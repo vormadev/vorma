@@ -68,76 +68,76 @@ export type SitemapItem = {
 /////// Extra TS Code:
 /////////////////////////////////////////////////////////////////////
 
-type RiverRootData = Extract<
+type VormaRootData = Extract<
 	(typeof routes)[number],
 	{ isRootData: true }
 >["phantomOutputType"];
 
-export type RiverApp = {
+export type VormaApp = {
 	routes: typeof routes;
-	appConfig: typeof riverAppConfig;
-	rootData: RiverRootData;
+	appConfig: typeof vormaAppConfig;
+	rootData: VormaRootData;
 };
 
-export const riverAppConfig = {
+export const vormaAppConfig = {
 	actionsRouterMountRoot: "/api/",
 	actionsDynamicRune: ":",
 	actionsSplatRune: "*",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
 	loadersExplicitIndexSegment: "_index",
-	__phantom: null as unknown as RiverApp,
+	__phantom: null as unknown as VormaApp,
 } as const;
 
 import type {
-	RiverLoaderPattern,
-	RiverMutationInput,
-	RiverMutationOutput,
-	RiverMutationPattern,
-	RiverMutationProps,
-	RiverQueryInput,
-	RiverQueryOutput,
-	RiverQueryPattern,
-	RiverQueryProps,
-} from "river.now/client";
-import type { RiverRouteProps } from "river.now/solid";
+	VormaLoaderPattern,
+	VormaMutationInput,
+	VormaMutationOutput,
+	VormaMutationPattern,
+	VormaMutationProps,
+	VormaQueryInput,
+	VormaQueryOutput,
+	VormaQueryPattern,
+	VormaQueryProps,
+} from "vorma/client";
+import type { VormaRouteProps } from "vorma/solid";
 
-export type QueryPattern = RiverQueryPattern<RiverApp>;
-export type QueryProps<P extends QueryPattern> = RiverQueryProps<RiverApp, P>;
-export type QueryInput<P extends QueryPattern> = RiverQueryInput<RiverApp, P>;
-export type QueryOutput<P extends QueryPattern> = RiverQueryOutput<RiverApp, P>;
+export type QueryPattern = VormaQueryPattern<VormaApp>;
+export type QueryProps<P extends QueryPattern> = VormaQueryProps<VormaApp, P>;
+export type QueryInput<P extends QueryPattern> = VormaQueryInput<VormaApp, P>;
+export type QueryOutput<P extends QueryPattern> = VormaQueryOutput<VormaApp, P>;
 
-export type MutationPattern = RiverMutationPattern<RiverApp>;
-export type MutationProps<P extends MutationPattern> = RiverMutationProps<
-	RiverApp,
+export type MutationPattern = VormaMutationPattern<VormaApp>;
+export type MutationProps<P extends MutationPattern> = VormaMutationProps<
+	VormaApp,
 	P
 >;
-export type MutationInput<P extends MutationPattern> = RiverMutationInput<
-	RiverApp,
+export type MutationInput<P extends MutationPattern> = VormaMutationInput<
+	VormaApp,
 	P
 >;
-export type MutationOutput<P extends MutationPattern> = RiverMutationOutput<
-	RiverApp,
+export type MutationOutput<P extends MutationPattern> = VormaMutationOutput<
+	VormaApp,
 	P
 >;
 
-export type RouteProps<P extends RiverLoaderPattern<RiverApp>> =
-	RiverRouteProps<RiverApp, P>;
+export type RouteProps<P extends VormaLoaderPattern<VormaApp>> =
+	VormaRouteProps<VormaApp, P>;
 
 /////////////////////////////////////////////////////////////////////
-/////// River Vite Config:
+/////// Vorma Vite Config:
 /////////////////////////////////////////////////////////////////////
 
 export const staticPublicAssetMap = {
-	"desktop.svg": "river_out_desktop_eebc981612eb.svg",
-	"favicon.svg": "river_out_favicon_d4e72b60e709.svg",
-	"fonts/jetbrains_mono.woff2": "river_out_fonts_jetbrains_mono_1e06740a02a4.woff2",
-	"fonts/jetbrains_mono_ext.woff2": "river_out_fonts_jetbrains_mono_ext_7db7affbce1f.woff2",
-	"fonts/jetbrains_mono_italic.woff2": "river_out_fonts_jetbrains_mono_italic_6548575d6839.woff2",
-	"fonts/jetbrains_mono_italic_ext.woff2": "river_out_fonts_jetbrains_mono_italic_ext_bdce8a4f00f6.woff2",
-	"moon.svg": "river_out_moon_7e0c08985ebe.svg",
-	"river-banner.webp": "river_out_river-banner_87c38a5b8c35.webp",
-	"sun.svg": "river_out_sun_338b26f6045d.svg"
+	"desktop.svg": "vorma_out_desktop_eebc981612eb.svg",
+	"favicon.svg": "vorma_out_favicon_d4e72b60e709.svg",
+	"fonts/jetbrains_mono.woff2": "vorma_out_fonts_jetbrains_mono_1e06740a02a4.woff2",
+	"fonts/jetbrains_mono_ext.woff2": "vorma_out_fonts_jetbrains_mono_ext_7db7affbce1f.woff2",
+	"fonts/jetbrains_mono_italic.woff2": "vorma_out_fonts_jetbrains_mono_italic_6548575d6839.woff2",
+	"fonts/jetbrains_mono_italic_ext.woff2": "vorma_out_fonts_jetbrains_mono_italic_ext_bdce8a4f00f6.woff2",
+	"moon.svg": "vorma_out_moon_7e0c08985ebe.svg",
+	"sun.svg": "vorma_out_sun_338b26f6045d.svg",
+	"vorma-banner.webp": "vorma_out_vorma-banner_af55bc5dc9f0.webp"
 } as const;
 
 export type StaticPublicAsset = keyof typeof staticPublicAssetMap;
@@ -157,12 +157,12 @@ export function waveRuntimeURL(
 	return publicPathPrefix + url;
 }
 
-export const riverViteConfig = {
+export const vormaViteConfig = {
 	rollupInput: [
 		"frontend/src/components/dyn.tsx",
 		"frontend/src/components/home.tsx",
 		"frontend/src/components/md.tsx",
-		"frontend/src/river.entry.tsx"
+		"frontend/src/vorma.entry.tsx"
 	],
 	publicPathPrefix,
 	staticPublicAssetMap,
@@ -172,8 +172,8 @@ export const riverViteConfig = {
 		"**/backend/dist/**/*",
 		"**/backend/assets/**/*",
 		"**/backend/wave.config.json",
-		"**/frontend/src/river.gen.ts",
-		"**/frontend/src/river.routes.ts"
+		"**/frontend/src/vorma.gen.ts",
+		"**/frontend/src/vorma.routes.ts"
 	],
 	dedupeList: [
 		"solid-js",

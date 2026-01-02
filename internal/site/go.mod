@@ -7,8 +7,8 @@ replace github.com/vormadev/vorma => ../../
 require (
 	github.com/adrg/frontmatter v0.2.0
 	github.com/go-chi/chi/v5 v5.2.2
-	github.com/vormadev/vorma v0.54.1
 	github.com/russross/blackfriday/v2 v2.1.0
+	github.com/vormadev/vorma v0.54.1
 )
 
 require (

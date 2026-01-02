@@ -1,7 +1,7 @@
 {
 	"name": "vorma",
 	"version": "0.81.0",
-	"description": "Vite-powered web framework for building full-stack applications with Go and TypeScript",
+	"description": "The Next.js of Golang, powered by Vite.",
 	"type": "module",
 	"sideEffects": false,
 	"license": "BSD-3-Clause",

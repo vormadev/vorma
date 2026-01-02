@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/river-now/river/kit/matcher"
+	"github.com/vormadev/vorma/kit/matcher"
 )
 
 var m = matcher.New(&matcher.Options{

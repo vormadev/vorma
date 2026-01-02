@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/river-now/river/kit/tsgen/tsgencore"
+	"github.com/vormadev/vorma/kit/tsgen/tsgencore"
 )
 
 // Basic types

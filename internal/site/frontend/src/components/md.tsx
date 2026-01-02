@@ -55,7 +55,7 @@ export function MD(props: RouteProps<"/*">) {
 
 				<Show when={loaderData().Content && !loaderData().IsFolder}>
 					<button
-						class="sm:ml-auto px-2 py-1 text-xs bg-dark rounded-sm text-light border-1 border-[#7777] font-normal tracking-wide hover:outline-3 hover:outline-nice-blue hover:outline-offset-1 hover:cursor-pointer uppercase"
+						class="sm:ml-auto px-2 py-1 text-xs bg-dark rounded-sm text-light border border-[#7777] font-normal tracking-wide hover:outline-3 hover:outline-nice-blue hover:outline-offset-1 hover:cursor-pointer uppercase"
 						onClick={async () => {
 							const ld = loaderData();
 							const markdown = `# ${ld.Title}\n\n${htmlToMarkdown(ld.Content ?? "")}\n`;

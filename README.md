@@ -4,8 +4,7 @@
 
 ---
 
-Vite-powered web framework for building full-stack applications with Go and
-TypeScript
+The Next.js of Golang, powered by Vite.
 
 ## Links
 
@@ -22,8 +21,9 @@ npm create vorma@latest
 
 ## What is Vorma?
 
-Vorma is a lot like Next.js or Remix, but it uses Go on the backend, with your
-choice of **_React_**, **_Solid_**, or **_Preact_** on the frontend.
+Vorma is a lot like Next.js, Remix, or TanStack Start, but it uses Go on the
+backend, with your choice of **_React_**, **_Solid_**, or **_Preact_** on the
+frontend.
 
 It has **_nested routing_**, effortless **_end-to-end type safety_** (including
 Link components!), **_parallel-executed route loaders_**, and much, much more.

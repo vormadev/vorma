@@ -40,7 +40,7 @@ export function App() {
 								alt="Vorma logo"
 								class="w-5 h-5 brightness-85 dark:brightness-[unset]"
 							/>
-							<span>Vorma</span>
+							<span>VORMA</span>
 						</h1>
 					</Link>
 					<div class="text-xs opacity-70 hidden sm:flex">

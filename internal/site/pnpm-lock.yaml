@@ -26,9 +26,6 @@ importers:
       nprogress:
         specifier: ^0.2.0
         version: 0.2.0
-      river.now:
-        specifier: link:../..
-        version: link:../..
       solid-js:
         specifier: ^1.9.9
         version: 1.9.9
@@ -44,6 +41,9 @@ importers:
       vite-plugin-solid:
         specifier: ^2.11.8
         version: 2.11.8(rolldown-vite@7.1.14(@types/node@16.18.11)(esbuild@0.25.4)(jiti@2.5.1))(solid-js@1.9.9)
+      vorma:
+        specifier: link:../..
+        version: link:../..
 
 packages:
 

@@ -33,10 +33,9 @@ export function Home(_props: RouteProps<"/_index">) {
 
 	return (
 		<>
-			<div class="flex flex-col gap-2 sm:gap-1 my-6">
+			<div class="flex flex-col gap-2 sm:gap-1 mt-4">
 				<h2 class="big-heading">
-					Vite-powered web framework for building full-stack
-					applications with Go and TypeScript
+					The Next.js of Golang, powered by Vite.
 				</h2>
 			</div>
 
@@ -89,7 +88,8 @@ export function Home(_props: RouteProps<"/_index">) {
 				<h2 class="scream-heading">What is Vorma?</h2>
 				<div class="flex-col-wrapper">
 					<p class="leading-[1.75]">
-						Vorma is a lot like Next.js or Remix, but it uses{" "}
+						Vorma is a lot like Next.js, Remix, or TanStack Start,
+						but it uses{" "}
 						<b>
 							<i>Go</i>
 						</b>{" "}
