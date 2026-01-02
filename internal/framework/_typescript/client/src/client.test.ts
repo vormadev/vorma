@@ -1,5 +1,5 @@
-import { createPatternRegistry } from "river.now/kit/matcher/register";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPatternRegistry } from "vorma/kit/matcher/register";
 import {
 	beginNavigation,
 	getBuildID,
@@ -9,8 +9,8 @@ import {
 	getStatus,
 	navigationStateManager,
 	revalidate,
-	riverNavigate,
 	submit,
+	vormaNavigate,
 } from "./client";
 import {
 	addBuildIDListener,
@@ -23,14 +23,14 @@ import {
 import { customHistoryListener, initCustomHistory } from "./history/history.ts";
 import { initClient } from "./init_client.ts";
 import { __getPrefetchHandlers, __makeLinkOnClickFn } from "./links.ts";
-import type { RiverAppConfig } from "./river_app_helpers/river_app_helpers.ts";
-import { __riverClientGlobal } from "./river_ctx/river_ctx.ts";
 import {
 	__applyScrollState,
 	type ScrollState,
 } from "./scroll_state_manager.ts";
+import type { VormaAppConfig } from "./vorma_app_helpers/vorma_app_helpers.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
-const riverAppConfig: RiverAppConfig = {
+const vormaAppConfig: VormaAppConfig = {
 	actionsRouterMountRoot: "/api/",
 	actionsDynamicRune: ":",
 	actionsSplatRune: "*",
@@ -63,9 +63,9 @@ const mockSessionStorage = (() => {
 // Store cleanup functions
 const cleanupFns: Array<() => void> = [];
 
-// Helper to setup initial River context
-const setupGlobalRiverContext = (initialData = {}) => {
-	(globalThis as any)[Symbol.for("__river_internal__")] = {
+// Helper to setup initial Vorma context
+const setupGlobalVormaContext = (initialData = {}) => {
+	(globalThis as any)[Symbol.for("__vorma_internal__")] = {
 		buildID: "1",
 		matchedPatterns: [],
 		importURLs: [],
@@ -90,7 +90,7 @@ const createMockResponse = (data: any, options: ResponseInit = {}) => {
 		status: 200,
 		headers: {
 			"Content-Type": "application/json",
-			"X-River-Build-Id": "1",
+			"X-Vorma-Build-Id": "1",
 			...options.headers,
 		},
 		...options,
@@ -211,8 +211,8 @@ describe("Comprehensive Navigation Test Suite", () => {
 			configurable: true,
 		});
 
-		// Setup River context
-		setupGlobalRiverContext();
+		// Setup Vorma context
+		setupGlobalVormaContext();
 
 		// Setup spies
 		vi.spyOn(window, "fetch");
@@ -299,12 +299,12 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/user-nav");
+				await vormaNavigate("/user-nav");
 				await vi.runAllTimersAsync();
 
 				expect(fetch).toHaveBeenCalledWith(
 					expect.objectContaining({
-						href: "http://localhost:3000/user-nav?river_json=1",
+						href: "http://localhost:3000/user-nav?vorma_json=1",
 					}),
 					expect.any(Object),
 				);
@@ -429,7 +429,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 						}),
 					);
 
-				await riverNavigate("/original");
+				await vormaNavigate("/original");
 				await vi.runAllTimersAsync();
 
 				expect(fetch).toHaveBeenCalledTimes(2);
@@ -574,18 +574,18 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// Verify each navigation type was started with correct URL
 				expect(fetchCalls[0]?.[0]).toBeInstanceOf(URL);
 				expect((fetchCalls[0]?.[0] as any)?.href).toBe(
-					"http://localhost:3000/nav1?river_json=1",
+					"http://localhost:3000/nav1?vorma_json=1",
 				);
 
 				expect(fetchCalls[1]?.[0]).toBeInstanceOf(URL);
 				expect((fetchCalls[1]?.[0] as any)?.href).toBe(
-					"http://localhost:3000/nav2?river_json=1",
+					"http://localhost:3000/nav2?vorma_json=1",
 				);
 
 				// Revalidation uses current window.location.href (which is "/")
 				expect(fetchCalls[2]?.[0]).toBeInstanceOf(URL);
 				expect((fetchCalls[2]?.[0] as any)?.href).toBe(
-					"http://localhost:3000/?river_json=1",
+					"http://localhost:3000/?vorma_json=1",
 				);
 
 				// Verify the options object structure
@@ -660,7 +660,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				} as any;
 
 				// Start navigation
-				const navPromise = riverNavigate("/cleanup-test");
+				const navPromise = vormaNavigate("/cleanup-test");
 
 				// IMMEDIATELY check status synchronously - should be navigating
 				expect(getStatus().isNavigating).toBe(true);
@@ -698,7 +698,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.clearAllMocks();
 				abortControllers.length = 0;
 
-				const navPromise2 = riverNavigate("/cleanup-test");
+				const navPromise2 = vormaNavigate("/cleanup-test");
 
 				// Should create a new AbortController (proves the old one was cleaned up)
 				expect(abortControllers.length).toBe(1);
@@ -904,7 +904,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				expect(fetch).not.toHaveBeenCalled();
 
 				const scrollState = JSON.parse(
-					sessionStorage.getItem("__river__scrollStateMap") || "[]",
+					sessionStorage.getItem("__vorma__scrollStateMap") || "[]",
 				);
 				expect(scrollState).toBeDefined();
 			});
@@ -964,7 +964,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const replaceSpy = vi.spyOn(history, "replace");
 				const pushSpy = vi.spyOn(history, "push");
 
-				await riverNavigate("/replace-test", { replace: true });
+				await vormaNavigate("/replace-test", { replace: true });
 				await vi.runAllTimersAsync();
 
 				// Should have called replace, not push
@@ -1104,18 +1104,18 @@ describe("Comprehensive Navigation Test Suite", () => {
 		});
 
 		describe("2.2 Fetch Route Data Phase", () => {
-			it("should construct URL with river_json and buildID", async () => {
-				setupGlobalRiverContext({ buildID: "test-build-123" });
+			it("should construct URL with vorma_json and buildID", async () => {
+				setupGlobalVormaContext({ buildID: "test-build-123" });
 				vi.mocked(fetch).mockResolvedValue(
 					createMockResponse({ importURLs: [], cssBundles: [] }),
 				);
 
-				await riverNavigate("/test-url");
+				await vormaNavigate("/test-url");
 				await vi.runAllTimersAsync();
 
 				expect(fetch).toHaveBeenCalledWith(
 					expect.objectContaining({
-						href: "http://localhost:3000/test-url?river_json=test-build-123",
+						href: "http://localhost:3000/test-url?vorma_json=test-build-123",
 					}),
 					expect.any(Object),
 				);
@@ -1126,7 +1126,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					createMockResponse({ importURLs: [], cssBundles: [] }),
 				);
 
-				await riverNavigate("/test-headers");
+				await vormaNavigate("/test-headers");
 				await vi.runAllTimersAsync();
 
 				expect(fetch).toHaveBeenCalledWith(
@@ -1156,7 +1156,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 						}),
 					);
 
-				await riverNavigate("/original");
+				await vormaNavigate("/original");
 				await vi.runAllTimersAsync();
 
 				expect(fetch).toHaveBeenCalledTimes(2);
@@ -1170,7 +1170,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// Check initial state
 				expect(getStatus().isNavigating).toBe(false);
 
-				const navPromise = riverNavigate("/empty-json");
+				const navPromise = vormaNavigate("/empty-json");
 
 				// Should be navigating immediately (synchronous check)
 				expect(getStatus().isNavigating).toBe(true);
@@ -1187,7 +1187,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				// Verify cleanup by trying to navigate to same URL again
 				vi.clearAllMocks();
-				await riverNavigate("/empty-json");
+				await vormaNavigate("/empty-json");
 
 				// Should make a new fetch call (proves previous navigation was cleaned up)
 				expect(fetch).toHaveBeenCalledTimes(1);
@@ -1268,7 +1268,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const waitFn = vi
 					.fn()
 					.mockResolvedValue({ clientData: "test" });
-				setupGlobalRiverContext({
+				setupGlobalVormaContext({
 					patternToWaitFnMap: {
 						"/pattern": waitFn,
 					},
@@ -1284,7 +1284,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/pattern/test");
+				await vormaNavigate("/pattern/test");
 				await vi.runAllTimersAsync();
 
 				expect(waitFn).toHaveBeenCalledWith(
@@ -1318,7 +1318,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// Check initial state
 				expect(getStatus().isNavigating).toBe(false);
 
-				const navPromise = riverNavigate("/cleanup");
+				const navPromise = vormaNavigate("/cleanup");
 
 				// Should be navigating immediately
 				expect(getStatus().isNavigating).toBe(true);
@@ -1331,7 +1331,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				// Verify cleanup by trying to navigate to same URL again
 				vi.clearAllMocks();
-				await riverNavigate("/cleanup");
+				await vormaNavigate("/cleanup");
 
 				// Should make a new fetch call (proves previous navigation was cleaned up)
 				expect(fetch).toHaveBeenCalledTimes(1);
@@ -1356,7 +1356,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 						}),
 					);
 
-				await riverNavigate("/start");
+				await vormaNavigate("/start");
 				await vi.runAllTimersAsync();
 
 				expect(document.title).toBe("Redirect Target");
@@ -1372,11 +1372,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockResolvedValue(
 					createMockResponse(
 						{ importURLs: [], cssBundles: [] },
-						{ headers: { "X-River-Build-Id": "new-build-456" } },
+						{ headers: { "X-Vorma-Build-Id": "new-build-456" } },
 					),
 				);
 
-				await riverNavigate("/new-build");
+				await vormaNavigate("/new-build");
 				await vi.runAllTimersAsync();
 
 				expect(buildIdListener).toHaveBeenCalledWith(
@@ -1395,7 +1395,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const clientData = { processed: true };
 				const waitFn = vi.fn().mockResolvedValue(clientData);
 
-				setupGlobalRiverContext({
+				setupGlobalVormaContext({
 					patternToWaitFnMap: { "/": waitFn },
 				});
 
@@ -1408,10 +1408,10 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/wait-test");
+				await vormaNavigate("/wait-test");
 				await vi.runAllTimersAsync();
 
-				expect(__riverClientGlobal.get("clientLoadersData")).toEqual([
+				expect(__vormaClientGlobal.get("clientLoadersData")).toEqual([
 					clientData,
 				]);
 			});
@@ -1426,7 +1426,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// Check status synchronously
 				expect(getStatus().isNavigating).toBe(false);
 
-				const navPromise = riverNavigate("/clear-loading");
+				const navPromise = vormaNavigate("/clear-loading");
 
 				// Should be navigating immediately
 				expect(getStatus().isNavigating).toBe(true);
@@ -1439,7 +1439,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 			});
 
 			it("should use view transitions when enabled and supported", async () => {
-				setupGlobalRiverContext({ useViewTransitions: true });
+				setupGlobalVormaContext({ useViewTransitions: true });
 
 				const mockStartViewTransition = vi.fn((callback) => {
 					callback?.();
@@ -1454,14 +1454,14 @@ describe("Comprehensive Navigation Test Suite", () => {
 					createMockResponse({ importURLs: [], cssBundles: [] }),
 				);
 
-				await riverNavigate("/with-transition");
+				await vormaNavigate("/with-transition");
 				await vi.runAllTimersAsync();
 
 				expect(mockStartViewTransition).toHaveBeenCalled();
 			});
 
 			it("should skip view transitions for prefetch and revalidation", async () => {
-				setupGlobalRiverContext({ useViewTransitions: true });
+				setupGlobalVormaContext({ useViewTransitions: true });
 
 				const mockStartViewTransition = vi.fn((callback) => {
 					callback?.();
@@ -1499,13 +1499,13 @@ describe("Comprehensive Navigation Test Suite", () => {
 					createMockResponse(routeData),
 				);
 
-				await riverNavigate("/users/123");
+				await vormaNavigate("/users/123");
 				await vi.runAllTimersAsync();
 
-				expect(__riverClientGlobal.get("matchedPatterns")).toEqual(
+				expect(__vormaClientGlobal.get("matchedPatterns")).toEqual(
 					routeData.matchedPatterns,
 				);
-				expect(__riverClientGlobal.get("params")).toEqual(
+				expect(__vormaClientGlobal.get("params")).toEqual(
 					routeData.params,
 				);
 			});
@@ -1519,7 +1519,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const pushSpy = vi.spyOn(history, "push");
 				const replaceSpy = vi.spyOn(history, "replace");
 
-				await riverNavigate("/new-page");
+				await vormaNavigate("/new-page");
 				await vi.runAllTimersAsync();
 
 				// Should have used push, not replace
@@ -1544,7 +1544,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const replaceSpy = vi.spyOn(history, "replace");
 				const pushSpy = vi.spyOn(history, "push");
 
-				await riverNavigate("/same-page");
+				await vormaNavigate("/same-page");
 				await vi.runAllTimersAsync();
 
 				// Should use replace for same URL, not push
@@ -1582,7 +1582,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/entity-title");
+				await vormaNavigate("/entity-title");
 				await vi.runAllTimersAsync();
 
 				expect(document.title).toBe("Title with & entities");
@@ -1613,7 +1613,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				);
 
 				// Navigate and handle the promise properly
-				const navPromise = riverNavigate("/css-wait");
+				const navPromise = vormaNavigate("/css-wait");
 
 				// Wait a bit for the navigation to start
 				await vi.advanceTimersByTimeAsync(10);
@@ -1667,7 +1667,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					createMockResponse({ importURLs: [], cssBundles: [] }),
 				);
 
-				await riverNavigate("/route-change-test");
+				await vormaNavigate("/route-change-test");
 				await vi.runAllTimersAsync();
 
 				expect(routeChangeListener).toHaveBeenCalledWith(
@@ -1682,7 +1682,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 			});
 
 			it("should apply CSS bundles avoiding duplicates", async () => {
-				setupGlobalRiverContext({ publicPathPrefix: "/static" });
+				setupGlobalVormaContext({ publicPathPrefix: "/static" });
 
 				// Store RAF callbacks
 				const rafCallbacks: FrameRequestCallback[] = [];
@@ -1702,16 +1702,16 @@ describe("Comprehensive Navigation Test Suite", () => {
 					.mockImplementation((selector) => {
 						if (
 							typeof selector === "string" &&
-							selector.includes("data-river-css-bundle")
+							selector.includes("data-vorma-css-bundle")
 						) {
 							const match = selector.match(
-								/data-river-css-bundle="([^"]+)"/,
+								/data-vorma-css-bundle="([^"]+)"/,
 							);
 							if (match && addedBundles.has(match[1]!)) {
 								const mockElement =
 									document.createElement("link");
 								mockElement.setAttribute(
-									"data-river-css-bundle",
+									"data-vorma-css-bundle",
 									match[1]!,
 								);
 								return mockElement;
@@ -1735,7 +1735,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				);
 
 				// First navigation
-				const nav1Promise = riverNavigate("/css-page");
+				const nav1Promise = vormaNavigate("/css-page");
 				await vi.advanceTimersByTimeAsync(10);
 
 				// Trigger onload for preload links
@@ -1762,7 +1762,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				rafCallbacks.length = 0;
 
 				// Second navigation
-				const nav2Promise = riverNavigate("/css-page");
+				const nav2Promise = vormaNavigate("/css-page");
 				await vi.advanceTimersByTimeAsync(10);
 
 				// Trigger onload for any new preload links
@@ -1788,7 +1788,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// The implementation should have checked for duplicates
 				expect(querySelectorSpy).toHaveBeenCalledWith(
 					expect.stringContaining(
-						'data-river-css-bundle="/styles.css"',
+						'data-vorma-css-bundle="/styles.css"',
 					),
 				);
 			});
@@ -1954,7 +1954,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				expect(firstFetchSignal?.aborted).toBe(false);
 
 				// Upgrade by starting a user navigation to the same URL
-				riverNavigate("/abort-test");
+				vormaNavigate("/abort-test");
 
 				// Now stop the prefetch handlers
 				handlers?.stop();
@@ -2033,12 +2033,12 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const key = "test-key";
 
 				sessionStorage.setItem(
-					"__river__scrollStateMap",
+					"__vorma__scrollStateMap",
 					JSON.stringify([[key, scrollState]]),
 				);
 
 				const stored = JSON.parse(
-					sessionStorage.getItem("__river__scrollStateMap") || "[]",
+					sessionStorage.getItem("__vorma__scrollStateMap") || "[]",
 				);
 				expect(stored).toEqual([[key, scrollState]]);
 			});
@@ -2051,7 +2051,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				}
 
 				sessionStorage.setItem(
-					"__river__scrollStateMap",
+					"__vorma__scrollStateMap",
 					JSON.stringify(entries.slice(0, 50)),
 				);
 
@@ -2066,11 +2066,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 				(window as any).scrollX = 999;
 				(window as any).scrollY = 999;
 
-				await riverNavigate("/new-page");
+				await vormaNavigate("/new-page");
 				vi.runAllTimers();
 
 				const stored = JSON.parse(
-					sessionStorage.getItem("__river__scrollStateMap") || "[]",
+					sessionStorage.getItem("__vorma__scrollStateMap") || "[]",
 				);
 				expect(stored.length).toBe(50);
 				expect(stored[0][0]).toBe("key-1"); // First entry evicted
@@ -2113,11 +2113,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 				(window as any).scrollX = 150;
 				(window as any).scrollY = 300;
 
-				await riverNavigate("/next");
+				await vormaNavigate("/next");
 				await vi.runAllTimersAsync();
 
 				const stored = JSON.parse(
-					sessionStorage.getItem("__river__scrollStateMap") || "[]",
+					sessionStorage.getItem("__vorma__scrollStateMap") || "[]",
 				);
 				const savedEntry = stored.find(
 					([k]: [string]) => k === history.location.key,
@@ -2142,7 +2142,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				await vi.runAllTimersAsync();
 
 				const stored = JSON.parse(
-					sessionStorage.getItem("__river__scrollStateMap") || "[]",
+					sessionStorage.getItem("__vorma__scrollStateMap") || "[]",
 				);
 				expect(stored.length).toBeGreaterThan(0);
 			});
@@ -2191,7 +2191,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				// Save scroll state for the non-hash version
 				sessionStorage.setItem(
-					"__river__scrollStateMap",
+					"__vorma__scrollStateMap",
 					JSON.stringify([[pageKey, savedScrollState]]),
 				);
 
@@ -2241,7 +2241,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					routeChangeListener,
 				);
 
-				await riverNavigate("/new-page");
+				await vormaNavigate("/new-page");
 				await vi.runAllTimersAsync();
 
 				expect(routeChangeListener).toHaveBeenCalledWith(
@@ -2265,7 +2265,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				document.body.appendChild(element);
 				const scrollIntoViewSpy = vi.spyOn(element, "scrollIntoView");
 
-				await riverNavigate("/page#target");
+				await vormaNavigate("/page#target");
 				await vi.runAllTimersAsync();
 
 				// Apply scroll state from route change event
@@ -2291,12 +2291,12 @@ describe("Comprehensive Navigation Test Suite", () => {
 				(window as any).scrollX = 200;
 				(window as any).scrollY = 400;
 
-				await initClient({ renderFn: () => {}, riverAppConfig });
+				await initClient({ renderFn: () => {}, vormaAppConfig });
 
 				window.dispatchEvent(new Event("beforeunload"));
 
 				const saved = JSON.parse(
-					sessionStorage.getItem("__river__pageRefreshScrollState") ||
+					sessionStorage.getItem("__vorma__pageRefreshScrollState") ||
 						"{}",
 				);
 				expect(saved).toMatchObject({
@@ -2316,7 +2316,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				};
 
 				sessionStorage.setItem(
-					"__river__pageRefreshScrollState",
+					"__vorma__pageRefreshScrollState",
 					JSON.stringify(scrollState),
 				);
 
@@ -2329,11 +2329,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 					return 0;
 				});
 
-				await initClient({ renderFn: () => {}, riverAppConfig });
+				await initClient({ renderFn: () => {}, vormaAppConfig });
 
 				expect(window.scrollTo).toHaveBeenCalledWith(250, 500);
 				expect(
-					sessionStorage.getItem("__river__pageRefreshScrollState"),
+					sessionStorage.getItem("__vorma__pageRefreshScrollState"),
 				).toBeNull();
 			});
 
@@ -2346,11 +2346,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 				};
 
 				sessionStorage.setItem(
-					"__river__pageRefreshScrollState",
+					"__vorma__pageRefreshScrollState",
 					JSON.stringify(scrollState),
 				);
 
-				await initClient({ renderFn: () => {}, riverAppConfig });
+				await initClient({ renderFn: () => {}, vormaAppConfig });
 
 				expect(window.scrollTo).not.toHaveBeenCalledWith(250, 500);
 			});
@@ -2364,11 +2364,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 				};
 
 				sessionStorage.setItem(
-					"__river__pageRefreshScrollState",
+					"__vorma__pageRefreshScrollState",
 					JSON.stringify(scrollState),
 				);
 
-				await initClient({ renderFn: () => {}, riverAppConfig });
+				await initClient({ renderFn: () => {}, vormaAppConfig });
 
 				expect(window.scrollTo).not.toHaveBeenCalledWith(250, 500);
 			});
@@ -2394,7 +2394,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					createMockResponse({ importURLs: [], cssBundles: [] }),
 				);
 
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				const headers = vi.mocked(fetch).mock.calls[0]?.[1]
@@ -2404,7 +2404,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 		});
 
 		describe("5.2 Response Headers Priority", () => {
-			it("should prioritize X-River-Reload over other redirects", async () => {
+			it("should prioritize X-Vorma-Reload over other redirects", async () => {
 				// Mock location.href setter
 				let locationHref = window.location.href;
 				const originalLocation = window.location;
@@ -2424,18 +2424,18 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockResolvedValueOnce(
 					createMockResponse(null, {
 						headers: {
-							"X-River-Reload": "/force-reload",
+							"X-Vorma-Reload": "/force-reload",
 							"X-Client-Redirect": "/ignored",
-							"X-River-Build-Id": "test-build",
+							"X-Vorma-Build-Id": "test-build",
 						},
 					}),
 				);
 
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				expect(locationHref).toContain("/force-reload");
-				expect(locationHref).toContain("river_reload=test-build");
+				expect(locationHref).toContain("vorma_reload=test-build");
 
 				// Restore original location
 				Object.defineProperty(window, "location", {
@@ -2460,7 +2460,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				vi.mocked(fetch).mockResolvedValueOnce(redirectedResponse);
 
-				await riverNavigate("/original");
+				await vormaNavigate("/original");
 				await vi.runAllTimersAsync();
 
 				// Since redirected=true for GET, navigation completes without rendering
@@ -2492,7 +2492,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 						createMockResponse(null, {
 							headers: {
 								"X-Client-Redirect": "/client-redirect",
-								"X-River-Build-Id": "test-build",
+								"X-Vorma-Build-Id": "test-build",
 							},
 						}),
 					)
@@ -2504,7 +2504,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 						}),
 					);
 
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				expect(document.title).toBe("Client Redirected");
@@ -2520,18 +2520,18 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockResolvedValueOnce(
 					createMockResponse(
 						{ importURLs: [], cssBundles: [] },
-						{ headers: { "X-River-Build-Id": "new-build-789" } },
+						{ headers: { "X-Vorma-Build-Id": "new-build-789" } },
 					),
 				);
 
-				await riverNavigate("/new-build");
+				await vormaNavigate("/new-build");
 				await vi.runAllTimersAsync();
 
 				expect(buildIdListener).toHaveBeenCalled();
 			});
 
 			it("should dispatch build-id event before redirect", async () => {
-				// The issue is that setupGlobalRiverContext is being called in beforeEach
+				// The issue is that setupGlobalVormaContext is being called in beforeEach
 				// and resets the buildID to "1". We need to check what build ID changes occur.
 
 				const buildIdListener = vi.fn();
@@ -2542,7 +2542,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					.mockResolvedValueOnce(
 						createMockResponse(null, {
 							headers: {
-								"X-River-Build-Id": "redirect-build",
+								"X-Vorma-Build-Id": "redirect-build",
 								"X-Client-Redirect": "/redirect",
 							},
 						}),
@@ -2558,13 +2558,13 @@ describe("Comprehensive Navigation Test Suite", () => {
 							},
 							{
 								headers: {
-									"X-River-Build-Id": "redirect-build",
+									"X-Vorma-Build-Id": "redirect-build",
 								},
 							},
 						),
 					);
 
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				expect(buildIdListener).toHaveBeenCalled();
@@ -2594,7 +2594,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 						}),
 					);
 
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				expect(document.title).toBe("Soft Redirected");
@@ -2638,7 +2638,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				// The URL might have a trailing slash added
@@ -2650,7 +2650,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				});
 			});
 
-			it("should add river_reload param for forced internal redirect", async () => {
+			it("should add vorma_reload param for forced internal redirect", async () => {
 				let locationHref = window.location.href;
 				const originalLocation = window.location;
 
@@ -2675,17 +2675,17 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockResolvedValueOnce(
 					createMockResponse(null, {
 						headers: {
-							"X-River-Reload": "/force-internal",
-							"X-River-Build-Id": "force-build",
+							"X-Vorma-Reload": "/force-internal",
+							"X-Vorma-Build-Id": "force-build",
 						},
 					}),
 				);
 
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				expect(locationHref).toContain("/force-internal");
-				expect(locationHref).toContain("river_reload=force-build");
+				expect(locationHref).toContain("vorma_reload=force-build");
 
 				Object.defineProperty(window, "location", {
 					value: originalLocation,
@@ -2708,7 +2708,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				}
 
 				// Navigate - it should stop at the redirect limit
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				// Should stop at 10 calls: 1 initial + 9 redirects, then the 10th redirect attempt
@@ -2717,7 +2717,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				// Should log error when hitting the limit
 				expect(consoleErrorSpy).toHaveBeenCalledWith(
-					"River:",
+					"Vorma:",
 					"Too many redirects",
 				);
 
@@ -2744,7 +2744,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					),
 				);
 
-				await riverNavigate("/test");
+				await vormaNavigate("/test");
 				await vi.runAllTimersAsync();
 
 				expect(window.location.href).not.toContain("mailto:");
@@ -2753,11 +2753,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 		});
 
 		describe("5.6 URL Cleanup", () => {
-			it("should remove river_reload param on init", async () => {
+			it("should remove vorma_reload param on init", async () => {
 				window.history.replaceState(
 					{},
 					"",
-					"/?river_reload=123&other=param",
+					"/?vorma_reload=123&other=param",
 				);
 
 				// Reset custom history
@@ -2768,8 +2768,8 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				// Simulate just the URL cleanup part of initClient
 				const url = new URL(window.location.href);
-				if (url.searchParams.has("river_reload")) {
-					url.searchParams.delete("river_reload");
+				if (url.searchParams.has("vorma_reload")) {
+					url.searchParams.delete("vorma_reload");
 					history.replace(url.href);
 				}
 
@@ -3135,7 +3135,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				expect(document.title).not.toBe(initialTitle);
 			});
 
-			it("should handle X-River-Reload redirects from submit", async () => {
+			it("should handle X-Vorma-Reload redirects from submit", async () => {
 				let locationHref = window.location.href;
 				Object.defineProperty(window.location, "href", {
 					get: () => locationHref,
@@ -3148,8 +3148,8 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockResolvedValueOnce(
 					createMockResponse(null, {
 						headers: {
-							"X-River-Reload": "/force-reload",
-							"X-River-Build-Id": "new-build",
+							"X-Vorma-Reload": "/force-reload",
+							"X-Vorma-Build-Id": "new-build",
 						},
 					}),
 				);
@@ -3157,9 +3157,9 @@ describe("Comprehensive Navigation Test Suite", () => {
 				await submit("/api/action", { method: "POST" });
 				await vi.runAllTimersAsync();
 
-				// Should do a hard redirect with river_reload param
+				// Should do a hard redirect with vorma_reload param
 				expect(locationHref).toContain("/force-reload");
-				expect(locationHref).toContain("river_reload=new-build");
+				expect(locationHref).toContain("vorma_reload=new-build");
 			});
 
 			it("should handle external redirects from submit", async () => {
@@ -3392,7 +3392,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				expect(fetch).toHaveBeenCalledWith(
 					expect.objectContaining({
-						href: "http://localhost:3000/current-page?param=value&river_json=1",
+						href: "http://localhost:3000/current-page?param=value&vorma_json=1",
 					}),
 					expect.any(Object),
 				);
@@ -3401,7 +3401,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 	});
 
 	describe("7. Events System", () => {
-		describe("7.1 Loading States (river:status)", () => {
+		describe("7.1 Loading States (vorma:status)", () => {
 			it("should track isNavigating state", async () => {
 				// Ensure clean state
 				await vi.runAllTimersAsync();
@@ -3418,7 +3418,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockReturnValue(navPromise as any);
 
 				// Start navigation
-				const navResult = riverNavigate("/nav-state");
+				const navResult = vormaNavigate("/nav-state");
 
 				// Wait for the debounced status event
 				await vi.advanceTimersByTimeAsync(10);
@@ -3630,7 +3630,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 			});
 		});
 
-		describe("7.2 Route Changes (river:route-change)", () => {
+		describe("7.2 Route Changes (vorma:route-change)", () => {
 			it("should fire after navigation completes", async () => {
 				const routeChangeListener = vi.fn();
 				addRouteChangeListener(routeChangeListener);
@@ -3639,7 +3639,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					createMockResponse({ importURLs: [], cssBundles: [] }),
 				);
 
-				await riverNavigate("/route-change");
+				await vormaNavigate("/route-change");
 				await vi.runAllTimersAsync();
 
 				expect(routeChangeListener).toHaveBeenCalledTimes(1);
@@ -3653,7 +3653,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					createMockResponse({ importURLs: [], cssBundles: [] }),
 				);
 
-				await riverNavigate("/with-hash#section");
+				await vormaNavigate("/with-hash#section");
 				await vi.runAllTimersAsync();
 
 				expect(routeChangeListener).toHaveBeenCalledWith(
@@ -3680,7 +3680,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/after-title");
+				await vormaNavigate("/after-title");
 				await vi.runAllTimersAsync();
 
 				expect(routeChangeListener).toHaveBeenCalled();
@@ -3690,7 +3690,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 			});
 		});
 
-		describe("7.3 Location Changes (river:location)", () => {
+		describe("7.3 Location Changes (vorma:location)", () => {
 			it("should fire when location.key changes", async () => {
 				// Manually trigger the customHistoryListener to test the location event
 				const locationListener = vi.fn();
@@ -3734,7 +3734,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 			});
 		});
 
-		describe("7.4 Build ID Changes (river:build-id)", () => {
+		describe("7.4 Build ID Changes (vorma:build-id)", () => {
 			it("should fire on build ID mismatch", async () => {
 				const buildIdListener = vi.fn();
 				addBuildIDListener(buildIdListener);
@@ -3742,11 +3742,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockResolvedValue(
 					createMockResponse(
 						{ importURLs: [], cssBundles: [] },
-						{ headers: { "X-River-Build-Id": "new-build-456" } },
+						{ headers: { "X-Vorma-Build-Id": "new-build-456" } },
 					),
 				);
 
-				await riverNavigate("/new-build");
+				await vormaNavigate("/new-build");
 				await vi.runAllTimersAsync();
 
 				expect(buildIdListener).toHaveBeenCalledWith(
@@ -3766,18 +3766,18 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockResolvedValue(
 					createMockResponse(
 						{ importURLs: [], cssBundles: [] },
-						{ headers: { "X-River-Build-Id": "updated-build" } },
+						{ headers: { "X-Vorma-Build-Id": "updated-build" } },
 					),
 				);
 
-				await riverNavigate("/check-update");
+				await vormaNavigate("/check-update");
 				await vi.runAllTimersAsync();
 
 				expect(buildIdListener).toHaveBeenCalled();
 			});
 
 			it("should provide current build ID via getBuildID()", () => {
-				setupGlobalRiverContext({ buildID: "test-build-999" });
+				setupGlobalVormaContext({ buildID: "test-build-999" });
 				expect(getBuildID()).toBe("test-build-999");
 			});
 		});
@@ -3789,7 +3789,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const mockModule = { default: () => "Component" };
 				vi.doMock("/static/module.js", () => mockModule);
 
-				setupGlobalRiverContext({
+				setupGlobalVormaContext({
 					importURLs: ["/module.js"],
 					publicPathPrefix: "/static",
 				});
@@ -3802,11 +3802,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/with-module");
+				await vormaNavigate("/with-module");
 				await vi.runAllTimersAsync();
 
 				expect(
-					__riverClientGlobal.get("activeComponents"),
+					__vormaClientGlobal.get("activeComponents"),
 				).toBeDefined();
 			});
 
@@ -3827,10 +3827,10 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/multi-export");
+				await vormaNavigate("/multi-export");
 				await vi.runAllTimersAsync();
 
-				const components = __riverClientGlobal.get("activeComponents");
+				const components = __vormaClientGlobal.get("activeComponents");
 				expect(components).toHaveLength(2);
 				expect(components?.[0]).toBe(mockModule.default);
 				expect(components?.[1]).toBe(mockModule.NamedExport);
@@ -3869,13 +3869,13 @@ describe("Comprehensive Navigation Test Suite", () => {
 				);
 
 				// 3. EXECUTION: Trigger the navigation.
-				await riverNavigate("/route-with-specific-error-boundary");
+				await vormaNavigate("/route-with-specific-error-boundary");
 				await vi.runAllTimersAsync();
 
 				// 4. ASSERTIONS: Verify the state is correct and comprehensive.
 				const activeComponents =
-					__riverClientGlobal.get("activeComponents");
-				const activeErrorBoundary = __riverClientGlobal.get(
+					__vormaClientGlobal.get("activeComponents");
+				const activeErrorBoundary = __vormaClientGlobal.get(
 					"activeErrorBoundary",
 				);
 
@@ -3894,7 +3894,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 			it("should fallback to defaultErrorBoundary if not found", async () => {
 				const defaultError = () => "Default Error";
-				setupGlobalRiverContext({ defaultErrorBoundary: defaultError });
+				setupGlobalVormaContext({ defaultErrorBoundary: defaultError });
 
 				vi.mocked(fetch).mockResolvedValue(
 					createMockResponse({
@@ -3904,10 +3904,10 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/missing-error");
+				await vormaNavigate("/missing-error");
 				await vi.runAllTimersAsync();
 
-				expect(__riverClientGlobal.get("activeErrorBoundary")).toBe(
+				expect(__vormaClientGlobal.get("activeErrorBoundary")).toBe(
 					defaultError,
 				);
 			});
@@ -3918,7 +3918,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const originalEnv = import.meta.env.DEV;
 				(import.meta.env as any).DEV = true;
 
-				setupGlobalRiverContext({
+				setupGlobalVormaContext({
 					viteDevURL: "http://localhost:5173",
 					publicPathPrefix: "/static",
 				});
@@ -3937,7 +3937,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					return { default: () => {} };
 				});
 
-				await riverNavigate("/dev-test");
+				await vormaNavigate("/dev-test");
 				await vi.runAllTimersAsync();
 
 				// In dev, should use viteDevURL with
@@ -3950,7 +3950,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const originalEnv = import.meta.env.DEV;
 				(import.meta.env as any).DEV = false;
 
-				setupGlobalRiverContext({
+				setupGlobalVormaContext({
 					publicPathPrefix: "/assets",
 				});
 
@@ -3965,19 +3965,19 @@ describe("Comprehensive Navigation Test Suite", () => {
 					default: () => {},
 				}));
 
-				await riverNavigate("/prod-test");
+				await vormaNavigate("/prod-test");
 				await vi.runAllTimersAsync();
 
 				// Verify it tried to import from the correct path
 				expect(
-					__riverClientGlobal.get("activeComponents"),
+					__vormaClientGlobal.get("activeComponents"),
 				).toBeDefined();
 
 				(import.meta.env as any).DEV = originalEnv;
 			});
 
 			it("should handle trailing slashes correctly", async () => {
-				setupGlobalRiverContext({
+				setupGlobalVormaContext({
 					publicPathPrefix: "/static/", // With trailing slash
 				});
 
@@ -4011,7 +4011,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 						return document.head.appendChild(element);
 					});
 
-				await riverNavigate("/slash-test");
+				await vormaNavigate("/slash-test");
 
 				// Wait for all async operations
 				await vi.runAllTimersAsync();
@@ -4042,22 +4042,22 @@ describe("Comprehensive Navigation Test Suite", () => {
 			const customErrorBoundary = () => "Custom Error";
 
 			await initClient({
-				riverAppConfig,
+				vormaAppConfig,
 				renderFn: () => {},
 				defaultErrorBoundary: customErrorBoundary,
 				useViewTransitions: true,
 			});
 
-			expect(__riverClientGlobal.get("defaultErrorBoundary")).toBe(
+			expect(__vormaClientGlobal.get("defaultErrorBoundary")).toBe(
 				customErrorBoundary,
 			);
-			expect(__riverClientGlobal.get("useViewTransitions")).toBe(true);
+			expect(__vormaClientGlobal.get("useViewTransitions")).toBe(true);
 		});
 
 		it("should initialize history with POP listener", async () => {
 			const listenSpy = vi.spyOn(getHistoryInstance(), "listen");
 
-			await initClient({ renderFn: () => {}, riverAppConfig });
+			await initClient({ renderFn: () => {}, vormaAppConfig });
 
 			expect(listenSpy).toHaveBeenCalled();
 		});
@@ -4071,21 +4071,21 @@ describe("Comprehensive Navigation Test Suite", () => {
 				configurable: true,
 			});
 
-			await initClient({ renderFn: () => {}, riverAppConfig });
+			await initClient({ renderFn: () => {}, vormaAppConfig });
 
 			expect(setterSpy).toHaveBeenCalledWith("manual");
 		});
 
-		it("should clean river_reload param from URL", async () => {
+		it("should clean vorma_reload param from URL", async () => {
 			window.history.replaceState(
 				{},
 				"",
-				"/?river_reload=old-build&keep=this",
+				"/?vorma_reload=old-build&keep=this",
 			);
 
 			const replaceSpy = vi.spyOn(getHistoryInstance(), "replace");
 
-			await initClient({ renderFn: () => {}, riverAppConfig });
+			await initClient({ renderFn: () => {}, vormaAppConfig });
 
 			expect(replaceSpy).toHaveBeenCalledWith(
 				"http://localhost:3000/?keep=this",
@@ -4093,7 +4093,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 		});
 
 		it("should load initial components", async () => {
-			setupGlobalRiverContext({
+			setupGlobalVormaContext({
 				importURLs: ["/initial.js"],
 				publicPathPrefix: "/",
 			});
@@ -4102,24 +4102,24 @@ describe("Comprehensive Navigation Test Suite", () => {
 				default: () => "Initial Component",
 			}));
 
-			await initClient({ renderFn: () => {}, riverAppConfig });
+			await initClient({ renderFn: () => {}, vormaAppConfig });
 
-			expect(__riverClientGlobal.get("activeComponents")).toHaveLength(1);
+			expect(__vormaClientGlobal.get("activeComponents")).toHaveLength(1);
 		});
 
 		it("should run initial client wait functions", async () => {
 			const waitFn = vi.fn().mockResolvedValue({ initialized: true });
 
-			setupGlobalRiverContext({
+			setupGlobalVormaContext({
 				patternToWaitFnMap: { "/": waitFn },
 				matchedPatterns: ["/"],
 				loadersData: [{ initial: "data" }],
 			});
 
-			await initClient({ renderFn: () => {}, riverAppConfig });
+			await initClient({ renderFn: () => {}, vormaAppConfig });
 
 			expect(waitFn).toHaveBeenCalled();
-			expect(__riverClientGlobal.get("clientLoadersData")).toEqual([
+			expect(__vormaClientGlobal.get("clientLoadersData")).toEqual([
 				{ initialized: true },
 			]);
 		});
@@ -4127,7 +4127,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 		it("should execute user render function", async () => {
 			const renderFn = vi.fn();
 
-			await initClient({ renderFn, riverAppConfig });
+			await initClient({ renderFn, vormaAppConfig });
 
 			expect(renderFn).toHaveBeenCalled();
 		});
@@ -4141,7 +4141,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 			};
 
 			sessionStorage.setItem(
-				"__river__pageRefreshScrollState",
+				"__vorma__pageRefreshScrollState",
 				JSON.stringify(scrollState),
 			);
 
@@ -4152,24 +4152,24 @@ describe("Comprehensive Navigation Test Suite", () => {
 					return 0;
 				});
 
-			await initClient({ renderFn: () => {}, riverAppConfig });
+			await initClient({ renderFn: () => {}, vormaAppConfig });
 
 			expect(window.scrollTo).toHaveBeenCalledWith(300, 600);
 			expect(
-				sessionStorage.getItem("__river__pageRefreshScrollState"),
+				sessionStorage.getItem("__vorma__pageRefreshScrollState"),
 			).toBeNull();
 
 			rafSpy.mockRestore();
 		});
 
 		it("should detect touch devices on first touch", async () => {
-			await initClient({ renderFn: () => {}, riverAppConfig });
+			await initClient({ renderFn: () => {}, vormaAppConfig });
 
-			expect(__riverClientGlobal.get("isTouchDevice")).toBeUndefined();
+			expect(__vormaClientGlobal.get("isTouchDevice")).toBeUndefined();
 
 			window.dispatchEvent(new Event("touchstart"));
 
-			expect(__riverClientGlobal.get("isTouchDevice")).toBe(true);
+			expect(__vormaClientGlobal.get("isTouchDevice")).toBe(true);
 		});
 	});
 
@@ -4272,7 +4272,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// This assertion is more specific and robust.
 				expect(fetch).toHaveBeenCalledWith(
 					expect.objectContaining({
-						href: expect.stringContaining("/page1?river_json="),
+						href: expect.stringContaining("/page1?vorma_json="),
 					}),
 					expect.any(Object),
 				);
@@ -4290,7 +4290,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				await vi.runAllTimersAsync();
 
 				const saved = JSON.parse(
-					sessionStorage.getItem("__river__scrollStateMap") || "[]",
+					sessionStorage.getItem("__vorma__scrollStateMap") || "[]",
 				);
 				expect(saved).toContainEqual([
 					expect.any(String),
@@ -4311,7 +4311,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const statusListener = vi.fn();
 				const cleanup = addListener(addStatusListener, statusListener);
 
-				await riverNavigate("/will-abort");
+				await vormaNavigate("/will-abort");
 				await vi.runAllTimersAsync();
 
 				// Should not log abort errors
@@ -4330,7 +4330,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// Check initial state
 				expect(getStatus().isNavigating).toBe(false);
 
-				const navPromise = riverNavigate("/abort-loading");
+				const navPromise = vormaNavigate("/abort-loading");
 
 				// Should be navigating immediately
 				expect(getStatus().isNavigating).toBe(true);
@@ -4352,11 +4352,11 @@ describe("Comprehensive Navigation Test Suite", () => {
 					.spyOn(console, "error")
 					.mockImplementation(() => {});
 
-				await riverNavigate("/fail");
+				await vormaNavigate("/fail");
 				await vi.runAllTimersAsync();
 
 				expect(consoleErrorSpy).toHaveBeenCalledWith(
-					"River:",
+					"Vorma:",
 					"Navigation failed",
 					error,
 				);
@@ -4370,7 +4370,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// Check initial state
 				expect(getStatus().isNavigating).toBe(false);
 
-				const navPromise = riverNavigate("/clear-on-fail");
+				const navPromise = vormaNavigate("/clear-on-fail");
 
 				// Should be navigating immediately
 				expect(getStatus().isNavigating).toBe(true);
@@ -4388,7 +4388,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					new Error("Navigation error"),
 				);
 
-				await riverNavigate("/unreachable");
+				await vormaNavigate("/unreachable");
 				vi.runAllTimers();
 
 				expect(window.location.pathname).toBe(currentPath);
@@ -4397,22 +4397,22 @@ describe("Comprehensive Navigation Test Suite", () => {
 			it("should not update any state on failure", async () => {
 				const initialState = {
 					title: document.title,
-					components: __riverClientGlobal.get("activeComponents"),
-					params: __riverClientGlobal.get("params"),
+					components: __vormaClientGlobal.get("activeComponents"),
+					params: __vormaClientGlobal.get("params"),
 				};
 
 				vi.mocked(fetch).mockRejectedValue(
 					new Error("State test error"),
 				);
 
-				await riverNavigate("/state-fail");
+				await vormaNavigate("/state-fail");
 				vi.runAllTimers();
 
 				expect(document.title).toBe(initialState.title);
-				expect(__riverClientGlobal.get("activeComponents")).toBe(
+				expect(__vormaClientGlobal.get("activeComponents")).toBe(
 					initialState.components,
 				);
-				expect(__riverClientGlobal.get("params")).toBe(
+				expect(__vormaClientGlobal.get("params")).toBe(
 					initialState.params,
 				);
 			});
@@ -4427,7 +4427,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// Check initial state
 				expect(getStatus().isNavigating).toBe(false);
 
-				const navPromise = riverNavigate("/empty");
+				const navPromise = vormaNavigate("/empty");
 
 				// Should be navigating immediately
 				expect(getStatus().isNavigating).toBe(true);
@@ -4448,7 +4448,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					.spyOn(console, "error")
 					.mockImplementation(() => {});
 
-				await riverNavigate("/network-error");
+				await vormaNavigate("/network-error");
 				await vi.runAllTimersAsync();
 
 				expect(consoleErrorSpy).toHaveBeenCalled();
@@ -4464,7 +4464,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				);
 
 				// Navigate to a 404 page
-				await riverNavigate("/not-found");
+				await vormaNavigate("/not-found");
 
 				// The important behaviors:
 				// 1. We should still be on the original page
@@ -4483,7 +4483,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					}),
 				);
 
-				await riverNavigate("/success");
+				await vormaNavigate("/success");
 
 				// This navigation should work, proving we're not stuck
 				expect(document.title).toBe("Success Page");
@@ -4499,7 +4499,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				// Trigger event
 				window.dispatchEvent(
-					new CustomEvent("river:status", {
+					new CustomEvent("vorma:status", {
 						detail: {
 							isNavigating: false,
 							isSubmitting: false,
@@ -4515,7 +4515,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 
 				// Trigger again
 				window.dispatchEvent(
-					new CustomEvent("river:status", {
+					new CustomEvent("vorma:status", {
 						detail: {
 							isNavigating: true,
 							isSubmitting: false,
@@ -4540,19 +4540,19 @@ describe("Comprehensive Navigation Test Suite", () => {
 				addBuildIDListener(() => {});
 
 				expect(addEventListenerSpy).toHaveBeenCalledWith(
-					"river:status",
+					"vorma:status",
 					expect.any(Function),
 				);
 				expect(addEventListenerSpy).toHaveBeenCalledWith(
-					"river:route-change",
+					"vorma:route-change",
 					expect.any(Function),
 				);
 				expect(addEventListenerSpy).toHaveBeenCalledWith(
-					"river:location",
+					"vorma:location",
 					expect.any(Function),
 				);
 				expect(addEventListenerSpy).toHaveBeenCalledWith(
-					"river:build-id",
+					"vorma:build-id",
 					expect.any(Function),
 				);
 			});
@@ -4561,7 +4561,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 		describe("13.2 Public Utilities", () => {
 			it("should return root element via getRootEl()", () => {
 				const root = document.createElement("div");
-				root.id = "river-root";
+				root.id = "vorma-root";
 				document.body.appendChild(root);
 
 				expect(getRootEl()).toBe(root);
@@ -4609,7 +4609,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 			});
 
 			it("should return current build ID", () => {
-				setupGlobalRiverContext({ buildID: "test-build-12345" });
+				setupGlobalVormaContext({ buildID: "test-build-12345" });
 				expect(getBuildID()).toBe("test-build-12345");
 			});
 		});
@@ -4631,13 +4631,13 @@ describe("Comprehensive Navigation Test Suite", () => {
 			}) as any);
 
 			// Start first navigation
-			riverNavigate("/page1");
+			vormaNavigate("/page1");
 
 			// Verify it's navigating
 			expect(getStatus().isNavigating).toBe(true);
 
 			// Start second navigation before first completes
-			const nav2 = riverNavigate("/page2");
+			const nav2 = vormaNavigate("/page2");
 
 			// Should still be navigating (now to page2)
 			expect(getStatus().isNavigating).toBe(true);
@@ -4679,7 +4679,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 			expect(fetch).toHaveBeenCalledTimes(1);
 
 			// Start user navigation while prefetch is in flight
-			const navPromise = riverNavigate("/prefetch-race");
+			const navPromise = vormaNavigate("/prefetch-race");
 
 			// Should not make another fetch call (reusing prefetch)
 			expect(fetch).toHaveBeenCalledTimes(1);
@@ -4723,10 +4723,10 @@ describe("Comprehensive Navigation Test Suite", () => {
 				}),
 			);
 
-			await riverNavigate("/page-with-error1");
+			await vormaNavigate("/page-with-error1");
 			await vi.runAllTimersAsync();
 
-			expect(__riverClientGlobal.get("activeErrorBoundary")).toBe(
+			expect(__vormaClientGlobal.get("activeErrorBoundary")).toBe(
 				errorBoundary1,
 			);
 
@@ -4741,10 +4741,10 @@ describe("Comprehensive Navigation Test Suite", () => {
 				}),
 			);
 
-			await riverNavigate("/page-with-error2");
+			await vormaNavigate("/page-with-error2");
 			await vi.runAllTimersAsync();
 
-			expect(__riverClientGlobal.get("activeErrorBoundary")).toBe(
+			expect(__vormaClientGlobal.get("activeErrorBoundary")).toBe(
 				errorBoundary2,
 			);
 		});
@@ -4901,19 +4901,19 @@ describe("Comprehensive Navigation Test Suite", () => {
 			// Should have removed all listeners
 			expect(removeEventListenerSpy).toHaveBeenCalledTimes(4);
 			expect(removeEventListenerSpy).toHaveBeenCalledWith(
-				"river:status",
+				"vorma:status",
 				expect.any(Function),
 			);
 			expect(removeEventListenerSpy).toHaveBeenCalledWith(
-				"river:route-change",
+				"vorma:route-change",
 				expect.any(Function),
 			);
 			expect(removeEventListenerSpy).toHaveBeenCalledWith(
-				"river:location",
+				"vorma:location",
 				expect.any(Function),
 			);
 			expect(removeEventListenerSpy).toHaveBeenCalledWith(
-				"river:build-id",
+				"vorma:build-id",
 				expect.any(Function),
 			);
 		});
@@ -5148,7 +5148,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 					.mockImplementationOnce(() => secondFetchPromise as any);
 
 				// 2. Start navigation
-				const navPromise = riverNavigate("/dashboard");
+				const navPromise = vormaNavigate("/dashboard");
 
 				// 3. Check initial navigating state
 				await vi.advanceTimersByTimeAsync(8);
@@ -5219,7 +5219,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 						}),
 					);
 
-				await riverNavigate("/admin");
+				await vormaNavigate("/admin");
 				await vi.runAllTimersAsync();
 
 				// No loading gaps throughout redirect chain
@@ -5268,7 +5268,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				// Check status before navigation
 				expect(getStatus().isNavigating).toBe(false);
 
-				const navPromise = riverNavigate("/complex-page");
+				const navPromise = vormaNavigate("/complex-page");
 
 				// Should be navigating immediately after starting
 				expect(getStatus().isNavigating).toBe(true);
@@ -5338,7 +5338,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				);
 
 				// 3. Start navigation
-				const navPromise = riverNavigate("/styled-page");
+				const navPromise = vormaNavigate("/styled-page");
 
 				// 4. Resolve fetch, which triggers the code path that waits for CSS
 				(resolveFetch as any)();
@@ -5381,7 +5381,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				const waitFnPromise = new Promise((resolve) => {
 					resolveWaitFn = () => resolve({ clientData: "loaded" });
 				});
-				setupGlobalRiverContext({
+				setupGlobalVormaContext({
 					patternToWaitFnMap: { "/data-page": () => waitFnPromise },
 				});
 
@@ -5400,7 +5400,7 @@ describe("Comprehensive Navigation Test Suite", () => {
 				vi.mocked(fetch).mockResolvedValueOnce(fetchPromise as any);
 
 				// 3. Start navigation
-				const navPromise = riverNavigate("/data-page");
+				const navPromise = vormaNavigate("/data-page");
 
 				// 4. Resolve fetch, which triggers the client loader
 				(resolveFetch as any)();

@@ -2,19 +2,19 @@ import { memo, type ComponentProps, type JSX } from "react";
 import type {
 	ExtractApp,
 	PermissivePatternBasedProps,
-	RiverAppBase,
-	RiverLoaderPattern,
-} from "river.now/client";
+	VormaAppBase,
+	VormaLoaderPattern,
+} from "vorma/client";
 import {
 	__makeFinalLinkProps,
 	__resolvePath,
-	type RiverAppConfig,
-	type RiverLinkPropsBase,
-} from "river.now/client";
+	type VormaAppConfig,
+	type VormaLinkPropsBase,
+} from "vorma/client";
 
-export const RiverLink = memo(function RiverLink(
+export const VormaLink = memo(function VormaLink(
 	props: ComponentProps<"a"> &
-		RiverLinkPropsBase<
+		VormaLinkPropsBase<
 			(
 				e: React.MouseEvent<HTMLAnchorElement, MouseEvent>,
 			) => void | Promise<void>
@@ -40,11 +40,11 @@ export const RiverLink = memo(function RiverLink(
 	);
 });
 
-type TypedRiverLinkProps<
-	App extends RiverAppBase,
-	Pattern extends RiverLoaderPattern<App> = RiverLoaderPattern<App>,
+type TypedVormaLinkProps<
+	App extends VormaAppBase,
+	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = Omit<ComponentProps<"a">, "href" | "pattern"> &
-	RiverLinkPropsBase<
+	VormaLinkPropsBase<
 		(
 			e: React.MouseEvent<HTMLAnchorElement, MouseEvent>,
 		) => void | Promise<void>
@@ -54,19 +54,19 @@ type TypedRiverLinkProps<
 		hash?: string;
 	};
 
-export function makeTypedLink<C extends RiverAppConfig>(
-	riverAppConfig: C,
+export function makeTypedLink<C extends VormaAppConfig>(
+	vormaAppConfig: C,
 	defaultProps?: Partial<
 		Omit<
-			TypedRiverLinkProps<ExtractApp<C>>,
+			TypedVormaLinkProps<ExtractApp<C>>,
 			"pattern" | "params" | "splatValues"
 		>
 	>,
 ) {
 	type App = ExtractApp<C>;
 
-	const TypedLink = <Pattern extends RiverLoaderPattern<App>>(
-		props: TypedRiverLinkProps<App, Pattern>,
+	const TypedLink = <Pattern extends VormaLoaderPattern<App>>(
+		props: TypedVormaLinkProps<App, Pattern>,
 	) => {
 		const {
 			pattern,
@@ -79,7 +79,7 @@ export function makeTypedLink<C extends RiverAppConfig>(
 		} = props as any;
 
 		const href = __resolvePath({
-			riverAppConfig,
+			vormaAppConfig,
 			type: "loader",
 			props: {
 				pattern,
@@ -99,13 +99,13 @@ export function makeTypedLink<C extends RiverAppConfig>(
 			state,
 		};
 
-		return <RiverLink {...finalProps} />;
+		return <VormaLink {...finalProps} />;
 	};
 
 	const MemoizedTypedLink = memo(TypedLink) as <
-		Pattern extends RiverLoaderPattern<App>,
+		Pattern extends VormaLoaderPattern<App>,
 	>(
-		props: TypedRiverLinkProps<App, Pattern>,
+		props: TypedVormaLinkProps<App, Pattern>,
 	) => JSX.Element;
 
 	(MemoizedTypedLink as any).displayName =

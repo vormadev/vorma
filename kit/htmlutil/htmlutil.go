@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/river-now/river/kit/bytesutil"
-	"github.com/river-now/river/kit/cryptoutil"
-	"github.com/river-now/river/kit/id"
+	"github.com/vormadev/vorma/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/id"
 )
 
 type Element struct {

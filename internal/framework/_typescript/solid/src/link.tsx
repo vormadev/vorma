@@ -1,20 +1,20 @@
+import { createMemo, mergeProps, splitProps, type JSX } from "solid-js";
 import type {
 	ExtractApp,
 	PermissivePatternBasedProps,
-	RiverAppBase,
-	RiverLoaderPattern,
-} from "river.now/client";
+	VormaAppBase,
+	VormaLoaderPattern,
+} from "vorma/client";
 import {
 	__makeFinalLinkProps,
 	__resolvePath,
-	type RiverAppConfig,
-	type RiverLinkPropsBase,
-} from "river.now/client";
-import { createMemo, mergeProps, splitProps, type JSX } from "solid-js";
+	type VormaAppConfig,
+	type VormaLinkPropsBase,
+} from "vorma/client";
 
-export function RiverLink(
+export function VormaLink(
 	props: JSX.AnchorHTMLAttributes<HTMLAnchorElement> &
-		RiverLinkPropsBase<
+		VormaLinkPropsBase<
 			JSX.CustomEventHandlersCamelCase<HTMLAnchorElement>["onClick"]
 		>,
 ) {
@@ -42,11 +42,11 @@ export function RiverLink(
 	);
 }
 
-type TypedRiverLinkProps<
-	App extends RiverAppBase,
-	Pattern extends RiverLoaderPattern<App> = RiverLoaderPattern<App>,
+type TypedVormaLinkProps<
+	App extends VormaAppBase,
+	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "href" | "pattern"> &
-	RiverLinkPropsBase<
+	VormaLinkPropsBase<
 		JSX.CustomEventHandlersCamelCase<HTMLAnchorElement>["onClick"]
 	> &
 	PermissivePatternBasedProps<App, Pattern> & {
@@ -54,19 +54,19 @@ type TypedRiverLinkProps<
 		hash?: string;
 	};
 
-export function makeTypedLink<C extends RiverAppConfig>(
-	riverAppConfig: C,
+export function makeTypedLink<C extends VormaAppConfig>(
+	vormaAppConfig: C,
 	defaultProps?: Partial<
 		Omit<
-			TypedRiverLinkProps<ExtractApp<C>>,
+			TypedVormaLinkProps<ExtractApp<C>>,
 			"pattern" | "params" | "splatValues"
 		>
 	>,
 ) {
 	type App = ExtractApp<C>;
 
-	const TypedLink = <Pattern extends RiverLoaderPattern<App>>(
-		props: TypedRiverLinkProps<App, Pattern>,
+	const TypedLink = <Pattern extends VormaLoaderPattern<App>>(
+		props: TypedVormaLinkProps<App, Pattern>,
 	) => {
 		const merged = mergeProps(defaultProps || {}, props);
 
@@ -81,7 +81,7 @@ export function makeTypedLink<C extends RiverAppConfig>(
 
 		const href = createMemo(() => {
 			const basePath = __resolvePath({
-				riverAppConfig,
+				vormaAppConfig,
 				type: "loader",
 				props: {
 					pattern: local.pattern,
@@ -97,7 +97,7 @@ export function makeTypedLink<C extends RiverAppConfig>(
 			return url.href;
 		});
 
-		return <RiverLink {...linkProps} href={href()} state={local.state} />;
+		return <VormaLink {...linkProps} href={href()} state={local.state} />;
 	};
 
 	return TypedLink;

@@ -1,10 +1,10 @@
-import { getRootEl, initClient } from "river.now/client";
 import { render } from "solid-js/web";
+import { getRootEl, initClient } from "vorma/client";
 import { App } from "./components/app.tsx";
-import { riverAppConfig } from "./river.gen.ts";
+import { vormaAppConfig } from "./vorma.gen.ts";
 
 await initClient({
-	riverAppConfig,
+	vormaAppConfig,
 	renderFn: () => {
 		render(() => <App />, getRootEl());
 	},

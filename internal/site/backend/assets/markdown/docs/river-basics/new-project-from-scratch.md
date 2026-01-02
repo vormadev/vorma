@@ -1,6 +1,6 @@
 ---
-title: Create River App From Scratch
-description: How to create a new River app from scratch
+title: Create Vorma App From Scratch
+description: How to create a new Vorma app from scratch
 order: 2
 ---
 

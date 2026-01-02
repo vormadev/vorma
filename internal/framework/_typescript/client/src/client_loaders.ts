@@ -1,43 +1,43 @@
-import { findNestedMatches } from "river.now/kit/matcher/find-nested";
-import { registerPattern } from "river.now/kit/matcher/register";
+import { findNestedMatches } from "vorma/kit/matcher/find-nested";
+import { registerPattern } from "vorma/kit/matcher/register";
 import { ComponentLoader, getEffectiveErrorData } from "./component_loader.ts";
-import {
-	__riverClientGlobal,
-	type GetRouteDataOutput,
-} from "./river_ctx/river_ctx.ts";
 import { isAbortError } from "./utils/errors.ts";
 import { logError } from "./utils/logging.ts";
+import {
+	__vormaClientGlobal,
+	type GetRouteDataOutput,
+} from "./vorma_ctx/vorma_ctx.ts";
 
 export function setClientLoadersState(
 	clr: ClientLoadersResult | undefined,
 ): void {
 	if (clr) {
-		__riverClientGlobal.set("clientLoadersData", clr.data ?? []);
-		__riverClientGlobal.set(
+		__vormaClientGlobal.set("clientLoadersData", clr.data ?? []);
+		__vormaClientGlobal.set(
 			"outermostClientErrorIdx",
 			clr.errorMessage ? clr.data.length - 1 : undefined,
 		);
-		__riverClientGlobal.set("outermostClientError", clr.errorMessage);
+		__vormaClientGlobal.set("outermostClientError", clr.errorMessage);
 	}
 }
 
 export function deriveAndSetErrorState(): void {
 	const effectiveErrData = getEffectiveErrorData();
-	__riverClientGlobal.set("outermostErrorIdx", effectiveErrData.index);
-	__riverClientGlobal.set("outermostError", effectiveErrData.error);
+	__vormaClientGlobal.set("outermostErrorIdx", effectiveErrData.index);
+	__vormaClientGlobal.set("outermostError", effectiveErrData.error);
 }
 
 export async function setupClientLoaders(): Promise<void> {
 	const clientLoadersResult = await runWaitFns(
 		{
-			hasRootData: __riverClientGlobal.get("hasRootData"),
-			importURLs: __riverClientGlobal.get("importURLs"),
-			loadersData: __riverClientGlobal.get("loadersData"),
-			matchedPatterns: __riverClientGlobal.get("matchedPatterns"),
-			params: __riverClientGlobal.get("params"),
-			splatValues: __riverClientGlobal.get("splatValues"),
+			hasRootData: __vormaClientGlobal.get("hasRootData"),
+			importURLs: __vormaClientGlobal.get("importURLs"),
+			loadersData: __vormaClientGlobal.get("loadersData"),
+			matchedPatterns: __vormaClientGlobal.get("matchedPatterns"),
+			params: __vormaClientGlobal.get("params"),
+			splatValues: __vormaClientGlobal.get("splatValues"),
 		},
-		__riverClientGlobal.get("buildID"),
+		__vormaClientGlobal.get("buildID"),
 		new AbortController().signal,
 	);
 
@@ -48,7 +48,7 @@ export async function setupClientLoaders(): Promise<void> {
 export async function __registerClientLoaderPattern(
 	pattern: string,
 ): Promise<void> {
-	registerPattern(__riverClientGlobal.get("patternRegistry"), pattern);
+	registerPattern(__vormaClientGlobal.get("patternRegistry"), pattern);
 }
 
 // This is needed because the matcher, by definition, will only
@@ -57,12 +57,12 @@ export async function __registerClientLoaderPattern(
 // no match, even if some registered patterns would potentially
 // be in the parent segments. This fixes that.
 export async function findPartialMatchesOnClient(pathname: string) {
-	const patternToWaitFnMap = __riverClientGlobal.get("patternToWaitFnMap");
+	const patternToWaitFnMap = __vormaClientGlobal.get("patternToWaitFnMap");
 	if (Object.keys(patternToWaitFnMap).length === 0) {
 		return null;
 	}
 
-	const patternRegistry = __riverClientGlobal.get("patternRegistry");
+	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
 
 	// First try the full path
 	const fullResult = findNestedMatches(patternRegistry, pathname);
@@ -111,8 +111,8 @@ async function executeClientLoaders(
 	await ComponentLoader.loadComponents(json.importURLs);
 
 	const matchedPatterns = json.matchedPatterns ?? [];
-	const patternToWaitFnMap = __riverClientGlobal.get("patternToWaitFnMap");
-	const outermostServerErrorIdx = __riverClientGlobal.get(
+	const patternToWaitFnMap = __vormaClientGlobal.get("patternToWaitFnMap");
+	const outermostServerErrorIdx = __vormaClientGlobal.get(
 		"outermostServerErrorIdx",
 	);
 

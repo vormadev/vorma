@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/river-now/river/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/bytesutil"
 	"golang.org/x/crypto/nacl/auth"
 )
 

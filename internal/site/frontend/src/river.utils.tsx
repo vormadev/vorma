@@ -1,22 +1,22 @@
-import { makeTypedNavigate } from "river.now/client";
-import { addThemeChangeListener, getTheme } from "river.now/kit/theme";
+import { createSignal } from "solid-js";
+import { makeTypedNavigate } from "vorma/client";
+import { addThemeChangeListener, getTheme } from "vorma/kit/theme";
 import {
 	makeTypedAddClientLoader,
 	makeTypedLink,
 	makeTypedUseLoaderData,
 	makeTypedUsePatternLoaderData,
 	makeTypedUseRouterData,
-} from "river.now/solid";
-import { createSignal } from "solid-js";
-import { riverAppConfig, type RiverApp, type RouteProps } from "./river.gen.ts";
+} from "vorma/solid";
+import { vormaAppConfig, type RouteProps, type VormaApp } from "./vorma.gen.ts";
 
 export type { RouteProps };
-export const useRouterData = makeTypedUseRouterData<RiverApp>();
-export const useLoaderData = makeTypedUseLoaderData<RiverApp>();
-export const usePatternLoaderData = makeTypedUsePatternLoaderData<RiverApp>();
-export const addClientLoader = makeTypedAddClientLoader<RiverApp>();
-export const navigate = makeTypedNavigate(riverAppConfig);
-export const Link = makeTypedLink(riverAppConfig, {
+export const useRouterData = makeTypedUseRouterData<VormaApp>();
+export const useLoaderData = makeTypedUseLoaderData<VormaApp>();
+export const usePatternLoaderData = makeTypedUsePatternLoaderData<VormaApp>();
+export const addClientLoader = makeTypedAddClientLoader<VormaApp>();
+export const navigate = makeTypedNavigate(vormaAppConfig);
+export const Link = makeTypedLink(vormaAppConfig, {
 	prefetch: "intent",
 });
 

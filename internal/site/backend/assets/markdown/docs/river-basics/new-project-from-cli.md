@@ -1,6 +1,6 @@
 ---
-title: Create River App Using CLI
-description: How to create a new River app using River's bootstrapper CLI
+title: Create Vorma App Using CLI
+description: How to create a new Vorma app using Vorma's bootstrapper CLI
 order: 1
 ---
 
@@ -16,5 +16,5 @@ Ensure the following are installed on your machine:
 Run the following command from your terminal, and follow the prompts:
 
 ```sh
-npm create river@latest
+npm create vorma@latest
 ```

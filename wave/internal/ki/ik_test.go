@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/river-now/river/kit/colorlog"
-	"github.com/river-now/river/kit/fsutil"
-	"github.com/river-now/river/kit/safecache"
+	"github.com/vormadev/vorma/kit/colorlog"
+	"github.com/vormadev/vorma/kit/fsutil"
+	"github.com/vormadev/vorma/kit/safecache"
 	"golang.org/x/sync/semaphore"
 )
 

@@ -7,11 +7,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/river-now/river/kit/genericsutil"
-	"github.com/river-now/river/kit/matcher"
-	"github.com/river-now/river/kit/opt"
-	"github.com/river-now/river/kit/response"
-	"github.com/river-now/river/kit/tasks"
+	"github.com/vormadev/vorma/kit/genericsutil"
+	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/kit/opt"
+	"github.com/vormadev/vorma/kit/response"
+	"github.com/vormadev/vorma/kit/tasks"
 )
 
 var (

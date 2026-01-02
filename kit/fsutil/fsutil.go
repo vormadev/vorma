@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/river-now/river/kit/errutil"
+	"github.com/vormadev/vorma/kit/errutil"
 )
 
 // EnsureDir creates a directory if it does not exist.

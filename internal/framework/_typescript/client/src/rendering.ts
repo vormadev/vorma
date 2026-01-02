@@ -1,19 +1,19 @@
 import { AssetManager } from "./asset_manager.ts";
-import type { RiverNavigationType } from "./client.ts";
+import type { VormaNavigationType } from "./client.ts";
 import { deriveAndSetErrorState } from "./client_loaders.ts";
 import { ComponentLoader } from "./component_loader.ts";
 import { dispatchRouteChangeEvent } from "./events.ts";
 import { updateHeadEls } from "./head_elements/head_elements.ts";
 import { HistoryManager } from "./history/history.ts";
-import {
-	__riverClientGlobal,
-	type GetRouteDataOutput,
-} from "./river_ctx/river_ctx.ts";
 import type { ScrollState } from "./scroll_state_manager.ts";
+import {
+	__vormaClientGlobal,
+	type GetRouteDataOutput,
+} from "./vorma_ctx/vorma_ctx.ts";
 
 type RerenderAppProps = {
 	json: GetRouteDataOutput;
-	navigationType: RiverNavigationType;
+	navigationType: VormaNavigationType;
 	runHistoryOptions?: {
 		href: string;
 		scrollStateToRestore?: ScrollState;
@@ -26,7 +26,7 @@ type RerenderAppProps = {
 
 export async function __reRenderApp(props: RerenderAppProps): Promise<void> {
 	const shouldUseViewTransitions =
-		__riverClientGlobal.get("useViewTransitions") &&
+		__vormaClientGlobal.get("useViewTransitions") &&
 		!!document.startViewTransition &&
 		props.navigationType !== "prefetch" &&
 		props.navigationType !== "revalidation";
@@ -59,7 +59,7 @@ async function __reRenderAppInner(props: RerenderAppProps): Promise<void> {
 	] as const;
 
 	for (const key of stateKeys) {
-		__riverClientGlobal.set(key, json[key]);
+		__vormaClientGlobal.set(key, json[key]);
 	}
 
 	deriveAndSetErrorState();

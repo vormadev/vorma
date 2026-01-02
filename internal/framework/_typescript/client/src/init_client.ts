@@ -1,23 +1,23 @@
 import {
 	createPatternRegistry,
 	registerPattern,
-} from "river.now/kit/matcher/register";
+} from "vorma/kit/matcher/register";
 import { setupClientLoaders } from "./client_loaders.ts";
 import { ComponentLoader } from "./component_loader.ts";
 import { defaultErrorBoundary } from "./error_boundary.ts";
-import { RIVER_HARD_RELOAD_QUERY_PARAM } from "./hard_reload.ts";
+import { VORMA_HARD_RELOAD_QUERY_PARAM } from "./hard_reload.ts";
 import { HistoryManager } from "./history/history.ts";
 import { initHMR } from "./hmr/hmr.ts";
-import type { RiverAppConfig } from "./river_app_helpers/river_app_helpers.ts";
-import {
-	__riverClientGlobal,
-	type RiverClientGlobal,
-	type RouteErrorComponent,
-} from "./river_ctx/river_ctx.ts";
 import { scrollStateManager } from "./scroll_state_manager.ts";
+import type { VormaAppConfig } from "./vorma_app_helpers/vorma_app_helpers.ts";
+import {
+	__vormaClientGlobal,
+	type RouteErrorComponent,
+	type VormaClientGlobal,
+} from "./vorma_ctx/vorma_ctx.ts";
 
 export async function initClient(options: {
-	riverAppConfig: RiverAppConfig;
+	vormaAppConfig: VormaAppConfig;
 	renderFn: () => void;
 	defaultErrorBoundary?: RouteErrorComponent;
 	useViewTransitions?: boolean;
@@ -29,16 +29,16 @@ export async function initClient(options: {
 		scrollStateManager.savePageRefreshState();
 	});
 
-	__riverClientGlobal.set("riverAppConfig", options.riverAppConfig);
-	const clientModuleMap: RiverClientGlobal["clientModuleMap"] = {};
+	__vormaClientGlobal.set("vormaAppConfig", options.vormaAppConfig);
+	const clientModuleMap: VormaClientGlobal["clientModuleMap"] = {};
 
 	// Populate client module map with initial page's modules
 	const initialMatchedPatterns =
-		__riverClientGlobal.get("matchedPatterns") || [];
-	const initialImportURLs = __riverClientGlobal.get("importURLs") || [];
-	const initialExportKeys = __riverClientGlobal.get("exportKeys") || [];
+		__vormaClientGlobal.get("matchedPatterns") || [];
+	const initialImportURLs = __vormaClientGlobal.get("importURLs") || [];
+	const initialExportKeys = __vormaClientGlobal.get("exportKeys") || [];
 	const initialErrorExportKeys =
-		__riverClientGlobal.get("errorExportKeys") || [];
+		__vormaClientGlobal.get("errorExportKeys") || [];
 
 	for (let i = 0; i < initialMatchedPatterns.length; i++) {
 		const pattern = initialMatchedPatterns[i];
@@ -54,22 +54,22 @@ export async function initClient(options: {
 			};
 		}
 	}
-	__riverClientGlobal.set("clientModuleMap", clientModuleMap);
+	__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
 
 	const patternRegistry = createPatternRegistry({
-		dynamicParamPrefixRune: options.riverAppConfig.loadersDynamicRune,
-		splatSegmentRune: options.riverAppConfig.loadersSplatRune,
+		dynamicParamPrefixRune: options.vormaAppConfig.loadersDynamicRune,
+		splatSegmentRune: options.vormaAppConfig.loadersSplatRune,
 		explicitIndexSegment:
-			options.riverAppConfig.loadersExplicitIndexSegment,
+			options.vormaAppConfig.loadersExplicitIndexSegment,
 	});
-	__riverClientGlobal.set("patternRegistry", patternRegistry);
+	__vormaClientGlobal.set("patternRegistry", patternRegistry);
 
-	const manifestURL = __riverClientGlobal.get("routeManifestURL");
+	const manifestURL = __vormaClientGlobal.get("routeManifestURL");
 	if (manifestURL) {
 		fetch(manifestURL)
 			.then((response) => response.json())
 			.then((manifest) => {
-				__riverClientGlobal.set("routeManifest", manifest);
+				__vormaClientGlobal.set("routeManifest", manifest);
 
 				// Register all patterns from manifest into the existing registry
 				for (const pattern of Object.keys(manifest)) {
@@ -84,16 +84,16 @@ export async function initClient(options: {
 
 	// Set options
 	if (options.defaultErrorBoundary) {
-		__riverClientGlobal.set(
+		__vormaClientGlobal.set(
 			"defaultErrorBoundary",
 			options.defaultErrorBoundary,
 		);
 	} else {
-		__riverClientGlobal.set("defaultErrorBoundary", defaultErrorBoundary);
+		__vormaClientGlobal.set("defaultErrorBoundary", defaultErrorBoundary);
 	}
 
 	if (options.useViewTransitions) {
-		__riverClientGlobal.set("useViewTransitions", true);
+		__vormaClientGlobal.set("useViewTransitions", true);
 	}
 
 	// Initialize history
@@ -101,12 +101,12 @@ export async function initClient(options: {
 
 	// Clean URL
 	const url = new URL(window.location.href);
-	if (url.searchParams.has(RIVER_HARD_RELOAD_QUERY_PARAM)) {
-		url.searchParams.delete(RIVER_HARD_RELOAD_QUERY_PARAM);
+	if (url.searchParams.has(VORMA_HARD_RELOAD_QUERY_PARAM)) {
+		url.searchParams.delete(VORMA_HARD_RELOAD_QUERY_PARAM);
 		HistoryManager.getInstance().replace(url.href);
 	}
 
-	const importURLs = __riverClientGlobal.get("importURLs");
+	const importURLs = __vormaClientGlobal.get("importURLs");
 
 	// Load initial components
 	await ComponentLoader.handleComponents(importURLs);
@@ -127,7 +127,7 @@ export async function initClient(options: {
 	window.addEventListener(
 		"touchstart",
 		() => {
-			__riverClientGlobal.set("isTouchDevice", true);
+			__vormaClientGlobal.set("isTouchDevice", true);
 		},
 		{ once: true },
 	);

@@ -1,34 +1,34 @@
 import {
 	__resolvePath,
-	type RiverAppBase,
-	type RiverLoaderPattern,
-	type RiverRouteParams,
-} from "../river_app_helpers/river_app_helpers.ts";
+	type VormaAppBase,
+	type VormaLoaderPattern,
+	type VormaRouteParams,
+} from "../vorma_app_helpers/vorma_app_helpers.ts";
 import {
-	__riverClientGlobal,
+	__vormaClientGlobal,
 	type getRouterData,
-} from "../river_ctx/river_ctx.ts";
+} from "../vorma_ctx/vorma_ctx.ts";
 
-export type RiverRoutePropsGeneric<
+export type VormaRoutePropsGeneric<
 	JSXElement,
-	App extends RiverAppBase,
-	Pattern extends RiverLoaderPattern<App> = RiverLoaderPattern<App>,
+	App extends VormaAppBase,
+	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = {
 	idx: number;
 	Outlet: (props: Record<string, any>) => JSXElement;
 	__phantom_pattern: Pattern;
 } & Record<string, any>;
 
-export type RiverRouteGeneric<
+export type VormaRouteGeneric<
 	JSXElement,
-	App extends RiverAppBase,
-	Pattern extends RiverLoaderPattern<App> = RiverLoaderPattern<App>,
-> = (props: RiverRoutePropsGeneric<JSXElement, App, Pattern>) => JSXElement;
+	App extends VormaAppBase,
+	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
+> = (props: VormaRoutePropsGeneric<JSXElement, App, Pattern>) => JSXElement;
 
 export type ParamsForPattern<
-	App extends RiverAppBase,
-	Pattern extends RiverLoaderPattern<App>,
-> = RiverRouteParams<App, Pattern>;
+	App extends VormaAppBase,
+	Pattern extends VormaLoaderPattern<App>,
+> = VormaRouteParams<App, Pattern>;
 
 type BaseRouterData<RootData, Params extends string> = ReturnType<
 	typeof getRouterData<RootData, Record<Params, string>>
@@ -39,16 +39,16 @@ type Wrapper<UseAccessor extends boolean, T> = UseAccessor extends false
 	: () => T;
 
 export type UseRouterDataFunction<
-	App extends RiverAppBase,
+	App extends VormaAppBase,
 	UseAccessor extends boolean = false,
 > = {
-	<Pattern extends RiverLoaderPattern<App>>(
-		props: RiverRoutePropsGeneric<any, App, Pattern>,
+	<Pattern extends VormaLoaderPattern<App>>(
+		props: VormaRoutePropsGeneric<any, App, Pattern>,
 	): Wrapper<
 		UseAccessor,
 		BaseRouterData<App["rootData"], ParamsForPattern<App, Pattern>>
 	>;
-	<Pattern extends RiverLoaderPattern<App>>(): Wrapper<
+	<Pattern extends VormaLoaderPattern<App>>(): Wrapper<
 		UseAccessor,
 		BaseRouterData<App["rootData"], ParamsForPattern<App, Pattern>>
 	>;

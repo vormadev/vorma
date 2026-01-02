@@ -3,7 +3,7 @@ package ki
 import (
 	"log"
 
-	"github.com/river-now/river/kit/netutil"
+	"github.com/vormadev/vorma/kit/netutil"
 )
 
 const (

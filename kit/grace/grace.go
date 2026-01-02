@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/river-now/river/kit/colorlog"
+	"github.com/vormadev/vorma/kit/colorlog"
 )
 
 func defaultSignals() []os.Signal {

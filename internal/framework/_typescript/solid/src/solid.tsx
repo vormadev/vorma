@@ -1,13 +1,4 @@
 import {
-	__applyScrollState,
-	addLocationListener,
-	addRouteChangeListener,
-	__riverClientGlobal as ctx,
-	getLocation,
-	getRouterData,
-	type RouteChangeEvent,
-} from "river.now/client";
-import {
 	batch,
 	createEffect,
 	createMemo,
@@ -17,6 +8,15 @@ import {
 	Show,
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import {
+	__applyScrollState,
+	addLocationListener,
+	addRouteChangeListener,
+	__vormaClientGlobal as ctx,
+	getLocation,
+	getRouterData,
+	type RouteChangeEvent,
+} from "vorma/client";
 
 /////////////////////////////////////////////////////////////////////
 /////// CORE SETUP
@@ -81,7 +81,7 @@ export { location };
 /////// COMPONENT
 /////////////////////////////////////////////////////////////////////
 
-export function RiverRootOutlet(props: { idx?: number }): JSX.Element {
+export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 	const idx = props.idx ?? 0;
 
 	if (idx === 0) {
@@ -170,7 +170,7 @@ export function RiverRootOutlet(props: { idx?: number }): JSX.Element {
 
 	const Outlet = (localProps: Record<string, any> | undefined) => (
 		<Show when={remountKeyNext()} keyed>
-			<RiverRootOutlet {...localProps} {...props} idx={idx + 1} />
+			<VormaRootOutlet {...localProps} {...props} idx={idx + 1} />
 		</Show>
 	);
 

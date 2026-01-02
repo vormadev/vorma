@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-{{.RiverHeadEls}}
-{{.RiverSSRScript}}
+{{.VormaHeadEls}}
+{{.VormaSSRScript}}
 </head>
 <body>
-<div id="{{.RiverRootID}}"></div>
-{{.RiverBodyScripts}}
+<div id="{{.VormaRootID}}"></div>
+{{.VormaBodyScripts}}
 </body>
 </html>

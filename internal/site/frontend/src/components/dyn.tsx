@@ -1,4 +1,4 @@
-import { type RouteProps, useRouterData } from "../river.utils.tsx";
+import { type RouteProps, useRouterData } from "../vorma.utils.tsx";
 
 export function Dyn(props: RouteProps<"/__/:dyn">) {
 	const routerData = useRouterData(props);

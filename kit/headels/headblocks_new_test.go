@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/river-now/river/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
 )
 
 // TestHashElement tests that the hashElement function generates different hashes for different elements

@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/river-now/river/kit/bytesutil"
-	"github.com/river-now/river/kit/cryptoutil"
-	"github.com/river-now/river/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
 )
 
 // clientManager manages all WebSocket clients

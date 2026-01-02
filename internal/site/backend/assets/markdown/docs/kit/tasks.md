@@ -1,14 +1,14 @@
 ---
 title: Tasks
-description: river/kit/tasks
+description: vorma/kit/tasks
 ---
 
 ```go
-import "github.com/river-now/river/kit/tasks"
+import "github.com/vormadev/vorma/kit/tasks"
 ```
 
 The `tasks` package is the single most important and innovative primitive on
-which the entire River framework is built.
+which the entire Vorma framework is built.
 
 A "Task", as used in this package, is simply a function that takes in input,
 returns data (or an error), and runs a maximum of one time per

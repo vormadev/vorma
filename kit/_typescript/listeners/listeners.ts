@@ -1,4 +1,4 @@
-import { debounce } from "river.now/kit/debounce";
+import { debounce } from "vorma/kit/debounce";
 
 export function addOnWindowFocusListener(callback: () => void): () => void {
 	const debouncedCallback = debounce(callback, 30);

@@ -1,9 +1,9 @@
-import { __riverClientGlobal } from "./river_ctx/river_ctx.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 export function resolvePublicHref(relativeHref: string): string {
-	let baseURL = __riverClientGlobal.get("viteDevURL");
+	let baseURL = __vormaClientGlobal.get("viteDevURL");
 	if (!baseURL) {
-		baseURL = __riverClientGlobal.get("publicPathPrefix");
+		baseURL = __vormaClientGlobal.get("publicPathPrefix");
 	}
 	if (baseURL.endsWith("/")) {
 		baseURL = baseURL.slice(0, -1);

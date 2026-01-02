@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/river-now/river/kit/bytesutil"
-	"github.com/river-now/river/kit/cryptoutil"
-	"github.com/river-now/river/kit/lazyget"
+	"github.com/vormadev/vorma/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/lazyget"
 )
 
 // Base64-encoded 32-byte root secret.

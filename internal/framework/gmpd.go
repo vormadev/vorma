@@ -1,17 +1,17 @@
-package river
+package vorma
 
 import (
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/river-now/river/kit/headels"
-	"github.com/river-now/river/kit/htmlutil"
-	"github.com/river-now/river/kit/matcher"
-	"github.com/river-now/river/kit/mux"
-	"github.com/river-now/river/kit/reflectutil"
-	"github.com/river-now/river/kit/response"
-	"github.com/river-now/river/kit/typed"
+	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/reflectutil"
+	"github.com/vormadev/vorma/kit/response"
+	"github.com/vormadev/vorma/kit/typed"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -77,7 +77,7 @@ type final_ui_data struct {
 	ViteDevURL string   `json:"viteDevURL,omitempty"`
 }
 
-func (h *River) get_ui_data_stage_1(
+func (h *Vorma) get_ui_data_stage_1(
 	w http.ResponseWriter,
 	r *http.Request,
 	nestedRouter *mux.NestedRouter,
@@ -266,7 +266,7 @@ func (h *River) get_ui_data_stage_1(
 	return ui_data
 }
 
-func (h *River) getUIRouteData(
+func (h *Vorma) getUIRouteData(
 	w http.ResponseWriter,
 	r *http.Request,
 	nestedRouter *mux.NestedRouter,
@@ -344,7 +344,7 @@ func (h *River) getUIRouteData(
 					"href": publicPathPrefix + cssBundle,
 				},
 				Attributes: map[string]string{
-					"data-river-css-bundle": cssBundle,
+					"data-vorma-css-bundle": cssBundle,
 				},
 				SelfClosing: true,
 			}

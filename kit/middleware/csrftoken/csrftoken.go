@@ -1,5 +1,5 @@
 // Deprecated: Please upgrade to the newer, more robust, and stateless csrf
-// package available at github.com/river-now/river/kit/csrf.
+// package available at github.com/vormadev/vorma/kit/csrf.
 package csrftoken
 
 import (
@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/river-now/river/kit/response"
+	"github.com/vormadev/vorma/kit/response"
 )
 
 type (
@@ -17,7 +17,7 @@ type (
 )
 
 // Deprecated: Please upgrade to the newer, more robust, and stateless csrf
-// package available at github.com/river-now/river/kit/csrf.
+// package available at github.com/vormadev/vorma/kit/csrf.
 type Opts struct {
 	GetExpectedCSRFToken  GetExpectedCSRFToken
 	GetSubmittedCSRFToken GetSubmittedCSRFToken
@@ -26,7 +26,7 @@ type Opts struct {
 }
 
 // Deprecated: Please upgrade to the newer, more robust, and stateless csrf
-// package available at github.com/river-now/river/kit/csrf.
+// package available at github.com/vormadev/vorma/kit/csrf.
 func NewMiddleware(opts Opts) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

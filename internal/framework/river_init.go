@@ -1,4 +1,4 @@
-package river
+package vorma
 
 import (
 	"encoding/json"
@@ -7,26 +7,26 @@ import (
 	"io/fs"
 	"path"
 
-	"github.com/river-now/river/kit/mux"
+	"github.com/vormadev/vorma/kit/mux"
 )
 
-func (h *River) Init() *River {
+func (h *Vorma) Init() *Vorma {
 	isDev := h.GetIsDev()
 	if err := h.initInner(isDev); err != nil {
-		wrapped := fmt.Errorf("error initializing River: %w", err)
+		wrapped := fmt.Errorf("error initializing Vorma: %w", err)
 		if isDev {
 			Log.Error(wrapped.Error())
 		} else {
 			panic(wrapped)
 		}
 	} else {
-		Log.Info("River initialized", "build id", h._buildID)
+		Log.Info("Vorma initialized", "build id", h._buildID)
 	}
 	return h
 }
 
 // RUNTIME! Gets called from the handler maker, which gets called by the user's router init function.
-func (h *River) validateAndDecorateNestedRouter(nestedRouter *mux.NestedRouter) {
+func (h *Vorma) validateAndDecorateNestedRouter(nestedRouter *mux.NestedRouter) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if nestedRouter == nil {
@@ -54,7 +54,7 @@ func PrettyPrintFS(fsys fs.FS) error {
 	})
 }
 
-func (h *River) initInner(isDev bool) error {
+func (h *Vorma) initInner(isDev bool) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h._isDev = isDev
@@ -86,7 +86,7 @@ func (h *River) initInner(isDev bool) error {
 		h._depToCSSBundleMap = make(map[string]string)
 	}
 	h._routeManifestFile = pathsFile.RouteManifestFile
-	tmpl, err := template.ParseFS(h._privateFS, h.Wave.GetRiverHTMLTemplateLocation())
+	tmpl, err := template.ParseFS(h._privateFS, h.Wave.GetVormaHTMLTemplateLocation())
 	if err != nil {
 		return fmt.Errorf("error parsing root template: %w", err)
 	}
@@ -100,13 +100,13 @@ func (h *River) initInner(isDev bool) error {
 	return nil
 }
 
-func (h *River) getBasePaths_StageOneOrTwo(isDev bool) (*PathsFile, error) {
-	fileToUse := RiverPathsStageOneJSONFileName
+func (h *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*PathsFile, error) {
+	fileToUse := VormaPathsStageOneJSONFileName
 	if !isDev {
-		fileToUse = RiverPathsStageTwoJSONFileName
+		fileToUse = VormaPathsStageTwoJSONFileName
 	}
 	pathsFile := PathsFile{}
-	file, err := h._privateFS.Open(path.Join("river_out", fileToUse))
+	file, err := h._privateFS.Open(path.Join("vorma_out", fileToUse))
 	if err != nil {
 		wrapped := fmt.Errorf("could not open %s: %v", fileToUse, err)
 		Log.Error(wrapped.Error())

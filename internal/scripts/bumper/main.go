@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/river-now/river/kit/scripts/bumper"
+	"github.com/vormadev/vorma/kit/scripts/bumper"
 )
 
 func main() {

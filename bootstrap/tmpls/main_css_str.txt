@@ -18,12 +18,12 @@ html {
 
 html,
 body,
-#river-root {
+#vorma-root {
 	height: 100%;
 	width: 100%;
 }
 
-#river-root {
+#vorma-root {
 	display: grid;
 	place-items: center;
 	padding: 1rem;

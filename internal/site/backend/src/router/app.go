@@ -5,25 +5,25 @@ import (
 	"path"
 	"site/backend"
 
-	"github.com/river-now/river"
-	"github.com/river-now/river/kit/colorlog"
-	"github.com/river-now/river/kit/theme"
-	"github.com/river-now/river/wave"
+	"github.com/vormadev/vorma"
+	"github.com/vormadev/vorma/kit/colorlog"
+	"github.com/vormadev/vorma/kit/theme"
+	"github.com/vormadev/vorma/wave"
 )
 
 var Log = colorlog.New("app server")
 
 const (
-	Domain          = "river.now"
-	SiteTitle       = "River Framework"
+	Domain          = "vorma.dev"
+	SiteTitle       = "Vorma Framework"
 	SiteDescription = "Vite-powered web framework for building full-stack applications with Go and TypeScript"
 )
 
-var App = river.NewRiverApp(river.RiverAppConfig{
+var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
 
-	GetHeadElUniqueRules: func() *river.HeadEls {
-		e := river.NewHeadEls(8)
+	GetHeadElUniqueRules: func() *vorma.HeadEls {
+		e := vorma.NewHeadEls(8)
 
 		e.Meta(e.Property("og:title"))
 		e.Meta(e.Property("og:description"))
@@ -37,17 +37,17 @@ var App = river.NewRiverApp(river.RiverAppConfig{
 		return e
 	},
 
-	GetDefaultHeadEls: func(r *http.Request, app *river.River) (*river.HeadEls, error) {
+	GetDefaultHeadEls: func(r *http.Request, app *vorma.Vorma) (*vorma.HeadEls, error) {
 		currentURL := "https://" + path.Join(Domain, r.URL.Path)
 
-		ogImgURL := app.GetPublicURL("river-banner.webp")
+		ogImgURL := app.GetPublicURL("vorma-banner.webp")
 		favURL := app.GetPublicURL("favicon.svg")
 
 		if !wave.GetIsDev() {
 			ogImgURL = "https://" + path.Join(Domain, ogImgURL)
 		}
 
-		e := river.NewHeadEls(12)
+		e := vorma.NewHeadEls(12)
 
 		e.Title(SiteTitle)
 		e.Description(SiteDescription)
@@ -59,7 +59,7 @@ var App = river.NewRiverApp(river.RiverAppConfig{
 		e.Meta(e.Property("og:url"), e.Content(currentURL))
 
 		e.Meta(e.Name("twitter:card"), e.Content("summary_large_image"))
-		e.Meta(e.Name("twitter:site"), e.Content("@riverframework"))
+		e.Meta(e.Name("twitter:site"), e.Content("@vormadev"))
 
 		e.Link(e.Rel("icon"), e.Attr("href", favURL), e.Attr("type", "image/svg+xml"))
 

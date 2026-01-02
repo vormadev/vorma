@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/river-now/river/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
 )
 
 var testInstance = NewInstance("bob")

@@ -64,7 +64,7 @@ body {
 }
 
 body,
-#river-root {
+#vorma-root {
 	max-width: 100dvw;
 }
 
@@ -444,7 +444,7 @@ nav .logo:hover {
 /* ============================================
    LAYOUT
    ============================================ */
-#river-root {
+#vorma-root {
 	padding: 0 1.75rem;
 	width: 100%;
 	display: flex;
@@ -544,7 +544,7 @@ footer span {
 	}
 
 	/* Layout adjustments */
-	#river-root {
+	#vorma-root {
 		padding: 0 1.25rem;
 	}
 

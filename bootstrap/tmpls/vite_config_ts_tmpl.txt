@@ -1,8 +1,8 @@
-{{.TailwindViteImport}}import river from "river.now/vite";
+{{.TailwindViteImport}}import vorma from "vorma/vite";
 import { defineConfig } from "vite";
 import {{.UIVariant}} from "{{.UIVitePlugin}}";
-import { riverViteConfig } from "./frontend/src/river.gen.ts";
+import { vormaViteConfig } from "./frontend/src/vorma.gen.ts";
 
 export default defineConfig({
-	plugins: [{{.UIVariant}}(), river(riverViteConfig){{.TailwindViteCall}}],
+	plugins: [{{.UIVariant}}(), vorma(vormaViteConfig){{.TailwindViteCall}}],
 });

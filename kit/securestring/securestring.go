@@ -9,9 +9,9 @@ package securestring
 import (
 	"fmt"
 
-	"github.com/river-now/river/kit/bytesutil"
-	"github.com/river-now/river/kit/keyset"
-	"github.com/river-now/river/kit/securebytes"
+	"github.com/vormadev/vorma/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/keyset"
+	"github.com/vormadev/vorma/kit/securebytes"
 )
 
 const MaxBase64Size = securebytes.MaxSize + securebytes.MaxSize/3
@@ -42,4 +42,4 @@ func Parse[T any](ks *keyset.Keyset, ss SecureString) (T, error) {
 }
 
 // Deprecated: Use only if you need to support legacy encrypted values.
-const LegacyHKDFInfoStr = "river_kit_securestring_v1_encryption_key"
+const LegacyHKDFInfoStr = "vorma_kit_securestring_v1_encryption_key"

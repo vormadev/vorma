@@ -4,8 +4,8 @@ import (
 	"os"
 	"strings"
 
-	t "github.com/river-now/river/kit/cliutil"
-	"github.com/river-now/river/kit/parseutil"
+	t "github.com/vormadev/vorma/kit/cliutil"
+	"github.com/vormadev/vorma/kit/parseutil"
 )
 
 func main() {

@@ -1,13 +1,13 @@
-package river
+package vorma
 
 import (
 	_ "embed"
 
-	rf "github.com/river-now/river/internal/framework"
-	"github.com/river-now/river/kit/headels"
-	"github.com/river-now/river/kit/mux"
-	"github.com/river-now/river/kit/parseutil"
-	"github.com/river-now/river/wave"
+	rf "github.com/vormadev/vorma/internal/framework"
+	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/parseutil"
+	"github.com/vormadev/vorma/wave"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -15,10 +15,10 @@ import (
 /////////////////////////////////////////////////////////////////////
 
 type (
-	River                             = rf.River
+	Vorma                             = rf.Vorma
 	HeadEls                           = headels.HeadEls
 	AdHocType                         = rf.AdHocType
-	RiverAppConfig                    = rf.RiverAppConfig
+	VormaAppConfig                    = rf.VormaAppConfig
 	LoadersRouter                     = rf.LoadersRouter
 	LoaderReqData                     = rf.LoaderReqData
 	ActionsRouter                     = rf.ActionsRouter
@@ -48,14 +48,14 @@ var (
 
 	IsJSONRequest          = rf.IsJSONRequest
 	NewHeadEls             = headels.New
-	RiverBuildIDHeaderKey  = rf.RiverBuildIDHeaderKey
+	VormaBuildIDHeaderKey  = rf.VormaBuildIDHeaderKey
 	EnableThirdPartyRouter = mux.InjectTasksCtxMiddleware
 )
 
-func NewRiverApp(o RiverAppConfig) *River { return rf.NewRiverApp(o) }
+func NewVormaApp(o VormaAppConfig) *Vorma { return rf.NewVormaApp(o) }
 
 func NewLoader[O any, CtxPtr ~*Ctx, Ctx any](
-	app *River,
+	app *Vorma,
 	p string,
 	f func(CtxPtr) (O, error),
 	decorateCtx func(*LoaderReqData) CtxPtr,
@@ -67,7 +67,7 @@ func NewLoader[O any, CtxPtr ~*Ctx, Ctx any](
 }
 
 func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
-	app *River,
+	app *Vorma,
 	m string,
 	p string,
 	f func(CtxPtr) (O, error),
@@ -82,7 +82,7 @@ func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 //go:embed package.json
 var packageJSON string
 
-// This utility exists primarily in service of the River.now
+// This utility exists primarily in service of the vorma.dev
 // website. There is no guarantee that this utility will always
 // be available or kept up to date.
 func Internal__GetCurrentNPMVersion() string {

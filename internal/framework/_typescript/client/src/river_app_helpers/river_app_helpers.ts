@@ -1,7 +1,7 @@
-import { serializeToSearchParams } from "river.now/kit/json";
+import { serializeToSearchParams } from "vorma/kit/json";
 import type { SubmitOptions } from "../client.ts";
 
-export type RiverAppConfig = {
+export type VormaAppConfig = {
 	actionsRouterMountRoot: string;
 	actionsDynamicRune: string;
 	actionsSplatRune: string;
@@ -11,106 +11,106 @@ export type RiverAppConfig = {
 	__phantom?: any;
 };
 
-export type RiverAppBase = {
+export type VormaAppBase = {
 	routes: readonly any[];
-	appConfig: RiverAppConfig;
+	appConfig: VormaAppConfig;
 	rootData: any;
 };
 
-export type ExtractApp<C extends RiverAppConfig> = C["__phantom"];
+export type ExtractApp<C extends VormaAppConfig> = C["__phantom"];
 
-type RouteByType<App extends RiverAppBase, T extends string> = Extract<
+type RouteByType<App extends VormaAppBase, T extends string> = Extract<
 	App["routes"][number],
 	{ _type: T }
 >;
 
 type RouteByPattern<Routes, P> = Extract<Routes, { pattern: P }>;
 
-type RiverLoader<App extends RiverAppBase> = RouteByType<App, "loader">;
-type RiverQuery<App extends RiverAppBase> = RouteByType<App, "query">;
-type RiverMutation<App extends RiverAppBase> = RouteByType<App, "mutation">;
+type VormaLoader<App extends VormaAppBase> = RouteByType<App, "loader">;
+type VormaQuery<App extends VormaAppBase> = RouteByType<App, "query">;
+type VormaMutation<App extends VormaAppBase> = RouteByType<App, "mutation">;
 
 // Pattern types
-export type RiverLoaderPattern<App extends RiverAppBase> =
-	RiverLoader<App>["pattern"];
-export type RiverQueryPattern<App extends RiverAppBase> =
-	RiverQuery<App>["pattern"];
-export type RiverMutationPattern<App extends RiverAppBase> =
-	RiverMutation<App>["pattern"];
+export type VormaLoaderPattern<App extends VormaAppBase> =
+	VormaLoader<App>["pattern"];
+export type VormaQueryPattern<App extends VormaAppBase> =
+	VormaQuery<App>["pattern"];
+export type VormaMutationPattern<App extends VormaAppBase> =
+	VormaMutation<App>["pattern"];
 
 // IO types
-export type RiverLoaderOutput<
-	App extends RiverAppBase,
-	P extends RiverLoaderPattern<App>,
+export type VormaLoaderOutput<
+	App extends VormaAppBase,
+	P extends VormaLoaderPattern<App>,
 > =
-	RouteByPattern<RiverLoader<App>, P> extends { phantomOutputType: infer T }
+	RouteByPattern<VormaLoader<App>, P> extends { phantomOutputType: infer T }
 		? T
 		: null | undefined;
 
-export type RiverQueryInput<
-	App extends RiverAppBase,
-	P extends RiverQueryPattern<App>,
+export type VormaQueryInput<
+	App extends VormaAppBase,
+	P extends VormaQueryPattern<App>,
 > =
-	RouteByPattern<RiverQuery<App>, P> extends { phantomInputType: infer T }
+	RouteByPattern<VormaQuery<App>, P> extends { phantomInputType: infer T }
 		? T
 		: null | undefined;
 
-export type RiverQueryOutput<
-	App extends RiverAppBase,
-	P extends RiverQueryPattern<App>,
+export type VormaQueryOutput<
+	App extends VormaAppBase,
+	P extends VormaQueryPattern<App>,
 > =
-	RouteByPattern<RiverQuery<App>, P> extends { phantomOutputType: infer T }
+	RouteByPattern<VormaQuery<App>, P> extends { phantomOutputType: infer T }
 		? T
 		: null | undefined;
 
-export type RiverMutationInput<
-	App extends RiverAppBase,
-	P extends RiverMutationPattern<App>,
+export type VormaMutationInput<
+	App extends VormaAppBase,
+	P extends VormaMutationPattern<App>,
 > =
-	RouteByPattern<RiverMutation<App>, P> extends { phantomInputType: infer T }
+	RouteByPattern<VormaMutation<App>, P> extends { phantomInputType: infer T }
 		? T
 		: null | undefined;
 
-export type RiverMutationOutput<
-	App extends RiverAppBase,
-	P extends RiverMutationPattern<App>,
+export type VormaMutationOutput<
+	App extends VormaAppBase,
+	P extends VormaMutationPattern<App>,
 > =
-	RouteByPattern<RiverMutation<App>, P> extends { phantomOutputType: infer T }
+	RouteByPattern<VormaMutation<App>, P> extends { phantomOutputType: infer T }
 		? T
 		: null | undefined;
 
-export type RiverMutationMethod<
-	App extends RiverAppBase,
-	P extends RiverMutationPattern<App>,
+export type VormaMutationMethod<
+	App extends VormaAppBase,
+	P extends VormaMutationPattern<App>,
 > =
-	RouteByPattern<RiverMutation<App>, P> extends { method: infer M }
+	RouteByPattern<VormaMutation<App>, P> extends { method: infer M }
 		? M extends string
 			? M
 			: "POST"
 		: "POST";
 
 // Route metadata
-type RouteMetadata<App extends RiverAppBase, P extends string> = Extract<
+type RouteMetadata<App extends VormaAppBase, P extends string> = Extract<
 	App["routes"][number],
 	{ pattern: P }
 >;
 
-export type GetParams<App extends RiverAppBase, P extends string> =
+export type GetParams<App extends VormaAppBase, P extends string> =
 	RouteMetadata<App, P> extends { params: ReadonlyArray<infer Params> }
 		? Params extends string
 			? Params
 			: never
 		: never;
 
-export type RiverRouteParams<
-	App extends RiverAppBase,
-	P extends RiverLoaderPattern<App>,
+export type VormaRouteParams<
+	App extends VormaAppBase,
+	P extends VormaLoaderPattern<App>,
 > = GetParams<App, P>;
 
-export type HasParams<App extends RiverAppBase, P extends string> =
+export type HasParams<App extends VormaAppBase, P extends string> =
 	GetParams<App, P> extends never ? false : true;
 
-export type IsSplat<App extends RiverAppBase, P extends string> =
+export type IsSplat<App extends VormaAppBase, P extends string> =
 	RouteMetadata<App, P> extends { isSplat: true } ? true : false;
 
 export type IsEmptyInput<T> = [T] extends [null | undefined | never]
@@ -118,38 +118,38 @@ export type IsEmptyInput<T> = [T] extends [null | undefined | never]
 	: false;
 
 // Pattern-based props composition
-type ConditionalParams<App extends RiverAppBase, P extends string> =
+type ConditionalParams<App extends VormaAppBase, P extends string> =
 	HasParams<App, P> extends true
 		? { params: { [K in GetParams<App, P>]: string } }
 		: {};
 
-type ConditionalSplat<App extends RiverAppBase, P extends string> =
+type ConditionalSplat<App extends VormaAppBase, P extends string> =
 	IsSplat<App, P> extends true ? { splatValues: Array<string> } : {};
 
-export type PatternBasedProps<App extends RiverAppBase, P extends string> = {
+export type PatternBasedProps<App extends VormaAppBase, P extends string> = {
 	pattern: P;
 } & ConditionalParams<App, P> &
 	ConditionalSplat<App, P>;
 
 export type PermissivePatternBasedProps<
-	App extends RiverAppBase,
-	P extends RiverLoaderPattern<App>,
+	App extends VormaAppBase,
+	P extends VormaLoaderPattern<App>,
 > = {
 	pattern: PermissiveLoaderPattern<App, P>;
 } & ConditionalParams<App, P> &
 	ConditionalSplat<App, P>;
 
 type PermissiveLoaderPattern<
-	App extends RiverAppBase,
-	P extends RiverLoaderPattern<App>,
+	App extends VormaAppBase,
+	P extends VormaLoaderPattern<App>,
 > = P extends `${infer Prefix}/${App["appConfig"]["loadersExplicitIndexSegment"]}`
 	? P | (Prefix extends "" ? "/" : Prefix)
 	: P;
 
-export type RiverRoutePropsGeneric<
+export type VormaRoutePropsGeneric<
 	JSXElement,
-	App extends RiverAppBase,
-	P extends RiverLoaderPattern<App>,
+	App extends VormaAppBase,
+	P extends VormaLoaderPattern<App>,
 > = {
 	idx: number;
 	Outlet: (props: Record<string, any>) => JSXElement;
@@ -167,50 +167,50 @@ type Props = PatternBasedProps<any, string> & {
 };
 
 type APIClientHelperOpts = {
-	riverAppConfig: RiverAppConfig;
+	vormaAppConfig: VormaAppConfig;
 	type: "loader" | "query" | "mutation";
 	props: Props;
 };
 
-export type RiverQueryProps<
-	App extends RiverAppBase,
-	P extends RiverQueryPattern<App>,
+export type VormaQueryProps<
+	App extends VormaAppBase,
+	P extends VormaQueryPattern<App>,
 > = (PatternBasedProps<App, P> & {
 	options?: SubmitOptions;
 	requestInit?: Omit<RequestInit, "method"> & { method?: "GET" };
 }) &
-	(IsEmptyInput<RiverQueryInput<App, P>> extends true
-		? { input?: RiverQueryInput<App, P> }
-		: { input: RiverQueryInput<App, P> });
+	(IsEmptyInput<VormaQueryInput<App, P>> extends true
+		? { input?: VormaQueryInput<App, P> }
+		: { input: VormaQueryInput<App, P> });
 
-export type RiverMutationProps<
-	App extends RiverAppBase,
-	P extends RiverMutationPattern<App>,
+export type VormaMutationProps<
+	App extends VormaAppBase,
+	P extends VormaMutationPattern<App>,
 > = PatternBasedProps<App, P> & {
 	options?: SubmitOptions;
-} & (RiverMutationMethod<App, P> extends "POST"
+} & (VormaMutationMethod<App, P> extends "POST"
 		? { requestInit?: Omit<RequestInit, "method"> & { method?: "POST" } }
 		: {
 				requestInit: RequestInit & {
-					method: RiverMutationMethod<App, P>;
+					method: VormaMutationMethod<App, P>;
 				};
 			}) &
-	(IsEmptyInput<RiverMutationInput<App, P>> extends true
-		? { input?: RiverMutationInput<App, P> }
-		: { input: RiverMutationInput<App, P> });
+	(IsEmptyInput<VormaMutationInput<App, P>> extends true
+		? { input?: VormaMutationInput<App, P> }
+		: { input: VormaMutationInput<App, P> });
 
 export function buildQueryURL(
-	riverAppConfig: RiverAppConfig,
+	vormaAppConfig: VormaAppConfig,
 	props: Props,
 ): URL {
-	return buildURL({ riverAppConfig, props, type: "query" });
+	return buildURL({ vormaAppConfig, props, type: "query" });
 }
 
 export function buildMutationURL(
-	riverAppConfig: RiverAppConfig,
+	vormaAppConfig: VormaAppConfig,
 	props: Props,
 ): URL {
-	return buildURL({ riverAppConfig, props, type: "mutation" });
+	return buildURL({ vormaAppConfig, props, type: "mutation" });
 }
 
 export function resolveBody(props: Props): BodyInit | null | undefined {
@@ -232,7 +232,7 @@ export function resolveBody(props: Props): BodyInit | null | undefined {
 
 function buildURL(opts: APIClientHelperOpts): URL {
 	const base_path = stripTrailingSlash(
-		opts.riverAppConfig.actionsRouterMountRoot,
+		opts.vormaAppConfig.actionsRouterMountRoot,
 	);
 	const resolved_path = __resolvePath(opts);
 	const url = new URL(base_path + resolved_path, getCurrentOrigin());
@@ -245,15 +245,15 @@ function buildURL(opts: APIClientHelperOpts): URL {
 }
 
 export function __resolvePath(opts: APIClientHelperOpts): string {
-	const { props, riverAppConfig } = opts;
+	const { props, vormaAppConfig } = opts;
 	let path = props.pattern;
 
-	let dynamicParamPrefixRune = riverAppConfig.actionsDynamicRune;
-	let splatSegmentRune = riverAppConfig.actionsSplatRune;
+	let dynamicParamPrefixRune = vormaAppConfig.actionsDynamicRune;
+	let splatSegmentRune = vormaAppConfig.actionsSplatRune;
 
 	if (opts.type === "loader") {
-		dynamicParamPrefixRune = riverAppConfig.loadersDynamicRune;
-		splatSegmentRune = riverAppConfig.loadersSplatRune;
+		dynamicParamPrefixRune = vormaAppConfig.loadersDynamicRune;
+		splatSegmentRune = vormaAppConfig.loadersSplatRune;
 	}
 
 	if ("params" in props && props.params) {
@@ -271,8 +271,8 @@ export function __resolvePath(opts: APIClientHelperOpts): string {
 	}
 
 	// Strip explicit index segment
-	if (opts.type === "loader" && riverAppConfig.loadersExplicitIndexSegment) {
-		const indexSegment = `/${riverAppConfig.loadersExplicitIndexSegment}`;
+	if (opts.type === "loader" && vormaAppConfig.loadersExplicitIndexSegment) {
+		const indexSegment = `/${vormaAppConfig.loadersExplicitIndexSegment}`;
 		if (path.endsWith(indexSegment)) {
 			path = path.slice(0, -indexSegment.length) || "/";
 		}

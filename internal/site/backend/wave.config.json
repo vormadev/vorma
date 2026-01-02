@@ -16,12 +16,12 @@
 		},
 		"PublicPathPrefix": "/"
 	},
-	"River": {
+	"Vorma": {
 		"UIVariant": "solid",
 		"HTMLTemplateLocation": "entry.go.html",
-		"ClientEntry": "frontend/src/river.entry.tsx",
-		"ClientRouteDefsFile": "frontend/src/river.routes.ts",
-		"TSGenOutPath": "frontend/src/river.gen.ts",
+		"ClientEntry": "frontend/src/vorma.entry.tsx",
+		"ClientRouteDefsFile": "frontend/src/vorma.routes.ts",
+		"TSGenOutPath": "frontend/src/vorma.gen.ts",
 		"BuildtimePublicURLFuncName": "hashedURL"
 	},
 	"Vite": {

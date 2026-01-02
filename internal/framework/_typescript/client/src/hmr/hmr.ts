@@ -1,9 +1,9 @@
-import { debounce } from "river.now/kit/debounce";
+import { debounce } from "vorma/kit/debounce";
 import { revalidate } from "../client.ts";
 import { setupClientLoaders } from "../client_loaders.ts";
 import { dispatchRouteChangeEvent } from "../events.ts";
-import { __riverClientGlobal } from "../river_ctx/river_ctx.ts";
 import { logInfo } from "../utils/logging.ts";
+import { __vormaClientGlobal } from "../vorma_ctx/vorma_ctx.ts";
 
 let devTimeSetupClientLoadersDebounced: () => Promise<void> = () =>
 	Promise.resolve();
@@ -51,7 +51,7 @@ export function initHMR() {
 							updateURL.search = "";
 							if (updateURL.pathname === thisURL.pathname) {
 								if (
-									__riverClientGlobal
+									__vormaClientGlobal
 										.get("matchedPatterns")
 										.includes(pattern)
 								) {

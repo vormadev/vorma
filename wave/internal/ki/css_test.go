@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/river-now/river/kit/htmltestutil"
+	"github.com/vormadev/vorma/kit/htmltestutil"
 )
 
 func TestGetCriticalCSS(t *testing.T) {
@@ -108,7 +108,7 @@ func TestBuildCSS(t *testing.T) {
 		t.Fatalf("Failed to read normal CSS reference file: %v", err)
 	}
 	normalCSSFilename := strings.TrimSpace(string(normalCSSRef))
-	if !strings.HasPrefix(normalCSSFilename, "river_out_river_internal_normal_") || !strings.HasSuffix(normalCSSFilename, ".css") {
+	if !strings.HasPrefix(normalCSSFilename, "vorma_out_vorma_internal_normal_") || !strings.HasSuffix(normalCSSFilename, ".css") {
 		t.Errorf("Invalid normal CSS reference: %v", normalCSSFilename)
 	}
 

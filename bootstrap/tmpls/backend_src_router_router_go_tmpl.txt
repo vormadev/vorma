@@ -4,9 +4,9 @@ import (
 	"{{.GoImportBase}}/backend"
 	"net/http"
 
-	"github.com/river-now/river"
-	"github.com/river-now/river/kit/middleware/healthcheck"
-	"github.com/river-now/river/kit/mux"
+	"github.com/vormadev/vorma"
+	"github.com/vormadev/vorma/kit/middleware/healthcheck"
+	"github.com/vormadev/vorma/kit/mux"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -32,21 +32,21 @@ func Init() (addr string, handler http.Handler) {
 }
 
 /////////////////////////////////////////////////////////////////////
-/////// RIVER APP INSTANCE
+/////// VORMA APP INSTANCE
 /////////////////////////////////////////////////////////////////////
 
-var App = river.NewRiverApp(river.RiverAppConfig{
+var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
-	GetHeadElUniqueRules: func() *river.HeadEls {
-		e := river.NewHeadEls()
+	GetHeadElUniqueRules: func() *vorma.HeadEls {
+		e := vorma.NewHeadEls()
 		e.Meta(e.Property("og:title"))
 		e.Meta(e.Property("og:description"))
 		return e
 	},
-	GetDefaultHeadEls: func(r *http.Request, app *river.River) (*river.HeadEls, error) {
-		e := river.NewHeadEls()
-		e.Title("River Example")
-		e.Description("This is a River example.")
+	GetDefaultHeadEls: func(r *http.Request, app *vorma.Vorma) (*vorma.HeadEls, error) {
+		e := vorma.NewHeadEls()
+		e.Title("Vorma Example")
+		e.Description("This is a Vorma example.")
 		e.Link(
 			e.Rel("icon"),
 			e.Attr("href", app.GetPublicURL("favicon.svg")),
@@ -65,17 +65,17 @@ var App = river.NewRiverApp(river.RiverAppConfig{
 /////////////////////////////////////////////////////////////////////
 
 type LoaderCtx struct {
-	*river.LoaderReqData
+	*vorma.LoaderReqData
 }
 
-func decorateLoaderCtx(rd *river.LoaderReqData) *LoaderCtx {
+func decorateLoaderCtx(rd *vorma.LoaderReqData) *LoaderCtx {
 	return &LoaderCtx{LoaderReqData: rd}
 }
 
 func NewLoader[O any](
-	pattern string, loader river.LoaderFunc[LoaderCtx, O],
-) *river.Loader[O] {
-	return river.NewLoader(App, pattern, loader, decorateLoaderCtx)
+	pattern string, loader vorma.LoaderFunc[LoaderCtx, O],
+) *vorma.Loader[O] {
+	return vorma.NewLoader(App, pattern, loader, decorateLoaderCtx)
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -83,17 +83,17 @@ func NewLoader[O any](
 /////////////////////////////////////////////////////////////////////
 
 type ActionCtx[I any] struct {
-	*river.ActionReqData[I]
+	*vorma.ActionReqData[I]
 }
 
-func decorateActionCtx[I any](rd *river.ActionReqData[I]) *ActionCtx[I] {
+func decorateActionCtx[I any](rd *vorma.ActionReqData[I]) *ActionCtx[I] {
 	return &ActionCtx[I]{ActionReqData: rd}
 }
 
 func NewAction[I any, O any](
-	method string, pattern string, action river.ActionFunc[ActionCtx[I], I, O],
-) *river.Action[I, O] {
-	return river.NewAction(App, method, pattern, action, decorateActionCtx)
+	method string, pattern string, action vorma.ActionFunc[ActionCtx[I], I, O],
+) *vorma.Action[I, O] {
+	return vorma.NewAction(App, method, pattern, action, decorateActionCtx)
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -105,14 +105,14 @@ type RootData struct {
 }
 
 var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
-	return &RootData{Message: "Welcome to your River app!"}, nil
+	return &RootData{Message: "Welcome to your Vorma app!"}, nil
 })
 
 var _ = NewLoader("/_index", func(c *LoaderCtx) (int, error) {
 	return count, nil
 })
 
-const externalDocsLink = "https://river.now/docs"
+const externalDocsLink = "https://vorma.dev/docs"
 
 var _ = NewLoader("/links", func(c *LoaderCtx) (string, error) {
 	return externalDocsLink, nil
@@ -124,7 +124,7 @@ var _ = NewLoader("/links", func(c *LoaderCtx) (string, error) {
 
 var count = 0
 
-var _ = NewAction("POST", "/increment-count", func(c *ActionCtx[river.None]) (int, error) {
+var _ = NewAction("POST", "/increment-count", func(c *ActionCtx[vorma.None]) (int, error) {
 	count++
 	return count, nil
 })

@@ -1,14 +1,14 @@
 ---
 title: Docs 2
-description: Documentation for the River framework
+description: Documentation for the Vorma framework
 order: 3
 ---
 
-# River Documentation
+# Vorma Documentation
 
-## Starting a New River Project
+## Starting a New Vorma Project
 
-`npm create river@latest`
+`npm create vorma@latest`
 
 ## Supported Frontend UI Libraries
 
@@ -18,7 +18,7 @@ order: 3
 
 ## Wave Config
 
-River's lower-level build tool is called Wave. Wave handles things like watching
+Vorma's lower-level build tool is called Wave. Wave handles things like watching
 for dev-time file changes, running build hooks, integrating with the Vite CLI,
 and handling project structure customizations.
 
@@ -103,13 +103,13 @@ To learn more, visit the
 
 #### Serve
 
-##### River Init
+##### Vorma Init
 
 ##### Graceful Shutdown
 
 ### Dist
 
-### River Instantiation and Config
+### Vorma Instantiation and Config
 
 ### Wave JSON Config
 

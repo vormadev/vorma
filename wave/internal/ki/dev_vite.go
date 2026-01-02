@@ -3,7 +3,7 @@ package ki
 import (
 	"path/filepath"
 
-	"github.com/river-now/river/kit/viteutil"
+	"github.com/vormadev/vorma/kit/viteutil"
 )
 
 func (c *Config) isUsingVite() bool {
@@ -11,7 +11,7 @@ func (c *Config) isUsingVite() bool {
 }
 
 func (c *Config) GetViteManifestLocation() string {
-	return filepath.Join(c.GetStaticPrivateOutDir(), "river_out", "river_vite_manifest.json")
+	return filepath.Join(c.GetStaticPrivateOutDir(), "vorma_out", "vorma_vite_manifest.json")
 }
 
 func (c *Config) GetViteOutDir() string {

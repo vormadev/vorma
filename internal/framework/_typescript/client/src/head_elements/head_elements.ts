@@ -1,12 +1,12 @@
-import type { HeadEl } from "../river_ctx/river_ctx.ts";
 import { panic } from "../utils/errors.ts";
+import type { HeadEl } from "../vorma_ctx/vorma_ctx.ts";
 
 export function getStartAndEndComments(type: "meta" | "rest"): {
 	startComment: Comment | null;
 	endComment: Comment | null;
 } {
-	const startMarker = `data-river="${type}-start"`;
-	const endMarker = `data-river="${type}-end"`;
+	const startMarker = `data-vorma="${type}-start"`;
+	const endMarker = `data-vorma="${type}-end"`;
 	const start = findComment(startMarker);
 	const end = findComment(endMarker);
 	return { startComment: start, endComment: end };

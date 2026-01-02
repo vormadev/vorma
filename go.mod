@@ -1,4 +1,4 @@
-module github.com/river-now/river
+module github.com/vormadev/vorma
 
 go 1.24.0
 

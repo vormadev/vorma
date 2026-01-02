@@ -1,1 +1,1 @@
-export const RIVER_HARD_RELOAD_QUERY_PARAM = "river_reload";
+export const VORMA_HARD_RELOAD_QUERY_PARAM = "vorma_reload";

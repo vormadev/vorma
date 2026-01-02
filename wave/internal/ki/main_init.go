@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/river-now/river/kit/colorlog"
-	"github.com/river-now/river/kit/safecache"
+	"github.com/vormadev/vorma/kit/colorlog"
+	"github.com/vormadev/vorma/kit/safecache"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -130,19 +130,19 @@ func (c *Config) MainInit(opts MainInitOptions, calledFrom string) {
 		},
 	}
 
-	includeDefaults := c._uc.River != nil
-	if c._uc.River != nil && c._uc.River.IncludeDefaults != nil && !*c._uc.River.IncludeDefaults {
+	includeDefaults := c._uc.Vorma != nil
+	if c._uc.Vorma != nil && c._uc.Vorma.IncludeDefaults != nil && !*c._uc.Vorma.IncludeDefaults {
 		includeDefaults = false
 	}
 
 	if includeDefaults {
-		relClientRouteDefsFile, err := filepath.Rel(c.cleanWatchRoot, c._uc.River.ClientRouteDefsFile)
+		relClientRouteDefsFile, err := filepath.Rel(c.cleanWatchRoot, c._uc.Vorma.ClientRouteDefsFile)
 		if err != nil {
 			c.panic("failed to get relative path for ClientRouteDefsFile", err)
 		}
 
 		c.defaultWatchedFiles = append(c.defaultWatchedFiles, WatchedFile{
-			Pattern:       filepath.Join(c.cleanSources.PrivateStatic, c._uc.River.HTMLTemplateLocation),
+			Pattern:       filepath.Join(c.cleanSources.PrivateStatic, c._uc.Vorma.HTMLTemplateLocation),
 			OnChangeHooks: []OnChangeHook{{Cmd: __internal_full_dev_reset_less_go_mrkr}},
 		})
 
@@ -156,7 +156,7 @@ func (c *Config) MainInit(opts MainInitOptions, calledFrom string) {
 			OnChangeHooks: []OnChangeHook{{Cmd: "DevBuildHook", Timing: "concurrent"}},
 		})
 
-		relHTMLTemplateLocation, err := filepath.Rel(c.cleanWatchRoot, c._uc.River.HTMLTemplateLocation)
+		relHTMLTemplateLocation, err := filepath.Rel(c.cleanWatchRoot, c._uc.Vorma.HTMLTemplateLocation)
 		if err != nil {
 			c.panic("failed to get relative path for HTMLTemplateLocation", err)
 		}
@@ -166,7 +166,7 @@ func (c *Config) MainInit(opts MainInitOptions, calledFrom string) {
 			RestartApp: true,
 		})
 
-		relTSGenOutPath, err := filepath.Rel(c.cleanWatchRoot, c._uc.River.TSGenOutPath)
+		relTSGenOutPath, err := filepath.Rel(c.cleanWatchRoot, c._uc.Vorma.TSGenOutPath)
 		if err != nil {
 			c.panic("failed to get relative path for TSGenOutPath", err)
 		}
@@ -233,21 +233,21 @@ func (c *Config) validateUserConfig() {
 	}
 
 	// Validate required fields within optional blocks.
-	if c._uc.River != nil {
-		if c._uc.River.UIVariant == "" {
-			c.panic("Config Error: River.UIVariant is required when the [River] block is present.", ErrConfigValidation)
+	if c._uc.Vorma != nil {
+		if c._uc.Vorma.UIVariant == "" {
+			c.panic("Config Error: Vorma.UIVariant is required when the [Vorma] block is present.", ErrConfigValidation)
 		}
-		if c._uc.River.HTMLTemplateLocation == "" {
-			c.panic("Config Error: River.HTMLTemplateLocation is required when the [River] block is present.", ErrConfigValidation)
+		if c._uc.Vorma.HTMLTemplateLocation == "" {
+			c.panic("Config Error: Vorma.HTMLTemplateLocation is required when the [Vorma] block is present.", ErrConfigValidation)
 		}
-		if c._uc.River.ClientEntry == "" {
-			c.panic("Config Error: River.ClientEntry is required when the [River] block is present.", ErrConfigValidation)
+		if c._uc.Vorma.ClientEntry == "" {
+			c.panic("Config Error: Vorma.ClientEntry is required when the [Vorma] block is present.", ErrConfigValidation)
 		}
-		if c._uc.River.ClientRouteDefsFile == "" {
-			c.panic("Config Error: River.ClientRouteDefsFile is required when the [River] block is present.", ErrConfigValidation)
+		if c._uc.Vorma.ClientRouteDefsFile == "" {
+			c.panic("Config Error: Vorma.ClientRouteDefsFile is required when the [Vorma] block is present.", ErrConfigValidation)
 		}
-		if c._uc.River.TSGenOutPath == "" {
-			c.panic("Config Error: River.TSGenOutPath is required when the [River] block is present.", ErrConfigValidation)
+		if c._uc.Vorma.TSGenOutPath == "" {
+			c.panic("Config Error: Vorma.TSGenOutPath is required when the [Vorma] block is present.", ErrConfigValidation)
 		}
 	}
 

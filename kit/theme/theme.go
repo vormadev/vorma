@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/river-now/river/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
 )
 
 const (

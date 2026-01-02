@@ -1,14 +1,14 @@
-package river
+package vorma
 
 import (
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/river-now/river/kit/matcher"
-	"github.com/river-now/river/kit/mux"
-	"github.com/river-now/river/kit/rpc"
-	"github.com/river-now/river/kit/tsgen"
+	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/rpc"
+	"github.com/vormadev/vorma/kit/tsgen"
 )
 
 type AdHocType = rpc.AdHocType
@@ -33,7 +33,7 @@ var mutationMethods = map[string]struct{}{
 	http.MethodPost: {}, http.MethodPut: {}, http.MethodPatch: {}, http.MethodDelete: {},
 }
 
-func (h *River) generateTypeScript(opts *tsGenOptions) (string, error) {
+func (h *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
 	var collection []tsgen.CollectionItem
 
 	allLoaders := opts.LoadersRouter.AllRoutes()
@@ -142,71 +142,71 @@ func (h *River) generateTypeScript(opts *tsGenOptions) (string, error) {
 		collection = append(collection, item)
 	}
 
-	uiVariant := h.Wave.GetRiverUIVariant()
+	uiVariant := h.Wave.GetVormaUIVariant()
 
 	var sb strings.Builder
 
 	if foundRootData {
-		sb.WriteString(`type RiverRootData = Extract<
+		sb.WriteString(`type VormaRootData = Extract<
 	(typeof routes)[number],
 	{ isRootData: true }
 >["phantomOutputType"];`)
 	} else {
-		sb.WriteString("type RiverRootData = null;")
+		sb.WriteString("type VormaRootData = null;")
 	}
 
 	sb.WriteString("\n\n")
 
-	sb.WriteString(fmt.Sprintf(`export type RiverApp = {
+	sb.WriteString(fmt.Sprintf(`export type VormaApp = {
 	routes: typeof routes;
-	appConfig: typeof riverAppConfig;
-	rootData: RiverRootData;
+	appConfig: typeof vormaAppConfig;
+	rootData: VormaRootData;
 };
 
-export const riverAppConfig = {
+export const vormaAppConfig = {
 	actionsRouterMountRoot: "%s",
 	actionsDynamicRune: "%s",
 	actionsSplatRune: "%s",
 	loadersDynamicRune: "%s",
 	loadersSplatRune: "%s",
 	loadersExplicitIndexSegment: "%s",
-	__phantom: null as unknown as RiverApp,
+	__phantom: null as unknown as VormaApp,
 } as const;
 
 import type {
-	RiverLoaderPattern,
-	RiverMutationInput,
-	RiverMutationOutput,
-	RiverMutationPattern,
-	RiverMutationProps,
-	RiverQueryInput,
-	RiverQueryOutput,
-	RiverQueryPattern,
-	RiverQueryProps,
-} from "river.now/client";
-import type { RiverRouteProps } from "river.now/%s";
+	VormaLoaderPattern,
+	VormaMutationInput,
+	VormaMutationOutput,
+	VormaMutationPattern,
+	VormaMutationProps,
+	VormaQueryInput,
+	VormaQueryOutput,
+	VormaQueryPattern,
+	VormaQueryProps,
+} from "vorma/client";
+import type { VormaRouteProps } from "vorma/%s";
 
-export type QueryPattern = RiverQueryPattern<RiverApp>;
-export type QueryProps<P extends QueryPattern> = RiverQueryProps<RiverApp, P>;
-export type QueryInput<P extends QueryPattern> = RiverQueryInput<RiverApp, P>;
-export type QueryOutput<P extends QueryPattern> = RiverQueryOutput<RiverApp, P>;
+export type QueryPattern = VormaQueryPattern<VormaApp>;
+export type QueryProps<P extends QueryPattern> = VormaQueryProps<VormaApp, P>;
+export type QueryInput<P extends QueryPattern> = VormaQueryInput<VormaApp, P>;
+export type QueryOutput<P extends QueryPattern> = VormaQueryOutput<VormaApp, P>;
 
-export type MutationPattern = RiverMutationPattern<RiverApp>;
-export type MutationProps<P extends MutationPattern> = RiverMutationProps<
-	RiverApp,
+export type MutationPattern = VormaMutationPattern<VormaApp>;
+export type MutationProps<P extends MutationPattern> = VormaMutationProps<
+	VormaApp,
 	P
 >;
-export type MutationInput<P extends MutationPattern> = RiverMutationInput<
-	RiverApp,
+export type MutationInput<P extends MutationPattern> = VormaMutationInput<
+	VormaApp,
 	P
 >;
-export type MutationOutput<P extends MutationPattern> = RiverMutationOutput<
-	RiverApp,
+export type MutationOutput<P extends MutationPattern> = VormaMutationOutput<
+	VormaApp,
 	P
 >;
 
-export type RouteProps<P extends RiverLoaderPattern<RiverApp>> =
-	RiverRouteProps<RiverApp, P>;
+export type RouteProps<P extends VormaLoaderPattern<VormaApp>> =
+	VormaRouteProps<VormaApp, P>;
 `,
 		opts.ActionsRouter.MountRoot(),
 		string(actionsDynamicRune),

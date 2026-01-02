@@ -4,8 +4,8 @@ import (
 	"io"
 
 	"github.com/adrg/frontmatter"
-	"github.com/river-now/river/kit/lab/fsmarkdown"
 	"github.com/russross/blackfriday/v2"
+	"github.com/vormadev/vorma/kit/lab/fsmarkdown"
 )
 
 var Markdown = fsmarkdown.New(fsmarkdown.Options{

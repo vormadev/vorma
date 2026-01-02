@@ -3,11 +3,11 @@ package main
 import (
 	"log"
 
-	"github.com/river-now/river/kit/lab/repoconcat"
+	"github.com/vormadev/vorma/kit/lab/repoconcat"
 )
 
 func main() {
-	/////// RIVER FRAMEWORK
+	/////// VORMA FRAMEWORK
 	if err := repoconcat.Concat(repoconcat.Config{
 		Root:   "./internal/framework",
 		Output: "LLM__INTERNAL_FRAMEWORK.local.txt",
@@ -176,6 +176,36 @@ func main() {
 		Root:       "./internal/framework/_typescript/create",
 		Output:     "LLM__CREATE_TS.local.txt",
 		IgnoreDirs: []string{},
+		IgnoreFiles: []string{
+			"**/*_test.go",
+			"**/*.test.*",
+			"bench.txt",
+			"**/*.bench.*",
+			"**/*.local.*",
+			"**/*.bench.txt",
+		},
+		Verbose: true,
+	}); err != nil {
+		log.Fatal(err)
+	}
+
+	/////// KIT -- PRIMITIVES FOR LLMs
+	if err := repoconcat.Concat(repoconcat.Config{
+		Output: "LLM__KIT_PRIMITIVES.local.txt",
+		IncludeDirs: []string{
+			"./kit/id",
+			"./kit/keyset",
+			"./kit/securebytes",
+			"./kit/grace",
+			"./kit/lazycache",
+			"./kit/lazyget",
+			"./kit/safecache",
+			"./kit/tasks",
+			"./kit/bytesutil",
+			"./kit/cryptoutil",
+			"./kit/cookies",
+			"./kit/csrf",
+		},
 		IgnoreFiles: []string{
 			"**/*_test.go",
 			"**/*.test.*",

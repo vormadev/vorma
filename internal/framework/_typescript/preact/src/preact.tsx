@@ -5,11 +5,11 @@ import {
 	__applyScrollState,
 	addLocationListener,
 	addRouteChangeListener,
-	__riverClientGlobal as ctx,
+	__vormaClientGlobal as ctx,
 	getLocation,
 	getRouterData,
 	type RouteChangeEvent,
-} from "river.now/client";
+} from "vorma/client";
 
 /////////////////////////////////////////////////////////////////////
 /////// CORE SETUP
@@ -60,7 +60,7 @@ export const location = signal(getLocation());
 /////// COMPONENT
 /////////////////////////////////////////////////////////////////////
 
-export function RiverRootOutlet(props: { idx?: number }): h.JSX.Element {
+export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element {
 	const idx = props.idx ?? 0;
 
 	const initialRenderRef = useRef(true);
@@ -147,7 +147,7 @@ export function RiverRootOutlet(props: { idx?: number }): h.JSX.Element {
 
 	const Outlet = useMemo(
 		() => (localProps: Record<string, any> | undefined) => {
-			return h(RiverRootOutlet, {
+			return h(VormaRootOutlet, {
 				...localProps,
 				...props,
 				idx: idx + 1,

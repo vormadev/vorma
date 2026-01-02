@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/river-now/river/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
 )
 
 type Instance struct {

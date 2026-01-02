@@ -1,4 +1,4 @@
-package river
+package vorma
 
 import (
 	"bytes"
@@ -8,28 +8,29 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/river-now/river/kit/headels"
-	"github.com/river-now/river/kit/mux"
-	"github.com/river-now/river/kit/response"
-	"github.com/river-now/river/kit/viteutil"
+	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/response"
+	"github.com/vormadev/vorma/kit/viteutil"
 	"golang.org/x/sync/errgroup"
 )
 
-const RiverBuildIDHeaderKey = "X-River-Build-Id"
+const VormaBuildIDHeaderKey = "X-Vorma-Build-Id"
+const VormaJSONQueryKey = "vorma_json"
 
-var headElsInstance = headels.NewInstance("river")
+var headElsInstance = headels.NewInstance("vorma")
 
 // Deprecated: use GetLoadersHandler instead.
-func (h *River) GetUIHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
+func (h *Vorma) GetUIHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
 	return h.GetLoadersHandler(nestedRouter)
 }
 
-func (h *River) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
+func (h *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
 	h.validateAndDecorateNestedRouter(nestedRouter)
 
 	handler := mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
-		res.SetHeader(RiverBuildIDHeaderKey, h._buildID)
+		res.SetHeader(VormaBuildIDHeaderKey, h._buildID)
 
 		isJSON := IsJSONRequest(r)
 		if isJSON && !h.IsCurrentBuildJSONRequest(r) {
@@ -40,9 +41,9 @@ func (h *River) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 				return
 			}
 			q := newURL.Query()
-			q.Del("river_json")
+			q.Del(VormaJSONQueryKey)
 			newURL.RawQuery = q.Encode()
-			res.SetHeader("X-River-Reload", newURL.String())
+			res.SetHeader("X-Vorma-Reload", newURL.String())
 			res.OK()
 			return
 		}
@@ -132,13 +133,13 @@ func (h *River) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			return
 		}
 
-		rootTemplateData["RiverHeadEls"] = headElements
-		rootTemplateData["RiverSSRScript"] = ssrScript
-		rootTemplateData["RiverSSRScriptSha256Hash"] = ssrScriptSha256Hash
-		rootTemplateData["RiverRootID"] = "river-root"
+		rootTemplateData["VormaHeadEls"] = headElements
+		rootTemplateData["VormaSSRScript"] = ssrScript
+		rootTemplateData["VormaSSRScriptSha256Hash"] = ssrScriptSha256Hash
+		rootTemplateData["VormaRootID"] = "vorma-root"
 
 		if !h._isDev {
-			rootTemplateData["RiverBodyScripts"] = template.HTML(
+			rootTemplateData["VormaBodyScripts"] = template.HTML(
 				fmt.Sprintf(
 					`<script type="module" src="%s%s"></script>`,
 					h.Wave.GetPublicPathPrefix(), h._clientEntryOut,
@@ -146,7 +147,7 @@ func (h *River) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			)
 		} else {
 			opts := viteutil.ToDevScriptsOptions{ClientEntry: h._clientEntrySrc}
-			if UIVariant(h.Wave.GetRiverUIVariant()) == UIVariants.React {
+			if UIVariant(h.Wave.GetVormaUIVariant()) == UIVariants.React {
 				opts.Variant = viteutil.Variants.React
 			} else {
 				opts.Variant = viteutil.Variants.Other
@@ -159,7 +160,7 @@ func (h *River) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 				return
 			}
 
-			rootTemplateData["RiverBodyScripts"] = devScripts + "\n" + h.Wave.GetRefreshScript()
+			rootTemplateData["VormaBodyScripts"] = devScripts + "\n" + h.Wave.GetRefreshScript()
 		}
 
 		var buf bytes.Buffer
@@ -178,24 +179,24 @@ func (h *River) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 
 // If true, is JSON, but may or may not be from an up-to-date client.
 func IsJSONRequest(r *http.Request) bool {
-	return r.URL.Query().Get("river_json") != ""
+	return r.URL.Query().Get(VormaJSONQueryKey) != ""
 }
 
 // If true, is both (1) JSON and (2) guaranteed to be from a client
 // that has knowledge of the latest build ID.
-func (h *River) IsCurrentBuildJSONRequest(r *http.Request) bool {
-	return r.URL.Query().Get("river_json") == h._buildID
+func (h *Vorma) IsCurrentBuildJSONRequest(r *http.Request) bool {
+	return r.URL.Query().Get(VormaJSONQueryKey) == h._buildID
 }
 
-// GetCurrentBuildID returns the current build ID of the River instance.
-func (h *River) GetCurrentBuildID() string {
+// GetCurrentBuildID returns the current build ID of the Vorma instance.
+func (h *Vorma) GetCurrentBuildID() string {
 	return h._buildID
 }
 
-func (h *River) GetActionsHandler(router *mux.Router) mux.TasksCtxRequirerFunc {
+func (h *Vorma) GetActionsHandler(router *mux.Router) mux.TasksCtxRequirerFunc {
 	return mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
-		res.SetHeader(RiverBuildIDHeaderKey, h._buildID)
+		res.SetHeader(VormaBuildIDHeaderKey, h._buildID)
 		router.ServeHTTP(w, r)
 	})
 }

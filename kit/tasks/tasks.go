@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/river-now/river/kit/genericsutil"
+	"github.com/vormadev/vorma/kit/genericsutil"
 	"golang.org/x/sync/errgroup"
 )
 

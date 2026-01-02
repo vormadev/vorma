@@ -48,5 +48,5 @@ func getHashedFilename(content []byte, originalFileName string) string {
 func toOutputFileName(hash hash.Hash, originalFileName string) string {
 	hashedSuffix := fmt.Sprintf("%x", hash.Sum(nil))[:12]
 	ext := filepath.Ext(originalFileName)
-	return fmt.Sprintf("river_out_%s_%s%s", strings.TrimSuffix(originalFileName, ext), hashedSuffix, ext)
+	return fmt.Sprintf("vorma_out_%s_%s%s", strings.TrimSuffix(originalFileName, ext), hashedSuffix, ext)
 }

@@ -1,4 +1,4 @@
-import { getClientCookie } from "river.now/kit/cookies";
+import { getClientCookie } from "vorma/kit/cookies";
 
 export function getCSRFToken(opts: {
 	isDev: boolean;

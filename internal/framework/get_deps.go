@@ -1,8 +1,8 @@
-package river
+package vorma
 
-import "github.com/river-now/river/kit/matcher"
+import "github.com/vormadev/vorma/kit/matcher"
 
-func (h *River) getDeps(_matches []*matcher.Match) []string {
+func (h *Vorma) getDeps(_matches []*matcher.Match) []string {
 	var deps []string
 	seen := make(map[string]struct{}, len(_matches))
 	handleDeps := func(src []string) {
@@ -27,7 +27,7 @@ func (h *River) getDeps(_matches []*matcher.Match) []string {
 }
 
 // order matters
-func (h *River) getCSSBundles(deps []string) []string {
+func (h *Vorma) getCSSBundles(deps []string) []string {
 	cssBundles := make([]string, 0, len(deps))
 	// first, client entry CSS
 	if x, exists := h._depToCSSBundleMap[h._clientEntryOut]; exists {

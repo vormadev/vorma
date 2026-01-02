@@ -1,14 +1,14 @@
-package river
+package vorma
 
 import (
 	"errors"
 	"mime"
 	"net/http"
 
-	"github.com/river-now/river/kit/headels"
-	"github.com/river-now/river/kit/mux"
-	"github.com/river-now/river/kit/validate"
-	"github.com/river-now/river/wave"
+	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/validate"
+	"github.com/vormadev/vorma/wave"
 )
 
 type LoadersRouter struct {
@@ -112,7 +112,7 @@ type FormData struct{}
 
 func (m FormData) TSTypeRaw() string { return "FormData" }
 
-type RiverAppConfig struct {
+type VormaAppConfig struct {
 	Wave *wave.Wave
 
 	GetDefaultHeadEls    GetDefaultHeadElsFunc
@@ -123,66 +123,66 @@ type RiverAppConfig struct {
 	ActionsRouterOptions ActionsRouterOptions
 }
 
-func NewRiverApp(o RiverAppConfig) *River {
-	var rvr River
+func NewVormaApp(o VormaAppConfig) *Vorma {
+	var v Vorma
 
-	rvr.Wave = o.Wave
-	if rvr.Wave == nil {
+	v.Wave = o.Wave
+	if v.Wave == nil {
 		panic("Wave instance is required")
 	}
 
-	rvr.getDefaultHeadEls = o.GetDefaultHeadEls
-	if rvr.getDefaultHeadEls == nil {
-		rvr.getDefaultHeadEls = func(r *http.Request, app *River) (*headels.HeadEls, error) {
+	v.getDefaultHeadEls = o.GetDefaultHeadEls
+	if v.getDefaultHeadEls == nil {
+		v.getDefaultHeadEls = func(r *http.Request, app *Vorma) (*headels.HeadEls, error) {
 			return headels.New(), nil
 		}
 	}
 
-	rvr.getHeadElUniqueRules = o.GetHeadElUniqueRules
-	if rvr.getHeadElUniqueRules == nil {
-		rvr.getHeadElUniqueRules = func() *headels.HeadEls {
+	v.getHeadElUniqueRules = o.GetHeadElUniqueRules
+	if v.getHeadElUniqueRules == nil {
+		v.getHeadElUniqueRules = func() *headels.HeadEls {
 			return headels.New()
 		}
 	}
 
-	rvr.getRootTemplateData = o.GetRootTemplateData
-	if rvr.getRootTemplateData == nil {
-		rvr.getRootTemplateData = func(r *http.Request) (map[string]any, error) {
+	v.getRootTemplateData = o.GetRootTemplateData
+	if v.getRootTemplateData == nil {
+		v.getRootTemplateData = func(r *http.Request) (map[string]any, error) {
 			return map[string]any{}, nil
 		}
 	}
 
-	rvr.loadersRouter = newLoadersRouter(o.LoadersRouterOptions)
-	rvr.actionsRouter = newActionsRouter(o.ActionsRouterOptions)
+	v.loadersRouter = newLoadersRouter(o.LoadersRouterOptions)
+	v.actionsRouter = newActionsRouter(o.ActionsRouterOptions)
 
-	return &rvr
+	return &v
 }
 
-type Loaders struct{ river *River }
-type Actions struct{ river *River }
+type Loaders struct{ vorma *Vorma }
+type Actions struct{ vorma *Vorma }
 
-func (h *River) ServeStatic() func(http.Handler) http.Handler {
+func (h *Vorma) ServeStatic() func(http.Handler) http.Handler {
 	return h.Wave.ServeStatic(true)
 }
 
-func (h *River) Loaders() *Loaders { return &Loaders{river: h} }
-func (h *River) Actions() *Actions { return &Actions{river: h} }
+func (h *Vorma) Loaders() *Loaders { return &Loaders{vorma: h} }
+func (h *Vorma) Actions() *Actions { return &Actions{vorma: h} }
 
 func (h *Loaders) HandlerMountPattern() string {
 	return "/*"
 }
 func (h *Loaders) Handler() http.Handler {
-	return h.river.GetLoadersHandler(h.river.LoadersRouter().NestedRouter)
+	return h.vorma.GetLoadersHandler(h.vorma.LoadersRouter().NestedRouter)
 }
 
 func (h *Actions) HandlerMountPattern() string {
-	return h.river.ActionsRouter().MountRoot("*")
+	return h.vorma.ActionsRouter().MountRoot("*")
 }
 func (h *Actions) Handler() http.Handler {
-	return h.river.GetActionsHandler(h.river.ActionsRouter().Router)
+	return h.vorma.GetActionsHandler(h.vorma.ActionsRouter().Router)
 }
 func (h *Actions) SupportedMethods() map[string]bool {
-	return h.river.ActionsRouter().supportedMethods
+	return h.vorma.ActionsRouter().supportedMethods
 }
 
 type BuildOptions struct {
@@ -190,7 +190,7 @@ type BuildOptions struct {
 	ExtraTSCode string
 }
 
-func (h *River) Build(o ...BuildOptions) {
+func (h *Vorma) Build(o ...BuildOptions) {
 	var opts BuildOptions
 	if len(o) > 0 {
 		opts = o[0]

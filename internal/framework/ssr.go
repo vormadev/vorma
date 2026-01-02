@@ -1,4 +1,4 @@
-package river
+package vorma
 
 import (
 	"fmt"
@@ -6,12 +6,12 @@ import (
 	"path"
 	"strings"
 
-	"github.com/river-now/river/kit/envutil"
-	"github.com/river-now/river/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/envutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
 )
 
 type SSRInnerHTMLInput struct {
-	RiverSymbolStr string
+	VormaSymbolStr string
 
 	IsDev            bool
 	ViteDevURL       string
@@ -29,8 +29,8 @@ type SSRInnerHTMLInput struct {
 // They are stripped off later in order to get the correct sha256 hash.
 // Then they are added back via htmlutil.RenderElement.
 const ssrInnerHTMLTmplStr = `<script>
-globalThis[Symbol.for("{{.RiverSymbolStr}}")] = {};
-const x = globalThis[Symbol.for("{{.RiverSymbolStr}}")];
+globalThis[Symbol.for("{{.VormaSymbolStr}}")] = {};
+const x = globalThis[Symbol.for("{{.VormaSymbolStr}}")];
 x.patternToWaitFnMap = {};
 x.clientLoadersData = [];
 x.isDev = {{.IsDev}};
@@ -60,11 +60,11 @@ type GetSSRInnerHTMLOutput struct {
 	Sha256Hash string
 }
 
-func (h *River) getSSRInnerHTML(routeData *final_ui_data) (*GetSSRInnerHTMLOutput, error) {
+func (h *Vorma) getSSRInnerHTML(routeData *final_ui_data) (*GetSSRInnerHTMLOutput, error) {
 	var htmlBuilder strings.Builder
 
 	dto := SSRInnerHTMLInput{
-		RiverSymbolStr: RiverSymbolStr,
+		VormaSymbolStr: VormaSymbolStr,
 
 		IsDev:            h._isDev,
 		ViteDevURL:       routeData.ViteDevURL,

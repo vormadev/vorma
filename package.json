@@ -1,18 +1,18 @@
 {
-	"name": "river.now",
+	"name": "vorma",
 	"version": "0.81.0",
 	"description": "Vite-powered web framework for building full-stack applications with Go and TypeScript",
 	"type": "module",
 	"sideEffects": false,
 	"license": "BSD-3-Clause",
 	"repository": {
-		"url": "https://github.com/river-now/river",
+		"url": "https://github.com/vormadev/vorma",
 		"type": "git"
 	},
 	"bugs": {
-		"url": "https://github.com/river-now/river/issues"
+		"url": "https://github.com/vormadev/vorma/issues"
 	},
-	"homepage": "https://river.now",
+	"homepage": "https://vorma.dev",
 	"author": "Samuel J. Cook",
 	"keywords": [
 		"react",
@@ -103,7 +103,7 @@
 		"tsconfig.base.json",
 		"internal/framework/_typescript/",
 		"kit/_typescript/",
-		"internal/site/frontend/assets/river-banner.webp",
+		"internal/site/frontend/assets/vorma-banner.webp",
 		"!node_modules",
 		"!**/*.test.*",
 		"!**/*.bench.*",

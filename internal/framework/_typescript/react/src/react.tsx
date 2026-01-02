@@ -11,11 +11,11 @@ import {
 	__applyScrollState,
 	addLocationListener,
 	addRouteChangeListener,
-	__riverClientGlobal as ctx,
+	__vormaClientGlobal as ctx,
 	getLocation,
 	getRouterData,
 	type RouteChangeEvent,
-} from "river.now/client";
+} from "vorma/client";
 
 /////////////////////////////////////////////////////////////////////
 /////// STORE
@@ -168,7 +168,7 @@ export function useLocation() {
 /////// COMPONENT
 /////////////////////////////////////////////////////////////////////
 
-export function RiverRootOutlet(props: { idx?: number }): JSX.Element {
+export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 	const idx = props.idx ?? 0;
 
 	const initialRenderRef = useRef(true);
@@ -259,7 +259,7 @@ export function RiverRootOutlet(props: { idx?: number }): JSX.Element {
 
 	const Outlet = useMemo(
 		() => (localProps: Record<string, any> | undefined) => {
-			return <RiverRootOutlet {...localProps} {...props} idx={idx + 1} />;
+			return <VormaRootOutlet {...localProps} {...props} idx={idx + 1} />;
 		},
 		[nextImportURL, nextExportKey],
 	);

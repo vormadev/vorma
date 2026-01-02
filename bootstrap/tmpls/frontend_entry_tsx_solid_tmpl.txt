@@ -1,11 +1,11 @@
-import { getRootEl, initClient } from "river.now/client";
-import { RiverRootOutlet } from "river.now/{{.UIVariant}}";
+import { getRootEl, initClient } from "vorma/client";
+import { VormaRootOutlet } from "vorma/{{.UIVariant}}";
 import { render } from "solid-js/web";
-import { riverAppConfig } from "./river.gen.ts";
+import { vormaAppConfig } from "./vorma.gen.ts";
 {{.TailwindFileImport}}
 await initClient({
-	riverAppConfig,
+	vormaAppConfig,
 	renderFn: () => {
-		render(() => <RiverRootOutlet />, getRootEl());
+		render(() => <VormaRootOutlet />, getRootEl());
 	},
 });

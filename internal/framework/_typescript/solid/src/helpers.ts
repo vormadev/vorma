@@ -1,50 +1,50 @@
 /// <reference types="vite/client" />
 
-import {
-	__registerClientLoaderPattern,
-	__riverClientGlobal,
-	__runClientLoadersAfterHMRUpdate,
-	type ClientLoaderAwaitedServerData,
-	type ParamsForPattern,
-	type RiverAppBase,
-	type RiverLoaderOutput,
-	type RiverLoaderPattern,
-	type RiverRouteGeneric,
-	type RiverRoutePropsGeneric,
-	type UseRouterDataFunction,
-} from "river.now/client";
 import { createMemo, type Accessor } from "solid-js";
 import type { JSX } from "solid-js/jsx-runtime";
+import {
+	__registerClientLoaderPattern,
+	__runClientLoadersAfterHMRUpdate,
+	__vormaClientGlobal,
+	type ClientLoaderAwaitedServerData,
+	type ParamsForPattern,
+	type UseRouterDataFunction,
+	type VormaAppBase,
+	type VormaLoaderOutput,
+	type VormaLoaderPattern,
+	type VormaRouteGeneric,
+	type VormaRoutePropsGeneric,
+} from "vorma/client";
 import { clientLoadersData, loadersData, routerData } from "./solid.tsx";
 
-export type RiverRouteProps<
-	App extends RiverAppBase = any,
-	Pattern extends RiverLoaderPattern<App> = string,
-> = RiverRoutePropsGeneric<JSX.Element, App, Pattern>;
+export type VormaRouteProps<
+	App extends VormaAppBase = any,
+	Pattern extends VormaLoaderPattern<App> = string,
+> = VormaRoutePropsGeneric<JSX.Element, App, Pattern>;
 
-export type RiverRoute<
-	App extends RiverAppBase = any,
-	Pattern extends RiverLoaderPattern<App> = string,
-> = RiverRouteGeneric<JSX.Element, App, Pattern>;
+export type VormaRoute<
+	App extends VormaAppBase = any,
+	Pattern extends VormaLoaderPattern<App> = string,
+> = VormaRouteGeneric<JSX.Element, App, Pattern>;
 
-export function makeTypedUseRouterData<App extends RiverAppBase>() {
+export function makeTypedUseRouterData<App extends VormaAppBase>() {
 	return (() => routerData) as UseRouterDataFunction<App, true>;
 }
 
-export function makeTypedUseLoaderData<App extends RiverAppBase>() {
-	return function useLoaderData<Pattern extends RiverLoaderPattern<App>>(
-		props: RiverRouteProps<App, Pattern>,
-	): Accessor<RiverLoaderOutput<App, Pattern>> {
+export function makeTypedUseLoaderData<App extends VormaAppBase>() {
+	return function useLoaderData<Pattern extends VormaLoaderPattern<App>>(
+		props: VormaRouteProps<App, Pattern>,
+	): Accessor<VormaLoaderOutput<App, Pattern>> {
 		return createMemo(() => {
 			return loadersData()[props.idx];
 		});
 	};
 }
 
-export function makeTypedUsePatternLoaderData<App extends RiverAppBase>() {
+export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 	return function usePatternLoaderData<
-		Pattern extends RiverLoaderPattern<App>,
-	>(pattern: Pattern): Accessor<RiverLoaderOutput<App, Pattern> | undefined> {
+		Pattern extends VormaLoaderPattern<App>,
+	>(pattern: Pattern): Accessor<VormaLoaderOutput<App, Pattern> | undefined> {
 		const idx = createMemo(() => {
 			const matchedPatterns = routerData().matchedPatterns;
 			return matchedPatterns.findIndex((p) => p === pattern);
@@ -60,11 +60,11 @@ export function makeTypedUsePatternLoaderData<App extends RiverAppBase>() {
 	};
 }
 
-export function makeTypedAddClientLoader<App extends RiverAppBase>() {
-	const m = __riverClientGlobal.get("patternToWaitFnMap");
+export function makeTypedAddClientLoader<App extends VormaAppBase>() {
+	const m = __vormaClientGlobal.get("patternToWaitFnMap");
 	return function addClientLoader<
-		Pattern extends RiverLoaderPattern<App>,
-		LoaderData extends RiverLoaderOutput<App, Pattern>,
+		Pattern extends VormaLoaderPattern<App>,
+		LoaderData extends VormaLoaderOutput<App, Pattern>,
 		T = any,
 	>(props: {
 		pattern: Pattern;
@@ -93,7 +93,7 @@ export function makeTypedAddClientLoader<App extends RiverAppBase>() {
 		type Res = Awaited<ReturnType<typeof fn>>;
 
 		const useClientLoaderData = (
-			props?: RiverRouteProps<App, Pattern>,
+			props?: VormaRouteProps<App, Pattern>,
 		): Accessor<Res | undefined> => {
 			return createMemo(() => {
 				if (props) {
@@ -107,7 +107,7 @@ export function makeTypedAddClientLoader<App extends RiverAppBase>() {
 		};
 
 		return useClientLoaderData as {
-			(props: RiverRouteProps<App, Pattern>): Accessor<Res>;
+			(props: VormaRouteProps<App, Pattern>): Accessor<Res>;
 			(): Accessor<Res | undefined>;
 		};
 	};

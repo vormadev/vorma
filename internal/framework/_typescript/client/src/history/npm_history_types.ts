@@ -2,12 +2,12 @@
 
 This file is a condensed, comment-stripped, and prefixed-type version of
 npm:history's index.d.ts file as of v5.3.0. npm:history is licensed under the
-MIT license. It is used under the hood by river.now/client.
+MIT license. It is used under the hood by vorma/client.
 
 The npm:history repository is located at: https://github.com/remix-run/history
 
 It's only purpose is to re-export a minimal version of the types needed by
-river.now/client's "getHistoryInstance" function, which simply returns an
+vorma/client's "getHistoryInstance" function, which simply returns an
 instance of npm:history's BrowserHistory.
 
 Original license:

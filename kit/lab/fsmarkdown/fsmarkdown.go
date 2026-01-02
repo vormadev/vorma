@@ -14,8 +14,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/river-now/river/kit/lru"
-	"github.com/river-now/river/kit/typed"
+	"github.com/vormadev/vorma/kit/lru"
+	"github.com/vormadev/vorma/kit/typed"
 	"golang.org/x/sync/errgroup"
 )
 

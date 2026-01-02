@@ -1,7 +1,7 @@
 export function logInfo(message?: any, ...optionalParams: Array<any>) {
-	console.log("River:", message, ...optionalParams);
+	console.log("Vorma:", message, ...optionalParams);
 }
 
 export function logError(message?: any, ...optionalParams: Array<any>) {
-	console.error("River:", message, ...optionalParams);
+	console.error("Vorma:", message, ...optionalParams);
 }

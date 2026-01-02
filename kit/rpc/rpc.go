@@ -4,7 +4,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/river-now/river/kit/tsgen"
+	"github.com/vormadev/vorma/kit/tsgen"
 )
 
 const CollectionVarName = "routes"

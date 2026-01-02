@@ -8,8 +8,8 @@ import (
 	"site/backend/src/router"
 	"time"
 
-	"github.com/river-now/river/kit/colorlog"
-	"github.com/river-now/river/kit/grace"
+	"github.com/vormadev/vorma/kit/colorlog"
+	"github.com/vormadev/vorma/kit/grace"
 )
 
 var Log = colorlog.New("site")

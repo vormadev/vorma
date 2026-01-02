@@ -1,5 +1,5 @@
 import { resolvePublicHref } from "./resolve_public_href.ts";
-import { __riverClientGlobal } from "./river_ctx/river_ctx.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 export class AssetManager {
 	static preloadModule(url: string): void {
@@ -44,13 +44,13 @@ export class AssetManager {
 
 	static applyCSS(bundles: string[]): void {
 		window.requestAnimationFrame(() => {
-			const prefix = __riverClientGlobal.get("publicPathPrefix");
+			const prefix = __vormaClientGlobal.get("publicPathPrefix");
 
 			for (const bundle of bundles) {
 				// Check using the data attribute without escaping
 				if (
 					document.querySelector(
-						`link[data-river-css-bundle="${bundle}"]`,
+						`link[data-vorma-css-bundle="${bundle}"]`,
 					)
 				) {
 					continue;
@@ -59,7 +59,7 @@ export class AssetManager {
 				const link = document.createElement("link");
 				link.rel = "stylesheet";
 				link.href = prefix + bundle;
-				link.setAttribute("data-river-css-bundle", bundle);
+				link.setAttribute("data-vorma-css-bundle", bundle);
 				document.head.appendChild(link);
 			}
 		});
