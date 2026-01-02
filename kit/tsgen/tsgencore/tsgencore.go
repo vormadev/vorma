@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/river-now/river/kit/reflectutil"
+	"github.com/vormadev/vorma/kit/reflectutil"
 )
 
 /////////////////////////////////////////////////////////////////////

@@ -3,7 +3,7 @@ package matcher
 import (
 	"strings"
 
-	"github.com/river-now/river/kit/opt"
+	"github.com/vormadev/vorma/kit/opt"
 )
 
 type (

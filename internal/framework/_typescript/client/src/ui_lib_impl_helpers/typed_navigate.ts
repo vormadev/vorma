@@ -1,17 +1,17 @@
-import { riverNavigate } from "../client.ts";
+import { vormaNavigate } from "../client.ts";
 import {
 	__resolvePath,
 	type ExtractApp,
 	type PermissivePatternBasedProps,
-	type RiverAppBase,
-	type RiverAppConfig,
-	type RiverLoaderPattern,
-} from "../river_app_helpers/river_app_helpers.ts";
-import { __riverClientGlobal } from "../river_ctx/river_ctx.ts";
+	type VormaAppBase,
+	type VormaAppConfig,
+	type VormaLoaderPattern,
+} from "../vorma_app_helpers/vorma_app_helpers.ts";
+import { __vormaClientGlobal } from "../vorma_ctx/vorma_ctx.ts";
 
 type TypedNavigateOptions<
-	App extends RiverAppBase,
-	Pattern extends RiverLoaderPattern<App>,
+	App extends VormaAppBase,
+	Pattern extends VormaLoaderPattern<App>,
 > = PermissivePatternBasedProps<App, Pattern> & {
 	replace?: boolean;
 	scrollToTop?: boolean;
@@ -20,11 +20,11 @@ type TypedNavigateOptions<
 	state?: unknown;
 };
 
-export function makeTypedNavigate<C extends RiverAppConfig>(riverAppConfig: C) {
+export function makeTypedNavigate<C extends VormaAppConfig>(vormaAppConfig: C) {
 	type App = ExtractApp<C>;
 
 	return async function typedNavigate<
-		Pattern extends RiverLoaderPattern<App>,
+		Pattern extends VormaLoaderPattern<App>,
 	>(options: TypedNavigateOptions<App, Pattern>): Promise<void> {
 		const {
 			pattern,
@@ -38,7 +38,7 @@ export function makeTypedNavigate<C extends RiverAppConfig>(riverAppConfig: C) {
 		} = options as any;
 
 		const href = __resolvePath({
-			riverAppConfig,
+			vormaAppConfig,
 			type: "loader",
 			props: {
 				pattern,
@@ -47,7 +47,7 @@ export function makeTypedNavigate<C extends RiverAppConfig>(riverAppConfig: C) {
 			},
 		});
 
-		return riverNavigate(href, {
+		return vormaNavigate(href, {
 			replace,
 			scrollToTop,
 			search,

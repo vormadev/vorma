@@ -1,11 +1,11 @@
 import { createRoot } from "react-dom/client";
-import { getRootEl, initClient } from "river.now/client";
-import { RiverRootOutlet } from "river.now/{{.UIVariant}}";
-import { riverAppConfig } from "./river.gen.ts";
+import { getRootEl, initClient } from "vorma/client";
+import { VormaRootOutlet } from "vorma/{{.UIVariant}}";
+import { vormaAppConfig } from "./vorma.gen.ts";
 {{.TailwindFileImport}}
 await initClient({
-	riverAppConfig,
+	vormaAppConfig,
 	renderFn: () => {
-		createRoot(getRootEl()).render(<RiverRootOutlet />);
+		createRoot(getRootEl()).render(<VormaRootOutlet />);
 	},
 });

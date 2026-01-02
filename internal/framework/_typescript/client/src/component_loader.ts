@@ -1,13 +1,13 @@
-import { jsonDeepEquals } from "river.now/kit/json";
+import { jsonDeepEquals } from "vorma/kit/json";
 import { resolvePublicHref } from "./resolve_public_href.ts";
-import { __riverClientGlobal } from "./river_ctx/river_ctx.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 export function getEffectiveErrorData(): {
 	index: number | undefined;
 	error: string | undefined;
 } {
-	const serverErrorIdx = __riverClientGlobal.get("outermostServerErrorIdx");
-	const clientErrorIdx = __riverClientGlobal.get("outermostClientErrorIdx");
+	const serverErrorIdx = __vormaClientGlobal.get("outermostServerErrorIdx");
+	const clientErrorIdx = __vormaClientGlobal.get("outermostClientErrorIdx");
 	let errorIdx: number | undefined;
 	if (serverErrorIdx != null && clientErrorIdx != null) {
 		errorIdx = Math.min(serverErrorIdx, clientErrorIdx);
@@ -18,9 +18,9 @@ export function getEffectiveErrorData(): {
 		index: errorIdx,
 		error:
 			errorIdx === serverErrorIdx
-				? __riverClientGlobal.get("outermostServerError")
+				? __vormaClientGlobal.get("outermostServerError")
 				: errorIdx === clientErrorIdx
-					? __riverClientGlobal.get("outermostClientError")
+					? __vormaClientGlobal.get("outermostClientError")
 					: undefined,
 	};
 }
@@ -41,8 +41,8 @@ export class ComponentLoader {
 
 	static async handleComponents(importURLs: string[]): Promise<void> {
 		const modulesMap = await this.loadComponents(importURLs);
-		const originalImportURLs = __riverClientGlobal.get("importURLs");
-		const exportKeys = __riverClientGlobal.get("exportKeys") ?? [];
+		const originalImportURLs = __vormaClientGlobal.get("importURLs");
+		const exportKeys = __vormaClientGlobal.get("exportKeys") ?? [];
 
 		// Build new components array
 		const newActiveComponents = originalImportURLs.map(
@@ -57,10 +57,10 @@ export class ComponentLoader {
 		if (
 			!jsonDeepEquals(
 				newActiveComponents,
-				__riverClientGlobal.get("activeComponents"),
+				__vormaClientGlobal.get("activeComponents"),
 			)
 		) {
-			__riverClientGlobal.set("activeComponents", newActiveComponents);
+			__vormaClientGlobal.set("activeComponents", newActiveComponents);
 		}
 	}
 
@@ -68,7 +68,7 @@ export class ComponentLoader {
 		importURLs: string[],
 	): Promise<void> {
 		const modulesMap = await this.loadComponents(importURLs);
-		const originalImportURLs = __riverClientGlobal.get("importURLs");
+		const originalImportURLs = __vormaClientGlobal.get("importURLs");
 
 		// Handle error boundary
 		const errorIdx = getEffectiveErrorData().index;
@@ -79,7 +79,7 @@ export class ComponentLoader {
 
 			if (errorModuleURL) {
 				const errorModule = modulesMap.get(errorModuleURL);
-				const errorKeys = __riverClientGlobal.get("errorExportKeys");
+				const errorKeys = __vormaClientGlobal.get("errorExportKeys");
 				const errorKey = errorKeys ? errorKeys[errorIdx] : null;
 				if (errorKey && errorModule) {
 					errorComponent = errorModule[errorKey];
@@ -88,14 +88,14 @@ export class ComponentLoader {
 
 			const newErrorBoundary =
 				errorComponent ??
-				__riverClientGlobal.get("defaultErrorBoundary");
+				__vormaClientGlobal.get("defaultErrorBoundary");
 
 			// Only update if changed
-			const currentErrorBoundary = __riverClientGlobal.get(
+			const currentErrorBoundary = __vormaClientGlobal.get(
 				"activeErrorBoundary",
 			);
 			if (currentErrorBoundary !== newErrorBoundary) {
-				__riverClientGlobal.set(
+				__vormaClientGlobal.set(
 					"activeErrorBoundary",
 					newErrorBoundary,
 				);

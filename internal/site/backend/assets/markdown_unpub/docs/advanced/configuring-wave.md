@@ -5,7 +5,7 @@ description: How to configure the Wave build tool
 
 Wave uses a JSON configuration file to control build processes, asset handling,
 and development workflows. The configuration is organized into four main
-sections: `Core`, `River`, `Vite`, and `Watch`.
+sections: `Core`, `Vorma`, `Vite`, and `Watch`.
 
 ## Core Settings
 
@@ -152,98 +152,98 @@ like the behavior when you call `go run` manually).
 }
 ```
 
-## River Settings
+## Vorma Settings
 
-Configure Wave's integration with the River framework.
+Configure Wave's integration with the Vorma framework.
 
-### River.IncludeDefaults
+### Vorma.IncludeDefaults
 
 - **Optional**
 - Default: `true`
-- Whether to include River's default watch patterns and build hooks
+- Whether to include Vorma's default watch patterns and build hooks
 
 ```json
 {
-	"River": {
+	"Vorma": {
 		"IncludeDefaults": true
 	}
 }
 ```
 
-### River.UIVariant
+### Vorma.UIVariant
 
-- **Required** (when using River)
+- **Required** (when using Vorma)
 - Which UI library integration to use
 - Options: `"react"`, `"preact"`, `"solid"`
 
 ```json
 {
-	"River": {
+	"Vorma": {
 		"UIVariant": "react"
 	}
 }
 ```
 
-### River.HTMLTemplateLocation
+### Vorma.HTMLTemplateLocation
 
-- **Required** (when using River)
+- **Required** (when using Vorma)
 - Path to HTML template, relative to your private static directory
 
 ```json
 {
-	"River": {
+	"Vorma": {
 		"HTMLTemplateLocation": "entry.go.html"
 	}
 }
 ```
 
-### River.ClientEntry
+### Vorma.ClientEntry
 
-- **Required** (when using River)
+- **Required** (when using Vorma)
 - Client-side TypeScript entry point
 
 ```json
 {
-	"River": {
-		"ClientEntry": "frontend/src/river.entry.tsx"
+	"Vorma": {
+		"ClientEntry": "frontend/src/vorma.entry.tsx"
 	}
 }
 ```
 
-### River.ClientRouteDefsFile
+### Vorma.ClientRouteDefsFile
 
-- **Required** (when using River)
-- Where River writes route definitions
+- **Required** (when using Vorma)
+- Where Vorma writes route definitions
 
 ```json
 {
-	"River": {
-		"ClientRouteDefsFile": "frontend/src/river.routes.ts"
+	"Vorma": {
+		"ClientRouteDefsFile": "frontend/src/vorma.routes.ts"
 	}
 }
 ```
 
-### River.TSGenOutPath
+### Vorma.TSGenOutPath
 
-- **Required** (when using River)
+- **Required** (when using Vorma)
 - Where TypeScript type definitions are generated
 
 ```json
 {
-	"River": {
-		"TSGenOutPath": "frontend/src/river.gen.ts"
+	"Vorma": {
+		"TSGenOutPath": "frontend/src/vorma.gen.ts"
 	}
 }
 ```
 
-### River.BuildtimePublicURLFuncName
+### Vorma.BuildtimePublicURLFuncName
 
 - **Optional**
 - Function name for resolving public URLs at build time
 
 ```json
 {
-	"River": {
+	"Vorma": {
 		"BuildtimePublicURLFuncName": "waveBuildtimeURL"
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/river-now/river/kit/dirs"
+	"github.com/vormadev/vorma/kit/dirs"
 )
 
 type Dist struct {

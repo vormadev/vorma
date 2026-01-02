@@ -1,4 +1,4 @@
-import type { RouteErrorComponent } from "./river_ctx/river_ctx.ts";
+import type { RouteErrorComponent } from "./vorma_ctx/vorma_ctx.ts";
 
 export const defaultErrorBoundary: RouteErrorComponent = (props: {
 	error: string;

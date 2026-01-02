@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/river-now/river"
-	"github.com/river-now/river/kit/lab/fsmarkdown"
-	"github.com/river-now/river/wave"
+	"github.com/vormadev/vorma"
+	"github.com/vormadev/vorma/kit/lab/fsmarkdown"
+	"github.com/vormadev/vorma/wave"
 )
 
 type RootData struct {
 	LatestVersion string
 }
 
-var currentNPMVersion = "v" + river.Internal__GetCurrentNPMVersion()
+var currentNPMVersion = "v" + vorma.Internal__GetCurrentNPMVersion()
 
 var jsonCacheControlVal = strings.Join([]string{
 	"public",
@@ -39,7 +39,7 @@ var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
 		// pretty aggressively.
 		// Vercel purges the CDN on new deployments, so we don't need to worry about
 		// build ID mismatches.
-		if river.IsJSONRequest(r) {
+		if vorma.IsJSONRequest(r) {
 			rp.SetHeader("Cache-Control", jsonCacheControlVal)
 		} else {
 			// Vary the HTML response by cookie to account for theme
@@ -64,7 +64,7 @@ var _ = NewLoader("/*", func(c *LoaderCtx) (*fsmarkdown.DetailedPage, error) {
 	}
 
 	data := p
-	e := river.NewHeadEls(2)
+	e := vorma.NewHeadEls(2)
 
 	if p.Title != "" {
 		e.Title(fmt.Sprintf("%s | %s", SiteTitle, p.Title))

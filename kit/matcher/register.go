@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/river-now/river/kit/colorlog"
+	"github.com/vormadev/vorma/kit/colorlog"
 )
 
 const (

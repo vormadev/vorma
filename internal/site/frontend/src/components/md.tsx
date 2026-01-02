@@ -1,11 +1,11 @@
-import { RiverLink } from "river.now/solid";
 import { For, Show } from "solid-js";
+import { VormaLink } from "vorma/solid";
 import { htmlToMarkdown } from "../html_to_md.ts";
 import {
 	addClientLoader,
 	useLoaderData,
 	type RouteProps,
-} from "../river.utils.tsx";
+} from "../vorma.utils.tsx";
 import { useRootClientLoaderData } from "./home.tsx";
 import { RenderedMarkdown } from "./rendered-markdown.tsx";
 
@@ -43,19 +43,19 @@ export function MD(props: RouteProps<"/*">) {
 			<div class="flex flex-wrap gap-6 items-center">
 				<Show when={loaderData()?.BackItem}>
 					{(backUrl) => (
-						<RiverLink
+						<VormaLink
 							prefetch="intent"
 							href={backUrl()}
 							class="back-link self-start my-2"
 						>
 							↑ Go to parent folder
-						</RiverLink>
+						</VormaLink>
 					)}
 				</Show>
 
 				<Show when={loaderData().Content && !loaderData().IsFolder}>
 					<button
-						class="sm:ml-auto px-2 py-1 text-xs bg-dark rounded-sm text-light border-1 border-[#7777] font-normal tracking-wide hover:outline-3 hover:outline-nice-blue hover:outline-offset-1 hover:cursor-pointer uppercase"
+						class="sm:ml-auto px-2 py-1 text-xs bg-dark rounded-sm text-light border border-[#7777] font-normal tracking-wide hover:outline-3 hover:outline-nice-blue hover:outline-offset-1 hover:cursor-pointer uppercase"
 						onClick={async () => {
 							const ld = loaderData();
 							const markdown = `# ${ld.Title}\n\n${htmlToMarkdown(ld.Content ?? "")}\n`;
@@ -77,7 +77,7 @@ export function MD(props: RouteProps<"/*">) {
 						<For each={n()}>
 							{(item) => (
 								<li>
-									<RiverLink
+									<VormaLink
 										prefetch="intent"
 										href={item.url}
 										class="index-card"
@@ -89,7 +89,7 @@ export function MD(props: RouteProps<"/*">) {
 										<Show when={item.description}>
 											<p>{item.description}</p>
 										</Show>
-									</RiverLink>
+									</VormaLink>
 								</li>
 							)}
 						</For>

@@ -1,4 +1,4 @@
-type RiverVitePluginConfig = {
+type VormaVitePluginConfig = {
 	rollupInput: ReadonlyArray<string>;
 	publicPathPrefix: string;
 	staticPublicAssetMap: Record<string, string>;
@@ -7,9 +7,9 @@ type RiverVitePluginConfig = {
 	dedupeList: ReadonlyArray<string>;
 };
 
-export default function riverVitePlugin(config: RiverVitePluginConfig): any {
+export default function vormaVitePlugin(config: VormaVitePluginConfig): any {
 	return {
-		name: "river-vite-plugin",
+		name: "vorma-vite-plugin",
 		config(c: any, { command }: any) {
 			const mp = c.build?.modulePreload;
 			const roi = c.build?.rollupOptions?.input;
@@ -36,9 +36,9 @@ export default function riverVitePlugin(config: RiverVitePluginConfig): any {
 						preserveEntrySignatures: "exports-only",
 						output: {
 							assetFileNames:
-								"river_out_vite_[name]-[hash][extname]",
-							chunkFileNames: "river_out_vite_[name]-[hash].js",
-							entryFileNames: "river_out_vite_[name]-[hash].js",
+								"vorma_out_vite_[name]-[hash][extname]",
+							chunkFileNames: "vorma_out_vite_[name]-[hash].js",
+							entryFileNames: "vorma_out_vite_[name]-[hash].js",
 						},
 					},
 				},

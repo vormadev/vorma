@@ -7,8 +7,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/river-now/river/kit/htmlutil"
-	"github.com/river-now/river/kit/matcher"
+	"github.com/vormadev/vorma/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/matcher"
 )
 
 const (

@@ -1,21 +1,21 @@
 {
-	"name": "create-river",
+	"name": "create-vorma",
 	"version": "0.81.0",
-	"description": "CLI for creating new River applications.",
+	"description": "CLI for creating new Vorma applications.",
 	"type": "module",
 	"license": "BSD-3-Clause",
 	"repository": {
-		"url": "https://github.com/river-now/river",
+		"url": "https://github.com/vormadev/vorma",
 		"type": "git",
 		"directory": "internal/framework/_typescript/create"
 	},
 	"bugs": {
-		"url": "https://github.com/river-now/river/issues"
+		"url": "https://github.com/vormadev/vorma/issues"
 	},
-	"homepage": "https://river.now",
+	"homepage": "https://vorma.dev",
 	"author": "Samuel J. Cook",
 	"bin": {
-		"create-river": "./dist/main.js"
+		"create-vorma": "./dist/main.js"
 	},
 	"files": [
 		"dist"

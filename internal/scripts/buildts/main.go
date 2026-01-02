@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/river-now/river/kit/executil"
+	"github.com/vormadev/vorma/kit/executil"
 )
 
 var targetDir = "./npm_dist"
@@ -59,7 +59,7 @@ func buildKit() {
 			"./kit/_typescript/theme/theme.ts",
 			"./kit/_typescript/url/url.ts",
 		},
-		External: []string{"river.now"},
+		External: []string{"vorma"},
 		Outdir:   "./npm_dist/kit/_typescript",
 		Tsconfig: tsconfig,
 	})
@@ -78,7 +78,7 @@ func buildClient() {
 		Bundle:      true,
 		EntryPoints: []string{"./internal/framework/_typescript/client/index.ts"},
 		External: []string{
-			"river.now",
+			"vorma",
 		},
 		Outdir:   "./npm_dist/internal/framework/_typescript/client",
 		Tsconfig: tsconfig,
@@ -98,7 +98,7 @@ func buildReact() {
 		Bundle:      true,
 		EntryPoints: []string{"./internal/framework/_typescript/react/index.tsx"},
 		External: []string{
-			"river.now",
+			"vorma",
 			"react", "react-dom",
 		},
 		Outdir:   "./npm_dist/internal/framework/_typescript/react",
@@ -130,7 +130,7 @@ func buildPreact() {
 		Bundle:      true,
 		EntryPoints: []string{"./internal/framework/_typescript/preact/index.tsx"},
 		External: []string{
-			"river.now",
+			"vorma",
 			"preact", "preact/hooks",
 			"@preact/signals",
 			"preact/jsx-runtime", "preact/compat", "preact/test-utils",
@@ -153,7 +153,7 @@ func buildVite() {
 		Bundle:      true,
 		EntryPoints: []string{"./internal/framework/_typescript/vite/vite.ts"},
 		External: []string{
-			"river.now",
+			"vorma",
 			"vite",
 		},
 		Outdir:   "./npm_dist/internal/framework/_typescript/vite",

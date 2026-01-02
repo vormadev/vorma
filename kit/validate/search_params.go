@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/river-now/river/kit/reflectutil"
+	"github.com/vormadev/vorma/kit/reflectutil"
 )
 
 // parseURLValues parses URL values into a struct.

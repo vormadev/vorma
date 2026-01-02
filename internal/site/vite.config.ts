@@ -1,9 +1,9 @@
 import tailwindcss from "@tailwindcss/vite";
-import river from "river.now/vite";
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
-import { riverViteConfig } from "./frontend/src/river.gen.ts";
+import vorma from "vorma/vite";
+import { vormaViteConfig } from "./frontend/src/vorma.gen.ts";
 
 export default defineConfig({
-	plugins: [solid(), river(riverViteConfig), tailwindcss()],
+	plugins: [solid(), vorma(vormaViteConfig), tailwindcss()],
 });

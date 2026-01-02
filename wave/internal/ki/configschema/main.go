@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/river-now/river/kit/jsonschema"
+	"github.com/vormadev/vorma/kit/jsonschema"
 )
 
 func Write(target string) error {
@@ -34,12 +34,12 @@ var Root_Schema = jsonschema.Entry{
 	Required:    []string{"Core"},
 	Properties: struct {
 		Core  jsonschema.Entry
-		River jsonschema.Entry
+		Vorma jsonschema.Entry
 		Vite  jsonschema.Entry
 		Watch jsonschema.Entry
 	}{
 		Core:  Core_Schema,
-		River: River_Schema,
+		Vorma: Vorma_Schema,
 		Vite:  Vite_Schema,
 		Watch: Watch_Schema,
 	},
@@ -202,11 +202,11 @@ var ServerOnlyMode_Schema = jsonschema.OptionalBoolean(jsonschema.Def{
 })
 
 /////////////////////////////////////////////////////////////////////
-/////// RIVER SETTINGS
+/////// VORMA SETTINGS
 /////////////////////////////////////////////////////////////////////
 
-var River_Schema = jsonschema.OptionalObject(jsonschema.Def{
-	Description: `River framework-specific settings. Configure these when using Wave with the River framework.`,
+var Vorma_Schema = jsonschema.OptionalObject(jsonschema.Def{
+	Description: `Vorma framework-specific settings. Configure these when using Wave with the Vorma framework.`,
 	Properties: struct {
 		IncludeDefaults            jsonschema.Entry
 		UIVariant                  jsonschema.Entry
@@ -227,12 +227,12 @@ var River_Schema = jsonschema.OptionalObject(jsonschema.Def{
 })
 
 var IncludeDefaults_Schema = jsonschema.OptionalBoolean(jsonschema.Def{
-	Description: `Whether to include River's default watch patterns and build hooks. Set to false if you want full control over the watch configuration.`,
+	Description: `Whether to include Vorma's default watch patterns and build hooks. Set to false if you want full control over the watch configuration.`,
 	Default:     true,
 })
 
 var UIVariant_Schema = jsonschema.OptionalString(jsonschema.Def{
-	Description: `The UI variant to use with River. Determines which UI frontend library integration to use.`,
+	Description: `The UI variant to use with Vorma. Determines which UI frontend library integration to use.`,
 	Required:    true,
 	Examples:    []string{"react", "preact", "solid"},
 })
@@ -246,19 +246,19 @@ var HTMLTemplateLocation_Schema = jsonschema.OptionalString(jsonschema.Def{
 var ClientEntry_Schema = jsonschema.OptionalString(jsonschema.Def{
 	Description: `Path to your client-side TypeScript entry point.`,
 	Required:    true,
-	Examples:    []string{"frontend/src/river.entry.tsx"},
+	Examples:    []string{"frontend/src/vorma.entry.tsx"},
 })
 
 var ClientRouteDefsFile_Schema = jsonschema.OptionalString(jsonschema.Def{
-	Description: `Path to the file where River route definitions are written.`,
+	Description: `Path to the file where Vorma route definitions are written.`,
 	Required:    true,
-	Examples:    []string{"frontend/src/river.routes.ts"},
+	Examples:    []string{"frontend/src/vorma.routes.ts"},
 })
 
 var TSGenOutPath_Schema = jsonschema.OptionalString(jsonschema.Def{
 	Description: `Path where TypeScript type definitions should be generated.`,
 	Required:    true,
-	Examples:    []string{"frontend/src/river.gen.ts"},
+	Examples:    []string{"frontend/src/vorma.gen.ts"},
 })
 
 var BuildtimePublicURLFuncName_Schema = jsonschema.OptionalString(jsonschema.Def{

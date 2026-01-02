@@ -1,4 +1,4 @@
-import { addOnWindowFocusListener } from "river.now/kit/listeners";
+import { addOnWindowFocusListener } from "vorma/kit/listeners";
 import {
 	getLastTriggeredNavOrRevalidateTimestampMS,
 	getStatus,

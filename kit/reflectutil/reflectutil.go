@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/river-now/river/kit/genericsutil"
+	"github.com/vormadev/vorma/kit/genericsutil"
 )
 
 func ImplementsInterface(t reflect.Type, iface reflect.Type) bool {

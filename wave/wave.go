@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/river-now/river/kit/middleware"
-	"github.com/river-now/river/wave/internal/ki"
+	"github.com/vormadev/vorma/kit/middleware"
+	"github.com/vormadev/vorma/wave/internal/ki"
 )
 
 type (
@@ -193,23 +193,23 @@ func (k Wave) GetViteOutDir() string {
 func (k Wave) BuildWaveWithHook(hook func(isDev bool) error) {
 	k.c.BuildWaveWithHook(hook)
 }
-func (k Wave) GetRiverUIVariant() string {
-	return k.c.GetRiverUIVariant()
+func (k Wave) GetVormaUIVariant() string {
+	return k.c.GetVormaUIVariant()
 }
-func (k Wave) GetRiverHTMLTemplateLocation() string {
-	return k.c.GetRiverHTMLTemplateLocation()
+func (k Wave) GetVormaHTMLTemplateLocation() string {
+	return k.c.GetVormaHTMLTemplateLocation()
 }
-func (k Wave) GetRiverClientEntry() string {
-	return k.c.GetRiverClientEntry()
+func (k Wave) GetVormaClientEntry() string {
+	return k.c.GetVormaClientEntry()
 }
-func (k Wave) GetRiverClientRouteDefsFile() string {
-	return k.c.GetRiverClientRouteDefsFile()
+func (k Wave) GetVormaClientRouteDefsFile() string {
+	return k.c.GetVormaClientRouteDefsFile()
 }
-func (k Wave) GetRiverTSGenOutPath() string {
-	return k.c.GetRiverTSGenOutPath()
+func (k Wave) GetVormaTSGenOutPath() string {
+	return k.c.GetVormaTSGenOutPath()
 }
-func (k Wave) GetRiverBuildtimePublicURLFuncName() string {
-	return k.c.GetRiverBuildtimePublicURLFuncName()
+func (k Wave) GetVormaBuildtimePublicURLFuncName() string {
+	return k.c.GetVormaBuildtimePublicURLFuncName()
 }
 func (k Wave) GetConfigFile() string {
 	return k.c.GetConfigFile()

@@ -1,7 +1,7 @@
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HeadEl } from "../river_ctx/river_ctx.ts";
 import { panic } from "../utils/errors.ts";
+import type { HeadEl } from "../vorma_ctx/vorma_ctx.ts";
 import { getStartAndEndComments, updateHeadEls } from "./head_elements.ts";
 
 vi.mock("../utils/errors.ts", () => ({
@@ -33,13 +33,13 @@ describe("updateHeadEls", () => {
 		};
 
 		const startMetaComment = document.createComment(
-			'data-river="meta-start"',
+			'data-vorma="meta-start"',
 		);
-		const endMetaComment = document.createComment('data-river="meta-end"');
+		const endMetaComment = document.createComment('data-vorma="meta-end"');
 		const startRestComment = document.createComment(
-			'data-river="rest-start"',
+			'data-vorma="rest-start"',
 		);
-		const endRestComment = document.createComment('data-river="rest-end"');
+		const endRestComment = document.createComment('data-vorma="rest-end"');
 
 		document.head.appendChild(startMetaComment);
 		document.head.appendChild(endMetaComment);
@@ -110,13 +110,13 @@ describe("updateHeadEls", () => {
 		const startMetaIndex = headChildren.findIndex((node) => {
 			return (
 				node.nodeType === 8 &&
-				(node as Comment).data === 'data-river="meta-start"'
+				(node as Comment).data === 'data-vorma="meta-start"'
 			);
 		});
 		const endMetaIndex = headChildren.findIndex((node) => {
 			return (
 				node.nodeType === 8 &&
-				(node as Comment).data === 'data-river="meta-end"'
+				(node as Comment).data === 'data-vorma="meta-end"'
 			);
 		});
 
@@ -320,9 +320,9 @@ describe("updateHeadEls", () => {
 	it("should handle missing start/end comments gracefully", () => {
 		document.head.innerHTML = "";
 		const startRestComment = document.createComment(
-			'data-river="rest-start"',
+			'data-vorma="rest-start"',
 		);
-		const endRestComment = document.createComment('data-river="rest-end"');
+		const endRestComment = document.createComment('data-vorma="rest-end"');
 		document.head.appendChild(startRestComment);
 		document.head.appendChild(endRestComment);
 
@@ -384,14 +384,14 @@ describe("updateHeadEls", () => {
 			(node) => {
 				return (
 					node.nodeType === 8 &&
-					(node as Comment).data.trim() === 'data-river="rest-start"'
+					(node as Comment).data.trim() === 'data-vorma="rest-start"'
 				);
 			},
 		);
 		const endComment = Array.from(document.head.childNodes).find((node) => {
 			return (
 				node.nodeType === 8 &&
-				(node as Comment).data.trim() === 'data-river="rest-end"'
+				(node as Comment).data.trim() === 'data-vorma="rest-end"'
 			);
 		});
 
@@ -449,13 +449,13 @@ describe("updateHeadEls", () => {
 		const metaStartIndex = headChildren.findIndex((node) => {
 			return (
 				node.nodeType === 8 &&
-				(node as Comment).data === 'data-river="meta-start"'
+				(node as Comment).data === 'data-vorma="meta-start"'
 			);
 		});
 		const metaEndIndex = headChildren.findIndex((node) => {
 			return (
 				node.nodeType === 8 &&
-				(node as Comment).data === 'data-river="meta-end"'
+				(node as Comment).data === 'data-vorma="meta-end"'
 			);
 		});
 

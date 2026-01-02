@@ -5,7 +5,7 @@ package safecache
 import (
 	"sync"
 
-	"github.com/river-now/river/kit/typed"
+	"github.com/vormadev/vorma/kit/typed"
 )
 
 // Cache is a generic, thread-safe cache that ensures initialization occurs only

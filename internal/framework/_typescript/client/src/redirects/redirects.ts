@@ -2,9 +2,9 @@ import {
 	getHrefDetails,
 	getIsGETRequest,
 	type HrefDetails,
-} from "river.now/kit/url";
+} from "vorma/kit/url";
 import { navigationStateManager, type NavigateProps } from "../client.ts";
-import { RIVER_HARD_RELOAD_QUERY_PARAM } from "../hard_reload.ts";
+import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../hard_reload.ts";
 import { logError, logInfo } from "../utils/logging.ts";
 
 export type RedirectData = { href: string; hrefDetails: HrefDetails } & (
@@ -19,7 +19,7 @@ export type RedirectData = { href: string; hrefDetails: HrefDetails } & (
 );
 
 export function getBuildIDFromResponse(response: Response | undefined) {
-	return response?.headers.get("X-River-Build-Id") || "";
+	return response?.headers.get("X-Vorma-Build-Id") || "";
 }
 
 export function parseFetchResponseForRedirectData(
@@ -28,9 +28,9 @@ export function parseFetchResponseForRedirectData(
 ): RedirectData | null {
 	const latestBuildID = getBuildIDFromResponse(res);
 
-	const riverReloadTarget = res.headers.get("X-River-Reload");
-	if (riverReloadTarget) {
-		const newURL = new URL(riverReloadTarget, window.location.href);
+	const vormaReloadTarget = res.headers.get("X-Vorma-Reload");
+	if (vormaReloadTarget) {
+		const newURL = new URL(vormaReloadTarget, window.location.href);
 		const hrefDetails = getHrefDetails(newURL.href);
 		if (!hrefDetails.isHTTP) {
 			return null;
@@ -39,7 +39,7 @@ export function parseFetchResponseForRedirectData(
 		return {
 			hrefDetails,
 			status: "should",
-			href: riverReloadTarget,
+			href: vormaReloadTarget,
 			shouldRedirectStrategy: "hard",
 			latestBuildID,
 		};
@@ -120,7 +120,7 @@ export async function effectuateRedirectDataResult(
 		} else {
 			const url = new URL(redirectData.href, window.location.href);
 			url.searchParams.set(
-				RIVER_HARD_RELOAD_QUERY_PARAM,
+				VORMA_HARD_RELOAD_QUERY_PARAM,
 				redirectData.latestBuildID,
 			);
 			window.location.href = url.href;

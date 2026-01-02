@@ -1,4 +1,4 @@
-package river
+package vorma
 
 import (
 	"bytes"
@@ -19,22 +19,22 @@ import (
 	"time"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/river-now/river/kit/cryptoutil"
-	"github.com/river-now/river/kit/id"
-	"github.com/river-now/river/kit/mux"
-	"github.com/river-now/river/kit/stringsutil"
-	"github.com/river-now/river/kit/tsgen"
-	"github.com/river-now/river/kit/viteutil"
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/js"
+	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/id"
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/stringsutil"
+	"github.com/vormadev/vorma/kit/tsgen"
+	"github.com/vormadev/vorma/kit/viteutil"
 )
 
 const (
-	riverOutPrefix                 = "river_out_"
-	riverVitePrehashedFilePrefix   = riverOutPrefix + "vite_"
-	riverRouteManifestPrefix       = riverOutPrefix + "river_internal_route_manifest_"
-	RiverPathsStageOneJSONFileName = "river_paths_stage_1.json"
-	RiverPathsStageTwoJSONFileName = "river_paths_stage_2.json"
+	vormaOutPrefix                 = "vorma_out_"
+	vormaVitePrehashedFilePrefix   = vormaOutPrefix + "vite_"
+	vormaRouteManifestPrefix       = vormaOutPrefix + "vorma_internal_route_manifest_"
+	VormaPathsStageOneJSONFileName = "vorma_paths_stage_1.json"
+	VormaPathsStageTwoJSONFileName = "vorma_paths_stage_2.json"
 )
 
 type PathsFile struct {
@@ -51,11 +51,11 @@ type PathsFile struct {
 	DepToCSSBundleMap map[string]string `json:"depToCSSBundleMap,omitempty"`
 }
 
-func (h *River) writePathsToDisk_StageOne() error {
+func (h *Vorma) writePathsToDisk_StageOne() error {
 	pathsJSONOut_StageOne := filepath.Join(
 		h.Wave.GetStaticPrivateOutDir(),
-		"river_out",
-		RiverPathsStageOneJSONFileName,
+		"vorma_out",
+		VormaPathsStageOneJSONFileName,
 	)
 	err := os.MkdirAll(filepath.Dir(pathsJSONOut_StageOne), os.ModePerm)
 	if err != nil {
@@ -65,7 +65,7 @@ func (h *River) writePathsToDisk_StageOne() error {
 	pathsAsJSON, err := json.MarshalIndent(PathsFile{
 		Stage:             "one",
 		Paths:             h._paths,
-		ClientEntrySrc:    h.Wave.GetRiverClientEntry(),
+		ClientEntrySrc:    h.Wave.GetVormaClientEntry(),
 		BuildID:           h._buildID,
 		RouteManifestFile: h._routeManifestFile,
 	}, "", "\t")
@@ -115,7 +115,7 @@ export function waveRuntimeURL(
 	return publicPathPrefix + url;
 }
 
-export const riverViteConfig = {
+export const vormaViteConfig = {
 	rollupInput: [{{range $i, $e := .Entrypoints}}{{if $i}},{{end}}
 		"{{$e}}"{{end}}
 	],
@@ -133,15 +133,15 @@ export const riverViteConfig = {
 
 var vitePluginTemplate = template.Must(template.New("vitePlugin").Parse(vitePluginTemplateStr))
 
-func (h *River) toRollupOptions(entrypoints []string, fileMap map[string]string) (string, error) {
+func (h *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string) (string, error) {
 	var sb stringsutil.Builder
 
 	sb.Return()
-	sb.Write(tsgen.Comment("River Vite Config:"))
+	sb.Write(tsgen.Comment("Vorma Vite Config:"))
 	sb.Return()
 
 	var dedupeList []string
-	switch UIVariant(h.Wave.GetRiverUIVariant()) {
+	switch UIVariant(h.Wave.GetVormaUIVariant()) {
 	case UIVariants.React:
 		dedupeList = reactDedupeList
 	case UIVariants.Preact:
@@ -155,8 +155,8 @@ func (h *River) toRollupOptions(entrypoints []string, fileMap map[string]string)
 		path.Join("**", h.Wave.GetDistDir()+"/**/*"),
 		path.Join("**", h.Wave.GetPrivateStaticDir()+"/**/*"),
 		path.Join("**", h.Wave.GetConfigFile()),
-		path.Join("**", h.Wave.GetRiverTSGenOutPath()),
-		path.Join("**", h.Wave.GetRiverClientRouteDefsFile()),
+		path.Join("**", h.Wave.GetVormaTSGenOutPath()),
+		path.Join("**", h.Wave.GetVormaClientRouteDefsFile()),
 	}
 
 	mapAsJSON, err := json.MarshalIndent(fileMap, "", "\t") // No initial indent
@@ -169,7 +169,7 @@ func (h *River) toRollupOptions(entrypoints []string, fileMap map[string]string)
 		"Entrypoints":              entrypoints,
 		"PublicPathPrefix":         h.Wave.GetPublicPathPrefix(),
 		"StaticPublicAssetMapJSON": template.HTML(mapAsJSON),
-		"FuncName":                 h.Wave.GetRiverBuildtimePublicURLFuncName(),
+		"FuncName":                 h.Wave.GetVormaBuildtimePublicURLFuncName(),
 		"IgnoredPatterns":          ignoredList,
 		"DedupeList":               dedupeList,
 	})
@@ -182,7 +182,7 @@ func (h *River) toRollupOptions(entrypoints []string, fileMap map[string]string)
 	return sb.String(), nil
 }
 
-func (h *River) handleViteConfigHelper(extraTS string) error {
+func (h *Vorma) handleViteConfigHelper(extraTS string) error {
 	entrypoints := h.getEntrypoints()
 
 	publicFileMap, err := h.Wave.GetSimplePublicFileMapBuildtime()
@@ -199,7 +199,7 @@ func (h *River) handleViteConfigHelper(extraTS string) error {
 
 	rollupOptions = extraTS + rollupOptions
 
-	target := filepath.Join(".", h.Wave.GetRiverTSGenOutPath())
+	target := filepath.Join(".", h.Wave.GetVormaTSGenOutPath())
 
 	err = os.MkdirAll(filepath.Dir(target), os.ModePerm)
 	if err != nil {
@@ -367,8 +367,8 @@ func extractRouteCalls(code string) ([]RouteCall, error) {
 				importPath = strings.Trim(importPath, `"'`+"`")
 			}
 
-			// Only process route imports from river.now/client
-			if importPath == "river.now/client" {
+			// Only process route imports from vorma/client
+			if importPath == "vorma/client" {
 				for _, alias := range s.List {
 					if string(alias.Name) == "route" ||
 						(string(alias.Name) == "" && string(alias.Binding) == "route") {
@@ -409,7 +409,7 @@ func extractRouteCalls(code string) ([]RouteCall, error) {
 	return routes, nil
 }
 
-func (h *River) buildInner(opts *buildInnerOptions) error {
+func (h *Vorma) buildInner(opts *buildInnerOptions) error {
 	a := time.Now()
 
 	h.mu.Lock()
@@ -424,12 +424,12 @@ func (h *River) buildInner(opts *buildInnerOptions) error {
 			return err
 		}
 		h._buildID = "dev_" + buildID
-		Log.Info("START building River (DEV)")
+		Log.Info("START building Vorma (DEV)")
 	} else {
-		Log.Info("START building River (PROD)")
+		Log.Info("START building Vorma (PROD)")
 	}
 
-	clientRouteDefsFile := h.Wave.GetRiverClientRouteDefsFile()
+	clientRouteDefsFile := h.Wave.GetVormaClientRouteDefsFile()
 
 	code, err := os.ReadFile(clientRouteDefsFile)
 	if err != nil {
@@ -512,7 +512,7 @@ func (h *River) buildInner(opts *buildInnerOptions) error {
 		}
 	}
 
-	// Remove all files in StaticPublicOutDir starting with riverChunkPrefix or riverEntryPrefix.
+	// Remove all files in StaticPublicOutDir starting with vormaChunkPrefix or vormaEntryPrefix.
 	err = cleanStaticPublicOutDir(h.Wave.GetStaticPublicOutDir())
 	if err != nil {
 		Log.Error(fmt.Sprintf("error cleaning static public out dir: %s", err))
@@ -560,7 +560,7 @@ func (h *River) buildInner(opts *buildInnerOptions) error {
 		}
 	}
 
-	Log.Info("DONE building River",
+	Log.Info("DONE building Vorma",
 		"buildID", h._buildID,
 		"routes found", len(routeCalls),
 		"duration", time.Since(a),
@@ -569,7 +569,7 @@ func (h *River) buildInner(opts *buildInnerOptions) error {
 	return nil
 }
 
-func (h *River) getViteDevURL() string {
+func (h *Vorma) getViteDevURL() string {
 	if !h._isDev {
 		return ""
 	}
@@ -604,13 +604,13 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 		return wrapped
 	}
 
-	// delete all files starting with riverPrehashedFilePrefix
+	// delete all files starting with vormaPrehashedFilePrefix
 	err = filepath.Walk(staticPublicOutDir, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if strings.HasPrefix(filepath.Base(path), riverVitePrehashedFilePrefix) ||
-			strings.HasPrefix(filepath.Base(path), riverRouteManifestPrefix) {
+		if strings.HasPrefix(filepath.Base(path), vormaVitePrehashedFilePrefix) ||
+			strings.HasPrefix(filepath.Base(path), vormaRouteManifestPrefix) {
 			err = os.Remove(path)
 			if err != nil {
 				return err
@@ -629,9 +629,9 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 /////// GET ENTRYPOINTS
 /////////////////////////////////////////////////////////////////////
 
-func (h *River) getEntrypoints() []string {
+func (h *Vorma) getEntrypoints() []string {
 	entryPoints := make(map[string]struct{}, len(h._paths)+1)
-	entryPoints[path.Clean(h.Wave.GetRiverClientEntry())] = struct{}{}
+	entryPoints[path.Clean(h.Wave.GetVormaClientEntry())] = struct{}{}
 	for _, path := range h._paths {
 		if path.SrcPath != "" {
 			entryPoints[path.SrcPath] = struct{}{}
@@ -649,9 +649,9 @@ func (h *River) getEntrypoints() []string {
 /////// TO PATHS FILE -- STAGE TWO
 /////////////////////////////////////////////////////////////////////
 
-func (h *River) toPathsFile_StageTwo() (*PathsFile, error) {
-	riverClientEntryOut := ""
-	riverClientEntryDeps := []string{}
+func (h *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
+	vormaClientEntryOut := ""
+	vormaClientEntryDeps := []string{}
 	depToCSSBundleMap := make(map[string]string)
 
 	viteManifest, err := viteutil.ReadManifest(h.Wave.GetViteManifestLocation())
@@ -660,7 +660,7 @@ func (h *River) toPathsFile_StageTwo() (*PathsFile, error) {
 		return nil, err
 	}
 
-	cleanClientEntry := filepath.Clean(h.Wave.GetRiverClientEntry())
+	cleanClientEntry := filepath.Clean(h.Wave.GetVormaClientEntry())
 
 	// Assuming manifestJSON is your Vite manifest
 	for key, chunk := range viteManifest {
@@ -679,14 +679,14 @@ func (h *River) toPathsFile_StageTwo() (*PathsFile, error) {
 
 		// Handle client entry
 		if chunk.IsEntry && cleanClientEntry == chunk.Src {
-			riverClientEntryOut = cleanKey
+			vormaClientEntryOut = cleanKey
 			depsWithoutClientEntry := make([]string, 0, len(deps)-1)
 			for _, dep := range deps {
-				if dep != riverClientEntryOut {
+				if dep != vormaClientEntryOut {
 					depsWithoutClientEntry = append(depsWithoutClientEntry, dep)
 				}
 			}
-			riverClientEntryDeps = depsWithoutClientEntry
+			vormaClientEntryDeps = depsWithoutClientEntry
 		} else {
 			// Handle other paths
 			for i, path := range h._paths {
@@ -699,7 +699,7 @@ func (h *River) toPathsFile_StageTwo() (*PathsFile, error) {
 		}
 	}
 
-	htmlTemplateContent, err := os.ReadFile(path.Join(h.Wave.GetPrivateStaticDir(), h.Wave.GetRiverHTMLTemplateLocation()))
+	htmlTemplateContent, err := os.ReadFile(path.Join(h.Wave.GetPrivateStaticDir(), h.Wave.GetVormaHTMLTemplateLocation()))
 	if err != nil {
 		Log.Error(fmt.Sprintf("error reading HTML template file: %s", err))
 		return nil, err
@@ -710,9 +710,9 @@ func (h *River) toPathsFile_StageTwo() (*PathsFile, error) {
 		Stage:             "two",
 		DepToCSSBundleMap: depToCSSBundleMap,
 		Paths:             h._paths,
-		ClientEntrySrc:    h.Wave.GetRiverClientEntry(),
-		ClientEntryOut:    riverClientEntryOut,
-		ClientEntryDeps:   riverClientEntryDeps,
+		ClientEntrySrc:    h.Wave.GetVormaClientEntry(),
+		ClientEntryOut:    vormaClientEntryOut,
+		ClientEntryDeps:   vormaClientEntryDeps,
 		RouteManifestFile: h._routeManifestFile,
 	}
 
@@ -741,7 +741,7 @@ func (h *River) toPathsFile_StageTwo() (*PathsFile, error) {
 	return pf, nil
 }
 
-func (h *River) writeRouteManifestToDisk(manifest map[string]int) (string, error) {
+func (h *Vorma) writeRouteManifestToDisk(manifest map[string]int) (string, error) {
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		return "", fmt.Errorf("error marshalling route manifest: %w", err)
@@ -750,7 +750,7 @@ func (h *River) writeRouteManifestToDisk(manifest map[string]int) (string, error
 	// Hash the content to create a stable filename
 	hash := cryptoutil.Sha256Hash(manifestJSON)
 	hashStr := base64.RawURLEncoding.EncodeToString(hash[:8])
-	filename := fmt.Sprintf(riverRouteManifestPrefix+"%s.json", hashStr)
+	filename := fmt.Sprintf(vormaRouteManifestPrefix+"%s.json", hashStr)
 
 	// Write to static public dir so it's served automatically
 	outPath := filepath.Join(h.Wave.GetStaticPublicOutDir(), filename)
@@ -761,7 +761,7 @@ func (h *River) writeRouteManifestToDisk(manifest map[string]int) (string, error
 	return filename, nil
 }
 
-func (h *River) generateRouteManifest(nestedRouter *mux.NestedRouter) map[string]int {
+func (h *Vorma) generateRouteManifest(nestedRouter *mux.NestedRouter) map[string]int {
 	manifest := make(map[string]int)
 
 	for _, v := range h._paths {

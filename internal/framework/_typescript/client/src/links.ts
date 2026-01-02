@@ -1,5 +1,5 @@
-import { getAnchorDetailsFromEvent, getHrefDetails } from "river.now/kit/url";
-import { navigationStateManager, riverNavigate } from "./client.ts";
+import { getAnchorDetailsFromEvent, getHrefDetails } from "vorma/kit/url";
+import { navigationStateManager, vormaNavigate } from "./client.ts";
 import { saveScrollState } from "./scroll_state_manager.ts";
 
 type LinkOnClickCallback<E extends Event> = (event: E) => void | Promise<void>;
@@ -113,7 +113,7 @@ export function __getPrefetchHandlers<E extends Event>(
 		}
 
 		// Use standard navigation -- it will upgrade the prefetch if it exists
-		await riverNavigate(relativeURL, {
+		await vormaNavigate(relativeURL, {
 			scrollToTop: input.scrollToTop,
 			replace: input.replace,
 			search: input.search,

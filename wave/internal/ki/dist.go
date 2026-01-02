@@ -3,7 +3,7 @@ package ki
 import (
 	"runtime"
 
-	"github.com/river-now/river/kit/dirs"
+	"github.com/vormadev/vorma/kit/dirs"
 )
 
 const (

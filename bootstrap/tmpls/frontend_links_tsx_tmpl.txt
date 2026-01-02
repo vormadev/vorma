@@ -1,5 +1,5 @@
-import type { RouteProps } from "../river.gen.ts";
-import { useLoaderData } from "../river.utils.tsx";
+import type { RouteProps } from "../vorma.gen.ts";
+import { useLoaderData } from "../vorma.utils.tsx";
 
 export function Links(props: RouteProps<"/links">) {
 	const data = useLoaderData(props);
@@ -10,7 +10,7 @@ export function Links(props: RouteProps<"/links">) {
 				docs <span>↗</span>
 			</a>
 			<a
-				href="https://github.com/river-now/river"
+				href="https://github.com/vormadev/vorma"
 				id="github-link"
 				target="_blank"
 				rel="noreferrer"

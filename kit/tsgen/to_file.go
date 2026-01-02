@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/river-now/river/kit/fsutil"
+	"github.com/vormadev/vorma/kit/fsutil"
 )
 
 // GenerateTSToFile generates a TypeScript file from the provided Opts.

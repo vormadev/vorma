@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/river-now/river/kit/netutil"
+	"github.com/vormadev/vorma/kit/netutil"
 )
 
 type must_start_dev_opts struct {

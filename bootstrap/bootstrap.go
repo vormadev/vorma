@@ -1,6 +1,6 @@
 // This package is not meant to be called directly by users.
-// If you are looking to bootstrap a new River app, please
-// run `npm create river@latest` in your terminal instead.
+// If you are looking to bootstrap a new Vorma app, please
+// run `npm create vorma@latest` in your terminal instead.
 package bootstrap
 
 import (
@@ -10,9 +10,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/river-now/river"
-	"github.com/river-now/river/kit/executil"
-	"github.com/river-now/river/kit/fsutil"
+	"github.com/vormadev/vorma"
+	"github.com/vormadev/vorma/kit/executil"
+	"github.com/vormadev/vorma/kit/fsutil"
 )
 
 type Options struct {
@@ -31,7 +31,7 @@ type Options struct {
 
 	// Monorepo support fields
 	ModuleRoot      string // Absolute path to go.mod location
-	CurrentDir      string // Absolute path where River app is being created
+	CurrentDir      string // Absolute path where Vorma app is being created
 	HasParentModule bool   // True if using a parent go.mod
 }
 
@@ -163,15 +163,15 @@ func (o Options) derived() derivedOptions {
 
 	if o.DeploymentTarget == "docker" {
 		// Update package.json extras for Docker
-		dockerBuildCmd := "docker build -t river-app ."
+		dockerBuildCmd := "docker build -t vorma-app ."
 		if do.IsMonorepo && do.DockerBuildContextPath != "" {
 			// For monorepo, build from module root
-			dockerBuildCmd = fmt.Sprintf("docker build -f Dockerfile -t river-app %s", do.DockerBuildContextPath)
+			dockerBuildCmd = fmt.Sprintf("docker build -f Dockerfile -t vorma-app %s", do.DockerBuildContextPath)
 		}
 
 		do.PackageJSONExtras = fmt.Sprintf(`,
 		"docker-build": "%s",
-		"docker-run": "docker run -d -p ${PORT:-8080}:${PORT:-8080} -e PORT=${PORT:-8080} river-app"`,
+		"docker-run": "docker run -d -p ${PORT:-8080}:${PORT:-8080} -e PORT=${PORT:-8080} vorma-app"`,
 			dockerBuildCmd)
 
 		// Set lock file and install command based on package manager
@@ -261,12 +261,12 @@ func Init(o Options) {
 	strWriteMust(".gitignore", "tmpls/gitignore_str.txt")
 	strWriteMust("frontend/src/styles/main.css", "tmpls/main_css_str.txt")
 	strWriteMust("frontend/src/styles/main.critical.css", "tmpls/main_critical_css_str.txt")
-	strWriteMust("frontend/src/river.routes.ts", "tmpls/frontend_routes_ts_str.txt")
+	strWriteMust("frontend/src/vorma.routes.ts", "tmpls/frontend_routes_ts_str.txt")
 	do.tmplWriteMust("frontend/src/components/root.tsx", "tmpls/frontend_root_tsx_tmpl.txt")
 	do.tmplWriteMust("frontend/src/components/home.tsx", "tmpls/frontend_home_tsx_tmpl.txt")
 	do.tmplWriteMust("frontend/src/components/links.tsx", "tmpls/frontend_links_tsx_tmpl.txt")
-	do.tmplWriteMust("frontend/src/river.utils.tsx", "tmpls/frontend_app_utils_tsx_tmpl.txt")
-	strWriteMust("frontend/src/river.api.ts", "tmpls/frontend_api_client_ts_str.txt")
+	do.tmplWriteMust("frontend/src/vorma.utils.tsx", "tmpls/frontend_app_utils_tsx_tmpl.txt")
+	strWriteMust("frontend/src/vorma.api.ts", "tmpls/frontend_api_client_ts_str.txt")
 	if o.DeploymentTarget == "vercel" {
 		do.tmplWriteMust("vercel.json", "tmpls/vercel_json_tmpl.txt")
 		do.tmplWriteMust("api/proxy.ts", "tmpls/api_proxy_ts_str.txt")
@@ -280,11 +280,11 @@ func Init(o Options) {
 
 	installJSPkg(do, "typescript")
 	installJSPkg(do, "vite")
-	installJSPkg(do, fmt.Sprintf("river.now@%s", river.Internal__GetCurrentNPMVersion()))
+	installJSPkg(do, fmt.Sprintf("vorma@%s", vorma.Internal__GetCurrentNPMVersion()))
 	installJSPkg(do, resolveUIVitePlugin(do))
 
 	if do.UIVariant == "react" {
-		do.tmplWriteMust("frontend/src/river.entry.tsx", "tmpls/frontend_entry_tsx_react_tmpl.txt")
+		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_react_tmpl.txt")
 
 		installJSPkg(do, "react")
 		installJSPkg(do, "react-dom")
@@ -293,13 +293,13 @@ func Init(o Options) {
 	}
 
 	if do.UIVariant == "solid" {
-		do.tmplWriteMust("frontend/src/river.entry.tsx", "tmpls/frontend_entry_tsx_solid_tmpl.txt")
+		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_solid_tmpl.txt")
 
 		installJSPkg(do, "solid-js")
 	}
 
 	if do.UIVariant == "preact" {
-		do.tmplWriteMust("frontend/src/river.entry.tsx", "tmpls/frontend_entry_tsx_preact_tmpl.txt")
+		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_preact_tmpl.txt")
 
 		installJSPkg(do, "preact")
 		installJSPkg(do, "@preact/signals")
@@ -329,7 +329,7 @@ func Init(o Options) {
 	}
 
 	fmt.Println()
-	fmt.Println("✨ SUCCESS! Your River app is ready.")
+	fmt.Println("✨ SUCCESS! Your Vorma app is ready.")
 	fmt.Println()
 	if o.CreatedInDir != "" {
 		fmt.Printf("💻 Run `cd %s && %s dev` to start the development server.\n",

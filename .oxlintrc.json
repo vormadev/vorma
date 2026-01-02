@@ -1,7 +1,7 @@
 {
 	"ignorePatterns": [
 		"npm_dist",
-		"internal/site/frontend/src/river.gen.ts",
+		"internal/site/frontend/src/vorma.gen.ts",
 		"internal/framework/_typescript/create/dist"
 	]
 }

@@ -10,9 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/river-now/river/kit/htmlutil"
-	"github.com/river-now/river/kit/netutil"
-	"github.com/river-now/river/kit/stringsutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/netutil"
+	"github.com/vormadev/vorma/kit/stringsutil"
 )
 
 type ManifestChunk struct {

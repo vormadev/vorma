@@ -1,27 +1,27 @@
 ---
 title: Data Loaders
-description: How River data loaders work, and how to use them
+description: How Vorma data loaders work, and how to use them
 order: 4
 ---
 
 ## Nested Routing
 
-Similar to React Router, River uses _nested_ data loaders, tied to URL segments,
+Similar to React Router, Vorma uses _nested_ data loaders, tied to URL segments,
 to preload the data needed for your routes in parallel.
 
-In River, this is always done in a single request, and all response headers get
+In Vorma, this is always done in a single request, and all response headers get
 merged according to a safe and predictable formula. This makes data
 drift/inconsistency/staleness across route segments impossible. It's also an
 incredibly nice mental model, as it's extremely similar to how you reason about
 a traditional MPA.
 
-If this is problematic for certain use cases, River also provides a client
+If this is problematic for certain use cases, Vorma also provides a client
 loaders primitive (more on this later) that you can use to break down your data
 fetching more granularly.
 
 Another benefit of the single-request model is that you can coalesce/memoize
-your data fetching across your route segments to avoid duplicate work. River is
-built on a fundamental primitive it calls `tasks` (from the `river/kit/tasks`
+your data fetching across your route segments to avoid duplicate work. Vorma is
+built on a fundamental primitive it calls `tasks` (from the `vorma/kit/tasks`
 package) that makes this possible. Here's the
 [documentation on tasks](/docs/kit/tasks) if you want to read more. In short,
 the `tasks` primitive allows you to do things like check user authentication in
@@ -32,7 +32,7 @@ but it's there if you want it.
 
 ### Segment Types
 
-In River, there are four URL segment types:
+In Vorma, there are four URL segment types:
 
 1. Static
 2. Dynamic
@@ -60,7 +60,7 @@ What pattern do you register for the home/landing page then? Well, you would use
 an index segment, such as `"/_index"` (more on index segments below).
 
 <lightbulb>
-The loader data for your base slash route is also known in River as
+The loader data for your base slash route is also known in Vorma as
 your app's `RootData`.
 </lightbulb>
 
@@ -80,13 +80,13 @@ but you can change this if you want).
 Let's take a quick detour to explain how a parent route can actually render a
 child. It's very simple. It simply renders `<props.Outlet />` anywhere in its
 TSX. Unlike in React Router, where `Outlet` is a component you import from the
-npm package, in River, Outlet is just a prop passed to all River routes.
+npm package, in Vorma, Outlet is just a prop passed to all Vorma routes.
 
 It looks something like this:
 
 ```tsx
-import type { RouteProps } from "../river.gen.ts";
-import { useRouterData } from "../river.utils.tsx";
+import type { RouteProps } from "../vorma.gen.ts";
+import { useRouterData } from "../vorma.utils.tsx";
 
 export function Posts(props: RouteProps<"/posts">) {
 	return (

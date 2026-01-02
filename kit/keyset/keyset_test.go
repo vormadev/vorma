@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/river-now/river/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/cryptoutil"
 )
 
 // Helper function to create a valid base64-encoded 32-byte secret

@@ -1,17 +1,17 @@
-import { makeTypedNavigate } from "river.now/client";
+import { makeTypedNavigate } from "vorma/client";
 import {
 	makeTypedAddClientLoader,
 	makeTypedLink,
 	makeTypedUseLoaderData,
 	makeTypedUsePatternLoaderData,
 	makeTypedUseRouterData,
-} from "river.now/{{.UIVariant}}";
-import { riverAppConfig, type RiverApp } from "./river.gen.ts";
+} from "vorma/{{.UIVariant}}";
+import { vormaAppConfig, type VormaApp } from "./vorma.gen.ts";
 
-export const Link = makeTypedLink(riverAppConfig, { prefetch: "intent" });
-export const navigate = makeTypedNavigate(riverAppConfig);
+export const Link = makeTypedLink(vormaAppConfig, { prefetch: "intent" });
+export const navigate = makeTypedNavigate(vormaAppConfig);
 
-export const useRouterData = makeTypedUseRouterData<RiverApp>();
-export const useLoaderData = makeTypedUseLoaderData<RiverApp>();
-export const usePatternLoaderData = makeTypedUsePatternLoaderData<RiverApp>();
-export const addClientLoader = makeTypedAddClientLoader<RiverApp>();
+export const useRouterData = makeTypedUseRouterData<VormaApp>();
+export const useLoaderData = makeTypedUseLoaderData<VormaApp>();
+export const usePatternLoaderData = makeTypedUsePatternLoaderData<VormaApp>();
+export const addClientLoader = makeTypedAddClientLoader<VormaApp>();

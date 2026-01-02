@@ -1,14 +1,12 @@
 <!doctype html>
 <html lang="en" class="{{.HTMLClass}}">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-{{.RiverHeadEls}}
-{{.RiverSSRScript}}
-{{.SystemThemeScript}}
-</head>
-<body>
-<div id="{{.RiverRootID}}"></div>
-{{.RiverBodyScripts}} 
-</body>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		{{.VormaHeadEls}} {{.VormaSSRScript}} {{.SystemThemeScript}}
+	</head>
+	<body>
+		<div id="{{.VormaRootID}}"></div>
+		{{.VormaBodyScripts}}
+	</body>
 </html>

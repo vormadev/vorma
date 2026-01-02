@@ -1,4 +1,4 @@
-package river
+package vorma
 
 import (
 	"crypto/sha256"

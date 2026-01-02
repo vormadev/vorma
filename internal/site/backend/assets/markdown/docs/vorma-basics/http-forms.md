@@ -1,19 +1,19 @@
 ---
 title: Working With Traditional HTTP Forms
-description: How to use traditional HTTP forms with River
+description: How to use traditional HTTP forms with Vorma
 order: 990
 ---
 
-Typically, River API endpoints will operate with serializable JSON data.
+Typically, Vorma API endpoints will operate with serializable JSON data.
 However, sometimes (_e.g._, when you need file uploads) you will want to use a
-normal HTTP form. River supports this through the usage of `FormData` and works
+normal HTTP form. Vorma supports this through the usage of `FormData` and works
 with both `application/x-www-form-urlencoded` and `multipart/form-data` forms.
 
 ### Backend
 
 On the backend, you will want to:
 
-- Use `river.FormData` as the `I` generic to your action context, which will
+- Use `vorma.FormData` as the `I` generic to your action context, which will
   cause your frontend API client to expect a `FormData` instance as the input
   type.
 - Call `ParseMultipartForm` on the http request, as you would in any Go handler,
@@ -22,7 +22,7 @@ On the backend, you will want to:
 It will probably look something like this:
 
 ```go
-var _ = NewMutation("/form", func(c *ActionCtx[river.FormData]) (string, error) {
+var _ = NewMutation("/form", func(c *ActionCtx[vorma.FormData]) (string, error) {
 	r := c.Request() // standard *http.Request
 	if err := r.ParseMultipartForm(5 << 20); err != nil {
 		return nil, errors.New("malformed input")
@@ -43,7 +43,7 @@ library you want).
 
 Then, on the frontend, all you need to do is populate a `FormData` instance
 (most likely, but not necessarily, through an actual http `form` element), and
-then submit to the River API like any other endpoint, like so:
+then submit to the Vorma API like any other endpoint, like so:
 
 ```tsx
 <form

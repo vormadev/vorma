@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/river-now/river/kit/grace"
+	"github.com/vormadev/vorma/kit/grace"
 )
 
 /////////////////////////////////////////////////////////////////////

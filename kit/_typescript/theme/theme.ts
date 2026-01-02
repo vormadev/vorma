@@ -1,4 +1,4 @@
-import { getClientCookie, setClientCookie } from "river.now/kit/cookies";
+import { getClientCookie, setClientCookie } from "vorma/kit/cookies";
 
 /////////////////////////////////////////////////////////////////////
 /////// SETUP

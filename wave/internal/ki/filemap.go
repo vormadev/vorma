@@ -13,13 +13,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/river-now/river/kit/fsutil"
-	"github.com/river-now/river/kit/htmlutil"
-	"github.com/river-now/river/kit/matcher"
+	"github.com/vormadev/vorma/kit/fsutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/matcher"
 )
 
 const (
-	PublicFileMapJSName   = "river_internal_public_filemap.js"
+	PublicFileMapJSName   = "vorma_internal_public_filemap.js"
 	PublicFileMapGobName  = "public_filemap.gob"
 	PrivateFileMapGobName = "private_filemap.gob"
 )
@@ -79,7 +79,7 @@ func (c *Config) savePublicFileMapJSToInternalPublicDir(mapToSave FileMap) error
 	publicAssetsPath := c._dist.S().Static.S().Assets.S().Public.FullPath()
 	oldFileMapPattern := filepath.Join(
 		publicAssetsPath,
-		"river_out_river_internal_public_filemap_*.js",
+		"vorma_out_vorma_internal_public_filemap_*.js",
 	)
 	oldFileMapFiles, err := filepath.Glob(oldFileMapPattern)
 	if err != nil {

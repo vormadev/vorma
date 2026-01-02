@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/river-now/river/kit/validate"
+	"github.com/vormadev/vorma/kit/validate"
 )
 
 func TestRouterBasics(t *testing.T) {

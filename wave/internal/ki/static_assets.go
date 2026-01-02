@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/river-now/river/kit/matcher"
+	"github.com/vormadev/vorma/kit/matcher"
 )
 
 type fileVal struct {

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/river-now/river/kit/cryptoutil"
-	"github.com/river-now/river/kit/keyset"
+	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/keyset"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 

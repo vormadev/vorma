@@ -72,14 +72,14 @@ TypeScript LSP will thank you for it.
 
 ---
 
-[River](/) makes writing fullstack, dynamic, type-safe applications with Go
+[Vorma](/) makes writing fullstack, dynamic, type-safe applications with Go
 backends and TypeScript frontends insanely easy.
 
-You can deploy River apps absolutely anywhere, even on
+You can deploy Vorma apps absolutely anywhere, even on
 [Vercel](https://x.com/rauchg/status/1955639485385118134).
 
 Give it a try today:
 
 ```sh
-npm create river@latest
+npm create vorma@latest
 ```

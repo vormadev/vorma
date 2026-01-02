@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/river-now/river/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
 )
 
 // For usage in JSON API handlers that may run in parallel or

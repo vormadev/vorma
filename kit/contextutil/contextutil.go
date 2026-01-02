@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/river-now/river/kit/genericsutil"
+	"github.com/vormadev/vorma/kit/genericsutil"
 )
 
 type Store[T any] struct {

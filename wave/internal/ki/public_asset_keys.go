@@ -1,7 +1,7 @@
 package ki
 
 import (
-	"github.com/river-now/river/kit/tsgen"
+	"github.com/vormadev/vorma/kit/tsgen"
 )
 
 // If you pass nil to this function, it will return a pointer to a new Statements

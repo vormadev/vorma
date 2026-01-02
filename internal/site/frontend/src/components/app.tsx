@@ -1,9 +1,9 @@
 import { done, isStarted, start } from "nprogress";
-import { setupGlobalLoadingIndicator } from "river.now/client";
-import { setTheme, THEMES } from "river.now/kit/theme";
-import { RiverRootOutlet } from "river.now/solid";
-import { Link, theme, useRouterData } from "../river.utils.tsx";
+import { setupGlobalLoadingIndicator } from "vorma/client";
+import { setTheme, THEMES } from "vorma/kit/theme";
+import { VormaRootOutlet } from "vorma/solid";
 import "../styles/tailwind.css";
+import { Link, theme, useRouterData } from "../vorma.utils.tsx";
 
 setupGlobalLoadingIndicator({ start, stop: done, isRunning: isStarted });
 
@@ -37,10 +37,10 @@ export function App() {
 						<h1 class="logo">
 							<img
 								src={hashedURL("favicon.svg")}
-								alt="River logo"
+								alt="Vorma logo"
 								class="w-5 h-5 brightness-85 dark:brightness-[unset]"
 							/>
-							<span>River</span>
+							<span>VORMA</span>
 						</h1>
 					</Link>
 					<div class="text-xs opacity-70 hidden sm:flex">
@@ -58,7 +58,7 @@ export function App() {
 					</Link>
 
 					<a
-						href="https://github.com/river-now/river"
+						href="https://github.com/vormadev/vorma"
 						class="nav-item"
 						target="_blank"
 						rel="noreferrer"
@@ -96,7 +96,7 @@ export function App() {
 			</nav>
 
 			<main class="root-outlet-wrapper">
-				<RiverRootOutlet />
+				<VormaRootOutlet />
 			</main>
 
 			<footer>

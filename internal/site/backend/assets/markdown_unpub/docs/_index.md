@@ -1,4 +1,4 @@
 ---
 title: Docs
-description: Documentation for the River framework
+description: Documentation for the Vorma framework
 ---

@@ -4,7 +4,7 @@ description: API documentation for the Wave build tool
 ---
 
 ```
-import "github.com/river-now/river/wave"
+import "github.com/vormadev/vorma/wave"
 ```
 
 ## Overview
@@ -15,8 +15,8 @@ integration with Vite for JavaScript/TypeScript builds. It provides a unified
 development and production build pipeline with automatic browser refresh
 capabilities.
 
-Wave is the lower-level build tool used by the River framework, but Wave itself
-can be used without River (and without Vite, for that matter). In fact, it can
+Wave is the lower-level build tool used by the Vorma framework, but Wave itself
+can be used without Vorma (and without Vite, for that matter). In fact, it can
 be used without any frontend at all as a simple file watcher that restarts any
 server (or really, does anything at all in response to file changes).
 
@@ -152,7 +152,7 @@ package platform
 import (
     _ "embed"
     "your-module-name/dist"
-    "github.com/river-now/river/wave"
+    "github.com/vormadev/vorma/wave"
 )
 
 //go:embed ../../wave.config.json
@@ -177,7 +177,7 @@ import (
     "html/template"
     "net/http"
     "your-module-name/internal/platform"
-    "github.com/river-now/river/wave"
+    "github.com/vormadev/vorma/wave"
 )
 
 func main() {
@@ -364,7 +364,7 @@ JSON schema):
 ### Initialization
 
 ```go
-import "github.com/river-now/river/wave"
+import "github.com/vormadev/vorma/wave"
 
 // With embedded filesystem (recommended for production)
 //go:embed dist/static
@@ -517,7 +517,7 @@ Returns the hashed/versioned URL for a public asset at runtime.
 
 ```go
 // Input: "images/logo.png"
-// Output: "/public/river_out_images_logo_abc123def456.png"
+// Output: "/public/vorma_out_images_logo_abc123def456.png"
 imageURL := w.GetPublicURL("images/logo.png")
 ```
 
@@ -626,7 +626,7 @@ Returns a simplified string-to-string mapping (build time). Triggers a build if
 the file map doesn't exist.
 
 ```go
-// Returns: {"images/logo.png": "river_out_images_logo_abc123.png", ...}
+// Returns: {"images/logo.png": "vorma_out_images_logo_abc123.png", ...}
 simpleMap, err := w.GetSimplePublicFileMapBuildtime()
 ```
 
@@ -1024,7 +1024,7 @@ This will:
 
 ### React Fast Refresh
 
-When using River with `UIVariant: "react"` configured, Wave injects React Fast
+When using Vorma with `UIVariant: "react"` configured, Wave injects React Fast
 Refresh runtime in development for component state preservation during edits.
 
 ### API Methods
@@ -1037,54 +1037,54 @@ manifestPath := w.GetViteManifestLocation()
 viteOutDir := w.GetViteOutDir()
 ```
 
-## River Framework Integration
+## Vorma Framework Integration
 
-Wave is the build system that powers the River framework. When used with River,
+Wave is the build system that powers the Vorma framework. When used with Vorma,
 Wave provides additional functionality.
 
-### River Configuration
+### Vorma Configuration
 
-Configure River-specific settings in your `wave.config.json`:
+Configure Vorma-specific settings in your `wave.config.json`:
 
 ```json
 {
-	"River": {
+	"Vorma": {
 		"IncludeDefaults": true,
 		"UIVariant": "react",
 		"HTMLTemplateLocation": "templates/index.html",
 		"ClientEntry": "./frontend/src/main.tsx",
 		"ClientRouteDefsFile": "./frontend/src/routes.gen.ts",
-		"TSGenOutPath": "./frontend/river.gen.ts",
+		"TSGenOutPath": "./frontend/vorma.gen.ts",
 		"BuildtimePublicURLFuncName": "waveURL"
 	}
 }
 ```
 
-### River-Specific Methods
+### Vorma-Specific Methods
 
 ```go
 // Get the frontend UI library variant
-variant := w.GetRiverUIVariant()
+variant := w.GetVormaUIVariant()
 
 // Get HTML template location relative to private static dir
-templatePath := w.GetRiverHTMLTemplateLocation()
+templatePath := w.GetVormaHTMLTemplateLocation()
 
 // Get client-side entry point
-clientEntry := w.GetRiverClientEntry()
+clientEntry := w.GetVormaClientEntry()
 
 // Get route definitions file path
-routeDefsPath := w.GetRiverClientRouteDefsFile()
+routeDefsPath := w.GetVormaClientRouteDefsFile()
 
 // Get TypeScript generation output path
-tsGenPath := w.GetRiverTSGenOutPath()
+tsGenPath := w.GetVormaTSGenOutPath()
 
 // Get build-time public URL function name
-funcName := w.GetRiverBuildtimePublicURLFuncName()
+funcName := w.GetVormaBuildtimePublicURLFuncName()
 ```
 
 ### Default Watch Patterns
 
-When `IncludeDefaults` is true, River adds these watch patterns:
+When `IncludeDefaults` is true, Vorma adds these watch patterns:
 
 1. **Go files**: Triggers build hook on changes
 2. **HTML templates**: Triggers app restart for template parsing
@@ -1098,7 +1098,7 @@ characters):
 
 ```
 Original: images/logo.png
-Hashed: river_out_images_logo_abc123def456.png
+Hashed: vorma_out_images_logo_abc123def456.png
 ```
 
 ## Production Deployment

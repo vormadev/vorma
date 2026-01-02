@@ -1,4 +1,4 @@
-package river
+package vorma
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-func (h *River) postViteProdBuild() error {
+func (h *Vorma) postViteProdBuild() error {
 	// Must come after Vite -- only needed in prod (the stage "one" version is fine in dev)
 	pf, err := h.toPathsFile_StageTwo()
 	if err != nil {
@@ -24,8 +24,8 @@ func (h *River) postViteProdBuild() error {
 
 	pathsJSONOut_StageTwo := filepath.Join(
 		h.Wave.GetStaticPrivateOutDir(),
-		"river_out",
-		RiverPathsStageTwoJSONFileName,
+		"vorma_out",
+		VormaPathsStageTwoJSONFileName,
 	)
 	err = os.WriteFile(pathsJSONOut_StageTwo, pathsAsJSON, os.ModePerm)
 	if err != nil {

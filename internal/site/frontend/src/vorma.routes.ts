@@ -1,4 +1,4 @@
-import { route } from "river.now/client";
+import { route } from "vorma/client";
 
 route("/", import("./components/home.tsx"), "RootLayout");
 route("/_index", import("./components/home.tsx"), "Home");

@@ -1,10 +1,10 @@
-import { type RouteProps } from "../river.gen.ts";
-import { Link } from "../river.utils.tsx";
+import { type RouteProps } from "../vorma.gen.ts";
+import { Link } from "../vorma.utils.tsx";
 
 export function Root(props: RouteProps<"/">) {
 	return (
 		<div id="root-wrapper">
-			<img src={waveBuildtimeURL("favicon.svg")} alt="River logo" />
+			<img src={waveBuildtimeURL("favicon.svg")} alt="Vorma logo" />
 
 			<nav>
 				<Link pattern="/">home</Link>

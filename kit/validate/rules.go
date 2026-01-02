@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/river-now/river/kit/set"
+	"github.com/vormadev/vorma/kit/set"
 )
 
 func (c *AnyChecker) If(condition bool, f func(*AnyChecker) *AnyChecker) *AnyChecker {

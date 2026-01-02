@@ -3,7 +3,7 @@ import {
 	Link,
 	type RouteProps,
 	usePatternLoaderData,
-} from "../river.utils.tsx";
+} from "../vorma.utils.tsx";
 // import { useSplatClientLoaderData } from "./md.tsx";
 
 export const useRootClientLoaderData = addClientLoader({
@@ -33,17 +33,16 @@ export function Home(_props: RouteProps<"/_index">) {
 
 	return (
 		<>
-			<div class="flex flex-col gap-2 sm:gap-1 my-6">
+			<div class="flex flex-col gap-2 sm:gap-1 mt-4">
 				<h2 class="big-heading">
-					Vite-powered web framework for building full-stack
-					applications with Go and TypeScript
+					The Next.js of Golang, powered by Vite.
 				</h2>
 			</div>
 
 			<div class="flex gap-3 flex-wrap mb-6">
 				<a
 					class="font-medium bg-[var(--fg)] py-[2px] px-[6px] text-[var(--bg)] text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
-					href="https://github.com/river-now/river"
+					href="https://github.com/vormadev/vorma"
 					target="_blank"
 					rel="noreferrer"
 				>
@@ -52,7 +51,7 @@ export function Home(_props: RouteProps<"/_index">) {
 
 				<a
 					class="font-medium bg-[var(--fg)] py-[2px] px-[6px] text-[var(--bg)] text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
-					href="https://pkg.go.dev/github.com/river-now/river"
+					href="https://pkg.go.dev/github.com/vormadev/vorma"
 					target="_blank"
 					rel="noreferrer"
 				>
@@ -61,7 +60,7 @@ export function Home(_props: RouteProps<"/_index">) {
 
 				<a
 					class="font-medium bg-[var(--fg)] py-[2px] px-[6px] text-[var(--bg)] text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
-					href="https://www.npmjs.com/package/river.now"
+					href="https://www.npmjs.com/package/vorma"
 					target="_blank"
 					rel="noreferrer"
 				>
@@ -70,7 +69,7 @@ export function Home(_props: RouteProps<"/_index">) {
 
 				<a
 					class="font-medium bg-[var(--fg)] py-[2px] px-[6px] text-[var(--bg)] text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
-					href="https://x.com/riverframework"
+					href="https://x.com/vormadev"
 					target="_blank"
 					rel="noreferrer"
 				>
@@ -81,15 +80,16 @@ export function Home(_props: RouteProps<"/_index">) {
 			<div>
 				<h2 class="scream-heading">Quick Start</h2>
 				<code class="inline-code high-contrast self-start text-xl font-bold italic">
-					npm create river@latest
+					npm create vorma@latest
 				</code>
 			</div>
 
 			<div>
-				<h2 class="scream-heading">What is River?</h2>
+				<h2 class="scream-heading">What is Vorma?</h2>
 				<div class="flex-col-wrapper">
 					<p class="leading-[1.75]">
-						River is a lot like Next.js or Remix, but it uses{" "}
+						Vorma is a lot like Next.js, Remix, or TanStack Start,
+						but it uses{" "}
 						<b>
 							<i>Go</i>
 						</b>{" "}
@@ -144,7 +144,7 @@ export function Home(_props: RouteProps<"/_index">) {
 					<p class="leading-[1.75]">
 						If you want to dive right in, just open a terminal and
 						run{" "}
-						<code class="inline-code">npm create river@latest</code>{" "}
+						<code class="inline-code">npm create vorma@latest</code>{" "}
 						and follow the prompts.
 					</p>
 					<p class="leading-[1.75]">
@@ -164,12 +164,12 @@ export function Home(_props: RouteProps<"/_index">) {
 			<div>
 				<h2 class="scream-heading">Status</h2>
 				<p class="leading-[1.75]">
-					River's underlying tech has reached a good degree of
+					Vorma's underlying tech has reached a good degree of
 					stability, but its APIs are still evolving. Sub-1.0 releases
 					may contain breaking changes. If you ever need help
 					upgrading to the latest version, feel free to{" "}
 					<a
-						href="https://github.com/river-now/river"
+						href="https://github.com/vormadev/vorma"
 						target="_blank"
 						rel="noreferrer"
 					>
@@ -177,7 +177,7 @@ export function Home(_props: RouteProps<"/_index">) {
 					</a>{" "}
 					or{" "}
 					<a
-						href="https://x.com/riverframework"
+						href="https://x.com/vormadev"
 						target="_blank"
 						rel="noreferrer"
 					>

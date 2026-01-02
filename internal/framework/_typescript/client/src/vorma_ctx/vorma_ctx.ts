@@ -1,5 +1,5 @@
-import type { PatternRegistry } from "river.now/kit/matcher/register";
-import type { RiverAppConfig } from "../river_app_helpers/river_app_helpers.ts";
+import type { PatternRegistry } from "vorma/kit/matcher/register";
+import type { VormaAppConfig } from "../vorma_app_helpers/vorma_app_helpers.ts";
 
 export type HeadEl = {
 	tag?: string;
@@ -44,7 +44,7 @@ export type GetRouteDataOutput = Omit<shared, "buildID"> &
 		cssBundles: Array<string>;
 	};
 
-export const RIVER_SYMBOL = Symbol.for("__river_internal__");
+export const VORMA_SYMBOL = Symbol.for("__vorma_internal__");
 
 export type RouteErrorComponent = (props: { error: string }) => any;
 
@@ -55,7 +55,7 @@ export type ClientLoaderAwaitedServerData<RD, LD> = {
 	buildID: string;
 };
 
-export type RiverClientGlobal = shared & {
+export type VormaClientGlobal = shared & {
 	isDev: boolean;
 	viteDevURL: string;
 	publicPathPrefix: string;
@@ -73,7 +73,7 @@ export type RiverClientGlobal = shared & {
 	defaultErrorBoundary: RouteErrorComponent;
 	useViewTransitions: boolean;
 	deploymentID: string;
-	riverAppConfig: RiverAppConfig;
+	vormaAppConfig: VormaAppConfig;
 	// SSR'd
 	routeManifestURL: string;
 	// Fetched at startup -- fine because progressive enhancement
@@ -92,37 +92,37 @@ export type RiverClientGlobal = shared & {
 	patternRegistry: PatternRegistry;
 };
 
-export function __getRiverClientGlobal() {
+export function __getVormaClientGlobal() {
 	const dangerousGlobalThis = globalThis as any;
-	function get<K extends keyof RiverClientGlobal>(key: K) {
-		return dangerousGlobalThis[RIVER_SYMBOL][key] as RiverClientGlobal[K];
+	function get<K extends keyof VormaClientGlobal>(key: K) {
+		return dangerousGlobalThis[VORMA_SYMBOL][key] as VormaClientGlobal[K];
 	}
 	function set<
-		K extends keyof RiverClientGlobal,
-		V extends RiverClientGlobal[K],
+		K extends keyof VormaClientGlobal,
+		V extends VormaClientGlobal[K],
 	>(key: K, value: V) {
-		dangerousGlobalThis[RIVER_SYMBOL][key] = value;
+		dangerousGlobalThis[VORMA_SYMBOL][key] = value;
 	}
 	return { get, set };
 }
 
-export const __riverClientGlobal = __getRiverClientGlobal();
+export const __vormaClientGlobal = __getVormaClientGlobal();
 
 // to debug ctx in browser, paste this:
-// const river_ctx = window[Symbol.for("__river_internal__")];
+// const vorma_ctx = window[Symbol.for("__vorma_internal__")];
 
 export function getRouterData<
 	T = any,
 	P extends Record<string, string> = Record<string, string>,
 >() {
-	const rootData: T = __riverClientGlobal.get("hasRootData")
-		? __riverClientGlobal.get("loadersData")[0]
+	const rootData: T = __vormaClientGlobal.get("hasRootData")
+		? __vormaClientGlobal.get("loadersData")[0]
 		: null;
 	return {
-		buildID: __riverClientGlobal.get("buildID") || "",
-		matchedPatterns: __riverClientGlobal.get("matchedPatterns") || [],
-		splatValues: __riverClientGlobal.get("splatValues") || [],
-		params: (__riverClientGlobal.get("params") || {}) as P,
+		buildID: __vormaClientGlobal.get("buildID") || "",
+		matchedPatterns: __vormaClientGlobal.get("matchedPatterns") || [],
+		splatValues: __vormaClientGlobal.get("splatValues") || [],
+		params: (__vormaClientGlobal.get("params") || {}) as P,
 		rootData,
 	};
 }

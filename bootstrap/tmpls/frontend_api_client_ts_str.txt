@@ -3,22 +3,22 @@ import {
 	buildQueryURL,
 	resolveBody,
 	submit,
-} from "river.now/client";
+} from "vorma/client";
 import {
-	riverAppConfig,
+	vormaAppConfig,
 	type MutationOutput,
 	type MutationPattern,
 	type MutationProps,
 	type QueryOutput,
 	type QueryPattern,
 	type QueryProps,
-} from "./river.gen.ts";
+} from "./vorma.gen.ts";
 
 export const api = { query, mutate };
 
 async function query<P extends QueryPattern>(props: QueryProps<P>) {
 	return await submit<QueryOutput<P>>(
-		buildQueryURL(riverAppConfig, props),
+		buildQueryURL(vormaAppConfig, props),
 		{
 			method: "GET",
 			...props.requestInit,
@@ -29,7 +29,7 @@ async function query<P extends QueryPattern>(props: QueryProps<P>) {
 
 async function mutate<P extends MutationPattern>(props: MutationProps<P>) {
 	return await submit<MutationOutput<P>>(
-		buildMutationURL(riverAppConfig, props),
+		buildMutationURL(vormaAppConfig, props),
 		{
 			method: "POST",
 			...props.requestInit,

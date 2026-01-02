@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/river-now/river/kit/keyset"
-	"github.com/river-now/river/kit/response"
-	"github.com/river-now/river/kit/securestring"
+	"github.com/vormadev/vorma/kit/keyset"
+	"github.com/vormadev/vorma/kit/response"
+	"github.com/vormadev/vorma/kit/securestring"
 )
 
 type (

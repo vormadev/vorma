@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/river-now/river/kit/bytesutil"
-	"github.com/river-now/river/kit/cryptoutil"
-	"github.com/river-now/river/kit/keyset"
-	"github.com/river-now/river/kit/securebytes"
+	"github.com/vormadev/vorma/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/keyset"
+	"github.com/vormadev/vorma/kit/securebytes"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 

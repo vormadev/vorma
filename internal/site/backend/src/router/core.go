@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/river-now/river/kit/middleware/etag"
-	"github.com/river-now/river/kit/middleware/healthcheck"
-	"github.com/river-now/river/kit/middleware/robotstxt"
-	"github.com/river-now/river/kit/middleware/secureheaders"
-	"github.com/river-now/river/kit/mux"
+	"github.com/vormadev/vorma/kit/middleware/etag"
+	"github.com/vormadev/vorma/kit/middleware/healthcheck"
+	"github.com/vormadev/vorma/kit/middleware/robotstxt"
+	"github.com/vormadev/vorma/kit/middleware/secureheaders"
+	"github.com/vormadev/vorma/kit/mux"
 )
 
 func Init() (addr string, handler http.Handler) {

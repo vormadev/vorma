@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/river-now/river/kit/bytesutil"
-	"github.com/river-now/river/kit/keyset"
+	"github.com/vormadev/vorma/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/keyset"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/river-now/river/kit/htmltestutil"
+	"github.com/vormadev/vorma/kit/htmltestutil"
 )
 
 func TestTemplates(t *testing.T) {

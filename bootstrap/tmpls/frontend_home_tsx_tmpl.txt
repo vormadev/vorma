@@ -1,6 +1,6 @@
-import { api } from "../river.api.ts";
-import type { RouteProps } from "../river.gen.ts";
-import { useLoaderData } from "../river.utils.tsx";
+import { api } from "../vorma.api.ts";
+import type { RouteProps } from "../vorma.gen.ts";
+import { useLoaderData } from "../vorma.utils.tsx";
 
 export function Home(props: RouteProps<"/_index">) {
 	const data = useLoaderData(props);

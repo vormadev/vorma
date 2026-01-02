@@ -1,4 +1,4 @@
-package river
+package vorma
 
 import (
 	"html/template"
@@ -6,17 +6,17 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/river-now/river/kit/colorlog"
-	"github.com/river-now/river/kit/headels"
-	"github.com/river-now/river/kit/mux"
-	"github.com/river-now/river/wave"
+	"github.com/vormadev/vorma/kit/colorlog"
+	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/wave"
 )
 
 const (
-	RiverSymbolStr = "__river_internal__"
+	VormaSymbolStr = "__vorma_internal__"
 )
 
-var Log = colorlog.New("river")
+var Log = colorlog.New("vorma")
 
 type RouteType = string
 
@@ -59,12 +59,12 @@ var UIVariants = struct {
 }
 
 type (
-	GetDefaultHeadElsFunc    func(r *http.Request, app *River) (*headels.HeadEls, error)
+	GetDefaultHeadElsFunc    func(r *http.Request, app *Vorma) (*headels.HeadEls, error)
 	GetHeadElUniqueRulesFunc func() *headels.HeadEls
 	GetRootTemplateDataFunc  func(r *http.Request) (map[string]any, error)
 )
 
-type River struct {
+type Vorma struct {
 	*wave.Wave
 
 	actionsRouter *ActionsRouter
@@ -88,6 +88,6 @@ type River struct {
 	_serverAddr        string
 }
 
-func (h *River) ServerAddr() string            { return h._serverAddr }
-func (h *River) LoadersRouter() *LoadersRouter { return h.loadersRouter }
-func (h *River) ActionsRouter() *ActionsRouter { return h.actionsRouter }
+func (h *Vorma) ServerAddr() string            { return h._serverAddr }
+func (h *Vorma) LoadersRouter() *LoadersRouter { return h.loadersRouter }
+func (h *Vorma) ActionsRouter() *ActionsRouter { return h.actionsRouter }

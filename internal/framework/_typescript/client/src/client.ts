@@ -1,12 +1,9 @@
 /// <reference types="vite/client" />
 
-import { debounce } from "river.now/kit/debounce";
-import { jsonDeepEquals } from "river.now/kit/json";
-import {
-	findNestedMatches,
-	type Match,
-} from "river.now/kit/matcher/find-nested";
-import { getIsGETRequest } from "river.now/kit/url";
+import { debounce } from "vorma/kit/debounce";
+import { jsonDeepEquals } from "vorma/kit/json";
+import { findNestedMatches, type Match } from "vorma/kit/matcher/find-nested";
+import { getIsGETRequest } from "vorma/kit/url";
 import { AssetManager } from "./asset_manager.ts";
 import {
 	completeClientLoaders,
@@ -29,22 +26,22 @@ import {
 } from "./redirects/redirects.ts";
 import { __reRenderApp } from "./rendering.ts";
 import {
-	__riverClientGlobal,
-	type ClientLoaderAwaitedServerData,
-	type GetRouteDataOutput,
-} from "./river_ctx/river_ctx.ts";
-import {
 	__applyScrollState,
 	type ScrollState,
 } from "./scroll_state_manager.ts";
 import { isAbortError } from "./utils/errors.ts";
 import { logError } from "./utils/logging.ts";
+import {
+	__vormaClientGlobal,
+	type ClientLoaderAwaitedServerData,
+	type GetRouteDataOutput,
+} from "./vorma_ctx/vorma_ctx.ts";
 
 /////////////////////////////////////////////////////////////////////
 // TYPES
 /////////////////////////////////////////////////////////////////////
 
-export type RiverNavigationType =
+export type VormaNavigationType =
 	| "browserHistory"
 	| "userNavigation"
 	| "revalidation"
@@ -55,7 +52,7 @@ export type RiverNavigationType =
 export type NavigateProps = {
 	href: string;
 	state?: unknown;
-	navigationType: RiverNavigationType;
+	navigationType: VormaNavigationType;
 	scrollStateToRestore?: ScrollState;
 	replace?: boolean;
 	redirectCount?: number;
@@ -100,7 +97,7 @@ type NavigationIntent =
 
 interface NavigationEntry {
 	control: NavigationControl;
-	type: RiverNavigationType;
+	type: VormaNavigationType;
 	intent: NavigationIntent;
 	phase: NavigationPhase;
 	startTime: number;
@@ -339,18 +336,18 @@ class NavigationStateManager {
 		exportKeys?: string[];
 		loadersData?: any[];
 	} {
-		const routeManifest = __riverClientGlobal.get("routeManifest");
+		const routeManifest = __vormaClientGlobal.get("routeManifest");
 		if (!routeManifest) {
 			return { canSkip: false };
 		}
 
-		const patternRegistry = __riverClientGlobal.get("patternRegistry");
+		const patternRegistry = __vormaClientGlobal.get("patternRegistry");
 		if (!patternRegistry) {
 			return { canSkip: false };
 		}
 
 		const patternToWaitFnMap =
-			__riverClientGlobal.get("patternToWaitFnMap") || {};
+			__vormaClientGlobal.get("patternToWaitFnMap") || {};
 
 		const url = new URL(targetUrl);
 		const matchResult = findNestedMatches(patternRegistry, url.pathname);
@@ -359,12 +356,12 @@ class NavigationStateManager {
 		}
 
 		const clientModuleMap =
-			__riverClientGlobal.get("clientModuleMap") || {};
+			__vormaClientGlobal.get("clientModuleMap") || {};
 		const currentMatchedPatterns =
-			__riverClientGlobal.get("matchedPatterns") || [];
-		const currentParams = __riverClientGlobal.get("params") || {};
-		const currentSplatValues = __riverClientGlobal.get("splatValues") || [];
-		const currentLoadersData = __riverClientGlobal.get("loadersData") || [];
+			__vormaClientGlobal.get("matchedPatterns") || [];
+		const currentParams = __vormaClientGlobal.get("params") || {};
+		const currentSplatValues = __vormaClientGlobal.get("splatValues") || [];
+		const currentLoadersData = __vormaClientGlobal.get("loadersData") || [];
 
 		// Check if any current server loaders are being removed
 		for (const pattern of currentMatchedPatterns) {
@@ -522,7 +519,7 @@ class NavigationStateManager {
 						loadersData: loadersData!,
 						importURLs: importURLs!,
 						exportKeys: exportKeys!,
-						hasRootData: __riverClientGlobal.get("hasRootData"),
+						hasRootData: __vormaClientGlobal.get("hasRootData"),
 						params: skipCheck.matchResult.params,
 						splatValues: skipCheck.matchResult.splatValues,
 						deps: [],
@@ -541,15 +538,15 @@ class NavigationStateManager {
 						status: 200,
 						headers: {
 							"Content-Type": "application/json",
-							"X-River-Build-Id":
-								__riverClientGlobal.get("buildID") || "1",
+							"X-Vorma-Build-Id":
+								__vormaClientGlobal.get("buildID") || "1",
 						},
 					});
 
 					const currentClientLoadersData =
-						__riverClientGlobal.get("clientLoadersData") || [];
+						__vormaClientGlobal.get("clientLoadersData") || [];
 					const patternToWaitFnMap =
-						__riverClientGlobal.get("patternToWaitFnMap") || {};
+						__vormaClientGlobal.get("patternToWaitFnMap") || {};
 					const runningLoaders = new Map<string, Promise<any>>();
 
 					for (let i = 0; i < json.matchedPatterns.length; i++) {
@@ -558,7 +555,7 @@ class NavigationStateManager {
 
 						if (patternToWaitFnMap[pattern]) {
 							const currentMatchedPatterns =
-								__riverClientGlobal.get("matchedPatterns") ||
+								__vormaClientGlobal.get("matchedPatterns") ||
 								[];
 							const currentPatternIndex =
 								currentMatchedPatterns.indexOf(pattern);
@@ -583,7 +580,7 @@ class NavigationStateManager {
 
 					const waitFnPromise = completeClientLoaders(
 						json,
-						__riverClientGlobal.get("buildID") || "1",
+						__vormaClientGlobal.get("buildID") || "1",
 						runningLoaders,
 						controller.signal,
 					);
@@ -599,12 +596,12 @@ class NavigationStateManager {
 			}
 
 			url.searchParams.set(
-				"river_json",
-				__riverClientGlobal.get("buildID") || "1",
+				"vorma_json",
+				__vormaClientGlobal.get("buildID") || "1",
 			);
 
 			if (props.navigationType === "revalidation") {
-				const deploymentID = __riverClientGlobal.get("deploymentID");
+				const deploymentID = __vormaClientGlobal.get("deploymentID");
 				if (deploymentID) {
 					url.searchParams.set("dpl", deploymentID);
 				}
@@ -633,7 +630,7 @@ class NavigationStateManager {
 			const pathname = url.pathname;
 			const matchResult = await findPartialMatchesOnClient(pathname);
 			const patternToWaitFnMap =
-				__riverClientGlobal.get("patternToWaitFnMap");
+				__vormaClientGlobal.get("patternToWaitFnMap");
 			const runningLoaders = new Map<string, Promise<any>>();
 
 			// Start client loaders for already-registered patterns
@@ -800,13 +797,13 @@ class NavigationStateManager {
 			}
 
 			// Only update module map and apply CSS if build IDs match
-			const currentBuildID = __riverClientGlobal.get("buildID");
+			const currentBuildID = __vormaClientGlobal.get("buildID");
 			const responseBuildID = getBuildIDFromResponse(result.response);
 
 			if (responseBuildID === currentBuildID) {
 				// Update module map only when builds match
 				const clientModuleMap =
-					__riverClientGlobal.get("clientModuleMap") || {};
+					__vormaClientGlobal.get("clientModuleMap") || {};
 				const matchedPatterns = result.json.matchedPatterns || [];
 				const importURLs = result.json.importURLs || [];
 				const exportKeys = result.json.exportKeys || [];
@@ -827,7 +824,7 @@ class NavigationStateManager {
 					}
 				}
 
-				__riverClientGlobal.set("clientModuleMap", clientModuleMap);
+				__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
 
 				// Apply CSS bundles immediately, even for prefetches.
 				// This ensures that if the user doesn't actually click now,
@@ -859,7 +856,7 @@ class NavigationStateManager {
 			}
 
 			// Update build ID if needed
-			const oldID = __riverClientGlobal.get("buildID");
+			const oldID = __vormaClientGlobal.get("buildID");
 			const newID = getBuildIDFromResponse(result.response);
 			if (newID && newID !== oldID) {
 				dispatchBuildIDEvent({ newID, oldID });
@@ -963,7 +960,7 @@ class NavigationStateManager {
 		try {
 			const urlToUse = new URL(url, window.location.href);
 			const headers = new Headers(requestInit?.headers);
-			const deploymentID = __riverClientGlobal.get("deploymentID");
+			const deploymentID = __vormaClientGlobal.get("deploymentID");
 			if (deploymentID) {
 				headers.set("x-deployment-id", deploymentID);
 			}
@@ -981,7 +978,7 @@ class NavigationStateManager {
 				requestInit: finalRequestInit,
 			});
 
-			const oldID = __riverClientGlobal.get("buildID");
+			const oldID = __vormaClientGlobal.get("buildID");
 			const newID = getBuildIDFromResponse(response);
 			if (newID && newID !== oldID) {
 				dispatchBuildIDEvent({ newID, oldID });
@@ -1119,7 +1116,7 @@ export const navigationStateManager = new NavigationStateManager();
 // PUBLIC API
 /////////////////////////////////////////////////////////////////////
 
-export async function riverNavigate(
+export async function vormaNavigate(
 	href: string,
 	options?: {
 		replace?: boolean;
@@ -1192,11 +1189,11 @@ export function getLocation() {
 }
 
 export function getBuildID(): string {
-	return __riverClientGlobal.get("buildID");
+	return __vormaClientGlobal.get("buildID");
 }
 
 export function getRootEl(): HTMLDivElement {
-	return document.getElementById("river-root") as HTMLDivElement;
+	return document.getElementById("vorma-root") as HTMLDivElement;
 }
 
 export function getHistoryInstance(): historyInstance {

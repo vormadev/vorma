@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/river-now/river/kit/tasks"
+	"github.com/vormadev/vorma/kit/tasks"
 )
 
 func TestNestedRouterBasics(t *testing.T) {

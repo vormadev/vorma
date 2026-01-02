@@ -8,13 +8,13 @@ import (
 	"site/backend"
 	"site/backend/src/router"
 
-	"github.com/river-now/river/wave"
+	"github.com/vormadev/vorma/wave"
 )
 
 var siteRouter = router.Core()
 
 func init() {
-	backend.River.Init(wave.GetIsDev())
+	backend.Vorma.Init(wave.GetIsDev())
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {

@@ -3,8 +3,8 @@ import { HistoryManager } from "./history/history.ts";
 export type ScrollState = { x: number; y: number } | { hash: string };
 
 class ScrollStateManager {
-	private readonly STORAGE_KEY = "__river__scrollStateMap";
-	private readonly PAGE_REFRESH_KEY = "__river__pageRefreshScrollState";
+	private readonly STORAGE_KEY = "__vorma__scrollStateMap";
+	private readonly PAGE_REFRESH_KEY = "__vorma__pageRefreshScrollState";
 	private readonly MAX_ENTRIES = 50;
 
 	saveState(key: string, state: ScrollState): void {

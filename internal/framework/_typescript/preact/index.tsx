@@ -3,8 +3,8 @@ export {
 	makeTypedUseLoaderData,
 	makeTypedUsePatternLoaderData,
 	makeTypedUseRouterData,
-	type RiverRoute,
-	type RiverRouteProps,
+	type VormaRoute,
+	type VormaRouteProps,
 } from "./src/helpers.ts";
-export { makeTypedLink, RiverLink } from "./src/link.tsx";
-export { location, RiverRootOutlet } from "./src/preact.tsx";
+export { VormaLink, makeTypedLink } from "./src/link.tsx";
+export { VormaRootOutlet, location } from "./src/preact.tsx";

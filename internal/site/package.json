@@ -7,7 +7,7 @@
 		"highlight.js": "^11.11.1",
 		"mdream": "0.11.0",
 		"nprogress": "^0.2.0",
-		"river.now": "link:../..",
+		"vorma": "link:../..",
 		"solid-js": "^1.9.9",
 		"tailwindcss": "^4.1.13",
 		"typescript": "^5.9.2",

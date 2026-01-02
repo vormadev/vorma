@@ -13,12 +13,12 @@ import (
 	"time"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/river-now/river/kit/errutil"
-	"github.com/river-now/river/kit/esbuildutil"
-	"github.com/river-now/river/kit/executil"
-	"github.com/river-now/river/kit/fsutil"
-	"github.com/river-now/river/kit/typed"
-	"github.com/river-now/river/wave/internal/ki/configschema"
+	"github.com/vormadev/vorma/kit/errutil"
+	"github.com/vormadev/vorma/kit/esbuildutil"
+	"github.com/vormadev/vorma/kit/executil"
+	"github.com/vormadev/vorma/kit/fsutil"
+	"github.com/vormadev/vorma/kit/typed"
+	"github.com/vormadev/vorma/wave/internal/ki/configschema"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -294,7 +294,7 @@ func (c *Config) __processCSS(nature string) error {
 
 	if nature == "normal" {
 		// first, delete the old normal.css file(s)
-		oldNormalPath := filepath.Join(outputPath, "river_out_river_internal_normal_*.css")
+		oldNormalPath := filepath.Join(outputPath, "vorma_out_vorma_internal_normal_*.css")
 		oldNormalFiles, err := filepath.Glob(oldNormalPath)
 		if err != nil {
 			return fmt.Errorf("error finding old normal CSS files: %w", err)
@@ -308,7 +308,7 @@ func (c *Config) __processCSS(nature string) error {
 		// Hash the css output
 		outputFileName = getHashedFilename(
 			result.OutputFiles[0].Contents,
-			"river_internal_normal.css",
+			"vorma_internal_normal.css",
 		)
 	}
 

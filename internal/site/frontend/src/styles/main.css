@@ -64,7 +64,7 @@ body {
 }
 
 body,
-#river-root {
+#vorma-root {
 	max-width: 100dvw;
 }
 
@@ -94,11 +94,11 @@ button:active {
 
 /* Big heading (hero/page title) */
 .big-heading {
-	font-size: 2.125rem;
-	font-weight: 400;
+	font-size: 1.875rem;
+	font-weight: 500;
 	font-style: italic;
 	line-height: 1.425;
-	opacity: 0.95;
+	opacity: 0.8;
 }
 
 /* Standard headings */
@@ -444,7 +444,7 @@ nav .logo:hover {
 /* ============================================
    LAYOUT
    ============================================ */
-#river-root {
+#vorma-root {
 	padding: 0 1.75rem;
 	width: 100%;
 	display: flex;
@@ -544,7 +544,7 @@ footer span {
 	}
 
 	/* Layout adjustments */
-	#river-root {
+	#vorma-root {
 		padding: 0 1.25rem;
 	}
 

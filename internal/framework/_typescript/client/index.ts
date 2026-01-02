@@ -5,8 +5,8 @@ export {
 	getRootEl,
 	getStatus,
 	revalidate,
-	riverNavigate,
 	submit,
+	vormaNavigate,
 	type SubmitOptions,
 } from "./src/client.ts";
 export { __registerClientLoaderPattern } from "./src/client_loaders.ts";
@@ -23,6 +23,18 @@ export { setupGlobalLoadingIndicator } from "./src/global_loading_indicator/glob
 export { __runClientLoadersAfterHMRUpdate } from "./src/hmr/hmr.ts";
 export { initClient } from "./src/init_client.ts";
 export { __getPrefetchHandlers, __makeLinkOnClickFn } from "./src/links.ts";
+export { __applyScrollState } from "./src/scroll_state_manager.ts";
+export { route } from "./src/static_route_defs/route_def_helpers.ts";
+export {
+	__makeFinalLinkProps,
+	type VormaLinkPropsBase,
+} from "./src/ui_lib_impl_helpers/link_components.ts";
+export {
+	type ParamsForPattern,
+	type UseRouterDataFunction,
+	type VormaRouteGeneric,
+} from "./src/ui_lib_impl_helpers/route_components.ts";
+export { makeTypedNavigate } from "./src/ui_lib_impl_helpers/typed_navigate.ts";
 export {
 	__resolvePath,
 	buildMutationURL,
@@ -30,35 +42,23 @@ export {
 	resolveBody,
 	type ExtractApp,
 	type PermissivePatternBasedProps,
-	type RiverAppBase,
-	type RiverAppConfig,
-	type RiverLoaderOutput,
-	type RiverLoaderPattern,
-	type RiverMutationInput,
-	type RiverMutationOutput,
-	type RiverMutationPattern,
-	type RiverMutationProps,
-	type RiverQueryInput,
-	type RiverQueryOutput,
-	type RiverQueryPattern,
-	type RiverQueryProps,
-	type RiverRoutePropsGeneric,
-} from "./src/river_app_helpers/river_app_helpers.ts";
+	type VormaAppBase,
+	type VormaAppConfig,
+	type VormaLoaderOutput,
+	type VormaLoaderPattern,
+	type VormaMutationInput,
+	type VormaMutationOutput,
+	type VormaMutationPattern,
+	type VormaMutationProps,
+	type VormaQueryInput,
+	type VormaQueryOutput,
+	type VormaQueryPattern,
+	type VormaQueryProps,
+	type VormaRoutePropsGeneric,
+} from "./src/vorma_app_helpers/vorma_app_helpers.ts";
 export {
-	__riverClientGlobal,
+	__vormaClientGlobal,
 	getRouterData,
 	type ClientLoaderAwaitedServerData,
-} from "./src/river_ctx/river_ctx.ts";
-export { __applyScrollState } from "./src/scroll_state_manager.ts";
-export { route } from "./src/static_route_defs/route_def_helpers.ts";
-export {
-	__makeFinalLinkProps,
-	type RiverLinkPropsBase,
-} from "./src/ui_lib_impl_helpers/link_components.ts";
-export {
-	type ParamsForPattern,
-	type RiverRouteGeneric,
-	type UseRouterDataFunction,
-} from "./src/ui_lib_impl_helpers/route_components.ts";
-export { makeTypedNavigate } from "./src/ui_lib_impl_helpers/typed_navigate.ts";
+} from "./src/vorma_ctx/vorma_ctx.ts";
 export { revalidateOnWindowFocus } from "./src/window_focus_revalidation/window_focus_revalidation.ts";

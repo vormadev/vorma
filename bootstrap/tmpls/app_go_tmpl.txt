@@ -3,8 +3,8 @@ package backend
 import (
 	"embed"
 
-	"github.com/river-now/river/kit/fsutil"
-	"github.com/river-now/river/wave"
+	"github.com/vormadev/vorma/kit/fsutil"
+	"github.com/vormadev/vorma/wave"
 )
 
 //go:embed all:dist/static wave.config.json

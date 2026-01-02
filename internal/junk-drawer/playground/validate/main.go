@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/river-now/river/kit/validate"
+	"github.com/vormadev/vorma/kit/validate"
 )
 
 type FirstName string

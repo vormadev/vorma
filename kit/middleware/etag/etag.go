@@ -187,7 +187,7 @@ func canUseETag(ew *etagWriter) bool {
 }
 
 func generateETag(h hash.Hash, strong bool, headers http.Header) string {
-	if buildID := headers.Get("X-River-Build-Id"); buildID != "" {
+	if buildID := headers.Get("X-Vorma-Build-Id"); buildID != "" {
 		h.Write([]byte(buildID))
 	}
 

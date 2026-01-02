@@ -16,7 +16,7 @@
 	],
 	"headers": [
 		{
-			"source": "/river_out_(.*).(.*)",
+			"source": "/vorma_out_(.*).(.*)",
 			"headers": [
 				{
 					"key": "Cache-Control",

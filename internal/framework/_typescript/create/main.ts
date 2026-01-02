@@ -25,7 +25,7 @@ async function main() {
 	const isLocalTest = args.includes("--local-test");
 
 	console.log();
-	intro("Welcome to the River new app creator!");
+	intro("Welcome to the Vorma new app creator!");
 
 	// Check Go installation
 	let goVersion = "";
@@ -72,7 +72,7 @@ async function main() {
 
 	// Option to create a new directory at start if not already in desired location
 	const createNewDir = await confirm({
-		message: "Create a new directory for your River app?",
+		message: "Create a new directory for your Vorma app?",
 		initialValue: true,
 	});
 
@@ -191,12 +191,12 @@ async function main() {
 		try {
 			execSync(`go mod init ${moduleName}`, { cwd: moduleRoot });
 			if (isLocalTest) {
-				const riverPath = path.resolve(__dirname, "../../../../../");
+				const vormaPath = path.resolve(__dirname, "../../../../../");
 				execSync(
-					`go mod edit -replace github.com/river-now/river=${riverPath}`,
+					`go mod edit -replace github.com/vormadev/vorma=${vormaPath}`,
 					{ cwd: moduleRoot },
 				);
-				log.info("Using local River code for testing");
+				log.info("Using local Vorma code for testing");
 			}
 			s.stop("Go module initialized");
 		} catch (error) {
@@ -218,7 +218,7 @@ async function main() {
 	);
 	if (underscoreSegments.length > 0) {
 		cancel(
-			`Cannot create River app in a path containing directories that start with underscores:\n   ${underscoreSegments.join(", ")}\n` +
+			`Cannot create Vorma app in a path containing directories that start with underscores:\n   ${underscoreSegments.join(", ")}\n` +
 				`   Go ignores directories starting with underscores, which will cause build issues.`,
 		);
 		process.exit(1);
@@ -302,7 +302,7 @@ async function main() {
 	console.log("🛠️  Preparing bootstrapper...");
 
 	// Create temporary directory
-	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "create-river-"));
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "create-vorma-"));
 	const bootstrapFile = path.join(tempDir, "main.go");
 
 	// Extract Go version string (e.g., "go1.24.0")
@@ -313,7 +313,7 @@ async function main() {
 		// Write bootstrap Go file
 		const goCode = `package main
 
-import "github.com/river-now/river/bootstrap"
+import "github.com/vormadev/vorma/bootstrap"
 
 func main() {
 	bootstrap.Init(bootstrap.Options{
@@ -333,16 +333,16 @@ func main() {
 `;
 		fs.writeFileSync(bootstrapFile, goCode);
 
-		// Install River dependency
+		// Install Vorma dependency
 		const packageJsonPath = path.join(__dirname, "../package.json");
 		const packageJson = JSON.parse(
 			fs.readFileSync(packageJsonPath, "utf8"),
 		);
 		const version = packageJson.version;
 		const usingExistingModule = !createNewModule;
-		const skipRiverGet = isLocalTest && usingExistingModule;
-		if (!skipRiverGet) {
-			execSync(`go get github.com/river-now/river@v${version}`, {
+		const skipVormaGet = isLocalTest && usingExistingModule;
+		if (!skipVormaGet) {
+			execSync(`go get github.com/vormadev/vorma@v${version}`, {
 				cwd: process.cwd(),
 				stdio: "pipe",
 			});

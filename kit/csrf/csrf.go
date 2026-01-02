@@ -18,10 +18,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/river-now/river/kit/cookies"
-	"github.com/river-now/river/kit/cryptoutil"
-	"github.com/river-now/river/kit/netutil"
-	"github.com/river-now/river/kit/response"
+	"github.com/vormadev/vorma/kit/cookies"
+	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/netutil"
+	"github.com/vormadev/vorma/kit/response"
 )
 
 const nonceSize = 16 // Size, in bytes, of the random nonce used in the CSRF token payload.

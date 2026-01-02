@@ -3,8 +3,8 @@ package robotstxt
 import (
 	"net/http"
 
-	"github.com/river-now/river/kit/middleware"
-	"github.com/river-now/river/kit/response"
+	"github.com/vormadev/vorma/kit/middleware"
+	"github.com/vormadev/vorma/kit/response"
 )
 
 var (

@@ -8,10 +8,10 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/river-now/river/kit/dirs"
-	"github.com/river-now/river/kit/matcher"
-	"github.com/river-now/river/kit/safecache"
-	"github.com/river-now/river/kit/viteutil"
+	"github.com/vormadev/vorma/kit/dirs"
+	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/kit/safecache"
+	"github.com/vormadev/vorma/kit/viteutil"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -165,7 +165,7 @@ var TimingEnum = struct {
 
 type UserConfig struct {
 	Core  *UserConfigCore
-	River *UserConfigRiver
+	Vorma *UserConfigVorma
 	Vite  *UserConfigVite
 	Watch *UserConfigWatch
 }
@@ -203,33 +203,33 @@ type UserConfigVite struct {
 	ViteConfigFile          string
 }
 
-type UserConfigRiver struct {
+type UserConfigVorma struct {
 	IncludeDefaults            *bool
 	UIVariant                  string
 	HTMLTemplateLocation       string // Relative to your static private dir
 	ClientEntry                string
 	ClientRouteDefsFile        string
-	TSGenOutPath               string // e.g., "frontend/src/river.gen.ts"
+	TSGenOutPath               string // e.g., "frontend/src/vorma.gen.ts"
 	BuildtimePublicURLFuncName string // e.g., "waveURL", "withHash", etc.
 }
 
-func (c *Config) GetRiverUIVariant() string {
-	return c._uc.River.UIVariant
+func (c *Config) GetVormaUIVariant() string {
+	return c._uc.Vorma.UIVariant
 }
-func (c *Config) GetRiverHTMLTemplateLocation() string {
-	return c._uc.River.HTMLTemplateLocation
+func (c *Config) GetVormaHTMLTemplateLocation() string {
+	return c._uc.Vorma.HTMLTemplateLocation
 }
-func (c *Config) GetRiverClientEntry() string {
-	return c._uc.River.ClientEntry
+func (c *Config) GetVormaClientEntry() string {
+	return c._uc.Vorma.ClientEntry
 }
-func (c *Config) GetRiverClientRouteDefsFile() string {
-	return c._uc.River.ClientRouteDefsFile
+func (c *Config) GetVormaClientRouteDefsFile() string {
+	return c._uc.Vorma.ClientRouteDefsFile
 }
-func (c *Config) GetRiverTSGenOutPath() string {
-	return c._uc.River.TSGenOutPath
+func (c *Config) GetVormaTSGenOutPath() string {
+	return c._uc.Vorma.TSGenOutPath
 }
-func (c *Config) GetRiverBuildtimePublicURLFuncName() string {
-	funcName := c._uc.River.BuildtimePublicURLFuncName
+func (c *Config) GetVormaBuildtimePublicURLFuncName() string {
+	funcName := c._uc.Vorma.BuildtimePublicURLFuncName
 	if funcName == "" {
 		funcName = "waveBuildtimeURL"
 	}

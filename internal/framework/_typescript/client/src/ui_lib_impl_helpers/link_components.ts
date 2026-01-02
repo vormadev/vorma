@@ -1,8 +1,8 @@
 import { __getPrefetchHandlers, __makeLinkOnClickFn } from "../links.ts";
-import { __resolvePath } from "../river_app_helpers/river_app_helpers.ts";
-import { __riverClientGlobal } from "../river_ctx/river_ctx.ts";
+import { __resolvePath } from "../vorma_app_helpers/vorma_app_helpers.ts";
+import { __vormaClientGlobal } from "../vorma_ctx/vorma_ctx.ts";
 
-export type RiverLinkPropsBase<LinkOnClickCallback> = {
+export type VormaLinkPropsBase<LinkOnClickCallback> = {
 	href?: string;
 	prefetch?: "intent";
 	prefetchDelayMs?: number;
@@ -15,7 +15,7 @@ export type RiverLinkPropsBase<LinkOnClickCallback> = {
 };
 
 function linkPropsToPrefetchObj<LinkOnClickCallback>(
-	props: RiverLinkPropsBase<LinkOnClickCallback>,
+	props: VormaLinkPropsBase<LinkOnClickCallback>,
 ) {
 	if (!props.href || props.prefetch !== "intent") {
 		return undefined;
@@ -34,7 +34,7 @@ function linkPropsToPrefetchObj<LinkOnClickCallback>(
 }
 
 function linkPropsToOnClickFn<LinkOnClickCallback>(
-	props: RiverLinkPropsBase<LinkOnClickCallback>,
+	props: VormaLinkPropsBase<LinkOnClickCallback>,
 ) {
 	return __makeLinkOnClickFn({
 		beforeBegin: props.beforeBegin as any,
@@ -65,7 +65,7 @@ const standardCamelHandlerKeys = {
 } satisfies handlerKeys;
 
 export function __makeFinalLinkProps<LinkOnClickCallback>(
-	props: RiverLinkPropsBase<LinkOnClickCallback>,
+	props: VormaLinkPropsBase<LinkOnClickCallback>,
 	keys: {
 		onPointerEnter: string;
 		onFocus: string;
@@ -94,7 +94,7 @@ export function __makeFinalLinkProps<LinkOnClickCallback>(
 		onPointerLeave: (e: any) => {
 			// we don't want to stop on a touch device, because this triggers
 			// even when the user "clicks" on the link for some reason
-			if (!__riverClientGlobal.get("isTouchDevice")) {
+			if (!__vormaClientGlobal.get("isTouchDevice")) {
 				prefetchObj?.stop();
 			}
 			if (isFn((props as any)[keys.onPointerLeave])) {
