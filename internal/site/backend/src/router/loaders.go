@@ -65,12 +65,12 @@ var _ = NewLoader("/*", func(c *LoaderCtx) (*fsmarkdown.DetailedPage, error) {
 
 	if data.Title != "" {
 		e.Title(fmt.Sprintf("%s | %s", SiteTitle, data.Title))
-		e.PropertyContent("og:title", data.Title)
+		e.MetaPropertyContent("og:title", data.Title)
 	}
 
 	if data.Description != "" {
 		e.Description(data.Description)
-		e.PropertyContent("og:description", data.Description)
+		e.MetaPropertyContent("og:description", data.Description)
 	}
 
 	return data, nil

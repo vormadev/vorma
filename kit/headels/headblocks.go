@@ -469,9 +469,9 @@ func (h *HeadEls) CrossOrigin(crossOrigin string) *Attr {
 
 /////// Common combinations
 
-func (h *HeadEls) PropertyContent(property, content string) {
+func (h *HeadEls) MetaPropertyContent(property, content string) {
 	h.Meta(h.Property(property), h.Content(content))
 }
-func (h *HeadEls) NameContent(name, content string) {
+func (h *HeadEls) MetaNameContent(name, content string) {
 	h.Meta(h.Name(name), h.Content(content))
 }
