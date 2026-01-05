@@ -195,10 +195,10 @@ func (h *Vorma) get_ui_data_stage_1(
 		}
 	}
 
-	loadersHeadEls := make([][]*htmlutil.Element, numberOfLoaders)
+	loadersHeadEls := make([][]*htmlutil.Element, 0, numberOfLoaders)
 	for _, _response_proxy := range _tasks_results.ResponseProxies {
 		if _response_proxy != nil {
-			loadersHeadEls = append(loadersHeadEls, _response_proxy.GetHeadElements())
+			loadersHeadEls = append(loadersHeadEls, _response_proxy.GetHeadEls().Collect())
 		}
 	}
 

@@ -80,8 +80,8 @@ docker-site:
 docker-run-site:
 	@docker run -d -p $(PORT):$(PORT) -e PORT=$(PORT) vorma-site
 
-repoconcat:
-	@go run ./internal/scripts/repoconcat
+sum:
+	@go run ./internal/scripts/sum
 
 run-create: tsreset npmbuild nuke-node-modules
 	@mkdir -p test_create.local && \

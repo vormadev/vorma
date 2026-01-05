@@ -20,7 +20,7 @@ import (
 )
 
 type FrontmatterParser = func(io.Reader, any) ([]byte, error)
-type MarkdownParser = func([]byte) []byte
+type MarkdownParser = func([]byte, io.Writer) error
 
 // Do not initialize manually. Always create with New().
 type Instance struct {
@@ -381,9 +381,49 @@ func (inst *Instance) parseMarkdown(fileBytes []byte, cleanPath string, isFolder
 	}
 
 	p.RawContent = string(rest)
-	p.Content = template.HTML(inst.MarkdownParser(rest))
+
+	var buf bytes.Buffer
+	if err := inst.MarkdownParser(rest, &buf); err != nil {
+		return nil, err
+	}
+	p.Content = template.HTML(buf.String())
+
 	p.URL = cleanPath
 	p.IsFolder = isFolder
 
 	return &p, nil
+}
+
+func (md *Instance) PlainTextMiddleware(pathPrefixes ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			match := false
+			for _, p := range pathPrefixes {
+				if strings.HasPrefix(r.URL.Path, p) {
+					match = true
+					break
+				}
+			}
+			if !match {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			accept := r.Header.Get("Accept")
+			if !strings.Contains(accept, "text/plain") && !strings.Contains(accept, "text/markdown") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			markdown, err := md.GetPlainMarkdown(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(markdown))
+		})
+	}
 }

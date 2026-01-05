@@ -10,7 +10,8 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 )
 
-func (h *Vorma) Init() *Vorma {
+// Inits Vorma. Panics on error in production; logs error in dev mode.
+func (h *Vorma) Init() {
 	isDev := h.GetIsDev()
 	if err := h.initInner(isDev); err != nil {
 		wrapped := fmt.Errorf("error initializing Vorma: %w", err)
@@ -22,7 +23,21 @@ func (h *Vorma) Init() *Vorma {
 	} else {
 		Log.Info("Vorma initialized", "build id", h._buildID)
 	}
-	return h
+}
+
+// Inits Vorma and returns a default mux.Router with all loaders and actions registered.
+// To use a different router, call Vorma.Init() and then register the handlers manually
+// with whatever third-party router you may want to use (see the implementation of this
+// function for reference on how to do that).
+func (h *Vorma) InitWithDefaultRouter() *mux.Router {
+	h.Init()
+	r := mux.NewRouter()
+	loaders, actions := h.Loaders(), h.Actions()
+	r.RegisterHandler("GET", loaders.HandlerMountPattern(), loaders.Handler())
+	for m := range actions.SupportedMethods() {
+		r.RegisterHandler(m, actions.HandlerMountPattern(), actions.Handler())
+	}
+	return r
 }
 
 // RUNTIME! Gets called from the handler maker, which gets called by the user's router init function.

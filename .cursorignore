@@ -1,0 +1,8 @@
+**/node_modules/
+**/*.local
+**/*.local.*
+.hooks/
+.vscode/
+internal/junk-drawer/
+internal/site/backend/dist
+npm_dist/
