@@ -41,7 +41,7 @@ func (inst *Instance) InitUniqueRules(e *HeadEls) {
 	inst.once.Do(func() {
 		inst.uniqueRulesByTag = make(map[string][]*ruleAttrs)
 		if e == nil {
-			e = New(2)
+			e = New()
 		}
 		e.Add(Tag("title"))
 		e.Meta(e.Name("description"))
@@ -342,14 +342,8 @@ func FromRaw(els []*htmlutil.Element) *HeadEls {
 	return &HeadEls{els: els}
 }
 
-func New(size ...int) *HeadEls {
-	var els []*htmlutil.Element
-	if len(size) > 0 {
-		els = make([]*htmlutil.Element, 0, size[0])
-	} else {
-		els = make([]*htmlutil.Element, 0)
-	}
-	return &HeadEls{els: els}
+func New() *HeadEls {
+	return &HeadEls{els: make([]*htmlutil.Element, 0)}
 }
 
 func (h *HeadEls) Add(defs ...typeInterface) {

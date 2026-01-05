@@ -7,13 +7,14 @@ import (
 	"io/fs"
 	"path"
 
+	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 )
 
 // Inits Vorma. Panics on error in production; logs error in dev mode.
-func (h *Vorma) Init() {
-	isDev := h.GetIsDev()
-	if err := h.initInner(isDev); err != nil {
+func (v *Vorma) Init() {
+	isDev := v.GetIsDev()
+	if err := v.initInner(isDev); err != nil {
 		wrapped := fmt.Errorf("error initializing Vorma: %w", err)
 		if isDev {
 			Log.Error(wrapped.Error())
@@ -21,7 +22,7 @@ func (h *Vorma) Init() {
 			panic(wrapped)
 		}
 	} else {
-		Log.Info("Vorma initialized", "build id", h._buildID)
+		Log.Info("Vorma initialized", "build id", v._buildID)
 	}
 }
 
@@ -29,10 +30,10 @@ func (h *Vorma) Init() {
 // To use a different router, call Vorma.Init() and then register the handlers manually
 // with whatever third-party router you may want to use (see the implementation of this
 // function for reference on how to do that).
-func (h *Vorma) InitWithDefaultRouter() *mux.Router {
-	h.Init()
+func (v *Vorma) InitWithDefaultRouter() *mux.Router {
+	v.Init()
 	r := mux.NewRouter()
-	loaders, actions := h.Loaders(), h.Actions()
+	loaders, actions := v.Loaders(), v.Actions()
 	r.RegisterHandler("GET", loaders.HandlerMountPattern(), loaders.Handler())
 	for m := range actions.SupportedMethods() {
 		r.RegisterHandler(m, actions.HandlerMountPattern(), actions.Handler())
@@ -41,13 +42,13 @@ func (h *Vorma) InitWithDefaultRouter() *mux.Router {
 }
 
 // RUNTIME! Gets called from the handler maker, which gets called by the user's router init function.
-func (h *Vorma) validateAndDecorateNestedRouter(nestedRouter *mux.NestedRouter) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+func (v *Vorma) validateAndDecorateNestedRouter(nestedRouter *mux.NestedRouter) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
 	if nestedRouter == nil {
 		panic("nestedRouter is nil")
 	}
-	for _, p := range h._paths {
+	for _, p := range v._paths {
 		_is_already_registered := nestedRouter.IsRegistered(p.OriginalPattern)
 		if !_is_already_registered {
 			mux.RegisterNestedPatternWithoutHandler(nestedRouter, p.OriginalPattern)
@@ -69,59 +70,61 @@ func PrettyPrintFS(fsys fs.FS) error {
 	})
 }
 
-func (h *Vorma) initInner(isDev bool) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h._isDev = isDev
-	privateFS, err := h.Wave.GetPrivateFS()
+func (v *Vorma) initInner(isDev bool) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v._isDev = isDev
+	privateFS, err := v.Wave.GetPrivateFS()
 	if err != nil {
 		wrapped := fmt.Errorf("could not get private fs: %w", err)
 		Log.Error(wrapped.Error())
 		return wrapped
 	}
-	h._privateFS = privateFS
-	pathsFile, err := h.getBasePaths_StageOneOrTwo(isDev)
+	v._privateFS = privateFS
+	pathsFile, err := v.getBasePaths_StageOneOrTwo(isDev)
 	if err != nil {
 		wrapped := fmt.Errorf("could not get base paths: %w", err)
 		Log.Error(wrapped.Error())
 		return wrapped
 	}
-	h._buildID = pathsFile.BuildID
-	if h._paths == nil {
-		h._paths = make(map[string]*Path, len(pathsFile.Paths))
+	v._buildID = pathsFile.BuildID
+	if v._paths == nil {
+		v._paths = make(map[string]*Path, len(pathsFile.Paths))
 	}
 	for _, p := range pathsFile.Paths {
-		h._paths[p.OriginalPattern] = p
+		v._paths[p.OriginalPattern] = p
 	}
-	h._clientEntrySrc = pathsFile.ClientEntrySrc
-	h._clientEntryOut = pathsFile.ClientEntryOut
-	h._clientEntryDeps = pathsFile.ClientEntryDeps
-	h._depToCSSBundleMap = pathsFile.DepToCSSBundleMap
-	if h._depToCSSBundleMap == nil {
-		h._depToCSSBundleMap = make(map[string]string)
+	v._clientEntrySrc = pathsFile.ClientEntrySrc
+	v._clientEntryOut = pathsFile.ClientEntryOut
+	v._clientEntryDeps = pathsFile.ClientEntryDeps
+	v._depToCSSBundleMap = pathsFile.DepToCSSBundleMap
+	if v._depToCSSBundleMap == nil {
+		v._depToCSSBundleMap = make(map[string]string)
 	}
-	h._routeManifestFile = pathsFile.RouteManifestFile
-	tmpl, err := template.ParseFS(h._privateFS, h.Wave.GetVormaHTMLTemplateLocation())
+	v._routeManifestFile = pathsFile.RouteManifestFile
+	tmpl, err := template.ParseFS(v._privateFS, v.Wave.GetVormaHTMLTemplateLocation())
 	if err != nil {
 		return fmt.Errorf("error parsing root template: %w", err)
 	}
-	h._rootTemplate = tmpl
-	if h.getHeadElUniqueRules != nil {
-		headElsInstance.InitUniqueRules(h.getHeadElUniqueRules())
+	v._rootTemplate = tmpl
+	if v.getHeadElUniqueRules != nil {
+		headEls := headels.New()
+		v.getHeadElUniqueRules(headEls)
+		headElsInstance.InitUniqueRules(headEls)
 	} else {
 		headElsInstance.InitUniqueRules(nil)
 	}
-	h._serverAddr = fmt.Sprintf(":%d", h.MustGetPort())
+	v._serverAddr = fmt.Sprintf(":%d", v.MustGetPort())
 	return nil
 }
 
-func (h *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*PathsFile, error) {
+func (v *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*PathsFile, error) {
 	fileToUse := VormaPathsStageOneJSONFileName
 	if !isDev {
 		fileToUse = VormaPathsStageTwoJSONFileName
 	}
 	pathsFile := PathsFile{}
-	file, err := h._privateFS.Open(path.Join("vorma_out", fileToUse))
+	file, err := v._privateFS.Open(path.Join("vorma_out", fileToUse))
 	if err != nil {
 		wrapped := fmt.Errorf("could not open %s: %v", fileToUse, err)
 		Log.Error(wrapped.Error())

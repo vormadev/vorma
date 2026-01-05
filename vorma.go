@@ -47,7 +47,6 @@ var (
 	SetModeToDev = wave.SetModeToDev
 
 	IsJSONRequest          = rf.IsJSONRequest
-	NewHeadEls             = headels.New
 	VormaBuildIDHeaderKey  = rf.VormaBuildIDHeaderKey
 	EnableThirdPartyRouter = mux.InjectTasksCtxMiddleware
 )

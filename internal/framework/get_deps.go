@@ -2,7 +2,7 @@ package vorma
 
 import "github.com/vormadev/vorma/kit/matcher"
 
-func (h *Vorma) getDeps(_matches []*matcher.Match) []string {
+func (v *Vorma) getDeps(_matches []*matcher.Match) []string {
 	var deps []string
 	seen := make(map[string]struct{}, len(_matches))
 	handleDeps := func(src []string) {
@@ -13,11 +13,11 @@ func (h *Vorma) getDeps(_matches []*matcher.Match) []string {
 			}
 		}
 	}
-	if h._clientEntryDeps != nil {
-		handleDeps(h._clientEntryDeps)
+	if v._clientEntryDeps != nil {
+		handleDeps(v._clientEntryDeps)
 	}
 	for _, match := range _matches {
-		path := h._paths[match.OriginalPattern()]
+		path := v._paths[match.OriginalPattern()]
 		if path == nil {
 			continue
 		}
@@ -27,15 +27,15 @@ func (h *Vorma) getDeps(_matches []*matcher.Match) []string {
 }
 
 // order matters
-func (h *Vorma) getCSSBundles(deps []string) []string {
+func (v *Vorma) getCSSBundles(deps []string) []string {
 	cssBundles := make([]string, 0, len(deps))
 	// first, client entry CSS
-	if x, exists := h._depToCSSBundleMap[h._clientEntryOut]; exists {
+	if x, exists := v._depToCSSBundleMap[v._clientEntryOut]; exists {
 		cssBundles = append(cssBundles, x)
 	}
 	// then all downstream deps
 	for _, dep := range deps {
-		if x, exists := h._depToCSSBundleMap[dep]; exists {
+		if x, exists := v._depToCSSBundleMap[dep]; exists {
 			cssBundles = append(cssBundles, x)
 		}
 	}

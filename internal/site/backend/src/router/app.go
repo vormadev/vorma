@@ -22,22 +22,18 @@ const (
 var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
 
-	GetHeadElUniqueRules: func() *vorma.HeadEls {
-		e := vorma.NewHeadEls(8)
-
-		e.Meta(e.Property("og:title"))
-		e.Meta(e.Property("og:description"))
-		e.Meta(e.Property("og:type"))
-		e.Meta(e.Property("og:image"))
-		e.Meta(e.Property("og:url"))
-		e.Meta(e.Name("twitter:card"))
-		e.Meta(e.Name("twitter:site"))
-		e.Link(e.Rel("icon"))
-
-		return e
+	GetHeadElUniqueRules: func(h *vorma.HeadEls) {
+		h.Meta(h.Property("og:title"))
+		h.Meta(h.Property("og:description"))
+		h.Meta(h.Property("og:type"))
+		h.Meta(h.Property("og:image"))
+		h.Meta(h.Property("og:url"))
+		h.Meta(h.Name("twitter:card"))
+		h.Meta(h.Name("twitter:site"))
+		h.Link(h.Rel("icon"))
 	},
 
-	GetDefaultHeadEls: func(r *http.Request, app *vorma.Vorma) (*vorma.HeadEls, error) {
+	GetDefaultHeadEls: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadEls) error {
 		currentURL := "https://" + path.Join(Domain, r.URL.Path)
 
 		ogImgURL := app.GetPublicURL("vorma-banner.webp")
@@ -47,37 +43,35 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 			ogImgURL = "https://" + path.Join(Domain, ogImgURL)
 		}
 
-		e := vorma.NewHeadEls(12)
+		h.Title(SiteTitle)
+		h.Description(SiteDescription)
 
-		e.Title(SiteTitle)
-		e.Description(SiteDescription)
+		h.MetaPropertyContent("og:title", SiteTitle)
+		h.MetaPropertyContent("og:description", SiteDescription)
+		h.MetaPropertyContent("og:type", "website")
+		h.MetaPropertyContent("og:image", ogImgURL)
+		h.MetaPropertyContent("og:url", currentURL)
 
-		e.Meta(e.Property("og:title"), e.Content(SiteTitle))
-		e.Meta(e.Property("og:description"), e.Content(SiteDescription))
-		e.Meta(e.Property("og:type"), e.Content("website"))
-		e.Meta(e.Property("og:image"), e.Content(ogImgURL))
-		e.Meta(e.Property("og:url"), e.Content(currentURL))
+		h.MetaNameContent("twitter:card", "summary_large_image")
+		h.MetaNameContent("twitter:site", "@vormadev")
 
-		e.Meta(e.Name("twitter:card"), e.Content("summary_large_image"))
-		e.Meta(e.Name("twitter:site"), e.Content("@vormadev"))
-
-		e.Link(e.Rel("icon"), e.Attr("href", favURL), e.Attr("type", "image/svg+xml"))
+		h.Link(h.Rel("icon"), h.Href(favURL), h.Type("image/svg+xml"))
 
 		for _, fontFile := range []string{
 			"fonts/jetbrains_mono.woff2",
 			"fonts/jetbrains_mono_italic.woff2",
 		} {
 			fontURL := app.GetPublicURL(fontFile)
-			e.Link(
-				e.Rel("preload"),
-				e.Attr("as", "font"),
-				e.Attr("type", "font/woff2"),
-				e.Attr("crossorigin", "anonymous"),
-				e.Attr("href", fontURL),
+			h.Link(
+				h.Rel("preload"),
+				h.As("font"),
+				h.Type("font/woff2"),
+				h.CrossOrigin("anonymous"),
+				h.Href(fontURL),
 			)
 		}
 
-		return e, nil
+		return nil
 	},
 
 	GetRootTemplateData: func(r *http.Request) (map[string]any, error) {

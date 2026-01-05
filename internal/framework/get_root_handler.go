@@ -21,19 +21,19 @@ const VormaJSONQueryKey = "vorma_json"
 var headElsInstance = headels.NewInstance("vorma")
 
 // Deprecated: use GetLoadersHandler instead.
-func (h *Vorma) GetUIHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
-	return h.GetLoadersHandler(nestedRouter)
+func (v *Vorma) GetUIHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
+	return v.GetLoadersHandler(nestedRouter)
 }
 
-func (h *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
-	h.validateAndDecorateNestedRouter(nestedRouter)
+func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
+	v.validateAndDecorateNestedRouter(nestedRouter)
 
 	handler := mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
-		res.SetHeader(VormaBuildIDHeaderKey, h._buildID)
+		res.SetHeader(VormaBuildIDHeaderKey, v._buildID)
 
 		isJSON := IsJSONRequest(r)
-		if isJSON && !h.IsCurrentBuildJSONRequest(r) {
+		if isJSON && !v.IsCurrentBuildJSONRequest(r) {
 			newURL, err := url.Parse(r.URL.Path)
 			if err != nil {
 				Log.Error(fmt.Sprintf("Error parsing URL: %v\n", err))
@@ -48,7 +48,7 @@ func (h *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			return
 		}
 
-		uiRouteData := h.getUIRouteData(w, r, nestedRouter, isJSON)
+		uiRouteData := v.getUIRouteData(w, r, nestedRouter, isJSON)
 
 		if uiRouteData.notFound {
 			res.NotFound()
@@ -98,14 +98,14 @@ func (h *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 				return fmt.Errorf("error getting head elements: %w", err)
 			}
 			headElements = he
-			headElements += "\n" + h.Wave.GetCriticalCSSStyleElement()
-			headElements += "\n" + h.Wave.GetStyleSheetLinkElement()
+			headElements += "\n" + v.Wave.GetCriticalCSSStyleElement()
+			headElements += "\n" + v.Wave.GetStyleSheetLinkElement()
 
 			return nil
 		})
 
 		eg.Go(func() error {
-			sih, err := h.getSSRInnerHTML(routeData)
+			sih, err := v.getSSRInnerHTML(routeData)
 			if err != nil {
 				return fmt.Errorf("error getting SSR inner HTML: %w", err)
 			}
@@ -122,8 +122,8 @@ func (h *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 
 		var rootTemplateData map[string]any
 		var err error
-		if h.getRootTemplateData != nil {
-			rootTemplateData, err = h.getRootTemplateData(r)
+		if v.getRootTemplateData != nil {
+			rootTemplateData, err = v.getRootTemplateData(r)
 		} else {
 			rootTemplateData = make(map[string]any)
 		}
@@ -138,16 +138,16 @@ func (h *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		rootTemplateData["VormaSSRScriptSha256Hash"] = ssrScriptSha256Hash
 		rootTemplateData["VormaRootID"] = "vorma-root"
 
-		if !h._isDev {
+		if !v._isDev {
 			rootTemplateData["VormaBodyScripts"] = template.HTML(
 				fmt.Sprintf(
 					`<script type="module" src="%s%s"></script>`,
-					h.Wave.GetPublicPathPrefix(), h._clientEntryOut,
+					v.Wave.GetPublicPathPrefix(), v._clientEntryOut,
 				),
 			)
 		} else {
-			opts := viteutil.ToDevScriptsOptions{ClientEntry: h._clientEntrySrc}
-			if UIVariant(h.Wave.GetVormaUIVariant()) == UIVariants.React {
+			opts := viteutil.ToDevScriptsOptions{ClientEntry: v._clientEntrySrc}
+			if UIVariant(v.Wave.GetVormaUIVariant()) == UIVariants.React {
 				opts.Variant = viteutil.Variants.React
 			} else {
 				opts.Variant = viteutil.Variants.Other
@@ -160,12 +160,12 @@ func (h *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 				return
 			}
 
-			rootTemplateData["VormaBodyScripts"] = devScripts + "\n" + h.Wave.GetRefreshScript()
+			rootTemplateData["VormaBodyScripts"] = devScripts + "\n" + v.Wave.GetRefreshScript()
 		}
 
 		var buf bytes.Buffer
 
-		err = h._rootTemplate.Execute(&buf, rootTemplateData)
+		err = v._rootTemplate.Execute(&buf, rootTemplateData)
 		if err != nil {
 			Log.Error(fmt.Sprintf("Error executing template: %v\n", err))
 			res.InternalServerError()
@@ -184,19 +184,19 @@ func IsJSONRequest(r *http.Request) bool {
 
 // If true, is both (1) JSON and (2) guaranteed to be from a client
 // that has knowledge of the latest build ID.
-func (h *Vorma) IsCurrentBuildJSONRequest(r *http.Request) bool {
-	return r.URL.Query().Get(VormaJSONQueryKey) == h._buildID
+func (v *Vorma) IsCurrentBuildJSONRequest(r *http.Request) bool {
+	return r.URL.Query().Get(VormaJSONQueryKey) == v._buildID
 }
 
 // GetCurrentBuildID returns the current build ID of the Vorma instance.
-func (h *Vorma) GetCurrentBuildID() string {
-	return h._buildID
+func (v *Vorma) GetCurrentBuildID() string {
+	return v._buildID
 }
 
-func (h *Vorma) GetActionsHandler(router *mux.Router) mux.TasksCtxRequirerFunc {
+func (v *Vorma) GetActionsHandler(router *mux.Router) mux.TasksCtxRequirerFunc {
 	return mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
-		res.SetHeader(VormaBuildIDHeaderKey, h._buildID)
+		res.SetHeader(VormaBuildIDHeaderKey, v._buildID)
 		router.ServeHTTP(w, r)
 	})
 }

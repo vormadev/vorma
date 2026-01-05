@@ -30,22 +30,19 @@ func Init() (addr string, handler http.Handler) {
 
 var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
-	GetHeadElUniqueRules: func() *vorma.HeadEls {
-		e := vorma.NewHeadEls()
-		e.Meta(e.Property("og:title"))
-		e.Meta(e.Property("og:description"))
-		return e
+	GetHeadElUniqueRules: func(h *vorma.HeadEls) {
+		h.Meta(h.Property("og:title"))
+		h.Meta(h.Property("og:description"))
 	},
-	GetDefaultHeadEls: func(r *http.Request, app *vorma.Vorma) (*vorma.HeadEls, error) {
-		e := vorma.NewHeadEls()
-		e.Title("Vorma Example")
-		e.Description("This is a Vorma example.")
-		e.Link(
-			e.Rel("icon"),
-			e.Href(app.GetPublicURL("favicon.svg")),
-			e.Type("image/svg+xml"),
+	GetDefaultHeadEls: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadEls) error {
+		h.Title("Vorma Example")
+		h.Description("This is a Vorma example.")
+		h.Link(
+			h.Rel("icon"),
+			h.Href(app.GetPublicURL("favicon.svg")),
+			h.Type("image/svg+xml"),
 		)
-		return e, nil
+		return nil
 	},
 	GetRootTemplateData: func(r *http.Request) (map[string]any, error) {
 		// This gets fed into backend/assets/entry.go.html

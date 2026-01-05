@@ -791,13 +791,9 @@ func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
 /////// REQ DATA HELPERS TO REDUCE DIRECT RESPONSE PROXY USAGE
 /////////////////////////////////////////////////////////////////////
 
-// NewHeadEls creates a new HeadEls instance and registers it with the response proxy.
-func (rd *ReqData[I]) NewHeadEls(size ...int) *headels.HeadEls {
-	sizeToUse := 0
-	if len(size) > 0 {
-		sizeToUse = size[0]
-	}
-	e := headels.New(sizeToUse)
+// Head creates a new HeadEls instance and registers it with the response proxy.
+func (rd *ReqData[I]) HeadEls() *headels.HeadEls {
+	e := headels.New()
 	rd.responseProxy.AddHeadEls(e)
 	return e
 }

@@ -51,9 +51,9 @@ type PathsFile struct {
 	DepToCSSBundleMap map[string]string `json:"depToCSSBundleMap,omitempty"`
 }
 
-func (h *Vorma) writePathsToDisk_StageOne() error {
+func (v *Vorma) writePathsToDisk_StageOne() error {
 	pathsJSONOut_StageOne := filepath.Join(
-		h.Wave.GetStaticPrivateOutDir(),
+		v.Wave.GetStaticPrivateOutDir(),
 		"vorma_out",
 		VormaPathsStageOneJSONFileName,
 	)
@@ -64,10 +64,10 @@ func (h *Vorma) writePathsToDisk_StageOne() error {
 
 	pathsAsJSON, err := json.MarshalIndent(PathsFile{
 		Stage:             "one",
-		Paths:             h._paths,
-		ClientEntrySrc:    h.Wave.GetVormaClientEntry(),
-		BuildID:           h._buildID,
-		RouteManifestFile: h._routeManifestFile,
+		Paths:             v._paths,
+		ClientEntrySrc:    v.Wave.GetVormaClientEntry(),
+		BuildID:           v._buildID,
+		RouteManifestFile: v._routeManifestFile,
 	}, "", "\t")
 	if err != nil {
 		return err
@@ -133,7 +133,7 @@ export const vormaViteConfig = {
 
 var vitePluginTemplate = template.Must(template.New("vitePlugin").Parse(vitePluginTemplateStr))
 
-func (h *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string) (string, error) {
+func (v *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string) (string, error) {
 	var sb stringsutil.Builder
 
 	sb.Return()
@@ -141,7 +141,7 @@ func (h *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string)
 	sb.Return()
 
 	var dedupeList []string
-	switch UIVariant(h.Wave.GetVormaUIVariant()) {
+	switch UIVariant(v.Wave.GetVormaUIVariant()) {
 	case UIVariants.React:
 		dedupeList = reactDedupeList
 	case UIVariants.Preact:
@@ -152,11 +152,11 @@ func (h *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string)
 
 	ignoredList := []string{
 		"**/*.go",
-		path.Join("**", h.Wave.GetDistDir()+"/**/*"),
-		path.Join("**", h.Wave.GetPrivateStaticDir()+"/**/*"),
-		path.Join("**", h.Wave.GetConfigFile()),
-		path.Join("**", h.Wave.GetVormaTSGenOutPath()),
-		path.Join("**", h.Wave.GetVormaClientRouteDefsFile()),
+		path.Join("**", v.Wave.GetDistDir()+"/**/*"),
+		path.Join("**", v.Wave.GetPrivateStaticDir()+"/**/*"),
+		path.Join("**", v.Wave.GetConfigFile()),
+		path.Join("**", v.Wave.GetVormaTSGenOutPath()),
+		path.Join("**", v.Wave.GetVormaClientRouteDefsFile()),
 	}
 
 	mapAsJSON, err := json.MarshalIndent(fileMap, "", "\t") // No initial indent
@@ -167,9 +167,9 @@ func (h *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string)
 	var buf bytes.Buffer
 	err = vitePluginTemplate.Execute(&buf, map[string]any{
 		"Entrypoints":              entrypoints,
-		"PublicPathPrefix":         h.Wave.GetPublicPathPrefix(),
+		"PublicPathPrefix":         v.Wave.GetPublicPathPrefix(),
 		"StaticPublicAssetMapJSON": template.HTML(mapAsJSON),
-		"FuncName":                 h.Wave.GetVormaBuildtimePublicURLFuncName(),
+		"FuncName":                 v.Wave.GetVormaBuildtimePublicURLFuncName(),
 		"IgnoredPatterns":          ignoredList,
 		"DedupeList":               dedupeList,
 	})
@@ -182,16 +182,16 @@ func (h *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string)
 	return sb.String(), nil
 }
 
-func (h *Vorma) handleViteConfigHelper(extraTS string) error {
-	entrypoints := h.getEntrypoints()
+func (v *Vorma) handleViteConfigHelper(extraTS string) error {
+	entrypoints := v.getEntrypoints()
 
-	publicFileMap, err := h.Wave.GetSimplePublicFileMapBuildtime()
+	publicFileMap, err := v.Wave.GetSimplePublicFileMapBuildtime()
 	if err != nil {
 		Log.Error(fmt.Sprintf("HandleEntrypoints: error getting public file map: %s", err))
 		return err
 	}
 
-	rollupOptions, err := h.toRollupOptions(entrypoints, publicFileMap)
+	rollupOptions, err := v.toRollupOptions(entrypoints, publicFileMap)
 	if err != nil {
 		Log.Error(fmt.Sprintf("HandleEntrypoints: error converting entrypoints to rollup options: %s", err))
 		return err
@@ -199,7 +199,7 @@ func (h *Vorma) handleViteConfigHelper(extraTS string) error {
 
 	rollupOptions = extraTS + rollupOptions
 
-	target := filepath.Join(".", h.Wave.GetVormaTSGenOutPath())
+	target := filepath.Join(".", v.Wave.GetVormaTSGenOutPath())
 
 	err = os.MkdirAll(filepath.Dir(target), os.ModePerm)
 	if err != nil {
@@ -409,27 +409,27 @@ func extractRouteCalls(code string) ([]RouteCall, error) {
 	return routes, nil
 }
 
-func (h *Vorma) buildInner(opts *buildInnerOptions) error {
+func (v *Vorma) buildInner(opts *buildInnerOptions) error {
 	a := time.Now()
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	v.mu.Lock()
+	defer v.mu.Unlock()
 
-	h._isDev = opts.isDev
+	v._isDev = opts.isDev
 
-	if h._isDev {
+	if v._isDev {
 		buildID, err := id.New(16)
 		if err != nil {
 			Log.Error(fmt.Sprintf("error generating random ID: %s", err))
 			return err
 		}
-		h._buildID = "dev_" + buildID
+		v._buildID = "dev_" + buildID
 		Log.Info("START building Vorma (DEV)")
 	} else {
 		Log.Info("START building Vorma (PROD)")
 	}
 
-	clientRouteDefsFile := h.Wave.GetVormaClientRouteDefsFile()
+	clientRouteDefsFile := v.Wave.GetVormaClientRouteDefsFile()
 
 	code, err := os.ReadFile(clientRouteDefsFile)
 	if err != nil {
@@ -465,7 +465,7 @@ func (h *Vorma) buildInner(opts *buildInnerOptions) error {
 		return err
 	}
 
-	h._paths = make(map[string]*Path)
+	v._paths = make(map[string]*Path)
 
 	routesDir := filepath.Dir(clientRouteDefsFile)
 	for _, routeCall := range routeCalls {
@@ -491,7 +491,7 @@ func (h *Vorma) buildInner(opts *buildInnerOptions) error {
 			return errors.New(errMsg)
 		}
 
-		h._paths[routeCall.Pattern] = &Path{
+		v._paths[routeCall.Pattern] = &Path{
 			OriginalPattern: routeCall.Pattern,
 			SrcPath:         modulePath,
 			ExportKey:       routeCall.Key,
@@ -499,11 +499,11 @@ func (h *Vorma) buildInner(opts *buildInnerOptions) error {
 		}
 	}
 
-	allServerRoutes := h.LoadersRouter().NestedRouter.AllRoutes()
+	allServerRoutes := v.LoadersRouter().NestedRouter.AllRoutes()
 	for pattern := range allServerRoutes {
-		if _, hasClientRoute := h._paths[pattern]; !hasClientRoute {
+		if _, hasClientRoute := v._paths[pattern]; !hasClientRoute {
 			// Create a pass-through path entry
-			h._paths[pattern] = &Path{
+			v._paths[pattern] = &Path{
 				OriginalPattern: pattern,
 				SrcPath:         "", // Empty indicates pass-through
 				ExportKey:       "default",
@@ -513,28 +513,28 @@ func (h *Vorma) buildInner(opts *buildInnerOptions) error {
 	}
 
 	// Remove all files in StaticPublicOutDir starting with vormaChunkPrefix or vormaEntryPrefix.
-	err = cleanStaticPublicOutDir(h.Wave.GetStaticPublicOutDir())
+	err = cleanStaticPublicOutDir(v.Wave.GetStaticPublicOutDir())
 	if err != nil {
 		Log.Error(fmt.Sprintf("error cleaning static public out dir: %s", err))
 		return err
 	}
 
-	manifest := h.generateRouteManifest(h.LoadersRouter().NestedRouter)
-	manifestFile, err := h.writeRouteManifestToDisk(manifest)
+	manifest := v.generateRouteManifest(v.LoadersRouter().NestedRouter)
+	manifestFile, err := v.writeRouteManifestToDisk(manifest)
 	if err != nil {
 		Log.Error(fmt.Sprintf("error writing route manifest: %s", err))
 		return err
 	}
-	h._routeManifestFile = manifestFile
+	v._routeManifestFile = manifestFile
 
-	if err = h.writePathsToDisk_StageOne(); err != nil {
+	if err = v.writePathsToDisk_StageOne(); err != nil {
 		Log.Error(fmt.Sprintf("error writing paths to disk: %s", err))
 		return err
 	}
 
-	tsgenOutput, err := h.generateTypeScript(&tsGenOptions{
-		LoadersRouter: h.LoadersRouter().NestedRouter,
-		ActionsRouter: h.ActionsRouter().Router,
+	tsgenOutput, err := v.generateTypeScript(&tsGenOptions{
+		LoadersRouter: v.LoadersRouter().NestedRouter,
+		ActionsRouter: v.ActionsRouter().Router,
 		AdHocTypes:    opts.buildOptions.AdHocTypes,
 		ExtraTSCode:   opts.buildOptions.ExtraTSCode,
 	})
@@ -543,25 +543,25 @@ func (h *Vorma) buildInner(opts *buildInnerOptions) error {
 		return err
 	}
 
-	if err = h.handleViteConfigHelper(tsgenOutput); err != nil {
+	if err = v.handleViteConfigHelper(tsgenOutput); err != nil {
 		// already logged internally in handleViteConfigHelper
 		return err
 	}
 
-	if !h._isDev {
-		if err := h.Wave.ViteProdBuildWave(); err != nil {
+	if !v._isDev {
+		if err := v.Wave.ViteProdBuildWave(); err != nil {
 			Log.Error(fmt.Sprintf("error running vite prod build: %s", err))
 			return err
 		}
 
-		if err := h.postViteProdBuild(); err != nil {
+		if err := v.postViteProdBuild(); err != nil {
 			Log.Error(fmt.Sprintf("error running post vite prod build: %s", err))
 			return err
 		}
 	}
 
 	Log.Info("DONE building Vorma",
-		"buildID", h._buildID,
+		"buildID", v._buildID,
 		"routes found", len(routeCalls),
 		"duration", time.Since(a),
 	)
@@ -569,8 +569,8 @@ func (h *Vorma) buildInner(opts *buildInnerOptions) error {
 	return nil
 }
 
-func (h *Vorma) getViteDevURL() string {
-	if !h._isDev {
+func (v *Vorma) getViteDevURL() string {
+	if !v._isDev {
 		return ""
 	}
 	return fmt.Sprintf("http://localhost:%s", viteutil.GetVitePortStr())
@@ -629,10 +629,10 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 /////// GET ENTRYPOINTS
 /////////////////////////////////////////////////////////////////////
 
-func (h *Vorma) getEntrypoints() []string {
-	entryPoints := make(map[string]struct{}, len(h._paths)+1)
-	entryPoints[path.Clean(h.Wave.GetVormaClientEntry())] = struct{}{}
-	for _, path := range h._paths {
+func (v *Vorma) getEntrypoints() []string {
+	entryPoints := make(map[string]struct{}, len(v._paths)+1)
+	entryPoints[path.Clean(v.Wave.GetVormaClientEntry())] = struct{}{}
+	for _, path := range v._paths {
 		if path.SrcPath != "" {
 			entryPoints[path.SrcPath] = struct{}{}
 		}
@@ -649,18 +649,18 @@ func (h *Vorma) getEntrypoints() []string {
 /////// TO PATHS FILE -- STAGE TWO
 /////////////////////////////////////////////////////////////////////
 
-func (h *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
+func (v *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 	vormaClientEntryOut := ""
 	vormaClientEntryDeps := []string{}
 	depToCSSBundleMap := make(map[string]string)
 
-	viteManifest, err := viteutil.ReadManifest(h.Wave.GetViteManifestLocation())
+	viteManifest, err := viteutil.ReadManifest(v.Wave.GetViteManifestLocation())
 	if err != nil {
 		Log.Error(fmt.Sprintf("error reading vite manifest: %s", err))
 		return nil, err
 	}
 
-	cleanClientEntry := filepath.Clean(h.Wave.GetVormaClientEntry())
+	cleanClientEntry := filepath.Clean(v.Wave.GetVormaClientEntry())
 
 	// Assuming manifestJSON is your Vite manifest
 	for key, chunk := range viteManifest {
@@ -689,17 +689,17 @@ func (h *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 			vormaClientEntryDeps = depsWithoutClientEntry
 		} else {
 			// Handle other paths
-			for i, path := range h._paths {
+			for i, path := range v._paths {
 				// Compare with source path instead of entryPoint
 				if path.SrcPath == chunk.Src {
-					h._paths[i].OutPath = cleanKey
-					h._paths[i].Deps = deps
+					v._paths[i].OutPath = cleanKey
+					v._paths[i].Deps = deps
 				}
 			}
 		}
 	}
 
-	htmlTemplateContent, err := os.ReadFile(path.Join(h.Wave.GetPrivateStaticDir(), h.Wave.GetVormaHTMLTemplateLocation()))
+	htmlTemplateContent, err := os.ReadFile(path.Join(v.Wave.GetPrivateStaticDir(), v.Wave.GetVormaHTMLTemplateLocation()))
 	if err != nil {
 		Log.Error(fmt.Sprintf("error reading HTML template file: %s", err))
 		return nil, err
@@ -709,11 +709,11 @@ func (h *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 	pf := &PathsFile{
 		Stage:             "two",
 		DepToCSSBundleMap: depToCSSBundleMap,
-		Paths:             h._paths,
-		ClientEntrySrc:    h.Wave.GetVormaClientEntry(),
+		Paths:             v._paths,
+		ClientEntrySrc:    v.Wave.GetVormaClientEntry(),
 		ClientEntryOut:    vormaClientEntryOut,
 		ClientEntryDeps:   vormaClientEntryDeps,
-		RouteManifestFile: h._routeManifestFile,
+		RouteManifestFile: v._routeManifestFile,
 	}
 
 	asJSON, err := json.Marshal(pf)
@@ -723,7 +723,7 @@ func (h *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 	}
 	pfJSONHash := cryptoutil.Sha256Hash(asJSON)
 
-	publicFSSummaryHash, err := getFSSummaryHash(os.DirFS(h.Wave.GetStaticPublicOutDir()))
+	publicFSSummaryHash, err := getFSSummaryHash(os.DirFS(v.Wave.GetStaticPublicOutDir()))
 	if err != nil {
 		Log.Error(fmt.Sprintf("error getting FS summary hash: %s", err))
 		return nil, err
@@ -735,13 +735,13 @@ func (h *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 	fullHash.Write(publicFSSummaryHash)
 	buildID := base64.RawURLEncoding.EncodeToString(fullHash.Sum(nil)[:16])
 
-	h._buildID = buildID
+	v._buildID = buildID
 	pf.BuildID = buildID
 
 	return pf, nil
 }
 
-func (h *Vorma) writeRouteManifestToDisk(manifest map[string]int) (string, error) {
+func (v *Vorma) writeRouteManifestToDisk(manifest map[string]int) (string, error) {
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		return "", fmt.Errorf("error marshalling route manifest: %w", err)
@@ -753,7 +753,7 @@ func (h *Vorma) writeRouteManifestToDisk(manifest map[string]int) (string, error
 	filename := fmt.Sprintf(vormaRouteManifestPrefix+"%s.json", hashStr)
 
 	// Write to static public dir so it's served automatically
-	outPath := filepath.Join(h.Wave.GetStaticPublicOutDir(), filename)
+	outPath := filepath.Join(v.Wave.GetStaticPublicOutDir(), filename)
 	if err := os.WriteFile(outPath, manifestJSON, 0644); err != nil {
 		return "", fmt.Errorf("error writing route manifest: %w", err)
 	}
@@ -761,10 +761,10 @@ func (h *Vorma) writeRouteManifestToDisk(manifest map[string]int) (string, error
 	return filename, nil
 }
 
-func (h *Vorma) generateRouteManifest(nestedRouter *mux.NestedRouter) map[string]int {
+func (v *Vorma) generateRouteManifest(nestedRouter *mux.NestedRouter) map[string]int {
 	manifest := make(map[string]int)
 
-	for _, v := range h._paths {
+	for _, v := range v._paths {
 		hasServerLoader := 0
 		if nestedRouter.HasTaskHandler(v.OriginalPattern) {
 			hasServerLoader = 1

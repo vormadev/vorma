@@ -61,16 +61,16 @@ var _ = NewLoader("/*", func(c *LoaderCtx) (*fsmarkdown.DetailedPage, error) {
 		return nil, fmt.Errorf("failed to get page details: %w", err)
 	}
 
-	e := c.NewHeadEls()
+	h := c.HeadEls()
 
 	if data.Title != "" {
-		e.Title(fmt.Sprintf("%s | %s", SiteTitle, data.Title))
-		e.MetaPropertyContent("og:title", data.Title)
+		h.Title(fmt.Sprintf("%s | %s", SiteTitle, data.Title))
+		h.MetaPropertyContent("og:title", data.Title)
 	}
 
 	if data.Description != "" {
-		e.Description(data.Description)
-		e.MetaPropertyContent("og:description", data.Description)
+		h.Description(data.Description)
+		h.MetaPropertyContent("og:description", data.Description)
 	}
 
 	return data, nil

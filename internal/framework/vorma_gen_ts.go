@@ -33,7 +33,7 @@ var mutationMethods = map[string]struct{}{
 	http.MethodPost: {}, http.MethodPut: {}, http.MethodPatch: {}, http.MethodDelete: {},
 }
 
-func (h *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
+func (v *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
 	var collection []tsgen.CollectionItem
 
 	allLoaders := opts.LoadersRouter.AllRoutes()
@@ -81,7 +81,7 @@ func (h *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
 	}
 
 	// add any client-defined paths that don't have loaders
-	maybeExtraLoaderPaths := h._paths
+	maybeExtraLoaderPaths := v._paths
 	for _, path := range maybeExtraLoaderPaths {
 		if _, ok := seen[path.OriginalPattern]; ok {
 			continue
@@ -142,7 +142,7 @@ func (h *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
 		collection = append(collection, item)
 	}
 
-	uiVariant := h.Wave.GetVormaUIVariant()
+	uiVariant := v.Wave.GetVormaUIVariant()
 
 	var sb strings.Builder
 
