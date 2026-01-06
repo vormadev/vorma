@@ -1,6 +1,6 @@
 {
 	"name": "vorma",
-	"version": "0.82.0",
+	"version": "0.83.0",
 	"description": "The Next.js of Golang, powered by Vite.",
 	"type": "module",
 	"sideEffects": false,
