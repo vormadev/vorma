@@ -6,7 +6,6 @@ import (
 
 	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/kit/middleware/healthcheck"
-	"github.com/vormadev/vorma/kit/mux"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -17,7 +16,6 @@ func Init() (addr string, handler http.Handler) {
 	r := App.InitWithDefaultRouter()
 
 	// Register middlewares here
-
 	r.SetGlobalHTTPMiddleware(App.ServeStatic())
 	r.SetGlobalHTTPMiddleware(healthcheck.Healthz)
 

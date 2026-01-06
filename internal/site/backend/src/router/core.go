@@ -21,7 +21,10 @@ func Init() (addr string, handler http.Handler) {
 	r.SetGlobalHTTPMiddleware(secureheaders.Middleware)
 	r.SetGlobalHTTPMiddleware(healthcheck.Healthz)
 	r.SetGlobalHTTPMiddleware(robotstxt.Allow)
-	r.SetGlobalHTTPMiddleware(Markdown.PlainTextMiddleware("/docs", "/blog"))
+	r.SetGlobalHTTPMiddleware(Markdown.PlainTextMiddleware(
+		"/docs", "/docs/*",
+		"/blog", "/blog/*",
+	))
 
 	return App.ServerAddr(), r
 }

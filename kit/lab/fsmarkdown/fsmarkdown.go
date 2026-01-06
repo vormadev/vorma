@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/vormadev/vorma/kit/lru"
+	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/typed"
 	"golang.org/x/sync/errgroup"
 )
@@ -32,9 +33,9 @@ type Instance struct {
 
 type Options struct {
 	FS                fs.FS
+	IsDev             bool
 	FrontmatterParser FrontmatterParser
 	MarkdownParser    MarkdownParser
-	IsDev             bool
 }
 
 func New(opts Options) *Instance {
@@ -394,17 +395,20 @@ func (inst *Instance) parseMarkdown(fileBytes []byte, cleanPath string, isFolder
 	return &p, nil
 }
 
-func (md *Instance) PlainTextMiddleware(pathPrefixes ...string) func(http.Handler) http.Handler {
+// PlainTextMiddleware serves the plain markdown content of pages when the
+// request's Accept header includes "text/plain" or "text/markdown".
+// Patterns use the default semantics of the kit/matcher package (e.g.,
+// "/docs/*" for nested paths, "/docs/:slug" for dynamic segments, or
+// "/docs" for an exact match). To include everything, pass "/*".
+func (md *Instance) PlainTextMiddleware(patterns ...string) func(http.Handler) http.Handler {
+	m := matcher.New(nil)
+	for _, p := range patterns {
+		m.RegisterPattern(p)
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			match := false
-			for _, p := range pathPrefixes {
-				if strings.HasPrefix(r.URL.Path, p) {
-					match = true
-					break
-				}
-			}
-			if !match {
+			if _, ok := m.FindBestMatch(r.URL.Path); !ok {
 				next.ServeHTTP(w, r)
 				return
 			}
