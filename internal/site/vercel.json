@@ -4,7 +4,7 @@
 	"buildCommand": "make vercel-build",
 	"outputDirectory": "backend/dist/static/assets/public",
 	"functions": {
-		"api/proxy.ts": {
+		"api/proxy.rs": {
 			"includeFiles": "backend/{dist/main,wave.config.json}"
 		}
 	},
