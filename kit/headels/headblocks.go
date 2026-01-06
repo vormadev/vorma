@@ -41,7 +41,7 @@ func (inst *Instance) InitUniqueRules(e *HeadEls) {
 	inst.once.Do(func() {
 		inst.uniqueRulesByTag = make(map[string][]*ruleAttrs)
 		if e == nil {
-			e = New(2)
+			e = New()
 		}
 		e.Add(Tag("title"))
 		e.Meta(e.Name("description"))
@@ -324,6 +324,11 @@ type InnerHTML string
 type TextContent string
 type SelfClosing bool
 
+func (a *Attr) KnownSafe() *Attr {
+	a.knownSafe = true
+	return a
+}
+
 func (Tag) GetType() htmlutilType              { return typeTag }
 func (Attr) GetType() htmlutilType             { return typeAttribute }
 func (BooleanAttribute) GetType() htmlutilType { return typeBooleanAttribute }
@@ -331,22 +336,14 @@ func (InnerHTML) GetType() htmlutilType        { return typeInnerHTML }
 func (TextContent) GetType() htmlutilType      { return typeTextContent }
 func (SelfClosing) GetType() htmlutilType      { return typeSelfClosing }
 
-type HeadEls struct {
-	els []*htmlutil.Element
-}
+type HeadEls struct{ els []*htmlutil.Element }
 
 func FromRaw(els []*htmlutil.Element) *HeadEls {
 	return &HeadEls{els: els}
 }
 
-func New(size ...int) *HeadEls {
-	var els []*htmlutil.Element
-	if len(size) > 0 {
-		els = make([]*htmlutil.Element, 0, size[0])
-	} else {
-		els = make([]*htmlutil.Element, 0)
-	}
-	return &HeadEls{els: els}
+func New() *HeadEls {
+	return &HeadEls{els: make([]*htmlutil.Element, 0)}
 }
 
 func (h *HeadEls) Add(defs ...typeInterface) {
@@ -388,14 +385,23 @@ func (h *HeadEls) Add(defs ...typeInterface) {
 	h.els = append(h.els, el)
 }
 
+func (h *HeadEls) AddElements(other *HeadEls) {
+	h.els = append(h.els, other.els...)
+}
 func (h *HeadEls) Collect() []*htmlutil.Element {
 	return h.els
 }
-
-func (a *Attr) KnownSafe() *Attr {
-	a.knownSafe = true
-	return a
+func (h *HeadEls) SelfClosing() SelfClosing {
+	return SelfClosing(true)
 }
+func (h *HeadEls) DangerousInnerHTML(content string) InnerHTML {
+	return InnerHTML(content)
+}
+func (h *HeadEls) TextContent(content string) TextContent {
+	return TextContent(content)
+}
+
+/////// Tag helpers
 
 func (h *HeadEls) Title(title string) {
 	h.Add(Tag("title"), TextContent(title))
@@ -409,9 +415,20 @@ func (h *HeadEls) Meta(defs ...typeInterface) {
 func (h *HeadEls) Link(defs ...typeInterface) {
 	h.Add(append(defs, Tag("link"))...)
 }
+func (h *HeadEls) Script(defs ...typeInterface) {
+	h.Add(append(defs, Tag("script"))...)
+}
+func (h *HeadEls) Style(defs ...typeInterface) {
+	h.Add(append(defs, Tag("style"))...)
+}
+
+/////// Attribute helpers
 
 func (h *HeadEls) Attr(name, value string) *Attr {
 	return &Attr{attr: [2]string{name, value}}
+}
+func (h *HeadEls) BoolAttr(name string) BooleanAttribute {
+	return BooleanAttribute(name)
 }
 func (h *HeadEls) Property(property string) *Attr {
 	return h.Attr("property", property)
@@ -427,4 +444,28 @@ func (h *HeadEls) Rel(rel string) *Attr {
 }
 func (h *HeadEls) Href(href string) *Attr {
 	return h.Attr("href", href)
+}
+func (h *HeadEls) Src(src string) *Attr {
+	return h.Attr("src", src)
+}
+func (h *HeadEls) Type(type_ string) *Attr {
+	return h.Attr("type", type_)
+}
+func (h *HeadEls) Charset(charset string) *Attr {
+	return h.Attr("charset", charset)
+}
+func (h *HeadEls) As(as string) *Attr {
+	return h.Attr("as", as)
+}
+func (h *HeadEls) CrossOrigin(crossOrigin string) *Attr {
+	return h.Attr("crossorigin", crossOrigin)
+}
+
+/////// Common combinations
+
+func (h *HeadEls) MetaPropertyContent(property, content string) {
+	h.Meta(h.Property(property), h.Content(content))
+}
+func (h *HeadEls) MetaNameContent(name, content string) {
+	h.Meta(h.Name(name), h.Content(content))
 }

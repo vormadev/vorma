@@ -59,8 +59,8 @@ var UIVariants = struct {
 }
 
 type (
-	GetDefaultHeadElsFunc    func(r *http.Request, app *Vorma) (*headels.HeadEls, error)
-	GetHeadElUniqueRulesFunc func() *headels.HeadEls
+	GetDefaultHeadElsFunc    func(r *http.Request, app *Vorma, head *headels.HeadEls) error
+	GetHeadElUniqueRulesFunc func(head *headels.HeadEls)
 	GetRootTemplateDataFunc  func(r *http.Request) (map[string]any, error)
 )
 
@@ -88,6 +88,6 @@ type Vorma struct {
 	_serverAddr        string
 }
 
-func (h *Vorma) ServerAddr() string            { return h._serverAddr }
-func (h *Vorma) LoadersRouter() *LoadersRouter { return h.loadersRouter }
-func (h *Vorma) ActionsRouter() *ActionsRouter { return h.actionsRouter }
+func (v *Vorma) ServerAddr() string            { return v._serverAddr }
+func (v *Vorma) LoadersRouter() *LoadersRouter { return v.loadersRouter }
+func (v *Vorma) ActionsRouter() *ActionsRouter { return v.actionsRouter }

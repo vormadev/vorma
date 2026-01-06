@@ -15,12 +15,13 @@ import (
 	"sync"
 
 	"github.com/vormadev/vorma/kit/lru"
+	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/typed"
 	"golang.org/x/sync/errgroup"
 )
 
 type FrontmatterParser = func(io.Reader, any) ([]byte, error)
-type MarkdownParser = func([]byte) []byte
+type MarkdownParser = func([]byte, io.Writer) error
 
 // Do not initialize manually. Always create with New().
 type Instance struct {
@@ -32,9 +33,9 @@ type Instance struct {
 
 type Options struct {
 	FS                fs.FS
+	IsDev             bool
 	FrontmatterParser FrontmatterParser
 	MarkdownParser    MarkdownParser
-	IsDev             bool
 }
 
 func New(opts Options) *Instance {
@@ -381,9 +382,52 @@ func (inst *Instance) parseMarkdown(fileBytes []byte, cleanPath string, isFolder
 	}
 
 	p.RawContent = string(rest)
-	p.Content = template.HTML(inst.MarkdownParser(rest))
+
+	var buf bytes.Buffer
+	if err := inst.MarkdownParser(rest, &buf); err != nil {
+		return nil, err
+	}
+	p.Content = template.HTML(buf.String())
+
 	p.URL = cleanPath
 	p.IsFolder = isFolder
 
 	return &p, nil
+}
+
+// PlainTextMiddleware serves the plain markdown content of pages when the
+// request's Accept header includes "text/plain" or "text/markdown".
+// Patterns use the default semantics of the kit/matcher package (e.g.,
+// "/docs/*" for nested paths, "/docs/:slug" for dynamic segments, or
+// "/docs" for an exact match). To include everything, pass "/*".
+func (md *Instance) PlainTextMiddleware(patterns ...string) func(http.Handler) http.Handler {
+	m := matcher.New(nil)
+	for _, p := range patterns {
+		m.RegisterPattern(p)
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := m.FindBestMatch(r.URL.Path); !ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			accept := r.Header.Get("Accept")
+			if !strings.Contains(accept, "text/plain") && !strings.Contains(accept, "text/markdown") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			markdown, err := md.GetPlainMarkdown(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(markdown))
+		})
+	}
 }

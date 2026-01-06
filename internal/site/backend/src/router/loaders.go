@@ -56,27 +56,22 @@ var _ = NewLoader("/_index", func(c *LoaderCtx) (string, error) {
 })
 
 var _ = NewLoader("/*", func(c *LoaderCtx) (*fsmarkdown.DetailedPage, error) {
-	r, rp := c.Request(), c.ResponseProxy()
-
-	p, err := Markdown.GetPageDetails(r)
+	data, err := Markdown.GetPageDetails(c.Request())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get page details: %w", err)
 	}
 
-	data := p
-	e := vorma.NewHeadEls(2)
+	h := c.HeadEls()
 
-	if p.Title != "" {
-		e.Title(fmt.Sprintf("%s | %s", SiteTitle, p.Title))
-		e.Meta(e.Property("og:title"), e.Content(p.Title))
+	if data.Title != "" {
+		h.Title(fmt.Sprintf("%s | %s", SiteTitle, data.Title))
+		h.MetaPropertyContent("og:title", data.Title)
 	}
 
-	if p.Description != "" {
-		e.Description(p.Description)
-		e.Meta(e.Property("og:description"), e.Content(p.Description))
+	if data.Description != "" {
+		h.Description(data.Description)
+		h.MetaPropertyContent("og:description", data.Description)
 	}
-
-	rp.AddHeadElements(e.Collect()...)
 
 	return data, nil
 })

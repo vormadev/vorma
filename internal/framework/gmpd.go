@@ -77,7 +77,7 @@ type final_ui_data struct {
 	ViteDevURL string   `json:"viteDevURL,omitempty"`
 }
 
-func (h *Vorma) get_ui_data_stage_1(
+func (v *Vorma) get_ui_data_stage_1(
 	w http.ResponseWriter,
 	r *http.Request,
 	nestedRouter *mux.NestedRouter,
@@ -116,7 +116,7 @@ func (h *Vorma) get_ui_data_stage_1(
 	if _cachedItemSubset, isCached = gmpdCache.Load(cacheKey); !isCached {
 		_cachedItemSubset = &cachedItemSubset{}
 		for _, path := range _matches {
-			foundPath := h._paths[path.OriginalPattern()]
+			foundPath := v._paths[path.OriginalPattern()]
 			// Potentially a server route with no client-side counterpart
 			if foundPath == nil || foundPath.SrcPath == "" {
 				_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "")
@@ -125,14 +125,14 @@ func (h *Vorma) get_ui_data_stage_1(
 				continue
 			}
 			pathToUse := foundPath.OutPath
-			if h._isDev {
+			if v._isDev {
 				pathToUse = foundPath.SrcPath
 			}
 			_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "/"+pathToUse)
 			_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, foundPath.ExportKey)
 			_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, foundPath.ErrorExportKey)
 		}
-		_cachedItemSubset.Deps = h.getDeps(_matches)
+		_cachedItemSubset.Deps = v.getDeps(_matches)
 		_cachedItemSubset, _ = gmpdCache.LoadOrStore(cacheKey, _cachedItemSubset)
 	}
 
@@ -195,10 +195,10 @@ func (h *Vorma) get_ui_data_stage_1(
 		}
 	}
 
-	loadersHeadEls := make([][]*htmlutil.Element, numberOfLoaders)
+	loadersHeadEls := make([][]*htmlutil.Element, 0, numberOfLoaders)
 	for _, _response_proxy := range _tasks_results.ResponseProxies {
 		if _response_proxy != nil {
-			loadersHeadEls = append(loadersHeadEls, _response_proxy.GetHeadElements())
+			loadersHeadEls = append(loadersHeadEls, _response_proxy.GetHeadEls().Collect())
 		}
 	}
 
@@ -266,7 +266,7 @@ func (h *Vorma) get_ui_data_stage_1(
 	return ui_data
 }
 
-func (h *Vorma) getUIRouteData(
+func (v *Vorma) getUIRouteData(
 	w http.ResponseWriter,
 	r *http.Request,
 	nestedRouter *mux.NestedRouter,
@@ -276,23 +276,21 @@ func (h *Vorma) getUIRouteData(
 
 	eg := errgroup.Group{}
 
-	var defaultHeadEls *headels.HeadEls
+	defaultHeadEls := headels.New()
 	var egErr error
 
 	eg.Go(func() error {
 		var headErr error
-		if h.getDefaultHeadEls != nil {
-			defaultHeadEls, headErr = h.getDefaultHeadEls(r, h)
+		if v.getDefaultHeadEls != nil {
+			headErr = v.getDefaultHeadEls(r, v, defaultHeadEls)
 			if headErr != nil {
 				return fmt.Errorf("GetDefaultHeadEls error: %w", headErr)
 			}
-		} else {
-			defaultHeadEls = headels.New()
 		}
 		return nil
 	})
 
-	uiRoutesData := h.get_ui_data_stage_1(w, r, nestedRouter)
+	uiRoutesData := v.get_ui_data_stage_1(w, r, nestedRouter)
 
 	egErr = eg.Wait()
 
@@ -306,7 +304,7 @@ func (h *Vorma) getUIRouteData(
 		return uiRoutesData
 	}
 
-	cssBundles := h.getCSSBundles(uiRoutesData.ui_data_core.Deps)
+	cssBundles := v.getCSSBundles(uiRoutesData.ui_data_core.Deps)
 
 	defaultHeadElsRaw := defaultHeadEls.Collect()
 
@@ -315,13 +313,13 @@ func (h *Vorma) getUIRouteData(
 	hb = append(hb, defaultHeadElsRaw...)
 	hb = append(hb, uiRoutesData.stage_1_head_els...)
 
-	publicPathPrefix := h.Wave.GetPublicPathPrefix()
+	publicPathPrefix := v.Wave.GetPublicPathPrefix()
 
 	// For client transitions (JSON), AssetManager injects
 	// modulepreload links before head els get rendered,
 	// so there is no need (and it would be wasteful) to
 	// include them here.
-	if !h._isDev && !isJSON {
+	if !v._isDev && !isJSON {
 		if uiRoutesData.ui_data_core.Deps != nil {
 			for _, dep := range uiRoutesData.ui_data_core.Deps {
 				el := &htmlutil.Element{
@@ -360,7 +358,7 @@ func (h *Vorma) getUIRouteData(
 		state_2_final: &ui_data_stage_2{
 			SortedAndPreEscapedHeadEls: headEls,
 			CSSBundles:                 cssBundles,
-			ViteDevURL:                 h.getViteDevURL(),
+			ViteDevURL:                 v.getViteDevURL(),
 		},
 	}
 

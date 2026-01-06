@@ -60,19 +60,19 @@ type GetSSRInnerHTMLOutput struct {
 	Sha256Hash string
 }
 
-func (h *Vorma) getSSRInnerHTML(routeData *final_ui_data) (*GetSSRInnerHTMLOutput, error) {
+func (v *Vorma) getSSRInnerHTML(routeData *final_ui_data) (*GetSSRInnerHTMLOutput, error) {
 	var htmlBuilder strings.Builder
 
 	dto := SSRInnerHTMLInput{
 		VormaSymbolStr: VormaSymbolStr,
 
-		IsDev:            h._isDev,
+		IsDev:            v._isDev,
 		ViteDevURL:       routeData.ViteDevURL,
-		BuildID:          h._buildID,
-		PublicPathPrefix: h.Wave.GetPublicPathPrefix(),
+		BuildID:          v._buildID,
+		PublicPathPrefix: v.Wave.GetPublicPathPrefix(),
 		RouteManifestURL: path.Join(
-			h.Wave.GetPublicPathPrefix(),
-			h._routeManifestFile,
+			v.Wave.GetPublicPathPrefix(),
+			v._routeManifestFile,
 		),
 
 		ui_data_core: routeData.ui_data_core,

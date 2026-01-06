@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 )
 
-func (h *Vorma) postViteProdBuild() error {
+func (v *Vorma) postViteProdBuild() error {
 	// Must come after Vite -- only needed in prod (the stage "one" version is fine in dev)
-	pf, err := h.toPathsFile_StageTwo()
+	pf, err := v.toPathsFile_StageTwo()
 	if err != nil {
 		Log.Error(fmt.Sprintf("error converting paths to paths file: %s", err))
 		return err
@@ -23,7 +23,7 @@ func (h *Vorma) postViteProdBuild() error {
 	}
 
 	pathsJSONOut_StageTwo := filepath.Join(
-		h.Wave.GetStaticPrivateOutDir(),
+		v.Wave.GetStaticPrivateOutDir(),
 		"vorma_out",
 		VormaPathsStageTwoJSONFileName,
 	)

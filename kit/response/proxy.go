@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/vormadev/vorma/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/headels"
 )
 
 // For usage in JSON API handlers that may run in parallel or
@@ -20,12 +20,13 @@ type headerOp struct {
 	value string
 }
 
+// Do not instantiate directly. Use NewProxy().
 type Proxy struct {
 	_status      int
 	_status_text string
 	_headerOps   map[string][]headerOp
 	_cookies     []*http.Cookie
-	_head_els    []*htmlutil.Element
+	_head_els    *headels.HeadEls
 	_location    string
 }
 
@@ -102,15 +103,17 @@ func (p *Proxy) GetCookies() []*http.Cookie {
 
 /////// HEAD ELEMENTS
 
-func (p *Proxy) AddHeadElement(el *htmlutil.Element) {
-	p._head_els = append(p._head_els, el)
+func (p *Proxy) AddHeadEls(els *headels.HeadEls) {
+	if p._head_els == nil {
+		p._head_els = headels.New()
+	}
+	p._head_els.AddElements(els)
 }
 
-func (p *Proxy) AddHeadElements(els ...*htmlutil.Element) {
-	p._head_els = append(p._head_els, els...)
-}
-
-func (p *Proxy) GetHeadElements() []*htmlutil.Element {
+func (p *Proxy) GetHeadEls() *headels.HeadEls {
+	if p._head_els == nil {
+		p._head_els = headels.New()
+	}
 	return p._head_els
 }
 
@@ -247,9 +250,11 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 	merged := NewProxy()
 
 	// Head Elements -- MERGED IN ORDER
-	merged._head_els = make([]*htmlutil.Element, 0)
+	merged._head_els = headels.New()
 	for _, p := range proxies {
-		merged._head_els = append(merged._head_els, p._head_els...)
+		if p._head_els != nil {
+			merged._head_els.AddElements(p._head_els)
+		}
 	}
 
 	// Headers -- MERGED IN ORDER

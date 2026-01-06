@@ -10,6 +10,7 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/contextutil"
 	"github.com/vormadev/vorma/kit/genericsutil"
+	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/opt"
 	"github.com/vormadev/vorma/kit/reflectutil"
@@ -192,6 +193,10 @@ func SetGlobalHTTPMiddleware(router *Router, httpMw HTTPMiddleware, opts ...*Mid
 	})
 }
 
+func (rt *Router) SetGlobalHTTPMiddleware(httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+	SetGlobalHTTPMiddleware(rt, httpMw, opts...)
+}
+
 func SetMethodLevelTaskMiddleware[O any](
 	router *Router, method string, taskMw *TaskMiddleware[O], opts ...*MiddlewareOptions,
 ) {
@@ -210,6 +215,10 @@ func SetMethodLevelHTTPMiddleware(router *Router, method string, httpMw HTTPMidd
 	})
 }
 
+func (rt *Router) SetMethodLevelHTTPMiddleware(method string, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+	SetMethodLevelHTTPMiddleware(rt, method, httpMw, opts...)
+}
+
 func SetPatternLevelTaskMiddleware[PI any, PO any, MWO any](route *Route[PI, PO], taskMw *TaskMiddleware[MWO], opts ...*MiddlewareOptions) {
 	route.taskMws = append(route.taskMws, taskMiddlewareWithOptions{
 		mw:   taskMw,
@@ -224,8 +233,16 @@ func SetPatternLevelHTTPMiddleware[I any, O any](route *Route[I, O], httpMw HTTP
 	})
 }
 
+func (route *Route[I, O]) SetPatternLevelHTTPMiddleware(httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+	SetPatternLevelHTTPMiddleware(route, httpMw, opts...)
+}
+
 func SetGlobalNotFoundHTTPHandler(router *Router, httpHandler http.Handler) {
 	router.notFoundHandler = httpHandler
+}
+
+func (rt *Router) SetGlobalNotFoundHTTPHandler(httpHandler http.Handler) {
+	SetGlobalNotFoundHTTPHandler(rt, httpHandler)
 }
 
 type Route[I, O any] struct {
@@ -283,6 +300,10 @@ func RegisterHandlerFunc(
 	return RegisterHandler(router, method, pattern, httpHandlerFunc)
 }
 
+func (rt *Router) RegisterHandlerFunc(method, pattern string, httpHandlerFunc http.HandlerFunc) *Route[any, any] {
+	return RegisterHandlerFunc(rt, method, pattern, httpHandlerFunc)
+}
+
 func RegisterHandler(
 	router *Router, method, pattern string, httpHandler http.Handler,
 ) *Route[any, any] {
@@ -298,7 +319,12 @@ func RegisterHandler(
 	return route
 }
 
+func (rt *Router) RegisterHandler(method, pattern string, httpHandler http.Handler) *Route[any, any] {
+	return RegisterHandler(rt, method, pattern, httpHandler)
+}
+
 func (rd *ReqData[I]) Params() Params                 { return rd.params }
+func (rd *ReqData[I]) Param(key string) string        { return rd.params[key] }
 func (rd *ReqData[I]) SplatValues() []string          { return rd.splatVals }
 func (rd *ReqData[I]) TasksCtx() *tasks.Ctx           { return rd.tasksCtx }
 func (rd *ReqData[I]) Request() *http.Request         { return rd.req }
@@ -759,4 +785,80 @@ func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, requestStore.GetRequestWithContext(r, rd))
 	})
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// REQ DATA HELPERS TO REDUCE DIRECT RESPONSE PROXY USAGE
+/////////////////////////////////////////////////////////////////////
+
+// Head creates a new HeadEls instance and registers it with the response proxy.
+func (rd *ReqData[I]) HeadEls() *headels.HeadEls {
+	e := headels.New()
+	rd.responseProxy.AddHeadEls(e)
+	return e
+}
+
+// Redirect sets a redirect on the response proxy. Defaults to 302 if no code is provided.
+func (rd *ReqData[I]) Redirect(url string, code ...int) {
+	rd.responseProxy.Redirect(rd.req, url, code...)
+}
+
+// SetResponseStatus sets the status code and optional error text on the response proxy.
+func (rd *ReqData[I]) SetResponseStatus(status int, errorText ...string) {
+	rd.responseProxy.SetStatus(status, errorText...)
+}
+
+// SetResponseCookie adds a cookie to the response proxy.
+func (rd *ReqData[I]) SetResponseCookie(cookie *http.Cookie) {
+	rd.responseProxy.SetCookie(cookie)
+}
+
+// SetResponseHeader sets a header on the response proxy, replacing any existing values for that key.
+func (rd *ReqData[I]) SetResponseHeader(key, value string) {
+	rd.responseProxy.SetHeader(key, value)
+}
+
+// AddResponseHeader appends a header value to the response proxy without replacing existing values.
+func (rd *ReqData[I]) AddResponseHeader(key, value string) {
+	rd.responseProxy.AddHeader(key, value)
+}
+
+// GetResponseStatus returns the status code and error text from the response proxy.
+func (rd *ReqData[I]) GetResponseStatus() (int, string) {
+	return rd.responseProxy.GetStatus()
+}
+
+// GetResponseHeader returns the first value for a header on the response proxy, or empty string if not set.
+func (rd *ReqData[I]) GetResponseHeader(key string) string {
+	return rd.responseProxy.GetHeader(key)
+}
+
+// GetResponseHeaders returns all values for a header on the response proxy.
+func (rd *ReqData[I]) GetResponseHeaders(key string) []string {
+	return rd.responseProxy.GetHeaders(key)
+}
+
+// GetResponseCookies returns all cookies set on the response proxy.
+func (rd *ReqData[I]) GetResponseCookies() []*http.Cookie {
+	return rd.responseProxy.GetCookies()
+}
+
+// GetResponseLocation returns the redirect URL from the response proxy, if a redirect has been set.
+func (rd *ReqData[I]) GetResponseLocation() string {
+	return rd.responseProxy.GetLocation()
+}
+
+// IsResponseError returns true if the response proxy status is 400 or higher.
+func (rd *ReqData[I]) IsResponseError() bool {
+	return rd.responseProxy.IsError()
+}
+
+// IsResponseRedirect returns true if a redirect has been set on the response proxy.
+func (rd *ReqData[I]) IsResponseRedirect() bool {
+	return rd.responseProxy.IsRedirect()
+}
+
+// IsResponseSuccess returns true if the response proxy status is in the 2xx range.
+func (rd *ReqData[I]) IsResponseSuccess() bool {
+	return rd.responseProxy.IsSuccess()
 }

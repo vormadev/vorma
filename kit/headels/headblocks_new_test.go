@@ -166,18 +166,6 @@ func TestInitUniqueRules(t *testing.T) {
 
 // TestHighLevelAPI tests the high level API functions
 func TestHighLevelAPI(t *testing.T) {
-	// Test New with and without size
-	h1 := New()
-	h2 := New(10)
-
-	if cap(h1.els) != 0 {
-		t.Errorf("Expected capacity 0, got %d", cap(h1.els))
-	}
-
-	if cap(h2.els) != 10 {
-		t.Errorf("Expected capacity 10, got %d", cap(h2.els))
-	}
-
 	// Test Add with various types
 	h := New()
 	h.Add(Tag("meta"), h.Name("description"), h.Content("Test Description"))

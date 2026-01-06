@@ -133,16 +133,14 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 
 	v.getDefaultHeadEls = o.GetDefaultHeadEls
 	if v.getDefaultHeadEls == nil {
-		v.getDefaultHeadEls = func(r *http.Request, app *Vorma) (*headels.HeadEls, error) {
-			return headels.New(), nil
+		v.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
+			return nil
 		}
 	}
 
 	v.getHeadElUniqueRules = o.GetHeadElUniqueRules
 	if v.getHeadElUniqueRules == nil {
-		v.getHeadElUniqueRules = func() *headels.HeadEls {
-			return headels.New()
-		}
+		v.getHeadElUniqueRules = func(h *headels.HeadEls) {}
 	}
 
 	v.getRootTemplateData = o.GetRootTemplateData
@@ -161,12 +159,12 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 type Loaders struct{ vorma *Vorma }
 type Actions struct{ vorma *Vorma }
 
-func (h *Vorma) ServeStatic() func(http.Handler) http.Handler {
-	return h.Wave.ServeStatic(true)
+func (v *Vorma) ServeStatic() func(http.Handler) http.Handler {
+	return v.Wave.ServeStatic(true)
 }
 
-func (h *Vorma) Loaders() *Loaders { return &Loaders{vorma: h} }
-func (h *Vorma) Actions() *Actions { return &Actions{vorma: h} }
+func (v *Vorma) Loaders() *Loaders { return &Loaders{vorma: v} }
+func (v *Vorma) Actions() *Actions { return &Actions{vorma: v} }
 
 func (h *Loaders) HandlerMountPattern() string {
 	return "/*"
@@ -190,13 +188,13 @@ type BuildOptions struct {
 	ExtraTSCode string
 }
 
-func (h *Vorma) Build(o ...BuildOptions) {
+func (v *Vorma) Build(o ...BuildOptions) {
 	var opts BuildOptions
 	if len(o) > 0 {
 		opts = o[0]
 	}
-	h.Wave.BuildWaveWithHook(func(isDev bool) error {
-		return h.buildInner(&buildInnerOptions{
+	v.Wave.BuildWaveWithHook(func(isDev bool) error {
+		return v.buildInner(&buildInnerOptions{
 			isDev:        isDev,
 			buildOptions: &opts,
 		})

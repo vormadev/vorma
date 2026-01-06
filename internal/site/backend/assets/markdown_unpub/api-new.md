@@ -141,7 +141,6 @@ which only triggers when you do a Vorma-controlled navigation.
 ## Server APIs
 
 - IsJSONRequest
-- NewHeadEls
 - VormaBuildIDHeaderKey
 - EnableThirdPartyRouter
 - AdHocType

@@ -130,6 +130,17 @@ export function initLocal() {
 	localStorage.setItem(RESOLVED_THEME_KEY, resolvedTheme);
 }
 
+export function getNextToggleValue(theme: Theme): Theme {
+	switch (theme) {
+		case THEMES.System:
+			return THEMES.Light;
+		case THEMES.Light:
+			return THEMES.Dark;
+		case THEMES.Dark:
+			return THEMES.System;
+	}
+}
+
 /////////////////////////////////////////////////////////////////////
 /////// INTERNAL UTILS
 /////////////////////////////////////////////////////////////////////
