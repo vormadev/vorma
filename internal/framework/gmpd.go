@@ -11,7 +11,6 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
-	"github.com/vormadev/vorma/kit/typed"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -20,15 +19,6 @@ import (
 /////////////////////////////////////////////////////////////////////
 
 type SplatValues []string
-
-var gmpdCache = typed.SyncMap[string, *cachedItemSubset]{}
-
-type cachedItemSubset struct {
-	ImportURLs      []string
-	ExportKeys      []string
-	ErrorExportKeys []string
-	Deps            []string
-}
 
 /////////////////////////////////////////////////////////////////////
 /////// CORE TYPES
@@ -99,12 +89,19 @@ func (v *Vorma) get_ui_data_stage_1(
 		matchedPatterns[i] = match.OriginalPattern()
 	}
 
+	// Get buildID and paths snapshot atomically to ensure consistency.
+	// If a rebuild happens between these calls, the buildID will be part of the
+	// cache key, so we won't pollute the new cache with stale data.
+	buildID := v.getBuildID()
+	paths := v.getPathsSnapshot()
+	isDev := v.getIsDev()
+
+	// Build cache key including buildID to prevent stale cache entries
+	// after rebuilds. The buildID changes on every rebuild.
 	var sb strings.Builder
-	var growSize int
-	for _, match := range _matches {
-		growSize += len(match.NormalizedPattern())
-	}
-	sb.Grow(growSize)
+	sb.Grow(len(buildID) + 1)
+	sb.WriteString(buildID)
+	sb.WriteByte(':')
 	for _, match := range _matches {
 		sb.WriteString(match.NormalizedPattern())
 	}
@@ -113,10 +110,11 @@ func (v *Vorma) get_ui_data_stage_1(
 	var _cachedItemSubset *cachedItemSubset
 	var isCached bool
 
-	if _cachedItemSubset, isCached = gmpdCache.Load(cacheKey); !isCached {
+	if _cachedItemSubset, isCached = v.gmpdCache.Load(cacheKey); !isCached {
 		_cachedItemSubset = &cachedItemSubset{}
+
 		for _, path := range _matches {
-			foundPath := v._paths[path.OriginalPattern()]
+			foundPath := paths[path.OriginalPattern()]
 			// Potentially a server route with no client-side counterpart
 			if foundPath == nil || foundPath.SrcPath == "" {
 				_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "")
@@ -125,15 +123,15 @@ func (v *Vorma) get_ui_data_stage_1(
 				continue
 			}
 			pathToUse := foundPath.OutPath
-			if v._isDev {
+			if isDev {
 				pathToUse = foundPath.SrcPath
 			}
 			_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "/"+pathToUse)
 			_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, foundPath.ExportKey)
 			_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, foundPath.ErrorExportKey)
 		}
-		_cachedItemSubset.Deps = v.getDeps(_matches)
-		_cachedItemSubset, _ = gmpdCache.LoadOrStore(cacheKey, _cachedItemSubset)
+		_cachedItemSubset.Deps = v.getDepsFromSnapshot(_matches, paths)
+		_cachedItemSubset, _ = v.gmpdCache.LoadOrStore(cacheKey, _cachedItemSubset)
 	}
 
 	_tasks_results := mux.RunNestedTasks(nestedRouter, r, _match_results)
@@ -314,12 +312,13 @@ func (v *Vorma) getUIRouteData(
 	hb = append(hb, uiRoutesData.stage_1_head_els...)
 
 	publicPathPrefix := v.Wave.GetPublicPathPrefix()
+	isDev := v.getIsDev()
 
 	// For client transitions (JSON), AssetManager injects
 	// modulepreload links before head els get rendered,
 	// so there is no need (and it would be wasteful) to
 	// include them here.
-	if !v._isDev && !isJSON {
+	if !isDev && !isJSON {
 		if uiRoutesData.ui_data_core.Deps != nil {
 			for _, dep := range uiRoutesData.ui_data_core.Deps {
 				el := &htmlutil.Element{

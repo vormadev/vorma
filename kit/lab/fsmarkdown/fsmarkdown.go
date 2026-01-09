@@ -27,7 +27,7 @@ type MarkdownParser = func([]byte, io.Writer) error
 type Instance struct {
 	Options
 	pageDetailsCache *lru.Cache[string, *DetailedPage]
-	sitemapCache     typed.SyncMap[generateSitemapInput, *generateSitemapInnerData]
+	sitemapCache     *typed.SyncMap__[generateSitemapInput, *generateSitemapInnerData]
 	basePageCache    *lru.Cache[string, *Page]
 }
 
@@ -51,7 +51,7 @@ func New(opts Options) *Instance {
 	return &Instance{
 		Options:          opts,
 		pageDetailsCache: lru.NewCache[string, *DetailedPage](1_000),
-		sitemapCache:     typed.SyncMap[generateSitemapInput, *generateSitemapInnerData]{},
+		sitemapCache:     typed.NewSyncMap[generateSitemapInput, *generateSitemapInnerData](),
 		basePageCache:    lru.NewCache[string, *Page](1_000),
 	}
 }

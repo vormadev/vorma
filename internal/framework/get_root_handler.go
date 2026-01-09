@@ -18,6 +18,20 @@ import (
 const VormaBuildIDHeaderKey = "X-Vorma-Build-Id"
 const VormaJSONQueryKey = "vorma_json"
 
+// DevRebuildRoutesPath is the endpoint path for fast route rebuilds.
+// Wave calls this instead of running the full build hook when only
+// vorma.routes.ts changes.
+// This reduces rebuild time from ~1.5s to ~50ms.
+const DevRebuildRoutesPath = "/__vorma/rebuild-routes"
+
+// DevReloadTemplatePath is the endpoint path for fast template reloads.
+// Wave calls this instead of a full restart when only the HTML template changes.
+const DevReloadTemplatePath = "/__vorma/reload-template"
+
+// DevRebuildFileMapPath is the endpoint path for regenerating filemap.ts.
+// Used when public static files change.
+const DevRebuildFileMapPath = "/__vorma/rebuild-filemap"
+
 var headElsInstance = headels.NewInstance("vorma")
 
 // Deprecated: use GetLoadersHandler instead.
@@ -29,8 +43,46 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 	v.validateAndDecorateNestedRouter(nestedRouter)
 
 	handler := mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Dev-only fast rebuild endpoints
+		// Use getter method for thread-safe access to _isDev
+		if v.getIsDev() {
+			if r.URL.Path == DevRebuildRoutesPath {
+				if err := v.rebuildRoutesOnly(); err != nil {
+					Log.Error(fmt.Sprintf("fast route rebuild failed: %s", err))
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("ok"))
+				return
+			}
+			if r.URL.Path == DevReloadTemplatePath {
+				if err := v.reloadTemplate(); err != nil {
+					Log.Error(fmt.Sprintf("fast template reload failed: %s", err))
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("ok"))
+				return
+			}
+			if r.URL.Path == DevRebuildFileMapPath {
+				if err := v.Wave.WritePublicFileMapTS(v.config.TSGenOutDir); err != nil {
+					Log.Error(fmt.Sprintf("fast filemap rebuild failed: %s", err))
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("ok"))
+				return
+			}
+		}
+
+		// Get buildID once for this request using thread-safe getter
+		buildID := v.getBuildID()
+
 		res := response.New(w)
-		res.SetHeader(VormaBuildIDHeaderKey, v._buildID)
+		res.SetHeader(VormaBuildIDHeaderKey, buildID)
 
 		isJSON := IsJSONRequest(r)
 		if isJSON && !v.IsCurrentBuildJSONRequest(r) {
@@ -138,16 +190,20 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		rootTemplateData["VormaSSRScriptSha256Hash"] = ssrScriptSha256Hash
 		rootTemplateData["VormaRootID"] = "vorma-root"
 
-		if !v._isDev {
+		// Use thread-safe getters
+		isDev := v.getIsDev()
+		clientEntryOut := v.getClientEntryOut()
+
+		if !isDev {
 			rootTemplateData["VormaBodyScripts"] = template.HTML(
 				fmt.Sprintf(
 					`<script type="module" src="%s%s"></script>`,
-					v.Wave.GetPublicPathPrefix(), v._clientEntryOut,
+					v.Wave.GetPublicPathPrefix(), clientEntryOut,
 				),
 			)
 		} else {
-			opts := viteutil.ToDevScriptsOptions{ClientEntry: v._clientEntrySrc}
-			if UIVariant(v.Wave.GetVormaUIVariant()) == UIVariants.React {
+			opts := viteutil.ToDevScriptsOptions{ClientEntry: v.config.ClientEntry}
+			if UIVariant(v.config.UIVariant) == UIVariants.React {
 				opts.Variant = viteutil.Variants.React
 			} else {
 				opts.Variant = viteutil.Variants.Other
@@ -165,7 +221,9 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 
 		var buf bytes.Buffer
 
-		err = v._rootTemplate.Execute(&buf, rootTemplateData)
+		// Use thread-safe getter for template
+		rootTemplate := v.getRootTemplate()
+		err = rootTemplate.Execute(&buf, rootTemplateData)
 		if err != nil {
 			Log.Error(fmt.Sprintf("Error executing template: %v\n", err))
 			res.InternalServerError()
@@ -182,21 +240,22 @@ func IsJSONRequest(r *http.Request) bool {
 	return r.URL.Query().Get(VormaJSONQueryKey) != ""
 }
 
+// IsCurrentBuildJSONRequest checks if the request is from a client with the current build ID.
 // If true, is both (1) JSON and (2) guaranteed to be from a client
 // that has knowledge of the latest build ID.
 func (v *Vorma) IsCurrentBuildJSONRequest(r *http.Request) bool {
-	return r.URL.Query().Get(VormaJSONQueryKey) == v._buildID
+	return r.URL.Query().Get(VormaJSONQueryKey) == v.getBuildID()
 }
 
 // GetCurrentBuildID returns the current build ID of the Vorma instance.
 func (v *Vorma) GetCurrentBuildID() string {
-	return v._buildID
+	return v.getBuildID()
 }
 
 func (v *Vorma) GetActionsHandler(router *mux.Router) mux.TasksCtxRequirerFunc {
 	return mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
-		res.SetHeader(VormaBuildIDHeaderKey, v._buildID)
+		res.SetHeader(VormaBuildIDHeaderKey, v.getBuildID())
 		router.ServeHTTP(w, r)
 	})
 }

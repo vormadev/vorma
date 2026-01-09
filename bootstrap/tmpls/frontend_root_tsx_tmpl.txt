@@ -1,4 +1,4 @@
-import { type RouteProps } from "../vorma.gen.ts";
+import { type RouteProps } from "../vorma.gen/index.ts";
 import { Link } from "../vorma.utils.tsx";
 
 export function Root(props: RouteProps<"/">) {

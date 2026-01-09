@@ -57,6 +57,9 @@ func EnsureTrailingSlash(pattern string) string {
 	}
 	return pattern
 }
+func EnsureLeadingAndTrailingSlash(pattern string) string {
+	return EnsureLeadingSlash(EnsureTrailingSlash(pattern))
+}
 
 func StripLeadingSlash(pattern string) string {
 	if HasLeadingSlash(pattern) {

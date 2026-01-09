@@ -65,7 +65,7 @@ func (v *Vorma) writePathsToDisk_StageOne() error {
 	pathsAsJSON, err := json.MarshalIndent(PathsFile{
 		Stage:             "one",
 		Paths:             v._paths,
-		ClientEntrySrc:    v.Wave.GetVormaClientEntry(),
+		ClientEntrySrc:    v.config.ClientEntry,
 		BuildID:           v._buildID,
 		RouteManifestFile: v._routeManifestFile,
 	}, "", "\t")
@@ -96,21 +96,17 @@ var (
 )
 
 const vitePluginTemplateStr = `
-export const staticPublicAssetMap = {{.StaticPublicAssetMapJSON}} as const;
-
+import { staticPublicAssetMap } from "./filemap";
+export { staticPublicAssetMap };
 export type StaticPublicAsset = keyof typeof staticPublicAssetMap;
 
 declare global {
-	function {{.FuncName}}(
-		staticPublicAsset: StaticPublicAsset,
-	): string;
+	function {{.FuncName}}(staticPublicAsset: StaticPublicAsset): string;
 }
 
 export const publicPathPrefix = "{{.PublicPathPrefix}}";
 
-export function waveRuntimeURL(
-	originalPublicURL: StaticPublicAsset,
-) {
+export function waveRuntimeURL(originalPublicURL: StaticPublicAsset) {
 	const url = staticPublicAssetMap[originalPublicURL] ?? originalPublicURL;
 	return publicPathPrefix + url;
 }
@@ -133,7 +129,7 @@ export const vormaViteConfig = {
 
 var vitePluginTemplate = template.Must(template.New("vitePlugin").Parse(vitePluginTemplateStr))
 
-func (v *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string) (string, error) {
+func (v *Vorma) toRollupOptions(entrypoints []string) (string, error) {
 	var sb stringsutil.Builder
 
 	sb.Return()
@@ -141,7 +137,7 @@ func (v *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string)
 	sb.Return()
 
 	var dedupeList []string
-	switch UIVariant(v.Wave.GetVormaUIVariant()) {
+	switch UIVariant(v.config.UIVariant) {
 	case UIVariants.React:
 		dedupeList = reactDedupeList
 	case UIVariants.Preact:
@@ -150,28 +146,23 @@ func (v *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string)
 		dedupeList = solidDedupeList
 	}
 
+	// Ignore the entire TSGenOutDir (contains filemap.ts and index.ts)
 	ignoredList := []string{
 		"**/*.go",
 		path.Join("**", v.Wave.GetDistDir()+"/**/*"),
 		path.Join("**", v.Wave.GetPrivateStaticDir()+"/**/*"),
 		path.Join("**", v.Wave.GetConfigFile()),
-		path.Join("**", v.Wave.GetVormaTSGenOutPath()),
-		path.Join("**", v.Wave.GetVormaClientRouteDefsFile()),
-	}
-
-	mapAsJSON, err := json.MarshalIndent(fileMap, "", "\t") // No initial indent
-	if err != nil {
-		return "", fmt.Errorf("error marshalling map to JSON: %w", err)
+		path.Join("**", v.config.TSGenOutDir+"/**/*"),
+		path.Join("**", v.config.ClientRouteDefsFile),
 	}
 
 	var buf bytes.Buffer
-	err = vitePluginTemplate.Execute(&buf, map[string]any{
-		"Entrypoints":              entrypoints,
-		"PublicPathPrefix":         v.Wave.GetPublicPathPrefix(),
-		"StaticPublicAssetMapJSON": template.HTML(mapAsJSON),
-		"FuncName":                 v.Wave.GetVormaBuildtimePublicURLFuncName(),
-		"IgnoredPatterns":          ignoredList,
-		"DedupeList":               dedupeList,
+	err := vitePluginTemplate.Execute(&buf, map[string]any{
+		"Entrypoints":      entrypoints,
+		"PublicPathPrefix": v.Wave.GetPublicPathPrefix(),
+		"FuncName":         v.config.BuildtimePublicURLFuncName,
+		"IgnoredPatterns":  ignoredList,
+		"DedupeList":       dedupeList,
 	})
 	if err != nil {
 		return "", fmt.Errorf("error executing template: %w", err)
@@ -182,33 +173,45 @@ func (v *Vorma) toRollupOptions(entrypoints []string, fileMap map[string]string)
 	return sb.String(), nil
 }
 
-func (v *Vorma) handleViteConfigHelper(extraTS string) error {
-	entrypoints := v.getEntrypoints()
-
-	publicFileMap, err := v.Wave.GetSimplePublicFileMapBuildtime()
+// writeGeneratedTS generates and writes the complete TypeScript output file.
+// This includes both the route type definitions and the Vite config.
+func (v *Vorma) writeGeneratedTS() error {
+	tsOutput, err := v.generateTypeScript(&tsGenOptions{
+		LoadersRouter: v.LoadersRouter().NestedRouter,
+		ActionsRouter: v.ActionsRouter().Router,
+		// Use stored configuration which is available in both build and server processes
+		AdHocTypes:  v._adHocTypes,
+		ExtraTSCode: v._extraTSCode,
+	})
 	if err != nil {
-		Log.Error(fmt.Sprintf("HandleEntrypoints: error getting public file map: %s", err))
+		return fmt.Errorf("generate TypeScript: %w", err)
+	}
+
+	rollupOptions, err := v.toRollupOptions(v.getEntrypoints())
+	if err != nil {
+		return fmt.Errorf("generate rollup options: %w", err)
+	}
+
+	content := tsOutput + rollupOptions
+
+	// Hash check to skip write if unchanged (prevents unnecessary Vite HMR)
+	newHash := sha256.Sum256([]byte(content))
+	if v._lastConfigHash == newHash {
+		Log.Info("Generated config unchanged, skipping write")
+		return nil
+	}
+	v._lastConfigHash = newHash
+
+	tsGenOutDir := v.config.TSGenOutDir
+	target := filepath.Join(".", tsGenOutDir, "index.ts")
+
+	if err := os.MkdirAll(filepath.Dir(target), os.ModePerm); err != nil {
+		Log.Error(fmt.Sprintf("writeGeneratedTS: error creating directory: %s", err))
 		return err
 	}
 
-	rollupOptions, err := v.toRollupOptions(entrypoints, publicFileMap)
-	if err != nil {
-		Log.Error(fmt.Sprintf("HandleEntrypoints: error converting entrypoints to rollup options: %s", err))
-		return err
-	}
-
-	rollupOptions = extraTS + rollupOptions
-
-	target := filepath.Join(".", v.Wave.GetVormaTSGenOutPath())
-
-	err = os.MkdirAll(filepath.Dir(target), os.ModePerm)
-	if err != nil {
-		Log.Error(fmt.Sprintf("HandleEntrypoints: error creating directory: %s", err))
-		return err
-	}
-
-	if err = os.WriteFile(target, []byte(rollupOptions), os.ModePerm); err != nil {
-		Log.Error(fmt.Sprintf("HandleEntrypoints: error writing entrypoints to disk: %s", err))
+	if err := os.WriteFile(target, []byte(content), os.ModePerm); err != nil {
+		Log.Error(fmt.Sprintf("writeGeneratedTS: error writing file: %s", err))
 		return err
 	}
 
@@ -225,8 +228,7 @@ type NodeScriptResultItem struct {
 type NodeScriptResult []NodeScriptResultItem
 
 type buildInnerOptions struct {
-	isDev        bool
-	buildOptions *BuildOptions
+	isDev bool
 }
 
 // Finds `import("./path")` and captures just the path string `"./path"`.
@@ -257,18 +259,18 @@ type routeCallVisitor struct {
 }
 
 // Enter is called for each node when descending into the AST.
-func (v *routeCallVisitor) Enter(n js.INode) js.IVisitor {
+func (rv *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 	call, isCall := n.(*js.CallExpr)
 	if !isCall {
-		return v
+		return rv
 	}
 
 	ident, isIdent := call.X.(*js.Var)
 	if !isIdent {
-		return v
+		return rv
 	}
 
-	if _, isRouteFunc := v.routeFuncNames[string(ident.Data)]; isRouteFunc {
+	if _, isRouteFunc := rv.routeFuncNames[string(ident.Data)]; isRouteFunc {
 		route := RouteCall{Key: "default"}
 		argsList := call.Args.List
 
@@ -287,7 +289,7 @@ func (v *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 		// Extract pattern (first argument)
 		val, ok := extractStringArg(0)
 		if !ok {
-			return v
+			return rv
 		}
 		route.Pattern = val
 
@@ -297,21 +299,21 @@ func (v *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 
 			// Check if it's a variable reference
 			if varRef, ok := arg.Value.(*js.Var); ok {
-				if importPath, exists := v.importTracker.imports[string(varRef.Data)]; exists {
+				if importPath, exists := rv.importTracker.imports[string(varRef.Data)]; exists {
 					route.Module = importPath
 				} else {
-					return v // Skip if we can't resolve the variable
+					return rv // Skip if we can't resolve the variable
 				}
-			} else if call, ok := arg.Value.(*js.CallExpr); ok {
+			} else if innerCall, ok := arg.Value.(*js.CallExpr); ok {
 				// Direct import() call
-				if ident, ok := call.X.(*js.Var); ok && string(ident.Data) == "import" {
-					if len(call.Args.List) > 0 {
-						if strLit, ok := call.Args.List[0].Value.(*js.LiteralExpr); ok && strLit.TokenType == js.StringToken {
+				if innerIdent, ok := innerCall.X.(*js.Var); ok && string(innerIdent.Data) == "import" {
+					if len(innerCall.Args.List) > 0 {
+						if strLit, ok := innerCall.Args.List[0].Value.(*js.LiteralExpr); ok && strLit.TokenType == js.StringToken {
 							unquoted, err := strconv.Unquote(string(strLit.Data))
 							if err == nil {
 								route.Module = unquoted
 							} else {
-								return v
+								return rv
 							}
 						}
 					}
@@ -320,7 +322,7 @@ func (v *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 				// Try to extract as string (shouldn't happen with imports, but just in case)
 				val, ok := extractStringArg(1)
 				if !ok {
-					return v
+					return rv
 				}
 				route.Module = val
 			}
@@ -335,13 +337,13 @@ func (v *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 			route.ErrorKey = val
 		}
 
-		*v.routes = append(*v.routes, route)
+		*rv.routes = append(*rv.routes, route)
 	}
-	return v
+	return rv
 }
 
 // Exit is called when ascending from a node.
-func (v *routeCallVisitor) Exit(n js.INode) {}
+func (rv *routeCallVisitor) Exit(n js.INode) {}
 
 // extractRouteCalls uses an AST parser to find all `route()` calls.
 func extractRouteCalls(code string) ([]RouteCall, error) {
@@ -409,6 +411,73 @@ func extractRouteCalls(code string) ([]RouteCall, error) {
 	return routes, nil
 }
 
+// parseClientRoutes reads and parses vorma.routes.ts, returning the paths map.
+// This is the single source of truth for route parsing, used by both
+// buildInner() and rebuildRoutesOnly().
+func (v *Vorma) parseClientRoutes() (map[string]*Path, error) {
+	clientRouteDefsFile := v.config.ClientRouteDefsFile
+
+	code, err := os.ReadFile(clientRouteDefsFile)
+	if err != nil {
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+
+	// First, transpile and minify the routes file to ensure consistent import format
+	minifyResult := esbuild.Transform(string(code), esbuild.TransformOptions{
+		Format:            esbuild.FormatESModule,
+		Platform:          esbuild.PlatformNode,
+		MinifyWhitespace:  true,
+		MinifySyntax:      true,
+		MinifyIdentifiers: false,
+		Loader:            esbuild.LoaderTSX,
+		Target:            esbuild.ES2020,
+	})
+	if len(minifyResult.Errors) > 0 {
+		for _, msg := range minifyResult.Errors {
+			Log.Error(fmt.Sprintf("esbuild error: %s", msg.Text))
+		}
+		return nil, errors.New("esbuild transform failed")
+	}
+
+	// Apply the import transformation to the minified code
+	transformedCode := importRegex.ReplaceAllString(string(minifyResult.Code), "$1")
+
+	// Extract route calls from the transformed code
+	routeCalls, err := extractRouteCalls(transformedCode)
+	if err != nil {
+		return nil, fmt.Errorf("extract route calls: %w", err)
+	}
+
+	paths := make(map[string]*Path, len(routeCalls))
+	routesDir := filepath.Dir(clientRouteDefsFile)
+
+	for _, rc := range routeCalls {
+		resolvedModulePath, err := filepath.Rel(".", filepath.Join(routesDir, rc.Module))
+		if err != nil {
+			Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
+			resolvedModulePath = rc.Module
+		}
+		modulePath := filepath.ToSlash(resolvedModulePath)
+
+		// Check if the module file exists on disk
+		if _, err := os.Stat(modulePath); err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("component module does not exist: %s (pattern: %s). Did you specify the correct file extension?", modulePath, rc.Pattern)
+			}
+			return nil, fmt.Errorf("access component module %s: %w", modulePath, err)
+		}
+
+		paths[rc.Pattern] = &Path{
+			OriginalPattern: rc.Pattern,
+			SrcPath:         modulePath,
+			ExportKey:       rc.Key,
+			ErrorExportKey:  rc.ErrorKey,
+		}
+	}
+
+	return paths, nil
+}
+
 func (v *Vorma) buildInner(opts *buildInnerOptions) error {
 	a := time.Now()
 
@@ -429,122 +498,32 @@ func (v *Vorma) buildInner(opts *buildInnerOptions) error {
 		Log.Info("START building Vorma (PROD)")
 	}
 
-	clientRouteDefsFile := v.Wave.GetVormaClientRouteDefsFile()
-
-	code, err := os.ReadFile(clientRouteDefsFile)
+	// Parse client routes (single source of truth)
+	paths, err := v.parseClientRoutes()
 	if err != nil {
-		Log.Error(fmt.Sprintf("error reading client route defs file: %s", err))
+		Log.Error(fmt.Sprintf("error parsing client routes: %s", err))
 		return err
 	}
 
-	// First, transpile and minify the routes file to ensure consistent import format
-	minifyResult := esbuild.Transform(string(code), esbuild.TransformOptions{
-		Format:            esbuild.FormatESModule,
-		Platform:          esbuild.PlatformNode,
-		MinifyWhitespace:  true,
-		MinifySyntax:      true,
-		MinifyIdentifiers: false,
-		Loader:            esbuild.LoaderTSX,
-		Target:            esbuild.ES2020,
-	})
-	if len(minifyResult.Errors) > 0 {
-		for _, msg := range minifyResult.Errors {
-			Log.Error(fmt.Sprintf("esbuild error: %s", msg.Text))
-		}
-		return fmt.Errorf("esbuild errors occurred during transform")
-	}
-	minifiedCode := string(minifyResult.Code)
+	// Sync routes via registry (merges server routes, rebuilds router, clears cache)
+	v.routes().Sync(paths)
 
-	// Apply the import transformation to the minified code
-	transformedCode := importRegex.ReplaceAllString(minifiedCode, "$1")
-
-	// Extract route calls from the transformed code
-	routeCalls, err := extractRouteCalls(transformedCode)
-	if err != nil {
-		Log.Error(fmt.Sprintf("error extracting route calls: %s", err))
-		return err
-	}
-
-	v._paths = make(map[string]*Path)
-
-	routesDir := filepath.Dir(clientRouteDefsFile)
-	for _, routeCall := range routeCalls {
-		// The module path is now a raw string literal, so we need to unquote it if needed
-		unquotedModule := routeCall.Module
-
-		resolvedModulePath, err := filepath.Rel(".", filepath.Join(routesDir, unquotedModule))
-		if err != nil {
-			Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
-			resolvedModulePath = unquotedModule
-		}
-		modulePath := filepath.ToSlash(resolvedModulePath)
-
-		// Check if the module file exists on disk
-		if _, err := os.Stat(modulePath); err != nil {
-			if os.IsNotExist(err) {
-				errMsg := fmt.Sprintf("Component module does not exist: %s (pattern: %s). Did you specify the correct file extension?", modulePath, routeCall.Pattern)
-				Log.Error(errMsg)
-				return errors.New(errMsg)
-			}
-			errMsg := fmt.Sprintf("Error accessing component module %s: %v", modulePath, err)
-			Log.Error(errMsg)
-			return errors.New(errMsg)
-		}
-
-		v._paths[routeCall.Pattern] = &Path{
-			OriginalPattern: routeCall.Pattern,
-			SrcPath:         modulePath,
-			ExportKey:       routeCall.Key,
-			ErrorExportKey:  routeCall.ErrorKey,
-		}
-	}
-
-	allServerRoutes := v.LoadersRouter().NestedRouter.AllRoutes()
-	for pattern := range allServerRoutes {
-		if _, hasClientRoute := v._paths[pattern]; !hasClientRoute {
-			// Create a pass-through path entry
-			v._paths[pattern] = &Path{
-				OriginalPattern: pattern,
-				SrcPath:         "", // Empty indicates pass-through
-				ExportKey:       "default",
-				ErrorExportKey:  "",
-			}
-		}
-	}
-
-	// Remove all files in StaticPublicOutDir starting with vormaChunkPrefix or vormaEntryPrefix.
+	// Remove Vorma-generated files
 	err = cleanStaticPublicOutDir(v.Wave.GetStaticPublicOutDir())
 	if err != nil {
 		Log.Error(fmt.Sprintf("error cleaning static public out dir: %s", err))
 		return err
 	}
 
-	manifest := v.generateRouteManifest(v.LoadersRouter().NestedRouter)
-	manifestFile, err := v.writeRouteManifestToDisk(manifest)
-	if err != nil {
-		Log.Error(fmt.Sprintf("error writing route manifest: %s", err))
-		return err
-	}
-	v._routeManifestFile = manifestFile
-
-	if err = v.writePathsToDisk_StageOne(); err != nil {
-		Log.Error(fmt.Sprintf("error writing paths to disk: %s", err))
+	// Ensure Wave writes the filemap.ts before we generate index.ts
+	if err = v.Wave.WritePublicFileMapTS(v.config.TSGenOutDir); err != nil {
+		Log.Error(fmt.Sprintf("error writing public file map TS: %s", err))
 		return err
 	}
 
-	tsgenOutput, err := v.generateTypeScript(&tsGenOptions{
-		LoadersRouter: v.LoadersRouter().NestedRouter,
-		ActionsRouter: v.ActionsRouter().Router,
-		AdHocTypes:    opts.buildOptions.AdHocTypes,
-		ExtraTSCode:   opts.buildOptions.ExtraTSCode,
-	})
-	if err != nil {
-		Log.Error(fmt.Sprintf("error generating TypeScript: %s", err))
-		return err
-	}
-
-	if err = v.handleViteConfigHelper(tsgenOutput); err != nil {
-		// already logged internally in handleViteConfigHelper
+	// Write all route artifacts (manifest, paths JSON, TypeScript)
+	if err = v.routes().WriteArtifacts(); err != nil {
+		Log.Error(fmt.Sprintf("error writing route artifacts: %s", err))
 		return err
 	}
 
@@ -562,7 +541,7 @@ func (v *Vorma) buildInner(opts *buildInnerOptions) error {
 
 	Log.Info("DONE building Vorma",
 		"buildID", v._buildID,
-		"routes found", len(routeCalls),
+		"routes found", len(v._paths),
 		"duration", time.Since(a),
 	)
 
@@ -570,7 +549,7 @@ func (v *Vorma) buildInner(opts *buildInnerOptions) error {
 }
 
 func (v *Vorma) getViteDevURL() string {
-	if !v._isDev {
+	if !v.getIsDev() {
 		return ""
 	}
 	return fmt.Sprintf("http://localhost:%s", viteutil.GetVitePortStr())
@@ -596,15 +575,6 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 		return wrapped
 	}
 
-	// delete the ".vite" directory
-	err = os.RemoveAll(filepath.Join(staticPublicOutDir, ".vite"))
-	if err != nil {
-		wrapped := fmt.Errorf("error removing .vite directory: %s", err)
-		Log.Error(wrapped.Error())
-		return wrapped
-	}
-
-	// delete all files starting with vormaPrehashedFilePrefix
 	err = filepath.Walk(staticPublicOutDir, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -631,7 +601,7 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 
 func (v *Vorma) getEntrypoints() []string {
 	entryPoints := make(map[string]struct{}, len(v._paths)+1)
-	entryPoints[path.Clean(v.Wave.GetVormaClientEntry())] = struct{}{}
+	entryPoints[path.Clean(v.config.ClientEntry)] = struct{}{}
 	for _, path := range v._paths {
 		if path.SrcPath != "" {
 			entryPoints[path.SrcPath] = struct{}{}
@@ -660,9 +630,8 @@ func (v *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 		return nil, err
 	}
 
-	cleanClientEntry := filepath.Clean(v.Wave.GetVormaClientEntry())
+	cleanClientEntry := filepath.Clean(v.config.ClientEntry)
 
-	// Assuming manifestJSON is your Vite manifest
 	for key, chunk := range viteManifest {
 		cleanKey := filepath.Base(chunk.File)
 
@@ -674,7 +643,6 @@ func (v *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 			}
 		}
 
-		// Get dependencies
 		deps := viteutil.FindAllDependencies(viteManifest, key)
 
 		// Handle client entry
@@ -699,7 +667,7 @@ func (v *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 		}
 	}
 
-	htmlTemplateContent, err := os.ReadFile(path.Join(v.Wave.GetPrivateStaticDir(), v.Wave.GetVormaHTMLTemplateLocation()))
+	htmlTemplateContent, err := os.ReadFile(path.Join(v.Wave.GetPrivateStaticDir(), v.config.HTMLTemplateLocation))
 	if err != nil {
 		Log.Error(fmt.Sprintf("error reading HTML template file: %s", err))
 		return nil, err
@@ -710,7 +678,7 @@ func (v *Vorma) toPathsFile_StageTwo() (*PathsFile, error) {
 		Stage:             "two",
 		DepToCSSBundleMap: depToCSSBundleMap,
 		Paths:             v._paths,
-		ClientEntrySrc:    v.Wave.GetVormaClientEntry(),
+		ClientEntrySrc:    v.config.ClientEntry,
 		ClientEntryOut:    vormaClientEntryOut,
 		ClientEntryDeps:   vormaClientEntryDeps,
 		RouteManifestFile: v._routeManifestFile,

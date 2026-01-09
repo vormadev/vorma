@@ -3,6 +3,7 @@ package vorma
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/matcher"
@@ -53,7 +54,17 @@ func (v *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
 
 	var seen = map[string]struct{}{}
 
-	for pattern, loader := range allLoaders {
+	// Sort loader patterns for deterministic output.
+	// Map iteration order in Go is random, which would cause the generated
+	// TypeScript to differ between runs even with identical input.
+	loaderPatterns := make([]string, 0, len(allLoaders))
+	for pattern := range allLoaders {
+		loaderPatterns = append(loaderPatterns, pattern)
+	}
+	slices.Sort(loaderPatterns)
+
+	for _, pattern := range loaderPatterns {
+		loader := allLoaders[pattern]
 		item := tsgen.CollectionItem{
 			ArbitraryProperties: map[string]any{
 				base.DiscriminatorStr:     pattern,
@@ -73,19 +84,30 @@ func (v *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
 			}
 		}
 		if pattern == expectedRootDataPattern {
-			foundRootData = true
-			item.ArbitraryProperties["isRootData"] = true
+			// Only mark as root data if there's an actual Go loader (task handler),
+			// not just a client-only route registered without a handler.
+			if opts.LoadersRouter.HasTaskHandler(pattern) {
+				foundRootData = true
+				item.ArbitraryProperties["isRootData"] = true
+			}
 		}
 		collection = append(collection, item)
 		seen[pattern] = struct{}{}
 	}
 
-	// add any client-defined paths that don't have loaders
+	// Sort client-defined path patterns for deterministic output
 	maybeExtraLoaderPaths := v._paths
-	for _, path := range maybeExtraLoaderPaths {
-		if _, ok := seen[path.OriginalPattern]; ok {
-			continue
+	extraPathPatterns := make([]string, 0, len(maybeExtraLoaderPaths))
+	for pattern := range maybeExtraLoaderPaths {
+		if _, ok := seen[pattern]; !ok {
+			extraPathPatterns = append(extraPathPatterns, pattern)
 		}
+	}
+	slices.Sort(extraPathPatterns)
+
+	// add any client-defined paths that don't have loaders
+	for _, pattern := range extraPathPatterns {
+		path := maybeExtraLoaderPaths[pattern]
 		item := tsgen.CollectionItem{
 			ArbitraryProperties: map[string]any{
 				base.DiscriminatorStr:     path.OriginalPattern,
@@ -106,7 +128,31 @@ func (v *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
 		seen[path.OriginalPattern] = struct{}{}
 	}
 
-	for _, action := range allActions {
+	// Sort actions for deterministic output.
+	// Create a sortable key combining pattern and method since multiple
+	// actions can exist for the same pattern with different HTTP methods.
+	type actionKey struct {
+		pattern string
+		method  string
+		index   int
+	}
+	actionKeys := make([]actionKey, 0, len(allActions))
+	for i, action := range allActions {
+		actionKeys = append(actionKeys, actionKey{
+			pattern: action.OriginalPattern(),
+			method:  action.Method(),
+			index:   i,
+		})
+	}
+	slices.SortFunc(actionKeys, func(a, b actionKey) int {
+		if cmp := strings.Compare(a.pattern, b.pattern); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(a.method, b.method)
+	})
+
+	for _, ak := range actionKeys {
+		action := allActions[ak.index]
 		method, pattern := action.Method(), action.OriginalPattern()
 		_, isQuery := queryMethods[method]
 		_, isMutation := mutationMethods[method]
@@ -142,7 +188,7 @@ func (v *Vorma) generateTypeScript(opts *tsGenOptions) (string, error) {
 		collection = append(collection, item)
 	}
 
-	uiVariant := v.Wave.GetVormaUIVariant()
+	uiVariant := v.config.UIVariant
 
 	var sb strings.Builder
 

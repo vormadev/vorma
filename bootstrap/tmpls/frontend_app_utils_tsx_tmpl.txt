@@ -6,7 +6,7 @@ import {
 	makeTypedUsePatternLoaderData,
 	makeTypedUseRouterData,
 } from "vorma/{{.UIVariant}}";
-import { vormaAppConfig, type VormaApp } from "./vorma.gen.ts";
+import { vormaAppConfig, type VormaApp } from "./vorma.gen/index.ts";
 
 export const Link = makeTypedLink(vormaAppConfig, { prefetch: "intent" });
 export const navigate = makeTypedNavigate(vormaAppConfig);

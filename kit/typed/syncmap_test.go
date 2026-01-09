@@ -7,7 +7,7 @@ import (
 )
 
 func TestSyncMap_BasicOperations(t *testing.T) {
-	var m SyncMap[string, int]
+	m := NewSyncMap[string, int]()
 
 	// Test storing and loading values
 	m.Store("foo", 42)
@@ -32,7 +32,7 @@ func TestSyncMap_BasicOperations(t *testing.T) {
 }
 
 func TestSyncMap_LoadOrStore(t *testing.T) {
-	var m SyncMap[string, int]
+	m := NewSyncMap[string, int]()
 
 	// Test loading or storing a new value
 	actual, loaded := m.LoadOrStore("foo", 42)
@@ -48,7 +48,7 @@ func TestSyncMap_LoadOrStore(t *testing.T) {
 }
 
 func TestSyncMap_LoadAndDelete(t *testing.T) {
-	var m SyncMap[string, int]
+	m := NewSyncMap[string, int]()
 
 	// Test loading and deleting a value
 	m.Store("foo", 42)
@@ -71,7 +71,7 @@ func TestSyncMap_LoadAndDelete(t *testing.T) {
 }
 
 func TestSyncMap_Range(t *testing.T) {
-	var m SyncMap[string, int]
+	m := NewSyncMap[string, int]()
 
 	// Store multiple values
 	m.Store("foo", 42)
@@ -100,7 +100,7 @@ func TestSyncMap_Range(t *testing.T) {
 }
 
 func TestSyncMap_Concurrency(t *testing.T) {
-	var m SyncMap[string, int]
+	m := NewSyncMap[string, int]()
 	wg := sync.WaitGroup{}
 
 	// Test concurrent access

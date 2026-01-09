@@ -9,6 +9,7 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/typed"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -58,14 +59,35 @@ var UIVariants = struct {
 	Solid:  "solid",
 }
 
+type VormaConfig struct {
+	IncludeDefaults            *bool  `json:"IncludeDefaults,omitempty"`
+	UIVariant                  string `json:"UIVariant"`
+	HTMLTemplateLocation       string `json:"HTMLTemplateLocation"`
+	ClientEntry                string `json:"ClientEntry"`
+	ClientRouteDefsFile        string `json:"ClientRouteDefsFile"`
+	TSGenOutDir                string `json:"TSGenOutDir"`
+	BuildtimePublicURLFuncName string `json:"BuildtimePublicURLFuncName,omitempty"`
+}
+
 type (
 	GetDefaultHeadElsFunc    func(r *http.Request, app *Vorma, head *headels.HeadEls) error
 	GetHeadElUniqueRulesFunc func(head *headels.HeadEls)
 	GetRootTemplateDataFunc  func(r *http.Request) (map[string]any, error)
 )
 
+// cachedItemSubset holds pre-computed route metadata for a specific match combination.
+// This is cached per unique combination of matched patterns to avoid repeated lookups.
+type cachedItemSubset struct {
+	ImportURLs      []string
+	ExportKeys      []string
+	ErrorExportKeys []string
+	Deps            []string
+}
+
 type Vorma struct {
 	*wave.Wave
+
+	config *VormaConfig
 
 	actionsRouter *ActionsRouter
 	loadersRouter *LoadersRouter
@@ -74,6 +96,8 @@ type Vorma struct {
 	getHeadElUniqueRules GetHeadElUniqueRulesFunc
 	getRootTemplateData  GetRootTemplateDataFunc
 
+	// mu protects mutable state that can be modified during dev rebuilds.
+	// Use RLock for read access, Lock for write access.
 	mu                 sync.RWMutex
 	_isDev             bool
 	_paths             map[string]*Path
@@ -86,8 +110,69 @@ type Vorma struct {
 	_privateFS         fs.FS
 	_routeManifestFile string
 	_serverAddr        string
+	_lastConfigHash    [32]byte // Cache for config hashing to skip redundant writes
+
+	// gmpdCache is an instance-level cache for route match metadata.
+	// Keys are concatenated normalized patterns + buildID; values are pre-computed metadata.
+	// This cache is cleared on route rebuilds via routeRegistry.clearCache().
+	gmpdCache *typed.SyncMap__[string, *cachedItemSubset]
+
+	// Config for TS Generation (persisted in app struct)
+	_adHocTypes  []*AdHocType
+	_extraTSCode string
 }
 
 func (v *Vorma) ServerAddr() string            { return v._serverAddr }
 func (v *Vorma) LoadersRouter() *LoadersRouter { return v.loadersRouter }
 func (v *Vorma) ActionsRouter() *ActionsRouter { return v.actionsRouter }
+
+// getPathsSnapshot returns the paths map for safe concurrent access.
+// The map is replaced atomically during rebuilds (not mutated in place),
+// so callers can safely read from it without holding a lock for the duration.
+func (v *Vorma) getPathsSnapshot() map[string]*Path {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._paths
+}
+
+// getIsDev returns whether we're in dev mode. Thread-safe.
+func (v *Vorma) getIsDev() bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._isDev
+}
+
+// getBuildID returns the current build ID. Thread-safe.
+func (v *Vorma) getBuildID() string {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._buildID
+}
+
+// getClientEntryOut returns the client entry output path. Thread-safe.
+func (v *Vorma) getClientEntryOut() string {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._clientEntryOut
+}
+
+// getClientEntryDeps returns the client entry dependencies. Thread-safe.
+func (v *Vorma) getClientEntryDeps() []string {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._clientEntryDeps
+}
+
+// getDepToCSSBundleMap returns the dep to CSS bundle mapping. Thread-safe.
+func (v *Vorma) getDepToCSSBundleMap() map[string]string {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._depToCSSBundleMap
+}
+
+// getRootTemplate returns the root HTML template. Thread-safe.
+func (v *Vorma) getRootTemplate() *template.Template {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._rootTemplate
+}

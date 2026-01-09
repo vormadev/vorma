@@ -6,12 +6,15 @@ import (
 	"html/template"
 	"io/fs"
 	"path"
+	"path/filepath"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/wave"
 )
 
-// Inits Vorma. Panics on error in production; logs error in dev mode.
+// Inits Vorma.
+// Panics on error in production; logs error in dev mode.
 func (v *Vorma) Init() {
 	isDev := v.GetIsDev()
 	if err := v.initInner(isDev); err != nil {
@@ -41,7 +44,8 @@ func (v *Vorma) InitWithDefaultRouter() *mux.Router {
 	return r
 }
 
-// RUNTIME! Gets called from the handler maker, which gets called by the user's router init function.
+// RUNTIME!
+// Gets called from the handler maker, which gets called by the user's router init function.
 func (v *Vorma) validateAndDecorateNestedRouter(nestedRouter *mux.NestedRouter) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
@@ -70,10 +74,27 @@ func PrettyPrintFS(fsys fs.FS) error {
 	})
 }
 
+// Internal__GetCurrentNPMVersion returns the version of the Vorma NPM package
+// that should be installed. Used by bootstrap.
+func Internal__GetCurrentNPMVersion() string {
+	return "0.0.1" // Placeholder: This would typically be dynamic or hardcoded to release version
+}
+
 func (v *Vorma) initInner(isDev bool) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v._isDev = isDev
+
+	// Inject runtime configuration into Wave
+	if v.config.TSGenOutDir != "" {
+		v.Wave.SetPublicFileMapOutDir(v.config.TSGenOutDir)
+		// Ignore the generated filemap.ts to prevent infinite loops
+		// Use public constant from wave package
+		v.Wave.AddIgnoredPatterns([]string{
+			filepath.Join(v.config.TSGenOutDir, wave.PublicFileMapTSName),
+		})
+	}
+
 	privateFS, err := v.Wave.GetPrivateFS()
 	if err != nil {
 		wrapped := fmt.Errorf("could not get private fs: %w", err)
@@ -102,7 +123,7 @@ func (v *Vorma) initInner(isDev bool) error {
 		v._depToCSSBundleMap = make(map[string]string)
 	}
 	v._routeManifestFile = pathsFile.RouteManifestFile
-	tmpl, err := template.ParseFS(v._privateFS, v.Wave.GetVormaHTMLTemplateLocation())
+	tmpl, err := template.ParseFS(v._privateFS, v.config.HTMLTemplateLocation)
 	if err != nil {
 		return fmt.Errorf("error parsing root template: %w", err)
 	}

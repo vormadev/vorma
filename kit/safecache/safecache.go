@@ -54,7 +54,7 @@ type mapToKeyFunc[K any, DK comparable] func(key K) DK
 // CacheMap is a generic, thread-safe cache map that caches values based on
 // derived keys.
 type CacheMap[K any, DK comparable, V any] struct {
-	cache         typed.SyncMap[DK, *Cache[V]]
+	cache         *typed.SyncMap__[DK, *Cache[V]]
 	mapInitFunc   mapInitFunc[K, V]
 	mapBypassFunc mapBypassFunc[K]
 	mapToKeyFunc  mapToKeyFunc[K, DK]
@@ -74,7 +74,7 @@ func NewMap[K any, DK comparable, V any](
 		panic("mapToKeyFunc must not be nil")
 	}
 	return &CacheMap[K, DK, V]{
-		cache:         typed.SyncMap[DK, *Cache[V]]{},
+		cache:         typed.NewSyncMap[DK, *Cache[V]](),
 		mapInitFunc:   initFunc,
 		mapToKeyFunc:  mapToKeyFunc,
 		mapBypassFunc: bypassFunc,
@@ -88,8 +88,16 @@ func (c *CacheMap[K, DK, V]) Get(key K) (V, error) {
 		return c.mapInitFunc(key)
 	}
 
+	dk := c.mapToKeyFunc(key)
+
+	// Check if already cached first to avoid allocation
+	if itemCache, ok := c.cache.Load(dk); ok {
+		return itemCache.Get()
+	}
+
+	// Only allocate if needed
 	itemCache, _ := c.cache.LoadOrStore(
-		c.mapToKeyFunc(key),
+		dk,
 		New(func() (V, error) { return c.mapInitFunc(key) }, nil),
 	)
 
