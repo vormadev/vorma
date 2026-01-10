@@ -4,147 +4,310 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
-func TestColorLogHandler_Levels(t *testing.T) {
-	var buf bytes.Buffer
-	logger := New("TEST")
-	logger.Handler().(*ColorLogHandler).output = &buf
+func ptr[T any](v T) *T { return &v }
 
+func newTestLogger(label string, buf *bytes.Buffer) *slog.Logger {
+	return New(label, Options{Output: buf, UseColor: ptr(true)})
+}
+
+func TestNew(t *testing.T) {
+	t.Run("with label only", func(t *testing.T) {
+		logger := New("TEST")
+		if logger == nil {
+			t.Fatal("New should not return nil")
+		}
+		h, ok := logger.Handler().(*ColorLogHandler)
+		if !ok {
+			t.Fatal("handler should be *ColorLogHandler")
+		}
+		if h.label != "TEST" {
+			t.Errorf("label = %q, want TEST", h.label)
+		}
+	})
+
+	t.Run("with options", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := New("TEST", Options{
+			Output:   &buf,
+			Level:    slog.LevelWarn,
+			UseColor: ptr(false),
+		})
+		h := logger.Handler().(*ColorLogHandler)
+		if h.opts.Level != slog.LevelWarn {
+			t.Errorf("level = %v, want LevelWarn", h.opts.Level)
+		}
+		if h.color != false {
+			t.Error("color should be false")
+		}
+	})
+}
+
+func TestEnabled(t *testing.T) {
 	tests := []struct {
-		name    string
-		logFunc func(string, ...any)
-		message string
-		color   string
+		handlerLevel slog.Level
+		logLevel     slog.Level
+		want         bool
 	}{
-		{"Debug", logger.Debug, "debug message", colorGray},
-		{"Info", logger.Info, "info message", colorCyan},
-		{"Warn", logger.Warn, "warning message", colorYellow},
-		{"Error", logger.Error, "error message", colorRed},
+		{slog.LevelDebug, slog.LevelDebug, true},
+		{slog.LevelDebug, slog.LevelInfo, true},
+		{slog.LevelInfo, slog.LevelDebug, false},
+		{slog.LevelInfo, slog.LevelInfo, true},
+		{slog.LevelWarn, slog.LevelInfo, false},
+		{slog.LevelWarn, slog.LevelWarn, true},
+		{slog.LevelError, slog.LevelWarn, false},
+		{slog.LevelError, slog.LevelError, true},
+	}
+
+	for _, tt := range tests {
+		var buf bytes.Buffer
+		logger := New("TEST", Options{Output: &buf, Level: tt.handlerLevel})
+		h := logger.Handler().(*ColorLogHandler)
+		got := h.Enabled(context.Background(), tt.logLevel)
+		if got != tt.want {
+			t.Errorf("Enabled(handlerLevel=%v, logLevel=%v) = %v, want %v",
+				tt.handlerLevel, tt.logLevel, got, tt.want)
+		}
+	}
+}
+
+func TestLevelFiltering(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, Level: slog.LevelWarn, UseColor: ptr(true)})
+
+	logger.Debug("debug")
+	logger.Info("info")
+	logger.Warn("warn")
+	logger.Error("error")
+
+	got := buf.String()
+	if strings.Contains(got, "debug") {
+		t.Error("debug message should be filtered")
+	}
+	if strings.Contains(got, "info") {
+		t.Error("info message should be filtered")
+	}
+	if !strings.Contains(got, "warn") {
+		t.Error("warn message should appear")
+	}
+	if !strings.Contains(got, "error") {
+		t.Error("error message should appear")
+	}
+}
+
+func TestLevels(t *testing.T) {
+	tests := []struct {
+		name   string
+		level  slog.Level
+		prefix string
+		color  string
+	}{
+		{"Debug", slog.LevelDebug, "DEBUG  ", colorGray},
+		{"Info", slog.LevelInfo, "", colorCyan},
+		{"Warn", slog.LevelWarn, "WARNING  ", colorYellow},
+		{"Error", slog.LevelError, "ERROR  ", colorRed},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buf.Reset()
-			tt.logFunc(tt.message)
+			var buf bytes.Buffer
+			logger := New("TEST", Options{Output: &buf, Level: slog.LevelDebug, UseColor: ptr(true)})
+			logger.Log(context.Background(), tt.level, "test message")
 			got := buf.String()
 
-			// Check color codes
 			if !strings.Contains(got, tt.color) {
-				t.Errorf("expected output to contain color %q, got %q", tt.color, got)
+				t.Errorf("missing color %q in output: %q", tt.color, got)
 			}
-
-			// Check message content
-			if !strings.Contains(got, tt.message) {
-				t.Errorf("expected output to contain message %q, got %q", tt.message, got)
+			if !strings.Contains(got, tt.prefix+"test message") {
+				t.Errorf("missing prefix+message %q in output: %q", tt.prefix+"test message", got)
 			}
-
-			// Check label
 			if !strings.Contains(got, "TEST") {
-				t.Errorf("expected output to contain label TEST, got %q", got)
-			}
-
-			// Check color reset
-			if !strings.Contains(got, colorReset) {
-				t.Errorf("expected output to contain reset color code, got %q", got)
+				t.Errorf("missing label in output: %q", got)
 			}
 		})
 	}
 }
 
-func TestColorLogHandler_WithAttributes(t *testing.T) {
+func TestWithAttrs(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST")
-	logger.Handler().(*ColorLogHandler).output = &buf
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
 
-	logger.Info("test message", "key1", "value1", "key2", 42)
+	// WithAttrs should return a new logger
+	logger2 := logger.With("key1", "value1")
+	logger2.Info("message")
+
 	got := buf.String()
-
-	// Check for key elements in the attribute formatting
-	expectations := []string{
-		colorGray + "[" + colorReset + " " + colorGray + "key1" + colorReset + " " + colorGray + "=" + colorReset + " value1 " + colorGray + "]" + colorReset,
-		colorGray + "[" + colorReset + " " + colorGray + "key2" + colorReset + " " + colorGray + "=" + colorReset + " 42 " + colorGray + "]" + colorReset,
+	if !strings.Contains(got, "key1") || !strings.Contains(got, "value1") {
+		t.Errorf("WithAttrs not applied: %q", got)
 	}
 
-	for _, exp := range expectations {
+	// Original logger should not have the attr
+	buf.Reset()
+	logger.Info("original")
+	got = buf.String()
+	if strings.Contains(got, "key1") {
+		t.Errorf("original logger should not have attr: %q", got)
+	}
+}
+
+func TestWithAttrsChained(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+
+	logger.With("a", 1).With("b", 2).Info("chained")
+
+	got := buf.String()
+	if !strings.Contains(got, "a") || !strings.Contains(got, "1") {
+		t.Errorf("missing first attr: %q", got)
+	}
+	if !strings.Contains(got, "b") || !strings.Contains(got, "2") {
+		t.Errorf("missing second attr: %q", got)
+	}
+}
+
+func TestWithGroup(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+
+	logger.WithGroup("grp").Info("message", "key", "value")
+
+	got := buf.String()
+	if !strings.Contains(got, "grp.key") {
+		t.Errorf("group prefix not applied: %q", got)
+	}
+}
+
+func TestWithGroupNested(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+
+	logger.WithGroup("a").WithGroup("b").Info("message", "key", "value")
+
+	got := buf.String()
+	if !strings.Contains(got, "a.b.key") {
+		t.Errorf("nested group prefix not applied: %q", got)
+	}
+}
+
+func TestWithGroupAndAttrs(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+
+	logger.With("pre", "val").WithGroup("grp").Info("msg", "key", "value")
+
+	got := buf.String()
+	if !strings.Contains(got, "pre") {
+		t.Errorf("pre-group attr missing: %q", got)
+	}
+	if !strings.Contains(got, "grp.key") {
+		t.Errorf("grouped attr missing: %q", got)
+	}
+}
+
+func TestColorDisabled(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(false)})
+
+	logger.Info("test message", "key", "value")
+
+	got := buf.String()
+	if strings.Contains(got, "\033[") {
+		t.Errorf("color codes should not appear when disabled: %q", got)
+	}
+	if !strings.Contains(got, "test message") {
+		t.Errorf("message missing: %q", got)
+	}
+}
+
+func TestTimeFormat(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newTestLogger("TEST", &buf)
+
+	logger.Info("test")
+
+	got := buf.String()
+	today := time.Now().Format("2006/01/02")
+	if !strings.Contains(got, today) {
+		t.Errorf("expected date %q in output: %q", today, got)
+	}
+}
+
+func TestAttributes(t *testing.T) {
+	var buf bytes.Buffer
+	logger := newTestLogger("TEST", &buf)
+
+	logger.Info("msg",
+		"string", "value",
+		"int", 42,
+		"float", 3.14,
+		"bool", true,
+	)
+
+	got := buf.String()
+	for _, exp := range []string{"string", "value", "int", "42", "float", "3.14", "bool", "true"} {
 		if !strings.Contains(got, exp) {
-			t.Errorf("expected output to contain %q, got %q", exp, got)
+			t.Errorf("missing %q in output: %q", exp, got)
 		}
 	}
 }
 
-func TestColorLogHandler_TimeFormat(t *testing.T) {
+func TestThreadSafety(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST")
-	logger.Handler().(*ColorLogHandler).output = &buf
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(false)})
 
-	logger.Info("test message")
-	got := buf.String()
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			logger.Info("message", "n", n)
+		}(i)
+	}
+	wg.Wait()
 
-	// Check time format (2006/01/02 15:04:05)
-	timeStr := time.Now().Format("2006/01/02")
-	if !strings.Contains(got, timeStr) {
-		t.Errorf("expected output to contain time format %q, got %q", timeStr, got)
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 100 {
+		t.Errorf("expected 100 lines, got %d", len(lines))
+	}
+
+	// Each line should be complete (not interleaved)
+	for i, line := range lines {
+		if !strings.Contains(line, "message") {
+			t.Errorf("line %d appears corrupted: %q", i, line)
+		}
 	}
 }
 
-func TestColorLogHandler_Interface(t *testing.T) {
-	handler := &ColorLogHandler{}
+func TestSharedMutex(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(false)})
 
-	// Test Enabled method
-	if !handler.Enabled(context.Background(), slog.LevelInfo) {
-		t.Error("Enabled should return true")
-	}
+	h1 := logger.Handler().(*ColorLogHandler)
+	h2 := logger.With("key", "value").Handler().(*ColorLogHandler)
+	h3 := logger.WithGroup("grp").Handler().(*ColorLogHandler)
 
-	// Test WithAttrs method
-	newHandler := handler.WithAttrs([]slog.Attr{slog.String("key", "value")})
-	if newHandler != handler {
-		t.Error("WithAttrs should return the same handler")
-	}
-
-	// Test WithGroup method
-	newHandler = handler.WithGroup("group")
-	if newHandler != handler {
-		t.Error("WithGroup should return the same handler")
+	if h1.mu != h2.mu || h1.mu != h3.mu {
+		t.Error("WithAttrs/WithGroup clones should share the same mutex")
 	}
 }
 
-func TestNew(t *testing.T) {
-	logger := New("TEST")
-	if logger == nil {
-		t.Error("New should not return nil")
-	}
+type errorWriter struct{}
 
-	handler, ok := logger.Handler().(*ColorLogHandler)
-	if !ok {
-		t.Error("logger.Handler should be of type *ColorLogHandler")
-	}
-
-	if handler.label != "TEST" {
-		t.Errorf("handler label should be TEST, got %q", handler.label)
-	}
-}
-
-type errorWriter struct {
-	io.Writer
-}
-
-func (ew errorWriter) Write(p []byte) (n int, err error) {
+func (errorWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write error")
 }
 
-func TestColorLogHandler_ErrorOutput(t *testing.T) {
-	handler := &ColorLogHandler{
-		label:  "TEST",
-		output: errorWriter{},
-	}
+func TestHandleError(t *testing.T) {
+	logger := New("TEST", Options{Output: errorWriter{}, UseColor: ptr(false)})
+	h := logger.Handler().(*ColorLogHandler)
 
-	err := handler.Handle(context.Background(), slog.Record{
+	err := h.Handle(context.Background(), slog.Record{
 		Time:    time.Now(),
 		Message: "test",
 		Level:   slog.LevelInfo,
@@ -155,114 +318,48 @@ func TestColorLogHandler_ErrorOutput(t *testing.T) {
 	}
 }
 
-func TestColorLogHandler_ComplexAttributes(t *testing.T) {
+func TestWithAttrsEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST")
-	logger.Handler().(*ColorLogHandler).output = &buf
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	h := logger.Handler().(*ColorLogHandler)
 
-	logger.Info("complex attributes",
-		"string", "value",
-		"int", 42,
-		"float", 3.14,
-		"bool", true,
-		"array", []string{"a", "b"},
-		"map", map[string]int{"k": 1},
-	)
+	h2 := h.WithAttrs(nil)
+	if h2 != h {
+		t.Error("WithAttrs(nil) should return same handler")
+	}
 
+	h3 := h.WithAttrs([]slog.Attr{})
+	if h3 != h {
+		t.Error("WithAttrs([]) should return same handler")
+	}
+}
+
+func TestWithGroupEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	h := logger.Handler().(*ColorLogHandler)
+
+	h2 := h.WithGroup("")
+	if h2 != h {
+		t.Error("WithGroup(\"\") should return same handler")
+	}
+}
+
+func TestOutputFormat(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+
+	logger.Info("hello", "k", "v")
 	got := buf.String()
-	expectations := []string{
-		"value",
-		"42",
-		"3.14",
-		"true",
-		"[a b]",
-		"map[k:1]",
+
+	// Verify structure: timestamp  (label)  message  [attrs]
+	if !strings.Contains(got, "("+colorBlue+"TEST"+colorReset+")") {
+		t.Errorf("label format incorrect: %q", got)
 	}
-
-	for _, exp := range expectations {
-		if !strings.Contains(got, exp) {
-			t.Errorf("expected output to contain %q, got %q", exp, got)
-		}
+	if !strings.Contains(got, colorCyan+"hello"+colorReset) {
+		t.Errorf("message format incorrect: %q", got)
 	}
-}
-
-func withParens(str string) string {
-	return "  (" + colorBlue + str + colorReset + ")  "
-}
-
-func TestColorLogHandler_Output(t *testing.T) {
-	var buf bytes.Buffer
-	logger := New("TEST")
-	logger.Handler().(*ColorLogHandler).output = &buf
-
-	tests := []struct {
-		name    string
-		logFunc func(string, ...any)
-		msg     string
-		args    []any
-		prefix  string
-		suffix  string
-	}{
-		{
-			name:    "info no attrs",
-			logFunc: logger.Info,
-			msg:     "test message",
-			prefix:  colorGray,
-			suffix:  colorReset + withParens("TEST") + colorCyan + "test message" + colorReset + "\n",
-		},
-		{
-			name:    "info with attrs",
-			logFunc: logger.Info,
-			msg:     "test message",
-			args:    []any{"key1", "val1", "key2", 42},
-			prefix:  colorGray,
-			suffix: colorReset + withParens("TEST") + colorCyan + "test message" + colorReset + "  " +
-				colorGray + "[" + colorReset + " " + colorGray + "key1" + colorReset + " " + colorGray + "=" + colorReset + " val1 " + colorGray + "]" + colorReset + " " +
-				colorGray + "[" + colorReset + " " + colorGray + "key2" + colorReset + " " + colorGray + "=" + colorReset + " 42 " + colorGray + "]" + colorReset + "\n",
-		},
-		{
-			name:    "debug no attrs",
-			logFunc: logger.Debug,
-			msg:     "debug message",
-			prefix:  colorGray,
-			suffix:  colorReset + withParens("TEST") + colorGray + "DEBUG  debug message" + colorReset + "\n",
-		},
-		{
-			name:    "warn no attrs",
-			logFunc: logger.Warn,
-			msg:     "warn message",
-			prefix:  colorGray,
-			suffix:  colorReset + withParens("TEST") + colorYellow + "WARNING  warn message" + colorReset + "\n",
-		},
-		{
-			name:    "error no attrs",
-			logFunc: logger.Error,
-			msg:     "error message",
-			prefix:  colorGray,
-			suffix:  colorReset + withParens("TEST") + colorRed + "ERROR  error message" + colorReset + "\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			buf.Reset()
-			if tt.args != nil {
-				tt.logFunc(tt.msg, tt.args...)
-			} else {
-				tt.logFunc(tt.msg)
-			}
-			got := buf.String()
-
-			ts := got[len(colorGray) : len(colorGray)+19] // Account for the colorGray prefix
-			expectedFormat := "2006/01/02 15:04:05"
-			if len(ts) != len(expectedFormat) {
-				t.Errorf("timestamp wrong format\ngot:  %q\nwant format: %q", ts, expectedFormat)
-			}
-
-			expected := tt.prefix + ts + tt.suffix
-			if got != expected {
-				t.Errorf("\ngot:  %q\nwant: %q", got, expected)
-			}
-		})
+	if !strings.HasSuffix(got, "]\033[0m\n") {
+		t.Errorf("should end with attr bracket and newline: %q", got)
 	}
 }

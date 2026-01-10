@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/vormadev/vorma/kit/lab/repoconcat"
+	"github.com/vormadev/vorma/lab/repoconcat"
 )
 
 func main() {

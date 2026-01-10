@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	t "github.com/vormadev/vorma/kit/cliutil"
+	t "github.com/vormadev/vorma/lab/cliutil"
 )
 
 func Run() {
