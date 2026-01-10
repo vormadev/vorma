@@ -7,6 +7,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
@@ -52,13 +53,38 @@ func (r *Runtime) initFileMapDetails() (*fileMapDetails, error) {
 `
 	innerHTML := fmt.Sprintf(innerHTMLFormat, url, prefix)
 
+	linkEl := htmlutil.Element{
+		Tag:         "link",
+		Attributes:  map[string]string{"rel": "modulepreload", "href": url},
+		SelfClosing: true,
+	}
+
+	scriptEl := htmlutil.Element{
+		Tag:                "script",
+		Attributes:         map[string]string{"type": "module"},
+		DangerousInnerHTML: innerHTML,
+	}
+
+	sha256Hash, err := htmlutil.AddSha256HashInline(&scriptEl)
+	if err != nil {
+		return nil, fmt.Errorf("error handling CSP for filemap script: %w", err)
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`<link rel="modulepreload" href="%s">`, url))
-	sb.WriteString(fmt.Sprintf(`<script type="module">%s</script>`, innerHTML))
+
+	err = htmlutil.RenderElementToBuilder(&linkEl, &sb)
+	if err != nil {
+		return nil, fmt.Errorf("error rendering link element: %w", err)
+	}
+
+	err = htmlutil.RenderElementToBuilder(&scriptEl, &sb)
+	if err != nil {
+		return nil, fmt.Errorf("error rendering script element: %w", err)
+	}
 
 	return &fileMapDetails{
 		elements:   sb.String(),
-		sha256Hash: sha256Base64([]byte(innerHTML)),
+		sha256Hash: sha256Hash,
 	}, nil
 }
 

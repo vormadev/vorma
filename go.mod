@@ -7,7 +7,6 @@ require (
 	github.com/evanw/esbuild v0.25.9
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/joho/godotenv v1.5.1
 	github.com/tdewolff/parse/v2 v2.8.3
 	golang.org/x/crypto v0.42.0
 	golang.org/x/net v0.44.0

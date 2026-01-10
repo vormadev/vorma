@@ -26,7 +26,6 @@ type (
 	None                              = mux.None
 	Action[I any, O any]              = rf.TaskHandler[I, O]
 	Loader[O any]                     = rf.TaskHandler[None, O]
-	BuildOptions                      = rf.BuildOptions
 	LoaderFunc[Ctx any, O any]        = func(*Ctx) (O, error)
 	ActionFunc[Ctx any, I any, O any] = func(*Ctx) (O, error)
 	LoadersRouterOptions              = rf.LoadersRouterOptions
@@ -37,7 +36,8 @@ type (
 	// marker method to ensure the API client knows to accept FormData
 	// as the input type. To get the actual form values, use the underlying
 	// *http.Request (by calling `Request()` on your action ctx).
-	FormData = rf.FormData
+	FormData    = rf.FormData
+	LoaderError = rf.LoaderError
 )
 
 var (

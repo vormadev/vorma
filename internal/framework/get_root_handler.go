@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"net/url"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
@@ -33,11 +32,6 @@ const DevReloadTemplatePath = "/__vorma/reload-template"
 const DevRebuildFileMapPath = "/__vorma/rebuild-filemap"
 
 var headElsInstance = headels.NewInstance("vorma")
-
-// Deprecated: use GetLoadersHandler instead.
-func (v *Vorma) GetUIHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
-	return v.GetLoadersHandler(nestedRouter)
-}
 
 func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
 	v.validateAndDecorateNestedRouter(nestedRouter)
@@ -86,12 +80,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 
 		isJSON := IsJSONRequest(r)
 		if isJSON && !v.IsCurrentBuildJSONRequest(r) {
-			newURL, err := url.Parse(r.URL.Path)
-			if err != nil {
-				Log.Error(fmt.Sprintf("Error parsing URL: %v\n", err))
-				res.InternalServerError()
-				return
-			}
+			newURL := *r.URL // shallow copy preserves query string
 			q := newURL.Query()
 			q.Del(VormaJSONQueryKey)
 			newURL.RawQuery = q.Encode()

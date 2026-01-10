@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/wave/internal/builder"
 	"github.com/vormadev/vorma/wave/internal/config"
 	"golang.org/x/sync/errgroup"
@@ -389,7 +390,7 @@ func (s *server) handleFileChange(classified classifiedEvent, isBatch bool, skip
 			continue
 		}
 		go func(c string) {
-			if err := builder.RunShellCommand(context.Background(), c); err != nil {
+			if err := executil.RunShell(c); err != nil {
 				s.log.Warn("concurrent-no-wait hook failed", "cmd", c, "error", err)
 			}
 		}(cmd)
@@ -407,7 +408,7 @@ func (s *server) handleFileChange(classified classifiedEvent, isBatch bool, skip
 		if cmd == "" {
 			continue
 		}
-		if err := builder.RunShellCommand(context.Background(), cmd); err != nil {
+		if err := executil.RunShell(cmd); err != nil {
 			return err
 		}
 	}
@@ -446,7 +447,7 @@ func (s *server) handleFileChange(classified classifiedEvent, isBatch bool, skip
 			if cmd == "" {
 				return nil
 			}
-			return builder.RunShellCommand(context.Background(), cmd)
+			return executil.RunShell(cmd)
 		})
 	}
 
@@ -467,7 +468,7 @@ func (s *server) handleFileChange(classified classifiedEvent, isBatch bool, skip
 		if cmd == "" {
 			continue
 		}
-		if err := builder.RunShellCommand(context.Background(), cmd); err != nil {
+		if err := executil.RunShell(cmd); err != nil {
 			return err
 		}
 	}

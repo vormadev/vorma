@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"html/template"
 
+	"github.com/vormadev/vorma/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/wave/internal/config"
 )
 
@@ -32,7 +34,8 @@ func (r *Runtime) RefreshScriptHash() string {
 		port = defaultRefreshPort
 	}
 
-	return sha256Base64([]byte(RefreshScriptInner(port)))
+	hash := cryptoutil.Sha256Hash([]byte(RefreshScriptInner(port)))
+	return bytesutil.ToBase64(hash)
 }
 
 const defaultRefreshPort = 10000

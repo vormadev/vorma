@@ -6,7 +6,9 @@ import (
 	"html/template"
 	"io/fs"
 	"path"
+	"strings"
 
+	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
@@ -22,14 +24,35 @@ func (r *Runtime) initCriticalCSS() (*criticalCSSData, error) {
 
 	content, err := fs.ReadFile(base, "internal/critical.css")
 	if err != nil {
-		// Use proper error checking instead of string matching
 		if errors.Is(err, fs.ErrNotExist) {
 			return &criticalCSSData{noSuchFile: true}, nil
 		}
 		return nil, err
 	}
 
-	return &criticalCSSData{content: string(content)}, nil
+	result := &criticalCSSData{content: string(content)}
+
+	el := htmlutil.Element{
+		Tag:                 "style",
+		AttributesKnownSafe: map[string]string{"id": CriticalCSSElementID},
+		DangerousInnerHTML:  "\n" + result.content,
+	}
+
+	sha256Hash, err := htmlutil.AddSha256HashInline(&el)
+	if err != nil {
+		r.log.Error(fmt.Sprintf("error handling CSP: %v", err))
+		return nil, err
+	}
+	result.sha256Hash = sha256Hash
+
+	renderedEl, err := htmlutil.RenderElement(&el)
+	if err != nil {
+		r.log.Error(fmt.Sprintf("error rendering element: %v", err))
+		return nil, err
+	}
+	result.styleEl = renderedEl
+
+	return result, nil
 }
 
 // CriticalCSS returns the critical CSS content
@@ -43,21 +66,20 @@ func (r *Runtime) CriticalCSS() string {
 
 // CriticalCSSStyleElement returns an inline style element with critical CSS
 func (r *Runtime) CriticalCSSStyleElement() template.HTML {
-	css := r.CriticalCSS()
-	if css == "" {
+	data, err := r.criticalCSS.Get()
+	if err != nil || data == nil || data.noSuchFile {
 		return ""
 	}
-	inner := "\n" + css
-	return template.HTML(fmt.Sprintf(`<style id="%s">%s</style>`, CriticalCSSElementID, inner))
+	return data.styleEl
 }
 
 // CriticalCSSStyleElementHash returns the CSP hash for the critical CSS element
 func (r *Runtime) CriticalCSSStyleElementHash() string {
-	css := r.CriticalCSS()
-	if css == "" {
+	data, err := r.criticalCSS.Get()
+	if err != nil || data == nil || data.noSuchFile {
 		return ""
 	}
-	return sha256Base64([]byte("\n" + css))
+	return data.sha256Hash
 }
 
 func (r *Runtime) initStylesheetURL() (string, error) {
@@ -89,7 +111,15 @@ func (r *Runtime) initStylesheetLink() (string, error) {
 	if url == "" {
 		return "", nil
 	}
-	return fmt.Sprintf(`<link rel="stylesheet" href="%s" id="%s" />`, url, StyleSheetElementID), nil
+
+	var sb strings.Builder
+	sb.WriteString(`<link rel="stylesheet" href="`)
+	sb.WriteString(url)
+	sb.WriteString(`" id="`)
+	sb.WriteString(StyleSheetElementID)
+	sb.WriteString(`" />`)
+
+	return sb.String(), nil
 }
 
 // StyleSheetLinkElement returns a link element for the stylesheet

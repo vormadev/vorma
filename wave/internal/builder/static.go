@@ -273,7 +273,7 @@ func (b *Builder) loadFileMap(gobName string) (config.FileMap, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return config.DecodeFileMap(f)
+	return fsutil.FromGob[config.FileMap](f)
 }
 
 func (b *Builder) saveFileMap(fm config.FileMap, gobName string) error {

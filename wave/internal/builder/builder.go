@@ -3,15 +3,14 @@
 package builder
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"time"
 
+	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/kit/viteutil"
 	"github.com/vormadev/vorma/wave/internal/config"
 	"golang.org/x/sync/errgroup"
@@ -153,7 +152,7 @@ func (b *Builder) runHooks(isDev bool) error {
 		return nil
 	}
 
-	return RunShellCommand(context.Background(), hook)
+	return executil.RunShell(hook)
 }
 
 func (b *Builder) compileGo(isDev bool) error {
@@ -295,18 +294,4 @@ func (b *Builder) getPublicURLBuildtimeCached(original string) string {
 	}
 
 	return url
-}
-
-// RunShellCommand runs a command string through the system shell.
-// This properly handles quoting, pipes, and other shell features.
-func RunShellCommand(ctx context.Context, command string) error {
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
-	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }

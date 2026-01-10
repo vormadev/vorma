@@ -237,35 +237,7 @@ func (h *Actions) SupportedMethods() map[string]bool {
 	return h.vorma.ActionsRouter().supportedMethods
 }
 
-type BuildOptions struct {
-	// Deprecated: Pass AdHocTypes to NewVormaApp via VormaAppConfig instead.
-	// This ensures they are available during fast dev rebuilds.
-	AdHocTypes []*AdHocType
-	// Deprecated: Pass ExtraTSCode to NewVormaApp via VormaAppConfig instead.
-	// This ensures it is available during fast dev rebuilds.
-	ExtraTSCode string
-}
-
-func (v *Vorma) Build(o ...BuildOptions) {
-	var opts BuildOptions
-	if len(o) > 0 {
-		opts = o[0]
-	}
-
-	// Support deprecated usage for backward compatibility, but warn
-	if len(opts.AdHocTypes) > 0 || opts.ExtraTSCode != "" {
-		// We merge them into the instance for THIS run, but they won't persist
-		// to the server process for fast rebuilds.
-		v._adHocTypes = append(v._adHocTypes, opts.AdHocTypes...)
-		if v._extraTSCode != "" && opts.ExtraTSCode != "" {
-			v._extraTSCode += "\n" + opts.ExtraTSCode
-		} else if opts.ExtraTSCode != "" {
-			v._extraTSCode = opts.ExtraTSCode
-		}
-		// Note: We cannot easily log a warning here as the user might not see it,
-		// but this path is technically flawed for fast rebuilds.
-	}
-
+func (v *Vorma) Build() {
 	// Inject Vorma's default watch patterns before starting the build/dev server.
 	// This allows Wave to handle Vorma-specific file changes without having
 	// Vorma-specific knowledge hardcoded into Wave.

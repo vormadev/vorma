@@ -5,6 +5,7 @@ package runtime
 
 import (
 	"fmt"
+	"html/template"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -12,8 +13,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/vormadev/vorma/kit/bytesutil"
-	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/kit/safecache"
 	"github.com/vormadev/vorma/wave/internal/config"
 )
@@ -54,6 +54,8 @@ type Runtime struct {
 type criticalCSSData struct {
 	content    string
 	noSuchFile bool
+	styleEl    template.HTML
+	sha256Hash string
 }
 
 // fileMapDetails holds pre-computed file map HTML
@@ -153,7 +155,7 @@ func (r *Runtime) initFileMap() (config.FileMap, error) {
 	}
 	defer f.Close()
 
-	fm, err := config.DecodeFileMap(f)
+	fm, err := fsutil.FromGob[config.FileMap](f)
 	if err != nil {
 		return nil, fmt.Errorf("decode file map: %w", err)
 	}
@@ -254,8 +256,4 @@ func (r *Runtime) StaticMiddleware(immutableCache bool) func(http.Handler) http.
 			}
 		})
 	}
-}
-
-func sha256Base64(data []byte) string {
-	return bytesutil.ToBase64(cryptoutil.Sha256Hash(data))
 }

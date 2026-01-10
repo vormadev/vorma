@@ -114,7 +114,7 @@ imports.
 <img src="{{ .App.GetPublicURL "hero.png" }}">
 ```
 
-With Vite alone, these would come from the `public/` folder—unhashed, requiring
+With Vite alone, these would come from the `public/` folder--unhashed, requiring
 cache revalidation on every request.
 
 Wave solves this. `GetPublicURL("favicon.svg")` returns
@@ -128,7 +128,7 @@ This matters for production performance. Without content-addressed filenames,
 browsers must revalidate assets on every page load. With them, assets are cached
 forever until they actually change.
 
-**Even Vorma apps benefit from Wave's hashing**—any asset referenced from Go
+**Even Vorma apps benefit from Wave's hashing**--any asset referenced from Go
 templates (favicons, OG images, fonts loaded via CSS `url()`, etc.) gets proper
 cache busting that Vite's `public/` folder cannot provide.
 

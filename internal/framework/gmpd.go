@@ -202,6 +202,27 @@ func (v *Vorma) get_ui_data_stage_1(
 
 	if outermostErrorIdx != nil {
 		derefOuterMostErrorIdx := *outermostErrorIdx
+		err := loadersErrs[derefOuterMostErrorIdx]
+		pattern := matchedPatterns[derefOuterMostErrorIdx]
+
+		var clientMsg string
+		var errToLog error
+
+		if loaderErr, ok := err.(LoaderErrorMarker); ok {
+			clientMsg = loaderErr.ClientMessage()
+			errToLog = loaderErr.ServerError()
+		} else {
+			clientMsg = "An error occurred"
+			errToLog = err
+			Log.Warn("Sending a generic error to the client. " +
+				"If you intended to send a non-generic error message to the client, " +
+				"return it from your loader as a `vorma.LoaderError`, in the `Client` field.",
+			)
+		}
+
+		if errToLog != nil {
+			Log.Error("loader error", "pattern", pattern, "error", errToLog)
+		}
 
 		headElsDoubleSlice := loadersHeadEls[:derefOuterMostErrorIdx]
 		headEls := make([]*htmlutil.Element, 0, len(headElsDoubleSlice))
@@ -213,7 +234,7 @@ func (v *Vorma) get_ui_data_stage_1(
 
 		ui_data := &ui_data_all{
 			ui_data_core: &ui_data_core{
-				OutermostServerError:    loadersErrs[derefOuterMostErrorIdx].Error(),
+				OutermostServerError:    clientMsg,
 				OutermostServerErrorIdx: outermostErrorIdx,
 				ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys[:cutIdx],
 

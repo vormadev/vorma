@@ -3,8 +3,6 @@
 package config
 
 import (
-	"encoding/gob"
-	"io"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -191,15 +189,6 @@ func (fm FileMap) Lookup(original, prefix string) (url string, found bool) {
 		return matcher.EnsureLeadingSlash(path.Join(prefix, entry.DistName)), true
 	}
 	return matcher.EnsureLeadingSlash(path.Join(prefix, original)), false
-}
-
-// DecodeFileMap decodes a gob-encoded FileMap from the given reader.
-func DecodeFileMap(r io.Reader) (FileMap, error) {
-	var fm FileMap
-	if err := gob.NewDecoder(r).Decode(&fm); err != nil {
-		return nil, err
-	}
-	return fm, nil
 }
 
 // Constants
