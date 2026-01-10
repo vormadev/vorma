@@ -85,7 +85,7 @@ func (b *Builder) Build(opts Opts) error {
 	}
 
 	// Write config schema
-	if err := writeConfigSchema(b.cfg.Dist.Internal()); err != nil {
+	if err := writeConfigSchema(b); err != nil {
 		b.log.Warn("failed to write config schema (non-fatal)", "error", err)
 	}
 

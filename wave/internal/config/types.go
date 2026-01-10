@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/vormadev/vorma/kit/jsonschema"
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
@@ -23,9 +24,10 @@ type Config struct {
 	// Framework hooks (Runtime only, not serialized)
 	// These allow the framework (Driver) to configure the Engine without
 	// the Engine knowing about the Framework's specific config structs.
-	FrameworkWatchPatterns       []WatchedFile `json:"-"`
-	FrameworkIgnoredPatterns     []string      `json:"-"`
-	FrameworkPublicFileMapOutDir string        `json:"-"`
+	FrameworkWatchPatterns       []WatchedFile               `json:"-"`
+	FrameworkIgnoredPatterns     []string                    `json:"-"`
+	FrameworkPublicFileMapOutDir string                      `json:"-"`
+	FrameworkSchemaExtensions    map[string]jsonschema.Entry `json:"-"`
 }
 
 type CoreConfig struct {

@@ -158,6 +158,9 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v.config = wrapper.Vorma
 	v.validateConfig()
 
+	// Register Vorma's config schema for IDE autocomplete
+	v.Wave.RegisterConfigSchemaSection("Vorma", Vorma_Schema)
+
 	v.getDefaultHeadEls = o.GetDefaultHeadEls
 	if v.getDefaultHeadEls == nil {
 		v.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
@@ -321,9 +324,6 @@ func (v *Vorma) getDefaultWatchPatterns() []wave.WatchedFile {
 			Timing: wave.OnChangeStrategyConcurrent,
 		}},
 	})
-
-	// Public static files - we rely on Wave's internal handling + configured regeneration of filemap.ts
-	// We do NOT need a strategy here because we used v.Wave.SetPublicFileMapOutDir in initInner.
 
 	return patterns
 }

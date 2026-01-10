@@ -7,6 +7,9 @@ import (
 )
 
 // writeConfigSchema writes the JSON schema to the internal directory
-func writeConfigSchema(internalDir string) error {
-	return configschema.Write(filepath.Join(internalDir, "schema.json"))
+func writeConfigSchema(b *Builder) error {
+	return configschema.Write(
+		filepath.Join(b.cfg.Dist.Internal(), "schema.json"),
+		b.cfg.FrameworkSchemaExtensions,
+	)
 }

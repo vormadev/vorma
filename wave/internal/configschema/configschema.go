@@ -3,44 +3,42 @@ package configschema
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 
 	"github.com/vormadev/vorma/kit/jsonschema"
 )
 
-func Write(target string) error {
-	json, err := json.MarshalIndent(Root_Schema, "", "\t")
+func Write(target string, additional map[string]jsonschema.Entry) error {
+	schema := jsonschema.Entry{
+		Schema:      "http://json-schema.org/draft-07/schema#",
+		Type:        jsonschema.TypeObject,
+		Description: "Wave configuration schema.",
+		Required:    []string{"Core"},
+		Properties: map[string]jsonschema.Entry{
+			"Core":  Core_Schema,
+			"Vite":  Vite_Schema,
+			"Watch": Watch_Schema,
+		},
+	}
+
+	if len(additional) > 0 {
+		props := schema.Properties.(map[string]jsonschema.Entry)
+		maps.Copy(props, additional)
+	}
+
+	jsonBytes, err := json.MarshalIndent(schema, "", "\t")
 	if err != nil {
 		return fmt.Errorf("configschema.Write: failed to marshal JSON schema: %w", err)
 	}
 
-	json = append(json, []byte("\n")...)
+	jsonBytes = append(jsonBytes, []byte("\n")...)
 
-	if err = os.WriteFile(target, json, 0644); err != nil {
+	if err = os.WriteFile(target, jsonBytes, 0644); err != nil {
 		return fmt.Errorf("configschema.Write: failed to write JSON schema: %w", err)
 	}
 
 	return nil
-}
-
-/////////////////////////////////////////////////////////////////////
-/////// ROOT
-/////////////////////////////////////////////////////////////////////
-
-var Root_Schema = jsonschema.Entry{
-	Schema:      "http://json-schema.org/draft-07/schema#",
-	Type:        jsonschema.TypeObject,
-	Description: "Wave configuration schema.",
-	Required:    []string{"Core"},
-	Properties: struct {
-		Core  jsonschema.Entry
-		Vite  jsonschema.Entry
-		Watch jsonschema.Entry
-	}{
-		Core:  Core_Schema,
-		Vite:  Vite_Schema,
-		Watch: Watch_Schema,
-	},
 }
 
 /////////////////////////////////////////////////////////////////////

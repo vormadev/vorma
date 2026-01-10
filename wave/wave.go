@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/vormadev/vorma/kit/colorlog"
+	"github.com/vormadev/vorma/kit/jsonschema"
 	"github.com/vormadev/vorma/kit/middleware"
 	"github.com/vormadev/vorma/wave/internal/builder"
 	"github.com/vormadev/vorma/wave/internal/config"
@@ -118,6 +119,16 @@ func (w *Wave) AddIgnoredPatterns(patterns []string) {
 // If set, Wave will automatically regenerate this file when public assets change.
 func (w *Wave) SetPublicFileMapOutDir(dir string) {
 	w.cfg.FrameworkPublicFileMapOutDir = dir
+}
+
+// RegisterConfigSchemaSection adds a custom section to the generated JSON schema.
+// This allows frameworks to extend wave.config.json with their own configuration
+// while maintaining IDE autocomplete support.
+func (w *Wave) RegisterConfigSchemaSection(name string, schema jsonschema.Entry) {
+	if w.cfg.FrameworkSchemaExtensions == nil {
+		w.cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
+	}
+	w.cfg.FrameworkSchemaExtensions[name] = schema
 }
 
 // If you want to do a custom build command, just use

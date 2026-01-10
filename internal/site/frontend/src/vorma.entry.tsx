@@ -12,4 +12,4 @@ await initClient({
 
 import("./highlight.ts"); // warm up highlighter
 import("./html_to_md.ts"); // warm up markdown converter
-import("./components/md.tsx"); // warm up  markdown route component
+import("./components/md.tsx"); // warm up markdown route component
