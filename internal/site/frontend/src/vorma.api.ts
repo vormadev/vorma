@@ -12,7 +12,7 @@ import {
 	type QueryOutput,
 	type QueryPattern,
 	type QueryProps,
-} from "./vorma.gen.ts";
+} from "./vorma.gen/index.ts";
 
 export const api = { query, mutate };
 

@@ -12,7 +12,6 @@ import (
 	"github.com/vormadev/vorma/kit/genericsutil"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/opt"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/tasks"
@@ -61,9 +60,9 @@ type MiddlewareOptions struct {
 
 type (
 	HTTPMiddleware                = func(http.Handler) http.Handler
-	TaskMiddlewareFunc[O any]     = genericsutil.IOFunc[*ReqData[None], O]
+	TaskMiddlewareFunc[O any]     func(*ReqData[None]) (O, error)
 	TaskMiddleware[O any]         = tasks.Task[*ReqData[None], O]
-	TaskHandlerFunc[I any, O any] = genericsutil.IOFunc[*ReqData[I], O]
+	TaskHandlerFunc[I any, O any] func(*ReqData[I]) (O, error)
 )
 
 type Router struct {
@@ -140,8 +139,8 @@ func NewRouter(options ...*Options) *Router {
 	if opts == nil {
 		opts = new(Options)
 	}
-	matcherOpts.DynamicParamPrefixRune = opt.Resolve(opts, opts.DynamicParamPrefixRune, ':')
-	matcherOpts.SplatSegmentRune = opt.Resolve(opts, opts.SplatSegmentRune, '*')
+	matcherOpts.DynamicParamPrefixRune = genericsutil.OrDefault(opts.DynamicParamPrefixRune, ':')
+	matcherOpts.SplatSegmentRune = genericsutil.OrDefault(opts.SplatSegmentRune, '*')
 	mountRootToUse := opts.MountRoot
 	if mountRootToUse != "" {
 		if len(mountRootToUse) == 1 && mountRootToUse[0] == '/' {

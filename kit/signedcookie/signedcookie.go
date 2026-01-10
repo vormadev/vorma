@@ -1,3 +1,6 @@
+// Deprecated: Use github.com/vormadev/vorma/kit/cookies instead.
+// This package is retained for backward compatibility with existing sessions.
+//
 // Package signedcookie provides a secure cookie manager for Go web applications.
 package signedcookie
 

@@ -346,7 +346,7 @@ func NewSecureCookieNonHostOnly[T any](cfg SecureCookieNonHostOnlyConfig) *Secur
 		panic("NewSecureCookieNonHostOnly: Manager is required.")
 	}
 	if cfg.Name == "" {
-		panic("NewSecureCookie: Name is required.")
+		panic("NewSecureCookieNonHostOnly: Name is required.")
 	}
 	spec := cookieSpec{
 		name:          cfg.Name,
@@ -371,7 +371,7 @@ func NewClientReadableCookie[T ~string](cfg ClientReadableCookieConfig) *ClientR
 		panic("NewClientReadableCookie: Manager is required.")
 	}
 	if cfg.Name == "" {
-		panic("NewSecureCookie: Name is required.")
+		panic("NewClientReadableCookie: Name is required.")
 	}
 	spec := cookieSpec{
 		name:          cfg.Name,
@@ -396,7 +396,7 @@ func NewClientReadableCookieNonHostOnly[T ~string](cfg ClientReadableCookieNonHo
 		panic("NewClientReadableCookieNonHostOnly: Manager is required.")
 	}
 	if cfg.Name == "" {
-		panic("NewSecureCookie: Name is required.")
+		panic("NewClientReadableCookieNonHostOnly: Name is required.")
 	}
 	spec := cookieSpec{
 		name:          cfg.Name,

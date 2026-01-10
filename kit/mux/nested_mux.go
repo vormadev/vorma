@@ -9,7 +9,6 @@ import (
 
 	"github.com/vormadev/vorma/kit/genericsutil"
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/opt"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/tasks"
 )
@@ -36,24 +35,30 @@ type compiledRoute struct {
 }
 
 type NestedRouter struct {
+	mu             sync.RWMutex
 	matcher        *matcher.Matcher
 	routes         map[string]AnyNestedRoute
 	compiledRoutes atomic.Value // []compiledRoute
 	routeIndexMap  atomic.Value // map[string]int
 	version        uint64       // Version counter for atomic updates
-	mu             sync.RWMutex
 }
 
 func (nr *NestedRouter) AllRoutes() map[string]AnyNestedRoute {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
 	return nr.routes
 }
 
 func (nr *NestedRouter) IsRegistered(originalPattern string) bool {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
 	_, exists := nr.routes[originalPattern]
 	return exists
 }
 
 func (nr *NestedRouter) HasTaskHandler(originalPattern string) bool {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
 	route, exists := nr.routes[originalPattern]
 	if !exists {
 		return false
@@ -62,18 +67,26 @@ func (nr *NestedRouter) HasTaskHandler(originalPattern string) bool {
 }
 
 func (nr *NestedRouter) GetExplicitIndexSegment() string {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
 	return nr.matcher.GetExplicitIndexSegment()
 }
 
 func (nr *NestedRouter) GetDynamicParamPrefixRune() rune {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
 	return nr.matcher.GetDynamicParamPrefixRune()
 }
 
 func (nr *NestedRouter) GetSplatSegmentRune() rune {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
 	return nr.matcher.GetSplatSegmentRune()
 }
 
 func (nr *NestedRouter) GetMatcher() *matcher.Matcher {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
 	return nr.matcher
 }
 
@@ -88,9 +101,9 @@ func NewNestedRouter(opts *NestedOptions) *NestedRouter {
 	if opts == nil {
 		opts = new(NestedOptions)
 	}
-	matcherOpts.DynamicParamPrefixRune = opt.Resolve(opts, opts.DynamicParamPrefixRune, ':')
-	matcherOpts.SplatSegmentRune = opt.Resolve(opts, opts.SplatSegmentRune, '*')
-	matcherOpts.ExplicitIndexSegment = opt.Resolve(opts, opts.ExplicitIndexSegment, "")
+	matcherOpts.DynamicParamPrefixRune = genericsutil.OrDefault(opts.DynamicParamPrefixRune, ':')
+	matcherOpts.SplatSegmentRune = genericsutil.OrDefault(opts.SplatSegmentRune, '*')
+	matcherOpts.ExplicitIndexSegment = genericsutil.OrDefault(opts.ExplicitIndexSegment, "")
 	nr := &NestedRouter{
 		matcher: matcher.New(matcherOpts),
 		routes:  make(map[string]AnyNestedRoute),
@@ -190,7 +203,10 @@ func (ntr *NestedTasksResults) GetHasTaskHandler(i int) bool {
 }
 
 func FindNestedMatches(nestedRouter *NestedRouter, r *http.Request) (*matcher.FindNestedMatchesResults, bool) {
-	return nestedRouter.matcher.FindNestedMatches(r.URL.Path)
+	nestedRouter.mu.RLock()
+	m := nestedRouter.matcher
+	nestedRouter.mu.RUnlock()
+	return m.FindNestedMatches(r.URL.Path)
 }
 
 func FindNestedMatchesAndRunTasks(nestedRouter *NestedRouter, r *http.Request) (*NestedTasksResults, bool) {
@@ -201,6 +217,12 @@ func FindNestedMatchesAndRunTasks(nestedRouter *NestedRouter, r *http.Request) (
 	return RunNestedTasks(nestedRouter, r, findResults), true
 }
 
+// RunNestedTasks executes all task handlers for the matched routes in parallel.
+//
+// IMPORTANT: This function uses object pooling for ReqData objects. The safety of this
+// depends on tasksCtx.RunParallel blocking until all tasks complete. If RunParallel
+// were to return before tasks finish (async dispatch), this would cause use-after-free bugs.
+// The current tasks.Ctx implementation blocks until completion, making this safe.
 func RunNestedTasks(
 	nestedRouter *NestedRouter,
 	r *http.Request,
@@ -237,7 +259,7 @@ func RunNestedTasks(
 	// Track pooled objects for cleanup
 	pooledReqData := make([]*ReqData[None], 0, numMatches/2)
 
-	// Ensure cleanup happens
+	// Ensure cleanup happens after RunParallel completes (which blocks until all tasks finish)
 	defer func() {
 		// Return ReqData objects to pool after clearing
 		for _, rd := range pooledReqData {
@@ -302,7 +324,9 @@ func RunNestedTasks(
 		boundTasks = append(boundTasks, boundTask)
 	}
 
-	// Execute all tasks in parallel if we have any
+	// Execute all tasks in parallel if we have any.
+	// RunParallel blocks until all tasks complete, which is required for
+	// the defer cleanup above to be safe.
 	if len(boundTasks) > 0 {
 		if err := tasksCtx.RunParallel(boundTasks...); err != nil {
 			muxLog.Error("tasks.Go reported an error during nested task execution", "error", err)
@@ -360,4 +384,78 @@ func (oc *optimizedBoundTask) Run(ctx *tasks.Ctx) error {
 	oc.result.data = data
 	oc.result.err = err
 	return err
+}
+
+// ReplaceRoutes atomically replaces all routes with a new set.
+// This rebuilds the matcher from scratch, which is safe and fast for dev mode.
+func (nr *NestedRouter) ReplaceRoutes(newRoutes map[string]AnyNestedRoute) {
+	nr.mu.Lock()
+	defer nr.mu.Unlock()
+	nr.replaceRoutesLocked(newRoutes)
+}
+
+// RebuildPreservingHandlers atomically rebuilds the router, preserving routes
+// that have task handlers and replacing handler-less routes with the provided patterns.
+// This is intended for dev-time fast rebuilds when only pattern definitions change.
+func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
+	nr.mu.Lock()
+	defer nr.mu.Unlock()
+
+	newRoutes := make(map[string]AnyNestedRoute)
+
+	// Preserve existing routes with handlers
+	for pattern, route := range nr.routes {
+		if route.getTaskHandler() != nil {
+			newRoutes[pattern] = route
+		}
+	}
+
+	// Add patterns without handlers
+	for _, pattern := range patterns {
+		if _, exists := newRoutes[pattern]; !exists {
+			newRoutes[pattern] = &NestedRoute[None]{
+				router:          nr,
+				originalPattern: pattern,
+				taskHandler:     nil,
+			}
+		}
+	}
+
+	nr.replaceRoutesLocked(newRoutes)
+}
+
+// replaceRoutesLocked is the internal implementation. Caller must hold nr.mu.Lock().
+func (nr *NestedRouter) replaceRoutesLocked(newRoutes map[string]AnyNestedRoute) {
+	opts := &matcher.Options{
+		DynamicParamPrefixRune: nr.matcher.GetDynamicParamPrefixRune(),
+		SplatSegmentRune:       nr.matcher.GetSplatSegmentRune(),
+		ExplicitIndexSegment:   nr.matcher.GetExplicitIndexSegment(),
+		Quiet:                  true,
+	}
+
+	newMatcher := matcher.New(opts)
+
+	for pattern := range newRoutes {
+		newMatcher.RegisterPattern(pattern)
+	}
+
+	newCompiled := make([]compiledRoute, 0, len(newRoutes))
+	newIndexMap := make(map[string]int, len(newRoutes))
+
+	for pattern, route := range newRoutes {
+		taskHandler := route.getTaskHandler()
+		compiled := compiledRoute{
+			pattern:     pattern,
+			taskHandler: taskHandler,
+			hasHandler:  taskHandler != nil,
+		}
+		newIndexMap[pattern] = len(newCompiled)
+		newCompiled = append(newCompiled, compiled)
+	}
+
+	nr.matcher = newMatcher
+	nr.routes = newRoutes
+	nr.compiledRoutes.Store(newCompiled)
+	nr.routeIndexMap.Store(newIndexMap)
+	atomic.AddUint64(&nr.version, 1)
 }

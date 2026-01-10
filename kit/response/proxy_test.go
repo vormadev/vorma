@@ -200,7 +200,10 @@ func TestProxy_Redirects(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
 		p := NewProxy()
 
-		upgraded := p.Redirect(req, "/login", 302)
+		upgraded, err := p.Redirect(req, "/login", 302)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
 		if upgraded {
 			t.Error("Should not upgrade to client redirect without proper header")
 		}
@@ -807,4 +810,14 @@ func TestProxy_ComplexScenarios(t *testing.T) {
 			t.Errorf("Expected error body to contain 'Forbidden'")
 		}
 	})
+}
+
+func TestProxy_Redirect_InvalidURL(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set(ClientAcceptsRedirectHeader, "true")
+	p := NewProxy()
+	_, err := p.Redirect(req, "javascript:alert(1)")
+	if err == nil {
+		t.Error("Expected error for invalid URL scheme")
+	}
 }

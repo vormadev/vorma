@@ -73,8 +73,14 @@ var SystemThemeScript, SystemThemeScriptSha256Hash = mustGetSystemThemeScript()
 
 func mustGetSystemThemeScript() (template.HTML, string) {
 	el := &htmlutil.Element{Tag: "script", DangerousInnerHTML: string(systemThemeScriptInnerHTML)}
-	sha256Hash, _ := htmlutil.AddSha256HashInline(el)
-	renderedEl, _ := htmlutil.RenderElement(el)
+	sha256Hash, err := htmlutil.ComputeContentSha256(el)
+	if err != nil {
+		panic("could not compute CSP hash for system theme script: " + err.Error())
+	}
+	renderedEl, err := htmlutil.RenderElement(el)
+	if err != nil {
+		panic("could not render system theme script element: " + err.Error())
+	}
 	return renderedEl, sha256Hash
 }
 

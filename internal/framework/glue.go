@@ -1,9 +1,12 @@
 package vorma
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"mime"
 	"net/http"
+	"path/filepath"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
@@ -121,6 +124,17 @@ type VormaAppConfig struct {
 
 	LoadersRouterOptions LoadersRouterOptions
 	ActionsRouterOptions ActionsRouterOptions
+
+	// AdHocTypes and ExtraTSCode are used for TypeScript generation.
+	// These are stored in the application state so they are available
+	// to the server process during fast route rebuilds.
+	AdHocTypes  []*AdHocType
+	ExtraTSCode string
+}
+
+// temp config holder to parse just the Vorma section
+type configWrapper struct {
+	Vorma *VormaConfig `json:"Vorma,omitempty"`
 }
 
 func NewVormaApp(o VormaAppConfig) *Vorma {
@@ -130,6 +144,21 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	if v.Wave == nil {
 		panic("Wave instance is required")
 	}
+
+	// Parse Vorma config from Wave's raw JSON
+	var wrapper configWrapper
+	if err := json.Unmarshal(v.Wave.RawConfigJSON(), &wrapper); err != nil {
+		panic(fmt.Sprintf("failed to parse Vorma config from wave.config.json: %v", err))
+	}
+	if wrapper.Vorma == nil {
+		// Vorma config is optional in the schema, but we need defaults or panic if critical fields missing
+		wrapper.Vorma = &VormaConfig{}
+	}
+	v.config = wrapper.Vorma
+	v.validateConfig()
+
+	// Register Vorma's config schema for IDE autocomplete
+	v.Wave.RegisterConfigSchemaSection("Vorma", Vorma_Schema)
 
 	v.getDefaultHeadEls = o.GetDefaultHeadEls
 	if v.getDefaultHeadEls == nil {
@@ -150,10 +179,35 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 		}
 	}
 
+	// Store TS generation options
+	v._adHocTypes = o.AdHocTypes
+	v._extraTSCode = o.ExtraTSCode
+
 	v.loadersRouter = newLoadersRouter(o.LoadersRouterOptions)
 	v.actionsRouter = newActionsRouter(o.ActionsRouterOptions)
 
 	return &v
+}
+
+func (v *Vorma) validateConfig() {
+	if v.config.UIVariant == "" {
+		panic("config: Vorma.UIVariant is required when Vorma is configured")
+	}
+	if v.config.HTMLTemplateLocation == "" {
+		panic("config: Vorma.HTMLTemplateLocation is required")
+	}
+	if v.config.ClientEntry == "" {
+		panic("config: Vorma.ClientEntry is required")
+	}
+	if v.config.ClientRouteDefsFile == "" {
+		panic("config: Vorma.ClientRouteDefsFile is required")
+	}
+	if v.config.TSGenOutDir == "" {
+		panic("config: Vorma.TSGenOutDir is required")
+	}
+	if v.config.BuildtimePublicURLFuncName == "" {
+		v.config.BuildtimePublicURLFuncName = "waveBuildtimeURL"
+	}
 }
 
 type Loaders struct{ vorma *Vorma }
@@ -183,22 +237,92 @@ func (h *Actions) SupportedMethods() map[string]bool {
 	return h.vorma.ActionsRouter().supportedMethods
 }
 
-type BuildOptions struct {
-	AdHocTypes  []*AdHocType
-	ExtraTSCode string
-}
+func (v *Vorma) Build() {
+	// Inject Vorma's default watch patterns before starting the build/dev server.
+	// This allows Wave to handle Vorma-specific file changes without having
+	// Vorma-specific knowledge hardcoded into Wave.
+	v.injectDefaultWatchPatterns()
 
-func (v *Vorma) Build(o ...BuildOptions) {
-	var opts BuildOptions
-	if len(o) > 0 {
-		opts = o[0]
-	}
 	v.Wave.BuildWaveWithHook(func(isDev bool) error {
 		return v.buildInner(&buildInnerOptions{
-			isDev:        isDev,
-			buildOptions: &opts,
+			isDev: isDev,
 		})
 	})
+}
+
+// injectDefaultWatchPatterns adds Vorma's default watch patterns to Wave.
+// This is called before Build() starts the dev server.
+func (v *Vorma) injectDefaultWatchPatterns() {
+	// Check if Vorma defaults should be included
+	includeDefaults := true
+	if v.config.IncludeDefaults != nil {
+		includeDefaults = *v.config.IncludeDefaults
+	}
+
+	if !includeDefaults {
+		return
+	}
+
+	patterns := v.getDefaultWatchPatterns()
+	v.Wave.AddFrameworkWatchPatterns(patterns)
+}
+
+// getDefaultWatchPatterns returns Vorma's default watch patterns.
+// These use the Strategy system to handle file changes via HTTP endpoints
+// instead of requiring Wave to have Vorma-specific knowledge.
+func (v *Vorma) getDefaultWatchPatterns() []wave.WatchedFile {
+	patterns := []wave.WatchedFile{}
+
+	// Route definitions file - use fast rebuild via HTTP endpoint
+	clientRouteDefsFile := v.config.ClientRouteDefsFile
+	if clientRouteDefsFile != "" {
+		patterns = append(patterns, wave.WatchedFile{
+			Pattern: clientRouteDefsFile,
+			OnChangeHooks: []wave.OnChangeHook{{
+				Strategy: &wave.OnChangeStrategy{
+					HttpEndpoint:   DevRebuildRoutesPath,
+					SkipDevHook:    true,
+					SkipGoCompile:  true,
+					WaitForVite:    true,
+					ReloadBrowser:  true,
+					FallbackAction: wave.FallbackRestartNoGo,
+				},
+			}},
+			SkipRebuildingNotification: true,
+		})
+	}
+
+	// HTML template file - use fast reload via HTTP endpoint
+	htmlTemplateLocation := v.config.HTMLTemplateLocation
+	privateStaticDir := v.Wave.GetPrivateStaticDir()
+	if htmlTemplateLocation != "" && privateStaticDir != "" {
+		templatePath := filepath.Join(privateStaticDir, htmlTemplateLocation)
+		patterns = append(patterns, wave.WatchedFile{
+			Pattern: templatePath,
+			OnChangeHooks: []wave.OnChangeHook{{
+				Strategy: &wave.OnChangeStrategy{
+					HttpEndpoint:   DevReloadTemplatePath,
+					SkipDevHook:    true,
+					SkipGoCompile:  true,
+					WaitForApp:     true,
+					WaitForVite:    true,
+					ReloadBrowser:  true,
+					FallbackAction: wave.FallbackRestartNoGo,
+				},
+			}},
+		})
+	}
+
+	// Go files - run DevBuildHook concurrently with Go compilation
+	patterns = append(patterns, wave.WatchedFile{
+		Pattern: "**/*.go",
+		OnChangeHooks: []wave.OnChangeHook{{
+			Cmd:    "DevBuildHook",
+			Timing: wave.OnChangeStrategyConcurrent,
+		}},
+	})
+
+	return patterns
 }
 
 type Route[I any, O any] = mux.Route[I, O]

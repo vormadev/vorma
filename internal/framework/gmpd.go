@@ -3,7 +3,6 @@ package vorma
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
@@ -11,7 +10,6 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
-	"github.com/vormadev/vorma/kit/typed"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -20,15 +18,6 @@ import (
 /////////////////////////////////////////////////////////////////////
 
 type SplatValues []string
-
-var gmpdCache = typed.SyncMap[string, *cachedItemSubset]{}
-
-type cachedItemSubset struct {
-	ImportURLs      []string
-	ExportKeys      []string
-	ErrorExportKeys []string
-	Deps            []string
-}
 
 /////////////////////////////////////////////////////////////////////
 /////// CORE TYPES
@@ -99,42 +88,32 @@ func (v *Vorma) get_ui_data_stage_1(
 		matchedPatterns[i] = match.OriginalPattern()
 	}
 
-	var sb strings.Builder
-	var growSize int
-	for _, match := range _matches {
-		growSize += len(match.NormalizedPattern())
-	}
-	sb.Grow(growSize)
-	for _, match := range _matches {
-		sb.WriteString(match.NormalizedPattern())
-	}
-	cacheKey := sb.String()
+	paths := v.getPathsSnapshot()
+	isDev := v.getIsDev()
 
-	var _cachedItemSubset *cachedItemSubset
-	var isCached bool
+	// Build route metadata slices
+	importURLs := make([]string, 0, len(_matches))
+	exportKeys := make([]string, 0, len(_matches))
+	errorExportKeys := make([]string, 0, len(_matches))
 
-	if _cachedItemSubset, isCached = gmpdCache.Load(cacheKey); !isCached {
-		_cachedItemSubset = &cachedItemSubset{}
-		for _, path := range _matches {
-			foundPath := v._paths[path.OriginalPattern()]
-			// Potentially a server route with no client-side counterpart
-			if foundPath == nil || foundPath.SrcPath == "" {
-				_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "")
-				_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, "")
-				_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, "")
-				continue
-			}
-			pathToUse := foundPath.OutPath
-			if v._isDev {
-				pathToUse = foundPath.SrcPath
-			}
-			_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "/"+pathToUse)
-			_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, foundPath.ExportKey)
-			_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, foundPath.ErrorExportKey)
+	for _, path := range _matches {
+		foundPath := paths[path.OriginalPattern()]
+		// Potentially a server route with no client-side counterpart
+		if foundPath == nil || foundPath.SrcPath == "" {
+			importURLs = append(importURLs, "")
+			exportKeys = append(exportKeys, "")
+			errorExportKeys = append(errorExportKeys, "")
+			continue
 		}
-		_cachedItemSubset.Deps = v.getDeps(_matches)
-		_cachedItemSubset, _ = gmpdCache.LoadOrStore(cacheKey, _cachedItemSubset)
+		pathToUse := foundPath.OutPath
+		if isDev {
+			pathToUse = foundPath.SrcPath
+		}
+		importURLs = append(importURLs, "/"+pathToUse)
+		exportKeys = append(exportKeys, foundPath.ExportKey)
+		errorExportKeys = append(errorExportKeys, foundPath.ErrorExportKey)
 	}
+	deps := v.getDepsFromSnapshot(_matches, paths)
 
 	_tasks_results := mux.RunNestedTasks(nestedRouter, r, _match_results)
 
@@ -204,6 +183,27 @@ func (v *Vorma) get_ui_data_stage_1(
 
 	if outermostErrorIdx != nil {
 		derefOuterMostErrorIdx := *outermostErrorIdx
+		err := loadersErrs[derefOuterMostErrorIdx]
+		pattern := matchedPatterns[derefOuterMostErrorIdx]
+
+		var clientMsg string
+		var errToLog error
+
+		if loaderErr, ok := err.(LoaderErrorMarker); ok {
+			clientMsg = loaderErr.ClientMessage()
+			errToLog = loaderErr.ServerError()
+		} else {
+			clientMsg = "An error occurred"
+			errToLog = err
+			Log.Warn("Sending a generic error to the client. " +
+				"If you intended to send a non-generic error message to the client, " +
+				"return it from your loader as a `vorma.LoaderError`, in the `Client` field.",
+			)
+		}
+
+		if errToLog != nil {
+			Log.Error("loader error", "pattern", pattern, "error", errToLog)
+		}
 
 		headElsDoubleSlice := loadersHeadEls[:derefOuterMostErrorIdx]
 		headEls := make([]*htmlutil.Element, 0, len(headElsDoubleSlice))
@@ -215,20 +215,20 @@ func (v *Vorma) get_ui_data_stage_1(
 
 		ui_data := &ui_data_all{
 			ui_data_core: &ui_data_core{
-				OutermostServerError:    loadersErrs[derefOuterMostErrorIdx].Error(),
+				OutermostServerError:    clientMsg,
 				OutermostServerErrorIdx: outermostErrorIdx,
-				ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys[:cutIdx],
+				ErrorExportKeys:         errorExportKeys[:cutIdx],
 
 				MatchedPatterns: matchedPatterns[:cutIdx],
 				LoadersData:     loadersData[:cutIdx],
-				ImportURLs:      _cachedItemSubset.ImportURLs[:cutIdx],
-				ExportKeys:      _cachedItemSubset.ExportKeys[:cutIdx],
+				ImportURLs:      importURLs[:cutIdx],
+				ExportKeys:      exportKeys[:cutIdx],
 				HasRootData:     hasRootData,
 
 				Params:      _match_results.Params,
 				SplatValues: _match_results.SplatValues,
 
-				Deps: _cachedItemSubset.Deps,
+				Deps: deps,
 			},
 
 			stage_1_head_els: headEls,
@@ -246,18 +246,18 @@ func (v *Vorma) get_ui_data_stage_1(
 		ui_data_core: &ui_data_core{
 			OutermostServerError:    "",
 			OutermostServerErrorIdx: nil,
-			ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys,
+			ErrorExportKeys:         errorExportKeys,
 
 			MatchedPatterns: matchedPatterns,
 			LoadersData:     loadersData,
-			ImportURLs:      _cachedItemSubset.ImportURLs,
-			ExportKeys:      _cachedItemSubset.ExportKeys,
+			ImportURLs:      importURLs,
+			ExportKeys:      exportKeys,
 			HasRootData:     hasRootData,
 
 			Params:      _match_results.Params,
 			SplatValues: _match_results.SplatValues,
 
-			Deps: _cachedItemSubset.Deps,
+			Deps: deps,
 		},
 
 		stage_1_head_els: headEls,
@@ -314,12 +314,13 @@ func (v *Vorma) getUIRouteData(
 	hb = append(hb, uiRoutesData.stage_1_head_els...)
 
 	publicPathPrefix := v.Wave.GetPublicPathPrefix()
+	isDev := v.getIsDev()
 
 	// For client transitions (JSON), AssetManager injects
 	// modulepreload links before head els get rendered,
 	// so there is no need (and it would be wasteful) to
 	// include them here.
-	if !v._isDev && !isJSON {
+	if !isDev && !isJSON {
 		if uiRoutesData.ui_data_core.Deps != nil {
 			for _, dep := range uiRoutesData.ui_data_core.Deps {
 				el := &htmlutil.Element{

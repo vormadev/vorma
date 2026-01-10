@@ -3,7 +3,7 @@ import { render } from "solid-js/web";
 import { getHrefDetails } from "vorma/kit/url";
 import { VormaLink } from "vorma/solid";
 import { highlight } from "../highlight.ts";
-import { waveRuntimeURL } from "../vorma.gen.ts";
+import { waveRuntimeURL } from "../vorma.gen/index.ts";
 
 export function RenderedMarkdown(props: { markdown: string }) {
 	let containerRef: HTMLDivElement | null = null;

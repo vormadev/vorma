@@ -21,7 +21,7 @@
 		"HTMLTemplateLocation": "entry.go.html",
 		"ClientEntry": "frontend/src/vorma.entry.tsx",
 		"ClientRouteDefsFile": "frontend/src/vorma.routes.ts",
-		"TSGenOutPath": "frontend/src/vorma.gen.ts",
+		"TSGenOutDir": "frontend/src/vorma.gen",
 		"BuildtimePublicURLFuncName": "hashedURL"
 	},
 	"Vite": {
