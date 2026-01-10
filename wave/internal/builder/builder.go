@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/kit/executil"
-	"github.com/vormadev/vorma/kit/viteutil"
+	"github.com/vormadev/vorma/lab/viteutil"
 	"github.com/vormadev/vorma/wave/internal/config"
 	"golang.org/x/sync/errgroup"
 )

@@ -16,7 +16,6 @@ import (
 
 	"github.com/vormadev/vorma/kit/lru"
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/typed"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -27,7 +26,7 @@ type MarkdownParser = func([]byte, io.Writer) error
 type Instance struct {
 	Options
 	pageDetailsCache *lru.Cache[string, *DetailedPage]
-	sitemapCache     *typed.SyncMap__[generateSitemapInput, *generateSitemapInnerData]
+	sitemapCache     sync.Map
 	basePageCache    *lru.Cache[string, *Page]
 }
 
@@ -51,7 +50,6 @@ func New(opts Options) *Instance {
 	return &Instance{
 		Options:          opts,
 		pageDetailsCache: lru.NewCache[string, *DetailedPage](1_000),
-		sitemapCache:     typed.NewSyncMap[generateSitemapInput, *generateSitemapInnerData](),
 		basePageCache:    lru.NewCache[string, *Page](1_000),
 	}
 }
@@ -181,7 +179,7 @@ func (inst *Instance) generateSitemap(input generateSitemapInput) (*generateSite
 	var innerData *generateSitemapInnerData
 
 	if x, ok := inst.sitemapCache.Load(input); ok && !inst.IsDev {
-		innerData = x
+		innerData = x.(*generateSitemapInnerData)
 	} else {
 		dirToUse := filepath.Dir(input.CleanPath)
 		if input.IsIndex {

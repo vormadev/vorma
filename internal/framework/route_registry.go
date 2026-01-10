@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/typed"
 )
 
 // routeRegistry consolidates route state management to ensure buildInner
@@ -13,7 +12,6 @@ import (
 //
 // Owned state:
 //   - v._paths (the canonical route definitions)
-//   - v.gmpdCache (match results cache)
 //   - router registration state
 type routeRegistry struct {
 	vorma *Vorma
@@ -30,7 +28,6 @@ func (v *Vorma) routes() *routeRegistry {
 //  1. Stores paths
 //  2. Merges server-only routes
 //  3. Rebuilds the router atomically
-//  4. Clears the gmpd cache
 //
 // IMPORTANT: Caller must hold v.mu.Lock() before calling this method.
 func (r *routeRegistry) Sync(paths map[string]*Path) {
@@ -47,10 +44,7 @@ func (r *routeRegistry) Sync(paths map[string]*Path) {
 	for pattern := range v._paths {
 		patterns = append(patterns, pattern)
 	}
-	v.LoadersRouter().NestedRouter.RebuildWithClientRoutes(patterns)
-
-	// Clear cache
-	r.clearCache()
+	v.LoadersRouter().NestedRouter.RebuildPreservingHandlers(patterns)
 }
 
 // WriteArtifacts writes all route-related artifacts to disk.
@@ -89,6 +83,7 @@ func (r *routeRegistry) WriteArtifacts() error {
 // IMPORTANT: Caller must hold v.mu.Lock() before calling this method.
 func (r *routeRegistry) mergeServerRoutes() {
 	v := r.vorma
+
 	allServerRoutes := v.LoadersRouter().NestedRouter.AllRoutes()
 	for pattern := range allServerRoutes {
 		// IMPORTANT: Only merge if it actually has a server handler.
@@ -106,15 +101,6 @@ func (r *routeRegistry) mergeServerRoutes() {
 			}
 		}
 	}
-}
-
-// clearCache clears the gmpd cache so new routes are picked up.
-// Uses atomic swap internally so in-flight requests keep their reference to the old map.
-//
-// IMPORTANT: Caller must hold v.mu.Lock() before calling this method.
-func (r *routeRegistry) clearCache() {
-	v := r.vorma
-	v.gmpdCache = typed.NewSyncMap[string, *cachedItemSubset]()
 }
 
 // RegisterPatternIfNeeded registers a pattern in the router if not already registered.

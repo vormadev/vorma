@@ -94,11 +94,7 @@ var extraTSCode = BuildFromCategories(
 	},
 )
 
-type BaseOptions struct {
-	CollectionVarName    string
-	DiscriminatorStr     string
-	CategoryPropertyName string
-}
+type BaseOptions = tsgen.BaseOptions
 
 type CategorySpecificOptions struct {
 	BaseOptions

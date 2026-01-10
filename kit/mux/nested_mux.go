@@ -394,24 +394,24 @@ func (nr *NestedRouter) ReplaceRoutes(newRoutes map[string]AnyNestedRoute) {
 	nr.replaceRoutesLocked(newRoutes)
 }
 
-// RebuildWithClientRoutes atomically rebuilds the router, preserving server routes
-// (those with handlers) and replacing client-only routes with the provided patterns.
-// This is intended for dev-time fast rebuilds when only client route definitions change.
-func (nr *NestedRouter) RebuildWithClientRoutes(clientPatterns []string) {
+// RebuildPreservingHandlers atomically rebuilds the router, preserving routes
+// that have task handlers and replacing handler-less routes with the provided patterns.
+// This is intended for dev-time fast rebuilds when only pattern definitions change.
+func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
 	nr.mu.Lock()
 	defer nr.mu.Unlock()
 
 	newRoutes := make(map[string]AnyNestedRoute)
 
-	// Preserve existing routes with handlers (server routes)
+	// Preserve existing routes with handlers
 	for pattern, route := range nr.routes {
 		if route.getTaskHandler() != nil {
 			newRoutes[pattern] = route
 		}
 	}
 
-	// Add client-only patterns (without handlers)
-	for _, pattern := range clientPatterns {
+	// Add patterns without handlers
+	for _, pattern := range patterns {
 		if _, exists := newRoutes[pattern]; !exists {
 			newRoutes[pattern] = &NestedRoute[None]{
 				router:          nr,

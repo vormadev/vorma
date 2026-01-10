@@ -10,7 +10,6 @@ import (
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/typed"
 	"github.com/vormadev/vorma/kit/validate"
 	"github.com/vormadev/vorma/wave"
 )
@@ -186,8 +185,6 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 
 	v.loadersRouter = newLoadersRouter(o.LoadersRouterOptions)
 	v.actionsRouter = newActionsRouter(o.ActionsRouterOptions)
-
-	v.gmpdCache = typed.NewSyncMap[string, *cachedItemSubset]()
 
 	return &v
 }

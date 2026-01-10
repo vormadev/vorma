@@ -3,7 +3,6 @@ package vorma
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
@@ -89,50 +88,32 @@ func (v *Vorma) get_ui_data_stage_1(
 		matchedPatterns[i] = match.OriginalPattern()
 	}
 
-	// Get buildID and paths snapshot atomically to ensure consistency.
-	// If a rebuild happens between these calls, the buildID will be part of the
-	// cache key, so we won't pollute the new cache with stale data.
-	buildID := v.getBuildID()
 	paths := v.getPathsSnapshot()
 	isDev := v.getIsDev()
 
-	// Build cache key including buildID to prevent stale cache entries
-	// after rebuilds. The buildID changes on every rebuild.
-	var sb strings.Builder
-	sb.Grow(len(buildID) + 1)
-	sb.WriteString(buildID)
-	sb.WriteByte(':')
-	for _, match := range _matches {
-		sb.WriteString(match.NormalizedPattern())
-	}
-	cacheKey := sb.String()
+	// Build route metadata slices
+	importURLs := make([]string, 0, len(_matches))
+	exportKeys := make([]string, 0, len(_matches))
+	errorExportKeys := make([]string, 0, len(_matches))
 
-	var _cachedItemSubset *cachedItemSubset
-	var isCached bool
-
-	if _cachedItemSubset, isCached = v.gmpdCache.Load(cacheKey); !isCached {
-		_cachedItemSubset = &cachedItemSubset{}
-
-		for _, path := range _matches {
-			foundPath := paths[path.OriginalPattern()]
-			// Potentially a server route with no client-side counterpart
-			if foundPath == nil || foundPath.SrcPath == "" {
-				_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "")
-				_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, "")
-				_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, "")
-				continue
-			}
-			pathToUse := foundPath.OutPath
-			if isDev {
-				pathToUse = foundPath.SrcPath
-			}
-			_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "/"+pathToUse)
-			_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, foundPath.ExportKey)
-			_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, foundPath.ErrorExportKey)
+	for _, path := range _matches {
+		foundPath := paths[path.OriginalPattern()]
+		// Potentially a server route with no client-side counterpart
+		if foundPath == nil || foundPath.SrcPath == "" {
+			importURLs = append(importURLs, "")
+			exportKeys = append(exportKeys, "")
+			errorExportKeys = append(errorExportKeys, "")
+			continue
 		}
-		_cachedItemSubset.Deps = v.getDepsFromSnapshot(_matches, paths)
-		_cachedItemSubset, _ = v.gmpdCache.LoadOrStore(cacheKey, _cachedItemSubset)
+		pathToUse := foundPath.OutPath
+		if isDev {
+			pathToUse = foundPath.SrcPath
+		}
+		importURLs = append(importURLs, "/"+pathToUse)
+		exportKeys = append(exportKeys, foundPath.ExportKey)
+		errorExportKeys = append(errorExportKeys, foundPath.ErrorExportKey)
 	}
+	deps := v.getDepsFromSnapshot(_matches, paths)
 
 	_tasks_results := mux.RunNestedTasks(nestedRouter, r, _match_results)
 
@@ -236,18 +217,18 @@ func (v *Vorma) get_ui_data_stage_1(
 			ui_data_core: &ui_data_core{
 				OutermostServerError:    clientMsg,
 				OutermostServerErrorIdx: outermostErrorIdx,
-				ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys[:cutIdx],
+				ErrorExportKeys:         errorExportKeys[:cutIdx],
 
 				MatchedPatterns: matchedPatterns[:cutIdx],
 				LoadersData:     loadersData[:cutIdx],
-				ImportURLs:      _cachedItemSubset.ImportURLs[:cutIdx],
-				ExportKeys:      _cachedItemSubset.ExportKeys[:cutIdx],
+				ImportURLs:      importURLs[:cutIdx],
+				ExportKeys:      exportKeys[:cutIdx],
 				HasRootData:     hasRootData,
 
 				Params:      _match_results.Params,
 				SplatValues: _match_results.SplatValues,
 
-				Deps: _cachedItemSubset.Deps,
+				Deps: deps,
 			},
 
 			stage_1_head_els: headEls,
@@ -265,18 +246,18 @@ func (v *Vorma) get_ui_data_stage_1(
 		ui_data_core: &ui_data_core{
 			OutermostServerError:    "",
 			OutermostServerErrorIdx: nil,
-			ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys,
+			ErrorExportKeys:         errorExportKeys,
 
 			MatchedPatterns: matchedPatterns,
 			LoadersData:     loadersData,
-			ImportURLs:      _cachedItemSubset.ImportURLs,
-			ExportKeys:      _cachedItemSubset.ExportKeys,
+			ImportURLs:      importURLs,
+			ExportKeys:      exportKeys,
 			HasRootData:     hasRootData,
 
 			Params:      _match_results.Params,
 			SplatValues: _match_results.SplatValues,
 
-			Deps: _cachedItemSubset.Deps,
+			Deps: deps,
 		},
 
 		stage_1_head_els: headEls,

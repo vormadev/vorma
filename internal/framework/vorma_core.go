@@ -9,7 +9,6 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/typed"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -75,15 +74,6 @@ type (
 	GetRootTemplateDataFunc  func(r *http.Request) (map[string]any, error)
 )
 
-// cachedItemSubset holds pre-computed route metadata for a specific match combination.
-// This is cached per unique combination of matched patterns to avoid repeated lookups.
-type cachedItemSubset struct {
-	ImportURLs      []string
-	ExportKeys      []string
-	ErrorExportKeys []string
-	Deps            []string
-}
-
 type Vorma struct {
 	*wave.Wave
 
@@ -111,11 +101,6 @@ type Vorma struct {
 	_routeManifestFile string
 	_serverAddr        string
 	_lastConfigHash    [32]byte // Cache for config hashing to skip redundant writes
-
-	// gmpdCache is an instance-level cache for route match metadata.
-	// Keys are concatenated normalized patterns + buildID; values are pre-computed metadata.
-	// This cache is cleared on route rebuilds via routeRegistry.clearCache().
-	gmpdCache *typed.SyncMap__[string, *cachedItemSubset]
 
 	// Config for TS Generation (persisted in app struct)
 	_adHocTypes  []*AdHocType

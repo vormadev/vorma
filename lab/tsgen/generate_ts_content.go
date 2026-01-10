@@ -77,6 +77,12 @@ type ArbitraryProperty struct {
 
 type AdHocType = tsgencore.AdHocType
 
+type BaseOptions struct {
+	CollectionVarName    string
+	DiscriminatorStr     string
+	CategoryPropertyName string
+}
+
 const __commentTemplateNeedsTrim = `/////////////////////////////////////////////////////////////////////
 /////// __REPLACE_ME__
 /////////////////////////////////////////////////////////////////////`

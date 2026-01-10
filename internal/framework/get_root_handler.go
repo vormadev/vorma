@@ -10,7 +10,7 @@ import (
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/response"
-	"github.com/vormadev/vorma/kit/viteutil"
+	"github.com/vormadev/vorma/lab/viteutil"
 	"golang.org/x/sync/errgroup"
 )
 

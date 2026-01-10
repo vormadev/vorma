@@ -99,7 +99,6 @@ func mungeOptsToDefaults(opts *Options) Options {
 	copy.DynamicParamPrefixRune = genericsutil.OrDefault(copy.DynamicParamPrefixRune, ':')
 	copy.SplatSegmentRune = genericsutil.OrDefault(copy.SplatSegmentRune, '*')
 	copy.ExplicitIndexSegment = genericsutil.OrDefault(copy.ExplicitIndexSegment, "")
-	copy.Quiet = genericsutil.OrDefault(copy.Quiet, false)
 
 	return copy
 }

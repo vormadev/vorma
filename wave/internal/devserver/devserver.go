@@ -15,7 +15,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/grace"
 	"github.com/vormadev/vorma/kit/netutil"
-	"github.com/vormadev/vorma/kit/viteutil"
+	"github.com/vormadev/vorma/lab/viteutil"
 	"github.com/vormadev/vorma/wave/internal/builder"
 	"github.com/vormadev/vorma/wave/internal/config"
 	"github.com/vormadev/vorma/wave/internal/runtime"

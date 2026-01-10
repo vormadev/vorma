@@ -8,11 +8,10 @@ import (
 
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/rpc"
 	"github.com/vormadev/vorma/lab/tsgen"
 )
 
-type AdHocType = rpc.AdHocType
+type AdHocType = tsgen.AdHocType
 
 type tsGenOptions struct {
 	LoadersRouter *mux.NestedRouter
@@ -21,7 +20,7 @@ type tsGenOptions struct {
 	ExtraTSCode   string
 }
 
-var base = rpc.BaseOptions{
+var base = tsgen.BaseOptions{
 	CollectionVarName:    "routes",
 	DiscriminatorStr:     "pattern",
 	CategoryPropertyName: "_type",
