@@ -32,7 +32,7 @@ var (
 	}
 )
 
-func AddSha256HashInline(el *Element) (string, error) {
+func ComputeContentSha256(el *Element) (string, error) {
 	if el.AttributesKnownSafe == nil {
 		el.AttributesKnownSafe = make(map[string]string)
 	}
@@ -41,7 +41,7 @@ func AddSha256HashInline(el *Element) (string, error) {
 	return sha256HashBase64, nil
 }
 
-func AddSha256HashExternal(el *Element, externalSha256Hash string) (string, error) {
+func SetSha256Integrity(el *Element, externalSha256Hash string) (string, error) {
 	if el.AttributesKnownSafe == nil {
 		el.AttributesKnownSafe = make(map[string]string)
 	}

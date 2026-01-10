@@ -8,8 +8,8 @@ import (
 	"net/http"
 
 	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/jsonschema"
 	"github.com/vormadev/vorma/kit/middleware"
+	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/wave/internal/builder"
 	"github.com/vormadev/vorma/wave/internal/config"
 	"github.com/vormadev/vorma/wave/internal/devserver"

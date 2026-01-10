@@ -12,9 +12,9 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/vormadev/vorma/kit/fsutil"
-	"github.com/vormadev/vorma/kit/safecache"
 	"github.com/vormadev/vorma/wave/internal/config"
 )
 
@@ -23,31 +23,77 @@ const (
 	StyleSheetElementID  = "wave-normal-css"
 )
 
+// cacheInProd holds a lazily-initialized value that is cached in prod but
+// recomputed on every access in dev mode.
+type cacheInProd[T any] struct {
+	val      T
+	err      error
+	once     sync.Once
+	initFunc func() (T, error)
+}
+
+func newCacheInProd[T any](initFunc func() (T, error)) *cacheInProd[T] {
+	return &cacheInProd[T]{initFunc: initFunc}
+}
+
+func (c *cacheInProd[T]) get() (T, error) {
+	if config.GetIsDev() {
+		return c.initFunc()
+	}
+	c.once.Do(func() { c.val, c.err = c.initFunc() })
+	return c.val, c.err
+}
+
+// cacheInProdMap holds lazily-initialized keyed values that are cached in prod
+// but recomputed on every access in dev mode.
+type cacheInProdMap[K comparable, V any] struct {
+	cache    sync.Map
+	initFunc func(K) (V, error)
+}
+
+type cacheInProdEntry[V any] struct {
+	val V
+	err error
+}
+
+func newCacheInProdMap[K comparable, V any](initFunc func(K) (V, error)) *cacheInProdMap[K, V] {
+	return &cacheInProdMap[K, V]{initFunc: initFunc}
+}
+
+func (m *cacheInProdMap[K, V]) get(key K) (V, error) {
+	if config.GetIsDev() {
+		return m.initFunc(key)
+	}
+	if entry, ok := m.cache.Load(key); ok {
+		e := entry.(*cacheInProdEntry[V])
+		return e.val, e.err
+	}
+	val, err := m.initFunc(key)
+	actual, _ := m.cache.LoadOrStore(key, &cacheInProdEntry[V]{val: val, err: err})
+	e := actual.(*cacheInProdEntry[V])
+	return e.val, e.err
+}
+
 // Runtime provides runtime services for Wave applications.
-// It uses caching with dev-mode bypass for optimal performance.
 type Runtime struct {
 	cfg    *config.Config
-	distFS fs.FS // embedded or disk-based FS rooted at dist/static
+	distFS fs.FS
 	log    *slog.Logger
 
-	// Cached values with dev-mode bypass
-	baseFS    *safecache.Cache[fs.FS]
-	publicFS  *safecache.Cache[fs.FS]
-	privateFS *safecache.Cache[fs.FS]
-	fileMap   *safecache.Cache[config.FileMap]
+	baseFS    *cacheInProd[fs.FS]
+	publicFS  *cacheInProd[fs.FS]
+	privateFS *cacheInProd[fs.FS]
+	fileMap   *cacheInProd[config.FileMap]
 
-	// CSS caches
-	criticalCSS    *safecache.Cache[*criticalCSSData]
-	stylesheetURL  *safecache.Cache[string]
-	stylesheetLink *safecache.Cache[string]
+	criticalCSS    *cacheInProd[*criticalCSSData]
+	stylesheetURL  *cacheInProd[string]
+	stylesheetLink *cacheInProd[string]
 
-	// File map caches
-	fileMapURL     *safecache.Cache[string]
-	fileMapDetails *safecache.Cache[*fileMapDetails]
+	fileMapURL     *cacheInProd[string]
+	fileMapDetails *cacheInProd[*fileMapDetails]
 
-	// URL resolution cache
-	publicURLs *safecache.CacheMap[string, string, string]
-	isAsset    *safecache.CacheMap[string, string, bool]
+	publicURLs *cacheInProdMap[string, string]
+	isAsset    *cacheInProdMap[string, bool]
 }
 
 // criticalCSSData holds pre-computed critical CSS data
@@ -72,23 +118,17 @@ func New(cfg *config.Config, distStaticFS fs.FS, log *slog.Logger) *Runtime {
 		log:    log,
 	}
 
-	// Dev mode bypass function - always re-read in dev mode
-	bypass := config.GetIsDev
-	bypassKey := func(string) bool { return config.GetIsDev() }
-	identity := func(s string) string { return s }
-
-	// Initialize caches
-	r.baseFS = safecache.New(r.initBaseFS, bypass)
-	r.publicFS = safecache.New(r.initPublicFS, bypass)
-	r.privateFS = safecache.New(r.initPrivateFS, bypass)
-	r.fileMap = safecache.New(r.initFileMap, bypass)
-	r.criticalCSS = safecache.New(r.initCriticalCSS, bypass)
-	r.stylesheetURL = safecache.New(r.initStylesheetURL, bypass)
-	r.stylesheetLink = safecache.New(r.initStylesheetLink, bypass)
-	r.fileMapURL = safecache.New(r.initFileMapURL, bypass)
-	r.fileMapDetails = safecache.New(r.initFileMapDetails, bypass)
-	r.publicURLs = safecache.NewMap(r.resolvePublicURL, identity, bypassKey)
-	r.isAsset = safecache.NewMap(r.checkIsAsset, identity, bypassKey)
+	r.baseFS = newCacheInProd(r.initBaseFS)
+	r.publicFS = newCacheInProd(r.initPublicFS)
+	r.privateFS = newCacheInProd(r.initPrivateFS)
+	r.fileMap = newCacheInProd(r.initFileMap)
+	r.criticalCSS = newCacheInProd(r.initCriticalCSS)
+	r.stylesheetURL = newCacheInProd(r.initStylesheetURL)
+	r.stylesheetLink = newCacheInProd(r.initStylesheetLink)
+	r.fileMapURL = newCacheInProd(r.initFileMapURL)
+	r.fileMapDetails = newCacheInProd(r.initFileMapDetails)
+	r.publicURLs = newCacheInProdMap(r.resolvePublicURL)
+	r.isAsset = newCacheInProdMap(r.checkIsAsset)
 
 	return r
 }
@@ -128,17 +168,17 @@ func (r *Runtime) initPrivateFS() (fs.FS, error) {
 
 // BaseFS returns the base filesystem (dist/static)
 func (r *Runtime) BaseFS() (fs.FS, error) {
-	return r.baseFS.Get()
+	return r.baseFS.get()
 }
 
 // PublicFS returns the public assets filesystem
 func (r *Runtime) PublicFS() (fs.FS, error) {
-	return r.publicFS.Get()
+	return r.publicFS.get()
 }
 
 // PrivateFS returns the private assets filesystem
 func (r *Runtime) PrivateFS() (fs.FS, error) {
-	return r.privateFS.Get()
+	return r.privateFS.get()
 }
 
 // === File Map ===
@@ -164,7 +204,7 @@ func (r *Runtime) initFileMap() (config.FileMap, error) {
 
 // PublicFileMap returns the public file map
 func (r *Runtime) PublicFileMap() (config.FileMap, error) {
-	return r.fileMap.Get()
+	return r.fileMap.get()
 }
 
 // === URL Resolution ===
@@ -189,7 +229,7 @@ func (r *Runtime) resolvePublicURL(original string) (string, error) {
 
 // PublicURL returns the hashed URL for a public asset
 func (r *Runtime) PublicURL(original string) string {
-	url, _ := r.publicURLs.Get(original)
+	url, _ := r.publicURLs.get(original)
 	return url
 }
 
@@ -209,7 +249,7 @@ func (r *Runtime) checkIsAsset(urlPath string) (bool, error) {
 func (r *Runtime) IsPublicAsset(urlPath string) bool {
 	prefix := r.cfg.PublicPathPrefix()
 	if prefix == "" || prefix == "/" {
-		isAsset, _ := r.isAsset.Get(urlPath)
+		isAsset, _ := r.isAsset.get(urlPath)
 		return isAsset
 	}
 	return strings.HasPrefix(urlPath, prefix)

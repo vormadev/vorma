@@ -39,7 +39,7 @@ func (r *Runtime) initCriticalCSS() (*criticalCSSData, error) {
 		DangerousInnerHTML:  "\n" + result.content,
 	}
 
-	sha256Hash, err := htmlutil.AddSha256HashInline(&el)
+	sha256Hash, err := htmlutil.ComputeContentSha256(&el)
 	if err != nil {
 		r.log.Error(fmt.Sprintf("error handling CSP: %v", err))
 		return nil, err
@@ -58,7 +58,7 @@ func (r *Runtime) initCriticalCSS() (*criticalCSSData, error) {
 
 // CriticalCSS returns the critical CSS content
 func (r *Runtime) CriticalCSS() string {
-	data, err := r.criticalCSS.Get()
+	data, err := r.criticalCSS.get()
 	if err != nil || data == nil || data.noSuchFile {
 		return ""
 	}
@@ -67,7 +67,7 @@ func (r *Runtime) CriticalCSS() string {
 
 // CriticalCSSStyleElement returns an inline style element with critical CSS
 func (r *Runtime) CriticalCSSStyleElement() template.HTML {
-	data, err := r.criticalCSS.Get()
+	data, err := r.criticalCSS.get()
 	if err != nil || data == nil || data.noSuchFile {
 		return ""
 	}
@@ -76,7 +76,7 @@ func (r *Runtime) CriticalCSSStyleElement() template.HTML {
 
 // CriticalCSSStyleElementHash returns the CSP hash for the critical CSS element
 func (r *Runtime) CriticalCSSStyleElementHash() string {
-	data, err := r.criticalCSS.Get()
+	data, err := r.criticalCSS.get()
 	if err != nil || data == nil || data.noSuchFile {
 		return ""
 	}
@@ -103,7 +103,7 @@ func (r *Runtime) initStylesheetURL() (string, error) {
 
 // StyleSheetURL returns the URL to the non-critical stylesheet
 func (r *Runtime) StyleSheetURL() string {
-	url, _ := r.stylesheetURL.Get()
+	url, _ := r.stylesheetURL.get()
 	return url
 }
 
@@ -125,6 +125,6 @@ func (r *Runtime) initStylesheetLink() (string, error) {
 
 // StyleSheetLinkElement returns a link element for the stylesheet
 func (r *Runtime) StyleSheetLinkElement() template.HTML {
-	link, _ := r.stylesheetLink.Get()
+	link, _ := r.stylesheetLink.get()
 	return template.HTML(link)
 }

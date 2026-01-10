@@ -100,7 +100,7 @@ func (v *Vorma) getSSRInnerHTML(routeData *final_ui_data) (*GetSSRInnerHTMLOutpu
 		DangerousInnerHTML:  innerHTML,
 	}
 
-	sha256Hash, err := htmlutil.AddSha256HashInline(&el)
+	sha256Hash, err := htmlutil.ComputeContentSha256(&el)
 	if err != nil {
 		wrapped := fmt.Errorf("could not handle CSP for SSR inner HTML: %w", err)
 		Log.Error(wrapped.Error())

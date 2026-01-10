@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/vormadev/vorma/kit/esbuildutil"
+	"github.com/vormadev/vorma/lab/esbuildutil"
 	"github.com/vormadev/vorma/wave/internal/config"
 )
 

@@ -9,7 +9,7 @@ import (
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/rpc"
-	"github.com/vormadev/vorma/kit/tsgen"
+	"github.com/vormadev/vorma/lab/tsgen"
 )
 
 type AdHocType = rpc.AdHocType

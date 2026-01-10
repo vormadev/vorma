@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/vormadev/vorma/kit/stringsutil"
+	"github.com/vormadev/vorma/lab/stringsutil"
 )
 
 // Returns: linesSlice, versionLineIdx, currentVersionStr

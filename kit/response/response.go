@@ -70,8 +70,8 @@ func (res *Response) JSON(v any) {
 
 // Returns a 200 JSON response of {"ok":true}
 func (res *Response) OK() {
-	res.SetStatus(http.StatusOK)
 	res.SetHeader("Content-Type", "application/json")
+	res.Writer.WriteHeader(http.StatusOK)
 	res.Writer.Write([]byte(`{"ok":true}`))
 	res.flagAsCommitted()
 }
@@ -84,8 +84,10 @@ func (res *Response) Text(text string) {
 
 // Returns a 200 text response of "OK"
 func (res *Response) OKText() {
-	res.SetStatus(http.StatusOK)
-	res.Text("OK")
+	res.SetHeader("Content-Type", "text/plain")
+	res.Writer.WriteHeader(http.StatusOK)
+	res.Writer.Write([]byte("OK"))
+	res.flagAsCommitted()
 }
 
 func (res *Response) HTMLBytes(bytes []byte) {
@@ -174,16 +176,17 @@ func (res *Response) ServerRedirect(r *http.Request, url string, code ...int) {
 	res.flagAsCommitted()
 }
 
-// sets status to 200 if not already set
+// ClientRedirect sets a client-side redirect header and status 200.
+// Returns an error if the response is already committed.
 func (res *Response) ClientRedirect(url string) error {
 	if ok := validateURL(url); !ok {
 		return fmt.Errorf("invalid URL: %s", url)
 	}
-	currentStatus := res.Writer.Header().Get("Status")
-	if currentStatus == "" {
-		res.SetStatus(http.StatusOK)
+	if res.isCommitted {
+		return fmt.Errorf("cannot set client redirect: response already committed")
 	}
 	res.SetHeader(ClientRedirectHeader, url)
+	res.SetStatus(http.StatusOK)
 	return nil
 }
 

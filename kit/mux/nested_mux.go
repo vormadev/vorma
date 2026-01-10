@@ -9,7 +9,6 @@ import (
 
 	"github.com/vormadev/vorma/kit/genericsutil"
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/opt"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/tasks"
 )
@@ -102,9 +101,9 @@ func NewNestedRouter(opts *NestedOptions) *NestedRouter {
 	if opts == nil {
 		opts = new(NestedOptions)
 	}
-	matcherOpts.DynamicParamPrefixRune = opt.Resolve(opts, opts.DynamicParamPrefixRune, ':')
-	matcherOpts.SplatSegmentRune = opt.Resolve(opts, opts.SplatSegmentRune, '*')
-	matcherOpts.ExplicitIndexSegment = opt.Resolve(opts, opts.ExplicitIndexSegment, "")
+	matcherOpts.DynamicParamPrefixRune = genericsutil.OrDefault(opts.DynamicParamPrefixRune, ':')
+	matcherOpts.SplatSegmentRune = genericsutil.OrDefault(opts.SplatSegmentRune, '*')
+	matcherOpts.ExplicitIndexSegment = genericsutil.OrDefault(opts.ExplicitIndexSegment, "")
 	nr := &NestedRouter{
 		matcher: matcher.New(matcherOpts),
 		routes:  make(map[string]AnyNestedRoute),

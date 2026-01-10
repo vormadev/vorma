@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vormadev/vorma/kit/cookies"
 	"github.com/vormadev/vorma/kit/keyset"
 	"github.com/vormadev/vorma/kit/response"
-	"github.com/vormadev/vorma/lab/cookies"
 )
 
 // Test helpers

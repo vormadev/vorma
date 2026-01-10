@@ -6,7 +6,7 @@ import (
 	"maps"
 	"os"
 
-	"github.com/vormadev/vorma/kit/jsonschema"
+	"github.com/vormadev/vorma/lab/jsonschema"
 )
 
 func Write(target string, additional map[string]jsonschema.Entry) error {

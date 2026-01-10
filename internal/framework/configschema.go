@@ -1,6 +1,6 @@
 package vorma
 
-import "github.com/vormadev/vorma/kit/jsonschema"
+import "github.com/vormadev/vorma/lab/jsonschema"
 
 var Vorma_Schema = jsonschema.OptionalObject(jsonschema.Def{
 	Description:      "Vorma framework configuration.",

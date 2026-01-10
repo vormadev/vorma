@@ -24,9 +24,9 @@ import (
 	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/kit/id"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/stringsutil"
-	"github.com/vormadev/vorma/kit/tsgen"
 	"github.com/vormadev/vorma/kit/viteutil"
+	"github.com/vormadev/vorma/lab/stringsutil"
+	"github.com/vormadev/vorma/lab/tsgen"
 )
 
 type PathsFile struct {

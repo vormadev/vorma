@@ -9,13 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-
-	"github.com/vormadev/vorma/kit/errutil"
 )
 
 // EnsureDir creates a directory if it does not exist.
 func EnsureDir(path string) error {
-	return errutil.Maybe("fsutil.EnsureDir: ", os.MkdirAll(path, os.ModePerm))
+	err := os.MkdirAll(path, os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("fsutil.EnsureDir: failed to create directory %s: %w", path, err)
+	}
+	return nil
 }
 
 func EnsureDirs(paths ...string) error {
@@ -127,13 +129,13 @@ func FromGobInto(file fs.File, destPtr any) error {
 func FromGob[T any](file fs.File) (T, error) {
 	var zeroT T
 	if file == nil {
-		return zeroT, fmt.Errorf("fsutil.FromGobInto: cannot decode nil file")
+		return zeroT, fmt.Errorf("fsutil.FromGob: cannot decode nil file")
 	}
 	dec := gob.NewDecoder(file)
 	destPtr := new(T)
 	err := dec.Decode(destPtr)
 	if err != nil {
-		return zeroT, fmt.Errorf("fsutil.FromGobInto: failed to decode file into dest: %w", err)
+		return zeroT, fmt.Errorf("fsutil.FromGob: failed to decode file into dest: %w", err)
 	}
 	return *destPtr, nil
 }

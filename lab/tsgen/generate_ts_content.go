@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/vormadev/vorma/kit/tsgen/tsgencore"
+	"github.com/vormadev/vorma/lab/tsgen/tsgencore"
 )
 
 type Opts struct {

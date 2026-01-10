@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vormadev/vorma/kit/stringsutil"
+	"github.com/vormadev/vorma/lab/stringsutil"
 )
 
 const (

@@ -12,7 +12,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/netutil"
-	"github.com/vormadev/vorma/kit/stringsutil"
+	"github.com/vormadev/vorma/lab/stringsutil"
 )
 
 type ManifestChunk struct {

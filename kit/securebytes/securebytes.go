@@ -63,6 +63,9 @@ func Parse[T any](ks *keyset.Keyset, sb SecureBytes) (T, error) {
 	if err != nil {
 		return zeroT, fmt.Errorf("error decrypting value: %w", err)
 	}
+	if len(plaintext) < 2 { // need at least version byte + some gob data
+		return zeroT, fmt.Errorf("invalid plaintext: too short")
+	}
 	version := plaintext[0]
 	if version != current_pkg_version {
 		return zeroT, fmt.Errorf("unsupported SecureBytes version %d", version)

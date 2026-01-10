@@ -557,3 +557,24 @@ func TestBackwardsCompatibility(t *testing.T) {
 		t.Errorf("Expected 'a' to still be present with backwards-compatible constructor")
 	}
 }
+
+func TestCloseOnce(t *testing.T) {
+	cache := NewCacheWithTTL[string, int](5, 100*time.Millisecond)
+
+	// Calling Close multiple times should not panic
+	cache.Close()
+	cache.Close()
+	cache.Close()
+
+	// Concurrent Close calls should also be safe
+	cache2 := NewCacheWithTTL[string, int](5, 100*time.Millisecond)
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cache2.Close()
+		}()
+	}
+	wg.Wait()
+}

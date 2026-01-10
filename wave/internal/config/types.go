@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/vormadev/vorma/kit/jsonschema"
 	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/lab/jsonschema"
 )
 
 // Path segment constants - private, used only by DistLayout and RelPaths methods

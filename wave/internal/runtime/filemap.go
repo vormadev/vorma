@@ -31,7 +31,7 @@ func (r *Runtime) initFileMapURL() (string, error) {
 
 // PublicFileMapURL returns the URL to the file map JS module
 func (r *Runtime) PublicFileMapURL() string {
-	url, _ := r.fileMapURL.Get()
+	url, _ := r.fileMapURL.get()
 	return url
 }
 
@@ -66,7 +66,7 @@ func (r *Runtime) initFileMapDetails() (*fileMapDetails, error) {
 		DangerousInnerHTML: innerHTML,
 	}
 
-	sha256Hash, err := htmlutil.AddSha256HashInline(&scriptEl)
+	sha256Hash, err := htmlutil.ComputeContentSha256(&scriptEl)
 	if err != nil {
 		return nil, fmt.Errorf("error handling CSP for filemap script: %w", err)
 	}
@@ -91,7 +91,7 @@ func (r *Runtime) initFileMapDetails() (*fileMapDetails, error) {
 
 // PublicFileMapElements returns HTML for loading the file map
 func (r *Runtime) PublicFileMapElements() template.HTML {
-	details, _ := r.fileMapDetails.Get()
+	details, _ := r.fileMapDetails.get()
 	if details == nil {
 		return ""
 	}
@@ -100,7 +100,7 @@ func (r *Runtime) PublicFileMapElements() template.HTML {
 
 // PublicFileMapScriptHash returns the CSP hash for the file map script
 func (r *Runtime) PublicFileMapScriptHash() string {
-	details, _ := r.fileMapDetails.Get()
+	details, _ := r.fileMapDetails.get()
 	if details == nil {
 		return ""
 	}

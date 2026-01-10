@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/tsgen"
+	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave/internal/config"
 )
 

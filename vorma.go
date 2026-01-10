@@ -6,7 +6,7 @@ import (
 	rf "github.com/vormadev/vorma/internal/framework"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/parseutil"
+	"github.com/vormadev/vorma/lab/parseutil"
 	"github.com/vormadev/vorma/wave"
 )
 
