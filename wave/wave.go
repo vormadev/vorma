@@ -36,7 +36,7 @@ const (
 	OnChangeStrategyPost             = config.TimingPost
 	PrehashedDirname                 = config.PrehashedDirname
 	// Expose constant so frameworks can reference the expected filename
-	PublicFileMapTSName = config.PublicFileMapTSName
+	PublicFileMapTSName = config.FilePublicMapTS
 
 	// Fallback action constants for OnChangeStrategy
 	FallbackRestart     = config.FallbackRestart

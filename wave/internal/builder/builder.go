@@ -280,7 +280,7 @@ func (b *Builder) getPublicURLBuildtimeCached(original string) string {
 	defer b.css.cachedFileMapMu.Unlock()
 
 	if b.css.cachedFileMap == nil {
-		fm, err := b.loadFileMap(config.PublicFileMapGobName)
+		fm, err := b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 		if err != nil {
 			b.log.Error("failed to load file map for CSS URL resolution", "error", err, "url", original)
 			panic(err)

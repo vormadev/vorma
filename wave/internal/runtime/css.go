@@ -10,6 +10,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/wave/internal/config"
 )
 
 func (r *Runtime) initCriticalCSS() (*criticalCSSData, error) {
@@ -22,7 +23,7 @@ func (r *Runtime) initCriticalCSS() (*criticalCSSData, error) {
 		return nil, err
 	}
 
-	content, err := fs.ReadFile(base, "internal/critical.css")
+	content, err := fs.ReadFile(base, config.RelPaths.CriticalCSS())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return &criticalCSSData{noSuchFile: true}, nil
@@ -92,7 +93,7 @@ func (r *Runtime) initStylesheetURL() (string, error) {
 		return "", err
 	}
 
-	content, err := fs.ReadFile(base, "internal/normal_css_file_ref.txt")
+	content, err := fs.ReadFile(base, config.RelPaths.NormalCSSRef())
 	if err != nil {
 		return "", err
 	}

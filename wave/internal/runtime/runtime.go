@@ -115,7 +115,7 @@ func (r *Runtime) initPublicFS() (fs.FS, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fs.Sub(base, "assets/public")
+	return fs.Sub(base, config.RelPaths.AssetsPublic())
 }
 
 func (r *Runtime) initPrivateFS() (fs.FS, error) {
@@ -123,7 +123,7 @@ func (r *Runtime) initPrivateFS() (fs.FS, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fs.Sub(base, "assets/private")
+	return fs.Sub(base, config.RelPaths.AssetsPrivate())
 }
 
 // BaseFS returns the base filesystem (dist/static)
@@ -149,7 +149,7 @@ func (r *Runtime) initFileMap() (config.FileMap, error) {
 		return nil, err
 	}
 
-	f, err := base.Open("internal/" + config.PublicFileMapGobName)
+	f, err := base.Open(config.RelPaths.PublicFileMapGob())
 	if err != nil {
 		return nil, fmt.Errorf("open file map: %w", err)
 	}

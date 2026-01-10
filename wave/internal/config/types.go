@@ -12,6 +12,90 @@ import (
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
+// Path segment constants - private, used only by DistLayout and RelPaths methods
+const (
+	segStatic   = "static"
+	segAssets   = "assets"
+	segPublic   = "public"
+	segPrivate  = "private"
+	segInternal = "internal"
+)
+
+// File name constants - private, used only by DistLayout and RelPaths methods
+const (
+	fileBinary        = "main"
+	fileBinaryWindows = "main.exe"
+	fileKeep          = ".keep"
+	fileCriticalCSS   = "critical.css"
+	fileNormalCSSRef  = "normal_css_file_ref.txt"
+	filePublicMapRef  = "public_file_map_file_ref.txt"
+	filePublicMapGob  = "public_filemap.gob"
+	filePrivateMapGob = "private_filemap.gob"
+	filePublicMapJS   = "vorma_internal_public_filemap.js"
+)
+
+// Public constants - referenced by external packages
+const (
+	PrehashedDirname = "prehashed"
+	NohashDirname    = "__nohash"
+
+	// HashedOutputPrefix is the prefix for all Wave-generated hashed files
+	HashedOutputPrefix           = "vorma_out_"
+	HashedOutputPrefixNoTrailing = "vorma_out"
+
+	// CSS output
+	NormalCSSBaseName    = "vorma_internal_normal.css"
+	NormalCSSGlobPattern = HashedOutputPrefix + "vorma_internal_normal_*.css"
+
+	// Files
+	FilePublicMapTS      = "filemap.ts"
+	FileMapJSGlobPattern = HashedOutputPrefix + "vorma_internal_public_filemap_*.js"
+)
+
+// RelPaths provides fs.FS-relative paths (no leading slash, forward slashes).
+// Used by runtime package when reading from embedded/disk fs.FS.
+var RelPaths = relPaths{}
+
+type relPaths struct{}
+
+func (relPaths) Internal() string              { return segInternal }
+func (relPaths) AssetsPublic() string          { return segAssets + "/" + segPublic }
+func (relPaths) AssetsPrivate() string         { return segAssets + "/" + segPrivate }
+func (relPaths) CriticalCSS() string           { return segInternal + "/" + fileCriticalCSS }
+func (relPaths) NormalCSSRef() string          { return segInternal + "/" + fileNormalCSSRef }
+func (relPaths) PublicFileMapRef() string      { return segInternal + "/" + filePublicMapRef }
+func (relPaths) PublicFileMapGob() string      { return segInternal + "/" + filePublicMapGob }
+func (relPaths) PublicFileMapGobName() string  { return filePublicMapGob }
+func (relPaths) PrivateFileMapGobName() string { return filePrivateMapGob }
+func (relPaths) PublicFileMapJSName() string   { return filePublicMapJS }
+func (relPaths) PublicFileMapTSName() string   { return FilePublicMapTS }
+
+// DistLayout provides computed paths for the dist directory structure.
+// All methods return absolute paths using filepath (OS-native separators).
+type DistLayout struct {
+	Root string
+}
+
+func (d DistLayout) Binary() string {
+	name := fileBinary
+	if runtime.GOOS == "windows" {
+		name = fileBinaryWindows
+	}
+	return filepath.Join(d.Root, name)
+}
+
+func (d DistLayout) Static() string            { return filepath.Join(d.Root, segStatic) }
+func (d DistLayout) StaticAssets() string      { return filepath.Join(d.Static(), segAssets) }
+func (d DistLayout) StaticPublic() string      { return filepath.Join(d.StaticAssets(), segPublic) }
+func (d DistLayout) StaticPrivate() string     { return filepath.Join(d.StaticAssets(), segPrivate) }
+func (d DistLayout) Internal() string          { return filepath.Join(d.Static(), segInternal) }
+func (d DistLayout) CriticalCSS() string       { return filepath.Join(d.Internal(), fileCriticalCSS) }
+func (d DistLayout) NormalCSSRef() string      { return filepath.Join(d.Internal(), fileNormalCSSRef) }
+func (d DistLayout) PublicFileMapRef() string  { return filepath.Join(d.Internal(), filePublicMapRef) }
+func (d DistLayout) PublicFileMapGob() string  { return filepath.Join(d.Internal(), filePublicMapGob) }
+func (d DistLayout) PrivateFileMapGob() string { return filepath.Join(d.Internal(), filePrivateMapGob) }
+func (d DistLayout) KeepFile() string          { return filepath.Join(d.Static(), fileKeep) }
+
 // Config is the parsed and validated wave.config.json
 type Config struct {
 	Core  *CoreConfig  `json:"Core"`
@@ -193,44 +277,6 @@ func (fm FileMap) Lookup(original, prefix string) (url string, found bool) {
 	return matcher.EnsureLeadingSlash(path.Join(prefix, original)), false
 }
 
-// Constants
-const (
-	PrehashedDirname      = "prehashed"
-	PublicFileMapGobName  = "public_filemap.gob"
-	PrivateFileMapGobName = "private_filemap.gob"
-	PublicFileMapJSName   = "vorma_internal_public_filemap.js"
-	PublicFileMapTSName   = "filemap.ts"
-)
-
-// DistLayout provides computed paths for the dist directory structure
-type DistLayout struct {
-	Root string
-}
-
-func (d DistLayout) Binary() string {
-	name := "main"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	return filepath.Join(d.Root, name)
-}
-
-func (d DistLayout) Static() string       { return filepath.Join(d.Root, "static") }
-func (d DistLayout) StaticAssets() string { return filepath.Join(d.Static(), "assets") }
-func (d DistLayout) StaticPublic() string { return filepath.Join(d.StaticAssets(), "public") }
-func (d DistLayout) StaticPrivate() string {
-	return filepath.Join(d.StaticAssets(), "private")
-}
-func (d DistLayout) Internal() string    { return filepath.Join(d.Static(), "internal") }
-func (d DistLayout) CriticalCSS() string { return filepath.Join(d.Internal(), "critical.css") }
-func (d DistLayout) NormalCSSRef() string {
-	return filepath.Join(d.Internal(), "normal_css_file_ref.txt")
-}
-func (d DistLayout) PublicFileMapRef() string {
-	return filepath.Join(d.Internal(), "public_file_map_file_ref.txt")
-}
-func (d DistLayout) KeepFile() string { return filepath.Join(d.Static(), ".keep") }
-
 // Config methods
 
 func (c *Config) PublicPathPrefix() string {
@@ -242,7 +288,7 @@ func (c *Config) PublicPathPrefix() string {
 }
 
 func (c *Config) ViteManifestPath() string {
-	return filepath.Join(c.Dist.StaticPrivate(), "vorma_out", "vorma_vite_manifest.json")
+	return filepath.Join(c.Dist.StaticPrivate(), HashedOutputPrefixNoTrailing, "vorma_vite_manifest.json")
 }
 
 func (c *Config) WatchRoot() string {

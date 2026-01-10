@@ -18,6 +18,12 @@ import (
 // matchCacheMaxSize limits the match cache to prevent unbounded memory growth
 const matchCacheMaxSize = 10000
 
+// Ignore patterns - these are glob patterns, not path segments
+const (
+	globGit         = "**/.git"
+	globNodeModules = "**/node_modules"
+)
+
 // Watcher manages file watching for the dev server
 type Watcher struct {
 	cfg     *config.Config
@@ -88,11 +94,6 @@ func (w *Watcher) setupPatterns() {
 		w.norm(w.cfg.Dist.Binary()),
 	}
 
-	baseDirs := []string{
-		"**/.git",
-		"**/node_modules",
-	}
-
 	// Add dist static as absolute path
 	w.ignoredDirs = append(w.ignoredDirs, w.norm(w.cfg.Dist.Static()))
 	w.ignoredDirs = append(w.ignoredDirs, w.norm(w.cfg.Dist.Static())+"/**")
@@ -100,10 +101,14 @@ func (w *Watcher) setupPatterns() {
 	// Only add static asset patterns if not in server-only mode
 	if w.cfg.UsingBrowser() {
 		publicStatic := filepath.Clean(w.cfg.Core.StaticAssetDirs.Public)
-		w.ignoredDirs = append(w.ignoredDirs, w.norm(filepath.Join(publicStatic, "__nohash")))
-		w.ignoredDirs = append(w.ignoredDirs, w.norm(filepath.Join(publicStatic, "__nohash"))+"/**")
-		w.ignoredDirs = append(w.ignoredDirs, w.norm(filepath.Join(publicStatic, config.PrehashedDirname)))
-		w.ignoredDirs = append(w.ignoredDirs, w.norm(filepath.Join(publicStatic, config.PrehashedDirname))+"/**")
+
+		nohashDir := w.norm(filepath.Join(publicStatic, config.NohashDirname))
+		w.ignoredDirs = append(w.ignoredDirs, nohashDir)
+		w.ignoredDirs = append(w.ignoredDirs, nohashDir+"/**")
+
+		prehashedDir := w.norm(filepath.Join(publicStatic, config.PrehashedDirname))
+		w.ignoredDirs = append(w.ignoredDirs, prehashedDir)
+		w.ignoredDirs = append(w.ignoredDirs, prehashedDir+"/**")
 
 		// Public static files: Wave handles processing and writes filemap.ts directly.
 		// No DevBuildHook needed - Vite HMR picks up the TS file change.
@@ -129,10 +134,8 @@ func (w *Watcher) setupPatterns() {
 	}
 
 	// For ** patterns, we need to anchor them to watch root
-	for _, p := range baseDirs {
-		// These are recursive patterns that should match anywhere under watch root
-		w.ignoredDirs = append(w.ignoredDirs, w.absWatchRoot+"/"+p)
-	}
+	w.ignoredDirs = append(w.ignoredDirs, w.absWatchRoot+"/"+globGit)
+	w.ignoredDirs = append(w.ignoredDirs, w.absWatchRoot+"/"+globNodeModules)
 
 	if w.cfg.Watch != nil {
 		for _, p := range w.cfg.Watch.Exclude.Dirs {

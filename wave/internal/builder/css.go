@@ -171,7 +171,7 @@ func (p *cssProcessor) build(nature string, isDev bool) error {
 		outputPath = p.cfg.Dist.StaticPublic()
 
 		// Clean up old files
-		oldFiles, err := filepath.Glob(filepath.Join(outputPath, "vorma_out_vorma_internal_normal_*.css"))
+		oldFiles, err := filepath.Glob(filepath.Join(outputPath, config.NormalCSSGlobPattern))
 		if err != nil {
 			p.log.Warn("failed to glob old CSS files", "error", err)
 		}
@@ -181,7 +181,7 @@ func (p *cssProcessor) build(nature string, isDev bool) error {
 			}
 		}
 
-		outputFileName = hashBytes(result.OutputFiles[0].Contents, "vorma_internal_normal.css")
+		outputFileName = hashBytes(result.OutputFiles[0].Contents, config.NormalCSSBaseName)
 
 		// Write ref file atomically
 		refPath := p.cfg.Dist.NormalCSSRef()

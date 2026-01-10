@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/vormadev/vorma/wave/internal/config"
 )
 
 // hashFile computes a content-addressed filename.
@@ -57,5 +59,5 @@ func formatHashedName(h hash.Hash, originalName string) string {
 	hashStr := fmt.Sprintf("%x", h.Sum(nil))[:12]
 	ext := filepath.Ext(originalName)
 	base := strings.TrimSuffix(originalName, ext)
-	return fmt.Sprintf("vorma_out_%s_%s%s", base, hashStr, ext)
+	return fmt.Sprintf("%s%s_%s%s", config.HashedOutputPrefix, base, hashStr, ext)
 }

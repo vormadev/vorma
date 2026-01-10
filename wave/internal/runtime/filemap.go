@@ -9,6 +9,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/wave/internal/config"
 )
 
 func (r *Runtime) initFileMapURL() (string, error) {
@@ -17,7 +18,7 @@ func (r *Runtime) initFileMapURL() (string, error) {
 		return "", err
 	}
 
-	content, err := fs.ReadFile(base, "internal/public_file_map_file_ref.txt")
+	content, err := fs.ReadFile(base, config.RelPaths.PublicFileMapRef())
 	if err != nil {
 		return "", err
 	}

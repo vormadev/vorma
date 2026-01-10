@@ -25,7 +25,7 @@ func (b *Builder) processPublicFiles(granular bool) error {
 	return b.processStaticFiles(staticOpts{
 		srcDir:     filepath.Clean(b.cfg.Core.StaticAssetDirs.Public),
 		distDir:    b.cfg.Dist.StaticPublic(),
-		gobName:    config.PublicFileMapGobName,
+		gobPath:    b.cfg.Dist.PublicFileMapGob(),
 		granular:   granular,
 		isPublic:   true,
 		hashOutput: true,
@@ -36,7 +36,7 @@ func (b *Builder) processPrivateFiles(granular bool) error {
 	return b.processStaticFiles(staticOpts{
 		srcDir:     filepath.Clean(b.cfg.Core.StaticAssetDirs.Private),
 		distDir:    b.cfg.Dist.StaticPrivate(),
-		gobName:    config.PrivateFileMapGobName,
+		gobPath:    b.cfg.Dist.PrivateFileMapGob(),
 		granular:   granular,
 		isPublic:   false,
 		hashOutput: false,
@@ -46,7 +46,7 @@ func (b *Builder) processPrivateFiles(granular bool) error {
 type staticOpts struct {
 	srcDir     string
 	distDir    string
-	gobName    string
+	gobPath    string
 	granular   bool
 	isPublic   bool
 	hashOutput bool
@@ -60,7 +60,7 @@ type fileInfo struct {
 
 func (b *Builder) processStaticFiles(opts staticOpts) error {
 	if _, err := os.Stat(opts.srcDir); os.IsNotExist(err) {
-		if err := b.saveFileMap(config.FileMap{}, opts.gobName); err != nil {
+		if err := b.saveFileMap(config.FileMap{}, opts.gobPath); err != nil {
 			return err
 		}
 		if opts.isPublic {
@@ -73,7 +73,7 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 	var oldMap *sync.Map
 
 	if opts.granular {
-		old, err := b.loadFileMap(opts.gobName)
+		old, err := b.loadFileMapFromPath(opts.gobPath)
 		if err == nil {
 			oldMap = &sync.Map{}
 			for k, v := range old {
@@ -118,12 +118,14 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 			relPath = filepath.ToSlash(relPath)
 
 			prehash := false
-			if strings.HasPrefix(relPath, config.PrehashedDirname+"/") {
+			prehashedPrefix := config.PrehashedDirname + "/"
+			nohashPrefix := config.NohashDirname + "/"
+			if strings.HasPrefix(relPath, prehashedPrefix) {
 				prehash = true
-				relPath = strings.TrimPrefix(relPath, config.PrehashedDirname+"/")
-			} else if strings.HasPrefix(relPath, "__nohash/") {
+				relPath = strings.TrimPrefix(relPath, prehashedPrefix)
+			} else if strings.HasPrefix(relPath, nohashPrefix) {
 				prehash = true
-				relPath = strings.TrimPrefix(relPath, "__nohash/")
+				relPath = strings.TrimPrefix(relPath, nohashPrefix)
 			}
 
 			if _, ignore := staticIgnoreList[filepath.Base(relPath)]; ignore {
@@ -208,7 +210,7 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 		})
 	}
 
-	if err := b.saveFileMap(finalMap, opts.gobName); err != nil {
+	if err := b.saveFileMap(finalMap, opts.gobPath); err != nil {
 		return err
 	}
 
@@ -266,9 +268,8 @@ func (b *Builder) processFile(fi fileInfo, opts staticOpts, newMap, oldMap *sync
 	return fsutil.CopyFile(fi.srcPath, distPath)
 }
 
-func (b *Builder) loadFileMap(gobName string) (config.FileMap, error) {
-	path := filepath.Join(b.cfg.Dist.Internal(), gobName)
-	f, err := os.Open(path)
+func (b *Builder) loadFileMapFromPath(gobPath string) (config.FileMap, error) {
+	f, err := os.Open(gobPath)
 	if err != nil {
 		return nil, err
 	}
@@ -276,9 +277,8 @@ func (b *Builder) loadFileMap(gobName string) (config.FileMap, error) {
 	return fsutil.FromGob[config.FileMap](f)
 }
 
-func (b *Builder) saveFileMap(fm config.FileMap, gobName string) error {
-	path := filepath.Join(b.cfg.Dist.Internal(), gobName)
-	return writeFileAtomic(path, func(f *os.File) error {
+func (b *Builder) saveFileMap(fm config.FileMap, gobPath string) error {
+	return writeFileAtomic(gobPath, func(f *os.File) error {
 		return gob.NewEncoder(f).Encode(fm)
 	})
 }
@@ -295,11 +295,11 @@ func (b *Builder) savePublicFileMapJS(fm config.FileMap) error {
 	}
 
 	content := fmt.Sprintf("export const wavePublicFileMap = %s;", string(jsonBytes))
-	hashedName := hashBytes([]byte(content), config.PublicFileMapJSName)
+	hashedName := hashBytes([]byte(content), config.RelPaths.PublicFileMapJSName())
 
 	// Cleanup old files
 	publicDir := b.cfg.Dist.StaticPublic()
-	oldFiles, err := filepath.Glob(filepath.Join(publicDir, "vorma_out_vorma_internal_public_filemap_*.js"))
+	oldFiles, err := filepath.Glob(filepath.Join(publicDir, config.FileMapJSGlobPattern))
 	if err != nil {
 		b.log.Warn("failed to glob old filemap files", "error", err)
 	}
@@ -349,7 +349,7 @@ func (b *Builder) WritePublicFileMapTS(outDir string) error {
 		return fmt.Errorf("create output dir: %w", err)
 	}
 
-	outPath := filepath.Join(outDir, config.PublicFileMapTSName)
+	outPath := filepath.Join(outDir, config.RelPaths.PublicFileMapTSName())
 	return writeFileAtomicBytes(outPath, []byte(sb.String()))
 }
 

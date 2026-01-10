@@ -29,14 +29,6 @@ import (
 	"github.com/vormadev/vorma/kit/viteutil"
 )
 
-const (
-	vormaOutPrefix                 = "vorma_out_"
-	vormaVitePrehashedFilePrefix   = vormaOutPrefix + "vite_"
-	vormaRouteManifestPrefix       = vormaOutPrefix + "vorma_internal_route_manifest_"
-	VormaPathsStageOneJSONFileName = "vorma_paths_stage_1.json"
-	VormaPathsStageTwoJSONFileName = "vorma_paths_stage_2.json"
-)
-
 type PathsFile struct {
 	// both stages one and two
 	Stage             string           `json:"stage"`
@@ -54,7 +46,7 @@ type PathsFile struct {
 func (v *Vorma) writePathsToDisk_StageOne() error {
 	pathsJSONOut_StageOne := filepath.Join(
 		v.Wave.GetStaticPrivateOutDir(),
-		"vorma_out",
+		VormaOutDirname,
 		VormaPathsStageOneJSONFileName,
 	)
 	err := os.MkdirAll(filepath.Dir(pathsJSONOut_StageOne), os.ModePerm)
@@ -579,8 +571,9 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 		if err != nil {
 			return err
 		}
-		if strings.HasPrefix(filepath.Base(path), vormaVitePrehashedFilePrefix) ||
-			strings.HasPrefix(filepath.Base(path), vormaRouteManifestPrefix) {
+		baseName := filepath.Base(path)
+		if strings.HasPrefix(baseName, vormaVitePrehashedFilePrefix) ||
+			strings.HasPrefix(baseName, vormaRouteManifestPrefix) {
 			err = os.Remove(path)
 			if err != nil {
 				return err
@@ -718,7 +711,7 @@ func (v *Vorma) writeRouteManifestToDisk(manifest map[string]int) (string, error
 	// Hash the content to create a stable filename
 	hash := cryptoutil.Sha256Hash(manifestJSON)
 	hashStr := base64.RawURLEncoding.EncodeToString(hash[:8])
-	filename := fmt.Sprintf(vormaRouteManifestPrefix+"%s.json", hashStr)
+	filename := fmt.Sprintf("%s%s.json", vormaRouteManifestPrefix, hashStr)
 
 	// Write to static public dir so it's served automatically
 	outPath := filepath.Join(v.Wave.GetStaticPublicOutDir(), filename)
