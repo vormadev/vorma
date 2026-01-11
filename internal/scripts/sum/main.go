@@ -12,9 +12,39 @@ func main() {
 		os.Mkdir("__LLM_CONCAT.local", 0755)
 	}
 
+	// SNIPPET:
+	//
+	// repoconcat.Concat(repoconcat.Config{
+	// 	Output:  "__LLM_CONCAT.local/____________.txt",
+	// 	Include: []string{},
+	// 	Exclude: []string{"**/*.test.ts", "**/*.bench.ts", "**/*_test.go", "**/bench.txt"},
+	// })
+
 	repoconcat.Concat(repoconcat.Config{
-		Output:  "__LLM_CONCAT.local/__CURRENT_VERSION.txt",
-		Include: []string{"wave", "internal/framework", "kit/mux/nested_mux.go", "bootstrap"},
-		Exclude: []string{"wave/internal/configschema", "**/_typescript", "**/*_test.go", "**/bench.txt"},
+		Output: "__LLM_CONCAT.local/__WAVE_AND_VORMA.txt",
+		Include: []string{
+			"wave",
+			"internal/framework",
+		},
+		Exclude: []string{
+			"wave/internal/configschema",
+			"**/_typescript",
+			"**/*.test.ts",
+			"**/*.bench.ts",
+			"**/*_test.go",
+			"**/bench.txt",
+		},
+	})
+
+	repoconcat.Concat(repoconcat.Config{
+		Output:  "__LLM_CONCAT.local/BOOTSTRAPPER.txt",
+		Include: []string{"bootstrap"},
+		Exclude: []string{"**/*.test.ts", "**/*.bench.ts", "**/*_test.go", "**/bench.txt"},
+	})
+
+	repoconcat.Concat(repoconcat.Config{
+		Output:  "__LLM_CONCAT.local/TSGEN.txt",
+		Include: []string{"lab/tsgen"},
+		Exclude: []string{"**/*.test.ts", "**/*.bench.ts", "**/*_test.go", "**/bench.txt"},
 	})
 }
