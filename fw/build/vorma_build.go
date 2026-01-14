@@ -20,7 +20,7 @@ import (
 	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/id"
 	"github.com/vormadev/vorma/lab/jsonschema"
-	waveconfig "github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave"
 	wavebuild "github.com/vormadev/vorma/wave/tooling"
 )
 
@@ -54,7 +54,7 @@ func Build(v *runtime.Vorma, isDev bool) error {
 	injectDefaultWatchPatterns(v)
 
 	if isDev {
-		waveconfig.SetModeToDev()
+		wave.SetModeToDev()
 
 		if err := buildInner(v, &buildInnerOptions{isDev: true}); err != nil {
 			return err
@@ -102,28 +102,29 @@ func injectDefaultWatchPatterns(v *runtime.Vorma) {
 	if v.Config.TSGenOutDir != "" {
 		cfg.FrameworkPublicFileMapOutDir = v.Config.TSGenOutDir
 		cfg.FrameworkIgnoredPatterns = append(cfg.FrameworkIgnoredPatterns,
-			filepath.Join(v.Config.TSGenOutDir, waveconfig.PublicFileMapTSName),
+			filepath.Join(v.Config.TSGenOutDir, wave.GeneratedTSFileName),
+			filepath.Join(v.Config.TSGenOutDir, wave.PublicFileMapTSName),
 		)
 	}
 }
 
-func getDefaultWatchPatterns(v *runtime.Vorma) []waveconfig.WatchedFile {
-	var patterns []waveconfig.WatchedFile
+func getDefaultWatchPatterns(v *runtime.Vorma) []wave.WatchedFile {
+	var patterns []wave.WatchedFile
 
 	// Route definitions file
 	if clientRouteDefsFile := v.Config.ClientRouteDefsFile; clientRouteDefsFile != "" {
-		patterns = append(patterns, waveconfig.WatchedFile{
+		patterns = append(patterns, wave.WatchedFile{
 			Pattern: clientRouteDefsFile,
-			OnChangeHooks: []waveconfig.OnChangeHook{{
+			OnChangeHooks: []wave.OnChangeHook{{
 				Callback: func(string) error {
 					return rebuildRoutesOnly(v)
 				},
-				Strategy: &waveconfig.OnChangeStrategy{
+				Strategy: &wave.OnChangeStrategy{
 					HttpEndpoint:   runtime.DevReloadRoutesPath,
 					WaitForApp:     true,
 					WaitForVite:    true,
 					ReloadBrowser:  true,
-					FallbackAction: waveconfig.FallbackRestartNoGo,
+					FallbackAction: wave.FallbackRestartNoGo,
 				},
 			}},
 			SkipRebuildingNotification: true,
@@ -135,26 +136,26 @@ func getDefaultWatchPatterns(v *runtime.Vorma) []waveconfig.WatchedFile {
 	privateStaticDir := v.Wave.GetPrivateStaticDir()
 	if htmlTemplateLocation != "" && privateStaticDir != "" {
 		templatePath := filepath.Join(privateStaticDir, htmlTemplateLocation)
-		patterns = append(patterns, waveconfig.WatchedFile{
+		patterns = append(patterns, wave.WatchedFile{
 			Pattern: templatePath,
-			OnChangeHooks: []waveconfig.OnChangeHook{{
-				Strategy: &waveconfig.OnChangeStrategy{
+			OnChangeHooks: []wave.OnChangeHook{{
+				Strategy: &wave.OnChangeStrategy{
 					HttpEndpoint:   runtime.DevReloadTemplatePath,
 					WaitForApp:     true,
 					WaitForVite:    true,
 					ReloadBrowser:  true,
-					FallbackAction: waveconfig.FallbackRestartNoGo,
+					FallbackAction: wave.FallbackRestartNoGo,
 				},
 			}},
 		})
 	}
 
 	// Go files
-	patterns = append(patterns, waveconfig.WatchedFile{
+	patterns = append(patterns, wave.WatchedFile{
 		Pattern: "**/*.go",
-		OnChangeHooks: []waveconfig.OnChangeHook{{
+		OnChangeHooks: []wave.OnChangeHook{{
 			Cmd:    "DevBuildHook",
-			Timing: waveconfig.OnChangeStrategyConcurrent,
+			Timing: wave.OnChangeStrategyConcurrent,
 		}},
 	})
 

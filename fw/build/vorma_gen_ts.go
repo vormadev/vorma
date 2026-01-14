@@ -20,6 +20,7 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/lab/stringsutil"
 	"github.com/vormadev/vorma/lab/tsgen"
+	"github.com/vormadev/vorma/wave"
 )
 
 var base = tsgen.BaseOptions{
@@ -404,7 +405,7 @@ func WriteGeneratedTS(v *runtime.Vorma) error {
 	}
 
 	content := tsOutput + rollupOptions
-	target := filepath.Join(".", v.Config.TSGenOutDir, "index.ts")
+	target := filepath.Join(".", v.Config.TSGenOutDir, wave.GeneratedTSFileName)
 
 	// Skip write if content unchanged (prevents infinite file watcher loop)
 	if existingBytes, err := os.ReadFile(target); err == nil {

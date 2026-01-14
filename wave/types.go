@@ -45,6 +45,7 @@ const (
 	NormalCSSBaseName    = "vorma_internal_normal.css"
 	NormalCSSGlobPattern = HashedOutputPrefix + "vorma_internal_normal_*.css"
 
+	GeneratedTSFileName  = "index.ts"
 	PublicFileMapTSName  = "filemap.ts"
 	FileMapJSGlobPattern = HashedOutputPrefix + "vorma_internal_public_filemap_*.js"
 )
