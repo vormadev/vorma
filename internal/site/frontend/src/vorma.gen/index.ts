@@ -137,6 +137,7 @@ export const vormaViteConfig = {
 	rollupInput: [
 		"frontend/src/components/dyn.tsx",
 		"frontend/src/components/home.tsx",
+		"frontend/src/components/md.tsx",
 		"frontend/src/vorma.entry.tsx"
 	],
 	publicPathPrefix,
