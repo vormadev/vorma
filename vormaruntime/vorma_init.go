@@ -1,4 +1,4 @@
-package runtime
+package vormaruntime
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"path"
 
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/wave"
@@ -71,7 +70,7 @@ func (v *Vorma) initInner(isDev bool) error {
 
 	v._buildID = pathsFile.BuildID
 	if v._paths == nil {
-		v._paths = make(map[string]*types.Path, len(pathsFile.Paths))
+		v._paths = make(map[string]*Path, len(pathsFile.Paths))
 	}
 	for _, p := range pathsFile.Paths {
 		v._paths[p.OriginalPattern] = p
@@ -103,10 +102,10 @@ func (v *Vorma) initInner(isDev bool) error {
 	return nil
 }
 
-func (v *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*types.PathsFile, error) {
-	fileToUse := types.VormaPathsStageOneJSONFileName
+func (v *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*PathsFile, error) {
+	fileToUse := VormaPathsStageOneJSONFileName
 	if !isDev {
-		fileToUse = types.VormaPathsStageTwoJSONFileName
+		fileToUse = VormaPathsStageTwoJSONFileName
 	}
 
 	file, err := v._privateFS.Open(path.Join("vorma_out", fileToUse))
@@ -115,7 +114,7 @@ func (v *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*types.PathsFile, error)
 	}
 	defer file.Close()
 
-	var pathsFile types.PathsFile
+	var pathsFile PathsFile
 	if err := json.NewDecoder(file).Decode(&pathsFile); err != nil {
 		return nil, fmt.Errorf("could not decode %s: %w", fileToUse, err)
 	}

@@ -1,10 +1,9 @@
-package runtime
+package vormaruntime
 
 import (
 	"fmt"
 	"net/http"
 
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/matcher"
@@ -170,7 +169,7 @@ func (v *Vorma) get_ui_data_stage_1(
 		var clientMsg string
 		var errToLog error
 
-		if loaderErr, ok := err.(types.LoaderErrorMarker); ok {
+		if loaderErr, ok := err.(LoaderErrorMarker); ok {
 			clientMsg = loaderErr.ClientMessage()
 			errToLog = loaderErr.ServerError()
 		} else {

@@ -1,4 +1,4 @@
-package runtime
+package vormaruntime
 
 import (
 	"html/template"
@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/lab/tsgen"
@@ -41,7 +40,7 @@ type (
 type Vorma struct {
 	*wave.Wave
 
-	Config *types.VormaConfig
+	Config *VormaConfig
 
 	actionsRouter *ActionsRouter
 	loadersRouter *LoadersRouter
@@ -53,7 +52,7 @@ type Vorma struct {
 	// mu protects mutable state that can be modified during dev rebuilds.
 	mu                 sync.RWMutex
 	_isDev             bool
-	_paths             map[string]*types.Path
+	_paths             map[string]*Path
 	_clientEntrySrc    string
 	_clientEntryOut    string
 	_clientEntryDeps   []string
@@ -75,7 +74,7 @@ func (v *Vorma) ServerAddr() string            { return v._serverAddr }
 func (v *Vorma) LoadersRouter() *LoadersRouter { return v.loadersRouter }
 func (v *Vorma) ActionsRouter() *ActionsRouter { return v.actionsRouter }
 
-func (v *Vorma) GetPathsSnapshot() map[string]*types.Path {
+func (v *Vorma) GetPathsSnapshot() map[string]*Path {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._paths
@@ -141,13 +140,13 @@ func (v *Vorma) Unlock() { v.mu.Unlock() }
 
 // --- Unsafe Getters/Setters (caller MUST hold lock) ---
 
-func (v *Vorma) UnsafeGetPaths() map[string]*types.Path      { return v._paths }
-func (v *Vorma) UnsafeGetBuildID() string                    { return v._buildID }
-func (v *Vorma) UnsafeGetRouteManifestFile() string          { return v._routeManifestFile }
-func (v *Vorma) UnsafeSetPaths(paths map[string]*types.Path) { v._paths = paths }
-func (v *Vorma) UnsafeSetBuildID(id string)                  { v._buildID = id }
-func (v *Vorma) UnsafeSetRouteManifestFile(f string)         { v._routeManifestFile = f }
-func (v *Vorma) UnsafeSetRootTemplate(t *template.Template)  { v._rootTemplate = t }
+func (v *Vorma) UnsafeGetPaths() map[string]*Path           { return v._paths }
+func (v *Vorma) UnsafeGetBuildID() string                   { return v._buildID }
+func (v *Vorma) UnsafeGetRouteManifestFile() string         { return v._routeManifestFile }
+func (v *Vorma) UnsafeSetPaths(paths map[string]*Path)      { v._paths = paths }
+func (v *Vorma) UnsafeSetBuildID(id string)                 { v._buildID = id }
+func (v *Vorma) UnsafeSetRouteManifestFile(f string)        { v._routeManifestFile = f }
+func (v *Vorma) UnsafeSetRootTemplate(t *template.Template) { v._rootTemplate = t }
 
 // --- Thread-safe Setters (acquire lock internally) ---
 

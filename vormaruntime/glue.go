@@ -1,4 +1,4 @@
-package runtime
+package vormaruntime
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 	"mime"
 	"net/http"
 
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/validate"
@@ -120,7 +119,7 @@ type VormaAppConfig struct {
 }
 
 type configWrapper struct {
-	Vorma *types.VormaConfig `json:"Vorma,omitempty"`
+	Vorma *VormaConfig `json:"Vorma,omitempty"`
 }
 
 func NewVormaApp(o VormaAppConfig) *Vorma {
@@ -136,7 +135,7 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 		panic(fmt.Sprintf("failed to parse Vorma config: %v", err))
 	}
 	if wrapper.Vorma == nil {
-		wrapper.Vorma = &types.VormaConfig{}
+		wrapper.Vorma = &VormaConfig{}
 	}
 	v.Config = wrapper.Vorma
 	v.validateConfig()

@@ -1,7 +1,6 @@
-package runtime
+package vormaruntime
 
 import (
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/mux"
 )
 
@@ -17,7 +16,7 @@ func (v *Vorma) Routes() *RouteRegistry {
 
 // Sync updates the route state from parsed client routes.
 // IMPORTANT: Caller must hold v.mu.Lock().
-func (r *RouteRegistry) Sync(paths map[string]*types.Path) {
+func (r *RouteRegistry) Sync(paths map[string]*Path) {
 	v := r.vorma
 	v._paths = paths
 	r.mergeServerRoutes()
@@ -39,7 +38,7 @@ func (r *RouteRegistry) mergeServerRoutes() {
 			continue
 		}
 		if _, hasClientRoute := v._paths[pattern]; !hasClientRoute {
-			v._paths[pattern] = &types.Path{
+			v._paths[pattern] = &Path{
 				OriginalPattern: pattern,
 				SrcPath:         "",
 				ExportKey:       "default",

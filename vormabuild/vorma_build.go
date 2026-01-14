@@ -1,4 +1,4 @@
-package build
+package vormabuild
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,15 +17,14 @@ import (
 	esbuild "github.com/evanw/esbuild/pkg/api"
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/js"
-	"github.com/vormadev/vorma/fw/runtime"
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/id"
 	"github.com/vormadev/vorma/lab/jsonschema"
+	"github.com/vormadev/vorma/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 	wavebuild "github.com/vormadev/vorma/wave/tooling"
 )
 
-func registerVormaSchema(v *runtime.Vorma) {
+func registerVormaSchema(v *vormaruntime.Vorma) {
 	cfg := v.Wave.GetParsedConfig()
 	if cfg.FrameworkSchemaExtensions == nil {
 		cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
@@ -32,8 +32,8 @@ func registerVormaSchema(v *runtime.Vorma) {
 	cfg.FrameworkSchemaExtensions["Vorma"] = Vorma_Schema
 }
 
-// RunBuildCLI parses flags and runs the build or dev server.
-func RunBuildCLI(v *runtime.Vorma) error {
+// Build parses flags and runs the build or dev server.
+func Build(v *vormaruntime.Vorma) {
 	dev := flag.Bool("dev", false, "run in development mode")
 	hook := flag.Bool("hook", false, "run build hook only (internal use)")
 	_ = flag.Bool("no-binary", false, "skip go binary compilation (internal use)")
@@ -44,7 +44,7 @@ func RunBuildCLI(v *runtime.Vorma) error {
 		injectDefaultWatchPatterns(v)
 
 		if err := buildInner(v, &buildInnerOptions{isDev: *dev}); err != nil {
-			return err
+			log.Fatalf("build hook failed: %v", err)
 		}
 
 		// In prod hook mode, also run Vite and post-processing.
@@ -55,22 +55,23 @@ func RunBuildCLI(v *runtime.Vorma) error {
 			defer wb.Close()
 
 			if err := wb.ViteProdBuild(); err != nil {
-				return err
+				log.Fatalf("Vite production build failed: %v", err)
 			}
 
 			if err := postViteProdBuild(v); err != nil {
-				return err
+				log.Fatalf("post Vite production build failed: %v", err)
 			}
 		}
-
-		return nil
+		return
 	}
 
-	return Build(v, *dev)
+	if err := build(v, *dev); err != nil {
+		log.Fatalf("build failed: %v", err)
+	}
 }
 
-// Build performs a full Vorma build.
-func Build(v *runtime.Vorma, isDev bool) error {
+// build performs a full Vorma build.
+func build(v *vormaruntime.Vorma, isDev bool) error {
 	registerVormaSchema(v)
 	injectDefaultWatchPatterns(v)
 
@@ -103,7 +104,7 @@ func Build(v *runtime.Vorma, isDev bool) error {
 	})
 }
 
-func injectDefaultWatchPatterns(v *runtime.Vorma) {
+func injectDefaultWatchPatterns(v *vormaruntime.Vorma) {
 	includeDefaults := true
 	if v.Config.IncludeDefaults != nil {
 		includeDefaults = *v.Config.IncludeDefaults
@@ -125,7 +126,7 @@ func injectDefaultWatchPatterns(v *runtime.Vorma) {
 	}
 }
 
-func getDefaultWatchPatterns(v *runtime.Vorma) []wave.WatchedFile {
+func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 	var patterns []wave.WatchedFile
 
 	// Route definitions file
@@ -137,7 +138,7 @@ func getDefaultWatchPatterns(v *runtime.Vorma) []wave.WatchedFile {
 					return rebuildRoutesOnly(v)
 				},
 				Strategy: &wave.OnChangeStrategy{
-					HttpEndpoint:   runtime.DevReloadRoutesPath,
+					HttpEndpoint:   vormaruntime.DevReloadRoutesPath,
 					WaitForApp:     true,
 					WaitForVite:    true,
 					ReloadBrowser:  true,
@@ -157,7 +158,7 @@ func getDefaultWatchPatterns(v *runtime.Vorma) []wave.WatchedFile {
 			Pattern: templatePath,
 			OnChangeHooks: []wave.OnChangeHook{{
 				Strategy: &wave.OnChangeStrategy{
-					HttpEndpoint:   runtime.DevReloadTemplatePath,
+					HttpEndpoint:   vormaruntime.DevReloadTemplatePath,
 					WaitForApp:     true,
 					WaitForVite:    true,
 					ReloadBrowser:  true,
@@ -183,7 +184,7 @@ type buildInnerOptions struct {
 	isDev bool
 }
 
-func buildInner(v *runtime.Vorma, opts *buildInnerOptions) error {
+func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 	start := time.Now()
 
 	v.SetIsDev(opts.isDev)
@@ -196,9 +197,9 @@ func buildInner(v *runtime.Vorma, opts *buildInnerOptions) error {
 		v.Lock()
 		v.UnsafeSetBuildID("dev_" + buildID)
 		v.Unlock()
-		runtime.Log.Info("START building Vorma (DEV)")
+		vormaruntime.Log.Info("START building Vorma (DEV)")
 	} else {
-		runtime.Log.Info("START building Vorma (PROD)")
+		vormaruntime.Log.Info("START building Vorma (PROD)")
 	}
 
 	// Parse client routes
@@ -233,7 +234,7 @@ func buildInner(v *runtime.Vorma, opts *buildInnerOptions) error {
 		return fmt.Errorf("write route artifacts: %w", err)
 	}
 
-	runtime.Log.Info("DONE building Vorma",
+	vormaruntime.Log.Info("DONE building Vorma",
 		"buildID", v.GetBuildID(),
 		"routes found", len(v.GetPathsSnapshot()),
 		"duration", time.Since(start),
@@ -246,7 +247,7 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 	fileInfo, err := os.Stat(staticPublicOutDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			runtime.Log.Warn(fmt.Sprintf("static public out dir does not exist: %s", staticPublicOutDir))
+			vormaruntime.Log.Warn(fmt.Sprintf("static public out dir does not exist: %s", staticPublicOutDir))
 			return nil
 		}
 		return err
@@ -261,25 +262,25 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 			return err
 		}
 		baseName := filepath.Base(path)
-		if strings.HasPrefix(baseName, types.VormaVitePrehashedFilePrefix) ||
-			strings.HasPrefix(baseName, types.VormaRouteManifestPrefix) {
+		if strings.HasPrefix(baseName, vormaruntime.VormaVitePrehashedFilePrefix) ||
+			strings.HasPrefix(baseName, vormaruntime.VormaRouteManifestPrefix) {
 			return os.Remove(path)
 		}
 		return nil
 	})
 }
 
-func writePathsToDisk_StageOne(v *runtime.Vorma) error {
+func writePathsToDisk_StageOne(v *vormaruntime.Vorma) error {
 	pathsJSONOut := filepath.Join(
 		v.Wave.GetStaticPrivateOutDir(),
-		types.VormaOutDirname,
-		types.VormaPathsStageOneJSONFileName,
+		vormaruntime.VormaOutDirname,
+		vormaruntime.VormaPathsStageOneJSONFileName,
 	)
 	if err := os.MkdirAll(filepath.Dir(pathsJSONOut), os.ModePerm); err != nil {
 		return err
 	}
 
-	pathsAsJSON, err := json.MarshalIndent(types.PathsFile{
+	pathsAsJSON, err := json.MarshalIndent(vormaruntime.PathsFile{
 		Stage:             "one",
 		Paths:             v.UnsafeGetPaths(),
 		ClientEntrySrc:    v.Config.ClientEntry,
@@ -445,7 +446,7 @@ func extractRouteCalls(code string) ([]RouteCall, error) {
 	return routes, nil
 }
 
-func parseClientRoutes(config *types.VormaConfig) (map[string]*types.Path, error) {
+func parseClientRoutes(config *vormaruntime.VormaConfig) (map[string]*vormaruntime.Path, error) {
 	code, err := os.ReadFile(config.ClientRouteDefsFile)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
@@ -462,7 +463,7 @@ func parseClientRoutes(config *types.VormaConfig) (map[string]*types.Path, error
 	})
 	if len(minifyResult.Errors) > 0 {
 		for _, msg := range minifyResult.Errors {
-			runtime.Log.Error(fmt.Sprintf("esbuild error: %s", msg.Text))
+			vormaruntime.Log.Error(fmt.Sprintf("esbuild error: %s", msg.Text))
 		}
 		return nil, errors.New("esbuild transform failed")
 	}
@@ -474,13 +475,13 @@ func parseClientRoutes(config *types.VormaConfig) (map[string]*types.Path, error
 		return nil, fmt.Errorf("extract route calls: %w", err)
 	}
 
-	paths := make(map[string]*types.Path, len(routeCalls))
+	paths := make(map[string]*vormaruntime.Path, len(routeCalls))
 	routesDir := filepath.Dir(config.ClientRouteDefsFile)
 
 	for _, rc := range routeCalls {
 		resolvedModulePath, err := filepath.Rel(".", filepath.Join(routesDir, rc.Module))
 		if err != nil {
-			runtime.Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
+			vormaruntime.Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
 			resolvedModulePath = rc.Module
 		}
 		modulePath := filepath.ToSlash(resolvedModulePath)
@@ -492,7 +493,7 @@ func parseClientRoutes(config *types.VormaConfig) (map[string]*types.Path, error
 			return nil, fmt.Errorf("access component module %s: %w", modulePath, err)
 		}
 
-		paths[rc.Pattern] = &types.Path{
+		paths[rc.Pattern] = &vormaruntime.Path{
 			OriginalPattern: rc.Pattern,
 			SrcPath:         modulePath,
 			ExportKey:       rc.Key,

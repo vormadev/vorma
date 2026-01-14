@@ -65,7 +65,8 @@ func main() {
 	repoconcat.Concat(repoconcat.Config{
 		Output: "__LLM_CONCAT.local/VORMA_CURRENT_CODE.txt",
 		Include: []string{
-			"fw",
+			"vormaruntime",
+			"vormabuild",
 			"vorma.go",
 		},
 		Exclude: []string{

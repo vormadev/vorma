@@ -1,4 +1,4 @@
-package build
+package vormabuild
 
 import (
 	"crypto/sha256"
@@ -9,13 +9,12 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/vormadev/vorma/fw/runtime"
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/lab/viteutil"
+	"github.com/vormadev/vorma/vormaruntime"
 )
 
-func postViteProdBuild(v *runtime.Vorma) error {
+func postViteProdBuild(v *vormaruntime.Vorma) error {
 	pf, err := toPathsFile_StageTwo(v)
 	if err != nil {
 		return fmt.Errorf("convert paths to stage two: %w", err)
@@ -29,7 +28,7 @@ func postViteProdBuild(v *runtime.Vorma) error {
 	pathsJSONOut := filepath.Join(
 		v.Wave.GetStaticPrivateOutDir(),
 		"vorma_out",
-		types.VormaPathsStageTwoJSONFileName,
+		vormaruntime.VormaPathsStageTwoJSONFileName,
 	)
 	if err := os.WriteFile(pathsJSONOut, pathsAsJSON, os.ModePerm); err != nil {
 		return fmt.Errorf("write paths: %w", err)
@@ -38,7 +37,7 @@ func postViteProdBuild(v *runtime.Vorma) error {
 	return nil
 }
 
-func toPathsFile_StageTwo(v *runtime.Vorma) (*types.PathsFile, error) {
+func toPathsFile_StageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error) {
 	vormaClientEntryOut := ""
 	vormaClientEntryDeps := []string{}
 	depToCSSBundleMap := make(map[string]string)
@@ -87,7 +86,7 @@ func toPathsFile_StageTwo(v *runtime.Vorma) (*types.PathsFile, error) {
 	}
 	htmlContentHash := cryptoutil.Sha256Hash(htmlTemplateContent)
 
-	pf := &types.PathsFile{
+	pf := &vormaruntime.PathsFile{
 		Stage:             "two",
 		DepToCSSBundleMap: depToCSSBundleMap,
 		Paths:             paths,

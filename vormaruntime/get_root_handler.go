@@ -1,4 +1,4 @@
-package runtime
+package vormaruntime
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"html/template"
 	"net/http"
 
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/response"
@@ -163,7 +162,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			)
 		} else {
 			opts := viteutil.ToDevScriptsOptions{ClientEntry: v.Config.ClientEntry}
-			if types.UIVariant(v.Config.UIVariant) == types.UIVariants.React {
+			if UIVariant(v.Config.UIVariant) == UIVariants.React {
 				opts.Variant = viteutil.Variants.React
 			} else {
 				opts.Variant = viteutil.Variants.Other

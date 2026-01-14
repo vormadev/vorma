@@ -1,4 +1,4 @@
-package build
+package vormabuild
 
 import (
 	"encoding/base64"
@@ -7,16 +7,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/vormadev/vorma/fw/runtime"
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/vormaruntime"
 )
 
 // writeRouteArtifacts writes all route-related artifacts to disk.
 // Includes manifest, paths JSON, and TypeScript generation.
 // IMPORTANT: Caller must hold v.mu.Lock().
-func writeRouteArtifacts(v *runtime.Vorma) error {
+func writeRouteArtifacts(v *vormaruntime.Vorma) error {
 	// 1. Generate & Write Manifest
 	manifest := generateRouteManifest(v, v.LoadersRouter().NestedRouter)
 	manifestFile, err := writeRouteManifestToDisk(v, manifest)
@@ -38,7 +37,7 @@ func writeRouteArtifacts(v *runtime.Vorma) error {
 	return nil
 }
 
-func writeRouteManifestToDisk(v *runtime.Vorma, manifest map[string]int) (string, error) {
+func writeRouteManifestToDisk(v *vormaruntime.Vorma, manifest map[string]int) (string, error) {
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		return "", fmt.Errorf("marshal route manifest: %w", err)
@@ -46,7 +45,7 @@ func writeRouteManifestToDisk(v *runtime.Vorma, manifest map[string]int) (string
 
 	hash := cryptoutil.Sha256Hash(manifestJSON)
 	hashStr := base64.RawURLEncoding.EncodeToString(hash[:8])
-	filename := fmt.Sprintf("%s%s.json", types.VormaRouteManifestPrefix, hashStr)
+	filename := fmt.Sprintf("%s%s.json", vormaruntime.VormaRouteManifestPrefix, hashStr)
 
 	outPath := filepath.Join(v.Wave.GetStaticPublicOutDir(), filename)
 	if err := os.WriteFile(outPath, manifestJSON, 0644); err != nil {
@@ -56,7 +55,7 @@ func writeRouteManifestToDisk(v *runtime.Vorma, manifest map[string]int) (string
 	return filename, nil
 }
 
-func generateRouteManifest(v *runtime.Vorma, nestedRouter *mux.NestedRouter) map[string]int {
+func generateRouteManifest(v *vormaruntime.Vorma, nestedRouter *mux.NestedRouter) map[string]int {
 	manifest := make(map[string]int)
 	paths := v.UnsafeGetPaths()
 

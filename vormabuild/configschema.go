@@ -1,7 +1,4 @@
-// Package build provides build-time functionality for Vorma.
-// This package has heavy dependencies (esbuild, JS parser) and should NOT
-// be imported by production server binaries.
-package build
+package vormabuild
 
 import "github.com/vormadev/vorma/lab/jsonschema"
 

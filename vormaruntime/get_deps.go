@@ -1,11 +1,10 @@
-package runtime
+package vormaruntime
 
 import (
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
-func (v *Vorma) getDepsFromSnapshot(_matches []*matcher.Match, paths map[string]*types.Path) []string {
+func (v *Vorma) getDepsFromSnapshot(_matches []*matcher.Match, paths map[string]*Path) []string {
 	clientEntryDeps := v.GetClientEntryDeps()
 
 	var deps []string

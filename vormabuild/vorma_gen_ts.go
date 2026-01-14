@@ -1,7 +1,4 @@
-// TypeScript generation lives entirely in the build package.
-// Runtime never generates TypeScript - it only reads pre-built artifacts.
-
-package build
+package vormabuild
 
 import (
 	"bytes"
@@ -14,14 +11,16 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/vormadev/vorma/fw/runtime"
-	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/lab/stringsutil"
 	"github.com/vormadev/vorma/lab/tsgen"
+	"github.com/vormadev/vorma/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
+
+// TypeScript generation lives entirely in the build package.
+// Runtime never generates TypeScript - it only reads pre-built artifacts.
 
 var base = tsgen.BaseOptions{
 	CollectionVarName:    "routes",
@@ -41,8 +40,8 @@ var mutationMethods = map[string]struct{}{
 type TSGenInput struct {
 	LoadersRouter *mux.NestedRouter
 	ActionsRouter *mux.Router
-	Paths         map[string]*types.Path
-	Config        *types.VormaConfig
+	Paths         map[string]*vormaruntime.Path
+	Config        *vormaruntime.VormaConfig
 	AdHocTypes    []*tsgen.AdHocType
 	ExtraTSCode   string
 }
@@ -325,19 +324,19 @@ export const vormaViteConfig = {
 
 var vitePluginTemplate = template.Must(template.New("vitePlugin").Parse(vitePluginTemplateStr))
 
-func generateRollupOptions(v *runtime.Vorma, entrypoints []string) (string, error) {
+func generateRollupOptions(v *vormaruntime.Vorma, entrypoints []string) (string, error) {
 	var sb stringsutil.Builder
 	sb.Return()
 	sb.Write(tsgen.Comment("Vorma Vite Config:"))
 	sb.Return()
 
 	var dedupeList []string
-	switch types.UIVariant(v.Config.UIVariant) {
-	case types.UIVariants.React:
+	switch vormaruntime.UIVariant(v.Config.UIVariant) {
+	case vormaruntime.UIVariants.React:
 		dedupeList = reactDedupeList
-	case types.UIVariants.Preact:
+	case vormaruntime.UIVariants.Preact:
 		dedupeList = preactDedupeList
-	case types.UIVariants.Solid:
+	case vormaruntime.UIVariants.Solid:
 		dedupeList = solidDedupeList
 	}
 
@@ -365,7 +364,7 @@ func generateRollupOptions(v *runtime.Vorma, entrypoints []string) (string, erro
 	return sb.String(), nil
 }
 
-func getEntrypoints(v *runtime.Vorma) []string {
+func getEntrypoints(v *vormaruntime.Vorma) []string {
 	paths := v.UnsafeGetPaths()
 	entryPoints := make(map[string]struct{}, len(paths)+1)
 	entryPoints[path.Clean(v.Config.ClientEntry)] = struct{}{}
@@ -384,7 +383,7 @@ func getEntrypoints(v *runtime.Vorma) []string {
 
 // WriteGeneratedTS generates and writes the complete TypeScript output file.
 // IMPORTANT: Caller must hold v.mu.Lock() OR ensure exclusive access.
-func WriteGeneratedTS(v *runtime.Vorma) error {
+func WriteGeneratedTS(v *vormaruntime.Vorma) error {
 	input := TSGenInput{
 		LoadersRouter: v.LoadersRouter().NestedRouter,
 		ActionsRouter: v.ActionsRouter().Router,
@@ -410,7 +409,7 @@ func WriteGeneratedTS(v *runtime.Vorma) error {
 	// Skip write if content unchanged (prevents infinite file watcher loop)
 	if existingBytes, err := os.ReadFile(target); err == nil {
 		if bytes.Equal(existingBytes, []byte(content)) {
-			runtime.Log.Info("Generated config unchanged, skipping write")
+			vormaruntime.Log.Info("Generated config unchanged, skipping write")
 			return nil
 		}
 	}

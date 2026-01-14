@@ -1,4 +1,4 @@
-package types
+package vormaruntime
 
 // LoaderErrorMarker is an interface for loader errors that can provide
 // separate client and server error messages.

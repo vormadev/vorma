@@ -1,4 +1,4 @@
-package build
+package vormabuild
 
 import (
 	"crypto/sha256"
