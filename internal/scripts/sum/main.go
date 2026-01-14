@@ -21,14 +21,12 @@ func main() {
 	// })
 
 	repoconcat.Concat(repoconcat.Config{
-		Output: "__LLM_CONCAT.local/__WAVE_AND_VORMA.txt",
+		Output: "__LLM_CONCAT.local/WAVE_OLD_CODE_BEFORE_REFACTOR.txt",
 		Include: []string{
-			"wave",
-			"internal/framework",
+			"__old__/wave",
 		},
 		Exclude: []string{
-			"wave/internal/configschema",
-			"**/_typescript",
+			// "**/ARCHITECTURE_DECISIONS.md",
 			"**/*.test.ts",
 			"**/*.bench.ts",
 			"**/*_test.go",
@@ -37,10 +35,52 @@ func main() {
 	})
 
 	repoconcat.Concat(repoconcat.Config{
-		Output:  "__LLM_CONCAT.local/BOOTSTRAPPER.txt",
-		Include: []string{"bootstrap"},
-		Exclude: []string{"**/*.test.ts", "**/*.bench.ts", "**/*_test.go", "**/bench.txt"},
+		Output: "__LLM_CONCAT.local/WAVE_CURRENT_CODE.txt",
+		Include: []string{
+			"wave",
+		},
+		Exclude: []string{
+			"**/*.test.ts",
+			"**/*.bench.ts",
+			"**/*_test.go",
+			"**/bench.txt",
+		},
 	})
+
+	repoconcat.Concat(repoconcat.Config{
+		Output: "__LLM_CONCAT.local/VORMA_OLD_CODE_BEFORE_REFACTOR.txt",
+		Include: []string{
+			"__old__/internal/framework",
+			"__old__/vorma.go",
+		},
+		Exclude: []string{
+			// "**/ARCHITECTURE_DECISIONS.md",
+			"**/*.test.ts",
+			"**/*.bench.ts",
+			"**/*_test.go",
+			"**/bench.txt",
+		},
+	})
+
+	repoconcat.Concat(repoconcat.Config{
+		Output: "__LLM_CONCAT.local/VORMA_CURRENT_CODE.txt",
+		Include: []string{
+			"fw",
+			"vorma.go",
+		},
+		Exclude: []string{
+			"**/*.test.ts",
+			"**/*.bench.ts",
+			"**/*_test.go",
+			"**/bench.txt",
+		},
+	})
+
+	// repoconcat.Concat(repoconcat.Config{
+	// 	Output:  "__LLM_CONCAT.local/BOOTSTRAPPER.txt",
+	// 	Include: []string{"bootstrap"},
+	// 	Exclude: []string{"**/*.test.ts", "**/*.bench.ts", "**/*_test.go", "**/bench.txt"},
+	// })
 
 	repoconcat.Concat(repoconcat.Config{
 		Output:  "__LLM_CONCAT.local/TSGEN.txt",

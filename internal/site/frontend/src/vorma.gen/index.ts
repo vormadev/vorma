@@ -108,21 +108,11 @@ export type QueryInput<P extends QueryPattern> = VormaQueryInput<VormaApp, P>;
 export type QueryOutput<P extends QueryPattern> = VormaQueryOutput<VormaApp, P>;
 
 export type MutationPattern = VormaMutationPattern<VormaApp>;
-export type MutationProps<P extends MutationPattern> = VormaMutationProps<
-	VormaApp,
-	P
->;
-export type MutationInput<P extends MutationPattern> = VormaMutationInput<
-	VormaApp,
-	P
->;
-export type MutationOutput<P extends MutationPattern> = VormaMutationOutput<
-	VormaApp,
-	P
->;
+export type MutationProps<P extends MutationPattern> = VormaMutationProps<VormaApp, P>;
+export type MutationInput<P extends MutationPattern> = VormaMutationInput<VormaApp, P>;
+export type MutationOutput<P extends MutationPattern> = VormaMutationOutput<VormaApp, P>;
 
-export type RouteProps<P extends VormaLoaderPattern<VormaApp>> =
-	VormaRouteProps<VormaApp, P>;
+export type RouteProps<P extends VormaLoaderPattern<VormaApp>> = VormaRouteProps<VormaApp, P>;
 
 /////////////////////////////////////////////////////////////////////
 /////// Vorma Vite Config:

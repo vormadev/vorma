@@ -3,55 +3,49 @@ package vorma
 import (
 	_ "embed"
 
-	rf "github.com/vormadev/vorma/internal/framework"
+	"github.com/vormadev/vorma/fw/runtime"
+	"github.com/vormadev/vorma/fw/types"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/lab/parseutil"
+	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
 
-/////////////////////////////////////////////////////////////////////
-/////// PUBLIC API
-/////////////////////////////////////////////////////////////////////
-
+// Type aliases for public API
 type (
-	Vorma                             = rf.Vorma
+	Vorma                             = runtime.Vorma
 	HeadEls                           = headels.HeadEls
-	AdHocType                         = rf.AdHocType
-	VormaAppConfig                    = rf.VormaAppConfig
-	LoadersRouter                     = rf.LoadersRouter
-	LoaderReqData                     = rf.LoaderReqData
-	ActionsRouter                     = rf.ActionsRouter
-	ActionReqData[I any]              = rf.ActionReqData[I]
+	AdHocType                         = tsgen.AdHocType
+	VormaAppConfig                    = runtime.VormaAppConfig
+	LoadersRouter                     = runtime.LoadersRouter
+	LoaderReqData                     = runtime.LoaderReqData
+	ActionsRouter                     = runtime.ActionsRouter
+	ActionReqData[I any]              = runtime.ActionReqData[I]
 	None                              = mux.None
-	Action[I any, O any]              = rf.TaskHandler[I, O]
-	Loader[O any]                     = rf.TaskHandler[None, O]
+	Action[I any, O any]              = mux.TaskHandler[I, O]
+	Loader[O any]                     = mux.TaskHandler[None, O]
 	LoaderFunc[Ctx any, O any]        = func(*Ctx) (O, error)
 	ActionFunc[Ctx any, I any, O any] = func(*Ctx) (O, error)
-	LoadersRouterOptions              = rf.LoadersRouterOptions
-	ActionsRouterOptions              = rf.ActionsRouterOptions
-	// Set this as your input type when you want to work with standard
-	// HTTP forms (whether "application/x-www-form-urlencoded" or
-	// "multipart/form-data"). This is just an empty struct with a
-	// marker method to ensure the API client knows to accept FormData
-	// as the input type. To get the actual form values, use the underlying
-	// *http.Request (by calling `Request()` on your action ctx).
-	FormData    = rf.FormData
-	LoaderError = rf.LoaderError
+	LoadersRouterOptions              = runtime.LoadersRouterOptions
+	ActionsRouterOptions              = runtime.ActionsRouterOptions
+	FormData                          = runtime.FormData
+	LoaderError                       = types.LoaderError
 )
 
+// Re-exported functions
 var (
-	// Wave convenience re-exports
-	MustGetPort  = wave.MustGetPort
-	GetIsDev     = wave.GetIsDev
-	SetModeToDev = wave.SetModeToDev
-
-	IsJSONRequest          = rf.IsJSONRequest
-	VormaBuildIDHeaderKey  = rf.VormaBuildIDHeaderKey
+	MustGetPort            = wave.MustGetPort
+	GetIsDev               = wave.GetIsDev
+	SetModeToDev           = wave.SetModeToDev
+	IsJSONRequest          = runtime.IsJSONRequest
+	VormaBuildIDHeaderKey  = runtime.VormaBuildIDHeaderKey
 	EnableThirdPartyRouter = mux.InjectTasksCtxMiddleware
 )
 
-func NewVormaApp(o VormaAppConfig) *Vorma { return rf.NewVormaApp(o) }
+func NewVormaApp(o VormaAppConfig) *Vorma {
+	return runtime.NewVormaApp(o)
+}
 
 func NewLoader[O any, CtxPtr ~*Ctx, Ctx any](
 	app *Vorma,
@@ -81,9 +75,6 @@ func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 //go:embed package.json
 var packageJSON string
 
-// This utility exists primarily in service of the vorma.dev
-// website. There is no guarantee that this utility will always
-// be available or kept up to date.
 func Internal__GetCurrentNPMVersion() string {
 	_, _, currentVersion := parseutil.PackageJSONFromString(packageJSON)
 	return currentVersion

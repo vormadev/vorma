@@ -1,7 +1,15 @@
 package main
 
-import "site/backend/src/router"
+import (
+	"log"
+
+	"site/backend/src/router"
+
+	"github.com/vormadev/vorma/fw/build"
+)
 
 func main() {
-	router.App.Build()
+	if err := build.RunBuildCLI(router.App); err != nil {
+		log.Fatal(err)
+	}
 }
