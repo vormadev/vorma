@@ -42,7 +42,28 @@ func RunBuildCLI(v *runtime.Vorma) error {
 	if *hook {
 		registerVormaSchema(v)
 		injectDefaultWatchPatterns(v)
-		return buildInner(v, &buildInnerOptions{isDev: *dev})
+
+		if err := buildInner(v, &buildInnerOptions{isDev: *dev}); err != nil {
+			return err
+		}
+
+		// In prod hook mode, also run Vite and post-processing.
+		// This matches the old architecture where everything ran inside
+		// the hook subprocess, keeping all state in one process.
+		if !*dev {
+			wb := wavebuild.NewBuilder(v.Wave.GetParsedConfig(), v.Wave.Logger())
+			defer wb.Close()
+
+			if err := wb.ViteProdBuild(); err != nil {
+				return err
+			}
+
+			if err := postViteProdBuild(v); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}
 
 	return Build(v, *dev)
@@ -55,35 +76,31 @@ func Build(v *runtime.Vorma, isDev bool) error {
 
 	if isDev {
 		wave.SetModeToDev()
-
-		if err := buildInner(v, &buildInnerOptions{isDev: true}); err != nil {
-			return err
-		}
-
+		// Set isDev on this process's Vorma instance so callbacks
+		// (like rebuildRoutesOnly) can run in the dev server process.
+		v.SetIsDev(true)
 		return wavebuild.RunDev(v.Wave.GetParsedConfig(), v.Wave.Logger())
 	}
 
 	// Production Build
-	if err := buildInner(v, &buildInnerOptions{isDev: false}); err != nil {
-		return err
-	}
-
+	//
+	// The build flow is:
+	// 1. wb.Build() sets up dist directory, then runs ProdBuildHook
+	// 2. ProdBuildHook (e.g., "go run ./cmd/build --hook") runs in subprocess:
+	//    a. buildInner() - parses routes, writes artifacts
+	//    b. ViteProdBuild() - runs Vite
+	//    c. postViteProdBuild() - processes Vite output
+	// 3. wb.Build() compiles the Go binary
+	//
+	// All Vorma logic runs in the subprocess (via --hook) so state is shared.
 	wb := wavebuild.NewBuilder(v.Wave.GetParsedConfig(), v.Wave.Logger())
 	defer wb.Close()
 
-	if err := wb.Build(wavebuild.BuildOpts{
+	return wb.Build(wavebuild.BuildOpts{
 		CompileGo: true,
 		IsDev:     false,
 		IsRebuild: false,
-	}); err != nil {
-		return err
-	}
-
-	if err := wb.ViteProdBuild(); err != nil {
-		return err
-	}
-
-	return postViteProdBuild(v)
+	})
 }
 
 func injectDefaultWatchPatterns(v *runtime.Vorma) {

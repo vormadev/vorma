@@ -20,19 +20,19 @@ func main() {
 	// 	Exclude: []string{"**/*.test.ts", "**/*.bench.ts", "**/*_test.go", "**/bench.txt"},
 	// })
 
-	repoconcat.Concat(repoconcat.Config{
-		Output: "__LLM_CONCAT.local/WAVE_OLD_CODE_BEFORE_REFACTOR.txt",
-		Include: []string{
-			"__old__/wave",
-		},
-		Exclude: []string{
-			// "**/ARCHITECTURE_DECISIONS.md",
-			"**/*.test.ts",
-			"**/*.bench.ts",
-			"**/*_test.go",
-			"**/bench.txt",
-		},
-	})
+	// repoconcat.Concat(repoconcat.Config{
+	// 	Output: "__LLM_CONCAT.local/WAVE_OLD_CODE_BEFORE_REFACTOR.txt",
+	// 	Include: []string{
+	// 		"__old__/wave",
+	// 	},
+	// 	Exclude: []string{
+	// 		// "**/ARCHITECTURE_DECISIONS.md",
+	// 		"**/*.test.ts",
+	// 		"**/*.bench.ts",
+	// 		"**/*_test.go",
+	// 		"**/bench.txt",
+	// 	},
+	// })
 
 	repoconcat.Concat(repoconcat.Config{
 		Output: "__LLM_CONCAT.local/WAVE_CURRENT_CODE.txt",
@@ -47,20 +47,20 @@ func main() {
 		},
 	})
 
-	repoconcat.Concat(repoconcat.Config{
-		Output: "__LLM_CONCAT.local/VORMA_OLD_CODE_BEFORE_REFACTOR.txt",
-		Include: []string{
-			"__old__/internal/framework",
-			"__old__/vorma.go",
-		},
-		Exclude: []string{
-			// "**/ARCHITECTURE_DECISIONS.md",
-			"**/*.test.ts",
-			"**/*.bench.ts",
-			"**/*_test.go",
-			"**/bench.txt",
-		},
-	})
+	// repoconcat.Concat(repoconcat.Config{
+	// 	Output: "__LLM_CONCAT.local/VORMA_OLD_CODE_BEFORE_REFACTOR.txt",
+	// 	Include: []string{
+	// 		"__old__/internal/framework",
+	// 		"__old__/vorma.go",
+	// 	},
+	// 	Exclude: []string{
+	// 		// "**/ARCHITECTURE_DECISIONS.md",
+	// 		"**/*.test.ts",
+	// 		"**/*.bench.ts",
+	// 		"**/*_test.go",
+	// 		"**/bench.txt",
+	// 	},
+	// })
 
 	repoconcat.Concat(repoconcat.Config{
 		Output: "__LLM_CONCAT.local/VORMA_CURRENT_CODE.txt",
