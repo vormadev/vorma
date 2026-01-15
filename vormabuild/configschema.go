@@ -4,9 +4,10 @@ import "github.com/vormadev/vorma/lab/jsonschema"
 
 var Vorma_Schema = jsonschema.OptionalObject(jsonschema.Def{
 	Description:      "Vorma framework configuration.",
-	RequiredChildren: []string{"UIVariant", "HTMLTemplateLocation", "ClientEntry", "ClientRouteDefsFile", "TSGenOutDir"},
+	RequiredChildren: []string{"UIVariant", "HTMLTemplateLocation", "ClientEntry", "ClientRouteDefsFile", "TSGenOutDir", "MainBuildEntry"},
 	Properties: struct {
 		IncludeDefaults            jsonschema.Entry
+		MainBuildEntry             jsonschema.Entry
 		UIVariant                  jsonschema.Entry
 		HTMLTemplateLocation       jsonschema.Entry
 		ClientEntry                jsonschema.Entry
@@ -15,6 +16,7 @@ var Vorma_Schema = jsonschema.OptionalObject(jsonschema.Def{
 		BuildtimePublicURLFuncName jsonschema.Entry
 	}{
 		IncludeDefaults:            IncludeDefaults_Schema,
+		MainBuildEntry:             MainBuildEntry_Schema,
 		UIVariant:                  UIVariant_Schema,
 		HTMLTemplateLocation:       HTMLTemplateLocation_Schema,
 		ClientEntry:                ClientEntry_Schema,
@@ -27,6 +29,11 @@ var Vorma_Schema = jsonschema.OptionalObject(jsonschema.Def{
 var IncludeDefaults_Schema = jsonschema.OptionalBoolean(jsonschema.Def{
 	Description: `If true (default), Vorma injects default watch patterns for routes, templates, and Go files.`,
 	Default:     true,
+})
+
+var MainBuildEntry_Schema = jsonschema.RequiredString(jsonschema.Def{
+	Description: `Path to the Vorma build command entry point.`,
+	Examples:    []string{"backend/cmd/build", "cmd/build"},
 })
 
 var UIVariant_Schema = jsonschema.RequiredString(jsonschema.Def{

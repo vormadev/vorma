@@ -143,6 +143,7 @@ export const vormaViteConfig = {
 	publicPathPrefix,
 	staticPublicAssetMap,
 	buildtimePublicURLFuncName: "hashedURL",
+	filemapJSONPath: "frontend/src/vorma.gen/filemap.json",
 	ignoredPatterns: [
 		"**/*.go",
 		"**/backend/dist/**/*",

@@ -201,10 +201,14 @@ func main() {
 ```go
 package main
 
-import "yourmodule/backend/src/router"
+import (
+	"yourmodule/backend/src/router"
+
+	"github.com/vormadev/vorma/vormabuild"
+)
 
 func main() {
-    router.App.Build()
+    vormabuild.Build(router.App)
 }
 ```
 
@@ -448,8 +452,8 @@ type VormaAppConfig struct {
     Wave *wave.Wave  // REQUIRED: Wave instance from backend.Wave
 
     // Optional: Custom head element rules
-    GetDefaultHeadEls    func(r *http.Request, app *Vorma, h *headels.HeadEls) error
-    GetHeadElUniqueRules func(h *headels.HeadEls)
+    GetDefaultHeadEls   func(r *http.Request, app *Vorma, h *vorma.HeadEls) error
+    GetHeadDedupeKeys	func(h *vorma.HeadEls)
 
     // Optional: Custom template data
     GetRootTemplateData func(r *http.Request) (map[string]any, error)
@@ -541,7 +545,7 @@ type LoaderReqData struct {
     ResponseProxy() *response.Proxy
 
     // Response manipulation
-    HeadEls() *headels.HeadEls
+    HeadEls() *vorma.HeadEls
     Redirect(url string, code ...int)
     SetResponseStatus(status int, errorText ...string)
     SetResponseCookie(cookie *http.Cookie)
@@ -811,7 +815,7 @@ head.Add(
 **Head element deduplication:** Configure unique rules in VormaAppConfig:
 
 ```go
-GetHeadElUniqueRules: func(h *headels.HeadEls) {
+GetHeadDedupeKeys: func(h *vorma.HeadEls) {
     h.Add(headels.Tag("title"))              // Only one title
     h.Meta(h.Name("description"))            // One description
     h.Meta(h.Property("og:title"))           // One OG title
@@ -822,7 +826,7 @@ GetHeadElUniqueRules: func(h *headels.HeadEls) {
 **Default head elements:**
 
 ```go
-GetDefaultHeadEls: func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
+GetDefaultHeadEls: func(r *http.Request, app *Vorma, h *vorma.HeadEls) error {
     h.Title("Default Title")
     h.Link(
         h.Rel("icon"),

@@ -2,8 +2,6 @@
 	"$schema": "dist/static/internal/schema.json",
 	"Core": {
 		"ConfigLocation": "backend/wave.config.json",
-		"DevBuildHook": "go run ./backend/cmd/build --dev --hook",
-		"ProdBuildHook": "go run ./backend/cmd/build --hook",
 		"MainAppEntry": "backend/cmd/serve",
 		"DistDir": "backend/dist",
 		"StaticAssetDirs": {
@@ -17,6 +15,7 @@
 		"PublicPathPrefix": "/"
 	},
 	"Vorma": {
+		"MainBuildEntry": "backend/cmd/build",
 		"UIVariant": "solid",
 		"HTMLTemplateLocation": "entry.go.html",
 		"ClientEntry": "frontend/src/vorma.entry.tsx",

@@ -33,6 +33,7 @@ var UIVariants = struct {
 // VormaConfig holds Vorma-specific configuration.
 type VormaConfig struct {
 	IncludeDefaults            *bool  `json:"IncludeDefaults,omitempty"`
+	MainBuildEntry             string `json:"MainBuildEntry"`
 	UIVariant                  string `json:"UIVariant"`
 	HTMLTemplateLocation       string `json:"HTMLTemplateLocation"`
 	ClientEntry                string `json:"ClientEntry"`

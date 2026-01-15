@@ -5,17 +5,20 @@ import (
 )
 
 // RouteRegistry consolidates route state management.
-// IMPORTANT: All methods assume caller holds v.mu.Lock().
+// All methods require the Vorma mutex to be held.
 type RouteRegistry struct {
 	vorma *Vorma
 }
 
-func (v *Vorma) Routes() *RouteRegistry {
+// routes returns a RouteRegistry for route management operations.
+// This is unexported to enforce that external packages use
+// LockedVorma.Routes() via WithLock for compile-time safety.
+func (v *Vorma) routes() *RouteRegistry {
 	return &RouteRegistry{vorma: v}
 }
 
 // Sync updates the route state from parsed client routes.
-// IMPORTANT: Caller must hold v.mu.Lock().
+// Caller must hold v.mu.Lock().
 func (r *RouteRegistry) Sync(paths map[string]*Path) {
 	v := r.vorma
 	v._paths = paths
@@ -29,7 +32,7 @@ func (r *RouteRegistry) Sync(paths map[string]*Path) {
 }
 
 // mergeServerRoutes adds server-only routes to paths.
-// IMPORTANT: Caller must hold v.mu.Lock().
+// Caller must hold v.mu.Lock().
 func (r *RouteRegistry) mergeServerRoutes() {
 	v := r.vorma
 	allServerRoutes := v.LoadersRouter().NestedRouter.AllRoutes()
@@ -49,8 +52,10 @@ func (r *RouteRegistry) mergeServerRoutes() {
 }
 
 // RegisterPatternIfNeeded registers a pattern if not already registered.
-func (r *RouteRegistry) RegisterPatternIfNeeded(pattern string) {
-	nestedRouter := r.vorma.LoadersRouter().NestedRouter
+// This method is safe to call without holding the lock as the router handles
+// its own synchronization.
+func (v *Vorma) RegisterPatternIfNeeded(pattern string) {
+	nestedRouter := v.LoadersRouter().NestedRouter
 	if !nestedRouter.IsRegistered(pattern) {
 		mux.RegisterNestedPatternWithoutHandler(nestedRouter, pattern)
 	}

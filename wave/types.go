@@ -45,9 +45,10 @@ const (
 	NormalCSSBaseName    = "vorma_internal_normal.css"
 	NormalCSSGlobPattern = HashedOutputPrefix + "vorma_internal_normal_*.css"
 
-	GeneratedTSFileName  = "index.ts"
-	PublicFileMapTSName  = "filemap.ts"
-	FileMapJSGlobPattern = HashedOutputPrefix + "vorma_internal_public_filemap_*.js"
+	GeneratedTSFileName   = "index.ts"
+	PublicFileMapTSName   = "filemap.ts"
+	PublicFileMapJSONName = "filemap.json"
+	FileMapJSGlobPattern  = HashedOutputPrefix + "vorma_internal_public_filemap_*.js"
 )
 
 // Timing represents when an OnChangeHook runs relative to Wave's rebuild process
@@ -58,13 +59,6 @@ const (
 	OnChangeStrategyPost             Timing = "post"
 	OnChangeStrategyConcurrent       Timing = "concurrent"
 	OnChangeStrategyConcurrentNoWait Timing = "concurrent-no-wait"
-)
-
-// Fallback action constants
-const (
-	FallbackRestart     = "restart"
-	FallbackRestartNoGo = "restart-no-go"
-	FallbackNone        = "none"
 )
 
 // RelPaths provides fs.FS-relative paths (no leading slash, forward slashes).
@@ -83,6 +77,7 @@ func (relPaths) PublicFileMapGobName() string  { return filePublicMapGob }
 func (relPaths) PrivateFileMapGobName() string { return filePrivateMapGob }
 func (relPaths) PublicFileMapJSName() string   { return filePublicMapJS }
 func (relPaths) PublicFileMapTSName() string   { return PublicFileMapTSName }
+func (relPaths) PublicFileMapJSONName() string { return PublicFileMapJSONName }
 
 // DistLayout provides computed paths for the dist directory structure.
 type DistLayout struct {
@@ -121,6 +116,8 @@ type ParsedConfig struct {
 	FrameworkIgnoredPatterns     []string                    `json:"-"`
 	FrameworkPublicFileMapOutDir string                      `json:"-"`
 	FrameworkSchemaExtensions    map[string]jsonschema.Entry `json:"-"`
+	FrameworkDevBuildHook        string                      `json:"-"`
+	FrameworkProdBuildHook       string                      `json:"-"`
 }
 
 type CoreConfig struct {
@@ -200,26 +197,66 @@ func (wf *WatchedFile) Sort() {
 	}
 }
 
-type OnChangeStrategy struct {
-	HttpEndpoint   string `json:"HttpEndpoint,omitempty"`
-	SkipDevHook    bool   `json:"SkipDevHook,omitempty"`
-	SkipGoCompile  bool   `json:"SkipGoCompile,omitempty"`
-	WaitForApp     bool   `json:"WaitForApp,omitempty"`
-	WaitForVite    bool   `json:"WaitForVite,omitempty"`
-	ReloadBrowser  bool   `json:"ReloadBrowser,omitempty"`
-	FallbackAction string `json:"FallbackAction,omitempty"`
+// HookContext provides context to callbacks during file change handling.
+type HookContext struct {
+	// FilePath is the absolute path of the changed file.
+	FilePath string
+	// AppStoppedForBatch is true when the app has been stopped as part of batch
+	// processing (e.g., a Go file changed in the same batch). When true, HTTP
+	// endpoints on the running app cannot be called.
+	AppStoppedForBatch bool
 }
 
+// RefreshAction specifies what Wave should do after a callback completes.
+// Multiple RefreshActions from different hooks are merged with OR semantics.
+type RefreshAction struct {
+	// ReloadBrowser triggers a browser reload via WebSocket.
+	// Ignored if TriggerRestart is true.
+	ReloadBrowser bool
+	// WaitForApp polls the app's healthcheck before reloading the browser.
+	// Ignored if TriggerRestart is true.
+	WaitForApp bool
+	// WaitForVite waits for Vite dev server to be ready before reloading.
+	// Ignored if TriggerRestart is true.
+	WaitForVite bool
+	// TriggerRestart causes Wave to restart the app process.
+	// When true, ReloadBrowser/WaitForApp/WaitForVite are ignored.
+	TriggerRestart bool
+	// RecompileGo recompiles the Go binary before restart.
+	// Only relevant when TriggerRestart is true.
+	RecompileGo bool
+}
+
+// Merge combines two RefreshActions with OR semantics.
+// TriggerRestart takes precedence over browser reload.
+func (r RefreshAction) Merge(other RefreshAction) RefreshAction {
+	return RefreshAction{
+		ReloadBrowser:  r.ReloadBrowser || other.ReloadBrowser,
+		WaitForApp:     r.WaitForApp || other.WaitForApp,
+		WaitForVite:    r.WaitForVite || other.WaitForVite,
+		TriggerRestart: r.TriggerRestart || other.TriggerRestart,
+		RecompileGo:    r.RecompileGo || other.RecompileGo,
+	}
+}
+
+// IsZero returns true if this RefreshAction specifies no action.
+func (r RefreshAction) IsZero() bool {
+	return !r.ReloadBrowser && !r.WaitForApp && !r.WaitForVite && !r.TriggerRestart && !r.RecompileGo
+}
+
+// OnChangeHook defines an action to run when a watched file changes.
 type OnChangeHook struct {
-	Cmd      string             `json:"Cmd,omitempty"`
-	Strategy *OnChangeStrategy  `json:"Strategy,omitempty"`
-	Timing   Timing             `json:"Timing,omitempty"`
-	Exclude  []string           `json:"Exclude,omitempty"`
-	Callback func(string) error `json:"-"`
-}
-
-func (h *OnChangeHook) HasStrategy() bool {
-	return h.Strategy != nil
+	// Cmd is a shell command to run. Can be any shell command or "DevBuildHook"
+	// to run the configured dev build hook.
+	Cmd string `json:"Cmd,omitempty"`
+	// Timing controls when the hook runs relative to Wave's rebuild process.
+	Timing Timing `json:"Timing,omitempty"`
+	// Exclude contains glob patterns for files to exclude from triggering this hook.
+	Exclude []string `json:"Exclude,omitempty"`
+	// Callback is a Go function to run. Framework use only (not JSON-configurable).
+	// If the callback returns a non-nil RefreshAction, it controls what Wave does
+	// after all hooks complete. Multiple RefreshActions are merged with OR semantics.
+	Callback func(*HookContext) (*RefreshAction, error) `json:"-"`
 }
 
 type FileMap map[string]FileVal

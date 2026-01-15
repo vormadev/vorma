@@ -75,8 +75,9 @@ func validateWatchedFile(wf *WatchedFile, index int) error {
 	}
 
 	for j, hook := range wf.OnChangeHooks {
-		// Strategy hooks don't use timing, so skip validation for them
-		if hook.HasStrategy() {
+		// Callbacks can use any timing - they return RefreshAction to control behavior.
+		// This validation only applies to Cmd hooks.
+		if hook.Cmd == "" {
 			continue
 		}
 

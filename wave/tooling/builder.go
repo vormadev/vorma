@@ -157,18 +157,30 @@ func (b *Builder) processFiles(granular bool, isDev bool) error {
 }
 
 func (b *Builder) runHooks(isDev bool) error {
-	var hook string
+	var userHook, frameworkHook string
 	if isDev {
-		hook = b.cfg.Core.DevBuildHook
+		userHook = b.cfg.Core.DevBuildHook
+		frameworkHook = b.cfg.FrameworkDevBuildHook
 	} else {
-		hook = b.cfg.Core.ProdBuildHook
+		userHook = b.cfg.Core.ProdBuildHook
+		frameworkHook = b.cfg.FrameworkProdBuildHook
 	}
 
-	if hook == "" {
-		return nil
+	// User hooks first -- they may generate Go types used in loaders/actions
+	if userHook != "" {
+		if err := executil.RunShell(userHook); err != nil {
+			return fmt.Errorf("user build hook failed: %w", err)
+		}
 	}
 
-	return executil.RunShell(hook)
+	// Framework hooks second — Vorma reflects on the final Go types
+	if frameworkHook != "" {
+		if err := executil.RunShell(frameworkHook); err != nil {
+			return fmt.Errorf("framework build hook failed: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (b *Builder) compileGo(isDev bool) error {

@@ -1,13 +1,11 @@
 package tooling
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -32,7 +30,138 @@ type classifiedEvent struct {
 	watchedFile *wave.WatchedFile
 	ignored     bool
 	chmodOnly   bool
-	strategy    *wave.OnChangeStrategy
+}
+
+// workSet collects all work to be done in response to file changes.
+// This separates "what to do" from "how to coordinate it."
+type workSet struct {
+	// Build phase
+	compileGo          bool
+	buildCriticalCSS   bool
+	buildNormalCSS     bool
+	processPublicFiles bool
+
+	// App phase
+	restartApp bool
+
+	// Browser phase
+	reloadBrowser  bool
+	hotReloadCSS   bool
+	invalidateVite bool
+	revalidate     bool
+	waitForApp     bool
+	waitForVite    bool
+	cycleVite      bool
+
+	// Notification
+	showRebuilding bool
+}
+
+// addFromRefreshAction merges a RefreshAction into the work set.
+func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
+	if action.TriggerRestart {
+		w.restartApp = true
+		if action.RecompileGo {
+			w.compileGo = true
+		}
+	}
+	if action.ReloadBrowser {
+		w.reloadBrowser = true
+	}
+	if action.WaitForApp {
+		w.waitForApp = true
+	}
+	if action.WaitForVite {
+		w.waitForVite = true
+	}
+}
+
+// addImplicitWork adds work implied by a file type and its watched config.
+func (w *workSet) addImplicitWork(c classifiedEvent) {
+	wf := c.watchedFile
+	if wf != nil && wf.RunOnChangeOnly {
+		return // Callbacks handle everything
+	}
+
+	switch c.fileType {
+	case fileTypeGo:
+		w.compileGo = true
+		w.restartApp = true
+		w.reloadBrowser = true
+		w.waitForApp = true
+		w.waitForVite = true
+
+	case fileTypeCriticalCSS:
+		w.buildCriticalCSS = true
+		if wf == nil || !needsHardReload(wf) {
+			w.hotReloadCSS = true
+		} else {
+			w.restartApp = true
+			w.reloadBrowser = true
+		}
+
+	case fileTypeNormalCSS:
+		w.buildNormalCSS = true
+		if wf == nil || !needsHardReload(wf) {
+			w.hotReloadCSS = true
+		} else {
+			w.restartApp = true
+			w.reloadBrowser = true
+		}
+
+	case fileTypePublicStatic:
+		w.processPublicFiles = true
+		w.invalidateVite = true
+		// Fallback to reloadBrowser handled in executeBrowserPhase if not using Vite
+
+	case fileTypeOther:
+		if wf != nil {
+			if wf.RecompileGoBinary {
+				w.compileGo = true
+			}
+			if wf.RestartApp || wf.RecompileGoBinary {
+				w.restartApp = true
+				w.reloadBrowser = true
+				w.waitForApp = true
+				w.waitForVite = true
+			}
+			if wf.OnlyRunClientDefinedRevalidateFunc {
+				w.revalidate = true
+				w.waitForApp = true
+				w.waitForVite = true
+			}
+		}
+	}
+
+	// Notification logic
+	if wf == nil || !wf.SkipRebuildingNotification {
+		if c.fileType != fileTypeCriticalCSS && c.fileType != fileTypeNormalCSS {
+			w.showRebuilding = true
+		}
+	}
+}
+
+// resolve handles mutual exclusivity and subsumption.
+func (w *workSet) resolve() {
+	// Full browser reload subsumes CSS hot reload and revalidate
+	if w.reloadBrowser {
+		w.hotReloadCSS = false
+		w.revalidate = false
+		w.invalidateVite = false
+	}
+
+	// Restart implies wait for app and full reload
+	if w.restartApp {
+		w.waitForApp = true
+		w.reloadBrowser = true
+		w.hotReloadCSS = false
+		w.revalidate = false
+	}
+
+	// Go recompile implies restart
+	if w.compileGo {
+		w.restartApp = true
+	}
 }
 
 func (s *server) runWatcher() {
@@ -55,14 +184,14 @@ func (s *server) runWatcher() {
 }
 
 func (s *server) processEvents(events []fsnotify.Event) {
+	// Deduplicate events by path
 	eventMap := make(map[string]fsnotify.Event)
 	for _, evt := range events {
 		eventMap[evt.Name] = evt
 	}
 
-	var relevantEvents []classifiedEvent
-	needsHardReload := false
-	needsGoCompile := false
+	// 1. Classify events and check for config change
+	var classified []classifiedEvent
 	handledPatterns := make(map[string]bool)
 
 	for _, evt := range eventMap {
@@ -80,178 +209,350 @@ func (s *server) processEvents(events []fsnotify.Event) {
 			continue
 		}
 
-		classified := s.classifyEvent(evt)
-		if classified.ignored {
+		c := s.classifyEvent(evt)
+		if c.ignored || c.chmodOnly {
 			continue
 		}
 
+		// Dedupe by pattern
 		patternKey := ""
-		if classified.watchedFile != nil {
-			patternKey = classified.watchedFile.Pattern
+		if c.watchedFile != nil {
+			patternKey = c.watchedFile.Pattern
 		}
 		if handledPatterns[patternKey] {
 			continue
 		}
 		handledPatterns[patternKey] = true
 
-		// Strategy events flow through handleFileChange so Callbacks run
-		if classified.chmodOnly {
-			continue
-		}
-
-		if classified.fileType == fileTypeGo {
-			needsGoCompile = true
-		}
-
-		// Only force hard reload if there is NO strategy.
-		// Strategies handle their own reload logic.
-		if classified.strategy == nil && !needsHardReload {
-			needsHardReload = classified.fileType == fileTypeGo || s.needsHardReload(classified.watchedFile)
-		}
-
-		relevantEvents = append(relevantEvents, classified)
+		classified = append(classified, c)
 	}
 
-	if len(relevantEvents) == 0 {
+	if len(classified) == 0 {
 		return
 	}
 
-	isBatch := len(relevantEvents) > 1
+	// 2. Run hooks and collect work
+	work := &workSet{}
+	var allActions []wave.RefreshAction
 
-	// Determine if we should show the rebuilding overlay.
-	// We show it if any involved file does NOT explicitly skip notification.
-	shouldBroadcast := false
-	for _, e := range relevantEvents {
-		// If no watched file config (e.g. standard go file outside patterns), default is show.
-		if e.watchedFile == nil {
-			shouldBroadcast = true
-			break
-		}
-		if !e.watchedFile.SkipRebuildingNotification {
-			shouldBroadcast = true
+	// Determine if we need to stop app before hooks (for hard reload batches)
+	needsAppStop := false
+	for _, c := range classified {
+		if c.fileType == fileTypeGo || needsHardReload(c.watchedFile) {
+			needsAppStop = true
 			break
 		}
 	}
 
-	if shouldBroadcast {
+	// Show rebuilding overlay if any event requires it
+	for _, c := range classified {
+		if c.fileType == fileTypeCriticalCSS || c.fileType == fileTypeNormalCSS {
+			continue
+		}
+		if c.watchedFile == nil || !c.watchedFile.SkipRebuildingNotification {
+			work.showRebuilding = true
+			break
+		}
+	}
+
+	if work.showRebuilding {
 		s.broadcastRebuilding()
 	}
 
-	// For standard (non-strategy) batch + hard reload, stop app before compiling
-	// We check if *any* event is standard (no strategy) to trigger standard stop logic
-	anyStandardEvents := false
-	for _, e := range relevantEvents {
-		if e.strategy == nil {
-			anyStandardEvents = true
-			break
+	// Stop app before hooks if needed
+	appStoppedForBatch := false
+	if needsAppStop && len(classified) > 1 {
+		s.log.Info("Stopping app for batch rebuild")
+		if err := s.stopApp(); err != nil {
+			panic(fmt.Sprintf("failed to stop app: %v", err))
 		}
+		appStoppedForBatch = true
 	}
 
-	if anyStandardEvents && isBatch && needsHardReload {
-		s.log.Info("Shutting down running app (batch)")
+	// Run hooks for each event
+	for _, c := range classified {
+		s.log.Info("File changed", "op", c.event.Op.String(), "file", c.event.Name)
+		actions, err := s.runHooksForEvent(c, appStoppedForBatch)
+		if err != nil {
+			s.log.Error("Hook execution failed", "error", err)
+		}
+		allActions = append(allActions, actions...)
+
+		// Add implicit work from file type
+		work.addImplicitWork(c)
+	}
+
+	// Check if any callback requested a full restart cycle (bail out)
+	for _, action := range allActions {
+		if action.TriggerRestart {
+			if action.RecompileGo {
+				s.triggerRestart()
+			} else {
+				s.triggerRestartNoGo()
+			}
+			return
+		}
+		work.addFromRefreshAction(action)
+	}
+
+	// 3. Resolve mutual exclusivity
+	work.resolve()
+
+	// 4. Stop app if needed before build
+	needsStop := work.compileGo || work.restartApp
+	if needsStop && !appStoppedForBatch {
+		s.log.Info("Stopping app")
 		if err := s.stopApp(); err != nil {
 			panic(fmt.Sprintf("failed to stop app: %v", err))
 		}
 	}
 
-	// For standard Go batches: compile Go once, not per-file
-	if anyStandardEvents && isBatch && needsGoCompile {
-		s.log.Info("Batch Go change detected, compiling once")
+	// 5. Execute build phase
+	s.executeBuildPhase(work)
+
+	// 6. Start app if needed
+	if work.restartApp {
+		s.startApp()
+	}
+
+	// 7. Execute browser phase
+	s.executeBrowserPhase(work)
+
+	s.watcher.RemoveStale()
+}
+
+func (s *server) runHooksForEvent(c classifiedEvent, appStoppedForBatch bool) ([]wave.RefreshAction, error) {
+	wf := c.watchedFile
+	if wf == nil {
+		wf = &wave.WatchedFile{}
+	}
+	if wf.SortedHooks == nil {
+		wf.SortedHooks = &wave.SortedHooks{}
+	}
+
+	sorted := wf.SortedHooks
+	hookCtx := &wave.HookContext{
+		FilePath:           c.event.Name,
+		AppStoppedForBatch: appStoppedForBatch,
+	}
+
+	var actions []wave.RefreshAction
+
+	// Fire-and-forget hooks
+	for _, hook := range sorted.ConcurrentNoWait {
+		if s.watcher.IsIgnored(c.event.Name, hook.Exclude) {
+			continue
+		}
+		if hook.Callback != nil {
+			go func(cb func(*wave.HookContext) (*wave.RefreshAction, error), ctx *wave.HookContext) {
+				if _, err := cb(ctx); err != nil {
+					s.log.Warn("concurrent-no-wait callback failed", "error", err)
+				}
+			}(hook.Callback, hookCtx)
+		}
+		cmd := s.resolveCmd(hook.Cmd)
+		if cmd != "" {
+			go func(c string) {
+				if err := executil.RunShell(c); err != nil {
+					s.log.Warn("concurrent-no-wait hook failed", "cmd", c, "error", err)
+				}
+			}(cmd)
+		}
+	}
+
+	// Pre hooks
+	for _, hook := range sorted.Pre {
+		if s.watcher.IsIgnored(c.event.Name, hook.Exclude) {
+			continue
+		}
+		if hook.Callback != nil {
+			action, err := hook.Callback(hookCtx)
+			if err != nil {
+				return actions, err
+			}
+			if action != nil {
+				actions = append(actions, *action)
+			}
+		}
+		cmd := s.resolveCmd(hook.Cmd)
+		if cmd != "" {
+			if err := executil.RunShell(cmd); err != nil {
+				return actions, err
+			}
+		}
+	}
+
+	// Concurrent hooks
+	var eg errgroup.Group
+	var actionsMu sync.Mutex
+
+	for _, hook := range sorted.Concurrent {
+		if s.watcher.IsIgnored(c.event.Name, hook.Exclude) {
+			continue
+		}
+		h := hook
+		eg.Go(func() error {
+			if h.Callback != nil {
+				action, err := h.Callback(hookCtx)
+				if err != nil {
+					return err
+				}
+				if action != nil {
+					actionsMu.Lock()
+					actions = append(actions, *action)
+					actionsMu.Unlock()
+				}
+			}
+			cmd := s.resolveCmd(h.Cmd)
+			if cmd != "" {
+				return executil.RunShell(cmd)
+			}
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return actions, err
+	}
+
+	// Post hooks
+	for _, hook := range sorted.Post {
+		if s.watcher.IsIgnored(c.event.Name, hook.Exclude) {
+			continue
+		}
+		if hook.Callback != nil {
+			action, err := hook.Callback(hookCtx)
+			if err != nil {
+				return actions, err
+			}
+			if action != nil {
+				actions = append(actions, *action)
+			}
+		}
+		cmd := s.resolveCmd(hook.Cmd)
+		if cmd != "" {
+			if err := executil.RunShell(cmd); err != nil {
+				return actions, err
+			}
+		}
+	}
+
+	return actions, nil
+}
+
+func (s *server) executeBuildPhase(work *workSet) {
+	// Compile Go (once for batch)
+	if work.compileGo {
+		s.log.Info("Compiling Go binary")
 		if err := s.builder.CompileGoOnly(true); err != nil {
 			s.log.Error("Go compilation failed", "error", err)
 		}
 	}
 
-	for _, classified := range relevantEvents {
-		s.log.Info("File changed", "op", classified.event.Op.String(), "file", classified.event.Name)
-		skipGoCompile := isBatch && needsGoCompile && classified.fileType == fileTypeGo
-		if err := s.handleFileChange(classified, isBatch, skipGoCompile); err != nil {
-			s.log.Error("Handle change failed", "error", err)
+	// Build CSS
+	if work.buildCriticalCSS {
+		if err := s.builder.BuildCriticalCSS(true); err != nil {
+			s.log.Error("Critical CSS build failed", "error", err)
+		}
+	}
+	if work.buildNormalCSS {
+		if err := s.builder.BuildNormalCSS(true); err != nil {
+			s.log.Error("Normal CSS build failed", "error", err)
 		}
 	}
 
-	if anyStandardEvents && isBatch && needsHardReload {
-		s.startApp()
+	// Process public files
+	if work.processPublicFiles {
+		if err := s.builder.ProcessPublicFilesOnly(); err != nil {
+			s.log.Error("Public files processing failed", "error", err)
+		}
+		if s.cfg.FrameworkPublicFileMapOutDir != "" {
+			if err := s.builder.WritePublicFileMapTS(s.cfg.FrameworkPublicFileMapOutDir); err != nil {
+				s.log.Error("Write public file map TS failed", "error", err)
+			}
+		}
+	}
+}
+
+func (s *server) executeBrowserPhase(work *workSet) {
+	if !s.cfg.UsingBrowser() {
+		return
+	}
+
+	// Vite invalidation (for public static changes)
+	// Attempt if requested. Falls back to standard reload if Vite fails or isn't used.
+	if work.invalidateVite {
+		if s.cfg.UsingVite() {
+			if err := s.callViteFilemapInvalidate(); err != nil {
+				s.log.Warn("Vite filemap invalidate failed, falling back to reload", "error", err)
+				work.reloadBrowser = true
+			} else {
+				// Success: Vite handles browser reload via its own websocket
+				return
+			}
+		} else {
+			// Not using Vite: fall back to standard reload
+			work.reloadBrowser = true
+		}
+	}
+
+	// Full browser reload
+	if work.reloadBrowser {
 		s.broadcastReload(reloadOpts{
 			payload:   refreshPayload{ChangeType: changeTypeOther},
-			waitApp:   true,
-			waitVite:  true,
-			cycleVite: false,
+			waitApp:   work.waitForApp,
+			waitVite:  work.waitForVite,
+			cycleVite: work.cycleVite,
 		})
+		return
 	}
 
-	s.watcher.RemoveStale()
-}
-
-func (s *server) executeStrategy(strategy *wave.OnChangeStrategy) error {
-	if strategy == nil {
-		return nil
-	}
-
-	if strategy.HttpEndpoint != "" {
-		s.log.Info("Executing strategy HTTP endpoint", "endpoint", strategy.HttpEndpoint)
-		if !s.waitForApp() {
-			return s.handleStrategyFallback(strategy, fmt.Errorf("app not ready"))
-		}
-		if err := s.callStrategyEndpoint(strategy.HttpEndpoint); err != nil {
-			return s.handleStrategyFallback(strategy, err)
-		}
-	}
-
-	if strategy.ReloadBrowser {
+	// Revalidate (client-side refresh)
+	if work.revalidate {
 		s.broadcastReload(reloadOpts{
-			payload:   refreshPayload{ChangeType: changeTypeOther},
-			waitApp:   strategy.WaitForApp,
-			waitVite:  strategy.WaitForVite,
+			payload:   refreshPayload{ChangeType: changeTypeRevalidate},
+			waitApp:   work.waitForApp,
+			waitVite:  work.waitForVite,
 			cycleVite: false,
 		})
+		return
 	}
 
-	return nil
-}
+	// CSS hot reload
+	if work.hotReloadCSS {
+		criticalCSS, _ := s.builder.ReadCriticalCSS()
+		normalURL, _ := s.builder.ReadNormalCSSURL()
 
-func (s *server) callStrategyEndpoint(endpoint string) error {
-	url := fmt.Sprintf("http://localhost:%d%s", wave.MustGetPort(), endpoint)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("endpoint returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	s.log.Info("Strategy endpoint succeeded", "endpoint", endpoint)
-	return nil
-}
-
-func (s *server) handleStrategyFallback(strategy *wave.OnChangeStrategy, originalErr error) error {
-	s.log.Warn("Strategy failed, executing fallback", "error", originalErr, "fallback", strategy.FallbackAction)
-
-	switch strategy.FallbackAction {
-	case wave.FallbackRestart:
-		s.triggerRestart()
-		return nil
-	case wave.FallbackRestartNoGo:
-		s.triggerRestartNoGo()
-		return nil
-	case wave.FallbackNone, "":
-		return originalErr
-	default:
-		s.log.Warn("Unknown fallback action", "action", strategy.FallbackAction)
-		return originalErr
+		// Send both if both changed, otherwise send individually
+		if work.buildCriticalCSS && work.buildNormalCSS {
+			// Send critical first, then normal
+			s.broadcastReload(reloadOpts{
+				payload: refreshPayload{
+					ChangeType:  changeTypeCriticalCSS,
+					CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
+				},
+			})
+			s.broadcastReload(reloadOpts{
+				payload: refreshPayload{
+					ChangeType:   changeTypeNormalCSS,
+					NormalCSSURL: normalURL,
+				},
+			})
+		} else if work.buildCriticalCSS {
+			s.broadcastReload(reloadOpts{
+				payload: refreshPayload{
+					ChangeType:  changeTypeCriticalCSS,
+					CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
+				},
+			})
+		} else if work.buildNormalCSS {
+			s.broadcastReload(reloadOpts{
+				payload: refreshPayload{
+					ChangeType:   changeTypeNormalCSS,
+					NormalCSSURL: normalURL,
+				},
+			})
+		}
 	}
 }
 
@@ -287,7 +588,6 @@ func (s *server) classifyEvent(evt fsnotify.Event) classifiedEvent {
 		result.ignored = true
 	}
 
-	result.strategy = s.watcher.GetFirstStrategy(result.watchedFile)
 	result.chmodOnly = isNonEmptyChmodOnly(evt)
 
 	return result
@@ -312,285 +612,11 @@ func (s *server) isConfigFile(path string) bool {
 	return absPath == absConfigPath
 }
 
-func (s *server) needsHardReload(wf *wave.WatchedFile) bool {
+func needsHardReload(wf *wave.WatchedFile) bool {
 	if wf == nil {
 		return false
 	}
 	return wf.RecompileGoBinary || wf.RestartApp
-}
-
-func (s *server) handleFileChange(classified classifiedEvent, isBatch bool, skipGoCompile bool) error {
-	wf := classified.watchedFile
-	if wf == nil {
-		wf = &wave.WatchedFile{}
-	}
-	if wf.SortedHooks == nil {
-		wf.SortedHooks = &wave.SortedHooks{}
-	}
-
-	sorted := wf.SortedHooks
-
-	// 1. EXECUTE HOOKS (Callbacks & Cmds)
-	// We run Callbacks regardless of whether a Strategy exists.
-	// We skip Cmds if a Strategy exists.
-
-	// Fire-and-forget hooks
-	for _, hook := range sorted.ConcurrentNoWait {
-		if s.watcher.IsIgnored(classified.event.Name, hook.Exclude) {
-			continue
-		}
-		// Always run Callback (internal framework logic)
-		if hook.Callback != nil {
-			go func(cb func(string) error, name string) {
-				if err := cb(name); err != nil {
-					s.log.Warn("concurrent-no-wait callback failed", "error", err)
-				}
-			}(hook.Callback, classified.event.Name)
-		}
-		// Skip Cmd if Strategy overrides it
-		if hook.HasStrategy() {
-			continue
-		}
-		cmd := s.resolveCmd(hook.Cmd)
-		if cmd == "" {
-			continue
-		}
-		go func(c string) {
-			if err := executil.RunShell(c); err != nil {
-				s.log.Warn("concurrent-no-wait hook failed", "cmd", c, "error", err)
-			}
-		}(cmd)
-	}
-
-	// Pre hooks
-	for _, hook := range sorted.Pre {
-		if s.watcher.IsIgnored(classified.event.Name, hook.Exclude) {
-			continue
-		}
-		// Always run Callback
-		if hook.Callback != nil {
-			if err := hook.Callback(classified.event.Name); err != nil {
-				return err
-			}
-		}
-		// Skip Cmd if Strategy overrides it
-		if hook.HasStrategy() {
-			continue
-		}
-		cmd := s.resolveCmd(hook.Cmd)
-		if cmd == "" {
-			continue
-		}
-		if err := executil.RunShell(cmd); err != nil {
-			return err
-		}
-	}
-
-	var callbackEg errgroup.Group
-
-	// Concurrent hooks
-	for _, hook := range sorted.Concurrent {
-		if s.watcher.IsIgnored(classified.event.Name, hook.Exclude) {
-			continue
-		}
-		h := hook
-		callbackEg.Go(func() error {
-			if h.Callback != nil {
-				if err := h.Callback(classified.event.Name); err != nil {
-					return err
-				}
-			}
-			if h.HasStrategy() {
-				return nil
-			}
-			cmd := s.resolveCmd(h.Cmd)
-			if cmd == "" {
-				return nil
-			}
-			return executil.RunShell(cmd)
-		})
-	}
-
-	if err := callbackEg.Wait(); err != nil {
-		return err
-	}
-
-	// Post hooks
-	for _, hook := range sorted.Post {
-		if s.watcher.IsIgnored(classified.event.Name, hook.Exclude) {
-			continue
-		}
-		if hook.Callback != nil {
-			if err := hook.Callback(classified.event.Name); err != nil {
-				return err
-			}
-		}
-		if hook.HasStrategy() {
-			continue
-		}
-		cmd := s.resolveCmd(hook.Cmd)
-		if cmd == "" {
-			continue
-		}
-		if err := executil.RunShell(cmd); err != nil {
-			return err
-		}
-	}
-
-	// 2. CHECK FOR STRATEGY
-	// If a strategy exists, it overrides the default build/restart behavior below.
-	if classified.strategy != nil {
-		if err := s.executeStrategy(classified.strategy); err != nil {
-			return s.handleStrategyFallback(classified.strategy, err)
-		}
-		return nil
-	}
-
-	// 3. STANDARD BUILD / RESTART LOGIC
-	// Only runs if no strategy handled the event.
-	isGo := classified.fileType == fileTypeGo
-
-	needsRestart := (isGo || s.needsHardReload(wf)) && !isBatch
-
-	var stopEg errgroup.Group
-	if needsRestart {
-		stopEg.Go(func() error {
-			s.log.Info("Terminating running app")
-			return s.stopApp()
-		})
-	}
-
-	if wf.RunOnChangeOnly {
-		s.log.Info("ran applicable onChange callbacks (RunOnChangeOnly)")
-		if needsRestart {
-			if err := stopEg.Wait(); err != nil {
-				panic(fmt.Sprintf("failed to stop app: %v", err))
-			}
-			s.startApp()
-		}
-		return nil
-	}
-
-	// Run main build callback
-	if err := s.fileChangeCallback(wf, classified, skipGoCompile); err != nil {
-		return err
-	}
-
-	if needsRestart {
-		if err := stopEg.Wait(); err != nil {
-			panic(fmt.Sprintf("failed to stop app: %v", err))
-		}
-		s.startApp()
-	}
-
-	if isBatch {
-		return nil
-	}
-
-	return s.handleBrowserReload(classified, wf)
-}
-
-func (s *server) fileChangeCallback(wf *wave.WatchedFile, classified classifiedEvent, skipGoCompile bool) error {
-	isCSS := classified.fileType == fileTypeCriticalCSS || classified.fileType == fileTypeNormalCSS
-
-	if classified.fileType == fileTypeGo {
-		if skipGoCompile {
-			return nil
-		}
-		return s.builder.CompileGoOnly(true)
-	}
-
-	if classified.fileType == fileTypePublicStatic {
-		if err := s.builder.ProcessPublicFilesOnly(); err != nil {
-			return err
-		}
-		if s.cfg.FrameworkPublicFileMapOutDir != "" {
-			return s.builder.WritePublicFileMapTS(s.cfg.FrameworkPublicFileMapOutDir)
-		}
-		return nil
-	}
-
-	if isCSS {
-		if classified.fileType == fileTypeCriticalCSS {
-			if err := s.builder.BuildCriticalCSS(true); err != nil {
-				return err
-			}
-		} else {
-			if err := s.builder.BuildNormalCSS(true); err != nil {
-				return err
-			}
-		}
-		if !s.needsHardReload(wf) {
-			return nil
-		}
-	}
-
-	return s.builder.Build(BuildOpts{
-		IsDev:        true,
-		CompileGo:    wf.RecompileGoBinary,
-		IsRebuild:    true,
-		FileOnlyMode: isCSS || wf.OnlyRunClientDefinedRevalidateFunc,
-	})
-}
-
-func (s *server) handleBrowserReload(classified classifiedEvent, wf *wave.WatchedFile) error {
-	if !s.cfg.UsingBrowser() {
-		return nil
-	}
-
-	if wf.OnlyRunClientDefinedRevalidateFunc {
-		s.broadcastReload(reloadOpts{
-			payload:   refreshPayload{ChangeType: changeTypeRevalidate},
-			waitApp:   true,
-			waitVite:  true,
-			cycleVite: false,
-		})
-		return nil
-	}
-
-	isCSS := classified.fileType == fileTypeCriticalCSS || classified.fileType == fileTypeNormalCSS
-	isPublicStatic := classified.fileType == fileTypePublicStatic
-
-	if isPublicStatic {
-		s.broadcastReload(reloadOpts{
-			payload:   refreshPayload{ChangeType: changeTypeOther},
-			waitApp:   false,
-			waitVite:  true,
-			cycleVite: true,
-		})
-		return nil
-	}
-
-	if !isCSS || s.needsHardReload(wf) {
-		s.broadcastReload(reloadOpts{
-			payload:   refreshPayload{ChangeType: changeTypeOther},
-			waitApp:   true,
-			waitVite:  true,
-			cycleVite: false,
-		})
-		return nil
-	}
-
-	changeType := changeTypeNormalCSS
-	if classified.fileType == fileTypeCriticalCSS {
-		changeType = changeTypeCriticalCSS
-	}
-
-	criticalCSS, _ := s.builder.ReadCriticalCSS()
-	normalURL, _ := s.builder.ReadNormalCSSURL()
-
-	s.broadcastReload(reloadOpts{
-		payload: refreshPayload{
-			ChangeType:   changeType,
-			CriticalCSS:  base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
-			NormalCSSURL: normalURL,
-		},
-		waitApp:   false,
-		waitVite:  false,
-		cycleVite: false,
-	})
-
-	return nil
 }
 
 func (s *server) resolveCmd(cmd string) string {

@@ -313,6 +313,7 @@ export const vormaViteConfig = {
 	publicPathPrefix,
 	staticPublicAssetMap,
 	buildtimePublicURLFuncName: "{{.FuncName}}",
+	filemapJSONPath: "{{.FilemapJSONPath}}",
 	ignoredPatterns: [{{range $i, $e := .IgnoredPatterns}}{{if $i}},{{end}}
 		"{{$e}}"{{end}}
 	],
@@ -324,7 +325,9 @@ export const vormaViteConfig = {
 
 var vitePluginTemplate = template.Must(template.New("vitePlugin").Parse(vitePluginTemplateStr))
 
-func generateRollupOptions(v *vormaruntime.Vorma, entrypoints []string) (string, error) {
+func generateRollupOptions(l *vormaruntime.LockedVorma, entrypoints []string) (string, error) {
+	v := l.Vorma()
+
 	var sb stringsutil.Builder
 	sb.Return()
 	sb.Write(tsgen.Comment("Vorma Vite Config:"))
@@ -349,11 +352,15 @@ func generateRollupOptions(v *vormaruntime.Vorma, entrypoints []string) (string,
 		path.Join("**", v.Config.ClientRouteDefsFile),
 	}
 
+	// Path to filemap.json for Vite plugin dev mode cache invalidation
+	filemapJSONPath := path.Join(v.Config.TSGenOutDir, wave.RelPaths.PublicFileMapJSONName())
+
 	var buf bytes.Buffer
 	err := vitePluginTemplate.Execute(&buf, map[string]any{
 		"Entrypoints":      entrypoints,
 		"PublicPathPrefix": v.Wave.GetPublicPathPrefix(),
 		"FuncName":         v.Config.BuildtimePublicURLFuncName,
+		"FilemapJSONPath":  filemapJSONPath,
 		"IgnoredPatterns":  ignoredList,
 		"DedupeList":       dedupeList,
 	})
@@ -364,8 +371,9 @@ func generateRollupOptions(v *vormaruntime.Vorma, entrypoints []string) (string,
 	return sb.String(), nil
 }
 
-func getEntrypoints(v *vormaruntime.Vorma) []string {
-	paths := v.UnsafeGetPaths()
+func getEntrypoints(l *vormaruntime.LockedVorma) []string {
+	v := l.Vorma()
+	paths := l.GetPaths()
 	entryPoints := make(map[string]struct{}, len(paths)+1)
 	entryPoints[path.Clean(v.Config.ClientEntry)] = struct{}{}
 	for _, p := range paths {
@@ -382,12 +390,13 @@ func getEntrypoints(v *vormaruntime.Vorma) []string {
 }
 
 // WriteGeneratedTS generates and writes the complete TypeScript output file.
-// IMPORTANT: Caller must hold v.mu.Lock() OR ensure exclusive access.
-func WriteGeneratedTS(v *vormaruntime.Vorma) error {
+func WriteGeneratedTS(l *vormaruntime.LockedVorma) error {
+	v := l.Vorma()
+
 	input := TSGenInput{
 		LoadersRouter: v.LoadersRouter().NestedRouter,
 		ActionsRouter: v.ActionsRouter().Router,
-		Paths:         v.UnsafeGetPaths(),
+		Paths:         l.GetPaths(),
 		Config:        v.Config,
 		AdHocTypes:    v.GetAdHocTypes(),
 		ExtraTSCode:   v.GetExtraTSCode(),
@@ -398,7 +407,7 @@ func WriteGeneratedTS(v *vormaruntime.Vorma) error {
 		return fmt.Errorf("generate TypeScript: %w", err)
 	}
 
-	rollupOptions, err := generateRollupOptions(v, getEntrypoints(v))
+	rollupOptions, err := generateRollupOptions(l, getEntrypoints(l))
 	if err != nil {
 		return fmt.Errorf("generate rollup options: %w", err)
 	}
@@ -409,7 +418,7 @@ func WriteGeneratedTS(v *vormaruntime.Vorma) error {
 	// Skip write if content unchanged (prevents infinite file watcher loop)
 	if existingBytes, err := os.ReadFile(target); err == nil {
 		if bytes.Equal(existingBytes, []byte(content)) {
-			vormaruntime.Log.Info("Generated config unchanged, skipping write")
+			v.Log.Info("Generated config unchanged, skipping write")
 			return nil
 		}
 	}

@@ -28,10 +28,10 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 		return errors.New("rebuildRoutesOnly should only be called in dev mode")
 	}
 
-	vormaruntime.Log.Info("START fast route rebuild")
+	v.Log.Info("START fast route rebuild")
 
 	// 1. Parse client routes (before acquiring lock)
-	clientPaths, err := parseClientRoutes(v.Config)
+	clientPaths, err := parseClientRoutes(v)
 	if err != nil {
 		return fmt.Errorf("parse client routes: %w", err)
 	}
@@ -42,26 +42,32 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 		return fmt.Errorf("generate build ID: %w", err)
 	}
 
-	// 3. Acquire lock and update all state
-	v.Lock()
-	defer v.Unlock()
+	// 3. Acquire lock and update all state atomically
+	var writeErr error
+	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("dev_fast_" + buildID)
+		l.Routes().Sync(clientPaths)
 
-	v.UnsafeSetBuildID("dev_fast_" + buildID)
-	v.Routes().Sync(clientPaths)
+		// 4. Clean old route manifests
+		if err := cleanRouteManifestsOnly(v); err != nil {
+			writeErr = fmt.Errorf("clean route manifests: %w", err)
+			return
+		}
 
-	// 4. Clean old route manifests
-	if err := cleanRouteManifestsOnly(v); err != nil {
-		return fmt.Errorf("clean route manifests: %w", err)
+		// 5. Write all artifacts (manifest, paths JSON, TypeScript)
+		if err := writeRouteArtifacts(l); err != nil {
+			writeErr = err
+			return
+		}
+	})
+
+	if writeErr != nil {
+		return writeErr
 	}
 
-	// 5. Write all artifacts (manifest, paths JSON, TypeScript)
-	if err := writeRouteArtifacts(v); err != nil {
-		return err
-	}
-
-	vormaruntime.Log.Info("DONE fast route rebuild",
-		"buildID", v.UnsafeGetBuildID(),
-		"routes", len(v.UnsafeGetPaths()),
+	v.Log.Info("DONE fast route rebuild",
+		"buildID", v.GetBuildID(),
+		"routes", len(v.GetPathsSnapshot()),
 		"duration", time.Since(start),
 	)
 

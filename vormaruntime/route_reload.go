@@ -22,9 +22,9 @@ func (v *Vorma) ReloadRoutesFromDisk() error {
 	v._buildID = pathsFile.BuildID
 	v._routeManifestFile = pathsFile.RouteManifestFile
 
-	v.Routes().Sync(v._paths)
+	v.routes().Sync(v._paths)
 
-	Log.Info("Routes reloaded from disk", "buildID", v._buildID)
+	v.Log.Info("Routes reloaded from disk", "buildID", v._buildID)
 	return nil
 }
 
@@ -40,6 +40,6 @@ func (v *Vorma) ReloadTemplateFromDisk() error {
 	defer v.mu.Unlock()
 	v._rootTemplate = tmpl
 
-	Log.Info("HTML template reloaded")
+	v.Log.Info("HTML template reloaded")
 	return nil
 }

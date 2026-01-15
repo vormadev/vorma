@@ -310,30 +310,111 @@ func (w *Watcher) IsIgnoredDir(path string) bool {
 	return w.IsIgnored(path, w.ignoredDirs)
 }
 
-// FindWatchedFile finds the matching WatchedFile config for a path.
-// Normalizes the path before matching.
+// FindWatchedFile finds and merges all matching WatchedFile configs for a path.
+// Framework patterns are matched first, then user patterns. Settings are merged
+// with "strongest wins" semantics: destructive flags use OR, suppressive flags use AND,
+// and hooks are concatenated (framework first, then user).
 func (w *Watcher) FindWatchedFile(path string) *wave.WatchedFile {
 	np := w.norm(path)
 
-	// Check user-defined patterns first
+	var matches []*wave.WatchedFile
+
+	// Collect framework/default matches first (these run first in hook order)
+	for i := range w.defaultWatched {
+		wf := &w.defaultWatched[i]
+		if w.MatchPattern(wf.Pattern, np) {
+			matches = append(matches, wf)
+		}
+	}
+
+	// Collect user-defined matches second (these run after framework hooks)
 	if w.cfg.Watch != nil {
 		for i := range w.cfg.Watch.Include {
 			wf := &w.cfg.Watch.Include[i]
 			if w.MatchPattern(wf.Pattern, np) {
-				return wf
+				matches = append(matches, wf)
 			}
 		}
 	}
 
-	// Check default patterns
-	for i := range w.defaultWatched {
-		wf := &w.defaultWatched[i]
-		if w.MatchPattern(wf.Pattern, np) {
-			return wf
-		}
+	if len(matches) == 0 {
+		return nil
 	}
 
-	return nil
+	if len(matches) == 1 {
+		return matches[0]
+	}
+
+	return mergeWatchedFiles(matches)
+}
+
+// mergeWatchedFiles merges multiple WatchedFile configs into one.
+//
+// The principle is simple: union of all work. If ANY matching config requests
+// an action, we do it. This prevents user config from accidentally disabling
+// framework-critical behavior.
+//
+// For each possible action, we ask: "would ANY config cause this to happen?"
+//
+//   - Compile Go binary: yes if RecompileGoBinary=true OR (it's a .go file AND TreatAsNonGo=false)
+//   - Restart app: yes if RestartApp=true
+//   - Run standard build: yes if RunOnChangeOnly=false
+//   - Show notification: yes if SkipRebuildingNotification=false
+//   - Full reload (vs revalidate): yes if OnlyRunClientDefinedRevalidateFunc=false
+//
+// Hooks are concatenated: framework hooks first, then user hooks.
+func mergeWatchedFiles(matches []*wave.WatchedFile) *wave.WatchedFile {
+	if len(matches) == 0 {
+		return nil
+	}
+
+	// Start with "no work" defaults
+	merged := &wave.WatchedFile{
+		Pattern: matches[0].Pattern,
+
+		// These mean "do work" when true - start false, any true wins
+		RecompileGoBinary: false,
+		RestartApp:        false,
+
+		// These mean "skip work" when true - start true, any false wins
+		TreatAsNonGo:                       true,
+		RunOnChangeOnly:                    true,
+		SkipRebuildingNotification:         true,
+		OnlyRunClientDefinedRevalidateFunc: true,
+	}
+
+	var allHooks []wave.OnChangeHook
+
+	for _, wf := range matches {
+		// "Do X" flags: if any config says do it, we do it
+		if wf.RecompileGoBinary {
+			merged.RecompileGoBinary = true
+		}
+		if wf.RestartApp {
+			merged.RestartApp = true
+		}
+
+		// "Skip X" flags: if any config says DON'T skip, we don't skip
+		if !wf.TreatAsNonGo {
+			merged.TreatAsNonGo = false
+		}
+		if !wf.RunOnChangeOnly {
+			merged.RunOnChangeOnly = false
+		}
+		if !wf.SkipRebuildingNotification {
+			merged.SkipRebuildingNotification = false
+		}
+		if !wf.OnlyRunClientDefinedRevalidateFunc {
+			merged.OnlyRunClientDefinedRevalidateFunc = false
+		}
+
+		allHooks = append(allHooks, wf.OnChangeHooks...)
+	}
+
+	merged.OnChangeHooks = allHooks
+	merged.Sort()
+
+	return merged
 }
 
 // IsPublicStaticFile checks if a path is within the public static directory
@@ -345,31 +426,7 @@ func (w *Watcher) IsPublicStaticFile(path string) bool {
 	return strings.HasPrefix(np, w.absPublicStatic+"/")
 }
 
-func (w *Watcher) HasStrategyHook(wf *wave.WatchedFile) bool {
-	if wf == nil {
-		return false
-	}
-	for _, hook := range wf.OnChangeHooks {
-		if hook.HasStrategy() {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *Watcher) GetFirstStrategy(wf *wave.WatchedFile) *wave.OnChangeStrategy {
-	if wf == nil {
-		return nil
-	}
-	for _, hook := range wf.OnChangeHooks {
-		if hook.HasStrategy() {
-			return hook.Strategy
-		}
-	}
-	return nil
-}
-
-// Debouncer batches rapid file events
+// Debouncer batches rapid file events and ensures callbacks don't overlap.
 type Debouncer struct {
 	duration time.Duration
 	callback func([]fsnotify.Event)
@@ -377,6 +434,8 @@ type Debouncer struct {
 	timer    *time.Timer
 	events   []fsnotify.Event
 	stopped  bool
+	inFlight bool
+	pending  []fsnotify.Event
 }
 
 func NewDebouncer(d time.Duration, cb func([]fsnotify.Event)) *Debouncer {
@@ -397,20 +456,52 @@ func (d *Debouncer) Add(evt fsnotify.Event) {
 		d.timer.Stop()
 	}
 
-	d.timer = time.AfterFunc(d.duration, func() {
-		d.mu.Lock()
-		if d.stopped {
-			d.mu.Unlock()
-			return
-		}
-		events := d.events
-		d.events = nil
-		d.mu.Unlock()
+	d.timer = time.AfterFunc(d.duration, d.flush)
+}
 
-		if len(events) > 0 {
-			d.callback(events)
-		}
-	})
+// flush is called by the timer. It checks if a callback is in-flight and either
+// runs the callback or queues events for later.
+func (d *Debouncer) flush() {
+	d.mu.Lock()
+
+	if d.stopped {
+		d.mu.Unlock()
+		return
+	}
+
+	events := d.events
+	d.events = nil
+
+	if len(events) == 0 {
+		d.mu.Unlock()
+		return
+	}
+
+	// If a callback is already running, queue these events for when it finishes
+	if d.inFlight {
+		d.pending = append(d.pending, events...)
+		d.mu.Unlock()
+		return
+	}
+
+	// Mark as in-flight and release lock before callback
+	d.inFlight = true
+	d.mu.Unlock()
+
+	// Run callback outside of lock
+	d.callback(events)
+
+	// After callback completes, check for pending events
+	d.mu.Lock()
+	d.inFlight = false
+
+	if len(d.pending) > 0 && !d.stopped {
+		// Move pending to events and schedule another flush
+		d.events = d.pending
+		d.pending = nil
+		d.timer = time.AfterFunc(d.duration, d.flush)
+	}
+	d.mu.Unlock()
 }
 
 // Stop cancels any pending debounced callback and prevents future events.
@@ -426,6 +517,7 @@ func (d *Debouncer) Stop() {
 		d.timer = nil
 	}
 	d.events = nil
+	d.pending = nil
 }
 
 // isNonEmptyChmodOnly checks if an event is only a chmod operation on a non-empty file.

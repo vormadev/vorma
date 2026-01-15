@@ -18,12 +18,12 @@ func (v *Vorma) Init() {
 	if err := v.initInner(isDev); err != nil {
 		wrapped := fmt.Errorf("error initializing Vorma: %w", err)
 		if isDev {
-			Log.Error(wrapped.Error())
+			v.Log.Error(wrapped.Error())
 		} else {
 			panic(wrapped)
 		}
 	} else {
-		Log.Info("Vorma initialized", "build id", v._buildID)
+		v.Log.Info("Vorma initialized", "build id", v._buildID)
 	}
 }
 
@@ -90,9 +90,9 @@ func (v *Vorma) initInner(isDev bool) error {
 	}
 	v._rootTemplate = tmpl
 
-	if v.getHeadElUniqueRules != nil {
+	if v.getHeadDedupeKeys != nil {
 		headEls := headels.New()
-		v.getHeadElUniqueRules(headEls)
+		v.getHeadDedupeKeys(headEls)
 		headElsInstance.InitUniqueRules(headEls)
 	} else {
 		headElsInstance.InitUniqueRules(nil)

@@ -266,93 +266,30 @@ Supports ** for recursive matching.`,
 })
 
 var onChangeHooksSchema = jsonschema.OptionalArray(jsonschema.Def{
-	Description: `Commands or strategies to run when a file matching the pattern changes. Each hook can either specify a Cmd (shell command) or a Strategy (declarative behavior).`,
+	Description: `Commands to run when a file matching the pattern changes.`,
 	Items:       onChangeHooksItemsSchema,
 })
 
 var onChangeHooksItemsSchema = jsonschema.OptionalObject(jsonschema.Def{
 	Properties: struct {
-		Cmd      jsonschema.Entry
-		Strategy jsonschema.Entry
-		Timing   jsonschema.Entry
-		Exclude  jsonschema.Entry
+		Cmd     jsonschema.Entry
+		Timing  jsonschema.Entry
+		Exclude jsonschema.Entry
 	}{
-		Cmd:      cmdSchema,
-		Strategy: strategySchema,
-		Timing:   timingSchema,
-		Exclude:  onChangeHooksExcludeSchema,
+		Cmd:     cmdSchema,
+		Timing:  timingSchema,
+		Exclude: onChangeHooksExcludeSchema,
 	},
 })
 
 var cmdSchema = jsonschema.OptionalString(jsonschema.Def{
 	Description: `Shell command to run when a file matching the pattern changes.
-Can be any shell command or "DevBuildHook" to run the configured dev build hook.
-Ignored if Strategy is set.`,
+Can be any shell command or "DevBuildHook" to run the configured dev build hook.`,
 	Examples: []string{"echo 'File changed!'", "make generate", "DevBuildHook", "npm run lint"},
 })
 
-var strategySchema = jsonschema.OptionalObject(jsonschema.Def{
-	Description: `Declarative strategy for handling file changes.
-Use this instead of Cmd for complex behaviors like calling HTTP endpoints on the running app.`,
-	Properties: struct {
-		HttpEndpoint   jsonschema.Entry
-		SkipDevHook    jsonschema.Entry
-		SkipGoCompile  jsonschema.Entry
-		WaitForApp     jsonschema.Entry
-		WaitForVite    jsonschema.Entry
-		ReloadBrowser  jsonschema.Entry
-		FallbackAction jsonschema.Entry
-	}{
-		HttpEndpoint:   httpEndpointSchema,
-		SkipDevHook:    skipDevHookSchema,
-		SkipGoCompile:  skipGoCompileSchema,
-		WaitForApp:     waitForAppSchema,
-		WaitForVite:    waitForViteSchema,
-		ReloadBrowser:  reloadBrowserSchema,
-		FallbackAction: fallbackActionSchema,
-	},
-})
-
-var httpEndpointSchema = jsonschema.OptionalString(jsonschema.Def{
-	Description: `HTTP endpoint to call on the running app (e.g., "/__vorma/reload-routes").
-If the call fails, FallbackAction is executed.`,
-	Examples: []string{"/__vorma/reload-routes", "/__vorma/reload-template", "/__my-app/refresh-cache"},
-})
-
-var skipDevHookSchema = jsonschema.OptionalBoolean(jsonschema.Def{
-	Description: `If true, skips running the DevBuildHook for this change.`,
-	Default:     false,
-})
-
-var skipGoCompileSchema = jsonschema.OptionalBoolean(jsonschema.Def{
-	Description: `If true, skips Go binary recompilation for this change.`,
-	Default:     false,
-})
-
-var waitForAppSchema = jsonschema.OptionalBoolean(jsonschema.Def{
-	Description: `If true, waits for the app's healthcheck before reloading the browser.`,
-	Default:     false,
-})
-
-var waitForViteSchema = jsonschema.OptionalBoolean(jsonschema.Def{
-	Description: `If true, waits for Vite dev server before reloading the browser.`,
-	Default:     false,
-})
-
-var reloadBrowserSchema = jsonschema.OptionalBoolean(jsonschema.Def{
-	Description: `If true, triggers a browser reload after successful execution.`,
-	Default:     false,
-})
-
-var fallbackActionSchema = jsonschema.OptionalString(jsonschema.Def{
-	Description: `Action to take if HttpEndpoint fails.
-"restart" does a full restart with Go recompile, "restart-no-go" restarts without Go recompile, "none" does nothing.`,
-	Enum:    []string{"restart", "restart-no-go", "none"},
-	Default: "none",
-})
-
 var timingSchema = jsonschema.OptionalString(jsonschema.Def{
-	Description: `Timing of the given command relative to Wave's rebuild process. Only applies to Cmd hooks, not Strategy hooks.`,
+	Description: `Timing of the given command relative to Wave's rebuild process.`,
 	Enum:        []string{"pre", "post", "concurrent", "concurrent-no-wait"},
 	Default:     "pre",
 })
@@ -381,9 +318,8 @@ var onlyRunClientDefinedRevalidateFuncSchema = jsonschema.OptionalBoolean(jsonsc
 })
 
 var runOnChangeOnlySchema = jsonschema.OptionalBoolean(jsonschema.Def{
-	Description: `If true, only the OnChangeHooks will run - Wave won't reload the browser.
-Use when your onChange hook triggers its own reload process.
-Note: OnChangeHooks must use "pre" timing (the default) with this option.`,
+	Description: `If true, only the OnChangeHooks will run - Wave won't perform standard build/reload.
+Use when your onChange hook handles everything including any necessary reload.`,
 	Default: false,
 })
 

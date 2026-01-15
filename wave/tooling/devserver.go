@@ -112,15 +112,7 @@ func (s *server) run() error {
 
 		isRebuild := !firstRun
 
-		// Start Vite if not already running
-		if s.viteCtx == nil && s.cfg.UsingVite() {
-			if err := s.startVite(); err != nil {
-				s.log.Error("vite start failed", "error", err)
-			}
-		}
-
 		// Run the build of the Builder binary and Server binary in parallel
-
 		var buildEg errgroup.Group
 
 		buildEg.Go(func() error {
@@ -138,12 +130,18 @@ func (s *server) run() error {
 		}
 
 		if err := buildEg.Wait(); err != nil {
-			// handles errors from either
 			s.log.Error("build failed", "error", err)
 			s.log.Info("Waiting for file changes to retry build...")
 			s.waitForBuildRetry()
 			firstRun = false
 			continue
+		}
+
+		// Start Vite AFTER build completes (TypeScript files now exist)
+		if s.viteCtx == nil && s.cfg.UsingVite() {
+			if err := s.startVite(); err != nil {
+				s.log.Error("vite start failed", "error", err)
+			}
 		}
 
 		// Start the app
@@ -367,6 +365,43 @@ func (s *server) cycleVite() {
 	}
 	s.waitForVite()
 	s.log.Info("Vite cycled and ready")
+}
+
+// callViteFilemapInvalidate calls the Vite plugin's filemap invalidation endpoint.
+// This clears the plugin's cached filemap and invalidates all modules, triggering
+// a browser reload through Vite's HMR system.
+func (s *server) callViteFilemapInvalidate() error {
+	s.mu.Lock()
+	viteCtx := s.viteCtx
+	s.mu.Unlock()
+
+	if viteCtx == nil {
+		return fmt.Errorf("vite not running")
+	}
+
+	url := fmt.Sprintf("http://localhost:%d/__vorma_invalidate_filemap", viteCtx.GetPort())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("endpoint returned %d", resp.StatusCode)
+	}
+
+	s.log.Info("Vite filemap invalidated successfully")
+	return nil
 }
 
 func (s *server) startRefreshServer(port int) {

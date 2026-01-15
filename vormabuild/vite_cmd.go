@@ -113,9 +113,9 @@ func toPathsFile_StageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error
 	fullHash.Write(publicFSSummaryHash)
 	buildID := base64.RawURLEncoding.EncodeToString(fullHash.Sum(nil)[:16])
 
-	v.Lock()
-	v.UnsafeSetBuildID(buildID)
-	v.Unlock()
+	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID(buildID)
+	})
 
 	pf.BuildID = buildID
 	return pf, nil

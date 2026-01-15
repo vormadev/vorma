@@ -3,10 +3,10 @@ package vormaruntime
 import (
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"sync"
 
-	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
@@ -14,26 +14,12 @@ import (
 
 const VormaSymbolStr = "__vorma_internal__"
 
-var Log = colorlog.New("vorma")
-
 type RouteType = string
 
-var RouteTypes = struct {
-	Loader   RouteType
-	Query    RouteType
-	Mutation RouteType
-	NotFound RouteType
-}{
-	Loader:   "loader",
-	Query:    "query",
-	Mutation: "mutation",
-	NotFound: "not-found",
-}
-
 type (
-	GetDefaultHeadElsFunc    func(r *http.Request, app *Vorma, head *headels.HeadEls) error
-	GetHeadElUniqueRulesFunc func(head *headels.HeadEls)
-	GetRootTemplateDataFunc  func(r *http.Request) (map[string]any, error)
+	GetDefaultHeadElsFunc   func(r *http.Request, app *Vorma, head *headels.HeadEls) error
+	GetHeadDedupeKeysFunc   func(head *headels.HeadEls)
+	GetRootTemplateDataFunc func(r *http.Request) (map[string]any, error)
 )
 
 // Vorma is the main runtime struct for a Vorma application.
@@ -41,13 +27,14 @@ type Vorma struct {
 	*wave.Wave
 
 	Config *VormaConfig
+	Log    *slog.Logger
 
 	actionsRouter *ActionsRouter
 	loadersRouter *LoadersRouter
 
-	getDefaultHeadEls    GetDefaultHeadElsFunc
-	getHeadElUniqueRules GetHeadElUniqueRulesFunc
-	getRootTemplateData  GetRootTemplateDataFunc
+	getDefaultHeadEls   GetDefaultHeadElsFunc
+	getHeadDedupeKeys   GetHeadDedupeKeysFunc
+	getRootTemplateData GetRootTemplateDataFunc
 
 	// mu protects mutable state that can be modified during dev rebuilds.
 	mu                 sync.RWMutex
@@ -68,7 +55,7 @@ type Vorma struct {
 	_extraTSCode string
 }
 
-// --- Public Getters (thread-safe, acquire lock) ---
+// --- Public Getters (thread-safe, acquire read lock) ---
 
 func (v *Vorma) ServerAddr() string            { return v._serverAddr }
 func (v *Vorma) LoadersRouter() *LoadersRouter { return v.loadersRouter }
@@ -132,21 +119,53 @@ func (v *Vorma) GetExtraTSCode() string {
 	return v._extraTSCode
 }
 
-// --- Lock Management ---
-// Exposed for build package to acquire lock when making multiple updates.
+// --- LockedVorma Pattern ---
+// LockedVorma provides compile-time safe access to fields that require the lock.
+// Use WithLock to obtain a LockedVorma instance.
 
-func (v *Vorma) Lock()   { v.mu.Lock() }
-func (v *Vorma) Unlock() { v.mu.Unlock() }
+// LockedVorma wraps a Vorma instance and provides access to lock-protected fields.
+// This type can only be obtained via Vorma.WithLock, ensuring the lock is held.
+type LockedVorma struct {
+	v *Vorma
+}
 
-// --- Unsafe Getters/Setters (caller MUST hold lock) ---
+// WithLock acquires the write lock and calls fn with a LockedVorma.
+// The lock is released when fn returns.
+func (v *Vorma) WithLock(fn func(*LockedVorma)) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	fn(&LockedVorma{v: v})
+}
 
-func (v *Vorma) UnsafeGetPaths() map[string]*Path           { return v._paths }
-func (v *Vorma) UnsafeGetBuildID() string                   { return v._buildID }
-func (v *Vorma) UnsafeGetRouteManifestFile() string         { return v._routeManifestFile }
-func (v *Vorma) UnsafeSetPaths(paths map[string]*Path)      { v._paths = paths }
-func (v *Vorma) UnsafeSetBuildID(id string)                 { v._buildID = id }
-func (v *Vorma) UnsafeSetRouteManifestFile(f string)        { v._routeManifestFile = f }
-func (v *Vorma) UnsafeSetRootTemplate(t *template.Template) { v._rootTemplate = t }
+// WithRLock acquires the read lock and calls fn with a LockedVorma.
+// The lock is released when fn returns. Use this for read-only operations.
+func (v *Vorma) WithRLock(fn func(*LockedVorma)) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	fn(&LockedVorma{v: v})
+}
+
+// --- LockedVorma Getters ---
+
+// Vorma returns the underlying Vorma instance for accessing non-lock-protected fields.
+func (l *LockedVorma) Vorma() *Vorma                       { return l.v }
+func (l *LockedVorma) GetPaths() map[string]*Path          { return l.v._paths }
+func (l *LockedVorma) GetBuildID() string                  { return l.v._buildID }
+func (l *LockedVorma) GetRouteManifestFile() string        { return l.v._routeManifestFile }
+func (l *LockedVorma) GetRootTemplate() *template.Template { return l.v._rootTemplate }
+func (l *LockedVorma) GetIsDev() bool                      { return l.v._isDev }
+
+// --- LockedVorma Setters ---
+
+func (l *LockedVorma) SetPaths(paths map[string]*Path)      { l.v._paths = paths }
+func (l *LockedVorma) SetBuildID(id string)                 { l.v._buildID = id }
+func (l *LockedVorma) SetRouteManifestFile(f string)        { l.v._routeManifestFile = f }
+func (l *LockedVorma) SetRootTemplate(t *template.Template) { l.v._rootTemplate = t }
+
+// Routes returns the RouteRegistry for route management operations.
+func (l *LockedVorma) Routes() *RouteRegistry {
+	return &RouteRegistry{vorma: l.v}
+}
 
 // --- Thread-safe Setters (acquire lock internally) ---
 

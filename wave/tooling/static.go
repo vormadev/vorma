@@ -350,7 +350,34 @@ func (b *Builder) WritePublicFileMapTS(outDir string) error {
 	}
 
 	outPath := filepath.Join(outDir, wave.RelPaths.PublicFileMapTSName())
-	return writeFileAtomicBytes(outPath, []byte(sb.String()))
+	if err := writeFileAtomicBytes(outPath, []byte(sb.String())); err != nil {
+		return fmt.Errorf("write TS file: %w", err)
+	}
+
+	// Also write JSON version for Vite plugin dev mode cache invalidation
+	if err := b.writePublicFileMapJSON(outDir, fm); err != nil {
+		return fmt.Errorf("write JSON file: %w", err)
+	}
+
+	return nil
+}
+
+// writePublicFileMapJSON writes the public file map as a JSON file for the Vite plugin
+// to read in dev mode. This allows the plugin to dynamically reload the filemap
+// without restarting Vite.
+func (b *Builder) writePublicFileMapJSON(outDir string, fm wave.FileMap) error {
+	simpleMap := make(map[string]string, len(fm))
+	for k, v := range fm {
+		simpleMap[k] = v.DistName
+	}
+
+	jsonBytes, err := json.MarshalIndent(simpleMap, "", "\t")
+	if err != nil {
+		return fmt.Errorf("marshal JSON: %w", err)
+	}
+
+	outPath := filepath.Join(outDir, wave.RelPaths.PublicFileMapJSONName())
+	return writeFileAtomicBytes(outPath, jsonBytes)
 }
 
 // writeFileAtomic writes data to a file atomically using a randomized temp file

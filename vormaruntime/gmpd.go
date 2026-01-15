@@ -138,7 +138,7 @@ func (v *Vorma) get_ui_data_stage_1(
 				if result.RanTask() && loadersErrs[i] == nil {
 					shouldWarn := reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(loadersData[i])
 					if shouldWarn {
-						Log.Warn("Do not return nil values from loaders unless the underlying type is an empty struct or you are returning an error.",
+						v.Log.Warn("Do not return nil values from loaders unless the underlying type is an empty struct or you are returning an error.",
 							"pattern", matchedPatterns[i])
 					}
 				}
@@ -154,10 +154,14 @@ func (v *Vorma) get_ui_data_stage_1(
 		}
 	}
 
+	// Collect head elements from each response proxy, maintaining index alignment
+	// with _matches. If a proxy is nil, append nil to preserve indices.
 	loadersHeadEls := make([][]*htmlutil.Element, 0, numberOfLoaders)
 	for _, _response_proxy := range _tasks_results.ResponseProxies {
 		if _response_proxy != nil {
 			loadersHeadEls = append(loadersHeadEls, _response_proxy.GetHeadEls().Collect())
+		} else {
+			loadersHeadEls = append(loadersHeadEls, nil)
 		}
 	}
 
@@ -175,11 +179,11 @@ func (v *Vorma) get_ui_data_stage_1(
 		} else {
 			clientMsg = "An error occurred"
 			errToLog = err
-			Log.Warn("Sending generic error to client. Use vorma.LoaderError for custom client messages.")
+			v.Log.Warn("Sending generic error to client. Use vorma.LoaderError for custom client messages.")
 		}
 
 		if errToLog != nil {
-			Log.Error("loader error", "pattern", pattern, "error", errToLog)
+			v.Log.Error("loader error", "pattern", pattern, "error", errToLog)
 		}
 
 		headElsSlice := loadersHeadEls[:derefIdx]
@@ -254,7 +258,7 @@ func (v *Vorma) getUIRouteData(
 	egErr = eg.Wait()
 
 	if egErr != nil {
-		Log.Error("Error in getUIRouteData", "error", egErr.Error())
+		v.Log.Error("Error in getUIRouteData", "error", egErr.Error())
 		res.InternalServerError()
 		return &ui_data_all{didErr: true}
 	}

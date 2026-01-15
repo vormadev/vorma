@@ -35,7 +35,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		if v.GetIsDevMode() {
 			if r.URL.Path == DevReloadRoutesPath {
 				if err := v.ReloadRoutesFromDisk(); err != nil {
-					Log.Error(fmt.Sprintf("route reload failed: %s", err))
+					v.Log.Error(fmt.Sprintf("route reload failed: %s", err))
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -44,7 +44,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			}
 			if r.URL.Path == DevReloadTemplatePath {
 				if err := v.ReloadTemplateFromDisk(); err != nil {
-					Log.Error(fmt.Sprintf("template reload failed: %s", err))
+					v.Log.Error(fmt.Sprintf("template reload failed: %s", err))
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -94,7 +94,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		if isJSON {
 			jsonBytes, err := json.Marshal(routeData)
 			if err != nil {
-				Log.Error(fmt.Sprintf("Error marshalling JSON: %v", err))
+				v.Log.Error(fmt.Sprintf("Error marshalling JSON: %v", err))
 				res.InternalServerError()
 				return
 			}
@@ -129,7 +129,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		})
 
 		if err := eg.Wait(); err != nil {
-			Log.Error(fmt.Sprintf("Error getting route data: %v", err))
+			v.Log.Error(fmt.Sprintf("Error getting route data: %v", err))
 			res.InternalServerError()
 			return
 		}
@@ -142,7 +142,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			rootTemplateData = make(map[string]any)
 		}
 		if err != nil {
-			Log.Error(fmt.Sprintf("Error getting root template data: %v", err))
+			v.Log.Error(fmt.Sprintf("Error getting root template data: %v", err))
 			res.InternalServerError()
 			return
 		}
@@ -169,7 +169,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			}
 			devScripts, err := viteutil.ToDevScripts(opts)
 			if err != nil {
-				Log.Error(fmt.Sprintf("Error getting dev scripts: %v", err))
+				v.Log.Error(fmt.Sprintf("Error getting dev scripts: %v", err))
 				res.InternalServerError()
 				return
 			}
@@ -179,7 +179,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		var buf bytes.Buffer
 		rootTemplate := v.GetRootTemplate()
 		if err := rootTemplate.Execute(&buf, rootTemplateData); err != nil {
-			Log.Error(fmt.Sprintf("Error executing template: %v", err))
+			v.Log.Error(fmt.Sprintf("Error executing template: %v", err))
 			res.InternalServerError()
 			return
 		}

@@ -1,12 +1,14 @@
 package vormabuild
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,6 +34,12 @@ func registerVormaSchema(v *vormaruntime.Vorma) {
 	cfg.FrameworkSchemaExtensions["Vorma"] = Vorma_Schema
 }
 
+func injectFrameworkBuildHooks(v *vormaruntime.Vorma) {
+	cfg := v.Wave.GetParsedConfig()
+	cfg.FrameworkDevBuildHook = fmt.Sprintf("go run ./%s --dev --hook", v.Config.MainBuildEntry)
+	cfg.FrameworkProdBuildHook = fmt.Sprintf("go run ./%s --hook", v.Config.MainBuildEntry)
+}
+
 // Build parses flags and runs the build or dev server.
 func Build(v *vormaruntime.Vorma) {
 	dev := flag.Bool("dev", false, "run in development mode")
@@ -42,6 +50,7 @@ func Build(v *vormaruntime.Vorma) {
 	if *hook {
 		registerVormaSchema(v)
 		injectDefaultWatchPatterns(v)
+		injectFrameworkBuildHooks(v)
 
 		if err := buildInner(v, &buildInnerOptions{isDev: *dev}); err != nil {
 			log.Fatalf("build hook failed: %v", err)
@@ -74,6 +83,7 @@ func Build(v *vormaruntime.Vorma) {
 func build(v *vormaruntime.Vorma, isDev bool) error {
 	registerVormaSchema(v)
 	injectDefaultWatchPatterns(v)
+	injectFrameworkBuildHooks(v)
 
 	if isDev {
 		wave.SetModeToDev()
@@ -122,6 +132,7 @@ func injectDefaultWatchPatterns(v *vormaruntime.Vorma) {
 		cfg.FrameworkIgnoredPatterns = append(cfg.FrameworkIgnoredPatterns,
 			filepath.Join(v.Config.TSGenOutDir, wave.GeneratedTSFileName),
 			filepath.Join(v.Config.TSGenOutDir, wave.PublicFileMapTSName),
+			filepath.Join(v.Config.TSGenOutDir, wave.PublicFileMapJSONName),
 		)
 	}
 }
@@ -132,17 +143,34 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 	// Route definitions file
 	if clientRouteDefsFile := v.Config.ClientRouteDefsFile; clientRouteDefsFile != "" {
 		patterns = append(patterns, wave.WatchedFile{
-			Pattern: clientRouteDefsFile,
+			Pattern:         clientRouteDefsFile,
+			RunOnChangeOnly: true, // Skip standard build - callback handles everything
 			OnChangeHooks: []wave.OnChangeHook{{
-				Callback: func(string) error {
-					return rebuildRoutesOnly(v)
-				},
-				Strategy: &wave.OnChangeStrategy{
-					HttpEndpoint:   vormaruntime.DevReloadRoutesPath,
-					WaitForApp:     true,
-					WaitForVite:    true,
-					ReloadBrowser:  true,
-					FallbackAction: wave.FallbackRestartNoGo,
+				Callback: func(ctx *wave.HookContext) (*wave.RefreshAction, error) {
+					// 1. Process A work: Rebuild artifacts
+					if err := rebuildRoutesOnly(v); err != nil {
+						return nil, err
+					}
+
+					// 2. If the app was stopped (e.g., Go file changed in same batch),
+					// the batch restart will handle everything. Don't try to call endpoints.
+					if ctx.AppStoppedForBatch {
+						return nil, nil
+					}
+
+					// 3. Process A talks to Process B: Call reload endpoint
+					if err := callReloadEndpoint(v, vormaruntime.DevReloadRoutesPath); err != nil {
+						// Fallback: restart without Go recompile
+						v.Log.Warn("route reload endpoint failed, falling back to restart", "error", err)
+						return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
+					}
+
+					// 4. Tell Wave to reload browser after waiting for app/vite
+					return &wave.RefreshAction{
+						ReloadBrowser: true,
+						WaitForApp:    true,
+						WaitForVite:   true,
+					}, nil
 				},
 			}},
 			SkipRebuildingNotification: true,
@@ -155,14 +183,24 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 	if htmlTemplateLocation != "" && privateStaticDir != "" {
 		templatePath := filepath.Join(privateStaticDir, htmlTemplateLocation)
 		patterns = append(patterns, wave.WatchedFile{
-			Pattern: templatePath,
+			Pattern:         templatePath,
+			RunOnChangeOnly: true, // Skip standard build - callback handles everything
 			OnChangeHooks: []wave.OnChangeHook{{
-				Strategy: &wave.OnChangeStrategy{
-					HttpEndpoint:   vormaruntime.DevReloadTemplatePath,
-					WaitForApp:     true,
-					WaitForVite:    true,
-					ReloadBrowser:  true,
-					FallbackAction: wave.FallbackRestartNoGo,
+				Callback: func(ctx *wave.HookContext) (*wave.RefreshAction, error) {
+					if ctx.AppStoppedForBatch {
+						return nil, nil
+					}
+
+					if err := callReloadEndpoint(v, vormaruntime.DevReloadTemplatePath); err != nil {
+						v.Log.Warn("template reload endpoint failed, falling back to restart", "error", err)
+						return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
+					}
+
+					return &wave.RefreshAction{
+						ReloadBrowser: true,
+						WaitForApp:    true,
+						WaitForVite:   true,
+					}, nil
 				},
 			}},
 		})
@@ -180,6 +218,33 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 	return patterns
 }
 
+// callReloadEndpoint makes an HTTP GET request to the running app's reload endpoint.
+func callReloadEndpoint(v *vormaruntime.Vorma, endpoint string) error {
+	port := v.MustGetPort()
+	url := fmt.Sprintf("http://localhost:%d%s", port, endpoint)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("endpoint returned %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 type buildInnerOptions struct {
 	isDev bool
 }
@@ -194,27 +259,27 @@ func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 		if err != nil {
 			return fmt.Errorf("generate build ID: %w", err)
 		}
-		v.Lock()
-		v.UnsafeSetBuildID("dev_" + buildID)
-		v.Unlock()
-		vormaruntime.Log.Info("START building Vorma (DEV)")
+		v.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetBuildID("dev_" + buildID)
+		})
+		v.Log.Info("START building Vorma (DEV)")
 	} else {
-		vormaruntime.Log.Info("START building Vorma (PROD)")
+		v.Log.Info("START building Vorma (PROD)")
 	}
 
 	// Parse client routes
-	paths, err := parseClientRoutes(v.Config)
+	paths, err := parseClientRoutes(v)
 	if err != nil {
 		return fmt.Errorf("parse client routes: %w", err)
 	}
 
 	// Sync routes
-	v.Lock()
-	v.Routes().Sync(paths)
-	v.Unlock()
+	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.Routes().Sync(paths)
+	})
 
 	// Clean Vorma-generated files
-	if err := cleanStaticPublicOutDir(v.Wave.GetStaticPublicOutDir()); err != nil {
+	if err := cleanStaticPublicOutDir(v); err != nil {
 		return fmt.Errorf("clean static public out dir: %w", err)
 	}
 
@@ -227,14 +292,15 @@ func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 	}
 
 	// Write all route artifacts
-	v.Lock()
-	err = writeRouteArtifacts(v)
-	v.Unlock()
-	if err != nil {
-		return fmt.Errorf("write route artifacts: %w", err)
+	var writeErr error
+	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		writeErr = writeRouteArtifacts(l)
+	})
+	if writeErr != nil {
+		return fmt.Errorf("write route artifacts: %w", writeErr)
 	}
 
-	vormaruntime.Log.Info("DONE building Vorma",
+	v.Log.Info("DONE building Vorma",
 		"buildID", v.GetBuildID(),
 		"routes found", len(v.GetPathsSnapshot()),
 		"duration", time.Since(start),
@@ -243,11 +309,13 @@ func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 	return nil
 }
 
-func cleanStaticPublicOutDir(staticPublicOutDir string) error {
+func cleanStaticPublicOutDir(v *vormaruntime.Vorma) error {
+	staticPublicOutDir := v.Wave.GetStaticPublicOutDir()
+
 	fileInfo, err := os.Stat(staticPublicOutDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			vormaruntime.Log.Warn(fmt.Sprintf("static public out dir does not exist: %s", staticPublicOutDir))
+			v.Log.Warn(fmt.Sprintf("static public out dir does not exist: %s", staticPublicOutDir))
 			return nil
 		}
 		return err
@@ -270,7 +338,8 @@ func cleanStaticPublicOutDir(staticPublicOutDir string) error {
 	})
 }
 
-func writePathsToDisk_StageOne(v *vormaruntime.Vorma) error {
+func writePathsToDisk_StageOne(l *vormaruntime.LockedVorma) error {
+	v := l.Vorma()
 	pathsJSONOut := filepath.Join(
 		v.Wave.GetStaticPrivateOutDir(),
 		vormaruntime.VormaOutDirname,
@@ -282,10 +351,10 @@ func writePathsToDisk_StageOne(v *vormaruntime.Vorma) error {
 
 	pathsAsJSON, err := json.MarshalIndent(vormaruntime.PathsFile{
 		Stage:             "one",
-		Paths:             v.UnsafeGetPaths(),
+		Paths:             l.GetPaths(),
 		ClientEntrySrc:    v.Config.ClientEntry,
-		BuildID:           v.UnsafeGetBuildID(),
-		RouteManifestFile: v.UnsafeGetRouteManifestFile(),
+		BuildID:           l.GetBuildID(),
+		RouteManifestFile: l.GetRouteManifestFile(),
 	}, "", "\t")
 	if err != nil {
 		return err
@@ -305,14 +374,25 @@ type RouteCall struct {
 	ErrorKey string
 }
 
+// UnresolvedRouteCall represents a route() call where the module path could not
+// be statically determined. This happens when the module argument is a variable,
+// function call, or other dynamic expression.
+type UnresolvedRouteCall struct {
+	Pattern       string
+	RawModuleExpr string
+	Reason        string
+}
+
 type importTracker struct {
 	imports map[string]string
 }
 
 type routeCallVisitor struct {
-	routeFuncNames map[string]bool
-	routes         *[]RouteCall
-	importTracker  *importTracker
+	routeFuncNames   map[string]bool
+	routes           *[]RouteCall
+	unresolvedRoutes *[]UnresolvedRouteCall
+	importTracker    *importTracker
+	sourceFile       string
 }
 
 func (rv *routeCallVisitor) Enter(n js.INode) js.IVisitor {
@@ -350,10 +430,19 @@ func (rv *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 
 		if len(argsList) > 1 {
 			arg := argsList[1]
+			resolved := false
+
 			if varRef, ok := arg.Value.(*js.Var); ok {
 				if importPath, exists := rv.importTracker.imports[string(varRef.Data)]; exists {
 					route.Module = importPath
+					resolved = true
 				} else {
+					// Variable reference that we can't resolve
+					*rv.unresolvedRoutes = append(*rv.unresolvedRoutes, UnresolvedRouteCall{
+						Pattern:       route.Pattern,
+						RawModuleExpr: string(varRef.Data),
+						Reason:        fmt.Sprintf("variable '%s' is not a tracked import or const string", string(varRef.Data)),
+					})
 					return rv
 				}
 			} else if innerCall, ok := arg.Value.(*js.CallExpr); ok {
@@ -363,18 +452,49 @@ func (rv *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 							unquoted, err := strconv.Unquote(string(strLit.Data))
 							if err == nil {
 								route.Module = unquoted
-							} else {
-								return rv
+								resolved = true
 							}
 						}
 					}
+					if !resolved {
+						// Dynamic import with non-static argument
+						*rv.unresolvedRoutes = append(*rv.unresolvedRoutes, UnresolvedRouteCall{
+							Pattern:       route.Pattern,
+							RawModuleExpr: "import(...)",
+							Reason:        "dynamic import() argument is not a static string",
+						})
+						return rv
+					}
+				} else {
+					// Some other function call as the module argument
+					funcName := "<unknown>"
+					if innerIdent, ok := innerCall.X.(*js.Var); ok {
+						funcName = string(innerIdent.Data)
+					}
+					*rv.unresolvedRoutes = append(*rv.unresolvedRoutes, UnresolvedRouteCall{
+						Pattern:       route.Pattern,
+						RawModuleExpr: funcName + "(...)",
+						Reason:        "module argument is a function call, which cannot be statically analyzed",
+					})
+					return rv
 				}
 			} else {
 				val, ok := extractStringArg(1)
 				if !ok {
+					// Not a string, not a var, not a call - some other expression
+					*rv.unresolvedRoutes = append(*rv.unresolvedRoutes, UnresolvedRouteCall{
+						Pattern:       route.Pattern,
+						RawModuleExpr: "<expression>",
+						Reason:        "module argument is not a static string, variable, or import() call",
+					})
 					return rv
 				}
 				route.Module = val
+				resolved = true
+			}
+
+			if !resolved {
+				return rv
 			}
 		}
 
@@ -392,10 +512,10 @@ func (rv *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 
 func (rv *routeCallVisitor) Exit(n js.INode) {}
 
-func extractRouteCalls(code string) ([]RouteCall, error) {
+func extractRouteCalls(code string, sourceFile string) ([]RouteCall, []UnresolvedRouteCall, error) {
 	parsedAST, err := js.Parse(parse.NewInputString(code), js.Options{})
 	if err != nil {
-		return nil, fmt.Errorf("parse JS/TS: %w", err)
+		return nil, nil, fmt.Errorf("parse JS/TS: %w", err)
 	}
 
 	routeFuncNames := make(map[string]bool)
@@ -436,18 +556,22 @@ func extractRouteCalls(code string) ([]RouteCall, error) {
 	}
 
 	var routes []RouteCall
+	var unresolvedRoutes []UnresolvedRouteCall
+
 	visitor := &routeCallVisitor{
-		routeFuncNames: routeFuncNames,
-		routes:         &routes,
-		importTracker:  tracker,
+		routeFuncNames:   routeFuncNames,
+		routes:           &routes,
+		unresolvedRoutes: &unresolvedRoutes,
+		importTracker:    tracker,
+		sourceFile:       sourceFile,
 	}
 	js.Walk(visitor, parsedAST)
 
-	return routes, nil
+	return routes, unresolvedRoutes, nil
 }
 
-func parseClientRoutes(config *vormaruntime.VormaConfig) (map[string]*vormaruntime.Path, error) {
-	code, err := os.ReadFile(config.ClientRouteDefsFile)
+func parseClientRoutes(v *vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+	code, err := os.ReadFile(v.Config.ClientRouteDefsFile)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
@@ -463,25 +587,38 @@ func parseClientRoutes(config *vormaruntime.VormaConfig) (map[string]*vormarunti
 	})
 	if len(minifyResult.Errors) > 0 {
 		for _, msg := range minifyResult.Errors {
-			vormaruntime.Log.Error(fmt.Sprintf("esbuild error: %s", msg.Text))
+			v.Log.Error(fmt.Sprintf("esbuild error: %s", msg.Text))
 		}
 		return nil, errors.New("esbuild transform failed")
 	}
 
 	transformedCode := importRegex.ReplaceAllString(string(minifyResult.Code), "$1")
 
-	routeCalls, err := extractRouteCalls(transformedCode)
+	routeCalls, unresolvedRoutes, err := extractRouteCalls(transformedCode, v.Config.ClientRouteDefsFile)
 	if err != nil {
 		return nil, fmt.Errorf("extract route calls: %w", err)
 	}
 
+	// Warn about unresolved routes
+	for _, unresolved := range unresolvedRoutes {
+		v.Log.Warn(
+			fmt.Sprintf("Route pattern %q has a module path that cannot be statically resolved", unresolved.Pattern),
+			"file", v.Config.ClientRouteDefsFile,
+			"expression", unresolved.RawModuleExpr,
+			"reason", unresolved.Reason,
+		)
+		v.Log.Warn(
+			"This route will be ignored. Use a static string path or a const variable assigned to a string literal.",
+		)
+	}
+
 	paths := make(map[string]*vormaruntime.Path, len(routeCalls))
-	routesDir := filepath.Dir(config.ClientRouteDefsFile)
+	routesDir := filepath.Dir(v.Config.ClientRouteDefsFile)
 
 	for _, rc := range routeCalls {
 		resolvedModulePath, err := filepath.Rel(".", filepath.Join(routesDir, rc.Module))
 		if err != nil {
-			vormaruntime.Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
+			v.Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
 			resolvedModulePath = rc.Module
 		}
 		modulePath := filepath.ToSlash(resolvedModulePath)

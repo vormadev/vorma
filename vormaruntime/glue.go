@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"mime"
 	"net/http"
 
+	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/validate"
@@ -110,12 +112,13 @@ func (m FormData) TSTypeRaw() string { return "FormData" }
 type VormaAppConfig struct {
 	Wave                 *wave.Wave
 	GetDefaultHeadEls    GetDefaultHeadElsFunc
-	GetHeadElUniqueRules GetHeadElUniqueRulesFunc
+	GetHeadDedupeKeys    GetHeadDedupeKeysFunc
 	GetRootTemplateData  GetRootTemplateDataFunc
 	LoadersRouterOptions LoadersRouterOptions
 	ActionsRouterOptions ActionsRouterOptions
 	AdHocTypes           []*tsgen.AdHocType
 	ExtraTSCode          string
+	Logger               *slog.Logger
 }
 
 type configWrapper struct {
@@ -128,6 +131,12 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v.Wave = o.Wave
 	if v.Wave == nil {
 		panic("Wave instance is required")
+	}
+
+	if o.Logger != nil {
+		v.Log = o.Logger
+	} else {
+		v.Log = colorlog.New("vorma")
 	}
 
 	var wrapper configWrapper
@@ -146,9 +155,9 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 			return nil
 		}
 	}
-	v.getHeadElUniqueRules = o.GetHeadElUniqueRules
-	if v.getHeadElUniqueRules == nil {
-		v.getHeadElUniqueRules = func(h *headels.HeadEls) {}
+	v.getHeadDedupeKeys = o.GetHeadDedupeKeys
+	if v.getHeadDedupeKeys == nil {
+		v.getHeadDedupeKeys = func(h *headels.HeadEls) {}
 	}
 	v.getRootTemplateData = o.GetRootTemplateData
 	if v.getRootTemplateData == nil {
@@ -166,6 +175,9 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 }
 
 func (v *Vorma) validateConfig() {
+	if v.Config.MainBuildEntry == "" {
+		panic("config: Vorma.MainBuildEntry is required")
+	}
 	if v.Config.UIVariant == "" {
 		panic("config: Vorma.UIVariant is required")
 	}

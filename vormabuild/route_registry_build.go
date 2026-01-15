@@ -14,23 +14,24 @@ import (
 
 // writeRouteArtifacts writes all route-related artifacts to disk.
 // Includes manifest, paths JSON, and TypeScript generation.
-// IMPORTANT: Caller must hold v.mu.Lock().
-func writeRouteArtifacts(v *vormaruntime.Vorma) error {
+func writeRouteArtifacts(l *vormaruntime.LockedVorma) error {
+	v := l.Vorma()
+
 	// 1. Generate & Write Manifest
-	manifest := generateRouteManifest(v, v.LoadersRouter().NestedRouter)
+	manifest := generateRouteManifest(l, v.LoadersRouter().NestedRouter)
 	manifestFile, err := writeRouteManifestToDisk(v, manifest)
 	if err != nil {
 		return fmt.Errorf("write route manifest: %w", err)
 	}
-	v.UnsafeSetRouteManifestFile(manifestFile)
+	l.SetRouteManifestFile(manifestFile)
 
 	// 2. Write Paths JSON (Stage One)
-	if err := writePathsToDisk_StageOne(v); err != nil {
+	if err := writePathsToDisk_StageOne(l); err != nil {
 		return fmt.Errorf("write paths JSON: %w", err)
 	}
 
 	// 3. Generate TypeScript
-	if err := WriteGeneratedTS(v); err != nil {
+	if err := WriteGeneratedTS(l); err != nil {
 		return fmt.Errorf("write generated TypeScript: %w", err)
 	}
 
@@ -55,9 +56,9 @@ func writeRouteManifestToDisk(v *vormaruntime.Vorma, manifest map[string]int) (s
 	return filename, nil
 }
 
-func generateRouteManifest(v *vormaruntime.Vorma, nestedRouter *mux.NestedRouter) map[string]int {
+func generateRouteManifest(l *vormaruntime.LockedVorma, nestedRouter *mux.NestedRouter) map[string]int {
 	manifest := make(map[string]int)
-	paths := v.UnsafeGetPaths()
+	paths := l.GetPaths()
 
 	for _, p := range paths {
 		hasServerLoader := 0
