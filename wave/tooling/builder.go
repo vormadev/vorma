@@ -128,8 +128,20 @@ func (b *Builder) Build(opts BuildOpts) error {
 
 func (b *Builder) processFiles(granular bool, isDev bool) error {
 	if !granular {
-		if err := os.RemoveAll(b.cfg.Dist.Static()); err != nil {
-			return fmt.Errorf("remove dist/static: %w", err)
+		// Selective cleanup: remove contents except lock files
+		staticDir := b.cfg.Dist.Static()
+		entries, err := os.ReadDir(staticDir)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("read dist/static: %w", err)
+		}
+		for _, entry := range entries {
+			// Preserve Wave dev lock files
+			if isLockFile(entry.Name()) {
+				continue
+			}
+			if err := os.RemoveAll(filepath.Join(staticDir, entry.Name())); err != nil {
+				return fmt.Errorf("remove %s: %w", entry.Name(), err)
+			}
 		}
 		if err := SetupDistDir(b.cfg); err != nil {
 			return fmt.Errorf("setup dist dir: %w", err)

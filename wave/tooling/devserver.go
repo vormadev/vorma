@@ -63,6 +63,14 @@ func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
 
 	wave.SetModeToDev()
 
+	// Acquire project-level lock before doing anything else.
+	// This prevents multiple wave dev instances on the same project.
+	lock := newDevLock(cfg.Dist.Static())
+	if err := lock.acquire(); err != nil {
+		return fmt.Errorf("cannot start dev server: %w", err)
+	}
+	defer lock.release()
+
 	s := &server{
 		cfg:       cfg,
 		log:       log,
