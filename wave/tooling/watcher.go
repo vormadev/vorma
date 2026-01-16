@@ -42,8 +42,9 @@ type Watcher struct {
 	defaultWatched []wave.WatchedFile
 
 	// Absolute watch root for reference
-	absWatchRoot    string
-	absPublicStatic string
+	absWatchRoot     string
+	absPublicStatic  string
+	absPrivateStatic string
 }
 
 // NewWatcher creates a new file watcher
@@ -63,20 +64,26 @@ func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 	}
 
 	absPublicStatic := ""
+	absPrivateStatic := ""
 	if cfg.UsingBrowser() {
 		abs, err := filepath.Abs(filepath.Clean(cfg.Core.StaticAssetDirs.Public))
 		if err == nil {
 			absPublicStatic = filepath.ToSlash(abs)
 		}
+		abs, err = filepath.Abs(filepath.Clean(cfg.Core.StaticAssetDirs.Private))
+		if err == nil {
+			absPrivateStatic = filepath.ToSlash(abs)
+		}
 	}
 
 	w := &Watcher{
-		cfg:             cfg,
-		log:             log,
-		fsWatch:         fsWatch,
-		absWatchRoot:    filepath.ToSlash(absWatchRoot),
-		absPublicStatic: absPublicStatic,
-		matchCache:      lru.NewCache[string, bool](matchCacheMaxSize),
+		cfg:              cfg,
+		log:              log,
+		fsWatch:          fsWatch,
+		absWatchRoot:     filepath.ToSlash(absWatchRoot),
+		absPublicStatic:  absPublicStatic,
+		absPrivateStatic: absPrivateStatic,
+		matchCache:       lru.NewCache[string, bool](matchCacheMaxSize),
 	}
 
 	w.setupPatterns()
@@ -106,6 +113,7 @@ func (w *Watcher) setupPatterns() {
 	// Only add static asset patterns if not in server-only mode
 	if w.cfg.UsingBrowser() {
 		publicStatic := filepath.Clean(w.cfg.Core.StaticAssetDirs.Public)
+		privateStatic := filepath.Clean(w.cfg.Core.StaticAssetDirs.Private)
 
 		nohashDir := w.norm(filepath.Join(publicStatic, wave.NohashDirname))
 		w.ignoredDirs = append(w.ignoredDirs, nohashDir)
@@ -122,6 +130,11 @@ func (w *Watcher) setupPatterns() {
 				Pattern: w.norm(publicStatic) + "/**/*",
 			},
 		}
+
+		// Private static files: Wave handles processing and triggers browser reload.
+		w.defaultWatched = append(w.defaultWatched, wave.WatchedFile{
+			Pattern: w.norm(privateStatic) + "/**/*",
+		})
 	}
 
 	// Add framework-injected watch patterns
@@ -360,7 +373,7 @@ func (w *Watcher) FindWatchedFile(path string) *wave.WatchedFile {
 //   - Restart app: yes if RestartApp=true
 //   - Run standard build: yes if RunOnChangeOnly=false
 //   - Show notification: yes if SkipRebuildingNotification=false
-//   - Full reload (vs revalidate): yes if OnlyRunClientDefinedRevalidateFunc=false
+//   - Revalidate only (vs full reload): yes if OnlyRunClientDefinedRevalidateFunc=true (trump flag)
 //
 // Hooks are concatenated: framework hooks first, then user hooks.
 func mergeWatchedFiles(matches []*wave.WatchedFile) *wave.WatchedFile {
@@ -377,10 +390,12 @@ func mergeWatchedFiles(matches []*wave.WatchedFile) *wave.WatchedFile {
 		RestartApp:        false,
 
 		// These mean "skip work" when true - start true, any false wins
-		TreatAsNonGo:                       true,
-		RunOnChangeOnly:                    true,
-		SkipRebuildingNotification:         true,
-		OnlyRunClientDefinedRevalidateFunc: true,
+		TreatAsNonGo:               true,
+		RunOnChangeOnly:            true,
+		SkipRebuildingNotification: true,
+
+		// Trump flag: user explicitly overriding browser behavior - any true wins
+		OnlyRunClientDefinedRevalidateFunc: false,
 	}
 
 	var allHooks []wave.OnChangeHook
@@ -404,8 +419,10 @@ func mergeWatchedFiles(matches []*wave.WatchedFile) *wave.WatchedFile {
 		if !wf.SkipRebuildingNotification {
 			merged.SkipRebuildingNotification = false
 		}
-		if !wf.OnlyRunClientDefinedRevalidateFunc {
-			merged.OnlyRunClientDefinedRevalidateFunc = false
+
+		// Trump flag: user explicitly overriding browser behavior
+		if wf.OnlyRunClientDefinedRevalidateFunc {
+			merged.OnlyRunClientDefinedRevalidateFunc = true
 		}
 
 		allHooks = append(allHooks, wf.OnChangeHooks...)
@@ -424,6 +441,15 @@ func (w *Watcher) IsPublicStaticFile(path string) bool {
 	}
 	np := w.norm(path)
 	return strings.HasPrefix(np, w.absPublicStatic+"/")
+}
+
+// IsPrivateStaticFile checks if a path is within the private static directory
+func (w *Watcher) IsPrivateStaticFile(path string) bool {
+	if w.absPrivateStatic == "" {
+		return false
+	}
+	np := w.norm(path)
+	return strings.HasPrefix(np, w.absPrivateStatic+"/")
 }
 
 // Debouncer batches rapid file events and ensures callbacks don't overlap.

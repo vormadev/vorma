@@ -152,12 +152,12 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 	}()
 
 	// Process files with worker pool
-	const numWorkers = 4
+	const numWorkers = 32
 	var wg sync.WaitGroup
 	var firstErr error
 	var errOnce sync.Once
 
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

@@ -21,8 +21,23 @@ func (v *Vorma) routes() *RouteRegistry {
 // Caller must hold v.mu.Lock().
 func (r *RouteRegistry) Sync(paths map[string]*Path) {
 	v := r.vorma
+
+	// Defensive nil check: if paths is nil (e.g., malformed JSON file),
+	// initialize to empty map to prevent nil map panics in mergeServerRoutes.
+	if paths == nil {
+		paths = make(map[string]*Path)
+	}
+
 	v._paths = paths
 	r.mergeServerRoutes()
+
+	// Clear the gmpd cache since paths have changed.
+	// Use Range+Delete rather than reassigning the sync.Map variable
+	// to avoid a data race with concurrent Load/Store operations.
+	gmpdCache.Range(func(key, _ any) bool {
+		gmpdCache.Delete(key)
+		return true
+	})
 
 	patterns := make([]string, 0, len(v._paths))
 	for pattern := range v._paths {

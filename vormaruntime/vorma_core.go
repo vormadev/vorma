@@ -44,7 +44,7 @@ type Vorma struct {
 	_clientEntryOut    string
 	_clientEntryDeps   []string
 	_buildID           string
-	_depToCSSBundleMap map[string]string
+	_depToCSSBundleMap map[string][]string
 	_rootTemplate      *template.Template
 	_privateFS         fs.FS
 	_routeManifestFile string
@@ -91,7 +91,7 @@ func (v *Vorma) GetClientEntryDeps() []string {
 	return v._clientEntryDeps
 }
 
-func (v *Vorma) GetDepToCSSBundleMap() map[string]string {
+func (v *Vorma) GetDepToCSSBundleMap() map[string][]string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._depToCSSBundleMap

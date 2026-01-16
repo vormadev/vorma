@@ -82,6 +82,19 @@ func main() {
 	})
 
 	repoconcat.Concat(repoconcat.Config{
+		Output: OUTDIR + "VORMA_FRONTEND.txt",
+		Include: []string{
+			"internal/framework/_typescript/*",
+		},
+		Exclude: []string{
+			"**/*.test.ts",
+			"**/*.bench.ts",
+			"**/*_test.go",
+			"**/bench.txt",
+		},
+	})
+
+	repoconcat.Concat(repoconcat.Config{
 		Output:  OUTDIR + "BOOTSTRAPPER.txt",
 		Include: []string{"bootstrap"},
 		Exclude: []string{"**/*.test.ts", "**/*.bench.ts", "**/*_test.go", "**/bench.txt"},

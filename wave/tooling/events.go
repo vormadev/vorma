@@ -2,7 +2,6 @@ package tooling
 
 import (
 	"encoding/base64"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -22,6 +21,7 @@ const (
 	fileTypeCriticalCSS
 	fileTypeNormalCSS
 	fileTypePublicStatic
+	fileTypePrivateStatic
 )
 
 type classifiedEvent struct {
@@ -33,18 +33,16 @@ type classifiedEvent struct {
 }
 
 // workSet collects all work to be done in response to file changes.
-// This separates "what to do" from "how to coordinate it."
 type workSet struct {
-	// Build phase
-	compileGo          bool
-	buildCriticalCSS   bool
-	buildNormalCSS     bool
-	processPublicFiles bool
+	// Build phase (determined by file type, union semantics)
+	compileGo           bool
+	buildCriticalCSS    bool
+	buildNormalCSS      bool
+	processPublicFiles  bool
+	processPrivateFiles bool
+	restartApp          bool
 
-	// App phase
-	restartApp bool
-
-	// Browser phase
+	// Browser behavior (determined in resolve based on work + preferences)
 	reloadBrowser  bool
 	hotReloadCSS   bool
 	invalidateVite bool
@@ -53,11 +51,11 @@ type workSet struct {
 	waitForVite    bool
 	cycleVite      bool
 
-	// Notification
-	showRebuilding bool
+	// User preferences (collected from watchedFiles)
+	preferRevalidate bool
 }
 
-// addFromRefreshAction merges a RefreshAction into the work set.
+// addFromRefreshAction merges a RefreshAction from a callback into the work set.
 func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
 	if action.TriggerRestart {
 		w.restartApp = true
@@ -76,43 +74,39 @@ func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
 	}
 }
 
-// addImplicitWork adds work implied by a file type and its watched config.
+// addImplicitWork adds build work implied by a file type.
 func (w *workSet) addImplicitWork(c classifiedEvent) {
 	wf := c.watchedFile
 	if wf != nil && wf.RunOnChangeOnly {
-		return // Callbacks handle everything
+		return
+	}
+
+	if wf != nil && wf.OnlyRunClientDefinedRevalidateFunc {
+		w.preferRevalidate = true
 	}
 
 	switch c.fileType {
 	case fileTypeGo:
 		w.compileGo = true
 		w.restartApp = true
-		w.reloadBrowser = true
-		w.waitForApp = true
-		w.waitForVite = true
 
 	case fileTypeCriticalCSS:
 		w.buildCriticalCSS = true
-		if wf == nil || !needsHardReload(wf) {
-			w.hotReloadCSS = true
-		} else {
+		if wf != nil && needsHardReload(wf) {
 			w.restartApp = true
-			w.reloadBrowser = true
 		}
 
 	case fileTypeNormalCSS:
 		w.buildNormalCSS = true
-		if wf == nil || !needsHardReload(wf) {
-			w.hotReloadCSS = true
-		} else {
+		if wf != nil && needsHardReload(wf) {
 			w.restartApp = true
-			w.reloadBrowser = true
 		}
 
 	case fileTypePublicStatic:
 		w.processPublicFiles = true
-		w.invalidateVite = true
-		// Fallback to reloadBrowser handled in executeBrowserPhase if not using Vite
+
+	case fileTypePrivateStatic:
+		w.processPrivateFiles = true
 
 	case fileTypeOther:
 		if wf != nil {
@@ -121,47 +115,63 @@ func (w *workSet) addImplicitWork(c classifiedEvent) {
 			}
 			if wf.RestartApp || wf.RecompileGoBinary {
 				w.restartApp = true
-				w.reloadBrowser = true
-				w.waitForApp = true
-				w.waitForVite = true
 			}
-			if wf.OnlyRunClientDefinedRevalidateFunc {
-				w.revalidate = true
-				w.waitForApp = true
-				w.waitForVite = true
-			}
-		}
-	}
-
-	// Notification logic
-	if wf == nil || !wf.SkipRebuildingNotification {
-		if c.fileType != fileTypeCriticalCSS && c.fileType != fileTypeNormalCSS {
-			w.showRebuilding = true
 		}
 	}
 }
 
-// resolve handles mutual exclusivity and subsumption.
-func (w *workSet) resolve() {
-	// Full browser reload subsumes CSS hot reload and revalidate
-	if w.reloadBrowser {
-		w.hotReloadCSS = false
-		w.revalidate = false
-		w.invalidateVite = false
-	}
-
-	// Restart implies wait for app and full reload
-	if w.restartApp {
-		w.waitForApp = true
-		w.reloadBrowser = true
-		w.hotReloadCSS = false
-		w.revalidate = false
-	}
-
-	// Go recompile implies restart
+// resolve determines browser behavior based on build work and user preferences.
+func (w *workSet) resolve(usingVite bool) {
 	if w.compileGo {
 		w.restartApp = true
 	}
+	w.determineBrowserBehavior(usingVite)
+}
+
+func (w *workSet) determineBrowserBehavior(usingVite bool) {
+	if w.restartApp {
+		w.reloadBrowser = true
+		w.waitForApp = true
+		w.waitForVite = usingVite
+		return
+	}
+
+	// User preference takes precedence over automatic optimizations
+	if w.preferRevalidate {
+		w.revalidate = true
+		w.waitForApp = true
+		w.waitForVite = usingVite
+		return
+	}
+
+	cssWork := w.buildCriticalCSS || w.buildNormalCSS
+	cssOnly := cssWork && !w.processPublicFiles && !w.processPrivateFiles
+
+	if cssOnly {
+		w.hotReloadCSS = true
+		return
+	}
+
+	if w.processPublicFiles {
+		w.invalidateVite = true
+		return
+	}
+
+	if w.processPrivateFiles || cssWork {
+		w.reloadBrowser = true
+		w.waitForApp = true
+		w.waitForVite = usingVite
+		return
+	}
+}
+
+// eventWithHooks pairs a classified event with its sorted hooks
+type eventWithHooks struct {
+	classified      classifiedEvent
+	hooks           *wave.SortedHooks
+	hookCtx         *wave.HookContext
+	runOnChangeOnly bool
+	needsHardReload bool
 }
 
 func (s *server) runWatcher() {
@@ -184,6 +194,15 @@ func (s *server) runWatcher() {
 }
 
 func (s *server) processEvents(events []fsnotify.Event) {
+	s.mu.Lock()
+	watcher := s.watcher
+	builder := s.builder
+	s.mu.Unlock()
+
+	if watcher == nil || builder == nil {
+		return
+	}
+
 	// Deduplicate events by path
 	eventMap := make(map[string]fsnotify.Event)
 	for _, evt := range events {
@@ -204,17 +223,16 @@ func (s *server) processEvents(events []fsnotify.Event) {
 		info, _ := os.Stat(evt.Name)
 		if info != nil && info.IsDir() {
 			if evt.Has(fsnotify.Create) || evt.Has(fsnotify.Rename) {
-				s.watcher.AddDir(evt.Name)
+				watcher.AddDir(evt.Name)
 			}
 			continue
 		}
 
-		c := s.classifyEvent(evt)
+		c := s.classifyEventWithWatcherAndBuilder(evt, watcher, builder)
 		if c.ignored || c.chmodOnly {
 			continue
 		}
 
-		// Dedupe by pattern
 		patternKey := ""
 		if c.watchedFile != nil {
 			patternKey = c.watchedFile.Pattern
@@ -231,59 +249,179 @@ func (s *server) processEvents(events []fsnotify.Event) {
 		return
 	}
 
-	// 2. Run hooks and collect work
-	work := &workSet{}
-	var allActions []wave.RefreshAction
-
-	// Determine if we need to stop app before hooks (for hard reload batches)
-	needsAppStop := false
+	// 2. Determine if we should show rebuilding overlay - check IMMEDIATELY
+	showRebuilding := false
 	for _, c := range classified {
-		if c.fileType == fileTypeGo || needsHardReload(c.watchedFile) {
-			needsAppStop = true
-			break
+		if c.fileType != fileTypeCriticalCSS && c.fileType != fileTypeNormalCSS {
+			if c.watchedFile == nil || !c.watchedFile.SkipRebuildingNotification {
+				showRebuilding = true
+				break
+			}
 		}
 	}
-
-	// Show rebuilding overlay if any event requires it
-	for _, c := range classified {
-		if c.fileType == fileTypeCriticalCSS || c.fileType == fileTypeNormalCSS {
-			continue
-		}
-		if c.watchedFile == nil || !c.watchedFile.SkipRebuildingNotification {
-			work.showRebuilding = true
-			break
-		}
-	}
-
-	if work.showRebuilding {
+	if showRebuilding {
 		s.broadcastRebuilding()
 	}
 
-	// Stop app before hooks if needed
-	appStoppedForBatch := false
-	if needsAppStop && len(classified) > 1 {
+	// 3. Prepare events with hooks
+	work := &workSet{}
+	eventsWithHooks := make([]eventWithHooks, 0, len(classified))
+	isBatch := len(classified) > 1
+	batchNeedsAppStop := false
+
+	for _, c := range classified {
+		s.log.Info("[watcher]", "op", c.event.Op.String(), "file", c.event.Name)
+
+		wf := c.watchedFile
+		if wf == nil {
+			wf = &wave.WatchedFile{}
+		}
+		if wf.SortedHooks == nil {
+			wf.Sort()
+		}
+		if wf.SortedHooks == nil {
+			wf.SortedHooks = &wave.SortedHooks{}
+		}
+
+		eventNeedsHardReload := c.fileType == fileTypeGo || needsHardReload(wf)
+		if eventNeedsHardReload {
+			batchNeedsAppStop = true
+		}
+
+		eventsWithHooks = append(eventsWithHooks, eventWithHooks{
+			classified:      c,
+			hooks:           wf.SortedHooks,
+			runOnChangeOnly: wf.RunOnChangeOnly,
+			needsHardReload: eventNeedsHardReload,
+			hookCtx: &wave.HookContext{
+				FilePath:           c.event.Name,
+				AppStoppedForBatch: false,
+			},
+		})
+	}
+
+	// 4. For batches with hard reload, stop app upfront (safer for batch processing)
+	if isBatch && batchNeedsAppStop {
 		s.log.Info("Stopping app for batch rebuild")
 		if err := s.stopApp(); err != nil {
-			panic(fmt.Sprintf("failed to stop app: %v", err))
+			s.log.Error("Failed to stop app", "error", err)
 		}
-		appStoppedForBatch = true
+		for i := range eventsWithHooks {
+			eventsWithHooks[i].hookCtx.AppStoppedForBatch = true
+		}
 	}
 
-	// Run hooks for each event
-	for _, c := range classified {
-		s.log.Info("File changed", "op", c.event.Op.String(), "file", c.event.Name)
-		actions, err := s.runHooksForEvent(c, appStoppedForBatch)
+	// 5. Process events - for batches, process all then reload once
+	//    For single events, use the original parallel kill + build approach
+	if isBatch {
+		s.processBatchedEvents(eventsWithHooks, work, watcher)
+	} else {
+		s.processSingleEvent(eventsWithHooks[0], work, watcher)
+	}
+
+	watcher.RemoveStale()
+}
+
+// processSingleEvent handles a single file change with maximum parallelism:
+// app termination runs in parallel with hooks and build (matching old behavior)
+func (s *server) processSingleEvent(ewh eventWithHooks, work *workSet, watcher *Watcher) {
+	// Fire no-wait hooks immediately
+	s.fireNoWaitHooks(ewh, watcher)
+
+	// Start app termination in parallel if needed
+	var killEg errgroup.Group
+	if ewh.needsHardReload {
+		killEg.Go(func() error {
+			s.log.Info("Terminating running app")
+			return s.stopApp()
+		})
+	}
+
+	// Run pre hooks
+	preActions, err := s.runPreHooks(ewh, watcher)
+	if err != nil {
+		s.log.Error("Pre-hook execution failed", "error", err)
+	}
+
+	// Check for restart request from pre hooks
+	for _, action := range preActions {
+		if action.TriggerRestart {
+			killEg.Wait()
+			if action.RecompileGo {
+				s.triggerRestart()
+			} else {
+				s.triggerRestartNoGo()
+			}
+			return
+		}
+		work.addFromRefreshAction(action)
+	}
+
+	// Add implicit work
+	work.addImplicitWork(ewh.classified)
+
+	// Check for RunOnChangeOnly - if so, we're done
+	if ewh.runOnChangeOnly {
+		s.log.Info("RunOnChangeOnly: skipping build phase")
+		killEg.Wait()
+		return
+	}
+
+	// Resolve browser behavior
+	work.resolve(s.cfg.UsingVite())
+
+	// Run build AND concurrent hooks in parallel (both also parallel with app kill)
+	var buildAndConcurrentEg errgroup.Group
+	var concurrentActions []wave.RefreshAction
+	var concurrentActionsMu sync.Mutex
+
+	buildAndConcurrentEg.Go(func() error {
+		s.executeBuildPhase(work)
+		return nil
+	})
+
+	buildAndConcurrentEg.Go(func() error {
+		actions, err := s.runConcurrentHooks(ewh, watcher)
 		if err != nil {
-			s.log.Error("Hook execution failed", "error", err)
+			s.log.Error("Concurrent hook execution failed", "error", err)
 		}
-		allActions = append(allActions, actions...)
+		if len(actions) > 0 {
+			concurrentActionsMu.Lock()
+			concurrentActions = append(concurrentActions, actions...)
+			concurrentActionsMu.Unlock()
+		}
+		return nil
+	})
 
-		// Add implicit work from file type
-		work.addImplicitWork(c)
+	// Wait for build and concurrent hooks
+	buildAndConcurrentEg.Wait()
+
+	// Process concurrent hook actions
+	for _, action := range concurrentActions {
+		if action.TriggerRestart {
+			killEg.Wait()
+			if action.RecompileGo {
+				s.triggerRestart()
+			} else {
+				s.triggerRestartNoGo()
+			}
+			return
+		}
+		work.addFromRefreshAction(action)
 	}
 
-	// Check if any callback requested a full restart cycle (bail out)
-	for _, action := range allActions {
+	// Wait for app termination to complete before post hooks
+	if err := killEg.Wait(); err != nil {
+		s.log.Error("Failed to terminate app", "error", err)
+	}
+
+	// Run post hooks (after build, after app stopped)
+	postActions, err := s.runPostHooks(ewh, watcher)
+	if err != nil {
+		s.log.Error("Post-hook execution failed", "error", err)
+	}
+
+	for _, action := range postActions {
 		if action.TriggerRestart {
 			if action.RecompileGo {
 				s.triggerRestart()
@@ -295,52 +433,145 @@ func (s *server) processEvents(events []fsnotify.Event) {
 		work.addFromRefreshAction(action)
 	}
 
-	// 3. Resolve mutual exclusivity
-	work.resolve()
-
-	// 4. Stop app if needed before build
-	needsStop := work.compileGo || work.restartApp
-	if needsStop && !appStoppedForBatch {
-		s.log.Info("Stopping app")
-		if err := s.stopApp(); err != nil {
-			panic(fmt.Sprintf("failed to stop app: %v", err))
-		}
-	}
-
-	// 5. Execute build phase
-	s.executeBuildPhase(work)
-
-	// 6. Start app if needed
+	// Restart app if needed
 	if work.restartApp {
+		s.log.Info("Restarting app")
 		s.startApp()
 	}
 
-	// 7. Execute browser phase
+	// Browser refresh
 	s.executeBrowserPhase(work)
-
-	s.watcher.RemoveStale()
 }
 
-func (s *server) runHooksForEvent(c classifiedEvent, appStoppedForBatch bool) ([]wave.RefreshAction, error) {
-	wf := c.watchedFile
-	if wf == nil {
-		wf = &wave.WatchedFile{}
-	}
-	if wf.SortedHooks == nil {
-		wf.SortedHooks = &wave.SortedHooks{}
+// processBatchedEvents handles multiple file changes - app already stopped upfront
+func (s *server) processBatchedEvents(eventsWithHooks []eventWithHooks, work *workSet, watcher *Watcher) {
+	// Fire all no-wait hooks
+	for _, ewh := range eventsWithHooks {
+		s.fireNoWaitHooks(ewh, watcher)
 	}
 
-	sorted := wf.SortedHooks
-	hookCtx := &wave.HookContext{
-		FilePath:           c.event.Name,
-		AppStoppedForBatch: appStoppedForBatch,
+	// Run all pre hooks
+	var allPreActions []wave.RefreshAction
+	for _, ewh := range eventsWithHooks {
+		actions, err := s.runPreHooks(ewh, watcher)
+		if err != nil {
+			s.log.Error("Pre-hook execution failed", "error", err)
+		}
+		allPreActions = append(allPreActions, actions...)
+		work.addImplicitWork(ewh.classified)
 	}
 
-	var actions []wave.RefreshAction
+	// Check for restart request from pre hooks
+	for _, action := range allPreActions {
+		if action.TriggerRestart {
+			if action.RecompileGo {
+				s.triggerRestart()
+			} else {
+				s.triggerRestartNoGo()
+			}
+			return
+		}
+		work.addFromRefreshAction(action)
+	}
 
-	// Fire-and-forget hooks
-	for _, hook := range sorted.ConcurrentNoWait {
-		if s.watcher.IsIgnored(c.event.Name, hook.Exclude) {
+	// Check if ALL events are RunOnChangeOnly
+	allRunOnChangeOnly := true
+	for _, ewh := range eventsWithHooks {
+		if !ewh.runOnChangeOnly {
+			allRunOnChangeOnly = false
+			break
+		}
+	}
+	if allRunOnChangeOnly {
+		s.log.Info("All events are RunOnChangeOnly, skipping build phase")
+		return
+	}
+
+	// Resolve browser behavior
+	work.resolve(s.cfg.UsingVite())
+
+	// Run build AND all concurrent hooks in parallel
+	var buildAndConcurrentEg errgroup.Group
+	var concurrentActions []wave.RefreshAction
+	var concurrentActionsMu sync.Mutex
+
+	buildAndConcurrentEg.Go(func() error {
+		s.executeBuildPhase(work)
+		return nil
+	})
+
+	for _, ewh := range eventsWithHooks {
+		if ewh.runOnChangeOnly {
+			continue
+		}
+		ewh := ewh
+		buildAndConcurrentEg.Go(func() error {
+			actions, err := s.runConcurrentHooks(ewh, watcher)
+			if err != nil {
+				s.log.Error("Concurrent hook execution failed", "error", err)
+			}
+			if len(actions) > 0 {
+				concurrentActionsMu.Lock()
+				concurrentActions = append(concurrentActions, actions...)
+				concurrentActionsMu.Unlock()
+			}
+			return nil
+		})
+	}
+
+	buildAndConcurrentEg.Wait()
+
+	// Process concurrent hook actions
+	for _, action := range concurrentActions {
+		if action.TriggerRestart {
+			if action.RecompileGo {
+				s.triggerRestart()
+			} else {
+				s.triggerRestartNoGo()
+			}
+			return
+		}
+		work.addFromRefreshAction(action)
+	}
+
+	// Run all post hooks
+	var allPostActions []wave.RefreshAction
+	for _, ewh := range eventsWithHooks {
+		if ewh.runOnChangeOnly {
+			continue
+		}
+		actions, err := s.runPostHooks(ewh, watcher)
+		if err != nil {
+			s.log.Error("Post-hook execution failed", "error", err)
+		}
+		allPostActions = append(allPostActions, actions...)
+	}
+
+	for _, action := range allPostActions {
+		if action.TriggerRestart {
+			if action.RecompileGo {
+				s.triggerRestart()
+			} else {
+				s.triggerRestartNoGo()
+			}
+			return
+		}
+		work.addFromRefreshAction(action)
+	}
+
+	// Restart app if needed
+	if work.restartApp {
+		s.log.Info("Restarting app")
+		s.startApp()
+	}
+
+	// Single browser refresh for entire batch
+	s.executeBrowserPhase(work)
+}
+
+func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
+	for _, hook := range ewh.hooks.ConcurrentNoWait {
+		if watcher.IsIgnored(ewh.classified.event.Name, hook.Exclude) {
 			continue
 		}
 		if hook.Callback != nil {
@@ -348,7 +579,7 @@ func (s *server) runHooksForEvent(c classifiedEvent, appStoppedForBatch bool) ([
 				if _, err := cb(ctx); err != nil {
 					s.log.Warn("concurrent-no-wait callback failed", "error", err)
 				}
-			}(hook.Callback, hookCtx)
+			}(hook.Callback, ewh.hookCtx)
 		}
 		cmd := s.resolveCmd(hook.Cmd)
 		if cmd != "" {
@@ -359,14 +590,17 @@ func (s *server) runHooksForEvent(c classifiedEvent, appStoppedForBatch bool) ([
 			}(cmd)
 		}
 	}
+}
 
-	// Pre hooks
-	for _, hook := range sorted.Pre {
-		if s.watcher.IsIgnored(c.event.Name, hook.Exclude) {
+func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
+	var actions []wave.RefreshAction
+
+	for _, hook := range ewh.hooks.Pre {
+		if watcher.IsIgnored(ewh.classified.event.Name, hook.Exclude) {
 			continue
 		}
 		if hook.Callback != nil {
-			action, err := hook.Callback(hookCtx)
+			action, err := hook.Callback(ewh.hookCtx)
 			if err != nil {
 				return actions, err
 			}
@@ -382,18 +616,26 @@ func (s *server) runHooksForEvent(c classifiedEvent, appStoppedForBatch bool) ([
 		}
 	}
 
-	// Concurrent hooks
-	var eg errgroup.Group
-	var actionsMu sync.Mutex
+	return actions, nil
+}
 
-	for _, hook := range sorted.Concurrent {
-		if s.watcher.IsIgnored(c.event.Name, hook.Exclude) {
+func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
+	if len(ewh.hooks.Concurrent) == 0 {
+		return nil, nil
+	}
+
+	var actions []wave.RefreshAction
+	var actionsMu sync.Mutex
+	var eg errgroup.Group
+
+	for _, hook := range ewh.hooks.Concurrent {
+		if watcher.IsIgnored(ewh.classified.event.Name, hook.Exclude) {
 			continue
 		}
 		h := hook
 		eg.Go(func() error {
 			if h.Callback != nil {
-				action, err := h.Callback(hookCtx)
+				action, err := h.Callback(ewh.hookCtx)
 				if err != nil {
 					return err
 				}
@@ -411,17 +653,19 @@ func (s *server) runHooksForEvent(c classifiedEvent, appStoppedForBatch bool) ([
 		})
 	}
 
-	if err := eg.Wait(); err != nil {
-		return actions, err
-	}
+	err := eg.Wait()
+	return actions, err
+}
 
-	// Post hooks
-	for _, hook := range sorted.Post {
-		if s.watcher.IsIgnored(c.event.Name, hook.Exclude) {
+func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
+	var actions []wave.RefreshAction
+
+	for _, hook := range ewh.hooks.Post {
+		if watcher.IsIgnored(ewh.classified.event.Name, hook.Exclude) {
 			continue
 		}
 		if hook.Callback != nil {
-			action, err := hook.Callback(hookCtx)
+			action, err := hook.Callback(ewh.hookCtx)
 			if err != nil {
 				return actions, err
 			}
@@ -441,36 +685,80 @@ func (s *server) runHooksForEvent(c classifiedEvent, appStoppedForBatch bool) ([
 }
 
 func (s *server) executeBuildPhase(work *workSet) {
-	// Compile Go (once for batch)
+	builder := s.getBuilder()
+	if builder == nil {
+		s.log.Error("Builder is nil during build phase")
+		return
+	}
+
+	var g errgroup.Group
+
 	if work.compileGo {
-		s.log.Info("Compiling Go binary")
-		if err := s.builder.CompileGoOnly(true); err != nil {
-			s.log.Error("Go compilation failed", "error", err)
-		}
-	}
-
-	// Build CSS
-	if work.buildCriticalCSS {
-		if err := s.builder.BuildCriticalCSS(true); err != nil {
-			s.log.Error("Critical CSS build failed", "error", err)
-		}
-	}
-	if work.buildNormalCSS {
-		if err := s.builder.BuildNormalCSS(true); err != nil {
-			s.log.Error("Normal CSS build failed", "error", err)
-		}
-	}
-
-	// Process public files
-	if work.processPublicFiles {
-		if err := s.builder.ProcessPublicFilesOnly(); err != nil {
-			s.log.Error("Public files processing failed", "error", err)
-		}
-		if s.cfg.FrameworkPublicFileMapOutDir != "" {
-			if err := s.builder.WritePublicFileMapTS(s.cfg.FrameworkPublicFileMapOutDir); err != nil {
-				s.log.Error("Write public file map TS failed", "error", err)
+		g.Go(func() error {
+			if err := builder.CompileGoOnly(true); err != nil {
+				s.log.Error("Go compilation failed", "error", err)
+				return err
 			}
-		}
+			return nil
+		})
+	}
+
+	needsFileProcessing := work.processPublicFiles || work.processPrivateFiles ||
+		work.buildCriticalCSS || work.buildNormalCSS
+
+	if needsFileProcessing {
+		g.Go(func() error {
+			if work.processPublicFiles {
+				if err := builder.ProcessPublicFilesOnly(); err != nil {
+					s.log.Error("Public files processing failed", "error", err)
+					return err
+				}
+				if s.cfg.FrameworkPublicFileMapOutDir != "" {
+					if err := builder.WritePublicFileMapTS(s.cfg.FrameworkPublicFileMapOutDir); err != nil {
+						s.log.Error("Write public file map TS failed", "error", err)
+						return err
+					}
+				}
+			}
+
+			var innerG errgroup.Group
+
+			if work.processPrivateFiles {
+				innerG.Go(func() error {
+					if err := builder.ProcessPrivateFilesOnly(); err != nil {
+						s.log.Error("Private files processing failed", "error", err)
+						return err
+					}
+					return nil
+				})
+			}
+
+			if work.buildCriticalCSS {
+				innerG.Go(func() error {
+					if err := builder.BuildCriticalCSS(true); err != nil {
+						s.log.Error("Critical CSS build failed", "error", err)
+						return err
+					}
+					return nil
+				})
+			}
+
+			if work.buildNormalCSS {
+				innerG.Go(func() error {
+					if err := builder.BuildNormalCSS(true); err != nil {
+						s.log.Error("Normal CSS build failed", "error", err)
+						return err
+					}
+					return nil
+				})
+			}
+
+			return innerG.Wait()
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		s.log.Error("Build phase had errors", "error", err)
 	}
 }
 
@@ -479,25 +767,26 @@ func (s *server) executeBrowserPhase(work *workSet) {
 		return
 	}
 
-	// Vite invalidation (for public static changes)
-	// Attempt if requested. Falls back to standard reload if Vite fails or isn't used.
+	builder := s.getBuilder()
+
 	if work.invalidateVite {
 		if s.cfg.UsingVite() {
 			if err := s.callViteFilemapInvalidate(); err != nil {
 				s.log.Warn("Vite filemap invalidate failed, falling back to reload", "error", err)
 				work.reloadBrowser = true
+				work.waitForApp = true
+				work.waitForVite = true
 			} else {
-				// Success: Vite handles browser reload via its own websocket
 				return
 			}
 		} else {
-			// Not using Vite: fall back to standard reload
 			work.reloadBrowser = true
+			work.waitForApp = true
 		}
 	}
 
-	// Full browser reload
 	if work.reloadBrowser {
+		s.log.Info("Hard reloading browser")
 		s.broadcastReload(reloadOpts{
 			payload:   refreshPayload{ChangeType: changeTypeOther},
 			waitApp:   work.waitForApp,
@@ -507,8 +796,8 @@ func (s *server) executeBrowserPhase(work *workSet) {
 		return
 	}
 
-	// Revalidate (client-side refresh)
 	if work.revalidate {
+		s.log.Info("Running client-defined revalidate function")
 		s.broadcastReload(reloadOpts{
 			payload:   refreshPayload{ChangeType: changeTypeRevalidate},
 			waitApp:   work.waitForApp,
@@ -518,14 +807,12 @@ func (s *server) executeBrowserPhase(work *workSet) {
 		return
 	}
 
-	// CSS hot reload
-	if work.hotReloadCSS {
-		criticalCSS, _ := s.builder.ReadCriticalCSS()
-		normalURL, _ := s.builder.ReadNormalCSSURL()
+	if work.hotReloadCSS && builder != nil {
+		s.log.Info("Hot reloading CSS")
+		criticalCSS, _ := builder.ReadCriticalCSS()
+		normalURL, _ := builder.ReadNormalCSSURL()
 
-		// Send both if both changed, otherwise send individually
 		if work.buildCriticalCSS && work.buildNormalCSS {
-			// Send critical first, then normal
 			s.broadcastReload(reloadOpts{
 				payload: refreshPayload{
 					ChangeType:  changeTypeCriticalCSS,
@@ -556,7 +843,7 @@ func (s *server) executeBrowserPhase(work *workSet) {
 	}
 }
 
-func (s *server) classifyEvent(evt fsnotify.Event) classifiedEvent {
+func (s *server) classifyEventWithWatcherAndBuilder(evt fsnotify.Event, watcher *Watcher, builder *Builder) classifiedEvent {
 	result := classifiedEvent{event: evt}
 
 	if evt.Name == "" {
@@ -564,21 +851,23 @@ func (s *server) classifyEvent(evt fsnotify.Event) classifiedEvent {
 		return result
 	}
 
-	result.ignored = s.watcher.IsIgnoredFile(evt.Name)
+	result.ignored = watcher.IsIgnoredFile(evt.Name)
 
-	if s.builder.IsCriticalCSSFile(evt.Name) {
+	if builder.IsCriticalCSSFile(evt.Name) {
 		result.fileType = fileTypeCriticalCSS
-	} else if s.builder.IsNormalCSSFile(evt.Name) {
+	} else if builder.IsNormalCSSFile(evt.Name) {
 		result.fileType = fileTypeNormalCSS
 	} else if filepath.Ext(evt.Name) == ".go" {
 		result.fileType = fileTypeGo
-	} else if s.watcher.IsPublicStaticFile(evt.Name) {
+	} else if watcher.IsPublicStaticFile(evt.Name) {
 		result.fileType = fileTypePublicStatic
+	} else if watcher.IsPrivateStaticFile(evt.Name) {
+		result.fileType = fileTypePrivateStatic
 	} else {
 		result.fileType = fileTypeOther
 	}
 
-	result.watchedFile = s.watcher.FindWatchedFile(evt.Name)
+	result.watchedFile = watcher.FindWatchedFile(evt.Name)
 
 	if result.fileType == fileTypeGo && result.watchedFile != nil && result.watchedFile.TreatAsNonGo {
 		result.fileType = fileTypeOther

@@ -51,7 +51,7 @@ type PathsFile struct {
 	RouteManifestFile string           `json:"routeManifestFile"`
 
 	// Stage two only
-	ClientEntryOut    string            `json:"clientEntryOut,omitempty"`
-	ClientEntryDeps   []string          `json:"clientEntryDeps,omitempty"`
-	DepToCSSBundleMap map[string]string `json:"depToCSSBundleMap,omitempty"`
+	ClientEntryOut    string              `json:"clientEntryOut,omitempty"`
+	ClientEntryDeps   []string            `json:"clientEntryDeps,omitempty"`
+	DepToCSSBundleMap map[string][]string `json:"depToCSSBundleMap,omitempty"`
 }

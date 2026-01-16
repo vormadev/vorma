@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/grace"
 	"github.com/vormadev/vorma/kit/netutil"
 	"github.com/vormadev/vorma/lab/viteutil"
 	"github.com/vormadev/vorma/wave"
@@ -29,9 +28,8 @@ type restartRequest struct {
 
 // server is the dev server instance
 type server struct {
-	cfg     *wave.ParsedConfig
-	log     *slog.Logger
-	builder *Builder
+	cfg *wave.ParsedConfig
+	log *slog.Logger
 
 	// File watching
 	watcher *Watcher
@@ -40,6 +38,7 @@ type server struct {
 	mu      sync.Mutex
 	appCmd  *exec.Cmd
 	viteCtx *viteutil.BuildCtx
+	builder *Builder
 
 	// Browser refresh
 	refreshServer    *http.Server
@@ -62,6 +61,11 @@ func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
 	}
 
 	wave.SetModeToDev()
+
+	// Validate config before starting dev server
+	if err := ValidateConfig(cfg); err != nil {
+		return fmt.Errorf("config validation failed: %w", err)
+	}
 
 	// Acquire project-level lock before doing anything else.
 	// This prevents multiple wave dev instances on the same project.
@@ -112,7 +116,7 @@ func (s *server) run() error {
 		}
 
 		// Create/recreate builder with current config
-		s.builder = NewBuilder(s.cfg, s.log)
+		s.setBuilder(NewBuilder(s.cfg, s.log))
 
 		if err := s.initWatcher(); err != nil {
 			return fmt.Errorf("init watcher: %w", err)
@@ -124,7 +128,11 @@ func (s *server) run() error {
 		var buildEg errgroup.Group
 
 		buildEg.Go(func() error {
-			return s.builder.Build(BuildOpts{
+			b := s.getBuilder()
+			if b == nil {
+				return fmt.Errorf("builder is nil")
+			}
+			return b.Build(BuildOpts{
 				IsDev:     true,
 				CompileGo: false,
 				IsRebuild: isRebuild,
@@ -133,7 +141,11 @@ func (s *server) run() error {
 
 		if recompileGo {
 			buildEg.Go(func() error {
-				return s.builder.CompileGoOnly(true)
+				b := s.getBuilder()
+				if b == nil {
+					return fmt.Errorf("builder is nil")
+				}
+				return b.CompileGoOnly(true)
 			})
 		}
 
@@ -220,9 +232,12 @@ func (s *server) initWatcher() error {
 	if err != nil {
 		return fmt.Errorf("create watcher: %w", err)
 	}
-	s.watcher = watcher
 
-	if err := s.watcher.AddDir(s.cfg.WatchRoot()); err != nil {
+	s.mu.Lock()
+	s.watcher = watcher
+	s.mu.Unlock()
+
+	if err := watcher.AddDir(s.cfg.WatchRoot()); err != nil {
 		return fmt.Errorf("watch root: %w", err)
 	}
 
@@ -239,6 +254,11 @@ func (s *server) reloadConfig() error {
 	newCfg, err := wave.ParseConfigFile(configPath)
 	if err != nil {
 		return err
+	}
+
+	// Validate the new config
+	if err := ValidateConfig(newCfg); err != nil {
+		return fmt.Errorf("config validation failed: %w", err)
 	}
 
 	// Preserve framework-injected runtime configuration.
@@ -260,18 +280,28 @@ func (s *server) cleanupForRebuild() {
 
 	// Don't stop Vite here - it's cycled in broadcastReload when needed
 
-	if s.watcher != nil {
-		if err := s.watcher.Close(); err != nil {
+	// Close watcher and set to nil under lock to prevent race with processEvents
+	s.mu.Lock()
+	watcher := s.watcher
+	s.watcher = nil
+	s.mu.Unlock()
+
+	if watcher != nil {
+		if err := watcher.Close(); err != nil {
 			s.log.Error("close watcher failed", "error", err)
 		}
-		s.watcher = nil
 	}
 
-	if s.builder != nil {
-		if err := s.builder.Close(); err != nil {
+	// Close builder under lock
+	s.mu.Lock()
+	builder := s.builder
+	s.builder = nil
+	s.mu.Unlock()
+
+	if builder != nil {
+		if err := builder.Close(); err != nil {
 			s.log.Error("close builder failed", "error", err)
 		}
-		s.builder = nil
 	}
 }
 
@@ -318,7 +348,9 @@ func (s *server) stopApp() error {
 	}
 
 	s.log.Info("Stopping app", "pid", cmd.Process.Pid)
-	return grace.TerminateProcess(cmd.Process, 5*time.Second, s.log)
+	cmd.Process.Kill()
+	cmd.Wait() // reap zombie, ensure port is released
+	return nil
 }
 
 func (s *server) startVite() error {
@@ -589,4 +621,18 @@ func (s *server) waitForReady(url string) bool {
 	}
 
 	return false
+}
+
+// getBuilder returns the current builder instance safely.
+func (s *server) getBuilder() *Builder {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.builder
+}
+
+// setBuilder sets the builder instance safely.
+func (s *server) setBuilder(b *Builder) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.builder = b
 }

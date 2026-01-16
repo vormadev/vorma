@@ -40,7 +40,7 @@ func postViteProdBuild(v *vormaruntime.Vorma) error {
 func toPathsFile_StageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error) {
 	vormaClientEntryOut := ""
 	vormaClientEntryDeps := []string{}
-	depToCSSBundleMap := make(map[string]string)
+	depToCSSBundleMap := make(map[string][]string)
 
 	viteManifest, err := viteutil.ReadManifest(v.Wave.GetViteManifestLocation())
 	if err != nil {
@@ -53,10 +53,13 @@ func toPathsFile_StageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error
 	for key, chunk := range viteManifest {
 		cleanKey := filepath.Base(chunk.File)
 
+		// Collect all CSS files for this chunk
 		if len(chunk.CSS) > 0 {
+			cssBundles := make([]string, 0, len(chunk.CSS))
 			for _, cssFile := range chunk.CSS {
-				depToCSSBundleMap[cleanKey] = filepath.Base(cssFile)
+				cssBundles = append(cssBundles, filepath.Base(cssFile))
 			}
+			depToCSSBundleMap[cleanKey] = cssBundles
 		}
 
 		deps := viteutil.FindAllDependencies(viteManifest, key)

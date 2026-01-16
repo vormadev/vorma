@@ -61,6 +61,9 @@ if (scrollY) {
 	}, 150);
 }
 const ws = new WebSocket("ws://localhost:%d/events");
+ws.onopen = () => {
+	ws.send("ping");
+};
 ws.onmessage = (e) => {
 	const { changeType, criticalCSS, normalCSSURL } = JSON.parse(e.data);
 	if (changeType == "rebuilding") {

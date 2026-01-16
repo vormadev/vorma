@@ -3,6 +3,8 @@ package vormaruntime
 import (
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
@@ -12,6 +14,15 @@ import (
 	"github.com/vormadev/vorma/kit/response"
 	"golang.org/x/sync/errgroup"
 )
+
+var gmpdCache sync.Map
+
+type cachedItemSubset struct {
+	ImportURLs      []string
+	ExportKeys      []string
+	ErrorExportKeys []string
+	Deps            []string
+}
 
 type SplatValues []string
 
@@ -76,30 +87,56 @@ func (v *Vorma) get_ui_data_stage_1(
 		matchedPatterns[i] = match.OriginalPattern()
 	}
 
-	paths := v.GetPathsSnapshot()
-	isDev := v.GetIsDevMode()
-
-	importURLs := make([]string, 0, len(_matches))
-	exportKeys := make([]string, 0, len(_matches))
-	errorExportKeys := make([]string, 0, len(_matches))
-
-	for _, path := range _matches {
-		foundPath := paths[path.OriginalPattern()]
-		if foundPath == nil || foundPath.SrcPath == "" {
-			importURLs = append(importURLs, "")
-			exportKeys = append(exportKeys, "")
-			errorExportKeys = append(errorExportKeys, "")
-			continue
-		}
-		pathToUse := foundPath.OutPath
-		if isDev {
-			pathToUse = foundPath.SrcPath
-		}
-		importURLs = append(importURLs, "/"+pathToUse)
-		exportKeys = append(exportKeys, foundPath.ExportKey)
-		errorExportKeys = append(errorExportKeys, foundPath.ErrorExportKey)
+	// Cache key generation based on normalized patterns
+	var sb strings.Builder
+	var growSize int
+	for _, match := range _matches {
+		growSize += len(match.NormalizedPattern())
 	}
-	deps := v.getDepsFromSnapshot(_matches, paths)
+	sb.Grow(growSize)
+	for _, match := range _matches {
+		sb.WriteString(match.NormalizedPattern())
+	}
+	cacheKey := sb.String()
+
+	var _cachedItemSubset *cachedItemSubset
+	cachedValue, isCached := gmpdCache.Load(cacheKey)
+
+	if isCached {
+		_cachedItemSubset = cachedValue.(*cachedItemSubset)
+	} else {
+		// Cache Miss: Perform expensive path lookups and dependency graph traversal
+		paths := v.GetPathsSnapshot()
+		isDev := v.GetIsDevMode()
+
+		_cachedItemSubset = &cachedItemSubset{
+			ImportURLs:      make([]string, 0, len(_matches)),
+			ExportKeys:      make([]string, 0, len(_matches)),
+			ErrorExportKeys: make([]string, 0, len(_matches)),
+		}
+
+		for _, path := range _matches {
+			foundPath := paths[path.OriginalPattern()]
+			if foundPath == nil || foundPath.SrcPath == "" {
+				_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "")
+				_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, "")
+				_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, "")
+				continue
+			}
+			pathToUse := foundPath.OutPath
+			if isDev {
+				pathToUse = foundPath.SrcPath
+			}
+			_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "/"+pathToUse)
+			_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, foundPath.ExportKey)
+			_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, foundPath.ErrorExportKey)
+		}
+
+		// Expensive dependency graph traversal
+		_cachedItemSubset.Deps = v.getDepsFromSnapshot(_matches, paths)
+
+		gmpdCache.Store(cacheKey, _cachedItemSubset)
+	}
 
 	_tasks_results := mux.RunNestedTasks(nestedRouter, r, _match_results)
 
@@ -197,15 +234,15 @@ func (v *Vorma) get_ui_data_stage_1(
 			ui_data_core: &ui_data_core{
 				OutermostServerError:    clientMsg,
 				OutermostServerErrorIdx: outermostErrorIdx,
-				ErrorExportKeys:         errorExportKeys[:cutIdx],
+				ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys[:cutIdx],
 				MatchedPatterns:         matchedPatterns[:cutIdx],
 				LoadersData:             loadersData[:cutIdx],
-				ImportURLs:              importURLs[:cutIdx],
-				ExportKeys:              exportKeys[:cutIdx],
+				ImportURLs:              _cachedItemSubset.ImportURLs[:cutIdx],
+				ExportKeys:              _cachedItemSubset.ExportKeys[:cutIdx],
 				HasRootData:             hasRootData,
 				Params:                  _match_results.Params,
 				SplatValues:             _match_results.SplatValues,
-				Deps:                    deps,
+				Deps:                    _cachedItemSubset.Deps,
 			},
 			stage_1_head_els: headEls,
 		}
@@ -220,15 +257,15 @@ func (v *Vorma) get_ui_data_stage_1(
 		ui_data_core: &ui_data_core{
 			OutermostServerError:    "",
 			OutermostServerErrorIdx: nil,
-			ErrorExportKeys:         errorExportKeys,
+			ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys,
 			MatchedPatterns:         matchedPatterns,
 			LoadersData:             loadersData,
-			ImportURLs:              importURLs,
-			ExportKeys:              exportKeys,
+			ImportURLs:              _cachedItemSubset.ImportURLs,
+			ExportKeys:              _cachedItemSubset.ExportKeys,
 			HasRootData:             hasRootData,
 			Params:                  _match_results.Params,
 			SplatValues:             _match_results.SplatValues,
-			Deps:                    deps,
+			Deps:                    _cachedItemSubset.Deps,
 		},
 		stage_1_head_els: headEls,
 	}

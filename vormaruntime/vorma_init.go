@@ -12,19 +12,13 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-// Init initializes Vorma. Panics on error in production; logs in dev.
+// Init initializes Vorma. Panics on error.
 func (v *Vorma) Init() {
 	isDev := wave.GetIsDev()
 	if err := v.initInner(isDev); err != nil {
-		wrapped := fmt.Errorf("error initializing Vorma: %w", err)
-		if isDev {
-			v.Log.Error(wrapped.Error())
-		} else {
-			panic(wrapped)
-		}
-	} else {
-		v.Log.Info("Vorma initialized", "build id", v._buildID)
+		panic(fmt.Errorf("error initializing Vorma: %w", err))
 	}
+	v.Log.Info("Vorma initialized", "build_id", v._buildID)
 }
 
 // InitWithDefaultRouter initializes Vorma and returns a configured mux.Router.
@@ -80,7 +74,7 @@ func (v *Vorma) initInner(isDev bool) error {
 	v._clientEntryDeps = pathsFile.ClientEntryDeps
 	v._depToCSSBundleMap = pathsFile.DepToCSSBundleMap
 	if v._depToCSSBundleMap == nil {
-		v._depToCSSBundleMap = make(map[string]string)
+		v._depToCSSBundleMap = make(map[string][]string)
 	}
 	v._routeManifestFile = pathsFile.RouteManifestFile
 
