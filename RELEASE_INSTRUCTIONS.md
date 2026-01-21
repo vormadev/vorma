@@ -16,14 +16,14 @@ if PRE release:
 
 ```sh
 npm publish --access public --tag pre
-cd internal/framework/_typescript/create && npm publish --access public --tag pre
+cd internal/framework/_typescript/create && npm publish --access public --tag pre && cd ../../../../
 ```
 
 if FINAL release:
 
 ```sh
 npm publish --access public
-cd internal/framework/_typescript/create && npm publish --access public
+cd internal/framework/_typescript/create && npm publish --access public && cd ../../../../
 ```
 
 4. push to github
