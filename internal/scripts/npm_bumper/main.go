@@ -80,31 +80,18 @@ func main() {
 		t.NewLine()
 	}
 
+	// Run prep
+	cmd := t.Cmd("make", "tsprepforpub")
+	t.MustRun(cmd, "prep failed")
+
 	// Ask whether to initiate a new build?
 	t.Blue("emit a new build to ./npm_dist?  ")
 	t.RequireYes("aborted")
 
-	cmd := t.Cmd("make", "npmbuild")
+	cmd = t.Cmd("make", "npmbuild")
 	t.MustRun(cmd, "npm dist build failed")
 
-	// Ask for publish confirmation
-	t.Blue("do you want to publish ")
-	if isPre {
-		t.Red("PRE release ")
-	} else {
-		t.Red("FINAL release ")
-	}
-	t.Green(trimmedVersion)
-	t.Blue(" npm? ")
-	t.RequireYes("aborted")
-
-	cmd = t.Cmd("make", "tspublishpre")
-	if !isPre {
-		cmd = t.Cmd("make", "tspublishnonpre")
-	}
-
-	t.MustRun(cmd, "npm publish failed")
-
-	t.Plain("npm publish done")
+	t.NewLine()
+	t.Green("npm bump complete. ready to publish.")
 	t.NewLine()
 }
