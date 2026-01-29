@@ -1,5 +1,6 @@
 import { getAnchorDetailsFromEvent, getHrefDetails } from "vorma/kit/url";
 import { navigationStateManager, vormaNavigate } from "./client.ts";
+import { effectuateRedirectDataResult } from "./redirects/redirects.ts";
 import { saveScrollState } from "./scroll_state_manager.ts";
 
 type LinkOnClickCallback<E extends Event> = (event: E) => void | Promise<void>;
@@ -173,29 +174,62 @@ export function __makeLinkOnClickFn<E extends Event>(
 
 			if (!control.promise) return;
 
-			const res = await control.promise;
-
-			if (!res) {
-				// If not here, loading indicator can get stuck on
-				// following redirects
-				const targetUrl = new URL(anchor.href, window.location.href)
-					.href;
-				navigationStateManager.removeNavigation(targetUrl);
-				return;
-			}
-
-			await callbacks.beforeRender?.(e);
-
+			const outcome = await control.promise;
 			const targetUrl = new URL(anchor.href, window.location.href).href;
-			const entry = navigationStateManager.getNavigation(targetUrl);
-			if (entry) {
-				await navigationStateManager["processNavigationResult"](
-					res,
-					entry,
-				);
-			}
 
-			await callbacks.afterRender?.(e);
+			// Handle outcome based on type (discriminated union)
+			switch (outcome.type) {
+				case "aborted":
+					// Navigation was aborted - clean up to prevent stuck loading indicator
+					navigationStateManager.removeNavigation(targetUrl);
+					return;
+
+				case "redirect": {
+					// Call beforeRender while entry still exists (consistent with success case)
+					await callbacks.beforeRender?.(e);
+
+					// Clean up before redirect to prevent race conditions
+					navigationStateManager.removeNavigation(targetUrl);
+
+					// Effectuate the redirect
+					await effectuateRedirectDataResult(
+						outcome.redirectData,
+						outcome.props.redirectCount || 0,
+						outcome.props,
+					);
+
+					// Call afterRender after redirect effectuation
+					await callbacks.afterRender?.(e);
+					return;
+				}
+
+				case "success": {
+					// Call beforeRender before processing (matches original behavior)
+					await callbacks.beforeRender?.(e);
+
+					// Process the successful navigation if entry still exists
+					const entry =
+						navigationStateManager.getNavigation(targetUrl);
+					if (entry) {
+						await navigationStateManager.processSuccessfulNavigation(
+							outcome,
+							entry,
+						);
+					}
+
+					// Call afterRender after processing (matches original behavior)
+					await callbacks.afterRender?.(e);
+					return;
+				}
+
+				default: {
+					// Exhaustiveness check
+					const _exhaustive: never = outcome;
+					throw new Error(
+						`Unexpected outcome type: ${(_exhaustive as any).type}`,
+					);
+				}
+			}
 		}
 	};
 }

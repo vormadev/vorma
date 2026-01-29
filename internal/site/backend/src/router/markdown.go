@@ -4,7 +4,7 @@ import (
 	"io"
 
 	"github.com/adrg/frontmatter"
-	"github.com/vormadev/vorma/kit/lab/fsmarkdown"
+	"github.com/vormadev/vorma/lab/fsmarkdown"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"

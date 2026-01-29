@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { getRootEl, initClient } from "vorma/client";
 import { VormaRootOutlet } from "vorma/{{.UIVariant}}";
-import { vormaAppConfig } from "./vorma.gen.ts";
+import { vormaAppConfig } from "./vorma.gen/index.ts";
 {{.TailwindFileImport}}
 await initClient({
 	vormaAppConfig,

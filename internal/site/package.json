@@ -1,17 +1,17 @@
 {
 	"type": "module",
 	"devDependencies": {
-		"@tailwindcss/vite": "^4.1.13",
+		"@tailwindcss/vite": "^4.1.18",
 		"@types/nprogress": "^0.2.3",
-		"@vercel/node": "^5.3.21",
+		"@vercel/node": "^5.5.16",
 		"highlight.js": "^11.11.1",
 		"mdream": "0.11.0",
 		"nprogress": "^0.2.0",
-		"vorma": "link:../..",
-		"solid-js": "^1.9.9",
-		"tailwindcss": "^4.1.13",
-		"typescript": "^5.9.2",
-		"vite": "npm:rolldown-vite@latest",
-		"vite-plugin-solid": "^2.11.8"
+		"solid-js": "^1.9.10",
+		"tailwindcss": "^4.1.18",
+		"typescript": "^5.9.3",
+		"vite": "npm:rolldown-vite@^7.1.14",
+		"vite-plugin-solid": "^2.11.8",
+		"vorma": "link:../.."
 	}
 }

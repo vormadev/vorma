@@ -22,7 +22,7 @@ const (
 var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
 
-	GetHeadElUniqueRules: func(h *vorma.HeadEls) {
+	GetHeadDedupeKeys: func(h *vorma.HeadEls) {
 		h.Meta(h.Property("og:title"))
 		h.Meta(h.Property("og:description"))
 		h.Meta(h.Property("og:type"))

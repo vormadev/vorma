@@ -1,7 +1,7 @@
 {
 	"search.exclude": {
 		"**/node_modules": true,
-		"**/vorma.gen.ts": true
+		"**/vorma.gen": true
 	},
 
 	"javascript.preferences.importModuleSpecifierEnding": "js",

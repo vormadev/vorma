@@ -254,7 +254,8 @@ func Init(o Options) {
 	do.tmplWriteMust("backend/dist/static/.keep", "tmpls/dist_static_keep_tmpl.txt")
 	strWriteMust("backend/assets/entry.go.html", "tmpls/backend_static_entry_go_html_str.txt")
 	do.tmplWriteMust("backend/src/router/router.go", "tmpls/backend_src_router_router_go_tmpl.txt")
-	do.tmplWriteMust("backend/wave.go", "tmpls/app_go_tmpl.txt")
+	strWriteMust("backend/wave.dev.go", "tmpls/backend_wave_dev_go_str.txt")
+	strWriteMust("backend/wave.prod.go", "tmpls/backend_wave_prod_go_str.txt")
 	do.tmplWriteMust("backend/wave.config.json", "tmpls/wave_config_json_tmpl.txt")
 	do.tmplWriteMust("vite.config.ts", "tmpls/vite_config_ts_tmpl.txt")
 	do.tmplWriteMust("package.json", "tmpls/package_json_tmpl.txt")
@@ -267,6 +268,7 @@ func Init(o Options) {
 	do.tmplWriteMust("frontend/src/components/links.tsx", "tmpls/frontend_links_tsx_tmpl.txt")
 	do.tmplWriteMust("frontend/src/vorma.utils.tsx", "tmpls/frontend_app_utils_tsx_tmpl.txt")
 	strWriteMust("frontend/src/vorma.api.ts", "tmpls/frontend_api_client_ts_str.txt")
+	strWriteMust("frontend/vite.d.ts", "tmpls/frontend_vite_d_ts_str.txt")
 	if o.DeploymentTarget == "vercel" {
 		do.tmplWriteMust("vercel.json", "tmpls/vercel_json_tmpl.txt")
 		do.tmplWriteMust("api/proxy.ts", "tmpls/api_proxy_ts_str.txt")

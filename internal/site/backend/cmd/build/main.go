@@ -1,7 +1,11 @@
 package main
 
-import "site/backend/src/router"
+import (
+	"site/backend/src/router"
+
+	"github.com/vormadev/vorma/vormabuild"
+)
 
 func main() {
-	router.App.Build()
+	vormabuild.Build(router.App)
 }

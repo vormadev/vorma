@@ -1,5 +1,5 @@
 import { api } from "../vorma.api.ts";
-import type { RouteProps } from "../vorma.gen.ts";
+import type { RouteProps } from "../vorma.gen/index.ts";
 import { useLoaderData } from "../vorma.utils.tsx";
 
 export function Home(props: RouteProps<"/_index">) {

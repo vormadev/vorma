@@ -4,8 +4,46 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vormadev/vorma/kit/htmltestutil"
+	"golang.org/x/net/html"
 )
+
+// parseHTML parses an HTML string into a node.
+func parseHTML(input string) (*html.Node, error) {
+	return html.Parse(strings.NewReader(input))
+}
+
+// compareNodes checks if two nodes are structurally equivalent (ignoring attribute order).
+func compareNodes(n1, n2 *html.Node) bool {
+	// Compare node types and tag names.
+	if n1.Type != n2.Type || n1.Data != n2.Data {
+		return false
+	}
+
+	// Compare attributes, ignoring order.
+	if len(n1.Attr) != len(n2.Attr) {
+		return false
+	}
+	attrMap1 := make(map[string]string)
+	for _, a := range n1.Attr {
+		attrMap1[a.Key] = a.Val
+	}
+	for _, a := range n2.Attr {
+		if attrMap1[a.Key] != a.Val {
+			return false
+		}
+	}
+
+	// Compare children recursively.
+	n1Child, n2Child := n1.FirstChild, n2.FirstChild
+	for n1Child != nil && n2Child != nil {
+		if !compareNodes(n1Child, n2Child) {
+			return false
+		}
+		n1Child = n1Child.NextSibling
+		n2Child = n2Child.NextSibling
+	}
+	return n1Child == nil && n2Child == nil
+}
 
 func TestTemplates(t *testing.T) {
 	tests := []struct {
@@ -140,17 +178,17 @@ func TestTemplates(t *testing.T) {
 			}
 
 			// Parse both the expected and actual HTML.
-			expectedNode, err := htmltestutil.ParseHTML(tt.expected)
+			expectedNode, err := parseHTML(tt.expected)
 			if err != nil {
 				t.Fatalf("error parsing expected HTML: %v", err)
 			}
-			resultNode, err := htmltestutil.ParseHTML(string(result))
+			resultNode, err := parseHTML(string(result))
 			if err != nil {
 				t.Fatalf("error parsing result HTML: %v", err)
 			}
 
 			// Compare the parsed nodes structurally (ignoring attribute order).
-			if !htmltestutil.CompareNodes(expectedNode, resultNode) {
+			if !compareNodes(expectedNode, resultNode) {
 				t.Errorf("expected HTML structure does not match actual structure.\nExpected: %s\nGot: %s", tt.expected, result)
 			}
 		})
@@ -162,7 +200,7 @@ func hasDoubleSpaces(s string) bool {
 	return strings.Contains(s, "  ")
 }
 
-func TestAddSha256HashInline(t *testing.T) {
+func TestComputeContentSha256(t *testing.T) {
 	tests := []struct {
 		name        string
 		element     Element
@@ -182,7 +220,7 @@ func TestAddSha256HashInline(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := AddSha256HashInline(&tt.element)
+			_, err := ComputeContentSha256(&tt.element)
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("expected error, got nil")
@@ -196,7 +234,7 @@ func TestAddSha256HashInline(t *testing.T) {
 	}
 }
 
-func TestAddSha256HashExternal(t *testing.T) {
+func TestSetSha256Integrity(t *testing.T) {
 	tests := []struct {
 		name         string
 		element      Element
@@ -219,7 +257,7 @@ func TestAddSha256HashExternal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := AddSha256HashExternal(&tt.element, tt.externalHash)
+			_, err := SetSha256Integrity(&tt.element, tt.externalHash)
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("expected error, got nil")

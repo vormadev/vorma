@@ -34,6 +34,7 @@ type Cache[K comparable, V any] struct {
 	maxItems    int
 	defaultTTL  time.Duration
 	cleanupDone chan struct{} // Used to signal when the cleanup goroutine is done
+	closeOnce   sync.Once
 }
 
 // NewCache creates a new LRU cache with the specified maximum number of items.
@@ -213,6 +214,6 @@ func (c *Cache[K, V]) startCleanupLoop() {
 // It should be called when the cache is no longer needed to prevent resource leaks.
 func (c *Cache[K, V]) Close() {
 	if c.defaultTTL > 0 {
-		close(c.cleanupDone)
+		c.closeOnce.Do(func() { close(c.cleanupDone) })
 	}
 }

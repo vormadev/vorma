@@ -970,3 +970,111 @@ func TestPartialMatchingWithGaps(t *testing.T) {
 		}
 	})
 }
+
+// TestMatchOrderingDeterminism checks that match ordering and params
+// are consistent across many iterations, exposing any non-determinism
+// from map iteration order.
+func TestMatchOrderingDeterminism(t *testing.T) {
+	t.Run("static vs dynamic same depth", func(t *testing.T) {
+		var firstParams Params
+		var firstOrder []string
+
+		for i := range 1000 {
+			m := New(&Options{Quiet: true})
+			m.RegisterPattern("/api/v1")
+			m.RegisterPattern("/api/:version")
+
+			results, ok := m.FindNestedMatches("/api/v1")
+			if !ok {
+				t.Fatal("Expected matches")
+			}
+
+			currentOrder := make([]string, len(results.Matches))
+			for j, match := range results.Matches {
+				currentOrder[j] = match.normalizedPattern
+			}
+
+			if i == 0 {
+				firstParams = results.Params
+				firstOrder = currentOrder
+				continue
+			}
+
+			if !reflect.DeepEqual(results.Params, firstParams) {
+				t.Fatalf("Iteration %d: params inconsistent. First: %v, Now: %v",
+					i, firstParams, results.Params)
+			}
+
+			if !reflect.DeepEqual(currentOrder, firstOrder) {
+				t.Fatalf("Iteration %d: match order inconsistent. First: %v, Now: %v",
+					i, firstOrder, currentOrder)
+			}
+		}
+	})
+
+	t.Run("multiple dynamic same depth", func(t *testing.T) {
+		var firstParams Params
+
+		for i := range 1000 {
+			m := New(&Options{Quiet: true})
+			m.RegisterPattern("/users/:id")
+			m.RegisterPattern("/users/:user_id")
+
+			results, ok := m.FindNestedMatches("/users/123")
+			if !ok {
+				t.Fatal("Expected matches")
+			}
+
+			if i == 0 {
+				firstParams = results.Params
+				if len(firstParams) == 0 {
+					t.Fatal("Expected params from dynamic match")
+				}
+				continue
+			}
+
+			if !reflect.DeepEqual(results.Params, firstParams) {
+				t.Fatalf("Iteration %d: params inconsistent. First: %v, Now: %v",
+					i, firstParams, results.Params)
+			}
+		}
+	})
+
+	t.Run("three patterns same depth", func(t *testing.T) {
+		var firstParams Params
+		var firstOrder []string
+
+		for i := range 1000 {
+			m := New(&Options{Quiet: true})
+			m.RegisterPattern("/a/b")
+			m.RegisterPattern("/a/:p")
+			m.RegisterPattern("/:x/b")
+
+			results, ok := m.FindNestedMatches("/a/b")
+			if !ok {
+				t.Fatal("Expected matches")
+			}
+
+			currentOrder := make([]string, len(results.Matches))
+			for j, match := range results.Matches {
+				currentOrder[j] = match.normalizedPattern
+			}
+
+			if i == 0 {
+				firstParams = results.Params
+				firstOrder = currentOrder
+				continue
+			}
+
+			if !reflect.DeepEqual(results.Params, firstParams) {
+				t.Fatalf("Iteration %d: params inconsistent. First: %v, Now: %v",
+					i, firstParams, results.Params)
+			}
+
+			if !reflect.DeepEqual(currentOrder, firstOrder) {
+				t.Fatalf("Iteration %d: match order inconsistent. First: %v, Now: %v",
+					i, firstOrder, currentOrder)
+			}
+		}
+	})
+}

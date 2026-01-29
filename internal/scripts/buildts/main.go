@@ -155,6 +155,8 @@ func buildVite() {
 		External: []string{
 			"vorma",
 			"vite",
+			"node:fs",
+			"node:path",
 		},
 		Outdir:   "./npm_dist/internal/framework/_typescript/vite",
 		Tsconfig: tsconfig,

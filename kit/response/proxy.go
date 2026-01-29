@@ -15,11 +15,15 @@ import (
 // afterwards should be used by a parent scope to actually
 // de-duplicate, determine priority, and write to the real
 // http.ResponseWriter.
-type headerOp struct {
-	op    string
-	value string
-}
-
+//
+// Concurrency model: Proxy instances are NOT thread-safe and must not be
+// shared across goroutines. The intended usage pattern is:
+//   - Create one Proxy per goroutine/task
+//   - Each goroutine writes only to its own Proxy
+//   - After all goroutines complete, merge proxies on a single goroutine
+//     using MergeProxyResponses
+//   - Apply the merged result to the ResponseWriter
+//
 // Do not instantiate directly. Use NewProxy().
 type Proxy struct {
 	_status      int
@@ -32,6 +36,11 @@ type Proxy struct {
 
 func NewProxy() *Proxy {
 	return &Proxy{_headerOps: make(map[string][]headerOp)}
+}
+
+type headerOp struct {
+	op    string
+	value string
 }
 
 /////// STATUS (use directly for both success and error responses)
@@ -119,14 +128,16 @@ func (p *Proxy) GetHeadEls() *headels.HeadEls {
 
 /////// REDIRECTS
 
-// bool return value indicates whether the redirect upgraded to a client redirect
-func (p *Proxy) Redirect(r *http.Request, url string, code ...int) bool {
+// Redirect sets a redirect on the proxy. If the request accepts client redirects,
+// a client redirect is set; otherwise, a server redirect is set.
+// Returns whether a client redirect was used and any error from URL validation.
+func (p *Proxy) Redirect(r *http.Request, url string, code ...int) (bool, error) {
 	if doesAcceptClientRedirect(r) {
-		p.clientRedirect(url)
-		return true
+		err := p.clientRedirect(url)
+		return true, err
 	}
 	p.serverRedirect(url, resolveSpreadCode(code))
-	return false
+	return false, nil
 }
 
 func (p *Proxy) serverRedirect(url string, code ...int) {
