@@ -18,7 +18,7 @@ type SSRInnerHTMLInput struct {
 	PublicPathPrefix string
 	DeploymentID     string
 	RouteManifestURL string
-	*ui_data_core
+	*RouteDataCore
 	CSSBundles []string
 }
 
@@ -54,7 +54,7 @@ type GetSSRInnerHTMLOutput struct {
 	Sha256Hash string
 }
 
-func (v *Vorma) getSSRInnerHTML(routeData *final_ui_data) (*GetSSRInnerHTMLOutput, error) {
+func (v *Vorma) getSSRInnerHTML(routeData *RouteDataFinal) (*GetSSRInnerHTMLOutput, error) {
 	var htmlBuilder strings.Builder
 
 	dto := SSRInnerHTMLInput{
@@ -64,7 +64,7 @@ func (v *Vorma) getSSRInnerHTML(routeData *final_ui_data) (*GetSSRInnerHTMLOutpu
 		BuildID:          v._buildID,
 		PublicPathPrefix: v.Wave.GetPublicPathPrefix(),
 		RouteManifestURL: path.Join(v.Wave.GetPublicPathPrefix(), v._routeManifestFile),
-		ui_data_core:     routeData.ui_data_core,
+		RouteDataCore:    routeData.RouteDataCore,
 		CSSBundles:       routeData.CSSBundles,
 	}
 

@@ -1,3 +1,5 @@
+//go:build prod
+
 package backend
 
 import (

@@ -44,7 +44,7 @@ func injectFrameworkBuildHooks(v *vormaruntime.Vorma) {
 func Build(v *vormaruntime.Vorma) {
 	dev := flag.Bool("dev", false, "run in development mode")
 	hook := flag.Bool("hook", false, "run build hook only (internal use)")
-	_ = flag.Bool("no-binary", false, "skip go binary compilation (internal use)")
+	noBinary := flag.Bool("no-binary", false, "skip go binary compilation")
 	flag.Parse()
 
 	if *hook {
@@ -57,8 +57,6 @@ func Build(v *vormaruntime.Vorma) {
 		}
 
 		// In prod hook mode, also run Vite and post-processing.
-		// This matches the old architecture where everything ran inside
-		// the hook subprocess, keeping all state in one process.
 		if !*dev {
 			wb := wavebuild.NewBuilder(v.Wave.GetParsedConfig(), v.Wave.Logger())
 			defer wb.Close()
@@ -74,13 +72,13 @@ func Build(v *vormaruntime.Vorma) {
 		return
 	}
 
-	if err := build(v, *dev); err != nil {
+	if err := build(v, *dev, *noBinary); err != nil {
 		log.Fatalf("build failed: %v", err)
 	}
 }
 
 // build performs a full Vorma build.
-func build(v *vormaruntime.Vorma, isDev bool) error {
+func build(v *vormaruntime.Vorma, isDev bool, noBinary bool) error {
 	registerVormaSchema(v)
 	injectDefaultWatchPatterns(v)
 	injectFrameworkBuildHooks(v)
@@ -108,7 +106,7 @@ func build(v *vormaruntime.Vorma, isDev bool) error {
 	defer wb.Close()
 
 	return wb.Build(wavebuild.BuildOpts{
-		CompileGo: true,
+		CompileGo: !noBinary,
 		IsDev:     false,
 		IsRebuild: false,
 	})

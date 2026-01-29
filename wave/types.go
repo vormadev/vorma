@@ -55,9 +55,13 @@ const (
 type Timing string
 
 const (
-	OnChangeStrategyPre              Timing = "pre"
-	OnChangeStrategyPost             Timing = "post"
-	OnChangeStrategyConcurrent       Timing = "concurrent"
+	// Blocks build, use when build depends on hook output (e.g., code generation)
+	OnChangeStrategyPre Timing = "pre"
+	// Blocks reload, use when hook depends on build output (e.g., something that reads compiled artifacts)
+	OnChangeStrategyPost Timing = "post"
+	// Runs during build, blocks reload, saves time when hook and build are independent
+	OnChangeStrategyConcurrent Timing = "concurrent"
+	// Fire-and-forget, blocks nothing
 	OnChangeStrategyConcurrentNoWait Timing = "concurrent-no-wait"
 )
 
@@ -121,15 +125,16 @@ type ParsedConfig struct {
 }
 
 type CoreConfig struct {
-	ConfigLocation   string          `json:"ConfigLocation,omitempty"`
-	DevBuildHook     string          `json:"DevBuildHook,omitempty"`
-	ProdBuildHook    string          `json:"ProdBuildHook,omitempty"`
-	MainAppEntry     string          `json:"MainAppEntry"`
-	DistDir          string          `json:"DistDir"`
-	StaticAssetDirs  StaticAssetDirs `json:"StaticAssetDirs"`
-	CSSEntryFiles    CSSEntryFiles   `json:"CSSEntryFiles,omitempty"`
-	PublicPathPrefix string          `json:"PublicPathPrefix,omitempty"`
-	ServerOnlyMode   bool            `json:"ServerOnlyMode,omitempty"`
+	ConfigLocation    string          `json:"ConfigLocation,omitempty"`
+	DevBuildHook      string          `json:"DevBuildHook,omitempty"`
+	ProdBuildHook     string          `json:"ProdBuildHook,omitempty"`
+	MainAppEntry      string          `json:"MainAppEntry"`
+	DistDir           string          `json:"DistDir"`
+	StaticAssetDirs   StaticAssetDirs `json:"StaticAssetDirs"`
+	CSSEntryFiles     CSSEntryFiles   `json:"CSSEntryFiles,omitempty"`
+	PublicPathPrefix  string          `json:"PublicPathPrefix,omitempty"`
+	ServerOnlyMode    bool            `json:"ServerOnlyMode,omitempty"`
+	SequentialGoBuild bool            `json:"SequentialGoBuild,omitempty"`
 }
 
 type StaticAssetDirs struct {

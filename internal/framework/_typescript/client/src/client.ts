@@ -59,23 +59,22 @@ export type NavigateProps = {
 	scrollToTop?: boolean;
 };
 
-type NavigationResult =
-	| ({
+// Discriminated union for navigation outcomes -- provides exhaustiveness checking
+export type NavigationOutcome =
+	| { type: "aborted" }
+	| { type: "redirect"; redirectData: RedirectData; props: NavigateProps }
+	| {
+			type: "success";
 			response: Response;
+			json: GetRouteDataOutput;
+			cssBundlePromises: Array<Promise<any>>;
+			waitFnPromise: Promise<ClientLoadersResult> | undefined;
 			props: NavigateProps;
-	  } & (
-			| {
-					json: GetRouteDataOutput;
-					cssBundlePromises: Array<Promise<any>>;
-					waitFnPromise: Promise<ClientLoadersResult> | undefined;
-			  }
-			| { redirectData: RedirectData }
-	  ))
-	| undefined;
+	  };
 
 export type NavigationControl = {
 	abortController: AbortController | undefined;
-	promise: Promise<NavigationResult>;
+	promise: Promise<NavigationOutcome>;
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -109,14 +108,183 @@ interface NavigationEntry {
 }
 
 interface SubmissionEntry {
-	control: NavigationControl;
+	control: {
+		abortController: AbortController | undefined;
+		promise: Promise<any>;
+	};
 	startTime: number;
 	skipGlobalLoadingIndicator?: boolean;
 }
 
+/////////////////////////////////////////////////////////////////////
+// canSkipServerFetch HELPERS - extracted for readability
+/////////////////////////////////////////////////////////////////////
+
+type SkipCheckContext = {
+	routeManifest: Record<string, number>;
+	patternRegistry: any;
+	patternToWaitFnMap: Record<string, any>;
+	clientModuleMap: Record<
+		string,
+		{ importURL: string; exportKey: string; errorExportKey: string }
+	>;
+	currentMatchedPatterns: string[];
+	currentParams: Record<string, string>;
+	currentSplatValues: string[];
+	currentLoadersData: any[];
+	url: URL;
+	matchResult: any;
+};
+
+type SkipCheckResult =
+	| { canSkip: false }
+	| {
+			canSkip: true;
+			matchResult: any;
+			importURLs: string[];
+			exportKeys: string[];
+			loadersData: any[];
+	  };
+
+function hasServerLoaderRemoval(ctx: SkipCheckContext): boolean {
+	for (const pattern of ctx.currentMatchedPatterns) {
+		const hasServerLoader = ctx.routeManifest[pattern] === 1;
+		if (hasServerLoader) {
+			const stillMatched = ctx.matchResult.matches.some(
+				(m: Match) => m.registeredPattern.originalPattern === pattern,
+			);
+			if (!stillMatched) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+function hasNewClientLoader(ctx: SkipCheckContext): boolean {
+	for (const m of ctx.matchResult.matches) {
+		const pattern = m.registeredPattern.originalPattern;
+		const hasClientLoader = !!ctx.patternToWaitFnMap[pattern];
+		const wasAlreadyMatched = ctx.currentMatchedPatterns.includes(pattern);
+		if (hasClientLoader && !wasAlreadyMatched) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function findOutermostLoaderIndex(ctx: SkipCheckContext): number {
+	for (let i = ctx.matchResult.matches.length - 1; i >= 0; i--) {
+		const match: Match | undefined = ctx.matchResult.matches[i];
+		if (!match) continue;
+
+		const pattern = match.registeredPattern.originalPattern;
+		const hasServerLoader = ctx.routeManifest[pattern] === 1;
+		const hasClientLoader = !!ctx.patternToWaitFnMap[pattern];
+
+		if (hasServerLoader || hasClientLoader) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+function didSearchParamsChange(ctx: SkipCheckContext): boolean {
+	const currentUrlObj = new URL(window.location.href);
+	const currentParamsSorted = Array.from(
+		currentUrlObj.searchParams.entries(),
+	).sort();
+	const targetParamsSorted = Array.from(
+		ctx.url.searchParams.entries(),
+	).sort();
+	return !jsonDeepEquals(currentParamsSorted, targetParamsSorted);
+}
+
+function didOutermostParamsChange(
+	ctx: SkipCheckContext,
+	outermostLoaderIndex: number,
+): boolean {
+	const outermostMatch = ctx.matchResult.matches[outermostLoaderIndex];
+	if (!outermostMatch) return false;
+
+	for (const seg of outermostMatch.registeredPattern.normalizedSegments) {
+		if (seg.segType === "dynamic") {
+			const paramName = seg.normalizedVal.substring(1);
+			if (
+				ctx.matchResult.params[paramName] !==
+				ctx.currentParams[paramName]
+			) {
+				return true;
+			}
+		}
+	}
+
+	const hasSplat = outermostMatch.registeredPattern.lastSegType === "splat";
+	if (hasSplat) {
+		if (
+			!jsonDeepEquals(ctx.matchResult.splatValues, ctx.currentSplatValues)
+		) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function buildSkipResult(ctx: SkipCheckContext): SkipCheckResult {
+	const importURLs: string[] = [];
+	const exportKeys: string[] = [];
+	const loadersData: any[] = [];
+
+	for (let i = 0; i < ctx.matchResult.matches.length; i++) {
+		const match: Match | undefined = ctx.matchResult.matches[i];
+		if (!match) continue;
+
+		const pattern = match.registeredPattern.originalPattern;
+		const moduleInfo = ctx.clientModuleMap[pattern];
+		if (!moduleInfo) {
+			return { canSkip: false };
+		}
+
+		importURLs.push(moduleInfo.importURL);
+		exportKeys.push(moduleInfo.exportKey);
+
+		const hasServerLoader = ctx.routeManifest[pattern] === 1;
+		if (!hasServerLoader) {
+			loadersData.push(undefined);
+		} else {
+			const currentPatternIndex =
+				ctx.currentMatchedPatterns.indexOf(pattern);
+			if (currentPatternIndex === -1) {
+				return { canSkip: false };
+			}
+			loadersData.push(ctx.currentLoadersData[currentPatternIndex]);
+		}
+	}
+
+	return {
+		canSkip: true,
+		matchResult: ctx.matchResult,
+		importURLs,
+		exportKeys,
+		loadersData,
+	};
+}
+
+/////////////////////////////////////////////////////////////////////
+// NAVIGATION STATE MANAGER CLASS
+/////////////////////////////////////////////////////////////////////
+
 class NavigationStateManager {
-	private _navigations = new Map<string, NavigationEntry>();
+	// Single slot for active user/browser/redirect navigation
+	private _activeNavigation: NavigationEntry | null = null;
+	// Separate cache for prefetches (can have multiple to different URLs)
+	private _prefetchCache = new Map<string, NavigationEntry>();
+	// Single slot for pending revalidation (at most one, coalesced)
+	private _pendingRevalidation: NavigationEntry | null = null;
+	// Submissions tracked separately
 	private _submissions = new Map<string | symbol, SubmissionEntry>();
+
 	private lastDispatchedStatus: StatusEventDetail | null = null;
 	private dispatchStatusEventDebounced: () => void;
 	private readonly REVALIDATION_COALESCE_MS = 8;
@@ -131,30 +299,67 @@ class NavigationStateManager {
 		const control = this.beginNavigation(props);
 
 		try {
-			const result = await control.promise;
-			if (!result) {
-				return { didNavigate: false };
-			}
+			const outcome = await control.promise;
 
-			// Process based on navigation entry state
-			const targetUrl = new URL(props.href, window.location.href).href;
-			const entry = this._navigations.get(targetUrl);
-			if (!entry) {
-				return { didNavigate: false };
-			}
+			// Handle based on outcome type (discriminated union)
+			switch (outcome.type) {
+				case "aborted":
+					return { didNavigate: false };
 
-			if (entry.intent === "navigate" || entry.intent === "revalidate") {
-				const now = Date.now();
-				lastTriggeredNavOrRevalidateTimestampMS = now;
-			}
+				case "redirect": {
+					const targetUrl = new URL(props.href, window.location.href)
+						.href;
+					const entry = this.findNavigationEntry(targetUrl);
+					if (!entry) {
+						return { didNavigate: false };
+					}
 
-			// Always call processNavigationResult so the module map and other caches are populated.
-			await this.processNavigationResult(result, entry);
+					// Skip redirect effectuation for pure prefetches
+					if (entry.type === "prefetch" && entry.intent === "none") {
+						this.deleteNavigation(targetUrl);
+						return { didNavigate: false };
+					}
 
-			// After processing, if it was just a prefetch, then we can return
-			// and signal that no UI navigation occurred.
-			if (entry.intent === "none" && entry.type === "prefetch") {
-				return { didNavigate: false };
+					this.deleteNavigation(targetUrl);
+					await effectuateRedirectDataResult(
+						outcome.redirectData,
+						props.redirectCount || 0,
+						props,
+					);
+					return { didNavigate: false };
+				}
+
+				case "success": {
+					const targetUrl = new URL(props.href, window.location.href)
+						.href;
+					const entry = this.findNavigationEntry(targetUrl);
+					if (!entry) {
+						return { didNavigate: false };
+					}
+
+					if (
+						entry.intent === "navigate" ||
+						entry.intent === "revalidate"
+					) {
+						lastTriggeredNavOrRevalidateTimestampMS = Date.now();
+					}
+
+					await this.processSuccessfulNavigation(outcome, entry);
+
+					if (entry.intent === "none" && entry.type === "prefetch") {
+						return { didNavigate: false };
+					}
+
+					return { didNavigate: true };
+				}
+
+				default: {
+					// Exhaustiveness check - TypeScript will error if a case is missing
+					const _exhaustive: never = outcome;
+					throw new Error(
+						`Unexpected navigation outcome type: ${(_exhaustive as any).type}`,
+					);
+				}
 			}
 		} catch (error) {
 			const targetUrl = new URL(props.href, window.location.href).href;
@@ -164,65 +369,107 @@ class NavigationStateManager {
 			}
 			return { didNavigate: false };
 		}
-		return { didNavigate: true };
 	}
 
 	beginNavigation(props: NavigateProps): NavigationControl {
-		const existing = this._navigations.get(
-			new URL(props.href, window.location.href).href,
-		);
+		const targetUrl = new URL(props.href, window.location.href).href;
 
 		switch (props.navigationType) {
 			case "userNavigation":
-				return this.beginUserNavigation(props, existing);
+				return this.beginUserNavigation(props, targetUrl);
 			case "prefetch":
-				return this.beginPrefetch(props, existing);
+				return this.beginPrefetch(props, targetUrl);
 			case "revalidation":
 				return this.beginRevalidation(props);
 			case "browserHistory":
 			case "redirect":
 			default:
-				return this.createNavigation(props, "navigate");
+				return this.createActiveNavigation(props, "navigate");
 		}
 	}
 
 	private beginUserNavigation(
 		props: NavigateProps,
-		existing: NavigationEntry | undefined,
+		targetUrl: string,
 	): NavigationControl {
-		const targetUrl = new URL(props.href, window.location.href).href;
-
-		// Abort all other navigations
-		this.abortAllNavigationsExcept(targetUrl);
-
-		if (existing) {
-			if (existing.type === "prefetch") {
-				// Upgrade prefetch to user navigation
-				this.upgradeNavigation(targetUrl, {
-					type: "userNavigation",
-					intent: "navigate",
-					scrollToTop: props.scrollToTop,
-					replace: props.replace,
-					state: props.state,
-				});
-				return existing.control;
-			}
-
-			// Already navigating to this URL, return existing
-			return existing.control;
+		// Abort active navigation if it's to a different URL
+		if (
+			this._activeNavigation &&
+			this._activeNavigation.targetUrl !== targetUrl
+		) {
+			this._activeNavigation.control.abortController?.abort();
+			this._activeNavigation = null;
 		}
 
-		return this.createNavigation(props, "navigate");
+		// Abort all prefetches except the one we might upgrade
+		for (const [url, prefetch] of this._prefetchCache.entries()) {
+			if (url !== targetUrl) {
+				prefetch.control.abortController?.abort();
+				this._prefetchCache.delete(url);
+			}
+		}
+
+		// Abort pending revalidation only if it's to a different URL
+		if (
+			this._pendingRevalidation &&
+			this._pendingRevalidation.targetUrl !== targetUrl
+		) {
+			this._pendingRevalidation.control.abortController?.abort();
+			this._pendingRevalidation = null;
+		}
+
+		// Check if there's already an active navigation to this URL
+		if (this._activeNavigation?.targetUrl === targetUrl) {
+			return this._activeNavigation.control;
+		}
+
+		// Check if there's a prefetch to upgrade
+		const existingPrefetch = this._prefetchCache.get(targetUrl);
+		if (existingPrefetch) {
+			// Upgrade prefetch: move from cache to active slot, change intent
+			this._prefetchCache.delete(targetUrl);
+			existingPrefetch.type = "userNavigation";
+			existingPrefetch.intent = "navigate";
+			existingPrefetch.scrollToTop = props.scrollToTop;
+			existingPrefetch.replace = props.replace;
+			existingPrefetch.state = props.state;
+			this._activeNavigation = existingPrefetch;
+			this.scheduleStatusUpdate();
+			return existingPrefetch.control;
+		}
+
+		// Check if there's a pending revalidation to the same URL - upgrade it
+		if (this._pendingRevalidation?.targetUrl === targetUrl) {
+			// Upgrade revalidation: change intent so user gets proper link semantics
+			this._pendingRevalidation.type = "userNavigation";
+			this._pendingRevalidation.intent = "navigate";
+			this._pendingRevalidation.scrollToTop = props.scrollToTop;
+			this._pendingRevalidation.replace = props.replace;
+			this._pendingRevalidation.state = props.state;
+			return this._pendingRevalidation.control;
+		}
+
+		return this.createActiveNavigation(props, "navigate");
 	}
 
 	private beginPrefetch(
 		props: NavigateProps,
-		existing: NavigationEntry | undefined,
+		targetUrl: string,
 	): NavigationControl {
-		const targetUrl = new URL(props.href, window.location.href).href;
+		// If there's already an active navigation to this URL, return its control
+		if (this._activeNavigation?.targetUrl === targetUrl) {
+			return this._activeNavigation.control;
+		}
 
-		if (existing) {
-			return existing.control;
+		// If there's already a prefetch to this URL, return its control
+		const existingPrefetch = this._prefetchCache.get(targetUrl);
+		if (existingPrefetch) {
+			return existingPrefetch.control;
+		}
+
+		// If there's a pending revalidation to this URL, return its control
+		if (this._pendingRevalidation?.targetUrl === targetUrl) {
+			return this._pendingRevalidation.control;
 		}
 
 		// Don't prefetch current page
@@ -231,45 +478,37 @@ class NavigationStateManager {
 		currentUrl.hash = "";
 		targetUrlObj.hash = "";
 		if (currentUrl.href === targetUrlObj.href) {
-			// Return a no-op control
 			return {
 				abortController: new AbortController(),
-				promise: Promise.resolve(undefined),
+				promise: Promise.resolve({ type: "aborted" as const }),
 			};
 		}
 
-		return this.createNavigation(props, "none");
+		return this.createPrefetch(props, targetUrl);
 	}
 
 	private beginRevalidation(props: NavigateProps): NavigationControl {
-		// Store current URL to validate against later
 		const currentUrl = window.location.href;
 
-		// Check for recent revalidation to same URL
-		const existing = this._navigations.get(currentUrl);
+		// Coalesce recent revalidations
 		if (
-			existing?.type === "revalidation" &&
-			Date.now() - existing.startTime < this.REVALIDATION_COALESCE_MS
+			this._pendingRevalidation &&
+			Date.now() - this._pendingRevalidation.startTime <
+				this.REVALIDATION_COALESCE_MS
 		) {
-			return existing.control;
+			return this._pendingRevalidation.control;
 		}
 
-		// Abort other revalidations
-		for (const [key, nav] of this._navigations.entries()) {
-			if (nav.type === "revalidation") {
-				nav.control.abortController?.abort();
-				this.deleteNavigation(key);
-			}
+		// Abort existing revalidation
+		if (this._pendingRevalidation) {
+			this._pendingRevalidation.control.abortController?.abort();
+			this._pendingRevalidation = null;
 		}
 
-		// Create revalidation with current URL
-		return this.createNavigation(
-			{ ...props, href: currentUrl },
-			"revalidate",
-		);
+		return this.createRevalidation({ ...props, href: currentUrl });
 	}
 
-	private createNavigation(
+	private createActiveNavigation(
 		props: NavigateProps,
 		intent: NavigationIntent,
 	): NavigationControl {
@@ -297,206 +536,168 @@ class NavigationStateManager {
 			state: props.state,
 		};
 
-		this.setNavigation(targetUrl, entry);
+		this._activeNavigation = entry;
+		this.scheduleStatusUpdate();
 		return entry.control;
 	}
 
-	private upgradeNavigation(
-		href: string,
-		updates: Partial<
-			Pick<
-				NavigationEntry,
-				"type" | "intent" | "scrollToTop" | "replace" | "state"
-			>
-		>,
-	): void {
-		const existing = this._navigations.get(href);
-		if (!existing) return;
+	private createPrefetch(
+		props: NavigateProps,
+		targetUrl: string,
+	): NavigationControl {
+		const controller = new AbortController();
 
-		this.setNavigation(href, {
-			...existing,
-			...updates,
-		});
+		const entry: NavigationEntry = {
+			control: {
+				abortController: controller,
+				promise: this.fetchRouteData(controller, props).catch(
+					(error) => {
+						this._prefetchCache.delete(targetUrl);
+						throw error;
+					},
+				),
+			},
+			type: "prefetch",
+			intent: "none",
+			phase: "fetching",
+			startTime: Date.now(),
+			targetUrl,
+			originUrl: window.location.href,
+			scrollToTop: props.scrollToTop,
+			replace: props.replace,
+			state: props.state,
+		};
+
+		this._prefetchCache.set(targetUrl, entry);
+		// No status update needed - prefetches don't affect status
+		return entry.control;
 	}
 
-	private transitionPhase(href: string, phase: NavigationPhase): void {
-		const existing = this._navigations.get(href);
-		if (!existing) return;
+	private createRevalidation(props: NavigateProps): NavigationControl {
+		const controller = new AbortController();
+		const targetUrl = new URL(props.href, window.location.href).href;
 
-		this.setNavigation(href, {
-			...existing,
-			phase,
-		});
+		const entry: NavigationEntry = {
+			control: {
+				abortController: controller,
+				promise: this.fetchRouteData(controller, props).catch(
+					(error) => {
+						if (
+							this._pendingRevalidation?.targetUrl === targetUrl
+						) {
+							this._pendingRevalidation = null;
+							this.scheduleStatusUpdate();
+						}
+						throw error;
+					},
+				),
+			},
+			type: "revalidation",
+			intent: "revalidate",
+			phase: "fetching",
+			startTime: Date.now(),
+			targetUrl,
+			originUrl: window.location.href,
+			scrollToTop: props.scrollToTop,
+			replace: props.replace,
+			state: props.state,
+		};
+
+		this._pendingRevalidation = entry;
+		this.scheduleStatusUpdate();
+		return entry.control;
 	}
 
-	private canSkipServerFetch(targetUrl: string): {
-		canSkip: boolean;
-		matchResult?: any;
-		importURLs?: string[];
-		exportKeys?: string[];
-		loadersData?: any[];
-	} {
+	private transitionPhase(targetUrl: string, phase: NavigationPhase): void {
+		if (this._activeNavigation?.targetUrl === targetUrl) {
+			this._activeNavigation.phase = phase;
+			this.scheduleStatusUpdate();
+			return;
+		}
+
+		const prefetch = this._prefetchCache.get(targetUrl);
+		if (prefetch) {
+			prefetch.phase = phase;
+			// No status update for prefetches
+			return;
+		}
+
+		if (this._pendingRevalidation?.targetUrl === targetUrl) {
+			this._pendingRevalidation.phase = phase;
+			this.scheduleStatusUpdate();
+		}
+	}
+
+	private canSkipServerFetch(targetUrl: string): SkipCheckResult {
+		// Early return: no route manifest
 		const routeManifest = __vormaClientGlobal.get("routeManifest");
 		if (!routeManifest) {
 			return { canSkip: false };
 		}
 
+		// Early return: no pattern registry
 		const patternRegistry = __vormaClientGlobal.get("patternRegistry");
 		if (!patternRegistry) {
 			return { canSkip: false };
 		}
 
-		const patternToWaitFnMap =
-			__vormaClientGlobal.get("patternToWaitFnMap") || {};
-
+		// Early return: no match
 		const url = new URL(targetUrl);
 		const matchResult = findNestedMatches(patternRegistry, url.pathname);
 		if (!matchResult) {
 			return { canSkip: false };
 		}
 
-		const clientModuleMap =
-			__vormaClientGlobal.get("clientModuleMap") || {};
-		const currentMatchedPatterns =
-			__vormaClientGlobal.get("matchedPatterns") || [];
-		const currentParams = __vormaClientGlobal.get("params") || {};
-		const currentSplatValues = __vormaClientGlobal.get("splatValues") || [];
-		const currentLoadersData = __vormaClientGlobal.get("loadersData") || [];
+		// Build context for helper functions
+		const ctx: SkipCheckContext = {
+			routeManifest,
+			patternRegistry,
+			patternToWaitFnMap:
+				__vormaClientGlobal.get("patternToWaitFnMap") || {},
+			clientModuleMap: __vormaClientGlobal.get("clientModuleMap") || {},
+			currentMatchedPatterns:
+				__vormaClientGlobal.get("matchedPatterns") || [],
+			currentParams: __vormaClientGlobal.get("params") || {},
+			currentSplatValues: __vormaClientGlobal.get("splatValues") || [],
+			currentLoadersData: __vormaClientGlobal.get("loadersData") || [],
+			url,
+			matchResult,
+		};
 
-		// Check if any current server loaders are being removed
-		for (const pattern of currentMatchedPatterns) {
-			const hasServerLoader = routeManifest[pattern] === 1;
-			if (hasServerLoader) {
-				const stillMatched = matchResult.matches.some(
-					(m: any) => m.registeredPattern.originalPattern === pattern,
-				);
-				if (!stillMatched) {
-					// A server loader is being removed - must fetch from server
-					return { canSkip: false };
-				}
-			}
-		}
-
-		// Block skip if the target introduces a new client loader
-		for (const m of matchResult.matches) {
-			const pattern = m.registeredPattern.originalPattern;
-			const hasClientLoader = !!patternToWaitFnMap[pattern];
-			const wasAlreadyMatched = currentMatchedPatterns.includes(pattern);
-			if (hasClientLoader && !wasAlreadyMatched) {
-				return { canSkip: false };
-			}
-		}
-
-		let outermostLoaderIndex = -1;
-		for (let i = matchResult.matches.length - 1; i >= 0; i--) {
-			const match: Match | undefined = matchResult.matches[i];
-			if (!match) continue;
-
-			const pattern = match.registeredPattern.originalPattern;
-			const hasServerLoader = routeManifest[pattern] === 1;
-			const hasClientLoader = !!patternToWaitFnMap[pattern];
-
-			if (hasServerLoader || hasClientLoader) {
-				outermostLoaderIndex = i;
-				break;
-			}
-		}
-
-		const currentUrlObj = new URL(window.location.href);
-		const currentParamsSorted = Array.from(
-			currentUrlObj.searchParams.entries(),
-		).sort();
-		const targetParamsSorted = Array.from(
-			url.searchParams.entries(),
-		).sort();
-		const searchChanged = !jsonDeepEquals(
-			currentParamsSorted,
-			targetParamsSorted,
-		);
-
-		if (searchChanged && outermostLoaderIndex !== -1) {
+		// Early return: server loader being removed
+		if (hasServerLoaderRemoval(ctx)) {
 			return { canSkip: false };
 		}
 
-		if (outermostLoaderIndex !== -1) {
-			const outermostMatch = matchResult.matches[outermostLoaderIndex];
-			if (outermostMatch) {
-				for (const seg of outermostMatch.registeredPattern
-					.normalizedSegments) {
-					if (seg.segType === "dynamic") {
-						const paramName = seg.normalizedVal.substring(1);
-						if (
-							matchResult.params[paramName] !==
-							currentParams[paramName]
-						) {
-							return { canSkip: false };
-						}
-					}
-				}
-
-				const hasSplat =
-					outermostMatch.registeredPattern.lastSegType === "splat";
-
-				if (hasSplat) {
-					if (
-						!jsonDeepEquals(
-							matchResult.splatValues,
-							currentSplatValues,
-						)
-					) {
-						return { canSkip: false };
-					}
-				}
-			}
+		// Early return: new client loader introduced
+		if (hasNewClientLoader(ctx)) {
+			return { canSkip: false };
 		}
 
-		const importURLs: string[] = [];
-		const exportKeys: string[] = [];
-		const loadersData: any[] = [];
+		// Find outermost loader index for param/search change checks
+		const outermostLoaderIndex = findOutermostLoaderIndex(ctx);
 
-		for (let i = 0; i < matchResult.matches.length; i++) {
-			const match: Match | undefined = matchResult.matches[i];
-			if (!match) continue;
-
-			const pattern = match.registeredPattern.originalPattern;
-
-			const moduleInfo = clientModuleMap[pattern];
-			if (!moduleInfo) {
-				return { canSkip: false };
-			}
-
-			importURLs.push(moduleInfo.importURL);
-			exportKeys.push(moduleInfo.exportKey);
-
-			const hasServerLoader = routeManifest[pattern] === 1;
-
-			if (!hasServerLoader) {
-				loadersData.push(undefined);
-			} else {
-				const currentPatternIndex =
-					currentMatchedPatterns.indexOf(pattern);
-
-				if (currentPatternIndex === -1) {
-					// New server loader that we don't have data for
-					return { canSkip: false };
-				}
-				loadersData.push(currentLoadersData[currentPatternIndex]);
-			}
+		// Early return: search params changed with loaders present
+		if (outermostLoaderIndex !== -1 && didSearchParamsChange(ctx)) {
+			return { canSkip: false };
 		}
 
-		return {
-			canSkip: true,
-			matchResult,
-			importURLs,
-			exportKeys,
-			loadersData,
-		};
+		// Early return: outermost loader params changed
+		if (
+			outermostLoaderIndex !== -1 &&
+			didOutermostParamsChange(ctx, outermostLoaderIndex)
+		) {
+			return { canSkip: false };
+		}
+
+		// Build and return skip result
+		return buildSkipResult(ctx);
 	}
 
 	private async fetchRouteData(
 		controller: AbortController,
 		props: NavigateProps,
-	): Promise<NavigationResult> {
+	): Promise<NavigationOutcome> {
 		try {
 			const url = new URL(props.href, window.location.href);
 
@@ -507,91 +708,12 @@ class NavigationStateManager {
 			) {
 				const skipCheck = this.canSkipServerFetch(url.href);
 
-				if (skipCheck.canSkip && skipCheck.matchResult) {
-					// We can use client-only navigation
-					const { importURLs, exportKeys, loadersData } = skipCheck;
-
-					// Build the response as if it came from the server
-					const json: GetRouteDataOutput = {
-						matchedPatterns: skipCheck.matchResult.matches.map(
-							(m: any) => m.registeredPattern.originalPattern,
-						),
-						loadersData: loadersData!,
-						importURLs: importURLs!,
-						exportKeys: exportKeys!,
-						hasRootData: __vormaClientGlobal.get("hasRootData"),
-						params: skipCheck.matchResult.params,
-						splatValues: skipCheck.matchResult.splatValues,
-						deps: [],
-						cssBundles: [],
-						outermostServerError: undefined,
-						outermostServerErrorIdx: undefined,
-						errorExportKeys: [],
-						title: undefined,
-						metaHeadEls: undefined,
-						restHeadEls: undefined,
-						activeComponents: undefined as unknown as [],
-					};
-
-					// Create a response object
-					const response = new Response(JSON.stringify(json), {
-						status: 200,
-						headers: {
-							"Content-Type": "application/json",
-							"X-Vorma-Build-Id":
-								__vormaClientGlobal.get("buildID") || "1",
-						},
-					});
-
-					const currentClientLoadersData =
-						__vormaClientGlobal.get("clientLoadersData") || [];
-					const patternToWaitFnMap =
-						__vormaClientGlobal.get("patternToWaitFnMap") || {};
-					const runningLoaders = new Map<string, Promise<any>>();
-
-					for (let i = 0; i < json.matchedPatterns.length; i++) {
-						const pattern = json.matchedPatterns[i];
-						if (!pattern) continue;
-
-						if (patternToWaitFnMap[pattern]) {
-							const currentMatchedPatterns =
-								__vormaClientGlobal.get("matchedPatterns") ||
-								[];
-							const currentPatternIndex =
-								currentMatchedPatterns.indexOf(pattern);
-
-							if (
-								currentPatternIndex !== -1 &&
-								currentClientLoadersData[
-									currentPatternIndex
-								] !== undefined
-							) {
-								runningLoaders.set(
-									pattern,
-									Promise.resolve(
-										currentClientLoadersData[
-											currentPatternIndex
-										],
-									),
-								);
-							}
-						}
-					}
-
-					const waitFnPromise = completeClientLoaders(
-						json,
-						__vormaClientGlobal.get("buildID") || "1",
-						runningLoaders,
-						controller.signal,
-					);
-
-					return {
-						response,
+				if (skipCheck.canSkip) {
+					return this.buildClientOnlyOutcome(
+						skipCheck,
 						props,
-						json,
-						cssBundlePromises: [],
-						waitFnPromise,
-					};
+						controller,
+					);
 				}
 			}
 
@@ -614,7 +736,6 @@ class NavigationStateManager {
 				isPrefetch: props.navigationType === "prefetch",
 				redirectCount: props.redirectCount,
 			}).then(async (result) => {
-				// Read the response body once and return both the original result and parsed JSON
 				if (
 					result.response &&
 					result.response.ok &&
@@ -645,7 +766,6 @@ class NavigationStateManager {
 					const loaderFn = patternToWaitFnMap[pattern];
 
 					if (loaderFn) {
-						// Create a promise for this pattern's server data
 						const serverDataPromise = serverPromise
 							.then(
 								({
@@ -707,22 +827,18 @@ class NavigationStateManager {
 			const responseNotOK = !response?.ok && response?.status !== 304;
 
 			if (redirected || !response) {
-				// This is a valid end to a navigation attempt (e.g., a redirect occurred
-				// or the request was aborted). It's not an error.
 				controller.abort();
-				return undefined;
+				return { type: "aborted" };
 			}
 
 			if (responseNotOK) {
-				// This is a server error. Throwing an exception allows our .catch()
-				// blocks to handle cleanup and reset the loading state.
 				controller.abort();
 				throw new Error(`Fetch failed with status ${response.status}`);
 			}
 
 			if (redirectData?.status === "should") {
 				controller.abort();
-				return { response, redirectData, props };
+				return { type: "redirect", redirectData, props };
 			}
 
 			if (!json) {
@@ -731,9 +847,6 @@ class NavigationStateManager {
 			}
 
 			// deps are only present in prod because they stem from the rollup metafile
-			// (same for CSS bundles -- vite handles them in dev)
-			// so in dev, to get similar behavior, we use the importURLs
-			// (which is a subset of what the deps would be in prod)
 			const depsToPreload = import.meta.env.DEV
 				? [...new Set(json.importURLs)]
 				: json.deps;
@@ -756,7 +869,14 @@ class NavigationStateManager {
 				cssBundlePromises.push(AssetManager.preloadCSS(bundle));
 			}
 
-			return { response, json, props, cssBundlePromises, waitFnPromise };
+			return {
+				type: "success",
+				response,
+				json,
+				props,
+				cssBundlePromises,
+				waitFnPromise,
+			};
 		} catch (error) {
 			if (!isAbortError(error)) {
 				logError("Navigation failed", error);
@@ -765,49 +885,109 @@ class NavigationStateManager {
 		}
 	}
 
-	private async processNavigationResult(
-		result: NavigationResult,
+	private buildClientOnlyOutcome(
+		skipCheck: Extract<SkipCheckResult, { canSkip: true }>,
+		props: NavigateProps,
+		controller: AbortController,
+	): NavigationOutcome {
+		const { matchResult, importURLs, exportKeys, loadersData } = skipCheck;
+
+		const json: GetRouteDataOutput = {
+			matchedPatterns: matchResult.matches.map(
+				(m: Match) => m.registeredPattern.originalPattern,
+			),
+			loadersData: loadersData,
+			importURLs: importURLs,
+			exportKeys: exportKeys,
+			hasRootData: __vormaClientGlobal.get("hasRootData"),
+			params: matchResult.params,
+			splatValues: matchResult.splatValues,
+			deps: [],
+			cssBundles: [],
+			outermostServerError: undefined,
+			outermostServerErrorIdx: undefined,
+			errorExportKeys: [],
+			title: undefined,
+			metaHeadEls: undefined,
+			restHeadEls: undefined,
+			activeComponents: undefined as unknown as [],
+		};
+
+		const response = new Response(JSON.stringify(json), {
+			status: 200,
+			headers: {
+				"Content-Type": "application/json",
+				"X-Vorma-Build-Id": __vormaClientGlobal.get("buildID") || "1",
+			},
+		});
+
+		const currentClientLoadersData =
+			__vormaClientGlobal.get("clientLoadersData") || [];
+		const patternToWaitFnMap =
+			__vormaClientGlobal.get("patternToWaitFnMap") || {};
+		const runningLoaders = new Map<string, Promise<any>>();
+
+		for (let i = 0; i < json.matchedPatterns.length; i++) {
+			const pattern = json.matchedPatterns[i];
+			if (!pattern) continue;
+
+			if (patternToWaitFnMap[pattern]) {
+				const currentMatchedPatterns =
+					__vormaClientGlobal.get("matchedPatterns") || [];
+				const currentPatternIndex =
+					currentMatchedPatterns.indexOf(pattern);
+
+				if (
+					currentPatternIndex !== -1 &&
+					currentClientLoadersData[currentPatternIndex] !== undefined
+				) {
+					runningLoaders.set(
+						pattern,
+						Promise.resolve(
+							currentClientLoadersData[currentPatternIndex],
+						),
+					);
+				}
+			}
+		}
+
+		const waitFnPromise = completeClientLoaders(
+			json,
+			__vormaClientGlobal.get("buildID") || "1",
+			runningLoaders,
+			controller.signal,
+		);
+
+		return {
+			type: "success",
+			response,
+			props,
+			json,
+			cssBundlePromises: [],
+			waitFnPromise,
+		};
+	}
+
+	async processSuccessfulNavigation(
+		outcome: Extract<NavigationOutcome, { type: "success" }>,
 		entry: NavigationEntry,
 	): Promise<void> {
 		try {
-			if (!result) return;
-
-			if ("redirectData" in result) {
-				// Skip redirect effectuation for pure prefetches
-				if (entry.type === "prefetch" && entry.intent === "none") {
-					this.deleteNavigation(entry.targetUrl);
-					return;
-				}
-
-				// Clean up before redirect to prevent race conditions
-				this.deleteNavigation(entry.targetUrl);
-
-				await effectuateRedirectDataResult(
-					result.redirectData,
-					result.props.redirectCount || 0,
-					result.props,
-				);
-				return;
-			}
-
-			// Sanity check -- should not happen
-			if (!("json" in result)) {
-				logError("Invalid navigation result: no JSON or redirect");
-				return;
-			}
+			const { response, json, props, cssBundlePromises, waitFnPromise } =
+				outcome;
 
 			// Only update module map and apply CSS if build IDs match
 			const currentBuildID = __vormaClientGlobal.get("buildID");
-			const responseBuildID = getBuildIDFromResponse(result.response);
+			const responseBuildID = getBuildIDFromResponse(response);
 
 			if (responseBuildID === currentBuildID) {
 				// Update module map only when builds match
 				const clientModuleMap =
 					__vormaClientGlobal.get("clientModuleMap") || {};
-				const matchedPatterns = result.json.matchedPatterns || [];
-				const importURLs = result.json.importURLs || [];
-				const exportKeys = result.json.exportKeys || [];
-				const errorExportKeys = result.json.errorExportKeys || [];
+				const matchedPatterns = json.matchedPatterns || [];
+				const importURLs = json.importURLs || [];
+				const exportKeys = json.exportKeys || [];
+				const errorExportKeys = json.errorExportKeys || [];
 
 				for (let i = 0; i < matchedPatterns.length; i++) {
 					const pattern = matchedPatterns[i];
@@ -826,15 +1006,9 @@ class NavigationStateManager {
 
 				__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
 
-				// Apply CSS bundles immediately, even for prefetches.
-				// This ensures that if the user doesn't actually click now,
-				// but they do later (and it happens to be eligible for skip),
-				// everything still works.
-				if (
-					result.json.cssBundles &&
-					result.json.cssBundles.length > 0
-				) {
-					AssetManager.applyCSS(result.json.cssBundles);
+				// Apply CSS bundles immediately, even for prefetches
+				if (json.cssBundles && json.cssBundles.length > 0) {
+					AssetManager.applyCSS(json.cssBundles);
 				}
 			}
 
@@ -851,25 +1025,25 @@ class NavigationStateManager {
 			this.transitionPhase(entry.targetUrl, "waiting");
 
 			// Skip if navigation was aborted
-			if (!this._navigations.has(entry.targetUrl)) {
+			if (!this.findNavigationEntry(entry.targetUrl)) {
 				return;
 			}
 
 			// Update build ID if needed
 			const oldID = __vormaClientGlobal.get("buildID");
-			const newID = getBuildIDFromResponse(result.response);
+			const newID = getBuildIDFromResponse(response);
 			if (newID && newID !== oldID) {
 				dispatchBuildIDEvent({ newID, oldID });
 			}
 
 			// Wait for client loaders and set state
-			const clientLoadersResult = await result.waitFnPromise;
+			const clientLoadersResult = await waitFnPromise;
 			setClientLoadersState(clientLoadersResult);
 
 			// Wait for CSS
-			if (result.cssBundlePromises.length > 0) {
+			if (cssBundlePromises.length > 0) {
 				try {
-					await Promise.all(result.cssBundlePromises);
+					await Promise.all(cssBundlePromises);
 				} catch (error) {
 					logError("Error preloading CSS bundles:", error);
 				}
@@ -895,16 +1069,15 @@ class NavigationStateManager {
 			// Render the app
 			try {
 				await __reRenderApp({
-					json: result.json,
+					json,
 					navigationType: entry.type,
 					runHistoryOptions:
 						entry.intent === "navigate"
 							? {
 									href: entry.targetUrl,
 									scrollStateToRestore:
-										result.props.scrollStateToRestore,
-									replace:
-										entry.replace || result.props.replace,
+										props.scrollStateToRestore,
+									replace: entry.replace || props.replace,
 									scrollToTop: entry.scrollToTop,
 									state: entry.state,
 								}
@@ -993,7 +1166,7 @@ class NavigationStateManager {
 
 			if (redirectData?.status === "should") {
 				await effectuateRedirectDataResult(redirectData, 0);
-				return { success: true, data: undefined as T }; // No data on redirect
+				return { success: true, data: undefined as T };
 			}
 
 			const data = await response.json();
@@ -1021,61 +1194,100 @@ class NavigationStateManager {
 		}
 	}
 
-	private setNavigation(key: string, entry: NavigationEntry): void {
-		this._navigations.set(key, entry);
-		this.scheduleStatusUpdate();
+	private findNavigationEntry(
+		targetUrl: string,
+	): NavigationEntry | undefined {
+		if (this._activeNavigation?.targetUrl === targetUrl) {
+			return this._activeNavigation;
+		}
+		const prefetch = this._prefetchCache.get(targetUrl);
+		if (prefetch) {
+			return prefetch;
+		}
+		if (this._pendingRevalidation?.targetUrl === targetUrl) {
+			return this._pendingRevalidation;
+		}
+		return undefined;
 	}
 
 	private deleteNavigation(key: string): boolean {
-		const result = this._navigations.delete(key);
-		if (result) {
+		// Check active navigation
+		if (this._activeNavigation?.targetUrl === key) {
+			this._activeNavigation = null;
 			this.scheduleStatusUpdate();
+			return true;
 		}
-		return result;
+
+		// Check prefetch cache
+		if (this._prefetchCache.has(key)) {
+			this._prefetchCache.delete(key);
+			// No status update for prefetches
+			return true;
+		}
+
+		// Check pending revalidation
+		if (this._pendingRevalidation?.targetUrl === key) {
+			this._pendingRevalidation = null;
+			this.scheduleStatusUpdate();
+			return true;
+		}
+
+		return false;
 	}
 
 	removeNavigation(key: string): void {
-		this.deleteNavigation(key);
-	}
-
-	getNavigation(key: string): NavigationEntry | undefined {
-		return this._navigations.get(key);
-	}
-
-	hasNavigation(key: string): boolean {
-		return this._navigations.has(key);
-	}
-
-	getNavigationsSize(): number {
-		return this._navigations.size;
-	}
-
-	getNavigations(): Map<string, NavigationEntry> {
-		return this._navigations;
-	}
-
-	private abortAllNavigationsExcept(excludeHref?: string): void {
-		for (const [href, nav] of this._navigations.entries()) {
-			if (href !== excludeHref) {
-				nav.control.abortController?.abort();
-				this.deleteNavigation(href);
-			}
+		const entry = this.findNavigationEntry(key);
+		if (entry) {
+			entry.control.abortController?.abort();
+			this.deleteNavigation(key);
 		}
 	}
 
+	getNavigation(key: string): NavigationEntry | undefined {
+		return this.findNavigationEntry(key);
+	}
+
+	hasNavigation(key: string): boolean {
+		return this.findNavigationEntry(key) !== undefined;
+	}
+
+	getNavigationsSize(): number {
+		let size = 0;
+		if (this._activeNavigation) size++;
+		size += this._prefetchCache.size;
+		if (this._pendingRevalidation) size++;
+		return size;
+	}
+
+	getNavigations(): Map<string, NavigationEntry> {
+		// Reconstruct Map for compatibility with existing code
+		const map = new Map<string, NavigationEntry>();
+		if (this._activeNavigation) {
+			map.set(this._activeNavigation.targetUrl, this._activeNavigation);
+		}
+		for (const [key, entry] of this._prefetchCache) {
+			map.set(key, entry);
+		}
+		if (this._pendingRevalidation) {
+			map.set(
+				this._pendingRevalidation.targetUrl,
+				this._pendingRevalidation,
+			);
+		}
+		return map;
+	}
+
 	getStatus(): StatusEventDetail {
-		const navigations = Array.from(this._navigations.values());
-		const submissions = Array.from(this._submissions.values());
+		const isNavigating =
+			this._activeNavigation !== null &&
+			this._activeNavigation.intent === "navigate" &&
+			this._activeNavigation.phase !== "complete";
 
-		const isNavigating = navigations.some(
-			(nav) => nav.intent === "navigate" && nav.phase !== "complete",
-		);
+		const isRevalidating =
+			this._pendingRevalidation !== null &&
+			this._pendingRevalidation.phase !== "complete";
 
-		const isRevalidating = navigations.some(
-			(nav) => nav.type === "revalidation" && nav.phase !== "complete",
-		);
-
-		const isSubmitting = submissions.some(
+		const isSubmitting = Array.from(this._submissions.values()).some(
 			(x) => !x.skipGlobalLoadingIndicator,
 		);
 
@@ -1083,14 +1295,26 @@ class NavigationStateManager {
 	}
 
 	clearAll(): void {
-		for (const nav of this._navigations.values()) {
-			nav.control.abortController?.abort();
+		if (this._activeNavigation) {
+			this._activeNavigation.control.abortController?.abort();
+			this._activeNavigation = null;
 		}
-		this._navigations.clear();
+
+		for (const prefetch of this._prefetchCache.values()) {
+			prefetch.control.abortController?.abort();
+		}
+		this._prefetchCache.clear();
+
+		if (this._pendingRevalidation) {
+			this._pendingRevalidation.control.abortController?.abort();
+			this._pendingRevalidation = null;
+		}
+
 		for (const sub of this._submissions.values()) {
 			sub.control.abortController?.abort();
 		}
 		this._submissions.clear();
+
 		this.scheduleStatusUpdate();
 	}
 

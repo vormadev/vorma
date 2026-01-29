@@ -26,7 +26,8 @@ type cachedItemSubset struct {
 
 type SplatValues []string
 
-type ui_data_core struct {
+// RouteDataCore contains the core route data that is serialized to JSON for the client.
+type RouteDataCore struct {
 	OutermostServerError    string   `json:"outermostServerError,omitempty"`
 	OutermostServerErrorIdx *int     `json:"outermostServerErrorIdx,omitempty"`
 	ErrorExportKeys         []string `json:"errorExportKeys,omitempty"`
@@ -42,23 +43,27 @@ type ui_data_core struct {
 	Deps        []string    `json:"deps,omitempty"`
 }
 
-type ui_data_stage_2 struct {
+// RouteAssets contains resolved CSS bundles and head elements.
+type RouteAssets struct {
 	SortedAndPreEscapedHeadEls *headels.SortedAndPreEscapedHeadEls
 	CSSBundles                 []string
 	ViteDevURL                 string
 }
 
-type ui_data_all struct {
-	notFound         bool
-	didRedirect      bool
-	didErr           bool
-	ui_data_core     *ui_data_core
-	stage_1_head_els []*htmlutil.Element
-	state_2_final    *ui_data_stage_2
+// RouteResult is the full result of route resolution, including early-return signals.
+type RouteResult struct {
+	notFound    bool
+	didRedirect bool
+	didErr      bool
+
+	core         *RouteDataCore
+	headElements []*htmlutil.Element
+	assets       *RouteAssets
 }
 
-type final_ui_data struct {
-	*ui_data_core
+// RouteDataFinal is the final structure serialized to JSON for the client.
+type RouteDataFinal struct {
+	*RouteDataCore
 	Title      *htmlutil.Element   `json:"title,omitempty"`
 	Meta       []*htmlutil.Element `json:"metaHeadEls,omitempty"`
 	Rest       []*htmlutil.Element `json:"restHeadEls,omitempty"`
@@ -66,108 +71,108 @@ type final_ui_data struct {
 	ViteDevURL string              `json:"viteDevURL,omitempty"`
 }
 
-func (v *Vorma) get_ui_data_stage_1(
+func (v *Vorma) getRouteDataStage1(
 	w http.ResponseWriter,
 	r *http.Request,
 	nestedRouter *mux.NestedRouter,
-) *ui_data_all {
+) *RouteResult {
 	realPath := matcher.StripTrailingSlash(r.URL.Path)
 	if realPath == "" {
 		realPath = "/"
 	}
 
-	_match_results, found := mux.FindNestedMatches(nestedRouter, r)
+	matchResults, found := mux.FindNestedMatches(nestedRouter, r)
 	if !found {
-		return &ui_data_all{notFound: true}
+		return &RouteResult{notFound: true}
 	}
 
-	_matches := _match_results.Matches
-	matchedPatterns := make([]string, len(_matches))
-	for i, match := range _matches {
+	matches := matchResults.Matches
+	matchedPatterns := make([]string, len(matches))
+	for i, match := range matches {
 		matchedPatterns[i] = match.OriginalPattern()
 	}
 
 	// Cache key generation based on normalized patterns
 	var sb strings.Builder
 	var growSize int
-	for _, match := range _matches {
+	for _, match := range matches {
 		growSize += len(match.NormalizedPattern())
 	}
 	sb.Grow(growSize)
-	for _, match := range _matches {
+	for _, match := range matches {
 		sb.WriteString(match.NormalizedPattern())
 	}
 	cacheKey := sb.String()
 
-	var _cachedItemSubset *cachedItemSubset
+	var cached *cachedItemSubset
 	cachedValue, isCached := gmpdCache.Load(cacheKey)
 
 	if isCached {
-		_cachedItemSubset = cachedValue.(*cachedItemSubset)
+		cached = cachedValue.(*cachedItemSubset)
 	} else {
 		// Cache Miss: Perform expensive path lookups and dependency graph traversal
 		paths := v.GetPathsSnapshot()
 		isDev := v.GetIsDevMode()
 
-		_cachedItemSubset = &cachedItemSubset{
-			ImportURLs:      make([]string, 0, len(_matches)),
-			ExportKeys:      make([]string, 0, len(_matches)),
-			ErrorExportKeys: make([]string, 0, len(_matches)),
+		cached = &cachedItemSubset{
+			ImportURLs:      make([]string, 0, len(matches)),
+			ExportKeys:      make([]string, 0, len(matches)),
+			ErrorExportKeys: make([]string, 0, len(matches)),
 		}
 
-		for _, path := range _matches {
+		for _, path := range matches {
 			foundPath := paths[path.OriginalPattern()]
 			if foundPath == nil || foundPath.SrcPath == "" {
-				_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "")
-				_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, "")
-				_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, "")
+				cached.ImportURLs = append(cached.ImportURLs, "")
+				cached.ExportKeys = append(cached.ExportKeys, "")
+				cached.ErrorExportKeys = append(cached.ErrorExportKeys, "")
 				continue
 			}
 			pathToUse := foundPath.OutPath
 			if isDev {
 				pathToUse = foundPath.SrcPath
 			}
-			_cachedItemSubset.ImportURLs = append(_cachedItemSubset.ImportURLs, "/"+pathToUse)
-			_cachedItemSubset.ExportKeys = append(_cachedItemSubset.ExportKeys, foundPath.ExportKey)
-			_cachedItemSubset.ErrorExportKeys = append(_cachedItemSubset.ErrorExportKeys, foundPath.ErrorExportKey)
+			cached.ImportURLs = append(cached.ImportURLs, "/"+pathToUse)
+			cached.ExportKeys = append(cached.ExportKeys, foundPath.ExportKey)
+			cached.ErrorExportKeys = append(cached.ErrorExportKeys, foundPath.ErrorExportKey)
 		}
 
 		// Expensive dependency graph traversal
-		_cachedItemSubset.Deps = v.getDepsFromSnapshot(_matches, paths)
+		cached.Deps = v.getDepsFromSnapshot(matches, paths)
 
-		gmpdCache.Store(cacheKey, _cachedItemSubset)
+		gmpdCache.Store(cacheKey, cached)
 	}
 
-	_tasks_results := mux.RunNestedTasks(nestedRouter, r, _match_results)
+	tasksResults := mux.RunNestedTasks(nestedRouter, r, matchResults)
 
 	var hasRootData bool
-	if len(_match_results.Matches) > 0 &&
-		_match_results.Matches[0].NormalizedPattern() == "" &&
-		_tasks_results.GetHasTaskHandler(0) {
+	if len(matchResults.Matches) > 0 &&
+		matchResults.Matches[0].NormalizedPattern() == "" &&
+		tasksResults.GetHasTaskHandler(0) {
 		hasRootData = true
 	}
 
-	_merged_response_proxy := response.MergeProxyResponses(_tasks_results.ResponseProxies...)
-	if _merged_response_proxy != nil {
-		_merged_response_proxy.ApplyToResponseWriter(w, r)
-		if _merged_response_proxy.IsError() {
-			return &ui_data_all{didErr: true}
+	mergedResponseProxy := response.MergeProxyResponses(tasksResults.ResponseProxies...)
+	if mergedResponseProxy != nil {
+		mergedResponseProxy.ApplyToResponseWriter(w, r)
+		if mergedResponseProxy.IsError() {
+			return &RouteResult{didErr: true}
 		}
-		if _merged_response_proxy.IsRedirect() {
-			return &ui_data_all{didRedirect: true}
+		if mergedResponseProxy.IsRedirect() {
+			return &RouteResult{didRedirect: true}
 		}
 	}
 
 	var numberOfLoaders int
-	if _match_results != nil {
-		numberOfLoaders = len(_match_results.Matches)
+	if matchResults != nil {
+		numberOfLoaders = len(matchResults.Matches)
 	}
 
 	loadersData := make([]any, numberOfLoaders)
 	loadersErrs := make([]error, numberOfLoaders)
 
 	if numberOfLoaders > 0 {
-		for i, result := range _tasks_results.Slice {
+		for i, result := range tasksResults.Slice {
 			if result != nil {
 				loadersData[i] = result.Data()
 				loadersErrs[i] = result.Err()
@@ -192,11 +197,11 @@ func (v *Vorma) get_ui_data_stage_1(
 	}
 
 	// Collect head elements from each response proxy, maintaining index alignment
-	// with _matches. If a proxy is nil, append nil to preserve indices.
+	// with matches. If a proxy is nil, append nil to preserve indices.
 	loadersHeadEls := make([][]*htmlutil.Element, 0, numberOfLoaders)
-	for _, _response_proxy := range _tasks_results.ResponseProxies {
-		if _response_proxy != nil {
-			loadersHeadEls = append(loadersHeadEls, _response_proxy.GetHeadEls().Collect())
+	for _, responseProxy := range tasksResults.ResponseProxies {
+		if responseProxy != nil {
+			loadersHeadEls = append(loadersHeadEls, responseProxy.GetHeadEls().Collect())
 		} else {
 			loadersHeadEls = append(loadersHeadEls, nil)
 		}
@@ -230,21 +235,21 @@ func (v *Vorma) get_ui_data_stage_1(
 		}
 
 		cutIdx := derefIdx + 1
-		return &ui_data_all{
-			ui_data_core: &ui_data_core{
+		return &RouteResult{
+			core: &RouteDataCore{
 				OutermostServerError:    clientMsg,
 				OutermostServerErrorIdx: outermostErrorIdx,
-				ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys[:cutIdx],
+				ErrorExportKeys:         cached.ErrorExportKeys[:cutIdx],
 				MatchedPatterns:         matchedPatterns[:cutIdx],
 				LoadersData:             loadersData[:cutIdx],
-				ImportURLs:              _cachedItemSubset.ImportURLs[:cutIdx],
-				ExportKeys:              _cachedItemSubset.ExportKeys[:cutIdx],
+				ImportURLs:              cached.ImportURLs[:cutIdx],
+				ExportKeys:              cached.ExportKeys[:cutIdx],
 				HasRootData:             hasRootData,
-				Params:                  _match_results.Params,
-				SplatValues:             _match_results.SplatValues,
-				Deps:                    _cachedItemSubset.Deps,
+				Params:                  matchResults.Params,
+				SplatValues:             matchResults.SplatValues,
+				Deps:                    cached.Deps,
 			},
-			stage_1_head_els: headEls,
+			headElements: headEls,
 		}
 	}
 
@@ -253,21 +258,21 @@ func (v *Vorma) get_ui_data_stage_1(
 		headEls = append(headEls, slice...)
 	}
 
-	return &ui_data_all{
-		ui_data_core: &ui_data_core{
+	return &RouteResult{
+		core: &RouteDataCore{
 			OutermostServerError:    "",
 			OutermostServerErrorIdx: nil,
-			ErrorExportKeys:         _cachedItemSubset.ErrorExportKeys,
+			ErrorExportKeys:         cached.ErrorExportKeys,
 			MatchedPatterns:         matchedPatterns,
 			LoadersData:             loadersData,
-			ImportURLs:              _cachedItemSubset.ImportURLs,
-			ExportKeys:              _cachedItemSubset.ExportKeys,
+			ImportURLs:              cached.ImportURLs,
+			ExportKeys:              cached.ExportKeys,
 			HasRootData:             hasRootData,
-			Params:                  _match_results.Params,
-			SplatValues:             _match_results.SplatValues,
-			Deps:                    _cachedItemSubset.Deps,
+			Params:                  matchResults.Params,
+			SplatValues:             matchResults.SplatValues,
+			Deps:                    cached.Deps,
 		},
-		stage_1_head_els: headEls,
+		headElements: headEls,
 	}
 }
 
@@ -276,7 +281,7 @@ func (v *Vorma) getUIRouteData(
 	r *http.Request,
 	nestedRouter *mux.NestedRouter,
 	isJSON bool,
-) *ui_data_all {
+) *RouteResult {
 	res := response.New(w)
 	eg := errgroup.Group{}
 	defaultHeadEls := headels.New()
@@ -291,32 +296,32 @@ func (v *Vorma) getUIRouteData(
 		return nil
 	})
 
-	uiRoutesData := v.get_ui_data_stage_1(w, r, nestedRouter)
+	routeResult := v.getRouteDataStage1(w, r, nestedRouter)
 	egErr = eg.Wait()
 
 	if egErr != nil {
 		v.Log.Error("Error in getUIRouteData", "error", egErr.Error())
 		res.InternalServerError()
-		return &ui_data_all{didErr: true}
+		return &RouteResult{didErr: true}
 	}
 
-	if uiRoutesData.notFound || uiRoutesData.didRedirect || uiRoutesData.didErr {
-		return uiRoutesData
+	if routeResult.notFound || routeResult.didRedirect || routeResult.didErr {
+		return routeResult
 	}
 
-	cssBundles := v.getCSSBundles(uiRoutesData.ui_data_core.Deps)
+	cssBundles := v.getCSSBundles(routeResult.core.Deps)
 	defaultHeadElsRaw := defaultHeadEls.Collect()
 
-	hb := make([]*htmlutil.Element, 0, len(uiRoutesData.stage_1_head_els)+len(defaultHeadElsRaw))
+	hb := make([]*htmlutil.Element, 0, len(routeResult.headElements)+len(defaultHeadElsRaw))
 	hb = append(hb, defaultHeadElsRaw...)
-	hb = append(hb, uiRoutesData.stage_1_head_els...)
+	hb = append(hb, routeResult.headElements...)
 
 	publicPathPrefix := v.Wave.GetPublicPathPrefix()
 	isDev := v.GetIsDevMode()
 
 	if !isDev && !isJSON {
-		if uiRoutesData.ui_data_core.Deps != nil {
-			for _, dep := range uiRoutesData.ui_data_core.Deps {
+		if routeResult.core.Deps != nil {
+			for _, dep := range routeResult.core.Deps {
 				el := &htmlutil.Element{
 					Tag:                 "link",
 					AttributesKnownSafe: map[string]string{"rel": "modulepreload", "href": publicPathPrefix + dep},
@@ -338,9 +343,9 @@ func (v *Vorma) getUIRouteData(
 
 	headEls := headElsInstance.ToSortedAndPreEscapedHeadEls(hb)
 
-	return &ui_data_all{
-		ui_data_core: uiRoutesData.ui_data_core,
-		state_2_final: &ui_data_stage_2{
+	return &RouteResult{
+		core: routeResult.core,
+		assets: &RouteAssets{
 			SortedAndPreEscapedHeadEls: headEls,
 			CSSBundles:                 cssBundles,
 			ViteDevURL:                 v.getViteDevURL(),

@@ -60,25 +60,27 @@ var coreSchema = jsonschema.RequiredObject(jsonschema.Def{
 		},
 	}},
 	Properties: struct {
-		ConfigLocation   jsonschema.Entry
-		DevBuildHook     jsonschema.Entry
-		ProdBuildHook    jsonschema.Entry
-		MainAppEntry     jsonschema.Entry
-		DistDir          jsonschema.Entry
-		StaticAssetDirs  jsonschema.Entry
-		CSSEntryFiles    jsonschema.Entry
-		PublicPathPrefix jsonschema.Entry
-		ServerOnlyMode   jsonschema.Entry
+		ConfigLocation    jsonschema.Entry
+		DevBuildHook      jsonschema.Entry
+		ProdBuildHook     jsonschema.Entry
+		MainAppEntry      jsonschema.Entry
+		DistDir           jsonschema.Entry
+		StaticAssetDirs   jsonschema.Entry
+		CSSEntryFiles     jsonschema.Entry
+		PublicPathPrefix  jsonschema.Entry
+		ServerOnlyMode    jsonschema.Entry
+		SequentialGoBuild jsonschema.Entry
 	}{
-		ConfigLocation:   configLocationSchema,
-		DevBuildHook:     devBuildHookSchema,
-		ProdBuildHook:    prodBuildHookSchema,
-		MainAppEntry:     mainAppEntrySchema,
-		DistDir:          distDirSchema,
-		StaticAssetDirs:  staticAssetDirsSchema,
-		CSSEntryFiles:    cssEntryFilesSchema,
-		PublicPathPrefix: publicPathPrefixSchema,
-		ServerOnlyMode:   serverOnlyModeSchema,
+		ConfigLocation:    configLocationSchema,
+		DevBuildHook:      devBuildHookSchema,
+		ProdBuildHook:     prodBuildHookSchema,
+		MainAppEntry:      mainAppEntrySchema,
+		DistDir:           distDirSchema,
+		StaticAssetDirs:   staticAssetDirsSchema,
+		CSSEntryFiles:     cssEntryFilesSchema,
+		PublicPathPrefix:  publicPathPrefixSchema,
+		ServerOnlyMode:    serverOnlyModeSchema,
+		SequentialGoBuild: sequentialGoBuildSchema,
 	},
 })
 
@@ -161,6 +163,12 @@ var publicPathPrefixSchema = jsonschema.OptionalString(jsonschema.Def{
 var serverOnlyModeSchema = jsonschema.OptionalBoolean(jsonschema.Def{
 	Description: `If true, skips static asset processing/serving and browser reloading.
 Use this for API-only servers without frontend assets.`,
+	Default: false,
+})
+
+var sequentialGoBuildSchema = jsonschema.OptionalBoolean(jsonschema.Def{
+	Description: `If true, the Go binary is compiled after build hooks complete rather than concurrently.
+Enable this if your build hooks generate Go code that the server binary imports.`,
 	Default: false,
 })
 

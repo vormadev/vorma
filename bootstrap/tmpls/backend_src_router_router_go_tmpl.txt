@@ -46,9 +46,6 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 		// This gets fed into backend/assets/entry.go.html
 		return map[string]any{}, nil
 	},
-	// If you need custom types for TypeScript generation, add them here:
-	// AdHocTypes: []*vorma.AdHocType{...},
-	// ExtraTSCode: `export type MyCustomType = ...`,
 })
 
 /////////////////////////////////////////////////////////////////////

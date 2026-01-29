@@ -68,23 +68,23 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			return
 		}
 
-		uiRouteData := v.getUIRouteData(w, r, nestedRouter, isJSON)
+		routeResult := v.getUIRouteData(w, r, nestedRouter, isJSON)
 
-		if uiRouteData.notFound {
+		if routeResult.notFound {
 			res.NotFound()
 			return
 		}
-		if uiRouteData.didErr || uiRouteData.didRedirect {
+		if routeResult.didErr || routeResult.didRedirect {
 			return
 		}
 
-		routeData := &final_ui_data{
-			ui_data_core: uiRouteData.ui_data_core,
-			Title:        uiRouteData.state_2_final.SortedAndPreEscapedHeadEls.Title,
-			Meta:         uiRouteData.state_2_final.SortedAndPreEscapedHeadEls.Meta,
-			Rest:         uiRouteData.state_2_final.SortedAndPreEscapedHeadEls.Rest,
-			CSSBundles:   uiRouteData.state_2_final.CSSBundles,
-			ViteDevURL:   uiRouteData.state_2_final.ViteDevURL,
+		routeData := &RouteDataFinal{
+			RouteDataCore: routeResult.core,
+			Title:         routeResult.assets.SortedAndPreEscapedHeadEls.Title,
+			Meta:          routeResult.assets.SortedAndPreEscapedHeadEls.Meta,
+			Rest:          routeResult.assets.SortedAndPreEscapedHeadEls.Rest,
+			CSSBundles:    routeResult.assets.CSSBundles,
+			ViteDevURL:    routeResult.assets.ViteDevURL,
 		}
 
 		if w.Header().Get("Cache-Control") == "" {
@@ -108,7 +108,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		var headElements template.HTML
 
 		eg.Go(func() error {
-			he, err := headElsInstance.Render(uiRouteData.state_2_final.SortedAndPreEscapedHeadEls)
+			he, err := headElsInstance.Render(routeResult.assets.SortedAndPreEscapedHeadEls)
 			if err != nil {
 				return fmt.Errorf("error getting head elements: %w", err)
 			}

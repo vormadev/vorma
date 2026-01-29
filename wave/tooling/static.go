@@ -340,7 +340,7 @@ func (b *Builder) WritePublicFileMapTS(outDir string) error {
 
 	for _, k := range keys {
 		v := fm[k]
-		sb.WriteString(fmt.Sprintf("  %q: %q,\n", k, v.DistName))
+		sb.WriteString(fmt.Sprintf("\t%q: %q,\n", k, v.DistName))
 	}
 
 	sb.WriteString("} as const;\n")

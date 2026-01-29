@@ -123,8 +123,9 @@ func (s *server) run() error {
 		}
 
 		isRebuild := !firstRun
+		sequentialGo := s.cfg.Core.SequentialGoBuild
 
-		// Run the build of the Builder binary and Server binary in parallel
+		// Run builds - either in parallel or sequentially based on config
 		var buildEg errgroup.Group
 
 		buildEg.Go(func() error {
@@ -139,7 +140,8 @@ func (s *server) run() error {
 			})
 		})
 
-		if recompileGo {
+		// Compile Go concurrently only if recompileGo is true AND sequential mode is disabled
+		if recompileGo && !sequentialGo {
 			buildEg.Go(func() error {
 				b := s.getBuilder()
 				if b == nil {
@@ -155,6 +157,25 @@ func (s *server) run() error {
 			s.waitForBuildRetry()
 			firstRun = false
 			continue
+		}
+
+		// If sequential mode is enabled, compile Go after build hooks have completed
+		if recompileGo && sequentialGo {
+			b := s.getBuilder()
+			if b == nil {
+				s.log.Error("builder is nil for sequential Go compile")
+				s.log.Info("Waiting for file changes to retry build...")
+				s.waitForBuildRetry()
+				firstRun = false
+				continue
+			}
+			if err := b.CompileGoOnly(true); err != nil {
+				s.log.Error("go compilation failed", "error", err)
+				s.log.Info("Waiting for file changes to retry build...")
+				s.waitForBuildRetry()
+				firstRun = false
+				continue
+			}
 		}
 
 		// Start Vite AFTER build completes (TypeScript files now exist)
