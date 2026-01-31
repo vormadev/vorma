@@ -1213,3 +1213,166 @@ func TestOutputFileWithDifferentExtension(t *testing.T) {
 	assertIncluded(t, result, "src/main.go")
 	assertExcluded(t, result, "context.md")
 }
+
+// =============================================================================
+// Dot-slash prefix (./) patterns
+// =============================================================================
+
+func TestDotSlashPrefixAnchorsToRoot(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"src/main.go":     "package main",
+		"src/lib/util.go": "package lib",
+		"other/main.go":   "package other",
+	})
+
+	output := runConcat(t, dir, []string{"./src/**"})
+
+	assertIncluded(t, output, "src/main.go")
+	assertIncluded(t, output, "src/lib/util.go")
+	assertExcluded(t, output, "other/main.go")
+}
+
+func TestDotSlashEquivalentToLeadingSlash(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"build":     "root build file",
+		"src/build": "nested build file",
+	})
+
+	outputDotSlash := runConcat(t, dir, []string{".", "!./build"})
+	outputSlash := runConcat(t, dir, []string{".", "!/build"})
+
+	// Both should exclude only root build, not nested
+	assertExcluded(t, outputDotSlash, "build")
+	assertIncluded(t, outputDotSlash, "src/build")
+
+	assertExcluded(t, outputSlash, "build")
+	assertIncluded(t, outputSlash, "src/build")
+}
+
+func TestDotSlashWithWildcard(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"main.go":       "package main",
+		"util.go":       "package util",
+		"src/nested.go": "package src",
+	})
+
+	output := runConcat(t, dir, []string{"./*.go"})
+
+	assertIncluded(t, output, "main.go")
+	assertIncluded(t, output, "util.go")
+	assertExcluded(t, output, "src/nested.go")
+}
+
+func TestDotSlashExclusionAnchored(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"vendor/dep.go":     "package dep",
+		"src/vendor/lib.go": "package lib",
+		"src/main.go":       "package main",
+	})
+
+	output := runConcat(t, dir, []string{".", "!./vendor/**"})
+
+	assertExcluded(t, output, "vendor/dep.go")
+	assertIncluded(t, output, "src/vendor/lib.go")
+	assertIncluded(t, output, "src/main.go")
+}
+
+func TestDotSlashWithTrailingSlash(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"build/out.go":     "package build",
+		"src/build/lib.go": "package lib",
+		"other/build":      "file named build",
+	})
+
+	output := runConcat(t, dir, []string{".", "!./build/"})
+
+	assertExcluded(t, output, "build/out.go")
+	assertIncluded(t, output, "src/build/lib.go")
+	assertIncluded(t, output, "other/build")
+}
+
+func TestDotSlashNegationReinclude(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"vendor/dep.go":  "package dep",
+		"vendor/keep.go": "package keep",
+	})
+
+	output := runConcat(t, dir, []string{
+		".",
+		"!./vendor/**",
+		"./vendor/keep.go",
+	})
+
+	assertExcluded(t, output, "vendor/dep.go")
+	assertIncluded(t, output, "vendor/keep.go")
+}
+
+func TestDotSlashOverridesDefaultExcludes(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"src/main.js":               "console.log()",
+		"node_modules/dep/index.js": "module.exports = {}",
+	})
+
+	output := runConcat(t, dir, []string{".", "./node_modules/**"})
+
+	assertIncluded(t, output, "src/main.js")
+	assertIncluded(t, output, "node_modules/dep/index.js")
+}
+
+func TestDotSlashSpecificFile(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"README.md":     "root readme",
+		"src/README.md": "nested readme",
+		"src/main.go":   "package main",
+	})
+
+	output := runConcat(t, dir, []string{"./README.md"})
+
+	assertIncluded(t, output, "README.md")
+	assertExcluded(t, output, "src/README.md")
+	assertExcluded(t, output, "src/main.go")
+}
+
+func TestDotSlashWithBraceExpansion(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"src/main.go":  "package main",
+		"lib/lib.go":   "package lib",
+		"test/test.go": "package test",
+	})
+
+	output := runConcat(t, dir, []string{"./{src,lib}/**"})
+
+	assertIncluded(t, output, "src/main.go")
+	assertIncluded(t, output, "lib/lib.go")
+	assertExcluded(t, output, "test/test.go")
+}
+
+func TestDotSlashNegatedPattern(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"src/main.go":   "package main",
+		"src/test.go":   "package main",
+		"lib/helper.go": "package lib",
+	})
+
+	output := runConcat(t, dir, []string{".", "!./src/test.go"})
+
+	assertIncluded(t, output, "src/main.go")
+	assertExcluded(t, output, "src/test.go")
+	assertIncluded(t, output, "lib/helper.go")
+}
+
+func TestMultipleDotSlashPatterns(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"src/main.go":  "package main",
+		"lib/lib.go":   "package lib",
+		"test/test.go": "package test",
+		"docs/doc.md":  "documentation",
+	})
+
+	output := runConcat(t, dir, []string{"./src/**", "./lib/**"})
+
+	assertIncluded(t, output, "src/main.go")
+	assertIncluded(t, output, "lib/lib.go")
+	assertExcluded(t, output, "test/test.go")
+	assertExcluded(t, output, "docs/doc.md")
+}

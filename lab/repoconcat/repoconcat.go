@@ -91,7 +91,7 @@ type patternSet struct {
 //
 // Patterns use glob syntax with gitignore-style semantics:
 //   - Patterns without `/` match anywhere (e.g., `build` matches `./build` and `./src/build`).
-//   - Leading `/` anchors to root (e.g., `/build` matches only `./build`).
+//   - Leading `/` or `./` anchors to root (e.g., `/build` or `./build` matches only `./build`).
 //   - Trailing `/` means directory (for inclusion: match contents; for exclusion: don't match files of same name).
 //   - Prefix `!` for negation (e.g., `!*.log` excludes log files).
 //   - Last match wins.
@@ -105,7 +105,7 @@ func MustConcat(output string, patterns []string, opts ...Options) {
 //
 // Patterns use glob syntax with gitignore-style semantics:
 //   - Patterns without `/` match anywhere (e.g., `build` matches `./build` and `./src/build`).
-//   - Leading `/` anchors to root (e.g., `/build` matches only `./build`).
+//   - Leading `/` or `./` anchors to root (e.g., `/build` or `./build` matches only `./build`).
 //   - Trailing `/` means directory (for inclusion: match contents; for exclusion: don't match files of same name).
 //   - Prefix `!` for negation (e.g., `!*.log` excludes log files).
 //   - Last match wins.
@@ -153,6 +153,7 @@ func Concat(output string, patterns []string, opts ...Options) error {
 			continue
 		}
 		p = strings.TrimPrefix(p, "/")
+		p = strings.TrimPrefix(p, "./")
 		p = strings.TrimSuffix(p, "/")
 		p = strings.TrimSuffix(p, "/**")
 		parts := strings.SplitN(p, "/", 2)
@@ -309,6 +310,11 @@ func normalizePattern(pattern string) string {
 	neg := strings.HasPrefix(pattern, "!")
 	pat := strings.TrimPrefix(pattern, "!")
 
+	// Treat "./" as equivalent to "/" (anchored to root)
+	if strings.HasPrefix(pat, "./") {
+		pat = "/" + pat[2:]
+	}
+
 	if pat == "." || strings.HasPrefix(pat, "**") {
 		if neg {
 			return "!" + pat
@@ -335,6 +341,7 @@ func normalizePattern(pattern string) string {
 func isOverridePattern(pattern string) bool {
 	pat := strings.TrimPrefix(pattern, "!")
 	pat = strings.TrimPrefix(pat, "/")
+	pat = strings.TrimPrefix(pat, "./")
 	pat = strings.TrimPrefix(pat, "**/")
 
 	parts := strings.SplitN(pat, "/", 2)
@@ -408,6 +415,7 @@ func extractRoots(patterns []string) []string {
 			continue
 		}
 		p = strings.TrimPrefix(p, "/")
+		p = strings.TrimPrefix(p, "./")
 		parts := strings.Split(p, "/")
 		var lit []string
 		for _, part := range parts {
