@@ -248,7 +248,7 @@ func bindTask[I comparable, O any](task *Task[I, O], input I, dest *O) BoundTask
 		return &boundTask[O]{
 			runner: func(ctx *Ctx) (O, error) {
 				var zero O
-				return zero, errors.New("tasks: PrepareTask called with a nil or invalid task")
+				return zero, errors.New("tasks: bindTask called with a nil or invalid task")
 			},
 			dest: dest,
 		}

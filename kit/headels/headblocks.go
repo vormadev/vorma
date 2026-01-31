@@ -40,13 +40,20 @@ func suffix(val string) string {
 func (inst *Instance) InitUniqueRules(e *HeadEls) {
 	inst.once.Do(func() {
 		inst.uniqueRulesByTag = make(map[string][]*ruleAttrs)
-		if e == nil {
-			e = New()
+
+		// Build default rules internally without mutating input
+		defaults := New()
+		defaults.Add(Tag("title"))
+		defaults.Meta(defaults.Name("description"))
+
+		var sources []*htmlutil.Element
+		sources = append(sources, defaults.Collect()...)
+		if e != nil {
+			sources = append(sources, e.Collect()...)
 		}
-		e.Add(Tag("title"))
-		e.Meta(e.Name("description"))
+
 		seenHashes := make(map[string]map[uint64]bool)
-		for _, rule := range e.Collect() {
+		for _, rule := range sources {
 			hash := hashElement(rule)
 			if _, exists := seenHashes[rule.Tag]; !exists {
 				seenHashes[rule.Tag] = make(map[uint64]bool)
@@ -211,6 +218,10 @@ func (inst *Instance) dedupeHeadEls(els []*htmlutil.Element) []*htmlutil.Element
 	seenHash := make(map[uint64]int)
 
 	for _, el := range els {
+		if el == nil {
+			continue
+		}
+
 		if rules, hasRules := inst.uniqueRulesByTag[el.Tag]; hasRules {
 			matchedRule := false
 			for ruleIdx, rule := range rules {
@@ -283,7 +294,9 @@ func matchesRule(el *htmlutil.Element, rule *ruleAttrs) bool {
 	}
 
 	for _, ruleAttr := range rule.boolean {
-		return slices.Contains(el.BooleanAttributes, ruleAttr)
+		if !slices.Contains(el.BooleanAttributes, ruleAttr) {
+			return false
+		}
 	}
 
 	return true
@@ -336,7 +349,12 @@ func (InnerHTML) GetType() htmlutilType        { return typeInnerHTML }
 func (TextContent) GetType() htmlutilType      { return typeTextContent }
 func (SelfClosing) GetType() htmlutilType      { return typeSelfClosing }
 
-type HeadEls struct{ els []*htmlutil.Element }
+// HeadEls is a collection of HTML head elements.
+// It is safe for concurrent use.
+type HeadEls struct {
+	mu  sync.Mutex
+	els []*htmlutil.Element
+}
 
 func FromRaw(els []*htmlutil.Element) *HeadEls {
 	return &HeadEls{els: els}
@@ -346,6 +364,8 @@ func New() *HeadEls {
 	return &HeadEls{els: make([]*htmlutil.Element, 0)}
 }
 
+// Add appends a new element to the collection.
+// Panics if no Tag is provided among the definitions.
 func (h *HeadEls) Add(defs ...typeInterface) {
 	el := new(htmlutil.Element)
 
@@ -382,15 +402,24 @@ func (h *HeadEls) Add(defs ...typeInterface) {
 		panic("head element added without a Tag")
 	}
 
+	h.mu.Lock()
 	h.els = append(h.els, el)
+	h.mu.Unlock()
 }
 
 func (h *HeadEls) AddElements(other *HeadEls) {
-	h.els = append(h.els, other.els...)
+	otherEls := other.Collect()
+	h.mu.Lock()
+	h.els = append(h.els, otherEls...)
+	h.mu.Unlock()
 }
+
 func (h *HeadEls) Collect() []*htmlutil.Element {
-	return h.els
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.els)
 }
+
 func (h *HeadEls) SelfClosing() SelfClosing {
 	return SelfClosing(true)
 }

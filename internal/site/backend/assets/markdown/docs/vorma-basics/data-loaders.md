@@ -85,7 +85,7 @@ npm package, in Vorma, Outlet is just a prop passed to all Vorma routes.
 It looks something like this:
 
 ```tsx
-import type { RouteProps } from "../vorma.gen.ts";
+import type { RouteProps } from "../vorma.gen/index.ts";
 import { useRouterData } from "../vorma.utils.tsx";
 
 export function Posts(props: RouteProps<"/posts">) {

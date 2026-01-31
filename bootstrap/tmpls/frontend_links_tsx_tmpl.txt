@@ -1,4 +1,4 @@
-import type { RouteProps } from "../vorma.gen.ts";
+import type { RouteProps } from "../vorma.gen/index.ts";
 import { useLoaderData } from "../vorma.utils.tsx";
 
 export function Links(props: RouteProps<"/links">) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/vormadev/vorma"
-	"github.com/vormadev/vorma/kit/lab/fsmarkdown"
+	"github.com/vormadev/vorma/lab/fsmarkdown"
 	"github.com/vormadev/vorma/wave"
 )
 

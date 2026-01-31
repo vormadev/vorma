@@ -1,7 +1,7 @@
 {{.TailwindViteImport}}import vorma from "vorma/vite";
 import { defineConfig } from "vite";
 import {{.UIVariant}} from "{{.UIVitePlugin}}";
-import { vormaViteConfig } from "./frontend/src/vorma.gen.ts";
+import { vormaViteConfig } from "./frontend/src/vorma.gen/index.ts";
 
 export default defineConfig({
 	plugins: [{{.UIVariant}}(), vorma(vormaViteConfig){{.TailwindViteCall}}],

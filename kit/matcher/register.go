@@ -57,6 +57,9 @@ func EnsureTrailingSlash(pattern string) string {
 	}
 	return pattern
 }
+func EnsureLeadingAndTrailingSlash(pattern string) string {
+	return EnsureLeadingSlash(EnsureTrailingSlash(pattern))
+}
 
 func StripLeadingSlash(pattern string) string {
 	if HasLeadingSlash(pattern) {
@@ -133,7 +136,7 @@ func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern {
 		}
 		// if is an idx route, clear the sig, but leave the trailing slash
 		if strings.HasSuffix(normalizedPattern, m.slashIndexSegment) {
-			normalizedPattern = strings.TrimRight(normalizedPattern, m.explicitIndexSegment)
+			normalizedPattern = strings.TrimSuffix(normalizedPattern, m.explicitIndexSegment)
 		}
 
 		// Now patterns with a trailing slash are index routes, and those without a trailing

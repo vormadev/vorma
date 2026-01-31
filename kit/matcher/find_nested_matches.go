@@ -242,7 +242,13 @@ func flattenAndSortMatches(
 		}
 
 		// else sort by segment length
-		return len(i.normalizedSegments) - len(j.normalizedSegments)
+		lenDiff := len(i.normalizedSegments) - len(j.normalizedSegments)
+		if lenDiff != 0 {
+			return lenDiff
+		}
+
+		// Tiebreaker for determinism when segment lengths are equal
+		return strings.Compare(i.normalizedPattern, j.normalizedPattern)
 	})
 
 	if len(results) == 0 {

@@ -3,7 +3,7 @@ package matcher
 import (
 	"strings"
 
-	"github.com/vormadev/vorma/kit/opt"
+	"github.com/vormadev/vorma/kit/genericsutil"
 )
 
 type (
@@ -96,10 +96,9 @@ func mungeOptsToDefaults(opts *Options) Options {
 		panic("explicit index segment cannot contain a slash")
 	}
 
-	copy.DynamicParamPrefixRune = opt.Resolve(copy, copy.DynamicParamPrefixRune, ':')
-	copy.SplatSegmentRune = opt.Resolve(copy, copy.SplatSegmentRune, '*')
-	copy.ExplicitIndexSegment = opt.Resolve(copy, copy.ExplicitIndexSegment, "")
-	copy.Quiet = opt.Resolve(copy, copy.Quiet, false)
+	copy.DynamicParamPrefixRune = genericsutil.OrDefault(copy.DynamicParamPrefixRune, ':')
+	copy.SplatSegmentRune = genericsutil.OrDefault(copy.SplatSegmentRune, '*')
+	copy.ExplicitIndexSegment = genericsutil.OrDefault(copy.ExplicitIndexSegment, "")
 
 	return copy
 }
