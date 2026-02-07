@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import { findNestedMatches } from "./find_nested_matches.ts";
 import {
 	createPatternRegistry,

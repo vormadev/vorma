@@ -1,41 +1,29 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPatternRegistry } from "vorma/kit/matcher/register";
 import {
-	beginNavigation,
-	getBuildID,
-	getHistoryInstance,
-	getLocation,
-	getRootEl,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
+
+import {
 	getStatus,
-	navigationStateManager,
-	revalidate,
-	submit,
 	vormaNavigate,
 } from "./client";
+
 import {
-	addBuildIDListener,
-	addLocationListener,
-	addRouteChangeListener,
 	addStatusListener,
-	type RouteChangeEventDetail,
-	type StatusEventDetail,
 } from "./events.ts";
-import { customHistoryListener, initCustomHistory } from "./history/history.ts";
-import { initClient } from "./init_client.ts";
-import { __getPrefetchHandlers, __makeLinkOnClickFn } from "./links.ts";
+
 import {
-	__applyScrollState,
-	type ScrollState,
-} from "./scroll_state_manager.ts";
-import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
+	__vormaClientGlobal,
+} from "./vorma_ctx/vorma_ctx.ts";
+
 import {
 	createMockResponse,
 	describeNavigationTestSuite,
-	setupGlobalVormaContext,
-	vormaAppConfig,
 } from "./client.test.helpers.ts";
 
-describeNavigationTestSuite(({ addCleanup, addListener }) => {
+describeNavigationTestSuite(({ addListener }) => {
 	describe("12. Error Handling", () => {
 		describe("12.1 Abort Errors", () => {
 			it("should identify abort errors correctly", async () => {

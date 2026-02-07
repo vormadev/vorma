@@ -1,41 +1,40 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPatternRegistry } from "vorma/kit/matcher/register";
+import {
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
+
 import {
 	beginNavigation,
-	getBuildID,
 	getHistoryInstance,
-	getLocation,
-	getRootEl,
 	getStatus,
-	navigationStateManager,
 	revalidate,
-	submit,
 	vormaNavigate,
 } from "./client";
+
 import {
 	addBuildIDListener,
-	addLocationListener,
 	addRouteChangeListener,
 	addStatusListener,
 	type RouteChangeEventDetail,
-	type StatusEventDetail,
 } from "./events.ts";
-import { customHistoryListener, initCustomHistory } from "./history/history.ts";
-import { initClient } from "./init_client.ts";
-import { __getPrefetchHandlers, __makeLinkOnClickFn } from "./links.ts";
+
 import {
 	__applyScrollState,
-	type ScrollState,
 } from "./scroll_state_manager.ts";
-import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
+
+import {
+	__vormaClientGlobal,
+} from "./vorma_ctx/vorma_ctx.ts";
+
 import {
 	createMockResponse,
 	describeNavigationTestSuite,
 	setupGlobalVormaContext,
-	vormaAppConfig,
 } from "./client.test.helpers.ts";
 
-describeNavigationTestSuite(({ addCleanup, addListener }) => {
+describeNavigationTestSuite(({ addListener }) => {
 	describe("2. Navigation Lifecycle", () => {
 		describe("2.1 Begin Navigation Phase", () => {
 			it("should set appropriate loading states", async () => {

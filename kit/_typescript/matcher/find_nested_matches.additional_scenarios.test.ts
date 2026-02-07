@@ -4,14 +4,6 @@ import {
 	createPatternRegistry,
 	registerPattern,
 } from "./register.ts";
-import {
-	NestedPatterns,
-	NestedScenarios,
-	differentOptsToTest,
-	equalParams,
-	equalSplat,
-	modifyPatternsToOpts,
-} from "./find_nested_matches.test.helpers.ts";
 
 describe("TestFindAllMatchesAdditionalScenarios", () => {
 	const testCases = [

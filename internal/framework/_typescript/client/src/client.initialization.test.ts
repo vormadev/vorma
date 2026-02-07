@@ -1,41 +1,29 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPatternRegistry } from "vorma/kit/matcher/register";
 import {
-	beginNavigation,
-	getBuildID,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
+
+import {
 	getHistoryInstance,
-	getLocation,
-	getRootEl,
-	getStatus,
-	navigationStateManager,
-	revalidate,
-	submit,
-	vormaNavigate,
 } from "./client";
+
 import {
-	addBuildIDListener,
-	addLocationListener,
-	addRouteChangeListener,
-	addStatusListener,
-	type RouteChangeEventDetail,
-	type StatusEventDetail,
-} from "./events.ts";
-import { customHistoryListener, initCustomHistory } from "./history/history.ts";
-import { initClient } from "./init_client.ts";
-import { __getPrefetchHandlers, __makeLinkOnClickFn } from "./links.ts";
+	initClient,
+} from "./init_client.ts";
+
 import {
-	__applyScrollState,
-	type ScrollState,
-} from "./scroll_state_manager.ts";
-import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
+	__vormaClientGlobal,
+} from "./vorma_ctx/vorma_ctx.ts";
+
 import {
-	createMockResponse,
 	describeNavigationTestSuite,
 	setupGlobalVormaContext,
 	vormaAppConfig,
 } from "./client.test.helpers.ts";
 
-describeNavigationTestSuite(({ addCleanup, addListener }) => {
+describeNavigationTestSuite(() => {
 	describe("9. [Reserved]", () => {
 		it("should have placeholder test", () => {
 			expect(true).toBe(true);

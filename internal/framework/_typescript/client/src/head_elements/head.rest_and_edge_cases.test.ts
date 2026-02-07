@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import { panic } from "../utils/errors.ts";
 import type { HeadEl } from "../vorma_ctx/vorma_ctx.ts";
 import { getStartAndEndComments, updateHeadEls } from "./head_elements.ts";
