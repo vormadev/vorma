@@ -1,13 +1,14 @@
 import { expect, it, vi } from "vitest";
 import type { HeadEl } from "../vorma_ctx/vorma_ctx.ts";
 import { getStartAndEndComments, updateHeadEls } from "./head_elements.ts";
-import { describeUpdateHeadElsSuite } from "./head.test.helpers.ts";
+import {
+	describeUpdateHeadElsSuite,
+} from "./head.test.helpers.ts";
 
-vi.mock("../utils/errors.ts", () => ({
-	panic: vi.fn(() => {
-		throw new Error("Panic called");
-	}),
-}));
+vi.mock("../utils/errors.ts", async () => {
+	const { createHeadErrorsMock } = await import("./head.test.helpers.ts");
+	return createHeadErrorsMock();
+});
 
 describeUpdateHeadElsSuite(() => {
 	it("should handle complex innerHTML correctly (style tag)", () => {
