@@ -11,6 +11,7 @@ package tasks
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -36,7 +37,15 @@ func NewTask[I comparable, O any](fn func(ctx *Ctx, input I) (O, error)) *Task[I
 }
 
 func (t *Task[I, O]) RunWithAnyInput(ctx *Ctx, input any) (any, error) {
-	return runTask(ctx, t, genericsutil.AssertOrZero[I](input))
+	typedInput, ok := input.(I)
+	if !ok {
+		return nil, fmt.Errorf(
+			"tasks: input type mismatch: expected %s, got %T",
+			reflect.TypeOf((*I)(nil)).Elem(),
+			input,
+		)
+	}
+	return runTask(ctx, t, typedInput)
 }
 
 func (t *Task[I, O]) Run(ctx *Ctx, input I) (O, error) {
@@ -62,7 +71,7 @@ type Ctx struct {
 }
 
 type cacheEntry struct {
-	result    *TaskResult
+	result    *taskResult
 	expiresAt time.Time
 }
 
@@ -79,6 +88,9 @@ func NewCtx(parent context.Context) *Ctx {
 func NewCtxWithTTL(parent context.Context, ttl time.Duration) *Ctx {
 	if parent == nil {
 		parent = context.Background()
+	}
+	if ttl < 0 {
+		ttl = 0
 	}
 
 	c := &Ctx{
@@ -122,27 +134,27 @@ func runTask[I comparable, O any](c *Ctx, task *Task[I, O], input I) (result O, 
 	r.once.Do(func() {
 		val, err := task.fn(c, input)
 		if err != nil {
-			r.Err = err
+			r.err = err
 			return
 		}
 		if cerr := c.ctx.Err(); cerr != nil {
-			r.Err = cerr
+			r.err = cerr
 			return
 		}
-		r.Data = val
-		r.Err = nil
+		r.data = val
+		r.err = nil
 	})
 
-	if r.Err != nil {
-		return result, r.Err
+	if r.err != nil {
+		return result, r.err
 	}
-	if r.Data == nil {
+	if r.data == nil {
 		return result, nil
 	}
-	return genericsutil.AssertOrZero[O](r.Data), nil
+	return genericsutil.AssertOrZero[O](r.data), nil
 }
 
-func (c *Ctx) getOrCreateResult(taskPtr any, input any) *TaskResult {
+func (c *Ctx) getOrCreateResult(taskPtr any, input any) *taskResult {
 	// Use uintptr for task pointer to avoid allocation
 	key := taskKey{
 		taskPtr: reflect.ValueOf(taskPtr).Pointer(),
@@ -220,18 +232,14 @@ func (c *Ctx) cleanupExpired(now time.Time) {
 	c.lastCleanup.Store(now.UnixNano())
 }
 
-type TaskResult struct {
-	Data any
-	Err  error
+type taskResult struct {
+	data any
+	err  error
 	once *sync.Once
 }
 
-func newTaskResult() *TaskResult {
-	return &TaskResult{once: &sync.Once{}}
-}
-
-func (r *TaskResult) OK() bool {
-	return r.Err == nil
+func newTaskResult() *taskResult {
+	return &taskResult{once: &sync.Once{}}
 }
 
 type BoundTask interface {

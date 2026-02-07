@@ -10,10 +10,16 @@ type (
 	Params = map[string]string
 
 	pattern     = string
-	segType     = string
 	patternsMap = map[pattern]*RegisteredPattern
 	matchesMap  = map[pattern]*Match
 )
+
+type SegmentType string
+
+type Segment struct {
+	NormalizedVal string
+	SegType       SegmentType
+}
 
 type Matcher struct {
 	staticPatterns  patternsMap

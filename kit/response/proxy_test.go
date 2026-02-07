@@ -68,6 +68,20 @@ func TestProxy_Status(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("SetStatus_Clears_Stale_ErrorText", func(t *testing.T) {
+		p := NewProxy()
+		p.SetStatus(400, "Bad Request Custom")
+		p.SetStatus(500)
+
+		status, text := p.GetStatus()
+		if status != 500 {
+			t.Fatalf("expected status 500, got %d", status)
+		}
+		if text != "" {
+			t.Fatalf("expected status text to be cleared, got %q", text)
+		}
+	})
 }
 
 func TestProxy_Headers(t *testing.T) {
@@ -139,6 +153,16 @@ func TestProxy_Cookies(t *testing.T) {
 		}
 		if cookies[1].Name != "user" {
 			t.Errorf("Expected second cookie to be 'user', got %q", cookies[1].Name)
+		}
+	})
+
+	t.Run("SetCookie_Nil_NoOp", func(t *testing.T) {
+		p := NewProxy()
+		p.SetCookie(nil)
+
+		cookies := p.GetCookies()
+		if len(cookies) != 0 {
+			t.Fatalf("expected no cookies, got %d", len(cookies))
 		}
 	})
 }
@@ -454,6 +478,27 @@ func TestMergeProxyResponses(t *testing.T) {
 		}
 		if !merged.IsRedirect() {
 			t.Error("Should be a redirect")
+		}
+	})
+
+	t.Run("Merge_Ignores_Nil_Proxies_And_Cookies", func(t *testing.T) {
+		p1 := NewProxy()
+		p1.SetStatus(200)
+		p1.SetCookie(nil)
+		p1.SetCookie(&http.Cookie{Name: "session", Value: "ok"})
+
+		merged := MergeProxyResponses(nil, p1, nil)
+
+		status, _ := merged.GetStatus()
+		if status != 200 {
+			t.Fatalf("expected status 200, got %d", status)
+		}
+		cookies := merged.GetCookies()
+		if len(cookies) != 1 {
+			t.Fatalf("expected one cookie, got %d", len(cookies))
+		}
+		if cookies[0].Name != "session" {
+			t.Fatalf("expected session cookie, got %q", cookies[0].Name)
 		}
 	})
 }

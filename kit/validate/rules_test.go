@@ -79,6 +79,20 @@ func TestInValidation(t *testing.T) {
 			t.Error("expected error for empty allowed slice")
 		}
 	})
+
+	t.Run("Nil allowed slice", func(t *testing.T) {
+		err := Any("fruit", "orange").In(nil).Error()
+		if err == nil {
+			t.Error("expected error for nil allowed slice")
+		}
+	})
+
+	t.Run("Nil candidate value", func(t *testing.T) {
+		err := Any("fruit", nil).In([]string{"apple"}).Error()
+		if err == nil {
+			t.Error("expected error for nil candidate value")
+		}
+	})
 }
 
 func TestNotInValidation(t *testing.T) {
@@ -113,6 +127,13 @@ func TestNotInValidation(t *testing.T) {
 
 		if err == nil {
 			t.Error("expected error for empty prohibited slice")
+		}
+	})
+
+	t.Run("Nil prohibited slice", func(t *testing.T) {
+		err := Any("fruit", "orange").NotIn(nil).Error()
+		if err == nil {
+			t.Error("expected error for nil prohibited slice")
 		}
 	})
 }

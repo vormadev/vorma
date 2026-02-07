@@ -1,9 +1,5 @@
 package main
 
-import (
-	"github.com/vormadev/vorma/lab/bumper"
-)
+import "github.com/vormadev/vorma/lab/bumper"
 
-func main() {
-	bumper.Run()
-}
+func main() { bumper.Run() }

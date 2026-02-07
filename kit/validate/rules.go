@@ -23,6 +23,9 @@ func (c *AnyChecker) If(condition bool, f func(*AnyChecker) *AnyChecker) *AnyChe
 
 // Helper function to compare values across types
 func compareValues(a, b reflect.Value) bool {
+	if !a.IsValid() || !b.IsValid() {
+		return !a.IsValid() && !b.IsValid()
+	}
 	if reflect.DeepEqual(a.Interface(), b.Interface()) {
 		return true
 	}
@@ -54,7 +57,18 @@ func (c *AnyChecker) validateAgainstSlice(valuesSlice any) bool {
 	if c.done {
 		return false
 	}
-	base := safeDereference(reflect.ValueOf(valuesSlice))
+	if valuesSlice == nil {
+		c.failF("%s is nil", c.label)
+		c.done = true
+		return false
+	}
+	baseValue := reflect.ValueOf(valuesSlice)
+	if !baseValue.IsValid() {
+		c.failF("%s is nil", c.label)
+		c.done = true
+		return false
+	}
+	base := safeDereference(baseValue)
 	if base.Kind() != reflect.Slice && base.Kind() != reflect.Array {
 		c.failF("%s is not a slice or array", c.label)
 		c.done = true
@@ -65,7 +79,11 @@ func (c *AnyChecker) validateAgainstSlice(valuesSlice any) bool {
 		c.done = true
 		return false
 	}
-	trueBaseReflect := safeDereference(reflect.ValueOf(c.trueValue))
+	trueValue := reflect.ValueOf(c.trueValue)
+	if !trueValue.IsValid() {
+		return false
+	}
+	trueBaseReflect := safeDereference(trueValue)
 	for i := range base.Len() {
 		itemBase := safeDereference(base.Index(i))
 		if compareValues(trueBaseReflect, itemBase) {

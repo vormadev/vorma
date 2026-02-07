@@ -1,6 +1,7 @@
 package netutil
 
 import (
+	"net"
 	"net/http"
 	"testing"
 )
@@ -127,4 +128,80 @@ func TestProductionHostsSafety(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCheckAvailability(t *testing.T) {
+	t.Run("invalid ports", func(t *testing.T) {
+		if CheckAvailability(0) {
+			t.Fatal("expected port 0 to be unavailable for explicit checks")
+		}
+		if CheckAvailability(-1) {
+			t.Fatal("expected negative port to be unavailable")
+		}
+		if CheckAvailability(70000) {
+			t.Fatal("expected out-of-range port to be unavailable")
+		}
+	})
+
+	t.Run("in-use port is unavailable", func(t *testing.T) {
+		ln, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to allocate test listener: %v", err)
+		}
+		defer ln.Close()
+
+		port := ln.Addr().(*net.TCPAddr).Port
+		if CheckAvailability(port) {
+			t.Fatalf("expected port %d to be unavailable while listener is open", port)
+		}
+	})
+}
+
+func TestGetRandomFreePort(t *testing.T) {
+	port, err := GetRandomFreePort()
+	if err != nil {
+		t.Fatalf("expected random free port, got error: %v", err)
+	}
+	if port <= 0 || port > 65535 {
+		t.Fatalf("expected valid TCP port, got %d", port)
+	}
+}
+
+func TestGetFreePort(t *testing.T) {
+	t.Run("uses available default port", func(t *testing.T) {
+		ln, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to allocate test listener: %v", err)
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		ln.Close()
+
+		got, err := GetFreePort(port)
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if got != port {
+			t.Fatalf("expected default available port %d, got %d", port, got)
+		}
+	})
+
+	t.Run("finds alternative when default is occupied", func(t *testing.T) {
+		ln, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to allocate test listener: %v", err)
+		}
+		defer ln.Close()
+		occupied := ln.Addr().(*net.TCPAddr).Port
+
+		got, err := GetFreePort(occupied)
+		if err != nil {
+			t.Fatalf("expected to find fallback port without error, got: %v", err)
+		}
+		if got == occupied {
+			t.Fatalf("expected fallback port to differ from occupied port %d", occupied)
+		}
+		if got <= 0 || got > 65535 {
+			t.Fatalf("expected valid fallback port, got %d", got)
+		}
+	})
 }

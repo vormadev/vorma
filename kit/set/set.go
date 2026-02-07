@@ -7,6 +7,9 @@ func New[T comparable]() Set[T] {
 }
 
 func (s Set[T]) Add(val T) Set[T] {
+	if s == nil {
+		s = New[T]()
+	}
 	s[val] = struct{}{}
 	return s
 }

@@ -3,16 +3,14 @@ package lazyget
 import "sync"
 
 type Cache[T any] struct {
-	val  T
-	once sync.Once
+	get      func() T
+	initOnce sync.Once
 }
 
 func (v *Cache[T]) Get(initFunc func() T) T {
-	v.once.Do(func() { v.val = initFunc() })
-	return v.val
+	v.initOnce.Do(func() { v.get = sync.OnceValue(initFunc) })
+	return v.get()
 }
 
-func New[T any](fn func() T) func() T {
-	var v Cache[T]
-	return func() T { return v.Get(fn) }
-}
+// Deprecated: use sync.OnceValue directly for package-level lazy getters.
+func New[T any](fn func() T) func() T { return sync.OnceValue(fn) }

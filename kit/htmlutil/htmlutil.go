@@ -33,8 +33,8 @@ var (
 )
 
 func ComputeContentSha256(el *Element) (string, error) {
-	if el.AttributesKnownSafe == nil {
-		el.AttributesKnownSafe = make(map[string]string)
+	if el == nil {
+		return "", fmt.Errorf("element cannot be nil")
 	}
 	sha256Hash := cryptoutil.Sha256Hash([]byte(el.DangerousInnerHTML))
 	sha256HashBase64 := bytesutil.ToBase64(sha256Hash[:])
@@ -42,6 +42,9 @@ func ComputeContentSha256(el *Element) (string, error) {
 }
 
 func SetSha256Integrity(el *Element, externalSha256Hash string) (string, error) {
+	if el == nil {
+		return "", fmt.Errorf("element cannot be nil")
+	}
 	if el.AttributesKnownSafe == nil {
 		el.AttributesKnownSafe = make(map[string]string)
 	}
@@ -53,6 +56,9 @@ func SetSha256Integrity(el *Element, externalSha256Hash string) (string, error) 
 }
 
 func AddNonce(el *Element, len uint8) (string, error) {
+	if el == nil {
+		return "", fmt.Errorf("element cannot be nil")
+	}
 	if el.AttributesKnownSafe == nil {
 		el.AttributesKnownSafe = make(map[string]string)
 	}
@@ -79,6 +85,12 @@ func RenderElement(el *Element) (template.HTML, error) {
 }
 
 func RenderElementToBuilder(el *Element, htmlBuilder *strings.Builder) error {
+	if el == nil {
+		return fmt.Errorf("element cannot be nil")
+	}
+	if htmlBuilder == nil {
+		return fmt.Errorf("html builder cannot be nil")
+	}
 	escapedTag := template.HTMLEscapeString(el.Tag)
 	if escapedTag == "" {
 		return fmt.Errorf("element has no tag")

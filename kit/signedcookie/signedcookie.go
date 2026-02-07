@@ -26,6 +26,13 @@ type Manager struct {
 	keyset *keyset.Keyset
 }
 
+func (m Manager) validate() error {
+	if m.keyset == nil {
+		return errors.New("signedcookie manager is not initialized")
+	}
+	return nil
+}
+
 // NewManager creates a new Manager instance with the provided secrets.
 // It returns an error if no secrets are provided or if any secret is invalid.
 func NewManager(secrets keyset.RootSecrets) (*Manager, error) {
@@ -39,6 +46,15 @@ func NewManager(secrets keyset.RootSecrets) (*Manager, error) {
 // VerifyAndReadCookieValue retrieves and verifies the value of a signed cookie.
 // It returns an error if the cookie is not found or is invalid.
 func (m Manager) VerifyAndReadCookieValue(r *http.Request, key string) (string, error) {
+	if err := m.validate(); err != nil {
+		return "", err
+	}
+	if r == nil {
+		return "", errors.New("request is nil")
+	}
+	if key == "" {
+		return "", errors.New("cookie key is empty")
+	}
 	cookie, err := r.Cookie(key)
 	if err != nil {
 		return "", err
@@ -60,6 +76,12 @@ func (m Manager) NewDeletionCookie(cookie http.Cookie) *http.Cookie {
 // SignCookie retrieves the value of the provided cookie, signs it, and replaces the value with the signed value.
 // If encrypt is true, the value will be encrypted before signing.
 func (m Manager) SignCookie(unsignedCookie *http.Cookie, encrypt bool) error {
+	if err := m.validate(); err != nil {
+		return err
+	}
+	if unsignedCookie == nil {
+		return errors.New("unsigned cookie is nil")
+	}
 	signedValue, err := m.signValue(unsignedCookie.Value, encrypt)
 	if err != nil {
 		return err
@@ -72,6 +94,9 @@ func (m Manager) SignCookie(unsignedCookie *http.Cookie, encrypt bool) error {
 // It returns the base64-encoded signed value or an error if signing fails.
 // If encrypt is true, the value will be encrypted before signing.
 func (m Manager) signValue(unsignedValue string, encrypt bool) (string, error) {
+	if err := m.validate(); err != nil {
+		return "", err
+	}
 	var prefix byte
 	var valueToSign []byte
 	firstKey, err := m.keyset.First()
@@ -101,6 +126,9 @@ func (m Manager) signValue(unsignedValue string, encrypt bool) (string, error) {
 // verifyAndReadValue verifies and reads the signed value.
 // It returns the original unsigned value or an error if verification fails.
 func (m Manager) verifyAndReadValue(signedValue string) (string, error) {
+	if err := m.validate(); err != nil {
+		return "", err
+	}
 	bytes, err := bytesutil.FromBase64(signedValue)
 	if err != nil {
 		return "", fmt.Errorf("error decoding base64: %w", err)
@@ -109,6 +137,9 @@ func (m Manager) verifyAndReadValue(signedValue string) (string, error) {
 		return "", errors.New("invalid signed value")
 	}
 	prefix := bytes[0]
+	if prefix != 0 && prefix != 1 {
+		return "", fmt.Errorf("invalid signed value prefix: %d", prefix)
+	}
 	signedBytes := bytes[1:]
 	return keyset.Attempt(m.keyset,
 		func(secret cryptoutil.Key32) (string, error) {
@@ -151,6 +182,15 @@ type SignedCookie[T any] struct {
 
 // NewSignedCookie creates a new signed cookie with the provided value and optional override settings.
 func (sc *SignedCookie[T]) NewSignedCookie(unsignedValue T, overrideBaseCookie *BaseCookie) (*http.Cookie, error) {
+	if sc == nil {
+		return nil, errors.New("signed cookie is nil")
+	}
+	if sc.Manager == nil {
+		return nil, errors.New("signed cookie manager is nil")
+	}
+	if sc.BaseCookie.Name == "" {
+		return nil, errors.New("signed cookie name is empty")
+	}
 	unsignedCookie, err := sc.newUnsignedCookie(unsignedValue, overrideBaseCookie)
 	if err != nil {
 		return nil, err
@@ -166,6 +206,12 @@ func (sc *SignedCookie[T]) NewSignedCookie(unsignedValue T, overrideBaseCookie *
 
 // NewDeletionCookie creates a new cookie that will delete the current cookie when sent to the client.
 func (sc *SignedCookie[T]) NewDeletionCookie() *http.Cookie {
+	if sc == nil || sc.Manager == nil {
+		return nil
+	}
+	if sc.BaseCookie.Name == "" {
+		return nil
+	}
 	return sc.Manager.NewDeletionCookie(sc.BaseCookie)
 }
 
@@ -173,6 +219,15 @@ func (sc *SignedCookie[T]) NewDeletionCookie() *http.Cookie {
 // It returns the decoded value of type T or an error if retrieval or verification fails.
 func (sc *SignedCookie[T]) VerifyAndReadCookieValue(r *http.Request) (T, error) {
 	var zeroT T
+	if sc == nil {
+		return zeroT, errors.New("signed cookie is nil")
+	}
+	if sc.Manager == nil {
+		return zeroT, errors.New("signed cookie manager is nil")
+	}
+	if sc.BaseCookie.Name == "" {
+		return zeroT, errors.New("signed cookie name is empty")
+	}
 
 	value, err := sc.Manager.VerifyAndReadCookieValue(r, sc.BaseCookie.Name)
 	if err != nil {

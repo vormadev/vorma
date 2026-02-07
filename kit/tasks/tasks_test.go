@@ -1028,3 +1028,74 @@ func TestTTL_MultipleContexts_IndependentCaches(t *testing.T) {
 		t.Errorf("Expected 2 executions, got %d", execCount)
 	}
 }
+
+func TestNewCtxWithTTLNegativeDisablesTTL(t *testing.T) {
+	ctx := NewCtxWithTTL(context.Background(), -1*time.Second)
+	if ctx.ttl != 0 {
+		t.Fatalf("expected ttl=0 for negative input, got %v", ctx.ttl)
+	}
+
+	var count int32
+	task := NewTask(func(_ *Ctx, input string) (string, error) {
+		n := atomic.AddInt32(&count, 1)
+		return input + "-" + string(rune('0'+n)), nil
+	})
+
+	first, err := task.Run(ctx, "a")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	second, err := task.Run(ctx, "a")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if first != second {
+		t.Fatalf("expected cached result with ttl disabled, got %q and %q", first, second)
+	}
+	if count != 1 {
+		t.Fatalf("expected single execution, got %d", count)
+	}
+}
+
+func TestRunWithAnyInputTypeChecks(t *testing.T) {
+	ctx := NewCtx(context.Background())
+	task := NewTask(func(_ *Ctx, input string) (string, error) {
+		return "ok:" + input, nil
+	})
+
+	got, err := task.RunWithAnyInput(ctx, "x")
+	if err != nil {
+		t.Fatalf("expected no error for matching type, got %v", err)
+	}
+	if got != "ok:x" {
+		t.Fatalf("unexpected result: %v", got)
+	}
+
+	_, err = task.RunWithAnyInput(ctx, 123)
+	if err == nil {
+		t.Fatal("expected type mismatch error")
+	}
+
+	_, err = task.RunWithAnyInput(ctx, nil)
+	if err == nil {
+		t.Fatal("expected type mismatch error for untyped nil")
+	}
+}
+
+func TestRunWithAnyInputTypedNilPointer(t *testing.T) {
+	ctx := NewCtx(context.Background())
+	task := NewTask(func(_ *Ctx, input *int) (bool, error) {
+		return input == nil, nil
+	})
+
+	var typedNil *int
+	got, err := task.RunWithAnyInput(ctx, typedNil)
+	if err != nil {
+		t.Fatalf("expected no error for typed nil pointer, got %v", err)
+	}
+	if got != true {
+		t.Fatalf("expected true, got %v", got)
+	}
+}

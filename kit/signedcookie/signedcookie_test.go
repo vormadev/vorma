@@ -376,6 +376,93 @@ func TestManagerSignCookie(t *testing.T) {
 	})
 }
 
+func TestManagerNilGuards(t *testing.T) {
+	var m Manager
+
+	if err := m.SignCookie(&http.Cookie{Name: "x", Value: "y"}, false); err == nil {
+		t.Fatal("expected error for uninitialized manager")
+	}
+
+	if _, err := m.VerifyAndReadCookieValue(httptest.NewRequest("GET", "/", nil), "x"); err == nil {
+		t.Fatal("expected error for uninitialized manager")
+	}
+}
+
+func TestManagerSignCookieNilCookie(t *testing.T) {
+	manager, err := NewManager(keyset.RootSecrets{aSecret})
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+	if err := manager.SignCookie(nil, false); err == nil {
+		t.Fatal("expected error for nil cookie")
+	}
+}
+
+func TestManagerVerifyAndReadCookieValueEmptyKey(t *testing.T) {
+	manager, err := NewManager(keyset.RootSecrets{aSecret})
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+	req := httptest.NewRequest("GET", "/", nil)
+	if _, err := manager.VerifyAndReadCookieValue(req, ""); err == nil {
+		t.Fatal("expected error for empty cookie key")
+	}
+}
+
+func TestVerifyAndReadValueRejectsUnknownPrefix(t *testing.T) {
+	manager, err := NewManager(keyset.RootSecrets{aSecret})
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	signedValue, err := manager.signValue("abc", false)
+	if err != nil {
+		t.Fatalf("failed to sign value: %v", err)
+	}
+
+	raw, err := bytesutil.FromBase64(signedValue)
+	if err != nil {
+		t.Fatalf("failed to decode signed value: %v", err)
+	}
+	raw[0] = 2
+	tampered := bytesutil.ToBase64(raw)
+
+	if _, err := manager.verifyAndReadValue(tampered); err == nil {
+		t.Fatal("expected error for invalid prefix")
+	}
+}
+
+func TestSignedCookieNilManager(t *testing.T) {
+	sc := &SignedCookie[string]{BaseCookie: http.Cookie{Name: "test"}}
+	if _, err := sc.NewSignedCookie("x", nil); err == nil {
+		t.Fatal("expected error for nil manager")
+	}
+	if _, err := sc.VerifyAndReadCookieValue(httptest.NewRequest("GET", "/", nil)); err == nil {
+		t.Fatal("expected error for nil manager")
+	}
+	if c := sc.NewDeletionCookie(); c != nil {
+		t.Fatal("expected nil deletion cookie for nil manager")
+	}
+}
+
+func TestSignedCookieRequiresName(t *testing.T) {
+	manager, err := NewManager(keyset.RootSecrets{aSecret})
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	sc := &SignedCookie[string]{Manager: manager}
+	if _, err := sc.NewSignedCookie("x", nil); err == nil {
+		t.Fatal("expected error for empty cookie name")
+	}
+	if _, err := sc.VerifyAndReadCookieValue(httptest.NewRequest("GET", "/", nil)); err == nil {
+		t.Fatal("expected error for empty cookie name")
+	}
+	if c := sc.NewDeletionCookie(); c != nil {
+		t.Fatal("expected nil deletion cookie for empty cookie name")
+	}
+}
+
 func TestManagerReadInvalidSignature(t *testing.T) {
 	secrets := keyset.RootSecrets{aSecret}
 	manager, _ := NewManager(secrets)

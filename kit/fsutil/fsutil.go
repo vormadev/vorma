@@ -13,7 +13,7 @@ import (
 
 // EnsureDir creates a directory if it does not exist.
 func EnsureDir(path string) error {
-	err := os.MkdirAll(path, os.ModePerm)
+	err := os.MkdirAll(path, 0o755)
 	if err != nil {
 		return fmt.Errorf("fsutil.EnsureDir: failed to create directory %s: %w", path, err)
 	}
@@ -86,7 +86,20 @@ func CopyFile(src, dest string) error {
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.Create(dest)
+	sourceInfo, err := sourceFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+
+	destFile, err := os.OpenFile(
+		dest,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		sourceInfo.Mode().Perm(),
+	)
 	if err != nil {
 		return err
 	}

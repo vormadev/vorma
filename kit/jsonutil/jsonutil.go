@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// JSONString is a semantic marker type for JSON payload strings.
 type JSONString string
 
 func Serialize(v any) ([]byte, error) {

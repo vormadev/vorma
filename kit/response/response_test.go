@@ -268,3 +268,38 @@ func TestResponse_ClientRedirect(t *testing.T) {
 		}
 	})
 }
+
+func TestResponseRedirectNilRequestDoesNotPanic(t *testing.T) {
+	rr := httptest.NewRecorder()
+	r := New(rr)
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("expected no panic, got %v", recovered)
+		}
+	}()
+
+	usedClientRedirect, err := r.Redirect(nil, "/target", http.StatusFound)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if usedClientRedirect {
+		t.Fatal("expected server redirect path for nil request")
+	}
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected status %d, got %d", http.StatusFound, rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/target" {
+		t.Fatalf("expected Location '/target', got %q", loc)
+	}
+}
+
+func TestResponseClientRedirectRejectsEmptyURL(t *testing.T) {
+	rr := httptest.NewRecorder()
+	r := New(rr)
+
+	err := r.ClientRedirect("")
+	if err == nil {
+		t.Fatal("expected error for empty redirect URL")
+	}
+}

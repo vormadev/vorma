@@ -94,13 +94,15 @@ func (oc *ObjectChecker) Required(field string) *AnyChecker { return oc.validate
 func (oc *ObjectChecker) Optional(field string) *AnyChecker { return oc.validateField(field, false) }
 
 func (oc *ObjectChecker) Error() error {
+	errs := make([]error, 0, len(oc.errors)+len(oc.ChildCheckers))
+	errs = append(errs, oc.errors...)
 	for _, child := range oc.ChildCheckers {
 		if err := child.Error(); err != nil {
-			oc.errors = append(oc.errors, err)
+			errs = append(errs, err)
 		}
 	}
-	if len(oc.errors) > 0 {
-		return &ValidationError{Err: errors.Join(oc.errors...)}
+	if len(errs) > 0 {
+		return &ValidationError{Err: errors.Join(errs...)}
 	}
 	return nil
 }
@@ -110,6 +112,14 @@ func (oc *ObjectChecker) validateField(fieldName string, required bool) (c *AnyC
 		c = newAnyChecker(fieldName, nil, reflect.Value{})
 		c.done = true
 		return c
+	}
+	if oc.isStructLike {
+		if err := oc.ensureStructField(fieldName); err != nil {
+			c = newAnyChecker(fieldName, nil, reflect.Value{})
+			c.fail(err.Error())
+			oc.ChildCheckers = append(oc.ChildCheckers, c)
+			return c
+		}
 	}
 	wrappedField := oc.getFieldValue(fieldName)
 	c = newAnyChecker(fieldName, wrappedField.trueValue, wrappedField.reflectValue)
@@ -142,6 +152,17 @@ func (oc *ObjectChecker) getFieldValue(fieldName string) (wrapped *fieldWrapper)
 		return
 	}
 	panic("this should never happen")
+}
+
+func (oc *ObjectChecker) ensureStructField(fieldName string) error {
+	field, ok := oc.baseReflectValue.Type().FieldByName(fieldName)
+	if !ok {
+		return fmt.Errorf("unknown field %s on %s", fieldName, oc.baseReflectValue.Type())
+	}
+	if !field.IsExported() {
+		return fmt.Errorf("field %s on %s is unexported", fieldName, oc.baseReflectValue.Type())
+	}
+	return nil
 }
 
 /////////////////////////////////////////////////////////////////////

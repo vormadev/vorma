@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -51,6 +52,14 @@ func TestRandom(t *testing.T) {
 	}
 	if len(zeroLengthBytes) != 0 {
 		t.Fatalf("expected empty byte slice, got %d bytes", len(zeroLengthBytes))
+	}
+
+	_, err = RandomBytes(-1)
+	if err == nil {
+		t.Fatalf("expected error for negative byte length")
+	}
+	if !errors.Is(err, errNegativeByteLength) {
+		t.Fatalf("expected negative-length error, got %v", err)
 	}
 }
 
@@ -1200,14 +1209,14 @@ func TestValidateHmacSha256(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			valid, err := ValidateHmacSha256(tt.message, tt.key, tt.knownMAC)
-			if tt.expectError {
-				if err == nil {
-					t.Error("expected error, got nil")
-				} else if tt.errorMsg != "" && err.Error() != tt.errorMsg {
-					t.Errorf("expected error %q, got %q", tt.errorMsg, err.Error())
+				if tt.expectError {
+					if err == nil {
+						t.Error("expected error, got nil")
+					} else if tt.errorMsg != "" && err.Error() != tt.errorMsg {
+						t.Errorf("expected error %q, got %q", tt.errorMsg, err.Error())
+					}
+					return
 				}
-				return
-			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

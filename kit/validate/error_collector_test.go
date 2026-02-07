@@ -217,6 +217,46 @@ func TestObjectChecker(t *testing.T) {
 	})
 }
 
+func TestObjectCheckerUnknownFieldFailsFast(t *testing.T) {
+	type Person struct {
+		Name string
+	}
+
+	err := Object(Person{}).Required("Nmae").Error()
+	if err == nil {
+		t.Fatal("expected error for unknown field")
+	}
+	if !strings.Contains(err.Error(), "unknown field Nmae") {
+		t.Fatalf("expected unknown-field error, got %v", err)
+	}
+
+	err = Object(Person{}).Optional("Nmae").Error()
+	if err == nil {
+		t.Fatal("expected error for unknown optional field")
+	}
+}
+
+func TestObjectCheckerErrorIdempotent(t *testing.T) {
+	type Person struct {
+		Name string
+	}
+
+	checker := Object(Person{})
+	checker.Required("Name")
+
+	err1 := checker.Error()
+	err2 := checker.Error()
+	if err1 == nil || err2 == nil {
+		t.Fatal("expected validation errors")
+	}
+	if err1.Error() != err2.Error() {
+		t.Fatalf("expected idempotent errors, got %q then %q", err1.Error(), err2.Error())
+	}
+	if strings.Count(err2.Error(), "Name is required") != 1 {
+		t.Fatalf("expected exactly one Name error, got %q", err2.Error())
+	}
+}
+
 // Validator implementation tests
 type User struct {
 	Username string

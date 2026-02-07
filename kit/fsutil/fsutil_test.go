@@ -89,6 +89,42 @@ func TestCopyFile(t *testing.T) {
 	if !bytes.Equal(content, copiedContent) {
 		t.Fatalf("expected content %s, got %s", content, copiedContent)
 	}
+
+	// Ensure file mode is preserved.
+	srcInfo, err := os.Stat(srcFile)
+	if err != nil {
+		t.Fatalf("expected no error statting source file, got %v", err)
+	}
+	dstInfo, err := os.Stat(dstFile)
+	if err != nil {
+		t.Fatalf("expected no error statting destination file, got %v", err)
+	}
+	if srcInfo.Mode().Perm() != dstInfo.Mode().Perm() {
+		t.Fatalf("expected destination mode %v, got %v", srcInfo.Mode().Perm(), dstInfo.Mode().Perm())
+	}
+}
+
+func TestCopyFileCreatesDestinationDirectories(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "source.txt")
+	dstFile := filepath.Join(dstDir, "nested", "path", "target.txt")
+
+	if err := os.WriteFile(srcFile, []byte("hello"), 0o600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	if err := CopyFile(srcFile, dstFile); err != nil {
+		t.Fatalf("CopyFile failed: %v", err)
+	}
+
+	got, err := os.ReadFile(dstFile)
+	if err != nil {
+		t.Fatalf("failed to read destination file: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("unexpected copied content: %q", string(got))
+	}
 }
 
 // TestCopyDir tests the CopyDir function.

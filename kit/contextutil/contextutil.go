@@ -8,7 +8,7 @@ import (
 )
 
 type Store[T any] struct {
-	key keyWrapper
+	key *keyWrapper
 }
 
 type keyWrapper struct {
@@ -16,7 +16,7 @@ type keyWrapper struct {
 }
 
 func NewStore[T any](key string) *Store[T] {
-	return &Store[T]{key: keyWrapper{name: key}}
+	return &Store[T]{key: &keyWrapper{name: key}}
 }
 
 func (s *Store[T]) GetContextWithValue(c context.Context, val T) context.Context {

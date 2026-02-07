@@ -49,7 +49,9 @@ func (p *Proxy) SetStatus(status int, errorStatusText ...string) {
 	p._status = status
 	if len(errorStatusText) != 0 {
 		p._status_text = errorStatusText[0]
+		return
 	}
+	p._status_text = ""
 }
 
 func (p *Proxy) GetStatus() (int, string) {
@@ -103,6 +105,9 @@ func (p *Proxy) computeHeaderValues(key string) []string {
 /////// COOKIES
 
 func (p *Proxy) SetCookie(cookie *http.Cookie) {
+	if cookie == nil {
+		return
+	}
 	p._cookies = append(p._cookies, cookie)
 }
 
@@ -227,6 +232,9 @@ func (p *Proxy) ApplyToResponseWriter(w http.ResponseWriter, r *http.Request) {
 
 	// Cookies
 	for _, c := range p._cookies {
+		if c == nil {
+			continue
+		}
 		http.SetCookie(w, c)
 	}
 
@@ -263,6 +271,9 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 	// Head Elements -- MERGED IN ORDER
 	merged._head_els = headels.New()
 	for _, p := range proxies {
+		if p == nil {
+			continue
+		}
 		if p._head_els != nil {
 			merged._head_els.AddElements(p._head_els)
 		}
@@ -271,6 +282,9 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 	// Headers -- MERGED IN ORDER
 	merged._headerOps = make(map[string][]headerOp)
 	for _, p := range proxies {
+		if p == nil {
+			continue
+		}
 		for key, ops := range p._headerOps {
 			merged._headerOps[key] = append(merged._headerOps[key], ops...)
 		}
@@ -279,7 +293,13 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 	// Cookies -- MERGED IN ORDER (later cookies overwrite earlier ones with same name)
 	_unique_cookies_map := make(map[string]*cookieWithIdx)
 	for i, p := range proxies {
+		if p == nil {
+			continue
+		}
 		for _, c := range p._cookies {
+			if c == nil {
+				continue
+			}
 			_unique_cookies_map[c.Name] = &cookieWithIdx{i, c}
 		}
 	}
@@ -300,6 +320,9 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 	// Status
 	// Either FIRST ERROR or LAST SUCCESS will win
 	for _, p := range proxies {
+		if p == nil {
+			continue
+		}
 		if p._status >= 400 { // Error status codes
 			merged._status = p._status
 			merged._status_text = p._status_text
@@ -313,6 +336,9 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 	// Redirect -- Assuming no error, FIRST REDIRECT WINS
 	if !isError(merged._status) {
 		for _, p := range proxies {
+			if p == nil {
+				continue
+			}
 			if p.IsRedirect() {
 				merged._status = p._status
 				merged._location = p._location

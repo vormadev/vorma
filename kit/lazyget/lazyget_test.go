@@ -110,6 +110,29 @@ func TestNew(t *testing.T) {
 		}()
 		getter()
 	})
+
+	t.Run("Panics are sticky", func(t *testing.T) {
+		callCount := 0
+		getter := New(func() int {
+			callCount++
+			panic("boom")
+		})
+
+		for i := 0; i < 3; i++ {
+			func() {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Fatal("expected panic")
+					}
+				}()
+				getter()
+			}()
+		}
+
+		if callCount != 1 {
+			t.Fatalf("expected initFunc call count 1, got %d", callCount)
+		}
+	})
 }
 
 func TestValue_RaceCondition(t *testing.T) {
@@ -134,5 +157,29 @@ func TestValue_RaceCondition(t *testing.T) {
 
 	if got := v.Get(initFunc); got != 42 {
 		t.Errorf("Value.Get() = %v, want 42", got)
+	}
+}
+
+func TestCache_Get_PanicsAreSticky(t *testing.T) {
+	callCount := 0
+	var c Cache[int]
+	initFunc := func() int {
+		callCount++
+		panic("boom")
+	}
+
+	for range 3 {
+		func() {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Fatal("expected panic")
+				}
+			}()
+			c.Get(initFunc)
+		}()
+	}
+
+	if callCount != 1 {
+		t.Fatalf("expected initFunc call count 1, got %d", callCount)
 	}
 }

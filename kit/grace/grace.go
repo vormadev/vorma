@@ -76,13 +76,26 @@ func Orchestrate(options OrchestrateOptions) {
 		defer cancelCtx()
 
 		// Execute shutdown logic (cleanup tasks)
+		timedOut := false
 		if options.ShutdownCallback != nil {
-			if err := options.ShutdownCallback(shutdownCtx); err != nil {
-				options.Logger.Error("[shutdown] Cleanup error", "error", err)
+			done := make(chan error, 1)
+			go func() {
+				done <- options.ShutdownCallback(shutdownCtx)
+			}()
+
+			select {
+			case err := <-done:
+				if err != nil {
+					options.Logger.Error("[shutdown] Cleanup error", "error", err)
+				}
+			case <-shutdownCtx.Done():
+				// Allow Orchestrate to continue even if callback ignores context.
+				options.Logger.Warn("[shutdown] Graceful shutdown timed out, forcing exit")
+				timedOut = true
 			}
 		}
 
-		if shutdownCtx.Err() == context.DeadlineExceeded {
+		if !timedOut && shutdownCtx.Err() == context.DeadlineExceeded {
 			options.Logger.Warn("[shutdown] Graceful shutdown timed out, forcing exit")
 		}
 

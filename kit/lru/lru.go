@@ -70,25 +70,24 @@ func NewCacheWithTTL[K comparable, V any](maxItems int, defaultTTL time.Duration
 // It returns the value and a boolean indicating whether the key was found.
 // If the item has expired, it will be removed and not returned.
 func (c *Cache[K, V]) Get(key K) (v V, found bool) {
-	c.mu.RLock()
-	itm, found := c.items[key]
-	c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	itm, found := c.items[key]
 	if !found {
 		return
 	}
 
 	// Check if the item has expired
 	if !itm.expiresAt.IsZero() && time.Now().After(itm.expiresAt) {
-		c.Delete(key)
+		delete(c.items, key)
+		c.order.Remove(itm.element)
 		var zero V
 		return zero, false
 	}
 
 	if !itm.isSpam {
-		c.mu.Lock()
 		c.order.MoveToFront(itm.element)
-		c.mu.Unlock()
 	}
 
 	return itm.value, true

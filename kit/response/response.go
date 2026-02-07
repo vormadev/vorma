@@ -172,7 +172,13 @@ func (res *Response) Redirect(r *http.Request, url string, code ...int) (usedCli
 }
 
 func (res *Response) ServerRedirect(r *http.Request, url string, code ...int) {
-	http.Redirect(res.Writer, r, url, resolveSpreadCode(code))
+	codeToUse := resolveSpreadCode(code)
+	if r == nil {
+		res.SetHeader("Location", url)
+		res.SetStatus(codeToUse)
+		return
+	}
+	http.Redirect(res.Writer, r, url, codeToUse)
 	res.flagAsCommitted()
 }
 
@@ -195,11 +201,17 @@ func GetClientRedirectURL(w http.ResponseWriter) string {
 }
 
 func doesAcceptClientRedirect(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
 	yes, err := strconv.ParseBool(r.Header.Get(ClientAcceptsRedirectHeader))
 	return err == nil && yes
 }
 
 func validateURL(location string) (ok bool) {
+	if location == "" {
+		return false
+	}
 	url, err := url.Parse(location)
 	if err != nil {
 		return false

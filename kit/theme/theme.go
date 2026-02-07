@@ -24,8 +24,7 @@ type ThemeData struct {
 }
 
 func GetThemeData(r *http.Request) ThemeData {
-	c, err := r.Cookie(themeCookieName)
-	if err != nil {
+	if r == nil {
 		return ThemeData{
 			Theme:                 SystemValue,
 			ResolvedTheme:         LightValue,
@@ -34,7 +33,12 @@ func GetThemeData(r *http.Request) ThemeData {
 		}
 	}
 
-	rawTheme := c.Value
+	rawTheme := SystemValue
+	c, err := r.Cookie(themeCookieName)
+	if err == nil {
+		rawTheme = normalizeTheme(c.Value)
+	}
+
 	resolvedTheme := rawTheme
 
 	htmlClass := strings.Builder{}
@@ -55,11 +59,14 @@ func GetThemeData(r *http.Request) ThemeData {
 }
 
 func getResolved(r *http.Request) string {
+	if r == nil {
+		return LightValue
+	}
 	c, err := r.Cookie(resolvedThemeCookieName)
 	if err != nil {
 		return LightValue
 	}
-	return c.Value
+	return normalizeResolvedTheme(c.Value)
 }
 
 func getResolvedOpposite(theme string) string {
@@ -67,6 +74,24 @@ func getResolvedOpposite(theme string) string {
 		return DarkValue
 	}
 	return LightValue
+}
+
+func normalizeTheme(value string) string {
+	switch value {
+	case SystemValue, LightValue, DarkValue:
+		return value
+	default:
+		return SystemValue
+	}
+}
+
+func normalizeResolvedTheme(value string) string {
+	switch value {
+	case DarkValue:
+		return DarkValue
+	default:
+		return LightValue
+	}
 }
 
 var SystemThemeScript, SystemThemeScriptSha256Hash = mustGetSystemThemeScript()

@@ -178,3 +178,35 @@ func TestEdgeCases(t *testing.T) {
 		t.Errorf("unexpected name value, got %s", dest.Name)
 	}
 }
+
+func TestHighLevelNilGuards(t *testing.T) {
+	dest := &TestStruct{}
+
+	if err := JSONBodyInto(nil, dest); err == nil {
+		t.Fatal("expected error for nil request in JSONBodyInto")
+	}
+
+	if err := JSONBodyInto(&http.Request{}, dest); err == nil {
+		t.Fatal("expected error for nil body in JSONBodyInto")
+	}
+
+	if err := JSONBytesInto([]byte(`{}`), nil); err == nil {
+		t.Fatal("expected error for nil destination in JSONBytesInto")
+	}
+
+	if err := JSONStrInto(`{}`, nil); err == nil {
+		t.Fatal("expected error for nil destination in JSONStrInto")
+	}
+
+	if err := URLSearchParamsInto(nil, dest); err == nil {
+		t.Fatal("expected error for nil request in URLSearchParamsInto")
+	}
+
+	if err := URLSearchParamsInto(&http.Request{}, dest); err == nil {
+		t.Fatal("expected error for nil URL in URLSearchParamsInto")
+	}
+
+	if err := URLSearchParamsInto(&http.Request{URL: &url.URL{}}, nil); err == nil {
+		t.Fatal("expected error for nil destination in URLSearchParamsInto")
+	}
+}

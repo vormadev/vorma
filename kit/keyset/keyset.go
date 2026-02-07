@@ -84,6 +84,9 @@ func (wk *Keyset) First() (cryptoutil.Key32, error) {
 // key fails due to a recent rotation.
 func Attempt[R any](ks *Keyset, f func(cryptoutil.Key32) (R, error)) (R, error) {
 	var zeroR R
+	if ks == nil {
+		return zeroR, fmt.Errorf("keyset is nil")
+	}
 	uks := ks.Unwrap()
 	if len(uks) == 0 {
 		return zeroR, fmt.Errorf("keyset is empty")

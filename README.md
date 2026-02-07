@@ -4,7 +4,7 @@
 
 ---
 
-The Next.js of Golang, powered by Vite.
+The Golang metaframework, powered by Vite.
 
 ## Links
 

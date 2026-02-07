@@ -16,7 +16,7 @@ var Log = colorlog.New("app server")
 const (
 	Domain          = "vorma.dev"
 	SiteTitle       = "Vorma Framework"
-	SiteDescription = "The Next.js of Golang, powered by Vite."
+	SiteDescription = "The Golang metaframework, powered by Vite."
 )
 
 var App = vorma.NewVormaApp(vorma.VormaAppConfig{

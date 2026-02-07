@@ -28,8 +28,8 @@ func (m *Matcher) FindBestMatch(realPath string) (*BestMatch, bool) {
 	if best.numberOfDynamicParamSegs > 0 {
 		params := make(Params, best.numberOfDynamicParamSegs)
 		for i, seg := range best.normalizedSegments {
-			if seg.segType == segTypes.dynamic {
-				params[seg.normalizedVal[1:]] = segments[i]
+			if seg.SegType == segTypes.dynamic {
+				params[seg.NormalizedVal[1:]] = segments[i]
 			}
 		}
 		best.Params = params

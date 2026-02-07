@@ -658,12 +658,12 @@ func modifyPatternsToOpts(incomingPatterns []string, incomingIndexSegment string
 
 		for _, seg := range rp.normalizedSegments {
 			sb.WriteString("/")
-			switch seg.segType {
+			switch seg.SegType {
 			case segTypes.static:
-				sb.WriteString(seg.normalizedVal)
+				sb.WriteString(seg.NormalizedVal)
 			case segTypes.dynamic:
 				sb.WriteString(string(opts.DynamicParamPrefixRune))
-				sb.WriteString(seg.normalizedVal[1:])
+				sb.WriteString(seg.NormalizedVal[1:])
 			case segTypes.splat:
 				sb.WriteString(string(opts.SplatSegmentRune))
 			case segTypes.index:

@@ -47,6 +47,21 @@ func TestIDNewEdgeCases(t *testing.T) {
 	if len(id) != 255 {
 		t.Errorf("New(255) returned ID of length %d, expected 255", len(id))
 	}
+
+	_, err = New(0, "", "abc")
+	if err == nil {
+		t.Error("expected error for multiple optional charset values")
+	}
+
+	_, err = New(8, "é")
+	if err == nil {
+		t.Error("expected error for non-ASCII charset")
+	}
+
+	_, err = New(0, "é")
+	if err == nil {
+		t.Error("expected charset validation even when idLen is zero")
+	}
 }
 
 func TestNewMulti(t *testing.T) {

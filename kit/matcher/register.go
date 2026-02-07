@@ -19,8 +19,8 @@ const (
 type RegisteredPattern struct {
 	originalPattern          string
 	normalizedPattern        string
-	normalizedSegments       []*segment
-	lastSegType              segType
+	normalizedSegments       []Segment
+	lastSegType              SegmentType
 	lastSegIsNonRootSplat    bool
 	lastSegIsIndex           bool
 	numberOfDynamicParamSegs uint8
@@ -30,8 +30,10 @@ func (rp *RegisteredPattern) NormalizedPattern() string {
 	return rp.normalizedPattern
 }
 
-func (rp *RegisteredPattern) NormalizedSegments() []*segment {
-	return rp.normalizedSegments
+func (rp *RegisteredPattern) NormalizedSegments() []Segment {
+	out := make([]Segment, len(rp.normalizedSegments))
+	copy(out, rp.normalizedSegments)
+	return out
 }
 
 func (rp *RegisteredPattern) OriginalPattern() string {
@@ -92,16 +94,11 @@ func JoinPatterns(rp *RegisteredPattern, pattern string) string {
 	return sb.String()
 }
 
-type segment struct {
-	normalizedVal string
-	segType       segType
-}
-
 var segTypes = struct {
-	splat   segType
-	static  segType
-	dynamic segType
-	index   segType
+	splat   SegmentType
+	static  SegmentType
+	dynamic SegmentType
+	index   SegmentType
 }{
 	splat:   "splat",
 	static:  "static",
@@ -146,7 +143,7 @@ func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern {
 	}
 
 	rawSegments := ParseSegments(normalizedPattern)
-	segments := make([]*segment, 0, len(rawSegments))
+	segments := make([]Segment, 0, len(rawSegments))
 
 	var numberOfDynamicParamSegs uint8
 
@@ -162,22 +159,22 @@ func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern {
 			normalizedVal = "*"
 		}
 
-		segments = append(segments, &segment{
-			normalizedVal: normalizedVal,
-			segType:       segType,
+		segments = append(segments, Segment{
+			NormalizedVal: normalizedVal,
+			SegType:       segType,
 		})
 	}
 
 	segLen := len(segments)
-	var lastType segType
+	var lastType SegmentType
 	if segLen > 0 {
-		lastType = segments[segLen-1].segType
+		lastType = segments[segLen-1].SegType
 	}
 
 	var finalNormalizedPatternBuilder strings.Builder
 	finalNormalizedPatternBuilder.WriteString("/")
 	for i, seg := range segments {
-		finalNormalizedPatternBuilder.WriteString(seg.normalizedVal)
+		finalNormalizedPatternBuilder.WriteString(seg.NormalizedVal)
 		if i < segLen-1 {
 			finalNormalizedPatternBuilder.WriteString("/")
 		}
@@ -225,11 +222,11 @@ func (m *Matcher) RegisterPattern(originalPattern string) *RegisteredPattern {
 	var nodeScore int
 
 	for i, segment := range _normalized.normalizedSegments {
-		child := current.findOrCreateChild(segment.normalizedVal)
+		child := current.findOrCreateChild(segment.NormalizedVal)
 		switch {
-		case segment.segType == segTypes.dynamic:
+		case segment.SegType == segTypes.dynamic:
 			nodeScore += scoreDynamic
-		case segment.segType != segTypes.splat:
+		case segment.SegType != segTypes.splat:
 			nodeScore += scoreStaticMatch
 		}
 
@@ -244,7 +241,7 @@ func (m *Matcher) RegisterPattern(originalPattern string) *RegisteredPattern {
 	return _normalized
 }
 
-func (m *Matcher) getSegmentTypeAssumeNormalized(segment string) segType {
+func (m *Matcher) getSegmentTypeAssumeNormalized(segment string) SegmentType {
 	switch {
 	case segment == "":
 		return segTypes.index
@@ -257,10 +254,10 @@ func (m *Matcher) getSegmentTypeAssumeNormalized(segment string) segType {
 	}
 }
 
-func getIsStatic(segments []*segment) bool {
+func getIsStatic(segments []Segment) bool {
 	if len(segments) > 0 {
 		for _, segment := range segments {
-			switch segment.segType {
+			switch segment.SegType {
 			case segTypes.splat:
 				return false
 			case segTypes.dynamic:

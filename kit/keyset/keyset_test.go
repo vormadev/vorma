@@ -178,6 +178,12 @@ func TestAttempt(t *testing.T) {
 		wantErr   bool
 	}{
 		{
+			name:    "nil keyset",
+			keyset:  nil,
+			fn:      func(k cryptoutil.Key32) (string, error) { return "ok", nil },
+			wantErr: true,
+		},
+		{
 			name:    "empty keyset",
 			keyset:  &Keyset{uks: UnwrappedKeyset{}},
 			fn:      func(k cryptoutil.Key32) (string, error) { return "ok", nil },

@@ -91,7 +91,7 @@ func (m *Matcher) FindNestedMatches(realPath string) (*FindNestedMatchesResults,
 	}
 
 	var longestSegmentLen int
-	longestSegmentMatches := make(matchesMap)
+	longestSegmentMatches := make(map[SegmentType]*Match)
 	for _, match := range matches {
 		if len(match.normalizedSegments) > longestSegmentLen {
 			longestSegmentLen = len(match.normalizedSegments)

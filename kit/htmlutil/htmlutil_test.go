@@ -376,3 +376,23 @@ func TestEscapeIntoTrusted(t *testing.T) {
 		t.Errorf("SelfClosing not copied correctly")
 	}
 }
+
+func TestComputeContentSha256NoMutation(t *testing.T) {
+	el := &Element{DangerousInnerHTML: "<b>x</b>"}
+	if _, err := ComputeContentSha256(el); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if el.AttributesKnownSafe != nil {
+		t.Fatal("ComputeContentSha256 should not mutate AttributesKnownSafe")
+	}
+}
+
+func TestRenderElementToBuilderNilGuards(t *testing.T) {
+	var b strings.Builder
+	if err := RenderElementToBuilder(nil, &b); err == nil {
+		t.Fatal("expected error for nil element")
+	}
+	if err := RenderElementToBuilder(&Element{Tag: "div"}, nil); err == nil {
+		t.Fatal("expected error for nil builder")
+	}
+}

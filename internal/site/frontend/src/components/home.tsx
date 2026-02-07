@@ -35,7 +35,7 @@ export function Home(_props: RouteProps<"/_index">) {
 		<>
 			<div class="flex flex-col gap-2 sm:gap-1 mt-4">
 				<h2 class="big-heading">
-					The Next.js of Golang, powered by Vite.
+					The Golang metaframework, powered by Vite.
 				</h2>
 			</div>
 

@@ -1,12 +1,15 @@
 package etag
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"fmt"
 	"hash"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -121,13 +124,7 @@ func (ew *etagWriter) Write(b []byte) (int, error) {
 		return ew.w.Write(b)
 	}
 	if ew.maxSize > 0 && ew.size+int64(len(b)) > ew.maxSize {
-		ew.tooBig = true
-		if ew.buf.Len() > 0 {
-			maps.Copy(ew.w.Header(), ew.headers)
-			ew.w.WriteHeader(ew.status)
-			ew.w.Write(ew.buf.Bytes())
-			ew.buf.Reset()
-		}
+		ew.beginPassthrough()
 		ew.size += int64(len(b))
 		return ew.w.Write(b)
 	}
@@ -141,6 +138,53 @@ func (ew *etagWriter) Close() {
 		bufPool.Put(ew.buf)
 		ew.buf = nil
 	}
+}
+
+func (ew *etagWriter) beginPassthrough() {
+	if ew.tooBig {
+		return
+	}
+	ew.tooBig = true
+	maps.Copy(ew.w.Header(), ew.headers)
+	ew.w.WriteHeader(ew.status)
+	if ew.buf != nil && ew.buf.Len() > 0 {
+		_, _ = ew.w.Write(ew.buf.Bytes())
+		ew.buf.Reset()
+	}
+}
+
+func (ew *etagWriter) Flush() {
+	flusher, ok := ew.w.(http.Flusher)
+	if !ok {
+		return
+	}
+	if ew.buf == nil {
+		flusher.Flush()
+		return
+	}
+
+	if !ew.tooBig {
+		ew.beginPassthrough()
+	}
+
+	flusher.Flush()
+}
+
+func (ew *etagWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := ew.w.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+	}
+	ew.tooBig = true
+	return hijacker.Hijack()
+}
+
+func (ew *etagWriter) Push(target string, opts *http.PushOptions) error {
+	pusher, ok := ew.w.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, opts)
 }
 
 func (ew *etagWriter) WriteResponseWithETag(etag string) {
@@ -177,13 +221,25 @@ func canUseETag(ew *etagWriter) bool {
 	if ew.buf == nil || ew.buf.Len() == 0 {
 		return false
 	}
-	if strings.Contains(ew.headers.Get("Cache-Control"), "no-store") {
+	if hasNoStoreDirective(ew.headers.Get("Cache-Control")) {
 		return false
 	}
 	if ew.headers.Get("Set-Cookie") != "" {
 		return false
 	}
 	return true
+}
+
+func hasNoStoreDirective(cacheControl string) bool {
+	if cacheControl == "" {
+		return false
+	}
+	for directive := range strings.SplitSeq(cacheControl, ",") {
+		if strings.EqualFold(strings.TrimSpace(directive), "no-store") {
+			return true
+		}
+	}
+	return false
 }
 
 func generateETag(h hash.Hash, strong bool, headers http.Header) string {
