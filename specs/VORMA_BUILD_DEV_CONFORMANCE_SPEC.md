@@ -661,6 +661,37 @@ Then startup failure MUST be returned to caller (not logged-and-suppressed), and
 caller-visible Vite runtime state MUST NOT present a false-positive "running"
 context after that failure.
 
+### BUILD-VITE-012: Buildtime URL Transform Match-Surface and Literal Output Contract
+
+Given plugin transform scans module source for buildtime public URL calls  
+When replacement matching is performed  
+Then matcher surface MUST be limited to calls of configured function name with a
+single same-delimiter string literal argument (`"..."`, `'...'`, or `` `...` ``).
+
+Given call sites that use non-literal argument expressions  
+When transform runs  
+Then those call sites MUST remain unchanged by URL rewrite.
+
+Given transformed known-asset and missing-asset call sites  
+When replacement strings are emitted  
+Then rewritten output MUST use canonical double-quoted string literals in both
+cases (hashed+prefixed URL for hits; original asset path for misses).
+
+### BUILD-VITE-013: Vite Config Merge Type-Guard Contract
+
+Given plugin config merge runs against incoming Vite config  
+When incoming user fields are non-array/non-object shapes  
+Then plugin merge MUST apply explicit type guards:
+
+- rollup user input entries are appended only for array-form
+  `build.rollupOptions.input`,
+- server watch ignored user entries are preserved only for array-form
+  `server.watch.ignored`,
+- resolve dedupe user entries are preserved only for array-form
+  `resolve.dedupe`,
+- modulePreload user fields are preserved only for object-form
+  `build.modulePreload`.
+
 ## 4.9 Output Cleanup Contract
 
 ### BUILD-CLEAN-001: Vorma-Generated Public File Cleanup
@@ -1167,6 +1198,24 @@ When alias and canonical helper are invoked under equivalent process/env state
 Then alias output and side effects MUST be behaviorally identical to
 `MustGetPort` (including latching and environment side effects).
 
+### BUILD-DEV-039: Watcher Initialization Failure Propagation Contract
+
+Given dev-loop iteration initializes watcher before build execution  
+When watcher creation or watch-root registration fails  
+Then loop startup MUST fail fast by returning actionable error and MUST NOT
+continue into build/app startup for that iteration.
+
+### BUILD-DEV-040: Refresh-Port Reservation and Publication Contract
+
+Given dev control loop starts and refresh-port initialization runs  
+When refresh-port free-port probe succeeds  
+Then selected refresh port MUST be published via runtime refresh-port setter
+before refresh-script endpoint generation/serving paths consume it.
+
+Given refresh-port probe fails  
+When startup initializes refresh-port state  
+Then dev loop MUST fail fast with actionable startup error.
+
 ## 4.12 Watch/Event Processing Contract
 
 ### BUILD-EVT-001: Debounced Batch and Path Dedupe
@@ -1183,6 +1232,11 @@ Batch-callback discipline:
 - after path-level dedupe, any additional watched-pattern-key dedupe MUST apply
   only to non-empty effective watched-file pattern keys and MUST NOT collapse
   distinct classified events that have no matched watched-file pattern key.
+- implementations that keep watched-pattern dedupe state MUST preserve distinct
+  unmatched classified events (for example by skipping pattern-key dedupe when
+  the effective matched watched-file pattern key is empty, or by keying unmatched
+  entries by path identity). A shared sentinel key for unmatched events MUST NOT
+  collapse those events.
 - when multiple classified events share the same non-empty watched-pattern key,
   dedupe MUST NOT drop stronger effective implicit work. The merged work for
   that pattern key MUST preserve union semantics across those events (for
@@ -1482,6 +1536,95 @@ When phase execution runs
 Then bucketed hook sets MUST execute through corresponding phase order contract
 (`BUILD-EVT-006`) with default-pre hooks participating in pre phase.
 
+### BUILD-EVT-025: Watcher Baseline Ignore and Browser-Static Injection Contract
+
+Given watcher setup runs for a config with watch root and dist outputs  
+When baseline ignore/watch patterns are prepared  
+Then runtime MUST include these baseline ignore entries:
+
+- dist binary output file path as ignored file,
+- dist static output directory as ignored directory (including descendants),
+- watch-root recursive `.git` ignore glob,
+- watch-root recursive `node_modules` ignore glob.
+
+Given browser mode is enabled  
+When watcher setup runs  
+Then runtime MUST:
+
+- ignore public static `nohash` and `prehashed` directories recursively,
+- inject default watched patterns for public static and private static file trees
+  recursively.
+
+Given browser mode is disabled  
+When watcher setup runs  
+Then browser-only static defaults (`public/private` default watched patterns and
+`nohash/prehashed` ignore entries) MUST NOT be injected.
+
+### BUILD-EVT-026: Directory Watch Registration and Stale Cleanup Contract
+
+Given `AddDir(root)` executes  
+When directory traversal runs  
+Then runtime MUST:
+
+- recursively traverse directory tree from `root`,
+- skip ignored directories using subtree-skip semantics,
+- add non-ignored directories to fsnotify watch set.
+
+Given the same directory is encountered multiple times through equivalent paths  
+When watch registration is applied  
+Then runtime MUST suppress duplicate registrations via normalized absolute-path
+identity.
+
+Given tracked watched directories include entries that no longer exist on disk  
+When stale cleanup runs  
+Then runtime MUST remove corresponding fsnotify watches and delete stale entries
+from tracked watched-directory state.
+
+Given tracked watched directory still exists  
+When stale cleanup runs  
+Then that tracked entry MUST remain.
+
+### BUILD-EVT-027: Pattern-Match Normalization and Bounded Cache Contract
+
+Given path-pattern matching is used for ignore/watched-file checks  
+When matching executes  
+Then runtime MUST match against normalized absolute forward-slash path forms for
+both pattern and path inputs.
+
+Given repeated matches for same `(pattern, path)` pair  
+When matching executes  
+Then runtime MAY return cached result keyed by that exact tuple.
+
+Given pattern-match caching is enabled  
+When cache capacity is evaluated  
+Then cache MUST be bounded to prevent unbounded growth (current contract
+capacity: `10000` entries).
+
+### BUILD-EVT-028: Directory Watch-Expansion Failure Handling Contract
+
+Given fsnotify create/rename event targets a directory under watch root  
+When dynamic subtree watch registration is attempted for that directory  
+Then registration failure MUST be surfaced as actionable event-cycle failure
+state rather than being silently ignored.
+
+Given directory watch-expansion failure occurs  
+When event-cycle outcome is resolved  
+Then runtime MUST NOT proceed with success-oriented event-cycle continuation as if
+watch expansion succeeded.
+
+### BUILD-EVT-029: CSS Hot-Reload Read-Failure Handling Contract
+
+Given browser phase selects CSS hot-reload path and corresponding CSS artifact
+read fails (`ReadCriticalCSS` and/or `ReadNormalCSSURL`)  
+When browser-phase response is resolved  
+Then runtime MUST treat read failure as actionable failure state and MUST NOT
+emit success-style CSS hot-reload payloads using empty/invalid fallback data.
+
+Given same CSS read-failure path in browser mode  
+When runtime chooses recovery behavior  
+Then runtime MUST execute explicit failure recovery (for example hard-reload
+fallback) rather than silently continuing as successful CSS hot-reload.
+
 ## 4.13 Static Asset and Filemap Contract
 
 ### BUILD-STATIC-001: Missing Static Source Behavior
@@ -1622,6 +1765,24 @@ Then output MUST define:
 - exported type `WavePublicAsset` that accepts both slash-prefixed and
   non-prefixed variants of those keys.
 
+### BUILD-STATIC-015: Granular Stale-Artifact Removal Failure Handling Contract
+
+Given granular static cleanup identifies stale prior dist artifact(s)  
+When filesystem removal of a stale artifact fails  
+Then static processing MUST surface actionable failure state (error return) and
+MUST NOT silently continue as successful stale-cleanup completion.
+
+### BUILD-STATIC-016: Granular Old-Filemap Load Failure Fallback Contract
+
+Given granular static processing starts and prior filemap load fails  
+When processing continues  
+Then runtime MUST fall back to "no prior map" semantics for that pass:
+
+- unchanged-file skip optimization MUST be disabled (all discovered files are
+  treated as copy candidates),
+- stale-old-dist cleanup by prior map comparison MUST be skipped for that pass,
+- final discovered filemap output MUST still be persisted.
+
 ## 4.14 Config Schema Emission Contract
 
 ### BUILD-SCHEMA-001: Core and Conditional StaticAssetDirs Requirement
@@ -1676,6 +1837,14 @@ Then schema MUST:
 - define optional `IncludeDefaults` with default `true`,
 - define optional `BuildtimePublicURLFuncName` with default
   `waveBuildtimeURL`.
+
+### BUILD-SCHEMA-007: Framework Extension Reserved-Key Collision Guard Contract
+
+Given framework schema extensions are merged into top-level schema properties  
+When extension keys collide with reserved Wave top-level sections (`Core`,
+`Vite`, `Watch`)  
+Then merge MUST NOT allow reserved section override and schema generation MUST
+surface collision as actionable failure.
 
 ## 4.15 Builder Orchestration and Dist Priming Contract
 
@@ -1732,6 +1901,76 @@ Given file-processing pipeline runs while browser mode is enabled
 When `processFiles` executes  
 Then runtime MUST process public static files first, and only after that stage
 MAY execute private-static and CSS stages in parallel.
+
+### BUILD-BLD-007: Non-Granular Dist Cleanup and Lock Preservation Contract
+
+Given file-processing pipeline runs with `granular=false`  
+When dist-static cleanup executes  
+Then runtime MUST:
+
+- tolerate missing dist-static directory without failing solely for missing path,
+- remove non-lock entries under dist-static before dist-setup stage,
+- preserve recognized dev-lock file entries during cleanup.
+
+Given non-lock entry removal fails  
+When cleanup runs  
+Then file-processing stage MUST fail with actionable remove error.
+
+Given cleanup stage completes  
+When non-granular processing continues  
+Then dist-setup stage MUST run before browser/static processing gates.
+
+### BUILD-BLD-008: Vite Context Helper Gate and Option-Propagation Contract
+
+Given `ViteProdBuild()` runs while `UsingVite()` is false  
+When helper executes  
+Then helper MUST no-op successfully.
+
+Given `ViteProdBuild()` runs while `UsingVite()` is true  
+When helper executes  
+Then helper MUST build Vite context from active config and invoke context
+production build; context build failures MUST propagate as returned errors.
+
+Given `NewViteDevContext()` runs while `UsingVite()` is false  
+When helper executes  
+Then helper MUST return `(nil, nil)`.
+
+Given `NewViteDevContext()` runs while `UsingVite()` is true  
+When helper executes  
+Then helper MUST run dev-build startup on generated context and return startup
+error on failure (without successful context result).
+
+Vite-context option propagation refinement:
+
+- JS package-manager base command and command directory MUST be sourced from
+  active Vite config,
+- output directory MUST target dist static public path,
+- manifest output path MUST target active Vite-manifest path,
+- Vite config file and default port MUST propagate from active Vite config.
+
+### BUILD-BLD-009: Builder Wrapper and CSS-Read Helper Delegation Contract
+
+Given wrapper helpers execute (`CompileGoOnly`, `ProcessFilesOnly`,
+`ProcessPublicFilesOnly`, `ProcessPrivateFilesOnly`, `BuildCriticalCSS`,
+`BuildNormalCSS`)  
+When helper behavior is observed  
+Then wrappers MUST delegate to corresponding underlying stage methods with
+documented argument forms:
+
+- `CompileGoOnly(isDev)` -> `compileGo(isDev)`,
+- `ProcessFilesOnly(isRebuild, isDev)` -> `processFiles(isRebuild, isDev)`,
+- `ProcessPublicFilesOnly()` -> `processPublicFiles(true)`,
+- `ProcessPrivateFilesOnly()` -> `processPrivateFiles(true)`,
+- `BuildCriticalCSS(isDev)` -> css critical build,
+- `BuildNormalCSS(isDev)` -> css normal build.
+
+Given CSS-read helpers execute  
+When dist files are readable/unreadable  
+Then:
+
+- `ReadCriticalCSS()` MUST return raw critical-css file content or read error,
+- `ReadNormalCSSURL()` MUST return `PublicPathPrefix + <normal-css-ref-content>`
+  or read error.
 
 ## 4.16 CSS Build Artifact and URL-Rewrite Contract
 
@@ -1802,6 +2041,39 @@ Given CSS build stage executes in non-dev mode
 When bundler options are configured  
 Then CSS minification options for whitespace, identifiers, and syntax MUST be
 enabled.
+
+### BUILD-CSS-008: CSS Build Context Lifecycle Contract
+
+Given repeated CSS builds for the same nature (`critical` or `normal`)  
+When a new esbuild context is created for that nature  
+Then prior context for that nature (if present) MUST be disposed before
+replacement.
+
+Given builder/css processor shutdown runs  
+When CSS context teardown executes  
+Then both tracked CSS contexts (`critical` and `normal`) MUST be disposed when
+present and corresponding context-present flags MUST be cleared.
+
+### BUILD-CSS-009: Esbuild Output Presence Guard Contract
+
+Given CSS build stage completes without bundler errors  
+When emitted output file list is evaluated  
+Then stage MUST fail if bundler produced zero output files.
+
+### BUILD-CSS-010: CSS BuildAll Sequencing and Error-Wrapping Contract
+
+Given combined CSS build stage (`buildAll`) executes  
+When processing runs  
+Then critical CSS build MUST execute before normal CSS build.
+
+Given critical stage fails  
+When `buildAll` returns  
+Then normal stage MUST NOT execute and returned error context MUST identify
+critical-stage failure.
+
+Given normal stage fails after critical stage succeeds  
+When `buildAll` returns  
+Then returned error context MUST identify normal-stage failure.
 
 ## 4.17 Runtime Config Validation Gate Contract
 
@@ -2333,6 +2605,26 @@ and dev-server `startVite`
 Then failure MUST propagate as error (no silent success return) and no
 stale/running Vite context MUST be published to runtime consumers.
 
+### BDC-VITE-012 (covers BUILD-VITE-012)
+
+Given transform source variants containing:
+
+- literal buildtime URL calls with `"..."`, `'...'`, and `` `...` `` arguments,
+- non-literal argument calls,
+
+When plugin transform runs under hit and miss filemap conditions  
+Then only literal-call variants MUST rewrite and rewritten outputs MUST be
+double-quoted literals (`"<prefix><hashed>"` for hits, `"<original>"` for
+misses).
+
+### BDC-VITE-013 (covers BUILD-VITE-013)
+
+Given plugin config merge input variants spanning array-form and non-array/non-
+object user fields for rollup input, watch ignored, dedupe, and modulePreload  
+When merged config output is inspected  
+Then user entries MUST be preserved only for accepted guarded shapes and ignored
+for other shapes, while plugin-required values remain applied.
+
 ## 5.9 Cleanup Scenarios
 
 ### BDC-CLEAN-001 (covers BUILD-CLEAN-001)
@@ -2635,6 +2927,23 @@ call path (`MustGetPort`) across dev/non-dev and latched/non-latched variants
 When outputs and env side effects are compared  
 Then alias path MUST remain strictly equivalent to canonical helper behavior.
 
+### BDC-DEV-039 (covers BUILD-DEV-039)
+
+Given startup fixtures that force watcher-creation failure and watch-root-add
+failure respectively  
+When dev-loop initialization path runs  
+Then loop MUST return actionable initialization error and MUST NOT proceed into
+build/app startup for those failure paths.
+
+### BDC-DEV-040 (covers BUILD-DEV-040)
+
+Given startup fixture where refresh-port probe succeeds and another where probe
+fails  
+When dev loop initializes refresh-port state  
+Then successful path MUST publish selected refresh-port state before
+refresh-script consumption, and failure path MUST return actionable startup
+error.
+
 ## 5.12 Watch/Event Processing Scenarios
 
 ### BDC-EVT-001 (covers BUILD-EVT-001)
@@ -2834,6 +3143,62 @@ When watched-pattern-key dedupe is applied
 Then dedupe outcome for that key MUST preserve union-strength implicit work and
 MUST NOT downgrade stronger work requirements due to event selection order.
 
+### BDC-EVT-026 (covers BUILD-EVT-025)
+
+Given watcher setup fixtures for browser-enabled and browser-disabled modes with
+known watch root/dist/static paths  
+When computed baseline ignored files/dirs and default watched patterns are
+inspected  
+Then baseline ignore entries (`dist binary`, `dist static`, watch-root `.git`,
+watch-root `node_modules`) and browser-conditional static defaults
+(`public/private` watched trees plus `nohash/prehashed` ignores) MUST match
+contract gating rules.
+
+### BDC-EVT-027 (covers BUILD-EVT-026)
+
+Given directory tree fixtures containing ignored and non-ignored subdirectories,
+duplicate equivalent directory paths, and later-deleted watched directories  
+When `AddDir` and stale cleanup are exercised  
+Then ignored subtrees MUST be skipped, non-ignored directories MUST be watched
+once by normalized absolute identity, and deleted directories MUST be removed
+from fsnotify/tracked watch state.
+
+### BDC-EVT-028 (covers BUILD-EVT-027)
+
+Given path-pattern matching fixtures using relative/absolute and slash-variant
+inputs plus repeated `(pattern,path)` pairs  
+When matching and cache behavior are observed  
+Then normalization to absolute forward-slash forms, tuple-keyed cache reuse, and
+bounded cache-capacity behavior MUST satisfy contract.
+
+### BDC-EVT-029 (covers BUILD-EVT-028)
+
+Given directory create/rename event fixtures where dynamic subtree watch add
+succeeds in one case and fails in another  
+When event cycle executes  
+Then success case MUST continue with expanded watch coverage, and failure case
+MUST surface actionable failure state rather than silently treating expansion as
+successful.
+
+### BDC-EVT-030 (covers BUILD-EVT-029)
+
+Given CSS hot-reload fixtures where critical/normal CSS artifact reads succeed
+and fail across variants  
+When browser phase resolves payload/recovery behavior  
+Then read-success paths MUST emit documented CSS payloads, while read-failure
+paths MUST suppress success-style CSS payload emission and execute explicit
+failure recovery behavior.
+
+### BDC-EVT-031 (covers BUILD-EVT-001)
+
+Given one debounced batch contains multiple distinct classified events that have
+no matched watched-file pattern key (for example critical-CSS and normal-CSS
+source paths that do not match any `Watch.Include`/framework watch pattern)  
+When watched-pattern-key dedupe state is applied after path-level dedupe  
+Then each unmatched event MUST remain independently represented in effective
+work aggregation (MUST NOT collapse into a single shared unmatched bucket), so
+event-type union behavior for that batch is preserved.
+
 ## 5.13 Static Asset and Filemap Scenarios
 
 ### BDC-STATIC-001 (covers BUILD-STATIC-001)
@@ -2927,6 +3292,22 @@ When emitted declarations are inspected
 Then nil-allocation, fail-fast behavior, and emitted const/type shape MUST match
 contract.
 
+### BDC-STATIC-015 (covers BUILD-STATIC-015)
+
+Given granular static cleanup fixture where stale dist artifact removal fails
+(for example permission/FS error injection)  
+When static processing handles stale cleanup step  
+Then failure MUST be surfaced as actionable build error and MUST NOT be treated
+as successful stale-cleanup completion.
+
+### BDC-STATIC-016 (covers BUILD-STATIC-016)
+
+Given granular processing fixture with unreadable/missing prior filemap state  
+When static processing runs  
+Then processing MUST proceed using no-prior-map fallback semantics (no unchanged
+skip and no stale-old-dist diff cleanup for that pass) while still writing the
+final filemap output.
+
 ## 5.14 Config Schema Emission Scenarios
 
 ### BDC-SCHEMA-001 (covers BUILD-SCHEMA-001)
@@ -2967,6 +3348,15 @@ Given generated schema output
 When `Vorma` extension section is inspected  
 Then required fields, `UIVariant` enum values, and documented default values for
 `IncludeDefaults` and `BuildtimePublicURLFuncName` MUST match contract.
+
+### BDC-SCHEMA-007 (covers BUILD-SCHEMA-007)
+
+Given framework extension fixtures with one non-reserved key and one reserved
+collision key (`Core`/`Vite`/`Watch`)  
+When schema generation runs  
+Then non-reserved extension merge MUST succeed, and reserved-key collision MUST
+fail with actionable collision signal rather than silently overriding reserved
+section definitions.
 
 ## 5.15 Builder Orchestration and Dist Priming Scenarios
 
@@ -3012,6 +3402,33 @@ When file-processing phase execution order is observed
 Then non-browser fixture MUST skip public/private/CSS processing stages, while
 browser fixture MUST run public-file processing before entering private/CSS
 processing paths.
+
+### BDC-BLD-007 (covers BUILD-BLD-007)
+
+Given non-granular file-processing fixture with dist-static missing in one case
+and with lock+non-lock entries in another case  
+When cleanup and follow-on setup stages execute  
+Then missing dist-static MUST be tolerated, non-lock entries MUST be removed,
+lock entries MUST be preserved, and cleanup success path MUST still execute
+dist-setup stage.
+
+### BDC-BLD-008 (covers BUILD-BLD-008)
+
+Given helper fixtures spanning `UsingVite()` false and true for both
+`ViteProdBuild()` and `NewViteDevContext()`  
+When helper outputs and underlying context options are inspected  
+Then no-vite paths MUST no-op/return `(nil,nil)`, vite-enabled paths MUST invoke
+ProdBuild/DevBuild with active-config-derived context options, and startup/build
+errors MUST propagate.
+
+### BDC-BLD-009 (covers BUILD-BLD-009)
+
+Given wrapper/helper fixtures for compile/file/css wrapper methods and CSS-read
+helpers  
+When delegation and return values are observed  
+Then wrappers MUST invoke documented underlying methods with required argument
+forms, and CSS-read helpers MUST return expected success payload shape with
+read-error propagation on failure paths.
 
 ## 5.16 CSS Build Artifact and URL-Rewrite Scenarios
 
@@ -3067,6 +3484,28 @@ Given one dev-mode CSS build and one non-dev CSS build
 When bundler option contracts are inspected  
 Then dev build MUST disable minification flags, and non-dev build MUST enable
 whitespace/identifier/syntax minification flags.
+
+### BDC-CSS-008 (covers BUILD-CSS-008)
+
+Given successive critical/normal CSS builds and final processor close lifecycle  
+When context state and disposal side effects are inspected  
+Then same-nature old contexts MUST be disposed before replacement and lifecycle
+close MUST dispose any remaining tracked contexts while clearing presence flags.
+
+### BDC-CSS-009 (covers BUILD-CSS-009)
+
+Given CSS build fixture where bundler returns zero output files without explicit
+build error  
+When stage result is evaluated  
+Then stage MUST fail through no-output guard contract.
+
+### BDC-CSS-010 (covers BUILD-CSS-010)
+
+Given `buildAll` fixtures covering critical failure, normal failure, and full
+success paths  
+When call ordering and returned errors are observed  
+Then critical-before-normal sequencing and stage-specific error wrapping
+semantics MUST match contract.
 
 ## 5.17 Runtime Config Validation Gate Scenarios
 

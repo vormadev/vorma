@@ -325,6 +325,12 @@ Given successful document-mode loaders response
 When bootstrap payload is emitted  
 Then `routeManifestURL` MUST reference a public URL path to route manifest JSON.
 
+Composition refinement:
+
+- `routeManifestURL` MUST be composed from active `publicPathPrefix` and active
+  route-manifest filename using single-boundary path-join semantics (no
+  duplicate slash seams and no missing separator).
+
 ### WIRE-MAN-002: Manifest JSON Shape
 
 Given route manifest is fetched  
@@ -629,7 +635,9 @@ Then `patternToWaitFnMap` MUST be object-literal initialized and
 
 Given document-mode loaders success  
 When bootstrap payload is inspected  
-Then `routeManifestURL` MUST be non-empty and public-path-resolvable.
+Then `routeManifestURL` MUST be non-empty, public-path-resolvable, and path-join
+equivalent to `{publicPathPrefix}/{routeManifestFile}` under normalized
+single-boundary slash semantics.
 
 ### WRC-MAN-002 (covers WIRE-MAN-002)
 

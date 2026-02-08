@@ -401,6 +401,20 @@ Conformance-visible invariants:
 - no-handler patterns omitted from refreshed set no longer match post-rebuild,
 - new refreshed patterns become match-eligible no-handler entries.
 
+### BR-LOAD-023: Concurrent `RegisterPatternIfNeeded` Idempotency Contract
+
+Given two or more concurrent callers invoke
+`RegisterPatternIfNeeded(pattern)` for the same currently-unregistered pattern  
+When registration race occurs  
+Then runtime MUST converge to one registered pattern and MUST NOT panic or
+surface duplicate-registration failure.
+
+Given the same API is called concurrently for a pattern already registered
+with a task handler  
+When calls execute  
+Then API MUST remain no-op and MUST preserve existing handler-backed
+registration (it MUST NOT replace or downgrade handler state).
+
 ### BR-LOAD-010: Dependency List Ordering and Deduplication
 
 Given route-data dependencies are computed  
@@ -961,6 +975,22 @@ When caller mutates returned value
 Then runtime-internal state used for request handling MUST remain unaffected and
 thread-safe (no external mutable alias into lock-protected internals).
 
+### BR-CONC-004: `WithRLock` Must Enforce Read-Only Access
+
+Given caller invokes `WithRLock` and receives `LockedVorma` callback access  
+When callback execution occurs  
+Then lock-protected runtime state MUST be read-only for that callback scope.
+
+Mutation operations over lock-protected runtime fields (for example
+`SetPaths`, `SetBuildID`, `SetRouteManifestFile`, `SetRootTemplate`) MUST NOT
+be permitted under `WithRLock` (for example unavailable in API surface or
+fail-fast at runtime).
+
+Given caller invokes `WithLock` and mutates lock-protected fields inside the
+callback  
+When callback returns  
+Then those mutations MUST be committed atomically before `WithLock` returns.
+
 ## 4.14 Embedded Wave Asset Helper Contracts
 
 These contracts are inherited through `Vorma` embedding `*wave.Wave` and are
@@ -1075,8 +1105,27 @@ Mode-cache semantics:
   `GetPrivateFS`, `GetPublicFileMap`, `GetPublicURL`, critical-css helpers,
   stylesheet helpers, and filemap URL/elements/hash helpers) MUST be computed
   from current filesystem state on each access (no process-lifetime memoization),
-- in non-dev mode, these helper values MAY be memoized per process after first
-  access (including memoizing first computed error state).
+- in non-dev mode, scalar helper caches MAY be memoized per process after first
+  access (including memoizing first computed error state), while keyed-helper
+  cache error behavior follows `BR-ASSET-007`.
+
+### BR-ASSET-007: Keyed vs Scalar Helper Error-Memoization Precision Contract
+
+Given non-dev mode and scalar helper cache (`cache[T]`) initializer fails on
+first access  
+When subsequent accesses run  
+Then helper MUST return the same memoized error state without recomputing
+initializer function.
+
+Given non-dev mode and keyed helper cache (`cacheMap[K,V]`) lookup for key `K`
+fails  
+When subsequent accesses for key `K` run  
+Then helper MUST retry lookup function for `K` (error state MUST NOT be cached
+for that key).
+
+Given non-dev mode and keyed helper lookup for key `K` succeeds  
+When subsequent accesses for key `K` run  
+Then helper MAY reuse memoized value for `K` without recomputation.
 
 ## 5. Executable Conformance Scenario Catalog
 
@@ -1419,6 +1468,18 @@ payload)
 Then dev-mode payloads MUST emit `viteDevURL` using
 `http://localhost:<vite-port>` form, and non-dev payloads MUST emit empty
 string.
+
+### BRC-LOAD-023 (covers BR-LOAD-023)
+
+Given a fresh app/router where pattern `P` is initially unregistered  
+When multiple concurrent goroutines call `RegisterPatternIfNeeded(P)`  
+Then operation MUST complete without panic and exactly one stable registration
+for `P` MUST be present.
+
+Given an already handler-backed pattern `H`  
+When concurrent `RegisterPatternIfNeeded(H)` calls execute  
+Then handler-backed route behavior for `H` MUST remain intact and non-downgraded
+after the concurrent call burst.
 
 ## 5.6 Loader Error Scenarios
 
@@ -1809,6 +1870,20 @@ When subsequent loader requests are served
 Then runtime route-data behavior MUST remain based on internal authoritative
 state and MUST NOT reflect caller-side mutation of snapshot return values.
 
+### BRC-CONC-004 (covers BR-CONC-004)
+
+Given callback logic is executed under `WithRLock`  
+When callback attempts mutation through lock-protected setter APIs on
+`LockedVorma`  
+Then runtime MUST reject that mutation path (compile-time unavailability or
+fail-fast runtime guard) and post-callback observable runtime state MUST remain
+unchanged.
+
+Given callback logic is executed under `WithLock` and applies lock-protected
+mutations  
+When callback returns  
+Then subsequent getter observations MUST reflect those writes atomically.
+
 ## 5.14 Embedded Wave Asset Helper Scenarios
 
 ### BRC-ASSET-001 (covers BR-ASSET-001)
@@ -1857,6 +1932,14 @@ When base/public/private/filemap helper calls are observed across repeated
 accesses and on-disk mutation between calls  
 Then fs-source selection, missing-fs failure behavior, and mode-specific
 recompute-vs-memoize semantics MUST match contract.
+
+### BRC-ASSET-007 (covers BR-ASSET-007)
+
+Given production-mode fixtures for one scalar helper-cache path and one keyed
+helper-cache path under controlled failure/success transitions  
+When repeated accesses are observed  
+Then scalar cache MUST memoize first error result, keyed cache MUST retry on
+error for same key, and keyed cache MAY memoize successful value per key.
 
 ## 6. Conformance Test Suite Guidance
 

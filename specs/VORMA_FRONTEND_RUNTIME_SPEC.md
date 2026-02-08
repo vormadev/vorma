@@ -1623,6 +1623,13 @@ Runtime MUST use session storage keys:
 - `__vorma__scrollStateMap` for history-entry scroll map,
 - `__vorma__pageRefreshScrollState` for refresh restore state.
 
+Storage-shape refinement:
+
+- `__vorma__scrollStateMap` payload MUST be serialized as JSON array of
+  `[historyKey, scrollState]` tuples (Map-entry order preserved),
+- refresh payload stored at `__vorma__pageRefreshScrollState` MUST include
+  numeric `x`, numeric `y`, numeric `unix`, and string `href` fields.
+
 ### FE-SCROLL-002: Scroll Map Capacity
 
 Given more than 50 scroll entries are saved  
@@ -3145,6 +3152,12 @@ Given many saved scroll entries
 When storage state is inspected  
 Then runtime MUST use documented storage keys and cap map at 50 entries via
 oldest eviction.
+
+Given persisted scroll-map and refresh-scroll payloads are inspected  
+When serialized storage values are decoded  
+Then scroll-map payload MUST be tuple-array JSON (`[key, state]` entries in
+insertion order) and refresh payload MUST include `x`, `y`, `unix`, and `href`
+fields.
 
 ### FEC-SCROLL-002 (covers FE-SCROLL-003)
 

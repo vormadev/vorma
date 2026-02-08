@@ -18,6 +18,12 @@ normative intent.
 - `OUT-OF-SCOPE`: Not normative implementation behavior for Vorma runtime
   contracts (for example, test harness scaffolding helpers).
 
+Directory-level exclusion rules (tracked once to avoid per-file vendor/generated
+noise):
+
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/create/node_modules/**` | Vendored package-manager dependency tree for create-CLI package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/create/dist/**` | Generated build output for create-CLI package.
+
 ## Exhaustive-Signoff Gates
 
 Before claiming specs are exhaustive:
@@ -27,6 +33,45 @@ Before claiming specs are exhaustive:
    dispositioned (normative, bug, or intentional divergence policy).
 3. Any spec updates discovered during mining must be reflected in:
    `VORMA_*_SPEC.md` + `VORMA_TRACEABILITY_MATRIX.md` + `SPECS_CHECKLIST.md`.
+
+## Replay Accounting and Stop Rule
+
+To prevent unbounded replay loops, remining progress is tracked as explicit
+rounds with a hard stop criterion.
+
+### Definitions
+
+- `Full round`: one complete pass over every in-scope implementation/legacy row
+  tracked in this ledger.
+- `New gap`: any newly surfaced normative delta that requires one or more of:
+  new requirement/scenario IDs, tightened requirement language, new traceability
+  row, or new conformance issue entry.
+- `No-gap round`: a full round that surfaces zero new gaps.
+
+### Round Log
+
+| Round | Window | Status | New gaps found | Notes |
+|---|---|---|---:|---|
+| `R1` | `446e64a` -> `2026-02-08` | complete | `>0` | Comprehensive replay pass that produced the current strict requirement/issue baseline. |
+| `R2` | `2026-02-08` -> current | in_progress | `4` | New gaps found so far: `VCI-061`, `VCI-062`, `VCI-063`, plus spec-precision tightening for `WIRE-MAN-001` and `FE-SCROLL-001`. |
+
+### Current Counters (Snapshot)
+
+- `Checklist replay markers`: `157`
+- `Ledger VERIFIED rows`: `212`
+- `Ledger HISTORICAL rows`: `0`
+- `Ledger PENDING rows`: `0`
+- `Ledger OUT-OF-SCOPE rows`: `140`
+
+### Stop Criterion (Adopted)
+
+Spec-mining stops when all of the following are true:
+
+1. All in-scope ledger rows are `VERIFIED` (`PENDING=0`, `HISTORICAL=0`).
+2. Two consecutive full rounds are completed with `No-gap` result.
+3. Mechanical closure audit reports no untracked in-scope files.
+4. The final two no-gap rounds are recorded in this ledger and summarized in
+   `SPECS_CHECKLIST.md`.
 
 ## A) Backend Runtime Source (`vormaruntime/*.go`)
 
@@ -325,6 +370,23 @@ All files below are legacy/pre-conformance behavior sources.
 ### H.5) `kit/_typescript/listeners` (`vorma/kit/listeners`)
 
 - `VERIFIED` | `/Users/sjc/__code/river/kit/_typescript/listeners/listeners.ts`
+
+### H.6) Additional TS Kit Packages Not in Current Vorma Runtime/Build Frontend Inheritance Closure
+
+These packages are exported kit modules but are not imported by current Vorma
+frontend runtime/build sources (`internal/framework/_typescript/client/*`,
+adapter packages, generated Vite helper, or build toolchain paths). They are
+tracked as out-of-scope for inherited-behavior mining in this Vorma-focused
+spec effort.
+
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/_typescript/converters/converters.ts` | Exported utility package not currently inherited by Vorma runtime/build/frontend control-plane paths.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/_typescript/converters/converters.test.ts` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/_typescript/cookies/cookies.ts` | Exported utility package not currently inherited by Vorma runtime/build/frontend control-plane paths.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/_typescript/cookies/cookies.test.ts` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/_typescript/csrf/csrf.ts` | Exported utility package not currently inherited by Vorma runtime/build/frontend control-plane paths.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/_typescript/fmt/fmt.ts` | Exported utility package not currently inherited by Vorma runtime/build/frontend control-plane paths.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/_typescript/theme/theme.ts` | Exported utility package not currently inherited by Vorma runtime/build/frontend control-plane paths.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/_typescript/tsconfig.json` | Package build metadata for out-of-scope TS kit package set.
 
 ## I) Additional Vorma Source Domains (Coverage-Reconciliation Expansion)
 

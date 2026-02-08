@@ -1325,3 +1325,160 @@ Out of scope for now:
       `BDC-EVT-025`, traceability mapping was updated, and implementation
       divergence was logged as open conformance issue `VCI-056` rather than
       codified as acceptable behavior)
+- [x] Watcher baseline setup/cleanup/match-cache contract pass
+      (`wave/tooling/watcher.go` replay promoted missing explicit requirements
+      for watcher baseline ignore + browser-static default injection
+      (`BUILD-EVT-025`/`BDC-EVT-026`), recursive dir watch registration with
+      stale-watch cleanup semantics (`BUILD-EVT-026`/`BDC-EVT-027`), and
+      normalized tuple-keyed bounded pattern-match cache behavior
+      (`BUILD-EVT-027`/`BDC-EVT-028`); traceability rows added as `missing`)
+- [x] Static processing failure-mode closure pass
+      (`wave/tooling/static.go` replay promoted two missing granular static
+      contracts: stale-artifact remove-failure handling must be actionable
+      (`BUILD-STATIC-015`/`BDC-STATIC-015`) and old-filemap-load failure fallback
+      semantics must remain explicit (`BUILD-STATIC-016`/`BDC-STATIC-016`);
+      traceability rows added as `missing`, and current silent stale-remove
+      error swallow was logged as open conformance issue `VCI-057`)
+- [x] CSS context/output lifecycle closure pass
+      (`wave/tooling/css.go` replay promoted missing explicit contracts for
+      CSS context replacement+teardown disposal behavior
+      (`BUILD-CSS-008`/`BDC-CSS-008`), zero-output hard failure guard
+      (`BUILD-CSS-009`/`BDC-CSS-009`), and `buildAll` critical-before-normal
+      sequencing with stage-specific error wrapping
+      (`BUILD-CSS-010`/`BDC-CSS-010`); traceability rows added as `missing`)
+- [x] Buildtime URL/public-filemap helper replay pass (no new deltas)
+      (`wave/tooling/url.go` was re-read line-by-line; existing static/url
+      contracts already cover panic-vs-error helper modes, load-or-build
+      fallback, non-prehashed key filtering/sorting, and TS asset-key emission;
+      no additional normative requirements surfaced in this replay)
+- [x] Dev lock source replay pass (no new deltas)
+      (`wave/tooling/lock.go`, `lock_unix.go`, and `lock_windows.go` were
+      re-read line-by-line; existing dev control-plane lock/liveness contracts
+      already cover acquisition failure classes, stale takeover, platform
+      liveness probe semantics, and lock-file cleanup on shutdown)
+- [x] Hash helper replay pass (no new deltas)
+      (`wave/tooling/hash.go` was re-read line-by-line; existing static/CSS hash
+      contracts already cover content-addressed naming, normalized-name
+      collision guard input, and hashed output format coupling)
+- [x] Schema extension collision-guard pass
+      (`wave/tooling/schema.go` replay surfaced missing reserved-key collision
+      protection in framework schema extension merge; strict schema contract was
+      tightened with `BUILD-SCHEMA-007`/`BDC-SCHEMA-007`, traceability row added
+      as `missing`, and current silent override behavior was logged as open
+      conformance issue `VCI-058`)
+- [x] Refresh broadcast manager replay pass (no new deltas)
+      (`wave/tooling/broadcast.go` was re-read line-by-line; client-manager
+      non-blocking fan-out/shutdown semantics and cycle-vite reload-orchestration
+      behavior remain covered by existing build-dev contracts and previously
+      logged divergence `VCI-014`)
+- [x] CLI entry replay pass (no new deltas)
+      (`wave/tooling/cli.go` was re-read line-by-line; existing CLI mode,
+      precedence, panic/error propagation, and builder-close lifecycle contracts
+      already capture current behavior)
+- [x] Wave runtime helper-cache precision pass
+      (`wave/wave.go`, `wave/types.go`, `wave/filemap.go`, `wave/css.go`,
+      `wave/parse.go`, `wave/env.go`, and `wave/refresh.go` were replayed;
+      backend asset-helper cache semantics were tightened to distinguish scalar
+      error memoization from keyed-cache retry behavior
+      (`BR-ASSET-007`/`BRC-ASSET-007`), and traceability row was added as
+      `missing`; no new implementation divergence was introduced in this pass)
+- [x] Frontend kit listener/debounce replay pass (no new deltas)
+      (`kit/_typescript/listeners/listeners.ts` and
+      `kit/_typescript/debounce/debounce.ts` were re-read line-by-line; existing
+      frontend+interop specs already capture focus/visibility listener
+      composition, 30ms debounce inheritance, cleanup behavior, and debounced
+      invocation window semantics)
+- [x] Vite plugin transform/config type-guard precision pass
+      (`internal/framework/_typescript/vite/vite.ts` replay promoted two missing
+      explicit contracts: buildtime URL transform literal-match/output-shape
+      semantics (`BUILD-VITE-012`/`BDC-VITE-012`) and config-merge
+      type-guarded preservation for rollup/watch/dedupe/modulePreload fields
+      (`BUILD-VITE-013`/`BDC-VITE-013`); traceability rows added as `missing`)
+- [x] Devserver control-plane startup-failure/refresh-port closure pass
+      (`wave/tooling/devserver.go` replay promoted two missing explicit dev
+      control-plane contracts: watcher-init failure must fail-fast and halt
+      startup (`BUILD-DEV-039`/`BDC-DEV-039`), and refresh-port probe result
+      must be published before refresh-script consumption with probe-failure
+      fail-fast semantics (`BUILD-DEV-040`/`BDC-DEV-040`); traceability rows
+      added as `missing`)
+- [x] Mining-ledger TS kit closure pass
+      (mechanical closure audit against ledger uncovered untracked
+      `kit/_typescript/{converters,cookies,csrf,fmt,theme}` package files and
+      shared TS-kit `tsconfig`; these were explicitly classified in
+      `NORMATIVE_INTENT_MINING_LEDGER.md` as `OUT-OF-SCOPE` for current
+      Vorma-inheritance mining scope to prevent future replay-loop ambiguity)
+- [x] Builder orchestration helper-surface closure pass
+      (`wave/tooling/builder.go` replay promoted missing explicit contracts for
+      non-granular dist cleanup lock-file preservation (`BUILD-BLD-007`/
+      `BDC-BLD-007`), Vite helper gate/option propagation semantics
+      (`BUILD-BLD-008`/`BDC-BLD-008`), and wrapper/CSS-read helper delegation
+      behavior (`BUILD-BLD-009`/`BDC-BLD-009`); traceability rows added as
+      `missing`)
+- [x] Vorma build orchestration replay pass (no new deltas)
+      (`vormabuild/vorma_build.go` was re-read line-by-line; existing CLI/hook
+      flow, default-watch-pattern callback behavior, reload-endpoint fallback
+      semantics, route parse/extract contracts, and build-id/artifact-write
+      contracts already cover current observable behavior with no additional
+      normative deltas surfaced in this replay)
+- [x] Vite stage-two conversion replay pass (no new deltas)
+      (`vormabuild/vite_cmd.go` was re-read line-by-line; existing stage-two
+      conversion/build-id contracts already capture manifest dependency mapping,
+      stage-two paths emission, hash-input composition, and runtime build-id
+      propagation with no additional normative deltas surfaced in this replay)
+- [x] Remaining build-core helper replay pass (no new deltas)
+      (`vormabuild/rebuild_routes.go`, `vormabuild/route_registry_build.go`,
+      `vormabuild/configschema.go`, and `vormabuild/fs_to_hash.go` were
+      re-read line-by-line; existing fast-route rebuild, manifest/hash, schema
+      extension/defaults, and filesystem-summary hash contracts already cover
+      current observable behavior with no additional normative deltas surfaced)
+- [x] Event-loop failure-handling closure pass
+      (`wave/tooling/events.go` replay promoted missing explicit failure-handling
+      contracts for dynamic directory watch expansion (`BUILD-EVT-028`/
+      `BDC-EVT-029`) and CSS hot-reload artifact read failures
+      (`BUILD-EVT-029`/`BDC-EVT-030`); traceability rows added as `missing`, and
+      current silent error-drop behaviors were logged as open conformance issues
+      `VCI-059` and `VCI-060`)
+- [x] Root-handler backend/wire replay pass (no new deltas)
+      (`vormaruntime/get_root_handler.go` was re-read line-by-line; existing
+      backend/wire contracts already capture dev reload endpoints, build-id and
+      stale-build JSON signaling, cache-control injection/preservation, SSR
+      template payload keys, and dev/prod body-script emission behavior with no
+      additional normative deltas surfaced in this replay)
+- [x] Init/bootstrap backend replay pass (no new deltas)
+      (`vormaruntime/vorma_init.go` was re-read line-by-line; existing backend
+      init/router/artifact-mode/head-dedupe/server-address contracts plus open
+      conformance issues already capture current observable behavior with no
+      additional normative deltas surfaced in this replay)
+- [x] Runtime lock-callback mutability closure pass
+      (`vormaruntime/vorma_core.go` replay surfaced missing explicit
+      read-lock-vs-write-lock callback contract for `WithRLock`/`WithLock`;
+      backend concurrency spec now codifies read-only enforcement under
+      `WithRLock` (`BR-CONC-004`/`BRC-CONC-004`), traceability row added as
+      `missing`, and current mutable-under-read-lock behavior was logged as open
+      conformance issue `VCI-061`)
+- [x] Constructor/router glue replay pass (no new deltas)
+      (`vormaruntime/glue.go` was re-read line-by-line; existing backend init,
+      defaults, action-parse, mount, and static middleware contracts plus open
+      conformance issues already capture current observable behavior with no
+      additional normative deltas surfaced in this replay)
+- [x] Loader pattern-registration concurrency closure pass
+      (`vormaruntime/route_registry.go` replay surfaced missing explicit
+      concurrent idempotency contract for `RegisterPatternIfNeeded`; backend
+      loader spec now codifies panic-free convergence + handler-preservation
+      semantics under concurrent calls (`BR-LOAD-023`/`BRC-LOAD-023`),
+      traceability row added as `missing`, and current check-then-register race
+      behavior was logged as open conformance issue `VCI-062`)
+- [x] SSR bootstrap URL + scroll-storage shape precision pass
+      (`vormaruntime/ssr.go`, `vormaruntime/vite_url.go`, and legacy frontend
+      loading/scroll suites were replayed line-by-line; missing precision was
+      promoted into existing requirements by tightening
+      `WIRE-MAN-001`/`WRC-MAN-001` (routeManifestURL path-join composition) and
+      `FE-SCROLL-001`/`FEC-SCROLL-001` (tuple-array scroll-map serialization and
+      refresh payload field-shape invariants), with no new divergence issue
+      surfaced in this pass)
+- [x] Unmatched event dedupe isolation closure pass
+      (`wave/tooling/events.go` replay surfaced that pattern-key dedupe still
+      collapses distinct unmatched events through shared empty-key state;
+      `BUILD-EVT-001`/`BDC-EVT-031` now explicitly lock unmatched-event
+      non-collapse semantics, traceability mapping was expanded, and current
+      implementation divergence was logged as open conformance issue `VCI-063`)

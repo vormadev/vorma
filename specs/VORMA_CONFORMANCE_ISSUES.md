@@ -481,3 +481,66 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, classified events are collapsed by `handledPatterns[pattern]` before implicit work aggregation. When multiple events share a non-empty watched pattern key, only the first survives; because map iteration order over deduped paths is not deterministic, stronger implicit work (for example `.go` compile/restart) can be dropped if a weaker event for the same pattern key is selected first.
 - `Current Test Accommodation`: none; strict spec now requires pattern-key dedupe to preserve union-strength implicit work (`BUILD-EVT-001`) and does not mirror selection-order-dependent downgrade behavior.
 - `Follow-Up`: preserve hook-level dedupe intent while aggregating implicit work union across all events sharing the same non-empty pattern key, then add/enable focused `BDC-EVT-025` coverage for mixed-strength same-pattern batches.
+
+### VCI-057 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-STATIC-015`
+- `Summary`: Granular stale-artifact cleanup currently drops `os.Remove` failures silently.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/static.go`, granular cleanup loop removes stale prior dist artifacts via `os.Remove(...)` but ignores returned errors. Cleanup failure can therefore leave stale outputs while processing still reports success.
+- `Current Test Accommodation`: none; strict static contract now requires actionable failure on stale-removal failure (`BUILD-STATIC-015`) and does not mirror silent-continue behavior.
+- `Follow-Up`: propagate stale-removal failures as returned errors (or adopt an explicit tolerated-stale policy and revise contract), then add/enable focused `BDC-STATIC-015` coverage.
+
+### VCI-058 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-SCHEMA-007`
+- `Summary`: Framework schema extensions can silently override reserved top-level schema sections.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/schema.go`, extension merge uses `maps.Copy` into root schema properties map. If an extension key equals reserved section name (`Core`, `Vite`, or `Watch`), reserved schema definition is overwritten without collision guard.
+- `Current Test Accommodation`: none; strict schema contract now requires reserved-key collision failure (`BUILD-SCHEMA-007`) and does not mirror silent override behavior.
+- `Follow-Up`: add reserved-key collision validation before merge (or explicitly namespace extensions), then add/enable focused `BDC-SCHEMA-007` coverage.
+
+### VCI-059 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-EVT-028`
+- `Summary`: Directory watch-expansion failures are currently ignored during event processing.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, directory create/rename handling calls `watcher.AddDir(evt.Name)` without checking/propagating returned error. Failed subtree watch registration can therefore be silently dropped while the event cycle continues as if expansion succeeded.
+- `Current Test Accommodation`: none; strict event contract now requires actionable failure handling for dynamic directory watch-expansion failure (`BUILD-EVT-028`) and does not mirror silent-ignore behavior.
+- `Follow-Up`: propagate `AddDir` failure into explicit event-cycle failure control flow (and prevent success-path continuation for that failed expansion), then add/enable focused `BDC-EVT-029` coverage.
+
+### VCI-060 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-EVT-029`
+- `Summary`: CSS hot-reload path currently ignores CSS artifact read errors and can emit success-style payloads with empty/invalid data.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, CSS hot-reload path reads artifacts as `criticalCSS, _ := builder.ReadCriticalCSS()` and `normalURL, _ := builder.ReadNormalCSSURL()`, discarding read errors before payload emission.
+- `Current Test Accommodation`: none; strict event contract now requires actionable read-failure handling and forbids success-style CSS payload emission on read failure (`BUILD-EVT-029`).
+- `Follow-Up`: handle read errors explicitly (for example fail the event cycle and/or fallback to hard reload with wait gates) and add/enable focused `BDC-EVT-030` coverage.
+
+### VCI-061 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BR-CONC-004`
+- `Summary`: `WithRLock` currently exposes mutating setters through `LockedVorma`, so read-lock callbacks can write lock-protected runtime state.
+- `Observed Symptom`: In `/Users/sjc/__code/river/vormaruntime/vorma_core.go`, `WithRLock` passes `*LockedVorma` to callback while holding `RLock`, and `LockedVorma` includes mutating setters (`SetPaths`, `SetBuildID`, `SetRouteManifestFile`, `SetRootTemplate`). Callback code can therefore mutate runtime state while only read lock is held, violating documented read-only callback intent.
+- `Current Test Accommodation`: none; strict backend concurrency contract now requires `WithRLock` to enforce read-only access (`BR-CONC-004`) and does not mirror mutable-under-read-lock behavior.
+- `Follow-Up`: separate read-only vs writable locked callback views (for example distinct wrapper types), or add explicit runtime guards preventing setter use in `WithRLock` callback context; then add/enable focused `BRC-CONC-004` coverage.
+
+### VCI-062 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BR-LOAD-023`
+- `Summary`: `RegisterPatternIfNeeded` has a check-then-register race that can panic under concurrent calls for the same new pattern.
+- `Observed Symptom`: In `/Users/sjc/__code/river/vormaruntime/route_registry.go`, `RegisterPatternIfNeeded` performs `if !nestedRouter.IsRegistered(pattern) { RegisterNestedPatternWithoutHandler(...) }`. Under concurrent callers, multiple goroutines can observe unregistered state before any registration commits. `RegisterNestedPatternWithoutHandler` ultimately calls duplicate-guarded registration in `/Users/sjc/__code/river/kit/mux/nested_mux.go` (`mustRegisterNestedRoute`) which panics on second registration attempt.
+- `Current Test Accommodation`: none; strict loader contract now requires concurrent idempotent registration behavior (`BR-LOAD-023`) and does not mirror panic-on-race behavior.
+- `Follow-Up`: make registration path atomic/idempotent across the check+register window (for example router-level helper that registers-if-absent under one lock), then add/enable focused `BRC-LOAD-023` coverage.
+
+### VCI-063 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-EVT-001`
+- `Summary`: Watch-pattern dedupe currently collapses unmatched events through a shared empty-key bucket.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, event classification sets `patternKey := \"\"` when `classifiedEvent.watchedFile == nil`, then dedupe checks `handledPatterns[patternKey]`. Distinct unmatched events in the same batch therefore share the same key and later unmatched events can be dropped before implicit-work aggregation.
+- `Current Test Accommodation`: none; strict build-event contract requires unmatched events to remain distinct and does not permit collapse through a shared empty/sentinel key.
+- `Follow-Up`: make pattern-key dedupe apply only to non-empty matched pattern keys (or key unmatched events by path identity), then add/enable focused `BDC-EVT-031` coverage for multi-unmatched-event batches.
