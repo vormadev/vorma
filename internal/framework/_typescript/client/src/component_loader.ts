@@ -82,7 +82,20 @@ export class ComponentLoader {
 				const errorKeys = __vormaClientGlobal.get("errorExportKeys");
 				const errorKey = errorKeys ? errorKeys[errorIdx] : null;
 				if (errorKey && errorModule) {
-					errorComponent = errorModule[errorKey];
+					try {
+						if (
+							Object.prototype.hasOwnProperty.call(
+								errorModule,
+								errorKey,
+							)
+						) {
+							errorComponent = errorModule[errorKey];
+						}
+					} catch {
+						// Some module namespace proxies may throw on missing exports.
+						// Treat that as unresolved and fall back to default boundary.
+						errorComponent = undefined;
+					}
 				}
 			}
 

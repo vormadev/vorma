@@ -124,9 +124,10 @@ async function executeClientLoaders(
 	for (const pattern of matchedPatterns) {
 		if (
 			outermostServerErrorIdx !== undefined &&
-			i === outermostServerErrorIdx
+			i >= outermostServerErrorIdx
 		) {
-			// This route has a server error, skip its client loader
+			// This route or a deeper child is under server-error cutoff.
+			// Skip client loaders at and below the outermost server error.
 			loaderPromises.push(Promise.resolve());
 			abortControllers.push(null);
 			i++;

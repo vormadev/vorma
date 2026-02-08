@@ -41,9 +41,15 @@ export function updateHeadEls(type: "meta" | "rest", blocks: Array<HeadEl>) {
 		currentNodes.push(nodePtr);
 		nodePtr = nodePtr.nextSibling;
 	}
-	const currentElements = currentNodes.filter(
-		(node): node is Element => node.nodeType === Node.ELEMENT_NODE,
-	);
+	const currentElements: Array<Element> = [];
+	for (const node of currentNodes) {
+		if (node.nodeType === Node.ELEMENT_NODE) {
+			currentElements.push(node as Element);
+			continue;
+		}
+		// Managed section should only contain managed elements between markers.
+		parent.removeChild(node);
+	}
 
 	// Create new elements from blocks
 	const newElements: Array<Element> = [];

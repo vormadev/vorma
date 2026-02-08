@@ -1,6 +1,8 @@
 package vormaruntime
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -188,13 +190,7 @@ func (v *Vorma) getRouteDataStage1(
 		}
 	}
 
-	var outermostErrorIdx *int
-	for i, err := range loadersErrs {
-		if err != nil {
-			outermostErrorIdx = &i
-			break
-		}
-	}
+	outermostErrorIdx := selectOutermostLoaderErrorIdx(loadersErrs)
 
 	// Collect head elements from each response proxy, maintaining index alignment
 	// with matches. If a proxy is nil, append nil to preserve indices.
@@ -274,6 +270,39 @@ func (v *Vorma) getRouteDataStage1(
 		},
 		headElements: headEls,
 	}
+}
+
+func selectOutermostLoaderErrorIdx(loadersErrs []error) *int {
+	var cancellationOnlyIdx *int
+	for i, err := range loadersErrs {
+		if err == nil {
+			continue
+		}
+
+		if isCancellationOnlyLoaderError(err) {
+			if cancellationOnlyIdx == nil {
+				idx := i
+				cancellationOnlyIdx = &idx
+			}
+			continue
+		}
+
+		idx := i
+		return &idx
+	}
+	return cancellationOnlyIdx
+}
+
+func isCancellationOnlyLoaderError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if loaderErr, ok := err.(LoaderErrorMarker); ok {
+		err = loaderErr.ServerError()
+	}
+
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (v *Vorma) getUIRouteData(

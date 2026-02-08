@@ -19,6 +19,7 @@ import (
 )
 
 const defaultRefreshPort = 10000
+const envDevExitAfterMS = "WAVE_DEV_EXIT_AFTER_MS"
 
 // restartRequest signals what kind of restart is needed
 type restartRequest struct {
@@ -88,6 +89,7 @@ func (s *server) run() error {
 	firstRun := true
 	recompileGo := true // First run always compiles
 	isConfigRestart := false
+	devExitAfter := getDevExitAfterDuration()
 
 	// Initialize refresh server once (crucial -- persists across rebuilds)
 	wave.MustGetPort()
@@ -214,8 +216,31 @@ func (s *server) run() error {
 
 		firstRun = false
 
-		// Wait for restart request
-		req := <-s.restartCh
+		// Wait for restart request.
+		// Test harnesses can request deterministic clean exit after startup.
+		var req restartRequest
+		if devExitAfter > 0 {
+			timer := time.NewTimer(devExitAfter)
+			select {
+			case req = <-s.restartCh:
+				timer.Stop()
+			case <-timer.C:
+				s.log.Info(
+					"Exiting dev server due to env override",
+					"env",
+					envDevExitAfterMS,
+					"duration_ms",
+					devExitAfter.Milliseconds(),
+				)
+				s.cleanupForRebuild()
+				if err := s.stopVite(); err != nil {
+					s.log.Error("stop vite failed", "error", err)
+				}
+				return nil
+			}
+		} else {
+			req = <-s.restartCh
+		}
 		recompileGo = req.recompileGo
 		isConfigRestart = req.isConfigRestart
 		s.log.Info("Restarting dev server...", "recompile_go", recompileGo, "config_restart", isConfigRestart)
@@ -226,6 +251,20 @@ func (s *server) run() error {
 		// Clean up everything except refresh server and Vite
 		s.cleanupForRebuild()
 	}
+}
+
+func getDevExitAfterDuration() time.Duration {
+	raw := os.Getenv(envDevExitAfterMS)
+	if raw == "" {
+		return 0
+	}
+
+	ms, err := strconv.Atoi(raw)
+	if err != nil || ms <= 0 {
+		return 0
+	}
+
+	return time.Duration(ms) * time.Millisecond
 }
 
 // waitForBuildRetry waits for a file change that might fix the build error.
