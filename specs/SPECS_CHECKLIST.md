@@ -14,7 +14,6 @@ Out of scope for now:
 
 - [x] Vorma domain model and terminology
 - [x] Spec template and RFC/change process
-- [x] Versioning and compatibility policy (Go, Vite/TS, browsers, UI variants)
 - [x] Public API surface map (Go + TypeScript)
 
 ## 1) Backend Runtime (Go) Spec Areas
@@ -66,8 +65,6 @@ Out of scope for now:
 - [x] Vite integration contract (plugin behavior, rollup inputs, dedupe
       behavior)
 - [x] Output layout/naming contract (public/private dist, hashing prefixes)
-- [x] TypeScript package build pipeline contract (`internal/scripts/buildts`,
-      declaration+bundle+cleanup behavior)
 
 ## 4) Frontend Runtime Spec Areas (`internal/framework/_typescript`)
 
@@ -112,15 +109,14 @@ Out of scope for now:
       paths)
 - [x] Observability/debug contract (logs, warnings, diagnostics hooks)
 - [x] Testing strategy contract (unit/integration/e2e expectations by layer)
-- [x] Release/distribution contract (Go module + npm package artifacts/exports)
 
 ## 6) Conformance Assets and Traceability
 
 - [x] Canonical requirement traceability matrix
       (`/Users/sjc/__code/river/specs/VORMA_TRACEABILITY_MATRIX.md`)
-- [x] Concrete backend/wire/build/release conformance suite map (requirement
+- [x] Concrete backend/wire/build conformance suite map (requirement
       group -> suite name -> test file path)
-- [x] Backend/wire/build/release Go conformance suite skeletons
+- [x] Backend/wire/build Go conformance suite skeletons
       (`/Users/sjc/__code/river/conformance/*`)
 - [x] Conformance issue backlog
       (`/Users/sjc/__code/river/specs/VORMA_CONFORMANCE_ISSUES.md`)
@@ -147,10 +143,6 @@ Out of scope for now:
       abort semantics, title/route-change ordering, deployment request
       propagation on submit/revalidate, dev script variant selection, and
       explicit mux middleware/fallback interop constraints)
-- [x] Create-CLI runtime deep-pass normalization (`create-vorma` prerequisite
-      enforcement, directory/module discovery flow, underscore-path guard,
-      option prompt surface, bootstrap generation/execution, version-pinned
-      `go get`, and temp cleanup semantics promoted into release spec)
 - [x] Wave tooling watcher/control-plane deep-pass normalization (default
       ignore/watched sets, watch-root normalization, refresh-server
       endpoint/shutdown guards, rebuilding-signal gating, batch
@@ -250,9 +242,6 @@ Out of scope for now:
 - [x] Public API drift/signature pass (root Go surface re-verified against
       `/Users/sjc/__code/river/vorma.go`; constructor and alias signature
       contracts promoted into API spec)
-- [x] TypeScript packaging strictness parity pass (Solid helper warning-fatal
-      mismatch documented as open issue `VCI-019`; parity requirement/scenario
-      promoted into build spec + traceability)
 - [x] Frontend accessor/scroll-helper closure pass (`getHistoryInstance()`
       singleton/surface contract and `__applyScrollState(undefined)`
       hash-fallback/no-op semantics promoted into runtime spec + traceability)
@@ -320,9 +309,6 @@ Out of scope for now:
 - [x] Route-DSL signature strictness pass (`route(...)` first-arg pattern +
       required module-arg validity promoted as `BUILD-ROUTE-005`; current parser
       under-validation behavior tracked as open issue `VCI-024`)
-- [x] TypeScript packaging flag-precision pass (`BUILD-TSPKG-002` now explicitly
-      codifies `runTSC` target/emit/root-dir semantics:
-      `--project <target tsconfig>`, `--noEmit false`, and `--rootDir ./`)
 - [x] Dev build-id prefix precision pass (standard dev build-id prefix `dev_`
       and fast-route rebuild prefix `dev_fast_` codified as `BUILD-ART-007` +
       traceability)
@@ -339,9 +325,6 @@ Out of scope for now:
       (`WIRE-HTML-004`/`WRC-HTML-004` tightened for
       disabled/enabled+set/enabled+unset env combinations; missing traceability
       row backfilled)
-- [x] TypeScript packaging fail-fast precision pass
-      (`BUILD-TSPKG-008`/`BDC-TSPKG-008` codify terminal non-zero behavior for
-      prep/build/cleanup failures and downstream-stage non-execution)
 - [x] Frontend history-baseline failure-path precision pass
       (`FE-SCROLL-009`/`FEC-SCROLL-007` codify that failed cross-document POP
       navigation MUST NOT commit a new last-known history baseline before a
@@ -353,12 +336,9 @@ Out of scope for now:
       (`BUILD-WATCH-012`/`BDC-WATCH-012` codify timeout/transport/non-200
       endpoint outcomes as callback failures that must trigger documented
       restart fallback semantics)
-- [x] Create-CLI Go-version parse-guard audit pass (unparseable `go version`
-      output fail-open behavior surfaced as open issue `VCI-027` under
-      `REL-CREATE-005`)
 - [x] Template-watch injection precondition precision pass (`BUILD-WATCH-005`
       now explicitly includes `HTMLTemplateLocation`+private-static-dir gating,
-      with `BDC-WATCH-013` added and traceability marked missing until coverage
+      with `BDC-WATCH-005` added and traceability marked missing until coverage
       is added)
 - [x] Backend terminal-outcome precedence pass (`BR-HEAD-004`/`BRC-HEAD-004`
       codify that terminal loader outcomes MUST NOT be overwritten by concurrent
@@ -396,8 +376,7 @@ Out of scope for now:
       retention semantics, `FE-COMP-001/002` component-import dedupe + slot
       alignment/null-slot behavior, `FE-HMR-002/003` query-stripped pathname
       normalization for update/registration matching, `BR-ERR-005` loader-head
-      cutoff truncation semantics, and `BUILD-TSPKG-006` cleanup scope boundary
-      for `npm_dist` vs create-CLI dist output)
+      cutoff truncation semantics)
 - [x] Dev watcher debounce/dedupe precision pass (`BUILD-EVT-001` now
       explicitly codifies non-overlapping debounced callback sequencing with
       queued follow-up flushes plus non-empty-key guardrails for any
@@ -426,7 +405,7 @@ Out of scope for now:
       rune settings (including client-defined loader paths), `BUILD-VITE-001`
       now explicitly codifies deduplicated deterministic sorted rollup-input
       emission; current mixed-rune client-path typing behavior is surfaced as
-      open issue `VCI-031`; traceability rows for `BUILD-ART-004` and
+      open issue `VCI-050`; traceability rows for `BUILD-ART-004` and
       `BUILD-VITE-001` are now marked `missing` pending stronger scenario
       coverage)
 - [x] Revalidation stale-origin no-commit boundary pass (`FE-NAV-009` now
@@ -506,21 +485,11 @@ Out of scope for now:
       push/replace calls must forward current commit `state` exactly and must
       not leak stale state from prior commits; traceability row added as
       `missing` pending strict scenario coverage)
-- [x] Deterministic-exit override parsing-gate pass (`BUILD-DEV-014` +
-      `BDC-DEV-014` now explicitly codify that absent/non-integer/non-positive
-      `WAVE_DEV_EXIT_AFTER_MS` disables timer-driven self-exit and keeps normal
-      restart-wait semantics; traceability row added as `missing` pending strict
-      scenario coverage)
 - [x] Fetch module-preload source-selection precision pass (`FE-FETCH-025` +
       `FEC-FETCH-020` now explicitly codify build-mode source selection for
       preload candidates (`importURLs` in dev vs `deps` in prod), plus falsy
       candidate filtering and per-URL dedupe semantics; traceability row added
       as `missing` pending strict scenario coverage)
-- [x] Create-CLI bundling externalization precision pass (`BUILD-TSPKG-009` +
-      `BDC-TSPKG-009` now explicitly codify create package esbuild input/output
-      contract and required Node builtin externalization set from
-      `internal/scripts/buildts/main.go`; traceability row added as `missing`
-      pending strict scenario coverage)
 - [x] CSS preload failure-tolerance precision pass (`FE-ASSET-008` +
       `FEC-ASSET-006` now explicitly codify non-fatal navigation behavior when
       CSS preload promises reject during waiting phase; runtime must continue to
@@ -666,12 +635,6 @@ Out of scope for now:
       throw synchronously if the symbol-keyed bootstrap object is absent, and
       must not auto-install/synthesize fallback global state; traceability row
       added as `missing` pending strict scenario coverage)
-- [x] TypeScript packaging profile + mapping precision pass
-      (`BUILD-TSPKG-010..012` + `BDC-TSPKG-010..012` now explicitly codify
-      cross-target shared esbuild profile invariants, full target-to-tsconfig
-      mapping, and baseline `vorma` externalization across published TS package
-      bundles; traceability rows added as `missing` pending strict
-      source-contract coverage)
 - [x] History last-known baseline success-commit closure pass
       (`FE-SCROLL-010` + `FEC-SCROLL-008` now explicitly codify that successful
       history-listener update paths must advance the last-known location
@@ -720,10 +683,6 @@ Out of scope for now:
       `BRC-ACT-003` now explicitly codify default parser zero-value typed-input
       behavior for non-GET form content types, in addition to the existing
       non-JSON-decode rule)
-- [x] TypeScript packaging invocation precision pass (`BUILD-TSPKG-013` +
-      `BDC-TSPKG-013` now explicitly codify `runTSC` toolchain invocation via
-      `pnpm tsc` with direct argv exec semantics; traceability row added as
-      `missing` pending strict source-contract coverage)
 - [x] Deployment-ID + redirect-handshake + submit-error precision pass
       (`FE-FETCH-002`, `FE-FETCH-003`, `FE-FETCH-016`, `FE-FETCH-019`,
       `FEC-FETCH-001`, `FEC-FETCH-002`, `FEC-FETCH-011`, `WIRE-HDR-008`,
@@ -732,10 +691,6 @@ Out of scope for now:
       query/header propagation, redirect-handshake header override-to-`1`
       behavior, and explicit `"Unknown error"` fallback for non-`Error` submit
       failure throwables)
-- [x] Release npm module-system metadata closure pass (`REL-NPM-008` +
-      `RDC-NPM-004` now explicitly codify root package `type: "module"` as a
-      release contract alongside side-effects metadata stability; traceability
-      row added as `missing` pending strict conformance coverage)
 - [x] Frontend init/events/refresh-storage precision pass (`FE-INIT-014` +
       `FEC-INIT-011`, `FE-EVT-005` + `FEC-EVT-005`, and `FE-SCROLL-012` +
       `FEC-SCROLL-010` now explicitly codify one-shot touch-listener
@@ -915,18 +870,6 @@ Out of scope for now:
       phantom-metadata fallback typing (`null|undefined`/`POST`/`never`) for
       exported IO/method/param aliases; traceability rows added as `missing`
       pending strict coverage)
-- [x] Adapter/create pending-row completion pass
-      (`react/src/helpers.ts`, `react/src/link.tsx`, `react/src/react.tsx`,
-      `react/tsconfig.json`, `preact/src/helpers.ts`, `preact/src/link.tsx`,
-      `preact/src/preact.tsx`, `preact/tsconfig.json`,
-      `solid/src/helpers.ts`, `solid/src/link.tsx`, `solid/tsconfig.json`,
-      `vite/tsconfig.json`, `create/package.json`, `create/tsconfig.json`)
-      replay-verified under ledger workflow; `BUILD-TSPKG-014` +
-      `BDC-TSPKG-014` added to codify adapter/create tsconfig JSX-dialect
-      contracts; known adapter parity divergences remained tracked as open
-      issues (`VCI-036`, `VCI-037`, `VCI-038`) without narrowing specs; lockfile
-      artifact `create/pnpm-lock.yaml` was moved to `OUT-OF-SCOPE`
-      (package-manager lock metadata, no direct runtime/API contract)
 - [x] `internal/framework/_typescript/client/src/history/npm_history_types.ts`
       replay-verification completion pass (`FE-CTX-008`/`FEC-CTX-006` refined
       to codify full history-instance compatibility surface inherited from
@@ -1019,19 +962,10 @@ Out of scope for now:
       already capture config merge/mode semantics, transform rewrite/fallback
       behavior, dev filemap cache discipline, and invalidate-endpoint side
       effects, so no additional requirement IDs were needed)
-- [x] `internal/framework/_typescript/create/main.ts`
-      replay-verification completion pass (create CLI runtime flow re-read under
-      ledger workflow; existing release contracts `REL-CREATE-005..015` +
-      `RDC-CREATE-002..007` already capture prerequisite guards, prompt/cancel
-      flow, module discovery/init behavior, underscore-path rejection, bootstrap
-      option/program generation, version-pinned `go get` policy, and guaranteed
-      temp cleanup semantics; known guard divergences remain tracked in open
-      conformance issues without narrowing specs)
 - [x] Corpus-reconciliation expansion pass (post-queue audit)
       (ledger reconciled against repository domains to prevent omission loops;
       added explicit tracking section for previously untracked but in-scope
-      domains: root API entrypoint, client package entrypoint, wave core
-      package, vormabuild package, and bootstrap runtime package)
+      domains: root API entrypoint, client package entrypoint, wave core package and vormabuild package)
 - [x] Root/client entrypoint replay-verification pass
       (`vorma.go`, `internal/framework/_typescript/client/index.ts`, and
       `internal/framework/_typescript/client/tsconfig.json` re-read under
@@ -1127,23 +1061,15 @@ Out of scope for now:
       `BUILD-STAGE2-004` + `BDC-STAGE2-004` refined to make FS-summary walk
       domain explicit (`"."`/dirs excluded) and tuple encoding contract explicit
       (`<path>|<size>`), with no new requirement IDs introduced)
-- [x] `bootstrap/bootstrap.go` + `bootstrap/utils.go`
-      replay-verification completion pass (`REL-CREATE-016..021` added/refined
-      to codify bootstrap option/default mapping, deployment-target
-      docker/vercel wiring, scaffold directory/file/dependency matrix, post-write
-      command sequencing, package-manager helper fail-fast behavior, and
-      template/asset write (`0644`) fail-fast semantics; conformance scenarios
-      `RDC-CREATE-005..007` and traceability rows were added as `missing`
-      pending strict coverage; mining ledger bootstrap queue is now cleared)
 - [x] Mining-ledger mechanical completeness pass
       (cross-checked in-scope source domains against ledger entries to ensure no
-      silent omissions; bootstrap files confirmed `VERIFIED`, and newly created
+      silent omissions; newly created
       conformance harness files plus `internal/framework/_typescript/create/.gitignore`
       were explicitly classified `OUT-OF-SCOPE` to keep queue accounting stable
       under future context compaction)
 - [x] Dependency-led inheritance reconciliation pass (`kit/middleware`,
       `kit/htmlutil`, `kit/envutil`, `kit/netutil`, `kit/reflectutil`)
-      (narrowed runtime/build/bootstrap import graph was replay-audited;
+      (narrowed runtime/build import graph was replay-audited;
       `BR-STATIC-005` + `BRC-STATIC-005` added for embedded Wave favicon-redirect
       middleware behavior, and interop contracts were expanded to codify HTML
       render-safety/trust precedence, env+port fallback semantics, reflection
@@ -1189,3 +1115,197 @@ Out of scope for now:
       expanded for `kit/contextutil`, `kit/genericsutil`, `kit/grace`,
       `kit/set`, and `lab/esbuildutil` with corresponding behavior contracts and
       `VERIFIED` source rows)
+- [x] Vite dev-start error-propagation precision pass
+      (`lab/viteutil/cmd.go` replay surfaced logged-and-suppressed `cmd.Start()`
+      failure semantics; build spec expanded with `BUILD-VITE-011` +
+      `BDC-VITE-011` to require startup error propagation/no false-positive
+      running context, traceability row added as `missing`, and divergence logged
+      as open conformance issue `VCI-041`)
+- [x] RunOnChangeOnly app-liveness precision pass
+      (`wave/tooling/events.go` replay surfaced hard-reload pre-kill leakage into
+      `RunOnChangeOnly` short-circuit paths; build spec refinements added under
+      `BUILD-EVT-010` and `BUILD-EVT-013` to require no implicit app-stop unless
+      callback actions request restart, and divergence logged as open conformance
+      issue `VCI-042`)
+- [x] Event dedupe signal-preservation precision pass
+      (`wave/tooling/events.go` replay surfaced same-path last-write dedupe risk
+      where trailing chmod-only events can mask earlier content-changing ops;
+      `BUILD-EVT-001`/`BDC-EVT-001` refined to require content-change signal
+      preservation across deduped same-path batches, and divergence logged as
+      open conformance issue `VCI-043`)
+- [x] Dev-loop Vite startup failure-state precision pass
+      (`wave/tooling/devserver.go` replay surfaced log-only handling for
+      Vite-start failure during initial startup and cycle restart; build spec
+      expanded with `BUILD-DEV-032` + `BDC-DEV-032` to require actionable
+      failure-state behavior, traceability row added as `missing`, and divergence
+      logged as open conformance issue `VCI-044`)
+- [x] Build-failure retry request-strength precision pass
+      (`wave/tooling/devserver.go` replay surfaced retry-wait wake-up path
+      dropping consumed restart flags; build spec expanded with
+      `BUILD-DEV-033` + `BDC-DEV-033` to require preservation of effective
+      `recompileGo` and config-restart intent, traceability row added as
+      `missing`, and divergence logged as open conformance issue `VCI-045`)
+- [x] Mining-ledger bootstrap-template scope-classification pass
+      (`NORMATIVE_INTENT_MINING_LEDGER.md` now explicitly classifies
+      `bootstrap/assets/*` and `bootstrap/tmpls/*` rows as `OUT-OF-SCOPE`
+      scaffold/distribution templates to keep exhaustive queue accounting
+      mechanically complete without re-introducing out-of-scope bootstrap spec
+      drift)
+- [x] App-start failure handling precision pass
+      (`wave/tooling/devserver.go` replay surfaced log-only continuation when
+      `startApp` process launch fails; build spec expanded with
+      `BUILD-DEV-034` + `BDC-DEV-034` to require actionable startup-failure
+      control-flow behavior, traceability row added as `missing`, and
+      divergence logged as open conformance issue `VCI-046`)
+- [x] RunOnChangeOnly mixed-batch callback-phase precision pass
+      (`wave/tooling/events.go` replay surfaced that mixed batches skip
+      concurrent/post phases for run-on-change-only entries via per-entry
+      `continue` guards; `BUILD-EVT-010/013` and `BDC-EVT-010/013` were refined
+      to require per-entry callback-phase execution in mixed batches, and open
+      issue `VCI-035` was tightened accordingly)
+- [x] Readiness-gate failure handling precision pass
+      (`wave/tooling/devserver.go` replay surfaced warning-only continuation
+      when `waitForApp`/`waitForVite` exhaust readiness budgets; build spec
+      expanded with `BUILD-DEV-035` + `BDC-DEV-035` to require actionable
+      readiness-failure control-flow behavior, traceability row added as
+      `missing`, and divergence logged as open conformance issue `VCI-047`)
+- [x] Event-phase failure and no-wait isolation precision pass
+      (`wave/tooling/events.go` replay surfaced log-only continuation after
+      blocking event-phase failures; build spec expanded with
+      `BUILD-EVT-019` + `BDC-EVT-019` to require actionable failure-state
+      handling and suppression of success browser signaling for failed cycles,
+      plus `BUILD-EVT-020` + `BDC-EVT-020` to codify warning-only/non-blocking
+      isolation semantics for concurrent-no-wait hook failures; traceability
+      rows added as `missing`, and divergence for blocking paths logged as open
+      conformance issue `VCI-048`)
+- [x] Hook command-token resolution precision pass
+      (`wave/tooling/events.go` command resolution path now explicitly codified
+      as `BUILD-EVT-021` + `BDC-EVT-021`: literal `DevBuildHook` token must
+      resolve to current `Core.DevBuildHook`, explicit commands remain verbatim,
+      and empty resolved commands skip execution; traceability row added as
+      `missing`)
+- [x] Event classification ignore-gate precision pass
+      (`wave/tooling/events.go` classification prefilter behavior now
+      explicitly codified as `BUILD-EVT-022` + `BDC-EVT-022`: empty-path events
+      and unmatched `other`-type events are ignored and omitted from downstream
+      event-processing flow; traceability row added as `missing`)
+- [x] Hashed-artifact cleanup failure policy precision pass
+      (`wave/tooling/static.go` and `wave/tooling/css.go` replay surfaced
+      warning-only continuation on old-hash cleanup failures during filemap/CSS
+      rotation; strict spec behavior under `BUILD-STATIC-005` and
+      `BUILD-CSS-003` was kept unchanged and divergence is now tracked as open
+      conformance issue `VCI-049`)
+- [x] TS-generation loader-rune parity audit pass
+      (`vormabuild/vorma_gen_ts.go` replay surfaced that client-defined
+      loader-only path typing currently derives params/splat with action matcher
+      runes; strict `BUILD-ART-004` loader-rune contract remains unchanged and
+      divergence is now tracked as open conformance issue `VCI-050`)
+- [x] Scope-boundary realignment pass
+      (out-of-scope release/distribution + TS packaging requirement/scenario
+      rows were removed from active Vorma build spec, traceability matrix, and
+      issue/checklist references; mining-ledger entries for create/bootstrap/
+      buildts scaffolding/distribution domains were explicitly reclassified as
+      `OUT-OF-SCOPE`)
+- [x] Route-build replay closure pass
+      (`vormabuild/vorma_build.go`, `vormabuild/rebuild_routes.go`, and
+      `vormabuild/route_registry_build.go` were replay-read line-by-line after
+      scope cleanup; no new in-scope requirement gaps were found beyond existing
+      open issue `VCI-050`, and stale template-watch scenario labeling was
+      collapsed into `BDC-WATCH-005`)
+- [x] Concurrent-hook restart-strength arbitration pass
+      (`wave/tooling/events.go` replay surfaced that concurrent restart actions
+      are currently consumed in goroutine-completion order, which can
+      nondeterministically downgrade `RecompileGo=true` to no-go restart;
+      `BUILD-EVT-023` + `BDC-EVT-023` now codify deterministic
+      strongest-intent arbitration, and divergence is tracked as open
+      conformance issue `VCI-051`)
+- [x] Config-reload full framework-field preservation pass
+      (`wave/tooling/devserver.go` replay surfaced that reload currently
+      preserves only watch/ignore/public-map framework fields and drops
+      framework schema/build-hook fields; `BUILD-DEV-036` + `BDC-DEV-036` now
+      codify full non-JSON framework-field preservation, traceability row added
+      as `missing`, and divergence tracked as open conformance issue `VCI-052`)
+- [x] Dev exit-override timer precision pass
+      (`wave/tooling/devserver.go` replay promoted `WAVE_DEV_EXIT_AFTER_MS`
+      semantics into explicit contract (`BUILD-DEV-037` + `BDC-DEV-037`):
+      invalid/unset override disables timer, positive timeout exits cleanly with
+      teardown, and restart requests retain precedence when received before
+      timeout; traceability row added as `missing`)
+- [x] App-port alias compatibility pass
+      (`wave/env.go` replay promoted backward-compat alias semantics so
+      `MustGetAppPort` is explicitly locked to `MustGetPort` behavior
+      (`BUILD-DEV-038` + `BDC-DEV-038`); traceability row added as `missing`)
+- [x] Embedded-wave asset-helper fs/cache precision pass
+      (`wave/wave.go`, `wave/filemap.go`, and `wave/css.go` replay promoted
+      missing contracts for server-side `GetPublicURL` passthrough/fallback
+      semantics plus dev-vs-prod embedded-fs source and helper memoization
+      behavior (`BR-ASSET-005/006` + `BRC-ASSET-005/006`); traceability rows
+      added as `missing`)
+- [x] Parsed-config helper normalization/default precision pass
+      (`wave/types.go` replay promoted missing normalization/default contracts
+      for `PublicPathPrefix()`, `WatchRoot()`, `HealthcheckEndpoint()`,
+      `CriticalCSSEntry()`, and `NonCriticalCSSEntry()`
+      (`BUILD-VAL-006` + `BDC-VAL-006`); traceability row added as `missing`)
+- [x] Framework-injection helper accumulation precision pass
+      (`wave/wave.go` replay promoted explicit append/override semantics for
+      `AddFrameworkWatchPatterns`, `AddIgnoredPatterns`, and
+      `SetPublicFileMapOutDir` (`BUILD-WATCH-013` + `BDC-WATCH-013`);
+      traceability row added as `missing`)
+- [x] Hook timing default-pre bucket precision pass
+      (`wave/types.go` replay promoted explicit hook timing-bucket behavior for
+      `WatchedFile.Sort` (empty/unknown timing defaults to pre; explicit
+      `post`/`concurrent`/`concurrent-no-wait` map to corresponding phases)
+      as `BUILD-EVT-024` + `BDC-EVT-024`; traceability row added as `missing`)
+- [x] Refresh-script revalidate-rejection cleanup pass
+      (`wave/refresh.go` replay surfaced missing rejection-path overlay cleanup
+      for `__waveRevalidate()` promise failures; `BUILD-DEV-030`/`BDC-DEV-030`
+      were tightened to require rejection-path cleanup and diagnostics, and
+      divergence logged as open conformance issue `VCI-053`)
+- [x] Revalidation target-canonicalization + 304-path divergence pass
+      (`internal/framework/_typescript/client/src/client.ts` replay promoted
+      missing explicit revalidation-target canonicalization behavior into
+      `FE-NAV-020` + `FEC-NAV-015` + traceability row (`missing`), and surfaced
+      a strict conformance divergence where currently allowed-304 handling still
+      fails through `No JSON response` path (`VCI-054`))
+- [x] Dev reload failure non-mutation precision pass
+      (`vormaruntime/route_reload.go` replay promoted explicit failure-path state
+      preservation for route/template reload into `BR-DEV-009` +
+      `BRC-DEV-009` + traceability row (`missing`): failed reload attempts must
+      leave previously active route/template runtime snapshot in effect)
+- [x] History-listener event/scroll ordering precision pass
+      (`internal/framework/_typescript/client/src/history/history.ts` and legacy
+      history/events tests replay promoted two missing frontend runtime
+      contracts: `FE-SCROLL-013` + `FEC-SCROLL-011` now lock the exact
+      pre-branch scroll-save boundary (all non-same-document-POP updates save;
+      same-document POP skips), and `FE-EVT-006` + `FEC-EVT-006` now lock
+      changed-key location-event dispatch ordering before action-specific history
+      branches, including cross-document POP failure fallback; traceability rows
+      added as `missing`)
+- [x] Kit mux mount-root helper argument parity pass
+      (`kit/mux/mux.go` + `kit/mux/mux_test.go` replay tightened interop
+      section 5.1 to explicitly lock inherited `MountRoot(...)` helper argument
+      semantics: zero args returns canonical mount root, one arg appends via
+      join, and extra args are ignored)
+- [x] Frontend legacy replay closure pass (links/submissions/context tie-break precision)
+      (`internal/framework/_typescript/client/src/client.events_system.test.ts`,
+      `client.history_management.test.ts`, `client.scroll_restoration.test.ts`,
+      `client.prefetching.test.ts`, `client.error_handling.test.ts`,
+      `client.navigation_lifecycle.*.test.ts`,
+      `client.core_navigation.*.test.ts`,
+      `client.form_submissions.*.test.ts`,
+      `client.component_module_loading.test.ts`, plus source replay in
+      `client/src/links.ts` and `client/src/component_loader.ts` were
+      line-by-line revalidated; missing strict contracts were added for
+      effective-error tie precedence (`FE-CTX-010` + `FEC-CTX-008`) and
+      repeated-prefetch timer cancellation semantics
+      (`FE-LINK-019` + `FEC-LINK-017`), traceability rows were added as
+      `missing`, and current implementation divergence for timer overwrite/stop
+      under repeated start was logged as open conformance issue `VCI-055`)
+- [x] Process and adapter-policy scope alignment pass
+      (`VORMA_PUBLIC_API_SURFACE_SPEC.md` now explicitly codifies
+      cross-adapter alignment as default with only model-required
+      framework-specific differences (`API-UI-009`) plus parity gate
+      requirement (`API-TEST-005`); `VORMA_SPEC_PROCESS_RFC_SPEC.md` was
+      simplified to a sub-1.0 lightweight workflow (`Proposed`/`Final`/`Dropped`,
+      in-place editing, checklist+traceability as canonical tracking, and
+      explicit permission to prune obsolete proposal/history cruft))

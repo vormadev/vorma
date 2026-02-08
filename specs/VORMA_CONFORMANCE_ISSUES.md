@@ -39,7 +39,7 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Summary`: Solid TSX conformance execution in Vitest previously failed before behavioral assertions due transform/runtime mismatch.
 - `Observed Symptom`: Strict runs initially failed with `React is not defined` for Solid TSX imports.
 - `Current Test Accommodation`: none. Resolved by Vitest transform/runtime alignment in `/Users/sjc/__code/river/vitest.config.ts` (Solid TSX Babel pre-transform + `solid-js`/`solid-js/web` browser-runtime aliases), without global React injection.
-- `Follow-Up`: Keep Vitest Solid transform path aligned with `/Users/sjc/__code/river/internal/scripts/buildts/build-solid.mjs`; re-validate on build/test tooling upgrades.
+- `Follow-Up`: Keep Vitest Solid transform/runtime alignment consistent with the production Solid TSX compilation profile; re-validate on build/test tooling upgrades.
 
 ### VCI-004 (resolved)
 
@@ -122,15 +122,6 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Current Test Accommodation`: none. Resolved in `/Users/sjc/__code/river/internal/framework/_typescript/client/src/hmr/hmr.ts` by resolving hot context as `importMeta.hot ?? import.meta.hot` before listener registration.
 - `Follow-Up`: Preserve caller-module HMR context compatibility when refactoring HMR registration logic.
 
-### VCI-013 (open)
-
-- `Type`: `impl-bug-candidate`
-- `Affected Requirements`: `REL-CREATE-005`
-- `Summary`: `create-vorma` runtime Node guard currently checks major-version floor only, while package engine/spec contract is `>=22.11.0`.
-- `Observed Symptom`: `internal/framework/_typescript/create/main.ts` accepts Node `v22.0.x` as valid because guard is `if (nodeMajor < 22)`, despite user-facing message and package engine floor claiming `22.11+`.
-- `Current Test Accommodation`: release conformance currently verifies presence of major-floor check text and does not enforce semver-minor/patch floor behavior.
-- `Follow-Up`: Parse and enforce full semver floor at runtime (`22.11.0` minimum), keep message/engine/runtime checks aligned, and add explicit conformance coverage for minor/patch rejection.
-
 ### VCI-014 (open)
 
 - `Type`: `impl-bug-candidate`
@@ -175,15 +166,6 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Observed Symptom`: `/Users/sjc/__code/river/vormaruntime/ssr.go` reads `v._isDev`, `v._buildID`, and `v._routeManifestFile` directly in `getSSRInnerHTML` while `/Users/sjc/__code/river/vormaruntime/route_reload.go` mutates build/manifest fields under `v.mu.Lock()`, creating potential read/write race under concurrent requests + reload.
 - `Current Test Accommodation`: none; existing backend concurrency scenarios are broad and do not yet include a focused assertion around SSR bootstrap field reads during reload churn.
 - `Follow-Up`: snapshot required SSR fields via lock-safe getters (or `WithRLock`) before template execution, then add targeted race/conformance coverage for concurrent HTML requests plus repeated route reloads.
-
-### VCI-019 (open)
-
-- `Type`: `impl-bug-candidate`
-- `Affected Requirements`: `BUILD-TSPKG-007`
-- `Summary`: Solid TypeScript packaging path currently does not enforce warning-fatal behavior used by the standard esbuild helper path.
-- `Observed Symptom`: `/Users/sjc/__code/river/internal/scripts/buildts/main.go` enforces warning failure only in `build(...)`, while Solid packaging runs through `/Users/sjc/__code/river/internal/scripts/buildts/build-solid.mjs` which invokes `esbuild.build(...)` without warning inspection.
-- `Current Test Accommodation`: none; existing TypeScript packaging conformance covers helper warning intolerance (`BUILD-TSPKG-003`) but does not yet assert warning-fatal parity for the Solid helper path.
-- `Follow-Up`: enforce warning-fatal parity for Solid packaging (either in helper script or caller wrapper), then add strict `BDC-TSPKG-007` source-contract coverage.
 
 ### VCI-020 (open)
 
@@ -248,15 +230,6 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Current Test Accommodation`: none; behavior is now explicitly codified as current contract but no focused duplicate-collision conformance case is yet enabled.
 - `Follow-Up`: decide duplicate-pattern policy (explicit error, warning, or intentional last-write semantics), then align parser behavior, build spec text, and `BDC-ROUTE-006` coverage accordingly.
 
-### VCI-027 (open)
-
-- `Type`: `impl-bug-candidate`
-- `Affected Requirements`: `REL-CREATE-005`
-- `Summary`: `create-vorma` Go-version guard does not fail when `go version` output is present but unparsable.
-- `Observed Symptom`: `/Users/sjc/__code/river/internal/framework/_typescript/create/main.ts` parses Go version with `/go(\\d+)\\.(\\d+)/`; when match is absent, no parse-failure branch triggers and script continues instead of rejecting unknown version format.
-- `Current Test Accommodation`: release conformance currently validates declared floor checks but does not include an unparsable-`go version` fixture path.
-- `Follow-Up`: treat unparsable Go-version output as guard failure with explicit error message and add release conformance coverage for parse-failure guard path.
-
 ### VCI-028 (open)
 
 - `Type`: `impl-bug-candidate`
@@ -283,15 +256,6 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Observed Symptom`: In `/Users/sjc/__code/river/vormaruntime/vorma_init.go`, `initInner` only allocates `_paths` when nil and then writes artifact entries into the existing map without clearing removed keys, so removed patterns from prior init runs can remain resident.
 - `Current Test Accommodation`: none; backend spec now explicitly requires init-time route snapshot replacement semantics instead of additive merge.
 - `Follow-Up`: replace init-time `_paths` state from decoded artifact snapshot (or clear map before repopulating), then add focused init-reentry conformance coverage that removes a route between two init runs and asserts stale key absence.
-
-### VCI-031 (open)
-
-- `Type`: `impl-bug-candidate`
-- `Affected Requirements`: `BUILD-ART-004`
-- `Summary`: Generated TypeScript currently derives params/splat typing for client-defined loader paths using action runes instead of loader runes.
-- `Observed Symptom`: In `/Users/sjc/__code/river/vormabuild/vorma_gen_ts.go`, client-defined loader-path synthesis branch uses `extractDynamicParamsFromPattern(..., actionsDynamicRune)` and `isSplat(..., actionsSplatRune)` while emitting loader-category entries; this can mis-type loader params/splats when action and loader rune settings differ.
-- `Current Test Accommodation`: none; build spec now encodes loader-entry rune-source intent explicitly instead of mirroring current mixed-rune implementation.
-- `Follow-Up`: switch client-defined loader-path param/splat extraction to loader rune settings and add focused `BDC-ART-004` coverage for divergent action-vs-loader rune configurations.
 
 ### VCI-032 (open)
 
@@ -325,9 +289,9 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Type`: `impl-bug-candidate`
 - `Affected Requirements`: `BUILD-EVT-010`, `BUILD-EVT-013`
 - `Summary`: `RunOnChangeOnly` short-circuit currently skips concurrent/post callback-hook execution.
-- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, single-event path returns immediately on `ewh.runOnChangeOnly` and all-run-on-change-only batch path returns on `allRunOnChangeOnly` before concurrent/post hook phases. This conflicts with schema/runtime intent that `RunOnChangeOnly` means "only OnChangeHooks run" (not "only pre/no-wait callbacks run").
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, single-event path returns immediately on `ewh.runOnChangeOnly` and all-run-on-change-only batch path returns on `allRunOnChangeOnly` before concurrent/post hook phases. Additionally, in mixed batches, run-on-change-only entries are skipped in concurrent/post loops (`if ewh.runOnChangeOnly { continue }`), so those callback phases are omitted for those entries. This conflicts with schema/runtime intent that `RunOnChangeOnly` means "only OnChangeHooks run" (not "only pre/no-wait callbacks run").
 - `Current Test Accommodation`: none; current source-contract conformance around run-on-change-only focuses on build-skip and does not yet assert callback-timing execution coverage.
-- `Follow-Up`: ensure run-on-change-only flows execute supported callback-hook timing phases (including concurrent/post callbacks) while still skipping standard build work, then add strict `BDC-EVT-010`/`BDC-EVT-013` timing-coverage assertions.
+- `Follow-Up`: ensure run-on-change-only flows execute supported callback-hook timing phases (including concurrent/post callbacks) in single, all-run-on-change-only batch, and mixed-batch paths while still skipping standard build work, then add strict `BDC-EVT-010`/`BDC-EVT-013` timing-coverage assertions.
 
 ### VCI-036 (open)
 
@@ -373,3 +337,138 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Observed Symptom`: `/Users/sjc/__code/river/lab/viteutil/viteutil.go` defines `InitPort(defaultPort int)` but calls `netutil.GetFreePort(5199)` unconditionally, so `defaultPort` input (and upstream `Vite.DefaultPort` wiring from `/Users/sjc/__code/river/wave/tooling/builder.go`) is not used for candidate selection.
 - `Current Test Accommodation`: none; contract is now explicitly tracked as missing instead of mirroring current hard-coded-candidate behavior.
 - `Follow-Up`: use `defaultPort` as the candidate passed to free-port selection, preserve env propagation to `__VITE_PORT`, and add/enable `BDC-VITE-010` conformance coverage.
+
+### VCI-041 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-VITE-011`
+- `Summary`: Vite dev-start command failure is currently logged but not propagated as an error.
+- `Observed Symptom`: `/Users/sjc/__code/river/lab/viteutil/cmd.go` logs `c.cmd.Start()` failure in `DevBuild()` but still returns `nil`, allowing `/Users/sjc/__code/river/wave/tooling/builder.go` `NewViteDevContext()` and `/Users/sjc/__code/river/wave/tooling/devserver.go` `startVite()` to treat startup as success and publish a Vite context.
+- `Current Test Accommodation`: none; requirement is tracked as missing instead of accepting logged-and-suppressed startup failure semantics.
+- `Follow-Up`: return startup error from `DevBuild()` on `cmd.Start()` failure, propagate through builder/devserver startup path, and add/enable strict `BDC-VITE-011` coverage.
+
+### VCI-042 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-EVT-010`, `BUILD-EVT-013`
+- `Summary`: `RunOnChangeOnly` paths can stop app process via hard-reload pre-kill logic even when no callback action requests restart.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, single-event flow starts app termination for `needsHardReload` before `runOnChangeOnly` early return, and batch flow may stop app upfront when any event in batch is hard-reload-class before `allRunOnChangeOnly` short-circuit. Both paths can return without restart, leaving app stopped despite `RunOnChangeOnly` hooks-only intent.
+- `Current Test Accommodation`: none; run-on-change-only behavior remains strict in spec and is tracked as missing rather than mirroring implicit app-stop side effect.
+- `Follow-Up`: suppress hard-reload app-stop side effects on run-on-change-only short-circuit paths unless callback actions explicitly request restart, then add/enable strict `BDC-EVT-010` and `BDC-EVT-013` coverage for app-liveness preservation.
+
+### VCI-043 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-EVT-001`, `BUILD-EVT-003`
+- `Summary`: Path-level batch dedupe can drop content-changing events when trailing chmod-only event for same path wins map overwrite.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, dedupe assigns `eventMap[path]=evt` for each event and keeps the last-seen event for each path. If a write/create/remove/rename event is followed by chmod-only event for same path in one debounce batch, later chmod-only classification may be ignored and earlier content-change signal is lost.
+- `Current Test Accommodation`: none; strict spec now requires dedupe to preserve effective content-change signal instead of mirroring last-write-wins overwrite semantics.
+- `Follow-Up`: change path dedupe to preserve op union/priority (or equivalent non-lossy content-change signal) so chmod-only cannot mask prior content-changing ops in same batch, then add/enable strict `BDC-EVT-001` coverage for mixed-op same-path batches.
+
+### VCI-044 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-DEV-032`
+- `Summary`: Dev control loop currently logs Vite startup failures but continues as if startup was non-fatal.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/devserver.go`, startup errors from `startVite()` are logged (`"vite start failed"` / `"start vite failed during cycle"`) and execution continues through app start/reload flow without explicit failure-state handling. This can leave readiness/reload orchestration operating without healthy Vite runtime after startup failure.
+- `Current Test Accommodation`: none; strict spec now tracks this as missing rather than codifying log-only continuation semantics.
+- `Follow-Up`: make Vite startup failure transition dev loop into explicit failure handling path (fail-fast or bounded recovery policy), and add/enable strict `BDC-DEV-032` coverage.
+
+### VCI-045 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-DEV-033`
+- `Summary`: Build-failure retry wait currently consumes restart requests as wake-up signals but drops request-strength flags.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/devserver.go`, `waitForBuildRetry()` reads from `s.restartCh` only as `<-s.restartCh` and discards the `restartRequest`. The surrounding loop in `run()` then continues with prior `recompileGo` / `isConfigRestart` state instead of the consumed retry request flags, so stronger retry intent (for example `recompileGo=true` or config-restart) can be lost on retry resume.
+- `Current Test Accommodation`: none; strict spec now requires preserved retry-request strength rather than mirroring wake-only semantics.
+- `Follow-Up`: return consumed `restartRequest` from `waitForBuildRetry()` (or otherwise plumb it) and update loop state from that effective request before retry iteration starts; then add/enable strict `BDC-DEV-033` coverage.
+
+### VCI-046 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-DEV-034`
+- `Summary`: App startup failures are currently logged but not propagated into actionable dev-loop failure handling.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/devserver.go`, `startApp()` logs `cmd.Start()` failure and returns without error. Callers in both main loop (`run()`) and event-flow restart paths (`processSingleEvent`/`processBatchedEvents`) continue control flow as if app startup succeeded.
+- `Current Test Accommodation`: none; strict spec now requires startup-failure control-flow handling rather than mirroring log-only continuation behavior.
+- `Follow-Up`: make `startApp` return error and propagate failure into explicit retry/fail-fast startup handling path before watcher/reload running semantics proceed; then add/enable strict `BDC-DEV-034` coverage.
+
+### VCI-047 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-DEV-035`
+- `Summary`: Readiness waits currently log timeout warnings but do not gate reload orchestration outcomes.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/devserver.go`, `waitForApp()` and `waitForVite()` return boolean readiness, but callers in `broadcastReload()` and `cycleVite()` ignore return values and continue orchestration regardless; timeout paths therefore degrade to warning-only continuation under not-ready dependencies.
+- `Current Test Accommodation`: none; strict spec now requires actionable readiness-failure handling instead of warning-only continuation.
+- `Follow-Up`: propagate readiness wait failure outcomes into reload/cycle control flow (for example fail-fast, bounded retry escalation, or explicit degraded state policy) and add/enable strict `BDC-DEV-035` coverage.
+
+### VCI-048 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-EVT-019`
+- `Summary`: Blocking event-phase failures are currently logged but do not gate subsequent success-flow actions.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, blocking hook errors (`runPreHooks`, `runConcurrentHooks`, `runPostHooks`) are logged in callers and processing continues, and `executeBuildPhase()` logs build-unit errors without propagating failure state. `processSingleEvent()` and `processBatchedEvents()` then continue through restart/browser-phase flow, so failed event cycles can still emit success-oriented browser signaling and continue as if rebuild succeeded.
+- `Current Test Accommodation`: none; strict spec now requires actionable failure-state handling for blocking event-phase failures instead of log-only continuation.
+- `Follow-Up`: make blocking hook/build failure outcomes explicit in event-flow control (for example returned error/flag), suppress success browser signaling for failed cycles, and define explicit retry/recovery handling (especially when app was already stopped for hard-reload-class work), then add/enable strict `BDC-EVT-019` coverage.
+
+### VCI-049 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-STATIC-005`, `BUILD-CSS-003`
+- `Summary`: Hashed-artifact rotation cleanup failures are currently warning-only and do not fail processing.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/static.go`, filemap-JS rotation cleanup errors (`Glob`/`Remove`) are logged as warnings and processing continues. In `/Users/sjc/__code/river/wave/tooling/css.go`, normal-CSS hashed-artifact cleanup errors are likewise warning-only. This can leave stale hashed artifacts despite strict cleanup requirements.
+- `Current Test Accommodation`: none; strict spec continues to require old-hash cleanup as part of rotation behavior and does not narrow to warning-only continuation semantics.
+- `Follow-Up`: decide and enforce cleanup-failure policy (fail-fast or explicit tolerated/stale-artifact policy). If fail-fast, propagate cleanup failures as actionable errors; if tolerant by policy, explicitly revise requirements to encode tolerated stale-artifact semantics and bounded cleanup expectations.
+
+### VCI-050 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-ART-004`
+- `Summary`: Client-defined loader-only route typing currently derives params/splat with action matcher runes instead of loader matcher runes.
+- `Observed Symptom`: In `/Users/sjc/__code/river/vormabuild/vorma_gen_ts.go`, the branch that adds client-defined paths without Go loaders (`extraPathPatterns`) uses `actionsDynamicRune` / `actionsSplatRune` for loader-category param/splat extraction. This conflicts with loader typing contract requiring loader matcher rune settings (`loadersDynamicRune`, `loadersSplatRune`) for loader-category entries.
+- `Current Test Accommodation`: none; strict build spec already requires loader-category typing to use loader matcher runes (including client-defined loader paths) and has not been narrowed to current implementation behavior.
+- `Follow-Up`: switch client-defined loader-path param/splat extraction to loader matcher rune settings, then add/enable focused `BDC-ART-004` coverage for divergent loader/action rune configurations.
+
+### VCI-051 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-EVT-023`
+- `Summary`: Concurrent hook restart arbitration is currently nondeterministic and can downgrade stronger restart intent.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, `runConcurrentHooks(...)` appends actions from goroutines in completion order, then `processSingleEvent(...)` / `processBatchedEvents(...)` scan that slice and return on the first restart action encountered. If one concurrent action requests restart with `RecompileGo=true` and another requests restart with `RecompileGo=false`, completion-order variance can cause weaker no-go restart to win.
+- `Current Test Accommodation`: none; strict spec now requires deterministic strongest-intent arbitration (`BUILD-EVT-023`) rather than preserving completion-order-dependent outcomes.
+- `Follow-Up`: aggregate concurrent restart actions deterministically before dispatch (any restart -> restart, any `RecompileGo=true` -> recompile restart), then add/enable strict `BDC-EVT-023` coverage with varying goroutine completion orders.
+
+### VCI-052 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-DEV-036`
+- `Summary`: Config reload currently preserves only a subset of framework-injected runtime fields, dropping framework schema/hook fields after reload.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/devserver.go`, `reloadConfig()` preserves `FrameworkWatchPatterns`, `FrameworkIgnoredPatterns`, and `FrameworkPublicFileMapOutDir`, but does not preserve `FrameworkSchemaExtensions`, `FrameworkDevBuildHook`, or `FrameworkProdBuildHook`. These fields are `json:"-"` runtime-injected framework values and can be lost on post-first-run config reload.
+- `Current Test Accommodation`: none; strict spec now requires full framework-injected field preservation across reload (`BUILD-DEV-036`) rather than matching partial-preservation implementation behavior.
+- `Follow-Up`: preserve the full framework-injected non-JSON field set during config reload replacement (including schema extensions and framework dev/prod hooks), then add/enable strict `BDC-DEV-036` coverage.
+
+### VCI-053 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-DEV-030`
+- `Summary`: Refresh-script `revalidate` path can leave rebuilding overlay stuck when `__waveRevalidate()` rejects.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/refresh.go`, `changeType == "revalidate"` path invokes `window.__waveRevalidate().then(...)` without rejection handling. If returned promise rejects, overlay-removal branch is not executed and overlay can remain visible.
+- `Current Test Accommodation`: none; strict spec now requires overlay cleanup on both success and rejection outcomes for helper-present path (`BUILD-DEV-030`) rather than mirroring resolve-only cleanup behavior.
+- `Follow-Up`: add rejection handling (`catch`/`finally` equivalent) that logs failure diagnostics and removes rebuilding overlay on rejection, then add/enable strict `BDC-DEV-030` coverage for helper-rejecting variants.
+
+### VCI-054 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `FE-FETCH-012`
+- `Summary`: Route-data handling currently treats HTTP 304 as allowed but then fails due to unconditional JSON-required path.
+- `Observed Symptom`: In `/Users/sjc/__code/river/internal/framework/_typescript/client/src/client.ts`, `responseNotOK` excludes `304` from non-OK failure (`!response.ok && status !== 304`), but JSON parsing is only performed when `response.ok` is true and later `!json` triggers `throw new Error("No JSON response")`. A `304` response therefore still fails navigation through the no-JSON error path.
+- `Current Test Accommodation`: none; strict spec keeps `FE-FETCH-012` contract that `304` is non-fatal and does not narrow to current implementation behavior.
+- `Follow-Up`: align 304 handling with one explicit policy: either support non-fatal 304 semantics with a valid route-data fallback path or revise the requirement to fail 304 explicitly; then add/enable focused conformance coverage for the chosen policy branch.
+
+### VCI-055 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `FE-LINK-019`
+- `Summary`: Repeated prefetch `start()` calls can stack pending timers while `stop()` clears only the latest handle.
+- `Observed Symptom`: In `/Users/sjc/__code/river/internal/framework/_typescript/client/src/links.ts`, `start()` overwrites a single `timer` field on each call before begin, and `stop()` clears only that one stored handle. Earlier pending timeout handles can remain active and still invoke prefetch begin/fetch after `stop()` was called.
+- `Current Test Accommodation`: none; strict spec now requires lossless pending-begin cancellation and single pending timer semantics rather than mirroring current overwrite behavior.
+- `Follow-Up`: make `start()` idempotent for pre-begin phase (single scheduled timer) or track/clear all pending timer handles in `stop()`, then add/enable focused `FEC-LINK-017` coverage.

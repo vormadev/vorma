@@ -197,37 +197,23 @@ Then generated files in that directory MUST include ignores for:
 - `filemap.ts`
 - `filemap.json`.
 
-### BUILD-WATCH-009: Default Watcher Ignore Baseline
+### BUILD-WATCH-013: Framework Injection Helper Accumulation Contract
 
-Given watcher pattern setup runs  
-When ignore lists are initialized  
-Then watcher MUST include default ignore coverage for:
+Given `AddFrameworkWatchPatterns` is called multiple times with pattern sets in
+order `A`, then `B`  
+When effective framework watch pattern list is inspected  
+Then list MUST preserve append semantics (entries from `A` remain and entries
+from `B` are appended in call order).
 
-- dist static output directory subtree,
-- `.git` subtree under watch root,
-- `node_modules` subtree under watch root,
-- emitted dist binary path.
+Given `AddIgnoredPatterns` is called multiple times with ignore sets in order
+`I1`, then `I2`  
+When effective framework ignored-pattern list is inspected  
+Then list MUST preserve append semantics (entries from `I1` remain and entries
+from `I2` are appended in call order).
 
-Given browser mode is enabled  
-When ignore lists are initialized  
-Then watcher MUST also ignore `nohash/` and `prehashed/` subtrees under public
-static source.
-
-### BUILD-WATCH-010: Watch Pattern Root Normalization
-
-Given framework-injected or user-configured watch/include/exclude patterns  
-When watcher setup runs  
-Then relative paths MUST be normalized against watch root and stored as absolute
-slash-normalized paths before matching.
-
-### BUILD-WATCH-011: Browser Static Default Watch Includes
-
-Given browser mode is enabled  
-When watcher default include set is prepared  
-Then watcher MUST include recursive default watch entries for:
-
-- public static source subtree,
-- private static source subtree.
+Given `SetPublicFileMapOutDir` is called repeatedly with values `D1...Dn`  
+When effective framework public-filemap output directory is inspected  
+Then effective value MUST equal last call value (`Dn`).
 
 ### BUILD-WATCH-012: Reload Endpoint Call Failure Classification
 
@@ -665,6 +651,16 @@ Then:
 - runtime dev URL/script helpers consuming `__VITE_PORT` MUST observe that same
   selected value.
 
+### BUILD-VITE-011: Vite Dev Start-Failure Propagation Contract
+
+Given Vite dev-process command startup fails (for example exec spawn/permission
+error)  
+When dev-context startup flow runs (`DevBuild` -> `NewViteDevContext` ->
+dev-server `startVite`)  
+Then startup failure MUST be returned to caller (not logged-and-suppressed), and
+caller-visible Vite runtime state MUST NOT present a false-positive "running"
+context after that failure.
+
 ## 4.9 Output Cleanup Contract
 
 ### BUILD-CLEAN-001: Vorma-Generated Public File Cleanup
@@ -692,212 +688,7 @@ Given cleanup target path exists but is not a directory
 When cleanup runs  
 Then cleanup MUST fail fast with invalid-path-type error.
 
-## 4.10 TypeScript Package Build Pipeline Contract
-
-### BUILD-TSPKG-001: npm_dist Reset and Target Build Order
-
-Given TypeScript package build entrypoint (`internal/scripts/buildts/main.go`) runs  
-When packaging pipeline starts  
-Then it MUST:
-
-1. clear `./npm_dist`,
-2. recreate `./npm_dist`,
-3. run target builds in this order:
-   `kit -> client -> react -> solid -> preact -> vite -> create`,
-4. perform post-build test/bench artifact cleanup.
-
-Output-location invariants:
-
-- package artifacts for kit/client/adapters/vite MUST emit to `./npm_dist/...`,
-- create package bundle MUST emit to
-  `./internal/framework/_typescript/create/dist`.
-
-### BUILD-TSPKG-002: Declaration-Only TypeScript Emission
-
-Given target TypeScript build step runs (`runTSC`)  
-When declarations are generated  
-Then command MUST emit declaration artifacts with declaration maps into
-`./npm_dist` using declaration-only emission.
-
-The `tsc` invocation MUST include declaration-only flags equivalent to:
-
-- `--project <target tsconfig path>`,
-- `--declaration`,
-- `--emitDeclarationOnly`,
-- `--declarationMap`,
-- `--sourceMap`,
-- `--noEmit false` (explicit emit override),
-- `--rootDir ./` (workspace-root anchored declaration pathing),
-- with out-dir rooted at `./npm_dist`.
-
-### BUILD-TSPKG-003: Warning Intolerance in esbuild Helper
-
-Given bundling helper (`build(...)`) executes  
-When esbuild returns any warning or error  
-Then packaging step MUST fail.
-
-### BUILD-TSPKG-004: Solid Adapter Build Path Uses Solid Plugin
-
-Given Solid adapter package build runs  
-When bundling executes  
-Then pipeline MUST invoke node helper script
-`internal/scripts/buildts/build-solid.mjs`, and that helper MUST bundle with
-`esbuild-plugin-solid`.
-
-Solid helper bundle contract MUST include:
-
-- entry `internal/framework/_typescript/solid/index.tsx`,
-- outdir `./npm_dist/internal/framework/_typescript/solid`,
-- externals including `vorma` and `solid-js`.
-
-### BUILD-TSPKG-005: Adapter/Vite Peer Dependencies Stay External
-
-Given adapter and vite package bundling runs  
-When esbuild options are applied  
-Then framework/runtime peer dependencies MUST remain externalized (for example
-React/Preact peers and Vite/node builtins for vite package build).
-
-Current conformance examples include:
-
-- React adapter: `react`, `react-dom`,
-- Preact adapter: `preact`, `preact/hooks`, `@preact/signals`,
-  `preact/jsx-runtime`, `preact/compat`, `preact/test-utils`,
-- Solid adapter: `solid-js`,
-- Vite adapter: `vite`, `node:fs`, `node:path`,
-- create package: node builtin modules used by CLI scaffolding.
-
-### BUILD-TSPKG-006: npm_dist Test/Bench Artifact Purge
-
-Given packaging pipeline completes  
-When cleanup runs over `./npm_dist`  
-Then files matching test/bench naming patterns (`.test.`, `.bench.`) MUST be
-removed from emitted artifact tree.
-
-Cleanup scope MUST be recursive through `./npm_dist` and MUST also remove
-matching sourcemap siblings where basename includes those test/bench markers.
-
-Cleanup scope boundary:
-
-- this cleanup phase MUST be bounded to `./npm_dist` traversal; create-CLI
-  bundle output under `./internal/framework/_typescript/create/dist` is outside
-  this purge pass.
-
-### BUILD-TSPKG-007: Solid Packaging Warning Intolerance Parity
-
-Given Solid adapter packaging path runs via node helper
-(`internal/scripts/buildts/build-solid.mjs`)  
-When esbuild reports any warning  
-Then packaging MUST fail with non-zero exit behavior (same strictness target as
-other package builds).
-
-### BUILD-TSPKG-008: Packaging Pipeline Fail-Fast Semantics
-
-Given TypeScript packaging pipeline runs  
-When any mandatory stage fails (target-dir reset, target-dir create, `runTSC`,
-target bundle stage, or post-build cleanup)  
-Then process MUST terminate immediately with non-zero exit and MUST NOT continue
-to subsequent packaging stages.
-
-### BUILD-TSPKG-009: Create-CLI Bundle Input/Externalization Contract
-
-Given create-CLI TypeScript packaging step runs  
-When esbuild options are applied in `internal/scripts/buildts/main.go`  
-Then bundle configuration MUST target:
-
-- entrypoint `./internal/framework/_typescript/create/main.ts`,
-- outdir `./internal/framework/_typescript/create/dist`,
-- ESM output with `target=esnext` and bundling enabled,
-- externalization of Node runtime modules required by create-CLI:
-  `node:child_process`, `node:fs`, `node:os`, `node:path`, `node:process`,
-  `node:readline`, `node:stream`, `node:util`, `node:url`.
-
-Externalization compatibility rule:
-
-- create-CLI bundle MAY externalize additional runtime-safe modules, but MUST
-  preserve at least the required Node module externalization set above.
-
-### BUILD-TSPKG-010: Shared Bundle-Profile Invariants Across Packaging Targets
-
-Given package bundle steps for `kit`, `client`, `react`, `preact`, `vite`, and
-`create`  
-When esbuild options are configured  
-Then each bundle profile MUST include:
-
-- `sourcemap` linked,
-- `target` as `esnext`,
-- `format` as ESM,
-- tree-shaking enabled,
-- write-to-disk enabled,
-- bundling enabled.
-
-Splitting rule:
-
-- `kit`, `client`, `react`, `preact`, and `vite` bundle steps MUST enable
-  code-splitting,
-- `create` bundle step MAY omit code-splitting.
-
-Solid-helper parity:
-
-- Solid helper (`internal/scripts/buildts/build-solid.mjs`) MUST apply the same
-  core profile invariants and MUST enable code-splitting.
-
-### BUILD-TSPKG-011: Target-to-tsconfig Mapping Contract
-
-Given TypeScript packaging pipeline runs across all targets  
-When per-target declaration emission is invoked  
-Then `runTSC` target mapping MUST use the corresponding target tsconfig paths:
-
-- `kit`: `./kit/_typescript/tsconfig.json`,
-- `client`: `./internal/framework/_typescript/client/tsconfig.json`,
-- `react`: `./internal/framework/_typescript/react/tsconfig.json`,
-- `solid`: `./internal/framework/_typescript/solid/tsconfig.json`,
-- `preact`: `./internal/framework/_typescript/preact/tsconfig.json`,
-- `vite`: `./internal/framework/_typescript/vite/tsconfig.json`,
-- `create`: `./internal/framework/_typescript/create/tsconfig.json`.
-
-### BUILD-TSPKG-012: Baseline `vorma` Externalization Across Published TS Packages
-
-Given TypeScript package bundling runs for published runtime packages (`kit`,
-`client`, `react`, `solid`, `preact`, `vite`)  
-When externals are configured  
-Then each package bundle contract MUST include `vorma` as an external dependency
-rather than inlining it.
-
-Create package exception:
-
-- create-CLI bundle externalization requirements are governed by
-  `BUILD-TSPKG-009` and do not require `vorma` externalization.
-
-### BUILD-TSPKG-013: Declaration Emission Toolchain Invocation Contract
-
-Given TypeScript declaration emission helper executes (`runTSC`)  
-When declaration-generation command is spawned  
-Then invocation MUST use workspace package-manager toolchain path equivalent to
-`pnpm tsc` (not shell-dependent fallback execution).
-
-### BUILD-TSPKG-014: Adapter/Create Target tsconfig JSX Dialect Contract
-
-Given TypeScript packaging target tsconfig files for `react`, `preact`, `solid`,
-`vite`, and `create`  
-When tsconfig source contracts are inspected  
-Then each target tsconfig MUST extend shared base config
-`../../../../tsconfig.base.json`.
-
-Adapter-specific JSX compiler options MUST match:
-
-- React target: `jsx = react-jsx`,
-- Preact target: `jsx = react-jsx` with `jsxImportSource = preact`,
-- Solid target: `jsx = preserve` with `jsxImportSource = solid-js`.
-
-Non-adapter utility targets (`vite`, `create`) MAY omit package-local JSX
-overrides and inherit base defaults.
-
-Command-construction safety refinement:
-
-- command execution MUST use direct argv/exec-style invocation semantics (no
-  shell-eval interpolation contract requirement).
-
-## 4.11 Dev Server Control-Plane Contract
+## 4.10 Dev Server Control-Plane Contract
 
 ### BUILD-DEV-001: Single-Instance Project Lock
 
@@ -988,20 +779,6 @@ Given app/Vite readiness waits are enabled for a reload path
 When readiness polling runs  
 Then polling MUST treat HTTP 200 as ready and bound total wait time to finite
 budget (approximately 10 seconds with bounded per-request timeout).
-
-### BUILD-DEV-009: Deterministic Exit Override
-
-Given environment variable `WAVE_DEV_EXIT_AFTER_MS` is valid positive integer  
-When dev loop reaches wait-for-restart phase  
-Then process MUST exit cleanly after that duration if no restart request
-arrives.
-
-### BUILD-DEV-014: Deterministic Exit Override Parsing Gate
-
-Given `WAVE_DEV_EXIT_AFTER_MS` is absent, non-integer, zero, or negative  
-When dev startup parses exit override  
-Then deterministic-exit override MUST be treated as disabled and MUST NOT force
-timer-based process exit behavior.
 
 ### BUILD-DEV-010: Refresh Server Endpoint Contract
 
@@ -1263,6 +1040,11 @@ When message handler executes
 Then script MUST look for global `window.__waveRevalidate` and, if present,
 invoke it and remove rebuilding overlay after successful promise resolution.
 
+Given same revalidate payload and `window.__waveRevalidate` promise rejects  
+When rejection outcome is observed  
+Then script MUST log rejection-class error diagnostics and MUST remove
+rebuilding overlay (failed revalidate MUST NOT leave rebuilding overlay stuck).
+
 Given same revalidate payload and `window.__waveRevalidate` is absent  
 When handler executes  
 Then script MUST log error and remove rebuilding overlay without throwing.
@@ -1282,6 +1064,109 @@ When unload handler executes
 Then script MUST disable reload-on-close behavior before closing websocket to
 avoid duplicate/unwanted reload loop during intentional page unload.
 
+### BUILD-DEV-032: Vite Startup Failure Handling Contract
+
+Given dev server is configured to use Vite  
+When Vite startup fails during initial run or Vite-cycle restart  
+Then dev control plane MUST treat startup failure as actionable failure state
+rather than silent success:
+
+- failure MUST be surfaced through dev-loop control flow (not only debug logs),
+- runtime MUST NOT continue presenting Vite as healthy/ready for subsequent
+  waits/reload orchestration until successful startup occurs.
+
+### BUILD-DEV-033: Build-Failure Retry Request Strength Preservation Contract
+
+Given dev loop is waiting in build-failure retry state  
+When watcher-driven restart request is consumed to resume loop  
+Then control flow MUST preserve request strength for the next iteration:
+
+- `recompileGo` intent MUST be preserved (for example, Go-file-triggered retry
+  MUST NOT be downgraded to no-Go retry),
+- config-restart intent MUST be preserved (so config-restart-specific ordering
+  and reload signaling still applies on the resumed iteration).
+
+Given multiple restart requests race while retry-wait is active  
+When queue supersede/upgrade rules resolve strongest effective request  
+Then resumed iteration MUST observe that strongest effective request semantics
+consistent with restart-queue policy.
+
+### BUILD-DEV-034: App Startup Failure Handling Contract
+
+Given build/compile phases succeeded and runtime attempts to launch app binary  
+When app process startup fails (for example exec/start error)  
+Then dev control plane MUST treat that failure as actionable startup failure
+state rather than silent continuation:
+
+- failure MUST be surfaced through control flow (not only log output),
+- loop MUST NOT transition into normal running iteration semantics that assume a
+  live app process (for example watcher-ready idle wait plus browser reload
+  success signaling) until successful app startup occurs.
+
+### BUILD-DEV-035: Readiness-Gate Failure Handling Contract
+
+Given reload orchestration requests readiness waits (`waitApp` and/or
+`waitVite`)  
+When readiness polling exhausts retry budget without HTTP-200 success  
+Then runtime MUST treat that as actionable readiness-gate failure state rather
+than warning-only continuation:
+
+- readiness failure MUST be surfaced through control flow (not only warning
+  logs),
+- reload/cycle path MUST NOT proceed under false-ready success semantics for
+  the failed dependency (app and/or Vite) until readiness succeeds.
+
+### BUILD-DEV-036: Config Reload Full Framework-Field Preservation Contract
+
+Given post-first-run config reload with framework-injected non-JSON runtime
+fields populated in active config  
+When config file parses and validates successfully  
+Then reload replacement config MUST preserve the full framework-injected field
+set across reload:
+
+- `FrameworkWatchPatterns`
+- `FrameworkIgnoredPatterns`
+- `FrameworkPublicFileMapOutDir`
+- `FrameworkSchemaExtensions`
+- `FrameworkDevBuildHook`
+- `FrameworkProdBuildHook`
+
+Given preserved framework fields include schema extensions and framework build
+hooks  
+When subsequent build/dev iterations execute after reload  
+Then framework schema emission and framework hook execution behavior MUST remain
+equivalent to pre-reload active config state (unless framework code explicitly
+mutates those fields at runtime).
+
+### BUILD-DEV-037: Dev Exit-Override Timer Contract
+
+Given env `WAVE_DEV_EXIT_AFTER_MS` is unset, non-integer, or non-positive  
+When dev control loop reaches restart-request wait phase  
+Then exit-override timer MUST be disabled and loop MUST wait for restart request
+without override-triggered exit.
+
+Given env `WAVE_DEV_EXIT_AFTER_MS` is positive integer `N` and no restart
+request arrives before `N` milliseconds  
+When override timer expires in restart-request wait phase  
+Then loop MUST:
+
+- log exit due to env override with configured env key and duration,
+- run rebuild cleanup (app/watcher/builder teardown),
+- stop Vite context if present,
+- return successful loop termination (no error) so deferred shutdown cleanup
+  (refresh-manager/server and dev lock release) can complete normally.
+
+Given same positive override and restart request arrives before timer expiry  
+When wait phase resolves  
+Then restart request MUST win and timer-exit path MUST NOT run for that cycle.
+
+### BUILD-DEV-038: App-Port Alias Compatibility Contract
+
+Given runtime exposes compatibility alias `MustGetAppPort`  
+When alias and canonical helper are invoked under equivalent process/env state  
+Then alias output and side effects MUST be behaviorally identical to
+`MustGetPort` (including latching and environment side effects).
+
 ## 4.12 Watch/Event Processing Contract
 
 ### BUILD-EVT-001: Debounced Batch and Path Dedupe
@@ -1298,6 +1183,9 @@ Batch-callback discipline:
 - after path-level dedupe, any additional watched-pattern-key dedupe MUST apply
   only to non-empty effective watched-file pattern keys and MUST NOT collapse
   distinct classified events that have no matched watched-file pattern key.
+- path-level dedupe MUST preserve effective content-change signal for that path:
+  a trailing chmod-only event in the same batch MUST NOT erase an earlier
+  content-changing event for that path.
 
 ### BUILD-EVT-002: Config File Change Short-Circuit
 
@@ -1354,7 +1242,8 @@ Then phase order MUST be:
 ### BUILD-EVT-007: Batch Hard-Reload App Stop Once
 
 Given multi-event batch where any event needs hard reload  
-When batch processing runs  
+When batch processing runs and flow does not finalize through all-run-on-change-only
+short-circuit  
 Then app MUST be stopped once up front for the batch, and browser refresh
 decision MUST execute once for the batch.
 
@@ -1393,9 +1282,15 @@ Action-propagation refinement:
 - `RunOnChangeOnly` MUST still execute configured `OnChangeHooks` across
   supported timing phases for that event path (for example no-wait/pre/concurrent/post
   callback hooks), while skipping standard build/reload work.
+- this callback-phase execution requirement is per-event and MUST hold for
+  `RunOnChangeOnly` entries even when those entries are processed inside mixed
+  multi-event batches that include non-`RunOnChangeOnly` entries.
 - when `RunOnChangeOnly=true`, command hooks remain constrained by schema
   validation (`BUILD-SCHEMA-005`: command timing must be pre/default), but callback
   hooks with other timings MUST still execute at their configured phase.
+- `RunOnChangeOnly` event paths with no callback-requested restart action MUST
+  NOT stop/kill the currently running app process as a side effect of
+  pre-build hard-reload guard logic.
 
 ### BUILD-EVT-011: New Directory Watch Expansion
 
@@ -1431,6 +1326,11 @@ Action-propagation refinement:
 - batch-wide run-on-change-only short-circuit MUST still execute each event's
   configured callback hooks for supported timing phases before finalizing merged
   callback action outcome.
+- in mixed batches (not all run-on-change-only), `RunOnChangeOnly` entries MUST
+  still execute their configured callback hooks for supported timing phases as
+  per-event behavior.
+- batch-wide run-on-change-only short-circuit with no callback-requested restart
+  action MUST NOT leave app process stopped after short-circuit return.
 
 ### BUILD-EVT-014: Vite Invalidate Success Must Short-Circuit Browser Phase
 
@@ -1492,6 +1392,90 @@ Given watcher loop exits due shutdown or closed watcher channels
 When deferred watcher cleanup runs  
 Then debouncer stop logic MUST execute and clear pending timer/event state so no
 delayed callback can run after watcher exit.
+
+### BUILD-EVT-019: Event-Phase Blocking Failure Handling Contract
+
+Given event-driven processing executes (single-event or batched path)  
+When any blocking event-phase unit fails (for example pre/concurrent/post hook
+execution, Go compile, public/private file processing, CSS build, filemap TS
+write)  
+Then runtime MUST treat that as actionable failure state rather than silent
+success continuation:
+
+- failure MUST be surfaced through event-flow control (not only error logs),
+- success-oriented browser signaling for that failed event cycle (reload,
+  revalidate, or CSS hot-reload success payloads) MUST NOT be emitted.
+
+Given app process was already stopped for hard-reload-class work in that failed
+event cycle  
+When failure state is handled  
+Then runtime MUST transition through explicit failure/retry policy rather than
+continuing as if rebuild succeeded.
+
+### BUILD-EVT-020: Concurrent-No-Wait Hook Isolation Contract
+
+Given concurrent-no-wait hooks are configured for an event  
+When callback or command execution in that phase fails  
+Then failure MUST remain isolated to no-wait path:
+
+- failure MUST be surfaced as diagnostics (warning-level logging),
+- failure MUST NOT block event-flow progression for blocking phases,
+- no-wait hook execution MUST remain fire-and-forget and non-blocking relative
+  to pre/build/post/restart/browser orchestration.
+
+### BUILD-EVT-021: Hook Command Token Resolution Contract
+
+Given hook command token equals literal `DevBuildHook`  
+When command execution is resolved for pre/concurrent/post/no-wait phases  
+Then runtime MUST substitute current `Core.DevBuildHook` command value.
+
+Given resolved command value is empty string  
+When phase executes  
+Then command execution path MUST be skipped for that hook entry.
+
+Given hook command token is any value other than `DevBuildHook`  
+When command execution is resolved  
+Then runtime MUST execute the command token verbatim.
+
+### BUILD-EVT-022: Event Classification Ignore-Gate Contract
+
+Given fsnotify event has empty event-name path  
+When classification runs  
+Then event MUST be marked ignored and omitted from downstream event processing.
+
+Given classified file type resolves to `other` and no watched-file pattern
+matches that path  
+When classification runs  
+Then event MUST be marked ignored and omitted from downstream event processing.
+
+### BUILD-EVT-023: Concurrent Restart-Action Strength Arbitration Contract
+
+Given concurrent hook callbacks return multiple restart actions in one event
+cycle (single-event or batch)  
+When restart decision is derived from collected concurrent actions  
+Then effective restart action MUST be deterministic and strongest-intent:
+
+- if any action requests restart, effective outcome MUST restart,
+- if any restart action requests `RecompileGo=true`, effective restart outcome
+  MUST preserve `RecompileGo=true` (it MUST NOT be downgraded by weaker restart
+  actions),
+- effective restart decision MUST NOT depend on goroutine completion order.
+
+### BUILD-EVT-024: Hook Timing Bucket and Default-Pre Classification Contract
+
+Given watched-file hook sorting runs over `OnChangeHooks` entries  
+When timing values are mapped into execution buckets  
+Then bucket assignment MUST be:
+
+- `post` -> post bucket,
+- `concurrent` -> concurrent bucket,
+- `concurrent-no-wait` -> concurrent-no-wait bucket,
+- empty/unknown/unspecified timing -> pre bucket.
+
+Given sorted hooks are consumed by event processing  
+When phase execution runs  
+Then bucketed hook sets MUST execute through corresponding phase order contract
+(`BUILD-EVT-006`) with default-pre hooks participating in pre phase.
 
 ## 4.13 Static Asset and Filemap Contract
 
@@ -1867,6 +1851,40 @@ When helper returns parsed config
 Then returned parse behavior MUST be equivalent to calling `ParseConfig` on file
 contents (including parse/minimal-safety/dist-root contracts).
 
+### BUILD-VAL-006: ParsedConfig Helper Normalization/Default Contract
+
+Given parsed config with `Core.PublicPathPrefix` as empty string or `/`  
+When `PublicPathPrefix()` is evaluated  
+Then helper MUST return `/`.
+
+Given parsed config with `Core.PublicPathPrefix` as non-root path token `P`  
+When `PublicPathPrefix()` is evaluated  
+Then helper MUST return a leading-and-trailing-slash normalized form of `P`.
+
+Given `Watch` section is absent or `Watch.WatchRoot` is empty  
+When `WatchRoot()` is evaluated  
+Then helper MUST return `"."`.
+
+Given `Watch.WatchRoot` is set  
+When `WatchRoot()` is evaluated  
+Then helper MUST return cleaned filesystem path value of configured root.
+
+Given `Watch` section is absent or `Watch.HealthcheckEndpoint` is empty  
+When `HealthcheckEndpoint()` is evaluated  
+Then helper MUST return `/`.
+
+Given `Watch.HealthcheckEndpoint` is set  
+When `HealthcheckEndpoint()` is evaluated  
+Then helper MUST return configured endpoint unchanged.
+
+Given CSS entry values are unset  
+When `CriticalCSSEntry()` / `NonCriticalCSSEntry()` are evaluated  
+Then each helper MUST return empty string for its unset entry.
+
+Given CSS entry values are set  
+When `CriticalCSSEntry()` / `NonCriticalCSSEntry()` are evaluated  
+Then each helper MUST return cleaned filesystem path for its configured value.
+
 ## 5. Executable Conformance Scenario Catalog
 
 This section defines concrete black-box scenarios that SHOULD be used as the
@@ -1991,8 +2009,6 @@ Given app is already stopped for active batch
 When template callback executes  
 Then callback MUST skip reload-endpoint call and defer refresh to batch restart.
 
-### BDC-WATCH-013 (covers BUILD-WATCH-005)
-
 Given one configuration with both `HTMLTemplateLocation` and private-static-dir
 available, and one configuration missing either prerequisite  
 When default watch-pattern injection runs  
@@ -2017,24 +2033,13 @@ When ignored patterns are injected
 Then ignore list MUST include generated `index.ts`, `filemap.ts`,
 `filemap.json` in that directory.
 
-### BDC-WATCH-009 (covers BUILD-WATCH-009)
+### BDC-WATCH-013 (covers BUILD-WATCH-013)
 
-Given watcher is initialized with defaults  
-When computed ignore lists are inspected  
-Then dist-static subtree, watch-root `.git`/`node_modules`, dist binary path,
-and browser-mode `nohash/` + `prehashed/` ignores MUST be present.
-
-### BDC-WATCH-010 (covers BUILD-WATCH-010)
-
-Given relative framework/user watch patterns and exclude patterns  
-When watcher setup runs  
-Then effective stored patterns MUST be absolute watch-root-anchored slash paths.
-
-### BDC-WATCH-011 (covers BUILD-WATCH-011)
-
-Given browser mode enabled  
-When default watched include patterns are inspected  
-Then recursive entries for public/private static sources MUST exist.
+Given repeated invocation fixtures for framework pattern/ignore append helpers
+and public-filemap output-dir setter  
+When effective config state is observed  
+Then watch/ignore helpers MUST accumulate by append-in-call-order and
+public-filemap output directory MUST reflect last-write-wins setter semantics.
 
 ### BDC-WATCH-012 (covers BUILD-WATCH-012)
 
@@ -2315,6 +2320,14 @@ dev-script URL consumption are inspected
 Then effective default-candidate selection (`P` vs `5173`), candidate-based
 free-port resolution, and env/value propagation MUST match contract.
 
+### BDC-VITE-011 (covers BUILD-VITE-011)
+
+Given Vite dev startup is forced into command-start failure path  
+When startup flows are observed through `DevBuild`, builder `NewViteDevContext`,
+and dev-server `startVite`  
+Then failure MUST propagate as error (no silent success return) and no
+stale/running Vite context MUST be published to runtime consumers.
+
 ## 5.9 Cleanup Scenarios
 
 ### BDC-CLEAN-001 (covers BUILD-CLEAN-001)
@@ -2336,106 +2349,7 @@ Given cleanup target exists as non-directory filesystem node
 When cleanup runs  
 Then operation MUST fail with invalid-path-type error class.
 
-## 5.10 TypeScript Package Build Pipeline Scenarios
-
-### BDC-TSPKG-001 (covers BUILD-TSPKG-001)
-
-Given TypeScript package build script entrypoint (`internal/scripts/buildts/main.go`)  
-When source contract is inspected  
-Then script MUST reset `npm_dist`, run documented target order, and finish with
-test/bench cleanup pass.
-
-### BDC-TSPKG-002 (covers BUILD-TSPKG-002)
-
-Given TypeScript declaration generation helper contract (`runTSC`)  
-When command template is inspected  
-Then declaration-only emission flags and `./npm_dist` output target MUST be
-present.
-
-### BDC-TSPKG-003 (covers BUILD-TSPKG-003)
-
-Given esbuild helper contract (`build`)  
-When warning handling path is inspected  
-Then warnings MUST be treated as fatal failures.
-
-### BDC-TSPKG-004 (covers BUILD-TSPKG-004)
-
-Given Solid adapter packaging path contract  
-When solid build script and helper are inspected  
-Then node helper invocation and `esbuild-plugin-solid` usage MUST be present.
-
-### BDC-TSPKG-005 (covers BUILD-TSPKG-005)
-
-Given adapter/vite packaging externals contract  
-When build script config is inspected  
-Then required peer/runtime dependencies MUST remain externalized.
-
-### BDC-TSPKG-006 (covers BUILD-TSPKG-006)
-
-Given npm_dist cleanup contract  
-When cleanup function contract is inspected  
-Then `.test.` and `.bench.` artifact removal behavior MUST be present.
-
-### BDC-TSPKG-007 (covers BUILD-TSPKG-007)
-
-Given Solid packaging helper path contract  
-When warning-handling behavior is validated for the helper-invocation path  
-Then warning outcomes MUST fail packaging instead of succeeding silently.
-
-### BDC-TSPKG-008 (covers BUILD-TSPKG-008)
-
-Given TypeScript packaging script source contract  
-When fatal-error paths are inspected for prep/build/cleanup stages  
-Then each failure path MUST be terminal (non-zero) and MUST prevent downstream
-stage execution.
-
-### BDC-TSPKG-009 (covers BUILD-TSPKG-009)
-
-Given create-CLI packaging block in `internal/scripts/buildts/main.go`  
-When source contract is inspected  
-Then entrypoint/outdir plus required Node-module externalization set MUST match
-the documented create-CLI bundle contract.
-
-### BDC-TSPKG-010 (covers BUILD-TSPKG-010)
-
-Given package bundle step definitions in `internal/scripts/buildts/main.go` and
-`internal/scripts/buildts/build-solid.mjs`  
-When source contracts are inspected  
-Then shared bundle-profile invariants (linked sourcemaps, `esnext` target, ESM
-format, tree-shaking, write, bundle) plus documented splitting rules MUST be
-present across targets.
-
-### BDC-TSPKG-011 (covers BUILD-TSPKG-011)
-
-Given per-target packaging functions in `internal/scripts/buildts/main.go`  
-When `runTSC(...)` invocations are inspected  
-Then each target MUST map to the documented target tsconfig path.
-
-### BDC-TSPKG-012 (covers BUILD-TSPKG-012)
-
-Given per-target esbuild external lists in `internal/scripts/buildts/main.go`
-and `internal/scripts/buildts/build-solid.mjs`  
-When package externalization contracts are inspected  
-Then published TS packages (`kit`, `client`, `react`, `solid`, `preact`,
-`vite`) MUST externalize `vorma`, while create-CLI externalization remains
-governed by its Node-runtime contract.
-
-### BDC-TSPKG-013 (covers BUILD-TSPKG-013)
-
-Given declaration-emission helper contract in `internal/scripts/buildts/main.go`  
-When command-construction path is inspected  
-Then helper MUST invoke declaration emission through `pnpm tsc` using direct
-argv execution semantics.
-
-### BDC-TSPKG-014 (covers BUILD-TSPKG-014)
-
-Given target tsconfig files for `react`, `preact`, `solid`, `vite`, and
-`create`  
-When tsconfig compiler-option contracts are inspected  
-Then shared base-extension and adapter-specific JSX dialect option requirements
-MUST match contract.
-
-## 5.11 Dev Server Control-Plane Scenarios
+## 5.10 Dev Server Control-Plane Scenarios
 
 ### BDC-DEV-001 (covers BUILD-DEV-001)
 
@@ -2490,19 +2404,6 @@ Then queue output MUST preserve upgrade/supersede semantics.
 Given readiness checks for app/Vite URLs  
 When targets are unavailable  
 Then wait MUST terminate within bounded timeout budget rather than hanging.
-
-### BDC-DEV-009 (covers BUILD-DEV-009)
-
-Given `WAVE_DEV_EXIT_AFTER_MS` set to positive value  
-When dev loop idles awaiting restart  
-Then process MUST self-exit after configured duration.
-
-### BDC-DEV-014 (covers BUILD-DEV-014)
-
-Given `WAVE_DEV_EXIT_AFTER_MS` is absent, non-integer, `0`, or negative  
-When dev loop startup parses override  
-Then loop MUST continue with normal restart-channel waiting semantics and MUST
-not trigger timer-driven auto-exit.
 
 ### BDC-DEV-015 (covers BUILD-DEV-015)
 
@@ -2659,11 +2560,12 @@ insert/replace/remove semantics.
 ### BDC-DEV-030 (covers BUILD-DEV-030)
 
 Given refresh script receives `revalidate` payload under helper-present and
-helper-absent variants  
+helper-rejecting, and helper-absent variants  
 When handler behavior is observed  
 Then helper-present case MUST invoke `window.__waveRevalidate` and remove
-overlay after successful completion, and helper-absent case MUST log error and still
-remove overlay.
+overlay after successful completion, helper-rejecting case MUST log failure and
+still remove overlay, and helper-absent case MUST log error and still remove
+overlay.
 
 ### BDC-DEV-031 (covers BUILD-DEV-031)
 
@@ -2672,13 +2574,71 @@ When handlers are exercised
 Then close/error variants MUST trigger reload fallback, and unload variant MUST
 suppress close-triggered reload before socket close.
 
+### BDC-DEV-032 (covers BUILD-DEV-032)
+
+Given Vite startup failure on initial dev start and on cycle-restart path  
+When dev control loop behavior is observed  
+Then failure MUST be surfaced as actionable dev-loop failure state and runtime
+MUST avoid reporting/using a false-ready Vite state until startup succeeds.
+
+### BDC-DEV-033 (covers BUILD-DEV-033)
+
+Given build loop is paused in retry-wait after a failure and restart requests
+arrive with differing strengths  
+When retry iteration resumes  
+Then resumed iteration MUST honor strongest effective restart request flags
+(`recompileGo` and config-restart intent) rather than treating retry requests
+as equivalent wake-up signals.
+
+### BDC-DEV-034 (covers BUILD-DEV-034)
+
+Given app binary startup is forced into process-start failure on a dev iteration  
+When control-loop behavior is observed  
+Then failure MUST enter actionable startup-failure handling and runtime MUST NOT
+proceed as if app is running (no false-success running iteration semantics)
+until startup succeeds.
+
+### BDC-DEV-035 (covers BUILD-DEV-035)
+
+Given reload path requests app and/or Vite readiness waits and readiness
+polling times out  
+When orchestration outcome is observed  
+Then control flow MUST enter explicit readiness-failure handling and MUST NOT
+continue as if readiness gate succeeded for the timed-out dependency.
+
+### BDC-DEV-036 (covers BUILD-DEV-036)
+
+Given active dev config includes framework-injected watch/ignore/public-map,
+schema-extension, and framework build-hook fields before reload  
+When post-first-run config reload succeeds and next build iteration executes  
+Then all framework-injected fields MUST remain present in active config, and
+schema emission plus framework hook invocation behavior MUST remain intact.
+
+### BDC-DEV-037 (covers BUILD-DEV-037)
+
+Given restart-wait phase fixtures for override env unset/invalid/non-positive,
+positive-without-restart, and positive-with-restart-before-timeout  
+When control-loop outcomes are observed  
+Then wait behavior MUST match override contract: disabled timer for invalid
+inputs, clean success exit on positive timeout, and restart-precedence when a
+restart request arrives before timer expiration.
+
+### BDC-DEV-038 (covers BUILD-DEV-038)
+
+Given equivalent fixtures for alias call path (`MustGetAppPort`) and canonical
+call path (`MustGetPort`) across dev/non-dev and latched/non-latched variants  
+When outputs and env side effects are compared  
+Then alias path MUST remain strictly equivalent to canonical helper behavior.
+
 ## 5.12 Watch/Event Processing Scenarios
 
 ### BDC-EVT-001 (covers BUILD-EVT-001)
 
 Given duplicate fsnotify path events within one debounce window  
 When batch executes  
-Then path MUST be processed once.
+Then path MUST be processed once while preserving content-change signal
+equivalence for that path (for example trailing chmod-only events MUST NOT mask
+earlier write/create/remove/rename events in the same batch).
 
 ### BDC-EVT-002 (covers BUILD-EVT-002)
 
@@ -2713,7 +2673,7 @@ Then hook/build/app/browser phases MUST execute in required order.
 ### BDC-EVT-007 (covers BUILD-EVT-007)
 
 Given multi-event batch with at least one hard-reload requirement  
-When processing runs  
+When processing runs without all-run-on-change-only short-circuit finalization  
 Then app stop MUST happen once up front and browser phase MUST emit once.
 
 ### BDC-EVT-008 (covers BUILD-EVT-008)
@@ -2735,7 +2695,15 @@ When event processing runs
 Then standard build phase MUST be skipped while callback-returned refresh
 actions (restart/reload/wait flags) remain effective in final event outcome,
 and callback hooks configured for no-wait/pre/concurrent/post timing MUST still
-execute.
+execute, and app process MUST remain running when callback actions do not
+request restart.
+
+Given mixed event batch containing both `RunOnChangeOnly=true` and
+non-`RunOnChangeOnly` entries  
+When per-entry callback phases execute  
+Then callback hooks for the run-on-change-only entry MUST still execute for
+supported timing phases (no-wait/pre/concurrent/post) and MUST NOT be skipped
+just because another batch entry requires standard build work.
 
 ### BDC-EVT-011 (covers BUILD-EVT-011)
 
@@ -2756,7 +2724,15 @@ When batch processing runs
 Then build phase MUST be skipped while merged callback refresh actions
 (restart/reload/wait flags) remain effective in final batch outcome, and
 callback hooks for supported timing phases across batch entries MUST still
-execute before outcome finalization.
+execute before outcome finalization, and app process MUST not be left stopped
+when merged callback actions do not request restart.
+
+Given mixed multi-event batch that includes at least one run-on-change-only
+entry but not all entries are run-on-change-only  
+When batch processing runs  
+Then run-on-change-only entries MUST still execute callback hooks for supported
+timing phases as per-entry behavior, even though standard build work is
+performed for other entries.
 
 ### BDC-EVT-014 (covers BUILD-EVT-014)
 
@@ -2795,6 +2771,54 @@ Given watcher loop shutdown path is inspected
 When loop exits  
 Then deferred debouncer stop MUST run and clear timer/pending-event state so no
 post-shutdown callback flush is possible.
+
+### BDC-EVT-019 (covers BUILD-EVT-019)
+
+Given event-driven processing is forced into blocking-hook failures and
+build-unit failures across single-event and batched variants  
+When event-flow outcomes are observed  
+Then failure MUST become actionable event-flow failure state and success
+browser-signaling payloads for that failed cycle MUST NOT be emitted.
+
+### BDC-EVT-020 (covers BUILD-EVT-020)
+
+Given concurrent-no-wait callbacks/commands fail during event processing  
+When hook outcomes and event-flow progression are observed  
+Then failures MUST be warning-diagnostic only and MUST NOT block later blocking
+event phases.
+
+### BDC-EVT-021 (covers BUILD-EVT-021)
+
+Given hook command entries include literal `DevBuildHook`, explicit command
+strings, and empty resolved command values  
+When pre/concurrent/post/no-wait execution paths resolve commands  
+Then `DevBuildHook` entries MUST execute current `Core.DevBuildHook`, explicit
+commands MUST remain verbatim, and empty resolved command values MUST skip
+command execution.
+
+### BDC-EVT-022 (covers BUILD-EVT-022)
+
+Given one event with empty path and one `other`-type event with no watched-file
+match  
+When classification/filtering is applied before event handling  
+Then both events MUST be treated as ignored and MUST NOT enter downstream event
+processing flow.
+
+### BDC-EVT-023 (covers BUILD-EVT-023)
+
+Given concurrent hook fixtures that return mixed restart actions (including
+`RecompileGo=true` and `RecompileGo=false`) under varying goroutine completion
+orders  
+When effective restart decision is observed for single-event and batch paths  
+Then outcome MUST be deterministic and preserve strongest restart strength
+(`RecompileGo=true` wins over weaker restart actions).
+
+### BDC-EVT-024 (covers BUILD-EVT-024)
+
+Given watched-hook fixtures spanning explicit post/concurrent/concurrent-no-wait
+timings plus empty/unknown timing values  
+When hook sorting and subsequent phase execution are observed  
+Then bucket assignment and default-pre timing behavior MUST match contract.
 
 ## 5.13 Static Asset and Filemap Scenarios
 
@@ -3068,6 +3092,16 @@ When `ParseConfigFile` runs
 Then unreadable case MUST fail with read-class error, and readable case MUST
 match `ParseConfig`-equivalent output semantics.
 
+### BDC-VAL-006 (covers BUILD-VAL-006)
+
+Given parsed-config fixtures covering root/non-root public path prefix,
+missing/present watch root, missing/present healthcheck endpoint, and
+empty/non-empty CSS entries  
+When helper outputs are sampled  
+Then normalization/default behavior for `PublicPathPrefix()`, `WatchRoot()`,
+`HealthcheckEndpoint()`, `CriticalCSSEntry()`, and `NonCriticalCSSEntry()`
+MUST match contract.
+
 ## 6. Conformance Test Guidance
 
 Build/dev conformance suites SHOULD:
@@ -3079,11 +3113,10 @@ Build/dev conformance suites SHOULD:
 5. Include route DSL negative cases (dynamic module expressions, missing modules).
 6. Validate Vite integration contracts (naming prefix, transform rewriting, invalidation endpoint).
 7. Validate deterministic behavior (TS write skipping and build ID sensitivity to declared inputs).
-8. Validate TypeScript packaging contracts in `internal/scripts/buildts` (warnings, externals, solid plugin path, test/bench purge).
-9. Validate dev control-plane invariants (single-instance lock, restart queue upgrade semantics, config-restart ordering, readiness timeout bounds).
-10. Validate watch/event semantics (classification priority, hook phase ordering, run-on-change-only behavior, Vite-invalidate fallback).
-11. Validate static/filemap contracts (prehashed/nohash handling, granular delta behavior, deterministic TS/JSON filemap outputs, atomic-write discipline).
-12. Track traceability with IDs (`BUILD-*`, `BDC-*`) in CI output.
+8. Validate dev control-plane invariants (single-instance lock, restart queue upgrade semantics, config-restart ordering, readiness timeout bounds).
+9. Validate watch/event semantics (classification priority, hook phase ordering, run-on-change-only behavior, Vite-invalidate fallback).
+10. Validate static/filemap contracts (prehashed/nohash handling, granular delta behavior, deterministic TS/JSON filemap outputs, atomic-write discipline).
+11. Track traceability with IDs (`BUILD-*`, `BDC-*`) in CI output.
 
 ## 7. Relation to Other Specs
 

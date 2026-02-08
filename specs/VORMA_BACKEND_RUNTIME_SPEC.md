@@ -851,6 +851,21 @@ When route reload succeeds and resulting route set still includes those patterns
 Then subsequent requests to surviving patterns MUST continue to execute the same
 task handlers (handler bindings MUST be preserved across route-tree rebuild).
 
+### BR-DEV-009: Reload Failure Must Preserve Prior Runtime Snapshot
+
+Given dev mode and a reload operation fails (for example invalid stage artifact
+or template parse failure)  
+When `/__vorma/reload-routes` or `/__vorma/reload-template` returns failure  
+Then previously active route/template runtime state MUST remain in effect (failed
+reload MUST be non-mutating for authoritative in-memory snapshot state).
+
+Failure-preservation scope:
+
+- failed route reload MUST NOT partially overwrite active `_paths`, `buildID`,
+  route-manifest reference, or live route-registry state,
+- failed template reload MUST NOT replace the currently active parsed root
+  template.
+
 ## 4.12 Static Asset Middleware Contract
 
 ### BR-STATIC-001: `ServeStatic` Intercept vs Pass-Through Contract
@@ -1012,6 +1027,45 @@ used by `GetPublicFileMapElements()` helper payload.
 Given filemap details are unavailable  
 When hash accessor is read  
 Then helper MUST return empty output.
+
+### BR-ASSET-005: Public URL Resolver Contract (`GetPublicURL`)
+
+Given `GetPublicURL(original)` is called with `original` using `data:` scheme  
+When resolver runs  
+Then resolver MUST return `original` unchanged (no filemap lookup, no prefix
+rewrite).
+
+Given filemap lookup has an entry for `original` under configured public path
+prefix  
+When resolver runs  
+Then resolver MUST return leading-slash URL for `<PublicPathPrefix> +
+<mapped-dist-name>`.
+
+Given filemap lookup key is absent or filemap loading fails  
+When resolver runs  
+Then resolver MUST return leading-slash fallback URL for `<PublicPathPrefix> +
+<original-relative-path>` and MUST NOT panic.
+
+### BR-ASSET-006: Embedded Wave FS Source and Mode-Cache Contract
+
+Given runtime is in dev mode  
+When base filesystem helper initializes  
+Then helper MUST read from on-disk dist-static root (`Dist.Static()`) and MUST
+NOT require embedded `DistStaticFS`.
+
+Given runtime is in non-dev mode and `DistStaticFS` is nil  
+When base filesystem helper initializes  
+Then helper MUST fail with production-mode missing-fs error, and dependent
+filesystem/filemap helpers MUST surface corresponding failure semantics.
+
+Mode-cache semantics:
+
+- in dev mode, helper-backed values in this section (`GetBaseFS`, `GetPublicFS`,
+  `GetPrivateFS`, `GetPublicFileMap`, `GetPublicURL`, critical-css helpers,
+  stylesheet helpers, and filemap URL/elements/hash helpers) MUST be computed
+  from current filesystem state on each access (no process-lifetime memoization),
+- in non-dev mode, these helper values MAY be memoized per process after first
+  access (including memoizing first computed error state).
 
 ## 5. Executable Conformance Scenario Catalog
 
@@ -1657,6 +1711,14 @@ When `/__vorma/reload-routes` succeeds and those routes are requested
 Then matched handlers MUST still execute (no dropped handler bindings due to
 route-tree rebuild).
 
+### BRC-DEV-009 (covers BR-DEV-009)
+
+Given dev mode with a known-good active route/template state and a subsequent
+reload request that fails (invalid artifact/template)  
+When failure response is observed and normal requests continue afterward  
+Then runtime MUST continue serving the previously active route/template behavior
+without partial adoption of failed reload inputs.
+
 ## 5.12 Static Asset Middleware Scenarios
 
 ### BRC-STATIC-001 (covers BR-STATIC-001)
@@ -1758,6 +1820,23 @@ Given fixture variants with and without resolvable filemap details
 When `GetPublicFileMapScriptSha256Hash()` is sampled  
 Then present-details case MUST match generated filemap module-script hash and
 absent-details case MUST return empty output.
+
+### BRC-ASSET-005 (covers BR-ASSET-005)
+
+Given fixture variants for `GetPublicURL` input as `data:` URL, filemap-hit
+asset key, filemap-miss asset key, and filemap-load-failure state  
+When resolver output is sampled  
+Then data-url passthrough, mapped-url resolution, fallback-url resolution, and
+non-panicking failure fallback behavior MUST match contract.
+
+### BRC-ASSET-006 (covers BR-ASSET-006)
+
+Given dev-mode and non-dev-mode fixture variants with controlled dist-static
+filesystem setup (including nil `DistStaticFS` in non-dev)  
+When base/public/private/filemap helper calls are observed across repeated
+accesses and on-disk mutation between calls  
+Then fs-source selection, missing-fs failure behavior, and mode-specific
+recompute-vs-memoize semantics MUST match contract.
 
 ## 6. Conformance Test Suite Guidance
 

@@ -1,273 +1,154 @@
-# Vorma Spec Template and RFC Process Specification
+# Vorma Spec Workflow (Sub-1.0)
 
 Status: Draft  
-Last Updated: 2026-02-07  
-Applies To: Creation, update, review, and governance of Vorma specifications
+Last Updated: 2026-02-08  
+Applies To: Creation, update, review, and tracking of Vorma specs before 1.0
 
 ## 1. Why This Spec Exists
 
-This document standardizes how Vorma specs are authored and changed.
+This document defines a lightweight process for evolving Vorma specs while the
+framework is still pre-1.0.
 
 It exists to:
 
-- keep specs structurally consistent,
-- make behavior changes traceable and reviewable,
-- ensure specs remain usable as test-generation sources.
+- keep specs useful for large refactors and conformance testing,
+- preserve proposal/final visibility,
+- avoid process overhead and historical-document buildup.
 
 ## 2. Conformance Boundaries
 
 ### 2.1 Normative Terms
 
-The terms **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
+The terms **MUST** and **MUST NOT** are normative.
 
 ### 2.2 Scope
 
-This spec governs process and format for spec documents. It does not define
-runtime/build/frontend behavior itself.
+This spec governs spec workflow and tracking only. Runtime/build/frontend/wire
+behavior is defined in their domain specs.
 
-## 3. Spec Document Classification Model
+## 3. Sub-1.0 Operating Model
 
-### PROC-CLASS-001: Spec Classes
+### PROC-MODE-001: Fast-First Mode
 
-Vorma spec documents MUST be explicitly classed as one of:
+Until Vorma reaches 1.0, spec workflow MUST prioritize speed and clarity over
+formal governance ceremony.
 
-- **Conformance spec**: normative requirement catalog for black-box behavior,
-- **Supporting reference**: dependency map/context doc that informs conformance,
-- **Process/governance spec**: meta-rules for evolving spec system.
+### PROC-MODE-002: Minimal Status Model
 
-### PROC-CLASS-002: Class Declaration
+Spec workflow status MUST map onto:
 
-Each spec SHOULD declare class intent near document header/scope section.
-
-### PROC-CLASS-003: Conformance Priority
-
-When process decisions conflict between reference notes and conformance specs,
-conformance spec requirements take precedence.
-
-## 4. Required Spec Template
-
-### PROC-TPL-001: Required Header Fields
-
-Every spec MUST include:
-
-- title,
-- status,
-- last-updated date,
-- applies-to scope line.
-
-### PROC-TPL-002: Required Top-Level Sections
-
-Conformance-oriented specs SHOULD include at least:
-
-1. why spec exists,
-2. conformance boundaries,
-3. terminology (if needed),
-4. requirement catalog,
-5. conformance test guidance,
-6. relation-to-other-specs links.
-
-### PROC-TPL-003: Requirement ID Format
-
-Normative requirements MUST use stable IDs with domain prefix, e.g.:
-
-- `BR-*`
-- `WIRE-*`
-- `BUILD-*`
-- `FE-*`
-- `SEC-*`
-- `TEST-*`
-- `OBS-*`
-- `PERF-*`
-- `REL-*`
-- `TERM-*`
-- `PROC-*`
-- `VER-*`
-- `API-*`
-
-### PROC-TPL-004: Requirement Wording Pattern
-
-Normative requirements SHOULD use scenario format:
-
-- Given …
-- When …
-- Then …
-
-or an equivalent explicit condition-action-outcome structure.
-
-### PROC-TPL-005: One Requirement per ID
-
-Each requirement ID MUST represent one logically atomic contract statement.
-
-### PROC-TPL-006: Stable IDs Over Time
-
-Existing requirement IDs MUST NOT be repurposed for different semantics.
-
-If semantics change materially, add new ID and deprecate old ID.
-
-### PROC-TPL-007: Absolute Path References
-
-Cross-spec references SHOULD use absolute workspace paths for unambiguous
-navigation.
-
-## 5. RFC and Change Lifecycle
-
-## 5.1 Status Model
-
-### PROC-RFC-001: Status Values
-
-Spec status values are:
-
-- `Draft`
 - `Proposed`
-- `Accepted`
-- `Deprecated`
-- `Superseded`
+- `Final`
+- `Dropped`
 
-### PROC-RFC-002: Draft Entry Rule
+Transition note:
 
-New specs and substantial rewrites MUST enter as `Draft` unless explicitly
-approved for direct promotion.
+- legacy `Draft` MAY be treated as equivalent to `Proposed` while existing
+  specs are gradually normalized.
 
-### PROC-RFC-003: Accepted Promotion Criteria
+### PROC-MODE-003: In-Place Evolution
 
-A spec SHOULD move to `Accepted` when:
+Behavior/spec changes MUST be made directly in the current spec files (in
+place). Separate long-lived RFC history documents are not required.
 
-- requirement language is sufficiently testable,
-- traceability plan exists for key requirements,
-- review concerns are resolved or explicitly tracked.
+### PROC-MODE-004: Current Truth Over Historical Archive
 
-### PROC-RFC-004: Supersession Rule
+When a proposal is superseded or completed, outdated proposal text, temporary
+alternatives, and obsolete process notes SHOULD be deleted instead of archived.
 
-When a spec is superseded, it MUST point to replacement doc(s) and preserve
-history context.
+### PROC-MODE-005: Proposal vs Final Visibility
 
-## 5.2 Change Types and Required Actions
+At any point, proposal/final state MUST be visible from:
 
-### PROC-CHANGE-001: Editorial Change
+- the per-spec `Status:` header, and
+- checklist/traceability artifacts.
 
-Editorial-only changes (wording/typos/clarity without semantic change) MAY skip
-full RFC flow but SHOULD still update date if meaningful.
+## 4. Required Tracking Artifacts
 
-### PROC-CHANGE-002: Behavioral Clarification Change
+### PROC-TRACK-001: Checklist Is Work-Progress Canon
 
-Clarification that narrows ambiguity without changing expected behavior SHOULD:
+`/Users/sjc/__code/river/specs/SPECS_CHECKLIST.md` MUST remain the canonical
+record of done vs remaining spec work.
 
-- update relevant requirement text,
-- confirm no traceability remap required.
+### PROC-TRACK-002: Traceability Matrix Is Coverage Canon
 
-### PROC-CHANGE-003: Behavioral Contract Change
+`/Users/sjc/__code/river/specs/VORMA_TRACEABILITY_MATRIX.md` MUST remain the
+canonical requirement-to-scenario/test coverage record.
 
-Behavioral contract changes MUST include:
+### PROC-TRACK-003: Conformance Issues Are Divergence Canon
 
-- requirement ID update/new IDs,
-- impacted spec cross-links,
-- testing-strategy traceability update,
-- compatibility/release impact note.
+`/Users/sjc/__code/river/specs/VORMA_CONFORMANCE_ISSUES.md` MUST track known
+spec/implementation divergences and bug candidates.
 
-### PROC-CHANGE-004: Breaking-Sensitive Change Annotation
+### PROC-TRACK-004: New Requirement IDs Need Matrix Rows
 
-If change affects public compatibility surface, update MUST call out breaking
-risk and required migration/deprecation handling.
+When new conformance-domain requirement IDs are added (`BR-*`, `WIRE-*`,
+`BUILD-*`, `FE-*`), corresponding traceability rows MUST be added in the same
+change set.
 
-## 5.3 Review and Approval Workflow
+## 5. Lightweight Change Workflow
 
-### PROC-REVIEW-001: Required Review Dimensions
+### PROC-FLOW-001: Proposal Entry
 
-Spec review SHOULD evaluate:
+New or changed behavior contracts MUST first be written in specs with
+testable normative wording and `Status: Proposed` where appropriate.
 
-- technical correctness,
-- testability (black-box feasibility),
-- compatibility impact,
-- ambiguity/resolution quality,
-- traceability impact.
+### PROC-FLOW-002: Finalization Criteria
 
-### PROC-REVIEW-002: Open Questions Tracking
+A proposal is ready for `Final` when all are true:
 
-Unresolved design questions SHOULD be listed explicitly in the spec PR/discussion
-thread until resolved.
+- normative behavior is explicit and testable,
+- traceability rows exist,
+- known implementation divergence is either resolved or logged as an open
+  conformance issue.
 
-### PROC-REVIEW-003: No Orphan Behavioral Changes
+### PROC-FLOW-003: No Extra Ceremony Requirement
 
-Behavior-changing code PRs SHOULD NOT merge without corresponding spec update
-when affected behavior is in scope of normative docs.
+For sub-1.0 work, separate governance artifacts (meeting notes, approval logs,
+or standalone RFC thread docs) MUST NOT be required to finalize spec changes.
 
-## 6. Requirement ID Management Rules
+### PROC-FLOW-004: Cleanup on Finalization
 
-### PROC-ID-001: Prefix Ownership
+When promoting content to `Final`, obsolete proposal alternatives and temporary
+process scaffolding SHOULD be removed in the same or immediate follow-up change.
 
-Each domain prefix SHOULD be owned by one primary spec to reduce accidental ID
-collisions.
+## 6. Requirement ID Rules
 
-### PROC-ID-002: Sequential Monotonic IDs
+### PROC-ID-001: Prefix Families
 
-Within a prefix family, new IDs SHOULD be appended monotonically rather than
-reindexing existing IDs.
+Requirement IDs MUST use domain prefixes (for example `BR-*`, `WIRE-*`,
+`BUILD-*`, `FE-*`, `API-*`, `PROC-*`).
 
-### PROC-ID-003: Deprecation Annotation
+### PROC-ID-002: No Semantic Repurposing
 
-Deprecated requirements SHOULD remain in document history with clear deprecation
-annotation instead of silent deletion where traceability matters.
+An existing requirement ID MUST NOT be repurposed to mean a different contract.
 
-### PROC-ID-004: Cross-Spec Link Integrity
+### PROC-ID-003: Append-Only Numbering
 
-If a requirement ID is moved/replaced, all known cross-references SHOULD be
-updated in same change set.
+Within a prefix family, new IDs SHOULD be appended monotonically instead of
+reindexing older IDs.
 
-## 7. Spec-to-Test Traceability Process
+### PROC-ID-004: Replace-or-Remove Sync Rule
 
-### PROC-TRACE-001: Test Strategy Alignment
+When requirements are replaced or removed, checklist/traceability/conformance
+issue artifacts MUST be updated in the same change set. Historical tombstones
+are optional during sub-1.0.
 
-Conformance specs MUST remain compatible with
-`/Users/sjc/__code/river/specs/VORMA_TESTING_STRATEGY_SPEC.md` traceability
-expectations.
+## 7. Post-1.0 Placeholder
 
-### PROC-TRACE-002: Coverage Lifecycle
+### PROC-V1-001: Governance Tightening May Be Introduced at 1.0
 
-New requirement IDs SHOULD be accompanied by initial coverage status (`planned`,
-`partial`, `implemented`) in project traceability artifacts.
+After 1.0, Vorma MAY adopt stronger governance (for example historical RFC
+retention and stricter compatibility process). Those policies are out of scope
+for this sub-1.0 workflow spec.
 
-### PROC-TRACE-003: Removed Requirement Handling
+## 8. Relation to Other Specs
 
-If a requirement is removed/superseded, associated tests MUST be updated or
-explicitly marked obsolete.
-
-## 8. Document Hygiene Rules
-
-### PROC-HYGIENE-001: Keep Spec Self-Contained
-
-Specs SHOULD avoid requiring deep implementation source diving to understand
-contract intent.
-
-### PROC-HYGIENE-002: Distinguish Normative vs Guidance
-
-Normative requirements and non-blocking guidance MUST be clearly separated.
-
-### PROC-HYGIENE-003: Avoid Overfitting to Current Implementation
-
-Specs MUST express externally observable behavior and invariants, not current
-private call graph details.
-
-### PROC-HYGIENE-004: Keep Supporting Docs Secondary
-
-Supporting reference docs MUST NOT become the only source for critical
-conformance requirements.
-
-## 9. Standard Spec Skeleton (Reference)
-
-Recommended skeleton:
-
-1. Title / Status / Last Updated / Applies To  
-2. Why This Spec Exists  
-3. Conformance Boundaries  
-4. Terminology (optional)  
-5. Requirement Catalog (`PREFIX-*`)  
-6. Conformance Test Guidance  
-7. Relation to Other Specs
-
-## 10. Relation to Other Specs
-
-- Domain terminology: `/Users/sjc/__code/river/specs/VORMA_DOMAIN_MODEL_TERMINOLOGY_SPEC.md`
-- Versioning/compatibility: `/Users/sjc/__code/river/specs/VORMA_VERSIONING_COMPATIBILITY_SPEC.md`
 - Public API map: `/Users/sjc/__code/river/specs/VORMA_PUBLIC_API_SURFACE_SPEC.md`
-- Testing strategy: `/Users/sjc/__code/river/specs/VORMA_TESTING_STRATEGY_SPEC.md`
+- Testing strategy:
+  `/Users/sjc/__code/river/specs/VORMA_TESTING_STRATEGY_SPEC.md`
+- Traceability matrix:
+  `/Users/sjc/__code/river/specs/VORMA_TRACEABILITY_MATRIX.md`
+- Conformance issues:
+  `/Users/sjc/__code/river/specs/VORMA_CONFORMANCE_ISSUES.md`
 - Checklist: `/Users/sjc/__code/river/specs/SPECS_CHECKLIST.md`

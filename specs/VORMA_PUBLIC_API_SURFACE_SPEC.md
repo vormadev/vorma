@@ -1,7 +1,7 @@
 # Vorma Public API Surface Specification
 
 Status: Draft  
-Last Updated: 2026-02-07  
+Last Updated: 2026-02-08  
 Applies To: Public Go and npm API surfaces exposed by Vorma
 
 ## 1. Why This Spec Exists
@@ -9,42 +9,42 @@ Applies To: Public Go and npm API surfaces exposed by Vorma
 This document defines Vorma's public API map so that:
 
 - refactors can preserve behavior without reading implementation internals,
-- compatibility-sensitive changes are visible early,
+- API-surface changes are visible early,
 - conformance tests can be generated from explicit surface contracts.
 
 ## 2. Conformance Boundaries
 
 ### 2.1 Normative Terms
 
-The terms **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
+The terms **MUST** and **MUST NOT** are normative.
 
 ### 2.2 Scope
 
-This spec catalogs API surface and change rules. Detailed runtime semantics are
-defined in runtime/build/wire/frontend specs.
+This spec catalogs API surface and API-conformance checks. Detailed runtime
+semantics are defined in runtime/build/wire/frontend specs.
 
-## 3. API Classes and Stability Tiers
+## 3. API Classes
 
 ### API-CLASS-001: Tier Definitions
 
 Publicly exposed surfaces MUST be classified as one of:
 
-- **Tier A (stable Vorma API)**: consumer-facing APIs expected to remain stable
-  across routine releases.
-- **Tier B (interop API)**: exposed surfaces whose core behavior is inherited
-  from kit/wave packages and governed by dedicated interop specs.
-- **Tier C (internal-exported API)**: exported only for framework internals,
-  tooling hooks, or advanced integration; lower stability commitment.
+- **Tier A (core public API)**: documented consumer-facing surfaces that are
+  primary conformance targets.
+- **Tier B (interop API)**: exposed surfaces whose behavior is delegated to
+  kit/wave packages and governed by dedicated interop specs.
+- **Tier C (internal-exported API)**: exported symbols used primarily by
+  framework internals/tooling, included for inventory completeness.
 
 ### API-CLASS-002: Internal Marker Semantics
 
-Identifiers prefixed with `Internal__` (Go) or `__` (TypeScript) are Tier C and
-MAY change without full Tier A compatibility guarantees.
+Identifiers prefixed with `Internal__` (Go) or `__` (TypeScript) MUST be
+classified as Tier C.
 
 ### API-CLASS-003: Promotion Rule
 
 A Tier C API MUST NOT be treated as Tier A unless explicitly promoted in this
-spec and related compatibility docs.
+spec.
 
 ### API-CLASS-004: Interop Ownership Rule
 
@@ -139,7 +139,7 @@ The package MUST expose these type aliases:
 
 For aliased/re-exported symbols, externally observable behavior MUST remain
 compatible with underlying owner packages (for example `mux`, `wave`,
-`vormaruntime`) unless documented breaking change is made.
+`vormaruntime`).
 
 ### API-GO-007: Router Interop Contract
 
@@ -201,7 +201,7 @@ their current callable helper surface:
 
 If any method listed in `API-GO-011` or `API-GO-012` is removed, renamed, or
 semantically re-tiered, the change MUST be treated as explicit API-surface
-change and reflected in this spec and compatibility policy docs.
+change and reflected in this spec and traceability artifacts.
 
 ### API-GO-014: Mutable Return Ownership Rule
 
@@ -211,9 +211,7 @@ values MUST be treated as read-only snapshots from caller perspective.
 Surface contract intent:
 
 - caller mutation of returned collections MUST NOT mutate runtime-authoritative
-  internal state,
-- implementations SHOULD use defensive copy or immutable-view strategies where
-  needed to preserve this contract.
+  internal state.
 
 This applies to accessors in `API-GO-011` and `API-GO-012` that return
 collection-shaped values (for example maps/slices).
@@ -267,7 +265,7 @@ imports.
 ### API-NPM-002: No Root Import Guarantee
 
 Because no `"."` export is declared, consumers MUST NOT rely on `import "vorma"`
-as a stable API contract.
+as an in-scope public API contract for conformance.
 
 ### API-NPM-003: Exported Subpath Inventory
 
@@ -466,7 +464,7 @@ Shape requirements:
 - install loader function for that pattern into runtime client-loader map,
 - support optional dev HMR rerun registration when `reRunOnModuleChange` is
   provided,
-- keep registration failures non-fatal to caller (error MAY be logged),
+- keep registration failures non-fatal to caller (error logging is optional),
 - invoke loader callbacks with `params`, `splatValues`, `signal`, and
   `serverDataPromise` payload contract compatible with
   `/Users/sjc/__code/river/specs/VORMA_FRONTEND_RUNTIME_SPEC.md`
@@ -511,6 +509,19 @@ taking precedence over defaults.
 - absent/non-`"intent"` prefetch value MUST disable prefetch lifecycle and
   retain click-only navigation wiring.
 
+### API-UI-009: Cross-Adapter Alignment Default Rule
+
+For `vorma/react`, `vorma/preact`, and `vorma/solid`, public API shape and
+observable behavior MUST align by default.
+
+Allowed divergence rule:
+
+- differences are allowed only where lower-level framework component/reactivity
+  models require adapter-specific behavior,
+- each allowed divergence MUST be explicitly documented in this spec and/or
+  `/Users/sjc/__code/river/specs/VORMA_FRONTEND_RUNTIME_SPEC.md`,
+- silent adapter drift MUST NOT be treated as acceptable.
+
 ### 6.4 `vorma/vite` Surface
 
 ### API-VITE-001: Default Export Contract
@@ -544,56 +555,38 @@ public, while detailed behavior is defined by kit package contracts.
 ### API-KIT-002: Behavioral Ownership
 
 Behavioral changes in kit-exported subpaths MUST be assessed for Vorma impact
-using the kit interop spec before release.
+using the kit interop spec and reflected in affected Vorma behavior specs.
 
-## 7. API Change Rules
-
-### API-CHANGE-001: Additive Changes
-
-Adding new Tier A API is allowed and SHOULD update:
-
-- this API map spec,
-- compatibility spec,
-- testing traceability artifacts.
-
-### API-CHANGE-002: Removal/Rename Guardrail
-
-Removing or renaming Tier A APIs SHOULD follow deprecation guidance and MUST be
-called out in release notes.
-
-### API-CHANGE-003: Tier C Change Freedom
-
-Tier C APIs MAY change faster, but changes SHOULD still be documented when they
-affect common extension workflows.
-
-### API-CHANGE-004: Interop Change Coordination
-
-Changes touching Tier B APIs MUST include interoperability risk assessment and
-cross-spec updates.
-
-## 8. Conformance Test Guidance
+## 7. API Conformance Checks
 
 ### API-TEST-001: Go Compile-Time Surface Check
 
-Conformance suite SHOULD include compile-time checks that import
+Conformance suite MUST include compile-time checks that import
 `github.com/vormadev/vorma` and reference Tier A symbols.
 
 ### API-TEST-002: npm Subpath Resolution Check
 
-Conformance suite SHOULD verify each documented subpath resolves from published
-package artifacts.
+Conformance suite MUST verify each documented subpath resolves from package
+artifacts under test.
 
 ### API-TEST-003: Type Export Presence Check
 
-Type-level smoke tests SHOULD verify key TypeScript exports for `vorma/client`
+Type-level smoke tests MUST verify key TypeScript exports for `vorma/client`
 and UI adapters remain available.
 
 ### API-TEST-004: API Diff Gate
 
-Release validation SHOULD include API diff checks between baseline and candidate
+API-surface validation MUST include diff checks between baseline and candidate
 for Tier A and Tier B surfaces.
 
-## 9. Relation to Other Specs
+### API-TEST-005: UI Adapter Parity Gate
+
+API-surface validation MUST include adapter parity checks for
+`vorma/react`, `vorma/preact`, and `vorma/solid` so shared exports and behavior
+contracts stay aligned except for explicitly documented adapter-specific
+differences.
+
+## 8. Relation to Other Specs
 
 - Checklist: `/Users/sjc/__code/river/specs/SPECS_CHECKLIST.md`
 - Backend runtime:
@@ -606,7 +599,5 @@ for Tier A and Tier B surfaces.
   `/Users/sjc/__code/river/specs/VORMA_WIRE_CONTRACT_SPEC.md`
 - Kit interop:
   `/Users/sjc/__code/river/specs/VORMA_KIT_INTEROP_SPEC.md`
-- Versioning and compatibility:
-  `/Users/sjc/__code/river/specs/VORMA_VERSIONING_COMPATIBILITY_SPEC.md`
 - Spec process:
   `/Users/sjc/__code/river/specs/VORMA_SPEC_PROCESS_RFC_SPEC.md`

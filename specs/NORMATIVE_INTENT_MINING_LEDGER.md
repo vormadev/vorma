@@ -126,15 +126,15 @@ All files below are legacy/pre-conformance behavior sources.
 - `VERIFIED` | `/Users/sjc/__code/river/internal/framework/_typescript/solid/tsconfig.json`
 - `VERIFIED` | `/Users/sjc/__code/river/internal/framework/_typescript/vite/vite.ts`
 - `VERIFIED` | `/Users/sjc/__code/river/internal/framework/_typescript/vite/tsconfig.json`
-- `VERIFIED` | `/Users/sjc/__code/river/internal/framework/_typescript/create/main.ts`
-- `VERIFIED` | `/Users/sjc/__code/river/internal/framework/_typescript/create/package.json`
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/create/main.ts` | Create-CLI scaffolding/distribution tool source; not Vorma runtime/build/dev-server contract.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/create/package.json` | Create-CLI package metadata; not Vorma runtime/build/dev-server contract.
 - `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/create/pnpm-lock.yaml` | Package-manager lock artifact; no direct Vorma runtime/API contract.
-- `VERIFIED` | `/Users/sjc/__code/river/internal/framework/_typescript/create/tsconfig.json`
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/create/tsconfig.json` | Create-CLI toolchain config; not Vorma runtime/build/dev-server contract.
 
-## E) Build Packaging Scripts (`internal/scripts/buildts`)
+## E) Build Packaging Scripts (`internal/scripts/buildts`, Out-of-Scope)
 
-- `VERIFIED` | `/Users/sjc/__code/river/internal/scripts/buildts/main.go`
-- `VERIFIED` | `/Users/sjc/__code/river/internal/scripts/buildts/build-solid.mjs`
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/scripts/buildts/main.go` | TS package/distribution build pipeline; excluded from Vorma runtime/build/dev-server conformance scope.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/scripts/buildts/build-solid.mjs` | TS package/distribution helper script; excluded from Vorma runtime/build/dev-server conformance scope.
 
 ## F) Wave Tooling Source (`wave/tooling/*.go`)
 
@@ -329,7 +329,7 @@ All files below are legacy/pre-conformance behavior sources.
 ## I) Additional Vorma Source Domains (Coverage-Reconciliation Expansion)
 
 These rows were added after reconciling the ledger against repository domains
-used by Vorma runtime/build/release behavior to avoid silent omissions.
+used by Vorma runtime/build behavior to avoid silent omissions.
 
 ### I.1) Public Root and Client Entrypoints
 
@@ -357,15 +357,50 @@ used by Vorma runtime/build/release behavior to avoid silent omissions.
 - `VERIFIED` | `/Users/sjc/__code/river/vormabuild/configschema.go`
 - `VERIFIED` | `/Users/sjc/__code/river/vormabuild/fs_to_hash.go`
 
-### I.4) Bootstrap Runtime (`bootstrap/*.go`)
+### I.4) Bootstrap Runtime (`bootstrap/*.go`, Out-of-Scope)
 
-- `VERIFIED` | `/Users/sjc/__code/river/bootstrap/bootstrap.go`
-- `VERIFIED` | `/Users/sjc/__code/river/bootstrap/utils.go`
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/bootstrap.go` | App-scaffold generation runtime; not Vorma runtime/build/dev-server contract.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/utils.go` | App-scaffold helper runtime; not Vorma runtime/build/dev-server contract.
+
+### I.4a) Bootstrap Template/Scaffold Assets
+
+These files define generated scaffold app/distribution content and are outside
+Vorma runtime/build/dev-server normative behavior scope.
+
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/assets/favicon.svg` | Scaffold asset template.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/api_proxy_ts_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/backend_src_router_router_go_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/backend_static_entry_go_html_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/backend_wave_dev_go_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/backend_wave_prod_go_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/cmd_app_main_go_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/cmd_build_main_go_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/dist_static_keep_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/dockerfile_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_api_client_ts_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_app_utils_tsx_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_css_tailwind_css_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_entry_tsx_preact_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_entry_tsx_react_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_entry_tsx_solid_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_home_tsx_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_links_tsx_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_root_tsx_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_routes_ts_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/frontend_vite_d_ts_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/gitignore_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/main_critical_css_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/main_css_str.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/package_json_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/ts_config_json_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/vercel_json_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/vite_config_ts_tmpl.txt` | Scaffold template source.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/bootstrap/tmpls/wave_config_json_tmpl.txt` | Scaffold template source.
 
 ### I.5) Conformance Suite Files (Spec-Validation Harness)
 
 These are post-spec conformance harness files, not legacy truth-mining inputs or
-runtime/build/release implementation sources.
+runtime/build implementation sources.
 
 - `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/client/src/client.asset_conformance.test.ts` | Conformance harness.
 - `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/client/src/client.component_conformance.test.ts` | Conformance harness.
@@ -385,7 +420,7 @@ runtime/build/release implementation sources.
 
 ### I.6) Ancillary Package Artifacts
 
-- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/create/.gitignore` | Ancillary package artifact; not normative runtime/build/release behavior.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/internal/framework/_typescript/create/.gitignore` | Ancillary package artifact; not normative runtime/build behavior.
 
 ## J) Supporting Utility Packages Used by Runtime/Build APIs (`lab/*`)
 

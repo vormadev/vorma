@@ -173,6 +173,9 @@ matched patterns.
 - Mount root behavior
 - Mount-root normalization behavior (leading slash + trailing slash canonical form;
   root-only mount resolves to empty prefix)
+- `MountRoot(...)` helper argument semantics:
+  zero args returns canonical mount root, one arg appends via path join, and
+  additional args beyond the first are ignored
 - Static-over-dynamic precedence for equivalent candidates
 - Splat decoding behavior (URL-decoded segments; empty splat represented as `[""]`)
 - HTTP middleware nesting order: global (outermost), then method-level, then

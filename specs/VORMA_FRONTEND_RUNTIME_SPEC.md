@@ -261,6 +261,13 @@ When `__getVormaClientGlobal().get(key)` or `__getVormaClientGlobal().set(key, v
 Then the accessor call MUST fail synchronously (throw) and MUST NOT synthesize
 or auto-install a fallback global object.
 
+### FE-CTX-010: Effective Error Tie-Break Must Prefer Server Error Payload
+
+Given both server and client effective error indices exist and are equal  
+When effective error is derived  
+Then runtime MUST keep that shared index and MUST choose the server-side error
+payload as effective error message source for that tie case.
+
 ## 4.3 Navigation State Machine and Status
 
 ### FE-NAV-001: Supported Navigation Types
@@ -494,6 +501,23 @@ targets `U`
 When prefetch begin path runs  
 Then runtime MUST return the existing pending-revalidation control and MUST NOT
 create a separate prefetch control or duplicate fetch.
+
+### FE-NAV-020: Revalidation Target Must Canonicalize to Current Document URL
+
+Given revalidation navigation begin path runs (including direct
+`beginNavigation({ navigationType: "revalidation", ... })` usage)  
+When runtime constructs/records the revalidation target  
+Then target URL MUST be canonicalized to current `window.location.href` and MUST
+NOT use a caller-provided alternate `href`.
+
+Canonicalization invariants:
+
+- revalidation request URL construction MUST preserve the current document query
+  string and then apply/overwrite `vorma_json=<build id>` semantics from
+  `FE-FETCH-001`/`FE-FETCH-028`,
+- pending revalidation entry identity/keying MUST be based on the canonical
+  current-document URL, enabling same-document coalescing semantics from
+  `FE-NAV-008`.
 
 ## 4.4 Request Construction, Redirects, and Build ID Tracking
 
@@ -1578,6 +1602,18 @@ When helper wiring is created
 Then runtime MUST create prefetch-capable handlers and use prefetch lifecycle
 (`start`/`stop`/click-upgrade) semantics for that link.
 
+### FE-LINK-019: Prefetch Stop Must Cancel Pending Begin After Repeated Starts
+
+Given a single prefetch handler receives repeated `start()` calls before prefetch begin executes  
+When pending scheduling state is observed  
+Then handler MUST retain at most one pending begin timer (no stacked begin
+timers for the same lifecycle).
+
+Given repeated `start()` calls were issued and `stop()` is called before begin executes  
+When the original delay window elapses  
+Then prefetch MUST NOT begin and no fetch/navigation work for that handler
+lifecycle MUST start.
+
 ## 4.11 History and Scroll Persistence Contract
 
 ### FE-SCROLL-001: Scroll Storage Keys
@@ -1702,6 +1738,19 @@ When init evaluates refresh restore path
 Then runtime MUST NOT consume/remove the stored refresh entry for that skip
 path.
 
+### FE-SCROLL-013: Scroll Save Trigger Boundary in History Listener
+
+Given custom history listener receives update where action/path/search is not a
+same-document `POP`  
+When listener executes  
+Then runtime MUST save current scroll position for the last-known location key
+before subsequent history-processing branches run.
+
+Given listener receives same-document `POP` update (same pathname and search as
+last-known location)  
+When listener executes  
+Then this pre-branch `saveScrollState()` path MUST be skipped.
+
 ## 4.12 Events Contract
 
 ### FE-EVT-001: Event Names
@@ -1738,6 +1787,20 @@ Then runtime MUST NOT dispatch `vorma:location`.
 Given `vorma:location` is dispatched  
 When listeners inspect event payload  
 Then event detail payload MUST be empty/undefined (no structured detail object).
+
+### FE-EVT-006: Location Event Dispatch Ordering Within History Listener
+
+Given history listener receives update with changed location key  
+When listener executes  
+Then runtime MUST dispatch `vorma:location` before action-specific history
+branches (including same-document hash POP handling and cross-document POP
+navigation handling) are evaluated.
+
+Given same update later follows cross-document `POP` failure branch that
+triggers hard-reload fallback  
+When failure path runs  
+Then prior location-event dispatch MUST remain committed (failure path MUST NOT
+retroactively suppress dispatch for that update).
 
 ## 4.13 HMR and Focus Revalidation
 
@@ -2273,6 +2336,13 @@ When `__getVormaClientGlobal().get(...)` or `.set(...)` is invoked
 Then invocation MUST throw synchronously and runtime MUST NOT materialize a
 fallback symbol-keyed global store.
 
+### FEC-CTX-008 (covers FE-CTX-010)
+
+Given equal server/client effective error indices with distinct payload values  
+When effective error is derived  
+Then effective message source MUST prefer the server-side payload for that
+shared index.
+
 ## 5.3 Navigation State Machine Scenarios
 
 ### FEC-NAV-001 (covers FE-NAV-001)
@@ -2387,6 +2457,14 @@ When prefetch begin is requested for the same URL as the active slot and then
 for the same URL as the revalidation slot  
 Then runtime MUST return the already-existing control for each case and MUST
 not start duplicate fetch/prefetch work for that target.
+
+### FEC-NAV-015 (covers FE-NAV-020)
+
+Given direct revalidation begin calls provide non-current `href` values and
+current document URL differs from those provided values  
+When revalidation control and request URL are inspected  
+Then runtime MUST target current `window.location.href` (plus JSON/build-id
+query semantics) rather than caller-provided revalidation `href`.
 
 ## 5.4 Request, Redirect, and Build-ID Scenarios
 
@@ -3051,6 +3129,14 @@ When each corresponding event handler is invoked
 Then internal prefetch lifecycle side effect for that event MUST run before user
 handler invocation.
 
+### FEC-LINK-017 (covers FE-LINK-019)
+
+Given repeated prefetch `start()` calls occur before delay expiry and `stop()`
+is invoked before begin executes  
+When the prior delay window elapses  
+Then no prefetch fetch/navigation begin side effect MUST occur for that handler
+lifecycle.
+
 ## 5.11 History and Scroll Persistence Scenarios
 
 ### FEC-SCROLL-001 (covers FE-SCROLL-001, FE-SCROLL-002)
@@ -3129,6 +3215,14 @@ When init completes
 Then refresh scroll entry MUST remain in session storage (not consumed by the
 skip path).
 
+### FEC-SCROLL-011 (covers FE-SCROLL-013)
+
+Given history updates include: same-document `POP`, cross-document `POP`, and
+`PUSH`/`REPLACE` changes  
+When custom history listener executes each update variant  
+Then pre-branch scroll-save MUST run for all non-same-document-`POP` variants
+and MUST be skipped for same-document `POP`.
+
 ## 5.12 Events Scenarios
 
 ### FEC-EVT-001 (covers FE-EVT-001)
@@ -3163,6 +3257,13 @@ Then runtime MUST NOT dispatch `vorma:location`.
 Given history listener triggers a `vorma:location` dispatch  
 When listener receives the event  
 Then event detail payload MUST be empty/undefined.
+
+### FEC-EVT-006 (covers FE-EVT-006)
+
+Given changed-key history updates for `PUSH` and cross-document `POP` variants  
+When custom history listener runs and call-order is observed  
+Then `vorma:location` dispatch MUST occur before action-specific branch logic,
+and POP-failure hard-reload fallback MUST NOT erase/suppress that dispatch.
 
 ## 5.13 HMR and Focus Revalidation Scenarios
 
