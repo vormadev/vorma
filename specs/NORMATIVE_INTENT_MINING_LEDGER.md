@@ -438,6 +438,52 @@ runtime/build implementation sources.
 - `VERIFIED` | `/Users/sjc/__code/river/lab/stringsutil/stringsutil.go`
 - `VERIFIED` | `/Users/sjc/__code/river/lab/esbuildutil/esbuildutil.go`
 
+## K) Kit/Lab Non-Dependency Surface (Explicitly Out-of-Scope for Behavioral Mining)
+
+These files were surfaced by mechanical `find` audit under `kit/*` + `lab/*`
+and do not appear in the current Vorma runtime/build import closure
+(`go list -deps . ./vormaruntime ./vormabuild ./wave ./wave/tooling`), so they
+are tracked as out-of-scope for inherited-behavior mining.
+
+### K.1) Kit Packages Not in Current Inherited Runtime/Build Dependency Closure
+
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/cookies/cookies.go` | Exported kit subpath; not in current Vorma runtime/build dependency closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/cookies/cookies_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/csrf/csrf.go` | Exported kit subpath; not in current Vorma runtime/build dependency closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/csrf/csrf_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/ioutil/ioutil.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/ioutil/ioutil_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/jsonutil/jsonutil.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/jsonutil/jsonutil_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/keyset/keyset.go` | Exported kit subpath; not in current Vorma runtime/build dependency closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/keyset/keyset_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/lazyget/lazyget.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/lazyget/lazyget_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/securebytes/securebytes.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/securebytes/securebytes_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/securestring/securestring.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/securestring/securestring_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/signedcookie/signedcookie.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/signedcookie/signedcookie_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/theme/theme.go` | Exported kit subpath; not in current Vorma runtime/build dependency closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/kit/theme/theme_test.go` | Package tests for out-of-scope package.
+
+### K.2) Lab Packages Not in Current Inherited Runtime/Build Dependency Closure
+
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/bumper/bumper.go` | Tooling utility not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/cliutil/cliutil.go` | Tooling utility not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/errutil/errutil.go` | Tooling utility not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/fsmarkdown/fsmarkdown.go` | Tooling utility not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/mailutil/mailutil.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/mailutil/mailutil_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/repoconcat/repoconcat.go` | Tooling utility not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/repoconcat/repoconcat_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/rpc/rpc.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/rpc/rpc_test.go` | Package tests for out-of-scope package.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/sqlutil/sqlutil.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/timer/timer.go` | Utility package not imported by current Vorma runtime/build closure.
+- `OUT-OF-SCOPE` | `/Users/sjc/__code/river/lab/xyz/xyz.go` | Utility package not imported by current Vorma runtime/build closure.
+
 ## Next Mining Queue (Strict Order; unresolved `HISTORICAL`/`PENDING` first)
 
 All currently tracked in-scope files are `VERIFIED` (no unresolved queue

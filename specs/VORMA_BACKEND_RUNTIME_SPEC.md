@@ -483,6 +483,17 @@ Then import URL source selection MUST be mode-dependent:
 Both modes MUST preserve per-match positional alignment and prefix emitted URLs
 with leading `/`.
 
+### BR-LOAD-022: Mode-Dependent `viteDevURL` Emission Contract
+
+Given route-data assets are assembled in dev mode  
+When route-data payload (`JSON`) or SSR bootstrap payload (`HTML`) is emitted  
+Then `viteDevURL` MUST be emitted as `http://localhost:<vite-port>` where
+`<vite-port>` is the currently selected Vite dev-server port for that process.
+
+Given route-data assets are assembled in non-dev mode  
+When payload is emitted  
+Then `viteDevURL` MUST be emitted as an empty string.
+
 ## 4.6 Loader Error Behavior
 
 ### BR-ERR-001: Outermost Error Cutoff
@@ -1399,6 +1410,15 @@ When loader JSON route-data is inspected
 Then `importURLs` entries MUST use `srcPath`-derived values in dev and
 `outPath`-derived values in non-dev, while preserving index alignment and
 leading-`/` URL formatting.
+
+### BRC-LOAD-022 (covers BR-LOAD-022)
+
+Given one request served in dev mode and one request served in non-dev mode  
+When route-data payloads are inspected (`JSON` response and HTML bootstrap
+payload)  
+Then dev-mode payloads MUST emit `viteDevURL` using
+`http://localhost:<vite-port>` form, and non-dev payloads MUST emit empty
+string.
 
 ## 5.6 Loader Error Scenarios
 

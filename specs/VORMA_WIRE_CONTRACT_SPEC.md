@@ -236,6 +236,17 @@ Then route-data arrays MUST be truncated at outermost error index and include:
 - `outermostServerError`
 - `outermostServerErrorIdx`.
 
+### WIRE-JSON-005: `viteDevURL` Mode Contract
+
+Given JSON route-data payload is emitted in dev mode  
+When `viteDevURL` field is inspected  
+Then value MUST be `http://localhost:<vite-port>` for the currently selected
+Vite dev-server port.
+
+Given JSON route-data payload is emitted in non-dev mode  
+When `viteDevURL` field is inspected  
+Then value MUST be empty string.
+
 ## 4.5 HTML Document Payload Contract
 
 ### WIRE-HTML-001: SSR Bootstrap Global Symbol
@@ -567,6 +578,13 @@ Then arrays MUST be truncated to `i+1` and include
 Given payload includes head element arrays  
 When `metaHeadEls` / `restHeadEls` are present  
 Then elements MUST conform to `HeadEl` field contract.
+
+### WRC-JSON-006 (covers WIRE-JSON-005)
+
+Given one JSON route-data response served in dev mode and one in non-dev mode  
+When `viteDevURL` is inspected  
+Then dev response MUST use `http://localhost:<vite-port>` form and non-dev
+response MUST emit empty string.
 
 ## 5.5 HTML Payload Scenarios
 

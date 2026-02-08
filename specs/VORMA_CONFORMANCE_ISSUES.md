@@ -472,3 +472,12 @@ Purpose: Track places where conformance tests/specs exposed likely implementatio
 - `Observed Symptom`: In `/Users/sjc/__code/river/internal/framework/_typescript/client/src/links.ts`, `start()` overwrites a single `timer` field on each call before begin, and `stop()` clears only that one stored handle. Earlier pending timeout handles can remain active and still invoke prefetch begin/fetch after `stop()` was called.
 - `Current Test Accommodation`: none; strict spec now requires lossless pending-begin cancellation and single pending timer semantics rather than mirroring current overwrite behavior.
 - `Follow-Up`: make `start()` idempotent for pre-begin phase (single scheduled timer) or track/clear all pending timer handles in `stop()`, then add/enable focused `FEC-LINK-017` coverage.
+
+### VCI-056 (open)
+
+- `Type`: `impl-bug-candidate`
+- `Affected Requirements`: `BUILD-EVT-001`
+- `Summary`: Watched-pattern dedupe can nondeterministically downgrade stronger implicit work when multiple changed files share one non-empty pattern key.
+- `Observed Symptom`: In `/Users/sjc/__code/river/wave/tooling/events.go`, classified events are collapsed by `handledPatterns[pattern]` before implicit work aggregation. When multiple events share a non-empty watched pattern key, only the first survives; because map iteration order over deduped paths is not deterministic, stronger implicit work (for example `.go` compile/restart) can be dropped if a weaker event for the same pattern key is selected first.
+- `Current Test Accommodation`: none; strict spec now requires pattern-key dedupe to preserve union-strength implicit work (`BUILD-EVT-001`) and does not mirror selection-order-dependent downgrade behavior.
+- `Follow-Up`: preserve hook-level dedupe intent while aggregating implicit work union across all events sharing the same non-empty pattern key, then add/enable focused `BDC-EVT-025` coverage for mixed-strength same-pattern batches.

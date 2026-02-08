@@ -1183,6 +1183,11 @@ Batch-callback discipline:
 - after path-level dedupe, any additional watched-pattern-key dedupe MUST apply
   only to non-empty effective watched-file pattern keys and MUST NOT collapse
   distinct classified events that have no matched watched-file pattern key.
+- when multiple classified events share the same non-empty watched-pattern key,
+  dedupe MUST NOT drop stronger effective implicit work. The merged work for
+  that pattern key MUST preserve union semantics across those events (for
+  example if any event requires Go compile/restart, the deduped outcome for
+  that pattern key MUST still require Go compile/restart).
 - path-level dedupe MUST preserve effective content-change signal for that path:
   a trailing chmod-only event in the same batch MUST NOT erase an earlier
   content-changing event for that path.
@@ -2819,6 +2824,15 @@ Given watched-hook fixtures spanning explicit post/concurrent/concurrent-no-wait
 timings plus empty/unknown timing values  
 When hook sorting and subsequent phase execution are observed  
 Then bucket assignment and default-pre timing behavior MUST match contract.
+
+### BDC-EVT-025 (covers BUILD-EVT-001)
+
+Given one debounced batch contains multiple classified events that share the
+same non-empty watched-file pattern key and those events imply different
+implicit work strengths (for example static-only plus `.go` compile/restart)  
+When watched-pattern-key dedupe is applied  
+Then dedupe outcome for that key MUST preserve union-strength implicit work and
+MUST NOT downgrade stronger work requirements due to event selection order.
 
 ## 5.13 Static Asset and Filemap Scenarios
 

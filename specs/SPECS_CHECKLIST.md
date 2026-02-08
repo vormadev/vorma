@@ -1309,3 +1309,19 @@ Out of scope for now:
       simplified to a sub-1.0 lightweight workflow (`Proposed`/`Final`/`Dropped`,
       in-place editing, checklist+traceability as canonical tracking, and
       explicit permission to prune obsolete proposal/history cruft))
+- [x] Backend/wire `viteDevURL` semantics + ledger dependency-closure pass
+      (`vormaruntime/get_root_handler.go` + `vormaruntime/vite_url.go` replay
+      promoted explicit mode-dependent `viteDevURL` contract into backend and
+      wire specs (`BR-LOAD-022` + `BRC-LOAD-022`,
+      `WIRE-JSON-005` + `WRC-JSON-006`), with traceability rows added as
+      `missing`; mechanical ledger audit over `kit/*` + `lab/*` then added
+      explicit `OUT-OF-SCOPE` rows for non-imported packages using
+      `go list -deps . ./vormaruntime ./vormabuild ./wave ./wave/tooling`
+      closure to prevent future mining-loop ambiguity)
+- [x] Build event pattern-dedupe strength-preservation pass
+      (`wave/tooling/events.go` replay surfaced that same-pattern dedupe can
+      nondeterministically drop stronger implicit work; strict build event
+      contract was tightened under `BUILD-EVT-001` with scenario
+      `BDC-EVT-025`, traceability mapping was updated, and implementation
+      divergence was logged as open conformance issue `VCI-056` rather than
+      codified as acceptable behavior)
