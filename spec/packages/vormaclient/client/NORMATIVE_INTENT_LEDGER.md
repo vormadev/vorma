@@ -6,7 +6,8 @@ Trust Epoch: `E2`
 
 ## Mining Rules
 
-- Intent mining MUST use implementation source plus legacy tests outside `conformance/**`.
+- Intent mining MUST use implementation source and incorporate legacy tests
+  outside `conformance/**` when present.
 - Per-file counters are epoch-scoped.
 - `passes`: total pass count in current epoch.
 - `clean_passes`: no-new-gap pass count in current epoch.
@@ -17,43 +18,28 @@ Trust Epoch: `E2`
 |---|---|---|---:|---:|---|---|
 | `vormaclient/client/index.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/asset_manager.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.asset_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.component_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.component_module_loading.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.core_navigation.link_click_handling.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.core_navigation.navigation_types.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.core_navigation.programmatic_navigation.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.core_navigation.state_management.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.critical_edge_cases.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.ctx_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.error_handling.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.events_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.events_system.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.fetch_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.form_submissions.revalidate_function.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.form_submissions.submit_function.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.history_management.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.hmr_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.init_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.initialization.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.link_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.loader_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.loading_state_continuity.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.nav_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.navigation_lifecycle.begin_navigation_phase.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.navigation_lifecycle.complete_navigation_phase.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.navigation_lifecycle.fetch_route_data_phase.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.navigation_lifecycle.rerender_app_phase.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.prefetching.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.redirects.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.rendering_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.scroll_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.scroll_restoration.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.skip_conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.test.helpers.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.ui_adapter_parity.conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormaclient/client/src/client.ui_root_parity.conformance.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client.utility_functions.test.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/client_loaders.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 | `vormaclient/client/src/component_loader.ts` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
@@ -92,4 +78,4 @@ Trust Epoch: `E2`
 
 | Round | Status | New Gaps | Notes |
 |---|---|---:|---|
-| `E2-R1` | in_progress | `TBD` | Package-path reset baseline initialized. |
+| `E2-R1` | in_progress | `TBD` | Package replay is active. |

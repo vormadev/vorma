@@ -62,7 +62,7 @@ function initUIListeners() {
 			setOutermostErrorIdx(ctx.get("outermostErrorIdx"));
 			setOutermostError(ctx.get("outermostError"));
 			setActiveComponents(ctx.get("activeComponents"));
-			setActiveErrorBoundary(() => ctx.get("activeErrorBoundary"));
+			setActiveErrorBoundary(ctx.get("activeErrorBoundary"));
 			setImportURLs(ctx.get("importURLs"));
 			setExportKeys(ctx.get("exportKeys"));
 		});
@@ -94,7 +94,7 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 			setOutermostErrorIdx(ctx.get("outermostErrorIdx"));
 			setOutermostError(ctx.get("outermostError"));
 			setActiveComponents(ctx.get("activeComponents"));
-			setActiveErrorBoundary(() => ctx.get("activeErrorBoundary"));
+			setActiveErrorBoundary(ctx.get("activeErrorBoundary"));
 			setImportURLs(ctx.get("importURLs"));
 			setExportKeys(ctx.get("exportKeys"));
 		});

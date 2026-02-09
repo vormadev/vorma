@@ -8,27 +8,23 @@ Update Style: Full overwrite each update. No cumulative timeline.
 
 - Priority package remains `vormaruntime`.
 - Requirement/scenario parity is exact at `113 / 113`.
-- `E2-R7` and `E2-R8` are completed no-gap full rounds after `BR-INIT-024`.
-- Replay stop criterion is re-satisfied.
-- `VRI-003` remains narrowed to unresolved exported helper surfaces
-  (`RouteAssets`, `RouteResult`, `SSRInnerHTMLInput`,
-  `GetSSRInnerHTMLOutput`).
+- No package artifact may cite files under `conformance/**` as current
+  evidence.
+- Packages with no active legacy tests outside `conformance/**` stay in
+  source-only evidence state.
 
 ## High Confidence
 
-- `SPEC.md` and `TRACEABILITY_MATRIX.md` are synchronized at `113 / 113`.
-- Cross-package runtime/build DTO boundary (`BR-INIT-024`) is explicit,
-  traceable, and replay-validated.
+- `SPEC.md` and `TRACEABILITY_MATRIX.md` remain synchronized at `113 / 113`.
 - Replay/accounting docs are aligned on no active replay round.
 
 ## Not Done / Still Dirty
 
-- Open intent-validation gaps remain (`VRI-001`, `VRI-002`, narrowed `VRI-003`).
 - `VCI-*` implementation-divergence backlog remains unresolved.
 
 ## Next Step
 
-1. Continue disposition work for remaining `VRI-003` helper exports.
-2. Resolve/triage `VRI-002` utility-export ambiguity.
-3. Keep `VCI-*` backlog explicit until implementation or de-scope decisions are
-   made.
+1. Continue `VCI-*` triage/implementation decisions while keeping issue backlog
+   explicit.
+2. Keep package matrices in source-only evidence state unless backed by current
+   in-repo test evidence; do not reference files under `conformance/**`.

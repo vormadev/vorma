@@ -1,4 +1,5 @@
 import { resolvePublicHref } from "./resolve_public_href.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 export class AssetManager {
 	static preloadModule(url: string): void {
@@ -43,6 +44,8 @@ export class AssetManager {
 
 	static applyCSS(bundles: string[]): void {
 		window.requestAnimationFrame(() => {
+			const prefix = __vormaClientGlobal.get("publicPathPrefix");
+
 			for (const bundle of bundles) {
 				// Check using the data attribute without escaping
 				if (
@@ -55,7 +58,7 @@ export class AssetManager {
 
 				const link = document.createElement("link");
 				link.rel = "stylesheet";
-				link.href = resolvePublicHref(bundle);
+				link.href = prefix + bundle;
 				link.setAttribute("data-vorma-css-bundle", bundle);
 				document.head.appendChild(link);
 			}

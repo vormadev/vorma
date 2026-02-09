@@ -146,20 +146,6 @@ type SkipCheckResult =
 			loadersData: any[];
 	  };
 
-function maybeApplyBuildIDUpdateFromResponse(
-	response: Response | undefined,
-): void {
-	if (!response) {
-		return;
-	}
-	const oldID = __vormaClientGlobal.get("buildID") || "";
-	const newID = getBuildIDFromResponse(response);
-	if (newID && newID !== oldID) {
-		__vormaClientGlobal.set("buildID", newID);
-		dispatchBuildIDEvent({ newID, oldID });
-	}
-}
-
 function hasServerLoaderRemoval(ctx: SkipCheckContext): boolean {
 	for (const pattern of ctx.currentMatchedPatterns) {
 		const hasServerLoader = ctx.routeManifest[pattern] === 1;
@@ -317,12 +303,8 @@ class NavigationStateManager {
 
 			// Handle based on outcome type (discriminated union)
 			switch (outcome.type) {
-				case "aborted": {
-					const targetUrl = new URL(props.href, window.location.href)
-						.href;
-					this.deleteNavigation(targetUrl);
+				case "aborted":
 					return { didNavigate: false };
-				}
 
 				case "redirect": {
 					const targetUrl = new URL(props.href, window.location.href)
@@ -840,7 +822,6 @@ class NavigationStateManager {
 
 			// Wait for server response
 			const { redirectData, response, json } = await serverPromise;
-			maybeApplyBuildIDUpdateFromResponse(response);
 
 			const redirected = redirectData?.status === "did";
 			const responseNotOK = !response?.ok && response?.status !== 304;
@@ -1048,6 +1029,13 @@ class NavigationStateManager {
 				return;
 			}
 
+			// Update build ID if needed
+			const oldID = __vormaClientGlobal.get("buildID");
+			const newID = getBuildIDFromResponse(response);
+			if (newID && newID !== oldID) {
+				dispatchBuildIDEvent({ newID, oldID });
+			}
+
 			// Wait for client loaders and set state
 			const clientLoadersResult = await waitFnPromise;
 			setClientLoadersState(clientLoadersResult);
@@ -1162,7 +1150,12 @@ class NavigationStateManager {
 				redirectCount: 0,
 				requestInit: finalRequestInit,
 			});
-			maybeApplyBuildIDUpdateFromResponse(response);
+
+			const oldID = __vormaClientGlobal.get("buildID");
+			const newID = getBuildIDFromResponse(response);
+			if (newID && newID !== oldID) {
+				dispatchBuildIDEvent({ newID, oldID });
+			}
 
 			if (!response || !response.ok) {
 				return {

@@ -6,7 +6,8 @@ Trust Epoch: `E2` (package-local reset)
 
 ## Mining Rules
 
-- Intent mining MUST use implementation source plus legacy tests outside `conformance/**`.
+- Intent mining MUST use implementation source and incorporate legacy tests
+  outside `conformance/**` when present.
 - Per-file counters are epoch-scoped.
 - `passes`: total number of full mining passes for that file in current epoch.
 - `clean_passes`: number of passes with no newly surfaced normative gap for that file in current epoch.
@@ -27,4 +28,4 @@ Trust Epoch: `E2` (package-local reset)
 
 | Round | Status | New Gaps | Notes |
 |---|---|---:|---|
-| `E2-R1` | in_progress | 1 | Runtime-owner catalog surfaced coverage gap (no dedicated legacy/conformance runtime suite); tracked as `WCI-RT-001`. |
+| `E2-R1` | in_progress | 1 | Runtime-owner catalog authored and reconciled with source-only evidence state where no legacy tests outside `conformance/**` are present in-repo. |

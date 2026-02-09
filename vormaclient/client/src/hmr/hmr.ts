@@ -29,8 +29,7 @@ export function initHMR() {
 				hmrRevalidateSet = new Set();
 			}
 
-			const hot = importMeta.hot ?? import.meta.hot;
-			if (import.meta.env.DEV && hot) {
+			if (import.meta.env.DEV && import.meta.hot) {
 				const thisURL = new URL(importMeta.url, location.href);
 				thisURL.search = "";
 				const thisPathname = thisURL.pathname;
@@ -42,7 +41,7 @@ export function initHMR() {
 
 				hmrRevalidateSet.add(thisPathname);
 
-				hot.on("vite:afterUpdate", (props) => {
+				import.meta.hot.on("vite:afterUpdate", (props) => {
 					for (const update of props.updates) {
 						if (update.type === "js-update") {
 							const updateURL = new URL(

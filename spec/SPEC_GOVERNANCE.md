@@ -33,8 +33,9 @@ This is the single canonical top-level specs program document.
 - [x] Package-path ownership model is active (`spec/packages/<package-path>/`).
 - [x] Every package has independent spec/checklist/audit/ledger/matrix/issues
       files.
-- [x] Intent mining requires implementation source plus legacy tests outside
-      `conformance/**`, with per-file `passes`/`clean_passes`.
+- [x] Intent mining uses implementation source and incorporates legacy tests
+      outside `conformance/**` when present, with per-file
+      `passes`/`clean_passes`.
 - [x] Old shared out-of-scope ledger removed.
 - [x] Vorma-family owner split is active (`BR-*` in `vormaruntime`, `BUILD-*` in
       `vormabuild`, `FE-*` in `vormaclient/client`; `vorma` kept wrapper-level
@@ -82,12 +83,18 @@ Each package directory MUST contain:
 
 ### 3. Mining Rule
 
-- Normative intent mining MUST use implementation source plus legacy tests
-  outside `conformance/**`.
-- `conformance/**` test suites are verification outputs/evidence and MUST NOT be
-  treated as normative mining inputs.
+- Normative intent mining MUST use implementation source.
+- Legacy tests outside `conformance/**` are optional corroborating evidence when
+  they exist in-repo.
+- Package artifacts MUST NOT cite files under `conformance/**` as current
+  evidence references.
+- When no legacy tests outside `conformance/**` exist for a package, record
+  source-only evidence state in matrix/ledger notes.
+- Absence of legacy tests outside `conformance/**` by itself MUST NOT be
+  tracked as an intent-validation issue.
 - Full-audit replay MUST re-validate existing spec claims against source +
-  legacy tests; prior spec text is not automatically trusted.
+  available legacy tests; prior spec text and prior test claims are not
+  automatically trusted.
 - Every file row in package ledger tracks `passes` and `clean_passes` per epoch.
 
 ### 3a. Pass Taxonomy Rule
@@ -125,12 +132,20 @@ Each package directory MUST contain:
 - Specs, checklists, and traceability matrices MUST contain only current,
   correct requirements.
 - `CONFORMANCE_ISSUES.md` MUST track only active implementation-vs-spec gaps; do
-  not retain historical wrong-claim narrative.
+  not retain historical wrong-claim narrative and do not use it to represent
+  missing/deleted conformance evidence.
 - Behavior that appears accidental, ambiguous, or weakly evidenced MUST be
   recorded as an active intent-validation issue in `CONFORMANCE_ISSUES.md` until
   confirmed or removed.
 - Open intent-validation issues count as open gaps and MUST block no-gap round
   closure for that package.
+
+### 7a. Forward-State Writing Rule
+
+- Package artifacts MUST describe current enforceable state only.
+- Do not include migration/change history narrative, deletion timelines, or
+  prior-state retrospectives in package artifacts.
+- Provenance belongs in git history, not in normative package content.
 
 ### 8. Full-Audit Definition (Normative)
 
@@ -139,12 +154,11 @@ content, not only running more mining passes.
 
 Required sequence per package:
 
-1. Re-derive normative intent from implementation source and legacy tests
-   outside `conformance/**`.
+1. Re-derive normative intent from implementation source and available legacy
+   tests outside `conformance/**` (if present).
 2. Author/expand a detailed requirement catalog that reflects mined behavior
    (not a rough summary).
-3. Validate every current normative claim (including previously marked verified
-   claims) against that intent.
+3. Validate every current normative claim against that intent.
 4. Delete or rewrite any incorrect, stale, ambiguous, or unsupported claim
    immediately.
 5. Reconfirm boundary ownership (owner behavior stays in owner specs; consumer

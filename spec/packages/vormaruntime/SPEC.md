@@ -5,12 +5,12 @@ Last Updated: 2026-02-09
 Applies To: vormaruntime package behavior as observed through public APIs and
 HTTP I/O
 
-Current evidence status (epoch `E2-R2`):
+Current evidence status (epoch `E2-R9`):
 
 - this catalog was imported from prior backend-runtime spec material and is
-  under owner-package replay validation,
-- no legacy `vormaruntime` tests outside `conformance/**` were found during this
-  replay pass; current requirement support is therefore source-only until
+  under owner-package replay validation through current epoch rounds,
+- no legacy `vormaruntime` tests outside `conformance/**` were found across
+  replay passes; current requirement support is therefore source-only until
   external legacy evidence exists.
 
 ## 1. Why This Spec Exists
@@ -271,7 +271,7 @@ Then constants MUST remain:
 - `VormaVitePrehashedFilePrefix == "vorma_out_vite_"`
 - `VormaRouteManifestPrefix == "vorma_out_vorma_internal_route_manifest_"`.
 
-### BR-INIT-021: Public Type-Alias Surface Contract
+### BR-INIT-021: Public Alias Surface and Legacy-Export Disposition Contract
 
 Given callers use exported runtime type aliases  
 When compile-time type identity and assignability are evaluated  
@@ -289,6 +289,17 @@ Ownership boundary:
 - behavior semantics for mux-owned aliases (`LoaderReqData`, `ActionReqData`,
   `Route`, `TaskHandler`) are owned by `kit/mux`; runtime MUST preserve alias
   compatibility with that owner surface.
+
+Legacy-export disposition:
+
+- runtime currently exposes several symbols for package-internal wiring or debug
+  convenience only: `RouteAssets`, `RouteResult`, `SSRInnerHTMLInput`,
+  `GetSSRInnerHTMLOutput`, `GetHeadElsInstance()`, and `PrettyPrintFS(...)`,
+- those symbols MUST be treated as non-conformance legacy exports; field shape,
+  runtime behavior, and symbol existence MAY change without compatibility
+  guarantees,
+- conformance suites MUST NOT rely on these legacy-export symbols for
+  pass/fail assertions.
 
 ### BR-INIT-022: Router Options Passthrough Contract
 
@@ -1420,10 +1431,14 @@ Then all exported constants in `BR-INIT-020` MUST match exactly.
 
 ### BRC-INIT-021 (covers BR-INIT-021)
 
-Given compile-time assertions over exported runtime aliases  
-When alias identity and assignability checks are compiled/run  
+Given compile-time assertions over exported runtime aliases and direct reads of
+legacy-export symbol declarations  
+When alias identity/assignability checks and conformance-scope checks are
+evaluated  
 Then aliases in `BR-INIT-021` MUST preserve direct alias compatibility with
-their underlying types.
+their underlying types, and listed legacy exports (`RouteAssets`, `RouteResult`,
+`SSRInnerHTMLInput`, `GetSSRInnerHTMLOutput`, `GetHeadElsInstance()`,
+`PrettyPrintFS(...)`) MUST remain out of conformance pass/fail scope.
 
 ### BRC-INIT-022 (covers BR-INIT-022)
 

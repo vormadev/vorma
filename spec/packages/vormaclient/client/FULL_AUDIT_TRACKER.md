@@ -5,11 +5,11 @@ Last Updated: 2026-02-09
 
 | Artifact                                                      | Structural  | Boundary    | Semantic    | Last Updated | Notes                                                                                        |
 | ------------------------------------------------------------- | ----------- | ----------- | ----------- | ------------ | -------------------------------------------------------------------------------------------- |
-| `spec/packages/vormaclient/client/SPEC.md`                    | in_progress | in_progress | in_progress | 2026-02-09   | Owner catalog imported from prior monolithic Vorma frontend spec; replay validation pending. |
-| `spec/packages/vormaclient/client/TRACEABILITY_MATRIX.md`     | in_progress | in_progress | n/a         | 2026-02-09   | `FE-*` rows moved into owner matrix; post-split validation pending.                          |
-| `spec/packages/vormaclient/client/CONFORMANCE_ISSUES.md`      | in_progress | in_progress | n/a         | 2026-02-09   | Open frontend issues migrated into owner backlog table.                                      |
-| `spec/packages/vormaclient/client/SPEC_CHECKLIST.md`          | in_progress | n/a         | n/a         | 2026-02-09   | Updated to active owner mode.                                                                |
-| `spec/packages/vormaclient/client/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a         | n/a         | 2026-02-09   | Mining-rule wording aligned to source + legacy tests outside `conformance/**`.               |
+| `spec/packages/vormaclient/client/SPEC.md`                    | in_progress | in_progress | in_progress | 2026-02-09   | Requirement replay validation pending.                                                        |
+| `spec/packages/vormaclient/client/TRACEABILITY_MATRIX.md`     | in_progress | in_progress | n/a         | 2026-02-09   | Matrix reconciliation pending against current source and active legacy tests only.            |
+| `spec/packages/vormaclient/client/CONFORMANCE_ISSUES.md`      | in_progress | in_progress | n/a         | 2026-02-09   | Open frontend issues remain unresolved.                                                       |
+| `spec/packages/vormaclient/client/SPEC_CHECKLIST.md`          | in_progress | n/a         | n/a         | 2026-02-09   | Checklist progression in progress.                                                            |
+| `spec/packages/vormaclient/client/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a         | n/a         | 2026-02-09   | Ledger tracks source + available legacy tests outside `conformance/**` (when present). |
 
 ## Round Status
 

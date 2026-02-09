@@ -9,7 +9,7 @@ Last Updated: 2026-02-09
 - [x] Package full-audit tracker exists (`FULL_AUDIT_TRACKER.md`).
 - [x] Package intent ledger exists (`NORMATIVE_INTENT_LEDGER.md`).
 - [x] Canonical backend-runtime requirement catalog imported into owner package.
-- [x] Revalidate imported catalog against source + legacy tests outside `conformance/**`.
+- [x] Revalidate imported catalog against source + available legacy tests outside `conformance/**` (when present).
 - [x] Complete rough structural pass.
 - [x] Complete rough boundary pass.
 - [x] Complete rough semantic pass.
@@ -18,5 +18,5 @@ Last Updated: 2026-02-09
 - [x] Complete at least one explicit full structural pass (all in-scope source files replayed in current epoch).
 - [x] Complete at least one explicit full boundary pass (owner inheritance vs runtime-owned behavior revalidated across all files).
 - [x] Complete at least one explicit full semantic pass (existing claims revalidated and new gaps incorporated where found).
-- [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md` (includes `VRI-001`, `VRI-002`, `VRI-003`, and active `VCI-*` divergence backlog).
+- [ ] Resolve active implementation-divergence issues in `CONFORMANCE_ISSUES.md` (active `VCI-*` backlog).
 - [x] Record two consecutive no-gap full rounds after latest requirement-catalog change.

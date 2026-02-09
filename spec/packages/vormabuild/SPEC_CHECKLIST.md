@@ -9,7 +9,7 @@ Last Updated: 2026-02-09
 - [x] Package full-audit tracker exists (`FULL_AUDIT_TRACKER.md`).
 - [x] Package intent ledger exists (`NORMATIVE_INTENT_LEDGER.md`).
 - [x] Canonical build/dev requirement catalog imported into owner package.
-- [ ] Revalidate imported catalog against source + legacy tests outside `conformance/**`.
+- [ ] Revalidate imported catalog against source + available legacy tests outside `conformance/**` (when present).
 - [ ] Complete rough structural pass.
 - [ ] Complete rough boundary pass.
 - [ ] Complete rough semantic pass.
