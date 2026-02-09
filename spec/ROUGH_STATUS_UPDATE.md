@@ -7,29 +7,25 @@ Update Style: Recreated from scratch each update.
 ## Current State Worth Tracking
 
 - Program remains in step 1: normative intent mining + reconciliation replay.
-- Priority gate remains active: execution is restricted to P0 package paths.
-- `spec/packages/vormaclient/client/*` now has rough + full
-  structural/boundary/semantic pass gates complete.
-- `spec/packages/vormaclient/client/TRACEABILITY_MATRIX.md` has no
-  `pending-mapping` rows.
-- `spec/packages/vormaclient/client/NORMATIVE_INTENT_LEDGER.md` records `E2-R1`
-  and `E2-R2`; `E2-R3` is pending.
+- Step 1 hard gate remains active: edit only `spec/**`, no
+  implementation/test/config edits.
+- P0-only sequencing remains active.
+- Shared-checkout dispatch board is now active at `spec/MINING_DISPATCH.md`.
 
 ## Remaining Work Snapshot
 
-- `vormaclient/client` still has open `VCI-*` intent-validation issues.
-- Because open issues remain, the checklist closure gates are still open:
-  `Resolve open intent-validation issues in CONFORMANCE_ISSUES.md` and
-  `Record two consecutive no-gap full rounds`.
-- `vormabuild` and `wave/tooling` full-pass closure work also remains open at
-  P0.
+- Multiple P0 package paths still have open checklist closure gates.
+- Top near-term P0 focus remains: `vormaclient/client`, `vormabuild`,
+  `wave/tooling`, `wave`, `vormaruntime`, `lab/tsgen`, `lab/viteutil`,
+  `kit/response`, `kit/validate`, `kit/headels`, `kit/mux`, `kit/matcher`.
 
 ## Next Action
 
-1. Continue `vormaclient/client` normative intent mining by re-validating each
-   open `VCI-*` statement against implementation source evidence and updating
-   only package spec artifacts under `spec/**`.
-2. Do not perform implementation/test/config edits; if a source-code fix is
-   desired, require explicit user instruction in the current turn.
-3. After issue statuses are reconciled in spec artifacts, record two consecutive
-   no-gap full rounds for `vormaclient/client`.
+1. Launch/continue parallel worker chats; each chat claims the next `OPEN` slot
+   in `spec/MINING_DISPATCH.md`.
+2. Workers perform mining-only reconciliation in claimed package artifacts under
+   `spec/packages/<claimed-package>/**`.
+3. Workers release slot as `OPEN` (work remains) or `DONE` (stop criterion met)
+   with a short note.
+4. Coordinator periodically recreates this file from scratch to reflect current
+   active state.

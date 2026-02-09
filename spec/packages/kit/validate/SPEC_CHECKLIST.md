@@ -19,4 +19,6 @@ Last Updated: 2026-02-09
 - [x] Complete full boundary pass (`E2-R1` with issue-backed exceptions).
 - [x] Complete full semantic pass (`E2-R1` with issue-backed exceptions).
 - [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md`.
-- [ ] Record two consecutive no-gap full rounds.
+- [ ] Record two consecutive no-gap full rounds (`E2-R3`, `E2-R4` observed;
+      item remains unchecked until prior open-issue gate is resolved per ordered
+      checklist execution).

@@ -62,3 +62,41 @@ Current evidence note:
 - `LAB-TSGEN-014` Union-helper contract. `StringUnion` and `TypeUnion` MUST
   return `""` for empty input, otherwise join members using `" | "`
   (`StringUnion` uses single-quoted string literals).
+
+## Scenario Catalog
+
+- `LAB-TSGEN-SCN-001` (covers `LAB-TSGEN-001`): Merge-input fixtures MUST verify
+  ad-hoc and collection phantom inputs are merged while `TSTyperRaw` phantom
+  entries are excluded from merged export processing.
+- `LAB-TSGEN-SCN-002` (covers `LAB-TSGEN-002`): Generated output fixtures MUST
+  verify banner/comment section ordering for collection, ad-hoc type exports,
+  and extra TS blocks.
+- `LAB-TSGEN-SCN-003` (covers `LAB-TSGEN-003`): Collection-output fixtures MUST
+  verify const-array emission, default collection variable naming, and optional
+  `export` prefix behavior.
+- `LAB-TSGEN-SCN-004` (covers `LAB-TSGEN-004`): Arbitrary-property fixtures MUST
+  verify JSON-compatible literal emission and marshal-error propagation.
+- `LAB-TSGEN-SCN-005` (covers `LAB-TSGEN-005`): Phantom-output fixtures MUST
+  verify `TSTyperRaw` handling, merged type-info fallback, and omission of null
+  / `Record<never, never>` phantom outputs.
+- `LAB-TSGEN-SCN-006` (covers `LAB-TSGEN-006`): Determinism fixtures MUST verify
+  sorted property lines, sorted collection items, and sorted export lines.
+- `LAB-TSGEN-SCN-007` (covers `LAB-TSGEN-007`): Export fixtures MUST verify
+  `getExports` includes only merged types with non-empty resolved names.
+- `LAB-TSGEN-SCN-008` (covers `LAB-TSGEN-008`): Extra-code fixtures MUST verify
+  trimmed `ExtraTSCode` passthrough under the extra-code comment block.
+- `LAB-TSGEN-SCN-009` (covers `LAB-TSGEN-009`): Error-path fixtures MUST verify
+  `GenerateTSContent` propagates collection-rendering errors and has no
+  filesystem side effects.
+- `LAB-TSGEN-SCN-010` (covers `LAB-TSGEN-010`): File-output fixtures MUST verify
+  `OutPath` validation, ensure-dir call ordering, and write-to-path behavior.
+- `LAB-TSGEN-SCN-011` (covers `LAB-TSGEN-011`): File-output error fixtures MUST
+  verify exact wrapped error prefixes for missing outpath, ensure-dir failure,
+  and write failure.
+- `LAB-TSGEN-SCN-012` (covers `LAB-TSGEN-012`): Statement-builder fixtures MUST
+  verify append semantics and `<prefix> = <value>;\n` rendering shape.
+- `LAB-TSGEN-SCN-013` (covers `LAB-TSGEN-013`): Serialization fixtures MUST
+  verify `json.MarshalIndent` formatting, panic-on-marshal-failure behavior, and
+  ` as const` suffix rules.
+- `LAB-TSGEN-SCN-014` (covers `LAB-TSGEN-014`): Union-helper fixtures MUST
+  verify empty-input empty-string returns and pipe-delimited union joining.

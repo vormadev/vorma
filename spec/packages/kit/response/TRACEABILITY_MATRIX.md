@@ -1,6 +1,6 @@
 # kit/response Traceability Matrix
 
-Status: Draft  
+Status: Active  
 Last Updated: 2026-02-09  
 Applies To: Requirement-to-test traceability for `kit/response`
 

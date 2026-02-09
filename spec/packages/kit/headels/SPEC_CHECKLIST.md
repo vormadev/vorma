@@ -19,4 +19,5 @@ Last Updated: 2026-02-09
 - [x] Complete full boundary pass.
 - [x] Complete full semantic pass.
 - [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md`.
-- [ ] Record two consecutive no-gap full rounds.
+- [ ] Record two consecutive no-gap full rounds (`E2-R2` complete; one more
+      no-gap full replay required).

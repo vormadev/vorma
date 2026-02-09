@@ -15,12 +15,13 @@ Last Updated: 2026-02-09
 - [x] Complete rough structural pass.
 - [x] Complete rough boundary pass.
 - [x] Complete rough semantic pass.
-- [ ] Complete full requirement catalog authoring (detailed, comprehensive,
+- [x] Complete full requirement catalog authoring (detailed, comprehensive,
       non-summary).
-- [ ] Complete full requirement-level traceability reconciliation (coverage
+- [x] Complete full requirement-level traceability reconciliation (coverage
       complete or issue-backed exceptions).
-- [ ] Complete full structural pass.
-- [ ] Complete full boundary pass.
-- [ ] Complete full semantic pass.
-- [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md`.
-- [ ] Record two consecutive no-gap full rounds.
+- [x] Complete full structural pass.
+- [x] Complete full boundary pass.
+- [x] Complete full semantic pass.
+- [ ] Resolve active implementation-divergence issues in `CONFORMANCE_ISSUES.md`
+      (active `VCI-*` backlog).
+- [x] Record two consecutive no-gap full rounds (`E2-R2`, `E2-R3`, `E2-R4`).

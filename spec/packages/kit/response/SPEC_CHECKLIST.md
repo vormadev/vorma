@@ -18,5 +18,6 @@ Last Updated: 2026-02-09
 - [x] Complete full structural pass.
 - [x] Complete full boundary pass.
 - [x] Complete full semantic pass.
-- [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md`.
-- [ ] Record two consecutive no-gap full rounds.
+- [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md` (active
+      `KIT-RESPONSE-ISSUE-*` backlog).
+- [x] Record two consecutive no-gap full rounds (`E2-R2`, `E2-R3`).

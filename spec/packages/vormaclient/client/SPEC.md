@@ -1016,7 +1016,8 @@ stop at first error.
 
 ### FE-CL-006: Abort Errors Are Non-Fatal
 
-Given loader promise rejects with abort-like error  
+Given loader promise rejects with an error value `E` such that
+`isAbortError(E) === true`  
 When collecting results  
 Then runtime MUST treat it as cancellation, not a client-error message source.
 
@@ -1143,8 +1144,8 @@ Then runtime MUST fall back to default error boundary.
 Given module namespace access for the configured error export key throws (for
 example proxy-backed module namespaces)  
 When error boundary resolves  
-Then runtime MUST treat that export as unresolved and MUST fall back to default
-error boundary instead of propagating the access error.
+Then current runtime behavior propagates that thrown access error; fallback to
+default error boundary is not guaranteed for this failure mode.
 
 ### FE-COMP-006: Built-In Default Error Boundary Render Contract
 
@@ -2278,10 +2279,10 @@ Given `isAbortError(value)` receives an `Error` instance with
 When classification runs  
 Then helper MUST return `true`.
 
-Given helper receives a non-`Error` object with property
-`name === "AbortError"`  
+Given helper receives a non-`Error` value (including plain objects that carry
+`name === "AbortError"`)  
 When classification runs  
-Then helper MUST return `true`.
+Then helper MUST return `false`.
 
 Given helper receives values that do not satisfy either shape above  
 When classification runs  
@@ -2846,7 +2847,7 @@ loaders MUST abort after first non-abort client error.
 
 ### FEC-CL-004 (covers FE-CL-006)
 
-Given loader rejects with abort-like error  
+Given loader rejects with a value classified as abort by `isAbortError`  
 When results are projected  
 Then runtime MUST treat abort as cancellation, not a client error message.
 
@@ -2920,8 +2921,8 @@ MUST be used.
 
 Given module namespace throws during configured error-export access  
 When boundary resolution runs  
-Then runtime MUST treat export as unresolved and fall back to default error
-boundary without propagating the thrown access error.
+Then thrown access error currently propagates, and default-boundary fallback is
+not guaranteed for that path.
 
 ### FEC-COMP-005 (covers FE-COMP-006)
 
@@ -3615,10 +3616,11 @@ still allowed under stop-delay guard when initially running).
 
 ### FEC-ERR-001 (covers FE-ERR-001)
 
-Given `isAbortError` receives fixtures spanning native `AbortError` instances,
-AbortError-shaped plain objects, and non-abort values  
+Given `isAbortError` receives fixtures spanning native `AbortError` `Error`
+instances, AbortError-shaped plain objects, and non-abort values  
 When classification results are observed  
-Then helper MUST return true only for the documented abort shapes.
+Then helper MUST return true only for native `Error` instances with
+`name === "AbortError"`.
 
 ### FEC-ERR-002 (covers FE-ERR-002)
 

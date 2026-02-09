@@ -6,9 +6,8 @@
 
 ## Markdown Formatting
 
-- After editing any `.md` files, always run Prettier before handoff.
-- Format all Markdown files in the repo (excluding `node_modules`) with:
-  `rg --files -g '*.md' -g '!node_modules/**' -g '!.git/**' -0 | xargs -0 ./node_modules/.bin/prettier --write`
+- After editing any `.md` files, always run Prettier on the file using
+  `pnpm prettier` with the appropriate arguments.
 
 ## Scope Guardrail
 
@@ -17,3 +16,10 @@
   are prohibited.
 - No exceptions: do not edit implementation/test/config files until step 1 is
   complete.
+
+## Parallel Mining Dispatch
+
+- In shared-checkout parallel mining, claim work via `spec/MINING_DISPATCH.md`
+  before editing package artifacts.
+- Claim the lowest-numbered `OPEN` slot and edit only the claimed package path
+  under `spec/packages/**`.

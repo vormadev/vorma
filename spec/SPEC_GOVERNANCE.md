@@ -145,6 +145,26 @@ Each package directory MUST contain:
 - While step 1 is incomplete, edits outside `spec/**` are prohibited with no
   exceptions.
 
+### 3d. Shared-Checkout Claim Rule (Faux Mutex)
+
+- When parallel chats are active in one checkout, each chat MUST claim one
+  package slot in `spec/MINING_DISPATCH.md` before editing package artifacts.
+- Claim by changing exactly one row from `OPEN` to `CLAIMED`, adding agent stamp
+  and UTC timestamp.
+- If a claim race is detected, refresh and claim the next `OPEN` slot; do not
+  co-edit a claimed package.
+- Coordinator MUST be determined mechanically as the chat holding the
+  lowest-numbered `CLAIMED` slot in `spec/MINING_DISPATCH.md`.
+- If no slot is `CLAIMED`, coordinator is unset until the next claim.
+- Worker chats (non-coordinator) MUST edit only
+  `spec/packages/<claimed-package>/**` plus their own row in
+  `spec/MINING_DISPATCH.md`.
+- Coordinator-only files are `spec/ROUGH_STATUS_UPDATE.md`,
+  `spec/MINING_DISPATCH.md` policy text (non-row sections),
+  `spec/AGENTS_START_HERE.md`, and `spec/SPEC_GOVERNANCE.md`.
+- At handoff, the claimed row MUST be released as `OPEN` (work remains) or
+  `DONE` (package stop condition met), with a short note.
+
 ### 4. Trust Epoch Rule
 
 - Verified state is valid only within current trust epoch.

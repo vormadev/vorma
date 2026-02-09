@@ -171,6 +171,168 @@ Normal CSS hashed artifact rotation MUST obey explicit cleanup-failure policy.
 Framework schema extensions MUST NOT silently override reserved top-level Wave
 schema sections.
 
+### 3.5 Builder and Config Processing
+
+#### WAVE-BUILD-001: Config Validation Gate
+
+Given `ValidateConfig` is invoked for build/dev startup  
+When required core fields are missing (`Core`, `Core.MainAppEntry`,
+`Core.DistDir`)  
+Then validation MUST fail before build/dev execution continues.
+
+Given `Core.ServerOnlyMode` is false  
+When validating static paths  
+Then `Core.StaticAssetDirs.Private` and `Core.StaticAssetDirs.Public` MUST be
+required.
+
+Given Vite config is present  
+When validating config  
+Then `Vite.JSPackageManagerBaseCmd` MUST be required.
+
+Given a watched include entry has `RunOnChangeOnly=true`  
+When any `OnChangeHooks[*].Cmd` uses non-`pre` timing  
+Then validation MUST fail.
+
+#### WAVE-BUILD-002: Build Pipeline Ordering and File-Only Behavior
+
+Given `Builder.Build(opts)` executes  
+When build starts  
+Then config validation MUST run before file processing, hooks, schema write, or
+Go compilation.
+
+Given build enters main pipeline  
+When `Build` executes  
+Then first file-processing phase MUST run before hooks and second post-hook
+file-processing phase.
+
+Given `opts.FileOnlyMode=true`  
+When first file-processing phase succeeds  
+Then build MUST return without running hooks, schema writing, or Go compilation.
+
+Given `opts.FileOnlyMode=false` and compile is enabled  
+When build runs  
+Then schema write failures MUST be warning-only (non-fatal), while Go
+compilation failures MUST fail build.
+
+#### WAVE-BUILD-003: Build Hook Selection, Order, and Failure Semantics
+
+Given `runHooks` executes in dev or prod mode  
+When both user and framework hooks are configured  
+Then user hook MUST execute before framework hook.
+
+Given selected hook command fails  
+When `runHooks` processes hooks  
+Then failure MUST abort the hook phase and propagate as build failure.
+
+#### WAVE-BUILD-004: Non-Granular File Processing Cleanup Discipline
+
+Given `processFiles(granular=false, ...)` executes  
+When dist static directory already has entries  
+Then processing MUST remove prior entries except Wave lock files before
+recreating dist structure.
+
+Given dist structure setup is required  
+When non-granular file processing runs  
+Then `SetupDistDir` MUST run and MUST write the `.keep` embed sentinel file.
+
+#### WAVE-BUILD-005: Dev-Loop Go Compile Scheduling Contract
+
+Given dev loop restart handling requires Go recompilation  
+When `Core.SequentialGoBuild` is false  
+Then Go compilation MUST run concurrently with the build phase.
+
+Given dev loop restart handling requires Go recompilation  
+When `Core.SequentialGoBuild` is true  
+Then Go compilation MUST run only after build phase succeeds.
+
+#### WAVE-BUILD-006: Static Source Absence Fallback Contract
+
+Given public/private static source directory does not exist  
+When static processing runs for that source  
+Then tooling MUST write an empty file-map artifact and continue without failing
+build.
+
+Given missing source is public static  
+When static processing completes  
+Then tooling MUST also refresh public file-map JS output from the empty map.
+
+### 3.6 Watcher, Lock, and Build-Time URL Helpers
+
+#### WAVE-WATCH-001: Watch Pattern Normalization and Pre-Sort Contract
+
+Given watcher initialization runs  
+When patterns are loaded from framework/user config  
+Then watcher MUST normalize paths to absolute forward-slash form before matching
+and MUST pre-sort hook timing groups before event processing.
+
+Given watcher ignore defaults are initialized  
+When watch set is assembled  
+Then dist static output, `.git`, and `node_modules` ignore patterns MUST be
+included.
+
+#### WAVE-WATCH-002: Multi-Match WatchedFile Merge Semantics
+
+Given multiple watched-file configs match one path  
+When watcher resolves effective config  
+Then merged behavior MUST be strongest-work preserving (`RecompileGoBinary` /
+`RestartApp` OR semantics, skip-style flags merged with conservative semantics)
+and hooks MUST preserve framework-before-user ordering.
+
+#### WAVE-LOCK-001: Single-Instance Dev Lock Discipline
+
+Given dev startup acquires lock at `dist/static/.wave-dev.lock`  
+When lock file references a live PID  
+Then acquisition MUST fail with lock-held error.
+
+Given lock file is stale or malformed  
+When lock acquisition runs  
+Then startup MUST overwrite lock with current PID and continue.
+
+#### WAVE-URL-001: Build-Time Public URL Resolution Fallback Semantics
+
+Given build-time URL resolution cannot load public file-map artifact  
+When `GetPublicURLBuildtime` is called  
+Then it MUST return a public-prefix fallback URL plus non-nil error.
+
+Given `MustGetPublicURLBuildtime` cannot load file-map artifact  
+When invoked  
+Then it MUST panic.
+
+Given mapped key is absent but file-map load succeeded  
+When either resolver is called  
+Then it MUST return fallback URL and warn without failing call.
+
+#### WAVE-URL-002: Build-Time Public Filemap Helper Contract
+
+Given `PublicFileMapKeys()`  
+When public file-map loads (or is built successfully via fallback path)  
+Then helper MUST return sorted keys for non-prehashed entries only.
+
+Given `SimplePublicFileMap()`  
+When public file-map loads (or is built successfully via fallback path)  
+Then helper MUST return `map[originalPath]distName` for non-prehashed entries
+only.
+
+Given `loadOrBuildFileMap()` helper load step fails  
+When fallback processing runs  
+Then helper MUST run non-granular file processing once and return
+`build files: ...` wrapping error if processing fails.
+
+Given `LoadPublicFileMap()`  
+When called  
+Then helper MUST return direct public file-map load results without extra
+fallback logic.
+
+Given `AddPublicAssetKeys(statements)`  
+When `statements` is nil  
+Then helper MUST allocate statements, append serialized `WAVE_PUBLIC_ASSETS`
+from `PublicFileMapKeys()`, and append `WavePublicAsset` template-literal type
+export.
+
+Given `AddPublicAssetKeys(statements)`  
+When `PublicFileMapKeys()` returns error  
+Then helper MUST panic.
+
 ## 4. Scenario Catalog
 
 ### WDC-CLI-001 (covers WAVE-CLI-001)
@@ -283,6 +445,62 @@ conformance.
 
 Reserved schema-key collision fixtures MUST fail instead of silently overriding
 reserved sections.
+
+### WDC-BUILD-001 (covers WAVE-BUILD-001)
+
+Config-validation fixtures MUST verify required core/static/vite fields and
+`RunOnChangeOnly` command-hook timing constraints.
+
+### WDC-BUILD-002 (covers WAVE-BUILD-002)
+
+Build-pipeline fixtures MUST verify validation-first ordering, pre/post file
+phases, file-only short-circuit behavior, and schema-warning-vs-compile-failure
+policies.
+
+### WDC-BUILD-003 (covers WAVE-BUILD-003)
+
+Hook-selection fixtures MUST verify user-before-framework execution order and
+fail-fast propagation semantics.
+
+### WDC-BUILD-004 (covers WAVE-BUILD-004)
+
+Non-granular file-processing fixtures MUST verify lock-file-preserving cleanup
+and `SetupDistDir` `.keep` sentinel creation.
+
+### WDC-BUILD-005 (covers WAVE-BUILD-005)
+
+Dev-loop compile fixtures MUST verify sequential-vs-concurrent Go compile
+scheduling under `SequentialGoBuild`.
+
+### WDC-BUILD-006 (covers WAVE-BUILD-006)
+
+Missing-static-directory fixtures MUST verify empty file-map fallback handling
+for both public and private paths.
+
+### WDC-WATCH-001 (covers WAVE-WATCH-001)
+
+Watcher-bootstrap fixtures MUST verify absolute-path normalization, ignore-set
+defaults, and hook pre-sort behavior.
+
+### WDC-WATCH-002 (covers WAVE-WATCH-002)
+
+Overlapping-watch-pattern fixtures MUST verify strongest-work merge semantics
+and framework-before-user hook ordering.
+
+### WDC-LOCK-001 (covers WAVE-LOCK-001)
+
+Dev-lock fixtures MUST verify live-PID lock rejection and stale-lock takeover
+behavior.
+
+### WDC-URL-001 (covers WAVE-URL-001)
+
+Build-time URL resolution fixtures MUST verify fallback URL semantics,
+error-return behavior for non-must path, and panic behavior for must path.
+
+### WDC-URL-002 (covers WAVE-URL-002)
+
+Public file-map helper fixtures MUST verify key sorting/filtering semantics,
+load-or-build fallback behavior, and `AddPublicAssetKeys` nil+panic contracts.
 
 ## 5. Relation to Other Specs
 

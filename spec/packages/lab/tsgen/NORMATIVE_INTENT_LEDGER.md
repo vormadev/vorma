@@ -16,15 +16,18 @@ Trust Epoch: `E2`
 
 ## Per-File Replay Ledger
 
-| File                                    | Scope    | Mining Inputs       | Passes | Clean Passes | Epoch State | Notes                                                                                           |
-| --------------------------------------- | -------- | ------------------- | -----: | -----------: | ----------- | ----------------------------------------------------------------------------------------------- |
-| `lab/tsgen/generate_ts_content.go`      | in-scope | source+legacy-tests |      1 |            1 | in_progress | Core generation contracts revalidated against source and `generate_ts_content_test.go`.         |
-| `lab/tsgen/generate_ts_content_test.go` | in-scope | source+legacy-tests |      1 |            1 | in_progress | Legacy assertions mined for collection/export/type-shape behavior coverage.                     |
-| `lab/tsgen/statements.go`               | in-scope | source+legacy-tests |      1 |            0 | in_progress | Statement/serialize helper APIs are currently source-only and tracked by `LAB-TSGEN-ISSUE-001`. |
-| `lab/tsgen/to_file.go`                  | in-scope | source+legacy-tests |      1 |            0 | in_progress | File-output/error-path behavior is currently source-only and tracked by `LAB-TSGEN-ISSUE-001`.  |
+| File                                    | Scope    | Mining Inputs       | Passes | Clean Passes | Epoch State     | Notes                                                                                                                     |
+| --------------------------------------- | -------- | ------------------- | -----: | -----------: | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lab/tsgen/generate_ts_content.go`      | in-scope | source+legacy-tests |      4 |            3 | mined_gaps_open | `E2-R2` replay surfaced `LAB-TSGEN-ISSUE-002`; `E2-R3` and `E2-R4` full replays found no additional gaps.                 |
+| `lab/tsgen/generate_ts_content_test.go` | in-scope | source+legacy-tests |      4 |            3 | mined_gaps_open | Legacy assertions still cover core generation behavior; `E2-R3` and `E2-R4` full replays found no additional gaps.        |
+| `lab/tsgen/statements.go`               | in-scope | source+legacy-tests |      4 |            3 | mined_gaps_open | Statement/serialize helper APIs remain source-only and tracked by `LAB-TSGEN-ISSUE-001`; no new gaps in `E2-R3`/`E2-R4`.  |
+| `lab/tsgen/to_file.go`                  | in-scope | source+legacy-tests |      4 |            3 | mined_gaps_open | File-output/error-path behavior remains source-only and tracked by `LAB-TSGEN-ISSUE-001`; no new gaps in `E2-R3`/`E2-R4`. |
 
 ## Round Log
 
-| Round   | Status    | New Gaps | Notes                                                                                                       |
-| ------- | --------- | -------: | ----------------------------------------------------------------------------------------------------------- |
-| `E2-R1` | completed |        1 | Rough replay completed; placeholder artifacts replaced with requirement-level source/test-backed contracts. |
+| Round   | Status    | New Gaps | Notes                                                                                                                     |
+| ------- | --------- | -------: | ------------------------------------------------------------------------------------------------------------------------- |
+| `E2-R1` | completed |        1 | Rough replay completed; placeholder artifacts replaced with requirement-level source/test-backed contracts.               |
+| `E2-R2` | completed |        1 | Full replay tightened traceability and added `LAB-TSGEN-ISSUE-002` for source-only `TSTyperRaw` + marshal-error branches. |
+| `E2-R3` | completed |        0 | Full replay across in-scope source and legacy tests found no new gaps; open issue backlog remained unchanged.             |
+| `E2-R4` | completed |        0 | Second consecutive no-gap full replay confirmed no new gaps; open issue backlog remained unchanged.                       |

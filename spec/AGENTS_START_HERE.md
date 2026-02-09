@@ -40,6 +40,22 @@ Priority hard gate:
 
 - `spec/ROUGH_STATUS_UPDATE.md`
 
+## 3a) Parallel Dispatch (Shared Checkout)
+
+- For parallel agent chats in one checkout, claim work in
+  `spec/MINING_DISPATCH.md` before editing package artifacts.
+- Claim rule: take the lowest-numbered `OPEN` slot, set it to `CLAIMED`, and add
+  agent stamp + UTC timestamp.
+- One chat holds one slot at a time.
+- Coordinator selection is deterministic: the chat holding the lowest-numbered
+  `CLAIMED` slot is coordinator.
+- If no slot is `CLAIMED`, coordinator is unset until the next claim.
+- Worker chats edit only: `spec/packages/<claimed-package>/**` and that slot row
+  in `spec/MINING_DISPATCH.md`.
+- Coordinator-only files: `spec/ROUGH_STATUS_UPDATE.md`,
+  `spec/MINING_DISPATCH.md` policy text (non-row sections),
+  `spec/AGENTS_START_HERE.md`, and `spec/SPEC_GOVERNANCE.md`.
+
 ## 4) Work In One Package At A Time
 
 Open the target package directory from:
@@ -63,3 +79,6 @@ Then use only that package's canonical files:
 - Do not append, diff-edit, or preserve prior narrative structure from the
   existing file.
 - Keep policy changes in `spec/SPEC_GOVERNANCE.md`, not here.
+- In parallel mode, release your slot in `spec/MINING_DISPATCH.md` at handoff:
+  mark `OPEN` (work remains) or `DONE` (package stop condition met), with a
+  one-line note.
