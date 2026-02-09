@@ -1,0 +1,33 @@
+# wave Traceability Matrix
+
+Status: Draft  
+Last Updated: 2026-02-09  
+Applies To: Requirement-to-test traceability for `wave` runtime requirements
+
+Owner-boundary note:
+
+- This matrix tracks `wave` runtime-owner requirements (`WAVE-RT-*`) only.
+- Build/dev `WAVE-*` requirements are owned by `wave/tooling` and tracked in
+  `spec/packages/wave/tooling/TRACEABILITY_MATRIX.md`.
+
+| Requirement ID | Scenario ID(s) | Suite Family | Suite Name                      | Fixture Type    | Test File(s)                                                        | Pass Criteria                                                                                             | Status  | Owner |
+| -------------- | -------------- | ------------ | ------------------------------- | --------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------- | ----- |
+| WAVE-RT-001    | WRC-RT-001     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | ParseConfig safety/default behavior is verified for invalid JSON, missing Core, and Dist root assignment. | missing | wave  |
+| WAVE-RT-002    | WRC-RT-002     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Constructor panic/default logger/cache-init behavior is verified.                                         | missing | wave  |
+| WAVE-RT-003    | WRC-RT-003     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Raw config and parsed-config accessors are verified.                                                      | missing | wave  |
+| WAVE-RT-004    | WRC-RT-004     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Dev/prod cache recompute/memoization behavior is verified.                                                | missing | wave  |
+| WAVE-RT-005    | WRC-RT-005     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Base/public/private FS selection behavior is verified.                                                    | missing | wave  |
+| WAVE-RT-006    | WRC-RT-006     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | MustGet FS panic-on-error behavior is verified.                                                           | missing | wave  |
+| WAVE-RT-007    | WRC-RT-007     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Public filemap decode/open error propagation is verified.                                                 | missing | wave  |
+| WAVE-RT-008    | WRC-RT-008     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Public URL resolution/fallback semantics are verified.                                                    | missing | wave  |
+| WAVE-RT-009    | WRC-RT-009     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Public asset detection semantics are verified for root/non-root prefix modes.                             | missing | wave  |
+| WAVE-RT-010    | WRC-RT-010     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Static handler creation and immutable cache-header behavior is verified.                                  | missing | wave  |
+| WAVE-RT-011    | WRC-RT-011     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | ServeStatic middleware gate behavior is verified.                                                         | missing | wave  |
+| WAVE-RT-012    | WRC-RT-012     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Favicon redirect/404 behavior is verified.                                                                | missing | wave  |
+| WAVE-RT-013    | WRC-RT-013     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Critical CSS helper behavior for present/absent artifacts is verified.                                    | missing | wave  |
+| WAVE-RT-014    | WRC-RT-014     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Normal stylesheet URL/link helper behavior is verified.                                                   | missing | wave  |
+| WAVE-RT-015    | WRC-RT-015     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Public filemap elements/script-hash helper behavior is verified.                                          | missing | wave  |
+| WAVE-RT-016    | WRC-RT-016     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Refresh script helper dev-only/default-port/hash behavior is verified.                                    | missing | wave  |
+| WAVE-RT-017    | WRC-RT-017     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Env mode/port helper semantics and MustGetPort memoization are verified.                                  | missing | wave  |
+| WAVE-RT-018    | WRC-RT-018     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | ParsedConfig helper defaults/cleaning behavior is verified.                                               | missing | wave  |
+| WAVE-RT-019    | WRC-RT-019     | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Runtime framework-extension mutator behavior is verified.                                                 | missing | wave  |
