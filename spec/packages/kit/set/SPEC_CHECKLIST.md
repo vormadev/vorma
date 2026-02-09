@@ -8,15 +8,15 @@ Last Updated: 2026-02-09
 - [x] Package conformance issues file exists (`CONFORMANCE_ISSUES.md`).
 - [x] Package full-audit tracker exists (`FULL_AUDIT_TRACKER.md`).
 - [x] Package intent ledger exists (`NORMATIVE_INTENT_LEDGER.md`).
-- [x] Complete rough structural pass (`E2-R1`).
-- [x] Complete rough boundary pass (`E2-R1`).
-- [x] Complete rough semantic pass (`E2-R1`).
-- [x] Complete full requirement catalog authoring (detailed, comprehensive,
+- [ ] Complete rough structural pass (`E2-R1`).
+- [ ] Complete rough boundary pass (`E2-R1`).
+- [ ] Complete rough semantic pass (`E2-R1`).
+- [ ] Complete full requirement catalog authoring (detailed, comprehensive,
       non-summary).
-- [x] Complete full requirement-level traceability reconciliation (coverage
+- [ ] Complete full requirement-level traceability reconciliation (coverage
       complete or issue-backed exceptions).
-- [x] Complete full structural pass (`E2-R1` with issue-backed exceptions).
-- [x] Complete full boundary pass (`E2-R1` with issue-backed exceptions).
-- [x] Complete full semantic pass (`E2-R1` with issue-backed exceptions).
+- [ ] Complete full structural pass (`E2-R1` with issue-backed exceptions).
+- [ ] Complete full boundary pass (`E2-R1` with issue-backed exceptions).
+- [ ] Complete full semantic pass (`E2-R1` with issue-backed exceptions).
 - [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md`.
 - [ ] Record two consecutive no-gap full rounds.

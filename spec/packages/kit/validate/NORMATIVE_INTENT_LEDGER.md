@@ -30,10 +30,10 @@ Trust Epoch: `E2`
 
 ## Round Log
 
-| Round   | Status    | New Gaps | Notes                                                                                                                                                     |
-| ------- | --------- | -------: | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `E2-R1` | completed |        2 | Full-pass replay and requirement-level reconciliation completed with explicit issue-backed exceptions (`KIT-VALIDATE-ISSUE-001..002`).                    |
-| `E2-R2` | completed |        1 | From-scratch replay corrected `KIT-VALIDATE-001` from covered to partial (`ValidationError.Unwrap()` remains source-backed) without adding new issue IDs. |
-| `E2-R3` | completed |        0 | Full replay across source + legacy tests found no new gaps; open `KIT-VALIDATE-ISSUE-001..002` backlog remained unchanged.                                |
-| `E2-R4` | completed |        0 | Full replay across source + legacy tests plus issue-validation sanity pass found no new requirements or issue IDs; open `KIT-VALIDATE-ISSUE-*` backlog remains unchanged. |
-| `E2-R5` | in_progress |        0 | Next replay is active; ordered closure gates remain blocked by open intent-validation issues. |
+| Round   | Status      | New Gaps | Notes                                                                                                                                                                     |
+| ------- | ----------- | -------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E2-R1` | completed   |        2 | Full-pass replay and requirement-level reconciliation completed with explicit issue-backed exceptions (`KIT-VALIDATE-ISSUE-001..002`).                                    |
+| `E2-R2` | completed   |        1 | From-scratch replay corrected `KIT-VALIDATE-001` from covered to partial (`ValidationError.Unwrap()` remains source-backed) without adding new issue IDs.                 |
+| `E2-R3` | completed   |        0 | Full replay across source + legacy tests found no new gaps; open `KIT-VALIDATE-ISSUE-001..002` backlog remained unchanged.                                                |
+| `E2-R4` | completed   |        0 | Full replay across source + legacy tests plus issue-validation sanity pass found no new requirements or issue IDs; open `KIT-VALIDATE-ISSUE-*` backlog remains unchanged. |
+| `E2-R5` | in_progress |        0 | Next replay is active; ordered closure gates remain blocked by open intent-validation issues.                                                                             |

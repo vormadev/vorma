@@ -5,7 +5,8 @@ policy details in governance/package docs.
 
 ## 0) Bigger Picture Process (Order Matters)
 
-1. Finish all normative intent mining across the package universe.
+1. Finish all normative intent mining across the package universe to
+   rebuild-grade completeness.
 2. After mining is complete, scrutinize resulting specs for poor design or
    accidental complexity; improve the specs where needed. Backward compatibility
    is not a concern at this stage (pre-1.0), and intentional breaking changes to
@@ -27,6 +28,18 @@ Priority hard gate:
 - While the program is in step 1 (normative intent mining), edit only `spec/**`.
   Do not edit implementation/test/config files outside `spec/**` while step 1 is
   incomplete. No exceptions.
+
+Rebuild-grade standard (hard requirement):
+
+- Treat package specs as target artifacts for source-free reimplementation.
+- A package is "done" only when replay/no-gap is achieved at rebuild-grade
+  granularity.
+- If replay/no-gap is achieved below rebuild-grade detail, treat it as
+  provisional stability only (not closure).
+- Keep checklist closure items open until the package spec is detailed enough to
+  recreate behavior from spec alone.
+- Hard fail test: if a developer could not rebuild the system correctly from the
+  spec artifacts alone, it is NOT done.
 
 ## 1) Program Rules (Read First)
 
@@ -80,5 +93,4 @@ Then use only that package's canonical files:
   existing file.
 - Keep policy changes in `spec/SPEC_GOVERNANCE.md`, not here.
 - In parallel mode, release your slot in `spec/MINING_DISPATCH.md` at handoff:
-  mark `OPEN` (work remains) or `DONE` (package stop condition met), with a
-  one-line note.
+  mark `OPEN`, clear claim fields, and leave a one-line progress note.

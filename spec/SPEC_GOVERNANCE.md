@@ -62,13 +62,21 @@ Priority execution rule (hard gate):
 Program closure requires every package path in `spec/packages/PACKAGE_INDEX.md`
 to satisfy:
 
-1. Detailed package requirement catalog is fully authored (not
-   placeholder/high-level-only).
+1. Detailed package requirement catalog is fully authored at rebuild-grade
+   completeness (sufficient to re-implement package behavior from spec without
+   consulting source).
 2. Requirement-level traceability is reconciled (coverage complete or active
    issue-backed exceptions).
 3. Every in-scope file row mined in current epoch.
 4. Two consecutive full no-gap rounds recorded.
 5. Package checklist/tracker/matrix/issues reconciled.
+
+Hard closure test (non-optional):
+
+- If a developer could not rebuild package behavior correctly from `SPEC.md`
+  plus package-owned spec artifacts alone, that package is NOT done.
+- If a developer could not rebuild the overall system correctly from `spec/**`
+  artifacts alone, the program is NOT done.
 
 ## Governance Rules
 
@@ -113,6 +121,12 @@ Each package directory MUST contain:
   placeholders and surface gaps; it is not full closure.
 - `Full pass` means detailed requirement catalog + requirement-level
   traceability + issue reconciliation across all in-scope files.
+- No-gap full-pass rounds imply completion only when the replayed catalog is
+  rebuild-grade complete.
+- Below rebuild-grade completeness, no-gap outcomes are provisional stability
+  evidence only.
+- Checklist completion markers and no-gap rounds are necessary but insufficient
+  for package closure without rebuild-grade catalog completeness.
 - Package checklists MUST include separate checklist items for rough-pass
   completion and full-pass completion.
 - Full-pass checklist items MUST NOT be marked complete while requirement-level
@@ -162,8 +176,8 @@ Each package directory MUST contain:
 - Coordinator-only files are `spec/ROUGH_STATUS_UPDATE.md`,
   `spec/MINING_DISPATCH.md` policy text (non-row sections),
   `spec/AGENTS_START_HERE.md`, and `spec/SPEC_GOVERNANCE.md`.
-- At handoff, the claimed row MUST be released as `OPEN` (work remains) or
-  `DONE` (package stop condition met), with a short note.
+- At handoff, the claimed row MUST be released as `OPEN`, claim fields cleared,
+  with a short progress note.
 
 ### 4. Trust Epoch Rule
 
@@ -224,6 +238,9 @@ Required sequence per package:
    `NORMATIVE_INTENT_LEDGER.md`, and `FULL_AUDIT_TRACKER.md`.
 7. Only after steps 1-6 are complete, update per-file `passes` and
    `clean_passes` for the round.
+8. Treat replay/no-gap outcomes as closure evidence only when replay was run at
+   rebuild-grade detail; otherwise treat as provisional confidence and keep
+   closure gates open.
 
 ### 9. Vorma Family Ownership Split
 

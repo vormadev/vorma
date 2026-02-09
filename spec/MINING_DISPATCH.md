@@ -16,9 +16,18 @@ Tell a new agent chat:
 3. If the row changed before save, refresh and claim the next `OPEN` row.
 4. While claimed, edit only: `spec/packages/<claimed-package>/**` and your row
    in this file.
-5. At handoff, release your row: set `Status = OPEN` (if work remains) or
-   `Status = DONE` (if stop criterion is met), and add a short note.
+5. At handoff, release your row: set `Status = OPEN`, clear `Agent`, clear
+   `Claimed At (UTC)`, and add/update a short progress note.
 6. Hold only one claimed row at a time.
+
+## Status Semantics (Required)
+
+- `Status` is a lock state only, not a completion state.
+- Allowed status values are only `OPEN` and `CLAIMED`.
+- This board MUST NOT assert package closure/program closure.
+- Completion/closure state is owned by package artifacts
+  (`SPEC_CHECKLIST.md`, `FULL_AUDIT_TRACKER.md`, `CONFORMANCE_ISSUES.md`) and
+  `spec/SPEC_GOVERNANCE.md`.
 
 ## Coordinator Election (Required)
 
@@ -34,18 +43,18 @@ Tell a new agent chat:
 
 Claim the lowest `OPEN` slot number.
 
-| Slot | Package Path         | Status | Agent      | Claimed At (UTC)     | Notes                                                                                                       |
-| ---- | -------------------- | ------ | ---------- | -------------------- | ----------------------------------------------------------------------------------------------------------- |
-| 1    | `vormaclient/client` | DONE   | codex-gpt5 | 2026-02-09T22:24:42Z | E2-R4 no-gap full replay complete; open `VCI-*` backlog unchanged                                           |
-| 2    | `vormabuild`         | DONE   | codex-gpt5 | 2026-02-09T22:09:31Z | E2-R4 no-gap replay complete; open `VCI-*` backlog unchanged                                                |
-| 3    | `wave/tooling`       | DONE   | codex-gpt5 | 2026-02-09T22:30:59Z | E2-R5 no-gap replay complete; open `WCI-*` backlog unchanged                                                |
-| 4    | `wave`               | DONE   | codex-gpt5 | 2026-02-09T22:31:28Z | E2-R3 no-gap full replay complete; no active package-level issues                                           |
-| 5    | `vormaruntime`       | DONE   | codex-gpt5 | 2026-02-09T22:03:32Z | E2-R10 full replay complete; no new gaps (`VCI-*` backlog open)                                             |
-| 6    | `lab/tsgen`          | DONE   | codex-gpt5 | 2026-02-09T22:21:00Z | E2-R4 no-gap full replay complete; open issue backlog unchanged                                             |
-| 7    | `lab/viteutil`       | DONE   | codex-gpt5 | 2026-02-09T22:12:19Z | E2-R3 no-gap full replay complete; open issue backlog unchanged                                             |
-| 8    | `kit/response`       | DONE   | codex-gpt5 | 2026-02-09T22:31:41Z | E2-R3 no-gap full replay complete; open issue backlog unchanged                                             |
-| 9    | `kit/validate`       | DONE    | codex-gpt5 | 2026-02-09T22:36:21Z | E2-R4 no-gap replay complete; open `KIT-VALIDATE-ISSUE-*` backlog unchanged                                  |
-| 10   | `kit/headels`        | CLAIMED | codex-gpt5 | 2026-02-09T22:37:22Z | Active Step-1 mining                                                                                          |
-| 11   | `kit/mux`            | CLAIMED | codex-gpt5 | 2026-02-09T22:37:45Z | Active Step-1 mining                                                                                          |
-| 12   | `kit/matcher`        | OPEN   |            |                      |                                                                                                             |
-| 13   | `vorma`              | DONE   |            |                      | Checklist complete                                                                                          |
+| Slot | Package Path         | Status | Agent | Claimed At (UTC) | Notes                                                                                         |
+| ---- | -------------------- | ------ | ----- | ---------------- | --------------------------------------------------------------------------------------------- |
+| 1    | `vormaclient/client` | OPEN   |       |                  | Latest replay snapshot: `E2-R4`; open `VCI-*` backlog remains.                               |
+| 2    | `vormabuild`         | OPEN   |       |                  | Latest replay snapshot: `E2-R4`; open `VCI-*` backlog remains.                               |
+| 3    | `wave/tooling`       | OPEN   |       |                  | Latest replay snapshot: `E2-R5`; open `WCI-*` backlog remains.                               |
+| 4    | `wave`               | OPEN   |       |                  | Latest replay snapshot: `E2-R3`; package stop/closure must be read from package artifacts.   |
+| 5    | `vormaruntime`       | OPEN   |       |                  | Latest replay snapshot: `E2-R10`; open `VCI-*` backlog remains.                              |
+| 6    | `lab/tsgen`          | OPEN   |       |                  | Latest replay snapshot: `E2-R4`; open issue backlog remains.                                 |
+| 7    | `lab/viteutil`       | OPEN   |       |                  | Latest replay snapshot: `E2-R3`; open issue backlog remains.                                 |
+| 8    | `kit/response`       | OPEN   |       |                  | Latest replay snapshot: `E2-R3`; open issue backlog remains.                                 |
+| 9    | `kit/validate`       | OPEN   |       |                  | Latest replay snapshot: `E2-R4`; open `KIT-VALIDATE-ISSUE-*` backlog remains.                |
+| 10   | `kit/headels`        | OPEN   |       |                  | Latest replay snapshot: `E2-R4`; open `KIT-HEADELS-ISSUE-*` backlog remains.                 |
+| 11   | `kit/mux`            | OPEN   |       |                  | Latest replay snapshot: replay completed; open `KIT-MUX-ISSUE-*` backlog remains.            |
+| 12   | `kit/matcher`        | OPEN   |       |                  | Latest replay snapshot: `E2-R6`; open `KIT-MATCHER-ISSUE-*` backlog remains.                 |
+| 13   | `vorma`              | OPEN   |       |                  | Latest replay snapshot: checklist has completion markers; closure must be read from package docs. |
