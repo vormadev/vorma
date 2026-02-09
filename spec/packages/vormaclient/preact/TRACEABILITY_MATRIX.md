@@ -1,8 +1,15 @@
 # vormaclient/preact Traceability Matrix
 
-Status: Placeholder  
+Status: In Progress  
 Last Updated: 2026-02-09
 
 | Requirement ID | Scenario ID(s) | Suite Family | Suite Name | Fixture Type | Test File(s) | Pass Criteria | Status | Owner |
 |---|---|---|---|---|---|---|---|---|
-| `VORMACLIENT-PREACT-PLACEHOLDER-001` | `VORMACLIENT-PREACT-SCN-PLACEHOLDER-001` | vormaclient/preact | pending | source-contract | pending | Placeholder row until requirements are mined. | missing | `vormaclient/preact` |
+| `VORMACLIENT-PREACT-001` | `VORMACLIENT-PREACT-SCN-001` | vormaclient/preact | ts_source_preact_entry_exports | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Entry export surface is source-backed in `vormaclient/preact/index.tsx`. | source-only | `vormaclient/preact` |
+| `VORMACLIENT-PREACT-002` | `VORMACLIENT-PREACT-SCN-002` | vormaclient/preact | ts_source_preact_typed_route_aliases | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Typed route aliases are source-backed in `vormaclient/preact/src/helpers.ts`. | source-only | `vormaclient/preact` |
+| `VORMACLIENT-PREACT-003` | `VORMACLIENT-PREACT-SCN-003` | vormaclient/preact | ts_source_preact_typed_loader_helpers | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Typed loader/router helper behavior is source-backed in `vormaclient/preact/src/helpers.ts`. | source-only | `vormaclient/preact` |
+| `VORMACLIENT-PREACT-004` | `VORMACLIENT-PREACT-SCN-004` | vormaclient/preact | ts_source_preact_typed_client_loader_helpers | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Client-loader registration/accessor behavior is source-backed in `vormaclient/preact/src/helpers.ts`. | source-only | `vormaclient/preact` |
+| `VORMACLIENT-PREACT-005` | `VORMACLIENT-PREACT-SCN-005` | vormaclient/preact | ts_source_preact_link_wiring | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Link anchor wiring is source-backed in `vormaclient/preact/src/link.tsx`. | source-only | `vormaclient/preact` |
+| `VORMACLIENT-PREACT-006` | `VORMACLIENT-PREACT-SCN-006` | vormaclient/preact | ts_source_preact_typed_link_resolution | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Typed-link destination resolution is source-backed in `vormaclient/preact/src/link.tsx`. | source-only | `vormaclient/preact` |
+| `VORMACLIENT-PREACT-007` | `VORMACLIENT-PREACT-SCN-007` | vormaclient/preact | ts_source_preact_root_outlet_surface | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Root-outlet/location adapter surface is source-backed in `vormaclient/preact/src/preact.tsx` and aligned to owner `FE-UI-*` contract references. | source-only | `vormaclient/preact` |
+| `VORMACLIENT-PREACT-008` | `VORMACLIENT-PREACT-SCN-008` | vormaclient/preact | ts_source_preact_tsconfig | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | TS config behavior is source-backed in `vormaclient/preact/tsconfig.json`. | source-only | `vormaclient/preact` |

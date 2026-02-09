@@ -6,25 +6,32 @@ Update Style: Full overwrite each update. No cumulative timeline.
 
 ## Current Truth
 
-- Priority package remains `vormaruntime`.
-- Requirement/scenario parity is exact at `113 / 113`.
-- No package artifact may cite files under `conformance/**` as current
-  evidence.
-- Packages with no active legacy tests outside `conformance/**` stay in
+- Normative intent mining is active across package-path specs.
+- `vormaclient/solid`, `vormaclient/react`, `vormaclient/preact`,
+  `vormaclient/vite`, and `vormaclient/create` now have source-mined requirement
+  catalogs, source-only traceability rows, active checklists, and non-placeholder
+  issue/ledger/tracker artifacts.
+- No package artifact may cite files under `conformance/**` as current evidence.
+- Packages with no active legacy tests outside `conformance/**` remain in
   source-only evidence state.
 
 ## High Confidence
 
-- `SPEC.md` and `TRACEABILITY_MATRIX.md` remain synchronized at `113 / 113`.
-- Replay/accounting docs are aligned on no active replay round.
+- Placeholder rows/issues were removed from the five `vormaclient/*` companion
+  package artifact sets above.
+- Requirement-to-matrix row counts are aligned for those five packages.
 
 ## Not Done / Still Dirty
 
-- `VCI-*` implementation-divergence backlog remains unresolved.
+- Remaining placeholder/pending traceability rows across `spec/packages/**`:
+  `42`.
+- Open conformance issue backlog (`impl-bug-candidate` and
+  `intent-validation-gap`) remains unresolved in multiple packages.
 
 ## Next Step
 
-1. Continue `VCI-*` triage/implementation decisions while keeping issue backlog
-   explicit.
-2. Keep package matrices in source-only evidence state unless backed by current
-   in-repo test evidence; do not reference files under `conformance/**`.
+1. Continue step-1 normative mining on remaining placeholder packages (`kit/*`
+   and `lab/*` paths first, then remaining lower-priority package paths).
+2. Keep matrices source-only where no active legacy tests outside
+   `conformance/**` exist; do not add backward-looking or historical-state
+   narrative.

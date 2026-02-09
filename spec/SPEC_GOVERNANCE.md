@@ -109,6 +109,11 @@ Each package directory MUST contain:
 - Full-pass checklist items MUST NOT be marked complete while requirement-level
   traceability remains partial/source-only without explicit issue
   reconciliation.
+- Package checklist execution is strictly ordered; later checklist items MUST NOT
+  be marked complete while any earlier checklist item remains unchecked.
+- In particular, `Resolve open intent-validation issues in CONFORMANCE_ISSUES.md`
+  is a late-stage closure gate and MUST remain unchecked until preceding
+  full-pass checklist items are complete.
 
 ### 4. Trust Epoch Rule
 
