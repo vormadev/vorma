@@ -5,7 +5,10 @@ import { VormaLink } from "vorma/solid";
 import { highlight } from "../highlight.ts";
 import { waveRuntimeURL } from "../vorma.gen/index.ts";
 
-export function RenderedMarkdown(props: { markdown: string }) {
+export function RenderedMarkdown(props: {
+	markdown: string;
+	stripLeadingH1?: boolean;
+}) {
 	let containerRef: HTMLDivElement | null = null;
 	const disposers: Array<() => void> = [];
 
@@ -25,10 +28,29 @@ export function RenderedMarkdown(props: { markdown: string }) {
 
 		containerRef.innerHTML = props.markdown; // Set the HTML content
 
+		if (props.stripLeadingH1) {
+			for (const node of Array.from(containerRef.childNodes)) {
+				if (
+					node.nodeType === Node.TEXT_NODE &&
+					(node.textContent ?? "").trim() === ""
+				) {
+					continue;
+				}
+				if (node.nodeType === Node.COMMENT_NODE) {
+					continue;
+				}
+				if (node.nodeType === Node.ELEMENT_NODE) {
+					const el = node as Element;
+					if (el.tagName.toLowerCase() === "h1") {
+						el.remove();
+					}
+				}
+				break;
+			}
+		}
+
 		// Process headings to add anchor links
-		const headings = containerRef.querySelectorAll(
-			"h1, h2, h3, h4, h5, h6",
-		);
+		const headings = containerRef.querySelectorAll("h2, h3, h4, h5, h6");
 		for (const heading of headings) {
 			const id = heading.id;
 			if (id) {
@@ -114,6 +136,7 @@ export function RenderedMarkdown(props: { markdown: string }) {
 	// Create effect to run processContent when markdown changes
 	createEffect(() => {
 		props.markdown; // Access props.markdown to track changes
+		props.stripLeadingH1;
 		if (containerRef) {
 			processContent();
 		}

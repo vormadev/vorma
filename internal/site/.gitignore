@@ -2,3 +2,7 @@
 backend/dist/static/*
 !backend/dist/static/.keep
 backend/dist/main*
+
+# Generated docs (from README sync)
+backend/assets/markdown/docs/~/
+frontend/assets/reference/readmes/

@@ -27,12 +27,33 @@
 		"JSPackageManagerBaseCmd": "pnpm"
 	},
 	"Watch": {
+		"WatchRoot": "../..",
 		"HealthcheckEndpoint": "/healthz",
 		"Include": [
 			{
-				"Pattern": "backend/assets/markdown/**/*.md",
+				"Pattern": "internal/site/backend/assets/markdown/**/*.md",
 				"OnlyRunClientDefinedRevalidateFunc": true,
 				"SkipRebuildingNotification": true
+			},
+			{
+				"Pattern": "**/README.md",
+				"RunOnChangeOnly": true,
+				"SkipRebuildingNotification": true,
+				"OnChangeHooks": [
+					{
+						"Cmd": "go run ./backend/cmd/sync_docs"
+					}
+				]
+			},
+			{
+				"Pattern": "internal/site/frontend/assets/**/*",
+				"SkipRebuildingNotification": true,
+				"OnChangeHooks": [
+					{
+						"Cmd": "go run ./backend/cmd/sync_docs --rewrite-only",
+						"Timing": "post"
+					}
+				]
 			}
 		]
 	}

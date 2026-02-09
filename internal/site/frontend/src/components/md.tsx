@@ -66,10 +66,17 @@ export function MD(props: RouteProps<"/*">) {
 					</button>
 				</Show>
 			</div>
-			<Show when={splatClientLoaderData()}>{(n) => <h1>{n()}</h1>}</Show>
+			<Show when={splatClientLoaderData()}>
+				{(n) => <h1>{n()}</h1>}
+			</Show>
 			<Show when={loaderData()?.Date}>{(n) => <i>{n()}</i>}</Show>
 			<Show when={loaderData()?.Content}>
-				{(n) => <RenderedMarkdown markdown={n()} />}
+				{(n) => (
+					<RenderedMarkdown
+						markdown={n()}
+						stripLeadingH1={Boolean(loaderData()?.Title)}
+					/>
+				)}
 			</Show>
 			<Show when={loaderData()?.IndexSitemap}>
 				{(n) => (
