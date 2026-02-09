@@ -108,7 +108,7 @@ func TestBuildViteIntegrationConformance(t *testing.T) {
 
 	t.Run("BDC-VITE-003_BUILD-VITE-003_vite_output_naming_uses_required_vorma_prefix", func(t *testing.T) {
 		out, err := runVitePluginNodeProbe(t, `
-import vormaVitePlugin from "./internal/framework/_typescript/vite/vite.ts";
+import vormaVitePlugin from "./vormaclient/vite/vite.ts";
 const plugin = vormaVitePlugin({
 	rollupInput: [],
 	publicPathPrefix: "/",
@@ -141,7 +141,7 @@ console.log(JSON.stringify({
 
 	t.Run("BDC-VITE-004_BUILD-VITE-004_buildtime_public_url_calls_rewrite_using_prefixed_hashed_url", func(t *testing.T) {
 		out, err := runVitePluginNodeProbe(t, `
-import vormaVitePlugin from "./internal/framework/_typescript/vite/vite.ts";
+import vormaVitePlugin from "./vormaclient/vite/vite.ts";
 const plugin = vormaVitePlugin({
 	rollupInput: [],
 	publicPathPrefix: "/static/",
@@ -176,7 +176,7 @@ console.log(JSON.stringify({ transformed }));
 
 	t.Run("BDC-VITE-005_BUILD-VITE-005_filemap_invalidation_endpoint_returns_ok_invalidates_modules_and_triggers_full_reload", func(t *testing.T) {
 		out, err := runVitePluginNodeProbe(t, `
-import vormaVitePlugin from "./internal/framework/_typescript/vite/vite.ts";
+import vormaVitePlugin from "./vormaclient/vite/vite.ts";
 const plugin = vormaVitePlugin({
 	rollupInput: [],
 	publicPathPrefix: "/",
@@ -275,7 +275,7 @@ func runVitePluginNodeProbe(t *testing.T, script string) (string, error) {
 	esbuildPath := filepath.Join(root, "node_modules", "esbuild", "bin", "esbuild")
 	bundleCmd := exec.Command(
 		esbuildPath,
-		"./internal/framework/_typescript/vite/vite.ts",
+		"./vormaclient/vite/vite.ts",
 		"--bundle",
 		"--platform=node",
 		"--format=esm",
@@ -293,7 +293,7 @@ func runVitePluginNodeProbe(t *testing.T, script string) (string, error) {
 	fileURL := (&url.URL{Scheme: "file", Path: filepath.ToSlash(bundlePath)}).String()
 	script = strings.ReplaceAll(
 		script,
-		"./internal/framework/_typescript/vite/vite.ts",
+		"./vormaclient/vite/vite.ts",
 		fileURL,
 	)
 

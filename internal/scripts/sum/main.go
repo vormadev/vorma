@@ -48,7 +48,7 @@ func main() {
 	// repoconcat.MustConcat(repoconcat.Config{
 	// 	Output: OUTDIR + "VORMA_OLD_CODE_BEFORE_REFACTOR.txt",
 	// 	Patterns: []string{
-	// 		"__old__/internal/framework",
+	// 		"__old__/vormaclient",
 	// 		"__old__/vorma.go",
 	// 	},
 	// 	Exclude: []string{
@@ -65,7 +65,7 @@ func main() {
 		"vormabuild",
 		"vorma.go",
 		"ARCHITECTURE_DECISIONS.md",
-		"internal/framework/_typescript/vite/vite.ts",
+		"vormaclient/vite/vite.ts",
 		"!**/*.test.ts",
 		"!**/*.bench.ts",
 		"!**/*_test.go",
@@ -73,7 +73,7 @@ func main() {
 	})
 
 	repoconcat.MustConcat(OUTDIR+"VORMA_FRONTEND.txt", []string{
-		"internal/framework/_typescript/*",
+		"vormaclient/*",
 		"!**/*.test.ts",
 		"!**/*.bench.ts",
 		"!**/*_test.go",

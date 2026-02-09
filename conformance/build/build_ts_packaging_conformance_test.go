@@ -92,7 +92,7 @@ func TestBuildTypeScriptPackagingConformance(t *testing.T) {
 			"buildSolid",
 		)
 		for _, expected := range []string{
-			`runTSC("./internal/framework/_typescript/solid/tsconfig.json")`,
+			`runTSC("./vormaclient/solid/tsconfig.json")`,
 			`executil.RunCmd("node", "./internal/scripts/buildts/build-solid.mjs")`,
 		} {
 			if !strings.Contains(solidBody, expected) {
@@ -104,9 +104,9 @@ func TestBuildTypeScriptPackagingConformance(t *testing.T) {
 		solidScript := mustReadFileAsString(t, solidScriptPath)
 		for _, expected := range []string{
 			"solidPlugin()",
-			`entryPoints: ["./internal/framework/_typescript/solid/index.tsx"]`,
+			`entryPoints: ["./vormaclient/solid/index.tsx"]`,
 			`external: ["vorma", "solid-js"]`,
-			`outdir: "./npm_dist/internal/framework/_typescript/solid"`,
+			`outdir: "./npm_dist/vormaclient/solid"`,
 		} {
 			if !strings.Contains(solidScript, expected) {
 				t.Fatalf("expected build-solid.mjs to include %q", expected)

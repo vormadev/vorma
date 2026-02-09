@@ -34,7 +34,7 @@ nuke-node-modules:
 
 tsinstall:
 	@pnpm i
-	@cd internal/framework/_typescript/create && pnpm i
+	@cd vormaclient/create && pnpm i
 
 tsreset: nuke-node-modules tsinstall
 
@@ -47,26 +47,26 @@ tscheck-kit:
 	@pnpm tsgo --noEmit --project ./kit/_typescript
 
 tscheck-fw-client:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/client
+	@pnpm tsgo --noEmit --project ./vormaclient/client
 
 tscheck-fw-react:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/react
+	@pnpm tsgo --noEmit --project ./vormaclient/react
 
 tscheck-fw-solid:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/solid
+	@pnpm tsgo --noEmit --project ./vormaclient/solid
 
 tscheck-fw-preact:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/preact
+	@pnpm tsgo --noEmit --project ./vormaclient/preact
 
 tsprepforpub: tsreset tstest tslint tscheck
 
 tspublishpre: tsprepforpub
 	@npm publish --access public --tag pre
-	@cd internal/framework/_typescript/create && npm publish --access public --tag pre
+	@cd vormaclient/create && npm publish --access public --tag pre
 
 tspublishnonpre: tsprepforpub
 	@npm publish --access public
-	@cd internal/framework/_typescript/create && npm publish --access public
+	@cd vormaclient/create && npm publish --access public
 
 npmbuild:
 	@go run ./internal/scripts/buildts
@@ -86,4 +86,4 @@ sum:
 run-create: tsreset npmbuild nuke-node-modules
 	@mkdir -p test_create.local && \
 		cd test_create.local && \
-		node ../internal/framework/_typescript/create/dist/main.js --local-test
+		node ../vormaclient/create/dist/main.js --local-test

@@ -54,7 +54,7 @@ func main() {
 	}
 
 	// Update create package version
-	createPackagePath := "./internal/framework/_typescript/create/package.json"
+	createPackagePath := "./vormaclient/create/package.json"
 	createLines, createVersionLine, createCurrentVersion := parseutil.PackageJSONFromFile(createPackagePath)
 
 	t.Plain("Updating create package: ")

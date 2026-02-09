@@ -28,24 +28,24 @@
 	],
 	"exports": {
 		"./client": {
-			"import": "./npm_dist/internal/framework/_typescript/client/index.js",
-			"types": "./npm_dist/internal/framework/_typescript/client/index.d.ts"
+			"import": "./npm_dist/vormaclient/client/index.js",
+			"types": "./npm_dist/vormaclient/client/index.d.ts"
 		},
 		"./react": {
-			"import": "./npm_dist/internal/framework/_typescript/react/index.js",
-			"types": "./npm_dist/internal/framework/_typescript/react/index.d.ts"
+			"import": "./npm_dist/vormaclient/react/index.js",
+			"types": "./npm_dist/vormaclient/react/index.d.ts"
 		},
 		"./solid": {
-			"import": "./npm_dist/internal/framework/_typescript/solid/index.js",
-			"types": "./npm_dist/internal/framework/_typescript/solid/index.d.ts"
+			"import": "./npm_dist/vormaclient/solid/index.js",
+			"types": "./npm_dist/vormaclient/solid/index.d.ts"
 		},
 		"./preact": {
-			"import": "./npm_dist/internal/framework/_typescript/preact/index.js",
-			"types": "./npm_dist/internal/framework/_typescript/preact/index.d.ts"
+			"import": "./npm_dist/vormaclient/preact/index.js",
+			"types": "./npm_dist/vormaclient/preact/index.d.ts"
 		},
 		"./vite": {
-			"import": "./npm_dist/internal/framework/_typescript/vite/vite.js",
-			"types": "./npm_dist/internal/framework/_typescript/vite/vite.d.ts"
+			"import": "./npm_dist/vormaclient/vite/vite.js",
+			"types": "./npm_dist/vormaclient/vite/vite.d.ts"
 		},
 		"./kit/converters": {
 			"import": "./npm_dist/kit/_typescript/converters/converters.js",
@@ -101,7 +101,7 @@
 		"LICENSE",
 		"README.md",
 		"tsconfig.base.json",
-		"internal/framework/_typescript/",
+		"vormaclient/",
 		"kit/_typescript/",
 		"internal/site/frontend/assets/vorma-banner.webp",
 		"!node_modules",

@@ -66,7 +66,7 @@ I don't think we have hit that mark yet.
 		Output: "__LLM_CONCAT.local/__CURRENT_VERSION.txt",
 		Include: []string{
 			"wave",
-			"internal/framework",
+			"vormaclient",
 			"kit/matcher",
 			"kit/mux",
 			"kit/response",
@@ -80,7 +80,7 @@ I don't think we have hit that mark yet.
 		Exclude: []string{
 			"wave/internal/configschema",
 			// "**/_typescript",
-			"internal/framework/_typescript/create",
+			"vormaclient/create",
 			"**/*.test.ts",
 			"**/*.bench.ts",
 			"**/*_test.go",

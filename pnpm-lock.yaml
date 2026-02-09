@@ -66,11 +66,11 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.19.5)(@vitest/browser@3.2.4)(happy-dom@18.0.1)(jsdom@26.1.0)(lightningcss@1.30.2)
 
-  internal/framework/_typescript/client: {}
+  vormaclient/client: {}
 
-  internal/framework/_typescript/react: {}
+  vormaclient/react: {}
 
-  internal/framework/_typescript/solid: {}
+  vormaclient/solid: {}
 
   internal/scripts/_typescript: {}
 

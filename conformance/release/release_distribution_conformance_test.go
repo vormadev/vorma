@@ -60,7 +60,7 @@ func TestReleaseDistributionConformance(t *testing.T) {
 		preExpected := []string{
 			"tspublishpre: tsprepforpub",
 			"@npm publish --access public --tag pre",
-			"@cd internal/framework/_typescript/create && npm publish --access public --tag pre",
+			"@cd vormaclient/create && npm publish --access public --tag pre",
 		}
 		for _, fragment := range preExpected {
 			if !strings.Contains(makefile, fragment) {
@@ -71,7 +71,7 @@ func TestReleaseDistributionConformance(t *testing.T) {
 		nonPreExpected := []string{
 			"tspublishnonpre: tsprepforpub",
 			"@npm publish --access public",
-			"@cd internal/framework/_typescript/create && npm publish --access public",
+			"@cd vormaclient/create && npm publish --access public",
 		}
 		for _, fragment := range nonPreExpected {
 			if !strings.Contains(makefile, fragment) {
