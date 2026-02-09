@@ -123,3 +123,7 @@ Receiver-method wrappers (`Router.SetGlobalHTTPMiddleware`, `Router.SetMethodLev
 `NestedTasksResult` accessors (`Pattern`, `OK`, `Data`, `Err`, `RanTask`) MUST reflect stored execution state, and `NestedTasksResults.GetHasTaskHandler(i)` MUST return false for out-of-range indices.
 - `KIT-MUX-053` Task adapter wrapper behavior.
 `TaskHandlerFromFunc` and `TaskMiddlewareFromFunc` MUST wrap user functions in `tasks.Task` adapters that invoke the user function with the supplied `ReqData` and propagate return values/errors unchanged.
+- `KIT-MUX-054` Router explicit-index getter behavior.
+`Router.GetExplicitIndexSegment()` MUST return the router matcher explicit-index segment value; for `NewRouter` this value MUST default to empty string because `Options` does not expose explicit-index configuration.
+- `KIT-MUX-055` `TasksCtxRequirer` adapter/marker behavior.
+`TasksCtxRequirerFunc` MUST satisfy `TasksCtxRequirer` (`ServeHTTP` + marker `NeedsTasksCtx`), and `HandlerNeedsTasksCtxImplReflectType` MUST represent the interface type used by `RegisterHandler` for `needsTasksCtx` detection.

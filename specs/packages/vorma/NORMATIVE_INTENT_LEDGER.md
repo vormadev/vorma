@@ -16,11 +16,13 @@ Trust Epoch: `E2` (wrapper canonical reset)
 
 | File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
 |---|---|---|---:|---:|---|---|
-| `vorma.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | Wrapper source contracts (`VORMA-API-001..004`) revalidated; dedicated wrapper suites remain missing. |
-| `package.json` | in-scope | source+legacy-tests | 1 | 0 | in_progress | Embedded npm version contract (`VORMA-API-005`) revalidated; dedicated wrapper suite remains missing. |
+| `vorma.go` | in-scope | source+legacy-tests | 3 | 2 | mined_gaps_open | `E2-R2` and `E2-R3` clean replays reconfirmed wrapper contracts (`VORMA-API-001..004`); no legacy wrapper tests outside `conformance/**` were found. |
+| `package.json` | in-scope | source+legacy-tests | 3 | 2 | mined_gaps_open | `E2-R2` and `E2-R3` clean replays reconfirmed embedded npm version contract (`VORMA-API-005`). |
 
 ## Round Log
 
 | Round | Status | New Gaps | Notes |
 |---|---|---:|---|
-| `E2-R1` | in_progress | 1 | Wrapper replay surfaced executable-coverage gap for `VORMA-API-*`; tracked as `VORMA-ISSUE-001`. |
+| `E2-R1` | completed | 1 | Canonical reset replay corrected traceability evidence model to exclude `conformance/**` inputs; wrapper intent-validation gap remains tracked as `VORMA-ISSUE-001`. |
+| `E2-R2` | completed | 0 | Clean replay revalidated `vorma.go` + embedded package version contract and reconfirmed no legacy wrapper tests outside `conformance/**`. |
+| `E2-R3` | completed | 0 | Clean replay reconfirmed source-derived wrapper requirements with no new gap IDs; with `E2-R2`, this satisfies two consecutive no-gap full rounds. |

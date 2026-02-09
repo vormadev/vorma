@@ -17,14 +17,14 @@ Trust Epoch: `E2`
 |---|---|---|---:|---:|---|---|
 | `kit/matcher/README.md` | out-of-scope | n/a | 0 | 0 | out-of-scope | Documentation/benchmark artifact. |
 | `kit/matcher/bench.txt` | out-of-scope | n/a | 0 | 0 | out-of-scope | Documentation/benchmark artifact. |
-| `kit/matcher/find_best_match.go` | in-scope | source+legacy-tests | 2 | 1 | mined_gaps_open | `E2-R1` and `E2-R2` replays reconciled; no new gap IDs in `E2-R2`. |
-| `kit/matcher/find_best_match_test.go` | in-scope | source+legacy-tests | 2 | 1 | mined_gaps_open | `E2-R2` revalidated scenario coverage mapping; no new gap IDs. |
-| `kit/matcher/find_nested_matches.go` | in-scope | source+legacy-tests | 2 | 1 | mined_gaps_open | `E2-R2` revalidated nested branch mappings and ordering behavior. |
-| `kit/matcher/find_nested_matches_test.go` | in-scope | source+legacy-tests | 2 | 1 | mined_gaps_open | `E2-R2` revalidated deterministic-order and invalid-match scenarios. |
-| `kit/matcher/matcher.go` | in-scope | source+legacy-tests | 2 | 1 | mined_gaps_open | `E2-R2` revalidated options/defaults and added explicit getter API requirements. |
-| `kit/matcher/parse_segments.go` | in-scope | source+legacy-tests | 2 | 1 | mined_gaps_open | `E2-R2` confirmed parser contract set without introducing new gaps. |
-| `kit/matcher/parse_segments_test.go` | in-scope | source+legacy-tests | 2 | 1 | mined_gaps_open | `E2-R2` confirmed parser scenario coverage remains aligned. |
-| `kit/matcher/register.go` | in-scope | source+legacy-tests | 2 | 1 | mined_gaps_open | `E2-R2` revalidated normalization/registration semantics; added accessor API requirement coverage rows. |
+| `kit/matcher/find_best_match.go` | in-scope | source+legacy-tests | 5 | 3 | mined_gaps_open | `E2-R5` clean replay revalidated best-match traversal; no new gap IDs. |
+| `kit/matcher/find_best_match_test.go` | in-scope | source+legacy-tests | 5 | 3 | mined_gaps_open | `E2-R5` clean replay reconfirmed best-match scenario coverage alignment. |
+| `kit/matcher/find_nested_matches.go` | in-scope | source+legacy-tests | 5 | 3 | mined_gaps_open | `E2-R5` clean replay reconfirmed nested collision/representative semantics without additional gaps. |
+| `kit/matcher/find_nested_matches_test.go` | in-scope | source+legacy-tests | 5 | 3 | mined_gaps_open | `E2-R5` clean replay reconfirmed duplicate-key and ordering stress evidence remains aligned. |
+| `kit/matcher/matcher.go` | in-scope | source+legacy-tests | 5 | 3 | mined_gaps_open | `E2-R5` clean replay reconfirmed option/default and getter contract mappings with no new gaps. |
+| `kit/matcher/parse_segments.go` | in-scope | source+legacy-tests | 5 | 3 | mined_gaps_open | `E2-R5` clean replay reconfirmed parser contracts and existing coverage mapping. |
+| `kit/matcher/parse_segments_test.go` | in-scope | source+legacy-tests | 5 | 3 | mined_gaps_open | `E2-R5` clean replay reconfirmed parser scenario evidence remains aligned with source behavior. |
+| `kit/matcher/register.go` | in-scope | source+legacy-tests | 5 | 3 | mined_gaps_open | `E2-R5` clean replay reconfirmed normalization/registration behavior with no new requirement-level gaps. |
 
 ## Round Log
 
@@ -32,4 +32,6 @@ Trust Epoch: `E2`
 |---|---|---:|---|
 | `E2-R1` | completed | 3 | Full-pass replay and requirement-level reconciliation completed with explicit issue-backed exceptions (`KIT-MATCHER-ISSUE-001..003`). |
 | `E2-R2` | completed | 0 | From-scratch replay revalidated source+legacy-test intent; requirements expanded to include exported accessor/getter surface without introducing new issue IDs. |
-| `E2-R3` | pending | `TBD` | Second consecutive no-new-gap full round pending. |
+| `E2-R3` | completed | 2 | Deep replay found new requirement-level gaps: nested duplicate-key params semantics (`KIT-MATCHER-043`) and same-type longest-depth representative selection semantics (`KIT-MATCHER-044` / `KIT-MATCHER-ISSUE-004`). |
+| `E2-R4` | completed | 0 | Clean replay revalidated source+legacy-test intent across updated requirement set with no new gap IDs. |
+| `E2-R5` | completed | 0 | Clean replay revalidated source+legacy-test intent; with `E2-R4`, this satisfies two consecutive no-gap full rounds. |

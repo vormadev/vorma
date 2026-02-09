@@ -5,6 +5,14 @@ Last Updated: 2026-02-09
 Applies To: vormaruntime package behavior as observed through public APIs and
 HTTP I/O
 
+Current evidence status (epoch `E2-R2`):
+
+- this catalog was imported from prior backend-runtime spec material and is under
+  owner-package replay validation,
+- no legacy `vormaruntime` tests outside `conformance/**` were found during this
+  replay pass; current requirement support is therefore source-only until
+  external legacy evidence exists.
+
 ## 1. Why This Spec Exists
 
 This is a **conformance spec**, not an architecture note.
@@ -179,6 +187,22 @@ Given loaders-router options specify an explicit index segment token containing
 When app construction initializes matcher-backed loader routing  
 Then initialization MUST fail fast (panic-class construction failure) and MUST
 NOT continue with invalid matcher configuration.
+
+### BR-INIT-013: Vorma Paths Helpers Must Resolve Canonical Artifact Paths
+
+Given callers invoke `VormaPaths.StageOneJSON()` and
+`VormaPaths.StageTwoJSON()`  
+When return values are observed  
+Then returned paths MUST equal:
+
+- `path.Join("vorma_out", "vorma_paths_stage_1.json")` for stage one, and
+- `path.Join("vorma_out", "vorma_paths_stage_2.json")` for stage two.
+
+### BR-INIT-014: `SetIsDev` Must Drive Mode Getter State
+
+Given runtime mode is toggled through `SetIsDev(true)` or `SetIsDev(false)`  
+When `GetIsDevMode()` is queried afterward  
+Then returned mode value MUST reflect the most recent setter value.
 
 ## 4.2 Common Response Contract
 
@@ -900,64 +924,47 @@ Failure-preservation scope:
 - failed template reload MUST NOT replace the currently active parsed root
   template.
 
-## 4.12 Static Asset Middleware Contract
+### BR-DEV-010: Direct Route Reload API Uses Stage-One Artifacts
 
-### BR-STATIC-001: `ServeStatic` Intercept vs Pass-Through Contract
+Given `ReloadRoutesFromDisk()` is invoked directly  
+When route artifact loading succeeds  
+Then runtime MUST:
 
-Given app middleware from `Vorma.ServeStatic()` is installed and request path is
-treated as a public asset by runtime public-asset predicate  
-When request is handled  
-Then static middleware MUST serve the response and MUST NOT call downstream
-`next` handler for that request.
+- load stage-one paths artifact semantics (same source used by dev route reload),
+- replace in-memory route/build/manifest snapshot with loaded artifact values,
+- synchronize route registry from that snapshot before returning success.
 
-Given same middleware and request path is not treated as a public asset  
-When request is handled  
-Then middleware MUST pass through to downstream `next` handler unchanged.
+Given stage-one artifact loading fails  
+When `ReloadRoutesFromDisk()` returns  
+Then method MUST return non-nil error and MUST leave previously active
+authoritative runtime snapshot unchanged.
 
-### BR-STATIC-002: Immutable Cache Header for Served Public Assets
+### BR-DEV-011: Direct Template Reload API Is Parse-Then-Swap
 
-Given `Vorma.ServeStatic()` middleware serves a public static asset response  
-When response headers are observed  
-Then response MUST include:
+Given `ReloadTemplateFromDisk()` is invoked directly  
+When template parsing fails  
+Then method MUST return non-nil error and MUST NOT mutate active root template.
 
-- `Cache-Control: public, max-age=31536000, immutable`.
+Given template parsing succeeds  
+When method returns success  
+Then active root template snapshot MUST be replaced atomically for subsequent
+requests.
 
-### BR-STATIC-003: Public-Asset Predicate Prefix Semantics
+## 4.12 Wave Delegation Surface
 
-Given configured `PublicPathPrefix` is empty or `/`  
-When request path does not map to an existing file in public static filesystem  
-Then static middleware MUST treat request as non-asset and pass through to
-downstream handler.
+### BR-STATIC-001: `ServeStatic` Delegates to Wave Static Middleware
 
-Given configured `PublicPathPrefix` is non-root (not empty and not `/`)  
-When request path starts with that prefix  
-Then static middleware MUST route request through static handler regardless of
-whether file exists (result MAY be static-handler 404).
+Given a Vorma app instance with embedded `*wave.Wave`  
+When `Vorma.ServeStatic()` is called  
+Then runtime MUST return the middleware produced by
+`Wave.ServeStatic(true)` without introducing additional Vorma-owned static
+serving semantics.
 
-### BR-STATIC-004: Prefix-Stripped Public-FS Lookup Contract
+Behavior ownership note:
 
-Given public static file exists at path `P` relative to public static subtree
-and request URL is `<PublicPathPrefix> + P`  
-When static middleware serves request  
-Then served content MUST resolve from public static filesystem via
-prefix-stripped lookup for `P`.
-
-### BR-STATIC-005: Favicon Redirect Middleware Contract
-
-Given middleware from `Vorma.FaviconRedirect()` is installed and request method
-is `GET` or `HEAD` at path `/favicon.ico`  
-When middleware resolves `GetPublicURL("favicon.ico")` to value `U` and fallback
-path `<PublicPathPrefix>favicon.ico` to value `F`  
-Then behavior MUST be:
-
-- if `U != F`, middleware MUST return HTTP `302 Found` with `Location=U` and MUST
-  NOT call downstream `next` handler,
-- if `U == F`, middleware MUST return HTTP `404 Not Found` and MUST NOT call
-  downstream `next` handler.
-
-Given request does not satisfy both endpoint and method gate  
-When middleware runs  
-Then request MUST pass through to downstream handler unchanged.
+- static-serving behavior details (asset predicate, cache header policy, prefix
+  semantics, and static file lookup semantics) are owned by Wave requirement IDs
+  `WAVE-RT-010` and `WAVE-RT-011` in `specs/packages/wave/SPEC.md`.
 
 ## 4.13 Concurrency and Thread-Safety (Black-Box)
 
@@ -1001,76 +1008,6 @@ Given caller invokes `WithLock` and mutates lock-protected fields inside the
 callback  
 When callback returns  
 Then those mutations MUST be committed atomically before `WithLock` returns.
-
-## 4.14 Embedded Wave Helper Delegation Contracts
-
-These contracts exist because `Vorma` embeds `*wave.Wave` and therefore
-exposes Wave helper methods through the Vorma API surface.
-
-Behavioral ownership remains in Wave specs. Vorma requirements below are
-delegation-compatibility requirements, not owner-internal re-specification.
-
-Owner references:
-
-- `specs/packages/wave/SPEC.md`
-- `specs/packages/wave/TRACEABILITY_MATRIX.md`
-- `specs/packages/wave/CONFORMANCE_ISSUES.md`
-
-### BR-ASSET-001: Critical CSS Helper Delegation Compatibility
-
-Given callers invoke critical CSS helpers through Vorma
-(`GetCriticalCSS`, `GetCriticalCSSStyleElement`,
-`GetCriticalCSSStyleElementSha256Hash`, `GetCriticalCSSElementID`)  
-When helper outputs are observed  
-Then behavior MUST remain compatible with the corresponding Wave-owned helper
-contracts.
-
-### BR-ASSET-002: Stylesheet Helper Delegation Compatibility
-
-Given callers invoke stylesheet helpers through Vorma
-(`GetStyleSheetURL`, `GetStyleSheetLinkElement`, `GetStyleSheetElementID`)  
-When helper outputs are observed  
-Then behavior MUST remain compatible with corresponding Wave-owned helper
-contracts.
-
-### BR-ASSET-003: Public Filemap Helper Delegation Compatibility
-
-Given callers invoke public filemap helpers through Vorma
-(`GetPublicFileMapURL`, `GetPublicFileMapElements`)  
-When helper outputs are observed  
-Then behavior MUST remain compatible with corresponding Wave-owned helper
-contracts.
-
-### BR-ASSET-004: Public Filemap Script Hash Delegation Compatibility
-
-Given callers invoke `GetPublicFileMapScriptSha256Hash()` through Vorma  
-When helper output is observed  
-Then behavior MUST remain compatible with corresponding Wave-owned helper
-contracts.
-
-### BR-ASSET-005: Public URL Resolver Delegation Compatibility
-
-Given callers invoke `GetPublicURL(...)` through Vorma  
-When helper output is observed  
-Then behavior MUST remain compatible with corresponding Wave-owned resolver
-contracts.
-
-### BR-ASSET-006: Filesystem Source / Cache Delegation Compatibility
-
-Given callers invoke embedded filesystem/filemap helper group through Vorma
-(`GetBaseFS`, `GetPublicFS`, `GetPrivateFS`, `GetPublicFileMap`, plus helper
-families above)  
-When helper outputs are observed across dev/non-dev modes  
-Then behavior MUST remain compatible with corresponding Wave-owned source and
-cache contracts.
-
-### BR-ASSET-007: Keyed vs Scalar Error-Memoization Delegation Compatibility
-
-Given callers exercise repeated helper access patterns through Vorma in
-non-dev mode  
-When scalar- and keyed-helper error/success paths are observed  
-Then behavior MUST remain compatible with corresponding Wave-owned
-error-memoization contracts.
 
 ## 5. Executable Conformance Scenario Catalog
 
@@ -1169,6 +1106,24 @@ token containing `/` (for example `"bad/idx"`)
 When constructor/init path is invoked  
 Then construction MUST fail fast with panic-class invalid matcher configuration
 error.
+
+### BRC-INIT-013 (covers BR-INIT-013)
+
+Given direct helper calls to `VormaPaths.StageOneJSON()` and
+`VormaPaths.StageTwoJSON()`  
+When helper output strings are observed  
+Then outputs MUST exactly match canonical joined artifact paths under
+`vorma_out` for stage-one and stage-two JSON files.
+
+### BRC-INIT-014 (covers BR-INIT-014)
+
+Given an initialized runtime instance  
+When `SetIsDev(true)` is called and then `GetIsDevMode()` is read  
+Then getter MUST return `true`.
+
+Given same instance after `SetIsDev(false)`  
+When `GetIsDevMode()` is read  
+Then getter MUST return `false`.
 
 ## 5.2 Common Response Header Scenarios
 
@@ -1753,52 +1708,40 @@ When failure response is observed and normal requests continue afterward
 Then runtime MUST continue serving the previously active route/template behavior
 without partial adoption of failed reload inputs.
 
-## 5.12 Static Asset Middleware Scenarios
+### BRC-DEV-010 (covers BR-DEV-010)
+
+Given a runtime instance where stage-one artifact values differ from current
+in-memory snapshot  
+When `ReloadRoutesFromDisk()` is called directly  
+Then subsequent route/build/manifest observations MUST reflect stage-one artifact
+values.
+
+Given direct-call artifact load failure  
+When `ReloadRoutesFromDisk()` returns error  
+Then pre-call runtime snapshot behavior MUST remain unchanged.
+
+### BRC-DEV-011 (covers BR-DEV-011)
+
+Given active template `T0` and on-disk replacement `T1`  
+When `ReloadTemplateFromDisk()` succeeds  
+Then subsequent HTML rendering MUST reflect `T1`.
+
+Given parse-failing template source for direct call  
+When `ReloadTemplateFromDisk()` returns error  
+Then subsequent HTML rendering MUST continue using previously active template.
+
+## 5.12 Delegated Static Middleware Scenario
 
 ### BRC-STATIC-001 (covers BR-STATIC-001)
 
-Given `Vorma.ServeStatic()` middleware wraps a downstream probe handler  
-When one request targets a known public asset and another targets non-asset path  
-Then asset request MUST be served by static middleware without downstream probe
-execution, and non-asset request MUST reach downstream probe handler.
+Given the same underlying Wave instance is observed through:
 
-### BRC-STATIC-002 (covers BR-STATIC-002)
+- direct `Wave.ServeStatic(true)` middleware usage, and
+- `Vorma.ServeStatic()` middleware usage,
 
-Given request path resolves to existing public static asset through
-`Vorma.ServeStatic()`  
-When response headers are observed  
-Then `Cache-Control` MUST equal
-`public, max-age=31536000, immutable`.
-
-### BRC-STATIC-003 (covers BR-STATIC-003)
-
-Given one app configured with root/empty `PublicPathPrefix` and another with
-non-root prefix  
-When both receive requests for missing asset-like paths  
-Then root-prefix app MUST pass missing path to downstream handler, while
-non-root-prefix app MUST route prefixed path through static handler path (which
-may return static 404).
-
-### BRC-STATIC-004 (covers BR-STATIC-004)
-
-Given public asset exists in public static subtree at relative path `P` and
-request URL is formed with configured prefix plus `P`  
-When static response body is inspected  
-Then body/content MUST match the public-FS file addressed by prefix-stripped
-relative path `P`.
-
-### BRC-STATIC-005 (covers BR-STATIC-005)
-
-Given `Vorma.FaviconRedirect()` middleware wraps a downstream probe handler and
-fixture variants where resolved favicon URL differs from fallback and equals
-fallback  
-When `/favicon.ico` is requested with `GET`/`HEAD`  
-Then differing variant MUST return `302` + `Location` and block downstream probe,
-and equal/fallback variant MUST return `404` and block downstream probe.
-
-Given request path/method does not match middleware gate  
-When request is handled  
-Then middleware MUST pass through to downstream probe handler.
+When equivalent static-asset and non-asset requests are exercised  
+Then Vorma-observed static middleware behavior MUST be delegation-equivalent to
+the Wave-owned static middleware contract (`WAVE-RT-010`, `WAVE-RT-011`).
 
 ## 5.13 Concurrency Scenarios
 
@@ -1839,52 +1782,6 @@ mutations
 When callback returns  
 Then subsequent getter observations MUST reflect those writes atomically.
 
-## 5.14 Embedded Wave Asset Helper Scenarios
-
-### BRC-ASSET-001 (covers BR-ASSET-001)
-
-Given Vorma critical-css helper outputs are sampled through embedded methods  
-When compared against corresponding Wave owner-fixture expectations  
-Then outputs MUST remain behavior-compatible.
-
-### BRC-ASSET-002 (covers BR-ASSET-002)
-
-Given Vorma stylesheet helper outputs are sampled through embedded methods  
-When compared against corresponding Wave owner-fixture expectations  
-Then outputs MUST remain behavior-compatible.
-
-### BRC-ASSET-003 (covers BR-ASSET-003)
-
-Given Vorma public-filemap helper outputs are sampled through embedded methods  
-When compared against corresponding Wave owner-fixture expectations  
-Then outputs MUST remain behavior-compatible.
-
-### BRC-ASSET-004 (covers BR-ASSET-004)
-
-Given Vorma filemap-script-hash helper output is sampled through embedded method  
-When compared against corresponding Wave owner-fixture expectations  
-Then output MUST remain behavior-compatible.
-
-### BRC-ASSET-005 (covers BR-ASSET-005)
-
-Given Vorma public-URL resolver output is sampled through embedded method  
-When compared against corresponding Wave owner-fixture expectations  
-Then output MUST remain behavior-compatible.
-
-### BRC-ASSET-006 (covers BR-ASSET-006)
-
-Given Vorma embedded filesystem/filemap helper group is sampled across dev and
-non-dev modes  
-When compared against corresponding Wave owner-fixture expectations  
-Then outputs and mode-dependent behavior MUST remain compatible.
-
-### BRC-ASSET-007 (covers BR-ASSET-007)
-
-Given repeated Vorma helper accesses in non-dev mode covering scalar and keyed
-failure/success paths  
-When compared against corresponding Wave owner-fixture expectations  
-Then error-memoization behavior MUST remain compatible.
-
 ## 6. Conformance Test Suite Guidance
 
 Conformance suites derived from this spec SHOULD:
@@ -1902,7 +1799,8 @@ Conformance suites derived from this spec SHOULD:
 
 ## 7. Relation to Other Specs
 
-- Wire contract: `specs/packages/vormaruntime/SPEC.md`
+- Traceability matrix: `specs/packages/vormaruntime/TRACEABILITY_MATRIX.md`
+- Conformance issues: `specs/packages/vormaruntime/CONFORMANCE_ISSUES.md`
 - Frontend runtime:
   `specs/packages/vormaclient/client/SPEC.md`
 - Build/dev conformance:
@@ -1910,8 +1808,6 @@ Conformance suites derived from this spec SHOULD:
 - Interop contracts: `specs/packages/vorma/SPEC.md`
 - Wave runtime-serving owner contracts:
   `specs/packages/wave/SPEC.md`
-- Wave build/dev owner contracts:
-  `specs/packages/wave/tooling/SPEC.md`
 - Testing strategy:
   `specs/SPEC_GOVERNANCE.md`
 - Checklist/roadmap: `specs/packages/vormaruntime/SPEC_CHECKLIST.md`

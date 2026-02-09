@@ -102,3 +102,7 @@ Custom option runes for dynamic/splat/index representations MUST preserve matchi
 `RegisteredPattern.NormalizedPattern()` and `RegisteredPattern.OriginalPattern()` MUST return the stored normalized/original strings without additional transformation.
 - `KIT-MATCHER-042` Matcher option getter behavior.
 `GetExplicitIndexSegment()`, `GetDynamicParamPrefixRune()`, and `GetSplatSegmentRune()` MUST return the matcher's effective configured option values.
+- `KIT-MATCHER-043` Nested params key-collision behavior.
+When nested matching traverses multiple dynamic segments that normalize to the same param key (including empty key and repeated names), the resulting params map MUST retain the last-seen segment value for that key.
+- `KIT-MATCHER-044` Nested longest-depth same-type representative selection.
+During nested longest-depth conflict pruning, representative selection for each segment type (`dynamic`, `splat`, `index`) is currently performed via single-entry-per-type map assignment, so same-type representative choice is source-order/map-iteration dependent and MUST be intent-validated.
