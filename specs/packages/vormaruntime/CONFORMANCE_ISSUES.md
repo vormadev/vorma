@@ -6,6 +6,8 @@ Last Updated: 2026-02-09
 | Issue ID | Type | Affected Requirements | Summary | Status |
 |---|---|---|---|---|
 | VRI-001 | intent-validation-gap | BR-* | No legacy `vormaruntime` tests outside `conformance/**` are currently present in-repo; requirement rows are source-only until legacy coverage exists. | open |
+| VRI-002 | intent-validation-gap | BR-* | Exported utility APIs `GetHeadElsInstance()` and `PrettyPrintFS(...)` currently have no explicit owner requirement/disposition; confirm whether they are stable supported surface or should be treated as non-normative/deprecation candidates. | open |
+| VRI-003 | intent-validation-gap | BR-* | Remaining exported DTO/helper surfaces (`RouteAssets`, `RouteResult`, `SSRInnerHTMLInput`, `GetSSRInnerHTMLOutput`) still need explicit owner disposition: stable normative API vs non-normative/internal-export legacy surface. | open |
 | VCI-015 | impl-bug-candidate | BR-HTML-008 | HTML render path is not nil-safe when GetRootTemplateData returns (nil, nil). | open |
 | VCI-018 | impl-bug-candidate | BR-CONC-001, BR-CONC-002, BR-DEV-007 | SSR bootstrap DTO reads mutable runtime fields without lock while dev reload writes those fields under lock. | open |
 | VCI-020 | impl-bug-candidate | BR-LOAD-014 | Route-data cache key uses direct normalized-pattern concatenation without tuple-boundary separators. | open |
@@ -19,3 +21,7 @@ Last Updated: 2026-02-09
 | VCI-062 | impl-bug-candidate | BR-LOAD-023 | RegisterPatternIfNeeded has a check-then-register race that can panic under concurrent calls for the same new pattern. | open |
 | VCI-069 | impl-bug-candidate | BR-CONC-003 | Router route-collection accessors currently return mutable backing collections. | open |
 | VCI-070 | impl-bug-candidate | BR-ACT-006 | Typed GET-action HEAD fallback currently fails default parse flow with unsupported-method error. | open |
+| VCI-071 | impl-bug-candidate | BR-ACT-007 | Custom ActionsRouterOptions.SupportedMethods tokens are consumed verbatim (no method canonicalization), so non-canonical casing can break action registration/parse gating. | open |
+| VCI-072 | impl-bug-candidate | BR-DEV-012 | ReloadRoutesFromDisk can panic before Init() because private FS prerequisites are unset; behavior should fail with error instead of panic. | open |
+| VCI-073 | impl-bug-candidate | BR-CONC-005 | RouteRegistry.mergeServerRoutes iterates `NestedRouter.AllRoutes()` live map alias without holding nested-router lock, so concurrent pattern registration can trigger concurrent map iteration/write panic. | open |
+| VCI-074 | impl-bug-candidate | BR-INIT-016 | GetActionsHandler accepts nil router and currently panics only when handling a request, rather than failing fast at handler construction time. | open |

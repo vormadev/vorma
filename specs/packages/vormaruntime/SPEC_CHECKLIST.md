@@ -15,8 +15,8 @@ Last Updated: 2026-02-09
 - [x] Complete rough semantic pass.
 - [x] Complete full requirement catalog authoring (detailed, comprehensive, non-summary).
 - [x] Complete full requirement-level traceability reconciliation (coverage complete or issue-backed exceptions).
-- [ ] Complete full structural pass.
-- [ ] Complete full boundary pass.
-- [ ] Complete full semantic pass.
-- [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md`.
-- [ ] Record two consecutive no-gap full rounds.
+- [x] Complete at least one explicit full structural pass (all in-scope source files replayed in current epoch).
+- [x] Complete at least one explicit full boundary pass (owner inheritance vs runtime-owned behavior revalidated across all files).
+- [x] Complete at least one explicit full semantic pass (existing claims revalidated and new gaps incorporated where found).
+- [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md` (includes `VRI-001`, `VRI-002`, `VRI-003`, and active `VCI-*` divergence backlog).
+- [x] Record two consecutive no-gap full rounds after latest requirement-catalog change.

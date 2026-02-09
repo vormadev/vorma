@@ -167,6 +167,30 @@ When caller passes `nil` nested router
 Then runtime MUST fail immediately (panic) rather than proceed with undefined
 route-registration behavior.
 
+### BR-INIT-016: Actions Handler Requires Non-Nil Router
+
+Given actions handler is requested via `GetActionsHandler`  
+When caller passes `nil` router  
+Then runtime MUST fail immediately (panic/fail-fast) rather than defer nil
+dereference to request-processing time.
+
+### BR-INIT-017: Loaders/Actions Facade Helpers Must Delegate to App Routers
+
+Given an initialized app instance  
+When `Loaders().HandlerMountPattern()` is queried  
+Then returned mount pattern MUST be exactly `/*`.
+
+Given the same app instance  
+When `Actions().HandlerMountPattern()` is queried  
+Then returned mount pattern MUST equal `ActionsRouter().MountRoot(\"*\")` for the
+current actions-router configuration.
+
+Given the same app instance  
+When `Loaders().Handler()` and `Actions().Handler()` are used  
+Then they MUST delegate behavior-equivalently to
+`GetLoadersHandler(LoadersRouter().NestedRouter)` and
+`GetActionsHandler(ActionsRouter().Router)` respectively.
+
 ### BR-INIT-010: Server Address Derivation After Init
 
 Given runtime initialization succeeds and effective app port is `P`  
@@ -204,6 +228,117 @@ Given runtime mode is toggled through `SetIsDev(true)` or `SetIsDev(false)`
 When `GetIsDevMode()` is queried afterward  
 Then returned mode value MUST reflect the most recent setter value.
 
+### BR-INIT-015: `Init()` Must Source Mode from Wave Environment
+
+Given runtime mode may already have been set by prior direct setter calls  
+When `Init()` executes  
+Then initialization mode selection MUST be sourced from `wave.GetIsDev()` at
+init time and MUST set runtime mode to that value for the initialized snapshot.
+
+### BR-INIT-018: Constructor Config Payload Must Be JSON-Decodable
+
+Given `NewVormaApp` is called and `Wave.RawConfigJSON()` is not valid JSON  
+When constructor decodes config payload  
+Then construction MUST fail immediately (panic/fatal construction error).
+
+Given `Wave.RawConfigJSON()` is valid JSON but has no `Vorma` object payload  
+When constructor applies config defaults/validation  
+Then runtime MUST treat the missing `Vorma` object as empty config and still
+enforce required-key validation contracts (`BR-INIT-002`).
+
+### BR-INIT-019: Constructor Logger Selection Contract
+
+Given `NewVormaApp` is called with non-nil `VormaAppConfig.Logger`  
+When construction completes  
+Then runtime logging surface (`Vorma.Log`) MUST use that exact logger instance.
+
+Given `NewVormaApp` is called with `Logger=nil`  
+When construction completes  
+Then runtime logging surface (`Vorma.Log`) MUST be initialized to a non-nil
+default logger instance.
+
+### BR-INIT-020: Exported Artifact-Naming Constants Contract
+
+Given callers read exported artifact/path naming constants from runtime package  
+When values are observed  
+Then constants MUST remain:
+
+- `VormaOutDirname == "vorma_out"`
+- `VormaPathsStageOneJSONFileName == "vorma_paths_stage_1.json"`
+- `VormaPathsStageTwoJSONFileName == "vorma_paths_stage_2.json"`
+- `VormaOutPrefix == "vorma_out_"`
+- `VormaVitePrehashedFilePrefix == "vorma_out_vite_"`
+- `VormaRouteManifestPrefix == "vorma_out_vorma_internal_route_manifest_"`.
+
+### BR-INIT-021: Public Type-Alias Surface Contract
+
+Given callers use exported runtime type aliases  
+When compile-time type identity and assignability are evaluated  
+Then these aliases MUST remain direct aliases:
+
+- `LoaderReqData` aliases `mux.NestedReqData`
+- `ActionReqData[I]` aliases `mux.ReqData[I]`
+- `Route[I,O]` aliases `mux.Route[I,O]`
+- `TaskHandler[I,O]` aliases `mux.TaskHandler[I,O]`
+- `RouteType` aliases `string`
+- `SplatValues` aliases `[]string`.
+
+Ownership boundary:
+
+- behavior semantics for mux-owned aliases (`LoaderReqData`, `ActionReqData`,
+  `Route`, `TaskHandler`) are owned by `kit/mux`; runtime MUST preserve alias
+  compatibility with that owner surface.
+
+### BR-INIT-022: Router Options Passthrough Contract
+
+Given `NewVormaApp` receives non-default `LoadersRouterOptions` and/or
+`ActionsRouterOptions`  
+When runtime constructs internal routers  
+Then option fields MUST be passed through to corresponding mux router options:
+
+- `DynamicParamPrefix` -> `DynamicParamPrefixRune`
+- `SplatSegmentIdentifier` -> `SplatSegmentRune`
+- `IndexSegmentIdentifier` -> `ExplicitIndexSegment` (loaders)
+- `MountRoot` -> `MountRoot` (actions)
+- `SupportedMethods` controls action parse-gating method set.
+
+Default refinement:
+
+- default index segment, actions mount root, and default supported-method set are
+  still governed by `BR-INIT-003`.
+
+### BR-INIT-023: Exported `UIVariants` Values Contract
+
+Given callers read exported `UIVariants` helper values  
+When values are observed  
+Then constants MUST remain:
+
+- `UIVariants.React == "react"`
+- `UIVariants.Preact == "preact"`
+- `UIVariants.Solid == "solid"`.
+
+### BR-INIT-024: Exported Build/Runtime JSON DTO Field Contract
+
+Given runtime/build integration serializes and deserializes exported runtime DTOs
+for config and paths artifacts  
+When JSON field names are observed  
+Then field-name contracts MUST remain:
+
+- `Path` fields: `originalPattern`, `srcPath`, `exportKey`,
+  `errorExportKey`, `outPath`, `deps` (`NestedRoute` remains non-serialized),
+- `PathsFile` fields: `stage`, `buildID`, `clientEntrySrc`, `paths`,
+  `routeManifestFile`, `clientEntryOut`, `clientEntryDeps`,
+  `depToCSSBundleMap`,
+- `VormaConfig` fields: `IncludeDefaults`, `MainBuildEntry`, `UIVariant`,
+  `HTMLTemplateLocation`, `ClientEntry`, `ClientRouteDefsFile`, `TSGenOutDir`,
+  `BuildtimePublicURLFuncName`.
+
+Cross-package boundary:
+
+- this contract is consumed directly by `vormabuild` artifact emit/read paths
+  and runtime init/reload decode paths; owner package `vormaruntime` MUST keep
+  these DTO field names stable.
+
 ## 4.2 Common Response Contract
 
 ### BR-RESP-001: Build ID Header on Loader Responses
@@ -238,6 +373,22 @@ Given loaders flow where `Cache-Control` was already set (for example through
 response proxy)  
 When final response is produced  
 Then runtime MUST preserve existing value and MUST NOT override it.
+
+### BR-RESP-004: Current Build ID Accessor Alias
+
+Given runtime has an observable current build ID  
+When `GetCurrentBuildID()` and `GetBuildID()` are queried in the same runtime
+snapshot  
+Then both accessors MUST return equal values.
+
+### BR-RESP-005: Exported Response/Query Key Constants Contract
+
+Given callers read exported protocol constants from runtime package  
+When values are observed  
+Then constants MUST remain:
+
+- `VormaBuildIDHeaderKey == "X-Vorma-Build-Id"`
+- `VormaJSONQueryKey == "vorma_json"`.
 
 ## 4.3 Loaders: JSON Route-Data Negotiation
 
@@ -280,6 +431,29 @@ When loaders handler processes request
 Then stale-build sentinel response MUST be returned before route-match/not-found
 evaluation, including for paths that would otherwise return loader 404.
 
+### BR-JSON-005: JSON Helper Function Semantics
+
+Given any request object  
+When `IsJSONRequest(r)` is called  
+Then function MUST return true iff query key `vorma_json` resolves to a
+non-empty value.
+
+Given any request object and runtime build id snapshot `B`  
+When `IsCurrentBuildJSONRequest(r)` is called  
+Then function MUST return true iff request query `vorma_json` equals `B`.
+
+### BR-JSON-006: Route-Data JSON Field Name Contract
+
+Given runtime emits current-build JSON route-data payload  
+When payload object keys are inspected  
+Then field names MUST match runtime DTO tag contract:
+
+- core keys: `outermostServerError`, `outermostServerErrorIdx`,
+  `errorExportKeys`, `matchedPatterns`, `loadersData`, `importURLs`,
+  `exportKeys`, `hasRootData`, `params`, `splatValues`, `deps`,
+- final keys: `title`, `metaHeadEls`, `restHeadEls`, `cssBundles`,
+  `viteDevURL`.
+
 ## 4.4 Loaders: Routing and Matching
 
 ### BR-LOAD-001: Not Found Behavior
@@ -306,6 +480,12 @@ Matcher-ownership boundary:
 Given a matching dynamic/splat route  
 When JSON route-data is returned  
 Then resolved params and splat values MUST be present in payload.
+
+Nested params/splat ownership boundary:
+
+- extraction/population semantics are owner-defined by `kit/mux` nested-match and
+  nested-task contracts and MUST remain behavior-compatible with
+  `KIT-MUX-044` and `KIT-MUX-045` in `specs/packages/kit/mux/SPEC.md`.
 
 ### BR-LOAD-004: Root Data Flag
 
@@ -343,10 +523,12 @@ with `kit/matcher` full-match validity contracts (`KIT-MATCHER-028`,
 
 ### BR-LOAD-005: Parallel Loader Execution
 
-Given multiple matched loader handlers that block for controlled durations  
+Given multiple matched loader routes execute through runtime nested-task flow  
 When request is processed  
-Then total execution time SHOULD reflect parallel execution (bounded near max
-duration, not sum).
+Then loader task fan-out behavior (including parallel execution model and
+per-match result/proxy indexing) MUST remain behavior-compatible with
+`kit/mux` owner contracts `KIT-MUX-045` and `KIT-MUX-046` in
+`specs/packages/kit/mux/SPEC.md`.
 
 ### BR-LOAD-006: Loader Data Index Alignment
 
@@ -391,6 +573,11 @@ When handler bootstrap runs
 Then runtime MUST register those missing patterns (without requiring task
 handlers) so route matching can include client-defined patterns.
 
+Registration-helper ownership boundary:
+
+- no-handler nested-pattern registration behavior is owner-defined by `kit/mux`
+  (`KIT-MUX-043`) and runtime usage MUST remain compatible with that contract.
+
 ### BR-LOAD-020: `RegisterPatternIfNeeded` Idempotent Registration Contract
 
 Given runtime API `RegisterPatternIfNeeded(pattern)` is called  
@@ -406,17 +593,12 @@ Then runtime MUST no-op and MUST NOT surface duplicate-registration failure.
 Given route-registry sync refreshes client pattern input while nested loader
 router already contains a mix of handler-backed and no-handler patterns  
 When nested-router rebuild path executes  
-Then runtime MUST preserve handler-backed patterns, MUST replace handler-less
-patterns with exactly the refreshed pattern set, and MUST keep matcher-option
-semantics stable across rebuild (`DynamicParamPrefixRune`,
-`SplatSegmentRune`, `ExplicitIndexSegment`).
+Then runtime-observed rebuild outcomes MUST remain behavior-compatible with
+`kit/mux` nested rebuild contract (`KIT-MUX-047`) including:
 
-Conformance-visible invariants:
-
-- handler-backed patterns remain runnable after rebuild even if omitted from the
-  refreshed client-only pattern set,
-- no-handler patterns omitted from refreshed set no longer match post-rebuild,
-- new refreshed patterns become match-eligible no-handler entries.
+- preserving handler-backed routes,
+- replacing handler-less routes with refreshed client pattern input, and
+- preserving matcher option semantics across rebuild.
 
 ### BR-LOAD-023: Concurrent `RegisterPatternIfNeeded` Idempotency Contract
 
@@ -697,6 +879,60 @@ Given successful HTML render path
 When runtime populates reserved root-template keys  
 Then `VormaRootID` MUST equal `vorma-root`.
 
+### BR-HTML-012: SSR Bootstrap Manifest/Deployment Field Contract
+
+Given successful HTML render path  
+When runtime assembles SSR bootstrap script payload  
+Then payload `routeManifestURL` MUST equal
+`path.Join(Wave.GetPublicPathPrefix(), GetRouteManifestFile())`.
+
+Given environment flag `VERCEL_SKEW_PROTECTION_ENABLED` resolves to true  
+When runtime assembles SSR bootstrap script payload  
+Then payload `deploymentID` MUST equal environment value
+`VERCEL_DEPLOYMENT_ID` (empty string when unset).
+
+Given `VERCEL_SKEW_PROTECTION_ENABLED` is false/unset  
+When runtime assembles SSR bootstrap script payload  
+Then payload `deploymentID` MUST be empty.
+
+### BR-HTML-013: HTML Pipeline Internal Failures Must Return 500
+
+Given document-mode HTML rendering is in progress  
+When any internal pipeline stage fails (including head-element rendering,
+SSR-script generation, dev-script generation, or root-template execution)  
+Then runtime MUST return HTTP 500 and MUST NOT emit successful HTML document
+payload for that request.
+
+### BR-HTML-014: SSR Bootstrap Global Namespace Symbol Contract
+
+Given successful HTML rendering path  
+When SSR bootstrap script is produced  
+Then script payload MUST initialize and write runtime bootstrap state under
+`globalThis[Symbol.for("__vorma_internal__")]`.
+
+### BR-HTML-015: Exported `VormaSymbolStr` Constant Value Contract
+
+Given callers read exported `VormaSymbolStr` constant  
+When value is observed  
+Then value MUST be exactly `__vorma_internal__`.
+
+### BR-HTML-016: SSR Bootstrap Runtime-State Seed Contract
+
+Given successful HTML rendering path  
+When SSR bootstrap script initializes runtime namespace object `x`  
+Then bootstrap payload MUST seed:
+
+- `x.patternToWaitFnMap` as an empty object (`{}`),
+- `x.clientLoadersData` as an empty array (`[]`).
+
+Given successful HTML rendering path  
+When SSR bootstrap script initializes runtime mode/public-prefix metadata  
+Then payload fields MUST reflect current runtime snapshot values:
+
+- `x.isDev == GetIsDevMode()`,
+- `x.buildID == GetBuildID()`,
+- `x.publicPathPrefix == Wave.GetPublicPathPrefix()`.
+
 ## 4.9 Actions Contract
 
 ### BR-ACT-001: GET Input Parsing
@@ -733,6 +969,12 @@ Given action input parsing/validation fails with validation-class error
 When request is handled  
 Then response MUST be HTTP 400.
 
+Parse-error mapping ownership boundary:
+
+- parse-input validation/non-validation error status mapping is owner-defined by
+  `kit/mux` contracts `KIT-MUX-019` and `KIT-MUX-020`, and runtime behavior
+  MUST remain compatible with those contracts.
+
 ### BR-ACT-005: Supported-Methods Accessor Immutability
 
 Given caller retrieves action supported-methods via
@@ -749,6 +991,21 @@ When default action input parsing executes for that request
 Then parsing semantics MUST remain equivalent to GET query parsing and MUST NOT
 fail with unsupported-method parse errors solely because transport method is
 `HEAD`.
+
+### BR-ACT-007: Custom Supported Methods Must Be Canonicalized
+
+Given actions router is configured with `SupportedMethods` containing valid HTTP
+method tokens in non-canonical casing (for example `post`, `Patch`)  
+When runtime mounts/dispatches actions and parse-gating checks supported methods  
+Then method tokens MUST be canonicalized to HTTP method casing used by
+`net/http` (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, etc.) so behavior remains
+equivalent to canonical method input.
+
+### BR-ACT-008: `FormData` TS Raw Type Identity Contract
+
+Given runtime `FormData` helper type is used in TS-generation contexts  
+When `FormData{}.TSTypeRaw()` is queried  
+Then returned type string MUST be exactly `FormData`.
 
 ## 4.10 Head Elements Contract
 
@@ -911,6 +1168,22 @@ When method returns success
 Then active root template snapshot MUST be replaced atomically for subsequent
 requests.
 
+### BR-DEV-012: Direct Route Reload Must Fail Gracefully Before Init
+
+Given `ReloadRoutesFromDisk()` is invoked before runtime initialization has
+established artifact file-system prerequisites (for example private FS snapshot)  
+When method executes  
+Then call MUST fail with non-nil error and MUST NOT panic.
+
+### BR-DEV-013: Exported Dev Reload Path Constants Contract
+
+Given callers read exported dev reload path constants  
+When values are observed  
+Then constants MUST remain:
+
+- `DevReloadRoutesPath == "/__vorma/reload-routes"`
+- `DevReloadTemplatePath == "/__vorma/reload-template"`.
+
 ## 4.12 Wave Delegation Surface
 
 ### BR-STATIC-001: `ServeStatic` Delegates to Wave Static Middleware
@@ -969,6 +1242,14 @@ Given caller invokes `WithLock` and mutates lock-protected fields inside the
 callback  
 When callback returns  
 Then those mutations MUST be committed atomically before `WithLock` returns.
+
+### BR-CONC-005: Route Sync Server-Route Enumeration Must Be Concurrency-Safe
+
+Given route-sync/reload logic enumerates nested-router server routes while other
+callers may concurrently register patterns  
+When server-route placeholder merge logic executes  
+Then enumeration and merge behavior MUST avoid concurrent map
+iteration/write panics and MUST remain thread-safe.
 
 ## 5. Executable Conformance Scenario Catalog
 
@@ -1048,6 +1329,22 @@ Given initialized app instance
 When `GetLoadersHandler(nil)` is invoked  
 Then invocation MUST panic with nil-router guard failure.
 
+### BRC-INIT-016 (covers BR-INIT-016)
+
+Given initialized app instance  
+When `GetActionsHandler(nil)` is invoked  
+Then invocation MUST fail fast (panic/fail-fast) without requiring live request
+execution to surface invalid router input.
+
+### BRC-INIT-017 (covers BR-INIT-017)
+
+Given an initialized app instance with custom actions mount root  
+When facade helpers are queried (`Loaders().HandlerMountPattern()`,
+`Actions().HandlerMountPattern()`) and facade handlers are mounted/served  
+Then loader mount pattern MUST remain `/*`, action mount pattern MUST equal
+`ActionsRouter().MountRoot(\"*\")`, and facade handlers MUST produce responses
+equivalent to direct `GetLoadersHandler`/`GetActionsHandler` wiring.
+
 ### BRC-INIT-010 (covers BR-INIT-010)
 
 Given app init succeeds under known port `P`  
@@ -1086,6 +1383,70 @@ Given same instance after `SetIsDev(false)`
 When `GetIsDevMode()` is read  
 Then getter MUST return `false`.
 
+### BRC-INIT-015 (covers BR-INIT-015)
+
+Given environment mode seen by `wave.GetIsDev()` differs from any prior
+`SetIsDev(...)` value on the same app instance  
+When `Init()` is called  
+Then post-init `GetIsDevMode()` MUST equal `wave.GetIsDev()` value used during
+init.
+
+### BRC-INIT-018 (covers BR-INIT-018)
+
+Given `Wave.RawConfigJSON()` returns malformed JSON bytes  
+When `NewVormaApp(...)` is invoked  
+Then constructor MUST fail immediately with panic-class decode failure.
+
+Given `Wave.RawConfigJSON()` returns valid JSON without a `Vorma` object  
+When `NewVormaApp(...)` is invoked  
+Then constructor MUST continue through empty-config validation path and fail
+with required-field validation behavior (per `BR-INIT-002`), not with missing
+wrapper-object decode failure.
+
+### BRC-INIT-019 (covers BR-INIT-019)
+
+Given one constructor run with explicit custom logger `L` and another run with
+`Logger=nil`  
+When resulting app instances are observed  
+Then first instance MUST expose `Vorma.Log == L`, and second instance MUST
+expose a non-nil default logger instance.
+
+### BRC-INIT-020 (covers BR-INIT-020)
+
+Given runtime package constants are read directly by name  
+When values are compared against expected artifact/path naming strings  
+Then all exported constants in `BR-INIT-020` MUST match exactly.
+
+### BRC-INIT-021 (covers BR-INIT-021)
+
+Given compile-time assertions over exported runtime aliases  
+When alias identity and assignability checks are compiled/run  
+Then aliases in `BR-INIT-021` MUST preserve direct alias compatibility with
+their underlying types.
+
+### BRC-INIT-022 (covers BR-INIT-022)
+
+Given non-default loader/action router option inputs for dynamic-prefix, splat,
+explicit-index, mount-root, and supported-method set  
+When app is constructed and router behavior is exercised  
+Then observed routing/parse-gating behavior MUST reflect those passed options
+with defaults still matching `BR-INIT-003` when options are omitted.
+
+### BRC-INIT-023 (covers BR-INIT-023)
+
+Given direct reads of exported `UIVariants.React`, `UIVariants.Preact`, and
+`UIVariants.Solid`  
+When values are compared against expected literals  
+Then values MUST remain `react`, `preact`, and `solid`.
+
+### BRC-INIT-024 (covers BR-INIT-024)
+
+Given marshaled JSON fixtures for `Path`, `PathsFile`, and `VormaConfig`  
+When JSON keys are inspected and runtime/build round-trip compatibility checks
+are executed  
+Then field names in `BR-INIT-024` MUST remain unchanged and compatible across
+runtime init/reload and build artifact emission flows.
+
 ## 5.2 Common Response Header Scenarios
 
 ### BRC-RESP-001 (covers BR-RESP-001)
@@ -1107,6 +1468,20 @@ Given loader requests across JSON and HTML flows with and without pre-set
 When responses are observed  
 Then missing values MUST receive default loader cache-control and pre-set values
 MUST remain unchanged.
+
+### BRC-RESP-004 (covers BR-RESP-004)
+
+Given runtime initialized with build artifact metadata  
+When `GetCurrentBuildID()` and `GetBuildID()` are read without intervening
+mutation  
+Then returned values MUST be equal.
+
+### BRC-RESP-005 (covers BR-RESP-005)
+
+Given direct reads of exported runtime constants `VormaBuildIDHeaderKey` and
+`VormaJSONQueryKey`  
+When values are compared against expected protocol literals  
+Then values MUST remain `X-Vorma-Build-Id` and `vorma_json`.
 
 ## 5.3 JSON Negotiation Scenarios
 
@@ -1148,6 +1523,20 @@ When request `/missing?vorma_json=stale` is handled
 Then response MUST be stale-build sentinel (`200` with `X-Vorma-Reload`) rather
 than loader `404`.
 
+### BRC-JSON-005 (covers BR-JSON-005)
+
+Given requests with `vorma_json` absent, empty, stale, and current-build values  
+When helper functions are called directly  
+Then `IsJSONRequest` MUST return true only for non-empty values, and
+`IsCurrentBuildJSONRequest` MUST return true only for current-build value.
+
+### BRC-JSON-006 (covers BR-JSON-006)
+
+Given current-build JSON loaders response on matched route  
+When response payload is unmarshaled as generic object map  
+Then emitted object keys MUST include runtime DTO keys listed in `BR-JSON-006`
+with exact field-name spelling.
+
 ## 5.4 Loader Routing and Match Scenarios
 
 ### BRC-LOAD-001 (covers BR-LOAD-001)
@@ -1167,6 +1556,11 @@ Then `matchedPatterns` MUST be ordered from outermost to innermost.
 Given dynamic/splat pattern (for example `/files/*`)  
 When requesting `/files/a/b/c`  
 Then response payload MUST include expected `params` and `splatValues`.
+
+Compatibility assertion:
+
+- observed params/splat outputs MUST remain compatible with `kit/mux`
+  owner-contract vectors for the same route set.
 
 ### BRC-LOAD-004 (covers BR-LOAD-004)
 
@@ -1196,9 +1590,11 @@ expectations, and any non-match outcome MUST map to loader `404`.
 
 ### BRC-LOAD-005 (covers BR-LOAD-005)
 
-Given two matched loaders with controlled sleeps (`50ms`, `50ms`)  
-When JSON request is executed repeatedly  
-Then elapsed time SHOULD be near one sleep interval (parallel) rather than sum.
+Given `kit/mux` nested-task owner vectors for parallel fan-out/result indexing
+are materialized through Vorma loader routes  
+When JSON requests exercise those vectors  
+Then runtime-observed loader task execution behavior MUST match
+`KIT-MUX-045`/`KIT-MUX-046` expectations.
 
 ### BRC-LOAD-006 (covers BR-LOAD-006)
 
@@ -1229,6 +1625,11 @@ When loaders handler is constructed and matching request executes
 Then pattern MUST be auto-registered for matching and request MUST avoid false
 not-found solely due to missing pre-registration.
 
+Compatibility assertion:
+
+- no-handler nested-pattern registration semantics MUST remain compatible with
+  `KIT-MUX-043`.
+
 ### BRC-LOAD-020 (covers BR-LOAD-020)
 
 Given `RegisterPatternIfNeeded(P)` is called twice for the same pattern `P`  
@@ -1238,12 +1639,11 @@ duplicate registration attempt.
 
 ### BRC-LOAD-021 (covers BR-LOAD-021)
 
-Given nested loader router has a handler-backed route `/persist` and a
-no-handler route `/old`, and route-sync refresh input contains only `/new`  
+Given `kit/mux` rebuild-preserving-handlers owner vectors are materialized
+through runtime route-sync flows  
 When route-sync rebuild executes and subsequent loader matching runs  
-Then `/persist` MUST remain match-eligible with handler execution,
-`/new` MUST become match-eligible as a no-handler pattern, and `/old` MUST no
-longer match post-rebuild.
+Then runtime-observed rebuild outcomes MUST match `KIT-MUX-047` expectations for
+handler preservation, handler-less replacement, and matcher-option continuity.
 
 ### BRC-LOAD-010 (covers BR-LOAD-010)
 
@@ -1477,6 +1877,49 @@ Given successful HTML response with root-template probe output for `VormaRootID`
 When rendered document is inspected  
 Then `VormaRootID` probe value MUST equal `vorma-root`.
 
+### BRC-HTML-013 (covers BR-HTML-012)
+
+Given one run with `VERCEL_SKEW_PROTECTION_ENABLED=true` and
+`VERCEL_DEPLOYMENT_ID=dep_123`, and another run with skew protection disabled  
+When HTML responses are rendered and SSR bootstrap payload is inspected  
+Then first run MUST emit `deploymentID=\"dep_123\"` and second run MUST emit an
+empty `deploymentID`, and both runs MUST emit `routeManifestURL` derived from
+public-path prefix plus route-manifest file.
+
+### BRC-HTML-014 (covers BR-HTML-013)
+
+Given document-mode requests where each case triggers one internal render
+pipeline failure (head-element render failure, SSR-script generation failure,
+dev-script generation failure in dev mode, template execute failure)  
+When loaders handler processes each case  
+Then each response MUST be HTTP 500 and MUST not contain successful HTML
+document output.
+
+### BRC-HTML-015 (covers BR-HTML-014)
+
+Given successful HTML response  
+When emitted `VormaSSRScript` content is inspected  
+Then script payload MUST reference `globalThis[Symbol.for("__vorma_internal__")]`
+as bootstrap namespace root.
+
+### BRC-HTML-016 (covers BR-HTML-015)
+
+Given direct read of exported `VormaSymbolStr` constant  
+When value is compared against expected literal  
+Then value MUST remain `__vorma_internal__`.
+
+### BRC-HTML-017 (covers BR-HTML-016)
+
+Given successful HTML response  
+When emitted `VormaSSRScript` content is inspected  
+Then bootstrap payload MUST initialize:
+
+- `x.patternToWaitFnMap = {};`
+- `x.clientLoadersData = [];`
+
+And payload metadata assignments MUST match runtime snapshot values for:
+`x.isDev`, `x.buildID`, and `x.publicPathPrefix`.
+
 ## 5.9 Action Route Scenarios
 
 ### BRC-ACT-001 (covers BR-ACT-001)
@@ -1505,6 +1948,11 @@ Given action input fails validation/parsing with validation-class error
 When request is handled  
 Then response MUST be `400`.
 
+Compatibility assertion:
+
+- parse-error mapping behavior MUST remain compatible with `KIT-MUX-019` and
+  `KIT-MUX-020`.
+
 ### BRC-ACT-005 (covers BR-ACT-005)
 
 Given caller reads `Actions().SupportedMethods()` and mutates returned map
@@ -1520,6 +1968,19 @@ matches it through router fallback
 When request parsing/dispatch runs through the actions handler  
 Then request MUST complete without unsupported-method parse failure and
 handler-observed typed input semantics MUST remain GET/query-equivalent.
+
+### BRC-ACT-007 (covers BR-ACT-007)
+
+Given one app configured with canonical custom methods (for example `POST`) and
+another with equivalent non-canonical casing (for example `post`)  
+When equivalent action requests are executed against both apps  
+Then mount/dispatch/parse behavior MUST be equivalent for those methods.
+
+### BRC-ACT-008 (covers BR-ACT-008)
+
+Given runtime `FormData` helper value  
+When `TSTypeRaw()` is called  
+Then return value MUST be exactly `FormData`.
 
 ## 5.10 Head Integration Scenarios
 
@@ -1651,6 +2112,20 @@ Given parse-failing template source for direct call
 When `ReloadTemplateFromDisk()` returns error  
 Then subsequent HTML rendering MUST continue using previously active template.
 
+### BRC-DEV-012 (covers BR-DEV-012)
+
+Given a newly constructed runtime instance before `Init()`  
+When `ReloadRoutesFromDisk()` is called directly  
+Then call MUST return non-nil error and MUST NOT panic.
+
+### BRC-DEV-013 (covers BR-DEV-013)
+
+Given direct reads of exported dev reload constants `DevReloadRoutesPath` and
+`DevReloadTemplatePath`  
+When values are compared against expected literals  
+Then values MUST remain `/__vorma/reload-routes` and
+`/__vorma/reload-template`.
+
 ## 5.12 Delegated Static Middleware Scenario
 
 ### BRC-STATIC-001 (covers BR-STATIC-001)
@@ -1702,6 +2177,14 @@ Given callback logic is executed under `WithLock` and applies lock-protected
 mutations  
 When callback returns  
 Then subsequent getter observations MUST reflect those writes atomically.
+
+### BRC-CONC-005 (covers BR-CONC-005)
+
+Given concurrent goroutines repeatedly call route-sync/reload while other
+goroutines concurrently call `RegisterPatternIfNeeded`  
+When stress workload executes under race/stability harness  
+Then runtime MUST not panic with concurrent map iteration/write failures during
+server-route merge steps.
 
 ## 6. Conformance Test Suite Guidance
 
