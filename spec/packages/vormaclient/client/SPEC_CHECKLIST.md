@@ -8,16 +8,16 @@ Last Updated: 2026-02-09
 - [x] Package conformance issues file exists (`CONFORMANCE_ISSUES.md`).
 - [x] Package full-audit tracker exists (`FULL_AUDIT_TRACKER.md`).
 - [x] Package intent ledger exists (`NORMATIVE_INTENT_LEDGER.md`).
-- [x] Canonical frontend-runtime requirement catalog imported into owner
-      package.
-- [ ] Revalidate imported catalog against source + available legacy tests
+- [x] Canonical frontend-runtime requirement catalog is present in this owner
+      package path.
+- [x] Revalidate imported catalog against source + available legacy tests
       outside `conformance/**` (when present).
-- [ ] Complete rough structural pass.
-- [ ] Complete rough boundary pass.
-- [ ] Complete rough semantic pass.
-- [ ] Complete full requirement catalog authoring (detailed, comprehensive,
+- [x] Complete rough structural pass.
+- [x] Complete rough boundary pass.
+- [x] Complete rough semantic pass.
+- [x] Complete full requirement catalog authoring (detailed, comprehensive,
       non-summary).
-- [ ] Complete full requirement-level traceability reconciliation (coverage
+- [x] Complete full requirement-level traceability reconciliation (coverage
       complete or issue-backed exceptions).
 - [ ] Complete full structural pass.
 - [ ] Complete full boundary pass.

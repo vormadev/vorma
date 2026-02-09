@@ -6,34 +6,28 @@ Update Style: Recreated from scratch each update.
 
 ## Current State Worth Tracking
 
-- Normative intent mining remains in step 1 (package-by-package replay).
-- Non-placeholder package artifact sets currently include:
-    - `vormaclient/solid`
-    - `vormaclient/react`
-    - `vormaclient/preact`
-    - `vormaclient/vite`
-    - `vormaclient/create`
-    - `lab/tsgen`
-    - `lab/tsgen/tsgencore`
-    - `lab/viteutil`
-    - `kit/signedcookie`
-    - `kit/securebytes`
-    - `kit/securestring`
-    - `kit/contextutil`
-    - `kit/id`
-- `kit/id` now has full companion artifacts with one focused open
-  intent-validation gap for rare, hard-to-force error paths.
-- `conformance/**` remains excluded from mining inputs.
+- Program remains in step 1: normative intent mining + reconciliation replay.
+- Priority gate remains active: execution is restricted to P0 package paths.
+- `spec/packages/vormabuild/*` and `spec/packages/wave/tooling/*` are in
+  rough-complete state with full-pass gates still open.
+- `spec/packages/vormaclient/client/*` rough replay gates are complete.
+- `spec/packages/vormaclient/client/*` full requirement-catalog authoring gate
+  is complete.
+- `spec/packages/vormaclient/client/*` full requirement-level traceability gate
+  is complete.
+- `spec/packages/vormaclient/client/TRACEABILITY_MATRIX.md` has no remaining
+  `pending-mapping` placeholders.
 
 ## Remaining Work Snapshot
 
-- Placeholder traceability rows remaining across `spec/packages/**`: `39`.
-- Additional `kit/*` and `lab/*` package paths still require rough-pass replay.
-- Open issue backlog (`impl-bug-candidate` and `intent-validation-gap`) remains
-  unresolved across multiple packages.
+- `vormabuild` full-pass gates remain open.
+- `wave/tooling` full-pass gates remain open.
+- `vormaclient/client` full structural/boundary/semantic gates remain open.
 
 ## Next Action
 
-1. Continue with next placeholder `kit/*` package path and replace all six
-   package artifacts end-to-end.
-2. Keep issue closure strict and sequential with checklist gates.
+1. Continue `vormaclient/client` full-pass reconciliation by driving the
+   remaining structural/boundary/semantic checklist gates from current source
+   evidence and open `VCI-*` issue set.
+2. Keep open `VCI-*` issues unresolved unless current source evidence supports
+   closure.
