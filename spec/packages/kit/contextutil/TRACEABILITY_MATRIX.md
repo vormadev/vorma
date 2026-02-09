@@ -1,14 +1,7 @@
-# kit/contextutil Traceability Matrix
+# Traceability Matrix
 
-Status: In Progress  
-Last Updated: 2026-02-09
+Purpose: map each normative requirement to evidence and coverage state.
 
-| Requirement ID        | Scenario ID(s) | Suite Family    | Suite Name                              | Fixture Type        | Test File(s)                          | Pass Criteria                                                                                                   | Status      | Owner             |
-| --------------------- | -------------- | --------------- | --------------------------------------- | ------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------- | ----------------- |
-| `KIT-CONTEXTUTIL-001` | `KCU-001`      | kit/contextutil | go_package_unit_contextutil_store       | source+legacy-tests | `kit/contextutil/contextutil_test.go` | Store construction and usable typed store behavior are directly exercised.                                      | covered     | `kit/contextutil` |
-| `KIT-CONTEXTUTIL-002` | `KCU-002`      | kit/contextutil | go_package_unit_contextutil_store       | source+legacy-tests | `kit/contextutil/contextutil_test.go` | Distinct store instance non-collision with same key string is directly asserted.                                | covered     | `kit/contextutil` |
-| `KIT-CONTEXTUTIL-003` | `KCU-003`      | kit/contextutil | go_package_unit_contextutil_store       | source+legacy-tests | `kit/contextutil/contextutil_test.go` | Context write/read via store key is directly asserted by generic roundtrip tests.                               | covered     | `kit/contextutil` |
-| `KIT-CONTEXTUTIL-004` | `KCU-004`      | kit/contextutil | go_package_unit_contextutil_store       | source+legacy-tests | `kit/contextutil/contextutil_test.go` | Typed retrieval via store key is directly asserted across multiple payload types.                               | covered     | `kit/contextutil` |
-| `KIT-CONTEXTUTIL-005` | `KCU-005`      | kit/contextutil | go_source_contract_contextutil_fallback | source-contract     | n/a (no direct legacy assertion)      | Zero-value fallback for missing/incompatible context values is source-derived.                                  | source-only | `kit/contextutil` |
-| `KIT-CONTEXTUTIL-006` | `KCU-006`      | kit/contextutil | go_package_unit_contextutil_store       | source+legacy-tests | `kit/contextutil/contextutil_test.go` | Request context update behavior is directly asserted by retrieving stored values from returned request context. | covered     | `kit/contextutil` |
-| `KIT-CONTEXTUTIL-007` | `KCU-007`      | kit/contextutil | go_package_unit_contextutil_store       | source+legacy-tests | `kit/contextutil/contextutil_test.go` | Generic type support is directly asserted across string/int/float/bool/struct payloads.                         | covered     | `kit/contextutil` |
+| Requirement ID | Spec Section | Source Evidence | Legacy Test Evidence (non-conformance only) | Coverage Status | Gap Link | Notes |
+| -------------- | ------------ | --------------- | ------------------------------------------- | --------------- | -------- | ----- |
+| TODO           |              |                 |                                             | pending         |          |       |

@@ -1,37 +1,31 @@
-# kit/contextutil Specification
+# Package Spec: `kit/contextutil`
 
-Status: Active  
-Last Updated: 2026-02-09  
-Owner: `kit/contextutil`
+Status: OPEN (Step 1)
 
-## Scope
+Purpose: normative behavior contract for this package. Not for: logs, history,
+or implementation task notes.
 
-Package-owned typed context/request storage behavior for `Store[T]` in
-`kit/contextutil/**`.
+## Boundary
 
-Current evidence note:
+- Owner package path: TODO
+- Public entry points: TODO
+- Out-of-scope behavior: TODO
 
-- Requirements are mined from `kit/contextutil/contextutil.go` and
-  `kit/contextutil/contextutil_test.go`.
+## Normative Requirements (rebuild-from-scratch-from-spec-alone)
 
-## Requirements
+Each requirement must include:
 
-- `KIT-CONTEXTUTIL-001` Store construction contract. `NewStore[T](key)` MUST
-  return a non-nil `*Store[T]` with an internal key wrapper pointer for context
-  lookups.
-- `KIT-CONTEXTUTIL-002` Store-key non-collision contract. Distinct store
-  instances MUST not collide in context lookups, even when created with the same
-  string key name.
-- `KIT-CONTEXTUTIL-003` Context write contract. `GetContextWithValue(c, val)`
-  MUST return a derived context from `context.WithValue(c, s.key, val)`.
-- `KIT-CONTEXTUTIL-004` Context read contract. `GetValueFromContext(c)` MUST
-  read by store key and return typed value via `genericsutil.AssertOrZero[T]`.
-- `KIT-CONTEXTUTIL-005` Missing/incompatible fallback contract.
-  `GetValueFromContext` MUST return the zero value of `T` when no compatible
-  value is present for the store key.
-- `KIT-CONTEXTUTIL-006` Request write contract. `GetRequestWithContext(r, val)`
-  MUST return `r.WithContext(...)` where the updated context is produced by
-  `GetContextWithValue(r.Context(), val)`.
-- `KIT-CONTEXTUTIL-007` Generic instantiation contract. Store context write/read
-  and request update behavior MUST hold across tested generic instantiations
-  (scalar and struct payload types).
+- Trigger/input conditions
+- Required behavior/outcome
+- Boundary/error behavior
+- Evidence paths
+
+| Requirement ID | Requirement Statement | Evidence Paths | Notes |
+| -------------- | --------------------- | -------------- | ----- |
+| TODO           |                       |                |       |
+
+## Owner References (Do Not Duplicate Owner Internals)
+
+| Owner Package | Owner Requirement IDs | Consumer Contract |
+| ------------- | --------------------- | ----------------- |
+| TODO          |                       |                   |

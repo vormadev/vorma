@@ -1,251 +1,116 @@
 # Spec Program Governance
 
-Status: Active  
-Last Updated: 2026-02-09  
-Trust Epoch: `E2`  
-Scope: Cross-package governance for `spec/packages/**`.
+Status: Active Current Phase: Step 1 (normative intent mining) Scope: `spec/**`
+only
 
-This is the single canonical top-level specs program document.
+## 1) Authority
 
-## Canonical Sources
+This file is the authoritative policy for Step 1. If any other doc appears to
+conflict, follow this file. If ambiguity remains, stop and ask the user.
 
-- Package index: `spec/packages/PACKAGE_INDEX.md`
-- Package-local checklists: `spec/packages/<package-path>/SPEC_CHECKLIST.md`
-- Package-local full-audit trackers:
-  `spec/packages/<package-path>/FULL_AUDIT_TRACKER.md`
-- Package-local normative ledgers:
-  `spec/packages/<package-path>/NORMATIVE_INTENT_LEDGER.md`
-- Package-local traceability matrices:
-  `spec/packages/<package-path>/TRACEABILITY_MATRIX.md`
-- Package-local conformance issues:
-  `spec/packages/<package-path>/CONFORMANCE_ISSUES.md`
+## 2) Core Term
 
-## Program State
+`rebuild-from-scratch-from-spec-alone` means:
 
-- Package-path structure established.
-- Independent tracking artifacts established per package path.
-- From-scratch replay in progress (epoch `E2`).
-- No package closure claimed yet.
+An engineer can implement package behavior using only that package's spec
+artifacts under `spec/packages/<package>/`, without consulting implementation
+source, and with enough detail to recreate behavior from scratch.
 
-## Program Checklist
+This is a local program definition. Agents must not assume any weaker meaning.
 
-- [x] Package-path canonical index exists: `spec/packages/PACKAGE_INDEX.md`
-- [x] Package-path ownership model is active (`spec/packages/<package-path>/`).
-- [x] Every package has independent spec/checklist/audit/ledger/matrix/issues
-      files.
-- [x] Intent mining uses implementation source and incorporates legacy tests
-      outside `conformance/**` when present, with per-file
-      `passes`/`clean_passes`.
-- [x] Old shared out-of-scope ledger removed.
-- [x] Vorma-family owner split is active (`BR-*` in `vormaruntime`, `BUILD-*` in
-      `vormabuild`, `FE-*` in `vormaclient/client`; `vorma` kept wrapper-level
-      only).
-- [ ] P0 closure: `vorma`, `vormabuild`, `vormaruntime`, `vormaclient/client`,
-      `wave`, `wave/tooling`, `kit/matcher`, `kit/mux`, `kit/response`,
-      `kit/validate`, `kit/headels`, `lab/tsgen`, `lab/viteutil`.
-- [ ] P1 closure: remaining `kit/*`, `lab/*`, and `vormaclient/*` package paths.
-- [ ] P2 closure: `bootstrap` and `vormaclient/create` package paths
-      (bootstrap-related, explicitly lowest priority).
-- [ ] Program stop condition met for every package.
+## 3) Hard Phase Gate
 
-Priority execution rule (hard gate):
+- Step 1 remains active until the user explicitly says to move to Step 2.
+- During Step 1, edits outside `spec/**` are prohibited.
+- Prohibited non-spec edits include implementation, tests, config, tooling, and
+  build files.
 
-- While any P0 package checklist/tracker is not at stop criterion, agents MUST
-  execute only P0 package-path work.
-- P1/P2 work MUST NOT be started opportunistically (for example, placeholder
-  cleanup convenience) until P0 closure is complete.
-- The only exception is explicit user direction in the current session to
-  override priority sequencing.
+## 4) Evidence Rules
 
-## Program Stop Condition
+Allowed evidence input:
 
-Program closure requires every package path in `spec/packages/PACKAGE_INDEX.md`
-to satisfy:
+- Implementation source files.
+- Legacy tests outside `conformance/**` (optional corroboration only).
 
-1. Detailed package requirement catalog is fully authored at rebuild-grade
-   completeness (sufficient to re-implement package behavior from spec without
-   consulting source).
-2. Requirement-level traceability is reconciled (coverage complete or active
-   issue-backed exceptions).
-3. Every in-scope file row mined in current epoch.
-4. Two consecutive full no-gap rounds recorded.
-5. Package checklist/tracker/matrix/issues reconciled.
+Forbidden evidence input:
 
-Hard closure test (non-optional):
+- Any file under `conformance/**`.
 
-- If a developer could not rebuild package behavior correctly from `SPEC.md`
-  plus package-owned spec artifacts alone, that package is NOT done.
-- If a developer could not rebuild the overall system correctly from `spec/**`
-  artifacts alone, the program is NOT done.
+## 5) Allowed vs Forbidden Actions (Step 1)
 
-## Governance Rules
+Allowed:
 
-### 1. Ownership Rule
+- Read any repository files as mining evidence.
+- Edit only `spec/**`.
+- Reconcile findings in spec artifacts.
 
-- Each package path owns its own spec and tracking artifacts under
-  `spec/packages/<package-path>/`.
-- Consumer packages reference owner requirement IDs; they do not duplicate owner
-  behavior (internal implementation details or owner public/external contracts).
+Forbidden:
 
-### 2. Required Per-Package Artifacts
+- Any edit outside `spec/**`.
+- Any implementation bug fix/refactor/behavior change.
+- Treating "resolve issue" as permission to change non-spec code.
 
-Each package directory MUST contain:
+## 6) No-Gap Full Round (Normative Definition)
+
+A round is `no-gap` only if all are true:
+
+1. From-scratch replay: re-derived from evidence, not trusted from existing spec
+   text.
+2. Full-scope replay: every in-scope file in `NORMATIVE_INTENT_LEDGER.md` is
+   covered.
+3. Replay explicitly checks whether current spec is missing normative behavior
+   required for rebuild-from-scratch-from-spec-alone.
+4. Missing normative requirement count is `0`.
+5. Incorrect normative-claim count is `0`.
+6. Blocking intent-validation issue count is `0` after the round.
+
+If any condition fails, the round is not `no-gap`.
+
+Plain-language equivalent:
+
+- "No-gap round" means you attempted, from scratch and in full, to mine all
+  normative intent to rebuild-from-scratch-from-spec-alone level and found
+  nothing missing from the existing spec.
+
+## 7) Execution Model (No Light Rounds)
+
+1. Author package specs to rebuild-from-scratch-from-spec-alone detail.
+2. Run baseline full replay (gaps allowed).
+3. Reconcile all baseline findings in `spec/**` artifacts only.
+4. Run verification full replay #1 and require `no-gap`.
+5. Run verification full replay #2 and require `no-gap` consecutively.
+
+There is no rough/light replay stage.
+
+## 8) Required Package Artifacts (Minimal)
+
+Each package path in `spec/packages/PACKAGE_INDEX.md` must contain exactly:
 
 - `SPEC.md`
 - `SPEC_CHECKLIST.md`
-- `FULL_AUDIT_TRACKER.md`
 - `NORMATIVE_INTENT_LEDGER.md`
 - `TRACEABILITY_MATRIX.md`
 - `CONFORMANCE_ISSUES.md`
 
-### 3. Mining Rule
+## 9) Package Completion Criteria (`DONE`)
 
-- Normative intent mining MUST use implementation source.
-- Legacy tests outside `conformance/**` are optional corroborating evidence when
-  they exist in-repo.
-- Package artifacts MUST NOT cite files under `conformance/**` as current
-  evidence references.
-- When no legacy tests outside `conformance/**` exist for a package, record
-  source-only evidence state in matrix/ledger notes.
-- Absence of legacy tests outside `conformance/**` by itself MUST NOT be tracked
-  as an intent-validation issue.
-- Full-audit replay MUST re-validate existing spec claims against source +
-  available legacy tests; prior spec text and prior test claims are not
-  automatically trusted.
-- Every file row in package ledger tracks `passes` and `clean_passes` per epoch.
+A package may be set to `DONE` in `PACKAGE_INDEX.md` only when all are true:
 
-### 3a. Pass Taxonomy Rule
+1. `SPEC.md` is rebuild-from-scratch-from-spec-alone complete.
+2. `TRACEABILITY_MATRIX.md` is fully reconciled (or issue-backed).
+3. `NORMATIVE_INTENT_LEDGER.md` records two consecutive `no-gap` full rounds
+   using section 6 criteria.
+4. `CONFORMANCE_ISSUES.md` has no open blocking intent-validation issues.
+5. `SPEC_CHECKLIST.md` is fully complete in strict sequence.
 
-- Package audit passes MUST distinguish `rough pass` and `full pass`.
-- `Rough pass` means initial mining/reconciliation sufficient to replace
-  placeholders and surface gaps; it is not full closure.
-- `Full pass` means detailed requirement catalog + requirement-level
-  traceability + issue reconciliation across all in-scope files.
-- No-gap full-pass rounds imply completion only when the replayed catalog is
-  rebuild-grade complete.
-- Below rebuild-grade completeness, no-gap outcomes are provisional stability
-  evidence only.
-- Checklist completion markers and no-gap rounds are necessary but insufficient
-  for package closure without rebuild-grade catalog completeness.
-- Package checklists MUST include separate checklist items for rough-pass
-  completion and full-pass completion.
-- Full-pass checklist items MUST NOT be marked complete while requirement-level
-  traceability remains partial/source-only without explicit issue
-  reconciliation.
-- Package checklist execution is strictly ordered; later checklist items MUST
-  NOT be marked complete while any earlier checklist item remains unchecked.
-- In particular,
-  `Resolve open intent-validation issues in CONFORMANCE_ISSUES.md` is a
-  late-stage closure gate and MUST remain unchecked until preceding full-pass
-  checklist items are complete.
+## 10) Writing Constraints
 
-### 3b. Priority Sequencing Rule
+- Forward-state only. No replay timeline/history narrative.
+- Repo-relative paths only.
+- Claims must be precise, testable, and evidence-linked.
 
-- Program execution MUST follow P0 -> P1 -> P2 sequencing.
-- Presence of easy/quick placeholder work in lower tiers is not a valid reason
-  to skip unfinished higher-tier package paths.
-- If uncertain, agents MUST re-check the Program Checklist P0 status before
-  selecting the next package path.
+## 11) Parallel Shared Checkout
 
-### 3c. Mining-Only Edit Gate
-
-- While the program is in step 1 (normative intent mining), agents MUST edit
-  only files under `spec/**`.
-- During step 1, agents MUST NOT edit implementation, test, or config/source
-  files outside `spec/**`.
-- In step 1, `Resolve open intent-validation issues in CONFORMANCE_ISSUES.md`
-  means evidence/state reconciliation in package spec artifacts, not runtime
-  implementation changes.
-- While step 1 is incomplete, edits outside `spec/**` are prohibited with no
-  exceptions.
-
-### 3d. Shared-Checkout Claim Rule (Faux Mutex)
-
-- When parallel chats are active in one checkout, each chat MUST claim one
-  package slot in `spec/MINING_DISPATCH.md` before editing package artifacts.
-- Claim by changing exactly one row from `OPEN` to `CLAIMED`, adding agent stamp
-  and UTC timestamp.
-- If a claim race is detected, refresh and claim the next `OPEN` slot; do not
-  co-edit a claimed package.
-- Coordinator MUST be determined mechanically as the chat holding the
-  lowest-numbered `CLAIMED` slot in `spec/MINING_DISPATCH.md`.
-- If no slot is `CLAIMED`, coordinator is unset until the next claim.
-- Worker chats (non-coordinator) MUST edit only
-  `spec/packages/<claimed-package>/**` plus their own row in
-  `spec/MINING_DISPATCH.md`.
-- Coordinator-only files are `spec/ROUGH_STATUS_UPDATE.md`,
-  `spec/MINING_DISPATCH.md` policy text (non-row sections),
-  `spec/AGENTS_START_HERE.md`, and `spec/SPEC_GOVERNANCE.md`.
-- At handoff, the claimed row MUST be released as `OPEN`, claim fields cleared,
-  with a short progress note.
-
-### 4. Trust Epoch Rule
-
-- Verified state is valid only within current trust epoch.
-- Trust reset invalidates prior closure claims.
-
-### 5. Top-Level Rule
-
-- Top-level docs are program rollups only.
-- Top-level docs MUST NOT contain package-owned requirement inventories.
-
-### 6. Path Hygiene
-
-- Personal absolute filesystem paths MUST NOT appear in committed spec docs.
-- Use repo-relative paths.
-
-### 7. Correctness-First Cleanup Rule
-
-- Incorrect or unsupported normative claims MUST be deleted or rewritten
-  immediately.
-- Specs, checklists, and traceability matrices MUST contain only current,
-  correct requirements.
-- `CONFORMANCE_ISSUES.md` MUST track only active implementation-vs-spec gaps; do
-  not retain historical wrong-claim narrative and do not use it to represent
-  missing/deleted conformance evidence.
-- Behavior that appears accidental, ambiguous, or weakly evidenced MUST be
-  recorded as an active intent-validation issue in `CONFORMANCE_ISSUES.md` until
-  confirmed or removed.
-- Open intent-validation issues count as open gaps and MUST block no-gap round
-  closure for that package.
-
-### 7a. Forward-State Writing Rule
-
-- Package artifacts MUST describe current enforceable state only.
-- Do not include migration/change history narrative, deletion timelines, or
-  prior-state retrospectives in package artifacts.
-- Provenance belongs in git history, not in normative package content.
-
-### 8. Full-Audit Definition (Normative)
-
-For this program, a "full audit" means revalidating all existing package spec
-content, not only running more mining passes.
-
-Required sequence per package:
-
-1. Re-derive normative intent from implementation source and available legacy
-   tests outside `conformance/**` (if present).
-2. Author/expand a detailed requirement catalog that reflects mined behavior
-   (not a rough summary).
-3. Validate every current normative claim against that intent.
-4. Delete or rewrite any incorrect, stale, ambiguous, or unsupported claim
-   immediately.
-5. Reconfirm boundary ownership (owner behavior stays in owner specs; consumer
-   specs reference owner requirement IDs instead of duplicating internal or
-   public/external owner behavior).
-6. Reconcile package artifacts for consistency: `SPEC.md`, `SPEC_CHECKLIST.md`,
-   `TRACEABILITY_MATRIX.md`, `CONFORMANCE_ISSUES.md`,
-   `NORMATIVE_INTENT_LEDGER.md`, and `FULL_AUDIT_TRACKER.md`.
-7. Only after steps 1-6 are complete, update per-file `passes` and
-   `clean_passes` for the round.
-8. Treat replay/no-gap outcomes as closure evidence only when replay was run at
-   rebuild-grade detail; otherwise treat as provisional confidence and keep
-   closure gates open.
-
-### 9. Vorma Family Ownership Split
-
-- `vormaruntime`, `vormabuild`, and `vormaclient/client` are canonical owners
-  for detailed package semantics in their domains.
-- `vorma` remains wrapper/facade scope only (public composition/boundary
-  contracts and owner references).
-- Authors MUST NOT re-centralize owner catalogs under `spec/packages/vorma/`.
+- `spec/MINING_DISPATCH.md` is lock state only.
+- `OPEN` and `CLAIMED` are mutex states, not completion states.
+- A worker edits only its claimed package and its own dispatch row.

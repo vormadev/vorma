@@ -1,17 +1,7 @@
-# kit/id Traceability Matrix
+# Traceability Matrix
 
-Status: In Progress  
-Last Updated: 2026-02-09
+Purpose: map each normative requirement to evidence and coverage state.
 
-| Requirement ID | Scenario ID(s) | Suite Family | Suite Name                             | Fixture Type        | Test File(s)                                       | Pass Criteria                                                                                                            | Status      | Owner    |
-| -------------- | -------------- | ------------ | -------------------------------------- | ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- | -------- |
-| `KIT-ID-001`   | `KID-001`      | kit/id       | go_package_unit_id_new                 | source+legacy-tests | `kit/id/id_test.go`                                | Default charset behavior is directly exercised by general generation tests.                                              | covered     | `kit/id` |
-| `KIT-ID-002`   | `KID-002`      | kit/id       | go_package_unit_id_new                 | source+legacy-tests | `kit/id/id_test.go`                                | Multiple optional charset argument rejection is directly asserted.                                                       | covered     | `kit/id` |
-| `KIT-ID-003`   | `KID-003`      | kit/id       | go_package_unit_id_new                 | source+legacy-tests | `kit/id/id_test.go`                                | Charset length and ASCII constraints are directly asserted for invalid and valid charsets.                               | covered     | `kit/id` |
-| `KIT-ID-004`   | `KID-004`      | kit/id       | go_package_unit_id_new                 | source+legacy-tests | `kit/id/id_test.go`                                | `idLen==0` behavior is directly asserted for default and custom charset cases.                                           | covered     | `kit/id` |
-| `KIT-ID-005`   | `KID-005`      | kit/id       | go_package_unit_id_new                 | source+legacy-tests | `kit/id/id_test.go`                                | Random generation behavior is directly exercised by repeated generation and randomness checks.                           | covered     | `kit/id` |
-| `KIT-ID-006`   | `KID-006`      | kit/id       | go_package_unit_id_uniformity          | source+legacy-tests | `kit/id/id_test.go`                                | Uniformity tests over digit and prime-length charsets provide direct evidence for rejection-sampling anti-bias behavior. | covered     | `kit/id` |
-| `KIT-ID-007`   | `KID-007`      | kit/id       | go_source_contract_id_rand_failure     | source-contract     | n/a (no direct legacy assertion)                   | `rand.Read` failure propagation branch is source-derived.                                                                | source-only | `kit/id` |
-| `KIT-ID-008`   | `KID-008`      | kit/id       | go_package_unit_id_new_multi           | source+legacy-tests | `kit/id/id_test.go`                                | `NewMulti` quantity/length and custom-charset behavior are directly asserted.                                            | covered     | `kit/id` |
-| `KIT-ID-009`   | `KID-009`      | kit/id       | go_source_contract_id_new_multi_errors | source-contract     | n/a (no direct forced delegated-failure assertion) | `NewMulti` delegated error propagation is source-derived.                                                                | source-only | `kit/id` |
-| `KIT-ID-010`   | `KID-010`      | kit/id       | go_package_unit_id_output_shape        | source+legacy-tests | `kit/id/id_test.go`                                | Output length and charset-membership constraints are directly asserted across `New`/`NewMulti` test cases.               | covered     | `kit/id` |
+| Requirement ID | Spec Section | Source Evidence | Legacy Test Evidence (non-conformance only) | Coverage Status | Gap Link | Notes |
+| -------------- | ------------ | --------------- | ------------------------------------------- | --------------- | -------- | ----- |
+| TODO           |              |                 |                                             | pending         |          |       |

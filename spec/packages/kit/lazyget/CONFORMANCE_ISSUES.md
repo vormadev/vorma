@@ -1,8 +1,8 @@
-# kit/lazyget Conformance Issues
+# Conformance Issues
 
-Status: Active  
-Last Updated: 2026-02-09
+Purpose: track active implementation-vs-spec mismatches and intent-validation
+gaps. Not for: implementation task execution during Step 1.
 
-| Issue ID                | Requirement(s)    | Summary                                                                                                                                                                                                                                                          | Status |
-| ----------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| `KIT-LAZYGET-ISSUE-001` | `KIT-LAZYGET-003` | Intent-validation: tests assert once-only initialization but do not explicitly assert that later calls supplying different `initFunc` values are ignored in favor of first initializer binding. Add explicit conformance test or confirm source-only acceptance. | open   |
+| Issue ID | Type | Severity | Status | Summary                              | Evidence | Related Requirement IDs | Required Spec Action |
+| -------- | ---- | -------- | ------ | ------------------------------------ | -------- | ----------------------- | -------------------- |
+| NONE     | n/a  | n/a      | none   | No active issues currently recorded. |          |                         |                      |

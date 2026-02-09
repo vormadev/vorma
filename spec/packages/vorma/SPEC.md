@@ -1,61 +1,31 @@
-# vorma Specification
+# Package Spec: `vorma`
 
-Status: Active  
-Last Updated: 2026-02-09
+Status: OPEN (Step 1)
 
-## Scope
+Purpose: normative behavior contract for this package. Not for: logs, history,
+or implementation task notes.
 
-`vorma` is a thin wrapper/facade package over owner packages.
+## Boundary
 
-Owner package semantics are canonical in:
+- Owner package path: TODO
+- Public entry points: TODO
+- Out-of-scope behavior: TODO
 
-- `spec/packages/vormaruntime/SPEC.md` (`BR-*`)
-- `spec/packages/vormaruntime/WIRE_CONTRACT_SPEC.md` (`WIRE-*`)
-- `spec/packages/vormabuild/SPEC.md` (`BUILD-*`)
-- `spec/packages/vormaclient/client/SPEC.md` (`FE-*`)
+## Normative Requirements (rebuild-from-scratch-from-spec-alone)
 
-This package owns only wrapper-level contracts defined by `vorma.go`.
+Each requirement must include:
 
-Current evidence note:
+- Trigger/input conditions
+- Required behavior/outcome
+- Boundary/error behavior
+- Evidence paths
 
-- Wrapper requirements are currently derived from `vorma.go` source.
-- No legacy wrapper package tests outside `conformance/**` were found in this
-  repo during this replay round.
+| Requirement ID | Requirement Statement | Evidence Paths | Notes |
+| -------------- | --------------------- | -------------- | ----- |
+| TODO           |                       |                |       |
 
-## Requirement Catalog
+## Owner References (Do Not Duplicate Owner Internals)
 
-### VORMA-API-001: Wrapper Constructor Delegation
-
-Given `NewVormaApp(o)` from `vorma`  
-When called with any valid `VormaAppConfig`  
-Then behavior MUST be delegated to `vormaruntime.NewVormaApp(o)` without
-introducing additional wrapper-side policy.
-
-### VORMA-API-002: Wrapper Loader Registration Helper
-
-Given `NewLoader(...)` from `vorma`  
-When invoked  
-Then it MUST register the generated task handler on
-`app.LoadersRouter().NestedRouter` for the provided pattern and return the
-registered handler.
-
-### VORMA-API-003: Wrapper Action Registration Helper
-
-Given `NewAction(...)` from `vorma`  
-When invoked  
-Then it MUST register the generated task handler on `app.ActionsRouter().Router`
-for the provided method+pattern and return the registered handler.
-
-### VORMA-API-004: Re-Export Identity Surface
-
-Given top-level re-exported vars/types in `vorma.go`  
-When compiled and used by consumers  
-Then those exports MUST remain alias/re-export contracts over their owner
-symbols (not divergent wrapper implementations).
-
-### VORMA-API-005: Embedded NPM Version Accessor
-
-Given `Internal__GetCurrentNPMVersion()`  
-When called  
-Then it MUST parse the embedded root `package.json` and return the current npm
-version string.
+| Owner Package | Owner Requirement IDs | Consumer Contract |
+| ------------- | --------------------- | ----------------- |
+| TODO          |                       |                   |

@@ -1,31 +1,31 @@
-# vorma Normative Intent Ledger
+# Normative Intent Ledger
 
-Status: Active  
-Last Updated: 2026-02-09  
-Trust Epoch: `E2` (wrapper canonical reset)
+Purpose: file-level mining coverage and replay rounds.
 
-## Mining Rules
+Evidence policy reminder:
 
-- Intent mining MUST use implementation source and incorporate legacy tests
-  outside `conformance/**` when present.
-- `conformance/**` suites are verification outputs/evidence and MUST NOT be
-  mining inputs.
-- Per-file counters are epoch-scoped.
-- `passes`: total number of full mining passes for that file in current epoch.
-- `clean_passes`: number of passes with no newly surfaced normative gap for that
-  file in current epoch.
+- Primary: implementation source files.
+- Optional corroboration: legacy tests outside `conformance/**`.
+- Never use `conformance/**` as mining evidence.
 
-## Per-File Replay Ledger
+No-gap round meaning (strict):
 
-| File           | Scope    | Mining Inputs       | Passes | Clean Passes | Epoch State     | Notes                                                                                                                                                |
-| -------------- | -------- | ------------------- | -----: | -----------: | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vorma.go`     | in-scope | source+legacy-tests |      3 |            2 | mined_gaps_open | `E2-R2` and `E2-R3` clean replays reconfirmed wrapper contracts (`VORMA-API-001..004`); no legacy wrapper tests outside `conformance/**` were found. |
-| `package.json` | in-scope | source+legacy-tests |      3 |            2 | mined_gaps_open | `E2-R2` and `E2-R3` clean replays reconfirmed embedded npm version contract (`VORMA-API-005`).                                                       |
+- Attempted from scratch and in full to mine all normative intent to
+  rebuild-from-scratch-from-spec-alone level.
+- Found zero missing normative requirements in current spec.
+- Found zero incorrect normative claims in current spec.
+- Found zero open blocking intent-validation issues after the round.
 
-## Round Log
+## In-Scope Files
 
-| Round   | Status    | New Gaps | Notes                                                                                                                                                                                       |
-| ------- | --------- | -------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `E2-R1` | completed |        1 | Canonical reset replay corrected traceability evidence model to exclude `conformance/**` inputs and aligned wrapper rows to source-only evidence state where no legacy wrapper tests exist. |
-| `E2-R2` | completed |        0 | Clean replay revalidated `vorma.go` + embedded package version contract and reconfirmed no legacy wrapper tests outside `conformance/**`.                                                   |
-| `E2-R3` | completed |        0 | Clean replay reconfirmed source-derived wrapper requirements with no new gap IDs; with `E2-R2`, this satisfies two consecutive no-gap full rounds.                                          |
+| File Path | Category | Passes | Clean Passes | Last Pass Kind | State   | Notes |
+| --------- | -------- | ------ | ------------ | -------------- | ------- | ----- |
+| TODO      | source   | 0      | 0            | none           | pending |       |
+
+## Replay Rounds
+
+| Round | Role              | Result  | From Scratch | Full Scope | Rebuild-From-Scratch-From-Spec-Alone Checked | Missing Req Count | Incorrect Claim Count | Blocking Issue Count | No-Gap Qualified | Summary                                              |
+| ----- | ----------------- | ------- | ------------ | ---------- | -------------------------------------------- | ----------------- | --------------------- | -------------------- | ---------------- | ---------------------------------------------------- |
+| R1    | baseline_full     | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Baseline full replay; gap discovery expected.        |
+| R2    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #1.                              |
+| R3    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #2 (must be consecutive no-gap). |

@@ -1,15 +1,31 @@
-# kit/cryptoutil Specification
+# Package Spec: `kit/cryptoutil`
 
-Status: Placeholder  
-Last Updated: 2026-02-09  
-Owner: `kit/cryptoutil`
+Status: OPEN (Step 1)
 
-## Scope
+Purpose: normative behavior contract for this package. Not for: logs, history,
+or implementation task notes.
 
-Package-owned behavior contracts for `kit/cryptoutil`.
+## Boundary
 
-## Requirements
+- Owner package path: TODO
+- Public entry points: TODO
+- Out-of-scope behavior: TODO
 
-- Define canonical `KIT-CRYPTOUTIL-*` requirement IDs.
-- Keep owner behavior here; consumers reference these IDs instead of duplicating
-  semantics.
+## Normative Requirements (rebuild-from-scratch-from-spec-alone)
+
+Each requirement must include:
+
+- Trigger/input conditions
+- Required behavior/outcome
+- Boundary/error behavior
+- Evidence paths
+
+| Requirement ID | Requirement Statement | Evidence Paths | Notes |
+| -------------- | --------------------- | -------------- | ----- |
+| TODO           |                       |                |       |
+
+## Owner References (Do Not Duplicate Owner Internals)
+
+| Owner Package | Owner Requirement IDs | Consumer Contract |
+| ------------- | --------------------- | ----------------- |
+| TODO          |                       |                   |

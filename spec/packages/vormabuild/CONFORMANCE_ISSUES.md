@@ -1,12 +1,8 @@
-# vormabuild Conformance Issues
+# Conformance Issues
 
-Status: Active  
-Last Updated: 2026-02-09
+Purpose: track active implementation-vs-spec mismatches and intent-validation
+gaps. Not for: implementation task execution during Step 1.
 
-| Issue ID | Type               | Affected Requirements | Summary                                                                                                                           | Status |
-| -------- | ------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| VCI-024  | impl-bug-candidate | BUILD-ROUTE-005       | Route DSL parser does not currently enforce strict required signature for route(pattern, module, ...).                            | open   |
-| VCI-026  | impl-bug-candidate | BUILD-ROUTE-006       | Duplicate route-pattern collisions are currently silent last-write-wins with no diagnostics.                                      | open   |
-| VCI-040  | impl-bug-candidate | BUILD-VITE-010        | Vite dev-port helper currently ignores configured/default candidate port during free-port selection (`LAB-VITEUTIL-ISSUE-002`).   | open   |
-| VCI-041  | impl-bug-candidate | BUILD-VITE-011        | Vite dev-start command failure is currently logged but not propagated as an error (`LAB-VITEUTIL-ISSUE-001`, `WCI-002`).          | open   |
-| VCI-050  | impl-bug-candidate | BUILD-ART-004         | Client-defined loader-only route typing currently derives params/splat with action matcher runes instead of loader matcher runes. | open   |
+| Issue ID | Type | Severity | Status | Summary                              | Evidence | Related Requirement IDs | Required Spec Action |
+| -------- | ---- | -------- | ------ | ------------------------------------ | -------- | ----------------------- | -------------------- |
+| NONE     | n/a  | n/a      | none   | No active issues currently recorded. |          |                         |                      |

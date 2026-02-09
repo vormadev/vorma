@@ -1,8 +1,8 @@
-# kit/contextutil Conformance Issues
+# Conformance Issues
 
-Status: Active  
-Last Updated: 2026-02-09
+Purpose: track active implementation-vs-spec mismatches and intent-validation
+gaps. Not for: implementation task execution during Step 1.
 
-| Issue ID                    | Type                    | Affected Requirements | Summary                                                                                                                                                                                                                             | Status |
-| --------------------------- | ----------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| `KIT-CONTEXTUTIL-ISSUE-001` | `intent-validation-gap` | `KIT-CONTEXTUTIL-005` | The zero-value fallback behavior for missing/incompatible context values is currently source-derived and not directly asserted by legacy tests. Add focused missing/incompatible lookup tests if branch-level evidence is required. | open   |
+| Issue ID | Type | Severity | Status | Summary                              | Evidence | Related Requirement IDs | Required Spec Action |
+| -------- | ---- | -------- | ------ | ------------------------------------ | -------- | ----------------------- | -------------------- |
+| NONE     | n/a  | n/a      | none   | No active issues currently recorded. |          |                         |                      |

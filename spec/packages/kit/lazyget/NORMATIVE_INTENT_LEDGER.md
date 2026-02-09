@@ -1,28 +1,31 @@
-# kit/lazyget Normative Intent Ledger
+# Normative Intent Ledger
 
-Status: Active  
-Last Updated: 2026-02-09  
-Trust Epoch: `E2`
+Purpose: file-level mining coverage and replay rounds.
 
-## Mining Rules
+Evidence policy reminder:
 
-- Intent mining MUST use implementation source and incorporate legacy tests
-  outside `conformance/**` when present.
-- Per-file counters are epoch-scoped.
-- `passes`: total pass count in current epoch.
-- `clean_passes`: no-new-gap pass count in current epoch.
+- Primary: implementation source files.
+- Optional corroboration: legacy tests outside `conformance/**`.
+- Never use `conformance/**` as mining evidence.
 
-## Per-File Replay Ledger
+No-gap round meaning (strict):
 
-| File                          | Scope        | Mining Inputs | Passes | Clean Passes | Epoch State     | Notes                                                                                                                             |
-| ----------------------------- | ------------ | ------------- | -----: | -----------: | --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `kit/lazyget/README.md`       | out-of-scope | n/a           |      0 |            0 | out-of-scope    | Documentation/reference artifact; not normative mining input for this replay pass.                                                |
-| `kit/lazyget/lazyget.go`      | in-scope     | source+tests  |      1 |            0 | mined_gaps_open | `E2-R1` full-pass reconciled; lazy initialization and panic semantics mapped to `KIT-LAZYGET-001..009` with one source-only gap.  |
-| `kit/lazyget/lazyget_test.go` | in-scope     | source+tests  |      1 |            0 | mined_gaps_open | `E2-R1` full-pass reconciled; once, concurrency, nil-init panic, and panic-stickiness scenarios mapped to requirement-level rows. |
+- Attempted from scratch and in full to mine all normative intent to
+  rebuild-from-scratch-from-spec-alone level.
+- Found zero missing normative requirements in current spec.
+- Found zero incorrect normative claims in current spec.
+- Found zero open blocking intent-validation issues after the round.
 
-## Round Log
+## In-Scope Files
 
-| Round   | Status    | New Gaps | Notes                                                                                                                           |
-| ------- | --------- | -------: | ------------------------------------------------------------------------------------------------------------------------------- |
-| `E2-R1` | completed |        1 | Full-pass replay and requirement-level reconciliation completed with explicit issue-backed exception (`KIT-LAZYGET-ISSUE-001`). |
-| `E2-R2` | pending   |    `TBD` | No-gap clean pass is blocked until open issue is resolved or explicitly accepted.                                               |
+| File Path | Category | Passes | Clean Passes | Last Pass Kind | State   | Notes |
+| --------- | -------- | ------ | ------------ | -------------- | ------- | ----- |
+| TODO      | source   | 0      | 0            | none           | pending |       |
+
+## Replay Rounds
+
+| Round | Role              | Result  | From Scratch | Full Scope | Rebuild-From-Scratch-From-Spec-Alone Checked | Missing Req Count | Incorrect Claim Count | Blocking Issue Count | No-Gap Qualified | Summary                                              |
+| ----- | ----------------- | ------- | ------------ | ---------- | -------------------------------------------- | ----------------- | --------------------- | -------------------- | ---------------- | ---------------------------------------------------- |
+| R1    | baseline_full     | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Baseline full replay; gap discovery expected.        |
+| R2    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #1.                              |
+| R3    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #2 (must be consecutive no-gap). |

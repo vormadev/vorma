@@ -1,20 +1,8 @@
-# kit/validate Conformance Issues
+# Conformance Issues
 
-Status: Active  
-Last Updated: 2026-02-09
+Purpose: track active implementation-vs-spec mismatches and intent-validation
+gaps. Not for: implementation task execution during Step 1.
 
-| Issue ID                 | Requirement(s)                                                                 | Summary                                                                                                                                                                                                                                                                                                                                                                 | Status |
-| ------------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| `KIT-VALIDATE-ISSUE-001` | `KIT-VALIDATE-011`, `KIT-VALIDATE-012`, `KIT-VALIDATE-019`, `KIT-VALIDATE-020` | Intent-validation: low-level URL parsing internals are only partially test-backed (strict destination-kind contract details, interface-pointer dereference branch, full scalar parse edge surface, and full nested map/slice helper branch matrix). Add focused conformance tests or explicitly accept these as source-owned contracts.                                 | open   |
-| `KIT-VALIDATE-ISSUE-002` | `KIT-VALIDATE-001`, `KIT-VALIDATE-030`, `KIT-VALIDATE-032`                     | Intent-validation: `ValidationError.Unwrap()` branch, `attemptValidation` entry branches (including nil-input shortcut), and low-level utility semantics (`safeDereference`, `getTypeState`, `isEffectivelyZero`, `safeIsNil`) are partially asserted but still rely on source-level branch interpretation. Confirm intended behavior and add direct tests if required. | open   |
-
-## Source Validation Notes (`E2-R4`)
-
-- `KIT-VALIDATE-ISSUE-001`: `kit/validate/search_params.go` destination-kind and
-  interface-dereference control flow remains source-backed in edge branches
-  beyond current direct legacy-test assertions in
-  `kit/validate/search_params_test.go`.
-- `KIT-VALIDATE-ISSUE-002`: `kit/validate/error_collector.go` utility/entry
-  branches (`ValidationError.Unwrap`, `attemptValidation`, `safeDereference`,
-  `getTypeState`, `isEffectivelyZero`, `safeIsNil`) remain partially
-  assertion-backed and partially source-backed after replay.
+| Issue ID | Type | Severity | Status | Summary                              | Evidence | Related Requirement IDs | Required Spec Action |
+| -------- | ---- | -------- | ------ | ------------------------------------ | -------- | ----------------------- | -------------------- |
+| NONE     | n/a  | n/a      | none   | No active issues currently recorded. |          |                         |                      |

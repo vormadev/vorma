@@ -1,39 +1,31 @@
-# kit/matcher Normative Intent Ledger
+# Normative Intent Ledger
 
-Status: Active  
-Last Updated: 2026-02-09  
-Trust Epoch: `E2`
+Purpose: file-level mining coverage and replay rounds.
 
-## Mining Rules
+Evidence policy reminder:
 
-- Intent mining MUST use implementation source and incorporate legacy tests
-  outside `conformance/**` when present.
-- Per-file counters are epoch-scoped.
-- `passes`: total pass count in current epoch.
-- `clean_passes`: no-new-gap pass count in current epoch.
+- Primary: implementation source files.
+- Optional corroboration: legacy tests outside `conformance/**`.
+- Never use `conformance/**` as mining evidence.
 
-## Per-File Replay Ledger
+No-gap round meaning (strict):
 
-| File                                      | Scope        | Mining Inputs       | Passes | Clean Passes | Epoch State     | Notes                                                                                                    |
-| ----------------------------------------- | ------------ | ------------------- | -----: | -----------: | --------------- | -------------------------------------------------------------------------------------------------------- |
-| `kit/matcher/README.md`                   | out-of-scope | n/a                 |      0 |            0 | out-of-scope    | Documentation/benchmark artifact.                                                                        |
-| `kit/matcher/bench.txt`                   | out-of-scope | n/a                 |      0 |            0 | out-of-scope    | Documentation/benchmark artifact.                                                                        |
-| `kit/matcher/find_best_match.go`          | in-scope     | source+legacy-tests |      6 |            4 | mined_gaps_open | `E2-R6` clean replay revalidated best-match traversal; no new gap IDs.                                   |
-| `kit/matcher/find_best_match_test.go`     | in-scope     | source+legacy-tests |      6 |            4 | mined_gaps_open | `E2-R6` clean replay reconfirmed best-match scenario coverage alignment.                                 |
-| `kit/matcher/find_nested_matches.go`      | in-scope     | source+legacy-tests |      6 |            4 | mined_gaps_open | `E2-R6` clean replay reconfirmed nested collision/representative semantics without additional gaps.      |
-| `kit/matcher/find_nested_matches_test.go` | in-scope     | source+legacy-tests |      6 |            4 | mined_gaps_open | `E2-R6` clean replay reconfirmed duplicate-key and ordering stress evidence remains aligned.             |
-| `kit/matcher/matcher.go`                  | in-scope     | source+legacy-tests |      6 |            4 | mined_gaps_open | `E2-R6` clean replay reconfirmed option/default and getter contract mappings with no new gaps.           |
-| `kit/matcher/parse_segments.go`           | in-scope     | source+legacy-tests |      6 |            4 | mined_gaps_open | `E2-R6` clean replay reconfirmed parser contracts and existing coverage mapping.                         |
-| `kit/matcher/parse_segments_test.go`      | in-scope     | source+legacy-tests |      6 |            4 | mined_gaps_open | `E2-R6` clean replay reconfirmed parser scenario evidence remains aligned with source behavior.          |
-| `kit/matcher/register.go`                 | in-scope     | source+legacy-tests |      6 |            4 | mined_gaps_open | `E2-R6` clean replay reconfirmed normalization/registration behavior with no new requirement-level gaps. |
+- Attempted from scratch and in full to mine all normative intent to
+  rebuild-from-scratch-from-spec-alone level.
+- Found zero missing normative requirements in current spec.
+- Found zero incorrect normative claims in current spec.
+- Found zero open blocking intent-validation issues after the round.
 
-## Round Log
+## In-Scope Files
 
-| Round   | Status    | New Gaps | Notes                                                                                                                                                                                                                 |
-| ------- | --------- | -------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `E2-R1` | completed |        3 | Full-pass replay and requirement-level reconciliation completed with explicit issue-backed exceptions (`KIT-MATCHER-ISSUE-001..003`).                                                                                 |
-| `E2-R2` | completed |        0 | From-scratch replay revalidated source+legacy-test intent; requirements expanded to include exported accessor/getter surface without introducing new issue IDs.                                                       |
-| `E2-R3` | completed |        2 | Deep replay found new requirement-level gaps: nested duplicate-key params semantics (`KIT-MATCHER-043`) and same-type longest-depth representative selection semantics (`KIT-MATCHER-044` / `KIT-MATCHER-ISSUE-004`). |
-| `E2-R4` | completed |        0 | Clean replay revalidated source+legacy-test intent across updated requirement set with no new gap IDs.                                                                                                                |
-| `E2-R5` | completed |        0 | Clean replay revalidated source+legacy-test intent; with `E2-R4`, this satisfies two consecutive no-gap full rounds.                                                                                                  |
-| `E2-R6` | completed |        0 | Clean replay revalidated source+legacy-test intent; open `KIT-MATCHER-ISSUE-*` backlog remained unchanged.                                                                                                            |
+| File Path | Category | Passes | Clean Passes | Last Pass Kind | State   | Notes |
+| --------- | -------- | ------ | ------------ | -------------- | ------- | ----- |
+| TODO      | source   | 0      | 0            | none           | pending |       |
+
+## Replay Rounds
+
+| Round | Role              | Result  | From Scratch | Full Scope | Rebuild-From-Scratch-From-Spec-Alone Checked | Missing Req Count | Incorrect Claim Count | Blocking Issue Count | No-Gap Qualified | Summary                                              |
+| ----- | ----------------- | ------- | ------------ | ---------- | -------------------------------------------- | ----------------- | --------------------- | -------------------- | ---------------- | ---------------------------------------------------- |
+| R1    | baseline_full     | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Baseline full replay; gap discovery expected.        |
+| R2    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #1.                              |
+| R3    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #2 (must be consecutive no-gap). |

@@ -1,8 +1,8 @@
-# kit/id Conformance Issues
+# Conformance Issues
 
-Status: Active  
-Last Updated: 2026-02-09
+Purpose: track active implementation-vs-spec mismatches and intent-validation
+gaps. Not for: implementation task execution during Step 1.
 
-| Issue ID           | Type                    | Affected Requirements      | Summary                                                                                                                                                                                                                                                                 | Status |
-| ------------------ | ----------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| `KIT-ID-ISSUE-001` | `intent-validation-gap` | `KIT-ID-007`, `KIT-ID-009` | Rare failure branches (`rand.Read` failure propagation in `New` and delegated error propagation in `NewMulti`) are currently source-derived and not directly asserted by legacy tests. Add deterministic fault-injection tests if explicit branch evidence is required. | open   |
+| Issue ID | Type | Severity | Status | Summary                              | Evidence | Related Requirement IDs | Required Spec Action |
+| -------- | ---- | -------- | ------ | ------------------------------------ | -------- | ----------------------- | -------------------- |
+| NONE     | n/a  | n/a      | none   | No active issues currently recorded. |          |                         |                      |

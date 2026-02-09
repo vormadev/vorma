@@ -1,16 +1,7 @@
-# vormaclient/vite Traceability Matrix
+# Traceability Matrix
 
-Status: In Progress  
-Last Updated: 2026-02-09
+Purpose: map each normative requirement to evidence and coverage state.
 
-| Requirement ID         | Scenario ID(s)             | Suite Family     | Suite Name                           | Fixture Type    | Test File(s)                                                            | Pass Criteria                                                                            | Status      | Owner              |
-| ---------------------- | -------------------------- | ---------------- | ------------------------------------ | --------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------- | ------------------ |
-| `VORMACLIENT-VITE-001` | `VORMACLIENT-VITE-SCN-001` | vormaclient/vite | ts_source_vite_plugin_factory        | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Plugin factory/config shape is source-backed in `vormaclient/vite/vite.ts`.              | source-only | `vormaclient/vite` |
-| `VORMACLIENT-VITE-002` | `VORMACLIENT-VITE-SCN-002` | vormaclient/vite | ts_source_vite_filemap_dev_cache     | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Dev filemap read-and-cache behavior is source-backed in `vormaclient/vite/vite.ts`.      | source-only | `vormaclient/vite` |
-| `VORMACLIENT-VITE-003` | `VORMACLIENT-VITE-SCN-003` | vormaclient/vite | ts_source_vite_build_base_config     | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Build/base config behavior is source-backed in `vormaclient/vite/vite.ts`.               | source-only | `vormaclient/vite` |
-| `VORMACLIENT-VITE-004` | `VORMACLIENT-VITE-SCN-004` | vormaclient/vite | ts_source_vite_server_watch_headers  | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Dev server headers/watch config behavior is source-backed in `vormaclient/vite/vite.ts`. | source-only | `vormaclient/vite` |
-| `VORMACLIENT-VITE-005` | `VORMACLIENT-VITE-SCN-005` | vormaclient/vite | ts_source_vite_dedupe_merge          | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Resolve dedupe merge behavior is source-backed in `vormaclient/vite/vite.ts`.            | source-only | `vormaclient/vite` |
-| `VORMACLIENT-VITE-006` | `VORMACLIENT-VITE-SCN-006` | vormaclient/vite | ts_source_vite_invalidate_endpoint   | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Invalidation endpoint behavior is source-backed in `vormaclient/vite/vite.ts`.           | source-only | `vormaclient/vite` |
-| `VORMACLIENT-VITE-007` | `VORMACLIENT-VITE-SCN-007` | vormaclient/vite | ts_source_vite_transform_gating      | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Transform gating behavior is source-backed in `vormaclient/vite/vite.ts`.                | source-only | `vormaclient/vite` |
-| `VORMACLIENT-VITE-008` | `VORMACLIENT-VITE-SCN-008` | vormaclient/vite | ts_source_vite_transform_replacement | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | Buildtime URL replacement behavior is source-backed in `vormaclient/vite/vite.ts`.       | source-only | `vormaclient/vite` |
-| `VORMACLIENT-VITE-009` | `VORMACLIENT-VITE-SCN-009` | vormaclient/vite | ts_source_vite_tsconfig              | source-contract | n/a (no active legacy tests outside `conformance/**` currently in repo) | TS config behavior is source-backed in `vormaclient/vite/tsconfig.json`.                 | source-only | `vormaclient/vite` |
+| Requirement ID | Spec Section | Source Evidence | Legacy Test Evidence (non-conformance only) | Coverage Status | Gap Link | Notes |
+| -------------- | ------------ | --------------- | ------------------------------------------- | --------------- | -------- | ----- |
+| TODO           |              |                 |                                             | pending         |          |       |

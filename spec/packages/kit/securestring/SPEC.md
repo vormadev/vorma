@@ -1,54 +1,31 @@
-# kit/securestring Specification
+# Package Spec: `kit/securestring`
 
-Status: Active  
-Last Updated: 2026-02-09  
-Owner: `kit/securestring`
+Status: OPEN (Step 1)
 
-## Scope
+Purpose: normative behavior contract for this package. Not for: logs, history,
+or implementation task notes.
 
-Package-owned contracts for base64 string wrappers around encrypted payloads in
-`kit/securestring/**`.
+## Boundary
 
-Current evidence note:
+- Owner package path: TODO
+- Public entry points: TODO
+- Out-of-scope behavior: TODO
 
-- Requirements are mined from `kit/securestring/securestring.go` and
-  `kit/securestring/securestring_test.go`.
-- This package is a thin wrapper over `kit/securebytes`; owner semantics here
-  are wrapper-specific contracts plus explicit delegation behavior.
+## Normative Requirements (rebuild-from-scratch-from-spec-alone)
 
-## Requirements
+Each requirement must include:
 
-- `KIT-SECURESTRING-001` Serialized form contract. `SecureString` values MUST
-  represent base64-encoded ciphertext produced by `securebytes.Serialize`.
-- `KIT-SECURESTRING-002` Serialize delegation contract. `Serialize(ks, rv)` MUST
-  call `securebytes.Serialize(ks, rv)` and then base64-encode ciphertext via
-  `bytesutil.ToBase64`.
-- `KIT-SECURESTRING-003` Serialize error-wrapping contract. Errors from
-  delegated `securebytes.Serialize` MUST be wrapped as
-  `error serializing raw value: ...`.
-- `KIT-SECURESTRING-004` Parse input-length guard contract. `Parse[T](ks, ss)`
-  MUST reject empty `ss` with `invalid secure string: empty value` and reject
-  `len(ss) > MaxBase64Size` with `secure string too large (over 1.33MB)`.
-- `KIT-SECURESTRING-005` Parse base64 decoding contract. `Parse` MUST decode
-  base64 ciphertext via `bytesutil.FromBase64`; decode failures MUST be wrapped
-  as `error decoding base64: ...`.
-- `KIT-SECURESTRING-006` Parse delegation contract. `Parse` MUST delegate
-  decrypted parsing to
-  `securebytes.Parse[T](ks, securebytes.SecureBytes(ciphertext))`.
-- `KIT-SECURESTRING-007` Max size constant contract. `MaxBase64Size` MUST be
-  computed from `securebytes.MaxSize` using
-  `((securebytes.MaxSize + 2) / 3) * 4`.
-- `KIT-SECURESTRING-008` Key-rotation compatibility contract. Values serialized
-  under older keys MUST remain parseable when those keys are still present in
-  keyset attempt order.
-- `KIT-SECURESTRING-009` Generic payload roundtrip contract. Roundtrip behavior
-  MUST preserve supported payload categories including primitives, structs,
-  pointer payloads, and nested serializable values.
-- `KIT-SECURESTRING-010` Invalid-input behavior contract. Parse MUST fail on
-  invalid base64, tampered ciphertext, and keysets with no usable keys.
-- `KIT-SECURESTRING-011` Version propagation contract. Version-byte validation
-  is delegated to `securebytes.Parse`; unsupported version payloads MUST fail
-  parsing.
-- `KIT-SECURESTRING-012` Concurrency contract. Package APIs are stateless over
-  caller inputs and MUST support concurrent serialize/parse calls with shared
-  valid keysets.
+- Trigger/input conditions
+- Required behavior/outcome
+- Boundary/error behavior
+- Evidence paths
+
+| Requirement ID | Requirement Statement | Evidence Paths | Notes |
+| -------------- | --------------------- | -------------- | ----- |
+| TODO           |                       |                |       |
+
+## Owner References (Do Not Duplicate Owner Internals)
+
+| Owner Package | Owner Requirement IDs | Consumer Contract |
+| ------------- | --------------------- | ----------------- |
+| TODO          |                       |                   |

@@ -1,8 +1,7 @@
-# lab/rpc Traceability Matrix
+# Traceability Matrix
 
-Status: Placeholder  
-Last Updated: 2026-02-09
+Purpose: map each normative requirement to evidence and coverage state.
 
-| Requirement ID            | Scenario ID(s)                | Suite Family | Suite Name | Fixture Type    | Test File(s) | Pass Criteria                                 | Status  | Owner     |
-| ------------------------- | ----------------------------- | ------------ | ---------- | --------------- | ------------ | --------------------------------------------- | ------- | --------- |
-| `LAB-RPC-PLACEHOLDER-001` | `LAB-RPC-SCN-PLACEHOLDER-001` | lab/rpc      | pending    | source-contract | pending      | Placeholder row until requirements are mined. | missing | `lab/rpc` |
+| Requirement ID | Spec Section | Source Evidence | Legacy Test Evidence (non-conformance only) | Coverage Status | Gap Link | Notes |
+| -------------- | ------------ | --------------- | ------------------------------------------- | --------------- | -------- | ----- |
+| TODO           |              |                 |                                             | pending         |          |       |

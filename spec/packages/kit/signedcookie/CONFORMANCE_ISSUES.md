@@ -1,8 +1,8 @@
-# kit/signedcookie Conformance Issues
+# Conformance Issues
 
-Status: Active  
-Last Updated: 2026-02-09
+Purpose: track active implementation-vs-spec mismatches and intent-validation
+gaps. Not for: implementation task execution during Step 1.
 
-| Issue ID                     | Type                    | Affected Requirements                          | Summary                                                                                                                                                                                                                                                      | Status |
-| ---------------------------- | ----------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| `KIT-SIGNEDCOOKIE-ISSUE-001` | `intent-validation-gap` | `KIT-SIGNEDCOOKIE-006`, `KIT-SIGNEDCOOKIE-009` | Nil-input edge branches (`Manager.VerifyAndReadCookieValue(nil, ...)` and nil-receiver guards on `SignedCookie[T]` methods) are currently source-derived without direct legacy assertions. Confirm strict desired behavior and add targeted tests if needed. | open   |
+| Issue ID | Type | Severity | Status | Summary                              | Evidence | Related Requirement IDs | Required Spec Action |
+| -------- | ---- | -------- | ------ | ------------------------------------ | -------- | ----------------------- | -------------------- |
+| NONE     | n/a  | n/a      | none   | No active issues currently recorded. |          |                         |                      |

@@ -1,8 +1,7 @@
-# kit/middleware/healthcheck Traceability Matrix
+# Traceability Matrix
 
-Status: Placeholder  
-Last Updated: 2026-02-09
+Purpose: map each normative requirement to evidence and coverage state.
 
-| Requirement ID                               | Scenario ID(s)                                   | Suite Family               | Suite Name | Fixture Type    | Test File(s) | Pass Criteria                                 | Status  | Owner                        |
-| -------------------------------------------- | ------------------------------------------------ | -------------------------- | ---------- | --------------- | ------------ | --------------------------------------------- | ------- | ---------------------------- |
-| `KIT-MIDDLEWARE-HEALTHCHECK-PLACEHOLDER-001` | `KIT-MIDDLEWARE-HEALTHCHECK-SCN-PLACEHOLDER-001` | kit/middleware/healthcheck | pending    | source-contract | pending      | Placeholder row until requirements are mined. | missing | `kit/middleware/healthcheck` |
+| Requirement ID | Spec Section | Source Evidence | Legacy Test Evidence (non-conformance only) | Coverage Status | Gap Link | Notes |
+| -------------- | ------------ | --------------- | ------------------------------------------- | --------------- | -------- | ----- |
+| TODO           |              |                 |                                             | pending         |          |       |

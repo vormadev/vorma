@@ -1,30 +1,31 @@
-# lab/viteutil Normative Intent Ledger
+# Normative Intent Ledger
 
-Status: Active  
-Last Updated: 2026-02-09  
-Trust Epoch: `E2`
+Purpose: file-level mining coverage and replay rounds.
 
-## Mining Rules
+Evidence policy reminder:
 
-- Intent mining MUST use implementation source and incorporate legacy tests
-  outside `conformance/**` when present.
-- `conformance/**` suites are verification outputs/evidence and MUST NOT be
-  mining inputs.
-- Per-file counters are epoch-scoped.
-- `passes`: total pass count in current epoch.
-- `clean_passes`: no-new-gap pass count in current epoch.
+- Primary: implementation source files.
+- Optional corroboration: legacy tests outside `conformance/**`.
+- Never use `conformance/**` as mining evidence.
 
-## Per-File Replay Ledger
+No-gap round meaning (strict):
 
-| File                       | Scope    | Mining Inputs                                                 | Passes | Clean Passes | Epoch State     | Notes                                                                                                       |
-| -------------------------- | -------- | ------------------------------------------------------------- | -----: | -----------: | --------------- | ----------------------------------------------------------------------------------------------------------- |
-| `lab/viteutil/cmd.go`      | in-scope | source-only (no active legacy tests outside `conformance/**`) |      3 |            2 | mined_gaps_open | `E2-R1` rough replay surfaced issue-backed gaps; `E2-R2` and `E2-R3` full replays found no additional gaps. |
-| `lab/viteutil/viteutil.go` | in-scope | source-only (no active legacy tests outside `conformance/**`) |      3 |            2 | mined_gaps_open | `E2-R1` rough replay surfaced default-port gap; `E2-R2` and `E2-R3` full replays found no additional gaps.  |
+- Attempted from scratch and in full to mine all normative intent to
+  rebuild-from-scratch-from-spec-alone level.
+- Found zero missing normative requirements in current spec.
+- Found zero incorrect normative claims in current spec.
+- Found zero open blocking intent-validation issues after the round.
 
-## Round Log
+## In-Scope Files
 
-| Round   | Status    | New Gaps | Notes                                                                                                 |
-| ------- | --------- | -------: | ----------------------------------------------------------------------------------------------------- |
-| `E2-R1` | completed |        3 | Rough replay completed with source-backed requirement catalog and issue-backed bug-candidate gaps.    |
-| `E2-R2` | completed |        0 | Full replay across `cmd.go` + `viteutil.go` found no new gaps; open issue backlog remained unchanged. |
-| `E2-R3` | completed |        0 | Second consecutive no-gap full replay confirmed no new gaps; open issue backlog remained unchanged.   |
+| File Path | Category | Passes | Clean Passes | Last Pass Kind | State   | Notes |
+| --------- | -------- | ------ | ------------ | -------------- | ------- | ----- |
+| TODO      | source   | 0      | 0            | none           | pending |       |
+
+## Replay Rounds
+
+| Round | Role              | Result  | From Scratch | Full Scope | Rebuild-From-Scratch-From-Spec-Alone Checked | Missing Req Count | Incorrect Claim Count | Blocking Issue Count | No-Gap Qualified | Summary                                              |
+| ----- | ----------------- | ------- | ------------ | ---------- | -------------------------------------------- | ----------------- | --------------------- | -------------------- | ---------------- | ---------------------------------------------------- |
+| R1    | baseline_full     | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Baseline full replay; gap discovery expected.        |
+| R2    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #1.                              |
+| R3    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #2 (must be consecutive no-gap). |

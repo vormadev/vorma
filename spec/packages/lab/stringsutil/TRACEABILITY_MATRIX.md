@@ -1,8 +1,7 @@
-# lab/stringsutil Traceability Matrix
+# Traceability Matrix
 
-Status: Placeholder  
-Last Updated: 2026-02-09
+Purpose: map each normative requirement to evidence and coverage state.
 
-| Requirement ID                    | Scenario ID(s)                        | Suite Family    | Suite Name | Fixture Type    | Test File(s) | Pass Criteria                                 | Status  | Owner             |
-| --------------------------------- | ------------------------------------- | --------------- | ---------- | --------------- | ------------ | --------------------------------------------- | ------- | ----------------- |
-| `LAB-STRINGSUTIL-PLACEHOLDER-001` | `LAB-STRINGSUTIL-SCN-PLACEHOLDER-001` | lab/stringsutil | pending    | source-contract | pending      | Placeholder row until requirements are mined. | missing | `lab/stringsutil` |
+| Requirement ID | Spec Section | Source Evidence | Legacy Test Evidence (non-conformance only) | Coverage Status | Gap Link | Notes |
+| -------------- | ------------ | --------------- | ------------------------------------------- | --------------- | -------- | ----- |
+| TODO           |              |                 |                                             | pending         |          |       |

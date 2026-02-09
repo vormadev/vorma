@@ -1,30 +1,31 @@
-# kit/headels Normative Intent Ledger
+# Normative Intent Ledger
 
-Status: Active  
-Last Updated: 2026-02-09  
-Trust Epoch: `E2`
+Purpose: file-level mining coverage and replay rounds.
 
-## Mining Rules
+Evidence policy reminder:
 
-- Intent mining MUST use implementation source and incorporate legacy tests
-  outside `conformance/**` when present.
-- Per-file counters are epoch-scoped.
-- `passes`: total pass count in current epoch.
-- `clean_passes`: no-new-gap pass count in current epoch.
+- Primary: implementation source files.
+- Optional corroboration: legacy tests outside `conformance/**`.
+- Never use `conformance/**` as mining evidence.
 
-## Per-File Replay Ledger
+No-gap round meaning (strict):
 
-| File                             | Scope        | Mining Inputs       | Passes | Clean Passes | Epoch State     | Notes                                                                                                                                                         |
-| -------------------------------- | ------------ | ------------------- | -----: | -----------: | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kit/headels/README.md`          | out-of-scope | n/a                 |      0 |            0 | pending         | Documentation-only; not normative source for this replay.                                                                                                     |
-| `kit/headels/headblocks.go`      | in-scope     | source+legacy-tests |      4 |            3 | mined_gaps_open | `E2-R1` baseline mined `KIT-HEADELS-001..016` and surfaced `KIT-HEADELS-ISSUE-001..004`; `E2-R2` through `E2-R4` full replays found no new requirement/issue IDs. |
-| `kit/headels/headblocks_test.go` | in-scope     | source+legacy-tests |      4 |            3 | mined_gaps_open | `E2-R2` through `E2-R4` replays revalidated legacy evidence mappings and issue-backed partials with no newly surfaced gaps.                                       |
+- Attempted from scratch and in full to mine all normative intent to
+  rebuild-from-scratch-from-spec-alone level.
+- Found zero missing normative requirements in current spec.
+- Found zero incorrect normative claims in current spec.
+- Found zero open blocking intent-validation issues after the round.
 
-## Round Log
+## In-Scope Files
 
-| Round   | Status    | New Gaps | Notes                                                                                                                           |
-| ------- | --------- | -------: | ------------------------------------------------------------------------------------------------------------------------------- |
-| `E2-R1` | completed |        4 | Placeholder package replaced; active gaps tracked as `KIT-HEADELS-ISSUE-001..004`.                                              |
-| `E2-R2` | completed |        0 | Full replay across source + legacy tests found no new requirement or issue IDs; existing `KIT-HEADELS-ISSUE-*` backlog remains. |
-| `E2-R3` | completed |        0 | Second consecutive no-gap full replay found no new requirement or issue IDs; existing `KIT-HEADELS-ISSUE-*` backlog remains.    |
-| `E2-R4` | completed |        0 | Additional full replay plus issue-validation sanity pass found no new requirement or issue IDs; existing `KIT-HEADELS-ISSUE-*` backlog remains. |
+| File Path | Category | Passes | Clean Passes | Last Pass Kind | State   | Notes |
+| --------- | -------- | ------ | ------------ | -------------- | ------- | ----- |
+| TODO      | source   | 0      | 0            | none           | pending |       |
+
+## Replay Rounds
+
+| Round | Role              | Result  | From Scratch | Full Scope | Rebuild-From-Scratch-From-Spec-Alone Checked | Missing Req Count | Incorrect Claim Count | Blocking Issue Count | No-Gap Qualified | Summary                                              |
+| ----- | ----------------- | ------- | ------------ | ---------- | -------------------------------------------- | ----------------- | --------------------- | -------------------- | ---------------- | ---------------------------------------------------- |
+| R1    | baseline_full     | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Baseline full replay; gap discovery expected.        |
+| R2    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #1.                              |
+| R3    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #2 (must be consecutive no-gap). |

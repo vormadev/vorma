@@ -1,29 +1,31 @@
-# kit/securestring Normative Intent Ledger
+# Normative Intent Ledger
 
-Status: Active  
-Last Updated: 2026-02-09  
-Trust Epoch: `E2`
+Purpose: file-level mining coverage and replay rounds.
 
-## Mining Rules
+Evidence policy reminder:
 
-- Intent mining MUST use implementation source and incorporate legacy tests
-  outside `conformance/**` when present.
-- `conformance/**` suites are verification outputs/evidence and MUST NOT be
-  mining inputs.
-- Per-file counters are epoch-scoped.
-- `passes`: total pass count in current epoch.
-- `clean_passes`: no-new-gap pass count in current epoch.
+- Primary: implementation source files.
+- Optional corroboration: legacy tests outside `conformance/**`.
+- Never use `conformance/**` as mining evidence.
 
-## Per-File Replay Ledger
+No-gap round meaning (strict):
 
-| File                                    | Scope        | Mining Inputs       | Passes | Clean Passes | Epoch State | Notes                                                                                                                  |
-| --------------------------------------- | ------------ | ------------------- | -----: | -----------: | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `kit/securestring/README.md`            | out-of-scope | n/a                 |      0 |            0 | pending     | Documentation-only; not normative source for this replay.                                                              |
-| `kit/securestring/securestring.go`      | in-scope     | source+legacy-tests |      1 |            0 | in_progress | Wrapper serialize/parse contracts revalidated; empty-input parse guard branch tracked by `KIT-SECURESTRING-ISSUE-001`. |
-| `kit/securestring/securestring_test.go` | in-scope     | source+legacy-tests |      1 |            0 | in_progress | Legacy assertions mapped to roundtrip, size limit, key rotation, invalid input, version, and concurrency coverage.     |
+- Attempted from scratch and in full to mine all normative intent to
+  rebuild-from-scratch-from-spec-alone level.
+- Found zero missing normative requirements in current spec.
+- Found zero incorrect normative claims in current spec.
+- Found zero open blocking intent-validation issues after the round.
 
-## Round Log
+## In-Scope Files
 
-| Round   | Status    | New Gaps | Notes                                                                                                   |
-| ------- | --------- | -------: | ------------------------------------------------------------------------------------------------------- |
-| `E2-R1` | completed |        1 | Placeholder package replaced with detailed requirement catalog and requirement-level traceability rows. |
+| File Path | Category | Passes | Clean Passes | Last Pass Kind | State   | Notes |
+| --------- | -------- | ------ | ------------ | -------------- | ------- | ----- |
+| TODO      | source   | 0      | 0            | none           | pending |       |
+
+## Replay Rounds
+
+| Round | Role              | Result  | From Scratch | Full Scope | Rebuild-From-Scratch-From-Spec-Alone Checked | Missing Req Count | Incorrect Claim Count | Blocking Issue Count | No-Gap Qualified | Summary                                              |
+| ----- | ----------------- | ------- | ------------ | ---------- | -------------------------------------------- | ----------------- | --------------------- | -------------------- | ---------------- | ---------------------------------------------------- |
+| R1    | baseline_full     | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Baseline full replay; gap discovery expected.        |
+| R2    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #1.                              |
+| R3    | verification_full | pending | no           | no         | no                                           | TBD               | TBD                   | TBD                  | no               | Verification replay #2 (must be consecutive no-gap). |
