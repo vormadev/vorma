@@ -5,13 +5,13 @@ Last Updated: 2026-02-09
 
 | Artifact | Structural | Boundary | Semantic | Last Updated | Notes |
 |---|---|---|---|---|---|
-| `specs/packages/kit/mux/SPEC.md` | pending | pending | pending | 2026-02-09 | Placeholder expansion pending. |
-| `specs/packages/kit/mux/TRACEABILITY_MATRIX.md` | pending | pending | n/a | 2026-02-09 | Placeholder rows pending replacement. |
-| `specs/packages/kit/mux/CONFORMANCE_ISSUES.md` | pending | pending | n/a | 2026-02-09 | Placeholder issue rows pending replacement. |
-| `specs/packages/kit/mux/SPEC_CHECKLIST.md` | in_progress | n/a | n/a | 2026-02-09 | Initialized. |
-| `specs/packages/kit/mux/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a | n/a | 2026-02-09 | Per-file counters initialized. |
+| `specs/packages/kit/mux/SPEC.md` | completed | completed | completed | 2026-02-09 | Detailed requirement catalog authored through `KIT-MUX-048`; issue-backed exceptions remain open. |
+| `specs/packages/kit/mux/TRACEABILITY_MATRIX.md` | completed | completed | completed | 2026-02-09 | Requirement-level matrix reconciled for all requirements with explicit `covered`/`partial`/`source-only` status mapping. |
+| `specs/packages/kit/mux/CONFORMANCE_ISSUES.md` | in_progress | in_progress | in_progress | 2026-02-09 | Active intent-validation backlog (`KIT-MUX-ISSUE-001..003`) remains open and blocks no-gap closure. |
+| `specs/packages/kit/mux/SPEC_CHECKLIST.md` | completed | n/a | n/a | 2026-02-09 | Rough/full checklist milestones updated; unresolved-issues and no-gap closure items remain open. |
+| `specs/packages/kit/mux/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a | n/a | 2026-02-09 | `E2-R1` full-pass reconciliation recorded with open-gap status; `E2-R2` clean pass pending. |
 
 ## Round Status
 
-- Active round: `E2-R1`.
+- Active round: `E2-R2`.
 - Stop criterion: not met.

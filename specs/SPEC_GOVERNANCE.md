@@ -28,20 +28,23 @@ This is the single canonical top-level specs program document.
 - [x] Package-path canonical index exists: `specs/packages/PACKAGE_INDEX.md`
 - [x] Package-path ownership model is active (`specs/packages/<package-path>/`).
 - [x] Every package has independent spec/checklist/audit/ledger/matrix/issues files.
-- [x] Intent mining requires both source and tests, with per-file `passes`/`clean_passes`.
+- [x] Intent mining requires implementation source plus legacy tests outside `conformance/**`, with per-file `passes`/`clean_passes`.
 - [x] Old shared out-of-scope ledger removed.
+- [x] Vorma-family owner split is active (`BR-*` in `vormaruntime`, `BUILD-*` in `vormabuild`, `FE-*` in `vormaclient/client`; `vorma` kept wrapper-level only).
 - [ ] P0 closure: `vorma`, `vormabuild`, `vormaruntime`, `vormaclient/client`, `wave`, `wave/tooling`, `kit/matcher`, `kit/mux`, `kit/response`, `kit/validate`, `kit/headels`, `lab/tsgen`, `lab/viteutil`.
 - [ ] P1 closure: remaining `kit/*`, `lab/*`, and `vormaclient/*` package paths.
-- [ ] P2 closure: `bootstrap` package path (explicitly lowest priority).
+- [ ] P2 closure: `bootstrap` and `vormaclient/create` package paths (bootstrap-related, explicitly lowest priority).
 - [ ] Program stop condition met for every package.
 
 ## Program Stop Condition
 
 Program closure requires every package path in `specs/packages/PACKAGE_INDEX.md` to satisfy:
 
-1. Every in-scope file row mined in current epoch.
-2. Two consecutive full no-gap rounds recorded.
-3. Package checklist/tracker/matrix/issues reconciled.
+1. Detailed package requirement catalog is fully authored (not placeholder/high-level-only).
+2. Requirement-level traceability is reconciled (coverage complete or active issue-backed exceptions).
+3. Every in-scope file row mined in current epoch.
+4. Two consecutive full no-gap rounds recorded.
+5. Package checklist/tracker/matrix/issues reconciled.
 
 ## Governance Rules
 
@@ -63,9 +66,18 @@ Each package directory MUST contain:
 
 ### 3. Mining Rule
 
-- Normative intent mining MUST use both source and existing tests.
-- Full-audit replay MUST re-validate existing spec claims against source+tests; prior spec text is not automatically trusted.
+- Normative intent mining MUST use implementation source plus legacy tests outside `conformance/**`.
+- `conformance/**` test suites are verification outputs/evidence and MUST NOT be treated as normative mining inputs.
+- Full-audit replay MUST re-validate existing spec claims against source + legacy tests; prior spec text is not automatically trusted.
 - Every file row in package ledger tracks `passes` and `clean_passes` per epoch.
+
+### 3a. Pass Taxonomy Rule
+
+- Package audit passes MUST distinguish `rough pass` and `full pass`.
+- `Rough pass` means initial mining/reconciliation sufficient to replace placeholders and surface gaps; it is not full closure.
+- `Full pass` means detailed requirement catalog + requirement-level traceability + issue reconciliation across all in-scope files.
+- Package checklists MUST include separate checklist items for rough-pass completion and full-pass completion.
+- Full-pass checklist items MUST NOT be marked complete while requirement-level traceability remains partial/source-only without explicit issue reconciliation.
 
 ### 4. Trust Epoch Rule
 
@@ -96,9 +108,16 @@ For this program, a "full audit" means revalidating all existing package spec co
 
 Required sequence per package:
 
-1. Re-derive normative intent from implementation source and existing tests.
-2. Validate every current normative claim (including previously marked verified claims) against that intent.
-3. Delete or rewrite any incorrect, stale, ambiguous, or unsupported claim immediately.
-4. Reconfirm boundary ownership (owner behavior stays in owner specs; consumer specs reference owner requirement IDs instead of duplicating internal or public/external owner behavior).
-5. Reconcile package artifacts for consistency: `SPEC.md`, `SPEC_CHECKLIST.md`, `TRACEABILITY_MATRIX.md`, `CONFORMANCE_ISSUES.md`, `NORMATIVE_INTENT_LEDGER.md`, and `FULL_AUDIT_TRACKER.md`.
-6. Only after steps 1-5 are complete, update per-file `passes` and `clean_passes` for the round.
+1. Re-derive normative intent from implementation source and legacy tests outside `conformance/**`.
+2. Author/expand a detailed requirement catalog that reflects mined behavior (not a rough summary).
+3. Validate every current normative claim (including previously marked verified claims) against that intent.
+4. Delete or rewrite any incorrect, stale, ambiguous, or unsupported claim immediately.
+5. Reconfirm boundary ownership (owner behavior stays in owner specs; consumer specs reference owner requirement IDs instead of duplicating internal or public/external owner behavior).
+6. Reconcile package artifacts for consistency: `SPEC.md`, `SPEC_CHECKLIST.md`, `TRACEABILITY_MATRIX.md`, `CONFORMANCE_ISSUES.md`, `NORMATIVE_INTENT_LEDGER.md`, and `FULL_AUDIT_TRACKER.md`.
+7. Only after steps 1-6 are complete, update per-file `passes` and `clean_passes` for the round.
+
+### 9. Vorma Family Ownership Split
+
+- `vormaruntime`, `vormabuild`, and `vormaclient/client` are canonical owners for detailed package semantics in their domains.
+- `vorma` remains wrapper/facade scope only (public composition/boundary contracts and owner references).
+- Authors MUST NOT re-centralize owner catalogs under `specs/packages/vorma/`.

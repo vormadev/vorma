@@ -6,7 +6,7 @@ Trust Epoch: `E2`
 
 ## Mining Rules
 
-- Intent mining MUST use both implementation source and existing tests.
+- Intent mining MUST use implementation source plus legacy tests outside `conformance/**`.
 - Per-file counters are epoch-scoped.
 - `passes`: total pass count in current epoch.
 - `clean_passes`: no-new-gap pass count in current epoch.
@@ -15,19 +15,19 @@ Trust Epoch: `E2`
 
 | File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
 |---|---|---|---:|---:|---|---|
-| `vormaruntime/errors.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/get_deps.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/get_root_handler.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/glue.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/gmpd.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/paths.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/route_registry.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/route_reload.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/ssr.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/types.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/vite_url.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/vorma_core.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `vormaruntime/vorma_init.go` | in-scope | source+tests | 0 | 0 | pending |  |
+| `vormaruntime/errors.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/get_deps.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/get_root_handler.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/glue.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/gmpd.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/paths.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/route_registry.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/route_reload.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/ssr.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/types.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/vite_url.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/vorma_core.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `vormaruntime/vorma_init.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
 
 ## Round Log
 

@@ -61,14 +61,14 @@ This index is package-path canonical. Each package owns its own spec/tracking ar
 | `lab/tsgen/tsgencore` | `specs/packages/lab/tsgen/tsgencore/` | active | Package-owned artifacts. |
 | `lab/viteutil` | `specs/packages/lab/viteutil/` | active | Package-owned artifacts. |
 | `lab/xyz` | `specs/packages/lab/xyz/` | active | Package-owned artifacts. |
-| `vorma` | `specs/packages/vorma/` | active | Package-owned artifacts. |
-| `vormabuild` | `specs/packages/vormabuild/` | active | Package-owned artifacts. |
-| `vormaclient/client` | `specs/packages/vormaclient/client/` | active | Package-owned artifacts. |
+| `vorma` | `specs/packages/vorma/` | active | Wrapper/facade package specs; owner catalogs live in owning packages.|
+| `vormabuild` | `specs/packages/vormabuild/` | active | Owner package catalogs for `BUILD-*` requirements.|
+| `vormaclient/client` | `specs/packages/vormaclient/client/` | active | Owner package catalogs for `FE-*` requirements.|
 | `vormaclient/create` | `specs/packages/vormaclient/create/` | active | Package-owned artifacts. |
 | `vormaclient/preact` | `specs/packages/vormaclient/preact/` | active | Package-owned artifacts. |
 | `vormaclient/react` | `specs/packages/vormaclient/react/` | active | Package-owned artifacts. |
 | `vormaclient/solid` | `specs/packages/vormaclient/solid/` | active | Package-owned artifacts. |
 | `vormaclient/vite` | `specs/packages/vormaclient/vite/` | active | Package-owned artifacts. |
-| `vormaruntime` | `specs/packages/vormaruntime/` | active | Package-owned artifacts. |
+| `vormaruntime` | `specs/packages/vormaruntime/` | active | Owner package catalogs for `BR-*` requirements.|
 | `wave` | `specs/packages/wave/` | active | Package-owned artifacts. |
 | `wave/tooling` | `specs/packages/wave/tooling/` | active | Package-owned artifacts. |

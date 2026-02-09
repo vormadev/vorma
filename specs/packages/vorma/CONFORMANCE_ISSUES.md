@@ -3,6 +3,7 @@
 Status: Active  
 Last Updated: 2026-02-09
 
-Canonical issues backlog:
+| Issue ID | Type | Affected Requirements | Summary | Status |
+|---|---|---|---|---|
 
-- `specs/packages/vorma/VORMA_CONFORMANCE_ISSUES.md`
+No open wrapper-level `vorma` conformance issues are currently recorded.

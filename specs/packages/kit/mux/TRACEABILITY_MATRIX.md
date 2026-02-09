@@ -1,8 +1,57 @@
 # kit/mux Traceability Matrix
 
-Status: Placeholder  
+Status: In Progress  
 Last Updated: 2026-02-09
+
+Note: source-only or partial rows are explicitly issue-backed in `CONFORMANCE_ISSUES.md`.
 
 | Requirement ID | Scenario ID(s) | Suite Family | Suite Name | Fixture Type | Test File(s) | Pass Criteria | Status | Owner |
 |---|---|---|---|---|---|---|---|---|
-| `KIT-MUX-PLACEHOLDER-001` | `KIT-MUX-SCN-PLACEHOLDER-001` | kit/mux | pending | source-contract | pending | Placeholder row until requirements are mined. | missing | `kit/mux` |
+| `KIT-MUX-001` | `KIT-MUX-SCN-001` | kit/mux | router-default-runes | unit | `kit/mux/mux_test.go` | Default dynamic/splat rune behavior matches expectations. | covered | `kit/mux` |
+| `KIT-MUX-002` | `KIT-MUX-SCN-002` | kit/mux | mountroot-normalization | unit | `kit/mux/mux_test.go` | MountRoot normalization cases produce expected canonical values. | covered | `kit/mux` |
+| `KIT-MUX-003` | `KIT-MUX-SCN-003` | kit/mux | mountroot-method-contract | unit | `kit/mux/mux_test.go` | `MountRoot()` getter/join behavior matches expected outputs. | covered | `kit/mux` |
+| `KIT-MUX-004` | `KIT-MUX-SCN-004` | kit/mux | method-matcher-options | unit+source | `kit/mux/mux_test.go` | Method-scoped matcher behavior is test-backed, while shared option propagation remains source-validated (`KIT-MUX-ISSUE-002`). | partial | `kit/mux` |
+| `KIT-MUX-005` | `KIT-MUX-SCN-005` | kit/mux | method-scoped-registration | unit | `kit/mux/mux_test.go` | Same pattern registered on different methods remains distinct at dispatch and in route listings. | covered | `kit/mux` |
+| `KIT-MUX-006` | `KIT-MUX-SCN-006` | kit/mux | register-http-needs-taskctx | unit | `kit/mux/mux_advanced_test.go` | `TasksCtxRequirer` handlers are detected and executed with tasks context. | covered | `kit/mux` |
+| `KIT-MUX-007` | `KIT-MUX-SCN-007` | kit/mux | register-task-reqdata | unit | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | Registered task handlers receive populated req data (input/params/splat/context/proxy). | covered | `kit/mux` |
+| `KIT-MUX-008` | `KIT-MUX-SCN-008` | kit/mux | allroutes-live-order | unit+source | `kit/mux/mux_test.go` | Route ordering/count are test-backed; live underlying-slice exposure remains source-validated (`KIT-MUX-ISSUE-002`). | partial | `kit/mux` |
+| `KIT-MUX-009` | `KIT-MUX-SCN-009` | kit/mux | matcher-delegation | unit+source | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | Static/param/splat outcomes are test-backed; full delegated precedence surface remains partially source-backed (`KIT-MUX-ISSUE-002`). | partial | `kit/mux` |
+| `KIT-MUX-010` | `KIT-MUX-SCN-010` | kit/mux | mountroot-strip-before-match | unit | `kit/mux/mux_test.go` | Requests with configured mount root strip prefix and dispatch to registered route patterns. | covered | `kit/mux` |
+| `KIT-MUX-011` | `KIT-MUX-SCN-011` | kit/mux | head-explicit-route | unit | `kit/mux/mux_test.go` | Explicit `HEAD` handlers dispatch successfully when registered. | covered | `kit/mux` |
+| `KIT-MUX-012` | `KIT-MUX-SCN-012` | kit/mux | head-fallback-to-get | unit | `kit/mux/mux_test.go` | `HEAD` fallback to `GET` preserves headers/status while suppressing body bytes. | covered | `kit/mux` |
+| `KIT-MUX-013` | `KIT-MUX-SCN-013` | kit/mux | notfound-default-custom | unit | `kit/mux/mux_test.go` | Default and custom not-found behavior match expected 404 responses. | covered | `kit/mux` |
+| `KIT-MUX-014` | `KIT-MUX-SCN-014` | kit/mux | fastpath-gating | unit+source | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | Slow/fast-path outcomes are partially test-backed; complete gating branch surface remains source-backed (`KIT-MUX-ISSUE-002`). | partial | `kit/mux` |
+| `KIT-MUX-015` | `KIT-MUX-SCN-015` | kit/mux | fastpath-requeststore-conditional | source-contract | `(none)` | Conditional fast-path request-store injection by params/splat remains source-owned (`KIT-MUX-ISSUE-001`). | source-only | `kit/mux` |
+| `KIT-MUX-016` | `KIT-MUX-SCN-016` | kit/mux | slowpath-transport-init | unit | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | Slow-path handlers/middleware observe initialized tasks context and request transport state. | covered | `kit/mux` |
+| `KIT-MUX-017` | `KIT-MUX-SCN-017` | kit/mux | parseinput-invocation-guard | unit | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | Parse-input runs for typed inputs and is skipped for `None`/nil-parse configurations. | covered | `kit/mux` |
+| `KIT-MUX-018` | `KIT-MUX-SCN-018` | kit/mux | parseinput-mutation-adoption | unit | `kit/mux/mux_advanced_test.go` | Mutated parse-input pointer value is observed by downstream task handler input. | covered | `kit/mux` |
+| `KIT-MUX-019` | `KIT-MUX-SCN-019` | kit/mux | parseinput-validation-400 | unit | `kit/mux/mux_test.go` | Validation errors are surfaced as HTTP 400 responses. | covered | `kit/mux` |
+| `KIT-MUX-020` | `KIT-MUX-SCN-020` | kit/mux | parseinput-nonvalidation-500 | source-contract | `(none)` | Non-validation parse-input error mapping to 500 remains source-owned (`KIT-MUX-ISSUE-001`). | source-only | `kit/mux` |
+| `KIT-MUX-021` | `KIT-MUX-SCN-021` | kit/mux | task-success-json | unit | `kit/mux/mux_test.go` | Successful task outputs are JSON-encoded and returned with success status. | covered | `kit/mux` |
+| `KIT-MUX-022` | `KIT-MUX-SCN-022` | kit/mux | task-error-500 | unit | `kit/mux/mux_advanced_test.go` | Task-handler returned errors produce HTTP 500 responses. | covered | `kit/mux` |
+| `KIT-MUX-023` | `KIT-MUX-SCN-023` | kit/mux | task-proxy-apply-shortcircuit | unit+source | `kit/mux/mux_advanced_test.go` | Proxy short-circuit behavior is test-backed via middleware; full task-handler proxy branch coverage remains partial (`KIT-MUX-ISSUE-002`). | partial | `kit/mux` |
+| `KIT-MUX-024` | `KIT-MUX-SCN-024` | kit/mux | nilish-task-output-warning | source-contract | `(none)` | Warning-only behavior for nil-ish task outputs remains source-owned (`KIT-MUX-ISSUE-001`). | source-only | `kit/mux` |
+| `KIT-MUX-025` | `KIT-MUX-SCN-025` | kit/mux | http-middleware-layering | unit | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | Global/method/pattern middleware nesting order matches expected execution traces. | covered | `kit/mux` |
+| `KIT-MUX-026` | `KIT-MUX-SCN-026` | kit/mux | http-middleware-registration-order | unit | `kit/mux/mux_test.go` | Middleware registration order is preserved within layer. | covered | `kit/mux` |
+| `KIT-MUX-027` | `KIT-MUX-SCN-027` | kit/mux | http-middleware-if | unit | `kit/mux/mux_test.go` | HTTP middleware `If` option correctly skips or executes middleware. | covered | `kit/mux` |
+| `KIT-MUX-028` | `KIT-MUX-SCN-028` | kit/mux | task-middleware-gather-order | unit | `kit/mux/mux_advanced_test.go` | Global/method/pattern task middleware all execute and merge into request response behavior. | covered | `kit/mux` |
+| `KIT-MUX-029` | `KIT-MUX-SCN-029` | kit/mux | task-middleware-if | unit | `kit/mux/mux_test.go` | Task middleware `If` option correctly skips or executes middleware. | covered | `kit/mux` |
+| `KIT-MUX-030` | `KIT-MUX-SCN-030` | kit/mux | task-middleware-parallel-isolated | unit | `kit/mux/mux_advanced_test.go` | Task middleware fan-out executes across multiple middleware and produces merged proxy effects. | covered | `kit/mux` |
+| `KIT-MUX-031` | `KIT-MUX-SCN-031` | kit/mux | task-middleware-error-500 | unit | `kit/mux/mux_advanced_test.go` | Any task middleware Go error returns 500 and halts downstream handler execution. | covered | `kit/mux` |
+| `KIT-MUX-032` | `KIT-MUX-SCN-032` | kit/mux | task-middleware-merge-shortcircuit | unit | `kit/mux/mux_advanced_test.go` | Merged middleware proxy error/redirect responses halt downstream handler execution. | covered | `kit/mux` |
+| `KIT-MUX-033` | `KIT-MUX-SCN-033` | kit/mux | task-route-http-chain | unit | `kit/mux/mux_advanced_test.go` | Task route still executes configured HTTP middleware chain around task handler. | covered | `kit/mux` |
+| `KIT-MUX-034` | `KIT-MUX-SCN-034` | kit/mux | http-route-with-taskmw-chain | unit+source | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | HTTP-route/task-middleware interaction is partially test-backed; complete chain-gating branch behavior remains source-backed (`KIT-MUX-ISSUE-002`). | partial | `kit/mux` |
+| `KIT-MUX-035` | `KIT-MUX-SCN-035` | kit/mux | httpchain-cache-contract | source-contract | `(none)` | Cached `Route.httpChain` and post-cache mutation caveat remain source-owned (`KIT-MUX-ISSUE-001`). | source-only | `kit/mux` |
+| `KIT-MUX-036` | `KIT-MUX-SCN-036` | kit/mux | slowpath-taskctx-availability | unit | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | Slow-path handlers and task middleware observe non-nil tasks context. | covered | `kit/mux` |
+| `KIT-MUX-037` | `KIT-MUX-SCN-037` | kit/mux | taskctxrequirer-slowpath | unit | `kit/mux/mux_advanced_test.go` | `TasksCtxRequirer` handlers receive tasks context without requiring task middleware. | covered | `kit/mux` |
+| `KIT-MUX-038` | `KIT-MUX-SCN-038` | kit/mux | regular-handler-no-taskctx | unit | `kit/mux/mux_advanced_test.go` | Regular handlers on fast path do not receive tasks context. | covered | `kit/mux` |
+| `KIT-MUX-039` | `KIT-MUX-SCN-039` | kit/mux | request-helper-fallbacks | unit+source | `kit/mux/mux_test.go`, `kit/mux/mux_advanced_test.go` | Helper behavior is test-backed on matched routes; no-context fallback defaults remain partially source-backed (`KIT-MUX-ISSUE-002`). | partial | `kit/mux` |
+| `KIT-MUX-040` | `KIT-MUX-SCN-040` | kit/mux | reqdata-helper-forwarding | source-contract | `(none)` | Full forwarding surface of `ReqData` response helper wrappers remains source-owned (`KIT-MUX-ISSUE-001`). | source-only | `kit/mux` |
+| `KIT-MUX-041` | `KIT-MUX-SCN-041` | kit/mux | inject-taskctx-middleware | source-contract | `(none)` | `InjectTasksCtxMiddleware` idempotent injection behavior remains source-owned (`KIT-MUX-ISSUE-001`). | source-only | `kit/mux` |
+| `KIT-MUX-042` | `KIT-MUX-SCN-042` | kit/mux | nested-options | unit | `kit/mux/nested_mux_test.go` | Nested router defaults and configured option overrides match expected getter outputs. | covered | `kit/mux` |
+| `KIT-MUX-043` | `KIT-MUX-SCN-043` | kit/mux | nested-registration-and-duplicate | unit | `kit/mux/nested_mux_test.go` | Nested pattern/task registrations succeed and duplicate registrations panic. | covered | `kit/mux` |
+| `KIT-MUX-044` | `KIT-MUX-SCN-044` | kit/mux | nested-match-wrapper-contract | unit | `kit/mux/nested_mux_test.go` | Nested match wrappers return expected found/not-found behavior and matched pattern sets. | covered | `kit/mux` |
+| `KIT-MUX-045` | `KIT-MUX-SCN-045` | kit/mux | runnested-prereq-and-result-shape | unit+source | `kit/mux/nested_mux_test.go` | Result-map/slice/task-participation shape is test-backed; no-tasksCtx and empty-match return branches remain source-backed (`KIT-MUX-ISSUE-003`). | partial | `kit/mux` |
+| `KIT-MUX-046` | `KIT-MUX-SCN-046` | kit/mux | runnested-parallel-and-proxies | unit+source | `kit/mux/nested_mux_test.go` | Nested parallel execution and proxy presence are test-backed; full allocation/error-log branches remain partially source-backed (`KIT-MUX-ISSUE-003`). | partial | `kit/mux` |
+| `KIT-MUX-047` | `KIT-MUX-SCN-047` | kit/mux | nested-live-state-and-rebuild | source-contract | `(none)` | Live-structure exposure and atomic rebuild APIs are source-owned contracts (`KIT-MUX-ISSUE-003`). | source-only | `kit/mux` |
+| `KIT-MUX-048` | `KIT-MUX-SCN-048` | kit/mux | runnested-pooling-blocking-assumption | source-contract | `(none)` | Req-data pool safety dependency on blocking `RunParallel` remains source-owned (`KIT-MUX-ISSUE-003`). | source-only | `kit/mux` |

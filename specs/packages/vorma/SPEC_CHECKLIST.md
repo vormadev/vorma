@@ -3,6 +3,17 @@
 Status: Active  
 Last Updated: 2026-02-09
 
-Canonical checklist:
-
-- `specs/packages/vorma/VORMA_SPEC_CHECKLIST.md`
+- [x] Package spec file exists (`SPEC.md`).
+- [x] Package traceability matrix exists (`TRACEABILITY_MATRIX.md`).
+- [x] Package conformance issues file exists (`CONFORMANCE_ISSUES.md`).
+- [x] Package full-audit tracker exists (`FULL_AUDIT_TRACKER.md`).
+- [x] Package intent ledger exists (`NORMATIVE_INTENT_LEDGER.md`).
+- [x] Redundant `VORMA_*` layer removed from this package path.
+- [x] Wrapper package scope reduced to `vorma.go`-owned behavior only.
+- [ ] Revalidate wrapper requirement catalog against source + legacy tests outside `conformance/**`.
+- [ ] Reconcile wrapper traceability row status/coverage.
+- [ ] Complete full structural pass.
+- [ ] Complete full boundary pass.
+- [ ] Complete full semantic pass.
+- [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md`.
+- [ ] Record two consecutive no-gap full rounds.
