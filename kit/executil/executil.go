@@ -32,6 +32,19 @@ func RunCmd(commands ...string) error {
 	return MakeCmdRunner(commands...)()
 }
 
+func RunCmdCapture(commands ...string) (string, error) {
+	if len(commands) == 0 {
+		return "", fmt.Errorf("no commands provided")
+	}
+	cmd := exec.Command(commands[0], commands[1:]...)
+	out, err := cmd.CombinedOutput()
+	output := string(out)
+	if err != nil {
+		return output, err
+	}
+	return output, nil
+}
+
 func RunShell(command string) error {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
