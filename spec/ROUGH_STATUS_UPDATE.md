@@ -8,26 +8,28 @@ Update Style: Recreated from scratch each update.
 
 - Program remains in step 1: normative intent mining + reconciliation replay.
 - Priority gate remains active: execution is restricted to P0 package paths.
-- `spec/packages/vormabuild/*` and `spec/packages/wave/tooling/*` are in
-  rough-complete state with full-pass gates still open.
-- `spec/packages/vormaclient/client/*` rough replay gates are complete.
-- `spec/packages/vormaclient/client/*` full requirement-catalog authoring gate
-  is complete.
-- `spec/packages/vormaclient/client/*` full requirement-level traceability gate
-  is complete.
-- `spec/packages/vormaclient/client/TRACEABILITY_MATRIX.md` has no remaining
-  `pending-mapping` placeholders.
+- `spec/packages/vormaclient/client/*` now has rough + full
+  structural/boundary/semantic pass gates complete.
+- `spec/packages/vormaclient/client/TRACEABILITY_MATRIX.md` has no
+  `pending-mapping` rows.
+- `spec/packages/vormaclient/client/NORMATIVE_INTENT_LEDGER.md` records `E2-R1`
+  and `E2-R2`; `E2-R3` is pending.
 
 ## Remaining Work Snapshot
 
-- `vormabuild` full-pass gates remain open.
-- `wave/tooling` full-pass gates remain open.
-- `vormaclient/client` full structural/boundary/semantic gates remain open.
+- `vormaclient/client` still has open `VCI-*` intent-validation issues.
+- Because open issues remain, the checklist closure gates are still open:
+  `Resolve open intent-validation issues in CONFORMANCE_ISSUES.md` and
+  `Record two consecutive no-gap full rounds`.
+- `vormabuild` and `wave/tooling` full-pass closure work also remains open at
+  P0.
 
 ## Next Action
 
-1. Continue `vormaclient/client` full-pass reconciliation by driving the
-   remaining structural/boundary/semantic checklist gates from current source
-   evidence and open `VCI-*` issue set.
-2. Keep open `VCI-*` issues unresolved unless current source evidence supports
-   closure.
+1. Continue `vormaclient/client` normative intent mining by re-validating each
+   open `VCI-*` statement against implementation source evidence and updating
+   only package spec artifacts under `spec/**`.
+2. Do not perform implementation/test/config edits; if a source-code fix is
+   desired, require explicit user instruction in the current turn.
+3. After issue statuses are reconciled in spec artifacts, record two consecutive
+   no-gap full rounds for `vormaclient/client`.

@@ -133,6 +133,18 @@ Each package directory MUST contain:
 - If uncertain, agents MUST re-check the Program Checklist P0 status before
   selecting the next package path.
 
+### 3c. Mining-Only Edit Gate
+
+- While the program is in step 1 (normative intent mining), agents MUST edit
+  only files under `spec/**`.
+- During step 1, agents MUST NOT edit implementation, test, or config/source
+  files outside `spec/**`.
+- In step 1, `Resolve open intent-validation issues in CONFORMANCE_ISSUES.md`
+  means evidence/state reconciliation in package spec artifacts, not runtime
+  implementation changes.
+- While step 1 is incomplete, edits outside `spec/**` are prohibited with no
+  exceptions.
+
 ### 4. Trust Epoch Rule
 
 - Verified state is valid only within current trust epoch.

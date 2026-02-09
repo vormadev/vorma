@@ -24,6 +24,9 @@ Priority hard gate:
 - Specifically: no opportunistic P1/P2 placeholder cleanup while P0 is still
   open, unless the user explicitly asks for that override in the current
   session.
+- While the program is in step 1 (normative intent mining), edit only `spec/**`.
+  Do not edit implementation/test/config files outside `spec/**` while step 1 is
+  incomplete. No exceptions.
 
 ## 1) Program Rules (Read First)
 
