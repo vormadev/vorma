@@ -8,8 +8,12 @@ Update Style: Full overwrite each update. No cumulative timeline.
 
 - `kit/matcher`, `kit/mux`, and `vorma` have completed replay-round stop criteria in their current package trackers.
 - `vormaruntime` remains the active priority package; `E2-R1` is completed and `E2-R2` is actively in progress.
-- `vormaruntime` ownership cleanup is applied: removed non-owner Wave duplication and deleted stale `Vorma.FaviconRedirect()` claims.
-- `vormaruntime` catalog now includes `92` reconciled requirement IDs with matching traceability rows.
+- `vormaruntime` ownership cleanup now includes Wave, matcher, and response boundaries:
+  - removed non-owner Wave duplication and stale `Vorma.FaviconRedirect()` claims,
+  - collapsed duplicated matcher internals in `BR-LOAD-002/016/017` into owner-reference inheritance contracts,
+  - collapsed duplicated proxy-merge internals by removing `BR-PROXY-004/005` and keeping owner-linked merge semantics under `BR-PROXY-001`.
+- `vormaruntime` internal duplication cleanup removed `BR-HTML-005` because cache-control behavior is already owned by `BR-RESP-003`.
+- `vormaruntime` catalog currently reconciles at `89` requirement IDs with matching traceability rows.
 - Working tree is intentionally dirty with spec-only changes.
 
 ## High-Confidence State
@@ -20,7 +24,8 @@ Update Style: Full overwrite each update. No cumulative timeline.
   - `BR-INIT-014` (`SetIsDev`/`GetIsDevMode` mode-toggle contract)
   - `BR-DEV-010` (`ReloadRoutesFromDisk()` direct-call contract)
   - `BR-DEV-011` (`ReloadTemplateFromDisk()` direct-call contract)
-- `vormaruntime` spec/matrix scenario-ID and requirement-ID reconciliation is currently consistent.
+- `vormaruntime` requirement IDs and scenario IDs are fully reconciled between `SPEC.md` and `TRACEABILITY_MATRIX.md`.
+- `vormaruntime` checklist now marks requirement-level traceability reconciliation complete (with issue-backed source-only exceptions via `VRI-001`).
 
 ## Low-Confidence / Risk Areas
 
@@ -30,7 +35,7 @@ Update Style: Full overwrite each update. No cumulative timeline.
 
 ## Immediate Next Steps
 
-1. Continue `vormaruntime` `E2-R2` replay by revalidating remaining detailed claims for overreach/ambiguity and pruning anything unsupported.
+1. Continue `vormaruntime` `E2-R2` replay by auditing remaining sections for unsupported specificity and boundary drift.
 2. Keep `TRACEABILITY_MATRIX.md`, `CONFORMANCE_ISSUES.md`, `SPEC_CHECKLIST.md`, and `NORMATIVE_INTENT_LEDGER.md` synchronized with each new gap.
 3. Do not count no-gap rounds for `vormaruntime` while intent-validation gaps remain open.
 

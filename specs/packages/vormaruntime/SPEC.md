@@ -294,11 +294,12 @@ Given a route match with nested parent/child loader paths
 When JSON route-data is returned  
 Then `matchedPatterns` MUST be ordered outermost-to-innermost.
 
-Matching precedence inherited from kit matcher/router MUST also hold:
+Matcher-ownership boundary:
 
-- static segment matches MUST beat param matches at equivalent depth,
-- ordering MUST be deterministic across runs (no map-iteration nondeterminism),
-- splat matching MUST preserve decoded path-segment semantics.
+- nested match eligibility/precedence and deterministic ordering semantics are
+  owner-defined by `kit/matcher` and MUST remain behavior-compatible with
+  `KIT-MATCHER-025..KIT-MATCHER-036` in
+  `specs/packages/kit/matcher/SPEC.md`.
 
 ### BR-LOAD-003: Params and Splat Exposure
 
@@ -316,35 +317,27 @@ Given root route matches but no root server loader handler is present/runnable
 When route-data is returned  
 Then `hasRootData` MUST be false.
 
-### BR-LOAD-016: Trailing-Slash and Catch-All Eligibility Semantics
+### BR-LOAD-016: Matcher Eligibility/Precedence Inheritance Contract
 
-Given loader routes include exact, dynamic, and non-root catch-all siblings at
-the same depth  
-When nested loader matching resolves a request path  
-Then matcher-interop eligibility MUST hold:
+Given loader routes are registered through runtime nested router with configured
+matcher options (dynamic prefix, splat rune, explicit index segment)  
+When nested loader matching resolves request paths  
+Then runtime-observed matching outcomes MUST remain behavior-compatible with
+`kit/matcher` owner contracts for equivalent route sets/options (including
+trailing-slash handling, explicit-index behavior, dynamic vs splat eligibility,
+and precedence ordering), specifically `KIT-MATCHER-019..KIT-MATCHER-036` in
+`specs/packages/kit/matcher/SPEC.md`.
 
-- dynamic segments MUST NOT match an empty trailing segment (for example,
-  `/users/:id` MUST NOT match `/users/`),
-- non-root catch-all patterns (for example `/users/*`) MUST NOT match `/users`,
-  but MUST match `/users/` with empty remainder represented as `[""]`,
-- with explicit index segment configuration, explicit index routes (for example
-  `/users/_index`) MUST match both `/users` and `/users/`,
-- exact/static matches at equivalent depth MUST beat dynamic/catch-all
-  candidates,
-- root-path precedence between root, root catch-all, and explicit root index
-  patterns (when configured) MUST remain deterministic and matcher-compatible.
+### BR-LOAD-017: Matcher Full-Match Validity Inheritance Contract
 
-### BR-LOAD-017: Full-Match Validity with Gap-Tolerant Parent/Leaf Stacks
-
-Given nested routes include a parent route and a deeper leaf route while one or
-more intermediate route depths are unregistered  
-When request path exactly reaches the deeper registered leaf  
-Then `matchedPatterns` MAY include both parent and leaf (gap-tolerant stack).
-
-Given request path ends at an unregistered intermediate depth  
-When nested loader matching is evaluated  
-Then route resolution MUST fail as not found (no non-consuming deeper partial
-match).
+Given nested loader routes include parent/leaf stacks with intermediate-depth
+gaps  
+When request paths exercise both fully-consumed and partially-consumed
+combinations  
+Then runtime-observed success/failure outcomes MUST remain behavior-compatible
+with `kit/matcher` full-match validity contracts (`KIT-MATCHER-028`,
+`KIT-MATCHER-034`, `KIT-MATCHER-035`) in
+`specs/packages/kit/matcher/SPEC.md`.
 
 ## 4.5 Loaders: Execution and Data Assembly
 
@@ -599,12 +592,12 @@ When request is handled
 Then merged proxy output MUST influence final HTTP response before payload
 rendering.
 
-Merge semantics MUST preserve kit-response precedence rules:
+Merge semantics ownership boundary:
 
-- first error status wins,
-- otherwise last success status wins,
-- first redirect wins only when merged status is non-error,
-- header op order (set/add) MUST be preserved.
+- merge arbitration, header-op ordering, cookie conflict handling, and redirect
+  winner semantics are owner-defined by `kit/response` and MUST remain
+  behavior-compatible with `KIT-RESPONSE-014..KIT-RESPONSE-018` in
+  `specs/packages/kit/response/SPEC.md`.
 
 ### BR-PROXY-002: Redirect Short-Circuit
 
@@ -619,23 +612,6 @@ Given merged proxy indicates error status
 When loaders request is handled  
 Then runtime MUST short-circuit and MUST NOT emit normal JSON/HTML route-data
 payload.
-
-### BR-PROXY-004: Cookie Name-Collision Merge Contract
-
-Given multiple matched loaders set response cookies and at least two cookies
-share the same name  
-When merged proxy output is applied  
-Then final response MUST keep one winning cookie per cookie name, using value
-from later proxy merge position for that name.
-
-Distinct cookie names MUST remain present.
-
-### BR-PROXY-005: Client Redirect Header Single-Value Winner Contract
-
-Given merged non-error proxy output includes one or more client redirects  
-When response is emitted  
-Then `X-Client-Redirect` MUST be single-valued and MUST equal winning redirect
-target from first redirect in merge order.
 
 ### BR-PROXY-006: Non-Redirect Success Status Preservation with Normal Payload
 
@@ -665,10 +641,6 @@ Then template data MUST include:
 - `VormaRootID`
 - `VormaBodyScripts`.
 
-Given root-template-data callback returns error  
-When HTML render path executes  
-Then runtime MUST return HTTP 500 and MUST NOT emit partial rendered HTML body.
-
 ### BR-HTML-003: Production Body Script
 
 Given prod mode and successful HTML rendering  
@@ -681,17 +653,6 @@ output under public path prefix.
 Given dev mode and successful HTML rendering  
 When response is generated  
 Then `VormaBodyScripts` MUST include Vite dev scripts and Wave refresh script.
-
-### BR-HTML-005: Default Cache-Control
-
-Given loader response does not already set `Cache-Control`  
-When response is generated  
-Then runtime MUST set
-`Cache-Control: private, max-age=0, must-revalidate, no-cache`.
-
-Given response already has `Cache-Control` (for example via loader proxy)  
-When response is generated  
-Then runtime MUST preserve existing value and MUST NOT override it.
 
 ### BR-HTML-006: Development Script Variant Selection
 
@@ -1215,34 +1176,21 @@ Then `hasRootData` MUST be `true` only for app with root loader handler.
 
 ### BRC-LOAD-016 (covers BR-LOAD-016)
 
-Given loader-route fixtures including `/users/:id`, `/users/*`, and exact
-`/users` variants (including explicit-index fixture `/users/_index` when index
-segment is configured)  
-When requests `/users`, `/users/`, and `/users/123` are served in JSON mode  
-Then matching MUST satisfy:
-
-- `/users/:id` does not match `/users/`,
-- `/users/*` does not match `/users` but does match `/users/` with empty splat
-  remainder,
-- explicit index route `/users/_index` matches both `/users` and `/users/`,
-- exact `/users` beats sibling catch-all on exact-equivalent request targets.
-
-Given root fixtures with root, root catch-all, and explicit root-index
-registrations  
-When request `/` is served  
-Then selected root matches MUST follow deterministic matcher precedence (no
-ambiguous winner drift across runs).
+Given matcher owner fixture vectors covering trailing-slash handling,
+explicit-index behavior, dynamic/splat eligibility, and precedence cases are
+materialized through Vorma loader routes  
+When those vectors are exercised via loader JSON requests  
+Then runtime-observed matching results MUST match expected outcomes from
+`kit/matcher` owner contracts for the same vectors.
 
 ### BRC-LOAD-017 (covers BR-LOAD-017)
 
-Given registered routes include `/team` and `/team/members/profile` but not
-`/team/members`  
-When `/team/members/profile` is requested in JSON mode  
-Then `matchedPatterns` MUST include both `/team` and
-`/team/members/profile`.
-
-When `/team/members` is requested  
-Then response MUST be `404` (no deeper-route partial acceptance).
+Given matcher owner fixture vectors for gap-tolerant parent/leaf stacks and
+intermediate-depth partial-match rejection are materialized through Vorma loader
+routes  
+When requests are exercised via loader endpoints  
+Then runtime-observed success/failure outcomes MUST match `kit/matcher` owner
+expectations, and any non-match outcome MUST map to loader `404`.
 
 ## 5.5 Loader Data Assembly Scenarios
 
@@ -1445,21 +1393,6 @@ When request is handled
 Then runtime MUST return error response and MUST NOT append normal route-data
 JSON/HTML body.
 
-### BRC-PROXY-004 (covers BR-PROXY-004)
-
-Given multiple matched loaders set cookies with colliding names and distinct
-names  
-When response is emitted  
-Then wire-visible cookie set MUST include distinct names and single winning
-value per colliding name using later-proxy precedence.
-
-### BRC-PROXY-005 (covers BR-PROXY-005)
-
-Given multiple matched loaders attempt client redirects in non-error flow  
-When response is emitted  
-Then `X-Client-Redirect` MUST appear as one winning value (no multi-value
-append).
-
 ### BRC-PROXY-006 (covers BR-PROXY-006)
 
 Given matched loaders set merged proxy success status `201` without
@@ -1500,18 +1433,6 @@ path prefix and targets built client entry output.
 Given development mode  
 When HTML response is generated  
 Then `VormaBodyScripts` MUST include Vite dev script(s) and Wave refresh script.
-
-### BRC-HTML-005 (covers BR-HTML-005)
-
-Given no proxy/header override for cache control  
-When loader response is generated  
-Then `Cache-Control` MUST equal `private, max-age=0, must-revalidate, no-cache`.
-
-### BRC-HTML-006 (covers BR-HTML-005)
-
-Given loader/proxy explicitly sets `Cache-Control: public, max-age=60`  
-When response is generated  
-Then runtime MUST preserve that value (must not overwrite with default).
 
 ### BRC-HTML-007 (covers BR-HTML-006)
 
