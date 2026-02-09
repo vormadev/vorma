@@ -16,6 +16,12 @@ Owner package semantics are canonical in:
 
 This package owns only wrapper-level contracts defined by `vorma.go`.
 
+Current evidence note:
+
+- Wrapper requirements are currently derived from `vorma.go` source.
+- No legacy wrapper package tests outside `conformance/**` were found in this
+  repo during this replay round.
+
 ## Requirement Catalog
 
 ### VORMA-API-001: Wrapper Constructor Delegation

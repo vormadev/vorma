@@ -1,304 +1,299 @@
-# Wave Specification
+# wave Specification
 
 Status: Active  
 Last Updated: 2026-02-09  
-Applies To: Wave package behavior (current detailed catalog: build/dev control plane; runtime serving placeholder)
+Applies To: `wave` runtime package behavior (`wave/*.go`)
 
 ## 1. Purpose
 
-This spec is the canonical contract for Wave-owned build/dev behavior.
+This is the canonical contract for Wave runtime/public-asset behavior exposed by
+the `wave` package.
 
-Framework specs (including Vorma) SHOULD reference these requirements instead of
-duplicating Wave internal control-plane semantics.
+Build/dev control-plane behavior lives in `wave/tooling` and is intentionally
+not duplicated here.
 
 ## 2. Ownership Boundary
 
-Wave owns:
+`wave` owns:
 
-- dev control-plane restart/readiness lifecycle,
-- watcher/event-loop semantics,
-- static/CSS artifact processing control-plane behavior,
-- schema-merge behavior for framework extensions.
+- runtime config parsing/accessor defaults,
+- runtime env helpers and port selection helpers,
+- runtime FS/filemap/public-URL resolution,
+- runtime static-serving helpers,
+- runtime CSS/filemap/refresh script HTML helper output.
 
-Frameworks own:
+`wave/tooling` owns:
 
-- framework-specific callbacks injected into Wave,
-- framework-specific endpoint interactions and resulting app-visible behavior.
+- build/dev CLI and orchestration,
+- watcher/event-loop control-plane semantics,
+- static/CSS/schema build-time pipelines.
 
-Conflict rule:
+## 3. Requirement Catalog
 
-- if a framework alias requirement conflicts with this spec for a Wave-owned
-  concern, this spec is authoritative.
+### 3.1 Config and Construction
 
-## 3. Framework Integration Mapping
+#### WAVE-RT-001: ParseConfig Minimal Safety Contract
 
-Framework specs SHOULD reference `WAVE-*` IDs directly at integration
-boundaries.
+Given `ParseConfig(data)` is called  
+When JSON is invalid  
+Then it MUST return an error prefixed with `parse config:`.
 
-No framework-alias table is maintained in this file; alias rows that were
-previously copied from framework docs were removed to prevent stale cross-spec
-duplication.
+Given parsed config omits `Core`  
+When parsing completes  
+Then it MUST return an error (`Core section is required`) rather than allowing
+nil-dereference behavior.
 
-## 4. Requirement Catalog
+Given parsing succeeds  
+When return values are observed  
+Then `Dist.Root` MUST be populated as `filepath.Clean(Core.DistDir)`.
 
-### 4.0 CLI Entry Contracts
+#### WAVE-RT-002: Constructor Panic-and-Default Contract
 
-#### WAVE-CLI-001: CLI Logger Defaulting Contract
+Given `New(Config)` receives nil `WaveConfigJSON`  
+When called  
+Then it MUST panic.
 
-Given CLI entry helper `BuildWaveWithHook` or wrapper `BuildWave` is invoked
-with nil logger  
-When entrypoint initializes runtime dependencies  
-Then helper MUST construct default color logger named `wave` before invoking
-dev/build flows.
+Given `ParseConfig` fails during `New`  
+When called  
+Then `New` MUST panic with that parse failure.
 
-#### WAVE-CLI-002: Hook Callback Gate and Precedence Contract
+Given `Logger` is nil  
+When `New` initializes runtime instance  
+Then it MUST default to `colorlog.New("wave")`.
 
-Given CLI flags include `--hook` and a non-nil hook callback is provided  
-When entry helper executes  
-Then helper MUST invoke callback exactly once with parsed `--dev` value and MUST
-return immediately without entering `RunDev` or builder build path.
+Given construction succeeds  
+When instance is created  
+Then cache-backed runtime helpers (`baseFS`, `publicFS`, `privateFS`,
+`fileMap`, CSS/filemap helpers) MUST be initialized.
 
-Given CLI flags include `--hook` but callback is nil  
-When entry helper executes  
-Then helper MUST ignore hook-only callback path and continue through standard
-`--dev`/production flow selection.
+#### WAVE-RT-003: Raw Config and Parsed Config Accessors
 
-#### WAVE-CLI-003: CLI Error Propagation and Builder Lifecycle Contract
+Given a `Wave` instance  
+When `RawConfigJSON()` is called  
+Then it MUST return the raw bytes passed into constructor config.
 
-Given hook callback, `RunDev`, or production builder path returns error  
-When CLI helper handles that failure  
-Then helper MUST fail fast via panic (no error return contract).
+Given a `Wave` instance  
+When `GetParsedConfig()` is called  
+Then it MUST return the parsed config pointer used by the runtime instance.
 
-Given production builder path is selected  
-When helper completes (success or panic unwind)  
-Then builder cleanup (`Close`) MUST be deferred for execution.
+### 3.2 Runtime Cache Semantics
 
-### 4.1 Dev Control Plane
+#### WAVE-RT-004: Dev-vs-Prod Cache Behavior
 
-#### WAVE-DEV-012: Cycle-Vite Reload Source Exclusivity
+Given runtime cache wrappers (`cache`, `cacheMap`)  
+When Wave is in dev mode  
+Then cached values MUST be recomputed on each access.
 
-Cycle-vite reload orchestration MUST have one authoritative browser reload
-source per cycle and MUST NOT emit duplicate reload triggers.
+Given Wave is not in dev mode  
+When cache access succeeds  
+Then results MUST be memoized for subsequent calls.
 
-#### WAVE-DEV-030: Revalidate Overlay-Cleanup Robustness
+### 3.3 Runtime FS, Filemap, and URL Resolution
 
-Refresh-script revalidate flow MUST clear rebuilding overlay for both resolve
-and reject outcomes.
+#### WAVE-RT-005: Base/Public/Private FS Selection Contract
 
-#### WAVE-DEV-032: Vite Startup Failure Handling
+Given runtime is in dev mode  
+When base FS is initialized  
+Then it MUST use `os.DirFS(cfg.Dist.Static())`.
 
-Vite startup failure in dev loop MUST enter explicit failure handling (not
-log-only success continuation).
+Given runtime is not in dev mode  
+When `distStaticFS` is nil  
+Then base FS initialization MUST fail.
 
-#### WAVE-DEV-033: Build-Retry Request Strength Preservation
+Given base FS resolves  
+When public/private FS are initialized  
+Then they MUST resolve via `fs.Sub(base, RelPaths.AssetsPublic())` and
+`fs.Sub(base, RelPaths.AssetsPrivate())`.
 
-Build-retry wake-up handling MUST preserve restart request strength bits
-(`recompileGo`, config-restart intent).
+#### WAVE-RT-006: MustGet FS Panic Contract
 
-#### WAVE-DEV-034: App Startup Failure Handling
+Given `MustGetPublicFS()` / `MustGetPrivateFS()`  
+When underlying getter returns error  
+Then helper MUST panic.
 
-App startup failure MUST propagate as actionable orchestration failure.
+#### WAVE-RT-007: Public Filemap Decode Contract
 
-#### WAVE-DEV-035: Readiness-Gate Failure Handling
+Given `GetPublicFileMap()`  
+When runtime filemap blob exists and decodes  
+Then decoded map MUST be returned.
 
-App/Vite readiness timeout/failure outcomes MUST be actionable and MUST gate
-reload/cycle success continuation.
+Given file open/decode fails  
+When called  
+Then error MUST be returned (not silently swallowed).
 
-#### WAVE-DEV-036: Config Reload Framework-Field Preservation
+#### WAVE-RT-008: Public URL Resolution Contract
 
-Config reload replacement MUST preserve framework-injected runtime-only fields
-required for control-plane correctness.
+Given `GetPublicURL(original)`  
+When input starts with `data:`  
+Then output MUST return the original data URL unchanged.
 
-#### WAVE-DEV-041: App-Stop Failure Propagation
+Given filemap lookup finds a hashed output  
+When resolved  
+Then output MUST use that hashed URL.
 
-App stop (`Kill`/`Wait`) failures MUST be surfaced to callers.
+Given lookup misses or filemap load fails  
+When resolved  
+Then runtime MUST return fallback prefixed URL and keep execution running.
 
-### 4.2 Watch and Event Processing
+#### WAVE-RT-009: Public Asset Detection Contract
 
-#### WAVE-EVT-001: Batch Dedupe Must Preserve Strongest Effective Work
+Given `IsPublicAsset(urlPath)` and configured prefix is empty or `/`  
+When called  
+Then runtime MUST perform FS-backed existence check under public FS.
 
-Event dedupe MUST preserve non-lossy effective work semantics, including
-unmatched-event distinctness and strongest-intent aggregation.
+Given configured prefix is non-root  
+When called  
+Then runtime MUST treat prefix match as public-asset check result.
 
-#### WAVE-EVT-019: Blocking Event-Phase Failure Gating
+### 3.4 Static Serving and Redirect Helpers
 
-Blocking phase failures (hooks/build units) MUST gate success-phase continuation
-and success-style browser signaling.
+#### WAVE-RT-010: Static Handler Construction Contract
 
-#### WAVE-EVT-023: Concurrent Restart Arbitration Determinism
+Given `GetServeStaticHandler(immutable=false)`  
+When called  
+Then returned handler MUST serve from public FS under configured
+`PublicPathPrefix`.
 
-Concurrent restart actions MUST resolve deterministically to strongest intent.
+Given `immutable=true`  
+When serving response  
+Then handler MUST set
+`Cache-Control: public, max-age=31536000, immutable`.
 
-#### WAVE-EVT-028: Directory Watch-Expansion Failure Handling
+Given public FS initialization fails  
+When called  
+Then error MUST be returned.
 
-Dynamic watch-expansion failure MUST be actionable and MUST NOT silently
-continue as success.
+#### WAVE-RT-011: ServeStatic Middleware Gate Contract
 
-#### WAVE-EVT-029: CSS Hot-Reload Artifact Read-Failure Handling
+Given middleware from `ServeStatic(immutable)`  
+When request path is public asset  
+Then middleware MUST serve static response through static handler.
 
-CSS artifact read failures in hot-reload path MUST be actionable and MUST
-suppress success-style CSS payload emission.
+Given request path is not public asset  
+When called  
+Then middleware MUST delegate to `next` handler.
 
-#### WAVE-EVT-030: Implicit-vs-Callback Restart Strength Preservation
+#### WAVE-RT-012: Favicon Redirect Contract
 
-Implicit rebuild work MUST NOT be downgraded by weaker callback restart actions.
+Given `FaviconRedirect()` middleware for `GET`/`HEAD /favicon.ico`  
+When hashed/public URL differs from fallback path  
+Then middleware MUST issue `302 Found` redirect.
 
-#### WAVE-EVT-031: Stable Watcher Channel Source Under Teardown
+Given hashed/public URL equals fallback path (no mapped favicon)  
+When called  
+Then middleware MUST return `404 Not Found`.
 
-Watch-loop channel consumption MUST use a stable watcher source under teardown
-races.
+### 3.5 Runtime CSS and Filemap HTML Helpers
 
-#### WAVE-EVT-032: Stale-Watch Removal Failure Handling
+#### WAVE-RT-013: Critical CSS Helper Contract
 
-Stale watch removal failures MUST be explicit and tracked-state updates MUST stay
-consistent with actual removal outcome.
+Given no critical CSS entry or missing critical CSS artifact  
+When critical CSS helpers are called  
+Then helper outputs MUST be empty values (`""`).
 
-#### WAVE-EVT-033: Closed Error-Channel Watch-Loop Termination
+Given critical CSS exists  
+When helpers are called  
+Then runtime MUST provide:
 
-Closed watcher error-channel receive MUST terminate watcher loop (not nil-error
-spin/log behavior).
+- inline CSS content,
+- rendered style element with `id="wave-critical-css"`,
+- sha256 hash derived from rendered style element content.
 
-### 4.3 Static, CSS, and Schema
+#### WAVE-RT-014: Normal Stylesheet Helper Contract
 
-#### WAVE-STATIC-005: Filemap Artifact Rotation Cleanup Guarantees
+Given no non-critical CSS entry  
+When stylesheet helpers are called  
+Then URL/link outputs MUST be empty.
 
-Filemap artifact rotation MUST obey explicit cleanup-failure policy (actionable
-failure or explicitly bounded tolerated-stale policy).
+Given non-critical CSS reference resolves  
+When helpers are called  
+Then runtime MUST provide prefixed stylesheet URL and rendered link element with
+`id="wave-normal-css"`.
 
-#### WAVE-STATIC-015: Granular Stale-Artifact Removal Failure Handling
+#### WAVE-RT-015: Public Filemap HTML Helper Contract
 
-Granular stale artifact removal failures MUST be explicit and policy-aligned.
+Given filemap reference URL resolves  
+When filemap helpers are called  
+Then runtime MUST provide:
 
-#### WAVE-CSS-003: Normal CSS Rotation Cleanup Guarantees
+- modulepreload + module script elements,
+- script body that defines `window.__wave.getPublicURL(...)`,
+- sha256 hash for generated module script content.
 
-Normal CSS hashed artifact rotation MUST obey explicit cleanup-failure policy.
+Given filemap URL is empty  
+When called  
+Then helper outputs MUST be empty values.
 
-#### WAVE-SCHEMA-007: Reserved Schema-Key Collision Guard
+#### WAVE-RT-016: Refresh Script Helper Contract
 
-Framework schema extensions MUST NOT silently override reserved top-level Wave
-schema sections.
+Given runtime is not in dev mode  
+When refresh script helpers are called  
+Then returned script and hash MUST be empty values.
 
-## 5. Scenario Catalog (Initial)
+Given runtime is in dev mode  
+When refresh script helpers are called  
+Then helpers MUST use refresh port from environment
+(`WAVE_REFRESH_SERVER_PORT`) or default (`10000`) and return:
 
-### WDC-CLI-001 (covers WAVE-CLI-001)
+- `<script>` wrapper around `RefreshScriptInner(port)`,
+- base64-encoded sha256 hash of refresh script body.
 
-CLI helper invocation variants with nil logger input MUST verify default `wave`
-color logger initialization occurs before delegated work.
+### 3.6 Runtime Env and ParsedConfig Helpers
 
-### WDC-CLI-002 (covers WAVE-CLI-002)
+#### WAVE-RT-017: Env Mode and Port Helper Contract
 
-`--hook` callback-present and callback-nil variants MUST verify callback
-gating, dev-flag forwarding, and early-return vs standard mode-selection
-semantics.
+Given `SetModeToDev()`  
+When called  
+Then `WAVE_MODE` MUST be set to `development` and `GetIsDev()` MUST reflect that.
 
-### WDC-CLI-003 (covers WAVE-CLI-003)
+Given `MustGetPort()` first call  
+When not in dev mode (or when `WAVE_PORT_HAS_BEEN_SET=true`)  
+Then helper MUST use configured `PORT`, defaulting to `8080` if absent/invalid.
 
-Hook/dev/prod delegated-path failure fixtures MUST verify panic-based failure
-propagation and production builder deferred-close lifecycle.
+Given `MustGetPort()` first call in dev mode without prior port-set flag  
+When selecting port  
+Then helper MUST request free port near configured/default port and set `PORT`
+and `WAVE_PORT_HAS_BEEN_SET=true`.
 
-### WDC-DEV-012 (covers WAVE-DEV-012)
+Given subsequent `MustGetPort()` calls  
+When called repeatedly  
+Then helper MUST return memoized port value for process lifetime.
 
-Cycle-vite orchestration fixtures MUST verify single authoritative reload source
-per cycle.
+#### WAVE-RT-018: ParsedConfig Helper Defaults Contract
 
-### WDC-DEV-030 (covers WAVE-DEV-030)
+Given parsed config helper methods  
+When corresponding fields are absent  
+Then defaults MUST be:
 
-Revalidate helper resolve/reject fixtures MUST both clear rebuilding overlay.
+- `PublicPathPrefix()`: `/`,
+- `WatchRoot()`: `.`,
+- `HealthcheckEndpoint()`: `/`,
+- `UsingBrowser()`: inverse of `ServerOnlyMode`,
+- `UsingVite()`: true only when `Vite != nil`.
 
-### WDC-DEV-032 (covers WAVE-DEV-032)
+Given CSS entry helper methods (`CriticalCSSEntry`, `NonCriticalCSSEntry`)  
+When values are non-empty  
+Then returned paths MUST be `filepath.Clean(...)`.
 
-Vite startup failure fixture MUST verify explicit failure-state handling.
+#### WAVE-RT-019: Runtime Framework Extension Mutator Contract
 
-### WDC-DEV-033 (covers WAVE-DEV-033)
+Given runtime mutators `AddFrameworkWatchPatterns`, `AddIgnoredPatterns`, and
+`SetPublicFileMapOutDir`  
+When called  
+Then runtime config MUST reflect appended watch patterns, appended ignored
+patterns, and overwritten public filemap output directory value.
 
-Build-retry restart-strength fixtures MUST verify strength bits are preserved.
+## 4. Scenario Catalog
 
-### WDC-DEV-034 (covers WAVE-DEV-034)
+### WRC-RT-001..WRC-RT-019
 
-App startup failure fixture MUST verify actionable propagation.
+Wave runtime executable scenario IDs map 1:1 to `WAVE-RT-001..WAVE-RT-019`.
+Current package replay has requirement coverage rows in
+`TRACEABILITY_MATRIX.md`; dedicated runtime conformance suites are still pending
+for most scenarios.
 
-### WDC-DEV-035 (covers WAVE-DEV-035)
+## 5. Relation to Other Specs
 
-Readiness timeout fixtures MUST verify failure-state gating.
-
-### WDC-DEV-036 (covers WAVE-DEV-036)
-
-Config-reload fixtures MUST verify full framework-injected field preservation.
-
-### WDC-DEV-041 (covers WAVE-DEV-041)
-
-App stop failure fixtures MUST verify caller-observable error propagation.
-
-### WDC-EVT-001 (covers WAVE-EVT-001)
-
-Mixed-strength/mixed-match dedupe fixtures MUST verify non-lossy strongest-work
-aggregation.
-
-### WDC-EVT-019 (covers WAVE-EVT-019)
-
-Blocking phase failure fixtures MUST verify success-signal suppression.
-
-### WDC-EVT-023 (covers WAVE-EVT-023)
-
-Concurrent restart fixtures with completion-order variance MUST verify
-deterministic strongest-intent outcome.
-
-### WDC-EVT-028 (covers WAVE-EVT-028)
-
-Dynamic directory watch-expansion failure fixtures MUST verify actionable
-failure.
-
-### WDC-EVT-029 (covers WAVE-EVT-029)
-
-CSS artifact read-failure fixtures MUST verify no success-style CSS payload
-emission.
-
-### WDC-EVT-030 (covers WAVE-EVT-030)
-
-Implicit-work + callback-restart fixtures MUST verify no downgrade of
-recompile-required outcome.
-
-### WDC-EVT-031 (covers WAVE-EVT-031)
-
-Watcher teardown-race fixtures MUST verify stable watcher-channel source.
-
-### WDC-EVT-032 (covers WAVE-EVT-032)
-
-Stale-watch removal-failure fixtures MUST verify explicit failure handling and
-state consistency.
-
-### WDC-EVT-033 (covers WAVE-EVT-033)
-
-Closed error-channel fixtures MUST verify bounded watch-loop termination without
-nil-error spin.
-
-### WDC-STATIC-005 (covers WAVE-STATIC-005)
-
-Filemap rotation cleanup-failure fixtures MUST verify explicit policy
-conformance.
-
-### WDC-STATIC-015 (covers WAVE-STATIC-015)
-
-Granular stale-artifact removal-failure fixtures MUST verify explicit policy
-conformance.
-
-### WDC-CSS-003 (covers WAVE-CSS-003)
-
-Normal CSS rotation cleanup-failure fixtures MUST verify explicit policy
-conformance.
-
-### WDC-SCHEMA-007 (covers WAVE-SCHEMA-007)
-
-Reserved schema-key collision fixtures MUST fail instead of silently overriding
-reserved sections.
-
-## 6. Runtime Serving (Placeholder)
-
-Wave runtime/public-asset serving helper behavior is in-scope for this package
-and remains to be expanded into explicit `WAVE-RT-*` requirement IDs during
-full-audit replay.
-
-Current runtime-serving placeholder intent:
-
-- embedded runtime/public-asset method behavior consumed through Vorma embedding,
-- serving/public-filemap/path helpers that are Wave-owned and Vorma-visible.
+- Wave build/dev owner contracts: `specs/packages/wave/tooling/SPEC.md`
+- Wave build/dev traceability: `specs/packages/wave/tooling/TRACEABILITY_MATRIX.md`
+- Wave build/dev conformance issues: `specs/packages/wave/tooling/CONFORMANCE_ISSUES.md`

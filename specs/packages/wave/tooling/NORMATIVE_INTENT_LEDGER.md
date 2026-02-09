@@ -15,23 +15,23 @@ Trust Epoch: `E2`
 
 | File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
 |---|---|---|---:|---:|---|---|
-| `wave/tooling/broadcast.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/builder.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/cli.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/css.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/devserver.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/events.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/hash.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/lock.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/lock_unix.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/lock_windows.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/schema.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/static.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/url.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `wave/tooling/watcher.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| `wave/tooling/broadcast.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/builder.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/cli.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/css.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/devserver.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/events.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/hash.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/lock.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/lock_unix.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/lock_windows.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/schema.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/static.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/url.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
+| `wave/tooling/watcher.go` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Rough replay complete; no additional gaps beyond migrated `WCI-*` backlog. |
 
 ## Round Log
 
 | Round | Status | New Gaps | Notes |
 |---|---|---:|---|
-| `E2-R1` | in_progress | `TBD` | Package-path reset baseline initialized. |
+| `E2-R1` | in_progress | 0 | Package-path baseline initialized; `WAVE-*` build/dev owner catalog migrated from `specs/packages/wave/`; rough source replay found no additional gaps beyond migrated backlog. |

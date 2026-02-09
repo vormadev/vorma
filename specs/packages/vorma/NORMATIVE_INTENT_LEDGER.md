@@ -16,11 +16,11 @@ Trust Epoch: `E2` (wrapper canonical reset)
 
 | File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
 |---|---|---|---:|---:|---|---|
-| `vorma.go` | in-scope | source+legacy-tests | 0 | 0 | pending | Wrapper source contracts (`VORMA-API-001..004`). |
-| `package.json` | in-scope | source+legacy-tests | 0 | 0 | pending | Embedded npm version contract (`VORMA-API-005`). |
+| `vorma.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | Wrapper source contracts (`VORMA-API-001..004`) revalidated; dedicated wrapper suites remain missing. |
+| `package.json` | in-scope | source+legacy-tests | 1 | 0 | in_progress | Embedded npm version contract (`VORMA-API-005`) revalidated; dedicated wrapper suite remains missing. |
 
 ## Round Log
 
 | Round | Status | New Gaps | Notes |
 |---|---|---:|---|
-| `E2-R1` | in_progress | `TBD` | Wrapper ledger reset after removal of redundant `VORMA_*` catalog layer. |
+| `E2-R1` | in_progress | 1 | Wrapper replay surfaced executable-coverage gap for `VORMA-API-*`; tracked as `VORMA-ISSUE-001`. |

@@ -70,5 +70,5 @@ This index is package-path canonical. Each package owns its own spec/tracking ar
 | `vormaclient/solid` | `specs/packages/vormaclient/solid/` | active | Package-owned artifacts. |
 | `vormaclient/vite` | `specs/packages/vormaclient/vite/` | active | Package-owned artifacts. |
 | `vormaruntime` | `specs/packages/vormaruntime/` | active | Owner package catalogs for `BR-*` requirements.|
-| `wave` | `specs/packages/wave/` | active | Package-owned artifacts. |
-| `wave/tooling` | `specs/packages/wave/tooling/` | active | Package-owned artifacts. |
+| `wave` | `specs/packages/wave/` | active | Runtime-owner artifacts (`wave/*.go`). |
+| `wave/tooling` | `specs/packages/wave/tooling/` | active | Build/dev-owner artifacts (`wave/tooling/*.go`). |

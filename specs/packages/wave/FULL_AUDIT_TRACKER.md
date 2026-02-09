@@ -1,24 +1,24 @@
-# Wave Full Audit Tracker
+# wave Full Audit Tracker
 
 Status: In Progress  
 Last Updated: 2026-02-09  
-Purpose: From-scratch package-owned audit for Wave specs and ledger.
+Purpose: From-scratch package-owned audit for Wave runtime specs and ledger.
 
 ## Boundary Statement
 
-- Wave specs define Wave-owned behavior.
-- Framework packages (including Vorma) reference Wave requirements at integration boundaries.
-- Wave internals are not duplicated into consumer package specs.
+- `wave` package specs define runtime-owner behavior implemented in `wave/*.go`.
+- Build/dev control-plane behavior is owned by `wave/tooling`.
+- Consumer packages reference owner requirements and do not duplicate owner internals.
 
 ## Artifact Pass Board
 
 | Artifact | Structural | Boundary | Semantic | Last Updated | Notes |
 |---|---|---|---|---|---|
-| `specs/packages/wave/SPEC.md` | in_progress | in_progress | in_progress | 2026-02-09 | Canonical owner spec; build/dev catalog present; runtime-serving catalog expansion still pending. |
-| `specs/packages/wave/TRACEABILITY_MATRIX.md` | in_progress | in_progress | n/a | 2026-02-09 | Requirement/scenario sync pass pending completion. |
-| `specs/packages/wave/CONFORMANCE_ISSUES.md` | in_progress | in_progress | n/a | 2026-02-09 | Open backlog present; normalization pass pending completion. |
-| `specs/packages/wave/SPEC_CHECKLIST.md` | in_progress | n/a | n/a | 2026-02-09 | Program/package alignment pass in progress. |
-| `specs/packages/wave/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a | n/a | 2026-02-09 | Epoch E2 per-file counters initialized. |
+| `specs/packages/wave/SPEC.md` | in_progress | in_progress | in_progress | 2026-02-09 | Rewritten to runtime-owner `WAVE-RT-*` catalog; full replay reconciliation pending. |
+| `specs/packages/wave/TRACEABILITY_MATRIX.md` | in_progress | in_progress | n/a | 2026-02-09 | Runtime-only rows authored; coverage remains missing. |
+| `specs/packages/wave/CONFORMANCE_ISSUES.md` | in_progress | in_progress | n/a | 2026-02-09 | Runtime intent-validation backlog recorded. |
+| `specs/packages/wave/SPEC_CHECKLIST.md` | in_progress | n/a | n/a | 2026-02-09 | Rough pass complete; full pass items open. |
+| `specs/packages/wave/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a | n/a | 2026-02-09 | Epoch E2 per-file counters updated for runtime-owner sweep. |
 
 ## Round Status
 

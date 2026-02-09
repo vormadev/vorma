@@ -1,37 +1,33 @@
-# Wave Traceability Matrix
+# wave Traceability Matrix
 
 Status: Draft  
 Last Updated: 2026-02-09  
-Applies To: Requirement-to-test traceability for Wave build/dev conformance requirements
+Applies To: Requirement-to-test traceability for `wave` runtime requirements
 
 Owner-boundary note:
 
-- This matrix tracks Wave-owned conformance requirements only.
-- Owner column values in this matrix MUST be `WAVE` (no `TBD` values).
+- This matrix tracks `wave` runtime-owner requirements (`WAVE-RT-*`) only.
+- Build/dev `WAVE-*` requirements are owned by `wave/tooling` and tracked in
+  `specs/packages/wave/tooling/TRACEABILITY_MATRIX.md`.
 
 | Requirement ID | Scenario ID(s) | Suite Family | Suite Name | Fixture Type | Test File(s) | Pass Criteria | Status | Owner |
 |---|---|---|---|---|---|---|---|---|
-| WAVE-CLI-001 | WDC-CLI-001 | wave-build-dev | go_conformance_wave_cli | source-contract | conformance/wave/wave_cli_conformance_test.go | Observable contract for WAVE-CLI-001 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-CLI-002 | WDC-CLI-002 | wave-build-dev | go_conformance_wave_cli | source-contract | conformance/wave/wave_cli_conformance_test.go | Observable contract for WAVE-CLI-002 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-CLI-003 | WDC-CLI-003 | wave-build-dev | go_conformance_wave_cli | source-contract | conformance/wave/wave_cli_conformance_test.go | Observable contract for WAVE-CLI-003 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-DEV-012 | WDC-DEV-012 | wave-build-dev | go_conformance_wave_build_dev | source-contract | conformance/wave/wave_build_dev_conformance_test.go | Observable contract for WAVE-DEV-012 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-DEV-030 | WDC-DEV-030 | wave-build-dev | go_conformance_wave_build_dev | source-contract | conformance/wave/wave_build_dev_conformance_test.go | Observable contract for WAVE-DEV-030 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-DEV-032 | WDC-DEV-032 | wave-build-dev | go_conformance_wave_build_dev | source-contract | conformance/wave/wave_build_dev_conformance_test.go | Observable contract for WAVE-DEV-032 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-DEV-033 | WDC-DEV-033 | wave-build-dev | go_conformance_wave_build_dev | source-contract | conformance/wave/wave_build_dev_conformance_test.go | Observable contract for WAVE-DEV-033 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-DEV-034 | WDC-DEV-034 | wave-build-dev | go_conformance_wave_build_dev | source-contract | conformance/wave/wave_build_dev_conformance_test.go | Observable contract for WAVE-DEV-034 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-DEV-035 | WDC-DEV-035 | wave-build-dev | go_conformance_wave_build_dev | source-contract | conformance/wave/wave_build_dev_conformance_test.go | Observable contract for WAVE-DEV-035 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-DEV-036 | WDC-DEV-036 | wave-build-dev | go_conformance_wave_build_dev | source-contract | conformance/wave/wave_build_dev_conformance_test.go | Observable contract for WAVE-DEV-036 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-DEV-041 | WDC-DEV-041 | wave-build-dev | go_conformance_wave_build_dev | source-contract | conformance/wave/wave_build_dev_conformance_test.go | Observable contract for WAVE-DEV-041 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-001 | WDC-EVT-001 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-001 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-019 | WDC-EVT-019 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-019 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-023 | WDC-EVT-023 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-023 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-028 | WDC-EVT-028 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-028 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-029 | WDC-EVT-029 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-029 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-030 | WDC-EVT-030 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-030 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-031 | WDC-EVT-031 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-031 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-032 | WDC-EVT-032 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-032 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-EVT-033 | WDC-EVT-033 | wave-build-dev | go_conformance_wave_watch_events | source-contract | conformance/wave/wave_watch_events_conformance_test.go | Observable contract for WAVE-EVT-033 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-STATIC-005 | WDC-STATIC-005 | wave-build-dev | go_conformance_wave_static_css_schema | source-contract | conformance/wave/wave_static_css_schema_conformance_test.go | Observable contract for WAVE-STATIC-005 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-STATIC-015 | WDC-STATIC-015 | wave-build-dev | go_conformance_wave_static_css_schema | source-contract | conformance/wave/wave_static_css_schema_conformance_test.go | Observable contract for WAVE-STATIC-015 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-CSS-003 | WDC-CSS-003 | wave-build-dev | go_conformance_wave_static_css_schema | source-contract | conformance/wave/wave_static_css_schema_conformance_test.go | Observable contract for WAVE-CSS-003 passes under mapped scenario(s). | missing | WAVE |
-| WAVE-SCHEMA-007 | WDC-SCHEMA-007 | wave-build-dev | go_conformance_wave_static_css_schema | source-contract | conformance/wave/wave_static_css_schema_conformance_test.go | Observable contract for WAVE-SCHEMA-007 passes under mapped scenario(s). | missing | WAVE |
+| WAVE-RT-001 | WRC-RT-001 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | ParseConfig safety/default behavior is verified for invalid JSON, missing Core, and Dist root assignment. | missing | wave |
+| WAVE-RT-002 | WRC-RT-002 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Constructor panic/default logger/cache-init behavior is verified. | missing | wave |
+| WAVE-RT-003 | WRC-RT-003 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Raw config and parsed-config accessors are verified. | missing | wave |
+| WAVE-RT-004 | WRC-RT-004 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Dev/prod cache recompute/memoization behavior is verified. | missing | wave |
+| WAVE-RT-005 | WRC-RT-005 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Base/public/private FS selection behavior is verified. | missing | wave |
+| WAVE-RT-006 | WRC-RT-006 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | MustGet FS panic-on-error behavior is verified. | missing | wave |
+| WAVE-RT-007 | WRC-RT-007 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Public filemap decode/open error propagation is verified. | missing | wave |
+| WAVE-RT-008 | WRC-RT-008 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Public URL resolution/fallback semantics are verified. | missing | wave |
+| WAVE-RT-009 | WRC-RT-009 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Public asset detection semantics are verified for root/non-root prefix modes. | missing | wave |
+| WAVE-RT-010 | WRC-RT-010 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Static handler creation and immutable cache-header behavior is verified. | missing | wave |
+| WAVE-RT-011 | WRC-RT-011 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | ServeStatic middleware gate behavior is verified. | missing | wave |
+| WAVE-RT-012 | WRC-RT-012 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Favicon redirect/404 behavior is verified. | missing | wave |
+| WAVE-RT-013 | WRC-RT-013 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Critical CSS helper behavior for present/absent artifacts is verified. | missing | wave |
+| WAVE-RT-014 | WRC-RT-014 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Normal stylesheet URL/link helper behavior is verified. | missing | wave |
+| WAVE-RT-015 | WRC-RT-015 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Public filemap elements/script-hash helper behavior is verified. | missing | wave |
+| WAVE-RT-016 | WRC-RT-016 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Refresh script helper dev-only/default-port/hash behavior is verified. | missing | wave |
+| WAVE-RT-017 | WRC-RT-017 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Env mode/port helper semantics and MustGetPort memoization are verified. | missing | wave |
+| WAVE-RT-018 | WRC-RT-018 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | ParsedConfig helper defaults/cleaning behavior is verified. | missing | wave |
+| WAVE-RT-019 | WRC-RT-019 | wave-runtime | go_wave_runtime_source_contract | source-contract | n/a (no dedicated wave runtime conformance suite currently in repo) | Runtime framework-extension mutator behavior is verified. | missing | wave |

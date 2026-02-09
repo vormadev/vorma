@@ -1,4 +1,4 @@
-# Wave Normative Intent Ledger
+# wave Normative Intent Ledger
 
 Status: Active  
 Last Updated: 2026-02-09  
@@ -15,16 +15,16 @@ Trust Epoch: `E2` (package-local reset)
 
 | File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Legacy State | Notes |
 |---|---|---|---:|---:|---|---|---|
-| `wave/css.go` | in-scope | source+legacy-tests | 0 | 0 | pending | verified |  |
-| `wave/env.go` | in-scope | source+legacy-tests | 0 | 0 | pending | verified |  |
-| `wave/filemap.go` | in-scope | source+legacy-tests | 0 | 0 | pending | verified |  |
-| `wave/parse.go` | in-scope | source+legacy-tests | 0 | 0 | pending | verified |  |
-| `wave/refresh.go` | in-scope | source+legacy-tests | 0 | 0 | pending | verified |  |
-| `wave/types.go` | in-scope | source+legacy-tests | 0 | 0 | pending | verified |  |
-| `wave/wave.go` | in-scope | source+legacy-tests | 0 | 0 | pending | verified |  |
+| `wave/css.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | verified | Runtime helper catalog extracted (`WAVE-RT-013`, `WAVE-RT-014`). |
+| `wave/env.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | verified | Env/mode/port contracts extracted (`WAVE-RT-017`). |
+| `wave/filemap.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | verified | Filemap helper contracts extracted (`WAVE-RT-015`). |
+| `wave/parse.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | verified | Parse safety/default contracts extracted (`WAVE-RT-001`). |
+| `wave/refresh.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | verified | Refresh helper contracts extracted (`WAVE-RT-016`). |
+| `wave/types.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | verified | ParsedConfig/default/mutator contracts extracted (`WAVE-RT-018`, `WAVE-RT-019`). |
+| `wave/wave.go` | in-scope | source+legacy-tests | 1 | 0 | in_progress | verified | Constructor/runtime FS/static-serving contracts extracted (`WAVE-RT-002`..`WAVE-RT-012`). |
 
 ## Round Log
 
 | Round | Status | New Gaps | Notes |
 |---|---|---:|---|
-| `E2-R1` | in_progress | `TBD` | Epoch reset baseline created; per-file counters initialized. |
+| `E2-R1` | in_progress | 1 | Runtime-owner catalog surfaced coverage gap (no dedicated legacy/conformance runtime suite); tracked as `WCI-RT-001`. |

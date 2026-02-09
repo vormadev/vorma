@@ -1013,7 +1013,8 @@ delegation-compatibility requirements, not owner-internal re-specification.
 Owner references:
 
 - `specs/packages/wave/SPEC.md`
-- `specs/packages/wave/SPEC.md`
+- `specs/packages/wave/TRACEABILITY_MATRIX.md`
+- `specs/packages/wave/CONFORMANCE_ISSUES.md`
 
 ### BR-ASSET-001: Critical CSS Helper Delegation Compatibility
 
@@ -1910,7 +1911,7 @@ Conformance suites derived from this spec SHOULD:
 - Wave runtime-serving owner contracts:
   `specs/packages/wave/SPEC.md`
 - Wave build/dev owner contracts:
-  `specs/packages/wave/SPEC.md`
+  `specs/packages/wave/tooling/SPEC.md`
 - Testing strategy:
   `specs/SPEC_GOVERNANCE.md`
 - Checklist/roadmap: `specs/packages/vormaruntime/SPEC_CHECKLIST.md`

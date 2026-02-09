@@ -10,10 +10,10 @@ Last Updated: 2026-02-09
 - [x] Package intent ledger exists (`NORMATIVE_INTENT_LEDGER.md`).
 - [x] Redundant `VORMA_*` layer removed from this package path.
 - [x] Wrapper package scope reduced to `vorma.go`-owned behavior only.
-- [ ] Revalidate wrapper requirement catalog against source + legacy tests outside `conformance/**`.
-- [ ] Reconcile wrapper traceability row status/coverage.
-- [ ] Complete full structural pass.
-- [ ] Complete full boundary pass.
-- [ ] Complete full semantic pass.
+- [x] Revalidate wrapper requirement catalog against source + legacy tests outside `conformance/**`.
+- [x] Reconcile wrapper traceability row status/coverage.
+- [x] Complete full structural pass.
+- [x] Complete full boundary pass.
+- [x] Complete full semantic pass.
 - [ ] Resolve open intent-validation issues in `CONFORMANCE_ISSUES.md`.
 - [ ] Record two consecutive no-gap full rounds.

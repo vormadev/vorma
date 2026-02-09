@@ -30,9 +30,9 @@ Tests MUST NOT assert package-private implementation details.
 
 Wave-owned build/dev control-plane semantics are canonicalized in:
 
-- `specs/packages/wave/SPEC.md`
-- `specs/packages/wave/TRACEABILITY_MATRIX.md`
-- `specs/packages/wave/CONFORMANCE_ISSUES.md`
+- `specs/packages/wave/tooling/SPEC.md`
+- `specs/packages/wave/tooling/TRACEABILITY_MATRIX.md`
+- `specs/packages/wave/tooling/CONFORMANCE_ISSUES.md`
 
 For this Vorma spec:
 
@@ -90,7 +90,7 @@ When command executes
 Then final Go binary compilation MUST be skipped.
 
 Wave-owned CLI helper contracts (`BuildWaveWithHook` / `BuildWave`) are
-canonicalized in `specs/packages/wave/SPEC.md`
+canonicalized in `specs/packages/wave/tooling/SPEC.md`
 (`WAVE-CLI-001` through `WAVE-CLI-003`) and are intentionally not duplicated in
 this Vorma-owned spec.
 
@@ -702,9 +702,9 @@ their requirement prose here.
 
 Canonical owner references:
 
-- `specs/packages/wave/SPEC.md`
-- `specs/packages/wave/TRACEABILITY_MATRIX.md`
-- `specs/packages/wave/CONFORMANCE_ISSUES.md`
+- `specs/packages/wave/tooling/SPEC.md`
+- `specs/packages/wave/tooling/TRACEABILITY_MATRIX.md`
+- `specs/packages/wave/tooling/CONFORMANCE_ISSUES.md`
 
 Vorma-owned build/dev schema coverage in this spec is limited to framework
 extension behavior directly injected by Vorma (`Vorma_Schema` and hook/watch
@@ -756,7 +756,7 @@ When command executes
 Then Go binary compilation step MUST be skipped.
 
 Wave-owned CLI helper scenario coverage is tracked in
-`specs/packages/wave/SPEC.md`
+`specs/packages/wave/tooling/SPEC.md`
 (`WDC-CLI-001` through `WDC-CLI-003`) and is intentionally not duplicated in
 this Vorma-owned scenario catalog.
 
