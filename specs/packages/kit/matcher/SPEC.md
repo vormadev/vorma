@@ -98,3 +98,7 @@ Custom option runes for dynamic/splat/index representations MUST preserve matchi
 `Has/Ensure/Strip` slash helper exported functions MUST behave exactly per source implementation and remain contract-bearing APIs.
 - `KIT-MATCHER-040` JoinPatterns behavior.
 `JoinPatterns` MUST join a normalized base and incoming pattern using source-defined slash-merge rules (no double slash when base ends and incoming starts with slash).
+- `KIT-MATCHER-041` RegisteredPattern accessor behavior.
+`RegisteredPattern.NormalizedPattern()` and `RegisteredPattern.OriginalPattern()` MUST return the stored normalized/original strings without additional transformation.
+- `KIT-MATCHER-042` Matcher option getter behavior.
+`GetExplicitIndexSegment()`, `GetDynamicParamPrefixRune()`, and `GetSplatSegmentRune()` MUST return the matcher's effective configured option values.

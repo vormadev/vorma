@@ -7,7 +7,7 @@ Note: source-only or partial rows are explicitly issue-backed in `CONFORMANCE_IS
 
 | Requirement ID | Scenario ID(s) | Suite Family | Suite Name | Fixture Type | Test File(s) | Pass Criteria | Status | Owner |
 |---|---|---|---|---|---|---|---|---|
-| `KIT-VALIDATE-001` | `KIT-VALIDATE-SCN-001` | kit/validate | validationerror-wrapper | unit | `kit/validate/error_collector_test.go` | `ValidationError` string/unwrapping behavior is preserved. | covered | `kit/validate` |
+| `KIT-VALIDATE-001` | `KIT-VALIDATE-SCN-001` | kit/validate | validationerror-wrapper | unit+source | `kit/validate/error_collector_test.go` | `ValidationError.Error()` behavior is test-backed; `Unwrap()` semantics are currently source-backed (`KIT-VALIDATE-ISSUE-002`). | partial | `kit/validate` |
 | `KIT-VALIDATE-002` | `KIT-VALIDATE-SCN-002` | kit/validate | isvalidationerror-detection | unit | `kit/validate/error_collector_test.go` | Direct and wrapped validation errors are detected by `IsValidationError`. | covered | `kit/validate` |
 | `KIT-VALIDATE-003` | `KIT-VALIDATE-SCN-003` | kit/validate | destination-nil-guard | unit | `kit/validate/validate_test.go` | Nil destinations are rejected by high-level decode helpers. | covered | `kit/validate` |
 | `KIT-VALIDATE-004` | `KIT-VALIDATE-SCN-004` | kit/validate | jsonbody-request-guards | unit | `kit/validate/validate_test.go` | `JSONBodyInto` rejects nil request and nil request body. | covered | `kit/validate` |

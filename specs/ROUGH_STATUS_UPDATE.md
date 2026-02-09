@@ -1,82 +1,42 @@
 # Rough Status Update
 
 Status: Active  
-Last Updated: 2026-02-09  
-Purpose: Single rolling snapshot of spec-program reality (done/not-done/next/confidence). This file must be updated after every major audit or ownership-change pass.
+Last Updated: 2026-02-09
+Update Style: Full overwrite each update. No cumulative timeline.
 
-## Current Metrics
+## Current Truth
 
-- Package specs: `65` total (`12` non-placeholder, `53` placeholder).
-- Package checklists with open items: `65/65`.
-- Open conformance issue rows: `114` total (`60` non-placeholder, `54` placeholder).
+- Package specs: `65` total (`14` active/non-placeholder, `51` placeholder).
+- Checklists with open items: `65/65`.
+- Open conformance issue rows: `121` total (`70` in active packages, `51` in placeholder packages).
+- Working tree is intentionally dirty (`78` modified files), almost entirely spec-doc edits.
 
-## Done
+## High-Confidence State
 
-- Package-path spec structure is established under `specs/packages/<package>/`.
-- Top-level governance is centralized in `specs/SPEC_GOVERNANCE.md`.
-- Redundant `VORMA_*` and `WAVE_*` duplicate file layers were removed in favor of canonical package files.
-- `vorma` scope was reduced to wrapper/facade contracts.
-- Wave ownership split is now explicit and package-correct:
-  - `specs/packages/wave/tooling/*` owns build/dev `WAVE-CLI/DEV/EVT/STATIC/CSS/SCHEMA` contracts.
-  - `specs/packages/wave/*` owns runtime `WAVE-RT-*` contracts.
-- `wave/tooling` ownership migration now includes rough replay accounting (ledger/checklist/tracker updated; full pass still open).
-- `vormabuild` references were redirected to `specs/packages/wave/tooling/*` for build/dev owner behavior.
-- `vormaruntime` Wave references were cleaned (removed accidental duplicate runtime link; build/dev link now points at `wave/tooling`).
-- `vorma` wrapper package replay was tightened: full structural/boundary/semantic pass items are complete, and coverage gap tracking is explicit (`VORMA-ISSUE-001`).
-- Path hygiene rule is enforced in docs (repo-relative paths only).
+- Package-first spec layout is stable under `specs/packages/<package>/`.
+- Vorma wrapper boundary and Wave runtime/tooling ownership split are in place.
+- `kit/response` and `kit/headels` are now non-placeholder and mined from source + legacy tests.
+- `kit/matcher` replay `E2-R2` is complete with no new issue IDs; exported API surface gaps were reconciled into requirements/matrix.
+- `kit/mux` replay `E2-R2` is complete with no new issue IDs; exported API surface gaps were reconciled into requirements/matrix.
+- `kit/validate` replay `E2-R2` is now completed from scratch and corrected one prior overclaim: `KIT-VALIDATE-001` is partial (direct `ValidationError.Unwrap()` branch remains source-backed).
+- Mining-rule wording is normalized across package ledgers to source + legacy tests outside `conformance/**`.
 
-## Not Done
+## Low-Confidence / Risk Areas
 
-- No package has reached full closure (full audit + two consecutive no-gap full rounds).
-- Most packages are still placeholder-level.
-- Open conformance/intent-validation issues remain across key packages.
-- `wave` runtime requirements are now explicit but still mostly source-only (coverage gap tracked as `WCI-RT-001`).
-- `vorma` still has unresolved wrapper coverage gap (`VORMA-ISSUE-001`), so no-gap rounds are not yet possible.
+- Most packages remain placeholder-level; broad repository trust is still low outside audited packages.
+- No package has reached final closure (two consecutive no-gap full rounds).
+- Active package issue backlogs are still open and blocking no-gap closure.
+- The single largest quality risk right now is false confidence from partially covered behaviors being marked covered; `kit/validate` replay just surfaced one such case.
 
-## Next (Priority Order)
+## Immediate Next Steps
 
-1. Continue full-audit replay for P0 packages in this order:
-   - `vorma`
-   - `vormaruntime`
-   - `vormabuild`
-   - `vormaclient/client`
-   - `wave/tooling`
-   - `wave`
-   - `kit/matcher`, `kit/mux`, `kit/response`, `kit/validate`, `kit/headels`
-   - `lab/tsgen`, `lab/viteutil`
-2. For each package, convert rough pass state to full pass state:
-   - detailed requirement reconciliation,
-   - traceability reconciliation,
-   - conformance issue normalization,
-   - two no-gap full rounds.
-3. Keep low-priority bootstrap-related scope deferred:
-   - `bootstrap`
-   - `vormaclient/create`
+1. Run `kit/matcher` `E2-R3` full replay and verify whether it is truly no-new-gap.
+2. Run `kit/mux` `E2-R3` full replay and verify whether it is truly no-new-gap.
+3. Continue P0 audit order: `vorma`, `vormaruntime`, `vormabuild`, `vormaclient/client`, `wave/tooling`, `wave`.
+4. Keep enforcing delete/replace behavior for incorrect spec text rather than preserving historical wording.
 
-## Clean vs Dirty
+## Handoff Notes
 
-Clean:
-
-- Package folderization and per-package artifact set are in place.
-- Canonical governance and audit-definition rules are written.
-- Major Wave owner-boundary mismatch is fixed (`wave` vs `wave/tooling`).
-
-Dirty:
-
-- Working tree remains heavily dirty with many uncommitted spec edits/deletions.
-- Placeholder volume remains high across non-P0 package specs.
-- Open issue volume remains high; most package checklists are still mid-replay.
-
-## Confidence
-
-High confidence:
-
-- Structural status (files/folders/governance) and owner-boundary mapping for Vorma/Wave package splits.
-
-Medium confidence:
-
-- Correctness of moved Wave build/dev catalogs in new `wave/tooling` owner path (structure is correct; full source revalidation still pending).
-
-Low confidence:
-
-- Detailed correctness/completeness of package catalogs that remain placeholder or mid-replay.
+- Treat conformance tests as outputs, not mining inputs.
+- Keep owner boundaries strict: owner package defines semantics, consumers reference owner specs.
+- If a requirement is only indirectly covered, mark it partial and attach an issue rather than claiming covered.

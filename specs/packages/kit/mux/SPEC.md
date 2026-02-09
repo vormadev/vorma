@@ -113,3 +113,13 @@ Nested route registration MUST support routes with handlers and pattern-only rou
 `NestedRouter` live-state accessors (`AllRoutes`, `GetMatcher`) MUST expose live internal structures; rebuild APIs (`ReplaceRoutes`, `RebuildPreservingHandlers`) MUST atomically rebuild matcher/compiled state while preserving matcher option runes.
 - `KIT-MUX-048` Nested pooling safety dependency behavior.
 Nested req-data pooling safety MUST depend on `tasks.Ctx.RunParallel` remaining blocking-until-complete.
+- `KIT-MUX-049` Middleware/registration helper wrapper equivalence behavior.
+Receiver-method wrappers (`Router.SetGlobalHTTPMiddleware`, `Router.SetMethodLevelHTTPMiddleware`, `Route.SetPatternLevelHTTPMiddleware`, `Router.SetGlobalNotFoundHTTPHandler`, receiver `RegisterHandler*`) and package-level registration helpers MUST delegate to the same underlying behavior as their package-function counterparts.
+- `KIT-MUX-050` ReqData accessor and request helper behavior.
+`ReqData` accessors (`Params`, `Param`, `SplatValues`, `TasksCtx`, `Request`, `ResponseProxy`, `Input`) and request helpers (`GetTasksCtx`, `GetParams`, `GetParam`, `GetSplatValues`) MUST return stored transport data when present and safe zero/nil defaults when absent.
+- `KIT-MUX-051` Nested registration-state query behavior.
+`NestedRouter.IsRegistered` MUST report route-key presence and `NestedRouter.HasTaskHandler` MUST return true only when the route exists and has a non-nil task handler.
+- `KIT-MUX-052` Nested task-result accessor behavior.
+`NestedTasksResult` accessors (`Pattern`, `OK`, `Data`, `Err`, `RanTask`) MUST reflect stored execution state, and `NestedTasksResults.GetHasTaskHandler(i)` MUST return false for out-of-range indices.
+- `KIT-MUX-053` Task adapter wrapper behavior.
+`TaskHandlerFromFunc` and `TaskMiddlewareFromFunc` MUST wrap user functions in `tasks.Task` adapters that invoke the user function with the supplied `ReqData` and propagate return values/errors unchanged.

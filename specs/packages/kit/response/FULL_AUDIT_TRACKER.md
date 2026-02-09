@@ -5,11 +5,11 @@ Last Updated: 2026-02-09
 
 | Artifact | Structural | Boundary | Semantic | Last Updated | Notes |
 |---|---|---|---|---|---|
-| `specs/packages/kit/response/SPEC.md` | pending | pending | pending | 2026-02-09 | Placeholder expansion pending. |
-| `specs/packages/kit/response/TRACEABILITY_MATRIX.md` | pending | pending | n/a | 2026-02-09 | Placeholder rows pending replacement. |
-| `specs/packages/kit/response/CONFORMANCE_ISSUES.md` | pending | pending | n/a | 2026-02-09 | Placeholder issue rows pending replacement. |
-| `specs/packages/kit/response/SPEC_CHECKLIST.md` | in_progress | n/a | n/a | 2026-02-09 | Initialized. |
-| `specs/packages/kit/response/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a | n/a | 2026-02-09 | Per-file counters initialized. |
+| `specs/packages/kit/response/SPEC.md` | complete | complete | complete | 2026-02-09 | Placeholder replaced with requirement catalog from source + legacy tests. |
+| `specs/packages/kit/response/TRACEABILITY_MATRIX.md` | complete | complete | n/a | 2026-02-09 | Requirement-level traceability reconciled with issue-backed partials. |
+| `specs/packages/kit/response/CONFORMANCE_ISSUES.md` | complete | complete | n/a | 2026-02-09 | Active implementation/intent gaps recorded. |
+| `specs/packages/kit/response/SPEC_CHECKLIST.md` | complete | n/a | n/a | 2026-02-09 | Rough/full pass items reconciled to current state. |
+| `specs/packages/kit/response/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a | n/a | 2026-02-09 | Current-epoch file counters updated; no-gap rounds pending. |
 
 ## Round Status
 

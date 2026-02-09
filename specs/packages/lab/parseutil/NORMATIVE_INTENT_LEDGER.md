@@ -6,7 +6,7 @@ Trust Epoch: `E2`
 
 ## Mining Rules
 
-- Intent mining MUST use both implementation source and existing tests.
+- Intent mining MUST use implementation source plus legacy tests outside `conformance/**`.
 - Per-file counters are epoch-scoped.
 - `passes`: total pass count in current epoch.
 - `clean_passes`: no-new-gap pass count in current epoch.
