@@ -4,11 +4,13 @@
 
 Deprecated package retained for backward compatibility.
 
-For new development, use `kit/cookies` instead: [/Users/sjc/__code/river/kit/cookies/README.md](/Users/sjc/__code/river/kit/cookies/README.md).
+For new development, use `kit/cookies` instead:
+[kit/cookies/README.md](../cookies/README.md).
 
 ## When To Use This Package
 
-Use `kit/signedcookie` only when you need to continue reading/writing existing legacy cookies that already depend on this package's format.
+Use `kit/signedcookie` only when you need to continue reading/writing existing
+legacy cookies that already depend on this package's format.
 
 If you are building new cookie behavior, use `kit/cookies`.
 
@@ -72,25 +74,33 @@ http.SetCookie(w, sessionCookie.NewDeletionCookie())
 
 ## Behavior And Constraints
 
-- `SignedCookie.NewSignedCookie` always forces `HttpOnly=true` and `Secure=true`.
+- `SignedCookie.NewSignedCookie` always forces `HttpOnly=true` and
+  `Secure=true`.
 - `TTL` sets `Expires` via `time.Now().Add(TTL)` when non-zero.
-- Value payloads for `SignedCookie[T]` are gob-encoded (`bytesutil.ToGob`), then base64-encoded.
-- `Encrypt=true` encrypts payload bytes before signing; `Encrypt=false` signs plaintext bytes.
-- Manager read-path attempts secrets in order, so the first secret is the active signer and the rest support rotation.
-- Cookie payload size still must fit practical browser cookie size limits (typically around 4 KB).
+- Value payloads for `SignedCookie[T]` are gob-encoded (`bytesutil.ToGob`), then
+  base64-encoded.
+- `Encrypt=true` encrypts payload bytes before signing; `Encrypt=false` signs
+  plaintext bytes.
+- Manager read-path attempts secrets in order, so the first secret is the active
+  signer and the rest support rotation.
+- Cookie payload size still must fit practical browser cookie size limits
+  (typically around 4 KB).
 
 ## Rotation Model
 
 - New writes are signed with `keyset.First()` (the first/active secret).
 - Reads try all secrets in the keyset until verification succeeds.
 - Standard rollout pattern:
+
 1. Add new secret at index `0`, keep previous secret(s) after it.
 2. Deploy and allow old cookies to age out.
 3. Remove old secret(s) after rollout window.
 
 ## Migration Notes (`kit/signedcookie` -> `kit/cookies`)
 
-Treat this as a format migration. Plan a staged rollout (for example: dual-read and rewrite on successful legacy read) rather than assuming existing cookie values can be read unchanged by a different package.
+Treat this as a format migration. Plan a staged rollout (for example: dual-read
+and rewrite on successful legacy read) rather than assuming existing cookie
+values can be read unchanged by a different package.
 
 ## Public API Reference
 
@@ -126,4 +136,6 @@ Methods:
 - `func (sc *SignedCookie[T]) VerifyAndReadCookieValue(r *http.Request) (T, error)`
 - `func (sc *SignedCookie[T]) NewDeletionCookie() *http.Cookie`
 
-`overrideBaseCookie` replaces base attributes for that call, but cookie name still comes from `sc.BaseCookie.Name` and security flags are forced (`Secure`, `HttpOnly`).
+`overrideBaseCookie` replaces base attributes for that call, but cookie name
+still comes from `sc.BaseCookie.Name` and security flags are forced (`Secure`,
+`HttpOnly`).

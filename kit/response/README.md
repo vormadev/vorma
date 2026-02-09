@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/response`
 
-Helpers for writing HTTP responses directly (`Response`) or building/merging deferred responses (`Proxy`) before applying to a real `http.ResponseWriter`.
+Helpers for writing HTTP responses directly (`Response`) or building/merging
+deferred responses (`Proxy`) before applying to a real `http.ResponseWriter`.
 
 ## Import
 
@@ -13,7 +14,8 @@ import "github.com/vormadev/vorma/kit/response"
 ## Choose The Right Type
 
 - Use `Response` in normal handlers that already own `http.ResponseWriter`.
-- Use `Proxy` when multiple tasks/goroutines independently produce response decisions and you need deterministic merge rules.
+- Use `Proxy` when multiple tasks/goroutines independently produce response
+  decisions and you need deterministic merge rules.
 
 ## `Response` Quick Start
 
@@ -51,7 +53,8 @@ func handle(w http.ResponseWriter, r *http.Request) {
 Two redirect modes are supported:
 
 - Server redirect: normal HTTP `3xx + Location`.
-- Client redirect: sets `X-Client-Redirect` for JS/fetch clients that intentionally handle navigation themselves.
+- Client redirect: sets `X-Client-Redirect` for JS/fetch clients that
+  intentionally handle navigation themselves.
 
 Opt in to client redirects by sending:
 
@@ -79,16 +82,21 @@ When multiple proxies are merged:
 
 - Status: first error (`>=400`) wins; otherwise last success (`2xx`) wins.
 - Redirect: if merged status is not an error, first redirect wins.
-- Headers: header operations are replayed in order (`Set` replaces prior values for that key, `Add` appends).
+- Headers: header operations are replayed in order (`Set` replaces prior values
+  for that key, `Add` appends).
 - Cookies: later cookies with the same name replace earlier ones.
 - Head elements: merged in input order.
 
 ## Important Notes
 
 - `Proxy` is not thread-safe; do not share one proxy across goroutines.
-- `Response.IsCommitted()` tracks commits done through `Response` methods. If code writes directly via `Response.Writer`, commit tracking can diverge from actual writer state.
-- `Response` content helpers (`JSON`, `Text`, `HTML`, etc.) do not return write errors.
-- `MergeProxyResponses` ignores `nil` proxies; `SetCookie(nil)` is treated as a no-op.
+- `Response.IsCommitted()` tracks commits done through `Response` methods. If
+  code writes directly via `Response.Writer`, commit tracking can diverge from
+  actual writer state.
+- `Response` content helpers (`JSON`, `Text`, `HTML`, etc.) do not return write
+  errors.
+- `MergeProxyResponses` ignores `nil` proxies; `SetCookie(nil)` is treated as a
+  no-op.
 
 ## API Reference
 

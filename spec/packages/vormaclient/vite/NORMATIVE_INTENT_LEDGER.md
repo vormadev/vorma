@@ -16,13 +16,13 @@ Trust Epoch: `E2`
 
 ## Per-File Replay Ledger
 
-| File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
-|---|---|---|---:|---:|---|---|
-| `vormaclient/vite/tsconfig.json` | in-scope | source+legacy-tests | 1 | 1 | in_progress | TS config contract revalidated from source; no active legacy tests outside `conformance/**` found for this package. |
-| `vormaclient/vite/vite.ts` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Plugin config/transform/invalidation contracts revalidated from source. |
+| File                             | Scope    | Mining Inputs       | Passes | Clean Passes | Epoch State | Notes                                                                                                               |
+| -------------------------------- | -------- | ------------------- | -----: | -----------: | ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| `vormaclient/vite/tsconfig.json` | in-scope | source+legacy-tests |      1 |            1 | in_progress | TS config contract revalidated from source; no active legacy tests outside `conformance/**` found for this package. |
+| `vormaclient/vite/vite.ts`       | in-scope | source+legacy-tests |      1 |            1 | in_progress | Plugin config/transform/invalidation contracts revalidated from source.                                             |
 
 ## Round Log
 
-| Round | Status | New Gaps | Notes |
-|---|---|---:|---|
-| `E2-R1` | completed | 0 | Rough replay completed with source-backed contracts and traceability rows. |
+| Round   | Status    | New Gaps | Notes                                                                      |
+| ------- | --------- | -------: | -------------------------------------------------------------------------- |
+| `E2-R1` | completed |        0 | Rough replay completed with source-backed contracts and traceability rows. |

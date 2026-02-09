@@ -4,7 +4,8 @@
 
 Typed wrappers for storing and reading values from `context.Context`.
 
-Use this when you want to avoid repetitive type assertions and keep context keys isolated per concern.
+Use this when you want to avoid repetitive type assertions and keep context keys
+isolated per concern.
 
 ## Import
 
@@ -36,7 +37,8 @@ user := userStore.GetValueFromContext(req.Context())
 
 - Store identity is per `Store[T]` instance, not just key string text.
 - Missing or mismatched values return zero-value `T`.
-- Because zero-value can also be valid data, treat `GetValueFromContext` as a convenience API, not presence-proof.
+- Because zero-value can also be valid data, treat `GetValueFromContext` as a
+  convenience API, not presence-proof.
 
 Recommended pattern:
 

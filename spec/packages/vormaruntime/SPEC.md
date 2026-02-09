@@ -298,8 +298,8 @@ Legacy-export disposition:
 - those symbols MUST be treated as non-conformance legacy exports; field shape,
   runtime behavior, and symbol existence MAY change without compatibility
   guarantees,
-- conformance suites MUST NOT rely on these legacy-export symbols for
-  pass/fail assertions.
+- conformance suites MUST NOT rely on these legacy-export symbols for pass/fail
+  assertions.
 
 ### BR-INIT-022: Router Options Passthrough Contract
 

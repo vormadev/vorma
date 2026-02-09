@@ -4,7 +4,8 @@
 
 String-oriented encryption wrapper over `kit/securebytes`.
 
-It serializes a value to encrypted bytes and returns base64 text, which is useful for cookies, headers, and JSON fields.
+It serializes a value to encrypted bytes and returns base64 text, which is
+useful for cookies, headers, and JSON fields.
 
 ## Import
 
@@ -38,7 +39,8 @@ Inherited behavior from `securebytes`:
 
 - key rotation support via ordered keysets
 - ciphertext integrity checks
-- gob serialization constraints (for example concrete type registration for interface payloads)
+- gob serialization constraints (for example concrete type registration for
+  interface payloads)
 
 ## Size Limits
 
@@ -47,7 +49,8 @@ Inherited behavior from `securebytes`:
 - Oversized base64 input is rejected before decode.
 - Invalid base64 input returns an error.
 
-`MaxBase64Size` is derived from `securebytes.MaxSize` using base64 expansion math.
+`MaxBase64Size` is derived from `securebytes.MaxSize` using base64 expansion
+math.
 
 ## API Reference
 

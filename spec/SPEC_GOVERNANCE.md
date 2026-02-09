@@ -48,6 +48,15 @@ This is the single canonical top-level specs program document.
       (bootstrap-related, explicitly lowest priority).
 - [ ] Program stop condition met for every package.
 
+Priority execution rule (hard gate):
+
+- While any P0 package checklist/tracker is not at stop criterion, agents MUST
+  execute only P0 package-path work.
+- P1/P2 work MUST NOT be started opportunistically (for example, placeholder
+  cleanup convenience) until P0 closure is complete.
+- The only exception is explicit user direction in the current session to
+  override priority sequencing.
+
 ## Program Stop Condition
 
 Program closure requires every package path in `spec/packages/PACKAGE_INDEX.md`
@@ -90,8 +99,8 @@ Each package directory MUST contain:
   evidence references.
 - When no legacy tests outside `conformance/**` exist for a package, record
   source-only evidence state in matrix/ledger notes.
-- Absence of legacy tests outside `conformance/**` by itself MUST NOT be
-  tracked as an intent-validation issue.
+- Absence of legacy tests outside `conformance/**` by itself MUST NOT be tracked
+  as an intent-validation issue.
 - Full-audit replay MUST re-validate existing spec claims against source +
   available legacy tests; prior spec text and prior test claims are not
   automatically trusted.
@@ -109,11 +118,20 @@ Each package directory MUST contain:
 - Full-pass checklist items MUST NOT be marked complete while requirement-level
   traceability remains partial/source-only without explicit issue
   reconciliation.
-- Package checklist execution is strictly ordered; later checklist items MUST NOT
-  be marked complete while any earlier checklist item remains unchecked.
-- In particular, `Resolve open intent-validation issues in CONFORMANCE_ISSUES.md`
-  is a late-stage closure gate and MUST remain unchecked until preceding
-  full-pass checklist items are complete.
+- Package checklist execution is strictly ordered; later checklist items MUST
+  NOT be marked complete while any earlier checklist item remains unchecked.
+- In particular,
+  `Resolve open intent-validation issues in CONFORMANCE_ISSUES.md` is a
+  late-stage closure gate and MUST remain unchecked until preceding full-pass
+  checklist items are complete.
+
+### 3b. Priority Sequencing Rule
+
+- Program execution MUST follow P0 -> P1 -> P2 sequencing.
+- Presence of easy/quick placeholder work in lower tiers is not a valid reason
+  to skip unfinished higher-tier package paths.
+- If uncertain, agents MUST re-check the Program Checklist P0 status before
+  selecting the next package path.
 
 ### 4. Trust Epoch Rule
 

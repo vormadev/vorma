@@ -5,9 +5,11 @@
 `mux` is Vorma's HTTP routing layer with two execution models:
 
 - classic `http.Handler` routes
-- typed task routes (`TaskHandler`) with `ReqData[I]` inputs and structured outputs
+- typed task routes (`TaskHandler`) with `ReqData[I]` inputs and structured
+  outputs
 
-It also provides a `NestedRouter` for hierarchical pattern matching + parallel nested task execution.
+It also provides a `NestedRouter` for hierarchical pattern matching + parallel
+nested task execution.
 
 ## Import
 
@@ -110,12 +112,15 @@ You can set response state from tasks with wrappers like:
 
 - task routes and any route with task middleware run with a `tasks.Ctx`
 - HTTP handlers can get it via `mux.GetTasksCtx(r)` when present
-- for non-task stacks, use `mux.InjectTasksCtxMiddleware` to force-inject a `tasks.Ctx`
-- handlers implementing `TasksCtxRequirer` are run on the slow path so `tasks.Ctx` is available
+- for non-task stacks, use `mux.InjectTasksCtxMiddleware` to force-inject a
+  `tasks.Ctx`
+- handlers implementing `TasksCtxRequirer` are run on the slow path so
+  `tasks.Ctx` is available
 
 ## Nested Router
 
-Use `NestedRouter` when one URL should match multiple nested patterns and optionally run multiple nested tasks.
+Use `NestedRouter` when one URL should match multiple nested patterns and
+optionally run multiple nested tasks.
 
 ```go
 nr := mux.NewNestedRouter(nil)
@@ -148,12 +153,14 @@ if ok {
 ## Lifecycle And Concurrency Assumptions
 
 - Register routes and middleware before serving traffic.
-- `Route.httpChain` is compiled and cached on first use, so adding HTTP middleware after first hit will not affect that route's cached chain.
+- `Route.httpChain` is compiled and cached on first use, so adding HTTP
+  middleware after first hit will not affect that route's cached chain.
 - `Router.AllRoutes()` returns the underlying route slice.
 - `NestedRouter.AllRoutes()` returns the underlying route map.
 - `NestedRouter.GetMatcher()` returns the live matcher pointer.
 
-Treat returned slices/maps/matcher as internal live state; avoid mutating them from request paths.
+Treat returned slices/maps/matcher as internal live state; avoid mutating them
+from request paths.
 
 ## Public API Reference
 

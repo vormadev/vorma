@@ -92,7 +92,8 @@ Given `Redirect(r, url, code...)`
 When request indicates client-redirect support  
 Then it MUST attempt client redirect path and return `(true, nil)` on success.
 
-Given request does not indicate client-redirect support (including nil request)  
+Given request does not indicate client-redirect support (including nil
+request)  
 When called  
 Then it MUST use server redirect path and return `(false, nil)`.
 

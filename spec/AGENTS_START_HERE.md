@@ -7,15 +7,23 @@ policy details in governance/package docs.
 
 1. Finish all normative intent mining across the package universe.
 2. After mining is complete, scrutinize resulting specs for poor design or
-   accidental complexity; improve the specs where needed. Backward
-   compatibility is not a concern at this stage (pre-1.0), and intentional
-   breaking changes to end-user code are acceptable.
+   accidental complexity; improve the specs where needed. Backward compatibility
+   is not a concern at this stage (pre-1.0), and intentional breaking changes to
+   end-user code are acceptable.
 3. Only after specs are comprehensive and design-tuned, start writing and/or
    migrating legacy tests into `/conformance`.
 4. Then review any remaining legacy tests that are not in `/conformance` and
    confirm whether they are intentionally non-conformance tests (for example,
    internal unit tests) or should be migrated.
 5. Once conformance harnesses are solid, proceed with aggressive refactoring.
+
+Priority hard gate:
+
+- Do not work on lower-priority tiers while any P0 package path remains
+  incomplete.
+- Specifically: no opportunistic P1/P2 placeholder cleanup while P0 is still
+  open, unless the user explicitly asks for that override in the current
+  session.
 
 ## 1) Program Rules (Read First)
 
@@ -46,6 +54,9 @@ Then use only that package's canonical files:
 
 ## 5) Handoff Discipline
 
-- Update `spec/ROUGH_STATUS_UPDATE.md` by replacing prior content (no historical
-  accumulation).
+- Treat `spec/ROUGH_STATUS_UPDATE.md` as disposable scratch state.
+- On each update cycle, delete and recreate `spec/ROUGH_STATUS_UPDATE.md` from
+  scratch with only what currently matters.
+- Do not append, diff-edit, or preserve prior narrative structure from the
+  existing file.
 - Keep policy changes in `spec/SPEC_GOVERNANCE.md`, not here.

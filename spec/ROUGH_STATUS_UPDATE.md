@@ -2,36 +2,38 @@
 
 Status: Active  
 Last Updated: 2026-02-09  
-Update Style: Full overwrite each update. No cumulative timeline.
+Update Style: Recreated from scratch each update.
 
-## Current Truth
+## Current State Worth Tracking
 
-- Normative intent mining is active across package-path specs.
-- `vormaclient/solid`, `vormaclient/react`, `vormaclient/preact`,
-  `vormaclient/vite`, and `vormaclient/create` now have source-mined requirement
-  catalogs, source-only traceability rows, active checklists, and non-placeholder
-  issue/ledger/tracker artifacts.
-- No package artifact may cite files under `conformance/**` as current evidence.
-- Packages with no active legacy tests outside `conformance/**` remain in
-  source-only evidence state.
+- Normative intent mining remains in step 1 (package-by-package replay).
+- Non-placeholder package artifact sets currently include:
+    - `vormaclient/solid`
+    - `vormaclient/react`
+    - `vormaclient/preact`
+    - `vormaclient/vite`
+    - `vormaclient/create`
+    - `lab/tsgen`
+    - `lab/tsgen/tsgencore`
+    - `lab/viteutil`
+    - `kit/signedcookie`
+    - `kit/securebytes`
+    - `kit/securestring`
+    - `kit/contextutil`
+    - `kit/id`
+- `kit/id` now has full companion artifacts with one focused open
+  intent-validation gap for rare, hard-to-force error paths.
+- `conformance/**` remains excluded from mining inputs.
 
-## High Confidence
+## Remaining Work Snapshot
 
-- Placeholder rows/issues were removed from the five `vormaclient/*` companion
-  package artifact sets above.
-- Requirement-to-matrix row counts are aligned for those five packages.
+- Placeholder traceability rows remaining across `spec/packages/**`: `39`.
+- Additional `kit/*` and `lab/*` package paths still require rough-pass replay.
+- Open issue backlog (`impl-bug-candidate` and `intent-validation-gap`) remains
+  unresolved across multiple packages.
 
-## Not Done / Still Dirty
+## Next Action
 
-- Remaining placeholder/pending traceability rows across `spec/packages/**`:
-  `42`.
-- Open conformance issue backlog (`impl-bug-candidate` and
-  `intent-validation-gap`) remains unresolved in multiple packages.
-
-## Next Step
-
-1. Continue step-1 normative mining on remaining placeholder packages (`kit/*`
-   and `lab/*` paths first, then remaining lower-priority package paths).
-2. Keep matrices source-only where no active legacy tests outside
-   `conformance/**` exist; do not add backward-looking or historical-state
-   narrative.
+1. Continue with next placeholder `kit/*` package path and replace all six
+   package artifacts end-to-end.
+2. Keep issue closure strict and sequential with checklist gates.

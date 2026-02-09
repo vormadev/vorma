@@ -20,5 +20,7 @@ Last Updated: 2026-02-09
 - [ ] Complete full structural pass.
 - [ ] Complete full boundary pass.
 - [ ] Complete full semantic pass.
-- [x] Reconcile `CONFORMANCE_ISSUES.md` to active package-level gaps only (legacy-test absence recorded as source-only evidence state in matrix/ledger).
+- [x] Reconcile `CONFORMANCE_ISSUES.md` to active package-level gaps only
+      (legacy-test absence recorded as source-only evidence state in
+      matrix/ledger).
 - [ ] Record two consecutive no-gap full rounds.

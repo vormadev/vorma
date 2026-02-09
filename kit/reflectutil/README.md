@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/reflectutil`
 
-Small reflection helpers for interface checks, nil/pointer inspection, and JSON tag name extraction.
+Small reflection helpers for interface checks, nil/pointer inspection, and JSON
+tag name extraction.
 
 ## Import
 
@@ -21,7 +22,8 @@ if reflectutil.ImplementsInterface(t, readerIface) {
 }
 ```
 
-`ImplementsInterface` returns false for nil types and panics if `iface` is not an interface type.
+`ImplementsInterface` returns false for nil types and panics if `iface` is not
+an interface type.
 
 ### Nil-or-points-to-nil checks
 
@@ -29,7 +31,8 @@ if reflectutil.ImplementsInterface(t, readerIface) {
 isNil := reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(v)
 ```
 
-This follows pointers/interfaces recursively and treats `struct{}`/`*struct{}` ("None" sentinel) as non-nil.
+This follows pointers/interfaces recursively and treats `struct{}`/`*struct{}`
+("None" sentinel) as non-nil.
 
 ### JSON field name extraction
 

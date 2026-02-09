@@ -11,4 +11,5 @@ Package-owned behavior contracts for `lab/stringsutil`.
 ## Requirements
 
 - Define canonical `LAB-STRINGSUTIL-*` requirement IDs.
-- Keep owner behavior here; consumers reference these IDs instead of duplicating semantics.
+- Keep owner behavior here; consumers reference these IDs instead of duplicating
+  semantics.

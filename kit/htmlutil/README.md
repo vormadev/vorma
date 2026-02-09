@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/htmlutil`
 
-`htmlutil` is a small HTML element renderer for server-side output, with explicit support for:
+`htmlutil` is a small HTML element renderer for server-side output, with
+explicit support for:
 
 - escaped vs trusted attributes/content
 - CSP nonce/hash helpers
@@ -49,7 +50,8 @@ if err := htmlutil.RenderElementToBuilder(el, &b); err != nil {
 }
 ```
 
-`RenderElementToBuilder` returns errors for nil element, nil builder, or missing tag.
+`RenderElementToBuilder` returns errors for nil element, nil builder, or missing
+tag.
 
 `RenderModuleScriptToBuilder` is a convenience helper for:
 
@@ -83,7 +85,8 @@ This sets `integrity="sha256-<hash>"` in trusted attributes.
 
 ## Escaping Into Trusted Form
 
-`EscapeIntoTrusted` returns a new `Element` where escaped-safe values are already consolidated into trusted fields.  
+`EscapeIntoTrusted` returns a new `Element` where escaped-safe values are
+already consolidated into trusted fields.  
 Useful when you need to escape once, then render many times.
 
 ## API Coverage

@@ -4,7 +4,8 @@
 
 `middleware` provides a tiny shared type plus a path/method gate helper.
 
-Most real behavior lives in subpackages (`etag`, `secureheaders`, `healthcheck`, `robotstxt`).
+Most real behavior lives in subpackages (`etag`, `secureheaders`, `healthcheck`,
+`robotstxt`).
 
 ## Import
 
@@ -58,7 +59,8 @@ h = healthcheck.Healthz(h)
 h = robotstxt.Disallow(h)
 ```
 
-Use the `ToHandlerMiddleware` helper for endpoint-scoped short-circuit handlers; use subpackages for policy middleware.
+Use the `ToHandlerMiddleware` helper for endpoint-scoped short-circuit handlers;
+use subpackages for policy middleware.
 
 ## Public API Reference
 

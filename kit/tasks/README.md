@@ -163,8 +163,8 @@ TTL behavior details:
 - `ttl < 0`: normalized to `0`.
 - Expiration is per input key.
 - Cleanup is lazy and runs at most once per TTL period during access.
-- Errors are cached per key the same way as successes; after expiry, a new
-  entry is created so retry can happen.
+- Errors are cached per key the same way as successes; after expiry, a new entry
+  is created so retry can happen.
 
 `NewCtx(nil)` and `NewCtxWithTTL(nil, ttl)` use `context.Background()`.
 

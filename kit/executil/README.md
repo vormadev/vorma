@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/executil`
 
-Helpers for running subprocesses with stdout/stderr wired to the current process.
+Helpers for running subprocesses with stdout/stderr wired to the current
+process.
 
 ## Import
 
@@ -41,7 +42,8 @@ if err := executil.RunShell("echo hello"); err != nil {
 
 Security note:
 
-- `RunShell` executes via a shell and is vulnerable to shell injection if untrusted input is interpolated.
+- `RunShell` executes via a shell and is vulnerable to shell injection if
+  untrusted input is interpolated.
 - Use `RunCmd` with explicit argument separation for user-controlled values.
 
 ## Executable Directory

@@ -66,7 +66,8 @@ if err := bytesutil.FromGobInto(payload, &session); err != nil {
 - `ToGob` returns an error for typed nil pointers.
 - `FromGob` and `FromGobInto` return errors for nil/invalid gob bytes.
 - `FromGobInto` expects a destination pointer.
-- If you encode interface values with gob, register concrete types as needed (`encoding/gob` rules apply).
+- If you encode interface values with gob, register concrete types as needed
+  (`encoding/gob` rules apply).
 
 ## API Reference
 

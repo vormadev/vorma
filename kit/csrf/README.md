@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/csrf`
 
-`csrf` is a stateless CSRF middleware using a double-submit cookie pattern with encrypted token payloads.
+`csrf` is a stateless CSRF middleware using a double-submit cookie pattern with
+encrypted token payloads.
 
 Defense layers:
 
@@ -76,18 +77,19 @@ Validation requires:
 
 Unsafe-method failures return `403 Forbidden`.
 
-When possible, middleware also self-heals by issuing a fresh cookie in the same 403 response.
+When possible, middleware also self-heals by issuing a fresh cookie in the same
+403 response.
 
-| Failure case | 403 | Self-heal cookie |
-| --- | --- | --- |
-| Origin/Referer not allowed | yes | no |
-| Cookie missing | yes | yes |
-| Cookie present but empty | yes | no |
-| Token parse/decrypt fails | yes | yes |
-| Token expired/invalid payload | yes | yes |
-| Header token missing | yes | no |
-| Header token mismatch | yes | no |
-| Session mismatch | yes | yes |
+| Failure case                  | 403 | Self-heal cookie |
+| ----------------------------- | --- | ---------------- |
+| Origin/Referer not allowed    | yes | no               |
+| Cookie missing                | yes | yes              |
+| Cookie present but empty      | yes | no               |
+| Token parse/decrypt fails     | yes | yes              |
+| Token expired/invalid payload | yes | yes              |
+| Header token missing          | yes | no               |
+| Header token mismatch         | yes | no               |
+| Session mismatch              | yes | yes              |
 
 ## Origin/Referer Rules
 
@@ -98,7 +100,8 @@ When possible, middleware also self-heals by issuing a fresh cookie in the same 
 - If `Origin` is absent and `Referer` is present, `Referer` is validated.
 - If both headers are absent, this layer allows the request.
 
-`AllowedOrigins` entries must include scheme and host (for example `https://app.example.com`).
+`AllowedOrigins` entries must include scheme and host (for example
+`https://app.example.com`).
 
 ## Configuration Defaults And Panics
 
@@ -117,13 +120,15 @@ When possible, middleware also self-heals by issuing a fresh cookie in the same 
 
 Dev-mode guard:
 
-- if cookie manager is in dev mode, middleware panics when request host is not localhost/loopback.
+- if cookie manager is in dev mode, middleware panics when request host is not
+  localhost/loopback.
 
 ## Token/Cookie Details
 
 - cookie is managed via `cookies.SecureCookie[payload]`
 - cookie settings are fixed to `SameSite=Lax` and `HttpOnly=false`
-- cookie value itself is the token clients must echo in the configured request header
+- cookie value itself is the token clients must echo in the configured request
+  header
 
 ## Public API Reference
 

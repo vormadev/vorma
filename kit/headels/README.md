@@ -64,12 +64,14 @@ _ = headHTML
 
 - normal attributes are escaped
 - `Attr.KnownSafe()` marks an attribute value as trusted/pre-escaped
-- `DangerousInnerHTML` injects raw HTML and should only be used for trusted content
+- `DangerousInnerHTML` injects raw HTML and should only be used for trusted
+  content
 
 ## Builder Helpers
 
 - high-level tags: `Title`, `Description`, `Meta`, `Link`, `Script`, `Style`
-- attribute helpers: `Name`, `Content`, `Property`, `Rel`, `Href`, `Src`, `Type`, `Charset`, `As`, `CrossOrigin`
+- attribute helpers: `Name`, `Content`, `Property`, `Rel`, `Href`, `Src`,
+  `Type`, `Charset`, `As`, `CrossOrigin`
 - content helpers: `TextContent`, `DangerousInnerHTML`, `SelfClosing`
 - generic form: `Add(...)` if you need full control
 

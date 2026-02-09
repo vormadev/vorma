@@ -14,14 +14,14 @@ Trust Epoch: `E2`
 
 ## Per-File Replay Ledger
 
-| File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
-|---|---|---|---:|---:|---|---|
-| `kit/keyset/README.md` | out-of-scope | n/a | 0 | 0 | pending | Documentation/benchmark artifact. |
-| `kit/keyset/keyset.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `kit/keyset/keyset_test.go` | in-scope | source+tests | 0 | 0 | pending |  |
+| File                        | Scope        | Mining Inputs | Passes | Clean Passes | Epoch State | Notes                             |
+| --------------------------- | ------------ | ------------- | -----: | -----------: | ----------- | --------------------------------- |
+| `kit/keyset/README.md`      | out-of-scope | n/a           |      0 |            0 | pending     | Documentation/benchmark artifact. |
+| `kit/keyset/keyset.go`      | in-scope     | source+tests  |      0 |            0 | pending     |                                   |
+| `kit/keyset/keyset_test.go` | in-scope     | source+tests  |      0 |            0 | pending     |                                   |
 
 ## Round Log
 
-| Round | Status | New Gaps | Notes |
-|---|---|---:|---|
-| `E2-R1` | in_progress | `TBD` | Package-path reset baseline initialized. |
+| Round   | Status      | New Gaps | Notes                                    |
+| ------- | ----------- | -------: | ---------------------------------------- |
+| `E2-R1` | in_progress |    `TBD` | Package-path reset baseline initialized. |

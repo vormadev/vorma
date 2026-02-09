@@ -16,16 +16,16 @@ Trust Epoch: `E2`
 
 ## Per-File Replay Ledger
 
-| File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
-|---|---|---|---:|---:|---|---|
-| `vormaclient/solid/index.tsx` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Export surface revalidated from source; no active legacy tests outside `conformance/**` found for this package. |
-| `vormaclient/solid/src/helpers.ts` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Typed helper and client-loader helper contracts revalidated from source. |
-| `vormaclient/solid/src/link.tsx` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Link and typed-link contracts revalidated from source. |
-| `vormaclient/solid/src/solid.tsx` | in-scope | source+legacy-tests | 1 | 1 | in_progress | Adapter root-outlet/location surface revalidated from source; owner runtime semantics remain in `FE-*`. |
-| `vormaclient/solid/tsconfig.json` | in-scope | source+legacy-tests | 1 | 1 | in_progress | JSX compiler-option contract revalidated from source. |
+| File                               | Scope    | Mining Inputs       | Passes | Clean Passes | Epoch State | Notes                                                                                                           |
+| ---------------------------------- | -------- | ------------------- | -----: | -----------: | ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `vormaclient/solid/index.tsx`      | in-scope | source+legacy-tests |      1 |            1 | in_progress | Export surface revalidated from source; no active legacy tests outside `conformance/**` found for this package. |
+| `vormaclient/solid/src/helpers.ts` | in-scope | source+legacy-tests |      1 |            1 | in_progress | Typed helper and client-loader helper contracts revalidated from source.                                        |
+| `vormaclient/solid/src/link.tsx`   | in-scope | source+legacy-tests |      1 |            1 | in_progress | Link and typed-link contracts revalidated from source.                                                          |
+| `vormaclient/solid/src/solid.tsx`  | in-scope | source+legacy-tests |      1 |            1 | in_progress | Adapter root-outlet/location surface revalidated from source; owner runtime semantics remain in `FE-*`.         |
+| `vormaclient/solid/tsconfig.json`  | in-scope | source+legacy-tests |      1 |            1 | in_progress | JSX compiler-option contract revalidated from source.                                                           |
 
 ## Round Log
 
-| Round | Status | New Gaps | Notes |
-|---|---|---:|---|
-| `E2-R1` | completed | 0 | Rough replay completed with source-backed contracts and traceability rows. |
+| Round   | Status    | New Gaps | Notes                                                                      |
+| ------- | --------- | -------: | -------------------------------------------------------------------------- |
+| `E2-R1` | completed |        0 | Rough replay completed with source-backed contracts and traceability rows. |

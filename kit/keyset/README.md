@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/keyset`
 
-`keyset` is a latest-first key rotation primitive for symmetric crypto workflows.
+`keyset` is a latest-first key rotation primitive for symmetric crypto
+workflows.
 
 Use it to:
 
@@ -20,7 +21,8 @@ import "github.com/vormadev/vorma/kit/keyset"
 ## Core Concepts
 
 - `RootSecret`: one base64-encoded 32-byte secret string
-- `RootSecrets`: latest-first list of root secrets (`current`, then `previous`...)
+- `RootSecrets`: latest-first list of root secrets (`current`, then
+  `previous`...)
 - `UnwrappedKeyset`: latest-first list of `cryptoutil.Key32`
 - `Keyset`: wrapper around `UnwrappedKeyset` with validation helpers
 
@@ -43,7 +45,8 @@ _ = activeKey
 
 ## Rotation Fallback (`Attempt`)
 
-Use `Attempt` for read paths where payloads may have been created with older keys:
+Use `Attempt` for read paths where payloads may have been created with older
+keys:
 
 ```go
 value, err := keyset.Attempt(root, func(k cryptoutil.Key32) (string, error) {
@@ -99,7 +102,8 @@ Misconfiguration behavior:
 
 ## API Contracts And Footguns
 
-- `Keyset.Unwrap()` returns the underlying key slice directly (no defensive copy).
+- `Keyset.Unwrap()` returns the underlying key slice directly (no defensive
+  copy).
 - Mutating the returned slice mutates the `Keyset` internals.
 - `FromUnwrapped` validates input but does not clone it.
 - `LoadRootSecrets` treats missing or empty env values as errors.

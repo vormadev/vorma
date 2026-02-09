@@ -37,7 +37,8 @@ grace.Orchestrate(grace.OrchestrateOptions{
 ## Orchestration Model
 
 - `StartupCallback` runs first. It should block while your app is running.
-- On signal (or startup failure), `ShutdownCallback` runs with a timeout context.
+- On signal (or startup failure), `ShutdownCallback` runs with a timeout
+  context.
 - Defaults:
 - `ShutdownTimeout = 30s`
 - signals: `SIGHUP`, `SIGINT`, `SIGTERM`, `SIGQUIT` (Windows: `os.Interrupt`)
@@ -45,13 +46,17 @@ grace.Orchestrate(grace.OrchestrateOptions{
 
 Practical guidance:
 
-- return errors from callbacks; do not call `os.Exit`/`log.Fatal` inside callbacks
-- if startup exits quickly, `Orchestrate` still waits for signal-triggered shutdown flow
-- for `http.Server`, treat `http.ErrServerClosed` as normal shutdown, not a startup failure
+- return errors from callbacks; do not call `os.Exit`/`log.Fatal` inside
+  callbacks
+- if startup exits quickly, `Orchestrate` still waits for signal-triggered
+  shutdown flow
+- for `http.Server`, treat `http.ErrServerClosed` as normal shutdown, not a
+  startup failure
 
 ## Terminating Child Processes
 
-`TerminateProcess` sends a graceful termination signal and waits up to `timeToWait`.  
+`TerminateProcess` sends a graceful termination signal and waits up to
+`timeToWait`.  
 If the process has not exited, it force-kills it.
 
 ```go

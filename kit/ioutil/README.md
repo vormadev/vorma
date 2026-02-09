@@ -27,12 +27,14 @@ Behavior:
 
 - Reads up to `limit + 1` bytes internally to detect overflow.
 - Returns full data with `nil` error when input size is `<= limit`.
-- Returns truncated data (`limit` bytes) with `ErrReadLimitExceeded` when input exceeds the limit.
+- Returns truncated data (`limit` bytes) with `ErrReadLimitExceeded` when input
+  exceeds the limit.
 
 ## Limits and Bounds
 
 - `limit` is `uint64`.
-- Extremely large limits above `math.MaxInt64-1` return an internal limit-too-large error.
+- Extremely large limits above `math.MaxInt64-1` return an internal
+  limit-too-large error.
 - This guard exists because the underlying `io.LimitReader` takes `int64`.
 
 ## Constants

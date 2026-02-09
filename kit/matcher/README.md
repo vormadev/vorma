@@ -73,7 +73,8 @@ Returns exactly one route using internal precedence/score rules.
 
 Returns an ordered stack of matches for layout-style routing.
 
-Use this when parent routes and a leaf route should all participate in rendering.
+Use this when parent routes and a leaf route should all participate in
+rendering.
 
 Result fields:
 
@@ -91,12 +92,17 @@ Result fields:
 
 ## Important Behavior Notes
 
-- Register all patterns before serving traffic. `Matcher` is not designed as a concurrent registration/mutation structure.
-- Duplicate registrations overwrite map entries and may log warnings when `Quiet` is false.
-- `NormalizePattern` panics if `ExplicitIndexSegment` contains `/` or if invalid trailing-slash usage is provided in explicit-index mode.
+- Register all patterns before serving traffic. `Matcher` is not designed as a
+  concurrent registration/mutation structure.
+- Duplicate registrations overwrite map entries and may log warnings when
+  `Quiet` is false.
+- `NormalizePattern` panics if `ExplicitIndexSegment` contains `/` or if invalid
+  trailing-slash usage is provided in explicit-index mode.
 - Dynamic params match non-empty segments.
-- `RegisteredPattern.NormalizedSegments()` returns a copy of normalized segment metadata, so mutating that returned slice does not mutate matcher internals.
-- Root catch-all `/*` is treated specially in nested matching to avoid overwhelming more specific matches.
+- `RegisteredPattern.NormalizedSegments()` returns a copy of normalized segment
+  metadata, so mutating that returned slice does not mutate matcher internals.
+- Root catch-all `/*` is treated specially in nested matching to avoid
+  overwhelming more specific matches.
 
 ## API Reference
 

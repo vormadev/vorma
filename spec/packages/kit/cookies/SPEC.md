@@ -11,4 +11,5 @@ Package-owned behavior contracts for `kit/cookies`.
 ## Requirements
 
 - Define canonical `KIT-COOKIES-*` requirement IDs.
-- Keep owner behavior here; consumers reference these IDs instead of duplicating semantics.
+- Keep owner behavior here; consumers reference these IDs instead of duplicating
+  semantics.

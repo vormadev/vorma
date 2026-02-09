@@ -4,7 +4,8 @@
 
 ## Purpose
 
-Use `kit/lazyget` when you want a zero-value struct field that lazily initializes once.
+Use `kit/lazyget` when you want a zero-value struct field that lazily
+initializes once.
 
 For package-level lazy getters, prefer the Go standard library directly:
 
@@ -37,9 +38,11 @@ func (s *Service) DB() *DB {
 Behavior:
 
 - Initialization function is executed at most once.
-- Concurrent callers block until first initialization completes, then all receive the cached value.
+- Concurrent callers block until first initialization completes, then all
+  receive the cached value.
 - If initialization panics, future calls panic with the same value.
-- Passing `nil` init functions panics when invoked (same behavior as calling a nil function in Go).
+- Passing `nil` init functions panics when invoked (same behavior as calling a
+  nil function in Go).
 
 ## Compatibility API
 

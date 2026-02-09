@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/middleware/healthcheck`
 
-Minimal healthcheck middleware that responds with `200 OK` and body `"OK"` for `GET`/`HEAD`.
+Minimal healthcheck middleware that responds with `200 OK` and body `"OK"` for
+`GET`/`HEAD`.
 
 ## Import
 

@@ -84,14 +84,16 @@ Use this when both signer and verifier share the same secret key.
 
 ### Asymmetric verification
 
-- `VerifyAndReadAsymmetric` verifies Ed25519 signatures using a 32-byte public key.
+- `VerifyAndReadAsymmetric` verifies Ed25519 signatures using a 32-byte public
+  key.
 - `VerifyAndReadAsymmetricBase64` does the same for base64-encoded inputs.
 
 ## Encryption Behavior
 
 - `EncryptSymmetricGeneric` prepends a random nonce to the ciphertext.
 - `DecryptSymmetricGeneric` expects that nonce-prefixed format.
-- XChaCha20-Poly1305 and AES-GCM wrappers call the generic functions with built-in AEAD constructors.
+- XChaCha20-Poly1305 and AES-GCM wrappers call the generic functions with
+  built-in AEAD constructors.
 
 ## HMAC Validation Semantics
 
@@ -109,7 +111,8 @@ Callers must check the boolean, not just the error.
 - `ToKey32` requires exactly 32 bytes.
 - `FromKey32` requires a non-nil key pointer.
 - HMAC helpers reject nil/empty key material.
-- `DecryptSymmetric*` returns `ErrCipherTextTooShort` for malformed ciphertext payloads.
+- `DecryptSymmetric*` returns `ErrCipherTextTooShort` for malformed ciphertext
+  payloads.
 
 ## API Coverage
 

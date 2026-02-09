@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/lru`
 
-Concurrent generic LRU cache with optional TTL expiration and spam-aware recency behavior.
+Concurrent generic LRU cache with optional TTL expiration and spam-aware recency
+behavior.
 
 ## Import
 
@@ -25,7 +26,8 @@ _ = ok
 ## Recency Behavior
 
 - `isSpam=false`: `Get` and updates move item to front (hot keys retained).
-- `isSpam=true`: accesses do not refresh recency (spam keys are easier to evict).
+- `isSpam=true`: accesses do not refresh recency (spam keys are easier to
+  evict).
 
 ## TTL Behavior
 

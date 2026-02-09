@@ -17,12 +17,12 @@ import "github.com/vormadev/vorma/kit/cookies"
 
 ## Cookie Type Matrix
 
-| Variant | Value format | Host prefix policy | Typical usage |
-| --- | --- | --- | --- |
-| `SecureCookie[T]` | Encrypted/serialized via `securestring` | `__Host-` in prod, `__Dev-` in dev | Sessions, auth state, sensitive server-only state |
-| `SecureCookieNonHostOnly[T]` | Encrypted/serialized via `securestring` | No prefix | Encrypted cookies needing explicit `Domain`/custom `Path` |
-| `ClientReadableCookie[T ~string]` | Plaintext string | `__Host-` in prod, `__Dev-` in dev | Theme/locale/preferences read by JS |
-| `ClientReadableCookieNonHostOnly[T ~string]` | Plaintext string | No prefix | Client-readable cookies with explicit `Domain`/custom `Path` |
+| Variant                                      | Value format                            | Host prefix policy                 | Typical usage                                                |
+| -------------------------------------------- | --------------------------------------- | ---------------------------------- | ------------------------------------------------------------ |
+| `SecureCookie[T]`                            | Encrypted/serialized via `securestring` | `__Host-` in prod, `__Dev-` in dev | Sessions, auth state, sensitive server-only state            |
+| `SecureCookieNonHostOnly[T]`                 | Encrypted/serialized via `securestring` | No prefix                          | Encrypted cookies needing explicit `Domain`/custom `Path`    |
+| `ClientReadableCookie[T ~string]`            | Plaintext string                        | `__Host-` in prod, `__Dev-` in dev | Theme/locale/preferences read by JS                          |
+| `ClientReadableCookieNonHostOnly[T ~string]` | Plaintext string                        | No prefix                          | Client-readable cookies with explicit `Domain`/custom `Path` |
 
 Host-only variants are the safest default when possible.
 
@@ -52,7 +52,8 @@ These constructors panic for missing required config:
 - `NewManager`: panics if `ManagerConfig.GetKeyset == nil`
 - all cookie constructors: panic if `Manager == nil` or `Name == ""`
 
-Constructors are intended for app startup wiring, where fail-fast panics are usually desirable.
+Constructors are intended for app startup wiring, where fail-fast panics are
+usually desirable.
 
 ## Runtime Behavior
 
@@ -66,7 +67,8 @@ Constructors are intended for app startup wiring, where fail-fast panics are usu
 - `Manager.GetIsDev() == true` (development behavior):
 - cookies are `Secure=false`
 - partitioning is forcibly disabled
-- host-only variants use `__Dev-` prefix and do not force production host-only constraints
+- host-only variants use `__Dev-` prefix and do not force production host-only
+  constraints
 
 ### Secure cookie values
 
@@ -232,7 +234,9 @@ Constructors:
 - `func NewClientReadableCookie[T ~string](cfg ClientReadableCookieConfig) *ClientReadableCookie[T]`
 - `func NewClientReadableCookieNonHostOnly[T ~string](cfg ClientReadableCookieNonHostOnlyConfig) *ClientReadableCookieNonHostOnly[T]`
 
-Methods available on each cookie type (`SecureCookie`, `SecureCookieNonHostOnly`, `ClientReadableCookie`, `ClientReadableCookieNonHostOnly`):
+Methods available on each cookie type (`SecureCookie`,
+`SecureCookieNonHostOnly`, `ClientReadableCookie`,
+`ClientReadableCookieNonHostOnly`):
 
 - `New(...)`
 - `Get(r *http.Request)`

@@ -11,4 +11,5 @@ Package-owned behavior contracts for `lab/sqlutil`.
 ## Requirements
 
 - Define canonical `LAB-SQLUTIL-*` requirement IDs.
-- Keep owner behavior here; consumers reference these IDs instead of duplicating semantics.
+- Keep owner behavior here; consumers reference these IDs instead of duplicating
+  semantics.

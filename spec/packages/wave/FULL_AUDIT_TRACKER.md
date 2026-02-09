@@ -13,13 +13,13 @@ Purpose: From-scratch package-owned audit for Wave runtime specs and ledger.
 
 ## Artifact Pass Board
 
-| Artifact                                        | Structural  | Boundary    | Semantic    | Last Updated | Notes                                                                               |
-| ----------------------------------------------- | ----------- | ----------- | ----------- | ------------ | ----------------------------------------------------------------------------------- |
-| `spec/packages/wave/SPEC.md`                    | in_progress | in_progress | in_progress | 2026-02-09   | Rewritten to runtime-owner `WAVE-RT-*` catalog; full replay reconciliation pending. |
+| Artifact                                        | Structural  | Boundary    | Semantic    | Last Updated | Notes                                                                                                                       |
+| ----------------------------------------------- | ----------- | ----------- | ----------- | ------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `spec/packages/wave/SPEC.md`                    | in_progress | in_progress | in_progress | 2026-02-09   | Rewritten to runtime-owner `WAVE-RT-*` catalog; full replay reconciliation pending.                                         |
 | `spec/packages/wave/TRACEABILITY_MATRIX.md`     | in_progress | in_progress | n/a         | 2026-02-09   | Runtime-only rows authored; evidence is currently source-only where no legacy tests outside `conformance/**` exist in-repo. |
 | `spec/packages/wave/CONFORMANCE_ISSUES.md`      | in_progress | in_progress | n/a         | 2026-02-09   | No active package-level issues; legacy-test absence is documented as source-only evidence state in matrix/ledger artifacts. |
-| `spec/packages/wave/SPEC_CHECKLIST.md`          | in_progress | n/a         | n/a         | 2026-02-09   | Rough pass complete; full pass items open.                                          |
-| `spec/packages/wave/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a         | n/a         | 2026-02-09   | Epoch E2 per-file counters updated for runtime-owner sweep.                         |
+| `spec/packages/wave/SPEC_CHECKLIST.md`          | in_progress | n/a         | n/a         | 2026-02-09   | Rough pass complete; full pass items open.                                                                                  |
+| `spec/packages/wave/NORMATIVE_INTENT_LEDGER.md` | in_progress | n/a         | n/a         | 2026-02-09   | Epoch E2 per-file counters updated for runtime-owner sweep.                                                                 |
 
 ## Round Status
 

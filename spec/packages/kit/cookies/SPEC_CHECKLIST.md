@@ -11,8 +11,10 @@ Last Updated: 2026-02-09
 - [ ] Complete rough structural pass.
 - [ ] Complete rough boundary pass.
 - [ ] Complete rough semantic pass.
-- [ ] Complete full requirement catalog authoring (detailed, comprehensive, non-summary).
-- [ ] Complete full requirement-level traceability reconciliation (coverage complete or issue-backed exceptions).
+- [ ] Complete full requirement catalog authoring (detailed, comprehensive,
+      non-summary).
+- [ ] Complete full requirement-level traceability reconciliation (coverage
+      complete or issue-backed exceptions).
 - [ ] Complete full structural pass.
 - [ ] Complete full boundary pass.
 - [ ] Complete full semantic pass.

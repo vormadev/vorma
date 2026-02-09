@@ -11,4 +11,5 @@ Package-owned behavior contracts for `kit/middleware`.
 ## Requirements
 
 - Define canonical `KIT-MIDDLEWARE-*` requirement IDs.
-- Keep owner behavior here; consumers reference these IDs instead of duplicating semantics.
+- Keep owner behavior here; consumers reference these IDs instead of duplicating
+  semantics.

@@ -4,7 +4,8 @@
 
 Encrypt/decrypt arbitrary gob-serializable values using keysets.
 
-Use this package when you need encrypted binary payloads with key-rotation-compatible reads.
+Use this package when you need encrypted binary payloads with
+key-rotation-compatible reads.
 
 ## Import
 
@@ -55,7 +56,8 @@ Rotation rollout pattern:
 ## Security Notes
 
 - Encryption uses XChaCha20-Poly1305.
-- Package design assumes key-index timing disclosure is acceptable for the use case (as documented in source comments).
+- Package design assumes key-index timing disclosure is acceptable for the use
+  case (as documented in source comments).
 
 ## API Reference
 

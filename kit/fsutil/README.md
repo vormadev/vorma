@@ -54,9 +54,12 @@ _ = state
 - `CopyFile` creates/overwrites destination content.
 - `CopyFile` creates missing destination parent directories with mode `0755`.
 - `CopyFile` preserves source file permission bits on destination file creation.
-- `CopyDir` recursively copies directory entries and delegates file copies to `CopyFile`.
-- `CopyDir`/`CopyFile` copy file contents and basic mode bits, not extended metadata.
-- `MustSub` and `MustReadFile` panic on error; use them where failure is unrecoverable (for example required embedded assets).
+- `CopyDir` recursively copies directory entries and delegates file copies to
+  `CopyFile`.
+- `CopyDir`/`CopyFile` copy file contents and basic mode bits, not extended
+  metadata.
+- `MustSub` and `MustReadFile` panic on error; use them where failure is
+  unrecoverable (for example required embedded assets).
 - `GetCallerDir` returns the directory of the direct caller frame.
 
 ## API Coverage

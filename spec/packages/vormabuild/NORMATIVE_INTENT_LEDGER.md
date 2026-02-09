@@ -14,18 +14,18 @@ Trust Epoch: `E2`
 
 ## Per-File Replay Ledger
 
-| File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
-|---|---|---|---:|---:|---|---|
-| `vormabuild/configschema.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormabuild/fs_to_hash.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormabuild/rebuild_routes.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormabuild/route_registry_build.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormabuild/vite_cmd.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormabuild/vorma_build.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
-| `vormabuild/vorma_gen_ts.go` | in-scope | source+legacy-tests | 0 | 0 | pending |  |
+| File                                 | Scope    | Mining Inputs       | Passes | Clean Passes | Epoch State | Notes |
+| ------------------------------------ | -------- | ------------------- | -----: | -----------: | ----------- | ----- |
+| `vormabuild/configschema.go`         | in-scope | source+legacy-tests |      0 |            0 | pending     |       |
+| `vormabuild/fs_to_hash.go`           | in-scope | source+legacy-tests |      0 |            0 | pending     |       |
+| `vormabuild/rebuild_routes.go`       | in-scope | source+legacy-tests |      0 |            0 | pending     |       |
+| `vormabuild/route_registry_build.go` | in-scope | source+legacy-tests |      0 |            0 | pending     |       |
+| `vormabuild/vite_cmd.go`             | in-scope | source+legacy-tests |      0 |            0 | pending     |       |
+| `vormabuild/vorma_build.go`          | in-scope | source+legacy-tests |      0 |            0 | pending     |       |
+| `vormabuild/vorma_gen_ts.go`         | in-scope | source+legacy-tests |      0 |            0 | pending     |       |
 
 ## Round Log
 
-| Round | Status | New Gaps | Notes |
-|---|---|---:|---|
-| `E2-R1` | in_progress | `TBD` | Package-path reset baseline initialized. |
+| Round   | Status      | New Gaps | Notes                                    |
+| ------- | ----------- | -------: | ---------------------------------------- |
+| `E2-R1` | in_progress |    `TBD` | Package-path reset baseline initialized. |

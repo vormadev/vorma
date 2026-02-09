@@ -12,9 +12,11 @@ import "github.com/vormadev/vorma/kit/jsonutil"
 
 ## When To Use
 
-Use this package when you want simple JSON encode/decode helpers with stable wrapped error messages.
+Use this package when you want simple JSON encode/decode helpers with stable
+wrapped error messages.
 
-If you need advanced behavior (streaming decoders, `DisallowUnknownFields`, custom encoder options), use `encoding/json` directly.
+If you need advanced behavior (streaming decoders, `DisallowUnknownFields`,
+custom encoder options), use `encoding/json` directly.
 
 ## Examples
 
@@ -39,7 +41,8 @@ _ = user
 ## Error Contract
 
 - `Serialize` returns `error encoding JSON: ...` on marshal failure.
-- `Parse[T]` returns the zero value of `T` plus `error decoding JSON: ...` on unmarshal failure.
+- `Parse[T]` returns the zero value of `T` plus `error decoding JSON: ...` on
+  unmarshal failure.
 
 ## API Reference
 

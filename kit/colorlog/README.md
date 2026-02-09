@@ -34,9 +34,9 @@ logger := colorlog.New("worker", colorlog.Options{
 - `Output`: target writer. Defaults to `os.Stdout`.
 - `Level`: minimum level emitted by handler.
 - `UseColor`:
-  - `nil`: color only when `Output` is an `*os.File` tty.
-  - `true`: always emit ANSI colors.
-  - `false`: never emit ANSI colors.
+    - `nil`: color only when `Output` is an `*os.File` tty.
+    - `true`: always emit ANSI colors.
+    - `false`: never emit ANSI colors.
 
 ## Output Shape
 
@@ -64,7 +64,8 @@ log.WithGroup("http").Info("done", "status", 200, "ms", 12)
 ## Concurrency Notes
 
 - Handler clones created by `WithAttrs` and `WithGroup` share a mutex.
-- Concurrent writes from cloned loggers stay line-safe (no interleaving within a line).
+- Concurrent writes from cloned loggers stay line-safe (no interleaving within a
+  line).
 
 ## API Reference
 

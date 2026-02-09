@@ -2,7 +2,8 @@
 
 `github.com/vormadev/vorma/kit/genericsutil`
 
-Generic helpers for zero values, fallback assertions, and type-erased generic pipelines.
+Generic helpers for zero values, fallback assertions, and type-erased generic
+pipelines.
 
 ## Import
 
@@ -20,7 +21,8 @@ n := genericsutil.AssertOrZero[int](v) // 0 (assertion failed)
 ```
 
 Use this when fallback-to-zero is intentional.  
-Avoid it when assertion failure should be explicit (otherwise bugs can be hidden).
+Avoid it when assertion failure should be explicit (otherwise bugs can be
+hidden).
 
 ### Defaulting zero values
 

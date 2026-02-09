@@ -27,11 +27,13 @@ service := envutil.GetStr("SERVICE_NAME", "api")
 Parsing details:
 
 - `GetInt` uses `strconv.Atoi`.
-- `GetBool` uses `strconv.ParseBool` (`1/0`, `t/f`, `true/false`, case-insensitive).
+- `GetBool` uses `strconv.ParseBool` (`1/0`, `t/f`, `true/false`,
+  case-insensitive).
 
 ## When Not To Use
 
-Do not use this package for strict config validation flows where invalid values must fail startup loudly.  
+Do not use this package for strict config validation flows where invalid values
+must fail startup loudly.  
 In those cases, parse explicitly and return/report errors.
 
 ## API Reference

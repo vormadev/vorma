@@ -108,8 +108,8 @@ Then it MUST:
 - run each element through `htmlutil.EscapeIntoTrusted`, and
 - classify into exactly one bucket: `Title`, `Meta`, or `Rest`.
 
-Title classification is `tag == "title"`; meta classification is `tag == "meta"`;
-all others go to `Rest`.
+Title classification is `tag == "title"`; meta classification is
+`tag == "meta"`; all others go to `Rest`.
 
 ### Rendering
 
@@ -196,8 +196,8 @@ Then they MUST expand to canonical `Add(...)` compositions:
 - tag helpers: `Title`, `Description`, `Meta`, `Link`, `Script`, `Style`,
 - attribute helpers: `Attr`, `Name`, `Content`, `Property`, `Rel`, `Href`,
   `Src`, `Type`, `Charset`, `As`, `CrossOrigin`,
-- other helpers: `BoolAttr`, `SelfClosing`, `TextContent`,
-  `DangerousInnerHTML`, `MetaPropertyContent`, `MetaNameContent`.
+- other helpers: `BoolAttr`, `SelfClosing`, `TextContent`, `DangerousInnerHTML`,
+  `MetaPropertyContent`, `MetaNameContent`.
 
 ## Scenario Catalog
 

@@ -7,7 +7,8 @@
 - parsing request input into typed structs
 - composable validation checks over values/objects
 
-It is designed so decode/parse and validation failures share one error type (`ValidationError`).
+It is designed so decode/parse and validation failures share one error type
+(`ValidationError`).
 
 ## Import
 
@@ -17,10 +18,13 @@ import "github.com/vormadev/vorma/kit/validate"
 
 ## Core Building Blocks
 
-- `JSONBodyInto`, `JSONBytesInto`, `JSONStrInto`: decode JSON and then run validation.
-- `URLSearchParamsInto`: parse query params into a struct and then run validation.
+- `JSONBodyInto`, `JSONBytesInto`, `JSONStrInto`: decode JSON and then run
+  validation.
+- `URLSearchParamsInto`: parse query params into a struct and then run
+  validation.
 - `Any(label, value)`: fluent validation over one value.
-- `Object(object)`: fluent validation over named fields on a struct or map with string keys.
+- `Object(object)`: fluent validation over named fields on a struct or map with
+  string keys.
 - `Validator` interface: model-owned validation hook (`Validate() error`).
 
 ## Quick Start
@@ -93,7 +97,8 @@ Rules:
 
 - lifecycle: `Required`, `Optional`, `If`, `Error`
 - membership: `In`, `NotIn`
-- string checks: `Email`, `URL`, `Regex`, `StartsWith`, `EndsWith`, `PermittedChars`
+- string checks: `Email`, `URL`, `Regex`, `StartsWith`, `EndsWith`,
+  `PermittedChars`
 - numeric/length checks: `Min`, `Max`, `RangeInclusive`, `RangeExclusive`
 
 Numeric rules apply to:
@@ -122,17 +127,20 @@ Unknown/unexported struct fields produce validation errors.
 
 ### Chaining behavior
 
-`Required()`/`Optional()` initialize checker state. For optional zero values, the checker is marked done and later chained checks are skipped.
+`Required()`/`Optional()` initialize checker state. For optional zero values,
+the checker is marked done and later chained checks are skipped.
 
 ## `Validator` Interface Behavior
 
-If a value (or its addressable form) implements `Validate() error`, validation is invoked recursively over:
+If a value (or its addressable form) implements `Validate() error`, validation
+is invoked recursively over:
 
 - structs
 - maps (keys and values)
 - slices/arrays
 
-Returned errors are wrapped as `ValidationError` when surfaced through checker `.Error()`.
+Returned errors are wrapped as `ValidationError` when surfaced through checker
+`.Error()`.
 
 ## Parsing Behavior Details
 
@@ -165,7 +173,8 @@ Pointer handling:
 All validation/decode parse failures are represented as `*ValidationError`.
 
 - detect using `validate.IsValidationError(err)`
-- unwrap via `errors.As` / `errors.Is` (`ValidationError.Unwrap()` is implemented)
+- unwrap via `errors.As` / `errors.Is` (`ValidationError.Unwrap()` is
+  implemented)
 
 ## Public API Reference
 

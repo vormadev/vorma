@@ -56,13 +56,18 @@ http.NotFound(w, r)
 - IPv6 loopback (`::1`, bracketed or unbracketed)
 - IPv4-mapped loopback IPv6 forms (for example `::ffff:127.0.0.1`)
 
-It returns `false` for normal hostnames, private RFC1918 addresses, public IPs, and malformed host values.
+It returns `false` for normal hostnames, private RFC1918 addresses, public IPs,
+and malformed host values.
 
 ## API Notes
 
-- `CheckAvailability` opens listeners on `tcp`, `tcp4`, and `tcp6`, on both `:<port>` and `localhost:<port>`. It only returns `true` if all probes succeed.
-- Port availability checks are best-effort snapshots. Another process can claim a port between check and bind.
-- `GetRandomFreePort` is useful for test setup, but you should still bind immediately after obtaining the port.
+- `CheckAvailability` opens listeners on `tcp`, `tcp4`, and `tcp6`, on both
+  `:<port>` and `localhost:<port>`. It only returns `true` if all probes
+  succeed.
+- Port availability checks are best-effort snapshots. Another process can claim
+  a port between check and bind.
+- `GetRandomFreePort` is useful for test setup, but you should still bind
+  immediately after obtaining the port.
 
 ## Public API Coverage
 

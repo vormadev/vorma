@@ -25,7 +25,7 @@ td := theme.GetThemeData(r)
 Use `td.HTMLClass` on `<html>`:
 
 ```html
-<html class="{{.Theme.HTMLClass}}">
+<html class="{{.Theme.HTMLClass}}"></html>
 ```
 
 Inject the system script early in `<head>`:
@@ -63,7 +63,8 @@ Cookie names are fixed internally:
 - `kit_theme`
 - `kit_resolved_theme`
 
-Plan integrations around those names (or wrap this package if custom names are required).
+Plan integrations around those names (or wrap this package if custom names are
+required).
 
 ## API Coverage
 

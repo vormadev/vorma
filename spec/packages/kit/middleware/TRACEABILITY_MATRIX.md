@@ -3,6 +3,6 @@
 Status: Placeholder  
 Last Updated: 2026-02-09
 
-| Requirement ID | Scenario ID(s) | Suite Family | Suite Name | Fixture Type | Test File(s) | Pass Criteria | Status | Owner |
-|---|---|---|---|---|---|---|---|---|
-| `KIT-MIDDLEWARE-PLACEHOLDER-001` | `KIT-MIDDLEWARE-SCN-PLACEHOLDER-001` | kit/middleware | pending | source-contract | pending | Placeholder row until requirements are mined. | missing | `kit/middleware` |
+| Requirement ID                   | Scenario ID(s)                       | Suite Family   | Suite Name | Fixture Type    | Test File(s) | Pass Criteria                                 | Status  | Owner            |
+| -------------------------------- | ------------------------------------ | -------------- | ---------- | --------------- | ------------ | --------------------------------------------- | ------- | ---------------- |
+| `KIT-MIDDLEWARE-PLACEHOLDER-001` | `KIT-MIDDLEWARE-SCN-PLACEHOLDER-001` | kit/middleware | pending    | source-contract | pending      | Placeholder row until requirements are mined. | missing | `kit/middleware` |

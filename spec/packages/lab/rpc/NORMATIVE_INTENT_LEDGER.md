@@ -14,13 +14,13 @@ Trust Epoch: `E2`
 
 ## Per-File Replay Ledger
 
-| File | Scope | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
-|---|---|---|---:|---:|---|---|
-| `lab/rpc/rpc.go` | in-scope | source+tests | 0 | 0 | pending |  |
-| `lab/rpc/rpc_test.go` | in-scope | source+tests | 0 | 0 | pending |  |
+| File                  | Scope    | Mining Inputs | Passes | Clean Passes | Epoch State | Notes |
+| --------------------- | -------- | ------------- | -----: | -----------: | ----------- | ----- |
+| `lab/rpc/rpc.go`      | in-scope | source+tests  |      0 |            0 | pending     |       |
+| `lab/rpc/rpc_test.go` | in-scope | source+tests  |      0 |            0 | pending     |       |
 
 ## Round Log
 
-| Round | Status | New Gaps | Notes |
-|---|---|---:|---|
-| `E2-R1` | in_progress | `TBD` | Package-path reset baseline initialized. |
+| Round   | Status      | New Gaps | Notes                                    |
+| ------- | ----------- | -------: | ---------------------------------------- |
+| `E2-R1` | in_progress |    `TBD` | Package-path reset baseline initialized. |

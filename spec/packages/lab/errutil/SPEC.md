@@ -11,4 +11,5 @@ Package-owned behavior contracts for `lab/errutil`.
 ## Requirements
 
 - Define canonical `LAB-ERRUTIL-*` requirement IDs.
-- Keep owner behavior here; consumers reference these IDs instead of duplicating semantics.
+- Keep owner behavior here; consumers reference these IDs instead of duplicating
+  semantics.

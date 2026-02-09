@@ -45,7 +45,8 @@ Invalid charset input returns an error.
 
 ## Randomness and Bias
 
-Generation uses `crypto/rand` plus rejection sampling so character distribution stays uniform even when charset size does not divide 256.
+Generation uses `crypto/rand` plus rejection sampling so character distribution
+stays uniform even when charset size does not divide 256.
 
 ## API Reference
 
