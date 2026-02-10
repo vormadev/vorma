@@ -1,27 +1,16 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	getHistoryInstance,
-	vormaNavigate,
-} from "./client";
+import { getHistoryInstance, vormaNavigate } from "./client";
 
 import {
 	addRouteChangeListener,
 	type RouteChangeEventDetail,
 } from "./events.ts";
 
-import {
-	initCustomHistory,
-} from "./history/history.ts";
+import { initCustomHistory } from "./history/history.ts";
 
-import {
-	initClient,
-} from "./init_client.ts";
+import { initClient } from "./init_client.ts";
 
 import {
 	__applyScrollState,
@@ -228,9 +217,8 @@ describeNavigationTestSuite(({ addListener }) => {
 				};
 
 				// Import and call customHistoryListener
-				const { customHistoryListener } = await import(
-					"./history/history.ts"
-				);
+				const { customHistoryListener } =
+					await import("./history/history.ts");
 				await customHistoryListener(update as any);
 
 				await vi.runAllTimersAsync();
@@ -383,5 +371,4 @@ describeNavigationTestSuite(({ addListener }) => {
 			});
 		});
 	});
-
 });

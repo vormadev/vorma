@@ -1,15 +1,7 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	beginNavigation,
-	getStatus,
-	vormaNavigate,
-} from "./client";
+import { beginNavigation, getStatus, vormaNavigate } from "./client";
 
 import {
 	createMockResponse,
@@ -253,6 +245,5 @@ describeNavigationTestSuite(() => {
 				expect(fetch).toHaveBeenCalledTimes(1);
 			});
 		});
-
 	});
 });

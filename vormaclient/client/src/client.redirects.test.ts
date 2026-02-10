@@ -1,20 +1,9 @@
-import {
-	afterEach,
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-	getHistoryInstance,
-	submit,
-	vormaNavigate,
-} from "./client";
+import { getHistoryInstance, submit, vormaNavigate } from "./client";
 
-import {
-	addBuildIDListener,
-} from "./events.ts";
+import { addBuildIDListener } from "./events.ts";
 
 import {
 	createMockResponse,
@@ -427,5 +416,4 @@ describeNavigationTestSuite(() => {
 			});
 		});
 	});
-
 });

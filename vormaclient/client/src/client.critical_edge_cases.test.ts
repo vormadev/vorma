@@ -1,9 +1,5 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
 import {
 	beginNavigation,
@@ -20,13 +16,9 @@ import {
 	addStatusListener,
 } from "./events.ts";
 
-import {
-	__getPrefetchHandlers,
-} from "./links.ts";
+import { __getPrefetchHandlers } from "./links.ts";
 
-import {
-	__vormaClientGlobal,
-} from "./vorma_ctx/vorma_ctx.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 import {
 	createMockResponse,
@@ -412,5 +404,4 @@ describeNavigationTestSuite(() => {
 		// Clean up
 		document.body.removeChild(anchor);
 	});
-
 });

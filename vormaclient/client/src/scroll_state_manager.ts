@@ -1,77 +1,44 @@
 import { HistoryManager } from "./history/history.ts";
+import {
+	restoreRecentPageRefreshScrollState,
+	savePageRefreshScrollStateSnapshot,
+} from "./scroll_state_refresh_state.ts";
+import {
+	getStoredScrollState,
+	saveStoredScrollState,
+} from "./scroll_state_storage.ts";
+import type { ScrollState } from "./scroll_state_types.ts";
 
-export type ScrollState = { x: number; y: number } | { hash: string };
+export type { ScrollState } from "./scroll_state_types.ts";
 
-class ScrollStateManager {
-	private readonly STORAGE_KEY = "__vorma__scrollStateMap";
-	private readonly PAGE_REFRESH_KEY = "__vorma__pageRefreshScrollState";
-	private readonly MAX_ENTRIES = 50;
-
-	saveState(key: string, state: ScrollState): void {
-		const map = this.getMap();
-		map.set(key, state);
-
-		// Enforce size limit
-		if (map.size > this.MAX_ENTRIES) {
-			const firstKey = map.keys().next().value;
-			if (firstKey) map.delete(firstKey);
-		}
-
-		this.saveMap(map);
+function createScrollStateManager() {
+	function saveState(key: string, state: ScrollState): void {
+		saveStoredScrollState(key, state);
 	}
 
-	getState(key: string): ScrollState | undefined {
-		return this.getMap().get(key);
+	function getState(key: string): ScrollState | undefined {
+		return getStoredScrollState(key);
 	}
 
-	savePageRefreshState(): void {
-		const state = {
-			x: window.scrollX,
-			y: window.scrollY,
-			unix: Date.now(),
-			href: window.location.href,
-		};
-		sessionStorage.setItem(this.PAGE_REFRESH_KEY, JSON.stringify(state));
+	function savePageRefreshState(): void {
+		savePageRefreshScrollStateSnapshot();
 	}
 
-	restorePageRefreshState(): void {
-		const stored = sessionStorage.getItem(this.PAGE_REFRESH_KEY);
-		if (!stored) return;
-
-		try {
-			const state = JSON.parse(stored);
-			if (
-				state.href === window.location.href &&
-				Date.now() - state.unix < 5000
-			) {
-				sessionStorage.removeItem(this.PAGE_REFRESH_KEY);
-				window.requestAnimationFrame(() => {
-					__applyScrollState({ x: state.x, y: state.y });
-				});
-			}
-		} catch {}
+	function restorePageRefreshState(): void {
+		restoreRecentPageRefreshScrollState((x, y) => {
+			__applyScrollState({ x, y });
+		});
 	}
 
-	private getMap(): Map<string, ScrollState> {
-		const stored = sessionStorage.getItem(this.STORAGE_KEY);
-		if (!stored) return new Map();
-
-		try {
-			return new Map(JSON.parse(stored));
-		} catch {
-			return new Map();
-		}
-	}
-
-	private saveMap(map: Map<string, ScrollState>): void {
-		sessionStorage.setItem(
-			this.STORAGE_KEY,
-			JSON.stringify(Array.from(map.entries())),
-		);
-	}
+	return {
+		saveState,
+		getState,
+		savePageRefreshState,
+		restorePageRefreshState,
+	};
 }
 
-export const scrollStateManager = new ScrollStateManager();
+export const scrollStateManager = createScrollStateManager();
 
 export function __applyScrollState(state?: ScrollState): void {
 	if (!state) {

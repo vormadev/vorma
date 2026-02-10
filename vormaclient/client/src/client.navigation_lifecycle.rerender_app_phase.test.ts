@@ -1,9 +1,5 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
 import {
 	getHistoryInstance,
@@ -17,13 +13,9 @@ import {
 	type RouteChangeEventDetail,
 } from "./events.ts";
 
-import {
-	__applyScrollState,
-} from "./scroll_state_manager.ts";
+import { __applyScrollState } from "./scroll_state_manager.ts";
 
-import {
-	__vormaClientGlobal,
-} from "./vorma_ctx/vorma_ctx.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 import {
 	createMockResponse,

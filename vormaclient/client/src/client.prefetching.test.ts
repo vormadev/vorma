@@ -1,18 +1,9 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	getStatus,
-	vormaNavigate,
-} from "./client";
+import { getStatus, vormaNavigate } from "./client";
 
-import {
-	__getPrefetchHandlers,
-} from "./links.ts";
+import { __getPrefetchHandlers } from "./links.ts";
 
 import {
 	createMockResponse,
@@ -250,5 +241,4 @@ describeNavigationTestSuite(() => {
 			});
 		});
 	});
-
 });

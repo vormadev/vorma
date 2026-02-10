@@ -1,10 +1,9 @@
+// READY_TO_DELETE_AFTER_SIGNOFF
 import { expect, it, vi } from "vitest";
 import { panic } from "../utils/errors.ts";
 import type { HeadEl } from "../vorma_ctx/vorma_ctx.ts";
 import { getStartAndEndComments, updateHeadEls } from "./head_elements.ts";
-import {
-	describeUpdateHeadElsSuite,
-} from "./head.test.helpers.ts";
+import { describeUpdateHeadElsSuite } from "./head.test.helpers.ts";
 
 vi.mock("../utils/errors.ts", async () => {
 	const { createHeadErrorsMock } = await import("./head.test.helpers.ts");

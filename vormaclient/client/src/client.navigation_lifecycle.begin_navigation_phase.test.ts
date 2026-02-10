@@ -1,18 +1,9 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	beginNavigation,
-	getStatus,
-} from "./client";
+import { beginNavigation, getStatus } from "./client";
 
-import {
-	addStatusListener,
-} from "./events.ts";
+import { addStatusListener } from "./events.ts";
 
 import {
 	createMockResponse,
@@ -142,6 +133,5 @@ describeNavigationTestSuite(({ addListener }) => {
 				control1.abortController?.abort();
 			});
 		});
-
 	});
 });

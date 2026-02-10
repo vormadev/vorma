@@ -1,15 +1,7 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	getStatus,
-	submit,
-	vormaNavigate,
-} from "./client";
+import { getStatus, submit, vormaNavigate } from "./client";
 
 import {
 	addRouteChangeListener,

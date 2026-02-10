@@ -1,17 +1,9 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	vormaNavigate,
-} from "./client";
+import { vormaNavigate } from "./client";
 
-import {
-	__vormaClientGlobal,
-} from "./vorma_ctx/vorma_ctx.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 import {
 	createMockResponse,
@@ -267,5 +259,4 @@ describeNavigationTestSuite(() => {
 			});
 		});
 	});
-
 });

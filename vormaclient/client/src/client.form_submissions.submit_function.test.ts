@@ -1,20 +1,9 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	getStatus,
-	navigationStateManager,
-	submit,
-} from "./client";
+import { getStatus, navigationStateManager, submit } from "./client";
 
-import {
-	addStatusListener,
-	type StatusEventDetail,
-} from "./events.ts";
+import { addStatusListener, type StatusEventDetail } from "./events.ts";
 
 import {
 	createMockResponse,
@@ -546,6 +535,5 @@ describeNavigationTestSuite(({ addListener }) => {
 				expect((result as any).error).toBe("Aborted");
 			});
 		});
-
 	});
 });

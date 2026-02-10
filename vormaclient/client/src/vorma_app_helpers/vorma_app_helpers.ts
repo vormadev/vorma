@@ -1,4 +1,6 @@
-import { serializeToSearchParams } from "vorma/kit/json";
+import { resolveVormaRequestBody } from "./body_resolution.ts";
+import { resolveVormaPath } from "./path_resolution.ts";
+import { buildVormaURL } from "./url_build.ts";
 import type { SubmitOptions } from "../client.ts";
 
 export type VormaAppConfig = {
@@ -203,88 +205,20 @@ export function buildQueryURL(
 	vormaAppConfig: VormaAppConfig,
 	props: Props,
 ): URL {
-	return buildURL({ vormaAppConfig, props, type: "query" });
+	return buildVormaURL({ vormaAppConfig, props, type: "query" });
 }
 
 export function buildMutationURL(
 	vormaAppConfig: VormaAppConfig,
 	props: Props,
 ): URL {
-	return buildURL({ vormaAppConfig, props, type: "mutation" });
+	return buildVormaURL({ vormaAppConfig, props, type: "mutation" });
 }
 
 export function resolveBody(props: Props): BodyInit | null | undefined {
-	const { input } = props;
-	if (
-		input == null ||
-		typeof input === "string" ||
-		input instanceof Blob ||
-		input instanceof FormData ||
-		input instanceof URLSearchParams ||
-		input instanceof ReadableStream ||
-		input instanceof ArrayBuffer ||
-		ArrayBuffer.isView(input)
-	) {
-		return input;
-	}
-	return JSON.stringify(input);
-}
-
-function buildURL(opts: APIClientHelperOpts): URL {
-	const base_path = stripTrailingSlash(
-		opts.vormaAppConfig.actionsRouterMountRoot,
-	);
-	const resolved_path = __resolvePath(opts);
-	const url = new URL(base_path + resolved_path, getCurrentOrigin());
-
-	if (opts.type === "query" && opts.props.input) {
-		url.search = serializeToSearchParams(opts.props.input).toString();
-	}
-
-	return url;
+	return resolveVormaRequestBody(props.input);
 }
 
 export function __resolvePath(opts: APIClientHelperOpts): string {
-	const { props, vormaAppConfig } = opts;
-	let path = props.pattern;
-
-	let dynamicParamPrefixRune = vormaAppConfig.actionsDynamicRune;
-	let splatSegmentRune = vormaAppConfig.actionsSplatRune;
-
-	if (opts.type === "loader") {
-		dynamicParamPrefixRune = vormaAppConfig.loadersDynamicRune;
-		splatSegmentRune = vormaAppConfig.loadersSplatRune;
-	}
-
-	if ("params" in props && props.params) {
-		for (const [key, value] of Object.entries(props.params)) {
-			path = path.replace(
-				`${dynamicParamPrefixRune}${key}`,
-				String(value),
-			);
-		}
-	}
-
-	if ("splatValues" in props && props.splatValues) {
-		const splatPath = (props.splatValues as Array<string>).join("/");
-		path = path.replace(splatSegmentRune, splatPath);
-	}
-
-	// Strip explicit index segment
-	if (opts.type === "loader" && vormaAppConfig.loadersExplicitIndexSegment) {
-		const indexSegment = `/${vormaAppConfig.loadersExplicitIndexSegment}`;
-		if (path.endsWith(indexSegment)) {
-			path = path.slice(0, -indexSegment.length) || "/";
-		}
-	}
-
-	return path;
-}
-
-function getCurrentOrigin(): string {
-	return new URL(window.location.href).origin;
-}
-
-function stripTrailingSlash(path: string): string {
-	return path.endsWith("/") ? path.slice(0, -1) : path;
+	return resolveVormaPath(opts);
 }

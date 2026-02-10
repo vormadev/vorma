@@ -1,25 +1,13 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	getHistoryInstance,
-} from "./client";
+import { getHistoryInstance } from "./client";
 
-import {
-	addLocationListener,
-} from "./events.ts";
+import { addLocationListener } from "./events.ts";
 
-import {
-	customHistoryListener,
-} from "./history/history.ts";
+import { customHistoryListener } from "./history/history.ts";
 
-import {
-	__applyScrollState,
-} from "./scroll_state_manager.ts";
+import { __applyScrollState } from "./scroll_state_manager.ts";
 
 import {
 	createMockResponse,
@@ -153,5 +141,4 @@ describeNavigationTestSuite(() => {
 			});
 		});
 	});
-
 });

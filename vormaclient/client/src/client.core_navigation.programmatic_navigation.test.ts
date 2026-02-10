@@ -1,14 +1,7 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	getHistoryInstance,
-	vormaNavigate,
-} from "./client";
+import { getHistoryInstance, vormaNavigate } from "./client";
 
 import {
 	createMockResponse,

@@ -1,14 +1,7 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	__getPrefetchHandlers,
-	__makeLinkOnClickFn,
-} from "./links.ts";
+import { __getPrefetchHandlers, __makeLinkOnClickFn } from "./links.ts";
 
 import {
 	createMockResponse,
@@ -134,6 +127,5 @@ describeNavigationTestSuite(() => {
 				handlers?.stop();
 			});
 		});
-
 	});
 });

@@ -1,21 +1,11 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
-import {
-	getHistoryInstance,
-} from "./client";
+import { getHistoryInstance } from "./client";
 
-import {
-	initClient,
-} from "./init_client.ts";
+import { initClient } from "./init_client.ts";
 
-import {
-	__vormaClientGlobal,
-} from "./vorma_ctx/vorma_ctx.ts";
+import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 import {
 	describeNavigationTestSuite,
@@ -165,5 +155,4 @@ describeNavigationTestSuite(() => {
 			expect(__vormaClientGlobal.get("isTouchDevice")).toBe(true);
 		});
 	});
-
 });

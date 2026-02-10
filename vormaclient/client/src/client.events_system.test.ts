@@ -1,9 +1,5 @@
-import {
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
+// READY_TO_DELETE_AFTER_SIGNOFF
+import { describe, expect, it, vi } from "vitest";
 
 import {
 	beginNavigation,
@@ -22,7 +18,6 @@ import {
 	addStatusListener,
 	type RouteChangeEventDetail,
 } from "./events.ts";
-
 
 import {
 	createMockResponse,
@@ -331,9 +326,8 @@ describeNavigationTestSuite(({ addListener }) => {
 				);
 
 				// Import and call customHistoryListener directly
-				const { customHistoryListener } = await import(
-					"./history/history.ts"
-				);
+				const { customHistoryListener } =
+					await import("./history/history.ts");
 
 				// Simulate a history update with a different key
 				await customHistoryListener({
@@ -413,5 +407,4 @@ describeNavigationTestSuite(({ addListener }) => {
 			});
 		});
 	});
-
 });
