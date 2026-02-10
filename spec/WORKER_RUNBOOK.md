@@ -1,12 +1,16 @@
 # Worker Runbook
 
 This is the single source of instructions for normative intent mining agents.
+It is intentionally mining-only.
 
 ## Mission
 
 Produce rebuild-grade normative specs with 100% assertion accounting,
 evidence-backed requirements, and two independent zero-note review passes before
 completion.
+
+This runbook covers only the mining contribution. Independent reviewer agents
+perform review passes in separate claim contexts after miner handoff.
 
 Naming rule: mirror existing repository directory names for spec package paths.
 The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
@@ -35,17 +39,25 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
     - `NON_MEANINGFUL` rows include no requirement mappings
     - derived unclassified assertion count is `0`.
 10. One active `CLAIMED` slot per owner.
-11. Only the slot owner may mark that slot `DONE`.
-12. Do not mark a slot `DONE` unless all guard checks pass and both independent
+11. One active `CLAIMED` slot per claim actor identity.
+12. Set a stable, unique `SPEC_AGENT_ID` for your agent process before claiming.
+    Do not change it during the task.
+13. Miner agents must not run `record_review_pass` or `mark_slot_done` for the
+    slot they mined.
+14. Miner agents must not claim extra slots for review aliases or self-review.
+15. Only the slot owner may mark that slot `DONE`.
+16. Do not mark a slot `DONE` unless all guard checks pass and both independent
     review passes are `PASS_NO_NOTES` on the current artifact hash.
-13. Do not add charts/diagram blocks to package artifacts.
-14. After editing any `spec/**/*.md` or `spec/**/*.json`, run Prettier:
+17. Do not add charts/diagram blocks to package artifacts.
+18. After editing any `spec/**/*.md` or `spec/**/*.json`, run Prettier:
     `pnpm prettier --write <files...>`.
-15. `spec/DECISIONS.json` entries must use `status = OPEN|RESOLVED`; `OPEN`
+19. `spec/DECISIONS.json` entries must use `status = OPEN|RESOLVED`; `OPEN`
     entries must keep `Selected Option`, `Rationale`, and `Evidence` as `-`.
-16. Review passes must be recorded from the reviewer's claimed worktree/branch
+20. Review passes must be recorded from the reviewer's claimed worktree/branch
     context; reviewers cannot share the miner claim context or each other’s
     claim context.
+21. Review passes must be recorded by a different claim actor identity than the
+    miner, and pass 1/pass 2 must use different claim actor identities.
 
 ## Required Read Order
 
@@ -61,10 +73,11 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
 1. Ensure scaffold/governance baseline is committed before first claim (the
    claim script enforces this when all slots are `OPEN`).
 
-2. Claim the next slot:
+2. Set agent identity and claim the next slot:
 
 ```bash
 export GOCACHE=${GOCACHE:-/tmp/go-build}
+export SPEC_AGENT_ID=<unique-agent-id>
 go run ./spec/tools/cmd/claim_lowest_open_slot <owner>
 ```
 
@@ -79,28 +92,21 @@ go run ./spec/tools/cmd/claim_lowest_open_slot <owner>
 go run ./spec/tools/cmd/check_all
 ```
 
-6. Record review passes (reviewers must differ from miner and from each other,
-   and must provide distinct reviewer claim slots they own):
+6. Stop and hand off after mining checks pass. Do not run review/done commands
+   for your mined slot.
+
+## Reviewer and Completion Flow (Independent Agents)
+
+These commands are intentionally run by other agents, not the miner:
 
 ```bash
 go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> 1 PASS_NO_NOTES -
 go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner_2> <reviewer_claim_slot_2> 2 PASS_NO_NOTES -
-```
-
-`record_review_pass` validates that the command is executed from the worktree
-and branch context captured when the reviewer claim slot was created.
-
-Use `FAIL_NOTES` with a notes reference when findings exist:
-
-```bash
-go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> 1 FAIL_NOTES spec/DECISIONS.json#DEC-0001
-```
-
-7. After both review passes are `PASS_NO_NOTES` and checks pass, mark slot done:
-
-```bash
 go run ./spec/tools/cmd/mark_slot_done SLOT-XXX <owner>
 ```
+
+`record_review_pass` enforces reviewer claim branch/context/actor identity
+matching and rejects self-review by the mined slot actor.
 
 ## Parallel Agent Model
 

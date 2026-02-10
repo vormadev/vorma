@@ -9,13 +9,17 @@ incomplete, edits are restricted to `spec/**`.
 For parallel mining, use isolated git worktrees (one per agent). Shared checkout
 is unsupported by guard checks.
 
-Dispatch claims capture branch and worktree claim context metadata; review
-passes must be recorded from the matching reviewer context and cannot reuse the
-miner context.
+Dispatch claims capture branch, worktree claim context, and claim actor
+metadata. Review passes must be recorded from the matching reviewer
+branch/context/actor and cannot reuse the miner context/actor.
+
+Use a stable, unique `SPEC_AGENT_ID` per agent process to keep actor identity
+independent across miners/reviewers.
 
 Primary entrypoints:
 
-- `spec/WORKER_RUNBOOK.md`: single-file instructions for mining agents.
+- `spec/WORKER_RUNBOOK.md`: mining-only instructions for worker agents
+  (stop at handoff; independent agents perform reviews).
 - `spec/PROGRAM.md`: phase model, quality bar, review gates, and completion
   rules.
 - `spec/OWNERSHIP_BOUNDARIES.md`: single-owner and inheritance-by-reference

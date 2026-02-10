@@ -26,6 +26,11 @@ func main() {
 	} else if os.Getenv("USER") != "" {
 		actorOwner = os.Getenv("USER")
 	}
+	actorClaimID, err := specutil.CurrentClaimActor()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 
 	lockPath, err := specutil.DispatchLockPath()
 	if err != nil {
@@ -52,8 +57,14 @@ func main() {
 		if row.ClaimBranch == "-" || row.ClaimContext == "-" {
 			return fmt.Errorf("slot is missing claim branch/context metadata: %s", slotID)
 		}
+		if row.ClaimActor == "-" {
+			return fmt.Errorf("slot is missing claim actor metadata: %s", slotID)
+		}
 		if row.Owner != actorOwner {
 			return fmt.Errorf("owner mismatch: slot %s is owned by %s, but actor is %s", slotID, row.Owner, actorOwner)
+		}
+		if row.ClaimActor != actorClaimID {
+			return fmt.Errorf("claim actor mismatch for slot %s", slotID)
 		}
 
 		specFile := row.SpecPath + "/spec.json"

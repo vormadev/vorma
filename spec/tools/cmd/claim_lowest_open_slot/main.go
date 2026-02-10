@@ -29,6 +29,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "owner name '-' is reserved and cannot be used")
 		os.Exit(1)
 	}
+	claimActor, err := specutil.CurrentClaimActor()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 
 	lockPath, err := specutil.DispatchLockPath()
 	if err != nil {
@@ -60,8 +65,20 @@ func main() {
 		}
 
 		for _, row := range doc.Rows {
-			if row.Status == "CLAIMED" && row.Owner == owner {
+			if row.Status != "CLAIMED" {
+				continue
+			}
+			if row.Owner == owner && row.ClaimActor != "-" && row.ClaimActor != claimActor {
+				return fmt.Errorf("owner has an active claim from a different claim actor: %s", owner)
+			}
+			if row.ClaimActor == claimActor && row.Owner != "-" && row.Owner != owner {
+				return fmt.Errorf("claim actor already has an active claim for owner %s; cannot claim as %s", row.Owner, owner)
+			}
+			if row.Owner == owner {
 				return fmt.Errorf("owner already has an active claim: %s (%s)", owner, row.SlotID)
+			}
+			if row.ClaimActor == claimActor {
+				return fmt.Errorf("claim actor already has an active claim: %s (%s)", row.Owner, row.SlotID)
 			}
 		}
 
@@ -92,18 +109,20 @@ func main() {
 		doc.Rows[openIndex].Notes = "claimed"
 		doc.Rows[openIndex].ClaimBranch = branch
 		doc.Rows[openIndex].ClaimContext = claimContext
+		doc.Rows[openIndex].ClaimActor = claimActor
 
 		if err := specutil.SaveDispatchState("spec/MINING_DISPATCH.json", doc); err != nil {
 			return err
 		}
 
 		fmt.Printf(
-			"claimed %s (%s) for owner %s [branch=%s claim_context=%s]\n",
+			"claimed %s (%s) for owner %s [branch=%s claim_context=%s claim_actor=%s]\n",
 			doc.Rows[openIndex].SlotID,
 			doc.Rows[openIndex].SpecPath,
 			owner,
 			branch,
 			claimContext[:12],
+			claimActor[:12],
 		)
 		return nil
 	})

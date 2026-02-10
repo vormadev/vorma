@@ -9,7 +9,10 @@
 			"source_roots": "vorma.go",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-002",
@@ -19,7 +22,10 @@
 			"source_roots": "vormabuild/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-003",
@@ -29,7 +35,10 @@
 			"source_roots": "vormaruntime/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-004",
@@ -39,7 +48,10 @@
 			"source_roots": "vormaclient/client/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-005",
@@ -49,7 +61,10 @@
 			"source_roots": "vormaclient/react/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-006",
@@ -59,7 +74,10 @@
 			"source_roots": "vormaclient/preact/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-007",
@@ -69,7 +87,10 @@
 			"source_roots": "vormaclient/solid/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-008",
@@ -79,7 +100,10 @@
 			"source_roots": "vormaclient/vite/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-009",
@@ -89,7 +113,10 @@
 			"source_roots": "wave/*.go",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-010",
@@ -99,7 +126,10 @@
 			"source_roots": "wave/tooling/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-011",
@@ -109,7 +139,10 @@
 			"source_roots": "kit/_typescript/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-012",
@@ -119,7 +152,10 @@
 			"source_roots": "kit/_typescript/converters/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-013",
@@ -129,7 +165,10 @@
 			"source_roots": "kit/_typescript/cookies/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-014",
@@ -139,7 +178,10 @@
 			"source_roots": "kit/_typescript/csrf/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-015",
@@ -149,7 +191,10 @@
 			"source_roots": "kit/_typescript/debounce/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-016",
@@ -159,7 +204,10 @@
 			"source_roots": "kit/_typescript/fmt/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-017",
@@ -169,7 +217,10 @@
 			"source_roots": "kit/_typescript/json/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-018",
@@ -179,7 +230,10 @@
 			"source_roots": "kit/_typescript/listeners/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-019",
@@ -189,7 +243,10 @@
 			"source_roots": "kit/_typescript/matcher/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-020",
@@ -199,7 +256,10 @@
 			"source_roots": "kit/_typescript/theme/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-021",
@@ -209,7 +269,10 @@
 			"source_roots": "kit/_typescript/url/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-022",
@@ -219,7 +282,10 @@
 			"source_roots": "kit/bytesutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-023",
@@ -229,7 +295,10 @@
 			"source_roots": "kit/colorlog/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-024",
@@ -239,7 +308,10 @@
 			"source_roots": "kit/contextutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-025",
@@ -249,7 +321,10 @@
 			"source_roots": "kit/cookies/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-026",
@@ -259,7 +334,10 @@
 			"source_roots": "kit/cryptoutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-027",
@@ -269,7 +347,10 @@
 			"source_roots": "kit/csrf/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-028",
@@ -279,7 +360,10 @@
 			"source_roots": "kit/envutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-029",
@@ -289,7 +373,10 @@
 			"source_roots": "kit/executil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-030",
@@ -299,7 +386,10 @@
 			"source_roots": "kit/fsutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-031",
@@ -309,7 +399,10 @@
 			"source_roots": "kit/genericsutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-032",
@@ -319,7 +412,10 @@
 			"source_roots": "kit/grace/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-033",
@@ -329,7 +425,10 @@
 			"source_roots": "kit/headels/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-034",
@@ -339,7 +438,10 @@
 			"source_roots": "kit/htmlutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-035",
@@ -349,7 +451,10 @@
 			"source_roots": "kit/id/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-036",
@@ -359,7 +464,10 @@
 			"source_roots": "kit/ioutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-037",
@@ -369,7 +477,10 @@
 			"source_roots": "kit/jsonutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-038",
@@ -379,7 +490,10 @@
 			"source_roots": "kit/keyset/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-039",
@@ -389,7 +503,10 @@
 			"source_roots": "kit/lazyget/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-040",
@@ -399,7 +516,10 @@
 			"source_roots": "kit/lru/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-041",
@@ -409,7 +529,10 @@
 			"source_roots": "kit/matcher/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-042",
@@ -419,7 +542,10 @@
 			"source_roots": "kit/middleware/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-043",
@@ -429,7 +555,10 @@
 			"source_roots": "kit/middleware/etag/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-044",
@@ -439,7 +568,10 @@
 			"source_roots": "kit/middleware/healthcheck/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-045",
@@ -449,7 +581,10 @@
 			"source_roots": "kit/middleware/robotstxt/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-046",
@@ -459,7 +594,10 @@
 			"source_roots": "kit/middleware/secureheaders/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-047",
@@ -469,7 +607,10 @@
 			"source_roots": "kit/mux/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-048",
@@ -479,7 +620,10 @@
 			"source_roots": "kit/netutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-049",
@@ -489,7 +633,10 @@
 			"source_roots": "kit/reflectutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-050",
@@ -499,7 +646,10 @@
 			"source_roots": "kit/response/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-051",
@@ -509,7 +659,10 @@
 			"source_roots": "kit/securebytes/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-052",
@@ -519,7 +672,10 @@
 			"source_roots": "kit/securestring/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-053",
@@ -529,7 +685,10 @@
 			"source_roots": "kit/set/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-054",
@@ -539,7 +698,10 @@
 			"source_roots": "kit/signedcookie/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-055",
@@ -549,7 +711,10 @@
 			"source_roots": "kit/tasks/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-056",
@@ -559,7 +724,10 @@
 			"source_roots": "kit/theme/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-057",
@@ -569,7 +737,10 @@
 			"source_roots": "kit/validate/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-058",
@@ -579,7 +750,10 @@
 			"source_roots": "lab/bumper/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-059",
@@ -589,7 +763,10 @@
 			"source_roots": "lab/cliutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-060",
@@ -599,7 +776,10 @@
 			"source_roots": "lab/errutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-061",
@@ -609,7 +789,10 @@
 			"source_roots": "lab/esbuildutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-062",
@@ -619,7 +802,10 @@
 			"source_roots": "lab/fsmarkdown/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-063",
@@ -629,7 +815,10 @@
 			"source_roots": "lab/jsonschema/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-064",
@@ -639,7 +828,10 @@
 			"source_roots": "lab/mailutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-065",
@@ -649,7 +841,10 @@
 			"source_roots": "lab/parseutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-066",
@@ -659,7 +854,10 @@
 			"source_roots": "lab/repoconcat/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-067",
@@ -669,7 +867,10 @@
 			"source_roots": "lab/rpc/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-068",
@@ -679,7 +880,10 @@
 			"source_roots": "lab/sqlutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-069",
@@ -689,7 +893,10 @@
 			"source_roots": "lab/stringsutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-070",
@@ -699,7 +906,10 @@
 			"source_roots": "lab/timer/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-071",
@@ -709,7 +919,10 @@
 			"source_roots": "lab/tsgen/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-072",
@@ -719,7 +932,10 @@
 			"source_roots": "lab/tsgen/tsgencore/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-073",
@@ -729,7 +945,10 @@
 			"source_roots": "lab/viteutil/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-074",
@@ -739,7 +958,10 @@
 			"source_roots": "lab/xyz/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-075",
@@ -749,7 +971,10 @@
 			"source_roots": "bootstrap/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		},
 		{
 			"slot_id": "SLOT-076",
@@ -759,7 +984,10 @@
 			"source_roots": "vormaclient/create/**",
 			"owner": "-",
 			"updated_utc": "-",
-			"notes": "-"
+			"notes": "-",
+			"claim_branch": "-",
+			"claim_context": "-",
+			"claim_actor": "-"
 		}
 	]
 }

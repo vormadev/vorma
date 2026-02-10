@@ -157,6 +157,7 @@ func main() {
 		Notes         string `json:"notes"`
 		ClaimBranch   string `json:"claim_branch"`
 		ClaimContext  string `json:"claim_context"`
+		ClaimActor    string `json:"claim_actor"`
 	}
 	type dispatchDoc struct {
 		SchemaVersion string         `json:"schema_version"`
@@ -175,6 +176,7 @@ func main() {
 			Notes:         "-",
 			ClaimBranch:   "-",
 			ClaimContext:  "-",
+			ClaimActor:    "-",
 		})
 	}
 	dispatchPayload, err := json.MarshalIndent(dispatchDoc{

@@ -10,6 +10,7 @@ import (
 )
 
 var reClaimContext = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var reClaimActor = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func main() {
 	doc, err := specutil.ReadDispatchState("spec/MINING_DISPATCH.json")
@@ -28,6 +29,9 @@ func main() {
 	}
 
 	claimsByOwner := map[string]int{}
+	claimsByActor := map[string]int{}
+	ownerToActor := map[string]string{}
+	actorToOwner := map[string]string{}
 	firstOpen := -1
 	bySlot := map[string]specutil.CatalogRow{}
 	for _, row := range catalogRows {
@@ -63,8 +67,8 @@ func main() {
 		}
 
 		if row.Status == "OPEN" {
-			if !(row.Owner == "-" && row.UpdatedUTC == "-" && row.Notes == "-" && row.ClaimBranch == "-" && row.ClaimContext == "-") {
-				fmt.Fprintf(os.Stderr, "OPEN row metadata must be owner=-, updated_utc=-, notes=-, claim_branch=-, claim_context=-: %s\n", row.SlotID)
+			if !(row.Owner == "-" && row.UpdatedUTC == "-" && row.Notes == "-" && row.ClaimBranch == "-" && row.ClaimContext == "-" && row.ClaimActor == "-") {
+				fmt.Fprintf(os.Stderr, "OPEN row metadata must be owner=-, updated_utc=-, notes=-, claim_branch=-, claim_context=-, claim_actor=-: %s\n", row.SlotID)
 				os.Exit(1)
 			}
 			if firstOpen == -1 {
@@ -85,7 +89,12 @@ func main() {
 				fmt.Fprintf(os.Stderr, "CLAIMED row claim_context must be 64-char lowercase hex: %s\n", row.SlotID)
 				os.Exit(1)
 			}
+			if !reClaimActor.MatchString(row.ClaimActor) {
+				fmt.Fprintf(os.Stderr, "CLAIMED row claim_actor must be 64-char lowercase hex: %s\n", row.SlotID)
+				os.Exit(1)
+			}
 			claimsByOwner[row.Owner]++
+			claimsByActor[row.ClaimActor]++
 		}
 
 		if row.Status == "DONE" {
@@ -101,12 +110,35 @@ func main() {
 				fmt.Fprintf(os.Stderr, "DONE row claim_context must be 64-char lowercase hex: %s\n", row.SlotID)
 				os.Exit(1)
 			}
+			if !reClaimActor.MatchString(row.ClaimActor) {
+				fmt.Fprintf(os.Stderr, "DONE row claim_actor must be 64-char lowercase hex: %s\n", row.SlotID)
+				os.Exit(1)
+			}
+		}
+
+		if row.Status == "CLAIMED" || row.Status == "DONE" {
+			if existingActor, ok := ownerToActor[row.Owner]; ok && existingActor != row.ClaimActor {
+				fmt.Fprintf(os.Stderr, "owner maps to multiple claim actors: %s\n", row.Owner)
+				os.Exit(1)
+			}
+			ownerToActor[row.Owner] = row.ClaimActor
+			if existingOwner, ok := actorToOwner[row.ClaimActor]; ok && existingOwner != row.Owner {
+				fmt.Fprintf(os.Stderr, "claim actor maps to multiple owners: %s\n", row.ClaimActor)
+				os.Exit(1)
+			}
+			actorToOwner[row.ClaimActor] = row.Owner
 		}
 	}
 
 	for owner, count := range claimsByOwner {
 		if count > 1 {
 			fmt.Fprintf(os.Stderr, "owner has more than one CLAIMED slot: %s\n", owner)
+			os.Exit(1)
+		}
+	}
+	for actor, count := range claimsByActor {
+		if count > 1 {
+			fmt.Fprintf(os.Stderr, "claim actor has more than one CLAIMED slot: %s\n", actor)
 			os.Exit(1)
 		}
 	}
@@ -145,6 +177,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+	currentActor, err := specutil.CurrentClaimActor()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 
 	claimedForContext := []specutil.DispatchRow{}
 	for _, row := range doc.Rows {
@@ -158,6 +195,10 @@ func main() {
 	}
 	if len(claimedForContext) > 1 {
 		fmt.Fprintln(os.Stderr, "current worktree/branch has multiple CLAIMED slots; dispatch state is invalid")
+		os.Exit(1)
+	}
+	if claimedForContext[0].ClaimActor != currentActor {
+		fmt.Fprintln(os.Stderr, "current claim actor does not match the CLAIMED slot actor for this worktree/branch")
 		os.Exit(1)
 	}
 	expectedSpecPath := claimedForContext[0].SpecPath

@@ -131,6 +131,33 @@ func CurrentClaimContext() (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+func CurrentClaimActor() (string, error) {
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("SPEC_AGENT_ID")),
+		strings.TrimSpace(os.Getenv("USER")),
+		strings.TrimSpace(os.Getenv("LOGNAME")),
+	}
+	if candidates[0] == "" && candidates[1] == "" && candidates[2] == "" {
+		if email, err := GitOutput("config", "--get", "user.email"); err == nil {
+			candidates = append(candidates, strings.TrimSpace(email))
+		}
+	}
+
+	seed := ""
+	for _, candidate := range candidates {
+		if candidate != "" {
+			seed = strings.ToLower(candidate)
+			break
+		}
+	}
+	if seed == "" {
+		return "", fmt.Errorf("unable to determine claim actor identity (set SPEC_AGENT_ID or configure git user.email)")
+	}
+
+	sum := sha256.Sum256([]byte(seed))
+	return hex.EncodeToString(sum[:]), nil
+}
+
 func GitCommonDir() (string, error) {
 	out, err := GitOutput("rev-parse", "--git-common-dir")
 	if err != nil {

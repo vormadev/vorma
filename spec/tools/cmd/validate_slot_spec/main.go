@@ -953,6 +953,9 @@ func (v *validator) validateReviewGate(spec map[string]any) {
 	if minedRow.ClaimContext == "-" {
 		v.fail("review_gate", "mined slot must include dispatch claim_context metadata")
 	}
+	if minedRow.ClaimActor == "-" {
+		v.fail("review_gate", "mined slot must include dispatch claim_actor metadata")
+	}
 
 	checkClaim := func(passPath string, pass *reviewPass) (specutil.DispatchRow, bool) {
 		row, ok := v.dispatchRows[pass.ReviewerClaimSlot]
@@ -972,6 +975,9 @@ func (v *validator) validateReviewGate(spec map[string]any) {
 		if row.ClaimContext == "-" {
 			v.fail(passPath, "reviewer claim slot must include dispatch claim_context metadata")
 		}
+		if row.ClaimActor == "-" {
+			v.fail(passPath, "reviewer claim slot must include dispatch claim_actor metadata")
+		}
 		return row, true
 	}
 	p1Row, ok1 := checkClaim("review_gate.pass1", p1)
@@ -984,6 +990,15 @@ func (v *validator) validateReviewGate(spec map[string]any) {
 	}
 	if ok1 && ok2 && p1Row.ClaimContext != "-" && p2Row.ClaimContext != "-" && p1Row.ClaimContext == p2Row.ClaimContext {
 		v.fail("review_gate", "pass1 and pass2 reviewer claim contexts must differ")
+	}
+	if minedRowOK && ok1 && minedRow.ClaimActor != "-" && p1Row.ClaimActor != "-" && minedRow.ClaimActor == p1Row.ClaimActor {
+		v.fail("review_gate.pass1", "pass1 reviewer claim actor must differ from mined slot claim actor")
+	}
+	if minedRowOK && ok2 && minedRow.ClaimActor != "-" && p2Row.ClaimActor != "-" && minedRow.ClaimActor == p2Row.ClaimActor {
+		v.fail("review_gate.pass2", "pass2 reviewer claim actor must differ from mined slot claim actor")
+	}
+	if ok1 && ok2 && p1Row.ClaimActor != "-" && p2Row.ClaimActor != "-" && p1Row.ClaimActor == p2Row.ClaimActor {
+		v.fail("review_gate", "pass1 and pass2 reviewer claim actors must differ")
 	}
 
 	if p1.ArtifactsHash != currentHash || p2.ArtifactsHash != currentHash {

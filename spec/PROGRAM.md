@@ -98,5 +98,7 @@ Each package requires:
 3. Independent review pass 2 by a different reviewer.
 4. Each reviewer must supply a reviewer claim slot they own.
 5. Reviewer claim slots must differ from the mined slot and from each other.
-6. Both passes must be `PASS_NO_NOTES` on the current artifact hash.
-7. Only then may the mined slot be marked `DONE`.
+6. Reviewer claim actor identities must differ from the mined slot actor and
+   from each other.
+7. Both passes must be `PASS_NO_NOTES` on the current artifact hash.
+8. Only then may the mined slot be marked `DONE`.

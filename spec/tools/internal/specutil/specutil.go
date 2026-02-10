@@ -21,6 +21,7 @@ type DispatchRow struct {
 	Notes         string `json:"notes"`
 	ClaimBranch   string `json:"claim_branch"`
 	ClaimContext  string `json:"claim_context"`
+	ClaimActor    string `json:"claim_actor"`
 }
 
 type DispatchDoc struct {
@@ -78,6 +79,9 @@ func ParseDispatchJSON(raw string) (*DispatchDoc, error) {
 		}
 		if strings.TrimSpace(row.ClaimContext) == "" {
 			row.ClaimContext = "-"
+		}
+		if strings.TrimSpace(row.ClaimActor) == "" {
+			row.ClaimActor = "-"
 		}
 	}
 	return &doc, nil

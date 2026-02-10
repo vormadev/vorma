@@ -115,6 +115,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "detect current claim context: %v\n", err)
 		os.Exit(1)
 	}
+	currentClaimActor, err := specutil.CurrentClaimActor()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "detect current claim actor: %v\n", err)
+		os.Exit(1)
+	}
 
 	lockPath, err := specutil.DispatchLockPath()
 	if err != nil {
@@ -141,6 +146,9 @@ func main() {
 		if slotRow.ClaimBranch == "-" || slotRow.ClaimContext == "-" {
 			return fmt.Errorf("mined slot is missing claim branch/context metadata: %s", slotID)
 		}
+		if slotRow.ClaimActor == "-" {
+			return fmt.Errorf("mined slot is missing claim actor metadata: %s", slotID)
+		}
 
 		_, reviewerRow := specutil.FindRowBySlotID(doc.Rows, reviewerClaimSlot)
 		if reviewerRow == nil {
@@ -161,14 +169,23 @@ func main() {
 		if reviewerRow.ClaimBranch == "-" || reviewerRow.ClaimContext == "-" {
 			return fmt.Errorf("reviewer claim slot is missing claim branch/context metadata: %s", reviewerClaimSlot)
 		}
+		if reviewerRow.ClaimActor == "-" {
+			return fmt.Errorf("reviewer claim slot is missing claim actor metadata: %s", reviewerClaimSlot)
+		}
 		if reviewerRow.ClaimContext == slotRow.ClaimContext {
 			return fmt.Errorf("reviewer claim context must differ from mined slot claim context")
+		}
+		if reviewerRow.ClaimActor == slotRow.ClaimActor {
+			return fmt.Errorf("reviewer claim actor must differ from mined slot claim actor")
 		}
 		if reviewerRow.ClaimBranch != currentBranch {
 			return fmt.Errorf("record_review_pass must run from reviewer claim branch %q (current: %q)", reviewerRow.ClaimBranch, currentBranch)
 		}
 		if reviewerRow.ClaimContext != currentClaimContext {
 			return fmt.Errorf("record_review_pass must run from the reviewer claim worktree context for slot %s", reviewerClaimSlot)
+		}
+		if reviewerRow.ClaimActor != currentClaimActor {
+			return fmt.Errorf("record_review_pass must run from the reviewer claim actor identity for slot %s", reviewerClaimSlot)
 		}
 
 		specPath := slotRow.SpecPath
@@ -254,8 +271,17 @@ func main() {
 			if pass1Row.ClaimContext == "-" {
 				return fmt.Errorf("pass 1 reviewer_claim_slot missing claim context metadata: %s", gate.Pass1.ReviewerClaimSlot)
 			}
+			if pass1Row.ClaimActor == "-" {
+				return fmt.Errorf("pass 1 reviewer_claim_slot missing claim actor metadata: %s", gate.Pass1.ReviewerClaimSlot)
+			}
 			if pass1Row.ClaimContext == reviewerRow.ClaimContext {
 				return fmt.Errorf("pass 2 reviewer claim context must differ from pass 1 reviewer claim context")
+			}
+			if pass1Row.ClaimActor == reviewerRow.ClaimActor {
+				return fmt.Errorf("pass 2 reviewer claim actor must differ from pass 1 reviewer claim actor")
+			}
+			if pass1Row.ClaimActor == slotRow.ClaimActor {
+				return fmt.Errorf("pass 1 reviewer claim actor must differ from mined slot claim actor")
 			}
 			apply(&gate.Pass2)
 		}
