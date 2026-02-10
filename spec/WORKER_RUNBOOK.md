@@ -43,6 +43,9 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
     `pnpm prettier --write <files...>`.
 15. `spec/DECISIONS.json` entries must use `status = OPEN|RESOLVED`; `OPEN`
     entries must keep `Selected Option`, `Rationale`, and `Evidence` as `-`.
+16. Review passes must be recorded from the reviewer's claimed worktree/branch
+    context; reviewers cannot share the miner claim context or each other’s
+    claim context.
 
 ## Required Read Order
 
@@ -83,6 +86,9 @@ go run ./spec/tools/cmd/check_all
 go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> 1 PASS_NO_NOTES -
 go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner_2> <reviewer_claim_slot_2> 2 PASS_NO_NOTES -
 ```
+
+`record_review_pass` validates that the command is executed from the worktree
+and branch context captured when the reviewer claim slot was created.
 
 Use `FAIL_NOTES` with a notes reference when findings exist:
 

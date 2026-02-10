@@ -38,9 +38,11 @@
 2. If pass 1 has findings (`FAIL_NOTES`), address notes and rerun pass 1.
 3. After pass 1 is `PASS_NO_NOTES`, record pass 2 with a different reviewer and
    different reviewer claim slot.
-4. If pass 2 has findings, address notes and rerun pass 1 and pass 2 on the new
+4. Run each review pass from the reviewer's own claimed worktree/branch context;
+   tooling rejects passes recorded from the wrong claim context.
+5. If pass 2 has findings, address notes and rerun pass 1 and pass 2 on the new
    artifact hash.
-5. A slot needs two independent `PASS_NO_NOTES` passes on the current artifact
+6. A slot needs two independent `PASS_NO_NOTES` passes on the current artifact
    hash.
 
 ## Before Marking DONE

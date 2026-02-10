@@ -70,18 +70,36 @@ func main() {
 			return fmt.Errorf("no OPEN slot is available")
 		}
 
+		branch, err := specutil.CurrentBranch()
+		if err != nil {
+			return fmt.Errorf("detect current branch: %w", err)
+		}
+		claimContext, err := specutil.CurrentClaimContext()
+		if err != nil {
+			return fmt.Errorf("detect current claim context: %w", err)
+		}
+
 		now := specutil.NowUTC()
 		doc.Rows[openIndex].Status = "CLAIMED"
 		doc.Rows[openIndex].Owner = owner
 		doc.Rows[openIndex].UpdatedUTC = now
 		doc.Rows[openIndex].Notes = "claimed"
+		doc.Rows[openIndex].ClaimBranch = branch
+		doc.Rows[openIndex].ClaimContext = claimContext
 
 		updated := specutil.RenderDispatch(doc)
 		if err := os.WriteFile("spec/MINING_DISPATCH.json", []byte(updated), 0o644); err != nil {
 			return err
 		}
 
-		fmt.Printf("claimed %s (%s) for owner %s\n", doc.Rows[openIndex].SlotID, doc.Rows[openIndex].SpecPath, owner)
+		fmt.Printf(
+			"claimed %s (%s) for owner %s [branch=%s claim_context=%s]\n",
+			doc.Rows[openIndex].SlotID,
+			doc.Rows[openIndex].SpecPath,
+			owner,
+			branch,
+			claimContext[:12],
+		)
 		return nil
 	})
 	if err != nil {

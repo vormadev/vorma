@@ -3,9 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/vormadev/vorma/spec/tools/internal/specutil"
 )
+
+var reClaimContext = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func main() {
 	doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
@@ -59,8 +63,8 @@ func main() {
 		}
 
 		if row.Status == "OPEN" {
-			if !(row.Owner == "-" && row.UpdatedUTC == "-" && row.Notes == "-") {
-				fmt.Fprintf(os.Stderr, "OPEN row metadata must be owner=-, updated_utc=-, notes=-: %s\n", row.SlotID)
+			if !(row.Owner == "-" && row.UpdatedUTC == "-" && row.Notes == "-" && row.ClaimBranch == "-" && row.ClaimContext == "-") {
+				fmt.Fprintf(os.Stderr, "OPEN row metadata must be owner=-, updated_utc=-, notes=-, claim_branch=-, claim_context=-: %s\n", row.SlotID)
 				os.Exit(1)
 			}
 			if firstOpen == -1 {
@@ -73,12 +77,28 @@ func main() {
 				fmt.Fprintf(os.Stderr, "CLAIMED row metadata invalid: %s\n", row.SlotID)
 				os.Exit(1)
 			}
+			if strings.TrimSpace(row.ClaimBranch) == "" || row.ClaimBranch == "-" {
+				fmt.Fprintf(os.Stderr, "CLAIMED row must have non-empty claim_branch: %s\n", row.SlotID)
+				os.Exit(1)
+			}
+			if !reClaimContext.MatchString(row.ClaimContext) {
+				fmt.Fprintf(os.Stderr, "CLAIMED row claim_context must be 64-char lowercase hex: %s\n", row.SlotID)
+				os.Exit(1)
+			}
 			claimsByOwner[row.Owner]++
 		}
 
 		if row.Status == "DONE" {
 			if row.Owner == "-" || !specutil.IsUTCRFC3339(row.UpdatedUTC) || row.Notes != "done" {
 				fmt.Fprintf(os.Stderr, "DONE row metadata invalid: %s\n", row.SlotID)
+				os.Exit(1)
+			}
+			if strings.TrimSpace(row.ClaimBranch) == "" || row.ClaimBranch == "-" {
+				fmt.Fprintf(os.Stderr, "DONE row must retain non-empty claim_branch: %s\n", row.SlotID)
+				os.Exit(1)
+			}
+			if !reClaimContext.MatchString(row.ClaimContext) {
+				fmt.Fprintf(os.Stderr, "DONE row claim_context must be 64-char lowercase hex: %s\n", row.SlotID)
 				os.Exit(1)
 			}
 		}

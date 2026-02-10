@@ -105,7 +105,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := specutil.WithLock("spec/.dispatch.lock", func() error {
+	currentBranch, err := specutil.CurrentBranch()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "detect current branch: %v\n", err)
+		os.Exit(1)
+	}
+	currentClaimContext, err := specutil.CurrentClaimContext()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "detect current claim context: %v\n", err)
+		os.Exit(1)
+	}
+
+	err = specutil.WithLock("spec/.dispatch.lock", func() error {
 		doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
 		if err != nil {
 			return err
@@ -120,6 +131,9 @@ func main() {
 		}
 		if slotRow.Owner == "-" {
 			return fmt.Errorf("slot owner is invalid for %s", slotID)
+		}
+		if slotRow.ClaimBranch == "-" || slotRow.ClaimContext == "-" {
+			return fmt.Errorf("mined slot is missing claim branch/context metadata: %s", slotID)
 		}
 
 		_, reviewerRow := specutil.FindRowBySlotID(doc.Rows, reviewerClaimSlot)
@@ -137,6 +151,18 @@ func main() {
 		}
 		if reviewerOwner == slotRow.Owner {
 			return fmt.Errorf("reviewer owner must be independent from miner owner: %s", reviewerOwner)
+		}
+		if reviewerRow.ClaimBranch == "-" || reviewerRow.ClaimContext == "-" {
+			return fmt.Errorf("reviewer claim slot is missing claim branch/context metadata: %s", reviewerClaimSlot)
+		}
+		if reviewerRow.ClaimContext == slotRow.ClaimContext {
+			return fmt.Errorf("reviewer claim context must differ from mined slot claim context")
+		}
+		if reviewerRow.ClaimBranch != currentBranch {
+			return fmt.Errorf("record_review_pass must run from reviewer claim branch %q (current: %q)", reviewerRow.ClaimBranch, currentBranch)
+		}
+		if reviewerRow.ClaimContext != currentClaimContext {
+			return fmt.Errorf("record_review_pass must run from the reviewer claim worktree context for slot %s", reviewerClaimSlot)
 		}
 
 		specPath := slotRow.SpecPath
@@ -214,6 +240,16 @@ func main() {
 			}
 			if gate.Pass1.ReviewerClaimSlot == reviewerClaimSlot {
 				return fmt.Errorf("pass 2 reviewer_claim_slot must differ from pass 1 reviewer_claim_slot")
+			}
+			_, pass1Row := specutil.FindRowBySlotID(doc.Rows, gate.Pass1.ReviewerClaimSlot)
+			if pass1Row == nil {
+				return fmt.Errorf("pass 1 reviewer_claim_slot not found in dispatch: %s", gate.Pass1.ReviewerClaimSlot)
+			}
+			if pass1Row.ClaimContext == "-" {
+				return fmt.Errorf("pass 1 reviewer_claim_slot missing claim context metadata: %s", gate.Pass1.ReviewerClaimSlot)
+			}
+			if pass1Row.ClaimContext == reviewerRow.ClaimContext {
+				return fmt.Errorf("pass 2 reviewer claim context must differ from pass 1 reviewer claim context")
 			}
 			apply(&gate.Pass2)
 		}

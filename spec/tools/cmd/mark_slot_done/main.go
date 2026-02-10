@@ -43,6 +43,9 @@ func main() {
 		if row.Owner == "-" {
 			return fmt.Errorf("slot owner is invalid for %s", slotID)
 		}
+		if row.ClaimBranch == "-" || row.ClaimContext == "-" {
+			return fmt.Errorf("slot is missing claim branch/context metadata: %s", slotID)
+		}
 		if row.Owner != actorOwner {
 			return fmt.Errorf("owner mismatch: slot %s is owned by %s, but actor is %s", slotID, row.Owner, actorOwner)
 		}

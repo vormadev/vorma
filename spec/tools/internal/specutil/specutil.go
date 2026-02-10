@@ -19,6 +19,8 @@ type DispatchRow struct {
 	Owner         string `json:"owner"`
 	UpdatedUTC    string `json:"updated_utc"`
 	Notes         string `json:"notes"`
+	ClaimBranch   string `json:"claim_branch"`
+	ClaimContext  string `json:"claim_context"`
 }
 
 type DispatchDoc struct {
@@ -62,7 +64,8 @@ func ParseDispatchJSON(raw string) (*DispatchDoc, error) {
 		return nil, fmt.Errorf("dispatch has no slots")
 	}
 	seen := map[string]struct{}{}
-	for _, row := range doc.Rows {
+	for i := range doc.Rows {
+		row := &doc.Rows[i]
 		if row.SlotID == "" {
 			return nil, fmt.Errorf("dispatch row has empty slot_id")
 		}
@@ -70,6 +73,12 @@ func ParseDispatchJSON(raw string) (*DispatchDoc, error) {
 			return nil, fmt.Errorf("duplicate dispatch slot_id: %s", row.SlotID)
 		}
 		seen[row.SlotID] = struct{}{}
+		if strings.TrimSpace(row.ClaimBranch) == "" {
+			row.ClaimBranch = "-"
+		}
+		if strings.TrimSpace(row.ClaimContext) == "" {
+			row.ClaimContext = "-"
+		}
 	}
 	return &doc, nil
 }

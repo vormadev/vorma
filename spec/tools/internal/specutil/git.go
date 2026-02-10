@@ -2,9 +2,12 @@ package specutil
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -93,4 +96,37 @@ func GitFileAtHEAD(path string) (string, error) {
 		return "", err
 	}
 	return out, nil
+}
+
+func CurrentBranch() (string, error) {
+	out, err := GitOutput("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	branch := strings.TrimSpace(out)
+	if branch == "" {
+		return "", fmt.Errorf("current branch is empty")
+	}
+	return branch, nil
+}
+
+func CurrentWorktreeRoot() (string, error) {
+	out, err := GitOutput("rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	root := strings.TrimSpace(out)
+	if root == "" {
+		return "", fmt.Errorf("current worktree root is empty")
+	}
+	return filepath.Clean(root), nil
+}
+
+func CurrentClaimContext() (string, error) {
+	root, err := CurrentWorktreeRoot()
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(root))
+	return hex.EncodeToString(sum[:]), nil
 }

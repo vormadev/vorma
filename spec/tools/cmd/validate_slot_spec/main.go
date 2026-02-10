@@ -943,11 +943,22 @@ func (v *validator) validateReviewGate(spec map[string]any) {
 		v.fail("review_gate", "pass1 and pass2 reviewer_claim_slot must differ")
 	}
 
-	checkClaim := func(passPath string, pass *reviewPass) {
+	minedRow, minedRowOK := v.dispatchRows[v.slotID]
+	if !minedRowOK {
+		v.fail("review_gate", fmt.Sprintf("mined slot '%s' not found in dispatch", v.slotID))
+	}
+	if minedRow.ClaimBranch == "-" {
+		v.fail("review_gate", "mined slot must include dispatch claim_branch metadata")
+	}
+	if minedRow.ClaimContext == "-" {
+		v.fail("review_gate", "mined slot must include dispatch claim_context metadata")
+	}
+
+	checkClaim := func(passPath string, pass *reviewPass) (specutil.DispatchRow, bool) {
 		row, ok := v.dispatchRows[pass.ReviewerClaimSlot]
 		if !ok {
 			v.fail(passPath+".reviewer_claim_slot", fmt.Sprintf("slot '%s' not found in dispatch", pass.ReviewerClaimSlot))
-			return
+			return specutil.DispatchRow{}, false
 		}
 		if row.Owner != pass.ReviewerOwner {
 			v.fail(passPath, fmt.Sprintf("reviewer_owner '%s' does not match dispatch owner '%s'", pass.ReviewerOwner, row.Owner))
@@ -955,9 +966,25 @@ func (v *validator) validateReviewGate(spec map[string]any) {
 		if row.Status != "CLAIMED" && row.Status != "DONE" {
 			v.fail(passPath, fmt.Sprintf("reviewer claim slot must be CLAIMED or DONE, got '%s'", row.Status))
 		}
+		if row.ClaimBranch == "-" {
+			v.fail(passPath, "reviewer claim slot must include dispatch claim_branch metadata")
+		}
+		if row.ClaimContext == "-" {
+			v.fail(passPath, "reviewer claim slot must include dispatch claim_context metadata")
+		}
+		return row, true
 	}
-	checkClaim("review_gate.pass1", p1)
-	checkClaim("review_gate.pass2", p2)
+	p1Row, ok1 := checkClaim("review_gate.pass1", p1)
+	p2Row, ok2 := checkClaim("review_gate.pass2", p2)
+	if minedRowOK && ok1 && minedRow.ClaimContext != "-" && p1Row.ClaimContext != "-" && minedRow.ClaimContext == p1Row.ClaimContext {
+		v.fail("review_gate.pass1", "pass1 reviewer claim context must differ from mined slot claim context")
+	}
+	if minedRowOK && ok2 && minedRow.ClaimContext != "-" && p2Row.ClaimContext != "-" && minedRow.ClaimContext == p2Row.ClaimContext {
+		v.fail("review_gate.pass2", "pass2 reviewer claim context must differ from mined slot claim context")
+	}
+	if ok1 && ok2 && p1Row.ClaimContext != "-" && p2Row.ClaimContext != "-" && p1Row.ClaimContext == p2Row.ClaimContext {
+		v.fail("review_gate", "pass1 and pass2 reviewer claim contexts must differ")
+	}
 
 	if p1.ArtifactsHash != currentHash || p2.ArtifactsHash != currentHash {
 		v.fail("review_gate", fmt.Sprintf("review pass artifact hashes must match current hash '%s'", currentHash))

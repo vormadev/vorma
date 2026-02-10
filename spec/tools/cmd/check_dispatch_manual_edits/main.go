@@ -55,7 +55,11 @@ func main() {
 		}
 
 		if oldRow.Status == newRow.Status {
-			if oldRow.Owner != newRow.Owner || oldRow.UpdatedUTC != newRow.UpdatedUTC || oldRow.Notes != newRow.Notes {
+			if oldRow.Owner != newRow.Owner ||
+				oldRow.UpdatedUTC != newRow.UpdatedUTC ||
+				oldRow.Notes != newRow.Notes ||
+				oldRow.ClaimBranch != newRow.ClaimBranch ||
+				oldRow.ClaimContext != newRow.ClaimContext {
 				fmt.Fprintf(os.Stderr, "spec/MINING_DISPATCH.json metadata changed without status transition: %s\n", oldRow.SlotID)
 				os.Exit(1)
 			}

@@ -153,6 +153,8 @@ func main() {
 		Owner         string `json:"owner"`
 		UpdatedUTC    string `json:"updated_utc"`
 		Notes         string `json:"notes"`
+		ClaimBranch   string `json:"claim_branch"`
+		ClaimContext  string `json:"claim_context"`
 	}
 	type dispatchDoc struct {
 		SchemaVersion string         `json:"schema_version"`
@@ -169,6 +171,8 @@ func main() {
 			Owner:         "-",
 			UpdatedUTC:    "-",
 			Notes:         "-",
+			ClaimBranch:   "-",
+			ClaimContext:  "-",
 		})
 	}
 	dispatchPayload, err := json.MarshalIndent(dispatchDoc{
