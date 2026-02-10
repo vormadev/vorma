@@ -123,7 +123,7 @@ func main() {
 	}
 
 	err = specutil.WithLock(lockPath, func() error {
-		doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
+		doc, err := specutil.LoadDispatchState("spec/MINING_DISPATCH.json")
 		if err != nil {
 			return err
 		}
@@ -275,6 +275,10 @@ func main() {
 			return err
 		}
 		if err := os.WriteFile(specFile, append(updated, '\n'), 0o644); err != nil {
+			return err
+		}
+
+		if err := specutil.SaveDispatchState("spec/MINING_DISPATCH.json", doc); err != nil {
 			return err
 		}
 

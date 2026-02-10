@@ -12,7 +12,7 @@ import (
 var reClaimContext = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func main() {
-	doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
+	doc, err := specutil.ReadDispatchState("spec/MINING_DISPATCH.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -134,12 +134,50 @@ func main() {
 	if len(touchedPaths) == 0 {
 		return
 	}
+
+	currentBranch, err := specutil.CurrentBranch()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	currentContext, err := specutil.CurrentClaimContext()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	claimedForContext := []specutil.DispatchRow{}
+	for _, row := range doc.Rows {
+		if row.Status == "CLAIMED" && row.ClaimBranch == currentBranch && row.ClaimContext == currentContext {
+			claimedForContext = append(claimedForContext, row)
+		}
+	}
+	if len(claimedForContext) == 0 {
+		fmt.Fprintln(os.Stderr, "current worktree/branch has no CLAIMED slot; refuse package edits")
+		os.Exit(1)
+	}
+	if len(claimedForContext) > 1 {
+		fmt.Fprintln(os.Stderr, "current worktree/branch has multiple CLAIMED slots; dispatch state is invalid")
+		os.Exit(1)
+	}
+	expectedSpecPath := claimedForContext[0].SpecPath
+
 	if len(touchedPaths) > 1 {
 		fmt.Fprintln(os.Stderr, "multiple changed package paths detected (use one isolated worktree per agent)")
 		os.Exit(1)
 	}
 
 	touched := touchedPaths[0]
+	if touched != expectedSpecPath {
+		fmt.Fprintf(
+			os.Stderr,
+			"changed package path does not match current claim context slot %s (%s): %s\n",
+			claimedForContext[0].SlotID,
+			expectedSpecPath,
+			touched,
+		)
+		os.Exit(1)
+	}
 	touchedIndex := -1
 	for i, row := range doc.Rows {
 		if row.SpecPath == touched {

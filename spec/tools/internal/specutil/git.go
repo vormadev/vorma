@@ -157,3 +157,11 @@ func DispatchLockPath() (string, error) {
 	}
 	return filepath.Join(commonDir, "spec-dispatch.lock"), nil
 }
+
+func DispatchStatePath() (string, error) {
+	commonDir, err := GitCommonDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(commonDir, "spec-dispatch-state.json"), nil
+}

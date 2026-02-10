@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/vormadev/vorma/spec/tools/internal/specutil"
 )
 
 type row struct {
@@ -184,6 +186,23 @@ func main() {
 		os.Exit(1)
 	}
 	if err := os.WriteFile("spec/MINING_DISPATCH.json", append(dispatchPayload, '\n'), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	dispatchStateDoc, err := specutil.ParseDispatchJSON(string(dispatchPayload))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	lockPath, err := specutil.DispatchLockPath()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := specutil.WithLock(lockPath, func() error {
+		return specutil.SaveDispatchState("spec/MINING_DISPATCH.json", dispatchStateDoc)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}

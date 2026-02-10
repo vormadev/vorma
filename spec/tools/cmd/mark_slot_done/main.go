@@ -34,7 +34,7 @@ func main() {
 	}
 
 	err = specutil.WithLock(lockPath, func() error {
-		doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
+		doc, err := specutil.LoadDispatchState("spec/MINING_DISPATCH.json")
 		if err != nil {
 			return err
 		}
@@ -61,11 +61,16 @@ func main() {
 			return fmt.Errorf("missing spec file: %s", specFile)
 		}
 
+		dispatchPath, err := specutil.DispatchStatePath()
+		if err != nil {
+			return err
+		}
+
 		cmd := exec.Command("go", "run", "./spec/tools/cmd/validate_slot_spec",
 			"--slot", row.SlotID,
 			"--spec", specFile,
 			"--owner", row.Owner,
-			"--dispatch", "spec/MINING_DISPATCH.json",
+			"--dispatch", dispatchPath,
 			"--require-review-pass",
 		)
 		cmd.Env = append(os.Environ(), "GOCACHE=/tmp/go-build")
@@ -79,8 +84,7 @@ func main() {
 		doc.Rows[idx].UpdatedUTC = specutil.NowUTC()
 		doc.Rows[idx].Notes = "done"
 
-		updated := specutil.RenderDispatch(doc)
-		if err := os.WriteFile("spec/MINING_DISPATCH.json", []byte(updated), 0o644); err != nil {
+		if err := specutil.SaveDispatchState("spec/MINING_DISPATCH.json", doc); err != nil {
 			return err
 		}
 

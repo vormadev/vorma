@@ -91,6 +91,55 @@ func RenderDispatch(doc *DispatchDoc) string {
 	return string(encoded) + "\n"
 }
 
+func LoadDispatchState(localPath string) (*DispatchDoc, error) {
+	statePath, err := DispatchStatePath()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(statePath); err == nil {
+		return ParseDispatchFile(statePath)
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	doc, err := ParseDispatchFile(localPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(statePath, []byte(RenderDispatch(doc)), 0o644); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+func ReadDispatchState(localPath string) (*DispatchDoc, error) {
+	statePath, err := DispatchStatePath()
+	if err != nil {
+		return ParseDispatchFile(localPath)
+	}
+	if _, err := os.Stat(statePath); err == nil {
+		return ParseDispatchFile(statePath)
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	return ParseDispatchFile(localPath)
+}
+
+func SaveDispatchState(localPath string, doc *DispatchDoc) error {
+	rendered := RenderDispatch(doc)
+	statePath, err := DispatchStatePath()
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(statePath, []byte(rendered), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(localPath, []byte(rendered), 0o644); err != nil {
+		return err
+	}
+	return nil
+}
+
 func FindRowBySlotID(rows []DispatchRow, slotID string) (int, *DispatchRow) {
 	for i := range rows {
 		if rows[i].SlotID == slotID {
