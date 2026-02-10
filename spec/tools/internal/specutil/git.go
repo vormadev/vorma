@@ -130,3 +130,30 @@ func CurrentClaimContext() (string, error) {
 	sum := sha256.Sum256([]byte(root))
 	return hex.EncodeToString(sum[:]), nil
 }
+
+func GitCommonDir() (string, error) {
+	out, err := GitOutput("rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	dir := strings.TrimSpace(out)
+	if dir == "" {
+		return "", fmt.Errorf("git common dir is empty")
+	}
+	if !filepath.IsAbs(dir) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(cwd, dir)
+	}
+	return filepath.Clean(dir), nil
+}
+
+func DispatchLockPath() (string, error) {
+	commonDir, err := GitCommonDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(commonDir, "spec-dispatch.lock"), nil
+}

@@ -27,7 +27,13 @@ func main() {
 		actorOwner = os.Getenv("USER")
 	}
 
-	err := specutil.WithLock("spec/.dispatch.lock", func() error {
+	lockPath, err := specutil.DispatchLockPath()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	err = specutil.WithLock(lockPath, func() error {
 		doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
 		if err != nil {
 			return err
