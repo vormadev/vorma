@@ -36,6 +36,25 @@ if [ "$header" != $'slot_id\tstatus\tpriority_group\tspec_path\tsource_roots\tow
 	exit 1
 fi
 
+if awk -F '\t' 'NR > 1 && $2 != "OPEN" {exit 1} END {exit 0}' "$original_tsv"; then
+	changed_count=$(spec/tools/changed_files.sh | sed '/^$/d' | wc -l | tr -d ' ')
+	if [ "$changed_count" -gt 0 ]; then
+		echo "cannot claim first slot: commit current spec scaffold baseline first" >&2
+		exit 1
+	fi
+fi
+
+if [ "$owner" = "-" ]; then
+	echo "owner name '-' is reserved and cannot be used" >&2
+	exit 1
+fi
+
+existing_claim=$(awk -F '\t' -v target_owner="$owner" 'NR > 1 && $2 == "CLAIMED" && $6 == target_owner {print $1; exit}' "$original_tsv")
+if [ -n "$existing_claim" ]; then
+	echo "owner already has an active claim: $owner ($existing_claim)" >&2
+	exit 1
+fi
+
 open_row=$(awk -F '\t' 'NR > 1 && $2 == "OPEN" {print NR; exit}' "$original_tsv")
 if [ -z "$open_row" ]; then
 	echo "no OPEN slot is available" >&2

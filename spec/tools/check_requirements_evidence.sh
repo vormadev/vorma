@@ -51,6 +51,46 @@ while IFS=$'\t' read -r slot_id status priority_group spec_path source_roots own
 		failures=$((failures + 1))
 	fi
 
+	if ! rg -q '^## Ownership Boundaries$' "$spec_path/00-scope.md"; then
+		echo "[$slot_id] ownership boundary section missing in $spec_path/00-scope.md" >&2
+		failures=$((failures + 1))
+	fi
+
+	if ! rg -q 'Upstream Requirement Refs' "$spec_path/20-requirements.md"; then
+		echo "[$slot_id] upstream requirement reference column missing in $spec_path/20-requirements.md" >&2
+		failures=$((failures + 1))
+	fi
+
+	if ! rg -q 'Ownership' "$spec_path/20-requirements.md"; then
+		echo "[$slot_id] ownership column missing in $spec_path/20-requirements.md" >&2
+		failures=$((failures + 1))
+	fi
+
+	if ! awk -F '|' -v slot_id="$slot_id" '
+		function trim(value) {
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			return value
+		}
+		/^[[:space:]]*\|[[:space:]]*REQ-[A-Z0-9-]+-[0-9]{4}[[:space:]]*\|/ {
+			req_id = trim($2)
+			ownership = trim($6)
+			upstream = trim($7)
+
+			if (ownership != "OWNED" && ownership != "INHERITED" && ownership != "DELTA") {
+				print "[" slot_id "] invalid ownership value for " req_id ": " ownership
+				fail = 1
+			}
+
+			if ((ownership == "INHERITED" || ownership == "DELTA") && (upstream == "" || upstream == "-")) {
+				print "[" slot_id "] missing upstream refs for " req_id " with ownership " ownership
+				fail = 1
+			}
+		}
+		END { exit fail ? 1 : 0 }
+	' "$spec_path/20-requirements.md"; then
+		failures=$((failures + 1))
+	fi
+
 	get_counter() {
 		local key="$1"
 		local file="$2"

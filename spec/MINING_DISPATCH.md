@@ -5,12 +5,14 @@ Claim rules:
 1. Claim the lowest-numbered slot with status `OPEN`.
 2. Set slot status to `CLAIMED` before editing package artifacts.
 3. Edit only the claimed `spec_path` under `spec/packages/**`.
-4. Set status to `DONE` only after passing all guard checks.
+4. One active `CLAIMED` slot per owner.
+5. Only the slot owner may mark that slot `DONE`.
+6. Set status to `DONE` only after passing all guard checks.
 
 Preferred commands:
 
 - Claim: `spec/tools/claim_lowest_open_slot.sh <owner>`
-- Done: `spec/tools/mark_slot_done.sh SLOT-XXX`
+- Done: `spec/tools/mark_slot_done.sh SLOT-XXX <owner>`
 
 Edit only rows in the TSV block below when claiming or completing work.
 

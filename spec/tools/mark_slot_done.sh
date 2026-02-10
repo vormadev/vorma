@@ -6,10 +6,11 @@ cd "$repo_root"
 
 slot_id="${1:-}"
 if [ -z "$slot_id" ]; then
-	echo "usage: spec/tools/mark_slot_done.sh SLOT-XXX" >&2
+	echo "usage: spec/tools/mark_slot_done.sh SLOT-XXX [owner]" >&2
 	exit 1
 fi
 
+actor_owner="${2:-${USER:-unknown}}"
 now_utc=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 lock_dir="spec/.dispatch.lock"
 dispatch_file="spec/MINING_DISPATCH.md"
@@ -34,7 +35,7 @@ if [ ! -s "$original_tsv" ]; then
 	exit 1
 fi
 
-row_info=$(awk -F '\t' -v target="$slot_id" 'NR > 1 && $1 == target {print NR"\t"$2"\t"$4; exit}' "$original_tsv")
+row_info=$(awk -F '\t' -v target="$slot_id" 'NR > 1 && $1 == target {print NR"\t"$2"\t"$4"\t"$6; exit}' "$original_tsv")
 if [ -z "$row_info" ]; then
 	echo "slot not found: $slot_id" >&2
 	exit 1
@@ -43,9 +44,30 @@ fi
 slot_row=$(printf '%s\n' "$row_info" | cut -f1)
 slot_status=$(printf '%s\n' "$row_info" | cut -f2)
 slot_path=$(printf '%s\n' "$row_info" | cut -f3)
+slot_owner=$(printf '%s\n' "$row_info" | cut -f4)
 
 if [ "$slot_status" != "CLAIMED" ] && [ "$slot_status" != "DONE" ]; then
 	echo "slot must be CLAIMED or DONE before marking done: $slot_id ($slot_status)" >&2
+	exit 1
+fi
+
+if [ "$slot_owner" = "-" ]; then
+	echo "slot owner is invalid for $slot_id" >&2
+	exit 1
+fi
+
+if [ "$slot_owner" != "$actor_owner" ]; then
+	echo "owner mismatch: slot $slot_id is owned by $slot_owner, but actor is $actor_owner" >&2
+	exit 1
+fi
+
+if rg -n 'TODO' "$slot_path" >/dev/null; then
+	echo "cannot mark DONE while TODO markers remain in $slot_path" >&2
+	exit 1
+fi
+
+if rg -n '\|[[:space:]]*(OPEN|UNRESOLVED)[[:space:]]*\|' "$slot_path/70-open-questions.md" >/dev/null; then
+	echo "cannot mark DONE while unresolved open questions remain in $slot_path/70-open-questions.md" >&2
 	exit 1
 fi
 

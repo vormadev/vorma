@@ -27,6 +27,58 @@ fi
 
 tail -n +2 "$dispatch_rows" > "$dispatch_rows.data"
 
+if ! awk -F '\t' '
+	function valid_ts(value) {
+		return value ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$/
+	}
+	{
+		slot = $1
+		status = $2
+		owner = $6
+		updated = $7
+		notes = $8
+
+		if (status != "OPEN" && status != "CLAIMED" && status != "DONE") {
+			print "invalid status in dispatch row: " slot " => " status
+			fail = 1
+		}
+
+		if (status == "OPEN") {
+			if (!(owner == "-" && updated == "-" && notes == "-")) {
+				print "OPEN row metadata must be owner=-, updated_utc=-, notes=-: " slot
+				fail = 1
+			}
+		}
+
+		if (status == "CLAIMED") {
+			if (owner == "-" || !valid_ts(updated) || notes != "claimed") {
+				print "CLAIMED row metadata invalid: " slot
+				fail = 1
+			}
+			claims_by_owner[owner]++
+		}
+
+		if (status == "DONE") {
+			if (owner == "-" || !valid_ts(updated) || notes != "done") {
+				print "DONE row metadata invalid: " slot
+				fail = 1
+			}
+		}
+	}
+	END {
+		for (owner in claims_by_owner) {
+			if (claims_by_owner[owner] > 1) {
+				print "owner has more than one CLAIMED slot: " owner
+				fail = 1
+			}
+		}
+		exit fail ? 1 : 0
+	}
+' "$dispatch_rows.data"; then
+	echo "dispatch validation failed" >&2
+	exit 1
+fi
+
 first_open_row=$(awk -F '\t' '$2 == "OPEN" {print NR; exit}' "$dispatch_rows.data")
 if [ -n "$first_open_row" ]; then
 	if ! awk -F '\t' -v row="$first_open_row" 'NR > row && $2 != "OPEN" {exit 1} END {exit 0}' "$dispatch_rows.data"; then

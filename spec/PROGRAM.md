@@ -44,8 +44,10 @@ Blocked until To-Be spec acceptance.
 3. Non-meaningful assertions have explicit rationale and reviewer sign-off.
 4. Unclassified assertions are `0`.
 5. Every normative requirement has source evidence from tests and source code.
-6. No unresolved contradictions across package specs.
-7. No package marked `DONE` has unresolved open questions.
+6. Normative ownership is unambiguous: each behavior has exactly one owner
+   package and all inherited behavior is referenced, not duplicated.
+7. No unresolved contradictions across package specs.
+8. No package marked `DONE` has unresolved open questions.
 
 ## Requirement and Evidence Rules
 
@@ -53,6 +55,13 @@ Blocked until To-Be spec acceptance.
 - Evidence links use IDs: `EVID-<PACKAGE>-<TYPE>-NNNN`.
 - Evidence must cite repository-relative paths and line numbers.
 - Do not include machine-specific absolute paths in committed spec content.
+- Use single-owner requirement boundaries from `spec/OWNERSHIP_BOUNDARIES.md`.
+- Cross-package inheritance must be represented via upstream requirement
+  references, not copied requirement text.
+- Each requirement row must include `Ownership` as `OWNED`, `INHERITED`, or
+  `DELTA`.
+- `INHERITED` and `DELTA` requirements must include non-empty upstream
+  requirement references.
 
 ## Package Artifact Contract
 
