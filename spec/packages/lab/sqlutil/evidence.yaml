@@ -1,0 +1,17 @@
+package: lab/sqlutil
+spec_path: spec/packages/lab/sqlutil
+requirements:
+  REQ-LAB-SQLUTIL-0001:
+    evidences:
+      - evidence_id: EVID-LAB-SQLUTIL-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-LAB-SQLUTIL-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

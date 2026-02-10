@@ -1,0 +1,17 @@
+package: kit/genericsutil
+spec_path: spec/packages/kit/genericsutil
+requirements:
+  REQ-KIT-GENERICSUTIL-0001:
+    evidences:
+      - evidence_id: EVID-KIT-GENERICSUTIL-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-GENERICSUTIL-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

@@ -1,0 +1,17 @@
+package: kit/lazyget
+spec_path: spec/packages/kit/lazyget
+requirements:
+  REQ-KIT-LAZYGET-0001:
+    evidences:
+      - evidence_id: EVID-KIT-LAZYGET-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-LAZYGET-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

@@ -1,0 +1,17 @@
+package: vormaclient/client
+spec_path: spec/packages/vormaclient/client
+requirements:
+  REQ-VORMACLIENT-CLIENT-0001:
+    evidences:
+      - evidence_id: EVID-VORMACLIENT-CLIENT-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-VORMACLIENT-CLIENT-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

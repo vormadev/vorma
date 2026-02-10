@@ -1,0 +1,17 @@
+package: lab/xyz
+spec_path: spec/packages/lab/xyz
+requirements:
+  REQ-LAB-XYZ-0001:
+    evidences:
+      - evidence_id: EVID-LAB-XYZ-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-LAB-XYZ-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

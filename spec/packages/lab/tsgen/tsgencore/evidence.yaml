@@ -1,0 +1,17 @@
+package: lab/tsgen/tsgencore
+spec_path: spec/packages/lab/tsgen/tsgencore
+requirements:
+  REQ-LAB-TSGEN-TSGENCORE-0001:
+    evidences:
+      - evidence_id: EVID-LAB-TSGEN-TSGENCORE-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-LAB-TSGEN-TSGENCORE-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

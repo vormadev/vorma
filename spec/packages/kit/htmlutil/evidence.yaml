@@ -1,0 +1,17 @@
+package: kit/htmlutil
+spec_path: spec/packages/kit/htmlutil
+requirements:
+  REQ-KIT-HTMLUTIL-0001:
+    evidences:
+      - evidence_id: EVID-KIT-HTMLUTIL-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-HTMLUTIL-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

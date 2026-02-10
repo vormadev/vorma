@@ -1,0 +1,17 @@
+package: kit/netutil
+spec_path: spec/packages/kit/netutil
+requirements:
+  REQ-KIT-NETUTIL-0001:
+    evidences:
+      - evidence_id: EVID-KIT-NETUTIL-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-NETUTIL-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

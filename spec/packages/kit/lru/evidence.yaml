@@ -1,0 +1,17 @@
+package: kit/lru
+spec_path: spec/packages/kit/lru
+requirements:
+  REQ-KIT-LRU-0001:
+    evidences:
+      - evidence_id: EVID-KIT-LRU-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-LRU-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

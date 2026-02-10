@@ -1,0 +1,17 @@
+package: lab/timer
+spec_path: spec/packages/lab/timer
+requirements:
+  REQ-LAB-TIMER-0001:
+    evidences:
+      - evidence_id: EVID-LAB-TIMER-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-LAB-TIMER-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

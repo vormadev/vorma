@@ -1,0 +1,17 @@
+package: lab/jsonschema
+spec_path: spec/packages/lab/jsonschema
+requirements:
+  REQ-LAB-JSONSCHEMA-0001:
+    evidences:
+      - evidence_id: EVID-LAB-JSONSCHEMA-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-LAB-JSONSCHEMA-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

@@ -1,0 +1,17 @@
+package: kit/response
+spec_path: spec/packages/kit/response
+requirements:
+  REQ-KIT-RESPONSE-0001:
+    evidences:
+      - evidence_id: EVID-KIT-RESPONSE-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-RESPONSE-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

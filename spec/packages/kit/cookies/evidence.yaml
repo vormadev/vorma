@@ -1,0 +1,17 @@
+package: kit/cookies
+spec_path: spec/packages/kit/cookies
+requirements:
+  REQ-KIT-COOKIES-0001:
+    evidences:
+      - evidence_id: EVID-KIT-COOKIES-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-COOKIES-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

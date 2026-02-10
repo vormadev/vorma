@@ -1,0 +1,17 @@
+package: kit/_typescript/fmt
+spec_path: spec/packages/kit/_typescript/fmt
+requirements:
+  REQ-KIT-TYPESCRIPT-FMT-0001:
+    evidences:
+      - evidence_id: EVID-KIT-TYPESCRIPT-FMT-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-TYPESCRIPT-FMT-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

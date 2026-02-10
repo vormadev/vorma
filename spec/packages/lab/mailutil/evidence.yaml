@@ -1,0 +1,17 @@
+package: lab/mailutil
+spec_path: spec/packages/lab/mailutil
+requirements:
+  REQ-LAB-MAILUTIL-0001:
+    evidences:
+      - evidence_id: EVID-LAB-MAILUTIL-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-LAB-MAILUTIL-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

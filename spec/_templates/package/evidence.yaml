@@ -1,0 +1,17 @@
+package: __PACKAGE_NAME__
+spec_path: __SPEC_PATH__
+requirements:
+  REQ-__REQ_PREFIX__-0001:
+    evidences:
+      - evidence_id: EVID-__REQ_PREFIX__-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-__REQ_PREFIX__-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

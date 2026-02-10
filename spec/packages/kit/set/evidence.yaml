@@ -1,0 +1,17 @@
+package: kit/set
+spec_path: spec/packages/kit/set
+requirements:
+  REQ-KIT-SET-0001:
+    evidences:
+      - evidence_id: EVID-KIT-SET-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-SET-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

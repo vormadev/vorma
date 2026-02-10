@@ -1,0 +1,17 @@
+package: kit/_typescript/matcher
+spec_path: spec/packages/kit/_typescript/matcher
+requirements:
+  REQ-KIT-TYPESCRIPT-MATCHER-0001:
+    evidences:
+      - evidence_id: EVID-KIT-TYPESCRIPT-MATCHER-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-TYPESCRIPT-MATCHER-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

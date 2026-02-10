@@ -1,0 +1,17 @@
+package: lab/errutil
+spec_path: spec/packages/lab/errutil
+requirements:
+  REQ-LAB-ERRUTIL-0001:
+    evidences:
+      - evidence_id: EVID-LAB-ERRUTIL-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-LAB-ERRUTIL-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

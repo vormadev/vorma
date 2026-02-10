@@ -1,0 +1,17 @@
+package: kit/matcher
+spec_path: spec/packages/kit/matcher
+requirements:
+  REQ-KIT-MATCHER-0001:
+    evidences:
+      - evidence_id: EVID-KIT-MATCHER-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-MATCHER-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO

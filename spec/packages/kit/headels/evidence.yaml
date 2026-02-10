@@ -1,0 +1,17 @@
+package: kit/headels
+spec_path: spec/packages/kit/headels
+requirements:
+  REQ-KIT-HEADELS-0001:
+    evidences:
+      - evidence_id: EVID-KIT-HEADELS-TEST-0001
+        kind: test
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
+      - evidence_id: EVID-KIT-HEADELS-IMPL-0001
+        kind: implementation
+        refs:
+          - path: TODO
+            line: 1
+        note: TODO
