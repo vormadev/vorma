@@ -4,7 +4,8 @@
   into repository files.
 - Use repository-relative paths in docs and instructions.
 
-## Markdown Formatting
+## Formatting
 
-- After editing any `.md` files, always run Prettier on the file using
-  `pnpm prettier` with the appropriate arguments.
+- After editing any files formattable by Prettier (including, without
+  limitation, `.ts`, `.tsx`, `.json` and `.md` files), always run
+  `pnpm prettier` on the files.

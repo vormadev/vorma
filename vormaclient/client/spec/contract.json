@@ -1,0 +1,3976 @@
+{
+	"schema_version": "1.0.0",
+	"package": "vormaclient/client",
+	"scope": {
+		"statement": "Reconstruction-grade runtime contract for vormaclient/client package entrypoint.",
+		"owned_surface": [
+			"All runtime and type exports from vormaclient/client/index.ts.",
+			"Package-owned event keys, storage keys, query params, and headers used by exported APIs.",
+			"Observable runtime behavior implemented in this package."
+		],
+		"out_of_scope": [
+			"Dependency internals in history and vorma/kit modules.",
+			"Browser engine internals and build tooling implementation details."
+		]
+	},
+	"runtime_export_coverage": {
+		"exports": [
+			{
+				"symbol": "getBuildID",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-005"]
+			},
+			{
+				"symbol": "getHistoryInstance",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-005"]
+			},
+			{
+				"symbol": "getLocation",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-005"]
+			},
+			{
+				"symbol": "getRootEl",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-005"]
+			},
+			{
+				"symbol": "getStatus",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-005"]
+			},
+			{
+				"symbol": "revalidate",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-006"]
+			},
+			{
+				"symbol": "submit",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-007"]
+			},
+			{
+				"symbol": "vormaNavigate",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-006"]
+			},
+			{
+				"symbol": "__registerClientLoaderPattern",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-009"]
+			},
+			{
+				"symbol": "defaultErrorBoundary",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-002"]
+			},
+			{
+				"symbol": "addBuildIDListener",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-001"]
+			},
+			{
+				"symbol": "addLocationListener",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-001"]
+			},
+			{
+				"symbol": "addRouteChangeListener",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-001"]
+			},
+			{
+				"symbol": "addStatusListener",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-001"]
+			},
+			{
+				"symbol": "setupGlobalLoadingIndicator",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-012"]
+			},
+			{
+				"symbol": "__runClientLoadersAfterHMRUpdate",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-013"]
+			},
+			{
+				"symbol": "initClient",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-008"]
+			},
+			{
+				"symbol": "__getPrefetchHandlers",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-010"]
+			},
+			{
+				"symbol": "__makeLinkOnClickFn",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-010"]
+			},
+			{
+				"symbol": "__applyScrollState",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-011"]
+			},
+			{
+				"symbol": "route",
+				"kind": "function",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-014"]
+			},
+			{
+				"symbol": "__makeFinalLinkProps",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-015"]
+			},
+			{
+				"symbol": "makeTypedNavigate",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-016"]
+			},
+			{
+				"symbol": "__resolvePath",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-017"]
+			},
+			{
+				"symbol": "buildMutationURL",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-017"]
+			},
+			{
+				"symbol": "buildQueryURL",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-017"]
+			},
+			{
+				"symbol": "resolveBody",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-017"]
+			},
+			{
+				"symbol": "__vormaClientGlobal",
+				"kind": "object",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-003"]
+			},
+			{
+				"symbol": "getRouterData",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-004"]
+			},
+			{
+				"symbol": "revalidateOnWindowFocus",
+				"kind": "function",
+				"classification": "OWNED_RUNTIME_BEHAVIOR",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-018"]
+			},
+			{
+				"symbol": "SubmitOptions",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "RouteChangeEvent",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "StatusEvent",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaLinkPropsBase",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "ParamsForPattern",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "UseRouterDataFunction",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaRouteGeneric",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "ExtractApp",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "PermissivePatternBasedProps",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaAppBase",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaAppConfig",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaLoaderOutput",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaLoaderPattern",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaMutationInput",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaMutationOutput",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaMutationPattern",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaMutationProps",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaQueryInput",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaQueryOutput",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaQueryPattern",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaQueryProps",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "VormaRoutePropsGeneric",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			},
+			{
+				"symbol": "ClientLoaderAwaitedServerData",
+				"kind": "type_export",
+				"classification": "COMPILE_TIME_ONLY_OR_NOOP",
+				"contract_coverage": ["REQ-VORMACLIENT-CLIENT-019"]
+			}
+		],
+		"summary": {
+			"runtime_export_total": 30,
+			"runtime_export_covered": 30
+		}
+	},
+	"api_reference": {
+		"symbols": [
+			{
+				"name": "getBuildID",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol getBuildID."
+			},
+			{
+				"name": "getHistoryInstance",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol getHistoryInstance."
+			},
+			{
+				"name": "getLocation",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol getLocation."
+			},
+			{
+				"name": "getRootEl",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol getRootEl."
+			},
+			{
+				"name": "getStatus",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol getStatus."
+			},
+			{
+				"name": "revalidate",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol revalidate."
+			},
+			{
+				"name": "submit",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol submit."
+			},
+			{
+				"name": "vormaNavigate",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol vormaNavigate."
+			},
+			{
+				"name": "__registerClientLoaderPattern",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol __registerClientLoaderPattern."
+			},
+			{
+				"name": "defaultErrorBoundary",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol defaultErrorBoundary."
+			},
+			{
+				"name": "addBuildIDListener",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol addBuildIDListener."
+			},
+			{
+				"name": "addLocationListener",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol addLocationListener."
+			},
+			{
+				"name": "addRouteChangeListener",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol addRouteChangeListener."
+			},
+			{
+				"name": "addStatusListener",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol addStatusListener."
+			},
+			{
+				"name": "setupGlobalLoadingIndicator",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol setupGlobalLoadingIndicator."
+			},
+			{
+				"name": "__runClientLoadersAfterHMRUpdate",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol __runClientLoadersAfterHMRUpdate."
+			},
+			{
+				"name": "initClient",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol initClient."
+			},
+			{
+				"name": "__getPrefetchHandlers",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol __getPrefetchHandlers."
+			},
+			{
+				"name": "__makeLinkOnClickFn",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol __makeLinkOnClickFn."
+			},
+			{
+				"name": "__applyScrollState",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol __applyScrollState."
+			},
+			{
+				"name": "route",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol route."
+			},
+			{
+				"name": "__makeFinalLinkProps",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol __makeFinalLinkProps."
+			},
+			{
+				"name": "makeTypedNavigate",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol makeTypedNavigate."
+			},
+			{
+				"name": "__resolvePath",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol __resolvePath."
+			},
+			{
+				"name": "buildMutationURL",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol buildMutationURL."
+			},
+			{
+				"name": "buildQueryURL",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol buildQueryURL."
+			},
+			{
+				"name": "resolveBody",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol resolveBody."
+			},
+			{
+				"name": "__vormaClientGlobal",
+				"kind": "global",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol __vormaClientGlobal."
+			},
+			{
+				"name": "getRouterData",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol getRouterData."
+			},
+			{
+				"name": "revalidateOnWindowFocus",
+				"kind": "function",
+				"visibility": "public",
+				"ownership": "OWNED",
+				"description": "Contract symbol revalidateOnWindowFocus."
+			},
+			{
+				"name": "SubmitOptions",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol SubmitOptions."
+			},
+			{
+				"name": "RouteChangeEvent",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol RouteChangeEvent."
+			},
+			{
+				"name": "StatusEvent",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol StatusEvent."
+			},
+			{
+				"name": "VormaLinkPropsBase",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaLinkPropsBase."
+			},
+			{
+				"name": "ParamsForPattern",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol ParamsForPattern."
+			},
+			{
+				"name": "UseRouterDataFunction",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol UseRouterDataFunction."
+			},
+			{
+				"name": "VormaRouteGeneric",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaRouteGeneric."
+			},
+			{
+				"name": "ExtractApp",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol ExtractApp."
+			},
+			{
+				"name": "PermissivePatternBasedProps",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol PermissivePatternBasedProps."
+			},
+			{
+				"name": "VormaAppBase",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaAppBase."
+			},
+			{
+				"name": "VormaAppConfig",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaAppConfig."
+			},
+			{
+				"name": "VormaLoaderOutput",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaLoaderOutput."
+			},
+			{
+				"name": "VormaLoaderPattern",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaLoaderPattern."
+			},
+			{
+				"name": "VormaMutationInput",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaMutationInput."
+			},
+			{
+				"name": "VormaMutationOutput",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaMutationOutput."
+			},
+			{
+				"name": "VormaMutationPattern",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaMutationPattern."
+			},
+			{
+				"name": "VormaMutationProps",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaMutationProps."
+			},
+			{
+				"name": "VormaQueryInput",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaQueryInput."
+			},
+			{
+				"name": "VormaQueryOutput",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaQueryOutput."
+			},
+			{
+				"name": "VormaQueryPattern",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaQueryPattern."
+			},
+			{
+				"name": "VormaQueryProps",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaQueryProps."
+			},
+			{
+				"name": "VormaRoutePropsGeneric",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol VormaRoutePropsGeneric."
+			},
+			{
+				"name": "ClientLoaderAwaitedServerData",
+				"kind": "type_export",
+				"visibility": "public",
+				"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+				"description": "Contract symbol ClientLoaderAwaitedServerData."
+			},
+			{
+				"name": "vorma:route-change",
+				"kind": "event",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol vorma:route-change."
+			},
+			{
+				"name": "vorma:status",
+				"kind": "event",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol vorma:status."
+			},
+			{
+				"name": "vorma:build-id",
+				"kind": "event",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol vorma:build-id."
+			},
+			{
+				"name": "vorma:location",
+				"kind": "event",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol vorma:location."
+			},
+			{
+				"name": "VORMA_SYMBOL` (`Symbol.for(\"__vorma_internal__\")`)",
+				"kind": "global",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol VORMA_SYMBOL` (`Symbol.for(\"__vorma_internal__\")`)."
+			},
+			{
+				"name": "__vorma__scrollStateMap",
+				"kind": "storage_key",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol __vorma__scrollStateMap."
+			},
+			{
+				"name": "__vorma__pageRefreshScrollState",
+				"kind": "storage_key",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol __vorma__pageRefreshScrollState."
+			},
+			{
+				"name": "vorma_json",
+				"kind": "query_param",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol vorma_json."
+			},
+			{
+				"name": "dpl",
+				"kind": "query_param",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol dpl."
+			},
+			{
+				"name": "vorma_reload",
+				"kind": "query_param",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol vorma_reload."
+			},
+			{
+				"name": "X-Accepts-Client-Redirect",
+				"kind": "header",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol X-Accepts-Client-Redirect."
+			},
+			{
+				"name": "X-Vorma-Build-Id",
+				"kind": "header",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol X-Vorma-Build-Id."
+			},
+			{
+				"name": "x-deployment-id",
+				"kind": "header",
+				"visibility": "internal",
+				"ownership": "OWNED",
+				"description": "Contract symbol x-deployment-id."
+			}
+		],
+		"functions": [
+			{
+				"name": "addRouteChangeListener",
+				"signature": {
+					"params": [
+						{
+							"name": "listener",
+							"type": "(event: CustomEvent<RouteChangeEventDetail>) => void",
+							"required": true,
+							"description": "Parameter listener."
+						}
+					],
+					"return_type": "() => void"
+				},
+				"side_effects": [
+					"adds window listener for vorma:route-change.",
+					"Return behavior: cleanup function removing same listener from window."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "none from package code path."
+					}
+				]
+			},
+			{
+				"name": "addStatusListener",
+				"signature": {
+					"params": [
+						{
+							"name": "listener",
+							"type": "(event: CustomEvent<StatusEventDetail>) => void",
+							"required": true,
+							"description": "Parameter listener."
+						}
+					],
+					"return_type": "() => void"
+				},
+				"side_effects": [
+					"adds window listener for vorma:status.",
+					"Return behavior: cleanup function removing same listener."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "addBuildIDListener",
+				"signature": {
+					"params": [
+						{
+							"name": "listener",
+							"type": "(event: CustomEvent<{ oldID: string; newID: string }>) => void",
+							"required": true,
+							"description": "Parameter listener."
+						}
+					],
+					"return_type": "() => void"
+				},
+				"side_effects": [
+					"adds listener for vorma:build-id.",
+					"Return behavior: cleanup function."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "addLocationListener",
+				"signature": {
+					"params": [
+						{
+							"name": "listener",
+							"type": "(event: CustomEvent<void>) => void",
+							"required": true,
+							"description": "Parameter listener."
+						}
+					],
+					"return_type": "() => void"
+				},
+				"side_effects": [
+					"adds listener for vorma:location.",
+					"Return behavior: cleanup function."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "defaultErrorBoundary",
+				"signature": {
+					"params": [
+						{
+							"name": "props",
+							"type": "{ error: string }",
+							"required": true,
+							"description": "Parameter props."
+						}
+					],
+					"return_type": "any"
+				},
+				"side_effects": [
+					"Return value: exact runtime value is string concatenation \"Route Error: \" + props.error.",
+					"none."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__vormaClientGlobal.get",
+				"signature": {
+					"params": [
+						{
+							"name": "key",
+							"type": "K",
+							"required": true,
+							"description": "Parameter key."
+						}
+					],
+					"return_type": "VormaClientGlobal[K]"
+				},
+				"side_effects": [
+					"Reads globalThis[Symbol.for(\"__vorma_internal__\")][key].",
+					"No defaulting or cloning."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__vormaClientGlobal.set",
+				"signature": {
+					"params": [
+						{
+							"name": "key",
+							"type": "K",
+							"required": true,
+							"description": "Parameter key."
+						},
+						{
+							"name": "value",
+							"type": "VormaClientGlobal[K]",
+							"required": true,
+							"description": "Parameter value."
+						}
+					],
+					"return_type": "void"
+				},
+				"side_effects": [
+					"Writes globalThis[Symbol.for(\"__vorma_internal__\")][key] = value."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "getRouterData",
+				"signature": {
+					"params": [],
+					"return_type": "{ buildID: string; matchedPatterns: string[]; splatValues: string[]; params: P; rootData: T | null }"
+				},
+				"side_effects": [
+					"buildID: __vormaClientGlobal.get(\"buildID\") || \"\".",
+					"matchedPatterns: __vormaClientGlobal.get(\"matchedPatterns\") || [].",
+					"splatValues: __vormaClientGlobal.get(\"splatValues\") || [].",
+					"params: (__vormaClientGlobal.get(\"params\") || {}) as P.",
+					"rootData: first element of loadersData when hasRootData is truthy, else null."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "getStatus",
+				"signature": {
+					"params": [],
+					"return_type": "{ isNavigating: boolean; isSubmitting: boolean; isRevalidating: boolean }"
+				},
+				"side_effects": [
+					"Returns current status snapshot from singleton navigationStateManager."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "getLocation",
+				"signature": {
+					"params": [],
+					"return_type": "{ pathname: string; search: string; hash: string; state: unknown }"
+				},
+				"side_effects": [
+					"Returns current window.location pieces and HistoryManager.getInstance().location.state."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "getBuildID",
+				"signature": {
+					"params": [],
+					"return_type": "string"
+				},
+				"side_effects": [
+					"Returns __vormaClientGlobal.get(\"buildID\")."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "getRootEl",
+				"signature": {
+					"params": [],
+					"return_type": "HTMLDivElement"
+				},
+				"side_effects": [
+					"Returns document.getElementById(\"vorma-root\") cast to HTMLDivElement.",
+					"Runtime note: if element missing, runtime value is null (cast only affects static type)."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "getHistoryInstance",
+				"signature": {
+					"params": [],
+					"return_type": "historyInstance"
+				},
+				"side_effects": [
+					"Returns singleton history instance from HistoryManager.getInstance().",
+					"Dependency-owned methods (push, replace, listen) are OUT_OF_SCOPE beyond boundary usage."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "vormaNavigate",
+				"signature": {
+					"params": [
+						{
+							"name": "href",
+							"type": "string",
+							"required": true,
+							"description": "Parameter href."
+						},
+						{
+							"name": "options",
+							"type": "{ replace?: boolean; scrollToTop?: boolean; search?: string; hash?: string; state?: unknown }",
+							"required": true,
+							"description": "Parameter options."
+						}
+					],
+					"return_type": "Promise<void>"
+				},
+				"side_effects": [
+					"Resolves target URL relative to window.location.href.",
+					"If options.search is not undefined, overrides url.search.",
+					"If options.hash is not undefined, overrides url.hash.",
+					"Delegates to navigation engine with navigationType: \"userNavigation\" and passes replace, scrollToTop, state."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "revalidate",
+				"signature": {
+					"params": [],
+					"return_type": "Promise<void>"
+				},
+				"side_effects": [
+					"Delegates navigation with href: window.location.href and navigationType: \"revalidation\".",
+					"Revalidation calls within 8ms window coalesce to one in-flight revalidation control."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "submit",
+				"signature": {
+					"params": [
+						{
+							"name": "url",
+							"type": "string | URL",
+							"required": true,
+							"description": "Parameter url."
+						},
+						{
+							"name": "requestInit",
+							"type": "RequestInit",
+							"required": true,
+							"description": "Parameter requestInit."
+						},
+						{
+							"name": "options",
+							"type": "SubmitOptions",
+							"required": true,
+							"description": "Parameter options."
+						}
+					],
+					"return_type": "Promise<{ success: true; data: T } | { success: false; error: string }>"
+				},
+				"side_effects": [
+					"Dedupe keying: - with options.dedupeKey = \"k\": submission key is exact string \"submission:k\". - without dedupe key: unique Symbol(\"submission\").",
+					"Existing dedupe-keyed submission is aborted before starting replacement submission.",
+					"Always returns union shape; does not throw for network and HTTP failures from internal flow.",
+					"On abort error: { success: false, error: \"Aborted\" }.",
+					"On HTTP non-OK or missing response: { success: false, error: String(status || \"unknown\") }.",
+					"On non-abort thrown error: { success: false, error: error.message | \"Unknown error\" }.",
+					"On redirect with redirectData.status === \"should\": performs redirect effect and returns { success: true, data: undefined as T }.",
+					"Auto-revalidation after successful non-GET submission when redirect status is not \"did\" and options.revalidate !== false."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "initClient",
+				"signature": {
+					"params": [
+						{
+							"name": "options",
+							"type": "{ vormaAppConfig: VormaAppConfig; renderFn: () => void; defaultErrorBoundary?: RouteErrorComponent; useViewTransitions?: boolean }",
+							"required": true,
+							"description": "Parameter options."
+						}
+					],
+					"return_type": "Promise<void>"
+				},
+				"side_effects": [
+					"Initializes HMR integration.",
+					"Registers beforeunload save handler.",
+					"Seeds global vormaAppConfig, clientModuleMap, patternRegistry, optional routeManifest async fetch.",
+					"Sets defaultErrorBoundary to provided callback or package default.",
+					"Sets useViewTransitions to true only when option is truthy.",
+					"Initializes history and forces history.scrollRestoration = \"manual\" when not already manual.",
+					"Removes vorma_reload query parameter from URL via history replace when present.",
+					"Awaits in order: initial component load, client loader setup, error-boundary component resolution.",
+					"Calls renderFn(), then restores page-refresh scroll state.",
+					"Adds one-shot touchstart listener that sets isTouchDevice = true."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__registerClientLoaderPattern",
+				"signature": {
+					"params": [
+						{
+							"name": "pattern",
+							"type": "string",
+							"required": true,
+							"description": "Parameter pattern."
+						}
+					],
+					"return_type": "Promise<void>"
+				},
+				"side_effects": [
+					"Calls the pattern-registration dependency with the current global patternRegistry and provided pattern."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__getPrefetchHandlers",
+				"signature": {
+					"params": [
+						{
+							"name": "input",
+							"type": "{ href: string; delayMs?: number; beforeBegin?: (e: E) => void | Promise<void>; beforeRender?: (e: E) => void | Promise<void>; afterRender?: (e: E) => void | Promise<void>; scrollToTop?: boolean; replace?: boolean; search?: string; hash?: string; state?: unknown }",
+							"required": true,
+							"description": "Parameter input."
+						}
+					],
+					"return_type": "({ start(e: E): void; stop(): void; onClick(e: E): Promise<void> } & Record<string, unknown>) | undefined"
+				},
+				"side_effects": [
+					"Returns undefined when href details are non-HTTP, external, or missing dependency-provided relative URL.",
+					"Default prefetch delay: 100ms.",
+					"start(e) schedules prefetch; stop() cancels timer and aborts removable prefetch navigation; onClick(e) handles click routing with hash-change bypass.",
+					"Return object additionally includes dependency-provided href-detail fields unchanged (OUT_OF_SCOPE dependency ownership)."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__makeLinkOnClickFn",
+				"signature": {
+					"params": [
+						{
+							"name": "callbacks",
+							"type": "{ beforeBegin?: (e: E) => void | Promise<void>; beforeRender?: (e: E) => void | Promise<void>; afterRender?: (e: E) => void | Promise<void>; scrollToTop?: boolean; replace?: boolean; state?: unknown }",
+							"required": true,
+							"description": "Parameter callbacks."
+						}
+					],
+					"return_type": "(e: E) => Promise<void>"
+				},
+				"side_effects": [
+					"Returned handler performs internal-link interception, hash-only shortcut handling, and navigation outcome handling (aborted/redirect/success)."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__applyScrollState",
+				"signature": {
+					"params": [
+						{
+							"name": "state",
+							"type": "{ x: number; y: number } | { hash: string }",
+							"required": true,
+							"description": "Parameter state."
+						}
+					],
+					"return_type": "void"
+				},
+				"side_effects": [
+					"undefined state: attempts element scroll for current URL hash.",
+					"{ hash }: attempts element scroll for provided hash when non-empty string.",
+					"{ x, y }: performs window.scrollTo(x, y)."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "setupGlobalLoadingIndicator",
+				"signature": {
+					"params": [
+						{
+							"name": "config",
+							"type": "{ start: () => void; stop: () => void; isRunning: () => boolean; include?: \"all\" | Array<\"navigations\" | \"submissions\" | \"revalidations\">; startDelayMS?: number; stopDelayMS?: number }",
+							"required": true,
+							"description": "Parameter config."
+						}
+					],
+					"return_type": "() => void"
+				},
+				"side_effects": [
+					"Defaults both delays to 12 ms.",
+					"Subscribes to status events and evaluates working state immediately.",
+					"Debounces start/stop transitions and guards against duplicate start/stop calls via isRunning() checks.",
+					"Cleanup unsubscribes, clears timers, and forces stop() if indicator still running."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__runClientLoadersAfterHMRUpdate",
+				"signature": {
+					"params": [
+						{
+							"name": "importMeta",
+							"type": "ImportMeta",
+							"required": true,
+							"description": "Parameter importMeta."
+						},
+						{
+							"name": "pattern",
+							"type": "string",
+							"required": true,
+							"description": "Parameter pattern."
+						}
+					],
+					"return_type": "void"
+				},
+				"side_effects": [
+					"Exported binding defaults to no-op function.",
+					"In dev mode after HMR init, binding becomes implementation that registers a vite:afterUpdate hook once per module pathname and reruns client loaders (debounced by 10ms) when matching JS module updates occur for currently matched route pattern."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "route",
+				"signature": {
+					"params": [
+						{
+							"name": "pattern",
+							"type": "string",
+							"required": true,
+							"description": "Parameter pattern."
+						},
+						{
+							"name": "importPromise",
+							"type": "Promise<Record<string, any>>",
+							"required": true,
+							"description": "Parameter importPromise."
+						},
+						{
+							"name": "componentKey",
+							"type": "string",
+							"required": true,
+							"description": "Parameter componentKey."
+						},
+						{
+							"name": "errorBoundaryKey",
+							"type": "string",
+							"required": true,
+							"description": "Parameter errorBoundaryKey."
+						}
+					],
+					"return_type": "void"
+				},
+				"side_effects": [
+					"Runtime no-op: returns undefined, no side effects."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__makeFinalLinkProps",
+				"signature": {
+					"params": [
+						{
+							"name": "props",
+							"type": "VormaLinkPropsBase<LinkOnClickCallback>",
+							"required": true,
+							"description": "Parameter props."
+						},
+						{
+							"name": "keys",
+							"type": "{ onPointerEnter: string; onFocus: string; onPointerLeave: string; onBlur: string; onTouchCancel: string; onClick: string }",
+							"required": true,
+							"description": "Parameter keys."
+						}
+					],
+					"return_type": "{ dataExternal?: boolean; onPointerEnter(e: any): void; onFocus(e: any): void; onPointerLeave(e: any): void; onBlur(e: any): void; onTouchCancel(e: any): void; onClick(e: any): Promise<void> }"
+				},
+				"side_effects": [
+					"Produces framework-neutral link handlers.",
+					"Handler name remapping uses keys override, defaulting to camel-case names."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "makeTypedNavigate",
+				"signature": {
+					"params": [
+						{
+							"name": "vormaAppConfig",
+							"type": "C",
+							"required": true,
+							"description": "Parameter vormaAppConfig."
+						}
+					],
+					"return_type": "(options: { pattern: string; params?: Record<string, string>; splatValues?: string[]; replace?: boolean; scrollToTop?: boolean; search?: string; hash?: string; state?: unknown }) => Promise<void>"
+				},
+				"side_effects": [
+					"Returned function resolves loader path via __resolvePath(...type: \"loader\") and delegates to vormaNavigate."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "__resolvePath",
+				"signature": {
+					"params": [
+						{
+							"name": "opts",
+							"type": "{ vormaAppConfig: VormaAppConfig; type: \"loader\" | \"query\" | \"mutation\"; props: { pattern: string; params?: Record<string, string>; splatValues?: string[] } }",
+							"required": true,
+							"description": "Parameter opts."
+						}
+					],
+					"return_type": "string"
+				},
+				"side_effects": [
+					"Replaces dynamic placeholders and splat rune according to action or loader rune config.",
+					"For type === \"loader\", strips trailing explicit index segment /${loadersExplicitIndexSegment}."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "buildQueryURL",
+				"signature": {
+					"params": [
+						{
+							"name": "vormaAppConfig",
+							"type": "VormaAppConfig",
+							"required": true,
+							"description": "Parameter vormaAppConfig."
+						},
+						{
+							"name": "props",
+							"type": "{ pattern: string; params?: Record<string, string>; splatValues?: string[]; input?: any }",
+							"required": true,
+							"description": "Parameter props."
+						}
+					],
+					"return_type": "URL"
+				},
+				"side_effects": [
+					"Base URL uses new URL(stripTrailingSlash(actionsRouterMountRoot) + resolvedPath, new URL(window.location.href).origin).",
+					"If props.input is truthy, query string is dependency serialization output."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "buildMutationURL",
+				"signature": {
+					"params": [
+						{
+							"name": "vormaAppConfig",
+							"type": "VormaAppConfig",
+							"required": true,
+							"description": "Parameter vormaAppConfig."
+						},
+						{
+							"name": "props",
+							"type": "{ pattern: string; params?: Record<string, string>; splatValues?: string[]; input?: any }",
+							"required": true,
+							"description": "Parameter props."
+						}
+					],
+					"return_type": "URL"
+				},
+				"side_effects": [
+					"Same base-path resolution as buildQueryURL, no query serialization branch."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "resolveBody",
+				"signature": {
+					"params": [
+						{
+							"name": "props",
+							"type": "{ input?: any }",
+							"required": true,
+							"description": "Parameter props."
+						}
+					],
+					"return_type": "BodyInit | null | undefined"
+				},
+				"side_effects": [
+					"Pass-through for null, undefined, string, Blob, FormData, URLSearchParams, ReadableStream, ArrayBuffer, and ArrayBufferView.",
+					"JSON stringifies all other input values."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			},
+			{
+				"name": "revalidateOnWindowFocus",
+				"signature": {
+					"params": [
+						{
+							"name": "options",
+							"type": "{ staleTimeMS?: number }",
+							"required": true,
+							"description": "Parameter options."
+						}
+					],
+					"return_type": "() => void"
+				},
+				"side_effects": [
+					"Default stale time: 5000 ms.",
+					"Returns cleanup callback from focus-listener dependency.",
+					"Focus callback runs revalidate() only when status is idle and stale window is exceeded."
+				],
+				"errors": [
+					{
+						"mode": "none",
+						"description": "No explicit throw path documented in package code."
+					}
+				]
+			}
+		],
+		"types": [
+			{
+				"name": "SubmitOptions",
+				"kind": "object",
+				"fields": []
+			},
+			{
+				"name": "StatusEventDetail",
+				"kind": "object",
+				"fields": []
+			},
+			{
+				"name": "RouteChangeEventDetail",
+				"kind": "object",
+				"fields": []
+			},
+			{
+				"name": "ScrollState",
+				"kind": "union",
+				"fields": [
+					{
+						"name": "variant_a",
+						"type": "`{ x: number; y: number }`.",
+						"required": true,
+						"nullable": false,
+						"description": "Union variant variant_a."
+					},
+					{
+						"name": "variant_b",
+						"type": "`{ hash: string }`.",
+						"required": true,
+						"nullable": false,
+						"description": "Union variant variant_b."
+					}
+				]
+			},
+			{
+				"name": "VormaAppConfig",
+				"kind": "object",
+				"fields": []
+			},
+			{
+				"name": "GlobalLoadingIndicatorConfig",
+				"kind": "object",
+				"fields": []
+			},
+			{
+				"name": "VormaLinkPropsBase<LinkOnClickCallback>",
+				"kind": "generic",
+				"fields": []
+			},
+			{
+				"name": "VormaClientGlobal",
+				"kind": "object",
+				"fields": []
+			}
+		],
+		"events": [
+			{
+				"name": "vorma:status",
+				"payload_schema": "StatusEventDetail.",
+				"emission_conditions": [
+					"status snapshot change after internal debounced dispatch cycle."
+				]
+			},
+			{
+				"name": "vorma:route-change",
+				"payload_schema": "{ __scrollState?: ScrollState }.",
+				"emission_conditions": [
+					"rerender pipeline dispatch in __reRenderAppInner."
+				]
+			},
+			{
+				"name": "vorma:location",
+				"payload_schema": "no detail payload.",
+				"emission_conditions": [
+					"custom history listener when location.key changes."
+				]
+			},
+			{
+				"name": "vorma:build-id",
+				"payload_schema": "{ oldID: string; newID: string }.",
+				"emission_conditions": [
+					"when response build ID differs from current build ID and update is consumed."
+				]
+			}
+		],
+		"constants": [
+			{
+				"name": "vorma:route-change",
+				"value_type": "string",
+				"value": "vorma:route-change",
+				"description": "Route-change custom event key."
+			},
+			{
+				"name": "vorma:status",
+				"value_type": "string",
+				"value": "vorma:status",
+				"description": "Status custom event key."
+			},
+			{
+				"name": "vorma:build-id",
+				"value_type": "string",
+				"value": "vorma:build-id",
+				"description": "Build-id custom event key."
+			},
+			{
+				"name": "vorma:location",
+				"value_type": "string",
+				"value": "vorma:location",
+				"description": "Location custom event key."
+			},
+			{
+				"name": "vorma_json",
+				"value_type": "string",
+				"value": "vorma_json",
+				"description": "Navigation query parameter carrying build id marker."
+			},
+			{
+				"name": "dpl",
+				"value_type": "string",
+				"value": "dpl",
+				"description": "Deployment redirect query parameter."
+			},
+			{
+				"name": "vorma_reload",
+				"value_type": "string",
+				"value": "vorma_reload",
+				"description": "Query parameter indicating hard-reload cleanup path."
+			},
+			{
+				"name": "X-Accepts-Client-Redirect",
+				"value_type": "string",
+				"value": "1",
+				"description": "Header value sent by client to opt into redirect protocol."
+			},
+			{
+				"name": "X-Vorma-Build-Id",
+				"value_type": "string",
+				"value": "X-Vorma-Build-Id",
+				"description": "Response header key used for build id drift detection."
+			},
+			{
+				"name": "x-deployment-id",
+				"value_type": "string",
+				"value": "x-deployment-id",
+				"description": "Request header key attached to submissions when deployment id is set."
+			},
+			{
+				"name": "status_dispatch_debounce_ms",
+				"value_type": "number",
+				"value": 8,
+				"description": "Debounce window for status event dispatch."
+			},
+			{
+				"name": "revalidation_coalesce_window_ms",
+				"value_type": "number",
+				"value": 8,
+				"description": "Window for revalidation request coalescing."
+			},
+			{
+				"name": "prefetch_default_delay_ms",
+				"value_type": "number",
+				"value": 100,
+				"description": "Default prefetch start delay."
+			},
+			{
+				"name": "global_loading_start_delay_ms",
+				"value_type": "number",
+				"value": 12,
+				"description": "Default global loading start delay."
+			},
+			{
+				"name": "global_loading_stop_delay_ms",
+				"value_type": "number",
+				"value": 12,
+				"description": "Default global loading stop delay."
+			},
+			{
+				"name": "hmr_loader_rerun_debounce_ms",
+				"value_type": "number",
+				"value": 10,
+				"description": "HMR loader rerun debounce delay."
+			},
+			{
+				"name": "page_refresh_restore_window_ms",
+				"value_type": "number",
+				"value": 5000,
+				"description": "Maximum age for refresh scroll restoration."
+			},
+			{
+				"name": "focus_revalidate_stale_window_ms",
+				"value_type": "number",
+				"value": 5000,
+				"description": "Default stale window before revalidate on focus."
+			},
+			{
+				"name": "stored_scroll_entries_max",
+				"value_type": "number",
+				"value": 50,
+				"description": "Maximum stored scroll entries before FIFO eviction."
+			},
+			{
+				"name": "redirect_recursion_limit",
+				"value_type": "number",
+				"value": 10,
+				"description": "Maximum redirect recursion depth consumed from redirect helper."
+			}
+		],
+		"global_state": [
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "__vorma_internal__",
+				"type": "Record<string, unknown>",
+				"nullable": false,
+				"mutation_rules": [
+					"Root object is read and written by __vormaClientGlobal.get/set."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "buildID",
+				"type": "string",
+				"nullable": false,
+				"mutation_rules": [
+					"Set directly via __vormaClientGlobal.set.",
+					"Read by getBuildID and getRouterData."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "matchedPatterns",
+				"type": "string[]",
+				"nullable": false,
+				"mutation_rules": [
+					"Updated by navigation pipeline.",
+					"Read by getRouterData and HMR logic."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "splatValues",
+				"type": "string[]",
+				"nullable": false,
+				"mutation_rules": [
+					"Updated during route match resolution.",
+					"Read by getRouterData."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "params",
+				"type": "Record<string, string>",
+				"nullable": false,
+				"mutation_rules": [
+					"Updated during route match resolution.",
+					"Read by getRouterData."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "hasRootData",
+				"type": "boolean",
+				"nullable": false,
+				"mutation_rules": [
+					"Set by navigation data load.",
+					"Read by getRouterData rootData selection."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "loadersData",
+				"type": "unknown[]",
+				"nullable": false,
+				"mutation_rules": [
+					"Set by data loading pipeline.",
+					"Index 0 consumed by getRouterData when hasRootData is true."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "patternRegistry",
+				"type": "PatternRegistry",
+				"nullable": false,
+				"mutation_rules": [
+					"Initialized by initClient.",
+					"Consumed by __registerClientLoaderPattern."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "isTouchDevice",
+				"type": "boolean",
+				"nullable": false,
+				"mutation_rules": [
+					"Set to true once on first touchstart after initClient.",
+					"Read by __makeFinalLinkProps pointer-leave behavior."
+				]
+			},
+			{
+				"symbol_name": "Symbol.for(\"__vorma_internal__\")",
+				"key": "vormaAppConfig",
+				"type": "VormaAppConfig",
+				"nullable": false,
+				"mutation_rules": [
+					"Set during initClient.",
+					"Consumed by typed navigation and URL helpers."
+				]
+			}
+		]
+	},
+	"requirements": [
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-001",
+			"title": "addBuildIDListener contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"addBuildIDListener",
+				"addLocationListener",
+				"addRouteChangeListener",
+				"addStatusListener"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "Each listener-adder function MUST register the passed callback on window with its fixed event key."
+				},
+				{
+					"level": "MUST",
+					"text": "The returned cleanup callback MUST remove the same callback from window for the same key."
+				},
+				{
+					"level": "MUST_NOT",
+					"text": "Listener-adder functions MUST NOT add listeners to any target other than window."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "listener: function receiving one CustomEvent argument."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "A cleanup function is returned."
+				},
+				{
+					"name": "output_2",
+					"type": "observable_effect",
+					"description": "window.addEventListener receives one call per adder invocation."
+				},
+				{
+					"name": "output_3",
+					"type": "observable_effect",
+					"description": "Cleanup triggers one window.removeEventListener call."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "No package-level throw path is introduced."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "vorma:status",
+					"description": "Event keys are exact strings: vorma:status, vorma:route-change, vorma:location, vorma:build-id."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-002",
+			"title": "defaultErrorBoundary contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["defaultErrorBoundary"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "defaultErrorBoundary MUST return the exact concatenated string \"Route Error: \" + props.error."
+				},
+				{
+					"level": "MUST_NOT",
+					"text": "defaultErrorBoundary MUST NOT mutate global state, DOM, or network state."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "props: { error: string }."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Return type is runtime string for any string input."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "No package-level throw path is defined."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "\"Route Error: \"",
+					"description": "String prefix constant is exactly \"Route Error: \"."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-003",
+			"title": "__vormaClientGlobal contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["__vormaClientGlobal"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "__vormaClientGlobal.get(key) MUST return globalThis[Symbol.for(\"__vorma_internal__\")][key] by direct property read."
+				},
+				{
+					"level": "MUST",
+					"text": "__vormaClientGlobal.set(key, value) MUST assign value by direct property write."
+				},
+				{
+					"level": "MUST",
+					"text": "Reads and writes MUST be unvalidated passthrough operations."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "key: one concrete key from VormaClientGlobal, e.g. \"buildID\"."
+				},
+				{
+					"name": "input_2",
+					"type": "described_value",
+					"description": "value: concrete value matching key type, e.g. \"123\" for \"buildID\"."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "set(\"buildID\", \"123\") makes subsequent get(\"buildID\") return \"123\"."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "If globalThis[Symbol.for(\"__vorma_internal__\")] is undefined, key access/write throws runtime TypeError from property access."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "Symbol.for(\"__vorma_internal__\")",
+					"description": "Symbol key is exactly Symbol.for(\"__vorma_internal__\")."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-004",
+			"title": "getRouterData contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["getRouterData", "__vormaClientGlobal"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "getRouterData() MUST return object keys buildID, matchedPatterns, splatValues, params, rootData."
+				},
+				{
+					"level": "MUST",
+					"text": "buildID MUST default to empty string when global build ID is falsy."
+				},
+				{
+					"level": "MUST",
+					"text": "matchedPatterns MUST default to empty array when absent."
+				},
+				{
+					"level": "MUST",
+					"text": "splatValues MUST default to empty array when absent."
+				},
+				{
+					"level": "MUST",
+					"text": "params MUST default to empty object when absent."
+				},
+				{
+					"level": "MUST",
+					"text": "rootData MUST be loadersData[0] when hasRootData is truthy; otherwise null."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "No runtime arguments."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Returns a new snapshot object derived from current global values."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "Inherits failure behavior of __vormaClientGlobal.get when global symbol object is missing."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "\"\"",
+					"description": "Default build ID fallback constant is exact empty string \"\"."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-005",
+			"title": "getStatus contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"getStatus",
+				"getLocation",
+				"getBuildID",
+				"getRootEl",
+				"getHistoryInstance"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "getStatus() MUST return current status object { isNavigating, isSubmitting, isRevalidating } from the singleton navigation manager."
+				},
+				{
+					"level": "MUST",
+					"text": "getLocation() MUST return { pathname, search, hash, state } where state is from HistoryManager.getInstance().location.state."
+				},
+				{
+					"level": "MUST",
+					"text": "getBuildID() MUST return __vormaClientGlobal.get(\"buildID\")."
+				},
+				{
+					"level": "MUST",
+					"text": "getRootEl() MUST select by exact DOM ID \"vorma-root\"."
+				},
+				{
+					"level": "MUST",
+					"text": "getHistoryInstance() MUST return the singleton history instance."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "No runtime args."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Returned objects are immediately observable snapshots."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "getRootEl() can return runtime null if the element does not exist."
+				},
+				{
+					"condition": "failure_condition_2",
+					"behavior": "No additional package-level throw behavior is introduced."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "\"vorma-root\"",
+					"description": "DOM selector key is exact \"vorma-root\"."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-006",
+			"title": "vormaNavigate contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["vormaNavigate", "revalidate"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "vormaNavigate(href, options) MUST resolve href against window.location.href."
+				},
+				{
+					"level": "MUST",
+					"text": "When options.search !== undefined, vormaNavigate MUST overwrite URL search string with options.search."
+				},
+				{
+					"level": "MUST",
+					"text": "When options.hash !== undefined, vormaNavigate MUST overwrite URL hash with options.hash."
+				},
+				{
+					"level": "MUST",
+					"text": "vormaNavigate MUST delegate to navigation engine with navigationType: \"userNavigation\" and pass through replace, scrollToTop, state."
+				},
+				{
+					"level": "MUST",
+					"text": "revalidate() MUST delegate with href: window.location.href and navigationType: \"revalidation\"."
+				},
+				{
+					"level": "MUST",
+					"text": "Revalidation requests MUST coalesce when started within 8 ms of an in-flight revalidation."
+				},
+				{
+					"level": "MUST_NOT",
+					"text": "Revalidation MUST NOT push or replace browser history entries."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "vormaNavigate(\"/users/1\", { replace: true, search: \"?a=1\", hash: \"#top\", state: { from: \"x\" } })."
+				},
+				{
+					"name": "input_2",
+					"type": "described_value",
+					"description": "revalidate() with no args."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Network route fetch includes vorma_json=<current build ID or \"1\"> query parameter."
+				},
+				{
+					"name": "output_2",
+					"type": "observable_effect",
+					"description": "Revalidation fetch targets current location URL and marks status as revalidating while in flight."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "vormaNavigate rejects only on invalid URL construction input (native URL constructor error)."
+				},
+				{
+					"condition": "failure_condition_2",
+					"behavior": "Otherwise, internal navigation failures are swallowed by navigation manager and return without throw."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "vorma_json",
+					"description": "Query param name is exact vorma_json."
+				},
+				{
+					"name": "constant_2",
+					"value": 8,
+					"description": "Revalidation coalesce window is exact 8 ms."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-007",
+			"title": "submit contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["submit", "revalidate"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "submit MUST return one of two shapes only: { success: true, data } or { success: false, error }."
+				},
+				{
+					"level": "MUST",
+					"text": "With options.dedupeKey, submit MUST abort an existing in-flight submission for the same key before starting the new one."
+				},
+				{
+					"level": "MUST",
+					"text": "Without options.dedupeKey, submissions MUST be tracked independently."
+				},
+				{
+					"level": "MUST",
+					"text": "submit MUST attach x-deployment-id header when global deployment ID exists."
+				},
+				{
+					"level": "MUST",
+					"text": "submit MUST call redirect handler with isPrefetch: false and redirectCount: 0."
+				},
+				{
+					"level": "MUST",
+					"text": "Non-OK or missing response MUST return { success: false, error: String(status || \"unknown\") }."
+				},
+				{
+					"level": "MUST",
+					"text": "Redirect result with status \"should\" MUST trigger redirect effectuation and return success with data set to undefined value."
+				},
+				{
+					"level": "MUST",
+					"text": "Successful non-GET submission MUST trigger revalidate() unless redirect status is \"did\" or options.revalidate === false."
+				},
+				{
+					"level": "MUST",
+					"text": "Abort errors MUST map to exact error string \"Aborted\"."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "URL string and URL objects are both accepted."
+				},
+				{
+					"name": "input_2",
+					"type": "described_value",
+					"description": "Example options: { dedupeKey: \"save-1\", revalidate: true, skipGlobalLoadingIndicator: false }."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Status reflects isSubmitting: true while submission is tracked (unless skipped by global-loading-indicator filtering)."
+				},
+				{
+					"name": "output_2",
+					"type": "observable_effect",
+					"description": "Request body pass-through for FormData and string; JSON-stringify for other object bodies via redirect handler path."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "Network throw returns { success: false, error: error.message } when thrown value is an Error instance."
+				},
+				{
+					"condition": "failure_condition_2",
+					"behavior": "Network throw returns { success: false, error: \"Unknown error\" } when thrown value is not an Error instance."
+				},
+				{
+					"condition": "failure_condition_3",
+					"behavior": "Abort throw returns { success: false, error: \"Aborted\" }."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "\"submission:\"",
+					"description": "Dedupe submission map key prefix is exact \"submission:\"."
+				},
+				{
+					"name": "constant_2",
+					"value": 10,
+					"description": "Redirect recursion limit consumed by submit path is exact 10."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-008",
+			"title": "initClient contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["initClient", "defaultErrorBoundary"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "initClient MUST initialize HMR first."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST attach a beforeunload listener that saves page-refresh scroll state."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST set vormaAppConfig global key to provided config."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST rebuild and store clientModuleMap from initial SSR route arrays, defaulting missing export key to \"default\" and missing error export key to empty string."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST initialize pattern registry with loader runes from vormaAppConfig."
+				},
+				{
+					"level": "MUST",
+					"text": "If routeManifestURL exists, initClient MUST asynchronously fetch manifest and register all manifest patterns."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST set default error boundary to user-provided callback when given, else package defaultErrorBoundary."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST set useViewTransitions only when option is truthy."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST initialize history and enforce manual scroll restoration."
+				},
+				{
+					"level": "MUST",
+					"text": "If URL contains vorma_reload, initClient MUST remove that query param and replace URL via history."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST await initial component resolution, client loader setup, and error boundary component resolution, then execute renderFn."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST attempt page-refresh scroll restoration after rendering."
+				},
+				{
+					"level": "MUST",
+					"text": "initClient MUST install one-time touchstart listener that sets global isTouchDevice to true."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "options object with concrete vormaAppConfig runes and mount root."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Global keys set/updated as listed above."
+				},
+				{
+					"name": "output_2",
+					"type": "observable_effect",
+					"description": "History listener registered."
+				},
+				{
+					"name": "output_3",
+					"type": "observable_effect",
+					"description": "Optional URL cleanup side effect by history replace."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "Promise rejects if awaited setup steps throw or reject."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "vorma_reload",
+					"description": "Hard-reload query key removed is exact vorma_reload."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-009",
+			"title": "__registerClientLoaderPattern contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"__registerClientLoaderPattern",
+				"__vormaClientGlobal"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "__registerClientLoaderPattern(pattern) MUST invoke the pattern-registration dependency using current global patternRegistry and provided pattern."
+				},
+				{
+					"level": "MUST",
+					"text": "Function MUST resolve Promise<void> on success."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "pattern: string, example \"/users/:id\"."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Pattern registration side effect occurs in dependency-owned registry."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "Promise rejects if the pattern-registration dependency throws."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "No additional constants.",
+					"description": "No additional constants."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-010",
+			"title": "__getPrefetchHandlers contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"__getPrefetchHandlers",
+				"__makeLinkOnClickFn",
+				"vormaNavigate"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "__getPrefetchHandlers MUST return undefined for external or non-HTTP hrefs and for missing dependency-relative URL."
+				},
+				{
+					"level": "MUST",
+					"text": "__getPrefetchHandlers MUST use 100 ms default prefetch delay when delayMs is omitted."
+				},
+				{
+					"level": "MUST",
+					"text": "start() MUST schedule exactly one prefetch start per handler instance until stopped/reset."
+				},
+				{
+					"level": "MUST",
+					"text": "stop() MUST clear pending timer and abort/remove prefetch navigation entry when entry type is prefetch and intent is none."
+				},
+				{
+					"level": "MUST_NOT",
+					"text": "onClick() on prefetch handler MUST: - return early when event already prevented or ineligible anchor details. - for hash-only same-page change, save scroll state and MUST NOT start fetch navigation. - for eligible internal links, prevent default, run callbacks in order (beforeBegin only when prefetch not already started, then beforeRender, then navigation, then afterRender)."
+				},
+				{
+					"level": "MUST",
+					"text": "__makeLinkOnClickFn returned function MUST: - ignore already prevented and ineligible events. - perform hash-only save-scroll shortcut. - for eligible internal links, prevent default, run beforeBegin, begin user navigation, then handle outcome: - aborted: remove navigation. - redirect: run beforeRender, remove navigation, effectuate redirect, run afterRender. - success: run beforeRender, process navigation when entry exists, run afterRender."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "href examples: \"/internal\", \"https://external.com\", \"mailto:test@test.com\"."
+				},
+				{
+					"name": "input_2",
+					"type": "described_value",
+					"description": "Click event with anchor target."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Internal eligible click prevents default."
+				},
+				{
+					"name": "output_2",
+					"type": "observable_effect",
+					"description": "Prefetch result can be reused by click path without second fetch."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "Callback errors propagate as rejected promise from returned async handlers."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": 100,
+					"description": "Default prefetch delay is exact 100 ms."
+				},
+				{
+					"name": "constant_2",
+					"value": "beforeBegin? -> beforeRender? -> navigation -> afterRender?",
+					"description": "Callback order for click path is exactly beforeBegin? -> beforeRender? -> navigation -> afterRender? (prefetch path has conditional beforeBegin)."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-011",
+			"title": "__applyScrollState contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["__applyScrollState"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "When called with { x, y }, function MUST call window.scrollTo(x, y)."
+				},
+				{
+					"level": "MUST",
+					"text": "When called with { hash } where hash is non-empty, function MUST attempt document.getElementById(hash)?.scrollIntoView()."
+				},
+				{
+					"level": "MUST",
+					"text": "When called with undefined, function MUST inspect current window.location.hash and attempt element scroll for that hash value when non-empty."
+				},
+				{
+					"level": "MUST_NOT",
+					"text": "Missing target element MUST NOT throw."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "{ x: 100, y: 200 }, { hash: \"section\" }, undefined."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "DOM scroll API calls as above."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "No package-level error when element does not exist."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "#",
+					"description": "Hash extraction strips leading # via slice(1)."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-012",
+			"title": "setupGlobalLoadingIndicator contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"setupGlobalLoadingIndicator",
+				"addStatusListener",
+				"getStatus"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "setupGlobalLoadingIndicator MUST default startDelayMS and stopDelayMS to 12 when omitted."
+				},
+				{
+					"level": "MUST",
+					"text": "Include behavior MUST be: - include omitted or \"all\": all three status dimensions (isNavigating, isSubmitting, isRevalidating) considered. - include array: only listed dimensions considered."
+				},
+				{
+					"level": "MUST",
+					"text": "Setup MUST evaluate current status immediately once."
+				},
+				{
+					"level": "MUST",
+					"text": "If working state becomes true: - stop timer MUST be cleared. - start timer MUST schedule at startDelayMS and call start() only when indicator not running and working state still true."
+				},
+				{
+					"level": "MUST",
+					"text": "If working state becomes false: - start timer MUST be cleared. - stop timer MUST schedule at stopDelayMS and call stop() only when indicator running and working state still false."
+				},
+				{
+					"level": "MUST",
+					"text": "Returned cleanup MUST remove status listener, clear timers, and call stop() when indicator remains running."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "Concrete config callbacks and optional include/delay values."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Timer scheduling and callback execution as defined."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "No package-level throw path is introduced."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": 12,
+					"description": "Default delay constants are exact 12 and 12 milliseconds."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-013",
+			"title": "__runClientLoadersAfterHMRUpdate contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["__runClientLoadersAfterHMRUpdate", "initClient"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "Export binding __runClientLoadersAfterHMRUpdate MUST be a no-op function before dev HMR initialization."
+				},
+				{
+					"level": "MUST",
+					"text": "During initClient execution, HMR init MUST configure dev-mode behavior: - assign a development-only revalidation hook on window that invokes package revalidate. - set internal debounced client-loader rerun function with delay 10 ms. - replace exported __runClientLoadersAfterHMRUpdate with dev implementation."
+				},
+				{
+					"level": "MUST",
+					"text": "Dev implementation MUST register at most one vite:afterUpdate listener per current module pathname."
+				},
+				{
+					"level": "MUST",
+					"text": "On matching JS update and when current matched patterns include requested pattern, dev implementation MUST invoke debounced client-loader setup and dispatch route-change event."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "importMeta object with URL from module and pattern string such as \"/users/:id\"."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "In dev, hook registration to import.meta.hot.on(\"vite:afterUpdate\", ...)."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "No-op path in non-dev mode."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": 10,
+					"description": "Debounce delay is exact 10 ms."
+				},
+				{
+					"name": "constant_2",
+					"value": "vite:afterUpdate",
+					"description": "Event name listened is exact vite:afterUpdate."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-014",
+			"title": "route contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": ["route"],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "route(pattern, importPromise, componentKey, errorBoundaryKey) MUST return undefined."
+				},
+				{
+					"level": "MUST",
+					"text": "route(pattern, importPromise, componentKey, errorBoundaryKey) MUST have no runtime side effects for any argument values."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "pattern, importPromise, componentKey, optional errorBoundaryKey."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Always no-op."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "No throw path in implementation body."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "None.",
+					"description": "None."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-015",
+			"title": "__makeFinalLinkProps contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"__makeFinalLinkProps",
+				"__getPrefetchHandlers",
+				"__makeLinkOnClickFn",
+				"__vormaClientGlobal"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "__makeFinalLinkProps MUST create prefetch object only when props.href exists and props.prefetch === \"intent\"."
+				},
+				{
+					"level": "MUST",
+					"text": "Returned dataExternal MUST be prefetchObj.isExternal when prefetch object exists, otherwise undefined."
+				},
+				{
+					"level": "MUST",
+					"text": "Pointer/focus handlers MUST call prefetch start before user handler (when user handler exists and is function)."
+				},
+				{
+					"level": "MUST_NOT",
+					"text": "onPointerLeave MUST NOT stop prefetch on touch devices (__vormaClientGlobal.get(\"isTouchDevice\") truthy); it MUST stop otherwise."
+				},
+				{
+					"level": "MUST",
+					"text": "onBlur and onTouchCancel MUST stop prefetch."
+				},
+				{
+					"level": "MUST",
+					"text": "Returned onClick MUST call user onClick first, then: - if prefetch object exists: await prefetchObj.onClick(e). - else: await click handler from __makeLinkOnClickFn."
+				},
+				{
+					"level": "MUST",
+					"text": "Custom handler key mapping via keys argument MUST be honored."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "Example: props = { href: \"/a\", prefetch: \"intent\", onClick: fn }."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Returned object always includes six event handlers and optional dataExternal."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "Exceptions from user handlers and delegated async handlers propagate."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "onPointerEnter",
+					"description": "Default handler keys are exact: onPointerEnter, onFocus, onPointerLeave, onBlur, onTouchCancel, onClick."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-016",
+			"title": "makeTypedNavigate contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"makeTypedNavigate",
+				"__resolvePath",
+				"vormaNavigate"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "makeTypedNavigate(vormaAppConfig) MUST return async function typedNavigate(options)."
+				},
+				{
+					"level": "MUST",
+					"text": "typedNavigate MUST resolve href using __resolvePath with type: \"loader\" and pass pattern, optional params, optional splatValues."
+				},
+				{
+					"level": "MUST",
+					"text": "typedNavigate MUST call vormaNavigate with resolved href and pass through replace, scrollToTop, search, hash, and state."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "Concrete example: { pattern: \"/users/:id\", params: { id: \"42\" }, replace: true, hash: \"#profile\" }."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Returns the promise from vormaNavigate."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "Errors from path resolution or navigation propagate as rejected promise."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "Uses loader rune set, not action rune set.",
+					"description": "Uses loader rune set, not action rune set."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-017",
+			"title": "__resolvePath contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"__resolvePath",
+				"buildQueryURL",
+				"buildMutationURL",
+				"resolveBody"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "__resolvePath MUST: - start from props.pattern. - replace dynamic placeholders using configured rune set (actions* for query/mutation; loaders* for loader). - replace splat rune with splatValues.join(\"/\") when provided. - for loader type, strip trailing /${loadersExplicitIndexSegment} when present; if full path becomes empty, return /."
+				},
+				{
+					"level": "MUST",
+					"text": "buildQueryURL and buildMutationURL MUST build absolute URL using origin from window.location.href and base path stripTrailingSlash(actionsRouterMountRoot)."
+				},
+				{
+					"level": "MUST",
+					"text": "buildQueryURL MUST set URL search from dependency serializer only when props.input is truthy."
+				},
+				{
+					"level": "MUST_NOT",
+					"text": "buildMutationURL MUST NOT add query string from props.input."
+				},
+				{
+					"level": "MUST",
+					"text": "resolveBody MUST pass through null, undefined, string, Blob, FormData, URLSearchParams, ReadableStream, ArrayBuffer, and typed-array views unchanged."
+				},
+				{
+					"level": "MUST",
+					"text": "resolveBody MUST JSON stringify all other values."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "Path input examples: - loader: pattern \"/users/:id/_index\", params { id: \"7\" }, loaders runes \":\" and splat \"*\". - query: pattern \"/search/:term\", params { term: \"abc\" }."
+				},
+				{
+					"name": "input_2",
+					"type": "described_value",
+					"description": "Body input examples: FormData, \"raw\", { a: 1 }, new Uint8Array([1,2])."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Deterministic string URL/path and body outputs as above."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "Invalid URL inputs to URL constructor throw native error."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "/${loadersExplicitIndexSegment}",
+					"description": "Loader explicit index stripping checks exact trailing segment /${loadersExplicitIndexSegment}."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-018",
+			"title": "revalidateOnWindowFocus contract",
+			"requirement_type": "runtime_behavior",
+			"ownership": "OWNED",
+			"api_symbols": [
+				"revalidateOnWindowFocus",
+				"getStatus",
+				"revalidate"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "revalidateOnWindowFocus() MUST default staleTimeMS to 5000."
+				},
+				{
+					"level": "MUST",
+					"text": "Focus callback MUST read current status and MUST return early when any of isNavigating, isSubmitting, isRevalidating is true."
+				},
+				{
+					"level": "MUST",
+					"text": "Focus callback MUST return early when elapsed time since the package's last navigation-or-revalidation timestamp is less than staleTimeMS."
+				},
+				{
+					"level": "MUST",
+					"text": "Focus callback MUST call revalidate() when status is idle and stale window has elapsed."
+				},
+				{
+					"level": "MUST",
+					"text": "Function MUST return cleanup callback from addOnWindowFocusListener."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "options?: { staleTimeMS?: number }."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "Registers one focus listener."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "No package-level throw path."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": 5000,
+					"description": "Default stale window is exact 5000 ms."
+				}
+			]
+		},
+		{
+			"id": "REQ-VORMACLIENT-CLIENT-019",
+			"title": "SubmitOptions contract",
+			"requirement_type": "compile_time_only_or_noop",
+			"ownership": "COMPILE_TIME_ONLY_OR_NOOP",
+			"api_symbols": [
+				"SubmitOptions",
+				"RouteChangeEvent",
+				"StatusEvent",
+				"VormaLinkPropsBase",
+				"ParamsForPattern",
+				"UseRouterDataFunction",
+				"VormaRouteGeneric",
+				"ExtractApp",
+				"PermissivePatternBasedProps",
+				"VormaAppBase",
+				"VormaAppConfig",
+				"VormaLoaderOutput",
+				"VormaLoaderPattern",
+				"VormaMutationInput",
+				"VormaMutationOutput",
+				"VormaMutationPattern",
+				"VormaMutationProps",
+				"VormaQueryInput",
+				"VormaQueryOutput",
+				"VormaQueryPattern",
+				"VormaQueryProps",
+				"VormaRoutePropsGeneric",
+				"ClientLoaderAwaitedServerData"
+			],
+			"normative_statements": [
+				{
+					"level": "MUST",
+					"text": "These symbols MUST remain type-only exports with no runtime side effects."
+				},
+				{
+					"level": "MUST_NOT",
+					"text": "Importing these symbols in runtime JS MUST NOT create additional runtime values attributable to these symbols."
+				}
+			],
+			"inputs": [
+				{
+					"name": "input_1",
+					"type": "described_value",
+					"description": "Type import statements (compile-time only)."
+				}
+			],
+			"outputs": [
+				{
+					"name": "output_1",
+					"type": "observable_effect",
+					"description": "No runtime behavior."
+				}
+			],
+			"failure_behavior": [
+				{
+					"condition": "failure_condition_1",
+					"behavior": "None."
+				}
+			],
+			"constants_and_limits": [
+				{
+					"name": "constant_1",
+					"value": "None.",
+					"description": "None."
+				}
+			]
+		}
+	],
+	"data_contracts": [
+		{
+			"contract_id": "DC-001",
+			"name": "StatusEventDetail",
+			"kind": "event_payload",
+			"fields": [
+				{
+					"name": "details",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "See contract text for exact shape."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-002",
+			"name": "RouteChangeEventDetail",
+			"kind": "event_payload",
+			"fields": [
+				{
+					"name": "details",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "See contract text for exact shape."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-003",
+			"name": "BuildIDEventDetail",
+			"kind": "event_payload",
+			"fields": [
+				{
+					"name": "details",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "See contract text for exact shape."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-004",
+			"name": "LocationSnapshot",
+			"kind": "other",
+			"fields": [
+				{
+					"name": "details",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "See contract text for exact shape."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-005",
+			"name": "SubmitResult<T>",
+			"kind": "response",
+			"fields": [
+				{
+					"name": "success_variant",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "Success variant: `{ success: true; data: T }`."
+				},
+				{
+					"name": "failure_variant",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "Failure variant: `{ success: false; error: string }`."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-006",
+			"name": "SubmitOptions",
+			"kind": "request",
+			"fields": [
+				{
+					"name": "details",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "See contract text for exact shape."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-007",
+			"name": "GlobalLoadingIndicatorConfig",
+			"kind": "other",
+			"fields": [
+				{
+					"name": "required_functions",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "Required functions: `start`, `stop`, `isRunning`."
+				},
+				{
+					"name": "optional_filters",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "Optional filters: `include` with values `\"all\"` or subset array of `\"navigations\"`, `\"submissions\"`, `\"revalidations\"`."
+				},
+				{
+					"name": "optional_delays",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "Optional delays: `startDelayMS`, `stopDelayMS` default to `12`."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-008",
+			"name": "TypedNavigateRuntimeOptions",
+			"kind": "request",
+			"fields": [
+				{
+					"name": "details",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "See contract text for exact shape."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-009",
+			"name": "APIHelperProps",
+			"kind": "request",
+			"fields": [
+				{
+					"name": "details",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "See contract text for exact shape."
+				}
+			]
+		},
+		{
+			"contract_id": "DC-010",
+			"name": "Scroll persistence payloads",
+			"kind": "other",
+			"fields": [
+				{
+					"name": "details",
+					"type": "described_structure",
+					"required": true,
+					"nullable": false,
+					"description": "See contract text for exact shape."
+				}
+			]
+		}
+	],
+	"state_and_transitions": {
+		"states": [
+			"idle",
+			"navigating",
+			"submitting",
+			"revalidating",
+			"prefetching"
+		],
+		"transitions": [
+			{
+				"id": "TRANS-001",
+				"from": "idle",
+				"to": "navigating",
+				"trigger": "vormaNavigate starts user navigation",
+				"guards": ["internal URL is eligible for client navigation"],
+				"effects": [
+					"Status becomes isNavigating=true until completion."
+				],
+				"api_symbols": ["vormaNavigate", "getStatus"],
+				"requirement_ids": ["REQ-VORMACLIENT-CLIENT-006"]
+			},
+			{
+				"id": "TRANS-002",
+				"from": "idle",
+				"to": "revalidating",
+				"trigger": "revalidate invoked",
+				"guards": [
+					"No fresher in-flight revalidation younger than 8 ms"
+				],
+				"effects": [
+					"Status becomes isRevalidating=true until settled."
+				],
+				"api_symbols": ["revalidate", "getStatus"],
+				"requirement_ids": ["REQ-VORMACLIENT-CLIENT-006"]
+			},
+			{
+				"id": "TRANS-003",
+				"from": "revalidating",
+				"to": "revalidating",
+				"trigger": "second revalidate call inside coalesce window",
+				"guards": ["existing revalidation age is less than 8 ms"],
+				"effects": [
+					"Call reuses existing in-flight control and does not enqueue new fetch."
+				],
+				"api_symbols": ["revalidate"],
+				"requirement_ids": ["REQ-VORMACLIENT-CLIENT-006"]
+			},
+			{
+				"id": "TRANS-004",
+				"from": "idle",
+				"to": "submitting",
+				"trigger": "submit starts mutation/request",
+				"guards": ["request is accepted for submission"],
+				"effects": [
+					"Status becomes isSubmitting=true while tracked submission is in flight."
+				],
+				"api_symbols": ["submit", "getStatus"],
+				"requirement_ids": ["REQ-VORMACLIENT-CLIENT-007"]
+			},
+			{
+				"id": "TRANS-005",
+				"from": "submitting",
+				"to": "idle",
+				"trigger": "submit settles",
+				"guards": [
+					"submission promise resolves to success or failure union"
+				],
+				"effects": [
+					"Tracked submission key is removed in finally block."
+				],
+				"api_symbols": ["submit"],
+				"requirement_ids": ["REQ-VORMACLIENT-CLIENT-007"]
+			},
+			{
+				"id": "TRANS-006",
+				"from": "idle",
+				"to": "prefetching",
+				"trigger": "__getPrefetchHandlers.start called",
+				"guards": ["href is internal HTTP link"],
+				"effects": [
+					"Prefetch timer starts with default delay 100 ms when delayMs is omitted."
+				],
+				"api_symbols": ["__getPrefetchHandlers"],
+				"requirement_ids": ["REQ-VORMACLIENT-CLIENT-010"]
+			},
+			{
+				"id": "TRANS-007",
+				"from": "prefetching",
+				"to": "idle",
+				"trigger": "prefetch stop invoked",
+				"guards": [
+					"pending prefetch timer or removable prefetch navigation exists"
+				],
+				"effects": [
+					"Timer is cleared and removable prefetch navigation is aborted."
+				],
+				"api_symbols": ["__getPrefetchHandlers"],
+				"requirement_ids": ["REQ-VORMACLIENT-CLIENT-010"]
+			},
+			{
+				"id": "TRANS-008",
+				"from": "idle",
+				"to": "idle",
+				"trigger": "route called",
+				"guards": ["none"],
+				"effects": [
+					"No runtime side effects occur and undefined is returned."
+				],
+				"api_symbols": ["route"],
+				"requirement_ids": ["REQ-VORMACLIENT-CLIENT-014"]
+			}
+		]
+	},
+	"dependency_boundaries": [
+		{
+			"dependency_symbol": "history.createBrowserHistory",
+			"boundary_io": {
+				"target_input": "no arguments",
+				"dependency_output": "history instance object"
+			},
+			"target_followup": "stored singleton; used for listen, push, replace, location reads (OUT_OF_SCOPE internals).",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/matcher/register.createPatternRegistry",
+			"boundary_io": {
+				"target_input": "loader rune config values",
+				"dependency_output": "pattern registry object"
+			},
+			"target_followup": "persisted in global state; passed to matcher/registration (OUT_OF_SCOPE internals).",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/matcher/register.registerPattern",
+			"boundary_io": {
+				"target_input": "registry + pattern string",
+				"dependency_output": "success or thrown error"
+			},
+			"target_followup": "used in initClient/__registerClientLoaderPattern; errors propagate or are swallowed based on caller.",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/matcher/find-nested.findNestedMatches",
+			"boundary_io": {
+				"target_input": "pattern registry + pathname",
+				"dependency_output": "match result or null"
+			},
+			"target_followup": "drives client-side skip logic and loader startup decisions.",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/debounce.debounce",
+			"boundary_io": {
+				"target_input": "callback + delay (8 or 10)",
+				"dependency_output": "debounced callable"
+			},
+			"target_followup": "controls status dispatch cadence and HMR loader-rerun cadence.",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/url.getHrefDetails",
+			"boundary_io": {
+				"target_input": "href string",
+				"dependency_output": "detail object (isHTTP, isExternal, relativeURL, other fields)"
+			},
+			"target_followup": "gates prefetch eligibility and redirect strategy.",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/url.getAnchorDetailsFromEvent",
+			"boundary_io": {
+				"target_input": "click event",
+				"dependency_output": "anchor detail or null"
+			},
+			"target_followup": "determines internal click interception eligibility and hash-only detection inputs.",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/url.getIsGETRequest",
+			"boundary_io": {
+				"target_input": "optional RequestInit",
+				"dependency_output": "boolean"
+			},
+			"target_followup": "decides redirect parsing and auto-revalidation behavior.",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/json.serializeToSearchParams",
+			"boundary_io": {
+				"target_input": "query input object",
+				"dependency_output": "URLSearchParams-like data"
+			},
+			"target_followup": "serialized query string for buildQueryURL.",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		},
+		{
+			"dependency_symbol": "vorma/kit/listeners.addOnWindowFocusListener",
+			"boundary_io": {
+				"target_input": "callback",
+				"dependency_output": "cleanup callback"
+			},
+			"target_followup": "exported as cleanup result of revalidateOnWindowFocus.",
+			"ownership": "OUT_OF_SCOPE",
+			"notes": "Dependency internals are outside this package contract."
+		}
+	],
+	"evidence_map": [
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-001",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/events.ts",
+					"line": 7
+				},
+				{
+					"path": "vormaclient/client/src/events.ts",
+					"line": 47
+				}
+			],
+			"test_refs": [
+				{
+					"path": "vormaclient/client/src/client.utility_functions.test.ts",
+					"line": 33
+				},
+				{
+					"path": "vormaclient/client/src/client.utility_functions.test.ts",
+					"line": 68
+				},
+				{
+					"path": "vormaclient/client/src/client.critical_edge_cases.test.ts",
+					"line": 303
+				}
+			]
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-002",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/error_boundary.ts",
+					"line": 3
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no test asserts exported `defaultErrorBoundary` output string"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-003",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/vorma_ctx/vorma_ctx.ts",
+					"line": 47
+				},
+				{
+					"path": "vormaclient/client/src/vorma_ctx/vorma_ctx.ts",
+					"line": 95
+				}
+			],
+			"test_refs": [
+				{
+					"path": "vormaclient/client/src/vorma_ctx/vorma_ctx.test.ts",
+					"line": 30
+				},
+				{
+					"path": "vormaclient/client/src/vorma_ctx/vorma_ctx.test.ts",
+					"line": 36
+				}
+			]
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-004",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/vorma_ctx/vorma_ctx.ts",
+					"line": 114
+				},
+				{
+					"path": "vormaclient/client/src/vorma_ctx/vorma_ctx.ts",
+					"line": 118
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no test directly asserts `getRouterData` defaults and rootData derivation"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-005",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1402
+				},
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1406
+				},
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1415
+				},
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1419
+				},
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1423
+				}
+			],
+			"test_refs": [
+				{
+					"path": "vormaclient/client/src/client.events_system.test.ts",
+					"line": 242
+				},
+				{
+					"path": "vormaclient/client/src/client.utility_functions.test.ts",
+					"line": 99
+				},
+				{
+					"path": "vormaclient/client/src/client.utility_functions.test.ts",
+					"line": 132
+				},
+				{
+					"path": "vormaclient/client/src/client.history_management.test.ts",
+					"line": 32
+				}
+			]
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-006",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1343
+				},
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1377
+				},
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 490
+				}
+			],
+			"test_refs": [
+				{
+					"path": "vormaclient/client/src/client.core_navigation.navigation_types.test.ts",
+					"line": 32
+				},
+				{
+					"path": "vormaclient/client/src/client.form_submissions.revalidate_function.test.ts",
+					"line": 26
+				},
+				{
+					"path": "vormaclient/client/src/client.core_navigation.programmatic_navigation.test.ts",
+					"line": 21
+				}
+			]
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-007",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1103
+				},
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1117
+				},
+				{
+					"path": "vormaclient/client/src/client.ts",
+					"line": 1175
+				},
+				{
+					"path": "vormaclient/client/src/redirects/redirects.ts",
+					"line": 175
+				}
+			],
+			"test_refs": [
+				{
+					"path": "vormaclient/client/src/client.form_submissions.submit_function.test.ts",
+					"line": 27
+				},
+				{
+					"path": "vormaclient/client/src/client.form_submissions.submit_function.test.ts",
+					"line": 278
+				},
+				{
+					"path": "vormaclient/client/src/client.form_submissions.submit_function.test.ts",
+					"line": 333
+				},
+				{
+					"path": "vormaclient/client/src/client.form_submissions.submit_function.test.ts",
+					"line": 431
+				},
+				{
+					"path": "vormaclient/client/src/client.form_submissions.submit_function.test.ts",
+					"line": 508
+				}
+			]
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-008",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/init_client.ts",
+					"line": 19
+				},
+				{
+					"path": "vormaclient/client/src/init_client.ts",
+					"line": 99
+				},
+				{
+					"path": "vormaclient/client/src/init_client.ts",
+					"line": 103
+				},
+				{
+					"path": "vormaclient/client/src/init_client.ts",
+					"line": 112
+				},
+				{
+					"path": "vormaclient/client/src/init_client.ts",
+					"line": 124
+				}
+			],
+			"test_refs": [
+				{
+					"path": "vormaclient/client/src/client.initialization.test.ts",
+					"line": 34
+				},
+				{
+					"path": "vormaclient/client/src/client.initialization.test.ts",
+					"line": 72
+				},
+				{
+					"path": "vormaclient/client/src/client.initialization.test.ts",
+					"line": 120
+				},
+				{
+					"path": "vormaclient/client/src/client.initialization.test.ts",
+					"line": 158
+				},
+				{
+					"path": "vormaclient/client/src/client.scroll_restoration.test.ts",
+					"line": 299
+				}
+			]
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-009",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/client_loaders.ts",
+					"line": 48
+				},
+				{
+					"path": "vormaclient/client/src/client_loaders.ts",
+					"line": 51
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no tests call `__registerClientLoaderPattern`"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-010",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/links.ts",
+					"line": 24
+				},
+				{
+					"path": "vormaclient/client/src/links.ts",
+					"line": 84
+				},
+				{
+					"path": "vormaclient/client/src/links.ts",
+					"line": 138
+				}
+			],
+			"test_refs": [
+				{
+					"path": "vormaclient/client/src/client.prefetching.test.ts",
+					"line": 25
+				},
+				{
+					"path": "vormaclient/client/src/client.prefetching.test.ts",
+					"line": 64
+				},
+				{
+					"path": "vormaclient/client/src/client.prefetching.test.ts",
+					"line": 163
+				},
+				{
+					"path": "vormaclient/client/src/client.core_navigation.link_click_handling.test.ts",
+					"line": 21
+				},
+				{
+					"path": "vormaclient/client/src/client.core_navigation.link_click_handling.test.ts",
+					"line": 72
+				}
+			]
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-011",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/scroll_state_manager.ts",
+					"line": 76
+				},
+				{
+					"path": "vormaclient/client/src/scroll_state_manager.ts",
+					"line": 85
+				}
+			],
+			"test_refs": [
+				{
+					"path": "vormaclient/client/src/client.utility_functions.test.ts",
+					"line": 107
+				},
+				{
+					"path": "vormaclient/client/src/client.scroll_restoration.test.ts",
+					"line": 188
+				},
+				{
+					"path": "vormaclient/client/src/client.scroll_restoration.test.ts",
+					"line": 292
+				}
+			]
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-012",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/global_loading_indicator/global_loading_indicator.ts",
+					"line": 37
+				},
+				{
+					"path": "vormaclient/client/src/global_loading_indicator/global_loading_indicator.ts",
+					"line": 70
+				},
+				{
+					"path": "vormaclient/client/src/global_loading_indicator/global_loading_indicator.ts",
+					"line": 96
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no test file references `setupGlobalLoadingIndicator`"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-013",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/hmr/hmr.ts",
+					"line": 13
+				},
+				{
+					"path": "vormaclient/client/src/hmr/hmr.ts",
+					"line": 22
+				},
+				{
+					"path": "vormaclient/client/src/hmr/hmr.ts",
+					"line": 27
+				},
+				{
+					"path": "vormaclient/client/src/init_client.ts",
+					"line": 25
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no test covers HMR exported hook behavior"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-014",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/static_route_defs/route_def_helpers.ts",
+					"line": 13
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no runtime test for `route` no-op export"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-015",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/ui_lib_impl_helpers/link_components.ts",
+					"line": 67
+				},
+				{
+					"path": "vormaclient/client/src/ui_lib_impl_helpers/link_components.ts",
+					"line": 82
+				},
+				{
+					"path": "vormaclient/client/src/ui_lib_impl_helpers/link_components.ts",
+					"line": 116
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no test directly imports `__makeFinalLinkProps`"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-016",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/ui_lib_impl_helpers/typed_navigate.ts",
+					"line": 23
+				},
+				{
+					"path": "vormaclient/client/src/ui_lib_impl_helpers/typed_navigate.ts",
+					"line": 40
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no test directly imports `makeTypedNavigate`"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-017",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/vorma_app_helpers/vorma_app_helpers.ts",
+					"line": 202
+				},
+				{
+					"path": "vormaclient/client/src/vorma_app_helpers/vorma_app_helpers.ts",
+					"line": 216
+				},
+				{
+					"path": "vormaclient/client/src/vorma_app_helpers/vorma_app_helpers.ts",
+					"line": 247
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no test directly imports URL/body helper exports"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-018",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/src/window_focus_revalidation/window_focus_revalidation.ts",
+					"line": 14
+				},
+				{
+					"path": "vormaclient/client/src/window_focus_revalidation/window_focus_revalidation.ts",
+					"line": 24
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "no test file references `revalidateOnWindowFocus`"
+		},
+		{
+			"requirement_id": "REQ-VORMACLIENT-CLIENT-019",
+			"implementation_refs": [
+				{
+					"path": "vormaclient/client/index.ts",
+					"line": 10
+				},
+				{
+					"path": "vormaclient/client/index.ts",
+					"line": 19
+				},
+				{
+					"path": "vormaclient/client/index.ts",
+					"line": 30
+				},
+				{
+					"path": "vormaclient/client/index.ts",
+					"line": 43
+				},
+				{
+					"path": "vormaclient/client/index.ts",
+					"line": 62
+				}
+			],
+			"tests_unavailable": true,
+			"tests_unavailable_reason": "type-only exports are compile-time artifacts; no runtime behavior tests"
+		}
+	],
+	"open_questions": {
+		"status": "none",
+		"questions": []
+	}
+}

@@ -1,0 +1,910 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://vorma.dev/spec_templates/contract.schema.json",
+	"title": "Package Contract Spec",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schema_version",
+		"package",
+		"scope",
+		"runtime_export_coverage",
+		"api_reference",
+		"requirements",
+		"data_contracts",
+		"state_and_transitions",
+		"dependency_boundaries",
+		"evidence_map",
+		"open_questions"
+	],
+	"properties": {
+		"schema_version": {
+			"type": "string",
+			"const": "1.0.0"
+		},
+		"package": {
+			"$ref": "#/$defs/nonEmptyString"
+		},
+		"scope": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["statement", "owned_surface", "out_of_scope"],
+			"properties": {
+				"statement": {
+					"$ref": "#/$defs/nonEmptyString"
+				},
+				"owned_surface": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/nonEmptyString"
+					}
+				},
+				"out_of_scope": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/nonEmptyString"
+					}
+				}
+			}
+		},
+		"runtime_export_coverage": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["exports", "summary"],
+			"properties": {
+				"exports": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"symbol",
+							"kind",
+							"classification",
+							"contract_coverage"
+						],
+						"properties": {
+							"symbol": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"kind": {
+								"type": "string",
+								"enum": [
+									"function",
+									"object",
+									"event",
+									"constant",
+									"global",
+									"storage_key",
+									"header",
+									"query_param",
+									"type_export"
+								]
+							},
+							"classification": {
+								"type": "string",
+								"enum": [
+									"OWNED_RUNTIME_BEHAVIOR",
+									"COMPILE_TIME_ONLY_OR_NOOP",
+									"OUT_OF_SCOPE"
+								]
+							},
+							"contract_coverage": {
+								"type": "array",
+								"minItems": 1,
+								"uniqueItems": true,
+								"items": {
+									"$ref": "#/$defs/reqId"
+								}
+							}
+						}
+					}
+				},
+				"summary": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": [
+						"runtime_export_total",
+						"runtime_export_covered"
+					],
+					"properties": {
+						"runtime_export_total": {
+							"type": "integer",
+							"minimum": 0
+						},
+						"runtime_export_covered": {
+							"type": "integer",
+							"minimum": 0
+						}
+					}
+				}
+			}
+		},
+		"api_reference": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"symbols",
+				"functions",
+				"types",
+				"events",
+				"constants",
+				"global_state"
+			],
+			"properties": {
+				"symbols": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"name",
+							"kind",
+							"visibility",
+							"ownership",
+							"description"
+						],
+						"properties": {
+							"name": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"kind": {
+								"type": "string",
+								"enum": [
+									"function",
+									"object",
+									"event",
+									"constant",
+									"global",
+									"storage_key",
+									"header",
+									"query_param",
+									"type_export"
+								]
+							},
+							"visibility": {
+								"type": "string",
+								"enum": ["public", "internal"]
+							},
+							"ownership": {
+								"type": "string",
+								"enum": [
+									"OWNED",
+									"OUT_OF_SCOPE",
+									"COMPILE_TIME_ONLY_OR_NOOP"
+								]
+							},
+							"description": {
+								"$ref": "#/$defs/nonEmptyString"
+							}
+						}
+					}
+				},
+				"functions": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"name",
+							"signature",
+							"side_effects",
+							"errors"
+						],
+						"properties": {
+							"name": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"signature": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["params", "return_type"],
+								"properties": {
+									"params": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"additionalProperties": false,
+											"required": [
+												"name",
+												"type",
+												"required"
+											],
+											"properties": {
+												"name": {
+													"$ref": "#/$defs/nonEmptyString"
+												},
+												"type": {
+													"$ref": "#/$defs/nonEmptyString"
+												},
+												"required": {
+													"type": "boolean"
+												},
+												"default": {},
+												"description": {
+													"$ref": "#/$defs/nonEmptyString"
+												}
+											}
+										}
+									},
+									"return_type": {
+										"$ref": "#/$defs/nonEmptyString"
+									}
+								}
+							},
+							"side_effects": {
+								"type": "array",
+								"items": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							},
+							"errors": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"additionalProperties": false,
+									"required": ["mode", "description"],
+									"properties": {
+										"mode": {
+											"type": "string",
+											"enum": [
+												"none",
+												"returned_error_status",
+												"promise_rejected",
+												"exception_thrown"
+											]
+										},
+										"description": {
+											"$ref": "#/$defs/nonEmptyString"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"types": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["name", "kind", "fields"],
+						"properties": {
+							"name": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"kind": {
+								"type": "string",
+								"enum": ["object", "union", "alias", "generic"]
+							},
+							"fields": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"additionalProperties": false,
+									"required": [
+										"name",
+										"type",
+										"required",
+										"nullable",
+										"description"
+									],
+									"properties": {
+										"name": {
+											"$ref": "#/$defs/nonEmptyString"
+										},
+										"type": {
+											"$ref": "#/$defs/nonEmptyString"
+										},
+										"required": {
+											"type": "boolean"
+										},
+										"nullable": {
+											"type": "boolean"
+										},
+										"default": {},
+										"constraints": {
+											"type": "array",
+											"items": {
+												"$ref": "#/$defs/nonEmptyString"
+											}
+										},
+										"description": {
+											"$ref": "#/$defs/nonEmptyString"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"events": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"name",
+							"payload_schema",
+							"emission_conditions"
+						],
+						"properties": {
+							"name": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"payload_schema": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"emission_conditions": {
+								"type": "array",
+								"items": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							}
+						}
+					}
+				},
+				"constants": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"name",
+							"value_type",
+							"value",
+							"description"
+						],
+						"properties": {
+							"name": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"value_type": {
+								"type": "string",
+								"enum": [
+									"string",
+									"number",
+									"boolean",
+									"object",
+									"array",
+									"null"
+								]
+							},
+							"value": {
+								"type": [
+									"string",
+									"number",
+									"boolean",
+									"object",
+									"array",
+									"null"
+								]
+							},
+							"description": {
+								"$ref": "#/$defs/nonEmptyString"
+							}
+						}
+					}
+				},
+				"global_state": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"symbol_name",
+							"key",
+							"type",
+							"nullable",
+							"mutation_rules"
+						],
+						"properties": {
+							"symbol_name": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"key": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"type": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"nullable": {
+								"type": "boolean"
+							},
+							"mutation_rules": {
+								"type": "array",
+								"items": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"requirements": {
+			"type": "array",
+			"minItems": 1,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"id",
+					"title",
+					"requirement_type",
+					"ownership",
+					"api_symbols",
+					"normative_statements",
+					"inputs",
+					"outputs",
+					"failure_behavior",
+					"constants_and_limits"
+				],
+				"properties": {
+					"id": {
+						"$ref": "#/$defs/reqId"
+					},
+					"title": {
+						"$ref": "#/$defs/nonEmptyString"
+					},
+					"requirement_type": {
+						"type": "string",
+						"enum": [
+							"runtime_behavior",
+							"compile_time_only_or_noop",
+							"boundary_only"
+						]
+					},
+					"ownership": {
+						"type": "string",
+						"enum": [
+							"OWNED",
+							"COMPILE_TIME_ONLY_OR_NOOP",
+							"OUT_OF_SCOPE"
+						]
+					},
+					"api_symbols": {
+						"type": "array",
+						"minItems": 1,
+						"uniqueItems": true,
+						"items": {
+							"$ref": "#/$defs/nonEmptyString"
+						}
+					},
+					"normative_statements": {
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["level", "text"],
+							"properties": {
+								"level": {
+									"type": "string",
+									"enum": ["MUST", "MUST_NOT", "SHOULD"]
+								},
+								"text": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							}
+						}
+					},
+					"inputs": {
+						"type": "array",
+						"items": {
+							"$ref": "#/$defs/ioField"
+						}
+					},
+					"outputs": {
+						"type": "array",
+						"items": {
+							"$ref": "#/$defs/ioField"
+						}
+					},
+					"failure_behavior": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["condition", "behavior"],
+							"properties": {
+								"condition": {
+									"$ref": "#/$defs/nonEmptyString"
+								},
+								"behavior": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							}
+						}
+					},
+					"constants_and_limits": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["name", "value", "description"],
+							"properties": {
+								"name": {
+									"$ref": "#/$defs/nonEmptyString"
+								},
+								"value": {
+									"type": [
+										"string",
+										"number",
+										"boolean",
+										"object",
+										"array",
+										"null"
+									]
+								},
+								"unit": {
+									"$ref": "#/$defs/nonEmptyString"
+								},
+								"description": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"data_contracts": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["contract_id", "name", "kind", "fields"],
+				"properties": {
+					"contract_id": {
+						"$ref": "#/$defs/nonEmptyString"
+					},
+					"name": {
+						"$ref": "#/$defs/nonEmptyString"
+					},
+					"kind": {
+						"type": "string",
+						"enum": [
+							"request",
+							"response",
+							"event_payload",
+							"state",
+							"other"
+						]
+					},
+					"fields": {
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": [
+								"name",
+								"type",
+								"required",
+								"nullable",
+								"description"
+							],
+							"properties": {
+								"name": {
+									"$ref": "#/$defs/nonEmptyString"
+								},
+								"type": {
+									"$ref": "#/$defs/nonEmptyString"
+								},
+								"required": {
+									"type": "boolean"
+								},
+								"nullable": {
+									"type": "boolean"
+								},
+								"default": {},
+								"constraints": {
+									"type": "array",
+									"items": {
+										"$ref": "#/$defs/nonEmptyString"
+									}
+								},
+								"description": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"state_and_transitions": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["states", "transitions"],
+			"properties": {
+				"states": {
+					"type": "array",
+					"minItems": 1,
+					"uniqueItems": true,
+					"items": {
+						"$ref": "#/$defs/nonEmptyString"
+					}
+				},
+				"transitions": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"id",
+							"from",
+							"to",
+							"trigger",
+							"guards",
+							"effects",
+							"api_symbols",
+							"requirement_ids"
+						],
+						"properties": {
+							"id": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"from": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"to": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"trigger": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"guards": {
+								"type": "array",
+								"items": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							},
+							"effects": {
+								"type": "array",
+								"items": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							},
+							"api_symbols": {
+								"type": "array",
+								"minItems": 1,
+								"uniqueItems": true,
+								"items": {
+									"$ref": "#/$defs/nonEmptyString"
+								}
+							},
+							"requirement_ids": {
+								"type": "array",
+								"minItems": 1,
+								"uniqueItems": true,
+								"items": {
+									"$ref": "#/$defs/reqId"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"dependency_boundaries": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"dependency_symbol",
+					"boundary_io",
+					"target_followup",
+					"ownership",
+					"notes"
+				],
+				"properties": {
+					"dependency_symbol": {
+						"$ref": "#/$defs/nonEmptyString"
+					},
+					"boundary_io": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["target_input", "dependency_output"],
+						"properties": {
+							"target_input": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"dependency_output": {
+								"$ref": "#/$defs/nonEmptyString"
+							}
+						}
+					},
+					"target_followup": {
+						"$ref": "#/$defs/nonEmptyString"
+					},
+					"ownership": {
+						"type": "string",
+						"const": "OUT_OF_SCOPE"
+					},
+					"notes": {
+						"$ref": "#/$defs/nonEmptyString"
+					}
+				}
+			}
+		},
+		"evidence_map": {
+			"type": "array",
+			"minItems": 1,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["requirement_id", "implementation_refs"],
+				"properties": {
+					"requirement_id": {
+						"$ref": "#/$defs/reqId"
+					},
+					"implementation_refs": {
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"$ref": "#/$defs/sourceRef"
+						}
+					},
+					"test_refs": {
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"$ref": "#/$defs/sourceRef"
+						}
+					},
+					"tests_unavailable": {
+						"type": "boolean",
+						"const": true
+					},
+					"tests_unavailable_reason": {
+						"$ref": "#/$defs/nonEmptyString"
+					}
+				},
+				"allOf": [
+					{
+						"oneOf": [
+							{
+								"required": ["test_refs"]
+							},
+							{
+								"required": [
+									"tests_unavailable",
+									"tests_unavailable_reason"
+								]
+							}
+						]
+					}
+				]
+			}
+		},
+		"open_questions": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["status", "questions"],
+			"properties": {
+				"status": {
+					"type": "string",
+					"enum": ["none", "has_open_questions"]
+				},
+				"questions": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"question_id",
+							"question",
+							"blocking_contradiction_refs",
+							"temporary_decision",
+							"affected_requirement_ids"
+						],
+						"properties": {
+							"question_id": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"question": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"blocking_contradiction_refs": {
+								"type": "array",
+								"minItems": 1,
+								"items": {
+									"$ref": "#/$defs/sourceRef"
+								}
+							},
+							"temporary_decision": {
+								"$ref": "#/$defs/nonEmptyString"
+							},
+							"affected_requirement_ids": {
+								"type": "array",
+								"minItems": 1,
+								"uniqueItems": true,
+								"items": {
+									"$ref": "#/$defs/reqId"
+								}
+							}
+						}
+					}
+				}
+			},
+			"allOf": [
+				{
+					"if": {
+						"properties": {
+							"status": {
+								"const": "none"
+							}
+						},
+						"required": ["status"]
+					},
+					"then": {
+						"properties": {
+							"questions": {
+								"maxItems": 0
+							}
+						}
+					},
+					"else": {
+						"properties": {
+							"questions": {
+								"minItems": 1
+							}
+						}
+					}
+				}
+			]
+		}
+	},
+	"$defs": {
+		"nonEmptyString": {
+			"type": "string",
+			"minLength": 1
+		},
+		"reqId": {
+			"type": "string",
+			"pattern": "^REQ-[A-Z0-9-]+-[0-9]{3,4}$"
+		},
+		"repoPath": {
+			"type": "string",
+			"pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!file://).+"
+		},
+		"sourceRef": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["path", "line"],
+			"properties": {
+				"path": {
+					"$ref": "#/$defs/repoPath"
+				},
+				"line": {
+					"type": "integer",
+					"minimum": 1
+				}
+			}
+		},
+		"ioField": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["name", "type", "description"],
+			"properties": {
+				"name": {
+					"$ref": "#/$defs/nonEmptyString"
+				},
+				"type": {
+					"$ref": "#/$defs/nonEmptyString"
+				},
+				"required": {
+					"type": "boolean"
+				},
+				"description": {
+					"$ref": "#/$defs/nonEmptyString"
+				}
+			}
+		}
+	}
+}
