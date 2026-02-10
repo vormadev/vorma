@@ -6,6 +6,9 @@ rebuild-grade specifications for the repository.
 Phase 1 (normative intent mining) is currently active. While Phase 1 is
 incomplete, edits are restricted to `spec/**`.
 
+For parallel mining, use isolated git worktrees (one per agent). Shared checkout
+is unsupported by guard checks.
+
 Primary entrypoints:
 
 - `spec/WORKER_RUNBOOK.md`: single-file instructions for mining agents.
@@ -15,13 +18,34 @@ Primary entrypoints:
   rules.
 - `spec/MINING_DISPATCH.md`: claim board for package-by-package mining.
 - `spec/CHECKLIST.md`: operator checklist for each mining cycle.
-- `spec/tools/check_all.sh`: guardrail checks.
-- `spec/tools/check_worker_allowlist.sh`: enforces mining-edit allowlist.
-- `spec/tools/check_append_only_docs.sh`: enforces append-only edits for
-  decisions and traceability.
-- `spec/tools/check_dispatch_manual_edits.sh`: blocks manual dispatch edits.
-- `spec/tools/claim_lowest_open_slot.sh`: claim the next eligible slot.
-- `spec/tools/record_review_pass.sh`: record required independent review
-  outcomes.
-- `spec/tools/mark_slot_done.sh`: mark a claimed slot as done after all review
-  gates.
+- `go run ./spec/tools/cmd/check_all`: guardrail checks.
+- `go run ./spec/tools/cmd/check_worker_allowlist`: enforces mining-edit
+  allowlist.
+- `go run ./spec/tools/cmd/check_append_only_docs`: enforces append-only edits
+  for decisions and traceability.
+- `go run ./spec/tools/cmd/check_dispatch_manual_edits`: blocks manual dispatch
+  edits.
+- `go run ./spec/tools/cmd/check_decisions`: validates decisions log structure
+  and status discipline.
+- `go run ./spec/tools/cmd/check_traceability`: validates traceability JSON
+  structure and identifier/path formats.
+- `go run ./spec/tools/cmd/claim_lowest_open_slot`: claim the next eligible
+  slot.
+- `go run ./spec/tools/cmd/generate_catalog_and_dispatch`: regenerate
+  `spec/PACKAGE_CATALOG.tsv` and `spec/MINING_DISPATCH.md`.
+- `go run ./spec/tools/cmd/scaffold_packages`: re-render package `spec.json`
+  files from the template.
+- `go run ./spec/tools/cmd/record_review_pass`: record required independent
+  review outcomes.
+- `go run ./spec/tools/cmd/mark_slot_done`: mark a claimed slot as done after
+  all review gates.
+- `go run ./spec/tools/cmd/validate_slot_spec`: JSON artifact validator used by
+  guard and done gates.
+- `go run ./spec/tools/cmd/check_phase_completion`: enforces completion-only
+  gates when `phase1_status: COMPLETE`.
+
+Package artifact format:
+
+- One file per package: `spec/packages/<package>/spec.json`.
+- No split requirement files.
+- No package markdown table artifacts.

@@ -17,27 +17,32 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
 2. Claim work from `spec/MINING_DISPATCH.md` using tooling, not manual row
    edits.
 3. During mining, allowed files are:
-    - `spec/packages/<claimed-path>/**`
+    - `spec/packages/<claimed-path>/spec.json`
     - `spec/MINING_DISPATCH.md` (script-managed)
     - `spec/DECISIONS.md` (append-only)
     - `spec/TRACEABILITY.md` (append-only)
 4. Edit only one claimed package path under `spec/packages/**`.
 5. Follow `spec/OWNERSHIP_BOUNDARIES.md`: inherited behavior must reference
    upstream requirements instead of redefining them.
-6. Every requirement in `20-requirements.md` must map in `evidence.yaml`.
-7. Every mapped requirement must include both test and implementation evidence.
-8. `20-requirements.md` must include:
-    - `Ownership` value in `OWNED|INHERITED|DELTA`
-    - non-empty `Upstream Requirement Refs` for `INHERITED` and `DELTA`
-    - a prose detail section for every requirement ID in the index
-9. `80-assertion-accounting.md` must satisfy:
-    - `mapped_meaningful_assertions = meaningful_assertions`
-    - `unclassified_assertions = 0`
+6. Every requirement must include ownership and normative statements.
+7. `INHERITED` and `DELTA` requirements must include non-empty
+   `upstream_requirement_refs`.
+8. Every requirement must map to evidence with both test and implementation
+   coverage.
+9. `assertion_accounting` must satisfy:
+    - every assertion row is classified as `MEANINGFUL` or `NON_MEANINGFUL`
+    - `MEANINGFUL` rows map to one or more local requirements
+    - `NON_MEANINGFUL` rows include no requirement mappings
+    - derived unclassified assertion count is `0`.
 10. One active `CLAIMED` slot per owner.
 11. Only the slot owner may mark that slot `DONE`.
-12. Do not mark a slot `DONE` unless guard checks pass and both independent
-    review passes are `PASS_NO_NOTES`.
-13. Do not use mermaid/diagram/chart code blocks in package artifacts.
+12. Do not mark a slot `DONE` unless all guard checks pass and both independent
+    review passes are `PASS_NO_NOTES` on the current artifact hash.
+13. Do not add charts/diagram blocks to package artifacts.
+14. After editing any `spec/**/*.md` or `spec/**/*.json`, run Prettier:
+    `pnpm prettier --write <files...>`.
+15. `spec/DECISIONS.md` rows must use `status = OPEN|RESOLVED`; `OPEN` rows must
+    keep `Selected Option`, `Rationale`, and `Evidence` as `-`.
 
 ## Required Read Order
 
@@ -56,45 +61,48 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
 2. Claim the next slot:
 
 ```bash
-spec/tools/claim_lowest_open_slot.sh <owner>
+export GOCACHE=${GOCACHE:-/tmp/go-build}
+go run ./spec/tools/cmd/claim_lowest_open_slot <owner>
 ```
 
 3. Find your claimed slot row in `spec/MINING_DISPATCH.md` and note `slot_id`
    and `spec_path`.
 
-4. Edit only files under your claimed `spec_path`.
+4. Edit only `spec/packages/<claimed-path>/spec.json`.
 
 5. Run guard checks:
 
 ```bash
-spec/tools/check_all.sh
+go run ./spec/tools/cmd/check_all
 ```
 
-6. Record review passes (reviewers must differ from miner and each other):
+6. Record review passes (reviewers must differ from miner and from each other,
+   and must provide distinct reviewer claim slots they own):
 
 ```bash
-spec/tools/record_review_pass.sh SLOT-XXX <reviewer> 1 PASS_NO_NOTES -
-spec/tools/record_review_pass.sh SLOT-XXX <reviewer2> 2 PASS_NO_NOTES -
+go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> 1 PASS_NO_NOTES -
+go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner_2> <reviewer_claim_slot_2> 2 PASS_NO_NOTES -
 ```
 
 Use `FAIL_NOTES` with a notes reference when findings exist:
 
 ```bash
-spec/tools/record_review_pass.sh SLOT-XXX <reviewer> 1 FAIL_NOTES spec/DECISIONS.md#L123
+go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> 1 FAIL_NOTES spec/DECISIONS.md#L123
 ```
 
 7. After both review passes are `PASS_NO_NOTES` and checks pass, mark slot done:
 
 ```bash
-spec/tools/mark_slot_done.sh SLOT-XXX <owner>
+go run ./spec/tools/cmd/mark_slot_done SLOT-XXX <owner>
 ```
 
 ## Parallel Agent Model
 
-- Shared checkout is supported.
+- Use one isolated git worktree per agent.
+- Shared checkout is unsupported by guard checks.
 - Multiple `CLAIMED` slots are allowed.
 - Claims and done updates are serialized by a dispatch lock in tooling.
-- Each agent must still edit only one package path per patch.
+- Each agent still edits only one package path per patch.
 
 ## Completion Output
 
@@ -105,4 +113,4 @@ At handoff, report:
 3. files edited
 4. unresolved decisions/questions
 5. review pass status
-6. `spec/tools/check_all.sh` result
+6. `go run ./spec/tools/cmd/check_all` result

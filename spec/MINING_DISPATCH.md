@@ -13,10 +13,10 @@ Claim rules:
 
 Preferred commands:
 
-- Claim: `spec/tools/claim_lowest_open_slot.sh <owner>`
+- Claim: `go run ./spec/tools/cmd/claim_lowest_open_slot <owner>`
 - Review:
-  `spec/tools/record_review_pass.sh SLOT-XXX <reviewer> <pass(1|2)> <PASS_NO_NOTES|FAIL_NOTES> <notes_ref>`
-- Done: `spec/tools/mark_slot_done.sh SLOT-XXX <owner>`
+  `go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> <pass(1|2)> <PASS_NO_NOTES|FAIL_NOTES> <notes_ref>`
+- Done: `go run ./spec/tools/cmd/mark_slot_done SLOT-XXX <owner>`
 
 Edit only rows in the TSV block below when claiming or completing work.
 

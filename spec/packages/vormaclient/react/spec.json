@@ -1,0 +1,66 @@
+{
+	"meta": {
+		"schema_version": "1.0.0",
+		"package": "vormaclient/react",
+		"spec_path": "spec/packages/vormaclient/react",
+		"source_roots": ["vormaclient/react/**"],
+		"requirement_id_prefix": "REQ-VORMACLIENT-REACT",
+		"status": "DRAFT"
+	},
+	"scope": {
+		"included_behaviors": [],
+		"excluded_behaviors": [],
+		"ownership_boundaries": {
+			"owned_behaviors": [],
+			"inherited_behaviors": []
+		},
+		"public_surfaces": []
+	},
+	"capabilities": [],
+	"requirements": [],
+	"state_model": {
+		"entities": [],
+		"transitions": []
+	},
+	"error_model": {
+		"errors": []
+	},
+	"external_contracts": {
+		"contracts": []
+	},
+	"nonfunctional": {
+		"requirements": []
+	},
+	"open_questions": {
+		"questions": []
+	},
+	"assertion_accounting": {
+		"ledger": [],
+		"non_meaningful_exclusion_notes": []
+	},
+	"evidence": {
+		"requirements": {}
+	},
+	"review_gate": {
+		"miner_owner": "-",
+		"target_artifacts_hash": "-",
+		"pass1": {
+			"reviewer_owner": "-",
+			"reviewer_claim_slot": "-",
+			"result": "PENDING",
+			"artifacts_hash": "-",
+			"completed_utc": "-",
+			"notes_ref": "-",
+			"notes_log": []
+		},
+		"pass2": {
+			"reviewer_owner": "-",
+			"reviewer_claim_slot": "-",
+			"result": "PENDING",
+			"artifacts_hash": "-",
+			"completed_utc": "-",
+			"notes_ref": "-",
+			"notes_log": []
+		}
+	}
+}

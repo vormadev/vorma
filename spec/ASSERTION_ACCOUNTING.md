@@ -4,27 +4,28 @@ Every legacy test assertion must be recorded exactly once with a disposition.
 
 Allowed dispositions:
 
-- `MEANINGFUL`: normative behavior; must map to one or more `REQ-*` IDs.
+- `MEANINGFUL`: normative behavior; maps to one or more `REQ-*` IDs.
 - `NON_MEANINGFUL`: excluded from normative spec with explicit rationale.
 
-Required counters per package (`80-assertion-accounting.md`):
+Required ledger fields per package (in `spec.json` under
+`assertion_accounting.ledger`):
 
-- `total_assertions`
-- `meaningful_assertions`
-- `non_meaningful_assertions`
-- `mapped_meaningful_assertions`
-- `unclassified_assertions`
+- `assertion_id`
+- `source_test_ref` (`path`, `line`)
+- `disposition` (`MEANINGFUL | NON_MEANINGFUL`)
+- `requirement_ids`
+- `rationale`
 
-Required invariants:
+Required derived invariants:
 
-- `total_assertions = meaningful_assertions + non_meaningful_assertions`
-- `mapped_meaningful_assertions = meaningful_assertions`
-- `unclassified_assertions = 0`
+- every assertion is classified (`MEANINGFUL` or `NON_MEANINGFUL`)
+- `MEANINGFUL` rows map to at least one local requirement
+- `NON_MEANINGFUL` rows map to zero requirements
+- derived unclassified assertion count is `0`
 
-Traceability requirement:
+Traceability requirements:
 
-- Every `MEANINGFUL` assertion ledger row must map to at least one requirement
-  ID.
-- Every requirement in the index must have evidence in `evidence.yaml`.
-- Assertion accounting and evidence mapping must stay consistent across mining
-  and both required review passes.
+- Every `MEANINGFUL` assertion ledger row maps to at least one requirement ID.
+- Every requirement has both test and implementation evidence mappings.
+- Assertion accounting and evidence mapping remain consistent across mining and
+  both required review passes.

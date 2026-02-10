@@ -1,0 +1,82 @@
+package specutil
+
+import (
+	"bytes"
+	"fmt"
+	"os/exec"
+	"sort"
+	"strings"
+)
+
+func CommandOutput(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return "", fmt.Errorf("%s %s: %s", name, strings.Join(args, " "), strings.TrimSpace(stderr.String()))
+		}
+		return "", fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
+	}
+	return out.String(), nil
+}
+
+func CommandLines(name string, args ...string) ([]string, error) {
+	out, err := CommandOutput(name, args...)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(out, "\n")
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			result = append(result, line)
+		}
+	}
+	return result, nil
+}
+
+func GitLines(args ...string) ([]string, error) {
+	return CommandLines("git", args...)
+}
+
+func GitOutput(args ...string) (string, error) {
+	return CommandOutput("git", args...)
+}
+
+func ChangedFiles() ([]string, error) {
+	diff, err := GitLines("diff", "--name-only", "--diff-filter=ACMRTD", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	untracked, err := GitLines("ls-files", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(diff)+len(untracked))
+	for _, file := range append(diff, untracked...) {
+		if _, ok := seen[file]; ok {
+			continue
+		}
+		seen[file] = struct{}{}
+		out = append(out, file)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func IsGitFileChanged(path string) (bool, error) {
+	lines, err := GitLines("diff", "--name-only", "HEAD", "--", path)
+	if err != nil {
+		return false, err
+	}
+	return len(lines) > 0, nil
+}
+
+func GitDiff(path string, unified int) (string, error) {
+	return GitOutput("diff", fmt.Sprintf("--unified=%d", unified), "HEAD", "--", path)
+}
