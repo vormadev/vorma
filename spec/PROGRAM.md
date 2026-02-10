@@ -26,6 +26,8 @@ Output of this phase:
 - `spec/packages/**` package artifacts with requirement IDs and evidence.
 - Assertion accounting with explicit disposition for every legacy assertion.
 - Resolved contradictions and explicit decision records.
+- Two independent review passes with zero findings for every package before
+  completion.
 
 Phase 1 status is tracked in `spec/PHASE_STATUS.md`.
 
@@ -37,17 +39,37 @@ Blocked until all Phase 1 gates are satisfied.
 
 Blocked until To-Be spec acceptance.
 
+## Readability and Structure Standard
+
+Package artifacts must be human-readable first, machine-checkable second.
+
+- Do not use mermaid/diagram/chart blocks in package artifacts.
+- Use prose sections for explanations.
+- Keep a compact machine-checkable index for requirements and status fields.
+- Every normative requirement must have a detailed prose section.
+
+## Slot Lifecycle
+
+Dispatch status stays `OPEN`, `CLAIMED`, or `DONE`.
+
+- `OPEN`: no owner, not yet claimed.
+- `CLAIMED`: active mining and review loop. The slot remains `CLAIMED` until it
+  satisfies both independent review passes.
+- `DONE`: only allowed after all gates pass.
+
 ## Hard Gates for Phase 1 Completion
 
 1. Assertion accounting is `100%` complete for all legacy assertions.
 2. Meaningful assertion mapping is `100%` complete.
-3. Non-meaningful assertions have explicit rationale and reviewer sign-off.
+3. Non-meaningful assertions have explicit rationale.
 4. Unclassified assertions are `0`.
-5. Every normative requirement has source evidence from tests and source code.
+5. Every normative requirement has evidence from tests and source code.
 6. Normative ownership is unambiguous: each behavior has exactly one owner
    package and all inherited behavior is referenced, not duplicated.
 7. No unresolved contradictions across package specs.
 8. No package marked `DONE` has unresolved open questions.
+9. No package is marked `DONE` without two independent review passes with
+   `PASS_NO_NOTES` against the exact current package artifact hash.
 
 ## Requirement and Evidence Rules
 
@@ -58,8 +80,8 @@ Blocked until To-Be spec acceptance.
 - Use single-owner requirement boundaries from `spec/OWNERSHIP_BOUNDARIES.md`.
 - Cross-package inheritance must be represented via upstream requirement
   references, not copied requirement text.
-- Each requirement row must include `Ownership` as `OWNED`, `INHERITED`, or
-  `DELTA`.
+- Each requirement index row must include `Ownership` as `OWNED`, `INHERITED`,
+  or `DELTA`.
 - `INHERITED` and `DELTA` requirements must include non-empty upstream
   requirement references.
 
@@ -76,6 +98,7 @@ Each package path under `spec/packages/**` must include:
 - `60-nonfunctional.md`
 - `70-open-questions.md`
 - `80-assertion-accounting.md`
+- `90-review-gate.md`
 - `evidence.yaml`
 
 ## Review Model
@@ -83,5 +106,7 @@ Each package path under `spec/packages/**` must include:
 Each package requires:
 
 1. Primary mining pass.
-2. Independent traceability and contradiction review pass.
-3. Gate checks before status changes to `DONE`.
+2. Independent review pass 1.
+3. Independent review pass 2 by a different reviewer.
+4. Both passes must report `PASS_NO_NOTES` for the current artifact hash.
+5. Only then may the slot be marked `DONE`.

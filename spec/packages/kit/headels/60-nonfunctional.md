@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** Nonfunctional Requirements
+# kit/headels Nonfunctional Requirements
 
-| NFR ID                  | Category    | Requirement |
-| ----------------------- | ----------- | ----------- |
-| NFR-**REQ_PREFIX**-0001 | Performance | TODO        |
+## NFR Index (machine-checkable)
+
+| NFR ID               | Category | Requirement |
+| -------------------- | -------- | ----------- |
+| NFR-KIT-HEADELS-0001 | TODO     | TODO        |
+
+## NFR Details
+
+### NFR-KIT-HEADELS-0001
+
+Requirement:
+
+- TODO
+
+Measurement or Evidence Notes:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-KIT-HEADELS-0001

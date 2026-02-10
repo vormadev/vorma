@@ -71,6 +71,81 @@ if rg -n '\|[[:space:]]*(OPEN|UNRESOLVED)[[:space:]]*\|' "$slot_path/70-open-que
 	exit 1
 fi
 
+if rg -n '^Current Status:[[:space:]]*$|^[[:space:]]*-[[:space:]]*(OPEN|UNRESOLVED)[[:space:]]*$|^status:[[:space:]]*(OPEN|UNRESOLVED)[[:space:]]*$' "$slot_path/70-open-questions.md" >/dev/null; then
+	echo "cannot mark DONE while unresolved status markers remain in $slot_path/70-open-questions.md" >&2
+	exit 1
+fi
+
+review_file="$slot_path/90-review-gate.md"
+if [ ! -f "$review_file" ]; then
+	echo "missing review gate file: $review_file" >&2
+	exit 1
+fi
+
+is_utc_timestamp() {
+	local value="$1"
+	[[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
+get_key() {
+	local key="$1"
+	awk -F ': ' -v target="$key" '$1 == target {print $2; exit}' "$review_file"
+}
+
+current_hash=$(spec/tools/compute_package_artifact_hash.sh "$slot_path")
+miner_owner=$(get_key "miner_owner")
+target_hash=$(get_key "target_artifacts_hash")
+pass1_reviewer=$(get_key "pass1_reviewer")
+pass1_result=$(get_key "pass1_result")
+pass1_hash=$(get_key "pass1_artifacts_hash")
+pass1_time=$(get_key "pass1_completed_utc")
+pass1_notes=$(get_key "pass1_notes")
+pass2_reviewer=$(get_key "pass2_reviewer")
+pass2_result=$(get_key "pass2_result")
+pass2_hash=$(get_key "pass2_artifacts_hash")
+pass2_time=$(get_key "pass2_completed_utc")
+pass2_notes=$(get_key "pass2_notes")
+
+if [ "$miner_owner" != "$slot_owner" ]; then
+	echo "review gate miner_owner mismatch: expected $slot_owner, found $miner_owner" >&2
+	exit 1
+fi
+
+if [ "$pass1_result" != "PASS_NO_NOTES" ] || [ "$pass2_result" != "PASS_NO_NOTES" ]; then
+	echo "cannot mark DONE: review gate requires PASS_NO_NOTES for pass1 and pass2" >&2
+	exit 1
+fi
+
+if [ "$pass1_reviewer" = "-" ] || [ "$pass2_reviewer" = "-" ]; then
+	echo "cannot mark DONE: both review pass reviewers must be set" >&2
+	exit 1
+fi
+
+if [ "$pass1_reviewer" = "$slot_owner" ] || [ "$pass2_reviewer" = "$slot_owner" ]; then
+	echo "cannot mark DONE: reviewers must be independent from slot owner $slot_owner" >&2
+	exit 1
+fi
+
+if [ "$pass1_reviewer" = "$pass2_reviewer" ]; then
+	echo "cannot mark DONE: pass1 and pass2 reviewers must be different" >&2
+	exit 1
+fi
+
+if [ "$target_hash" != "$current_hash" ] || [ "$pass1_hash" != "$current_hash" ] || [ "$pass2_hash" != "$current_hash" ]; then
+	echo "cannot mark DONE: review hashes must match current artifact hash $current_hash" >&2
+	exit 1
+fi
+
+if [ "$pass1_notes" != "-" ] || [ "$pass2_notes" != "-" ]; then
+	echo "cannot mark DONE: zero-note passes require pass1_notes and pass2_notes to be '-'" >&2
+	exit 1
+fi
+
+if ! is_utc_timestamp "$pass1_time" || ! is_utc_timestamp "$pass2_time"; then
+	echo "cannot mark DONE: review pass timestamps must be UTC RFC3339" >&2
+	exit 1
+fi
+
 awk -F '\t' -v OFS='\t' -v row="$slot_row" -v now="$now_utc" '
 	NR == 1 {
 		print

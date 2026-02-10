@@ -8,10 +8,14 @@ Claim rules:
 4. One active `CLAIMED` slot per owner.
 5. Only the slot owner may mark that slot `DONE`.
 6. Set status to `DONE` only after passing all guard checks.
+7. A slot must remain `CLAIMED` until both required independent review passes
+   are recorded as `PASS_NO_NOTES`.
 
 Preferred commands:
 
 - Claim: `spec/tools/claim_lowest_open_slot.sh <owner>`
+- Review:
+  `spec/tools/record_review_pass.sh SLOT-XXX <reviewer> <pass(1|2)> <PASS_NO_NOTES|FAIL_NOTES> <notes_ref>`
 - Done: `spec/tools/mark_slot_done.sh SLOT-XXX <owner>`
 
 Edit only rows in the TSV block below when claiming or completing work.

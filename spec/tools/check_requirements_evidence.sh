@@ -26,10 +26,28 @@ required_files=(
 	"60-nonfunctional.md"
 	"70-open-questions.md"
 	"80-assertion-accounting.md"
+	"90-review-gate.md"
 	"evidence.yaml"
 )
 
 failures=0
+
+is_utc_timestamp() {
+	local value="$1"
+	[[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
+get_counter() {
+	local key="$1"
+	local file="$2"
+	awk -F ': ' -v target="$key" '$1 == target {print $2; exit}' "$file"
+}
+
+get_key() {
+	local key="$1"
+	local file="$2"
+	awk -F ': ' -v target="$key" '$1 == target {print $2; exit}' "$file"
+}
 
 while IFS=$'\t' read -r slot_id status priority_group spec_path source_roots owner updated_utc notes; do
 	[ "$status" = "DONE" ] || continue
@@ -41,8 +59,19 @@ while IFS=$'\t' read -r slot_id status priority_group spec_path source_roots own
 		fi
 	done
 
+	if [ ! -d "$spec_path" ]; then
+		echo "[$slot_id] missing spec path directory: $spec_path" >&2
+		failures=$((failures + 1))
+		continue
+	fi
+
 	if rg -n '\|[[:space:]]*(OPEN|UNRESOLVED)[[:space:]]*\|' "$spec_path/70-open-questions.md" >/dev/null; then
 		echo "[$slot_id] unresolved open question statuses in $spec_path/70-open-questions.md" >&2
+		failures=$((failures + 1))
+	fi
+
+	if rg -n '^Current Status:[[:space:]]*$|^[[:space:]]*-[[:space:]]*(OPEN|UNRESOLVED)[[:space:]]*$|^status:[[:space:]]*(OPEN|UNRESOLVED)[[:space:]]*$' "$spec_path/70-open-questions.md" >/dev/null; then
+		echo "[$slot_id] unresolved open question markers found in $spec_path/70-open-questions.md" >&2
 		failures=$((failures + 1))
 	fi
 
@@ -91,11 +120,41 @@ while IFS=$'\t' read -r slot_id status priority_group spec_path source_roots own
 		failures=$((failures + 1))
 	fi
 
-	get_counter() {
-		local key="$1"
-		local file="$2"
-		awk -F ': ' -v target="$key" '$1 == target {print $2; exit}' "$file"
-	}
+	req_ids=$(awk -F '|' '
+		function trim(value) {
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			return value
+		}
+		/^[[:space:]]*\|[[:space:]]*REQ-[A-Z0-9-]+-[0-9]{4}[[:space:]]*\|/ {
+			print trim($2)
+		}
+	' "$spec_path/20-requirements.md" | sort -u)
+
+	if [ -z "$req_ids" ]; then
+		echo "[$slot_id] no requirement IDs found in $spec_path/20-requirements.md" >&2
+		failures=$((failures + 1))
+	fi
+
+	while IFS= read -r req; do
+		[ -n "$req" ] || continue
+		if ! rg -q "^[[:space:]]*$req:" "$spec_path/evidence.yaml"; then
+			echo "[$slot_id] missing evidence mapping for $req in $spec_path/evidence.yaml" >&2
+			failures=$((failures + 1))
+		fi
+		if ! rg -q "^### $req([[:space:]]|$)" "$spec_path/20-requirements.md"; then
+			echo "[$slot_id] missing prose detail section for $req in $spec_path/20-requirements.md" >&2
+			failures=$((failures + 1))
+		fi
+	done <<< "$req_ids"
+
+	if ! rg -q 'kind: test' "$spec_path/evidence.yaml"; then
+		echo "[$slot_id] missing test evidence entries in $spec_path/evidence.yaml" >&2
+		failures=$((failures + 1))
+	fi
+	if ! rg -q 'kind: implementation' "$spec_path/evidence.yaml"; then
+		echo "[$slot_id] missing implementation evidence entries in $spec_path/evidence.yaml" >&2
+		failures=$((failures + 1))
+	fi
 
 	counter_file="$spec_path/80-assertion-accounting.md"
 	total=$(get_counter "total_assertions" "$counter_file")
@@ -133,25 +192,58 @@ while IFS=$'\t' read -r slot_id status priority_group spec_path source_roots own
 		fi
 	fi
 
-	req_ids=$(rg -o 'REQ-[A-Z0-9-]+-[0-9]{4}' "$spec_path/20-requirements.md" | sort -u || true)
-	if [ -z "$req_ids" ]; then
-		echo "[$slot_id] no requirement IDs found in $spec_path/20-requirements.md" >&2
-		failures=$((failures + 1))
-	fi
-	while IFS= read -r req; do
-		[ -n "$req" ] || continue
-		if ! rg -q "^[[:space:]]*$req:" "$spec_path/evidence.yaml"; then
-			echo "[$slot_id] missing evidence mapping for $req in $spec_path/evidence.yaml" >&2
-			failures=$((failures + 1))
-		fi
-	done <<< "$req_ids"
+	review_file="$spec_path/90-review-gate.md"
+	current_hash=$(spec/tools/compute_package_artifact_hash.sh "$spec_path")
+	miner_owner=$(get_key "miner_owner" "$review_file")
+	target_hash=$(get_key "target_artifacts_hash" "$review_file")
+	pass1_reviewer=$(get_key "pass1_reviewer" "$review_file")
+	pass1_result=$(get_key "pass1_result" "$review_file")
+	pass1_hash=$(get_key "pass1_artifacts_hash" "$review_file")
+	pass1_time=$(get_key "pass1_completed_utc" "$review_file")
+	pass1_notes=$(get_key "pass1_notes" "$review_file")
+	pass2_reviewer=$(get_key "pass2_reviewer" "$review_file")
+	pass2_result=$(get_key "pass2_result" "$review_file")
+	pass2_hash=$(get_key "pass2_artifacts_hash" "$review_file")
+	pass2_time=$(get_key "pass2_completed_utc" "$review_file")
+	pass2_notes=$(get_key "pass2_notes" "$review_file")
 
-	if ! rg -q 'kind: test' "$spec_path/evidence.yaml"; then
-		echo "[$slot_id] missing test evidence entries in $spec_path/evidence.yaml" >&2
+	if [ "$miner_owner" != "$owner" ]; then
+		echo "[$slot_id] review gate miner_owner must match slot owner: expected $owner, found $miner_owner" >&2
 		failures=$((failures + 1))
 	fi
-	if ! rg -q 'kind: implementation' "$spec_path/evidence.yaml"; then
-		echo "[$slot_id] missing implementation evidence entries in $spec_path/evidence.yaml" >&2
+
+	if [ "$pass1_result" != "PASS_NO_NOTES" ] || [ "$pass2_result" != "PASS_NO_NOTES" ]; then
+		echo "[$slot_id] review gate requires PASS_NO_NOTES for both pass1 and pass2" >&2
+		failures=$((failures + 1))
+	fi
+
+	if [ "$pass1_reviewer" = "-" ] || [ "$pass2_reviewer" = "-" ]; then
+		echo "[$slot_id] review gate reviewers must be set for both passes" >&2
+		failures=$((failures + 1))
+	fi
+
+	if [ "$pass1_reviewer" = "$owner" ] || [ "$pass2_reviewer" = "$owner" ]; then
+		echo "[$slot_id] review gate reviewers must be independent from miner owner $owner" >&2
+		failures=$((failures + 1))
+	fi
+
+	if [ "$pass1_reviewer" = "$pass2_reviewer" ]; then
+		echo "[$slot_id] review gate pass1 and pass2 reviewers must differ" >&2
+		failures=$((failures + 1))
+	fi
+
+	if [ "$target_hash" != "$current_hash" ] || [ "$pass1_hash" != "$current_hash" ] || [ "$pass2_hash" != "$current_hash" ]; then
+		echo "[$slot_id] review gate hashes must match current artifact hash ($current_hash)" >&2
+		failures=$((failures + 1))
+	fi
+
+	if [ "$pass1_notes" != "-" ] || [ "$pass2_notes" != "-" ]; then
+		echo "[$slot_id] PASS_NO_NOTES requires pass1_notes and pass2_notes to be '-'" >&2
+		failures=$((failures + 1))
+	fi
+
+	if ! is_utc_timestamp "$pass1_time" || ! is_utc_timestamp "$pass2_time"; then
+		echo "[$slot_id] review gate pass timestamps must be UTC RFC3339 (YYYY-MM-DDTHH:MM:SSZ)" >&2
 		failures=$((failures + 1))
 	fi
 done < "$dispatch_rows.data"

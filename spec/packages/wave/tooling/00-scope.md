@@ -1,4 +1,4 @@
-# **PACKAGE_NAME** Scope
+# wave/tooling Scope
 
 Spec path: `spec/packages/wave/tooling`
 
@@ -6,11 +6,15 @@ Source roots:
 
 - `wave/tooling/**`
 
-## Included
+## Scope Summary
+
+Describe what this package is responsible for in one short paragraph.
+
+## Included Behavior
 
 - TODO
 
-## Excluded
+## Excluded Behavior
 
 - TODO
 
@@ -24,6 +28,12 @@ Source roots:
 
 - TODO
 
-## Public Surfaces
+## Public Surface Inventory (machine-checkable)
 
-- TODO
+| Surface ID             | Kind | Symbol or Path | Owner Package | Requirement Refs | Notes |
+| ---------------------- | ---- | -------------- | ------------- | ---------------- | ----- |
+| SURF-WAVE-TOOLING-0001 | TODO | TODO           | wave/tooling  | TODO             | TODO  |
+
+## Coverage Notes
+
+Explain any intentionally excluded surfaces and why.

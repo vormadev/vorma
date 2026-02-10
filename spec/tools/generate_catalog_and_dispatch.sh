@@ -60,11 +60,13 @@ Claim rules:
 2. Set slot status to `CLAIMED` before editing package artifacts.
 3. Edit only the claimed `spec_path` under `spec/packages/**`.
 4. Set status to `DONE` only after passing all guard checks.
+5. Keep the slot `CLAIMED` until both independent review passes are recorded as `PASS_NO_NOTES`.
 
 Preferred commands:
 
 - Claim: `spec/tools/claim_lowest_open_slot.sh <owner>`
-- Done: `spec/tools/mark_slot_done.sh SLOT-XXX`
+- Review: `spec/tools/record_review_pass.sh SLOT-XXX <reviewer> <pass(1|2)> <PASS_NO_NOTES|FAIL_NOTES> <notes_ref>`
+- Done: `spec/tools/mark_slot_done.sh SLOT-XXX <owner>`
 
 Edit only rows in the TSV block below when claiming or completing work.
 

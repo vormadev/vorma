@@ -22,10 +22,10 @@ render_template() {
 		-v source_roots="$source_roots" \
 		-v req_prefix="$req_prefix" '
 		{
-			gsub(/__PACKAGE_NAME__/, package_name)
-			gsub(/__SPEC_PATH__/, spec_path)
-			gsub(/__SOURCE_ROOTS__/, source_roots)
-			gsub(/__REQ_PREFIX__/, req_prefix)
+			gsub(/@@PACKAGE_NAME@@/, package_name)
+			gsub(/@@SPEC_PATH@@/, spec_path)
+			gsub(/@@SOURCE_ROOTS@@/, source_roots)
+			gsub(/@@REQ_PREFIX@@/, req_prefix)
 			print
 		}
 	' "$template_path" > "$output_path"
@@ -46,10 +46,11 @@ while IFS=$'\t' read -r slot_id priority_group spec_path source_roots; do
 	render_template spec/_templates/package/30-state-model.md "$spec_path/30-state-model.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
 	render_template spec/_templates/package/40-errors.md "$spec_path/40-errors.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
 	render_template spec/_templates/package/50-external-contracts.md "$spec_path/50-external-contracts.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
-	render_template spec/_templates/package/60-nonfunctional.md "$spec_path/60-nonfunctional.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
-	render_template spec/_templates/package/70-open-questions.md "$spec_path/70-open-questions.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
-	render_template spec/_templates/package/80-assertion-accounting.md "$spec_path/80-assertion-accounting.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
-	render_template spec/_templates/package/evidence.yaml "$spec_path/evidence.yaml" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
+		render_template spec/_templates/package/60-nonfunctional.md "$spec_path/60-nonfunctional.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
+		render_template spec/_templates/package/70-open-questions.md "$spec_path/70-open-questions.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
+		render_template spec/_templates/package/80-assertion-accounting.md "$spec_path/80-assertion-accounting.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
+		render_template spec/_templates/package/90-review-gate.md "$spec_path/90-review-gate.md" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
+		render_template spec/_templates/package/evidence.yaml "$spec_path/evidence.yaml" "$package_name" "$spec_path" "$source_roots" "$req_prefix"
 done < spec/PACKAGE_CATALOG.tsv
 
 echo "scaffolded package specs from spec/PACKAGE_CATALOG.tsv"

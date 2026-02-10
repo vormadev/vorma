@@ -1,4 +1,4 @@
-# **PACKAGE_NAME** Scope
+# lab/fsmarkdown Scope
 
 Spec path: `spec/packages/lab/fsmarkdown`
 
@@ -6,11 +6,15 @@ Source roots:
 
 - `lab/fsmarkdown/**`
 
-## Included
+## Scope Summary
+
+Describe what this package is responsible for in one short paragraph.
+
+## Included Behavior
 
 - TODO
 
-## Excluded
+## Excluded Behavior
 
 - TODO
 
@@ -24,6 +28,12 @@ Source roots:
 
 - TODO
 
-## Public Surfaces
+## Public Surface Inventory (machine-checkable)
 
-- TODO
+| Surface ID               | Kind | Symbol or Path | Owner Package  | Requirement Refs | Notes |
+| ------------------------ | ---- | -------------- | -------------- | ---------------- | ----- |
+| SURF-LAB-FSMARKDOWN-0001 | TODO | TODO           | lab/fsmarkdown | TODO             | TODO  |
+
+## Coverage Notes
+
+Explain any intentionally excluded surfaces and why.

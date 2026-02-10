@@ -1,4 +1,4 @@
-# **PACKAGE_NAME** Scope
+# kit/genericsutil Scope
 
 Spec path: `spec/packages/kit/genericsutil`
 
@@ -6,11 +6,15 @@ Source roots:
 
 - `kit/genericsutil/**`
 
-## Included
+## Scope Summary
+
+Describe what this package is responsible for in one short paragraph.
+
+## Included Behavior
 
 - TODO
 
-## Excluded
+## Excluded Behavior
 
 - TODO
 
@@ -24,6 +28,12 @@ Source roots:
 
 - TODO
 
-## Public Surfaces
+## Public Surface Inventory (machine-checkable)
 
-- TODO
+| Surface ID                 | Kind | Symbol or Path | Owner Package    | Requirement Refs | Notes |
+| -------------------------- | ---- | -------------- | ---------------- | ---------------- | ----- |
+| SURF-KIT-GENERICSUTIL-0001 | TODO | TODO           | kit/genericsutil | TODO             | TODO  |
+
+## Coverage Notes
+
+Explain any intentionally excluded surfaces and why.

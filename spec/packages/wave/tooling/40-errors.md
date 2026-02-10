@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** Error Model
+# wave/tooling Error Model
 
-| Error ID                | Condition | Surface | Required Behavior |
-| ----------------------- | --------- | ------- | ----------------- |
-| ERR-**REQ_PREFIX**-0001 | TODO      | TODO    | TODO              |
+## Error Index (machine-checkable)
+
+| Error ID              | Condition | Surface | Required Behavior |
+| --------------------- | --------- | ------- | ----------------- |
+| ERR-WAVE-TOOLING-0001 | TODO      | TODO    | TODO              |
+
+## Error Details
+
+### ERR-WAVE-TOOLING-0001
+
+Condition:
+
+- TODO
+
+Required Behavior:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-WAVE-TOOLING-0001

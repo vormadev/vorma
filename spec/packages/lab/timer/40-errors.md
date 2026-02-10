@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** Error Model
+# lab/timer Error Model
 
-| Error ID                | Condition | Surface | Required Behavior |
-| ----------------------- | --------- | ------- | ----------------- |
-| ERR-**REQ_PREFIX**-0001 | TODO      | TODO    | TODO              |
+## Error Index (machine-checkable)
+
+| Error ID           | Condition | Surface | Required Behavior |
+| ------------------ | --------- | ------- | ----------------- |
+| ERR-LAB-TIMER-0001 | TODO      | TODO    | TODO              |
+
+## Error Details
+
+### ERR-LAB-TIMER-0001
+
+Condition:
+
+- TODO
+
+Required Behavior:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-LAB-TIMER-0001

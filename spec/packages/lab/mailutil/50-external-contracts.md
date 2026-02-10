@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** External Contracts
+# lab/mailutil External Contracts
 
-| Contract ID             | Type | Interface | Versioning/Compat Rules |
-| ----------------------- | ---- | --------- | ----------------------- |
-| EXT-**REQ_PREFIX**-0001 | TODO | TODO      | TODO                    |
+## Contract Index (machine-checkable)
+
+| Contract ID           | Type | Interface | Versioning and Compatibility Rules |
+| --------------------- | ---- | --------- | ---------------------------------- |
+| EXT-LAB-MAILUTIL-0001 | TODO | TODO      | TODO                               |
+
+## Contract Details
+
+### EXT-LAB-MAILUTIL-0001
+
+Contract Description:
+
+- TODO
+
+Compatibility Notes:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-LAB-MAILUTIL-0001

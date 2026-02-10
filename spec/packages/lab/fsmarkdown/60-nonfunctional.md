@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** Nonfunctional Requirements
+# lab/fsmarkdown Nonfunctional Requirements
 
-| NFR ID                  | Category    | Requirement |
-| ----------------------- | ----------- | ----------- |
-| NFR-**REQ_PREFIX**-0001 | Performance | TODO        |
+## NFR Index (machine-checkable)
+
+| NFR ID                  | Category | Requirement |
+| ----------------------- | -------- | ----------- |
+| NFR-LAB-FSMARKDOWN-0001 | TODO     | TODO        |
+
+## NFR Details
+
+### NFR-LAB-FSMARKDOWN-0001
+
+Requirement:
+
+- TODO
+
+Measurement or Evidence Notes:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-LAB-FSMARKDOWN-0001

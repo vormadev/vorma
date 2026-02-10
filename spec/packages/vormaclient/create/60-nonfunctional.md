@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** Nonfunctional Requirements
+# vormaclient/create Nonfunctional Requirements
 
-| NFR ID                  | Category    | Requirement |
-| ----------------------- | ----------- | ----------- |
-| NFR-**REQ_PREFIX**-0001 | Performance | TODO        |
+## NFR Index (machine-checkable)
+
+| NFR ID                      | Category | Requirement |
+| --------------------------- | -------- | ----------- |
+| NFR-VORMACLIENT-CREATE-0001 | TODO     | TODO        |
+
+## NFR Details
+
+### NFR-VORMACLIENT-CREATE-0001
+
+Requirement:
+
+- TODO
+
+Measurement or Evidence Notes:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-VORMACLIENT-CREATE-0001

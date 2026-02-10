@@ -9,7 +9,8 @@ incomplete, edits are restricted to `spec/**`.
 Primary entrypoints:
 
 - `spec/WORKER_RUNBOOK.md`: single-file instructions for mining agents.
-- `spec/PROGRAM.md`: phase model, quality bar, and completion gates.
+- `spec/PROGRAM.md`: phase model, quality bar, review gates, and completion
+  rules.
 - `spec/OWNERSHIP_BOUNDARIES.md`: single-owner and inheritance-by-reference
   rules.
 - `spec/MINING_DISPATCH.md`: claim board for package-by-package mining.
@@ -20,4 +21,7 @@ Primary entrypoints:
   decisions and traceability.
 - `spec/tools/check_dispatch_manual_edits.sh`: blocks manual dispatch edits.
 - `spec/tools/claim_lowest_open_slot.sh`: claim the next eligible slot.
-- `spec/tools/mark_slot_done.sh`: mark a claimed slot as done.
+- `spec/tools/record_review_pass.sh`: record required independent review
+  outcomes.
+- `spec/tools/mark_slot_done.sh`: mark a claimed slot as done after all review
+  gates.

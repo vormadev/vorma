@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** Nonfunctional Requirements
+# kit/lazyget Nonfunctional Requirements
 
-| NFR ID                  | Category    | Requirement |
-| ----------------------- | ----------- | ----------- |
-| NFR-**REQ_PREFIX**-0001 | Performance | TODO        |
+## NFR Index (machine-checkable)
+
+| NFR ID               | Category | Requirement |
+| -------------------- | -------- | ----------- |
+| NFR-KIT-LAZYGET-0001 | TODO     | TODO        |
+
+## NFR Details
+
+### NFR-KIT-LAZYGET-0001
+
+Requirement:
+
+- TODO
+
+Measurement or Evidence Notes:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-KIT-LAZYGET-0001

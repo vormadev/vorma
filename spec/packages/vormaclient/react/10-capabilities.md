@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** Capabilities
+# vormaclient/react Capabilities
 
-| Capability ID           | Summary | Inputs | Outputs | Side Effects |
-| ----------------------- | ------- | ------ | ------- | ------------ |
-| CAP-**REQ_PREFIX**-0001 | TODO    | TODO   | TODO    | TODO         |
+Use one section per capability. Keep summaries short and concrete.
+
+## CAP-VORMACLIENT-REACT-0001: TODO title
+
+Summary: TODO
+
+Inputs:
+
+- TODO
+
+Outputs:
+
+- TODO
+
+Side Effects:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-VORMACLIENT-REACT-0001

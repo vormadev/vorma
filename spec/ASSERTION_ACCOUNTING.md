@@ -20,3 +20,11 @@ Required invariants:
 - `total_assertions = meaningful_assertions + non_meaningful_assertions`
 - `mapped_meaningful_assertions = meaningful_assertions`
 - `unclassified_assertions = 0`
+
+Traceability requirement:
+
+- Every `MEANINGFUL` assertion ledger row must map to at least one requirement
+  ID.
+- Every requirement in the index must have evidence in `evidence.yaml`.
+- Assertion accounting and evidence mapping must stay consistent across mining
+  and both required review passes.

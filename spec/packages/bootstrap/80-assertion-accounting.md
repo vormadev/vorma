@@ -1,10 +1,21 @@
-# **PACKAGE_NAME** Assertion Accounting
+# bootstrap Assertion Accounting
 
-total_assertions: 0 meaningful_assertions: 0 non_meaningful_assertions: 0
-mapped_meaningful_assertions: 0 unclassified_assertions: 0
+Counters (machine-checkable):
+
+```yaml
+total_assertions: 0
+meaningful_assertions: 0
+non_meaningful_assertions: 0
+mapped_meaningful_assertions: 0
+unclassified_assertions: 0
+```
 
 ## Assertion Ledger
 
-| Assertion ID            | Source Test Ref | Disposition | Requirement IDs         | Rationale |
-| ----------------------- | --------------- | ----------- | ----------------------- | --------- |
-| AST-**REQ_PREFIX**-0001 | TODO            | MEANINGFUL  | REQ-**REQ_PREFIX**-0001 | TODO      |
+| Assertion ID       | Source Test Ref | Disposition | Requirement IDs    | Rationale |
+| ------------------ | --------------- | ----------- | ------------------ | --------- |
+| AST-BOOTSTRAP-0001 | TODO            | MEANINGFUL  | REQ-BOOTSTRAP-0001 | TODO      |
+
+## Non-Meaningful Exclusion Notes
+
+Document explicit rationale for each `NON_MEANINGFUL` assertion.

@@ -12,5 +12,6 @@ spec/tools/check_dispatch_manual_edits.sh
 spec/tools/check_dispatch_claim.sh
 spec/tools/check_requirements_evidence.sh
 spec/tools/check_absolute_paths.sh
+spec/tools/check_no_mermaid.sh
 
 echo "all spec guardrail checks passed"

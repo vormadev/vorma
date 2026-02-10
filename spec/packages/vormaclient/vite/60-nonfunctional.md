@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** Nonfunctional Requirements
+# vormaclient/vite Nonfunctional Requirements
 
-| NFR ID                  | Category    | Requirement |
-| ----------------------- | ----------- | ----------- |
-| NFR-**REQ_PREFIX**-0001 | Performance | TODO        |
+## NFR Index (machine-checkable)
+
+| NFR ID                    | Category | Requirement |
+| ------------------------- | -------- | ----------- |
+| NFR-VORMACLIENT-VITE-0001 | TODO     | TODO        |
+
+## NFR Details
+
+### NFR-VORMACLIENT-VITE-0001
+
+Requirement:
+
+- TODO
+
+Measurement or Evidence Notes:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-VORMACLIENT-VITE-0001

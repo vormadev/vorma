@@ -1,5 +1,23 @@
-# **PACKAGE_NAME** External Contracts
+# vormaclient/solid External Contracts
 
-| Contract ID             | Type | Interface | Versioning/Compat Rules |
-| ----------------------- | ---- | --------- | ----------------------- |
-| EXT-**REQ_PREFIX**-0001 | TODO | TODO      | TODO                    |
+## Contract Index (machine-checkable)
+
+| Contract ID                | Type | Interface | Versioning and Compatibility Rules |
+| -------------------------- | ---- | --------- | ---------------------------------- |
+| EXT-VORMACLIENT-SOLID-0001 | TODO | TODO      | TODO                               |
+
+## Contract Details
+
+### EXT-VORMACLIENT-SOLID-0001
+
+Contract Description:
+
+- TODO
+
+Compatibility Notes:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-VORMACLIENT-SOLID-0001

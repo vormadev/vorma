@@ -4,8 +4,9 @@ This is the single source of instructions for normative intent mining agents.
 
 ## Mission
 
-Produce rebuild-grade normative specs with 100% assertion accounting and
-evidence-backed requirements, while editing only `spec/**`.
+Produce rebuild-grade normative specs with 100% assertion accounting,
+evidence-backed requirements, and two independent zero-note review passes before
+completion.
 
 Naming rule: mirror existing repository directory names for spec package paths.
 The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
@@ -25,15 +26,18 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
    upstream requirements instead of redefining them.
 6. Every requirement in `20-requirements.md` must map in `evidence.yaml`.
 7. Every mapped requirement must include both test and implementation evidence.
-8. `20-requirements.md` rows must include:
+8. `20-requirements.md` must include:
     - `Ownership` value in `OWNED|INHERITED|DELTA`
     - non-empty `Upstream Requirement Refs` for `INHERITED` and `DELTA`
+    - a prose detail section for every requirement ID in the index
 9. `80-assertion-accounting.md` must satisfy:
     - `mapped_meaningful_assertions = meaningful_assertions`
     - `unclassified_assertions = 0`
 10. One active `CLAIMED` slot per owner.
 11. Only the slot owner may mark that slot `DONE`.
-12. Do not mark a slot `DONE` unless guard checks pass.
+12. Do not mark a slot `DONE` unless guard checks pass and both independent
+    review passes are `PASS_NO_NOTES`.
+13. Do not use mermaid/diagram/chart code blocks in package artifacts.
 
 ## Required Read Order
 
@@ -66,7 +70,20 @@ spec/tools/claim_lowest_open_slot.sh <owner>
 spec/tools/check_all.sh
 ```
 
-6. If checks pass, mark your slot done:
+6. Record review passes (reviewers must differ from miner and each other):
+
+```bash
+spec/tools/record_review_pass.sh SLOT-XXX <reviewer> 1 PASS_NO_NOTES -
+spec/tools/record_review_pass.sh SLOT-XXX <reviewer2> 2 PASS_NO_NOTES -
+```
+
+Use `FAIL_NOTES` with a notes reference when findings exist:
+
+```bash
+spec/tools/record_review_pass.sh SLOT-XXX <reviewer> 1 FAIL_NOTES spec/DECISIONS.md#L123
+```
+
+7. After both review passes are `PASS_NO_NOTES` and checks pass, mark slot done:
 
 ```bash
 spec/tools/mark_slot_done.sh SLOT-XXX <owner>
@@ -87,4 +104,5 @@ At handoff, report:
 2. `spec_path`
 3. files edited
 4. unresolved decisions/questions
-5. `spec/tools/check_all.sh` result
+5. review pass status
+6. `spec/tools/check_all.sh` result

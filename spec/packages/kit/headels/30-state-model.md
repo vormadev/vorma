@@ -1,11 +1,27 @@
-# **PACKAGE_NAME** State Model
+# kit/headels State Model
 
 ## Entities
 
 - TODO
 
-## Transitions
+## Transition Index (machine-checkable)
 
-| Transition ID          | From | To   | Trigger | Guard | Effects |
-| ---------------------- | ---- | ---- | ------- | ----- | ------- |
-| ST-**REQ_PREFIX**-0001 | TODO | TODO | TODO    | TODO  | TODO    |
+| Transition ID       | From | To   | Trigger |
+| ------------------- | ---- | ---- | ------- |
+| ST-KIT-HEADELS-0001 | TODO | TODO | TODO    |
+
+## Transition Details
+
+### ST-KIT-HEADELS-0001
+
+Guard Conditions:
+
+- TODO
+
+Effects:
+
+- TODO
+
+Requirement Refs:
+
+- REQ-KIT-HEADELS-0001
