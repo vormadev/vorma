@@ -87,3 +87,6 @@ run-create: tsreset npmbuild nuke-node-modules
 	@mkdir -p test_create.local && \
 		cd test_create.local && \
 		node ../vormaclient/create/dist/main.js --local-test
+
+spec-prog:
+	@cat "$(git rev-parse --git-common-dir)/spec-dispatch-state.json"
