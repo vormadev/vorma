@@ -13,7 +13,7 @@ func fail(format string, args ...any) {
 }
 
 func main() {
-	phaseStatus, err := specutil.ParsePhaseStatusFile("spec/PHASE_STATUS.md")
+	phaseStatus, err := specutil.ParsePhaseStatusFile("spec/PHASE_STATUS.json")
 	if err != nil {
 		fail("%v", err)
 	}
@@ -21,7 +21,7 @@ func main() {
 		return
 	}
 
-	dispatch, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.md")
+	dispatch, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
 	if err != nil {
 		fail("%v", err)
 	}
@@ -31,7 +31,7 @@ func main() {
 		}
 	}
 
-	decisions, err := specutil.ParseDecisionsFile("spec/DECISIONS.md")
+	decisions, err := specutil.ParseDecisionsFile("spec/DECISIONS.json")
 	if err != nil {
 		fail("%v", err)
 	}

@@ -1,4 +1,0 @@
-# Phase Status
-
-phase1_status: INCOMPLETE phase2_status: BLOCKED phase3_status: BLOCKED
-last_updated_utc: 2026-02-10T00:00:00Z

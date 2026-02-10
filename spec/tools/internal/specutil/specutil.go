@@ -3,7 +3,7 @@ package specutil
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -11,20 +11,19 @@ import (
 )
 
 type DispatchRow struct {
-	SlotID        string
-	Status        string
-	PriorityGroup string
-	SpecPath      string
-	SourceRoots   string
-	Owner         string
-	UpdatedUTC    string
-	Notes         string
+	SlotID        string `json:"slot_id"`
+	Status        string `json:"status"`
+	PriorityGroup string `json:"priority_group"`
+	SpecPath      string `json:"spec_path"`
+	SourceRoots   string `json:"source_roots"`
+	Owner         string `json:"owner"`
+	UpdatedUTC    string `json:"updated_utc"`
+	Notes         string `json:"notes"`
 }
 
 type DispatchDoc struct {
-	Before string
-	Rows   []DispatchRow
-	After  string
+	SchemaVersion string        `json:"schema_version"`
+	Rows          []DispatchRow `json:"slots"`
 }
 
 func NowUTC() string {
@@ -39,84 +38,48 @@ func IsUTCRFC3339(value string) bool {
 	return err == nil
 }
 
-func ParseDispatchMarkdown(raw string) (*DispatchDoc, error) {
-	startMarker := "```tsv\n"
-	start := strings.Index(raw, startMarker)
-	if start == -1 {
-		return nil, errors.New("dispatch TSV block is missing")
-	}
-	end := strings.Index(raw[start+len(startMarker):], "\n```")
-	if end == -1 {
-		return nil, errors.New("dispatch TSV block terminator is missing")
-	}
-	end += start + len(startMarker)
-
-	before := raw[:start+len(startMarker)]
-	tsv := strings.TrimSpace(raw[start+len(startMarker) : end])
-	after := raw[end:]
-
-	if tsv == "" {
-		return nil, errors.New("dispatch TSV is empty")
-	}
-
-	lines := strings.Split(tsv, "\n")
-	header := lines[0]
-	expectedHeader := "slot_id\tstatus\tpriority_group\tspec_path\tsource_roots\towner\tupdated_utc\tnotes"
-	if header != expectedHeader {
-		return nil, errors.New("dispatch TSV header is invalid")
-	}
-
-	rows := make([]DispatchRow, 0, len(lines)-1)
-	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.Split(line, "\t")
-		if len(parts) != 8 {
-			return nil, fmt.Errorf("dispatch row has %d columns (expected 8): %s", len(parts), line)
-		}
-		rows = append(rows, DispatchRow{
-			SlotID:        parts[0],
-			Status:        parts[1],
-			PriorityGroup: parts[2],
-			SpecPath:      parts[3],
-			SourceRoots:   parts[4],
-			Owner:         parts[5],
-			UpdatedUTC:    parts[6],
-			Notes:         parts[7],
-		})
-	}
-
-	return &DispatchDoc{
-		Before: before,
-		Rows:   rows,
-		After:  after,
-	}, nil
-}
-
 func ParseDispatchFile(path string) (*DispatchDoc, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return ParseDispatchMarkdown(string(raw))
+	doc, err := ParseDispatchJSON(string(raw))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return doc, nil
+}
+
+func ParseDispatchJSON(raw string) (*DispatchDoc, error) {
+	doc := DispatchDoc{}
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		return nil, fmt.Errorf("invalid dispatch JSON: %w", err)
+	}
+	if doc.SchemaVersion != "1.0.0" {
+		return nil, fmt.Errorf("invalid dispatch schema_version: %s", doc.SchemaVersion)
+	}
+	if len(doc.Rows) == 0 {
+		return nil, fmt.Errorf("dispatch has no slots")
+	}
+	seen := map[string]struct{}{}
+	for _, row := range doc.Rows {
+		if row.SlotID == "" {
+			return nil, fmt.Errorf("dispatch row has empty slot_id")
+		}
+		if _, ok := seen[row.SlotID]; ok {
+			return nil, fmt.Errorf("duplicate dispatch slot_id: %s", row.SlotID)
+		}
+		seen[row.SlotID] = struct{}{}
+	}
+	return &doc, nil
 }
 
 func RenderDispatch(doc *DispatchDoc) string {
-	lines := []string{"slot_id\tstatus\tpriority_group\tspec_path\tsource_roots\towner\tupdated_utc\tnotes"}
-	for _, row := range doc.Rows {
-		lines = append(lines, strings.Join([]string{
-			row.SlotID,
-			row.Status,
-			row.PriorityGroup,
-			row.SpecPath,
-			row.SourceRoots,
-			row.Owner,
-			row.UpdatedUTC,
-			row.Notes,
-		}, "\t"))
+	encoded, err := json.MarshalIndent(doc, "", "\t")
+	if err != nil {
+		panic(err)
 	}
-	return doc.Before + strings.Join(lines, "\n") + doc.After
+	return string(encoded) + "\n"
 }
 
 func FindRowBySlotID(rows []DispatchRow, slotID string) (int, *DispatchRow) {
@@ -129,7 +92,7 @@ func FindRowBySlotID(rows []DispatchRow, slotID string) (int, *DispatchRow) {
 }
 
 func ComputeSpecHash(specPath string) (string, error) {
-	specFile := strings.TrimRight(specPath, "/") + "/spec.json"
+	specFile := specPath + "/spec.json"
 	content, err := os.ReadFile(specFile)
 	if err != nil {
 		return "", err
@@ -161,10 +124,10 @@ func IsRelativeRepoPath(value string) bool {
 	if strings.TrimSpace(value) == "" {
 		return false
 	}
-	if strings.HasPrefix(value, "/") {
+	if value[0] == '/' {
 		return false
 	}
-	if strings.HasPrefix(strings.ToLower(value), "file://") {
+	if len(value) >= 7 && (value[:7] == "file://" || value[:7] == "FILE://") {
 		return false
 	}
 	if len(value) >= 3 {

@@ -70,39 +70,29 @@ func asStringArray(obj map[string]any, key string, min int) []string {
 	return out
 }
 
-func extractJSONBlock(raw string) (string, error) {
-	startMarker := "```json\n"
-	start := strings.Index(raw, startMarker)
-	if start == -1 {
-		return "", fmt.Errorf("TRACEABILITY.md is missing a ```json fenced block")
-	}
-	end := strings.Index(raw[start+len(startMarker):], "\n```")
-	if end == -1 {
-		return "", fmt.Errorf("TRACEABILITY.md JSON fenced block terminator is missing")
-	}
-	end += start + len(startMarker)
-	return strings.TrimSpace(raw[start+len(startMarker) : end]), nil
+type traceabilityDoc struct {
+	SchemaVersion string           `json:"schema_version"`
+	Entries       []map[string]any `json:"entries"`
 }
 
 func main() {
-	raw, err := os.ReadFile("spec/TRACEABILITY.md")
+	raw, err := os.ReadFile("spec/TRACEABILITY.json")
 	if err != nil {
 		fail("%v", err)
 	}
 
-	block, err := extractJSONBlock(string(raw))
-	if err != nil {
-		fail("%v", err)
-	}
-
-	dec := json.NewDecoder(strings.NewReader(block))
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.UseNumber()
 
-	var entries []map[string]any
-	if err := dec.Decode(&entries); err != nil {
-		fail("TRACEABILITY.md JSON is invalid: %v", err)
+	doc := traceabilityDoc{}
+	if err := dec.Decode(&doc); err != nil {
+		fail("TRACEABILITY.json is invalid: %v", err)
+	}
+	if doc.SchemaVersion != "1.0.0" {
+		fail("TRACEABILITY.json schema_version must be 1.0.0")
 	}
 
+	entries := doc.Entries
 	goalIDs := map[string]struct{}{}
 	for i, entry := range entries {
 		required := []string{

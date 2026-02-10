@@ -27,19 +27,17 @@ func containsPlaceholder(s string) bool {
 	return strings.Contains(t, "TODO") || strings.Contains(t, "TBD")
 }
 
-func validatePackagePathCell(line int, value string) {
-	if containsPlaceholder(value) {
-		fail("decisions line %d has placeholder package path", line)
+func validatePackagePaths(line int, paths []string) {
+	if len(paths) == 0 {
+		fail("decisions line %d must include at least one package path", line)
 	}
-
-	cell := strings.Trim(value, "`")
-	if cell == "cross-package" {
-		return
-	}
-
-	parts := strings.Split(cell, ",")
-	for _, part := range parts {
-		p := strings.TrimSpace(part)
+	for _, p := range paths {
+		if containsPlaceholder(p) {
+			fail("decisions line %d has placeholder package path", line)
+		}
+		if p == "cross-package" {
+			continue
+		}
 		if p == "" {
 			fail("decisions line %d has empty package path", line)
 		}
@@ -53,7 +51,7 @@ func validatePackagePathCell(line int, value string) {
 }
 
 func main() {
-	rows, err := specutil.ParseDecisionsFile("spec/DECISIONS.md")
+	rows, err := specutil.ParseDecisionsFile("spec/DECISIONS.json")
 	if err != nil {
 		fail("%v", err)
 	}
@@ -78,20 +76,25 @@ func main() {
 			fail("decisions line %d has invalid Status: %s", row.Line, row.Status)
 		}
 
-		validatePackagePathCell(row.Line, row.PackagePath)
+		validatePackagePaths(row.Line, row.PackagePaths)
 
 		if containsPlaceholder(row.Question) {
 			fail("decisions line %d has placeholder Question", row.Line)
 		}
-		if containsPlaceholder(row.OptionsConsidered) {
-			fail("decisions line %d has placeholder Options Considered", row.Line)
+		if len(row.OptionsConsidered) == 0 {
+			fail("decisions line %d must include options_considered", row.Line)
+		}
+		for _, opt := range row.OptionsConsidered {
+			if containsPlaceholder(opt) {
+				fail("decisions line %d has placeholder Options Considered", row.Line)
+			}
 		}
 
 		if row.Status == "OPEN" {
 			if strings.TrimSpace(row.SelectedOption) != "-" ||
 				strings.TrimSpace(row.Rationale) != "-" ||
-				strings.TrimSpace(row.Evidence) != "-" {
-				fail("decisions line %d OPEN rows must set Selected Option, Rationale, and Evidence to '-'", row.Line)
+				len(row.EvidenceRefs) != 1 || strings.TrimSpace(row.EvidenceRefs[0]) != "-" {
+				fail("decisions line %d OPEN rows must set selected_option, rationale, and evidence_refs=['-']", row.Line)
 			}
 			continue
 		}
@@ -102,8 +105,13 @@ func main() {
 		if containsPlaceholder(row.Rationale) || strings.TrimSpace(row.Rationale) == "-" {
 			fail("decisions line %d RESOLVED row must provide Rationale", row.Line)
 		}
-		if containsPlaceholder(row.Evidence) || strings.TrimSpace(row.Evidence) == "-" {
-			fail("decisions line %d RESOLVED row must provide Evidence", row.Line)
+		if len(row.EvidenceRefs) == 0 {
+			fail("decisions line %d RESOLVED row must provide evidence_refs", row.Line)
+		}
+		for _, ref := range row.EvidenceRefs {
+			if containsPlaceholder(ref) || strings.TrimSpace(ref) == "-" {
+				fail("decisions line %d RESOLVED row must provide Evidence", row.Line)
+			}
 		}
 	}
 }

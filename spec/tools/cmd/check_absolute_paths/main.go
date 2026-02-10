@@ -13,7 +13,6 @@ func main() {
 		".md":   true,
 		".yaml": true,
 		".yml":  true,
-		".tsv":  true,
 		".json": true,
 	}
 

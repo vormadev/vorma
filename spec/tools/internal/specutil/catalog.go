@@ -1,6 +1,7 @@
 package specutil
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -8,41 +9,50 @@ import (
 )
 
 type CatalogRow struct {
-	SlotID        string
-	PriorityGroup string
-	SpecPath      string
-	SourceRoots   string
+	SlotID        string `json:"slot_id"`
+	PriorityGroup string `json:"priority_group"`
+	SpecPath      string `json:"spec_path"`
+	SourceRoots   string `json:"source_roots"`
 }
 
-func ParseCatalogTSV(path string) ([]CatalogRow, error) {
+type CatalogDoc struct {
+	SchemaVersion string       `json:"schema_version"`
+	Slots         []CatalogRow `json:"slots"`
+}
+
+func ParseCatalogJSON(path string) ([]CatalogRow, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	if len(lines) == 0 {
-		return nil, fmt.Errorf("%s is empty", path)
+	doc := CatalogDoc{}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("invalid catalog JSON in %s: %w", path, err)
 	}
-	if lines[0] != "slot_id\tpriority_group\tspec_path\tsource_roots" {
-		return nil, fmt.Errorf("invalid %s header", path)
+	if doc.SchemaVersion != "1.0.0" {
+		return nil, fmt.Errorf("invalid catalog schema_version in %s: %s", path, doc.SchemaVersion)
 	}
-	rows := make([]CatalogRow, 0, len(lines)-1)
-	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) == "" {
-			continue
+	if len(doc.Slots) == 0 {
+		return nil, fmt.Errorf("%s has no slots", path)
+	}
+
+	seen := map[string]struct{}{}
+	for _, row := range doc.Slots {
+		if row.SlotID == "" || row.PriorityGroup == "" || row.SpecPath == "" || row.SourceRoots == "" {
+			return nil, fmt.Errorf("invalid catalog row with empty field: %+v", row)
 		}
-		parts := strings.Split(line, "\t")
-		if len(parts) != 4 {
-			return nil, fmt.Errorf("invalid catalog row: %s", line)
+		if _, ok := seen[row.SlotID]; ok {
+			return nil, fmt.Errorf("duplicate catalog slot_id: %s", row.SlotID)
 		}
-		rows = append(rows, CatalogRow{
-			SlotID:        parts[0],
-			PriorityGroup: parts[1],
-			SpecPath:      parts[2],
-			SourceRoots:   parts[3],
-		})
+		seen[row.SlotID] = struct{}{}
 	}
-	return rows, nil
+
+	return doc.Slots, nil
+}
+
+// ParseCatalogTSV is kept as a temporary compatibility wrapper.
+func ParseCatalogTSV(path string) ([]CatalogRow, error) {
+	return ParseCatalogJSON(path)
 }
 
 func ChangedPackagePaths(changedFiles []string, catalogRows []CatalogRow) ([]string, error) {

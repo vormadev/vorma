@@ -30,7 +30,7 @@ Required outputs:
 - Explicit ownership boundaries with inheritance by reference.
 - Two independent zero-note review passes per package before completion.
 
-Phase 1 status is tracked in `spec/PHASE_STATUS.md`.
+Phase 1 status is tracked in `spec/PHASE_STATUS.json`.
 
 ### Phase 2: To-Be Rebuild Spec
 

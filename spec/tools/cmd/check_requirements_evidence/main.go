@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.md")
+	doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -31,7 +31,7 @@ func main() {
 			"--slot", row.SlotID,
 			"--spec", specFile,
 			"--owner", row.Owner,
-			"--dispatch", "spec/MINING_DISPATCH.md",
+			"--dispatch", "spec/MINING_DISPATCH.json",
 			"--require-review-pass",
 		)
 		cmd.Env = append(os.Environ(), "GOCACHE=/tmp/go-build")

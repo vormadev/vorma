@@ -1,11 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 type row struct {
@@ -112,42 +112,77 @@ func main() {
 	add("bootstrap-create", "spec/packages/bootstrap", "bootstrap/**")
 	add("bootstrap-create", "spec/packages/vormaclient/create", "vormaclient/create/**")
 
-	catalog := strings.Builder{}
-	catalog.WriteString("slot_id\tpriority_group\tspec_path\tsource_roots\n")
-	for _, r := range rows {
-		catalog.WriteString(fmt.Sprintf("%s\t%s\t%s\t%s\n", r.SlotID, r.PriorityGroup, r.SpecPath, r.SourceRoots))
+	type catalogSlot struct {
+		SlotID        string `json:"slot_id"`
+		PriorityGroup string `json:"priority_group"`
+		SpecPath      string `json:"spec_path"`
+		SourceRoots   string `json:"source_roots"`
 	}
-	if err := os.WriteFile("spec/PACKAGE_CATALOG.tsv", []byte(catalog.String()), 0o644); err != nil {
+	type catalogDoc struct {
+		SchemaVersion string        `json:"schema_version"`
+		Slots         []catalogSlot `json:"slots"`
+	}
+	catalogSlots := make([]catalogSlot, 0, len(rows))
+	for _, r := range rows {
+		catalogSlots = append(catalogSlots, catalogSlot{
+			SlotID:        r.SlotID,
+			PriorityGroup: r.PriorityGroup,
+			SpecPath:      r.SpecPath,
+			SourceRoots:   r.SourceRoots,
+		})
+	}
+	catalogPayload, err := json.MarshalIndent(catalogDoc{
+		SchemaVersion: "1.0.0",
+		Slots:         catalogSlots,
+	}, "", "\t")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := os.WriteFile("spec/PACKAGE_CATALOG.json", append(catalogPayload, '\n'), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	dispatch := strings.Builder{}
-	dispatch.WriteString("# Mining Dispatch\n\n")
-	dispatch.WriteString("Claim rules:\n\n")
-	dispatch.WriteString("1. Claim the lowest-numbered slot with status `OPEN`.\n")
-	dispatch.WriteString("2. Set slot status to `CLAIMED` before editing package artifacts.\n")
-	dispatch.WriteString("3. Edit only the claimed `spec_path` under `spec/packages/**`.\n")
-	dispatch.WriteString("4. One active `CLAIMED` slot per owner.\n")
-	dispatch.WriteString("5. Only the slot owner may mark that slot `DONE`.\n")
-	dispatch.WriteString("6. Set status to `DONE` only after passing all guard checks.\n")
-	dispatch.WriteString("7. A slot must remain `CLAIMED` until both required independent review passes are recorded as `PASS_NO_NOTES`.\n\n")
-	dispatch.WriteString("Preferred commands:\n\n")
-	dispatch.WriteString("- Claim: `go run ./spec/tools/cmd/claim_lowest_open_slot <owner>`\n")
-	dispatch.WriteString("- Review: `go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> <pass(1|2)> <PASS_NO_NOTES|FAIL_NOTES> <notes_ref>`\n")
-	dispatch.WriteString("- Done: `go run ./spec/tools/cmd/mark_slot_done SLOT-XXX <owner>`\n\n")
-	dispatch.WriteString("Edit only rows in the TSV block below when claiming or completing work.\n\n")
-	dispatch.WriteString("```tsv\n")
-	dispatch.WriteString("slot_id\tstatus\tpriority_group\tspec_path\tsource_roots\towner\tupdated_utc\tnotes\n")
-	for _, r := range rows {
-		dispatch.WriteString(fmt.Sprintf("%s\tOPEN\t%s\t%s\t%s\t-\t-\t-\n", r.SlotID, r.PriorityGroup, r.SpecPath, r.SourceRoots))
+	type dispatchSlot struct {
+		SlotID        string `json:"slot_id"`
+		Status        string `json:"status"`
+		PriorityGroup string `json:"priority_group"`
+		SpecPath      string `json:"spec_path"`
+		SourceRoots   string `json:"source_roots"`
+		Owner         string `json:"owner"`
+		UpdatedUTC    string `json:"updated_utc"`
+		Notes         string `json:"notes"`
 	}
-	dispatch.WriteString("```\n")
-
-	if err := os.WriteFile("spec/MINING_DISPATCH.md", []byte(dispatch.String()), 0o644); err != nil {
+	type dispatchDoc struct {
+		SchemaVersion string         `json:"schema_version"`
+		Slots         []dispatchSlot `json:"slots"`
+	}
+	dispatchSlots := make([]dispatchSlot, 0, len(rows))
+	for _, r := range rows {
+		dispatchSlots = append(dispatchSlots, dispatchSlot{
+			SlotID:        r.SlotID,
+			Status:        "OPEN",
+			PriorityGroup: r.PriorityGroup,
+			SpecPath:      r.SpecPath,
+			SourceRoots:   r.SourceRoots,
+			Owner:         "-",
+			UpdatedUTC:    "-",
+			Notes:         "-",
+		})
+	}
+	dispatchPayload, err := json.MarshalIndent(dispatchDoc{
+		SchemaVersion: "1.0.0",
+		Slots:         dispatchSlots,
+	}, "", "\t")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	if err := os.WriteFile("spec/MINING_DISPATCH.json", append(dispatchPayload, '\n'), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	fmt.Println("generated spec/PACKAGE_CATALOG.tsv and spec/MINING_DISPATCH.md")
+	fmt.Println("generated spec/PACKAGE_CATALOG.json and spec/MINING_DISPATCH.json")
 }

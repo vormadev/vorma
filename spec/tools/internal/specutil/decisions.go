@@ -1,50 +1,27 @@
 package specutil
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 )
 
 type DecisionRow struct {
-	Line              int
-	DecisionID        string
-	Date              string
-	Status            string
-	PackagePath       string
-	Question          string
-	OptionsConsidered string
-	SelectedOption    string
-	Rationale         string
-	Evidence          string
+	Line              int      `json:"-"`
+	DecisionID        string   `json:"decision_id"`
+	Date              string   `json:"date"`
+	Status            string   `json:"status"`
+	PackagePaths      []string `json:"package_paths"`
+	Question          string   `json:"question"`
+	OptionsConsidered []string `json:"options_considered"`
+	SelectedOption    string   `json:"selected_option"`
+	Rationale         string   `json:"rationale"`
+	EvidenceRefs      []string `json:"evidence_refs"`
 }
 
-var decisionsHeader = []string{
-	"Decision ID",
-	"Date",
-	"Status",
-	"Package Path",
-	"Question",
-	"Options Considered",
-	"Selected Option",
-	"Rationale",
-	"Evidence",
-}
-
-func parseMarkdownRow(line string) ([]string, bool) {
-	trimmed := strings.TrimSpace(line)
-	if !strings.HasPrefix(trimmed, "|") || !strings.HasSuffix(trimmed, "|") {
-		return nil, false
-	}
-	parts := strings.Split(trimmed, "|")
-	if len(parts) < 3 {
-		return nil, false
-	}
-	out := make([]string, 0, len(parts)-2)
-	for i := 1; i < len(parts)-1; i++ {
-		out = append(out, strings.TrimSpace(parts[i]))
-	}
-	return out, true
+type DecisionsDoc struct {
+	SchemaVersion string        `json:"schema_version"`
+	Decisions     []DecisionRow `json:"decisions"`
 }
 
 func ParseDecisionsFile(path string) ([]DecisionRow, error) {
@@ -53,64 +30,18 @@ func ParseDecisionsFile(path string) ([]DecisionRow, error) {
 		return nil, err
 	}
 
-	lines := strings.Split(string(raw), "\n")
-	headerLine := -1
-	for i, line := range lines {
-		cols, ok := parseMarkdownRow(line)
-		if !ok {
-			continue
-		}
-		if len(cols) != len(decisionsHeader) {
-			continue
-		}
-		match := true
-		for j := range cols {
-			if cols[j] != decisionsHeader[j] {
-				match = false
-				break
-			}
-		}
-		if match {
-			headerLine = i
-			break
-		}
+	doc := DecisionsDoc{}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("invalid decisions JSON in %s: %w", path, err)
 	}
-	if headerLine == -1 {
-		return nil, fmt.Errorf("decisions table header not found in %s", path)
+	if doc.SchemaVersion != "1.0.0" {
+		return nil, fmt.Errorf("invalid decisions schema_version in %s: %s", path, doc.SchemaVersion)
 	}
 
-	if headerLine+1 >= len(lines) {
-		return nil, fmt.Errorf("decisions table separator missing in %s", path)
+	rows := make([]DecisionRow, 0, len(doc.Decisions))
+	for i, row := range doc.Decisions {
+		row.Line = i + 1
+		rows = append(rows, row)
 	}
-	if _, ok := parseMarkdownRow(lines[headerLine+1]); !ok {
-		return nil, fmt.Errorf("decisions table separator is invalid in %s", path)
-	}
-
-	rows := make([]DecisionRow, 0)
-	for i := headerLine + 2; i < len(lines); i++ {
-		cols, ok := parseMarkdownRow(lines[i])
-		if !ok {
-			if strings.TrimSpace(lines[i]) == "" {
-				continue
-			}
-			break
-		}
-		if len(cols) != len(decisionsHeader) {
-			return nil, fmt.Errorf("invalid decisions row column count on line %d", i+1)
-		}
-		rows = append(rows, DecisionRow{
-			Line:              i + 1,
-			DecisionID:        cols[0],
-			Date:              cols[1],
-			Status:            cols[2],
-			PackagePath:       cols[3],
-			Question:          cols[4],
-			OptionsConsidered: cols[5],
-			SelectedOption:    cols[6],
-			Rationale:         cols[7],
-			Evidence:          cols[8],
-		})
-	}
-
 	return rows, nil
 }

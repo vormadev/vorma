@@ -16,8 +16,13 @@ Primary entrypoints:
   rules.
 - `spec/OWNERSHIP_BOUNDARIES.md`: single-owner and inheritance-by-reference
   rules.
-- `spec/MINING_DISPATCH.md`: claim board for package-by-package mining.
+- `spec/MINING_DISPATCH.json`: claim board for package-by-package mining.
 - `spec/CHECKLIST.md`: operator checklist for each mining cycle.
+- `spec/DECISIONS.json`: append-only decision log for unresolved/resolved
+  cross-package questions.
+- `spec/TRACEABILITY.json`: append-only goal-to-capability-to-requirement map.
+- `spec/PACKAGE_CATALOG.json`: generated slot/catalog mapping.
+- `spec/PHASE_STATUS.json`: phase status state file.
 - `go run ./spec/tools/cmd/check_all`: guardrail checks.
 - `go run ./spec/tools/cmd/check_worker_allowlist`: enforces mining-edit
   allowlist.
@@ -32,7 +37,7 @@ Primary entrypoints:
 - `go run ./spec/tools/cmd/claim_lowest_open_slot`: claim the next eligible
   slot.
 - `go run ./spec/tools/cmd/generate_catalog_and_dispatch`: regenerate
-  `spec/PACKAGE_CATALOG.tsv` and `spec/MINING_DISPATCH.md`.
+  `spec/PACKAGE_CATALOG.json` and `spec/MINING_DISPATCH.json`.
 - `go run ./spec/tools/cmd/scaffold_packages`: re-render package `spec.json`
   files from the template.
 - `go run ./spec/tools/cmd/record_review_pass`: record required independent

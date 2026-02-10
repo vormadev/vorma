@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	rows, err := specutil.ParseCatalogTSV("spec/PACKAGE_CATALOG.tsv")
+	rows, err := specutil.ParseCatalogJSON("spec/PACKAGE_CATALOG.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

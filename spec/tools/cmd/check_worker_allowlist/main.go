@@ -57,7 +57,7 @@ func main() {
 
 	for _, file := range all {
 		switch file {
-		case "spec/MINING_DISPATCH.md", "spec/DECISIONS.md", "spec/TRACEABILITY.md":
+		case "spec/MINING_DISPATCH.json", "spec/DECISIONS.json", "spec/TRACEABILITY.json":
 			continue
 		default:
 			if allowedPackageFile.MatchString(file) {
@@ -73,7 +73,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, " - %s\n", v)
 		}
 		fmt.Fprintln(os.Stderr, "for parallel mining, use isolated worktrees so each worker sees only its own allowed changes")
-		fmt.Fprintln(os.Stderr, "allowed paths: spec/packages/<claimed-path>/spec.json, spec/MINING_DISPATCH.md, spec/DECISIONS.md, spec/TRACEABILITY.md")
+		fmt.Fprintln(os.Stderr, "allowed paths: spec/packages/<claimed-path>/spec.json, spec/MINING_DISPATCH.json, spec/DECISIONS.json, spec/TRACEABILITY.json")
 		os.Exit(1)
 	}
 }

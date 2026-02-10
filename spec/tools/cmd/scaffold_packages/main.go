@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 )
 
 func main() {
-	catalogPath := "spec/PACKAGE_CATALOG.tsv"
+	catalogPath := "spec/PACKAGE_CATALOG.json"
 	templatePath := "spec/_templates/package/spec.json"
 
 	catalogRaw, err := os.ReadFile(catalogPath)
@@ -24,29 +25,29 @@ func main() {
 	}
 	template := string(templateRaw)
 
-	lines := strings.Split(strings.TrimSpace(string(catalogRaw)), "\n")
-	if len(lines) == 0 {
-		fmt.Fprintf(os.Stderr, "empty %s\n", catalogPath)
+	catalog := struct {
+		SchemaVersion string `json:"schema_version"`
+		Slots         []struct {
+			SlotID        string `json:"slot_id"`
+			PriorityGroup string `json:"priority_group"`
+			SpecPath      string `json:"spec_path"`
+			SourceRoots   string `json:"source_roots"`
+		} `json:"slots"`
+	}{}
+	if err := json.Unmarshal(catalogRaw, &catalog); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid %s JSON: %v\n", catalogPath, err)
 		os.Exit(1)
 	}
-	if lines[0] != "slot_id\tpriority_group\tspec_path\tsource_roots" {
-		fmt.Fprintf(os.Stderr, "invalid %s header\n", catalogPath)
+	if catalog.SchemaVersion != "1.0.0" {
+		fmt.Fprintf(os.Stderr, "invalid %s schema_version\n", catalogPath)
 		os.Exit(1)
 	}
 
 	nonAlphaNum := regexp.MustCompile(`[^A-Z0-9]+`)
 
-	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.Split(line, "\t")
-		if len(parts) != 4 {
-			fmt.Fprintf(os.Stderr, "invalid catalog row: %s\n", line)
-			os.Exit(1)
-		}
-		specPath := parts[2]
-		sourceRoots := parts[3]
+	for _, slot := range catalog.Slots {
+		specPath := slot.SpecPath
+		sourceRoots := slot.SourceRoots
 
 		if err := os.MkdirAll(specPath, 0o755); err != nil {
 			fmt.Fprintf(os.Stderr, "mkdir %s: %v\n", specPath, err)
@@ -85,5 +86,5 @@ func main() {
 		}
 	}
 
-	fmt.Println("scaffolded package specs (JSON) from spec/PACKAGE_CATALOG.tsv")
+	fmt.Println("scaffolded package specs (JSON) from spec/PACKAGE_CATALOG.json")
 }

@@ -34,7 +34,7 @@ When a package reuses behavior from another package:
 
 If two packages appear to own the same normative behavior:
 
-1. Record the conflict in `spec/DECISIONS.md`.
+1. Record the conflict in `spec/DECISIONS.json`.
 2. Select one owner package.
 3. Update the non-owner package requirement to reference the owner.
 

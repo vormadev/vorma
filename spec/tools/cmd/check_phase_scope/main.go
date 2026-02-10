@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	phaseStatus, err := specutil.ParsePhaseStatusFile("spec/PHASE_STATUS.md")
+	phaseStatus, err := specutil.ParsePhaseStatusFile("spec/PHASE_STATUS.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

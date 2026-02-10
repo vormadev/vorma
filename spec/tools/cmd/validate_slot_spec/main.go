@@ -977,12 +977,12 @@ func main() {
 	slot := flag.String("slot", "", "SLOT-XXX")
 	specFile := flag.String("spec", "", "spec/packages/<path>/spec.json")
 	owner := flag.String("owner", "", "slot owner")
-	dispatch := flag.String("dispatch", "", "dispatch markdown file")
+	dispatch := flag.String("dispatch", "", "dispatch JSON file")
 	requireReviewPass := flag.Bool("require-review-pass", false, "enforce review pass fields")
 	flag.Parse()
 
 	if *slot == "" || *specFile == "" || *owner == "" || *dispatch == "" {
-		fmt.Fprintln(os.Stderr, "usage: go run ./spec/tools/cmd/validate_slot_spec --slot SLOT-XXX --spec spec/packages/<path>/spec.json --owner <owner> --dispatch spec/MINING_DISPATCH.md [--require-review-pass]")
+		fmt.Fprintln(os.Stderr, "usage: go run ./spec/tools/cmd/validate_slot_spec --slot SLOT-XXX --spec spec/packages/<path>/spec.json --owner <owner> --dispatch spec/MINING_DISPATCH.json [--require-review-pass]")
 		os.Exit(2)
 	}
 	if !reSpecFile.MatchString(filepath.ToSlash(*specFile)) {

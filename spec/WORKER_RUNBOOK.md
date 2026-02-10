@@ -14,13 +14,13 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
 ## Non-Negotiable Rules
 
 1. Edit only files under `spec/**`.
-2. Claim work from `spec/MINING_DISPATCH.md` using tooling, not manual row
+2. Claim work from `spec/MINING_DISPATCH.json` using tooling, not manual row
    edits.
 3. During mining, allowed files are:
     - `spec/packages/<claimed-path>/spec.json`
-    - `spec/MINING_DISPATCH.md` (script-managed)
-    - `spec/DECISIONS.md` (append-only)
-    - `spec/TRACEABILITY.md` (append-only)
+    - `spec/MINING_DISPATCH.json` (script-managed)
+    - `spec/DECISIONS.json` (append-only)
+    - `spec/TRACEABILITY.json` (append-only)
 4. Edit only one claimed package path under `spec/packages/**`.
 5. Follow `spec/OWNERSHIP_BOUNDARIES.md`: inherited behavior must reference
    upstream requirements instead of redefining them.
@@ -41,8 +41,8 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
 13. Do not add charts/diagram blocks to package artifacts.
 14. After editing any `spec/**/*.md` or `spec/**/*.json`, run Prettier:
     `pnpm prettier --write <files...>`.
-15. `spec/DECISIONS.md` rows must use `status = OPEN|RESOLVED`; `OPEN` rows must
-    keep `Selected Option`, `Rationale`, and `Evidence` as `-`.
+15. `spec/DECISIONS.json` entries must use `status = OPEN|RESOLVED`; `OPEN`
+    entries must keep `Selected Option`, `Rationale`, and `Evidence` as `-`.
 
 ## Required Read Order
 
@@ -51,7 +51,7 @@ The only synthetic package name is `vormaroot`, which maps to `vorma.go`.
 3. `spec/OWNERSHIP_BOUNDARIES.md`
 4. `spec/ASSERTION_ACCOUNTING.md`
 5. `spec/CHECKLIST.md`
-6. `spec/MINING_DISPATCH.md`
+6. `spec/MINING_DISPATCH.json`
 
 ## Workflow
 
@@ -65,7 +65,7 @@ export GOCACHE=${GOCACHE:-/tmp/go-build}
 go run ./spec/tools/cmd/claim_lowest_open_slot <owner>
 ```
 
-3. Find your claimed slot row in `spec/MINING_DISPATCH.md` and note `slot_id`
+3. Find your claimed slot row in `spec/MINING_DISPATCH.json` and note `slot_id`
    and `spec_path`.
 
 4. Edit only `spec/packages/<claimed-path>/spec.json`.
@@ -87,7 +87,7 @@ go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner_2> <reviewer
 Use `FAIL_NOTES` with a notes reference when findings exist:
 
 ```bash
-go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> 1 FAIL_NOTES spec/DECISIONS.md#L123
+go run ./spec/tools/cmd/record_review_pass SLOT-XXX <reviewer_owner> <reviewer_claim_slot> 1 FAIL_NOTES spec/DECISIONS.json#DEC-0001
 ```
 
 7. After both review passes are `PASS_NO_NOTES` and checks pass, mark slot done:

@@ -31,7 +31,7 @@ func main() {
 	}
 
 	err := specutil.WithLock("spec/.dispatch.lock", func() error {
-		doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.md")
+		doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
 		if err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ func main() {
 		doc.Rows[openIndex].Notes = "claimed"
 
 		updated := specutil.RenderDispatch(doc)
-		if err := os.WriteFile("spec/MINING_DISPATCH.md", []byte(updated), 0o644); err != nil {
+		if err := os.WriteFile("spec/MINING_DISPATCH.json", []byte(updated), 0o644); err != nil {
 			return err
 		}
 

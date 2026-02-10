@@ -28,7 +28,7 @@ func main() {
 	}
 
 	err := specutil.WithLock("spec/.dispatch.lock", func() error {
-		doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.md")
+		doc, err := specutil.ParseDispatchFile("spec/MINING_DISPATCH.json")
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func main() {
 			"--slot", row.SlotID,
 			"--spec", specFile,
 			"--owner", row.Owner,
-			"--dispatch", "spec/MINING_DISPATCH.md",
+			"--dispatch", "spec/MINING_DISPATCH.json",
 			"--require-review-pass",
 		)
 		cmd.Env = append(os.Environ(), "GOCACHE=/tmp/go-build")
@@ -71,7 +71,7 @@ func main() {
 		doc.Rows[idx].Notes = "done"
 
 		updated := specutil.RenderDispatch(doc)
-		if err := os.WriteFile("spec/MINING_DISPATCH.md", []byte(updated), 0o644); err != nil {
+		if err := os.WriteFile("spec/MINING_DISPATCH.json", []byte(updated), 0o644); err != nil {
 			return err
 		}
 

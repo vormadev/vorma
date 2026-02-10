@@ -11,9 +11,9 @@
 5. For parallel mining, use one isolated git worktree per agent; shared checkout
    is unsupported by guard checks.
 6. Use only allowed non-package files during mining:
-    - `spec/MINING_DISPATCH.md` (script-managed)
-    - `spec/DECISIONS.md` (append-only)
-    - `spec/TRACEABILITY.md` (append-only)
+    - `spec/MINING_DISPATCH.json` (script-managed)
+    - `spec/DECISIONS.json` (append-only)
+    - `spec/TRACEABILITY.json` (append-only)
 
 ## During Mining
 
@@ -29,7 +29,7 @@
 8. Keep assertion accounting ledger complete and classification-consistent.
 9. Keep open questions resolved before done.
 10. Do not add charts/diagram blocks in package artifacts.
-11. Move cross-package ambiguities to `spec/DECISIONS.md` as `status = OPEN`
+11. Move cross-package ambiguities to `spec/DECISIONS.json` as `status = OPEN`
     rows.
 
 ## Review Passes (Required)

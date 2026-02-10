@@ -1,0 +1,461 @@
+{
+	"schema_version": "1.0.0",
+	"slots": [
+		{
+			"slot_id": "SLOT-001",
+			"priority_group": "vorma",
+			"spec_path": "spec/packages/vormaroot",
+			"source_roots": "vorma.go"
+		},
+		{
+			"slot_id": "SLOT-002",
+			"priority_group": "vorma",
+			"spec_path": "spec/packages/vormabuild",
+			"source_roots": "vormabuild/**"
+		},
+		{
+			"slot_id": "SLOT-003",
+			"priority_group": "vorma",
+			"spec_path": "spec/packages/vormaruntime",
+			"source_roots": "vormaruntime/**"
+		},
+		{
+			"slot_id": "SLOT-004",
+			"priority_group": "vorma",
+			"spec_path": "spec/packages/vormaclient/client",
+			"source_roots": "vormaclient/client/**"
+		},
+		{
+			"slot_id": "SLOT-005",
+			"priority_group": "vorma",
+			"spec_path": "spec/packages/vormaclient/react",
+			"source_roots": "vormaclient/react/**"
+		},
+		{
+			"slot_id": "SLOT-006",
+			"priority_group": "vorma",
+			"spec_path": "spec/packages/vormaclient/preact",
+			"source_roots": "vormaclient/preact/**"
+		},
+		{
+			"slot_id": "SLOT-007",
+			"priority_group": "vorma",
+			"spec_path": "spec/packages/vormaclient/solid",
+			"source_roots": "vormaclient/solid/**"
+		},
+		{
+			"slot_id": "SLOT-008",
+			"priority_group": "vorma",
+			"spec_path": "spec/packages/vormaclient/vite",
+			"source_roots": "vormaclient/vite/**"
+		},
+		{
+			"slot_id": "SLOT-009",
+			"priority_group": "wave",
+			"spec_path": "spec/packages/wave",
+			"source_roots": "wave/*.go"
+		},
+		{
+			"slot_id": "SLOT-010",
+			"priority_group": "wave",
+			"spec_path": "spec/packages/wave/tooling",
+			"source_roots": "wave/tooling/**"
+		},
+		{
+			"slot_id": "SLOT-011",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript",
+			"source_roots": "kit/_typescript/**"
+		},
+		{
+			"slot_id": "SLOT-012",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/converters",
+			"source_roots": "kit/_typescript/converters/**"
+		},
+		{
+			"slot_id": "SLOT-013",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/cookies",
+			"source_roots": "kit/_typescript/cookies/**"
+		},
+		{
+			"slot_id": "SLOT-014",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/csrf",
+			"source_roots": "kit/_typescript/csrf/**"
+		},
+		{
+			"slot_id": "SLOT-015",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/debounce",
+			"source_roots": "kit/_typescript/debounce/**"
+		},
+		{
+			"slot_id": "SLOT-016",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/fmt",
+			"source_roots": "kit/_typescript/fmt/**"
+		},
+		{
+			"slot_id": "SLOT-017",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/json",
+			"source_roots": "kit/_typescript/json/**"
+		},
+		{
+			"slot_id": "SLOT-018",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/listeners",
+			"source_roots": "kit/_typescript/listeners/**"
+		},
+		{
+			"slot_id": "SLOT-019",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/matcher",
+			"source_roots": "kit/_typescript/matcher/**"
+		},
+		{
+			"slot_id": "SLOT-020",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/theme",
+			"source_roots": "kit/_typescript/theme/**"
+		},
+		{
+			"slot_id": "SLOT-021",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/_typescript/url",
+			"source_roots": "kit/_typescript/url/**"
+		},
+		{
+			"slot_id": "SLOT-022",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/bytesutil",
+			"source_roots": "kit/bytesutil/**"
+		},
+		{
+			"slot_id": "SLOT-023",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/colorlog",
+			"source_roots": "kit/colorlog/**"
+		},
+		{
+			"slot_id": "SLOT-024",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/contextutil",
+			"source_roots": "kit/contextutil/**"
+		},
+		{
+			"slot_id": "SLOT-025",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/cookies",
+			"source_roots": "kit/cookies/**"
+		},
+		{
+			"slot_id": "SLOT-026",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/cryptoutil",
+			"source_roots": "kit/cryptoutil/**"
+		},
+		{
+			"slot_id": "SLOT-027",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/csrf",
+			"source_roots": "kit/csrf/**"
+		},
+		{
+			"slot_id": "SLOT-028",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/envutil",
+			"source_roots": "kit/envutil/**"
+		},
+		{
+			"slot_id": "SLOT-029",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/executil",
+			"source_roots": "kit/executil/**"
+		},
+		{
+			"slot_id": "SLOT-030",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/fsutil",
+			"source_roots": "kit/fsutil/**"
+		},
+		{
+			"slot_id": "SLOT-031",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/genericsutil",
+			"source_roots": "kit/genericsutil/**"
+		},
+		{
+			"slot_id": "SLOT-032",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/grace",
+			"source_roots": "kit/grace/**"
+		},
+		{
+			"slot_id": "SLOT-033",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/headels",
+			"source_roots": "kit/headels/**"
+		},
+		{
+			"slot_id": "SLOT-034",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/htmlutil",
+			"source_roots": "kit/htmlutil/**"
+		},
+		{
+			"slot_id": "SLOT-035",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/id",
+			"source_roots": "kit/id/**"
+		},
+		{
+			"slot_id": "SLOT-036",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/ioutil",
+			"source_roots": "kit/ioutil/**"
+		},
+		{
+			"slot_id": "SLOT-037",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/jsonutil",
+			"source_roots": "kit/jsonutil/**"
+		},
+		{
+			"slot_id": "SLOT-038",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/keyset",
+			"source_roots": "kit/keyset/**"
+		},
+		{
+			"slot_id": "SLOT-039",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/lazyget",
+			"source_roots": "kit/lazyget/**"
+		},
+		{
+			"slot_id": "SLOT-040",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/lru",
+			"source_roots": "kit/lru/**"
+		},
+		{
+			"slot_id": "SLOT-041",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/matcher",
+			"source_roots": "kit/matcher/**"
+		},
+		{
+			"slot_id": "SLOT-042",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/middleware",
+			"source_roots": "kit/middleware/**"
+		},
+		{
+			"slot_id": "SLOT-043",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/middleware/etag",
+			"source_roots": "kit/middleware/etag/**"
+		},
+		{
+			"slot_id": "SLOT-044",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/middleware/healthcheck",
+			"source_roots": "kit/middleware/healthcheck/**"
+		},
+		{
+			"slot_id": "SLOT-045",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/middleware/robotstxt",
+			"source_roots": "kit/middleware/robotstxt/**"
+		},
+		{
+			"slot_id": "SLOT-046",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/middleware/secureheaders",
+			"source_roots": "kit/middleware/secureheaders/**"
+		},
+		{
+			"slot_id": "SLOT-047",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/mux",
+			"source_roots": "kit/mux/**"
+		},
+		{
+			"slot_id": "SLOT-048",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/netutil",
+			"source_roots": "kit/netutil/**"
+		},
+		{
+			"slot_id": "SLOT-049",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/reflectutil",
+			"source_roots": "kit/reflectutil/**"
+		},
+		{
+			"slot_id": "SLOT-050",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/response",
+			"source_roots": "kit/response/**"
+		},
+		{
+			"slot_id": "SLOT-051",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/securebytes",
+			"source_roots": "kit/securebytes/**"
+		},
+		{
+			"slot_id": "SLOT-052",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/securestring",
+			"source_roots": "kit/securestring/**"
+		},
+		{
+			"slot_id": "SLOT-053",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/set",
+			"source_roots": "kit/set/**"
+		},
+		{
+			"slot_id": "SLOT-054",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/signedcookie",
+			"source_roots": "kit/signedcookie/**"
+		},
+		{
+			"slot_id": "SLOT-055",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/tasks",
+			"source_roots": "kit/tasks/**"
+		},
+		{
+			"slot_id": "SLOT-056",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/theme",
+			"source_roots": "kit/theme/**"
+		},
+		{
+			"slot_id": "SLOT-057",
+			"priority_group": "kit",
+			"spec_path": "spec/packages/kit/validate",
+			"source_roots": "kit/validate/**"
+		},
+		{
+			"slot_id": "SLOT-058",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/bumper",
+			"source_roots": "lab/bumper/**"
+		},
+		{
+			"slot_id": "SLOT-059",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/cliutil",
+			"source_roots": "lab/cliutil/**"
+		},
+		{
+			"slot_id": "SLOT-060",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/errutil",
+			"source_roots": "lab/errutil/**"
+		},
+		{
+			"slot_id": "SLOT-061",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/esbuildutil",
+			"source_roots": "lab/esbuildutil/**"
+		},
+		{
+			"slot_id": "SLOT-062",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/fsmarkdown",
+			"source_roots": "lab/fsmarkdown/**"
+		},
+		{
+			"slot_id": "SLOT-063",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/jsonschema",
+			"source_roots": "lab/jsonschema/**"
+		},
+		{
+			"slot_id": "SLOT-064",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/mailutil",
+			"source_roots": "lab/mailutil/**"
+		},
+		{
+			"slot_id": "SLOT-065",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/parseutil",
+			"source_roots": "lab/parseutil/**"
+		},
+		{
+			"slot_id": "SLOT-066",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/repoconcat",
+			"source_roots": "lab/repoconcat/**"
+		},
+		{
+			"slot_id": "SLOT-067",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/rpc",
+			"source_roots": "lab/rpc/**"
+		},
+		{
+			"slot_id": "SLOT-068",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/sqlutil",
+			"source_roots": "lab/sqlutil/**"
+		},
+		{
+			"slot_id": "SLOT-069",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/stringsutil",
+			"source_roots": "lab/stringsutil/**"
+		},
+		{
+			"slot_id": "SLOT-070",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/timer",
+			"source_roots": "lab/timer/**"
+		},
+		{
+			"slot_id": "SLOT-071",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/tsgen",
+			"source_roots": "lab/tsgen/**"
+		},
+		{
+			"slot_id": "SLOT-072",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/tsgen/tsgencore",
+			"source_roots": "lab/tsgen/tsgencore/**"
+		},
+		{
+			"slot_id": "SLOT-073",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/viteutil",
+			"source_roots": "lab/viteutil/**"
+		},
+		{
+			"slot_id": "SLOT-074",
+			"priority_group": "lab",
+			"spec_path": "spec/packages/lab/xyz",
+			"source_roots": "lab/xyz/**"
+		},
+		{
+			"slot_id": "SLOT-075",
+			"priority_group": "bootstrap-create",
+			"spec_path": "spec/packages/bootstrap",
+			"source_roots": "bootstrap/**"
+		},
+		{
+			"slot_id": "SLOT-076",
+			"priority_group": "bootstrap-create",
+			"spec_path": "spec/packages/vormaclient/create",
+			"source_roots": "vormaclient/create/**"
+		}
+	]
+}

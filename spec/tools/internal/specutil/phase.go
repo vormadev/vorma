@@ -1,20 +1,18 @@
 package specutil
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
-	"strings"
 )
 
 type PhaseStatus struct {
-	Phase1Status   string
-	Phase2Status   string
-	Phase3Status   string
-	LastUpdatedUTC string
+	SchemaVersion  string `json:"schema_version"`
+	Phase1Status   string `json:"phase1_status"`
+	Phase2Status   string `json:"phase2_status"`
+	Phase3Status   string `json:"phase3_status"`
+	LastUpdatedUTC string `json:"last_updated_utc"`
 }
-
-var phaseEntryRe = regexp.MustCompile(`\b(phase1_status|phase2_status|phase3_status|last_updated_utc):\s*([A-Z0-9:-]+)`)
 
 func ParsePhaseStatusFile(path string) (*PhaseStatus, error) {
 	raw, err := os.ReadFile(path)
@@ -22,40 +20,32 @@ func ParsePhaseStatusFile(path string) (*PhaseStatus, error) {
 		return nil, err
 	}
 
-	values := map[string]string{}
-	matches := phaseEntryRe.FindAllStringSubmatch(string(raw), -1)
-	for _, m := range matches {
-		key := m[1]
-		value := m[2]
-		if _, exists := values[key]; exists {
-			return nil, fmt.Errorf("duplicate phase status key: %s", key)
-		}
-		values[key] = value
+	status := PhaseStatus{}
+	if err := json.Unmarshal(raw, &status); err != nil {
+		return nil, fmt.Errorf("invalid phase status JSON in %s: %w", path, err)
+	}
+	if status.SchemaVersion != "1.0.0" {
+		return nil, fmt.Errorf("invalid phase status schema_version in %s: %s", path, status.SchemaVersion)
 	}
 
-	required := []string{"phase1_status", "phase2_status", "phase3_status", "last_updated_utc"}
-	for _, key := range required {
-		if strings.TrimSpace(values[key]) == "" {
-			return nil, fmt.Errorf("missing required phase status key: %s", key)
-		}
-	}
-
-	for _, key := range []string{"phase1_status", "phase2_status", "phase3_status"} {
-		switch values[key] {
+	for _, value := range []struct {
+		key string
+		val string
+	}{
+		{key: "phase1_status", val: status.Phase1Status},
+		{key: "phase2_status", val: status.Phase2Status},
+		{key: "phase3_status", val: status.Phase3Status},
+	} {
+		switch value.val {
 		case "INCOMPLETE", "COMPLETE", "BLOCKED":
 		default:
-			return nil, fmt.Errorf("invalid %s value: %s", key, values[key])
+			return nil, fmt.Errorf("invalid %s value: %s", value.key, value.val)
 		}
 	}
 
-	if !IsUTCRFC3339(values["last_updated_utc"]) {
-		return nil, fmt.Errorf("invalid last_updated_utc value: %s", values["last_updated_utc"])
+	if !IsUTCRFC3339(status.LastUpdatedUTC) {
+		return nil, fmt.Errorf("invalid last_updated_utc value: %s", status.LastUpdatedUTC)
 	}
 
-	return &PhaseStatus{
-		Phase1Status:   values["phase1_status"],
-		Phase2Status:   values["phase2_status"],
-		Phase3Status:   values["phase3_status"],
-		LastUpdatedUTC: values["last_updated_utc"],
-	}, nil
+	return &status, nil
 }

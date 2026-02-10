@@ -3,6 +3,7 @@ package specutil
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -79,4 +80,17 @@ func IsGitFileChanged(path string) (bool, error) {
 
 func GitDiff(path string, unified int) (string, error) {
 	return GitOutput("diff", fmt.Sprintf("--unified=%d", unified), "HEAD", "--", path)
+}
+
+func GitFileAtHEAD(path string) (string, error) {
+	out, err := GitOutput("show", "HEAD:"+path)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "exists on disk, but not in 'HEAD'") ||
+			strings.Contains(msg, "does not exist in 'HEAD'") {
+			return "", os.ErrNotExist
+		}
+		return "", err
+	}
+	return out, nil
 }
