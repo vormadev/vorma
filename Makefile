@@ -87,20 +87,3 @@ run-create: tsreset npmbuild nuke-node-modules
 	@mkdir -p test_create.local && \
 		cd test_create.local && \
 		node ../vormaclient/create/dist/main.js --local-test
-
-spec-prog:
-	@cat "$(git rev-parse --git-common-dir)/spec-dispatch-state.json"
-
-spec-format-json:
-	@test -n "$(PKG)" || (echo "usage: make spec-format-json PKG=vormaclient/client" && exit 1)
-	@pnpm prettier --write "$(PKG)/spec/contract.json" "$(PKG)/spec/test-matrix.json"
-
-spec-check-json-format:
-	@test -n "$(PKG)" || (echo "usage: make spec-check-json-format PKG=vormaclient/client" && exit 1)
-	@pnpm prettier --check "$(PKG)/spec/contract.json" "$(PKG)/spec/test-matrix.json"
-
-spec-validate-shapes:
-	@test -n "$(PKG)" || (echo "usage: make spec-validate-shapes PKG=vormaclient/client" && exit 1)
-	@node ./internal/scripts/spec_validate/main.mjs --pkg "$(PKG)"
-
-spec-check-json: spec-check-json-format spec-validate-shapes
