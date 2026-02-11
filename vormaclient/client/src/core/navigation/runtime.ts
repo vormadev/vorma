@@ -459,6 +459,10 @@ async function handleNavigationOutcome(props: {
 			if (!entry) {
 				return { didNavigate: false };
 			}
+			if (isStaleRevalidationEntry(entry)) {
+				deleteNavigation(targetUrl);
+				return { didNavigate: false };
+			}
 
 			if (entry.type === "prefetch" && entry.intent === "none") {
 				deleteNavigation(targetUrl);
@@ -633,12 +637,12 @@ async function processSuccessfulNavigationRuntime(
 	try {
 		const { response, json } = outcome;
 
-		applyResponseArtifactsWhenBuildMatches(response, json);
-
 		if (isStaleRevalidationEntry(entry)) {
 			context.deleteNavigation(entry.targetUrl);
 			return;
 		}
+
+		applyResponseArtifactsWhenBuildMatches(response, json);
 
 		context.transitionPhase(entry.targetUrl, "waiting");
 

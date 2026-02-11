@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	createAbortAwareFetchRecorder,
 	createDeferred,
 	createJSONResponse,
 	createRouteDataResponse,
 	loadClientAPI,
 	setupContractTestSuite,
+	stubWindowLocationHref,
+	waitForRequestCount,
 	withUnhandledRejectionCapture,
 } from "./contract_test_harness.ts";
 
@@ -141,6 +144,104 @@ describe("client submit/redirect contracts", () => {
 		await Promise.all([firstSubmit, secondSubmit]);
 		await vi.runAllTimersAsync();
 		expect(api.getStatus().isSubmitting).toBe(false);
+	});
+
+	it("drops stale redirect side effects when concurrent different-key submits overlap", async () => {
+		const api = await loadClientAPI();
+		const { requests } = createAbortAwareFetchRecorder();
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+
+		try {
+			const submitA = api.submit(
+				"/api/resource",
+				{ method: "POST" },
+				{
+					dedupeKey: "key-a",
+					revalidate: false,
+				},
+			);
+			const submitB = api.submit(
+				"/api/resource",
+				{ method: "POST" },
+				{
+					dedupeKey: "key-b",
+					revalidate: false,
+				},
+			);
+
+			await waitForRequestCount({ requests, count: 2 });
+			expect(api.getStatus().isSubmitting).toBe(true);
+
+			// A submit returns redirect and starts redirect navigation A.
+			requests[0]!.resolve(
+				createRouteDataResponse(
+					{},
+					{ headers: { "X-Client-Redirect": "/redirect-a" } },
+				),
+			);
+			await waitForRequestCount({ requests, count: 3 });
+
+			// B submit returns redirect and should supersede redirect navigation A.
+			requests[1]!.resolve(
+				createRouteDataResponse(
+					{},
+					{ headers: { "X-Client-Redirect": "/redirect-b" } },
+				),
+			);
+			await waitForRequestCount({ requests, count: 4 });
+
+			// Resolve stale A redirect target late with unique build ID.
+			requests[2]!.resolve(
+				createRouteDataResponse(
+					{
+						title: { dangerousInnerHTML: "Redirect A (Stale)" },
+					},
+					{
+						headers: {
+							"X-Vorma-Build-Id": "stale-redirect-a-build",
+						},
+					},
+				),
+			);
+
+			// Resolve B redirect target after, this must be the visible winner.
+			requests[3]!.resolve(
+				createRouteDataResponse(
+					{
+						title: { dangerousInnerHTML: "Redirect B (Winner)" },
+					},
+					{
+						headers: {
+							"X-Vorma-Build-Id": "winner-redirect-b-build",
+						},
+					},
+				),
+			);
+
+			const [resultA, resultB] = await Promise.all([submitA, submitB]);
+			await vi.runAllTimersAsync();
+
+			expect(resultA).toEqual({ success: true, data: undefined });
+			expect(resultB).toEqual({ success: true, data: undefined });
+			expect(window.location.pathname).toBe("/redirect-b");
+			expect(document.title).toBe("Redirect B (Winner)");
+			expect(api.getBuildID()).toBe("winner-redirect-b-build");
+			expect(
+				buildIDEvents.some(
+					(event) => event.newID === "stale-redirect-a-build",
+				),
+			).toBe(false);
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+		}
 	});
 
 	it("does not deduplicate submissions when no dedupe key is provided", async () => {
@@ -315,20 +416,7 @@ describe("client submit/redirect contracts", () => {
 		const api = await loadClientAPI();
 		const firstDeferred = createDeferred<Response>();
 		let firstSignal: AbortSignal | undefined;
-		let locationHref = window.location.href;
-		const originalLocation = window.location;
-		Object.defineProperty(window, "location", {
-			value: {
-				...originalLocation,
-				get href() {
-					return locationHref;
-				},
-				set href(value) {
-					locationHref = String(value);
-				},
-			},
-			configurable: true,
-		});
+		const locationHrefStub = stubWindowLocationHref();
 
 		try {
 			vi.spyOn(window, "fetch")
@@ -339,67 +427,67 @@ describe("client submit/redirect contracts", () => {
 				})
 				.mockResolvedValueOnce(createJSONResponse({ ok: "second" }));
 
-			const { unhandledRejections } = await withUnhandledRejectionCapture({
-				run: async () => {
-					const firstSubmit = api.submit(
-						"/api/resource",
-						{ method: "POST" },
-						{
-							dedupeKey: "stale-hard-reload",
-							revalidate: false,
-						},
-					);
-
-					const secondSubmit = api.submit(
-						"/api/resource",
-						{ method: "POST" },
-						{
-							dedupeKey: "stale-hard-reload",
-							revalidate: false,
-						},
-					);
-
-					expect(firstSignal?.aborted).toBe(true);
-
-					const secondResult = await secondSubmit;
-					expect(secondResult).toEqual({
-						success: true,
-						data: { ok: "second" },
-					});
-
-					firstDeferred.resolve(
-						createRouteDataResponse(
-							{},
+			const { unhandledRejections } = await withUnhandledRejectionCapture(
+				{
+					run: async () => {
+						const firstSubmit = api.submit(
+							"/api/resource",
+							{ method: "POST" },
 							{
-								headers: {
-									"X-Vorma-Reload": "/stale-reload",
-									"X-Vorma-Build-Id": "stale-reload-build",
-								},
+								dedupeKey: "stale-hard-reload",
+								revalidate: false,
 							},
-						),
-					);
-					const firstResult = await firstSubmit;
-					expect(firstResult).toEqual({
-						success: false,
-						error: "Aborted",
-					});
+						);
 
-					await vi.runAllTimersAsync();
+						const secondSubmit = api.submit(
+							"/api/resource",
+							{ method: "POST" },
+							{
+								dedupeKey: "stale-hard-reload",
+								revalidate: false,
+							},
+						);
+
+						expect(firstSignal?.aborted).toBe(true);
+
+						const secondResult = await secondSubmit;
+						expect(secondResult).toEqual({
+							success: true,
+							data: { ok: "second" },
+						});
+
+						firstDeferred.resolve(
+							createRouteDataResponse(
+								{},
+								{
+									headers: {
+										"X-Vorma-Reload": "/stale-reload",
+										"X-Vorma-Build-Id":
+											"stale-reload-build",
+									},
+								},
+							),
+						);
+						const firstResult = await firstSubmit;
+						expect(firstResult).toEqual({
+							success: false,
+							error: "Aborted",
+						});
+
+						await vi.runAllTimersAsync();
+					},
 				},
-			});
+			);
 
 			expect(unhandledRejections).toEqual([]);
-			expect(locationHref).not.toContain("/stale-reload");
+			expect(locationHrefStub.getHref()).not.toContain("/stale-reload");
 			expect(api.getStatus()).toEqual({
 				isNavigating: false,
 				isSubmitting: false,
 				isRevalidating: false,
 			});
 		} finally {
-			Object.defineProperty(window, "location", {
-				value: originalLocation,
-				configurable: true,
-			});
+			locationHrefStub.restore();
 		}
 	});
 
@@ -421,13 +509,21 @@ describe("client submit/redirect contracts", () => {
 				}),
 			);
 
-		const firstSubmit = api.submit("/api/resource", { method: "POST" }, {
-			dedupeKey: "stale-submit-revalidate",
-		});
-		const secondSubmit = api.submit("/api/resource", { method: "POST" }, {
-			dedupeKey: "stale-submit-revalidate",
-			revalidate: false,
-		});
+		const firstSubmit = api.submit(
+			"/api/resource",
+			{ method: "POST" },
+			{
+				dedupeKey: "stale-submit-revalidate",
+			},
+		);
+		const secondSubmit = api.submit(
+			"/api/resource",
+			{ method: "POST" },
+			{
+				dedupeKey: "stale-submit-revalidate",
+				revalidate: false,
+			},
+		);
 
 		expect(firstSignal?.aborted).toBe(true);
 
@@ -471,10 +567,14 @@ describe("client submit/redirect contracts", () => {
 				})
 				.mockResolvedValueOnce(createJSONResponse({ ok: "second" }));
 
-			const firstSubmit = api.submit("/api/resource", { method: "POST" }, {
-				dedupeKey: "stale-build-id",
-				revalidate: false,
-			});
+			const firstSubmit = api.submit(
+				"/api/resource",
+				{ method: "POST" },
+				{
+					dedupeKey: "stale-build-id",
+					revalidate: false,
+				},
+			);
 			const secondSubmit = api.submit(
 				"/api/resource",
 				{ method: "POST" },
@@ -679,20 +779,7 @@ describe("client submit/redirect contracts", () => {
 
 	it("performs hard reload redirect when submit response includes X-Vorma-Reload", async () => {
 		const api = await loadClientAPI();
-		let locationHref = window.location.href;
-		const originalLocation = window.location;
-		Object.defineProperty(window, "location", {
-			value: {
-				...originalLocation,
-				get href() {
-					return locationHref;
-				},
-				set href(value) {
-					locationHref = String(value);
-				},
-			},
-			configurable: true,
-		});
+		const locationHrefStub = stubWindowLocationHref();
 
 		try {
 			vi.spyOn(window, "fetch").mockResolvedValueOnce(
@@ -711,32 +798,18 @@ describe("client submit/redirect contracts", () => {
 			await vi.runAllTimersAsync();
 
 			expect(result).toEqual({ success: true, data: undefined });
-			expect(locationHref).toContain("/force-reload");
-			expect(locationHref).toContain("vorma_reload=reload-build-1");
+			expect(locationHrefStub.getHref()).toContain("/force-reload");
+			expect(locationHrefStub.getHref()).toContain(
+				"vorma_reload=reload-build-1",
+			);
 		} finally {
-			Object.defineProperty(window, "location", {
-				value: originalLocation,
-				configurable: true,
-			});
+			locationHrefStub.restore();
 		}
 	});
 
 	it("performs hard redirect for external submit redirect targets", async () => {
 		const api = await loadClientAPI();
-		let locationHref = window.location.href;
-		const originalLocation = window.location;
-		Object.defineProperty(window, "location", {
-			value: {
-				...originalLocation,
-				get href() {
-					return locationHref;
-				},
-				set href(value) {
-					locationHref = String(value);
-				},
-			},
-			configurable: true,
-		});
+		const locationHrefStub = stubWindowLocationHref();
 
 		try {
 			vi.spyOn(window, "fetch").mockResolvedValueOnce(
@@ -754,31 +827,17 @@ describe("client submit/redirect contracts", () => {
 			await vi.runAllTimersAsync();
 
 			expect(result).toEqual({ success: true, data: undefined });
-			expect(locationHref).toMatch(/^https:\/\/external\.com\/?$/);
+			expect(locationHrefStub.getHref()).toMatch(
+				/^https:\/\/external\.com\/?$/,
+			);
 		} finally {
-			Object.defineProperty(window, "location", {
-				value: originalLocation,
-				configurable: true,
-			});
+			locationHrefStub.restore();
 		}
 	});
 
 	it("prioritizes X-Vorma-Reload over X-Client-Redirect", async () => {
 		const api = await loadClientAPI();
-		let locationHref = window.location.href;
-		const originalLocation = window.location;
-		Object.defineProperty(window, "location", {
-			value: {
-				...originalLocation,
-				get href() {
-					return locationHref;
-				},
-				set href(value) {
-					locationHref = String(value);
-				},
-			},
-			configurable: true,
-		});
+		const locationHrefStub = stubWindowLocationHref();
 
 		try {
 			const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValueOnce(
@@ -798,14 +857,17 @@ describe("client submit/redirect contracts", () => {
 			await vi.runAllTimersAsync();
 
 			expect(fetchSpy).toHaveBeenCalledTimes(1);
-			expect(locationHref).toContain("/force-reload-priority");
-			expect(locationHref).toContain("vorma_reload=priority-build-1");
-			expect(locationHref).not.toContain("/ignored-soft-redirect");
+			expect(locationHrefStub.getHref()).toContain(
+				"/force-reload-priority",
+			);
+			expect(locationHrefStub.getHref()).toContain(
+				"vorma_reload=priority-build-1",
+			);
+			expect(locationHrefStub.getHref()).not.toContain(
+				"/ignored-soft-redirect",
+			);
 		} finally {
-			Object.defineProperty(window, "location", {
-				value: originalLocation,
-				configurable: true,
-			});
+			locationHrefStub.restore();
 		}
 	});
 
@@ -866,6 +928,28 @@ describe("client submit/redirect contracts", () => {
 		const submitHeaders = fetchSpy.mock.calls[1]?.[1]?.headers as Headers;
 		expect(navHeaders.get("X-Accepts-Client-Redirect")).toBe("1");
 		expect(submitHeaders.get("X-Accepts-Client-Redirect")).toBe("1");
+	});
+
+	it("includes x-deployment-id on submit requests when deployment ID is configured", async () => {
+		const api = await loadClientAPI();
+		api.__vormaClientGlobal.set("deploymentID", "deploy-42");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		await api.submit(
+			"/api/with-deployment",
+			{
+				method: "POST",
+				headers: { "X-Test-Header": "kept" },
+				body: JSON.stringify({ ok: true }),
+			},
+			{ revalidate: false },
+		);
+
+		const submitHeaders = fetchSpy.mock.calls[0]?.[1]?.headers as Headers;
+		expect(submitHeaders.get("x-deployment-id")).toBe("deploy-42");
+		expect(submitHeaders.get("X-Test-Header")).toBe("kept");
 	});
 
 	it("updates build ID and dispatches event before following navigation redirects", async () => {

@@ -31,6 +31,7 @@ type Vorma struct {
 
 	actionsRouter *ActionsRouter
 	loadersRouter *LoadersRouter
+	headElsInst   *headels.Instance
 
 	getDefaultHeadEls   GetDefaultHeadElsFunc
 	getHeadDedupeKeys   GetHeadDedupeKeysFunc
@@ -64,7 +65,14 @@ func (v *Vorma) ActionsRouter() *ActionsRouter { return v.actionsRouter }
 func (v *Vorma) GetPathsSnapshot() map[string]*Path {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return v._paths
+	if v._paths == nil {
+		return nil
+	}
+	clone := make(map[string]*Path, len(v._paths))
+	for pattern, p := range v._paths {
+		clone[pattern] = clonePath(p)
+	}
+	return clone
 }
 
 func (v *Vorma) GetIsDevMode() bool {
@@ -88,13 +96,23 @@ func (v *Vorma) GetClientEntryOut() string {
 func (v *Vorma) GetClientEntryDeps() []string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return v._clientEntryDeps
+	if v._clientEntryDeps == nil {
+		return nil
+	}
+	return append([]string(nil), v._clientEntryDeps...)
 }
 
 func (v *Vorma) GetDepToCSSBundleMap() map[string][]string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return v._depToCSSBundleMap
+	if v._depToCSSBundleMap == nil {
+		return nil
+	}
+	clone := make(map[string][]string, len(v._depToCSSBundleMap))
+	for dep, bundles := range v._depToCSSBundleMap {
+		clone[dep] = append([]string(nil), bundles...)
+	}
+	return clone
 }
 
 func (v *Vorma) GetRootTemplate() *template.Template {
@@ -173,4 +191,15 @@ func (v *Vorma) SetIsDev(isDev bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v._isDev = isDev
+}
+
+func clonePath(path *Path) *Path {
+	if path == nil {
+		return nil
+	}
+	out := *path
+	if path.Deps != nil {
+		out.Deps = append([]string(nil), path.Deps...)
+	}
+	return &out
 }

@@ -90,6 +90,84 @@ describe("client loading/focus contracts", () => {
 		removeStatusListener();
 	});
 
+	it("does not expose submitting status for hidden submissions", async () => {
+		const api = await loadClientAPI();
+		const { statusEvents, cleanup: removeStatusListener } =
+			collectStatusEvents(api);
+		const submitDeferred = createDeferred<Response>();
+		vi.spyOn(window, "fetch").mockReturnValue(
+			submitDeferred.promise as any,
+		);
+
+		const submitPromise = api.submit<{ ok: boolean }>(
+			"/api/hidden-submit",
+			{ method: "POST" },
+			{ revalidate: false, skipGlobalLoadingIndicator: true },
+		);
+
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+
+		await vi.advanceTimersByTimeAsync(8);
+		expect(statusEvents.some((detail) => detail.isSubmitting)).toBe(false);
+
+		submitDeferred.resolve(createJSONResponse({ ok: true }));
+		const result = await submitPromise;
+		await vi.runAllTimersAsync();
+
+		expect(result).toEqual({ success: true, data: { ok: true } });
+		expectStatusIdle(api.getStatus());
+		removeStatusListener();
+	});
+
+	it("drops submitting status when only hidden submissions remain in-flight", async () => {
+		const api = await loadClientAPI();
+		const hiddenDeferred = createDeferred<Response>();
+		const visibleDeferred = createDeferred<Response>();
+		vi.spyOn(window, "fetch")
+			.mockReturnValueOnce(hiddenDeferred.promise as any)
+			.mockReturnValueOnce(visibleDeferred.promise as any);
+
+		const hiddenSubmit = api.submit(
+			"/api/hidden",
+			{ method: "POST" },
+			{ revalidate: false, skipGlobalLoadingIndicator: true },
+		);
+		const visibleSubmit = api.submit(
+			"/api/visible",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+
+		await vi.advanceTimersByTimeAsync(8);
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: true,
+			isRevalidating: false,
+		});
+
+		visibleDeferred.resolve(createJSONResponse({ visible: true }));
+		const visibleResult = await visibleSubmit;
+		await vi.runAllTimersAsync();
+
+		expect(visibleResult).toEqual({ success: true, data: { visible: true } });
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+
+		hiddenDeferred.resolve(createJSONResponse({ hidden: true }));
+		const hiddenResult = await hiddenSubmit;
+		await vi.runAllTimersAsync();
+
+		expect(hiddenResult).toEqual({ success: true, data: { hidden: true } });
+		expectStatusIdle(api.getStatus());
+	});
+
 	it("reports revalidating status while revalidate() is in flight", async () => {
 		const api = await loadClientAPI();
 		const { statusEvents, cleanup: removeStatusListener } =
@@ -630,6 +708,44 @@ describe("client loading/focus contracts", () => {
 		expect(clearTimeoutSpy).toHaveBeenCalledWith(0);
 	});
 
+	it("stops and detaches global loading indicator behavior after cleanup", async () => {
+		const api = await loadClientAPI();
+		let running = false;
+		const start = vi.fn(() => {
+			running = true;
+		});
+		const stop = vi.fn(() => {
+			running = false;
+		});
+		const navDeferred = createDeferred<Response>();
+		vi.spyOn(window, "fetch").mockReturnValue(navDeferred.promise as any);
+
+		const cleanupIndicator = api.setupGlobalLoadingIndicator({
+			start,
+			stop,
+			isRunning: () => running,
+			startDelayMS: 0,
+			stopDelayMS: 0,
+		});
+
+		const navPromise = api.vormaNavigate("/indicator-cleanup");
+		await vi.advanceTimersByTimeAsync(8);
+		await vi.runAllTimersAsync();
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(running).toBe(true);
+
+		cleanupIndicator();
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(running).toBe(false);
+
+		navDeferred.resolve(createRouteDataResponse());
+		await navPromise;
+		await vi.runAllTimersAsync();
+
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(stop).toHaveBeenCalledTimes(1);
+	});
+
 	it("revalidates on focus after staleTime has elapsed", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi
@@ -648,6 +764,158 @@ describe("client loading/focus contracts", () => {
 		expect(firstURL.href).toContain("vorma_json=1");
 
 		cleanup();
+	});
+
+	it("resets focus stale-time window after successful navigation", async () => {
+		const api = await loadClientAPI();
+		const {
+			getLastTriggeredNavOrRevalidateTimestampMS:
+				getLastTriggeredTimestamp,
+		} = await import("../../client.ts");
+		const timestampBeforeNavigation = getLastTriggeredTimestamp();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		await vi.advanceTimersByTimeAsync(10);
+		await api.vormaNavigate("/focus-stale-gate");
+		await vi.runAllTimersAsync();
+
+		const timestampAfterNavigation = getLastTriggeredTimestamp();
+		expect(timestampAfterNavigation).toBeGreaterThan(timestampBeforeNavigation);
+
+		const cleanup = api.revalidateOnWindowFocus({ staleTimeMS: 100 });
+		try {
+			window.dispatchEvent(new Event("focus"));
+			await vi.advanceTimersByTimeAsync(30);
+			await vi.runAllTimersAsync();
+
+			// Only navigation fetch should exist so far.
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+			await vi.advanceTimersByTimeAsync(71);
+			window.dispatchEvent(new Event("focus"));
+			await vi.advanceTimersByTimeAsync(30);
+			await vi.runAllTimersAsync();
+
+			// Focus revalidate should now run after stale window elapses.
+			expect(fetchSpy).toHaveBeenCalledTimes(2);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("does not advance focus stale-time timestamp for aborted navigations", async () => {
+		const api = await loadClientAPI();
+		const {
+			navigationStateManager,
+			getLastTriggeredNavOrRevalidateTimestampMS:
+				getLastTriggeredTimestamp,
+		} = await import("../../client.ts");
+		const timestampBeforeAbort = getLastTriggeredTimestamp();
+		const deferredNavigationResponse = createDeferred<Response>();
+		const { fetchSpy } = createSequencedFetchSpy([
+			() => deferredNavigationResponse.promise,
+			createRouteDataResponse(),
+		]);
+
+		const staleNavigation = api.vormaNavigate("/focus-stale-abort");
+		await vi.advanceTimersByTimeAsync(8);
+
+		navigationStateManager.clearAll();
+		deferredNavigationResponse.resolve(createRouteDataResponse());
+
+		await staleNavigation;
+		await vi.runAllTimersAsync();
+
+		const timestampAfterAbort = getLastTriggeredTimestamp();
+		expect(timestampAfterAbort).toBe(timestampBeforeAbort);
+
+		const cleanup = api.revalidateOnWindowFocus({ staleTimeMS: 20 });
+		try {
+			await vi.advanceTimersByTimeAsync(25);
+			window.dispatchEvent(new Event("focus"));
+			await vi.advanceTimersByTimeAsync(30);
+			await vi.runAllTimersAsync();
+
+			// Aborted navigation should not suppress staleness-triggered focus revalidate.
+			expect(fetchSpy).toHaveBeenCalledTimes(2);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("resets focus stale-time window after successful revalidation", async () => {
+		const api = await loadClientAPI();
+		const {
+			getLastTriggeredNavOrRevalidateTimestampMS:
+				getLastTriggeredTimestamp,
+		} = await import("../../client.ts");
+		const timestampBeforeRevalidate = getLastTriggeredTimestamp();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		await vi.advanceTimersByTimeAsync(10);
+		await api.revalidate();
+		await vi.runAllTimersAsync();
+
+		const timestampAfterRevalidate = getLastTriggeredTimestamp();
+		expect(timestampAfterRevalidate).toBeGreaterThan(timestampBeforeRevalidate);
+
+		const cleanup = api.revalidateOnWindowFocus({ staleTimeMS: 100 });
+		try {
+			window.dispatchEvent(new Event("focus"));
+			await vi.advanceTimersByTimeAsync(30);
+			await vi.runAllTimersAsync();
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+			await vi.advanceTimersByTimeAsync(71);
+			window.dispatchEvent(new Event("focus"));
+			await vi.advanceTimersByTimeAsync(30);
+			await vi.runAllTimersAsync();
+			expect(fetchSpy).toHaveBeenCalledTimes(2);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("does not advance focus stale-time timestamp for aborted revalidations", async () => {
+		const api = await loadClientAPI();
+		const {
+			navigationStateManager,
+			getLastTriggeredNavOrRevalidateTimestampMS:
+				getLastTriggeredTimestamp,
+		} = await import("../../client.ts");
+		const timestampBeforeAbort = getLastTriggeredTimestamp();
+		const deferredRevalidateResponse = createDeferred<Response>();
+		const { fetchSpy } = createSequencedFetchSpy([
+			() => deferredRevalidateResponse.promise,
+			createRouteDataResponse(),
+		]);
+
+		const revalidatePromise = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+
+		navigationStateManager.clearAll();
+		deferredRevalidateResponse.resolve(createRouteDataResponse());
+
+		await revalidatePromise;
+		await vi.runAllTimersAsync();
+
+		const timestampAfterAbort = getLastTriggeredTimestamp();
+		expect(timestampAfterAbort).toBe(timestampBeforeAbort);
+
+		const cleanup = api.revalidateOnWindowFocus({ staleTimeMS: 20 });
+		try {
+			await vi.advanceTimersByTimeAsync(25);
+			window.dispatchEvent(new Event("focus"));
+			await vi.advanceTimersByTimeAsync(30);
+			await vi.runAllTimersAsync();
+			expect(fetchSpy).toHaveBeenCalledTimes(2);
+		} finally {
+			cleanup();
+		}
 	});
 
 	it("does not revalidate on focus while navigation is active", async () => {

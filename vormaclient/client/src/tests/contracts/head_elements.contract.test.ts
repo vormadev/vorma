@@ -62,7 +62,7 @@ describe("head element contracts", () => {
 		installSectionMarkers();
 	});
 
-	describe("advanced updates parity", () => {
+	describe("advanced updates", () => {
 		it("updates style innerHTML content across consecutive rest updates", () => {
 			const initialCSS = "body > .foo { color: red; }\n/* comment */";
 			const updatedCSS = ".bar { font-weight: bold; }";
@@ -273,7 +273,7 @@ describe("head element contracts", () => {
 		});
 	});
 
-	describe("basic operations parity", () => {
+	describe("basic operations", () => {
 		it("keeps head unchanged when blocks array is empty", () => {
 			const initialNodeCount = document.head.childNodes.length;
 
@@ -498,7 +498,7 @@ describe("head element contracts", () => {
 		});
 	});
 
-	describe("minimal DOM change parity", () => {
+	describe("minimal DOM changes", () => {
 		it("handles add update remove and reorder in a single reconciliation", () => {
 			const description = document.createElement("meta");
 			description.setAttribute("name", "description");
@@ -613,7 +613,7 @@ describe("head element contracts", () => {
 		});
 	});
 
-	describe("rest and edge-case parity", () => {
+	describe("rest and edge cases", () => {
 		it("updates rest section without modifying meta section", () => {
 			const meta = document.createElement("meta");
 			meta.setAttribute("name", "description");

@@ -362,6 +362,90 @@ describe("client module-loading and fetch contracts", () => {
 		expect(stylesheet?.getAttribute("href")).toBe("/static/styles.css");
 	});
 
+	it("deduplicates stylesheet application for repeated CSS bundles", async () => {
+		const api = await loadClientAPI();
+		vi.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					importURLs: [],
+					exportKeys: [],
+					matchedPatterns: [],
+					loadersData: [],
+					cssBundles: ["/dup.css", "/dup.css"],
+				}),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					importURLs: [],
+					exportKeys: [],
+					matchedPatterns: [],
+					loadersData: [],
+					cssBundles: ["/dup.css"],
+				}),
+			);
+
+		const appendChild = document.head.appendChild.bind(document.head);
+		vi.spyOn(document.head, "appendChild").mockImplementation((node) => {
+			if (
+				node instanceof HTMLLinkElement &&
+				node.rel === "preload" &&
+				node.getAttribute("as") === "style"
+			) {
+				Promise.resolve().then(() => node.onload?.(new Event("load")));
+			}
+			return appendChild(node);
+		});
+
+		await api.vormaNavigate("/dup-css-a");
+		await vi.runAllTimersAsync();
+		await api.vormaNavigate("/dup-css-b");
+		await vi.runAllTimersAsync();
+
+		const stylesheets = document.querySelectorAll(
+			'link[rel="stylesheet"][data-vorma-css-bundle="/dup.css"]',
+		);
+		expect(stylesheets).toHaveLength(1);
+	});
+
+	it("does not prime prefetch module/css artifacts when response build ID differs", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse(
+				{
+					matchedPatterns: ["/prefetch-mismatch"],
+					importURLs: ["/prefetch-module.js"],
+					exportKeys: ["default"],
+					cssBundles: ["/prefetch-mismatch.css"],
+				},
+				{ headers: { "X-Vorma-Build-Id": "build-2" } },
+			),
+		);
+
+		const prefetchHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-mismatch",
+			delayMs: 0,
+		});
+		prefetchHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(api.getBuildID()).toBe("build-2");
+		expect(api.__vormaClientGlobal.get("clientModuleMap")).toEqual({});
+		expect(
+			document.head.querySelector(
+				'link[data-vorma-css-bundle="/prefetch-mismatch.css"]',
+			),
+		).toBeNull();
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+
+		prefetchHandlers?.stop();
+	});
+
 	it("cleans up completed navigation entries so same-url navigation refetches", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi

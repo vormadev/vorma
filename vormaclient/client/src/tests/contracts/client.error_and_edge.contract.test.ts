@@ -3,6 +3,7 @@ import {
 	createDeferred,
 	createRouteDataResponse,
 	loadClientAPI,
+	requestInputToHref,
 	registerServerDataFieldProbeLoader,
 	setupContractTestSuite,
 	withUnhandledRejectionCapture,
@@ -421,6 +422,93 @@ describe("client error and edge contracts", () => {
 		});
 	});
 
+	it("does not apply side effects from stale aborted navigation successes", async () => {
+		const api = await loadClientAPI();
+		const staleDeferred = createDeferred<Response>();
+		const requestAnimationFrameSpy = vi.spyOn(
+			window,
+			"requestAnimationFrame",
+		);
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+		let fetchCallCount = 0;
+
+		vi.spyOn(window, "fetch").mockImplementation(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return staleDeferred.promise as any;
+			}
+			return Promise.resolve(
+				createRouteDataResponse(
+					{
+						title: {
+							dangerousInnerHTML: "Winner Navigation Title",
+						},
+					},
+					{
+						headers: {
+							"X-Vorma-Build-Id": "winner-build-1",
+						},
+					},
+				),
+			) as any;
+		});
+
+		try {
+			const staleNavigation = api.vormaNavigate("/stale-side-effects");
+			await Promise.resolve();
+
+			const winnerNavigation = api.vormaNavigate("/winner-side-effects");
+			await winnerNavigation;
+			await vi.runAllTimersAsync();
+
+			const rAFCallCountBeforeStale =
+				requestAnimationFrameSpy.mock.calls.length;
+
+			staleDeferred.resolve(
+				createRouteDataResponse(
+					{
+						title: { dangerousInnerHTML: "Stale Side Effect Title" },
+						cssBundles: ["/stale-side-effects.css"],
+					},
+					{
+						headers: {
+							"X-Vorma-Build-Id": "stale-build-2",
+						},
+					},
+				),
+			);
+			await staleNavigation;
+			await vi.advanceTimersByTimeAsync(32);
+			await vi.runAllTimersAsync();
+
+			expect(fetchCallCount).toBe(2);
+			expect(window.location.pathname).toBe("/winner-side-effects");
+			expect(document.title).toBe("Winner Navigation Title");
+			expect(api.getBuildID()).toBe("winner-build-1");
+			expect(
+				buildIDEvents.some((event) => event.newID === "stale-build-2"),
+			).toBe(false);
+			expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(
+				rAFCallCountBeforeStale,
+			);
+			expect(
+				document.head.querySelector(
+					'link[data-vorma-css-bundle="/stale-side-effects.css"]',
+				),
+			).toBeNull();
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+		}
+	});
+
 	it("does not let stale revalidation override later prefetched navigation", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/");
@@ -428,12 +516,7 @@ describe("client error and edge contracts", () => {
 		const revalidationDeferred = createDeferred<Response>();
 		vi.spyOn(window, "fetch").mockImplementation(
 			(input: RequestInfo | URL) => {
-				const href =
-					typeof input === "string"
-						? input
-						: input instanceof URL
-							? input.href
-							: input.url;
+				const href = requestInputToHref(input);
 				if (href.includes("/about")) {
 					return Promise.resolve(
 						createRouteDataResponse({
@@ -477,6 +560,75 @@ describe("client error and edge contracts", () => {
 
 		expect(window.location.pathname).toBe("/about");
 		expect(document.title).toBe("About Page");
+		document.body.removeChild(anchor);
+	});
+
+	it("does not apply CSS bundles from stale revalidation responses", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/");
+		const requestAnimationFrameSpy = vi.spyOn(
+			window,
+			"requestAnimationFrame",
+		);
+
+		const revalidationDeferred = createDeferred<Response>();
+		vi.spyOn(window, "fetch").mockImplementation(
+			(input: RequestInfo | URL) => {
+				const href = requestInputToHref(input);
+				if (href.includes("/about")) {
+					return Promise.resolve(
+						createRouteDataResponse({
+							title: { dangerousInnerHTML: "About Page" },
+						}),
+					) as any;
+				}
+				return revalidationDeferred.promise as any;
+			},
+		);
+
+		const handlers = api.__getPrefetchHandlers({ href: "/about" });
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+		await vi.runAllTimersAsync();
+
+		const revalidatePromise = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+
+		const anchor = document.createElement("a");
+		anchor.href = "/about";
+		document.body.appendChild(anchor);
+		const clickEvent = new MouseEvent("click", {
+			bubbles: true,
+			cancelable: true,
+		});
+		Object.defineProperty(clickEvent, "target", { value: anchor });
+
+		await handlers?.onClick(clickEvent);
+		await vi.runAllTimersAsync();
+		expect(window.location.pathname).toBe("/about");
+		const rAFCallCountBeforeStale = requestAnimationFrameSpy.mock.calls.length;
+
+		revalidationDeferred.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Home Page (Stale)" },
+				cssBundles: ["/stale-only.css"],
+			}),
+		);
+		await revalidatePromise;
+		await vi.advanceTimersByTimeAsync(32);
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/about");
+		expect(document.title).toBe("About Page");
+		expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(
+			rAFCallCountBeforeStale,
+		);
+		expect(
+			document.head.querySelector(
+				'link[data-vorma-css-bundle="/stale-only.css"]',
+			),
+		).toBeNull();
+
 		document.body.removeChild(anchor);
 	});
 });

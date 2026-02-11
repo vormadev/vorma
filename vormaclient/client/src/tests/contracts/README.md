@@ -15,9 +15,11 @@ This folder holds high-level, public-behavior tests for `vormaclient/client`.
 - Use `*.contract.test.ts` for contract suites.
 - Group by behavior surface, not by internal file boundaries.
 
-## Migration Rule
+## Current Rule
 
-When adding coverage here, map overlapping legacy tests in
-`CLIENT_REFACTOR_PROGRESS.md` and only mark legacy cases
-`READY_TO_DELETE_AFTER_SIGNOFF` once contract parity is confirmed. Do not add
-relaxed interim assertions; if behavior is ambiguous, ask the user immediately.
+- Legacy test migration is complete.
+- Do not reintroduce mirrored legacy-style assertions.
+- Keep first-principles assertions strict; if behavior is ambiguous, ask the
+  user immediately.
+- Keep `contract_test_harness.ts` minimal and prune dead helpers as suites
+  evolve.

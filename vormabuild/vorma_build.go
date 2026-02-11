@@ -157,7 +157,7 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 					}
 
 					// 3. Process A talks to Process B: Call reload endpoint
-					if err := callReloadEndpoint(v, vormaruntime.DevReloadRoutesPath); err != nil {
+					if err := callReloadEndpoint(v, vormaruntime.Dev_ReloadRoutesPath); err != nil {
 						// Fallback: restart without Go recompile
 						v.Log.Warn("route reload endpoint failed, falling back to restart", "error", err)
 						return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
@@ -189,7 +189,7 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 						return nil, nil
 					}
 
-					if err := callReloadEndpoint(v, vormaruntime.DevReloadTemplatePath); err != nil {
+					if err := callReloadEndpoint(v, vormaruntime.Dev_ReloadTemplatePath); err != nil {
 						v.Log.Warn("template reload endpoint failed, falling back to restart", "error", err)
 						return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
 					}
@@ -526,7 +526,7 @@ func extractRouteCalls(code string, sourceFile string) ([]RouteCall, []Unresolve
 			if s.Module != nil {
 				importPath = strings.Trim(string(s.Module), `"'`+"`")
 			}
-			if importPath == "vorma/client" {
+			if importPath == "vorma/buildtime" {
 				for _, alias := range s.List {
 					if string(alias.Name) == "route" ||
 						(string(alias.Name) == "" && string(alias.Binding) == "route") {

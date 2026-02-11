@@ -5,41 +5,38 @@ import {
 	createRouteDataResponse,
 	expectStatusIdle,
 	loadClientAPI,
+	requestInputToURL,
 	setupContractTestSuite,
+	waitForRequestCount,
 	withUnhandledRejectionCapture,
 } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
 
-function asURL(input: RequestInfo | URL): URL {
-	if (input instanceof URL) {
-		return input;
-	}
-	if (typeof input === "string") {
-		return new URL(input, window.location.href);
-	}
-	return new URL(input.url, window.location.href);
-}
-
-async function waitForRequestCount(props: {
-	requests: unknown[];
-	count: number;
-}): Promise<void> {
-	const { requests, count } = props;
-	for (let i = 0; i < 300; i++) {
-		if (requests.length >= count) {
-			return;
-		}
-		await Promise.resolve();
-		await vi.advanceTimersByTimeAsync(1);
-	}
-	throw new Error(`Timed out waiting for request count ${count}`);
-}
-
 function routeTitle(title: string): Response {
 	return createRouteDataResponse({
 		title: { dangerousInnerHTML: title },
 	});
+}
+
+function createSeededRandom(seed: number): () => number {
+	let state = seed >>> 0;
+	return () => {
+		state = (state * 1664525 + 1013904223) >>> 0;
+		return state / 0x100000000;
+	};
+}
+
+function shuffledIndices(length: number, seed: number): number[] {
+	const random = createSeededRandom(seed);
+	const indices = Array.from({ length }, (_, index) => index);
+	for (let i = indices.length - 1; i > 0; i--) {
+		const j = Math.floor(random() * (i + 1));
+		const valueAtI = indices[i];
+		indices[i] = indices[j]!;
+		indices[j] = valueAtI!;
+	}
+	return indices;
 }
 
 describe("client navigation state machine contracts", () => {
@@ -85,6 +82,56 @@ describe("client navigation state machine contracts", () => {
 			expect(unhandledRejections).toEqual([]);
 			expect(window.location.pathname).toBe("/model-c");
 			expect(document.title).toBe("Model C");
+			expectStatusIdle(api.getStatus());
+		},
+	);
+
+	it.each([11, 29, 47, 83, 131])(
+		"keeps last-started navigation authoritative across generated resolve permutations (seed=%d)",
+		async (seed) => {
+			const api = await loadClientAPI();
+			const { requests } = createAbortAwareFetchRecorder();
+
+			const { result, unhandledRejections } =
+				await withUnhandledRejectionCapture({
+					run: async () => {
+						const navigationCount = 6;
+						const navigationPromises: Array<Promise<void>> = [];
+
+						for (let i = 0; i < navigationCount; i++) {
+							navigationPromises.push(
+								api.vormaNavigate(`/generated-${seed}-${i}`),
+							);
+						}
+
+						await waitForRequestCount({
+							requests,
+							count: navigationCount,
+						});
+
+						const resolveOrder = shuffledIndices(navigationCount, seed);
+						for (const requestIndex of resolveOrder) {
+							const request = requests[requestIndex];
+							if (!request) {
+								throw new Error(
+									`Missing generated request at index ${requestIndex}`,
+								);
+							}
+							request.resolve(routeTitle(`Generated ${requestIndex}`));
+							await Promise.resolve();
+						}
+
+						await Promise.all(navigationPromises);
+						return {
+							expectedPathname: `/generated-${seed}-${navigationCount - 1}`,
+							expectedTitle: `Generated ${navigationCount - 1}`,
+						};
+					},
+				});
+
+			expect(unhandledRejections).toEqual([]);
+			expect(window.location.pathname).toBe(result.expectedPathname);
+			expect(document.title).toBe(result.expectedTitle);
 			expectStatusIdle(api.getStatus());
 		},
 	);
@@ -151,7 +198,9 @@ describe("client navigation state machine contracts", () => {
 					expect(api.getStatus().isSubmitting).toBe(true);
 
 					const submitTwoRequest = requests[4]!;
-					const submitTwoURL = asURL(submitTwoRequest.input);
+					const submitTwoURL = requestInputToURL(
+						submitTwoRequest.input,
+					);
 					expect(submitTwoURL.pathname).toBe("/mutation");
 					expect(submitTwoRequest.init?.method).toBe("POST");
 
@@ -159,7 +208,9 @@ describe("client navigation state machine contracts", () => {
 
 					await waitForRequestCount({ requests, count: 6 });
 					const revalidationRequest = requests[5]!;
-					const revalidationURL = asURL(revalidationRequest.input);
+					const revalidationURL = requestInputToURL(
+						revalidationRequest.input,
+					);
 					expect(revalidationURL.pathname).toBe("/race-second");
 					expect(revalidationURL.searchParams.get("vorma_json")).toBe("1");
 

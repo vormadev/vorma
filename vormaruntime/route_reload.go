@@ -6,10 +6,21 @@ import (
 	"path/filepath"
 )
 
-// ReloadRoutesFromDisk reloads route configuration from JSON files on disk.
+func (v *Vorma) guardDevOnlyReload(op string) error {
+	if !v.GetIsDevMode() {
+		return fmt.Errorf("%s is dev-only and cannot run outside dev mode", op)
+	}
+	return nil
+}
+
+// devReloadRoutesFromDisk reloads route configuration from JSON files on disk.
 // Called by Process B when Process A has regenerated route artifacts.
 // This does NOT regenerate TypeScript - that's done by Process A.
-func (v *Vorma) ReloadRoutesFromDisk() error {
+func (v *Vorma) devReloadRoutesFromDisk() error {
+	if err := v.guardDevOnlyReload("route reload"); err != nil {
+		return err
+	}
+
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
@@ -28,8 +39,12 @@ func (v *Vorma) ReloadRoutesFromDisk() error {
 	return nil
 }
 
-// ReloadTemplateFromDisk re-parses the HTML template from disk.
-func (v *Vorma) ReloadTemplateFromDisk() error {
+// devReloadTemplateFromDisk re-parses the HTML template from disk.
+func (v *Vorma) devReloadTemplateFromDisk() error {
+	if err := v.guardDevOnlyReload("template reload"); err != nil {
+		return err
+	}
+
 	srcPath := filepath.Join(v.Wave.GetPrivateStaticDir(), v.Config.HTMLTemplateLocation)
 	tmpl, err := template.ParseFiles(srcPath)
 	if err != nil {

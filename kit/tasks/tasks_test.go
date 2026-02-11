@@ -208,6 +208,55 @@ func TestTasksWithSharedDependencies(t *testing.T) {
 	})
 }
 
+func TestCtxWithNativeContext(t *testing.T) {
+	t.Run("SharesTaskCacheWithParent", func(t *testing.T) {
+		var runs atomic.Int32
+		task := NewTask(func(c *Ctx, input string) (string, error) {
+			runs.Add(1)
+			return "ok-" + input, nil
+		})
+
+		parent := NewCtx(context.Background())
+		child := parent.WithNativeContext(context.Background())
+
+		gotParent, err := task.Run(parent, "a")
+		if err != nil {
+			t.Fatalf("parent run error = %v, want nil", err)
+		}
+		if gotParent != "ok-a" {
+			t.Fatalf("parent run value = %q, want %q", gotParent, "ok-a")
+		}
+
+		gotChild, err := task.Run(child, "a")
+		if err != nil {
+			t.Fatalf("child run error = %v, want nil", err)
+		}
+		if gotChild != "ok-a" {
+			t.Fatalf("child run value = %q, want %q", gotChild, "ok-a")
+		}
+
+		if runs.Load() != 1 {
+			t.Fatalf("task runs = %d, want 1 (shared cache)", runs.Load())
+		}
+	})
+
+	t.Run("UsesProvidedNativeContext", func(t *testing.T) {
+		parent := NewCtx(context.Background())
+		native, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		child := parent.WithNativeContext(native)
+		task := NewTask(func(c *Ctx, _ string) (string, error) {
+			return "ok", nil
+		})
+
+		_, err := task.Run(child, "ignored")
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want context.Canceled", err)
+		}
+	})
+}
+
 func TestComprehensiveSharedDependencies(t *testing.T) {
 	// State tracking variables for the test
 	var executionOrder []string

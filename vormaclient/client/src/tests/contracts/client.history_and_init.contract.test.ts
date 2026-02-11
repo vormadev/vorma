@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { findBestMatch } from "vorma/kit/matcher/find-best";
 import {
 	createRouteDataResponse,
 	loadClientAPI,
@@ -15,6 +16,17 @@ const TEST_APP_CONFIG = {
 	loadersSplatRune: "*",
 	loadersExplicitIndexSegment: "_index",
 };
+
+function stubElementScrollIntoView(
+	element: HTMLElement,
+): ReturnType<typeof vi.fn> {
+	const scrollIntoView = vi.fn();
+	Object.defineProperty(element, "scrollIntoView", {
+		value: scrollIntoView,
+		configurable: true,
+	});
+	return scrollIntoView;
+}
 
 describe("client history/init contracts", () => {
 	it("exposes a usable history instance", async () => {
@@ -79,7 +91,7 @@ describe("client history/init contracts", () => {
 		const element = document.createElement("div");
 		element.id = "section-a";
 		document.body.appendChild(element);
-		const scrollSpy = vi.spyOn(element, "scrollIntoView");
+		const scrollSpy = stubElementScrollIntoView(element);
 
 		await customHistoryListener({
 			action: "POP",
@@ -116,7 +128,7 @@ describe("client history/init contracts", () => {
 		const element = document.createElement("div");
 		element.id = "✓";
 		document.body.appendChild(element);
-		const scrollSpy = vi.spyOn(element, "scrollIntoView");
+		const scrollSpy = stubElementScrollIntoView(element);
 
 		await customHistoryListener({
 			action: "POP",
@@ -153,7 +165,7 @@ describe("client history/init contracts", () => {
 		const element = document.createElement("div");
 		element.id = "%20-literal";
 		document.body.appendChild(element);
-		const scrollSpy = vi.spyOn(element, "scrollIntoView");
+		const scrollSpy = stubElementScrollIntoView(element);
 
 		await customHistoryListener({
 			action: "POP",
@@ -190,7 +202,7 @@ describe("client history/init contracts", () => {
 		const element = document.createElement("div");
 		element.id = "~";
 		document.body.appendChild(element);
-		const scrollSpy = vi.spyOn(element, "scrollIntoView");
+		const scrollSpy = stubElementScrollIntoView(element);
 
 		await customHistoryListener({
 			action: "POP",
@@ -715,5 +727,104 @@ describe("client history/init contracts", () => {
 
 		window.dispatchEvent(new Event("touchstart"));
 		expect(api.__vormaClientGlobal.get("isTouchDevice")).toBe(true);
+	});
+
+	it("exposes the dev revalidate handle during init", async () => {
+		const api = await loadClientAPI();
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		expect((window as any).__waveRevalidate).toBe(api.revalidate);
+	});
+
+	it("installs an HMR update hook during init and keeps it callable", async () => {
+		const api = await loadClientAPI();
+		const preInitHook = api.__runClientLoadersAfterHMRUpdate;
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		expect(api.__runClientLoadersAfterHMRUpdate).not.toBe(preInitHook);
+		expect(() =>
+			api.__runClientLoadersAfterHMRUpdate(
+				{ url: "http://localhost:3000/src/routes/users.tsx" } as any,
+				"/users/:id",
+			),
+		).not.toThrow();
+	});
+
+	it("progressively loads route manifests and registers their patterns", async () => {
+		const api = await loadClientAPI();
+		const manifest = {
+			"/progressive/:id": 1,
+		};
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(JSON.stringify(manifest), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		const patternRegistry = api.__vormaClientGlobal.get("patternRegistry");
+		expect(findBestMatch(patternRegistry, "/progressive/123")).toBeNull();
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest.json",
+		);
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"http://localhost:3000/manifest.json",
+		);
+		expect(api.__vormaClientGlobal.get("routeManifest")).toEqual(manifest);
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/progressive/123",
+			)?.registeredPattern.originalPattern,
+		).toBe("/progressive/:id");
+	});
+
+	it("treats route-manifest progressive loading failures as non-fatal", async () => {
+		const api = await loadClientAPI();
+		const fetchError = new Error("manifest network failed");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockRejectedValue(fetchError);
+		const warnSpy = vi.spyOn(console, "warn");
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest.json",
+		);
+
+		await expect(
+			api.initClient({
+				vormaAppConfig: TEST_APP_CONFIG,
+				renderFn: () => {},
+			}),
+		).resolves.toBeUndefined();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"http://localhost:3000/manifest.json",
+		);
+		expect(api.__vormaClientGlobal.get("routeManifest")).toBeUndefined();
+		expect(warnSpy).toHaveBeenCalledWith(
+			"Failed to load route manifest:",
+			fetchError,
+		);
 	});
 });

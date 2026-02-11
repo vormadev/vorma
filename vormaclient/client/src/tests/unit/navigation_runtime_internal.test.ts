@@ -50,6 +50,25 @@ describe("navigation bookkeeping key aliasing", () => {
 		expect(found).toBe(active);
 	});
 
+	it("does not alias active navigation when search params differ", () => {
+		const active = createEntry({
+			targetUrl: "http://localhost:3000/alias?tab=a#first",
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		const slots: NavigationSlots = {
+			activeNavigation: active,
+			prefetchCache: new Map(),
+			pendingRevalidation: null,
+		};
+
+		const found = findNavigationEntryInSlots(
+			slots,
+			"http://localhost:3000/alias?tab=b#first",
+		);
+		expect(found).toBeUndefined();
+	});
+
 	it("deletes prefetch entry by same data target when hash differs", () => {
 		const prefetch = createEntry({
 			targetUrl: "http://localhost:3000/prefetch#first",
@@ -71,6 +90,30 @@ describe("navigation bookkeeping key aliasing", () => {
 
 		expect(deleted).toBe(true);
 		expect(slots.prefetchCache.size).toBe(0);
+		expect(onStatusRelevantChange).not.toHaveBeenCalled();
+	});
+
+	it("does not delete prefetch entry when search params differ", () => {
+		const prefetch = createEntry({
+			targetUrl: "http://localhost:3000/prefetch?tab=a#first",
+			type: "prefetch",
+			intent: "none",
+		});
+		const slots: NavigationSlots = {
+			activeNavigation: null,
+			prefetchCache: new Map([[prefetch.targetUrl, prefetch]]),
+			pendingRevalidation: null,
+		};
+		const onStatusRelevantChange = vi.fn();
+
+		const deleted = deleteNavigationFromSlots(
+			slots,
+			"http://localhost:3000/prefetch?tab=b#first",
+			onStatusRelevantChange,
+		);
+
+		expect(deleted).toBe(false);
+		expect(slots.prefetchCache.size).toBe(1);
 		expect(onStatusRelevantChange).not.toHaveBeenCalled();
 	});
 
@@ -96,6 +139,30 @@ describe("navigation bookkeeping key aliasing", () => {
 
 		expect(slots.pendingRevalidation?.phase).toBe("waiting");
 		expect(onStatusRelevantChange).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not transition pending revalidation phase when search params differ", () => {
+		const pendingRevalidation = createEntry({
+			targetUrl: "http://localhost:3000/revalidate?view=a#first",
+			type: "revalidation",
+			intent: "revalidate",
+		});
+		const slots: NavigationSlots = {
+			activeNavigation: null,
+			prefetchCache: new Map(),
+			pendingRevalidation,
+		};
+		const onStatusRelevantChange = vi.fn();
+
+		transitionNavigationPhaseInSlots(
+			slots,
+			"http://localhost:3000/revalidate?view=b#first",
+			"waiting",
+			onStatusRelevantChange,
+		);
+
+		expect(slots.pendingRevalidation?.phase).toBe("fetching");
+		expect(onStatusRelevantChange).not.toHaveBeenCalled();
 	});
 });
 

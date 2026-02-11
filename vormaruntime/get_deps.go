@@ -5,8 +5,14 @@ import (
 )
 
 func (v *Vorma) getDepsFromSnapshot(_matches []*matcher.Match, paths map[string]*Path) []string {
-	clientEntryDeps := v.GetClientEntryDeps()
+	v.mu.RLock()
+	clientEntryDeps := v._clientEntryDeps
+	v.mu.RUnlock()
 
+	return getDepsFromData(_matches, paths, clientEntryDeps)
+}
+
+func getDepsFromData(_matches []*matcher.Match, paths map[string]*Path, clientEntryDeps []string) []string {
 	var deps []string
 	seen := make(map[string]struct{}, len(_matches))
 	handleDeps := func(src []string) {
@@ -31,10 +37,13 @@ func (v *Vorma) getDepsFromSnapshot(_matches []*matcher.Match, paths map[string]
 }
 
 func (v *Vorma) getCSSBundles(deps []string) []string {
-	clientEntryOut := v.GetClientEntryOut()
-	depToCSSBundleMap := v.GetDepToCSSBundleMap()
+	v.mu.RLock()
+	clientEntryOut := v._clientEntryOut
+	depToCSSBundleMap := v._depToCSSBundleMap
+	v.mu.RUnlock()
 
 	// Use a map to deduplicate CSS bundles
+	clientEntryBundles := depToCSSBundleMap[clientEntryOut]
 	seen := make(map[string]struct{})
 	cssBundles := make([]string, 0, len(deps))
 
@@ -48,8 +57,8 @@ func (v *Vorma) getCSSBundles(deps []string) []string {
 	}
 
 	// Add CSS bundles from client entry first
-	if bundles, exists := depToCSSBundleMap[clientEntryOut]; exists {
-		addBundles(bundles)
+	if len(clientEntryBundles) > 0 {
+		addBundles(clientEntryBundles)
 	}
 
 	// Add CSS bundles from dependencies

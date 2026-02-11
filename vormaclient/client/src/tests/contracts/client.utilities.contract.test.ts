@@ -1,11 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	createRouteDataResponse,
 	installContractVormaGlobal,
 	loadClientAPI,
+	requestInputToURL,
 	setupContractTestSuite,
 } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
+
+const TEST_APP_CONFIG = {
+	actionsRouterMountRoot: "/api/",
+	actionsDynamicRune: ":",
+	actionsSplatRune: "*",
+	loadersDynamicRune: ":",
+	loadersSplatRune: "*",
+	loadersExplicitIndexSegment: "_index",
+};
+
+function stubElementScrollIntoView(
+	element: HTMLElement,
+): ReturnType<typeof vi.fn> {
+	const scrollIntoView = vi.fn();
+	Object.defineProperty(element, "scrollIntoView", {
+		value: scrollIntoView,
+		configurable: true,
+	});
+	return scrollIntoView;
+}
 
 describe("client utility contracts", () => {
 	it("returns listener cleanup functions that unsubscribe handlers", async () => {
@@ -83,7 +105,7 @@ describe("client utility contracts", () => {
 		const hashElement = document.createElement("div");
 		hashElement.id = "test-hash";
 		document.body.appendChild(hashElement);
-		const hashScrollSpy = vi.spyOn(hashElement, "scrollIntoView");
+		const hashScrollSpy = stubElementScrollIntoView(hashElement);
 
 		api.__applyScrollState({ hash: "test-hash" });
 		expect(hashScrollSpy).toHaveBeenCalled();
@@ -92,7 +114,7 @@ describe("client utility contracts", () => {
 		const urlHashElement = document.createElement("div");
 		urlHashElement.id = "url-hash";
 		document.body.appendChild(urlHashElement);
-		const urlHashScrollSpy = vi.spyOn(urlHashElement, "scrollIntoView");
+		const urlHashScrollSpy = stubElementScrollIntoView(urlHashElement);
 
 		api.__applyScrollState(undefined);
 		expect(urlHashScrollSpy).toHaveBeenCalled();
@@ -104,7 +126,7 @@ describe("client utility contracts", () => {
 		const unicodeElement = document.createElement("div");
 		unicodeElement.id = "✓";
 		document.body.appendChild(unicodeElement);
-		const unicodeScrollSpy = vi.spyOn(unicodeElement, "scrollIntoView");
+		const unicodeScrollSpy = stubElementScrollIntoView(unicodeElement);
 
 		api.__applyScrollState({ hash: "%E2%9C%93" });
 		expect(unicodeScrollSpy).toHaveBeenCalledTimes(1);
@@ -121,7 +143,7 @@ describe("client utility contracts", () => {
 		const fallbackElement = document.createElement("div");
 		fallbackElement.id = invalidEncodedHash;
 		document.body.appendChild(fallbackElement);
-		const fallbackScrollSpy = vi.spyOn(fallbackElement, "scrollIntoView");
+		const fallbackScrollSpy = stubElementScrollIntoView(fallbackElement);
 
 		expect(() =>
 			api.__applyScrollState({ hash: invalidEncodedHash }),
@@ -155,5 +177,80 @@ describe("client utility contracts", () => {
 		});
 
 		expect(api.getBuildID()).toBe("test-build-12345");
+	});
+
+	it("builds typed navigation hrefs and forwards navigation options", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const typedNavigate = api.makeTypedNavigate(TEST_APP_CONFIG as any);
+
+		await typedNavigate({
+			pattern: "/users/:id",
+			params: {
+				id: "a/b",
+			},
+			search: "?tab=activity",
+			hash: "#details",
+			replace: true,
+			scrollToTop: false,
+			state: { from: "tests" },
+		} as any);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const fetchInput = fetchSpy.mock.calls[0]?.[0] as RequestInfo | URL;
+		const fetchURL = requestInputToURL(fetchInput);
+		expect(fetchURL.pathname).toBe("/users/a%2Fb");
+		expect(fetchURL.searchParams.get("tab")).toBe("activity");
+		expect(fetchURL.searchParams.get("vorma_json")).toBe("1");
+		expect(api.getLocation().pathname).toBe("/users/a%2Fb");
+		expect(api.getLocation().search).toBe("?tab=activity");
+		expect(api.getLocation().hash).toBe("#details");
+	});
+
+	it("maps custom handler keys in __makeFinalLinkProps and preserves callbacks", async () => {
+		const api = await loadClientAPI();
+		const onMouseEnter = vi.fn();
+		const onFocusIn = vi.fn();
+		const onMouseLeave = vi.fn();
+		const onBlurred = vi.fn();
+		const onCancel = vi.fn();
+		const onPress = vi.fn();
+		const event = { defaultPrevented: true };
+
+		const finalProps = api.__makeFinalLinkProps(
+			{
+				onMouseEnter,
+				onFocusIn,
+				onMouseLeave,
+				onBlurred,
+				onCancel,
+				onPress,
+			} as any,
+			{
+				onPointerEnter: "onMouseEnter",
+				onFocus: "onFocusIn",
+				onPointerLeave: "onMouseLeave",
+				onBlur: "onBlurred",
+				onTouchCancel: "onCancel",
+				onClick: "onPress",
+			},
+		);
+
+		finalProps.onPointerEnter(event);
+		finalProps.onFocus(event);
+		finalProps.onPointerLeave(event);
+		finalProps.onBlur(event);
+		finalProps.onTouchCancel(event);
+		await finalProps.onClick(event);
+
+		expect(finalProps.dataExternal).toBeUndefined();
+		expect(onMouseEnter).toHaveBeenCalledWith(event);
+		expect(onFocusIn).toHaveBeenCalledWith(event);
+		expect(onMouseLeave).toHaveBeenCalledWith(event);
+		expect(onBlurred).toHaveBeenCalledWith(event);
+		expect(onCancel).toHaveBeenCalledWith(event);
+		expect(onPress).toHaveBeenCalledWith(event);
 	});
 });

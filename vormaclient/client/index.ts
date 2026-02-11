@@ -27,7 +27,6 @@ export {
 	__makeLinkOnClickFn,
 } from "./src/core/links.ts";
 export { __applyScrollState } from "./src/platform/scroll.ts";
-export { route } from "./src/core/extras.ts";
 export {
 	__makeFinalLinkProps,
 	type VormaLinkPropsBase,

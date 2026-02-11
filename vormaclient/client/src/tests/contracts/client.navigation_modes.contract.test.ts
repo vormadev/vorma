@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	createDeferred,
+	createSequencedFetchSpy,
 	createRouteDataResponse,
 	loadClientAPI,
 	setupContractTestSuite,
+	stubWindowLocationHref,
 } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
@@ -91,6 +94,113 @@ describe("client navigation mode contracts", () => {
 		expect(secondFetchURL.href).toContain("/redirected?vorma_json=1");
 		expect(window.location.pathname).toBe("/redirected");
 		expect(document.title).toBe("Redirected Page");
+	});
+
+	it("performs hard redirect for external navigation redirect targets", async () => {
+		const api = await loadClientAPI();
+		const locationHrefStub = stubWindowLocationHref();
+
+		try {
+			const fetchSpy = vi
+				.spyOn(window, "fetch")
+				.mockResolvedValueOnce(
+					createRouteDataResponse(
+						{},
+						{
+							headers: {
+								"X-Client-Redirect": "https://external.example",
+							},
+						},
+					),
+				);
+
+			await api.vormaNavigate("/external-nav-start");
+			await vi.runAllTimersAsync();
+
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			const redirectedURL = new URL(locationHrefStub.getHref());
+			expect(redirectedURL.origin).toBe("https://external.example");
+			expect(redirectedURL.pathname).toBe("/");
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			locationHrefStub.restore();
+		}
+	});
+
+	it("performs hard reload redirect for navigation X-Vorma-Reload responses", async () => {
+		const api = await loadClientAPI();
+		const locationHrefStub = stubWindowLocationHref();
+
+		try {
+			const fetchSpy = vi
+				.spyOn(window, "fetch")
+				.mockResolvedValueOnce(
+					createRouteDataResponse(
+						{},
+						{
+							headers: {
+								"X-Vorma-Reload": "/force-reload-nav",
+								"X-Vorma-Build-Id": "reload-nav-build-1",
+							},
+						},
+					),
+				);
+
+			await api.vormaNavigate("/hard-reload-nav-start");
+			await vi.runAllTimersAsync();
+
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			expect(locationHrefStub.getHref()).toContain("/force-reload-nav");
+			expect(locationHrefStub.getHref()).toContain(
+				"vorma_reload=reload-nav-build-1",
+			);
+			expect(api.getBuildID()).toBe("reload-nav-build-1");
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			locationHrefStub.restore();
+		}
+	});
+
+	it("prioritizes X-Vorma-Reload over X-Client-Redirect for navigation", async () => {
+		const api = await loadClientAPI();
+		const locationHrefStub = stubWindowLocationHref();
+
+		try {
+			vi.spyOn(window, "fetch").mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Vorma-Reload": "/force-reload-nav-priority",
+							"X-Client-Redirect": "/ignored-soft-nav",
+							"X-Vorma-Build-Id": "priority-nav-build-1",
+						},
+					},
+				),
+			);
+
+			await api.vormaNavigate("/priority-nav-start");
+			await vi.runAllTimersAsync();
+
+			expect(locationHrefStub.getHref()).toContain(
+				"/force-reload-nav-priority",
+			);
+			expect(locationHrefStub.getHref()).toContain(
+				"vorma_reload=priority-nav-build-1",
+			);
+			expect(locationHrefStub.getHref()).not.toContain("/ignored-soft-nav");
+			expect(api.getBuildID()).toBe("priority-nav-build-1");
+		} finally {
+			locationHrefStub.restore();
+		}
 	});
 
 	it("follows native fetch redirects for GET navigation requests", async () => {
@@ -251,5 +361,183 @@ describe("client navigation mode contracts", () => {
 			isSubmitting: false,
 			isRevalidating: false,
 		});
+	});
+
+	it("does not follow stale native redirects from an aborted user navigation", async () => {
+		const api = await loadClientAPI();
+		const staleNativeDeferred = createDeferred<Response>();
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+
+		const staleNativeRedirectResponse = createRouteDataResponse(
+			{},
+			{
+				headers: {
+					"X-Vorma-Build-Id": "stale-native-nav-build",
+				},
+			},
+		);
+		Object.defineProperty(staleNativeRedirectResponse, "redirected", {
+			value: true,
+			configurable: true,
+		});
+		Object.defineProperty(staleNativeRedirectResponse, "url", {
+			value: "http://localhost:3000/stale-native-nav-redirect",
+			configurable: true,
+		});
+
+		const { calls } = createSequencedFetchSpy([
+			() => staleNativeDeferred.promise,
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Navigation Winner" },
+			}),
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Stale Redirect Was Followed" },
+			}),
+		]);
+
+		try {
+			const staleNavigation = api.vormaNavigate("/stale-native-start");
+			await vi.advanceTimersByTimeAsync(8);
+
+			const winnerNavigation = api.vormaNavigate("/winner-page");
+			await winnerNavigation;
+			await vi.runAllTimersAsync();
+
+			staleNativeDeferred.resolve(staleNativeRedirectResponse);
+			await staleNavigation;
+			await vi.runAllTimersAsync();
+
+			expect(calls).toHaveLength(2);
+			expect(window.location.pathname).toBe("/winner-page");
+			expect(document.title).toBe("Navigation Winner");
+			expect(api.getBuildID()).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+		}
+	});
+
+	it("does not follow stale client-redirect headers from an aborted user navigation", async () => {
+		const api = await loadClientAPI();
+		const staleClientRedirectDeferred = createDeferred<Response>();
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+
+		const { calls } = createSequencedFetchSpy([
+			() => staleClientRedirectDeferred.promise,
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Soft Redirect Winner" },
+			}),
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Stale Soft Redirect Was Followed" },
+			}),
+		]);
+
+		try {
+			const staleNavigation = api.vormaNavigate("/stale-soft-start");
+			await vi.advanceTimersByTimeAsync(8);
+
+			const winnerNavigation = api.vormaNavigate("/soft-winner");
+			await winnerNavigation;
+			await vi.runAllTimersAsync();
+
+			staleClientRedirectDeferred.resolve(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Client-Redirect": "/stale-soft-target",
+							"X-Vorma-Build-Id": "stale-soft-nav-build",
+						},
+					},
+				),
+			);
+			await staleNavigation;
+			await vi.runAllTimersAsync();
+
+			expect(calls).toHaveLength(2);
+			expect(window.location.pathname).toBe("/soft-winner");
+			expect(document.title).toBe("Soft Redirect Winner");
+			expect(api.getBuildID()).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+		}
+	});
+
+	it("does not hard-reload from stale aborted user-navigation responses", async () => {
+		const api = await loadClientAPI();
+		const staleHardReloadDeferred = createDeferred<Response>();
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+		let restoreLocationHref: (() => void) | undefined;
+		let getLocationHref: (() => string) | undefined;
+
+		const { calls } = createSequencedFetchSpy([
+			() => staleHardReloadDeferred.promise,
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Hard Reload Winner" },
+			}),
+		]);
+
+		try {
+			const staleNavigation = api.vormaNavigate("/stale-hard-start");
+			await vi.advanceTimersByTimeAsync(8);
+
+			const winnerNavigation = api.vormaNavigate("/hard-winner");
+			await winnerNavigation;
+			await vi.runAllTimersAsync();
+			expect(window.location.pathname).toBe("/hard-winner");
+
+			const locationHrefStub = stubWindowLocationHref(window.location.href);
+			restoreLocationHref = locationHrefStub.restore;
+			getLocationHref = locationHrefStub.getHref;
+
+			staleHardReloadDeferred.resolve(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Vorma-Reload": "/stale-hard-redirect",
+							"X-Vorma-Build-Id": "stale-hard-nav-build",
+						},
+					},
+				),
+			);
+			await staleNavigation;
+			await vi.runAllTimersAsync();
+			const locationHref = getLocationHref?.() ?? "";
+
+			expect(calls).toHaveLength(2);
+			expect(locationHref).toContain("/hard-winner");
+			expect(locationHref).not.toContain("/stale-hard-redirect");
+			expect(api.getBuildID()).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+			restoreLocationHref?.();
+		}
 	});
 });

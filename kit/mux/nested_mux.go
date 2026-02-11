@@ -1,6 +1,7 @@
 package mux
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"net/http"
@@ -254,7 +255,8 @@ func RunNestedTasks(
 	routeIndexMap := nestedRouter.routeIndexMap.Load().(map[string]int)
 
 	// Pre-allocate boundTasks based on estimated task count
-	boundTasks := make([]tasks.BoundTask, 0, numMatches/2) // Assume ~50% have handlers
+	boundTasks := make([]*optimizedBoundTask, 0, numMatches/2) // Assume ~50% have handlers
+	taskCancels := make([]context.CancelFunc, 0, numMatches/2)
 
 	// Track pooled objects for cleanup
 	pooledReqData := make([]*ReqData[None], 0, numMatches/2)
@@ -310,27 +312,49 @@ func RunNestedTasks(
 		reqData := reqDataPool.Get().(*ReqData[None])
 		reqData.params = results.Params
 		reqData.splatVals = results.SplatValues
-		reqData.tasksCtx = tasksCtx
 		reqData.input = noneInstance
 		reqData.req = r
 		reqData.responseProxy = proxy
 		pooledReqData = append(pooledReqData, reqData)
+		reqData.tasksCtx = nil
 
 		boundTask := &optimizedBoundTask{
-			taskHandler: compiled.taskHandler,
-			reqData:     reqData,
-			result:      result,
+			taskHandler:       compiled.taskHandler,
+			reqData:           reqData,
+			result:            result,
+			cancelDescendants: nil,
 		}
 		boundTasks = append(boundTasks, boundTask)
 	}
 
 	// Execute all tasks in parallel if we have any.
-	// RunParallel blocks until all tasks complete, which is required for
-	// the defer cleanup above to be safe.
+	// We intentionally do NOT use tasksCtx.RunParallel here because that path
+	// fail-fast cancels sibling tasks on first error, which can mask per-route
+	// errors in nested routing.
 	if len(boundTasks) > 0 {
-		if err := tasksCtx.RunParallel(boundTasks...); err != nil {
-			muxLog.Error("tasks.Go reported an error during nested task execution", "error", err)
+		if len(boundTasks) == 1 {
+			boundTasks[0].reqData.tasksCtx = tasksCtx
+		} else {
+			currentCtx := tasksCtx
+			for i, bt := range boundTasks {
+				if i < len(boundTasks)-1 {
+					childNativeCtx, cancel := context.WithCancel(currentCtx.NativeContext())
+					taskCancels = append(taskCancels, cancel)
+					childCtx := currentCtx.WithNativeContext(childNativeCtx)
+					bt.reqData.tasksCtx = childCtx
+					bt.cancelDescendants = cancel
+					currentCtx = childCtx
+					continue
+				}
+				// Leaf task reuses the current ancestor-cancelable context.
+				bt.reqData.tasksCtx = currentCtx
+			}
 		}
+		runNestedBoundTasks(boundTasks)
+	}
+
+	for _, cancel := range taskCancels {
+		cancel()
 	}
 
 	return results
@@ -377,13 +401,39 @@ type optimizedBoundTask struct {
 	taskHandler tasks.AnyTask
 	reqData     *ReqData[None]
 	result      *NestedTasksResult
+	// Called when this task fails; should cancel deeper matched routes only.
+	cancelDescendants context.CancelFunc
 }
 
-func (oc *optimizedBoundTask) Run(ctx *tasks.Ctx) error {
-	data, err := oc.taskHandler.RunWithAnyInput(ctx, oc.reqData)
+func (oc *optimizedBoundTask) Run() error {
+	data, err := oc.taskHandler.RunWithAnyInput(oc.reqData.tasksCtx, oc.reqData)
 	oc.result.data = data
 	oc.result.err = err
+	if err != nil && oc.cancelDescendants != nil {
+		oc.cancelDescendants()
+	}
 	return err
+}
+
+func runNestedBoundTasks(boundTasks []*optimizedBoundTask) {
+	switch len(boundTasks) {
+	case 0:
+		return
+	case 1:
+		_ = boundTasks[0].Run()
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(boundTasks))
+	for _, bt := range boundTasks {
+		bt := bt
+		go func() {
+			defer wg.Done()
+			_ = bt.Run()
+		}()
+	}
+	wg.Wait()
 }
 
 // ReplaceRoutes atomically replaces all routes with a new set.

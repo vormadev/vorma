@@ -5,7 +5,7 @@ const VORMA_INTERNAL_SYMBOL = Symbol.for("__vorma_internal__");
 
 type AnyRecord = Record<string, any>;
 type AnyPropertyRecord = Record<PropertyKey, any>;
-export type StatusSnapshot = {
+type StatusSnapshot = {
 	isNavigating: boolean;
 	isSubmitting: boolean;
 	isRevalidating: boolean;
@@ -65,7 +65,7 @@ export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
 	};
 }
 
-export function createRouteData(overrides: AnyRecord = {}): AnyRecord {
+function createRouteData(overrides: AnyRecord = {}): AnyRecord {
 	return {
 		matchedPatterns: [],
 		loadersData: [],
@@ -166,12 +166,61 @@ export function createSignalCapturingNeverFetchSpy() {
 	return { fetchSpy, signals };
 }
 
-export type FetchSequenceCall = {
+type FetchSequenceCall = {
 	input: RequestInfo | URL;
 	init?: RequestInit;
 };
 
-export type FetchSequenceStep =
+export function requestInputToURL(input: RequestInfo | URL): URL {
+	if (input instanceof URL) {
+		return input;
+	}
+	if (typeof input === "string") {
+		return new URL(input, window.location.href);
+	}
+	return new URL(input.url, window.location.href);
+}
+
+export function requestInputToHref(input: RequestInfo | URL): string {
+	return requestInputToURL(input).href;
+}
+
+export function stubWindowLocationHref(initialHref = window.location.href): {
+	getHref: () => string;
+	setHref: (href: string) => void;
+	restore: () => void;
+} {
+	const originalLocation = window.location;
+	let locationHref = initialHref;
+
+	Object.defineProperty(window, "location", {
+		value: {
+			...originalLocation,
+			get href() {
+				return locationHref;
+			},
+			set href(value) {
+				locationHref = String(value);
+			},
+		},
+		configurable: true,
+	});
+
+	return {
+		getHref: () => locationHref,
+		setHref: (href: string) => {
+			locationHref = String(href);
+		},
+		restore: () => {
+			Object.defineProperty(window, "location", {
+				value: originalLocation,
+				configurable: true,
+			});
+		},
+	};
+}
+
+type FetchSequenceStep =
 	| Response
 	| Promise<Response>
 	| ((props: FetchSequenceCall & { callIndex: number }) => Response | Promise<Response>);
@@ -206,7 +255,7 @@ export function createSequencedFetchSpy(steps: FetchSequenceStep[]) {
 	return { fetchSpy, calls };
 }
 
-export type AbortAwareFetchRequest = {
+type AbortAwareFetchRequest = {
 	input: RequestInfo | URL;
 	init: RequestInit | undefined;
 	signal: AbortSignal | undefined;
@@ -260,6 +309,23 @@ export function collectStatusEvents(api: {
 	});
 
 	return { statusEvents, cleanup };
+}
+
+export async function waitForRequestCount(props: {
+	requests: Array<unknown>;
+	count: number;
+	maxTicks?: number;
+	tickMS?: number;
+}): Promise<void> {
+	const { requests, count, maxTicks = 300, tickMS = 1 } = props;
+	for (let i = 0; i < maxTicks; i++) {
+		if (requests.length >= count) {
+			return;
+		}
+		await Promise.resolve();
+		await vi.advanceTimersByTimeAsync(tickMS);
+	}
+	throw new Error(`Timed out waiting for request count ${count}`);
 }
 
 export function expectStatusIdle(

@@ -55,15 +55,29 @@ type GetSSRInnerHTMLOutput struct {
 }
 
 func (v *Vorma) getSSRInnerHTML(routeData *RouteDataFinal) (*GetSSRInnerHTMLOutput, error) {
+	if routeData == nil {
+		return nil, fmt.Errorf("routeData cannot be nil")
+	}
+	if routeData.RouteDataCore == nil {
+		return nil, fmt.Errorf("routeData.RouteDataCore cannot be nil")
+	}
+
 	var htmlBuilder strings.Builder
+	publicPathPrefix := v.Wave.GetPublicPathPrefix()
+
+	v.mu.RLock()
+	isDev := v._isDev
+	buildID := v._buildID
+	routeManifestFile := v._routeManifestFile
+	v.mu.RUnlock()
 
 	dto := SSRInnerHTMLInput{
 		VormaSymbolStr:   VormaSymbolStr,
-		IsDev:            v._isDev,
+		IsDev:            isDev,
 		ViteDevURL:       routeData.ViteDevURL,
-		BuildID:          v._buildID,
-		PublicPathPrefix: v.Wave.GetPublicPathPrefix(),
-		RouteManifestURL: path.Join(v.Wave.GetPublicPathPrefix(), v._routeManifestFile),
+		BuildID:          buildID,
+		PublicPathPrefix: publicPathPrefix,
+		RouteManifestURL: path.Join(publicPathPrefix, routeManifestFile),
 		RouteDataCore:    routeData.RouteDataCore,
 		CSSBundles:       routeData.CSSBundles,
 	}

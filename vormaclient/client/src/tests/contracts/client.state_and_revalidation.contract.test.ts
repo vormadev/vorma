@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	createDeferred,
 	createDeferredFetchCall,
+	createSequencedFetchSpy,
 	createRouteDataResponse,
 	createSignalCapturingNeverFetchSpy,
 	loadClientAPI,
 	setupContractTestSuite,
+	stubWindowLocationHref,
 } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
@@ -28,7 +31,9 @@ describe("client state/revalidation contracts", () => {
 		const secondNavigation = api.vormaNavigate("/state-second");
 		expect(firstFetchCall.getSignal()?.aborted).toBe(true);
 
-		firstFetchCall.deferred.reject(new DOMException("Aborted", "AbortError"));
+		firstFetchCall.deferred.reject(
+			new DOMException("Aborted", "AbortError"),
+		);
 
 		await firstNavigation;
 		await secondNavigation;
@@ -125,7 +130,9 @@ describe("client state/revalidation contracts", () => {
 			.spyOn(window, "fetch")
 			.mockImplementationOnce((_url, init) => {
 				const promise = firstFetchCall.mock(_url, init);
-				firstFetchCall.getSignal()?.addEventListener(
+				firstFetchCall
+					.getSignal()
+					?.addEventListener(
 						"abort",
 						() =>
 							firstFetchCall.deferred.reject(
@@ -211,6 +218,51 @@ describe("client state/revalidation contracts", () => {
 		);
 	});
 
+	it("includes deployment query param on revalidation when deployment ID is configured", async () => {
+		const api = await loadClientAPI();
+		api.__vormaClientGlobal.set("deploymentID", "deploy-abc");
+		window.history.replaceState({}, "", "/revalidate-target?tab=details");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		await api.revalidate();
+		await vi.runAllTimersAsync();
+
+		const fetchURL = fetchSpy.mock.calls[0]?.[0] as URL;
+		expect(fetchURL.pathname).toBe("/revalidate-target");
+		expect(fetchURL.searchParams.get("tab")).toBe("details");
+		expect(fetchURL.searchParams.get("vorma_json")).toBe("1");
+		expect(fetchURL.searchParams.get("dpl")).toBe("deploy-abc");
+	});
+
+	it("follows redirects returned from revalidation when still relevant", async () => {
+		const api = await loadClientAPI();
+		vi.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{ headers: { "X-Client-Redirect": "/revalidate-login" } },
+				),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					title: { dangerousInnerHTML: "Revalidate Login" },
+				}),
+			);
+
+		await api.revalidate();
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/revalidate-login");
+		expect(document.title).toBe("Revalidate Login");
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+	});
+
 	it("applies in-flight revalidation results across hash-only URL changes", async () => {
 		const api = await loadClientAPI();
 		let resolveFetch: ((value: Response) => void) | undefined;
@@ -240,6 +292,270 @@ describe("client state/revalidation contracts", () => {
 			isSubmitting: false,
 			isRevalidating: false,
 		});
+	});
+
+	it("treats search-param location changes as stale revalidation boundaries", async () => {
+		window.history.replaceState({}, "", "/search-stale?tab=a");
+		const api = await loadClientAPI();
+		const revalidationFetch = createDeferredFetchCall();
+		vi.spyOn(window, "fetch").mockImplementation(revalidationFetch.mock);
+
+		const revalidatePromise = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+
+		window.history.replaceState({}, "", "/search-stale?tab=b");
+		revalidationFetch.deferred.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Stale Search Result" },
+			}),
+		);
+
+		await revalidatePromise;
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/search-stale");
+		expect(window.location.search).toBe("?tab=b");
+		expect(document.title).toBe("Initial Title");
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+	});
+
+	it("ignores stale revalidation side effects after external location change", async () => {
+		const api = await loadClientAPI();
+		const revalidationFetch = createDeferredFetchCall();
+		vi.spyOn(window, "fetch").mockImplementation(revalidationFetch.mock);
+		const requestAnimationFrameSpy = vi.spyOn(
+			window,
+			"requestAnimationFrame",
+		);
+
+		const revalidatePromise = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+
+		window.history.replaceState({}, "", "/externally-changed");
+		const rAFCallCountBeforeResolve =
+			requestAnimationFrameSpy.mock.calls.length;
+
+		revalidationFetch.deferred.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Stale External Title" },
+				cssBundles: ["/stale-external.css"],
+			}),
+		);
+
+		await revalidatePromise;
+		await vi.advanceTimersByTimeAsync(32);
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/externally-changed");
+		expect(document.title).toBe("Initial Title");
+		expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(
+			rAFCallCountBeforeResolve,
+		);
+		expect(
+			document.head.querySelector(
+				'link[data-vorma-css-bundle="/stale-external.css"]',
+			),
+		).toBeNull();
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+	});
+
+	it("does not follow stale revalidation redirects after external location change", async () => {
+		const api = await loadClientAPI();
+		const staleRedirectDeferred = createDeferred<Response>();
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+		const { calls } = createSequencedFetchSpy([
+			() => staleRedirectDeferred.promise,
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Redirect Was Followed" },
+			}),
+		]);
+
+		const revalidatePromise = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+
+		try {
+			window.history.replaceState({}, "", "/externally-changed");
+
+			staleRedirectDeferred.resolve(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Client-Redirect": "/stale-redirect-target",
+							"X-Vorma-Build-Id": "stale-soft-build",
+						},
+					},
+				),
+			);
+
+			await revalidatePromise;
+			await vi.runAllTimersAsync();
+
+			expect(calls).toHaveLength(1);
+			expect(window.location.pathname).toBe("/externally-changed");
+			expect(api.getBuildID()).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+		}
+	});
+
+	it("does not follow stale native revalidation redirects after external location change", async () => {
+		const api = await loadClientAPI();
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+		const nativeRedirectDeferred = createDeferred<Response>();
+
+		const nativeRedirectResponse = createRouteDataResponse();
+		Object.defineProperty(nativeRedirectResponse, "redirected", {
+			value: true,
+			configurable: true,
+		});
+		Object.defineProperty(nativeRedirectResponse, "url", {
+			value: "http://localhost:3000/stale-native-revalidate-redirect",
+			configurable: true,
+		});
+
+		const { calls } = createSequencedFetchSpy([
+			() => nativeRedirectDeferred.promise,
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Native Redirect Followed" },
+			}),
+		]);
+
+		try {
+			const revalidatePromise = api.revalidate();
+			await vi.advanceTimersByTimeAsync(8);
+			window.history.replaceState({}, "", "/externally-changed");
+			nativeRedirectDeferred.resolve(nativeRedirectResponse);
+
+			await revalidatePromise;
+			await vi.runAllTimersAsync();
+
+			expect(calls).toHaveLength(1);
+			expect(window.location.pathname).toBe("/externally-changed");
+			expect(api.getBuildID()).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+		}
+	});
+
+	it("does not perform hard reload from stale revalidation responses", async () => {
+		const api = await loadClientAPI();
+		const revalidationFetch = createDeferredFetchCall();
+		vi.spyOn(window, "fetch").mockImplementation(revalidationFetch.mock);
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+		let restoreLocationHref: (() => void) | undefined;
+		let getLocationHref: (() => string) | undefined;
+
+		try {
+			const revalidatePromise = api.revalidate();
+			await vi.advanceTimersByTimeAsync(8);
+
+			window.history.replaceState({}, "", "/externally-changed");
+			const locationHrefStub = stubWindowLocationHref(
+				window.location.href,
+			);
+			restoreLocationHref = locationHrefStub.restore;
+			getLocationHref = locationHrefStub.getHref;
+
+			revalidationFetch.deferred.resolve(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Vorma-Reload": "/stale-hard-reload",
+							"X-Vorma-Build-Id": "stale-hard-build",
+						},
+					},
+				),
+			);
+
+			await revalidatePromise;
+			await vi.runAllTimersAsync();
+			const locationHref = getLocationHref?.() ?? "";
+
+			expect(locationHref).not.toContain("/stale-hard-reload");
+			expect(locationHref).toContain("/externally-changed");
+			expect(api.getBuildID()).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+			restoreLocationHref?.();
+		}
+	});
+
+	it("does not update build ID from stale revalidation responses", async () => {
+		const api = await loadClientAPI();
+		const revalidationFetch = createDeferredFetchCall();
+		vi.spyOn(window, "fetch").mockImplementation(revalidationFetch.mock);
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+
+		try {
+			const revalidatePromise = api.revalidate();
+			await vi.advanceTimersByTimeAsync(8);
+
+			window.history.replaceState({}, "", "/externally-changed");
+
+			revalidationFetch.deferred.resolve(
+				createRouteDataResponse(
+					{
+						title: {
+							dangerousInnerHTML: "Stale Build Update Attempt",
+						},
+					},
+					{
+						headers: {
+							"X-Vorma-Build-Id": "stale-revalidation-build",
+						},
+					},
+				),
+			);
+
+			await revalidatePromise;
+			await vi.runAllTimersAsync();
+
+			expect(api.getBuildID()).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+			expect(window.location.pathname).toBe("/externally-changed");
+		} finally {
+			removeBuildIDListener();
+		}
 	});
 
 	it("stopping a pure prefetch aborts it and allows a fresh prefetch", async () => {

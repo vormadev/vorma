@@ -2,10 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createAbortAwareFetchRecorder,
 	createDeferred,
+	createDeferredFetchCall,
 	createRouteDataResponse,
+	expectStatusIdle,
 	installContractVormaGlobal,
 	loadClientAPI,
 	setupContractTestSuite,
+	waitForRequestCount,
+	withUnhandledRejectionCapture,
 } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
@@ -39,6 +43,211 @@ describe("client navigation lifecycle contracts", () => {
 		await vi.runAllTimersAsync();
 
 		prefetchHandlers?.stop();
+	});
+
+	it("clearAll aborts in-flight navigation and submit work, then returns idle", async () => {
+		const api = await loadClientAPI();
+		const { navigationStateManager } = await import("../../client.ts");
+		const { requests } = createAbortAwareFetchRecorder();
+
+		const { result, unhandledRejections } = await withUnhandledRejectionCapture(
+			{
+				run: async () => {
+					const navPromise = api.vormaNavigate("/clear-all-nav");
+					const submitPromise = api.submit(
+						"/api/clear-all-submit",
+						{ method: "POST" },
+						{ revalidate: false },
+					);
+
+					await waitForRequestCount({ requests, count: 2 });
+					expect(api.getStatus()).toEqual({
+						isNavigating: true,
+						isSubmitting: true,
+						isRevalidating: false,
+					});
+
+					navigationStateManager.clearAll();
+					expect(requests[0]?.signal?.aborted).toBe(true);
+					expect(requests[1]?.signal?.aborted).toBe(true);
+
+					const submitResult = await submitPromise;
+					await navPromise;
+					await vi.runAllTimersAsync();
+
+					return { submitResult };
+				},
+			},
+		);
+
+		expect(result.submitResult).toEqual({
+			success: false,
+			error: "Aborted",
+		});
+		expect(unhandledRejections).toEqual([]);
+		expect(window.location.pathname).toBe("/");
+		expectStatusIdle(api.getStatus());
+	});
+
+	it("clearAll aborts in-flight prefetch and revalidation work, then returns idle", async () => {
+		const api = await loadClientAPI();
+		const { navigationStateManager } = await import("../../client.ts");
+		const { requests } = createAbortAwareFetchRecorder();
+		const prefetchHandlers = api.__getPrefetchHandlers({
+			href: "/clear-all-prefetch",
+			delayMs: 0,
+		});
+
+		prefetchHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+
+		const revalidatePromise = api.revalidate();
+		await waitForRequestCount({ requests, count: 2 });
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: true,
+		});
+
+		navigationStateManager.clearAll();
+		expect(requests[0]?.signal?.aborted).toBe(true);
+		expect(requests[1]?.signal?.aborted).toBe(true);
+
+		await revalidatePromise;
+		await vi.runAllTimersAsync();
+		prefetchHandlers?.stop();
+
+		expect(window.location.pathname).toBe("/");
+		expectStatusIdle(api.getStatus());
+	});
+
+	it("clearAll prevents late side effects from navigations whose fetch ignores abort", async () => {
+		const api = await loadClientAPI();
+		const { navigationStateManager } = await import("../../client.ts");
+		const fetchCall = createDeferredFetchCall();
+		const requestAnimationFrameSpy = vi.spyOn(
+			window,
+			"requestAnimationFrame",
+		);
+		vi.spyOn(window, "fetch").mockImplementation(fetchCall.mock);
+
+		const navPromise = api.vormaNavigate("/clear-all-late-success");
+		await vi.advanceTimersByTimeAsync(8);
+		expect(fetchCall.getSignal()?.aborted).toBe(false);
+
+		navigationStateManager.clearAll();
+		expect(fetchCall.getSignal()?.aborted).toBe(true);
+
+		const rAFCallCountBeforeResolve = requestAnimationFrameSpy.mock.calls.length;
+		fetchCall.deferred.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Late Stale Title" },
+				cssBundles: ["/late-stale.css"],
+			}),
+		);
+
+		await navPromise;
+		await vi.advanceTimersByTimeAsync(32);
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/");
+		expect(document.title).toBe("Initial Title");
+		expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(
+			rAFCallCountBeforeResolve,
+		);
+		expect(
+			document.head.querySelector(
+				'link[data-vorma-css-bundle="/late-stale.css"]',
+			),
+		).toBeNull();
+		expectStatusIdle(api.getStatus());
+	});
+
+	it("clearAll prevents late side effects from prefetches whose fetch ignores abort", async () => {
+		const api = await loadClientAPI();
+		const { navigationStateManager } = await import("../../client.ts");
+		const fetchCall = createDeferredFetchCall();
+		const requestAnimationFrameSpy = vi.spyOn(
+			window,
+			"requestAnimationFrame",
+		);
+		vi.spyOn(window, "fetch").mockImplementation(fetchCall.mock);
+
+		const { unhandledRejections } = await withUnhandledRejectionCapture({
+			run: async () => {
+				const prefetchHandlers = api.__getPrefetchHandlers({
+					href: "/clear-prefetch-late",
+					delayMs: 0,
+				});
+				prefetchHandlers?.start(new Event("mouseenter"));
+				await vi.advanceTimersByTimeAsync(1);
+				expect(fetchCall.getSignal()?.aborted).toBe(false);
+
+				navigationStateManager.clearAll();
+				expect(fetchCall.getSignal()?.aborted).toBe(true);
+
+				const rAFCallCountBeforeResolve =
+					requestAnimationFrameSpy.mock.calls.length;
+				fetchCall.deferred.resolve(
+					createRouteDataResponse({
+						title: { dangerousInnerHTML: "Late Prefetch Title" },
+						cssBundles: ["/late-prefetch.css"],
+					}),
+				);
+				await vi.advanceTimersByTimeAsync(32);
+				await vi.runAllTimersAsync();
+
+				expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(
+					rAFCallCountBeforeResolve,
+				);
+				expect(
+					document.head.querySelector(
+						'link[data-vorma-css-bundle="/late-prefetch.css"]',
+					),
+				).toBeNull();
+
+				prefetchHandlers?.stop();
+			},
+		});
+
+		expect(unhandledRejections).toEqual([]);
+		expect(window.location.pathname).toBe("/");
+		expect(document.title).toBe("Initial Title");
+		expectStatusIdle(api.getStatus());
+	});
+
+	it("remains operable after clearAll by allowing fresh navigation to complete", async () => {
+		const api = await loadClientAPI();
+		const { navigationStateManager } = await import("../../client.ts");
+		const firstFetchCall = createDeferredFetchCall();
+		vi.spyOn(window, "fetch")
+			.mockImplementationOnce(firstFetchCall.mock)
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					title: { dangerousInnerHTML: "Post-Clear Navigation" },
+				}),
+			);
+
+		const staleNavigation = api.vormaNavigate("/clear-all-stale");
+		await vi.advanceTimersByTimeAsync(8);
+
+		navigationStateManager.clearAll();
+		expect(firstFetchCall.getSignal()?.aborted).toBe(true);
+
+		firstFetchCall.deferred.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Should Not Apply" },
+			}),
+		);
+		await staleNavigation;
+		await vi.runAllTimersAsync();
+
+		await api.vormaNavigate("/clear-all-fresh");
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/clear-all-fresh");
+		expect(document.title).toBe("Post-Clear Navigation");
+		expectStatusIdle(api.getStatus());
 	});
 
 	it("deduplicates concurrent prefetch starts for the same URL", async () => {

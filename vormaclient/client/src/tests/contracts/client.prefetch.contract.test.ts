@@ -128,6 +128,29 @@ describe("client prefetch contracts", () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it("deduplicates identical prefetches for the same href", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const aHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-identical",
+			delayMs: 0,
+		});
+		const bHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-identical",
+			delayMs: 0,
+		});
+
+		aHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		bHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it("aborts a hash-deduped shared prefetch when stop is called from either handler", async () => {
 		const api = await loadClientAPI();
 		const { fetchSpy, signals } = createSignalCapturingNeverFetchSpy();

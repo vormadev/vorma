@@ -76,7 +76,10 @@ func buildClient() {
 		Splitting:   true,
 		Write:       true,
 		Bundle:      true,
-		EntryPoints: []string{"./vormaclient/client/index.ts"},
+		EntryPoints: []string{
+			"./vormaclient/client/index.ts",
+			"./vormaclient/client/buildtime.ts",
+		},
 		External: []string{
 			"vorma",
 		},

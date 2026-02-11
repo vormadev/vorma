@@ -113,6 +113,24 @@ func (c *Ctx) NativeContext() context.Context {
 	return c.ctx
 }
 
+// WithNativeContext returns a child Ctx that shares the same task cache as c
+// but uses the provided native context for cancellation/deadline semantics.
+func (c *Ctx) WithNativeContext(native context.Context) *Ctx {
+	if c == nil {
+		return NewCtx(native)
+	}
+	if native == nil {
+		native = context.Background()
+	}
+	return &Ctx{
+		mu:          c.mu,
+		results:     c.results,
+		ctx:         native,
+		ttl:         c.ttl,
+		lastCleanup: c.lastCleanup,
+	}
+}
+
 func (c *Ctx) RunParallel(tasks ...BoundTask) error {
 	return runTasks(c, tasks...)
 }

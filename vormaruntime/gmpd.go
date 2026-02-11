@@ -1,10 +1,13 @@
 package vormaruntime
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
@@ -76,13 +79,11 @@ func (v *Vorma) getRouteDataStage1(
 	r *http.Request,
 	nestedRouter *mux.NestedRouter,
 ) *RouteResult {
-	realPath := matcher.StripTrailingSlash(r.URL.Path)
-	if realPath == "" {
-		realPath = "/"
-	}
+	v.mu.RLock()
 
 	matchResults, found := mux.FindNestedMatches(nestedRouter, r)
 	if !found {
+		v.mu.RUnlock()
 		return &RouteResult{notFound: true}
 	}
 
@@ -92,17 +93,10 @@ func (v *Vorma) getRouteDataStage1(
 		matchedPatterns[i] = match.OriginalPattern()
 	}
 
-	// Cache key generation based on normalized patterns
-	var sb strings.Builder
-	var growSize int
-	for _, match := range matches {
-		growSize += len(match.NormalizedPattern())
-	}
-	sb.Grow(growSize)
-	for _, match := range matches {
-		sb.WriteString(match.NormalizedPattern())
-	}
-	cacheKey := sb.String()
+	// Cache key generation based on normalized patterns captured under read lock.
+	isDev := v._isDev
+	buildID := v._buildID
+	cacheKey := v.buildRouteDataCacheKey(matches, isDev, buildID)
 
 	var cached *cachedItemSubset
 	cachedValue, isCached := gmpdCache.Load(cacheKey)
@@ -110,10 +104,8 @@ func (v *Vorma) getRouteDataStage1(
 	if isCached {
 		cached = cachedValue.(*cachedItemSubset)
 	} else {
-		// Cache Miss: Perform expensive path lookups and dependency graph traversal
-		paths := v.GetPathsSnapshot()
-		isDev := v.GetIsDevMode()
-
+		// Cache Miss: Perform path lookups and dependency resolution against the
+		// same locked snapshot used for match/build metadata.
 		cached = &cachedItemSubset{
 			ImportURLs:      make([]string, 0, len(matches)),
 			ExportKeys:      make([]string, 0, len(matches)),
@@ -121,7 +113,7 @@ func (v *Vorma) getRouteDataStage1(
 		}
 
 		for _, path := range matches {
-			foundPath := paths[path.OriginalPattern()]
+			foundPath := v._paths[path.OriginalPattern()]
 			if foundPath == nil || foundPath.SrcPath == "" {
 				cached.ImportURLs = append(cached.ImportURLs, "")
 				cached.ExportKeys = append(cached.ExportKeys, "")
@@ -137,11 +129,11 @@ func (v *Vorma) getRouteDataStage1(
 			cached.ErrorExportKeys = append(cached.ErrorExportKeys, foundPath.ErrorExportKey)
 		}
 
-		// Expensive dependency graph traversal
-		cached.Deps = v.getDepsFromSnapshot(matches, paths)
+		cached.Deps = getDepsFromData(matches, v._paths, v._clientEntryDeps)
 
 		gmpdCache.Store(cacheKey, cached)
 	}
+	v.mu.RUnlock()
 
 	tasksResults := mux.RunNestedTasks(nestedRouter, r, matchResults)
 
@@ -215,7 +207,8 @@ func (v *Vorma) getRouteDataStage1(
 		var clientMsg string
 		var errToLog error
 
-		if loaderErr, ok := err.(LoaderErrorMarker); ok {
+		var loaderErr LoaderErrorMarker
+		if errors.As(err, &loaderErr) {
 			clientMsg = loaderErr.ClientMessage()
 			errToLog = loaderErr.ServerError()
 		} else {
@@ -274,6 +267,31 @@ func (v *Vorma) getRouteDataStage1(
 		},
 		headElements: headEls,
 	}
+}
+
+func (v *Vorma) buildRouteDataCacheKey(matches []*matcher.Match, isDev bool, buildID string) string {
+	var sb strings.Builder
+	// Include app identity + mode + build to prevent cross-app/mode/build cache leakage.
+	sb.Grow(32 + len(buildID) + (len(matches) * 16))
+
+	var ptrBuf [20]byte
+	ptrBytes := strconv.AppendUint(ptrBuf[:0], uint64(uintptr(unsafe.Pointer(v))), 16)
+	sb.Write(ptrBytes)
+	sb.WriteByte('|')
+
+	if isDev {
+		sb.WriteByte('1')
+	} else {
+		sb.WriteByte('0')
+	}
+	sb.WriteByte('|')
+	sb.WriteString(buildID)
+	sb.WriteByte('|')
+	for _, match := range matches {
+		sb.WriteString(match.NormalizedPattern())
+		sb.WriteByte(';')
+	}
+	return sb.String()
 }
 
 func (v *Vorma) getUIRouteData(
@@ -341,7 +359,7 @@ func (v *Vorma) getUIRouteData(
 		}
 	}
 
-	headEls := headElsInstance.ToSortedAndPreEscapedHeadEls(hb)
+	headEls := v.headElsInst.ToSortedAndPreEscapedHeadEls(hb)
 
 	return &RouteResult{
 		core: routeResult.core,

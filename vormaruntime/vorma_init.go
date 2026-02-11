@@ -83,13 +83,16 @@ func (v *Vorma) initInner(isDev bool) error {
 		return fmt.Errorf("error parsing root template: %w", err)
 	}
 	v._rootTemplate = tmpl
+	if v.headElsInst == nil {
+		v.headElsInst = headels.NewInstance("vorma")
+	}
 
 	if v.getHeadDedupeKeys != nil {
 		headEls := headels.New()
 		v.getHeadDedupeKeys(headEls)
-		headElsInstance.InitUniqueRules(headEls)
+		v.headElsInst.InitUniqueRules(headEls)
 	} else {
-		headElsInstance.InitUniqueRules(nil)
+		v.headElsInst.InitUniqueRules(nil)
 	}
 
 	v._serverAddr = fmt.Sprintf(":%d", v.MustGetPort())

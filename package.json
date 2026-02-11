@@ -31,6 +31,10 @@
 			"import": "./npm_dist/vormaclient/client/index.js",
 			"types": "./npm_dist/vormaclient/client/index.d.ts"
 		},
+		"./buildtime": {
+			"import": "./npm_dist/vormaclient/client/buildtime.js",
+			"types": "./npm_dist/vormaclient/client/buildtime.d.ts"
+		},
 		"./react": {
 			"import": "./npm_dist/vormaclient/react/index.js",
 			"types": "./npm_dist/vormaclient/react/index.d.ts"
@@ -116,6 +120,7 @@
 		"@types/react": "^19.2.8",
 		"@types/react-dom": "^19.2.3",
 		"@typescript/native-preview": "7.0.0-dev.20250716.1",
+		"@vitest/coverage-v8": "^4.0.18",
 		"esbuild": "^0.25.12",
 		"esbuild-plugin-solid": "^0.6.0",
 		"history": "5.3.0",
@@ -128,7 +133,7 @@
 		"solid-js": "^1.9.10",
 		"typescript": "^5.9.3",
 		"vite": "npm:rolldown-vite@latest",
-		"vitest": "^3.2.4"
+		"vitest": "^4.0.18"
 	},
 	"prettier": {
 		"useTabs": true,

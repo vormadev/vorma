@@ -18,14 +18,20 @@ const VormaBuildIDHeaderKey = "X-Vorma-Build-Id"
 const VormaJSONQueryKey = "vorma_json"
 
 const (
-	// DevReloadRoutesPath is the endpoint for reloading routes from disk.
+	// Dev_ReloadRoutesPath is the endpoint for reloading routes from disk.
 	// Called by Wave after Process A has regenerated route artifacts.
-	DevReloadRoutesPath = "/__vorma/reload-routes"
-	// DevReloadTemplatePath is the endpoint for reloading the HTML template.
-	DevReloadTemplatePath = "/__vorma/reload-template"
+	Dev_ReloadRoutesPath = "/__vorma/reload-routes"
+	// Dev_ReloadTemplatePath is the endpoint for reloading the HTML template.
+	Dev_ReloadTemplatePath = "/__vorma/reload-template"
+
+	// Backward-compatibility aliases. Prefer Dev_*-prefixed names.
+	DevReloadRoutesPath   = Dev_ReloadRoutesPath
+	DevReloadTemplatePath = Dev_ReloadTemplatePath
 )
 
-var headElsInstance = headels.NewInstance("vorma")
+// legacyHeadElsInstance preserves the package-level accessor behavior.
+// Runtime internals use app-scoped instances to avoid cross-app rule leakage.
+var legacyHeadElsInstance = headels.NewInstance("vorma")
 
 func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
 	v.validateAndDecorateNestedRouter(nestedRouter)
@@ -33,8 +39,8 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 	return mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Dev-only fast reload endpoints
 		if v.GetIsDevMode() {
-			if r.URL.Path == DevReloadRoutesPath {
-				if err := v.ReloadRoutesFromDisk(); err != nil {
+			if r.URL.Path == Dev_ReloadRoutesPath {
+				if err := v.devReloadRoutesFromDisk(); err != nil {
 					v.Log.Error(fmt.Sprintf("route reload failed: %s", err))
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -42,8 +48,8 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 				w.Write([]byte("ok"))
 				return
 			}
-			if r.URL.Path == DevReloadTemplatePath {
-				if err := v.ReloadTemplateFromDisk(); err != nil {
+			if r.URL.Path == Dev_ReloadTemplatePath {
+				if err := v.devReloadTemplateFromDisk(); err != nil {
 					v.Log.Error(fmt.Sprintf("template reload failed: %s", err))
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -57,10 +63,12 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		res := response.New(w)
 		res.SetHeader(VormaBuildIDHeaderKey, buildID)
 
-		isJSON := IsJSONRequest(r)
-		if isJSON && !v.IsCurrentBuildJSONRequest(r) {
+		query := r.URL.Query()
+		requestedBuildID := query.Get(VormaJSONQueryKey)
+		isJSON := requestedBuildID != ""
+		if isJSON && requestedBuildID != buildID {
 			newURL := *r.URL
-			q := newURL.Query()
+			q := query
 			q.Del(VormaJSONQueryKey)
 			newURL.RawQuery = q.Encode()
 			res.SetHeader("X-Vorma-Reload", newURL.String())
@@ -108,7 +116,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		var headElements template.HTML
 
 		eg.Go(func() error {
-			he, err := headElsInstance.Render(routeResult.assets.SortedAndPreEscapedHeadEls)
+			he, err := v.headElsInst.Render(routeResult.assets.SortedAndPreEscapedHeadEls)
 			if err != nil {
 				return fmt.Errorf("error getting head elements: %w", err)
 			}
@@ -208,5 +216,5 @@ func (v *Vorma) GetActionsHandler(router *mux.Router) mux.TasksCtxRequirerFunc {
 }
 
 func GetHeadElsInstance() *headels.Instance {
-	return headElsInstance
+	return legacyHeadElsInstance
 }

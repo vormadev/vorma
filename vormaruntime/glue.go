@@ -97,7 +97,7 @@ func newActionsRouter(options ...ActionsRouterOptions) *ActionsRouter {
 					}
 					return validate.JSONBodyInto(r, iPtr)
 				}
-				return errors.New("unsupported method")
+				return &validate.ValidationError{Err: errors.New("unsupported method")}
 			},
 		}),
 		supportedMethods: supportedMethods,
@@ -170,6 +170,7 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v._extraTSCode = o.ExtraTSCode
 	v.loadersRouter = newLoadersRouter(o.LoadersRouterOptions)
 	v.actionsRouter = newActionsRouter(o.ActionsRouterOptions)
+	v.headElsInst = headels.NewInstance("vorma")
 
 	return &v
 }
@@ -220,7 +221,15 @@ func (h *Actions) Handler() http.Handler {
 	return h.vorma.GetActionsHandler(h.vorma.ActionsRouter().Router)
 }
 func (h *Actions) SupportedMethods() map[string]bool {
-	return h.vorma.ActionsRouter().supportedMethods
+	original := h.vorma.ActionsRouter().supportedMethods
+	if original == nil {
+		return nil
+	}
+	clone := make(map[string]bool, len(original))
+	for method, supported := range original {
+		clone[method] = supported
+	}
+	return clone
 }
 
 type Route[I any, O any] = mux.Route[I, O]

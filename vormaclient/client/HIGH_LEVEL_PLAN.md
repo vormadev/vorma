@@ -8,7 +8,7 @@ does not drift.
 - Maintainable client runtime with clear module boundaries and no accidental
   behavior regressions.
 - Strict first-principles contract suite is the source of truth.
-- Legacy suites removed only after explicit signoff.
+- Legacy suites removed immediately once explicit signoff is completed.
 
 ## Sequence
 
@@ -19,10 +19,12 @@ does not drift.
 - [x]   2. Add navigation model/state-machine tests
     - Add sequence-driven invariants over `navigate/prefetch/revalidate/submit`.
     - Prioritize order/race-sensitive regressions.
-- [ ]   3. Expand race-focused regressions (**YOU ARE HERE**)
+- [x]   3. Expand race-focused regressions
     - Cover stale/aborted resolution classes and server/client payload mismatch
       classes comprehensively.
-- [ ]   4. Continue aggressive internal refactor cleanup
+- [ ]   4. Continue aggressive internal refactor cleanup (**YOU ARE HERE**)
+    - 2026-02-11 update: gap hardening pass for helper exports, HMR init hooks,
+      and progressive manifest loading is now in place.
     - Reduce complexity and fragmentation while keeping behavior pinned by
       tests.
 
@@ -31,5 +33,4 @@ does not drift.
 - If strict test fails and behavior is objectively incorrect, fix source code.
 - Do not weaken tests to mirror suspicious implementation quirks.
 - Ask the user immediately only for truly ambiguous product behavior.
-- Keep legacy tests in-tree with `READY_TO_DELETE_AFTER_SIGNOFF` until explicit
-  deletion signoff.
+- Legacy suites are now removed; do not reintroduce mirrored legacy tests.
