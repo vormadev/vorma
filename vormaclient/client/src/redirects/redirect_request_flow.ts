@@ -15,7 +15,6 @@ export type RedirectRequestFlowResult =
 	| {
 			kind: "ok";
 			response: Response;
-			requestInit: RequestInit;
 	  };
 
 export async function executeRedirectRequestFlow(
@@ -38,6 +37,5 @@ export async function executeRedirectRequestFlow(
 	return {
 		kind: "ok",
 		response,
-		requestInit,
 	};
 }

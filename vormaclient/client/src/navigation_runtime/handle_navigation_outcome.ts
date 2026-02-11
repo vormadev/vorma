@@ -23,15 +23,15 @@ export async function handleNavigationOutcome(
 	props: NavigateProps,
 	outcome: NavigationOutcome,
 ): Promise<{ didNavigate: boolean }> {
+	const targetUrl = resolveNavigationTargetURL(props.href);
+
 	switch (outcome.type) {
 		case "aborted": {
-			const targetUrl = resolveNavigationTargetURL(props.href);
 			context.deleteNavigation(targetUrl);
 			return { didNavigate: false };
 		}
 
 		case "redirect": {
-			const targetUrl = resolveNavigationTargetURL(props.href);
 			const entry = context.findNavigationEntry(targetUrl);
 			if (!entry) {
 				return { didNavigate: false };
@@ -65,7 +65,6 @@ export async function handleNavigationOutcome(
 		}
 
 		case "success": {
-			const targetUrl = resolveNavigationTargetURL(props.href);
 			const entry = context.findNavigationEntry(targetUrl);
 			if (!entry) {
 				return { didNavigate: false };

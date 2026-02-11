@@ -17,33 +17,59 @@ type CreateEntryOptions = {
 	onFetchError: (error: unknown) => void;
 };
 
-export function createActiveNavigationEntry(
-	options: CreateEntryOptions & {
-		intent: NavigationIntent;
-	},
-): NavigationEntry {
-	const { props, fetchRouteData, onFetchError, intent } = options;
-	const controller = new AbortController();
-	const targetUrl = resolveNavigationTargetURL(props.href);
+function createEntryControl(options: CreateEntryOptions): {
+	abortController: AbortController;
+	promise: Promise<NavigationOutcome>;
+} {
+	const { props, fetchRouteData, onFetchError } = options;
+	const abortController = new AbortController();
 
 	return {
-		control: {
-			abortController: controller,
-			promise: fetchRouteData(controller, props).catch((error) => {
-				onFetchError(error);
-				throw error;
-			}),
-		},
-		type: props.navigationType,
+		abortController,
+		promise: fetchRouteData(abortController, props).catch((error) => {
+			onFetchError(error);
+			throw error;
+		}),
+	};
+}
+
+function createNavigationEntry(props: {
+	options: CreateEntryOptions;
+	type: NavigationEntry["type"];
+	intent: NavigationIntent;
+	targetUrl: string;
+}): NavigationEntry {
+	const { options, type, intent, targetUrl } = props;
+	const control = createEntryControl(options);
+
+	return {
+		control,
+		type,
 		intent,
 		phase: "fetching",
 		startTime: Date.now(),
 		targetUrl,
 		originUrl: window.location.href,
-		scrollToTop: props.scrollToTop,
-		replace: props.replace,
-		state: props.state,
+		scrollToTop: options.props.scrollToTop,
+		replace: options.props.replace,
+		state: options.props.state,
 	};
+}
+
+export function createActiveNavigationEntry(
+	options: CreateEntryOptions & {
+		intent: NavigationIntent;
+	},
+): NavigationEntry {
+	const { props, intent } = options;
+	const targetUrl = resolveNavigationTargetURL(props.href);
+
+	return createNavigationEntry({
+		options,
+		type: props.navigationType,
+		intent,
+		targetUrl,
+	});
 }
 
 export function createPrefetchNavigationEntry(
@@ -51,52 +77,26 @@ export function createPrefetchNavigationEntry(
 		targetUrl: string;
 	},
 ): NavigationEntry {
-	const { props, fetchRouteData, onFetchError, targetUrl } = options;
-	const controller = new AbortController();
+	const { targetUrl } = options;
 
-	return {
-		control: {
-			abortController: controller,
-			promise: fetchRouteData(controller, props).catch((error) => {
-				onFetchError(error);
-				throw error;
-			}),
-		},
+	return createNavigationEntry({
+		options,
 		type: "prefetch",
 		intent: "none",
-		phase: "fetching",
-		startTime: Date.now(),
 		targetUrl,
-		originUrl: window.location.href,
-		scrollToTop: props.scrollToTop,
-		replace: props.replace,
-		state: props.state,
-	};
+	});
 }
 
 export function createRevalidationNavigationEntry(
 	options: CreateEntryOptions,
 ): NavigationEntry {
-	const { props, fetchRouteData, onFetchError } = options;
-	const controller = new AbortController();
+	const { props } = options;
 	const targetUrl = resolveNavigationTargetURL(props.href);
 
-	return {
-		control: {
-			abortController: controller,
-			promise: fetchRouteData(controller, props).catch((error) => {
-				onFetchError(error);
-				throw error;
-			}),
-		},
+	return createNavigationEntry({
+		options,
 		type: "revalidation",
 		intent: "revalidate",
-		phase: "fetching",
-		startTime: Date.now(),
 		targetUrl,
-		originUrl: window.location.href,
-		scrollToTop: props.scrollToTop,
-		replace: props.replace,
-		state: props.state,
-	};
+	});
 }

@@ -859,6 +859,49 @@
 - Added `pnpm tsc --noEmit --project ./vormaclient/client` to the active
   validation gate alongside `tsgo`.
 
+92. Extracted client-loader work-item assembly helper
+
+- Added `src/client_loader_work_items.ts`.
+- Moved client-loader work-item assembly (promise/controller construction,
+  server-error skipping, running-loader reuse, and abort signal wiring) out of
+  `src/client_loader_execution.ts` into `buildClientLoaderWorkItems(...)`.
+- `src/client_loader_execution.ts` now focuses on high-level orchestration
+  (component preloading, wrapping, settling, and result projection).
+
+93. Extracted redirect should-data helper
+
+- Added `src/redirects/redirect_should_data.ts`.
+- Moved redirect strategy derivation + `status: "should"` payload assembly out
+  of `src/redirects/redirect_response_parsing.ts` into
+  `getRedirectStrategy(...)` and `buildShouldRedirectData(...)`.
+- `src/redirects/redirect_response_parsing.ts` now focuses on response-source
+  parsing (`X-Vorma-Reload`, native redirect, and `X-Client-Redirect`).
+
+94. Deduplicated navigation entry/control construction
+
+- Refactored `src/navigation_runtime/navigation_entry_factory.ts` to centralize
+  shared entry-control creation in `createEntryControl(...)` and
+  `createNavigationEntry(...)`.
+- Removed repeated abort-controller + promise + metadata assembly across active,
+  prefetch, and revalidation entry constructors.
+- Preserved existing entry-type/intent/target-url semantics while reducing
+  duplication in the factory.
+
+95. Simplified navigation-outcome target URL handling
+
+- Refactored `src/navigation_runtime/handle_navigation_outcome.ts` to compute
+  resolved target URL once per outcome handling call.
+- Removed repeated per-branch target URL normalization while preserving all
+  aborted/redirect/success branch behavior.
+
+96. Removed no-value internal facades
+
+- Deleted `src/navigation_runtime/manager.ts` (unused compatibility adapter over
+  `createNavigationRuntime(...)`).
+- Simplified redirect parsing flow by removing unused request-init passthrough
+  in `src/redirects/redirects.ts` and `src/redirects/redirect_request_flow.ts`.
+- Kept public API shape unchanged while reducing internal wrapper cruft.
+
 ## Verification
 
 - `pnpm oxlint vormaclient/client/src`
@@ -966,6 +1009,8 @@
 - Redirect request-init + response parsing are isolated in
   `src/redirects/redirect_request_init.ts` and
   `src/redirects/redirect_response_parsing.ts`.
+- Redirect `status: "should"` payload assembly is isolated in
+  `src/redirects/redirect_should_data.ts`.
 - Redirect target URL + HTTP href-details parsing is isolated in
   `src/redirects/redirect_href_resolution.ts`.
 - Redirect request-flow orchestration is isolated in
@@ -973,8 +1018,9 @@
 - Redirect effectuation + cleanup are isolated in
   `src/redirects/redirect_effectuation.ts`.
 - Client-loader execution helper modules are isolated in
-  `src/client_loader_execution.ts`, `src/client_loader_promise_wrapping.ts`, and
-  `src/client_loader_result_processing.ts`.
+  `src/client_loader_execution.ts`, `src/client_loader_promise_wrapping.ts`,
+  `src/client_loader_result_processing.ts`, and
+  `src/client_loader_work_items.ts`.
 - Client-loader state mutation helpers are isolated in
   `src/client_loader_state.ts`.
 - Client-loader partial-match lookup is isolated in
@@ -1042,20 +1088,21 @@
   `src/vorma_app_helpers/path_resolution.ts`,
   `src/vorma_app_helpers/url_build.ts`, and
   `src/vorma_app_helpers/body_resolution.ts`.
-- `src/navigation_runtime/manager.ts` is now a thin adapter over runtime
-  composition.
+- Navigation runtime now uses `createNavigationRuntime(...)` directly without an
+  intermediate manager adapter module.
 - Strict contract suite remains green.
 - Legacy migration/parity ledgers remain in place and unchanged in policy.
 
 ## Next High-Leverage Steps
 
-1. Keep `src/navigation_runtime/manager.ts` as compatibility-only surface while
-   internal code paths use `createNavigationRuntime(...)` directly.
-2. Continue decomposition only where it materially improves cohesion in
+1. Continue decomposition only where it materially improves cohesion in
    medium-sized modules (`runtime.ts`, `runtime_api.ts`, `links.ts`,
    `redirects.ts`, `client_loaders.ts`, `init_client.ts`, `history.ts`) without
    changing semantics.
-3. Continue running both suites after every structural slice.
+2. Continue removing no-value facades (single-call wrappers / pass-through
+   adapters) when not required for public API compatibility.
+3. Continue running the full client validation gate after every structural
+   slice.
 
 ## Safe Takeover Notes
 
@@ -1063,6 +1110,9 @@
 - Treat `src/contracts/` as the authoritative behavior gate.
 - Preserve public exports in `index.ts` and public type exports in
   `src/client.ts`.
-- Run both suites after each slice:
+- Run the full gate after each slice:
+    - `pnpm oxlint vormaclient/client/src`
+    - `pnpm tsc --noEmit --project ./vormaclient/client`
+    - `pnpm tsgo --noEmit --project ./vormaclient/client`
     - `pnpm vitest --run vormaclient/client/src/contracts`
     - `pnpm vitest --run vormaclient/client/src`

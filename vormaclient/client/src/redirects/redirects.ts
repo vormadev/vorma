@@ -24,10 +24,7 @@ export function getBuildIDFromResponse(response: Response | undefined) {
 	return response?.headers.get("X-Vorma-Build-Id") || "";
 }
 
-export function parseFetchResponseForRedirectData(
-	_reqInit: RequestInit,
-	res: Response,
-): RedirectData | null {
+function parseFetchResponseForRedirectData(res: Response): RedirectData | null {
 	const latestBuildID = getBuildIDFromResponse(res);
 	return parseResponseForRedirectData(res, latestBuildID);
 }
@@ -75,7 +72,6 @@ export async function handleRedirects(props: {
 	}
 
 	const redirectData = parseFetchResponseForRedirectData(
-		requestFlow.requestInit,
 		requestFlow.response,
 	);
 	return { redirectData, response: requestFlow.response };

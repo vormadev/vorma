@@ -1,5 +1,6 @@
 import type { RedirectData } from "./redirects.ts";
 import { resolveHTTPRedirectTarget } from "./redirect_href_resolution.ts";
+import { buildShouldRedirectData as buildRedirectShouldData } from "./redirect_should_data.ts";
 
 function buildShouldRedirectData(
 	href: string,
@@ -13,11 +14,12 @@ function buildShouldRedirectData(
 	const { hrefDetails } = resolvedTarget;
 
 	return {
-		hrefDetails,
-		status: "should",
-		href,
-		shouldRedirectStrategy,
-		latestBuildID,
+		...buildRedirectShouldData({
+			href,
+			hrefDetails,
+			latestBuildID,
+			shouldRedirectStrategy,
+		}),
 	};
 }
 
@@ -52,13 +54,11 @@ function parseBrowserRedirect(
 		return { hrefDetails, status: "did", href: newURL.href };
 	}
 
-	return {
-		hrefDetails,
-		status: "should",
+	return buildRedirectShouldData({
 		href: newURL.href,
-		shouldRedirectStrategy: hrefDetails.isInternal ? "soft" : "hard",
+		hrefDetails,
 		latestBuildID,
-	};
+	});
 }
 
 function parseClientRedirectHeader(
@@ -76,13 +76,11 @@ function parseClientRedirectHeader(
 	}
 	const { hrefDetails } = resolvedTarget;
 
-	return {
-		hrefDetails,
-		status: "should",
+	return buildRedirectShouldData({
 		href: hrefDetails.absoluteURL,
-		shouldRedirectStrategy: hrefDetails.isInternal ? "soft" : "hard",
+		hrefDetails,
 		latestBuildID,
-	};
+	});
 }
 
 export function parseResponseForRedirectData(
