@@ -1,4 +1,5 @@
 import { handleNavigationOutcome } from "./handle_navigation_outcome.ts";
+import { resolveNavigationTargetURL } from "./target_url.ts";
 import type {
 	NavigateProps,
 	NavigationControl,
@@ -27,7 +28,7 @@ export function beginNavigationWithHandlers(
 	handlers: BeginNavigationHandlers,
 	props: NavigateProps,
 ): NavigationControl {
-	const targetUrl = new URL(props.href, window.location.href).href;
+	const targetUrl = resolveNavigationTargetURL(props.href);
 
 	switch (props.navigationType) {
 		case "userNavigation":
@@ -75,7 +76,7 @@ export async function navigateWithHandlers(
 			outcome,
 		);
 	} catch {
-		const targetUrl = new URL(props.href, window.location.href).href;
+		const targetUrl = resolveNavigationTargetURL(props.href);
 		handlers.deleteNavigation(targetUrl);
 		return { didNavigate: false };
 	}

@@ -1,5 +1,6 @@
 import { createRevalidationNavigationEntry } from "./navigation_entry_factory.ts";
 import type { CreateNavigationControlsContext } from "./navigation_controls.ts";
+import { resolveNavigationTargetURL } from "./target_url.ts";
 import type { NavigateProps, NavigationControl } from "./types.ts";
 
 export function createRevalidationControl(
@@ -13,7 +14,7 @@ export function createRevalidationControl(
 		scheduleStatusUpdate,
 	} = context;
 
-	const targetUrl = new URL(props.href, window.location.href).href;
+	const targetUrl = resolveNavigationTargetURL(props.href);
 	const entry = createRevalidationNavigationEntry({
 		props,
 		fetchRouteData,

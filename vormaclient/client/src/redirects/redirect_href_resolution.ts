@@ -2,7 +2,7 @@ import { getHrefDetails, type HrefDetails } from "vorma/kit/url";
 
 export function resolveHTTPRedirectTarget(href: string): {
 	newURL: URL;
-	hrefDetails: HrefDetails;
+	hrefDetails: Extract<HrefDetails, { isHTTP: true }>;
 } | null {
 	const newURL = new URL(href, window.location.href);
 	const hrefDetails = getHrefDetails(newURL.href);

@@ -1,6 +1,7 @@
 import { dispatchBuildIDEvent } from "../events.ts";
 import { effectuateRedirectDataResult } from "../redirects/redirects.ts";
 import { __vormaClientGlobal } from "../vorma_ctx/vorma_ctx.ts";
+import { resolveNavigationTargetURL } from "./target_url.ts";
 import type {
 	NavigateProps,
 	NavigationEntry,
@@ -24,13 +25,13 @@ export async function handleNavigationOutcome(
 ): Promise<{ didNavigate: boolean }> {
 	switch (outcome.type) {
 		case "aborted": {
-			const targetUrl = new URL(props.href, window.location.href).href;
+			const targetUrl = resolveNavigationTargetURL(props.href);
 			context.deleteNavigation(targetUrl);
 			return { didNavigate: false };
 		}
 
 		case "redirect": {
-			const targetUrl = new URL(props.href, window.location.href).href;
+			const targetUrl = resolveNavigationTargetURL(props.href);
 			const entry = context.findNavigationEntry(targetUrl);
 			if (!entry) {
 				return { didNavigate: false };
@@ -64,7 +65,7 @@ export async function handleNavigationOutcome(
 		}
 
 		case "success": {
-			const targetUrl = new URL(props.href, window.location.href).href;
+			const targetUrl = resolveNavigationTargetURL(props.href);
 			const entry = context.findNavigationEntry(targetUrl);
 			if (!entry) {
 				return { didNavigate: false };

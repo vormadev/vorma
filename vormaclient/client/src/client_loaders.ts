@@ -1,5 +1,4 @@
 import { registerPattern } from "vorma/kit/matcher/register";
-import { getEffectiveErrorData } from "./component_loader_error_data.ts";
 import {
 	executeClientLoaders,
 	type ClientLoadersResult,
@@ -7,31 +6,20 @@ import {
 } from "./client_loader_execution.ts";
 import { buildClientLoaderSnapshotFromGlobal } from "./client_loader_snapshot.ts";
 import { findClientLoaderPartialMatches } from "./client_loader_partial_matches.ts";
+import {
+	deriveAndSetErrorState,
+	setClientLoadersState,
+} from "./client_loader_state.ts";
 import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
 
 export type { ClientLoadersResult } from "./client_loader_execution.ts";
-
-export function setClientLoadersState(
-	clr: ClientLoadersResult | undefined,
-): void {
-	if (clr) {
-		__vormaClientGlobal.set("clientLoadersData", clr.data ?? []);
-		__vormaClientGlobal.set(
-			"outermostClientErrorIdx",
-			clr.errorMessage ? clr.data.length - 1 : undefined,
-		);
-		__vormaClientGlobal.set("outermostClientError", clr.errorMessage);
-	}
-}
-
-export function deriveAndSetErrorState(): void {
-	const effectiveErrData = getEffectiveErrorData();
-	__vormaClientGlobal.set("outermostErrorIdx", effectiveErrData.index);
-	__vormaClientGlobal.set("outermostError", effectiveErrData.error);
-}
+export {
+	deriveAndSetErrorState,
+	setClientLoadersState,
+} from "./client_loader_state.ts";
 
 export async function setupClientLoaders(): Promise<void> {
-	const clientLoadersResult = await runWaitFns(
+	const clientLoadersResult = await executeClientLoaders(
 		buildClientLoaderSnapshotFromGlobal(),
 		__vormaClientGlobal.get("buildID"),
 		new AbortController().signal,
@@ -58,14 +46,6 @@ export async function findPartialMatchesOnClient(pathname: string) {
 		patternRegistry: __vormaClientGlobal.get("patternRegistry"),
 		patternToWaitFnMap: __vormaClientGlobal.get("patternToWaitFnMap"),
 	});
-}
-
-async function runWaitFns(
-	json: PartialWaitFnJSON,
-	buildID: string,
-	signal: AbortSignal,
-): Promise<ClientLoadersResult> {
-	return executeClientLoaders(json, buildID, signal);
 }
 
 export async function completeClientLoaders(

@@ -1,5 +1,6 @@
 import { createActiveNavigationEntry } from "./navigation_entry_factory.ts";
 import type { CreateNavigationControlsContext } from "./navigation_controls.ts";
+import { resolveNavigationTargetURL } from "./target_url.ts";
 import type {
 	NavigateProps,
 	NavigationControl,
@@ -18,7 +19,7 @@ export function createActiveNavigationControl(
 		deleteNavigation,
 	} = context;
 
-	const targetUrl = new URL(props.href, window.location.href).href;
+	const targetUrl = resolveNavigationTargetURL(props.href);
 	const entry = createActiveNavigationEntry({
 		props,
 		intent,

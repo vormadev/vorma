@@ -359,6 +359,9 @@ describe("client history/init contracts", () => {
 
 		const activeComponents =
 			api.__vormaClientGlobal.get("activeComponents");
+		if (!activeComponents) {
+			throw new Error("Expected activeComponents to be initialized");
+		}
 		expect(activeComponents).toHaveLength(1);
 		expect(activeComponents[0]).toBe(initialComponent);
 	});

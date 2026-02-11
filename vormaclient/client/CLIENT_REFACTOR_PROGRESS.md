@@ -745,8 +745,128 @@
 - `src/navigation_runtime/runtime_api.ts` now delegates operation wiring and
   remains focused on bookkeeping adapter + surface composition.
 
+80. Extracted skip-server-fetch eligibility helper
+
+- Added `src/navigation_runtime/skip_server_fetch_eligibility.ts`.
+- Moved skip eligibility/change-detection logic out of
+  `src/navigation_runtime/skip_server_fetch_rules.ts` into
+  `isSkipEligibilityViolated(...)`.
+- `src/navigation_runtime/skip_server_fetch_rules.ts` now focuses on skip-result
+  construction and re-exports eligibility checks for compatibility.
+
+81. Extracted runtime target-url normalization helper
+
+- Added `src/navigation_runtime/target_url.ts`.
+- Moved repeated navigation target URL normalization
+  (`new URL(props.href, window.location.href).href`) from runtime modules into
+  `resolveNavigationTargetURL(...)`.
+- Updated runtime modules to consume the shared helper:
+  `src/navigation_runtime/handle_navigation_outcome.ts`,
+  `src/navigation_runtime/navigation_control_revalidation.ts`,
+  `src/navigation_runtime/navigation_entry_factory.ts`,
+  `src/navigation_runtime/navigation_control_active.ts`, and
+  `src/navigation_runtime/navigate.ts`.
+
+82. Extracted client-loader execution helpers
+
+- Added `src/client_loader_promise_wrapping.ts`.
+- Added `src/client_loader_result_processing.ts`.
+- Moved child-aborting loader promise wrapper logic out of
+  `src/client_loader_execution.ts` into `wrapLoaderPromisesWithChildAbort(...)`.
+- Moved settled loader result processing + first-error selection out of
+  `src/client_loader_execution.ts` into
+  `processSettledClientLoaderResults(...)`.
+- `src/client_loader_execution.ts` now focuses on loader orchestration and
+  delegates wrapping/result handling details.
+
+83. Extracted prefetch navigation manager helper
+
+- Added `src/link_prefetch_navigation.ts`.
+- Moved prefetch navigation start wiring out of `src/link_prefetch_handlers.ts`
+  into `startPrefetchNavigation(...)`.
+- Moved idle-prefetch abort/remove logic out of `src/link_prefetch_handlers.ts`
+  into `abortIdlePrefetchNavigation(...)`.
+- `src/link_prefetch_handlers.ts` now focuses on event/timer orchestration and
+  reuses a single computed prefetch target href per handler instance.
+
+84. Extracted client-loader state mutation helper
+
+- Added `src/client_loader_state.ts`.
+- Moved client-loader global-state writes out of `src/client_loaders.ts` into
+  `setClientLoadersState(...)` and `deriveAndSetErrorState(...)`.
+- `src/client_loaders.ts` now focuses on loader execution flow + matcher
+  integration and re-exports state helper functions for compatibility.
+
+85. Simplified client-loader setup flow wiring
+
+- Removed the single-use `runWaitFns(...)` indirection from
+  `src/client_loaders.ts`.
+- `setupClientLoaders(...)` now delegates directly to
+  `executeClientLoaders(...)` while preserving behavior.
+
+86. Extracted prefetch click-path helper
+
+- Added `src/link_prefetch_click.ts`.
+- Moved prefetch click-path eligibility checks, hash-only fast path, callback
+  sequencing, and navigation invocation out of `src/link_prefetch_handlers.ts`
+  into `handlePrefetchClick(...)`.
+- `src/link_prefetch_handlers.ts` now focuses on prefetch timer/state
+  orchestration and delegates click-path behavior.
+
+87. Extracted shared prefetch callback types
+
+- Added `src/link_prefetch_callbacks.ts`.
+- Moved shared prefetch callback type definitions out of
+  `src/link_prefetch_handlers.ts` and `src/link_prefetch_click.ts` into
+  `LinkOnClickCallbacks`/`LinkOnClickCallback`.
+- Prefetch runtime modules now consume one callback-type source.
+
+88. Added oxlint gate and fixed outstanding warnings
+
+- Added `pnpm oxlint vormaclient/client/src` to the active validation gate for
+  each `vormaclient/client` refactor slice.
+- Enforced refactor scope as `vormaclient/client` only.
+
+89. Extracted skip-server-fetch result item helper
+
+- Added `src/navigation_runtime/skip_server_fetch_result_item.ts`.
+- Moved per-pattern skip-result item assembly out of
+  `src/navigation_runtime/skip_server_fetch_rules.ts` into
+  `buildSkipResultItem(...)`.
+- `src/navigation_runtime/skip_server_fetch_rules.ts` now focuses on ordered
+  match iteration + aggregate result construction.
+
+90. Added TypeScript gate and fixed client TS errors
+
+- Added `pnpm tsgo --noEmit --project ./vormaclient/client` to the active
+  validation gate for each refactor slice.
+- Added `src/import_meta.d.ts` so `ImportMeta.env`/`ImportMeta.hot` usages are
+  typed in the client package.
+- Fixed strict typing issues in client runtime/tests, including:
+  `src/navigation_runtime/submit.ts`,
+  `src/redirects/redirect_href_resolution.ts`,
+  `src/contracts/contract_test_harness.ts`,
+  `src/contracts/client.error_and_edge.contract.test.ts`, and
+  `src/contracts/client.history_and_init.contract.test.ts`.
+
+91. Fixed `resolveVormaRequestBody` strict `tsc` incompatibility
+
+- Updated `src/vorma_app_helpers/body_resolution.ts` to normalize
+  `ArrayBufferView<ArrayBufferLike>` values into `BodyInit`-compatible payloads
+  under strict DOM typings.
+- Added explicit handling for SharedArrayBuffer-backed views by cloning into an
+  ArrayBuffer-backed `Uint8Array`.
+- Added `pnpm tsc --noEmit --project ./vormaclient/client` to the active
+  validation gate alongside `tsgo`.
+
 ## Verification
 
+- `pnpm oxlint vormaclient/client/src`
+- Result: `0` warnings, `0` errors.
+- `pnpm tsgo --noEmit --project ./vormaclient/client`
+- Result: passing.
+- `pnpm tsc --noEmit --project ./vormaclient/client`
+- Result: passing.
 - `pnpm vitest --run vormaclient/client/src/contracts`
 - Result: `14` files, `156` tests, all passing.
 - `pnpm vitest --run vormaclient/client/src`
@@ -833,9 +953,15 @@
   `src/navigation_runtime/skip_server_fetch_types.ts`.
 - Skip-server-fetch rule grouping is isolated in
   `src/navigation_runtime/skip_server_fetch_rules.ts`.
+- Skip-server-fetch eligibility/change checks are isolated in
+  `src/navigation_runtime/skip_server_fetch_eligibility.ts`.
+- Skip-server-fetch per-match result-item assembly is isolated in
+  `src/navigation_runtime/skip_server_fetch_result_item.ts`.
 - Link-click outcome branching is isolated in `src/link_navigation_outcome.ts`.
 - Link-prefetch and hash-change behavior are isolated in
-  `src/link_prefetch_handlers.ts` and `src/link_hash_change.ts`.
+  `src/link_prefetch_handlers.ts`, `src/link_prefetch_navigation.ts`,
+  `src/link_prefetch_click.ts`, `src/link_prefetch_callbacks.ts`, and
+  `src/link_hash_change.ts`.
 - Link click-handler flow is isolated in `src/link_click_handler.ts`.
 - Redirect request-init + response parsing are isolated in
   `src/redirects/redirect_request_init.ts` and
@@ -846,8 +972,11 @@
   `src/redirects/redirect_request_flow.ts`.
 - Redirect effectuation + cleanup are isolated in
   `src/redirects/redirect_effectuation.ts`.
-- Client-loader execution internals are isolated in
-  `src/client_loader_execution.ts`.
+- Client-loader execution helper modules are isolated in
+  `src/client_loader_execution.ts`, `src/client_loader_promise_wrapping.ts`, and
+  `src/client_loader_result_processing.ts`.
+- Client-loader state mutation helpers are isolated in
+  `src/client_loader_state.ts`.
 - Client-loader partial-match lookup is isolated in
   `src/client_loader_partial_matches.ts`.
 - Client-loader global snapshot assembly is isolated in
@@ -869,6 +998,8 @@
   `src/navigation_runtime/runtime_operations.ts`.
 - Runtime begin/process/navigate operation wiring is isolated in
   `src/navigation_runtime/runtime_navigation_operations.ts`.
+- Runtime target URL normalization is isolated in
+  `src/navigation_runtime/target_url.ts`.
 - Runtime begin-context setup is isolated in
   `src/navigation_runtime/runtime_begin_context_setup.ts`.
 - Runtime API surface assembly is isolated in

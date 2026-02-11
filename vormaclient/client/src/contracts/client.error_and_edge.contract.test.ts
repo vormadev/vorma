@@ -177,17 +177,24 @@ describe("client error and edge contracts", () => {
 		window.history.replaceState({}, "", "/");
 
 		const revalidationDeferred = createDeferred<Response>();
-		vi.spyOn(window, "fetch").mockImplementation((url: URL | string) => {
-			const href = typeof url === "string" ? url : url.href;
-			if (href.includes("/about")) {
-				return Promise.resolve(
-					createRouteDataResponse({
-						title: { dangerousInnerHTML: "About Page" },
-					}),
-				) as any;
-			}
-			return revalidationDeferred.promise as any;
-		});
+		vi.spyOn(window, "fetch").mockImplementation(
+			(input: RequestInfo | URL) => {
+				const href =
+					typeof input === "string"
+						? input
+						: input instanceof URL
+							? input.href
+							: input.url;
+				if (href.includes("/about")) {
+					return Promise.resolve(
+						createRouteDataResponse({
+							title: { dangerousInnerHTML: "About Page" },
+						}),
+					) as any;
+				}
+				return revalidationDeferred.promise as any;
+			},
+		);
 
 		const handlers = api.__getPrefetchHandlers({ href: "/about" });
 		handlers?.start(new Event("mouseenter"));

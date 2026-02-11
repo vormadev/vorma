@@ -4,6 +4,7 @@ import { createPatternRegistry } from "vorma/kit/matcher/register";
 const VORMA_INTERNAL_SYMBOL = Symbol.for("__vorma_internal__");
 
 type AnyRecord = Record<string, any>;
+type AnyPropertyRecord = Record<PropertyKey, any>;
 
 const DEFAULT_VORMA_APP_CONFIG = {
 	actionsRouterMountRoot: "/api/",
@@ -53,7 +54,7 @@ export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
 		}),
 	};
 
-	(globalThis as AnyRecord)[VORMA_INTERNAL_SYMBOL] = {
+	(globalThis as AnyPropertyRecord)[VORMA_INTERNAL_SYMBOL] = {
 		...globals,
 		...overrides,
 	};

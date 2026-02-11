@@ -1,6 +1,6 @@
 import { ComponentLoader } from "./component_loader.ts";
-import { isAbortError } from "./utils/errors.ts";
-import { logError } from "./utils/logging.ts";
+import { wrapLoaderPromisesWithChildAbort } from "./client_loader_promise_wrapping.ts";
+import { processSettledClientLoaderResults } from "./client_loader_result_processing.ts";
 import {
 	__vormaClientGlobal,
 	type GetRouteDataOutput,
@@ -94,58 +94,19 @@ export async function executeClientLoaders(
 	}
 
 	// Wrap all promises with the child-aborting logic
-	const wrappedPromises = loaderPromises.map(async (promise, index) => {
-		return promise.catch((error) => {
-			// If this promise failed with a true error (not just an abort)
-			if (!isAbortError(error)) {
-				// Abort all subsequent (child) loaders immediately
-				for (let j = index + 1; j < abortControllers.length; j++) {
-					abortControllers[j]?.abort();
-				}
-			}
-			// Re-throw the error so Promise.allSettled sees it as 'rejected'
-			throw error;
-		});
+	const wrappedPromises = wrapLoaderPromisesWithChildAbort({
+		loaderPromises,
+		abortControllers,
 	});
 
 	// Await all wrapped promises. They run in parallel,
 	// but a rejection in one now triggers aborts in its children.
 	const results = await Promise.allSettled(wrappedPromises);
 
-	// Process the results
-	const data: Array<any> = [];
-	let errorMessage: string | undefined;
-
-	for (let i = 0; i < results.length; i++) {
-		const result = results[i];
-		if (!result) {
-			data.push(undefined);
-			continue;
-		}
-
-		if (result.status === "fulfilled") {
-			data.push(result.value);
-		} else {
-			// This is a rejection
-			if (!isAbortError(result.reason)) {
-				// This is the first true error we've hit
-				const pattern = matchedPatterns[i];
-				logError(
-					`Client loader error for pattern ${pattern}:`,
-					result.reason,
-				);
-				errorMessage =
-					result.reason instanceof Error
-						? result.reason.message
-						: String(result.reason);
-
-				// We found the highest error. Stop processing.
-				// The .catch() wrapper already aborted any children.
-			}
-			data.push(undefined);
-			break; // Stop at the first error
-		}
-	}
+	const { data, errorMessage } = processSettledClientLoaderResults({
+		results,
+		matchedPatterns,
+	});
 
 	return { data, errorMessage };
 }

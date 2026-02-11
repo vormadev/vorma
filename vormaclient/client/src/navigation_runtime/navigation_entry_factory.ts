@@ -4,6 +4,7 @@ import type {
 	NavigationIntent,
 	NavigationOutcome,
 } from "./types.ts";
+import { resolveNavigationTargetURL } from "./target_url.ts";
 
 type FetchRouteDataFn = (
 	controller: AbortController,
@@ -23,7 +24,7 @@ export function createActiveNavigationEntry(
 ): NavigationEntry {
 	const { props, fetchRouteData, onFetchError, intent } = options;
 	const controller = new AbortController();
-	const targetUrl = new URL(props.href, window.location.href).href;
+	const targetUrl = resolveNavigationTargetURL(props.href);
 
 	return {
 		control: {
@@ -78,7 +79,7 @@ export function createRevalidationNavigationEntry(
 ): NavigationEntry {
 	const { props, fetchRouteData, onFetchError } = options;
 	const controller = new AbortController();
-	const targetUrl = new URL(props.href, window.location.href).href;
+	const targetUrl = resolveNavigationTargetURL(props.href);
 
 	return {
 		control: {

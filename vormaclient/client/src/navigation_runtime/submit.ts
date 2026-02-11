@@ -43,7 +43,9 @@ export async function executeSubmit<T = any>(
 			requestInit: finalRequestInit,
 		});
 
-		syncBuildIDFromResponse(response);
+		if (response) {
+			syncBuildIDFromResponse(response);
+		}
 
 		return await finalizeSubmitResponse<T>({
 			response,
