@@ -80,4 +80,48 @@ describe("client link click contracts", () => {
 		const scrollStateMap = JSON.parse(scrollStateMapRaw || "[]");
 		expect(Array.isArray(scrollStateMap)).toBe(true);
 	});
+
+	it("updates build ID before following redirects triggered by link clicks", async () => {
+		const api = await loadClientAPI();
+		let buildIdDuringEvent: string | undefined;
+		const cleanup = api.addBuildIDListener(() => {
+			buildIdDuringEvent = api.getBuildID();
+		});
+
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Client-Redirect": "/redirected-click",
+							"X-Vorma-Build-Id": "build-click-2",
+						},
+					},
+				),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{ headers: { "X-Vorma-Build-Id": "build-click-2" } },
+				),
+			);
+
+		const { event } = createClickEvent("/click-start");
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		const secondFetchURL = fetchSpy.mock.calls[1]?.[0] as URL;
+		expect(secondFetchURL.pathname).toBe("/redirected-click");
+		expect(secondFetchURL.searchParams.get("vorma_json")).toBe(
+			"build-click-2",
+		);
+		expect(buildIdDuringEvent).toBe("build-click-2");
+		expect(api.getBuildID()).toBe("build-click-2");
+
+		cleanup();
+	});
 });

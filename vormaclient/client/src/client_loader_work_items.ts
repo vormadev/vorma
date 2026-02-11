@@ -2,6 +2,10 @@ import type {
 	GetRouteDataOutput,
 	VormaClientGlobal,
 } from "./vorma_ctx/vorma_ctx.ts";
+import {
+	buildClientLoaderServerData,
+	createUnavailableServerDataError,
+} from "./client_loader_server_data.ts";
 
 type ClientLoaderJSON = Pick<
 	GetRouteDataOutput,
@@ -72,12 +76,16 @@ export function buildClientLoaderWorkItems(props: {
 				});
 			}
 
-			const serverDataPromise = Promise.resolve({
-				matchedPatterns: json.matchedPatterns,
-				loaderData: json.loadersData[i],
-				rootData: json.hasRootData ? json.loadersData[0] : null,
+			const serverData = buildClientLoaderServerData({
+				pattern,
+				matchedPatterns: json.matchedPatterns ?? [],
+				loadersData: json.loadersData ?? [],
+				hasRootData: !!json.hasRootData,
 				buildID,
 			});
+			const serverDataPromise = serverData
+				? Promise.resolve(serverData)
+				: Promise.reject(createUnavailableServerDataError());
 
 			const loaderPromise = patternToWaitFnMap[pattern]({
 				params: json.params || {},

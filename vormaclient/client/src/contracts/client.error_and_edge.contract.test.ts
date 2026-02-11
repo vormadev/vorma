@@ -172,6 +172,144 @@ describe("client error and edge contracts", () => {
 		expect(document.title).toBe("Success Page");
 	});
 
+	it("does not leak unhandled rejections when user navigation gets a failed response", async () => {
+		const api = await loadClientAPI();
+		const patternToWaitFnMap =
+			api.__vormaClientGlobal.get("patternToWaitFnMap");
+		const serverDataPromiseErrors: Array<unknown> = [];
+
+		patternToWaitFnMap["/failed-with-loader"] = async ({
+			serverDataPromise,
+		}: {
+			serverDataPromise: Promise<{ loaderData: { Title: string } }>;
+		}) => {
+			const { loaderData } = await serverDataPromise.catch((error) => {
+				serverDataPromiseErrors.push(error);
+				throw error;
+			});
+			return loaderData.Title;
+		};
+		await api.__registerClientLoaderPattern("/failed-with-loader");
+
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response("Server error", { status: 500 }),
+		);
+
+		const unhandledRejections: Array<unknown> = [];
+		const unhandledRejectionHandler = (reason: unknown) => {
+			unhandledRejections.push(reason);
+		};
+		process.on("unhandledRejection", unhandledRejectionHandler);
+
+		try {
+			await api.vormaNavigate("/failed-with-loader");
+			await vi.runAllTimersAsync();
+			await Promise.resolve();
+
+			expect(unhandledRejections).toEqual([]);
+			expect(serverDataPromiseErrors).toHaveLength(1);
+			expect(serverDataPromiseErrors[0]).toBeInstanceOf(Error);
+			expect((serverDataPromiseErrors[0] as Error).name).toBe(
+				"AbortError",
+			);
+		} finally {
+			process.off("unhandledRejection", unhandledRejectionHandler);
+		}
+	});
+
+	it("does not leak unhandled rejections when user navigation redirects before loader data is available", async () => {
+		const api = await loadClientAPI();
+		const patternToWaitFnMap =
+			api.__vormaClientGlobal.get("patternToWaitFnMap");
+		const serverDataPromiseErrors: Array<unknown> = [];
+
+		patternToWaitFnMap["/redirect-with-loader"] = async ({
+			serverDataPromise,
+		}: {
+			serverDataPromise: Promise<{ loaderData: { Title: string } }>;
+		}) => {
+			const { loaderData } = await serverDataPromise.catch((error) => {
+				serverDataPromiseErrors.push(error);
+				throw error;
+			});
+			return loaderData.Title;
+		};
+		await api.__registerClientLoaderPattern("/redirect-with-loader");
+
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{ headers: { "X-Client-Redirect": "/redirect-target" } },
+				),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					title: { dangerousInnerHTML: "Redirect Target" },
+				}),
+			);
+
+		const unhandledRejections: Array<unknown> = [];
+		const unhandledRejectionHandler = (reason: unknown) => {
+			unhandledRejections.push(reason);
+		};
+		process.on("unhandledRejection", unhandledRejectionHandler);
+
+		try {
+			await api.vormaNavigate("/redirect-with-loader");
+			await vi.runAllTimersAsync();
+			await Promise.resolve();
+
+			expect(unhandledRejections).toEqual([]);
+			expect(serverDataPromiseErrors).toHaveLength(1);
+			expect(serverDataPromiseErrors[0]).toBeInstanceOf(Error);
+			expect((serverDataPromiseErrors[0] as Error).name).toBe(
+				"AbortError",
+			);
+			expect(fetchSpy).toHaveBeenCalledTimes(2);
+		} finally {
+			process.off("unhandledRejection", unhandledRejectionHandler);
+		}
+	});
+
+	it("rejects client-loader serverDataPromise with AbortError when required server loader payload is missing", async () => {
+		const api = await loadClientAPI();
+		const pattern = "/missing-server-loader-payload";
+		api.__vormaClientGlobal.set("routeManifest", { [pattern]: 1 });
+		const patternToWaitFnMap =
+			api.__vormaClientGlobal.get("patternToWaitFnMap");
+		const serverDataPromiseErrors: Array<unknown> = [];
+
+		patternToWaitFnMap[pattern] = async ({
+			serverDataPromise,
+		}: {
+			serverDataPromise: Promise<{ loaderData: { Title: string } }>;
+		}) => {
+			const { loaderData } = await serverDataPromise.catch((error) => {
+				serverDataPromiseErrors.push(error);
+				throw error;
+			});
+			return loaderData.Title;
+		};
+		await api.__registerClientLoaderPattern(pattern);
+
+		vi.spyOn(window, "fetch").mockResolvedValueOnce(
+			createRouteDataResponse({
+				matchedPatterns: [pattern],
+				loadersData: [],
+				hasRootData: false,
+			}),
+		);
+
+		await api.vormaNavigate(pattern);
+		await vi.runAllTimersAsync();
+
+		expect(serverDataPromiseErrors).toHaveLength(1);
+		expect(serverDataPromiseErrors[0]).toBeInstanceOf(Error);
+		expect((serverDataPromiseErrors[0] as Error).name).toBe("AbortError");
+	});
+
 	it("does not let stale revalidation override later prefetched navigation", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/");

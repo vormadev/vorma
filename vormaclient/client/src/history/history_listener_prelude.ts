@@ -1,14 +1,12 @@
 import type { historyInstance } from "./npm_history_types.ts";
 
-type HistoryActionValue = "POP" | "PUSH" | "REPLACE";
-
 type HistoryLocationPrelude = Pick<
 	historyInstance["location"],
 	"key" | "pathname" | "search"
 >;
 
 export function analyzeHistoryListenerPrelude(props: {
-	action: HistoryActionValue;
+	action: historyInstance["action"];
 	location: HistoryLocationPrelude;
 	lastKnownLocation: HistoryLocationPrelude;
 }): {

@@ -1,5 +1,6 @@
 import { navigationStateManager } from "./client.ts";
 import type { NavigationOutcome } from "./navigation_runtime/types.ts";
+import { syncBuildIDFromRedirectData } from "./redirects/redirect_build_id.ts";
 import { effectuateRedirectDataResult } from "./redirects/redirects.ts";
 
 type LinkLifecycleCallbacks<E extends Event> = {
@@ -28,6 +29,8 @@ export async function handleLinkNavigationOutcome<E extends Event>(
 		case "redirect":
 			// Call beforeRender while entry still exists (consistent with success case)
 			await callbacks.beforeRender?.(event);
+
+			syncBuildIDFromRedirectData(outcome.redirectData);
 
 			// Clean up before redirect to prevent race conditions
 			navigationStateManager.removeNavigation(targetUrl);

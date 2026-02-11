@@ -1,6 +1,5 @@
-import { dispatchBuildIDEvent } from "../events.ts";
 import { effectuateRedirectDataResult } from "../redirects/redirects.ts";
-import { __vormaClientGlobal } from "../vorma_ctx/vorma_ctx.ts";
+import { syncBuildIDFromRedirectData } from "../redirects/redirect_build_id.ts";
 import { resolveNavigationTargetURL } from "./target_url.ts";
 import type {
 	NavigateProps,
@@ -43,17 +42,8 @@ export async function handleNavigationOutcome(
 				return { didNavigate: false };
 			}
 
-			// Redirect responses can carry a newer build ID. Persist and
-			// publish it before following the redirect target so subsequent
-			// fetches use the fresh build marker.
-			if (outcome.redirectData.status === "should") {
-				const oldID = __vormaClientGlobal.get("buildID");
-				const newID = outcome.redirectData.latestBuildID;
-				if (newID && newID !== oldID) {
-					__vormaClientGlobal.set("buildID", newID);
-					dispatchBuildIDEvent({ newID, oldID });
-				}
-			}
+			// Persist/publish redirect build ID before following redirect target.
+			syncBuildIDFromRedirectData(outcome.redirectData);
 
 			context.deleteNavigation(targetUrl);
 			await effectuateRedirectDataResult(

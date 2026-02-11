@@ -1,5 +1,27 @@
 import type { BeginNavigationContext } from "./begin_navigation.ts";
 import type { NavigateProps, NavigationControl } from "./types.ts";
+import { hasSameDataTarget } from "./url_identity.ts";
+
+function applyUserNavigationProps(props: {
+	targetUrl: string;
+	entry: {
+		targetUrl: string;
+		scrollToTop?: boolean;
+		replace?: boolean;
+		state?: unknown;
+		type: string;
+		intent: string;
+	};
+	navigationProps: NavigateProps;
+}): void {
+	const { targetUrl, entry, navigationProps } = props;
+	entry.targetUrl = targetUrl;
+	entry.scrollToTop = navigationProps.scrollToTop;
+	entry.replace = navigationProps.replace;
+	entry.state = navigationProps.state;
+	entry.type = "userNavigation";
+	entry.intent = "navigate";
+}
 
 export function beginUserNavigation(
 	context: BeginNavigationContext,
@@ -18,55 +40,90 @@ export function beginUserNavigation(
 
 	const activeNavigation = getActiveNavigation();
 	const pendingRevalidation = getPendingRevalidation();
+	const activeHasSameDataTarget = !!(
+		activeNavigation &&
+		hasSameDataTarget(activeNavigation.targetUrl, targetUrl)
+	);
 
-	// Abort active navigation if it's to a different URL
-	if (activeNavigation && activeNavigation.targetUrl !== targetUrl) {
+	let prefetchUpgradeKey: string | undefined;
+	let prefetchToUpgrade: ReturnType<typeof getActiveNavigation> | undefined;
+
+	if (!activeHasSameDataTarget) {
+		const exactPrefetch = prefetchCache.get(targetUrl);
+		if (exactPrefetch) {
+			prefetchUpgradeKey = targetUrl;
+			prefetchToUpgrade = exactPrefetch;
+		} else {
+			for (const [url, prefetch] of prefetchCache.entries()) {
+				if (hasSameDataTarget(url, targetUrl)) {
+					prefetchUpgradeKey = url;
+					prefetchToUpgrade = prefetch;
+					break;
+				}
+			}
+		}
+	}
+
+	// Abort active navigation if it targets different route data.
+	if (activeNavigation && !activeHasSameDataTarget) {
 		activeNavigation.control.abortController?.abort();
 		setActiveNavigation(null);
 	}
 
-	// Abort all prefetches except the one we might upgrade
+	// Abort all prefetches except a same-data target candidate that we will
+	// upgrade below.
 	for (const [url, prefetch] of prefetchCache.entries()) {
-		if (url !== targetUrl) {
+		if (url !== prefetchUpgradeKey) {
 			prefetch.control.abortController?.abort();
 			prefetchCache.delete(url);
 		}
 	}
 
-	// Abort pending revalidation only if it's to a different URL
-	if (pendingRevalidation && pendingRevalidation.targetUrl !== targetUrl) {
+	// Abort pending revalidation only if it targets different route data.
+	if (
+		pendingRevalidation &&
+		!hasSameDataTarget(pendingRevalidation.targetUrl, targetUrl)
+	) {
 		pendingRevalidation.control.abortController?.abort();
 		setPendingRevalidation(null);
 	}
 
-	// Check if there's already an active navigation to this URL
-	if (activeNavigation?.targetUrl === targetUrl) {
+	// Reuse same-data active navigation and retarget final URL semantics.
+	if (activeNavigation && activeHasSameDataTarget) {
+		applyUserNavigationProps({
+			targetUrl,
+			entry: activeNavigation,
+			navigationProps: props,
+		});
 		return activeNavigation.control;
 	}
 
-	// Check if there's a prefetch to upgrade
-	const existingPrefetch = prefetchCache.get(targetUrl);
-	if (existingPrefetch) {
-		// Upgrade prefetch: move from cache to active slot, change intent
-		prefetchCache.delete(targetUrl);
-		existingPrefetch.type = "userNavigation";
-		existingPrefetch.intent = "navigate";
-		existingPrefetch.scrollToTop = props.scrollToTop;
-		existingPrefetch.replace = props.replace;
-		existingPrefetch.state = props.state;
-		setActiveNavigation(existingPrefetch);
+	// Upgrade same-data prefetch to active navigation.
+	if (prefetchToUpgrade && prefetchUpgradeKey) {
+		prefetchCache.delete(prefetchUpgradeKey);
+		applyUserNavigationProps({
+			targetUrl,
+			entry: prefetchToUpgrade,
+			navigationProps: props,
+		});
+		setActiveNavigation(prefetchToUpgrade);
 		scheduleStatusUpdate();
-		return existingPrefetch.control;
+		return prefetchToUpgrade.control;
 	}
 
-	// Check if there's a pending revalidation to the same URL - upgrade it
-	if (pendingRevalidation?.targetUrl === targetUrl) {
-		// Upgrade revalidation: change intent so user gets proper link semantics
-		pendingRevalidation.type = "userNavigation";
-		pendingRevalidation.intent = "navigate";
-		pendingRevalidation.scrollToTop = props.scrollToTop;
-		pendingRevalidation.replace = props.replace;
-		pendingRevalidation.state = props.state;
+	// Upgrade same-data pending revalidation to active user navigation.
+	if (
+		pendingRevalidation &&
+		hasSameDataTarget(pendingRevalidation.targetUrl, targetUrl)
+	) {
+		setPendingRevalidation(null);
+		applyUserNavigationProps({
+			targetUrl,
+			entry: pendingRevalidation,
+			navigationProps: props,
+		});
+		setActiveNavigation(pendingRevalidation);
+		scheduleStatusUpdate();
 		return pendingRevalidation.control;
 	}
 

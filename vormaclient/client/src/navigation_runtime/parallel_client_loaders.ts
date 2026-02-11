@@ -1,41 +1,37 @@
 import { findPartialMatchesOnClient } from "../client_loaders.ts";
+import {
+	buildClientLoaderServerData,
+	createUnavailableServerDataError,
+} from "../client_loader_server_data.ts";
 import { getBuildIDFromResponse } from "../redirects/redirects.ts";
 import { __vormaClientGlobal } from "../vorma_ctx/vorma_ctx.ts";
 import type { ClientLoaderAwaitedServerData } from "../vorma_ctx/vorma_ctx.ts";
 import type { ServerRouteDataResult } from "./fetch_route_data_server.ts";
 
-function buildEmptyServerData(): ClientLoaderAwaitedServerData<any, any> {
-	return {
-		matchedPatterns: [],
-		loaderData: undefined,
-		rootData: null,
-		buildID: "1",
-	};
-}
-
 function buildServerDataForPattern(
 	pattern: string,
 	serverResult: ServerRouteDataResult,
-): ClientLoaderAwaitedServerData<any, any> {
+): ClientLoaderAwaitedServerData<any, any> | null {
 	const { response, json } = serverResult;
 	if (!response || !response.ok || !json) {
-		return buildEmptyServerData();
+		return null;
 	}
 
-	const serverIdx = json.matchedPatterns?.indexOf(pattern);
-	const loaderData =
-		serverIdx !== -1 && serverIdx !== undefined
-			? json.loadersData[serverIdx]
-			: undefined;
-	const rootData = json.hasRootData ? json.loadersData[0] : null;
+	const matchedPatterns = json.matchedPatterns || [];
+	const loadersData = json.loadersData || [];
+	if (!matchedPatterns.includes(pattern)) {
+		return null;
+	}
+
 	const buildID = getBuildIDFromResponse(response) || "1";
 
-	return {
-		matchedPatterns: json.matchedPatterns || [],
-		loaderData,
-		rootData,
+	return buildClientLoaderServerData({
+		pattern,
+		matchedPatterns,
+		loadersData,
+		hasRootData: !!json.hasRootData,
 		buildID,
-	};
+	});
 }
 
 export async function startParallelClientLoaders(props: {
@@ -64,11 +60,21 @@ export async function startParallelClientLoaders(props: {
 			continue;
 		}
 
-		const serverDataPromise = props.serverPromise
-			.then((serverResult) =>
-				buildServerDataForPattern(pattern, serverResult),
-			)
-			.catch(() => buildEmptyServerData());
+		const serverDataPromise = props.serverPromise.then(
+			(serverResult) => {
+				const serverData = buildServerDataForPattern(
+					pattern,
+					serverResult,
+				);
+				if (!serverData) {
+					throw createUnavailableServerDataError();
+				}
+				return serverData;
+			},
+			() => {
+				throw createUnavailableServerDataError();
+			},
+		);
 
 		const loaderPromise = loaderFn({
 			params,

@@ -27,11 +27,20 @@ function applyHashDrivenPopScrollState(
 	}
 }
 
+function buildListenerLocationHref(
+	location: historyInstance["location"],
+): string {
+	return new URL(
+		`${location.pathname}${location.search}${location.hash}`,
+		window.location.origin,
+	).href;
+}
+
 async function navigateCrossDocumentPop(
 	location: historyInstance["location"],
 ): Promise<boolean> {
 	const result = await getNavigationStateAccess().navigate({
-		href: window.location.href,
+		href: buildListenerLocationHref(location),
 		navigationType: "browserHistory",
 		scrollStateToRestore: scrollStateManager.getState(location.key),
 	});

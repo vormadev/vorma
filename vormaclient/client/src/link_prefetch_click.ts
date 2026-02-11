@@ -39,6 +39,7 @@ export async function handlePrefetchClick<E extends Event>(props: {
 	if (!isEligibleForDefaultPrevention || !isInternal) return;
 
 	if (isJustAHashChange(anchorDetails)) {
+		clearPendingTimer();
 		saveScrollState();
 		return;
 	}

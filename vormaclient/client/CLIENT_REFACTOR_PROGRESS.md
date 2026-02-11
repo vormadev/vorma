@@ -2,7 +2,7 @@
 
 ## Snapshot
 
-- Date: 2026-02-10
+- Date: 2026-02-11
 - Phase: Monolith decomposition (ongoing)
 - Contract gate status: passing
 
@@ -1021,6 +1021,176 @@
   verify no unhandled rejection leak on redirecting pure prefetch with a
   `serverDataPromise`-based client loader.
 
+111. Stopped passing empty server data into abandoned parallel loaders
+
+- Updated `src/navigation_runtime/parallel_client_loaders.ts` so
+  `serverDataPromise` rejects with `AbortError` when route-data is unavailable
+  (redirected/failed/abandoned), instead of resolving with synthetic empty
+  payloads.
+- This prevents client-loader code from receiving semantically invalid
+  `loaderData: undefined` payloads in abandonment paths.
+- Expanded contract coverage in `src/contracts/client.prefetch.contract.test.ts`
+  to assert `AbortError` behavior for both redirect and failed-response prefetch
+  paths.
+
+112. Added user-navigation race coverage for abandoned parallel loaders
+
+- Expanded `src/contracts/client.error_and_edge.contract.test.ts` with
+  user-navigation cases that previously had latent race risk:
+    - failed response (`500`) with server-data-dependent client loader
+    - redirecting response with server-data-dependent client loader
+- Verified these paths:
+    - do not leak unhandled promise rejections
+    - surface `AbortError` for abandoned/unavailable `serverDataPromise`
+      consumption
+
+113. Narrowed `AbortError` mapping to unavailable server-data paths only
+
+- Updated `src/navigation_runtime/parallel_client_loaders.ts` so rejected
+  `serverPromise` paths map to `AbortError` without broadly converting all
+  downstream errors.
+- This preserves first-principles debuggability: unexpected logic errors in
+  server-data shaping continue surfacing as real errors, while abandoned-data
+  paths still produce intentional `AbortError`.
+
+114. Hardened server-data mismatch handling for prestarted parallel loaders
+
+- Updated `src/navigation_runtime/parallel_client_loaders.ts` so a prestarted
+  loader whose pattern is missing from server `matchedPatterns` now treats
+  server data as unavailable (`AbortError`) instead of handing
+  `loaderData: undefined` to client loader code.
+- Added contract coverage in `src/contracts/client.prefetch.contract.test.ts`
+  for the `matchedPatterns`-omission mismatch path.
+
+115. Corrected same-target revalidation upgrade semantics to true navigation
+
+- Updated `src/navigation_runtime/begin_navigation_user.ts` so upgrading a
+  pending same-target revalidation now:
+    - clears the pending revalidation slot
+    - moves the entry into the active navigation slot
+    - emits status updates as a navigation transition
+- Added strict contract coverage in
+  `src/contracts/client.state_and_revalidation.contract.test.ts` to verify the
+  upgraded entry reports `isNavigating: true` and `isRevalidating: false` while
+  in flight.
+
+116. Prevented hash-only URL changes from invalidating in-flight revalidation
+
+- Updated `src/navigation_runtime/process_successful_navigation_revalidation.ts`
+  stale-entry detection to compare URLs without hash fragments.
+- This preserves first-principles behavior: hash-only changes remain
+  same-document state and should not discard valid revalidation results.
+- Added strict contract coverage in
+  `src/contracts/client.state_and_revalidation.contract.test.ts` to verify
+  revalidation results still apply across hash-only URL changes.
+
+117. Centralized hash-insensitive data-target identity for begin-phase decisions
+
+- Added `src/navigation_runtime/url_identity.ts` with shared helpers:
+    - `hrefWithoutHash(...)`
+    - `hasSameDataTarget(...)`
+- Updated begin-phase flows to use shared identity semantics where route-data
+  identity is the intent:
+    - `src/navigation_runtime/begin_navigation_user.ts`
+    - `src/navigation_runtime/begin_navigation_prefetch.ts`
+    - `src/navigation_runtime/process_successful_navigation_revalidation.ts`
+- Added strict contract coverage for hash-insensitive dedupe/upgrade behavior:
+    - `src/contracts/client.navigation_modes.contract.test.ts` ("reuses
+      in-flight navigation when only hash changes on the same data target")
+    - `src/contracts/client.prefetch.contract.test.ts` ("upgrades same-data
+      prefetch to navigation even when only hash differs")
+
+118. Fixed cross-document POP target source to use listener payload location
+
+- Updated `src/history/history_pop_navigation.ts` so browser-history POP
+  navigation targets are built from the history listener `location` payload
+  (`pathname + search + hash`) rather than ambient `window.location.href`.
+- Added strict contract coverage in
+  `src/contracts/client.history_and_init.contract.test.ts` ("uses listener
+  location payload as the source of truth for cross-document POP target").
+
+119. Made revalidation coalescing target-aware
+
+- Updated `src/navigation_runtime/begin_navigation_revalidation.ts` so rapid
+  revalidation coalescing only occurs when the pending revalidation and current
+  location share the same data target (`hasSameDataTarget(...)`).
+- Added strict contract coverage in
+  `src/contracts/client.state_and_revalidation.contract.test.ts` ("does not
+  coalesce revalidation across data-target changes").
+
+120. Extended hash-insensitive identity to prefetch dedupe
+
+- Updated `src/navigation_runtime/begin_navigation_prefetch.ts` to reuse an
+  existing in-flight prefetch when only hash differs.
+- Added strict contract coverage in
+  `src/contracts/client.prefetch.contract.test.ts` ("deduplicates same-data
+  prefetches when only hash differs").
+
+121. Prevented hash-only clicks from leaving stale prefetch timers alive
+
+- Updated `src/link_prefetch_click.ts` so hash-only click handling now clears
+  pending prefetch timers before returning to browser-native hash navigation.
+- This prevents prefetch callbacks from firing after a hash-only click.
+- Added strict contract coverage in
+  `src/contracts/client.prefetch.contract.test.ts` ("cancels pending prefetch
+  timer on hash-only click").
+
+122. Fixed click-driven redirect build-ID ordering parity with runtime navigate
+
+- Updated `src/link_navigation_outcome.ts` redirect handling to sync/dispatch
+  build ID from `redirectData.latestBuildID` before effecting redirect follow-up
+  navigation.
+- This aligns click-driven redirect ordering with runtime navigate behavior.
+- Added strict contract coverage in
+  `src/contracts/client.link_click.contract.test.ts` ("updates build ID before
+  following redirects triggered by link clicks").
+
+123. Consolidated redirect build-ID sync into a shared helper
+
+- Added `src/redirects/redirect_build_id.ts` with
+  `syncBuildIDFromRedirectData(...)`.
+- Updated both runtime and click-path redirect handlers to use the shared
+  helper:
+    - `src/navigation_runtime/handle_navigation_outcome.ts`
+    - `src/link_navigation_outcome.ts`
+- Preserved behavior while eliminating duplication and reducing drift risk for
+  redirect build-ID ordering semantics.
+
+124. Fixed stop() behavior for hash-deduped shared prefetch navigations
+
+- Updated `src/link_prefetch_navigation.ts` to resolve idle prefetch entries by
+  same data target (hash-insensitive), not only exact href.
+- This ensures `stop()` from any deduped hash variant correctly aborts and
+  removes the shared in-flight prefetch navigation.
+- Added strict contract coverage in
+  `src/contracts/client.prefetch.contract.test.ts` ("aborts a hash-deduped
+  shared prefetch when stop is called from either handler").
+
+125. Aligned history-listener prelude action typing with source enum
+
+- Updated `src/history/history_listener_prelude.ts` to type `action` as
+  `historyInstance["action"]` instead of a local string-literal union.
+- This removes enum-identity drift and resolves `TS2322` assignment mismatch
+  risk between history listener payload action types and prelude helper input.
+
+126. Added strict server-loader payload contract guards for client loaders
+
+- Added `src/client_loader_server_data.ts` with:
+    - `buildClientLoaderServerData(...)` for manifest-aware server-data payload
+      validation.
+    - `createUnavailableServerDataError()` for consistent `AbortError` semantics
+      when required payload is missing.
+- Updated both client-loader server-data construction paths to use the helper:
+    - `src/navigation_runtime/parallel_client_loaders.ts`
+    - `src/client_loader_work_items.ts`
+- Strict behavior: when route manifest declares a server loader for a pattern,
+  missing loader payload now yields `AbortError` (not downstream
+  `TypeError: ... loaderData is undefined`).
+- Added strict contract coverage in
+  `src/contracts/client.error_and_edge.contract.test.ts` ("rejects client-loader
+  serverDataPromise with AbortError when required server loader payload is
+  missing").
+
 ## Verification
 
 - `pnpm oxlint vormaclient/client/src`
@@ -1030,9 +1200,9 @@
 - `pnpm tsc --noEmit --project ./vormaclient/client`
 - Result: passing.
 - `pnpm vitest --run vormaclient/client/src/contracts`
-- Result: `14` files, `157` tests, all passing.
+- Result: `14` files, `172` tests, all passing.
 - `pnpm vitest --run vormaclient/client/src`
-- Result: `40` files, `351` tests, all passing.
+- Result: `40` files, `366` tests, all passing.
 
 ## Current State
 

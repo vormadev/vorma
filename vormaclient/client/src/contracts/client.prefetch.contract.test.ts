@@ -83,6 +83,92 @@ describe("client prefetch contracts", () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it("deduplicates same-data prefetches when only hash differs", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const aHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-dedupe#first",
+			delayMs: 0,
+		});
+		const bHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-dedupe#second",
+			delayMs: 0,
+		});
+
+		aHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		bHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("aborts a hash-deduped shared prefetch when stop is called from either handler", async () => {
+		const api = await loadClientAPI();
+		const signals: AbortSignal[] = [];
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementation((_url, init) => {
+				const signal = (init as RequestInit | undefined)
+					?.signal as AbortSignal;
+				if (signal) {
+					signals.push(signal);
+				}
+				return new Promise<Response>(() => {}) as any;
+			});
+
+		const aHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-stop-alias#first",
+			delayMs: 0,
+		});
+		const bHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-stop-alias#second",
+			delayMs: 0,
+		});
+
+		aHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		bHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(signals).toHaveLength(1);
+		expect(signals[0]?.aborted).toBe(false);
+
+		bHandlers?.stop();
+		expect(signals[0]?.aborted).toBe(true);
+	});
+
+	it("cancels pending prefetch timer on hash-only click", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/hash-page");
+		const beforeBegin = vi.fn();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/hash-page#section-a",
+			delayMs: 200,
+			beforeBegin,
+		});
+
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(beforeBegin).not.toHaveBeenCalled();
+
+		const { anchor, event } = buildAnchorClick("/hash-page#section-a");
+		await handlers?.onClick(event);
+		await vi.advanceTimersByTimeAsync(200);
+
+		expect(beforeBegin).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		document.body.removeChild(anchor);
+	});
+
 	it("runs beforeBegin callback before prefetch starts", async () => {
 		const api = await loadClientAPI();
 		const beforeBegin = vi.fn();
@@ -212,17 +298,57 @@ describe("client prefetch contracts", () => {
 		await vi.runAllTimersAsync();
 	});
 
+	it("upgrades same-data prefetch to navigation even when only hash differs", async () => {
+		const api = await loadClientAPI();
+		const fetchDeferred = createDeferred<Response>();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockReturnValue(fetchDeferred.promise as any);
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/prefetch-hash-upgrade#prefetch",
+		});
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(api.getStatus().isNavigating).toBe(false);
+
+		const navPromise = api.vormaNavigate("/prefetch-hash-upgrade#final");
+		await vi.advanceTimersByTimeAsync(8);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(api.getStatus().isNavigating).toBe(true);
+
+		fetchDeferred.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Prefetch Hash Upgrade" },
+			}),
+		);
+
+		await navPromise;
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/prefetch-hash-upgrade");
+		expect(window.location.hash).toBe("#final");
+		expect(document.title).toBe("Prefetch Hash Upgrade");
+	});
+
 	it("does not leak unhandled rejections when pure prefetch resolves to redirect", async () => {
 		const api = await loadClientAPI();
 		const patternToWaitFnMap =
 			api.__vormaClientGlobal.get("patternToWaitFnMap");
+		const serverDataPromiseErrors: Array<unknown> = [];
 
 		patternToWaitFnMap["/prefetch-redirect"] = async ({
 			serverDataPromise,
 		}: {
 			serverDataPromise: Promise<{ loaderData: { Title: string } }>;
 		}) => {
-			const { loaderData } = await serverDataPromise;
+			const { loaderData } = await serverDataPromise.catch((error) => {
+				serverDataPromiseErrors.push(error);
+				throw error;
+			});
 			return loaderData.Title;
 		};
 		await api.__registerClientLoaderPattern("/prefetch-redirect");
@@ -251,6 +377,114 @@ describe("client prefetch contracts", () => {
 			await Promise.resolve();
 
 			expect(unhandledRejections).toEqual([]);
+			expect(serverDataPromiseErrors).toHaveLength(1);
+			expect(serverDataPromiseErrors[0]).toBeInstanceOf(Error);
+			expect((serverDataPromiseErrors[0] as Error).name).toBe(
+				"AbortError",
+			);
+		} finally {
+			process.off("unhandledRejection", unhandledRejectionHandler);
+		}
+	});
+
+	it("rejects serverDataPromise with AbortError for failed prefetch responses", async () => {
+		const api = await loadClientAPI();
+		const patternToWaitFnMap =
+			api.__vormaClientGlobal.get("patternToWaitFnMap");
+		const serverDataPromiseErrors: Array<unknown> = [];
+
+		patternToWaitFnMap["/prefetch-failed-response"] = async ({
+			serverDataPromise,
+		}: {
+			serverDataPromise: Promise<{ loaderData: { Title: string } }>;
+		}) => {
+			const { loaderData } = await serverDataPromise.catch((error) => {
+				serverDataPromiseErrors.push(error);
+				throw error;
+			});
+			return loaderData.Title;
+		};
+		await api.__registerClientLoaderPattern("/prefetch-failed-response");
+
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response("Server error", { status: 500 }),
+		);
+
+		const unhandledRejections: Array<unknown> = [];
+		const unhandledRejectionHandler = (reason: unknown) => {
+			unhandledRejections.push(reason);
+		};
+		process.on("unhandledRejection", unhandledRejectionHandler);
+
+		try {
+			const handlers = api.__getPrefetchHandlers({
+				href: "/prefetch-failed-response",
+			});
+			handlers?.start(new Event("mouseenter"));
+
+			await vi.advanceTimersByTimeAsync(100);
+			await vi.runAllTimersAsync();
+			await Promise.resolve();
+
+			expect(unhandledRejections).toEqual([]);
+			expect(serverDataPromiseErrors).toHaveLength(1);
+			expect(serverDataPromiseErrors[0]).toBeInstanceOf(Error);
+			expect((serverDataPromiseErrors[0] as Error).name).toBe(
+				"AbortError",
+			);
+		} finally {
+			process.off("unhandledRejection", unhandledRejectionHandler);
+		}
+	});
+
+	it("rejects serverDataPromise with AbortError when server omits a prestarted matched pattern", async () => {
+		const api = await loadClientAPI();
+		const patternToWaitFnMap =
+			api.__vormaClientGlobal.get("patternToWaitFnMap");
+		const serverDataPromiseErrors: Array<unknown> = [];
+
+		patternToWaitFnMap["/prefetch-mismatch"] = async ({
+			serverDataPromise,
+		}: {
+			serverDataPromise: Promise<{ loaderData: { Title: string } }>;
+		}) => {
+			const { loaderData } = await serverDataPromise.catch((error) => {
+				serverDataPromiseErrors.push(error);
+				throw error;
+			});
+			return loaderData.Title;
+		};
+		await api.__registerClientLoaderPattern("/prefetch-mismatch");
+
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse({
+				matchedPatterns: [],
+				loadersData: [],
+			}),
+		);
+
+		const unhandledRejections: Array<unknown> = [];
+		const unhandledRejectionHandler = (reason: unknown) => {
+			unhandledRejections.push(reason);
+		};
+		process.on("unhandledRejection", unhandledRejectionHandler);
+
+		try {
+			const handlers = api.__getPrefetchHandlers({
+				href: "/prefetch-mismatch",
+			});
+			handlers?.start(new Event("mouseenter"));
+
+			await vi.advanceTimersByTimeAsync(100);
+			await vi.runAllTimersAsync();
+			await Promise.resolve();
+
+			expect(unhandledRejections).toEqual([]);
+			expect(serverDataPromiseErrors).toHaveLength(1);
+			expect(serverDataPromiseErrors[0]).toBeInstanceOf(Error);
+			expect((serverDataPromiseErrors[0] as Error).name).toBe(
+				"AbortError",
+			);
 		} finally {
 			process.off("unhandledRejection", unhandledRejectionHandler);
 		}

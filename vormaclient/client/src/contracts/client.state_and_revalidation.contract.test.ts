@@ -125,6 +125,84 @@ describe("client state/revalidation contracts", () => {
 		expect(api.getStatus().isRevalidating).toBe(false);
 	});
 
+	it("does not coalesce revalidation across data-target changes", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/revalidate-a");
+
+		let firstSignal: AbortSignal | undefined;
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementationOnce((_url, init) => {
+				firstSignal = (init as RequestInit | undefined)
+					?.signal as AbortSignal;
+				return new Promise<Response>((_resolve, reject) => {
+					firstSignal?.addEventListener(
+						"abort",
+						() => reject(new DOMException("Aborted", "AbortError")),
+						{ once: true },
+					);
+				}) as any;
+			})
+			.mockImplementationOnce(
+				() => Promise.resolve(createRouteDataResponse()) as any,
+			);
+
+		const firstRevalidate = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+
+		window.history.replaceState({}, "", "/revalidate-b");
+		const secondRevalidate = api.revalidate();
+
+		expect(firstSignal?.aborted).toBe(true);
+
+		await Promise.all([firstRevalidate, secondRevalidate]);
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		const secondFetchURL = fetchSpy.mock.calls[1]?.[0] as URL;
+		expect(secondFetchURL.pathname).toBe("/revalidate-b");
+		expect(secondFetchURL.searchParams.get("vorma_json")).toBe("1");
+	});
+
+	it("upgrades a same-target revalidation into navigating status when user navigation starts", async () => {
+		const api = await loadClientAPI();
+		let resolveFetch: ((value: Response) => void) | undefined;
+		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
+			() =>
+				new Promise<Response>((resolve) => {
+					resolveFetch = resolve;
+				}) as any,
+		);
+
+		const revalidatePromise = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: true,
+		});
+
+		const navigatePromise = api.vormaNavigate(window.location.href);
+		await vi.advanceTimersByTimeAsync(8);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(api.getStatus()).toEqual({
+			isNavigating: true,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+
+		resolveFetch?.(createRouteDataResponse());
+		await Promise.all([revalidatePromise, navigatePromise]);
+		await vi.runAllTimersAsync();
+
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+	});
+
 	it("revalidates against the current URL including search params", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/current-page?param=value");
@@ -139,6 +217,37 @@ describe("client state/revalidation contracts", () => {
 		expect(fetchURL.href).toBe(
 			"http://localhost:3000/current-page?param=value&vorma_json=1",
 		);
+	});
+
+	it("applies in-flight revalidation results across hash-only URL changes", async () => {
+		const api = await loadClientAPI();
+		let resolveFetch: ((value: Response) => void) | undefined;
+		vi.spyOn(window, "fetch").mockImplementation(
+			() =>
+				new Promise<Response>((resolve) => {
+					resolveFetch = resolve;
+				}) as any,
+		);
+
+		const revalidatePromise = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+
+		window.history.replaceState({}, "", "/#details");
+		resolveFetch?.(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Revalidated Title" },
+			}),
+		);
+
+		await revalidatePromise;
+		await vi.runAllTimersAsync();
+
+		expect(document.title).toBe("Revalidated Title");
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
 	});
 
 	it("stopping a pure prefetch aborts it and allows a fresh prefetch", async () => {

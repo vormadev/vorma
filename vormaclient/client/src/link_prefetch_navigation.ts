@@ -1,4 +1,24 @@
 import { navigationStateManager } from "./client.ts";
+import { hasSameDataTarget } from "./navigation_runtime/url_identity.ts";
+
+function findIdlePrefetchNavigationByDataTarget(targetHref: string) {
+	const exact = navigationStateManager.getNavigation(targetHref);
+	if (exact && exact.type === "prefetch" && exact.intent === "none") {
+		return exact;
+	}
+
+	for (const nav of navigationStateManager.getNavigations().values()) {
+		if (
+			nav.type === "prefetch" &&
+			nav.intent === "none" &&
+			hasSameDataTarget(nav.targetUrl, targetHref)
+		) {
+			return nav;
+		}
+	}
+
+	return undefined;
+}
 
 export async function startPrefetchNavigation(props: {
 	targetHref: string;
@@ -12,9 +32,9 @@ export async function startPrefetchNavigation(props: {
 }
 
 export function abortIdlePrefetchNavigation(targetHref: string): void {
-	const nav = navigationStateManager.getNavigation(targetHref);
-	if (nav && nav.type === "prefetch" && nav.intent === "none") {
+	const nav = findIdlePrefetchNavigationByDataTarget(targetHref);
+	if (nav) {
 		nav.control.abortController?.abort();
-		navigationStateManager.removeNavigation(targetHref);
+		navigationStateManager.removeNavigation(nav.targetUrl);
 	}
 }

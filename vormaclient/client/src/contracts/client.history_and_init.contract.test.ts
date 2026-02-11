@@ -136,6 +136,46 @@ describe("client history/init contracts", () => {
 		expect(fetchURL.href).toContain("/to-page?vorma_json=1");
 	});
 
+	it("uses listener location payload as the source of truth for cross-document POP target", async () => {
+		const api = await loadClientAPI();
+		api.getHistoryInstance();
+		const { customHistoryListener } = await import("../history/history.ts");
+
+		await customHistoryListener({
+			action: "PUSH",
+			location: {
+				pathname: "/from-page",
+				search: "",
+				hash: "",
+				state: null,
+				key: "from-key-source-of-truth",
+			},
+		} as any);
+
+		window.history.replaceState({}, "", "/window-location-only");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		await customHistoryListener({
+			action: "POP",
+			location: {
+				pathname: "/listener-target",
+				search: "?q=payload",
+				hash: "#details",
+				state: null,
+				key: "listener-key-source-of-truth",
+			},
+		} as any);
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const fetchURL = fetchSpy.mock.calls[0]?.[0] as URL;
+		expect(fetchURL.pathname).toBe("/listener-target");
+		expect(fetchURL.searchParams.get("q")).toBe("payload");
+		expect(fetchURL.searchParams.get("vorma_json")).toBe("1");
+	});
+
 	it("saves scroll state before moving to a different document", async () => {
 		const api = await loadClientAPI();
 		const history = api.getHistoryInstance();

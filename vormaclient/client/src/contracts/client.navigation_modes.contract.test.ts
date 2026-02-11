@@ -189,4 +189,42 @@ describe("client navigation mode contracts", () => {
 		expect(window.location.search).toBe("?q=contract");
 		expect(window.location.hash).toBe("#anchor");
 	});
+
+	it("reuses in-flight navigation when only hash changes on the same data target", async () => {
+		const api = await loadClientAPI();
+		let resolveFetch: ((value: Response) => void) | undefined;
+		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
+			() =>
+				new Promise<Response>((resolve) => {
+					resolveFetch = resolve;
+				}) as any,
+		);
+
+		const firstNavigation = api.vormaNavigate("/hash-only#first");
+		await vi.advanceTimersByTimeAsync(8);
+
+		const secondNavigation = api.vormaNavigate("/hash-only#second");
+		await vi.advanceTimersByTimeAsync(8);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(api.getStatus().isNavigating).toBe(true);
+
+		resolveFetch?.(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Hash Stable Page" },
+			}),
+		);
+
+		await Promise.all([firstNavigation, secondNavigation]);
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/hash-only");
+		expect(window.location.hash).toBe("#second");
+		expect(document.title).toBe("Hash Stable Page");
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+	});
 });

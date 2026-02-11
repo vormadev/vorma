@@ -1,5 +1,6 @@
 import type { BeginNavigationContext } from "./begin_navigation.ts";
 import type { NavigateProps, NavigationControl } from "./types.ts";
+import { hasSameDataTarget } from "./url_identity.ts";
 
 export function beginPrefetch(
 	context: BeginNavigationContext,
@@ -16,7 +17,10 @@ export function beginPrefetch(
 	const pendingRevalidation = getPendingRevalidation();
 
 	// If there's already an active navigation to this URL, return its control
-	if (activeNavigation?.targetUrl === targetUrl) {
+	if (
+		activeNavigation &&
+		hasSameDataTarget(activeNavigation.targetUrl, targetUrl)
+	) {
 		return activeNavigation.control;
 	}
 
@@ -26,17 +30,23 @@ export function beginPrefetch(
 		return existingPrefetch.control;
 	}
 
+	// Reuse an existing prefetch when only hash differs (same data target).
+	for (const [prefetchUrl, prefetch] of prefetchCache.entries()) {
+		if (hasSameDataTarget(prefetchUrl, targetUrl)) {
+			return prefetch.control;
+		}
+	}
+
 	// If there's a pending revalidation to this URL, return its control
-	if (pendingRevalidation?.targetUrl === targetUrl) {
+	if (
+		pendingRevalidation &&
+		hasSameDataTarget(pendingRevalidation.targetUrl, targetUrl)
+	) {
 		return pendingRevalidation.control;
 	}
 
 	// Don't prefetch current page
-	const currentUrl = new URL(window.location.href);
-	const targetUrlObj = new URL(targetUrl);
-	currentUrl.hash = "";
-	targetUrlObj.hash = "";
-	if (currentUrl.href === targetUrlObj.href) {
+	if (hasSameDataTarget(window.location.href, targetUrl)) {
 		return {
 			abortController: new AbortController(),
 			promise: Promise.resolve({ type: "aborted" as const }),
