@@ -9,8 +9,8 @@ export {
 	vormaNavigate,
 	type SubmitOptions,
 } from "./src/client.ts";
-export { __registerClientLoaderPattern } from "./src/client_loaders.ts";
-export { defaultErrorBoundary } from "./src/error_boundary.ts";
+export { __registerClientLoaderPattern } from "./src/core/render_runtime.ts";
+export { defaultErrorBoundary } from "./src/ui/helpers.ts";
 export {
 	addBuildIDListener,
 	addLocationListener,
@@ -18,23 +18,26 @@ export {
 	addStatusListener,
 	type RouteChangeEvent,
 	type StatusEvent,
-} from "./src/events.ts";
-export { setupGlobalLoadingIndicator } from "./src/global_loading_indicator/global_loading_indicator.ts";
-export { __runClientLoadersAfterHMRUpdate } from "./src/hmr/hmr.ts";
-export { initClient } from "./src/init_client.ts";
-export { __getPrefetchHandlers, __makeLinkOnClickFn } from "./src/links.ts";
-export { __applyScrollState } from "./src/scroll_state_manager.ts";
-export { route } from "./src/static_route_defs/route_def_helpers.ts";
+} from "./src/platform/events.ts";
+export { setupGlobalLoadingIndicator } from "./src/core/extras.ts";
+export { __runClientLoadersAfterHMRUpdate } from "./src/core/extras.ts";
+export { initClient } from "./src/app/init.ts";
+export {
+	__getPrefetchHandlers,
+	__makeLinkOnClickFn,
+} from "./src/core/links.ts";
+export { __applyScrollState } from "./src/platform/scroll.ts";
+export { route } from "./src/core/extras.ts";
 export {
 	__makeFinalLinkProps,
 	type VormaLinkPropsBase,
-} from "./src/ui_lib_impl_helpers/link_components.ts";
+} from "./src/ui/helpers.ts";
 export {
 	type ParamsForPattern,
 	type UseRouterDataFunction,
 	type VormaRouteGeneric,
-} from "./src/ui_lib_impl_helpers/route_components.ts";
-export { makeTypedNavigate } from "./src/ui_lib_impl_helpers/typed_navigate.ts";
+} from "./src/ui/helpers.ts";
+export { makeTypedNavigate } from "./src/ui/helpers.ts";
 export {
 	__resolvePath,
 	buildMutationURL,
@@ -55,10 +58,10 @@ export {
 	type VormaQueryPattern,
 	type VormaQueryProps,
 	type VormaRoutePropsGeneric,
-} from "./src/vorma_app_helpers/vorma_app_helpers.ts";
+} from "./src/app/helpers.ts";
 export {
 	__vormaClientGlobal,
 	getRouterData,
 	type ClientLoaderAwaitedServerData,
-} from "./src/vorma_ctx/vorma_ctx.ts";
-export { revalidateOnWindowFocus } from "./src/window_focus_revalidation/window_focus_revalidation.ts";
+} from "./src/app/context.ts";
+export { revalidateOnWindowFocus } from "./src/core/extras.ts";

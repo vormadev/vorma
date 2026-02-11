@@ -1,14 +1,14 @@
-import type { StatusEventDetail } from "./events.ts";
-import { HistoryManager } from "./history/history.ts";
-import type { historyInstance } from "./history/npm_history_types.ts";
-import { createNavigationRuntime } from "./navigation_runtime/runtime.ts";
+import type { StatusEventDetail } from "./platform/events.ts";
+import { HistoryManager } from "./platform/history.ts";
+import type { historyInstance } from "./platform/history.ts";
+import { createNavigationRuntime } from "./core/navigation/runtime.ts";
 import type {
 	NavigateProps,
 	NavigationControl,
 	SubmitOptions,
-} from "./navigation_runtime/types.ts";
-import { setNavigationStateAccess } from "./navigation_state_access.ts";
-import { __vormaClientGlobal } from "./vorma_ctx/vorma_ctx.ts";
+} from "./core/navigation/types.ts";
+import { setNavigationStateAccess } from "./app/context.ts";
+import { __vormaClientGlobal } from "./app/context.ts";
 
 export type {
 	NavigateProps,
@@ -16,7 +16,7 @@ export type {
 	NavigationOutcome,
 	SubmitOptions,
 	VormaNavigationType,
-} from "./navigation_runtime/types.ts";
+} from "./core/navigation/types.ts";
 
 let lastTriggeredNavOrRevalidateTimestampMS = Date.now();
 
