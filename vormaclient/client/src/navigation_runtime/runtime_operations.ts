@@ -3,13 +3,14 @@ import {
 	createRuntimeNavigationOperations,
 	type RuntimeNavigationOperations,
 } from "./runtime_navigation_operations.ts";
-import { createRuntimeSubmit, type RuntimeSubmit } from "./runtime_submit.ts";
+import { executeSubmit } from "./submit.ts";
 import type {
 	NavigateProps,
 	NavigationControl,
 	NavigationEntry,
 	NavigationIntent,
 	NavigationPhase,
+	SubmitOptions,
 	SubmissionEntry,
 } from "./types.ts";
 
@@ -34,6 +35,12 @@ export type RuntimeOperations = {
 	submit: RuntimeSubmit;
 };
 
+type RuntimeSubmit = <T = any>(
+	url: string | URL,
+	requestInit?: RequestInit,
+	options?: SubmitOptions,
+) => Promise<{ success: true; data: T } | { success: false; error: string }>;
+
 export function createRuntimeOperations(
 	context: RuntimeOperationsContext,
 ): RuntimeOperations {
@@ -42,11 +49,17 @@ export function createRuntimeOperations(
 	const { processSuccessfulNavigation, beginNavigation, navigate } =
 		createRuntimeNavigationOperations(context);
 
-	const submit = createRuntimeSubmit({
-		submissions,
-		scheduleStatusUpdate,
-		navigate,
-	});
+	const submit: RuntimeSubmit = (url, requestInit, options) =>
+		executeSubmit(
+			{
+				submissions,
+				scheduleStatusUpdate,
+				navigate,
+			},
+			url,
+			requestInit,
+			options,
+		);
 
 	return {
 		processSuccessfulNavigation,

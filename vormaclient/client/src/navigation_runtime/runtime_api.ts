@@ -2,8 +2,7 @@ import type { StatusEventDetail } from "../events.ts";
 import type { BeginNavigationContext } from "./begin_navigation.ts";
 import { createNavigationBookkeepingAdapter } from "./bookkeeping_adapter.ts";
 import type { NavigationBookkeeping } from "./navigation_bookkeeping.ts";
-import { createRuntimeAPISurface } from "./runtime_api_surface.ts";
-import { createRuntimeAPIWiring } from "./runtime_api_wiring.ts";
+import { createRuntimeOperations } from "./runtime_operations.ts";
 import type {
 	NavigateProps,
 	NavigationControl,
@@ -54,7 +53,7 @@ export function createNavigationRuntimeAPI(
 	});
 
 	const { processSuccessfulNavigation, beginNavigation, navigate, submit } =
-		createRuntimeAPIWiring({
+		createRuntimeOperations({
 			transitionPhase,
 			findNavigationEntry,
 			deleteNavigation,
@@ -65,8 +64,8 @@ export function createNavigationRuntimeAPI(
 			scheduleStatusUpdate,
 		});
 
-	return createRuntimeAPISurface({
-		submissions,
+	return {
+		_submissions: submissions,
 		navigate,
 		beginNavigation,
 		processSuccessfulNavigation,
@@ -78,5 +77,5 @@ export function createNavigationRuntimeAPI(
 		getNavigations,
 		getStatus,
 		clearAll,
-	});
+	};
 }

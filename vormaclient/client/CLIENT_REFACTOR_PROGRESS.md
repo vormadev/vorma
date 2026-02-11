@@ -902,6 +902,125 @@
   in `src/redirects/redirects.ts` and `src/redirects/redirect_request_flow.ts`.
 - Kept public API shape unchanged while reducing internal wrapper cruft.
 
+97. Removed trivial history-state wrappers
+
+- Simplified `src/history/history.ts` by removing local pass-through wrappers
+  around `getHistoryInstance(...)`, `getLastKnownHistoryLocation(...)`, and
+  `setLastKnownHistoryLocation(...)`.
+- Preserved `HistoryManager` public shape while wiring it directly to the
+  underlying history-state functions.
+
+98. Inlined redirect response parse wrapper
+
+- Simplified `src/redirects/redirects.ts` by removing an internal
+  `parseFetchResponseForRedirectData(...)` pass-through helper.
+- `handleRedirects(...)` now computes build ID and invokes
+  `parseResponseForRedirectData(...)` directly.
+
+99. Removed local redirect should-data wrapper
+
+- Simplified `src/redirects/redirect_response_parsing.ts` by removing a local
+  `buildShouldRedirectData(...)` pass-through wrapper.
+- `parseVormaReloadRedirect(...)` now resolves targets and delegates directly to
+  `buildShouldRedirectData(...)` from `src/redirects/redirect_should_data.ts`.
+
+100. Removed history init wrapper indirection
+
+- Simplified `src/history/history.ts` by removing the wrapper body in
+  `initCustomHistory()`.
+- `initCustomHistory` now aliases the same `initHistory` function referenced by
+  `HistoryManager.init`, preserving behavior while reducing indirection.
+
+101. Removed history listener type-cast indirection
+
+- Simplified `src/history/history.ts` by removing
+  `as unknown as historyListener` from listener registration.
+- `initHistory` now registers a typed adapter listener that forwards into
+  `customHistoryListener(...)`.
+- Updated `src/history/history_listener_prelude.ts` to consume local
+  `npm_history_types`-based history types, removing cross-type shims with npm
+  `history` package types.
+
+102. Removed redundant history init alias usage
+
+- Simplified `src/history/history.ts` by removing the internal
+  `initCustomHistory` alias export.
+- Updated internal call sites/tests to use `HistoryManager.init()` directly:
+    - `src/client.test.helpers.ts`
+    - `src/client.scroll_restoration.test.ts`
+    - `src/contracts/client.history_and_init.contract.test.ts`
+- Preserved behavior while reducing internal API surface and no-value alias
+  indirection.
+
+103. Removed links module pass-through wrappers
+
+- Simplified `src/links.ts` by replacing wrapper function bodies with direct
+  export aliases:
+    - `createPrefetchHandlers` as `__getPrefetchHandlers`
+    - `createLinkOnClickFn` as `__makeLinkOnClickFn`
+- Preserved public names/behavior while removing no-value runtime forwarding
+  code.
+
+104. Removed runtime API wiring pass-through module
+
+- Deleted `src/navigation_runtime/runtime_api_wiring.ts`, which only forwarded
+  input context to `createRuntimeOperations(...)`.
+- Updated `src/navigation_runtime/runtime_api.ts` to call
+  `createRuntimeOperations(...)` directly.
+- Preserved behavior while reducing internal module indirection.
+
+105. Removed runtime navigate/success wrapper modules
+
+- Deleted `src/navigation_runtime/runtime_navigate.ts` and
+  `src/navigation_runtime/runtime_process_successful_navigation.ts`.
+- Updated `src/navigation_runtime/runtime_navigation_operations.ts` to wire
+  `navigateWithHandlers(...)` and `processSuccessfulNavigation(...)` directly.
+- Preserved behavior while removing two internal pass-through wrapper modules.
+
+106. Removed runtime submit wrapper module
+
+- Deleted `src/navigation_runtime/runtime_submit.ts` (single-use wrapper around
+  `executeSubmit(...)`).
+- Updated `src/navigation_runtime/runtime_operations.ts` to call
+  `executeSubmit(...)` directly with the same context.
+- Preserved behavior while removing another internal pass-through module.
+
+107. Removed runtime API surface wrapper module
+
+- Deleted `src/navigation_runtime/runtime_api_surface.ts` (single-use object
+  assembly helper).
+- Updated `src/navigation_runtime/runtime_api.ts` to return the runtime API
+  object directly.
+- Preserved behavior while removing another internal pass-through module.
+
+108. Removed runtime begin-navigation wrapper module
+
+- Deleted `src/navigation_runtime/runtime_begin_navigation.ts` (single-use
+  wrapper around begin-navigation handler wiring).
+- Updated `src/navigation_runtime/runtime_navigation_operations.ts` to wire
+  `beginNavigationWithHandlers(...)` and begin handlers directly.
+- Preserved behavior while removing another internal pass-through module.
+
+109. Decoupled history listener prelude from enum identity
+
+- Updated `src/history/history_listener_prelude.ts` to accept canonical action
+  string literals (`"POP" | "PUSH" | "REPLACE"`) and structural location fields
+  (`key`, `pathname`, `search`) instead of enum-tied action/location identities.
+- Preserved behavior while preventing `Action` vs `historyAction` nominal type
+  mismatches.
+
+110. Prevented unhandled parallel client-loader rejections on abandoned prefetch
+
+- Updated `src/navigation_runtime/parallel_client_loaders.ts` to attach a
+  side-chain catch to each eagerly started loader promise.
+- This keeps abandoned parallel loader rejections (for example pure prefetches
+  that resolve to redirect/abort outcomes) from surfacing as unhandled promise
+  errors, while preserving rejection behavior when loaders are later awaited by
+  `completeClientLoaders(...)`.
+- Added contract coverage in `src/contracts/client.prefetch.contract.test.ts` to
+  verify no unhandled rejection leak on redirecting pure prefetch with a
+  `serverDataPromise`-based client loader.
+
 ## Verification
 
 - `pnpm oxlint vormaclient/client/src`
@@ -911,9 +1030,9 @@
 - `pnpm tsc --noEmit --project ./vormaclient/client`
 - Result: passing.
 - `pnpm vitest --run vormaclient/client/src/contracts`
-- Result: `14` files, `156` tests, all passing.
+- Result: `14` files, `157` tests, all passing.
 - `pnpm vitest --run vormaclient/client/src`
-- Result: `40` files, `350` tests, all passing.
+- Result: `40` files, `351` tests, all passing.
 
 ## Current State
 
@@ -945,14 +1064,12 @@
   `src/navigation_runtime/navigate.ts`.
 - Runtime bookkeeping passthrough assembly is isolated in
   `src/navigation_runtime/bookkeeping_adapter.ts`.
-- Runtime submit wiring is isolated in
-  `src/navigation_runtime/runtime_submit.ts`.
-- Runtime begin-navigation wiring is isolated in
-  `src/navigation_runtime/runtime_begin_navigation.ts`.
-- Runtime successful-navigation wiring is isolated in
-  `src/navigation_runtime/runtime_process_successful_navigation.ts`.
-- Runtime navigate wiring is isolated in
-  `src/navigation_runtime/runtime_navigate.ts`.
+- Runtime begin-navigation wiring is handled directly in
+  `src/navigation_runtime/runtime_navigation_operations.ts`.
+- Runtime submit wiring is handled directly in
+  `src/navigation_runtime/runtime_operations.ts`.
+- Runtime successful-navigation and navigate wiring are handled directly in
+  `src/navigation_runtime/runtime_navigation_operations.ts`.
 - `src/client.ts` now consumes `createNavigationRuntime(...)` directly.
 - Successful-navigation side effects are isolated in
   `src/navigation_runtime/successful_navigation_effects.ts`.
@@ -1048,10 +1165,10 @@
   `src/navigation_runtime/target_url.ts`.
 - Runtime begin-context setup is isolated in
   `src/navigation_runtime/runtime_begin_context_setup.ts`.
-- Runtime API surface assembly is isolated in
-  `src/navigation_runtime/runtime_api_surface.ts`.
-- Runtime API operation wiring is isolated in
-  `src/navigation_runtime/runtime_api_wiring.ts`.
+- Runtime API surface assembly is handled directly in
+  `src/navigation_runtime/runtime_api.ts`.
+- Runtime API operation wiring is handled directly in
+  `src/navigation_runtime/runtime_api.ts`.
 - Runtime bookkeeping/status setup is isolated in
   `src/navigation_runtime/runtime_bookkeeping_status_setup.ts`.
 - Runtime constants are isolated in `src/navigation_runtime/constants.ts`.

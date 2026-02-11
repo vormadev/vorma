@@ -1,21 +1,20 @@
-import type { BeginNavigationContext } from "./begin_navigation.ts";
 import {
-	createRuntimeBeginNavigation,
-	type RuntimeBeginNavigation,
-} from "./runtime_begin_navigation.ts";
+	beginPrefetch as executeBeginPrefetch,
+	beginRevalidation as executeBeginRevalidation,
+	beginUserNavigation as executeBeginUserNavigation,
+	type BeginNavigationContext,
+} from "./begin_navigation.ts";
 import {
-	createRuntimeNavigate,
-	type RuntimeNavigate,
-} from "./runtime_navigate.ts";
-import {
-	createRuntimeProcessSuccessfulNavigation,
-	type RuntimeProcessSuccessfulNavigation,
-} from "./runtime_process_successful_navigation.ts";
+	beginNavigationWithHandlers,
+	navigateWithHandlers,
+} from "./navigate.ts";
+import { processSuccessfulNavigation as executeProcessSuccessfulNavigation } from "./process_successful_navigation.ts";
 import type {
 	NavigateProps,
 	NavigationControl,
 	NavigationEntry,
 	NavigationIntent,
+	NavigationOutcome,
 	NavigationPhase,
 } from "./types.ts";
 
@@ -37,6 +36,17 @@ export type RuntimeNavigationOperations = {
 	navigate: RuntimeNavigate;
 };
 
+type RuntimeProcessSuccessfulNavigation = (
+	outcome: Extract<NavigationOutcome, { type: "success" }>,
+	entry: NavigationEntry,
+) => Promise<void>;
+
+type RuntimeNavigate = (
+	props: NavigateProps,
+) => Promise<{ didNavigate: boolean }>;
+
+type RuntimeBeginNavigation = (props: NavigateProps) => NavigationControl;
+
 export function createRuntimeNavigationOperations(
 	context: RuntimeNavigationOperationsContext,
 ): RuntimeNavigationOperations {
@@ -49,25 +59,51 @@ export function createRuntimeNavigationOperations(
 		onNavigationIntentResolved,
 	} = context;
 
-	const processSuccessfulNavigation =
-		createRuntimeProcessSuccessfulNavigation({
-			transitionPhase,
-			findNavigationEntry,
-			deleteNavigation,
-		});
+	const processSuccessfulNavigation: RuntimeProcessSuccessfulNavigation =
+		async (outcome, entry) =>
+			executeProcessSuccessfulNavigation(
+				{
+					transitionPhase,
+					findNavigationEntry,
+					deleteNavigation,
+				},
+				outcome,
+				entry,
+			);
 
-	const beginNavigation = createRuntimeBeginNavigation({
-		beginNavigationContext,
-		createActiveNavigation,
-	});
+	const beginNavigation: RuntimeBeginNavigation = (props) =>
+		beginNavigationWithHandlers(
+			{
+				beginUserNavigation: (input, targetUrl) =>
+					executeBeginUserNavigation(
+						beginNavigationContext,
+						input,
+						targetUrl,
+					),
+				beginPrefetch: (input, targetUrl) =>
+					executeBeginPrefetch(
+						beginNavigationContext,
+						input,
+						targetUrl,
+					),
+				beginRevalidation: (input) =>
+					executeBeginRevalidation(beginNavigationContext, input),
+				createActiveNavigation,
+			},
+			props,
+		);
 
-	const navigate = createRuntimeNavigate({
-		beginNavigation,
-		findNavigationEntry,
-		deleteNavigation,
-		processSuccessfulNavigation,
-		onNavigationIntentResolved,
-	});
+	const navigate: RuntimeNavigate = (props) =>
+		navigateWithHandlers(
+			{
+				beginNavigation,
+				findNavigationEntry,
+				deleteNavigation,
+				processSuccessfulNavigation,
+				onNavigationIntentResolved,
+			},
+			props,
+		);
 
 	return {
 		processSuccessfulNavigation,

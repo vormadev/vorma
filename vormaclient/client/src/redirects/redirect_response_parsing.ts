@@ -2,27 +2,6 @@ import type { RedirectData } from "./redirects.ts";
 import { resolveHTTPRedirectTarget } from "./redirect_href_resolution.ts";
 import { buildShouldRedirectData as buildRedirectShouldData } from "./redirect_should_data.ts";
 
-function buildShouldRedirectData(
-	href: string,
-	latestBuildID: string,
-	shouldRedirectStrategy: "hard" | "soft",
-): RedirectData | null {
-	const resolvedTarget = resolveHTTPRedirectTarget(href);
-	if (!resolvedTarget) {
-		return null;
-	}
-	const { hrefDetails } = resolvedTarget;
-
-	return {
-		...buildRedirectShouldData({
-			href,
-			hrefDetails,
-			latestBuildID,
-			shouldRedirectStrategy,
-		}),
-	};
-}
-
 function parseVormaReloadRedirect(
 	response: Response,
 	latestBuildID: string,
@@ -32,7 +11,18 @@ function parseVormaReloadRedirect(
 		return null;
 	}
 
-	return buildShouldRedirectData(vormaReloadTarget, latestBuildID, "hard");
+	const resolvedTarget = resolveHTTPRedirectTarget(vormaReloadTarget);
+	if (!resolvedTarget) {
+		return null;
+	}
+	const { hrefDetails } = resolvedTarget;
+
+	return buildRedirectShouldData({
+		href: vormaReloadTarget,
+		hrefDetails,
+		latestBuildID,
+		shouldRedirectStrategy: "hard",
+	});
 }
 
 function parseBrowserRedirect(

@@ -1,9 +1,16 @@
-import type { Action, Location } from "history";
+import type { historyInstance } from "./npm_history_types.ts";
+
+type HistoryActionValue = "POP" | "PUSH" | "REPLACE";
+
+type HistoryLocationPrelude = Pick<
+	historyInstance["location"],
+	"key" | "pathname" | "search"
+>;
 
 export function analyzeHistoryListenerPrelude(props: {
-	action: Action;
-	location: Location;
-	lastKnownLocation: Location;
+	action: HistoryActionValue;
+	location: HistoryLocationPrelude;
+	lastKnownLocation: HistoryLocationPrelude;
 }): {
 	didLocationKeyChange: boolean;
 	popWithinSameDoc: boolean;

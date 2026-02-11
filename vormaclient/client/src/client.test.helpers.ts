@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, vi } from "vitest";
 import { createPatternRegistry } from "vorma/kit/matcher/register";
 import { navigationStateManager } from "./client";
-import { initCustomHistory } from "./history/history.ts";
+import { HistoryManager } from "./history/history.ts";
 import type { VormaAppConfig } from "./vorma_app_helpers/vorma_app_helpers.ts";
 
 export const vormaAppConfig: VormaAppConfig = {
@@ -180,8 +180,14 @@ export const describeNavigationTestSuite = (
 				value: vi.fn(),
 				writable: true,
 			});
-			Object.defineProperty(window, "scrollX", { value: 0, writable: true });
-			Object.defineProperty(window, "scrollY", { value: 0, writable: true });
+			Object.defineProperty(window, "scrollX", {
+				value: 0,
+				writable: true,
+			});
+			Object.defineProperty(window, "scrollY", {
+				value: 0,
+				writable: true,
+			});
 
 			// Mock startViewTransition
 			const mockStartViewTransition = vi.fn((callback) => {
@@ -216,7 +222,7 @@ export const describeNavigationTestSuite = (
 			cleanupFns.length = 0;
 
 			// Initialize history after location is properly set up
-			initCustomHistory();
+			HistoryManager.init();
 		});
 
 		afterEach(async () => {

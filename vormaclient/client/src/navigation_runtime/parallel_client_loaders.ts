@@ -76,6 +76,12 @@ export async function startParallelClientLoaders(props: {
 			serverDataPromise,
 			signal: props.signal,
 		});
+		// These promises may outlive/escape the current navigation (for example
+		// pure prefetches that resolve to redirect/abort outcomes). Attach a
+		// side-chain catch so abandoned loaders never surface as unhandled
+		// rejections. The original promise still rejects when awaited later by
+		// completeClientLoaders(...).
+		void loaderPromise.catch(() => {});
 
 		runningLoaders.set(pattern, loaderPromise);
 	}

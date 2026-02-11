@@ -8,7 +8,7 @@ import {
 	type RouteChangeEventDetail,
 } from "./events.ts";
 
-import { initCustomHistory } from "./history/history.ts";
+import { HistoryManager } from "./history/history.ts";
 
 import { initClient } from "./init_client.ts";
 
@@ -84,7 +84,7 @@ describeNavigationTestSuite(({ addListener }) => {
 					scrollRestorationValue = value;
 				});
 
-				// Define the property before calling initCustomHistory
+				// Define the property before calling HistoryManager.init
 				Object.defineProperty(window.history, "scrollRestoration", {
 					get: () => scrollRestorationValue,
 					set: setterSpy,
@@ -92,7 +92,7 @@ describeNavigationTestSuite(({ addListener }) => {
 					enumerable: true,
 				});
 
-				initCustomHistory();
+				HistoryManager.init();
 
 				expect(setterSpy).toHaveBeenCalledWith("manual");
 				expect(scrollRestorationValue).toBe("manual");

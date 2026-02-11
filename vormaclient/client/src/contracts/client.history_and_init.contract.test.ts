@@ -183,8 +183,8 @@ describe("client history/init contracts", () => {
 	it("saves outgoing scroll position before user navigation pushes a new history entry", async () => {
 		const api = await loadClientAPI();
 		const history = api.getHistoryInstance();
-		const { initCustomHistory } = await import("../history/history.ts");
-		initCustomHistory();
+		const { HistoryManager } = await import("../history/history.ts");
+		HistoryManager.init();
 
 		history.push("/current-source");
 		const sourceKey = history.location.key;

@@ -1,4 +1,3 @@
-import type { Update as NPMHistoryUpdate } from "history";
 import { dispatchLocationEvent } from "../events.ts";
 import { saveScrollState } from "../scroll_state_manager.ts";
 import { analyzeHistoryListenerPrelude } from "./history_listener_prelude.ts";
@@ -8,19 +7,7 @@ import {
 	getLastKnownHistoryLocation,
 	setLastKnownHistoryLocation,
 } from "./history_state.ts";
-import type { historyInstance, historyListener } from "./npm_history_types.ts";
-
-function getInstance(): historyInstance {
-	return getHistoryInstance();
-}
-
-function getLastKnownLocation(): historyInstance["location"] {
-	return getLastKnownHistoryLocation();
-}
-
-function updateLastKnownLocation(location: historyInstance["location"]): void {
-	setLastKnownHistoryLocation(location);
-}
+import type { historyListener } from "./npm_history_types.ts";
 
 function setManualScrollRestoration(): void {
 	if (history.scrollRestoration && history.scrollRestoration !== "manual") {
@@ -28,28 +15,26 @@ function setManualScrollRestoration(): void {
 	}
 }
 
-function init(): void {
-	const instance = getInstance();
-	instance.listen(customHistoryListener as unknown as historyListener);
+function initHistory(): void {
+	const instance = getHistoryInstance();
+	instance.listen((update) => {
+		void customHistoryListener(update);
+	});
 	setManualScrollRestoration();
 }
 
 export const HistoryManager = {
-	getInstance,
-	getLastKnownLocation,
-	updateLastKnownLocation,
-	init,
+	getInstance: getHistoryInstance,
+	getLastKnownLocation: getLastKnownHistoryLocation,
+	updateLastKnownLocation: setLastKnownHistoryLocation,
+	init: initHistory,
 };
-
-export function initCustomHistory(): void {
-	init();
-}
 
 export async function customHistoryListener({
 	action,
 	location,
-}: NPMHistoryUpdate): Promise<void> {
-	const lastKnownLocation = getLastKnownLocation();
+}: Parameters<historyListener>[0]): Promise<void> {
+	const lastKnownLocation = getLastKnownHistoryLocation();
 	const { didLocationKeyChange, popWithinSameDoc, shouldSaveScrollState } =
 		analyzeHistoryListenerPrelude({
 			action,
@@ -76,6 +61,6 @@ export async function customHistoryListener({
 	}
 
 	if (navigationSucceeded) {
-		updateLastKnownLocation(location);
+		setLastKnownHistoryLocation(location);
 	}
 }

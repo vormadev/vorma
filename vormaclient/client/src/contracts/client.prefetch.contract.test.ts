@@ -212,6 +212,50 @@ describe("client prefetch contracts", () => {
 		await vi.runAllTimersAsync();
 	});
 
+	it("does not leak unhandled rejections when pure prefetch resolves to redirect", async () => {
+		const api = await loadClientAPI();
+		const patternToWaitFnMap =
+			api.__vormaClientGlobal.get("patternToWaitFnMap");
+
+		patternToWaitFnMap["/prefetch-redirect"] = async ({
+			serverDataPromise,
+		}: {
+			serverDataPromise: Promise<{ loaderData: { Title: string } }>;
+		}) => {
+			const { loaderData } = await serverDataPromise;
+			return loaderData.Title;
+		};
+		await api.__registerClientLoaderPattern("/prefetch-redirect");
+
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse(
+				{},
+				{ headers: { "X-Client-Redirect": "/redirect-target" } },
+			),
+		);
+
+		const unhandledRejections: Array<unknown> = [];
+		const unhandledRejectionHandler = (reason: unknown) => {
+			unhandledRejections.push(reason);
+		};
+		process.on("unhandledRejection", unhandledRejectionHandler);
+
+		try {
+			const handlers = api.__getPrefetchHandlers({
+				href: "/prefetch-redirect",
+			});
+			handlers?.start(new Event("mouseenter"));
+
+			await vi.advanceTimersByTimeAsync(100);
+			await vi.runAllTimersAsync();
+			await Promise.resolve();
+
+			expect(unhandledRejections).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", unhandledRejectionHandler);
+		}
+	});
+
 	it("supports click while prefetch is in-flight and runs render callbacks", async () => {
 		const api = await loadClientAPI();
 		const fetchDeferred = createDeferred<Response>();
