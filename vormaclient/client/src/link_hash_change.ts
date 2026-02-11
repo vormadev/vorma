@@ -1,3 +1,8 @@
+import {
+	isSameDocumentHashChange,
+	isSameDocumentLocation,
+} from "./hash_fragment.ts";
+
 type HashCheckAnchorDetails =
 	| {
 			anchor: HTMLAnchorElement;
@@ -10,14 +15,19 @@ export function isJustAHashChange(
 ): boolean {
 	if (!anchorDetails) return false;
 
-	const { pathname, search, hash } = new URL(
+	return isSameDocumentHashChange(
 		anchorDetails.anchor.href,
 		window.location.href,
 	);
+}
 
-	return !!(
-		hash &&
-		pathname === window.location.pathname &&
-		search === window.location.search
+export function isSameDocumentNoopNavigationTarget(
+	anchorDetails: HashCheckAnchorDetails,
+): boolean {
+	if (!anchorDetails) return false;
+
+	return isSameDocumentLocation(
+		anchorDetails.anchor.href,
+		window.location.href,
 	);
 }

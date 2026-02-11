@@ -63,6 +63,29 @@ describe("client prefetch contracts", () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
+	it("retries prefetch after a current-page no-op when location changes", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/current-page",
+			delayMs: 100,
+		});
+
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(fetchSpy).not.toHaveBeenCalled();
+
+		window.history.replaceState({}, "", "/other-page");
+		handlers?.start(new Event("focus"));
+		await vi.advanceTimersByTimeAsync(100);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it("starts prefetch only after the configured delay", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi
@@ -169,6 +192,87 @@ describe("client prefetch contracts", () => {
 		document.body.removeChild(anchor);
 	});
 
+	it("cancels pending prefetch timer on same-document hash removal click", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/hash-page#section-a");
+		const beforeBegin = vi.fn();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/hash-page",
+			delayMs: 200,
+			beforeBegin,
+		});
+
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(beforeBegin).not.toHaveBeenCalled();
+
+		const { anchor, event } = buildAnchorClick("/hash-page");
+		await handlers?.onClick(event);
+		await vi.advanceTimersByTimeAsync(200);
+
+		expect(beforeBegin).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		document.body.removeChild(anchor);
+	});
+
+	it("cancels pending prefetch timer on same-document no-op hash click", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/hash-page#section-a");
+		const beforeBegin = vi.fn();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/hash-page#section-a",
+			delayMs: 200,
+			beforeBegin,
+		});
+
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(beforeBegin).not.toHaveBeenCalled();
+
+		const { anchor, event } = buildAnchorClick("/hash-page#section-a");
+		await handlers?.onClick(event);
+		await vi.advanceTimersByTimeAsync(200);
+
+		expect(beforeBegin).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		document.body.removeChild(anchor);
+	});
+
+	it("cancels pending prefetch timer on encoding-equivalent hash click", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/hash-page#~");
+		const beforeBegin = vi.fn();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/hash-page#%7E",
+			delayMs: 200,
+			beforeBegin,
+		});
+
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(beforeBegin).not.toHaveBeenCalled();
+
+		const { anchor, event } = buildAnchorClick("/hash-page#%7E");
+		await handlers?.onClick(event);
+		await vi.advanceTimersByTimeAsync(200);
+
+		expect(beforeBegin).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		document.body.removeChild(anchor);
+	});
+
 	it("runs beforeBegin callback before prefetch starts", async () => {
 		const api = await loadClientAPI();
 		const beforeBegin = vi.fn();
@@ -183,6 +287,41 @@ describe("client prefetch contracts", () => {
 		await vi.advanceTimersByTimeAsync(100);
 
 		expect(beforeBegin).toHaveBeenCalledTimes(1);
+	});
+
+	it("recovers from beforeBegin prefetch callback failures and allows retry", async () => {
+		const api = await loadClientAPI();
+		const beforeBegin = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("beforeBegin failure"))
+			.mockResolvedValue(undefined);
+		const logErrorSpy = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/before-begin-retry",
+			delayMs: 100,
+			beforeBegin,
+		});
+
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+
+		expect(beforeBegin).toHaveBeenCalledTimes(1);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(logErrorSpy).toHaveBeenCalled();
+
+		handlers?.start(new Event("focus"));
+		await vi.advanceTimersByTimeAsync(100);
+		await vi.runAllTimersAsync();
+
+		expect(beforeBegin).toHaveBeenCalledTimes(2);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		logErrorSpy.mockRestore();
 	});
 
 	it("reuses completed prefetch response on click without refetching", async () => {
@@ -221,6 +360,24 @@ describe("client prefetch contracts", () => {
 		handlers?.stop();
 
 		await vi.advanceTimersByTimeAsync(200);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("does not leak orphan timers when start is called multiple times before stop", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/orphan-timer",
+			delayMs: 200,
+		});
+		handlers?.start(new Event("mouseenter"));
+		handlers?.start(new Event("focus"));
+		handlers?.stop();
+
+		await vi.advanceTimersByTimeAsync(250);
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 

@@ -787,6 +787,36 @@ describe("client loading/focus contracts", () => {
 		cleanupIndicator();
 	});
 
+	it("clears global loading indicator timers when timer id is zero", async () => {
+		const api = await loadClientAPI();
+		const originalSetTimeout = window.setTimeout.bind(window);
+		const setTimeoutSpy = vi
+			.spyOn(window, "setTimeout")
+			.mockImplementationOnce(() => 0 as any)
+			.mockImplementation(
+				(handler, timeout, ...args) =>
+					originalSetTimeout(
+						handler as TimerHandler,
+						timeout,
+						...args,
+					) as any,
+			);
+		const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+
+		const cleanupIndicator = api.setupGlobalLoadingIndicator({
+			start: vi.fn(),
+			stop: vi.fn(),
+			isRunning: () => false,
+			startDelayMS: 5,
+			stopDelayMS: 5,
+		});
+
+		cleanupIndicator();
+
+		expect(setTimeoutSpy).toHaveBeenCalled();
+		expect(clearTimeoutSpy).toHaveBeenCalledWith(0);
+	});
+
 	it("revalidates on focus after staleTime has elapsed", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi

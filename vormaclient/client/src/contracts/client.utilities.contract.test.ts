@@ -102,6 +102,41 @@ describe("client utility contracts", () => {
 		expect(urlHashScrollSpy).toHaveBeenCalled();
 	});
 
+	it("decodes encoded hash fragments before element lookup", async () => {
+		const api = await loadClientAPI();
+
+		const unicodeElement = document.createElement("div");
+		unicodeElement.id = "✓";
+		document.body.appendChild(unicodeElement);
+		const unicodeScrollSpy = vi.spyOn(unicodeElement, "scrollIntoView");
+
+		api.__applyScrollState({ hash: "%E2%9C%93" });
+		expect(unicodeScrollSpy).toHaveBeenCalledTimes(1);
+
+		window.location.hash = "#%E2%9C%93";
+		api.__applyScrollState(undefined);
+		expect(unicodeScrollSpy).toHaveBeenCalledTimes(2);
+	});
+
+	it("falls back to raw hash fragments when decode fails", async () => {
+		const api = await loadClientAPI();
+		const invalidEncodedHash = "%E0%A4%A";
+
+		const fallbackElement = document.createElement("div");
+		fallbackElement.id = invalidEncodedHash;
+		document.body.appendChild(fallbackElement);
+		const fallbackScrollSpy = vi.spyOn(fallbackElement, "scrollIntoView");
+
+		expect(() =>
+			api.__applyScrollState({ hash: invalidEncodedHash }),
+		).not.toThrow();
+		expect(fallbackScrollSpy).toHaveBeenCalledTimes(1);
+
+		window.location.hash = `#${invalidEncodedHash}`;
+		expect(() => api.__applyScrollState(undefined)).not.toThrow();
+		expect(fallbackScrollSpy).toHaveBeenCalledTimes(2);
+	});
+
 	it("returns current URL parts from getLocation()", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/test/path?query=value#section");

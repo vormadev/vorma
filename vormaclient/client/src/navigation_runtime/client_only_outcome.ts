@@ -1,4 +1,5 @@
 import { completeClientLoaders } from "../client_loaders.ts";
+import { observePromiseRejection } from "../utils/promise_safety.ts";
 import {
 	__vormaClientGlobal,
 	type GetRouteDataOutput,
@@ -78,6 +79,7 @@ export function buildClientOnlyOutcome(
 		runningLoaders,
 		controller.signal,
 	);
+	observePromiseRejection(waitFnPromise);
 
 	return {
 		type: "success",

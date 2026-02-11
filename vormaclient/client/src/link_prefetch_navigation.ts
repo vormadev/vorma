@@ -20,6 +20,10 @@ function findIdlePrefetchNavigationByDataTarget(targetHref: string) {
 	return undefined;
 }
 
+export function hasIdlePrefetchNavigation(targetHref: string): boolean {
+	return !!findIdlePrefetchNavigationByDataTarget(targetHref);
+}
+
 export async function startPrefetchNavigation(props: {
 	targetHref: string;
 	state?: unknown;

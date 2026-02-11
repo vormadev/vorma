@@ -1,5 +1,23 @@
 import type { NavigationPhase, SubmissionEntry } from "./types.ts";
 import type { NavigationSlots } from "./navigation_slots.ts";
+import { hasSameDataTarget } from "./url_identity.ts";
+
+function findMatchingPrefetchKey(
+	slots: NavigationSlots,
+	key: string,
+): string | undefined {
+	if (slots.prefetchCache.has(key)) {
+		return key;
+	}
+
+	for (const url of slots.prefetchCache.keys()) {
+		if (hasSameDataTarget(url, key)) {
+			return url;
+		}
+	}
+
+	return undefined;
+}
 
 export function deleteNavigationFromSlots(
 	slots: NavigationSlots,
@@ -7,21 +25,30 @@ export function deleteNavigationFromSlots(
 	onStatusRelevantChange: () => void,
 ): boolean {
 	// Check active navigation
-	if (slots.activeNavigation?.targetUrl === key) {
+	if (
+		slots.activeNavigation &&
+		(slots.activeNavigation.targetUrl === key ||
+			hasSameDataTarget(slots.activeNavigation.targetUrl, key))
+	) {
 		slots.activeNavigation = null;
 		onStatusRelevantChange();
 		return true;
 	}
 
 	// Check prefetch cache
-	if (slots.prefetchCache.has(key)) {
-		slots.prefetchCache.delete(key);
+	const prefetchKey = findMatchingPrefetchKey(slots, key);
+	if (prefetchKey) {
+		slots.prefetchCache.delete(prefetchKey);
 		// No status update for prefetches
 		return true;
 	}
 
 	// Check pending revalidation
-	if (slots.pendingRevalidation?.targetUrl === key) {
+	if (
+		slots.pendingRevalidation &&
+		(slots.pendingRevalidation.targetUrl === key ||
+			hasSameDataTarget(slots.pendingRevalidation.targetUrl, key))
+	) {
 		slots.pendingRevalidation = null;
 		onStatusRelevantChange();
 		return true;
@@ -36,7 +63,11 @@ export function transitionNavigationPhaseInSlots(
 	phase: NavigationPhase,
 	onStatusRelevantChange: () => void,
 ): void {
-	if (slots.activeNavigation?.targetUrl === targetUrl) {
+	if (
+		slots.activeNavigation &&
+		(slots.activeNavigation.targetUrl === targetUrl ||
+			hasSameDataTarget(slots.activeNavigation.targetUrl, targetUrl))
+	) {
 		slots.activeNavigation.phase = phase;
 		onStatusRelevantChange();
 		return;
@@ -48,8 +79,21 @@ export function transitionNavigationPhaseInSlots(
 		// No status update for prefetches
 		return;
 	}
+	const prefetchAliasKey = findMatchingPrefetchKey(slots, targetUrl);
+	if (prefetchAliasKey) {
+		const prefetchAlias = slots.prefetchCache.get(prefetchAliasKey);
+		if (prefetchAlias) {
+			prefetchAlias.phase = phase;
+			// No status update for prefetches
+			return;
+		}
+	}
 
-	if (slots.pendingRevalidation?.targetUrl === targetUrl) {
+	if (
+		slots.pendingRevalidation &&
+		(slots.pendingRevalidation.targetUrl === targetUrl ||
+			hasSameDataTarget(slots.pendingRevalidation.targetUrl, targetUrl))
+	) {
 		slots.pendingRevalidation.phase = phase;
 		onStatusRelevantChange();
 	}

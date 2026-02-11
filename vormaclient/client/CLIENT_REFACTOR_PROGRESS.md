@@ -1191,6 +1191,402 @@
   serverDataPromise with AbortError when required server loader payload is
   missing").
 
+127. Fixed same-document hash-removal link handling
+
+- Updated `src/link_hash_change.ts` so same-document hash transitions now
+  include add/update/remove cases (`hash !== window.location.hash`), not only
+  non-empty target hashes.
+- This prevents unnecessary client data fetches for same-document hash-removal
+  clicks (for example `/page#section` -> `/page`).
+- Added strict contract coverage:
+    - `src/contracts/client.link_click.contract.test.ts` ("handles same-document
+      hash removal links without navigation fetch")
+    - `src/contracts/client.prefetch.contract.test.ts` ("cancels pending
+      prefetch timer on same-document hash removal click")
+
+128. Hardened navigation slot operations against hash-alias key drift
+
+- Updated navigation slot lookup/mutation helpers to allow same-data-target key
+  matching (hash-insensitive) as a fallback:
+    - `src/navigation_runtime/navigation_slots.ts`
+    - `src/navigation_runtime/navigation_slot_mutations.ts`
+- This ensures slot find/delete/phase-transition operations remain correct when
+  an in-flight navigation entry is retargeted across hash variants.
+- Added focused unit coverage in
+  `src/navigation_runtime/navigation_slots.test.ts`.
+
+129. Restricted hash-change classification to same-origin URLs
+
+- Updated `src/link_hash_change.ts` to require same-origin targets before
+  classifying a click as same-document hash-only navigation.
+- This prevents cross-origin links (that happen to share pathname/search) from
+  incorrectly taking hash-only local handling branches.
+- Added strict contract coverage in
+  `src/contracts/client.link_click.contract.test.ts` ("does not treat
+  cross-origin hash links as same-document hash changes").
+
+130. Blocked skip-fetch fast path when required cached server data is missing
+
+- Updated `src/navigation_runtime/skip_server_fetch_result_item.ts` so
+  server-loader routes only qualify for skip-fetch when cached loader data is
+  present (`!== undefined`) at the matched pattern index.
+- This prevents client-only skip outcomes from propagating invalid
+  `loaderData: undefined` for server-loaded routes and forces a real server
+  fetch when cache integrity is incomplete.
+- Added strict contract coverage in
+  `src/contracts/client.module_loading_and_fetch.contract.test.ts` ("falls back
+  to server fetch when skip-cache is missing required server loader data").
+
+131. Eliminated duplicate prefetch timer race from repeated start() calls
+
+- Updated `src/link_prefetch_handlers.ts` so `start()` no-ops while a timer is
+  already pending (`timer !== undefined`), instead of scheduling additional
+  timers.
+- This prevents orphaned timers that could survive `stop()` and trigger an
+  unexpected prefetch later.
+- Added strict contract coverage in
+  `src/contracts/client.prefetch.contract.test.ts` ("does not leak orphan timers
+  when start is called multiple times before stop").
+
+132. Fixed global-loading-indicator timer-sentinel handling for timer id `0`
+
+- Updated `src/global_loading_indicator/global_loading_indicator.ts` to use
+  explicit `null` sentinel checks for start/stop timers (`=== null` /
+  `!== null`) instead of truthy/falsy checks.
+- This prevents missed clears and duplicate scheduling when a host returns timer
+  id `0`.
+- Added strict contract coverage in
+  `src/contracts/client.loading_and_focus.contract.test.ts` ("clears global
+  loading indicator timers when timer id is zero").
+
+133. Preserved full `BodyInit` support in redirect/submit request normalization
+
+- Updated `src/redirects/redirect_request_init.ts` to preserve standard
+  `BodyInit` payloads (`FormData`, `string`, `URLSearchParams`, `Blob`,
+  `ArrayBuffer`, typed-array/DataView via `ArrayBuffer.isView`, and
+  `ReadableStream`) as-is.
+- Non-`BodyInit` values (for example plain objects passed via `as any`) remain
+  JSON-stringified for compatibility.
+- Added strict contract coverage in
+  `src/contracts/client.submit_and_redirect.contract.test.ts` ("preserves
+  BodyInit payloads and serializes object bodies for submit requests").
+
+134. Enforced strict no-body policy for GET-like submit requests
+
+- Updated `src/redirects/redirect_request_init.ts` to strip request bodies for
+  `GET`/`HEAD` methods and for implicit `GET` requests (method omitted).
+- Fixed request-init merge order so filtered bodies are not accidentally leaked
+  back into fetch options through `...requestInit` spread.
+- Added strict contract coverage in
+  `src/contracts/client.submit_and_redirect.contract.test.ts` ("omits bodies for
+  GET/HEAD/implicit-GET submit requests even when provided").
+
+135. Guarded request-body normalization against missing `ReadableStream`
+
+- Updated `src/vorma_app_helpers/body_resolution.ts` to guard `ReadableStream`
+  pass-through checks with `typeof ReadableStream !== "undefined"`.
+- This prevents runtime failures in environments where `ReadableStream` is not
+  available on `globalThis`.
+- Added focused coverage in `src/vorma_app_helpers/body_resolution.test.ts` for:
+    - object-body serialization when `ReadableStream` is unavailable
+    - pass-through behavior when `ReadableStream` is available
+
+136. Hardened persisted scroll-state parsing against corrupted storage
+
+- Updated `src/scroll_state_storage.ts` to remove `__vorma__scrollStateMap` when
+  stored JSON is malformed.
+- Updated `src/scroll_state_refresh_state.ts` to remove
+  `__vorma__pageRefreshScrollState` when stored JSON is malformed.
+- This prevents repeated parse failures and ensures corrupted persisted state is
+  actively discarded.
+- Added focused coverage:
+    - `src/scroll_state_storage.test.ts`
+    - `src/scroll_state_refresh_state.test.ts`
+
+137. Validated page-refresh snapshot shape before applying scroll restore
+
+- Updated `src/scroll_state_refresh_state.ts` to validate parsed snapshot
+  structure before restore (`x`, `y`, `unix`, `href` with finite numeric fields
+  for coordinates and timestamp).
+- Invalid parseable payloads are now removed instead of being applied.
+- Expanded focused coverage in `src/scroll_state_refresh_state.test.ts` with
+  invalid-shape snapshot cases.
+
+138. Fixed scroll-state FIFO eviction for empty-string keys
+
+- Updated `src/scroll_state_storage.ts` to evict the oldest key when
+  `firstKey !== undefined` (instead of truthy checks).
+- This preserves strict FIFO behavior even if the oldest key is `""`.
+- Expanded focused coverage in `src/scroll_state_storage.test.ts` with an
+  empty-string oldest-key regression case.
+
+139. Made init-client global event registration idempotent
+
+- Updated `src/init_client_events.ts` to guard beforeunload and touch listener
+  registration with module-level flags.
+- Repeated `initClient()` calls now register at most one beforeunload listener
+  and one touchstart listener.
+- Added strict contract coverage in
+  `src/contracts/client.history_and_init.contract.test.ts` ("registers
+  beforeunload and touch listeners only once across repeated init calls").
+
+140. Prevented repeated init from accumulating history listeners
+
+- Updated `src/history/history.ts` to clean up any previously registered history
+  listener before registering the next one during `HistoryManager.init`.
+- This preserves `init` side effects on repeated calls (for example
+  `scrollRestoration` setup) while maintaining exactly one active history
+  listener.
+- Expanded strict contract coverage in
+  `src/contracts/client.history_and_init.contract.test.ts` to assert listener
+  cleanup + re-registration behavior across repeated init calls.
+
+141. URL-encoded dynamic and splat path segments in typed route resolution
+
+- Updated `src/vorma_app_helpers/path_resolution.ts` to URL-encode:
+    - dynamic parameter replacements
+    - each splat segment before join
+- Tightened dynamic token replacement to exact token matches (`:id`) so repeated
+  exact tokens are replaced without accidental partial matches.
+- Added focused coverage in `src/vorma_app_helpers/path_resolution.test.ts` for
+  encoded dynamic/splat behavior and explicit-index stripping.
+
+142. Decoded encoded hash fragments before scroll-target lookup
+
+- Updated `src/scroll_state_manager.ts` to decode percent-encoded hash fragments
+  before `document.getElementById(...)` lookup.
+- Applied decoding for both explicit hash-state restores and URL-hash fallback
+  restores (`window.location.hash` path).
+- Added decode-failure fallback to raw hash fragments so malformed encodings
+  cannot throw and still preserve direct-id lookup behavior.
+- Added strict contract coverage in
+  `src/contracts/client.utilities.contract.test.ts` for:
+    - encoded hash lookup
+    - malformed encoded hash fallback behavior
+
+143. Centralized hash-fragment normalization and replaced ad hoc call sites
+
+- Added `src/hash_fragment.ts` as the shared primitive for:
+    - hash-fragment decoding with malformed-encoding fallback
+    - normalized fragment extraction from hash strings and href values
+    - same-document hash-only transition checks
+- Replaced ad hoc hash handling with the shared primitive in:
+    - `src/scroll_state_manager.ts`
+    - `src/history/history_pop_navigation.ts`
+    - `src/rendering_history_scroll.ts`
+    - `src/link_hash_change.ts`
+- Added focused primitive coverage in `src/hash_fragment.test.ts`.
+- Expanded strict contract coverage in
+  `src/contracts/client.history_and_init.contract.test.ts` with encoded
+  same-document POP hash-scroll behavior.
+
+144. Enforced single-decode semantics for hash-driven scroll restoration
+
+- Refined `src/hash_fragment.ts` to split:
+    - raw fragment extraction (`hashFragmentFromHash`, `hashFragmentFromHref`)
+    - decoded normalization (`normalizedHashFragmentFromHash`,
+      `normalizedHashFragmentFromHref`)
+- Updated `src/rendering_history_scroll.ts` and
+  `src/history/history_pop_navigation.ts` to pass raw fragments into
+  `__applyScrollState(...)`, preserving exactly-one decode at apply time.
+- This prevents double-decoding regressions for literal `%`-containing element
+  IDs (for example `%20-literal`).
+- Expanded strict contract coverage in
+  `src/contracts/client.history_and_init.contract.test.ts` with a same-document
+  POP case that asserts literal percent-ID restoration semantics.
+
+145. Hardened delayed prefetch against callback failures and stale timer state
+
+- Updated `src/link_prefetch_handlers.ts` prefetch timer behavior to clear the
+  timer sentinel when the timer fires.
+- Wrapped delayed prefetch startup in `try/catch` to prevent unhandled promise
+  rejections from `beforeBegin` callback failures.
+- On delayed prefetch-start failure, reset `prefetchStarted` to allow explicit
+  retry attempts and log the failure for visibility.
+- Expanded strict contract coverage in
+  `src/contracts/client.prefetch.contract.test.ts` with a failure-and-retry case
+  for `beforeBegin`.
+
+146. Prevented no-op same-document links from triggering client navigation
+
+- Updated hash identity helpers in `src/hash_fragment.ts` so same-document hash
+  change detection compares normalized fragment values (including
+  encoding-equivalent forms).
+- Added `isSameDocumentLocation(...)` and wired link handling to treat
+  same-document same-fragment targets as explicit no-op navigations.
+- Updated:
+    - `src/link_hash_change.ts`
+    - `src/link_click_handler.ts`
+    - `src/link_prefetch_click.ts`
+- Added strict contract coverage for:
+    - exact same-document hash no-op clicks
+    - encoding-equivalent hash no-op clicks
+    - prefetch timer cancel/no-fetch behavior for both no-op forms
+- Added focused helper coverage in `src/hash_fragment.test.ts` for
+  encoding-equivalent hash semantics.
+
+147. Fixed stale prefetch-start state after no-op prefetch attempts
+
+- Updated `src/link_prefetch_handlers.ts` to treat `prefetchStarted` as
+  conditional on an actual idle prefetch entry existing for the target.
+- Added idle-prefetch presence checks via `hasIdlePrefetchNavigation(...)` in:
+    - `src/link_prefetch_handlers.ts`
+    - `src/link_prefetch_navigation.ts`
+- This prevents no-op prefetch attempts (for example, target equals current
+  page) from leaving handlers stuck in a non-retryable `prefetchStarted=true`
+  state.
+- Added strict contract coverage in
+  `src/contracts/client.prefetch.contract.test.ts` for retry behavior after a
+  current-page no-op once location changes.
+
+148. Stopped redundant same-target hash scroll on same-document POP
+
+- Updated `src/history/history_pop_navigation.ts` to treat hash-update scroll as
+  conditional on normalized hash target changes.
+- Same-document POP transitions with encoding-equivalent hash targets (for
+  example `#~` and `#%7E`) now avoid redundant `scrollIntoView` calls.
+- Preserved existing add/remove hash behavior and cross-document POP behavior.
+- Added strict contract coverage in
+  `src/contracts/client.history_and_init.contract.test.ts` for encoding-
+  equivalent hash POP no-rescroll semantics.
+
+149. Classified `#` as empty hash target in same-document POP removal handling
+
+- Updated `src/history/history_pop_navigation.ts` hash-transition logic to
+  derive add/update/remove from normalized hash-target emptiness instead of raw
+  hash-string truthiness.
+- This ensures transitions from hash targets (for example `#section`) to `#` are
+  treated as hash-target removal and restore stored scroll state.
+- Added strict contract coverage in
+  `src/contracts/client.history_and_init.contract.test.ts` for POP `#section` ->
+  `#` restoration behavior.
+
+150. Enforced query-order sensitivity for skip-fetch eligibility
+
+- Updated `src/navigation_runtime/skip_server_fetch_eligibility.ts` to treat
+  query-string order changes as changed input for skip-fetch gating.
+- Replaced order-normalized search-param comparison with exact `URL.search`
+  comparison between current and target URLs.
+- This prevents unsafe server-fetch skipping when query order changes could
+  change backend semantics.
+- Added focused coverage in
+  `src/navigation_runtime/skip_server_fetch_eligibility.test.ts` for:
+    - query-order change -> skip eligibility violated
+    - exact query-string equality -> skip eligibility not violated
+
+151. Prevented modifier-key hash clicks from mutating client scroll state
+
+- Updated `src/link_click_handler.ts` so same-document hash/no-op handling runs
+  only when the click is internal and eligible for default prevention.
+- This prevents ctrl/meta/shift/alt click variants (which are browser-handled,
+  not client-handled) from writing scroll state side effects in the current tab.
+- Added strict contract coverage in
+  `src/contracts/client.link_click.contract.test.ts` asserting no scroll-state
+  writes for modifier-key same-document hash clicks.
+
+152. Enforced normalized same-location history replacement for hash-equivalent
+     targets
+
+- Updated `src/rendering_history_scroll.ts` push-vs-replace logic to use
+  normalized same-document location equivalence via
+  `isSameDocumentLocation(...)` instead of raw URL string equality.
+- This prevents encoding-equivalent hash targets (for example `#~` and `#%7E`)
+  from generating redundant history `push(...)` entries.
+- Added strict contract coverage in
+  `src/contracts/client.navigation_lifecycle.contract.test.ts` for:
+    - encoding-equivalent hash targets -> `history.replace(...)`
+    - real hash-target changes -> `history.push(...)`
+
+153. Enforced normalized current-target detection for native redirect parsing
+
+- Updated `src/redirects/redirect_response_parsing.ts` to classify native
+  browser redirects as already-redirected (`status: "did"`) using normalized
+  same-document location equivalence rather than raw `href` string equality.
+- This prevents encoding-equivalent hash targets (for example `#~` and `#%7E`)
+  from triggering redundant follow-up redirect navigation fetches.
+- Added strict contract coverage in
+  `src/contracts/client.navigation_modes.contract.test.ts` asserting that native
+  redirect responses targeting an encoding-equivalent current hash trigger no
+  additional fetch.
+
+154. Enforced one-shot page-refresh snapshot applicability with normalized URL
+     equivalence
+
+- Updated `src/scroll_state_refresh_state.ts` to use normalized same-document
+  location equivalence for snapshot URL matching (including encoding-equivalent
+  hash URLs).
+- Tightened snapshot lifecycle semantics by removing page-refresh snapshots when
+  they are stale or do not match the current location, preventing repeated
+  re-evaluation of unusable snapshots.
+- Added focused coverage in `src/scroll_state_refresh_state.test.ts` for:
+    - encoding-equivalent hash URL restore
+    - stale/mismatched snapshot discard
+- Updated strict init contracts in
+  `src/contracts/client.history_and_init.contract.test.ts` to assert that
+  mismatched or stale snapshots are discarded.
+
+155. Centralized hash-insensitive URL identity primitives to prevent drift
+
+- Promoted `hrefWithoutHash(...)` and `hasSameDataTarget(...)` to shared exports
+  in `src/hash_fragment.ts`.
+- Updated `src/navigation_runtime/url_identity.ts` to re-export the shared
+  helpers instead of maintaining duplicate URL identity logic.
+- Added focused helper coverage in `src/hash_fragment.test.ts` for:
+    - hash-insensitive identity equality
+    - query-order-sensitive inequality
+
+156. Aligned history POP prelude classification with shared URL identity logic
+
+- Updated `src/history/history_listener_prelude.ts` to classify same-document
+  POP transitions via `hasSameDataTarget(...)` over normalized absolute hrefs.
+- This removes remaining ad hoc pathname/search equality checks from history POP
+  prelude logic and keeps URL-identity semantics consistent with the shared
+  primitive.
+- Added focused coverage in `src/history/history_listener_prelude.test.ts` for:
+    - same-data-target POP classification
+    - query-order-different POP non-equivalence
+    - non-POP behavior
+
+157. Hardened body normalization against missing optional web constructors
+
+- Updated `src/vorma_app_helpers/body_resolution.ts` to guard all constructor
+  checks (`Blob`, `FormData`, `URLSearchParams`, `ArrayBuffer`,
+  `ReadableStream`) behind global availability checks.
+- Updated `src/redirects/redirect_request_init.ts` with the same constructor
+  guard policy for body-serialization classification.
+- Added focused coverage in:
+    - `src/vorma_app_helpers/body_resolution.test.ts`
+    - `src/redirects/redirect_request_init.test.ts`
+- This prevents runtime `ReferenceError` failures in environments where one or
+  more optional constructors are absent.
+
+158. Centralized constructor-availability guards into shared utility primitives
+
+- Added shared constructor guard helpers in `src/utils/global_constructors.ts`.
+- Updated both body-handling call sites to reuse the shared utility:
+    - `src/vorma_app_helpers/body_resolution.ts`
+    - `src/redirects/redirect_request_init.ts`
+- Added focused utility coverage in `src/utils/global_constructors.test.ts`.
+- This removes duplicated guard logic and keeps constructor-availability
+  semantics consistent across all body normalization paths.
+
+159. Hardened detached navigation promise lifecycles against unhandled
+     rejections
+
+- Added shared detached-promise guard helper in `src/utils/promise_safety.ts`.
+- Applied the helper to detached loader/startup promises in:
+    - `src/navigation_runtime/parallel_client_loaders.ts`
+    - `src/navigation_runtime/server_success_outcome.ts`
+    - `src/navigation_runtime/client_only_outcome.ts`
+    - `src/navigation_runtime/navigation_entry_factory.ts`
+- Added focused helper coverage in `src/utils/promise_safety.test.ts`.
+- Added strict contract coverage in
+  `src/contracts/client.error_and_edge.contract.test.ts` asserting no
+  `unhandledRejection` leakage when stale prefetch success is dropped before
+  wait-phase completion.
+- This enforces one consistent rejection-observation policy for detached async
+  navigation work, including stale/aborted paths.
+
 ## Verification
 
 - `pnpm oxlint vormaclient/client/src`
@@ -1200,9 +1596,9 @@
 - `pnpm tsc --noEmit --project ./vormaclient/client`
 - Result: passing.
 - `pnpm vitest --run vormaclient/client/src/contracts`
-- Result: `14` files, `172` tests, all passing.
+- Result: `14` files, `197` tests, all passing.
 - `pnpm vitest --run vormaclient/client/src`
-- Result: `40` files, `366` tests, all passing.
+- Result: `51` files, `425` tests, all passing.
 
 ## Current State
 

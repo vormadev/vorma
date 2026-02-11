@@ -127,6 +127,34 @@ describe("client navigation mode contracts", () => {
 		expect(document.title).toBe("Native GET Redirected Page");
 	});
 
+	it("does not re-follow native redirects that land on an encoding-equivalent current hash target", async () => {
+		window.history.replaceState({}, "", "/native-current#~");
+		const api = await loadClientAPI();
+
+		const nativeRedirectResponse = createRouteDataResponse();
+		Object.defineProperty(nativeRedirectResponse, "redirected", {
+			value: true,
+			configurable: true,
+		});
+		Object.defineProperty(nativeRedirectResponse, "url", {
+			value: "http://localhost:3000/native-current#%7E",
+			configurable: true,
+		});
+
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(nativeRedirectResponse);
+
+		await api.vormaNavigate("/native-start");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const firstFetchURL = fetchSpy.mock.calls[0]?.[0] as URL;
+		expect(firstFetchURL.pathname).toBe("/native-start");
+		expect(window.location.pathname).toBe("/native-current");
+		expect(window.location.hash).toBe("#~");
+	});
+
 	it("does not emit loading status when running prefetch only", async () => {
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());

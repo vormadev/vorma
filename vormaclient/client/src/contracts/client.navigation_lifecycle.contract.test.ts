@@ -242,6 +242,44 @@ describe("client navigation lifecycle contracts", () => {
 		expect(pushSpy).not.toHaveBeenCalled();
 	});
 
+	it("replaces history when hash target is encoding-equivalent", async () => {
+		window.history.replaceState({}, "", "/history-same-hash#~");
+		const api = await loadClientAPI();
+		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
+
+		const history = api.getHistoryInstance();
+		const pushSpy = vi.spyOn(history, "push");
+		const replaceSpy = vi.spyOn(history, "replace");
+
+		await api.vormaNavigate("/history-same-hash#%7E");
+		await vi.runAllTimersAsync();
+
+		expect(replaceSpy).toHaveBeenCalledWith(
+			expect.stringContaining("/history-same-hash#%7E"),
+			undefined,
+		);
+		expect(pushSpy).not.toHaveBeenCalled();
+	});
+
+	it("pushes history when hash target changes", async () => {
+		window.history.replaceState({}, "", "/history-hash-change#first");
+		const api = await loadClientAPI();
+		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
+
+		const history = api.getHistoryInstance();
+		const pushSpy = vi.spyOn(history, "push");
+		const replaceSpy = vi.spyOn(history, "replace");
+
+		await api.vormaNavigate("/history-hash-change#second");
+		await vi.runAllTimersAsync();
+
+		expect(pushSpy).toHaveBeenCalledWith(
+			expect.stringContaining("/history-hash-change#second"),
+			undefined,
+		);
+		expect(replaceSpy).not.toHaveBeenCalled();
+	});
+
 	it("includes restored scroll state in browser-history route-change events", async () => {
 		const api = await loadClientAPI();
 		api.getHistoryInstance();

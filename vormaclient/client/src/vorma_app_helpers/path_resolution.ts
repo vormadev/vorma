@@ -18,6 +18,23 @@ type ResolvePathInput = {
 	props: PathResolutionProps;
 };
 
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function replaceDynamicParam(
+	path: string,
+	token: string,
+	value: string,
+): string {
+	const tokenRegex = new RegExp(`${escapeRegex(token)}(?=/|$)`, "g");
+	return path.replace(tokenRegex, encodeURIComponent(value));
+}
+
+function encodeSplatValues(splatValues: Array<string>): string {
+	return splatValues.map((segment) => encodeURIComponent(segment)).join("/");
+}
+
 export function resolveVormaPath(input: ResolvePathInput): string {
 	const { props, vormaAppConfig } = input;
 	let path = props.pattern;
@@ -32,7 +49,8 @@ export function resolveVormaPath(input: ResolvePathInput): string {
 
 	if ("params" in props && props.params) {
 		for (const [key, value] of Object.entries(props.params)) {
-			path = path.replace(
+			path = replaceDynamicParam(
+				path,
 				`${dynamicParamPrefixRune}${key}`,
 				String(value),
 			);
@@ -40,7 +58,7 @@ export function resolveVormaPath(input: ResolvePathInput): string {
 	}
 
 	if ("splatValues" in props && props.splatValues) {
-		const splatPath = props.splatValues.join("/");
+		const splatPath = encodeSplatValues(props.splatValues);
 		path = path.replace(splatSegmentRune, splatPath);
 	}
 

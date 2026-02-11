@@ -9,6 +9,8 @@ import {
 } from "./history_state.ts";
 import type { historyListener } from "./npm_history_types.ts";
 
+let cleanupHistoryListener: (() => void) | null = null;
+
 function setManualScrollRestoration(): void {
 	if (history.scrollRestoration && history.scrollRestoration !== "manual") {
 		history.scrollRestoration = "manual";
@@ -17,7 +19,8 @@ function setManualScrollRestoration(): void {
 
 function initHistory(): void {
 	const instance = getHistoryInstance();
-	instance.listen((update) => {
+	cleanupHistoryListener?.();
+	cleanupHistoryListener = instance.listen((update) => {
 		void customHistoryListener(update);
 	});
 	setManualScrollRestoration();

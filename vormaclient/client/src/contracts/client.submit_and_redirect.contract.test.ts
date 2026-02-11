@@ -294,7 +294,7 @@ describe("client submit/redirect contracts", () => {
 		});
 	});
 
-	it("sends FormData and string bodies as-is, and serializes object bodies", async () => {
+	it("preserves BodyInit payloads and serializes object bodies for submit requests", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
@@ -318,6 +318,15 @@ describe("client submit/redirect contracts", () => {
 			},
 		);
 
+		const paramsBody = new URLSearchParams({ q: "search", page: "1" });
+		await api.submit(
+			"/api/params",
+			{ method: "POST", body: paramsBody },
+			{
+				revalidate: false,
+			},
+		);
+
 		const objectBody = { key: "value", nested: { ok: true } };
 		await api.submit(
 			"/api/json",
@@ -332,8 +341,58 @@ describe("client submit/redirect contracts", () => {
 			expect.objectContaining({ body: "raw-string" }),
 		);
 		expect(fetchSpy.mock.calls[2]?.[1]).toEqual(
+			expect.objectContaining({ body: paramsBody }),
+		);
+		expect(fetchSpy.mock.calls[3]?.[1]).toEqual(
 			expect.objectContaining({ body: JSON.stringify(objectBody) }),
 		);
+	});
+
+	it("omits bodies for GET/HEAD/implicit-GET submit requests even when provided", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		await api.submit(
+			"/api/get-with-body",
+			{ method: "GET", body: "should-not-send" } as any,
+			{ revalidate: false },
+		);
+
+		await api.submit(
+			"/api/head-with-body",
+			{
+				method: "HEAD",
+				body: new URLSearchParams({ q: "ignored" }),
+			} as any,
+			{ revalidate: false },
+		);
+
+		await api.submit(
+			"/api/implicit-get-with-body",
+			{ body: JSON.stringify({ should: "omit" }) } as any,
+			{ revalidate: false },
+		);
+
+		const getInit = fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined;
+		const headInit = fetchSpy.mock.calls[1]?.[1] as RequestInit | undefined;
+		const implicitGetInit = fetchSpy.mock.calls[2]?.[1] as
+			| RequestInit
+			| undefined;
+
+		expect(getInit?.method).toBe("GET");
+		expect(headInit?.method).toBe("HEAD");
+		expect(
+			Object.prototype.hasOwnProperty.call(getInit ?? {}, "body"),
+		).toBe(false);
+		expect(
+			Object.prototype.hasOwnProperty.call(headInit ?? {}, "body"),
+		).toBe(false);
+		expect(implicitGetInit?.method).toBeUndefined();
+		expect(
+			Object.prototype.hasOwnProperty.call(implicitGetInit ?? {}, "body"),
+		).toBe(false);
 	});
 
 	it("auto-revalidates after non-GET submissions unless disabled", async () => {

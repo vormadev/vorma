@@ -3,9 +3,11 @@ import type { LinkOnClickCallbacks } from "./link_prefetch_callbacks.ts";
 import { handlePrefetchClick } from "./link_prefetch_click.ts";
 import {
 	abortIdlePrefetchNavigation,
+	hasIdlePrefetchNavigation,
 	startPrefetchNavigation,
 } from "./link_prefetch_navigation.ts";
 import { buildPrefetchTargetHref } from "./link_prefetch_target_href.ts";
+import { logError } from "./utils/logging.ts";
 
 export type CreatePrefetchHandlersInput<E extends Event> =
 	LinkOnClickCallbacks<E> & {
@@ -48,20 +50,38 @@ export function createPrefetchHandlers<E extends Event>(
 		}
 	}
 
+	function hasActiveIdlePrefetch(): boolean {
+		return hasIdlePrefetchNavigation(targetHref);
+	}
+
 	async function prefetch(e: E): Promise<void> {
-		if (prefetchStarted) return;
+		if (prefetchStarted && hasActiveIdlePrefetch()) return;
 		prefetchStarted = true;
 
-		if (input.beforeBegin) {
-			await input.beforeBegin(e);
-		}
+		try {
+			if (input.beforeBegin) {
+				await input.beforeBegin(e);
+			}
 
-		await startPrefetchNavigation({ targetHref, state: input.state });
+			await startPrefetchNavigation({ targetHref, state: input.state });
+			prefetchStarted = hasActiveIdlePrefetch();
+		} catch (error) {
+			prefetchStarted = false;
+			logError(
+				"Prefetch start failed; allowing subsequent retries.",
+				error,
+			);
+		}
 	}
 
 	function start(e: E): void {
-		if (prefetchStarted) return;
-		timer = window.setTimeout(() => prefetch(e), delayMs);
+		if (timer !== undefined) return;
+		if (prefetchStarted && hasActiveIdlePrefetch()) return;
+		prefetchStarted = false;
+		timer = window.setTimeout(() => {
+			timer = undefined;
+			void prefetch(e);
+		}, delayMs);
 	}
 
 	function stop(): void {

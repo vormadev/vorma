@@ -1,6 +1,9 @@
 import { getAnchorDetailsFromEvent } from "vorma/kit/url";
 import { navigationStateManager } from "./client.ts";
-import { isJustAHashChange } from "./link_hash_change.ts";
+import {
+	isJustAHashChange,
+	isSameDocumentNoopNavigationTarget,
+} from "./link_hash_change.ts";
 import { handleLinkNavigationOutcome } from "./link_navigation_outcome.ts";
 import { saveScrollState } from "./scroll_state_manager.ts";
 
@@ -31,12 +34,16 @@ export function createLinkOnClickFn<E extends Event>(
 			anchorDetails;
 		if (!anchor) return;
 
-		if (isJustAHashChange(anchorDetails)) {
-			saveScrollState();
-			return;
-		}
-
 		if (isEligibleForDefaultPrevention && isInternal) {
+			if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
+				return;
+			}
+
+			if (isJustAHashChange(anchorDetails)) {
+				saveScrollState();
+				return;
+			}
+
 			e.preventDefault();
 
 			await callbacks.beforeBegin?.(e);

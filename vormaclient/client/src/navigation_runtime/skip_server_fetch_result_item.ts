@@ -23,10 +23,14 @@ export function buildSkipResultItem(props: {
 	if (currentPatternIndex === -1) {
 		return null;
 	}
+	const loaderData = ctx.currentLoadersData[currentPatternIndex];
+	if (loaderData === undefined) {
+		return null;
+	}
 
 	return {
 		importURL: moduleInfo.importURL,
 		exportKey: moduleInfo.exportKey,
-		loaderData: ctx.currentLoadersData[currentPatternIndex],
+		loaderData,
 	};
 }

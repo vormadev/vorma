@@ -1,4 +1,5 @@
 import type { RedirectData } from "./redirects.ts";
+import { isSameDocumentLocation } from "../hash_fragment.ts";
 import { resolveHTTPRedirectTarget } from "./redirect_href_resolution.ts";
 import { buildShouldRedirectData as buildRedirectShouldData } from "./redirect_should_data.ts";
 
@@ -39,7 +40,7 @@ function parseBrowserRedirect(
 	}
 	const { newURL, hrefDetails } = resolvedTarget;
 
-	const isCurrent = newURL.href === window.location.href;
+	const isCurrent = isSameDocumentLocation(newURL.href, window.location.href);
 	if (isCurrent) {
 		return { hrefDetails, status: "did", href: newURL.href };
 	}

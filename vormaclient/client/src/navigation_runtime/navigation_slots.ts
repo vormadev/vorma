@@ -1,4 +1,5 @@
 import type { NavigationEntry } from "./types.ts";
+import { hasSameDataTarget } from "./url_identity.ts";
 
 export type NavigationSlots = {
 	activeNavigation: NavigationEntry | null;
@@ -10,7 +11,11 @@ export function findNavigationEntryInSlots(
 	slots: NavigationSlots,
 	targetUrl: string,
 ): NavigationEntry | undefined {
-	if (slots.activeNavigation?.targetUrl === targetUrl) {
+	if (
+		slots.activeNavigation &&
+		(slots.activeNavigation.targetUrl === targetUrl ||
+			hasSameDataTarget(slots.activeNavigation.targetUrl, targetUrl))
+	) {
 		return slots.activeNavigation;
 	}
 
@@ -18,8 +23,17 @@ export function findNavigationEntryInSlots(
 	if (prefetch) {
 		return prefetch;
 	}
+	for (const [url, entry] of slots.prefetchCache) {
+		if (hasSameDataTarget(url, targetUrl)) {
+			return entry;
+		}
+	}
 
-	if (slots.pendingRevalidation?.targetUrl === targetUrl) {
+	if (
+		slots.pendingRevalidation &&
+		(slots.pendingRevalidation.targetUrl === targetUrl ||
+			hasSameDataTarget(slots.pendingRevalidation.targetUrl, targetUrl))
+	) {
 		return slots.pendingRevalidation;
 	}
 

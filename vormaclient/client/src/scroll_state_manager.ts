@@ -1,4 +1,5 @@
 import { HistoryManager } from "./history/history.ts";
+import { normalizedHashFragmentFromHash } from "./hash_fragment.ts";
 import {
 	restoreRecentPageRefreshScrollState,
 	savePageRefreshScrollStateSnapshot,
@@ -42,7 +43,7 @@ export const scrollStateManager = createScrollStateManager();
 
 export function __applyScrollState(state?: ScrollState): void {
 	if (!state) {
-		const id = window.location.hash.slice(1);
+		const id = normalizedHashFragmentFromHash(window.location.hash);
 		if (id) {
 			document.getElementById(id)?.scrollIntoView();
 		}
@@ -50,8 +51,9 @@ export function __applyScrollState(state?: ScrollState): void {
 	}
 
 	if ("hash" in state) {
-		if (state.hash) {
-			document.getElementById(state.hash)?.scrollIntoView();
+		const hash = normalizedHashFragmentFromHash(state.hash);
+		if (hash) {
+			document.getElementById(hash)?.scrollIntoView();
 		}
 	} else {
 		window.scrollTo(state.x, state.y);

@@ -98,6 +98,114 @@ describe("client history/init contracts", () => {
 		document.body.removeChild(element);
 	});
 
+	it("applies decoded hash scroll on same-document POP updates", async () => {
+		const api = await loadClientAPI();
+		api.getHistoryInstance();
+		const { customHistoryListener } = await import("../history/history.ts");
+
+		await customHistoryListener({
+			action: "PUSH",
+			location: {
+				pathname: "/same-doc-encoded",
+				search: "",
+				hash: "",
+				state: null,
+				key: "same-doc-encoded-base",
+			},
+		} as any);
+
+		const element = document.createElement("div");
+		element.id = "✓";
+		document.body.appendChild(element);
+		const scrollSpy = vi.spyOn(element, "scrollIntoView");
+
+		await customHistoryListener({
+			action: "POP",
+			location: {
+				pathname: "/same-doc-encoded",
+				search: "",
+				hash: "#%E2%9C%93",
+				state: null,
+				key: "same-doc-encoded-target",
+			},
+		} as any);
+
+		expect(scrollSpy).toHaveBeenCalledTimes(1);
+		document.body.removeChild(element);
+	});
+
+	it("preserves single-decode semantics for percent-encoded literal IDs on POP", async () => {
+		const api = await loadClientAPI();
+		api.getHistoryInstance();
+		const { customHistoryListener } = await import("../history/history.ts");
+
+		await customHistoryListener({
+			action: "PUSH",
+			location: {
+				pathname: "/same-doc-percent",
+				search: "",
+				hash: "",
+				state: null,
+				key: "same-doc-percent-base",
+			},
+		} as any);
+
+		const element = document.createElement("div");
+		element.id = "%20-literal";
+		document.body.appendChild(element);
+		const scrollSpy = vi.spyOn(element, "scrollIntoView");
+
+		await customHistoryListener({
+			action: "POP",
+			location: {
+				pathname: "/same-doc-percent",
+				search: "",
+				hash: "#%2520-literal",
+				state: null,
+				key: "same-doc-percent-target",
+			},
+		} as any);
+
+		expect(scrollSpy).toHaveBeenCalledTimes(1);
+		document.body.removeChild(element);
+	});
+
+	it("does not re-scroll when POP hash target is encoding-equivalent", async () => {
+		const api = await loadClientAPI();
+		api.getHistoryInstance();
+		const { customHistoryListener } = await import("../history/history.ts");
+
+		await customHistoryListener({
+			action: "PUSH",
+			location: {
+				pathname: "/same-doc-equiv-hash",
+				search: "",
+				hash: "#~",
+				state: null,
+				key: "same-doc-equiv-hash-base",
+			},
+		} as any);
+
+		const element = document.createElement("div");
+		element.id = "~";
+		document.body.appendChild(element);
+		const scrollSpy = vi.spyOn(element, "scrollIntoView");
+
+		await customHistoryListener({
+			action: "POP",
+			location: {
+				pathname: "/same-doc-equiv-hash",
+				search: "",
+				hash: "#%7E",
+				state: null,
+				key: "same-doc-equiv-hash-target",
+			},
+		} as any);
+
+		expect(scrollSpy).not.toHaveBeenCalled();
+		document.body.removeChild(element);
+	});
+
 	it("triggers browser-history navigation fetch for cross-document POP", async () => {
 		const api = await loadClientAPI();
 		api.getHistoryInstance();
@@ -315,6 +423,43 @@ describe("client history/init contracts", () => {
 		expect(window.scrollTo).toHaveBeenCalledWith(75, 150);
 	});
 
+	it("restores saved scroll position when POP transitions from hash target to empty-fragment '#'", async () => {
+		const api = await loadClientAPI();
+		api.getHistoryInstance();
+		const { customHistoryListener } = await import("../history/history.ts");
+		const { scrollStateManager } =
+			await import("../scroll_state_manager.ts");
+
+		await customHistoryListener({
+			action: "PUSH",
+			location: {
+				pathname: "/page-hash-empty-fragment",
+				search: "",
+				hash: "#section",
+				state: null,
+				key: "hash-empty-fragment-key",
+			},
+		} as any);
+
+		scrollStateManager.saveState("hash-empty-fragment-target-key", {
+			x: 88,
+			y: 166,
+		});
+
+		await customHistoryListener({
+			action: "POP",
+			location: {
+				pathname: "/page-hash-empty-fragment",
+				search: "",
+				hash: "#",
+				state: null,
+				key: "hash-empty-fragment-target-key",
+			},
+		} as any);
+
+		expect(window.scrollTo).toHaveBeenCalledWith(88, 166);
+	});
+
 	it("initializes client options and calls render function", async () => {
 		const api = await loadClientAPI();
 		const renderFn = vi.fn();
@@ -345,6 +490,37 @@ describe("client history/init contracts", () => {
 		});
 
 		expect(listenSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("registers beforeunload and touch listeners only once across repeated init calls", async () => {
+		const api = await loadClientAPI();
+		const history = api.getHistoryInstance();
+		const unlistenSpy = vi.fn();
+		const listenSpy = vi
+			.spyOn(history, "listen")
+			.mockReturnValue(unlistenSpy);
+		const addEventListenerSpy = vi.spyOn(window, "addEventListener");
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		const beforeUnloadCalls = addEventListenerSpy.mock.calls.filter(
+			([eventType]) => eventType === "beforeunload",
+		);
+		const touchStartCalls = addEventListenerSpy.mock.calls.filter(
+			([eventType]) => eventType === "touchstart",
+		);
+
+		expect(listenSpy).toHaveBeenCalledTimes(2);
+		expect(unlistenSpy).toHaveBeenCalledTimes(1);
+		expect(beforeUnloadCalls).toHaveLength(1);
+		expect(touchStartCalls).toHaveLength(1);
 	});
 
 	it("sets history scrollRestoration to manual during init when supported", async () => {
@@ -495,7 +671,7 @@ describe("client history/init contracts", () => {
 		expect(window.scrollTo).not.toHaveBeenCalledWith(250, 500);
 		expect(
 			sessionStorage.getItem("__vorma__pageRefreshScrollState"),
-		).not.toBeNull();
+		).toBeNull();
 	});
 
 	it("does not restore page-refresh scroll state when snapshot is older than five seconds", async () => {
@@ -518,7 +694,7 @@ describe("client history/init contracts", () => {
 		expect(window.scrollTo).not.toHaveBeenCalledWith(250, 500);
 		expect(
 			sessionStorage.getItem("__vorma__pageRefreshScrollState"),
-		).not.toBeNull();
+		).toBeNull();
 	});
 
 	it("marks device as touch-capable on first touch after init", async () => {

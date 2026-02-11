@@ -1,6 +1,10 @@
 import type { VormaNavigationType } from "./navigation_runtime/types.ts";
 import { HistoryManager } from "./history/history.ts";
 import type { ScrollState } from "./scroll_state_manager.ts";
+import {
+	hashFragmentFromHref,
+	isSameDocumentLocation,
+} from "./hash_fragment.ts";
 
 export type RenderingHistoryOptions = {
 	href: string;
@@ -20,17 +24,17 @@ export function runHistoryAndDeriveScrollState(props: {
 	if (runHistoryOptions) {
 		const { href, scrollStateToRestore, replace, scrollToTop } =
 			runHistoryOptions;
-		const hash = href.split("#")[1];
+		const hash = hashFragmentFromHref(href);
 		const history = HistoryManager.getInstance();
 
 		if (
 			navigationType === "userNavigation" ||
 			navigationType === "redirect"
 		) {
-			const target = new URL(href, window.location.href).href;
-			const current = new URL(window.location.href).href;
+			const currentHref = window.location.href;
+			const isSameLocation = isSameDocumentLocation(href, currentHref);
 
-			if (target !== current && !replace) {
+			if (!isSameLocation && !replace) {
 				history.push(href, runHistoryOptions.state);
 			} else {
 				history.replace(href, runHistoryOptions.state);

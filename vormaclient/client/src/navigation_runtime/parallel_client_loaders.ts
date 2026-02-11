@@ -3,6 +3,7 @@ import {
 	buildClientLoaderServerData,
 	createUnavailableServerDataError,
 } from "../client_loader_server_data.ts";
+import { observePromiseRejection } from "../utils/promise_safety.ts";
 import { getBuildIDFromResponse } from "../redirects/redirects.ts";
 import { __vormaClientGlobal } from "../vorma_ctx/vorma_ctx.ts";
 import type { ClientLoaderAwaitedServerData } from "../vorma_ctx/vorma_ctx.ts";
@@ -82,12 +83,7 @@ export async function startParallelClientLoaders(props: {
 			serverDataPromise,
 			signal: props.signal,
 		});
-		// These promises may outlive/escape the current navigation (for example
-		// pure prefetches that resolve to redirect/abort outcomes). Attach a
-		// side-chain catch so abandoned loaders never surface as unhandled
-		// rejections. The original promise still rejects when awaited later by
-		// completeClientLoaders(...).
-		void loaderPromise.catch(() => {});
+		observePromiseRejection(loaderPromise);
 
 		runningLoaders.set(pattern, loaderPromise);
 	}

@@ -47,13 +47,7 @@ function findOutermostLoaderIndex(ctx: SkipCheckContext): number {
 
 function didSearchParamsChange(ctx: SkipCheckContext): boolean {
 	const currentUrlObj = new URL(window.location.href);
-	const currentParamsSorted = Array.from(
-		currentUrlObj.searchParams.entries(),
-	).sort();
-	const targetParamsSorted = Array.from(
-		ctx.url.searchParams.entries(),
-	).sort();
-	return !jsonDeepEquals(currentParamsSorted, targetParamsSorted);
+	return currentUrlObj.search !== ctx.url.search;
 }
 
 function didOutermostParamsChange(

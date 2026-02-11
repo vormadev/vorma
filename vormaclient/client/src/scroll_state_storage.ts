@@ -10,6 +10,7 @@ function getStoredScrollStateMap(): Map<string, ScrollState> {
 	try {
 		return new Map(JSON.parse(stored));
 	} catch {
+		sessionStorage.removeItem(STORAGE_KEY);
 		return new Map();
 	}
 }
@@ -27,7 +28,7 @@ export function saveStoredScrollState(key: string, state: ScrollState): void {
 
 	if (map.size > MAX_ENTRIES) {
 		const firstKey = map.keys().next().value;
-		if (firstKey) map.delete(firstKey);
+		if (firstKey !== undefined) map.delete(firstKey);
 	}
 
 	setStoredScrollStateMap(map);

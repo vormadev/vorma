@@ -52,13 +52,13 @@ export function setupGlobalLoadingIndicator(
 		stopDelayMS: config.stopDelayMS ?? DEFAULT_DELAY,
 	};
 	function clearStartTimer() {
-		if (gliDebounceStartTimer) {
+		if (gliDebounceStartTimer !== null) {
 			window.clearTimeout(gliDebounceStartTimer);
 			gliDebounceStartTimer = null;
 		}
 	}
 	function clearStopTimer() {
-		if (gliDebounceStopTimer) {
+		if (gliDebounceStopTimer !== null) {
 			window.clearTimeout(gliDebounceStopTimer);
 			gliDebounceStopTimer = null;
 		}
@@ -71,7 +71,7 @@ export function setupGlobalLoadingIndicator(
 		const shouldBeWorking = getIsWorking(pc, e);
 		if (shouldBeWorking) {
 			clearStopTimer();
-			if (!gliDebounceStartTimer) {
+			if (gliDebounceStartTimer === null) {
 				gliDebounceStartTimer = window.setTimeout(() => {
 					gliDebounceStartTimer = null;
 					if (!config.isRunning() && getIsWorking(pc)) {
@@ -81,7 +81,7 @@ export function setupGlobalLoadingIndicator(
 			}
 		} else {
 			clearStartTimer();
-			if (!gliDebounceStopTimer) {
+			if (gliDebounceStopTimer === null) {
 				gliDebounceStopTimer = window.setTimeout(() => {
 					gliDebounceStopTimer = null;
 					if (config.isRunning() && !getIsWorking(pc)) {

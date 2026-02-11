@@ -58,6 +58,25 @@ describe("client link click contracts", () => {
 		expect(preventDefault).not.toHaveBeenCalled();
 	});
 
+	it("does not save scroll state for modifier-key same-document hash clicks", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page");
+		api.getHistoryInstance();
+		const initialScrollStateMap = sessionStorage.getItem(
+			"__vorma__scrollStateMap",
+		);
+
+		const { event } = createClickEvent("/current-page#section", {
+			ctrlKey: true,
+		});
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+
+		expect(sessionStorage.getItem("__vorma__scrollStateMap")).toBe(
+			initialScrollStateMap,
+		);
+	});
+
 	it("handles hash-only links without navigation fetch", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/current-page");
@@ -79,6 +98,99 @@ describe("client link click contracts", () => {
 		expect(scrollStateMapRaw).toBeTruthy();
 		const scrollStateMap = JSON.parse(scrollStateMapRaw || "[]");
 		expect(Array.isArray(scrollStateMap)).toBe(true);
+	});
+
+	it("handles same-document hash removal links without navigation fetch", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page#section-a");
+		// saveScrollState expects history manager state to be initialized.
+		api.getHistoryInstance();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const { event } = createClickEvent("/current-page");
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+
+		const scrollStateMapRaw = sessionStorage.getItem(
+			"__vorma__scrollStateMap",
+		);
+		expect(scrollStateMapRaw).toBeTruthy();
+		const scrollStateMap = JSON.parse(scrollStateMapRaw || "[]");
+		expect(Array.isArray(scrollStateMap)).toBe(true);
+	});
+
+	it("does not trigger navigation for same-document no-op hash links", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page#section-a");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const initialScrollStateMap = sessionStorage.getItem(
+			"__vorma__scrollStateMap",
+		);
+
+		const { event } = createClickEvent("/current-page#section-a");
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(sessionStorage.getItem("__vorma__scrollStateMap")).toBe(
+			initialScrollStateMap,
+		);
+	});
+
+	it("does not trigger navigation for encoding-equivalent hash links", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page#~");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const initialScrollStateMap = sessionStorage.getItem(
+			"__vorma__scrollStateMap",
+		);
+
+		const { event } = createClickEvent("/current-page#%7E");
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(sessionStorage.getItem("__vorma__scrollStateMap")).toBe(
+			initialScrollStateMap,
+		);
+	});
+
+	it("does not treat cross-origin hash links as same-document hash changes", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const initialScrollStateMap = sessionStorage.getItem(
+			"__vorma__scrollStateMap",
+		);
+
+		const { event } = createClickEvent(
+			"https://external.com/current-page#x",
+		);
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(sessionStorage.getItem("__vorma__scrollStateMap")).toBe(
+			initialScrollStateMap,
+		);
 	});
 
 	it("updates build ID before following redirects triggered by link clicks", async () => {

@@ -273,6 +273,55 @@ describe("client error and edge contracts", () => {
 		}
 	});
 
+	it("does not leak unhandled rejections when stale prefetch success is dropped before wait phase", async () => {
+		const api = await loadClientAPI();
+		const { ComponentLoader } = await import("../component_loader.ts");
+
+		vi.spyOn(ComponentLoader, "loadComponents").mockRejectedValueOnce(
+			new Error("Module preload failed"),
+		);
+
+		const fetchDeferred = createDeferred<Response>();
+		vi.spyOn(window, "fetch").mockImplementation(
+			() => fetchDeferred.promise as any,
+		);
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/stale-prefetch-drop",
+		});
+
+		const unhandledRejections: Array<unknown> = [];
+		const unhandledRejectionHandler = (reason: unknown) => {
+			unhandledRejections.push(reason);
+		};
+		process.on("unhandledRejection", unhandledRejectionHandler);
+
+		try {
+			handlers?.start(new Event("mouseenter"));
+			await vi.advanceTimersByTimeAsync(100);
+
+			// Explicitly drop the idle prefetch entry before the fetch resolves.
+			handlers?.stop();
+
+			fetchDeferred.resolve(
+				createRouteDataResponse({
+					matchedPatterns: ["/stale-prefetch-drop"],
+					importURLs: ["/stale-prefetch-drop.module.js"],
+					exportKeys: ["default"],
+					loadersData: [null],
+					hasRootData: false,
+				}),
+			);
+
+			await vi.runAllTimersAsync();
+			await Promise.resolve();
+
+			expect(unhandledRejections).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", unhandledRejectionHandler);
+		}
+	});
+
 	it("rejects client-loader serverDataPromise with AbortError when required server loader payload is missing", async () => {
 		const api = await loadClientAPI();
 		const pattern = "/missing-server-loader-payload";

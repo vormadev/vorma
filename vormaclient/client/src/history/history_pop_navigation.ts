@@ -3,6 +3,10 @@ import {
 	__applyScrollState,
 	scrollStateManager,
 } from "../scroll_state_manager.ts";
+import {
+	hashFragmentFromHash,
+	normalizedHashFragmentFromHash,
+} from "../hash_fragment.ts";
 import { logError } from "../utils/logging.ts";
 import type { historyInstance } from "./npm_history_types.ts";
 
@@ -11,14 +15,24 @@ function applyHashDrivenPopScrollState(
 	lastKnownLocation: historyInstance["location"],
 	popWithinSameDoc: boolean,
 ): void {
+	const locationHashTarget = normalizedHashFragmentFromHash(location.hash);
+	const lastKnownHashTarget = normalizedHashFragmentFromHash(
+		lastKnownLocation.hash,
+	);
+	const hasLocationHashTarget = locationHashTarget !== "";
+	const hasLastKnownHashTarget = lastKnownHashTarget !== "";
+	const hashTargetChanged = locationHashTarget !== lastKnownHashTarget;
 	const removingHash =
-		popWithinSameDoc && !!lastKnownLocation.hash && !location.hash;
+		popWithinSameDoc && hasLastKnownHashTarget && !hasLocationHashTarget;
 	const addingHash =
-		popWithinSameDoc && !lastKnownLocation.hash && !!location.hash;
-	const updatingHash = popWithinSameDoc && !!location.hash;
+		popWithinSameDoc && !hasLastKnownHashTarget && hasLocationHashTarget;
+	const updatingHash =
+		popWithinSameDoc && hasLocationHashTarget && hashTargetChanged;
 
 	if (addingHash || updatingHash) {
-		__applyScrollState({ hash: location.hash.slice(1) });
+		__applyScrollState({
+			hash: hashFragmentFromHash(location.hash),
+		});
 	}
 
 	if (removingHash) {

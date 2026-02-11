@@ -1,7 +1,15 @@
+import {
+	isArrayBufferView,
+	isInstanceOfGlobal,
+} from "../utils/global_constructors.ts";
+
 function normalizeArrayBufferViewBody(
 	input: ArrayBufferView<ArrayBufferLike>,
 ): BodyInit {
-	if (input.buffer instanceof ArrayBuffer) {
+	if (
+		typeof ArrayBuffer !== "undefined" &&
+		input.buffer instanceof ArrayBuffer
+	) {
 		return input as ArrayBufferView<ArrayBuffer>;
 	}
 
@@ -17,20 +25,20 @@ function normalizeArrayBufferViewBody(
 export function resolveVormaRequestBody(
 	input: unknown,
 ): BodyInit | null | undefined {
-	if (ArrayBuffer.isView(input)) {
+	if (isArrayBufferView(input)) {
 		return normalizeArrayBufferViewBody(input);
 	}
 
 	if (
 		input == null ||
 		typeof input === "string" ||
-		input instanceof Blob ||
-		input instanceof FormData ||
-		input instanceof URLSearchParams ||
-		input instanceof ReadableStream ||
-		input instanceof ArrayBuffer
+		isInstanceOfGlobal(input, "Blob") ||
+		isInstanceOfGlobal(input, "FormData") ||
+		isInstanceOfGlobal(input, "URLSearchParams") ||
+		isInstanceOfGlobal(input, "ReadableStream") ||
+		isInstanceOfGlobal(input, "ArrayBuffer")
 	) {
-		return input;
+		return input as BodyInit | null | undefined;
 	}
 	return JSON.stringify(input);
 }

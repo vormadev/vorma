@@ -1,7 +1,10 @@
 import { getAnchorDetailsFromEvent } from "vorma/kit/url";
 import { vormaNavigate } from "./client.ts";
+import {
+	isJustAHashChange,
+	isSameDocumentNoopNavigationTarget,
+} from "./link_hash_change.ts";
 import type { LinkOnClickCallbacks } from "./link_prefetch_callbacks.ts";
-import { isJustAHashChange } from "./link_hash_change.ts";
 import { saveScrollState } from "./scroll_state_manager.ts";
 
 type ClickNavigationOptions = {
@@ -37,6 +40,11 @@ export async function handlePrefetchClick<E extends Event>(props: {
 
 	const { isEligibleForDefaultPrevention, isInternal } = anchorDetails;
 	if (!isEligibleForDefaultPrevention || !isInternal) return;
+
+	if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
+		clearPendingTimer();
+		return;
+	}
 
 	if (isJustAHashChange(anchorDetails)) {
 		clearPendingTimer();

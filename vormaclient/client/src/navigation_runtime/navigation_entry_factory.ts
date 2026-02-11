@@ -5,6 +5,7 @@ import type {
 	NavigationOutcome,
 } from "./types.ts";
 import { resolveNavigationTargetURL } from "./target_url.ts";
+import { observePromiseRejection } from "../utils/promise_safety.ts";
 
 type FetchRouteDataFn = (
 	controller: AbortController,
@@ -26,10 +27,12 @@ function createEntryControl(options: CreateEntryOptions): {
 
 	return {
 		abortController,
-		promise: fetchRouteData(abortController, props).catch((error) => {
-			onFetchError(error);
-			throw error;
-		}),
+		promise: observePromiseRejection(
+			fetchRouteData(abortController, props).catch((error) => {
+				onFetchError(error);
+				throw error;
+			}),
+		),
 	};
 }
 

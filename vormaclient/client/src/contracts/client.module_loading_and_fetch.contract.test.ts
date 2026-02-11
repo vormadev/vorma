@@ -197,6 +197,43 @@ describe("client module-loading and fetch contracts", () => {
 		});
 	});
 
+	it("falls back to server fetch when skip-cache is missing required server loader data", async () => {
+		vi.doMock("/noop.js", () => ({
+			default: () => null,
+		}));
+		installContractVormaGlobal({
+			routeManifest: { "/needs-data": 1 },
+			clientModuleMap: {
+				"/needs-data": {
+					importURL: "/noop.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			matchedPatterns: ["/needs-data"],
+			loadersData: [],
+		});
+		const api = await loadClientAPI();
+		await api.__registerClientLoaderPattern("/needs-data");
+
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse({
+				importURLs: ["/noop.js"],
+				exportKeys: ["default"],
+				matchedPatterns: ["/needs-data"],
+				loadersData: [{ serverData: "from-server" }],
+			}),
+		);
+
+		await api.vormaNavigate("/needs-data");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(api.__vormaClientGlobal.get("loadersData")).toEqual([
+			{ serverData: "from-server" },
+		]);
+	});
+
 	it("resolves module imports from viteDevURL when present", async () => {
 		const devComponent = () => "DevComponent";
 		vi.doMock("http://localhost:5173/dev-module.js", () => ({

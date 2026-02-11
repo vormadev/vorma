@@ -1,6 +1,7 @@
 import { AssetManager } from "../asset_manager.ts";
 import { completeClientLoaders } from "../client_loaders.ts";
 import { getBuildIDFromResponse } from "../redirects/redirects.ts";
+import { observePromiseRejection } from "../utils/promise_safety.ts";
 import type { GetRouteDataOutput } from "../vorma_ctx/vorma_ctx.ts";
 import type { NavigateProps, NavigationOutcome } from "./types.ts";
 
@@ -30,6 +31,7 @@ export function buildServerSuccessOutcome(props: {
 		runningLoaders,
 		signal,
 	);
+	observePromiseRejection(waitFnPromise);
 
 	const cssBundlePromises: Array<Promise<any>> = [];
 	for (const bundle of json.cssBundles ?? []) {
