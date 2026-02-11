@@ -1,13 +1,13 @@
 import { getHrefDetails, type HrefDetails } from "vorma/kit/url";
 import { dispatchBuildIDEvent } from "../platform/events.ts";
-import { isSameDocumentLocation } from "../platform/url.ts";
+import {
+	isSameDocumentLocation,
+	resolveAbsoluteHref,
+} from "../platform/url.ts";
 import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../platform/url.ts";
 import type { NavigateProps, NavigationEntry } from "./navigation/types.ts";
 import { getNavigationStateAccess } from "../app/context.ts";
-import {
-	isArrayBufferView,
-	isInstanceOfGlobal,
-} from "../platform/safety.ts";
+import { isArrayBufferView, isInstanceOfGlobal } from "../platform/safety.ts";
 import { logError } from "../platform/safety.ts";
 import { __vormaClientGlobal } from "../app/context.ts";
 
@@ -51,7 +51,7 @@ function resolveHTTPRedirectTarget(href: string): {
 	newURL: URL;
 	hrefDetails: Extract<HrefDetails, { isHTTP: true }>;
 } | null {
-	const newURL = new URL(href, window.location.href);
+	const newURL = new URL(resolveAbsoluteHref(href));
 	const hrefDetails = getHrefDetails(newURL.href);
 	if (!hrefDetails.isHTTP) {
 		return null;
@@ -82,24 +82,36 @@ function buildShouldRedirectData(props: {
 	};
 }
 
+function buildShouldRedirectFromHref(props: {
+	href: string;
+	latestBuildID: string;
+	shouldRedirectStrategy?: ShouldRedirectData["shouldRedirectStrategy"];
+	normalizeToAbsoluteHref?: boolean;
+}): ShouldRedirectData | null {
+	const resolvedTarget = resolveHTTPRedirectTarget(props.href);
+	if (!resolvedTarget) {
+		return null;
+	}
+
+	const href = props.normalizeToAbsoluteHref
+		? resolvedTarget.hrefDetails.absoluteURL
+		: props.href;
+
+	return buildShouldRedirectData({
+		href,
+		hrefDetails: resolvedTarget.hrefDetails,
+		latestBuildID: props.latestBuildID,
+		shouldRedirectStrategy: props.shouldRedirectStrategy,
+	});
+}
+
 function parseVormaReloadRedirect(
 	response: Response,
 	latestBuildID: string,
 ): RedirectData | null {
-	const vormaReloadTarget = response.headers.get("X-Vorma-Reload");
-	if (!vormaReloadTarget) {
-		return null;
-	}
-
-	const resolvedTarget = resolveHTTPRedirectTarget(vormaReloadTarget);
-	if (!resolvedTarget) {
-		return null;
-	}
-	const { hrefDetails } = resolvedTarget;
-
-	return buildShouldRedirectData({
-		href: vormaReloadTarget,
-		hrefDetails,
+	return parseHeaderRedirect({
+		response,
+		headerName: "X-Vorma-Reload",
 		latestBuildID,
 		shouldRedirectStrategy: "hard",
 	});
@@ -113,43 +125,57 @@ function parseBrowserRedirect(
 		return null;
 	}
 
-	const resolvedTarget = resolveHTTPRedirectTarget(response.url);
-	if (!resolvedTarget) {
+	const shouldRedirectData = buildShouldRedirectFromHref({
+		href: response.url,
+		latestBuildID,
+		normalizeToAbsoluteHref: true,
+	});
+	if (!shouldRedirectData) {
 		return null;
 	}
-	const { newURL, hrefDetails } = resolvedTarget;
-
-	const isCurrent = isSameDocumentLocation(newURL.href, window.location.href);
+	const isCurrent = isSameDocumentLocation(
+		shouldRedirectData.href,
+		window.location.href,
+	);
 	if (isCurrent) {
-		return { hrefDetails, status: "did", href: newURL.href };
+		return {
+			hrefDetails: shouldRedirectData.hrefDetails,
+			status: "did",
+			href: shouldRedirectData.href,
+		};
 	}
-
-	return buildShouldRedirectData({
-		href: newURL.href,
-		hrefDetails,
-		latestBuildID,
-	});
+	return shouldRedirectData;
 }
 
 function parseClientRedirectHeader(
 	response: Response,
 	latestBuildID: string,
 ): RedirectData | null {
-	const clientRedirectHeader = response.headers.get("X-Client-Redirect");
-	if (!clientRedirectHeader) {
-		return null;
-	}
-
-	const resolvedTarget = resolveHTTPRedirectTarget(clientRedirectHeader);
-	if (!resolvedTarget) {
-		return null;
-	}
-	const { hrefDetails } = resolvedTarget;
-
-	return buildShouldRedirectData({
-		href: hrefDetails.absoluteURL,
-		hrefDetails,
+	return parseHeaderRedirect({
+		response,
+		headerName: "X-Client-Redirect",
 		latestBuildID,
+		normalizeToAbsoluteHref: true,
+	});
+}
+
+function parseHeaderRedirect(props: {
+	response: Response;
+	headerName: "X-Vorma-Reload" | "X-Client-Redirect";
+	latestBuildID: string;
+	shouldRedirectStrategy?: ShouldRedirectData["shouldRedirectStrategy"];
+	normalizeToAbsoluteHref?: boolean;
+}): RedirectData | null {
+	const headerValue = props.response.headers.get(props.headerName);
+	if (!headerValue) {
+		return null;
+	}
+
+	return buildShouldRedirectFromHref({
+		href: headerValue,
+		latestBuildID: props.latestBuildID,
+		shouldRedirectStrategy: props.shouldRedirectStrategy,
+		normalizeToAbsoluteHref: props.normalizeToAbsoluteHref,
 	});
 }
 
@@ -300,6 +326,30 @@ async function effectuateSoftRedirect(
 	return toDidRedirectData(redirectData);
 }
 
+async function executeShouldRedirectStrategy(props: {
+	navigationState: RedirectNavigationState;
+	redirectData: ShouldRedirectData;
+	redirectCount: number;
+	originalProps?: NavigateProps;
+}): Promise<RedirectData | null> {
+	const { navigationState, redirectData, redirectCount, originalProps } =
+		props;
+
+	switch (redirectData.shouldRedirectStrategy) {
+		case "hard":
+			return effectuateHardRedirect(redirectData);
+		case "soft":
+			return effectuateSoftRedirect(
+				navigationState,
+				redirectData,
+				redirectCount,
+				originalProps,
+			);
+		default:
+			return null;
+	}
+}
+
 export function getBuildIDFromResponse(response: Response | undefined): string {
 	return response?.headers.get("X-Vorma-Build-Id") || "";
 }
@@ -328,21 +378,12 @@ export async function effectuateRedirectDataResult(
 
 	const navigationState = getNavigationStateAccess();
 	cleanupRedirectRelatedNavigations(navigationState);
-
-	if (redirectData.shouldRedirectStrategy === "hard") {
-		return effectuateHardRedirect(redirectData);
-	}
-
-	if (redirectData.shouldRedirectStrategy === "soft") {
-		return effectuateSoftRedirect(
-			navigationState,
-			redirectData,
-			redirectCount,
-			originalProps,
-		);
-	}
-
-	return null;
+	return executeShouldRedirectStrategy({
+		navigationState,
+		redirectData,
+		redirectCount,
+		originalProps,
+	});
 }
 
 export async function handleRedirects(props: {

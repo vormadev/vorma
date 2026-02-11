@@ -312,10 +312,10 @@ describe("client error and edge contracts", () => {
 
 		patternToWaitFnMap[pattern] = async ({
 			serverDataPromise,
-		}: {
-			serverDataPromise: Promise<{ loaderData: { LatestVersion: string } }>;
 		}) => {
-			const { loaderData } = await serverDataPromise;
+			const { loaderData } = (await serverDataPromise) as {
+				loaderData: { LatestVersion: string };
+			};
 			return loaderData.LatestVersion;
 		};
 		await api.__registerClientLoaderPattern(pattern);
@@ -353,10 +353,10 @@ describe("client error and edge contracts", () => {
 
 		patternToWaitFnMap[stalePattern] = async ({
 			serverDataPromise,
-		}: {
-			serverDataPromise: Promise<{ loaderData: { Title: string } }>;
 		}) => {
-			const { loaderData } = await serverDataPromise;
+			const { loaderData } = (await serverDataPromise) as {
+				loaderData: { Title: string };
+			};
 			return loaderData.Title;
 		};
 		await api.__registerClientLoaderPattern(stalePattern);

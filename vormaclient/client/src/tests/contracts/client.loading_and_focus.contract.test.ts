@@ -678,6 +678,96 @@ describe("client loading/focus contracts", () => {
 		cleanupIndicator();
 	});
 
+	it("supports navigation-only global loading indicator filters", async () => {
+		const api = await loadClientAPI();
+		let running = false;
+		const start = vi.fn(() => {
+			running = true;
+		});
+		const stop = vi.fn(() => {
+			running = false;
+		});
+		const navDeferred = createDeferred<Response>();
+		createSequencedFetchSpy([
+			createRouteDataResponse(),
+			createJSONResponse({ ok: true }),
+			() => navDeferred.promise,
+		]);
+
+		const cleanupIndicator = api.setupGlobalLoadingIndicator({
+			start,
+			stop,
+			isRunning: () => running,
+			include: ["navigations"],
+			startDelayMS: 0,
+			stopDelayMS: 0,
+		});
+
+		await api.revalidate();
+		await vi.runAllTimersAsync();
+		expect(start).not.toHaveBeenCalled();
+
+		await api.submit(
+			"/api/nav-only-indicator",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		await vi.runAllTimersAsync();
+		expect(start).not.toHaveBeenCalled();
+
+		const navPromise = api.vormaNavigate("/indicator-nav-only");
+		await vi.advanceTimersByTimeAsync(8);
+		await vi.runAllTimersAsync();
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(running).toBe(true);
+
+		navDeferred.resolve(createRouteDataResponse());
+		await navPromise;
+		await vi.runAllTimersAsync();
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(running).toBe(false);
+
+		cleanupIndicator();
+	});
+
+	it("supports revalidation-only global loading indicator filters", async () => {
+		const api = await loadClientAPI();
+		let running = false;
+		const start = vi.fn(() => {
+			running = true;
+		});
+		const stop = vi.fn(() => {
+			running = false;
+		});
+		const revalidateDeferred = createDeferred<Response>();
+		vi.spyOn(window, "fetch").mockImplementation(
+			() => revalidateDeferred.promise as Promise<Response>,
+		);
+
+		const cleanupIndicator = api.setupGlobalLoadingIndicator({
+			start,
+			stop,
+			isRunning: () => running,
+			include: ["revalidations"],
+			startDelayMS: 0,
+			stopDelayMS: 0,
+		});
+
+		const revalidatePromise = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+		await vi.runAllTimersAsync();
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(running).toBe(true);
+
+		revalidateDeferred.resolve(createRouteDataResponse());
+		await revalidatePromise;
+		await vi.runAllTimersAsync();
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(running).toBe(false);
+
+		cleanupIndicator();
+	});
+
 	it("clears global loading indicator timers when timer id is zero", async () => {
 		const api = await loadClientAPI();
 		const originalSetTimeout = window.setTimeout.bind(window);

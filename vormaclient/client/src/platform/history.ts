@@ -10,6 +10,7 @@ import {
 	hasSameDataTarget,
 	hashFragmentFromHash,
 	normalizedHashFragmentFromHash,
+	resolveAbsoluteHref,
 } from "./url.ts";
 import { getNavigationStateAccess } from "../app/context.ts";
 import {
@@ -56,10 +57,10 @@ function setLastKnownHistoryLocation(
 type HistoryLocationPrelude = Pick<Location, "key" | "pathname" | "search">;
 
 function toAbsoluteHref(location: HistoryLocationPrelude): string {
-	return new URL(
+	return resolveAbsoluteHref(
 		`${location.pathname}${location.search}`,
 		window.location.origin,
-	).href;
+	);
 }
 
 export function analyzeHistoryListenerPrelude(props: {
@@ -121,10 +122,29 @@ function applyHashDrivenPopScrollState(
 function buildListenerLocationHref(
 	location: historyInstance["location"],
 ): string {
-	return new URL(
+	return resolveAbsoluteHref(
 		`${location.pathname}${location.search}${location.hash}`,
 		window.location.origin,
-	).href;
+	);
+}
+
+function isJSDOMEnvironment(): boolean {
+	return /jsdom/i.test(navigator.userAgent);
+}
+
+function attemptHardReloadAfterFailedPopNavigation(): void {
+	if (isJSDOMEnvironment()) {
+		return;
+	}
+
+	try {
+		window.location.reload();
+	} catch (error) {
+		logError(
+			"Browser POP hard reload failed after client navigation fallback.",
+			error,
+		);
+	}
 }
 
 async function navigateCrossDocumentPop(
@@ -144,7 +164,7 @@ async function navigateCrossDocumentPop(
 		"Browser POP navigation failed, attempting hard reload of the destination.",
 	);
 
-	window.location.reload();
+	attemptHardReloadAfterFailedPopNavigation();
 	return false;
 }
 

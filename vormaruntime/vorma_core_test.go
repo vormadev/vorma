@@ -1,8 +1,11 @@
 package vormaruntime
 
 import (
+	"html/template"
 	"reflect"
 	"testing"
+
+	"github.com/vormadev/vorma/lab/tsgen"
 )
 
 func TestGetterSnapshotsAreDefensiveCopies(t *testing.T) {
@@ -78,5 +81,104 @@ func TestGettersPreserveNilShape(t *testing.T) {
 	paths := app.GetPathsSnapshot()
 	if !reflect.DeepEqual(paths, map[string]*Path{"/": &Path{OriginalPattern: "/"}}) {
 		t.Fatalf("unexpected paths snapshot after set: %#v", paths)
+	}
+}
+
+func TestLockedVormaGettersAndSetters(t *testing.T) {
+	fixture := newTestFixture(t, testFixtureOptions{})
+	app := fixture.app
+	app.SetIsDev(true)
+
+	tmpl := template.Must(template.New("root").Parse("<html>{{.VormaBodyScripts}}</html>"))
+
+	app.WithLock(func(lv *LockedVorma) {
+		lv.SetBuildID("locked-build")
+		lv.SetRouteManifestFile("vorma_out/locked-route-manifest.js")
+		lv.SetRootTemplate(tmpl)
+		lv.SetPaths(map[string]*Path{
+			"/locked": {
+				OriginalPattern: "/locked",
+				SrcPath:         "frontend/src/routes/locked.tsx",
+				OutPath:         "vorma_out/routes/locked.js",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	if got := app.GetBuildID(); got != "locked-build" {
+		t.Fatalf("GetBuildID() = %q, want %q", got, "locked-build")
+	}
+	if got := app.GetRouteManifestFile(); got != "vorma_out/locked-route-manifest.js" {
+		t.Fatalf("GetRouteManifestFile() = %q, want %q", got, "vorma_out/locked-route-manifest.js")
+	}
+	if got := app.GetRootTemplate(); got == nil {
+		t.Fatal("GetRootTemplate() returned nil after SetRootTemplate")
+	}
+	if got := app.GetPathsSnapshot(); got["/locked"] == nil {
+		t.Fatal("GetPathsSnapshot() missing /locked after SetPaths")
+	}
+
+	app.WithRLock(func(lv *LockedVorma) {
+		if got := lv.Vorma(); got != app {
+			t.Fatal("LockedVorma.Vorma() did not return underlying app instance")
+		}
+		if got := lv.GetBuildID(); got != "locked-build" {
+			t.Fatalf("LockedVorma.GetBuildID() = %q, want %q", got, "locked-build")
+		}
+		if got := lv.GetRouteManifestFile(); got != "vorma_out/locked-route-manifest.js" {
+			t.Fatalf("LockedVorma.GetRouteManifestFile() = %q, want %q", got, "vorma_out/locked-route-manifest.js")
+		}
+		if got := lv.GetRootTemplate(); got == nil {
+			t.Fatal("LockedVorma.GetRootTemplate() returned nil")
+		}
+		if got := lv.GetPaths(); got["/locked"] == nil {
+			t.Fatal("LockedVorma.GetPaths() missing /locked")
+		}
+		if !lv.GetIsDev() {
+			t.Fatal("LockedVorma.GetIsDev() = false, want true")
+		}
+	})
+}
+
+func TestCoreAccessorsAndServerAddr(t *testing.T) {
+	fixture := newTestFixture(t, testFixtureOptions{})
+	app := fixture.app
+
+	if got := app.ServerAddr(); got != ":8080" {
+		t.Fatalf("ServerAddr() = %q, want %q", got, ":8080")
+	}
+	if app.LoadersRouter() == nil {
+		t.Fatal("LoadersRouter() should not return nil")
+	}
+	if app.ActionsRouter() == nil {
+		t.Fatal("ActionsRouter() should not return nil")
+	}
+}
+
+func TestTSGenerationGettersReflectConfiguredValues(t *testing.T) {
+	adHoc := []*tsgen.AdHocType{
+		{
+			TypeInstance: struct {
+				Name string
+			}{},
+			TSTypeName: "UserDTO",
+		},
+	}
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		adHocTypes:  adHoc,
+		extraTSCode: "export type Extra = string;",
+	})
+	app := fixture.app
+
+	gotTypes := app.GetAdHocTypes()
+	if len(gotTypes) != 1 {
+		t.Fatalf("GetAdHocTypes length = %d, want %d", len(gotTypes), 1)
+	}
+	if gotTypes[0].TSTypeName != "UserDTO" {
+		t.Fatalf("GetAdHocTypes[0].TSTypeName = %q, want %q", gotTypes[0].TSTypeName, "UserDTO")
+	}
+	if got := app.GetExtraTSCode(); got != "export type Extra = string;" {
+		t.Fatalf("GetExtraTSCode() = %q, want %q", got, "export type Extra = string;")
 	}
 }

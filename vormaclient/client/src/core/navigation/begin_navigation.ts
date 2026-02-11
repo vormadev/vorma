@@ -1,4 +1,4 @@
-import { hasSameDataTarget } from "../../platform/url.ts";
+import { hasSameDataTarget, resolveAbsoluteHref } from "../../platform/url.ts";
 import { observePromiseRejection } from "../../platform/safety.ts";
 import type {
 	NavigateProps,
@@ -7,10 +7,6 @@ import type {
 	NavigationIntent,
 	NavigationOutcome,
 } from "./types.ts";
-
-function resolveNavigationTargetURL(href: string): string {
-	return new URL(href, window.location.href).href;
-}
 
 type FetchRouteDataFn = (
 	controller: AbortController,
@@ -70,7 +66,7 @@ function createActiveNavigationEntry(
 	},
 ): NavigationEntry {
 	const { props, intent } = options;
-	const targetUrl = resolveNavigationTargetURL(props.href);
+	const targetUrl = resolveAbsoluteHref(props.href);
 
 	return createNavigationEntry({
 		options,
@@ -99,7 +95,7 @@ function createRevalidationNavigationEntry(
 	options: CreateEntryOptions,
 ): NavigationEntry {
 	const { props } = options;
-	const targetUrl = resolveNavigationTargetURL(props.href);
+	const targetUrl = resolveAbsoluteHref(props.href);
 
 	return createNavigationEntry({
 		options,
@@ -107,6 +103,48 @@ function createRevalidationNavigationEntry(
 		intent: "revalidate",
 		targetUrl,
 	});
+}
+
+type PrefetchCacheMatch = {
+	key: string;
+	entry: NavigationEntry;
+};
+
+function findPrefetchByDataTarget(
+	prefetchCache: Map<string, NavigationEntry>,
+	targetUrl: string,
+): PrefetchCacheMatch | undefined {
+	const exact = prefetchCache.get(targetUrl);
+	if (exact) {
+		return {
+			key: targetUrl,
+			entry: exact,
+		};
+	}
+
+	for (const [prefetchUrl, prefetch] of prefetchCache.entries()) {
+		if (hasSameDataTarget(prefetchUrl, targetUrl)) {
+			return {
+				key: prefetchUrl,
+				entry: prefetch,
+			};
+		}
+	}
+
+	return undefined;
+}
+
+function promoteEntryToUserNavigation(
+	entry: NavigationEntry,
+	props: NavigateProps,
+	targetUrl: string,
+): void {
+	entry.targetUrl = targetUrl;
+	entry.scrollToTop = props.scrollToTop;
+	entry.replace = props.replace;
+	entry.state = props.state;
+	entry.type = "userNavigation";
+	entry.intent = "navigate";
 }
 
 export type CreateNavigationControlsContext = {
@@ -148,7 +186,7 @@ export function createNavigationControls(
 			deleteNavigation,
 		} = context;
 
-		const targetUrl = resolveNavigationTargetURL(props.href);
+		const targetUrl = resolveAbsoluteHref(props.href);
 		const entry = createActiveNavigationEntry({
 			props,
 			intent,
@@ -182,7 +220,9 @@ export function createNavigationControls(
 		return entry.control;
 	}
 
-	function createRevalidationControl(props: NavigateProps): NavigationControl {
+	function createRevalidationControl(
+		props: NavigateProps,
+	): NavigationControl {
 		const {
 			fetchRouteData,
 			getPendingRevalidation,
@@ -190,7 +230,7 @@ export function createNavigationControls(
 			scheduleStatusUpdate,
 		} = context;
 
-		const targetUrl = resolveNavigationTargetURL(props.href);
+		const targetUrl = resolveAbsoluteHref(props.href);
 		const entry = createRevalidationNavigationEntry({
 			props,
 			fetchRouteData,
@@ -257,25 +297,9 @@ export function beginUserNavigation(
 		activeNavigation &&
 		hasSameDataTarget(activeNavigation.targetUrl, targetUrl)
 	);
-
-	let prefetchUpgradeKey: string | undefined;
-	let prefetchToUpgrade: ReturnType<typeof getActiveNavigation> | undefined;
-
-	if (!activeHasSameDataTarget) {
-		const exactPrefetch = prefetchCache.get(targetUrl);
-		if (exactPrefetch) {
-			prefetchUpgradeKey = targetUrl;
-			prefetchToUpgrade = exactPrefetch;
-		} else {
-			for (const [url, prefetch] of prefetchCache.entries()) {
-				if (hasSameDataTarget(url, targetUrl)) {
-					prefetchUpgradeKey = url;
-					prefetchToUpgrade = prefetch;
-					break;
-				}
-			}
-		}
-	}
+	const prefetchMatch = !activeHasSameDataTarget
+		? findPrefetchByDataTarget(prefetchCache, targetUrl)
+		: undefined;
 
 	if (activeNavigation && !activeHasSameDataTarget) {
 		activeNavigation.control.abortController?.abort();
@@ -283,7 +307,7 @@ export function beginUserNavigation(
 	}
 
 	for (const [url, prefetch] of prefetchCache.entries()) {
-		if (url !== prefetchUpgradeKey) {
+		if (url !== prefetchMatch?.key) {
 			prefetch.control.abortController?.abort();
 			prefetchCache.delete(url);
 		}
@@ -298,26 +322,16 @@ export function beginUserNavigation(
 	}
 
 	if (activeNavigation && activeHasSameDataTarget) {
-		activeNavigation.targetUrl = targetUrl;
-		activeNavigation.scrollToTop = props.scrollToTop;
-		activeNavigation.replace = props.replace;
-		activeNavigation.state = props.state;
-		activeNavigation.type = "userNavigation";
-		activeNavigation.intent = "navigate";
+		promoteEntryToUserNavigation(activeNavigation, props, targetUrl);
 		return activeNavigation.control;
 	}
 
-	if (prefetchToUpgrade && prefetchUpgradeKey) {
-		prefetchCache.delete(prefetchUpgradeKey);
-		prefetchToUpgrade.targetUrl = targetUrl;
-		prefetchToUpgrade.scrollToTop = props.scrollToTop;
-		prefetchToUpgrade.replace = props.replace;
-		prefetchToUpgrade.state = props.state;
-		prefetchToUpgrade.type = "userNavigation";
-		prefetchToUpgrade.intent = "navigate";
-		setActiveNavigation(prefetchToUpgrade);
+	if (prefetchMatch) {
+		prefetchCache.delete(prefetchMatch.key);
+		promoteEntryToUserNavigation(prefetchMatch.entry, props, targetUrl);
+		setActiveNavigation(prefetchMatch.entry);
 		scheduleStatusUpdate();
-		return prefetchToUpgrade.control;
+		return prefetchMatch.entry.control;
 	}
 
 	if (
@@ -325,12 +339,7 @@ export function beginUserNavigation(
 		hasSameDataTarget(pendingRevalidation.targetUrl, targetUrl)
 	) {
 		setPendingRevalidation(null);
-		pendingRevalidation.targetUrl = targetUrl;
-		pendingRevalidation.scrollToTop = props.scrollToTop;
-		pendingRevalidation.replace = props.replace;
-		pendingRevalidation.state = props.state;
-		pendingRevalidation.type = "userNavigation";
-		pendingRevalidation.intent = "navigate";
+		promoteEntryToUserNavigation(pendingRevalidation, props, targetUrl);
 		setActiveNavigation(pendingRevalidation);
 		scheduleStatusUpdate();
 		return pendingRevalidation.control;
@@ -360,15 +369,9 @@ export function beginPrefetch(
 		return activeNavigation.control;
 	}
 
-	const existingPrefetch = prefetchCache.get(targetUrl);
-	if (existingPrefetch) {
-		return existingPrefetch.control;
-	}
-
-	for (const [prefetchUrl, prefetch] of prefetchCache.entries()) {
-		if (hasSameDataTarget(prefetchUrl, targetUrl)) {
-			return prefetch.control;
-		}
+	const prefetchMatch = findPrefetchByDataTarget(prefetchCache, targetUrl);
+	if (prefetchMatch) {
+		return prefetchMatch.entry.control;
 	}
 
 	if (

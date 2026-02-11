@@ -6,8 +6,11 @@ import {
 	dispatchStatusEvent,
 	type StatusEventDetail,
 } from "../../platform/events.ts";
-import { hasSameDataTarget } from "../../platform/url.ts";
-import { __vormaClientGlobal, type GetRouteDataOutput } from "../../app/context.ts";
+import { hasSameDataTarget, resolveAbsoluteHref } from "../../platform/url.ts";
+import {
+	__vormaClientGlobal,
+	type GetRouteDataOutput,
+} from "../../app/context.ts";
 import { isAbortError, logError } from "../../platform/safety.ts";
 import {
 	effectuateRedirectDataResult,
@@ -98,6 +101,21 @@ export type NavigationSlots = {
 	pendingRevalidation: NavigationEntry | null;
 };
 
+type NavigationSlotMatch =
+	| {
+			slot: "active";
+			entry: NavigationEntry;
+	  }
+	| {
+			slot: "prefetch";
+			key: string;
+			entry: NavigationEntry;
+	  }
+	| {
+			slot: "pendingRevalidation";
+			entry: NavigationEntry;
+	  };
+
 type NavigationBookkeeping = {
 	getActiveNavigation: () => NavigationEntry | null;
 	setActiveNavigation: (entry: NavigationEntry | null) => void;
@@ -125,33 +143,7 @@ export function findNavigationEntryInSlots(
 	slots: NavigationSlots,
 	targetUrl: string,
 ): NavigationEntry | undefined {
-	if (
-		slots.activeNavigation &&
-		(slots.activeNavigation.targetUrl === targetUrl ||
-			hasSameDataTarget(slots.activeNavigation.targetUrl, targetUrl))
-	) {
-		return slots.activeNavigation;
-	}
-
-	const prefetch = slots.prefetchCache.get(targetUrl);
-	if (prefetch) {
-		return prefetch;
-	}
-	for (const [url, entry] of slots.prefetchCache) {
-		if (hasSameDataTarget(url, targetUrl)) {
-			return entry;
-		}
-	}
-
-	if (
-		slots.pendingRevalidation &&
-		(slots.pendingRevalidation.targetUrl === targetUrl ||
-			hasSameDataTarget(slots.pendingRevalidation.targetUrl, targetUrl))
-	) {
-		return slots.pendingRevalidation;
-	}
-
-	return undefined;
+	return matchSlotByTargetURL(slots, targetUrl)?.entry;
 }
 
 function getNavigationsSizeFromSlots(slots: NavigationSlots): number {
@@ -195,67 +187,30 @@ function findMatchingPrefetchKey(
 	return undefined;
 }
 
-export function deleteNavigationFromSlots(
-	slots: NavigationSlots,
-	key: string,
-	onStatusRelevantChange: () => void,
-): boolean {
-	if (
-		slots.activeNavigation &&
-		(slots.activeNavigation.targetUrl === key ||
-			hasSameDataTarget(slots.activeNavigation.targetUrl, key))
-	) {
-		slots.activeNavigation = null;
-		onStatusRelevantChange();
-		return true;
-	}
-
-	const prefetchKey = findMatchingPrefetchKey(slots, key);
-	if (prefetchKey) {
-		slots.prefetchCache.delete(prefetchKey);
-		return true;
-	}
-
-	if (
-		slots.pendingRevalidation &&
-		(slots.pendingRevalidation.targetUrl === key ||
-			hasSameDataTarget(slots.pendingRevalidation.targetUrl, key))
-	) {
-		slots.pendingRevalidation = null;
-		onStatusRelevantChange();
-		return true;
-	}
-
-	return false;
-}
-
-export function transitionNavigationPhaseInSlots(
+function matchSlotByTargetURL(
 	slots: NavigationSlots,
 	targetUrl: string,
-	phase: NavigationPhase,
-	onStatusRelevantChange: () => void,
-): void {
+): NavigationSlotMatch | undefined {
 	if (
 		slots.activeNavigation &&
 		(slots.activeNavigation.targetUrl === targetUrl ||
 			hasSameDataTarget(slots.activeNavigation.targetUrl, targetUrl))
 	) {
-		slots.activeNavigation.phase = phase;
-		onStatusRelevantChange();
-		return;
+		return {
+			slot: "active",
+			entry: slots.activeNavigation,
+		};
 	}
 
-	const prefetch = slots.prefetchCache.get(targetUrl);
-	if (prefetch) {
-		prefetch.phase = phase;
-		return;
-	}
-	const prefetchAliasKey = findMatchingPrefetchKey(slots, targetUrl);
-	if (prefetchAliasKey) {
-		const prefetchAlias = slots.prefetchCache.get(prefetchAliasKey);
-		if (prefetchAlias) {
-			prefetchAlias.phase = phase;
-			return;
+	const prefetchKey = findMatchingPrefetchKey(slots, targetUrl);
+	if (prefetchKey) {
+		const prefetchEntry = slots.prefetchCache.get(prefetchKey);
+		if (prefetchEntry) {
+			return {
+				slot: "prefetch",
+				key: prefetchKey,
+				entry: prefetchEntry,
+			};
 		}
 	}
 
@@ -264,7 +219,55 @@ export function transitionNavigationPhaseInSlots(
 		(slots.pendingRevalidation.targetUrl === targetUrl ||
 			hasSameDataTarget(slots.pendingRevalidation.targetUrl, targetUrl))
 	) {
-		slots.pendingRevalidation.phase = phase;
+		return {
+			slot: "pendingRevalidation",
+			entry: slots.pendingRevalidation,
+		};
+	}
+
+	return undefined;
+}
+
+export function deleteNavigationFromSlots(
+	slots: NavigationSlots,
+	key: string,
+	onStatusRelevantChange: () => void,
+): boolean {
+	const matchedSlot = matchSlotByTargetURL(slots, key);
+	if (!matchedSlot) {
+		return false;
+	}
+
+	switch (matchedSlot.slot) {
+		case "active":
+			slots.activeNavigation = null;
+			onStatusRelevantChange();
+			return true;
+
+		case "prefetch":
+			slots.prefetchCache.delete(matchedSlot.key);
+			return true;
+
+		case "pendingRevalidation":
+			slots.pendingRevalidation = null;
+			onStatusRelevantChange();
+			return true;
+	}
+}
+
+export function transitionNavigationPhaseInSlots(
+	slots: NavigationSlots,
+	targetUrl: string,
+	phase: NavigationPhase,
+	onStatusRelevantChange: () => void,
+): void {
+	const matchedSlot = matchSlotByTargetURL(slots, targetUrl);
+	if (!matchedSlot) {
+		return;
+	}
+
+	matchedSlot.entry.phase = phase;
+	if (matchedSlot.slot !== "prefetch") {
 		onStatusRelevantChange();
 	}
 }
@@ -395,10 +398,6 @@ function createNavigationBookkeeping(
 	};
 }
 
-function resolveNavigationTargetURL(href: string): string {
-	return new URL(href, window.location.href).href;
-}
-
 function beginNavigationWithContext(
 	beginNavigationContext: BeginNavigationContext,
 	createActiveNavigation: (
@@ -407,7 +406,7 @@ function beginNavigationWithContext(
 	) => NavigationControl,
 	props: NavigateProps,
 ): NavigationControl {
-	const targetUrl = resolveNavigationTargetURL(props.href);
+	const targetUrl = resolveAbsoluteHref(props.href);
 
 	switch (props.navigationType) {
 		case "userNavigation":
@@ -417,7 +416,11 @@ function beginNavigationWithContext(
 				targetUrl,
 			);
 		case "prefetch":
-			return executeBeginPrefetch(beginNavigationContext, props, targetUrl);
+			return executeBeginPrefetch(
+				beginNavigationContext,
+				props,
+				targetUrl,
+			);
 		case "revalidation":
 			return executeBeginRevalidation(beginNavigationContext, props);
 		case "browserHistory":
@@ -446,65 +449,54 @@ async function handleNavigationOutcome(props: {
 		navigationProps,
 		outcome,
 	} = props;
-	const targetUrl = resolveNavigationTargetURL(navigationProps.href);
+	const targetUrl = resolveAbsoluteHref(navigationProps.href);
 
-	switch (outcome.type) {
-		case "aborted": {
-			deleteNavigation(targetUrl);
-			return { didNavigate: false };
-		}
-
-		case "redirect": {
-			const entry = findNavigationEntry(targetUrl);
-			if (!entry) {
-				return { didNavigate: false };
-			}
-			if (isStaleRevalidationEntry(entry)) {
-				deleteNavigation(targetUrl);
-				return { didNavigate: false };
-			}
-
-			if (entry.type === "prefetch" && entry.intent === "none") {
-				deleteNavigation(targetUrl);
-				return { didNavigate: false };
-			}
-
-			syncBuildIDFromRedirectData(outcome.redirectData);
-			deleteNavigation(targetUrl);
-			await effectuateRedirectDataResult(
-				outcome.redirectData,
-				navigationProps.redirectCount || 0,
-				navigationProps,
-			);
-			return { didNavigate: false };
-		}
-
-		case "success": {
-			const entry = findNavigationEntry(targetUrl);
-			if (!entry) {
-				return { didNavigate: false };
-			}
-
-			if (entry.intent === "navigate" || entry.intent === "revalidate") {
-				onNavigationIntentResolved?.();
-			}
-
-			await processSuccessfulNavigation(outcome, entry);
-
-			if (entry.intent === "none" && entry.type === "prefetch") {
-				return { didNavigate: false };
-			}
-
-			return { didNavigate: true };
-		}
-
-		default: {
-			const exhaustive: never = outcome;
-			throw new Error(
-				`Unexpected navigation outcome type: ${(exhaustive as any).type}`,
-			);
-		}
+	if (outcome.type === "aborted") {
+		deleteNavigation(targetUrl);
+		return { didNavigate: false };
 	}
+
+	if (outcome.type === "redirect") {
+		const entry = findNavigationEntry(targetUrl);
+		if (!entry) {
+			return { didNavigate: false };
+		}
+		if (isStaleRevalidationEntry(entry)) {
+			deleteNavigation(targetUrl);
+			return { didNavigate: false };
+		}
+
+		if (entry.type === "prefetch" && entry.intent === "none") {
+			deleteNavigation(targetUrl);
+			return { didNavigate: false };
+		}
+
+		syncBuildIDFromRedirectData(outcome.redirectData);
+		deleteNavigation(targetUrl);
+		await effectuateRedirectDataResult(
+			outcome.redirectData,
+			navigationProps.redirectCount || 0,
+			navigationProps,
+		);
+		return { didNavigate: false };
+	}
+
+	const entry = findNavigationEntry(targetUrl);
+	if (!entry) {
+		return { didNavigate: false };
+	}
+
+	if (entry.intent === "navigate" || entry.intent === "revalidate") {
+		onNavigationIntentResolved?.();
+	}
+
+	await processSuccessfulNavigation(outcome, entry);
+
+	if (entry.intent === "none" && entry.type === "prefetch") {
+		return { didNavigate: false };
+	}
+
+	return { didNavigate: true };
 }
 
 type ProcessSuccessfulNavigationContext = {
@@ -685,7 +677,7 @@ function createActiveSubmission(options?: SubmitOptions): ActiveSubmission {
 	const entry: SubmissionEntry = {
 		control: {
 			abortController,
-			promise: Promise.resolve() as any,
+			promise: Promise.resolve() as Promise<unknown>,
 		},
 		startTime: Date.now(),
 		skipGlobalLoadingIndicator: options?.skipGlobalLoadingIndicator,
@@ -772,6 +764,27 @@ type SubmitResult<T> =
 	| { success: true; data: T }
 	| { success: false; error: string };
 
+function getAbortedSubmitResult<T>(): SubmitResult<T> {
+	return { success: false, error: "Aborted" };
+}
+
+function getUnknownSubmitErrorResult<T>(): SubmitResult<T> {
+	return { success: false, error: "Unknown error" };
+}
+
+function getSubmitErrorResult<T>(error: string): SubmitResult<T> {
+	return { success: false, error };
+}
+
+function getSubmitStaleResultIfAny<T>(
+	isSubmissionCurrent: () => boolean,
+): SubmitResult<T> | null {
+	if (isSubmissionCurrent()) {
+		return null;
+	}
+	return getAbortedSubmitResult<T>();
+}
+
 async function finalizeSubmitResponse<T>(props: {
 	response?: Response;
 	redirectData: RedirectData | null;
@@ -789,36 +802,32 @@ async function finalizeSubmitResponse<T>(props: {
 		isSubmissionCurrent,
 	} = props;
 
-	if (!isSubmissionCurrent()) {
-		return { success: false, error: "Aborted" };
-	}
+	const staleBeforeResponse =
+		getSubmitStaleResultIfAny<T>(isSubmissionCurrent);
+	if (staleBeforeResponse) return staleBeforeResponse;
 
 	if (!response || !response.ok) {
-		return {
-			success: false,
-			error: String(response?.status || "unknown"),
-		};
+		return getSubmitErrorResult<T>(String(response?.status || "unknown"));
 	}
 
 	if (redirectData?.status === "should") {
-		if (!isSubmissionCurrent()) {
-			return { success: false, error: "Aborted" };
-		}
+		const staleBeforeRedirect =
+			getSubmitStaleResultIfAny<T>(isSubmissionCurrent);
+		if (staleBeforeRedirect) return staleBeforeRedirect;
 		await effectuateRedirectDataResult(redirectData, 0);
 		return { success: true, data: undefined as T };
 	}
 
 	const data = await response.json();
-	if (!isSubmissionCurrent()) {
-		return { success: false, error: "Aborted" };
-	}
+	const staleBeforeReturn = getSubmitStaleResultIfAny<T>(isSubmissionCurrent);
+	if (staleBeforeReturn) return staleBeforeReturn;
 
 	const isGET = getIsGETRequest(requestInit);
 	const redirected = redirectData?.status === "did";
 	if (!isGET && !redirected && options?.revalidate !== false) {
-		if (!isSubmissionCurrent()) {
-			return { success: false, error: "Aborted" };
-		}
+		const staleBeforeRevalidate =
+			getSubmitStaleResultIfAny<T>(isSubmissionCurrent);
+		if (staleBeforeRevalidate) return staleBeforeRevalidate;
 		await navigate({
 			href: window.location.href,
 			navigationType: "revalidation",
@@ -828,7 +837,7 @@ async function finalizeSubmitResponse<T>(props: {
 	return { success: true, data: data as T };
 }
 
-async function executeSubmitRuntime<T = any>(
+async function executeSubmitRuntime<T = unknown>(
 	context: SubmitExecutionContext,
 	url: string | URL,
 	requestInit?: RequestInit,
@@ -841,7 +850,7 @@ async function executeSubmitRuntime<T = any>(
 	beginSubmissionLifecycle(context, activeSubmission);
 
 	try {
-		const urlToUse = new URL(url, window.location.href);
+		const urlToUse = new URL(resolveAbsoluteHref(url));
 		const finalRequestInit = buildSubmitRequestInit({
 			requestInit,
 			signal: activeSubmission.abortController.signal,
@@ -853,9 +862,9 @@ async function executeSubmitRuntime<T = any>(
 			requestInit: finalRequestInit,
 		});
 
-		if (!isSubmissionCurrent()) {
-			return { success: false, error: "Aborted" };
-		}
+		const staleAfterRequest =
+			getSubmitStaleResultIfAny<T>(isSubmissionCurrent);
+		if (staleAfterRequest) return staleAfterRequest;
 
 		if (response && isSubmissionCurrent()) {
 			syncBuildIDFromResponse(response);
@@ -874,13 +883,13 @@ async function executeSubmitRuntime<T = any>(
 			isAbortError(error) ||
 			activeSubmission.abortController.signal.aborted
 		) {
-			return { success: false, error: "Aborted" };
+			return getAbortedSubmitResult<T>();
 		}
 		logError(error);
-		return {
-			success: false,
-			error: error instanceof Error ? error.message : "Unknown error",
-		};
+		if (error instanceof Error) {
+			return getSubmitErrorResult<T>(error.message);
+		}
+		return getUnknownSubmitErrorResult<T>();
 	} finally {
 		finishSubmissionLifecycle(context, activeSubmission);
 	}
@@ -957,7 +966,8 @@ export function createNavigationRuntime(
 				transitionPhase: (
 					targetUrl: string,
 					phase: NavigationPhase,
-				): void => navigationBookkeeping.transitionPhase(targetUrl, phase),
+				): void =>
+					navigationBookkeeping.transitionPhase(targetUrl, phase),
 				findNavigationEntry: navigationBookkeeping.findNavigationEntry,
 				deleteNavigation: navigationBookkeeping.deleteNavigation,
 			},
@@ -988,13 +998,13 @@ export function createNavigationRuntime(
 				outcome,
 			});
 		} catch {
-			const targetUrl = resolveNavigationTargetURL(props.href);
+			const targetUrl = resolveAbsoluteHref(props.href);
 			navigationBookkeeping.deleteNavigation(targetUrl);
 			return { didNavigate: false };
 		}
 	};
 
-	const submit = <T = any>(
+	const submit = <T = unknown>(
 		url: string | URL,
 		requestInit?: RequestInit,
 		options?: SubmitOptions,

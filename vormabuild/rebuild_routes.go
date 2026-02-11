@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/vormadev/vorma/kit/id"
@@ -90,8 +91,7 @@ func cleanRouteManifestsOnly(v *vormaruntime.Vorma) error {
 			continue
 		}
 		name := entry.Name()
-		if len(name) > len(vormaruntime.VormaRouteManifestPrefix) &&
-			name[:len(vormaruntime.VormaRouteManifestPrefix)] == vormaruntime.VormaRouteManifestPrefix {
+		if isGeneratedRouteManifestFilename(name) {
 			if err := os.Remove(filepath.Join(staticPublicOutDir, name)); err != nil {
 				return fmt.Errorf("remove %s: %w", name, err)
 			}
@@ -99,4 +99,9 @@ func cleanRouteManifestsOnly(v *vormaruntime.Vorma) error {
 	}
 
 	return nil
+}
+
+func isGeneratedRouteManifestFilename(fileName string) bool {
+	return len(fileName) > len(vormaruntime.VormaRouteManifestPrefix) &&
+		strings.HasPrefix(fileName, vormaruntime.VormaRouteManifestPrefix)
 }

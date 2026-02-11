@@ -8,6 +8,7 @@ import {
 	isSameDocumentHashChange,
 	normalizedHashFragmentFromHash,
 	normalizedHashFragmentFromHref,
+	resolveAbsoluteHref,
 } from "../../platform/url.ts";
 
 describe("hash fragment helpers", () => {
@@ -52,6 +53,20 @@ describe("hash fragment helpers", () => {
 		expect(
 			hasSameDataTarget("/same-doc?b=2&a=1#one", "/same-doc?a=1&b=2#two"),
 		).toBe(false);
+	});
+
+	it("resolves relative and URL inputs to absolute hrefs", () => {
+		window.history.replaceState({}, "", "/base-path");
+
+		expect(resolveAbsoluteHref("/next?mode=1#section")).toBe(
+			"http://localhost:3000/next?mode=1#section",
+		);
+		expect(resolveAbsoluteHref("child", "https://example.com/base/")).toBe(
+			"https://example.com/base/child",
+		);
+		expect(
+			resolveAbsoluteHref(new URL("/x?y=1", "https://example.com")),
+		).toBe("https://example.com/x?y=1");
 	});
 
 	it("detects same-document hash-only transitions", () => {

@@ -29,7 +29,7 @@ export type NavigationOutcome =
 			type: "success";
 			response: Response;
 			json: GetRouteDataOutput;
-			cssBundlePromises: Array<Promise<any>>;
+			cssBundlePromises: Array<Promise<unknown>>;
 			waitFnPromise: Promise<ClientLoadersResult> | undefined;
 			props: NavigateProps;
 	  };
@@ -59,7 +59,7 @@ export type NavigationEntry = {
 export type SubmissionEntry = {
 	control: {
 		abortController: AbortController | undefined;
-		promise: Promise<any>;
+		promise: Promise<unknown>;
 	};
 	startTime: number;
 	skipGlobalLoadingIndicator?: boolean;
@@ -79,7 +79,7 @@ export type NavigationStateManager = {
 		outcome: Extract<NavigationOutcome, { type: "success" }>,
 		entry: NavigationEntry,
 	) => Promise<void>;
-	submit: <T = any>(
+	submit: <T = unknown>(
 		url: string | URL,
 		requestInit?: RequestInit,
 		options?: SubmitOptions,

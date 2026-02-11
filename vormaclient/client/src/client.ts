@@ -71,7 +71,7 @@ export async function revalidate() {
 	});
 }
 
-export async function submit<T = any>(
+export async function submit<T = unknown>(
 	url: string | URL,
 	requestInit?: RequestInit,
 	options?: SubmitOptions,

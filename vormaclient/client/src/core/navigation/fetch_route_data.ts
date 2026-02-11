@@ -1,5 +1,6 @@
 import { jsonDeepEquals } from "vorma/kit/json";
-import { type Match, findNestedMatches } from "vorma/kit/matcher/find-nested";
+import { findNestedMatches } from "vorma/kit/matcher/find-nested";
+import type { PatternRegistry } from "vorma/kit/matcher/register";
 import {
 	completeClientLoaders,
 	buildClientLoaderServerData,
@@ -16,6 +17,7 @@ import { __vormaClientGlobal } from "../../app/context.ts";
 import type {
 	ClientLoaderAwaitedServerData,
 	GetRouteDataOutput,
+	VormaClientGlobal,
 } from "../../app/context.ts";
 import {
 	isAbortError,
@@ -24,31 +26,45 @@ import {
 } from "../../platform/safety.ts";
 import type { NavigateProps, NavigationOutcome } from "./types.ts";
 
+type SkipMatch = {
+	registeredPattern: {
+		originalPattern: string;
+		normalizedSegments: Array<{
+			segType: string;
+			normalizedVal: string;
+		}>;
+		lastSegType: string;
+	};
+};
+
+type SkipMatchResult = {
+	params: Record<string, string>;
+	splatValues: string[];
+	matches: SkipMatch[];
+};
+
 export type SkipCheckContext = {
 	routeManifest: Record<string, number>;
-	patternRegistry: any;
-	patternToWaitFnMap: Record<string, any>;
-	clientModuleMap: Record<
-		string,
-		{ importURL: string; exportKey: string; errorExportKey: string }
-	>;
+	patternRegistry: PatternRegistry;
+	patternToWaitFnMap: VormaClientGlobal["patternToWaitFnMap"];
+	clientModuleMap: VormaClientGlobal["clientModuleMap"];
 	currentMatchedPatterns: string[];
 	currentParams: Record<string, string>;
 	currentSplatValues: string[];
-	currentLoadersData: any[];
+	currentLoadersData: unknown[];
 	url: URL;
-	matchResult: any;
+	matchResult: SkipMatchResult;
 };
 
 export type SkipCheckResult =
 	| { canSkip: false }
 	| {
-			canSkip: true;
-			matchResult: any;
-			importURLs: string[];
-			exportKeys: string[];
-			loadersData: any[];
-	  };
+				canSkip: true;
+				matchResult: SkipMatchResult;
+				importURLs: string[];
+				exportKeys: string[];
+				loadersData: unknown[];
+		  };
 
 function buildSkipCheckContext(
 	targetUrl: string,
@@ -64,10 +80,11 @@ function buildSkipCheckContext(
 	}
 
 	const url = new URL(targetUrl);
-	const matchResult = findNestedMatches(patternRegistry, url.pathname);
-	if (!matchResult) {
+	const nestedMatchResult = findNestedMatches(patternRegistry, url.pathname);
+	if (!nestedMatchResult) {
 		return undefined;
 	}
+	const matchResult: SkipMatchResult = nestedMatchResult;
 
 	return {
 		routeManifest,
@@ -89,7 +106,7 @@ function hasServerLoaderRemoval(ctx: SkipCheckContext): boolean {
 		const hasServerLoader = ctx.routeManifest[pattern] === 1;
 		if (hasServerLoader) {
 			const stillMatched = ctx.matchResult.matches.some(
-				(m: Match) => m.registeredPattern.originalPattern === pattern,
+				(m) => m.registeredPattern.originalPattern === pattern,
 			);
 			if (!stillMatched) {
 				return true;
@@ -113,7 +130,7 @@ function hasNewClientLoader(ctx: SkipCheckContext): boolean {
 
 function findOutermostLoaderIndex(ctx: SkipCheckContext): number {
 	for (let i = ctx.matchResult.matches.length - 1; i >= 0; i--) {
-		const match: Match | undefined = ctx.matchResult.matches[i];
+		const match: SkipMatch | undefined = ctx.matchResult.matches[i];
 		if (!match) continue;
 
 		const pattern = match.registeredPattern.originalPattern;
@@ -191,7 +208,7 @@ export function isSkipEligibilityViolated(ctx: SkipCheckContext): boolean {
 function buildSkipResultItem(props: {
 	ctx: SkipCheckContext;
 	pattern: string;
-}): { importURL: string; exportKey: string; loaderData: any } | null {
+}): { importURL: string; exportKey: string; loaderData: unknown } | null {
 	const { ctx, pattern } = props;
 	const moduleInfo = ctx.clientModuleMap[pattern];
 	if (!moduleInfo) {
@@ -226,10 +243,10 @@ function buildSkipResultItem(props: {
 function buildSkipResultFromContext(ctx: SkipCheckContext): SkipCheckResult {
 	const importURLs: string[] = [];
 	const exportKeys: string[] = [];
-	const loadersData: any[] = [];
+	const loadersData: unknown[] = [];
 
 	for (let i = 0; i < ctx.matchResult.matches.length; i++) {
-		const match: Match | undefined = ctx.matchResult.matches[i];
+		const match: SkipMatch | undefined = ctx.matchResult.matches[i];
 		if (!match) continue;
 
 		const pattern = match.registeredPattern.originalPattern;
@@ -271,6 +288,13 @@ function buildClientOnlyOutcome(
 	controller: AbortController,
 ): NavigationOutcome {
 	const { matchResult, importURLs, exportKeys, loadersData } = skipCheck;
+	const buildID = __vormaClientGlobal.get("buildID") || "1";
+	const currentMatchedPatterns =
+		__vormaClientGlobal.get("matchedPatterns") || [];
+	const currentClientLoadersData =
+		__vormaClientGlobal.get("clientLoadersData") || [];
+	const patternToWaitFnMap =
+		__vormaClientGlobal.get("patternToWaitFnMap") || {};
 
 	const json: GetRouteDataOutput = {
 		matchedPatterns: matchResult.matches.map(
@@ -291,30 +315,22 @@ function buildClientOnlyOutcome(
 		title: undefined,
 		metaHeadEls: undefined,
 		restHeadEls: undefined,
-		activeComponents: undefined as unknown as [],
 	};
 
 	const response = new Response(JSON.stringify(json), {
 		status: 200,
 		headers: {
 			"Content-Type": "application/json",
-			"X-Vorma-Build-Id": __vormaClientGlobal.get("buildID") || "1",
+			"X-Vorma-Build-Id": buildID,
 		},
 	});
-
-	const currentClientLoadersData =
-		__vormaClientGlobal.get("clientLoadersData") || [];
-	const patternToWaitFnMap =
-		__vormaClientGlobal.get("patternToWaitFnMap") || {};
-	const runningLoaders = new Map<string, Promise<any>>();
+	const runningLoaders = new Map<string, Promise<unknown>>();
 
 	for (let i = 0; i < json.matchedPatterns.length; i++) {
 		const pattern = json.matchedPatterns[i];
 		if (!pattern) continue;
 
 		if (patternToWaitFnMap[pattern]) {
-			const currentMatchedPatterns =
-				__vormaClientGlobal.get("matchedPatterns") || [];
 			const currentPatternIndex = currentMatchedPatterns.indexOf(pattern);
 
 			if (
@@ -333,7 +349,7 @@ function buildClientOnlyOutcome(
 
 	const waitFnPromise = completeClientLoaders(
 		json,
-		__vormaClientGlobal.get("buildID") || "1",
+		buildID,
 		runningLoaders,
 		controller.signal,
 	);
@@ -466,7 +482,7 @@ function resolveServerRouteDataResult(props: {
 function buildServerDataForPattern(
 	pattern: string,
 	serverResult: ServerRouteDataResult,
-): ClientLoaderAwaitedServerData<any, any> | null {
+): ClientLoaderAwaitedServerData<unknown, unknown> | null {
 	const { response, json } = serverResult;
 	if (!response || !response.ok || !json) {
 		return null;
@@ -493,10 +509,11 @@ async function startParallelClientLoaders(props: {
 	pathname: string;
 	serverPromise: Promise<ServerRouteDataResult>;
 	signal: AbortSignal;
-}): Promise<Map<string, Promise<any>>> {
+}): Promise<Map<string, Promise<unknown>>> {
 	const matchResult = await findPartialMatchesOnClient(props.pathname);
-	const patternToWaitFnMap = __vormaClientGlobal.get("patternToWaitFnMap");
-	const runningLoaders = new Map<string, Promise<any>>();
+	const patternToWaitFnMap =
+		__vormaClientGlobal.get("patternToWaitFnMap") || {};
+	const runningLoaders = new Map<string, Promise<unknown>>();
 
 	if (!matchResult) {
 		return runningLoaders;
@@ -549,7 +566,7 @@ function buildServerSuccessOutcome(props: {
 	response: Response;
 	json: GetRouteDataOutput;
 	navigationProps: NavigateProps;
-	runningLoaders: Map<string, Promise<any>>;
+	runningLoaders: Map<string, Promise<unknown>>;
 	signal: AbortSignal;
 }): Extract<NavigationOutcome, { type: "success" }> {
 	const { response, json, navigationProps, runningLoaders, signal } = props;
@@ -571,7 +588,7 @@ function buildServerSuccessOutcome(props: {
 	);
 	observePromiseRejection(waitFnPromise);
 
-	const cssBundlePromises: Array<Promise<any>> = [];
+	const cssBundlePromises: Array<Promise<unknown>> = [];
 	for (const bundle of json.cssBundles ?? []) {
 		cssBundlePromises.push(AssetManager.preloadCSS(bundle));
 	}

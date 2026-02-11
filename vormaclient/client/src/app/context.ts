@@ -18,16 +18,12 @@ type Meta = {
 	restHeadEls: Array<HeadEl> | null | undefined;
 };
 
-type shared = {
+type RouteDataState = {
 	outermostServerError?: string;
-	outermostClientError?: string;
 	outermostServerErrorIdx?: number;
-	outermostClientErrorIdx?: number;
-	outermostError?: string;
-	outermostErrorIdx?: number;
 
 	matchedPatterns: Array<string>;
-	loadersData: Array<any>;
+	loadersData: Array<unknown>;
 	importURLs: Array<string>;
 	exportKeys: Array<string>;
 	errorExportKeys: string[];
@@ -35,14 +31,21 @@ type shared = {
 
 	params: Record<string, string>;
 	splatValues: Array<string>;
+};
+
+type RuntimeRouteState = RouteDataState & {
+	outermostClientError?: string;
+	outermostClientErrorIdx?: number;
+	outermostError?: string;
+	outermostErrorIdx?: number;
 
 	buildID: string;
 
-	activeComponents: Array<any> | null;
-	activeErrorBoundary?: any;
+	activeComponents: Array<unknown> | null;
+	activeErrorBoundary?: unknown;
 };
 
-export type GetRouteDataOutput = Omit<shared, "buildID"> &
+export type GetRouteDataOutput = RouteDataState &
 	Meta & {
 		deps: Array<string>;
 		cssBundles: Array<string>;
@@ -50,7 +53,7 @@ export type GetRouteDataOutput = Omit<shared, "buildID"> &
 
 export const VORMA_SYMBOL = Symbol.for("__vorma_internal__");
 
-export type RouteErrorComponent = (props: { error: string }) => any;
+export type RouteErrorComponent = (props: { error: string }) => unknown;
 
 export type ClientLoaderAwaitedServerData<RD, LD> = {
 	matchedPatterns: string[];
@@ -59,21 +62,20 @@ export type ClientLoaderAwaitedServerData<RD, LD> = {
 	buildID: string;
 };
 
-export type VormaClientGlobal = shared & {
+export type PatternWaitFn = (props: {
+	params: Record<string, string>;
+	splatValues: string[];
+	serverDataPromise: Promise<ClientLoaderAwaitedServerData<unknown, unknown>>;
+	signal: AbortSignal;
+}) => Promise<unknown>;
+
+export type VormaClientGlobal = RuntimeRouteState & {
 	isDev: boolean;
 	viteDevURL: string;
 	publicPathPrefix: string;
 	isTouchDevice: boolean;
-	patternToWaitFnMap: Record<
-		string,
-		(props: {
-			params: Record<string, string>;
-			splatValues: string[];
-			serverDataPromise: Promise<ClientLoaderAwaitedServerData<any, any>>;
-			signal: AbortSignal;
-		}) => Promise<any>
-	>;
-	clientLoadersData: Array<any>;
+	patternToWaitFnMap: Record<string, PatternWaitFn>;
+	clientLoadersData: Array<unknown>;
 	defaultErrorBoundary: RouteErrorComponent;
 	useViewTransitions: boolean;
 	deploymentID: string;
@@ -91,8 +93,12 @@ export type VormaClientGlobal = shared & {
 	patternRegistry: PatternRegistry;
 };
 
+type VormaGlobalThis = typeof globalThis & {
+	[VORMA_SYMBOL]: VormaClientGlobal;
+};
+
 export function __getVormaClientGlobal() {
-	const dangerousGlobalThis = globalThis as any;
+	const dangerousGlobalThis = globalThis as VormaGlobalThis;
 	function get<K extends keyof VormaClientGlobal>(key: K) {
 		return dangerousGlobalThis[VORMA_SYMBOL][key] as VormaClientGlobal[K];
 	}
@@ -108,12 +114,12 @@ export function __getVormaClientGlobal() {
 export const __vormaClientGlobal = __getVormaClientGlobal();
 
 export function getRouterData<
-	T = any,
+	T = unknown,
 	P extends Record<string, string> = Record<string, string>,
 >() {
-	const rootData: T = __vormaClientGlobal.get("hasRootData")
+	const rootData = (__vormaClientGlobal.get("hasRootData")
 		? __vormaClientGlobal.get("loadersData")[0]
-		: null;
+		: null) as T;
 	return {
 		buildID: __vormaClientGlobal.get("buildID") || "",
 		matchedPatterns: __vormaClientGlobal.get("matchedPatterns") || [],

@@ -1,8 +1,10 @@
 package vormaruntime
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"path"
 	"strings"
 
@@ -60,6 +62,11 @@ func (v *Vorma) getSSRInnerHTML(routeData *RouteDataFinal) (*GetSSRInnerHTMLOutp
 	}
 	if routeData.RouteDataCore == nil {
 		return nil, fmt.Errorf("routeData.RouteDataCore cannot be nil")
+	}
+	for i, loaderData := range routeData.RouteDataCore.LoadersData {
+		if err := json.NewEncoder(io.Discard).Encode(loaderData); err != nil {
+			return nil, fmt.Errorf("routeData.LoadersData[%d] must be JSON-serializable: %w", i, err)
+		}
 	}
 
 	var htmlBuilder strings.Builder

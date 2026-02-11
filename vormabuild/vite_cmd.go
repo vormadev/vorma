@@ -38,88 +38,143 @@ func postViteProdBuild(v *vormaruntime.Vorma) error {
 }
 
 func toPathsFile_StageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error) {
-	vormaClientEntryOut := ""
-	vormaClientEntryDeps := []string{}
-	depToCSSBundleMap := make(map[string][]string)
-
 	viteManifest, err := viteutil.ReadManifest(v.Wave.GetViteManifestLocation())
 	if err != nil {
 		return nil, fmt.Errorf("read vite manifest: %w", err)
 	}
 
-	cleanClientEntry := filepath.Clean(v.Config.ClientEntry)
 	paths := v.GetPathsSnapshot()
+	cleanClientEntry := filepath.Clean(v.Config.ClientEntry)
+	clientEntryOut, clientEntryDeps, depToCSSBundleMap := applyViteManifestToPaths(
+		viteManifest,
+		paths,
+		cleanClientEntry,
+	)
+
+	pathsFile := buildStageTwoPathsFile(
+		v,
+		paths,
+		clientEntryOut,
+		clientEntryDeps,
+		depToCSSBundleMap,
+	)
+
+	buildID, err := computeStageTwoBuildID(v, pathsFile)
+	if err != nil {
+		return nil, err
+	}
+
+	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID(buildID)
+	})
+
+	pathsFile.BuildID = buildID
+	return pathsFile, nil
+}
+
+func applyViteManifestToPaths(
+	viteManifest viteutil.Manifest,
+	paths map[string]*vormaruntime.Path,
+	cleanClientEntry string,
+) (string, []string, map[string][]string) {
+	clientEntryOut := ""
+	clientEntryDeps := []string{}
+	depToCSSBundleMap := make(map[string][]string)
 
 	for key, chunk := range viteManifest {
-		cleanKey := filepath.Base(chunk.File)
+		cleanChunkOutPath := filepath.Base(chunk.File)
 
-		// Collect all CSS files for this chunk
 		if len(chunk.CSS) > 0 {
-			cssBundles := make([]string, 0, len(chunk.CSS))
-			for _, cssFile := range chunk.CSS {
-				cssBundles = append(cssBundles, filepath.Base(cssFile))
-			}
-			depToCSSBundleMap[cleanKey] = cssBundles
+			depToCSSBundleMap[cleanChunkOutPath] = collectCSSBundleFileNames(chunk.CSS)
 		}
 
-		deps := viteutil.FindAllDependencies(viteManifest, key)
+		dependencies := viteutil.FindAllDependencies(viteManifest, key)
 
 		if chunk.IsEntry && cleanClientEntry == chunk.Src {
-			vormaClientEntryOut = cleanKey
-			depsWithoutEntry := make([]string, 0, len(deps)-1)
-			for _, dep := range deps {
-				if dep != vormaClientEntryOut {
-					depsWithoutEntry = append(depsWithoutEntry, dep)
-				}
-			}
-			vormaClientEntryDeps = depsWithoutEntry
-		} else {
-			for i, p := range paths {
-				if p.SrcPath == chunk.Src {
-					paths[i].OutPath = cleanKey
-					paths[i].Deps = deps
-				}
-			}
+			clientEntryOut = cleanChunkOutPath
+			clientEntryDeps = removeDependency(dependencies, clientEntryOut)
+			continue
 		}
+
+		updateRoutePathsForChunk(paths, chunk.Src, cleanChunkOutPath, dependencies)
 	}
 
-	htmlTemplateContent, err := os.ReadFile(path.Join(v.Wave.GetPrivateStaticDir(), v.Config.HTMLTemplateLocation))
-	if err != nil {
-		return nil, fmt.Errorf("read HTML template: %w", err)
-	}
-	htmlContentHash := cryptoutil.Sha256Hash(htmlTemplateContent)
+	return clientEntryOut, clientEntryDeps, depToCSSBundleMap
+}
 
-	pf := &vormaruntime.PathsFile{
+func collectCSSBundleFileNames(cssFiles []string) []string {
+	cssBundleFileNames := make([]string, 0, len(cssFiles))
+	for _, cssFile := range cssFiles {
+		cssBundleFileNames = append(cssBundleFileNames, filepath.Base(cssFile))
+	}
+	return cssBundleFileNames
+}
+
+func removeDependency(dependencies []string, dependencyToRemove string) []string {
+	dependenciesWithoutTarget := make([]string, 0, len(dependencies))
+	for _, dependency := range dependencies {
+		if dependency == dependencyToRemove {
+			continue
+		}
+		dependenciesWithoutTarget = append(dependenciesWithoutTarget, dependency)
+	}
+	return dependenciesWithoutTarget
+}
+
+func updateRoutePathsForChunk(
+	paths map[string]*vormaruntime.Path,
+	chunkSourcePath string,
+	chunkOutPath string,
+	chunkDependencies []string,
+) {
+	for _, currentPath := range paths {
+		if currentPath.SrcPath != chunkSourcePath {
+			continue
+		}
+		currentPath.OutPath = chunkOutPath
+		currentPath.Deps = chunkDependencies
+	}
+}
+
+func buildStageTwoPathsFile(
+	v *vormaruntime.Vorma,
+	paths map[string]*vormaruntime.Path,
+	clientEntryOut string,
+	clientEntryDeps []string,
+	depToCSSBundleMap map[string][]string,
+) *vormaruntime.PathsFile {
+	return &vormaruntime.PathsFile{
 		Stage:             "two",
 		DepToCSSBundleMap: depToCSSBundleMap,
 		Paths:             paths,
 		ClientEntrySrc:    v.Config.ClientEntry,
-		ClientEntryOut:    vormaClientEntryOut,
-		ClientEntryDeps:   vormaClientEntryDeps,
+		ClientEntryOut:    clientEntryOut,
+		ClientEntryDeps:   clientEntryDeps,
 		RouteManifestFile: v.GetRouteManifestFile(),
 	}
+}
 
-	asJSON, err := json.Marshal(pf)
+func computeStageTwoBuildID(v *vormaruntime.Vorma, pathsFile *vormaruntime.PathsFile) (string, error) {
+	htmlTemplateContent, err := os.ReadFile(path.Join(v.Wave.GetPrivateStaticDir(), v.Config.HTMLTemplateLocation))
 	if err != nil {
-		return nil, fmt.Errorf("marshal paths file: %w", err)
+		return "", fmt.Errorf("read HTML template: %w", err)
+	}
+	htmlContentHash := cryptoutil.Sha256Hash(htmlTemplateContent)
+
+	asJSON, err := json.Marshal(pathsFile)
+	if err != nil {
+		return "", fmt.Errorf("marshal paths file: %w", err)
 	}
 	pfJSONHash := cryptoutil.Sha256Hash(asJSON)
 
 	publicFSSummaryHash, err := getFSSummaryHash(os.DirFS(v.Wave.GetStaticPublicOutDir()))
 	if err != nil {
-		return nil, fmt.Errorf("get FS summary hash: %w", err)
+		return "", fmt.Errorf("get FS summary hash: %w", err)
 	}
 
 	fullHash := sha256.New()
 	fullHash.Write(htmlContentHash)
 	fullHash.Write(pfJSONHash)
 	fullHash.Write(publicFSSummaryHash)
-	buildID := base64.RawURLEncoding.EncodeToString(fullHash.Sum(nil)[:16])
-
-	v.WithLock(func(l *vormaruntime.LockedVorma) {
-		l.SetBuildID(buildID)
-	})
-
-	pf.BuildID = buildID
-	return pf, nil
+	return base64.RawURLEncoding.EncodeToString(fullHash.Sum(nil)[:16]), nil
 }

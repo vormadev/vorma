@@ -1,0 +1,184 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { NavigationEntry } from "../../core/navigation/types.ts";
+import type { RedirectData } from "../../core/redirects.ts";
+
+type ContextModule = typeof import("../../app/context.ts");
+type RedirectsModule = typeof import("../../core/redirects.ts");
+
+async function loadRedirectModules(): Promise<{
+	contextModule: ContextModule;
+	redirectsModule: RedirectsModule;
+}> {
+	vi.resetModules();
+	const contextModule = await import("../../app/context.ts");
+	const redirectsModule = await import("../../core/redirects.ts");
+	return { contextModule, redirectsModule };
+}
+
+function createRedirectEntryForCleanup(type: NavigationEntry["type"]): {
+	key: string;
+	entry: NavigationEntry;
+} {
+	const targetUrl = `http://localhost:3000/${type}`;
+	return {
+		key: targetUrl,
+		entry: {
+			control: {
+				abortController: new AbortController(),
+				promise: Promise.resolve({ type: "aborted" }),
+			},
+			type,
+			intent: "navigate",
+			phase: "fetching",
+			startTime: 0,
+			targetUrl,
+			originUrl: "http://localhost:3000/",
+		},
+	};
+}
+
+function createDidRedirectData(): RedirectData {
+	return {
+		status: "did",
+		href: "/already-redirected",
+		hrefDetails: {
+			isHTTP: true,
+		},
+	} as unknown as RedirectData;
+}
+
+function createShouldRedirectDataWithOverrides(overrides: {
+	shouldRedirectStrategy?: string;
+	isHTTP?: boolean;
+}): RedirectData {
+	return {
+		status: "should",
+		href: "/target",
+		latestBuildID: "build-2",
+		shouldRedirectStrategy: overrides.shouldRedirectStrategy ?? "hard",
+		hrefDetails: {
+			isHTTP: overrides.isHTTP ?? true,
+			isExternal: false,
+			isInternal: true,
+			absoluteURL: "http://localhost:3000/target",
+			relativeURL: "/target",
+		},
+	} as unknown as RedirectData;
+}
+
+describe("redirects internal defensive branches", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("does nothing when syncing build ID for already-applied redirect data", async () => {
+		const { redirectsModule } = await loadRedirectModules();
+
+		expect(() => {
+			redirectsModule.syncBuildIDFromRedirectData(
+				createDidRedirectData(),
+			);
+		}).not.toThrow();
+	});
+
+	it("returns null for already-applied redirect data without requiring navigation state", async () => {
+		const { redirectsModule } = await loadRedirectModules();
+
+		await expect(
+			redirectsModule.effectuateRedirectDataResult(
+				createDidRedirectData(),
+				0,
+			),
+		).resolves.toBeNull();
+	});
+
+	it("returns null when hard redirect data is non-http", async () => {
+		const { contextModule, redirectsModule } = await loadRedirectModules();
+
+		const removeNavigation = vi.fn();
+		contextModule.setNavigationStateAccess({
+			navigate: vi.fn().mockResolvedValue({ didNavigate: false }),
+			removeNavigation,
+			getNavigations: vi.fn().mockReturnValue(new Map()),
+		});
+
+		const result = await redirectsModule.effectuateRedirectDataResult(
+			createShouldRedirectDataWithOverrides({
+				shouldRedirectStrategy: "hard",
+				isHTTP: false,
+			}),
+			0,
+		);
+
+		expect(result).toBeNull();
+		expect(removeNavigation).not.toHaveBeenCalled();
+	});
+
+	it("returns null for unknown redirect strategy after cleanup", async () => {
+		const { contextModule, redirectsModule } = await loadRedirectModules();
+		const redirectEntry = createRedirectEntryForCleanup("redirect");
+		const userNavigationEntry =
+			createRedirectEntryForCleanup("userNavigation");
+		const navigationMap = new Map<string, NavigationEntry>([
+			[redirectEntry.key, redirectEntry.entry],
+			[userNavigationEntry.key, userNavigationEntry.entry],
+		]);
+
+		const removeNavigation = vi.fn((key: string) => {
+			navigationMap.delete(key);
+		});
+		contextModule.setNavigationStateAccess({
+			navigate: vi.fn().mockResolvedValue({ didNavigate: false }),
+			removeNavigation,
+			getNavigations: vi.fn(() => navigationMap),
+		});
+
+		const result = await redirectsModule.effectuateRedirectDataResult(
+			createShouldRedirectDataWithOverrides({
+				shouldRedirectStrategy: "unexpected",
+			}),
+			0,
+		);
+
+		expect(result).toBeNull();
+		expect(
+			redirectEntry.entry.control.abortController?.signal.aborted,
+		).toBe(true);
+		expect(
+			userNavigationEntry.entry.control.abortController?.signal.aborted,
+		).toBe(false);
+		expect(removeNavigation).toHaveBeenCalledWith(redirectEntry.key);
+		expect(removeNavigation).not.toHaveBeenCalledWith(
+			userNavigationEntry.key,
+		);
+	});
+
+	it("ignores non-http native redirect response URLs", async () => {
+		const { redirectsModule } = await loadRedirectModules();
+		const response = createResponseMarkedAsRedirected({
+			url: "mailto:test@example.com",
+		});
+		vi.spyOn(window, "fetch").mockResolvedValue(response);
+
+		const result = await redirectsModule.handleRedirects({
+			abortController: new AbortController(),
+			url: new URL("http://localhost:3000/start"),
+		});
+
+		expect(result.redirectData).toBeNull();
+		expect(result.response).toBe(response);
+	});
+});
+
+function createResponseMarkedAsRedirected(props: { url: string }): Response {
+	const response = new Response(null, { status: 200 });
+	Object.defineProperty(response, "redirected", {
+		value: true,
+		configurable: true,
+	});
+	Object.defineProperty(response, "url", {
+		value: props.url,
+		configurable: true,
+	});
+	return response;
+}

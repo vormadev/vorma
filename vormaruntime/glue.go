@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
@@ -77,7 +78,11 @@ func newActionsRouter(options ...ActionsRouterOptions) *ActionsRouter {
 		supportedMethods["PATCH"] = true
 	} else {
 		for _, m := range o.SupportedMethods {
-			supportedMethods[m] = true
+			upperMethod := strings.ToUpper(strings.TrimSpace(m))
+			if upperMethod == "" {
+				continue
+			}
+			supportedMethods[upperMethod] = true
 		}
 	}
 	return &ActionsRouter{
@@ -86,14 +91,17 @@ func newActionsRouter(options ...ActionsRouterOptions) *ActionsRouter {
 			SplatSegmentRune:       o.SplatSegmentIdentifier,
 			MountRoot:              mountRoot,
 			ParseInput: func(r *http.Request, iPtr any) error {
-				if r.Method == http.MethodGet {
+				if r.Method == http.MethodGet || r.Method == http.MethodHead {
 					return validate.URLSearchParamsInto(r, iPtr)
 				}
 				if supportedMethods[r.Method] {
 					contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 					if contentType == "application/x-www-form-urlencoded" ||
 						contentType == "multipart/form-data" {
-						return nil
+						if _, isFormData := iPtr.(*FormData); isFormData {
+							return nil
+						}
+						return &validate.ValidationError{Err: errors.New("form content type requires vormaruntime.FormData input")}
 					}
 					return validate.JSONBodyInto(r, iPtr)
 				}

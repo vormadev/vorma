@@ -4,6 +4,7 @@ import {
 	hasSameDataTarget,
 	isSameDocumentHashChange,
 	isSameDocumentLocation,
+	resolveAbsoluteHref,
 } from "../platform/url.ts";
 import type { NavigationOutcome } from "./navigation/types.ts";
 import {
@@ -13,16 +14,14 @@ import {
 import { saveScrollState } from "../platform/scroll.ts";
 import { logError } from "../platform/safety.ts";
 
-type HashCheckAnchorDetails =
-	| {
-			anchor: HTMLAnchorElement;
-	  }
-	| null
-	| undefined;
+type EligibleInternalAnchorDetails = Exclude<
+	ReturnType<typeof getAnchorDetailsFromEvent>,
+	null
+>;
 
-function isJustAHashChange(anchorDetails: HashCheckAnchorDetails): boolean {
-	if (!anchorDetails) return false;
-
+function isJustAHashChange(
+	anchorDetails: EligibleInternalAnchorDetails,
+): boolean {
 	return isSameDocumentHashChange(
 		anchorDetails.anchor.href,
 		window.location.href,
@@ -30,14 +29,32 @@ function isJustAHashChange(anchorDetails: HashCheckAnchorDetails): boolean {
 }
 
 function isSameDocumentNoopNavigationTarget(
-	anchorDetails: HashCheckAnchorDetails,
+	anchorDetails: EligibleInternalAnchorDetails,
 ): boolean {
-	if (!anchorDetails) return false;
-
 	return isSameDocumentLocation(
 		anchorDetails.anchor.href,
 		window.location.href,
 	);
+}
+
+function getEligibleInternalAnchorDetails(
+	event: Event,
+): EligibleInternalAnchorDetails | null {
+	if (event.defaultPrevented) return null;
+
+	const anchorDetails = getAnchorDetailsFromEvent(
+		event as unknown as MouseEvent,
+	);
+	if (!anchorDetails) return null;
+
+	if (
+		!anchorDetails.isEligibleForDefaultPrevention ||
+		!anchorDetails.isInternal
+	) {
+		return null;
+	}
+
+	return anchorDetails;
 }
 
 type LinkOnClickCallback<E extends Event> = (event: E) => void | Promise<void>;
@@ -61,43 +78,33 @@ async function handleLinkNavigationOutcome<E extends Event>(props: {
 }): Promise<void> {
 	const { event, outcome, targetUrl, callbacks } = props;
 
-	switch (outcome.type) {
-		case "aborted":
-			navigationStateManager.removeNavigation(targetUrl);
-			return;
-
-		case "redirect":
-			await callbacks.beforeRender?.(event);
-			syncBuildIDFromRedirectData(outcome.redirectData);
-			navigationStateManager.removeNavigation(targetUrl);
-			await effectuateRedirectDataResult(
-				outcome.redirectData,
-				outcome.props.redirectCount || 0,
-				outcome.props,
-			);
-			await callbacks.afterRender?.(event);
-			return;
-
-		case "success": {
-			await callbacks.beforeRender?.(event);
-			const entry = navigationStateManager.getNavigation(targetUrl);
-			if (entry) {
-				await navigationStateManager.processSuccessfulNavigation(
-					outcome,
-					entry,
-				);
-			}
-			await callbacks.afterRender?.(event);
-			return;
-		}
-
-		default: {
-			const exhaustiveCheck: never = outcome;
-			throw new Error(
-				`Unexpected outcome type: ${String(exhaustiveCheck)}`,
-			);
-		}
+	if (outcome.type === "aborted") {
+		navigationStateManager.removeNavigation(targetUrl);
+		return;
 	}
+
+	if (outcome.type === "redirect") {
+		await callbacks.beforeRender?.(event);
+		syncBuildIDFromRedirectData(outcome.redirectData);
+		navigationStateManager.removeNavigation(targetUrl);
+		await effectuateRedirectDataResult(
+			outcome.redirectData,
+			outcome.props.redirectCount || 0,
+			outcome.props,
+		);
+		await callbacks.afterRender?.(event);
+		return;
+	}
+
+	await callbacks.beforeRender?.(event);
+	const entry = navigationStateManager.getNavigation(targetUrl);
+	if (entry) {
+		await navigationStateManager.processSuccessfulNavigation(
+			outcome,
+			entry,
+		);
+	}
+	await callbacks.afterRender?.(event);
 }
 
 export function createLinkOnClickFn<E extends Event>(
@@ -108,20 +115,10 @@ export function createLinkOnClickFn<E extends Event>(
 	},
 ) {
 	return async (event: E) => {
-		if (event.defaultPrevented) return;
-
-		const anchorDetails = getAnchorDetailsFromEvent(
-			event as unknown as MouseEvent,
-		);
+		const anchorDetails = getEligibleInternalAnchorDetails(event);
 		if (!anchorDetails) return;
 
-		const { anchor, isEligibleForDefaultPrevention, isInternal } =
-			anchorDetails;
-		if (!anchor) return;
-
-		if (!isEligibleForDefaultPrevention || !isInternal) {
-			return;
-		}
+		const { anchor } = anchorDetails;
 
 		if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
 			return;
@@ -143,10 +140,8 @@ export function createLinkOnClickFn<E extends Event>(
 			state: callbacks.state,
 		});
 
-		if (!control.promise) return;
-
 		const outcome = await control.promise;
-		const targetUrl = new URL(anchor.href, window.location.href).href;
+		const targetUrl = resolveAbsoluteHref(anchor.href);
 		await handleLinkNavigationOutcome({
 			event,
 			outcome,
@@ -208,7 +203,7 @@ function buildPrefetchTargetHref(props: {
 	search?: string;
 	hash?: string;
 }): string {
-	const fullUrl = new URL(props.relativeURL, window.location.href);
+	const fullUrl = new URL(resolveAbsoluteHref(props.relativeURL));
 	if (props.search !== undefined) fullUrl.search = props.search;
 	if (props.hash !== undefined) fullUrl.hash = props.hash;
 	return fullUrl.href;
@@ -238,15 +233,8 @@ async function handlePrefetchClick<E extends Event>(props: {
 		callbacks,
 		navigationOptions,
 	} = props;
-	if (event.defaultPrevented) return;
-
-	const anchorDetails = getAnchorDetailsFromEvent(
-		event as unknown as MouseEvent,
-	);
+	const anchorDetails = getEligibleInternalAnchorDetails(event);
 	if (!anchorDetails) return;
-
-	const { isEligibleForDefaultPrevention, isInternal } = anchorDetails;
-	if (!isEligibleForDefaultPrevention || !isInternal) return;
 
 	if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
 		clearPendingTimer();
@@ -322,7 +310,6 @@ export function createPrefetchHandlers<E extends Event>(
 	}
 
 	async function prefetch(event: E): Promise<void> {
-		if (prefetchStarted && hasActiveIdlePrefetch()) return;
 		prefetchStarted = true;
 
 		try {

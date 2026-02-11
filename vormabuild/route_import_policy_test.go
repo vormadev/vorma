@@ -9,7 +9,7 @@ func TestExtractRouteCalls_RecognizesBuildtimeImportOnly(t *testing.T) {
 			defineRoute("/ok", "./ok.tsx", "default");
 		`
 
-		routes, unresolved, err := extractRouteCalls(code, "frontend/src/vorma.routes.ts")
+		routes, unresolved, err := extractRouteCalls(code)
 		if err != nil {
 			t.Fatalf("extractRouteCalls returned error: %v", err)
 		}
@@ -38,7 +38,7 @@ func TestExtractRouteCalls_RecognizesBuildtimeImportOnly(t *testing.T) {
 			route("/legacy", "./legacy.tsx", "default");
 		`
 
-		routes, unresolved, err := extractRouteCalls(code, "frontend/src/vorma.routes.ts")
+		routes, unresolved, err := extractRouteCalls(code)
 		if err != nil {
 			t.Fatalf("extractRouteCalls returned error: %v", err)
 		}

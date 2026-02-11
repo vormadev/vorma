@@ -30,6 +30,13 @@ function stubElementScrollIntoView(
 }
 
 describe("client utility contracts", () => {
+	it("formats errors through defaultErrorBoundary", async () => {
+		const api = await loadClientAPI();
+		expect(api.defaultErrorBoundary({ error: "boom" })).toBe(
+			"Route Error: boom",
+		);
+	});
+
 	it("returns listener cleanup functions that unsubscribe handlers", async () => {
 		const api = await loadClientAPI();
 		const listener = vi.fn();
@@ -209,6 +216,24 @@ describe("client utility contracts", () => {
 		expect(api.getLocation().hash).toBe("#details");
 	});
 
+	it("builds typed navigation hrefs from splat values", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const typedNavigate = api.makeTypedNavigate(TEST_APP_CONFIG as any);
+
+		await typedNavigate({
+			pattern: "/docs/*",
+			splatValues: ["guides", "intro"],
+		} as any);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const fetchInput = fetchSpy.mock.calls[0]?.[0] as RequestInfo | URL;
+		const fetchURL = requestInputToURL(fetchInput);
+		expect(fetchURL.pathname).toBe("/docs/guides/intro");
+	});
+
 	it("maps custom handler keys in __makeFinalLinkProps and preserves callbacks", async () => {
 		const api = await loadClientAPI();
 		const onMouseEnter = vi.fn();
@@ -252,5 +277,24 @@ describe("client utility contracts", () => {
 		expect(onBlurred).toHaveBeenCalledWith(event);
 		expect(onCancel).toHaveBeenCalledWith(event);
 		expect(onPress).toHaveBeenCalledWith(event);
+	});
+
+	it("supports intent-prefetch link props without requiring user callbacks", async () => {
+		const api = await loadClientAPI();
+		api.__vormaClientGlobal.set("isTouchDevice", true);
+		const finalProps = api.__makeFinalLinkProps({
+			href: "/prefetch-only",
+			prefetch: "intent",
+			prefetchDelayMs: 0,
+		} as any);
+
+		expect(finalProps.dataExternal).toBeUndefined();
+		finalProps.onPointerEnter(new Event("pointerenter"));
+		finalProps.onFocus(new Event("focus"));
+		finalProps.onPointerLeave(new Event("pointerleave"));
+		finalProps.onBlur(new Event("blur"));
+		finalProps.onTouchCancel(new Event("touchcancel"));
+		await finalProps.onClick({ defaultPrevented: true } as any);
+		await vi.runAllTimersAsync();
 	});
 });

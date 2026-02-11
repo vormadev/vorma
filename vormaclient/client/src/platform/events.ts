@@ -48,7 +48,10 @@ function makeListenerAdder<T>(key: string) {
 	return function addListener(
 		listener: (event: CustomEvent<T>) => void,
 	): () => void {
-		window.addEventListener(key, listener as any);
-		return () => window.removeEventListener(key, listener as any);
+		const wrappedListener: EventListener = (event) => {
+			listener(event as CustomEvent<T>);
+		};
+		window.addEventListener(key, wrappedListener);
+		return () => window.removeEventListener(key, wrappedListener);
 	};
 }

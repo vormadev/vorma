@@ -6,6 +6,13 @@ function stripHashPrefix(hash: string): string {
 	return hash.startsWith("#") ? hash.slice(1) : hash;
 }
 
+export function resolveAbsoluteHref(
+	href: string | URL,
+	baseHref = window.location.href,
+): string {
+	return new URL(href, baseHref).href;
+}
+
 export function hrefWithoutHash(
 	href: string,
 	baseHref = window.location.href,

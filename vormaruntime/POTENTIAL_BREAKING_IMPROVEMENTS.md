@@ -20,12 +20,7 @@ before implementation.
     - Aligning these paths may change which routes are available immediately
       after startup.
 
-4. Canonicalize custom action method names to uppercase.
-    - `ActionsRouterOptions.SupportedMethods` is currently case-sensitive.
-    - Normalizing to uppercase is more HTTP-idiomatic.
-    - Could break callers relying on exact non-uppercase strings.
-
-5. Remove legacy dev reload endpoint constant aliases.
+4. Remove legacy dev reload endpoint constant aliases.
     - Canonical names are `Dev_ReloadRoutesPath` and `Dev_ReloadTemplatePath`.
     - Legacy aliases (`DevReloadRoutesPath`, `DevReloadTemplatePath`) remain for
       compatibility.

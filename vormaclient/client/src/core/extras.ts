@@ -21,9 +21,32 @@ export let __runClientLoadersAfterHMRUpdate: (
 	pattern: string,
 ) => void = () => {};
 
+type HotModuleRuntime = {
+	on: (
+		event: string,
+		callback: (props: { updates: Array<{ type: string; path: string }> }) => void,
+	) => void;
+};
+
+type HMRWindow = Window & {
+	__waveRevalidate?: typeof revalidate;
+};
+
+function resolveHotModuleRuntime(
+	importMeta: ImportMeta,
+): HotModuleRuntime | undefined {
+	const runtimeHot =
+		(importMeta as ImportMeta & { hot?: unknown }).hot ??
+		(import.meta as ImportMeta & { hot?: unknown }).hot;
+	if (runtimeHot && typeof (runtimeHot as HotModuleRuntime).on === "function") {
+		return runtimeHot as HotModuleRuntime;
+	}
+	return undefined;
+}
+
 export function initHMR() {
 	if (import.meta.env.DEV) {
-		(window as any).__waveRevalidate = revalidate;
+		(window as HMRWindow).__waveRevalidate = revalidate;
 
 		devTimeSetupClientLoadersDebounced = debounce(async () => {
 			await setupClientLoaders();
@@ -35,7 +58,8 @@ export function initHMR() {
 				hmrRevalidateSet = new Set();
 			}
 
-			if (import.meta.env.DEV && import.meta.hot) {
+			const hot = resolveHotModuleRuntime(importMeta);
+			if (import.meta.env.DEV && hot) {
 				const thisURL = new URL(importMeta.url, location.href);
 				thisURL.search = "";
 				const thisPathname = thisURL.pathname;
@@ -47,7 +71,7 @@ export function initHMR() {
 
 				hmrRevalidateSet.add(thisPathname);
 
-				import.meta.hot.on("vite:afterUpdate", (props) => {
+				hot.on("vite:afterUpdate", (props) => {
 					for (const update of props.updates) {
 						if (update.type === "js-update") {
 							const updateURL = new URL(update.path, location.href);

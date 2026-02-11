@@ -115,7 +115,35 @@ func (v *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*PathsFile, error) {
 	if err := json.NewDecoder(file).Decode(&pathsFile); err != nil {
 		return nil, fmt.Errorf("could not decode %s: %w", fileToUse, err)
 	}
+	if err := validatePathsFileStructuralIntegrity(&pathsFile); err != nil {
+		return nil, fmt.Errorf("invalid %s: %w", fileToUse, err)
+	}
 	return &pathsFile, nil
+}
+
+func validatePathsFileStructuralIntegrity(pathsFile *PathsFile) error {
+	if pathsFile == nil {
+		return fmt.Errorf("paths file is nil")
+	}
+	if pathsFile.Paths == nil {
+		return nil
+	}
+	for mapKeyPattern, pathEntry := range pathsFile.Paths {
+		if pathEntry == nil {
+			return fmt.Errorf("paths[%q] cannot be null", mapKeyPattern)
+		}
+		if mapKeyPattern != "" && pathEntry.OriginalPattern == "" {
+			return fmt.Errorf("paths[%q].originalPattern is required", mapKeyPattern)
+		}
+		if pathEntry.OriginalPattern != mapKeyPattern {
+			return fmt.Errorf(
+				"paths[%q].originalPattern=%q does not match key",
+				mapKeyPattern,
+				pathEntry.OriginalPattern,
+			)
+		}
+	}
+	return nil
 }
 
 // PrettyPrintFS is a debug utility for fs.FS instances.

@@ -177,6 +177,26 @@ describe("client prefetch contracts", () => {
 		expect(signals[0]?.aborted).toBe(true);
 	});
 
+	it("aborts idle prefetch entries via same-data-target alias lookup", async () => {
+		const api = await loadClientAPI();
+		const { signals } = createSignalCapturingNeverFetchSpy();
+		const firstHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-idle-alias#first",
+			delayMs: 0,
+		});
+		firstHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		expect(signals[0]?.aborted).toBe(false);
+
+		const aliasHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-idle-alias#second",
+			delayMs: 0,
+		});
+		aliasHandlers?.stop();
+
+		expect(signals[0]?.aborted).toBe(true);
+	});
+
 	it("cancels pending prefetch timer on hash-only click", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/hash-page");
@@ -631,6 +651,36 @@ describe("client prefetch contracts", () => {
 		expect(beforeRender).toHaveBeenCalledTimes(1);
 		expect(afterRender).toHaveBeenCalledTimes(1);
 		expect(document.title).toBe("Eventual");
+
+		document.body.removeChild(anchor);
+	});
+
+	it("runs beforeBegin on direct click when no prefetch has started yet", async () => {
+		const api = await loadClientAPI();
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Direct Click" },
+			}),
+		);
+
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
+		const handlers = api.__getPrefetchHandlers({
+			href: "/direct-click",
+			beforeBegin,
+			beforeRender,
+			afterRender,
+		});
+
+		const { anchor, event } = buildAnchorClick("/direct-click");
+		await handlers?.onClick(event);
+		await vi.runAllTimersAsync();
+
+		expect(beforeBegin).toHaveBeenCalledTimes(1);
+		expect(beforeRender).toHaveBeenCalledTimes(1);
+		expect(afterRender).toHaveBeenCalledTimes(1);
+		expect(document.title).toBe("Direct Click");
 
 		document.body.removeChild(anchor);
 	});

@@ -31,7 +31,31 @@ describe("global_constructors", () => {
 
 		expect(isInstanceOfGlobal(params, "URLSearchParams")).toBe(true);
 		expect(isInstanceOfGlobal(bytes.buffer, "ArrayBuffer")).toBe(true);
+		expect(isInstanceOfGlobal("not-an-object", "ArrayBuffer")).toBe(false);
 		expect(isArrayBufferView(bytes)).toBe(true);
+	});
+
+	it("detects cross-realm ArrayBuffer instances", () => {
+		const iframe = document.createElement("iframe");
+		document.body.appendChild(iframe);
+
+		const foreignWindow = iframe.contentWindow as
+			| (Window & typeof globalThis)
+			| null;
+		if (
+			!foreignWindow ||
+			typeof foreignWindow.ArrayBuffer === "undefined"
+		) {
+			iframe.remove();
+			return;
+		}
+
+		const foreignArrayBuffer = new foreignWindow.ArrayBuffer(8);
+		expect(isInstanceOfGlobal(foreignArrayBuffer, "ArrayBuffer")).toBe(
+			true,
+		);
+
+		iframe.remove();
 	});
 });
 

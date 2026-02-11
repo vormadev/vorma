@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,8 +14,18 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/response"
 )
+
+type testCustomJSONMarshaler struct {
+	RawNonSerializable chan int
+}
+
+func (m testCustomJSONMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`{"ok":true}`), nil
+}
 
 func TestIsJSONRequest(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/products?vorma_json=abc123", nil)
@@ -26,6 +37,40 @@ func TestIsJSONRequest(t *testing.T) {
 	if IsJSONRequest(req) {
 		t.Fatal("expected request without vorma_json to be non-JSON request")
 	}
+}
+
+func TestBuildIDHelpersAndLegacyHeadAccessor(t *testing.T) {
+	fixture := newTestFixture(t, testFixtureOptions{})
+	app := fixture.app
+
+	t.Run("IsCurrentBuildJSONRequest", func(t *testing.T) {
+		reqCurrent := httptest.NewRequest(http.MethodGet, "/x?vorma_json="+app.GetBuildID(), nil)
+		if !app.IsCurrentBuildJSONRequest(reqCurrent) {
+			t.Fatal("expected current build request to match")
+		}
+
+		reqStale := httptest.NewRequest(http.MethodGet, "/x?vorma_json=stale-build", nil)
+		if app.IsCurrentBuildJSONRequest(reqStale) {
+			t.Fatal("expected stale build request not to match")
+		}
+	})
+
+	t.Run("GetCurrentBuildID", func(t *testing.T) {
+		if got, want := app.GetCurrentBuildID(), app.GetBuildID(); got != want {
+			t.Fatalf("GetCurrentBuildID() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("GetHeadElsInstance_LegacyAccessor", func(t *testing.T) {
+		first := GetHeadElsInstance()
+		second := GetHeadElsInstance()
+		if first == nil || second == nil {
+			t.Fatal("legacy headels accessor returned nil")
+		}
+		if first != second {
+			t.Fatal("legacy headels accessor should return stable singleton instance")
+		}
+	})
 }
 
 func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
@@ -96,6 +141,44 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		}
 	})
 
+	t.Run("stale_build_reload_header_preserves_non_vorma_query_params", func(t *testing.T) {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/items/42?vorma_json=old-build&foo=a&foo=b&zap=1",
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		raw := rec.Header().Get("X-Vorma-Reload")
+		if raw == "" {
+			t.Fatal("X-Vorma-Reload header should be set for stale build request")
+		}
+
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatalf("parse X-Vorma-Reload header %q: %v", raw, err)
+		}
+		if got, want := u.Path, "/items/42"; got != want {
+			t.Fatalf("reload path = %q, want %q", got, want)
+		}
+
+		q := u.Query()
+		if got := q.Get(VormaJSONQueryKey); got != "" {
+			t.Fatalf("%s should be removed in reload header, got %q", VormaJSONQueryKey, got)
+		}
+		if got := q["foo"]; !reflect.DeepEqual(got, []string{"a", "b"}) {
+			t.Fatalf(`foo query values = %#v, want %#v`, got, []string{"a", "b"})
+		}
+		if got := q.Get("zap"); got != "1" {
+			t.Fatalf(`zap query value = %q, want "1"`, got)
+		}
+	})
+
 	t.Run("current_build_json_request_returns_route_data", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/items/42?vorma_json=build-new", nil)
 		rec := httptest.NewRecorder()
@@ -150,6 +233,112 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		if !reflect.DeepEqual(routeData.ImportURLs, wantImportURLs) {
 			t.Fatalf("ImportURLs = %#v, want %#v", routeData.ImportURLs, wantImportURLs)
 		}
+	})
+}
+
+func TestLoadersHandler_HasRootDataAndSplatValuesContracts(t *testing.T) {
+	stage := defaultPathsFile("build-root-splat", map[string]*Path{
+		"/": {
+			OriginalPattern: "/",
+			SrcPath:         "frontend/src/routes/root.tsx",
+			OutPath:         "vorma_out/routes/root.js",
+			ExportKey:       "default",
+		},
+		"/files/*": {
+			OriginalPattern: "/files/*",
+			SrcPath:         "frontend/src/routes/files.splat.tsx",
+			OutPath:         "vorma_out/routes/files.splat.js",
+			ExportKey:       "default",
+		},
+	})
+
+	runCase := func(t *testing.T, rootHasHandler bool) {
+		t.Helper()
+
+		fixture := newTestFixture(t, testFixtureOptions{stageOne: stage, stageTwo: stage})
+		app := fixture.app
+
+		if rootHasHandler {
+			mux.RegisterNestedTaskHandler(
+				app.LoadersRouter().NestedRouter,
+				"/",
+				mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
+					return map[string]string{"layout": "ok"}, nil
+				}),
+			)
+		} else {
+			mux.RegisterNestedPatternWithoutHandler(app.LoadersRouter().NestedRouter, "/")
+		}
+
+		mux.RegisterNestedTaskHandler(
+			app.LoadersRouter().NestedRouter,
+			"/files/*",
+			mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
+				return map[string]string{"joinedSplat": strings.Join(rd.SplatValues(), "/")}, nil
+			}),
+		)
+
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/files/docs/readme.txt?vorma_json="+app.GetBuildID(),
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		mux.InjectTasksCtxMiddleware(app.Loaders().Handler()).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var routeData RouteDataFinal
+		if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
+			t.Fatalf("decode route data: %v", err)
+		}
+
+		if got, want := routeData.MatchedPatterns, []string{"/", "/files/*"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("MatchedPatterns = %#v, want %#v", got, want)
+		}
+		if got, want := []string(routeData.SplatValues), []string{"docs", "readme.txt"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("SplatValues = %#v, want %#v", got, want)
+		}
+		if len(routeData.LoadersData) != 2 {
+			t.Fatalf("LoadersData length = %d, want 2", len(routeData.LoadersData))
+		}
+
+		childData, ok := routeData.LoadersData[1].(map[string]any)
+		if !ok {
+			t.Fatalf("child loader data has unexpected type %T", routeData.LoadersData[1])
+		}
+		if got, want := childData["joinedSplat"], "docs/readme.txt"; got != want {
+			t.Fatalf("child joinedSplat = %#v, want %q", got, want)
+		}
+
+		if rootHasHandler {
+			if !routeData.HasRootData {
+				t.Fatal("HasRootData = false, want true when root loader handler runs")
+			}
+			rootData, ok := routeData.LoadersData[0].(map[string]any)
+			if !ok {
+				t.Fatalf("root loader data has unexpected type %T", routeData.LoadersData[0])
+			}
+			if got, want := rootData["layout"], "ok"; got != want {
+				t.Fatalf("root layout = %#v, want %q", got, want)
+			}
+		} else {
+			if routeData.HasRootData {
+				t.Fatal("HasRootData = true, want false when root has no handler")
+			}
+			if routeData.LoadersData[0] != nil {
+				t.Fatalf("root loader data = %#v, want nil when root has no handler", routeData.LoadersData[0])
+			}
+		}
+	}
+
+	t.Run("RootHandlerPresent", func(t *testing.T) {
+		runCase(t, true)
+	})
+	t.Run("RootPatternWithoutHandler", func(t *testing.T) {
+		runCase(t, false)
 	})
 }
 
@@ -275,6 +464,51 @@ func TestLoadersHandler_ProxyRedirectAndErrorShortCircuit(t *testing.T) {
 		if strings.Contains(rec.Body.String(), `"matchedPatterns"`) {
 			t.Fatalf("redirect response unexpectedly contained route JSON payload: %q", rec.Body.String())
 		}
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != "build-proxy" {
+			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, "build-proxy")
+		}
+	})
+
+	t.Run("redirect_response_proxy_short_circuits_html", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/redirect", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+		}
+		if got := rec.Header().Get("Location"); got != "/login" {
+			t.Fatalf("Location = %q, want %q", got, "/login")
+		}
+		if strings.Contains(rec.Body.String(), "vorma-root") {
+			t.Fatalf("redirect response unexpectedly contained root HTML payload: %q", rec.Body.String())
+		}
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != "build-proxy" {
+			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, "build-proxy")
+		}
+	})
+
+	t.Run("redirect_response_proxy_honors_client_redirect_header", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/redirect?vorma_json=build-proxy", nil)
+		req.Header.Set(response.ClientAcceptsRedirectHeader, "true")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if got := rec.Header().Get(response.ClientRedirectHeader); got != "/login" {
+			t.Fatalf("%s = %q, want %q", response.ClientRedirectHeader, got, "/login")
+		}
+		if got := rec.Header().Get("Location"); got != "" {
+			t.Fatalf("Location = %q, want empty when using client redirect header", got)
+		}
+		if strings.Contains(rec.Body.String(), `"matchedPatterns"`) {
+			t.Fatalf("client redirect response unexpectedly contained route JSON payload: %q", rec.Body.String())
+		}
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != "build-proxy" {
+			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, "build-proxy")
+		}
 	})
 
 	t.Run("error_status_proxy_short_circuits_json", func(t *testing.T) {
@@ -290,6 +524,9 @@ func TestLoadersHandler_ProxyRedirectAndErrorShortCircuit(t *testing.T) {
 		}
 		if strings.Contains(rec.Body.String(), `"matchedPatterns"`) {
 			t.Fatalf("error response unexpectedly contained route JSON payload: %q", rec.Body.String())
+		}
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != "build-proxy" {
+			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, "build-proxy")
 		}
 	})
 }
@@ -565,6 +802,209 @@ func TestLoadersHandler_DefaultHeadAndRootTemplateDataErrorsReturn500(t *testing
 	})
 }
 
+func TestLoadersHandler_HeadRenderingAndTemplateExecutionFailuresReturn500(t *testing.T) {
+	stage := defaultPathsFile("build-render-errors", map[string]*Path{
+		"/hooks": {
+			OriginalPattern: "/hooks",
+			SrcPath:         "frontend/src/routes/hooks.tsx",
+			OutPath:         "vorma_out/routes/hooks.js",
+			ExportKey:       "default",
+		},
+	})
+
+	t.Run("head_render_error", func(t *testing.T) {
+		fixture := newTestFixture(t, testFixtureOptions{
+			stageOne: stage,
+			stageTwo: stage,
+			getDefaultHeadEls: func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
+				h.AddElements(headels.FromRaw([]*htmlutil.Element{
+					{Tag: ""},
+				}))
+				return nil
+			},
+		})
+		app := fixture.app
+		mux.RegisterNestedTaskHandler(
+			app.LoadersRouter().NestedRouter,
+			"/hooks",
+			mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+				return map[string]bool{"ok": true}, nil
+			}),
+		)
+
+		req := httptest.NewRequest(http.MethodGet, "/hooks", nil)
+		rec := httptest.NewRecorder()
+		mux.InjectTasksCtxMiddleware(app.Loaders().Handler()).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("root_template_execute_error", func(t *testing.T) {
+		fixture := newTestFixture(t, testFixtureOptions{
+			stageOne: stage,
+			stageTwo: stage,
+			template: "<!doctype html><html><body>{{call .VormaHeadEls}}</body></html>",
+		})
+		app := fixture.app
+		mux.RegisterNestedTaskHandler(
+			app.LoadersRouter().NestedRouter,
+			"/hooks",
+			mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+				return map[string]bool{"ok": true}, nil
+			}),
+		)
+
+		req := httptest.NewRequest(http.MethodGet, "/hooks", nil)
+		rec := httptest.NewRecorder()
+		mux.InjectTasksCtxMiddleware(app.Loaders().Handler()).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestLoadersHandler_NilRootTemplateDataMapDoesNotPanic(t *testing.T) {
+	stage := defaultPathsFile("build-nil-root-template-data", map[string]*Path{
+		"/hooks": {
+			OriginalPattern: "/hooks",
+			SrcPath:         "frontend/src/routes/hooks.tsx",
+			OutPath:         "vorma_out/routes/hooks.js",
+			ExportKey:       "default",
+		},
+	})
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+		getRootTemplateData: func(r *http.Request) (map[string]any, error) {
+			return nil, nil
+		},
+	})
+	app := fixture.app
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/hooks",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+			return map[string]bool{"ok": true}, nil
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/hooks", nil)
+	rec := httptest.NewRecorder()
+	mux.InjectTasksCtxMiddleware(app.Loaders().Handler()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), "vorma-root") {
+		t.Fatalf("expected HTML body to include root marker, body=%q", rec.Body.String())
+	}
+}
+
+func TestLoadersHandler_NonSerializableLoaderDataReturns500(t *testing.T) {
+	stage := defaultPathsFile("build-bad-loader-data", map[string]*Path{
+		"/bad": {
+			OriginalPattern: "/bad",
+			SrcPath:         "frontend/src/routes/bad.tsx",
+			OutPath:         "vorma_out/routes/bad.js",
+			ExportKey:       "default",
+		},
+	})
+	fixture := newTestFixture(t, testFixtureOptions{stageOne: stage, stageTwo: stage})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/bad",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+			return map[string]any{"nonSerializable": make(chan int)}, nil
+		}),
+	)
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+	t.Run("JSONRequest", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/bad?vorma_json="+app.GetBuildID(), nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("HTMLRequest", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/bad", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestLoadersHandler_CustomJSONMarshalerLoaderDataIsAccepted(t *testing.T) {
+	stage := defaultPathsFile("build-custom-marshaler", map[string]*Path{
+		"/custom": {
+			OriginalPattern: "/custom",
+			SrcPath:         "frontend/src/routes/custom.tsx",
+			OutPath:         "vorma_out/routes/custom.js",
+			ExportKey:       "default",
+		},
+	})
+	fixture := newTestFixture(t, testFixtureOptions{stageOne: stage, stageTwo: stage})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/custom",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (testCustomJSONMarshaler, error) {
+			return testCustomJSONMarshaler{RawNonSerializable: make(chan int)}, nil
+		}),
+	)
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+	t.Run("JSONRequest", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/custom?vorma_json="+app.GetBuildID(), nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var routeData RouteDataFinal
+		if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
+			t.Fatalf("decode route data: %v", err)
+		}
+		if len(routeData.LoadersData) != 1 {
+			t.Fatalf("LoadersData length = %d, want 1", len(routeData.LoadersData))
+		}
+		got, ok := routeData.LoadersData[0].(map[string]any)
+		if !ok {
+			t.Fatalf("LoadersData[0] type = %T, want map[string]any", routeData.LoadersData[0])
+		}
+		if got["ok"] != true {
+			t.Fatalf(`LoadersData[0]["ok"] = %#v, want true`, got["ok"])
+		}
+	})
+
+	t.Run("HTMLRequest", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/custom", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+	})
+}
+
 func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 	makeStage := func(buildID, outPath, srcPath, dep string) *PathsFile {
 		return defaultPathsFile(buildID, map[string]*Path{
@@ -636,6 +1076,126 @@ func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 	devResult := getJSON(t, handlerA, "/shared/3?vorma_json=shared-build")
 	if !reflect.DeepEqual(devResult.ImportURLs, []string{"/frontend/src/routes/shared-a.tsx"}) {
 		t.Fatalf("dev ImportURLs = %#v, expected src-path import URL", devResult.ImportURLs)
+	}
+}
+
+func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
+	stageOld := &PathsFile{
+		Stage:           "stage-two",
+		BuildID:         "shared-old-build",
+		ClientEntrySrc:  "frontend/src/vorma.entry.tsx",
+		ClientEntryOut:  "vorma_out/client-entry.js",
+		ClientEntryDeps: []string{"vorma_out/shared.js"},
+		Paths: map[string]*Path{
+			"/items/:id": {
+				OriginalPattern: "/items/:id",
+				SrcPath:         "frontend/src/routes/items_old.$id.tsx",
+				OutPath:         "vorma_out/routes/items_old.$id.js",
+				ExportKey:       "default",
+				Deps:            []string{"vorma_out/shared.js"},
+			},
+		},
+		RouteManifestFile: "vorma_out/route-manifest.js",
+		DepToCSSBundleMap: map[string][]string{
+			"vorma_out/client-entry.js": {"vorma_out/client.css"},
+			"vorma_out/shared.js":       {"vorma_out/shared.css"},
+		},
+	}
+	stageNewA := &PathsFile{
+		Stage:           "stage-one",
+		BuildID:         "app-a-new-build",
+		ClientEntrySrc:  "frontend/src/vorma.entry.tsx",
+		ClientEntryOut:  "vorma_out/client-entry.js",
+		ClientEntryDeps: []string{"vorma_out/shared.js"},
+		Paths: map[string]*Path{
+			"/items/:id": {
+				OriginalPattern: "/items/:id",
+				SrcPath:         "frontend/src/routes/items_new.$id.tsx",
+				OutPath:         "vorma_out/routes/items_new.$id.js",
+				ExportKey:       "default",
+				Deps:            []string{"vorma_out/shared.js"},
+			},
+		},
+		RouteManifestFile: "vorma_out/route-manifest.js",
+		DepToCSSBundleMap: map[string][]string{
+			"vorma_out/client-entry.js": {"vorma_out/client.css"},
+			"vorma_out/shared.js":       {"vorma_out/shared.css"},
+		},
+	}
+
+	fixtureA := newTestFixture(t, testFixtureOptions{stageOne: stageOld, stageTwo: stageOld})
+	fixtureB := newTestFixture(t, testFixtureOptions{stageOne: stageOld, stageTwo: stageOld})
+	appA := fixtureA.app
+	appB := fixtureB.app
+	appA.SetIsDev(false)
+	appB.SetIsDev(false)
+
+	registerLoader := func(app *Vorma) {
+		mux.RegisterNestedTaskHandler(
+			app.LoadersRouter().NestedRouter,
+			"/items/:id",
+			mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+				return map[string]any{"id": rd.Params()["id"]}, nil
+			}),
+		)
+	}
+	registerLoader(appA)
+	registerLoader(appB)
+
+	handlerA := mux.InjectTasksCtxMiddleware(appA.Loaders().Handler())
+	handlerB := mux.InjectTasksCtxMiddleware(appB.Loaders().Handler())
+
+	getJSON := func(t *testing.T, handler http.Handler, path string) RouteDataFinal {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		var out RouteDataFinal
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decode route data: %v", err)
+		}
+		return out
+	}
+
+	// Warm both apps on the shared old build.
+	oldA := getJSON(t, handlerA, "/items/1?vorma_json="+appA.GetBuildID())
+	oldB := getJSON(t, handlerB, "/items/2?vorma_json="+appB.GetBuildID())
+	if !reflect.DeepEqual(oldA.ImportURLs, []string{"/vorma_out/routes/items_old.$id.js"}) {
+		t.Fatalf("appA old importURLs = %#v", oldA.ImportURLs)
+	}
+	if !reflect.DeepEqual(oldB.ImportURLs, []string{"/vorma_out/routes/items_old.$id.js"}) {
+		t.Fatalf("appB old importURLs = %#v", oldB.ImportURLs)
+	}
+
+	// Reload only appA to a new build.
+	mustWriteJSONFile(
+		t,
+		filepath.Join(fixtureA.privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName),
+		stageNewA,
+	)
+	appA.SetIsDev(true)
+	if err := appA.devReloadRoutesFromDisk(); err != nil {
+		t.Fatalf("appA devReloadRoutesFromDisk() error: %v", err)
+	}
+	appA.SetIsDev(false)
+
+	newA := getJSON(t, handlerA, "/items/3?vorma_json="+appA.GetBuildID())
+	stillB := getJSON(t, handlerB, "/items/4?vorma_json="+appB.GetBuildID())
+
+	if got, want := appA.GetBuildID(), "app-a-new-build"; got != want {
+		t.Fatalf("appA buildID = %q, want %q", got, want)
+	}
+	if got, want := appB.GetBuildID(), "shared-old-build"; got != want {
+		t.Fatalf("appB buildID = %q, want %q", got, want)
+	}
+	if !reflect.DeepEqual(newA.ImportURLs, []string{"/vorma_out/routes/items_new.$id.js"}) {
+		t.Fatalf("appA new importURLs = %#v, want new route output", newA.ImportURLs)
+	}
+	if !reflect.DeepEqual(stillB.ImportURLs, []string{"/vorma_out/routes/items_old.$id.js"}) {
+		t.Fatalf("appB importURLs leaked reload from appA: %#v", stillB.ImportURLs)
 	}
 }
 

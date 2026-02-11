@@ -1,5 +1,12 @@
 import { JSDOM } from "jsdom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import {
 	__getVormaClientGlobal,
 	VORMA_SYMBOL,
@@ -47,5 +54,28 @@ describe("__getVormaClientGlobal", () => {
 		const { set, get } = __getVormaClientGlobal();
 		set("activeComponents", ["Component1"]);
 		expect(get("activeComponents")).toEqual(["Component1"]);
+	});
+
+	it("throws when navigation state access is requested before initialization", async () => {
+		vi.resetModules();
+		const context = await import("../../app/context.ts");
+
+		expect(() => context.getNavigationStateAccess()).toThrow(
+			"Navigation state access has not been initialized.",
+		);
+	});
+
+	it("returns navigation state access after it is initialized", async () => {
+		vi.resetModules();
+		const context = await import("../../app/context.ts");
+		const access = {
+			navigate: vi.fn().mockResolvedValue({ didNavigate: true }),
+			removeNavigation: vi.fn(),
+			getNavigations: vi.fn().mockReturnValue([]),
+		};
+
+		context.setNavigationStateAccess(access);
+
+		expect(context.getNavigationStateAccess()).toBe(access);
 	});
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	createDeferredFetchCall,
 	createRouteDataResponse,
 	loadClientAPI,
 	setupContractTestSuite,
+	waitForRequestCount,
 } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
@@ -231,5 +233,37 @@ describe("client link click contracts", () => {
 		expect(api.getBuildID()).toBe("build-click-2");
 
 		cleanup();
+	});
+
+	it("cleans up aborted link outcomes when a newer navigation supersedes the click", async () => {
+		const api = await loadClientAPI();
+		const staleFetch = createDeferredFetchCall();
+		let fetchCallCount = 0;
+		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((url, init) => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return staleFetch.mock(url, init);
+			}
+			return Promise.resolve(createRouteDataResponse());
+		});
+		const onClick = api.__makeLinkOnClickFn({});
+		const { event } = createClickEvent("/aborted-click");
+
+		const clickPromise = onClick(event);
+		await waitForRequestCount({ requests: fetchSpy.mock.calls, count: 1 });
+
+		const winningNavigation = api.vormaNavigate("/winner");
+		await waitForRequestCount({
+			requests: fetchSpy.mock.calls,
+			count: 2,
+		});
+		await winningNavigation;
+
+		staleFetch.deferred.resolve(createRouteDataResponse());
+		await clickPromise;
+		await vi.runAllTimersAsync();
+
+		expect(fetchCallCount).toBe(2);
+		expect(window.location.pathname).toBe("/winner");
 	});
 });

@@ -24,20 +24,31 @@ export const defaultErrorBoundary: RouteErrorComponent = (props: {
 	return "Route Error: " + props.error;
 };
 
-export type VormaLinkPropsBase<LinkOnClickCallback> = {
+type LinkOnClickCallback<LinkEvent = unknown> = (
+	event: LinkEvent,
+) => void | Promise<void>;
+
+export type VormaLinkPropsBase<LinkEvent = unknown> = {
 	href?: string;
 	prefetch?: "intent";
 	prefetchDelayMs?: number;
-	beforeBegin?: LinkOnClickCallback;
-	beforeRender?: LinkOnClickCallback;
-	afterRender?: LinkOnClickCallback;
+	beforeBegin?: LinkOnClickCallback<LinkEvent>;
+	beforeRender?: LinkOnClickCallback<LinkEvent>;
+	afterRender?: LinkOnClickCallback<LinkEvent>;
 	scrollToTop?: boolean;
 	replace?: boolean;
 	state?: unknown;
 };
 
-function linkPropsToPrefetchObj<LinkOnClickCallback>(
-	props: VormaLinkPropsBase<LinkOnClickCallback>,
+function adaptDOMEventCallback<LinkEvent>(
+	callback: LinkOnClickCallback<LinkEvent> | undefined,
+): ((event: Event) => void | Promise<void>) | undefined {
+	if (!callback) return undefined;
+	return (event: Event) => callback(event as unknown as LinkEvent);
+}
+
+function linkPropsToPrefetchObj<LinkEvent>(
+	props: VormaLinkPropsBase<LinkEvent>,
 ) {
 	if (!props.href || props.prefetch !== "intent") {
 		return undefined;
@@ -46,29 +57,29 @@ function linkPropsToPrefetchObj<LinkOnClickCallback>(
 	return __getPrefetchHandlers({
 		href: props.href,
 		delayMs: props.prefetchDelayMs,
-		beforeBegin: props.beforeBegin as any,
-		beforeRender: props.beforeRender as any,
-		afterRender: props.afterRender as any,
+		beforeBegin: adaptDOMEventCallback(props.beforeBegin),
+		beforeRender: adaptDOMEventCallback(props.beforeRender),
+		afterRender: adaptDOMEventCallback(props.afterRender),
 		scrollToTop: props.scrollToTop,
 		replace: props.replace,
 		state: props.state,
 	});
 }
 
-function linkPropsToOnClickFn<LinkOnClickCallback>(
-	props: VormaLinkPropsBase<LinkOnClickCallback>,
+function linkPropsToOnClickFn<LinkEvent>(
+	props: VormaLinkPropsBase<LinkEvent>,
 ) {
 	return __makeLinkOnClickFn({
-		beforeBegin: props.beforeBegin as any,
-		beforeRender: props.beforeRender as any,
-		afterRender: props.afterRender as any,
+		beforeBegin: adaptDOMEventCallback(props.beforeBegin),
+		beforeRender: adaptDOMEventCallback(props.beforeRender),
+		afterRender: adaptDOMEventCallback(props.afterRender),
 		scrollToTop: props.scrollToTop,
 		replace: props.replace,
 		state: props.state,
 	});
 }
 
-type handlerKeys = {
+type HandlerKeys = {
 	onPointerEnter: string;
 	onFocus: string;
 	onPointerLeave: string;
@@ -84,70 +95,64 @@ const standardCamelHandlerKeys = {
 	onBlur: "onBlur",
 	onTouchCancel: "onTouchCancel",
 	onClick: "onClick",
-} satisfies handlerKeys;
+} satisfies HandlerKeys;
 
-export function __makeFinalLinkProps<LinkOnClickCallback>(
-	props: VormaLinkPropsBase<LinkOnClickCallback>,
-	keys: {
-		onPointerEnter: string;
-		onFocus: string;
-		onPointerLeave: string;
-		onBlur: string;
-		onTouchCancel: string;
-		onClick: string;
-	} = standardCamelHandlerKeys,
+type UnknownFn = (...args: ReadonlyArray<unknown>) => unknown;
+
+function isFn(fn: unknown): fn is UnknownFn {
+	return typeof fn === "function";
+}
+
+export function __makeFinalLinkProps<LinkEvent>(
+	props: VormaLinkPropsBase<LinkEvent>,
+	keys: HandlerKeys = standardCamelHandlerKeys,
 ) {
 	const prefetchObj = linkPropsToPrefetchObj(props);
+	const propsBag = props as Record<string, unknown>;
+
+	function callOriginalHandlerIfPresent(
+		handlerKey: string,
+		event: LinkEvent,
+	): void {
+		const maybeHandler = propsBag[handlerKey];
+		if (isFn(maybeHandler)) {
+			maybeHandler(event);
+		}
+	}
 
 	return {
 		dataExternal: prefetchObj?.isExternal || undefined,
-		onPointerEnter: (e: any) => {
-			prefetchObj?.start(e);
-			if (isFn((props as any)[keys.onPointerEnter])) {
-				(props as any)[keys.onPointerEnter](e);
-			}
+		onPointerEnter: (event: LinkEvent) => {
+			prefetchObj?.start(event as Event);
+			callOriginalHandlerIfPresent(keys.onPointerEnter, event);
 		},
-		onFocus: (e: any) => {
-			prefetchObj?.start(e);
-			if (isFn((props as any)[keys.onFocus])) {
-				(props as any)[keys.onFocus](e);
-			}
+		onFocus: (event: LinkEvent) => {
+			prefetchObj?.start(event as Event);
+			callOriginalHandlerIfPresent(keys.onFocus, event);
 		},
-		onPointerLeave: (e: any) => {
+		onPointerLeave: (event: LinkEvent) => {
 			if (!__vormaClientGlobal.get("isTouchDevice")) {
 				prefetchObj?.stop();
 			}
-			if (isFn((props as any)[keys.onPointerLeave])) {
-				(props as any)[keys.onPointerLeave](e);
-			}
+			callOriginalHandlerIfPresent(keys.onPointerLeave, event);
 		},
-		onBlur: (e: any) => {
+		onBlur: (event: LinkEvent) => {
 			prefetchObj?.stop();
-			if (isFn((props as any)[keys.onBlur])) {
-				(props as any)[keys.onBlur](e);
-			}
+			callOriginalHandlerIfPresent(keys.onBlur, event);
 		},
-		onTouchCancel: (e: any) => {
+		onTouchCancel: (event: LinkEvent) => {
 			prefetchObj?.stop();
-			if (isFn((props as any)[keys.onTouchCancel])) {
-				(props as any)[keys.onTouchCancel](e);
-			}
+			callOriginalHandlerIfPresent(keys.onTouchCancel, event);
 		},
-		onClick: async (e: any) => {
-			if (isFn((props as any)[keys.onClick])) {
-				(props as any)[keys.onClick](e);
-			}
+		onClick: async (event: LinkEvent) => {
+			callOriginalHandlerIfPresent(keys.onClick, event);
 			if (prefetchObj) {
-				await prefetchObj.onClick(e);
+				await prefetchObj.onClick(event as Event);
 			} else {
-				await linkPropsToOnClickFn(props)(e);
+				await linkPropsToOnClickFn(props)(event as Event);
 			}
 		},
 	};
-}
-
-function isFn(fn: any): fn is (...args: Array<any>) => any {
-	return typeof fn === "function";
 }
 
 export type VormaRoutePropsGeneric<
@@ -156,9 +161,9 @@ export type VormaRoutePropsGeneric<
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = {
 	idx: number;
-	Outlet: (props: Record<string, any>) => JSXElement;
+	Outlet: (props: Record<string, unknown>) => JSXElement;
 	__phantom_pattern: Pattern;
-} & Record<string, any>;
+} & Record<string, unknown>;
 
 export type VormaRouteGeneric<
 	JSXElement,
@@ -184,7 +189,7 @@ export type UseRouterDataFunction<
 	UseAccessor extends boolean = false,
 > = {
 	<Pattern extends VormaLoaderPattern<App>>(
-		props: VormaRoutePropsGeneric<any, App, Pattern>,
+		props: VormaRoutePropsGeneric<unknown, App, Pattern>,
 	): Wrapper<
 		UseAccessor,
 		BaseRouterData<App["rootData"], ParamsForPattern<App, Pattern>>
@@ -215,14 +220,15 @@ export function makeTypedNavigate<C extends VormaAppConfig>(vormaAppConfig: C) {
 	>(options: TypedNavigateOptions<App, Pattern>): Promise<void> {
 		const {
 			pattern,
-			params,
-			splatValues,
 			replace,
 			scrollToTop,
 			search,
 			hash,
 			state,
-		} = options as any;
+		} = options;
+		const params = "params" in options ? options.params : undefined;
+		const splatValues =
+			"splatValues" in options ? options.splatValues : undefined;
 
 		const href = __resolvePath({
 			vormaAppConfig,

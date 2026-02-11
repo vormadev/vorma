@@ -43,4 +43,81 @@ describe("buildRedirectRequestInit", () => {
 
 		expect(init.body).toBeUndefined();
 	});
+
+	it("passes through ArrayBufferView bodies for non-GET methods", () => {
+		const bytes = new Uint8Array([1, 2, 3]);
+		const init = buildRedirectRequestInit(
+			{
+				method: "POST",
+				body: bytes,
+			},
+			new AbortController().signal,
+		);
+
+		expect(init.body).toBe(bytes);
+	});
+
+	it("omits null bodies for non-GET methods", () => {
+		const init = buildRedirectRequestInit(
+			{
+				method: "POST",
+				body: null,
+			},
+			new AbortController().signal,
+		);
+
+		expect(init.body).toBeNull();
+	});
+
+	it("omits body for HEAD requests", () => {
+		const init = buildRedirectRequestInit(
+			{
+				method: "HEAD",
+				body: JSON.stringify({ ignored: true }),
+			},
+			new AbortController().signal,
+		);
+
+		expect(init.body).toBeUndefined();
+	});
+
+	it("passes through Blob and ArrayBuffer bodies for non-GET methods", () => {
+		const blobBody = new Blob(["blob-body"]);
+		const bufferBody = new TextEncoder().encode("buffer-body").buffer;
+
+		const blobInit = buildRedirectRequestInit(
+			{
+				method: "POST",
+				body: blobBody,
+			},
+			new AbortController().signal,
+		);
+		const bufferInit = buildRedirectRequestInit(
+			{
+				method: "POST",
+				body: bufferBody,
+			},
+			new AbortController().signal,
+		);
+
+		expect(blobInit.body).toBe(blobBody);
+		expect(bufferInit.body).toBe(bufferBody);
+	});
+
+	it("passes through ReadableStream bodies for non-GET methods", () => {
+		if (typeof ReadableStream === "undefined") {
+			return;
+		}
+
+		const readableStreamBody = new ReadableStream();
+		const init = buildRedirectRequestInit(
+			{
+				method: "POST",
+				body: readableStreamBody,
+			},
+			new AbortController().signal,
+		);
+
+		expect(init.body).toBe(readableStreamBody);
+	});
 });

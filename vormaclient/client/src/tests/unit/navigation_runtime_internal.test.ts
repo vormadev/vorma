@@ -1,15 +1,39 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	createPatternRegistry,
+	registerPattern,
+} from "vorma/kit/matcher/register";
+import {
+	createNavigationRuntime,
 	deleteNavigationFromSlots,
 	findNavigationEntryInSlots,
 	transitionNavigationPhaseInSlots,
 	type NavigationSlots,
 } from "../../core/navigation/runtime.ts";
 import type { NavigationEntry } from "../../core/navigation/types.ts";
+import { VORMA_SYMBOL } from "../../app/context.ts";
 import {
+	canSkipServerFetch,
+	fetchRouteData,
 	isSkipEligibilityViolated,
 	type SkipCheckContext,
 } from "../../core/navigation/fetch_route_data.ts";
+import {
+	__registerClientLoaderPattern,
+	findPartialMatchesOnClient,
+	setupClientLoaders,
+} from "../../core/render_runtime.ts";
+import * as renderRuntimeModule from "../../core/render_runtime.ts";
+import type { NavigationOutcome } from "../../core/navigation/types.ts";
+
+const TEST_VORMA_APP_CONFIG = {
+	actionsRouterMountRoot: "/api/",
+	actionsDynamicRune: ":",
+	actionsSplatRune: "*",
+	loadersDynamicRune: ":",
+	loadersSplatRune: "*",
+	loadersExplicitIndexSegment: "_index",
+};
 
 function createEntry(props: {
 	targetUrl: string;
@@ -29,6 +53,163 @@ function createEntry(props: {
 		originUrl: window.location.href,
 	};
 }
+
+function createRegisteredPatternRegistry(patterns: string[]) {
+	const registry = createPatternRegistry({
+		dynamicParamPrefixRune: TEST_VORMA_APP_CONFIG.loadersDynamicRune,
+		splatSegmentRune: TEST_VORMA_APP_CONFIG.loadersSplatRune,
+		explicitIndexSegment: TEST_VORMA_APP_CONFIG.loadersExplicitIndexSegment,
+	});
+	for (const pattern of patterns) {
+		registerPattern(registry, pattern);
+	}
+	return registry;
+}
+
+function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
+	(globalThis as any)[VORMA_SYMBOL] = {
+		buildID: "1",
+		matchedPatterns: [],
+		loadersData: [],
+		importURLs: [],
+		exportKeys: [],
+		errorExportKeys: [],
+		hasRootData: false,
+		params: {},
+		splatValues: [],
+		activeComponents: [],
+		outermostServerError: undefined,
+		outermostClientError: undefined,
+		outermostServerErrorIdx: undefined,
+		outermostClientErrorIdx: undefined,
+		outermostError: undefined,
+		outermostErrorIdx: undefined,
+		isDev: false,
+		viteDevURL: "",
+		publicPathPrefix: "",
+		isTouchDevice: false,
+		patternToWaitFnMap: {},
+		clientLoadersData: [],
+		defaultErrorBoundary: () => null,
+		useViewTransitions: false,
+		deploymentID: "",
+		vormaAppConfig: TEST_VORMA_APP_CONFIG,
+		routeManifestURL: "",
+		routeManifest: undefined,
+		clientModuleMap: {},
+		patternRegistry: createRegisteredPatternRegistry([]),
+		...overrides,
+	};
+}
+
+function createMatch(
+	pattern: string,
+	props: {
+		normalizedSegments?: Array<{ segType: string; normalizedVal: string }>;
+		lastSegType?: string;
+	} = {},
+) {
+	return {
+		registeredPattern: {
+			originalPattern: pattern,
+			normalizedSegments: props.normalizedSegments ?? [],
+			lastSegType: props.lastSegType ?? "static",
+		},
+		params: {},
+		splatValues: [],
+	};
+}
+
+function createSuccessNavigationOutcome(
+	overrides: {
+		cssBundlePromises?: Array<Promise<unknown>>;
+		waitFnPromise?: Promise<{
+			data: Array<unknown>;
+			errorMessage?: string;
+		}>;
+		props?: Partial<
+			Extract<NavigationOutcome, { type: "success" }>["props"]
+		>;
+	} = {},
+): Extract<NavigationOutcome, { type: "success" }> {
+	const defaultProps: Extract<
+		NavigationOutcome,
+		{ type: "success" }
+	>["props"] = {
+		href: window.location.href,
+		navigationType: "browserHistory",
+	};
+
+	return {
+		type: "success",
+		response: new Response(JSON.stringify({ ok: true }), {
+			status: 200,
+			headers: {
+				"Content-Type": "application/json",
+				"X-Vorma-Build-Id": "1",
+			},
+		}),
+		json: {
+			matchedPatterns: [],
+			loadersData: [],
+			importURLs: [],
+			exportKeys: [],
+			errorExportKeys: [],
+			hasRootData: false,
+			params: {},
+			splatValues: [],
+			deps: [],
+			cssBundles: [],
+			outermostServerError: undefined,
+			outermostServerErrorIdx: undefined,
+			title: undefined,
+			metaHeadEls: undefined,
+			restHeadEls: undefined,
+		},
+		cssBundlePromises: overrides.cssBundlePromises ?? [],
+		waitFnPromise: overrides.waitFnPromise ?? Promise.resolve({ data: [] }),
+		props: {
+			...defaultProps,
+			...overrides.props,
+		},
+	};
+}
+
+function createAbortAwareNeverResolvingFetchSpy() {
+	return vi.spyOn(window, "fetch").mockImplementation(
+		(_url, init) =>
+			new Promise<Response>((_resolve, reject) => {
+				const signal = (init as RequestInit | undefined)?.signal as
+					| AbortSignal
+					| undefined;
+				const abortError = new Error("Aborted");
+				abortError.name = "AbortError";
+				if (signal?.aborted) {
+					reject(abortError);
+					return;
+				}
+
+				signal?.addEventListener(
+					"abort",
+					() => {
+						const nextAbortError = new Error("Aborted");
+						nextAbortError.name = "AbortError";
+						reject(nextAbortError);
+					},
+					{ once: true },
+				);
+			}),
+	);
+}
+
+beforeEach(() => {
+	window.history.replaceState({}, "", "/");
+	installVormaGlobal();
+});
+
+afterEach(() => {
+	delete (globalThis as any)[VORMA_SYMBOL];
+});
 
 describe("navigation bookkeeping key aliasing", () => {
 	it("finds active navigation by same data target when hash differs", () => {
@@ -166,10 +347,378 @@ describe("navigation bookkeeping key aliasing", () => {
 	});
 });
 
-function buildContext(targetHref: string): SkipCheckContext {
+describe("navigation runtime bookkeeping lifecycle", () => {
+	it("tracks active, prefetch, and revalidation entries and clears them atomically", async () => {
+		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
+			(_url, init) =>
+				new Promise<Response>((_resolve, reject) => {
+					const signal = (init as RequestInit | undefined)?.signal as
+						| AbortSignal
+						| undefined;
+					const abortError = new Error("Aborted");
+					abortError.name = "AbortError";
+					if (signal?.aborted) {
+						reject(abortError);
+						return;
+					}
+
+					signal?.addEventListener(
+						"abort",
+						() => {
+							const abortError = new Error("Aborted");
+							abortError.name = "AbortError";
+							reject(abortError);
+						},
+						{ once: true },
+					);
+				}),
+		);
+		try {
+			const runtime = createNavigationRuntime();
+			const userControl = runtime.beginNavigation({
+				href: "/user-target",
+				navigationType: "browserHistory",
+			});
+			const prefetchControl = runtime.beginNavigation({
+				href: "/prefetch-target",
+				navigationType: "prefetch",
+			});
+			const revalidationControl = runtime.beginNavigation({
+				href: "/ignored-by-revalidation",
+				navigationType: "revalidation",
+			});
+			const userPromise = userControl.promise.catch((error) => error);
+			const prefetchPromise = prefetchControl.promise.catch(
+				(error) => error,
+			);
+			const revalidationPromise = revalidationControl.promise.catch(
+				(error) => error,
+			);
+			const submitPromise = runtime.submit(
+				"/api/clear-all",
+				{ method: "POST" },
+				{
+					dedupeKey: "clear-all",
+					revalidate: false,
+				},
+			);
+
+			expect(runtime.getNavigationsSize()).toBe(3);
+			const navigations = runtime.getNavigations();
+			expect(
+				navigations.get(
+					new URL("/user-target", window.location.href).href,
+				)?.type,
+			).toBe("browserHistory");
+			expect(
+				navigations.get(
+					new URL("/prefetch-target", window.location.href).href,
+				)?.type,
+			).toBe("prefetch");
+			expect(navigations.get(window.location.href)?.type).toBe(
+				"revalidation",
+			);
+			expect(runtime._submissions.size).toBe(1);
+
+			runtime.clearAll();
+
+			const [userError, prefetchError, revalidationError] =
+				await Promise.all([
+					userPromise,
+					prefetchPromise,
+					revalidationPromise,
+				]);
+			expect((userError as Error).name).toBe("AbortError");
+			expect((prefetchError as Error).name).toBe("AbortError");
+			expect((revalidationError as Error).name).toBe("AbortError");
+			await expect(submitPromise).resolves.toEqual({
+				success: false,
+				error: "Aborted",
+			});
+			expect(runtime.getNavigationsSize()).toBe(0);
+			expect(runtime.getNavigations().size).toBe(0);
+			expect(runtime._submissions.size).toBe(0);
+			expect(fetchSpy).toHaveBeenCalledTimes(4);
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("removeNavigation aborts and removes entries addressed by hash-alias key", async () => {
+		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
+			(_url, init) =>
+				new Promise<Response>((_resolve, reject) => {
+					const signal = (init as RequestInit | undefined)?.signal as
+						| AbortSignal
+						| undefined;
+					const abortError = new Error("Aborted");
+					abortError.name = "AbortError";
+					if (signal?.aborted) {
+						reject(abortError);
+						return;
+					}
+
+					signal?.addEventListener(
+						"abort",
+						() => {
+							const abortError = new Error("Aborted");
+							abortError.name = "AbortError";
+							reject(abortError);
+						},
+						{ once: true },
+					);
+				}),
+		);
+		try {
+			const runtime = createNavigationRuntime();
+			const control = runtime.beginNavigation({
+				href: "/remove-me#first",
+				navigationType: "browserHistory",
+			});
+			const aliasHref = new URL("/remove-me#second", window.location.href)
+				.href;
+
+			const entryBeforeRemoval = runtime.getNavigation(aliasHref);
+			expect(entryBeforeRemoval).toBeDefined();
+
+			runtime.removeNavigation(aliasHref);
+
+			expect(
+				entryBeforeRemoval?.control.abortController?.signal.aborted,
+			).toBe(true);
+			expect(runtime.getNavigation(aliasHref)).toBeUndefined();
+			await expect(control.promise).rejects.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+});
+
+describe("navigation runtime success-processing defensive branches", () => {
+	it("hasNavigation reflects tracked entries and hash aliases", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		try {
+			const runtime = createNavigationRuntime();
+			const control = runtime.beginNavigation({
+				href: "/has-navigation#first",
+				navigationType: "browserHistory",
+			});
+			const canonicalHref = new URL(
+				"/has-navigation#first",
+				window.location.href,
+			).href;
+			const aliasHref = new URL(
+				"/has-navigation#second",
+				window.location.href,
+			).href;
+
+			expect(runtime.hasNavigation(canonicalHref)).toBe(true);
+			expect(runtime.hasNavigation(aliasHref)).toBe(true);
+
+			runtime.removeNavigation(aliasHref);
+			expect(runtime.hasNavigation(canonicalHref)).toBe(false);
+			await expect(control.promise).rejects.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("continues successful processing when css preload promises reject", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockResolvedValue();
+		const consoleErrorSpy = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+
+		try {
+			const runtime = createNavigationRuntime();
+			runtime.beginNavigation({
+				href: "/css-preload-failure",
+				navigationType: "browserHistory",
+			});
+			const targetUrl = new URL(
+				"/css-preload-failure",
+				window.location.href,
+			).href;
+			const entry = runtime.getNavigation(targetUrl);
+			expect(entry).toBeDefined();
+			if (!entry) return;
+
+			const cssPreloadError = new Error("css preload failed");
+			const outcome = createSuccessNavigationOutcome({
+				cssBundlePromises: [Promise.reject(cssPreloadError)],
+				props: {
+					href: targetUrl,
+					navigationType: "browserHistory",
+				},
+			});
+
+			await expect(
+				runtime.processSuccessfulNavigation(outcome, entry),
+			).resolves.toBeUndefined();
+			expect(reRenderSpy).toHaveBeenCalledTimes(1);
+			expect(
+				consoleErrorSpy.mock.calls.some(
+					(call) =>
+						call[0] === "Vorma:" &&
+						call[1] === "Error preloading CSS bundles:" &&
+						call[2] === cssPreloadError,
+				),
+			).toBe(true);
+		} finally {
+			fetchSpy.mockRestore();
+			reRenderSpy.mockRestore();
+			consoleErrorSpy.mockRestore();
+		}
+	});
+
+	it("marks navigation complete and rethrows when render fails", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		const renderError = new Error("render failed");
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockRejectedValue(renderError);
+		const consoleErrorSpy = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+
+		try {
+			const runtime = createNavigationRuntime();
+			runtime.beginNavigation({
+				href: "/render-failure",
+				navigationType: "browserHistory",
+			});
+			const targetUrl = new URL("/render-failure", window.location.href)
+				.href;
+			const entry = runtime.getNavigation(targetUrl);
+			expect(entry).toBeDefined();
+			if (!entry) return;
+
+			const outcome = createSuccessNavigationOutcome({
+				props: {
+					href: targetUrl,
+					navigationType: "browserHistory",
+				},
+			});
+
+			await expect(
+				runtime.processSuccessfulNavigation(outcome, entry),
+			).rejects.toBe(renderError);
+			expect(entry.phase).toBe("complete");
+			expect(runtime.getNavigation(targetUrl)).toBeUndefined();
+			expect(
+				consoleErrorSpy.mock.calls.some(
+					(call) =>
+						call[0] === "Vorma:" &&
+						call[1] === "Error completing navigation" &&
+						call[2] === renderError,
+				),
+			).toBe(true);
+		} finally {
+			fetchSpy.mockRestore();
+			reRenderSpy.mockRestore();
+			consoleErrorSpy.mockRestore();
+		}
+	});
+
+	it("returns early when the entry is removed before waiting phase resolves", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockResolvedValue();
+
+		try {
+			const runtime = createNavigationRuntime();
+			runtime.beginNavigation({
+				href: "/removed-before-wait",
+				navigationType: "browserHistory",
+			});
+			const targetUrl = new URL(
+				"/removed-before-wait",
+				window.location.href,
+			).href;
+			const entry = runtime.getNavigation(targetUrl);
+			expect(entry).toBeDefined();
+			if (!entry) return;
+
+			runtime.removeNavigation(targetUrl);
+
+			const outcome = createSuccessNavigationOutcome({
+				props: {
+					href: targetUrl,
+					navigationType: "browserHistory",
+				},
+			});
+
+			await expect(
+				runtime.processSuccessfulNavigation(outcome, entry),
+			).resolves.toBeUndefined();
+			expect(reRenderSpy).not.toHaveBeenCalled();
+		} finally {
+			fetchSpy.mockRestore();
+			reRenderSpy.mockRestore();
+		}
+	});
+
+	it("aborts stale revalidation after wait completes without rendering", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockResolvedValue();
+
+		try {
+			window.history.replaceState({}, "", "/revalidation-stale");
+			const runtime = createNavigationRuntime();
+			runtime.beginNavigation({
+				href: window.location.href,
+				navigationType: "revalidation",
+			});
+
+			const entry = runtime.getNavigation(window.location.href);
+			expect(entry).toBeDefined();
+			if (!entry) return;
+
+			const waitFnPromise = Promise.resolve().then(() => {
+				window.history.replaceState(
+					{},
+					"",
+					"/revalidation-stale-after-wait",
+				);
+				return { data: [] };
+			});
+			const outcome = createSuccessNavigationOutcome({
+				waitFnPromise,
+				props: {
+					href: entry.targetUrl,
+					navigationType: "revalidation",
+				},
+			});
+
+			await expect(
+				runtime.processSuccessfulNavigation(outcome, entry),
+			).resolves.toBeUndefined();
+			expect(reRenderSpy).not.toHaveBeenCalled();
+			expect(runtime.getNavigation(entry.targetUrl)).toBeUndefined();
+		} finally {
+			fetchSpy.mockRestore();
+			reRenderSpy.mockRestore();
+		}
+	});
+});
+
+function buildContext(
+	targetHref: string,
+	overrides: Partial<SkipCheckContext> = {},
+): SkipCheckContext {
 	return {
 		routeManifest: { "/items": 1 },
-		patternRegistry: {},
+		patternRegistry: createRegisteredPatternRegistry(["/items"]),
 		patternToWaitFnMap: {},
 		clientModuleMap: {
 			"/items": {
@@ -184,18 +733,11 @@ function buildContext(targetHref: string): SkipCheckContext {
 		currentLoadersData: [{}],
 		url: new URL(targetHref),
 		matchResult: {
-			matches: [
-				{
-					registeredPattern: {
-						originalPattern: "/items",
-						normalizedSegments: [],
-						lastSegType: "static",
-					},
-				},
-			],
+			matches: [createMatch("/items")],
 			params: {},
 			splatValues: [],
 		},
+		...overrides,
 	};
 }
 
@@ -212,5 +754,844 @@ describe("skip server fetch eligibility", () => {
 		const ctx = buildContext("http://localhost:3000/items?a=1&b=2");
 
 		expect(isSkipEligibilityViolated(ctx)).toBe(false);
+	});
+
+	it("blocks skip when a previously matched server-loader route is removed", () => {
+		const ctx = buildContext("http://localhost:3000/new", {
+			routeManifest: {
+				"/old": 1,
+				"/new": 1,
+			},
+			currentMatchedPatterns: ["/old"],
+			matchResult: {
+				matches: [createMatch("/new")],
+				params: {},
+				splatValues: [],
+			},
+		});
+
+		expect(isSkipEligibilityViolated(ctx)).toBe(true);
+	});
+
+	it("blocks skip when outermost loader dynamic params change", () => {
+		const ctx = buildContext("http://localhost:3000/items/2", {
+			routeManifest: { "/items/:id": 1 },
+			currentMatchedPatterns: ["/items/:id"],
+			currentParams: { id: "1" },
+			matchResult: {
+				matches: [
+					createMatch("/items/:id", {
+						normalizedSegments: [
+							{
+								segType: "dynamic",
+								normalizedVal: ":id",
+							},
+						],
+					}),
+				],
+				params: { id: "2" },
+				splatValues: [],
+			},
+		});
+
+		expect(isSkipEligibilityViolated(ctx)).toBe(true);
+	});
+
+	it("blocks skip when outermost loader splat values change", () => {
+		const ctx = buildContext("http://localhost:3000/files/a/b", {
+			routeManifest: { "/files/*": 1 },
+			currentMatchedPatterns: ["/files/*"],
+			currentSplatValues: ["a"],
+			matchResult: {
+				matches: [
+					createMatch("/files/*", {
+						lastSegType: "splat",
+					}),
+				],
+				params: {},
+				splatValues: ["a", "b"],
+			},
+		});
+
+		expect(isSkipEligibilityViolated(ctx)).toBe(true);
+	});
+
+	it("does not block skip when no loaders are present, even if search changes", () => {
+		window.history.replaceState({}, "", "/items?mode=a");
+		const ctx = buildContext("http://localhost:3000/items?mode=b", {
+			routeManifest: { "/items": 0 },
+		});
+
+		expect(isSkipEligibilityViolated(ctx)).toBe(false);
+	});
+});
+
+describe("canSkipServerFetch decisions", () => {
+	it("cannot skip when pattern registry is unavailable", () => {
+		installVormaGlobal({
+			routeManifest: { "/items": 1 },
+			patternRegistry: undefined,
+		});
+
+		expect(canSkipServerFetch("http://localhost:3000/items").canSkip).toBe(
+			false,
+		);
+	});
+
+	it("cannot skip when target URL does not match any route", () => {
+		installVormaGlobal({
+			routeManifest: { "/other": 1 },
+			patternRegistry: createRegisteredPatternRegistry(["/other"]),
+		});
+
+		expect(
+			canSkipServerFetch("http://localhost:3000/not-registered").canSkip,
+		).toBe(false);
+	});
+
+	it("cannot skip when target introduces a newly matched client loader", () => {
+		installVormaGlobal({
+			routeManifest: {
+				"/existing": 0,
+				"/new": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry([
+				"/existing",
+				"/new",
+			]),
+			patternToWaitFnMap: {
+				"/new": vi.fn(),
+			},
+			matchedPatterns: ["/existing"],
+			clientModuleMap: {
+				"/existing": {
+					importURL: "/existing.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+				"/new": {
+					importURL: "/new.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+		});
+
+		expect(canSkipServerFetch("http://localhost:3000/new").canSkip).toBe(
+			false,
+		);
+	});
+
+	it("returns client-only skip payload for routes without server loaders", () => {
+		installVormaGlobal({
+			routeManifest: {
+				"/client-only": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/client-only"]),
+			clientModuleMap: {
+				"/client-only": {
+					importURL: "/client-only.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+		});
+
+		const result = canSkipServerFetch("http://localhost:3000/client-only");
+		expect(result.canSkip).toBe(true);
+		if (!result.canSkip) {
+			throw new Error(
+				"Expected canSkipServerFetch to return canSkip=true",
+			);
+		}
+
+		expect(result.importURLs).toEqual(["/client-only.js"]);
+		expect(result.exportKeys).toEqual(["default"]);
+		expect(result.loadersData).toEqual([undefined]);
+	});
+
+	it("cannot skip when matched route has no client module info", () => {
+		installVormaGlobal({
+			routeManifest: {
+				"/missing-module": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry([
+				"/missing-module",
+			]),
+			clientModuleMap: {},
+		});
+
+		expect(
+			canSkipServerFetch("http://localhost:3000/missing-module").canSkip,
+		).toBe(false);
+	});
+
+	it("cannot skip when client module map is missing", () => {
+		installVormaGlobal({
+			routeManifest: {
+				"/without-module-map": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry([
+				"/without-module-map",
+			]),
+			clientModuleMap: undefined,
+		});
+
+		expect(
+			canSkipServerFetch("http://localhost:3000/without-module-map")
+				.canSkip,
+		).toBe(false);
+	});
+
+	it("cannot skip when server-loader data is required but missing", () => {
+		installVormaGlobal({
+			routeManifest: {
+				"/needs-data": 1,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/needs-data"]),
+			clientModuleMap: {
+				"/needs-data": {
+					importURL: "/needs-data.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			matchedPatterns: ["/needs-data"],
+			loadersData: [],
+		});
+
+		expect(
+			canSkipServerFetch("http://localhost:3000/needs-data").canSkip,
+		).toBe(false);
+	});
+
+	it("cannot skip when server-loader route was not previously matched", () => {
+		installVormaGlobal({
+			routeManifest: {
+				"/needs-data": 1,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/needs-data"]),
+			clientModuleMap: {
+				"/needs-data": {
+					importURL: "/needs-data.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			matchedPatterns: [],
+			loadersData: [],
+		});
+
+		expect(
+			canSkipServerFetch("http://localhost:3000/needs-data").canSkip,
+		).toBe(false);
+	});
+
+	it("returns server-loader data when all required skip data is available", () => {
+		installVormaGlobal({
+			routeManifest: {
+				"/with-data": 1,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/with-data"]),
+			clientModuleMap: {
+				"/with-data": {
+					importURL: "/with-data.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			matchedPatterns: ["/with-data"],
+			loadersData: [{ from: "cache" }],
+		});
+
+		const result = canSkipServerFetch("http://localhost:3000/with-data");
+		expect(result.canSkip).toBe(true);
+		if (!result.canSkip) {
+			throw new Error(
+				"Expected canSkipServerFetch to return canSkip=true",
+			);
+		}
+		expect(result.loadersData).toEqual([{ from: "cache" }]);
+	});
+
+	it("uses empty defaults when optional global snapshots are unset", () => {
+		installVormaGlobal({
+			routeManifest: {
+				"/defaults": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/defaults"]),
+			clientModuleMap: {
+				"/defaults": {
+					importURL: "/defaults.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			patternToWaitFnMap: undefined,
+			matchedPatterns: undefined,
+			params: undefined,
+			splatValues: undefined,
+			loadersData: undefined,
+		});
+
+		const result = canSkipServerFetch("http://localhost:3000/defaults");
+		expect(result.canSkip).toBe(true);
+		if (!result.canSkip) {
+			throw new Error(
+				"Expected canSkipServerFetch to return canSkip=true",
+			);
+		}
+		expect(result.loadersData).toEqual([undefined]);
+	});
+});
+
+describe("findPartialMatchesOnClient guards", () => {
+	it("returns null when pattern registry is unavailable", async () => {
+		installVormaGlobal({
+			patternRegistry: undefined,
+			patternToWaitFnMap: {
+				"/any": vi.fn(),
+			},
+		});
+
+		await expect(findPartialMatchesOnClient("/any")).resolves.toBeNull();
+	});
+
+	it("returns null when no client loaders are registered", async () => {
+		installVormaGlobal({
+			patternRegistry: createRegisteredPatternRegistry(["/items"]),
+			patternToWaitFnMap: undefined,
+		});
+
+		await expect(findPartialMatchesOnClient("/items")).resolves.toBeNull();
+	});
+});
+
+describe("render runtime initialization guards", () => {
+	it("setupClientLoaders tolerates missing route-data snapshots", async () => {
+		installVormaGlobal({
+			importURLs: undefined,
+			matchedPatterns: undefined,
+			loadersData: undefined,
+			params: undefined,
+			splatValues: undefined,
+			patternToWaitFnMap: undefined,
+		});
+
+		await expect(setupClientLoaders()).resolves.toBeUndefined();
+
+		const runtimeGlobal = (globalThis as any)[VORMA_SYMBOL];
+		expect(runtimeGlobal.clientLoadersData).toEqual([]);
+		expect(runtimeGlobal.outermostClientError).toBeUndefined();
+	});
+
+	it("__registerClientLoaderPattern fails fast without a registry", async () => {
+		installVormaGlobal({
+			patternRegistry: undefined,
+		});
+
+		await expect(__registerClientLoaderPattern("/x")).rejects.toThrow(
+			"Pattern registry has not been initialized.",
+		);
+	});
+});
+
+describe("fetchRouteData client-only skip path", () => {
+	it("short-circuits server fetch for skippable user navigations", async () => {
+		vi.doMock("/client-only.js", () => ({
+			default: () => null,
+		}));
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(new Response("unused"));
+		installVormaGlobal({
+			buildID: "build-42",
+			routeManifest: {
+				"/client-only": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/client-only"]),
+			clientModuleMap: {
+				"/client-only": {
+					importURL: "/client-only.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+		});
+
+		const outcome = await fetchRouteData(new AbortController(), {
+			href: "/client-only",
+			navigationType: "userNavigation",
+		});
+
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(outcome.type).toBe("success");
+		if (outcome.type !== "success") {
+			throw new Error("Expected a success outcome");
+		}
+
+		expect(outcome.response.headers.get("X-Vorma-Build-Id")).toBe(
+			"build-42",
+		);
+		expect(outcome.json.matchedPatterns).toEqual(["/client-only"]);
+		expect(outcome.json.importURLs).toEqual(["/client-only.js"]);
+		expect(outcome.json.loadersData).toEqual([undefined]);
+		await expect(outcome.waitFnPromise).resolves.toEqual({
+			data: [undefined],
+			errorMessage: undefined,
+		});
+	});
+
+	it("reuses cached client-loader data in client-only skip outcomes", async () => {
+		vi.doMock("/cached-client.js", () => ({
+			default: () => null,
+		}));
+		const waitFn = vi.fn().mockResolvedValue("unexpected");
+		installVormaGlobal({
+			routeManifest: {
+				"/cached-client": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry([
+				"/cached-client",
+			]),
+			clientModuleMap: {
+				"/cached-client": {
+					importURL: "/cached-client.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			matchedPatterns: ["/cached-client"],
+			patternToWaitFnMap: {
+				"/cached-client": waitFn,
+			},
+			clientLoadersData: [{ cached: true }],
+		});
+
+		const outcome = await fetchRouteData(new AbortController(), {
+			href: "/cached-client",
+			navigationType: "userNavigation",
+		});
+		expect(outcome.type).toBe("success");
+		if (outcome.type !== "success") {
+			throw new Error("Expected a success outcome");
+		}
+
+		await expect(outcome.waitFnPromise).resolves.toEqual({
+			data: [{ cached: true }],
+			errorMessage: undefined,
+		});
+		expect(waitFn).not.toHaveBeenCalled();
+	});
+
+	it("falls back to default optional globals in skippable client-only outcomes", async () => {
+		vi.doMock("/fallback-defaults.js", () => ({
+			default: () => null,
+		}));
+		installVormaGlobal({
+			buildID: undefined,
+			routeManifest: {
+				"/fallback-defaults": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry([
+				"/fallback-defaults",
+			]),
+			clientModuleMap: {
+				"/fallback-defaults": {
+					importURL: "/fallback-defaults.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			patternToWaitFnMap: undefined,
+			matchedPatterns: undefined,
+			params: undefined,
+			splatValues: undefined,
+			loadersData: undefined,
+			clientLoadersData: undefined,
+		});
+
+		const outcome = await fetchRouteData(new AbortController(), {
+			href: "/fallback-defaults",
+			navigationType: "userNavigation",
+		});
+		expect(outcome.type).toBe("success");
+		if (outcome.type !== "success") {
+			throw new Error("Expected a success outcome");
+		}
+
+		expect(outcome.response.headers.get("X-Vorma-Build-Id")).toBe("1");
+		await expect(outcome.waitFnPromise).resolves.toEqual({
+			data: [undefined],
+			errorMessage: undefined,
+		});
+	});
+
+	it("handles server fetch outcomes when client-loader map is undefined", async () => {
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: [],
+					loadersData: [],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				},
+			),
+		);
+		installVormaGlobal({
+			routeManifest: undefined,
+			patternToWaitFnMap: undefined,
+		});
+
+		const outcome = await fetchRouteData(new AbortController(), {
+			href: "/server-without-loader-map",
+			navigationType: "userNavigation",
+		});
+		expect(outcome.type).toBe("success");
+	});
+
+	it("succeeds when server JSON omits importURLs", async () => {
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: [],
+					loadersData: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				},
+			),
+		);
+		installVormaGlobal({
+			routeManifest: undefined,
+			patternToWaitFnMap: undefined,
+		});
+
+		const outcome = await fetchRouteData(new AbortController(), {
+			href: "/missing-import-urls",
+			navigationType: "userNavigation",
+		});
+		expect(outcome.type).toBe("success");
+		if (outcome.type !== "success") {
+			throw new Error("Expected success outcome");
+		}
+		await expect(outcome.waitFnPromise).resolves.toEqual({
+			data: [],
+			errorMessage: undefined,
+		});
+	});
+
+	it("uses build-id fallback in server route-data request URLs", async () => {
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: [],
+					loadersData: [],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				},
+			),
+		);
+		installVormaGlobal({
+			buildID: undefined,
+			routeManifest: undefined,
+		});
+
+		await fetchRouteData(new AbortController(), {
+			href: "/server-fallback",
+			navigationType: "userNavigation",
+		});
+
+		const fetchInput = fetchSpy.mock.calls[0]?.[0] as RequestInfo | URL;
+		const fetchURL =
+			fetchInput instanceof URL
+				? fetchInput
+				: new URL(String(fetchInput), window.location.href);
+		expect(fetchURL.searchParams.get("vorma_json")).toBe("1");
+	});
+
+	it("starts only matched client loaders and preserves parent slots without loaders", async () => {
+		const waitFn = vi.fn(async ({ serverDataPromise }) => {
+			const serverData = await serverDataPromise;
+			return serverData.loaderData;
+		});
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: ["/parent", "/parent/child"],
+					loadersData: [{ root: true }, { fromServer: "child" }],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: true,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				},
+			),
+		);
+		installVormaGlobal({
+			routeManifest: {
+				"/parent": 0,
+				"/parent/child": 1,
+			},
+			patternRegistry: createRegisteredPatternRegistry([
+				"/parent",
+				"/parent/child",
+			]),
+			patternToWaitFnMap: {
+				"/parent/child": waitFn,
+			},
+			clientModuleMap: {
+				"/parent": {
+					importURL: "/parent.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+				"/parent/child": {
+					importURL: "/child.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			matchedPatterns: [],
+		});
+
+		const outcome = await fetchRouteData(new AbortController(), {
+			href: "/parent/child",
+			navigationType: "userNavigation",
+		});
+		expect(fetchSpy).toHaveBeenCalled();
+		expect(outcome.type).toBe("success");
+		if (outcome.type !== "success") {
+			throw new Error("Expected success outcome");
+		}
+		await expect(outcome.waitFnPromise).resolves.toEqual({
+			data: [undefined, { fromServer: "child" }],
+			errorMessage: undefined,
+		});
+		expect(waitFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("lets client loaders handle unavailable server data when payload lacks matched loader arrays", async () => {
+		const unavailableNames: string[] = [];
+		const waitFn = vi.fn(async ({ serverDataPromise }) => {
+			try {
+				await serverDataPromise;
+				return "unexpected";
+			} catch (error) {
+				unavailableNames.push((error as Error).name);
+				return "fallback";
+			}
+		});
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+					},
+				},
+			),
+		);
+		installVormaGlobal({
+			routeManifest: {
+				"/needs-server": 1,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/needs-server"]),
+			patternToWaitFnMap: {
+				"/needs-server": waitFn,
+			},
+			clientModuleMap: {
+				"/needs-server": {
+					importURL: "/needs-server.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			matchedPatterns: [],
+		});
+
+		const outcome = await fetchRouteData(new AbortController(), {
+			href: "/needs-server",
+			navigationType: "userNavigation",
+		});
+		expect(outcome.type).toBe("success");
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(waitFn).toHaveBeenCalledTimes(1);
+		expect(unavailableNames).toEqual(["AbortError"]);
+	});
+
+	it("maps server fetch rejections to unavailable server-data for client loaders", async () => {
+		const unavailableNames: string[] = [];
+		const waitFn = vi.fn(async ({ serverDataPromise }) => {
+			try {
+				await serverDataPromise;
+				return "unexpected";
+			} catch (error) {
+				unavailableNames.push((error as Error).name);
+				return "fallback";
+			}
+		});
+		const logErrorSpy = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		vi.spyOn(window, "fetch").mockRejectedValue(
+			new Error("network-failure"),
+		);
+		installVormaGlobal({
+			routeManifest: {
+				"/rejecting-server": 1,
+			},
+			patternRegistry: createRegisteredPatternRegistry([
+				"/rejecting-server",
+			]),
+			patternToWaitFnMap: {
+				"/rejecting-server": waitFn,
+			},
+			clientModuleMap: {
+				"/rejecting-server": {
+					importURL: "/rejecting-server.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+			matchedPatterns: [],
+		});
+
+		await expect(
+			fetchRouteData(new AbortController(), {
+				href: "/rejecting-server",
+				navigationType: "userNavigation",
+			}),
+		).rejects.toThrow("network-failure");
+		await Promise.resolve();
+		expect(waitFn).toHaveBeenCalledTimes(1);
+		expect(unavailableNames).toEqual(["AbortError"]);
+		expect(logErrorSpy).toHaveBeenCalled();
+		logErrorSpy.mockRestore();
+	});
+
+	it("handles production responses with undefined deps and cssBundles", async () => {
+		const originalDev = import.meta.env.DEV;
+		(import.meta.env as any).DEV = false;
+		try {
+			vi.spyOn(window, "fetch").mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						matchedPatterns: [],
+						loadersData: [],
+						importURLs: [],
+						exportKeys: [],
+						errorExportKeys: [],
+						hasRootData: false,
+						params: {},
+						splatValues: [],
+					}),
+					{
+						status: 200,
+						headers: {
+							"Content-Type": "application/json",
+							"X-Vorma-Build-Id": "1",
+						},
+					},
+				),
+			);
+			installVormaGlobal({
+				routeManifest: undefined,
+			});
+
+			const outcome = await fetchRouteData(new AbortController(), {
+				href: "/prod-no-assets",
+				navigationType: "userNavigation",
+			});
+			expect(outcome.type).toBe("success");
+			if (outcome.type !== "success") {
+				throw new Error("Expected success outcome");
+			}
+			expect(outcome.cssBundlePromises).toEqual([]);
+		} finally {
+			(import.meta.env as any).DEV = originalDev;
+		}
+	});
+
+	it("throws when the server returns 304 without route JSON payload", async () => {
+		const logErrorSpy = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(null, {
+				status: 304,
+				headers: {
+					"X-Vorma-Build-Id": "1",
+				},
+			}),
+		);
+		installVormaGlobal({
+			routeManifest: undefined,
+		});
+
+		await expect(
+			fetchRouteData(new AbortController(), {
+				href: "/not-modified",
+				navigationType: "userNavigation",
+			}),
+		).rejects.toThrow("No JSON response");
+		expect(logErrorSpy).toHaveBeenCalled();
+		logErrorSpy.mockRestore();
 	});
 });

@@ -1,36 +1,54 @@
 # vormaclient/client High-Level Plan
 
-Purpose: keep the long-term sequence explicit so takeover is safe and effort
-does not drift.
+Purpose: keep the sequence explicit so takeover is safe and work does not drift.
 
 ## End State
 
-- Maintainable client runtime with clear module boundaries and no accidental
-  behavior regressions.
-- Strict first-principles contract suite is the source of truth.
-- Legacy suites removed immediately once explicit signoff is completed.
+- Maintainable client runtime with clear boundaries and lower internal
+  complexity.
+- Strict first-principles tests as the only behavioral source of truth.
+- No legacy-test dependency and no compatibility cruft.
 
 ## Sequence
 
 - [x]   1. Test dedup + strengthen contracts
-    - Consolidate duplicate setup/assertion patterns into shared harness
-      helpers.
-    - Keep assertions strict and first-principles.
-- [x]   2. Add navigation model/state-machine tests
-    - Add sequence-driven invariants over `navigate/prefetch/revalidate/submit`.
-    - Prioritize order/race-sensitive regressions.
-- [x]   3. Expand race-focused regressions
-    - Cover stale/aborted resolution classes and server/client payload mismatch
-      classes comprehensively.
+- [x]   2. Add navigation model/state-machine coverage
+- [x]   3. Add race-focused regressions
 - [ ]   4. Continue aggressive internal refactor cleanup (**YOU ARE HERE**)
-    - 2026-02-11 update: gap hardening pass for helper exports, HMR init hooks,
-      and progressive manifest loading is now in place.
-    - Reduce complexity and fragmentation while keeping behavior pinned by
-      tests.
+    - 2026-02-11: navigation/begin-navigation/link/redirect internals moved to
+      shared primitives to remove duplicated branch trees.
+    - 2026-02-11: shared `resolveAbsoluteHref` primitive now replaces repeated
+      `new URL(..., window.location.href).href` normalization paths across
+      runtime/begin-navigation/links/history/redirect parsing.
+    - 2026-02-11: runtime branch handling moved to explicit discriminated
+      `aborted/redirect/success` control flow.
+    - 2026-02-11: runtime/global safety hardening added for optional init-order
+      state and cross-realm body detection.
+    - 2026-02-11: redirect parsing/execution moved to shared parser+executor
+      primitives.
+    - 2026-02-11: render-runtime now has explicit unit coverage for downstream
+      client-loader abort propagation after upstream non-abort loader failures.
+    - 2026-02-11: history runtime now has explicit POP fallback coverage for
+      both failed client-nav reload path and successful cross-document POP state
+      synchronization.
+    - 2026-02-11: history hard-reload fallback now no-ops in JSDOM so tests stay
+      deterministic while browser runtime behavior remains unchanged.
+    - 2026-02-11: link click/prefetch internals simplified; impossible nullable
+      `NavigationControl.promise` branch removed and duplicate idle-prefetch
+      guard removed.
 
-## Always-On Rules
+## Current Validation Gate
 
-- If strict test fails and behavior is objectively incorrect, fix source code.
-- Do not weaken tests to mirror suspicious implementation quirks.
-- Ask the user immediately only for truly ambiguous product behavior.
-- Legacy suites are now removed; do not reintroduce mirrored legacy tests.
+- `pnpm oxlint vormaclient/client/src`
+- `pnpm tsc --noEmit --project vormaclient/client`
+- `pnpm tsgo --noEmit --project vormaclient/client`
+- `pnpm vitest --run vormaclient/client/src`
+- `pnpm vitest --run vormaclient/client/src --coverage --coverage.reporter=text-summary`
+
+## Non-Negotiable Rules
+
+- Tests must assert first-principles-correct behavior only.
+- If strict test fails and behavior is objectively wrong, fix production code.
+- Do not weaken tests to mirror implementation quirks.
+- For genuinely ambiguous behavior, ask the user immediately.
+- Do not add back-compat adapters while sub-1.0 unless explicitly requested.

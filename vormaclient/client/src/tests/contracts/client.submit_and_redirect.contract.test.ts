@@ -551,6 +551,61 @@ describe("client submit/redirect contracts", () => {
 		});
 	});
 
+	it("aborts stale deduped submits that are superseded during JSON parsing", async () => {
+		const api = await loadClientAPI();
+		const firstJSONDeferred = createDeferred<unknown>();
+		let firstSignal: AbortSignal | undefined;
+		const firstResponse = createJSONResponse({ stale: true });
+
+		Object.defineProperty(firstResponse, "json", {
+			value: vi.fn(() => firstJSONDeferred.promise),
+			configurable: true,
+		});
+
+		vi.spyOn(window, "fetch")
+			.mockImplementationOnce((_url, init) => {
+				firstSignal = (init as RequestInit | undefined)
+					?.signal as AbortSignal;
+				return Promise.resolve(firstResponse) as any;
+			})
+			.mockResolvedValueOnce(createJSONResponse({ fresh: true }));
+
+		const firstSubmit = api.submit(
+			"/api/resource",
+			{ method: "POST" },
+			{
+				dedupeKey: "stale-json-parse",
+				revalidate: false,
+			},
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		const secondSubmit = api.submit(
+			"/api/resource",
+			{ method: "POST" },
+			{
+				dedupeKey: "stale-json-parse",
+				revalidate: false,
+			},
+		);
+
+		expect(firstSignal?.aborted).toBe(true);
+		const secondResult = await secondSubmit;
+
+		firstJSONDeferred.resolve({ stale: true });
+		const firstResult = await firstSubmit;
+
+		expect(secondResult).toEqual({
+			success: true,
+			data: { fresh: true },
+		});
+		expect(firstResult).toEqual({
+			success: false,
+			error: "Aborted",
+		});
+	});
+
 	it("does not allow late stale deduped submits to change build ID", async () => {
 		const api = await loadClientAPI();
 		const firstDeferred = createDeferred<Response>();
@@ -1047,6 +1102,17 @@ describe("client submit/redirect contracts", () => {
 		expect(networkError).toEqual({
 			success: false,
 			error: "Network failure",
+		});
+
+		fetchSpy.mockRejectedValueOnce("not-an-error-object");
+		const unknownThrownResult = await api.submit(
+			"/api/non-error-throw",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		expect(unknownThrownResult).toEqual({
+			success: false,
+			error: "Unknown error",
 		});
 
 		const abortFailure = new Error("Aborted");

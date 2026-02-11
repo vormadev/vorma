@@ -2,100 +2,109 @@
 
 ## Scope
 
-- Primary target: `vormaruntime/`
-- Policy: tests/benchmarks should encode first-principles behavior (not
-  incidental implementation quirks)
-- API constraint: do not change public frontend/backend contract shape
+- Work only in `vormaruntime/`.
+- Tests and benchmarks should encode first-principles external behavior, not
+  incidental implementation quirks.
+- Keep frontend/backend public contract shape stable while tightening
+  correctness.
 
-## Current Status
+## Current Snapshot (2026-02-11)
 
-- Comprehensive test harness now exists across runtime behavior, dev reload
-  guards, SSR output, loader/action contracts, and concurrency/reload churn.
-- `kit/mux` tests were expanded around nested execution semantics and now cover
-  route replacement/rebuild behavior and shared dependency cache semantics.
-- Benchmark harness now targets whole-package production hot paths, not dev-only
-  reload flows.
-- Baseline-on-old-code requirement is satisfied for the current benchmark suite
-  (details in `vormaruntime/bench.txt`).
+- The package now has a broad regression harness covering:
+    - loader/action HTTP contracts (status/header/content-type/JSON shape)
+    - loader redirect short-circuit contracts (HTML/JSON and client-redirect
+      header semantics)
+    - loader `HEAD` contracts via default router (`HEAD` no-body behavior for
+      current-build JSON, stale-build reload signal, and HTML requests)
+    - action redirect short-circuit contracts (server redirect vs
+      `X-Client-Redirect`)
+    - action parse/error contracts in matrix form (invalid JSON, typed-input
+      form rejection, unsupported method, unknown-path behavior, and
+      `GET`/`HEAD`/`POST`/`PUT`/`PATCH`/`DELETE` happy-path coverage)
+    - loader JSON header/cache contracts in matrix form (loader-set headers,
+      including `Cache-Control`, are preserved)
+    - custom action mount-root contract via `ActionsRouterOptions.MountRoot`
+      (mount-pattern normalization and route isolation)
+    - `SupportedMethods` casing normalization contract (configured methods are
+      trimmed/canonicalized to uppercase, with blank entries ignored)
+    - constructor/startup panic contracts (missing `Wave`, missing `Vorma`
+      section, unavailable private static FS)
+    - loader HTML failure contracts for app-provided head/template failures
+      (invalid head-element render path and template execute failure path)
+    - parsed route-file structural validation contracts (null path entries,
+      missing `originalPattern`, and key/pattern mismatch fail fast)
+    - dev route-reload artifact coherence contracts (client-entry deps and CSS
+      maps refresh with new stage-one route artifacts)
+    - `HEAD` action contracts (fallback-to-GET query parsing with no response
+      body)
+    - `HEAD` mount semantics for actions (`HEAD` works when `GET` is mounted and
+      stays `404` when only non-GET methods are mounted)
+    - startup and route-sync behavior (stage files, nested-route decoration)
+    - SSR output and serializability validation
+    - action input parsing/content-type behavior
+    - static middleware contract behavior (`ServeStatic` asset serving and
+      passthrough, including root-prefix behavior)
+    - dev-only reload guards and endpoint behavior
+    - reload/read concurrency coherence
+    - helper contracts (`paths`, deps/css ordering, error marker behavior, etc.)
+- New correctness fix in this pass:
+    - Loader HTML path now handles `GetRootTemplateData` returning `(nil, nil)`
+      without panicking.
+    - Regression test: `TestLoadersHandler_NilRootTemplateDataMapDoesNotPanic`.
+    - Actions input parsing now treats `HEAD` like `GET` for query-param input,
+      fixing `HEAD` fallback failures for typed GET action routes.
+    - Regression tests:
+      `TestHTTPContractMatrix_LoadersAndActions/Actions_HEAD_QueryInputAndHeader_NoBody`
+      and `TestInitWithDefaultRouter_ActionsHeadFallsBackToGetWithoutBody`.
+    - Loader `HEAD` route behavior is locked with
+      `TestInitWithDefaultRouter_LoadersHeadContracts`.
+    - Custom action mount root behavior is locked with
+      `TestInitWithDefaultRouter_RespectsCustomActionsMountRoot`.
+    - `SupportedMethods` casing normalization is locked with
+      `TestActionsSupportedMethods_NormalizesConfiguredMethodCasing` and
+      `TestInitWithDefaultRouter_SupportedMethodsCasingIsNormalized`.
+    - Constructor/startup panic behavior is locked with
+      `TestNewVormaApp_RequiresWaveInstance`,
+      `TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation`, and
+      `TestInit_PanicsWhenPrivateFSUnavailable`.
+    - Loader HTML failure behavior is locked with
+      `TestLoadersHandler_HeadRenderingAndTemplateExecutionFailuresReturn500`.
+    - Parsed route-file validation and reload-failure state safety are locked
+      with:
+      `TestGetBasePathsStageOneOrTwo_ErrorPaths/{NullPathEntry,PathEntryMissingOriginalPattern,PathEntryPatternMismatch}`
+      and
+      `TestDevReloadRoutesFromDisk_InvalidPathsFileDoesNotMutateRuntimeState`.
+    - Dev reload client-entry artifact refresh is locked with
+      `TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts`.
+    - `HEAD`/`GET` action mount semantics are locked with
+      `TestInitWithDefaultRouter_RespectsSupportedMethods` and
+      `TestInitWithDefaultRouter_HeadRequiresMountedGetActionHandler`.
 
-## Verification Executed
+## Verification (Latest Run)
 
 - `go test ./vormaruntime -count=1`
 - `go test -race ./vormaruntime -count=1`
 - `go test ./vormaruntime -cover -count=1`
-- `GOCACHE=/tmp/go-build go test ./vormaruntime -run=^$ -bench=. -benchmem -count=3`
-- `go test ./kit/tasks ./kit/mux -count=1`
-- `go test -race ./kit/mux -count=1`
-- `go test ./kit/mux ./vormaruntime -cover -count=1` (`kit/mux: 87.6%`,
-  `vormaruntime: 87.8%`)
+- `go test ./kit/mux ./vormaruntime -cover -count=1`
+- Latest coverage: `96.9%` statements.
 
-## Benchmarks In Scope
+## Benchmark Policy
 
-`vormaruntime/vormaruntime_bench_test.go` currently covers:
+- Keep all benchmark artifacts under `vormaruntime/benchmark_results/`.
+- Store raw `go test -bench` stdout only (no process listings or host diagnostic
+  output).
+- If host load is clearly unstable/high, skip benchmarking and note deferment
+  here.
 
-- `BenchmarkLoadersHandler_JSONCurrentBuild`
-- `BenchmarkLoadersHandler_HTMLCurrentBuild`
-- `BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache`
-- `BenchmarkRouteDepsAndCSSResolution`
-- `BenchmarkSSRInnerHTMLGeneration`
-- `BenchmarkActionsHandler_POSTJSONCurrentBuild`
-- `BenchmarkActionsHandler_GETQueryCurrentBuild`
+Clean old-vs-current reference pair:
 
-`BenchmarkReloadRoutesFromDisk` was removed intentionally (dev-time only, not a
-production hot path).
-
-## Current Perf Picture
-
-See `vormaruntime/bench.txt` for full old-vs-current numbers.
-
-Key takeaways:
-
-- Loader path regressions were materially reduced by `kit/mux` optimization.
-- Loader HTML is now faster than old baseline with alloc parity.
-- Loader JSON allocs are now better than old baseline; CPU still trails old
-  baseline.
-- Cold-cache JSON allocs/bytes improved versus old baseline; CPU still trails.
-- Route deps/CSS is slightly slower than old baseline.
-- SSR is slightly slower than old baseline.
-- Actions GET/POST are near or slightly better.
-- Latest same-load comparison run happened under heavy unrelated host CPU
-  contention; see `vormaruntime/bench.txt` "Contended Host Snapshot" section.
-
-## Known Completed Behavior Fixes
-
-- Wrapped loader errors are recognized correctly.
-- Loader handler parses `vorma_json` query once per request on the hot path.
-- Route-data cache isolation includes app identity/mode/build.
-- Route-data cache key construction no longer uses `fmt.Fprintf` on every
-  request.
-- `kit/mux` nested task execution now:
-    - avoids per-task full `tasks.NewCtx` allocation
-    - uses shared-cache child contexts for descendant cancellation
-    - executes single-task paths inline (no goroutine spawn)
-- `kit/mux` route-replacement behavior now has direct regression tests:
-    - `ReplaceRoutes` fully replaces matcher + compiled route state
-    - `RebuildPreservingHandlers` keeps handler routes and refreshes no-handler
-      patterns
-- `kit/mux` nested task tests now assert shared dependency tasks execute once
-  across parent/child handlers when using request-scoped task contexts.
-- `vormaruntime` startup/route-sync contracts now have direct tests for:
-    - stage-one/stage-two path file selection
-    - malformed/missing path file failures
-    - nested-router decoration of missing patterns
-    - `RegisterPatternIfNeeded` idempotence
-- Multi-app head dedupe leakage is fixed.
-- Reload/read concurrency coherence is hardened and stress-tested.
-- Dev-only reload methods/endpoints are explicitly guarded.
-- Nested router cancellation semantics are directional:
-    - parent failure cancels descendants
-    - descendant failure does not cancel parent work
+- `2026-02-11_154353_OLD_pre_refactor_71515bd_clean_raw.txt`
+- `2026-02-11_153905_CURRENT_clean_raw.txt`
 
 ## Next High-Leverage Work
 
-1. Re-run full benchmark suite on an uncontended host to refresh stable
-   old-vs-current figures (current same-load snapshot is recorded, but noisy).
-2. Reduce remaining CPU gaps in loader JSON cold-cache, route deps/CSS, and SSR
-   without weakening correctness contracts.
-3. Keep `bench.txt` and this handoff current after each perf-affecting change.
-4. Continue adding first-principles tests only when they increase external
-   contract confidence (avoid internals coupling).
+1. Continue matrix-style HTTP contract tests for externally observable behavior
+   with minimal overlap.
+2. Expand matrix coverage for remaining rare response-shape branches without
+   coupling to internals.
+3. Keep this handoff concise and refreshed each batch (remove stale history).

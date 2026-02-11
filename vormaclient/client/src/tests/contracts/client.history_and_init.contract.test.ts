@@ -758,6 +758,88 @@ describe("client history/init contracts", () => {
 		).not.toThrow();
 	});
 
+	it("refreshes matched route loaders after matching HMR js updates", async () => {
+		const api = await loadClientAPI();
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		api.__vormaClientGlobal.set("matchedPatterns", ["/hmr-match"]);
+
+		const routeChangeListener = vi.fn();
+		const removeRouteChangeListener =
+			api.addRouteChangeListener(routeChangeListener);
+		let afterUpdateHandler:
+			| ((props: { updates: Array<{ type: string; path: string }> }) => void)
+			| undefined;
+		const fakeHot = {
+			on: vi.fn((event: string, handler: unknown) => {
+				if (
+					event === "vite:afterUpdate" &&
+					typeof handler === "function"
+				) {
+					afterUpdateHandler = handler as typeof afterUpdateHandler;
+				}
+			}),
+		};
+
+		api.__runClientLoadersAfterHMRUpdate(
+			{
+				url: "http://localhost:3000/src/routes/hmr-match.tsx?t=1",
+				hot: fakeHot,
+			} as any,
+			"/hmr-match",
+		);
+
+		expect(fakeHot.on).toHaveBeenCalledWith(
+			"vite:afterUpdate",
+			expect.any(Function),
+		);
+		expect(afterUpdateHandler).toBeDefined();
+
+		afterUpdateHandler?.({
+			updates: [
+				{
+					type: "js-update",
+					path: "/src/routes/hmr-match.tsx?t=2",
+				},
+				{
+					type: "css-update",
+					path: "/src/routes/hmr-match.css?t=2",
+				},
+			],
+		});
+
+		await vi.advanceTimersByTimeAsync(11);
+		await vi.runAllTimersAsync();
+		expect(routeChangeListener).toHaveBeenCalledTimes(1);
+
+		afterUpdateHandler?.({
+			updates: [
+				{
+					type: "js-update",
+					path: "/src/routes/other.tsx?t=3",
+				},
+			],
+		});
+
+		await vi.advanceTimersByTimeAsync(11);
+		await vi.runAllTimersAsync();
+		expect(routeChangeListener).toHaveBeenCalledTimes(1);
+
+		api.__runClientLoadersAfterHMRUpdate(
+			{
+				url: "http://localhost:3000/src/routes/hmr-match.tsx?t=99",
+				hot: fakeHot,
+			} as any,
+			"/hmr-match",
+		);
+		expect(fakeHot.on).toHaveBeenCalledTimes(1);
+
+		removeRouteChangeListener();
+	});
+
 	it("progressively loads route manifests and registers their patterns", async () => {
 		const api = await loadClientAPI();
 		const manifest = {

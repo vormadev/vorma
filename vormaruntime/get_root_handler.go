@@ -154,6 +154,9 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			res.InternalServerError()
 			return
 		}
+		if rootTemplateData == nil {
+			rootTemplateData = make(map[string]any)
+		}
 
 		rootTemplateData["VormaHeadEls"] = headElements
 		rootTemplateData["VormaSSRScript"] = ssrScript

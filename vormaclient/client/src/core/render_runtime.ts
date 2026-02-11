@@ -85,6 +85,9 @@ export const AssetManager = {
 	applyCSS,
 };
 
+type ModuleExports = Record<string, unknown>;
+type ComponentModulesMap = Map<string, ModuleExports | undefined>;
+
 function getEffectiveErrorData(): {
 	index: number | undefined;
 	error: string | undefined;
@@ -109,8 +112,8 @@ function getEffectiveErrorData(): {
 }
 
 async function loadComponentModules(
-	importURLs: string[],
-): Promise<Map<string, any>> {
+	importURLs: string[] = [],
+): Promise<ComponentModulesMap> {
 	const dedupedURLs = [...new Set(importURLs)];
 	const modules = await Promise.all(
 		dedupedURLs.map(async (url) => {
@@ -124,8 +127,8 @@ async function loadComponentModules(
 function buildActiveComponents(props: {
 	importURLs: string[];
 	exportKeys: string[];
-	modulesMap: Map<string, any>;
-}): Array<any> {
+	modulesMap: ComponentModulesMap;
+}): Array<unknown> {
 	const { importURLs, exportKeys, modulesMap } = props;
 	return importURLs.map((url, i) => {
 		const module = modulesMap.get(url);
@@ -138,9 +141,9 @@ function resolveErrorBoundaryComponent(props: {
 	errorIdx: number;
 	importURLs: string[];
 	errorExportKeys: Array<string> | undefined;
-	modulesMap: Map<string, any>;
-	defaultErrorBoundary: any;
-}): any {
+	modulesMap: ComponentModulesMap;
+	defaultErrorBoundary: unknown;
+}): unknown {
 	const {
 		errorIdx,
 		importURLs,
@@ -162,13 +165,17 @@ function resolveErrorBoundaryComponent(props: {
 	return errorComponent ?? defaultErrorBoundary;
 }
 
-async function loadComponents(importURLs: string[]): Promise<Map<string, any>> {
+async function loadComponents(
+	importURLs?: string[],
+): Promise<ComponentModulesMap> {
 	return loadComponentModules(importURLs);
 }
 
-async function handleComponents(importURLs: string[]): Promise<void> {
+async function handleComponents(
+	importURLs?: string[],
+): Promise<ComponentModulesMap> {
 	const modulesMap = await loadComponents(importURLs);
-	const originalImportURLs = __vormaClientGlobal.get("importURLs");
+	const originalImportURLs = __vormaClientGlobal.get("importURLs") ?? [];
 	const exportKeys = __vormaClientGlobal.get("exportKeys") ?? [];
 	const newActiveComponents = buildActiveComponents({
 		importURLs: originalImportURLs,
@@ -184,13 +191,16 @@ async function handleComponents(importURLs: string[]): Promise<void> {
 	) {
 		__vormaClientGlobal.set("activeComponents", newActiveComponents);
 	}
+
+	return modulesMap;
 }
 
 async function handleErrorBoundaryComponent(
-	importURLs: string[],
+	importURLs?: string[],
+	modulesMapOverride?: ComponentModulesMap,
 ): Promise<void> {
-	const modulesMap = await loadComponents(importURLs);
-	const originalImportURLs = __vormaClientGlobal.get("importURLs");
+	const modulesMap = modulesMapOverride ?? (await loadComponents(importURLs));
+	const originalImportURLs = __vormaClientGlobal.get("importURLs") ?? [];
 	const errorIdx = getEffectiveErrorData().index;
 
 	if (errorIdx != null) {
@@ -230,7 +240,7 @@ export type PartialWaitFnJSON = Pick<
 >;
 
 export type ClientLoadersResult = {
-	data: Array<any>;
+	data: Array<unknown>;
 	errorMessage?: string;
 };
 
@@ -250,10 +260,10 @@ function patternRequiresServerData(pattern: string): boolean {
 export function buildClientLoaderServerData(props: {
 	pattern: string;
 	matchedPatterns: Array<string>;
-	loadersData: Array<any>;
+	loadersData: Array<unknown>;
 	hasRootData: boolean;
 	buildID: string;
-}): ClientLoaderAwaitedServerData<any, any> | null {
+}): ClientLoaderAwaitedServerData<unknown, unknown> | null {
 	const { pattern, matchedPatterns, loadersData, hasRootData, buildID } =
 		props;
 	const serverIdx = matchedPatterns.indexOf(pattern);
@@ -282,7 +292,7 @@ export function buildClientLoaderServerData(props: {
 }
 
 type ClientLoaderWorkItems = {
-	loaderPromises: Array<Promise<any>>;
+	loaderPromises: Array<Promise<unknown>>;
 	abortControllers: Array<AbortController | null>;
 };
 
@@ -290,7 +300,7 @@ function buildClientLoaderWorkItems(props: {
 	matchedPatterns: Array<string>;
 	patternToWaitFnMap: VormaClientGlobal["patternToWaitFnMap"];
 	outermostServerErrorIdx: number | undefined;
-	runningLoaders?: Map<string, Promise<any>>;
+	runningLoaders?: Map<string, Promise<unknown>>;
 	signal: AbortSignal;
 	json: PartialWaitFnJSON;
 	buildID: string;
@@ -305,7 +315,7 @@ function buildClientLoaderWorkItems(props: {
 		buildID,
 	} = props;
 
-	const loaderPromises: Array<Promise<any>> = [];
+	const loaderPromises: Array<Promise<unknown>> = [];
 	const abortControllers: Array<AbortController | null> = [];
 
 	let i = 0;
@@ -364,9 +374,9 @@ function buildClientLoaderWorkItems(props: {
 }
 
 function wrapLoaderPromisesWithChildAbort(props: {
-	loaderPromises: Array<Promise<any>>;
+	loaderPromises: Array<Promise<unknown>>;
 	abortControllers: Array<AbortController | null>;
-}): Array<Promise<any>> {
+}): Array<Promise<unknown>> {
 	const { loaderPromises, abortControllers } = props;
 	return loaderPromises.map(async (promise, index) => {
 		return promise.catch((error) => {
@@ -381,28 +391,22 @@ function wrapLoaderPromisesWithChildAbort(props: {
 }
 
 function processSettledClientLoaderResults(props: {
-	results: Array<PromiseSettledResult<any>>;
+	results: Array<PromiseSettledResult<unknown>>;
 	matchedPatterns: Array<string>;
 }): {
-	data: Array<any>;
+	data: Array<unknown>;
 	errorMessage: string | undefined;
 } {
 	const { results, matchedPatterns } = props;
-	const data: Array<any> = [];
+	const data: Array<unknown> = [];
 	let errorMessage: string | undefined;
 
-	for (let i = 0; i < results.length; i++) {
-		const result = results[i];
-		if (!result) {
-			data.push(undefined);
-			continue;
-		}
-
+	for (const [resultIndex, result] of results.entries()) {
 		if (result.status === "fulfilled") {
 			data.push(result.value);
 		} else {
 			if (!isAbortError(result.reason)) {
-				const pattern = matchedPatterns[i];
+				const pattern = matchedPatterns[resultIndex];
 				logError(
 					`Client loader error for pattern ${pattern}:`,
 					result.reason,
@@ -424,12 +428,13 @@ async function executeClientLoaders(
 	json: PartialWaitFnJSON,
 	buildID: string,
 	signal: AbortSignal,
-	runningLoaders?: Map<string, Promise<any>>,
+	runningLoaders?: Map<string, Promise<unknown>>,
 ): Promise<ClientLoadersResult> {
-	await ComponentLoader.loadComponents(json.importURLs);
+	await ComponentLoader.loadComponents(json.importURLs ?? []);
 
 	const matchedPatterns = json.matchedPatterns ?? [];
-	const patternToWaitFnMap = __vormaClientGlobal.get("patternToWaitFnMap");
+	const patternToWaitFnMap =
+		__vormaClientGlobal.get("patternToWaitFnMap") || {};
 	const outermostServerErrorIdx = __vormaClientGlobal.get(
 		"outermostServerErrorIdx",
 	);
@@ -512,12 +517,20 @@ export async function setupClientLoaders(): Promise<void> {
 export async function __registerClientLoaderPattern(
 	pattern: string,
 ): Promise<void> {
-	registerPattern(__vormaClientGlobal.get("patternRegistry"), pattern);
+	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
+	if (!patternRegistry) {
+		throw new Error("Pattern registry has not been initialized.");
+	}
+	registerPattern(patternRegistry, pattern);
 }
 
 export async function findPartialMatchesOnClient(pathname: string) {
 	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
-	const patternToWaitFnMap = __vormaClientGlobal.get("patternToWaitFnMap");
+	const patternToWaitFnMap =
+		__vormaClientGlobal.get("patternToWaitFnMap") || {};
+	if (!patternRegistry) {
+		return null;
+	}
 
 	if (Object.keys(patternToWaitFnMap).length === 0) {
 		return null;
@@ -544,7 +557,7 @@ export async function findPartialMatchesOnClient(pathname: string) {
 export async function completeClientLoaders(
 	json: PartialWaitFnJSON,
 	buildID: string,
-	runningLoaders: Map<string, Promise<any>>,
+	runningLoaders: Map<string, Promise<unknown>>,
 	signal: AbortSignal,
 ): Promise<ClientLoadersResult> {
 	return executeClientLoaders(json, buildID, signal, runningLoaders);
@@ -670,8 +683,11 @@ async function __reRenderAppInner(props: RerenderAppProps): Promise<void> {
 	applyRouteDataToGlobalState(json);
 	deriveAndSetErrorState();
 
-	await ComponentLoader.handleComponents(json.importURLs);
-	await ComponentLoader.handleErrorBoundaryComponent(json.importURLs);
+	const modulesMap = await ComponentLoader.handleComponents(json.importURLs);
+	await ComponentLoader.handleErrorBoundaryComponent(
+		json.importURLs,
+		modulesMap,
+	);
 
 	const scrollStateToDispatch: ScrollState | undefined =
 		runHistoryAndDeriveScrollState({ navigationType, runHistoryOptions });

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -30,6 +31,8 @@ type testFixtureOptions struct {
 	getRootTemplateData  GetRootTemplateDataFunc
 	actionsRouterOpts    ActionsRouterOptions
 	loadersRouterOpts    LoadersRouterOptions
+	adHocTypes           []*tsgen.AdHocType
+	extraTSCode          string
 }
 
 func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
@@ -123,6 +126,8 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		GetRootTemplateData:  o.getRootTemplateData,
 		LoadersRouterOptions: o.loadersRouterOpts,
 		ActionsRouterOptions: o.actionsRouterOpts,
+		AdHocTypes:           o.adHocTypes,
+		ExtraTSCode:          o.extraTSCode,
 		Logger:               slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	app.Init()

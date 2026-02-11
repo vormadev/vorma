@@ -139,7 +139,7 @@ function cleanupHardReloadQueryParam(): void {
 }
 
 async function bootstrapInitialClientRuntime(
-	importURLs: Array<string>,
+	importURLs: Array<string> | undefined,
 ): Promise<void> {
 	await ComponentLoader.handleComponents(importURLs);
 	await setupClientLoaders();

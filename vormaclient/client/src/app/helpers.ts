@@ -12,16 +12,25 @@ export type VormaAppConfig = {
 	loadersDynamicRune: string;
 	loadersSplatRune: string;
 	loadersExplicitIndexSegment: string;
-	__phantom?: any;
+	__phantom?: unknown;
+};
+
+type VormaRouteBase = {
+	_type: string;
+	pattern: string;
+	params?: ReadonlyArray<string>;
+	isSplat?: boolean;
+	[key: string]: unknown;
 };
 
 export type VormaAppBase = {
-	routes: readonly any[];
+	routes: readonly VormaRouteBase[];
 	appConfig: VormaAppConfig;
-	rootData: any;
+	rootData: unknown;
 };
 
-export type ExtractApp<C extends VormaAppConfig> = C["__phantom"];
+export type ExtractApp<C extends VormaAppConfig> =
+	C["__phantom"] extends VormaAppBase ? C["__phantom"] : VormaAppBase;
 
 type RouteByType<App extends VormaAppBase, T extends string> = Extract<
 	App["routes"][number],
@@ -156,18 +165,21 @@ export type VormaRoutePropsGeneric<
 	P extends VormaLoaderPattern<App>,
 > = {
 	idx: number;
-	Outlet: (props: Record<string, any>) => JSXElement;
+	Outlet: (props: Record<string, unknown>) => JSXElement;
 	__phantom_pattern: P;
-} & Record<string, any>;
+} & Record<string, unknown>;
 
 /////////////////////////////////////////////////////////////////////
 /////// API CLIENT HELPERS
 /////////////////////////////////////////////////////////////////////
 
-type Props = PatternBasedProps<any, string> & {
+type Props = {
+	pattern: string;
+	params?: Record<string, string>;
+	splatValues?: Array<string>;
 	options?: SubmitOptions;
 	requestInit?: RequestInit;
-	input?: any;
+	input?: unknown;
 };
 
 type APIClientHelperOpts = {

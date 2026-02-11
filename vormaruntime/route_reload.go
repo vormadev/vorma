@@ -30,6 +30,13 @@ func (v *Vorma) devReloadRoutesFromDisk() error {
 	}
 
 	v._paths = pathsFile.Paths
+	v._clientEntrySrc = pathsFile.ClientEntrySrc
+	v._clientEntryOut = pathsFile.ClientEntryOut
+	v._clientEntryDeps = pathsFile.ClientEntryDeps
+	v._depToCSSBundleMap = pathsFile.DepToCSSBundleMap
+	if v._depToCSSBundleMap == nil {
+		v._depToCSSBundleMap = make(map[string][]string)
+	}
 	v._buildID = pathsFile.BuildID
 	v._routeManifestFile = pathsFile.RouteManifestFile
 
