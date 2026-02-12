@@ -1,0 +1,18 @@
+package router
+
+import (
+	"sync"
+
+	"github.com/vormadev/vorma"
+)
+
+var registerRoutesOnce sync.Once
+
+func GetApp() *vorma.Vorma {
+	registerRoutesOnce.Do(registerAllRoutes)
+	return appSingleton
+}
+
+func registerAllRoutes() {
+	registerCoreLoaders()
+}

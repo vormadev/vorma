@@ -43,8 +43,10 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 			UIVariant:            string(UIVariants.React),
 			HTMLTemplateLocation: "entry.go.html",
 			ClientEntry:          "frontend/src/vorma.entry.tsx",
-			ClientRouteDefsFile:  "frontend/src/vorma.routes.ts",
-			TSGenOutDir:          "frontend/src/vorma.gen",
+			ClientRouteDefinitionPatterns: []string{
+				"frontend/src/**/*vorma.routes.ts",
+			},
+			TSGenOutDir: "frontend/src/vorma.gen",
 		},
 	}
 
@@ -82,11 +84,25 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 			wantMsg: "Vorma.ClientEntry is required",
 		},
 		{
-			name: "ClientRouteDefsFile",
+			name: "ClientRouteDefinitionPatterns",
 			mutate: func(c *VormaConfig) {
-				c.ClientRouteDefsFile = ""
+				c.ClientRouteDefinitionPatterns = nil
 			},
-			wantMsg: "Vorma.ClientRouteDefsFile is required",
+			wantMsg: "Vorma.ClientRouteDefinitionPatterns is required",
+		},
+		{
+			name: "ClientRouteDefinitionPatterns_EmptyEntry",
+			mutate: func(c *VormaConfig) {
+				c.ClientRouteDefinitionPatterns = []string{""}
+			},
+			wantMsg: "Vorma.ClientRouteDefinitionPatterns cannot contain empty entries",
+		},
+		{
+			name: "ClientRouteDefinitionPatterns_WhitespaceEntry",
+			mutate: func(c *VormaConfig) {
+				c.ClientRouteDefinitionPatterns = []string{"   "}
+			},
+			wantMsg: "Vorma.ClientRouteDefinitionPatterns cannot contain empty entries",
 		},
 		{
 			name: "TSGenOutDir",
@@ -150,8 +166,10 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 			UIVariant:            string(UIVariants.React),
 			HTMLTemplateLocation: "entry.go.html",
 			ClientEntry:          "frontend/src/vorma.entry.tsx",
-			ClientRouteDefsFile:  "frontend/src/vorma.routes.ts",
-			TSGenOutDir:          "frontend/src/vorma.gen",
+			ClientRouteDefinitionPatterns: []string{
+				"frontend/src/**/*vorma.routes.ts",
+			},
+			TSGenOutDir: "frontend/src/vorma.gen",
 		},
 	}
 	cfgBytes, err := json.Marshal(cfg)

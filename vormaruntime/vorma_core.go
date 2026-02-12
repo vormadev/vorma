@@ -52,6 +52,9 @@ type Vorma struct {
 	_privateFS         fs.FS
 	_routeManifestFile string
 	_serverAddr        string
+	// Monotonic version for route-data snapshot coherence. Increment whenever
+	// route-data inputs that influence stage-1/cacheable outputs are mutated.
+	_routeDataSnapshotVersion uint64
 
 	// Config for TS Generation
 	_adHocTypes  []*tsgen.AdHocType
@@ -151,8 +154,10 @@ func (v *Vorma) WithRLock(fn func(*LockedVorma)) {
 // --- LockedVorma Getters ---
 
 // Vorma returns the underlying Vorma instance for accessing non-lock-protected fields.
-func (l *LockedVorma) Vorma() *Vorma                       { return l.v }
-func (l *LockedVorma) GetPaths() map[string]*Path          { return l.v._paths }
+func (l *LockedVorma) Vorma() *Vorma { return l.v }
+func (l *LockedVorma) GetPaths() map[string]*Path {
+	return clonePathsMapOrNil(l.v._paths)
+}
 func (l *LockedVorma) GetBuildID() string                  { return l.v._buildID }
 func (l *LockedVorma) GetRouteManifestFile() string        { return l.v._routeManifestFile }
 func (l *LockedVorma) GetRootTemplate() *template.Template { return l.v._rootTemplate }
@@ -162,7 +167,7 @@ func (l *LockedVorma) GetIsDev() bool                      { return l.v._isDev }
 
 func (l *LockedVorma) SetPaths(paths map[string]*Path) {
 	l.v._paths = clonePathsMapOrNil(paths)
-	clearRouteDataCache()
+	l.v.invalidateRouteDataCacheLocked()
 }
 func (l *LockedVorma) SetBuildID(id string)                 { l.v._buildID = id }
 func (l *LockedVorma) SetRouteManifestFile(f string)        { l.v._routeManifestFile = f }

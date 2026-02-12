@@ -11,7 +11,35 @@
 		"esModuleInterop": true,
 		"noUncheckedIndexedAccess": true,
 		"verbatimModuleSyntax": true,
-		"allowImportingTsExtensions": true
+		"allowImportingTsExtensions": true,
+		"paths": {
+			"vorma/client": ["./vormaclient/client/index.ts"],
+			"vorma/buildtime": ["./vormaclient/client/buildtime.ts"],
+			"vorma/react": ["./vormaclient/react/index.ts"],
+			"vorma/solid": ["./vormaclient/solid/index.ts"],
+			"vorma/preact": ["./vormaclient/preact/index.ts"],
+			"vorma/vite": ["./vormaclient/vite/vite.ts"],
+			"vorma/kit/converters": [
+				"./kit/_typescript/converters/converters.ts"
+			],
+			"vorma/kit/cookies": ["./kit/_typescript/cookies/cookies.ts"],
+			"vorma/kit/csrf": ["./kit/_typescript/csrf/csrf.ts"],
+			"vorma/kit/debounce": ["./kit/_typescript/debounce/debounce.ts"],
+			"vorma/kit/fmt": ["./kit/_typescript/fmt/fmt.ts"],
+			"vorma/kit/json": ["./kit/_typescript/json/json.ts"],
+			"vorma/kit/listeners": ["./kit/_typescript/listeners/listeners.ts"],
+			"vorma/kit/matcher/register": [
+				"./kit/_typescript/matcher/register.ts"
+			],
+			"vorma/kit/matcher/find-best": [
+				"./kit/_typescript/matcher/find_best_match.ts"
+			],
+			"vorma/kit/matcher/find-nested": [
+				"./kit/_typescript/matcher/find_nested_matches.ts"
+			],
+			"vorma/kit/theme": ["./kit/_typescript/theme/theme.ts"],
+			"vorma/kit/url": ["./kit/_typescript/url/url.ts"]
+		}
 	},
 	"exclude": ["**/node_modules", "npm_dist"]
 }

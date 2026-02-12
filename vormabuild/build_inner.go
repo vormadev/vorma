@@ -76,12 +76,14 @@ var buildInnerPublicFileMapDeps = buildInnerPublicFileMapDependencies{
 }
 
 func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
+	normalizedOptions := normalizeBuildInnerOptions(opts)
+
 	start := time.Now()
 	initialRuntimeState := buildInnerDeps.captureBuildInnerRuntimeState(v)
 	buildErr := runWithRollbackOnFailureAndPanic(
 		rollbackTransactionOptions{
 			run: func() error {
-				if err := buildInnerDeps.initializeBuildInnerState(v, opts); err != nil {
+				if err := buildInnerDeps.initializeBuildInnerState(v, &normalizedOptions); err != nil {
 					return err
 				}
 
@@ -114,6 +116,13 @@ func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 
 	buildInnerDeps.logBuildInnerCompletion(v, start)
 	return nil
+}
+
+func normalizeBuildInnerOptions(opts *buildInnerOptions) buildInnerOptions {
+	if opts == nil {
+		return buildInnerOptions{}
+	}
+	return *opts
 }
 
 func captureBuildInnerRuntimeState(v *vormaruntime.Vorma) buildInnerRuntimeStateSnapshot {

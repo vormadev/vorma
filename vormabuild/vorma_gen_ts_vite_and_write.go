@@ -142,14 +142,22 @@ func dedupeListForUIVariant(uiVariant string) []string {
 }
 
 func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
-	return []string{
+	ignoredPatterns := []string{
 		"**/*.go",
 		path.Join("**", v.Wave.GetDistDir()+"/**/*"),
 		path.Join("**", v.Wave.GetPrivateStaticDir()+"/**/*"),
 		path.Join("**", v.Wave.GetConfigFile()),
 		path.Join("**", v.Config.TSGenOutDir+"/**/*"),
-		path.Join("**", v.Config.ClientRouteDefsFile),
 	}
+	for _, routeDefinitionPattern := range normalizeRouteDefinitionPatternsInInputOrder(
+		v.Config.ClientRouteDefinitionPatterns,
+	) {
+		ignoredPatterns = append(
+			ignoredPatterns,
+			path.Join("**", routeDefinitionPattern),
+		)
+	}
+	return ignoredPatterns
 }
 
 func renderVitePluginConfig(templateData vitePluginTemplateData) (string, error) {

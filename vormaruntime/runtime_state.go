@@ -7,6 +7,15 @@ func clearRouteDataCache() {
 	})
 }
 
+// invalidateRouteDataCacheLocked invalidates route-data cache entries for
+// requests that still reference an older runtime snapshot.
+//
+// Caller must hold v.mu.Lock().
+func (v *Vorma) invalidateRouteDataCacheLocked() {
+	v._routeDataSnapshotVersion++
+	clearRouteDataCache()
+}
+
 func clonePathsMap(paths map[string]*Path) map[string]*Path {
 	if paths == nil {
 		return make(map[string]*Path)

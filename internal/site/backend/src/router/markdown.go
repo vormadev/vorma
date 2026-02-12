@@ -18,8 +18,8 @@ var goldmarkInstance = goldmark.New(
 )
 
 var Markdown = fsmarkdown.New(fsmarkdown.Options{
-	FS:    App.MustGetPrivateFS(),
-	IsDev: App.GetIsDev(),
+	FS:    appSingleton.MustGetPrivateFS(),
+	IsDev: appSingleton.GetIsDev(),
 	FrontmatterParser: func(r io.Reader, v any) ([]byte, error) {
 		return frontmatter.Parse(r, v)
 	},

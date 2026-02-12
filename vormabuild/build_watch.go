@@ -48,10 +48,7 @@ func hasFrameworkWatchPattern(
 func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 	var patterns []wave.WatchedFile
 
-	routeDefinitionsPattern := routeDefinitionsWatchPattern(v)
-	if routeDefinitionsPattern != nil {
-		patterns = append(patterns, *routeDefinitionsPattern)
-	}
+	patterns = append(patterns, routeDefinitionWatchPatterns(v)...)
 
 	htmlTemplatePattern := htmlTemplateWatchPattern(v)
 	if htmlTemplatePattern != nil {
@@ -63,18 +60,27 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 	return patterns
 }
 
-func routeDefinitionsWatchPattern(v *vormaruntime.Vorma) *wave.WatchedFile {
-	clientRouteDefsFile := v.Config.ClientRouteDefsFile
-	if clientRouteDefsFile == "" {
+func routeDefinitionWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
+	normalizedRouteDefinitionPatterns := normalizeRouteDefinitionPatternsInInputOrder(
+		v.Config.ClientRouteDefinitionPatterns,
+	)
+	if len(normalizedRouteDefinitionPatterns) == 0 {
 		return nil
 	}
 
-	watchPattern := runOnChangeOnlyWatchPattern(
-		clientRouteDefsFile,
-		routeDefinitionsOnChangeCallback(v),
-		true,
-	)
-	return &watchPattern
+	onChangeCallback := routeDefinitionsOnChangeCallback(v)
+	watchPatterns := make([]wave.WatchedFile, 0, len(normalizedRouteDefinitionPatterns))
+	for _, routeDefinitionPattern := range normalizedRouteDefinitionPatterns {
+		watchPatterns = append(
+			watchPatterns,
+			runOnChangeOnlyWatchPattern(
+				routeDefinitionPattern,
+				onChangeCallback,
+				true,
+			),
+		)
+	}
+	return watchPatterns
 }
 
 func htmlTemplateWatchPattern(v *vormaruntime.Vorma) *wave.WatchedFile {

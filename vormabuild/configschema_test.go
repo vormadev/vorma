@@ -10,7 +10,7 @@ func TestVormaSchema_RequiredChildren(t *testing.T) {
 		"UIVariant",
 		"HTMLTemplateLocation",
 		"ClientEntry",
-		"ClientRouteDefsFile",
+		"ClientRouteDefinitionPatterns",
 		"TSGenOutDir",
 		"MainBuildEntry",
 	}

@@ -295,8 +295,10 @@ func TestInit_PanicsWhenPrivateFSUnavailable(t *testing.T) {
 			UIVariant:            string(UIVariants.React),
 			HTMLTemplateLocation: "entry.go.html",
 			ClientEntry:          "frontend/src/vorma.entry.tsx",
-			ClientRouteDefsFile:  "frontend/src/vorma.routes.ts",
-			TSGenOutDir:          "frontend/src/vorma.gen",
+			ClientRouteDefinitionPatterns: []string{
+				"frontend/src/**/*vorma.routes.ts",
+			},
+			TSGenOutDir: "frontend/src/vorma.gen",
 		},
 	}
 	cfgBytes, err := json.Marshal(cfg)

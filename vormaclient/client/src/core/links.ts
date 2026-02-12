@@ -6,7 +6,10 @@ import {
 	isSameDocumentLocation,
 	resolveAbsoluteHref,
 } from "../platform/url.ts";
-import type { NavigationOutcome } from "./navigation/types.ts";
+import {
+	hasNavigationControlPromiseOwnership,
+	type NavigationOutcome,
+} from "./navigation/types.ts";
 import {
 	effectuateRedirectDataResult,
 	syncBuildIDFromRedirectData,
@@ -76,7 +79,7 @@ function getCurrentNavigationEntryForControl(props: {
 }): ReturnType<typeof navigationStateManager.getNavigation> {
 	const { targetUrl, controlPromise } = props;
 	const currentEntry = navigationStateManager.getNavigation(targetUrl);
-	if (!currentEntry || currentEntry.control.promise !== controlPromise) {
+	if (!hasNavigationControlPromiseOwnership(currentEntry, controlPromise)) {
 		return undefined;
 	}
 
@@ -117,11 +120,14 @@ async function handleLinkNavigationOutcome<E extends Event>(props: {
 
 		syncBuildIDFromRedirectData(outcome.redirectData);
 		navigationStateManager.removeNavigation(targetUrl);
-		await effectuateRedirectDataResult(
+		const redirectResult = await effectuateRedirectDataResult(
 			outcome.redirectData,
 			outcome.props.redirectCount || 0,
 			outcome.props,
 		);
+		if (redirectResult?.status !== "did") {
+			return;
+		}
 		await callbacks.afterRender?.(event);
 		return;
 	}
@@ -139,6 +145,9 @@ async function handleLinkNavigationOutcome<E extends Event>(props: {
 		outcome,
 		currentEntryAfterBeforeRender,
 	);
+	if (currentEntryAfterBeforeRender.phase !== "complete") {
+		return;
+	}
 	await callbacks.afterRender?.(event);
 }
 
@@ -182,7 +191,12 @@ export function createLinkOnClickFn<E extends Event>(
 			const targetUrl = resolveAbsoluteHref(anchor.href);
 			const currentEntry =
 				navigationStateManager.getNavigation(targetUrl);
-			if (currentEntry?.control.promise === controlPromise) {
+			if (
+				hasNavigationControlPromiseOwnership(
+					currentEntry,
+					controlPromise,
+				)
+			) {
 				navigationStateManager.removeNavigation(targetUrl);
 			}
 			logError("Link navigation failed", error);

@@ -242,6 +242,7 @@ func Init(o Options) {
 		"backend/cmd/build",
 		"backend/dist/static/internal",
 		"frontend/src/components",
+		"frontend/src/routes",
 		"frontend/src/styles",
 	)
 
@@ -253,7 +254,11 @@ func Init(o Options) {
 	do.tmplWriteMust("backend/cmd/build/main.go", "tmpls/cmd_build_main_go_tmpl.txt")
 	do.tmplWriteMust("backend/dist/static/.keep", "tmpls/dist_static_keep_tmpl.txt")
 	strWriteMust("backend/assets/entry.go.html", "tmpls/backend_static_entry_go_html_str.txt")
-	do.tmplWriteMust("backend/src/router/router.go", "tmpls/backend_src_router_router_go_tmpl.txt")
+	do.tmplWriteMust("backend/src/router/app.go", "tmpls/backend_src_router_app_go_tmpl.txt")
+	do.tmplWriteMust("backend/src/router/context.go", "tmpls/backend_src_router_context_go_tmpl.txt")
+	do.tmplWriteMust("backend/src/router/registration.go", "tmpls/backend_src_router_registration_go_tmpl.txt")
+	do.tmplWriteMust("backend/src/router/init.go", "tmpls/backend_src_router_init_go_tmpl.txt")
+	do.tmplWriteMust("backend/src/router/example_routes.go", "tmpls/backend_src_router_example_routes_go_tmpl.txt")
 	strWriteMust("backend/wave.dev.go", "tmpls/backend_wave_dev_go_str.txt")
 	strWriteMust("backend/wave.prod.go", "tmpls/backend_wave_prod_go_str.txt")
 	do.tmplWriteMust("backend/wave.config.json", "tmpls/wave_config_json_tmpl.txt")
@@ -262,12 +267,12 @@ func Init(o Options) {
 	strWriteMust(".gitignore", "tmpls/gitignore_str.txt")
 	strWriteMust("frontend/src/styles/main.css", "tmpls/main_css_str.txt")
 	strWriteMust("frontend/src/styles/main.critical.css", "tmpls/main_critical_css_str.txt")
-	strWriteMust("frontend/src/vorma.routes.ts", "tmpls/frontend_routes_ts_str.txt")
+	strWriteMust("frontend/src/routes/core.vorma.routes.ts", "tmpls/frontend_routes_core_ts_str.txt")
+	strWriteMust("frontend/src/routes/links.vorma.routes.ts", "tmpls/frontend_routes_links_ts_str.txt")
 	do.tmplWriteMust("frontend/src/components/root.tsx", "tmpls/frontend_root_tsx_tmpl.txt")
 	do.tmplWriteMust("frontend/src/components/home.tsx", "tmpls/frontend_home_tsx_tmpl.txt")
 	do.tmplWriteMust("frontend/src/components/links.tsx", "tmpls/frontend_links_tsx_tmpl.txt")
-	do.tmplWriteMust("frontend/src/vorma.utils.tsx", "tmpls/frontend_app_utils_tsx_tmpl.txt")
-	strWriteMust("frontend/src/vorma.api.ts", "tmpls/frontend_api_client_ts_str.txt")
+	do.tmplWriteMust("frontend/src/vorma.app.tsx", "tmpls/frontend_app_tsx_tmpl.txt")
 	strWriteMust("frontend/vite.d.ts", "tmpls/frontend_vite_d_ts_str.txt")
 	if o.DeploymentTarget == "vercel" {
 		do.tmplWriteMust("vercel.json", "tmpls/vercel_json_tmpl.txt")

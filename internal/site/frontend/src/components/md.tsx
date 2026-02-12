@@ -5,7 +5,7 @@ import {
 	addClientLoader,
 	useLoaderData,
 	type RouteProps,
-} from "../vorma.utils.tsx";
+} from "../vorma.app.tsx";
 import { useRootClientLoaderData } from "./home.tsx";
 import { RenderedMarkdown } from "./rendered-markdown.tsx";
 
@@ -66,9 +66,7 @@ export function MD(props: RouteProps<"/*">) {
 					</button>
 				</Show>
 			</div>
-			<Show when={splatClientLoaderData()}>
-				{(n) => <h1>{n()}</h1>}
-			</Show>
+			<Show when={splatClientLoaderData()}>{(n) => <h1>{n()}</h1>}</Show>
 			<Show when={loaderData()?.Date}>{(n) => <i>{n()}</i>}</Show>
 			<Show when={loaderData()?.Content}>
 				{(n) => (

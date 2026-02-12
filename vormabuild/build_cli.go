@@ -1,6 +1,7 @@
 package vormabuild
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -57,6 +58,13 @@ func runBuildCommand(
 	commandLineArgs []string,
 	hooks buildCommandHooks,
 ) error {
+	if v == nil {
+		return errors.New("Vorma runtime is required")
+	}
+	if err := validateBuildCommandHooks(hooks); err != nil {
+		return err
+	}
+
 	options, err := parseBuildCommandOptions(commandLineArgs)
 	if err != nil {
 		return fmt.Errorf("parse build flags: %w", err)
@@ -64,6 +72,22 @@ func runBuildCommand(
 
 	commandExecutor := newBuildCommandExecutor(v, hooks)
 	return commandExecutor.run(options)
+}
+
+func validateBuildCommandHooks(hooks buildCommandHooks) error {
+	if hooks.configureBuildEnvironment == nil {
+		return errors.New("build command hook configureBuildEnvironment is required")
+	}
+	if hooks.runBuildHook == nil {
+		return errors.New("build command hook runBuildHook is required")
+	}
+	if hooks.runProdHookPostProcessing == nil {
+		return errors.New("build command hook runProdHookPostProcessing is required")
+	}
+	if hooks.runFullBuild == nil {
+		return errors.New("build command hook runFullBuild is required")
+	}
+	return nil
 }
 
 func newBuildCommandExecutor(

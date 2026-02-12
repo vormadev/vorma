@@ -9,14 +9,37 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-func TestRouteDefinitionsWatchPattern_ReturnsNilWhenRouteDefsFileMissing(t *testing.T) {
+func TestRouteDefinitionWatchPatterns_ReturnNilWhenRouteDefsPatternsMissing(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	app.Config.ClientRouteDefsFile = ""
+	app.Config.ClientRouteDefinitionPatterns = nil
 
-	pattern := routeDefinitionsWatchPattern(app)
-	if pattern != nil {
-		t.Fatalf("expected no watch pattern when route definitions file is empty, got %#v", pattern)
+	patterns := routeDefinitionWatchPatterns(app)
+	if len(patterns) != 0 {
+		t.Fatalf("expected no watch patterns when route definitions patterns are empty, got %#v", patterns)
+	}
+}
+
+func TestRouteDefinitionWatchPatterns_TrimsAndDeduplicatesPatternsInInputOrder(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	app.Config.ClientRouteDefinitionPatterns = []string{
+		"  frontend/src/routes/alpha.vorma.routes.ts  ",
+		"frontend/src/routes/alpha.vorma.routes.ts",
+		"",
+		"\nfrontend/src/routes/beta.vorma.routes.ts\n",
+		"frontend/src/routes/alpha.vorma.routes.ts",
+	}
+
+	patterns := routeDefinitionWatchPatterns(app)
+	if len(patterns) != 2 {
+		t.Fatalf("len(patterns) = %d, want %d (%#v)", len(patterns), 2, patterns)
+	}
+	if patterns[0].Pattern != "frontend/src/routes/alpha.vorma.routes.ts" {
+		t.Fatalf("patterns[0].Pattern = %q, want trimmed alpha pattern", patterns[0].Pattern)
+	}
+	if patterns[1].Pattern != "frontend/src/routes/beta.vorma.routes.ts" {
+		t.Fatalf("patterns[1].Pattern = %q, want trimmed beta pattern", patterns[1].Pattern)
 	}
 }
 
@@ -51,7 +74,7 @@ func TestRouteDefinitionsOnChangeCallback_ReturnsErrorWhenNotInDevMode(t *testin
 func TestGetDefaultWatchPatterns_SkipsMissingOptionalPatterns(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	app.Config.ClientRouteDefsFile = ""
+	app.Config.ClientRouteDefinitionPatterns = nil
 	app.Config.HTMLTemplateLocation = ""
 
 	patterns := getDefaultWatchPatterns(app)
@@ -77,9 +100,11 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 
 	templatePath := filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation)
 	expectedPatternCounts := map[string]int{
-		app.Config.ClientRouteDefsFile: 1,
-		templatePath:                   1,
-		"**/*.go":                      1,
+		templatePath: 1,
+		"**/*.go":    1,
+	}
+	for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
+		expectedPatternCounts[routeDefinitionPattern] = 1
 	}
 	assertFrameworkWatchPatternCounts(t, parsedCfg.FrameworkWatchPatterns, expectedPatternCounts)
 
@@ -287,16 +312,17 @@ func TestShouldInjectDefaultWatchPatterns(t *testing.T) {
 	}
 }
 
-func TestRouteDefinitionsWatchPattern_UsesConfiguredRouteFile(t *testing.T) {
+func TestRouteDefinitionWatchPatterns_UseConfiguredRoutePattern(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	app.Config.ClientRouteDefsFile = "frontend/src/custom.routes.ts"
+	app.Config.ClientRouteDefinitionPatterns = []string{"frontend/src/custom.routes.ts"}
 
-	pattern := routeDefinitionsWatchPattern(app)
-	if pattern == nil {
-		t.Fatal("expected route definitions watch pattern")
+	patterns := routeDefinitionWatchPatterns(app)
+	if len(patterns) != 1 {
+		t.Fatalf("len(patterns) = %d, want 1", len(patterns))
 	}
 
+	pattern := patterns[0]
 	if pattern.Pattern != "frontend/src/custom.routes.ts" {
 		t.Fatalf("Pattern = %q, want %q", pattern.Pattern, "frontend/src/custom.routes.ts")
 	}

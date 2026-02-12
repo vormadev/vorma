@@ -41,11 +41,13 @@ func newBuildTestFixture(t *testing.T, options *buildTestFixtureOptions) *buildT
 	mustMkdirAll(t, filepath.Join(privateDir, vormaruntime.VormaOutDirname))
 
 	cfg := vormaruntime.VormaConfig{
-		MainBuildEntry:             "backend/cmd/build",
-		UIVariant:                  string(vormaruntime.UIVariants.React),
-		HTMLTemplateLocation:       "entry.go.html",
-		ClientEntry:                "frontend/src/vorma.entry.tsx",
-		ClientRouteDefsFile:        "frontend/src/vorma.routes.ts",
+		MainBuildEntry:       "backend/cmd/build",
+		UIVariant:            string(vormaruntime.UIVariants.React),
+		HTMLTemplateLocation: "entry.go.html",
+		ClientEntry:          "frontend/src/vorma.entry.tsx",
+		ClientRouteDefinitionPatterns: []string{
+			"frontend/src/**/*vorma.routes.ts",
+		},
 		TSGenOutDir:                "frontend/src/vorma.gen",
 		BuildtimePublicURLFuncName: "waveBuildtimeURL",
 	}

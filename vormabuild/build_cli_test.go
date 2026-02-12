@@ -58,7 +58,93 @@ func TestParseBuildCommandOptions(t *testing.T) {
 	})
 }
 
+func TestValidateBuildCommandHooks(t *testing.T) {
+	validHooks := defaultBuildCommandHooks()
+
+	t.Run("valid hooks return nil", func(t *testing.T) {
+		if err := validateBuildCommandHooks(validHooks); err != nil {
+			t.Fatalf("validateBuildCommandHooks returned error: %v", err)
+		}
+	})
+
+	t.Run("configure hook is required", func(t *testing.T) {
+		invalidHooks := validHooks
+		invalidHooks.configureBuildEnvironment = nil
+		err := validateBuildCommandHooks(invalidHooks)
+		if err == nil {
+			t.Fatal("expected error for missing configureBuildEnvironment hook")
+		}
+		if !strings.Contains(err.Error(), "configureBuildEnvironment is required") {
+			t.Fatalf("error = %q, expected missing-configure-hook message", err)
+		}
+	})
+
+	t.Run("build hook is required", func(t *testing.T) {
+		invalidHooks := validHooks
+		invalidHooks.runBuildHook = nil
+		err := validateBuildCommandHooks(invalidHooks)
+		if err == nil {
+			t.Fatal("expected error for missing runBuildHook hook")
+		}
+		if !strings.Contains(err.Error(), "runBuildHook is required") {
+			t.Fatalf("error = %q, expected missing-build-hook message", err)
+		}
+	})
+
+	t.Run("post processing hook is required", func(t *testing.T) {
+		invalidHooks := validHooks
+		invalidHooks.runProdHookPostProcessing = nil
+		err := validateBuildCommandHooks(invalidHooks)
+		if err == nil {
+			t.Fatal("expected error for missing runProdHookPostProcessing hook")
+		}
+		if !strings.Contains(err.Error(), "runProdHookPostProcessing is required") {
+			t.Fatalf("error = %q, expected missing-post-hook message", err)
+		}
+	})
+
+	t.Run("full build hook is required", func(t *testing.T) {
+		invalidHooks := validHooks
+		invalidHooks.runFullBuild = nil
+		err := validateBuildCommandHooks(invalidHooks)
+		if err == nil {
+			t.Fatal("expected error for missing runFullBuild hook")
+		}
+		if !strings.Contains(err.Error(), "runFullBuild is required") {
+			t.Fatalf("error = %q, expected missing-full-build-hook message", err)
+		}
+	})
+}
+
 func TestRunBuildCommand(t *testing.T) {
+	t.Run("returns error when runtime is nil", func(t *testing.T) {
+		err := runBuildCommand(
+			nil,
+			nil,
+			defaultBuildCommandHooks(),
+		)
+		if err == nil {
+			t.Fatal("expected runBuildCommand to return error for nil runtime")
+		}
+		if !strings.Contains(err.Error(), "Vorma runtime is required") {
+			t.Fatalf("error = %q, expected nil-runtime context", err)
+		}
+	})
+
+	t.Run("returns error when required hooks are missing", func(t *testing.T) {
+		err := runBuildCommand(
+			&vormaruntime.Vorma{},
+			nil,
+			buildCommandHooks{},
+		)
+		if err == nil {
+			t.Fatal("expected runBuildCommand to return error for missing hooks")
+		}
+		if !strings.Contains(err.Error(), "build command hook configureBuildEnvironment is required") {
+			t.Fatalf("error = %q, expected missing-hook context", err)
+		}
+	})
+
 	t.Run("parses flags and executes through provided hooks", func(t *testing.T) {
 		var runFullBuildCalled bool
 		err := runBuildCommand(

@@ -150,7 +150,7 @@ export const vormaViteConfig = {
 		"**/backend/assets/**/*",
 		"**/backend/wave.config.json",
 		"**/frontend/src/vorma.gen/**/*",
-		"**/frontend/src/vorma.routes.ts"
+		"**/frontend/src/**/*vorma.routes.ts"
 	],
 	dedupeList: [
 		"solid-js",

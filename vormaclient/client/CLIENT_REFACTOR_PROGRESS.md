@@ -415,11 +415,35 @@
       `decideTransitionNavigationPhaseAction`,
       `executeTransitionNavigationPhaseAction`), separating match/decision from
       mutation side-effects.
+- Link callback completion semantics hardened:
+    - `src/core/links.ts` now gates redirect-path `afterRender` on redirect
+      effectuation result `status: "did"` (no callback on non-effectuation
+      `null` redirects).
+    - `src/core/links.ts` now gates success-path `afterRender` on entry phase
+      `complete` after navigation processing, preventing callback execution when
+      stale/replaced flows stop before completion.
+    - `src/tests/unit/links_internal.test.ts` now pins both cases:
+      non-effectuated redirect and non-complete successful-processing paths must
+      not execute `afterRender`.
+- Local import-resolution tooling hardened:
+    - `tsconfig.base.json` now maps `vorma/*` package subpaths directly to
+      source paths via `compilerOptions.paths`.
+    - `vitest.config.ts` now mirrors these aliases for deterministic test
+      resolution without requiring `npm_dist` to exist.
+    - mapping is compatible with both `tsc` and `tsgo` (no `baseUrl` usage).
+- Navigation ownership checks deduplicated:
+    - `src/core/navigation/types.ts` now exports
+      `hasNavigationControlPromiseOwnership(...)` as the shared primitive for
+      control-promise identity checks.
+    - `src/core/navigation/runtime.ts`,
+      `src/core/navigation/runtime_navigation_outcome.ts`, and
+      `src/core/links.ts` now route ownership checks through this shared helper
+      instead of ad hoc `entry.control.promise === controlPromise` branches.
 
 ## Current Test Inventory
 
 - `28` test files
-- `457` tests
+- `459` tests
 
 ## Latest Verified Gate (2026-02-12)
 
@@ -432,12 +456,12 @@
 
 Result:
 
-- tests: pass (`28` files, `457` tests)
+- tests: pass (`28` files, `459` tests)
 - coverage summary:
-    - statements: `92.95%`
-    - branches: `87.84%`
-    - functions: `95.56%`
-    - lines: `93.3%`
+    - statements: `92.96%`
+    - branches: `87.87%`
+    - functions: `95.57%`
+    - lines: `93.31%`
 
 ## Remaining Work
 

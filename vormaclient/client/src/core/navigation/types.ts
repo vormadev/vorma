@@ -94,3 +94,10 @@ export type NavigationStateManager = {
 	getStatus: () => StatusEventDetail;
 	clearAll: () => void;
 };
+
+export function hasNavigationControlPromiseOwnership(
+	entry: NavigationEntry | undefined,
+	controlPromise: Promise<NavigationOutcome>,
+): entry is NavigationEntry {
+	return !!entry && entry.control.promise === controlPromise;
+}

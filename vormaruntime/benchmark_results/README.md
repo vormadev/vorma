@@ -1,33 +1,30 @@
 # Benchmark Results
 
-This directory stores raw `go test -bench` stdout snapshots only.
+Raw benchmark stdout snapshots for `vormaruntime`.
 
-## Rules
+## Artifact Policy
 
-- Keep artifacts as raw benchmark stdout.
-- Do not include process listings or host diagnostic command output.
-- If host load is clearly unstable, skip benchmark capture and note it in
-  `AGENT_HANDOFF.md`.
-- Keep only three benchmark artifacts in this directory: `ORIGINAL`,
-  `SECOND_TO_LATEST`, and `FRESH`.
-- On each new benchmark capture, keep `ORIGINAL` unchanged.
-- On each new benchmark capture, move prior `FRESH` to `SECOND_TO_LATEST`.
-- On each new benchmark capture, record the new run as `FRESH`.
-- Delete all intermediary benchmark captures after recording the new `FRESH`.
+- Keep only:
+    - `ORIGINAL_raw.txt`
+    - `SECOND_TO_LATEST_raw.txt`
+    - `FRESH_raw.txt`
+- Keep filenames stable; update contents in place.
+- Never include host process diagnostics in these files.
 
-## Artifact Files
+## Capture Procedure
 
-- `ORIGINAL_raw.txt`
-- `SECOND_TO_LATEST_raw.txt`
-- `FRESH_raw.txt`
+- Preserve `ORIGINAL_raw.txt`.
+- Before a new capture, copy current `FRESH_raw.txt` to
+  `SECOND_TO_LATEST_raw.txt`.
+- Record a new `FRESH_raw.txt`.
+- Use slice-based runs with `-count=3`:
+    - loaders/deps/html/cold-cache set
+    - actions set
+    - SSR set
+- Compare runs using median `ns/op` per benchmark.
 
-## Capture Timestamps
+## Current Capture Timestamps
 
 - `ORIGINAL_raw.txt`: `2026-02-11 15:43:53`
-- `SECOND_TO_LATEST_raw.txt`: `2026-02-12 10:14:35`
-- `FRESH_raw.txt`: `2026-02-12 10:20:18`
-
-Compare both:
-
-- `FRESH` vs `ORIGINAL` for long-horizon guardrails.
-- `FRESH` vs `SECOND_TO_LATEST` for immediate regression detection.
+- `SECOND_TO_LATEST_raw.txt`: `2026-02-12 10:20:18`
+- `FRESH_raw.txt`: `2026-02-12 11:45:47`

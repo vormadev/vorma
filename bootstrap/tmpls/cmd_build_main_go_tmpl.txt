@@ -7,5 +7,5 @@ import (
 )
 
 func main() {
-	vormabuild.Build(router.App)
+	vormabuild.Build(router.GetApp())
 }

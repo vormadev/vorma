@@ -98,11 +98,13 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	}{
 		Core: coreCfg,
 		Vorma: VormaConfig{
-			MainBuildEntry:             "backend/cmd/build",
-			UIVariant:                  string(UIVariants.React),
-			HTMLTemplateLocation:       "entry.go.html",
-			ClientEntry:                "frontend/src/vorma.entry.tsx",
-			ClientRouteDefsFile:        "frontend/src/vorma.routes.ts",
+			MainBuildEntry:       "backend/cmd/build",
+			UIVariant:            string(UIVariants.React),
+			HTMLTemplateLocation: "entry.go.html",
+			ClientEntry:          "frontend/src/vorma.entry.tsx",
+			ClientRouteDefinitionPatterns: []string{
+				"frontend/src/**/*vorma.routes.ts",
+			},
 			TSGenOutDir:                "frontend/src/vorma.gen",
 			BuildtimePublicURLFuncName: "",
 		},

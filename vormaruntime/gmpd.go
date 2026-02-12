@@ -229,6 +229,7 @@ func (v *Vorma) prepareRouteDataExecutionInputs(
 	}
 
 	matches := matchResults.Matches
+	routeDataSnapshotVersion := v._routeDataSnapshotVersion
 	pathsSnapshot := v._paths
 	clientEntryDepsSnapshot := v._clientEntryDeps
 	clientEntryOutSnapshot := v._clientEntryOut
@@ -238,11 +239,13 @@ func (v *Vorma) prepareRouteDataExecutionInputs(
 	matchedPatterns := collectMatchedPatterns(matches)
 	cacheKey := v.buildRouteDataCacheKey(matches, isDev, buildID)
 	cached := loadOrBuildCachedItemSubset(
+		v,
 		cacheKey,
 		matches,
 		pathsSnapshot,
 		clientEntryDepsSnapshot,
 		isDev,
+		routeDataSnapshotVersion,
 	)
 
 	return routeDataExecutionInputs{
@@ -268,19 +271,29 @@ func collectMatchedPatterns(matches []*matcher.Match) []string {
 }
 
 func loadOrBuildCachedItemSubset(
+	v *Vorma,
 	cacheKey string,
 	matches []*matcher.Match,
 	pathsSnapshot map[string]*Path,
 	clientEntryDepsSnapshot []string,
 	isDev bool,
+	expectedSnapshotVersion uint64,
 ) *cachedItemSubset {
 	if cachedValue, isCached := gmpdCache.Load(cacheKey); isCached {
 		return cachedValue.(*cachedItemSubset)
 	}
 
 	cached := buildCachedItemSubset(matches, pathsSnapshot, clientEntryDepsSnapshot, isDev)
-	gmpdCache.Store(cacheKey, cached)
+	if v.isRouteDataSnapshotVersionCurrent(expectedSnapshotVersion) {
+		gmpdCache.Store(cacheKey, cached)
+	}
 	return cached
+}
+
+func (v *Vorma) isRouteDataSnapshotVersionCurrent(expectedSnapshotVersion uint64) bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._routeDataSnapshotVersion == expectedSnapshotVersion
 }
 
 func computeHasRootData(

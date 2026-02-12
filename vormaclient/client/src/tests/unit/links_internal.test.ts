@@ -224,6 +224,66 @@ describe("links internal branches", () => {
 		expect(effectuateRedirectSpy).not.toHaveBeenCalled();
 	});
 
+	it("does not call afterRender when redirect effectuation does not complete", async () => {
+		const targetHref = "/redirect-no-complete-after-render";
+		const targetUrl = new URL(targetHref, window.location.href).href;
+		const redirectHrefDetails = getHrefDetails("/redirect-target");
+		if (!redirectHrefDetails.isHTTP) {
+			throw new Error("Expected HTTP href details for redirect target.");
+		}
+		const redirectOutcome = {
+			type: "redirect" as const,
+			redirectData: {
+				status: "should" as const,
+				shouldRedirectStrategy: "soft" as const,
+				latestBuildID: "1",
+				href: "/redirect-target",
+				hrefDetails: redirectHrefDetails,
+			},
+			props: {
+				href: targetHref,
+				navigationType: "userNavigation" as const,
+			},
+		};
+		const controlPromise = Promise.resolve(redirectOutcome);
+		const entry: NavigationEntry = {
+			control: {
+				abortController: new AbortController(),
+				promise: controlPromise,
+			},
+			type: "userNavigation",
+			intent: "navigate",
+			phase: "fetching",
+			startTime: Date.now(),
+			targetUrl,
+			originUrl: window.location.href,
+		};
+
+		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
+			abortController: undefined,
+			promise: controlPromise,
+		});
+		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
+			() => entry,
+		);
+		vi.spyOn(
+			redirectsModule,
+			"syncBuildIDFromRedirectData",
+		).mockImplementation(() => {});
+		vi.spyOn(
+			redirectsModule,
+			"effectuateRedirectDataResult",
+		).mockResolvedValue(null);
+		const afterRender = vi.fn();
+
+		const onClick = __makeLinkOnClickFn({
+			afterRender,
+		});
+		await onClick(createClickEvent(targetHref));
+
+		expect(afterRender).not.toHaveBeenCalled();
+	});
+
 	it("does not remove navigation when failed link promise is stale", async () => {
 		const targetHref = "/failed-link-navigation-stale";
 		const staleControlPromise = Promise.reject(new Error("network failed"));
@@ -256,6 +316,76 @@ describe("links internal branches", () => {
 			onClick(createClickEvent(targetHref)),
 		).resolves.toBeUndefined();
 		expect(removeNavigationSpy).not.toHaveBeenCalled();
+	});
+
+	it("does not call afterRender when successful link processing does not complete", async () => {
+		const targetHref = "/success-not-complete-after-render";
+		const targetUrl = new URL(targetHref, window.location.href).href;
+		const successOutcome = {
+			type: "success" as const,
+			response: new Response("{}", {
+				status: 200,
+				headers: {
+					"X-Vorma-Build-Id": "build-id-1",
+				},
+			}),
+			json: {
+				matchedPatterns: ["/example"],
+				loadersData: [{}],
+				importURLs: ["/entry.js"],
+				exportKeys: ["default"],
+				errorExportKeys: [""],
+				hasRootData: true,
+				params: {},
+				splatValues: [],
+				title: null,
+				metaHeadEls: null,
+				restHeadEls: null,
+				deps: [],
+				cssBundles: [],
+			},
+			cssBundlePromises: [],
+			waitFnPromise: Promise.resolve({ data: [] }),
+			props: {
+				href: targetHref,
+				navigationType: "userNavigation" as const,
+			},
+		};
+		const controlPromise = Promise.resolve(successOutcome);
+		const entry: NavigationEntry = {
+			control: {
+				abortController: new AbortController(),
+				promise: controlPromise,
+			},
+			type: "userNavigation",
+			intent: "navigate",
+			phase: "fetching",
+			startTime: Date.now(),
+			targetUrl,
+			originUrl: window.location.href,
+		};
+
+		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
+			abortController: undefined,
+			promise: controlPromise,
+		});
+		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
+			() => entry,
+		);
+		vi.spyOn(
+			navigationStateManager,
+			"processSuccessfulNavigation",
+		).mockImplementation(async (_outcome, currentEntry) => {
+			currentEntry.phase = "waiting";
+		});
+		const afterRender = vi.fn();
+
+		const onClick = __makeLinkOnClickFn({
+			afterRender,
+		});
+		await onClick(createClickEvent(targetHref));
+
+		expect(afterRender).not.toHaveBeenCalled();
 	});
 
 	it("finds and aborts idle prefetch entries by same-data-target alias", () => {

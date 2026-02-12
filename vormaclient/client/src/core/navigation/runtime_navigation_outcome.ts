@@ -21,6 +21,7 @@ import type {
 	NavigationOutcome,
 	NavigationPhase,
 } from "./types.ts";
+import { hasNavigationControlPromiseOwnership } from "./types.ts";
 
 export async function handleNavigationOutcome(props: {
 	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
@@ -178,7 +179,7 @@ function isNavigationOutcomeCurrentForEntry(props: {
 	controlPromise: Promise<NavigationOutcome>;
 }): boolean {
 	const { entry, controlPromise } = props;
-	return entry.control.promise === controlPromise;
+	return hasNavigationControlPromiseOwnership(entry, controlPromise);
 }
 
 function isIdlePrefetchEntry(entry: NavigationEntry): boolean {

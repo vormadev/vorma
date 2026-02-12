@@ -113,6 +113,34 @@ func TestBuildInner(t *testing.T) {
 		}
 	})
 
+	t.Run("defaults to non-dev mode when options are nil", func(t *testing.T) {
+		restoreBuildInnerSteps(t)
+
+		initializeCalled := false
+		buildInnerDeps.initializeBuildInnerState = func(_ *vormaruntime.Vorma, options *buildInnerOptions) error {
+			initializeCalled = true
+			if options == nil {
+				t.Fatal("expected buildInner to normalize nil options")
+			}
+			if options.isDev {
+				t.Fatal("expected nil options to default to non-dev mode")
+			}
+			return nil
+		}
+		buildInnerDeps.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error { return nil }
+		buildInnerDeps.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error { return nil }
+		buildInnerDeps.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error { return nil }
+		buildInnerDeps.writeRouteArtifactsWithLock = func(*vormaruntime.Vorma) error { return nil }
+		buildInnerDeps.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {}
+
+		if err := buildInner(&vormaruntime.Vorma{}, nil); err != nil {
+			t.Fatalf("buildInner returned error with nil options: %v", err)
+		}
+		if !initializeCalled {
+			t.Fatal("expected initializeBuildInnerState to be called")
+		}
+	})
+
 	t.Run("restores runtime state snapshot when a step fails", func(t *testing.T) {
 		restoreBuildInnerSteps(t)
 

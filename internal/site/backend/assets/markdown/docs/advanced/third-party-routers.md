@@ -16,7 +16,7 @@ supported as well. At the end of the day, Vorma boils down to standard
 For example, here is how you might use Vorma with Chi:
 
 ```go
-// backend/src/router/router.go
+// backend/src/router/init.go
 
 package router
 
@@ -28,19 +28,20 @@ import (
     "github.com/vormadev/vorma/kit/middleware/healthcheck"
 )
 
-var App = vorma.NewVormaApp(vorma.VormaAppConfig{
+var appSingleton = vorma.NewVormaApp(vorma.VormaAppConfig{
     Wave: backend.Wave,
     // ... your config
 })
 
 func Init() (addr string, handler http.Handler) {
-    App.Init()
+    app := GetApp()
+    app.Init()
 
     r := chi.NewRouter()
-    loaders, actions := App.Loaders(), App.Actions()
+    loaders, actions := app.Loaders(), app.Actions()
 
     // Apply global middlewares
-    r.Use(App.ServeStatic())
+    r.Use(app.ServeStatic())
     r.Use(healthcheck.Healthz)
     r.Use(vorma.EnableThirdPartyRouter) // <-- KEY PIECE
 
@@ -56,6 +57,6 @@ func Init() (addr string, handler http.Handler) {
         )
     }
 
-    return App.ServerAddr(), r
+    return app.ServerAddr(), r
 }
 ```

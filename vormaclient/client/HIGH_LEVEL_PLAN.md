@@ -275,6 +275,18 @@ Purpose: keep the sequence explicit so takeover is safe and work does not drift.
     - 2026-02-12: submit stale-checkpoint unit coverage now also pins
       replacement takeover during redirect effectuation and during awaited
       auto-revalidation navigation.
+    - 2026-02-12: link-click callback semantics now gate `afterRender` on
+      objective completion only: redirect path requires effectuation result
+      `status: "did"` and success path requires navigation entry phase
+      `complete` after processing.
+    - 2026-02-12: test/tooling resolution for `vorma/*` self-imports is now
+      source-mapped in `tsconfig.base.json` and `vitest.config.ts`, removing
+      local Vitest coupling to `npm_dist` artifacts while remaining compatible
+      with both `tsc` and `tsgo`.
+    - 2026-02-12: navigation control-promise ownership checks are now
+      centralized in `hasNavigationControlPromiseOwnership(...)` and reused
+      across `runtime.ts`, `runtime_navigation_outcome.ts`, and `links.ts` to
+      remove duplicated stale-entry comparison logic.
 
 ## Current Validation Gate
 

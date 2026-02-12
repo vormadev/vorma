@@ -252,7 +252,10 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 	var foundGoPattern bool
 
 	for _, pattern := range patterns {
-		if pattern.Pattern == app.Config.ClientRouteDefsFile {
+		for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
+			if pattern.Pattern != routeDefinitionPattern {
+				continue
+			}
 			foundRoutesPattern = true
 			if !pattern.RunOnChangeOnly {
 				t.Fatalf("routes pattern should use RunOnChangeOnly")
@@ -290,7 +293,7 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 	}
 
 	if !foundRoutesPattern {
-		t.Fatalf("did not find routes watch pattern %q", app.Config.ClientRouteDefsFile)
+		t.Fatalf("did not find configured routes watch patterns %#v", app.Config.ClientRouteDefinitionPatterns)
 	}
 	if !foundTemplatePattern {
 		t.Fatalf("did not find template watch pattern")
@@ -303,12 +306,14 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 func TestInjectDefaultWatchPatterns_SkipsWhenIncludeDefaultsDisabled(t *testing.T) {
 	includeDefaults := false
 	cfg := vormaruntime.VormaConfig{
-		IncludeDefaults:            &includeDefaults,
-		MainBuildEntry:             "backend/cmd/build",
-		UIVariant:                  string(vormaruntime.UIVariants.React),
-		HTMLTemplateLocation:       "entry.go.html",
-		ClientEntry:                "frontend/src/vorma.entry.tsx",
-		ClientRouteDefsFile:        "frontend/src/vorma.routes.ts",
+		IncludeDefaults:      &includeDefaults,
+		MainBuildEntry:       "backend/cmd/build",
+		UIVariant:            string(vormaruntime.UIVariants.React),
+		HTMLTemplateLocation: "entry.go.html",
+		ClientEntry:          "frontend/src/vorma.entry.tsx",
+		ClientRouteDefinitionPatterns: []string{
+			"frontend/src/**/*vorma.routes.ts",
+		},
 		TSGenOutDir:                "frontend/src/vorma.gen",
 		BuildtimePublicURLFuncName: "waveBuildtimeURL",
 	}
@@ -495,7 +500,7 @@ func TestParseAndSyncClientRoutes_MergesClientAndServerRoutes(t *testing.T) {
 	t.Chdir(fixture.rootDir)
 
 	mustWriteFile(t, "frontend/src/components/client.tsx", []byte("export const Client = () => null;"))
-	mustWriteFile(t, app.Config.ClientRouteDefsFile, []byte(`
+	mustWriteFile(t, "frontend/src/vorma.routes.ts", []byte(`
 import { route } from "vorma/buildtime";
 route("/client", import("./components/client.tsx"), "Client");
 `))

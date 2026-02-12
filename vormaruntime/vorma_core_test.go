@@ -144,6 +144,44 @@ func TestLockedVormaGettersAndSetters(t *testing.T) {
 	})
 }
 
+func TestLockedVormaGetPaths_DoesNotExposeMutableInternalState(t *testing.T) {
+	stage := defaultPathsFile("build-locked-getpaths-clone", map[string]*Path{
+		"/locked": {
+			OriginalPattern: "/locked",
+			SrcPath:         "frontend/src/routes/locked.tsx",
+			OutPath:         "vorma_out/routes/locked.js",
+			ExportKey:       "default",
+			Deps:            []string{"vorma_out/chunk-locked.js"},
+		},
+	})
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+	})
+	app := fixture.app
+
+	var leakedPaths map[string]*Path
+	app.WithRLock(func(lv *LockedVorma) {
+		leakedPaths = lv.GetPaths()
+	})
+
+	leakedPaths["/new"] = &Path{OriginalPattern: "/new"}
+	leakedPaths["/locked"].SrcPath = "frontend/src/routes/mutated.tsx"
+	leakedPaths["/locked"].Deps[0] = "vorma_out/chunk-mutated.js"
+
+	pathsSnapshot := app.GetPathsSnapshot()
+	if _, exists := pathsSnapshot["/new"]; exists {
+		t.Fatalf("LockedVorma.GetPaths leaked caller-added key into runtime state: %#v", pathsSnapshot)
+	}
+	if got, want := pathsSnapshot["/locked"].SrcPath, "frontend/src/routes/locked.tsx"; got != want {
+		t.Fatalf("LockedVorma.GetPaths leaked SrcPath mutation: got %q want %q", got, want)
+	}
+	if got, want := pathsSnapshot["/locked"].Deps[0], "vorma_out/chunk-locked.js"; got != want {
+		t.Fatalf("LockedVorma.GetPaths leaked deps mutation: got %q want %q", got, want)
+	}
+}
+
 func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(t *testing.T) {
 	oldStage := defaultPathsFile("build-same", map[string]*Path{
 		"/products/:id": {

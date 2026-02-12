@@ -25,7 +25,7 @@ func (r *RouteRegistry) SyncFromDevReload(paths map[string]*Path) {
 	v := r.vorma
 	v._paths = clonePathsMap(paths)
 	r.mergeServerRoutes()
-	clearRouteDataCache()
+	v.invalidateRouteDataCacheLocked()
 	r.rebuildNestedRouterFromCurrentPaths()
 }
 
@@ -39,7 +39,7 @@ func (r *RouteRegistry) ReplaceParsedPathsForInit(
 ) {
 	v := r.vorma
 	v._paths = clonePathsMap(paths)
-	clearRouteDataCache()
+	v.invalidateRouteDataCacheLocked()
 	if rebuildNestedRouter {
 		r.rebuildNestedRouterFromCurrentPaths()
 	}

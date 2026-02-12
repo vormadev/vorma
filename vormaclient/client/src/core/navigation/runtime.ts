@@ -34,6 +34,7 @@ import type {
 	SubmitOptions,
 	SubmissionEntry,
 } from "./types.ts";
+import { hasNavigationControlPromiseOwnership } from "./types.ts";
 
 const REVALIDATION_COALESCE_MS = 8;
 
@@ -187,7 +188,7 @@ export function createNavigationRuntime(
 		} catch {
 			const targetUrl = resolveAbsoluteHref(props.href);
 			const entry = findNavigationEntry(targetUrl);
-			if (entry?.control.promise === control.promise) {
+			if (hasNavigationControlPromiseOwnership(entry, control.promise)) {
 				deleteNavigation(targetUrl);
 			}
 			return { didNavigate: false };

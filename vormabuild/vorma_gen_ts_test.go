@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -97,8 +98,11 @@ func TestGenerateRollupOptions_ContainsExpectedConfig(t *testing.T) {
 		if !strings.Contains(content, `"react"`) || !strings.Contains(content, `"react-dom"`) {
 			t.Fatalf("rollup options missing react dedupe list:\n%s", content)
 		}
-		if !strings.Contains(content, app.Config.ClientRouteDefsFile) {
-			t.Fatalf("rollup options missing client route defs file in ignored patterns:\n%s", content)
+		for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
+			if strings.Contains(content, routeDefinitionPattern) {
+				continue
+			}
+			t.Fatalf("rollup options missing client route defs pattern in ignored patterns:\n%s", content)
 		}
 		if !strings.Contains(content, app.Config.TSGenOutDir+"/**/*") {
 			t.Fatalf("rollup options missing TS output dir in ignored patterns:\n%s", content)
@@ -308,6 +312,39 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 	}
 	if len(data.IgnoredPatterns) == 0 {
 		t.Fatal("expected non-empty ignored patterns")
+	}
+}
+
+func TestBuildViteIgnoredPatterns_TrimsAndDeduplicatesRouteDefinitionPatterns(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	app.Config.ClientRouteDefinitionPatterns = []string{
+		" frontend/src/routes/core.vorma.routes.ts ",
+		"frontend/src/routes/core.vorma.routes.ts",
+		"",
+		"\nfrontend/src/routes/extra.vorma.routes.ts\n",
+	}
+
+	ignoredPatterns := buildViteIgnoredPatterns(app)
+	corePattern := filepath.ToSlash(path.Join("**", "frontend/src/routes/core.vorma.routes.ts"))
+	extraPattern := filepath.ToSlash(path.Join("**", "frontend/src/routes/extra.vorma.routes.ts"))
+
+	coreCount := 0
+	extraCount := 0
+	for _, ignoredPattern := range ignoredPatterns {
+		if filepath.ToSlash(ignoredPattern) == corePattern {
+			coreCount++
+		}
+		if filepath.ToSlash(ignoredPattern) == extraPattern {
+			extraCount++
+		}
+	}
+
+	if coreCount != 1 {
+		t.Fatalf("core pattern count = %d, want 1 (%#v)", coreCount, ignoredPatterns)
+	}
+	if extraCount != 1 {
+		t.Fatalf("extra pattern count = %d, want 1 (%#v)", extraCount, ignoredPatterns)
 	}
 }
 

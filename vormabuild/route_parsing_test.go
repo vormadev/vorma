@@ -255,7 +255,7 @@ func TestParseClientRoutes_ResolvesStaticAndImportModules(t *testing.T) {
 
 	v := &vormaruntime.Vorma{
 		Config: &vormaruntime.VormaConfig{
-			ClientRouteDefsFile: routesFile,
+			ClientRouteDefinitionPatterns: []string{routesFile},
 		},
 		Log: testLogger(),
 	}
@@ -300,6 +300,173 @@ func TestParseClientRoutes_ResolvesStaticAndImportModules(t *testing.T) {
 	}
 }
 
+func TestParseClientRoutes_MergesRoutesAcrossDefinitionFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	t.Chdir(rootDir)
+
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "components", "root.tsx"),
+		[]byte("export const Root = () => null;"),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "components", "links.tsx"),
+		[]byte("export const Links = () => null;"),
+	)
+
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "routes", "core.vorma.routes.ts"),
+		[]byte(`
+			import { route } from "vorma/buildtime";
+			route("/", import("../components/root.tsx"), "Root");
+		`),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "routes", "links.vorma.routes.ts"),
+		[]byte(`
+			import { route } from "vorma/buildtime";
+			route("/links", import("../components/links.tsx"), "Links");
+		`),
+	)
+
+	v := &vormaruntime.Vorma{
+		Config: &vormaruntime.VormaConfig{
+			ClientRouteDefinitionPatterns: []string{
+				"frontend/src/**/*vorma.routes.ts",
+			},
+		},
+		Log: testLogger(),
+	}
+
+	paths, err := parseClientRoutes(v)
+	if err != nil {
+		t.Fatalf("parseClientRoutes returned error: %v", err)
+	}
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 resolved paths, got %d", len(paths))
+	}
+	if got := paths["/"]; got == nil || got.SrcPath != "frontend/src/components/root.tsx" {
+		t.Fatalf("paths[/] = %#v, want frontend/src/components/root.tsx", got)
+	}
+	if got := paths["/links"]; got == nil || got.SrcPath != "frontend/src/components/links.tsx" {
+		t.Fatalf("paths[/links] = %#v, want frontend/src/components/links.tsx", got)
+	}
+}
+
+func TestParseClientRoutes_ReturnsErrorForDuplicatePatternAcrossDefinitionFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	t.Chdir(rootDir)
+
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "components", "first.tsx"),
+		[]byte("export const First = () => null;"),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "components", "second.tsx"),
+		[]byte("export const Second = () => null;"),
+	)
+
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "routes", "first.vorma.routes.ts"),
+		[]byte(`
+			import { route } from "vorma/buildtime";
+			route("/dup", import("../components/first.tsx"), "First");
+		`),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "routes", "second.vorma.routes.ts"),
+		[]byte(`
+			import { route } from "vorma/buildtime";
+			route("/dup", import("../components/second.tsx"), "Second");
+		`),
+	)
+
+	v := &vormaruntime.Vorma{
+		Config: &vormaruntime.VormaConfig{
+			ClientRouteDefinitionPatterns: []string{
+				"frontend/src/**/*vorma.routes.ts",
+			},
+		},
+		Log: testLogger(),
+	}
+
+	_, err := parseClientRoutes(v)
+	if err == nil {
+		t.Fatal("expected duplicate route pattern error, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate route pattern: /dup") {
+		t.Fatalf("error = %q, expected duplicate route pattern message", err)
+	}
+}
+
+func TestParseClientRoutes_TrimsAndDeduplicatesRouteDefinitionPatterns(t *testing.T) {
+	rootDir := t.TempDir()
+	t.Chdir(rootDir)
+
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "routes", "home.tsx"),
+		[]byte("export const Home = () => null;"),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "routes", "home.vorma.routes.ts"),
+		[]byte(`
+			import { route } from "vorma/buildtime";
+			route("/", "./home.tsx", "Home");
+		`),
+	)
+
+	v := &vormaruntime.Vorma{
+		Config: &vormaruntime.VormaConfig{
+			ClientRouteDefinitionPatterns: []string{
+				" frontend/src/routes/home.vorma.routes.ts ",
+				"frontend/src/routes/home.vorma.routes.ts",
+				" ",
+			},
+		},
+		Log: testLogger(),
+	}
+
+	paths, err := parseClientRoutes(v)
+	if err != nil {
+		t.Fatalf("parseClientRoutes returned error: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("len(paths) = %d, want 1", len(paths))
+	}
+	if got := paths["/"]; got == nil || got.SrcPath != "frontend/src/routes/home.tsx" {
+		t.Fatalf("paths[/] = %#v, want frontend/src/routes/home.tsx", got)
+	}
+}
+
+func TestParseClientRoutes_ReturnsErrorWhenRouteDefinitionPatternsContainOnlyWhitespace(t *testing.T) {
+	v := &vormaruntime.Vorma{
+		Config: &vormaruntime.VormaConfig{
+			ClientRouteDefinitionPatterns: []string{
+				" ",
+				"\n\t",
+			},
+		},
+		Log: testLogger(),
+	}
+
+	_, err := parseClientRoutes(v)
+	if err == nil {
+		t.Fatal("expected error for whitespace-only route definition patterns, got nil")
+	}
+	if !strings.Contains(err.Error(), "Vorma.ClientRouteDefinitionPatterns cannot contain only empty values") {
+		t.Fatalf("error = %q, expected whitespace-only pattern error", err)
+	}
+}
+
 func TestParseClientRoutes_ReturnsErrorWhenModuleDoesNotExist(t *testing.T) {
 	rootDir := t.TempDir()
 	t.Chdir(rootDir)
@@ -312,7 +479,7 @@ func TestParseClientRoutes_ReturnsErrorWhenModuleDoesNotExist(t *testing.T) {
 
 	v := &vormaruntime.Vorma{
 		Config: &vormaruntime.VormaConfig{
-			ClientRouteDefsFile: routesFile,
+			ClientRouteDefinitionPatterns: []string{routesFile},
 		},
 		Log: testLogger(),
 	}
@@ -329,7 +496,9 @@ func TestParseClientRoutes_ReturnsErrorWhenModuleDoesNotExist(t *testing.T) {
 func TestParseClientRoutes_ReturnsErrorWhenRoutesFileDoesNotExist(t *testing.T) {
 	v := &vormaruntime.Vorma{
 		Config: &vormaruntime.VormaConfig{
-			ClientRouteDefsFile: filepath.Join(t.TempDir(), "missing.routes.ts"),
+			ClientRouteDefinitionPatterns: []string{
+				filepath.Join(t.TempDir(), "missing.routes.ts"),
+			},
 		},
 		Log: testLogger(),
 	}
@@ -338,8 +507,8 @@ func TestParseClientRoutes_ReturnsErrorWhenRoutesFileDoesNotExist(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected error for missing route definitions file, got nil")
 	}
-	if !strings.Contains(err.Error(), "read file") {
-		t.Fatalf("error = %q, expected read-file context", err)
+	if !strings.Contains(err.Error(), "stat route definition path") {
+		t.Fatalf("error = %q, expected stat route definition path context", err)
 	}
 }
 
@@ -356,7 +525,7 @@ func TestParseClientRoutes_ReturnsErrorWhenTransformFails(t *testing.T) {
 
 	v := &vormaruntime.Vorma{
 		Config: &vormaruntime.VormaConfig{
-			ClientRouteDefsFile: routesFile,
+			ClientRouteDefinitionPatterns: []string{routesFile},
 		},
 		Log: testLogger(),
 	}
@@ -779,7 +948,9 @@ func TestResolveRouteModulePath(t *testing.T) {
 
 		v := &vormaruntime.Vorma{
 			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefsFile: "frontend/src/vorma.routes.ts",
+				ClientRouteDefinitionPatterns: []string{
+					"frontend/src/**/*vorma.routes.ts",
+				},
 			},
 			Log: testLogger(),
 		}
@@ -788,7 +959,7 @@ func TestResolveRouteModulePath(t *testing.T) {
 			Module:  "./routes/users.tsx",
 		}
 
-		resolvedPath := resolveRouteModulePath(v, "frontend/src", routeCall)
+		resolvedPath := resolveRouteModulePath(v, "frontend/src/vorma.routes.ts", routeCall)
 		if resolvedPath != "./routes/users.tsx" {
 			t.Fatalf("resolved path = %q, want fallback module path %q", resolvedPath, "./routes/users.tsx")
 		}

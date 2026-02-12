@@ -1,0 +1,17 @@
+package router
+
+import (
+	"net/http"
+
+	"github.com/vormadev/vorma/kit/middleware/healthcheck"
+)
+
+func Init() (addr string, handler http.Handler) {
+	app := GetApp()
+	r := app.InitWithDefaultRouter()
+
+	r.SetGlobalHTTPMiddleware(app.ServeStatic())
+	r.SetGlobalHTTPMiddleware(healthcheck.Healthz)
+
+	return app.ServerAddr(), r
+}

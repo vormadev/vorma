@@ -8,8 +8,10 @@ import (
 )
 
 func main() {
-	if _, err := docsync.SyncAndResolvePublicURLs(router.App.GetParsedConfig(), router.App.Logger()); err != nil {
+	app := router.GetApp()
+
+	if _, err := docsync.SyncAndResolvePublicURLs(app.GetParsedConfig(), app.Logger()); err != nil {
 		panic(err)
 	}
-	vormabuild.Build(router.App)
+	vormabuild.Build(app)
 }

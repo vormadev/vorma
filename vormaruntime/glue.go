@@ -197,8 +197,13 @@ func (v *Vorma) validateConfig() {
 	if v.Config.ClientEntry == "" {
 		panic("config: Vorma.ClientEntry is required")
 	}
-	if v.Config.ClientRouteDefsFile == "" {
-		panic("config: Vorma.ClientRouteDefsFile is required")
+	if len(v.Config.ClientRouteDefinitionPatterns) == 0 {
+		panic("config: Vorma.ClientRouteDefinitionPatterns is required")
+	}
+	for _, pattern := range v.Config.ClientRouteDefinitionPatterns {
+		if strings.TrimSpace(pattern) == "" {
+			panic("config: Vorma.ClientRouteDefinitionPatterns cannot contain empty entries")
+		}
 	}
 	if v.Config.TSGenOutDir == "" {
 		panic("config: Vorma.TSGenOutDir is required")
