@@ -17,33 +17,32 @@ func (v *Vorma) routes() *RouteRegistry {
 	return &RouteRegistry{vorma: v}
 }
 
-// Sync updates the route state from parsed client routes.
+// SyncFromDevReload updates the route state from parsed client routes for
+// dev-time reload, preserving server-only handlers in parsed-path state and
+// rebuilding nested-router registrations.
 // Caller must hold v.mu.Lock().
-func (r *RouteRegistry) Sync(paths map[string]*Path) {
+func (r *RouteRegistry) SyncFromDevReload(paths map[string]*Path) {
 	v := r.vorma
-
-	// Defensive nil check: if paths is nil (e.g., malformed JSON file),
-	// initialize to empty map to prevent nil map panics in mergeServerRoutes.
-	if paths == nil {
-		paths = make(map[string]*Path)
-	}
-
-	v._paths = paths
+	v._paths = clonePathsMap(paths)
 	r.mergeServerRoutes()
+	clearRouteDataCache()
+	r.rebuildNestedRouterFromCurrentPaths()
+}
 
-	// Clear the gmpd cache since paths have changed.
-	// Use Range+Delete rather than reassigning the sync.Map variable
-	// to avoid a data race with concurrent Load/Store operations.
-	gmpdCache.Range(func(key, _ any) bool {
-		gmpdCache.Delete(key)
-		return true
-	})
-
-	patterns := make([]string, 0, len(v._paths))
-	for pattern := range v._paths {
-		patterns = append(patterns, pattern)
+// ReplaceParsedPathsForInit updates route state from parsed client routes for
+// init/re-init flows. This does not merge server-only handlers into parsed-path
+// state, but can rebuild nested-router registrations when requested.
+// Caller must hold v.mu.Lock().
+func (r *RouteRegistry) ReplaceParsedPathsForInit(
+	paths map[string]*Path,
+	rebuildNestedRouter bool,
+) {
+	v := r.vorma
+	v._paths = clonePathsMap(paths)
+	clearRouteDataCache()
+	if rebuildNestedRouter {
+		r.rebuildNestedRouterFromCurrentPaths()
 	}
-	v.LoadersRouter().NestedRouter.RebuildPreservingHandlers(patterns)
 }
 
 // mergeServerRoutes adds server-only routes to paths.
@@ -64,6 +63,15 @@ func (r *RouteRegistry) mergeServerRoutes() {
 			}
 		}
 	}
+}
+
+func (r *RouteRegistry) rebuildNestedRouterFromCurrentPaths() {
+	v := r.vorma
+	patterns := make([]string, 0, len(v._paths))
+	for pattern := range v._paths {
+		patterns = append(patterns, pattern)
+	}
+	v.LoadersRouter().NestedRouter.RebuildPreservingHandlers(patterns)
 }
 
 // RegisterPatternIfNeeded registers a pattern if not already registered.

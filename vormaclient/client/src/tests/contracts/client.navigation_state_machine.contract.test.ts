@@ -39,45 +39,80 @@ function shuffledIndices(length: number, seed: number): number[] {
 	return indices;
 }
 
+type GeneratedOperation =
+	| {
+			kind: "prefetch";
+			href: string;
+	  }
+	| {
+			kind: "navigate";
+			href: string;
+	  };
+
+function buildGeneratedNavigationModelSequence(seed: number): {
+	operations: GeneratedOperation[];
+	finalNavigationHref: string;
+} {
+	const random = createSeededRandom(seed);
+	const operations: GeneratedOperation[] = [];
+	const basePathnames = ["/model-seq-a", "/model-seq-b", "/model-seq-c"];
+	const generatedCount = 14;
+
+	for (let i = 0; i < generatedCount; i++) {
+		const pathname =
+			basePathnames[Math.floor(random() * basePathnames.length)]!;
+		const hash = random() < 0.5 ? "" : `#h${Math.floor(random() * 4) + 1}`;
+		const href = `${pathname}${hash}`;
+		const kind = random() < 0.5 ? "prefetch" : "navigate";
+		operations.push({ kind, href } as GeneratedOperation);
+	}
+
+	const finalNavigationHref = `/model-seq-final-${seed}#winner`;
+	operations.push({
+		kind: "navigate",
+		href: finalNavigationHref,
+	});
+
+	return { operations, finalNavigationHref };
+}
+
 describe("client navigation state machine contracts", () => {
-	it.each([
-		[[2, 1, 0]],
-		[[1, 2, 0]],
-		[[0, 2, 1]],
-	])(
+	it.each([[[2, 1, 0]], [[1, 2, 0]], [[0, 2, 1]]])(
 		"keeps last-started user navigation authoritative despite late earlier completions (resolve order: %j)",
 		async (resolveOrder) => {
 			const api = await loadClientAPI();
 			const { requests } = createAbortAwareFetchRecorder();
 
-			const { unhandledRejections } = await withUnhandledRejectionCapture({
-				run: async () => {
-					const n1 = api.vormaNavigate("/model-a");
-					const n2 = api.vormaNavigate("/model-b");
-					const n3 = api.vormaNavigate("/model-c");
+			const { unhandledRejections } = await withUnhandledRejectionCapture(
+				{
+					run: async () => {
+						const n1 = api.vormaNavigate("/model-a");
+						const n2 = api.vormaNavigate("/model-b");
+						const n3 = api.vormaNavigate("/model-c");
 
-					await waitForRequestCount({ requests, count: 3 });
+						await waitForRequestCount({ requests, count: 3 });
 
-					const responses = [
-						routeTitle("Model A"),
-						routeTitle("Model B"),
-						routeTitle("Model C"),
-					];
+						const responses = [
+							routeTitle("Model A"),
+							routeTitle("Model B"),
+							routeTitle("Model C"),
+						];
 
-					for (const idx of resolveOrder) {
-						const request = requests[idx];
-						if (!request) {
-							throw new Error(
-								`Missing request for resolve index ${idx}`,
-							);
+						for (const idx of resolveOrder) {
+							const request = requests[idx];
+							if (!request) {
+								throw new Error(
+									`Missing request for resolve index ${idx}`,
+								);
+							}
+							request.resolve(responses[idx]!);
+							await Promise.resolve();
 						}
-						request.resolve(responses[idx]!);
-						await Promise.resolve();
-					}
 
-					await Promise.all([n1, n2, n3]);
+						await Promise.all([n1, n2, n3]);
+					},
 				},
-			});
+			);
 
 			expect(unhandledRejections).toEqual([]);
 			expect(window.location.pathname).toBe("/model-c");
@@ -109,7 +144,10 @@ describe("client navigation state machine contracts", () => {
 							count: navigationCount,
 						});
 
-						const resolveOrder = shuffledIndices(navigationCount, seed);
+						const resolveOrder = shuffledIndices(
+							navigationCount,
+							seed,
+						);
 						for (const requestIndex of resolveOrder) {
 							const request = requests[requestIndex];
 							if (!request) {
@@ -117,7 +155,9 @@ describe("client navigation state machine contracts", () => {
 									`Missing generated request at index ${requestIndex}`,
 								);
 							}
-							request.resolve(routeTitle(`Generated ${requestIndex}`));
+							request.resolve(
+								routeTitle(`Generated ${requestIndex}`),
+							);
 							await Promise.resolve();
 						}
 
@@ -140,8 +180,8 @@ describe("client navigation state machine contracts", () => {
 		const api = await loadClientAPI();
 		const { requests } = createAbortAwareFetchRecorder();
 
-		const { result, unhandledRejections } = await withUnhandledRejectionCapture(
-			{
+		const { result, unhandledRejections } =
+			await withUnhandledRejectionCapture({
 				run: async () => {
 					// 1) Start prefetch and then navigate to same data target:
 					// navigation should reuse in-flight work, not spawn another fetch.
@@ -153,7 +193,8 @@ describe("client navigation state machine contracts", () => {
 					await waitForRequestCount({ requests, count: 1 });
 					const prefetchRequest = requests[0]!;
 
-					const navFromPrefetch = api.vormaNavigate("/prefetch-seed#two");
+					const navFromPrefetch =
+						api.vormaNavigate("/prefetch-seed#two");
 					await Promise.resolve();
 					expect(requests).toHaveLength(1);
 
@@ -212,7 +253,9 @@ describe("client navigation state machine contracts", () => {
 						revalidationRequest.input,
 					);
 					expect(revalidationURL.pathname).toBe("/race-second");
-					expect(revalidationURL.searchParams.get("vorma_json")).toBe("1");
+					expect(revalidationURL.searchParams.get("vorma_json")).toBe(
+						"1",
+					);
 
 					// 4) Navigate away and then complete stale revalidation late:
 					// late revalidation must not overwrite newer destination.
@@ -223,17 +266,16 @@ describe("client navigation state machine contracts", () => {
 					navThirdRequest.resolve(routeTitle("Race Third"));
 					await navThird;
 
-					revalidationRequest.resolve(routeTitle("Stale Revalidation"));
+					revalidationRequest.resolve(
+						routeTitle("Stale Revalidation"),
+					);
 
-					const [submitOneResult, submitTwoResult] = await Promise.all([
-						submitOne,
-						submitTwo,
-					]);
+					const [submitOneResult, submitTwoResult] =
+						await Promise.all([submitOne, submitTwo]);
 
 					return { submitOneResult, submitTwoResult };
 				},
-			},
-		);
+			});
 
 		expect(unhandledRejections).toEqual([]);
 		expect(result.submitOneResult).toEqual({
@@ -246,6 +288,73 @@ describe("client navigation state machine contracts", () => {
 		});
 		expect(window.location.pathname).toBe("/race-third");
 		expect(document.title).toBe("Race Third");
+		expectStatusIdle(api.getStatus());
+	});
+
+	it("preserves last-navigation authority across a seeded randomized model sequence", async () => {
+		const api = await loadClientAPI();
+		const { requests } = createAbortAwareFetchRecorder();
+		const modelSeed = 20260212;
+		const { operations, finalNavigationHref } =
+			buildGeneratedNavigationModelSequence(modelSeed);
+
+		const { unhandledRejections } = await withUnhandledRejectionCapture({
+			run: async () => {
+				const navigationPromises: Array<Promise<void>> = [];
+
+				for (const operation of operations) {
+					if (operation.kind === "prefetch") {
+						const handlers = api.__getPrefetchHandlers({
+							href: operation.href,
+							delayMs: 0,
+						});
+						handlers?.start(new Event("mouseenter"));
+						await vi.advanceTimersByTimeAsync(1);
+						continue;
+					}
+
+					navigationPromises.push(api.vormaNavigate(operation.href));
+					await Promise.resolve();
+				}
+
+				await vi.advanceTimersByTimeAsync(20);
+				await Promise.resolve();
+				expect(requests.length).toBeGreaterThan(0);
+
+				const resolveOrder = shuffledIndices(
+					requests.length,
+					modelSeed ^ 0x5a5a,
+				);
+				for (const requestIndex of resolveOrder) {
+					const request = requests[requestIndex];
+					if (!request) {
+						throw new Error(
+							`Missing randomized model request at index ${requestIndex}`,
+						);
+					}
+
+					const requestURL = requestInputToURL(request.input);
+					request.resolve(
+						routeTitle(`Model Sequence ${requestURL.pathname}`),
+					);
+					await Promise.resolve();
+				}
+
+				await Promise.all(navigationPromises);
+			},
+		});
+
+		const expectedFinalURL = new URL(
+			finalNavigationHref,
+			window.location.origin,
+		);
+
+		expect(unhandledRejections).toEqual([]);
+		expect(window.location.pathname).toBe(expectedFinalURL.pathname);
+		expect(window.location.hash).toBe(expectedFinalURL.hash);
+		expect(document.title).toBe(
+			`Model Sequence ${expectedFinalURL.pathname}`,
+		);
 		expectStatusIdle(api.getStatus());
 	});
 });

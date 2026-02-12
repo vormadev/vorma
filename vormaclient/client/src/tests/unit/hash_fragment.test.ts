@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+	findMapEntryByNavigationTarget,
 	hasSameDataTarget,
+	hasSameNavigationTarget,
 	hashFragmentFromHash,
 	hashFragmentFromHref,
 	hrefWithoutHash,
@@ -53,6 +55,47 @@ describe("hash fragment helpers", () => {
 		expect(
 			hasSameDataTarget("/same-doc?b=2&a=1#one", "/same-doc?a=1&b=2#two"),
 		).toBe(false);
+	});
+
+	it("normalizes navigation target identity with exact and hash-insensitive checks", () => {
+		window.history.replaceState({}, "", "/same-doc?mode=1#base");
+
+		expect(
+			hasSameNavigationTarget(
+				"/same-doc?mode=1#stable",
+				"/same-doc?mode=1#stable",
+			),
+		).toBe(true);
+		expect(
+			hasSameNavigationTarget(
+				"/same-doc?mode=1#one",
+				"/same-doc?mode=1#two",
+			),
+		).toBe(true);
+		expect(
+			hasSameNavigationTarget(
+				"/same-doc?b=2&a=1#one",
+				"/same-doc?a=1&b=2#one",
+			),
+		).toBe(false);
+	});
+
+	it("finds map entries by navigation target with exact-key precedence", () => {
+		window.history.replaceState({}, "", "/same-doc?mode=1#base");
+		const map = new Map<string, string>([
+			["/same-doc?mode=1#first", "first"],
+			["/same-doc?mode=1#second", "second"],
+		]);
+
+		expect(
+			findMapEntryByNavigationTarget(map, "/same-doc?mode=1#first"),
+		).toEqual(["/same-doc?mode=1#first", "first"]);
+		expect(
+			findMapEntryByNavigationTarget(map, "/same-doc?mode=1#alias"),
+		).toEqual(["/same-doc?mode=1#first", "first"]);
+		expect(
+			findMapEntryByNavigationTarget(map, "/same-doc?mode=2#first"),
+		).toBe(undefined);
 	});
 
 	it("resolves relative and URL inputs to absolute hrefs", () => {

@@ -14,7 +14,14 @@ import { setupClientLoaders } from "./render_runtime.ts";
 let devTimeSetupClientLoadersDebounced: () => Promise<void> = () =>
 	Promise.resolve();
 
-let hmrRevalidateSet: Set<string>;
+let hmrRegisteredPathnamesByRuntime: WeakMap<
+	HotModuleRuntime,
+	Set<string>
+> = new WeakMap();
+let hmrTrackedPatternsByRuntimeAndPathname: WeakMap<
+	HotModuleRuntime,
+	Map<string, Set<string>>
+> = new WeakMap();
 
 export let __runClientLoadersAfterHMRUpdate: (
 	importMeta: ImportMeta,
@@ -24,7 +31,9 @@ export let __runClientLoadersAfterHMRUpdate: (
 type HotModuleRuntime = {
 	on: (
 		event: string,
-		callback: (props: { updates: Array<{ type: string; path: string }> }) => void,
+		callback: (props: {
+			updates: Array<{ type: string; path: string }>;
+		}) => void,
 	) => void;
 };
 
@@ -32,16 +41,55 @@ type HMRWindow = Window & {
 	__waveRevalidate?: typeof revalidate;
 };
 
+function isHotModuleRuntime(value: unknown): value is HotModuleRuntime {
+	return !!value && typeof (value as HotModuleRuntime).on === "function";
+}
+
 function resolveHotModuleRuntime(
 	importMeta: ImportMeta,
 ): HotModuleRuntime | undefined {
-	const runtimeHot =
-		(importMeta as ImportMeta & { hot?: unknown }).hot ??
-		(import.meta as ImportMeta & { hot?: unknown }).hot;
-	if (runtimeHot && typeof (runtimeHot as HotModuleRuntime).on === "function") {
-		return runtimeHot as HotModuleRuntime;
+	const importMetaHot = (importMeta as ImportMeta & { hot?: unknown }).hot;
+	if (isHotModuleRuntime(importMetaHot)) {
+		return importMetaHot;
 	}
-	return undefined;
+
+	const fallbackHot = (import.meta as ImportMeta & { hot?: unknown }).hot;
+	return isHotModuleRuntime(fallbackHot) ? fallbackHot : undefined;
+}
+
+function getRegisteredPathnamesForRuntime(
+	hotRuntime: HotModuleRuntime,
+): Set<string> {
+	let registeredPathnames = hmrRegisteredPathnamesByRuntime.get(hotRuntime);
+	if (!registeredPathnames) {
+		registeredPathnames = new Set<string>();
+		hmrRegisteredPathnamesByRuntime.set(hotRuntime, registeredPathnames);
+	}
+
+	return registeredPathnames;
+}
+
+function getTrackedPatternsForRuntimePathname(
+	hotRuntime: HotModuleRuntime,
+	pathname: string,
+): Set<string> {
+	let trackedPatternsByPathname =
+		hmrTrackedPatternsByRuntimeAndPathname.get(hotRuntime);
+	if (!trackedPatternsByPathname) {
+		trackedPatternsByPathname = new Map<string, Set<string>>();
+		hmrTrackedPatternsByRuntimeAndPathname.set(
+			hotRuntime,
+			trackedPatternsByPathname,
+		);
+	}
+
+	let trackedPatterns = trackedPatternsByPathname.get(pathname);
+	if (!trackedPatterns) {
+		trackedPatterns = new Set<string>();
+		trackedPatternsByPathname.set(pathname, trackedPatterns);
+	}
+
+	return trackedPatterns;
 }
 
 export function initHMR() {
@@ -54,37 +102,51 @@ export function initHMR() {
 		}, 10);
 
 		__runClientLoadersAfterHMRUpdate = (importMeta, pattern) => {
-			if (hmrRevalidateSet === undefined) {
-				hmrRevalidateSet = new Set();
-			}
-
 			const hot = resolveHotModuleRuntime(importMeta);
 			if (import.meta.env.DEV && hot) {
+				const registeredPathnames =
+					getRegisteredPathnamesForRuntime(hot);
 				const thisURL = new URL(importMeta.url, location.href);
 				thisURL.search = "";
 				const thisPathname = thisURL.pathname;
+				const trackedPatterns = getTrackedPatternsForRuntimePathname(
+					hot,
+					thisPathname,
+				);
+				trackedPatterns.add(pattern);
 
-				const alreadyRegistered = hmrRevalidateSet.has(thisPathname);
+				const alreadyRegistered = registeredPathnames.has(thisPathname);
 				if (alreadyRegistered) {
 					return;
 				}
 
-				hmrRevalidateSet.add(thisPathname);
+				registeredPathnames.add(thisPathname);
 
 				hot.on("vite:afterUpdate", (props) => {
 					for (const update of props.updates) {
 						if (update.type === "js-update") {
-							const updateURL = new URL(update.path, location.href);
+							const updateURL = new URL(
+								update.path,
+								location.href,
+							);
 							updateURL.search = "";
 							if (updateURL.pathname === thisURL.pathname) {
-								if (
-									__vormaClientGlobal
-										.get("matchedPatterns")
-										.includes(pattern)
-								) {
+								const matchedPatterns =
+									__vormaClientGlobal.get("matchedPatterns");
+								const matchedPatternList = Array.isArray(
+									matchedPatterns,
+								)
+									? matchedPatterns
+									: [];
+								const shouldRefreshClientLoaders = Array.from(
+									trackedPatterns,
+								).some((trackedPattern) =>
+									matchedPatternList.includes(trackedPattern),
+								);
+								if (shouldRefreshClientLoaders) {
 									logInfo(
 										"Refreshing client loaders due to change in pattern:",
-										pattern,
+										Array.from(trackedPatterns).join(", "),
 									);
 									devTimeSetupClientLoadersDebounced();
 								}

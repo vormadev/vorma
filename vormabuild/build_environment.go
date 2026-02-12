@@ -17,8 +17,12 @@ func registerVormaSchema(v *vormaruntime.Vorma) {
 
 func injectFrameworkBuildHooks(v *vormaruntime.Vorma) {
 	cfg := v.Wave.GetParsedConfig()
-	cfg.FrameworkDevBuildHook = fmt.Sprintf("go run ./%s --dev --hook", v.Config.MainBuildEntry)
-	cfg.FrameworkProdBuildHook = fmt.Sprintf("go run ./%s --hook", v.Config.MainBuildEntry)
+	if cfg.FrameworkDevBuildHook == "" {
+		cfg.FrameworkDevBuildHook = fmt.Sprintf("go run ./%s --dev --hook", v.Config.MainBuildEntry)
+	}
+	if cfg.FrameworkProdBuildHook == "" {
+		cfg.FrameworkProdBuildHook = fmt.Sprintf("go run ./%s --hook", v.Config.MainBuildEntry)
+	}
 }
 
 func configureBuildEnvironment(v *vormaruntime.Vorma) {

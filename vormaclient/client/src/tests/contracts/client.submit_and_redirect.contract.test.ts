@@ -224,7 +224,10 @@ describe("client submit/redirect contracts", () => {
 			const [resultA, resultB] = await Promise.all([submitA, submitB]);
 			await vi.runAllTimersAsync();
 
-			expect(resultA).toEqual({ success: true, data: undefined });
+			expect(resultA).toEqual({
+				success: false,
+				error: "Redirect failed",
+			});
 			expect(resultB).toEqual({ success: true, data: undefined });
 			expect(window.location.pathname).toBe("/redirect-b");
 			expect(document.title).toBe("Redirect B (Winner)");
@@ -830,6 +833,36 @@ describe("client submit/redirect contracts", () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(2);
 		expect(window.location.pathname).toBe("/after-submit");
 		expect(document.title).toBe("After Submit");
+	});
+
+	it("returns explicit error when submit soft redirect navigation fails", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{ headers: { "X-Client-Redirect": "/after-submit" } },
+				),
+			)
+			.mockRejectedValueOnce(
+				new Error("Redirect navigation request failed"),
+			);
+
+		const result = await api.submit("/api/action", { method: "POST" });
+		await vi.runAllTimersAsync();
+
+		expect(result).toEqual({
+			success: false,
+			error: "Redirect failed",
+		});
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		expect(window.location.pathname).toBe("/");
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
 	});
 
 	it("performs hard reload redirect when submit response includes X-Vorma-Reload", async () => {

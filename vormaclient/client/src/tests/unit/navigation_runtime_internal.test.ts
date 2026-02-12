@@ -11,14 +11,22 @@ import {
 	transitionNavigationPhaseInSlots,
 	type NavigationSlots,
 } from "../../core/navigation/runtime.ts";
+import {
+	executeSubmitRuntime,
+	type SubmitExecutionContext,
+} from "../../core/navigation/runtime_submit.ts";
+import {
+	handleNavigationOutcome,
+	processSuccessfulNavigationRuntime,
+} from "../../core/navigation/runtime_navigation_outcome.ts";
 import type { NavigationEntry } from "../../core/navigation/types.ts";
 import { VORMA_SYMBOL } from "../../app/context.ts";
+import { fetchRouteData } from "../../core/navigation/fetch_route_data.ts";
+import { canSkipServerFetch } from "../../core/navigation/fetch_route_data_skip.ts";
 import {
-	canSkipServerFetch,
-	fetchRouteData,
 	isSkipEligibilityViolated,
 	type SkipCheckContext,
-} from "../../core/navigation/fetch_route_data.ts";
+} from "../../core/navigation/fetch_route_data_skip_match.ts";
 import {
 	__registerClientLoaderPattern,
 	findPartialMatchesOnClient,
@@ -239,10 +247,12 @@ function createSubmitResponse(props: {
 
 beforeEach(() => {
 	window.history.replaceState({}, "", "/");
+	vi.spyOn(console, "error").mockImplementation(() => {});
 	installVormaGlobal();
 });
 
 afterEach(() => {
+	vi.restoreAllMocks();
 	delete (globalThis as any)[VORMA_SYMBOL];
 });
 
@@ -599,6 +609,210 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 		}
 	});
 
+	it("keeps a newer same-target active entry when an older active fetch rejects", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		try {
+			const runtime = createNavigationRuntime();
+			const firstControl = runtime.beginNavigation({
+				href: "/stale-active-entry",
+				navigationType: "browserHistory",
+			});
+			const firstControlPromise = firstControl.promise.catch(
+				(error) => error,
+			);
+
+			const targetUrl = new URL(
+				"/stale-active-entry",
+				window.location.href,
+			).href;
+			runtime.removeNavigation(targetUrl);
+
+			const secondControl = runtime.beginNavigation({
+				href: "/stale-active-entry",
+				navigationType: "browserHistory",
+			});
+			const secondControlPromise = secondControl.promise.catch(
+				(error) => error,
+			);
+			const secondEntry = runtime.getNavigation(targetUrl);
+			expect(secondEntry).toBeDefined();
+			if (!secondEntry) return;
+
+			await expect(firstControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
+
+			runtime.clearAll();
+			await expect(secondControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("does not delete a newer same-target entry when stale navigate rejection resolves", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		try {
+			const runtime = createNavigationRuntime();
+			const firstNavigatePromise = runtime.navigate({
+				href: "/stale-navigate-rejection",
+				navigationType: "browserHistory",
+			});
+
+			const targetUrl = new URL(
+				"/stale-navigate-rejection",
+				window.location.href,
+			).href;
+			runtime.removeNavigation(targetUrl);
+
+			const secondControl = runtime.beginNavigation({
+				href: "/stale-navigate-rejection",
+				navigationType: "browserHistory",
+			});
+			const secondControlPromise = secondControl.promise.catch(
+				(error) => error,
+			);
+			const secondEntry = runtime.getNavigation(targetUrl);
+			expect(secondEntry).toBeDefined();
+			if (!secondEntry) return;
+
+			await expect(firstNavigatePromise).resolves.toEqual({
+				didNavigate: false,
+			});
+			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
+
+			runtime.clearAll();
+			await expect(secondControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("deletes current same-target entry on navigate rejection when reused prefetch ownership still matches", async () => {
+		const deferred = createDeferred<Response>();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementation(() => deferred.promise);
+		try {
+			const runtime = createNavigationRuntime();
+			const targetHref = "/navigate-catch-owns-prefetch";
+			const targetUrl = new URL(targetHref, window.location.href).href;
+
+			runtime.beginNavigation({
+				href: targetHref,
+				navigationType: "prefetch",
+			});
+			const navigatePromise = runtime.navigate({
+				href: targetHref,
+				navigationType: "userNavigation",
+			});
+
+			const ownedEntryBeforeReject = runtime.getNavigation(targetUrl);
+			expect(ownedEntryBeforeReject).toBeDefined();
+			expect(ownedEntryBeforeReject?.type).toBe("userNavigation");
+
+			deferred.reject(new Error("network failed"));
+
+			await expect(navigatePromise).resolves.toEqual({
+				didNavigate: false,
+			});
+			expect(runtime.getNavigation(targetUrl)).toBeUndefined();
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("keeps a newer same-target prefetch entry when an older prefetch rejects", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		try {
+			const runtime = createNavigationRuntime();
+			const firstControl = runtime.beginNavigation({
+				href: "/stale-prefetch-entry",
+				navigationType: "prefetch",
+			});
+			const firstControlPromise = firstControl.promise.catch(
+				(error) => error,
+			);
+
+			const targetUrl = new URL(
+				"/stale-prefetch-entry",
+				window.location.href,
+			).href;
+			runtime.removeNavigation(targetUrl);
+
+			const secondControl = runtime.beginNavigation({
+				href: "/stale-prefetch-entry",
+				navigationType: "prefetch",
+			});
+			const secondControlPromise = secondControl.promise.catch(
+				(error) => error,
+			);
+			const secondEntry = runtime.getNavigation(targetUrl);
+			expect(secondEntry).toBeDefined();
+			if (!secondEntry) return;
+			expect(secondEntry.type).toBe("prefetch");
+
+			await expect(firstControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
+
+			runtime.clearAll();
+			await expect(secondControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("keeps a newer same-target revalidation entry when an older revalidation rejects", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		try {
+			window.history.replaceState({}, "", "/stale-revalidation-entry");
+			const runtime = createNavigationRuntime();
+
+			const firstControl = runtime.beginNavigation({
+				href: "/ignored-by-revalidation",
+				navigationType: "revalidation",
+			});
+			const firstControlPromise = firstControl.promise.catch(
+				(error) => error,
+			);
+
+			const targetUrl = window.location.href;
+			runtime.removeNavigation(targetUrl);
+
+			const secondControl = runtime.beginNavigation({
+				href: "/ignored-by-revalidation",
+				navigationType: "revalidation",
+			});
+			const secondControlPromise = secondControl.promise.catch(
+				(error) => error,
+			);
+			const secondEntry = runtime.getNavigation(targetUrl);
+			expect(secondEntry).toBeDefined();
+			if (!secondEntry) return;
+			expect(secondEntry.type).toBe("revalidation");
+
+			await expect(firstControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
+
+			runtime.clearAll();
+			await expect(secondControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
 	it("removeNavigation no-ops when target does not exist", () => {
 		const runtime = createNavigationRuntime();
 
@@ -609,6 +823,125 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 			),
 		).not.toThrow();
 		expect(runtime.getNavigationsSize()).toBe(0);
+	});
+});
+
+describe("navigation runtime outcome stale control guards", () => {
+	it("does not delete current entry when stale aborted outcome resolves for same target", async () => {
+		const targetUrl = new URL(
+			"/stale-control-aborted",
+			window.location.href,
+		).href;
+		const staleControlPromise = Promise.resolve({
+			type: "aborted",
+		} as NavigationOutcome);
+		const currentEntry = createEntry({
+			targetUrl,
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		currentEntry.control.promise = Promise.resolve(
+			createSuccessNavigationOutcome(),
+		);
+
+		const deleteNavigation = vi.fn(() => true);
+		const processSuccessfulNavigation = vi
+			.fn()
+			.mockResolvedValue(undefined);
+
+		const result = await handleNavigationOutcome({
+			findNavigationEntry: () => currentEntry,
+			deleteNavigation,
+			processSuccessfulNavigation,
+			navigationProps: {
+				href: targetUrl,
+				navigationType: "browserHistory",
+			},
+			outcome: { type: "aborted" },
+			controlPromise: staleControlPromise,
+		});
+
+		expect(result).toEqual({ didNavigate: false });
+		expect(deleteNavigation).not.toHaveBeenCalled();
+		expect(processSuccessfulNavigation).not.toHaveBeenCalled();
+	});
+
+	it("does not process success when stale control promise no longer owns target", async () => {
+		const targetUrl = new URL(
+			"/stale-control-success",
+			window.location.href,
+		).href;
+		const staleOutcome = createSuccessNavigationOutcome({
+			props: {
+				href: targetUrl,
+				navigationType: "browserHistory",
+			},
+		});
+		const staleControlPromise = Promise.resolve(staleOutcome);
+		const currentEntry = createEntry({
+			targetUrl,
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		currentEntry.control.promise = Promise.resolve(
+			createSuccessNavigationOutcome(),
+		);
+
+		const deleteNavigation = vi.fn(() => true);
+		const processSuccessfulNavigation = vi
+			.fn()
+			.mockResolvedValue(undefined);
+
+		const result = await handleNavigationOutcome({
+			findNavigationEntry: () => currentEntry,
+			deleteNavigation,
+			processSuccessfulNavigation,
+			navigationProps: staleOutcome.props,
+			outcome: staleOutcome,
+			controlPromise: staleControlPromise,
+		});
+
+		expect(result).toEqual({ didNavigate: false });
+		expect(deleteNavigation).not.toHaveBeenCalled();
+		expect(processSuccessfulNavigation).not.toHaveBeenCalled();
+	});
+
+	it("deletes target for current aborted outcome when control promise matches", async () => {
+		const targetUrl = new URL(
+			"/current-control-aborted",
+			window.location.href,
+		).href;
+		const controlPromise = Promise.resolve({
+			type: "aborted",
+		} as NavigationOutcome);
+		const currentEntry = createEntry({
+			targetUrl,
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		currentEntry.control.promise = controlPromise;
+
+		const deleteNavigation = vi.fn(() => true);
+		const processSuccessfulNavigation = vi
+			.fn()
+			.mockResolvedValue(undefined);
+
+		const result = await handleNavigationOutcome({
+			findNavigationEntry: () => currentEntry,
+			deleteNavigation,
+			processSuccessfulNavigation,
+			navigationProps: {
+				href: targetUrl,
+				navigationType: "browserHistory",
+			},
+			outcome: { type: "aborted" },
+			controlPromise,
+		});
+
+		expect(result).toEqual({ didNavigate: false });
+		expect(deleteNavigation).toHaveBeenCalledOnce();
+		expect(deleteNavigation).toHaveBeenCalledWith(targetUrl);
+		expect(processSuccessfulNavigation).not.toHaveBeenCalled();
 	});
 });
 
@@ -926,6 +1259,63 @@ describe("navigation runtime success-processing defensive branches", () => {
 		}
 	});
 
+	it("returns early when ownership is lost during waiting-phase transition", async () => {
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockResolvedValue();
+
+		try {
+			const targetUrl = new URL(
+				"/removed-during-waiting-transition",
+				window.location.href,
+			).href;
+			const entry = createEntry({
+				targetUrl,
+				type: "browserHistory",
+				intent: "navigate",
+			});
+			let ownedEntry: NavigationEntry | undefined = entry;
+			const transitionPhase = vi.fn(
+				(
+					_nextTargetUrl: string,
+					phase: "fetching" | "waiting" | "rendering" | "complete",
+				) => {
+					if (phase === "waiting") {
+						ownedEntry = undefined;
+					}
+				},
+			);
+			const findNavigationEntry = vi.fn(
+				(_nextTargetUrl: string) => ownedEntry,
+			);
+			const deleteNavigation = vi.fn(() => true);
+
+			await expect(
+				processSuccessfulNavigationRuntime(
+					{
+						transitionPhase,
+						findNavigationEntry: (nextTargetUrl: string) =>
+							findNavigationEntry(nextTargetUrl),
+						deleteNavigation,
+					},
+					createSuccessNavigationOutcome({
+						props: {
+							href: targetUrl,
+							navigationType: "browserHistory",
+						},
+					}),
+					entry,
+				),
+			).resolves.toBeUndefined();
+
+			expect(reRenderSpy).not.toHaveBeenCalled();
+			expect(transitionPhase).toHaveBeenCalledWith(targetUrl, "waiting");
+			expect(deleteNavigation).not.toHaveBeenCalled();
+		} finally {
+			reRenderSpy.mockRestore();
+		}
+	});
+
 	it("aborts stale revalidation after wait completes without rendering", async () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
 		const reRenderSpy = vi
@@ -966,6 +1356,165 @@ describe("navigation runtime success-processing defensive branches", () => {
 			expect(reRenderSpy).not.toHaveBeenCalled();
 			expect(runtime.getNavigation(entry.targetUrl)).toBeUndefined();
 		} finally {
+			fetchSpy.mockRestore();
+			reRenderSpy.mockRestore();
+		}
+	});
+
+	it("does not render or delete a newer same-target entry when an older success finishes late", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockResolvedValue();
+
+		try {
+			const runtime = createNavigationRuntime();
+			const firstControl = runtime.beginNavigation({
+				href: "/same-target-replacement",
+				navigationType: "browserHistory",
+			});
+			const firstControlPromise = firstControl.promise.catch(
+				(error) => error,
+			);
+
+			const targetUrl = new URL(
+				"/same-target-replacement",
+				window.location.href,
+			).href;
+			const firstEntry = runtime.getNavigation(targetUrl);
+			expect(firstEntry).toBeDefined();
+			if (!firstEntry) return;
+
+			const waitDeferred = createDeferred<{
+				data: Array<unknown>;
+				errorMessage?: string;
+			}>();
+			const olderSuccessProcessingPromise =
+				runtime.processSuccessfulNavigation(
+					createSuccessNavigationOutcome({
+						waitFnPromise: waitDeferred.promise,
+						props: {
+							href: targetUrl,
+							navigationType: "browserHistory",
+						},
+					}),
+					firstEntry,
+				);
+
+			runtime.removeNavigation(targetUrl);
+
+			const secondControl = runtime.beginNavigation({
+				href: "/same-target-replacement",
+				navigationType: "browserHistory",
+			});
+			const secondControlPromise = secondControl.promise.catch(
+				(error) => error,
+			);
+			const secondEntry = runtime.getNavigation(targetUrl);
+			expect(secondEntry).toBeDefined();
+			if (!secondEntry) return;
+			expect(secondEntry).not.toBe(firstEntry);
+
+			waitDeferred.resolve({ data: [] });
+			await expect(
+				olderSuccessProcessingPromise,
+			).resolves.toBeUndefined();
+
+			expect(reRenderSpy).not.toHaveBeenCalled();
+			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
+
+			runtime.clearAll();
+			await expect(firstControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+			await expect(secondControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+			reRenderSpy.mockRestore();
+		}
+	});
+
+	it("does not mark a newer same-target entry complete from a stale render onFinish callback", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		const renderDeferred = createDeferred<void>();
+		const renderStartedDeferred = createDeferred<void>();
+		let staleOnFinishCallback: (() => void) | undefined;
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockImplementation(async (props) => {
+				staleOnFinishCallback = props.onFinish;
+				renderStartedDeferred.resolve();
+				await renderDeferred.promise;
+			});
+
+		try {
+			const runtime = createNavigationRuntime();
+			const firstControl = runtime.beginNavigation({
+				href: "/same-target-stale-render-finish",
+				navigationType: "browserHistory",
+			});
+			const firstControlPromise = firstControl.promise.catch(
+				(error) => error,
+			);
+
+			const targetUrl = new URL(
+				"/same-target-stale-render-finish",
+				window.location.href,
+			).href;
+			const firstEntry = runtime.getNavigation(targetUrl);
+			expect(firstEntry).toBeDefined();
+			if (!firstEntry) return;
+
+			const olderSuccessProcessingPromise =
+				runtime.processSuccessfulNavigation(
+					createSuccessNavigationOutcome({
+						waitFnPromise: Promise.resolve({ data: [] }),
+						props: {
+							href: targetUrl,
+							navigationType: "browserHistory",
+						},
+					}),
+					firstEntry,
+				);
+
+			await renderStartedDeferred.promise;
+			expect(staleOnFinishCallback).toBeDefined();
+
+			runtime.removeNavigation(targetUrl);
+
+			const secondControl = runtime.beginNavigation({
+				href: "/same-target-stale-render-finish",
+				navigationType: "browserHistory",
+			});
+			const secondControlPromise = secondControl.promise.catch(
+				(error) => error,
+			);
+			const secondEntry = runtime.getNavigation(targetUrl);
+			expect(secondEntry).toBeDefined();
+			if (!secondEntry) return;
+			expect(secondEntry).not.toBe(firstEntry);
+			expect(secondEntry.phase).toBe("fetching");
+
+			staleOnFinishCallback?.();
+			expect(secondEntry.phase).toBe("fetching");
+
+			renderDeferred.resolve();
+			await expect(
+				olderSuccessProcessingPromise,
+			).resolves.toBeUndefined();
+			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
+
+			runtime.clearAll();
+			await expect(firstControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+			await expect(secondControlPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			renderDeferred.resolve();
 			fetchSpy.mockRestore();
 			reRenderSpy.mockRestore();
 		}
@@ -1099,6 +1648,76 @@ describe("navigation runtime submit stale checkpoints", () => {
 		}
 	});
 
+	it("aborts stale deduped submit when response classification starts a replacement submission", async () => {
+		const runtime = createNavigationRuntime();
+		let replacementSubmit:
+			| Promise<
+					| { success: true; data: unknown }
+					| { success: false; error: string }
+			  >
+			| undefined;
+		let okReadCount = 0;
+
+		let fetchCallCount = 0;
+		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve({
+					headers: new Headers({
+						"X-Vorma-Build-Id": "1",
+					}),
+					redirected: false,
+					url: window.location.href,
+					status: 503,
+					get ok() {
+						okReadCount++;
+						if (!replacementSubmit) {
+							replacementSubmit = runtime.submit(
+								"/api/replacement",
+								{ method: "POST" },
+								{
+									dedupeKey: "classification-stale",
+									revalidate: false,
+								},
+							);
+						}
+						return false;
+					},
+					json: async () => ({ stale: true }),
+				} as unknown as Response);
+			}
+
+			return Promise.resolve(
+				createSubmitResponse({
+					buildID: "1",
+					json: async () => ({ fresh: true }),
+				}),
+			);
+		});
+
+		try {
+			const firstSubmit = runtime.submit(
+				"/api/original",
+				{ method: "POST" },
+				{ dedupeKey: "classification-stale", revalidate: false },
+			);
+
+			await expect(firstSubmit).resolves.toEqual({
+				success: false,
+				error: "Aborted",
+			});
+			expect(okReadCount).toBeGreaterThan(0);
+			expect(replacementSubmit).toBeDefined();
+			await expect(replacementSubmit).resolves.toEqual({
+				success: true,
+				data: { fresh: true },
+			});
+			expect(fetchCallCount).toBe(2);
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
 	it("aborts stale deduped submit before auto-revalidation when method access starts a replacement submission", async () => {
 		const runtime = createNavigationRuntime();
 		let replacementSubmit:
@@ -1188,6 +1807,207 @@ describe("navigation runtime submit stale checkpoints", () => {
 			consoleErrorSpy.mockRestore();
 		}
 	});
+
+	it("returns explicit submit error when redirect effectuation fails", async () => {
+		const handleRedirectsSpy = vi
+			.spyOn(redirectsModule, "handleRedirects")
+			.mockResolvedValue({
+				redirectData: {
+					status: "should",
+					shouldRedirectStrategy: "soft",
+					latestBuildID: "1",
+					href: "/submit-redirect-target",
+					hrefDetails: {
+						isHTTP: true,
+						isInternal: true,
+						isExternal: false,
+						absoluteURL:
+							"http://localhost:3000/submit-redirect-target",
+					},
+				},
+				response: createSubmitResponse({
+					buildID: "1",
+					json: async () => ({ ok: true }),
+				}),
+			} as any);
+		const effectuateRedirectSpy = vi
+			.spyOn(redirectsModule, "effectuateRedirectDataResult")
+			.mockResolvedValue(null);
+
+		try {
+			const runtime = createNavigationRuntime();
+			const result = await runtime.submit(
+				"/api/failed-submit-redirect",
+				{ method: "POST" },
+				{ revalidate: false },
+			);
+
+			expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
+			expect(result).toEqual({
+				success: false,
+				error: "Redirect failed",
+			});
+		} finally {
+			handleRedirectsSpy.mockRestore();
+			effectuateRedirectSpy.mockRestore();
+		}
+	});
+
+	it("aborts stale deduped submit when replacement starts during redirect effectuation", async () => {
+		const runtime = createNavigationRuntime();
+		let replacementSubmit:
+			| Promise<
+					| { success: true; data: unknown }
+					| { success: false; error: string }
+			  >
+			| undefined;
+		const handleRedirectsSpy = vi
+			.spyOn(redirectsModule, "handleRedirects")
+			.mockResolvedValue({
+				redirectData: {
+					status: "should",
+					shouldRedirectStrategy: "soft",
+					latestBuildID: "1",
+					href: "/submit-redirect-target",
+					hrefDetails: {
+						isHTTP: true,
+						isInternal: true,
+						isExternal: false,
+						absoluteURL:
+							"http://localhost:3000/submit-redirect-target",
+					},
+				},
+				response: createSubmitResponse({
+					buildID: "1",
+					json: async () => ({ ok: true }),
+				}),
+			} as any);
+		const effectuateRedirectSpy = vi
+			.spyOn(redirectsModule, "effectuateRedirectDataResult")
+			.mockImplementation(async () => {
+				if (!replacementSubmit) {
+					replacementSubmit = runtime.submit(
+						"/api/replacement",
+						{ method: "POST" },
+						{
+							dedupeKey: "redirect-effectuation-stale",
+							revalidate: false,
+						},
+					);
+				}
+				return {
+					status: "did",
+					href: "/submit-redirect-target",
+					hrefDetails: {
+						isHTTP: true,
+						isInternal: true,
+						isExternal: false,
+						absoluteURL:
+							"http://localhost:3000/submit-redirect-target",
+					},
+				} as any;
+			});
+
+		try {
+			const firstSubmit = runtime.submit(
+				"/api/original",
+				{ method: "POST" },
+				{
+					dedupeKey: "redirect-effectuation-stale",
+					revalidate: false,
+				},
+			);
+
+			await expect(firstSubmit).resolves.toEqual({
+				success: false,
+				error: "Aborted",
+			});
+			expect(effectuateRedirectSpy).toHaveBeenCalled();
+			expect(replacementSubmit).toBeDefined();
+			await expect(replacementSubmit).resolves.toEqual({
+				success: true,
+				data: undefined,
+			});
+		} finally {
+			handleRedirectsSpy.mockRestore();
+			effectuateRedirectSpy.mockRestore();
+		}
+	});
+
+	it("aborts stale deduped submit when replacement starts during auto-revalidation navigation", async () => {
+		let replacementSubmit:
+			| Promise<
+					| { success: true; data: unknown }
+					| { success: false; error: string }
+			  >
+			| undefined;
+		let context: SubmitExecutionContext;
+		context = {
+			submissions: new Map(),
+			scheduleStatusUpdate: () => {},
+			navigate: async () => {
+				if (!replacementSubmit) {
+					replacementSubmit = executeSubmitRuntime(
+						context,
+						"/api/replacement",
+						{ method: "POST" },
+						{
+							dedupeKey: "auto-revalidate-stale",
+							revalidate: false,
+						},
+					);
+				}
+				return { didNavigate: true };
+			},
+		};
+
+		let requestCount = 0;
+		const handleRedirectsSpy = vi
+			.spyOn(redirectsModule, "handleRedirects")
+			.mockImplementation(async () => {
+				requestCount++;
+				if (requestCount === 1) {
+					return {
+						redirectData: null,
+						response: createSubmitResponse({
+							buildID: "1",
+							json: async () => ({ stale: true }),
+						}),
+					} as any;
+				}
+				return {
+					redirectData: null,
+					response: createSubmitResponse({
+						buildID: "1",
+						json: async () => ({ fresh: true }),
+					}),
+				} as any;
+			});
+
+		try {
+			const firstSubmit = executeSubmitRuntime(
+				context,
+				"/api/original",
+				{ method: "POST" },
+				{
+					dedupeKey: "auto-revalidate-stale",
+				},
+			);
+
+			await expect(firstSubmit).resolves.toEqual({
+				success: false,
+				error: "Aborted",
+			});
+			expect(replacementSubmit).toBeDefined();
+			await expect(replacementSubmit).resolves.toEqual({
+				success: true,
+				data: { fresh: true },
+			});
+			expect(requestCount).toBe(2);
+		} finally {
+			handleRedirectsSpy.mockRestore();
+		}
+	});
 });
 
 function buildContext(
@@ -1275,6 +2095,30 @@ describe("skip server fetch eligibility", () => {
 		expect(isSkipEligibilityViolated(ctx)).toBe(true);
 	});
 
+	it("does not block skip when outermost loader dynamic params are unchanged", () => {
+		const ctx = buildContext("http://localhost:3000/items/1", {
+			routeManifest: { "/items/:id": 1 },
+			currentMatchedPatterns: ["/items/:id"],
+			currentParams: { id: "1" },
+			matchResult: {
+				matches: [
+					createMatch("/items/:id", {
+						normalizedSegments: [
+							{
+								segType: "dynamic",
+								normalizedVal: ":id",
+							},
+						],
+					}),
+				],
+				params: { id: "1" },
+				splatValues: [],
+			},
+		});
+
+		expect(isSkipEligibilityViolated(ctx)).toBe(false);
+	});
+
 	it("blocks skip when outermost loader splat values change", () => {
 		const ctx = buildContext("http://localhost:3000/files/a/b", {
 			routeManifest: { "/files/*": 1 },
@@ -1292,6 +2136,25 @@ describe("skip server fetch eligibility", () => {
 		});
 
 		expect(isSkipEligibilityViolated(ctx)).toBe(true);
+	});
+
+	it("does not block skip when outermost loader splat values are unchanged", () => {
+		const ctx = buildContext("http://localhost:3000/files/a/b", {
+			routeManifest: { "/files/*": 1 },
+			currentMatchedPatterns: ["/files/*"],
+			currentSplatValues: ["a", "b"],
+			matchResult: {
+				matches: [
+					createMatch("/files/*", {
+						lastSegType: "splat",
+					}),
+				],
+				params: {},
+				splatValues: ["a", "b"],
+			},
+		});
+
+		expect(isSkipEligibilityViolated(ctx)).toBe(false);
 	});
 
 	it("does not block skip when no loaders are present, even if search changes", () => {

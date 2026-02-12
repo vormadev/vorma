@@ -1,0 +1,297 @@
+package vormabuild
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/vormadev/vorma/lab/viteutil"
+	"github.com/vormadev/vorma/vormaruntime"
+)
+
+func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
+	t.Run("wraps conversion error", func(t *testing.T) {
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		err := postViteProdBuild(app)
+		if err == nil {
+			t.Fatal("expected postViteProdBuild to return conversion error")
+		}
+		if !strings.Contains(err.Error(), "convert paths to stage two") {
+			t.Fatalf("error = %q, expected conversion context", err)
+		}
+		if !strings.Contains(err.Error(), "read vite manifest") {
+			t.Fatalf("error = %q, expected manifest-read context", err)
+		}
+	})
+
+	t.Run("wraps stage-two write error", func(t *testing.T) {
+		originalMarshalStageTwoPathsFileStep := stageTwoPathsWriteDeps.marshalStageTwoPathsFile
+		originalWriteStageTwoPathsJSONStep := stageTwoPathsWriteDeps.writeStageTwoPathsJSON
+		t.Cleanup(func() {
+			stageTwoPathsWriteDeps.marshalStageTwoPathsFile = originalMarshalStageTwoPathsFileStep
+			stageTwoPathsWriteDeps.writeStageTwoPathsJSON = originalWriteStageTwoPathsJSONStep
+		})
+
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetBuildID("build-before-stage-two-write-failure")
+			l.SetPaths(map[string]*vormaruntime.Path{
+				"/": {
+					OriginalPattern: "/",
+					SrcPath:         "frontend/src/routes/root.tsx",
+					ExportKey:       "default",
+				},
+			})
+		})
+		mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), viteutil.Manifest{
+			"frontend/src/vorma.entry.tsx": {
+				Src:     "frontend/src/vorma.entry.tsx",
+				File:    "assets/vorma_out/entry.js",
+				IsEntry: true,
+			},
+			"frontend/src/routes/root.tsx": {
+				Src:  "frontend/src/routes/root.tsx",
+				File: "assets/vorma_out/root.js",
+			},
+		})
+
+		expectedErr := errors.New("write stage-two failed")
+		stageTwoPathsWriteDeps.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+			return []byte(`{"stage":"two"}`), nil
+		}
+		stageTwoPathsWriteDeps.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
+			return expectedErr
+		}
+
+		err := postViteProdBuild(app)
+		if err == nil {
+			t.Fatal("expected postViteProdBuild to return stage-two write error")
+		}
+		if !strings.Contains(err.Error(), "write stage-two paths") {
+			t.Fatalf("error = %q, expected stage-two write context", err)
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped stage-two write error", err)
+		}
+		if app.GetBuildID() != "build-before-stage-two-write-failure" {
+			t.Fatalf(
+				"app build ID = %q, want unchanged build ID %q",
+				app.GetBuildID(),
+				"build-before-stage-two-write-failure",
+			)
+		}
+	})
+}
+
+func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
+	restoreStageTwoWriteSteps := func(t *testing.T) {
+		t.Helper()
+		originalMarshalStageTwoPathsFileStep := stageTwoPathsWriteDeps.marshalStageTwoPathsFile
+		originalWriteStageTwoPathsJSONStep := stageTwoPathsWriteDeps.writeStageTwoPathsJSON
+		t.Cleanup(func() {
+			stageTwoPathsWriteDeps.marshalStageTwoPathsFile = originalMarshalStageTwoPathsFileStep
+			stageTwoPathsWriteDeps.writeStageTwoPathsJSON = originalWriteStageTwoPathsJSONStep
+		})
+	}
+
+	t.Run("wraps marshal error", func(t *testing.T) {
+		restoreStageTwoWriteSteps(t)
+		expectedErr := errors.New("marshal failed")
+		stageTwoPathsWriteDeps.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+			return nil, expectedErr
+		}
+		stageTwoPathsWriteDeps.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
+			t.Fatal("did not expect write stage after marshal error")
+			return nil
+		}
+
+		err := writePathsToDiskStageTwo(&vormaruntime.Vorma{}, &vormaruntime.PathsFile{Stage: "two"})
+		if err == nil {
+			t.Fatal("expected writePathsToDiskStageTwo to return marshal error")
+		}
+		if !strings.Contains(err.Error(), "marshal stage-two paths file") {
+			t.Fatalf("error = %q, expected marshal context", err)
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped marshal error", err)
+		}
+	})
+
+	t.Run("wraps write error", func(t *testing.T) {
+		restoreStageTwoWriteSteps(t)
+		expectedErr := errors.New("write failed")
+		stageTwoPathsWriteDeps.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+			return []byte(`{"stage":"two"}`), nil
+		}
+		stageTwoPathsWriteDeps.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
+			return expectedErr
+		}
+
+		err := writePathsToDiskStageTwo(&vormaruntime.Vorma{}, &vormaruntime.PathsFile{Stage: "two"})
+		if err == nil {
+			t.Fatal("expected writePathsToDiskStageTwo to return write error")
+		}
+		if !strings.Contains(err.Error(), "write stage-two paths JSON") {
+			t.Fatalf("error = %q, expected write context", err)
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped write error", err)
+		}
+	})
+
+	t.Run("runs marshal and write in order", func(t *testing.T) {
+		restoreStageTwoWriteSteps(t)
+		var observedSteps []string
+		pathsFile := &vormaruntime.PathsFile{Stage: "two"}
+		stageTwoPathsWriteDeps.marshalStageTwoPathsFile = func(gotPathsFile *vormaruntime.PathsFile) ([]byte, error) {
+			observedSteps = append(observedSteps, "marshal")
+			if gotPathsFile != pathsFile {
+				t.Fatalf("marshal received unexpected paths file pointer: %p vs %p", gotPathsFile, pathsFile)
+			}
+			return []byte(`{"stage":"two"}`), nil
+		}
+		stageTwoPathsWriteDeps.writeStageTwoPathsJSON = func(_ *vormaruntime.Vorma, pathsJSON []byte) error {
+			observedSteps = append(observedSteps, "write")
+			if string(pathsJSON) != `{"stage":"two"}` {
+				t.Fatalf("write received unexpected marshaled JSON: %q", string(pathsJSON))
+			}
+			return nil
+		}
+
+		if err := writePathsToDiskStageTwo(&vormaruntime.Vorma{}, pathsFile); err != nil {
+			t.Fatalf("writePathsToDiskStageTwo returned error: %v", err)
+		}
+		if strings.Join(observedSteps, ",") != "marshal,write" {
+			t.Fatalf("observed step order = %#v, want [marshal write]", observedSteps)
+		}
+	})
+}
+
+func TestToPathsFileStageTwo_ReturnsErrorWhenPublicOutDirMissing(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/root.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	manifest := viteutil.Manifest{
+		"frontend/src/vorma.entry.tsx": {
+			Src:     "frontend/src/vorma.entry.tsx",
+			File:    "assets/vorma_out/entry.js",
+			IsEntry: true,
+		},
+		"frontend/src/routes/root.tsx": {
+			Src:  "frontend/src/routes/root.tsx",
+			File: "assets/vorma_out/root.js",
+		},
+	}
+	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), manifest)
+
+	if err := os.RemoveAll(fixture.publicDir); err != nil {
+		t.Fatalf("remove public out dir: %v", err)
+	}
+
+	_, err := toPathsFileStageTwo(app)
+	if err == nil {
+		t.Fatal("expected toPathsFileStageTwo to fail when static public out dir is missing")
+	}
+	if !strings.Contains(err.Error(), "get FS summary hash") {
+		t.Fatalf("error = %q, expected FS summary hash context", err)
+	}
+}
+
+func TestToPathsFileStageTwo_ReturnsManifestReadError(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	_, err := toPathsFileStageTwo(app)
+	if err == nil {
+		t.Fatal("expected toPathsFileStageTwo to fail when Vite manifest is missing")
+	}
+	if !strings.Contains(err.Error(), "read vite manifest") {
+		t.Fatalf("error = %q, expected read-vite-manifest context", err)
+	}
+}
+
+func TestComputeStageTwoBuildID_ErrorWrapping(t *testing.T) {
+	restoreStageTwoBuildIDHelpers := func(t *testing.T) {
+		t.Helper()
+		originalReadHTMLTemplateForStageTwoBuildID := stageTwoBuildIDDeps.readHTMLTemplate
+		originalMarshalPathsFileForStageTwoBuildID := stageTwoBuildIDDeps.marshalPathsFile
+		originalSummarizePublicFSForStageTwoBuildID := stageTwoBuildIDDeps.summarizePublicFS
+		t.Cleanup(func() {
+			stageTwoBuildIDDeps.readHTMLTemplate = originalReadHTMLTemplateForStageTwoBuildID
+			stageTwoBuildIDDeps.marshalPathsFile = originalMarshalPathsFileForStageTwoBuildID
+			stageTwoBuildIDDeps.summarizePublicFS = originalSummarizePublicFSForStageTwoBuildID
+		})
+	}
+
+	t.Run("wraps marshal paths file error", func(t *testing.T) {
+		restoreStageTwoBuildIDHelpers(t)
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		stageTwoBuildIDDeps.readHTMLTemplate = func(path string) ([]byte, error) {
+			return []byte("<html></html>"), nil
+		}
+		expectedErr := errors.New("marshal failed")
+		stageTwoBuildIDDeps.marshalPathsFile = func(any) ([]byte, error) {
+			return nil, expectedErr
+		}
+		stageTwoBuildIDDeps.summarizePublicFS = func(fs.FS) ([]byte, error) {
+			t.Fatal("did not expect FS summary step after marshal error")
+			return nil, nil
+		}
+
+		_, err := computeStageTwoBuildID(app, &vormaruntime.PathsFile{})
+		if err == nil {
+			t.Fatal("expected computeStageTwoBuildID to return marshal error")
+		}
+		if !strings.Contains(err.Error(), "marshal paths file") {
+			t.Fatalf("error = %q, expected marshal-paths-file context", err)
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped marshal error", err)
+		}
+	})
+
+	t.Run("wraps FS summary error", func(t *testing.T) {
+		restoreStageTwoBuildIDHelpers(t)
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		stageTwoBuildIDDeps.readHTMLTemplate = func(path string) ([]byte, error) {
+			return []byte("<html></html>"), nil
+		}
+		stageTwoBuildIDDeps.marshalPathsFile = func(any) ([]byte, error) {
+			return []byte(`{"stage":"two"}`), nil
+		}
+		expectedErr := errors.New("summary failed")
+		stageTwoBuildIDDeps.summarizePublicFS = func(fs.FS) ([]byte, error) {
+			return nil, expectedErr
+		}
+
+		_, err := computeStageTwoBuildID(app, &vormaruntime.PathsFile{})
+		if err == nil {
+			t.Fatal("expected computeStageTwoBuildID to return FS summary error")
+		}
+		if !strings.Contains(err.Error(), "get FS summary hash") {
+			t.Fatalf("error = %q, expected FS-summary context", err)
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped FS summary error", err)
+		}
+	})
+}

@@ -412,3 +412,90 @@ func TestCycleVite_NoOpWhenViteEnabledButNotStarted(t *testing.T) {
 
 	s.cycleVite()
 }
+
+func TestCycleVite_StartFailureAfterStopLeavesViteContextCleared(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Vite = &wave.ViteConfig{
+		JSPackageManagerBaseCmd: "command_that_does_not_exist_for_wave_cycle_test",
+		DefaultPort:             5203,
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &server{
+		cfg:     cfg,
+		log:     newDiscardLogger(),
+		builder: builder,
+		viteCtx: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: cfg.Vite.DefaultPort}),
+	}
+
+	s.cycleVite()
+
+	if s.viteCtx != nil {
+		t.Fatal("expected cycleVite start failure to leave vite context cleared")
+	}
+}
+
+func TestStartRefreshServer_ReturnsErrorForInvalidPort(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	manager := newClientManager()
+	ctx, cancel := context.WithCancel(context.Background())
+	go manager.start(ctx)
+	defer func() {
+		cancel()
+		manager.wait()
+	}()
+
+	s := &server{
+		cfg:           cfg,
+		log:           newDiscardLogger(),
+		refreshMgr:    manager,
+		refreshMgrCtx: ctx,
+	}
+
+	if _, err := s.startRefreshServer(-1); err == nil {
+		t.Fatal("expected startRefreshServer to return an error for invalid negative port")
+	}
+}
+
+func TestStartRefreshServer_EventsEndpointSetsCORSAndRejectsNonWebSocket(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	manager := newClientManager()
+	ctx, cancel := context.WithCancel(context.Background())
+	go manager.start(ctx)
+	defer func() {
+		cancel()
+		manager.wait()
+	}()
+
+	s := &server{
+		cfg:           cfg,
+		log:           newDiscardLogger(),
+		refreshMgr:    manager,
+		refreshMgrCtx: ctx,
+	}
+
+	port, err := s.startRefreshServer(0)
+	if err != nil {
+		t.Fatalf("startRefreshServer returned error: %v", err)
+	}
+	defer s.stopRefreshServer()
+
+	resp, err := http.Get("http://localhost:" + strconv.Itoa(port) + "/events")
+	if err != nil {
+		t.Fatalf("events endpoint request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("expected Access-Control-Allow-Origin header '*', got %q", got)
+	}
+	if resp.StatusCode < http.StatusBadRequest {
+		t.Fatalf("expected non-websocket request to be rejected, got status %d", resp.StatusCode)
+	}
+}

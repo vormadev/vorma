@@ -29,18 +29,8 @@ func (v *Vorma) devReloadRoutesFromDisk() error {
 		return fmt.Errorf("load paths from disk: %w", err)
 	}
 
-	v._paths = pathsFile.Paths
-	v._clientEntrySrc = pathsFile.ClientEntrySrc
-	v._clientEntryOut = pathsFile.ClientEntryOut
-	v._clientEntryDeps = pathsFile.ClientEntryDeps
-	v._depToCSSBundleMap = pathsFile.DepToCSSBundleMap
-	if v._depToCSSBundleMap == nil {
-		v._depToCSSBundleMap = make(map[string][]string)
-	}
-	v._buildID = pathsFile.BuildID
-	v._routeManifestFile = pathsFile.RouteManifestFile
-
-	v.routes().Sync(v._paths)
+	v.applyPathsFileMetadataLocked(pathsFile)
+	v.routes().SyncFromDevReload(pathsFile.Paths)
 
 	v.Log.Info("Routes reloaded from disk", "buildID", v._buildID)
 	return nil

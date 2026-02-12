@@ -6,7 +6,7 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 )
 
-func TestRouteRegistrySync_ClearsCacheAndRebuildsPatterns(t *testing.T) {
+func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testing.T) {
 	stage := defaultPathsFile("route-registry-build", map[string]*Path{
 		"/old-client": {
 			OriginalPattern: "/old-client",
@@ -43,11 +43,11 @@ func TestRouteRegistrySync_ClearsCacheAndRebuildsPatterns(t *testing.T) {
 	}
 
 	app.WithLock(func(lv *LockedVorma) {
-		lv.Routes().Sync(newPaths)
+		lv.Routes().SyncFromDevReload(newPaths)
 	})
 
 	if got := routeDataCacheLenForTest(); got != 0 {
-		t.Fatalf("route-data cache size = %d, want 0 after Sync", got)
+		t.Fatalf("route-data cache size = %d, want 0 after SyncFromDevReload", got)
 	}
 
 	paths := app.GetPathsSnapshot()
@@ -65,22 +65,22 @@ func TestRouteRegistrySync_ClearsCacheAndRebuildsPatterns(t *testing.T) {
 		t.Fatalf("server-only ExportKey = %q, want %q", serverOnly.ExportKey, "default")
 	}
 	if _, ok := paths["/old-client"]; ok {
-		t.Fatal("expected /old-client to be replaced by Sync")
+		t.Fatal("expected /old-client to be replaced by SyncFromDevReload")
 	}
 
 	nr := app.LoadersRouter().NestedRouter
 	if !nr.IsRegistered("/fresh-client") {
-		t.Fatal("expected /fresh-client to be registered in nested router after Sync")
+		t.Fatal("expected /fresh-client to be registered in nested router after SyncFromDevReload")
 	}
 	if !nr.IsRegistered("/server-only") {
 		t.Fatal("expected /server-only handler route to remain registered")
 	}
 	if nr.IsRegistered("/stale-no-handler") {
-		t.Fatal("expected stale no-handler pattern to be removed on Sync rebuild")
+		t.Fatal("expected stale no-handler pattern to be removed on SyncFromDevReload rebuild")
 	}
 }
 
-func TestRouteRegistrySync_NilPathsStillPreservesServerHandlers(t *testing.T) {
+func TestRouteRegistrySyncFromDevReload_NilPathsStillPreservesServerHandlers(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
@@ -93,19 +93,19 @@ func TestRouteRegistrySync_NilPathsStillPreservesServerHandlers(t *testing.T) {
 	)
 
 	app.WithLock(func(lv *LockedVorma) {
-		lv.Routes().Sync(nil)
+		lv.Routes().SyncFromDevReload(nil)
 	})
 
 	paths := app.GetPathsSnapshot()
 	if paths == nil {
-		t.Fatal("paths should never be nil after Sync(nil)")
+		t.Fatal("paths should never be nil after SyncFromDevReload(nil)")
 	}
 	if _, ok := paths["/internal/status"]; !ok {
-		t.Fatal("expected server handler route to be preserved when Sync(nil)")
+		t.Fatal("expected server handler route to be preserved when SyncFromDevReload(nil)")
 	}
 }
 
-func TestRouteRegistryMergeServerRoutes_SkipsNoHandlerRoutes(t *testing.T) {
+func TestRouteRegistrySyncFromDevReload_MergeServerRoutesSkipsNoHandlerRoutes(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
@@ -119,7 +119,7 @@ func TestRouteRegistryMergeServerRoutes_SkipsNoHandlerRoutes(t *testing.T) {
 	)
 
 	app.WithLock(func(lv *LockedVorma) {
-		lv.Routes().Sync(map[string]*Path{})
+		lv.Routes().SyncFromDevReload(map[string]*Path{})
 	})
 
 	paths := app.GetPathsSnapshot()
@@ -128,6 +128,77 @@ func TestRouteRegistryMergeServerRoutes_SkipsNoHandlerRoutes(t *testing.T) {
 	}
 	if _, ok := paths["/no-handler-only"]; ok {
 		t.Fatal("expected no-handler route to be excluded from merged paths")
+	}
+}
+
+func TestRouteRegistrySyncFromDevReload_ClonesPathEntries(t *testing.T) {
+	fixture := newTestFixture(t, testFixtureOptions{})
+	app := fixture.app
+
+	inputPaths := map[string]*Path{
+		"/products/:id": {
+			OriginalPattern: "/products/:id",
+			SrcPath:         "frontend/src/routes/products.$id.tsx",
+			OutPath:         "vorma_out/routes/products.$id.js",
+			ExportKey:       "default",
+			ErrorExportKey:  "ProductsErrorBoundary",
+			Deps:            []string{"vorma_out/chunk-products.js"},
+		},
+	}
+
+	app.WithLock(func(lv *LockedVorma) {
+		lv.Routes().SyncFromDevReload(inputPaths)
+	})
+
+	// Mutate caller-owned input after sync; runtime state should be isolated.
+	inputPaths["/products/:id"].SrcPath = "MUTATED_SRC"
+	inputPaths["/products/:id"].Deps[0] = "MUTATED_DEP"
+
+	paths := app.GetPathsSnapshot()
+	got := paths["/products/:id"]
+	if got == nil {
+		t.Fatal("expected /products/:id in synced paths")
+	}
+	if got.SrcPath != "frontend/src/routes/products.$id.tsx" {
+		t.Fatalf("SrcPath = %q, want original value", got.SrcPath)
+	}
+	if len(got.Deps) != 1 || got.Deps[0] != "vorma_out/chunk-products.js" {
+		t.Fatalf("Deps = %#v, want %#v", got.Deps, []string{"vorma_out/chunk-products.js"})
+	}
+}
+
+func TestRouteRegistryReplaceParsedPathsForInit_ClonesPathEntries(t *testing.T) {
+	fixture := newTestFixture(t, testFixtureOptions{})
+	app := fixture.app
+
+	inputPaths := map[string]*Path{
+		"/docs": {
+			OriginalPattern: "/docs",
+			SrcPath:         "frontend/src/routes/docs.tsx",
+			OutPath:         "vorma_out/routes/docs.js",
+			ExportKey:       "default",
+			Deps:            []string{"vorma_out/chunk-docs.js"},
+		},
+	}
+
+	app.WithLock(func(lv *LockedVorma) {
+		lv.Routes().ReplaceParsedPathsForInit(inputPaths, false)
+	})
+
+	// Mutate caller-owned input after init-style replace; runtime state should be isolated.
+	inputPaths["/docs"].OutPath = "MUTATED_OUT"
+	inputPaths["/docs"].Deps[0] = "MUTATED_DEP"
+
+	paths := app.GetPathsSnapshot()
+	got := paths["/docs"]
+	if got == nil {
+		t.Fatal("expected /docs in replaced paths")
+	}
+	if got.OutPath != "vorma_out/routes/docs.js" {
+		t.Fatalf("OutPath = %q, want original value", got.OutPath)
+	}
+	if len(got.Deps) != 1 || got.Deps[0] != "vorma_out/chunk-docs.js" {
+		t.Fatalf("Deps = %#v, want %#v", got.Deps, []string{"vorma_out/chunk-docs.js"})
 	}
 }
 

@@ -28,6 +28,9 @@ type InitClientInput = InitClientOptions & {
 
 let beforeUnloadRegistered = false;
 let touchDetectionRegistered = false;
+let latestRouteManifestProgressiveLoadID = 0;
+
+type RouteManifestRecord = NonNullable<VormaClientGlobal["routeManifest"]>;
 
 function onBeforeUnload(): void {
 	scrollStateManager.savePageRefreshState();
@@ -59,9 +62,10 @@ function applyInitClientOptions(options: InitClientOptions): void {
 		__vormaClientGlobal.set("defaultErrorBoundary", defaultErrorBoundary);
 	}
 
-	if (options.useViewTransitions) {
-		__vormaClientGlobal.set("useViewTransitions", true);
-	}
+	__vormaClientGlobal.set(
+		"useViewTransitions",
+		options.useViewTransitions === true,
+	);
 }
 
 function initializeClientModuleMapFromInitialRouteState(): void {
@@ -101,6 +105,32 @@ function initializeClientPatternRegistry(vormaAppConfig: VormaAppConfig): void {
 	__vormaClientGlobal.set("patternRegistry", patternRegistry);
 }
 
+function parseRouteManifestPayloadOrThrow(
+	manifestPayload: unknown,
+): RouteManifestRecord {
+	if (
+		typeof manifestPayload !== "object" ||
+		manifestPayload === null ||
+		Array.isArray(manifestPayload)
+	) {
+		throw new Error(
+			"Route manifest must be a non-null object with pattern keys.",
+		);
+	}
+
+	const parsedManifest: RouteManifestRecord = {};
+	for (const [pattern, loaderFlag] of Object.entries(manifestPayload)) {
+		if (loaderFlag !== 0 && loaderFlag !== 1) {
+			throw new Error(
+				`Route manifest value for pattern '${pattern}' must be 0 or 1.`,
+			);
+		}
+		parsedManifest[pattern] = loaderFlag;
+	}
+
+	return parsedManifest;
+}
+
 function loadRouteManifestProgressively(): void {
 	const manifestURL = __vormaClientGlobal.get("routeManifestURL");
 	if (!manifestURL) {
@@ -108,13 +138,34 @@ function loadRouteManifestProgressively(): void {
 	}
 
 	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
-	if (!patternRegistry) {
-		return;
-	}
+	const routeManifestProgressiveLoadID =
+		++latestRouteManifestProgressiveLoadID;
 
 	fetch(manifestURL)
-		.then((response) => response.json())
-		.then((manifest) => {
+		.then((response) => {
+			if (!response.ok) {
+				throw new Error(
+					`Route manifest request failed with status ${response.status}.`,
+				);
+			}
+			return response.json();
+		})
+		.then((manifestPayload) => {
+			const manifest = parseRouteManifestPayloadOrThrow(manifestPayload);
+
+			if (
+				routeManifestProgressiveLoadID !==
+				latestRouteManifestProgressiveLoadID
+			) {
+				return;
+			}
+
+			if (
+				__vormaClientGlobal.get("patternRegistry") !== patternRegistry
+			) {
+				return;
+			}
+
 			__vormaClientGlobal.set("routeManifest", manifest);
 
 			// Register all patterns from manifest into the existing registry

@@ -10,12 +10,37 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
+type reloadEndpointDependencies struct {
+	reloadEndpointURLForApp  func(*vormaruntime.Vorma, string) string
+	newReloadEndpointRequest func(context.Context, string) (*http.Request, error)
+	doReloadEndpointRequest  func(*http.Request) (*http.Response, error)
+}
+
+type reloadActionDependencies struct {
+	callReloadEndpoint func(*vormaruntime.Vorma, string) error
+}
+
+var reloadActionDeps = reloadActionDependencies{
+	callReloadEndpoint: callReloadEndpoint,
+}
+
+var reloadEndpointDeps = reloadEndpointDependencies{
+	reloadEndpointURLForApp: func(v *vormaruntime.Vorma, endpoint string) string {
+		return reloadEndpointURL(v.MustGetPort(), endpoint)
+	},
+	newReloadEndpointRequest: newReloadEndpointRequest,
+	doReloadEndpointRequest: func(req *http.Request) (*http.Response, error) {
+		client := &http.Client{Timeout: 10 * time.Second}
+		return client.Do(req)
+	},
+}
+
 func getReloadActionForEndpointWithFallback(
 	v *vormaruntime.Vorma,
 	endpoint string,
 	warnMessage string,
 ) *wave.RefreshAction {
-	if err := callReloadEndpoint(v, endpoint); err != nil {
+	if err := reloadActionDeps.callReloadEndpoint(v, endpoint); err != nil {
 		v.Log.Warn(warnMessage, "error", err)
 		return newRestartWithoutRecompileAction()
 	}
@@ -39,19 +64,17 @@ func newRestartWithoutRecompileAction() *wave.RefreshAction {
 
 // callReloadEndpoint makes an HTTP GET request to the running app's reload endpoint.
 func callReloadEndpoint(v *vormaruntime.Vorma, endpoint string) error {
-	port := v.MustGetPort()
-	url := reloadEndpointURL(port, endpoint)
+	url := reloadEndpointDeps.reloadEndpointURLForApp(v, endpoint)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req, err := newReloadEndpointRequest(ctx, url)
+	req, err := reloadEndpointDeps.newReloadEndpointRequest(ctx, url)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := reloadEndpointDeps.doReloadEndpointRequest(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}

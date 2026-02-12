@@ -30,6 +30,32 @@ export function hasSameDataTarget(
 	return hrefWithoutHash(a, baseHref) === hrefWithoutHash(b, baseHref);
 }
 
+export function hasSameNavigationTarget(
+	a: string,
+	b: string,
+	baseHref = window.location.href,
+): boolean {
+	return a === b || hasSameDataTarget(a, b, baseHref);
+}
+
+export function findMapEntryByNavigationTarget<T>(
+	map: ReadonlyMap<string, T>,
+	targetHref: string,
+	baseHref = window.location.href,
+): [string, T] | undefined {
+	if (map.has(targetHref)) {
+		return [targetHref, map.get(targetHref)!];
+	}
+
+	for (const [key, value] of map.entries()) {
+		if (hasSameDataTarget(key, targetHref, baseHref)) {
+			return [key, value];
+		}
+	}
+
+	return undefined;
+}
+
 export function decodeHashFragment(hashFragment: string): string {
 	try {
 		return decodeURIComponent(hashFragment);

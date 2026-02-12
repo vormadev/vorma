@@ -32,6 +32,16 @@ describe("scroll_state_refresh_state", () => {
 		expect(sessionStorage.getItem(PAGE_REFRESH_KEY)).toBeNull();
 	});
 
+	it("removes parseable non-object snapshots", () => {
+		sessionStorage.setItem(PAGE_REFRESH_KEY, JSON.stringify(123));
+		const applyState = vi.fn();
+
+		restoreRecentPageRefreshScrollState(applyState);
+
+		expect(applyState).not.toHaveBeenCalled();
+		expect(sessionStorage.getItem(PAGE_REFRESH_KEY)).toBeNull();
+	});
+
 	it("restores recent snapshots for encoding-equivalent same-document hash URLs", () => {
 		window.history.replaceState({}, "", "/refresh-hash#~");
 		vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {

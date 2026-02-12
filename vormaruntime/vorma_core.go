@@ -36,6 +36,8 @@ type Vorma struct {
 	getDefaultHeadEls   GetDefaultHeadElsFunc
 	getHeadDedupeKeys   GetHeadDedupeKeysFunc
 	getRootTemplateData GetRootTemplateDataFunc
+	// Immutable per-app identity string used in route-data cache keys.
+	_routeDataCacheAppIdentity string
 
 	// mu protects mutable state that can be modified during dev rebuilds.
 	mu                 sync.RWMutex
@@ -65,14 +67,7 @@ func (v *Vorma) ActionsRouter() *ActionsRouter { return v.actionsRouter }
 func (v *Vorma) GetPathsSnapshot() map[string]*Path {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	if v._paths == nil {
-		return nil
-	}
-	clone := make(map[string]*Path, len(v._paths))
-	for pattern, p := range v._paths {
-		clone[pattern] = clonePath(p)
-	}
-	return clone
+	return clonePathsMapOrNil(v._paths)
 }
 
 func (v *Vorma) GetIsDevMode() bool {
@@ -96,23 +91,13 @@ func (v *Vorma) GetClientEntryOut() string {
 func (v *Vorma) GetClientEntryDeps() []string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	if v._clientEntryDeps == nil {
-		return nil
-	}
-	return append([]string(nil), v._clientEntryDeps...)
+	return cloneStringSliceOrNil(v._clientEntryDeps)
 }
 
 func (v *Vorma) GetDepToCSSBundleMap() map[string][]string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	if v._depToCSSBundleMap == nil {
-		return nil
-	}
-	clone := make(map[string][]string, len(v._depToCSSBundleMap))
-	for dep, bundles := range v._depToCSSBundleMap {
-		clone[dep] = append([]string(nil), bundles...)
-	}
-	return clone
+	return cloneDepToCSSBundleMapOrNil(v._depToCSSBundleMap)
 }
 
 func (v *Vorma) GetRootTemplate() *template.Template {
@@ -175,7 +160,10 @@ func (l *LockedVorma) GetIsDev() bool                      { return l.v._isDev }
 
 // --- LockedVorma Setters ---
 
-func (l *LockedVorma) SetPaths(paths map[string]*Path)      { l.v._paths = paths }
+func (l *LockedVorma) SetPaths(paths map[string]*Path) {
+	l.v._paths = clonePathsMapOrNil(paths)
+	clearRouteDataCache()
+}
 func (l *LockedVorma) SetBuildID(id string)                 { l.v._buildID = id }
 func (l *LockedVorma) SetRouteManifestFile(f string)        { l.v._routeManifestFile = f }
 func (l *LockedVorma) SetRootTemplate(t *template.Template) { l.v._rootTemplate = t }

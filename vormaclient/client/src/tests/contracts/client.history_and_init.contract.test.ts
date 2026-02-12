@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { findBestMatch } from "vorma/kit/matcher/find-best";
+import { createPatternRegistry } from "vorma/kit/matcher/register";
 import {
+	createDeferred,
 	createRouteDataResponse,
 	loadClientAPI,
 	setupContractTestSuite,
@@ -26,6 +28,11 @@ function stubElementScrollIntoView(
 		configurable: true,
 	});
 	return scrollIntoView;
+}
+
+async function flushProgressiveManifestMicrotasks(): Promise<void> {
+	await Promise.resolve();
+	await Promise.resolve();
 }
 
 describe("client history/init contracts", () => {
@@ -329,8 +336,7 @@ describe("client history/init contracts", () => {
 
 	it("stores scroll states in session storage with FIFO eviction at 50 entries", async () => {
 		await loadClientAPI();
-		const { scrollStateManager } =
-			await import("../../platform/scroll.ts");
+		const { scrollStateManager } = await import("../../platform/scroll.ts");
 
 		for (let i = 0; i <= 50; i++) {
 			scrollStateManager.saveState(`key-${i}`, { x: i, y: i });
@@ -347,8 +353,7 @@ describe("client history/init contracts", () => {
 	it("saves outgoing scroll position before user navigation pushes a new history entry", async () => {
 		const api = await loadClientAPI();
 		const history = api.getHistoryInstance();
-		const { HistoryManager } =
-			await import("../../platform/history.ts");
+		const { HistoryManager } = await import("../../platform/history.ts");
 		HistoryManager.init();
 
 		history.push("/current-source");
@@ -412,8 +417,7 @@ describe("client history/init contracts", () => {
 		api.getHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
-		const { scrollStateManager } =
-			await import("../../platform/scroll.ts");
+		const { scrollStateManager } = await import("../../platform/scroll.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -447,8 +451,7 @@ describe("client history/init contracts", () => {
 		api.getHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
-		const { scrollStateManager } =
-			await import("../../platform/scroll.ts");
+		const { scrollStateManager } = await import("../../platform/scroll.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -497,6 +500,24 @@ describe("client history/init contracts", () => {
 			customErrorBoundary,
 		);
 		expect(api.__vormaClientGlobal.get("useViewTransitions")).toBe(true);
+	});
+
+	it("applies useViewTransitions option on every init call", async () => {
+		const api = await loadClientAPI();
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+			useViewTransitions: true,
+		});
+		expect(api.__vormaClientGlobal.get("useViewTransitions")).toBe(true);
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+			useViewTransitions: false,
+		});
+		expect(api.__vormaClientGlobal.get("useViewTransitions")).toBe(false);
 	});
 
 	it("registers browser history listener during init", async () => {
@@ -758,6 +779,25 @@ describe("client history/init contracts", () => {
 		).not.toThrow();
 	});
 
+	it("ignores HMR updates when the provided hot runtime is invalid", async () => {
+		const api = await loadClientAPI();
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		expect(() =>
+			api.__runClientLoadersAfterHMRUpdate(
+				{
+					url: "http://localhost:3000/src/routes/users.tsx",
+					hot: {},
+				} as any,
+				"/users/:id",
+			),
+		).not.toThrow();
+	});
+
 	it("refreshes matched route loaders after matching HMR js updates", async () => {
 		const api = await loadClientAPI();
 		await api.initClient({
@@ -771,7 +811,9 @@ describe("client history/init contracts", () => {
 		const removeRouteChangeListener =
 			api.addRouteChangeListener(routeChangeListener);
 		let afterUpdateHandler:
-			| ((props: { updates: Array<{ type: string; path: string }> }) => void)
+			| ((props: {
+					updates: Array<{ type: string; path: string }>;
+			  }) => void)
 			| undefined;
 		const fakeHot = {
 			on: vi.fn((event: string, handler: unknown) => {
@@ -840,6 +882,165 @@ describe("client history/init contracts", () => {
 		removeRouteChangeListener();
 	});
 
+	it("refreshes when any matched pattern is tracked for the same HMR module path", async () => {
+		const api = await loadClientAPI();
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		api.__vormaClientGlobal.set("matchedPatterns", ["/hmr-second"]);
+
+		const routeChangeListener = vi.fn();
+		const removeRouteChangeListener =
+			api.addRouteChangeListener(routeChangeListener);
+		let afterUpdateHandler:
+			| ((props: {
+					updates: Array<{ type: string; path: string }>;
+			  }) => void)
+			| undefined;
+		const fakeHot = {
+			on: vi.fn((event: string, handler: unknown) => {
+				if (
+					event === "vite:afterUpdate" &&
+					typeof handler === "function"
+				) {
+					afterUpdateHandler = handler as typeof afterUpdateHandler;
+				}
+			}),
+		};
+
+		api.__runClientLoadersAfterHMRUpdate(
+			{
+				url: "http://localhost:3000/src/routes/hmr-shared.tsx?t=1",
+				hot: fakeHot,
+			} as any,
+			"/hmr-first",
+		);
+		api.__runClientLoadersAfterHMRUpdate(
+			{
+				url: "http://localhost:3000/src/routes/hmr-shared.tsx?t=2",
+				hot: fakeHot,
+			} as any,
+			"/hmr-second",
+		);
+
+		expect(fakeHot.on).toHaveBeenCalledTimes(1);
+		expect(afterUpdateHandler).toBeDefined();
+
+		afterUpdateHandler?.({
+			updates: [
+				{
+					type: "js-update",
+					path: "/src/routes/hmr-shared.tsx?t=3",
+				},
+			],
+		});
+
+		await vi.advanceTimersByTimeAsync(11);
+		await vi.runAllTimersAsync();
+		expect(routeChangeListener).toHaveBeenCalledTimes(1);
+
+		removeRouteChangeListener();
+	});
+
+	it("registers same-path HMR listeners for new hot runtimes across repeated init calls", async () => {
+		const api = await loadClientAPI();
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		const firstHotRuntime = {
+			on: vi.fn(),
+		};
+		api.__runClientLoadersAfterHMRUpdate(
+			{
+				url: "http://localhost:3000/src/routes/hmr-reinit.tsx?t=1",
+				hot: firstHotRuntime,
+			} as any,
+			"/hmr-reinit-first",
+		);
+		expect(firstHotRuntime.on).toHaveBeenCalledWith(
+			"vite:afterUpdate",
+			expect.any(Function),
+		);
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		const secondHotRuntime = {
+			on: vi.fn(),
+		};
+		api.__runClientLoadersAfterHMRUpdate(
+			{
+				url: "http://localhost:3000/src/routes/hmr-reinit.tsx?t=2",
+				hot: secondHotRuntime,
+			} as any,
+			"/hmr-reinit-second",
+		);
+		expect(secondHotRuntime.on).toHaveBeenCalledWith(
+			"vite:afterUpdate",
+			expect.any(Function),
+		);
+	});
+
+	it("does not throw or refresh when matched patterns are unavailable during HMR updates", async () => {
+		const api = await loadClientAPI();
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		api.__vormaClientGlobal.set("matchedPatterns", undefined as any);
+
+		const routeChangeListener = vi.fn();
+		const removeRouteChangeListener =
+			api.addRouteChangeListener(routeChangeListener);
+		let afterUpdateHandler:
+			| ((props: {
+					updates: Array<{ type: string; path: string }>;
+			  }) => void)
+			| undefined;
+		const fakeHot = {
+			on: vi.fn((event: string, handler: unknown) => {
+				if (
+					event === "vite:afterUpdate" &&
+					typeof handler === "function"
+				) {
+					afterUpdateHandler = handler as typeof afterUpdateHandler;
+				}
+			}),
+		};
+
+		api.__runClientLoadersAfterHMRUpdate(
+			{
+				url: "http://localhost:3000/src/routes/hmr-match.tsx?t=1",
+				hot: fakeHot,
+			} as any,
+			"/hmr-match",
+		);
+
+		expect(afterUpdateHandler).toBeDefined();
+		expect(() =>
+			afterUpdateHandler?.({
+				updates: [
+					{
+						type: "js-update",
+						path: "/src/routes/hmr-match.tsx?t=2",
+					},
+				],
+			}),
+		).not.toThrow();
+		await vi.advanceTimersByTimeAsync(11);
+		await vi.runAllTimersAsync();
+		expect(routeChangeListener).not.toHaveBeenCalled();
+
+		removeRouteChangeListener();
+	});
+
 	it("progressively loads route manifests and registers their patterns", async () => {
 		const api = await loadClientAPI();
 		const manifest = {
@@ -863,8 +1064,7 @@ describe("client history/init contracts", () => {
 			vormaAppConfig: TEST_APP_CONFIG,
 			renderFn: () => {},
 		});
-		await Promise.resolve();
-		await Promise.resolve();
+		await flushProgressiveManifestMicrotasks();
 
 		expect(fetchSpy).toHaveBeenCalledWith(
 			"http://localhost:3000/manifest.json",
@@ -897,8 +1097,7 @@ describe("client history/init contracts", () => {
 				renderFn: () => {},
 			}),
 		).resolves.toBeUndefined();
-		await Promise.resolve();
-		await Promise.resolve();
+		await flushProgressiveManifestMicrotasks();
 
 		expect(fetchSpy).toHaveBeenCalledWith(
 			"http://localhost:3000/manifest.json",
@@ -908,5 +1107,275 @@ describe("client history/init contracts", () => {
 			"Failed to load route manifest:",
 			fetchError,
 		);
+	});
+
+	it("rejects invalid route-manifest payload shapes without mutating registry state", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(JSON.stringify(["/invalid-array-entry"]), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		const warnSpy = vi.spyOn(console, "warn");
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest.json",
+		);
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+		await flushProgressiveManifestMicrotasks();
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"http://localhost:3000/manifest.json",
+		);
+		expect(api.__vormaClientGlobal.get("routeManifest")).toBeUndefined();
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/invalid-array-entry",
+			),
+		).toBeNull();
+		const manifestWarningCall = warnSpy.mock.calls.find(
+			(call) => call[0] === "Failed to load route manifest:",
+		);
+		expect(manifestWarningCall).toBeDefined();
+		if (!manifestWarningCall) {
+			return;
+		}
+		expect(manifestWarningCall[1]).toBeInstanceOf(Error);
+		expect((manifestWarningCall[1] as Error).message).toContain(
+			"non-null object",
+		);
+	});
+
+	it("treats non-OK route-manifest responses as non-fatal and leaves state unchanged", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response("manifest unavailable", {
+				status: 503,
+				headers: { "Content-Type": "text/plain" },
+			}),
+		);
+		const warnSpy = vi.spyOn(console, "warn");
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest.json",
+		);
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+		await flushProgressiveManifestMicrotasks();
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"http://localhost:3000/manifest.json",
+		);
+		expect(api.__vormaClientGlobal.get("routeManifest")).toBeUndefined();
+		const manifestWarningCall = warnSpy.mock.calls.find(
+			(call) => call[0] === "Failed to load route manifest:",
+		);
+		expect(manifestWarningCall).toBeDefined();
+		if (!manifestWarningCall) {
+			return;
+		}
+		expect(manifestWarningCall[1]).toBeInstanceOf(Error);
+		expect((manifestWarningCall[1] as Error).message).toContain(
+			"status 503",
+		);
+	});
+
+	it("rejects route-manifest entries whose loader flags are outside 0 or 1", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					"/invalid-loader-flag": 2,
+				}),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				},
+			),
+		);
+		const warnSpy = vi.spyOn(console, "warn");
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest.json",
+		);
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+		await flushProgressiveManifestMicrotasks();
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"http://localhost:3000/manifest.json",
+		);
+		expect(api.__vormaClientGlobal.get("routeManifest")).toBeUndefined();
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/invalid-loader-flag",
+			),
+		).toBeNull();
+		const manifestWarningCall = warnSpy.mock.calls.find(
+			(call) => call[0] === "Failed to load route manifest:",
+		);
+		expect(manifestWarningCall).toBeDefined();
+		if (!manifestWarningCall) {
+			return;
+		}
+		expect(manifestWarningCall[1]).toBeInstanceOf(Error);
+		expect((manifestWarningCall[1] as Error).message).toContain("0 or 1");
+	});
+
+	it("ignores stale older progressive manifest responses after a newer init", async () => {
+		const api = await loadClientAPI();
+		const olderManifest = {
+			"/stale-manifest-old/:id": 1,
+		};
+		const newerManifest = {
+			"/stale-manifest-new/:id": 1,
+		};
+		const olderManifestDeferred = createDeferred<Response>();
+		const newerManifestDeferred = createDeferred<Response>();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementation((input) => {
+				const href =
+					typeof input === "string"
+						? input
+						: input instanceof URL
+							? input.href
+							: input.url;
+
+				if (href === "http://localhost:3000/manifest-old.json") {
+					return olderManifestDeferred.promise;
+				}
+				if (href === "http://localhost:3000/manifest-new.json") {
+					return newerManifestDeferred.promise;
+				}
+
+				throw new Error(`Unexpected manifest fetch URL: ${href}`);
+			});
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest-old.json",
+		);
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest-new.json",
+		);
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		newerManifestDeferred.resolve(
+			new Response(JSON.stringify(newerManifest), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		await vi.waitFor(() => {
+			expect(api.__vormaClientGlobal.get("routeManifest")).toEqual(
+				newerManifest,
+			);
+		});
+
+		olderManifestDeferred.resolve(
+			new Response(JSON.stringify(olderManifest), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		await flushProgressiveManifestMicrotasks();
+
+		expect(fetchSpy).toHaveBeenNthCalledWith(
+			1,
+			"http://localhost:3000/manifest-old.json",
+		);
+		expect(fetchSpy).toHaveBeenNthCalledWith(
+			2,
+			"http://localhost:3000/manifest-new.json",
+		);
+		expect(api.__vormaClientGlobal.get("routeManifest")).toEqual(
+			newerManifest,
+		);
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/stale-manifest-new/123",
+			)?.registeredPattern.originalPattern,
+		).toBe("/stale-manifest-new/:id");
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/stale-manifest-old/123",
+			),
+		).toBeNull();
+	});
+
+	it("ignores progressive manifest payload when pattern registry was replaced mid-flight", async () => {
+		const api = await loadClientAPI();
+		const deferredManifestResponse = createDeferred<Response>();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementation(() => deferredManifestResponse.promise);
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest.json",
+		);
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		const replacementRegistry = createPatternRegistry({
+			dynamicParamPrefixRune: TEST_APP_CONFIG.loadersDynamicRune,
+			splatSegmentRune: TEST_APP_CONFIG.loadersSplatRune,
+			explicitIndexSegment: TEST_APP_CONFIG.loadersExplicitIndexSegment,
+		});
+		api.__vormaClientGlobal.set("patternRegistry", replacementRegistry);
+
+		deferredManifestResponse.resolve(
+			new Response(
+				JSON.stringify({
+					"/manifest-should-be-ignored/:id": 1,
+				}),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				},
+			),
+		);
+		await flushProgressiveManifestMicrotasks();
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"http://localhost:3000/manifest.json",
+		);
+		expect(api.__vormaClientGlobal.get("routeManifest")).toBeUndefined();
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/manifest-should-be-ignored/123",
+			),
+		).toBeNull();
 	});
 });

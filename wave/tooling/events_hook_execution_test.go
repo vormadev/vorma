@@ -182,6 +182,55 @@ func TestFireNoWaitHooks_RunsAsyncCallbackAndCommand(t *testing.T) {
 	}
 }
 
+func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	changedPath := filepath.Join(root, "changed.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	var excludedHookRan atomic.Bool
+	failingHookCalled := make(chan struct{}, 1)
+
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			ConcurrentNoWait: []wave.OnChangeHook{
+				{
+					Exclude: []string{changedPath},
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						excludedHookRan.Store(true)
+						return nil, nil
+					},
+				},
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						failingHookCalled <- struct{}{}
+						return nil, os.ErrInvalid
+					},
+					Cmd: "false",
+				},
+			},
+		},
+	}
+
+	s.fireNoWaitHooks(ewh, watcher)
+
+	select {
+	case <-failingHookCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for failing no-wait callback to be invoked")
+	}
+
+	if excludedHookRan.Load() {
+		t.Fatal("did not expect excluded no-wait hook callback to run")
+	}
+}
+
 func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
@@ -318,6 +367,65 @@ func TestExecuteBuildPhase_CompileGoErrorDoesNotPanic(t *testing.T) {
 
 	work := &workSet{compileGo: true}
 	s.executeBuildPhase(work)
+}
+
+func TestExecuteBuildPhase_WithNilBuilderDoesNotPanic(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	s := &server{
+		cfg: cfg,
+		log: newDiscardLogger(),
+	}
+
+	work := &workSet{
+		compileGo:           true,
+		processPublicFiles:  true,
+		processPrivateFiles: true,
+		buildCriticalCSS:    true,
+		buildNormalCSS:      true,
+	}
+	s.executeBuildPhase(work)
+}
+
+func TestExecuteBuildPhase_WritePublicFileMapTSErrorDoesNotPanic(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.FrameworkPublicFileMapOutDir = filepath.Join(root, "framework-output-blocker")
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	if err := os.WriteFile(cfg.FrameworkPublicFileMapOutDir, []byte("not-a-directory"), 0644); err != nil {
+		t.Fatalf("failed writing framework output blocker file: %v", err)
+	}
+
+	publicFile := filepath.Join(cfg.Core.StaticAssetDirs.Public, "assets", "logo.png")
+	if err := os.MkdirAll(filepath.Dir(publicFile), 0755); err != nil {
+		t.Fatalf("failed creating public static dir: %v", err)
+	}
+	if err := os.WriteFile(publicFile, []byte("logo"), 0644); err != nil {
+		t.Fatalf("failed writing public static file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &server{
+		cfg:     cfg,
+		log:     newDiscardLogger(),
+		builder: builder,
+	}
+
+	work := &workSet{processPublicFiles: true}
+	s.executeBuildPhase(work)
+
+	statInfo, err := os.Stat(cfg.FrameworkPublicFileMapOutDir)
+	if err != nil {
+		t.Fatalf("failed stating framework output blocker: %v", err)
+	}
+	if statInfo.IsDir() {
+		t.Fatal("expected framework output blocker to remain a file")
+	}
 }
 
 func waveEvent(path string) fsnotify.Event {

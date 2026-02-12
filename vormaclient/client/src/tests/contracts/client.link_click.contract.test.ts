@@ -239,13 +239,15 @@ describe("client link click contracts", () => {
 		const api = await loadClientAPI();
 		const staleFetch = createDeferredFetchCall();
 		let fetchCallCount = 0;
-		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((url, init) => {
-			fetchCallCount++;
-			if (fetchCallCount === 1) {
-				return staleFetch.mock(url, init);
-			}
-			return Promise.resolve(createRouteDataResponse());
-		});
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementation((url, init) => {
+				fetchCallCount++;
+				if (fetchCallCount === 1) {
+					return staleFetch.mock(url, init);
+				}
+				return Promise.resolve(createRouteDataResponse());
+			});
 		const onClick = api.__makeLinkOnClickFn({});
 		const { event } = createClickEvent("/aborted-click");
 
@@ -265,5 +267,20 @@ describe("client link click contracts", () => {
 
 		expect(fetchCallCount).toBe(2);
 		expect(window.location.pathname).toBe("/winner");
+	});
+
+	it("does not throw and clears navigating state when link navigation fetch fails", async () => {
+		const api = await loadClientAPI();
+		vi.spyOn(window, "fetch").mockRejectedValue(
+			new Error("network failed"),
+		);
+
+		const { event } = createClickEvent("/failing-click");
+		const onClick = api.__makeLinkOnClickFn({});
+		await expect(onClick(event)).resolves.toBeUndefined();
+		await vi.runAllTimersAsync();
+
+		const status = api.getStatus();
+		expect(status.isNavigating).toBe(false);
 	});
 });

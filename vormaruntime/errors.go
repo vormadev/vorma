@@ -15,7 +15,19 @@ type LoaderError struct {
 	Server error
 }
 
-func (e *LoaderError) Error() string         { return e.Server.Error() }
+func (e *LoaderError) Error() string {
+	if e == nil {
+		return "loader error"
+	}
+	if e.Server != nil {
+		return e.Server.Error()
+	}
+	if e.Client != "" {
+		return e.Client
+	}
+	return "loader error"
+}
+
 func (e *LoaderError) __isLoaderError()      {}
 func (e *LoaderError) ClientMessage() string { return e.Client }
 func (e *LoaderError) ServerError() error    { return e.Server }

@@ -26,7 +26,7 @@ func SetModeToDev() {
 
 func GetPort() int {
 	p, err := strconv.Atoi(os.Getenv(envPort))
-	if err != nil {
+	if err != nil || p <= 0 || p > 65535 {
 		return 0
 	}
 	return p
@@ -78,7 +78,7 @@ var MustGetAppPort = MustGetPort
 
 func GetRefreshServerPort() int {
 	p, err := strconv.Atoi(os.Getenv(envRefreshServerPort))
-	if err != nil {
+	if err != nil || p <= 0 || p > 65535 {
 		return 0
 	}
 	return p

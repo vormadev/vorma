@@ -8,37 +8,54 @@ import (
 )
 
 func injectDefaultWatchPatterns(v *vormaruntime.Vorma) {
-	includeDefaults := true
-	if v.Config.IncludeDefaults != nil {
-		includeDefaults = *v.Config.IncludeDefaults
-	}
-	if !includeDefaults {
+	if !shouldInjectDefaultWatchPatterns(v) {
 		return
 	}
 
 	cfg := v.Wave.GetParsedConfig()
 	patterns := getDefaultWatchPatterns(v)
-	cfg.FrameworkWatchPatterns = append(cfg.FrameworkWatchPatterns, patterns...)
+	appendMissingFrameworkWatchPatterns(cfg, patterns)
 
 	if v.Config.TSGenOutDir != "" {
-		cfg.FrameworkPublicFileMapOutDir = v.Config.TSGenOutDir
-		cfg.FrameworkIgnoredPatterns = append(cfg.FrameworkIgnoredPatterns,
-			filepath.Join(v.Config.TSGenOutDir, wave.GeneratedTSFileName),
-			filepath.Join(v.Config.TSGenOutDir, wave.PublicFileMapTSName),
-			filepath.Join(v.Config.TSGenOutDir, wave.PublicFileMapJSONName),
-		)
+		injectGeneratedOutputPathsForDefaultWatchPatterns(cfg, v.Config.TSGenOutDir)
 	}
+}
+
+func appendMissingFrameworkWatchPatterns(
+	cfg *wave.ParsedConfig,
+	defaultPatterns []wave.WatchedFile,
+) {
+	for _, defaultPattern := range defaultPatterns {
+		if hasFrameworkWatchPattern(cfg.FrameworkWatchPatterns, defaultPattern.Pattern) {
+			continue
+		}
+		cfg.FrameworkWatchPatterns = append(cfg.FrameworkWatchPatterns, defaultPattern)
+	}
+}
+
+func hasFrameworkWatchPattern(
+	existingPatterns []wave.WatchedFile,
+	pattern string,
+) bool {
+	for _, existingPattern := range existingPatterns {
+		if existingPattern.Pattern == pattern {
+			return true
+		}
+	}
+	return false
 }
 
 func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 	var patterns []wave.WatchedFile
 
-	if pattern, ok := routeDefinitionsWatchPattern(v); ok {
-		patterns = append(patterns, pattern)
+	routeDefinitionsPattern := routeDefinitionsWatchPattern(v)
+	if routeDefinitionsPattern != nil {
+		patterns = append(patterns, *routeDefinitionsPattern)
 	}
 
-	if pattern, ok := htmlTemplateWatchPattern(v); ok {
-		patterns = append(patterns, pattern)
+	htmlTemplatePattern := htmlTemplateWatchPattern(v)
+	if htmlTemplatePattern != nil {
+		patterns = append(patterns, *htmlTemplatePattern)
 	}
 
 	patterns = append(patterns, goFilesWatchPattern())
@@ -46,37 +63,34 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 	return patterns
 }
 
-func routeDefinitionsWatchPattern(v *vormaruntime.Vorma) (wave.WatchedFile, bool) {
+func routeDefinitionsWatchPattern(v *vormaruntime.Vorma) *wave.WatchedFile {
 	clientRouteDefsFile := v.Config.ClientRouteDefsFile
 	if clientRouteDefsFile == "" {
-		return wave.WatchedFile{}, false
+		return nil
 	}
 
-	return wave.WatchedFile{
-		Pattern:         clientRouteDefsFile,
-		RunOnChangeOnly: true, // Skip standard build - callback handles everything
-		OnChangeHooks: []wave.OnChangeHook{{
-			Callback: routeDefinitionsOnChangeCallback(v),
-		}},
-		SkipRebuildingNotification: true,
-	}, true
+	watchPattern := runOnChangeOnlyWatchPattern(
+		clientRouteDefsFile,
+		routeDefinitionsOnChangeCallback(v),
+		true,
+	)
+	return &watchPattern
 }
 
-func htmlTemplateWatchPattern(v *vormaruntime.Vorma) (wave.WatchedFile, bool) {
+func htmlTemplateWatchPattern(v *vormaruntime.Vorma) *wave.WatchedFile {
 	htmlTemplateLocation := v.Config.HTMLTemplateLocation
 	privateStaticDir := v.Wave.GetPrivateStaticDir()
 	if htmlTemplateLocation == "" || privateStaticDir == "" {
-		return wave.WatchedFile{}, false
+		return nil
 	}
 
 	templatePath := filepath.Join(privateStaticDir, htmlTemplateLocation)
-	return wave.WatchedFile{
-		Pattern:         templatePath,
-		RunOnChangeOnly: true, // Skip standard build - callback handles everything
-		OnChangeHooks: []wave.OnChangeHook{{
-			Callback: htmlTemplateOnChangeCallback(v),
-		}},
-	}, true
+	watchPattern := runOnChangeOnlyWatchPattern(
+		templatePath,
+		htmlTemplateOnChangeCallback(v),
+		false,
+	)
+	return &watchPattern
 }
 
 func goFilesWatchPattern() wave.WatchedFile {
@@ -90,33 +104,102 @@ func goFilesWatchPattern() wave.WatchedFile {
 }
 
 func routeDefinitionsOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
+	return watchReloadCallback(
+		v,
+		vormaruntime.Dev_ReloadRoutesPath,
+		"route reload endpoint failed, falling back to restart",
+		rebuildRoutesOnly,
+	)
+}
+
+func htmlTemplateOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
+	return watchReloadCallback(
+		v,
+		vormaruntime.Dev_ReloadTemplatePath,
+		"template reload endpoint failed, falling back to restart",
+		nil,
+	)
+}
+
+func watchReloadCallback(
+	v *vormaruntime.Vorma,
+	reloadEndpoint string,
+	reloadEndpointFailureWarnMessage string,
+	preReloadAction func(*vormaruntime.Vorma) error,
+) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return func(ctx *wave.HookContext) (*wave.RefreshAction, error) {
-		if err := rebuildRoutesOnly(v); err != nil {
-			return nil, err
+		if preReloadAction != nil {
+			if err := preReloadAction(v); err != nil {
+				return nil, err
+			}
 		}
 
-		if ctx.AppStoppedForBatch {
+		if ctx != nil && ctx.AppStoppedForBatch {
 			return nil, nil
 		}
 
 		return getReloadActionForEndpointWithFallback(
 			v,
-			vormaruntime.Dev_ReloadRoutesPath,
-			"route reload endpoint failed, falling back to restart",
+			reloadEndpoint,
+			reloadEndpointFailureWarnMessage,
 		), nil
 	}
 }
 
-func htmlTemplateOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
-	return func(ctx *wave.HookContext) (*wave.RefreshAction, error) {
-		if ctx.AppStoppedForBatch {
-			return nil, nil
-		}
+func shouldInjectDefaultWatchPatterns(v *vormaruntime.Vorma) bool {
+	if v.Config.IncludeDefaults == nil {
+		return true
+	}
+	return *v.Config.IncludeDefaults
+}
 
-		return getReloadActionForEndpointWithFallback(
-			v,
-			vormaruntime.Dev_ReloadTemplatePath,
-			"template reload endpoint failed, falling back to restart",
-		), nil
+func injectGeneratedOutputPathsForDefaultWatchPatterns(
+	cfg *wave.ParsedConfig,
+	tsGenOutDir string,
+) {
+	if cfg.FrameworkPublicFileMapOutDir == "" {
+		cfg.FrameworkPublicFileMapOutDir = tsGenOutDir
+	}
+
+	appendMissingFrameworkIgnoredPatterns(cfg,
+		filepath.Join(tsGenOutDir, wave.GeneratedTSFileName),
+		filepath.Join(tsGenOutDir, wave.PublicFileMapTSName),
+		filepath.Join(tsGenOutDir, wave.PublicFileMapJSONName),
+	)
+}
+
+func appendMissingFrameworkIgnoredPatterns(
+	cfg *wave.ParsedConfig,
+	defaultIgnoredPatterns ...string,
+) {
+	for _, defaultIgnoredPattern := range defaultIgnoredPatterns {
+		if hasString(cfg.FrameworkIgnoredPatterns, defaultIgnoredPattern) {
+			continue
+		}
+		cfg.FrameworkIgnoredPatterns = append(cfg.FrameworkIgnoredPatterns, defaultIgnoredPattern)
+	}
+}
+
+func hasString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func runOnChangeOnlyWatchPattern(
+	pattern string,
+	callback func(*wave.HookContext) (*wave.RefreshAction, error),
+	skipRebuildingNotification bool,
+) wave.WatchedFile {
+	return wave.WatchedFile{
+		Pattern:         pattern,
+		RunOnChangeOnly: true,
+		OnChangeHooks: []wave.OnChangeHook{{
+			Callback: callback,
+		}},
+		SkipRebuildingNotification: skipRebuildingNotification,
 	}
 }

@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-	updateHeadEls,
-	getStartAndEndComments,
-} from "../../ui/head.ts";
+import { updateHeadEls, getStartAndEndComments } from "../../ui/head.ts";
 import type { HeadEl } from "../../app/context.ts";
 import { setupContractTestSuite } from "./contract_test_harness.ts";
 
@@ -63,6 +60,98 @@ describe("head element contracts", () => {
 	});
 
 	describe("advanced updates", () => {
+		it("no-ops when section markers are out of order", () => {
+			document.head.innerHTML = "";
+
+			const endMarker = document.createComment('data-vorma="meta-end"');
+			const startMarker = document.createComment(
+				'data-vorma="meta-start"',
+			);
+			const sentinel = document.createElement("meta");
+			sentinel.setAttribute("name", "sentinel");
+			sentinel.setAttribute("content", "keep");
+
+			document.head.appendChild(endMarker);
+			document.head.appendChild(startMarker);
+			document.head.appendChild(sentinel);
+
+			updateHeadEls("meta", [
+				{
+					tag: "meta",
+					attributesKnownSafe: {
+						name: "new-meta",
+						content: "new",
+					},
+				},
+			]);
+
+			const metaElements = Array.from(
+				document.head.querySelectorAll("meta"),
+			);
+			expect(metaElements).toHaveLength(1);
+			expect(metaElements[0]).toBe(sentinel);
+			expect(metaElements[0]?.getAttribute("name")).toBe("sentinel");
+			expect(metaElements[0]?.getAttribute("content")).toBe("keep");
+		});
+
+		it("uses the nearest valid marker pair when earlier stray markers exist", () => {
+			document.head.innerHTML = "";
+
+			const strayEndMarker = document.createComment(
+				'data-vorma="meta-end"',
+			);
+			const strayStartMarker = document.createComment(
+				'data-vorma="meta-start"',
+			);
+			const strayMeta = document.createElement("meta");
+			strayMeta.setAttribute("name", "stray");
+			strayMeta.setAttribute("content", "keep");
+
+			const validStartMarker = document.createComment(
+				'data-vorma="meta-start"',
+			);
+			const staleDescriptionMeta = document.createElement("meta");
+			staleDescriptionMeta.setAttribute("name", "description");
+			staleDescriptionMeta.setAttribute("content", "stale");
+			const validEndMarker = document.createComment(
+				'data-vorma="meta-end"',
+			);
+
+			const outsideMeta = document.createElement("meta");
+			outsideMeta.setAttribute("name", "outside");
+			outsideMeta.setAttribute("content", "keep");
+
+			document.head.appendChild(strayEndMarker);
+			document.head.appendChild(strayStartMarker);
+			document.head.appendChild(strayMeta);
+			document.head.appendChild(validStartMarker);
+			document.head.appendChild(staleDescriptionMeta);
+			document.head.appendChild(validEndMarker);
+			document.head.appendChild(outsideMeta);
+
+			updateHeadEls("meta", [
+				{
+					tag: "meta",
+					attributesKnownSafe: {
+						name: "description",
+						content: "fresh",
+					},
+				},
+			]);
+
+			const description = document.head.querySelector<HTMLMetaElement>(
+				'meta[name="description"]',
+			);
+			expect(description).not.toBeNull();
+			expect(description?.getAttribute("content")).toBe("fresh");
+			expect(
+				document.head.querySelector('meta[name="stray"]'),
+			).not.toBeNull();
+			expect(
+				document.head.querySelector('meta[name="outside"]'),
+			).not.toBeNull();
+		});
+
 		it("updates style innerHTML content across consecutive rest updates", () => {
 			const initialCSS = "body > .foo { color: red; }\n/* comment */";
 			const updatedCSS = ".bar { font-weight: bold; }";

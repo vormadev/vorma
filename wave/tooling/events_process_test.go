@@ -239,3 +239,42 @@ func TestProcessEvents_IgnoresChmodOnNonEmptyFile(t *testing.T) {
 		t.Fatalf("expected chmod-only non-empty event to be ignored, callback count=%d", got)
 	}
 }
+
+func TestProcessEvents_NewDirectoryCreateEventAddsWatchDir(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	if err != nil {
+		t.Fatalf("NewWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &server{
+		cfg:       cfg,
+		log:       newDiscardLogger(),
+		watcher:   watcher,
+		builder:   builder,
+		restartCh: make(chan restartRequest, 1),
+	}
+
+	newDirectory := filepath.Join(root, "new-child-dir")
+	if err := os.MkdirAll(newDirectory, 0755); err != nil {
+		t.Fatalf("failed creating new directory: %v", err)
+	}
+
+	s.processEvents([]fsnotify.Event{{
+		Name: newDirectory,
+		Op:   fsnotify.Create,
+	}})
+
+	directoryKey := watcher.norm(newDirectory)
+	if _, ok := watcher.watchedDirs.Load(directoryKey); !ok {
+		t.Fatalf("expected new directory to be added to watcher dirs: %s", directoryKey)
+	}
+}

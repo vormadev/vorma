@@ -188,18 +188,18 @@ func TestWritePathsToDiskStageOne_WritesExpectedFields(t *testing.T) {
 	}
 }
 
-func TestStageOnePathsOutputPath(t *testing.T) {
+func TestPathsOutputPath_StageOneFile(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	got := stageOnePathsOutputPath(app)
+	got := pathsOutputPath(app, vormaruntime.VormaPathsStageOneJSONFileName)
 	want := filepath.Join(
 		app.Wave.GetStaticPrivateOutDir(),
 		vormaruntime.VormaOutDirname,
 		vormaruntime.VormaPathsStageOneJSONFileName,
 	)
 	if got != want {
-		t.Fatalf("stageOnePathsOutputPath() = %q, want %q", got, want)
+		t.Fatalf("pathsOutputPath(stage-one) = %q, want %q", got, want)
 	}
 }
 
@@ -218,7 +218,7 @@ func TestStageOnePathsFile(t *testing.T) {
 				ExportKey:       "default",
 			},
 		})
-		pathsFile = stageOnePathsFile(l)
+		pathsFile = stageOnePathsFile(l, "manifest-stage-one.json")
 	})
 
 	if pathsFile == nil {
@@ -597,15 +597,33 @@ func TestConfigureBuildEnvironment_WiresSchemaHooksAndDefaults(t *testing.T) {
 	}
 }
 
-func TestRunBuildHook_DevBuildInnerFlow(t *testing.T) {
+func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	parsedCfg := app.Wave.GetParsedConfig()
+
+	parsedCfg.FrameworkDevBuildHook = "go run ./custom/devhook"
+	parsedCfg.FrameworkProdBuildHook = "go run ./custom/prodhook"
+
+	configureBuildEnvironment(app)
+
+	if parsedCfg.FrameworkDevBuildHook != "go run ./custom/devhook" {
+		t.Fatalf("FrameworkDevBuildHook = %q, want preserved custom hook", parsedCfg.FrameworkDevBuildHook)
+	}
+	if parsedCfg.FrameworkProdBuildHook != "go run ./custom/prodhook" {
+		t.Fatalf("FrameworkProdBuildHook = %q, want preserved custom hook", parsedCfg.FrameworkProdBuildHook)
+	}
+}
+
+func TestBuildInner_DevBuildInnerFlow(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
 	t.Chdir(fixture.rootDir)
 	writeBootstrapStyleRoutesFixtureFiles(t)
 
-	if err := runBuildHook(app, true); err != nil {
-		t.Fatalf("runBuildHook returned error: %v", err)
+	if err := buildInner(app, &buildInnerOptions{isDev: true}); err != nil {
+		t.Fatalf("buildInner returned error: %v", err)
 	}
 
 	if !app.GetIsDevMode() {

@@ -1,21 +1,12 @@
 package vormabuild
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strconv"
-	"strings"
 
-	esbuild "github.com/evanw/esbuild/pkg/api"
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/js"
-	"github.com/vormadev/vorma/vormaruntime"
 )
-
-var importRegex = regexp.MustCompile(`import\((` + "`" + `[^` + "`" + `]+` + "`" + `|'[^']+'|"[^"]+")\)`)
 
 type RouteCall struct {
 	Pattern  string
@@ -55,37 +46,38 @@ func (rv *routeCallVisitor) Enter(n js.INode) js.IVisitor {
 		return rv
 	}
 
-	route, unresolved, resolved := rv.extractRouteCall(call.Args.List)
-	if unresolved != nil {
-		rv.unresolvedRoutes = append(rv.unresolvedRoutes, *unresolved)
+	routeCall, unresolvedRoute := rv.extractRouteCall(call.Args.List)
+	if unresolvedRoute != nil {
+		rv.unresolvedRoutes = append(rv.unresolvedRoutes, *unresolvedRoute)
 		return rv
 	}
-	if !resolved {
+	if routeCall == nil {
 		return rv
 	}
 
-	rv.routes = append(rv.routes, route)
+	rv.routes = append(rv.routes, *routeCall)
 	return rv
 }
 
-func (rv *routeCallVisitor) Exit(n js.INode) {}
+func (rv *routeCallVisitor) Exit(n js.INode) {
+	_ = n
+}
 
-func (rv *routeCallVisitor) extractRouteCall(argsList []js.Arg) (RouteCall, *UnresolvedRouteCall, bool) {
+func (rv *routeCallVisitor) extractRouteCall(
+	argsList []js.Arg,
+) (*RouteCall, *UnresolvedRouteCall) {
 	route := RouteCall{Key: "default"}
 
 	pattern, ok := extractStaticStringArg(argsList, 0)
 	if !ok {
-		return RouteCall{}, nil, false
+		return nil, nil
 	}
 	route.Pattern = pattern
 
 	if len(argsList) > 1 {
-		modulePath, unresolvedRoute, resolved := rv.resolveModuleArgument(route.Pattern, argsList[1].Value)
-		if unresolvedRoute != nil {
-			return RouteCall{}, unresolvedRoute, false
-		}
-		if !resolved {
-			return RouteCall{}, nil, false
+		modulePath, unresolvedModule := rv.resolveModuleArgument(route.Pattern, argsList[1].Value)
+		if unresolvedModule != nil {
+			return nil, unresolvedModule
 		}
 		route.Module = modulePath
 	}
@@ -97,23 +89,23 @@ func (rv *routeCallVisitor) extractRouteCall(argsList []js.Arg) (RouteCall, *Unr
 		route.ErrorKey = errorKey
 	}
 
-	return route, nil, true
+	return &route, nil
 }
 
 func (rv *routeCallVisitor) resolveModuleArgument(
 	routePattern string,
 	moduleExpr js.IExpr,
-) (string, *UnresolvedRouteCall, bool) {
+) (string, *UnresolvedRouteCall) {
 	if varRef, ok := moduleExpr.(*js.Var); ok {
 		varName := string(varRef.Data)
 		if trackedModulePath, exists := rv.trackedModuleVars[varName]; exists {
-			return trackedModulePath, nil, true
+			return trackedModulePath, nil
 		}
-		return "", &UnresolvedRouteCall{
-			Pattern:       routePattern,
-			RawModuleExpr: varName,
-			Reason:        fmt.Sprintf("variable '%s' is not a tracked import or const string", varName),
-		}, false
+		return "", unresolvedModuleArgument(
+			routePattern,
+			varName,
+			fmt.Sprintf("variable '%s' is not a tracked import or const string", varName),
+		)
 	}
 
 	if functionCall, ok := moduleExpr.(*js.CallExpr); ok {
@@ -122,39 +114,51 @@ func (rv *routeCallVisitor) resolveModuleArgument(
 
 	modulePath, ok := extractStaticStringLiteral(moduleExpr)
 	if !ok {
-		return "", &UnresolvedRouteCall{
-			Pattern:       routePattern,
-			RawModuleExpr: "<expression>",
-			Reason:        "module argument is not a static string, variable, or import() call",
-		}, false
+		return "", unresolvedModuleArgument(
+			routePattern,
+			"<expression>",
+			"module argument is not a static string, variable, or import() call",
+		)
 	}
-	return modulePath, nil, true
+	return modulePath, nil
 }
 
 func resolveModuleArgumentFromFunctionCall(
 	routePattern string,
 	functionCall *js.CallExpr,
-) (string, *UnresolvedRouteCall, bool) {
+) (string, *UnresolvedRouteCall) {
 	if functionCallTargetsJSImport(functionCall) {
 		if modulePath, ok := extractStaticStringArg(functionCall.Args.List, 0); ok {
-			return modulePath, nil, true
+			return modulePath, nil
 		}
-		return "", &UnresolvedRouteCall{
-			Pattern:       routePattern,
-			RawModuleExpr: "import(...)",
-			Reason:        "dynamic import() argument is not a static string",
-		}, false
+		return "", unresolvedModuleArgument(
+			routePattern,
+			"import(...)",
+			"dynamic import() argument is not a static string",
+		)
 	}
 
 	functionName := "<unknown>"
 	if functionIdent, ok := functionCall.X.(*js.Var); ok {
 		functionName = string(functionIdent.Data)
 	}
-	return "", &UnresolvedRouteCall{
+	return "", unresolvedModuleArgument(
+		routePattern,
+		functionName+"(...)",
+		"module argument is a function call, which cannot be statically analyzed",
+	)
+}
+
+func unresolvedModuleArgument(
+	routePattern string,
+	rawModuleExpr string,
+	reason string,
+) *UnresolvedRouteCall {
+	return &UnresolvedRouteCall{
 		Pattern:       routePattern,
-		RawModuleExpr: functionName + "(...)",
-		Reason:        "module argument is a function call, which cannot be statically analyzed",
-	}, false
+		RawModuleExpr: rawModuleExpr,
+		Reason:        reason,
+	}
 }
 
 func functionCallTargetsJSImport(functionCall *js.CallExpr) bool {
@@ -187,176 +191,13 @@ func extractRouteCalls(code string) ([]RouteCall, []UnresolvedRouteCall, error) 
 		return nil, nil, fmt.Errorf("parse JS/TS: %w", err)
 	}
 
-	routeFuncNames := collectBuildtimeRouteFunctionNames(parsedAST)
-	trackedModuleVars := collectStaticStringVariableAssignments(parsedAST)
+	metadata := collectRouteParsingMetadata(parsedAST)
 
 	visitor := &routeCallVisitor{
-		routeFuncNames:    routeFuncNames,
-		trackedModuleVars: trackedModuleVars,
+		routeFuncNames:    metadata.routeFuncNames,
+		trackedModuleVars: metadata.trackedModuleVars,
 	}
 	js.Walk(visitor, parsedAST)
 
 	return visitor.routes, visitor.unresolvedRoutes, nil
-}
-
-func collectBuildtimeRouteFunctionNames(parsedAST *js.AST) map[string]bool {
-	routeFuncNames := make(map[string]bool)
-	for _, statement := range parsedAST.BlockStmt.List {
-		importStmt, isImportStmt := statement.(*js.ImportStmt)
-		if !isImportStmt {
-			continue
-		}
-		if !isBuildtimeImportStatement(importStmt) {
-			continue
-		}
-		for _, alias := range importStmt.List {
-			if !isRouteImportAlias(alias) {
-				continue
-			}
-			routeFuncName := routeImportAliasBinding(alias)
-			if routeFuncName != "" {
-				routeFuncNames[routeFuncName] = true
-			}
-		}
-	}
-	return routeFuncNames
-}
-
-func isBuildtimeImportStatement(importStmt *js.ImportStmt) bool {
-	return strings.Trim(string(importStmt.Module), `"'`+"`") == "vorma/buildtime"
-}
-
-func isRouteImportAlias(alias js.Alias) bool {
-	aliasName := string(alias.Name)
-	aliasBinding := string(alias.Binding)
-	return aliasName == "route" || (aliasName == "" && aliasBinding == "route")
-}
-
-func routeImportAliasBinding(alias js.Alias) string {
-	if len(alias.Binding) > 0 {
-		return string(alias.Binding)
-	}
-	return string(alias.Name)
-}
-
-func collectStaticStringVariableAssignments(parsedAST *js.AST) map[string]string {
-	trackedModuleVars := make(map[string]string)
-	for _, statement := range parsedAST.BlockStmt.List {
-		varDecl, isVarDecl := statement.(*js.VarDecl)
-		if !isVarDecl {
-			continue
-		}
-		for _, binding := range varDecl.List {
-			varBinding, ok := binding.Binding.(*js.Var)
-			if !ok {
-				continue
-			}
-			modulePath, ok := extractStaticStringLiteral(binding.Default)
-			if !ok {
-				continue
-			}
-			trackedModuleVars[string(varBinding.Data)] = modulePath
-		}
-	}
-	return trackedModuleVars
-}
-
-func parseClientRoutes(v *vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
-	code, err := os.ReadFile(v.Config.ClientRouteDefsFile)
-	if err != nil {
-		return nil, fmt.Errorf("read file: %w", err)
-	}
-
-	transformedCode, err := transformRouteDefinitionsCode(v, code)
-	if err != nil {
-		return nil, err
-	}
-
-	routeCalls, unresolvedRoutes, err := extractRouteCalls(transformedCode)
-	if err != nil {
-		return nil, fmt.Errorf("extract route calls: %w", err)
-	}
-
-	warnUnresolvedRouteCalls(v, unresolvedRoutes)
-
-	return buildPathsFromRouteCalls(v, routeCalls)
-}
-
-func transformRouteDefinitionsCode(v *vormaruntime.Vorma, code []byte) (string, error) {
-	transformResult := esbuild.Transform(string(code), esbuild.TransformOptions{
-		Format:            esbuild.FormatESModule,
-		Platform:          esbuild.PlatformNode,
-		MinifyWhitespace:  true,
-		MinifySyntax:      true,
-		MinifyIdentifiers: false,
-		Loader:            esbuild.LoaderTSX,
-		Target:            esbuild.ES2020,
-	})
-
-	if len(transformResult.Errors) > 0 {
-		logEsbuildTransformErrors(v, transformResult.Errors)
-		return "", errors.New("esbuild transform failed")
-	}
-
-	return importRegex.ReplaceAllString(string(transformResult.Code), "$1"), nil
-}
-
-func logEsbuildTransformErrors(v *vormaruntime.Vorma, messages []esbuild.Message) {
-	for _, message := range messages {
-		v.Log.Error(fmt.Sprintf("esbuild error: %s", message.Text))
-	}
-}
-
-func warnUnresolvedRouteCalls(v *vormaruntime.Vorma, unresolvedRoutes []UnresolvedRouteCall) {
-	for _, unresolved := range unresolvedRoutes {
-		v.Log.Warn(
-			fmt.Sprintf("Route pattern %q has a module path that cannot be statically resolved", unresolved.Pattern),
-			"file", v.Config.ClientRouteDefsFile,
-			"expression", unresolved.RawModuleExpr,
-			"reason", unresolved.Reason,
-		)
-		v.Log.Warn(
-			"This route will be ignored. Use a static string path or a const variable assigned to a string literal.",
-		)
-	}
-}
-
-func buildPathsFromRouteCalls(v *vormaruntime.Vorma, routeCalls []RouteCall) (map[string]*vormaruntime.Path, error) {
-	paths := make(map[string]*vormaruntime.Path, len(routeCalls))
-	routesDir := filepath.Dir(v.Config.ClientRouteDefsFile)
-
-	for _, routeCall := range routeCalls {
-		modulePath := resolveRouteModulePath(v, routesDir, routeCall)
-		if err := ensureRouteModuleExists(modulePath, routeCall.Pattern); err != nil {
-			return nil, err
-		}
-
-		paths[routeCall.Pattern] = &vormaruntime.Path{
-			OriginalPattern: routeCall.Pattern,
-			SrcPath:         modulePath,
-			ExportKey:       routeCall.Key,
-			ErrorExportKey:  routeCall.ErrorKey,
-		}
-	}
-
-	return paths, nil
-}
-
-func resolveRouteModulePath(v *vormaruntime.Vorma, routesDir string, routeCall RouteCall) string {
-	resolvedModulePath, err := filepath.Rel(".", filepath.Join(routesDir, routeCall.Module))
-	if err != nil {
-		v.Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
-		resolvedModulePath = routeCall.Module
-	}
-	return filepath.ToSlash(resolvedModulePath)
-}
-
-func ensureRouteModuleExists(modulePath string, pattern string) error {
-	if _, err := os.Stat(modulePath); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("component module does not exist: %s (pattern: %s)", modulePath, pattern)
-		}
-		return fmt.Errorf("access component module %s: %w", modulePath, err)
-	}
-	return nil
 }

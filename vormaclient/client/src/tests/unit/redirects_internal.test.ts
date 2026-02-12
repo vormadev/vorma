@@ -153,10 +153,114 @@ describe("redirects internal defensive branches", () => {
 		);
 	});
 
+	it("returns null for soft redirect when navigation does not complete", async () => {
+		const { contextModule, redirectsModule } = await loadRedirectModules();
+		const navigate = vi.fn().mockResolvedValue({ didNavigate: false });
+		contextModule.setNavigationStateAccess({
+			navigate,
+			removeNavigation: vi.fn(),
+			getNavigations: vi.fn().mockReturnValue(new Map()),
+		});
+
+		const result = await redirectsModule.effectuateRedirectDataResult(
+			createShouldRedirectDataWithOverrides({
+				shouldRedirectStrategy: "soft",
+			}),
+			2,
+			{
+				href: "/from-submit",
+				navigationType: "redirect",
+				replace: true,
+				scrollToTop: false,
+				state: { from: "submit" },
+			},
+		);
+
+		expect(result).toBeNull();
+		expect(navigate).toHaveBeenCalledWith({
+			href: "/target",
+			navigationType: "redirect",
+			redirectCount: 3,
+			replace: true,
+			scrollToTop: false,
+			state: { from: "submit" },
+		});
+	});
+
+	it("returns did redirect data for soft redirect when navigation completes", async () => {
+		const { contextModule, redirectsModule } = await loadRedirectModules();
+		const navigate = vi.fn().mockResolvedValue({ didNavigate: true });
+		contextModule.setNavigationStateAccess({
+			navigate,
+			removeNavigation: vi.fn(),
+			getNavigations: vi.fn().mockReturnValue(new Map()),
+		});
+
+		const result = await redirectsModule.effectuateRedirectDataResult(
+			createShouldRedirectDataWithOverrides({
+				shouldRedirectStrategy: "soft",
+			}),
+			0,
+		);
+
+		expect(result).toMatchObject({
+			status: "did",
+			href: "/target",
+		});
+		expect(navigate).toHaveBeenCalledWith({
+			href: "/target",
+			navigationType: "redirect",
+			redirectCount: 1,
+			replace: undefined,
+			scrollToTop: undefined,
+			state: undefined,
+		});
+	});
+
 	it("ignores non-http native redirect response URLs", async () => {
 		const { redirectsModule } = await loadRedirectModules();
 		const response = createResponseMarkedAsRedirected({
 			url: "mailto:test@example.com",
+		});
+		vi.spyOn(window, "fetch").mockResolvedValue(response);
+
+		const result = await redirectsModule.handleRedirects({
+			abortController: new AbortController(),
+			url: new URL("http://localhost:3000/start"),
+		});
+
+		expect(result.redirectData).toBeNull();
+		expect(result.response).toBe(response);
+	});
+
+	it("ignores invalid redirect header targets without throwing", async () => {
+		const { redirectsModule } = await loadRedirectModules();
+		const response = new Response(
+			JSON.stringify({
+				ok: true,
+			}),
+			{
+				status: 200,
+				headers: {
+					"X-Client-Redirect": "http://%zz",
+				},
+			},
+		);
+		vi.spyOn(window, "fetch").mockResolvedValue(response);
+
+		const result = await redirectsModule.handleRedirects({
+			abortController: new AbortController(),
+			url: new URL("http://localhost:3000/start"),
+		});
+
+		expect(result.redirectData).toBeNull();
+		expect(result.response).toBe(response);
+	});
+
+	it("ignores invalid native redirect response URLs without throwing", async () => {
+		const { redirectsModule } = await loadRedirectModules();
+		const response = createResponseMarkedAsRedirected({
+			url: "http://%zz",
 		});
 		vi.spyOn(window, "fetch").mockResolvedValue(response);
 

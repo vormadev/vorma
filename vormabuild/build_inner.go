@@ -13,31 +13,128 @@ type buildInnerOptions struct {
 	isDev bool
 }
 
+type buildInnerDependencies struct {
+	captureBuildInnerRuntimeState func(*vormaruntime.Vorma) buildInnerRuntimeStateSnapshot
+	restoreBuildInnerRuntimeState func(*vormaruntime.Vorma, buildInnerRuntimeStateSnapshot)
+	initializeBuildInnerState     func(*vormaruntime.Vorma, *buildInnerOptions) error
+	parseAndSyncClientRoutes      func(*vormaruntime.Vorma) error
+	cleanStaticPublicOutDir       func(*vormaruntime.Vorma) error
+	writePublicFileMapTypeScript  func(*vormaruntime.Vorma) error
+	writeRouteArtifactsWithLock   func(*vormaruntime.Vorma) error
+	logBuildInnerCompletion       func(*vormaruntime.Vorma, time.Time)
+}
+
+type buildInnerRuntimeStateSnapshot struct {
+	isDev                  bool
+	routeBuildRuntimeState routeBuildRuntimeStateSnapshot
+}
+
+type buildInnerRouteSyncDependencies struct {
+	parseClientRoutes     func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error)
+	runRouteSyncExecution func(*vormaruntime.Vorma, routeSyncExecutionOptions) error
+}
+
+type buildInnerBuildIDDependencies struct {
+	generateDevBuildIDSuffix func() (string, error)
+}
+
+type buildInnerPublicFileMapDependencies struct {
+	newPublicFileMapWriter func(*vormaruntime.Vorma) buildInnerPublicFileMapWriter
+}
+
+type buildInnerPublicFileMapWriter interface {
+	WritePublicFileMapTS(string) error
+	Close() error
+}
+
+var buildInnerDeps = buildInnerDependencies{
+	captureBuildInnerRuntimeState: captureBuildInnerRuntimeState,
+	restoreBuildInnerRuntimeState: restoreBuildInnerRuntimeState,
+	initializeBuildInnerState:     initializeBuildInnerState,
+	parseAndSyncClientRoutes:      parseAndSyncClientRoutes,
+	cleanStaticPublicOutDir:       cleanStaticPublicOutDir,
+	writePublicFileMapTypeScript:  writePublicFileMapTypeScript,
+	writeRouteArtifactsWithLock:   writeRouteArtifactsWithLock,
+	logBuildInnerCompletion:       logBuildInnerCompletion,
+}
+
+var buildInnerRouteSyncDeps = buildInnerRouteSyncDependencies{
+	parseClientRoutes:     parseClientRoutes,
+	runRouteSyncExecution: runRouteSyncExecution,
+}
+
+var buildInnerBuildIDDeps = buildInnerBuildIDDependencies{
+	generateDevBuildIDSuffix: func() (string, error) {
+		return id.New(16)
+	},
+}
+
+var buildInnerPublicFileMapDeps = buildInnerPublicFileMapDependencies{
+	newPublicFileMapWriter: func(v *vormaruntime.Vorma) buildInnerPublicFileMapWriter {
+		return wavebuild.NewBuilder(v.Wave.GetParsedConfig(), v.Wave.Logger())
+	},
+}
+
 func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 	start := time.Now()
+	initialRuntimeState := buildInnerDeps.captureBuildInnerRuntimeState(v)
+	buildErr := runWithRollbackOnFailureAndPanic(
+		rollbackTransactionOptions{
+			run: func() error {
+				if err := buildInnerDeps.initializeBuildInnerState(v, opts); err != nil {
+					return err
+				}
 
-	if err := initializeBuildInnerState(v, opts); err != nil {
-		return err
+				if err := buildInnerDeps.parseAndSyncClientRoutes(v); err != nil {
+					return fmt.Errorf("parse client routes: %w", err)
+				}
+
+				if err := buildInnerDeps.cleanStaticPublicOutDir(v); err != nil {
+					return fmt.Errorf("clean static public out dir: %w", err)
+				}
+
+				if err := buildInnerDeps.writePublicFileMapTypeScript(v); err != nil {
+					return fmt.Errorf("write public file map TS: %w", err)
+				}
+
+				if err := buildInnerDeps.writeRouteArtifactsWithLock(v); err != nil {
+					return fmt.Errorf("write route artifacts: %w", err)
+				}
+				return nil
+			},
+			rollbackOnFailure: func() error {
+				buildInnerDeps.restoreBuildInnerRuntimeState(v, initialRuntimeState)
+				return nil
+			},
+		},
+	)
+	if buildErr != nil {
+		return buildErr
 	}
 
-	if err := parseAndSyncClientRoutes(v); err != nil {
-		return fmt.Errorf("parse client routes: %w", err)
-	}
-
-	if err := cleanStaticPublicOutDir(v); err != nil {
-		return fmt.Errorf("clean static public out dir: %w", err)
-	}
-
-	if err := writePublicFileMapTypeScript(v); err != nil {
-		return fmt.Errorf("write public file map TS: %w", err)
-	}
-
-	if err := writeRouteArtifactsWithLock(v); err != nil {
-		return fmt.Errorf("write route artifacts: %w", err)
-	}
-
-	logBuildInnerCompletion(v, start)
+	buildInnerDeps.logBuildInnerCompletion(v, start)
 	return nil
+}
+
+func captureBuildInnerRuntimeState(v *vormaruntime.Vorma) buildInnerRuntimeStateSnapshot {
+	var runtimeStateSnapshot buildInnerRuntimeStateSnapshot
+	v.WithRLock(func(l *vormaruntime.LockedVorma) {
+		runtimeStateSnapshot = buildInnerRuntimeStateSnapshot{
+			isDev:                  l.GetIsDev(),
+			routeBuildRuntimeState: captureRouteBuildRuntimeStateSnapshot(l),
+		}
+	})
+	return runtimeStateSnapshot
+}
+
+func restoreBuildInnerRuntimeState(
+	v *vormaruntime.Vorma,
+	state buildInnerRuntimeStateSnapshot,
+) {
+	v.SetIsDev(state.isDev)
+	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		restoreRouteBuildRuntimeStateSnapshot(l, state.routeBuildRuntimeState)
+	})
 }
 
 func initializeBuildInnerState(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
@@ -48,34 +145,50 @@ func initializeBuildInnerState(v *vormaruntime.Vorma, opts *buildInnerOptions) e
 		return nil
 	}
 
-	buildID, err := id.New(16)
+	buildID, err := newDevBuildID()
 	if err != nil {
-		return fmt.Errorf("generate build ID: %w", err)
+		return err
 	}
 
 	v.WithLock(func(l *vormaruntime.LockedVorma) {
-		l.SetBuildID("dev_" + buildID)
+		l.SetBuildID(buildID)
 	})
 	v.Log.Info("START building Vorma (DEV)")
 	return nil
 }
 
+func newDevBuildID() (string, error) {
+	return generateBuildIDWithPrefix(
+		"dev_",
+		buildInnerBuildIDDeps.generateDevBuildIDSuffix,
+	)
+}
+
 func parseAndSyncClientRoutes(v *vormaruntime.Vorma) error {
-	paths, err := parseClientRoutes(v)
-	if err != nil {
-		return err
-	}
-	v.WithLock(func(l *vormaruntime.LockedVorma) {
-		l.Routes().Sync(paths)
-	})
-	return nil
+	return buildInnerRouteSyncDeps.runRouteSyncExecution(
+		v,
+		routeSyncExecutionOptions{
+			parseClientRoutes: buildInnerRouteSyncDeps.parseClientRoutes,
+		},
+	)
 }
 
 func writePublicFileMapTypeScript(v *vormaruntime.Vorma) error {
-	builder := wavebuild.NewBuilder(v.Wave.GetParsedConfig(), v.Wave.Logger())
-	defer builder.Close()
+	return runWithPublicFileMapWriter(v, func(writer buildInnerPublicFileMapWriter) error {
+		return writer.WritePublicFileMapTS(v.Config.TSGenOutDir)
+	})
+}
 
-	return builder.WritePublicFileMapTS(v.Config.TSGenOutDir)
+func runWithPublicFileMapWriter(
+	v *vormaruntime.Vorma,
+	runWithWriter func(buildInnerPublicFileMapWriter) error,
+) (operationErr error) {
+	writer := buildInnerPublicFileMapDeps.newPublicFileMapWriter(v)
+	return runWithClosableResource(
+		writer,
+		"close wave builder",
+		runWithWriter,
+	)
 }
 
 func writeRouteArtifactsWithLock(v *vormaruntime.Vorma) error {

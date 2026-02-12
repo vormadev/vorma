@@ -153,7 +153,10 @@ describe("client loading/focus contracts", () => {
 		const visibleResult = await visibleSubmit;
 		await vi.runAllTimersAsync();
 
-		expect(visibleResult).toEqual({ success: true, data: { visible: true } });
+		expect(visibleResult).toEqual({
+			success: true,
+			data: { visible: true },
+		});
 		expect(api.getStatus()).toEqual({
 			isNavigating: false,
 			isSubmitting: false,
@@ -626,6 +629,43 @@ describe("client loading/focus contracts", () => {
 		cleanupIndicator();
 	});
 
+	it("clears pending start timer when work finishes before start delay elapses", async () => {
+		const api = await loadClientAPI();
+		let running = false;
+		const start = vi.fn(() => {
+			running = true;
+		});
+		const stop = vi.fn(() => {
+			running = false;
+		});
+		const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+
+		const cleanupIndicator = api.setupGlobalLoadingIndicator({
+			start,
+			stop,
+			isRunning: () => running,
+			startDelayMS: 100,
+			stopDelayMS: 0,
+		});
+
+		const navDeferred = createDeferred<Response>();
+		vi.spyOn(window, "fetch").mockReturnValue(navDeferred.promise as any);
+
+		const navPromise = api.vormaNavigate("/contracts/loading-cancel-start");
+		await vi.advanceTimersByTimeAsync(8);
+
+		navDeferred.resolve(createRouteDataResponse());
+		await navPromise;
+		await vi.runAllTimersAsync();
+
+		expect(start).not.toHaveBeenCalled();
+		expect(stop).not.toHaveBeenCalled();
+		expect(running).toBe(false);
+		expect(clearTimeoutSpy).toHaveBeenCalled();
+
+		cleanupIndicator();
+	});
+
 	it("respects global loading indicator include filters", async () => {
 		const api = await loadClientAPI();
 		let running = false;
@@ -872,7 +912,9 @@ describe("client loading/focus contracts", () => {
 		await vi.runAllTimersAsync();
 
 		const timestampAfterNavigation = getLastTriggeredTimestamp();
-		expect(timestampAfterNavigation).toBeGreaterThan(timestampBeforeNavigation);
+		expect(timestampAfterNavigation).toBeGreaterThan(
+			timestampBeforeNavigation,
+		);
 
 		const cleanup = api.revalidateOnWindowFocus({ staleTimeMS: 100 });
 		try {
@@ -951,7 +993,9 @@ describe("client loading/focus contracts", () => {
 		await vi.runAllTimersAsync();
 
 		const timestampAfterRevalidate = getLastTriggeredTimestamp();
-		expect(timestampAfterRevalidate).toBeGreaterThan(timestampBeforeRevalidate);
+		expect(timestampAfterRevalidate).toBeGreaterThan(
+			timestampBeforeRevalidate,
+		);
 
 		const cleanup = api.revalidateOnWindowFocus({ staleTimeMS: 100 });
 		try {

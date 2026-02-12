@@ -221,6 +221,54 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T
 	}
 }
 
+func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(t *testing.T) {
+	loadersRouter := mux.NewNestedRouter(&mux.NestedOptions{
+		DynamicParamPrefixRune: '@',
+		SplatSegmentRune:       '#',
+	})
+	actionsRouter := mux.NewRouter(&mux.Options{
+		MountRoot:              "/api/",
+		DynamicParamPrefixRune: ':',
+		SplatSegmentRune:       '*',
+	})
+
+	content, err := generateTypeScript(TSGenInput{
+		LoadersRouter: loadersRouter,
+		ActionsRouter: actionsRouter,
+		Paths: map[string]*vormaruntime.Path{
+			"/client-only/@slug": {
+				OriginalPattern: "/client-only/@slug",
+				SrcPath:         "frontend/src/routes/client-only.tsx",
+				ExportKey:       "default",
+			},
+			"/client-only/#": {
+				OriginalPattern: "/client-only/#",
+				SrcPath:         "frontend/src/routes/catch-all.tsx",
+				ExportKey:       "default",
+			},
+		},
+		Config: &vormaruntime.VormaConfig{
+			UIVariant: string(vormaruntime.UIVariants.React),
+		},
+	})
+	if err != nil {
+		t.Fatalf("generateTypeScript returned error: %v", err)
+	}
+
+	if !strings.Contains(content, `pattern: "/client-only/@slug"`) {
+		t.Fatalf("expected client-only dynamic route pattern in output:\n%s", content)
+	}
+	if !strings.Contains(content, `params: ["slug"]`) {
+		t.Fatalf("expected loader dynamic rune metadata params for client-only route:\n%s", content)
+	}
+	if !strings.Contains(content, `pattern: "/client-only/#"`) {
+		t.Fatalf("expected client-only splat route pattern in output:\n%s", content)
+	}
+	if !strings.Contains(content, `isSplat: true`) {
+		t.Fatalf("expected loader splat rune metadata for client-only route:\n%s", content)
+	}
+}
+
 func TestDedupeListForUIVariant(t *testing.T) {
 	if got := dedupeListForUIVariant(string(vormaruntime.UIVariants.React)); !slices.Equal(got, reactDedupeList) {
 		t.Fatalf("react dedupe list = %#v, want %#v", got, reactDedupeList)
@@ -304,11 +352,60 @@ func TestActionCategoryForMethod(t *testing.T) {
 	})
 }
 
-func TestGeneratedTSTargetPath(t *testing.T) {
-	got := generatedTSTargetPath("frontend/src/vorma.gen")
-	want := filepath.Join(".", "frontend/src/vorma.gen", "index.ts")
-	if got != want {
-		t.Fatalf("generatedTSTargetPath() = %q, want %q", got, want)
+func TestSortedActionKeys_SortsByPatternThenMethod(t *testing.T) {
+	actionsRouter := mux.NewRouter(&mux.Options{MountRoot: "/api/"})
+
+	mux.RegisterTaskHandler(
+		actionsRouter,
+		http.MethodPatch,
+		"/b",
+		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+			return mux.None{}, nil
+		}),
+	)
+	mux.RegisterTaskHandler(
+		actionsRouter,
+		http.MethodGet,
+		"/a",
+		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+			return mux.None{}, nil
+		}),
+	)
+	mux.RegisterTaskHandler(
+		actionsRouter,
+		http.MethodPost,
+		"/a",
+		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+			return mux.None{}, nil
+		}),
+	)
+	mux.RegisterTaskHandler(
+		actionsRouter,
+		http.MethodDelete,
+		"/b",
+		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+			return mux.None{}, nil
+		}),
+	)
+
+	sorted := sortedActionKeys(actionsRouter.AllRoutes())
+	if len(sorted) != 4 {
+		t.Fatalf("sorted action keys len = %d, want %d", len(sorted), 4)
+	}
+
+	got := make([]string, 0, len(sorted))
+	for _, actionKey := range sorted {
+		got = append(got, actionKey.pattern+" "+actionKey.method)
+	}
+	want := []string{
+		"/a GET",
+		"/a POST",
+		"/b DELETE",
+		"/b PATCH",
+	}
+
+	if !slices.Equal(got, want) {
+		t.Fatalf("sorted action keys = %#v, want %#v", got, want)
 	}
 }
 

@@ -47,10 +47,6 @@ func (v *Vorma) validateAndDecorateNestedRouter(nestedRouter *mux.NestedRouter) 
 }
 
 func (v *Vorma) initInner(isDev bool) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	wasInitialized := v._paths != nil
-
 	privateFS, err := v.Wave.GetPrivateFS()
 	if err != nil {
 		return fmt.Errorf("could not get private fs: %w", err)
@@ -66,45 +62,29 @@ func (v *Vorma) initInner(isDev bool) error {
 		return fmt.Errorf("error parsing root template: %w", err)
 	}
 
+	var headElsUniqueRules *headels.HeadEls
+	if v.getHeadDedupeKeys != nil {
+		headEls := headels.New()
+		v.getHeadDedupeKeys(headEls)
+		headElsUniqueRules = headEls
+	}
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	wasInitialized := v._paths != nil
+
 	v._isDev = isDev
 	v._privateFS = privateFS
-	v._buildID = pathsFile.BuildID
-	v._clientEntrySrc = pathsFile.ClientEntrySrc
-	v._clientEntryOut = pathsFile.ClientEntryOut
-	v._clientEntryDeps = pathsFile.ClientEntryDeps
-	v._depToCSSBundleMap = pathsFile.DepToCSSBundleMap
-	if v._depToCSSBundleMap == nil {
-		v._depToCSSBundleMap = make(map[string][]string)
-	}
-	v._routeManifestFile = pathsFile.RouteManifestFile
-	v._paths = make(map[string]*Path, len(pathsFile.Paths))
-	for pattern, p := range pathsFile.Paths {
-		v._paths[pattern] = p
-	}
-
-	if wasInitialized {
-		patterns := make([]string, 0, len(v._paths))
-		for pattern := range v._paths {
-			patterns = append(patterns, pattern)
-		}
-		v.LoadersRouter().NestedRouter.RebuildPreservingHandlers(patterns)
-	}
-
-	// Clear route-data cache to ensure re-inits never reuse stale path/build artifacts.
-	gmpdCache.Range(func(key, _ any) bool {
-		gmpdCache.Delete(key)
-		return true
-	})
+	v.applyPathsFileMetadataLocked(pathsFile)
+	v.routes().ReplaceParsedPathsForInit(pathsFile.Paths, wasInitialized)
 
 	v._rootTemplate = tmpl
 	if v.headElsInst == nil {
 		v.headElsInst = headels.NewInstance("vorma")
 	}
 
-	if v.getHeadDedupeKeys != nil {
-		headEls := headels.New()
-		v.getHeadDedupeKeys(headEls)
-		v.headElsInst.InitUniqueRules(headEls)
+	if headElsUniqueRules != nil {
+		v.headElsInst.InitUniqueRules(headElsUniqueRules)
 	} else {
 		v.headElsInst.InitUniqueRules(nil)
 	}

@@ -50,6 +50,17 @@ func TestRefreshScriptUsesConfiguredRefreshServerPort(t *testing.T) {
 	}
 }
 
+func TestRefreshScriptFallsBackToDefaultWhenRefreshPortIsInvalid(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	t.Setenv(envRefreshServerPort, "-1")
+	w := newWaveForTest(t, fixture, true, nil)
+
+	script := string(w.GetRefreshScript())
+	if !strings.Contains(script, "ws://localhost:10000/events") {
+		t.Fatalf("expected default refresh port for invalid configured value, got %q", script)
+	}
+}
+
 func TestRefreshScriptInnerInterpolatesPort(t *testing.T) {
 	inner := RefreshScriptInner(42424)
 	if !strings.Contains(inner, "ws://localhost:42424/events") {

@@ -4,12 +4,53 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/vormadev/vorma/kit/id"
 	"github.com/vormadev/vorma/vormaruntime"
 )
+
+type fastRouteRebuildDependencies struct {
+	parseClientRoutes             func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error)
+	newFastRebuildID              func() (string, error)
+	runRouteSyncExecution         func(*vormaruntime.Vorma, routeSyncExecutionOptions) error
+	logFastRouteRebuildCompletion func(*vormaruntime.Vorma, time.Time)
+}
+
+type fastRouteRebuildArtifactDependencies struct {
+	cleanRouteManifestsOnly     func(*vormaruntime.Vorma) error
+	writeRouteArtifacts         func(*vormaruntime.LockedVorma) error
+	readRouteManifestArtifact   func(string) ([]byte, error)
+	writeRouteManifestArtifact  func(string, []byte, os.FileMode) error
+	removeRouteManifestArtifact func(string) error
+}
+
+type fastRouteRebuildBuildIDDependencies struct {
+	generateFastRebuildIDSuffix func() (string, error)
+}
+
+var fastRouteRebuildDeps = fastRouteRebuildDependencies{
+	parseClientRoutes:             parseClientRoutes,
+	newFastRebuildID:              newFastRebuildID,
+	runRouteSyncExecution:         runRouteSyncExecution,
+	logFastRouteRebuildCompletion: logFastRouteRebuildCompletion,
+}
+
+var fastRouteRebuildArtifactDeps = fastRouteRebuildArtifactDependencies{
+	cleanRouteManifestsOnly:     cleanRouteManifestsOnly,
+	writeRouteArtifacts:         writeRouteArtifacts,
+	readRouteManifestArtifact:   os.ReadFile,
+	writeRouteManifestArtifact:  writeFileAtomically,
+	removeRouteManifestArtifact: os.Remove,
+}
+
+var fastRouteRebuildBuildIDDeps = fastRouteRebuildBuildIDDependencies{
+	generateFastRebuildIDSuffix: func() (string, error) {
+		return id.New(16)
+	},
+}
 
 // rebuildRoutesOnly is the fast path for rebuilding when only vorma.routes.ts changes.
 // Runs in Process A (Dev Server), which has handlers registered for type reflection.
@@ -30,53 +71,104 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 
 	v.Log.Info("START fast route rebuild")
 
-	// 1. Parse client routes (before acquiring lock)
-	clientPaths, err := parseClientRoutes(v)
-	if err != nil {
-		return fmt.Errorf("parse client routes: %w", err)
-	}
-
-	buildID, err := newFastRebuildID()
+	err := fastRouteRebuildDeps.runRouteSyncExecution(
+		v,
+		routeSyncExecutionOptions{
+			parseClientRoutes:          fastRouteRebuildDeps.parseClientRoutes,
+			generateBuildID:            fastRouteRebuildDeps.newFastRebuildID,
+			parseClientRoutesErrorText: "parse client routes",
+			postSyncHook: func(l *vormaruntime.LockedVorma) error {
+				return writeFastRebuildArtifactsAfterRouteSync(v, l)
+			},
+		},
+	)
 	if err != nil {
 		return err
 	}
 
-	if err := syncRoutesAndWriteFastRebuildArtifacts(v, clientPaths, buildID); err != nil {
-		return err
-	}
-
-	logFastRouteRebuildCompletion(v, start)
+	fastRouteRebuildDeps.logFastRouteRebuildCompletion(v, start)
 	return nil
 }
 
 func newFastRebuildID() (string, error) {
-	buildID, err := id.New(16)
-	if err != nil {
-		return "", fmt.Errorf("generate build ID: %w", err)
-	}
-	return "dev_fast_" + buildID, nil
+	return generateBuildIDWithPrefix(
+		"dev_fast_",
+		fastRouteRebuildBuildIDDeps.generateFastRebuildIDSuffix,
+	)
 }
 
-func syncRoutesAndWriteFastRebuildArtifacts(
+func writeFastRebuildArtifactsAfterRouteSync(
 	v *vormaruntime.Vorma,
-	clientPaths map[string]*vormaruntime.Path,
-	buildID string,
+	l *vormaruntime.LockedVorma,
 ) error {
-	var writeErr error
-	v.WithLock(func(l *vormaruntime.LockedVorma) {
-		l.SetBuildID(buildID)
-		l.Routes().Sync(clientPaths)
+	previousRouteManifestFile := l.GetRouteManifestFile()
+	previousRouteManifestSnapshot, err := captureFastRebuildRouteManifestArtifactSnapshot(
+		v,
+		previousRouteManifestFile,
+	)
+	if err != nil {
+		return fmt.Errorf("snapshot current route manifest artifact: %w", err)
+	}
 
-		if err := cleanRouteManifestsOnly(v); err != nil {
-			writeErr = fmt.Errorf("clean route manifests: %w", err)
-			return
-		}
+	return runWithRollbackOnFailureAndPanic(
+		rollbackTransactionOptions{
+			run: func() error {
+				if err := fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly(v); err != nil {
+					return fmt.Errorf("clean route manifests: %w", err)
+				}
 
-		if err := writeRouteArtifacts(l); err != nil {
-			writeErr = err
-		}
-	})
-	return writeErr
+				return fastRouteRebuildArtifactDeps.writeRouteArtifacts(l)
+			},
+			rollbackOnFailure: func() error {
+				return restoreFastRebuildRouteManifestArtifactSnapshot(
+					v,
+					previousRouteManifestFile,
+					previousRouteManifestSnapshot,
+				)
+			},
+			rollbackErrorContext: "restore route manifest artifact",
+			logRollbackFailureAfterPanic: func(rollbackErr error) {
+				if v.Log != nil {
+					v.Log.Error("restore route manifest artifact after panic failed", "error", rollbackErr)
+				}
+			},
+		},
+	)
+}
+
+type fastRebuildRouteManifestArtifactSnapshot = buildArtifactFileSnapshot
+
+func captureFastRebuildRouteManifestArtifactSnapshot(
+	v *vormaruntime.Vorma,
+	manifestFile string,
+) (fastRebuildRouteManifestArtifactSnapshot, error) {
+	if manifestFile == "" {
+		return fastRebuildRouteManifestArtifactSnapshot{}, nil
+	}
+
+	manifestFilePath := filepath.Join(v.Wave.GetStaticPublicOutDir(), manifestFile)
+	return captureBuildArtifactFileSnapshot(
+		manifestFilePath,
+		fastRouteRebuildArtifactDeps.readRouteManifestArtifact,
+	)
+}
+
+func restoreFastRebuildRouteManifestArtifactSnapshot(
+	v *vormaruntime.Vorma,
+	manifestFile string,
+	snapshot fastRebuildRouteManifestArtifactSnapshot,
+) error {
+	if manifestFile == "" {
+		return nil
+	}
+
+	manifestFilePath := filepath.Join(v.Wave.GetStaticPublicOutDir(), manifestFile)
+	return restoreBuildArtifactFileSnapshot(
+		manifestFilePath,
+		snapshot,
+		fastRouteRebuildArtifactDeps.writeRouteManifestArtifact,
+		fastRouteRebuildArtifactDeps.removeRouteManifestArtifact,
+	)
 }
 
 func logFastRouteRebuildCompletion(v *vormaruntime.Vorma, start time.Time) {

@@ -25,3 +25,30 @@ func TestLoaderErrorMarkerContract(t *testing.T) {
 		t.Fatalf("Error() = %q, want %q", got, want)
 	}
 }
+
+func TestLoaderErrorError_NilServerFallsBackToClientMessage(t *testing.T) {
+	err := &LoaderError{
+		Client: "Something went wrong",
+		Server: nil,
+	}
+
+	if got, want := err.Error(), "Something went wrong"; got != want {
+		t.Fatalf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestLoaderErrorError_NoServerOrClientUsesSafeFallback(t *testing.T) {
+	err := &LoaderError{}
+
+	if got, want := err.Error(), "loader error"; got != want {
+		t.Fatalf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestLoaderErrorError_NilReceiverUsesSafeFallback(t *testing.T) {
+	var err *LoaderError
+
+	if got, want := err.Error(), "loader error"; got != want {
+		t.Fatalf("Error() = %q, want %q", got, want)
+	}
+}

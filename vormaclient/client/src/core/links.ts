@@ -1,7 +1,7 @@
 import { getAnchorDetailsFromEvent, getHrefDetails } from "vorma/kit/url";
 import { navigationStateManager, vormaNavigate } from "../client.ts";
 import {
-	hasSameDataTarget,
+	hasSameNavigationTarget,
 	isSameDocumentHashChange,
 	isSameDocumentLocation,
 	resolveAbsoluteHref,
@@ -70,13 +70,34 @@ type LinkLifecycleCallbacks<E extends Event> = {
 	afterRender?: (event: E) => void | Promise<void>;
 };
 
+function getCurrentNavigationEntryForControl(props: {
+	targetUrl: string;
+	controlPromise: Promise<NavigationOutcome>;
+}): ReturnType<typeof navigationStateManager.getNavigation> {
+	const { targetUrl, controlPromise } = props;
+	const currentEntry = navigationStateManager.getNavigation(targetUrl);
+	if (!currentEntry || currentEntry.control.promise !== controlPromise) {
+		return undefined;
+	}
+
+	return currentEntry;
+}
+
 async function handleLinkNavigationOutcome<E extends Event>(props: {
 	event: E;
 	outcome: NavigationOutcome;
 	targetUrl: string;
+	controlPromise: Promise<NavigationOutcome>;
 	callbacks: LinkLifecycleCallbacks<E>;
 }): Promise<void> {
-	const { event, outcome, targetUrl, callbacks } = props;
+	const { event, outcome, targetUrl, controlPromise, callbacks } = props;
+	const currentEntry = getCurrentNavigationEntryForControl({
+		targetUrl,
+		controlPromise,
+	});
+	if (!currentEntry) {
+		return;
+	}
 
 	if (outcome.type === "aborted") {
 		navigationStateManager.removeNavigation(targetUrl);
@@ -85,6 +106,15 @@ async function handleLinkNavigationOutcome<E extends Event>(props: {
 
 	if (outcome.type === "redirect") {
 		await callbacks.beforeRender?.(event);
+		if (
+			!getCurrentNavigationEntryForControl({
+				targetUrl,
+				controlPromise,
+			})
+		) {
+			return;
+		}
+
 		syncBuildIDFromRedirectData(outcome.redirectData);
 		navigationStateManager.removeNavigation(targetUrl);
 		await effectuateRedirectDataResult(
@@ -97,13 +127,18 @@ async function handleLinkNavigationOutcome<E extends Event>(props: {
 	}
 
 	await callbacks.beforeRender?.(event);
-	const entry = navigationStateManager.getNavigation(targetUrl);
-	if (entry) {
-		await navigationStateManager.processSuccessfulNavigation(
-			outcome,
-			entry,
-		);
+	const currentEntryAfterBeforeRender = getCurrentNavigationEntryForControl({
+		targetUrl,
+		controlPromise,
+	});
+	if (!currentEntryAfterBeforeRender) {
+		return;
 	}
+
+	await navigationStateManager.processSuccessfulNavigation(
+		outcome,
+		currentEntryAfterBeforeRender,
+	);
 	await callbacks.afterRender?.(event);
 }
 
@@ -139,13 +174,27 @@ export function createLinkOnClickFn<E extends Event>(
 			replace: callbacks.replace,
 			state: callbacks.state,
 		});
+		const controlPromise = control.promise;
+		let outcome: NavigationOutcome;
+		try {
+			outcome = await controlPromise;
+		} catch (error) {
+			const targetUrl = resolveAbsoluteHref(anchor.href);
+			const currentEntry =
+				navigationStateManager.getNavigation(targetUrl);
+			if (currentEntry?.control.promise === controlPromise) {
+				navigationStateManager.removeNavigation(targetUrl);
+			}
+			logError("Link navigation failed", error);
+			return;
+		}
 
-		const outcome = await control.promise;
 		const targetUrl = resolveAbsoluteHref(anchor.href);
 		await handleLinkNavigationOutcome({
 			event,
 			outcome,
 			targetUrl,
+			controlPromise,
 			callbacks: {
 				beforeRender: callbacks.beforeRender,
 				afterRender: callbacks.afterRender,
@@ -166,7 +215,7 @@ function findIdlePrefetchNavigationByDataTarget(
 		if (
 			nav.type === "prefetch" &&
 			nav.intent === "none" &&
-			hasSameDataTarget(nav.targetUrl, targetHref)
+			hasSameNavigationTarget(nav.targetUrl, targetHref)
 		) {
 			return nav;
 		}

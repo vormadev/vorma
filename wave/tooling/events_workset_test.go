@@ -77,6 +77,70 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 			t.Fatal("expected preferRevalidate=true")
 		}
 	})
+
+	t.Run("critical css file requests css rebuild and can request hard reload", func(t *testing.T) {
+		work := &workSet{}
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypeCriticalCSS,
+			watchedFile: &wave.WatchedFile{
+				RestartApp: true,
+			},
+		})
+		if !work.buildCriticalCSS {
+			t.Fatal("expected buildCriticalCSS=true")
+		}
+		if !work.restartApp {
+			t.Fatal("expected restartApp=true when critical css watched file requests hard reload")
+		}
+	})
+
+	t.Run("normal css file requests css rebuild and can request hard reload", func(t *testing.T) {
+		work := &workSet{}
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypeNormalCSS,
+			watchedFile: &wave.WatchedFile{
+				RecompileGoBinary: true,
+			},
+		})
+		if !work.buildNormalCSS {
+			t.Fatal("expected buildNormalCSS=true")
+		}
+		if !work.restartApp {
+			t.Fatal("expected restartApp=true when normal css watched file requests hard reload")
+		}
+	})
+
+	t.Run("public static file requests public file processing", func(t *testing.T) {
+		work := &workSet{}
+		work.addImplicitWork(classifiedEvent{fileType: fileTypePublicStatic})
+		if !work.processPublicFiles {
+			t.Fatal("expected processPublicFiles=true")
+		}
+	})
+
+	t.Run("private static file requests private file processing", func(t *testing.T) {
+		work := &workSet{}
+		work.addImplicitWork(classifiedEvent{fileType: fileTypePrivateStatic})
+		if !work.processPrivateFiles {
+			t.Fatal("expected processPrivateFiles=true")
+		}
+	})
+
+	t.Run("other watched file can request restart without go compile", func(t *testing.T) {
+		work := &workSet{}
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypeOther,
+			watchedFile: &wave.WatchedFile{
+				RestartApp: true,
+			},
+		})
+		if work.compileGo {
+			t.Fatal("did not expect compileGo=true")
+		}
+		if !work.restartApp {
+			t.Fatal("expected restartApp=true")
+		}
+	})
 }
 
 func TestWorkSetDetermineBrowserBehavior(t *testing.T) {

@@ -12,11 +12,12 @@ import (
 	"github.com/vormadev/vorma/vormaruntime"
 )
 
-func TestToPathsFileStageTwo_TransformsManifestAndUpdatesBuildID(t *testing.T) {
+func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("build-before-stage-two")
 		l.SetRouteManifestFile("vorma_out_route_manifest.json")
 		l.SetPaths(map[string]*vormaruntime.Path{
 			"/users/:id": {
@@ -94,8 +95,8 @@ func TestToPathsFileStageTwo_TransformsManifestAndUpdatesBuildID(t *testing.T) {
 	if pathsFile.BuildID == "" {
 		t.Fatal("expected non-empty build ID")
 	}
-	if app.GetBuildID() != pathsFile.BuildID {
-		t.Fatalf("app build ID = %q, want %q", app.GetBuildID(), pathsFile.BuildID)
+	if app.GetBuildID() != "build-before-stage-two" {
+		t.Fatalf("app build ID = %q, want %q", app.GetBuildID(), "build-before-stage-two")
 	}
 }
 
@@ -104,6 +105,7 @@ func TestPostViteProdBuild_WritesStageTwoPathsFile(t *testing.T) {
 	app := fixture.app
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("build-before-post-vite")
 		l.SetPaths(map[string]*vormaruntime.Path{
 			"/": {
 				OriginalPattern: "/",
@@ -153,6 +155,12 @@ func TestPostViteProdBuild_WritesStageTwoPathsFile(t *testing.T) {
 	if parsed.Paths["/"] == nil || parsed.Paths["/"].OutPath != "root.js" {
 		t.Fatalf("root route output = %#v, expected out path root.js", parsed.Paths["/"])
 	}
+	if parsed.BuildID == "" {
+		t.Fatal("expected non-empty stage-two build ID")
+	}
+	if app.GetBuildID() != parsed.BuildID {
+		t.Fatalf("app build ID = %q, want %q", app.GetBuildID(), parsed.BuildID)
+	}
 }
 
 func TestRemoveDependency_RetainsOrderAndExcludesMatches(t *testing.T) {
@@ -191,23 +199,23 @@ func TestApplyViteManifestToPaths_UpdatesClientEntryAndRoutePaths(t *testing.T) 
 		},
 	}
 
-	clientEntryOut, clientEntryDeps, depToCSSBundleMap := applyViteManifestToPaths(
+	result := applyViteManifestToPaths(
 		manifest,
 		paths,
 		"frontend/src/vorma.entry.tsx",
 	)
 
-	if clientEntryOut != "entry.js" {
-		t.Fatalf("client entry out = %q, want %q", clientEntryOut, "entry.js")
+	if result.clientEntryOut != "entry.js" {
+		t.Fatalf("client entry out = %q, want %q", result.clientEntryOut, "entry.js")
 	}
-	if !slices.Equal(clientEntryDeps, []string{"shared.js"}) {
-		t.Fatalf("client entry deps = %#v, want %#v", clientEntryDeps, []string{"shared.js"})
+	if !slices.Equal(result.clientEntryDeps, []string{"shared.js"}) {
+		t.Fatalf("client entry deps = %#v, want %#v", result.clientEntryDeps, []string{"shared.js"})
 	}
-	if !slices.Equal(depToCSSBundleMap["entry.js"], []string{"entry.css"}) {
-		t.Fatalf("entry css bundles = %#v, want %#v", depToCSSBundleMap["entry.js"], []string{"entry.css"})
+	if !slices.Equal(result.depToCSSBundleMap["entry.js"], []string{"entry.css"}) {
+		t.Fatalf("entry css bundles = %#v, want %#v", result.depToCSSBundleMap["entry.js"], []string{"entry.css"})
 	}
-	if !slices.Equal(depToCSSBundleMap["home.js"], []string{"home.css"}) {
-		t.Fatalf("home css bundles = %#v, want %#v", depToCSSBundleMap["home.js"], []string{"home.css"})
+	if !slices.Equal(result.depToCSSBundleMap["home.js"], []string{"home.css"}) {
+		t.Fatalf("home css bundles = %#v, want %#v", result.depToCSSBundleMap["home.js"], []string{"home.css"})
 	}
 
 	home := paths["/home"]
@@ -242,7 +250,7 @@ func TestApplyViteManifestToPaths_UpdatesAllRoutesSharingSameSourcePath(t *testi
 		},
 	}
 
-	_, _, _ = applyViteManifestToPaths(manifest, paths, "frontend/src/vorma.entry.tsx")
+	_ = applyViteManifestToPaths(manifest, paths, "frontend/src/vorma.entry.tsx")
 
 	pathA := paths["/a"]
 	pathB := paths["/b"]
@@ -270,18 +278,18 @@ func TestIndexPathsBySourcePath(t *testing.T) {
 	}
 }
 
-func TestStageTwoPathsOutputPath(t *testing.T) {
+func TestPathsOutputPath_StageTwoFile(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	got := stageTwoPathsOutputPath(app)
+	got := pathsOutputPath(app, vormaruntime.VormaPathsStageTwoJSONFileName)
 	want := filepath.Join(
 		app.Wave.GetStaticPrivateOutDir(),
 		vormaruntime.VormaOutDirname,
 		vormaruntime.VormaPathsStageTwoJSONFileName,
 	)
 	if got != want {
-		t.Fatalf("stageTwoPathsOutputPath() = %q, want %q", got, want)
+		t.Fatalf("pathsOutputPath(stage-two) = %q, want %q", got, want)
 	}
 }
 
@@ -296,7 +304,7 @@ func TestPathsOutputPath(t *testing.T) {
 	}
 }
 
-func TestWriteStageTwoPathsJSON_ReturnsErrorWhenParentIsNotDirectory(t *testing.T) {
+func TestWritePathsToDiskStageTwo_ReturnsErrorWhenParentIsNotDirectory(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -306,12 +314,39 @@ func TestWriteStageTwoPathsJSON_ReturnsErrorWhenParentIsNotDirectory(t *testing.
 	}
 	mustWriteFile(t, stageTwoDir, []byte("not-a-directory"))
 
-	err := writeStageTwoPathsJSON(app, []byte("{}"))
+	err := writePathsToDiskStageTwo(app, &vormaruntime.PathsFile{Stage: "two"})
 	if err == nil {
-		t.Fatal("expected writeStageTwoPathsJSON to fail when parent path is not a directory")
+		t.Fatal("expected writePathsToDiskStageTwo to fail when parent path is not a directory")
 	}
 	if !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("error = %q, expected not-a-directory message", err)
+	}
+}
+
+func TestWritePathsToDiskStageTwo_CreatesOutputDirectoryWhenMissing(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	stageTwoDir := filepath.Join(app.Wave.GetStaticPrivateOutDir(), vormaruntime.VormaOutDirname)
+	if err := os.RemoveAll(stageTwoDir); err != nil {
+		t.Fatalf("remove stage two dir: %v", err)
+	}
+
+	if err := writePathsToDiskStageTwo(app, &vormaruntime.PathsFile{Stage: "two"}); err != nil {
+		t.Fatalf("writePathsToDiskStageTwo returned error: %v", err)
+	}
+
+	outputPath := pathsOutputPath(app, vormaruntime.VormaPathsStageTwoJSONFileName)
+	outputBytes, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read stage-two output failed: %v", err)
+	}
+	var parsedPathsFile vormaruntime.PathsFile
+	if err := json.Unmarshal(outputBytes, &parsedPathsFile); err != nil {
+		t.Fatalf("unmarshal stage-two output failed: %v", err)
+	}
+	if parsedPathsFile.Stage != "two" {
+		t.Fatalf("stage-two output stage = %q, want %q", parsedPathsFile.Stage, "two")
 	}
 }
 

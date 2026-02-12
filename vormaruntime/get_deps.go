@@ -42,6 +42,14 @@ func (v *Vorma) getCSSBundles(deps []string) []string {
 	depToCSSBundleMap := v._depToCSSBundleMap
 	v.mu.RUnlock()
 
+	return getCSSBundlesFromSnapshot(deps, clientEntryOut, depToCSSBundleMap)
+}
+
+func getCSSBundlesFromSnapshot(
+	deps []string,
+	clientEntryOut string,
+	depToCSSBundleMap map[string][]string,
+) []string {
 	// Use a map to deduplicate CSS bundles
 	clientEntryBundles := depToCSSBundleMap[clientEntryOut]
 	seen := make(map[string]struct{})

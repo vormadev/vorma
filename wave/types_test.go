@@ -19,6 +19,30 @@ func TestRelPathsAreStable(t *testing.T) {
 	if RelPaths.CriticalCSS() != "internal/critical.css" {
 		t.Fatalf("unexpected critical css rel path: %q", RelPaths.CriticalCSS())
 	}
+	if RelPaths.NormalCSSRef() != "internal/normal_css_file_ref.txt" {
+		t.Fatalf("unexpected normal css ref rel path: %q", RelPaths.NormalCSSRef())
+	}
+	if RelPaths.PublicFileMapRef() != "internal/public_file_map_file_ref.txt" {
+		t.Fatalf("unexpected public file map ref rel path: %q", RelPaths.PublicFileMapRef())
+	}
+	if RelPaths.PublicFileMapGob() != "internal/public_filemap.gob" {
+		t.Fatalf("unexpected public file map gob rel path: %q", RelPaths.PublicFileMapGob())
+	}
+	if RelPaths.PublicFileMapGobName() != "public_filemap.gob" {
+		t.Fatalf("unexpected public file map gob name: %q", RelPaths.PublicFileMapGobName())
+	}
+	if RelPaths.PrivateFileMapGobName() != "private_filemap.gob" {
+		t.Fatalf("unexpected private file map gob name: %q", RelPaths.PrivateFileMapGobName())
+	}
+	if RelPaths.PublicFileMapJSName() != "vorma_internal_public_filemap.js" {
+		t.Fatalf("unexpected public file map js name: %q", RelPaths.PublicFileMapJSName())
+	}
+	if RelPaths.PublicFileMapTSName() != "filemap.ts" {
+		t.Fatalf("unexpected public file map ts name: %q", RelPaths.PublicFileMapTSName())
+	}
+	if RelPaths.PublicFileMapJSONName() != "filemap.json" {
+		t.Fatalf("unexpected public file map json name: %q", RelPaths.PublicFileMapJSONName())
+	}
 }
 
 func TestDistLayoutBuildsExpectedPaths(t *testing.T) {
@@ -46,6 +70,9 @@ func TestDistLayoutBuildsExpectedPaths(t *testing.T) {
 	if d.PrivateFileMapGob() != filepath.Join(d.Root, "static", "internal", "private_filemap.gob") {
 		t.Fatalf("unexpected private filemap gob path: %q", d.PrivateFileMapGob())
 	}
+	if d.KeepFile() != filepath.Join(d.Root, "static", ".keep") {
+		t.Fatalf("unexpected keep file path: %q", d.KeepFile())
+	}
 }
 
 func TestFileMapLookupMappedAndFallback(t *testing.T) {
@@ -69,6 +96,30 @@ func TestFileMapLookupMappedAndFallback(t *testing.T) {
 	}
 	if fallback != "/assets/missing.txt" {
 		t.Fatalf("unexpected fallback URL: %q", fallback)
+	}
+}
+
+func TestFileMapLookupPreventsPrefixEscapeFromTraversalInput(t *testing.T) {
+	fm := FileMap{
+		"nested/logo.txt": {
+			DistName: "vorma_out/nested.logo.hash.txt",
+		},
+	}
+
+	escapedURL, found := fm.Lookup("../secret.txt", "/assets/")
+	if found {
+		t.Fatal("expected traversal input to be treated as fallback (not found)")
+	}
+	if escapedURL != "/assets/secret.txt" {
+		t.Fatalf("expected traversal fallback to stay under prefix, got %q", escapedURL)
+	}
+
+	mappedURL, mappedFound := fm.Lookup("/../nested/logo.txt", "/assets/")
+	if !mappedFound {
+		t.Fatal("expected normalized traversal input to match mapped entry")
+	}
+	if mappedURL != "/assets/vorma_out/nested.logo.hash.txt" {
+		t.Fatalf("unexpected mapped URL for normalized traversal input: %q", mappedURL)
 	}
 }
 

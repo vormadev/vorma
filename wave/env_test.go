@@ -32,6 +32,16 @@ func TestGetPortAndSetPort(t *testing.T) {
 	if got := GetPort(); got != 0 {
 		t.Fatalf("expected invalid PORT to return 0, got %d", got)
 	}
+
+	t.Setenv(envPort, "-1")
+	if got := GetPort(); got != 0 {
+		t.Fatalf("expected negative PORT to return 0, got %d", got)
+	}
+
+	t.Setenv(envPort, "70000")
+	if got := GetPort(); got != 0 {
+		t.Fatalf("expected out-of-range PORT to return 0, got %d", got)
+	}
 }
 
 func TestMustGetPortNonDevDefaultsTo8080(t *testing.T) {
@@ -74,6 +84,21 @@ func TestMustGetPortDevChoosesPortAndMarksSet(t *testing.T) {
 	}
 }
 
+func TestMustGetPortDevWithInvalidRequestedPortStillReturnsUsablePort(t *testing.T) {
+	resetPortCacheForTest()
+	t.Setenv(envMode, envModeDev)
+	t.Setenv(envPortSet, "")
+	t.Setenv(envPort, "0")
+
+	got := MustGetPort()
+	if got <= 0 {
+		t.Fatalf("expected MustGetPort to return a positive port for invalid requested dev port, got %d", got)
+	}
+	if flag := os.Getenv(envPortSet); flag != "true" {
+		t.Fatalf("expected %s to be true, got %q", envPortSet, flag)
+	}
+}
+
 func TestMustGetPortCachesResultAfterFirstCall(t *testing.T) {
 	resetPortCacheForTest()
 	t.Setenv(envMode, "production")
@@ -92,6 +117,28 @@ func TestMustGetPortCachesResultAfterFirstCall(t *testing.T) {
 	}
 }
 
+func TestMustGetPortDevHonorsPortWhenAlreadySet(t *testing.T) {
+	resetPortCacheForTest()
+	t.Setenv(envMode, envModeDev)
+	t.Setenv(envPortSet, "true")
+	t.Setenv(envPort, "3333")
+
+	if got := MustGetPort(); got != 3333 {
+		t.Fatalf("expected MustGetPort to honor already-set dev port, got %d", got)
+	}
+}
+
+func TestMustGetPortDevAlreadySetFallsBackToDefaultForInvalidPort(t *testing.T) {
+	resetPortCacheForTest()
+	t.Setenv(envMode, envModeDev)
+	t.Setenv(envPortSet, "true")
+	t.Setenv(envPort, "")
+
+	if got := MustGetPort(); got != 8080 {
+		t.Fatalf("expected MustGetPort to default to 8080 for invalid pre-set dev port, got %d", got)
+	}
+}
+
 func TestGetAndSetRefreshServerPort(t *testing.T) {
 	t.Setenv(envRefreshServerPort, "")
 	if got := GetRefreshServerPort(); got != 0 {
@@ -106,5 +153,15 @@ func TestGetAndSetRefreshServerPort(t *testing.T) {
 	t.Setenv(envRefreshServerPort, "invalid")
 	if got := GetRefreshServerPort(); got != 0 {
 		t.Fatalf("expected invalid refresh port to return 0, got %d", got)
+	}
+
+	t.Setenv(envRefreshServerPort, "-10")
+	if got := GetRefreshServerPort(); got != 0 {
+		t.Fatalf("expected negative refresh port to return 0, got %d", got)
+	}
+
+	t.Setenv(envRefreshServerPort, "70000")
+	if got := GetRefreshServerPort(); got != 0 {
+		t.Fatalf("expected out-of-range refresh port to return 0, got %d", got)
 	}
 }

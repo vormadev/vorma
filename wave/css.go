@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
-	"path"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/htmlutil"
-	"github.com/vormadev/vorma/kit/matcher"
 )
 
 func (w *Wave) initCriticalCSS() (*criticalCSSData, error) {
@@ -17,20 +15,36 @@ func (w *Wave) initCriticalCSS() (*criticalCSSData, error) {
 		return &criticalCSSData{noSuchFile: true}, nil
 	}
 
-	base, err := w.GetBaseFS()
+	content, noSuchFile, err := w.readCriticalCSSContent()
 	if err != nil {
 		return nil, err
 	}
+	if noSuchFile {
+		return &criticalCSSData{noSuchFile: true}, nil
+	}
 
-	content, err := fs.ReadFile(base, RelPaths.CriticalCSS())
+	return w.buildCriticalCSSData(content)
+}
+
+func (w *Wave) readCriticalCSSContent() (string, bool, error) {
+	baseFS, err := w.GetBaseFS()
+	if err != nil {
+		return "", false, err
+	}
+
+	content, err := fs.ReadFile(baseFS, RelPaths.CriticalCSS())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return &criticalCSSData{noSuchFile: true}, nil
+			return "", true, nil
 		}
-		return nil, err
+		return "", false, err
 	}
 
-	result := &criticalCSSData{content: string(content)}
+	return string(content), false, nil
+}
+
+func (w *Wave) buildCriticalCSSData(content string) (*criticalCSSData, error) {
+	result := &criticalCSSData{content: content}
 
 	el := htmlutil.Element{
 		Tag:                 "style",
@@ -55,25 +69,33 @@ func (w *Wave) initCriticalCSS() (*criticalCSSData, error) {
 	return result, nil
 }
 
-func (w *Wave) GetCriticalCSS() template.CSS {
+func (w *Wave) getCriticalCSSData() *criticalCSSData {
 	data, err := w.criticalCSS.get()
 	if err != nil || data == nil || data.noSuchFile {
+		return nil
+	}
+	return data
+}
+
+func (w *Wave) GetCriticalCSS() template.CSS {
+	data := w.getCriticalCSSData()
+	if data == nil {
 		return ""
 	}
 	return template.CSS(data.content)
 }
 
 func (w *Wave) GetCriticalCSSStyleElement() template.HTML {
-	data, err := w.criticalCSS.get()
-	if err != nil || data == nil || data.noSuchFile {
+	data := w.getCriticalCSSData()
+	if data == nil {
 		return ""
 	}
 	return data.styleEl
 }
 
 func (w *Wave) GetCriticalCSSStyleElementSha256Hash() string {
-	data, err := w.criticalCSS.get()
-	if err != nil || data == nil || data.noSuchFile {
+	data := w.getCriticalCSSData()
+	if data == nil {
 		return ""
 	}
 	return data.sha256Hash
@@ -88,17 +110,7 @@ func (w *Wave) initStylesheetURL() (string, error) {
 		return "", nil
 	}
 
-	base, err := w.GetBaseFS()
-	if err != nil {
-		return "", err
-	}
-
-	content, err := fs.ReadFile(base, RelPaths.NormalCSSRef())
-	if err != nil {
-		return "", err
-	}
-
-	return matcher.EnsureLeadingSlash(path.Join(w.cfg.PublicPathPrefix(), string(content))), nil
+	return w.initPublicURLFromInternalRefFile(RelPaths.NormalCSSRef())
 }
 
 func (w *Wave) GetStyleSheetURL() string {

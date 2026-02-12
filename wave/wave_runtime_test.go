@@ -174,6 +174,22 @@ func TestPublicFileMapAndURLResolution(t *testing.T) {
 	if got := w.GetPublicURL(dataURL); got != dataURL {
 		t.Fatalf("expected data URL passthrough, got %q", got)
 	}
+	upperDataURL := "DATA:image/svg+xml;base64,AAAA"
+	if got := w.GetPublicURL(upperDataURL); got != upperDataURL {
+		t.Fatalf("expected case-insensitive data URL passthrough, got %q", got)
+	}
+	externalURL := "https://cdn.example.com/logo.svg"
+	if got := w.GetPublicURL(externalURL); got != externalURL {
+		t.Fatalf("expected external URL passthrough, got %q", got)
+	}
+	protocolRelativeURL := "//cdn.example.com/logo.svg"
+	if got := w.GetPublicURL(protocolRelativeURL); got != protocolRelativeURL {
+		t.Fatalf("expected protocol-relative URL passthrough, got %q", got)
+	}
+	blobURL := "blob:https://example.com/uuid"
+	if got := w.GetPublicURL(blobURL); got != blobURL {
+		t.Fatalf("expected blob URL passthrough, got %q", got)
+	}
 }
 
 func TestPublicFileMapElementsAndHash(t *testing.T) {
@@ -245,6 +261,12 @@ func TestCriticalCSSReturnsEmptyWhenEntryUnsetOrMissingFile(t *testing.T) {
 	if got := wNoEntry.GetCriticalCSS(); got != "" {
 		t.Fatalf("expected empty critical css when entry is unset, got %q", got)
 	}
+	if got := wNoEntry.GetCriticalCSSStyleElement(); got != "" {
+		t.Fatalf("expected empty critical css style element when entry is unset, got %q", got)
+	}
+	if got := wNoEntry.GetCriticalCSSStyleElementSha256Hash(); got != "" {
+		t.Fatalf("expected empty critical css hash when entry is unset, got %q", got)
+	}
 
 	fixture = newWaveTestFixture(t)
 	if err := os.Remove(fixture.cfg.Dist.CriticalCSS()); err != nil {
@@ -253,6 +275,12 @@ func TestCriticalCSSReturnsEmptyWhenEntryUnsetOrMissingFile(t *testing.T) {
 	wMissingFile := newWaveForTest(t, fixture, true, nil)
 	if got := wMissingFile.GetCriticalCSS(); got != "" {
 		t.Fatalf("expected empty critical css when file is missing, got %q", got)
+	}
+	if got := wMissingFile.GetCriticalCSSStyleElement(); got != "" {
+		t.Fatalf("expected empty critical css style element when file is missing, got %q", got)
+	}
+	if got := wMissingFile.GetCriticalCSSStyleElementSha256Hash(); got != "" {
+		t.Fatalf("expected empty critical css hash when file is missing, got %q", got)
 	}
 }
 

@@ -1,30 +1,76 @@
 import { panic } from "../platform/safety.ts";
 import type { HeadEl } from "../app/context.ts";
 
-function findComment(matchingText: string): Comment | null {
-	const walker = document.createTreeWalker(
-		document.head,
-		NodeFilter.SHOW_COMMENT,
-		{
-			acceptNode(node: Comment) {
-				return node.nodeValue?.trim() === matchingText.trim()
-					? NodeFilter.FILTER_ACCEPT
-					: NodeFilter.FILTER_REJECT;
-			},
-		},
-	);
-	return walker.nextNode() as Comment | null;
+function findNearestManagedSectionBoundaryComments(type: "meta" | "rest"): {
+	startComment: Comment | null;
+	endComment: Comment | null;
+} {
+	const startMarker = `data-vorma="${type}-start"`;
+	const endMarker = `data-vorma="${type}-end"`;
+	let nearestStartComment: Comment | null = null;
+	let nodePointer: Node | null = document.head.firstChild;
+
+	while (nodePointer != null) {
+		if (nodePointer.nodeType !== Node.COMMENT_NODE) {
+			nodePointer = nodePointer.nextSibling;
+			continue;
+		}
+
+		const commentNode = nodePointer as Comment;
+		const commentText = commentNode.nodeValue?.trim();
+		if (commentText === startMarker) {
+			nearestStartComment = commentNode;
+			nodePointer = nodePointer.nextSibling;
+			continue;
+		}
+
+		if (commentText === endMarker && nearestStartComment) {
+			return {
+				startComment: nearestStartComment,
+				endComment: commentNode,
+			};
+		}
+
+		nodePointer = nodePointer.nextSibling;
+	}
+
+	return {
+		startComment: null,
+		endComment: null,
+	};
 }
 
 export function getStartAndEndComments(type: "meta" | "rest"): {
 	startComment: Comment | null;
 	endComment: Comment | null;
 } {
-	const startMarker = `data-vorma="${type}-start"`;
-	const endMarker = `data-vorma="${type}-end"`;
-	const start = findComment(startMarker);
-	const end = findComment(endMarker);
-	return { startComment: start, endComment: end };
+	return findNearestManagedSectionBoundaryComments(type);
+}
+
+function getManagedSectionParentIfValid(props: {
+	startComment: Comment | null;
+	endComment: Comment | null;
+}): Node | null {
+	const { startComment, endComment } = props;
+	if (!startComment || !endComment) {
+		return null;
+	}
+
+	const startParent = startComment.parentNode;
+	const endParent = endComment.parentNode;
+	if (!startParent || startParent !== endParent) {
+		return null;
+	}
+
+	let nodePtr = startComment.nextSibling;
+	while (nodePtr != null) {
+		if (nodePtr === endComment) {
+			return startParent;
+		}
+		nodePtr = nodePtr.nextSibling;
+	}
+
+	return null;
 }
 
 function createElementFingerprint(element: Element): string {
@@ -193,10 +239,13 @@ function placeReconciledHeadElements(
 
 export function updateHeadEls(type: "meta" | "rest", blocks: Array<HeadEl>) {
 	const { startComment, endComment } = getStartAndEndComments(type);
-	if (!startComment || !endComment || !endComment.parentNode) {
+	const parent = getManagedSectionParentIfValid({
+		startComment,
+		endComment,
+	});
+	if (!parent || !startComment || !endComment) {
 		return;
 	}
-	const parent = endComment.parentNode;
 
 	const currentNodes: Array<Node> = [];
 	let nodePtr = startComment.nextSibling;

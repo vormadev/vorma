@@ -112,3 +112,136 @@ func TestNeedsHardReload(t *testing.T) {
 		t.Fatal("expected empty watched file to not require hard reload")
 	}
 }
+
+func TestClassifyEventWithWatcherAndBuilder_EmptyPathIsIgnored(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+
+	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	if err != nil {
+		t.Fatalf("NewWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &server{cfg: cfg, log: newDiscardLogger()}
+	classified := s.classifyEventWithWatcherAndBuilder(fsnotify.Event{Name: "", Op: fsnotify.Write}, watcher, builder)
+
+	if !classified.ignored {
+		t.Fatal("expected empty-path event to be ignored")
+	}
+}
+
+func TestClassifyEventWithWatcherAndBuilder_PublicAndPrivateStaticFiles(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+
+	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	if err != nil {
+		t.Fatalf("NewWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &server{cfg: cfg, log: newDiscardLogger()}
+
+	publicFile := filepath.Join(cfg.Core.StaticAssetDirs.Public, "img", "logo.png")
+	privateFile := filepath.Join(cfg.Core.StaticAssetDirs.Private, "tpl", "home.html")
+
+	publicClassified := s.classifyEventWithWatcherAndBuilder(
+		fsnotify.Event{Name: publicFile, Op: fsnotify.Write},
+		watcher,
+		builder,
+	)
+	if publicClassified.fileType != fileTypePublicStatic {
+		t.Fatalf("expected public static file type, got %v", publicClassified.fileType)
+	}
+
+	privateClassified := s.classifyEventWithWatcherAndBuilder(
+		fsnotify.Event{Name: privateFile, Op: fsnotify.Write},
+		watcher,
+		builder,
+	)
+	if privateClassified.fileType != fileTypePrivateStatic {
+		t.Fatalf("expected private static file type, got %v", privateClassified.fileType)
+	}
+}
+
+func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+
+	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	if err != nil {
+		t.Fatalf("NewWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	criticalCSSFile := filepath.Join(root, "styles", "critical.css")
+	normalCSSFile := filepath.Join(root, "styles", "normal.css")
+	criticalAbsPath, criticalErr := filepath.Abs(criticalCSSFile)
+	if criticalErr != nil {
+		t.Fatalf("filepath.Abs critical css failed: %v", criticalErr)
+	}
+	normalAbsPath, normalErr := filepath.Abs(normalCSSFile)
+	if normalErr != nil {
+		t.Fatalf("filepath.Abs normal css failed: %v", normalErr)
+	}
+
+	builder.css.mu.Lock()
+	builder.css.criticalImports[criticalAbsPath] = struct{}{}
+	builder.css.normalImports[normalAbsPath] = struct{}{}
+	builder.css.mu.Unlock()
+
+	s := &server{cfg: cfg, log: newDiscardLogger()}
+
+	criticalClassified := s.classifyEventWithWatcherAndBuilder(
+		fsnotify.Event{Name: criticalCSSFile, Op: fsnotify.Write},
+		watcher,
+		builder,
+	)
+	if criticalClassified.fileType != fileTypeCriticalCSS {
+		t.Fatalf("expected critical css file type, got %v", criticalClassified.fileType)
+	}
+
+	normalClassified := s.classifyEventWithWatcherAndBuilder(
+		fsnotify.Event{Name: normalCSSFile, Op: fsnotify.Write},
+		watcher,
+		builder,
+	)
+	if normalClassified.fileType != fileTypeNormalCSS {
+		t.Fatalf("expected normal css file type, got %v", normalClassified.fileType)
+	}
+}
+
+func TestClassifyEventWithWatcherAndBuilder_RespectsIgnoredFiles(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Watch.Exclude.Files = []string{"ignored.tmp"}
+
+	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	if err != nil {
+		t.Fatalf("NewWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &server{cfg: cfg, log: newDiscardLogger()}
+	classified := s.classifyEventWithWatcherAndBuilder(
+		fsnotify.Event{Name: filepath.Join(root, "ignored.tmp"), Op: fsnotify.Write},
+		watcher,
+		builder,
+	)
+
+	if !classified.ignored {
+		t.Fatal("expected ignored file to classify with ignored=true")
+	}
+}

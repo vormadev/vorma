@@ -3,29 +3,13 @@ package wave
 import (
 	"fmt"
 	"html/template"
-	"io/fs"
-	"path"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/htmlutil"
-	"github.com/vormadev/vorma/kit/matcher"
 )
 
 func (w *Wave) initFileMapURL() (string, error) {
-	base, err := w.GetBaseFS()
-	if err != nil {
-		return "", err
-	}
-
-	content, err := fs.ReadFile(base, RelPaths.PublicFileMapRef())
-	if err != nil {
-		return "", err
-	}
-
-	return matcher.EnsureLeadingSlash(path.Join(
-		w.cfg.PublicPathPrefix(),
-		string(content),
-	)), nil
+	return w.initPublicURLFromInternalRefFile(RelPaths.PublicFileMapRef())
 }
 
 func (w *Wave) GetPublicFileMapURL() string {
@@ -34,14 +18,59 @@ func (w *Wave) GetPublicFileMapURL() string {
 }
 
 func (w *Wave) initFileMapDetails() (*fileMapDetails, error) {
-	url := w.GetPublicFileMapURL()
-	if url == "" {
+	fileMapURL := w.GetPublicFileMapURL()
+	if fileMapURL == "" {
 		return &fileMapDetails{}, nil
 	}
 
-	prefix := w.cfg.PublicPathPrefix()
+	elements, sha256Hash, err := buildPublicFileMapElements(
+		fileMapURL,
+		w.cfg.PublicPathPrefix(),
+	)
+	if err != nil {
+		return nil, err
+	}
 
-	innerHTMLFormat := `
+	return &fileMapDetails{
+		elements:   elements,
+		sha256Hash: sha256Hash,
+	}, nil
+}
+
+func buildPublicFileMapElements(fileMapURL string, publicPathPrefix string) (string, string, error) {
+	linkElement := htmlutil.Element{
+		Tag:         "link",
+		Attributes:  map[string]string{"rel": "modulepreload", "href": fileMapURL},
+		SelfClosing: true,
+	}
+
+	scriptElement := htmlutil.Element{
+		Tag:                "script",
+		Attributes:         map[string]string{"type": "module"},
+		DangerousInnerHTML: buildPublicFileMapModuleScript(fileMapURL, publicPathPrefix),
+	}
+
+	scriptSHA256Hash, err := htmlutil.ComputeContentSha256(&scriptElement)
+	if err != nil {
+		return "", "", fmt.Errorf("error handling CSP for filemap script: %w", err)
+	}
+
+	var elementsBuilder strings.Builder
+
+	err = htmlutil.RenderElementToBuilder(&linkElement, &elementsBuilder)
+	if err != nil {
+		return "", "", fmt.Errorf("error rendering link element: %w", err)
+	}
+
+	err = htmlutil.RenderElementToBuilder(&scriptElement, &elementsBuilder)
+	if err != nil {
+		return "", "", fmt.Errorf("error rendering script element: %w", err)
+	}
+
+	return elementsBuilder.String(), scriptSHA256Hash, nil
+}
+
+const publicFileMapModuleScriptFormat = `
 		import { wavePublicFileMap } from "%s";
 		if (!window.__wave) window.__wave = {};
 		function getPublicURL(originalPublicURL) { 
@@ -50,45 +79,21 @@ func (w *Wave) initFileMapDetails() (*fileMapDetails, error) {
 		}
 		window.__wave.getPublicURL = getPublicURL;
 `
-	innerHTML := fmt.Sprintf(innerHTMLFormat, url, prefix)
 
-	linkEl := htmlutil.Element{
-		Tag:         "link",
-		Attributes:  map[string]string{"rel": "modulepreload", "href": url},
-		SelfClosing: true,
+func buildPublicFileMapModuleScript(fileMapURL string, publicPathPrefix string) string {
+	return fmt.Sprintf(publicFileMapModuleScriptFormat, fileMapURL, publicPathPrefix)
+}
+
+func (w *Wave) getFileMapDetails() *fileMapDetails {
+	details, _ := w.fileMapDetails.get()
+	if details == nil {
+		return nil
 	}
-
-	scriptEl := htmlutil.Element{
-		Tag:                "script",
-		Attributes:         map[string]string{"type": "module"},
-		DangerousInnerHTML: innerHTML,
-	}
-
-	sha256Hash, err := htmlutil.ComputeContentSha256(&scriptEl)
-	if err != nil {
-		return nil, fmt.Errorf("error handling CSP for filemap script: %w", err)
-	}
-
-	var sb strings.Builder
-
-	err = htmlutil.RenderElementToBuilder(&linkEl, &sb)
-	if err != nil {
-		return nil, fmt.Errorf("error rendering link element: %w", err)
-	}
-
-	err = htmlutil.RenderElementToBuilder(&scriptEl, &sb)
-	if err != nil {
-		return nil, fmt.Errorf("error rendering script element: %w", err)
-	}
-
-	return &fileMapDetails{
-		elements:   sb.String(),
-		sha256Hash: sha256Hash,
-	}, nil
+	return details
 }
 
 func (w *Wave) GetPublicFileMapElements() template.HTML {
-	details, _ := w.fileMapDetails.get()
+	details := w.getFileMapDetails()
 	if details == nil {
 		return ""
 	}
@@ -96,7 +101,7 @@ func (w *Wave) GetPublicFileMapElements() template.HTML {
 }
 
 func (w *Wave) GetPublicFileMapScriptSha256Hash() string {
-	details, _ := w.fileMapDetails.get()
+	details := w.getFileMapDetails()
 	if details == nil {
 		return ""
 	}

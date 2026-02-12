@@ -51,7 +51,13 @@ function resolveHTTPRedirectTarget(href: string): {
 	newURL: URL;
 	hrefDetails: Extract<HrefDetails, { isHTTP: true }>;
 } | null {
-	const newURL = new URL(resolveAbsoluteHref(href));
+	let newURL: URL;
+	try {
+		newURL = new URL(resolveAbsoluteHref(href));
+	} catch {
+		return null;
+	}
+
 	const hrefDetails = getHrefDetails(newURL.href);
 	if (!hrefDetails.isHTTP) {
 		return null;
@@ -313,8 +319,8 @@ async function effectuateSoftRedirect(
 	redirectData: ShouldRedirectData,
 	redirectCount: number,
 	originalProps?: NavigateProps,
-): Promise<RedirectData> {
-	await navigationState.navigate({
+): Promise<RedirectData | null> {
+	const navigationResult = await navigationState.navigate({
 		href: redirectData.href,
 		navigationType: "redirect",
 		redirectCount: redirectCount + 1,
@@ -322,6 +328,9 @@ async function effectuateSoftRedirect(
 		replace: originalProps?.replace,
 		scrollToTop: originalProps?.scrollToTop,
 	});
+	if (!navigationResult.didNavigate) {
+		return null;
+	}
 
 	return toDidRedirectData(redirectData);
 }

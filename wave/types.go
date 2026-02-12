@@ -3,12 +3,9 @@
 package wave
 
 import (
-	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
 
-	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/lab/jsonschema"
 )
 
@@ -183,25 +180,6 @@ type SortedHooks struct {
 	Post             []OnChangeHook
 }
 
-func (wf *WatchedFile) Sort() {
-	if wf.SortedHooks != nil {
-		return
-	}
-	wf.SortedHooks = &SortedHooks{}
-	for _, h := range wf.OnChangeHooks {
-		switch h.Timing {
-		case OnChangeStrategyPost:
-			wf.SortedHooks.Post = append(wf.SortedHooks.Post, h)
-		case OnChangeStrategyConcurrent:
-			wf.SortedHooks.Concurrent = append(wf.SortedHooks.Concurrent, h)
-		case OnChangeStrategyConcurrentNoWait:
-			wf.SortedHooks.ConcurrentNoWait = append(wf.SortedHooks.ConcurrentNoWait, h)
-		default:
-			wf.SortedHooks.Pre = append(wf.SortedHooks.Pre, h)
-		}
-	}
-}
-
 // HookContext provides context to callbacks during file change handling.
 type HookContext struct {
 	// FilePath is the absolute path of the changed file.
@@ -232,23 +210,6 @@ type RefreshAction struct {
 	RecompileGo bool
 }
 
-// Merge combines two RefreshActions with OR semantics.
-// TriggerRestart takes precedence over browser reload.
-func (r RefreshAction) Merge(other RefreshAction) RefreshAction {
-	return RefreshAction{
-		ReloadBrowser:  r.ReloadBrowser || other.ReloadBrowser,
-		WaitForApp:     r.WaitForApp || other.WaitForApp,
-		WaitForVite:    r.WaitForVite || other.WaitForVite,
-		TriggerRestart: r.TriggerRestart || other.TriggerRestart,
-		RecompileGo:    r.RecompileGo || other.RecompileGo,
-	}
-}
-
-// IsZero returns true if this RefreshAction specifies no action.
-func (r RefreshAction) IsZero() bool {
-	return !r.ReloadBrowser && !r.WaitForApp && !r.WaitForVite && !r.TriggerRestart && !r.RecompileGo
-}
-
 // OnChangeHook defines an action to run when a watched file changes.
 type OnChangeHook struct {
 	// Cmd is a shell command to run. Can be any shell command or "DevBuildHook"
@@ -270,55 +231,4 @@ type FileVal struct {
 	DistName    string
 	ContentHash string
 	IsPrehashed bool
-}
-
-func (fm FileMap) Lookup(original, prefix string) (url string, found bool) {
-	clean := strings.TrimPrefix(path.Clean(original), "/")
-	if entry, ok := fm[clean]; ok {
-		return matcher.EnsureLeadingSlash(path.Join(prefix, entry.DistName)), true
-	}
-	return matcher.EnsureLeadingSlash(path.Join(prefix, original)), false
-}
-
-func (c *ParsedConfig) PublicPathPrefix() string {
-	p := c.Core.PublicPathPrefix
-	if p == "" || p == "/" {
-		return "/"
-	}
-	return matcher.EnsureLeadingAndTrailingSlash(p)
-}
-
-func (c *ParsedConfig) ViteManifestPath() string {
-	return filepath.Join(c.Dist.StaticPrivate(), HashedOutputPrefixNoTrailing, "vorma_vite_manifest.json")
-}
-
-func (c *ParsedConfig) WatchRoot() string {
-	if c.Watch != nil && c.Watch.WatchRoot != "" {
-		return filepath.Clean(c.Watch.WatchRoot)
-	}
-	return "."
-}
-
-func (c *ParsedConfig) HealthcheckEndpoint() string {
-	if c.Watch != nil && c.Watch.HealthcheckEndpoint != "" {
-		return c.Watch.HealthcheckEndpoint
-	}
-	return "/"
-}
-
-func (c *ParsedConfig) UsingBrowser() bool { return !c.Core.ServerOnlyMode }
-func (c *ParsedConfig) UsingVite() bool    { return c.Vite != nil }
-
-func (c *ParsedConfig) CriticalCSSEntry() string {
-	if c.Core.CSSEntryFiles.Critical == "" {
-		return ""
-	}
-	return filepath.Clean(c.Core.CSSEntryFiles.Critical)
-}
-
-func (c *ParsedConfig) NonCriticalCSSEntry() string {
-	if c.Core.CSSEntryFiles.NonCritical == "" {
-		return ""
-	}
-	return filepath.Clean(c.Core.CSSEntryFiles.NonCritical)
 }

@@ -179,6 +179,7 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v.loadersRouter = newLoadersRouter(o.LoadersRouterOptions)
 	v.actionsRouter = newActionsRouter(o.ActionsRouterOptions)
 	v.headElsInst = headels.NewInstance("vorma")
+	v._routeDataCacheAppIdentity = computeRouteDataCacheAppIdentity(&v)
 
 	return &v
 }

@@ -112,11 +112,13 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		stageTwo: stage2,
 	})
 	app := fixture.app
+	var loaderRunCount atomic.Int64
 
 	mux.RegisterNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+			loaderRunCount.Add(1)
 			return map[string]any{"itemID": rd.Params()["id"]}, nil
 		}),
 	)
@@ -139,6 +141,9 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		}
 		if body := strings.TrimSpace(rec.Body.String()); body != `{"ok":true}` {
 			t.Fatalf("body = %q, want %q", body, `{"ok":true}`)
+		}
+		if got := loaderRunCount.Load(); got != 0 {
+			t.Fatalf("stale build request should not run loaders, ran %d loaders", got)
 		}
 	})
 
@@ -235,6 +240,52 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 			t.Fatalf("ImportURLs = %#v, want %#v", routeData.ImportURLs, wantImportURLs)
 		}
 	})
+}
+
+func TestLoadersHandler_MissingTasksCtxDoesNotPanicAndReturns500(t *testing.T) {
+	stage := defaultPathsFile("build-missing-tasks-ctx", map[string]*Path{
+		"/items/:id": {
+			OriginalPattern: "/items/:id",
+			SrcPath:         "frontend/src/routes/items.$id.tsx",
+			OutPath:         "vorma_out/routes/items.$id.js",
+			ExportKey:       "default",
+		},
+	})
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+	})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/items/:id",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+			return map[string]any{"itemID": rd.Params()["id"]}, nil
+		}),
+	)
+
+	handler := app.Loaders().Handler() // intentionally not wrapped with InjectTasksCtxMiddleware
+	req := httptest.NewRequest(http.MethodGet, "/items/42?vorma_json="+app.GetBuildID(), nil)
+	rec := httptest.NewRecorder()
+
+	didPanic := false
+	func() {
+		defer func() {
+			if recover() != nil {
+				didPanic = true
+			}
+		}()
+		handler.ServeHTTP(rec, req)
+	}()
+
+	if didPanic {
+		t.Fatal("loaders handler panicked without TasksCtx; should return an HTTP error instead")
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
 }
 
 func TestLoadersHandler_HasRootDataAndSplatValuesContracts(t *testing.T) {
@@ -824,6 +875,56 @@ func TestLoadersHandler_WrappedLoaderErrorPreservesClientMessage(t *testing.T) {
 	}
 }
 
+func TestLoadersHandler_EmptyLoaderErrorClientMessageFallsBackToGeneric(t *testing.T) {
+	stage := defaultPathsFile("build-empty-client-loader-error", map[string]*Path{
+		"/items/:id": {
+			OriginalPattern: "/items/:id",
+			SrcPath:         "frontend/src/routes/items.$id.tsx",
+			OutPath:         "vorma_out/routes/items.$id.js",
+			ExportKey:       "default",
+			ErrorExportKey:  "ItemErrorBoundary",
+		},
+	})
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+	})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/items/:id",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
+			return nil, &LoaderError{
+				Client: "",
+				Server: errors.New("upstream timeout"),
+			}
+		}),
+	)
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+	req := httptest.NewRequest(http.MethodGet, "/items/42?vorma_json=build-empty-client-loader-error", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var routeData RouteDataFinal
+	if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
+		t.Fatalf("decode route data: %v", err)
+	}
+
+	if got, want := routeData.OutermostServerError, "An error occurred"; got != want {
+		t.Fatalf("OutermostServerError = %q, want %q", got, want)
+	}
+	if routeData.OutermostServerErrorIdx == nil || *routeData.OutermostServerErrorIdx != 0 {
+		t.Fatalf("OutermostServerErrorIdx = %#v, want pointer to 0", routeData.OutermostServerErrorIdx)
+	}
+}
+
 func TestLoadersHandler_GenericLoaderErrorDoesNotLeakInternalMessage(t *testing.T) {
 	stage := defaultPathsFile("build-generic-errors", map[string]*Path{
 		"/items": {
@@ -896,6 +997,69 @@ func TestLoadersHandler_GenericLoaderErrorDoesNotLeakInternalMessage(t *testing.
 
 	if strings.Contains(string(rec.Body.Bytes()), "sensitive upstream database failure") {
 		t.Fatalf("response body leaked internal error detail: %s", rec.Body.String())
+	}
+}
+
+func TestLoadersHandler_HTMLExcludesFailingRouteHeadElementsOnLoaderError(t *testing.T) {
+	stage := defaultPathsFile("build-error-head", map[string]*Path{
+		"/items": {
+			OriginalPattern: "/items",
+			SrcPath:         "frontend/src/routes/items.tsx",
+			OutPath:         "vorma_out/routes/items.js",
+			ExportKey:       "default",
+			ErrorExportKey:  "ItemsErrorBoundary",
+		},
+		"/items/:id": {
+			OriginalPattern: "/items/:id",
+			SrcPath:         "frontend/src/routes/items.$id.tsx",
+			OutPath:         "vorma_out/routes/items.$id.js",
+			ExportKey:       "default",
+			ErrorExportKey:  "ItemErrorBoundary",
+		},
+	})
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+	})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/items",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+			head := rd.ResponseProxy().GetHeadEls()
+			head.Meta(head.Name("parent-head-ok"), head.Content("1"))
+			return map[string]bool{"ok": true}, nil
+		}),
+	)
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/items/:id",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+			head := rd.ResponseProxy().GetHeadEls()
+			head.Meta(head.Name("child-head-should-not-appear"), head.Content("1"))
+			return nil, &LoaderError{
+				Client: "Could not load item",
+				Server: errors.New("upstream timeout"),
+			}
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/items/42", nil)
+	rec := httptest.NewRecorder()
+	mux.InjectTasksCtxMiddleware(app.Loaders().Handler()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `name="parent-head-ok"`) {
+		t.Fatalf("missing parent head marker in HTML body=%q", body)
+	}
+	if strings.Contains(body, `name="child-head-should-not-appear"`) {
+		t.Fatalf("failing child route head marker leaked into HTML body=%q", body)
 	}
 }
 
@@ -1061,6 +1225,68 @@ func TestLoadersHandler_NilRootTemplateDataMapDoesNotPanic(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "vorma-root") {
 		t.Fatalf("expected HTML body to include root marker, body=%q", rec.Body.String())
+	}
+}
+
+func TestLoadersHandler_RuntimeDoesNotMutateAppTemplateDataMap(t *testing.T) {
+	stage := defaultPathsFile("build-template-data-clone", map[string]*Path{
+		"/hooks": {
+			OriginalPattern: "/hooks",
+			SrcPath:         "frontend/src/routes/hooks.tsx",
+			OutPath:         "vorma_out/routes/hooks.js",
+			ExportKey:       "default",
+		},
+	})
+
+	sharedTemplateData := map[string]any{
+		"AppKey": "stable",
+	}
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+		getRootTemplateData: func(r *http.Request) (map[string]any, error) {
+			return sharedTemplateData, nil
+		},
+	})
+	app := fixture.app
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/hooks",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+			return map[string]bool{"ok": true}, nil
+		}),
+	)
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/hooks", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d status = %d, want %d", i+1, rec.Code, http.StatusOK)
+		}
+	}
+
+	if got, want := len(sharedTemplateData), 1; got != want {
+		t.Fatalf("sharedTemplateData len = %d, want %d", got, want)
+	}
+	if got, want := sharedTemplateData["AppKey"], "stable"; got != want {
+		t.Fatalf("sharedTemplateData[AppKey] = %#v, want %#v", got, want)
+	}
+
+	runtimeInjectedKeys := []string{
+		"VormaHeadEls",
+		"VormaSSRScript",
+		"VormaSSRScriptSha256Hash",
+		"VormaRootID",
+		"VormaBodyScripts",
+	}
+	for _, key := range runtimeInjectedKeys {
+		if _, exists := sharedTemplateData[key]; exists {
+			t.Fatalf("sharedTemplateData unexpectedly mutated with runtime key %q", key)
+		}
 	}
 }
 
