@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -175,6 +176,14 @@ type eventWithHooks struct {
 }
 
 func (s *server) runWatcher() {
+	s.mu.Lock()
+	watcher := s.watcher
+	s.mu.Unlock()
+
+	if watcher == nil {
+		return
+	}
+
 	debouncer := NewDebouncer(30*time.Millisecond, func(events []fsnotify.Event) {
 		s.processEvents(events)
 	})
@@ -182,12 +191,12 @@ func (s *server) runWatcher() {
 
 	for {
 		select {
-		case evt, ok := <-s.watcher.Events():
+		case evt, ok := <-watcher.Events():
 			if !ok {
 				return
 			}
 			debouncer.Add(evt)
-		case err := <-s.watcher.Errors():
+		case err := <-watcher.Errors():
 			s.log.Error("Watcher error", "error", err)
 		}
 	}
@@ -910,7 +919,37 @@ func needsHardReload(wf *wave.WatchedFile) bool {
 
 func (s *server) resolveCmd(cmd string) string {
 	if cmd == "DevBuildHook" {
-		return s.cfg.Core.DevBuildHook
+		return resolveSequentialShellCommands(
+			getUserDevBuildHook(s.cfg),
+			getFrameworkDevBuildHook(s.cfg),
+		)
 	}
 	return cmd
+}
+
+func getUserDevBuildHook(cfg *wave.ParsedConfig) string {
+	if cfg == nil || cfg.Core == nil {
+		return ""
+	}
+	return cfg.Core.DevBuildHook
+}
+
+func getFrameworkDevBuildHook(cfg *wave.ParsedConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.FrameworkDevBuildHook
+}
+
+// resolveSequentialShellCommands combines non-empty shell commands in order.
+// The resulting command preserves "fail fast" behavior by chaining with &&.
+func resolveSequentialShellCommands(commands ...string) string {
+	nonEmptyCommands := make([]string, 0, len(commands))
+	for _, command := range commands {
+		trimmed := strings.TrimSpace(command)
+		if trimmed != "" {
+			nonEmptyCommands = append(nonEmptyCommands, trimmed)
+		}
+	}
+	return strings.Join(nonEmptyCommands, " && ")
 }

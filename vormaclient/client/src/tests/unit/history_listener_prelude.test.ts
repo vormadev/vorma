@@ -5,6 +5,7 @@ import {
 	HistoryManager,
 } from "../../platform/history.ts";
 import { setNavigationStateAccess } from "../../app/context.ts";
+import { addLocationListener } from "../../platform/events.ts";
 
 type HistoryLikeLocation = {
 	pathname: string;
@@ -157,5 +158,38 @@ describe("history_listener_prelude", () => {
 
 		expect(navigate).toHaveBeenCalledTimes(1);
 		expect(HistoryManager.getLastKnownLocation().key).toBe("target-key");
+	});
+
+	it("does not dispatch location events when history keys do not change", async () => {
+		const navigate = vi.fn().mockResolvedValue({ didNavigate: true });
+		setNavigationStateAccess({
+			navigate,
+			removeNavigation: vi.fn(),
+			getNavigations: vi.fn(() => new Map()),
+		});
+
+		let locationEventCount = 0;
+		const cleanupLocationListener = addLocationListener(() => {
+			locationEventCount++;
+		});
+
+		try {
+			const sameKeyLocation = createHistoryLikeLocation({
+				pathname: "/same-key",
+				key: "same-key",
+			});
+			HistoryManager.updateLastKnownLocation(sameKeyLocation as any);
+
+			await customHistoryListener({
+				action: "PUSH" as any,
+				location: sameKeyLocation as any,
+			});
+		} finally {
+			cleanupLocationListener();
+		}
+
+		expect(locationEventCount).toBe(0);
+		expect(navigate).not.toHaveBeenCalled();
+		expect(HistoryManager.getLastKnownLocation().key).toBe("same-key");
 	});
 });

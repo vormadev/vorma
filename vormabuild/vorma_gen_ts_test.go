@@ -1,7 +1,11 @@
 package vormabuild
 
 import (
+	"bytes"
+	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -215,4 +219,212 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T
 	if !strings.Contains(content, `import type { VormaRouteProps } from "vorma/react";`) {
 		t.Fatalf("expected UI variant import path in output:\n%s", content)
 	}
+}
+
+func TestDedupeListForUIVariant(t *testing.T) {
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariants.React)); !slices.Equal(got, reactDedupeList) {
+		t.Fatalf("react dedupe list = %#v, want %#v", got, reactDedupeList)
+	}
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariants.Preact)); !slices.Equal(got, preactDedupeList) {
+		t.Fatalf("preact dedupe list = %#v, want %#v", got, preactDedupeList)
+	}
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariants.Solid)); !slices.Equal(got, solidDedupeList) {
+		t.Fatalf("solid dedupe list = %#v, want %#v", got, solidDedupeList)
+	}
+	if got := dedupeListForUIVariant("unknown"); got != nil {
+		t.Fatalf("unknown variant dedupe list = %#v, want nil", got)
+	}
+}
+
+func TestBuildVitePluginTemplateData(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	entrypoints := []string{"frontend/src/vorma.entry.tsx", "frontend/src/routes/home.tsx"}
+	data := buildVitePluginTemplateData(app, entrypoints)
+
+	if !slices.Equal(data.Entrypoints, entrypoints) {
+		t.Fatalf("Entrypoints = %#v, want %#v", data.Entrypoints, entrypoints)
+	}
+	if data.PublicPathPrefix != app.Wave.GetPublicPathPrefix() {
+		t.Fatalf("PublicPathPrefix = %q, want %q", data.PublicPathPrefix, app.Wave.GetPublicPathPrefix())
+	}
+	if data.FuncName != app.Config.BuildtimePublicURLFuncName {
+		t.Fatalf("FuncName = %q, want %q", data.FuncName, app.Config.BuildtimePublicURLFuncName)
+	}
+	if data.FilemapJSONPath != "frontend/src/vorma.gen/filemap.json" {
+		t.Fatalf("FilemapJSONPath = %q, want %q", data.FilemapJSONPath, "frontend/src/vorma.gen/filemap.json")
+	}
+	if !slices.Equal(data.DedupeList, reactDedupeList) {
+		t.Fatalf("DedupeList = %#v, want %#v", data.DedupeList, reactDedupeList)
+	}
+	if len(data.IgnoredPatterns) == 0 {
+		t.Fatal("expected non-empty ignored patterns")
+	}
+}
+
+func TestActionCategoryForMethod(t *testing.T) {
+	t.Run("query method", func(t *testing.T) {
+		category, isMutation, ok := actionCategoryForMethod(http.MethodGet)
+		if !ok {
+			t.Fatal("expected GET to be recognized")
+		}
+		if category != "query" {
+			t.Fatalf("category = %q, want %q", category, "query")
+		}
+		if isMutation {
+			t.Fatal("expected GET not to be mutation")
+		}
+	})
+
+	t.Run("mutation method", func(t *testing.T) {
+		category, isMutation, ok := actionCategoryForMethod(http.MethodPatch)
+		if !ok {
+			t.Fatal("expected PATCH to be recognized")
+		}
+		if category != "mutation" {
+			t.Fatalf("category = %q, want %q", category, "mutation")
+		}
+		if !isMutation {
+			t.Fatal("expected PATCH to be mutation")
+		}
+	})
+
+	t.Run("unsupported method", func(t *testing.T) {
+		category, isMutation, ok := actionCategoryForMethod(http.MethodOptions)
+		if ok {
+			t.Fatal("expected OPTIONS to be unsupported")
+		}
+		if category != "" {
+			t.Fatalf("category = %q, want empty", category)
+		}
+		if isMutation {
+			t.Fatal("expected unsupported method not to be mutation")
+		}
+	})
+}
+
+func TestGeneratedTSTargetPath(t *testing.T) {
+	got := generatedTSTargetPath("frontend/src/vorma.gen")
+	want := filepath.Join(".", "frontend/src/vorma.gen", "index.ts")
+	if got != want {
+		t.Fatalf("generatedTSTargetPath() = %q, want %q", got, want)
+	}
+}
+
+func TestGeneratedTSUnchanged(t *testing.T) {
+	targetPath := filepath.Join(t.TempDir(), "index.ts")
+	content := []byte("export const x = 1;")
+
+	t.Run("missing file", func(t *testing.T) {
+		unchanged, err := generatedTSUnchanged(targetPath, content)
+		if err != nil {
+			t.Fatalf("generatedTSUnchanged returned error: %v", err)
+		}
+		if unchanged {
+			t.Fatal("expected unchanged=false when file does not exist")
+		}
+	})
+
+	t.Run("existing same content", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			t.Fatalf("mkdir failed: %v", err)
+		}
+		if err := os.WriteFile(targetPath, content, 0o644); err != nil {
+			t.Fatalf("write failed: %v", err)
+		}
+		unchanged, err := generatedTSUnchanged(targetPath, content)
+		if err != nil {
+			t.Fatalf("generatedTSUnchanged returned error: %v", err)
+		}
+		if !unchanged {
+			t.Fatal("expected unchanged=true when content matches")
+		}
+	})
+
+	t.Run("existing different content", func(t *testing.T) {
+		if err := os.WriteFile(targetPath, []byte("export const x = 2;"), 0o644); err != nil {
+			t.Fatalf("write failed: %v", err)
+		}
+		unchanged, err := generatedTSUnchanged(targetPath, content)
+		if err != nil {
+			t.Fatalf("generatedTSUnchanged returned error: %v", err)
+		}
+		if unchanged {
+			t.Fatal("expected unchanged=false when content differs")
+		}
+	})
+
+	t.Run("unexpected read error", func(t *testing.T) {
+		badPath := filepath.Join(targetPath, "child.ts")
+		_, err := generatedTSUnchanged(badPath, content)
+		if err == nil {
+			t.Fatal("expected error for unreadable path")
+		}
+		var pathErr *os.PathError
+		if !errors.As(err, &pathErr) {
+			t.Fatalf("expected os.PathError, got %T", err)
+		}
+	})
+}
+
+func TestGenerateAndAssembleTSContent(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/root.tsx",
+				ExportKey:       "default",
+			},
+		})
+
+		contentBytes, err := generateAndAssembleTSContent(app, l)
+		if err != nil {
+			t.Fatalf("generateAndAssembleTSContent returned error: %v", err)
+		}
+		content := string(contentBytes)
+		if !strings.Contains(content, "const routes = [") {
+			t.Fatalf("expected routes collection in generated content:\n%s", content)
+		}
+		if !strings.Contains(content, "Vorma Vite Config:") {
+			t.Fatalf("expected rollup config block in generated content:\n%s", content)
+		}
+	})
+}
+
+func TestWriteGeneratedTSContentIfChanged(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	targetPath := filepath.Join(t.TempDir(), "index.ts")
+	contentBytes := []byte("export const x = 1;\n")
+
+	t.Run("writes new file", func(t *testing.T) {
+		if err := writeGeneratedTSContentIfChanged(app, targetPath, contentBytes); err != nil {
+			t.Fatalf("writeGeneratedTSContentIfChanged returned error: %v", err)
+		}
+		written, err := os.ReadFile(targetPath)
+		if err != nil {
+			t.Fatalf("read generated file: %v", err)
+		}
+		if !bytes.Equal(written, contentBytes) {
+			t.Fatalf("written bytes = %q, want %q", written, contentBytes)
+		}
+	})
+
+	t.Run("skips unchanged content", func(t *testing.T) {
+		if err := writeGeneratedTSContentIfChanged(app, targetPath, contentBytes); err != nil {
+			t.Fatalf("writeGeneratedTSContentIfChanged returned error: %v", err)
+		}
+		written, err := os.ReadFile(targetPath)
+		if err != nil {
+			t.Fatalf("read generated file: %v", err)
+		}
+		if !bytes.Equal(written, contentBytes) {
+			t.Fatalf("written bytes = %q, want %q", written, contentBytes)
+		}
+	})
 }

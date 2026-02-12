@@ -105,9 +105,7 @@ function getEffectiveErrorData(): {
 		error:
 			errorIdx === serverErrorIdx
 				? __vormaClientGlobal.get("outermostServerError")
-				: errorIdx === clientErrorIdx
-					? __vormaClientGlobal.get("outermostClientError")
-					: undefined,
+				: __vormaClientGlobal.get("outermostClientError"),
 	};
 }
 
@@ -298,20 +296,26 @@ type ClientLoaderWorkItems = {
 
 function buildClientLoaderWorkItems(props: {
 	matchedPatterns: Array<string>;
+	loadersData: Array<unknown>;
+	params: Record<string, string>;
+	splatValues: Array<string>;
+	hasRootData: boolean;
 	patternToWaitFnMap: VormaClientGlobal["patternToWaitFnMap"];
 	outermostServerErrorIdx: number | undefined;
 	runningLoaders?: Map<string, Promise<unknown>>;
 	signal: AbortSignal;
-	json: PartialWaitFnJSON;
 	buildID: string;
 }): ClientLoaderWorkItems {
 	const {
 		matchedPatterns,
+		loadersData,
+		params,
+		splatValues,
+		hasRootData,
 		patternToWaitFnMap,
 		outermostServerErrorIdx,
 		runningLoaders,
 		signal,
-		json,
 		buildID,
 	} = props;
 
@@ -347,9 +351,9 @@ function buildClientLoaderWorkItems(props: {
 
 			const serverData = buildClientLoaderServerData({
 				pattern,
-				matchedPatterns: json.matchedPatterns ?? [],
-				loadersData: json.loadersData ?? [],
-				hasRootData: !!json.hasRootData,
+				matchedPatterns,
+				loadersData,
+				hasRootData,
 				buildID,
 			});
 			const serverDataPromise = serverData
@@ -357,8 +361,8 @@ function buildClientLoaderWorkItems(props: {
 				: Promise.reject(createUnavailableServerDataError());
 
 			const loaderPromise = patternToWaitFnMap[pattern]({
-				params: json.params || {},
-				splatValues: json.splatValues || [],
+				params,
+				splatValues,
 				serverDataPromise,
 				signal: controller.signal,
 			});
@@ -433,6 +437,10 @@ async function executeClientLoaders(
 	await ComponentLoader.loadComponents(json.importURLs ?? []);
 
 	const matchedPatterns = json.matchedPatterns ?? [];
+	const loadersData = json.loadersData ?? [];
+	const params = json.params ?? {};
+	const splatValues = json.splatValues ?? [];
+	const hasRootData = !!json.hasRootData;
 	const patternToWaitFnMap =
 		__vormaClientGlobal.get("patternToWaitFnMap") || {};
 	const outermostServerErrorIdx = __vormaClientGlobal.get(
@@ -441,11 +449,14 @@ async function executeClientLoaders(
 
 	const { loaderPromises, abortControllers } = buildClientLoaderWorkItems({
 		matchedPatterns,
+		loadersData,
+		params,
+		splatValues,
+		hasRootData,
 		patternToWaitFnMap,
 		outermostServerErrorIdx,
 		runningLoaders,
 		signal,
-		json,
 		buildID,
 	});
 
@@ -481,14 +492,14 @@ export function setClientLoadersState(
 		return;
 	}
 
-	__vormaClientGlobal.set(
-		"clientLoadersData",
-		clientLoadersResult.data ?? [],
-	);
+	const normalizedClientLoaderData = clientLoadersResult.data ?? [];
+	__vormaClientGlobal.set("clientLoadersData", normalizedClientLoaderData);
 	__vormaClientGlobal.set(
 		"outermostClientErrorIdx",
 		clientLoadersResult.errorMessage
-			? clientLoadersResult.data.length - 1
+			? normalizedClientLoaderData.length > 0
+				? normalizedClientLoaderData.length - 1
+				: undefined
 			: undefined,
 	);
 	__vormaClientGlobal.set(

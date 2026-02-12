@@ -2,7 +2,6 @@ package vormaruntime
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
-	"golang.org/x/sync/errgroup"
 )
 
 var gmpdCache sync.Map
@@ -96,6 +94,8 @@ func (v *Vorma) getRouteDataStage1(
 	// Cache key generation based on normalized patterns captured under read lock.
 	isDev := v._isDev
 	buildID := v._buildID
+	pathsSnapshot := v._paths
+	clientEntryDepsSnapshot := v._clientEntryDeps
 	cacheKey := v.buildRouteDataCacheKey(matches, isDev, buildID)
 
 	var cached *cachedItemSubset
@@ -113,7 +113,7 @@ func (v *Vorma) getRouteDataStage1(
 		}
 
 		for _, path := range matches {
-			foundPath := v._paths[path.OriginalPattern()]
+			foundPath := pathsSnapshot[path.OriginalPattern()]
 			if foundPath == nil || foundPath.SrcPath == "" {
 				cached.ImportURLs = append(cached.ImportURLs, "")
 				cached.ExportKeys = append(cached.ExportKeys, "")
@@ -129,7 +129,7 @@ func (v *Vorma) getRouteDataStage1(
 			cached.ErrorExportKeys = append(cached.ErrorExportKeys, foundPath.ErrorExportKey)
 		}
 
-		cached.Deps = getDepsFromData(matches, v._paths, v._clientEntryDeps)
+		cached.Deps = getDepsFromData(matches, pathsSnapshot, clientEntryDepsSnapshot)
 
 		gmpdCache.Store(cacheKey, cached)
 	}
@@ -228,6 +228,10 @@ func (v *Vorma) getRouteDataStage1(
 		}
 
 		cutIdx := derefIdx + 1
+		deps := cached.Deps
+		if cutIdx < len(matches) {
+			deps = getDepsFromData(matches[:cutIdx], pathsSnapshot, clientEntryDepsSnapshot)
+		}
 		return &RouteResult{
 			core: &RouteDataCore{
 				OutermostServerError:    clientMsg,
@@ -240,7 +244,7 @@ func (v *Vorma) getRouteDataStage1(
 				HasRootData:             hasRootData,
 				Params:                  matchResults.Params,
 				SplatValues:             matchResults.SplatValues,
-				Deps:                    cached.Deps,
+				Deps:                    deps,
 			},
 			headElements: headEls,
 		}
@@ -301,30 +305,18 @@ func (v *Vorma) getUIRouteData(
 	isJSON bool,
 ) *RouteResult {
 	res := response.New(w)
-	eg := errgroup.Group{}
-	defaultHeadEls := headels.New()
-	var egErr error
-
-	eg.Go(func() error {
-		if v.getDefaultHeadEls != nil {
-			if err := v.getDefaultHeadEls(r, v, defaultHeadEls); err != nil {
-				return fmt.Errorf("GetDefaultHeadEls error: %w", err)
-			}
-		}
-		return nil
-	})
-
 	routeResult := v.getRouteDataStage1(w, r, nestedRouter)
-	egErr = eg.Wait()
-
-	if egErr != nil {
-		v.Log.Error("Error in getUIRouteData", "error", egErr.Error())
-		res.InternalServerError()
-		return &RouteResult{didErr: true}
-	}
-
 	if routeResult.notFound || routeResult.didRedirect || routeResult.didErr {
 		return routeResult
+	}
+
+	defaultHeadEls := headels.New()
+	if v.getDefaultHeadEls != nil {
+		if err := v.getDefaultHeadEls(r, v, defaultHeadEls); err != nil {
+			v.Log.Error("Error in getUIRouteData", "error", err.Error())
+			res.InternalServerError()
+			return &RouteResult{didErr: true}
+		}
 	}
 
 	cssBundles := v.getCSSBundles(routeResult.core.Deps)

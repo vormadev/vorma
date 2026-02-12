@@ -2,7 +2,7 @@
 
 ## Snapshot
 
-- Date: 2026-02-11
+- Date: 2026-02-12
 - Phase: aggressive internal cleanup with strict first-principles tests
 - Status: all gates currently passing
 
@@ -57,13 +57,70 @@
       state synchronization behavior.
     - `src/platform/history.ts` hard-reload fallback now skips reload invocation
       in JSDOM environments to keep non-browser test runtimes deterministic.
+- Submit-race stale checkpoint coverage expanded:
+    - `src/tests/unit/navigation_runtime_internal.test.ts` now pins stale
+      deduped submit outcomes at all reachable async checkpoints:
+        - after response receipt/before finalize (build-id listener replacement)
+        - after JSON parsing (replacement during parse)
+        - before auto-revalidation (replacement during method access)
+    - removed one unreachable stale checkpoint branch in
+      `src/core/navigation/runtime.ts` redirect path (no async boundary existed
+      between stale checks).
+- Runtime slot-matching cleanup expanded:
+    - removed impossible nullable prefetch-entry branch in
+      `src/core/navigation/runtime.ts` slot matching.
+    - added explicit no-op contract for `removeNavigation` when target key is
+      absent in `src/tests/unit/navigation_runtime_internal.test.ts`.
+- Runtime defensive submit handling hardened:
+    - added explicit guard + contract for impossible missing submit response
+      objects from redirect handling.
+- Begin-navigation and fetch-route-data defensive coverage expanded:
+    - `src/tests/unit/navigation_runtime_internal.test.ts` now pins:
+        - same-target prefetch dedupe reuse from active navigation
+        - same-target prefetch dedupe reuse from pending revalidation
+        - build-id fallback (`"1"`) in client-loader server-data handoff when
+          response build-id header is missing
+        - sparse partial-match invariants now fail fast with explicit errors
+          before starting parallel client loaders
+        - production dep preloading that ignores falsy dep entries
+        - uncached client-loader reuse guard (missing current snapshot cache)
+          runs correctly without incorrectly seeding stale loader results
+        - skip-check invariants now fail fast for malformed matcher results
+          (sparse or empty route-pattern entries)
+- Runtime/buildtime API boundary contracts added:
+    - `src/tests/contracts/client.utilities.contract.test.ts` now pins:
+        - runtime client entrypoint does not export buildtime-only `route`
+        - buildtime entrypoint exports callable `route` registration API
+- Consumer package build gate re-validated:
+    - `make npmbuild` surfaced strict typing regressions in `vormaclient/solid`
+      and `vormaclient/preact` adapter wrappers.
+    - Fixed adapter typing at first principles (explicit typed memo/accessor
+      outputs, event typing alignment, and component typing for renderer
+      adapters) without adding compatibility shims.
+    - `make npmbuild` now passes end-to-end again.
+- Render-runtime branch hardening expanded:
+    - `src/tests/unit/render_runtime_internal.test.ts` now pins:
+        - explicit `scrollToTop: false` user-navigation behavior
+        - empty-title fallback when title HTML payload is missing
+        - null head-array normalization to empty arrays
+        - malformed client-loader result handling when data arrays are missing
+- Runtime response-artifact fallback hardening expanded:
+    - `src/tests/unit/navigation_runtime_internal.test.ts` now pins behavior
+      when response artifact arrays and module map are missing.
+- Render-runtime internal cleanup expanded:
+    - normalized client-loader inputs once per execution in
+      `src/core/render_runtime.ts` instead of repeatedly applying ad hoc
+      fallback checks inside loader loops.
+    - `setClientLoadersState` now uses normalized loader data consistently for
+      both state assignment and error-index derivation, avoiding malformed-data
+      crashes and invalid negative indexes.
 
 ## Current Test Inventory
 
 - `27` test files
-- `380` tests
+- `408` tests
 
-## Latest Verified Gate (2026-02-11)
+## Latest Verified Gate (2026-02-12)
 
 - `pnpm oxlint vormaclient/client/src`
 - `pnpm tsc --noEmit --project vormaclient/client`
@@ -73,20 +130,24 @@
 
 Result:
 
-- tests: pass (`27` files, `380` tests)
+- tests: pass (`27` files, `408` tests)
 - coverage summary:
-    - statements: `91.53%`
-    - branches: `83.47%`
-    - functions: `95.08%`
-    - lines: `92.32%`
+    - statements: `92.03%`
+    - branches: `86.27%`
+    - functions: `95.09%`
+    - lines: `92.42%`
 - notable files:
     - `src/core/links.ts`: `100%` statements/branches/functions/lines
     - `src/core/redirects.ts`: `100%` statements/branches/functions/lines
-    - `src/core/navigation/runtime.ts`: `98.67%` statements, `91.42%` branches,
+    - `src/core/navigation/runtime.ts`: `100%` statements, `100%` branches,
       `98.36%` functions, `100%` lines
-    - `src/core/render_runtime.ts`: `99.55%` statements, `90.32%` branches,
+    - `src/core/navigation/begin_navigation.ts`: `100%` statements, `100%`
+      branches, `100%` functions, `100%` lines
+    - `src/core/navigation/fetch_route_data.ts`: `100%` statements, `98.63%`
+      branches, `100%` functions, `100%` lines
+    - `src/core/render_runtime.ts`: `99.56%` statements, `100%` branches,
       `97.5%` functions, `100%` lines
-    - `src/platform/history.ts`: `95.31%` statements, `92.68%` branches, `100%`
+    - `src/platform/history.ts`: `95.31%` statements, `95.12%` branches, `100%`
       functions, `95.31%` lines
     - `src/platform/safety.ts`: `100%` statements, `93.33%` branches, `100%`
       functions, `100%` lines

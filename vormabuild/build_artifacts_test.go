@@ -155,8 +155,8 @@ func TestWritePathsToDiskStageOne_WritesExpectedFields(t *testing.T) {
 			},
 		})
 
-		if err := writePathsToDisk_StageOne(l); err != nil {
-			t.Fatalf("writePathsToDisk_StageOne returned error: %v", err)
+		if err := writePathsToDiskStageOne(l); err != nil {
+			t.Fatalf("writePathsToDiskStageOne returned error: %v", err)
 		}
 	})
 
@@ -185,6 +185,56 @@ func TestWritePathsToDiskStageOne_WritesExpectedFields(t *testing.T) {
 	}
 	if parsed.Paths["/items/:id"] == nil {
 		t.Fatalf("expected /items/:id path in stage one output")
+	}
+}
+
+func TestStageOnePathsOutputPath(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	got := stageOnePathsOutputPath(app)
+	want := filepath.Join(
+		app.Wave.GetStaticPrivateOutDir(),
+		vormaruntime.VormaOutDirname,
+		vormaruntime.VormaPathsStageOneJSONFileName,
+	)
+	if got != want {
+		t.Fatalf("stageOnePathsOutputPath() = %q, want %q", got, want)
+	}
+}
+
+func TestStageOnePathsFile(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	var pathsFile *vormaruntime.PathsFile
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("build-stage-one")
+		l.SetRouteManifestFile("manifest-stage-one.json")
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/a": {
+				OriginalPattern: "/a",
+				SrcPath:         "frontend/src/routes/a.tsx",
+				ExportKey:       "default",
+			},
+		})
+		pathsFile = stageOnePathsFile(l)
+	})
+
+	if pathsFile == nil {
+		t.Fatal("expected non-nil stage one paths file")
+	}
+	if pathsFile.Stage != "one" {
+		t.Fatalf("stage = %q, want %q", pathsFile.Stage, "one")
+	}
+	if pathsFile.BuildID != "build-stage-one" {
+		t.Fatalf("build ID = %q, want %q", pathsFile.BuildID, "build-stage-one")
+	}
+	if pathsFile.RouteManifestFile != "manifest-stage-one.json" {
+		t.Fatalf("route manifest file = %q, want %q", pathsFile.RouteManifestFile, "manifest-stage-one.json")
+	}
+	if pathsFile.Paths["/a"] == nil {
+		t.Fatal("expected /a path in stage one paths file")
 	}
 }
 
@@ -351,6 +401,52 @@ func TestIsGeneratedRouteManifestFilename(t *testing.T) {
 				t.Fatalf("isGeneratedRouteManifestFilename(%q) = %v, want %v", testCase.fileName, got, testCase.want)
 			}
 		})
+	}
+}
+
+func TestRemoveMatchingTopLevelFiles_RemovesOnlyMatchingFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	manifestFile := filepath.Join(rootDir, vormaruntime.VormaRouteManifestPrefix+"one.json")
+	keepFile := filepath.Join(rootDir, "keep.txt")
+	matchingDir := filepath.Join(rootDir, vormaruntime.VormaRouteManifestPrefix+"dir")
+
+	mustWriteFile(t, manifestFile, []byte("{}"))
+	mustWriteFile(t, keepFile, []byte("keep"))
+	mustWriteFile(t, filepath.Join(matchingDir, "nested.txt"), []byte("nested"))
+
+	if err := removeMatchingTopLevelFiles(rootDir, isGeneratedRouteManifestFilename); err != nil {
+		t.Fatalf("removeMatchingTopLevelFiles returned error: %v", err)
+	}
+
+	if _, err := os.Stat(manifestFile); !os.IsNotExist(err) {
+		t.Fatalf("expected matching top-level file removed, stat error: %v", err)
+	}
+	if _, err := os.Stat(keepFile); err != nil {
+		t.Fatalf("expected non-matching file to remain, stat error: %v", err)
+	}
+	if _, err := os.Stat(matchingDir); err != nil {
+		t.Fatalf("expected matching directory to remain untouched, stat error: %v", err)
+	}
+}
+
+func TestRemoveMatchingEntriesRecursively_RemovesNestedMatchingFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	nestedDir := filepath.Join(rootDir, "nested", "deeper")
+	removeFile := filepath.Join(nestedDir, vormaruntime.VormaVitePrehashedFilePrefix+"bundle.js")
+	keepFile := filepath.Join(nestedDir, "keep.txt")
+
+	mustWriteFile(t, removeFile, []byte("remove"))
+	mustWriteFile(t, keepFile, []byte("keep"))
+
+	if err := removeMatchingEntriesRecursively(rootDir, shouldRemoveGeneratedStaticPublicFile); err != nil {
+		t.Fatalf("removeMatchingEntriesRecursively returned error: %v", err)
+	}
+
+	if _, err := os.Stat(removeFile); !os.IsNotExist(err) {
+		t.Fatalf("expected matching nested file removed, stat error: %v", err)
+	}
+	if _, err := os.Stat(keepFile); err != nil {
+		t.Fatalf("expected non-matching nested file to remain, stat error: %v", err)
 	}
 }
 
@@ -536,5 +632,91 @@ func TestRunBuildHook_DevBuildInnerFlow(t *testing.T) {
 	paths := app.GetPathsSnapshot()
 	if len(paths) != 3 {
 		t.Fatalf("expected 3 routes from bootstrap-style defs, got %d", len(paths))
+	}
+}
+
+func TestNewFastRebuildID(t *testing.T) {
+	buildID, err := newFastRebuildID()
+	if err != nil {
+		t.Fatalf("newFastRebuildID returned error: %v", err)
+	}
+	if !strings.HasPrefix(buildID, "dev_fast_") {
+		t.Fatalf("build ID = %q, expected dev_fast_ prefix", buildID)
+	}
+	if len(buildID) <= len("dev_fast_") {
+		t.Fatalf("build ID = %q, expected non-empty suffix", buildID)
+	}
+}
+
+func TestWriteAndSetRouteManifest(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/server",
+		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
+			return "ok", nil
+		}),
+	)
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/server": {
+				OriginalPattern: "/server",
+				SrcPath:         "frontend/src/routes/server.tsx",
+				ExportKey:       "default",
+			},
+		})
+
+		if err := writeAndSetRouteManifest(l); err != nil {
+			t.Fatalf("writeAndSetRouteManifest returned error: %v", err)
+		}
+	})
+
+	manifestFile := app.GetRouteManifestFile()
+	if manifestFile == "" {
+		t.Fatal("expected route manifest filename to be set")
+	}
+	if !strings.HasPrefix(manifestFile, vormaruntime.VormaRouteManifestPrefix) {
+		t.Fatalf("route manifest file = %q, expected prefix %q", manifestFile, vormaruntime.VormaRouteManifestPrefix)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.publicDir, manifestFile)); err != nil {
+		t.Fatalf("expected manifest file to exist on disk: %v", err)
+	}
+}
+
+func TestRouteManifestFilename(t *testing.T) {
+	manifestJSON := []byte(`{"a":1}`)
+	filename := routeManifestFilename(manifestJSON)
+	if !strings.HasPrefix(filename, vormaruntime.VormaRouteManifestPrefix) {
+		t.Fatalf("filename = %q, expected prefix %q", filename, vormaruntime.VormaRouteManifestPrefix)
+	}
+	if filepath.Ext(filename) != ".json" {
+		t.Fatalf("filename = %q, expected .json extension", filename)
+	}
+
+	filenameAgain := routeManifestFilename(manifestJSON)
+	if filenameAgain != filename {
+		t.Fatalf("routeManifestFilename should be deterministic: %q vs %q", filename, filenameAgain)
+	}
+}
+
+func TestRouteManifestServerLoaderFlag(t *testing.T) {
+	nestedRouter := mux.NewNestedRouter(nil)
+	mux.RegisterNestedPatternWithoutHandler(nestedRouter, "/client-only")
+	mux.RegisterNestedTaskHandler(
+		nestedRouter,
+		"/with-loader",
+		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
+			return "ok", nil
+		}),
+	)
+
+	if got := routeManifestServerLoaderFlag(nestedRouter, "/client-only"); got != 0 {
+		t.Fatalf("routeManifestServerLoaderFlag(/client-only) = %d, want 0", got)
+	}
+	if got := routeManifestServerLoaderFlag(nestedRouter, "/with-loader"); got != 1 {
+		t.Fatalf("routeManifestServerLoaderFlag(/with-loader) = %d, want 1", got)
 	}
 }

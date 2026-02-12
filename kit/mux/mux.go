@@ -603,7 +603,7 @@ func createReqDataGetter[I any, O any](route *Route[I, O]) reqDataGetter {
 			reqData.req = r
 			reqData.responseProxy = response.NewProxy()
 			inputPtr := route.IPtr()
-			if route.router.parseInput != nil && !genericsutil.IsNone(route.I()) {
+			if route.handlerType == "task" && route.router.parseInput != nil && !genericsutil.IsNone(route.I()) {
 				if err := route.router.parseInput(reqData.Request(), inputPtr); err != nil {
 					return nil, err
 				}

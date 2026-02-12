@@ -37,7 +37,7 @@ export function makeTypedUseLoaderData<App extends VormaAppBase>() {
 	return function useLoaderData<Pattern extends VormaLoaderPattern<App>>(
 		props: VormaRouteProps<App, Pattern>,
 	): VormaLoaderOutput<App, Pattern> {
-		return loadersData.value[props.idx];
+		return loadersData.value[props.idx] as VormaLoaderOutput<App, Pattern>;
 	};
 }
 
@@ -54,7 +54,7 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 		if (idx === -1) {
 			return undefined;
 		}
-		return loadersData.value[idx];
+		return loadersData.value[idx] as VormaLoaderOutput<App, Pattern>;
 	};
 }
 
@@ -102,7 +102,7 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 			}, [props]);
 
 			if (idx === -1) return undefined;
-			return clientLoadersData.value[idx];
+			return clientLoadersData.value[idx] as Res | undefined;
 		};
 
 		return useClientLoaderData as {

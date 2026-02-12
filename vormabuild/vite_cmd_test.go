@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/vormadev/vorma/lab/viteutil"
@@ -49,9 +50,9 @@ func TestToPathsFileStageTwo_TransformsManifestAndUpdatesBuildID(t *testing.T) {
 	}
 	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), manifest)
 
-	pathsFile, err := toPathsFile_StageTwo(app)
+	pathsFile, err := toPathsFileStageTwo(app)
 	if err != nil {
-		t.Fatalf("toPathsFile_StageTwo returned error: %v", err)
+		t.Fatalf("toPathsFileStageTwo returned error: %v", err)
 	}
 
 	if pathsFile.Stage != "two" {
@@ -218,5 +219,138 @@ func TestApplyViteManifestToPaths_UpdatesClientEntryAndRoutePaths(t *testing.T) 
 	}
 	if !slices.Equal(home.Deps, []string{"home.js", "shared.js"}) {
 		t.Fatalf("home deps = %#v, want %#v", home.Deps, []string{"home.js", "shared.js"})
+	}
+}
+
+func TestApplyViteManifestToPaths_UpdatesAllRoutesSharingSameSourcePath(t *testing.T) {
+	manifest := viteutil.Manifest{
+		"frontend/src/routes/shared.tsx": {
+			Src:  "frontend/src/routes/shared.tsx",
+			File: "assets/vorma_out/shared-route.js",
+		},
+	}
+	paths := map[string]*vormaruntime.Path{
+		"/a": {
+			OriginalPattern: "/a",
+			SrcPath:         "frontend/src/routes/shared.tsx",
+			ExportKey:       "default",
+		},
+		"/b": {
+			OriginalPattern: "/b",
+			SrcPath:         "frontend/src/routes/shared.tsx",
+			ExportKey:       "default",
+		},
+	}
+
+	_, _, _ = applyViteManifestToPaths(manifest, paths, "frontend/src/vorma.entry.tsx")
+
+	pathA := paths["/a"]
+	pathB := paths["/b"]
+	if pathA.OutPath != "shared-route.js" || pathB.OutPath != "shared-route.js" {
+		t.Fatalf("expected both routes to receive same out path, got /a=%q /b=%q", pathA.OutPath, pathB.OutPath)
+	}
+	if !slices.Equal(pathA.Deps, []string{"shared-route.js"}) || !slices.Equal(pathB.Deps, []string{"shared-route.js"}) {
+		t.Fatalf("expected both routes to receive same deps, got /a=%#v /b=%#v", pathA.Deps, pathB.Deps)
+	}
+}
+
+func TestIndexPathsBySourcePath(t *testing.T) {
+	paths := map[string]*vormaruntime.Path{
+		"/a": {SrcPath: "one.tsx"},
+		"/b": {SrcPath: "two.tsx"},
+		"/c": {SrcPath: "one.tsx"},
+	}
+	indexed := indexPathsBySourcePath(paths)
+
+	if len(indexed["one.tsx"]) != 2 {
+		t.Fatalf("one.tsx index length = %d, want 2", len(indexed["one.tsx"]))
+	}
+	if len(indexed["two.tsx"]) != 1 {
+		t.Fatalf("two.tsx index length = %d, want 1", len(indexed["two.tsx"]))
+	}
+}
+
+func TestStageTwoPathsOutputPath(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	got := stageTwoPathsOutputPath(app)
+	want := filepath.Join(
+		app.Wave.GetStaticPrivateOutDir(),
+		vormaruntime.VormaOutDirname,
+		vormaruntime.VormaPathsStageTwoJSONFileName,
+	)
+	if got != want {
+		t.Fatalf("stageTwoPathsOutputPath() = %q, want %q", got, want)
+	}
+}
+
+func TestPathsOutputPath(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	got := pathsOutputPath(app, "custom.json")
+	want := filepath.Join(app.Wave.GetStaticPrivateOutDir(), vormaruntime.VormaOutDirname, "custom.json")
+	if got != want {
+		t.Fatalf("pathsOutputPath() = %q, want %q", got, want)
+	}
+}
+
+func TestWriteStageTwoPathsJSON_ReturnsErrorWhenParentIsNotDirectory(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	stageTwoDir := filepath.Join(app.Wave.GetStaticPrivateOutDir(), vormaruntime.VormaOutDirname)
+	if err := os.RemoveAll(stageTwoDir); err != nil {
+		t.Fatalf("remove stage two dir: %v", err)
+	}
+	mustWriteFile(t, stageTwoDir, []byte("not-a-directory"))
+
+	err := writeStageTwoPathsJSON(app, []byte("{}"))
+	if err == nil {
+		t.Fatal("expected writeStageTwoPathsJSON to fail when parent path is not a directory")
+	}
+	if !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("error = %q, expected not-a-directory message", err)
+	}
+}
+
+func TestPostViteProdBuild_ReturnsErrorWhenTemplateMissing(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	app.Config.HTMLTemplateLocation = "missing-template.html"
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/root.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	manifest := viteutil.Manifest{
+		"frontend/src/vorma.entry.tsx": {
+			Src:     "frontend/src/vorma.entry.tsx",
+			File:    "assets/vorma_out/entry.js",
+			IsEntry: true,
+		},
+		"frontend/src/routes/root.tsx": {
+			Src:  "frontend/src/routes/root.tsx",
+			File: "assets/vorma_out/root.js",
+		},
+	}
+	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), manifest)
+
+	err := postViteProdBuild(app)
+	if err == nil {
+		t.Fatal("expected postViteProdBuild to fail when template is missing")
+	}
+	if !strings.Contains(err.Error(), "convert paths to stage two") {
+		t.Fatalf("error = %q, expected stage-two conversion context", err)
+	}
+	if !strings.Contains(err.Error(), "read HTML template") {
+		t.Fatalf("error = %q, expected template read context", err)
 	}
 }

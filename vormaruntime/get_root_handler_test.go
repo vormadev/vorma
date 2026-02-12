@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/vormadev/vorma/kit/headels"
@@ -531,6 +532,95 @@ func TestLoadersHandler_ProxyRedirectAndErrorShortCircuit(t *testing.T) {
 	})
 }
 
+func TestLoadersHandler_DefaultHeadErrorsDoNotOverrideShortCircuitResponses(t *testing.T) {
+	stage := defaultPathsFile("build-short-circuit", map[string]*Path{
+		"/redirect": {
+			OriginalPattern: "/redirect",
+			SrcPath:         "frontend/src/routes/redirect.tsx",
+			OutPath:         "vorma_out/routes/redirect.js",
+			ExportKey:       "default",
+		},
+		"/blocked": {
+			OriginalPattern: "/blocked",
+			SrcPath:         "frontend/src/routes/blocked.tsx",
+			OutPath:         "vorma_out/routes/blocked.js",
+			ExportKey:       "default",
+		},
+	})
+
+	var defaultHeadCalls atomic.Int32
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+		getDefaultHeadEls: func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
+			defaultHeadCalls.Add(1)
+			return errors.New("default head should not run for short-circuit responses")
+		},
+	})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/redirect",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+			if _, err := rd.ResponseProxy().Redirect(rd.Request(), "/login", http.StatusSeeOther); err != nil {
+				return nil, err
+			}
+			return map[string]bool{"ignored": true}, nil
+		}),
+	)
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/blocked",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+			rd.ResponseProxy().SetStatus(http.StatusForbidden, "blocked by policy")
+			return map[string]bool{"ignored": true}, nil
+		}),
+	)
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+	t.Run("redirect_remains_redirect", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/redirect", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+		}
+		if got := rec.Header().Get("Location"); got != "/login" {
+			t.Fatalf("Location = %q, want %q", got, "/login")
+		}
+	})
+
+	t.Run("proxy_error_remains_proxy_error", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/blocked?vorma_json=build-short-circuit", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+		}
+		if !strings.Contains(rec.Body.String(), "blocked by policy") {
+			t.Fatalf("body = %q, expected custom policy message", rec.Body.String())
+		}
+	})
+
+	t.Run("not_found_remains_not_found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	if got := defaultHeadCalls.Load(); got != 0 {
+		t.Fatalf("GetDefaultHeadEls calls = %d, want 0 for short-circuit responses", got)
+	}
+}
+
 func TestLoadersHandler_LoaderErrorContract(t *testing.T) {
 	stage := defaultPathsFile("build-errors", map[string]*Path{
 		"/items": {
@@ -611,6 +701,76 @@ func TestLoadersHandler_LoaderErrorContract(t *testing.T) {
 	}
 	if routeData.LoadersData[1] != nil {
 		t.Fatalf("second loader data should be nil on error, got %#v", routeData.LoadersData[1])
+	}
+}
+
+func TestLoadersHandler_LoaderErrorDepsAreTrimmedToOutermostBoundary(t *testing.T) {
+	stage := defaultPathsFile("build-error-deps", map[string]*Path{
+		"/items": {
+			OriginalPattern: "/items",
+			SrcPath:         "frontend/src/routes/items.tsx",
+			OutPath:         "vorma_out/routes/items.js",
+			ExportKey:       "default",
+			ErrorExportKey:  "ItemsErrorBoundary",
+			Deps:            []string{"vorma_out/items.js"},
+		},
+		"/items/:id": {
+			OriginalPattern: "/items/:id",
+			SrcPath:         "frontend/src/routes/items.$id.tsx",
+			OutPath:         "vorma_out/routes/items.$id.js",
+			ExportKey:       "default",
+			ErrorExportKey:  "ItemErrorBoundary",
+			Deps:            []string{"vorma_out/item-detail.js"},
+		},
+	})
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+	})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/items",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+			return nil, &LoaderError{
+				Client: "Could not load items",
+				Server: errors.New("items upstream failure"),
+			}
+		}),
+	)
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/items/:id",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+			return map[string]any{"id": rd.Params()["id"]}, nil
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/items/42?vorma_json=build-error-deps", nil)
+	rec := httptest.NewRecorder()
+	mux.InjectTasksCtxMiddleware(app.Loaders().Handler()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var routeData RouteDataFinal
+	if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
+		t.Fatalf("decode route data: %v", err)
+	}
+
+	if routeData.OutermostServerErrorIdx == nil || *routeData.OutermostServerErrorIdx != 0 {
+		t.Fatalf("OutermostServerErrorIdx = %#v, want pointer to 0", routeData.OutermostServerErrorIdx)
+	}
+	if !reflect.DeepEqual(routeData.MatchedPatterns, []string{"/items"}) {
+		t.Fatalf("MatchedPatterns = %#v, want only outermost failing boundary", routeData.MatchedPatterns)
+	}
+
+	wantDeps := []string{"vorma_out/client-shared.js", "vorma_out/items.js"}
+	if !reflect.DeepEqual(routeData.Deps, wantDeps) {
+		t.Fatalf("Deps = %#v, want %#v", routeData.Deps, wantDeps)
 	}
 }
 

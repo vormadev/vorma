@@ -15,6 +15,7 @@ import {
 	createPatternRegistry,
 	registerPattern,
 } from "vorma/kit/matcher/register";
+import { VORMA_ROUTE_CHANGE_EVENT_KEY } from "../../platform/events.ts";
 import * as headModule from "../../ui/head.ts";
 
 const TEST_VORMA_APP_CONFIG = {
@@ -71,6 +72,29 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		routeManifest: undefined,
 		clientModuleMap: {},
 		patternRegistry: createRegisteredPatternRegistry([]),
+		...overrides,
+	};
+}
+
+function createRouteDataJSON(
+	overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return {
+		matchedPatterns: [],
+		loadersData: [],
+		importURLs: [],
+		exportKeys: [],
+		errorExportKeys: [],
+		hasRootData: false,
+		params: {},
+		splatValues: [],
+		deps: [],
+		cssBundles: [],
+		outermostServerError: undefined,
+		outermostServerErrorIdx: undefined,
+		title: undefined,
+		metaHeadEls: undefined,
+		restHeadEls: undefined,
 		...overrides,
 	};
 }
@@ -181,6 +205,33 @@ describe("render runtime internals", () => {
 					call[0] === "activeErrorBoundary" && call[1] === boundary,
 			),
 		).toBe(false);
+	});
+
+	it("falls back to the default error boundary when error export keys are missing", async () => {
+		const defaultBoundary = () => "default-boundary";
+		installVormaGlobal({
+			importURLs: ["/missing-error-key.js"],
+			errorExportKeys: undefined,
+			outermostServerErrorIdx: 0,
+			defaultErrorBoundary: defaultBoundary,
+			activeErrorBoundary: undefined,
+		});
+
+		await ComponentLoader.handleErrorBoundaryComponent(
+			["/missing-error-key.js"],
+			new Map([
+				[
+					"/missing-error-key.js",
+					{
+						ErrorBoundary: () => "unused-boundary",
+					},
+				],
+			]),
+		);
+
+		expect(__vormaClientGlobal.get("activeErrorBoundary")).toBe(
+			defaultBoundary,
+		);
 	});
 
 	it("returns null when client-loader server data is missing pattern match", () => {
@@ -340,6 +391,22 @@ describe("render runtime internals", () => {
 		).toEqual(["/docs"]);
 	});
 
+	it("handles missing export-key snapshots by defaulting to module default exports", async () => {
+		const moduleDefault = () => "default-module";
+		vi.doMock("/no-export-keys.js", () => ({ default: moduleDefault }));
+		installVormaGlobal({
+			importURLs: ["/no-export-keys.js"],
+			exportKeys: undefined,
+			activeComponents: [],
+		});
+
+		await ComponentLoader.handleComponents(["/no-export-keys.js"]);
+
+		expect(__vormaClientGlobal.get("activeComponents")).toEqual([
+			moduleDefault,
+		]);
+	});
+
 	it("setupClientLoaders no-ops cleanly when no result is provided", () => {
 		setClientLoadersState(undefined);
 		expect(__vormaClientGlobal.get("clientLoadersData")).toEqual([]);
@@ -355,6 +422,35 @@ describe("render runtime internals", () => {
 		expect(__vormaClientGlobal.get("outermostClientError")).toBeUndefined();
 	});
 
+	it("handles malformed client-loader results with missing data arrays safely", () => {
+		expect(() =>
+			setClientLoadersState({
+				data: undefined as any,
+				errorMessage: "loader-error",
+			}),
+		).not.toThrow();
+
+		expect(__vormaClientGlobal.get("clientLoadersData")).toEqual([]);
+		expect(
+			__vormaClientGlobal.get("outermostClientErrorIdx"),
+		).toBeUndefined();
+		expect(__vormaClientGlobal.get("outermostClientError")).toBe(
+			"loader-error",
+		);
+	});
+
+	it("sets outermost client error index to the last loader index when data exists", () => {
+		setClientLoadersState({
+			data: ["a", "b", "c"],
+			errorMessage: "loader-error",
+		});
+
+		expect(__vormaClientGlobal.get("outermostClientErrorIdx")).toBe(2);
+		expect(__vormaClientGlobal.get("outermostClientError")).toBe(
+			"loader-error",
+		);
+	});
+
 	it("supports setupClientLoaders with missing snapshots and empty maps", async () => {
 		installVormaGlobal({
 			importURLs: undefined,
@@ -367,6 +463,41 @@ describe("render runtime internals", () => {
 
 		await expect(setupClientLoaders()).resolves.toBeUndefined();
 		expect(__vormaClientGlobal.get("clientLoadersData")).toEqual([]);
+	});
+
+	it("passes unavailable server data to client loaders when required server payload is missing", async () => {
+		const waitFn = vi.fn(async ({ serverDataPromise }) => {
+			try {
+				await serverDataPromise;
+				return "unexpected";
+			} catch (error) {
+				return (error as Error).name;
+			}
+		});
+		installVormaGlobal({
+			patternToWaitFnMap: { "/needs-server": waitFn },
+			routeManifest: { "/needs-server": 1 },
+		});
+
+		const result = await completeClientLoaders(
+			{
+				matchedPatterns: ["/needs-server"],
+				loadersData: [],
+				hasRootData: false,
+				importURLs: [],
+				params: {},
+				splatValues: [],
+			},
+			"1",
+			new Map(),
+			new AbortController().signal,
+		);
+
+		expect(result).toEqual({
+			data: ["AbortError"],
+			errorMessage: undefined,
+		});
+		expect(waitFn).toHaveBeenCalledTimes(1);
 	});
 
 	it("fails fast when registering client loader without pattern registry", async () => {
@@ -386,26 +517,76 @@ describe("render runtime internals", () => {
 		await __reRenderApp({
 			navigationType: "userNavigation",
 			onFinish,
-			json: {
-				matchedPatterns: [],
-				loadersData: [],
-				importURLs: undefined as any,
-				exportKeys: [],
-				errorExportKeys: [],
-				hasRootData: false,
-				params: {},
-				splatValues: [],
-				deps: [],
-				cssBundles: undefined as any,
-				outermostServerError: undefined,
-				outermostServerErrorIdx: undefined,
-				title: undefined,
+			json: createRouteDataJSON({
+				importURLs: undefined,
+				cssBundles: undefined,
 				metaHeadEls: [],
 				restHeadEls: [],
-			},
+			}) as any,
 		});
 
 		expect(onFinish).toHaveBeenCalledTimes(1);
+		expect(updateHeadElsSpy).toHaveBeenCalledWith("meta", []);
+		expect(updateHeadElsSpy).toHaveBeenCalledWith("rest", []);
+	});
+
+	it("does not dispatch default top-scroll state when explicit user-navigation scrollToTop is false", async () => {
+		const routeChangeDetails: Array<unknown> = [];
+		const listener = (event: Event) => {
+			routeChangeDetails.push(
+				(event as CustomEvent<{ __scrollState?: unknown }>).detail,
+			);
+		};
+		window.addEventListener(VORMA_ROUTE_CHANGE_EVENT_KEY, listener);
+
+		try {
+			await __reRenderApp({
+				navigationType: "userNavigation",
+				runHistoryOptions: {
+					href: "http://localhost:3000/no-scroll",
+					scrollToTop: false,
+				},
+				onFinish: vi.fn(),
+				json: createRouteDataJSON() as any,
+			});
+		} finally {
+			window.removeEventListener(VORMA_ROUTE_CHANGE_EVENT_KEY, listener);
+		}
+
+		expect(window.location.pathname).toBe("/no-scroll");
+		expect(routeChangeDetails.length).toBe(1);
+		expect(
+			(routeChangeDetails[0] as { __scrollState?: unknown })
+				.__scrollState,
+		).toBeUndefined();
+	});
+
+	it("falls back to empty title text when title HTML payload is missing", async () => {
+		document.title = "before-title";
+
+		await __reRenderApp({
+			navigationType: "userNavigation",
+			onFinish: vi.fn(),
+			json: createRouteDataJSON({
+				title: {},
+			}) as any,
+		});
+
+		expect(document.title).toBe("");
+	});
+
+	it("normalizes null head-element arrays to empty lists during rerender", async () => {
+		const updateHeadElsSpy = vi.spyOn(headModule, "updateHeadEls");
+
+		await __reRenderApp({
+			navigationType: "userNavigation",
+			onFinish: vi.fn(),
+			json: createRouteDataJSON({
+				metaHeadEls: null,
+				restHeadEls: null,
+			}) as any,
+		});
+
 		expect(updateHeadElsSpy).toHaveBeenCalledWith("meta", []);
 		expect(updateHeadElsSpy).toHaveBeenCalledWith("rest", []);
 	});

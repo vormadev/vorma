@@ -510,6 +510,65 @@ func TestParseInputEdgeCases(t *testing.T) {
 	})
 }
 
+func TestParseInputSkipsHTTPRoutes(t *testing.T) {
+	t.Run("TaskMiddleware_SlowPath", func(t *testing.T) {
+		parseInputCalls := 0
+		router := NewRouter(&Options{
+			ParseInput: func(req *http.Request, inputPtr any) error {
+				parseInputCalls++
+				return errors.New("parse input should not run for HTTP handlers")
+			},
+		})
+
+		SetGlobalTaskMiddleware(router, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+			return None{}, nil
+		}))
+
+		RegisterHandlerFunc(router, http.MethodGet, "/http", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/http", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("Expected status 204, got %d", rec.Code)
+		}
+		if parseInputCalls != 0 {
+			t.Fatalf("ParseInput called %d times, expected 0 for HTTP routes", parseInputCalls)
+		}
+	})
+
+	t.Run("TasksCtxRequirer_SlowPath", func(t *testing.T) {
+		parseInputCalls := 0
+		router := NewRouter(&Options{
+			ParseInput: func(req *http.Request, inputPtr any) error {
+				parseInputCalls++
+				return errors.New("parse input should not run for HTTP handlers")
+			},
+		})
+
+		RegisterHandler(router, http.MethodGet, "/http", TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if GetTasksCtx(r) == nil {
+				t.Fatal("TasksCtx should be available for TasksCtxRequirer")
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/http", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("Expected status 204, got %d", rec.Code)
+		}
+		if parseInputCalls != 0 {
+			t.Fatalf("ParseInput called %d times, expected 0 for HTTP routes", parseInputCalls)
+		}
+	})
+}
+
 func TestTasksCtxRequirer(t *testing.T) {
 	t.Run("TasksCtxRequirer_Gets_TasksCtx_Even_Without_Middleware", func(t *testing.T) {
 		router := NewRouter()

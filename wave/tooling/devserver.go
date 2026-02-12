@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,8 +13,7 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/netutil"
-	"github.com/vormadev/vorma/lab/viteutil"
+	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 	"golang.org/x/sync/errgroup"
 )
@@ -37,7 +37,7 @@ type server struct {
 	// Running processes
 	mu      sync.Mutex
 	appCmd  *exec.Cmd
-	viteCtx *viteutil.BuildCtx
+	viteCtx *vitecmd.BuildCtx
 	builder *Builder
 
 	// Browser refresh
@@ -92,17 +92,13 @@ func (s *server) run() error {
 	// Initialize refresh server once (crucial -- persists across rebuilds)
 	wave.MustGetPort()
 
-	refreshPort, err := netutil.GetFreePort(defaultRefreshPort)
-	if err != nil {
-		return fmt.Errorf("get refresh port: %w", err)
-	}
-	wave.SetRefreshServerPort(refreshPort)
-
 	if s.cfg.UsingBrowser() {
 		s.refreshMgrCtx, s.refreshMgrCancel = context.WithCancel(context.Background())
 		s.refreshMgr = newClientManager()
 		go s.refreshMgr.start(s.refreshMgrCtx)
-		s.startRefreshServer(refreshPort)
+		if _, err := s.startRefreshServer(defaultRefreshPort); err != nil {
+			return fmt.Errorf("start refresh server: %w", err)
+		}
 	}
 
 	// Ensure refresh server is cleaned up on exit
@@ -387,7 +383,6 @@ func (s *server) startVite() error {
 	}
 
 	s.viteCtx = ctx
-	go s.viteCtx.Wait()
 	return nil
 }
 
@@ -465,9 +460,9 @@ func (s *server) callViteFilemapInvalidate() error {
 	return nil
 }
 
-func (s *server) startRefreshServer(port int) {
+func (s *server) startRefreshServer(port int) (int, error) {
 	if !s.cfg.UsingBrowser() {
-		return
+		return 0, nil
 	}
 
 	mux := http.NewServeMux()
@@ -485,17 +480,39 @@ func (s *server) startRefreshServer(port int) {
 		w.Write([]byte(wave.RefreshScriptInner(wave.GetRefreshServerPort())))
 	})
 
-	s.refreshServer = &http.Server{
-		Addr:    ":" + strconv.Itoa(port),
-		Handler: mux,
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		if port > 0 {
+			listener, err = net.Listen("tcp", ":0")
+		}
+		if err != nil {
+			return 0, err
+		}
 	}
 
+	tcpAddress, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		listener.Close()
+		return 0, fmt.Errorf("unexpected listener address type: %T", listener.Addr())
+	}
+
+	actualPort := tcpAddress.Port
+	wave.SetRefreshServerPort(actualPort)
+
+	refreshServer := &http.Server{
+		Addr:    ":" + strconv.Itoa(actualPort),
+		Handler: mux,
+	}
+	s.refreshServer = refreshServer
+
 	go func() {
-		s.log.Info("Refresh server started", "port", port)
-		if err := s.refreshServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		s.log.Info("Refresh server started", "port", actualPort)
+		if err := refreshServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			s.log.Error("Refresh server error", "error", err)
 		}
 	}()
+
+	return actualPort, nil
 }
 
 func (s *server) stopRefreshServer() error {

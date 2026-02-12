@@ -142,12 +142,18 @@ func (w *Watcher) setupPatterns() {
 
 	// Add framework-injected ignored patterns
 	for _, p := range w.cfg.FrameworkIgnoredPatterns {
+		pattern := p
+		if !filepath.IsAbs(pattern) {
+			pattern = filepath.Join(w.cfg.WatchRoot(), pattern)
+		}
+		normalizedPattern := w.norm(pattern)
+
 		// Heuristic: if it ends in /** or looks like a dir, treat as ignored dir
 		if strings.HasSuffix(p, "/**") {
-			w.ignoredDirs = append(w.ignoredDirs, w.norm(p))
+			w.ignoredDirs = append(w.ignoredDirs, normalizedPattern)
 		} else {
 			// It might be a file or a pattern
-			w.ignoredFiles = append(w.ignoredFiles, w.norm(p))
+			w.ignoredFiles = append(w.ignoredFiles, normalizedPattern)
 		}
 	}
 

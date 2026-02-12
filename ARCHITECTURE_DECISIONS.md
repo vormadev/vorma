@@ -68,6 +68,15 @@ fw/
 
 **Key rule:** `runtime` never imports `build`. Ever.
 
+In the current codebase this boundary is enforced by package split:
+
+- `lab/viteutil` provides runtime-safe Vite helpers (manifest parsing, dev
+  script tags)
+- `lab/vitecmd` holds dev/build command orchestration (`os/exec`, process
+  lifecycle)
+
+Runtime code can use `lab/viteutil` without pulling Vite process-spawning code.
+
 ### Why This Matters for Fast Rebuilds
 
 The fast rebuild path for route changes involves two processes:
@@ -117,7 +126,7 @@ For these, Wave provides:
 
 ### The WebSocket Server Is Not Duplicating Vite
 
-Wave's WebSocket (`devserver/broadcast.go`) handles events Vite cannot know
+Wave's WebSocket (`wave/tooling/broadcast.go`) handles events Vite cannot know
 about:
 
 - Go code changed --> binary recompiled --> app restarted
@@ -129,8 +138,8 @@ WebSocket handles Go-level events. They coexist, serving different purposes.
 
 ### CSS Pipeline Rationale
 
-Wave's CSS processing (`builder/css.go`) handles CSS entry points defined in
-`wave.config.json`--files outside the JavaScript module graph.
+Wave's CSS processing (`wave/tooling/css.go`) handles CSS entry points defined
+in `wave.config.json`--files outside the JavaScript module graph.
 
 - CSS imported in JavaScript --> Vite handles it
 - CSS referenced from Go templates, no JS involved --> Wave handles it
@@ -220,35 +229,41 @@ full restart. The HTTP endpoints let Wave coordinate this:
 
 This is a 30x improvement for the most common development changes.
 
-### The Strategy System
+### The Hook Action System
 
 Wave is framework-agnostic. Vorma needs framework-specific rebuild behavior. The
-"Strategy" system bridges this.
+"hook callback + RefreshAction" model bridges this.
 
-**Callbacks and Strategies work together.** They are not mutually exclusive:
+Vorma injects framework watch patterns with callback hooks. The callback does
+framework-specific work in Process A and returns a `RefreshAction` telling Wave
+what to do next:
 
 ```go
 OnChangeHooks: []waveconfig.OnChangeHook{{
-    // Callback runs first in Process A (dev server)
-    Callback: func(string) error {
-        return rebuildRoutesOnly(v)  // Parse routes, generate TS, write JSON
-    },
-    // Strategy runs after callback succeeds
-    Strategy: &waveconfig.OnChangeStrategy{
-        HttpEndpoint:   "/__vorma/reload-routes",  // Tell Process B to reload
-        WaitForApp:     true,
-        WaitForVite:    true,
-        ReloadBrowser:  true,
-        FallbackAction: waveconfig.FallbackRestartNoGo,
-    },
+	Callback: func(ctx *wave.HookContext) (*wave.RefreshAction, error) {
+		if err := rebuildRoutesOnly(v); err != nil {
+			return nil, err
+		}
+		if ctx.AppStoppedForBatch {
+			return nil, nil
+		}
+		if err := callReloadEndpoint(v, "/__vorma/reload-routes"); err != nil {
+			return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
+		}
+		return &wave.RefreshAction{
+			ReloadBrowser: true,
+			WaitForApp:    true,
+			WaitForVite:   true,
+		}, nil
+	},
 }},
 ```
 
 This tells Wave:
 
-1. Run the Callback first (Process A generates artifacts)
-2. Then call the HttpEndpoint (Process B reloads from disk)
-3. If the endpoint fails, fall back to restart without Go recompilation
+1. Run the callback first (Process A generates artifacts)
+2. Callback can call app reload endpoints (Process B reloads from disk)
+3. Wave applies returned `RefreshAction` (reload/wait/restart behavior)
 
 Without this system, either:
 
@@ -270,7 +285,7 @@ When `vorma.routes.ts` changes:
 │        (Process A has same handlers as B - Go unchanged)        │
 │     c. Write paths JSON to disk                                 │
 │     d. Write route manifest to disk                             │
-│  3. Strategy executes: HTTP POST to /__vorma/reload-routes      │
+│  3. Callback calls: HTTP GET /__vorma/reload-routes             │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -290,7 +305,7 @@ When `vorma.routes.ts` changes:
 │ Process A (Dev Server)                                          │
 │                                                                 │
 │  7. Receives 200 OK from Process B                              │
-│  8. Broadcasts reload to browser via WebSocket                  │
+│  8. Returns RefreshAction -> Wave broadcasts browser reload     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -349,6 +364,6 @@ imports esbuild and a JavaScript parser--neither is needed at runtime.
 | Vite can't know about Go events     | Separate WebSocket for Go-level reload signals               |
 | Route changes don't affect Go types | Callback + HTTP endpoint fast path to avoid subprocess       |
 | TypeScript needs Go type info       | Two-stage build (pre-Vite and post-Vite)                     |
-| Wave should be framework-agnostic   | Strategy system for framework-specific behavior              |
+| Wave should be framework-agnostic   | Hook callbacks + RefreshAction for framework behavior        |
 | Production binary size matters      | Separate build/runtime packages; runtime never imports build |
 | Fast rebuilds need type reflection  | Process A runs same init code, has handlers for reflection   |

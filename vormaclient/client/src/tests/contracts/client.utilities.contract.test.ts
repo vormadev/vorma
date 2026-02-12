@@ -30,6 +30,27 @@ function stubElementScrollIntoView(
 }
 
 describe("client utility contracts", () => {
+	it("does not expose buildtime-only route registration from the runtime client entry", async () => {
+		const api = await loadClientAPI();
+		expect("route" in api).toBe(false);
+		expect((api as Record<string, unknown>).route).toBeUndefined();
+	});
+
+	it("exposes route registration from the buildtime entry", async () => {
+		const buildtimeApi = await import("../../../buildtime.ts");
+
+		expect(typeof buildtimeApi.route).toBe("function");
+		expect(() =>
+			buildtimeApi.route(
+				"/",
+				Promise.resolve({
+					default: () => null,
+				}),
+				"default",
+			),
+		).not.toThrow();
+	});
+
 	it("formats errors through defaultErrorBoundary", async () => {
 		const api = await loadClientAPI();
 		expect(api.defaultErrorBoundary({ error: "boom" })).toBe(

@@ -1,5 +1,5 @@
 import { batch, computed, effect, signal } from "@preact/signals";
-import { h } from "preact";
+import { h, type ComponentType } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import {
 	__applyScrollState,
@@ -15,14 +15,31 @@ import {
 /////// CORE SETUP
 /////////////////////////////////////////////////////////////////////
 
+type VormaOutletProps = {
+	idx: number;
+	Outlet: (localProps: Record<string, any> | undefined) => h.JSX.Element;
+};
+
+type VormaOutletComponent = ComponentType<VormaOutletProps>;
+
+type VormaErrorBoundaryProps = {
+	error: string | undefined;
+};
+
+type VormaErrorBoundaryComponent = ComponentType<VormaErrorBoundaryProps>;
+
 const latestEvent = signal<RouteChangeEvent | null>(null);
 const loadersData = signal(ctx.get("loadersData"));
 const clientLoadersData = signal(ctx.get("clientLoadersData"));
 const routerData = signal(getRouterData());
 const outermostErrorIdx = signal(ctx.get("outermostErrorIdx"));
 const outermostError = signal(ctx.get("outermostError"));
-const activeComponents = signal(ctx.get("activeComponents"));
-const activeErrorBoundary = signal(ctx.get("activeErrorBoundary"));
+const activeComponents = signal<Array<VormaOutletComponent> | null>(
+	ctx.get("activeComponents") as Array<VormaOutletComponent> | null,
+);
+const activeErrorBoundary = signal<VormaErrorBoundaryComponent | undefined>(
+	ctx.get("activeErrorBoundary") as VormaErrorBoundaryComponent | undefined,
+);
 const importURLs = signal(ctx.get("importURLs"));
 const exportKeys = signal(ctx.get("exportKeys"));
 
@@ -42,8 +59,12 @@ function initUIListeners() {
 			routerData.value = getRouterData();
 			outermostErrorIdx.value = ctx.get("outermostErrorIdx");
 			outermostError.value = ctx.get("outermostError");
-			activeComponents.value = ctx.get("activeComponents");
-			activeErrorBoundary.value = ctx.get("activeErrorBoundary");
+			activeComponents.value = ctx.get(
+				"activeComponents",
+			) as Array<VormaOutletComponent> | null;
+			activeErrorBoundary.value = ctx.get("activeErrorBoundary") as
+				| VormaErrorBoundaryComponent
+				| undefined;
 			importURLs.value = ctx.get("importURLs");
 			exportKeys.value = ctx.get("exportKeys");
 		});
@@ -75,8 +96,12 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element {
 			routerData.value = getRouterData();
 			outermostError.value = ctx.get("outermostError");
 			outermostErrorIdx.value = ctx.get("outermostErrorIdx");
-			activeComponents.value = ctx.get("activeComponents");
-			activeErrorBoundary.value = ctx.get("activeErrorBoundary");
+			activeComponents.value = ctx.get(
+				"activeComponents",
+			) as Array<VormaOutletComponent> | null;
+			activeErrorBoundary.value = ctx.get("activeErrorBoundary") as
+				| VormaErrorBoundaryComponent
+				| undefined;
 			importURLs.value = ctx.get("importURLs");
 			exportKeys.value = ctx.get("exportKeys");
 		});
@@ -136,13 +161,13 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element {
 
 	const isErrorIdx = computed(() => idx === outermostErrorIdx.value);
 
-	const CurrentComp = computed(() => {
+	const CurrentComp = computed<VormaOutletComponent | null>(() => {
 		if (isErrorIdx.value) {
 			return null;
 		}
-		currentImportURL.value;
-		currentExportKey.value;
-		return activeComponents.value?.[idx];
+		void currentImportURL.value;
+		void currentExportKey.value;
+		return activeComponents.value?.[idx] ?? null;
 	});
 
 	const Outlet = useMemo(
@@ -166,11 +191,11 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element {
 		return idx + 1 < loadersData.value.length;
 	});
 
-	const ErrorComp = computed(() => {
+	const ErrorComp = computed<VormaErrorBoundaryComponent | null>(() => {
 		if (!isErrorIdx.value) {
 			return null;
 		}
-		return activeErrorBoundary.value;
+		return activeErrorBoundary.value ?? null;
 	});
 
 	if (isErrorIdx.value) {

@@ -204,14 +204,11 @@ function matchSlotByTargetURL(
 
 	const prefetchKey = findMatchingPrefetchKey(slots, targetUrl);
 	if (prefetchKey) {
-		const prefetchEntry = slots.prefetchCache.get(prefetchKey);
-		if (prefetchEntry) {
-			return {
-				slot: "prefetch",
-				key: prefetchKey,
-				entry: prefetchEntry,
-			};
-		}
+		return {
+			slot: "prefetch",
+			key: prefetchKey,
+			entry: slots.prefetchCache.get(prefetchKey)!,
+		};
 	}
 
 	if (
@@ -750,14 +747,23 @@ async function executeSubmitRequest(props: {
 	abortController: AbortController;
 	url: URL;
 	requestInit: RequestInit;
-}) {
-	return handleRedirects({
+}): Promise<{ redirectData: RedirectData | null; response: Response }> {
+	const result = await handleRedirects({
 		abortController: props.abortController,
 		url: props.url,
 		isPrefetch: false,
 		redirectCount: 0,
 		requestInit: props.requestInit,
 	});
+
+	if (!result.response) {
+		throw new Error("Submit request completed without a response.");
+	}
+
+	return {
+		redirectData: result.redirectData,
+		response: result.response,
+	};
 }
 
 type SubmitResult<T> =
@@ -786,7 +792,7 @@ function getSubmitStaleResultIfAny<T>(
 }
 
 async function finalizeSubmitResponse<T>(props: {
-	response?: Response;
+	response: Response;
 	redirectData: RedirectData | null;
 	requestInit?: RequestInit;
 	options?: SubmitOptions;
@@ -806,14 +812,11 @@ async function finalizeSubmitResponse<T>(props: {
 		getSubmitStaleResultIfAny<T>(isSubmissionCurrent);
 	if (staleBeforeResponse) return staleBeforeResponse;
 
-	if (!response || !response.ok) {
-		return getSubmitErrorResult<T>(String(response?.status || "unknown"));
+	if (!response.ok) {
+		return getSubmitErrorResult<T>(String(response.status));
 	}
 
 	if (redirectData?.status === "should") {
-		const staleBeforeRedirect =
-			getSubmitStaleResultIfAny<T>(isSubmissionCurrent);
-		if (staleBeforeRedirect) return staleBeforeRedirect;
 		await effectuateRedirectDataResult(redirectData, 0);
 		return { success: true, data: undefined as T };
 	}
@@ -866,9 +869,7 @@ async function executeSubmitRuntime<T = unknown>(
 			getSubmitStaleResultIfAny<T>(isSubmissionCurrent);
 		if (staleAfterRequest) return staleAfterRequest;
 
-		if (response && isSubmissionCurrent()) {
-			syncBuildIDFromResponse(response);
-		}
+		syncBuildIDFromResponse(response);
 
 		return await finalizeSubmitResponse<T>({
 			response,

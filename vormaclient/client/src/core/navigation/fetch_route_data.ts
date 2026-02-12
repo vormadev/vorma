@@ -59,12 +59,33 @@ export type SkipCheckContext = {
 export type SkipCheckResult =
 	| { canSkip: false }
 	| {
-				canSkip: true;
-				matchResult: SkipMatchResult;
-				importURLs: string[];
-				exportKeys: string[];
-				loadersData: unknown[];
-		  };
+			canSkip: true;
+			matchResult: SkipMatchResult;
+			importURLs: string[];
+			exportKeys: string[];
+			loadersData: unknown[];
+	  };
+
+function getMatchedPatternOrThrow(
+	match: SkipMatch | undefined,
+	index: number,
+	context: string,
+): string {
+	if (!match) {
+		throw new Error(
+			`${context} returned a sparse matches array at index ${index}.`,
+		);
+	}
+
+	const pattern = match.registeredPattern.originalPattern;
+	if (!pattern) {
+		throw new Error(
+			`${context} returned an empty route pattern at index ${index}.`,
+		);
+	}
+
+	return pattern;
+}
 
 function buildSkipCheckContext(
 	targetUrl: string,
@@ -117,8 +138,12 @@ function hasServerLoaderRemoval(ctx: SkipCheckContext): boolean {
 }
 
 function hasNewClientLoader(ctx: SkipCheckContext): boolean {
-	for (const m of ctx.matchResult.matches) {
-		const pattern = m.registeredPattern.originalPattern;
+	for (let i = 0; i < ctx.matchResult.matches.length; i++) {
+		const pattern = getMatchedPatternOrThrow(
+			ctx.matchResult.matches[i],
+			i,
+			"Route matcher",
+		);
 		const hasClientLoader = !!ctx.patternToWaitFnMap[pattern];
 		const wasAlreadyMatched = ctx.currentMatchedPatterns.includes(pattern);
 		if (hasClientLoader && !wasAlreadyMatched) {
@@ -130,10 +155,11 @@ function hasNewClientLoader(ctx: SkipCheckContext): boolean {
 
 function findOutermostLoaderIndex(ctx: SkipCheckContext): number {
 	for (let i = ctx.matchResult.matches.length - 1; i >= 0; i--) {
-		const match: SkipMatch | undefined = ctx.matchResult.matches[i];
-		if (!match) continue;
-
-		const pattern = match.registeredPattern.originalPattern;
+		const pattern = getMatchedPatternOrThrow(
+			ctx.matchResult.matches[i],
+			i,
+			"Route matcher",
+		);
 		const hasServerLoader = ctx.routeManifest[pattern] === 1;
 		const hasClientLoader = !!ctx.patternToWaitFnMap[pattern];
 
@@ -153,8 +179,7 @@ function didOutermostParamsChange(
 	ctx: SkipCheckContext,
 	outermostLoaderIndex: number,
 ): boolean {
-	const outermostMatch = ctx.matchResult.matches[outermostLoaderIndex];
-	if (!outermostMatch) return false;
+	const outermostMatch = ctx.matchResult.matches[outermostLoaderIndex]!;
 
 	for (const seg of outermostMatch.registeredPattern.normalizedSegments) {
 		if (seg.segType === "dynamic") {
@@ -246,10 +271,11 @@ function buildSkipResultFromContext(ctx: SkipCheckContext): SkipCheckResult {
 	const loadersData: unknown[] = [];
 
 	for (let i = 0; i < ctx.matchResult.matches.length; i++) {
-		const match: SkipMatch | undefined = ctx.matchResult.matches[i];
-		if (!match) continue;
-
-		const pattern = match.registeredPattern.originalPattern;
+		const pattern = getMatchedPatternOrThrow(
+			ctx.matchResult.matches[i],
+			i,
+			"Route matcher",
+		);
 		const item = buildSkipResultItem({ ctx, pattern });
 		if (!item) {
 			return { canSkip: false };
@@ -288,6 +314,17 @@ function buildClientOnlyOutcome(
 	controller: AbortController,
 ): NavigationOutcome {
 	const { matchResult, importURLs, exportKeys, loadersData } = skipCheck;
+	const matchedPatterns: string[] = [];
+	for (let i = 0; i < matchResult.matches.length; i++) {
+		matchedPatterns.push(
+			getMatchedPatternOrThrow(
+				matchResult.matches[i],
+				i,
+				"Route matcher",
+			),
+		);
+	}
+
 	const buildID = __vormaClientGlobal.get("buildID") || "1";
 	const currentMatchedPatterns =
 		__vormaClientGlobal.get("matchedPatterns") || [];
@@ -297,10 +334,7 @@ function buildClientOnlyOutcome(
 		__vormaClientGlobal.get("patternToWaitFnMap") || {};
 
 	const json: GetRouteDataOutput = {
-		matchedPatterns: matchResult.matches.map(
-			(match: { registeredPattern: { originalPattern: string } }) =>
-				match.registeredPattern.originalPattern,
-		),
+		matchedPatterns,
 		loadersData,
 		importURLs,
 		exportKeys,
@@ -326,10 +360,7 @@ function buildClientOnlyOutcome(
 	});
 	const runningLoaders = new Map<string, Promise<unknown>>();
 
-	for (let i = 0; i < json.matchedPatterns.length; i++) {
-		const pattern = json.matchedPatterns[i];
-		if (!pattern) continue;
-
+	for (const pattern of json.matchedPatterns) {
 		if (patternToWaitFnMap[pattern]) {
 			const currentPatternIndex = currentMatchedPatterns.indexOf(pattern);
 
@@ -522,10 +553,11 @@ async function startParallelClientLoaders(props: {
 	const { params, splatValues, matches } = matchResult;
 
 	for (let i = 0; i < matches.length; i++) {
-		const match = matches[i];
-		if (!match) continue;
-
-		const pattern = match.registeredPattern.originalPattern;
+		const pattern = getMatchedPatternOrThrow(
+			matches[i] as SkipMatch | undefined,
+			i,
+			"Partial route matcher",
+		);
 		const loaderFn = patternToWaitFnMap[pattern];
 
 		if (!loaderFn) {

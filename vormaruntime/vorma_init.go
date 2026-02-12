@@ -49,26 +49,26 @@ func (v *Vorma) validateAndDecorateNestedRouter(nestedRouter *mux.NestedRouter) 
 func (v *Vorma) initInner(isDev bool) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	v._isDev = isDev
+	wasInitialized := v._paths != nil
 
 	privateFS, err := v.Wave.GetPrivateFS()
 	if err != nil {
 		return fmt.Errorf("could not get private fs: %w", err)
 	}
-	v._privateFS = privateFS
 
-	pathsFile, err := v.getBasePaths_StageOneOrTwo(isDev)
+	pathsFile, err := v.getBasePathsFromFS(privateFS, isDev)
 	if err != nil {
 		return fmt.Errorf("could not get base paths: %w", err)
 	}
 
+	tmpl, err := template.ParseFS(privateFS, v.Config.HTMLTemplateLocation)
+	if err != nil {
+		return fmt.Errorf("error parsing root template: %w", err)
+	}
+
+	v._isDev = isDev
+	v._privateFS = privateFS
 	v._buildID = pathsFile.BuildID
-	if v._paths == nil {
-		v._paths = make(map[string]*Path, len(pathsFile.Paths))
-	}
-	for _, p := range pathsFile.Paths {
-		v._paths[p.OriginalPattern] = p
-	}
 	v._clientEntrySrc = pathsFile.ClientEntrySrc
 	v._clientEntryOut = pathsFile.ClientEntryOut
 	v._clientEntryDeps = pathsFile.ClientEntryDeps
@@ -77,11 +77,25 @@ func (v *Vorma) initInner(isDev bool) error {
 		v._depToCSSBundleMap = make(map[string][]string)
 	}
 	v._routeManifestFile = pathsFile.RouteManifestFile
-
-	tmpl, err := template.ParseFS(v._privateFS, v.Config.HTMLTemplateLocation)
-	if err != nil {
-		return fmt.Errorf("error parsing root template: %w", err)
+	v._paths = make(map[string]*Path, len(pathsFile.Paths))
+	for pattern, p := range pathsFile.Paths {
+		v._paths[pattern] = p
 	}
+
+	if wasInitialized {
+		patterns := make([]string, 0, len(v._paths))
+		for pattern := range v._paths {
+			patterns = append(patterns, pattern)
+		}
+		v.LoadersRouter().NestedRouter.RebuildPreservingHandlers(patterns)
+	}
+
+	// Clear route-data cache to ensure re-inits never reuse stale path/build artifacts.
+	gmpdCache.Range(func(key, _ any) bool {
+		gmpdCache.Delete(key)
+		return true
+	})
+
 	v._rootTemplate = tmpl
 	if v.headElsInst == nil {
 		v.headElsInst = headels.NewInstance("vorma")
@@ -100,12 +114,20 @@ func (v *Vorma) initInner(isDev bool) error {
 }
 
 func (v *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*PathsFile, error) {
+	return v.getBasePathsFromFS(v._privateFS, isDev)
+}
+
+func (v *Vorma) getBasePathsFromFS(privateFS fs.FS, isDev bool) (*PathsFile, error) {
+	if privateFS == nil {
+		return nil, fmt.Errorf("private fs is nil")
+	}
+
 	fileToUse := VormaPathsStageOneJSONFileName
 	if !isDev {
 		fileToUse = VormaPathsStageTwoJSONFileName
 	}
 
-	file, err := v._privateFS.Open(path.Join("vorma_out", fileToUse))
+	file, err := privateFS.Open(path.Join("vorma_out", fileToUse))
 	if err != nil {
 		return nil, fmt.Errorf("could not open %s: %w", fileToUse, err)
 	}

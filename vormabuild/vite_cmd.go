@@ -15,29 +15,24 @@ import (
 )
 
 func postViteProdBuild(v *vormaruntime.Vorma) error {
-	pf, err := toPathsFile_StageTwo(v)
+	pathsFile, err := toPathsFileStageTwo(v)
 	if err != nil {
 		return fmt.Errorf("convert paths to stage two: %w", err)
 	}
 
-	pathsAsJSON, err := json.MarshalIndent(pf, "", "\t")
+	pathsAsJSON, err := marshalIndentedPathsFile(pathsFile)
 	if err != nil {
 		return fmt.Errorf("marshal paths: %w", err)
 	}
 
-	pathsJSONOut := filepath.Join(
-		v.Wave.GetStaticPrivateOutDir(),
-		"vorma_out",
-		vormaruntime.VormaPathsStageTwoJSONFileName,
-	)
-	if err := os.WriteFile(pathsJSONOut, pathsAsJSON, os.ModePerm); err != nil {
+	if err := writeStageTwoPathsJSON(v, pathsAsJSON); err != nil {
 		return fmt.Errorf("write paths: %w", err)
 	}
 
 	return nil
 }
 
-func toPathsFile_StageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error) {
+func toPathsFileStageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error) {
 	viteManifest, err := viteutil.ReadManifest(v.Wave.GetViteManifestLocation())
 	if err != nil {
 		return nil, fmt.Errorf("read vite manifest: %w", err)
@@ -64,12 +59,31 @@ func toPathsFile_StageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error
 		return nil, err
 	}
 
+	applyBuildIDToVormaAndPathsFile(v, pathsFile, buildID)
+	return pathsFile, nil
+}
+
+func marshalIndentedPathsFile(pathsFile *vormaruntime.PathsFile) ([]byte, error) {
+	return json.MarshalIndent(pathsFile, "", "\t")
+}
+
+func writeStageTwoPathsJSON(v *vormaruntime.Vorma, pathsAsJSON []byte) error {
+	return os.WriteFile(stageTwoPathsOutputPath(v), pathsAsJSON, os.ModePerm)
+}
+
+func stageTwoPathsOutputPath(v *vormaruntime.Vorma) string {
+	return pathsOutputPath(v, vormaruntime.VormaPathsStageTwoJSONFileName)
+}
+
+func pathsOutputPath(v *vormaruntime.Vorma, fileName string) string {
+	return filepath.Join(v.Wave.GetStaticPrivateOutDir(), vormaruntime.VormaOutDirname, fileName)
+}
+
+func applyBuildIDToVormaAndPathsFile(v *vormaruntime.Vorma, pathsFile *vormaruntime.PathsFile, buildID string) {
 	v.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetBuildID(buildID)
 	})
-
 	pathsFile.BuildID = buildID
-	return pathsFile, nil
 }
 
 func applyViteManifestToPaths(
@@ -80,6 +94,7 @@ func applyViteManifestToPaths(
 	clientEntryOut := ""
 	clientEntryDeps := []string{}
 	depToCSSBundleMap := make(map[string][]string)
+	pathsBySourcePath := indexPathsBySourcePath(paths)
 
 	for key, chunk := range viteManifest {
 		cleanChunkOutPath := filepath.Base(chunk.File)
@@ -96,7 +111,7 @@ func applyViteManifestToPaths(
 			continue
 		}
 
-		updateRoutePathsForChunk(paths, chunk.Src, cleanChunkOutPath, dependencies)
+		updateRoutePathsForChunk(pathsBySourcePath, chunk.Src, cleanChunkOutPath, dependencies)
 	}
 
 	return clientEntryOut, clientEntryDeps, depToCSSBundleMap
@@ -122,18 +137,23 @@ func removeDependency(dependencies []string, dependencyToRemove string) []string
 }
 
 func updateRoutePathsForChunk(
-	paths map[string]*vormaruntime.Path,
+	pathsBySourcePath map[string][]*vormaruntime.Path,
 	chunkSourcePath string,
 	chunkOutPath string,
 	chunkDependencies []string,
 ) {
-	for _, currentPath := range paths {
-		if currentPath.SrcPath != chunkSourcePath {
-			continue
-		}
+	for _, currentPath := range pathsBySourcePath[chunkSourcePath] {
 		currentPath.OutPath = chunkOutPath
 		currentPath.Deps = chunkDependencies
 	}
+}
+
+func indexPathsBySourcePath(paths map[string]*vormaruntime.Path) map[string][]*vormaruntime.Path {
+	pathsBySourcePath := make(map[string][]*vormaruntime.Path)
+	for _, currentPath := range paths {
+		pathsBySourcePath[currentPath.SrcPath] = append(pathsBySourcePath[currentPath.SrcPath], currentPath)
+	}
+	return pathsBySourcePath
 }
 
 func buildStageTwoPathsFile(

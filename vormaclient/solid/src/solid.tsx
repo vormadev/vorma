@@ -4,6 +4,7 @@ import {
 	createMemo,
 	createRenderEffect,
 	createSignal,
+	type ValidComponent,
 	type JSX,
 	Show,
 } from "solid-js";
@@ -37,10 +38,10 @@ const [outermostError, setOutermostError] = createSignal(
 	ctx.get("outermostError"),
 );
 const [activeComponents, setActiveComponents] = createSignal(
-	ctx.get("activeComponents"),
+	ctx.get("activeComponents") as Array<ValidComponent> | null,
 );
 const [activeErrorBoundary, setActiveErrorBoundary] = createSignal(
-	ctx.get("activeErrorBoundary"),
+	ctx.get("activeErrorBoundary") as ValidComponent | undefined,
 );
 const [importURLs, setImportURLs] = createSignal(ctx.get("importURLs"));
 const [exportKeys, setExportKeys] = createSignal(ctx.get("exportKeys"));
@@ -61,8 +62,14 @@ function initUIListeners() {
 			setRouterData(getRouterData());
 			setOutermostErrorIdx(ctx.get("outermostErrorIdx"));
 			setOutermostError(ctx.get("outermostError"));
-			setActiveComponents(ctx.get("activeComponents"));
-			setActiveErrorBoundary(ctx.get("activeErrorBoundary"));
+			setActiveComponents(
+				ctx.get("activeComponents") as Array<ValidComponent> | null,
+			);
+			setActiveErrorBoundary(() => {
+				return ctx.get("activeErrorBoundary") as
+					| ValidComponent
+					| undefined;
+			});
 			setImportURLs(ctx.get("importURLs"));
 			setExportKeys(ctx.get("exportKeys"));
 		});
@@ -93,8 +100,14 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 			setRouterData(getRouterData());
 			setOutermostErrorIdx(ctx.get("outermostErrorIdx"));
 			setOutermostError(ctx.get("outermostError"));
-			setActiveComponents(ctx.get("activeComponents"));
-			setActiveErrorBoundary(ctx.get("activeErrorBoundary"));
+			setActiveComponents(
+				ctx.get("activeComponents") as Array<ValidComponent> | null,
+			);
+			setActiveErrorBoundary(() => {
+				return ctx.get("activeErrorBoundary") as
+					| ValidComponent
+					| undefined;
+			});
 			setImportURLs(ctx.get("importURLs"));
 			setExportKeys(ctx.get("exportKeys"));
 		});
@@ -141,13 +154,13 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 		return idx === outermostErrorIdx();
 	});
 
-	const currentCompMemo = createMemo(() => {
+	const currentCompMemo = createMemo<ValidComponent | undefined>(() => {
 		if (isErrorIdxMemo()) {
-			return null;
+			return undefined;
 		}
 		currentImportURL();
 		currentExportKey();
-		return activeComponents()?.[idx];
+		return activeComponents()?.[idx] ?? undefined;
 	});
 
 	const shouldFallbackOutletMemo = createMemo(() => {
@@ -157,11 +170,11 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 		return idx + 1 < loadersData().length;
 	});
 
-	const errorCompMemo = createMemo(() => {
+	const errorCompMemo = createMemo<ValidComponent | undefined>(() => {
 		if (!isErrorIdxMemo()) {
-			return null;
+			return undefined;
 		}
-		return activeErrorBoundary();
+		return activeErrorBoundary() ?? undefined;
 	});
 
 	const remountKeyNext = createMemo(

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -323,4 +325,336 @@ func TestInit_PanicsWhenPrivateFSUnavailable(t *testing.T) {
 	}()
 
 	app.Init()
+}
+
+func TestInit_ReinitReplacesRemovedClientRoutes(t *testing.T) {
+	const buildID = "reinit-routes-build"
+
+	initialStage := defaultPathsFile(buildID, map[string]*Path{
+		"/old": {
+			OriginalPattern: "/old",
+			SrcPath:         "frontend/src/routes/old.tsx",
+			OutPath:         "vorma_out/routes/old.js",
+			ExportKey:       "default",
+		},
+	})
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: initialStage,
+		stageTwo: initialStage,
+	})
+	app := fixture.app
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+	firstReq := httptest.NewRequest(http.MethodGet, "/old?vorma_json="+buildID, nil)
+	firstRec := httptest.NewRecorder()
+	handler.ServeHTTP(firstRec, firstReq)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("first /old status = %d, want %d", firstRec.Code, http.StatusOK)
+	}
+
+	updatedStage := defaultPathsFile(buildID, map[string]*Path{
+		"/new": {
+			OriginalPattern: "/new",
+			SrcPath:         "frontend/src/routes/new.tsx",
+			OutPath:         "vorma_out/routes/new.js",
+			ExportKey:       "default",
+		},
+	})
+	stageOneFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName)
+	stageTwoFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageTwoJSONFileName)
+	mustWriteJSONFile(t, stageOneFile, updatedStage)
+	mustWriteJSONFile(t, stageTwoFile, updatedStage)
+
+	app.Init()
+	pathsAfterReinit := app.GetPathsSnapshot()
+	if _, ok := pathsAfterReinit["/new"]; !ok {
+		t.Fatalf("expected /new to exist in paths after reinit, got %#v", pathsAfterReinit)
+	}
+	if _, ok := pathsAfterReinit["/old"]; ok {
+		t.Fatalf("expected /old to be removed from paths after reinit, got %#v", pathsAfterReinit)
+	}
+
+	oldReq := httptest.NewRequest(http.MethodGet, "/old?vorma_json="+buildID, nil)
+	oldRec := httptest.NewRecorder()
+	handler.ServeHTTP(oldRec, oldReq)
+	if oldRec.Code != http.StatusNotFound {
+		t.Fatalf("post-reinit /old status = %d, want %d", oldRec.Code, http.StatusNotFound)
+	}
+
+	newReq := httptest.NewRequest(http.MethodGet, "/new?vorma_json="+buildID, nil)
+	newRec := httptest.NewRecorder()
+	handler.ServeHTTP(newRec, newReq)
+	if newRec.Code != http.StatusOK {
+		t.Fatalf("post-reinit /new status = %d, want %d", newRec.Code, http.StatusOK)
+	}
+}
+
+func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(t *testing.T) {
+	const buildID = "reinit-cache-build"
+
+	stageV1 := defaultPathsFile(buildID, map[string]*Path{
+		"/items": {
+			OriginalPattern: "/items",
+			SrcPath:         "frontend/src/routes/items.v1.tsx",
+			OutPath:         "vorma_out/routes/items.v1.js",
+			ExportKey:       "default",
+		},
+	})
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stageV1,
+		stageTwo: stageV1,
+	})
+	app := fixture.app
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+	clearRouteDataCacheForTest()
+
+	v1Req := httptest.NewRequest(http.MethodGet, "/items?vorma_json="+buildID, nil)
+	v1Rec := httptest.NewRecorder()
+	handler.ServeHTTP(v1Rec, v1Req)
+	if v1Rec.Code != http.StatusOK {
+		t.Fatalf("v1 /items status = %d, want %d", v1Rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(v1Rec.Body.String(), "/vorma_out/routes/items.v1.js") {
+		t.Fatalf("v1 body missing expected import URL, body=%q", v1Rec.Body.String())
+	}
+	if got := routeDataCacheLenForTest(); got == 0 {
+		t.Fatal("expected route-data cache to contain entries after first request")
+	}
+
+	stageV2 := defaultPathsFile(buildID, map[string]*Path{
+		"/items": {
+			OriginalPattern: "/items",
+			SrcPath:         "frontend/src/routes/items.v2.tsx",
+			OutPath:         "vorma_out/routes/items.v2.js",
+			ExportKey:       "default",
+		},
+	})
+	stageOneFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName)
+	stageTwoFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageTwoJSONFileName)
+	mustWriteJSONFile(t, stageOneFile, stageV2)
+	mustWriteJSONFile(t, stageTwoFile, stageV2)
+
+	app.Init()
+	pathsAfterReinit := app.GetPathsSnapshot()
+	itemsPath, ok := pathsAfterReinit["/items"]
+	if !ok || itemsPath == nil {
+		t.Fatalf("expected /items to exist after reinit, got %#v", pathsAfterReinit)
+	}
+	if itemsPath.OutPath != "vorma_out/routes/items.v2.js" {
+		t.Fatalf("post-reinit /items outPath = %q, want %q", itemsPath.OutPath, "vorma_out/routes/items.v2.js")
+	}
+
+	v2Req := httptest.NewRequest(http.MethodGet, "/items?vorma_json="+buildID, nil)
+	v2Rec := httptest.NewRecorder()
+	handler.ServeHTTP(v2Rec, v2Req)
+	if v2Rec.Code != http.StatusOK {
+		t.Fatalf("v2 /items status = %d, want %d", v2Rec.Code, http.StatusOK)
+	}
+	if strings.Contains(v2Rec.Body.String(), "/vorma_out/routes/items.v1.js") {
+		t.Fatalf("v2 body leaked stale import URL, body=%q", v2Rec.Body.String())
+	}
+	if !strings.Contains(v2Rec.Body.String(), "/vorma_out/routes/items.v2.js") {
+		t.Fatalf("v2 body missing updated import URL, body=%q", v2Rec.Body.String())
+	}
+}
+
+func TestInit_ReinitPreservesServerOnlyHandlerRoutes(t *testing.T) {
+	const buildID = "reinit-server-only-build"
+
+	initialStage := defaultPathsFile(buildID, map[string]*Path{
+		"/client-old": {
+			OriginalPattern: "/client-old",
+			SrcPath:         "frontend/src/routes/client-old.tsx",
+			OutPath:         "vorma_out/routes/client-old.js",
+			ExportKey:       "default",
+		},
+	})
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: initialStage,
+		stageTwo: initialStage,
+	})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/server-only",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+			return map[string]bool{"ok": true}, nil
+		}),
+	)
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+	serverOnlyBeforeReq := httptest.NewRequest(http.MethodGet, "/server-only?vorma_json="+buildID, nil)
+	serverOnlyBeforeRec := httptest.NewRecorder()
+	handler.ServeHTTP(serverOnlyBeforeRec, serverOnlyBeforeReq)
+	if serverOnlyBeforeRec.Code != http.StatusOK {
+		t.Fatalf("pre-reinit /server-only status = %d, want %d", serverOnlyBeforeRec.Code, http.StatusOK)
+	}
+
+	updatedStage := defaultPathsFile(buildID, map[string]*Path{
+		"/client-new": {
+			OriginalPattern: "/client-new",
+			SrcPath:         "frontend/src/routes/client-new.tsx",
+			OutPath:         "vorma_out/routes/client-new.js",
+			ExportKey:       "default",
+		},
+	})
+	stageOneFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName)
+	stageTwoFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageTwoJSONFileName)
+	mustWriteJSONFile(t, stageOneFile, updatedStage)
+	mustWriteJSONFile(t, stageTwoFile, updatedStage)
+
+	app.Init()
+
+	serverOnlyAfterReq := httptest.NewRequest(http.MethodGet, "/server-only?vorma_json="+buildID, nil)
+	serverOnlyAfterRec := httptest.NewRecorder()
+	handler.ServeHTTP(serverOnlyAfterRec, serverOnlyAfterReq)
+	if serverOnlyAfterRec.Code != http.StatusOK {
+		t.Fatalf("post-reinit /server-only status = %d, want %d", serverOnlyAfterRec.Code, http.StatusOK)
+	}
+	if !strings.Contains(serverOnlyAfterRec.Body.String(), `"/server-only"`) {
+		t.Fatalf("post-reinit /server-only body missing matched pattern, body=%q", serverOnlyAfterRec.Body.String())
+	}
+
+	clientOldReq := httptest.NewRequest(http.MethodGet, "/client-old?vorma_json="+buildID, nil)
+	clientOldRec := httptest.NewRecorder()
+	handler.ServeHTTP(clientOldRec, clientOldReq)
+	if clientOldRec.Code != http.StatusNotFound {
+		t.Fatalf("post-reinit /client-old status = %d, want %d", clientOldRec.Code, http.StatusNotFound)
+	}
+
+	clientNewReq := httptest.NewRequest(http.MethodGet, "/client-new?vorma_json="+buildID, nil)
+	clientNewRec := httptest.NewRecorder()
+	handler.ServeHTTP(clientNewRec, clientNewReq)
+	if clientNewRec.Code != http.StatusOK {
+		t.Fatalf("post-reinit /client-new status = %d, want %d", clientNewRec.Code, http.StatusOK)
+	}
+}
+
+func TestInit_ReinitFailureDoesNotPartiallyMutateRuntimeState(t *testing.T) {
+	initialStage := defaultPathsFile("atomic-old-build", map[string]*Path{
+		"/old": {
+			OriginalPattern: "/old",
+			SrcPath:         "frontend/src/routes/old.tsx",
+			OutPath:         "vorma_out/routes/old.js",
+			ExportKey:       "default",
+		},
+	})
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: initialStage,
+		stageTwo: initialStage,
+	})
+	app := fixture.app
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+	beforeReq := httptest.NewRequest(http.MethodGet, "/old", nil)
+	beforeRec := httptest.NewRecorder()
+	handler.ServeHTTP(beforeRec, beforeReq)
+	if beforeRec.Code != http.StatusOK {
+		t.Fatalf("pre-failure /old status = %d, want %d", beforeRec.Code, http.StatusOK)
+	}
+	if got := beforeRec.Header().Get(VormaBuildIDHeaderKey); got != "atomic-old-build" {
+		t.Fatalf("pre-failure build header = %q, want %q", got, "atomic-old-build")
+	}
+
+	updatedStage := defaultPathsFile("atomic-new-build", map[string]*Path{
+		"/new": {
+			OriginalPattern: "/new",
+			SrcPath:         "frontend/src/routes/new.tsx",
+			OutPath:         "vorma_out/routes/new.js",
+			ExportKey:       "default",
+		},
+	})
+	stageOneFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName)
+	stageTwoFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageTwoJSONFileName)
+	mustWriteJSONFile(t, stageOneFile, updatedStage)
+	mustWriteJSONFile(t, stageTwoFile, updatedStage)
+
+	previousTemplateLocation := app.Config.HTMLTemplateLocation
+	app.Config.HTMLTemplateLocation = "missing-template.go.html"
+	defer func() {
+		app.Config.HTMLTemplateLocation = previousTemplateLocation
+	}()
+
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("expected Init() to panic when template is missing")
+			}
+		}()
+		app.Init()
+	}()
+
+	afterOldReq := httptest.NewRequest(http.MethodGet, "/old", nil)
+	afterOldRec := httptest.NewRecorder()
+	handler.ServeHTTP(afterOldRec, afterOldReq)
+	if afterOldRec.Code != http.StatusOK {
+		t.Fatalf("post-failure /old status = %d, want %d", afterOldRec.Code, http.StatusOK)
+	}
+	if got := afterOldRec.Header().Get(VormaBuildIDHeaderKey); got != "atomic-old-build" {
+		t.Fatalf("post-failure build header = %q, want %q", got, "atomic-old-build")
+	}
+
+	afterNewReq := httptest.NewRequest(http.MethodGet, "/new", nil)
+	afterNewRec := httptest.NewRecorder()
+	handler.ServeHTTP(afterNewRec, afterNewReq)
+	if afterNewRec.Code != http.StatusNotFound {
+		t.Fatalf("post-failure /new status = %d, want %d", afterNewRec.Code, http.StatusNotFound)
+	}
+}
+
+func TestInit_ReinitMalformedStageFileDoesNotPartiallyMutateRuntimeState(t *testing.T) {
+	initialStage := defaultPathsFile("malformed-old-build", map[string]*Path{
+		"/old": {
+			OriginalPattern: "/old",
+			SrcPath:         "frontend/src/routes/old.tsx",
+			OutPath:         "vorma_out/routes/old.js",
+			ExportKey:       "default",
+		},
+	})
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: initialStage,
+		stageTwo: initialStage,
+	})
+	app := fixture.app
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+	beforeReq := httptest.NewRequest(http.MethodGet, "/old", nil)
+	beforeRec := httptest.NewRecorder()
+	handler.ServeHTTP(beforeRec, beforeReq)
+	if beforeRec.Code != http.StatusOK {
+		t.Fatalf("pre-failure /old status = %d, want %d", beforeRec.Code, http.StatusOK)
+	}
+	if got := beforeRec.Header().Get(VormaBuildIDHeaderKey); got != "malformed-old-build" {
+		t.Fatalf("pre-failure build header = %q, want %q", got, "malformed-old-build")
+	}
+
+	stageTwoFile := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageTwoJSONFileName)
+	mustWriteFile(t, stageTwoFile, []byte("{"))
+
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Fatal("expected Init() to panic on malformed stage file")
+			}
+			msg := r.(error).Error()
+			if !strings.Contains(msg, "could not decode") {
+				t.Fatalf("panic message = %q, expected decode failure context", msg)
+			}
+		}()
+		app.Init()
+	}()
+
+	afterOldReq := httptest.NewRequest(http.MethodGet, "/old", nil)
+	afterOldRec := httptest.NewRecorder()
+	handler.ServeHTTP(afterOldRec, afterOldReq)
+	if afterOldRec.Code != http.StatusOK {
+		t.Fatalf("post-failure /old status = %d, want %d", afterOldRec.Code, http.StatusOK)
+	}
+	if got := afterOldRec.Header().Get(VormaBuildIDHeaderKey); got != "malformed-old-build" {
+		t.Fatalf("post-failure build header = %q, want %q", got, "malformed-old-build")
+	}
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/lab/jsonschema"
-	"github.com/vormadev/vorma/lab/viteutil"
+	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 	"golang.org/x/sync/errgroup"
 )
@@ -325,8 +325,8 @@ func (b *Builder) ViteProdBuild() error {
 	return b.viteCtx().ProdBuild()
 }
 
-func (b *Builder) viteCtx() *viteutil.BuildCtx {
-	return viteutil.NewBuildCtx(&viteutil.BuildCtxOptions{
+func (b *Builder) viteCtx() *vitecmd.BuildCtx {
+	return vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
 		JSPackageManagerBaseCmd: b.cfg.Vite.JSPackageManagerBaseCmd,
 		JSPackageManagerCmdDir:  b.cfg.Vite.JSPackageManagerCmdDir,
 		OutDir:                  b.cfg.Dist.StaticPublic(),
@@ -337,7 +337,7 @@ func (b *Builder) viteCtx() *viteutil.BuildCtx {
 }
 
 // NewViteDevContext creates a new Vite dev context
-func (b *Builder) NewViteDevContext() (*viteutil.BuildCtx, error) {
+func (b *Builder) NewViteDevContext() (*vitecmd.BuildCtx, error) {
 	if !b.cfg.UsingVite() {
 		return nil, nil
 	}

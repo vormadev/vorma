@@ -2,6 +2,6 @@
 	"ignorePatterns": [
 		"npm_dist",
 		"internal/site/frontend/src/vorma.gen",
-		"internal/framework/_typescript/create/dist"
+		"vormaclient/create/dist"
 	]
 }

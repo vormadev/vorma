@@ -12,13 +12,15 @@ import {
 	type VormaLinkPropsBase,
 } from "vorma/client";
 
+type VormaLinkEvent = Event;
+
 export function VormaLink(
 	props: JSX.AnchorHTMLAttributes<HTMLAnchorElement> &
-		VormaLinkPropsBase<
-			JSX.CustomEventHandlersCamelCase<HTMLAnchorElement>["onClick"]
-		>,
+		VormaLinkPropsBase<VormaLinkEvent>,
 ) {
-	const finalLinkProps = createMemo(() => __makeFinalLinkProps(props));
+	const finalLinkProps = createMemo(() =>
+		__makeFinalLinkProps<VormaLinkEvent>(props),
+	);
 	const [, rest] = splitProps(props, [
 		"prefetch",
 		"scrollToTop",
@@ -46,9 +48,7 @@ type TypedVormaLinkProps<
 	App extends VormaAppBase,
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "href" | "pattern"> &
-	VormaLinkPropsBase<
-		JSX.CustomEventHandlersCamelCase<HTMLAnchorElement>["onClick"]
-	> &
+	VormaLinkPropsBase<VormaLinkEvent> &
 	PermissivePatternBasedProps<App, Pattern> & {
 		search?: string;
 		hash?: string;

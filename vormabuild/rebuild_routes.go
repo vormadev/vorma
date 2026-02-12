@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -37,67 +36,66 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 		return fmt.Errorf("parse client routes: %w", err)
 	}
 
-	// 2. Generate new build ID (before acquiring lock)
-	buildID, err := id.New(16)
+	buildID, err := newFastRebuildID()
 	if err != nil {
-		return fmt.Errorf("generate build ID: %w", err)
+		return err
 	}
 
-	// 3. Acquire lock and update all state atomically
+	if err := syncRoutesAndWriteFastRebuildArtifacts(v, clientPaths, buildID); err != nil {
+		return err
+	}
+
+	logFastRouteRebuildCompletion(v, start)
+	return nil
+}
+
+func newFastRebuildID() (string, error) {
+	buildID, err := id.New(16)
+	if err != nil {
+		return "", fmt.Errorf("generate build ID: %w", err)
+	}
+	return "dev_fast_" + buildID, nil
+}
+
+func syncRoutesAndWriteFastRebuildArtifacts(
+	v *vormaruntime.Vorma,
+	clientPaths map[string]*vormaruntime.Path,
+	buildID string,
+) error {
 	var writeErr error
 	v.WithLock(func(l *vormaruntime.LockedVorma) {
-		l.SetBuildID("dev_fast_" + buildID)
+		l.SetBuildID(buildID)
 		l.Routes().Sync(clientPaths)
 
-		// 4. Clean old route manifests
 		if err := cleanRouteManifestsOnly(v); err != nil {
 			writeErr = fmt.Errorf("clean route manifests: %w", err)
 			return
 		}
 
-		// 5. Write all artifacts (manifest, paths JSON, TypeScript)
 		if err := writeRouteArtifacts(l); err != nil {
 			writeErr = err
-			return
 		}
 	})
+	return writeErr
+}
 
-	if writeErr != nil {
-		return writeErr
-	}
-
+func logFastRouteRebuildCompletion(v *vormaruntime.Vorma, start time.Time) {
 	v.Log.Info("DONE fast route rebuild",
 		"buildID", v.GetBuildID(),
 		"routes", len(v.GetPathsSnapshot()),
 		"duration", time.Since(start),
 	)
-
-	return nil
 }
 
 func cleanRouteManifestsOnly(v *vormaruntime.Vorma) error {
 	staticPublicOutDir := v.Wave.GetStaticPublicOutDir()
-
-	entries, err := os.ReadDir(staticPublicOutDir)
+	err := removeMatchingTopLevelFiles(staticPublicOutDir, isGeneratedRouteManifestFilename)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return err
 	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if isGeneratedRouteManifestFilename(name) {
-			if err := os.Remove(filepath.Join(staticPublicOutDir, name)); err != nil {
-				return fmt.Errorf("remove %s: %w", name, err)
-			}
-		}
-	}
-
 	return nil
 }
 

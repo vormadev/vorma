@@ -15,26 +15,29 @@ import (
 // writeRouteArtifacts writes all route-related artifacts to disk.
 // Includes manifest, paths JSON, and TypeScript generation.
 func writeRouteArtifacts(l *vormaruntime.LockedVorma) error {
-	v := l.Vorma()
-
-	// 1. Generate & Write Manifest
-	manifest := generateRouteManifest(l, v.LoadersRouter().NestedRouter)
-	manifestFile, err := writeRouteManifestToDisk(v, manifest)
-	if err != nil {
+	if err := writeAndSetRouteManifest(l); err != nil {
 		return fmt.Errorf("write route manifest: %w", err)
 	}
-	l.SetRouteManifestFile(manifestFile)
 
-	// 2. Write Paths JSON (Stage One)
-	if err := writePathsToDisk_StageOne(l); err != nil {
+	if err := writePathsToDiskStageOne(l); err != nil {
 		return fmt.Errorf("write paths JSON: %w", err)
 	}
 
-	// 3. Generate TypeScript
 	if err := WriteGeneratedTS(l); err != nil {
 		return fmt.Errorf("write generated TypeScript: %w", err)
 	}
 
+	return nil
+}
+
+func writeAndSetRouteManifest(l *vormaruntime.LockedVorma) error {
+	v := l.Vorma()
+	manifest := generateRouteManifest(l, v.LoadersRouter().NestedRouter)
+	manifestFile, err := writeRouteManifestToDisk(v, manifest)
+	if err != nil {
+		return err
+	}
+	l.SetRouteManifestFile(manifestFile)
 	return nil
 }
 
@@ -44,9 +47,7 @@ func writeRouteManifestToDisk(v *vormaruntime.Vorma, manifest map[string]int) (s
 		return "", fmt.Errorf("marshal route manifest: %w", err)
 	}
 
-	hash := cryptoutil.Sha256Hash(manifestJSON)
-	hashStr := base64.RawURLEncoding.EncodeToString(hash[:8])
-	filename := fmt.Sprintf("%s%s.json", vormaruntime.VormaRouteManifestPrefix, hashStr)
+	filename := routeManifestFilename(manifestJSON)
 
 	outPath := filepath.Join(v.Wave.GetStaticPublicOutDir(), filename)
 	if err := os.WriteFile(outPath, manifestJSON, 0644); err != nil {
@@ -60,13 +61,22 @@ func generateRouteManifest(l *vormaruntime.LockedVorma, nestedRouter *mux.Nested
 	manifest := make(map[string]int)
 	paths := l.GetPaths()
 
-	for _, p := range paths {
-		hasServerLoader := 0
-		if nestedRouter.HasTaskHandler(p.OriginalPattern) {
-			hasServerLoader = 1
-		}
-		manifest[p.OriginalPattern] = hasServerLoader
+	for _, currentPath := range paths {
+		manifest[currentPath.OriginalPattern] = routeManifestServerLoaderFlag(nestedRouter, currentPath.OriginalPattern)
 	}
 
 	return manifest
+}
+
+func routeManifestFilename(manifestJSON []byte) string {
+	hash := cryptoutil.Sha256Hash(manifestJSON)
+	hashStr := base64.RawURLEncoding.EncodeToString(hash[:8])
+	return fmt.Sprintf("%s%s.json", vormaruntime.VormaRouteManifestPrefix, hashStr)
+}
+
+func routeManifestServerLoaderFlag(nestedRouter *mux.NestedRouter, pattern string) int {
+	if nestedRouter.HasTaskHandler(pattern) {
+		return 1
+	}
+	return 0
 }

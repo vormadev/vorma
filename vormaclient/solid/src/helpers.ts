@@ -35,8 +35,8 @@ export function makeTypedUseLoaderData<App extends VormaAppBase>() {
 	return function useLoaderData<Pattern extends VormaLoaderPattern<App>>(
 		props: VormaRouteProps<App, Pattern>,
 	): Accessor<VormaLoaderOutput<App, Pattern>> {
-		return createMemo(() => {
-			return loadersData()[props.idx];
+		return createMemo<VormaLoaderOutput<App, Pattern>>(() => {
+			return loadersData()[props.idx] as VormaLoaderOutput<App, Pattern>;
 		});
 	};
 }
@@ -49,12 +49,14 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 			const matchedPatterns = routerData().matchedPatterns;
 			return matchedPatterns.findIndex((p) => p === pattern);
 		});
-		const loaderData = createMemo(() => {
+		const loaderData = createMemo<
+			VormaLoaderOutput<App, Pattern> | undefined
+		>(() => {
 			const index = idx();
 			if (index === -1) {
 				return undefined;
 			}
-			return loadersData()[index];
+			return loadersData()[index] as VormaLoaderOutput<App, Pattern>;
 		});
 		return loaderData;
 	};
@@ -95,14 +97,14 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		const useClientLoaderData = (
 			props?: VormaRouteProps<App, Pattern>,
 		): Accessor<Res | undefined> => {
-			return createMemo(() => {
+			return createMemo<Res | undefined>(() => {
 				if (props) {
-					return clientLoadersData()[props.idx];
+					return clientLoadersData()[props.idx] as Res | undefined;
 				}
 				const matched = routerData().matchedPatterns;
 				const idx = matched.findIndex((pattern) => pattern === p);
 				if (idx === -1) return undefined;
-				return clientLoadersData()[idx];
+				return clientLoadersData()[idx] as Res | undefined;
 			});
 		};
 

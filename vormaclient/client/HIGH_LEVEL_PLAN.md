@@ -33,9 +33,38 @@ Purpose: keep the sequence explicit so takeover is safe and work does not drift.
       synchronization.
     - 2026-02-11: history hard-reload fallback now no-ops in JSDOM so tests stay
       deterministic while browser runtime behavior remains unchanged.
+    - 2026-02-11: submit stale-checkpoint coverage now pins all reachable async
+      dedupe race windows, and one unreachable redirect stale-checkpoint branch
+      was removed from runtime submit flow.
+    - 2026-02-11: runtime slot matching removed an impossible nullable prefetch
+      lookup branch, and unit coverage now pins no-op `removeNavigation`
+      behavior for absent keys.
+    - 2026-02-11: runtime submit flow now has explicit coverage for impossible
+      missing-response defensive handling and full runtime branch coverage.
+    - 2026-02-11: render-runtime now has added contracts for explicit
+      `scrollToTop: false` behavior, empty-title fallback, and null head-array
+      normalization.
+    - 2026-02-11: render-runtime loader execution now normalizes inputs once and
+      uses consistent normalized loader state when deriving client-loader error
+      indices, with strict malformed-data contracts added.
     - 2026-02-11: link click/prefetch internals simplified; impossible nullable
       `NavigationControl.promise` branch removed and duplicate idle-prefetch
       guard removed.
+    - 2026-02-12: begin-navigation prefetch dedupe reuse paths are now pinned by
+      strict unit coverage (active-navigation reuse and pending-revalidation
+      reuse).
+    - 2026-02-12: fetch-route-data defensive behavior now has strict unit
+      coverage for build-id fallback in server-data handoff, sparse
+      partial-match invariant enforcement before client-loader startup,
+      production dep preloading that ignores falsy dep entries, and
+      unseeded-cache client-loader behavior when current snapshots do not
+      contain cached data.
+    - 2026-02-12: contract coverage now explicitly enforces the
+      runtime/buildtime API boundary for `route` (absent from runtime entry,
+      present in buildtime entry).
+    - 2026-02-12: matcher contracts in skip checks now fail fast on malformed
+      matcher output (sparse matches and empty route-pattern entries) rather
+      than silently continuing.
 
 ## Current Validation Gate
 

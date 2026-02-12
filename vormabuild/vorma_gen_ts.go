@@ -46,34 +46,77 @@ type TSGenInput struct {
 	ExtraTSCode   string
 }
 
+type actionKey struct {
+	pattern string
+	method  string
+	index   int
+}
+
 // generateTypeScript generates the route type definitions using live reflection.
 func generateTypeScript(input TSGenInput) (string, error) {
-	var collection []tsgen.CollectionItem
-
+	collection := make([]tsgen.CollectionItem, 0)
 	allLoaders := input.LoadersRouter.AllRoutes()
-	allActions := input.ActionsRouter.AllRoutes()
-
 	loadersDynamicRune := input.LoadersRouter.GetDynamicParamPrefixRune()
 	loadersSplatRune := input.LoadersRouter.GetSplatSegmentRune()
 	actionsDynamicRune := input.ActionsRouter.GetDynamicParamPrefixRune()
 	actionsSplatRune := input.ActionsRouter.GetSplatSegmentRune()
-
 	expectedRootDataPattern := ""
 	if input.LoadersRouter.GetExplicitIndexSegment() != "" {
 		expectedRootDataPattern = "/"
 	}
 
-	var foundRootData bool
 	seen := map[string]struct{}{}
+	foundRootData := appendLoaderCollectionItems(
+		input,
+		allLoaders,
+		&collection,
+		seen,
+		loadersDynamicRune,
+		loadersSplatRune,
+		expectedRootDataPattern,
+	)
+	appendClientOnlyLoaderCollectionItems(
+		input,
+		&collection,
+		seen,
+		actionsDynamicRune,
+		actionsSplatRune,
+	)
+	appendActionCollectionItems(
+		input.ActionsRouter.AllRoutes(),
+		&collection,
+		actionsDynamicRune,
+		actionsSplatRune,
+	)
 
-	// Sort loader patterns for deterministic output
-	loaderPatterns := make([]string, 0, len(allLoaders))
-	for pattern := range allLoaders {
-		loaderPatterns = append(loaderPatterns, pattern)
-	}
-	slices.Sort(loaderPatterns)
+	extraCode := buildGeneratedTypeScriptBlock(
+		input,
+		foundRootData,
+		actionsDynamicRune,
+		actionsSplatRune,
+		loadersDynamicRune,
+		loadersSplatRune,
+	)
 
-	for _, pattern := range loaderPatterns {
+	return tsgen.GenerateTSContent(tsgen.Opts{
+		Collection:        collection,
+		CollectionVarName: base.CollectionVarName,
+		AdHocTypes:        input.AdHocTypes,
+		ExtraTSCode:       extraCode,
+	})
+}
+
+func appendLoaderCollectionItems(
+	input TSGenInput,
+	allLoaders map[string]mux.AnyNestedRoute,
+	collection *[]tsgen.CollectionItem,
+	seen map[string]struct{},
+	loadersDynamicRune rune,
+	loadersSplatRune rune,
+	expectedRootDataPattern string,
+) bool {
+	foundRootData := false
+	for _, pattern := range sortedLoaderPatterns(allLoaders) {
 		loader := allLoaders[pattern]
 		item := tsgen.CollectionItem{
 			ArbitraryProperties: map[string]any{
@@ -81,65 +124,140 @@ func generateTypeScript(input TSGenInput) (string, error) {
 				base.CategoryPropertyName: "loader",
 			},
 		}
-		params := extractDynamicParamsFromPattern(pattern, loadersDynamicRune)
-		if len(params) > 0 {
-			item.ArbitraryProperties["params"] = params
-		}
-		if isSplat(pattern, loadersSplatRune) {
-			item.ArbitraryProperties["isSplat"] = true
-		}
+		setPatternMetadata(item.ArbitraryProperties, pattern, loadersDynamicRune, loadersSplatRune)
 		if loader != nil {
 			item.PhantomTypes = map[string]tsgen.AdHocType{
 				"phantomOutputType": {TypeInstance: loader.O()},
 			}
 		}
-		if pattern == expectedRootDataPattern {
-			if input.LoadersRouter.HasTaskHandler(pattern) {
-				foundRootData = true
-				item.ArbitraryProperties["isRootData"] = true
-			}
+		if pattern == expectedRootDataPattern && input.LoadersRouter.HasTaskHandler(pattern) {
+			foundRootData = true
+			item.ArbitraryProperties["isRootData"] = true
 		}
-		collection = append(collection, item)
+		*collection = append(*collection, item)
 		seen[pattern] = struct{}{}
 	}
+	return foundRootData
+}
 
-	// Add client-defined paths without Go loaders
-	extraPathPatterns := make([]string, 0, len(input.Paths))
-	for pattern := range input.Paths {
-		if _, ok := seen[pattern]; !ok {
-			extraPathPatterns = append(extraPathPatterns, pattern)
-		}
-	}
-	slices.Sort(extraPathPatterns)
-
-	for _, pattern := range extraPathPatterns {
-		p := input.Paths[pattern]
+func appendClientOnlyLoaderCollectionItems(
+	input TSGenInput,
+	collection *[]tsgen.CollectionItem,
+	seen map[string]struct{},
+	actionsDynamicRune rune,
+	actionsSplatRune rune,
+) {
+	for _, pattern := range sortedClientOnlyPathPatterns(input.Paths, seen) {
+		path := input.Paths[pattern]
 		item := tsgen.CollectionItem{
 			ArbitraryProperties: map[string]any{
-				base.DiscriminatorStr:     p.OriginalPattern,
+				base.DiscriminatorStr:     path.OriginalPattern,
 				base.CategoryPropertyName: "loader",
 			},
 			PhantomTypes: map[string]tsgen.AdHocType{
 				"phantomOutputType": {TypeInstance: mux.None{}},
 			},
 		}
-		params := extractDynamicParamsFromPattern(p.OriginalPattern, actionsDynamicRune)
-		if len(params) > 0 {
-			item.ArbitraryProperties["params"] = params
+		setPatternMetadata(item.ArbitraryProperties, path.OriginalPattern, actionsDynamicRune, actionsSplatRune)
+		*collection = append(*collection, item)
+		seen[path.OriginalPattern] = struct{}{}
+	}
+}
+
+func appendActionCollectionItems(
+	allActions []mux.AnyRoute,
+	collection *[]tsgen.CollectionItem,
+	actionsDynamicRune rune,
+	actionsSplatRune rune,
+) {
+	for _, currentActionKey := range sortedActionKeys(allActions) {
+		action := allActions[currentActionKey.index]
+		method := action.Method()
+		pattern := action.OriginalPattern()
+		item, ok := buildActionCollectionItem(action, method, pattern, actionsDynamicRune, actionsSplatRune)
+		if !ok {
+			continue
 		}
-		if isSplat(p.OriginalPattern, actionsSplatRune) {
-			item.ArbitraryProperties["isSplat"] = true
-		}
-		collection = append(collection, item)
-		seen[p.OriginalPattern] = struct{}{}
+		*collection = append(*collection, item)
+	}
+}
+
+func buildActionCollectionItem(
+	action mux.AnyRoute,
+	method string,
+	pattern string,
+	actionsDynamicRune rune,
+	actionsSplatRune rune,
+) (tsgen.CollectionItem, bool) {
+	categoryPropertyName, isMutation, ok := actionCategoryForMethod(method)
+	if !ok {
+		return tsgen.CollectionItem{}, false
 	}
 
-	// Sort actions for deterministic output
-	type actionKey struct {
-		pattern string
-		method  string
-		index   int
+	item := tsgen.CollectionItem{
+		ArbitraryProperties: map[string]any{
+			base.DiscriminatorStr:     pattern,
+			base.CategoryPropertyName: categoryPropertyName,
+		},
 	}
+	if isMutation && method != http.MethodPost {
+		item.ArbitraryProperties["method"] = method
+	}
+	setPatternMetadata(item.ArbitraryProperties, pattern, actionsDynamicRune, actionsSplatRune)
+	if action != nil {
+		item.PhantomTypes = map[string]tsgen.AdHocType{
+			"phantomInputType":  {TypeInstance: action.I()},
+			"phantomOutputType": {TypeInstance: action.O()},
+		}
+	}
+	return item, true
+}
+
+func actionCategoryForMethod(method string) (string, bool, bool) {
+	if _, isQuery := queryMethods[method]; isQuery {
+		return "query", false, true
+	}
+	if _, isMutation := mutationMethods[method]; isMutation {
+		return "mutation", true, true
+	}
+	return "", false, false
+}
+
+func setPatternMetadata(properties map[string]any, pattern string, dynamicRune rune, splatRune rune) {
+	params := extractDynamicParamsFromPattern(pattern, dynamicRune)
+	if len(params) > 0 {
+		properties["params"] = params
+	}
+	if isSplat(pattern, splatRune) {
+		properties["isSplat"] = true
+	}
+}
+
+func sortedLoaderPatterns(allLoaders map[string]mux.AnyNestedRoute) []string {
+	loaderPatterns := make([]string, 0, len(allLoaders))
+	for pattern := range allLoaders {
+		loaderPatterns = append(loaderPatterns, pattern)
+	}
+	slices.Sort(loaderPatterns)
+	return loaderPatterns
+}
+
+func sortedClientOnlyPathPatterns(
+	paths map[string]*vormaruntime.Path,
+	seen map[string]struct{},
+) []string {
+	extraPathPatterns := make([]string, 0, len(paths))
+	for pattern := range paths {
+		if _, ok := seen[pattern]; ok {
+			continue
+		}
+		extraPathPatterns = append(extraPathPatterns, pattern)
+	}
+	slices.Sort(extraPathPatterns)
+	return extraPathPatterns
+}
+
+func sortedActionKeys(allActions []mux.AnyRoute) []actionKey {
 	actionKeys := make([]actionKey, 0, len(allActions))
 	for i, action := range allActions {
 		actionKeys = append(actionKeys, actionKey{
@@ -154,56 +272,20 @@ func generateTypeScript(input TSGenInput) (string, error) {
 		}
 		return strings.Compare(a.method, b.method)
 	})
+	return actionKeys
+}
 
-	for _, ak := range actionKeys {
-		action := allActions[ak.index]
-		method, pattern := action.Method(), action.OriginalPattern()
-		_, isQuery := queryMethods[method]
-		_, isMutation := mutationMethods[method]
-		if !isQuery && !isMutation {
-			continue
-		}
-		categoryPropertyName := "query"
-		if isMutation {
-			categoryPropertyName = "mutation"
-		}
-		item := tsgen.CollectionItem{
-			ArbitraryProperties: map[string]any{
-				base.DiscriminatorStr:     pattern,
-				base.CategoryPropertyName: categoryPropertyName,
-			},
-		}
-		if isMutation && method != http.MethodPost {
-			item.ArbitraryProperties["method"] = method
-		}
-		params := extractDynamicParamsFromPattern(pattern, actionsDynamicRune)
-		if len(params) > 0 {
-			item.ArbitraryProperties["params"] = params
-		}
-		if isSplat(pattern, actionsSplatRune) {
-			item.ArbitraryProperties["isSplat"] = true
-		}
-		if action != nil {
-			item.PhantomTypes = map[string]tsgen.AdHocType{
-				"phantomInputType":  {TypeInstance: action.I()},
-				"phantomOutputType": {TypeInstance: action.O()},
-			}
-		}
-		collection = append(collection, item)
-	}
-
+func buildGeneratedTypeScriptBlock(
+	input TSGenInput,
+	foundRootData bool,
+	actionsDynamicRune rune,
+	actionsSplatRune rune,
+	loadersDynamicRune rune,
+	loadersSplatRune rune,
+) string {
 	var sb strings.Builder
-
-	if foundRootData {
-		sb.WriteString(`type VormaRootData = Extract<
-	(typeof routes)[number],
-	{ isRootData: true }
->["phantomOutputType"];`)
-	} else {
-		sb.WriteString("type VormaRootData = null;")
-	}
+	sb.WriteString(rootDataTypeAlias(foundRootData))
 	sb.WriteString("\n\n")
-
 	sb.WriteString(fmt.Sprintf(`export type VormaApp = {
 	routes: typeof routes;
 	appConfig: typeof vormaAppConfig;
@@ -258,13 +340,17 @@ export type RouteProps<P extends VormaLoaderPattern<VormaApp>> = VormaRouteProps
 		sb.WriteString("\n")
 		sb.WriteString(input.ExtraTSCode)
 	}
+	return sb.String()
+}
 
-	return tsgen.GenerateTSContent(tsgen.Opts{
-		Collection:        collection,
-		CollectionVarName: base.CollectionVarName,
-		AdHocTypes:        input.AdHocTypes,
-		ExtraTSCode:       sb.String(),
-	})
+func rootDataTypeAlias(foundRootData bool) string {
+	if foundRootData {
+		return `type VormaRootData = Extract<
+	(typeof routes)[number],
+	{ isRootData: true }
+>["phantomOutputType"];`
+	}
+	return "type VormaRootData = null;"
 }
 
 func extractDynamicParamsFromPattern(pattern string, dynamicRune rune) []string {
@@ -325,6 +411,15 @@ export const vormaViteConfig = {
 
 var vitePluginTemplate = template.Must(template.New("vitePlugin").Parse(vitePluginTemplateStr))
 
+type vitePluginTemplateData struct {
+	Entrypoints      []string
+	PublicPathPrefix string
+	FuncName         string
+	FilemapJSONPath  string
+	IgnoredPatterns  []string
+	DedupeList       []string
+}
+
 func generateRollupOptions(l *vormaruntime.LockedVorma, entrypoints []string) (string, error) {
 	v := l.Vorma()
 
@@ -333,17 +428,40 @@ func generateRollupOptions(l *vormaruntime.LockedVorma, entrypoints []string) (s
 	sb.Write(tsgen.Comment("Vorma Vite Config:"))
 	sb.Return()
 
-	var dedupeList []string
-	switch vormaruntime.UIVariant(v.Config.UIVariant) {
-	case vormaruntime.UIVariants.React:
-		dedupeList = reactDedupeList
-	case vormaruntime.UIVariants.Preact:
-		dedupeList = preactDedupeList
-	case vormaruntime.UIVariants.Solid:
-		dedupeList = solidDedupeList
+	renderedViteConfig, err := renderVitePluginConfig(buildVitePluginTemplateData(v, entrypoints))
+	if err != nil {
+		return "", err
 	}
+	sb.Write(renderedViteConfig)
+	return sb.String(), nil
+}
 
-	ignoredList := []string{
+func buildVitePluginTemplateData(v *vormaruntime.Vorma, entrypoints []string) vitePluginTemplateData {
+	return vitePluginTemplateData{
+		Entrypoints:      entrypoints,
+		PublicPathPrefix: v.Wave.GetPublicPathPrefix(),
+		FuncName:         v.Config.BuildtimePublicURLFuncName,
+		FilemapJSONPath:  buildFileMapJSONPath(v.Config.TSGenOutDir),
+		IgnoredPatterns:  buildViteIgnoredPatterns(v),
+		DedupeList:       dedupeListForUIVariant(v.Config.UIVariant),
+	}
+}
+
+func dedupeListForUIVariant(uiVariant string) []string {
+	switch vormaruntime.UIVariant(uiVariant) {
+	case vormaruntime.UIVariants.React:
+		return reactDedupeList
+	case vormaruntime.UIVariants.Preact:
+		return preactDedupeList
+	case vormaruntime.UIVariants.Solid:
+		return solidDedupeList
+	default:
+		return nil
+	}
+}
+
+func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
+	return []string{
 		"**/*.go",
 		path.Join("**", v.Wave.GetDistDir()+"/**/*"),
 		path.Join("**", v.Wave.GetPrivateStaticDir()+"/**/*"),
@@ -351,24 +469,18 @@ func generateRollupOptions(l *vormaruntime.LockedVorma, entrypoints []string) (s
 		path.Join("**", v.Config.TSGenOutDir+"/**/*"),
 		path.Join("**", v.Config.ClientRouteDefsFile),
 	}
+}
 
-	// Path to filemap.json for Vite plugin dev mode cache invalidation
-	filemapJSONPath := path.Join(v.Config.TSGenOutDir, wave.RelPaths.PublicFileMapJSONName())
+func buildFileMapJSONPath(tsGenOutDir string) string {
+	return path.Join(tsGenOutDir, wave.RelPaths.PublicFileMapJSONName())
+}
 
-	var buf bytes.Buffer
-	err := vitePluginTemplate.Execute(&buf, map[string]any{
-		"Entrypoints":      entrypoints,
-		"PublicPathPrefix": v.Wave.GetPublicPathPrefix(),
-		"FuncName":         v.Config.BuildtimePublicURLFuncName,
-		"FilemapJSONPath":  filemapJSONPath,
-		"IgnoredPatterns":  ignoredList,
-		"DedupeList":       dedupeList,
-	})
-	if err != nil {
+func renderVitePluginConfig(templateData vitePluginTemplateData) (string, error) {
+	var buffer bytes.Buffer
+	if err := vitePluginTemplate.Execute(&buffer, templateData); err != nil {
 		return "", fmt.Errorf("error executing template: %w", err)
 	}
-	sb.Write(buf.String())
-	return sb.String(), nil
+	return buffer.String(), nil
 }
 
 func getEntrypoints(l *vormaruntime.LockedVorma) []string {
@@ -393,7 +505,55 @@ func getEntrypoints(l *vormaruntime.LockedVorma) []string {
 func WriteGeneratedTS(l *vormaruntime.LockedVorma) error {
 	v := l.Vorma()
 
-	input := TSGenInput{
+	contentBytes, err := generateAndAssembleTSContent(v, l)
+	if err != nil {
+		return err
+	}
+
+	targetPath := generatedTSTargetPath(v.Config.TSGenOutDir)
+	return writeGeneratedTSContentIfChanged(v, targetPath, contentBytes)
+}
+
+func generateAndAssembleTSContent(v *vormaruntime.Vorma, l *vormaruntime.LockedVorma) ([]byte, error) {
+	tsOutput, err := generateTypeScript(tsGenInputForLockedVorma(v, l))
+	if err != nil {
+		return nil, fmt.Errorf("generate TypeScript: %w", err)
+	}
+
+	rollupOptions, err := generateRollupOptions(l, getEntrypoints(l))
+	if err != nil {
+		return nil, fmt.Errorf("generate rollup options: %w", err)
+	}
+
+	return []byte(tsOutput + rollupOptions), nil
+}
+
+func writeGeneratedTSContentIfChanged(
+	v *vormaruntime.Vorma,
+	targetPath string,
+	contentBytes []byte,
+) error {
+	unchanged, err := generatedTSUnchanged(targetPath, contentBytes)
+	if err != nil {
+		return fmt.Errorf("check existing generated file: %w", err)
+	}
+	if unchanged {
+		v.Log.Info("Generated config unchanged, skipping write")
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), os.ModePerm); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	if err := os.WriteFile(targetPath, contentBytes, os.ModePerm); err != nil {
+		return fmt.Errorf("write file: %w", err)
+	}
+	return nil
+}
+
+func tsGenInputForLockedVorma(v *vormaruntime.Vorma, l *vormaruntime.LockedVorma) TSGenInput {
+	return TSGenInput{
 		LoadersRouter: v.LoadersRouter().NestedRouter,
 		ActionsRouter: v.ActionsRouter().Router,
 		Paths:         l.GetPaths(),
@@ -401,35 +561,19 @@ func WriteGeneratedTS(l *vormaruntime.LockedVorma) error {
 		AdHocTypes:    v.GetAdHocTypes(),
 		ExtraTSCode:   v.GetExtraTSCode(),
 	}
+}
 
-	tsOutput, err := generateTypeScript(input)
+func generatedTSTargetPath(tsGenOutDir string) string {
+	return filepath.Join(".", tsGenOutDir, wave.GeneratedTSFileName)
+}
+
+func generatedTSUnchanged(targetPath string, newContent []byte) (bool, error) {
+	existingBytes, err := os.ReadFile(targetPath)
 	if err != nil {
-		return fmt.Errorf("generate TypeScript: %w", err)
-	}
-
-	rollupOptions, err := generateRollupOptions(l, getEntrypoints(l))
-	if err != nil {
-		return fmt.Errorf("generate rollup options: %w", err)
-	}
-
-	content := tsOutput + rollupOptions
-	target := filepath.Join(".", v.Config.TSGenOutDir, wave.GeneratedTSFileName)
-
-	// Skip write if content unchanged (prevents infinite file watcher loop)
-	if existingBytes, err := os.ReadFile(target); err == nil {
-		if bytes.Equal(existingBytes, []byte(content)) {
-			v.Log.Info("Generated config unchanged, skipping write")
-			return nil
+		if os.IsNotExist(err) {
+			return false, nil
 		}
+		return false, err
 	}
-
-	if err := os.MkdirAll(filepath.Dir(target), os.ModePerm); err != nil {
-		return fmt.Errorf("create directory: %w", err)
-	}
-
-	if err := os.WriteFile(target, []byte(content), os.ModePerm); err != nil {
-		return fmt.Errorf("write file: %w", err)
-	}
-
-	return nil
+	return bytes.Equal(existingBytes, newContent), nil
 }

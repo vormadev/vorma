@@ -302,9 +302,16 @@ func (w *Wave) checkIsAsset(urlPath string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	clean := strings.TrimPrefix(path.Clean(urlPath), "/")
-	_, err = fs.Stat(publicFS, clean)
-	return err == nil, nil
+	cleanPath := strings.TrimPrefix(path.Clean(urlPath), "/")
+	if cleanPath == "" || cleanPath == "." {
+		return false, nil
+	}
+
+	info, err := fs.Stat(publicFS, cleanPath)
+	if err != nil {
+		return false, nil
+	}
+	return !info.IsDir(), nil
 }
 
 func (w *Wave) IsPublicAsset(urlPath string) bool {

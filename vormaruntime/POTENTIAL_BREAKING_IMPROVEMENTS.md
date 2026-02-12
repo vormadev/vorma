@@ -14,13 +14,22 @@ before implementation.
       exposes a legacy singleton instance.
     - Removing or changing it is likely a public API behavior break.
 
-3. Unify route synchronization behavior between init and live reload.
-    - `devReloadRoutesFromDisk()` explicitly re-syncs merged server routes.
-    - Initial `Init()` path loading follows a different path.
-    - Aligning these paths may change which routes are available immediately
-      after startup.
+3. Fully unify init-time and dev-reload route synchronization semantics.
+    - Init re-init now replaces parsed-path state, rebuilds nested routes
+      against current parsed paths while preserving server handlers, and clears
+      route-data cache.
+    - Dev reload still uses `RouteRegistry.Sync`, which additionally merges
+      server-only handler routes into parsed paths.
+    - Aligning these flows may simplify state reasoning and reduce behavioral
+      drift.
 
-4. Remove legacy dev reload endpoint constant aliases.
+4. Consolidate loaders-route decoration lifecycle.
+    - Parsed client routes are decorated at handler construction time, while
+      re-init now also rebuilds nested-route registrations.
+    - Collapsing to one explicit lifecycle path could reduce state-coupling
+      complexity.
+
+5. Remove legacy dev reload endpoint constant aliases.
     - Canonical names are `Dev_ReloadRoutesPath` and `Dev_ReloadTemplatePath`.
     - Legacy aliases (`DevReloadRoutesPath`, `DevReloadTemplatePath`) remain for
       compatibility.
