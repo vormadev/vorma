@@ -1,6 +1,6 @@
 import { vormaNavigate } from "../client.ts";
 import {
-	__resolvePath,
+	resolvePath,
 	type ExtractApp,
 	type PermissivePatternBasedProps,
 	type VormaAppBase,
@@ -8,15 +8,9 @@ import {
 	type VormaLoaderPattern,
 	type VormaRouteParams,
 } from "../app/helpers.ts";
-import {
-	__vormaClientGlobal,
-	type getRouterData,
-} from "../app/context.ts";
+import { __vormaClientGlobal, type getRouterData } from "../app/context.ts";
 import type { RouteErrorComponent } from "../app/context.ts";
-import {
-	__getPrefetchHandlers,
-	__makeLinkOnClickFn,
-} from "../core/links.ts";
+import { __getPrefetchHandlers, __makeLinkOnClickFn } from "../core/links.ts";
 
 export const defaultErrorBoundary: RouteErrorComponent = (props: {
 	error: string;
@@ -66,9 +60,7 @@ function linkPropsToPrefetchObj<LinkEvent>(
 	});
 }
 
-function linkPropsToOnClickFn<LinkEvent>(
-	props: VormaLinkPropsBase<LinkEvent>,
-) {
+function linkPropsToOnClickFn<LinkEvent>(props: VormaLinkPropsBase<LinkEvent>) {
 	return __makeLinkOnClickFn({
 		beforeBegin: adaptDOMEventCallback(props.beforeBegin),
 		beforeRender: adaptDOMEventCallback(props.beforeRender),
@@ -103,7 +95,7 @@ function isFn(fn: unknown): fn is UnknownFn {
 	return typeof fn === "function";
 }
 
-export function __makeFinalLinkProps<LinkEvent>(
+export function makeFinalLinkProps<LinkEvent>(
 	props: VormaLinkPropsBase<LinkEvent>,
 	keys: HandlerKeys = standardCamelHandlerKeys,
 ) {
@@ -218,19 +210,12 @@ export function makeTypedNavigate<C extends VormaAppConfig>(vormaAppConfig: C) {
 	return async function typedNavigate<
 		Pattern extends VormaLoaderPattern<App>,
 	>(options: TypedNavigateOptions<App, Pattern>): Promise<void> {
-		const {
-			pattern,
-			replace,
-			scrollToTop,
-			search,
-			hash,
-			state,
-		} = options;
+		const { pattern, replace, scrollToTop, search, hash, state } = options;
 		const params = "params" in options ? options.params : undefined;
 		const splatValues =
 			"splatValues" in options ? options.splatValues : undefined;
 
-		const href = __resolvePath({
+		const href = resolvePath({
 			vormaAppConfig,
 			type: "loader",
 			props: {
@@ -249,3 +234,5 @@ export function makeTypedNavigate<C extends VormaAppConfig>(vormaAppConfig: C) {
 		});
 	};
 }
+
+export const __makeFinalLinkProps = makeFinalLinkProps;

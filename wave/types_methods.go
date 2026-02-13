@@ -108,3 +108,45 @@ func (parsedConfig *ParsedConfig) NonCriticalCSSEntry() string {
 	}
 	return filepath.Clean(parsedConfig.Core.CSSEntryFiles.NonCritical)
 }
+
+func (parsedConfig *ParsedConfig) BrowserRuntimeNamespace() string {
+	if parsedConfig == nil || parsedConfig.FrameworkBrowserRuntimeNamespace == "" {
+		return DefaultBrowserRuntimeNamespace
+	}
+	return parsedConfig.FrameworkBrowserRuntimeNamespace
+}
+
+func (parsedConfig *ParsedConfig) BrowserPublicURLResolverFunctionName() string {
+	if parsedConfig == nil || parsedConfig.FrameworkBrowserPublicURLResolverFunctionName == "" {
+		return DefaultBrowserPublicURLResolverFunctionName
+	}
+	return parsedConfig.FrameworkBrowserPublicURLResolverFunctionName
+}
+
+func (parsedConfig *ParsedConfig) BrowserRevalidateFunctionName() string {
+	if parsedConfig == nil || parsedConfig.FrameworkBrowserRevalidateFunctionName == "" {
+		return DefaultBrowserRevalidateFunctionName
+	}
+	return parsedConfig.FrameworkBrowserRevalidateFunctionName
+}
+
+func (parsedConfig *ParsedConfig) RefreshRebuildingOverlayElementID() string {
+	if parsedConfig == nil || parsedConfig.FrameworkRefreshRebuildingOverlayElementID == "" {
+		return DefaultRefreshRebuildingOverlayElementID
+	}
+	return parsedConfig.FrameworkRefreshRebuildingOverlayElementID
+}
+
+func (parsedConfig *ParsedConfig) CriticalCSSStyleElementID() string {
+	if parsedConfig == nil || parsedConfig.FrameworkCriticalCSSStyleElementID == "" {
+		return DefaultCriticalCSSStyleElementID
+	}
+	return parsedConfig.FrameworkCriticalCSSStyleElementID
+}
+
+func (parsedConfig *ParsedConfig) NonCriticalCSSLinkElementID() string {
+	if parsedConfig == nil || parsedConfig.FrameworkNonCriticalCSSLinkElementID == "" {
+		return DefaultNonCriticalCSSLinkElementID
+	}
+	return parsedConfig.FrameworkNonCriticalCSSLinkElementID
+}

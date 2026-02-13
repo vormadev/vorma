@@ -181,6 +181,49 @@ function shouldAutoRevalidateSubmitResult(props: {
 	return !isGET && !redirected && options?.revalidate !== false;
 }
 
+function hasNoContentResponseBody(response: Response): boolean {
+	if (response.status === 204 || response.status === 205) {
+		return true;
+	}
+
+	return response.headers.get("content-length") === "0";
+}
+
+function responseDeclaresJSON(response: Response): boolean {
+	const contentType = response.headers.get("content-type");
+	if (!contentType) {
+		return true;
+	}
+
+	const normalizedContentType = contentType.toLowerCase();
+	return (
+		normalizedContentType.includes("application/json") ||
+		normalizedContentType.includes("+json")
+	);
+}
+
+async function readSubmitSuccessResponseData(
+	response: Response,
+): Promise<unknown> {
+	if (hasNoContentResponseBody(response)) {
+		return undefined;
+	}
+
+	if (responseDeclaresJSON(response)) {
+		return await response.json();
+	}
+
+	const maybeTextFn = (
+		response as Response & { text?: () => Promise<string> }
+	).text;
+	if (typeof maybeTextFn !== "function") {
+		return undefined;
+	}
+
+	const text = await maybeTextFn.call(response);
+	return text === "" ? undefined : text;
+}
+
 type SubmitResponseAction =
 	| {
 			type: "error";
@@ -254,7 +297,7 @@ async function executeSubmitResponseAction<T>(props: {
 			return { success: true, data: undefined as T };
 		}
 		case "parseJSON": {
-			const data = await response.json();
+			const data = await readSubmitSuccessResponseData(response);
 			const staleBeforeReturn =
 				getStaleSubmitResultIfAny<T>(isSubmissionCurrent);
 			if (staleBeforeReturn) {

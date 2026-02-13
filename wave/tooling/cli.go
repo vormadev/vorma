@@ -83,13 +83,15 @@ func BuildWaveWithHookOptions(
 }
 
 // BuildWaveWithHook provides CLI integration for build commands with a custom hook.
-func BuildWaveWithHook(cfg *wave.ParsedConfig, log *slog.Logger, hook func(isDev bool) error) {
-	if err := BuildWaveWithHookFromArgs(cfg, log, os.Args[1:], hook); err != nil {
-		panic(err)
-	}
+func BuildWaveWithHook(
+	cfg *wave.ParsedConfig,
+	log *slog.Logger,
+	hook func(isDev bool) error,
+) error {
+	return BuildWaveWithHookFromArgs(cfg, log, os.Args[1:], hook)
 }
 
 // BuildWave is a simplified entry point without a custom hook.
-func BuildWave(cfg *wave.ParsedConfig, log *slog.Logger) {
-	BuildWaveWithHook(cfg, log, nil)
+func BuildWave(cfg *wave.ParsedConfig, log *slog.Logger) error {
+	return BuildWaveWithHook(cfg, log, nil)
 }

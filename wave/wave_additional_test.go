@@ -205,7 +205,7 @@ func TestServeStaticWithRootPrefix(t *testing.T) {
 	}
 }
 
-func TestServeStaticMiddlewareDoesNotFallThroughForMissingPrefixedAsset(t *testing.T) {
+func TestServeStaticMiddlewareFallsThroughForMissingPrefixedAsset(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
@@ -220,11 +220,11 @@ func TestServeStaticMiddlewareDoesNotFallThroughForMissingPrefixedAsset(t *testi
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected missing prefixed asset to return 404 from static handler, got %d", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected missing prefixed asset path to fall through to next handler, got %d", rec.Code)
 	}
-	if nextCalled {
-		t.Fatal("expected missing prefixed asset to bypass next handler")
+	if !nextCalled {
+		t.Fatal("expected missing prefixed asset path to call next handler")
 	}
 }
 

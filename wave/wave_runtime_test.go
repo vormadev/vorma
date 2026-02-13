@@ -104,6 +104,55 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 	if w.cfg.FrameworkPublicFileMapOutDir != "generated/public" {
 		t.Fatalf("unexpected public filemap out dir: %q", w.cfg.FrameworkPublicFileMapOutDir)
 	}
+
+	w.SetBrowserRuntimeNamespace("__vorma_runtime")
+	if got := w.cfg.FrameworkBrowserRuntimeNamespace; got != "__vorma_runtime" {
+		t.Fatalf("unexpected browser runtime namespace: %q", got)
+	}
+
+	w.SetBrowserPublicURLResolverFunctionName("resolvePublicURL")
+	if got := w.cfg.FrameworkBrowserPublicURLResolverFunctionName; got != "resolvePublicURL" {
+		t.Fatalf("unexpected public URL resolver function name: %q", got)
+	}
+
+	w.SetBrowserRevalidateFunctionName("__vorma_revalidate")
+	if got := w.cfg.FrameworkBrowserRevalidateFunctionName; got != "__vorma_revalidate" {
+		t.Fatalf("unexpected browser revalidate function name: %q", got)
+	}
+
+	w.SetRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
+	if got := w.cfg.FrameworkRefreshRebuildingOverlayElementID; got != "vorma-refresh-overlay" {
+		t.Fatalf("unexpected refresh rebuilding overlay element ID: %q", got)
+	}
+
+	w.SetCriticalCSSStyleElementID("vorma-critical-css")
+	if got := w.cfg.FrameworkCriticalCSSStyleElementID; got != "vorma-critical-css" {
+		t.Fatalf("unexpected critical CSS style element ID: %q", got)
+	}
+
+	w.SetNonCriticalCSSLinkElementID("vorma-noncritical-css")
+	if got := w.cfg.FrameworkNonCriticalCSSLinkElementID; got != "vorma-noncritical-css" {
+		t.Fatalf("unexpected non-critical CSS link element ID: %q", got)
+	}
+
+	resetPortCacheForTest()
+	t.Setenv(envMode, "production")
+	t.Setenv(envPortSet, "true")
+	t.Setenv(envPort, "4500")
+	w.SetPortResolver(NewPortResolver())
+	if got := w.MustGetPort(); got != 4500 {
+		t.Fatalf("expected Wave instance resolver port 4500, got %d", got)
+	}
+
+	t.Setenv(envPort, "4501")
+	if got := w.MustGetPort(); got != 4500 {
+		t.Fatalf("expected Wave instance resolver to cache first port 4500, got %d", got)
+	}
+
+	w.SetPortResolver(NewPortResolver())
+	if got := w.MustGetPort(); got != 4501 {
+		t.Fatalf("expected Wave instance resolver reset to pick updated port 4501, got %d", got)
+	}
 }
 
 func TestGetBaseFSUsesDiskInDevMode(t *testing.T) {
@@ -224,13 +273,31 @@ func TestPublicFileMapElementsAndHash(t *testing.T) {
 	if !strings.Contains(elements, `rel="modulepreload"`) {
 		t.Fatalf("expected modulepreload link in filemap elements, got %q", elements)
 	}
-	if !strings.Contains(elements, `window.__wave.getPublicURL = getPublicURL;`) {
-		t.Fatalf("expected script helper in filemap elements, got %q", elements)
+	if !strings.Contains(elements, `const browserRuntimeNamespace = "__wave";`) {
+		t.Fatalf("expected default browser runtime namespace in filemap script, got %q", elements)
+	}
+	if !strings.Contains(elements, `window[browserRuntimeNamespace][publicURLResolverFunctionName] = getPublicURL;`) {
+		t.Fatalf("expected public URL resolver registration in filemap elements, got %q", elements)
 	}
 
 	hash := w.GetPublicFileMapScriptSha256Hash()
 	if hash == "" {
 		t.Fatal("expected non-empty public filemap script hash")
+	}
+}
+
+func TestPublicFileMapElementsUseConfiguredBrowserRuntimeSettings(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	w := newWaveForTest(t, fixture, true, nil)
+	w.SetBrowserRuntimeNamespace("__vorma_runtime")
+	w.SetBrowserPublicURLResolverFunctionName("resolvePublicURL")
+
+	elements := string(w.GetPublicFileMapElements())
+	if !strings.Contains(elements, `const browserRuntimeNamespace = "__vorma_runtime";`) {
+		t.Fatalf("expected configured browser runtime namespace in filemap elements, got %q", elements)
+	}
+	if !strings.Contains(elements, `const publicURLResolverFunctionName = "resolvePublicURL";`) {
+		t.Fatalf("expected configured resolver function name in filemap elements, got %q", elements)
 	}
 }
 
@@ -271,6 +338,20 @@ func TestCriticalCSSMethods(t *testing.T) {
 	}
 	if w.GetCriticalCSSElementID() != CriticalCSSElementID {
 		t.Fatalf("unexpected critical css element id: %q", w.GetCriticalCSSElementID())
+	}
+}
+
+func TestCriticalCSSUsesConfiguredElementID(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	w := newWaveForTest(t, fixture, true, nil)
+	w.SetCriticalCSSStyleElementID("vorma-critical-css")
+
+	el := string(w.GetCriticalCSSStyleElement())
+	if !strings.Contains(el, `id="vorma-critical-css"`) {
+		t.Fatalf("expected configured critical css style element id, got %q", el)
+	}
+	if w.GetCriticalCSSElementID() != "vorma-critical-css" {
+		t.Fatalf("unexpected configured critical css element id getter value: %q", w.GetCriticalCSSElementID())
 	}
 }
 
@@ -323,6 +404,20 @@ func TestStylesheetURLAndLink(t *testing.T) {
 	}
 }
 
+func TestStylesheetLinkUsesConfiguredElementID(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	w := newWaveForTest(t, fixture, true, nil)
+	w.SetNonCriticalCSSLinkElementID("vorma-normal-css")
+
+	link := string(w.GetStyleSheetLinkElement())
+	if !strings.Contains(link, `id="vorma-normal-css"`) {
+		t.Fatalf("expected configured stylesheet element id in link element, got %q", link)
+	}
+	if w.GetStyleSheetElementID() != "vorma-normal-css" {
+		t.Fatalf("unexpected configured stylesheet element id getter value: %q", w.GetStyleSheetElementID())
+	}
+}
+
 func TestStylesheetReturnsEmptyWhenEntryUnset(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	fixture.cfg.Core.CSSEntryFiles.NonCritical = ""
@@ -336,15 +431,21 @@ func TestStylesheetReturnsEmptyWhenEntryUnset(t *testing.T) {
 	}
 }
 
-func TestIsPublicAssetWithConfiguredPrefix(t *testing.T) {
+func TestIsPublicAssetWithConfiguredPrefixUsesFileExistence(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if !w.IsPublicAsset("/assets/anything.txt") {
-		t.Fatal("expected prefixed path to be treated as a public asset")
+	if !w.IsPublicAsset("/assets/logo.txt") {
+		t.Fatal("expected existing prefixed file path to be treated as a public asset")
+	}
+	if w.IsPublicAsset("/assets/anything.txt") {
+		t.Fatal("expected missing prefixed file path to not be treated as a public asset")
 	}
 	if w.IsPublicAsset("/other/path") {
 		t.Fatal("expected non-prefixed path to not be treated as a public asset")
+	}
+	if w.IsPublicAsset("/assets/vorma_out") {
+		t.Fatal("expected prefixed directory path to not be treated as a public asset")
 	}
 }
 
@@ -433,6 +534,17 @@ func TestGetServeStaticHandlerAndServeStaticMiddleware(t *testing.T) {
 	}
 	if nonAssetRec.Body.String() != "next" {
 		t.Fatalf("unexpected next-handler response body: %q", nonAssetRec.Body.String())
+	}
+
+	prefixedNonAssetReq := httptest.NewRequest(http.MethodGet, "/assets/application/route", nil)
+	prefixedNonAssetRec := httptest.NewRecorder()
+	middlewareHandler.ServeHTTP(prefixedNonAssetRec, prefixedNonAssetReq)
+
+	if prefixedNonAssetRec.Code != http.StatusAccepted {
+		t.Fatalf("expected missing prefixed path to reach next handler, got %d", prefixedNonAssetRec.Code)
+	}
+	if prefixedNonAssetRec.Body.String() != "next" {
+		t.Fatalf("unexpected next-handler response body for missing prefixed path: %q", prefixedNonAssetRec.Body.String())
 	}
 }
 

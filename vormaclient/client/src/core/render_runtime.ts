@@ -525,7 +525,7 @@ export async function setupClientLoaders(): Promise<void> {
 	deriveAndSetErrorState();
 }
 
-export async function __registerClientLoaderPattern(
+export async function registerClientLoaderPattern(
 	pattern: string,
 ): Promise<void> {
 	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
@@ -534,6 +534,8 @@ export async function __registerClientLoaderPattern(
 	}
 	registerPattern(patternRegistry, pattern);
 }
+
+export const __registerClientLoaderPattern = registerClientLoaderPattern;
 
 export async function findPartialMatchesOnClient(pathname: string) {
 	const patternRegistry = __vormaClientGlobal.get("patternRegistry");

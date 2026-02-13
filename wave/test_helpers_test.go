@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 )
 
@@ -133,8 +132,7 @@ func setWaveDevModeForTest(t *testing.T, isDev bool) {
 }
 
 func resetPortCacheForTest() {
-	appPortOnce = sync.Once{}
-	appPortResult = 0
+	defaultPortResolver = NewPortResolver()
 }
 
 func mustReadFileFromFS(t *testing.T, filesystem fs.FS, filePath string) string {

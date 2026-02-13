@@ -14,11 +14,7 @@ import {
 
 export const VormaLink = memo(function VormaLink(
 	props: ComponentProps<"a"> &
-		VormaLinkPropsBase<
-			(
-				e: React.MouseEvent<HTMLAnchorElement, MouseEvent>,
-			) => void | Promise<void>
-		>,
+		VormaLinkPropsBase<React.MouseEvent<HTMLAnchorElement, MouseEvent>>,
 ) {
 	const finalLinkProps = __makeFinalLinkProps(props);
 	// oxlint-disable-next-line no-unused-vars
@@ -44,11 +40,7 @@ type TypedVormaLinkProps<
 	App extends VormaAppBase,
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = Omit<ComponentProps<"a">, "href" | "pattern"> &
-	VormaLinkPropsBase<
-		(
-			e: React.MouseEvent<HTMLAnchorElement, MouseEvent>,
-		) => void | Promise<void>
-	> &
+	VormaLinkPropsBase<React.MouseEvent<HTMLAnchorElement, MouseEvent>> &
 	PermissivePatternBasedProps<App, Pattern> & {
 		search?: string;
 		hash?: string;

@@ -26,6 +26,8 @@ func (w *Wave) initFileMapDetails() (*fileMapDetails, error) {
 	elements, sha256Hash, err := buildPublicFileMapElements(
 		fileMapURL,
 		w.cfg.PublicPathPrefix(),
+		w.cfg.BrowserRuntimeNamespace(),
+		w.cfg.BrowserPublicURLResolverFunctionName(),
 	)
 	if err != nil {
 		return nil, err
@@ -37,7 +39,12 @@ func (w *Wave) initFileMapDetails() (*fileMapDetails, error) {
 	}, nil
 }
 
-func buildPublicFileMapElements(fileMapURL string, publicPathPrefix string) (string, string, error) {
+func buildPublicFileMapElements(
+	fileMapURL string,
+	publicPathPrefix string,
+	browserRuntimeNamespace string,
+	publicURLResolverFunctionName string,
+) (string, string, error) {
 	linkElement := htmlutil.Element{
 		Tag:         "link",
 		Attributes:  map[string]string{"rel": "modulepreload", "href": fileMapURL},
@@ -45,9 +52,14 @@ func buildPublicFileMapElements(fileMapURL string, publicPathPrefix string) (str
 	}
 
 	scriptElement := htmlutil.Element{
-		Tag:                "script",
-		Attributes:         map[string]string{"type": "module"},
-		DangerousInnerHTML: buildPublicFileMapModuleScript(fileMapURL, publicPathPrefix),
+		Tag:        "script",
+		Attributes: map[string]string{"type": "module"},
+		DangerousInnerHTML: buildPublicFileMapModuleScript(
+			fileMapURL,
+			publicPathPrefix,
+			browserRuntimeNamespace,
+			publicURLResolverFunctionName,
+		),
 	}
 
 	scriptSHA256Hash, err := htmlutil.ComputeContentSha256(&scriptElement)
@@ -71,17 +83,30 @@ func buildPublicFileMapElements(fileMapURL string, publicPathPrefix string) (str
 }
 
 const publicFileMapModuleScriptFormat = `
-		import { wavePublicFileMap } from "%s";
-		if (!window.__wave) window.__wave = {};
+		import { wavePublicFileMap } from %q;
+		const browserRuntimeNamespace = %q;
+		const publicURLResolverFunctionName = %q;
+		if (!window[browserRuntimeNamespace]) window[browserRuntimeNamespace] = {};
 		function getPublicURL(originalPublicURL) { 
 			if (originalPublicURL.startsWith("/")) originalPublicURL = originalPublicURL.slice(1);
-			return "%s" + (wavePublicFileMap[originalPublicURL] || originalPublicURL);
+			return %q + (wavePublicFileMap[originalPublicURL] || originalPublicURL);
 		}
-		window.__wave.getPublicURL = getPublicURL;
+		window[browserRuntimeNamespace][publicURLResolverFunctionName] = getPublicURL;
 `
 
-func buildPublicFileMapModuleScript(fileMapURL string, publicPathPrefix string) string {
-	return fmt.Sprintf(publicFileMapModuleScriptFormat, fileMapURL, publicPathPrefix)
+func buildPublicFileMapModuleScript(
+	fileMapURL string,
+	publicPathPrefix string,
+	browserRuntimeNamespace string,
+	publicURLResolverFunctionName string,
+) string {
+	return fmt.Sprintf(
+		publicFileMapModuleScriptFormat,
+		fileMapURL,
+		browserRuntimeNamespace,
+		publicURLResolverFunctionName,
+		publicPathPrefix,
+	)
 }
 
 func (w *Wave) getFileMapDetails() *fileMapDetails {

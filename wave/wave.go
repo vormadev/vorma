@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	CriticalCSSElementID = "wave-critical-css"
-	StyleSheetElementID  = "wave-normal-css"
+	CriticalCSSElementID = DefaultCriticalCSSStyleElementID
+	StyleSheetElementID  = DefaultNonCriticalCSSLinkElementID
 )
 
 // Wave provides runtime services for Wave applications.
@@ -18,6 +18,8 @@ type Wave struct {
 	cfg    *ParsedConfig
 	rawCfg []byte
 	log    *slog.Logger
+
+	portResolver *PortResolver
 
 	distStaticFS fs.FS
 
@@ -82,6 +84,7 @@ func New(c Config) *Wave {
 		rawCfg:       configJSON,
 		log:          resolveWaveLogger(c.Logger),
 		distStaticFS: c.DistStaticFS,
+		portResolver: NewPortResolver(),
 	}
 
 	w.initRuntimeCaches()

@@ -3,9 +3,7 @@
 import { useMemo } from "preact/hooks";
 import type { JSX } from "preact/jsx-runtime";
 import {
-	__registerClientLoaderPattern,
-	__runClientLoadersAfterHMRUpdate,
-	__vormaClientGlobal,
+	__registerClientLoaderForAdapter,
 	type ClientLoaderAwaitedServerData,
 	type ParamsForPattern,
 	type UseRouterDataFunction,
@@ -59,7 +57,6 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 }
 
 export function makeTypedAddClientLoader<App extends VormaAppBase>() {
-	const m = __vormaClientGlobal.get("patternToWaitFnMap");
 	return function addClientLoader<
 		Pattern extends VormaLoaderPattern<App>,
 		LoaderData extends VormaLoaderOutput<App, Pattern>,
@@ -79,14 +76,11 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		const p = props.pattern;
 		const fn = props.clientLoader;
 
-		__registerClientLoaderPattern(p as string).catch((error) => {
-			console.error("Failed to register client loader pattern:", error);
+		__registerClientLoaderForAdapter({
+			pattern: p as string,
+			waitFn: fn as any,
+			reRunOnModuleChange: props.reRunOnModuleChange,
 		});
-		(m as any)[p] = fn;
-
-		if (import.meta.env.DEV && props.reRunOnModuleChange) {
-			__runClientLoadersAfterHMRUpdate(props.reRunOnModuleChange, p);
-		}
 
 		type Res = Awaited<ReturnType<typeof fn>>;
 

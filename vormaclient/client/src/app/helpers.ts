@@ -1,8 +1,5 @@
 import { serializeToSearchParams } from "vorma/kit/json";
-import {
-	isArrayBufferView,
-	isInstanceOfGlobal,
-} from "../platform/safety.ts";
+import { isArrayBufferView, isInstanceOfGlobal } from "../platform/safety.ts";
 import type { SubmitOptions } from "../client.ts";
 
 export type VormaAppConfig = {
@@ -392,6 +389,8 @@ export function resolveBody(props: Props): BodyInit | null | undefined {
 	return resolveVormaRequestBody(props.input);
 }
 
-export function __resolvePath(opts: APIClientHelperOpts): string {
+export function resolvePath(opts: APIClientHelperOpts): string {
 	return resolveVormaPath(opts);
 }
+
+export const __resolvePath = resolvePath;

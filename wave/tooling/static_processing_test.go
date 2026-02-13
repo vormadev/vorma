@@ -521,6 +521,54 @@ func TestProcessPublicFilesOnly_GranularModeRemovesStaleOutputFiles(t *testing.T
 	}
 }
 
+func TestProcessPublicFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	publicDir := cfg.Core.StaticAssetDirs.Public
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public source dir: %v", err)
+	}
+
+	removedFilePath := filepath.Join(publicDir, "removed.txt")
+	if err := os.WriteFile(removedFilePath, []byte("removed"), 0o644); err != nil {
+		t.Fatalf("failed writing removable source file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	initialMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap after initial build returned error: %v", err)
+	}
+	initialEntry := initialMap["removed.txt"]
+	initialDistPath := filepath.Join(cfg.Dist.StaticPublic(), initialEntry.DistName)
+
+	if err := os.RemoveAll(publicDir); err != nil {
+		t.Fatalf("failed removing public source directory: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("ProcessPublicFilesOnly after source dir removal returned error: %v", err)
+	}
+
+	updatedMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap after source dir removal returned error: %v", err)
+	}
+	if len(updatedMap) != 0 {
+		t.Fatalf("expected empty public file map after source dir removal, got %#v", updatedMap)
+	}
+
+	if _, statErr := os.Stat(initialDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected dist artifact to be deleted after source dir removal, stat error: %v", statErr)
+	}
+}
+
 func TestProcessPublicFilesOnly_ReturnsErrorWhenLogicalPathCollidesAcrossSourceLocations(
 	t *testing.T,
 ) {
@@ -869,6 +917,53 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T
 
 	if _, statErr := os.Stat(initialDistPath); !os.IsNotExist(statErr) {
 		t.Fatalf("expected private dist file to be deleted, stat error: %v", statErr)
+	}
+}
+
+func TestProcessPrivateFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateFilePath := filepath.Join(privateDir, "templates", "gone.html")
+	if err := os.MkdirAll(filepath.Dir(privateFilePath), 0o755); err != nil {
+		t.Fatalf("failed creating private source file parent dir: %v", err)
+	}
+	if err := os.WriteFile(privateFilePath, []byte("<h1>gone</h1>"), 0o644); err != nil {
+		t.Fatalf("failed writing private source file: %v", err)
+	}
+
+	if err := builder.ProcessPrivateFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", err)
+	}
+
+	initialMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	if err != nil {
+		t.Fatalf("loadFileMapFromPath after initial build returned error: %v", err)
+	}
+	initialEntry := initialMap["templates/gone.html"]
+	initialDistPath := filepath.Join(cfg.Dist.StaticPrivate(), initialEntry.DistName)
+
+	if err := os.RemoveAll(privateDir); err != nil {
+		t.Fatalf("failed removing private source directory: %v", err)
+	}
+
+	if err := builder.ProcessPrivateFilesOnly(); err != nil {
+		t.Fatalf("ProcessPrivateFilesOnly after source dir removal returned error: %v", err)
+	}
+
+	updatedMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	if err != nil {
+		t.Fatalf("loadFileMapFromPath after source dir removal returned error: %v", err)
+	}
+	if len(updatedMap) != 0 {
+		t.Fatalf("expected empty private file map after source dir removal, got %#v", updatedMap)
+	}
+
+	if _, statErr := os.Stat(initialDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected private dist artifact to be deleted after source dir removal, stat error: %v", statErr)
 	}
 }
 

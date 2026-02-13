@@ -15,11 +15,7 @@ import {
 
 export const VormaLink = memo(function VormaLink(
 	props: JSX.HTMLAttributes<HTMLAnchorElement> &
-		VormaLinkPropsBase<
-			(
-				e: JSX.TargetedMouseEvent<HTMLAnchorElement>,
-			) => void | Promise<void>
-		>,
+		VormaLinkPropsBase<JSX.TargetedMouseEvent<HTMLAnchorElement>>,
 ) {
 	const finalLinkProps = __makeFinalLinkProps(props);
 	// oxlint-disable-next-line no-unused-vars
@@ -45,9 +41,7 @@ type TypedVormaLinkProps<
 	App extends VormaAppBase,
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = Omit<JSX.HTMLAttributes<HTMLAnchorElement>, "href" | "pattern"> &
-	VormaLinkPropsBase<
-		(e: JSX.TargetedMouseEvent<HTMLAnchorElement>) => void | Promise<void>
-	> &
+	VormaLinkPropsBase<JSX.TargetedMouseEvent<HTMLAnchorElement>> &
 	PermissivePatternBasedProps<App, Pattern> & {
 		search?: string;
 		hash?: string;

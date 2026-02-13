@@ -48,6 +48,16 @@ const (
 	FileMapJSGlobPattern  = HashedOutputPrefix + "vorma_internal_public_filemap_*.js"
 )
 
+// Runtime browser integration defaults.
+const (
+	DefaultBrowserRuntimeNamespace              = "__wave"
+	DefaultBrowserPublicURLResolverFunctionName = "getPublicURL"
+	DefaultBrowserRevalidateFunctionName        = "__waveRevalidate"
+	DefaultRefreshRebuildingOverlayElementID    = "wave-refreshscript-rebuilding"
+	DefaultCriticalCSSStyleElementID            = "wave-critical-css"
+	DefaultNonCriticalCSSLinkElementID          = "wave-normal-css"
+)
+
 // Timing represents when an OnChangeHook runs relative to Wave's rebuild process
 type Timing string
 
@@ -119,6 +129,13 @@ type ParsedConfig struct {
 	FrameworkSchemaExtensions    map[string]jsonschema.Entry `json:"-"`
 	FrameworkDevBuildHook        string                      `json:"-"`
 	FrameworkProdBuildHook       string                      `json:"-"`
+
+	FrameworkBrowserRuntimeNamespace              string `json:"-"`
+	FrameworkBrowserPublicURLResolverFunctionName string `json:"-"`
+	FrameworkBrowserRevalidateFunctionName        string `json:"-"`
+	FrameworkRefreshRebuildingOverlayElementID    string `json:"-"`
+	FrameworkCriticalCSSStyleElementID            string `json:"-"`
+	FrameworkNonCriticalCSSLinkElementID          string `json:"-"`
 }
 
 type CoreConfig struct {

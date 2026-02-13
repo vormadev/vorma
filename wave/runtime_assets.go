@@ -70,17 +70,17 @@ func (w *Wave) GetPublicURL(original string) string {
 }
 
 func (w *Wave) checkIsAsset(urlPath string) (bool, error) {
+	publicAssetPath, isPublicAssetPath := w.publicAssetPath(urlPath)
+	if !isPublicAssetPath {
+		return false, nil
+	}
+
 	publicFS, err := w.GetPublicFS()
 	if err != nil {
 		return false, err
 	}
 
-	cleanPath := strings.TrimPrefix(path.Clean(urlPath), "/")
-	if cleanPath == "" || cleanPath == "." {
-		return false, nil
-	}
-
-	info, err := fs.Stat(publicFS, cleanPath)
+	info, err := fs.Stat(publicFS, publicAssetPath)
 	if err != nil {
 		return false, nil
 	}
@@ -88,12 +88,29 @@ func (w *Wave) checkIsAsset(urlPath string) (bool, error) {
 	return !info.IsDir(), nil
 }
 
-func (w *Wave) IsPublicAsset(urlPath string) bool {
-	prefix := w.cfg.PublicPathPrefix()
-	if prefix == "" || prefix == "/" {
-		isAsset, _ := w.isAsset.get(urlPath)
-		return isAsset
+func (w *Wave) publicAssetPath(urlPath string) (string, bool) {
+	cleanURLPath := path.Clean("/" + urlPath)
+	if cleanURLPath == "/" {
+		return "", false
 	}
 
-	return strings.HasPrefix(urlPath, prefix)
+	prefix := w.cfg.PublicPathPrefix()
+	if prefix != "/" {
+		if !strings.HasPrefix(cleanURLPath, prefix) {
+			return "", false
+		}
+		cleanURLPath = strings.TrimPrefix(cleanURLPath, prefix)
+	}
+
+	assetPath := strings.TrimPrefix(cleanURLPath, "/")
+	if assetPath == "" || assetPath == "." {
+		return "", false
+	}
+
+	return assetPath, true
+}
+
+func (w *Wave) IsPublicAsset(urlPath string) bool {
+	isAsset, _ := w.isAsset.get(urlPath)
+	return isAsset
 }

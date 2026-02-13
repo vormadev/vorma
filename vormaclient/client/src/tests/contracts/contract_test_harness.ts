@@ -151,8 +151,9 @@ export function createDeferredFetchCall() {
 
 export function createSignalCapturingNeverFetchSpy() {
 	const signals: AbortSignal[] = [];
-	const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
-		(_url, init) => {
+	const fetchSpy = vi
+		.spyOn(window, "fetch")
+		.mockImplementation((_url, init) => {
 			const signal = (init as RequestInit | undefined)?.signal as
 				| AbortSignal
 				| undefined;
@@ -160,8 +161,7 @@ export function createSignalCapturingNeverFetchSpy() {
 				signals.push(signal);
 			}
 			return new Promise<Response>(() => {});
-		},
-	);
+		});
 
 	return { fetchSpy, signals };
 }
@@ -223,14 +223,17 @@ export function stubWindowLocationHref(initialHref = window.location.href): {
 type FetchSequenceStep =
 	| Response
 	| Promise<Response>
-	| ((props: FetchSequenceCall & { callIndex: number }) => Response | Promise<Response>);
+	| ((
+			props: FetchSequenceCall & { callIndex: number },
+	  ) => Response | Promise<Response>);
 
 export function createSequencedFetchSpy(steps: FetchSequenceStep[]) {
 	const queue = [...steps];
 	const calls: FetchSequenceCall[] = [];
 
-	const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
-		(input, init) => {
+	const fetchSpy = vi
+		.spyOn(window, "fetch")
+		.mockImplementation((input, init) => {
 			const call: FetchSequenceCall = {
 				input: input as RequestInfo | URL,
 				init: init as RequestInit | undefined,
@@ -249,8 +252,7 @@ export function createSequencedFetchSpy(steps: FetchSequenceStep[]) {
 					? step({ ...call, callIndex: calls.length - 1 })
 					: step;
 			return Promise.resolve(value);
-		},
-	);
+		});
 
 	return { fetchSpy, calls };
 }
@@ -265,8 +267,9 @@ type AbortAwareFetchRequest = {
 
 export function createAbortAwareFetchRecorder() {
 	const requests: AbortAwareFetchRequest[] = [];
-	const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
-		(input, init) => {
+	const fetchSpy = vi
+		.spyOn(window, "fetch")
+		.mockImplementation((input, init) => {
 			const signal = (init as RequestInit | undefined)?.signal as
 				| AbortSignal
 				| undefined;
@@ -279,7 +282,8 @@ export function createAbortAwareFetchRecorder() {
 
 			signal?.addEventListener(
 				"abort",
-				() => deferred.reject(new DOMException("Aborted", "AbortError")),
+				() =>
+					deferred.reject(new DOMException("Aborted", "AbortError")),
 				{ once: true },
 			);
 
@@ -292,8 +296,7 @@ export function createAbortAwareFetchRecorder() {
 			});
 
 			return deferred.promise;
-		},
-	);
+		});
 
 	return { fetchSpy, requests };
 }
@@ -328,9 +331,7 @@ export async function waitForRequestCount(props: {
 	throw new Error(`Timed out waiting for request count ${count}`);
 }
 
-export function expectStatusIdle(
-	status: StatusSnapshot | undefined,
-): void {
+export function expectStatusIdle(status: StatusSnapshot | undefined): void {
 	expect(status).toEqual({
 		isNavigating: false,
 		isSubmitting: false,
@@ -351,9 +352,65 @@ export function expectNoLoadingGapBeforeFinalEvent(
 	expect(hasLoadingGap).toBe(false);
 }
 
-export async function loadClientAPI() {
+type PublicClientAPI = typeof import("../../../index.ts");
+type ContractInternalAPI = {
+	__getPrefetchHandlers: typeof import("../../core/links.ts").__getPrefetchHandlers;
+	__makeLinkOnClickFn: typeof import("../../core/links.ts").__makeLinkOnClickFn;
+	__applyScrollState: typeof import("../../platform/scroll.ts").__applyScrollState;
+	__vormaClientGlobal: typeof import("../../app/context.ts").__vormaClientGlobal;
+	__registerClientLoaderPattern: typeof import("../../core/render_runtime.ts").__registerClientLoaderPattern;
+	__makeFinalLinkProps: typeof import("../../ui/helpers.ts").__makeFinalLinkProps;
+	__resolvePath: typeof import("../../app/helpers.ts").__resolvePath;
+	__runClientLoadersAfterHMRUpdate: typeof import("../../core/extras.ts").__runClientLoadersAfterHMRUpdate;
+};
+
+export type ContractClientAPI = PublicClientAPI & ContractInternalAPI;
+
+export async function loadClientAPI(): Promise<ContractClientAPI> {
 	vi.resetModules();
-	return import("../../../index.ts");
+	const [
+		publicClientAPI,
+		linksInternal,
+		scrollInternal,
+		contextInternal,
+		renderRuntimeInternal,
+		extrasInternal,
+		uiHelpersInternal,
+		appHelpersInternal,
+	] = await Promise.all([
+		import("../../../index.ts"),
+		import("../../core/links.ts"),
+		import("../../platform/scroll.ts"),
+		import("../../app/context.ts"),
+		import("../../core/render_runtime.ts"),
+		import("../../core/extras.ts"),
+		import("../../ui/helpers.ts"),
+		import("../../app/helpers.ts"),
+	]);
+
+	// Contract tests may still exercise internal helpers, but we now source
+	// those directly from internal modules so tests do not force public exports.
+	const clientAPI: ContractClientAPI = {
+		...publicClientAPI,
+		__getPrefetchHandlers: linksInternal.__getPrefetchHandlers,
+		__makeLinkOnClickFn: linksInternal.__makeLinkOnClickFn,
+		__applyScrollState: scrollInternal.__applyScrollState,
+		__vormaClientGlobal: contextInternal.__vormaClientGlobal,
+		__registerClientLoaderPattern:
+			renderRuntimeInternal.__registerClientLoaderPattern,
+		__makeFinalLinkProps: uiHelpersInternal.__makeFinalLinkProps,
+		__resolvePath: appHelpersInternal.__resolvePath,
+		__runClientLoadersAfterHMRUpdate:
+			extrasInternal.__runClientLoadersAfterHMRUpdate,
+	};
+
+	Object.defineProperty(clientAPI, "__runClientLoadersAfterHMRUpdate", {
+		get: () => extrasInternal.__runClientLoadersAfterHMRUpdate,
+		enumerable: true,
+		configurable: true,
+	});
+
+	return clientAPI;
 }
 
 export async function registerServerDataFieldProbeLoader(props: {
@@ -362,7 +419,8 @@ export async function registerServerDataFieldProbeLoader(props: {
 	requiredField: string;
 }): Promise<{ serverDataPromiseErrors: Array<unknown> }> {
 	const { api, pattern, requiredField } = props;
-	const patternToWaitFnMap = api.__vormaClientGlobal.get("patternToWaitFnMap");
+	const patternToWaitFnMap =
+		api.__vormaClientGlobal.get("patternToWaitFnMap");
 	const serverDataPromiseErrors: Array<unknown> = [];
 
 	patternToWaitFnMap[pattern] = async ({

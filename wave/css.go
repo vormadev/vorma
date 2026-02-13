@@ -48,7 +48,7 @@ func (w *Wave) buildCriticalCSSData(content string) (*criticalCSSData, error) {
 
 	el := htmlutil.Element{
 		Tag:                 "style",
-		AttributesKnownSafe: map[string]string{"id": CriticalCSSElementID},
+		AttributesKnownSafe: map[string]string{"id": w.cfg.CriticalCSSStyleElementID()},
 		DangerousInnerHTML:  "\n" + result.content,
 	}
 
@@ -102,7 +102,7 @@ func (w *Wave) GetCriticalCSSStyleElementSha256Hash() string {
 }
 
 func (w *Wave) GetCriticalCSSElementID() string {
-	return CriticalCSSElementID
+	return w.cfg.CriticalCSSStyleElementID()
 }
 
 func (w *Wave) initStylesheetURL() (string, error) {
@@ -128,7 +128,7 @@ func (w *Wave) initStylesheetLink() (string, error) {
 	sb.WriteString(`<link rel="stylesheet" href="`)
 	sb.WriteString(url)
 	sb.WriteString(`" id="`)
-	sb.WriteString(StyleSheetElementID)
+	sb.WriteString(w.cfg.NonCriticalCSSLinkElementID())
 	sb.WriteString(`" />`)
 
 	return sb.String(), nil
@@ -140,5 +140,5 @@ func (w *Wave) GetStyleSheetLinkElement() template.HTML {
 }
 
 func (w *Wave) GetStyleSheetElementID() string {
-	return StyleSheetElementID
+	return w.cfg.NonCriticalCSSLinkElementID()
 }

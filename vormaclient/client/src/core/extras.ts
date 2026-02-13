@@ -8,8 +8,15 @@ import {
 import { addStatusListener, type StatusEvent } from "../platform/events.ts";
 import { dispatchRouteChangeEvent } from "../platform/events.ts";
 import { logInfo } from "../platform/safety.ts";
-import { __vormaClientGlobal } from "../app/context.ts";
-import { setupClientLoaders } from "./render_runtime.ts";
+import {
+	type PatternWaitFn,
+	setClientLoaderWaitFn,
+	__vormaClientGlobal,
+} from "../app/context.ts";
+import {
+	__registerClientLoaderPattern,
+	setupClientLoaders,
+} from "./render_runtime.ts";
 
 let devTimeSetupClientLoadersDebounced: () => Promise<void> = () =>
 	Promise.resolve();
@@ -23,10 +30,38 @@ let hmrTrackedPatternsByRuntimeAndPathname: WeakMap<
 	Map<string, Set<string>>
 > = new WeakMap();
 
-export let __runClientLoadersAfterHMRUpdate: (
+export let runClientLoadersAfterHMRUpdate: (
 	importMeta: ImportMeta,
 	pattern: string,
 ) => void = () => {};
+
+export { runClientLoadersAfterHMRUpdate as __runClientLoadersAfterHMRUpdate };
+
+type RegisterClientLoaderForAdapterProps = {
+	pattern: string;
+	waitFn: PatternWaitFn;
+	reRunOnModuleChange?: ImportMeta;
+	onRegistrationError?: (error: unknown) => void;
+};
+
+export function __registerClientLoaderForAdapter(
+	props: RegisterClientLoaderForAdapterProps,
+): void {
+	const { pattern, waitFn, reRunOnModuleChange, onRegistrationError } = props;
+
+	__registerClientLoaderPattern(pattern).catch((error) => {
+		if (onRegistrationError) {
+			onRegistrationError(error);
+			return;
+		}
+		console.error("Failed to register client loader pattern:", error);
+	});
+	setClientLoaderWaitFn(pattern, waitFn);
+
+	if (import.meta.env.DEV && reRunOnModuleChange) {
+		runClientLoadersAfterHMRUpdate(reRunOnModuleChange, pattern);
+	}
+}
 
 type HotModuleRuntime = {
 	on: (
@@ -101,7 +136,7 @@ export function initHMR() {
 			dispatchRouteChangeEvent({});
 		}, 10);
 
-		__runClientLoadersAfterHMRUpdate = (importMeta, pattern) => {
+		runClientLoadersAfterHMRUpdate = (importMeta, pattern) => {
 			const hot = resolveHotModuleRuntime(importMeta);
 			if (import.meta.env.DEV && hot) {
 				const registeredPathnames =

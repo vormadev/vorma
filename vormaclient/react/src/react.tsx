@@ -9,9 +9,9 @@ import {
 } from "react";
 import {
 	__applyScrollState,
+	__getClientRuntimeRenderState,
 	addLocationListener,
 	addRouteChangeListener,
-	__vormaClientGlobal as ctx,
 	getLocation,
 	getRouterData,
 	type RouteChangeEvent,
@@ -39,20 +39,28 @@ type StoreState = {
 	location: ReturnType<typeof getLocation>;
 };
 
+function buildNavigationState(
+	latestEvent: RouteChangeEvent | null,
+): NavigationState {
+	const renderState = __getClientRuntimeRenderState();
+
+	return {
+		latestEvent,
+		loadersData: renderState.loadersData,
+		clientLoadersData: renderState.clientLoadersData,
+		routerData: getRouterData(),
+		outermostError: renderState.outermostError,
+		outermostErrorIdx: renderState.outermostErrorIdx,
+		activeComponents: renderState.activeComponents,
+		activeErrorBoundary: renderState.activeErrorBoundary,
+		importURLs: renderState.importURLs,
+		exportKeys: renderState.exportKeys,
+	};
+}
+
 function getInitialState(): StoreState {
 	return {
-		navigation: {
-			latestEvent: null,
-			loadersData: ctx.get("loadersData"),
-			clientLoadersData: ctx.get("clientLoadersData"),
-			routerData: getRouterData(),
-			outermostError: ctx.get("outermostError"),
-			outermostErrorIdx: ctx.get("outermostErrorIdx"),
-			activeComponents: ctx.get("activeComponents"),
-			activeErrorBoundary: ctx.get("activeErrorBoundary"),
-			importURLs: ctx.get("importURLs"),
-			exportKeys: ctx.get("exportKeys"),
-		},
+		navigation: buildNavigationState(null),
 		location: getLocation(),
 	};
 }
@@ -134,18 +142,7 @@ function initUIListeners() {
 		store.setState((prev) => {
 			return {
 				...prev,
-				navigation: {
-					latestEvent: e,
-					loadersData: ctx.get("loadersData"),
-					clientLoadersData: ctx.get("clientLoadersData"),
-					routerData: getRouterData(),
-					outermostError: ctx.get("outermostError"),
-					outermostErrorIdx: ctx.get("outermostErrorIdx"),
-					activeComponents: ctx.get("activeComponents"),
-					activeErrorBoundary: ctx.get("activeErrorBoundary"),
-					importURLs: ctx.get("importURLs"),
-					exportKeys: ctx.get("exportKeys"),
-				},
+				navigation: buildNavigationState(e),
 			};
 		});
 	});
@@ -180,18 +177,7 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 		store.setState((prev) => {
 			return {
 				...prev,
-				navigation: {
-					latestEvent: null,
-					loadersData: ctx.get("loadersData"),
-					clientLoadersData: ctx.get("clientLoadersData"),
-					routerData: getRouterData(),
-					outermostError: ctx.get("outermostError"),
-					outermostErrorIdx: ctx.get("outermostErrorIdx"),
-					activeComponents: ctx.get("activeComponents"),
-					activeErrorBoundary: ctx.get("activeErrorBoundary"),
-					importURLs: ctx.get("importURLs"),
-					exportKeys: ctx.get("exportKeys"),
-				},
+				navigation: buildNavigationState(null),
 			};
 		});
 	}

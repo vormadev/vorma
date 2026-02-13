@@ -86,6 +86,17 @@ func TestGetPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(t *testing.
 	}
 }
 
+func TestGetPublicURLBuildtimeCached_MissingFileMapReturnsFallback(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	resolved := builder.getPublicURLBuildtimeCached("images/logo.png")
+	if resolved != "/images/logo.png" {
+		t.Fatalf("expected fallback URL when file map is missing, got %q", resolved)
+	}
+}
+
 func TestCSSBuildAll_ReturnsCriticalErrorWithContext(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.CSSEntryFiles = wave.CSSEntryFiles{

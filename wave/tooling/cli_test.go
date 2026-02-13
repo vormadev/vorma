@@ -129,13 +129,9 @@ func TestBuildWave_DoesNotUseGlobalFlagCommandLineParser(t *testing.T) {
 		[]string{"wave-tooling-test", "-no-binary"},
 		customGlobalFlagSet,
 		func() {
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					t.Fatalf("did not expect BuildWave to panic: %v", recovered)
-				}
-			}()
-
-			BuildWave(cfg, newDiscardLogger())
+			if err := BuildWave(cfg, newDiscardLogger()); err != nil {
+				t.Fatalf("did not expect BuildWave to return error: %v", err)
+			}
 
 			if flag.CommandLine != customGlobalFlagSet {
 				t.Fatal("expected global flag.CommandLine pointer to remain unchanged")

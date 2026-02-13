@@ -36,41 +36,66 @@ func SetPort(port int) {
 	os.Setenv(envPort, strconv.Itoa(port))
 }
 
-var (
-	appPortOnce   sync.Once
-	appPortResult int
-)
+type PortResolver struct {
+	resolvePortOnce sync.Once
+	resolvedPort    int
+}
+
+func NewPortResolver() *PortResolver {
+	return &PortResolver{}
+}
+
+var defaultPortResolver = NewPortResolver()
+
+func getDefaultPortResolver() *PortResolver {
+	if defaultPortResolver == nil {
+		defaultPortResolver = NewPortResolver()
+	}
+	return defaultPortResolver
+}
 
 // MustGetPort returns the application port.
 // In dev mode, finds a free port if needed.
 func MustGetPort() int {
-	appPortOnce.Do(func() {
-		if !GetIsDev() || os.Getenv(envPortSet) == "true" {
-			p := GetPort()
-			if p <= 0 {
-				appPortResult = 8080
-			} else {
-				appPortResult = p
-			}
-			return
-		}
+	return getDefaultPortResolver().MustGetPort()
+}
 
-		defaultPort := GetPort()
-		if defaultPort <= 0 {
-			defaultPort = 8080
-		}
+// MustGetPort returns a cached application port scoped to this resolver.
+// In dev mode, finds a free port if needed.
+func (resolver *PortResolver) MustGetPort() int {
+	if resolver == nil {
+		return getDefaultPortResolver().MustGetPort()
+	}
 
-		port, err := netutil.GetFreePort(defaultPort)
-		if err != nil {
-			port = defaultPort
-		}
-
-		SetPort(port)
-		os.Setenv(envPortSet, "true")
-		appPortResult = port
+	resolver.resolvePortOnce.Do(func() {
+		resolver.resolvedPort = resolvePortFromEnvironment()
 	})
 
-	return appPortResult
+	return resolver.resolvedPort
+}
+
+func resolvePortFromEnvironment() int {
+	if !GetIsDev() || os.Getenv(envPortSet) == "true" {
+		port := GetPort()
+		if port <= 0 {
+			return 8080
+		}
+		return port
+	}
+
+	defaultPort := GetPort()
+	if defaultPort <= 0 {
+		defaultPort = 8080
+	}
+
+	port, err := netutil.GetFreePort(defaultPort)
+	if err != nil {
+		port = defaultPort
+	}
+
+	SetPort(port)
+	os.Setenv(envPortSet, "true")
+	return port
 }
 
 func GetRefreshServerPort() int {

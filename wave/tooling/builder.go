@@ -7,12 +7,14 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/executil"
+	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
@@ -428,8 +430,14 @@ func (b *Builder) getPublicURLBuildtimeCached(original string) string {
 	if b.css.cachedFileMap == nil {
 		fm, err := b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 		if err != nil {
-			b.log.Error("failed to load file map for CSS URL resolution", "error", err, "url", original)
-			panic(err)
+			b.log.Warn(
+				"failed to load file map for CSS URL resolution; using fallback URL",
+				"error",
+				err,
+				"url",
+				original,
+			)
+			return matcher.EnsureLeadingSlash(path.Join(b.cfg.PublicPathPrefix(), original))
 		}
 		b.css.cachedFileMap = fm
 	}

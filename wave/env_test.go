@@ -114,6 +114,27 @@ func TestMustGetPortCachesResultAfterFirstCall(t *testing.T) {
 	}
 }
 
+func TestPortResolverInstancesCacheIndependently(t *testing.T) {
+	resetPortCacheForTest()
+	t.Setenv(envMode, "production")
+	t.Setenv(envPort, "5001")
+
+	firstResolver := NewPortResolver()
+	if got := firstResolver.MustGetPort(); got != 5001 {
+		t.Fatalf("expected first resolver to return 5001, got %d", got)
+	}
+
+	t.Setenv(envPort, "5002")
+	secondResolver := NewPortResolver()
+	if got := secondResolver.MustGetPort(); got != 5002 {
+		t.Fatalf("expected second resolver to return 5002, got %d", got)
+	}
+
+	if got := firstResolver.MustGetPort(); got != 5001 {
+		t.Fatalf("expected first resolver cache to remain 5001, got %d", got)
+	}
+}
+
 func TestMustGetPortDevHonorsPortWhenAlreadySet(t *testing.T) {
 	resetPortCacheForTest()
 	t.Setenv(envMode, envModeDev)

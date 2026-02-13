@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/lab/vitecmd"
+	"github.com/vormadev/vorma/wave"
 )
 
 func TestCallViteFilemapInvalidate_ReturnsErrorWhenViteNotRunning(t *testing.T) {
@@ -98,5 +99,30 @@ func TestGetBuilderAndSetBuilder(t *testing.T) {
 	s.setBuilder(builder)
 	if s.getBuilder() != builder {
 		t.Fatal("expected getBuilder to return the builder set by setBuilder")
+	}
+}
+
+func TestServerMustGetPortUsesOwnedResolverState(t *testing.T) {
+	t.Setenv("WAVE_MODE", "production")
+	t.Setenv("WAVE_PORT_HAS_BEEN_SET", "true")
+	t.Setenv("PORT", "6001")
+
+	s := &server{
+		log:          newDiscardLogger(),
+		portResolver: wave.NewPortResolver(),
+	}
+
+	if got := s.mustGetPort(); got != 6001 {
+		t.Fatalf("expected server resolver to return 6001, got %d", got)
+	}
+
+	t.Setenv("PORT", "6002")
+	if got := s.mustGetPort(); got != 6001 {
+		t.Fatalf("expected server resolver to cache first value 6001, got %d", got)
+	}
+
+	s.portResolver = wave.NewPortResolver()
+	if got := s.mustGetPort(); got != 6002 {
+		t.Fatalf("expected refreshed server resolver to return 6002, got %d", got)
 	}
 }

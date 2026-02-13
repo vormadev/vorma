@@ -329,7 +329,7 @@ Use for files that are cached on startup (e.g., templates that are parsed once).
 })
 
 var onlyRunClientDefinedRevalidateFuncSchema = jsonschema.OptionalBoolean(jsonschema.Def{
-	Description: `If true, Wave will call window.__waveRevalidate() instead of reloading the page. Use with frameworks that support hot module replacement or client-side revalidation.`,
+	Description: `If true, Wave will call the configured browser revalidate function (default: window.__waveRevalidate()) instead of reloading the page. Use with frameworks that support hot module replacement or client-side revalidation.`,
 	Default:     false,
 })
 

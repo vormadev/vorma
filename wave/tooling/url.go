@@ -92,20 +92,25 @@ func (b *Builder) LoadPublicFileMap() (wave.FileMap, error) {
 	return b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 }
 
-// AddPublicAssetKeys adds public asset keys for TypeScript generation
-func (b *Builder) AddPublicAssetKeys(statements *tsgen.Statements) *tsgen.Statements {
-	s := statements
-	if s == nil {
-		s = &tsgen.Statements{}
+// AddPublicAssetKeys adds public asset keys for TypeScript generation.
+func (b *Builder) AddPublicAssetKeys(
+	statements *tsgen.Statements,
+) (*tsgen.Statements, error) {
+	resolvedStatements := statements
+	if resolvedStatements == nil {
+		resolvedStatements = &tsgen.Statements{}
 	}
 
 	keys, err := b.PublicFileMapKeys()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("public file map keys: %w", err)
 	}
 
-	s.Serialize("const WAVE_PUBLIC_ASSETS", keys)
-	s.Raw("export type WavePublicAsset", "`${\"/\" | \"\"}${(typeof WAVE_PUBLIC_ASSETS)[number]}`")
+	resolvedStatements.Serialize("const WAVE_PUBLIC_ASSETS", keys)
+	resolvedStatements.Raw(
+		"export type WavePublicAsset",
+		"`${\"/\" | \"\"}${(typeof WAVE_PUBLIC_ASSETS)[number]}`",
+	)
 
-	return s
+	return resolvedStatements, nil
 }

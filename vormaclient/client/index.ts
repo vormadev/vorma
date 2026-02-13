@@ -9,7 +9,9 @@ export {
 	vormaNavigate,
 	type SubmitOptions,
 } from "./src/client.ts";
-export { __registerClientLoaderPattern } from "./src/core/render_runtime.ts";
+// Internal cross-package integration hooks for sibling adapters.
+// `__*` exports are intentionally unstable and not end-user APIs.
+export { registerClientLoaderPattern as __registerClientLoaderPattern } from "./src/core/render_runtime.ts";
 export { defaultErrorBoundary } from "./src/ui/helpers.ts";
 export {
 	addBuildIDListener,
@@ -19,16 +21,16 @@ export {
 	type RouteChangeEvent,
 	type StatusEvent,
 } from "./src/platform/events.ts";
-export { setupGlobalLoadingIndicator } from "./src/core/extras.ts";
-export { __runClientLoadersAfterHMRUpdate } from "./src/core/extras.ts";
+export {
+	revalidateOnWindowFocus,
+	setupGlobalLoadingIndicator,
+} from "./src/core/extras.ts";
+export { runClientLoadersAfterHMRUpdate as __runClientLoadersAfterHMRUpdate } from "./src/core/extras.ts";
+export { __registerClientLoaderForAdapter } from "./src/core/extras.ts";
 export { initClient } from "./src/app/init.ts";
+export { applyScrollState as __applyScrollState } from "./src/platform/scroll.ts";
 export {
-	__getPrefetchHandlers,
-	__makeLinkOnClickFn,
-} from "./src/core/links.ts";
-export { __applyScrollState } from "./src/platform/scroll.ts";
-export {
-	__makeFinalLinkProps,
+	makeFinalLinkProps as __makeFinalLinkProps,
 	type VormaLinkPropsBase,
 } from "./src/ui/helpers.ts";
 export {
@@ -38,9 +40,9 @@ export {
 } from "./src/ui/helpers.ts";
 export { makeTypedNavigate } from "./src/ui/helpers.ts";
 export {
-	__resolvePath,
 	buildMutationURL,
 	buildQueryURL,
+	resolvePath as __resolvePath,
 	resolveBody,
 	type ExtractApp,
 	type PermissivePatternBasedProps,
@@ -59,8 +61,8 @@ export {
 	type VormaRoutePropsGeneric,
 } from "./src/app/helpers.ts";
 export {
-	__vormaClientGlobal,
+	getClientRuntimeRenderState as __getClientRuntimeRenderState,
 	getRouterData,
+	setClientLoaderWaitFn as __setClientLoaderWaitFn,
 	type ClientLoaderAwaitedServerData,
 } from "./src/app/context.ts";
-export { revalidateOnWindowFocus } from "./src/core/extras.ts";

@@ -945,6 +945,83 @@ describe("navigation runtime outcome stale control guards", () => {
 	});
 });
 
+describe("navigation runtime outcome redirect signaling", () => {
+	it("returns didNavigate true when current redirect effectuation completes", async () => {
+		const targetUrl = new URL(
+			"/current-control-redirect",
+			window.location.href,
+		).href;
+		const redirectOutcome = {
+			type: "redirect" as const,
+			redirectData: {
+				status: "should" as const,
+				shouldRedirectStrategy: "soft" as const,
+				latestBuildID: "2",
+				href: "/redirect-destination",
+				hrefDetails: {
+					url: new URL("http://localhost:3000/redirect-destination"),
+					isHTTP: true,
+					isInternal: true,
+					isExternal: false,
+					absoluteURL: "http://localhost:3000/redirect-destination",
+					relativeURL: "/redirect-destination",
+				},
+			},
+			props: {
+				href: targetUrl,
+				navigationType: "browserHistory" as const,
+			},
+		} as NavigationOutcome;
+		const controlPromise = Promise.resolve(redirectOutcome);
+		const currentEntry = createEntry({
+			targetUrl,
+			type: "browserHistory",
+			intent: "navigate",
+		});
+		currentEntry.control.promise = controlPromise;
+
+		const deleteNavigation = vi.fn(() => true);
+		const processSuccessfulNavigation = vi
+			.fn()
+			.mockResolvedValue(undefined);
+		const effectuateRedirectSpy = vi
+			.spyOn(redirectsModule, "effectuateRedirectDataResult")
+			.mockResolvedValue({
+				status: "did",
+				href: "/redirect-destination",
+				hrefDetails: {
+					url: new URL("http://localhost:3000/redirect-destination"),
+					isHTTP: true,
+					isInternal: true,
+					isExternal: false,
+					absoluteURL: "http://localhost:3000/redirect-destination",
+					relativeURL: "/redirect-destination",
+				},
+			});
+
+		try {
+			const result = await handleNavigationOutcome({
+				findNavigationEntry: () => currentEntry,
+				deleteNavigation,
+				processSuccessfulNavigation,
+				navigationProps: {
+					href: targetUrl,
+					navigationType: "browserHistory",
+				},
+				outcome: redirectOutcome,
+				controlPromise,
+			});
+
+			expect(result).toEqual({ didNavigate: true });
+			expect(deleteNavigation).toHaveBeenCalledOnce();
+			expect(deleteNavigation).toHaveBeenCalledWith(targetUrl);
+			expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
+		} finally {
+			effectuateRedirectSpy.mockRestore();
+		}
+	});
+});
+
 describe("navigation runtime success-processing defensive branches", () => {
 	it("hasNavigation reflects tracked entries and hash aliases", async () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
@@ -1805,6 +1882,70 @@ describe("navigation runtime submit stale checkpoints", () => {
 		} finally {
 			handleRedirectsSpy.mockRestore();
 			consoleErrorSpy.mockRestore();
+		}
+	});
+
+	it("returns success with undefined data for 204 submit responses", async () => {
+		const handleRedirectsSpy = vi
+			.spyOn(redirectsModule, "handleRedirects")
+			.mockResolvedValue({
+				redirectData: null,
+				response: createSubmitResponse({
+					status: 204,
+					buildID: "1",
+					json: async () => {
+						throw new Error(
+							"json() should not be called for 204 submit responses",
+						);
+					},
+				}),
+			} as any);
+
+		try {
+			const runtime = createNavigationRuntime();
+			const result = await runtime.submit(
+				"/api/no-content-submit",
+				{ method: "POST" },
+				{ revalidate: false },
+			);
+
+			expect(result).toEqual({
+				success: true,
+				data: undefined,
+			});
+		} finally {
+			handleRedirectsSpy.mockRestore();
+		}
+	});
+
+	it("returns text data for successful non-JSON submit responses", async () => {
+		const handleRedirectsSpy = vi
+			.spyOn(redirectsModule, "handleRedirects")
+			.mockResolvedValue({
+				redirectData: null,
+				response: new Response("ok-text", {
+					status: 200,
+					headers: {
+						"Content-Type": "text/plain",
+						"X-Vorma-Build-Id": "1",
+					},
+				}),
+			} as any);
+
+		try {
+			const runtime = createNavigationRuntime();
+			const result = await runtime.submit(
+				"/api/non-json-submit",
+				{ method: "POST" },
+				{ revalidate: false },
+			);
+
+			expect(result).toEqual({
+				success: true,
+				data: "ok-text",
+			});
+		} finally {
+			handleRedirectsSpy.mockRestore();
 		}
 	});
 
@@ -3212,7 +3353,7 @@ describe("fetchRouteData client-only skip path", () => {
 		}
 	});
 
-	it("throws when the server returns 304 without route JSON payload", async () => {
+	it("throws explicit error when server route-data request returns 304", async () => {
 		const logErrorSpy = vi
 			.spyOn(console, "error")
 			.mockImplementation(() => {});
@@ -3233,7 +3374,7 @@ describe("fetchRouteData client-only skip path", () => {
 				href: "/not-modified",
 				navigationType: "userNavigation",
 			}),
-		).rejects.toThrow("No JSON response");
+		).rejects.toThrow("Fetch returned 304 without route JSON payload.");
 		expect(logErrorSpy).toHaveBeenCalled();
 		logErrorSpy.mockRestore();
 	});

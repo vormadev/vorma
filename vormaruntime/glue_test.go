@@ -462,7 +462,7 @@ func TestVormaServeStatic_PublicAssetAndPassthroughContracts(t *testing.T) {
 		}
 	})
 
-	t.Run("missing_static_namespace_path_returns_404_without_next", func(t *testing.T) {
+	t.Run("missing_static_namespace_path_passthroughs_to_next", func(t *testing.T) {
 		nextCalled := false
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			nextCalled = true
@@ -475,11 +475,14 @@ func TestVormaServeStatic_PublicAssetAndPassthroughContracts(t *testing.T) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		if rec.Code != http.StatusTeapot {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusTeapot)
 		}
-		if nextCalled {
-			t.Fatal("next handler should not be called for static namespace paths")
+		if got := rec.Body.String(); got != "next-handler" {
+			t.Fatalf("body = %q, want %q", got, "next-handler")
+		}
+		if !nextCalled {
+			t.Fatal("next handler should be called when static namespace path is missing")
 		}
 	})
 }

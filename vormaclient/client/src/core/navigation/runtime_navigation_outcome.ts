@@ -89,14 +89,13 @@ async function executeNavigationOutcomeAction(props: {
 		case "stop":
 			return { didNavigate: false };
 		case "redirect":
-			await handleRedirectOutcomeForEntry({
+			return await handleRedirectOutcomeForEntry({
 				entry: action.entry,
 				outcome: action.outcome,
 				deleteNavigation,
 				targetUrl,
 				navigationProps,
 			});
-			return { didNavigate: false };
 		case "success":
 			if (action.shouldResolveIntent) {
 				onNavigationIntentResolved?.();
@@ -208,23 +207,23 @@ async function handleRedirectOutcomeForEntry(props: {
 	deleteNavigation: (key: string) => boolean;
 	targetUrl: string;
 	navigationProps: NavigateProps;
-}): Promise<void> {
+}): Promise<{ didNavigate: boolean }> {
 	const { entry, outcome, deleteNavigation, targetUrl, navigationProps } =
 		props;
 
 	switch (getRedirectOutcomeStep(entry)) {
 		case "ignore":
 			deleteNavigation(targetUrl);
-			return;
+			return { didNavigate: false };
 		case "effectuate":
 			syncBuildIDFromRedirectData(outcome.redirectData);
 			deleteNavigation(targetUrl);
-			await effectuateRedirectDataResult(
+			const redirectResult = await effectuateRedirectDataResult(
 				outcome.redirectData,
 				navigationProps.redirectCount || 0,
 				navigationProps,
 			);
-			return;
+			return { didNavigate: redirectResult?.status === "did" };
 	}
 }
 

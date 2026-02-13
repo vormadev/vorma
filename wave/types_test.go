@@ -207,6 +207,79 @@ func TestParsedConfigCSSEntryCleaning(t *testing.T) {
 	}
 }
 
+func TestParsedConfigBrowserRuntimeDefaultsAndOverrides(t *testing.T) {
+	var nilCfg *ParsedConfig
+	if got := nilCfg.BrowserRuntimeNamespace(); got != DefaultBrowserRuntimeNamespace {
+		t.Fatalf("nil config browser runtime namespace = %q, want %q", got, DefaultBrowserRuntimeNamespace)
+	}
+
+	cfg := &ParsedConfig{Core: &CoreConfig{}}
+	if got := cfg.BrowserRuntimeNamespace(); got != DefaultBrowserRuntimeNamespace {
+		t.Fatalf("default browser runtime namespace = %q, want %q", got, DefaultBrowserRuntimeNamespace)
+	}
+	if got := cfg.BrowserPublicURLResolverFunctionName(); got != DefaultBrowserPublicURLResolverFunctionName {
+		t.Fatalf(
+			"default public URL resolver function name = %q, want %q",
+			got,
+			DefaultBrowserPublicURLResolverFunctionName,
+		)
+	}
+	if got := cfg.BrowserRevalidateFunctionName(); got != DefaultBrowserRevalidateFunctionName {
+		t.Fatalf(
+			"default browser revalidate function name = %q, want %q",
+			got,
+			DefaultBrowserRevalidateFunctionName,
+		)
+	}
+	if got := cfg.RefreshRebuildingOverlayElementID(); got != DefaultRefreshRebuildingOverlayElementID {
+		t.Fatalf(
+			"default refresh rebuilding overlay element ID = %q, want %q",
+			got,
+			DefaultRefreshRebuildingOverlayElementID,
+		)
+	}
+	if got := cfg.CriticalCSSStyleElementID(); got != DefaultCriticalCSSStyleElementID {
+		t.Fatalf(
+			"default critical CSS style element ID = %q, want %q",
+			got,
+			DefaultCriticalCSSStyleElementID,
+		)
+	}
+	if got := cfg.NonCriticalCSSLinkElementID(); got != DefaultNonCriticalCSSLinkElementID {
+		t.Fatalf(
+			"default non-critical CSS link element ID = %q, want %q",
+			got,
+			DefaultNonCriticalCSSLinkElementID,
+		)
+	}
+
+	cfg.FrameworkBrowserRuntimeNamespace = "__vorma_runtime"
+	cfg.FrameworkBrowserPublicURLResolverFunctionName = "resolvePublicURL"
+	cfg.FrameworkBrowserRevalidateFunctionName = "__vorma_revalidate"
+	cfg.FrameworkRefreshRebuildingOverlayElementID = "vorma-refresh-overlay"
+	cfg.FrameworkCriticalCSSStyleElementID = "vorma-critical-css"
+	cfg.FrameworkNonCriticalCSSLinkElementID = "vorma-noncritical-css"
+
+	if got := cfg.BrowserRuntimeNamespace(); got != "__vorma_runtime" {
+		t.Fatalf("configured browser runtime namespace = %q, want __vorma_runtime", got)
+	}
+	if got := cfg.BrowserPublicURLResolverFunctionName(); got != "resolvePublicURL" {
+		t.Fatalf("configured public URL resolver function name = %q, want resolvePublicURL", got)
+	}
+	if got := cfg.BrowserRevalidateFunctionName(); got != "__vorma_revalidate" {
+		t.Fatalf("configured browser revalidate function name = %q, want __vorma_revalidate", got)
+	}
+	if got := cfg.RefreshRebuildingOverlayElementID(); got != "vorma-refresh-overlay" {
+		t.Fatalf("configured refresh rebuilding overlay element ID = %q, want vorma-refresh-overlay", got)
+	}
+	if got := cfg.CriticalCSSStyleElementID(); got != "vorma-critical-css" {
+		t.Fatalf("configured critical CSS style element ID = %q, want vorma-critical-css", got)
+	}
+	if got := cfg.NonCriticalCSSLinkElementID(); got != "vorma-noncritical-css" {
+		t.Fatalf("configured non-critical CSS link element ID = %q, want vorma-noncritical-css", got)
+	}
+}
+
 func TestWatchedFileSortGroupsHooksAndIsIdempotent(t *testing.T) {
 	wf := &WatchedFile{
 		OnChangeHooks: []OnChangeHook{

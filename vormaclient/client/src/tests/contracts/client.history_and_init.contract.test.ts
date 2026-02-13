@@ -265,6 +265,77 @@ describe("client history/init contracts", () => {
 		expect(fetchURL.href).toContain("/to-page?vorma_json=1");
 	});
 
+	it("follows cross-document POP redirects and renders redirected destination", async () => {
+		const api = await loadClientAPI();
+		api.getHistoryInstance();
+		const { customHistoryListener } =
+			await import("../../platform/history.ts");
+
+		await customHistoryListener({
+			action: "PUSH",
+			location: {
+				pathname: "/from-pop-redirect",
+				search: "",
+				hash: "",
+				state: null,
+				key: "from-pop-redirect-key",
+			},
+		} as any);
+
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Client-Redirect": "/pop-redirect-destination",
+							"X-Vorma-Build-Id": "2",
+						},
+					},
+				),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{
+						title: {
+							dangerousInnerHTML: "POP Redirect Destination",
+						},
+					},
+					{
+						headers: {
+							"X-Vorma-Build-Id": "2",
+						},
+					},
+				),
+			);
+
+		await customHistoryListener({
+			action: "POP",
+			location: {
+				pathname: "/pop-redirect-source",
+				search: "",
+				hash: "",
+				state: null,
+				key: "pop-redirect-source-key",
+			},
+		} as any);
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		const firstFetchURL = fetchSpy.mock.calls[0]?.[0] as URL;
+		const secondFetchURL = fetchSpy.mock.calls[1]?.[0] as URL;
+		expect(firstFetchURL.pathname).toBe("/pop-redirect-source");
+		expect(secondFetchURL.pathname).toBe("/pop-redirect-destination");
+		expect(window.location.pathname).toBe("/pop-redirect-destination");
+		expect(document.title).toBe("POP Redirect Destination");
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+	});
+
 	it("uses listener location payload as the source of truth for cross-document POP target", async () => {
 		const api = await loadClientAPI();
 		api.getHistoryInstance();

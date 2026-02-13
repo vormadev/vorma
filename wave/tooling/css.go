@@ -328,86 +328,21 @@ func (p *cssProcessor) writeNormalCSSOutput(cssBytes []byte) (string, error) {
 	normalCSSRefPath := p.cfg.Dist.NormalCSSRef()
 	normalCSSOutputFileName := hashBytes(cssBytes, wave.NormalCSSBaseName)
 
-	if err := os.MkdirAll(normalCSSOutputDirectoryPath, 0o755); err != nil {
-		return "", fmt.Errorf("mkdir: %w", err)
+	publishedNormalCSSOutputFileName, publishError := publishHashedArtifactWithRef(
+		hashedArtifactPublishOptions{
+			log:                   p.log,
+			outputDirectoryPath:   normalCSSOutputDirectoryPath,
+			refFilePath:           normalCSSRefPath,
+			desiredHashedFileName: normalCSSOutputFileName,
+			content:               cssBytes,
+			globPattern:           wave.NormalCSSGlobPattern,
+		},
+	)
+	if publishError != nil {
+		return "", fmt.Errorf("publish CSS output: %w", publishError)
 	}
 
-	previousNormalCSSOutputFileName, hasPreviousRefFile, readRefError := p.readNormalCSSRefFileName(normalCSSRefPath)
-	if readRefError != nil {
-		return "", readRefError
-	}
-
-	normalCSSOutputFilePath := filepath.Join(normalCSSOutputDirectoryPath, normalCSSOutputFileName)
-	if hasPreviousRefFile && previousNormalCSSOutputFileName == normalCSSOutputFileName {
-		if _, statError := os.Stat(normalCSSOutputFilePath); statError == nil {
-			return normalCSSOutputFileName, nil
-		} else if !os.IsNotExist(statError) {
-			return "", statError
-		}
-	}
-
-	if hasPreviousRefFile &&
-		previousNormalCSSOutputFileName != "" &&
-		previousNormalCSSOutputFileName != normalCSSOutputFileName {
-		p.removeNormalCSSArtifact(
-			filepath.Join(normalCSSOutputDirectoryPath, previousNormalCSSOutputFileName),
-		)
-	}
-	if !hasPreviousRefFile {
-		p.cleanupOldNormalCSSFilesWhenRefFileMissing(
-			normalCSSOutputDirectoryPath,
-			normalCSSOutputFileName,
-		)
-	}
-
-	if _, writeError := writeFileAtomicBytesIfChanged(normalCSSOutputFilePath, cssBytes); writeError != nil {
-		return "", writeError
-	}
-
-	if _, writeError := writeFileAtomicBytesIfChanged(normalCSSRefPath, []byte(normalCSSOutputFileName)); writeError != nil {
-		return "", fmt.Errorf("write CSS ref: %w", writeError)
-	}
-	return normalCSSOutputFileName, nil
-}
-
-func (p *cssProcessor) readNormalCSSRefFileName(
-	normalCSSRefPath string,
-) (string, bool, error) {
-	existingRefData, readError := os.ReadFile(normalCSSRefPath)
-	if readError != nil {
-		if os.IsNotExist(readError) {
-			return "", false, nil
-		}
-		return "", false, readError
-	}
-
-	return strings.TrimSpace(string(existingRefData)), true, nil
-}
-
-func (p *cssProcessor) removeNormalCSSArtifact(artifactPath string) {
-	if removeError := os.Remove(artifactPath); removeError != nil && !os.IsNotExist(removeError) {
-		p.log.Warn("failed to remove old CSS file", "file", artifactPath, "error", removeError)
-	}
-}
-
-func (p *cssProcessor) cleanupOldNormalCSSFilesWhenRefFileMissing(
-	normalCSSOutputDirectoryPath string,
-	normalCSSOutputFileName string,
-) {
-	oldFiles, globError := filepath.Glob(filepath.Join(normalCSSOutputDirectoryPath, wave.NormalCSSGlobPattern))
-	if globError != nil {
-		p.log.Warn("failed to glob old CSS files", "error", globError)
-		return
-	}
-
-	for _, oldFilePath := range oldFiles {
-		if filepath.Base(oldFilePath) == normalCSSOutputFileName {
-			continue
-		}
-		if removeError := os.Remove(oldFilePath); removeError != nil {
-			p.log.Warn("failed to remove old CSS file", "file", oldFilePath, "error", removeError)
-		}
-	}
+	return publishedNormalCSSOutputFileName, nil
 }
 
 func (p *cssProcessor) invalidateHotReloadOutputForBuildNature(

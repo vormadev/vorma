@@ -195,7 +195,10 @@ func TestAddPublicAssetKeys_EmitsTypedAssetKeyDefinitions(t *testing.T) {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
-	statements := builder.AddPublicAssetKeys(nil)
+	statements, err := builder.AddPublicAssetKeys(nil)
+	if err != nil {
+		t.Fatalf("AddPublicAssetKeys returned error: %v", err)
+	}
 	generated := statements.BuildString()
 
 	if !strings.Contains(generated, "const WAVE_PUBLIC_ASSETS") {
@@ -206,5 +209,20 @@ func TestAddPublicAssetKeys_EmitsTypedAssetKeyDefinitions(t *testing.T) {
 	}
 	if !strings.Contains(generated, "images/logo.png") || !strings.Contains(generated, "scripts/app.js") {
 		t.Fatalf("expected generated output to include public asset keys, got:\n%s", generated)
+	}
+}
+
+func TestAddPublicAssetKeys_ReturnsErrorWhenFileMapIsMissing(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	_, err := builder.AddPublicAssetKeys(nil)
+	if err == nil {
+		t.Fatal("expected AddPublicAssetKeys to return error when file map is missing")
+	}
+	if !strings.Contains(err.Error(), "public file map keys") {
+		t.Fatalf("unexpected AddPublicAssetKeys error: %v", err)
 	}
 }

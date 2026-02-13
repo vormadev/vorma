@@ -11,9 +11,9 @@ import {
 import { Dynamic } from "solid-js/web";
 import {
 	__applyScrollState,
+	__getClientRuntimeRenderState,
 	addLocationListener,
 	addRouteChangeListener,
-	__vormaClientGlobal as ctx,
 	getLocation,
 	getRouterData,
 	type RouteChangeEvent,
@@ -26,29 +26,48 @@ import {
 const [latestEvent, setLatestEvent] = createSignal<RouteChangeEvent | null>(
 	null,
 );
-const [loadersData, setLoadersData] = createSignal(ctx.get("loadersData"));
+const initialRenderState = __getClientRuntimeRenderState();
+const [loadersData, setLoadersData] = createSignal(
+	initialRenderState.loadersData,
+);
 const [clientLoadersData, setClientLoadersData] = createSignal(
-	ctx.get("clientLoadersData"),
+	initialRenderState.clientLoadersData,
 );
 const [routerData, setRouterData] = createSignal(getRouterData());
 const [outermostErrorIdx, setOutermostErrorIdx] = createSignal(
-	ctx.get("outermostErrorIdx"),
+	initialRenderState.outermostErrorIdx,
 );
 const [outermostError, setOutermostError] = createSignal(
-	ctx.get("outermostError"),
+	initialRenderState.outermostError,
 );
 const [activeComponents, setActiveComponents] = createSignal(
-	ctx.get("activeComponents") as Array<ValidComponent> | null,
+	initialRenderState.activeComponents as Array<ValidComponent> | null,
 );
 const [activeErrorBoundary, setActiveErrorBoundary] = createSignal(
-	ctx.get("activeErrorBoundary") as ValidComponent | undefined,
+	initialRenderState.activeErrorBoundary as ValidComponent | undefined,
 );
-const [importURLs, setImportURLs] = createSignal(ctx.get("importURLs"));
-const [exportKeys, setExportKeys] = createSignal(ctx.get("exportKeys"));
+const [importURLs, setImportURLs] = createSignal(initialRenderState.importURLs);
+const [exportKeys, setExportKeys] = createSignal(initialRenderState.exportKeys);
 
 export { clientLoadersData, loadersData, routerData };
 
 let isInited = false;
+
+function syncRuntimeRenderState(): void {
+	const renderState = __getClientRuntimeRenderState();
+	setLoadersData(renderState.loadersData);
+	setClientLoadersData(renderState.clientLoadersData);
+	setOutermostErrorIdx(renderState.outermostErrorIdx);
+	setOutermostError(renderState.outermostError);
+	setActiveComponents(
+		renderState.activeComponents as Array<ValidComponent> | null,
+	);
+	setActiveErrorBoundary(() => {
+		return renderState.activeErrorBoundary as ValidComponent | undefined;
+	});
+	setImportURLs(renderState.importURLs);
+	setExportKeys(renderState.exportKeys);
+}
 
 function initUIListeners() {
 	if (isInited) return;
@@ -57,21 +76,8 @@ function initUIListeners() {
 	addRouteChangeListener((e) => {
 		batch(() => {
 			setLatestEvent(e);
-			setLoadersData(ctx.get("loadersData"));
-			setClientLoadersData(ctx.get("clientLoadersData"));
+			syncRuntimeRenderState();
 			setRouterData(getRouterData());
-			setOutermostErrorIdx(ctx.get("outermostErrorIdx"));
-			setOutermostError(ctx.get("outermostError"));
-			setActiveComponents(
-				ctx.get("activeComponents") as Array<ValidComponent> | null,
-			);
-			setActiveErrorBoundary(() => {
-				return ctx.get("activeErrorBoundary") as
-					| ValidComponent
-					| undefined;
-			});
-			setImportURLs(ctx.get("importURLs"));
-			setExportKeys(ctx.get("exportKeys"));
 		});
 	});
 
@@ -95,21 +101,8 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 		initUIListeners();
 
 		batch(() => {
-			setLoadersData(ctx.get("loadersData"));
-			setClientLoadersData(ctx.get("clientLoadersData"));
+			syncRuntimeRenderState();
 			setRouterData(getRouterData());
-			setOutermostErrorIdx(ctx.get("outermostErrorIdx"));
-			setOutermostError(ctx.get("outermostError"));
-			setActiveComponents(
-				ctx.get("activeComponents") as Array<ValidComponent> | null,
-			);
-			setActiveErrorBoundary(() => {
-				return ctx.get("activeErrorBoundary") as
-					| ValidComponent
-					| undefined;
-			});
-			setImportURLs(ctx.get("importURLs"));
-			setExportKeys(ctx.get("exportKeys"));
 		});
 	}
 

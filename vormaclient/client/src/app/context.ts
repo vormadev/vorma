@@ -117,9 +117,11 @@ export function getRouterData<
 	T = unknown,
 	P extends Record<string, string> = Record<string, string>,
 >() {
-	const rootData = (__vormaClientGlobal.get("hasRootData")
-		? __vormaClientGlobal.get("loadersData")[0]
-		: null) as T;
+	const rootData = (
+		__vormaClientGlobal.get("hasRootData")
+			? __vormaClientGlobal.get("loadersData")[0]
+			: null
+	) as T;
 	return {
 		buildID: __vormaClientGlobal.get("buildID") || "",
 		matchedPatterns: __vormaClientGlobal.get("matchedPatterns") || [],
@@ -127,6 +129,42 @@ export function getRouterData<
 		params: (__vormaClientGlobal.get("params") || {}) as P,
 		rootData,
 	};
+}
+
+export type ClientRuntimeRenderState = Pick<
+	VormaClientGlobal,
+	| "loadersData"
+	| "clientLoadersData"
+	| "outermostError"
+	| "outermostErrorIdx"
+	| "activeComponents"
+	| "activeErrorBoundary"
+	| "importURLs"
+	| "exportKeys"
+>;
+
+export function getClientRuntimeRenderState(): ClientRuntimeRenderState {
+	return {
+		loadersData: __vormaClientGlobal.get("loadersData"),
+		clientLoadersData: __vormaClientGlobal.get("clientLoadersData"),
+		outermostError: __vormaClientGlobal.get("outermostError"),
+		outermostErrorIdx: __vormaClientGlobal.get("outermostErrorIdx"),
+		activeComponents: __vormaClientGlobal.get("activeComponents"),
+		activeErrorBoundary: __vormaClientGlobal.get("activeErrorBoundary"),
+		importURLs: __vormaClientGlobal.get("importURLs"),
+		exportKeys: __vormaClientGlobal.get("exportKeys"),
+	};
+}
+
+export function setClientLoaderWaitFn(
+	pattern: string,
+	waitFn: PatternWaitFn,
+): void {
+	const currentMap = __vormaClientGlobal.get("patternToWaitFnMap") || {};
+	__vormaClientGlobal.set("patternToWaitFnMap", {
+		...currentMap,
+		[pattern]: waitFn,
+	});
 }
 
 export type NavigationStateAccess = Pick<

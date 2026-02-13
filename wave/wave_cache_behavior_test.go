@@ -107,6 +107,38 @@ func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 	})
 }
 
+func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
+	t.Run("production caches first file existence", func(t *testing.T) {
+		fixture := newWaveTestFixture(t)
+		w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+
+		if !w.IsPublicAsset("/assets/logo.txt") {
+			t.Fatal("expected /assets/logo.txt to be an asset on first production lookup")
+		}
+		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
+			t.Fatalf("failed to remove public file: %v", err)
+		}
+		if !w.IsPublicAsset("/assets/logo.txt") {
+			t.Fatal("expected production mode to reuse cached prefixed file-existence result")
+		}
+	})
+
+	t.Run("development recomputes file existence", func(t *testing.T) {
+		fixture := newWaveTestFixture(t)
+		w := newWaveForTest(t, fixture, true, nil)
+
+		if !w.IsPublicAsset("/assets/logo.txt") {
+			t.Fatal("expected /assets/logo.txt to be an asset on first development lookup")
+		}
+		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
+			t.Fatalf("failed to remove public file: %v", err)
+		}
+		if w.IsPublicAsset("/assets/logo.txt") {
+			t.Fatal("expected development mode to recompute prefixed file existence")
+		}
+	})
+}
+
 func TestCriticalCSSCachingDiffersByMode(t *testing.T) {
 	t.Run("production caches first critical css payload", func(t *testing.T) {
 		fixture := newWaveTestFixture(t)

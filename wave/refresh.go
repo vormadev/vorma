@@ -20,7 +20,9 @@ func (w *Wave) GetRefreshScript() template.HTML {
 		port = defaultRefreshPort
 	}
 
-	return template.HTML(fmt.Sprintf("<script>%s</script>", RefreshScriptInner(port)))
+	return template.HTML(
+		fmt.Sprintf("<script>%s</script>", RefreshScriptInnerWithParsedConfig(port, w.cfg)),
+	)
 }
 
 func (w *Wave) GetRefreshScriptSha256Hash() string {
@@ -33,14 +35,54 @@ func (w *Wave) GetRefreshScriptSha256Hash() string {
 		port = defaultRefreshPort
 	}
 
-	hash := cryptoutil.Sha256Hash([]byte(RefreshScriptInner(port)))
+	hash := cryptoutil.Sha256Hash([]byte(RefreshScriptInnerWithParsedConfig(port, w.cfg)))
 	return bytesutil.ToBase64(hash)
 }
 
 // RefreshScriptInner returns the raw JavaScript for the refresh script.
 // Exported so devserver can serve it via HTTP endpoint.
 func RefreshScriptInner(port int) string {
-	return fmt.Sprintf(refreshScriptTemplate, port)
+	return refreshScriptInnerWithConfig(
+		port,
+		refreshScriptConfig{
+			browserRevalidateFunctionName:     DefaultBrowserRevalidateFunctionName,
+			refreshRebuildingOverlayElementID: DefaultRefreshRebuildingOverlayElementID,
+			nonCriticalCSSLinkElementID:       DefaultNonCriticalCSSLinkElementID,
+			criticalCSSStyleElementID:         DefaultCriticalCSSStyleElementID,
+		},
+	)
+}
+
+// RefreshScriptInnerWithParsedConfig returns the raw JavaScript for the refresh
+// script, resolving runtime browser integration names from ParsedConfig.
+func RefreshScriptInnerWithParsedConfig(port int, parsedConfig *ParsedConfig) string {
+	return refreshScriptInnerWithConfig(
+		port,
+		refreshScriptConfig{
+			browserRevalidateFunctionName:     parsedConfig.BrowserRevalidateFunctionName(),
+			refreshRebuildingOverlayElementID: parsedConfig.RefreshRebuildingOverlayElementID(),
+			nonCriticalCSSLinkElementID:       parsedConfig.NonCriticalCSSLinkElementID(),
+			criticalCSSStyleElementID:         parsedConfig.CriticalCSSStyleElementID(),
+		},
+	)
+}
+
+type refreshScriptConfig struct {
+	browserRevalidateFunctionName     string
+	refreshRebuildingOverlayElementID string
+	nonCriticalCSSLinkElementID       string
+	criticalCSSStyleElementID         string
+}
+
+func refreshScriptInnerWithConfig(port int, config refreshScriptConfig) string {
+	return fmt.Sprintf(
+		refreshScriptTemplate,
+		config.refreshRebuildingOverlayElementID,
+		port,
+		config.nonCriticalCSSLinkElementID,
+		config.criticalCSSStyleElementID,
+		config.browserRevalidateFunctionName,
+	)
 }
 
 const refreshScriptTemplate = `
@@ -48,8 +90,9 @@ function base64ToUTF8(base64) {
 	const bytes = Uint8Array.from(atob(base64), (m) => m.codePointAt(0) || 0);
 	return new TextDecoder().decode(bytes);
 }
+const refreshRebuildingOverlayElementID = %q;
 function getCurrentEl() {
-	return document.getElementById("wave-refreshscript-rebuilding");
+	return document.getElementById(refreshRebuildingOverlayElementID);
 }
 const scrollYKey = "__wave_internal__devScrollY";
 const scrollY = sessionStorage.getItem(scrollYKey);
@@ -60,7 +103,16 @@ if (scrollY) {
 		window.scrollTo({ top: scrollY, behavior: "smooth" })
 	}, 150);
 }
-const ws = new WebSocket("ws://localhost:%d/events");
+const refreshWebSocketURL = new URL(window.location.href);
+refreshWebSocketURL.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+refreshWebSocketURL.port = String(%d);
+refreshWebSocketURL.pathname = "/events";
+refreshWebSocketURL.search = "";
+refreshWebSocketURL.hash = "";
+const ws = new WebSocket(refreshWebSocketURL.toString());
+const nonCriticalCSSLinkElementID = %q;
+const criticalCSSStyleElementID = %q;
+const browserRevalidateFunctionName = %q;
 ws.onopen = () => {
 	ws.send("ping");
 };
@@ -72,7 +124,7 @@ ws.onmessage = (e) => {
 		if (!currentEl) {
 			const el = document.createElement("div");
 			el.innerHTML = "Rebuilding...";
-			el.id = "wave-refreshscript-rebuilding";
+			el.id = refreshRebuildingOverlayElementID;
 			el.style.display = "flex";
 			el.style.position = "fixed";
 			el.style.inset = "0";
@@ -104,9 +156,9 @@ ws.onmessage = (e) => {
 		window.location.reload();
 	}
 	if (changeType == "normal") {
-		const oldLink = document.getElementById("wave-normal-css");
+		const oldLink = document.getElementById(nonCriticalCSSLinkElementID);
 		const newLink = document.createElement("link");
-		newLink.id = "wave-normal-css";
+		newLink.id = nonCriticalCSSLinkElementID;
 		newLink.rel = "stylesheet";
 		newLink.href = normalCSSURL;
 		if (oldLink && oldLink.parentNode) {
@@ -117,9 +169,9 @@ ws.onmessage = (e) => {
 		}
 	}
 	if (changeType == "critical") {
-		const oldStyle = document.getElementById("wave-critical-css");
+		const oldStyle = document.getElementById(criticalCSSStyleElementID);
 		const newStyle = document.createElement("style");
-		newStyle.id = "wave-critical-css";
+		newStyle.id = criticalCSSStyleElementID;
 		newStyle.innerHTML = base64ToUTF8(criticalCSS);
 		if (oldStyle && oldStyle.parentNode) {
 			oldStyle.parentNode.replaceChild(newStyle, oldStyle);
@@ -130,13 +182,17 @@ ws.onmessage = (e) => {
 	if (changeType == "revalidate") {
 		console.log("Wave: Revalidating...");
 		const el = getCurrentEl();
-		if ("__waveRevalidate" in window) {
-			window.__waveRevalidate().then(() => {
+		const revalidateFunction = window[browserRevalidateFunctionName];
+		if (typeof revalidateFunction === "function") {
+			Promise.resolve(revalidateFunction()).then(() => {
 				console.log("Wave: Revalidated");
+				el?.remove();
+			}).catch((error) => {
+				console.error("Wave: Revalidate failed", error);
 				el?.remove();
 			});
 		} else {
-			console.error("No __waveRevalidate() found");
+			console.error("No revalidate function found", browserRevalidateFunctionName);
 			el?.remove();
 		}
 	}

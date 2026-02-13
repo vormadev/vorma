@@ -20,6 +20,30 @@ func (w *Wave) SetPublicFileMapOutDir(dir string) {
 	w.cfg.FrameworkPublicFileMapOutDir = dir
 }
 
+func (w *Wave) SetBrowserRuntimeNamespace(namespace string) {
+	w.cfg.FrameworkBrowserRuntimeNamespace = namespace
+}
+
+func (w *Wave) SetBrowserPublicURLResolverFunctionName(functionName string) {
+	w.cfg.FrameworkBrowserPublicURLResolverFunctionName = functionName
+}
+
+func (w *Wave) SetBrowserRevalidateFunctionName(functionName string) {
+	w.cfg.FrameworkBrowserRevalidateFunctionName = functionName
+}
+
+func (w *Wave) SetRefreshRebuildingOverlayElementID(elementID string) {
+	w.cfg.FrameworkRefreshRebuildingOverlayElementID = elementID
+}
+
+func (w *Wave) SetCriticalCSSStyleElementID(elementID string) {
+	w.cfg.FrameworkCriticalCSSStyleElementID = elementID
+}
+
+func (w *Wave) SetNonCriticalCSSLinkElementID(elementID string) {
+	w.cfg.FrameworkNonCriticalCSSLinkElementID = elementID
+}
+
 // GetIsDev returns true if running in development mode.
 func (w *Wave) GetIsDev() bool {
 	return GetIsDev()
@@ -27,12 +51,26 @@ func (w *Wave) GetIsDev() bool {
 
 // MustGetPort returns the application port.
 func (w *Wave) MustGetPort() int {
-	return MustGetPort()
+	if w == nil || w.portResolver == nil {
+		return MustGetPort()
+	}
+	return w.portResolver.MustGetPort()
 }
 
 // SetModeToDev sets the environment to development mode.
 func (w *Wave) SetModeToDev() {
 	SetModeToDev()
+}
+
+func (w *Wave) SetPortResolver(portResolver *PortResolver) {
+	if w == nil {
+		return
+	}
+	if portResolver == nil {
+		w.portResolver = NewPortResolver()
+		return
+	}
+	w.portResolver = portResolver
 }
 
 func (w *Wave) GetPublicPathPrefix() string {

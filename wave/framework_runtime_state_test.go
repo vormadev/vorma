@@ -27,10 +27,16 @@ func TestCopyFrameworkRuntimeFieldsFrom(
 				},
 			},
 		},
-		FrameworkIgnoredPatterns:     []string{"generated/**"},
-		FrameworkPublicFileMapOutDir: "backend/dist/public_filemap",
-		FrameworkDevBuildHook:        "go run ./cmd/build --dev",
-		FrameworkProdBuildHook:       "go run ./cmd/build --prod",
+		FrameworkIgnoredPatterns:                      []string{"generated/**"},
+		FrameworkPublicFileMapOutDir:                  "backend/dist/public_filemap",
+		FrameworkDevBuildHook:                         "go run ./cmd/build --dev",
+		FrameworkProdBuildHook:                        "go run ./cmd/build --prod",
+		FrameworkBrowserRuntimeNamespace:              "__vorma_runtime",
+		FrameworkBrowserPublicURLResolverFunctionName: "resolvePublicURL",
+		FrameworkBrowserRevalidateFunctionName:        "__vorma_revalidate",
+		FrameworkRefreshRebuildingOverlayElementID:    "vorma-refresh-overlay",
+		FrameworkCriticalCSSStyleElementID:            "vorma-critical-css",
+		FrameworkNonCriticalCSSLinkElementID:          "vorma-noncritical-css",
 	}
 
 	parsedConfig := &ParsedConfig{}
@@ -43,6 +49,12 @@ func TestCopyFrameworkRuntimeFieldsFrom(
 	previousParsedConfig.FrameworkPublicFileMapOutDir = "backend/dist/changed_filemap"
 	previousParsedConfig.FrameworkDevBuildHook = "go run ./cmd/build --changed-dev"
 	previousParsedConfig.FrameworkProdBuildHook = "go run ./cmd/build --changed-prod"
+	previousParsedConfig.FrameworkBrowserRuntimeNamespace = "__changed_runtime"
+	previousParsedConfig.FrameworkBrowserPublicURLResolverFunctionName = "changedPublicURLResolver"
+	previousParsedConfig.FrameworkBrowserRevalidateFunctionName = "__changed_revalidate"
+	previousParsedConfig.FrameworkRefreshRebuildingOverlayElementID = "changed-refresh-overlay"
+	previousParsedConfig.FrameworkCriticalCSSStyleElementID = "changed-critical-css"
+	previousParsedConfig.FrameworkNonCriticalCSSLinkElementID = "changed-noncritical-css"
 
 	if got := parsedConfig.FrameworkWatchPatterns[0].Pattern; got != "**/*.route" {
 		t.Fatalf("framework watch pattern = %q, want **/*.route", got)
@@ -64,6 +76,27 @@ func TestCopyFrameworkRuntimeFieldsFrom(
 	}
 	if got := parsedConfig.FrameworkProdBuildHook; got != "go run ./cmd/build --prod" {
 		t.Fatalf("framework prod build hook = %q, want go run ./cmd/build --prod", got)
+	}
+	if got := parsedConfig.FrameworkBrowserRuntimeNamespace; got != "__vorma_runtime" {
+		t.Fatalf("framework browser runtime namespace = %q, want __vorma_runtime", got)
+	}
+	if got := parsedConfig.FrameworkBrowserPublicURLResolverFunctionName; got != "resolvePublicURL" {
+		t.Fatalf(
+			"framework public URL resolver function name = %q, want resolvePublicURL",
+			got,
+		)
+	}
+	if got := parsedConfig.FrameworkBrowserRevalidateFunctionName; got != "__vorma_revalidate" {
+		t.Fatalf("framework browser revalidate function name = %q, want __vorma_revalidate", got)
+	}
+	if got := parsedConfig.FrameworkRefreshRebuildingOverlayElementID; got != "vorma-refresh-overlay" {
+		t.Fatalf("framework refresh rebuilding overlay element ID = %q, want vorma-refresh-overlay", got)
+	}
+	if got := parsedConfig.FrameworkCriticalCSSStyleElementID; got != "vorma-critical-css" {
+		t.Fatalf("framework critical CSS style element ID = %q, want vorma-critical-css", got)
+	}
+	if got := parsedConfig.FrameworkNonCriticalCSSLinkElementID; got != "vorma-noncritical-css" {
+		t.Fatalf("framework non-critical CSS link element ID = %q, want vorma-noncritical-css", got)
 	}
 }
 

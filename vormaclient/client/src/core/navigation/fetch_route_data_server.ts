@@ -106,11 +106,16 @@ export function resolveServerRouteDataResult(props: {
 	const { redirectData, response, json } = serverResult;
 
 	const redirected = redirectData?.status === "did";
-	const responseNotOK = !response?.ok && response?.status !== 304;
+	const responseNotOK = !response?.ok;
 
 	if (redirected || !response) {
 		controller.abort();
 		return { type: "outcome", outcome: { type: "aborted" } };
+	}
+
+	if (response.status === 304) {
+		controller.abort();
+		throw new Error("Fetch returned 304 without route JSON payload.");
 	}
 
 	if (responseNotOK) {

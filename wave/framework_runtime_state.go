@@ -17,6 +17,12 @@ func (cfg *ParsedConfig) CopyFrameworkRuntimeFieldsFrom(
 	cfg.FrameworkPublicFileMapOutDir = previousParsedConfig.FrameworkPublicFileMapOutDir
 	cfg.FrameworkDevBuildHook = previousParsedConfig.FrameworkDevBuildHook
 	cfg.FrameworkProdBuildHook = previousParsedConfig.FrameworkProdBuildHook
+	cfg.FrameworkBrowserRuntimeNamespace = previousParsedConfig.FrameworkBrowserRuntimeNamespace
+	cfg.FrameworkBrowserPublicURLResolverFunctionName = previousParsedConfig.FrameworkBrowserPublicURLResolverFunctionName
+	cfg.FrameworkBrowserRevalidateFunctionName = previousParsedConfig.FrameworkBrowserRevalidateFunctionName
+	cfg.FrameworkRefreshRebuildingOverlayElementID = previousParsedConfig.FrameworkRefreshRebuildingOverlayElementID
+	cfg.FrameworkCriticalCSSStyleElementID = previousParsedConfig.FrameworkCriticalCSSStyleElementID
+	cfg.FrameworkNonCriticalCSSLinkElementID = previousParsedConfig.FrameworkNonCriticalCSSLinkElementID
 }
 
 func cloneFrameworkWatchPatterns(

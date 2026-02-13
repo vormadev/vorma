@@ -123,7 +123,7 @@ function createScrollStateManager() {
 
 	function restorePageRefreshState(): void {
 		restoreRecentPageRefreshScrollState((x, y) => {
-			__applyScrollState({ x, y });
+			applyScrollState({ x, y });
 		});
 	}
 
@@ -137,7 +137,7 @@ function createScrollStateManager() {
 
 export const scrollStateManager = createScrollStateManager();
 
-export function __applyScrollState(state?: ScrollState): void {
+export function applyScrollState(state?: ScrollState): void {
 	if (!state) {
 		const id = normalizedHashFragmentFromHash(window.location.hash);
 		if (id) {
@@ -155,6 +155,8 @@ export function __applyScrollState(state?: ScrollState): void {
 		window.scrollTo(state.x, state.y);
 	}
 }
+
+export const __applyScrollState = applyScrollState;
 
 export function saveScrollState(): void {
 	const lastKnownLocation = HistoryManager.getLastKnownLocation();

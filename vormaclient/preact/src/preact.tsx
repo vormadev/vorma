@@ -3,9 +3,9 @@ import { h, type ComponentType } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import {
 	__applyScrollState,
+	__getClientRuntimeRenderState,
 	addLocationListener,
 	addRouteChangeListener,
-	__vormaClientGlobal as ctx,
 	getLocation,
 	getRouterData,
 	type RouteChangeEvent,
@@ -29,23 +29,41 @@ type VormaErrorBoundaryProps = {
 type VormaErrorBoundaryComponent = ComponentType<VormaErrorBoundaryProps>;
 
 const latestEvent = signal<RouteChangeEvent | null>(null);
-const loadersData = signal(ctx.get("loadersData"));
-const clientLoadersData = signal(ctx.get("clientLoadersData"));
+const initialRenderState = __getClientRuntimeRenderState();
+const loadersData = signal(initialRenderState.loadersData);
+const clientLoadersData = signal(initialRenderState.clientLoadersData);
 const routerData = signal(getRouterData());
-const outermostErrorIdx = signal(ctx.get("outermostErrorIdx"));
-const outermostError = signal(ctx.get("outermostError"));
+const outermostErrorIdx = signal(initialRenderState.outermostErrorIdx);
+const outermostError = signal(initialRenderState.outermostError);
 const activeComponents = signal<Array<VormaOutletComponent> | null>(
-	ctx.get("activeComponents") as Array<VormaOutletComponent> | null,
+	initialRenderState.activeComponents as Array<VormaOutletComponent> | null,
 );
 const activeErrorBoundary = signal<VormaErrorBoundaryComponent | undefined>(
-	ctx.get("activeErrorBoundary") as VormaErrorBoundaryComponent | undefined,
+	initialRenderState.activeErrorBoundary as
+		| VormaErrorBoundaryComponent
+		| undefined,
 );
-const importURLs = signal(ctx.get("importURLs"));
-const exportKeys = signal(ctx.get("exportKeys"));
+const importURLs = signal(initialRenderState.importURLs);
+const exportKeys = signal(initialRenderState.exportKeys);
 
 export { clientLoadersData, loadersData, routerData };
 
 let isInited = false;
+
+function syncRuntimeRenderState(): void {
+	const renderState = __getClientRuntimeRenderState();
+	loadersData.value = renderState.loadersData;
+	clientLoadersData.value = renderState.clientLoadersData;
+	outermostErrorIdx.value = renderState.outermostErrorIdx;
+	outermostError.value = renderState.outermostError;
+	activeComponents.value =
+		renderState.activeComponents as Array<VormaOutletComponent> | null;
+	activeErrorBoundary.value = renderState.activeErrorBoundary as
+		| VormaErrorBoundaryComponent
+		| undefined;
+	importURLs.value = renderState.importURLs;
+	exportKeys.value = renderState.exportKeys;
+}
 
 function initUIListeners() {
 	if (isInited) return;
@@ -54,19 +72,8 @@ function initUIListeners() {
 	addRouteChangeListener((e) => {
 		batch(() => {
 			latestEvent.value = e;
-			loadersData.value = ctx.get("loadersData");
-			clientLoadersData.value = ctx.get("clientLoadersData");
+			syncRuntimeRenderState();
 			routerData.value = getRouterData();
-			outermostErrorIdx.value = ctx.get("outermostErrorIdx");
-			outermostError.value = ctx.get("outermostError");
-			activeComponents.value = ctx.get(
-				"activeComponents",
-			) as Array<VormaOutletComponent> | null;
-			activeErrorBoundary.value = ctx.get("activeErrorBoundary") as
-				| VormaErrorBoundaryComponent
-				| undefined;
-			importURLs.value = ctx.get("importURLs");
-			exportKeys.value = ctx.get("exportKeys");
 		});
 	});
 
@@ -91,19 +98,8 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element {
 
 		initialRenderRef.current = false;
 		batch(() => {
-			loadersData.value = ctx.get("loadersData");
-			clientLoadersData.value = ctx.get("clientLoadersData");
+			syncRuntimeRenderState();
 			routerData.value = getRouterData();
-			outermostError.value = ctx.get("outermostError");
-			outermostErrorIdx.value = ctx.get("outermostErrorIdx");
-			activeComponents.value = ctx.get(
-				"activeComponents",
-			) as Array<VormaOutletComponent> | null;
-			activeErrorBoundary.value = ctx.get("activeErrorBoundary") as
-				| VormaErrorBoundaryComponent
-				| undefined;
-			importURLs.value = ctx.get("importURLs");
-			exportKeys.value = ctx.get("exportKeys");
 		});
 	}
 

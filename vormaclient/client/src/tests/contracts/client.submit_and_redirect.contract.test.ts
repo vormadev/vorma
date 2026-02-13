@@ -810,6 +810,51 @@ describe("client submit/redirect contracts", () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it("returns success with undefined data for 204 non-GET submit responses", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(null, {
+				status: 204,
+				headers: {
+					"X-Vorma-Build-Id": "1",
+				},
+			}),
+		);
+
+		const result = await api.submit(
+			"/api/no-content-submit",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		await vi.runAllTimersAsync();
+
+		expect(result).toEqual({ success: true, data: undefined });
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns text data for successful non-JSON submit responses", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response("plain-ok", {
+				status: 200,
+				headers: {
+					"Content-Type": "text/plain",
+					"X-Vorma-Build-Id": "1",
+				},
+			}),
+		);
+
+		const result = await api.submit(
+			"/api/text-submit",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		await vi.runAllTimersAsync();
+
+		expect(result).toEqual({ success: true, data: "plain-ok" });
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it("follows internal redirect responses from submit", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi
