@@ -13,6 +13,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/executil"
+	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 	"golang.org/x/sync/errgroup"
@@ -59,6 +60,19 @@ func (b *Builder) Close() error {
 // Config returns the builder's config (read-only access)
 func (b *Builder) Config() *wave.ParsedConfig {
 	return b.cfg
+}
+
+// RegisterSchemaSection adds a custom section to the generated JSON schema.
+// This allows frameworks to extend wave.config.json with their own configuration
+// while maintaining IDE autocomplete support.
+func (b *Builder) RegisterSchemaSection(
+	name string,
+	schema jsonschema.Entry,
+) {
+	if b.cfg.FrameworkSchemaExtensions == nil {
+		b.cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
+	}
+	b.cfg.FrameworkSchemaExtensions[name] = schema
 }
 
 // ValidateConfig performs full validation of the Wave configuration.
@@ -163,6 +177,11 @@ func (b *Builder) Build(opts BuildOpts) error {
 	// Process files again (hooks may have generated files)
 	if err := b.processFiles(true, opts.IsDev); err != nil {
 		return fmt.Errorf("post-hook file processing failed: %w", err)
+	}
+
+	// Write config schema
+	if err := writeConfigSchema(b); err != nil {
+		b.log.Warn("failed to write config schema (non-fatal)", "error", err)
 	}
 
 	// Compile Go binary

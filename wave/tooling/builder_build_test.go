@@ -1,11 +1,14 @@
 package tooling
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/lab/jsonschema"
 )
 
 func TestBuild_FileOnlyModeSkipsHooks(t *testing.T) {
@@ -70,6 +73,76 @@ func TestBuild_Success(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
+	}
+}
+
+func TestBuild_WritesConfigSchema(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	if err := builder.Build(BuildOpts{IsDev: false, CompileGo: false, IsRebuild: false}); err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	schemaPath := filepath.Join(cfg.Dist.Internal(), "schema.json")
+	schemaBytes, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schemaBytes, &schema); err != nil {
+		t.Fatalf("unmarshal schema: %v", err)
+	}
+
+	for _, requiredSection := range []string{"Core", "Vite", "Watch"} {
+		if _, ok := schema.Properties[requiredSection]; !ok {
+			t.Fatalf("schema missing %q section", requiredSection)
+		}
+	}
+}
+
+func TestBuild_IncludesRegisteredSchemaSection(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+	builder.RegisterSchemaSection(
+		"CustomFramework",
+		jsonschema.OptionalObject(jsonschema.Def{
+			Properties: struct {
+				Enabled jsonschema.Entry
+			}{
+				Enabled: jsonschema.OptionalBoolean(jsonschema.Def{Default: true}),
+			},
+		}),
+	)
+
+	if err := builder.Build(BuildOpts{IsDev: false, CompileGo: false, IsRebuild: false}); err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	schemaPath := filepath.Join(cfg.Dist.Internal(), "schema.json")
+	schemaBytes, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schemaBytes, &schema); err != nil {
+		t.Fatalf("unmarshal schema: %v", err)
+	}
+
+	if _, ok := schema.Properties["CustomFramework"]; !ok {
+		t.Fatal("schema missing CustomFramework section")
 	}
 }
 

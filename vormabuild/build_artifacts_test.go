@@ -583,6 +583,10 @@ func TestConfigureBuildEnvironment_WiresHooksAndDefaults(t *testing.T) {
 
 	parsedCfg := app.Wave.GetParsedConfig()
 
+	if _, hasVormaSchema := parsedCfg.FrameworkSchemaExtensions["Vorma"]; !hasVormaSchema {
+		t.Fatal("expected configureBuildEnvironment to register Vorma schema extension")
+	}
+
 	expectedDevHook := fmt.Sprintf("go run ./%s --dev --hook", app.Config.MainBuildEntry)
 	if parsedCfg.FrameworkDevBuildHook != expectedDevHook {
 		t.Fatalf("FrameworkDevBuildHook = %q, want %q", parsedCfg.FrameworkDevBuildHook, expectedDevHook)

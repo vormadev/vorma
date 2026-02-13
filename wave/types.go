@@ -5,6 +5,8 @@ package wave
 import (
 	"path/filepath"
 	"runtime"
+
+	"github.com/vormadev/vorma/lab/jsonschema"
 )
 
 // Path segment constants
@@ -111,11 +113,12 @@ type ParsedConfig struct {
 
 	Dist DistLayout `json:"-"`
 
-	FrameworkWatchPatterns       []WatchedFile `json:"-"`
-	FrameworkIgnoredPatterns     []string      `json:"-"`
-	FrameworkPublicFileMapOutDir string        `json:"-"`
-	FrameworkDevBuildHook        string        `json:"-"`
-	FrameworkProdBuildHook       string        `json:"-"`
+	FrameworkWatchPatterns       []WatchedFile               `json:"-"`
+	FrameworkIgnoredPatterns     []string                    `json:"-"`
+	FrameworkPublicFileMapOutDir string                      `json:"-"`
+	FrameworkSchemaExtensions    map[string]jsonschema.Entry `json:"-"`
+	FrameworkDevBuildHook        string                      `json:"-"`
+	FrameworkProdBuildHook       string                      `json:"-"`
 }
 
 type CoreConfig struct {

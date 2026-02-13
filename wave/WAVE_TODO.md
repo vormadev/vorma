@@ -5,8 +5,7 @@ Context:
 - This list is inferred from canonical_refactor/\*.md as untrusted input.
 - Treat every item as a candidate until explicitly accepted.
 
-1. Remove unapproved config abstraction/protocol/provider layer; keep Wave
-   JSON-only.
+## Remove unapproved config abstraction/protocol/provider layer; keep Wave JSON-only.
 
 - Remove provider/source/protocol surfaces added under `wave/config_*` that
   introduce config-as-code style indirection.
@@ -17,24 +16,14 @@ Context:
 - Acceptance: app-facing Wave config is JSON-only and reload behavior is
   straightforward to trace.
 
-2. Remove dev `go:embed` build cost while keeping a simple Wave setup path.
-
-- Ensure dev builds compile zero `//go:embed` directives for dist/static.
-- Keep shared app Wave initialization code centralized; only FS binding should
-  be tag-specific.
-- Prefer tiny `prod`/`dev` FS-provider shims over duplicate full Wave setup
-  files.
-- Acceptance: dev uses filesystem directly with no embed packaging cost; prod
-  still embeds when desired.
-
-3. Unify event execution flow to reduce duplication.
+## Unify event execution flow to reduce duplication.
 
 - Merge single-event and batched-event orchestration into one deterministic
   classify -> plan -> execute pipeline.
 - Remove duplicated pre/concurrent/post hook and restart handling logic.
 - Target files: `wave/tooling/events.go`.
 
-4. Make refresh-action reduction deterministic.
+## Make refresh-action reduction deterministic.
 
 - Reduce all hook-returned refresh actions in a stable order before
   restart/reload decisions.
@@ -42,7 +31,7 @@ Context:
   outcomes.
 - Target files: `wave/tooling/events.go`.
 
-5. Keep lifecycle phases explicit inside dev tooling internals.
+## Keep lifecycle phases explicit inside dev tooling internals.
 
 - Keep boundaries clear between classification, planning, build execution,
   restart, and browser-phase signaling.
@@ -50,15 +39,43 @@ Context:
 - Target files: `wave/tooling/devserver.go`, `wave/tooling/events.go`,
   `wave/tooling/builder.go`.
 
-6. MAYBE (do last after discussion): Evaluate artifact-DAG rebuild model only if
-   it truly simplifies behavior.
+## Replace bool-heavy event internals with explicit plan/result types.
+
+- Reduce scattered flag mutation in watcher execution code.
+- Make decision data explicit before side effects run.
+- Target files: `wave/tooling/events.go`.
+
+## Make restart request merge/upgrade policy a pure function.
+
+- Move restart-channel upgrade semantics behind a deterministic function.
+- Add exhaustive table tests around config-restart precedence and upgrade rules.
+- Target files: `wave/tooling/devserver.go`.
+
+## Consolidate path/dependency normalization helpers.
+
+- Reduce duplicated path cleaning, slash conversion, abs/rel resolution helpers.
+- Keep one canonical normalization path per concern.
+- Target files: `wave/parse.go`, `wave/tooling/devserver.go`,
+  `wave/tooling/watcher.go`.
+
+## Add a flexibility-regression contract suite against refactor-2026-1 behavior.
+
+- Lock in end-user flexibility guarantees while internals are aggressively
+  simplified.
+- Cover watch hooks, restart/reload behavior, config reload expectations, and
+  static-serving behavior.
+- Target files: `wave/tooling/*_test.go`, `wave/*_test.go`.
+
+---
+
+## MAYBE (do last after discussion): Evaluate artifact-DAG rebuild model only if it truly simplifies behavior.
 
 - Consider replacing ad hoc rebuild flags with explicit artifact dependency
   nodes/fingerprints.
 - Adopt only if complexity is reduced and rebuild performance improves at scale.
 - Target files: `wave/tooling/builder.go`, `wave/tooling/events.go`.
 
-7. MAYBE (do last after discussion): Revisit diagnostics from a clean slate.
+## MAYBE (do last after discussion): Revisit diagnostics from a clean slate.
 
 - Current state goal: no diagnostics command surface while Wave internals are
   being simplified.
@@ -66,38 +83,14 @@ Context:
   framework).
 - Target files: `wave/tooling/cli.go`, `wave/tooling/events.go`.
 
-8. Preserve Wave guardrails during cleanup.
+---
+
+## RULES:
+
+### Preserve Wave guardrails during cleanup.
 
 - No non-JSON authored config path.
 - No builder-pattern APIs in Go.
 - No duplicate default-path APIs.
 - No back-compat adapters while sub-1.0.
 - Keep runtime/build boundaries strict.
-
-9. Replace bool-heavy event internals with explicit plan/result types.
-
-- Reduce scattered flag mutation in watcher execution code.
-- Make decision data explicit before side effects run.
-- Target files: `wave/tooling/events.go`.
-
-10. Make restart request merge/upgrade policy a pure function.
-
-- Move restart-channel upgrade semantics behind a deterministic function.
-- Add exhaustive table tests around config-restart precedence and upgrade rules.
-- Target files: `wave/tooling/devserver.go`.
-
-11. Consolidate path/dependency normalization helpers.
-
-- Reduce duplicated path cleaning, slash conversion, abs/rel resolution helpers.
-- Keep one canonical normalization path per concern.
-- Target files: `wave/parse.go`, `wave/tooling/devserver.go`,
-  `wave/tooling/watcher.go`.
-
-12. Add a flexibility-regression contract suite against refactor-2026-1
-    behavior.
-
-- Lock in end-user flexibility guarantees while internals are aggressively
-  simplified.
-- Cover watch hooks, restart/reload behavior, config reload expectations, and
-  static-serving behavior.
-- Target files: `wave/tooling/*_test.go`, `wave/*_test.go`.
