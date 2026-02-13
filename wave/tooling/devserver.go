@@ -10,13 +10,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/pathnorm"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -271,23 +271,18 @@ func (s *server) addConfigFileDirectory(
 	watcher *Watcher,
 	configFilePath string,
 ) error {
-	trimmedConfigFilePath := strings.TrimSpace(configFilePath)
-	if trimmedConfigFilePath == "" {
+	normalizedConfigFilePath := pathnorm.Absolute(configFilePath)
+	if normalizedConfigFilePath == "" {
 		return nil
 	}
 
-	configFileAbsolutePath, err := filepath.Abs(trimmedConfigFilePath)
-	if err != nil {
-		configFileAbsolutePath = filepath.Clean(trimmedConfigFilePath)
-	}
-
-	info, statErr := os.Stat(configFileAbsolutePath)
-	configFileDirectory := configFileAbsolutePath
+	info, statErr := os.Stat(normalizedConfigFilePath)
+	configFileDirectory := normalizedConfigFilePath
 	if statErr == nil && !info.IsDir() {
-		configFileDirectory = filepath.Dir(configFileAbsolutePath)
+		configFileDirectory = filepath.Dir(normalizedConfigFilePath)
 	}
 	if statErr != nil {
-		configFileDirectory = filepath.Dir(configFileAbsolutePath)
+		configFileDirectory = filepath.Dir(normalizedConfigFilePath)
 	}
 	if configFileDirectory == "" {
 		return nil
@@ -324,7 +319,7 @@ func (s *server) reloadConfig() error {
 }
 
 func (s *server) loadParsedConfigForReload() (*wave.ParsedConfig, error) {
-	configFilePath := strings.TrimSpace(s.cfg.Core.ConfigLocation)
+	configFilePath := pathnorm.Absolute(s.cfg.Core.ConfigLocation)
 	if configFilePath == "" {
 		return nil, nil
 	}
@@ -602,54 +597,45 @@ func (s *server) triggerRestartWithOpts(recompileGo bool, isConfigRestart bool) 
 	defer s.restartChMu.Unlock()
 
 	req := restartRequest{recompileGo: recompileGo, isConfigRestart: isConfigRestart}
-
-	// Config restarts have absolute priority
-	if isConfigRestart {
-		// Drain any pending request (we supersede everything)
-		select {
-		case <-s.restartCh:
-		default:
-		}
-		// Send our config restart (channel is now guaranteed empty)
-		s.restartCh <- req
-		return
+	if req.isConfigRestart {
+		req.recompileGo = true
 	}
 
-	// Non-config restart: try to send directly
+	// Try to enqueue directly when no restart is pending.
 	select {
 	case s.restartCh <- req:
 		return
 	default:
-		// Channel is full - there's a pending request
 	}
 
-	// Channel full. Check what's pending before deciding to upgrade.
+	// Merge with the currently pending request.
 	select {
 	case pending := <-s.restartCh:
-		if pending.isConfigRestart {
-			// Config restart takes absolute priority - put it back unchanged
-			s.restartCh <- pending
-			s.log.Debug("Dropped restart request: config restart pending",
-				"dropped_recompile_go", recompileGo)
-			return
-		}
-
-		// Pending is not a config restart. Decide whether to upgrade.
-		if recompileGo && !pending.recompileGo {
-			// We need Go recompile but pending doesn't - upgrade
-			s.restartCh <- req
-			s.log.Debug("Upgraded pending restart to include Go recompile")
-		} else {
-			// Pending is at least as strong as us - keep it
-			s.restartCh <- pending
-		}
+		s.restartCh <- mergeRestartRequests(pending, req)
 	default:
-		// Channel became empty (consumer took it) - send ours
+		// Channel became empty after the initial check (consumer took pending).
+		// Best effort enqueue of current request.
 		select {
 		case s.restartCh <- req:
 		default:
-			// Someone else sent first - that's fine, a restart is happening
 		}
+	}
+}
+
+func mergeRestartRequests(
+	pending restartRequest,
+	incoming restartRequest,
+) restartRequest {
+	if pending.isConfigRestart || incoming.isConfigRestart {
+		return restartRequest{
+			recompileGo:     true,
+			isConfigRestart: true,
+		}
+	}
+
+	return restartRequest{
+		recompileGo:     pending.recompileGo || incoming.recompileGo,
+		isConfigRestart: false,
 	}
 }
 

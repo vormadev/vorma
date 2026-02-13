@@ -1,12 +1,14 @@
 package tooling
 
 import (
+	"bytes"
 	"context"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -70,15 +72,14 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 	}
 
 	newMap := &sync.Map{}
-	var oldMap *sync.Map
+	var oldMap wave.FileMap
+	oldMapLoaded := false
 
 	if opts.granular {
 		old, err := b.loadFileMapFromPath(opts.gobPath)
 		if err == nil {
-			oldMap = &sync.Map{}
-			for k, v := range old {
-				oldMap.Store(k, v)
-			}
+			oldMap = old
+			oldMapLoaded = true
 		}
 	}
 
@@ -199,19 +200,20 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 	})
 
 	// Cleanup old files
-	if opts.granular && oldMap != nil {
-		oldMap.Range(func(k, v any) bool {
-			key := k.(string)
-			oldVal := v.(wave.FileVal)
-			if newVal, exists := newMap.Load(key); !exists || newVal.(wave.FileVal).DistName != oldVal.DistName {
-				os.Remove(filepath.Join(opts.distDir, oldVal.DistName))
+	if opts.granular && oldMapLoaded {
+		for key, oldVal := range oldMap {
+			newVal, exists := finalMap[key]
+			if !exists || newVal.DistName != oldVal.DistName {
+				_ = os.Remove(filepath.Join(opts.distDir, oldVal.DistName))
 			}
-			return true
-		})
+		}
 	}
 
-	if err := b.saveFileMap(finalMap, opts.gobPath); err != nil {
-		return err
+	shouldSaveFileMap := !oldMapLoaded || !maps.Equal(oldMap, finalMap)
+	if shouldSaveFileMap {
+		if err := b.saveFileMap(finalMap, opts.gobPath); err != nil {
+			return err
+		}
 	}
 
 	if opts.isPublic {
@@ -221,7 +223,12 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 	return nil
 }
 
-func (b *Builder) processFile(fi fileInfo, opts staticOpts, newMap, oldMap *sync.Map) error {
+func (b *Builder) processFile(
+	fi fileInfo,
+	opts staticOpts,
+	newMap *sync.Map,
+	oldMap wave.FileMap,
+) error {
 	underscorePath := strings.ReplaceAll(fi.relPath, "/", "_")
 	contentHash, err := hashFile(fi.srcPath, underscorePath)
 	if err != nil {
@@ -244,21 +251,24 @@ func (b *Builder) processFile(fi fileInfo, opts staticOpts, newMap, oldMap *sync
 	}
 	newMap.Store(fi.relPath, val)
 
-	// Skip if unchanged
-	if oldMap != nil {
-		if oldVal, ok := oldMap.Load(fi.relPath); ok {
-			if oldVal.(wave.FileVal).ContentHash == contentHash {
-				return nil
-			}
-		}
-	}
-
-	// Copy file
 	var distPath string
 	if opts.hashOutput {
 		distPath = filepath.Join(opts.distDir, distName)
 	} else {
 		distPath = filepath.Join(opts.distDir, fi.relPath)
+	}
+
+	// Skip if unchanged
+	if oldMap != nil {
+		if oldVal, ok := oldMap[fi.relPath]; ok {
+			if oldVal.ContentHash == contentHash {
+				if _, statErr := os.Stat(distPath); statErr == nil {
+					return nil
+				} else if !os.IsNotExist(statErr) {
+					return statErr
+				}
+			}
+		}
 	}
 
 	if err := os.MkdirAll(filepath.Dir(distPath), 0755); err != nil {
@@ -267,7 +277,6 @@ func (b *Builder) processFile(fi fileInfo, opts staticOpts, newMap, oldMap *sync
 
 	return fsutil.CopyFile(fi.srcPath, distPath)
 }
-
 func (b *Builder) loadFileMapFromPath(gobPath string) (wave.FileMap, error) {
 	f, err := os.Open(gobPath)
 	if err != nil {
@@ -296,9 +305,20 @@ func (b *Builder) savePublicFileMapJS(fm wave.FileMap) error {
 
 	content := fmt.Sprintf("export const wavePublicFileMap = %s;", string(jsonBytes))
 	hashedName := hashBytes([]byte(content), wave.RelPaths.PublicFileMapJSName())
+	publicDir := b.cfg.Dist.StaticPublic()
+	refPath := b.cfg.Dist.PublicFileMapRef()
+
+	if existingRefBytes, readErr := os.ReadFile(refPath); readErr == nil {
+		existingHashedName := strings.TrimSpace(string(existingRefBytes))
+		if existingHashedName == hashedName {
+			existingHashedPath := filepath.Join(publicDir, existingHashedName)
+			if _, statErr := os.Stat(existingHashedPath); statErr == nil {
+				return nil
+			}
+		}
+	}
 
 	// Cleanup old files
-	publicDir := b.cfg.Dist.StaticPublic()
 	oldFiles, err := filepath.Glob(filepath.Join(publicDir, wave.FileMapJSGlobPattern))
 	if err != nil {
 		b.log.Warn("failed to glob old filemap files", "error", err)
@@ -310,7 +330,6 @@ func (b *Builder) savePublicFileMapJS(fm wave.FileMap) error {
 	}
 
 	// Write ref file atomically
-	refPath := b.cfg.Dist.PublicFileMapRef()
 	if err := writeFileAtomicBytes(refPath, []byte(hashedName)); err != nil {
 		return err
 	}
@@ -350,7 +369,7 @@ func (b *Builder) WritePublicFileMapTS(outDir string) error {
 	}
 
 	outPath := filepath.Join(outDir, wave.RelPaths.PublicFileMapTSName())
-	if err := writeFileAtomicBytes(outPath, []byte(sb.String())); err != nil {
+	if _, err := writeFileAtomicBytesIfChanged(outPath, []byte(sb.String())); err != nil {
 		return fmt.Errorf("write TS file: %w", err)
 	}
 
@@ -377,7 +396,8 @@ func (b *Builder) writePublicFileMapJSON(outDir string, fm wave.FileMap) error {
 	}
 
 	outPath := filepath.Join(outDir, wave.RelPaths.PublicFileMapJSONName())
-	return writeFileAtomicBytes(outPath, jsonBytes)
+	_, err = writeFileAtomicBytesIfChanged(outPath, jsonBytes)
+	return err
 }
 
 // writeFileAtomic writes data to a file atomically using a randomized temp file
@@ -429,4 +449,21 @@ func writeFileAtomicBytes(path string, data []byte) error {
 		_, err := f.Write(data)
 		return err
 	})
+}
+
+func writeFileAtomicBytesIfChanged(path string, data []byte) (bool, error) {
+	existingData, readErr := os.ReadFile(path)
+	if readErr == nil {
+		if bytes.Equal(existingData, data) {
+			return false, nil
+		}
+	} else if !os.IsNotExist(readErr) {
+		return false, readErr
+	}
+
+	if err := writeFileAtomicBytes(path, data); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

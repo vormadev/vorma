@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/vormadev/vorma/wave/internal/pathnorm"
 )
 
 // ParseConfig parses Wave config JSON bytes into a ParsedConfig.
@@ -44,12 +46,7 @@ func ParseConfigFile(path string) (*ParsedConfig, error) {
 		return nil, err
 	}
 
-	configFileAbsolutePath, absolutePathError := filepath.Abs(configFilePath)
-	if absolutePathError != nil {
-		cfg.Core.ConfigLocation = filepath.Clean(configFilePath)
-	} else {
-		cfg.Core.ConfigLocation = filepath.Clean(configFileAbsolutePath)
-	}
+	cfg.Core.ConfigLocation = pathnorm.Absolute(configFilePath)
 
 	return cfg, nil
 }

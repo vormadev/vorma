@@ -78,6 +78,52 @@ func TestWorkSetApplyRefreshActions(t *testing.T) {
 	})
 }
 
+func TestReduceRefreshActionsInStableOrder(t *testing.T) {
+	t.Run("keeps non-restart actions in order", func(t *testing.T) {
+		input := []wave.RefreshAction{
+			{ReloadBrowser: true},
+			{WaitForApp: true},
+			{WaitForVite: true},
+		}
+
+		applied, result := reduceRefreshActionsInStableOrder(input)
+		if result.restartRequested {
+			t.Fatal("expected restartRequested=false")
+		}
+		if len(applied) != len(input) {
+			t.Fatalf("applied action count=%d, want %d", len(applied), len(input))
+		}
+		for i := range input {
+			if applied[i] != input[i] {
+				t.Fatalf("applied[%d]=%#v, want %#v", i, applied[i], input[i])
+			}
+		}
+	})
+
+	t.Run("returns first restart action and excludes later actions", func(t *testing.T) {
+		input := []wave.RefreshAction{
+			{ReloadBrowser: true},
+			{TriggerRestart: true, RecompileGo: false},
+			{TriggerRestart: true, RecompileGo: true},
+			{WaitForApp: true},
+		}
+
+		applied, result := reduceRefreshActionsInStableOrder(input)
+		if !result.restartRequested {
+			t.Fatal("expected restartRequested=true")
+		}
+		if result.recompileGo {
+			t.Fatal("expected first restart action to determine recompileGo=false")
+		}
+		if len(applied) != 1 {
+			t.Fatalf("applied action count=%d, want 1", len(applied))
+		}
+		if !applied[0].ReloadBrowser {
+			t.Fatalf("unexpected applied actions: %#v", applied)
+		}
+	})
+}
+
 func TestWorkSetAddImplicitWork(t *testing.T) {
 	t.Run("go files imply compile and restart", func(t *testing.T) {
 		work := &workSet{}

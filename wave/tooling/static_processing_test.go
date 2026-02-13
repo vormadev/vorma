@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vormadev/vorma/wave"
 )
@@ -179,5 +180,128 @@ func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 	distPath := filepath.Join(cfg.Dist.StaticPrivate(), "templates", "home.html")
 	if _, statErr := os.Stat(distPath); statErr != nil {
 		t.Fatalf("expected private dist file to exist at %s: %v", distPath, statErr)
+	}
+}
+
+func TestProcessPublicFilesOnly_RecopiesUnchangedFileWhenDistOutputIsMissing(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	publicDir := cfg.Core.StaticAssetDirs.Public
+	if err := os.MkdirAll(publicDir, 0755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+
+	sourcePath := filepath.Join(publicDir, "logo.png")
+	if err := os.WriteFile(sourcePath, []byte("logo"), 0644); err != nil {
+		t.Fatalf("failed writing source file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	fileMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap returned error: %v", err)
+	}
+	entry, exists := fileMap["logo.png"]
+	if !exists {
+		t.Fatalf("expected file map entry for logo.png, map=%#v", fileMap)
+	}
+
+	distPath := filepath.Join(cfg.Dist.StaticPublic(), entry.DistName)
+	if err := os.Remove(distPath); err != nil {
+		t.Fatalf("failed removing dist output to simulate partial cleanup: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("second ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	if _, statErr := os.Stat(distPath); statErr != nil {
+		t.Fatalf("expected missing dist output to be recopied, stat error: %v", statErr)
+	}
+}
+
+func TestProcessPublicFilesOnly_UnchangedInputsDoNotRewriteMapArtifacts(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	publicDir := cfg.Core.StaticAssetDirs.Public
+	if err := os.MkdirAll(publicDir, 0755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(publicDir, "logo.png"), []byte("logo"), 0644); err != nil {
+		t.Fatalf("failed writing source file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	refPath := cfg.Dist.PublicFileMapRef()
+	refBefore, err := os.ReadFile(refPath)
+	if err != nil {
+		t.Fatalf("failed reading file map ref: %v", err)
+	}
+
+	jsPath := filepath.Join(cfg.Dist.StaticPublic(), strings.TrimSpace(string(refBefore)))
+	refInfoBefore, err := os.Stat(refPath)
+	if err != nil {
+		t.Fatalf("failed stating file map ref: %v", err)
+	}
+	jsInfoBefore, err := os.Stat(jsPath)
+	if err != nil {
+		t.Fatalf("failed stating hashed file map artifact: %v", err)
+	}
+	gobInfoBefore, err := os.Stat(cfg.Dist.PublicFileMapGob())
+	if err != nil {
+		t.Fatalf("failed stating public file map gob: %v", err)
+	}
+
+	time.Sleep(20 * time.Millisecond)
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("second ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	refInfoAfter, err := os.Stat(refPath)
+	if err != nil {
+		t.Fatalf("failed stating file map ref after rerun: %v", err)
+	}
+	jsInfoAfter, err := os.Stat(jsPath)
+	if err != nil {
+		t.Fatalf("failed stating hashed file map artifact after rerun: %v", err)
+	}
+	gobInfoAfter, err := os.Stat(cfg.Dist.PublicFileMapGob())
+	if err != nil {
+		t.Fatalf("failed stating public file map gob after rerun: %v", err)
+	}
+
+	if !refInfoAfter.ModTime().Equal(refInfoBefore.ModTime()) {
+		t.Fatalf(
+			"expected unchanged ref file mtime, before=%v after=%v",
+			refInfoBefore.ModTime(),
+			refInfoAfter.ModTime(),
+		)
+	}
+	if !jsInfoAfter.ModTime().Equal(jsInfoBefore.ModTime()) {
+		t.Fatalf(
+			"expected unchanged js artifact mtime, before=%v after=%v",
+			jsInfoBefore.ModTime(),
+			jsInfoAfter.ModTime(),
+		)
+	}
+	if !gobInfoAfter.ModTime().Equal(gobInfoBefore.ModTime()) {
+		t.Fatalf(
+			"expected unchanged gob artifact mtime, before=%v after=%v",
+			gobInfoBefore.ModTime(),
+			gobInfoAfter.ModTime(),
+		)
 	}
 }

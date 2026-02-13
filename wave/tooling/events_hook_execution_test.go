@@ -97,6 +97,107 @@ func TestRunConcurrentHooks_RespectsExcludesAndCollectsActions(t *testing.T) {
 	}
 }
 
+func TestRunConcurrentHooks_ReturnsActionsInHookOrder(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	changedPath := filepath.Join(root, "changed.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						time.Sleep(20 * time.Millisecond)
+						return &wave.RefreshAction{ReloadBrowser: true}, nil
+					},
+				},
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return &wave.RefreshAction{WaitForApp: true}, nil
+					},
+				},
+			},
+		},
+	}
+
+	actions, err := s.runConcurrentHooks(ewh, watcher)
+	if err != nil {
+		t.Fatalf("runConcurrentHooks returned error: %v", err)
+	}
+	if len(actions) != 2 {
+		t.Fatalf("action count=%d, want 2", len(actions))
+	}
+	if !actions[0].ReloadBrowser {
+		t.Fatalf("expected first action to be ReloadBrowser=true, got %#v", actions[0])
+	}
+	if !actions[1].WaitForApp {
+		t.Fatalf("expected second action to be WaitForApp=true, got %#v", actions[1])
+	}
+}
+
+func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	firstChangedPath := filepath.Join(root, "first.txt")
+	secondChangedPath := filepath.Join(root, "second.txt")
+	if err := os.WriteFile(firstChangedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing first changed file: %v", err)
+	}
+	if err := os.WriteFile(secondChangedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing second changed file: %v", err)
+	}
+
+	eventsWithHooks := []eventWithHooks{
+		{
+			classified: classifiedEvent{event: waveEvent(firstChangedPath)},
+			hookCtx:    &wave.HookContext{FilePath: firstChangedPath},
+			hooks: &wave.SortedHooks{
+				Concurrent: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							time.Sleep(20 * time.Millisecond)
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						},
+					},
+				},
+			},
+		},
+		{
+			classified: classifiedEvent{event: waveEvent(secondChangedPath)},
+			hookCtx:    &wave.HookContext{FilePath: secondChangedPath},
+			hooks: &wave.SortedHooks{
+				Concurrent: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
+						},
+					},
+				},
+			},
+		},
+	}
+
+	actions := s.runConcurrentHooksForEvents(eventsWithHooks, watcher)
+	if len(actions) != 2 {
+		t.Fatalf("action count=%d, want 2", len(actions))
+	}
+	if !actions[0].ReloadBrowser {
+		t.Fatalf("expected first action to come from first event, got %#v", actions[0])
+	}
+	if !actions[1].TriggerRestart {
+		t.Fatalf("expected second action to come from second event, got %#v", actions[1])
+	}
+}
+
 func TestRunPostHooks_StopsOnCommandError(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()

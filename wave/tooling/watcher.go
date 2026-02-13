@@ -14,6 +14,7 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/lru"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/pathnorm"
 )
 
 // matchCacheMaxSize limits the match cache to prevent unbounded memory growth
@@ -58,29 +59,23 @@ func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 		return nil, err
 	}
 
-	absWatchRoot, err := filepath.Abs(cfg.WatchRoot())
-	if err != nil {
-		absWatchRoot = cfg.WatchRoot()
+	absWatchRoot := pathnorm.AbsoluteSlash(cfg.WatchRoot())
+	if absWatchRoot == "" {
+		absWatchRoot = filepath.ToSlash(cfg.WatchRoot())
 	}
 
 	absPublicStatic := ""
 	absPrivateStatic := ""
 	if cfg.UsingBrowser() {
-		abs, err := filepath.Abs(filepath.Clean(cfg.Core.StaticAssetDirs.Public))
-		if err == nil {
-			absPublicStatic = filepath.ToSlash(abs)
-		}
-		abs, err = filepath.Abs(filepath.Clean(cfg.Core.StaticAssetDirs.Private))
-		if err == nil {
-			absPrivateStatic = filepath.ToSlash(abs)
-		}
+		absPublicStatic = pathnorm.AbsoluteSlash(cfg.Core.StaticAssetDirs.Public)
+		absPrivateStatic = pathnorm.AbsoluteSlash(cfg.Core.StaticAssetDirs.Private)
 	}
 
 	w := &Watcher{
 		cfg:              cfg,
 		log:              log,
 		fsWatch:          fsWatch,
-		absWatchRoot:     filepath.ToSlash(absWatchRoot),
+		absWatchRoot:     absWatchRoot,
 		absPublicStatic:  absPublicStatic,
 		absPrivateStatic: absPrivateStatic,
 		matchCache:       lru.NewCache[string, bool](matchCacheMaxSize),
@@ -92,11 +87,7 @@ func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 
 // norm converts a path to absolute with forward slashes for consistent matching
 func (w *Watcher) norm(p string) string {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return filepath.ToSlash(p)
-	}
-	return filepath.ToSlash(abs)
+	return pathnorm.AbsoluteSlash(p)
 }
 
 func (w *Watcher) setupPatterns() {

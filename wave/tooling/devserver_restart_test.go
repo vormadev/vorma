@@ -66,6 +66,91 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 	})
 }
 
+func TestMergeRestartRequests(t *testing.T) {
+	tests := []struct {
+		name             string
+		pending          restartRequest
+		incoming         restartRequest
+		expectedCombined restartRequest
+	}{
+		{
+			name: "config restart takes precedence over non-config restart",
+			pending: restartRequest{
+				recompileGo:     false,
+				isConfigRestart: false,
+			},
+			incoming: restartRequest{
+				recompileGo:     false,
+				isConfigRestart: true,
+			},
+			expectedCombined: restartRequest{
+				recompileGo:     true,
+				isConfigRestart: true,
+			},
+		},
+		{
+			name: "pending config restart remains config restart",
+			pending: restartRequest{
+				recompileGo:     true,
+				isConfigRestart: true,
+			},
+			incoming: restartRequest{
+				recompileGo:     true,
+				isConfigRestart: false,
+			},
+			expectedCombined: restartRequest{
+				recompileGo:     true,
+				isConfigRestart: true,
+			},
+		},
+		{
+			name: "non-config requests OR their recompile requirement",
+			pending: restartRequest{
+				recompileGo:     false,
+				isConfigRestart: false,
+			},
+			incoming: restartRequest{
+				recompileGo:     true,
+				isConfigRestart: false,
+			},
+			expectedCombined: restartRequest{
+				recompileGo:     true,
+				isConfigRestart: false,
+			},
+		},
+		{
+			name: "weaker incoming request does not downgrade stronger pending request",
+			pending: restartRequest{
+				recompileGo:     true,
+				isConfigRestart: false,
+			},
+			incoming: restartRequest{
+				recompileGo:     false,
+				isConfigRestart: false,
+			},
+			expectedCombined: restartRequest{
+				recompileGo:     true,
+				isConfigRestart: false,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			combined := mergeRestartRequests(tt.pending, tt.incoming)
+			if combined != tt.expectedCombined {
+				t.Fatalf(
+					"mergeRestartRequests(%#v, %#v) = %#v, want %#v",
+					tt.pending,
+					tt.incoming,
+					combined,
+					tt.expectedCombined,
+				)
+			}
+		})
+	}
+}
+
 func TestTriggerRestartFromRefreshActions(t *testing.T) {
 	t.Run("trigger restart without go compile", func(t *testing.T) {
 		s := newServerForRestartChannelTest()

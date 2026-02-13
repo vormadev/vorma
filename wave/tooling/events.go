@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/pathnorm"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -97,17 +97,30 @@ func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
 func (w *workSet) applyRefreshActions(
 	actions []wave.RefreshAction,
 ) refreshActionApplicationResult {
+	actionsToApply, actionResult := reduceRefreshActionsInStableOrder(actions)
+	for _, action := range actionsToApply {
+		w.addFromRefreshAction(action)
+	}
+
+	return actionResult
+}
+
+func reduceRefreshActionsInStableOrder(
+	actions []wave.RefreshAction,
+) ([]wave.RefreshAction, refreshActionApplicationResult) {
+	appliedActions := make([]wave.RefreshAction, 0, len(actions))
+
 	for _, action := range actions {
 		if action.TriggerRestart {
-			return refreshActionApplicationResult{
+			return appliedActions, refreshActionApplicationResult{
 				restartRequested: true,
 				recompileGo:      action.RecompileGo,
 			}
 		}
-		w.addFromRefreshAction(action)
+		appliedActions = append(appliedActions, action)
 	}
 
-	return refreshActionApplicationResult{}
+	return appliedActions, refreshActionApplicationResult{}
 }
 
 // addImplicitWork adds build work implied by a file type.
@@ -273,16 +286,6 @@ func (s *server) processEvents(events []fsnotify.Event) {
 			"file",
 			eventWithHooksForLogging.classified.event.Name,
 		)
-	}
-
-	if executionPlan.isBatch && executionPlan.batchNeedsAppStop {
-		s.log.Info("Stopping app for batch rebuild")
-		if err := s.stopApp(); err != nil {
-			s.log.Error("Failed to stop app", "error", err)
-		}
-		for i := range executionPlan.eventsWithHooks {
-			executionPlan.eventsWithHooks[i].hookCtx.AppStoppedForBatch = true
-		}
 	}
 
 	if executionPlan.isBatch {
@@ -491,248 +494,240 @@ func shouldShowRebuildingOverlay(
 	return false
 }
 
-// processSingleEvent handles a single file change with maximum parallelism:
-// app termination runs in parallel with hooks and build (matching old behavior)
-func (s *server) processSingleEvent(ewh eventWithHooks, work *workSet, watcher *Watcher) {
-	// Fire no-wait hooks immediately
-	s.fireNoWaitHooks(ewh, watcher)
-
-	// Start app termination in parallel if needed
-	var killEg errgroup.Group
+func (s *server) processSingleEvent(
+	ewh eventWithHooks,
+	work *workSet,
+	watcher *Watcher,
+) {
 	if ewh.needsHardReload {
-		killEg.Go(func() error {
-			s.log.Info("Terminating running app")
-			return s.stopApp()
-		})
+		s.log.Info("Terminating running app")
+		if err := s.stopApp(); err != nil {
+			s.log.Error("Failed to terminate app", "error", err)
+		}
 	}
 
-	// Run pre hooks
-	preActions, err := s.runPreHooks(ewh, watcher)
-	if err != nil {
-		s.log.Error("Pre-hook execution failed", "error", err)
+	s.processEventsWithDeterministicPipeline([]eventWithHooks{ewh}, work, watcher)
+}
+
+// processBatchedEvents handles multiple file changes.
+func (s *server) processBatchedEvents(
+	eventsWithHooks []eventWithHooks,
+	work *workSet,
+	watcher *Watcher,
+) {
+	if batchNeedsHardReloadStop(eventsWithHooks) {
+		s.log.Info("Stopping app for batch rebuild")
+		if err := s.stopApp(); err != nil {
+			s.log.Error("Failed to stop app", "error", err)
+		}
+		for i := range eventsWithHooks {
+			if eventsWithHooks[i].hookCtx != nil {
+				eventsWithHooks[i].hookCtx.AppStoppedForBatch = true
+			}
+		}
 	}
 
+	s.processEventsWithDeterministicPipeline(eventsWithHooks, work, watcher)
+}
+
+func batchNeedsHardReloadStop(eventsWithHooks []eventWithHooks) bool {
+	if !anyEventNeedsHardReload(eventsWithHooks) {
+		return false
+	}
+	return !allBatchHookContextsMarkedAppStopped(eventsWithHooks)
+}
+
+func anyEventNeedsHardReload(eventsWithHooks []eventWithHooks) bool {
+	for _, eventWithHooksForCheck := range eventsWithHooks {
+		if eventWithHooksForCheck.needsHardReload {
+			return true
+		}
+	}
+	return false
+}
+
+func allBatchHookContextsMarkedAppStopped(eventsWithHooks []eventWithHooks) bool {
+	if len(eventsWithHooks) == 0 {
+		return false
+	}
+
+	for _, eventWithHooksForCheck := range eventsWithHooks {
+		if eventWithHooksForCheck.hookCtx == nil ||
+			!eventWithHooksForCheck.hookCtx.AppStoppedForBatch {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *server) processEventsWithDeterministicPipeline(
+	eventsWithHooks []eventWithHooks,
+	work *workSet,
+	watcher *Watcher,
+) {
+	if len(eventsWithHooks) == 0 {
+		return
+	}
+
+	s.fireNoWaitHooksForEvents(eventsWithHooks, watcher)
+
+	preActions := s.runPreHooksForEvents(eventsWithHooks, work, watcher)
 	preActionResult := work.applyRefreshActions(preActions)
 	if preActionResult.restartRequested {
-		killEg.Wait()
 		s.triggerRestartFromRefreshActions(preActionResult)
 		return
 	}
 
-	// Add implicit work
-	work.addImplicitWork(ewh.classified)
-
-	// Check for RunOnChangeOnly - skip implicit build work, but still allow
-	// callback hooks to drive refresh behavior.
-	if ewh.runOnChangeOnly {
-		s.log.Info("RunOnChangeOnly: skipping implicit build phase")
-
-		concurrentActions, err := s.runConcurrentHooks(ewh, watcher)
-		if err != nil {
-			s.log.Error("Concurrent hook execution failed", "error", err)
+	shouldRunImplicitBuild := s.shouldRunImplicitBuild(eventsWithHooks)
+	if !shouldRunImplicitBuild {
+		if len(eventsWithHooks) == 1 {
+			s.log.Info("RunOnChangeOnly: skipping implicit build phase")
+		} else {
+			s.log.Info("All events are RunOnChangeOnly, skipping implicit build phase")
 		}
-
-		concurrentActionResult := work.applyRefreshActions(concurrentActions)
-		if concurrentActionResult.restartRequested {
-			killEg.Wait()
-			s.triggerRestartFromRefreshActions(concurrentActionResult)
-			return
-		}
-
-		if err := killEg.Wait(); err != nil {
-			s.log.Error("Failed to terminate app", "error", err)
-		}
-
-		postActions, err := s.runPostHooks(ewh, watcher)
-		if err != nil {
-			s.log.Error("Post-hook execution failed", "error", err)
-		}
-
-		postActionResult := work.applyRefreshActions(postActions)
-		if postActionResult.restartRequested {
-			s.triggerRestartFromRefreshActions(postActionResult)
-			return
-		}
-
-		s.executeBrowserPhase(work)
-		return
+	} else {
+		work.resolve(s.cfg.UsingVite())
 	}
 
-	// Resolve browser behavior
-	work.resolve(s.cfg.UsingVite())
+	var buildAndConcurrentHooksGroup errgroup.Group
+	if shouldRunImplicitBuild {
+		buildAndConcurrentHooksGroup.Go(func() error {
+			s.executeBuildPhase(work)
+			return nil
+		})
+	}
 
-	// Run build AND concurrent hooks in parallel (both also parallel with app kill)
-	var buildAndConcurrentEg errgroup.Group
 	var concurrentActions []wave.RefreshAction
-	var concurrentActionsMu sync.Mutex
-
-	buildAndConcurrentEg.Go(func() error {
-		s.executeBuildPhase(work)
+	buildAndConcurrentHooksGroup.Go(func() error {
+		concurrentActions = s.runConcurrentHooksForEvents(eventsWithHooks, watcher)
 		return nil
 	})
-
-	buildAndConcurrentEg.Go(func() error {
-		actions, err := s.runConcurrentHooks(ewh, watcher)
-		if err != nil {
-			s.log.Error("Concurrent hook execution failed", "error", err)
-		}
-		if len(actions) > 0 {
-			concurrentActionsMu.Lock()
-			concurrentActions = append(concurrentActions, actions...)
-			concurrentActionsMu.Unlock()
-		}
-		return nil
-	})
-
-	// Wait for build and concurrent hooks
-	buildAndConcurrentEg.Wait()
+	_ = buildAndConcurrentHooksGroup.Wait()
 
 	concurrentActionResult := work.applyRefreshActions(concurrentActions)
 	if concurrentActionResult.restartRequested {
-		killEg.Wait()
 		s.triggerRestartFromRefreshActions(concurrentActionResult)
 		return
 	}
 
-	// Wait for app termination to complete before post hooks
-	if err := killEg.Wait(); err != nil {
-		s.log.Error("Failed to terminate app", "error", err)
-	}
-
-	// Run post hooks (after build, after app stopped)
-	postActions, err := s.runPostHooks(ewh, watcher)
-	if err != nil {
-		s.log.Error("Post-hook execution failed", "error", err)
-	}
-
+	postActions := s.runPostHooksForEvents(eventsWithHooks, watcher)
 	postActionResult := work.applyRefreshActions(postActions)
 	if postActionResult.restartRequested {
 		s.triggerRestartFromRefreshActions(postActionResult)
 		return
 	}
 
-	// Restart app if needed
-	if work.restartApp {
+	if shouldRunImplicitBuild && work.restartApp {
 		s.log.Info("Restarting app")
 		s.startApp()
 	}
 
-	// Browser refresh
 	s.executeBrowserPhase(work)
 }
 
-// processBatchedEvents handles multiple file changes - app already stopped upfront
-func (s *server) processBatchedEvents(eventsWithHooks []eventWithHooks, work *workSet, watcher *Watcher) {
-	// Fire all no-wait hooks
-	for _, ewh := range eventsWithHooks {
-		if ewh.skipDuplicateHooks {
-			continue
+func (s *server) shouldRunImplicitBuild(eventsWithHooks []eventWithHooks) bool {
+	for _, eventWithHooksForCheck := range eventsWithHooks {
+		if !eventWithHooksForCheck.runOnChangeOnly {
+			return true
 		}
-		s.fireNoWaitHooks(ewh, watcher)
 	}
+	return false
+}
 
-	// Run all pre hooks
-	var allPreActions []wave.RefreshAction
-	for _, ewh := range eventsWithHooks {
-		work.addImplicitWork(ewh.classified)
-		if ewh.skipDuplicateHooks {
+func (s *server) fireNoWaitHooksForEvents(
+	eventsWithHooks []eventWithHooks,
+	watcher *Watcher,
+) {
+	for _, eventWithHooksForFire := range eventsWithHooks {
+		if eventWithHooksForFire.skipDuplicateHooks {
 			continue
 		}
-		actions, err := s.runPreHooks(ewh, watcher)
+		s.fireNoWaitHooks(eventWithHooksForFire, watcher)
+	}
+}
+
+func (s *server) runPreHooksForEvents(
+	eventsWithHooks []eventWithHooks,
+	work *workSet,
+	watcher *Watcher,
+) []wave.RefreshAction {
+	allPreActions := make([]wave.RefreshAction, 0)
+
+	for _, eventWithHooksForPre := range eventsWithHooks {
+		work.addImplicitWork(eventWithHooksForPre.classified)
+
+		if eventWithHooksForPre.skipDuplicateHooks {
+			continue
+		}
+
+		preActions, err := s.runPreHooks(eventWithHooksForPre, watcher)
 		if err != nil {
 			s.log.Error("Pre-hook execution failed", "error", err)
 		}
-		allPreActions = append(allPreActions, actions...)
+		allPreActions = append(allPreActions, preActions...)
 	}
 
-	preActionResult := work.applyRefreshActions(allPreActions)
-	if preActionResult.restartRequested {
-		s.triggerRestartFromRefreshActions(preActionResult)
-		return
-	}
+	return allPreActions
+}
 
-	// Check if ALL events are RunOnChangeOnly
-	allRunOnChangeOnly := true
-	for _, ewh := range eventsWithHooks {
-		if !ewh.runOnChangeOnly {
-			allRunOnChangeOnly = false
-			break
-		}
-	}
+func (s *server) runConcurrentHooksForEvents(
+	eventsWithHooks []eventWithHooks,
+	watcher *Watcher,
+) []wave.RefreshAction {
+	actionsByEventIndex := make([][]wave.RefreshAction, len(eventsWithHooks))
+	var concurrentHooksGroup errgroup.Group
 
-	if allRunOnChangeOnly {
-		s.log.Info("All events are RunOnChangeOnly, skipping implicit build phase")
-	} else {
-		// Resolve browser behavior
-		work.resolve(s.cfg.UsingVite())
-	}
-
-	// Run build AND all concurrent hooks in parallel
-	var buildAndConcurrentEg errgroup.Group
-	var concurrentActions []wave.RefreshAction
-	var concurrentActionsMu sync.Mutex
-
-	if !allRunOnChangeOnly {
-		buildAndConcurrentEg.Go(func() error {
-			s.executeBuildPhase(work)
-			return nil
-		})
-	}
-
-	for _, ewh := range eventsWithHooks {
-		if ewh.skipDuplicateHooks {
+	for eventIndex := range eventsWithHooks {
+		eventWithHooksForConcurrent := eventsWithHooks[eventIndex]
+		if eventWithHooksForConcurrent.skipDuplicateHooks {
 			continue
 		}
-		ewh := ewh
-		buildAndConcurrentEg.Go(func() error {
-			actions, err := s.runConcurrentHooks(ewh, watcher)
+
+		eventIndexForResult := eventIndex
+		eventWithHooksForConcurrentCopy := eventWithHooksForConcurrent
+		concurrentHooksGroup.Go(func() error {
+			concurrentActions, err := s.runConcurrentHooks(
+				eventWithHooksForConcurrentCopy,
+				watcher,
+			)
 			if err != nil {
 				s.log.Error("Concurrent hook execution failed", "error", err)
 			}
-			if len(actions) > 0 {
-				concurrentActionsMu.Lock()
-				concurrentActions = append(concurrentActions, actions...)
-				concurrentActionsMu.Unlock()
-			}
+			actionsByEventIndex[eventIndexForResult] = concurrentActions
 			return nil
 		})
 	}
 
-	buildAndConcurrentEg.Wait()
+	_ = concurrentHooksGroup.Wait()
 
-	concurrentActionResult := work.applyRefreshActions(concurrentActions)
-	if concurrentActionResult.restartRequested {
-		s.triggerRestartFromRefreshActions(concurrentActionResult)
-		return
+	allConcurrentActions := make([]wave.RefreshAction, 0)
+	for _, concurrentActionsForEvent := range actionsByEventIndex {
+		allConcurrentActions = append(allConcurrentActions, concurrentActionsForEvent...)
 	}
 
-	// Run all post hooks
-	var allPostActions []wave.RefreshAction
-	for _, ewh := range eventsWithHooks {
-		if ewh.skipDuplicateHooks {
+	return allConcurrentActions
+}
+
+func (s *server) runPostHooksForEvents(
+	eventsWithHooks []eventWithHooks,
+	watcher *Watcher,
+) []wave.RefreshAction {
+	allPostActions := make([]wave.RefreshAction, 0)
+
+	for _, eventWithHooksForPost := range eventsWithHooks {
+		if eventWithHooksForPost.skipDuplicateHooks {
 			continue
 		}
-		actions, err := s.runPostHooks(ewh, watcher)
+
+		postActions, err := s.runPostHooks(eventWithHooksForPost, watcher)
 		if err != nil {
 			s.log.Error("Post-hook execution failed", "error", err)
 		}
-		allPostActions = append(allPostActions, actions...)
+		allPostActions = append(allPostActions, postActions...)
 	}
 
-	postActionResult := work.applyRefreshActions(allPostActions)
-	if postActionResult.restartRequested {
-		s.triggerRestartFromRefreshActions(postActionResult)
-		return
-	}
-
-	// Restart app if needed
-	if work.restartApp {
-		s.log.Info("Restarting app")
-		s.startApp()
-	}
-
-	// Single browser refresh for entire batch
-	s.executeBrowserPhase(work)
+	return allPostActions
 }
 
 func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
@@ -782,10 +777,7 @@ func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wav
 		return nil, nil
 	}
 
-	var actions []wave.RefreshAction
-	var actionsMu sync.Mutex
-	var eg errgroup.Group
-
+	concurrentHooksToRun := make([]wave.OnChangeHook, 0, len(ewh.hooks.Concurrent))
 	for _, concurrentHook := range ewh.hooks.Concurrent {
 		if watcher.IsIgnored(ewh.classified.event.Name, concurrentHook.Exclude) {
 			continue
@@ -798,18 +790,30 @@ func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wav
 			continue
 		}
 
+		concurrentHooksToRun = append(concurrentHooksToRun, hook)
+	}
+
+	actionsByHookIndex := make([]*wave.RefreshAction, len(concurrentHooksToRun))
+	var eg errgroup.Group
+
+	for hookIndex := range concurrentHooksToRun {
+		hookForExecution := concurrentHooksToRun[hookIndex]
+		hookIndexForResult := hookIndex
 		eg.Go(func() error {
-			action, err := s.executeHook(hook, ewh.hookCtx)
-			if action != nil {
-				actionsMu.Lock()
-				actions = append(actions, *action)
-				actionsMu.Unlock()
-			}
+			action, err := s.executeHook(hookForExecution, ewh.hookCtx)
+			actionsByHookIndex[hookIndexForResult] = action
 			return err
 		})
 	}
 
 	err := eg.Wait()
+	actions := make([]wave.RefreshAction, 0, len(actionsByHookIndex))
+	for _, action := range actionsByHookIndex {
+		if action != nil {
+			actions = append(actions, *action)
+		}
+	}
+
 	return actions, err
 }
 
@@ -1102,17 +1106,11 @@ func (s *server) isConfigFile(path string) bool {
 		return false
 	}
 
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		absPath = path
-	}
-
-	absConfigPath, err := filepath.Abs(configPath)
-	if err != nil {
-		absConfigPath = configPath
-	}
-
-	return absPath == absConfigPath
+	normalizedPath := pathnorm.Absolute(path)
+	normalizedConfigPath := pathnorm.Absolute(configPath)
+	return normalizedPath != "" &&
+		normalizedConfigPath != "" &&
+		normalizedPath == normalizedConfigPath
 }
 
 func needsHardReload(wf *wave.WatchedFile) bool {
