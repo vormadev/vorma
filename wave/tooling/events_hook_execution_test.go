@@ -398,7 +398,7 @@ func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 		needsHardReload: false,
 	}
 
-	s.processSingleEvent(ewh, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
 	select {
 	case req := <-s.restartCh:
@@ -434,7 +434,7 @@ func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(t *testing.T)
 		needsHardReload: false,
 	}
 
-	s.processSingleEvent(ewh, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
 	select {
 	case req := <-s.restartCh:

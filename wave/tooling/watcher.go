@@ -60,9 +60,6 @@ func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 	}
 
 	absWatchRoot := pathnorm.AbsoluteSlash(cfg.WatchRoot())
-	if absWatchRoot == "" {
-		absWatchRoot = filepath.ToSlash(cfg.WatchRoot())
-	}
 
 	absPublicStatic := ""
 	absPrivateStatic := ""
@@ -90,9 +87,15 @@ func (w *Watcher) norm(p string) string {
 	return pathnorm.AbsoluteSlash(p)
 }
 
-func (w *Watcher) setupPatterns() {
-	watchRoot := w.cfg.WatchRoot()
+func (w *Watcher) normalizePathOrPatternFromWatchRoot(pathOrPattern string) string {
+	if filepath.IsAbs(pathOrPattern) {
+		return w.norm(pathOrPattern)
+	}
 
+	return w.norm(filepath.Join(w.cfg.WatchRoot(), pathOrPattern))
+}
+
+func (w *Watcher) setupPatterns() {
 	w.ignoredFiles = []string{
 		w.norm(w.cfg.Dist.Binary()),
 	}
@@ -133,11 +136,7 @@ func (w *Watcher) setupPatterns() {
 
 	// Add framework-injected ignored patterns
 	for _, p := range w.cfg.FrameworkIgnoredPatterns {
-		pattern := p
-		if !filepath.IsAbs(pattern) {
-			pattern = filepath.Join(w.cfg.WatchRoot(), pattern)
-		}
-		normalizedPattern := w.norm(pattern)
+		normalizedPattern := w.normalizePathOrPatternFromWatchRoot(p)
 
 		// Heuristic: if it ends in /** or looks like a dir, treat as ignored dir
 		if strings.HasSuffix(p, "/**") {
@@ -154,11 +153,12 @@ func (w *Watcher) setupPatterns() {
 
 	if w.cfg.Watch != nil {
 		for _, p := range w.cfg.Watch.Exclude.Dirs {
-			w.ignoredDirs = append(w.ignoredDirs, w.norm(filepath.Join(watchRoot, p)))
-			w.ignoredDirs = append(w.ignoredDirs, w.norm(filepath.Join(watchRoot, p))+"/**")
+			normalizedDirectoryPattern := w.normalizePathOrPatternFromWatchRoot(p)
+			w.ignoredDirs = append(w.ignoredDirs, normalizedDirectoryPattern)
+			w.ignoredDirs = append(w.ignoredDirs, normalizedDirectoryPattern+"/**")
 		}
 		for _, p := range w.cfg.Watch.Exclude.Files {
-			w.ignoredFiles = append(w.ignoredFiles, w.norm(filepath.Join(watchRoot, p)))
+			w.ignoredFiles = append(w.ignoredFiles, w.normalizePathOrPatternFromWatchRoot(p))
 		}
 	}
 
@@ -169,22 +169,14 @@ func (w *Watcher) setupPatterns() {
 // addFrameworkWatchPatterns adds patterns injected by frameworks (e.g., Vorma)
 func (w *Watcher) addFrameworkWatchPatterns() {
 	for _, wf := range w.cfg.FrameworkWatchPatterns {
-		// Normalize the pattern path
-		pattern := wf.Pattern
-		if !filepath.IsAbs(pattern) {
-			pattern = w.absWatchRoot + "/" + filepath.ToSlash(pattern)
-		} else {
-			pattern = w.norm(pattern)
-		}
-
 		// Create a copy with normalized pattern
 		normalizedWF := wf
-		normalizedWF.Pattern = pattern
+		normalizedWF.Pattern = w.normalizePathOrPatternFromWatchRoot(wf.Pattern)
 
 		// Normalize exclude patterns in hooks
 		for i, hook := range normalizedWF.OnChangeHooks {
 			for j, excl := range hook.Exclude {
-				normalizedWF.OnChangeHooks[i].Exclude[j] = w.norm(filepath.Join(w.cfg.WatchRoot(), excl))
+				normalizedWF.OnChangeHooks[i].Exclude[j] = w.normalizePathOrPatternFromWatchRoot(excl)
 			}
 		}
 
@@ -197,20 +189,12 @@ func (w *Watcher) joinPatternsWithRoot() {
 		return
 	}
 
-	watchRoot := w.cfg.WatchRoot()
-
 	for i, wf := range w.cfg.Watch.Include {
-		pattern := wf.Pattern
-		if !filepath.IsAbs(pattern) {
-			pattern = w.absWatchRoot + "/" + filepath.ToSlash(pattern)
-		} else {
-			pattern = w.norm(pattern)
-		}
-		w.cfg.Watch.Include[i].Pattern = pattern
+		w.cfg.Watch.Include[i].Pattern = w.normalizePathOrPatternFromWatchRoot(wf.Pattern)
 
 		for j, hook := range wf.OnChangeHooks {
 			for k, excl := range hook.Exclude {
-				w.cfg.Watch.Include[i].OnChangeHooks[j].Exclude[k] = w.norm(filepath.Join(watchRoot, excl))
+				w.cfg.Watch.Include[i].OnChangeHooks[j].Exclude[k] = w.normalizePathOrPatternFromWatchRoot(excl)
 			}
 		}
 	}

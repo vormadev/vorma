@@ -324,9 +324,19 @@ func (b *Builder) ProcessPublicFilesOnly() error {
 	return b.processPublicFiles(true)
 }
 
+// ProcessPublicFilesOnlyForChangedPaths reprocesses only changed public files.
+func (b *Builder) ProcessPublicFilesOnlyForChangedPaths(changedSourcePaths []string) error {
+	return b.processPublicFilesForChangedPaths(changedSourcePaths)
+}
+
 // ProcessPrivateFilesOnly reprocesses just the private static files (for dev hot reload)
 func (b *Builder) ProcessPrivateFilesOnly() error {
 	return b.processPrivateFiles(true)
+}
+
+// ProcessPrivateFilesOnlyForChangedPaths reprocesses only changed private files.
+func (b *Builder) ProcessPrivateFilesOnlyForChangedPaths(changedSourcePaths []string) error {
+	return b.processPrivateFilesForChangedPaths(changedSourcePaths)
 }
 
 // BuildCriticalCSS builds only critical CSS

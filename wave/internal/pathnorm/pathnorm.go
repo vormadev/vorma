@@ -1,6 +1,7 @@
 package pathnorm
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -26,4 +27,26 @@ func AbsoluteSlash(path string) string {
 	}
 
 	return filepath.ToSlash(normalizedPath)
+}
+
+func AbsoluteDirectory(path string) string {
+	normalizedPath := Absolute(path)
+	if normalizedPath == "" {
+		return ""
+	}
+
+	fileInfo, statError := os.Stat(normalizedPath)
+	if statError == nil && fileInfo.IsDir() {
+		return normalizedPath
+	}
+
+	return filepath.Dir(normalizedPath)
+}
+
+func PathsReferToSameLocation(pathA string, pathB string) bool {
+	normalizedPathA := Absolute(pathA)
+	normalizedPathB := Absolute(pathB)
+	return normalizedPathA != "" &&
+		normalizedPathB != "" &&
+		normalizedPathA == normalizedPathB
 }

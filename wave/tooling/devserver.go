@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -271,24 +270,12 @@ func (s *server) addConfigFileDirectory(
 	watcher *Watcher,
 	configFilePath string,
 ) error {
-	normalizedConfigFilePath := pathnorm.Absolute(configFilePath)
-	if normalizedConfigFilePath == "" {
+	normalizedConfigDirectoryPath := pathnorm.AbsoluteDirectory(configFilePath)
+	if normalizedConfigDirectoryPath == "" {
 		return nil
 	}
 
-	info, statErr := os.Stat(normalizedConfigFilePath)
-	configFileDirectory := normalizedConfigFilePath
-	if statErr == nil && !info.IsDir() {
-		configFileDirectory = filepath.Dir(normalizedConfigFilePath)
-	}
-	if statErr != nil {
-		configFileDirectory = filepath.Dir(normalizedConfigFilePath)
-	}
-	if configFileDirectory == "" {
-		return nil
-	}
-
-	if err := watcher.AddDir(configFileDirectory); err != nil && !os.IsNotExist(err) {
+	if err := watcher.AddDir(normalizedConfigDirectoryPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
@@ -596,37 +583,77 @@ func (s *server) triggerRestartWithOpts(recompileGo bool, isConfigRestart bool) 
 	s.restartChMu.Lock()
 	defer s.restartChMu.Unlock()
 
-	req := restartRequest{recompileGo: recompileGo, isConfigRestart: isConfigRestart}
-	if req.isConfigRestart {
-		req.recompileGo = true
-	}
+	incomingRequest := normalizeRestartRequest(restartRequest{
+		recompileGo:     recompileGo,
+		isConfigRestart: isConfigRestart,
+	})
 
 	// Try to enqueue directly when no restart is pending.
-	select {
-	case s.restartCh <- req:
+	if tryEnqueueRestartRequest(s.restartCh, incomingRequest) {
 		return
-	default:
 	}
 
 	// Merge with the currently pending request.
-	select {
-	case pending := <-s.restartCh:
-		s.restartCh <- mergeRestartRequests(pending, req)
-	default:
+	pendingRequest, hasPendingRequest := tryDequeueRestartRequest(s.restartCh)
+	if !hasPendingRequest {
 		// Channel became empty after the initial check (consumer took pending).
 		// Best effort enqueue of current request.
-		select {
-		case s.restartCh <- req:
-		default:
-		}
+		_ = tryEnqueueRestartRequest(s.restartCh, incomingRequest)
+		return
+	}
+
+	queuedRequest := resolveQueuedRestartRequest(&pendingRequest, incomingRequest)
+	_ = tryEnqueueRestartRequest(s.restartCh, queuedRequest)
+}
+
+func normalizeRestartRequest(request restartRequest) restartRequest {
+	if request.isConfigRestart {
+		request.recompileGo = true
+	}
+	return request
+}
+
+func resolveQueuedRestartRequest(
+	pendingRequest *restartRequest,
+	incomingRequest restartRequest,
+) restartRequest {
+	normalizedIncomingRequest := normalizeRestartRequest(incomingRequest)
+	if pendingRequest == nil {
+		return normalizedIncomingRequest
+	}
+
+	normalizedPendingRequest := normalizeRestartRequest(*pendingRequest)
+	return mergeRestartRequests(normalizedPendingRequest, normalizedIncomingRequest)
+}
+
+func tryEnqueueRestartRequest(
+	restartRequests chan restartRequest,
+	request restartRequest,
+) bool {
+	select {
+	case restartRequests <- request:
+		return true
+	default:
+		return false
+	}
+}
+
+func tryDequeueRestartRequest(
+	restartRequests chan restartRequest,
+) (restartRequest, bool) {
+	select {
+	case pendingRequest := <-restartRequests:
+		return pendingRequest, true
+	default:
+		return restartRequest{}, false
 	}
 }
 
 func mergeRestartRequests(
-	pending restartRequest,
-	incoming restartRequest,
+	pendingRequest restartRequest,
+	incomingRequest restartRequest,
 ) restartRequest {
-	if pending.isConfigRestart || incoming.isConfigRestart {
+	if pendingRequest.isConfigRestart || incomingRequest.isConfigRestart {
 		return restartRequest{
 			recompileGo:     true,
 			isConfigRestart: true,
@@ -634,7 +661,7 @@ func mergeRestartRequests(
 	}
 
 	return restartRequest{
-		recompileGo:     pending.recompileGo || incoming.recompileGo,
+		recompileGo:     pendingRequest.recompileGo || incomingRequest.recompileGo,
 		isConfigRestart: false,
 	}
 }

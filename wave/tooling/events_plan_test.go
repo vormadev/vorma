@@ -147,14 +147,14 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(t *testing.T)
 	if len(executionPlan.eventsWithHooks) <= 1 {
 		t.Fatal("expected isBatch=true")
 	}
-	if anyEventNeedsHardReload(executionPlan.eventsWithHooks) {
+	if executionPlan.appStopStrategy != appStopStrategyNone {
 		t.Fatal("expected batchNeedsAppStop=false for txt-only batch")
+	}
+	if !executionPlan.runImplicitBuild {
+		t.Fatal("expected runImplicitBuild=true for non-run-on-change-only batch")
 	}
 	if !executionPlan.showRebuildingOverlay {
 		t.Fatal("expected showRebuildingOverlay=true for txt batch")
-	}
-	if len(executionPlan.classifiedEvents) != 2 {
-		t.Fatalf("expected 2 classified events, got %d", len(executionPlan.classifiedEvents))
 	}
 	if len(executionPlan.eventsWithHooks) != 2 {
 		t.Fatalf("expected 2 eventsWithHooks, got %d", len(executionPlan.eventsWithHooks))
@@ -175,4 +175,71 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(t *testing.T)
 	if !executionPlan.eventsWithHooks[1].skipDuplicateHooks {
 		t.Fatal("expected second matched pattern hook set to be deduplicated")
 	}
+}
+
+func TestResolveAppStopStrategy(t *testing.T) {
+	t.Run("returns none for empty plan", func(t *testing.T) {
+		if got := resolveAppStopStrategy(nil); got != appStopStrategyNone {
+			t.Fatalf("resolveAppStopStrategy(nil)=%v, want %v", got, appStopStrategyNone)
+		}
+	})
+
+	t.Run("single event hard reload uses single-event strategy", func(t *testing.T) {
+		eventsWithHooks := []eventWithHooks{
+			{needsHardReload: true},
+		}
+		if got := resolveAppStopStrategy(eventsWithHooks); got != appStopStrategySingleEventHardReload {
+			t.Fatalf(
+				"resolveAppStopStrategy(single hard reload)=%v, want %v",
+				got,
+				appStopStrategySingleEventHardReload,
+			)
+		}
+	})
+
+	t.Run("batch with any hard reload uses batch strategy", func(t *testing.T) {
+		eventsWithHooks := []eventWithHooks{
+			{needsHardReload: false},
+			{needsHardReload: true},
+		}
+		if got := resolveAppStopStrategy(eventsWithHooks); got != appStopStrategyBatchHardReload {
+			t.Fatalf(
+				"resolveAppStopStrategy(batch hard reload)=%v, want %v",
+				got,
+				appStopStrategyBatchHardReload,
+			)
+		}
+	})
+
+	t.Run("batch without hard reload uses none strategy", func(t *testing.T) {
+		eventsWithHooks := []eventWithHooks{
+			{needsHardReload: false},
+			{needsHardReload: false},
+		}
+		if got := resolveAppStopStrategy(eventsWithHooks); got != appStopStrategyNone {
+			t.Fatalf("resolveAppStopStrategy(batch no hard reload)=%v, want %v", got, appStopStrategyNone)
+		}
+	})
+}
+
+func TestShouldRunImplicitBuildForEvents(t *testing.T) {
+	t.Run("returns false when all events are run-on-change-only", func(t *testing.T) {
+		eventsWithHooks := []eventWithHooks{
+			{runOnChangeOnly: true},
+			{runOnChangeOnly: true},
+		}
+		if shouldRunImplicitBuildForEvents(eventsWithHooks) {
+			t.Fatal("expected implicit build to be skipped")
+		}
+	})
+
+	t.Run("returns true when any event requires implicit build", func(t *testing.T) {
+		eventsWithHooks := []eventWithHooks{
+			{runOnChangeOnly: true},
+			{runOnChangeOnly: false},
+		}
+		if !shouldRunImplicitBuildForEvents(eventsWithHooks) {
+			t.Fatal("expected implicit build to run")
+		}
+	})
 }

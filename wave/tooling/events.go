@@ -35,11 +35,13 @@ type classifiedEvent struct {
 }
 
 type buildPhaseDecision struct {
-	compileGo           bool
-	buildCriticalCSS    bool
-	buildNormalCSS      bool
-	processPublicFiles  bool
-	processPrivateFiles bool
+	compileGo                     bool
+	buildCriticalCSS              bool
+	buildNormalCSS                bool
+	processPublicFiles            bool
+	processPrivateFiles           bool
+	publicStaticChangedFilePaths  []string
+	privateStaticChangedFilePaths []string
 }
 
 func (d buildPhaseDecision) hasFileProcessingWork() bool {
@@ -81,10 +83,19 @@ type workSet struct {
 }
 
 type eventExecutionPlan struct {
-	classifiedEvents      []classifiedEvent
 	eventsWithHooks       []eventWithHooks
 	showRebuildingOverlay bool
+	appStopStrategy       appStopStrategy
+	runImplicitBuild      bool
 }
+
+type appStopStrategy int
+
+const (
+	appStopStrategyNone appStopStrategy = iota
+	appStopStrategySingleEventHardReload
+	appStopStrategyBatchHardReload
+)
 
 type eventExecutionPlanningResult struct {
 	plan          *eventExecutionPlan
@@ -144,6 +155,23 @@ func reduceRefreshActionsInStableOrder(
 	return appliedActions, refreshActionApplicationResult{}
 }
 
+func appendFilePathIfMissing(
+	existingFilePaths []string,
+	filePath string,
+) []string {
+	if filePath == "" {
+		return existingFilePaths
+	}
+
+	for _, existingFilePath := range existingFilePaths {
+		if existingFilePath == filePath {
+			return existingFilePaths
+		}
+	}
+
+	return append(existingFilePaths, filePath)
+}
+
 // addImplicitWork adds build work implied by a file type.
 func (w *workSet) addImplicitWork(c classifiedEvent) {
 	wf := c.watchedFile
@@ -174,9 +202,17 @@ func (w *workSet) addImplicitWork(c classifiedEvent) {
 
 	case fileTypePublicStatic:
 		w.build.processPublicFiles = true
+		w.build.publicStaticChangedFilePaths = appendFilePathIfMissing(
+			w.build.publicStaticChangedFilePaths,
+			c.event.Name,
+		)
 
 	case fileTypePrivateStatic:
 		w.build.processPrivateFiles = true
+		w.build.privateStaticChangedFilePaths = appendFilePathIfMissing(
+			w.build.privateStaticChangedFilePaths,
+			c.event.Name,
+		)
 
 	case fileTypeOther:
 		if wf != nil {
@@ -317,7 +353,7 @@ func (s *server) processEvents(events []fsnotify.Event) {
 		)
 	}
 
-	s.processPlannedEvents(executionPlan.eventsWithHooks, work, watcher)
+	s.executeEventExecutionPlan(executionPlan, work, watcher)
 
 	watcher.RemoveStale()
 }
@@ -343,13 +379,17 @@ func (s *server) buildEventExecutionPlan(
 		return eventExecutionPlanningResult{}
 	}
 
-	eventsWithHooks, _ := buildEventHooksForProcessing(classifiedEvents)
+	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
+	if len(eventsWithHooks) == 0 {
+		return eventExecutionPlanningResult{}
+	}
 
 	return eventExecutionPlanningResult{
 		plan: &eventExecutionPlan{
-			classifiedEvents:      classifiedEvents,
 			eventsWithHooks:       eventsWithHooks,
 			showRebuildingOverlay: shouldShowRebuildingOverlay(classifiedEvents),
+			appStopStrategy:       resolveAppStopStrategy(eventsWithHooks),
+			runImplicitBuild:      shouldRunImplicitBuildForEvents(eventsWithHooks),
 		},
 	}
 }
@@ -424,15 +464,14 @@ func (s *server) classifyWatcherEventsForProcessing(
 
 func buildEventHooksForProcessing(
 	classifiedEvents []classifiedEvent,
-) ([]eventWithHooks, bool) {
+) []eventWithHooks {
 	if len(classifiedEvents) == 0 {
-		return nil, false
+		return nil
 	}
 
 	eventsWithHooks := make([]eventWithHooks, 0, len(classifiedEvents))
 	handledWatchedPatterns := make(map[string]struct{})
 	changedFilePathsByWatchedPattern := make(map[string][]string)
-	batchNeedsAppStop := false
 
 	for _, classifiedEventForProcessing := range classifiedEvents {
 		if classifiedEventForProcessing.watchedFile != nil {
@@ -456,10 +495,6 @@ func buildEventHooksForProcessing(
 
 		eventNeedsHardReload := classifiedEventForProcessing.fileType == fileTypeGo ||
 			needsHardReload(watchedFile)
-		if eventNeedsHardReload {
-			batchNeedsAppStop = true
-		}
-
 		skipDuplicateHooks := false
 		if classifiedEventForProcessing.watchedFile != nil {
 			watchedPattern := classifiedEventForProcessing.watchedFile.Pattern
@@ -496,7 +531,7 @@ func buildEventHooksForProcessing(
 		)
 	}
 
-	return eventsWithHooks, batchNeedsAppStop
+	return eventsWithHooks
 }
 
 func shouldShowRebuildingOverlay(
@@ -517,23 +552,6 @@ func shouldShowRebuildingOverlay(
 	return false
 }
 
-func (s *server) processSingleEvent(
-	ewh eventWithHooks,
-	work *workSet,
-	watcher *Watcher,
-) {
-	s.processPlannedEvents([]eventWithHooks{ewh}, work, watcher)
-}
-
-// processBatchedEvents handles multiple file changes.
-func (s *server) processBatchedEvents(
-	eventsWithHooks []eventWithHooks,
-	work *workSet,
-	watcher *Watcher,
-) {
-	s.processPlannedEvents(eventsWithHooks, work, watcher)
-}
-
 func anyEventNeedsHardReload(eventsWithHooks []eventWithHooks) bool {
 	for _, eventWithHooksForCheck := range eventsWithHooks {
 		if eventWithHooksForCheck.needsHardReload {
@@ -543,46 +561,77 @@ func anyEventNeedsHardReload(eventsWithHooks []eventWithHooks) bool {
 	return false
 }
 
-func (s *server) processPlannedEvents(
-	eventsWithHooks []eventWithHooks,
-	work *workSet,
-	watcher *Watcher,
-) {
+func resolveAppStopStrategy(eventsWithHooks []eventWithHooks) appStopStrategy {
 	if len(eventsWithHooks) == 0 {
-		return
+		return appStopStrategyNone
 	}
 
 	if len(eventsWithHooks) == 1 {
 		if eventsWithHooks[0].needsHardReload {
-			s.log.Info("Terminating running app")
-			if err := s.stopApp(); err != nil {
-				s.log.Error("Failed to terminate app", "error", err)
-			}
+			return appStopStrategySingleEventHardReload
 		}
-	} else if anyEventNeedsHardReload(eventsWithHooks) {
+		return appStopStrategyNone
+	}
+
+	if anyEventNeedsHardReload(eventsWithHooks) {
+		return appStopStrategyBatchHardReload
+	}
+
+	return appStopStrategyNone
+}
+
+func shouldRunImplicitBuildForEvents(eventsWithHooks []eventWithHooks) bool {
+	for _, eventWithHooksForCheck := range eventsWithHooks {
+		if !eventWithHooksForCheck.runOnChangeOnly {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *server) executeEventExecutionPlan(
+	plan *eventExecutionPlan,
+	work *workSet,
+	watcher *Watcher,
+) {
+	if plan == nil || len(plan.eventsWithHooks) == 0 {
+		return
+	}
+
+	switch plan.appStopStrategy {
+	case appStopStrategySingleEventHardReload:
+		s.log.Info("Terminating running app")
+		if err := s.stopApp(); err != nil {
+			s.log.Error("Failed to terminate app", "error", err)
+		}
+
+	case appStopStrategyBatchHardReload:
 		s.log.Info("Stopping app for batch rebuild")
 		if err := s.stopApp(); err != nil {
 			s.log.Error("Failed to stop app", "error", err)
 		}
-		for i := range eventsWithHooks {
-			if eventsWithHooks[i].hookCtx != nil {
-				eventsWithHooks[i].hookCtx.AppStoppedForBatch = true
+		for i := range plan.eventsWithHooks {
+			if plan.eventsWithHooks[i].hookCtx != nil {
+				plan.eventsWithHooks[i].hookCtx.AppStoppedForBatch = true
 			}
 		}
+
+	case appStopStrategyNone:
 	}
 
-	s.processEventsWithDeterministicPipeline(eventsWithHooks, work, watcher)
+	s.processEventsWithDeterministicPipeline(plan, work, watcher)
 }
 
 func (s *server) processEventsWithDeterministicPipeline(
-	eventsWithHooks []eventWithHooks,
+	plan *eventExecutionPlan,
 	work *workSet,
 	watcher *Watcher,
 ) {
-	if len(eventsWithHooks) == 0 {
+	if plan == nil || len(plan.eventsWithHooks) == 0 {
 		return
 	}
 
+	eventsWithHooks := plan.eventsWithHooks
 	s.fireNoWaitHooksForEvents(eventsWithHooks, watcher)
 
 	preActions := s.runPreHooksForEvents(eventsWithHooks, work, watcher)
@@ -592,8 +641,7 @@ func (s *server) processEventsWithDeterministicPipeline(
 		return
 	}
 
-	shouldRunImplicitBuild := s.shouldRunImplicitBuild(eventsWithHooks)
-	if !shouldRunImplicitBuild {
+	if !plan.runImplicitBuild {
 		if len(eventsWithHooks) == 1 {
 			s.log.Info("RunOnChangeOnly: skipping implicit build phase")
 		} else {
@@ -604,7 +652,7 @@ func (s *server) processEventsWithDeterministicPipeline(
 	}
 
 	var buildAndConcurrentHooksGroup errgroup.Group
-	if shouldRunImplicitBuild {
+	if plan.runImplicitBuild {
 		buildAndConcurrentHooksGroup.Go(func() error {
 			s.executeBuildPhase(work)
 			return nil
@@ -631,21 +679,12 @@ func (s *server) processEventsWithDeterministicPipeline(
 		return
 	}
 
-	if shouldRunImplicitBuild && work.restart.restartApp {
+	if plan.runImplicitBuild && work.restart.restartApp {
 		s.log.Info("Restarting app")
 		s.startApp()
 	}
 
 	s.executeBrowserPhase(work)
-}
-
-func (s *server) shouldRunImplicitBuild(eventsWithHooks []eventWithHooks) bool {
-	for _, eventWithHooksForCheck := range eventsWithHooks {
-		if !eventWithHooksForCheck.runOnChangeOnly {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *server) fireNoWaitHooksForEvents(
@@ -935,9 +974,17 @@ func (s *server) executeBuildPhase(work *workSet) {
 	if needsFileProcessing {
 		g.Go(func() error {
 			if work.build.processPublicFiles {
-				if err := builder.ProcessPublicFilesOnly(); err != nil {
-					s.log.Error("Public files processing failed", "error", err)
-					return err
+				var publicProcessingError error
+				if len(work.build.publicStaticChangedFilePaths) > 0 {
+					publicProcessingError = builder.ProcessPublicFilesOnlyForChangedPaths(
+						work.build.publicStaticChangedFilePaths,
+					)
+				} else {
+					publicProcessingError = builder.ProcessPublicFilesOnly()
+				}
+				if publicProcessingError != nil {
+					s.log.Error("Public files processing failed", "error", publicProcessingError)
+					return publicProcessingError
 				}
 				if s.cfg.FrameworkPublicFileMapOutDir != "" {
 					if err := builder.WritePublicFileMapTS(s.cfg.FrameworkPublicFileMapOutDir); err != nil {
@@ -951,9 +998,17 @@ func (s *server) executeBuildPhase(work *workSet) {
 
 			if work.build.processPrivateFiles {
 				innerG.Go(func() error {
-					if err := builder.ProcessPrivateFilesOnly(); err != nil {
-						s.log.Error("Private files processing failed", "error", err)
-						return err
+					var privateProcessingError error
+					if len(work.build.privateStaticChangedFilePaths) > 0 {
+						privateProcessingError = builder.ProcessPrivateFilesOnlyForChangedPaths(
+							work.build.privateStaticChangedFilePaths,
+						)
+					} else {
+						privateProcessingError = builder.ProcessPrivateFilesOnly()
+					}
+					if privateProcessingError != nil {
+						s.log.Error("Private files processing failed", "error", privateProcessingError)
+						return privateProcessingError
 					}
 					return nil
 				})
@@ -1130,11 +1185,7 @@ func (s *server) isConfigFile(path string) bool {
 		return false
 	}
 
-	normalizedPath := pathnorm.Absolute(path)
-	normalizedConfigPath := pathnorm.Absolute(configPath)
-	return normalizedPath != "" &&
-		normalizedConfigPath != "" &&
-		normalizedPath == normalizedConfigPath
+	return pathnorm.PathsReferToSameLocation(path, configPath)
 }
 
 func needsHardReload(wf *wave.WatchedFile) bool {

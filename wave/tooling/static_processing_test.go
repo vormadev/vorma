@@ -145,6 +145,120 @@ func TestProcessPublicFilesOnly_GranularModeRemovesStaleOutputFiles(t *testing.T
 	}
 }
 
+func TestProcessPublicFilesOnlyForChangedPaths_UpdatesOnlyChangedEntries(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	publicDir := cfg.Core.StaticAssetDirs.Public
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+
+	changedFilePath := filepath.Join(publicDir, "changed.txt")
+	stableFilePath := filepath.Join(publicDir, "stable.txt")
+	if err := os.WriteFile(changedFilePath, []byte("v1"), 0o644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+	if err := os.WriteFile(stableFilePath, []byte("stable"), 0o644); err != nil {
+		t.Fatalf("failed writing stable file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	initialMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap after initial run returned error: %v", err)
+	}
+	initialChangedEntry := initialMap["changed.txt"]
+	initialStableEntry := initialMap["stable.txt"]
+
+	if err := os.WriteFile(changedFilePath, []byte("v2"), 0o644); err != nil {
+		t.Fatalf("failed rewriting changed file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{changedFilePath}); err != nil {
+		t.Fatalf("ProcessPublicFilesOnlyForChangedPaths returned error: %v", err)
+	}
+
+	updatedMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap after changed-path run returned error: %v", err)
+	}
+
+	updatedChangedEntry := updatedMap["changed.txt"]
+	updatedStableEntry := updatedMap["stable.txt"]
+	if updatedStableEntry.DistName != initialStableEntry.DistName {
+		t.Fatalf(
+			"expected unchanged stable entry dist name %q, got %q",
+			initialStableEntry.DistName,
+			updatedStableEntry.DistName,
+		)
+	}
+	if updatedChangedEntry.DistName == initialChangedEntry.DistName {
+		t.Fatalf(
+			"expected changed entry dist name to change, both were %q",
+			updatedChangedEntry.DistName,
+		)
+	}
+
+	oldChangedDistPath := filepath.Join(cfg.Dist.StaticPublic(), initialChangedEntry.DistName)
+	if _, statErr := os.Stat(oldChangedDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected old changed dist file to be removed, stat error: %v", statErr)
+	}
+}
+
+func TestProcessPublicFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	publicDir := cfg.Core.StaticAssetDirs.Public
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+
+	removedFilePath := filepath.Join(publicDir, "removed.txt")
+	if err := os.WriteFile(removedFilePath, []byte("remove-me"), 0o644); err != nil {
+		t.Fatalf("failed writing removable source file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	initialMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap after initial run returned error: %v", err)
+	}
+	initialRemovedEntry := initialMap["removed.txt"]
+	initialRemovedDistPath := filepath.Join(cfg.Dist.StaticPublic(), initialRemovedEntry.DistName)
+
+	if err := os.Remove(removedFilePath); err != nil {
+		t.Fatalf("failed removing source file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{removedFilePath}); err != nil {
+		t.Fatalf("ProcessPublicFilesOnlyForChangedPaths returned error: %v", err)
+	}
+
+	updatedMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap after changed-path delete returned error: %v", err)
+	}
+	if _, exists := updatedMap["removed.txt"]; exists {
+		t.Fatalf("expected removed.txt to be absent from map, got %#v", updatedMap["removed.txt"])
+	}
+
+	if _, statErr := os.Stat(initialRemovedDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected removed dist file to be deleted, stat error: %v", statErr)
+	}
+}
+
 func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
@@ -180,6 +294,53 @@ func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 	distPath := filepath.Join(cfg.Dist.StaticPrivate(), "templates", "home.html")
 	if _, statErr := os.Stat(distPath); statErr != nil {
 		t.Fatalf("expected private dist file to exist at %s: %v", distPath, statErr)
+	}
+}
+
+func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateFilePath := filepath.Join(privateDir, "templates", "gone.html")
+	if err := os.MkdirAll(filepath.Dir(privateFilePath), 0o755); err != nil {
+		t.Fatalf("failed creating private source dir: %v", err)
+	}
+	if err := os.WriteFile(privateFilePath, []byte("<h1>gone</h1>"), 0o644); err != nil {
+		t.Fatalf("failed writing private source file: %v", err)
+	}
+
+	if err := builder.ProcessPrivateFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", err)
+	}
+
+	initialMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	if err != nil {
+		t.Fatalf("loadFileMapFromPath returned error: %v", err)
+	}
+	initialEntry := initialMap["templates/gone.html"]
+	initialDistPath := filepath.Join(cfg.Dist.StaticPrivate(), initialEntry.DistName)
+
+	if err := os.Remove(privateFilePath); err != nil {
+		t.Fatalf("failed removing private source file: %v", err)
+	}
+
+	if err := builder.ProcessPrivateFilesOnlyForChangedPaths([]string{privateFilePath}); err != nil {
+		t.Fatalf("ProcessPrivateFilesOnlyForChangedPaths returned error: %v", err)
+	}
+
+	updatedMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	if err != nil {
+		t.Fatalf("loadFileMapFromPath after changed-path delete returned error: %v", err)
+	}
+	if _, exists := updatedMap["templates/gone.html"]; exists {
+		t.Fatalf("expected templates/gone.html to be absent from map, got %#v", updatedMap["templates/gone.html"])
+	}
+
+	if _, statErr := os.Stat(initialDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected private dist file to be deleted, stat error: %v", statErr)
 	}
 }
 

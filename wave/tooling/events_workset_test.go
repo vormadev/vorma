@@ -3,6 +3,7 @@ package tooling
 import (
 	"testing"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -220,17 +221,55 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 
 	t.Run("public static file requests public file processing", func(t *testing.T) {
 		work := &workSet{}
-		work.addImplicitWork(classifiedEvent{fileType: fileTypePublicStatic})
+		changedPublicFilePath := "/tmp/public/logo.svg"
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypePublicStatic,
+			event: fsnotify.Event{
+				Name: changedPublicFilePath,
+			},
+		})
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypePublicStatic,
+			event: fsnotify.Event{
+				Name: changedPublicFilePath,
+			},
+		})
 		if !work.build.processPublicFiles {
 			t.Fatal("expected build.processPublicFiles=true")
+		}
+		if len(work.build.publicStaticChangedFilePaths) != 1 {
+			t.Fatalf("expected one deduplicated public static path, got %#v", work.build.publicStaticChangedFilePaths)
+		}
+		if work.build.publicStaticChangedFilePaths[0] != changedPublicFilePath {
+			t.Fatalf(
+				"expected tracked public static path %q, got %#v",
+				changedPublicFilePath,
+				work.build.publicStaticChangedFilePaths,
+			)
 		}
 	})
 
 	t.Run("private static file requests private file processing", func(t *testing.T) {
 		work := &workSet{}
-		work.addImplicitWork(classifiedEvent{fileType: fileTypePrivateStatic})
+		firstPrivatePath := "/tmp/private/a.txt"
+		secondPrivatePath := "/tmp/private/b.txt"
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypePrivateStatic,
+			event: fsnotify.Event{
+				Name: firstPrivatePath,
+			},
+		})
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypePrivateStatic,
+			event: fsnotify.Event{
+				Name: secondPrivatePath,
+			},
+		})
 		if !work.build.processPrivateFiles {
 			t.Fatal("expected build.processPrivateFiles=true")
+		}
+		if len(work.build.privateStaticChangedFilePaths) != 2 {
+			t.Fatalf("expected two tracked private static paths, got %#v", work.build.privateStaticChangedFilePaths)
 		}
 	})
 

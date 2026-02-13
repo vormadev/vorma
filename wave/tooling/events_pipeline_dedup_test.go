@@ -207,7 +207,7 @@ func TestBuildEventHooksForProcessingDeduplicatesHooksByPattern(
 		},
 	}
 
-	eventsWithHooks, batchNeedsAppStop := buildEventHooksForProcessing(classifiedEvents)
+	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
 	if len(eventsWithHooks) != 2 {
 		t.Fatalf("eventsWithHooks count = %d, want 2", len(eventsWithHooks))
 	}
@@ -217,7 +217,7 @@ func TestBuildEventHooksForProcessingDeduplicatesHooksByPattern(
 	if !eventsWithHooks[1].skipDuplicateHooks {
 		t.Fatal("expected second event with shared pattern to skip duplicate hooks")
 	}
-	if !batchNeedsAppStop {
+	if !anyEventNeedsHardReload(eventsWithHooks) {
 		t.Fatal("expected batchNeedsAppStop=true when one event requires hard reload")
 	}
 	if got, want := eventsWithHooks[0].hookCtx.ChangedFilePaths, []string{"a.go", "b.txt"}; !reflect.DeepEqual(got, want) {
@@ -238,7 +238,7 @@ func TestBuildEventHooksForProcessingNoPatternUsesSingleChangedFilePath(
 		},
 	}
 
-	eventsWithHooks, _ := buildEventHooksForProcessing(classifiedEvents)
+	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
 	if len(eventsWithHooks) != 1 {
 		t.Fatalf("eventsWithHooks count = %d, want 1", len(eventsWithHooks))
 	}

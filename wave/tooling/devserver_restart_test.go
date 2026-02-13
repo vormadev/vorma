@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -66,88 +67,147 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 	})
 }
 
-func TestMergeRestartRequests(t *testing.T) {
+func TestNormalizeRestartRequest(t *testing.T) {
 	tests := []struct {
-		name             string
-		pending          restartRequest
-		incoming         restartRequest
-		expectedCombined restartRequest
+		name           string
+		inputRequest   restartRequest
+		expectedResult restartRequest
 	}{
 		{
-			name: "config restart takes precedence over non-config restart",
-			pending: restartRequest{
+			name: "non-config request unchanged",
+			inputRequest: restartRequest{
 				recompileGo:     false,
 				isConfigRestart: false,
 			},
-			incoming: restartRequest{
+			expectedResult: restartRequest{
+				recompileGo:     false,
+				isConfigRestart: false,
+			},
+		},
+		{
+			name: "config request always recompiles go",
+			inputRequest: restartRequest{
 				recompileGo:     false,
 				isConfigRestart: true,
 			},
-			expectedCombined: restartRequest{
+			expectedResult: restartRequest{
 				recompileGo:     true,
 				isConfigRestart: true,
 			},
 		},
 		{
-			name: "pending config restart remains config restart",
-			pending: restartRequest{
+			name: "already-strong config request preserved",
+			inputRequest: restartRequest{
 				recompileGo:     true,
 				isConfigRestart: true,
 			},
-			incoming: restartRequest{
-				recompileGo:     true,
-				isConfigRestart: false,
-			},
-			expectedCombined: restartRequest{
+			expectedResult: restartRequest{
 				recompileGo:     true,
 				isConfigRestart: true,
-			},
-		},
-		{
-			name: "non-config requests OR their recompile requirement",
-			pending: restartRequest{
-				recompileGo:     false,
-				isConfigRestart: false,
-			},
-			incoming: restartRequest{
-				recompileGo:     true,
-				isConfigRestart: false,
-			},
-			expectedCombined: restartRequest{
-				recompileGo:     true,
-				isConfigRestart: false,
-			},
-		},
-		{
-			name: "weaker incoming request does not downgrade stronger pending request",
-			pending: restartRequest{
-				recompileGo:     true,
-				isConfigRestart: false,
-			},
-			incoming: restartRequest{
-				recompileGo:     false,
-				isConfigRestart: false,
-			},
-			expectedCombined: restartRequest{
-				recompileGo:     true,
-				isConfigRestart: false,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			combined := mergeRestartRequests(tt.pending, tt.incoming)
-			if combined != tt.expectedCombined {
+			normalizedRequest := normalizeRestartRequest(tt.inputRequest)
+			if normalizedRequest != tt.expectedResult {
 				t.Fatalf(
-					"mergeRestartRequests(%#v, %#v) = %#v, want %#v",
-					tt.pending,
-					tt.incoming,
-					combined,
-					tt.expectedCombined,
+					"normalizeRestartRequest(%#v) = %#v, want %#v",
+					tt.inputRequest,
+					normalizedRequest,
+					tt.expectedResult,
 				)
 			}
 		})
+	}
+}
+
+func TestResolveQueuedRestartRequest(t *testing.T) {
+	t.Run("no pending request uses normalized incoming request", func(t *testing.T) {
+		incomingRequest := restartRequest{
+			recompileGo:     false,
+			isConfigRestart: true,
+		}
+
+		resolvedRequest := resolveQueuedRestartRequest(nil, incomingRequest)
+		if !resolvedRequest.recompileGo || !resolvedRequest.isConfigRestart {
+			t.Fatalf("expected normalized config restart, got %#v", resolvedRequest)
+		}
+	})
+
+	t.Run("pending request merges with incoming request", func(t *testing.T) {
+		pendingRequest := restartRequest{
+			recompileGo:     false,
+			isConfigRestart: false,
+		}
+		incomingRequest := restartRequest{
+			recompileGo:     true,
+			isConfigRestart: false,
+		}
+
+		resolvedRequest := resolveQueuedRestartRequest(&pendingRequest, incomingRequest)
+		if !resolvedRequest.recompileGo || resolvedRequest.isConfigRestart {
+			t.Fatalf("expected go-recompile non-config restart, got %#v", resolvedRequest)
+		}
+	})
+}
+
+func TestMergeRestartRequests(t *testing.T) {
+	allPossibleRequests := []restartRequest{
+		{recompileGo: false, isConfigRestart: false},
+		{recompileGo: true, isConfigRestart: false},
+		{recompileGo: false, isConfigRestart: true},
+		{recompileGo: true, isConfigRestart: true},
+	}
+
+	for _, pendingRequestForTest := range allPossibleRequests {
+		for _, incomingRequestForTest := range allPossibleRequests {
+			testName := fmt.Sprintf(
+				"pending_go_%t_config_%t__incoming_go_%t_config_%t",
+				pendingRequestForTest.recompileGo,
+				pendingRequestForTest.isConfigRestart,
+				incomingRequestForTest.recompileGo,
+				incomingRequestForTest.isConfigRestart,
+			)
+
+			t.Run(testName, func(t *testing.T) {
+				normalizedPendingRequest := normalizeRestartRequest(pendingRequestForTest)
+				normalizedIncomingRequest := normalizeRestartRequest(incomingRequestForTest)
+				combined := mergeRestartRequests(normalizedPendingRequest, normalizedIncomingRequest)
+				expectedCombined := expectedMergedRestartRequest(
+					normalizedPendingRequest,
+					normalizedIncomingRequest,
+				)
+
+				if combined != expectedCombined {
+					t.Fatalf(
+						"mergeRestartRequests(%#v, %#v) = %#v, want %#v",
+						normalizedPendingRequest,
+						normalizedIncomingRequest,
+						combined,
+						expectedCombined,
+					)
+				}
+			})
+		}
+	}
+}
+
+func expectedMergedRestartRequest(
+	pendingRequest restartRequest,
+	incomingRequest restartRequest,
+) restartRequest {
+	if pendingRequest.isConfigRestart || incomingRequest.isConfigRestart {
+		return restartRequest{
+			recompileGo:     true,
+			isConfigRestart: true,
+		}
+	}
+
+	return restartRequest{
+		recompileGo:     pendingRequest.recompileGo || incomingRequest.recompileGo,
+		isConfigRestart: false,
 	}
 }
 

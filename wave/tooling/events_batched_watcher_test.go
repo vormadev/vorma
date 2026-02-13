@@ -39,7 +39,7 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlySkipsBuildAndRestart(t *testing.
 	}
 
 	work := &workSet{}
-	s.processBatchedEvents(events, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	if preCount.Load() != 2 {
 		t.Fatalf("expected both pre hooks to run, got %d", preCount.Load())
@@ -86,7 +86,7 @@ func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
 	}
 
 	work := &workSet{}
-	s.processBatchedEvents(events, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	select {
 	case req := <-s.restartCh:
@@ -127,7 +127,7 @@ func TestProcessBatchedEvents_PostHookRestartNoGo(t *testing.T) {
 	}
 
 	work := &workSet{}
-	s.processBatchedEvents(events, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	select {
 	case req := <-s.restartCh:

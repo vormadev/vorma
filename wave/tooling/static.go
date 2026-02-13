@@ -17,6 +17,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/pathnorm"
 )
 
 var staticIgnoreList = map[string]struct{}{
@@ -25,7 +26,7 @@ var staticIgnoreList = map[string]struct{}{
 
 func (b *Builder) processPublicFiles(granular bool) error {
 	return b.processStaticFiles(staticOpts{
-		srcDir:     filepath.Clean(b.cfg.Core.StaticAssetDirs.Public),
+		srcDir:     pathnorm.Absolute(b.cfg.Core.StaticAssetDirs.Public),
 		distDir:    b.cfg.Dist.StaticPublic(),
 		gobPath:    b.cfg.Dist.PublicFileMapGob(),
 		granular:   granular,
@@ -36,13 +37,41 @@ func (b *Builder) processPublicFiles(granular bool) error {
 
 func (b *Builder) processPrivateFiles(granular bool) error {
 	return b.processStaticFiles(staticOpts{
-		srcDir:     filepath.Clean(b.cfg.Core.StaticAssetDirs.Private),
+		srcDir:     pathnorm.Absolute(b.cfg.Core.StaticAssetDirs.Private),
 		distDir:    b.cfg.Dist.StaticPrivate(),
 		gobPath:    b.cfg.Dist.PrivateFileMapGob(),
 		granular:   granular,
 		isPublic:   false,
 		hashOutput: false,
 	})
+}
+
+func (b *Builder) processPublicFilesForChangedPaths(changedSourcePaths []string) error {
+	return b.processStaticFilesForChangedPaths(
+		staticOpts{
+			srcDir:     pathnorm.Absolute(b.cfg.Core.StaticAssetDirs.Public),
+			distDir:    b.cfg.Dist.StaticPublic(),
+			gobPath:    b.cfg.Dist.PublicFileMapGob(),
+			granular:   true,
+			isPublic:   true,
+			hashOutput: true,
+		},
+		changedSourcePaths,
+	)
+}
+
+func (b *Builder) processPrivateFilesForChangedPaths(changedSourcePaths []string) error {
+	return b.processStaticFilesForChangedPaths(
+		staticOpts{
+			srcDir:     pathnorm.Absolute(b.cfg.Core.StaticAssetDirs.Private),
+			distDir:    b.cfg.Dist.StaticPrivate(),
+			gobPath:    b.cfg.Dist.PrivateFileMapGob(),
+			granular:   true,
+			isPublic:   false,
+			hashOutput: false,
+		},
+		changedSourcePaths,
+	)
 }
 
 type staticOpts struct {
@@ -58,6 +87,78 @@ type fileInfo struct {
 	srcPath string
 	relPath string
 	prehash bool
+}
+
+type staticChangedPathResolution struct {
+	fileInfo     fileInfo
+	sourceExists bool
+}
+
+func resolveStaticRelativePathFromSourcePath(
+	sourceDirectoryPath string,
+	sourcePath string,
+) (string, bool, error) {
+	relativePath, relativePathError := filepath.Rel(sourceDirectoryPath, sourcePath)
+	if relativePathError != nil {
+		return "", false, relativePathError
+	}
+	normalizedRelativePath := filepath.ToSlash(relativePath)
+	if normalizedRelativePath == "." ||
+		normalizedRelativePath == ".." ||
+		strings.HasPrefix(normalizedRelativePath, "../") {
+		return "", false, nil
+	}
+	return normalizedRelativePath, true, nil
+}
+
+func buildStaticFileInfoFromRelativePath(
+	sourcePath string,
+	relativePath string,
+) (fileInfo, bool) {
+	normalizedRelativePath := relativePath
+	prehash := false
+	prehashedPrefix := wave.PrehashedDirname + "/"
+	nohashPrefix := wave.NohashDirname + "/"
+	if strings.HasPrefix(normalizedRelativePath, prehashedPrefix) {
+		prehash = true
+		normalizedRelativePath = strings.TrimPrefix(normalizedRelativePath, prehashedPrefix)
+	} else if strings.HasPrefix(normalizedRelativePath, nohashPrefix) {
+		prehash = true
+		normalizedRelativePath = strings.TrimPrefix(normalizedRelativePath, nohashPrefix)
+	}
+
+	if normalizedRelativePath == "" {
+		return fileInfo{}, false
+	}
+
+	if _, ignore := staticIgnoreList[filepath.Base(normalizedRelativePath)]; ignore {
+		return fileInfo{}, false
+	}
+
+	return fileInfo{
+		srcPath: sourcePath,
+		relPath: normalizedRelativePath,
+		prehash: prehash,
+	}, true
+}
+
+func resolveStaticFileInfoFromSourcePath(
+	sourceDirectoryPath string,
+	sourcePath string,
+) (fileInfo, bool, error) {
+	relativePath, isWithinSourceDirectory, relativePathError := resolveStaticRelativePathFromSourcePath(
+		sourceDirectoryPath,
+		sourcePath,
+	)
+	if relativePathError != nil {
+		return fileInfo{}, false, relativePathError
+	}
+	if !isWithinSourceDirectory {
+		return fileInfo{}, false, nil
+	}
+
+	staticFileInfo, shouldProcessFile := buildStaticFileInfoFromRelativePath(sourcePath, relativePath)
+	return staticFileInfo, shouldProcessFile, nil
 }
 
 func (b *Builder) processStaticFiles(opts staticOpts) error {
@@ -112,29 +213,19 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 				return nil
 			}
 
-			relPath, err := filepath.Rel(opts.srcDir, path)
-			if err != nil {
-				return fmt.Errorf("failed to get relative path for %s: %w", path, err)
+			staticFileInfo, shouldProcessFile, resolveError := resolveStaticFileInfoFromSourcePath(
+				opts.srcDir,
+				path,
+			)
+			if resolveError != nil {
+				return fmt.Errorf("resolve static file info for %s: %w", path, resolveError)
 			}
-			relPath = filepath.ToSlash(relPath)
-
-			prehash := false
-			prehashedPrefix := wave.PrehashedDirname + "/"
-			nohashPrefix := wave.NohashDirname + "/"
-			if strings.HasPrefix(relPath, prehashedPrefix) {
-				prehash = true
-				relPath = strings.TrimPrefix(relPath, prehashedPrefix)
-			} else if strings.HasPrefix(relPath, nohashPrefix) {
-				prehash = true
-				relPath = strings.TrimPrefix(relPath, nohashPrefix)
-			}
-
-			if _, ignore := staticIgnoreList[filepath.Base(relPath)]; ignore {
+			if !shouldProcessFile {
 				return nil
 			}
 
 			select {
-			case files <- fileInfo{srcPath: path, relPath: relPath, prehash: prehash}:
+			case files <- staticFileInfo:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -201,12 +292,7 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 
 	// Cleanup old files
 	if opts.granular && oldMapLoaded {
-		for key, oldVal := range oldMap {
-			newVal, exists := finalMap[key]
-			if !exists || newVal.DistName != oldVal.DistName {
-				_ = os.Remove(filepath.Join(opts.distDir, oldVal.DistName))
-			}
-		}
+		cleanupStaleStaticDistFiles(opts.distDir, oldMap, finalMap)
 	}
 
 	shouldSaveFileMap := !oldMapLoaded || !maps.Equal(oldMap, finalMap)
@@ -221,6 +307,161 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 	}
 
 	return nil
+}
+
+func (b *Builder) processStaticFilesForChangedPaths(
+	opts staticOpts,
+	changedSourcePaths []string,
+) error {
+	if len(changedSourcePaths) == 0 {
+		return b.processStaticFiles(opts)
+	}
+
+	if _, statError := os.Stat(opts.srcDir); os.IsNotExist(statError) {
+		return b.processStaticFiles(opts)
+	}
+
+	oldMap, loadError := b.loadFileMapFromPath(opts.gobPath)
+	if loadError != nil {
+		return b.processStaticFiles(opts)
+	}
+
+	changedResolutions := make(map[string]staticChangedPathResolution)
+	for _, changedSourcePath := range changedSourcePaths {
+		normalizedChangedSourcePath := pathnorm.Absolute(changedSourcePath)
+		if normalizedChangedSourcePath == "" {
+			continue
+		}
+
+		staticFileInfo, shouldProcessFile, resolveError := resolveStaticFileInfoFromSourcePath(
+			opts.srcDir,
+			normalizedChangedSourcePath,
+		)
+		if resolveError != nil {
+			return fmt.Errorf(
+				"resolve static file info for changed path %s: %w",
+				changedSourcePath,
+				resolveError,
+			)
+		}
+		if !shouldProcessFile {
+			continue
+		}
+
+		sourceExists, sourceStatError := staticSourceFileExists(normalizedChangedSourcePath)
+		if sourceStatError != nil {
+			return sourceStatError
+		}
+
+		existingResolution, alreadyResolved := changedResolutions[staticFileInfo.relPath]
+		if !alreadyResolved || sourceExists || !existingResolution.sourceExists {
+			changedResolutions[staticFileInfo.relPath] = staticChangedPathResolution{
+				fileInfo:     staticFileInfo,
+				sourceExists: sourceExists,
+			}
+		}
+	}
+
+	if len(changedResolutions) == 0 {
+		return b.processStaticFiles(opts)
+	}
+
+	finalMap := maps.Clone(oldMap)
+	if finalMap == nil {
+		finalMap = make(wave.FileMap)
+	}
+
+	resolvedRelativePaths := make([]string, 0, len(changedResolutions))
+	for relativePath := range changedResolutions {
+		resolvedRelativePaths = append(resolvedRelativePaths, relativePath)
+	}
+	sort.Strings(resolvedRelativePaths)
+
+	for _, resolvedRelativePath := range resolvedRelativePaths {
+		resolution := changedResolutions[resolvedRelativePath]
+		if resolution.sourceExists {
+			updatedValue, hasUpdatedValue, processError := b.processChangedStaticFile(
+				resolution.fileInfo,
+				opts,
+				oldMap,
+			)
+			if processError != nil {
+				return processError
+			}
+			if hasUpdatedValue {
+				finalMap[resolvedRelativePath] = updatedValue
+				continue
+			}
+		}
+
+		delete(finalMap, resolvedRelativePath)
+	}
+
+	cleanupStaleStaticDistFiles(opts.distDir, oldMap, finalMap)
+
+	shouldSaveFileMap := !maps.Equal(oldMap, finalMap)
+	if shouldSaveFileMap {
+		if err := b.saveFileMap(finalMap, opts.gobPath); err != nil {
+			return err
+		}
+	}
+
+	if opts.isPublic {
+		return b.savePublicFileMapJS(finalMap)
+	}
+
+	return nil
+}
+
+func staticSourceFileExists(sourcePath string) (bool, error) {
+	sourceInfo, sourceStatError := os.Stat(sourcePath)
+	if sourceStatError != nil {
+		if os.IsNotExist(sourceStatError) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat changed file %s: %w", sourcePath, sourceStatError)
+	}
+
+	return !sourceInfo.IsDir(), nil
+}
+
+func (b *Builder) processChangedStaticFile(
+	staticFileInfo fileInfo,
+	opts staticOpts,
+	oldMap wave.FileMap,
+) (wave.FileVal, bool, error) {
+	processedFileValues := &sync.Map{}
+	if err := b.processFile(staticFileInfo, opts, processedFileValues, oldMap); err != nil {
+		if os.IsNotExist(err) {
+			return wave.FileVal{}, false, nil
+		}
+		return wave.FileVal{}, false, err
+	}
+
+	processedValueAny, processedValueExists := processedFileValues.Load(staticFileInfo.relPath)
+	if !processedValueExists {
+		return wave.FileVal{}, false, fmt.Errorf("processed static file value missing for %s", staticFileInfo.relPath)
+	}
+
+	processedValue, valueTypeOK := processedValueAny.(wave.FileVal)
+	if !valueTypeOK {
+		return wave.FileVal{}, false, fmt.Errorf("processed static file value has unexpected type for %s", staticFileInfo.relPath)
+	}
+
+	return processedValue, true, nil
+}
+
+func cleanupStaleStaticDistFiles(
+	distDirectoryPath string,
+	oldMap wave.FileMap,
+	newMap wave.FileMap,
+) {
+	for key, oldVal := range oldMap {
+		newVal, exists := newMap[key]
+		if !exists || newVal.DistName != oldVal.DistName {
+			_ = os.Remove(filepath.Join(distDirectoryPath, oldVal.DistName))
+		}
+	}
 }
 
 func (b *Builder) processFile(

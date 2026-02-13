@@ -70,7 +70,7 @@ func TestProcessSingleEvent_PreHookRestartCanRequestGoRecompile(t *testing.T) {
 		runOnChangeOnly: false,
 	}
 
-	s.processSingleEvent(ewh, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
 	select {
 	case req := <-s.restartCh:
@@ -107,7 +107,7 @@ func TestProcessSingleEvent_RunOnChangeOnlyWithHardReloadStopsRunningApp(t *test
 		needsHardReload: true,
 	}
 
-	s.processSingleEvent(ewh, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
 	if s.appCmd != nil {
 		t.Fatal("expected hard-reload run-on-change-only event to stop running app")
@@ -157,7 +157,7 @@ func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(t *testing
 		},
 	}
 
-	s.processSingleEvent(ewh, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
 	select {
 	case req := <-s.restartCh:
@@ -202,7 +202,7 @@ func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(t *testing.T
 		},
 	}
 
-	s.processSingleEvent(ewh, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -249,7 +249,7 @@ func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(t
 		runOnChangeOnly: true,
 	}
 
-	s.processSingleEvent(ewh, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -286,7 +286,7 @@ func TestProcessSingleEvent_ImplicitRestartStartsApp(t *testing.T) {
 		hooks:   &wave.SortedHooks{},
 	}
 
-	s.processSingleEvent(ewh, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 	if s.appCmd == nil || s.appCmd.Process == nil {
 		t.Fatal("expected implicit restart work to start app")
 	}
@@ -343,7 +343,7 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(t *testi
 	}
 
 	work := &workSet{}
-	s.processBatchedEvents(events, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	select {
 	case req := <-s.restartCh:
@@ -409,7 +409,7 @@ func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(t *test
 	}
 
 	work := &workSet{}
-	s.processBatchedEvents(events, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -464,7 +464,7 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserRe
 	}
 
 	work := &workSet{}
-	s.processBatchedEvents(events, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -519,7 +519,7 @@ func TestProcessBatchedEvents_MixedBatchRunsRunOnChangeOnlyPostCallbacks(t *test
 	}
 
 	work := &workSet{}
-	s.processBatchedEvents(events, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	if !runOnChangeOnlyPostCallbackRan.Load() {
 		t.Fatal("expected run-on-change-only post callback to run in mixed batch")
@@ -547,7 +547,7 @@ func TestProcessBatchedEvents_ImplicitRestartStartsApp(t *testing.T) {
 	}
 
 	work := &workSet{}
-	s.processBatchedEvents(events, work, watcher)
+	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 	if s.appCmd == nil || s.appCmd.Process == nil {
 		t.Fatal("expected batched implicit restart work to start app")
 	}
