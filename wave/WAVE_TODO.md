@@ -5,11 +5,12 @@ Context:
 - This list is rebuilt from a full `/wave/*` audit.
 - Items are tracked as candidates until explicitly accepted/completed.
 
-## 1) Devserver Process Orchestration Decomposition
+## 1) Hook Timeout Controls
 
-- Split `wave/tooling/devserver_processes.go` into focused files for app process
-  lifecycle, Vite process lifecycle, and restart/wait orchestration.
-- Keep restart/wait decisions pure and table-testable.
+- Add explicit timeout controls for pre/concurrent/post hook command execution
+  so a single stuck hook cannot stall watch cycles indefinitely.
+- Keep timeout policy configurable and stage-aware without introducing hidden
+  defaults that reduce user control.
 
 ## 2) Diagnostics (deferred)
 

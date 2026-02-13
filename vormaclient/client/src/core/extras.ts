@@ -14,7 +14,7 @@ import {
 	__vormaClientGlobal,
 } from "../app/context.ts";
 import {
-	__registerClientLoaderPattern,
+	registerClientLoaderPatternOrThrow,
 	setupClientLoaders,
 } from "./render_runtime.ts";
 
@@ -49,13 +49,19 @@ export function __registerClientLoaderForAdapter(
 ): void {
 	const { pattern, waitFn, reRunOnModuleChange, onRegistrationError } = props;
 
-	__registerClientLoaderPattern(pattern).catch((error) => {
+	try {
+		registerClientLoaderPatternOrThrow(pattern);
+	} catch (error) {
 		if (onRegistrationError) {
 			onRegistrationError(error);
 			return;
 		}
-		console.error("Failed to register client loader pattern:", error);
-	});
+		const reason = error instanceof Error ? error.message : String(error);
+		throw new Error(
+			`Failed to register client loader pattern "${pattern}": ${reason}`,
+		);
+	}
+
 	setClientLoaderWaitFn(pattern, waitFn);
 
 	if (import.meta.env.DEV && reRunOnModuleChange) {

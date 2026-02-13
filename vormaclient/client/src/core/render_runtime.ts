@@ -525,14 +525,18 @@ export async function setupClientLoaders(): Promise<void> {
 	deriveAndSetErrorState();
 }
 
-export async function registerClientLoaderPattern(
-	pattern: string,
-): Promise<void> {
+export function registerClientLoaderPatternOrThrow(pattern: string): void {
 	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
 	if (!patternRegistry) {
 		throw new Error("Pattern registry has not been initialized.");
 	}
 	registerPattern(patternRegistry, pattern);
+}
+
+export async function registerClientLoaderPattern(
+	pattern: string,
+): Promise<void> {
+	registerClientLoaderPatternOrThrow(pattern);
 }
 
 export const __registerClientLoaderPattern = registerClientLoaderPattern;

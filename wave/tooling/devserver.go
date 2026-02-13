@@ -47,6 +47,10 @@ type server struct {
 	restartCh   chan restartRequest
 	restartChMu sync.Mutex
 
+	// Concurrent-no-wait hook execution gate
+	concurrentNoWaitHookExecutionLimiter         chan struct{}
+	concurrentNoWaitHookExecutionLimiterInitOnce sync.Once
+
 	// Watcher control - used to delay watcher start until after config restart reload
 	watcherStartCh chan struct{}
 }
@@ -77,6 +81,10 @@ func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
 		log:          log,
 		portResolver: wave.NewPortResolver(),
 		restartCh:    make(chan restartRequest, 1),
+		concurrentNoWaitHookExecutionLimiter: make(
+			chan struct{},
+			maxConcurrentNoWaitHookExecutions,
+		),
 	}
 
 	return s.run()

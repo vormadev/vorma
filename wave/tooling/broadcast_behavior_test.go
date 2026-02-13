@@ -114,6 +114,84 @@ func TestBroadcastReload_StopsWhenContextCanceled(t *testing.T) {
 	}
 }
 
+func TestShouldBroadcastReloadPayloadAfterReadiness(t *testing.T) {
+	testCases := []struct {
+		name             string
+		reloadOptions    reloadOpts
+		cycleViteApplied bool
+		expected         bool
+	}{
+		{
+			name:             "non-cycle reload broadcasts payload",
+			reloadOptions:    reloadOpts{cycleVite: false},
+			cycleViteApplied: false,
+			expected:         true,
+		},
+		{
+			name:             "cycle requested and applied skips payload",
+			reloadOptions:    reloadOpts{cycleVite: true},
+			cycleViteApplied: true,
+			expected:         false,
+		},
+		{
+			name:             "cycle requested but not applied broadcasts payload",
+			reloadOptions:    reloadOpts{cycleVite: true},
+			cycleViteApplied: false,
+			expected:         true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := shouldBroadcastReloadPayloadAfterReadiness(
+				testCase.reloadOptions,
+				testCase.cycleViteApplied,
+			)
+			if got != testCase.expected {
+				t.Fatalf(
+					"shouldBroadcastReloadPayloadAfterReadiness(%#v, %t)=%t, want %t",
+					testCase.reloadOptions,
+					testCase.cycleViteApplied,
+					got,
+					testCase.expected,
+				)
+			}
+		})
+	}
+}
+
+func TestBroadcastReload_CycleViteWithoutActiveContextFallsBackToPayloadBroadcast(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+	cfg.Vite = &wave.ViteConfig{
+		JSPackageManagerBaseCmd: "echo",
+		DefaultPort:             5209,
+	}
+
+	s := &server{
+		cfg: cfg,
+		log: newDiscardLogger(),
+		refreshMgr: &clientManager{
+			broadcast: make(chan refreshPayload, 1),
+		},
+		refreshMgrCtx: context.Background(),
+	}
+
+	s.broadcastReload(reloadOpts{
+		payload:   refreshPayload{ChangeType: changeTypeOther},
+		cycleVite: true,
+	})
+
+	select {
+	case msg := <-s.refreshMgr.broadcast:
+		if msg.ChangeType != changeTypeOther {
+			t.Fatalf("expected fallback hard reload payload, got %#v", msg)
+		}
+	default:
+		t.Fatal("expected fallback broadcast payload when cycleVite cannot be applied")
+	}
+}
+
 func TestExecuteBrowserPhase_InvalidateViteFallbackWithoutViteSetsHardReload(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false

@@ -1,8 +1,11 @@
 package executil
 
 import (
+	"context"
 	"os"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestMakeCmdRunner(t *testing.T) {
@@ -46,5 +49,31 @@ func TestEdgeCases(t *testing.T) {
 	runner := MakeCmdRunner("non_existent_command")
 	if err := runner(); err == nil {
 		t.Fatalf("expected error for non-existent command, got nil")
+	}
+}
+
+func TestRunShellWithContext_CancelStopsCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	commandExecutionContext, cancelCommandExecutionContext := context.WithTimeout(
+		context.Background(),
+		100*time.Millisecond,
+	)
+	defer cancelCommandExecutionContext()
+
+	commandStartTime := time.Now()
+	err := RunShellWithContext(commandExecutionContext, "sleep 2")
+	commandElapsedTime := time.Since(commandStartTime)
+
+	if err == nil {
+		t.Fatal("expected canceled shell command to return error")
+	}
+	if commandElapsedTime > 1*time.Second {
+		t.Fatalf(
+			"expected canceled shell command to stop quickly, elapsed=%s",
+			commandElapsedTime,
+		)
 	}
 }

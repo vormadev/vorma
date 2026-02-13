@@ -127,11 +127,8 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) 
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
-		if msg.ChangeType != changeTypeOther {
-			t.Fatalf("unexpected broadcast payload: %#v", msg)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for broadcast after cycleVite reload")
+		t.Fatalf("expected cycleVite reload to skip direct broadcast payload, got %#v", msg)
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	secondPID := fetchViteProcessID(t, s.viteCtx.GetPort())
@@ -141,7 +138,7 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) 
 
 	select {
 	case extra := <-s.refreshMgr.broadcast:
-		t.Fatalf("expected exactly one broadcast payload, got extra %#v", extra)
+		t.Fatalf("expected no direct broadcast payload after cycleVite reload, got %#v", extra)
 	case <-time.After(100 * time.Millisecond):
 	}
 }

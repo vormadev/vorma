@@ -2,8 +2,12 @@ package tooling
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -293,6 +297,60 @@ func TestProcessSingleEvent_ImplicitRestartStartsApp(t *testing.T) {
 
 	if err := s.stopApp(); err != nil {
 		t.Fatalf("failed stopping test app: %v", err)
+	}
+}
+
+func TestProcessSingleEvent_BuildFailureShortCircuitsRestartAndBrowserReload(t *testing.T) {
+	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
+	defer watcher.Close()
+
+	s.cfg.Core.MainAppEntry = "missing/package/for/compile"
+	s.refreshMgrCtx = context.Background()
+	s.refreshMgr = &clientManager{
+		broadcast: make(chan refreshPayload, 1),
+	}
+	s.portResolver = wave.NewPortResolver()
+
+	appHealthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer appHealthServer.Close()
+
+	parsedAppHealthURL, parseURLPathError := url.Parse(appHealthServer.URL)
+	if parseURLPathError != nil {
+		t.Fatalf("failed parsing app health URL: %v", parseURLPathError)
+	}
+	appHealthPort, parsePortError := strconv.Atoi(parsedAppHealthURL.Port())
+	if parsePortError != nil {
+		t.Fatalf("failed parsing app health port: %v", parsePortError)
+	}
+	t.Setenv("PORT", strconv.Itoa(appHealthPort))
+	t.Setenv("WAVE_PORT_HAS_BEEN_SET", "true")
+
+	builder := NewBuilder(s.cfg, newDiscardLogger())
+	defer builder.Close()
+	s.builder = builder
+
+	work := &workSet{}
+	ewh := eventWithHooks{
+		classified: classifiedEvent{
+			event:    waveEvent(filepath.Join(t.TempDir(), "changed.go")),
+			fileType: fileTypeGo,
+		},
+		hookCtx: &wave.HookContext{},
+		hooks:   &wave.SortedHooks{},
+	}
+
+	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+
+	if s.appCmd != nil {
+		t.Fatalf("did not expect app to start after build failure, got %#v", s.appCmd)
+	}
+
+	select {
+	case msg := <-s.refreshMgr.broadcast:
+		t.Fatalf("did not expect browser payload after build failure, got %#v", msg)
+	default:
 	}
 }
 

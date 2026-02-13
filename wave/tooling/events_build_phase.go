@@ -1,6 +1,10 @@
 package tooling
 
-import "golang.org/x/sync/errgroup"
+import (
+	"errors"
+
+	"golang.org/x/sync/errgroup"
+)
 
 type staticFileProcessingExecutionMode int
 
@@ -26,6 +30,13 @@ type buildPhaseExecutionDecision struct {
 	buildCriticalCSS            bool
 	buildNormalCSS              bool
 	writeFrameworkPublicFileMap bool
+}
+
+func shouldExecuteBuildPhaseForExecutionDecision(
+	executionDecision buildPhaseExecutionDecision,
+) bool {
+	return executionDecision.compileGo ||
+		shouldExecuteAnyFileProcessingForBuildDecision(executionDecision)
 }
 
 func deriveStaticFileProcessingExecutionDecision(
@@ -85,17 +96,25 @@ func shouldExecuteAnyFileProcessingForBuildDecision(
 		executionDecision.buildNormalCSS
 }
 
-func (s *server) executeBuildPhase(work *workSet) {
-	builder := s.getBuilder()
-	if builder == nil {
-		s.log.Error("Builder is nil during build phase")
-		return
+func (s *server) executeBuildPhase(work *workSet) error {
+	if work == nil {
+		return nil
 	}
 
 	buildExecutionDecision := deriveBuildPhaseExecutionDecision(
 		work.build,
 		s.cfg.FrameworkPublicFileMapOutDir,
 	)
+	if !shouldExecuteBuildPhaseForExecutionDecision(buildExecutionDecision) {
+		return nil
+	}
+
+	builder := s.getBuilder()
+	if builder == nil {
+		builderNilError := errors.New("builder is nil during build phase")
+		s.log.Error("Builder is nil during build phase", "error", builderNilError)
+		return builderNilError
+	}
 
 	var buildPhaseGroup errgroup.Group
 
@@ -155,7 +174,10 @@ func (s *server) executeBuildPhase(work *workSet) {
 
 	if err := buildPhaseGroup.Wait(); err != nil {
 		s.log.Error("Build phase had errors", "error", err)
+		return err
 	}
+
+	return nil
 }
 
 func (s *server) executePublicStaticProcessingForBuildPhase(

@@ -216,6 +216,49 @@ func TestShouldExecuteAnyFileProcessingForBuildDecision(t *testing.T) {
 	}
 }
 
+func TestShouldExecuteBuildPhaseForExecutionDecision(t *testing.T) {
+	testCases := []struct {
+		name                  string
+		executionDecision     buildPhaseExecutionDecision
+		expectedShouldExecute bool
+	}{
+		{
+			name:                  "no compile or file processing work skips build phase",
+			executionDecision:     buildPhaseExecutionDecision{},
+			expectedShouldExecute: false,
+		},
+		{
+			name: "compile-go work executes build phase",
+			executionDecision: buildPhaseExecutionDecision{
+				compileGo: true,
+			},
+			expectedShouldExecute: true,
+		},
+		{
+			name: "file processing work executes build phase",
+			executionDecision: buildPhaseExecutionDecision{
+				buildNormalCSS: true,
+			},
+			expectedShouldExecute: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			shouldExecuteBuildPhase := shouldExecuteBuildPhaseForExecutionDecision(
+				testCase.executionDecision,
+			)
+			if shouldExecuteBuildPhase != testCase.expectedShouldExecute {
+				t.Fatalf(
+					"shouldExecuteBuildPhaseForExecutionDecision()=%t, want %t",
+					shouldExecuteBuildPhase,
+					testCase.expectedShouldExecute,
+				)
+			}
+		})
+	}
+}
+
 func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 	t.Run("none mode executes no processors", func(t *testing.T) {
 		fullCallCount := 0

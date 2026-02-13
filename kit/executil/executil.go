@@ -1,6 +1,7 @@
 package executil
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -46,11 +47,22 @@ func RunCmdCapture(commands ...string) (string, error) {
 }
 
 func RunShell(command string) error {
+	return RunShellWithContext(context.Background(), command)
+}
+
+func RunShellWithContext(
+	commandExecutionContext context.Context,
+	command string,
+) error {
+	if commandExecutionContext == nil {
+		commandExecutionContext = context.Background()
+	}
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", command)
+		cmd = exec.CommandContext(commandExecutionContext, "cmd", "/C", command)
 	} else {
-		cmd = exec.Command("sh", "-c", command)
+		cmd = exec.CommandContext(commandExecutionContext, "sh", "-c", command)
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

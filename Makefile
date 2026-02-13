@@ -19,11 +19,16 @@ gobench:
 ####### TS
 #####################################################################
 
-tstest:
-	@pnpm vitest run
+tstest: tstest-source
+
+tstest-source:
+	@pnpm vitest run --exclude "vormaclient/client/dist_tests/**"
+
+tstest-dist:
+	@pnpm vitest --run --config vormaclient/client/vitest.dist.config.ts
 
 tstestwatch:
-	@pnpm vitest
+	@pnpm vitest --exclude "vormaclient/client/dist_tests/**"
 
 tsbench:
 	@npx vitest bench
@@ -41,13 +46,16 @@ tsreset: nuke-node-modules tsinstall
 tslint:
 	@pnpm oxlint
 
-tscheck: tscheck-kit tscheck-fw-client tscheck-fw-react tscheck-fw-solid
+tscheck: tscheck-kit tscheck-fw-client tscheck-fw-client-dist tscheck-fw-react tscheck-fw-solid tscheck-fw-preact
 
 tscheck-kit:
 	@pnpm tsgo --noEmit --project ./kit/_typescript
 
 tscheck-fw-client:
 	@pnpm tsgo --noEmit --project ./vormaclient/client
+
+tscheck-fw-client-dist:
+	@pnpm tsgo --noEmit --project ./vormaclient/client/dist_tests/tsconfig.json
 
 tscheck-fw-react:
 	@pnpm tsgo --noEmit --project ./vormaclient/react
@@ -58,7 +66,13 @@ tscheck-fw-solid:
 tscheck-fw-preact:
 	@pnpm tsgo --noEmit --project ./vormaclient/preact
 
-tsprepforpub: tsreset tstest tslint tscheck
+tsprepforpub:
+	@$(MAKE) tsreset
+	@$(MAKE) tstest-source
+	@$(MAKE) tslint
+	@$(MAKE) tscheck
+	@$(MAKE) npmbuild
+	@$(MAKE) tstest-dist
 
 tspublishpre: tsprepforpub
 	@npm publish --access public --tag pre

@@ -1,9 +1,12 @@
 package tooling
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -142,6 +145,97 @@ func TestRunConcurrentHooks_ReturnsActionsInHookOrder(t *testing.T) {
 	}
 }
 
+func TestRunConcurrentHooks_AggregatesMultipleHookErrors(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "aggregate-errors.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return nil, os.ErrPermission
+					},
+				},
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return nil, os.ErrNotExist
+					},
+				},
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return &wave.RefreshAction{ReloadBrowser: true}, nil
+					},
+				},
+			},
+		},
+	}
+
+	actions, err := s.runConcurrentHooks(ewh, watcher)
+	if err == nil {
+		t.Fatal("expected aggregated concurrent hook error")
+	}
+	if len(actions) != 1 || !actions[0].ReloadBrowser {
+		t.Fatalf("expected successful concurrent actions to be preserved, got %#v", actions)
+	}
+	if !strings.Contains(err.Error(), os.ErrPermission.Error()) {
+		t.Fatalf("expected aggregated error to include permission failure, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), os.ErrNotExist.Error()) {
+		t.Fatalf("expected aggregated error to include not-exist failure, got %q", err.Error())
+	}
+}
+
+func TestRunConcurrentHooksWithContext_CanceledContextSkipsHookExecution(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	changedPath := filepath.Join(root, "changed.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	var callbackCalled atomic.Bool
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						callbackCalled.Store(true)
+						return &wave.RefreshAction{ReloadBrowser: true}, nil
+					},
+				},
+			},
+		},
+	}
+
+	concurrentHookExecutionContext, cancelConcurrentHookExecutionContext := context.WithCancel(
+		context.Background(),
+	)
+	cancelConcurrentHookExecutionContext()
+
+	actions, err := s.runConcurrentHooksWithContext(
+		concurrentHookExecutionContext,
+		ewh,
+		watcher,
+	)
+	if err != nil {
+		t.Fatalf("runConcurrentHooksWithContext returned error: %v", err)
+	}
+	if len(actions) != 0 {
+		t.Fatalf("expected no actions when context is canceled, got %#v", actions)
+	}
+	if callbackCalled.Load() {
+		t.Fatal("did not expect concurrent hook callback to run when context is canceled")
+	}
+}
+
 func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
@@ -195,6 +289,115 @@ func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 	}
 	if !actions[1].TriggerRestart {
 		t.Fatalf("expected second action to come from second event, got %#v", actions[1])
+	}
+}
+
+func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	firstChangedPath := filepath.Join(root, "first.txt")
+	secondChangedPath := filepath.Join(root, "second.txt")
+	if err := os.WriteFile(firstChangedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing first changed file: %v", err)
+	}
+	if err := os.WriteFile(secondChangedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing second changed file: %v", err)
+	}
+
+	var callbackCount atomic.Int32
+	eventsWithHooks := []eventWithHooks{
+		{
+			classified: classifiedEvent{event: waveEvent(firstChangedPath)},
+			hookCtx:    &wave.HookContext{FilePath: firstChangedPath},
+			hooks: &wave.SortedHooks{
+				Concurrent: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							callbackCount.Add(1)
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						},
+					},
+				},
+			},
+		},
+		{
+			classified: classifiedEvent{event: waveEvent(secondChangedPath)},
+			hookCtx:    &wave.HookContext{FilePath: secondChangedPath},
+			hooks: &wave.SortedHooks{
+				Concurrent: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							callbackCount.Add(1)
+							return &wave.RefreshAction{WaitForApp: true}, nil
+						},
+					},
+				},
+			},
+		},
+	}
+
+	concurrentHookExecutionContext, cancelConcurrentHookExecutionContext := context.WithCancel(
+		context.Background(),
+	)
+	cancelConcurrentHookExecutionContext()
+
+	actions := s.runConcurrentHooksForEventsWithContext(
+		concurrentHookExecutionContext,
+		eventsWithHooks,
+		watcher,
+	)
+	if len(actions) != 0 {
+		t.Fatalf("expected no actions when context is canceled, got %#v", actions)
+	}
+	if callbackCount.Load() != 0 {
+		t.Fatalf("expected callback count=0 when context is canceled, got %d", callbackCount.Load())
+	}
+}
+
+func TestRunConcurrentHooksWithContext_CanceledContextStopsRunningCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "concurrent-command.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{
+					Cmd: "sleep 2",
+				},
+			},
+		},
+	}
+
+	concurrentHookExecutionContext, cancelConcurrentHookExecutionContext := context.WithTimeout(
+		context.Background(),
+		100*time.Millisecond,
+	)
+	defer cancelConcurrentHookExecutionContext()
+
+	commandStartTime := time.Now()
+	_, err := s.runConcurrentHooksWithContext(
+		concurrentHookExecutionContext,
+		ewh,
+		watcher,
+	)
+	commandElapsedTime := time.Since(commandStartTime)
+	if err == nil {
+		t.Fatal("expected concurrent command to return cancellation error")
+	}
+	if commandElapsedTime > 1*time.Second {
+		t.Fatalf(
+			"expected canceled concurrent command to stop quickly, elapsed=%s",
+			commandElapsedTime,
+		)
 	}
 }
 
@@ -275,6 +478,93 @@ func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(t *testing.T) 
 	}
 	if _, statErr := os.Stat(commandOut); !os.IsNotExist(statErr) {
 		t.Fatalf("expected run-on-change-only post commands to be skipped, stat error: %v", statErr)
+	}
+}
+
+func TestRunPreHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "pre-error.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return nil, os.ErrInvalid
+					},
+				},
+			},
+		},
+	}
+
+	_, err := s.runPreHooks(ewh, watcher)
+	if err == nil {
+		t.Fatal("expected pre-hook error")
+	}
+	if !strings.Contains(err.Error(), "pre hook failed for "+changedPath) {
+		t.Fatalf("expected pre-hook error to include stage/path attribution, got %q", err.Error())
+	}
+}
+
+func TestRunConcurrentHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "concurrent-error.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return nil, os.ErrPermission
+					},
+				},
+			},
+		},
+	}
+
+	_, err := s.runConcurrentHooks(ewh, watcher)
+	if err == nil {
+		t.Fatal("expected concurrent-hook error")
+	}
+	if !strings.Contains(err.Error(), "concurrent hook failed for "+changedPath) {
+		t.Fatalf(
+			"expected concurrent-hook error to include stage/path attribution, got %q",
+			err.Error(),
+		)
+	}
+}
+
+func TestRunPostHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "post-error.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Post: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return nil, os.ErrNotExist
+					},
+				},
+			},
+		},
+	}
+
+	_, err := s.runPostHooks(ewh, watcher)
+	if err == nil {
+		t.Fatal("expected post-hook error")
+	}
+	if !strings.Contains(err.Error(), "post hook failed for "+changedPath) {
+		t.Fatalf("expected post-hook error to include stage/path attribution, got %q", err.Error())
 	}
 }
 
@@ -376,6 +666,55 @@ func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(t *testing.T)
 
 	if excludedHookRan.Load() {
 		t.Fatal("did not expect excluded no-wait hook callback to run")
+	}
+}
+
+func TestFireNoWaitHooks_CallbackPanicDoesNotStopOtherHooks(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	changedPath := filepath.Join(root, "changed.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	panicHookCalled := make(chan struct{}, 1)
+	followUpHookCalled := make(chan struct{}, 1)
+
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			ConcurrentNoWait: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						panicHookCalled <- struct{}{}
+						panic("expected test panic in no-wait callback")
+					},
+				},
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						followUpHookCalled <- struct{}{}
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+
+	s.fireNoWaitHooks(ewh, watcher)
+
+	select {
+	case <-panicHookCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for panicing no-wait callback")
+	}
+
+	select {
+	case <-followUpHookCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for follow-up no-wait callback after panic")
 	}
 }
 
@@ -839,7 +1178,9 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesFrameworkFileMapTS(t *te
 			buildNormalCSS:      true,
 		},
 	}
-	s.executeBuildPhase(work)
+	if err := s.executeBuildPhase(work); err != nil {
+		t.Fatalf("executeBuildPhase returned error: %v", err)
+	}
 
 	requiredOutputs := []string{
 		cfg.Dist.PublicFileMapGob(),
@@ -854,7 +1195,7 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesFrameworkFileMapTS(t *te
 	}
 }
 
-func TestExecuteBuildPhase_CompileGoErrorDoesNotPanic(t *testing.T) {
+func TestExecuteBuildPhase_CompileGoErrorIsReturned(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 	cfg.Core.MainAppEntry = "missing/package/for/compile"
@@ -873,10 +1214,12 @@ func TestExecuteBuildPhase_CompileGoErrorDoesNotPanic(t *testing.T) {
 			compileGo: true,
 		},
 	}
-	s.executeBuildPhase(work)
+	if err := s.executeBuildPhase(work); err == nil {
+		t.Fatal("expected compile-go build phase error")
+	}
 }
 
-func TestExecuteBuildPhase_WithNilBuilderDoesNotPanic(t *testing.T) {
+func TestExecuteBuildPhase_WithNilBuilderReturnsError(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
@@ -894,10 +1237,66 @@ func TestExecuteBuildPhase_WithNilBuilderDoesNotPanic(t *testing.T) {
 			buildNormalCSS:      true,
 		},
 	}
-	s.executeBuildPhase(work)
+	if err := s.executeBuildPhase(work); err == nil {
+		t.Fatal("expected nil-builder build phase error")
+	}
 }
 
-func TestExecuteBuildPhase_WritePublicFileMapTSErrorDoesNotPanic(t *testing.T) {
+func TestExecuteHookExecutionPlan_CallbackPanicReturnsErrorAndSkipsCommand(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	commandOutputPath := filepath.Join(t.TempDir(), "hook-command-output.log")
+	hookPlan := hookExecutionPlan{
+		callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+			panic("expected panic from hook callback")
+		},
+		command: "printf 'command should not run\\n' >> " + strconv.Quote(commandOutputPath),
+	}
+
+	action, err := s.executeHookExecutionPlan(hookPlan, &wave.HookContext{})
+	if err == nil {
+		t.Fatal("expected callback panic to be surfaced as an error")
+	}
+	if action != nil {
+		t.Fatalf("expected nil action when callback panics, got %#v", action)
+	}
+
+	if _, statErr := os.Stat(commandOutputPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected command to be skipped after callback panic, stat error: %v", statErr)
+	}
+}
+
+func TestExecuteBuildPhase_WithNilBuilderAndNoBuildWorkReturnsNil(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	s := &server{
+		cfg: cfg,
+		log: newDiscardLogger(),
+	}
+
+	work := &workSet{}
+	if err := s.executeBuildPhase(work); err != nil {
+		t.Fatalf("expected no-op build phase to return nil, got %v", err)
+	}
+}
+
+func TestExecuteBuildPhase_WithNilWorkSetReturnsNil(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	s := &server{
+		cfg: cfg,
+		log: newDiscardLogger(),
+	}
+
+	if err := s.executeBuildPhase(nil); err != nil {
+		t.Fatalf("expected nil workset to return nil, got %v", err)
+	}
+}
+
+func TestExecuteBuildPhase_WritePublicFileMapTSErrorIsReturned(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
@@ -930,7 +1329,9 @@ func TestExecuteBuildPhase_WritePublicFileMapTSErrorDoesNotPanic(t *testing.T) {
 			processPublicFiles: true,
 		},
 	}
-	s.executeBuildPhase(work)
+	if err := s.executeBuildPhase(work); err == nil {
+		t.Fatal("expected framework file map write error from build phase")
+	}
 
 	statInfo, err := os.Stat(cfg.FrameworkPublicFileMapOutDir)
 	if err != nil {

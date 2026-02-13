@@ -1,12 +1,140 @@
 package tooling
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/wave"
 	"golang.org/x/sync/errgroup"
 )
+
+const maxConcurrentNoWaitHookExecutions = 16
+
+func formatHookCallbackPanicError(panicValue any) error {
+	return fmt.Errorf("hook callback panicked: %v", panicValue)
+}
+
+func deriveHookStageLabel(
+	stageType hookStageType,
+) string {
+	switch stageType {
+	case hookStageTypePre:
+		return "pre"
+	case hookStageTypeConcurrent:
+		return "concurrent"
+	case hookStageTypePost:
+		return "post"
+	case hookStageTypeConcurrentNoWait:
+		return "concurrent-no-wait"
+	default:
+		return "unknown"
+	}
+}
+
+func wrapHookExecutionErrorWithStageAndPath(
+	stageType hookStageType,
+	changedFilePath string,
+	hookExecutionError error,
+) error {
+	if hookExecutionError == nil {
+		return nil
+	}
+
+	if strings.TrimSpace(changedFilePath) == "" {
+		return fmt.Errorf(
+			"%s hook failed: %w",
+			deriveHookStageLabel(stageType),
+			hookExecutionError,
+		)
+	}
+
+	return fmt.Errorf(
+		"%s hook failed for %s: %w",
+		deriveHookStageLabel(stageType),
+		changedFilePath,
+		hookExecutionError,
+	)
+}
+
+func joinHookExecutionErrorsInOrder(
+	hookExecutionErrorsByHookIndex []error,
+) error {
+	if len(hookExecutionErrorsByHookIndex) == 0 {
+		return nil
+	}
+
+	orderedHookExecutionErrors := make([]error, 0, len(hookExecutionErrorsByHookIndex))
+	for _, hookExecutionError := range hookExecutionErrorsByHookIndex {
+		if hookExecutionError == nil {
+			continue
+		}
+		orderedHookExecutionErrors = append(
+			orderedHookExecutionErrors,
+			hookExecutionError,
+		)
+	}
+	if len(orderedHookExecutionErrors) == 0 {
+		return nil
+	}
+	return errors.Join(orderedHookExecutionErrors...)
+}
+
+func executeHookCallbackSafely(
+	callback func(*wave.HookContext) (*wave.RefreshAction, error),
+	hookContext *wave.HookContext,
+) (
+	callbackAction *wave.RefreshAction,
+	callbackExecutionError error,
+) {
+	if callback == nil {
+		return nil, nil
+	}
+
+	defer func() {
+		if panicValue := recover(); panicValue != nil {
+			callbackExecutionError = formatHookCallbackPanicError(panicValue)
+			callbackAction = nil
+		}
+	}()
+
+	return callback(hookContext)
+}
+
+func (s *server) runNoWaitHookWithConcurrencyLimit(
+	runNoWaitHook func(),
+) {
+	if s == nil || runNoWaitHook == nil {
+		return
+	}
+
+	concurrentNoWaitHookExecutionLimiter := s.ensureConcurrentNoWaitHookExecutionLimiter()
+	concurrentNoWaitHookExecutionLimiter <- struct{}{}
+	go func() {
+		defer func() {
+			<-concurrentNoWaitHookExecutionLimiter
+		}()
+		runNoWaitHook()
+	}()
+}
+
+func (s *server) ensureConcurrentNoWaitHookExecutionLimiter() chan struct{} {
+	if s == nil {
+		return nil
+	}
+
+	s.concurrentNoWaitHookExecutionLimiterInitOnce.Do(func() {
+		if s.concurrentNoWaitHookExecutionLimiter == nil {
+			s.concurrentNoWaitHookExecutionLimiter = make(
+				chan struct{},
+				maxConcurrentNoWaitHookExecutions,
+			)
+		}
+	})
+	return s.concurrentNoWaitHookExecutionLimiter
+}
 
 func (s *server) runSequentialHookStageForEligibleEvents(
 	eventsWithHooks []eventWithHooks,
@@ -60,20 +188,64 @@ func (s *server) runConcurrentHooksForEvents(
 	eventsWithHooks []eventWithHooks,
 	watcher *Watcher,
 ) []wave.RefreshAction {
+	return s.runConcurrentHooksForEventsWithContext(
+		nil,
+		eventsWithHooks,
+		watcher,
+	)
+}
+
+func shouldContinueConcurrentHookExecution(
+	concurrentHookExecutionContext context.Context,
+) bool {
+	if concurrentHookExecutionContext == nil {
+		return true
+	}
+
+	select {
+	case <-concurrentHookExecutionContext.Done():
+		return false
+	default:
+		return true
+	}
+}
+
+func (s *server) runConcurrentHooksForEventsWithContext(
+	concurrentHookExecutionContext context.Context,
+	eventsWithHooks []eventWithHooks,
+	watcher *Watcher,
+) []wave.RefreshAction {
 	descriptors := deriveHookStageExecutionDescriptors(eventsWithHooks)
 	actionsByDescriptorIndex := make([][]wave.RefreshAction, len(descriptors))
 	var concurrentHooksGroup errgroup.Group
 
 	for descriptorIndex := range descriptors {
+		if !shouldContinueConcurrentHookExecution(
+			concurrentHookExecutionContext,
+		) {
+			break
+		}
+
 		descriptorForExecution := descriptors[descriptorIndex]
 		descriptorIndexForResult := descriptorIndex
 		concurrentHooksGroup.Go(func() error {
-			concurrentActions, err := s.runConcurrentHooks(
+			if !shouldContinueConcurrentHookExecution(
+				concurrentHookExecutionContext,
+			) {
+				return nil
+			}
+
+			concurrentActions, err := s.runConcurrentHooksWithContext(
+				concurrentHookExecutionContext,
 				descriptorForExecution.eventWithHooks,
 				watcher,
 			)
 			if err != nil {
-				s.log.Error("Concurrent hook execution failed", "error", err)
+				if shouldContinueConcurrentHookExecution(
+					concurrentHookExecutionContext,
+				) {
+					s.log.Error("Concurrent hook execution failed", "error", err)
+				}
 			}
 			actionsByDescriptorIndex[descriptorIndexForResult] = concurrentActions
 			return nil
@@ -111,18 +283,44 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 	)
 	for _, plan := range plans {
 		if plan.callback != nil {
-			go func(cb func(*wave.HookContext) (*wave.RefreshAction, error), hookContext *wave.HookContext) {
-				if _, err := cb(hookContext); err != nil {
-					s.log.Warn("concurrent-no-wait callback failed", "error", err)
+			callbackForExecution := plan.callback
+			hookContextForExecution := ewh.hookCtx
+			changedFilePathForExecution := ewh.classified.event.Name
+			s.runNoWaitHookWithConcurrencyLimit(func() {
+				if _, err := executeHookCallbackSafely(
+					callbackForExecution,
+					hookContextForExecution,
+				); err != nil {
+					s.log.Warn(
+						"concurrent-no-wait callback failed",
+						"stage",
+						deriveHookStageLabel(hookStageTypeConcurrentNoWait),
+						"path",
+						changedFilePathForExecution,
+						"error",
+						err,
+					)
 				}
-			}(plan.callback, ewh.hookCtx)
+			})
 		}
 		if strings.TrimSpace(plan.command) != "" {
-			go func(command string) {
-				if err := executil.RunShell(command); err != nil {
-					s.log.Warn("concurrent-no-wait hook failed", "cmd", command, "error", err)
+			commandForExecution := plan.command
+			changedFilePathForExecution := ewh.classified.event.Name
+			s.runNoWaitHookWithConcurrencyLimit(func() {
+				if err := executil.RunShell(commandForExecution); err != nil {
+					s.log.Warn(
+						"concurrent-no-wait hook failed",
+						"stage",
+						deriveHookStageLabel(hookStageTypeConcurrentNoWait),
+						"path",
+						changedFilePathForExecution,
+						"cmd",
+						commandForExecution,
+						"error",
+						err,
+					)
 				}
-			}(plan.command)
+			})
 		}
 	}
 }
@@ -142,7 +340,11 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 			actions = append(actions, *action)
 		}
 		if err != nil {
-			return actions, err
+			return actions, wrapHookExecutionErrorWithStageAndPath(
+				hookStageTypePre,
+				ewh.classified.event.Name,
+				err,
+			)
 		}
 	}
 
@@ -150,6 +352,14 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 }
 
 func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
+	return s.runConcurrentHooksWithContext(nil, ewh, watcher)
+}
+
+func (s *server) runConcurrentHooksWithContext(
+	concurrentHookExecutionContext context.Context,
+	ewh eventWithHooks,
+	watcher *Watcher,
+) ([]wave.RefreshAction, error) {
 	plans := deriveHookExecutionPlansForEventStage(
 		watcher,
 		ewh,
@@ -161,19 +371,43 @@ func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wav
 	}
 
 	actionsByHookIndex := make([]*wave.RefreshAction, len(plans))
+	hookExecutionErrorsByHookIndex := make([]error, len(plans))
 	var executionGroup errgroup.Group
 
 	for hookIndex := range plans {
+		if !shouldContinueConcurrentHookExecution(
+			concurrentHookExecutionContext,
+		) {
+			break
+		}
+
 		planForExecution := plans[hookIndex]
 		hookIndexForResult := hookIndex
 		executionGroup.Go(func() error {
-			action, err := s.executeHookExecutionPlan(planForExecution, ewh.hookCtx)
+			if !shouldContinueConcurrentHookExecution(
+				concurrentHookExecutionContext,
+			) {
+				return nil
+			}
+
+			action, err := s.executeHookExecutionPlanWithContext(
+				concurrentHookExecutionContext,
+				planForExecution,
+				ewh.hookCtx,
+			)
 			actionsByHookIndex[hookIndexForResult] = action
-			return err
+			if err != nil {
+				hookExecutionErrorsByHookIndex[hookIndexForResult] = wrapHookExecutionErrorWithStageAndPath(
+					hookStageTypeConcurrent,
+					ewh.classified.event.Name,
+					err,
+				)
+			}
+			return nil
 		})
 	}
 
-	err := executionGroup.Wait()
+	_ = executionGroup.Wait()
 	actions := make([]wave.RefreshAction, 0, len(actionsByHookIndex))
 	for _, action := range actionsByHookIndex {
 		if action != nil {
@@ -181,7 +415,7 @@ func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wav
 		}
 	}
 
-	return actions, err
+	return actions, joinHookExecutionErrorsInOrder(hookExecutionErrorsByHookIndex)
 }
 
 func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
@@ -199,7 +433,11 @@ func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refr
 			actions = append(actions, *action)
 		}
 		if err != nil {
-			return actions, err
+			return actions, wrapHookExecutionErrorWithStageAndPath(
+				hookStageTypePost,
+				ewh.classified.event.Name,
+				err,
+			)
 		}
 	}
 
@@ -210,7 +448,8 @@ func (s *server) executeHook(
 	hook wave.OnChangeHook,
 	hookContext *wave.HookContext,
 ) (*wave.RefreshAction, error) {
-	return s.executeHookExecutionPlan(
+	return s.executeHookExecutionPlanWithContext(
+		nil,
 		deriveHookExecutionPlanFromHook(hook, s.resolveHookCommand),
 		hookContext,
 	)
@@ -220,9 +459,43 @@ func (s *server) executeHookExecutionPlan(
 	plan hookExecutionPlan,
 	hookContext *wave.HookContext,
 ) (*wave.RefreshAction, error) {
+	return s.executeHookExecutionPlanWithContext(
+		nil,
+		plan,
+		hookContext,
+	)
+}
+
+func deriveConcurrentHookExecutionContextError(
+	concurrentHookExecutionContext context.Context,
+) error {
+	if concurrentHookExecutionContext == nil {
+		return nil
+	}
+	return concurrentHookExecutionContext.Err()
+}
+
+func executeHookCommandWithContext(
+	concurrentHookExecutionContext context.Context,
+	command string,
+) error {
+	if concurrentHookExecutionContext == nil {
+		return executil.RunShell(command)
+	}
+	return executil.RunShellWithContext(concurrentHookExecutionContext, command)
+}
+
+func (s *server) executeHookExecutionPlanWithContext(
+	concurrentHookExecutionContext context.Context,
+	plan hookExecutionPlan,
+	hookContext *wave.HookContext,
+) (*wave.RefreshAction, error) {
 	var action *wave.RefreshAction
 	if plan.callback != nil {
-		callbackAction, err := plan.callback(hookContext)
+		callbackAction, err := executeHookCallbackSafely(
+			plan.callback,
+			hookContext,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -230,7 +503,14 @@ func (s *server) executeHookExecutionPlan(
 	}
 
 	if strings.TrimSpace(plan.command) != "" {
-		if err := executil.RunShell(plan.command); err != nil {
+		if !shouldContinueConcurrentHookExecution(concurrentHookExecutionContext) {
+			return action, deriveConcurrentHookExecutionContextError(concurrentHookExecutionContext)
+		}
+
+		if err := executeHookCommandWithContext(
+			concurrentHookExecutionContext,
+			plan.command,
+		); err != nil {
 			return action, err
 		}
 	}
