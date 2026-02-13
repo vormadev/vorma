@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strings"
 
-	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/lab/viteutil"
@@ -18,20 +18,15 @@ const VormaBuildIDHeaderKey = "X-Vorma-Build-Id"
 const VormaJSONQueryKey = "vorma_json"
 
 const (
-	// Dev_ReloadRoutesPath is the endpoint for reloading routes from disk.
-	// Called by Wave after Process A has regenerated route artifacts.
-	Dev_ReloadRoutesPath = "/__vorma/reload-routes"
-	// Dev_ReloadTemplatePath is the endpoint for reloading the HTML template.
-	Dev_ReloadTemplatePath = "/__vorma/reload-template"
-
-	// Backward-compatibility aliases. Prefer Dev_*-prefixed names.
-	DevReloadRoutesPath   = Dev_ReloadRoutesPath
-	DevReloadTemplatePath = Dev_ReloadTemplatePath
+	DefaultDevReloadRoutesEndpointPath   = "/__vorma_internal/reload-routes"
+	DefaultDevReloadTemplateEndpointPath = "/__vorma_internal/reload-template"
+	DefaultTemplateDataKeyHeadElements   = "VormaHeadEls"
+	DefaultTemplateDataKeyBodyScripts    = "VormaBodyScripts"
+	DefaultTemplateDataKeySSRScript      = "VormaSSRScript"
+	DefaultTemplateDataKeySSRScriptHash  = "VormaSSRScriptSha256Hash"
+	DefaultTemplateDataKeyRootElementID  = "VormaRootID"
+	DefaultClientRootElementID           = "vorma-root"
 )
-
-// legacyHeadElsInstance preserves the package-level accessor behavior.
-// Runtime internals use app-scoped instances to avoid cross-app rule leakage.
-var legacyHeadElsInstance = headels.NewInstance("vorma")
 
 type loadersHTMLRenderSnapshot struct {
 	isDevMode      bool
@@ -111,7 +106,7 @@ func (v *Vorma) handleDevReloadEndpoints(
 	}
 
 	switch r.URL.Path {
-	case Dev_ReloadRoutesPath:
+	case v.DevReloadRoutesEndpointPath():
 		if err := v.devReloadRoutesFromDisk(); err != nil {
 			v.Log.Error(fmt.Sprintf("route reload failed: %s", err))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -119,7 +114,7 @@ func (v *Vorma) handleDevReloadEndpoints(
 		}
 		w.Write([]byte("ok"))
 		return true
-	case Dev_ReloadTemplatePath:
+	case v.DevReloadTemplateEndpointPath():
 		if err := v.devReloadTemplateFromDisk(); err != nil {
 			v.Log.Error(fmt.Sprintf("template reload failed: %s", err))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -130,6 +125,98 @@ func (v *Vorma) handleDevReloadEndpoints(
 	default:
 		return false
 	}
+}
+
+func (v *Vorma) DevReloadRoutesEndpointPath() string {
+	if v == nil || v.Config == nil {
+		return DefaultDevReloadRoutesEndpointPath
+	}
+
+	configuredPath := strings.TrimSpace(v.Config.DevReloadRoutesEndpointPath)
+	if configuredPath == "" {
+		return DefaultDevReloadRoutesEndpointPath
+	}
+
+	return configuredPath
+}
+
+func (v *Vorma) DevReloadTemplateEndpointPath() string {
+	if v == nil || v.Config == nil {
+		return DefaultDevReloadTemplateEndpointPath
+	}
+
+	configuredPath := strings.TrimSpace(v.Config.DevReloadTemplateEndpointPath)
+	if configuredPath == "" {
+		return DefaultDevReloadTemplateEndpointPath
+	}
+
+	return configuredPath
+}
+
+func (v *Vorma) TemplateDataKeyHeadElements() string {
+	if v == nil || v.Config == nil {
+		return DefaultTemplateDataKeyHeadElements
+	}
+	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeyHeadElements)
+	if configuredKey == "" {
+		return DefaultTemplateDataKeyHeadElements
+	}
+	return configuredKey
+}
+
+func (v *Vorma) TemplateDataKeyBodyScripts() string {
+	if v == nil || v.Config == nil {
+		return DefaultTemplateDataKeyBodyScripts
+	}
+	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeyBodyScripts)
+	if configuredKey == "" {
+		return DefaultTemplateDataKeyBodyScripts
+	}
+	return configuredKey
+}
+
+func (v *Vorma) TemplateDataKeySSRScript() string {
+	if v == nil || v.Config == nil {
+		return DefaultTemplateDataKeySSRScript
+	}
+	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeySSRScript)
+	if configuredKey == "" {
+		return DefaultTemplateDataKeySSRScript
+	}
+	return configuredKey
+}
+
+func (v *Vorma) TemplateDataKeySSRScriptHash() string {
+	if v == nil || v.Config == nil {
+		return DefaultTemplateDataKeySSRScriptHash
+	}
+	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeySSRScriptHash)
+	if configuredKey == "" {
+		return DefaultTemplateDataKeySSRScriptHash
+	}
+	return configuredKey
+}
+
+func (v *Vorma) TemplateDataKeyRootElementID() string {
+	if v == nil || v.Config == nil {
+		return DefaultTemplateDataKeyRootElementID
+	}
+	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeyRootElementID)
+	if configuredKey == "" {
+		return DefaultTemplateDataKeyRootElementID
+	}
+	return configuredKey
+}
+
+func (v *Vorma) ClientRootElementID() string {
+	if v == nil || v.Config == nil {
+		return DefaultClientRootElementID
+	}
+	rootElementID := strings.TrimSpace(v.Config.ClientRootElementID)
+	if rootElementID == "" {
+		return DefaultClientRootElementID
+	}
+	return rootElementID
 }
 
 func buildLoadersReloadURL(r *http.Request) string {
@@ -253,7 +340,7 @@ func (v *Vorma) buildLoadersHTMLResponseBytes(
 	if err != nil {
 		return nil, "Error getting dev scripts", err
 	}
-	rootTemplateData["VormaBodyScripts"] = bodyScripts
+	rootTemplateData[v.TemplateDataKeyBodyScripts()] = bodyScripts
 
 	htmlBytes, err := executeRootTemplate(htmlRenderSnapshot.rootTemplate, rootTemplateData)
 	if err != nil {
@@ -293,10 +380,10 @@ func (v *Vorma) injectVormaTemplateFields(
 	ssrScript *template.HTML,
 	ssrScriptSha256Hash string,
 ) {
-	rootTemplateData["VormaHeadEls"] = headElements
-	rootTemplateData["VormaSSRScript"] = ssrScript
-	rootTemplateData["VormaSSRScriptSha256Hash"] = ssrScriptSha256Hash
-	rootTemplateData["VormaRootID"] = "vorma-root"
+	rootTemplateData[v.TemplateDataKeyHeadElements()] = headElements
+	rootTemplateData[v.TemplateDataKeySSRScript()] = ssrScript
+	rootTemplateData[v.TemplateDataKeySSRScriptHash()] = ssrScriptSha256Hash
+	rootTemplateData[v.TemplateDataKeyRootElementID()] = v.ClientRootElementID()
 }
 
 func (v *Vorma) getBodyScriptsForTemplate(htmlRenderSnapshot loadersHTMLRenderSnapshot) (template.HTML, error) {
@@ -344,18 +431,10 @@ func (v *Vorma) IsCurrentBuildJSONRequest(r *http.Request) bool {
 	return r.URL.Query().Get(VormaJSONQueryKey) == v.GetBuildID()
 }
 
-func (v *Vorma) GetCurrentBuildID() string {
-	return v.GetBuildID()
-}
-
 func (v *Vorma) GetActionsHandler(router *mux.Router) mux.TasksCtxRequirerFunc {
 	return mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
 		res.SetHeader(VormaBuildIDHeaderKey, v.GetBuildID())
 		router.ServeHTTP(w, r)
 	})
-}
-
-func GetHeadElsInstance() *headels.Instance {
-	return legacyHeadElsInstance
 }

@@ -18,6 +18,8 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 
 	writeBootstrapStyleRoutesFixtureFiles(t)
 	app.SetIsDev(true)
+	app.Config.DevReloadRoutesEndpointPath = "/__custom_internal/reload-routes"
+	app.Config.DevReloadTemplateEndpointPath = "/__custom_internal/reload-template"
 
 	patterns := getDefaultWatchPatterns(app)
 	if len(patterns) != 3 {
@@ -39,10 +41,10 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 	originalCallReloadEndpointStep := reloadActionDeps.callReloadEndpoint
 	reloadActionDeps.callReloadEndpoint = func(_ *vormaruntime.Vorma, endpoint string) error {
 		switch endpoint {
-		case vormaruntime.Dev_ReloadRoutesPath:
+		case app.DevReloadRoutesEndpointPath():
 			routeReloadEndpointCalls++
 			return routeReloadEndpointErr
-		case vormaruntime.Dev_ReloadTemplatePath:
+		case app.DevReloadTemplateEndpointPath():
 			templateReloadEndpointCalls++
 			return templateReloadEndpointErr
 		default:

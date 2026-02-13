@@ -148,8 +148,8 @@ export const vormaViteConfig = {
 		"**/*.go",
 		"**/backend/dist/**/*",
 		"**/backend/assets/**/*",
-		"**/backend/wave.config.json",
 		"**/frontend/src/vorma.gen/**/*",
+		"**/backend/config/**/*.go",
 		"**/frontend/src/**/*vorma.routes.ts"
 	],
 	dedupeList: [

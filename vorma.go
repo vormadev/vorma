@@ -16,6 +16,9 @@ type (
 	Vorma                             = vormaruntime.Vorma
 	HeadEls                           = headels.HeadEls
 	AdHocType                         = tsgen.AdHocType
+	AppRoot                           = vormaruntime.AppRoot
+	AppModule                         = vormaruntime.AppModule
+	AppModuleRegistrationHook         = vormaruntime.AppModuleRegistrationHook
 	VormaAppConfig                    = vormaruntime.VormaAppConfig
 	LoadersRouter                     = vormaruntime.LoadersRouter
 	LoaderReqData                     = vormaruntime.LoaderReqData
@@ -34,12 +37,14 @@ type (
 
 // Re-exported functions
 var (
-	MustGetPort            = wave.MustGetPort
-	GetIsDev               = wave.GetIsDev
-	SetModeToDev           = wave.SetModeToDev
-	IsJSONRequest          = vormaruntime.IsJSONRequest
-	VormaBuildIDHeaderKey  = vormaruntime.VormaBuildIDHeaderKey
-	EnableThirdPartyRouter = mux.InjectTasksCtxMiddleware
+	MustGetPort                       = wave.MustGetPort
+	GetIsDev                          = wave.GetIsDev
+	SetModeToDev                      = wave.SetModeToDev
+	IsJSONRequest                     = vormaruntime.IsJSONRequest
+	VormaBuildIDHeaderKey             = vormaruntime.VormaBuildIDHeaderKey
+	EnableThirdPartyRouter            = mux.InjectTasksCtxMiddleware
+	NewAppRoot                        = vormaruntime.NewAppRoot
+	RunAppModuleRegistrationLifecycle = vormaruntime.RunAppModuleRegistrationLifecycle
 )
 
 func NewVormaApp(o VormaAppConfig) *Vorma {

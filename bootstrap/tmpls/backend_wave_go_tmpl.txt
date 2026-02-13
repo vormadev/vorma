@@ -1,5 +1,3 @@
-//go:build prod
-
 package backend
 
 import (
@@ -10,9 +8,9 @@ import (
 )
 
 //go:embed all:dist/static wave.config.json
-var embedFS embed.FS
+var embeddedFS embed.FS
 
 var Wave = wave.New(wave.Config{
-	WaveConfigJSON: fsutil.MustReadFile(embedFS, "wave.config.json"),
-	DistStaticFS:   fsutil.MustSub(embedFS, "dist", "static"),
+	WaveConfigJSON: fsutil.MustReadFile(embeddedFS, "wave.config.json"),
+	DistStaticFS:   fsutil.MustSub(embeddedFS, "dist", "static"),
 })

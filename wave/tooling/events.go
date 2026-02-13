@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +57,24 @@ type workSet struct {
 	preferRevalidate bool
 }
 
+type eventExecutionPlan struct {
+	classifiedEvents      []classifiedEvent
+	eventsWithHooks       []eventWithHooks
+	isBatch               bool
+	batchNeedsAppStop     bool
+	showRebuildingOverlay bool
+}
+
+type eventExecutionPlanningResult struct {
+	plan          *eventExecutionPlan
+	configChanged bool
+}
+
+type refreshActionApplicationResult struct {
+	restartRequested bool
+	recompileGo      bool
+}
+
 // addFromRefreshAction merges a RefreshAction from a callback into the work set.
 func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
 	if action.TriggerRestart {
@@ -73,6 +92,22 @@ func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
 	if action.WaitForVite {
 		w.waitForVite = true
 	}
+}
+
+func (w *workSet) applyRefreshActions(
+	actions []wave.RefreshAction,
+) refreshActionApplicationResult {
+	for _, action := range actions {
+		if action.TriggerRestart {
+			return refreshActionApplicationResult{
+				restartRequested: true,
+				recompileGo:      action.RecompileGo,
+			}
+		}
+		w.addFromRefreshAction(action)
+	}
+
+	return refreshActionApplicationResult{}
 }
 
 // addImplicitWork adds build work implied by a file type.
@@ -168,11 +203,12 @@ func (w *workSet) determineBrowserBehavior(usingVite bool) {
 
 // eventWithHooks pairs a classified event with its sorted hooks
 type eventWithHooks struct {
-	classified      classifiedEvent
-	hooks           *wave.SortedHooks
-	hookCtx         *wave.HookContext
-	runOnChangeOnly bool
-	needsHardReload bool
+	classified         classifiedEvent
+	hooks              *wave.SortedHooks
+	hookCtx            *wave.HookContext
+	runOnChangeOnly    bool
+	needsHardReload    bool
+	skipDuplicateHooks bool
 }
 
 func (s *server) runWatcher() {
@@ -212,123 +248,247 @@ func (s *server) processEvents(events []fsnotify.Event) {
 		return
 	}
 
-	// Deduplicate events by path
-	eventMap := make(map[string]fsnotify.Event)
-	for _, evt := range events {
-		eventMap[evt.Name] = evt
-	}
-
-	// 1. Classify events and check for config change
-	var classified []classifiedEvent
-	handledPatterns := make(map[string]bool)
-
-	for _, evt := range eventMap {
-		if s.isConfigFile(evt.Name) && (evt.Has(fsnotify.Write) || evt.Has(fsnotify.Create)) {
-			s.log.Info("Config changed, restarting")
-			s.triggerConfigRestart()
-			return
-		}
-
-		info, _ := os.Stat(evt.Name)
-		if info != nil && info.IsDir() {
-			if evt.Has(fsnotify.Create) || evt.Has(fsnotify.Rename) {
-				watcher.AddDir(evt.Name)
-			}
-			continue
-		}
-
-		c := s.classifyEventWithWatcherAndBuilder(evt, watcher, builder)
-		if c.ignored || c.chmodOnly {
-			continue
-		}
-
-		patternKey := ""
-		if c.watchedFile != nil {
-			patternKey = c.watchedFile.Pattern
-		}
-		if handledPatterns[patternKey] {
-			continue
-		}
-		handledPatterns[patternKey] = true
-
-		classified = append(classified, c)
-	}
-
-	if len(classified) == 0 {
+	executionPlanningResult := s.buildEventExecutionPlan(events, watcher, builder)
+	if executionPlanningResult.configChanged {
+		s.log.Info("Config changed, restarting")
+		s.triggerConfigRestart()
 		return
 	}
 
-	// 2. Determine if we should show rebuilding overlay - check IMMEDIATELY
-	showRebuilding := false
-	for _, c := range classified {
-		if c.fileType != fileTypeCriticalCSS && c.fileType != fileTypeNormalCSS {
-			if c.watchedFile == nil || !c.watchedFile.SkipRebuildingNotification {
-				showRebuilding = true
-				break
-			}
-		}
+	executionPlan := executionPlanningResult.plan
+	if executionPlan == nil {
+		return
 	}
-	if showRebuilding {
+
+	if executionPlan.showRebuildingOverlay {
 		s.broadcastRebuilding()
 	}
 
-	// 3. Prepare events with hooks
 	work := &workSet{}
-	eventsWithHooks := make([]eventWithHooks, 0, len(classified))
-	isBatch := len(classified) > 1
+	for _, eventWithHooksForLogging := range executionPlan.eventsWithHooks {
+		s.log.Info(
+			"[watcher]",
+			"op",
+			eventWithHooksForLogging.classified.event.Op.String(),
+			"file",
+			eventWithHooksForLogging.classified.event.Name,
+		)
+	}
+
+	if executionPlan.isBatch && executionPlan.batchNeedsAppStop {
+		s.log.Info("Stopping app for batch rebuild")
+		if err := s.stopApp(); err != nil {
+			s.log.Error("Failed to stop app", "error", err)
+		}
+		for i := range executionPlan.eventsWithHooks {
+			executionPlan.eventsWithHooks[i].hookCtx.AppStoppedForBatch = true
+		}
+	}
+
+	if executionPlan.isBatch {
+		s.processBatchedEvents(executionPlan.eventsWithHooks, work, watcher)
+	} else {
+		s.processSingleEvent(executionPlan.eventsWithHooks[0], work, watcher)
+	}
+
+	watcher.RemoveStale()
+}
+
+func (s *server) buildEventExecutionPlan(
+	events []fsnotify.Event,
+	watcher *Watcher,
+	builder *Builder,
+) eventExecutionPlanningResult {
+	deduplicatedEvents := deduplicateWatcherEventsByPath(events)
+	classifiedEvents, configChanged := s.classifyWatcherEventsForProcessing(
+		deduplicatedEvents,
+		watcher,
+		builder,
+	)
+	if configChanged {
+		return eventExecutionPlanningResult{
+			configChanged: true,
+		}
+	}
+
+	if len(classifiedEvents) == 0 {
+		return eventExecutionPlanningResult{}
+	}
+
+	eventsWithHooks, batchNeedsAppStop := buildEventHooksForProcessing(classifiedEvents)
+
+	return eventExecutionPlanningResult{
+		plan: &eventExecutionPlan{
+			classifiedEvents:      classifiedEvents,
+			eventsWithHooks:       eventsWithHooks,
+			isBatch:               len(classifiedEvents) > 1,
+			batchNeedsAppStop:     batchNeedsAppStop,
+			showRebuildingOverlay: shouldShowRebuildingOverlay(classifiedEvents),
+		},
+	}
+}
+
+func deduplicateWatcherEventsByPath(
+	events []fsnotify.Event,
+) []fsnotify.Event {
+	if len(events) == 0 {
+		return nil
+	}
+
+	mergedEventOpsByPath := make(map[string]fsnotify.Op, len(events))
+	for _, event := range events {
+		mergedEventOpsByPath[event.Name] |= event.Op
+	}
+
+	deduplicatedPaths := make([]string, 0, len(mergedEventOpsByPath))
+	for eventPath := range mergedEventOpsByPath {
+		deduplicatedPaths = append(deduplicatedPaths, eventPath)
+	}
+	sort.Strings(deduplicatedPaths)
+
+	deduplicatedEvents := make([]fsnotify.Event, 0, len(deduplicatedPaths))
+	for _, deduplicatedPath := range deduplicatedPaths {
+		deduplicatedEvents = append(deduplicatedEvents, fsnotify.Event{
+			Name: deduplicatedPath,
+			Op:   mergedEventOpsByPath[deduplicatedPath],
+		})
+	}
+
+	return deduplicatedEvents
+}
+
+func (s *server) classifyWatcherEventsForProcessing(
+	events []fsnotify.Event,
+	watcher *Watcher,
+	builder *Builder,
+) ([]classifiedEvent, bool) {
+	if len(events) == 0 {
+		return nil, false
+	}
+
+	classifiedEvents := make([]classifiedEvent, 0, len(events))
+
+	for _, event := range events {
+		if s.isConfigFile(event.Name) && (event.Has(fsnotify.Write) || event.Has(fsnotify.Create)) {
+			return nil, true
+		}
+
+		info, _ := os.Stat(event.Name)
+		if info != nil && info.IsDir() {
+			if event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
+				_ = watcher.AddDir(event.Name)
+			}
+			continue
+		}
+
+		classifiedEventForProcessing := s.classifyEventWithWatcherAndBuilder(
+			event,
+			watcher,
+			builder,
+		)
+		if classifiedEventForProcessing.ignored || classifiedEventForProcessing.chmodOnly {
+			continue
+		}
+
+		classifiedEvents = append(classifiedEvents, classifiedEventForProcessing)
+	}
+
+	return classifiedEvents, false
+}
+
+func buildEventHooksForProcessing(
+	classifiedEvents []classifiedEvent,
+) ([]eventWithHooks, bool) {
+	if len(classifiedEvents) == 0 {
+		return nil, false
+	}
+
+	eventsWithHooks := make([]eventWithHooks, 0, len(classifiedEvents))
+	handledWatchedPatterns := make(map[string]struct{})
+	changedFilePathsByWatchedPattern := make(map[string][]string)
 	batchNeedsAppStop := false
 
-	for _, c := range classified {
-		s.log.Info("[watcher]", "op", c.event.Op.String(), "file", c.event.Name)
-
-		wf := c.watchedFile
-		if wf == nil {
-			wf = &wave.WatchedFile{}
-		}
-		if wf.SortedHooks == nil {
-			wf.Sort()
-		}
-		if wf.SortedHooks == nil {
-			wf.SortedHooks = &wave.SortedHooks{}
+	for _, classifiedEventForProcessing := range classifiedEvents {
+		if classifiedEventForProcessing.watchedFile != nil {
+			watchedPattern := classifiedEventForProcessing.watchedFile.Pattern
+			changedFilePathsByWatchedPattern[watchedPattern] = append(
+				changedFilePathsByWatchedPattern[watchedPattern],
+				classifiedEventForProcessing.event.Name,
+			)
 		}
 
-		eventNeedsHardReload := c.fileType == fileTypeGo || needsHardReload(wf)
+		watchedFile := classifiedEventForProcessing.watchedFile
+		if watchedFile == nil {
+			watchedFile = &wave.WatchedFile{}
+		}
+		if watchedFile.SortedHooks == nil {
+			watchedFile.Sort()
+		}
+		if watchedFile.SortedHooks == nil {
+			watchedFile.SortedHooks = &wave.SortedHooks{}
+		}
+
+		eventNeedsHardReload := classifiedEventForProcessing.fileType == fileTypeGo ||
+			needsHardReload(watchedFile)
 		if eventNeedsHardReload {
 			batchNeedsAppStop = true
 		}
 
+		skipDuplicateHooks := false
+		if classifiedEventForProcessing.watchedFile != nil {
+			watchedPattern := classifiedEventForProcessing.watchedFile.Pattern
+			if _, alreadyHandled := handledWatchedPatterns[watchedPattern]; alreadyHandled {
+				skipDuplicateHooks = true
+			} else {
+				handledWatchedPatterns[watchedPattern] = struct{}{}
+			}
+		}
+
 		eventsWithHooks = append(eventsWithHooks, eventWithHooks{
-			classified:      c,
-			hooks:           wf.SortedHooks,
-			runOnChangeOnly: wf.RunOnChangeOnly,
-			needsHardReload: eventNeedsHardReload,
+			classified:         classifiedEventForProcessing,
+			hooks:              watchedFile.SortedHooks,
+			runOnChangeOnly:    watchedFile.RunOnChangeOnly,
+			needsHardReload:    eventNeedsHardReload,
+			skipDuplicateHooks: skipDuplicateHooks,
 			hookCtx: &wave.HookContext{
-				FilePath:           c.event.Name,
+				FilePath:           classifiedEventForProcessing.event.Name,
+				ChangedFilePaths:   []string{classifiedEventForProcessing.event.Name},
 				AppStoppedForBatch: false,
 			},
 		})
 	}
 
-	// 4. For batches with hard reload, stop app upfront (safer for batch processing)
-	if isBatch && batchNeedsAppStop {
-		s.log.Info("Stopping app for batch rebuild")
-		if err := s.stopApp(); err != nil {
-			s.log.Error("Failed to stop app", "error", err)
+	for i := range eventsWithHooks {
+		classifiedEventForProcessing := eventsWithHooks[i].classified
+		if classifiedEventForProcessing.watchedFile == nil {
+			continue
 		}
-		for i := range eventsWithHooks {
-			eventsWithHooks[i].hookCtx.AppStoppedForBatch = true
+		watchedPattern := classifiedEventForProcessing.watchedFile.Pattern
+		eventsWithHooks[i].hookCtx.ChangedFilePaths = append(
+			[]string(nil),
+			changedFilePathsByWatchedPattern[watchedPattern]...,
+		)
+	}
+
+	return eventsWithHooks, batchNeedsAppStop
+}
+
+func shouldShowRebuildingOverlay(
+	classifiedEvents []classifiedEvent,
+) bool {
+	for _, classifiedEventForOverlay := range classifiedEvents {
+		if classifiedEventForOverlay.fileType == fileTypeCriticalCSS ||
+			classifiedEventForOverlay.fileType == fileTypeNormalCSS {
+			continue
+		}
+
+		if classifiedEventForOverlay.watchedFile == nil ||
+			!classifiedEventForOverlay.watchedFile.SkipRebuildingNotification {
+			return true
 		}
 	}
 
-	// 5. Process events - for batches, process all then reload once
-	//    For single events, use the original parallel kill + build approach
-	if isBatch {
-		s.processBatchedEvents(eventsWithHooks, work, watcher)
-	} else {
-		s.processSingleEvent(eventsWithHooks[0], work, watcher)
-	}
-
-	watcher.RemoveStale()
+	return false
 }
 
 // processSingleEvent handles a single file change with maximum parallelism:
@@ -352,27 +512,49 @@ func (s *server) processSingleEvent(ewh eventWithHooks, work *workSet, watcher *
 		s.log.Error("Pre-hook execution failed", "error", err)
 	}
 
-	// Check for restart request from pre hooks
-	for _, action := range preActions {
-		if action.TriggerRestart {
-			killEg.Wait()
-			if action.RecompileGo {
-				s.triggerRestart()
-			} else {
-				s.triggerRestartNoGo()
-			}
-			return
-		}
-		work.addFromRefreshAction(action)
+	preActionResult := work.applyRefreshActions(preActions)
+	if preActionResult.restartRequested {
+		killEg.Wait()
+		s.triggerRestartFromRefreshActions(preActionResult)
+		return
 	}
 
 	// Add implicit work
 	work.addImplicitWork(ewh.classified)
 
-	// Check for RunOnChangeOnly - if so, we're done
+	// Check for RunOnChangeOnly - skip implicit build work, but still allow
+	// callback hooks to drive refresh behavior.
 	if ewh.runOnChangeOnly {
-		s.log.Info("RunOnChangeOnly: skipping build phase")
-		killEg.Wait()
+		s.log.Info("RunOnChangeOnly: skipping implicit build phase")
+
+		concurrentActions, err := s.runConcurrentHooks(ewh, watcher)
+		if err != nil {
+			s.log.Error("Concurrent hook execution failed", "error", err)
+		}
+
+		concurrentActionResult := work.applyRefreshActions(concurrentActions)
+		if concurrentActionResult.restartRequested {
+			killEg.Wait()
+			s.triggerRestartFromRefreshActions(concurrentActionResult)
+			return
+		}
+
+		if err := killEg.Wait(); err != nil {
+			s.log.Error("Failed to terminate app", "error", err)
+		}
+
+		postActions, err := s.runPostHooks(ewh, watcher)
+		if err != nil {
+			s.log.Error("Post-hook execution failed", "error", err)
+		}
+
+		postActionResult := work.applyRefreshActions(postActions)
+		if postActionResult.restartRequested {
+			s.triggerRestartFromRefreshActions(postActionResult)
+			return
+		}
+
+		s.executeBrowserPhase(work)
 		return
 	}
 
@@ -405,18 +587,11 @@ func (s *server) processSingleEvent(ewh eventWithHooks, work *workSet, watcher *
 	// Wait for build and concurrent hooks
 	buildAndConcurrentEg.Wait()
 
-	// Process concurrent hook actions
-	for _, action := range concurrentActions {
-		if action.TriggerRestart {
-			killEg.Wait()
-			if action.RecompileGo {
-				s.triggerRestart()
-			} else {
-				s.triggerRestartNoGo()
-			}
-			return
-		}
-		work.addFromRefreshAction(action)
+	concurrentActionResult := work.applyRefreshActions(concurrentActions)
+	if concurrentActionResult.restartRequested {
+		killEg.Wait()
+		s.triggerRestartFromRefreshActions(concurrentActionResult)
+		return
 	}
 
 	// Wait for app termination to complete before post hooks
@@ -430,16 +605,10 @@ func (s *server) processSingleEvent(ewh eventWithHooks, work *workSet, watcher *
 		s.log.Error("Post-hook execution failed", "error", err)
 	}
 
-	for _, action := range postActions {
-		if action.TriggerRestart {
-			if action.RecompileGo {
-				s.triggerRestart()
-			} else {
-				s.triggerRestartNoGo()
-			}
-			return
-		}
-		work.addFromRefreshAction(action)
+	postActionResult := work.applyRefreshActions(postActions)
+	if postActionResult.restartRequested {
+		s.triggerRestartFromRefreshActions(postActionResult)
+		return
 	}
 
 	// Restart app if needed
@@ -456,31 +625,30 @@ func (s *server) processSingleEvent(ewh eventWithHooks, work *workSet, watcher *
 func (s *server) processBatchedEvents(eventsWithHooks []eventWithHooks, work *workSet, watcher *Watcher) {
 	// Fire all no-wait hooks
 	for _, ewh := range eventsWithHooks {
+		if ewh.skipDuplicateHooks {
+			continue
+		}
 		s.fireNoWaitHooks(ewh, watcher)
 	}
 
 	// Run all pre hooks
 	var allPreActions []wave.RefreshAction
 	for _, ewh := range eventsWithHooks {
+		work.addImplicitWork(ewh.classified)
+		if ewh.skipDuplicateHooks {
+			continue
+		}
 		actions, err := s.runPreHooks(ewh, watcher)
 		if err != nil {
 			s.log.Error("Pre-hook execution failed", "error", err)
 		}
 		allPreActions = append(allPreActions, actions...)
-		work.addImplicitWork(ewh.classified)
 	}
 
-	// Check for restart request from pre hooks
-	for _, action := range allPreActions {
-		if action.TriggerRestart {
-			if action.RecompileGo {
-				s.triggerRestart()
-			} else {
-				s.triggerRestartNoGo()
-			}
-			return
-		}
-		work.addFromRefreshAction(action)
+	preActionResult := work.applyRefreshActions(allPreActions)
+	if preActionResult.restartRequested {
+		s.triggerRestartFromRefreshActions(preActionResult)
+		return
 	}
 
 	// Check if ALL events are RunOnChangeOnly
@@ -491,26 +659,28 @@ func (s *server) processBatchedEvents(eventsWithHooks []eventWithHooks, work *wo
 			break
 		}
 	}
-	if allRunOnChangeOnly {
-		s.log.Info("All events are RunOnChangeOnly, skipping build phase")
-		return
-	}
 
-	// Resolve browser behavior
-	work.resolve(s.cfg.UsingVite())
+	if allRunOnChangeOnly {
+		s.log.Info("All events are RunOnChangeOnly, skipping implicit build phase")
+	} else {
+		// Resolve browser behavior
+		work.resolve(s.cfg.UsingVite())
+	}
 
 	// Run build AND all concurrent hooks in parallel
 	var buildAndConcurrentEg errgroup.Group
 	var concurrentActions []wave.RefreshAction
 	var concurrentActionsMu sync.Mutex
 
-	buildAndConcurrentEg.Go(func() error {
-		s.executeBuildPhase(work)
-		return nil
-	})
+	if !allRunOnChangeOnly {
+		buildAndConcurrentEg.Go(func() error {
+			s.executeBuildPhase(work)
+			return nil
+		})
+	}
 
 	for _, ewh := range eventsWithHooks {
-		if ewh.runOnChangeOnly {
+		if ewh.skipDuplicateHooks {
 			continue
 		}
 		ewh := ewh
@@ -530,23 +700,16 @@ func (s *server) processBatchedEvents(eventsWithHooks []eventWithHooks, work *wo
 
 	buildAndConcurrentEg.Wait()
 
-	// Process concurrent hook actions
-	for _, action := range concurrentActions {
-		if action.TriggerRestart {
-			if action.RecompileGo {
-				s.triggerRestart()
-			} else {
-				s.triggerRestartNoGo()
-			}
-			return
-		}
-		work.addFromRefreshAction(action)
+	concurrentActionResult := work.applyRefreshActions(concurrentActions)
+	if concurrentActionResult.restartRequested {
+		s.triggerRestartFromRefreshActions(concurrentActionResult)
+		return
 	}
 
 	// Run all post hooks
 	var allPostActions []wave.RefreshAction
 	for _, ewh := range eventsWithHooks {
-		if ewh.runOnChangeOnly {
+		if ewh.skipDuplicateHooks {
 			continue
 		}
 		actions, err := s.runPostHooks(ewh, watcher)
@@ -556,16 +719,10 @@ func (s *server) processBatchedEvents(eventsWithHooks []eventWithHooks, work *wo
 		allPostActions = append(allPostActions, actions...)
 	}
 
-	for _, action := range allPostActions {
-		if action.TriggerRestart {
-			if action.RecompileGo {
-				s.triggerRestart()
-			} else {
-				s.triggerRestartNoGo()
-			}
-			return
-		}
-		work.addFromRefreshAction(action)
+	postActionResult := work.applyRefreshActions(allPostActions)
+	if postActionResult.restartRequested {
+		s.triggerRestartFromRefreshActions(postActionResult)
+		return
 	}
 
 	// Restart app if needed
@@ -590,13 +747,13 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 				}
 			}(hook.Callback, ewh.hookCtx)
 		}
-		cmd := s.resolveCmd(hook.Cmd)
-		if cmd != "" {
-			go func(c string) {
-				if err := executil.RunShell(c); err != nil {
-					s.log.Warn("concurrent-no-wait hook failed", "cmd", c, "error", err)
+		resolvedCommand := s.resolveCmd(hook.Cmd)
+		if resolvedCommand != "" {
+			go func(command string) {
+				if err := executil.RunShell(command); err != nil {
+					s.log.Warn("concurrent-no-wait hook failed", "cmd", command, "error", err)
 				}
-			}(cmd)
+			}(resolvedCommand)
 		}
 	}
 }
@@ -604,24 +761,16 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
 	var actions []wave.RefreshAction
 
-	for _, hook := range ewh.hooks.Pre {
-		if watcher.IsIgnored(ewh.classified.event.Name, hook.Exclude) {
+	for _, preHook := range ewh.hooks.Pre {
+		if watcher.IsIgnored(ewh.classified.event.Name, preHook.Exclude) {
 			continue
 		}
-		if hook.Callback != nil {
-			action, err := hook.Callback(ewh.hookCtx)
-			if err != nil {
-				return actions, err
-			}
-			if action != nil {
-				actions = append(actions, *action)
-			}
+		action, err := s.executeHook(preHook, ewh.hookCtx)
+		if action != nil {
+			actions = append(actions, *action)
 		}
-		cmd := s.resolveCmd(hook.Cmd)
-		if cmd != "" {
-			if err := executil.RunShell(cmd); err != nil {
-				return actions, err
-			}
+		if err != nil {
+			return actions, err
 		}
 	}
 
@@ -637,28 +786,26 @@ func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wav
 	var actionsMu sync.Mutex
 	var eg errgroup.Group
 
-	for _, hook := range ewh.hooks.Concurrent {
-		if watcher.IsIgnored(ewh.classified.event.Name, hook.Exclude) {
+	for _, concurrentHook := range ewh.hooks.Concurrent {
+		if watcher.IsIgnored(ewh.classified.event.Name, concurrentHook.Exclude) {
 			continue
 		}
-		h := hook
+		hook, shouldRunHook := prepareHookForExecutionWithRunOnChangeOnlyRules(
+			ewh.runOnChangeOnly,
+			concurrentHook,
+		)
+		if !shouldRunHook {
+			continue
+		}
+
 		eg.Go(func() error {
-			if h.Callback != nil {
-				action, err := h.Callback(ewh.hookCtx)
-				if err != nil {
-					return err
-				}
-				if action != nil {
-					actionsMu.Lock()
-					actions = append(actions, *action)
-					actionsMu.Unlock()
-				}
+			action, err := s.executeHook(hook, ewh.hookCtx)
+			if action != nil {
+				actionsMu.Lock()
+				actions = append(actions, *action)
+				actionsMu.Unlock()
 			}
-			cmd := s.resolveCmd(h.Cmd)
-			if cmd != "" {
-				return executil.RunShell(cmd)
-			}
-			return nil
+			return err
 		})
 	}
 
@@ -669,28 +816,77 @@ func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wav
 func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
 	var actions []wave.RefreshAction
 
-	for _, hook := range ewh.hooks.Post {
-		if watcher.IsIgnored(ewh.classified.event.Name, hook.Exclude) {
+	for _, postHook := range ewh.hooks.Post {
+		if watcher.IsIgnored(ewh.classified.event.Name, postHook.Exclude) {
 			continue
 		}
-		if hook.Callback != nil {
-			action, err := hook.Callback(ewh.hookCtx)
-			if err != nil {
-				return actions, err
-			}
-			if action != nil {
-				actions = append(actions, *action)
-			}
+		hook, shouldRunHook := prepareHookForExecutionWithRunOnChangeOnlyRules(
+			ewh.runOnChangeOnly,
+			postHook,
+		)
+		if !shouldRunHook {
+			continue
 		}
-		cmd := s.resolveCmd(hook.Cmd)
-		if cmd != "" {
-			if err := executil.RunShell(cmd); err != nil {
-				return actions, err
-			}
+
+		action, err := s.executeHook(hook, ewh.hookCtx)
+		if action != nil {
+			actions = append(actions, *action)
+		}
+		if err != nil {
+			return actions, err
 		}
 	}
 
 	return actions, nil
+}
+
+func prepareHookForExecutionWithRunOnChangeOnlyRules(
+	isRunOnChangeOnly bool,
+	hook wave.OnChangeHook,
+) (wave.OnChangeHook, bool) {
+	if !isRunOnChangeOnly || strings.TrimSpace(hook.Cmd) == "" {
+		return hook, true
+	}
+
+	if hook.Callback == nil {
+		return wave.OnChangeHook{}, false
+	}
+
+	hook.Cmd = ""
+	return hook, true
+}
+
+func (s *server) executeHook(
+	hook wave.OnChangeHook,
+	hookContext *wave.HookContext,
+) (*wave.RefreshAction, error) {
+	var action *wave.RefreshAction
+	if hook.Callback != nil {
+		callbackAction, err := hook.Callback(hookContext)
+		if err != nil {
+			return nil, err
+		}
+		action = callbackAction
+	}
+
+	resolvedCommand := s.resolveCmd(hook.Cmd)
+	if resolvedCommand != "" {
+		if err := executil.RunShell(resolvedCommand); err != nil {
+			return action, err
+		}
+	}
+
+	return action, nil
+}
+
+func (s *server) triggerRestartFromRefreshActions(
+	actionResult refreshActionApplicationResult,
+) {
+	if actionResult.recompileGo {
+		s.triggerRestart()
+		return
+	}
+	s.triggerRestartNoGo()
 }
 
 func (s *server) executeBuildPhase(work *workSet) {
@@ -892,22 +1088,11 @@ func (s *server) classifyEventWithWatcherAndBuilder(evt fsnotify.Event, watcher 
 }
 
 func (s *server) isConfigFile(path string) bool {
-	configPath := s.cfg.Core.ConfigLocation
-	if configPath == "" {
+	if s == nil || s.cfg == nil {
 		return false
 	}
 
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		absPath = path
-	}
-
-	absConfigPath, err := filepath.Abs(configPath)
-	if err != nil {
-		absConfigPath = configPath
-	}
-
-	return absPath == absConfigPath
+	return s.cfg.IsResolvedConfigDependencyPath(path)
 }
 
 func needsHardReload(wf *wave.WatchedFile) bool {

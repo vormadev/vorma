@@ -56,7 +56,7 @@ func TestBuild_PropagatesHookFailure(t *testing.T) {
 	}
 }
 
-func TestBuild_SuccessWritesSchema(t *testing.T) {
+func TestBuild_Success(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
@@ -70,11 +70,6 @@ func TestBuild_SuccessWritesSchema(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
-	}
-
-	schemaPath := filepath.Join(cfg.Dist.Internal(), "schema.json")
-	if _, statErr := os.Stat(schemaPath); statErr != nil {
-		t.Fatalf("expected schema file to exist at %s: %v", schemaPath, statErr)
 	}
 }
 

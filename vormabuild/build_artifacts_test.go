@@ -572,16 +572,13 @@ func TestWritePublicFileMapTypeScript_WritesTSAndJSON(t *testing.T) {
 	}
 }
 
-func TestConfigureBuildEnvironment_WiresSchemaHooksAndDefaults(t *testing.T) {
+func TestConfigureBuildEnvironment_WiresHooksAndDefaults(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
 	configureBuildEnvironment(app)
 
 	parsedCfg := app.Wave.GetParsedConfig()
-	if _, ok := parsedCfg.FrameworkSchemaExtensions["Vorma"]; !ok {
-		t.Fatal("expected Vorma schema extension to be registered")
-	}
 
 	expectedDevHook := fmt.Sprintf("go run ./%s --dev --hook", app.Config.MainBuildEntry)
 	if parsedCfg.FrameworkDevBuildHook != expectedDevHook {

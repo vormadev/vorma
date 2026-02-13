@@ -73,9 +73,6 @@ func MustGetPort() int {
 	return appPortResult
 }
 
-// MustGetAppPort is an alias for MustGetPort for backward compatibility.
-var MustGetAppPort = MustGetPort
-
 func GetRefreshServerPort() int {
 	p, err := strconv.Atoi(os.Getenv(envRefreshServerPort))
 	if err != nil || p <= 0 || p > 65535 {

@@ -1,6 +1,7 @@
 package wave
 
 import (
+	"context"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -50,10 +51,15 @@ type fileMapDetails struct {
 
 // Config configures Wave initialization.
 type Config struct {
-	// Required -- the bytes of your wave.config.json file.
-	// You can use go:embed or just read the file in yourself.
-	// Using go:embed is recommended for simpler deployments and improved performance.
+	// Optional -- Raw Wave configuration JSON.
+	// This is the simplest app-facing path when configuration is authored in JSON.
+	// Exactly one of WaveConfigJSON or ConfigSource must be provided.
 	WaveConfigJSON []byte
+
+	// Optional -- Wave loads configuration through this source.
+	// The source can be provider-backed in dev, or static/in-memory in production.
+	// Exactly one of WaveConfigJSON or ConfigSource must be provided.
+	ConfigSource ConfigSource
 
 	// Required -- be sure to pass in a file system that has your
 	// <distDir>/static directory as its ROOT.
@@ -68,18 +74,34 @@ type Config struct {
 }
 
 func New(c Config) *Wave {
-	if c.WaveConfigJSON == nil {
-		panic("wave.New: WaveConfigJSON cannot be nil")
+	if c.ConfigSource != nil && len(c.WaveConfigJSON) > 0 {
+		panic("wave.New: exactly one of WaveConfigJSON or ConfigSource must be provided")
 	}
 
-	cfg, err := ParseConfig(c.WaveConfigJSON)
-	if err != nil {
-		panic("wave.New: " + err.Error())
+	resolvedConfigSource := c.ConfigSource
+	if resolvedConfigSource == nil {
+		if len(c.WaveConfigJSON) == 0 {
+			panic("wave.New: WaveConfigJSON or ConfigSource is required")
+		}
+		resolvedConfigSource = NewStaticConfigSource(cloneBytes(c.WaveConfigJSON))
+	}
+
+	loadedCfg, parseError := resolvedConfigSource.LoadConfig(context.Background())
+	if parseError != nil {
+		panic("wave.New: load config source: " + parseError.Error())
+	}
+	if loadedCfg == nil {
+		panic("wave.New: config source returned nil")
+	}
+
+	cfg, parseError := ParseConfigFromLoadedConfig(loadedCfg, resolvedConfigSource)
+	if parseError != nil {
+		panic("wave.New: " + parseError.Error())
 	}
 
 	w := &Wave{
 		cfg:          cfg,
-		rawCfg:       cloneBytes(c.WaveConfigJSON),
+		rawCfg:       cloneBytes(loadedCfg.ConfigJSON),
 		log:          resolveWaveLogger(c.Logger),
 		distStaticFS: c.DistStaticFS,
 	}

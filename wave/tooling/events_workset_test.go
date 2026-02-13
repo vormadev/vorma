@@ -32,6 +32,52 @@ func TestWorkSetAddFromRefreshAction(t *testing.T) {
 	}
 }
 
+func TestWorkSetApplyRefreshActions(t *testing.T) {
+	t.Run("returns restart request and stops processing remaining actions", func(t *testing.T) {
+		work := &workSet{}
+
+		result := work.applyRefreshActions([]wave.RefreshAction{
+			{ReloadBrowser: true},
+			{TriggerRestart: true},
+			{WaitForApp: true},
+		})
+
+		if !result.restartRequested {
+			t.Fatal("expected restartRequested=true")
+		}
+		if result.recompileGo {
+			t.Fatal("expected recompileGo=false")
+		}
+		if !work.reloadBrowser {
+			t.Fatal("expected first non-restart action to be applied")
+		}
+		if work.waitForApp {
+			t.Fatal("expected actions after restart request not to be applied")
+		}
+	})
+
+	t.Run("merges non-restart actions into workset", func(t *testing.T) {
+		work := &workSet{}
+
+		result := work.applyRefreshActions([]wave.RefreshAction{
+			{ReloadBrowser: true, WaitForApp: true},
+			{WaitForVite: true},
+		})
+
+		if result.restartRequested {
+			t.Fatal("expected restartRequested=false")
+		}
+		if !work.reloadBrowser || !work.waitForApp || !work.waitForVite {
+			t.Fatalf(
+				"expected merged flags true, got reload=%v waitApp=%v waitVite=%v",
+				work.reloadBrowser,
+				work.waitForApp,
+				work.waitForVite,
+			)
+		}
+	})
+}
+
 func TestWorkSetAddImplicitWork(t *testing.T) {
 	t.Run("go files imply compile and restart", func(t *testing.T) {
 		work := &workSet{}

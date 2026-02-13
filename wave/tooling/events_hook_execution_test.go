@@ -130,6 +130,53 @@ func TestRunPostHooks_StopsOnCommandError(t *testing.T) {
 	}
 }
 
+func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	changedPath := filepath.Join(root, "changed.txt")
+	commandOut := filepath.Join(root, "post-command.log")
+	if err := os.WriteFile(changedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	var callbackCalled atomic.Bool
+	ewh := eventWithHooks{
+		classified:      classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:         &wave.HookContext{FilePath: changedPath},
+		runOnChangeOnly: true,
+		hooks: &wave.SortedHooks{
+			Post: []wave.OnChangeHook{
+				{
+					Cmd: "printf 'should-not-run\\n' >> " + strconv.Quote(commandOut),
+				},
+				{
+					Cmd: "printf 'should-not-run\\n' >> " + strconv.Quote(commandOut),
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						callbackCalled.Store(true)
+						return &wave.RefreshAction{ReloadBrowser: true}, nil
+					},
+				},
+			},
+		},
+	}
+
+	actions, err := s.runPostHooks(ewh, watcher)
+	if err != nil {
+		t.Fatalf("runPostHooks returned error: %v", err)
+	}
+	if !callbackCalled.Load() {
+		t.Fatal("expected callback hook to run for run-on-change-only post hooks")
+	}
+	if len(actions) != 1 || !actions[0].ReloadBrowser {
+		t.Fatalf("unexpected post hook actions: %#v", actions)
+	}
+	if _, statErr := os.Stat(commandOut); !os.IsNotExist(statErr) {
+		t.Fatalf("expected run-on-change-only post commands to be skipped, stat error: %v", statErr)
+	}
+}
+
 func TestFireNoWaitHooks_RunsAsyncCallbackAndCommand(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()

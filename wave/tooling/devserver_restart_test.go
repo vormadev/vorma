@@ -65,3 +65,43 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 		}
 	})
 }
+
+func TestTriggerRestartFromRefreshActions(t *testing.T) {
+	t.Run("trigger restart without go compile", func(t *testing.T) {
+		s := newServerForRestartChannelTest()
+
+		s.triggerRestartFromRefreshActions(
+			refreshActionApplicationResult{
+				restartRequested: true,
+				recompileGo:      false,
+			},
+		)
+
+		req := <-s.restartCh
+		if req.recompileGo {
+			t.Fatalf("expected recompileGo=false, got %#v", req)
+		}
+		if req.isConfigRestart {
+			t.Fatalf("expected isConfigRestart=false, got %#v", req)
+		}
+	})
+
+	t.Run("trigger restart with go compile", func(t *testing.T) {
+		s := newServerForRestartChannelTest()
+
+		s.triggerRestartFromRefreshActions(
+			refreshActionApplicationResult{
+				restartRequested: true,
+				recompileGo:      true,
+			},
+		)
+
+		req := <-s.restartCh
+		if !req.recompileGo {
+			t.Fatalf("expected recompileGo=true, got %#v", req)
+		}
+		if req.isConfigRestart {
+			t.Fatalf("expected isConfigRestart=false, got %#v", req)
+		}
+	})
+}

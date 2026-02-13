@@ -220,6 +220,53 @@ func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(t *testing.T
 	}
 }
 
+func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(t *testing.T) {
+	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
+	defer watcher.Close()
+
+	s.refreshMgrCtx = context.Background()
+	s.refreshMgr = &clientManager{
+		broadcast: make(chan refreshPayload, 1),
+	}
+
+	work := &workSet{}
+	ewh := eventWithHooks{
+		classified: classifiedEvent{
+			event:       waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+			fileType:    fileTypeOther,
+			watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
+		},
+		hookCtx: &wave.HookContext{},
+		hooks: &wave.SortedHooks{
+			Post: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return &wave.RefreshAction{ReloadBrowser: true}, nil
+					},
+				},
+			},
+		},
+		runOnChangeOnly: true,
+	}
+
+	s.processSingleEvent(ewh, work, watcher)
+
+	select {
+	case msg := <-s.refreshMgr.broadcast:
+		if msg.ChangeType != changeTypeOther {
+			t.Fatalf("expected hard reload payload, got %#v", msg)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for run-on-change-only post callback reload payload")
+	}
+
+	select {
+	case req := <-s.restartCh:
+		t.Fatalf("did not expect restart request, got %#v", req)
+	default:
+	}
+}
+
 func TestProcessSingleEvent_ImplicitRestartStartsApp(t *testing.T) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
@@ -383,6 +430,99 @@ func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(t *test
 	case req := <-s.restartCh:
 		t.Fatalf("did not expect restart request, got %#v", req)
 	default:
+	}
+}
+
+func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserReload(t *testing.T) {
+	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
+	defer watcher.Close()
+
+	s.refreshMgrCtx = context.Background()
+	s.refreshMgr = &clientManager{
+		broadcast: make(chan refreshPayload, 1),
+	}
+
+	events := []eventWithHooks{
+		{
+			classified: classifiedEvent{
+				event:       waveEvent(filepath.Join(t.TempDir(), "a.txt")),
+				fileType:    fileTypeOther,
+				watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
+			},
+			hookCtx: &wave.HookContext{},
+			hooks: &wave.SortedHooks{
+				Post: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						},
+					},
+				},
+			},
+			runOnChangeOnly: true,
+		},
+	}
+
+	work := &workSet{}
+	s.processBatchedEvents(events, work, watcher)
+
+	select {
+	case msg := <-s.refreshMgr.broadcast:
+		if msg.ChangeType != changeTypeOther {
+			t.Fatalf("expected hard reload payload, got %#v", msg)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for batched run-on-change-only reload payload")
+	}
+
+	select {
+	case req := <-s.restartCh:
+		t.Fatalf("did not expect restart request, got %#v", req)
+	default:
+	}
+}
+
+func TestProcessBatchedEvents_MixedBatchRunsRunOnChangeOnlyPostCallbacks(t *testing.T) {
+	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
+	defer watcher.Close()
+
+	var runOnChangeOnlyPostCallbackRan atomic.Bool
+	events := []eventWithHooks{
+		{
+			classified: classifiedEvent{
+				event:       waveEvent(filepath.Join(t.TempDir(), "a.txt")),
+				fileType:    fileTypeOther,
+				watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
+			},
+			hookCtx: &wave.HookContext{},
+			hooks: &wave.SortedHooks{
+				Post: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							runOnChangeOnlyPostCallbackRan.Store(true)
+							return nil, nil
+						},
+					},
+				},
+			},
+			runOnChangeOnly: true,
+		},
+		{
+			classified: classifiedEvent{
+				event:    waveEvent(filepath.Join(t.TempDir(), "b.txt")),
+				fileType: fileTypeOther,
+			},
+			hookCtx:         &wave.HookContext{},
+			hooks:           &wave.SortedHooks{},
+			runOnChangeOnly: false,
+		},
+	}
+
+	work := &workSet{}
+	s.processBatchedEvents(events, work, watcher)
+
+	if !runOnChangeOnlyPostCallbackRan.Load() {
+		t.Fatal("expected run-on-change-only post callback to run in mixed batch")
 	}
 }
 

@@ -33,6 +33,7 @@ type testFixtureOptions struct {
 	loadersRouterOpts    LoadersRouterOptions
 	adHocTypes           []*tsgen.AdHocType
 	extraTSCode          string
+	configureVormaConfig func(*VormaConfig)
 }
 
 func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
@@ -109,6 +110,9 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 			BuildtimePublicURLFuncName: "",
 		},
 	}
+	if o.configureVormaConfig != nil {
+		o.configureVormaConfig(&rawCfg.Vorma)
+	}
 
 	cfgJSON, err := json.Marshal(rawCfg)
 	if err != nil {
@@ -116,9 +120,9 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	}
 
 	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgJSON,
-		DistStaticFS:   os.DirFS(staticDir),
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ConfigSource: wave.NewStaticConfigSource(cfgJSON),
+		DistStaticFS: os.DirFS(staticDir),
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
 	app := NewVormaApp(VormaAppConfig{

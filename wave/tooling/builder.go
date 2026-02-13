@@ -8,11 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/executil"
-	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 	"golang.org/x/sync/errgroup"
@@ -59,16 +59,6 @@ func (b *Builder) Close() error {
 // Config returns the builder's config (read-only access)
 func (b *Builder) Config() *wave.ParsedConfig {
 	return b.cfg
-}
-
-// RegisterSchemaSection adds a custom section to the generated JSON schema.
-// This allows frameworks to extend wave.config.json with their own configuration
-// while maintaining IDE autocomplete support.
-func (b *Builder) RegisterSchemaSection(name string, schema jsonschema.Entry) {
-	if b.cfg.FrameworkSchemaExtensions == nil {
-		b.cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
-	}
-	b.cfg.FrameworkSchemaExtensions[name] = schema
 }
 
 // ValidateConfig performs full validation of the Wave configuration.
@@ -167,11 +157,6 @@ func (b *Builder) Build(opts BuildOpts) error {
 		return fmt.Errorf("post-hook file processing failed: %w", err)
 	}
 
-	// Write config schema
-	if err := writeConfigSchema(b); err != nil {
-		b.log.Warn("failed to write config schema (non-fatal)", "error", err)
-	}
-
 	// Compile Go binary
 	var goDur time.Duration
 	if opts.CompileGo {
@@ -268,13 +253,12 @@ func (b *Builder) compileGo(isDev bool) error {
 
 	dest := b.cfg.Dist.Binary()
 	entry := fmt.Sprintf(".%c%s", filepath.Separator, filepath.Clean(b.cfg.Core.MainAppEntry))
-
-	var cmd *exec.Cmd
-	if isDev {
-		cmd = exec.Command("go", "build", "-o", dest, entry)
-	} else {
-		cmd = exec.Command("go", "build", "-tags=prod", "-o", dest, entry)
-	}
+	cmd := buildGoBuildCommand(
+		dest,
+		entry,
+		isDev,
+		b.cfg.Core.UseFilesystemDistStaticInProd,
+	)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -285,6 +269,30 @@ func (b *Builder) compileGo(isDev bool) error {
 
 	b.log.Info("DONE compiling Go", "duration", time.Since(start))
 	return nil
+}
+
+func buildGoBuildCommand(
+	dest string,
+	entry string,
+	isDev bool,
+	useFilesystemDistStaticInProd bool,
+) *exec.Cmd {
+	commandArguments := []string{"build"}
+
+	if !isDev {
+		buildTags := []string{"prod"}
+		if useFilesystemDistStaticInProd {
+			buildTags = append(buildTags, "wave_dist_static_from_disk")
+		}
+		commandArguments = append(
+			commandArguments,
+			"-tags="+strings.Join(buildTags, ","),
+		)
+	}
+
+	commandArguments = append(commandArguments, "-o", dest, entry)
+
+	return exec.Command("go", commandArguments...)
 }
 
 // CompileGoOnly compiles the Go binary without running the full build

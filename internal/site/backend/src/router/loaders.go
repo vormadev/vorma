@@ -31,49 +31,47 @@ var htmlCacheControlVal = strings.Join([]string{
 	"must-revalidate",                // revalidate after 1 day in CDN
 }, ", ")
 
-func registerCoreLoaders() {
-	NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
-		r, rp := c.Request(), c.ResponseProxy()
+var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
+	r, rp := c.Request(), c.ResponseProxy()
 
-		if !wave.GetIsDev() {
-			// Because this app has no user-specific data, we can cache the responses
-			// pretty aggressively.
-			// Vercel purges the CDN on new deployments, so we don't need to worry about
-			// build ID mismatches.
-			if vorma.IsJSONRequest(r) {
-				rp.SetHeader("Cache-Control", jsonCacheControlVal)
-			} else {
-				// Vary the HTML response by cookie to account for theme
-				rp.SetHeader("Vary", "Cookie")
-				rp.SetHeader("Cache-Control", htmlCacheControlVal)
-			}
+	if !wave.GetIsDev() {
+		// Because this app has no user-specific data, we can cache the responses
+		// pretty aggressively.
+		// Vercel purges the CDN on new deployments, so we don't need to worry about
+		// build ID mismatches.
+		if vorma.IsJSONRequest(r) {
+			rp.SetHeader("Cache-Control", jsonCacheControlVal)
+		} else {
+			// Vary the HTML response by cookie to account for theme
+			rp.SetHeader("Vary", "Cookie")
+			rp.SetHeader("Cache-Control", htmlCacheControlVal)
 		}
+	}
 
-		return &RootData{LatestVersion: currentNPMVersion}, nil
-	})
+	return &RootData{LatestVersion: currentNPMVersion}, nil
+})
 
-	NewLoader("/_index", func(c *LoaderCtx) (string, error) {
-		return SiteDescription, nil
-	})
+var _ = NewLoader("/_index", func(c *LoaderCtx) (string, error) {
+	return SiteDescription, nil
+})
 
-	NewLoader("/*", func(c *LoaderCtx) (*fsmarkdown.DetailedPage, error) {
-		data, err := Markdown.GetPageDetails(c.Request())
-		if err != nil {
-			return nil, fmt.Errorf("failed to get page details: %w", err)
-		}
+var _ = NewLoader("/*", func(c *LoaderCtx) (*fsmarkdown.DetailedPage, error) {
+	data, err := Markdown.GetPageDetails(c.Request())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get page details: %w", err)
+	}
 
-		h := c.HeadEls()
+	h := c.HeadEls()
 
-		if data.Title != "" {
-			h.Title(fmt.Sprintf("%s | %s", SiteTitle, data.Title))
-			h.MetaPropertyContent("og:title", data.Title)
-		}
+	if data.Title != "" {
+		h.Title(fmt.Sprintf("%s | %s", SiteTitle, data.Title))
+		h.MetaPropertyContent("og:title", data.Title)
+	}
 
-		if data.Description != "" {
-			h.Description(data.Description)
-			h.MetaPropertyContent("og:description", data.Description)
-		}
+	if data.Description != "" {
+		h.Description(data.Description)
+		h.MetaPropertyContent("og:description", data.Description)
+	}
 
-		return data, nil
-	})
-}
+	return data, nil
+})

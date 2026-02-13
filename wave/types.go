@@ -5,8 +5,6 @@ package wave
 import (
 	"path/filepath"
 	"runtime"
-
-	"github.com/vormadev/vorma/lab/jsonschema"
 )
 
 // Path segment constants
@@ -105,7 +103,7 @@ func (d DistLayout) PublicFileMapGob() string  { return filepath.Join(d.Internal
 func (d DistLayout) PrivateFileMapGob() string { return filepath.Join(d.Internal(), filePrivateMapGob) }
 func (d DistLayout) KeepFile() string          { return filepath.Join(d.Static(), fileKeep) }
 
-// ParsedConfig is the parsed and validated wave.config.json
+// ParsedConfig is the parsed and validated Wave configuration payload.
 type ParsedConfig struct {
 	Core  *CoreConfig  `json:"Core"`
 	Vite  *ViteConfig  `json:"Vite,omitempty"`
@@ -113,25 +111,29 @@ type ParsedConfig struct {
 
 	Dist DistLayout `json:"-"`
 
-	FrameworkWatchPatterns       []WatchedFile               `json:"-"`
-	FrameworkIgnoredPatterns     []string                    `json:"-"`
-	FrameworkPublicFileMapOutDir string                      `json:"-"`
-	FrameworkSchemaExtensions    map[string]jsonschema.Entry `json:"-"`
-	FrameworkDevBuildHook        string                      `json:"-"`
-	FrameworkProdBuildHook       string                      `json:"-"`
+	ResolvedConfigSource            ConfigSource               `json:"-"`
+	ResolvedConfigDependencies      ConfigProviderDependencies `json:"-"`
+	ResolvedConfigFingerprint       string                     `json:"-"`
+	resolvedConfigDependencyMatcher *resolvedConfigDependencyMatcher
+
+	FrameworkWatchPatterns       []WatchedFile `json:"-"`
+	FrameworkIgnoredPatterns     []string      `json:"-"`
+	FrameworkPublicFileMapOutDir string        `json:"-"`
+	FrameworkDevBuildHook        string        `json:"-"`
+	FrameworkProdBuildHook       string        `json:"-"`
 }
 
 type CoreConfig struct {
-	ConfigLocation    string          `json:"ConfigLocation,omitempty"`
-	DevBuildHook      string          `json:"DevBuildHook,omitempty"`
-	ProdBuildHook     string          `json:"ProdBuildHook,omitempty"`
-	MainAppEntry      string          `json:"MainAppEntry"`
-	DistDir           string          `json:"DistDir"`
-	StaticAssetDirs   StaticAssetDirs `json:"StaticAssetDirs"`
-	CSSEntryFiles     CSSEntryFiles   `json:"CSSEntryFiles,omitempty"`
-	PublicPathPrefix  string          `json:"PublicPathPrefix,omitempty"`
-	ServerOnlyMode    bool            `json:"ServerOnlyMode,omitempty"`
-	SequentialGoBuild bool            `json:"SequentialGoBuild,omitempty"`
+	DevBuildHook                  string          `json:"DevBuildHook,omitempty"`
+	ProdBuildHook                 string          `json:"ProdBuildHook,omitempty"`
+	MainAppEntry                  string          `json:"MainAppEntry"`
+	DistDir                       string          `json:"DistDir"`
+	StaticAssetDirs               StaticAssetDirs `json:"StaticAssetDirs"`
+	CSSEntryFiles                 CSSEntryFiles   `json:"CSSEntryFiles,omitempty"`
+	PublicPathPrefix              string          `json:"PublicPathPrefix,omitempty"`
+	ServerOnlyMode                bool            `json:"ServerOnlyMode,omitempty"`
+	SequentialGoBuild             bool            `json:"SequentialGoBuild,omitempty"`
+	UseFilesystemDistStaticInProd bool            `json:"UseFilesystemDistStaticInProd,omitempty"`
 }
 
 type StaticAssetDirs struct {
@@ -184,6 +186,10 @@ type SortedHooks struct {
 type HookContext struct {
 	// FilePath is the absolute path of the changed file.
 	FilePath string
+	// ChangedFilePaths contains all changed file paths associated with the hook
+	// execution context. For deduped pattern hook execution, this includes all
+	// files in the matched batch.
+	ChangedFilePaths []string
 	// AppStoppedForBatch is true when the app has been stopped as part of batch
 	// processing (e.g., a Go file changed in the same batch). When true, HTTP
 	// endpoints on the running app cannot be called.

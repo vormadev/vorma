@@ -307,8 +307,8 @@ func TestInit_PanicsWhenPrivateFSUnavailable(t *testing.T) {
 	}
 
 	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgBytes,
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ConfigSource: wave.NewStaticConfigSource(cfgBytes),
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	app := NewVormaApp(VormaAppConfig{
 		Wave:   w,

@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -258,19 +260,93 @@ func (s *server) initWatcher() error {
 		return fmt.Errorf("watch root: %w", err)
 	}
 
+	if err := s.addConfigDependencyDirectoriesToWatcher(watcher); err != nil {
+		return fmt.Errorf("watch config dependencies: %w", err)
+	}
+
+	return nil
+}
+
+func (s *server) addConfigDependencyDirectoriesToWatcher(watcher *Watcher) error {
+	configDependencies := s.cfg.GetResolvedConfigDependencies()
+
+	for _, configDependencyFilePath := range configDependencies.Files {
+		if err := s.addConfigDependencyDirectory(watcher, configDependencyFilePath); err != nil {
+			return err
+		}
+	}
+
+	for _, configDependencyGlobPattern := range configDependencies.Globs {
+		if err := s.addConfigDependencyDirectory(
+			watcher,
+			configDependencyGlobBaseDirectory(configDependencyGlobPattern),
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func configDependencyGlobBaseDirectory(configDependencyGlobPattern string) string {
+	pattern := filepath.ToSlash(strings.TrimSpace(configDependencyGlobPattern))
+	if pattern == "" {
+		return ""
+	}
+
+	wildcardIndex := strings.IndexAny(pattern, "*?[{")
+	if wildcardIndex == -1 {
+		return filepath.FromSlash(pattern)
+	}
+
+	baseDirectory := strings.TrimSuffix(pattern[:wildcardIndex], "/")
+	if baseDirectory == "" {
+		return ""
+	}
+
+	return filepath.FromSlash(baseDirectory)
+}
+
+func (s *server) addConfigDependencyDirectory(
+	watcher *Watcher,
+	configDependencyPath string,
+) error {
+	trimmedConfigDependencyPath := strings.TrimSpace(configDependencyPath)
+	if trimmedConfigDependencyPath == "" {
+		return nil
+	}
+
+	configDependencyAbsolutePath, err := filepath.Abs(trimmedConfigDependencyPath)
+	if err != nil {
+		configDependencyAbsolutePath = filepath.Clean(trimmedConfigDependencyPath)
+	}
+
+	info, statErr := os.Stat(configDependencyAbsolutePath)
+	configDependencyDirectory := configDependencyAbsolutePath
+	if statErr == nil && !info.IsDir() {
+		configDependencyDirectory = filepath.Dir(configDependencyAbsolutePath)
+	}
+	if statErr != nil {
+		configDependencyDirectory = filepath.Dir(configDependencyAbsolutePath)
+	}
+	if configDependencyDirectory == "" {
+		return nil
+	}
+
+	if err := watcher.AddDir(configDependencyDirectory); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
 	return nil
 }
 
 func (s *server) reloadConfig() error {
-	configPath := s.cfg.Core.ConfigLocation
-	if configPath == "" {
-		return nil
-	}
-
-	s.log.Info("Reloading config", "path", configPath)
-	newCfg, err := wave.ParseConfigFile(configPath)
+	newCfg, err := s.loadParsedConfigForReload()
 	if err != nil {
 		return err
+	}
+	if newCfg == nil {
+		return nil
 	}
 
 	// Validate the new config
@@ -280,13 +356,31 @@ func (s *server) reloadConfig() error {
 
 	// Preserve framework-injected runtime configuration.
 	// These are set by frameworks (like Vorma) via AddFrameworkWatchPatterns()
-	// and are not persisted in the JSON config file.
-	newCfg.FrameworkWatchPatterns = s.cfg.FrameworkWatchPatterns
-	newCfg.FrameworkIgnoredPatterns = s.cfg.FrameworkIgnoredPatterns
-	newCfg.FrameworkPublicFileMapOutDir = s.cfg.FrameworkPublicFileMapOutDir
+	// and are not persisted in the base config payload.
+	newCfg.CopyFrameworkRuntimeFieldsFrom(s.cfg)
 
 	s.cfg = newCfg
 	return nil
+}
+
+func (s *server) loadParsedConfigForReload() (*wave.ParsedConfig, error) {
+	configSource := s.cfg.GetResolvedConfigSource()
+	if configSource == nil {
+		return nil, fmt.Errorf("reload config source: resolved config source is required")
+	}
+
+	s.log.Info("Reloading config source")
+	loadedConfig, err := configSource.LoadConfig(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("reload config source: %w", err)
+	}
+
+	newCfg, err := wave.ParseConfigFromLoadedConfig(loadedConfig, configSource)
+	if err != nil {
+		return nil, err
+	}
+
+	return newCfg, nil
 }
 
 // cleanupForRebuild cleans up resources but keeps refresh server and Vite alive

@@ -51,10 +51,6 @@ func (w *Wave) GetPrivateStaticDir() string {
 	return w.cfg.Core.StaticAssetDirs.Private
 }
 
-func (w *Wave) GetConfigFile() string {
-	return w.cfg.Core.ConfigLocation
-}
-
 func (w *Wave) GetViteManifestLocation() string {
 	return w.cfg.ViteManifestPath()
 }
@@ -75,4 +71,12 @@ func (w *Wave) GetStaticPublicOutDir() string {
 // This should only be used by build-time tooling, not at runtime.
 func (w *Wave) GetParsedConfig() *ParsedConfig {
 	return w.cfg
+}
+
+func (w *Wave) GetConfigDependencies() ConfigProviderDependencies {
+	return w.cfg.GetResolvedConfigDependencies()
+}
+
+func (w *Wave) GetConfigFingerprint() string {
+	return w.cfg.GetResolvedConfigFingerprint()
 }

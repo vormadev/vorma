@@ -112,7 +112,7 @@ func goFilesWatchPattern() wave.WatchedFile {
 func routeDefinitionsOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return watchReloadCallback(
 		v,
-		vormaruntime.Dev_ReloadRoutesPath,
+		v.DevReloadRoutesEndpointPath(),
 		"route reload endpoint failed, falling back to restart",
 		rebuildRoutesOnly,
 	)
@@ -121,7 +121,7 @@ func routeDefinitionsOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookCont
 func htmlTemplateOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return watchReloadCallback(
 		v,
-		vormaruntime.Dev_ReloadTemplatePath,
+		v.DevReloadTemplateEndpointPath(),
 		"template reload endpoint failed, falling back to restart",
 		nil,
 	)

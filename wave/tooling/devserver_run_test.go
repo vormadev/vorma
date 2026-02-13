@@ -186,7 +186,6 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
 	cfg.Core.MainAppEntry = "../../internal/scripts/sum"
-	cfg.Core.ConfigLocation = filepath.Join(root, "missing-config-for-reload.json")
 	cfg.Watch.HealthcheckEndpoint = "/healthz"
 
 	appPort := wave.MustGetPort()

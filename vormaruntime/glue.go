@@ -211,6 +211,74 @@ func (v *Vorma) validateConfig() {
 	if v.Config.BuildtimePublicURLFuncName == "" {
 		v.Config.BuildtimePublicURLFuncName = "waveBuildtimeURL"
 	}
+
+	if v.Config.DevReloadRoutesEndpointPath == "" {
+		v.Config.DevReloadRoutesEndpointPath = DefaultDevReloadRoutesEndpointPath
+	}
+	if v.Config.DevReloadTemplateEndpointPath == "" {
+		v.Config.DevReloadTemplateEndpointPath = DefaultDevReloadTemplateEndpointPath
+	}
+
+	v.Config.DevReloadRoutesEndpointPath = strings.TrimSpace(v.Config.DevReloadRoutesEndpointPath)
+	v.Config.DevReloadTemplateEndpointPath = strings.TrimSpace(v.Config.DevReloadTemplateEndpointPath)
+	if !strings.HasPrefix(v.Config.DevReloadRoutesEndpointPath, "/") {
+		panic("config: Vorma.DevReloadRoutesEndpointPath must start with '/'")
+	}
+	if !strings.HasPrefix(v.Config.DevReloadTemplateEndpointPath, "/") {
+		panic("config: Vorma.DevReloadTemplateEndpointPath must start with '/'")
+	}
+	if v.Config.DevReloadRoutesEndpointPath == v.Config.DevReloadTemplateEndpointPath {
+		panic("config: Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadTemplateEndpointPath must differ")
+	}
+
+	if v.Config.TemplateDataKeyHeadElements == "" {
+		v.Config.TemplateDataKeyHeadElements = DefaultTemplateDataKeyHeadElements
+	}
+	if v.Config.TemplateDataKeyBodyScripts == "" {
+		v.Config.TemplateDataKeyBodyScripts = DefaultTemplateDataKeyBodyScripts
+	}
+	if v.Config.TemplateDataKeySSRScript == "" {
+		v.Config.TemplateDataKeySSRScript = DefaultTemplateDataKeySSRScript
+	}
+	if v.Config.TemplateDataKeySSRScriptHash == "" {
+		v.Config.TemplateDataKeySSRScriptHash = DefaultTemplateDataKeySSRScriptHash
+	}
+	if v.Config.TemplateDataKeyRootElementID == "" {
+		v.Config.TemplateDataKeyRootElementID = DefaultTemplateDataKeyRootElementID
+	}
+	if v.Config.ClientRootElementID == "" {
+		v.Config.ClientRootElementID = DefaultClientRootElementID
+	}
+
+	v.Config.TemplateDataKeyHeadElements = strings.TrimSpace(v.Config.TemplateDataKeyHeadElements)
+	v.Config.TemplateDataKeyBodyScripts = strings.TrimSpace(v.Config.TemplateDataKeyBodyScripts)
+	v.Config.TemplateDataKeySSRScript = strings.TrimSpace(v.Config.TemplateDataKeySSRScript)
+	v.Config.TemplateDataKeySSRScriptHash = strings.TrimSpace(v.Config.TemplateDataKeySSRScriptHash)
+	v.Config.TemplateDataKeyRootElementID = strings.TrimSpace(v.Config.TemplateDataKeyRootElementID)
+	v.Config.ClientRootElementID = strings.TrimSpace(v.Config.ClientRootElementID)
+
+	templateDataKeys := []string{
+		v.Config.TemplateDataKeyHeadElements,
+		v.Config.TemplateDataKeyBodyScripts,
+		v.Config.TemplateDataKeySSRScript,
+		v.Config.TemplateDataKeySSRScriptHash,
+		v.Config.TemplateDataKeyRootElementID,
+	}
+	for _, templateDataKey := range templateDataKeys {
+		if templateDataKey == "" {
+			panic("config: Vorma template data keys must be non-empty")
+		}
+	}
+	seenTemplateDataKeys := make(map[string]struct{}, len(templateDataKeys))
+	for _, templateDataKey := range templateDataKeys {
+		if _, found := seenTemplateDataKeys[templateDataKey]; found {
+			panic("config: Vorma template data keys must be unique")
+		}
+		seenTemplateDataKeys[templateDataKey] = struct{}{}
+	}
+	if v.Config.ClientRootElementID == "" {
+		panic("config: Vorma.ClientRootElementID is required")
+	}
 }
 
 type Loaders struct{ vorma *Vorma }

@@ -40,7 +40,7 @@ func TestIsJSONRequest(t *testing.T) {
 	}
 }
 
-func TestBuildIDHelpersAndLegacyHeadAccessor(t *testing.T) {
+func TestBuildIDHelpers(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
@@ -55,23 +55,28 @@ func TestBuildIDHelpersAndLegacyHeadAccessor(t *testing.T) {
 			t.Fatal("expected stale build request not to match")
 		}
 	})
+}
 
-	t.Run("GetCurrentBuildID", func(t *testing.T) {
-		if got, want := app.GetCurrentBuildID(), app.GetBuildID(); got != want {
-			t.Fatalf("GetCurrentBuildID() = %q, want %q", got, want)
-		}
-	})
+func TestDevReloadEndpointPaths_DefaultAndCustom(t *testing.T) {
+	defaultFixture := newTestFixture(t, testFixtureOptions{})
+	defaultApp := defaultFixture.app
+	if got, want := defaultApp.DevReloadRoutesEndpointPath(), DefaultDevReloadRoutesEndpointPath; got != want {
+		t.Fatalf("default routes endpoint path = %q, want %q", got, want)
+	}
+	if got, want := defaultApp.DevReloadTemplateEndpointPath(), DefaultDevReloadTemplateEndpointPath; got != want {
+		t.Fatalf("default template endpoint path = %q, want %q", got, want)
+	}
 
-	t.Run("GetHeadElsInstance_LegacyAccessor", func(t *testing.T) {
-		first := GetHeadElsInstance()
-		second := GetHeadElsInstance()
-		if first == nil || second == nil {
-			t.Fatal("legacy headels accessor returned nil")
-		}
-		if first != second {
-			t.Fatal("legacy headels accessor should return stable singleton instance")
-		}
-	})
+	customFixture := newTestFixture(t, testFixtureOptions{})
+	customApp := customFixture.app
+	customApp.Config.DevReloadRoutesEndpointPath = "/__custom_internal/reload-routes"
+	customApp.Config.DevReloadTemplateEndpointPath = "/__custom_internal/reload-template"
+	if got, want := customApp.DevReloadRoutesEndpointPath(), "/__custom_internal/reload-routes"; got != want {
+		t.Fatalf("custom routes endpoint path = %q, want %q", got, want)
+	}
+	if got, want := customApp.DevReloadTemplateEndpointPath(), "/__custom_internal/reload-template"; got != want {
+		t.Fatalf("custom template endpoint path = %q, want %q", got, want)
+	}
 }
 
 func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
@@ -1277,16 +1282,66 @@ func TestLoadersHandler_RuntimeDoesNotMutateAppTemplateDataMap(t *testing.T) {
 	}
 
 	runtimeInjectedKeys := []string{
-		"VormaHeadEls",
-		"VormaSSRScript",
-		"VormaSSRScriptSha256Hash",
-		"VormaRootID",
-		"VormaBodyScripts",
+		app.TemplateDataKeyHeadElements(),
+		app.TemplateDataKeySSRScript(),
+		app.TemplateDataKeySSRScriptHash(),
+		app.TemplateDataKeyRootElementID(),
+		app.TemplateDataKeyBodyScripts(),
 	}
 	for _, key := range runtimeInjectedKeys {
 		if _, exists := sharedTemplateData[key]; exists {
 			t.Fatalf("sharedTemplateData unexpectedly mutated with runtime key %q", key)
 		}
+	}
+}
+
+func TestLoadersHandler_UsesConfiguredTemplateDataKeysAndRootElementID(t *testing.T) {
+	stage := defaultPathsFile("build-custom-template-keys", map[string]*Path{
+		"/keys": {
+			OriginalPattern: "/keys",
+			SrcPath:         "frontend/src/routes/keys.tsx",
+			OutPath:         "vorma_out/routes/keys.js",
+			ExportKey:       "default",
+		},
+	})
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+		template: "<!doctype html><html><head>{{.AppHeadElements}}</head><body><div id=\"{{.AppRootElementID}}\"></div>{{.AppSSRScript}}{{.AppBodyScripts}}</body></html>",
+		configureVormaConfig: func(config *VormaConfig) {
+			config.TemplateDataKeyHeadElements = "AppHeadElements"
+			config.TemplateDataKeyBodyScripts = "AppBodyScripts"
+			config.TemplateDataKeySSRScript = "AppSSRScript"
+			config.TemplateDataKeySSRScriptHash = "AppSSRHash"
+			config.TemplateDataKeyRootElementID = "AppRootElementID"
+			config.ClientRootElementID = "app-root-custom"
+		},
+	})
+	app := fixture.app
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/keys",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+			return map[string]bool{"ok": true}, nil
+		}),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/keys", nil)
+	rec := httptest.NewRecorder()
+	mux.InjectTasksCtxMiddleware(app.Loaders().Handler()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="app-root-custom"`) {
+		t.Fatalf("expected custom root id to render, body=%q", body)
+	}
+	if !strings.Contains(body, "<script") {
+		t.Fatalf("expected configured body script key to render scripts, body=%q", body)
 	}
 }
 
@@ -1834,7 +1889,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			stageNew,
 		)
 
-		req := httptest.NewRequest(http.MethodGet, Dev_ReloadRoutesPath, nil)
+		req := httptest.NewRequest(http.MethodGet, app.DevReloadRoutesEndpointPath(), nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -1879,7 +1934,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			filepath.Join(fixture.privateDir, "entry.go.html"),
 			[]byte("<!doctype html><html><body>NEW TEMPLATE {{.VormaBodyScripts}}</body></html>"),
 		)
-		req := httptest.NewRequest(http.MethodGet, Dev_ReloadTemplatePath, nil)
+		req := httptest.NewRequest(http.MethodGet, app.DevReloadTemplateEndpointPath(), nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
@@ -1906,7 +1961,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			t.Fatalf("remove stage one file: %v", err)
 		}
 
-		req := httptest.NewRequest(http.MethodGet, Dev_ReloadRoutesPath, nil)
+		req := httptest.NewRequest(http.MethodGet, app.DevReloadRoutesEndpointPath(), nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -1918,7 +1973,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 	t.Run("reload_template_error", func(t *testing.T) {
 		app.Config.HTMLTemplateLocation = "missing-template.go.html"
 
-		req := httptest.NewRequest(http.MethodGet, Dev_ReloadTemplatePath, nil)
+		req := httptest.NewRequest(http.MethodGet, app.DevReloadTemplateEndpointPath(), nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -1934,7 +1989,10 @@ func TestLoadersHandler_DevReloadEndpointsNotExposedInProd(t *testing.T) {
 	app.SetIsDev(false)
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 
-	for _, path := range []string{Dev_ReloadRoutesPath, Dev_ReloadTemplatePath} {
+	for _, path := range []string{
+		app.DevReloadRoutesEndpointPath(),
+		app.DevReloadTemplateEndpointPath(),
+	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)

@@ -139,7 +139,7 @@ WebSocket handles Go-level events. They coexist, serving different purposes.
 ### CSS Pipeline Rationale
 
 Wave's CSS processing (`wave/tooling/css.go`) handles CSS entry points defined
-in `wave.config.json`--files outside the JavaScript module graph.
+in Wave config--files outside the JavaScript module graph.
 
 - CSS imported in JavaScript --> Vite handles it
 - CSS referenced from Go templates, no JS involved --> Wave handles it

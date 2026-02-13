@@ -12,8 +12,8 @@ import (
 )
 
 func TestReloadEndpointURL(t *testing.T) {
-	got := reloadEndpointURL(8080, "/__vorma/reload-routes")
-	want := "http://localhost:8080/__vorma/reload-routes"
+	got := reloadEndpointURL(8080, vormaruntime.DefaultDevReloadRoutesEndpointPath)
+	want := "http://localhost:8080" + vormaruntime.DefaultDevReloadRoutesEndpointPath
 	if got != want {
 		t.Fatalf("reloadEndpointURL() = %q, want %q", got, want)
 	}
@@ -24,11 +24,14 @@ func TestReloadEndpointDefaultDependencySteps(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		reloadURL := reloadEndpointDeps.reloadEndpointURLForApp(app, "/__vorma/reload-routes")
+		reloadURL := reloadEndpointDeps.reloadEndpointURLForApp(
+			app,
+			vormaruntime.DefaultDevReloadRoutesEndpointPath,
+		)
 		if !strings.HasPrefix(reloadURL, "http://localhost:") {
 			t.Fatalf("reload URL = %q, expected localhost URL", reloadURL)
 		}
-		if !strings.HasSuffix(reloadURL, "/__vorma/reload-routes") {
+		if !strings.HasSuffix(reloadURL, vormaruntime.DefaultDevReloadRoutesEndpointPath) {
 			t.Fatalf("reload URL = %q, expected endpoint suffix", reloadURL)
 		}
 	})
@@ -95,10 +98,10 @@ func TestCallReloadEndpoint(t *testing.T) {
 	t.Run("wraps request creation error", func(t *testing.T) {
 		expectedErr := errors.New("request construction failed")
 		reloadEndpointDeps.reloadEndpointURLForApp = func(_ *vormaruntime.Vorma, endpoint string) string {
-			if endpoint != "/__vorma/reload-routes" {
-				t.Fatalf("endpoint = %q, want %q", endpoint, "/__vorma/reload-routes")
+			if endpoint != vormaruntime.DefaultDevReloadRoutesEndpointPath {
+				t.Fatalf("endpoint = %q, want %q", endpoint, vormaruntime.DefaultDevReloadRoutesEndpointPath)
 			}
-			return "http://localhost:1234/__vorma/reload-routes"
+			return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
 		}
 		reloadEndpointDeps.newReloadEndpointRequest = func(context.Context, string) (*http.Request, error) {
 			return nil, expectedErr
@@ -108,7 +111,7 @@ func TestCallReloadEndpoint(t *testing.T) {
 			return nil, nil
 		}
 
-		err := callReloadEndpoint(v, "/__vorma/reload-routes")
+		err := callReloadEndpoint(v, vormaruntime.DefaultDevReloadRoutesEndpointPath)
 		if err == nil {
 			t.Fatal("expected callReloadEndpoint to return request creation error")
 		}
@@ -123,7 +126,7 @@ func TestCallReloadEndpoint(t *testing.T) {
 	t.Run("wraps request execution error", func(t *testing.T) {
 		expectedErr := errors.New("request execution failed")
 		reloadEndpointDeps.reloadEndpointURLForApp = func(*vormaruntime.Vorma, string) string {
-			return "http://localhost:1234/__vorma/reload-routes"
+			return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
 		}
 		reloadEndpointDeps.newReloadEndpointRequest = func(ctx context.Context, url string) (*http.Request, error) {
 			return newReloadEndpointRequest(ctx, url)
@@ -132,7 +135,7 @@ func TestCallReloadEndpoint(t *testing.T) {
 			return nil, expectedErr
 		}
 
-		err := callReloadEndpoint(v, "/__vorma/reload-routes")
+		err := callReloadEndpoint(v, vormaruntime.DefaultDevReloadRoutesEndpointPath)
 		if err == nil {
 			t.Fatal("expected callReloadEndpoint to return request execution error")
 		}
@@ -146,7 +149,7 @@ func TestCallReloadEndpoint(t *testing.T) {
 
 	t.Run("returns non-200 status validation error", func(t *testing.T) {
 		reloadEndpointDeps.reloadEndpointURLForApp = func(*vormaruntime.Vorma, string) string {
-			return "http://localhost:1234/__vorma/reload-routes"
+			return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
 		}
 		reloadEndpointDeps.newReloadEndpointRequest = func(ctx context.Context, url string) (*http.Request, error) {
 			return newReloadEndpointRequest(ctx, url)
@@ -158,7 +161,7 @@ func TestCallReloadEndpoint(t *testing.T) {
 			}, nil
 		}
 
-		err := callReloadEndpoint(v, "/__vorma/reload-routes")
+		err := callReloadEndpoint(v, vormaruntime.DefaultDevReloadRoutesEndpointPath)
 		if err == nil {
 			t.Fatal("expected callReloadEndpoint to return status validation error")
 		}
@@ -169,7 +172,7 @@ func TestCallReloadEndpoint(t *testing.T) {
 
 	t.Run("returns nil on successful status", func(t *testing.T) {
 		reloadEndpointDeps.reloadEndpointURLForApp = func(*vormaruntime.Vorma, string) string {
-			return "http://localhost:1234/__vorma/reload-routes"
+			return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
 		}
 		reloadEndpointDeps.newReloadEndpointRequest = func(ctx context.Context, url string) (*http.Request, error) {
 			return newReloadEndpointRequest(ctx, url)
@@ -181,7 +184,7 @@ func TestCallReloadEndpoint(t *testing.T) {
 			}, nil
 		}
 
-		err := callReloadEndpoint(v, "/__vorma/reload-routes")
+		err := callReloadEndpoint(v, vormaruntime.DefaultDevReloadRoutesEndpointPath)
 		if err != nil {
 			t.Fatalf("callReloadEndpoint returned error: %v", err)
 		}

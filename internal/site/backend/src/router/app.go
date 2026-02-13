@@ -19,7 +19,7 @@ const (
 	SiteDescription = "The Golang metaframework, powered by Vite."
 )
 
-var appSingleton = vorma.NewVormaApp(vorma.VormaAppConfig{
+var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
 
 	GetHeadDedupeKeys: func(h *vorma.HeadEls) {

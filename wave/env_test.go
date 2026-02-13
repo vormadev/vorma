@@ -112,9 +112,6 @@ func TestMustGetPortCachesResultAfterFirstCall(t *testing.T) {
 	if first != 5001 || second != 5001 {
 		t.Fatalf("expected MustGetPort to cache first result, got first=%d second=%d", first, second)
 	}
-	if MustGetAppPort() != first {
-		t.Fatalf("expected MustGetAppPort alias to match MustGetPort result %d", first)
-	}
 }
 
 func TestMustGetPortDevHonorsPortWhenAlreadySet(t *testing.T) {

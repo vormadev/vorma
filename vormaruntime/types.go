@@ -38,8 +38,17 @@ type VormaConfig struct {
 	HTMLTemplateLocation          string   `json:"HTMLTemplateLocation"`
 	ClientEntry                   string   `json:"ClientEntry"`
 	ClientRouteDefinitionPatterns []string `json:"ClientRouteDefinitionPatterns"`
+	ServerRouteDefinitionPatterns []string `json:"ServerRouteDefinitionPatterns,omitempty"`
 	TSGenOutDir                   string   `json:"TSGenOutDir"`
 	BuildtimePublicURLFuncName    string   `json:"BuildtimePublicURLFuncName,omitempty"`
+	DevReloadRoutesEndpointPath   string   `json:"DevReloadRoutesEndpointPath,omitempty"`
+	DevReloadTemplateEndpointPath string   `json:"DevReloadTemplateEndpointPath,omitempty"`
+	TemplateDataKeyHeadElements   string   `json:"TemplateDataKeyHeadElements,omitempty"`
+	TemplateDataKeyBodyScripts    string   `json:"TemplateDataKeyBodyScripts,omitempty"`
+	TemplateDataKeySSRScript      string   `json:"TemplateDataKeySSRScript,omitempty"`
+	TemplateDataKeySSRScriptHash  string   `json:"TemplateDataKeySSRScriptHash,omitempty"`
+	TemplateDataKeyRootElementID  string   `json:"TemplateDataKeyRootElementID,omitempty"`
+	ClientRootElementID           string   `json:"ClientRootElementID,omitempty"`
 }
 
 // PathsFile represents the serialized paths data written to disk.

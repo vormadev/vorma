@@ -30,7 +30,12 @@ type buildInnerRuntimeStateSnapshot struct {
 }
 
 type buildInnerRouteSyncDependencies struct {
-	parseClientRoutes     func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error)
+	parseClientRoutes                func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error)
+	parseBackendLoaderPatterns       func(*vormaruntime.Vorma) ([]string, error)
+	mergeBackendLoaderPatternsInPath func(
+		map[string]*vormaruntime.Path,
+		[]string,
+	) map[string]*vormaruntime.Path
 	runRouteSyncExecution func(*vormaruntime.Vorma, routeSyncExecutionOptions) error
 }
 
@@ -59,8 +64,10 @@ var buildInnerDeps = buildInnerDependencies{
 }
 
 var buildInnerRouteSyncDeps = buildInnerRouteSyncDependencies{
-	parseClientRoutes:     parseClientRoutes,
-	runRouteSyncExecution: runRouteSyncExecution,
+	parseClientRoutes:                parseClientRoutes,
+	parseBackendLoaderPatterns:       parseBackendLoaderPatterns,
+	mergeBackendLoaderPatternsInPath: mergeBackendLoaderPatternsInPath,
+	runRouteSyncExecution:            runRouteSyncExecution,
 }
 
 var buildInnerBuildIDDeps = buildInnerBuildIDDependencies{
@@ -177,9 +184,52 @@ func parseAndSyncClientRoutes(v *vormaruntime.Vorma) error {
 	return buildInnerRouteSyncDeps.runRouteSyncExecution(
 		v,
 		routeSyncExecutionOptions{
-			parseClientRoutes: buildInnerRouteSyncDeps.parseClientRoutes,
+			parseClientRoutes: parseClientAndBackendRoutesForSync,
 		},
 	)
+}
+
+func parseClientAndBackendRoutesForSync(
+	v *vormaruntime.Vorma,
+) (map[string]*vormaruntime.Path, error) {
+	clientPaths, err := buildInnerRouteSyncDeps.parseClientRoutes(v)
+	if err != nil {
+		return nil, err
+	}
+
+	backendLoaderPatterns, err := buildInnerRouteSyncDeps.parseBackendLoaderPatterns(v)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath(
+		clientPaths,
+		backendLoaderPatterns,
+	), nil
+}
+
+func mergeBackendLoaderPatternsInPath(
+	clientPaths map[string]*vormaruntime.Path,
+	backendLoaderPatterns []string,
+) map[string]*vormaruntime.Path {
+	if len(backendLoaderPatterns) == 0 {
+		return clientPaths
+	}
+
+	if clientPaths == nil {
+		clientPaths = map[string]*vormaruntime.Path{}
+	}
+	for _, backendLoaderPattern := range backendLoaderPatterns {
+		if _, hasClientPath := clientPaths[backendLoaderPattern]; hasClientPath {
+			continue
+		}
+		clientPaths[backendLoaderPattern] = &vormaruntime.Path{
+			OriginalPattern: backendLoaderPattern,
+			SrcPath:         "",
+			ExportKey:       "default",
+		}
+	}
+	return clientPaths
 }
 
 func writePublicFileMapTypeScript(v *vormaruntime.Vorma) error {

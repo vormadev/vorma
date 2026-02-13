@@ -6,11 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/wave"
 )
 
-func TestBuilderConfigAndRegisterSchemaSection(t *testing.T) {
+func TestBuilderConfig(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
@@ -18,14 +17,45 @@ func TestBuilderConfigAndRegisterSchemaSection(t *testing.T) {
 	if builder.Config() != cfg {
 		t.Fatal("expected Config() to return original parsed config pointer")
 	}
+}
 
-	builder.RegisterSchemaSection("FrameworkConfig", jsonschema.RequiredString(jsonschema.Def{
-		Description: "framework config section",
-	}))
+func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
+	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", true, false)
 
-	if _, ok := cfg.FrameworkSchemaExtensions["FrameworkConfig"]; !ok {
-		t.Fatal("expected framework schema extension to be registered")
+	for _, commandArgument := range cmd.Args {
+		if strings.HasPrefix(commandArgument, "-tags=") {
+			t.Fatalf("expected dev build command to omit tags, got args %#v", cmd.Args)
+		}
 	}
+}
+
+func TestBuildGoBuildCommand_ProdBuildUsesEmbeddedDistStaticByDefault(t *testing.T) {
+	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", false, false)
+
+	if !containsCommandArgument(cmd.Args, "-tags=prod") {
+		t.Fatalf("expected prod build tags to be -tags=prod, got args %#v", cmd.Args)
+	}
+}
+
+func TestBuildGoBuildCommand_ProdBuildCanUseFilesystemDistStatic(t *testing.T) {
+	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", false, true)
+
+	if !containsCommandArgument(cmd.Args, "-tags=prod,wave_dist_static_from_disk") {
+		t.Fatalf(
+			"expected prod build tags to include wave_dist_static_from_disk, got args %#v",
+			cmd.Args,
+		)
+	}
+}
+
+func containsCommandArgument(commandArguments []string, expectedArgument string) bool {
+	for _, commandArgument := range commandArguments {
+		if commandArgument == expectedArgument {
+			return true
+		}
+	}
+
+	return false
 }
 
 func TestBuilderViteMethods_NoViteConfigured(t *testing.T) {

@@ -14,10 +14,16 @@ func TestProcessEvents_ConfigWriteTriggersConfigRestart(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	configDependencyFilePath := filepath.Join(root, "backend", "config", "wave.config.go")
+	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{
+		Files: []string{configDependencyFilePath},
+	}
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	if err := os.WriteFile(cfg.Core.ConfigLocation, []byte(`{}`), 0644); err != nil {
+	if err := os.MkdirAll(filepath.Dir(configDependencyFilePath), 0755); err != nil {
+		t.Fatalf("failed creating config dependency directory: %v", err)
+	}
+	if err := os.WriteFile(configDependencyFilePath, []byte(`package config`), 0644); err != nil {
 		t.Fatalf("failed writing config file: %v", err)
 	}
 
@@ -39,7 +45,56 @@ func TestProcessEvents_ConfigWriteTriggersConfigRestart(t *testing.T) {
 	}
 
 	s.processEvents([]fsnotify.Event{{
-		Name: cfg.Core.ConfigLocation,
+		Name: configDependencyFilePath,
+		Op:   fsnotify.Write,
+	}})
+
+	select {
+	case req := <-s.restartCh:
+		if !req.isConfigRestart || !req.recompileGo {
+			t.Fatalf("expected config restart with Go recompile, got %#v", req)
+		}
+	default:
+		t.Fatal("expected config restart request, got none")
+	}
+}
+
+func TestProcessEvents_ConfigDependencyWriteTriggersConfigRestart(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	configDependencyFilePath := filepath.Join(root, "config", "wave.config.go")
+	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{
+		Files: []string{configDependencyFilePath},
+	}
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	if err := os.MkdirAll(filepath.Dir(configDependencyFilePath), 0755); err != nil {
+		t.Fatalf("failed creating config dependency directory: %v", err)
+	}
+	if err := os.WriteFile(configDependencyFilePath, []byte(`package config`), 0644); err != nil {
+		t.Fatalf("failed writing config dependency file: %v", err)
+	}
+
+	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	if err != nil {
+		t.Fatalf("NewWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &server{
+		cfg:       cfg,
+		log:       newDiscardLogger(),
+		watcher:   watcher,
+		builder:   builder,
+		restartCh: make(chan restartRequest, 1),
+	}
+
+	s.processEvents([]fsnotify.Event{{
+		Name: configDependencyFilePath,
 		Op:   fsnotify.Write,
 	}})
 

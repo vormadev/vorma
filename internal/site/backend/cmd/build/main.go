@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	app := router.GetApp()
+	app := router.App
 
 	if _, err := docsync.SyncAndResolvePublicURLs(app.GetParsedConfig(), app.Logger()); err != nil {
 		panic(err)

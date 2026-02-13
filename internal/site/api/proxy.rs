@@ -44,13 +44,13 @@ static PROXY_CLIENT: OnceLock<Client<HttpConnector, Incoming>> = OnceLock::new()
 static HEALTH_CLIENT: OnceLock<Client<HttpConnector, Empty<Bytes>>> = OnceLock::new();
 static READY: AtomicBool = AtomicBool::new(false);
 static INIT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+const WAVE_CONFIG_JSON: &str = include_str!("../backend/wave.config.json");
 
 async fn config() -> &'static Config {
     CONFIG
         .get_or_init(|| async {
-            let data = std::fs::read_to_string("./backend/wave.config.json")
-                .expect("failed to read wave.config.json");
-            serde_json::from_str(&data).expect("failed to parse wave.config.json")
+            serde_json::from_str(WAVE_CONFIG_JSON)
+                .expect("failed to parse backend/wave.config.json")
         })
         .await
 }

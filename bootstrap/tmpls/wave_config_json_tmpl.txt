@@ -1,7 +1,5 @@
 {
-	"$schema": "dist/static/internal/schema.json",
 	"Core": {
-		"ConfigLocation": "backend/wave.config.json",
 		"MainAppEntry": "backend/cmd/serve",
 		"DistDir": "backend/dist",
 		"StaticAssetDirs": {
@@ -19,9 +17,8 @@
 		"UIVariant": "{{.UIVariant}}",
 		"HTMLTemplateLocation": "entry.go.html",
 		"ClientEntry": "frontend/src/vorma.entry.tsx",
-		"ClientRouteDefinitionPatterns": [
-			"frontend/src/**/*vorma.routes.ts"
-		],
+		"ClientRouteDefinitionPatterns": ["frontend/src/**/*vorma.routes.ts"],
+		"ServerRouteDefinitionPatterns": ["backend/src/router/**/*.go"],
 		"TSGenOutDir": "frontend/src/vorma.gen",
 		"BuildtimePublicURLFuncName": "waveBuildtimeURL"
 	},

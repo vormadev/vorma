@@ -40,6 +40,8 @@ func TestBuildInner(t *testing.T) {
 		originalWriteRouteArtifactsWithLockStep := buildInnerDeps.writeRouteArtifactsWithLock
 		originalLogBuildInnerCompletionStep := buildInnerDeps.logBuildInnerCompletion
 		originalParseClientRoutesForSync := buildInnerRouteSyncDeps.parseClientRoutes
+		originalParseBackendLoaderPatternsForSync := buildInnerRouteSyncDeps.parseBackendLoaderPatterns
+		originalMergeBackendLoaderPatternsInPathForSync := buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath
 		originalRunRouteSyncExecution := buildInnerRouteSyncDeps.runRouteSyncExecution
 		originalGenerateDevBuildIDSuffixStep := buildInnerBuildIDDeps.generateDevBuildIDSuffix
 		originalNewPublicFileMapWriterStep := buildInnerPublicFileMapDeps.newPublicFileMapWriter
@@ -53,6 +55,8 @@ func TestBuildInner(t *testing.T) {
 			buildInnerDeps.writeRouteArtifactsWithLock = originalWriteRouteArtifactsWithLockStep
 			buildInnerDeps.logBuildInnerCompletion = originalLogBuildInnerCompletionStep
 			buildInnerRouteSyncDeps.parseClientRoutes = originalParseClientRoutesForSync
+			buildInnerRouteSyncDeps.parseBackendLoaderPatterns = originalParseBackendLoaderPatternsForSync
+			buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath = originalMergeBackendLoaderPatternsInPathForSync
 			buildInnerRouteSyncDeps.runRouteSyncExecution = originalRunRouteSyncExecution
 			buildInnerBuildIDDeps.generateDevBuildIDSuffix = originalGenerateDevBuildIDSuffixStep
 			buildInnerPublicFileMapDeps.newPublicFileMapWriter = originalNewPublicFileMapWriterStep

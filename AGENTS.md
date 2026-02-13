@@ -15,6 +15,16 @@
 It is prohibited to add conversational or changelog comments to source code
 files.
 
+## No Builder Patterns In Go
+
+Builder-pattern APIs are prohibited in Go code.
+
+- Do not add fluent/chained configuration methods (for example:
+  `NewX(...).WithY(...).WithZ(...)`).
+- Do not add `With*`/`MustWith*` mutator methods used primarily for chained
+  construction.
+- Prefer explicit struct literals, plain functions, and explicit option structs.
+
 ## Function Formatting
 
 Functions with many parameters shall format such parameters vertically, like so:

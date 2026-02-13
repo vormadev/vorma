@@ -26,23 +26,41 @@ func newWaveForTest(
 	t.Helper()
 	setWaveDevModeForTest(t, isDev)
 	return New(Config{
-		WaveConfigJSON: fixture.configJSON(t),
-		DistStaticFS:   distStaticFS,
-		Logger:         newDiscardLoggerForWaveTests(),
+		ConfigSource: NewStaticConfigSource(fixture.configJSON(t)),
+		DistStaticFS: distStaticFS,
+		Logger:       newDiscardLoggerForWaveTests(),
 	})
 }
 
-func TestNewPanicsWhenWaveConfigJSONIsNil(t *testing.T) {
+func TestNewPanicsWhenNeitherConfigSourceNorConfigJSONIsProvided(t *testing.T) {
 	defer func() {
 		recovered := recover()
 		if recovered == nil {
-			t.Fatal("expected panic when WaveConfigJSON is nil")
+			t.Fatal("expected panic when no config input is provided")
 		}
-		if !strings.Contains(recovered.(string), "WaveConfigJSON cannot be nil") {
+		if !strings.Contains(recovered.(string), "WaveConfigJSON or ConfigSource is required") {
 			t.Fatalf("unexpected panic value: %v", recovered)
 		}
 	}()
 	_ = New(Config{})
+}
+
+func TestNewFromWaveConfigJSON(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	setWaveDevModeForTest(t, false)
+
+	w := New(Config{
+		WaveConfigJSON: fixture.configJSON(t),
+		DistStaticFS:   os.DirFS(fixture.cfg.Dist.Static()),
+		Logger:         newDiscardLoggerForWaveTests(),
+	})
+
+	if w == nil {
+		t.Fatal("expected non-nil Wave instance")
+	}
+	if !bytes.Equal(w.RawConfigJSON(), fixture.configJSON(t)) {
+		t.Fatal("expected RawConfigJSON to match input WaveConfigJSON")
+	}
 }
 
 func TestNewPanicsWhenConfigJSONIsInvalid(t *testing.T) {
@@ -56,7 +74,9 @@ func TestNewPanicsWhenConfigJSONIsInvalid(t *testing.T) {
 		}
 	}()
 
-	_ = New(Config{WaveConfigJSON: []byte("{")})
+	_ = New(Config{
+		ConfigSource: NewStaticConfigSource([]byte("{")),
+	})
 }
 
 func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
@@ -475,9 +495,6 @@ func TestConfigAccessorMethods(t *testing.T) {
 	}
 	if w.GetPrivateStaticDir() != fixture.cfg.Core.StaticAssetDirs.Private {
 		t.Fatalf("unexpected private static dir: %q", w.GetPrivateStaticDir())
-	}
-	if w.GetConfigFile() != fixture.cfg.Core.ConfigLocation {
-		t.Fatalf("unexpected config file path: %q", w.GetConfigFile())
 	}
 	if w.GetViteManifestLocation() != fixture.cfg.ViteManifestPath() {
 		t.Fatalf("unexpected Vite manifest location: %q", w.GetViteManifestLocation())

@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -76,25 +77,64 @@ func TestClassifyEventWithWatcherAndBuilder_UnmatchedOtherFilesAreIgnored(t *tes
 
 func TestIsConfigFileMatchesNormalizedPath(t *testing.T) {
 	root := t.TempDir()
-	configPath := filepath.Join(root, "wave.config.json")
+	configPath := filepath.Join(root, "backend", "config", "wave.config.go")
 
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ConfigLocation = configPath
+	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{
+		Files: []string{configPath},
+	}
 	s := &server{cfg: cfg}
 
-	equivalentPath := filepath.Join(root, ".", "wave.config.json")
+	equivalentPath := filepath.Join(root, "backend", ".", "config", "wave.config.go")
 	if !s.isConfigFile(equivalentPath) {
 		t.Fatalf("expected isConfigFile(%q) to match config path %q", equivalentPath, configPath)
 	}
 
-	otherPath := filepath.Join(root, "different.config.json")
+	otherPath := filepath.Join(root, "backend", "config", "different.config.go")
 	if s.isConfigFile(otherPath) {
 		t.Fatalf("expected isConfigFile(%q) to be false", otherPath)
 	}
 
-	cfg.Core.ConfigLocation = ""
+	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{}
 	if s.isConfigFile(configPath) {
-		t.Fatal("expected isConfigFile to be false when ConfigLocation is empty")
+		t.Fatal("expected isConfigFile to be false when dependency list is empty")
+	}
+}
+
+func TestIsConfigFileMatchesResolvedDependencyFileAndGlob(t *testing.T) {
+	root := t.TempDir()
+
+	configDependencyFilePath := filepath.Join(root, "backend", "wave.config.go")
+	if err := os.MkdirAll(filepath.Dir(configDependencyFilePath), 0755); err != nil {
+		t.Fatalf("failed creating dependency file dir: %v", err)
+	}
+	if err := os.WriteFile(configDependencyFilePath, []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed writing dependency file: %v", err)
+	}
+
+	configDependencyGlobMatchPath := filepath.Join(root, "backend", "config", "deps", "app.yaml")
+	if err := os.MkdirAll(filepath.Dir(configDependencyGlobMatchPath), 0755); err != nil {
+		t.Fatalf("failed creating dependency glob dir: %v", err)
+	}
+	if err := os.WriteFile(configDependencyGlobMatchPath, []byte("value"), 0644); err != nil {
+		t.Fatalf("failed writing dependency glob match file: %v", err)
+	}
+
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{
+		Files: []string{configDependencyFilePath},
+		Globs: []string{filepath.Join(root, "backend/config/**/*.yaml")},
+	}
+	s := &server{
+		cfg: cfg,
+		log: newDiscardLogger(),
+	}
+
+	if !s.isConfigFile(configDependencyFilePath) {
+		t.Fatalf("expected %q to match config dependency file", configDependencyFilePath)
+	}
+	if !s.isConfigFile(configDependencyGlobMatchPath) {
+		t.Fatalf("expected %q to match config dependency glob", configDependencyGlobMatchPath)
 	}
 }
 

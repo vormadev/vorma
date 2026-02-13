@@ -111,6 +111,50 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 			},
 			wantMsg: "Vorma.TSGenOutDir is required",
 		},
+		{
+			name: "DevReloadRoutesEndpointPath_MissingLeadingSlash",
+			mutate: func(c *VormaConfig) {
+				c.DevReloadRoutesEndpointPath = "reload-routes"
+			},
+			wantMsg: "Vorma.DevReloadRoutesEndpointPath must start with '/'",
+		},
+		{
+			name: "DevReloadTemplateEndpointPath_MissingLeadingSlash",
+			mutate: func(c *VormaConfig) {
+				c.DevReloadTemplateEndpointPath = "reload-template"
+			},
+			wantMsg: "Vorma.DevReloadTemplateEndpointPath must start with '/'",
+		},
+		{
+			name: "DevReloadEndpoints_MustDiffer",
+			mutate: func(c *VormaConfig) {
+				c.DevReloadRoutesEndpointPath = "/__same"
+				c.DevReloadTemplateEndpointPath = "/__same"
+			},
+			wantMsg: "Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadTemplateEndpointPath must differ",
+		},
+		{
+			name: "TemplateDataKeys_MustBeNonEmpty",
+			mutate: func(c *VormaConfig) {
+				c.TemplateDataKeyHeadElements = "   "
+			},
+			wantMsg: "Vorma template data keys must be non-empty",
+		},
+		{
+			name: "TemplateDataKeys_MustBeUnique",
+			mutate: func(c *VormaConfig) {
+				c.TemplateDataKeyHeadElements = "SharedTemplateKey"
+				c.TemplateDataKeyBodyScripts = "SharedTemplateKey"
+			},
+			wantMsg: "Vorma template data keys must be unique",
+		},
+		{
+			name: "ClientRootElementID_Required",
+			mutate: func(c *VormaConfig) {
+				c.ClientRootElementID = "   "
+			},
+			wantMsg: "Vorma.ClientRootElementID is required",
+		},
 	}
 
 	for _, tt := range tests {
@@ -124,9 +168,9 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 			}
 
 			w := wave.New(wave.Config{
-				WaveConfigJSON: cfgBytes,
-				DistStaticFS:   os.DirFS(staticDir),
-				Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+				ConfigSource: wave.NewStaticConfigSource(cfgBytes),
+				DistStaticFS: os.DirFS(staticDir),
+				Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 			})
 
 			defer func() {
@@ -178,14 +222,70 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 	}
 
 	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgBytes,
-		DistStaticFS:   os.DirFS(staticDir),
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ConfigSource: wave.NewStaticConfigSource(cfgBytes),
+		DistStaticFS: os.DirFS(staticDir),
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
 	app := NewVormaApp(VormaAppConfig{Wave: w})
 	if app.Config.BuildtimePublicURLFuncName != "waveBuildtimeURL" {
 		t.Fatalf("expected default buildtime URL function name, got %q", app.Config.BuildtimePublicURLFuncName)
+	}
+	if app.Config.DevReloadRoutesEndpointPath != DefaultDevReloadRoutesEndpointPath {
+		t.Fatalf(
+			"expected default routes reload endpoint path %q, got %q",
+			DefaultDevReloadRoutesEndpointPath,
+			app.Config.DevReloadRoutesEndpointPath,
+		)
+	}
+	if app.Config.DevReloadTemplateEndpointPath != DefaultDevReloadTemplateEndpointPath {
+		t.Fatalf(
+			"expected default template reload endpoint path %q, got %q",
+			DefaultDevReloadTemplateEndpointPath,
+			app.Config.DevReloadTemplateEndpointPath,
+		)
+	}
+	if app.Config.TemplateDataKeyHeadElements != DefaultTemplateDataKeyHeadElements {
+		t.Fatalf(
+			"expected default head-elements template key %q, got %q",
+			DefaultTemplateDataKeyHeadElements,
+			app.Config.TemplateDataKeyHeadElements,
+		)
+	}
+	if app.Config.TemplateDataKeyBodyScripts != DefaultTemplateDataKeyBodyScripts {
+		t.Fatalf(
+			"expected default body-scripts template key %q, got %q",
+			DefaultTemplateDataKeyBodyScripts,
+			app.Config.TemplateDataKeyBodyScripts,
+		)
+	}
+	if app.Config.TemplateDataKeySSRScript != DefaultTemplateDataKeySSRScript {
+		t.Fatalf(
+			"expected default SSR-script template key %q, got %q",
+			DefaultTemplateDataKeySSRScript,
+			app.Config.TemplateDataKeySSRScript,
+		)
+	}
+	if app.Config.TemplateDataKeySSRScriptHash != DefaultTemplateDataKeySSRScriptHash {
+		t.Fatalf(
+			"expected default SSR-script-hash template key %q, got %q",
+			DefaultTemplateDataKeySSRScriptHash,
+			app.Config.TemplateDataKeySSRScriptHash,
+		)
+	}
+	if app.Config.TemplateDataKeyRootElementID != DefaultTemplateDataKeyRootElementID {
+		t.Fatalf(
+			"expected default root-element-id template key %q, got %q",
+			DefaultTemplateDataKeyRootElementID,
+			app.Config.TemplateDataKeyRootElementID,
+		)
+	}
+	if app.Config.ClientRootElementID != DefaultClientRootElementID {
+		t.Fatalf(
+			"expected default client root element id %q, got %q",
+			DefaultClientRootElementID,
+			app.Config.ClientRootElementID,
+		)
 	}
 }
 
@@ -226,9 +326,9 @@ func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(t *testi
 	}
 
 	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgBytes,
-		DistStaticFS:   os.DirFS(staticDir),
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ConfigSource: wave.NewStaticConfigSource(cfgBytes),
+		DistStaticFS: os.DirFS(staticDir),
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
 	defer func() {

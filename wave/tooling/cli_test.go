@@ -4,17 +4,23 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"strings"
 	"testing"
 )
 
-func withResettableCommandLine(t *testing.T, args []string, fn func()) {
+func withTemporaryCommandLineState(
+	t *testing.T,
+	args []string,
+	commandLine *flag.FlagSet,
+	fn func(),
+) {
 	t.Helper()
 
 	originalArgs := os.Args
 	originalCommandLine := flag.CommandLine
 
 	os.Args = args
-	flag.CommandLine = flag.NewFlagSet(args[0], flag.ContinueOnError)
+	flag.CommandLine = commandLine
 
 	defer func() {
 		os.Args = originalArgs
@@ -24,50 +30,117 @@ func withResettableCommandLine(t *testing.T, args []string, fn func()) {
 	fn()
 }
 
-func TestBuildWaveWithHook_HookModeInvokesHookWithDevFlag(t *testing.T) {
+func TestParseCLIOptions(t *testing.T) {
+	parsedCLIOptions, err := ParseCLIOptions([]string{"-dev", "-hook", "-no-binary"})
+	if err != nil {
+		t.Fatalf("ParseCLIOptions returned error: %v", err)
+	}
+
+	if !parsedCLIOptions.IsDev {
+		t.Fatal("expected IsDev=true")
+	}
+	if !parsedCLIOptions.HookOnly {
+		t.Fatal("expected HookOnly=true")
+	}
+	if !parsedCLIOptions.NoBinary {
+		t.Fatal("expected NoBinary=true")
+	}
+}
+
+func TestParseCLIOptions_UnknownFlagReturnsError(t *testing.T) {
+	_, err := ParseCLIOptions([]string{"-not-a-real-flag"})
+	if err == nil {
+		t.Fatal("expected ParseCLIOptions to fail for unknown flag")
+	}
+	if !strings.Contains(err.Error(), "parse CLI options") {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+}
+
+func TestBuildWaveWithHookOptions_HookModeInvokesHookWithDevFlag(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
-	withResettableCommandLine(t, []string{"wave-tooling-test", "-hook", "-dev"}, func() {
-		called := false
-		BuildWaveWithHook(cfg, newDiscardLogger(), func(isDev bool) error {
+	called := false
+	err := BuildWaveWithHookOptions(
+		cfg,
+		newDiscardLogger(),
+		CLIOptions{HookOnly: true, IsDev: true},
+		func(isDev bool) error {
 			called = true
 			if !isDev {
-				t.Fatal("expected hook to receive isDev=true when -dev is provided")
+				t.Fatal("expected hook to receive IsDev=true")
 			}
 			return nil
-		})
-		if !called {
-			t.Fatal("expected hook mode to invoke provided hook")
-		}
-	})
+		},
+	)
+	if err != nil {
+		t.Fatalf("BuildWaveWithHookOptions returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected hook mode to invoke provided hook")
+	}
 }
 
-func TestBuildWaveWithHook_HookErrorPanics(t *testing.T) {
+func TestBuildWaveWithHookFromArgs_HookErrorIsReturned(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
-	withResettableCommandLine(t, []string{"wave-tooling-test", "-hook"}, func() {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("expected hook error to panic")
-			}
-		}()
-
-		BuildWaveWithHook(cfg, newDiscardLogger(), func(bool) error {
+	err := BuildWaveWithHookFromArgs(
+		cfg,
+		newDiscardLogger(),
+		[]string{"-hook"},
+		func(bool) error {
 			return errors.New("hook failure")
-		})
-	})
+		},
+	)
+	if err == nil {
+		t.Fatal("expected hook error to be returned")
+	}
+	if !strings.Contains(err.Error(), "run hook") {
+		t.Fatalf("unexpected hook error: %v", err)
+	}
 }
 
-func TestBuildWave_NoBinaryFlagRunsBuildWithoutCompile(t *testing.T) {
+func TestBuildWaveWithHookFromArgs_NoBinaryFlagRunsBuildWithoutCompile(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	withResettableCommandLine(t, []string{"wave-tooling-test", "-no-binary"}, func() {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				t.Fatalf("did not expect BuildWave to panic in no-binary mode: %v", recovered)
+	err := BuildWaveWithHookFromArgs(
+		cfg,
+		newDiscardLogger(),
+		[]string{"-no-binary"},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("BuildWaveWithHookFromArgs returned error: %v", err)
+	}
+}
+
+func TestBuildWave_DoesNotUseGlobalFlagCommandLineParser(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	customGlobalFlagSet := flag.NewFlagSet("global", flag.ContinueOnError)
+	customGlobalFlagSet.Bool("sentinel", false, "sentinel")
+
+	withTemporaryCommandLineState(
+		t,
+		[]string{"wave-tooling-test", "-no-binary"},
+		customGlobalFlagSet,
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("did not expect BuildWave to panic: %v", recovered)
+				}
+			}()
+
+			BuildWave(cfg, newDiscardLogger())
+
+			if flag.CommandLine != customGlobalFlagSet {
+				t.Fatal("expected global flag.CommandLine pointer to remain unchanged")
 			}
-		}()
-		BuildWave(cfg, newDiscardLogger())
-	})
+			if customGlobalFlagSet.Parsed() {
+				t.Fatal("expected global flag.CommandLine parser to remain unparsed")
+			}
+		},
+	)
 }

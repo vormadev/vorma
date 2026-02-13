@@ -10,23 +10,19 @@ const externalDocsLink = "https://vorma.dev/docs"
 
 var count = 0
 
-func registerExampleLoaders() {
-	NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
-		return &RootData{Message: "Welcome to your Vorma app!"}, nil
-	})
+var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
+	return &RootData{Message: "Welcome to your Vorma app!"}, nil
+})
 
-	NewLoader("/_index", func(c *LoaderCtx) (int, error) {
-		return count, nil
-	})
+var _ = NewLoader("/_index", func(c *LoaderCtx) (int, error) {
+	return count, nil
+})
 
-	NewLoader("/links", func(c *LoaderCtx) (string, error) {
-		return externalDocsLink, nil
-	})
-}
+var _ = NewLoader("/links", func(c *LoaderCtx) (string, error) {
+	return externalDocsLink, nil
+})
 
-func registerExampleActions() {
-	NewAction("POST", "/increment-count", func(c *ActionCtx[vorma.None]) (int, error) {
-		count++
-		return count, nil
-	})
-}
+var _ = NewAction("POST", "/increment-count", func(c *ActionCtx[vorma.None]) (int, error) {
+	count++
+	return count, nil
+})

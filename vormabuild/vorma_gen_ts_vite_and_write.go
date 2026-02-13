@@ -146,9 +146,13 @@ func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 		"**/*.go",
 		path.Join("**", v.Wave.GetDistDir()+"/**/*"),
 		path.Join("**", v.Wave.GetPrivateStaticDir()+"/**/*"),
-		path.Join("**", v.Wave.GetConfigFile()),
 		path.Join("**", v.Config.TSGenOutDir+"/**/*"),
 	}
+
+	for _, configDependencyPattern := range buildViteIgnoredConfigDependencyPatterns(v.Wave.GetConfigDependencies()) {
+		ignoredPatterns = append(ignoredPatterns, configDependencyPattern)
+	}
+
 	for _, routeDefinitionPattern := range normalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ClientRouteDefinitionPatterns,
 	) {
@@ -158,6 +162,41 @@ func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 		)
 	}
 	return ignoredPatterns
+}
+
+func buildViteIgnoredConfigDependencyPatterns(
+	configDependencies wave.ConfigProviderDependencies,
+) []string {
+	ignoredPatterns := make([]string, 0, len(configDependencies.Files)+len(configDependencies.Globs))
+
+	for _, configDependencyFilePath := range configDependencies.Files {
+		formattedPattern := formatConfigDependencyPatternForViteIgnore(configDependencyFilePath)
+		if formattedPattern != "" {
+			ignoredPatterns = append(ignoredPatterns, formattedPattern)
+		}
+	}
+
+	for _, configDependencyGlobPattern := range configDependencies.Globs {
+		formattedPattern := formatConfigDependencyPatternForViteIgnore(configDependencyGlobPattern)
+		if formattedPattern != "" {
+			ignoredPatterns = append(ignoredPatterns, formattedPattern)
+		}
+	}
+
+	return normalizeRouteDefinitionPatternsInInputOrder(ignoredPatterns)
+}
+
+func formatConfigDependencyPatternForViteIgnore(configDependencyPattern string) string {
+	trimmedPattern := strings.TrimSpace(configDependencyPattern)
+	if trimmedPattern == "" {
+		return ""
+	}
+
+	if filepath.IsAbs(trimmedPattern) {
+		return filepath.ToSlash(trimmedPattern)
+	}
+
+	return filepath.ToSlash(path.Join("**", trimmedPattern))
 }
 
 func renderVitePluginConfig(templateData vitePluginTemplateData) (string, error) {
