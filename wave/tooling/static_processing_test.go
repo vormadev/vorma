@@ -54,7 +54,7 @@ func TestDetermineStaticProcessingWorkerCount(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeChangedSourcePathForStaticResolution_FollowsParentSymlinkForMissingLeaf(
+func TestCanonicalizePathForLocationComparison_FollowsParentSymlinkForMissingLeaf(
 	t *testing.T,
 ) {
 	root := t.TempDir()
@@ -70,7 +70,7 @@ func TestCanonicalizeChangedSourcePathForStaticResolution_FollowsParentSymlinkFo
 		t.Fatalf("failed creating source alias directory symlink: %v", err)
 	}
 
-	canonicalizedPath := canonicalizeChangedSourcePathForStaticResolution(missingLeafUnderAlias)
+	canonicalizedPath := pathnorm.CanonicalizePathForLocationComparison(missingLeafUnderAlias)
 	if !pathnorm.PathsReferToSameLocation(canonicalizedPath, missingLeafUnderTarget) {
 		t.Fatalf(
 			"expected canonicalized alias path %q to resolve to %q, got %q",

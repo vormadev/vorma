@@ -588,6 +588,94 @@ func TestExecuteBuildPhase_WritePublicFileMapTSErrorDoesNotPanic(t *testing.T) {
 	}
 }
 
+func TestResolveHookForStageExecution(t *testing.T) {
+	_, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	changedPath := filepath.Join(root, "changed.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	callbackHook := wave.OnChangeHook{
+		Cmd: "echo should-not-run",
+		Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+			return nil, nil
+		},
+	}
+
+	excludedHook, excludedHookShouldRun := resolveHookForStageExecution(
+		watcher,
+		changedPath,
+		false,
+		false,
+		wave.OnChangeHook{Exclude: []string{changedPath}},
+	)
+	if excludedHookShouldRun {
+		t.Fatalf("expected excluded hook to be skipped, got hook %#v", excludedHook)
+	}
+
+	stageHookWithoutRunOnChangeRules, stageHookWithoutRunOnChangeRulesShouldRun := resolveHookForStageExecution(
+		watcher,
+		changedPath,
+		true,
+		false,
+		callbackHook,
+	)
+	if !stageHookWithoutRunOnChangeRulesShouldRun {
+		t.Fatal("expected hook to run when stage does not apply run-on-change-only rules")
+	}
+	if stageHookWithoutRunOnChangeRules.Cmd == "" {
+		t.Fatalf("expected command to remain for stage without run-on-change-only rules, got %#v", stageHookWithoutRunOnChangeRules)
+	}
+
+	commandOnlyHook, commandOnlyHookShouldRun := resolveHookForStageExecution(
+		watcher,
+		changedPath,
+		true,
+		true,
+		wave.OnChangeHook{Cmd: "echo skip-command-only"},
+	)
+	if commandOnlyHookShouldRun {
+		t.Fatalf("expected command-only hook to be skipped for run-on-change-only stage, got %#v", commandOnlyHook)
+	}
+
+	callbackAndCommandHook, callbackAndCommandHookShouldRun := resolveHookForStageExecution(
+		watcher,
+		changedPath,
+		true,
+		true,
+		callbackHook,
+	)
+	if !callbackAndCommandHookShouldRun {
+		t.Fatal("expected callback hook to be retained for run-on-change-only stage")
+	}
+	if callbackAndCommandHook.Cmd != "" || callbackAndCommandHook.RunCombinedDevBuildHookCommands {
+		t.Fatalf(
+			"expected run-on-change-only rules to strip command execution fields, got %#v",
+			callbackAndCommandHook,
+		)
+	}
+	if callbackAndCommandHook.Callback == nil {
+		t.Fatalf("expected callback to remain after run-on-change-only filtering, got %#v", callbackAndCommandHook)
+	}
+
+	normalStageHook, normalStageHookShouldRun := resolveHookForStageExecution(
+		watcher,
+		changedPath,
+		false,
+		true,
+		callbackHook,
+	)
+	if !normalStageHookShouldRun {
+		t.Fatal("expected hook to run when run-on-change-only mode is disabled")
+	}
+	if normalStageHook.Cmd == "" {
+		t.Fatalf("expected command to remain when run-on-change-only mode is disabled, got %#v", normalStageHook)
+	}
+}
+
 func waveEvent(path string) fsnotify.Event {
 	return fsnotify.Event{Name: path, Op: fsnotify.Write}
 }

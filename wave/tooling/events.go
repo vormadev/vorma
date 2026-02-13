@@ -729,26 +729,23 @@ func (s *server) classifyWatcherEventsForProcessing(
 		return nil, true
 	}
 
-	classifiedEvents := make([]classifiedEvent, 0, len(preClassificationPlan.plannedEvents))
-	for _, plannedEvent := range preClassificationPlan.plannedEvents {
-		if plannedEvent.preClassificationDecision.addDirectoryWatch {
-			addDirectoryWatchError := watcher.AddDir(plannedEvent.event.Name)
-			if shouldLogWatcherAddDirectoryError(addDirectoryWatchError) {
-				s.log.Warn(
-					"failed to add directory watch",
-					"path",
-					plannedEvent.event.Name,
-					"error",
-					addDirectoryWatchError,
-				)
-			}
+	for _, directoryPathToWatch := range preClassificationPlan.addDirectoryWatchPaths {
+		addDirectoryWatchError := watcher.AddDir(directoryPathToWatch)
+		if shouldLogWatcherAddDirectoryError(addDirectoryWatchError) {
+			s.log.Warn(
+				"failed to add directory watch",
+				"path",
+				directoryPathToWatch,
+				"error",
+				addDirectoryWatchError,
+			)
 		}
-		if !plannedEvent.preClassificationDecision.classifyEvent {
-			continue
-		}
+	}
 
+	classifiedEvents := make([]classifiedEvent, 0, len(preClassificationPlan.eventsToClassify))
+	for _, eventToClassify := range preClassificationPlan.eventsToClassify {
 		classifiedEventForProcessing := s.classifyEventWithWatcherAndBuilder(
-			plannedEvent.event,
+			eventToClassify,
 			watcher,
 			builder,
 		)
@@ -771,21 +768,10 @@ type watcherEventPreClassificationDecision struct {
 	classifyEvent     bool
 }
 
-type watcherEventPreClassificationInput struct {
-	event                       fsnotify.Event
-	isConfigFile                bool
-	eventIsDirectory            bool
-	eventPathStatProbeSucceeded bool
-}
-
-type watcherEventPreClassificationPlannedEvent struct {
-	event                     fsnotify.Event
-	preClassificationDecision watcherEventPreClassificationDecision
-}
-
 type watcherEventPreClassificationPlan struct {
-	configChanged bool
-	plannedEvents []watcherEventPreClassificationPlannedEvent
+	configChanged          bool
+	addDirectoryWatchPaths []string
+	eventsToClassify       []fsnotify.Event
 }
 
 func buildWatcherEventPreClassificationPlanFromEvents(
@@ -796,7 +782,8 @@ func buildWatcherEventPreClassificationPlanFromEvents(
 		return watcherEventPreClassificationPlan{}
 	}
 
-	plannedEvents := make([]watcherEventPreClassificationPlannedEvent, 0, len(events))
+	addDirectoryWatchPaths := make([]string, 0, len(events))
+	eventsToClassify := make([]fsnotify.Event, 0, len(events))
 	for _, event := range events {
 		isConfigFile := eventClassificationProber.probeIsConfigFile(event.Name)
 		if isConfigMutationEvent(event, isConfigFile) {
@@ -806,29 +793,23 @@ func buildWatcherEventPreClassificationPlanFromEvents(
 		}
 
 		directoryProbeResult := eventClassificationProber.probeEventDirectoryStatus(event.Name)
-		preClassificationDecision := deriveWatcherEventPreClassificationDecision(
+		preClassificationDecision := deriveWatcherEventPreClassificationDecisionForNonConfigEvent(
 			event,
-			isConfigFile,
 			directoryProbeResult.isDirectory,
 			directoryProbeResult.statProbeSucceeded,
 		)
 
-		if !preClassificationDecision.addDirectoryWatch &&
-			!preClassificationDecision.classifyEvent {
-			continue
+		if preClassificationDecision.addDirectoryWatch {
+			addDirectoryWatchPaths = append(addDirectoryWatchPaths, event.Name)
 		}
-
-		plannedEvents = append(
-			plannedEvents,
-			watcherEventPreClassificationPlannedEvent{
-				event:                     event,
-				preClassificationDecision: preClassificationDecision,
-			},
-		)
+		if preClassificationDecision.classifyEvent {
+			eventsToClassify = append(eventsToClassify, event)
+		}
 	}
 
 	return watcherEventPreClassificationPlan{
-		plannedEvents: plannedEvents,
+		addDirectoryWatchPaths: addDirectoryWatchPaths,
+		eventsToClassify:       eventsToClassify,
 	}
 }
 
@@ -837,30 +818,59 @@ type watcherEventDirectoryProbeResult struct {
 	isDirectory        bool
 }
 
+type watcherEventPathProbeSnapshot struct {
+	hasConfigFileProbe  bool
+	isConfigFile        bool
+	hasDirectoryProbe   bool
+	directoryProbeState watcherEventDirectoryProbeResult
+}
+
 type watcherEventClassificationProber struct {
-	isConfigFileByPath map[string]bool
-	isDirectoryByPath  map[string]watcherEventDirectoryProbeResult
-	isConfigFileFn     func(string) bool
-	statPathFn         func(string) (os.FileInfo, error)
+	pathProbeSnapshotByPath map[string]*watcherEventPathProbeSnapshot
+	isConfigFileFn          func(string) bool
+	statPathFn              func(string) (os.FileInfo, error)
 }
 
 func newWatcherEventClassificationProber(
 	isConfigFileFn func(string) bool,
 ) *watcherEventClassificationProber {
 	return &watcherEventClassificationProber{
-		isConfigFileByPath: make(map[string]bool),
-		isDirectoryByPath:  make(map[string]watcherEventDirectoryProbeResult),
-		isConfigFileFn:     isConfigFileFn,
-		statPathFn:         os.Stat,
+		pathProbeSnapshotByPath: make(map[string]*watcherEventPathProbeSnapshot),
+		isConfigFileFn:          isConfigFileFn,
+		statPathFn:              os.Stat,
 	}
 }
 
-func (prober *watcherEventClassificationProber) probeIsConfigFile(path string) bool {
+func (prober *watcherEventClassificationProber) resolvePathProbeSnapshot(
+	path string,
+) *watcherEventPathProbeSnapshot {
+	if prober == nil {
+		return nil
+	}
+	if prober.pathProbeSnapshotByPath == nil {
+		prober.pathProbeSnapshotByPath = make(map[string]*watcherEventPathProbeSnapshot)
+	}
+
+	pathProbeSnapshot, hasCachedSnapshot := prober.pathProbeSnapshotByPath[path]
+	if !hasCachedSnapshot || pathProbeSnapshot == nil {
+		pathProbeSnapshot = &watcherEventPathProbeSnapshot{}
+		prober.pathProbeSnapshotByPath[path] = pathProbeSnapshot
+	}
+	return pathProbeSnapshot
+}
+
+func (prober *watcherEventClassificationProber) probeIsConfigFile(
+	path string,
+) bool {
 	if prober == nil {
 		return false
 	}
-	if resolvedIsConfigFile, hasCachedResult := prober.isConfigFileByPath[path]; hasCachedResult {
-		return resolvedIsConfigFile
+	pathProbeSnapshot := prober.resolvePathProbeSnapshot(path)
+	if pathProbeSnapshot == nil {
+		return false
+	}
+	if pathProbeSnapshot.hasConfigFileProbe {
+		return pathProbeSnapshot.isConfigFile
 	}
 
 	resolvedIsConfigFile := false
@@ -868,7 +878,8 @@ func (prober *watcherEventClassificationProber) probeIsConfigFile(path string) b
 		resolvedIsConfigFile = prober.isConfigFileFn(path)
 	}
 
-	prober.isConfigFileByPath[path] = resolvedIsConfigFile
+	pathProbeSnapshot.hasConfigFileProbe = true
+	pathProbeSnapshot.isConfigFile = resolvedIsConfigFile
 	return resolvedIsConfigFile
 }
 
@@ -878,8 +889,12 @@ func (prober *watcherEventClassificationProber) probeEventDirectoryStatus(
 	if prober == nil {
 		return watcherEventDirectoryProbeResult{}
 	}
-	if cachedDirectoryProbeResult, hasCachedResult := prober.isDirectoryByPath[path]; hasCachedResult {
-		return cachedDirectoryProbeResult
+	pathProbeSnapshot := prober.resolvePathProbeSnapshot(path)
+	if pathProbeSnapshot == nil {
+		return watcherEventDirectoryProbeResult{}
+	}
+	if pathProbeSnapshot.hasDirectoryProbe {
+		return pathProbeSnapshot.directoryProbeState
 	}
 
 	directoryProbeResult := watcherEventDirectoryProbeResult{}
@@ -895,7 +910,8 @@ func (prober *watcherEventClassificationProber) probeEventDirectoryStatus(
 		statProbeSucceeded: statProbeSucceeded,
 		isDirectory:        isDirectory,
 	}
-	prober.isDirectoryByPath[path] = directoryProbeResult
+	pathProbeSnapshot.hasDirectoryProbe = true
+	pathProbeSnapshot.directoryProbeState = directoryProbeResult
 	return directoryProbeResult
 }
 
@@ -911,6 +927,18 @@ func deriveWatcherEventPreClassificationDecision(
 		}
 	}
 
+	return deriveWatcherEventPreClassificationDecisionForNonConfigEvent(
+		event,
+		eventIsDirectory,
+		eventPathStatProbeSucceeded,
+	)
+}
+
+func deriveWatcherEventPreClassificationDecisionForNonConfigEvent(
+	event fsnotify.Event,
+	eventIsDirectory bool,
+	eventPathStatProbeSucceeded bool,
+) watcherEventPreClassificationDecision {
 	if !eventPathStatProbeSucceeded && (event.Has(fsnotify.Create) || event.Has(fsnotify.Rename)) {
 		return watcherEventPreClassificationDecision{
 			addDirectoryWatch: true,
@@ -938,45 +966,6 @@ func isConfigMutationEvent(
 			event.Has(fsnotify.Create) ||
 			event.Has(fsnotify.Remove) ||
 			event.Has(fsnotify.Rename))
-}
-
-func buildWatcherEventPreClassificationPlan(
-	preClassificationInputs []watcherEventPreClassificationInput,
-) watcherEventPreClassificationPlan {
-	if len(preClassificationInputs) == 0 {
-		return watcherEventPreClassificationPlan{}
-	}
-
-	plannedEvents := make([]watcherEventPreClassificationPlannedEvent, 0, len(preClassificationInputs))
-	for _, preClassificationInput := range preClassificationInputs {
-		preClassificationDecision := deriveWatcherEventPreClassificationDecision(
-			preClassificationInput.event,
-			preClassificationInput.isConfigFile,
-			preClassificationInput.eventIsDirectory,
-			preClassificationInput.eventPathStatProbeSucceeded,
-		)
-		if preClassificationDecision.configChanged {
-			return watcherEventPreClassificationPlan{
-				configChanged: true,
-			}
-		}
-		if !preClassificationDecision.addDirectoryWatch &&
-			!preClassificationDecision.classifyEvent {
-			continue
-		}
-
-		plannedEvents = append(
-			plannedEvents,
-			watcherEventPreClassificationPlannedEvent{
-				event:                     preClassificationInput.event,
-				preClassificationDecision: preClassificationDecision,
-			},
-		)
-	}
-
-	return watcherEventPreClassificationPlan{
-		plannedEvents: plannedEvents,
-	}
 }
 
 type watcherEventPostClassificationDecision struct {
@@ -1141,6 +1130,83 @@ func shouldRunImplicitBuildForEvents(eventsWithHooks []eventWithHooks) bool {
 	return false
 }
 
+type implicitBuildExecutionDecision struct {
+	shouldRunImplicitBuild    bool
+	skipImplicitBuildLogEntry string
+}
+
+func deriveImplicitBuildExecutionDecision(
+	shouldRunImplicitBuild bool,
+	eventCount int,
+) implicitBuildExecutionDecision {
+	if shouldRunImplicitBuild {
+		return implicitBuildExecutionDecision{
+			shouldRunImplicitBuild: true,
+		}
+	}
+
+	if eventCount == 1 {
+		return implicitBuildExecutionDecision{
+			skipImplicitBuildLogEntry: "RunOnChangeOnly: skipping implicit build phase",
+		}
+	}
+
+	return implicitBuildExecutionDecision{
+		skipImplicitBuildLogEntry: "All events are RunOnChangeOnly, skipping implicit build phase",
+	}
+}
+
+func shouldShortCircuitPipelineForRefreshActions(
+	actionResult refreshActionApplicationResult,
+) bool {
+	return actionResult.restartRequested
+}
+
+func shouldStartAppAfterImplicitBuild(
+	shouldRunImplicitBuild bool,
+	restart restartPhaseDecision,
+) bool {
+	return shouldRunImplicitBuild && restart.restartApp
+}
+
+func shouldExecuteBrowserPhaseAfterHookActionResults(
+	preActionResult refreshActionApplicationResult,
+	concurrentActionResult refreshActionApplicationResult,
+	postActionResult refreshActionApplicationResult,
+) bool {
+	return !preActionResult.restartRequested &&
+		!concurrentActionResult.restartRequested &&
+		!postActionResult.restartRequested
+}
+
+func deriveEventsWithHooksForExecution(
+	eventsWithHooks []eventWithHooks,
+	appStopStrategyForExecution appStopStrategy,
+) []eventWithHooks {
+	if len(eventsWithHooks) == 0 {
+		return nil
+	}
+	if appStopStrategyForExecution != appStopStrategyBatchHardReload {
+		return eventsWithHooks
+	}
+
+	executionEventsWithHooks := make([]eventWithHooks, len(eventsWithHooks))
+	copy(executionEventsWithHooks, eventsWithHooks)
+	for eventIndex := range executionEventsWithHooks {
+		executionEventWithHooks := executionEventsWithHooks[eventIndex]
+		if executionEventWithHooks.hookCtx == nil {
+			continue
+		}
+
+		executionHookContext := *executionEventWithHooks.hookCtx
+		executionHookContext.AppStoppedForBatch = true
+		executionEventWithHooks.hookCtx = &executionHookContext
+		executionEventsWithHooks[eventIndex] = executionEventWithHooks
+	}
+
+	return executionEventsWithHooks
+}
+
 func (s *server) executeEventExecutionPlan(
 	plan *eventExecutionPlan,
 	work *workSet,
@@ -1149,6 +1215,11 @@ func (s *server) executeEventExecutionPlan(
 	if plan == nil || len(plan.eventsWithHooks) == 0 {
 		return
 	}
+
+	eventsWithHooksForExecution := deriveEventsWithHooksForExecution(
+		plan.eventsWithHooks,
+		plan.appStopStrategy,
+	)
 
 	switch plan.appStopStrategy {
 	case appStopStrategySingleEventHardReload:
@@ -1162,49 +1233,49 @@ func (s *server) executeEventExecutionPlan(
 		if err := s.stopApp(); err != nil {
 			s.log.Error("Failed to stop app", "error", err)
 		}
-		for i := range plan.eventsWithHooks {
-			if plan.eventsWithHooks[i].hookCtx != nil {
-				plan.eventsWithHooks[i].hookCtx.AppStoppedForBatch = true
-			}
-		}
 
 	case appStopStrategyNone:
 	}
 
-	s.processEventsWithDeterministicPipeline(plan, work, watcher)
+	s.processEventsWithDeterministicPipeline(
+		plan,
+		work,
+		watcher,
+		eventsWithHooksForExecution,
+	)
 }
 
 func (s *server) processEventsWithDeterministicPipeline(
 	plan *eventExecutionPlan,
 	work *workSet,
 	watcher *Watcher,
+	eventsWithHooks []eventWithHooks,
 ) {
-	if plan == nil || len(plan.eventsWithHooks) == 0 {
+	if plan == nil || len(eventsWithHooks) == 0 {
 		return
 	}
 
-	eventsWithHooks := plan.eventsWithHooks
 	s.fireNoWaitHooksForEvents(eventsWithHooks, watcher)
 
 	preActions := s.runPreHooksForEvents(eventsWithHooks, work, watcher)
 	preActionResult := work.applyRefreshActions(preActions)
-	if preActionResult.restartRequested {
+	if shouldShortCircuitPipelineForRefreshActions(preActionResult) {
 		s.triggerRestartFromRefreshActions(preActionResult)
 		return
 	}
 
-	if !plan.runImplicitBuild {
-		if len(eventsWithHooks) == 1 {
-			s.log.Info("RunOnChangeOnly: skipping implicit build phase")
-		} else {
-			s.log.Info("All events are RunOnChangeOnly, skipping implicit build phase")
-		}
+	implicitBuildDecision := deriveImplicitBuildExecutionDecision(
+		plan.runImplicitBuild,
+		len(eventsWithHooks),
+	)
+	if !implicitBuildDecision.shouldRunImplicitBuild {
+		s.log.Info(implicitBuildDecision.skipImplicitBuildLogEntry)
 	} else {
 		work.resolve(s.cfg.UsingVite())
 	}
 
 	var buildAndConcurrentHooksGroup errgroup.Group
-	if plan.runImplicitBuild {
+	if implicitBuildDecision.shouldRunImplicitBuild {
 		buildAndConcurrentHooksGroup.Go(func() error {
 			s.executeBuildPhase(work)
 			return nil
@@ -1219,36 +1290,84 @@ func (s *server) processEventsWithDeterministicPipeline(
 	_ = buildAndConcurrentHooksGroup.Wait()
 
 	concurrentActionResult := work.applyRefreshActions(concurrentActions)
-	if concurrentActionResult.restartRequested {
+	if shouldShortCircuitPipelineForRefreshActions(concurrentActionResult) {
 		s.triggerRestartFromRefreshActions(concurrentActionResult)
 		return
 	}
 
 	postActions := s.runPostHooksForEvents(eventsWithHooks, watcher)
 	postActionResult := work.applyRefreshActions(postActions)
-	if postActionResult.restartRequested {
+	if shouldShortCircuitPipelineForRefreshActions(postActionResult) {
 		s.triggerRestartFromRefreshActions(postActionResult)
 		return
 	}
 
-	if plan.runImplicitBuild && work.restart.restartApp {
+	if shouldStartAppAfterImplicitBuild(
+		implicitBuildDecision.shouldRunImplicitBuild,
+		work.restart,
+	) {
 		s.log.Info("Restarting app")
 		s.startApp()
 	}
 
-	s.executeBrowserPhase(work)
+	if shouldExecuteBrowserPhaseAfterHookActionResults(
+		preActionResult,
+		concurrentActionResult,
+		postActionResult,
+	) {
+		s.executeBrowserPhase(work)
+	}
+}
+
+func forEachEventWithHooksEligibleForHookExecution(
+	eventsWithHooks []eventWithHooks,
+	onEligibleEvent func(eventIndex int, eligibleEvent eventWithHooks),
+) {
+	if onEligibleEvent == nil {
+		return
+	}
+	for eventIndex, eventWithHooksForExecution := range eventsWithHooks {
+		if eventWithHooksForExecution.skipDuplicateHooks {
+			continue
+		}
+		onEligibleEvent(eventIndex, eventWithHooksForExecution)
+	}
+}
+
+func (s *server) runSequentialHookStageForEligibleEvents(
+	eventsWithHooks []eventWithHooks,
+	watcher *Watcher,
+	runHooksForEvent func(eventWithHooks, *Watcher) ([]wave.RefreshAction, error),
+	hookExecutionFailureLogMessage string,
+) []wave.RefreshAction {
+	if runHooksForEvent == nil {
+		return nil
+	}
+
+	allStageActions := make([]wave.RefreshAction, 0)
+	forEachEventWithHooksEligibleForHookExecution(
+		eventsWithHooks,
+		func(_ int, eventWithHooksForStage eventWithHooks) {
+			stageActions, err := runHooksForEvent(eventWithHooksForStage, watcher)
+			if err != nil {
+				s.log.Error(hookExecutionFailureLogMessage, "error", err)
+			}
+			allStageActions = append(allStageActions, stageActions...)
+		},
+	)
+	return allStageActions
 }
 
 func (s *server) fireNoWaitHooksForEvents(
 	eventsWithHooks []eventWithHooks,
 	watcher *Watcher,
 ) {
-	for _, eventWithHooksForFire := range eventsWithHooks {
-		if eventWithHooksForFire.skipDuplicateHooks {
-			continue
-		}
-		s.fireNoWaitHooks(eventWithHooksForFire, watcher)
-	}
+	forEachEventWithHooksEligibleForHookExecution(
+		eventsWithHooks,
+		func(_ int, eventWithHooksForFire eventWithHooks) {
+			s.fireNoWaitHooks(eventWithHooksForFire, watcher)
+		},
+	)
 }
 
 func (s *server) runPreHooksForEvents(
@@ -1256,23 +1375,15 @@ func (s *server) runPreHooksForEvents(
 	work *workSet,
 	watcher *Watcher,
 ) []wave.RefreshAction {
-	allPreActions := make([]wave.RefreshAction, 0)
-
 	for _, eventWithHooksForPre := range eventsWithHooks {
 		work.addImplicitWork(eventWithHooksForPre.classified)
-
-		if eventWithHooksForPre.skipDuplicateHooks {
-			continue
-		}
-
-		preActions, err := s.runPreHooks(eventWithHooksForPre, watcher)
-		if err != nil {
-			s.log.Error("Pre-hook execution failed", "error", err)
-		}
-		allPreActions = append(allPreActions, preActions...)
 	}
-
-	return allPreActions
+	return s.runSequentialHookStageForEligibleEvents(
+		eventsWithHooks,
+		watcher,
+		s.runPreHooks,
+		"Pre-hook execution failed",
+	)
 }
 
 func (s *server) runConcurrentHooksForEvents(
@@ -1282,26 +1393,24 @@ func (s *server) runConcurrentHooksForEvents(
 	actionsByEventIndex := make([][]wave.RefreshAction, len(eventsWithHooks))
 	var concurrentHooksGroup errgroup.Group
 
-	for eventIndex := range eventsWithHooks {
-		eventWithHooksForConcurrent := eventsWithHooks[eventIndex]
-		if eventWithHooksForConcurrent.skipDuplicateHooks {
-			continue
-		}
-
-		eventIndexForResult := eventIndex
-		eventWithHooksForConcurrentCopy := eventWithHooksForConcurrent
-		concurrentHooksGroup.Go(func() error {
-			concurrentActions, err := s.runConcurrentHooks(
-				eventWithHooksForConcurrentCopy,
-				watcher,
-			)
-			if err != nil {
-				s.log.Error("Concurrent hook execution failed", "error", err)
-			}
-			actionsByEventIndex[eventIndexForResult] = concurrentActions
-			return nil
-		})
-	}
+	forEachEventWithHooksEligibleForHookExecution(
+		eventsWithHooks,
+		func(eventIndex int, eventWithHooksForConcurrent eventWithHooks) {
+			eventIndexForResult := eventIndex
+			eventWithHooksForConcurrentCopy := eventWithHooksForConcurrent
+			concurrentHooksGroup.Go(func() error {
+				concurrentActions, err := s.runConcurrentHooks(
+					eventWithHooksForConcurrentCopy,
+					watcher,
+				)
+				if err != nil {
+					s.log.Error("Concurrent hook execution failed", "error", err)
+				}
+				actionsByEventIndex[eventIndexForResult] = concurrentActions
+				return nil
+			})
+		},
+	)
 
 	_ = concurrentHooksGroup.Wait()
 
@@ -1317,36 +1426,34 @@ func (s *server) runPostHooksForEvents(
 	eventsWithHooks []eventWithHooks,
 	watcher *Watcher,
 ) []wave.RefreshAction {
-	allPostActions := make([]wave.RefreshAction, 0)
-
-	for _, eventWithHooksForPost := range eventsWithHooks {
-		if eventWithHooksForPost.skipDuplicateHooks {
-			continue
-		}
-
-		postActions, err := s.runPostHooks(eventWithHooksForPost, watcher)
-		if err != nil {
-			s.log.Error("Post-hook execution failed", "error", err)
-		}
-		allPostActions = append(allPostActions, postActions...)
-	}
-
-	return allPostActions
+	return s.runSequentialHookStageForEligibleEvents(
+		eventsWithHooks,
+		watcher,
+		s.runPostHooks,
+		"Post-hook execution failed",
+	)
 }
 
 func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 	for _, hook := range ewh.hooks.ConcurrentNoWait {
-		if watcher.IsIgnored(ewh.classified.event.Name, hook.Exclude) {
+		hookForExecution, shouldRunHook := resolveHookForStageExecution(
+			watcher,
+			ewh.classified.event.Name,
+			ewh.runOnChangeOnly,
+			false,
+			hook,
+		)
+		if !shouldRunHook {
 			continue
 		}
-		if hook.Callback != nil {
+		if hookForExecution.Callback != nil {
 			go func(cb func(*wave.HookContext) (*wave.RefreshAction, error), ctx *wave.HookContext) {
 				if _, err := cb(ctx); err != nil {
 					s.log.Warn("concurrent-no-wait callback failed", "error", err)
 				}
-			}(hook.Callback, ewh.hookCtx)
+			}(hookForExecution.Callback, ewh.hookCtx)
 		}
-		resolvedCommand := s.resolveHookCommand(hook)
+		resolvedCommand := s.resolveHookCommand(hookForExecution)
 		if resolvedCommand != "" {
 			go func(command string) {
 				if err := executil.RunShell(command); err != nil {
@@ -1361,10 +1468,17 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 	var actions []wave.RefreshAction
 
 	for _, preHook := range ewh.hooks.Pre {
-		if watcher.IsIgnored(ewh.classified.event.Name, preHook.Exclude) {
+		hookForExecution, shouldRunHook := resolveHookForStageExecution(
+			watcher,
+			ewh.classified.event.Name,
+			ewh.runOnChangeOnly,
+			false,
+			preHook,
+		)
+		if !shouldRunHook {
 			continue
 		}
-		action, err := s.executeHook(preHook, ewh.hookCtx)
+		action, err := s.executeHook(hookForExecution, ewh.hookCtx)
 		if action != nil {
 			actions = append(actions, *action)
 		}
@@ -1383,18 +1497,18 @@ func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wav
 
 	concurrentHooksToRun := make([]wave.OnChangeHook, 0, len(ewh.hooks.Concurrent))
 	for _, concurrentHook := range ewh.hooks.Concurrent {
-		if watcher.IsIgnored(ewh.classified.event.Name, concurrentHook.Exclude) {
-			continue
-		}
-		hook, shouldRunHook := prepareHookForExecutionWithRunOnChangeOnlyRules(
+		hookForExecution, shouldRunHook := resolveHookForStageExecution(
+			watcher,
+			ewh.classified.event.Name,
 			ewh.runOnChangeOnly,
+			true,
 			concurrentHook,
 		)
 		if !shouldRunHook {
 			continue
 		}
 
-		concurrentHooksToRun = append(concurrentHooksToRun, hook)
+		concurrentHooksToRun = append(concurrentHooksToRun, hookForExecution)
 	}
 
 	actionsByHookIndex := make([]*wave.RefreshAction, len(concurrentHooksToRun))
@@ -1425,18 +1539,18 @@ func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refr
 	var actions []wave.RefreshAction
 
 	for _, postHook := range ewh.hooks.Post {
-		if watcher.IsIgnored(ewh.classified.event.Name, postHook.Exclude) {
-			continue
-		}
-		hook, shouldRunHook := prepareHookForExecutionWithRunOnChangeOnlyRules(
+		hookForExecution, shouldRunHook := resolveHookForStageExecution(
+			watcher,
+			ewh.classified.event.Name,
 			ewh.runOnChangeOnly,
+			true,
 			postHook,
 		)
 		if !shouldRunHook {
 			continue
 		}
 
-		action, err := s.executeHook(hook, ewh.hookCtx)
+		action, err := s.executeHook(hookForExecution, ewh.hookCtx)
 		if action != nil {
 			actions = append(actions, *action)
 		}
@@ -1446,6 +1560,25 @@ func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refr
 	}
 
 	return actions, nil
+}
+
+func resolveHookForStageExecution(
+	watcher *Watcher,
+	eventPath string,
+	isRunOnChangeOnly bool,
+	shouldApplyRunOnChangeOnlyRules bool,
+	hook wave.OnChangeHook,
+) (wave.OnChangeHook, bool) {
+	if watcher.IsIgnored(eventPath, hook.Exclude) {
+		return wave.OnChangeHook{}, false
+	}
+	if !shouldApplyRunOnChangeOnlyRules {
+		return hook, true
+	}
+	return prepareHookForExecutionWithRunOnChangeOnlyRules(
+		isRunOnChangeOnly,
+		hook,
+	)
 }
 
 func prepareHookForExecutionWithRunOnChangeOnlyRules(

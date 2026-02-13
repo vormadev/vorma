@@ -161,107 +161,86 @@ func TestDeriveWatcherEventPreClassificationDecision(t *testing.T) {
 	}
 }
 
-func TestBuildWatcherEventPreClassificationPlan(t *testing.T) {
-	t.Run("empty inputs returns empty plan", func(t *testing.T) {
-		plan := buildWatcherEventPreClassificationPlan(nil)
-		if plan.configChanged {
-			t.Fatalf("expected configChanged=false for empty inputs, got %#v", plan)
-		}
-		if len(plan.plannedEvents) != 0 {
-			t.Fatalf("expected no planned events for empty inputs, got %#v", plan.plannedEvents)
-		}
-	})
-
-	t.Run("config change short-circuits plan", func(t *testing.T) {
-		plan := buildWatcherEventPreClassificationPlan(
-			[]watcherEventPreClassificationInput{
-				{
-					event:                       fsnotify.Event{Name: "notes.txt", Op: fsnotify.Write},
-					isConfigFile:                false,
-					eventIsDirectory:            false,
-					eventPathStatProbeSucceeded: true,
-				},
-				{
-					event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Rename},
-					isConfigFile:                true,
-					eventIsDirectory:            false,
-					eventPathStatProbeSucceeded: false,
-				},
-				{
-					event:                       fsnotify.Event{Name: "later.txt", Op: fsnotify.Write},
-					isConfigFile:                false,
-					eventIsDirectory:            false,
-					eventPathStatProbeSucceeded: true,
-				},
+func TestDeriveWatcherEventPreClassificationDecisionForNonConfigEvent(t *testing.T) {
+	testCases := []struct {
+		name                        string
+		event                       fsnotify.Event
+		eventIsDirectory            bool
+		eventPathStatProbeSucceeded bool
+		expectedDecision            watcherEventPreClassificationDecision
+	}{
+		{
+			name:                        "directory create adds watch",
+			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Create},
+			eventIsDirectory:            true,
+			eventPathStatProbeSucceeded: true,
+			expectedDecision: watcherEventPreClassificationDecision{
+				addDirectoryWatch: true,
 			},
-		)
-
-		if !plan.configChanged {
-			t.Fatalf("expected configChanged=true when config event is present, got %#v", plan)
-		}
-		if len(plan.plannedEvents) != 0 {
-			t.Fatalf("expected no planned events when config change short-circuits, got %#v", plan.plannedEvents)
-		}
-	})
-
-	t.Run("non-config inputs preserve pre-classification decisions", func(t *testing.T) {
-		plan := buildWatcherEventPreClassificationPlan(
-			[]watcherEventPreClassificationInput{
-				{
-					event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Write},
-					isConfigFile:                false,
-					eventIsDirectory:            true,
-					eventPathStatProbeSucceeded: true,
-				},
-				{
-					event:                       fsnotify.Event{Name: "new.txt", Op: fsnotify.Create},
-					isConfigFile:                false,
-					eventIsDirectory:            false,
-					eventPathStatProbeSucceeded: false,
-				},
-				{
-					event:                       fsnotify.Event{Name: "app.go", Op: fsnotify.Write},
-					isConfigFile:                false,
-					eventIsDirectory:            false,
-					eventPathStatProbeSucceeded: true,
-				},
+		},
+		{
+			name:                        "directory write is skipped",
+			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Write},
+			eventIsDirectory:            true,
+			eventPathStatProbeSucceeded: true,
+			expectedDecision:            watcherEventPreClassificationDecision{},
+		},
+		{
+			name:                        "missing-stat rename adds watch and classifies",
+			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Rename},
+			eventIsDirectory:            false,
+			eventPathStatProbeSucceeded: false,
+			expectedDecision: watcherEventPreClassificationDecision{
+				addDirectoryWatch: true,
+				classifyEvent:     true,
 			},
-		)
+		},
+		{
+			name:                        "regular file write classifies",
+			event:                       fsnotify.Event{Name: "app.go", Op: fsnotify.Write},
+			eventIsDirectory:            false,
+			eventPathStatProbeSucceeded: true,
+			expectedDecision: watcherEventPreClassificationDecision{
+				classifyEvent: true,
+			},
+		},
+	}
 
-		if plan.configChanged {
-			t.Fatalf("expected configChanged=false for non-config inputs, got %#v", plan)
-		}
-		if len(plan.plannedEvents) != 2 {
-			t.Fatalf("expected exactly two planned events (directory write skipped), got %#v", plan.plannedEvents)
-		}
-
-		firstPlannedEvent := plan.plannedEvents[0]
-		if firstPlannedEvent.event.Name != "new.txt" {
-			t.Fatalf("expected first planned event to be new.txt, got %#v", firstPlannedEvent)
-		}
-		if !firstPlannedEvent.preClassificationDecision.addDirectoryWatch ||
-			!firstPlannedEvent.preClassificationDecision.classifyEvent {
-			t.Fatalf(
-				"expected missing-stat create to add watch and classify, got %#v",
-				firstPlannedEvent.preClassificationDecision,
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			decision := deriveWatcherEventPreClassificationDecisionForNonConfigEvent(
+				testCase.event,
+				testCase.eventIsDirectory,
+				testCase.eventPathStatProbeSucceeded,
 			)
-		}
-
-		secondPlannedEvent := plan.plannedEvents[1]
-		if secondPlannedEvent.event.Name != "app.go" {
-			t.Fatalf("expected second planned event to be app.go, got %#v", secondPlannedEvent)
-		}
-		if secondPlannedEvent.preClassificationDecision.addDirectoryWatch ||
-			!secondPlannedEvent.preClassificationDecision.classifyEvent {
-			t.Fatalf(
-				"expected regular file write to classify without addDirectoryWatch, got %#v",
-				secondPlannedEvent.preClassificationDecision,
-			)
-		}
-	})
+			if !reflect.DeepEqual(decision, testCase.expectedDecision) {
+				t.Fatalf(
+					"deriveWatcherEventPreClassificationDecisionForNonConfigEvent()=%#v, want %#v",
+					decision,
+					testCase.expectedDecision,
+				)
+			}
+		})
+	}
 }
 
 func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
+	t.Run("empty events returns empty plan", func(t *testing.T) {
+		plan := buildWatcherEventPreClassificationPlanFromEvents(
+			nil,
+			newWatcherEventClassificationProber(nil),
+		)
+		if plan.configChanged {
+			t.Fatalf("expected configChanged=false for empty events, got %#v", plan)
+		}
+		if len(plan.addDirectoryWatchPaths) != 0 {
+			t.Fatalf("expected no addDirectoryWatchPaths for empty events, got %#v", plan.addDirectoryWatchPaths)
+		}
+		if len(plan.eventsToClassify) != 0 {
+			t.Fatalf("expected no eventsToClassify for empty events, got %#v", plan.eventsToClassify)
+		}
+	})
+
 	t.Run("short-circuits after config mutation and skips trailing probes", func(t *testing.T) {
 		configProbeCount := 0
 		statProbeCount := 0
@@ -286,10 +265,16 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 		if !plan.configChanged {
 			t.Fatal("expected configChanged=true when config mutation event is present")
 		}
-		if len(plan.plannedEvents) != 0 {
+		if len(plan.addDirectoryWatchPaths) != 0 {
 			t.Fatalf(
-				"expected no planned events when config mutation short-circuits, got %#v",
-				plan.plannedEvents,
+				"expected no addDirectoryWatchPaths when config mutation short-circuits, got %#v",
+				plan.addDirectoryWatchPaths,
+			)
+		}
+		if len(plan.eventsToClassify) != 0 {
+			t.Fatalf(
+				"expected no eventsToClassify when config mutation short-circuits, got %#v",
+				plan.eventsToClassify,
 			)
 		}
 		if configProbeCount != 2 {
@@ -324,14 +309,70 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 		if plan.configChanged {
 			t.Fatalf("expected configChanged=false when config mutation is absent, got %#v", plan)
 		}
-		if len(plan.plannedEvents) != 3 {
-			t.Fatalf("expected three planned events, got %#v", plan.plannedEvents)
+		if len(plan.addDirectoryWatchPaths) != 1 {
+			t.Fatalf("expected one addDirectoryWatchPath, got %#v", plan.addDirectoryWatchPaths)
+		}
+		if len(plan.eventsToClassify) != 3 {
+			t.Fatalf("expected three eventsToClassify, got %#v", plan.eventsToClassify)
 		}
 		if configProbeCount != 2 {
 			t.Fatalf("expected config probe to run once per unique path, got %d", configProbeCount)
 		}
 		if statProbeCount != 2 {
 			t.Fatalf("expected stat probe to run once per unique path, got %d", statProbeCount)
+		}
+	})
+
+	t.Run("preserves decisions and skips non-actionable directory write", func(t *testing.T) {
+		root := t.TempDir()
+		directoryPath := filepath.Join(root, "assets")
+		regularFilePath := filepath.Join(root, "app.go")
+		if err := os.MkdirAll(directoryPath, 0o755); err != nil {
+			t.Fatalf("failed creating directory path: %v", err)
+		}
+		if err := os.WriteFile(regularFilePath, []byte("package main"), 0o644); err != nil {
+			t.Fatalf("failed writing regular file: %v", err)
+		}
+
+		prober := newWatcherEventClassificationProber(func(string) bool {
+			return false
+		})
+		prober.statPathFn = func(path string) (os.FileInfo, error) {
+			return os.Stat(path)
+		}
+
+		plan := buildWatcherEventPreClassificationPlanFromEvents(
+			[]fsnotify.Event{
+				{Name: directoryPath, Op: fsnotify.Write},
+				{Name: filepath.Join(root, "new.txt"), Op: fsnotify.Create},
+				{Name: regularFilePath, Op: fsnotify.Write},
+			},
+			prober,
+		)
+
+		if plan.configChanged {
+			t.Fatalf("expected configChanged=false for non-config events, got %#v", plan)
+		}
+		if len(plan.addDirectoryWatchPaths) != 1 {
+			t.Fatalf("expected one addDirectoryWatchPath, got %#v", plan.addDirectoryWatchPaths)
+		}
+		if len(plan.eventsToClassify) != 2 {
+			t.Fatalf("expected two eventsToClassify (directory write skipped), got %#v", plan.eventsToClassify)
+		}
+
+		firstAddDirectoryPath := plan.addDirectoryWatchPaths[0]
+		if firstAddDirectoryPath != filepath.Join(root, "new.txt") {
+			t.Fatalf("expected addDirectoryWatch path to be new.txt create path, got %#v", firstAddDirectoryPath)
+		}
+
+		firstEventToClassify := plan.eventsToClassify[0]
+		if firstEventToClassify.Name != filepath.Join(root, "new.txt") {
+			t.Fatalf("expected first eventToClassify to be new.txt create, got %#v", firstEventToClassify)
+		}
+
+		secondEventToClassify := plan.eventsToClassify[1]
+		if secondEventToClassify.Name != regularFilePath {
+			t.Fatalf("expected second eventToClassify to be regular file write, got %#v", secondEventToClassify)
 		}
 	})
 }
@@ -358,6 +399,9 @@ func TestWatcherEventClassificationProber_CachesConfigProbeByPath(t *testing.T) 
 	}
 	if configProbeCount != 2 {
 		t.Fatalf("expected config probe function to be called once per unique path, got %d", configProbeCount)
+	}
+	if len(prober.pathProbeSnapshotByPath) != 2 {
+		t.Fatalf("expected one path probe snapshot per unique path, got %d", len(prober.pathProbeSnapshotByPath))
 	}
 }
 
@@ -398,6 +442,90 @@ func TestWatcherEventClassificationProber_CachesDirectoryProbeByPath(t *testing.
 	}
 	if statProbeCount != 2 {
 		t.Fatalf("expected missing path stat probe to run once, total stat probes=%d", statProbeCount)
+	}
+	if len(prober.pathProbeSnapshotByPath) != 2 {
+		t.Fatalf("expected one path probe snapshot per unique path, got %d", len(prober.pathProbeSnapshotByPath))
+	}
+}
+
+func TestWatcherEventClassificationProber_SharesSingleSnapshotAcrossProbeTypes(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "wave.config.json")
+	if err := os.WriteFile(configPath, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("failed creating test config file: %v", err)
+	}
+
+	configProbeCount := 0
+	statProbeCount := 0
+	prober := newWatcherEventClassificationProber(func(path string) bool {
+		configProbeCount++
+		return path == configPath
+	})
+	prober.statPathFn = func(path string) (os.FileInfo, error) {
+		statProbeCount++
+		return os.Stat(path)
+	}
+
+	if !prober.probeIsConfigFile(configPath) {
+		t.Fatal("expected config probe to return true for config path")
+	}
+	directoryProbeResult := prober.probeEventDirectoryStatus(configPath)
+	if !directoryProbeResult.statProbeSucceeded || directoryProbeResult.isDirectory {
+		t.Fatalf(
+			"expected config file directory probe to report existing non-directory path, got %#v",
+			directoryProbeResult,
+		)
+	}
+	if configProbeCount != 1 {
+		t.Fatalf("expected config probe function called once, got %d", configProbeCount)
+	}
+	if statProbeCount != 1 {
+		t.Fatalf("expected stat probe function called once, got %d", statProbeCount)
+	}
+
+	if len(prober.pathProbeSnapshotByPath) != 1 {
+		t.Fatalf(
+			"expected one shared path probe snapshot for config path, got %d",
+			len(prober.pathProbeSnapshotByPath),
+		)
+	}
+
+	pathProbeSnapshot := prober.pathProbeSnapshotByPath[configPath]
+	if pathProbeSnapshot == nil {
+		t.Fatalf("expected path probe snapshot for config path %q", configPath)
+	}
+	if !pathProbeSnapshot.hasConfigFileProbe || !pathProbeSnapshot.isConfigFile {
+		t.Fatalf(
+			"expected path probe snapshot to cache positive config probe result, got %#v",
+			pathProbeSnapshot,
+		)
+	}
+	if !pathProbeSnapshot.hasDirectoryProbe ||
+		!pathProbeSnapshot.directoryProbeState.statProbeSucceeded ||
+		pathProbeSnapshot.directoryProbeState.isDirectory {
+		t.Fatalf(
+			"expected path probe snapshot to cache directory probe result, got %#v",
+			pathProbeSnapshot,
+		)
+	}
+
+	if !prober.probeIsConfigFile(configPath) {
+		t.Fatal("expected cached config probe to remain true for config path")
+	}
+	directoryProbeResult = prober.probeEventDirectoryStatus(configPath)
+	if !directoryProbeResult.statProbeSucceeded || directoryProbeResult.isDirectory {
+		t.Fatalf(
+			"expected cached directory probe to remain existing non-directory path, got %#v",
+			directoryProbeResult,
+		)
+	}
+	if configProbeCount != 1 {
+		t.Fatalf("expected config probe count to remain cached at one call, got %d", configProbeCount)
+	}
+	if statProbeCount != 1 {
+		t.Fatalf("expected stat probe count to remain cached at one call, got %d", statProbeCount)
 	}
 }
 

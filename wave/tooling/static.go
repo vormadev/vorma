@@ -123,10 +123,6 @@ type staticChangedPathResolutionProbeResult struct {
 	shouldProcessFile bool
 }
 
-func canonicalizeChangedSourcePathForStaticResolution(changedSourcePath string) string {
-	return pathnorm.CanonicalizePathForLocationComparison(changedSourcePath)
-}
-
 func resolveStaticChangedPathResolutions(
 	sourceDirectoryPath string,
 	changedSourcePaths []string,
@@ -135,7 +131,7 @@ func resolveStaticChangedPathResolutions(
 		sourceDirectoryPath,
 		changedSourcePaths,
 		staticChangedPathResolutionProbeFunctions{
-			normalizeChangedSourcePath: canonicalizeChangedSourcePathForStaticResolution,
+			normalizeChangedSourcePath: pathnorm.CanonicalizePathForLocationComparison,
 			resolveStaticFileInfoFromSourcePath: func(
 				sourceDirectoryPath string,
 				sourcePath string,
@@ -170,7 +166,7 @@ func resolveStaticChangedPathResolutionsWithProbeFunctions(
 
 	normalizeChangedSourcePath := probeFunctions.normalizeChangedSourcePath
 	if normalizeChangedSourcePath == nil {
-		normalizeChangedSourcePath = canonicalizeChangedSourcePathForStaticResolution
+		normalizeChangedSourcePath = pathnorm.CanonicalizePathForLocationComparison
 	}
 
 	normalizedSourceDirectoryPath := normalizeChangedSourcePath(sourceDirectoryPath)
