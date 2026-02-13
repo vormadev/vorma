@@ -5,74 +5,70 @@ Context:
 - This list is inferred from canonical_refactor/\*.md as untrusted input.
 - Treat every item as a candidate until explicitly accepted.
 
-## Unify event execution flow to reduce duplication.
+## 1) Deterministic event execution model (primary)
 
-- Merge single-event and batched-event orchestration into one deterministic
-  classify -> plan -> execute pipeline.
-- Remove duplicated pre/concurrent/post hook and restart handling logic.
+- Keep one execution pipeline for watcher events: classify -> plan -> execute.
+- Remove behavioral duplication between single-event and batched-event paths.
+- Replace scattered flag mutation with explicit decision/result structs for:
+  build work, restart decision, and browser action.
+- Reduce refresh actions in a stable, deterministic order before restart/reload
+  decisions.
+- Ensure concurrent hook completion order cannot change final outcomes.
 - Target files: `wave/tooling/events.go`.
 
-## Make refresh-action reduction deterministic.
+Acceptance:
 
-- Reduce all hook-returned refresh actions in a stable order before
-  restart/reload decisions.
-- Ensure concurrent hook completion order cannot change final restart/reload
-  outcomes.
-- Target files: `wave/tooling/events.go`.
+- No duplicated orchestration branches for single vs batch behavior.
+- Same input event set always yields the same plan/outcome.
+- Table-driven tests lock deterministic refresh/restart behavior.
 
-## Keep lifecycle phases explicit inside dev tooling internals.
+## 2) Restart scheduling policy as pure logic
 
-- Keep boundaries clear between classification, planning, build execution,
-  restart, and browser-phase signaling.
-- Avoid hidden branching and mixed responsibilities.
-- Target files: `wave/tooling/devserver.go`, `wave/tooling/events.go`,
-  `wave/tooling/builder.go`.
+- Move restart request merge/upgrade policy to a pure function.
+- Keep channel code as transport only (enqueue/dequeue), not policy logic.
+- Add exhaustive table tests for config-restart precedence and upgrade rules.
+- Target files: `wave/tooling/devserver.go`,
+  `wave/tooling/devserver_restart_test.go`.
 
-## Replace bool-heavy event internals with explicit plan/result types.
+Acceptance:
 
-- Reduce scattered flag mutation in watcher execution code.
-- Make decision data explicit before side effects run.
-- Target files: `wave/tooling/events.go`.
+- Restart policy is testable without goroutines/channels.
+- Existing precedence behavior is preserved where intended.
 
-## Make restart request merge/upgrade policy a pure function.
+## 3) Path normalization consolidation
 
-- Move restart-channel upgrade semantics behind a deterministic function.
-- Add exhaustive table tests around config-restart precedence and upgrade rules.
-- Target files: `wave/tooling/devserver.go`.
+- Consolidate abs/clean/slash normalization into shared helpers by concern.
+- Eliminate duplicated path-shape logic across parse, watcher, config reload,
+  and event classification.
+- Target files: `wave/parse.go`, `wave/tooling/watcher.go`,
+  `wave/tooling/devserver.go`, `wave/tooling/events.go`.
 
-## Consolidate path/dependency normalization helpers.
+Acceptance:
 
-- Reduce duplicated path cleaning, slash conversion, abs/rel resolution helpers.
-- Keep one canonical normalization path per concern.
-- Target files: `wave/parse.go`, `wave/tooling/devserver.go`,
-  `wave/tooling/watcher.go`.
+- One canonical normalization path per concern.
+- No mismatched path-shape behavior across modules.
 
----
+## 4) File-processing efficiency (after deterministic core)
 
-## MAYBE (do last after discussion): Look for file-processing efficiency improvements.
+- Profile static/CSS processing on large asset trees and frequent edit cycles.
+- Reduce unnecessary full-tree work while preserving: deletion correctness, hash
+  correctness, and deterministic outputs.
+- Prefer targeted processing improvements over broad abstraction.
+- Target files: `wave/tooling/static.go`, `wave/tooling/css.go`,
+  `wave/tooling/events.go`, `wave/tooling/builder.go`.
 
-- Profile static/CSS file-processing paths under large asset trees and frequent
-  edit cycles.
-- Reduce unnecessary full-tree work while preserving deletion correctness and
-  deterministic outputs.
-- Prefer targeted planner/file-processing optimizations before introducing a
-  broader artifact-DAG abstraction.
-- Target files: `wave/tooling/static.go`, `wave/tooling/builder.go`,
-  `wave/tooling/events.go`.
+Acceptance:
 
-## MAYBE (do last after discussion): Revisit diagnostics from a clean slate.
+- Measured improvement under representative large-tree workloads.
+- No regression in file-map correctness or cleanup behavior.
 
-- Current state goal: no diagnostics command surface while Wave internals are
-  being simplified.
-- If reintroduced later, require explicit ROI and minimal scope (no speculative
-  framework).
+## 5) Diagnostics (deferred)
+
+- Revisit only after core behavior work above is stable.
+- If reintroduced, scope must be minimal and directly actionable.
 - Target files: `wave/tooling/cli.go`, `wave/tooling/events.go`.
 
----
-
-## RULES:
-
-### Preserve Wave guardrails during cleanup.
+## RULES
 
 - No non-JSON authored config path.
 - No builder-pattern APIs in Go.
