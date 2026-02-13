@@ -5,17 +5,6 @@ Context:
 - This list is inferred from canonical_refactor/\*.md as untrusted input.
 - Treat every item as a candidate until explicitly accepted.
 
-## Remove unapproved config abstraction/protocol/provider layer; keep Wave JSON-only.
-
-- Remove provider/source/protocol surfaces added under `wave/config_*` that
-  introduce config-as-code style indirection.
-- Remove source/dependency plumbing from runtime and devserver paths where it is
-  not strictly needed.
-- Keep config reload explicit and direct (resolved JSON config file path +
-  reparsing), not protocol-driven.
-- Acceptance: app-facing Wave config is JSON-only and reload behavior is
-  straightforward to trace.
-
 ## Unify event execution flow to reduce duplication.
 
 - Merge single-event and batched-event orchestration into one deterministic
@@ -58,22 +47,18 @@ Context:
 - Target files: `wave/parse.go`, `wave/tooling/devserver.go`,
   `wave/tooling/watcher.go`.
 
-## Add a flexibility-regression contract suite against refactor-2026-1 behavior.
-
-- Lock in end-user flexibility guarantees while internals are aggressively
-  simplified.
-- Cover watch hooks, restart/reload behavior, config reload expectations, and
-  static-serving behavior.
-- Target files: `wave/tooling/*_test.go`, `wave/*_test.go`.
-
 ---
 
-## MAYBE (do last after discussion): Evaluate artifact-DAG rebuild model only if it truly simplifies behavior.
+## MAYBE (do last after discussion): Look for file-processing efficiency improvements.
 
-- Consider replacing ad hoc rebuild flags with explicit artifact dependency
-  nodes/fingerprints.
-- Adopt only if complexity is reduced and rebuild performance improves at scale.
-- Target files: `wave/tooling/builder.go`, `wave/tooling/events.go`.
+- Profile static/CSS file-processing paths under large asset trees and frequent
+  edit cycles.
+- Reduce unnecessary full-tree work while preserving deletion correctness and
+  deterministic outputs.
+- Prefer targeted planner/file-processing optimizations before introducing a
+  broader artifact-DAG abstraction.
+- Target files: `wave/tooling/static.go`, `wave/tooling/builder.go`,
+  `wave/tooling/events.go`.
 
 ## MAYBE (do last after discussion): Revisit diagnostics from a clean slate.
 
