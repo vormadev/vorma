@@ -1,11 +1,16 @@
 package tooling
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/vormadev/vorma/kit/executil"
 )
 
 func TestRunHooks_DevRunsUserThenFramework(t *testing.T) {
@@ -107,5 +112,82 @@ func TestRunHooks_ReportsFrameworkHookErrorAfterUserHookRuns(t *testing.T) {
 	}
 	if string(content) != "user\n" {
 		t.Fatalf("unexpected content after framework failure:\n%s", string(content))
+	}
+}
+
+func TestRunHooks_DevHookTimeoutStopsUserHookQuickly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.DevBuildHookTimeoutMilliseconds = 100
+
+	frameworkMarkerPath := filepath.Join(root, "framework-should-not-run.log")
+	cfg.Core.DevBuildHook = "sleep 2"
+	cfg.FrameworkDevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(frameworkMarkerPath)
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	hookStartTime := time.Now()
+	err := builder.runHooks(true)
+	hookElapsedTime := time.Since(hookStartTime)
+	if err == nil {
+		t.Fatal("expected runHooks(true) to fail when dev hook times out")
+	}
+	if !errors.Is(err, executil.ErrCommandExecutionTimedOut) {
+		t.Fatalf("expected timed-out command classification, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "user build hook failed") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+	if hookElapsedTime > 1*time.Second {
+		t.Fatalf("expected timed-out dev hook to stop quickly, elapsed=%s", hookElapsedTime)
+	}
+	if _, statErr := os.Stat(frameworkMarkerPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected framework hook not to run after timed-out dev hook, stat error: %v", statErr)
+	}
+}
+
+func TestRunHooks_ProdHookTimeoutStopsFrameworkHookQuickly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ProdBuildHookTimeoutMilliseconds = 100
+
+	userMarkerPath := filepath.Join(root, "prod-user-ran.log")
+	cfg.Core.ProdBuildHook = "printf 'prod-user\\n' >> " + strconv.Quote(userMarkerPath)
+	cfg.FrameworkProdBuildHook = "sleep 2"
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	hookStartTime := time.Now()
+	err := builder.runHooks(false)
+	hookElapsedTime := time.Since(hookStartTime)
+	if err == nil {
+		t.Fatal("expected runHooks(false) to fail when prod framework hook times out")
+	}
+	if !errors.Is(err, executil.ErrCommandExecutionTimedOut) {
+		t.Fatalf("expected timed-out command classification, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "framework build hook failed") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+	if hookElapsedTime > 1*time.Second {
+		t.Fatalf("expected timed-out prod framework hook to stop quickly, elapsed=%s", hookElapsedTime)
+	}
+
+	userOutput, readUserOutputError := os.ReadFile(userMarkerPath)
+	if readUserOutputError != nil {
+		t.Fatalf("expected user prod hook to run before framework timeout: %v", readUserOutputError)
+	}
+	if string(userOutput) != "prod-user\n" {
+		t.Fatalf("unexpected user prod hook output before framework timeout:\n%s", string(userOutput))
 	}
 }

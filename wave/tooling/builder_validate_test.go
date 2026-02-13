@@ -95,6 +95,82 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 			t.Fatalf("unexpected error message: %v", err)
 		}
 	})
+
+	t.Run("rejects negative per-hook command timeout", func(t *testing.T) {
+		wf := &wave.WatchedFile{
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Cmd:                        "echo hello",
+					CommandTimeoutMilliseconds: -1,
+				},
+			},
+		}
+
+		err := validateWatchedFile(wf, 6)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "CommandTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects simultaneous disable-stage-timeout and per-hook-timeout", func(t *testing.T) {
+		wf := &wave.WatchedFile{
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Cmd:                        "echo hello",
+					CommandTimeoutMilliseconds: 100,
+					DisableStageCommandTimeout: true,
+				},
+			},
+		}
+
+		err := validateWatchedFile(wf, 7)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "DisableStageCommandTimeout") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects negative per-hook callback timeout", func(t *testing.T) {
+		wf := &wave.WatchedFile{
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					CallbackTimeoutMilliseconds: -1,
+				},
+			},
+		}
+
+		err := validateWatchedFile(wf, 8)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "CallbackTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects simultaneous disable-stage-callback-timeout and per-hook-callback-timeout", func(t *testing.T) {
+		wf := &wave.WatchedFile{
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					CallbackTimeoutMilliseconds: 100,
+					DisableStageCallbackTimeout: true,
+				},
+			},
+		}
+
+		err := validateWatchedFile(wf, 9)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "DisableStageCallbackTimeout") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
 }
 
 func TestValidateConfig_StaticDirRules(t *testing.T) {
@@ -131,6 +207,275 @@ func TestValidateConfig_StaticDirRules(t *testing.T) {
 
 		if err := ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+}
+
+func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
+	baseConfig := &wave.ParsedConfig{
+		Core: &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+		},
+		Watch: &wave.WatchConfig{},
+	}
+
+	t.Run("accepts non-negative timeout values", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCommandTimeouts: wave.HookCommandTimeoutConfig{
+				PreCommandTimeoutMilliseconds:              250,
+				ConcurrentCommandTimeoutMilliseconds:       500,
+				ConcurrentNoWaitCommandTimeoutMilliseconds: 600,
+				PostCommandTimeoutMilliseconds:             750,
+			},
+		}
+
+		if err := ValidateConfig(&cfg); err != nil {
+			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+
+	t.Run("rejects negative pre timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCommandTimeouts: wave.HookCommandTimeoutConfig{
+				PreCommandTimeoutMilliseconds: -1,
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative pre timeout")
+		}
+		if !strings.Contains(err.Error(), "PreCommandTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects negative concurrent timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCommandTimeouts: wave.HookCommandTimeoutConfig{
+				ConcurrentCommandTimeoutMilliseconds: -1,
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative concurrent timeout")
+		}
+		if !strings.Contains(err.Error(), "ConcurrentCommandTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects negative concurrent-no-wait timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCommandTimeouts: wave.HookCommandTimeoutConfig{
+				ConcurrentNoWaitCommandTimeoutMilliseconds: -1,
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative concurrent-no-wait timeout")
+		}
+		if !strings.Contains(err.Error(), "ConcurrentNoWaitCommandTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects negative post timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCommandTimeouts: wave.HookCommandTimeoutConfig{
+				PostCommandTimeoutMilliseconds: -1,
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative post timeout")
+		}
+		if !strings.Contains(err.Error(), "PostCommandTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+}
+
+func TestValidateConfig_BuildHookTimeoutValidation(t *testing.T) {
+	baseConfig := &wave.ParsedConfig{
+		Core: &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+		},
+	}
+
+	t.Run("accepts non-negative core build hook timeouts", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Core = &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+			DevBuildHookTimeoutMilliseconds:  250,
+			ProdBuildHookTimeoutMilliseconds: 500,
+		}
+
+		if err := ValidateConfig(&cfg); err != nil {
+			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+
+	t.Run("rejects negative dev build hook timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Core = &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+			DevBuildHookTimeoutMilliseconds: -1,
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative dev build hook timeout")
+		}
+		if !strings.Contains(err.Error(), "DevBuildHookTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects negative prod build hook timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Core = &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+			ProdBuildHookTimeoutMilliseconds: -1,
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative prod build hook timeout")
+		}
+		if !strings.Contains(err.Error(), "ProdBuildHookTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+}
+
+func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
+	baseConfig := &wave.ParsedConfig{
+		Core: &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+		},
+		Watch: &wave.WatchConfig{},
+	}
+
+	t.Run("accepts non-negative callback timeout values", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCallbackTimeouts: wave.HookCallbackTimeoutConfig{
+				PreCallbackTimeoutMilliseconds:              250,
+				ConcurrentCallbackTimeoutMilliseconds:       500,
+				ConcurrentNoWaitCallbackTimeoutMilliseconds: 600,
+				PostCallbackTimeoutMilliseconds:             750,
+			},
+		}
+
+		if err := ValidateConfig(&cfg); err != nil {
+			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+
+	t.Run("rejects negative pre callback timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCallbackTimeouts: wave.HookCallbackTimeoutConfig{
+				PreCallbackTimeoutMilliseconds: -1,
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative pre callback timeout")
+		}
+		if !strings.Contains(err.Error(), "PreCallbackTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects negative concurrent callback timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCallbackTimeouts: wave.HookCallbackTimeoutConfig{
+				ConcurrentCallbackTimeoutMilliseconds: -1,
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative concurrent callback timeout")
+		}
+		if !strings.Contains(err.Error(), "ConcurrentCallbackTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects negative concurrent-no-wait callback timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCallbackTimeouts: wave.HookCallbackTimeoutConfig{
+				ConcurrentNoWaitCallbackTimeoutMilliseconds: -1,
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative concurrent-no-wait callback timeout")
+		}
+		if !strings.Contains(err.Error(), "ConcurrentNoWaitCallbackTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects negative post callback timeout", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookCallbackTimeouts: wave.HookCallbackTimeoutConfig{
+				PostCallbackTimeoutMilliseconds: -1,
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for negative post callback timeout")
+		}
+		if !strings.Contains(err.Error(), "PostCallbackTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
 		}
 	})
 }

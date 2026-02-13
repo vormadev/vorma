@@ -21,8 +21,12 @@ const (
 )
 
 type hookExecutionPlan struct {
-	callback func(*wave.HookContext) (*wave.RefreshAction, error)
-	command  string
+	callback                    func(*wave.HookContext) (*wave.RefreshAction, error)
+	command                     string
+	commandTimeoutMilliseconds  int
+	disableStageCommandTimeout  bool
+	callbackTimeoutMilliseconds int
+	disableStageCallbackTimeout bool
 }
 
 func deriveHookStageExecutionDescriptors(
@@ -77,8 +81,12 @@ func deriveHookExecutionPlanFromHook(
 	}
 
 	return hookExecutionPlan{
-		callback: hook.Callback,
-		command:  resolvedCommand,
+		callback:                    hook.Callback,
+		command:                     resolvedCommand,
+		commandTimeoutMilliseconds:  hook.CommandTimeoutMilliseconds,
+		disableStageCommandTimeout:  hook.DisableStageCommandTimeout,
+		callbackTimeoutMilliseconds: hook.CallbackTimeoutMilliseconds,
+		disableStageCallbackTimeout: hook.DisableStageCallbackTimeout,
 	}
 }
 

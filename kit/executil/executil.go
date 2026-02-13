@@ -2,11 +2,17 @@ package executil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+)
+
+var (
+	ErrCommandExecutionTimedOut = errors.New("command execution timed out")
+	ErrCommandExecutionCanceled = errors.New("command execution canceled")
 )
 
 func MakeCmdRunner(commands ...string) func() error {
@@ -66,5 +72,31 @@ func RunShellWithContext(
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+
+	runCommandError := cmd.Run()
+	if runCommandError == nil {
+		return nil
+	}
+
+	if commandExecutionContext == nil {
+		return runCommandError
+	}
+
+	commandExecutionContextError := commandExecutionContext.Err()
+	if errors.Is(commandExecutionContextError, context.DeadlineExceeded) {
+		return fmt.Errorf(
+			"%w: %w",
+			ErrCommandExecutionTimedOut,
+			runCommandError,
+		)
+	}
+	if errors.Is(commandExecutionContextError, context.Canceled) {
+		return fmt.Errorf(
+			"%w: %w",
+			ErrCommandExecutionCanceled,
+			runCommandError,
+		)
+	}
+
+	return runCommandError
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/wave"
@@ -32,6 +33,46 @@ func deriveHookStageLabel(
 	default:
 		return "unknown"
 	}
+}
+
+func deriveHookStageTypeFromTiming(
+	hookTiming wave.Timing,
+) hookStageType {
+	switch hookTiming {
+	case wave.OnChangeStrategyConcurrent:
+		return hookStageTypeConcurrent
+	case wave.OnChangeStrategyPost:
+		return hookStageTypePost
+	case wave.OnChangeStrategyConcurrentNoWait:
+		return hookStageTypeConcurrentNoWait
+	default:
+		return hookStageTypePre
+	}
+}
+
+func deriveHookExecutionContext(
+	parentHookExecutionContext context.Context,
+) context.Context {
+	if parentHookExecutionContext == nil {
+		return context.Background()
+	}
+	return parentHookExecutionContext
+}
+
+func cloneHookContextForExecution(
+	hookContext *wave.HookContext,
+	hookExecutionContext context.Context,
+) *wave.HookContext {
+	if hookContext == nil {
+		return &wave.HookContext{
+			ExecutionContext: hookExecutionContext,
+		}
+	}
+
+	clonedHookContext := *hookContext
+	clonedHookContext.ChangedFilePaths = append([]string(nil), hookContext.ChangedFilePaths...)
+	clonedHookContext.ExecutionContext = hookExecutionContext
+	return &clonedHookContext
 }
 
 func wrapHookExecutionErrorWithStageAndPath(
@@ -284,9 +325,25 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 	for _, plan := range plans {
 		if plan.callback != nil {
 			callbackForExecution := plan.callback
-			hookContextForExecution := ewh.hookCtx
 			changedFilePathForExecution := ewh.classified.event.Name
+			hookCallbackTimeoutForExecution := s.deriveHookCallbackTimeoutForExecutionPlan(
+				hookStageTypeConcurrentNoWait,
+				plan,
+			)
 			s.runNoWaitHookWithConcurrencyLimit(func() {
+				hookCallbackExecutionContext, cancelHookCallbackExecutionContext := deriveExecutionContextWithOptionalTimeout(
+					nil,
+					hookCallbackTimeoutForExecution,
+				)
+				if cancelHookCallbackExecutionContext != nil {
+					defer cancelHookCallbackExecutionContext()
+				}
+
+				hookContextForExecution := cloneHookContextForExecution(
+					ewh.hookCtx,
+					deriveHookExecutionContext(hookCallbackExecutionContext),
+				)
+
 				if _, err := executeHookCallbackSafely(
 					callbackForExecution,
 					hookContextForExecution,
@@ -306,8 +363,23 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 		if strings.TrimSpace(plan.command) != "" {
 			commandForExecution := plan.command
 			changedFilePathForExecution := ewh.classified.event.Name
+			hookCommandTimeoutForExecution := s.deriveHookCommandTimeoutForExecutionPlan(
+				hookStageTypeConcurrentNoWait,
+				plan,
+			)
 			s.runNoWaitHookWithConcurrencyLimit(func() {
-				if err := executil.RunShell(commandForExecution); err != nil {
+				hookCommandExecutionContext, cancelHookCommandExecutionContext := deriveExecutionContextWithOptionalTimeout(
+					nil,
+					hookCommandTimeoutForExecution,
+				)
+				if cancelHookCommandExecutionContext != nil {
+					defer cancelHookCommandExecutionContext()
+				}
+
+				if err := executeHookCommandWithContext(
+					hookCommandExecutionContext,
+					commandForExecution,
+				); err != nil {
 					s.log.Warn(
 						"concurrent-no-wait hook failed",
 						"stage",
@@ -335,7 +407,12 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 		s.resolveHookCommand,
 	)
 	for _, plan := range plans {
-		action, err := s.executeHookExecutionPlan(plan, ewh.hookCtx)
+		action, err := s.executeHookExecutionPlanWithContext(
+			nil,
+			hookStageTypePre,
+			plan,
+			ewh.hookCtx,
+		)
 		if action != nil {
 			actions = append(actions, *action)
 		}
@@ -392,6 +469,7 @@ func (s *server) runConcurrentHooksWithContext(
 
 			action, err := s.executeHookExecutionPlanWithContext(
 				concurrentHookExecutionContext,
+				hookStageTypeConcurrent,
 				planForExecution,
 				ewh.hookCtx,
 			)
@@ -428,7 +506,12 @@ func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refr
 		s.resolveHookCommand,
 	)
 	for _, plan := range plans {
-		action, err := s.executeHookExecutionPlan(plan, ewh.hookCtx)
+		action, err := s.executeHookExecutionPlanWithContext(
+			nil,
+			hookStageTypePost,
+			plan,
+			ewh.hookCtx,
+		)
 		if action != nil {
 			actions = append(actions, *action)
 		}
@@ -450,51 +533,102 @@ func (s *server) executeHook(
 ) (*wave.RefreshAction, error) {
 	return s.executeHookExecutionPlanWithContext(
 		nil,
+		deriveHookStageTypeFromTiming(hook.Timing),
 		deriveHookExecutionPlanFromHook(hook, s.resolveHookCommand),
 		hookContext,
 	)
 }
 
 func (s *server) executeHookExecutionPlan(
+	stageType hookStageType,
 	plan hookExecutionPlan,
 	hookContext *wave.HookContext,
 ) (*wave.RefreshAction, error) {
 	return s.executeHookExecutionPlanWithContext(
 		nil,
+		stageType,
 		plan,
 		hookContext,
 	)
 }
 
-func deriveConcurrentHookExecutionContextError(
-	concurrentHookExecutionContext context.Context,
+func deriveHookExecutionContextError(
+	hookExecutionContext context.Context,
 ) error {
-	if concurrentHookExecutionContext == nil {
+	if hookExecutionContext == nil {
 		return nil
 	}
-	return concurrentHookExecutionContext.Err()
+	return hookExecutionContext.Err()
 }
 
 func executeHookCommandWithContext(
-	concurrentHookExecutionContext context.Context,
+	hookCommandExecutionContext context.Context,
 	command string,
 ) error {
-	if concurrentHookExecutionContext == nil {
-		return executil.RunShell(command)
+	return executil.RunShellWithContext(hookCommandExecutionContext, command)
+}
+
+func (s *server) deriveHookCommandTimeoutForExecutionPlan(
+	stageType hookStageType,
+	executionPlan hookExecutionPlan,
+) time.Duration {
+	if s == nil || s.cfg == nil {
+		return deriveHookCommandTimeoutDurationForExecutionPlan(
+			nil,
+			stageType,
+			executionPlan,
+		)
 	}
-	return executil.RunShellWithContext(concurrentHookExecutionContext, command)
+	return deriveHookCommandTimeoutDurationForExecutionPlan(
+		s.cfg.Watch,
+		stageType,
+		executionPlan,
+	)
+}
+
+func (s *server) deriveHookCallbackTimeoutForExecutionPlan(
+	stageType hookStageType,
+	executionPlan hookExecutionPlan,
+) time.Duration {
+	if s == nil || s.cfg == nil {
+		return deriveHookCallbackTimeoutDurationForExecutionPlan(
+			nil,
+			stageType,
+			executionPlan,
+		)
+	}
+	return deriveHookCallbackTimeoutDurationForExecutionPlan(
+		s.cfg.Watch,
+		stageType,
+		executionPlan,
+	)
 }
 
 func (s *server) executeHookExecutionPlanWithContext(
-	concurrentHookExecutionContext context.Context,
+	parentHookExecutionContext context.Context,
+	stageType hookStageType,
 	plan hookExecutionPlan,
 	hookContext *wave.HookContext,
 ) (*wave.RefreshAction, error) {
 	var action *wave.RefreshAction
 	if plan.callback != nil {
+		hookCallbackExecutionContext, cancelHookCallbackExecutionContext := deriveExecutionContextWithOptionalTimeout(
+			parentHookExecutionContext,
+			s.deriveHookCallbackTimeoutForExecutionPlan(stageType, plan),
+		)
+		if cancelHookCallbackExecutionContext != nil {
+			defer cancelHookCallbackExecutionContext()
+		}
+
+		hookExecutionContext := deriveHookExecutionContext(hookCallbackExecutionContext)
+		hookContextForExecution := cloneHookContextForExecution(
+			hookContext,
+			hookExecutionContext,
+		)
+
 		callbackAction, err := executeHookCallbackSafely(
 			plan.callback,
-			hookContext,
+			hookContextForExecution,
 		)
 		if err != nil {
 			return nil, err
@@ -503,12 +637,20 @@ func (s *server) executeHookExecutionPlanWithContext(
 	}
 
 	if strings.TrimSpace(plan.command) != "" {
-		if !shouldContinueConcurrentHookExecution(concurrentHookExecutionContext) {
-			return action, deriveConcurrentHookExecutionContextError(concurrentHookExecutionContext)
+		hookCommandExecutionContext, cancelHookCommandExecutionContext := deriveExecutionContextWithOptionalTimeout(
+			parentHookExecutionContext,
+			s.deriveHookCommandTimeoutForExecutionPlan(stageType, plan),
+		)
+		if cancelHookCommandExecutionContext != nil {
+			defer cancelHookCommandExecutionContext()
+		}
+
+		if !shouldContinueConcurrentHookExecution(hookCommandExecutionContext) {
+			return action, deriveHookExecutionContextError(hookCommandExecutionContext)
 		}
 
 		if err := executeHookCommandWithContext(
-			concurrentHookExecutionContext,
+			hookCommandExecutionContext,
 			plan.command,
 		); err != nil {
 			return action, err

@@ -3,6 +3,7 @@
 package wave
 
 import (
+	"context"
 	"path/filepath"
 	"runtime"
 
@@ -139,16 +140,18 @@ type ParsedConfig struct {
 }
 
 type CoreConfig struct {
-	ConfigLocation    string          `json:"ConfigLocation,omitempty"`
-	DevBuildHook      string          `json:"DevBuildHook,omitempty"`
-	ProdBuildHook     string          `json:"ProdBuildHook,omitempty"`
-	MainAppEntry      string          `json:"MainAppEntry"`
-	DistDir           string          `json:"DistDir"`
-	StaticAssetDirs   StaticAssetDirs `json:"StaticAssetDirs"`
-	CSSEntryFiles     CSSEntryFiles   `json:"CSSEntryFiles,omitempty"`
-	PublicPathPrefix  string          `json:"PublicPathPrefix,omitempty"`
-	ServerOnlyMode    bool            `json:"ServerOnlyMode,omitempty"`
-	SequentialGoBuild bool            `json:"SequentialGoBuild,omitempty"`
+	ConfigLocation                   string          `json:"ConfigLocation,omitempty"`
+	DevBuildHook                     string          `json:"DevBuildHook,omitempty"`
+	DevBuildHookTimeoutMilliseconds  int             `json:"DevBuildHookTimeoutMilliseconds,omitempty"`
+	ProdBuildHook                    string          `json:"ProdBuildHook,omitempty"`
+	ProdBuildHookTimeoutMilliseconds int             `json:"ProdBuildHookTimeoutMilliseconds,omitempty"`
+	MainAppEntry                     string          `json:"MainAppEntry"`
+	DistDir                          string          `json:"DistDir"`
+	StaticAssetDirs                  StaticAssetDirs `json:"StaticAssetDirs"`
+	CSSEntryFiles                    CSSEntryFiles   `json:"CSSEntryFiles,omitempty"`
+	PublicPathPrefix                 string          `json:"PublicPathPrefix,omitempty"`
+	ServerOnlyMode                   bool            `json:"ServerOnlyMode,omitempty"`
+	SequentialGoBuild                bool            `json:"SequentialGoBuild,omitempty"`
 }
 
 type StaticAssetDirs struct {
@@ -169,13 +172,29 @@ type ViteConfig struct {
 }
 
 type WatchConfig struct {
-	WatchRoot           string        `json:"WatchRoot,omitempty"`
-	HealthcheckEndpoint string        `json:"HealthcheckEndpoint,omitempty"`
-	Include             []WatchedFile `json:"Include,omitempty"`
-	Exclude             struct {
+	WatchRoot            string                    `json:"WatchRoot,omitempty"`
+	HealthcheckEndpoint  string                    `json:"HealthcheckEndpoint,omitempty"`
+	HookCommandTimeouts  HookCommandTimeoutConfig  `json:"HookCommandTimeouts,omitempty"`
+	HookCallbackTimeouts HookCallbackTimeoutConfig `json:"HookCallbackTimeouts,omitempty"`
+	Include              []WatchedFile             `json:"Include,omitempty"`
+	Exclude              struct {
 		Dirs  []string `json:"Dirs,omitempty"`
 		Files []string `json:"Files,omitempty"`
 	} `json:"Exclude,omitempty"`
+}
+
+type HookCommandTimeoutConfig struct {
+	PreCommandTimeoutMilliseconds              int `json:"PreCommandTimeoutMilliseconds,omitempty"`
+	ConcurrentCommandTimeoutMilliseconds       int `json:"ConcurrentCommandTimeoutMilliseconds,omitempty"`
+	ConcurrentNoWaitCommandTimeoutMilliseconds int `json:"ConcurrentNoWaitCommandTimeoutMilliseconds,omitempty"`
+	PostCommandTimeoutMilliseconds             int `json:"PostCommandTimeoutMilliseconds,omitempty"`
+}
+
+type HookCallbackTimeoutConfig struct {
+	PreCallbackTimeoutMilliseconds              int `json:"PreCallbackTimeoutMilliseconds,omitempty"`
+	ConcurrentCallbackTimeoutMilliseconds       int `json:"ConcurrentCallbackTimeoutMilliseconds,omitempty"`
+	ConcurrentNoWaitCallbackTimeoutMilliseconds int `json:"ConcurrentNoWaitCallbackTimeoutMilliseconds,omitempty"`
+	PostCallbackTimeoutMilliseconds             int `json:"PostCallbackTimeoutMilliseconds,omitempty"`
 }
 
 type WatchedFile struct {
@@ -199,6 +218,10 @@ type SortedHooks struct {
 
 // HookContext provides context to callbacks during file change handling.
 type HookContext struct {
+	// ExecutionContext is canceled when the surrounding execution pipeline is
+	// canceled (for example, concurrent stage cancellation after build failure).
+	// Callback hooks can watch this context for cooperative cancellation.
+	ExecutionContext context.Context
 	// FilePath is the absolute path of the changed file.
 	FilePath string
 	// ChangedFilePaths contains all changed file paths associated with the hook
@@ -235,6 +258,14 @@ type RefreshAction struct {
 type OnChangeHook struct {
 	// Cmd is a shell command to run.
 	Cmd string `json:"Cmd,omitempty"`
+	// CommandTimeoutMilliseconds overrides stage-level command timeout for this hook when > 0.
+	CommandTimeoutMilliseconds int `json:"CommandTimeoutMilliseconds,omitempty"`
+	// DisableStageCommandTimeout disables stage-level command timeout for this hook.
+	DisableStageCommandTimeout bool `json:"DisableStageCommandTimeout,omitempty"`
+	// CallbackTimeoutMilliseconds overrides stage-level callback timeout for this hook when > 0.
+	CallbackTimeoutMilliseconds int `json:"CallbackTimeoutMilliseconds,omitempty"`
+	// DisableStageCallbackTimeout disables stage-level callback timeout for this hook.
+	DisableStageCallbackTimeout bool `json:"DisableStageCallbackTimeout,omitempty"`
 	// RunCombinedDevBuildHookCommands executes the configured development build
 	// hooks in order (Core.DevBuildHook then framework dev build hook).
 	RunCombinedDevBuildHookCommands bool `json:"RunCombinedDevBuildHookCommands,omitempty"`

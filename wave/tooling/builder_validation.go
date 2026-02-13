@@ -19,6 +19,12 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 	if cfg.Core.DistDir == "" {
 		return fmt.Errorf("config: Core.DistDir is required")
 	}
+	if cfg.Core.DevBuildHookTimeoutMilliseconds < 0 {
+		return fmt.Errorf("config: Core.DevBuildHookTimeoutMilliseconds must be >= 0")
+	}
+	if cfg.Core.ProdBuildHookTimeoutMilliseconds < 0 {
+		return fmt.Errorf("config: Core.ProdBuildHookTimeoutMilliseconds must be >= 0")
+	}
 
 	if !cfg.Core.ServerOnlyMode {
 		if cfg.Core.StaticAssetDirs.Private == "" {
@@ -36,6 +42,13 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 	}
 
 	if cfg.Watch != nil {
+		if err := validateHookCommandTimeoutConfig(cfg.Watch.HookCommandTimeouts); err != nil {
+			return err
+		}
+		if err := validateHookCallbackTimeoutConfig(cfg.Watch.HookCallbackTimeouts); err != nil {
+			return err
+		}
+
 		for i, watchedFile := range cfg.Watch.Include {
 			if err := validateWatchedFile(&watchedFile, i); err != nil {
 				return err
@@ -46,8 +59,97 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 	return nil
 }
 
+func validateHookCallbackTimeoutConfig(
+	hookCallbackTimeoutConfig wave.HookCallbackTimeoutConfig,
+) error {
+	if hookCallbackTimeoutConfig.PreCallbackTimeoutMilliseconds < 0 {
+		return fmt.Errorf(
+			"config: Watch.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds must be >= 0",
+		)
+	}
+
+	if hookCallbackTimeoutConfig.ConcurrentCallbackTimeoutMilliseconds < 0 {
+		return fmt.Errorf(
+			"config: Watch.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds must be >= 0",
+		)
+	}
+
+	if hookCallbackTimeoutConfig.ConcurrentNoWaitCallbackTimeoutMilliseconds < 0 {
+		return fmt.Errorf(
+			"config: Watch.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds must be >= 0",
+		)
+	}
+
+	if hookCallbackTimeoutConfig.PostCallbackTimeoutMilliseconds < 0 {
+		return fmt.Errorf(
+			"config: Watch.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds must be >= 0",
+		)
+	}
+
+	return nil
+}
+
+func validateHookCommandTimeoutConfig(
+	hookCommandTimeoutConfig wave.HookCommandTimeoutConfig,
+) error {
+	if hookCommandTimeoutConfig.PreCommandTimeoutMilliseconds < 0 {
+		return fmt.Errorf(
+			"config: Watch.HookCommandTimeouts.PreCommandTimeoutMilliseconds must be >= 0",
+		)
+	}
+
+	if hookCommandTimeoutConfig.ConcurrentCommandTimeoutMilliseconds < 0 {
+		return fmt.Errorf(
+			"config: Watch.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds must be >= 0",
+		)
+	}
+
+	if hookCommandTimeoutConfig.ConcurrentNoWaitCommandTimeoutMilliseconds < 0 {
+		return fmt.Errorf(
+			"config: Watch.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds must be >= 0",
+		)
+	}
+
+	if hookCommandTimeoutConfig.PostCommandTimeoutMilliseconds < 0 {
+		return fmt.Errorf(
+			"config: Watch.HookCommandTimeouts.PostCommandTimeoutMilliseconds must be >= 0",
+		)
+	}
+
+	return nil
+}
+
 func validateWatchedFile(wf *wave.WatchedFile, index int) error {
 	for hookIndex, hook := range wf.OnChangeHooks {
+		if hook.CommandTimeoutMilliseconds < 0 {
+			return fmt.Errorf(
+				"config: Watch.Include[%d].OnChangeHooks[%d].CommandTimeoutMilliseconds must be >= 0",
+				index,
+				hookIndex,
+			)
+		}
+		if hook.DisableStageCommandTimeout && hook.CommandTimeoutMilliseconds > 0 {
+			return fmt.Errorf(
+				"config: Watch.Include[%d].OnChangeHooks[%d] cannot set both DisableStageCommandTimeout and CommandTimeoutMilliseconds",
+				index,
+				hookIndex,
+			)
+		}
+		if hook.CallbackTimeoutMilliseconds < 0 {
+			return fmt.Errorf(
+				"config: Watch.Include[%d].OnChangeHooks[%d].CallbackTimeoutMilliseconds must be >= 0",
+				index,
+				hookIndex,
+			)
+		}
+		if hook.DisableStageCallbackTimeout && hook.CallbackTimeoutMilliseconds > 0 {
+			return fmt.Errorf(
+				"config: Watch.Include[%d].OnChangeHooks[%d] cannot set both DisableStageCallbackTimeout and CallbackTimeoutMilliseconds",
+				index,
+				hookIndex,
+			)
+		}
+
 		if strings.TrimSpace(hook.Cmd) != "" && hook.RunCombinedDevBuildHookCommands {
 			return fmt.Errorf(
 				"config: Watch.Include[%d].OnChangeHooks[%d] cannot set both Cmd and RunCombinedDevBuildHookCommands",

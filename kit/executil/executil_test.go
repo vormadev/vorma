@@ -2,6 +2,7 @@ package executil
 
 import (
 	"context"
+	"errors"
 	"os"
 	"runtime"
 	"testing"
@@ -70,10 +71,28 @@ func TestRunShellWithContext_CancelStopsCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected canceled shell command to return error")
 	}
+	if !errors.Is(err, ErrCommandExecutionTimedOut) {
+		t.Fatalf("expected timed-out command classification, got %v", err)
+	}
 	if commandElapsedTime > 1*time.Second {
 		t.Fatalf(
 			"expected canceled shell command to stop quickly, elapsed=%s",
 			commandElapsedTime,
 		)
+	}
+}
+
+func TestRunShellWithContext_CancelClassifiesCanceledCommand(t *testing.T) {
+	commandExecutionContext, cancelCommandExecutionContext := context.WithCancel(
+		context.Background(),
+	)
+	cancelCommandExecutionContext()
+
+	err := RunShellWithContext(commandExecutionContext, "echo should-not-run")
+	if err == nil {
+		t.Fatal("expected canceled shell command to return error")
+	}
+	if !errors.Is(err, ErrCommandExecutionCanceled) {
+		t.Fatalf("expected canceled command classification, got %v", err)
 	}
 }

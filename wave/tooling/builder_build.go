@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -124,20 +125,57 @@ func (b *Builder) runHooks(isDev bool) error {
 	}
 
 	// User hooks first -- they may generate Go types used in loaders/actions
+	buildHookCommandTimeout := b.deriveBuildHookCommandTimeout(isDev)
 	if userHook != "" {
-		if err := executil.RunShell(userHook); err != nil {
+		if err := runBuildHookCommandWithTimeout(
+			userHook,
+			buildHookCommandTimeout,
+		); err != nil {
 			return fmt.Errorf("user build hook failed: %w", err)
 		}
 	}
 
 	// Framework hooks second -- Vorma reflects on the final Go types
 	if frameworkHook != "" {
-		if err := executil.RunShell(frameworkHook); err != nil {
+		if err := runBuildHookCommandWithTimeout(
+			frameworkHook,
+			buildHookCommandTimeout,
+		); err != nil {
 			return fmt.Errorf("framework build hook failed: %w", err)
 		}
 	}
 
 	return nil
+}
+
+func (b *Builder) deriveBuildHookCommandTimeout(
+	isDev bool,
+) time.Duration {
+	if b == nil || b.cfg == nil {
+		return 0
+	}
+	return deriveBuildHookCommandTimeoutDuration(
+		b.cfg.Core,
+		isDev,
+	)
+}
+
+func runBuildHookCommandWithTimeout(
+	buildHookCommand string,
+	buildHookCommandTimeout time.Duration,
+) error {
+	buildHookCommandExecutionContext, cancelBuildHookCommandExecutionContext := deriveExecutionContextWithOptionalTimeout(
+		context.Background(),
+		buildHookCommandTimeout,
+	)
+	if cancelBuildHookCommandExecutionContext != nil {
+		defer cancelBuildHookCommandExecutionContext()
+	}
+
+	return executil.RunShellWithContext(
+		buildHookCommandExecutionContext,
+		buildHookCommand,
+	)
 }
 
 func (b *Builder) compileGo(isDev bool) error {

@@ -18,27 +18,31 @@ var coreSchema = jsonschema.RequiredObject(jsonschema.Def{
 		},
 	}},
 	Properties: struct {
-		ConfigLocation    jsonschema.Entry
-		DevBuildHook      jsonschema.Entry
-		ProdBuildHook     jsonschema.Entry
-		MainAppEntry      jsonschema.Entry
-		DistDir           jsonschema.Entry
-		StaticAssetDirs   jsonschema.Entry
-		CSSEntryFiles     jsonschema.Entry
-		PublicPathPrefix  jsonschema.Entry
-		ServerOnlyMode    jsonschema.Entry
-		SequentialGoBuild jsonschema.Entry
+		ConfigLocation                   jsonschema.Entry
+		DevBuildHook                     jsonschema.Entry
+		DevBuildHookTimeoutMilliseconds  jsonschema.Entry
+		ProdBuildHook                    jsonschema.Entry
+		ProdBuildHookTimeoutMilliseconds jsonschema.Entry
+		MainAppEntry                     jsonschema.Entry
+		DistDir                          jsonschema.Entry
+		StaticAssetDirs                  jsonschema.Entry
+		CSSEntryFiles                    jsonschema.Entry
+		PublicPathPrefix                 jsonschema.Entry
+		ServerOnlyMode                   jsonschema.Entry
+		SequentialGoBuild                jsonschema.Entry
 	}{
-		ConfigLocation:    configLocationSchema,
-		DevBuildHook:      devBuildHookSchema,
-		ProdBuildHook:     prodBuildHookSchema,
-		MainAppEntry:      mainAppEntrySchema,
-		DistDir:           distDirSchema,
-		StaticAssetDirs:   staticAssetDirsSchema,
-		CSSEntryFiles:     cssEntryFilesSchema,
-		PublicPathPrefix:  publicPathPrefixSchema,
-		ServerOnlyMode:    serverOnlyModeSchema,
-		SequentialGoBuild: sequentialGoBuildSchema,
+		ConfigLocation:                   configLocationSchema,
+		DevBuildHook:                     devBuildHookSchema,
+		DevBuildHookTimeoutMilliseconds:  devBuildHookTimeoutMillisecondsSchema,
+		ProdBuildHook:                    prodBuildHookSchema,
+		ProdBuildHookTimeoutMilliseconds: prodBuildHookTimeoutMillisecondsSchema,
+		MainAppEntry:                     mainAppEntrySchema,
+		DistDir:                          distDirSchema,
+		StaticAssetDirs:                  staticAssetDirsSchema,
+		CSSEntryFiles:                    cssEntryFilesSchema,
+		PublicPathPrefix:                 publicPathPrefixSchema,
+		ServerOnlyMode:                   serverOnlyModeSchema,
+		SequentialGoBuild:                sequentialGoBuildSchema,
 	},
 })
 
@@ -53,9 +57,17 @@ var devBuildHookSchema = jsonschema.OptionalString(jsonschema.Def{
 	Examples:    []string{"go run ./backend/cmd/build -dev", "make dev-generate"},
 })
 
+var devBuildHookTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Optional timeout in milliseconds for each dev build hook command execution (user hook and framework hook). Set to 0 or omit to disable timeout.`,
+})
+
 var prodBuildHookSchema = jsonschema.OptionalString(jsonschema.Def{
 	Description: `Command to run to build your app in production mode. This runs before Wave's build process and typically generates routes or other code.`,
 	Examples:    []string{"go run ./backend/cmd/build", "make prod-generate"},
+})
+
+var prodBuildHookTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Optional timeout in milliseconds for each prod build hook command execution (user hook and framework hook). Set to 0 or omit to disable timeout.`,
 })
 
 var mainAppEntrySchema = jsonschema.RequiredString(jsonschema.Def{

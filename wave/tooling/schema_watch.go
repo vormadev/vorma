@@ -5,15 +5,19 @@ import "github.com/vormadev/vorma/lab/jsonschema"
 var watchSchema = jsonschema.OptionalObject(jsonschema.Def{
 	Description: `File watching configuration for development mode. Controls which files trigger rebuilds and how.`,
 	Properties: struct {
-		WatchRoot           jsonschema.Entry
-		HealthcheckEndpoint jsonschema.Entry
-		Include             jsonschema.Entry
-		Exclude             jsonschema.Entry
+		WatchRoot            jsonschema.Entry
+		HealthcheckEndpoint  jsonschema.Entry
+		HookCommandTimeouts  jsonschema.Entry
+		HookCallbackTimeouts jsonschema.Entry
+		Include              jsonschema.Entry
+		Exclude              jsonschema.Entry
 	}{
-		WatchRoot:           watchRootSchema,
-		HealthcheckEndpoint: healthcheckEndpointSchema,
-		Include:             includeSchema,
-		Exclude:             excludeSchema,
+		WatchRoot:            watchRootSchema,
+		HealthcheckEndpoint:  healthcheckEndpointSchema,
+		HookCommandTimeouts:  hookCommandTimeoutsSchema,
+		HookCallbackTimeouts: hookCallbackTimeoutsSchema,
+		Include:              includeSchema,
+		Exclude:              excludeSchema,
 	},
 })
 
@@ -27,6 +31,73 @@ var healthcheckEndpointSchema = jsonschema.OptionalString(jsonschema.Def{
 	Description: `Path to your app's healthcheck endpoint. Must return 200 OK when healthy. During dev-time rebuilds and restarts, this endpoint will be polled to determine when your app is ready to begin serving normal requests.`,
 	Examples:    []string{"/healthz", "/health", "/api/health"},
 	Default:     "/",
+})
+
+var hookCommandTimeoutsSchema = jsonschema.OptionalObject(jsonschema.Def{
+	Description: `Stage-specific command timeouts for onChange hook command execution.
+Use these values to prevent a single command hook from stalling watch cycles.
+Set to 0 (or omit) to disable timeout for a stage.`,
+	Properties: struct {
+		PreCommandTimeoutMilliseconds              jsonschema.Entry
+		ConcurrentCommandTimeoutMilliseconds       jsonschema.Entry
+		ConcurrentNoWaitCommandTimeoutMilliseconds jsonschema.Entry
+		PostCommandTimeoutMilliseconds             jsonschema.Entry
+	}{
+		PreCommandTimeoutMilliseconds:              preCommandTimeoutMillisecondsSchema,
+		ConcurrentCommandTimeoutMilliseconds:       concurrentCommandTimeoutMillisecondsSchema,
+		ConcurrentNoWaitCommandTimeoutMilliseconds: concurrentNoWaitCommandTimeoutMillisecondsSchema,
+		PostCommandTimeoutMilliseconds:             postCommandTimeoutMillisecondsSchema,
+	},
+})
+
+var hookCallbackTimeoutsSchema = jsonschema.OptionalObject(jsonschema.Def{
+	Description: `Stage-specific callback timeouts for onChange hook callback execution.
+Callback timeout handling is cooperative and surfaces as deadline/cancellation
+through HookContext.ExecutionContext.
+Set to 0 (or omit) to disable timeout for a stage.`,
+	Properties: struct {
+		PreCallbackTimeoutMilliseconds              jsonschema.Entry
+		ConcurrentCallbackTimeoutMilliseconds       jsonschema.Entry
+		ConcurrentNoWaitCallbackTimeoutMilliseconds jsonschema.Entry
+		PostCallbackTimeoutMilliseconds             jsonschema.Entry
+	}{
+		PreCallbackTimeoutMilliseconds:              preCallbackTimeoutMillisecondsSchema,
+		ConcurrentCallbackTimeoutMilliseconds:       concurrentCallbackTimeoutMillisecondsSchema,
+		ConcurrentNoWaitCallbackTimeoutMilliseconds: concurrentNoWaitCallbackTimeoutMillisecondsSchema,
+		PostCallbackTimeoutMilliseconds:             postCallbackTimeoutMillisecondsSchema,
+	},
+})
+
+var preCommandTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Timeout in milliseconds for pre-stage hook commands.`,
+})
+
+var concurrentCommandTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Timeout in milliseconds for concurrent-stage hook commands.`,
+})
+
+var concurrentNoWaitCommandTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Timeout in milliseconds for concurrent-no-wait-stage hook commands.`,
+})
+
+var postCommandTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Timeout in milliseconds for post-stage hook commands.`,
+})
+
+var preCallbackTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Timeout in milliseconds for pre-stage hook callbacks.`,
+})
+
+var concurrentCallbackTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Timeout in milliseconds for concurrent-stage hook callbacks.`,
+})
+
+var concurrentNoWaitCallbackTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Timeout in milliseconds for concurrent-no-wait-stage hook callbacks.`,
+})
+
+var postCallbackTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Timeout in milliseconds for post-stage hook callbacks.`,
 })
 
 var includeSchema = jsonschema.OptionalArray(jsonschema.Def{
@@ -71,11 +142,19 @@ var onChangeHooksSchema = jsonschema.OptionalArray(jsonschema.Def{
 var onChangeHooksItemsSchema = jsonschema.OptionalObject(jsonschema.Def{
 	Properties: struct {
 		Cmd                             jsonschema.Entry
+		CommandTimeoutMilliseconds      jsonschema.Entry
+		DisableStageCommandTimeout      jsonschema.Entry
+		CallbackTimeoutMilliseconds     jsonschema.Entry
+		DisableStageCallbackTimeout     jsonschema.Entry
 		RunCombinedDevBuildHookCommands jsonschema.Entry
 		Timing                          jsonschema.Entry
 		Exclude                         jsonschema.Entry
 	}{
 		Cmd:                             cmdSchema,
+		CommandTimeoutMilliseconds:      commandTimeoutMillisecondsSchema,
+		DisableStageCommandTimeout:      disableStageCommandTimeoutSchema,
+		CallbackTimeoutMilliseconds:     callbackTimeoutMillisecondsSchema,
+		DisableStageCallbackTimeout:     disableStageCallbackTimeoutSchema,
 		RunCombinedDevBuildHookCommands: runCombinedDevBuildHookCommandsSchema,
 		Timing:                          timingSchema,
 		Exclude:                         onChangeHooksExcludeSchema,
@@ -86,6 +165,24 @@ var cmdSchema = jsonschema.OptionalString(jsonschema.Def{
 	Description: `Shell command to run when a file matching the pattern changes.
 Can be any shell command.`,
 	Examples: []string{"echo 'File changed!'", "make generate", "npm run lint"},
+})
+
+var commandTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Optional per-hook command timeout in milliseconds. When > 0, this overrides the stage-level timeout for this hook command.`,
+})
+
+var disableStageCommandTimeoutSchema = jsonschema.OptionalBoolean(jsonschema.Def{
+	Description: `If true, disables stage-level command timeout for this hook command.`,
+	Default:     false,
+})
+
+var callbackTimeoutMillisecondsSchema = jsonschema.OptionalNumber(jsonschema.Def{
+	Description: `Optional per-hook callback timeout in milliseconds. When > 0, this overrides the stage-level timeout for this hook callback.`,
+})
+
+var disableStageCallbackTimeoutSchema = jsonschema.OptionalBoolean(jsonschema.Def{
+	Description: `If true, disables stage-level callback timeout for this hook callback.`,
+	Default:     false,
 })
 
 var runCombinedDevBuildHookCommandsSchema = jsonschema.OptionalBoolean(jsonschema.Def{

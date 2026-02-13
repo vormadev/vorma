@@ -2,6 +2,7 @@ package tooling
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -236,6 +238,101 @@ func TestRunConcurrentHooksWithContext_CanceledContextSkipsHookExecution(t *test
 	}
 }
 
+func TestRunConcurrentHooks_CallbackReceivesIndependentHookContexts(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "context-clone.txt")
+	receivedHookContexts := make(chan *wave.HookContext, 2)
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx: &wave.HookContext{
+			FilePath:         changedPath,
+			ChangedFilePaths: []string{changedPath},
+		},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						receivedHookContexts <- hookContext
+						return nil, nil
+					},
+				},
+				{
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						receivedHookContexts <- hookContext
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+
+	if _, err := s.runConcurrentHooks(ewh, watcher); err != nil {
+		t.Fatalf("runConcurrentHooks returned error: %v", err)
+	}
+
+	firstHookContext := <-receivedHookContexts
+	secondHookContext := <-receivedHookContexts
+	if firstHookContext == secondHookContext {
+		t.Fatal("expected concurrent callbacks to receive independent hook context instances")
+	}
+	if firstHookContext.ExecutionContext == nil || secondHookContext.ExecutionContext == nil {
+		t.Fatal("expected callback hook contexts to include execution context")
+	}
+}
+
+func TestRunConcurrentHooksWithContext_CallbackCanObserveCancellation(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "callback-cancellation.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						select {
+						case <-hookContext.ExecutionContext.Done():
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						case <-time.After(2 * time.Second):
+							return nil, os.ErrDeadlineExceeded
+						}
+					},
+				},
+			},
+		},
+	}
+
+	concurrentHookExecutionContext, cancelConcurrentHookExecutionContext := context.WithTimeout(
+		context.Background(),
+		100*time.Millisecond,
+	)
+	defer cancelConcurrentHookExecutionContext()
+
+	callbackStartTime := time.Now()
+	actions, err := s.runConcurrentHooksWithContext(
+		concurrentHookExecutionContext,
+		ewh,
+		watcher,
+	)
+	callbackElapsedTime := time.Since(callbackStartTime)
+	if err != nil {
+		t.Fatalf("runConcurrentHooksWithContext returned error: %v", err)
+	}
+	if callbackElapsedTime > 1*time.Second {
+		t.Fatalf(
+			"expected callback cancellation observation to return quickly, elapsed=%s",
+			callbackElapsedTime,
+		)
+	}
+	if len(actions) != 1 || !actions[0].ReloadBrowser {
+		t.Fatalf("expected callback action after cancellation observation, got %#v", actions)
+	}
+}
+
 func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
@@ -397,6 +494,340 @@ func TestRunConcurrentHooksWithContext_CanceledContextStopsRunningCommand(t *tes
 		t.Fatalf(
 			"expected canceled concurrent command to stop quickly, elapsed=%s",
 			commandElapsedTime,
+		)
+	}
+}
+
+func TestRunPreHooks_CallbackTimeoutUsesPreStageSetting(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
+		PreCallbackTimeoutMilliseconds: 100,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "pre-callback-timeout.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						select {
+						case <-hookContext.ExecutionContext.Done():
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						case <-time.After(2 * time.Second):
+							return nil, os.ErrDeadlineExceeded
+						}
+					},
+				},
+			},
+		},
+	}
+
+	callbackStartTime := time.Now()
+	actions, err := s.runPreHooks(ewh, watcher)
+	callbackElapsedTime := time.Since(callbackStartTime)
+	if err != nil {
+		t.Fatalf("expected pre callback timeout path to succeed cooperatively, got %v", err)
+	}
+	if len(actions) != 1 || !actions[0].ReloadBrowser {
+		t.Fatalf("expected pre callback action after timeout cancellation, got %#v", actions)
+	}
+	if callbackElapsedTime > 1*time.Second {
+		t.Fatalf("expected pre callback timeout to return quickly, elapsed=%s", callbackElapsedTime)
+	}
+}
+
+func TestRunPreHooks_CommandTimeoutUsesPreStageSetting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+		PreCommandTimeoutMilliseconds: 100,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "pre-timeout.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{Cmd: "sleep 2"},
+			},
+		},
+	}
+
+	commandStartTime := time.Now()
+	_, err := s.runPreHooks(ewh, watcher)
+	commandElapsedTime := time.Since(commandStartTime)
+	if err == nil {
+		t.Fatal("expected pre hook command to time out")
+	}
+	if !errors.Is(err, executil.ErrCommandExecutionTimedOut) {
+		t.Fatalf("expected timed-out command classification, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "pre hook failed for "+changedPath) {
+		t.Fatalf("expected pre hook stage/path attribution, got %q", err.Error())
+	}
+	if commandElapsedTime > 1*time.Second {
+		t.Fatalf("expected pre hook timeout to stop quickly, elapsed=%s", commandElapsedTime)
+	}
+}
+
+func TestRunConcurrentHooks_CommandTimeoutUsesConcurrentStageSetting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+		ConcurrentCommandTimeoutMilliseconds: 100,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "concurrent-timeout.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{Cmd: "sleep 2"},
+			},
+		},
+	}
+
+	commandStartTime := time.Now()
+	_, err := s.runConcurrentHooks(ewh, watcher)
+	commandElapsedTime := time.Since(commandStartTime)
+	if err == nil {
+		t.Fatal("expected concurrent hook command to time out")
+	}
+	if !errors.Is(err, executil.ErrCommandExecutionTimedOut) {
+		t.Fatalf("expected timed-out command classification, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "concurrent hook failed for "+changedPath) {
+		t.Fatalf("expected concurrent hook stage/path attribution, got %q", err.Error())
+	}
+	if commandElapsedTime > 1*time.Second {
+		t.Fatalf("expected concurrent hook timeout to stop quickly, elapsed=%s", commandElapsedTime)
+	}
+}
+
+func TestRunPostHooks_CommandTimeoutUsesPostStageSetting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+		PostCommandTimeoutMilliseconds: 100,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "post-timeout.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Post: []wave.OnChangeHook{
+				{Cmd: "sleep 2"},
+			},
+		},
+	}
+
+	commandStartTime := time.Now()
+	_, err := s.runPostHooks(ewh, watcher)
+	commandElapsedTime := time.Since(commandStartTime)
+	if err == nil {
+		t.Fatal("expected post hook command to time out")
+	}
+	if !errors.Is(err, executil.ErrCommandExecutionTimedOut) {
+		t.Fatalf("expected timed-out command classification, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "post hook failed for "+changedPath) {
+		t.Fatalf("expected post hook stage/path attribution, got %q", err.Error())
+	}
+	if commandElapsedTime > 1*time.Second {
+		t.Fatalf("expected post hook timeout to stop quickly, elapsed=%s", commandElapsedTime)
+	}
+}
+
+func TestRunPreHooks_PerHookCommandTimeoutOverridesStageTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+		PreCommandTimeoutMilliseconds: 2000,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "pre-timeout-override.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{
+					Cmd:                        "sleep 2",
+					CommandTimeoutMilliseconds: 100,
+				},
+			},
+		},
+	}
+
+	commandStartTime := time.Now()
+	_, err := s.runPreHooks(ewh, watcher)
+	commandElapsedTime := time.Since(commandStartTime)
+	if err == nil {
+		t.Fatal("expected pre hook command timeout override to trigger")
+	}
+	if !errors.Is(err, executil.ErrCommandExecutionTimedOut) {
+		t.Fatalf("expected timed-out command classification, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "pre hook failed for "+changedPath) {
+		t.Fatalf("expected pre hook stage/path attribution, got %q", err.Error())
+	}
+	if commandElapsedTime > 1*time.Second {
+		t.Fatalf("expected per-hook timeout override to stop quickly, elapsed=%s", commandElapsedTime)
+	}
+}
+
+func TestRunPreHooks_DisableStageCommandTimeoutBypassesStageTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+		PreCommandTimeoutMilliseconds: 100,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "pre-timeout-disable.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{
+					Cmd:                        "sleep 1",
+					DisableStageCommandTimeout: true,
+				},
+			},
+		},
+	}
+
+	commandStartTime := time.Now()
+	_, err := s.runPreHooks(ewh, watcher)
+	commandElapsedTime := time.Since(commandStartTime)
+	if err != nil {
+		t.Fatalf("expected stage-timeout-disabled pre hook to succeed, got %v", err)
+	}
+	if commandElapsedTime < 800*time.Millisecond {
+		t.Fatalf(
+			"expected disabled stage timeout to allow hook command runtime, elapsed=%s",
+			commandElapsedTime,
+		)
+	}
+}
+
+func TestRunPreHooks_PerHookCallbackTimeoutOverridesStageTimeout(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
+		PreCallbackTimeoutMilliseconds: 2000,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "pre-callback-timeout-override.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{
+					CallbackTimeoutMilliseconds: 100,
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						select {
+						case <-hookContext.ExecutionContext.Done():
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						case <-time.After(2 * time.Second):
+							return nil, os.ErrDeadlineExceeded
+						}
+					},
+				},
+			},
+		},
+	}
+
+	callbackStartTime := time.Now()
+	actions, err := s.runPreHooks(ewh, watcher)
+	callbackElapsedTime := time.Since(callbackStartTime)
+	if err != nil {
+		t.Fatalf("expected per-hook callback timeout override to succeed cooperatively, got %v", err)
+	}
+	if len(actions) != 1 || !actions[0].ReloadBrowser {
+		t.Fatalf("expected callback action after per-hook timeout override, got %#v", actions)
+	}
+	if callbackElapsedTime > 1*time.Second {
+		t.Fatalf("expected per-hook callback timeout override to return quickly, elapsed=%s", callbackElapsedTime)
+	}
+}
+
+func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
+		PreCallbackTimeoutMilliseconds: 100,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "pre-callback-timeout-disable.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{
+					DisableStageCallbackTimeout: true,
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						select {
+						case <-hookContext.ExecutionContext.Done():
+							return nil, os.ErrDeadlineExceeded
+						case <-time.After(300 * time.Millisecond):
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						}
+					},
+				},
+			},
+		},
+	}
+
+	callbackStartTime := time.Now()
+	actions, err := s.runPreHooks(ewh, watcher)
+	callbackElapsedTime := time.Since(callbackStartTime)
+	if err != nil {
+		t.Fatalf("expected disabled stage callback timeout to allow callback runtime, got %v", err)
+	}
+	if len(actions) != 1 || !actions[0].ReloadBrowser {
+		t.Fatalf("expected callback action when stage callback timeout is disabled, got %#v", actions)
+	}
+	if callbackElapsedTime < 250*time.Millisecond {
+		t.Fatalf(
+			"expected disabled stage callback timeout to allow callback runtime, elapsed=%s",
+			callbackElapsedTime,
 		)
 	}
 }
@@ -620,6 +1051,116 @@ func TestFireNoWaitHooks_RunsAsyncCallbackAndCommand(t *testing.T) {
 	}
 }
 
+func TestFireNoWaitHooks_CallbacksReceiveIndependentHookContexts(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "no-wait-context-clone.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	s.concurrentNoWaitHookExecutionLimiter = make(chan struct{}, 2)
+
+	receivedHookContexts := make(chan *wave.HookContext, 2)
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx: &wave.HookContext{
+			FilePath:         changedPath,
+			ChangedFilePaths: []string{changedPath},
+		},
+		hooks: &wave.SortedHooks{
+			ConcurrentNoWait: []wave.OnChangeHook{
+				{
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						receivedHookContexts <- hookContext
+						return nil, nil
+					},
+				},
+				{
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						receivedHookContexts <- hookContext
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+
+	s.fireNoWaitHooks(ewh, watcher)
+
+	var firstHookContext *wave.HookContext
+	select {
+	case firstHookContext = <-receivedHookContexts:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for first no-wait callback context")
+	}
+
+	var secondHookContext *wave.HookContext
+	select {
+	case secondHookContext = <-receivedHookContexts:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for second no-wait callback context")
+	}
+
+	if firstHookContext == secondHookContext {
+		t.Fatal("expected no-wait callbacks to receive independent hook context instances")
+	}
+	if firstHookContext.ExecutionContext == nil || secondHookContext.ExecutionContext == nil {
+		t.Fatal("expected no-wait callback hook contexts to include execution context")
+	}
+}
+
+func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "no-wait-callback-cancellation.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+		ConcurrentNoWaitCommandTimeoutMilliseconds: 100,
+	}
+	s.cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
+		ConcurrentNoWaitCallbackTimeoutMilliseconds: 100,
+	}
+
+	callbackDone := make(chan struct{}, 1)
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			ConcurrentNoWait: []wave.OnChangeHook{
+				{
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						select {
+						case <-hookContext.ExecutionContext.Done():
+							callbackDone <- struct{}{}
+							return nil, nil
+						case <-time.After(2 * time.Second):
+							return nil, os.ErrDeadlineExceeded
+						}
+					},
+				},
+			},
+		},
+	}
+
+	s.fireNoWaitHooks(ewh, watcher)
+
+	select {
+	case <-callbackDone:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for no-wait callback to observe execution context cancellation")
+	}
+}
+
 func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
@@ -666,6 +1207,51 @@ func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(t *testing.T)
 
 	if excludedHookRan.Load() {
 		t.Fatal("did not expect excluded no-wait hook callback to run")
+	}
+}
+
+func TestFireNoWaitHooks_CommandTimeoutUsesConcurrentNoWaitStageSetting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.concurrentNoWaitHookExecutionLimiter = make(chan struct{}, 1)
+	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+		ConcurrentNoWaitCommandTimeoutMilliseconds: 100,
+	}
+
+	changedPath := filepath.Join(t.TempDir(), "concurrent-no-wait-timeout.txt")
+	secondHookRanMarkerPath := filepath.Join(t.TempDir(), "concurrent-no-wait-second-hook-ran.txt")
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			ConcurrentNoWait: []wave.OnChangeHook{
+				{Cmd: "sleep 2"},
+				{Cmd: "printf 'ran\\n' >> " + strconv.Quote(secondHookRanMarkerPath)},
+			},
+		},
+	}
+
+	stageExecutionStartTime := time.Now()
+	s.fireNoWaitHooks(ewh, watcher)
+
+	for {
+		if _, statErr := os.Stat(secondHookRanMarkerPath); statErr == nil {
+			break
+		}
+
+		stageExecutionElapsedTime := time.Since(stageExecutionStartTime)
+		if stageExecutionElapsedTime > 1500*time.Millisecond {
+			t.Fatalf(
+				"expected second no-wait hook command to run within timeout window, elapsed=%s",
+				stageExecutionElapsedTime,
+			)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -1254,7 +1840,11 @@ func TestExecuteHookExecutionPlan_CallbackPanicReturnsErrorAndSkipsCommand(t *te
 		command: "printf 'command should not run\\n' >> " + strconv.Quote(commandOutputPath),
 	}
 
-	action, err := s.executeHookExecutionPlan(hookPlan, &wave.HookContext{})
+	action, err := s.executeHookExecutionPlan(
+		hookStageTypePre,
+		hookPlan,
+		&wave.HookContext{},
+	)
 	if err == nil {
 		t.Fatal("expected callback panic to be surfaced as an error")
 	}
