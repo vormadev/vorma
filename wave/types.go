@@ -218,9 +218,11 @@ type RefreshAction struct {
 
 // OnChangeHook defines an action to run when a watched file changes.
 type OnChangeHook struct {
-	// Cmd is a shell command to run. Can be any shell command or "DevBuildHook"
-	// to run the configured dev build hook.
+	// Cmd is a shell command to run.
 	Cmd string `json:"Cmd,omitempty"`
+	// RunCombinedDevBuildHookCommands executes the configured development build
+	// hooks in order (Core.DevBuildHook then framework dev build hook).
+	RunCombinedDevBuildHookCommands bool `json:"RunCombinedDevBuildHookCommands,omitempty"`
 	// Timing controls when the hook runs relative to Wave's rebuild process.
 	Timing Timing `json:"Timing,omitempty"`
 	// Exclude contains glob patterns for files to exclude from triggering this hook.

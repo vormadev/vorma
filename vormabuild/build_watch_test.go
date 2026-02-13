@@ -264,7 +264,7 @@ func TestRunOnChangeOnlyWatchPattern_UsesCallbackOnly(t *testing.T) {
 	}
 }
 
-func TestGoFilesWatchPattern_UsesDevBuildHookCommand(t *testing.T) {
+func TestGoFilesWatchPattern_UsesCombinedDevBuildHookCommands(t *testing.T) {
 	pattern := goFilesWatchPattern()
 
 	if pattern.Pattern != "**/*.go" {
@@ -281,8 +281,11 @@ func TestGoFilesWatchPattern_UsesDevBuildHookCommand(t *testing.T) {
 	}
 
 	hook := pattern.OnChangeHooks[0]
-	if hook.Cmd != "DevBuildHook" {
-		t.Fatalf("Cmd = %q, want %q", hook.Cmd, "DevBuildHook")
+	if hook.Cmd != "" {
+		t.Fatalf("Cmd = %q, want empty", hook.Cmd)
+	}
+	if !hook.RunCombinedDevBuildHookCommands {
+		t.Fatal("expected RunCombinedDevBuildHookCommands=true")
 	}
 	if hook.Timing != wave.OnChangeStrategyConcurrent {
 		t.Fatalf("Timing = %q, want %q", hook.Timing, wave.OnChangeStrategyConcurrent)

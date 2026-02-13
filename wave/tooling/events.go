@@ -747,7 +747,7 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 				}
 			}(hook.Callback, ewh.hookCtx)
 		}
-		resolvedCommand := s.resolveCmd(hook.Cmd)
+		resolvedCommand := s.resolveHookCommand(hook)
 		if resolvedCommand != "" {
 			go func(command string) {
 				if err := executil.RunShell(command); err != nil {
@@ -844,7 +844,7 @@ func prepareHookForExecutionWithRunOnChangeOnlyRules(
 	isRunOnChangeOnly bool,
 	hook wave.OnChangeHook,
 ) (wave.OnChangeHook, bool) {
-	if !isRunOnChangeOnly || strings.TrimSpace(hook.Cmd) == "" {
+	if !isRunOnChangeOnly || !hookHasCommandAction(hook) {
 		return hook, true
 	}
 
@@ -853,7 +853,12 @@ func prepareHookForExecutionWithRunOnChangeOnlyRules(
 	}
 
 	hook.Cmd = ""
+	hook.RunCombinedDevBuildHookCommands = false
 	return hook, true
+}
+
+func hookHasCommandAction(hook wave.OnChangeHook) bool {
+	return strings.TrimSpace(hook.Cmd) != "" || hook.RunCombinedDevBuildHookCommands
 }
 
 func (s *server) executeHook(
@@ -869,7 +874,7 @@ func (s *server) executeHook(
 		action = callbackAction
 	}
 
-	resolvedCommand := s.resolveCmd(hook.Cmd)
+	resolvedCommand := s.resolveHookCommand(hook)
 	if resolvedCommand != "" {
 		if err := executil.RunShell(resolvedCommand); err != nil {
 			return action, err
@@ -1102,14 +1107,21 @@ func needsHardReload(wf *wave.WatchedFile) bool {
 	return wf.RecompileGoBinary || wf.RestartApp
 }
 
-func (s *server) resolveCmd(cmd string) string {
-	if cmd == "DevBuildHook" {
+func (s *server) resolveHookCommand(hook wave.OnChangeHook) string {
+	if hook.RunCombinedDevBuildHookCommands {
+		if strings.TrimSpace(hook.Cmd) != "" {
+			return resolveSequentialShellCommands(
+				hook.Cmd,
+				getUserDevBuildHook(s.cfg),
+				getFrameworkDevBuildHook(s.cfg),
+			)
+		}
 		return resolveSequentialShellCommands(
 			getUserDevBuildHook(s.cfg),
 			getFrameworkDevBuildHook(s.cfg),
 		)
 	}
-	return cmd
+	return hook.Cmd
 }
 
 func getUserDevBuildHook(cfg *wave.ParsedConfig) string {

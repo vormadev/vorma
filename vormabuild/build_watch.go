@@ -103,8 +103,8 @@ func goFilesWatchPattern() wave.WatchedFile {
 	return wave.WatchedFile{
 		Pattern: "**/*.go",
 		OnChangeHooks: []wave.OnChangeHook{{
-			Cmd:    "DevBuildHook",
-			Timing: wave.OnChangeStrategyConcurrent,
+			RunCombinedDevBuildHookCommands: true,
+			Timing:                          wave.OnChangeStrategyConcurrent,
 		}},
 	}
 }

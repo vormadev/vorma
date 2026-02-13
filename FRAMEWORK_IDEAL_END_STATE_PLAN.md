@@ -1,186 +1,191 @@
 # Framework Ideal End-State Plan (Sub-1.0 Hard-Break Track)
 
-- Last updated: 2026-02-12
-- Status: in progress (UX rollback landed)
-- Scope: Wave + Vorma + bootstrap + reference apps
+Scope: Wave + Vorma + bootstrap + reference apps.
 
-## Direction Correction (Locked)
+Wave config sub-plan: `WAVE_JSON_CONFIGURATION_PLAN.md`.
 
-The previous `src/modules` + `AppModule` default app shape regressed app-builder
-UX. That direction is no longer the target default.
+## Handoff Freshness Rules
 
-Locked correction:
+- This is the canonical execution plan for cross-framework work.
+- At the end of every agent response, verify and update this file first if any
+  scope, decisions, sequence, or priorities changed.
+- Keep this file future-looking only.
+- Do not add implemented/completed/changelog logs.
+- Keep exactly one canonical immediate-next-steps list in this file.
 
-- No mandatory per-route multi-file backend registration boilerplate.
-- No mandatory `src/modules` package shape in scaffolded apps.
-- No side-effect route registration (`init`, underscore imports) for
-  correctness.
-- No requirement to edit a second backend file to add one backend route.
+## Hard Constraints
 
-## UX/DX Non-Regression Gate (Hard Line)
-
-This roadmap has a hard constraint: break APIs if needed, but do not degrade
-app-builder UX/DX.
-
-Reference baseline for route authoring UX:
-
-- Commit `4dc9191a` (`v0.83.0`) is the canonical baseline for "original" simple
-  route authoring (top-level `NewLoader`/`NewAction` declarations in router
-  files, no extra per-route registration ceremony).
-- Commit `7471ca2c` marks the split-file/manual-registration transition and is
-  treated as historical context, not the UX floor.
-
-Required pass/fail criteria for any framework/bootstrap/reference-app change:
-
+- APIs may break; app-builder UX/DX may not regress.
+- Baseline UX floor is commit `4dc9191a`.
 - Adding one backend route must not require touching a second backend file.
-- Adding one full-stack route must not require touching a third file solely for
-  backend registration wiring.
-- Runtime/build determinism must be implemented internally (sorting, checks,
-  generated artifacts) and must not add user ceremony.
-- Wave/Vorma defaults must keep one obvious happy path per task and must not
-  introduce duplicate ways to do the same common operation.
+- Adding one full-stack route must not require a third file purely for backend
+  wiring.
+- Deterministic outputs are internal framework/tooling responsibilities.
+- No side-effect registration as a correctness requirement.
+- Keep one obvious default path for common tasks.
+- Applications may organize code however they want; framework defaults must not
+  enforce a package-organization model.
 
-## UX Contract (Locked)
+## Locked Current Decisions
 
-- Backend-only route addition: one backend file edit.
-- Full-stack route addition: two file edits (backend route + frontend route
-  file), not three.
-- Deterministic codegen outputs are achieved by explicit sorting in tooling, not
-  by forcing runtime registration ceremony.
-- One composition source of truth should exist at app/feature level, not
-  per-route.
-- Users keep full low-level freedom (headers, transport, request context,
-  loader/action context extension).
+- JSON is the authored Wave config surface.
+- Route authoring is location-flexible; frontend route-definition files use a
+  strict static AST contract, and backend route discovery comes from
+  symbol-resolved static analysis.
+- One backend route addition must remain a one-backend-file edit.
+- One full-stack route addition must remain backend route file plus frontend
+  route file.
+- Build determinism is enforced internally and must not add per-route user
+  boilerplate.
+- No default-path builder-pattern APIs.
+- No framework-enforced large-app package boundary model.
+- Backend route discovery must not depend on scaffold helper names.
 
-## Completed Since Last Revision
+## Target UX Contract
 
-- Bootstrap defaults rolled back to top-level route declarations:
-    - no `registration.go`
-    - no `registerAllRoutes()`
-    - build path uses `router.App` directly
-- `internal/site` router migrated to the same top-level route declaration shape.
-- Added bootstrap UX conformance tests that fail on regression to split
-  registration wrapper files.
-- Added backend Go AST route discovery in `vormabuild`:
-    - discovers loader patterns from top-level `var _ = NewLoader(...)`
-      declarations
-    - merges backend-only loader patterns into route sync without extra user
-      registration ceremony
-- Removed default app-facing Wave dev/prod split files:
-    - default path is now `var Wave = wavecfg.NewWave(config.WaveConfig)`
-    - no `wave_options_dev.go` / `wave_options_prod_*.go` required in defaults
+- Backend route authoring remains one-file for backend-only additions.
+- Full-stack route authoring remains two-file for backend+frontend additions.
+- Typed context extension remains straightforward and centralized.
+- Low-level escape hatches remain available for headers, request transport,
+  runtime hooks, and loader/action context shaping, and anything else that was
+  possible for the user to control as of `4dc9191a`.
 
-## End-State Architecture
+## Target Architecture
 
-### 1) Route Authoring (Small Apps)
+### 1) Route Authoring
 
-Default scaffold stays simple and explicit in `backend/src/router`:
+- Location-flexible route definitions with no framework-enforced package shape.
+- No per-route manual registration ceremony.
+- No side-effect import dependency for correctness.
 
-- `app.go`: app singleton + head/template defaults
-- `context.go`: typed ctx wrappers and `NewLoader`/`NewAction` helpers
-- `init.go`: HTTP middleware wiring
-- `routes_*.go`: self-contained top-level route declarations
+### 2) Determinism and Safety
 
-Key requirement:
+- Stable sorted generated artifacts and manifests.
+- Strict duplicate/conflict route detection with source-oriented errors.
+- Strict frontend route-definition parsing rules with fail-fast behavior.
+- Deterministic AST-to-manifest generation contract.
+- Backend route discovery is derived from symbol-resolved static analysis, not
+  helper-function naming conventions in source files.
+- Backend AST discovery resolves canonical registration targets and wrapper
+  forwarding paths while allowing arbitrary local helper names.
+- Backend route method/pattern arguments must resolve to compile-time strings;
+  unresolved or ambiguous shapes fail fast with source-oriented diagnostics.
 
-- Route logic is defined once at top-level (`var _ = NewLoader(...)`,
-  `var _ = NewAction(...)`), with no extra wrapper registration layer.
+Backend symbol-resolved discovery contract:
 
-### 2) Route Authoring (Large Apps)
+1. Load only Go files matched by `ServerRouteDefinitionPatterns` and analyze by
+   package.
+2. Resolve route registration by canonical registration targets, not by
+   identifier text.
+3. Support wrapper/helper functions by inferring parameter forwarding to
+   canonical registration symbols.
+4. Extract method/pattern only from compile-time string constants (including
+   const concatenation); dynamic values are hard errors.
+5. Emit deterministic sorted outputs and deterministic diagnostics including
+   file/line/column.
 
-Large apps scale by feature packages, while keeping one composition root:
+False-positive safety contract:
 
-- Feature packages export `RegisterRoutes(app *vorma.Vorma)`.
-- Root router/composition file calls feature registrars explicitly.
-- Feature packages do not import root router package.
-- Shared contracts/services live in explicit shared packages.
+1. Never infer routes from type usage (`vorma.Loader`, `vorma.Action`) alone.
+2. Never infer routes from function-name text alone.
+3. Count only call sites that resolve to canonical registration symbols (or
+   wrappers proven to forward directly to those symbols).
+4. If a call shape cannot be proven statically, fail as unsupported (false
+   negative) instead of guessing (false positive).
+5. Canonical selector/dot-import matches must reject shadowed identifiers using
+   static identifier binding checks.
 
-This keeps package boundaries clear without adding per-route ceremony.
+Chosen implementation approach:
 
-### 3) Single Composition Manifest (Runtime + Build)
+1. Use symbol-resolved static callgraph analysis rooted at package
+   initialization (`var` initializers and `init()`), then follow statically
+   resolvable calls.
+2. Route discovery anchors on canonical registration symbols and proven wrapper
+   forwarding paths.
+3. Do not introduce a new marker-return public API unless symbol-resolved
+   discovery proves insufficient.
 
-One composition manifest is the source of truth for feature/module inclusion.
+Will match:
 
-Each feature descriptor may declare:
+1. Direct canonical registration calls.
+2. Wrapper/helper calls with arbitrary names when forwarding to canonical
+   registration is statically provable.
+3. Compile-time string literal/const (including const concatenation)
+   method/pattern arguments.
 
-- `ID`
-- `DependsOn`
-- `RegisterBackend(app *vorma.Vorma)`
-- `ClientRouteDefinitionPatterns()`
+Will not match:
 
-Build and runtime both consume this same manifest.
+1. Dynamic dispatch (`interface{}` calls, reflection, function values assigned
+   at runtime).
+2. Runtime-computed method/pattern values.
+3. Code paths that are not init-reachable.
 
-Key requirement:
+### 3) Wave Core Robustness
 
-- No duplicate backend registration declarations in separate runtime/build
-  files.
+- Devserver change handling follows explicit `classify -> plan -> execute` flow.
+- Rebuild orchestration moves to a fingerprinted artifact DAG.
+- Watcher/debouncer model stays bounded under heavy churn.
+- CLI/library boundaries avoid hidden global side effects.
 
-### 4) Deterministic and Safe Registration
+### 4) Diagnostics
 
-- Detect duplicate/overlapping backend pattern conflicts as hard errors.
-- Keep user authoring explicit and low-ceremony.
-- Keep build/runtime determinism enforced internally by tooling (sorting, AST
-  discovery, stable artifact generation), not by extra route-registration files.
-- Keep generated files/manifests sorted and stable.
-- Keep diagnostics source-oriented (point to concrete files/functions).
+- `wave explain` and `wave doctor` expose config dependency trigger reasoning.
+- `wave explain` and `wave doctor` expose route conflict origin.
+- `wave explain` and `wave doctor` expose rebuild plan decisions.
 
-### 5) Typed Context and Escape Hatches
+## Current Focus
 
-- Keep typed ctx decorators centralized once per app.
-- Keep direct access to low-level request/response APIs.
-- Keep client-level request middleware/interceptors for auth/header/transport
-  needs.
+- Finish Wave-core robustness track
+  (`planner -> typed action plan -> artifact DAG`) while preserving locked UX
+  decisions.
 
-## What Remains Good From Existing Work
+## Roadmap
 
-- Config-as-code foundation (`wave.ConfigSource`, `wavecfg.Document`, provider
-  protocol)
-- Provider dependency-driven reload plumbing
-- Wave runtime/tooling hardening and expanded tests
-- Template-data configurability and endpoint configurability improvements
+### Phase A: Vorma Route and Determinism Model
 
-These stay, but route authoring UX constraints above take precedence.
+1. Harden backend symbol-resolved AST discovery coverage and diagnostics
+   (wrappers, dot-imports, direct mux registrations, ambiguity failures).
+2. Lock strict AST contract for frontend route-definition files and stable
+   AST-to-manifest generation ordering.
+3. Add strict route conflict diagnostics with source-oriented failures.
 
-## Work Plan (Updated)
+### Phase B: Wave Core Planner and DAG
 
-### Phase A: UX Regression Rollback and Baseline Restore
+1. Complete pure planner extraction for devserver events.
+2. Introduce artifact DAG and node fingerprinting.
+3. Replace ad hoc work flags with typed rebuild action plans.
 
-- Completed:
-- Removed mandatory `src/modules` routing pattern from bootstrap defaults.
-- Restored terse top-level route declarations in scaffolds and `internal/site`.
-- Enforced one-route backend change = one backend file edit in default shape.
+### Phase C: Core API Hardening
 
-### Phase B: Single Composition Manifest (Feature-Level)
+1. Tighten public API boundaries to avoid leaking internals.
+2. Remove remaining hidden magic/sentinel behavior in core APIs.
+3. Keep one obvious default path and remove duplicate config/runtime surfaces.
 
-- Add feature-level manifest descriptor consumed by both build and runtime.
-- Keep feature inclusion declaration in one place.
-- Keep per-route authoring self-contained and low-ceremony.
+### Phase D: Conformance and Stress
 
-### Phase C: Generated Registration Surface
+1. Add UX conformance tests tied directly to the UX contract.
+2. Add stress suites for high route count and watcher churn.
+3. Add deterministic artifact output checks across repeated runs.
 
-- Generate deterministic backend registration glue from discovered route
-  registration funcs.
-- Keep generated glue as the mechanism for determinism, not manual boilerplate.
-- Keep duplicate/conflict checks strict and readable.
+## Immediate Next 6 Steps
 
-### Phase D: Large-App Boundary Enforcement
+1. Expand backend symbol-resolved AST conformance coverage and unsupported-shape
+   diagnostics.
+2. Lock strict AST rules and fail-fast diagnostics for frontend route-definition
+   files.
+3. Finish Wave devserver pure planner extraction (`classify -> plan -> execute`)
+   and remove remaining ad hoc event branching.
+4. Introduce the first artifact-DAG cut with fingerprinted nodes and typed
+   rebuild action plans.
+5. Expand strict route conflict diagnostics and manifest validation failures.
+6. Expand conformance/stress coverage for UX contract, deterministic artifacts,
+   and watcher-churn behavior.
 
-- Conventions and checks for package boundaries (feature-to-root
-  directionality).
-- Cycle detection and contract diagnostics focused on feature manifest level.
+## Exit Criteria
 
-### Phase E: Tooling and Conformance
-
-- Add/expand tests that enforce UX contract directly:
-- one backend edit for backend-only route additions in scaffold flow
-- stable generated artifacts with sorted output
-- no side-effect registration dependency for correctness
-
-## Immediate Next Steps
-
-1. Decide whether to keep `AppModule`/`AppRoot` as advanced opt-in APIs or
-   remove them entirely from public surface to avoid default-path confusion.
-2. Design a single feature-level composition manifest that does not reintroduce
-   per-route registration ceremony.
-3. Extend UX conformance tests beyond bootstrap templates to assert route
-   editing ergonomics in generated app fixtures.
+- UX contract is enforced by automated conformance tests.
+- Route/build determinism is stable under repeated generation runs.
+- Wave planner and artifact DAG are the sole rebuild decision path.
+- Diagnostics explain why rebuilds/routes decisions happen.
+- No side-effect registration dependency exists in route discovery or build
+  output generation.

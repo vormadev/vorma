@@ -48,6 +48,19 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 		}
 	})
 
+	t.Run("allows run-combined-dev-build-hook commands with pre timing when run-on-change-only", func(t *testing.T) {
+		wf := &wave.WatchedFile{
+			RunOnChangeOnly: true,
+			OnChangeHooks: []wave.OnChangeHook{
+				{RunCombinedDevBuildHookCommands: true},
+				{RunCombinedDevBuildHookCommands: true, Timing: wave.OnChangeStrategyPre},
+			},
+		}
+		if err := validateWatchedFile(wf, 3); err != nil {
+			t.Fatalf("validateWatchedFile returned error: %v", err)
+		}
+	})
+
 	t.Run("rejects non-pre command timing when run-on-change-only", func(t *testing.T) {
 		wf := &wave.WatchedFile{
 			RunOnChangeOnly: true,
@@ -55,11 +68,30 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 				{Cmd: "echo hello", Timing: wave.OnChangeStrategyConcurrent},
 			},
 		}
-		err := validateWatchedFile(wf, 3)
+		err := validateWatchedFile(wf, 4)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
 		if !strings.Contains(err.Error(), "RunOnChangeOnly") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects cmd and run-combined-dev-build-hook combination", func(t *testing.T) {
+		wf := &wave.WatchedFile{
+			RunOnChangeOnly: false,
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Cmd:                             "echo hello",
+					RunCombinedDevBuildHookCommands: true,
+				},
+			},
+		}
+		err := validateWatchedFile(wf, 5)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "RunCombinedDevBuildHookCommands") {
 			t.Fatalf("unexpected error message: %v", err)
 		}
 	})

@@ -101,20 +101,28 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 }
 
 func validateWatchedFile(wf *wave.WatchedFile, index int) error {
-	if !wf.RunOnChangeOnly {
-		return nil
-	}
-
 	for j, hook := range wf.OnChangeHooks {
+		if strings.TrimSpace(hook.Cmd) != "" && hook.RunCombinedDevBuildHookCommands {
+			return fmt.Errorf(
+				"config: Watch.Include[%d].OnChangeHooks[%d] cannot set both Cmd and RunCombinedDevBuildHookCommands",
+				index,
+				j,
+			)
+		}
+
+		if !wf.RunOnChangeOnly {
+			continue
+		}
+
 		// Callbacks can use any timing - they return RefreshAction to control behavior.
-		// This validation only applies to Cmd hooks.
-		if hook.Cmd == "" {
+		// This validation only applies to command-like hooks.
+		if strings.TrimSpace(hook.Cmd) == "" && !hook.RunCombinedDevBuildHookCommands {
 			continue
 		}
 
 		if hook.Timing != "" && hook.Timing != wave.OnChangeStrategyPre {
 			return fmt.Errorf(
-				"config: Watch.Include[%d].OnChangeHooks[%d] has Timing %q but RunOnChangeOnly requires all Cmd hooks to use \"pre\" timing (the default)",
+				"config: Watch.Include[%d].OnChangeHooks[%d] has Timing %q but RunOnChangeOnly requires all command hooks to use \"pre\" timing (the default)",
 				index, j, hook.Timing,
 			)
 		}

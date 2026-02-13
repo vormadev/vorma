@@ -283,8 +283,11 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 				t.Fatalf("go pattern should include one hook")
 			}
 			hook := pattern.OnChangeHooks[0]
-			if hook.Cmd != "DevBuildHook" {
-				t.Fatalf("go hook cmd = %q, want %q", hook.Cmd, "DevBuildHook")
+			if hook.Cmd != "" {
+				t.Fatalf("go hook cmd = %q, want empty", hook.Cmd)
+			}
+			if !hook.RunCombinedDevBuildHookCommands {
+				t.Fatalf("go hook should set RunCombinedDevBuildHookCommands=true")
 			}
 			if hook.Timing != "concurrent" {
 				t.Fatalf("go hook timing = %q, want %q", hook.Timing, "concurrent")

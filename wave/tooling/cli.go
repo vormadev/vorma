@@ -14,6 +14,8 @@ type CLIOptions struct {
 	IsDev    bool
 	HookOnly bool
 	NoBinary bool
+	Explain  bool
+	Doctor   bool
 }
 
 func ParseCLIOptions(commandLineArgs []string) (CLIOptions, error) {
@@ -22,6 +24,8 @@ func ParseCLIOptions(commandLineArgs []string) (CLIOptions, error) {
 	isDev := flagSet.Bool("dev", false, "run in dev mode")
 	hookOnly := flagSet.Bool("hook", false, "run custom hook only")
 	noBinary := flagSet.Bool("no-binary", false, "skip go binary compilation")
+	explain := flagSet.Bool("explain", false, "print effective Wave config and watch summary")
+	doctor := flagSet.Bool("doctor", false, "run Wave diagnostics checks")
 
 	if err := flagSet.Parse(commandLineArgs); err != nil {
 		return CLIOptions{}, fmt.Errorf("parse CLI options: %w", err)
@@ -31,6 +35,8 @@ func ParseCLIOptions(commandLineArgs []string) (CLIOptions, error) {
 		IsDev:    *isDev,
 		HookOnly: *hookOnly,
 		NoBinary: *noBinary,
+		Explain:  *explain,
+		Doctor:   *doctor,
 	}, nil
 }
 
@@ -56,6 +62,22 @@ func BuildWaveWithHookOptions(
 ) error {
 	if log == nil {
 		log = colorlog.New("wave")
+	}
+
+	if cliOptions.Explain {
+		fmt.Fprint(os.Stdout, BuildWaveExplainReport(cfg))
+		if !cliOptions.Doctor {
+			return nil
+		}
+	}
+
+	if cliOptions.Doctor {
+		doctorReport, hasIssues := BuildWaveDoctorReport(cfg)
+		fmt.Fprint(os.Stdout, doctorReport)
+		if hasIssues {
+			return fmt.Errorf("wave doctor found issues")
+		}
+		return nil
 	}
 
 	if cliOptions.HookOnly && hook != nil {

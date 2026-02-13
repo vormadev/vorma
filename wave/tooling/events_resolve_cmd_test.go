@@ -6,10 +6,11 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-func TestResolveCmd_DevBuildHook(t *testing.T) {
+func TestResolveHookCommand(t *testing.T) {
 	tests := []struct {
 		name string
 		cfg  *wave.ParsedConfig
+		hook wave.OnChangeHook
 		want string
 	}{
 		{
@@ -17,6 +18,9 @@ func TestResolveCmd_DevBuildHook(t *testing.T) {
 			cfg: &wave.ParsedConfig{
 				Core:                  &wave.CoreConfig{DevBuildHook: "go generate ./..."},
 				FrameworkDevBuildHook: "go run ./backend/cmd/build --dev --hook",
+			},
+			hook: wave.OnChangeHook{
+				RunCombinedDevBuildHookCommands: true,
 			},
 			want: "go generate ./... && go run ./backend/cmd/build --dev --hook",
 		},
@@ -26,6 +30,9 @@ func TestResolveCmd_DevBuildHook(t *testing.T) {
 				Core:                  &wave.CoreConfig{},
 				FrameworkDevBuildHook: "go run ./backend/cmd/build --dev --hook",
 			},
+			hook: wave.OnChangeHook{
+				RunCombinedDevBuildHookCommands: true,
+			},
 			want: "go run ./backend/cmd/build --dev --hook",
 		},
 		{
@@ -33,12 +40,18 @@ func TestResolveCmd_DevBuildHook(t *testing.T) {
 			cfg: &wave.ParsedConfig{
 				Core: &wave.CoreConfig{DevBuildHook: "go generate ./..."},
 			},
+			hook: wave.OnChangeHook{
+				RunCombinedDevBuildHookCommands: true,
+			},
 			want: "go generate ./...",
 		},
 		{
-			name: "returns empty when no hooks configured",
+			name: "returns empty when no hook commands configured",
 			cfg: &wave.ParsedConfig{
 				Core: &wave.CoreConfig{},
+			},
+			hook: wave.OnChangeHook{
+				RunCombinedDevBuildHookCommands: true,
 			},
 			want: "",
 		},
@@ -48,31 +61,49 @@ func TestResolveCmd_DevBuildHook(t *testing.T) {
 				Core:                  &wave.CoreConfig{DevBuildHook: "   go generate ./...   "},
 				FrameworkDevBuildHook: "\tgo run ./backend/cmd/build --dev --hook\t",
 			},
+			hook: wave.OnChangeHook{
+				RunCombinedDevBuildHookCommands: true,
+			},
 			want: "go generate ./... && go run ./backend/cmd/build --dev --hook",
 		},
 		{
 			name: "handles nil config safely",
 			cfg:  nil,
+			hook: wave.OnChangeHook{
+				RunCombinedDevBuildHookCommands: true,
+			},
 			want: "",
+		},
+		{
+			name: "resolves explicit cmd when hook does not use dev build hooks",
+			cfg:  &wave.ParsedConfig{},
+			hook: wave.OnChangeHook{
+				Cmd: "echo hi",
+			},
+			want: "echo hi",
+		},
+		{
+			name: "runs explicit cmd before combined dev build hooks when both are set",
+			cfg: &wave.ParsedConfig{
+				Core:                  &wave.CoreConfig{DevBuildHook: "go generate ./..."},
+				FrameworkDevBuildHook: "go run ./backend/cmd/build --dev --hook",
+			},
+			hook: wave.OnChangeHook{
+				Cmd:                             "echo pre-step",
+				RunCombinedDevBuildHookCommands: true,
+			},
+			want: "echo pre-step && go generate ./... && go run ./backend/cmd/build --dev --hook",
 		},
 	}
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			s := &server{cfg: testCase.cfg}
-			got := s.resolveCmd("DevBuildHook")
+			got := s.resolveHookCommand(testCase.hook)
 			if got != testCase.want {
-				t.Fatalf("resolveCmd(DevBuildHook) = %q, want %q", got, testCase.want)
+				t.Fatalf("resolveHookCommand(...) = %q, want %q", got, testCase.want)
 			}
 		})
-	}
-}
-
-func TestResolveCmd_NonDevBuildHookPassThrough(t *testing.T) {
-	s := &server{}
-	got := s.resolveCmd("echo hi")
-	if got != "echo hi" {
-		t.Fatalf("resolveCmd(echo hi) = %q, want %q", got, "echo hi")
 	}
 }
 

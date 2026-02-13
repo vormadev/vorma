@@ -124,7 +124,7 @@ func (w *Watcher) setupPatterns() {
 		w.ignoredDirs = append(w.ignoredDirs, prehashedDir+"/**")
 
 		// Public static files: Wave handles processing and writes filemap.ts directly.
-		// No DevBuildHook needed - Vite HMR picks up the TS file change.
+		// No explicit dev build hook command is needed - Vite HMR picks up the TS file change.
 		w.defaultWatched = []wave.WatchedFile{
 			{
 				Pattern: w.norm(publicStatic) + "/**/*",
