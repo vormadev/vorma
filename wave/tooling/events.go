@@ -34,34 +34,55 @@ type classifiedEvent struct {
 	chmodOnly   bool
 }
 
-// workSet collects all work to be done in response to file changes.
-type workSet struct {
-	// Build phase (determined by file type, union semantics)
+type buildPhaseDecision struct {
 	compileGo           bool
 	buildCriticalCSS    bool
 	buildNormalCSS      bool
 	processPublicFiles  bool
 	processPrivateFiles bool
-	restartApp          bool
+}
 
-	// Browser behavior (determined in resolve based on work + preferences)
-	reloadBrowser  bool
-	hotReloadCSS   bool
-	invalidateVite bool
-	revalidate     bool
-	waitForApp     bool
-	waitForVite    bool
-	cycleVite      bool
+func (d buildPhaseDecision) hasFileProcessingWork() bool {
+	return d.processPublicFiles ||
+		d.processPrivateFiles ||
+		d.buildCriticalCSS ||
+		d.buildNormalCSS
+}
 
-	// User preferences (collected from watchedFiles)
+type restartPhaseDecision struct {
+	restartApp bool
+}
+
+type browserPhaseAction int
+
+const (
+	browserPhaseActionNone browserPhaseAction = iota
+	browserPhaseActionHotReloadCSS
+	browserPhaseActionRevalidate
+	browserPhaseActionHardReload
+	browserPhaseActionInvalidateVite
+)
+
+type browserPhaseDecision struct {
+	action      browserPhaseAction
+	waitForApp  bool
+	waitForVite bool
+	cycleVite   bool
+}
+
+// workSet collects per-phase execution decisions for a watcher cycle.
+type workSet struct {
+	build   buildPhaseDecision
+	restart restartPhaseDecision
+	browser browserPhaseDecision
+
+	// User preference collected from watched files and applied during resolve.
 	preferRevalidate bool
 }
 
 type eventExecutionPlan struct {
 	classifiedEvents      []classifiedEvent
 	eventsWithHooks       []eventWithHooks
-	isBatch               bool
-	batchNeedsAppStop     bool
 	showRebuildingOverlay bool
 }
 
@@ -78,19 +99,19 @@ type refreshActionApplicationResult struct {
 // addFromRefreshAction merges a RefreshAction from a callback into the work set.
 func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
 	if action.TriggerRestart {
-		w.restartApp = true
+		w.restart.restartApp = true
 		if action.RecompileGo {
-			w.compileGo = true
+			w.build.compileGo = true
 		}
 	}
 	if action.ReloadBrowser {
-		w.reloadBrowser = true
+		w.requestBrowserAction(browserPhaseActionHardReload)
 	}
 	if action.WaitForApp {
-		w.waitForApp = true
+		w.browser.waitForApp = true
 	}
 	if action.WaitForVite {
-		w.waitForVite = true
+		w.browser.waitForVite = true
 	}
 }
 
@@ -136,34 +157,34 @@ func (w *workSet) addImplicitWork(c classifiedEvent) {
 
 	switch c.fileType {
 	case fileTypeGo:
-		w.compileGo = true
-		w.restartApp = true
+		w.build.compileGo = true
+		w.restart.restartApp = true
 
 	case fileTypeCriticalCSS:
-		w.buildCriticalCSS = true
+		w.build.buildCriticalCSS = true
 		if wf != nil && needsHardReload(wf) {
-			w.restartApp = true
+			w.restart.restartApp = true
 		}
 
 	case fileTypeNormalCSS:
-		w.buildNormalCSS = true
+		w.build.buildNormalCSS = true
 		if wf != nil && needsHardReload(wf) {
-			w.restartApp = true
+			w.restart.restartApp = true
 		}
 
 	case fileTypePublicStatic:
-		w.processPublicFiles = true
+		w.build.processPublicFiles = true
 
 	case fileTypePrivateStatic:
-		w.processPrivateFiles = true
+		w.build.processPrivateFiles = true
 
 	case fileTypeOther:
 		if wf != nil {
 			if wf.RecompileGoBinary {
-				w.compileGo = true
+				w.build.compileGo = true
 			}
 			if wf.RestartApp || wf.RecompileGoBinary {
-				w.restartApp = true
+				w.restart.restartApp = true
 			}
 		}
 	}
@@ -171,46 +192,54 @@ func (w *workSet) addImplicitWork(c classifiedEvent) {
 
 // resolve determines browser behavior based on build work and user preferences.
 func (w *workSet) resolve(usingVite bool) {
-	if w.compileGo {
-		w.restartApp = true
+	if w.build.compileGo {
+		w.restart.restartApp = true
 	}
 	w.determineBrowserBehavior(usingVite)
 }
 
 func (w *workSet) determineBrowserBehavior(usingVite bool) {
-	if w.restartApp {
-		w.reloadBrowser = true
-		w.waitForApp = true
-		w.waitForVite = usingVite
+	if w.restart.restartApp {
+		w.requestBrowserAction(browserPhaseActionHardReload)
+		w.browser.waitForApp = true
+		w.browser.waitForVite = usingVite
 		return
 	}
 
 	// User preference takes precedence over automatic optimizations
 	if w.preferRevalidate {
-		w.revalidate = true
-		w.waitForApp = true
-		w.waitForVite = usingVite
+		w.requestBrowserAction(browserPhaseActionRevalidate)
+		w.browser.waitForApp = true
+		w.browser.waitForVite = usingVite
 		return
 	}
 
-	cssWork := w.buildCriticalCSS || w.buildNormalCSS
-	cssOnly := cssWork && !w.processPublicFiles && !w.processPrivateFiles
+	cssWork := w.build.buildCriticalCSS || w.build.buildNormalCSS
+	cssOnly := cssWork &&
+		!w.build.processPublicFiles &&
+		!w.build.processPrivateFiles
 
 	if cssOnly {
-		w.hotReloadCSS = true
+		w.requestBrowserAction(browserPhaseActionHotReloadCSS)
 		return
 	}
 
-	if w.processPublicFiles {
-		w.invalidateVite = true
+	if w.build.processPublicFiles {
+		w.requestBrowserAction(browserPhaseActionInvalidateVite)
 		return
 	}
 
-	if w.processPrivateFiles || cssWork {
-		w.reloadBrowser = true
-		w.waitForApp = true
-		w.waitForVite = usingVite
+	if w.build.processPrivateFiles || cssWork {
+		w.requestBrowserAction(browserPhaseActionHardReload)
+		w.browser.waitForApp = true
+		w.browser.waitForVite = usingVite
 		return
+	}
+}
+
+func (w *workSet) requestBrowserAction(action browserPhaseAction) {
+	if action > w.browser.action {
+		w.browser.action = action
 	}
 }
 
@@ -288,11 +317,7 @@ func (s *server) processEvents(events []fsnotify.Event) {
 		)
 	}
 
-	if executionPlan.isBatch {
-		s.processBatchedEvents(executionPlan.eventsWithHooks, work, watcher)
-	} else {
-		s.processSingleEvent(executionPlan.eventsWithHooks[0], work, watcher)
-	}
+	s.processPlannedEvents(executionPlan.eventsWithHooks, work, watcher)
 
 	watcher.RemoveStale()
 }
@@ -318,14 +343,12 @@ func (s *server) buildEventExecutionPlan(
 		return eventExecutionPlanningResult{}
 	}
 
-	eventsWithHooks, batchNeedsAppStop := buildEventHooksForProcessing(classifiedEvents)
+	eventsWithHooks, _ := buildEventHooksForProcessing(classifiedEvents)
 
 	return eventExecutionPlanningResult{
 		plan: &eventExecutionPlan{
 			classifiedEvents:      classifiedEvents,
 			eventsWithHooks:       eventsWithHooks,
-			isBatch:               len(classifiedEvents) > 1,
-			batchNeedsAppStop:     batchNeedsAppStop,
 			showRebuildingOverlay: shouldShowRebuildingOverlay(classifiedEvents),
 		},
 	}
@@ -499,14 +522,7 @@ func (s *server) processSingleEvent(
 	work *workSet,
 	watcher *Watcher,
 ) {
-	if ewh.needsHardReload {
-		s.log.Info("Terminating running app")
-		if err := s.stopApp(); err != nil {
-			s.log.Error("Failed to terminate app", "error", err)
-		}
-	}
-
-	s.processEventsWithDeterministicPipeline([]eventWithHooks{ewh}, work, watcher)
+	s.processPlannedEvents([]eventWithHooks{ewh}, work, watcher)
 }
 
 // processBatchedEvents handles multiple file changes.
@@ -515,7 +531,35 @@ func (s *server) processBatchedEvents(
 	work *workSet,
 	watcher *Watcher,
 ) {
-	if batchNeedsHardReloadStop(eventsWithHooks) {
+	s.processPlannedEvents(eventsWithHooks, work, watcher)
+}
+
+func anyEventNeedsHardReload(eventsWithHooks []eventWithHooks) bool {
+	for _, eventWithHooksForCheck := range eventsWithHooks {
+		if eventWithHooksForCheck.needsHardReload {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *server) processPlannedEvents(
+	eventsWithHooks []eventWithHooks,
+	work *workSet,
+	watcher *Watcher,
+) {
+	if len(eventsWithHooks) == 0 {
+		return
+	}
+
+	if len(eventsWithHooks) == 1 {
+		if eventsWithHooks[0].needsHardReload {
+			s.log.Info("Terminating running app")
+			if err := s.stopApp(); err != nil {
+				s.log.Error("Failed to terminate app", "error", err)
+			}
+		}
+	} else if anyEventNeedsHardReload(eventsWithHooks) {
 		s.log.Info("Stopping app for batch rebuild")
 		if err := s.stopApp(); err != nil {
 			s.log.Error("Failed to stop app", "error", err)
@@ -528,37 +572,6 @@ func (s *server) processBatchedEvents(
 	}
 
 	s.processEventsWithDeterministicPipeline(eventsWithHooks, work, watcher)
-}
-
-func batchNeedsHardReloadStop(eventsWithHooks []eventWithHooks) bool {
-	if !anyEventNeedsHardReload(eventsWithHooks) {
-		return false
-	}
-	return !allBatchHookContextsMarkedAppStopped(eventsWithHooks)
-}
-
-func anyEventNeedsHardReload(eventsWithHooks []eventWithHooks) bool {
-	for _, eventWithHooksForCheck := range eventsWithHooks {
-		if eventWithHooksForCheck.needsHardReload {
-			return true
-		}
-	}
-	return false
-}
-
-func allBatchHookContextsMarkedAppStopped(eventsWithHooks []eventWithHooks) bool {
-	if len(eventsWithHooks) == 0 {
-		return false
-	}
-
-	for _, eventWithHooksForCheck := range eventsWithHooks {
-		if eventWithHooksForCheck.hookCtx == nil ||
-			!eventWithHooksForCheck.hookCtx.AppStoppedForBatch {
-			return false
-		}
-	}
-
-	return true
 }
 
 func (s *server) processEventsWithDeterministicPipeline(
@@ -618,7 +631,7 @@ func (s *server) processEventsWithDeterministicPipeline(
 		return
 	}
 
-	if shouldRunImplicitBuild && work.restartApp {
+	if shouldRunImplicitBuild && work.restart.restartApp {
 		s.log.Info("Restarting app")
 		s.startApp()
 	}
@@ -907,7 +920,7 @@ func (s *server) executeBuildPhase(work *workSet) {
 
 	var g errgroup.Group
 
-	if work.compileGo {
+	if work.build.compileGo {
 		g.Go(func() error {
 			if err := builder.CompileGoOnly(true); err != nil {
 				s.log.Error("Go compilation failed", "error", err)
@@ -917,12 +930,11 @@ func (s *server) executeBuildPhase(work *workSet) {
 		})
 	}
 
-	needsFileProcessing := work.processPublicFiles || work.processPrivateFiles ||
-		work.buildCriticalCSS || work.buildNormalCSS
+	needsFileProcessing := work.build.hasFileProcessingWork()
 
 	if needsFileProcessing {
 		g.Go(func() error {
-			if work.processPublicFiles {
+			if work.build.processPublicFiles {
 				if err := builder.ProcessPublicFilesOnly(); err != nil {
 					s.log.Error("Public files processing failed", "error", err)
 					return err
@@ -937,7 +949,7 @@ func (s *server) executeBuildPhase(work *workSet) {
 
 			var innerG errgroup.Group
 
-			if work.processPrivateFiles {
+			if work.build.processPrivateFiles {
 				innerG.Go(func() error {
 					if err := builder.ProcessPrivateFilesOnly(); err != nil {
 						s.log.Error("Private files processing failed", "error", err)
@@ -947,7 +959,7 @@ func (s *server) executeBuildPhase(work *workSet) {
 				})
 			}
 
-			if work.buildCriticalCSS {
+			if work.build.buildCriticalCSS {
 				innerG.Go(func() error {
 					if err := builder.BuildCriticalCSS(true); err != nil {
 						s.log.Error("Critical CSS build failed", "error", err)
@@ -957,7 +969,7 @@ func (s *server) executeBuildPhase(work *workSet) {
 				})
 			}
 
-			if work.buildNormalCSS {
+			if work.build.buildNormalCSS {
 				innerG.Go(func() error {
 					if err := builder.BuildNormalCSS(true); err != nil {
 						s.log.Error("Normal CSS build failed", "error", err)
@@ -983,50 +995,53 @@ func (s *server) executeBrowserPhase(work *workSet) {
 
 	builder := s.getBuilder()
 
-	if work.invalidateVite {
+	switch work.browser.action {
+	case browserPhaseActionInvalidateVite:
 		if s.cfg.UsingVite() {
 			if err := s.callViteFilemapInvalidate(); err != nil {
 				s.log.Warn("Vite filemap invalidate failed, falling back to reload", "error", err)
-				work.reloadBrowser = true
-				work.waitForApp = true
-				work.waitForVite = true
+				work.browser.action = browserPhaseActionHardReload
+				work.browser.waitForApp = true
+				work.browser.waitForVite = true
 			} else {
 				return
 			}
 		} else {
-			work.reloadBrowser = true
-			work.waitForApp = true
+			work.browser.action = browserPhaseActionHardReload
+			work.browser.waitForApp = true
 		}
-	}
+		fallthrough
 
-	if work.reloadBrowser {
+	case browserPhaseActionHardReload:
 		s.log.Info("Hard reloading browser")
 		s.broadcastReload(reloadOpts{
 			payload:   refreshPayload{ChangeType: changeTypeOther},
-			waitApp:   work.waitForApp,
-			waitVite:  work.waitForVite,
-			cycleVite: work.cycleVite,
+			waitApp:   work.browser.waitForApp,
+			waitVite:  work.browser.waitForVite,
+			cycleVite: work.browser.cycleVite,
 		})
 		return
-	}
 
-	if work.revalidate {
+	case browserPhaseActionRevalidate:
 		s.log.Info("Running client-defined revalidate function")
 		s.broadcastReload(reloadOpts{
 			payload:   refreshPayload{ChangeType: changeTypeRevalidate},
-			waitApp:   work.waitForApp,
-			waitVite:  work.waitForVite,
+			waitApp:   work.browser.waitForApp,
+			waitVite:  work.browser.waitForVite,
 			cycleVite: false,
 		})
 		return
-	}
 
-	if work.hotReloadCSS && builder != nil {
+	case browserPhaseActionHotReloadCSS:
+		if builder == nil {
+			return
+		}
+
 		s.log.Info("Hot reloading CSS")
 		criticalCSS, _ := builder.ReadCriticalCSS()
 		normalURL, _ := builder.ReadNormalCSSURL()
 
-		if work.buildCriticalCSS && work.buildNormalCSS {
+		if work.build.buildCriticalCSS && work.build.buildNormalCSS {
 			s.broadcastReload(reloadOpts{
 				payload: refreshPayload{
 					ChangeType:  changeTypeCriticalCSS,
@@ -1039,14 +1054,20 @@ func (s *server) executeBrowserPhase(work *workSet) {
 					NormalCSSURL: normalURL,
 				},
 			})
-		} else if work.buildCriticalCSS {
+			return
+		}
+
+		if work.build.buildCriticalCSS {
 			s.broadcastReload(reloadOpts{
 				payload: refreshPayload{
 					ChangeType:  changeTypeCriticalCSS,
 					CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
 				},
 			})
-		} else if work.buildNormalCSS {
+			return
+		}
+
+		if work.build.buildNormalCSS {
 			s.broadcastReload(reloadOpts{
 				payload: refreshPayload{
 					ChangeType:   changeTypeNormalCSS,
@@ -1054,6 +1075,9 @@ func (s *server) executeBrowserPhase(work *workSet) {
 				},
 			})
 		}
+
+	case browserPhaseActionNone:
+		return
 	}
 }
 

@@ -479,10 +479,12 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesFrameworkFileMapTS(t *te
 	}
 
 	work := &workSet{
-		processPublicFiles:  true,
-		processPrivateFiles: true,
-		buildCriticalCSS:    true,
-		buildNormalCSS:      true,
+		build: buildPhaseDecision{
+			processPublicFiles:  true,
+			processPrivateFiles: true,
+			buildCriticalCSS:    true,
+			buildNormalCSS:      true,
+		},
 	}
 	s.executeBuildPhase(work)
 
@@ -513,7 +515,11 @@ func TestExecuteBuildPhase_CompileGoErrorDoesNotPanic(t *testing.T) {
 		builder: builder,
 	}
 
-	work := &workSet{compileGo: true}
+	work := &workSet{
+		build: buildPhaseDecision{
+			compileGo: true,
+		},
+	}
 	s.executeBuildPhase(work)
 }
 
@@ -527,11 +533,13 @@ func TestExecuteBuildPhase_WithNilBuilderDoesNotPanic(t *testing.T) {
 	}
 
 	work := &workSet{
-		compileGo:           true,
-		processPublicFiles:  true,
-		processPrivateFiles: true,
-		buildCriticalCSS:    true,
-		buildNormalCSS:      true,
+		build: buildPhaseDecision{
+			compileGo:           true,
+			processPublicFiles:  true,
+			processPrivateFiles: true,
+			buildCriticalCSS:    true,
+			buildNormalCSS:      true,
+		},
 	}
 	s.executeBuildPhase(work)
 }
@@ -564,7 +572,11 @@ func TestExecuteBuildPhase_WritePublicFileMapTSErrorDoesNotPanic(t *testing.T) {
 		builder: builder,
 	}
 
-	work := &workSet{processPublicFiles: true}
+	work := &workSet{
+		build: buildPhaseDecision{
+			processPublicFiles: true,
+		},
+	}
 	s.executeBuildPhase(work)
 
 	statInfo, err := os.Stat(cfg.FrameworkPublicFileMapOutDir)

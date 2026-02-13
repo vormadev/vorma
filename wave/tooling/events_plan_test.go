@@ -144,10 +144,10 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(t *testing.T)
 	}
 
 	executionPlan := executionPlanningResult.plan
-	if !executionPlan.isBatch {
+	if len(executionPlan.eventsWithHooks) <= 1 {
 		t.Fatal("expected isBatch=true")
 	}
-	if executionPlan.batchNeedsAppStop {
+	if anyEventNeedsHardReload(executionPlan.eventsWithHooks) {
 		t.Fatal("expected batchNeedsAppStop=false for txt-only batch")
 	}
 	if !executionPlan.showRebuildingOverlay {

@@ -16,18 +16,20 @@ func TestWorkSetAddFromRefreshAction(t *testing.T) {
 		WaitForVite:    true,
 	})
 
-	if !work.restartApp {
-		t.Fatal("expected restartApp=true")
+	if !work.restart.restartApp {
+		t.Fatal("expected restart.restartApp=true")
 	}
-	if !work.compileGo {
-		t.Fatal("expected compileGo=true")
+	if !work.build.compileGo {
+		t.Fatal("expected build.compileGo=true")
 	}
-	if !work.reloadBrowser || !work.waitForApp || !work.waitForVite {
+	if work.browser.action != browserPhaseActionHardReload ||
+		!work.browser.waitForApp ||
+		!work.browser.waitForVite {
 		t.Fatalf(
-			"expected reload/wait flags true, got reload=%v waitApp=%v waitVite=%v",
-			work.reloadBrowser,
-			work.waitForApp,
-			work.waitForVite,
+			"expected hard reload + wait flags, got action=%v waitApp=%v waitVite=%v",
+			work.browser.action,
+			work.browser.waitForApp,
+			work.browser.waitForVite,
 		)
 	}
 }
@@ -48,10 +50,10 @@ func TestWorkSetApplyRefreshActions(t *testing.T) {
 		if result.recompileGo {
 			t.Fatal("expected recompileGo=false")
 		}
-		if !work.reloadBrowser {
+		if work.browser.action != browserPhaseActionHardReload {
 			t.Fatal("expected first non-restart action to be applied")
 		}
-		if work.waitForApp {
+		if work.browser.waitForApp {
 			t.Fatal("expected actions after restart request not to be applied")
 		}
 	})
@@ -67,12 +69,14 @@ func TestWorkSetApplyRefreshActions(t *testing.T) {
 		if result.restartRequested {
 			t.Fatal("expected restartRequested=false")
 		}
-		if !work.reloadBrowser || !work.waitForApp || !work.waitForVite {
+		if work.browser.action != browserPhaseActionHardReload ||
+			!work.browser.waitForApp ||
+			!work.browser.waitForVite {
 			t.Fatalf(
-				"expected merged flags true, got reload=%v waitApp=%v waitVite=%v",
-				work.reloadBrowser,
-				work.waitForApp,
-				work.waitForVite,
+				"expected hard reload + wait flags, got action=%v waitApp=%v waitVite=%v",
+				work.browser.action,
+				work.browser.waitForApp,
+				work.browser.waitForVite,
 			)
 		}
 	})
@@ -128,8 +132,12 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 	t.Run("go files imply compile and restart", func(t *testing.T) {
 		work := &workSet{}
 		work.addImplicitWork(classifiedEvent{fileType: fileTypeGo})
-		if !work.compileGo || !work.restartApp {
-			t.Fatalf("expected compile+restart, got compile=%v restart=%v", work.compileGo, work.restartApp)
+		if !work.build.compileGo || !work.restart.restartApp {
+			t.Fatalf(
+				"expected compile+restart, got compile=%v restart=%v",
+				work.build.compileGo,
+				work.restart.restartApp,
+			)
 		}
 	})
 
@@ -139,8 +147,12 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 			fileType:    fileTypeGo,
 			watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
 		})
-		if work.compileGo || work.restartApp {
-			t.Fatalf("expected no implicit work, got compile=%v restart=%v", work.compileGo, work.restartApp)
+		if work.build.compileGo || work.restart.restartApp {
+			t.Fatalf(
+				"expected no implicit work, got compile=%v restart=%v",
+				work.build.compileGo,
+				work.restart.restartApp,
+			)
 		}
 	})
 
@@ -152,8 +164,12 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 				RecompileGoBinary: true,
 			},
 		})
-		if !work.compileGo || !work.restartApp {
-			t.Fatalf("expected compile+restart, got compile=%v restart=%v", work.compileGo, work.restartApp)
+		if !work.build.compileGo || !work.restart.restartApp {
+			t.Fatalf(
+				"expected compile+restart, got compile=%v restart=%v",
+				work.build.compileGo,
+				work.restart.restartApp,
+			)
 		}
 	})
 
@@ -178,11 +194,11 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 				RestartApp: true,
 			},
 		})
-		if !work.buildCriticalCSS {
-			t.Fatal("expected buildCriticalCSS=true")
+		if !work.build.buildCriticalCSS {
+			t.Fatal("expected build.buildCriticalCSS=true")
 		}
-		if !work.restartApp {
-			t.Fatal("expected restartApp=true when critical css watched file requests hard reload")
+		if !work.restart.restartApp {
+			t.Fatal("expected restart.restartApp=true when critical css watched file requests hard reload")
 		}
 	})
 
@@ -194,27 +210,27 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 				RecompileGoBinary: true,
 			},
 		})
-		if !work.buildNormalCSS {
-			t.Fatal("expected buildNormalCSS=true")
+		if !work.build.buildNormalCSS {
+			t.Fatal("expected build.buildNormalCSS=true")
 		}
-		if !work.restartApp {
-			t.Fatal("expected restartApp=true when normal css watched file requests hard reload")
+		if !work.restart.restartApp {
+			t.Fatal("expected restart.restartApp=true when normal css watched file requests hard reload")
 		}
 	})
 
 	t.Run("public static file requests public file processing", func(t *testing.T) {
 		work := &workSet{}
 		work.addImplicitWork(classifiedEvent{fileType: fileTypePublicStatic})
-		if !work.processPublicFiles {
-			t.Fatal("expected processPublicFiles=true")
+		if !work.build.processPublicFiles {
+			t.Fatal("expected build.processPublicFiles=true")
 		}
 	})
 
 	t.Run("private static file requests private file processing", func(t *testing.T) {
 		work := &workSet{}
 		work.addImplicitWork(classifiedEvent{fileType: fileTypePrivateStatic})
-		if !work.processPrivateFiles {
-			t.Fatal("expected processPrivateFiles=true")
+		if !work.build.processPrivateFiles {
+			t.Fatal("expected build.processPrivateFiles=true")
 		}
 	})
 
@@ -226,26 +242,30 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 				RestartApp: true,
 			},
 		})
-		if work.compileGo {
-			t.Fatal("did not expect compileGo=true")
+		if work.build.compileGo {
+			t.Fatal("did not expect build.compileGo=true")
 		}
-		if !work.restartApp {
-			t.Fatal("expected restartApp=true")
+		if !work.restart.restartApp {
+			t.Fatal("expected restart.restartApp=true")
 		}
 	})
 }
 
 func TestWorkSetDetermineBrowserBehavior(t *testing.T) {
 	t.Run("restart takes precedence", func(t *testing.T) {
-		work := &workSet{restartApp: true}
+		work := &workSet{
+			restart: restartPhaseDecision{restartApp: true},
+		}
 		work.determineBrowserBehavior(true)
 
-		if !work.reloadBrowser || !work.waitForApp || !work.waitForVite {
+		if work.browser.action != browserPhaseActionHardReload ||
+			!work.browser.waitForApp ||
+			!work.browser.waitForVite {
 			t.Fatalf(
-				"expected reload+wait for restart path, got reload=%v waitApp=%v waitVite=%v",
-				work.reloadBrowser,
-				work.waitForApp,
-				work.waitForVite,
+				"expected hard reload + wait for restart path, got action=%v waitApp=%v waitVite=%v",
+				work.browser.action,
+				work.browser.waitForApp,
+				work.browser.waitForVite,
 			)
 		}
 	})
@@ -253,60 +273,75 @@ func TestWorkSetDetermineBrowserBehavior(t *testing.T) {
 	t.Run("revalidate preference overrides hot reload optimizations", func(t *testing.T) {
 		work := &workSet{
 			preferRevalidate: true,
-			buildNormalCSS:   true,
+			build: buildPhaseDecision{
+				buildNormalCSS: true,
+			},
 		}
 		work.determineBrowserBehavior(true)
 
-		if !work.revalidate {
-			t.Fatal("expected revalidate=true")
-		}
-		if work.hotReloadCSS {
-			t.Fatal("expected hotReloadCSS=false when revalidate is preferred")
+		if work.browser.action != browserPhaseActionRevalidate {
+			t.Fatalf("expected revalidate action, got %v", work.browser.action)
 		}
 	})
 
 	t.Run("css-only work uses css hot reload", func(t *testing.T) {
-		work := &workSet{buildCriticalCSS: true}
-		work.determineBrowserBehavior(true)
-		if !work.hotReloadCSS {
-			t.Fatal("expected hotReloadCSS=true")
+		work := &workSet{
+			build: buildPhaseDecision{
+				buildCriticalCSS: true,
+			},
 		}
-		if work.reloadBrowser {
-			t.Fatal("expected reloadBrowser=false for css-only path")
+		work.determineBrowserBehavior(true)
+		if work.browser.action != browserPhaseActionHotReloadCSS {
+			t.Fatalf("expected hot reload css action, got %v", work.browser.action)
 		}
 	})
 
 	t.Run("public static work invalidates vite", func(t *testing.T) {
-		work := &workSet{processPublicFiles: true}
-		work.determineBrowserBehavior(true)
-		if !work.invalidateVite {
-			t.Fatal("expected invalidateVite=true")
+		work := &workSet{
+			build: buildPhaseDecision{
+				processPublicFiles: true,
+			},
 		}
-		if work.reloadBrowser {
-			t.Fatal("expected reloadBrowser=false on invalidate-vite path")
+		work.determineBrowserBehavior(true)
+		if work.browser.action != browserPhaseActionInvalidateVite {
+			t.Fatalf("expected invalidate vite action, got %v", work.browser.action)
 		}
 	})
 
 	t.Run("private static work uses full reload", func(t *testing.T) {
-		work := &workSet{processPrivateFiles: true}
+		work := &workSet{
+			build: buildPhaseDecision{
+				processPrivateFiles: true,
+			},
+		}
 		work.determineBrowserBehavior(false)
 
-		if !work.reloadBrowser || !work.waitForApp {
-			t.Fatalf("expected reload+waitApp for private static path, got reload=%v waitApp=%v", work.reloadBrowser, work.waitForApp)
+		if work.browser.action != browserPhaseActionHardReload ||
+			!work.browser.waitForApp {
+			t.Fatalf(
+				"expected hard reload + waitApp for private static path, got action=%v waitApp=%v",
+				work.browser.action,
+				work.browser.waitForApp,
+			)
 		}
-		if work.waitForVite {
+		if work.browser.waitForVite {
 			t.Fatal("expected waitForVite=false when vite is disabled")
 		}
 	})
 }
 
 func TestWorkSetResolve_CompileImpliesRestart(t *testing.T) {
-	work := &workSet{compileGo: true}
-	work.resolve(false)
-	if !work.restartApp {
-		t.Fatal("expected restartApp=true when compileGo=true")
+	work := &workSet{
+		build: buildPhaseDecision{
+			compileGo: true,
+		},
 	}
-	if !work.reloadBrowser {
-		t.Fatal("expected reloadBrowser=true on restart path")
+
+	work.resolve(false)
+	if !work.restart.restartApp {
+		t.Fatal("expected restart.restartApp=true when build.compileGo=true")
+	}
+	if work.browser.action != browserPhaseActionHardReload {
+		t.Fatal("expected hard reload action on restart path")
 	}
 }

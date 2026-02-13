@@ -112,7 +112,7 @@ func TestProcessSingleEvent_RunOnChangeOnlyWithHardReloadStopsRunningApp(t *test
 	if s.appCmd != nil {
 		t.Fatal("expected hard-reload run-on-change-only event to stop running app")
 	}
-	if work.compileGo || work.restartApp {
+	if work.build.compileGo || work.restart.restartApp {
 		t.Fatalf("expected run-on-change-only event to skip implicit build/restart work, got %#v", work)
 	}
 

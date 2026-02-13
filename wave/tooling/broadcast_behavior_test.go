@@ -124,17 +124,21 @@ func TestExecuteBrowserPhase_InvalidateViteFallbackWithoutViteSetsHardReload(t *
 		log: newDiscardLogger(),
 	}
 
-	work := &workSet{invalidateVite: true}
+	work := &workSet{
+		browser: browserPhaseDecision{
+			action: browserPhaseActionInvalidateVite,
+		},
+	}
 	s.executeBrowserPhase(work)
 
-	if !work.reloadBrowser || !work.waitForApp {
+	if work.browser.action != browserPhaseActionHardReload || !work.browser.waitForApp {
 		t.Fatalf(
 			"expected invalidate fallback to set reload+waitApp, got reload=%v waitApp=%v",
-			work.reloadBrowser,
-			work.waitForApp,
+			work.browser.action == browserPhaseActionHardReload,
+			work.browser.waitForApp,
 		)
 	}
-	if work.waitForVite {
+	if work.browser.waitForVite {
 		t.Fatal("did not expect waitForVite when Vite is disabled")
 	}
 }
@@ -149,15 +153,21 @@ func TestExecuteBrowserPhase_InvalidateViteFailureFallsBackToHardReload(t *testi
 		log: newDiscardLogger(),
 	}
 
-	work := &workSet{invalidateVite: true}
+	work := &workSet{
+		browser: browserPhaseDecision{
+			action: browserPhaseActionInvalidateVite,
+		},
+	}
 	s.executeBrowserPhase(work)
 
-	if !work.reloadBrowser || !work.waitForApp || !work.waitForVite {
+	if work.browser.action != browserPhaseActionHardReload ||
+		!work.browser.waitForApp ||
+		!work.browser.waitForVite {
 		t.Fatalf(
 			"expected fallback hard reload flags, got reload=%v waitApp=%v waitVite=%v",
-			work.reloadBrowser,
-			work.waitForApp,
-			work.waitForVite,
+			work.browser.action == browserPhaseActionHardReload,
+			work.browser.waitForApp,
+			work.browser.waitForVite,
 		)
 	}
 }
@@ -192,9 +202,13 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(t *
 	}
 
 	work := &workSet{
-		hotReloadCSS:     true,
-		buildCriticalCSS: true,
-		buildNormalCSS:   true,
+		browser: browserPhaseDecision{
+			action: browserPhaseActionHotReloadCSS,
+		},
+		build: buildPhaseDecision{
+			buildCriticalCSS: true,
+			buildNormalCSS:   true,
+		},
 	}
 	s.executeBrowserPhase(work)
 
@@ -232,7 +246,11 @@ func TestExecuteBrowserPhase_RevalidateBroadcastsRevalidatePayload(t *testing.T)
 		refreshMgrCtx: context.Background(),
 	}
 
-	work := &workSet{revalidate: true}
+	work := &workSet{
+		browser: browserPhaseDecision{
+			action: browserPhaseActionRevalidate,
+		},
+	}
 	s.executeBrowserPhase(work)
 
 	select {
@@ -271,8 +289,12 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalOnlyPayload(t *testin
 	}
 
 	work := &workSet{
-		hotReloadCSS:     true,
-		buildCriticalCSS: true,
+		browser: browserPhaseDecision{
+			action: browserPhaseActionHotReloadCSS,
+		},
+		build: buildPhaseDecision{
+			buildCriticalCSS: true,
+		},
 	}
 	s.executeBrowserPhase(work)
 
@@ -312,8 +334,12 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsNormalOnlyPayload(t *testing.
 	}
 
 	work := &workSet{
-		hotReloadCSS:   true,
-		buildNormalCSS: true,
+		browser: browserPhaseDecision{
+			action: browserPhaseActionHotReloadCSS,
+		},
+		build: buildPhaseDecision{
+			buildNormalCSS: true,
+		},
 	}
 	s.executeBrowserPhase(work)
 
@@ -340,7 +366,11 @@ func TestExecuteBrowserPhase_NoOpWhenServerOnlyMode(t *testing.T) {
 		refreshMgrCtx: context.Background(),
 	}
 
-	work := &workSet{reloadBrowser: true}
+	work := &workSet{
+		browser: browserPhaseDecision{
+			action: browserPhaseActionHardReload,
+		},
+	}
 	s.executeBrowserPhase(work)
 
 	select {
@@ -386,15 +416,21 @@ func TestExecuteBrowserPhase_InvalidateViteSuccessReturnsWithoutReloadFallback(t
 		refreshMgrCtx: context.Background(),
 	}
 
-	work := &workSet{invalidateVite: true}
+	work := &workSet{
+		browser: browserPhaseDecision{
+			action: browserPhaseActionInvalidateVite,
+		},
+	}
 	s.executeBrowserPhase(work)
 
-	if work.reloadBrowser || work.waitForApp || work.waitForVite {
+	if work.browser.action != browserPhaseActionInvalidateVite ||
+		work.browser.waitForApp ||
+		work.browser.waitForVite {
 		t.Fatalf(
 			"expected no fallback flags on successful vite invalidation, got reload=%v waitApp=%v waitVite=%v",
-			work.reloadBrowser,
-			work.waitForApp,
-			work.waitForVite,
+			work.browser.action == browserPhaseActionHardReload,
+			work.browser.waitForApp,
+			work.browser.waitForVite,
 		)
 	}
 
