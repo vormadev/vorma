@@ -618,6 +618,141 @@ func TestReadNormalCSSURLForHotReload_RequiresFreshOutputAfterFailedRebuild(t *t
 	}
 }
 
+func TestCSSHotReloadCaches_DoNotLeakAcrossBuilderReplacement(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = wave.CSSEntryFiles{
+		Critical:    filepath.Join(root, "styles", "critical.css"),
+		NonCritical: filepath.Join(root, "styles", "normal.css"),
+	}
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.Critical), 0o755); err != nil {
+		t.Fatalf("failed creating css entry parent dir: %v", err)
+	}
+	if err := os.WriteFile(cfg.Core.CSSEntryFiles.Critical, []byte("body { color: red; }"), 0o644); err != nil {
+		t.Fatalf("failed writing critical css entry file: %v", err)
+	}
+	if err := os.WriteFile(cfg.Core.CSSEntryFiles.NonCritical, []byte("body { color: blue; }"), 0o644); err != nil {
+		t.Fatalf("failed writing normal css entry file: %v", err)
+	}
+
+	firstBuilder := NewBuilder(cfg, newDiscardLogger())
+	defer firstBuilder.Close()
+
+	if err := firstBuilder.BuildCriticalCSS(true); err != nil {
+		t.Fatalf("first builder BuildCriticalCSS returned error: %v", err)
+	}
+	if err := firstBuilder.BuildNormalCSS(true); err != nil {
+		t.Fatalf("first builder BuildNormalCSS returned error: %v", err)
+	}
+
+	firstBuilderCriticalCSS, criticalReadError := firstBuilder.ReadCriticalCSSForHotReload(false)
+	if criticalReadError != nil {
+		t.Fatalf("first builder ReadCriticalCSSForHotReload(false) returned error: %v", criticalReadError)
+	}
+	firstBuilderNormalCSSURL, normalReadError := firstBuilder.ReadNormalCSSURLForHotReload(false)
+	if normalReadError != nil {
+		t.Fatalf("first builder ReadNormalCSSURLForHotReload(false) returned error: %v", normalReadError)
+	}
+
+	if err := os.WriteFile(cfg.Dist.CriticalCSS(), []byte("body { color: green; }"), 0o644); err != nil {
+		t.Fatalf("failed writing overridden critical css dist file: %v", err)
+	}
+	if err := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte("styles-overridden.css"), 0o644); err != nil {
+		t.Fatalf("failed writing overridden normal css ref file: %v", err)
+	}
+
+	stillCachedCriticalCSS, stillCachedCriticalReadError := firstBuilder.ReadCriticalCSSForHotReload(false)
+	if stillCachedCriticalReadError != nil {
+		t.Fatalf("first builder cached critical css read returned error: %v", stillCachedCriticalReadError)
+	}
+	if stillCachedCriticalCSS != firstBuilderCriticalCSS {
+		t.Fatalf(
+			"expected first builder to keep in-memory critical css cache, before=%q after=%q",
+			firstBuilderCriticalCSS,
+			stillCachedCriticalCSS,
+		)
+	}
+
+	stillCachedNormalCSSURL, stillCachedNormalReadError := firstBuilder.ReadNormalCSSURLForHotReload(false)
+	if stillCachedNormalReadError != nil {
+		t.Fatalf("first builder cached normal css URL read returned error: %v", stillCachedNormalReadError)
+	}
+	if stillCachedNormalCSSURL != firstBuilderNormalCSSURL {
+		t.Fatalf(
+			"expected first builder to keep in-memory normal css url cache, before=%q after=%q",
+			firstBuilderNormalCSSURL,
+			stillCachedNormalCSSURL,
+		)
+	}
+
+	secondBuilder := NewBuilder(cfg, newDiscardLogger())
+	defer secondBuilder.Close()
+
+	secondBuilderCriticalCSS, secondCriticalReadError := secondBuilder.ReadCriticalCSSForHotReload(false)
+	if secondCriticalReadError != nil {
+		t.Fatalf("second builder ReadCriticalCSSForHotReload(false) returned error: %v", secondCriticalReadError)
+	}
+	secondBuilderNormalCSSURL, secondNormalReadError := secondBuilder.ReadNormalCSSURLForHotReload(false)
+	if secondNormalReadError != nil {
+		t.Fatalf("second builder ReadNormalCSSURLForHotReload(false) returned error: %v", secondNormalReadError)
+	}
+
+	if !strings.Contains(secondBuilderCriticalCSS, "green") {
+		t.Fatalf(
+			"expected second builder to read critical css from dist, got %q",
+			secondBuilderCriticalCSS,
+		)
+	}
+	if !strings.HasSuffix(secondBuilderNormalCSSURL, "styles-overridden.css") {
+		t.Fatalf(
+			"expected second builder to read normal css ref from dist, got %q",
+			secondBuilderNormalCSSURL,
+		)
+	}
+}
+
+func TestIsCriticalCSSFile_RecognizesSymlinkAliasPath(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	stylesDirectoryPath := filepath.Join(root, "styles")
+	criticalEntryPath := filepath.Join(stylesDirectoryPath, "critical.css")
+	cfg.Core.CSSEntryFiles = wave.CSSEntryFiles{
+		Critical: criticalEntryPath,
+	}
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	if err := os.MkdirAll(stylesDirectoryPath, 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(criticalEntryPath, []byte("body { color: red; }"), 0o644); err != nil {
+		t.Fatalf("failed writing critical css entry file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	if err := builder.BuildCriticalCSS(true); err != nil {
+		t.Fatalf("BuildCriticalCSS returned error: %v", err)
+	}
+
+	aliasDirectoryPath := filepath.Join(root, "styles-alias")
+	if err := os.Symlink(stylesDirectoryPath, aliasDirectoryPath); err != nil {
+		t.Fatalf("failed creating styles alias symlink: %v", err)
+	}
+	aliasCriticalPath := filepath.Join(aliasDirectoryPath, "critical.css")
+
+	if !builder.IsCriticalCSSFile(aliasCriticalPath) {
+		t.Fatalf("expected symlink alias path %q to be recognized as critical css import", aliasCriticalPath)
+	}
+	if !builder.IsCSSFile(aliasCriticalPath) {
+		t.Fatalf("expected symlink alias path %q to be recognized as css import", aliasCriticalPath)
+	}
+}
+
 func contextPointerIdentity(value any) uintptr {
 	reflectiveValue := reflect.ValueOf(value)
 	if !reflectiveValue.IsValid() {

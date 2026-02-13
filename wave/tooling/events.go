@@ -2,10 +2,13 @@ package tooling
 
 import (
 	"encoding/base64"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -321,6 +324,64 @@ func (w *workSet) requestBrowserAction(action browserPhaseAction) {
 	}
 }
 
+func planBrowserReloadForAction(
+	action browserPhaseAction,
+	browserDecision browserPhaseDecision,
+) (reloadOpts, bool) {
+	switch action {
+	case browserPhaseActionHardReload:
+		return reloadOpts{
+			payload:   refreshPayload{ChangeType: changeTypeOther},
+			waitApp:   browserDecision.waitForApp,
+			waitVite:  browserDecision.waitForVite,
+			cycleVite: browserDecision.cycleVite,
+		}, true
+	case browserPhaseActionRevalidate:
+		return reloadOpts{
+			payload:   refreshPayload{ChangeType: changeTypeRevalidate},
+			waitApp:   browserDecision.waitForApp,
+			waitVite:  browserDecision.waitForVite,
+			cycleVite: false,
+		}, true
+	default:
+		return reloadOpts{}, false
+	}
+}
+
+func planInvalidateViteFallbackBrowserDecision(
+	usingVite bool,
+) browserPhaseDecision {
+	return browserPhaseDecision{
+		action:      browserPhaseActionHardReload,
+		waitForApp:  true,
+		waitForVite: usingVite,
+	}
+}
+
+func planHotReloadCSSPayloads(
+	includeCriticalCSS bool,
+	criticalCSS string,
+	criticalCSSAvailable bool,
+	includeNormalCSS bool,
+	normalCSSURL string,
+	normalCSSURLAvailable bool,
+) []refreshPayload {
+	payloads := make([]refreshPayload, 0, 2)
+	if includeCriticalCSS && criticalCSSAvailable {
+		payloads = append(payloads, refreshPayload{
+			ChangeType:  changeTypeCriticalCSS,
+			CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
+		})
+	}
+	if includeNormalCSS && normalCSSURLAvailable {
+		payloads = append(payloads, refreshPayload{
+			ChangeType:   changeTypeNormalCSS,
+			NormalCSSURL: normalCSSURL,
+		})
+	}
+	return payloads
+}
+
 // eventWithHooks pairs a classified event with its sorted hooks
 type eventWithHooks struct {
 	classified         classifiedEvent
@@ -421,18 +482,28 @@ func (s *server) buildEventExecutionPlan(
 		return eventExecutionPlanningResult{}
 	}
 
-	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
-	if len(eventsWithHooks) == 0 {
-		return eventExecutionPlanningResult{}
+	return eventExecutionPlanningResult{
+		plan: buildEventExecutionPlanFromClassifiedEvents(classifiedEvents),
+	}
+}
+
+func buildEventExecutionPlanFromClassifiedEvents(
+	classifiedEvents []classifiedEvent,
+) *eventExecutionPlan {
+	if len(classifiedEvents) == 0 {
+		return nil
 	}
 
-	return eventExecutionPlanningResult{
-		plan: &eventExecutionPlan{
-			eventsWithHooks:       eventsWithHooks,
-			showRebuildingOverlay: shouldShowRebuildingOverlay(classifiedEvents),
-			appStopStrategy:       resolveAppStopStrategy(eventsWithHooks),
-			runImplicitBuild:      shouldRunImplicitBuildForEvents(eventsWithHooks),
-		},
+	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
+	if len(eventsWithHooks) == 0 {
+		return nil
+	}
+
+	return &eventExecutionPlan{
+		eventsWithHooks:       eventsWithHooks,
+		showRebuildingOverlay: shouldShowRebuildingOverlay(classifiedEvents),
+		appStopStrategy:       resolveAppStopStrategy(eventsWithHooks),
+		runImplicitBuild:      shouldRunImplicitBuildForEvents(eventsWithHooks),
 	}
 }
 
@@ -444,8 +515,18 @@ func deduplicateWatcherEventsByPath(
 	}
 
 	mergedEventOpsByPath := make(map[string]fsnotify.Op, len(events))
+	deduplicationIndex := newWatcherEventDeduplicationIndex()
 	for _, event := range events {
-		mergedEventOpsByPath[event.Name] |= event.Op
+		eventPathKey := normalizeWatcherEventPathForDeduplication(event.Name)
+		if existingPathKey := deduplicationIndex.resolveExistingPathKey(
+			mergedEventOpsByPath,
+			eventPathKey,
+		); existingPathKey != "" {
+			eventPathKey = existingPathKey
+		} else {
+			deduplicationIndex.recordPathKey(eventPathKey)
+		}
+		mergedEventOpsByPath[eventPathKey] |= event.Op
 	}
 
 	deduplicatedPaths := make([]string, 0, len(mergedEventOpsByPath))
@@ -465,6 +546,171 @@ func deduplicateWatcherEventsByPath(
 	return deduplicatedEvents
 }
 
+type watcherEventDeduplicationIndex struct {
+	canonicalPathToPathKey        map[string]string
+	missingFileAliasKeyToPathKey  map[string]string
+	canonicalPathByAbsolutePath   map[string]string
+	missingAliasKeyByAbsolutePath map[string]string
+}
+
+func newWatcherEventDeduplicationIndex() *watcherEventDeduplicationIndex {
+	return &watcherEventDeduplicationIndex{
+		canonicalPathToPathKey:        make(map[string]string),
+		missingFileAliasKeyToPathKey:  make(map[string]string),
+		canonicalPathByAbsolutePath:   make(map[string]string),
+		missingAliasKeyByAbsolutePath: make(map[string]string),
+	}
+}
+
+func (index *watcherEventDeduplicationIndex) resolveExistingPathKey(
+	mergedEventOpsByPath map[string]fsnotify.Op,
+	normalizedEventPath string,
+) string {
+	if normalizedEventPath == "" {
+		if _, alreadyExists := mergedEventOpsByPath[""]; alreadyExists {
+			return ""
+		}
+		return ""
+	}
+
+	if _, alreadyExists := mergedEventOpsByPath[normalizedEventPath]; alreadyExists {
+		return normalizedEventPath
+	}
+
+	if !filepath.IsAbs(normalizedEventPath) {
+		return ""
+	}
+
+	canonicalPath := index.resolveCanonicalPathForAbsolutePath(normalizedEventPath)
+	if canonicalPath != "" {
+		if existingPathKey, exists := index.canonicalPathToPathKey[canonicalPath]; exists {
+			return existingPathKey
+		}
+	}
+
+	missingFileAliasKey := index.resolveMissingAliasKeyForAbsolutePath(normalizedEventPath)
+	if missingFileAliasKey != "" {
+		if existingPathKey, exists := index.missingFileAliasKeyToPathKey[missingFileAliasKey]; exists {
+			return existingPathKey
+		}
+	}
+
+	return ""
+}
+
+func (index *watcherEventDeduplicationIndex) recordPathKey(pathKey string) {
+	if pathKey == "" || !filepath.IsAbs(pathKey) {
+		return
+	}
+
+	canonicalPath := index.resolveCanonicalPathForAbsolutePath(pathKey)
+	if canonicalPath != "" {
+		if _, exists := index.canonicalPathToPathKey[canonicalPath]; !exists {
+			index.canonicalPathToPathKey[canonicalPath] = pathKey
+		}
+	}
+
+	missingFileAliasKey := index.resolveMissingAliasKeyForAbsolutePath(pathKey)
+	if missingFileAliasKey != "" {
+		if _, exists := index.missingFileAliasKeyToPathKey[missingFileAliasKey]; !exists {
+			index.missingFileAliasKeyToPathKey[missingFileAliasKey] = pathKey
+		}
+	}
+}
+
+const missingAliasKeyResolutionEmptySentinel = "\x00"
+
+func (index *watcherEventDeduplicationIndex) resolveCanonicalPathForAbsolutePath(
+	absolutePath string,
+) string {
+	if absolutePath == "" || !filepath.IsAbs(absolutePath) {
+		return ""
+	}
+
+	if canonicalPath, exists := index.canonicalPathByAbsolutePath[absolutePath]; exists {
+		return canonicalPath
+	}
+
+	canonicalPath := canonicalizeAbsolutePathForWatcherEventDeduplication(absolutePath)
+	if canonicalPath == "" {
+		return ""
+	}
+	index.canonicalPathByAbsolutePath[absolutePath] = canonicalPath
+	return canonicalPath
+}
+
+func (index *watcherEventDeduplicationIndex) resolveMissingAliasKeyForAbsolutePath(
+	absolutePath string,
+) string {
+	if absolutePath == "" || !filepath.IsAbs(absolutePath) {
+		return ""
+	}
+
+	if cachedAliasKey, exists := index.missingAliasKeyByAbsolutePath[absolutePath]; exists {
+		if cachedAliasKey == missingAliasKeyResolutionEmptySentinel {
+			return ""
+		}
+		return cachedAliasKey
+	}
+
+	missingAliasKey := missingFileAliasKeyForWatcherEventDeduplication(absolutePath)
+	if missingAliasKey == "" {
+		index.missingAliasKeyByAbsolutePath[absolutePath] = missingAliasKeyResolutionEmptySentinel
+		return ""
+	}
+
+	index.missingAliasKeyByAbsolutePath[absolutePath] = missingAliasKey
+	return missingAliasKey
+}
+
+func normalizeWatcherEventPathForDeduplication(
+	eventPath string,
+) string {
+	trimmedEventPath := strings.TrimSpace(eventPath)
+	if trimmedEventPath == "" {
+		return ""
+	}
+
+	cleanedEventPath := filepath.Clean(trimmedEventPath)
+	if filepath.IsAbs(cleanedEventPath) {
+		return pathnorm.Absolute(cleanedEventPath)
+	}
+
+	return cleanedEventPath
+}
+
+func canonicalizeAbsolutePathForWatcherEventDeduplication(
+	absolutePath string,
+) string {
+	return pathnorm.CanonicalizePathForLocationComparison(absolutePath)
+}
+
+func missingFileAliasKeyForWatcherEventDeduplication(
+	absolutePath string,
+) string {
+	if absolutePath == "" || !filepath.IsAbs(absolutePath) {
+		return ""
+	}
+
+	baseName := filepath.Base(absolutePath)
+	if baseName == "" || baseName == "." || baseName == string(filepath.Separator) {
+		return ""
+	}
+
+	parentDirectoryPath := pathnorm.AbsoluteDirectory(absolutePath)
+	if parentDirectoryPath == "" {
+		return ""
+	}
+	canonicalParentDirectoryPath := canonicalizeAbsolutePathForWatcherEventDeduplication(
+		parentDirectoryPath,
+	)
+	if canonicalParentDirectoryPath == "" {
+		return ""
+	}
+
+	return canonicalParentDirectoryPath + "\x00" + baseName
+}
+
 func (s *server) classifyWatcherEventsForProcessing(
 	events []fsnotify.Event,
 	watcher *Watcher,
@@ -474,27 +720,42 @@ func (s *server) classifyWatcherEventsForProcessing(
 		return nil, false
 	}
 
-	classifiedEvents := make([]classifiedEvent, 0, len(events))
+	eventClassificationProber := newWatcherEventClassificationProber(s.isConfigFile)
+	preClassificationPlan := buildWatcherEventPreClassificationPlanFromEvents(
+		events,
+		eventClassificationProber,
+	)
+	if preClassificationPlan.configChanged {
+		return nil, true
+	}
 
-	for _, event := range events {
-		if s.isConfigFile(event.Name) && (event.Has(fsnotify.Write) || event.Has(fsnotify.Create)) {
-			return nil, true
-		}
-
-		info, _ := os.Stat(event.Name)
-		if info != nil && info.IsDir() {
-			if event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
-				_ = watcher.AddDir(event.Name)
+	classifiedEvents := make([]classifiedEvent, 0, len(preClassificationPlan.plannedEvents))
+	for _, plannedEvent := range preClassificationPlan.plannedEvents {
+		if plannedEvent.preClassificationDecision.addDirectoryWatch {
+			addDirectoryWatchError := watcher.AddDir(plannedEvent.event.Name)
+			if shouldLogWatcherAddDirectoryError(addDirectoryWatchError) {
+				s.log.Warn(
+					"failed to add directory watch",
+					"path",
+					plannedEvent.event.Name,
+					"error",
+					addDirectoryWatchError,
+				)
 			}
+		}
+		if !plannedEvent.preClassificationDecision.classifyEvent {
 			continue
 		}
 
 		classifiedEventForProcessing := s.classifyEventWithWatcherAndBuilder(
-			event,
+			plannedEvent.event,
 			watcher,
 			builder,
 		)
-		if classifiedEventForProcessing.ignored || classifiedEventForProcessing.chmodOnly {
+		postClassificationDecision := deriveWatcherEventPostClassificationDecision(
+			classifiedEventForProcessing,
+		)
+		if !postClassificationDecision.includeClassifiedEvent {
 			continue
 		}
 
@@ -502,6 +763,254 @@ func (s *server) classifyWatcherEventsForProcessing(
 	}
 
 	return classifiedEvents, false
+}
+
+type watcherEventPreClassificationDecision struct {
+	configChanged     bool
+	addDirectoryWatch bool
+	classifyEvent     bool
+}
+
+type watcherEventPreClassificationInput struct {
+	event                       fsnotify.Event
+	isConfigFile                bool
+	eventIsDirectory            bool
+	eventPathStatProbeSucceeded bool
+}
+
+type watcherEventPreClassificationPlannedEvent struct {
+	event                     fsnotify.Event
+	preClassificationDecision watcherEventPreClassificationDecision
+}
+
+type watcherEventPreClassificationPlan struct {
+	configChanged bool
+	plannedEvents []watcherEventPreClassificationPlannedEvent
+}
+
+func buildWatcherEventPreClassificationPlanFromEvents(
+	events []fsnotify.Event,
+	eventClassificationProber *watcherEventClassificationProber,
+) watcherEventPreClassificationPlan {
+	if len(events) == 0 {
+		return watcherEventPreClassificationPlan{}
+	}
+
+	plannedEvents := make([]watcherEventPreClassificationPlannedEvent, 0, len(events))
+	for _, event := range events {
+		isConfigFile := eventClassificationProber.probeIsConfigFile(event.Name)
+		if isConfigMutationEvent(event, isConfigFile) {
+			return watcherEventPreClassificationPlan{
+				configChanged: true,
+			}
+		}
+
+		directoryProbeResult := eventClassificationProber.probeEventDirectoryStatus(event.Name)
+		preClassificationDecision := deriveWatcherEventPreClassificationDecision(
+			event,
+			isConfigFile,
+			directoryProbeResult.isDirectory,
+			directoryProbeResult.statProbeSucceeded,
+		)
+
+		if !preClassificationDecision.addDirectoryWatch &&
+			!preClassificationDecision.classifyEvent {
+			continue
+		}
+
+		plannedEvents = append(
+			plannedEvents,
+			watcherEventPreClassificationPlannedEvent{
+				event:                     event,
+				preClassificationDecision: preClassificationDecision,
+			},
+		)
+	}
+
+	return watcherEventPreClassificationPlan{
+		plannedEvents: plannedEvents,
+	}
+}
+
+type watcherEventDirectoryProbeResult struct {
+	statProbeSucceeded bool
+	isDirectory        bool
+}
+
+type watcherEventClassificationProber struct {
+	isConfigFileByPath map[string]bool
+	isDirectoryByPath  map[string]watcherEventDirectoryProbeResult
+	isConfigFileFn     func(string) bool
+	statPathFn         func(string) (os.FileInfo, error)
+}
+
+func newWatcherEventClassificationProber(
+	isConfigFileFn func(string) bool,
+) *watcherEventClassificationProber {
+	return &watcherEventClassificationProber{
+		isConfigFileByPath: make(map[string]bool),
+		isDirectoryByPath:  make(map[string]watcherEventDirectoryProbeResult),
+		isConfigFileFn:     isConfigFileFn,
+		statPathFn:         os.Stat,
+	}
+}
+
+func (prober *watcherEventClassificationProber) probeIsConfigFile(path string) bool {
+	if prober == nil {
+		return false
+	}
+	if resolvedIsConfigFile, hasCachedResult := prober.isConfigFileByPath[path]; hasCachedResult {
+		return resolvedIsConfigFile
+	}
+
+	resolvedIsConfigFile := false
+	if prober.isConfigFileFn != nil {
+		resolvedIsConfigFile = prober.isConfigFileFn(path)
+	}
+
+	prober.isConfigFileByPath[path] = resolvedIsConfigFile
+	return resolvedIsConfigFile
+}
+
+func (prober *watcherEventClassificationProber) probeEventDirectoryStatus(
+	path string,
+) watcherEventDirectoryProbeResult {
+	if prober == nil {
+		return watcherEventDirectoryProbeResult{}
+	}
+	if cachedDirectoryProbeResult, hasCachedResult := prober.isDirectoryByPath[path]; hasCachedResult {
+		return cachedDirectoryProbeResult
+	}
+
+	directoryProbeResult := watcherEventDirectoryProbeResult{}
+	isDirectory := false
+	statProbeSucceeded := false
+	if prober.statPathFn != nil {
+		pathInfo, pathStatError := prober.statPathFn(path)
+		statProbeSucceeded = pathStatError == nil && pathInfo != nil
+		isDirectory = statProbeSucceeded && pathInfo.IsDir()
+	}
+
+	directoryProbeResult = watcherEventDirectoryProbeResult{
+		statProbeSucceeded: statProbeSucceeded,
+		isDirectory:        isDirectory,
+	}
+	prober.isDirectoryByPath[path] = directoryProbeResult
+	return directoryProbeResult
+}
+
+func deriveWatcherEventPreClassificationDecision(
+	event fsnotify.Event,
+	isConfigFile bool,
+	eventIsDirectory bool,
+	eventPathStatProbeSucceeded bool,
+) watcherEventPreClassificationDecision {
+	if isConfigMutationEvent(event, isConfigFile) {
+		return watcherEventPreClassificationDecision{
+			configChanged: true,
+		}
+	}
+
+	if !eventPathStatProbeSucceeded && (event.Has(fsnotify.Create) || event.Has(fsnotify.Rename)) {
+		return watcherEventPreClassificationDecision{
+			addDirectoryWatch: true,
+			classifyEvent:     true,
+		}
+	}
+
+	if eventIsDirectory {
+		return watcherEventPreClassificationDecision{
+			addDirectoryWatch: event.Has(fsnotify.Create) || event.Has(fsnotify.Rename),
+		}
+	}
+
+	return watcherEventPreClassificationDecision{
+		classifyEvent: true,
+	}
+}
+
+func isConfigMutationEvent(
+	event fsnotify.Event,
+	isConfigFile bool,
+) bool {
+	return isConfigFile &&
+		(event.Has(fsnotify.Write) ||
+			event.Has(fsnotify.Create) ||
+			event.Has(fsnotify.Remove) ||
+			event.Has(fsnotify.Rename))
+}
+
+func buildWatcherEventPreClassificationPlan(
+	preClassificationInputs []watcherEventPreClassificationInput,
+) watcherEventPreClassificationPlan {
+	if len(preClassificationInputs) == 0 {
+		return watcherEventPreClassificationPlan{}
+	}
+
+	plannedEvents := make([]watcherEventPreClassificationPlannedEvent, 0, len(preClassificationInputs))
+	for _, preClassificationInput := range preClassificationInputs {
+		preClassificationDecision := deriveWatcherEventPreClassificationDecision(
+			preClassificationInput.event,
+			preClassificationInput.isConfigFile,
+			preClassificationInput.eventIsDirectory,
+			preClassificationInput.eventPathStatProbeSucceeded,
+		)
+		if preClassificationDecision.configChanged {
+			return watcherEventPreClassificationPlan{
+				configChanged: true,
+			}
+		}
+		if !preClassificationDecision.addDirectoryWatch &&
+			!preClassificationDecision.classifyEvent {
+			continue
+		}
+
+		plannedEvents = append(
+			plannedEvents,
+			watcherEventPreClassificationPlannedEvent{
+				event:                     preClassificationInput.event,
+				preClassificationDecision: preClassificationDecision,
+			},
+		)
+	}
+
+	return watcherEventPreClassificationPlan{
+		plannedEvents: plannedEvents,
+	}
+}
+
+type watcherEventPostClassificationDecision struct {
+	includeClassifiedEvent bool
+}
+
+func shouldLogWatcherAddDirectoryError(
+	addDirectoryWatchError error,
+) bool {
+	if addDirectoryWatchError == nil {
+		return false
+	}
+
+	if os.IsNotExist(addDirectoryWatchError) || errors.Is(addDirectoryWatchError, fs.ErrNotExist) {
+		return false
+	}
+
+	if errors.Is(addDirectoryWatchError, syscall.ENOTDIR) {
+		return false
+	}
+
+	return true
+}
+
+func deriveWatcherEventPostClassificationDecision(
+	classifiedEventForProcessing classifiedEvent,
+) watcherEventPostClassificationDecision {
+	if classifiedEventForProcessing.ignored || classifiedEventForProcessing.chmodOnly {
+		return watcherEventPostClassificationDecision{}
+	}
+
+	return watcherEventPostClassificationDecision{
+		includeClassifiedEvent: true,
+	}
 }
 
 func buildEventHooksForProcessing(
@@ -1098,37 +1607,26 @@ func (s *server) executeBrowserPhase(work *workSet) {
 		if s.cfg.UsingVite() {
 			if err := s.callViteFilemapInvalidate(); err != nil {
 				s.log.Warn("Vite filemap invalidate failed, falling back to reload", "error", err)
-				work.browser.action = browserPhaseActionHardReload
-				work.browser.waitForApp = true
-				work.browser.waitForVite = true
 			} else {
 				return
 			}
-		} else {
-			work.browser.action = browserPhaseActionHardReload
-			work.browser.waitForApp = true
 		}
+		fallbackDecision := planInvalidateViteFallbackBrowserDecision(s.cfg.UsingVite())
+		work.browser.action = fallbackDecision.action
+		work.browser.waitForApp = fallbackDecision.waitForApp
+		work.browser.waitForVite = fallbackDecision.waitForVite
 		fallthrough
 
-	case browserPhaseActionHardReload:
-		s.log.Info("Hard reloading browser")
-		s.broadcastReload(reloadOpts{
-			payload:   refreshPayload{ChangeType: changeTypeOther},
-			waitApp:   work.browser.waitForApp,
-			waitVite:  work.browser.waitForVite,
-			cycleVite: work.browser.cycleVite,
-		})
-		return
-
-	case browserPhaseActionRevalidate:
-		s.log.Info("Running client-defined revalidate function")
-		s.broadcastReload(reloadOpts{
-			payload:   refreshPayload{ChangeType: changeTypeRevalidate},
-			waitApp:   work.browser.waitForApp,
-			waitVite:  work.browser.waitForVite,
-			cycleVite: false,
-		})
-		return
+	case browserPhaseActionHardReload, browserPhaseActionRevalidate:
+		if reloadPlan, hasReloadPlan := planBrowserReloadForAction(work.browser.action, work.browser); hasReloadPlan {
+			if work.browser.action == browserPhaseActionHardReload {
+				s.log.Info("Hard reloading browser")
+			} else {
+				s.log.Info("Running client-defined revalidate function")
+			}
+			s.broadcastReload(reloadPlan)
+			return
+		}
 
 	case browserPhaseActionHotReloadCSS:
 		if builder == nil {
@@ -1137,8 +1635,11 @@ func (s *server) executeBrowserPhase(work *workSet) {
 
 		s.log.Info("Hot reloading CSS")
 
+		criticalCSS := ""
+		criticalCSSAvailable := false
 		if work.build.buildCriticalCSS {
-			criticalCSS, readCriticalCSSError := builder.ReadCriticalCSSForHotReload(true)
+			var readCriticalCSSError error
+			criticalCSS, readCriticalCSSError = builder.ReadCriticalCSSForHotReload(true)
 			if readCriticalCSSError != nil {
 				s.log.Warn(
 					"Skipping critical CSS hot reload payload due to missing fresh build output",
@@ -1146,17 +1647,15 @@ func (s *server) executeBrowserPhase(work *workSet) {
 					readCriticalCSSError,
 				)
 			} else {
-				s.broadcastReload(reloadOpts{
-					payload: refreshPayload{
-						ChangeType:  changeTypeCriticalCSS,
-						CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
-					},
-				})
+				criticalCSSAvailable = true
 			}
 		}
 
+		normalCSSURL := ""
+		normalCSSURLAvailable := false
 		if work.build.buildNormalCSS {
-			normalCSSURL, readNormalCSSURLError := builder.ReadNormalCSSURLForHotReload(true)
+			var readNormalCSSURLError error
+			normalCSSURL, readNormalCSSURLError = builder.ReadNormalCSSURLForHotReload(true)
 			if readNormalCSSURLError != nil {
 				s.log.Warn(
 					"Skipping normal CSS hot reload payload due to missing fresh build output",
@@ -1164,13 +1663,22 @@ func (s *server) executeBrowserPhase(work *workSet) {
 					readNormalCSSURLError,
 				)
 			} else {
-				s.broadcastReload(reloadOpts{
-					payload: refreshPayload{
-						ChangeType:   changeTypeNormalCSS,
-						NormalCSSURL: normalCSSURL,
-					},
-				})
+				normalCSSURLAvailable = true
 			}
+		}
+
+		payloads := planHotReloadCSSPayloads(
+			work.build.buildCriticalCSS,
+			criticalCSS,
+			criticalCSSAvailable,
+			work.build.buildNormalCSS,
+			normalCSSURL,
+			normalCSSURLAvailable,
+		)
+		for _, payload := range payloads {
+			s.broadcastReload(reloadOpts{
+				payload: payload,
+			})
 		}
 		return
 

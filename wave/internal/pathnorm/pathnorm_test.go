@@ -50,3 +50,87 @@ func TestPathsReferToSameLocation(t *testing.T) {
 		t.Fatal("expected empty path to fail same-location comparison")
 	}
 }
+
+func TestPathsReferToSameLocation_FollowsSymlinkAliases(t *testing.T) {
+	root := t.TempDir()
+	targetDirectoryPath := filepath.Join(root, "target")
+	aliasDirectoryPath := filepath.Join(root, "alias")
+	targetFilePath := filepath.Join(targetDirectoryPath, "styles.css")
+	aliasFilePath := filepath.Join(aliasDirectoryPath, "styles.css")
+
+	if err := os.MkdirAll(targetDirectoryPath, 0o755); err != nil {
+		t.Fatalf("create target directory: %v", err)
+	}
+	if err := os.WriteFile(targetFilePath, []byte("body{color:red;}"), 0o644); err != nil {
+		t.Fatalf("write target file: %v", err)
+	}
+	if err := os.Symlink(targetDirectoryPath, aliasDirectoryPath); err != nil {
+		t.Fatalf("create directory symlink: %v", err)
+	}
+
+	if !PathsReferToSameLocation(targetFilePath, aliasFilePath) {
+		t.Fatalf(
+			"expected symlink aliases %q and %q to refer to same location",
+			targetFilePath,
+			aliasFilePath,
+		)
+	}
+}
+
+func TestPathsReferToSameLocation_FollowsSymlinkAliasesForMissingLeaf(t *testing.T) {
+	root := t.TempDir()
+	targetDirectoryPath := filepath.Join(root, "target")
+	aliasDirectoryPath := filepath.Join(root, "alias")
+	targetMissingFilePath := filepath.Join(targetDirectoryPath, "missing.css")
+	aliasMissingFilePath := filepath.Join(aliasDirectoryPath, "missing.css")
+
+	if err := os.MkdirAll(targetDirectoryPath, 0o755); err != nil {
+		t.Fatalf("create target directory: %v", err)
+	}
+	if err := os.Symlink(targetDirectoryPath, aliasDirectoryPath); err != nil {
+		t.Fatalf("create directory symlink: %v", err)
+	}
+
+	if !PathsReferToSameLocation(targetMissingFilePath, aliasMissingFilePath) {
+		t.Fatalf(
+			"expected missing-file symlink aliases %q and %q to refer to same location",
+			targetMissingFilePath,
+			aliasMissingFilePath,
+		)
+	}
+}
+
+func TestCanonicalizePathForLocationComparison(t *testing.T) {
+	t.Run("empty path returns empty canonical path", func(t *testing.T) {
+		if got := CanonicalizePathForLocationComparison(""); got != "" {
+			t.Fatalf("expected empty canonical path for empty input, got %q", got)
+		}
+	})
+
+	t.Run("missing leaf under symlink resolves through parent directory", func(t *testing.T) {
+		root := t.TempDir()
+		targetDirectoryPath := filepath.Join(root, "target")
+		aliasDirectoryPath := filepath.Join(root, "alias")
+		targetMissingFilePath := filepath.Join(targetDirectoryPath, "missing.css")
+		aliasMissingFilePath := filepath.Join(aliasDirectoryPath, "missing.css")
+
+		if err := os.MkdirAll(targetDirectoryPath, 0o755); err != nil {
+			t.Fatalf("create target directory: %v", err)
+		}
+		if err := os.Symlink(targetDirectoryPath, aliasDirectoryPath); err != nil {
+			t.Fatalf("create alias directory symlink: %v", err)
+		}
+
+		canonicalizedAliasPath := CanonicalizePathForLocationComparison(aliasMissingFilePath)
+		if canonicalizedAliasPath == "" {
+			t.Fatalf("expected non-empty canonical path for alias path %q", aliasMissingFilePath)
+		}
+		if !PathsReferToSameLocation(canonicalizedAliasPath, targetMissingFilePath) {
+			t.Fatalf(
+				"expected canonical path %q to refer to target missing path %q",
+				canonicalizedAliasPath,
+				targetMissingFilePath,
+			)
+		}
+	})
+}

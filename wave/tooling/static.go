@@ -111,6 +111,153 @@ type staticChangedPathResolution struct {
 	sourceExists bool
 }
 
+type staticChangedPathResolutionProbeFunctions struct {
+	normalizeChangedSourcePath                                        func(string) string
+	resolveStaticFileInfoFromSourcePath                               func(string, string) (fileInfo, bool, error)
+	sourceFileExists                                                  func(string) (bool, error)
+	ensureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelPath func(string, string) error
+}
+
+type staticChangedPathResolutionProbeResult struct {
+	staticFileInfo    fileInfo
+	shouldProcessFile bool
+}
+
+func canonicalizeChangedSourcePathForStaticResolution(changedSourcePath string) string {
+	return pathnorm.CanonicalizePathForLocationComparison(changedSourcePath)
+}
+
+func resolveStaticChangedPathResolutions(
+	sourceDirectoryPath string,
+	changedSourcePaths []string,
+) (map[string]staticChangedPathResolution, bool, error) {
+	return resolveStaticChangedPathResolutionsWithProbeFunctions(
+		sourceDirectoryPath,
+		changedSourcePaths,
+		staticChangedPathResolutionProbeFunctions{
+			normalizeChangedSourcePath: canonicalizeChangedSourcePathForStaticResolution,
+			resolveStaticFileInfoFromSourcePath: func(
+				sourceDirectoryPath string,
+				sourcePath string,
+			) (fileInfo, bool, error) {
+				return resolveStaticFileInfoFromSourcePath(sourceDirectoryPath, sourcePath)
+			},
+			sourceFileExists: staticSourceFileExists,
+			ensureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelPath: func(
+				sourceDirectoryPath string,
+				relativePath string,
+			) error {
+				return ensureNoStaticLogicalPathCollisionWithinSourceDirectory(
+					sourceDirectoryPath,
+					relativePath,
+				)
+			},
+		},
+	)
+}
+
+func resolveStaticChangedPathResolutionsWithProbeFunctions(
+	sourceDirectoryPath string,
+	changedSourcePaths []string,
+	probeFunctions staticChangedPathResolutionProbeFunctions,
+) (map[string]staticChangedPathResolution, bool, error) {
+	changedResolutions := make(map[string]staticChangedPathResolution)
+	resolveProbeResultByNormalizedChangedSourcePath := make(
+		map[string]staticChangedPathResolutionProbeResult,
+	)
+	sourceExistsByNormalizedChangedSourcePath := make(map[string]bool)
+	collisionCheckedByRelativePath := make(map[string]struct{})
+
+	normalizeChangedSourcePath := probeFunctions.normalizeChangedSourcePath
+	if normalizeChangedSourcePath == nil {
+		normalizeChangedSourcePath = canonicalizeChangedSourcePathForStaticResolution
+	}
+
+	normalizedSourceDirectoryPath := normalizeChangedSourcePath(sourceDirectoryPath)
+	if normalizedSourceDirectoryPath != "" {
+		sourceDirectoryPath = normalizedSourceDirectoryPath
+	}
+	resolveStaticFileInfoFromSourcePathProbe := probeFunctions.resolveStaticFileInfoFromSourcePath
+	if resolveStaticFileInfoFromSourcePathProbe == nil {
+		resolveStaticFileInfoFromSourcePathProbe = resolveStaticFileInfoFromSourcePath
+	}
+	sourceFileExistsProbe := probeFunctions.sourceFileExists
+	if sourceFileExistsProbe == nil {
+		sourceFileExistsProbe = staticSourceFileExists
+	}
+	collisionProbe := probeFunctions.ensureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelPath
+	if collisionProbe == nil {
+		collisionProbe = ensureNoStaticLogicalPathCollisionWithinSourceDirectory
+	}
+
+	for _, changedSourcePath := range changedSourcePaths {
+		normalizedChangedSourcePath := normalizeChangedSourcePath(changedSourcePath)
+		if normalizedChangedSourcePath == "" {
+			continue
+		}
+		if normalizedChangedSourcePath == sourceDirectoryPath {
+			return nil, true, nil
+		}
+
+		resolutionProbeResult, hasResolutionProbeResult := resolveProbeResultByNormalizedChangedSourcePath[normalizedChangedSourcePath]
+		if !hasResolutionProbeResult {
+			staticFileInfo, shouldProcessFile, resolveError := resolveStaticFileInfoFromSourcePathProbe(
+				sourceDirectoryPath,
+				normalizedChangedSourcePath,
+			)
+			if resolveError != nil {
+				return nil, false, fmt.Errorf(
+					"resolve static file info for changed path %s: %w",
+					changedSourcePath,
+					resolveError,
+				)
+			}
+
+			resolutionProbeResult = staticChangedPathResolutionProbeResult{
+				staticFileInfo:    staticFileInfo,
+				shouldProcessFile: shouldProcessFile,
+			}
+			resolveProbeResultByNormalizedChangedSourcePath[normalizedChangedSourcePath] = resolutionProbeResult
+		}
+		if !resolutionProbeResult.shouldProcessFile {
+			continue
+		}
+
+		sourceExists, hasSourceExists := sourceExistsByNormalizedChangedSourcePath[normalizedChangedSourcePath]
+		if !hasSourceExists {
+			sourceExistsForPath, sourceStatError := sourceFileExistsProbe(normalizedChangedSourcePath)
+			if sourceStatError != nil {
+				return nil, false, sourceStatError
+			}
+
+			sourceExists = sourceExistsForPath
+			sourceExistsByNormalizedChangedSourcePath[normalizedChangedSourcePath] = sourceExists
+		}
+
+		if sourceExists {
+			relativePath := resolutionProbeResult.staticFileInfo.relPath
+			if _, alreadyChecked := collisionCheckedByRelativePath[relativePath]; !alreadyChecked {
+				collisionError := collisionProbe(sourceDirectoryPath, relativePath)
+				if collisionError != nil {
+					return nil, false, collisionError
+				}
+				collisionCheckedByRelativePath[relativePath] = struct{}{}
+			}
+		}
+
+		relativePath := resolutionProbeResult.staticFileInfo.relPath
+		existingResolution, alreadyResolved := changedResolutions[relativePath]
+		if !alreadyResolved || sourceExists || !existingResolution.sourceExists {
+			changedResolutions[relativePath] = staticChangedPathResolution{
+				fileInfo:     resolutionProbeResult.staticFileInfo,
+				sourceExists: sourceExists,
+			}
+		}
+	}
+
+	return changedResolutions, false, nil
+}
+
 func ensureNoStaticLogicalPathCollision(
 	existingFileInfo fileInfo,
 	candidateFileInfo fileInfo,
@@ -427,64 +574,26 @@ func (b *Builder) processStaticFilesForChangedPaths(
 		return b.processStaticFiles(opts)
 	}
 
+	changedResolutions, fullBuildRequired, resolutionError := resolveStaticChangedPathResolutions(
+		opts.srcDir,
+		changedSourcePaths,
+	)
+	if resolutionError != nil {
+		return resolutionError
+	}
+	if fullBuildRequired {
+		return b.processStaticFiles(opts)
+	}
+	if len(changedResolutions) == 0 {
+		return nil
+	}
+
 	oldMap, loadError := b.loadFileMapFromPath(opts.gobPath)
 	if loadError != nil {
 		return b.processStaticFiles(opts)
 	}
 	if oldMap == nil {
 		oldMap = make(wave.FileMap)
-	}
-
-	changedResolutions := make(map[string]staticChangedPathResolution)
-	for _, changedSourcePath := range changedSourcePaths {
-		normalizedChangedSourcePath := pathnorm.Absolute(changedSourcePath)
-		if normalizedChangedSourcePath == "" {
-			continue
-		}
-		if normalizedChangedSourcePath == opts.srcDir {
-			return b.processStaticFiles(opts)
-		}
-
-		staticFileInfo, shouldProcessFile, resolveError := resolveStaticFileInfoFromSourcePath(
-			opts.srcDir,
-			normalizedChangedSourcePath,
-		)
-		if resolveError != nil {
-			return fmt.Errorf(
-				"resolve static file info for changed path %s: %w",
-				changedSourcePath,
-				resolveError,
-			)
-		}
-		if !shouldProcessFile {
-			continue
-		}
-
-		sourceExists, sourceStatError := staticSourceFileExists(normalizedChangedSourcePath)
-		if sourceStatError != nil {
-			return sourceStatError
-		}
-		if sourceExists {
-			collisionError := ensureNoStaticLogicalPathCollisionWithinSourceDirectory(
-				opts.srcDir,
-				staticFileInfo.relPath,
-			)
-			if collisionError != nil {
-				return collisionError
-			}
-		}
-
-		existingResolution, alreadyResolved := changedResolutions[staticFileInfo.relPath]
-		if !alreadyResolved || sourceExists || !existingResolution.sourceExists {
-			changedResolutions[staticFileInfo.relPath] = staticChangedPathResolution{
-				fileInfo:     staticFileInfo,
-				sourceExists: sourceExists,
-			}
-		}
-	}
-
-	if len(changedResolutions) == 0 {
-		return nil
 	}
 
 	resolvedRelativePaths := make([]string, 0, len(changedResolutions))
@@ -494,6 +603,7 @@ func (b *Builder) processStaticFilesForChangedPaths(
 	sort.Strings(resolvedRelativePaths)
 
 	mapWasChanged := false
+	relativePathsNeedingRemoval := make([]string, 0, len(resolvedRelativePaths))
 	for _, resolvedRelativePath := range resolvedRelativePaths {
 		resolution := changedResolutions[resolvedRelativePath]
 		oldValueForPath, hadOldValueForPath := oldMap[resolvedRelativePath]
@@ -519,10 +629,15 @@ func (b *Builder) processStaticFilesForChangedPaths(
 				continue
 			}
 		}
+		relativePathsNeedingRemoval = append(relativePathsNeedingRemoval, resolvedRelativePath)
+	}
 
-		if removeStaticMapEntriesForChangedRelativePath(oldMap, opts.distDir, resolvedRelativePath) {
-			mapWasChanged = true
-		}
+	if removeStaticMapEntriesForChangedRelativePaths(
+		oldMap,
+		opts.distDir,
+		relativePathsNeedingRemoval,
+	) {
+		mapWasChanged = true
 	}
 
 	if !mapWasChanged {
@@ -598,36 +713,70 @@ func removeStaticDistArtifactIfPresent(
 	_ = os.Remove(filepath.Join(distDirectoryPath, distName))
 }
 
-func removeStaticMapEntriesForChangedRelativePath(
+func removeStaticMapEntriesForChangedRelativePaths(
 	staticMap wave.FileMap,
 	distDirectoryPath string,
-	changedRelativePath string,
+	changedRelativePaths []string,
 ) bool {
-	mapWasChanged := false
-
-	if oldValueForExactPath, hasExactPath := staticMap[changedRelativePath]; hasExactPath {
-		delete(staticMap, changedRelativePath)
-		removeStaticDistArtifactIfPresent(distDirectoryPath, oldValueForExactPath.DistName)
-		mapWasChanged = true
+	if len(changedRelativePaths) == 0 || len(staticMap) == 0 {
+		return false
 	}
 
-	prefix := changedRelativePath + "/"
+	changedRelativePathSet := make(map[string]struct{}, len(changedRelativePaths))
+	for _, changedRelativePath := range changedRelativePaths {
+		if changedRelativePath == "" {
+			continue
+		}
+		changedRelativePathSet[changedRelativePath] = struct{}{}
+	}
+	if len(changedRelativePathSet) == 0 {
+		return false
+	}
+
 	pathsToDelete := make([]string, 0)
 	for existingRelativePath := range staticMap {
-		if strings.HasPrefix(existingRelativePath, prefix) {
+		if shouldRemoveStaticMapEntryForChangedRelativePathSet(
+			existingRelativePath,
+			changedRelativePathSet,
+		) {
 			pathsToDelete = append(pathsToDelete, existingRelativePath)
 		}
 	}
+
+	if len(pathsToDelete) == 0 {
+		return false
+	}
+
 	sort.Strings(pathsToDelete)
 
 	for _, relativePathToDelete := range pathsToDelete {
 		oldValueForPath := staticMap[relativePathToDelete]
 		delete(staticMap, relativePathToDelete)
 		removeStaticDistArtifactIfPresent(distDirectoryPath, oldValueForPath.DistName)
-		mapWasChanged = true
 	}
 
-	return mapWasChanged
+	return true
+}
+
+func shouldRemoveStaticMapEntryForChangedRelativePathSet(
+	existingRelativePath string,
+	changedRelativePathSet map[string]struct{},
+) bool {
+	if _, hasExactMatch := changedRelativePathSet[existingRelativePath]; hasExactMatch {
+		return true
+	}
+
+	for index, character := range existingRelativePath {
+		if character != '/' {
+			continue
+		}
+
+		if _, hasParentDirectoryMatch := changedRelativePathSet[existingRelativePath[:index]]; hasParentDirectoryMatch {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (b *Builder) processFile(

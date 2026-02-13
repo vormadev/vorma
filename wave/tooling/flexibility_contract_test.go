@@ -114,51 +114,46 @@ func TestFlexibilityContract_AbsoluteWatchIncludePatternMatches(t *testing.T) {
 	}
 }
 
-func TestFlexibilityContract_ConfigCreateTriggersConfigRestart(t *testing.T) {
-	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	configFilePath := filepath.Join(root, "backend", "wave.config.json")
-	cfg.Core.ConfigLocation = configFilePath
-	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+func TestFlexibilityContract_ConfigMutationsTriggerConfigRestart(t *testing.T) {
+	runConfigMutationAndPathShapeMatrix(
+		t,
+		func(
+			t *testing.T,
+			configMutationCaseForRun configMutationCase,
+			pathShapeCaseForRun configEventPathShapeCase,
+		) {
+			cfg, _, configFilePath := setupConfigEventTestConfig(t)
+			if configMutationCaseForRun.prepareEvent != nil {
+				configMutationCaseForRun.prepareEvent(t, configFilePath)
+			}
 
-	if err := os.MkdirAll(filepath.Dir(configFilePath), 0o755); err != nil {
-		t.Fatalf("failed creating config file directory: %v", err)
-	}
-	if err := os.WriteFile(configFilePath, []byte(`{"Core":{"MainAppEntry":"cmd/app","DistDir":"dist"}}`), 0o644); err != nil {
-		t.Fatalf("failed writing config file: %v", err)
-	}
+			s := setupProcessEventsServerForToolingTests(t, cfg)
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
-	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
-	}
-	defer watcher.Close()
+			configEventPath := pathShapeCaseForRun.buildPath(t, configFilePath)
+			s.processEvents([]fsnotify.Event{{
+				Name: configEventPath,
+				Op:   configMutationCaseForRun.op,
+			}})
 
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
-	}
-
-	s.processEvents([]fsnotify.Event{{
-		Name: configFilePath,
-		Op:   fsnotify.Create,
-	}})
-
-	select {
-	case req := <-s.restartCh:
-		if !req.isConfigRestart || !req.recompileGo {
-			t.Fatalf("expected config restart with Go recompile on config create, got %#v", req)
-		}
-	default:
-		t.Fatal("expected config create to trigger config restart request")
-	}
+			select {
+			case req := <-s.restartCh:
+				if !req.isConfigRestart || !req.recompileGo {
+					t.Fatalf(
+						"expected config restart with Go recompile on config %s/%s, got %#v",
+						configMutationCaseForRun.name,
+						pathShapeCaseForRun.name,
+						req,
+					)
+				}
+			default:
+				t.Fatalf(
+					"expected config %s/%s to trigger config restart request",
+					configMutationCaseForRun.name,
+					pathShapeCaseForRun.name,
+				)
+			}
+		},
+	)
 }
 
 func TestFlexibilityContract_ViteDevBuildHonorsCmdDirAndConfigFile(t *testing.T) {

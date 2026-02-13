@@ -44,9 +44,35 @@ func AbsoluteDirectory(path string) string {
 }
 
 func PathsReferToSameLocation(pathA string, pathB string) bool {
-	normalizedPathA := Absolute(pathA)
-	normalizedPathB := Absolute(pathB)
+	normalizedPathA := CanonicalizePathForLocationComparison(pathA)
+	normalizedPathB := CanonicalizePathForLocationComparison(pathB)
 	return normalizedPathA != "" &&
 		normalizedPathB != "" &&
 		normalizedPathA == normalizedPathB
+}
+
+func CanonicalizePathForLocationComparison(path string) string {
+	normalizedPath := Absolute(path)
+	if normalizedPath == "" {
+		return ""
+	}
+
+	return canonicalizeNormalizedPathForLocationComparison(normalizedPath)
+}
+
+func canonicalizeNormalizedPathForLocationComparison(normalizedPath string) string {
+	resolvedPath, resolveError := filepath.EvalSymlinks(normalizedPath)
+	if resolveError == nil && resolvedPath != "" {
+		return filepath.Clean(resolvedPath)
+	}
+
+	parentPath := filepath.Dir(normalizedPath)
+	if parentPath != "" && parentPath != normalizedPath {
+		resolvedParentPath, parentResolveError := filepath.EvalSymlinks(parentPath)
+		if parentResolveError == nil && resolvedParentPath != "" {
+			return filepath.Clean(filepath.Join(resolvedParentPath, filepath.Base(normalizedPath)))
+		}
+	}
+
+	return normalizedPath
 }

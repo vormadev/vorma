@@ -299,11 +299,11 @@ func (p *cssProcessor) setBuildNatureImports(
 ) {
 	importsForBuildNature := make(map[string]struct{}, len(cssInputPaths))
 	for _, filePath := range cssInputPaths {
-		absolutePath, absolutePathError := filepath.Abs(filePath)
-		if absolutePathError != nil {
-			absolutePath = filePath
+		normalizedFilePath := normalizeCSSFilePathForImportTracking(filePath)
+		if normalizedFilePath == "" {
+			continue
 		}
-		importsForBuildNature[absolutePath] = struct{}{}
+		importsForBuildNature[normalizedFilePath] = struct{}{}
 	}
 
 	p.mu.Lock()
@@ -527,27 +527,41 @@ func (p *cssProcessor) urlResolverPlugin() esbuild.Plugin {
 }
 
 func (p *cssProcessor) isCriticalFile(path string) bool {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		absPath = path
+	normalizedPath := normalizeCSSFilePathForImportTracking(path)
+	if normalizedPath == "" {
+		return false
 	}
 
 	p.mu.RLock()
-	_, ok := p.criticalImports[absPath]
+	_, ok := p.criticalImports[normalizedPath]
 	p.mu.RUnlock()
 	return ok
 }
 
 func (p *cssProcessor) isNormalFile(path string) bool {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		absPath = path
+	normalizedPath := normalizeCSSFilePathForImportTracking(path)
+	if normalizedPath == "" {
+		return false
 	}
 
 	p.mu.RLock()
-	_, ok := p.normalImports[absPath]
+	_, ok := p.normalImports[normalizedPath]
 	p.mu.RUnlock()
 	return ok
+}
+
+func normalizeCSSFilePathForImportTracking(filePath string) string {
+	absoluteFilePath, absolutePathError := filepath.Abs(filePath)
+	if absolutePathError != nil {
+		absoluteFilePath = filepath.Clean(filePath)
+	}
+
+	resolvedFilePath, resolveError := filepath.EvalSymlinks(absoluteFilePath)
+	if resolveError == nil && resolvedFilePath != "" {
+		return filepath.Clean(resolvedFilePath)
+	}
+
+	return filepath.Clean(absoluteFilePath)
 }
 
 // IsCriticalCSSFile checks if a path is a critical CSS file or import

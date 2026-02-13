@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/pathnorm"
 )
 
 func TestDetermineStaticProcessingWorkerCount(t *testing.T) {
@@ -50,6 +51,338 @@ func TestDetermineStaticProcessingWorkerCount(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestCanonicalizeChangedSourcePathForStaticResolution_FollowsParentSymlinkForMissingLeaf(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	targetDirectoryPath := filepath.Join(root, "target")
+	aliasDirectoryPath := filepath.Join(root, "alias")
+	missingLeafUnderTarget := filepath.Join(targetDirectoryPath, "styles", "site.css")
+	missingLeafUnderAlias := filepath.Join(aliasDirectoryPath, "styles", "site.css")
+
+	if err := os.MkdirAll(filepath.Join(targetDirectoryPath, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating target styles directory: %v", err)
+	}
+	if err := os.Symlink(targetDirectoryPath, aliasDirectoryPath); err != nil {
+		t.Fatalf("failed creating source alias directory symlink: %v", err)
+	}
+
+	canonicalizedPath := canonicalizeChangedSourcePathForStaticResolution(missingLeafUnderAlias)
+	if !pathnorm.PathsReferToSameLocation(canonicalizedPath, missingLeafUnderTarget) {
+		t.Fatalf(
+			"expected canonicalized alias path %q to resolve to %q, got %q",
+			missingLeafUnderAlias,
+			missingLeafUnderTarget,
+			canonicalizedPath,
+		)
+	}
+}
+
+func TestResolveStaticChangedPathResolutions_UsesSymlinkAliasPathsForMissingLeafs(t *testing.T) {
+	root := t.TempDir()
+	sourceDirectoryPath := filepath.Join(root, "source")
+	aliasDirectoryPath := filepath.Join(root, "source_alias")
+	missingAliasPath := filepath.Join(aliasDirectoryPath, "styles", "site.css")
+
+	if err := os.MkdirAll(filepath.Join(sourceDirectoryPath, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating source styles directory: %v", err)
+	}
+	if err := os.Symlink(sourceDirectoryPath, aliasDirectoryPath); err != nil {
+		t.Fatalf("failed creating source alias directory symlink: %v", err)
+	}
+
+	changedResolutions, fullBuildRequired, resolutionError := resolveStaticChangedPathResolutions(
+		sourceDirectoryPath,
+		[]string{missingAliasPath},
+	)
+	if resolutionError != nil {
+		t.Fatalf("resolveStaticChangedPathResolutions returned error: %v", resolutionError)
+	}
+	if fullBuildRequired {
+		t.Fatal("expected fullBuildRequired=false for missing leaf changed path")
+	}
+	if len(changedResolutions) != 1 {
+		t.Fatalf("expected one changed-path resolution, got %#v", changedResolutions)
+	}
+
+	resolution, hasResolution := changedResolutions["styles/site.css"]
+	if !hasResolution {
+		t.Fatalf("expected changed resolution for styles/site.css, got %#v", changedResolutions)
+	}
+	if resolution.sourceExists {
+		t.Fatalf("expected sourceExists=false for missing leaf path, got %#v", resolution)
+	}
+
+	changedResolutions, fullBuildRequired, resolutionError = resolveStaticChangedPathResolutions(
+		sourceDirectoryPath,
+		[]string{aliasDirectoryPath},
+	)
+	if resolutionError != nil {
+		t.Fatalf("resolveStaticChangedPathResolutions(root alias) returned error: %v", resolutionError)
+	}
+	if !fullBuildRequired {
+		t.Fatalf(
+			"expected root alias path %q to require full build for source root %q",
+			aliasDirectoryPath,
+			sourceDirectoryPath,
+		)
+	}
+	if len(changedResolutions) != 0 {
+		t.Fatalf("expected no per-file resolutions when fullBuildRequired=true, got %#v", changedResolutions)
+	}
+}
+
+func TestResolveStaticChangedPathResolutionsWithProbeFunctions_MemoizesDuplicateAndAliasChangedPaths(
+	t *testing.T,
+) {
+	sourceDirectoryPath := "/workspace/public"
+	logicalSourcePath := "/workspace/public/images/logo.png"
+
+	resolveProbeCallCount := 0
+	sourceExistsProbeCallCount := 0
+	collisionProbeCallCount := 0
+
+	changedResolutions, fullBuildRequired, resolutionError := resolveStaticChangedPathResolutionsWithProbeFunctions(
+		sourceDirectoryPath,
+		[]string{"logo", "logo_alias", "logo_dup"},
+		staticChangedPathResolutionProbeFunctions{
+			normalizeChangedSourcePath: func(changedSourcePath string) string {
+				switch changedSourcePath {
+				case "logo", "logo_alias", "logo_dup":
+					return logicalSourcePath
+				default:
+					return ""
+				}
+			},
+			resolveStaticFileInfoFromSourcePath: func(
+				_ string,
+				sourcePath string,
+			) (fileInfo, bool, error) {
+				resolveProbeCallCount++
+				return fileInfo{
+					srcPath: sourcePath,
+					relPath: "images/logo.png",
+				}, true, nil
+			},
+			sourceFileExists: func(_ string) (bool, error) {
+				sourceExistsProbeCallCount++
+				return true, nil
+			},
+			ensureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelPath: func(
+				_ string,
+				_ string,
+			) error {
+				collisionProbeCallCount++
+				return nil
+			},
+		},
+	)
+	if resolutionError != nil {
+		t.Fatalf("resolveStaticChangedPathResolutionsWithProbeFunctions returned error: %v", resolutionError)
+	}
+	if fullBuildRequired {
+		t.Fatal("expected fullBuildRequired=false for file-only changed paths")
+	}
+	if len(changedResolutions) != 1 {
+		t.Fatalf("expected one changed resolution, got %#v", changedResolutions)
+	}
+
+	resolvedFileInfo := changedResolutions["images/logo.png"]
+	if resolvedFileInfo.fileInfo.srcPath != logicalSourcePath {
+		t.Fatalf(
+			"expected resolved srcPath %q, got %#v",
+			logicalSourcePath,
+			resolvedFileInfo.fileInfo,
+		)
+	}
+	if !resolvedFileInfo.sourceExists {
+		t.Fatalf("expected sourceExists=true, got %#v", resolvedFileInfo)
+	}
+
+	if resolveProbeCallCount != 1 {
+		t.Fatalf("expected resolve probe to run once for alias-equivalent changed paths, got %d", resolveProbeCallCount)
+	}
+	if sourceExistsProbeCallCount != 1 {
+		t.Fatalf("expected source-exists probe to run once for alias-equivalent changed paths, got %d", sourceExistsProbeCallCount)
+	}
+	if collisionProbeCallCount != 1 {
+		t.Fatalf("expected collision probe to run once for alias-equivalent changed paths, got %d", collisionProbeCallCount)
+	}
+}
+
+func TestResolveStaticChangedPathResolutionsWithProbeFunctions_ProbesCollisionOncePerRelativePath(
+	t *testing.T,
+) {
+	sourceDirectoryPath := "/workspace/public"
+
+	resolveProbeCallCount := 0
+	sourceExistsProbeCallCount := 0
+	collisionProbeCallCount := 0
+
+	_, fullBuildRequired, resolutionError := resolveStaticChangedPathResolutionsWithProbeFunctions(
+		sourceDirectoryPath,
+		[]string{"prehashed_path", "nohash_path"},
+		staticChangedPathResolutionProbeFunctions{
+			normalizeChangedSourcePath: func(changedSourcePath string) string {
+				switch changedSourcePath {
+				case "prehashed_path":
+					return filepath.Join(sourceDirectoryPath, wave.PrehashedDirname, "logo.png")
+				case "nohash_path":
+					return filepath.Join(sourceDirectoryPath, wave.NohashDirname, "logo.png")
+				default:
+					return ""
+				}
+			},
+			resolveStaticFileInfoFromSourcePath: func(
+				_ string,
+				sourcePath string,
+			) (fileInfo, bool, error) {
+				resolveProbeCallCount++
+				if strings.Contains(sourcePath, wave.PrehashedDirname+"/") ||
+					strings.Contains(sourcePath, wave.NohashDirname+"/") {
+					return fileInfo{
+						srcPath: sourcePath,
+						relPath: "logo.png",
+						prehash: true,
+					}, true, nil
+				}
+				return fileInfo{}, false, nil
+			},
+			sourceFileExists: func(_ string) (bool, error) {
+				sourceExistsProbeCallCount++
+				return true, nil
+			},
+			ensureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelPath: func(
+				_ string,
+				_ string,
+			) error {
+				collisionProbeCallCount++
+				return nil
+			},
+		},
+	)
+	if resolutionError != nil {
+		t.Fatalf("resolveStaticChangedPathResolutionsWithProbeFunctions returned error: %v", resolutionError)
+	}
+	if fullBuildRequired {
+		t.Fatal("expected fullBuildRequired=false for file-only changed paths")
+	}
+	if resolveProbeCallCount != 2 {
+		t.Fatalf("expected resolve probe to run once per unique normalized path, got %d", resolveProbeCallCount)
+	}
+	if sourceExistsProbeCallCount != 2 {
+		t.Fatalf("expected source-exists probe to run once per unique normalized path, got %d", sourceExistsProbeCallCount)
+	}
+	if collisionProbeCallCount != 1 {
+		t.Fatalf("expected collision probe to run once per relative path, got %d", collisionProbeCallCount)
+	}
+}
+
+func TestRemoveStaticMapEntriesForChangedRelativePaths_MixedExactAndSubtreeRemovals(t *testing.T) {
+	distDirectoryPath := t.TempDir()
+	staticMap := wave.FileMap{
+		"templates/keep.html": {
+			DistName: "templates/keep-dist.html",
+		},
+		"templates/removed/a.html": {
+			DistName: "templates/removed-a-dist.html",
+		},
+		"templates/removed/nested/b.html": {
+			DistName: "templates/removed-b-dist.html",
+		},
+		"images/logo.svg": {
+			DistName: "images/logo-dist.svg",
+		},
+	}
+
+	for _, mapValue := range staticMap {
+		distArtifactPath := filepath.Join(distDirectoryPath, mapValue.DistName)
+		if err := os.MkdirAll(filepath.Dir(distArtifactPath), 0o755); err != nil {
+			t.Fatalf("failed creating dist artifact parent dir: %v", err)
+		}
+		if err := os.WriteFile(distArtifactPath, []byte("artifact"), 0o644); err != nil {
+			t.Fatalf("failed writing dist artifact: %v", err)
+		}
+	}
+
+	mapWasChanged := removeStaticMapEntriesForChangedRelativePaths(
+		staticMap,
+		distDirectoryPath,
+		[]string{"templates/removed", "images/logo.svg"},
+	)
+	if !mapWasChanged {
+		t.Fatal("expected static map to change for mixed exact/subtree removals")
+	}
+
+	if len(staticMap) != 1 {
+		t.Fatalf("expected one remaining map entry, got %#v", staticMap)
+	}
+	if _, hasRemainingKeptPath := staticMap["templates/keep.html"]; !hasRemainingKeptPath {
+		t.Fatalf("expected kept path to remain in map, got %#v", staticMap)
+	}
+	if _, hasRemovedSubtreePath := staticMap["templates/removed/a.html"]; hasRemovedSubtreePath {
+		t.Fatalf("expected subtree path templates/removed/a.html to be removed, got %#v", staticMap)
+	}
+	if _, hasRemovedNestedSubtreePath := staticMap["templates/removed/nested/b.html"]; hasRemovedNestedSubtreePath {
+		t.Fatalf(
+			"expected subtree path templates/removed/nested/b.html to be removed, got %#v",
+			staticMap,
+		)
+	}
+	if _, hasRemovedExactPath := staticMap["images/logo.svg"]; hasRemovedExactPath {
+		t.Fatalf("expected exact path images/logo.svg to be removed, got %#v", staticMap)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(distDirectoryPath, "templates/keep-dist.html")); statErr != nil {
+		t.Fatalf("expected kept dist artifact to remain, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(distDirectoryPath, "templates/removed-a-dist.html")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected removed dist artifact templates/removed-a-dist.html to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(distDirectoryPath, "templates/removed-b-dist.html")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected removed dist artifact templates/removed-b-dist.html to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(distDirectoryPath, "images/logo-dist.svg")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected removed dist artifact images/logo-dist.svg to be deleted, stat error: %v", statErr)
+	}
+}
+
+func TestRemoveStaticMapEntriesForChangedRelativePaths_NoMatchesNoChanges(t *testing.T) {
+	distDirectoryPath := t.TempDir()
+	staticMap := wave.FileMap{
+		"templates/keep.html": {
+			DistName: "templates/keep-dist.html",
+		},
+	}
+
+	distArtifactPath := filepath.Join(distDirectoryPath, "templates/keep-dist.html")
+	if err := os.MkdirAll(filepath.Dir(distArtifactPath), 0o755); err != nil {
+		t.Fatalf("failed creating dist artifact parent dir: %v", err)
+	}
+	if err := os.WriteFile(distArtifactPath, []byte("artifact"), 0o644); err != nil {
+		t.Fatalf("failed writing dist artifact: %v", err)
+	}
+
+	mapWasChanged := removeStaticMapEntriesForChangedRelativePaths(
+		staticMap,
+		distDirectoryPath,
+		[]string{"images"},
+	)
+	if mapWasChanged {
+		t.Fatal("expected static map to remain unchanged for non-matching changed path")
+	}
+
+	if len(staticMap) != 1 {
+		t.Fatalf("expected map size to remain 1, got %#v", staticMap)
+	}
+	if _, stillHasKeptPath := staticMap["templates/keep.html"]; !stillHasKeptPath {
+		t.Fatalf("expected kept path to remain, got %#v", staticMap)
+	}
+	if _, statErr := os.Stat(distArtifactPath); statErr != nil {
+		t.Fatalf("expected kept dist artifact to remain, stat error: %v", statErr)
 	}
 }
 
@@ -371,6 +704,89 @@ func TestProcessPublicFilesOnlyForChangedPaths_ReturnsErrorWhenCollisionExists(
 	}
 }
 
+func TestProcessPublicFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBatch(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	publicDir := cfg.Core.StaticAssetDirs.Public
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+
+	renamedFromPath := filepath.Join(publicDir, "old-logo.png")
+	renamedToPath := filepath.Join(publicDir, "new-logo.png")
+	deletedPath := filepath.Join(publicDir, "obsolete.txt")
+	createdPath := filepath.Join(publicDir, "added.txt")
+
+	if err := os.WriteFile(renamedFromPath, []byte("old"), 0o644); err != nil {
+		t.Fatalf("failed writing renamed source file: %v", err)
+	}
+	if err := os.WriteFile(deletedPath, []byte("obsolete"), 0o644); err != nil {
+		t.Fatalf("failed writing deleted source file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	initialMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap after initial run returned error: %v", err)
+	}
+	initialRenamedFromEntry := initialMap["old-logo.png"]
+	initialDeletedEntry := initialMap["obsolete.txt"]
+	initialRenamedFromDistPath := filepath.Join(cfg.Dist.StaticPublic(), initialRenamedFromEntry.DistName)
+	initialDeletedDistPath := filepath.Join(cfg.Dist.StaticPublic(), initialDeletedEntry.DistName)
+
+	if err := os.Rename(renamedFromPath, renamedToPath); err != nil {
+		t.Fatalf("failed renaming source file: %v", err)
+	}
+	if err := os.Remove(deletedPath); err != nil {
+		t.Fatalf("failed removing source file: %v", err)
+	}
+	if err := os.WriteFile(createdPath, []byte("added"), 0o644); err != nil {
+		t.Fatalf("failed writing created source file: %v", err)
+	}
+
+	if err := builder.processPublicFilesOnlyForChangedPaths([]string{
+		renamedFromPath,
+		renamedToPath,
+		deletedPath,
+		createdPath,
+	}); err != nil {
+		t.Fatalf("processPublicFilesOnlyForChangedPaths returned error: %v", err)
+	}
+
+	updatedMap, err := builder.LoadPublicFileMap()
+	if err != nil {
+		t.Fatalf("LoadPublicFileMap after changed-path batch returned error: %v", err)
+	}
+
+	if _, exists := updatedMap["old-logo.png"]; exists {
+		t.Fatalf("expected renamed-from path to be removed, got %#v", updatedMap["old-logo.png"])
+	}
+	if _, exists := updatedMap["obsolete.txt"]; exists {
+		t.Fatalf("expected deleted path to be removed, got %#v", updatedMap["obsolete.txt"])
+	}
+	if _, exists := updatedMap["new-logo.png"]; !exists {
+		t.Fatalf("expected renamed-to path to exist in map, got %#v", updatedMap)
+	}
+	if _, exists := updatedMap["added.txt"]; !exists {
+		t.Fatalf("expected created path to exist in map, got %#v", updatedMap)
+	}
+
+	if _, statErr := os.Stat(initialRenamedFromDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected old renamed dist artifact to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(initialDeletedDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected deleted dist artifact to be deleted, stat error: %v", statErr)
+	}
+}
+
 func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
@@ -537,6 +953,92 @@ func TestProcessPrivateFilesOnlyForChangedPaths_ReturnsErrorWhenCollisionExists(
 	}
 }
 
+func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBatch(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	privateDir := cfg.Core.StaticAssetDirs.Private
+	if err := os.MkdirAll(privateDir, 0o755); err != nil {
+		t.Fatalf("failed creating private dir: %v", err)
+	}
+
+	renamedFromPath := filepath.Join(privateDir, "templates", "old.html")
+	renamedToPath := filepath.Join(privateDir, "templates", "new.html")
+	deletedPath := filepath.Join(privateDir, "templates", "obsolete.html")
+	createdPath := filepath.Join(privateDir, "templates", "added.html")
+
+	if err := os.MkdirAll(filepath.Dir(renamedFromPath), 0o755); err != nil {
+		t.Fatalf("failed creating private template dir: %v", err)
+	}
+	if err := os.WriteFile(renamedFromPath, []byte("<h1>old</h1>"), 0o644); err != nil {
+		t.Fatalf("failed writing renamed source file: %v", err)
+	}
+	if err := os.WriteFile(deletedPath, []byte("<h1>obsolete</h1>"), 0o644); err != nil {
+		t.Fatalf("failed writing deleted source file: %v", err)
+	}
+
+	if err := builder.ProcessPrivateFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", err)
+	}
+
+	initialMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	if err != nil {
+		t.Fatalf("loadFileMapFromPath after initial run returned error: %v", err)
+	}
+	initialRenamedFromEntry := initialMap["templates/old.html"]
+	initialDeletedEntry := initialMap["templates/obsolete.html"]
+	initialRenamedFromDistPath := filepath.Join(cfg.Dist.StaticPrivate(), initialRenamedFromEntry.DistName)
+	initialDeletedDistPath := filepath.Join(cfg.Dist.StaticPrivate(), initialDeletedEntry.DistName)
+
+	if err := os.Rename(renamedFromPath, renamedToPath); err != nil {
+		t.Fatalf("failed renaming source file: %v", err)
+	}
+	if err := os.Remove(deletedPath); err != nil {
+		t.Fatalf("failed removing source file: %v", err)
+	}
+	if err := os.WriteFile(createdPath, []byte("<h1>added</h1>"), 0o644); err != nil {
+		t.Fatalf("failed writing created source file: %v", err)
+	}
+
+	if err := builder.processPrivateFilesOnlyForChangedPaths([]string{
+		renamedFromPath,
+		renamedToPath,
+		deletedPath,
+		createdPath,
+	}); err != nil {
+		t.Fatalf("processPrivateFilesOnlyForChangedPaths returned error: %v", err)
+	}
+
+	updatedMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	if err != nil {
+		t.Fatalf("loadFileMapFromPath after changed-path batch returned error: %v", err)
+	}
+
+	if _, exists := updatedMap["templates/old.html"]; exists {
+		t.Fatalf("expected renamed-from path to be removed, got %#v", updatedMap["templates/old.html"])
+	}
+	if _, exists := updatedMap["templates/obsolete.html"]; exists {
+		t.Fatalf("expected deleted path to be removed, got %#v", updatedMap["templates/obsolete.html"])
+	}
+	if _, exists := updatedMap["templates/new.html"]; !exists {
+		t.Fatalf("expected renamed-to path to exist in map, got %#v", updatedMap)
+	}
+	if _, exists := updatedMap["templates/added.html"]; !exists {
+		t.Fatalf("expected created path to exist in map, got %#v", updatedMap)
+	}
+
+	if _, statErr := os.Stat(initialRenamedFromDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected old renamed dist artifact to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(initialDeletedDistPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected deleted dist artifact to be deleted, stat error: %v", statErr)
+	}
+}
+
 func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootIsNoOp(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
@@ -635,6 +1137,50 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootIsNoOp(t *testin
 			jsInfoBefore.ModTime(),
 			jsInfoAfter.ModTime(),
 		)
+	}
+}
+
+func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootDoesNotBuildWhenMapMissing(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	publicDir := cfg.Core.StaticAssetDirs.Public
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+
+	publicFilePath := filepath.Join(publicDir, "logo.png")
+	if err := os.WriteFile(publicFilePath, []byte("logo"), 0o644); err != nil {
+		t.Fatalf("failed writing public file: %v", err)
+	}
+
+	outsidePath := filepath.Join(root, "not-static", "note.txt")
+	if err := os.MkdirAll(filepath.Dir(outsidePath), 0o755); err != nil {
+		t.Fatalf("failed creating outside path parent dir: %v", err)
+	}
+	if err := os.WriteFile(outsidePath, []byte("note"), 0o644); err != nil {
+		t.Fatalf("failed writing outside path file: %v", err)
+	}
+
+	if err := builder.processPublicFilesOnlyForChangedPaths([]string{outsidePath}); err != nil {
+		t.Fatalf("processPublicFilesOnlyForChangedPaths returned error: %v", err)
+	}
+
+	if _, statErr := os.Stat(cfg.Dist.PublicFileMapGob()); !os.IsNotExist(statErr) {
+		t.Fatalf("expected public file map gob to remain absent, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(cfg.Dist.PublicFileMapRef()); !os.IsNotExist(statErr) {
+		t.Fatalf("expected public file map ref to remain absent, stat error: %v", statErr)
+	}
+
+	publicDistEntries, readErr := os.ReadDir(cfg.Dist.StaticPublic())
+	if readErr != nil && !os.IsNotExist(readErr) {
+		t.Fatalf("failed reading public dist dir: %v", readErr)
+	}
+	if readErr == nil && len(publicDistEntries) != 0 {
+		t.Fatalf("expected public dist dir to remain empty, got %d entries", len(publicDistEntries))
 	}
 }
 
