@@ -185,6 +185,7 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(t *testing
 
 	criticalCSSFile := filepath.Join(root, "styles", "critical.css")
 	normalCSSFile := filepath.Join(root, "styles", "normal.css")
+	sharedCSSFile := filepath.Join(root, "styles", "shared.css")
 	criticalAbsPath, criticalErr := filepath.Abs(criticalCSSFile)
 	if criticalErr != nil {
 		t.Fatalf("filepath.Abs critical css failed: %v", criticalErr)
@@ -193,10 +194,16 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(t *testing
 	if normalErr != nil {
 		t.Fatalf("filepath.Abs normal css failed: %v", normalErr)
 	}
+	sharedAbsPath, sharedErr := filepath.Abs(sharedCSSFile)
+	if sharedErr != nil {
+		t.Fatalf("filepath.Abs shared css failed: %v", sharedErr)
+	}
 
 	builder.css.mu.Lock()
 	builder.css.criticalImports[criticalAbsPath] = struct{}{}
 	builder.css.normalImports[normalAbsPath] = struct{}{}
+	builder.css.criticalImports[sharedAbsPath] = struct{}{}
+	builder.css.normalImports[sharedAbsPath] = struct{}{}
 	builder.css.mu.Unlock()
 
 	s := &server{cfg: cfg, log: newDiscardLogger()}
@@ -217,6 +224,19 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(t *testing
 	)
 	if normalClassified.fileType != fileTypeNormalCSS {
 		t.Fatalf("expected normal css file type, got %v", normalClassified.fileType)
+	}
+
+	sharedClassified := s.classifyEventWithWatcherAndBuilder(
+		fsnotify.Event{Name: sharedCSSFile, Op: fsnotify.Write},
+		watcher,
+		builder,
+	)
+	if sharedClassified.fileType != fileTypeCriticalAndNormalCSS {
+		t.Fatalf(
+			"expected shared css file type %v, got %v",
+			fileTypeCriticalAndNormalCSS,
+			sharedClassified.fileType,
+		)
 	}
 }
 

@@ -324,8 +324,7 @@ func (b *Builder) ProcessPublicFilesOnly() error {
 	return b.processPublicFiles(true)
 }
 
-// ProcessPublicFilesOnlyForChangedPaths reprocesses only changed public files.
-func (b *Builder) ProcessPublicFilesOnlyForChangedPaths(changedSourcePaths []string) error {
+func (b *Builder) processPublicFilesOnlyForChangedPaths(changedSourcePaths []string) error {
 	return b.processPublicFilesForChangedPaths(changedSourcePaths)
 }
 
@@ -334,8 +333,7 @@ func (b *Builder) ProcessPrivateFilesOnly() error {
 	return b.processPrivateFiles(true)
 }
 
-// ProcessPrivateFilesOnlyForChangedPaths reprocesses only changed private files.
-func (b *Builder) ProcessPrivateFilesOnlyForChangedPaths(changedSourcePaths []string) error {
+func (b *Builder) processPrivateFilesOnlyForChangedPaths(changedSourcePaths []string) error {
 	return b.processPrivateFilesForChangedPaths(changedSourcePaths)
 }
 
@@ -401,20 +399,24 @@ func SetupDistDir(cfg *wave.ParsedConfig) error {
 
 // ReadCriticalCSS reads the critical CSS content from dist
 func (b *Builder) ReadCriticalCSS() (string, error) {
-	data, err := os.ReadFile(b.cfg.Dist.CriticalCSS())
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+	return b.ReadCriticalCSSForHotReload(false)
 }
 
 // ReadNormalCSSURL reads the normal CSS URL from the ref file
 func (b *Builder) ReadNormalCSSURL() (string, error) {
-	data, err := os.ReadFile(b.cfg.Dist.NormalCSSRef())
-	if err != nil {
-		return "", err
-	}
-	return b.cfg.PublicPathPrefix() + string(data), nil
+	return b.ReadNormalCSSURLForHotReload(false)
+}
+
+// ReadCriticalCSSForHotReload reads critical CSS for browser hot reload.
+// When requireFreshBuildOutput is true, stale fallback reads from dist are disabled.
+func (b *Builder) ReadCriticalCSSForHotReload(requireFreshBuildOutput bool) (string, error) {
+	return b.css.readCriticalCSSHotReloadOutput(requireFreshBuildOutput)
+}
+
+// ReadNormalCSSURLForHotReload reads the normal CSS URL for browser hot reload.
+// When requireFreshBuildOutput is true, stale fallback reads from dist are disabled.
+func (b *Builder) ReadNormalCSSURLForHotReload(requireFreshBuildOutput bool) (string, error) {
+	return b.css.readNormalCSSHotReloadURL(requireFreshBuildOutput)
 }
 
 // getPublicURLBuildtimeCached resolves a public URL using cached file map (for CSS builds).

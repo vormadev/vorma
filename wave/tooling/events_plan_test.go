@@ -14,6 +14,7 @@ func TestShouldShowRebuildingOverlay(t *testing.T) {
 		classifiedEvents := []classifiedEvent{
 			{fileType: fileTypeCriticalCSS},
 			{fileType: fileTypeNormalCSS},
+			{fileType: fileTypeCriticalAndNormalCSS},
 		}
 
 		if shouldShowRebuildingOverlay(classifiedEvents) {

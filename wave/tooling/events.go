@@ -22,6 +22,7 @@ const (
 	fileTypeGo
 	fileTypeCriticalCSS
 	fileTypeNormalCSS
+	fileTypeCriticalAndNormalCSS
 	fileTypePublicStatic
 	fileTypePrivateStatic
 )
@@ -35,13 +36,15 @@ type classifiedEvent struct {
 }
 
 type buildPhaseDecision struct {
-	compileGo                     bool
-	buildCriticalCSS              bool
-	buildNormalCSS                bool
-	processPublicFiles            bool
-	processPrivateFiles           bool
-	publicStaticChangedFilePaths  []string
-	privateStaticChangedFilePaths []string
+	compileGo                       bool
+	buildCriticalCSS                bool
+	buildNormalCSS                  bool
+	processPublicFiles              bool
+	processPrivateFiles             bool
+	publicStaticChangedFilePaths    []string
+	privateStaticChangedFilePaths   []string
+	publicStaticChangedFilePathSet  map[string]struct{}
+	privateStaticChangedFilePathSet map[string]struct{}
 }
 
 func (d buildPhaseDecision) hasFileProcessingWork() bool {
@@ -155,21 +158,55 @@ func reduceRefreshActionsInStableOrder(
 	return appliedActions, refreshActionApplicationResult{}
 }
 
-func appendFilePathIfMissing(
-	existingFilePaths []string,
+func normalizeChangedSourceFilePathForWorkSet(
 	filePath string,
-) []string {
-	if filePath == "" {
-		return existingFilePaths
+) string {
+	return pathnorm.Absolute(filePath)
+}
+
+func appendNormalizedFilePathIfMissing(
+	existingFilePaths []string,
+	existingFilePathSet map[string]struct{},
+	filePath string,
+) ([]string, map[string]struct{}) {
+	normalizedFilePath := normalizeChangedSourceFilePathForWorkSet(filePath)
+	if normalizedFilePath == "" {
+		return existingFilePaths, existingFilePathSet
 	}
 
-	for _, existingFilePath := range existingFilePaths {
-		if existingFilePath == filePath {
-			return existingFilePaths
+	if existingFilePathSet == nil {
+		existingFilePathSet = make(map[string]struct{}, len(existingFilePaths)+1)
+		for _, existingFilePath := range existingFilePaths {
+			existingFilePathSet[existingFilePath] = struct{}{}
 		}
 	}
+	if _, alreadyExists := existingFilePathSet[normalizedFilePath]; alreadyExists {
+		return existingFilePaths, existingFilePathSet
+	}
 
-	return append(existingFilePaths, filePath)
+	existingFilePaths = append(existingFilePaths, normalizedFilePath)
+	existingFilePathSet[normalizedFilePath] = struct{}{}
+	return existingFilePaths, existingFilePathSet
+}
+
+func (d *buildPhaseDecision) addPublicStaticChangedFilePath(
+	filePath string,
+) {
+	d.publicStaticChangedFilePaths, d.publicStaticChangedFilePathSet = appendNormalizedFilePathIfMissing(
+		d.publicStaticChangedFilePaths,
+		d.publicStaticChangedFilePathSet,
+		filePath,
+	)
+}
+
+func (d *buildPhaseDecision) addPrivateStaticChangedFilePath(
+	filePath string,
+) {
+	d.privateStaticChangedFilePaths, d.privateStaticChangedFilePathSet = appendNormalizedFilePathIfMissing(
+		d.privateStaticChangedFilePaths,
+		d.privateStaticChangedFilePathSet,
+		filePath,
+	)
 }
 
 // addImplicitWork adds build work implied by a file type.
@@ -200,17 +237,22 @@ func (w *workSet) addImplicitWork(c classifiedEvent) {
 			w.restart.restartApp = true
 		}
 
+	case fileTypeCriticalAndNormalCSS:
+		w.build.buildCriticalCSS = true
+		w.build.buildNormalCSS = true
+		if wf != nil && needsHardReload(wf) {
+			w.restart.restartApp = true
+		}
+
 	case fileTypePublicStatic:
 		w.build.processPublicFiles = true
-		w.build.publicStaticChangedFilePaths = appendFilePathIfMissing(
-			w.build.publicStaticChangedFilePaths,
+		w.build.addPublicStaticChangedFilePath(
 			c.event.Name,
 		)
 
 	case fileTypePrivateStatic:
 		w.build.processPrivateFiles = true
-		w.build.privateStaticChangedFilePaths = appendFilePathIfMissing(
-			w.build.privateStaticChangedFilePaths,
+		w.build.addPrivateStaticChangedFilePath(
 			c.event.Name,
 		)
 
@@ -539,7 +581,8 @@ func shouldShowRebuildingOverlay(
 ) bool {
 	for _, classifiedEventForOverlay := range classifiedEvents {
 		if classifiedEventForOverlay.fileType == fileTypeCriticalCSS ||
-			classifiedEventForOverlay.fileType == fileTypeNormalCSS {
+			classifiedEventForOverlay.fileType == fileTypeNormalCSS ||
+			classifiedEventForOverlay.fileType == fileTypeCriticalAndNormalCSS {
 			continue
 		}
 
@@ -976,7 +1019,7 @@ func (s *server) executeBuildPhase(work *workSet) {
 			if work.build.processPublicFiles {
 				var publicProcessingError error
 				if len(work.build.publicStaticChangedFilePaths) > 0 {
-					publicProcessingError = builder.ProcessPublicFilesOnlyForChangedPaths(
+					publicProcessingError = builder.processPublicFilesOnlyForChangedPaths(
 						work.build.publicStaticChangedFilePaths,
 					)
 				} else {
@@ -1000,7 +1043,7 @@ func (s *server) executeBuildPhase(work *workSet) {
 				innerG.Go(func() error {
 					var privateProcessingError error
 					if len(work.build.privateStaticChangedFilePaths) > 0 {
-						privateProcessingError = builder.ProcessPrivateFilesOnlyForChangedPaths(
+						privateProcessingError = builder.processPrivateFilesOnlyForChangedPaths(
 							work.build.privateStaticChangedFilePaths,
 						)
 					} else {
@@ -1093,43 +1136,43 @@ func (s *server) executeBrowserPhase(work *workSet) {
 		}
 
 		s.log.Info("Hot reloading CSS")
-		criticalCSS, _ := builder.ReadCriticalCSS()
-		normalURL, _ := builder.ReadNormalCSSURL()
-
-		if work.build.buildCriticalCSS && work.build.buildNormalCSS {
-			s.broadcastReload(reloadOpts{
-				payload: refreshPayload{
-					ChangeType:  changeTypeCriticalCSS,
-					CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
-				},
-			})
-			s.broadcastReload(reloadOpts{
-				payload: refreshPayload{
-					ChangeType:   changeTypeNormalCSS,
-					NormalCSSURL: normalURL,
-				},
-			})
-			return
-		}
 
 		if work.build.buildCriticalCSS {
-			s.broadcastReload(reloadOpts{
-				payload: refreshPayload{
-					ChangeType:  changeTypeCriticalCSS,
-					CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
-				},
-			})
-			return
+			criticalCSS, readCriticalCSSError := builder.ReadCriticalCSSForHotReload(true)
+			if readCriticalCSSError != nil {
+				s.log.Warn(
+					"Skipping critical CSS hot reload payload due to missing fresh build output",
+					"error",
+					readCriticalCSSError,
+				)
+			} else {
+				s.broadcastReload(reloadOpts{
+					payload: refreshPayload{
+						ChangeType:  changeTypeCriticalCSS,
+						CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
+					},
+				})
+			}
 		}
 
 		if work.build.buildNormalCSS {
-			s.broadcastReload(reloadOpts{
-				payload: refreshPayload{
-					ChangeType:   changeTypeNormalCSS,
-					NormalCSSURL: normalURL,
-				},
-			})
+			normalCSSURL, readNormalCSSURLError := builder.ReadNormalCSSURLForHotReload(true)
+			if readNormalCSSURLError != nil {
+				s.log.Warn(
+					"Skipping normal CSS hot reload payload due to missing fresh build output",
+					"error",
+					readNormalCSSURLError,
+				)
+			} else {
+				s.broadcastReload(reloadOpts{
+					payload: refreshPayload{
+						ChangeType:   changeTypeNormalCSS,
+						NormalCSSURL: normalCSSURL,
+					},
+				})
+			}
 		}
+		return
 
 	case browserPhaseActionNone:
 		return
@@ -1146,9 +1189,14 @@ func (s *server) classifyEventWithWatcherAndBuilder(evt fsnotify.Event, watcher 
 
 	result.ignored = watcher.IsIgnoredFile(evt.Name)
 
-	if builder.IsCriticalCSSFile(evt.Name) {
+	isCriticalCSSFile := builder.IsCriticalCSSFile(evt.Name)
+	isNormalCSSFile := builder.IsNormalCSSFile(evt.Name)
+
+	if isCriticalCSSFile && isNormalCSSFile {
+		result.fileType = fileTypeCriticalAndNormalCSS
+	} else if isCriticalCSSFile {
 		result.fileType = fileTypeCriticalCSS
-	} else if builder.IsNormalCSSFile(evt.Name) {
+	} else if isNormalCSSFile {
 		result.fileType = fileTypeNormalCSS
 	} else if filepath.Ext(evt.Name) == ".go" {
 		result.fileType = fileTypeGo

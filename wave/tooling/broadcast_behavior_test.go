@@ -233,6 +233,78 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(t *
 	}
 }
 
+func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUnavailable(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = wave.CSSEntryFiles{
+		Critical:    filepath.Join(root, "styles", "critical.css"),
+		NonCritical: filepath.Join(root, "styles", "normal.css"),
+	}
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.Critical), 0o755); err != nil {
+		t.Fatalf("failed creating critical css entry parent dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.NonCritical), 0o755); err != nil {
+		t.Fatalf("failed creating normal css entry parent dir: %v", err)
+	}
+	if err := os.WriteFile(cfg.Core.CSSEntryFiles.Critical, []byte(`body { color: red; }`), 0o644); err != nil {
+		t.Fatalf("failed writing critical css entry file: %v", err)
+	}
+	if err := os.WriteFile(cfg.Core.CSSEntryFiles.NonCritical, []byte(`body { color: blue; }`), 0o644); err != nil {
+		t.Fatalf("failed writing normal css entry file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	if err := builder.BuildCriticalCSS(true); err != nil {
+		t.Fatalf("initial BuildCriticalCSS returned error: %v", err)
+	}
+	if err := builder.BuildNormalCSS(true); err != nil {
+		t.Fatalf("initial BuildNormalCSS returned error: %v", err)
+	}
+
+	cfg.Core.CSSEntryFiles.Critical = filepath.Join(root, "styles", "missing-critical.css")
+	cfg.Core.CSSEntryFiles.NonCritical = filepath.Join(root, "styles", "missing-normal.css")
+	if err := builder.BuildCriticalCSS(true); err == nil {
+		t.Fatal("expected BuildCriticalCSS to fail for missing entry")
+	}
+	if err := builder.BuildNormalCSS(true); err == nil {
+		t.Fatal("expected BuildNormalCSS to fail for missing entry")
+	}
+
+	s := &server{
+		cfg:     cfg,
+		log:     newDiscardLogger(),
+		builder: builder,
+		refreshMgr: &clientManager{
+			broadcast: make(chan refreshPayload, 2),
+		},
+		refreshMgrCtx: context.Background(),
+	}
+
+	work := &workSet{
+		browser: browserPhaseDecision{
+			action: browserPhaseActionHotReloadCSS,
+		},
+		build: buildPhaseDecision{
+			buildCriticalCSS: true,
+			buildNormalCSS:   true,
+		},
+	}
+	s.executeBrowserPhase(work)
+
+	select {
+	case payload := <-s.refreshMgr.broadcast:
+		t.Fatalf("did not expect css hot-reload payload after failed rebuilds, got %#v", payload)
+	default:
+	}
+}
+
 func TestExecuteBrowserPhase_RevalidateBroadcastsRevalidatePayload(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false

@@ -11,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -89,9 +90,108 @@ type fileInfo struct {
 	prehash bool
 }
 
+func determineStaticProcessingWorkerCount(gomaxprocs int) int {
+	if gomaxprocs <= 0 {
+		return 1
+	}
+
+	workerCount := gomaxprocs * 2
+	if workerCount < 1 {
+		return 1
+	}
+	if workerCount > 32 {
+		return 32
+	}
+
+	return workerCount
+}
+
 type staticChangedPathResolution struct {
 	fileInfo     fileInfo
 	sourceExists bool
+}
+
+func ensureNoStaticLogicalPathCollision(
+	existingFileInfo fileInfo,
+	candidateFileInfo fileInfo,
+) error {
+	if existingFileInfo.relPath != candidateFileInfo.relPath {
+		return nil
+	}
+
+	if pathnorm.PathsReferToSameLocation(existingFileInfo.srcPath, candidateFileInfo.srcPath) {
+		return nil
+	}
+
+	conflictingSourcePaths := []string{
+		pathnorm.Absolute(existingFileInfo.srcPath),
+		pathnorm.Absolute(candidateFileInfo.srcPath),
+	}
+	sort.Strings(conflictingSourcePaths)
+
+	return fmt.Errorf(
+		"static source path collision for logical path %q: %q and %q both map to the same output; keep exactly one source file",
+		existingFileInfo.relPath,
+		conflictingSourcePaths[0],
+		conflictingSourcePaths[1],
+	)
+}
+
+func ensureNoStaticLogicalPathCollisionWithinSourceDirectory(
+	sourceDirectoryPath string,
+	relativePath string,
+) error {
+	relativePathWithNativeSeparators := filepath.FromSlash(relativePath)
+	candidateFileInfos := []fileInfo{
+		{
+			srcPath: filepath.Join(sourceDirectoryPath, relativePathWithNativeSeparators),
+			relPath: relativePath,
+			prehash: false,
+		},
+		{
+			srcPath: filepath.Join(
+				sourceDirectoryPath,
+				wave.PrehashedDirname,
+				relativePathWithNativeSeparators,
+			),
+			relPath: relativePath,
+			prehash: true,
+		},
+		{
+			srcPath: filepath.Join(
+				sourceDirectoryPath,
+				wave.NohashDirname,
+				relativePathWithNativeSeparators,
+			),
+			relPath: relativePath,
+			prehash: true,
+		},
+	}
+
+	existingSourcePaths := make([]string, 0, len(candidateFileInfos))
+	for _, candidateFileInfo := range candidateFileInfos {
+		sourceExists, sourceStatError := staticSourceFileExists(candidateFileInfo.srcPath)
+		if sourceStatError != nil {
+			return sourceStatError
+		}
+		if sourceExists {
+			existingSourcePaths = append(
+				existingSourcePaths,
+				pathnorm.Absolute(candidateFileInfo.srcPath),
+			)
+		}
+	}
+
+	if len(existingSourcePaths) <= 1 {
+		return nil
+	}
+
+	sort.Strings(existingSourcePaths)
+	return fmt.Errorf(
+		"static source path collision for logical path %q: multiple source files map to the same output: %s; keep exactly one source file",
+		relativePath,
+		strings.Join(existingSourcePaths, ", "),
+	)
 }
 
 func resolveStaticRelativePathFromSourcePath(
@@ -190,6 +290,7 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 
 	// Discover files
 	files := make(chan fileInfo, 100)
+	discoveredFileInfosByRelativePath := make(map[string]fileInfo)
 
 	// Track walk errors
 	var walkErr error
@@ -224,6 +325,15 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 				return nil
 			}
 
+			existingFileInfo, alreadyDiscovered := discoveredFileInfosByRelativePath[staticFileInfo.relPath]
+			if alreadyDiscovered {
+				if collisionError := ensureNoStaticLogicalPathCollision(existingFileInfo, staticFileInfo); collisionError != nil {
+					return collisionError
+				}
+				return nil
+			}
+			discoveredFileInfosByRelativePath[staticFileInfo.relPath] = staticFileInfo
+
 			select {
 			case files <- staticFileInfo:
 			case <-ctx.Done():
@@ -244,7 +354,7 @@ func (b *Builder) processStaticFiles(opts staticOpts) error {
 	}()
 
 	// Process files with worker pool
-	const numWorkers = 32
+	numWorkers := determineStaticProcessingWorkerCount(runtime.GOMAXPROCS(0))
 	var wg sync.WaitGroup
 	var firstErr error
 	var errOnce sync.Once
@@ -317,13 +427,12 @@ func (b *Builder) processStaticFilesForChangedPaths(
 		return b.processStaticFiles(opts)
 	}
 
-	if _, statError := os.Stat(opts.srcDir); os.IsNotExist(statError) {
-		return b.processStaticFiles(opts)
-	}
-
 	oldMap, loadError := b.loadFileMapFromPath(opts.gobPath)
 	if loadError != nil {
 		return b.processStaticFiles(opts)
+	}
+	if oldMap == nil {
+		oldMap = make(wave.FileMap)
 	}
 
 	changedResolutions := make(map[string]staticChangedPathResolution)
@@ -331,6 +440,9 @@ func (b *Builder) processStaticFilesForChangedPaths(
 		normalizedChangedSourcePath := pathnorm.Absolute(changedSourcePath)
 		if normalizedChangedSourcePath == "" {
 			continue
+		}
+		if normalizedChangedSourcePath == opts.srcDir {
+			return b.processStaticFiles(opts)
 		}
 
 		staticFileInfo, shouldProcessFile, resolveError := resolveStaticFileInfoFromSourcePath(
@@ -352,6 +464,15 @@ func (b *Builder) processStaticFilesForChangedPaths(
 		if sourceStatError != nil {
 			return sourceStatError
 		}
+		if sourceExists {
+			collisionError := ensureNoStaticLogicalPathCollisionWithinSourceDirectory(
+				opts.srcDir,
+				staticFileInfo.relPath,
+			)
+			if collisionError != nil {
+				return collisionError
+			}
+		}
 
 		existingResolution, alreadyResolved := changedResolutions[staticFileInfo.relPath]
 		if !alreadyResolved || sourceExists || !existingResolution.sourceExists {
@@ -363,12 +484,7 @@ func (b *Builder) processStaticFilesForChangedPaths(
 	}
 
 	if len(changedResolutions) == 0 {
-		return b.processStaticFiles(opts)
-	}
-
-	finalMap := maps.Clone(oldMap)
-	if finalMap == nil {
-		finalMap = make(wave.FileMap)
+		return nil
 	}
 
 	resolvedRelativePaths := make([]string, 0, len(changedResolutions))
@@ -377,8 +493,11 @@ func (b *Builder) processStaticFilesForChangedPaths(
 	}
 	sort.Strings(resolvedRelativePaths)
 
+	mapWasChanged := false
 	for _, resolvedRelativePath := range resolvedRelativePaths {
 		resolution := changedResolutions[resolvedRelativePath]
+		oldValueForPath, hadOldValueForPath := oldMap[resolvedRelativePath]
+
 		if resolution.sourceExists {
 			updatedValue, hasUpdatedValue, processError := b.processChangedStaticFile(
 				resolution.fileInfo,
@@ -389,25 +508,33 @@ func (b *Builder) processStaticFilesForChangedPaths(
 				return processError
 			}
 			if hasUpdatedValue {
-				finalMap[resolvedRelativePath] = updatedValue
+				if !hadOldValueForPath || oldValueForPath != updatedValue {
+					mapWasChanged = true
+				}
+				oldMap[resolvedRelativePath] = updatedValue
+
+				if hadOldValueForPath && oldValueForPath.DistName != updatedValue.DistName {
+					removeStaticDistArtifactIfPresent(opts.distDir, oldValueForPath.DistName)
+				}
 				continue
 			}
 		}
 
-		delete(finalMap, resolvedRelativePath)
-	}
-
-	cleanupStaleStaticDistFiles(opts.distDir, oldMap, finalMap)
-
-	shouldSaveFileMap := !maps.Equal(oldMap, finalMap)
-	if shouldSaveFileMap {
-		if err := b.saveFileMap(finalMap, opts.gobPath); err != nil {
-			return err
+		if removeStaticMapEntriesForChangedRelativePath(oldMap, opts.distDir, resolvedRelativePath) {
+			mapWasChanged = true
 		}
 	}
 
+	if !mapWasChanged {
+		return nil
+	}
+
+	if err := b.saveFileMap(oldMap, opts.gobPath); err != nil {
+		return err
+	}
+
 	if opts.isPublic {
-		return b.savePublicFileMapJS(finalMap)
+		return b.savePublicFileMapJS(oldMap)
 	}
 
 	return nil
@@ -459,9 +586,48 @@ func cleanupStaleStaticDistFiles(
 	for key, oldVal := range oldMap {
 		newVal, exists := newMap[key]
 		if !exists || newVal.DistName != oldVal.DistName {
-			_ = os.Remove(filepath.Join(distDirectoryPath, oldVal.DistName))
+			removeStaticDistArtifactIfPresent(distDirectoryPath, oldVal.DistName)
 		}
 	}
+}
+
+func removeStaticDistArtifactIfPresent(
+	distDirectoryPath string,
+	distName string,
+) {
+	_ = os.Remove(filepath.Join(distDirectoryPath, distName))
+}
+
+func removeStaticMapEntriesForChangedRelativePath(
+	staticMap wave.FileMap,
+	distDirectoryPath string,
+	changedRelativePath string,
+) bool {
+	mapWasChanged := false
+
+	if oldValueForExactPath, hasExactPath := staticMap[changedRelativePath]; hasExactPath {
+		delete(staticMap, changedRelativePath)
+		removeStaticDistArtifactIfPresent(distDirectoryPath, oldValueForExactPath.DistName)
+		mapWasChanged = true
+	}
+
+	prefix := changedRelativePath + "/"
+	pathsToDelete := make([]string, 0)
+	for existingRelativePath := range staticMap {
+		if strings.HasPrefix(existingRelativePath, prefix) {
+			pathsToDelete = append(pathsToDelete, existingRelativePath)
+		}
+	}
+	sort.Strings(pathsToDelete)
+
+	for _, relativePathToDelete := range pathsToDelete {
+		oldValueForPath := staticMap[relativePathToDelete]
+		delete(staticMap, relativePathToDelete)
+		removeStaticDistArtifactIfPresent(distDirectoryPath, oldValueForPath.DistName)
+		mapWasChanged = true
+	}
+
+	return mapWasChanged
 }
 
 func (b *Builder) processFile(

@@ -1,10 +1,12 @@
 package tooling
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/pathnorm"
 )
 
 func TestWorkSetAddFromRefreshAction(t *testing.T) {
@@ -219,6 +221,25 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 		}
 	})
 
+	t.Run("shared critical+normal css file requests both rebuilds and can request hard reload", func(t *testing.T) {
+		work := &workSet{}
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypeCriticalAndNormalCSS,
+			watchedFile: &wave.WatchedFile{
+				RestartApp: true,
+			},
+		})
+		if !work.build.buildCriticalCSS {
+			t.Fatal("expected build.buildCriticalCSS=true")
+		}
+		if !work.build.buildNormalCSS {
+			t.Fatal("expected build.buildNormalCSS=true")
+		}
+		if !work.restart.restartApp {
+			t.Fatal("expected restart.restartApp=true when shared css watched file requests hard reload")
+		}
+	})
+
 	t.Run("public static file requests public file processing", func(t *testing.T) {
 		work := &workSet{}
 		changedPublicFilePath := "/tmp/public/logo.svg"
@@ -244,6 +265,42 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 			t.Fatalf(
 				"expected tracked public static path %q, got %#v",
 				changedPublicFilePath,
+				work.build.publicStaticChangedFilePaths,
+			)
+		}
+	})
+
+	t.Run("public static changed paths are normalized and deduplicated by location", func(t *testing.T) {
+		work := &workSet{}
+
+		root := t.TempDir()
+		canonicalFilePath := filepath.Join(root, "static", "public", "logo.svg")
+		equivalentFilePath := filepath.Join(root, "static", "public", ".", "logo.svg")
+		expectedNormalizedPath := pathnorm.Absolute(canonicalFilePath)
+
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypePublicStatic,
+			event: fsnotify.Event{
+				Name: canonicalFilePath,
+			},
+		})
+		work.addImplicitWork(classifiedEvent{
+			fileType: fileTypePublicStatic,
+			event: fsnotify.Event{
+				Name: equivalentFilePath,
+			},
+		})
+
+		if len(work.build.publicStaticChangedFilePaths) != 1 {
+			t.Fatalf(
+				"expected one normalized public static path, got %#v",
+				work.build.publicStaticChangedFilePaths,
+			)
+		}
+		if work.build.publicStaticChangedFilePaths[0] != expectedNormalizedPath {
+			t.Fatalf(
+				"expected normalized public static path %q, got %#v",
+				expectedNormalizedPath,
 				work.build.publicStaticChangedFilePaths,
 			)
 		}
