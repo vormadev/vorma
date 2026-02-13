@@ -111,9 +111,6 @@ type ParsedConfig struct {
 
 	Dist DistLayout `json:"-"`
 
-	ResolvedConfigFilePath    string `json:"-"`
-	ResolvedConfigFingerprint string `json:"-"`
-
 	FrameworkWatchPatterns       []WatchedFile `json:"-"`
 	FrameworkIgnoredPatterns     []string      `json:"-"`
 	FrameworkPublicFileMapOutDir string        `json:"-"`
@@ -122,16 +119,16 @@ type ParsedConfig struct {
 }
 
 type CoreConfig struct {
-	DevBuildHook                  string          `json:"DevBuildHook,omitempty"`
-	ProdBuildHook                 string          `json:"ProdBuildHook,omitempty"`
-	MainAppEntry                  string          `json:"MainAppEntry"`
-	DistDir                       string          `json:"DistDir"`
-	StaticAssetDirs               StaticAssetDirs `json:"StaticAssetDirs"`
-	CSSEntryFiles                 CSSEntryFiles   `json:"CSSEntryFiles,omitempty"`
-	PublicPathPrefix              string          `json:"PublicPathPrefix,omitempty"`
-	ServerOnlyMode                bool            `json:"ServerOnlyMode,omitempty"`
-	SequentialGoBuild             bool            `json:"SequentialGoBuild,omitempty"`
-	UseFilesystemDistStaticInProd bool            `json:"UseFilesystemDistStaticInProd,omitempty"`
+	ConfigLocation    string          `json:"ConfigLocation,omitempty"`
+	DevBuildHook      string          `json:"DevBuildHook,omitempty"`
+	ProdBuildHook     string          `json:"ProdBuildHook,omitempty"`
+	MainAppEntry      string          `json:"MainAppEntry"`
+	DistDir           string          `json:"DistDir"`
+	StaticAssetDirs   StaticAssetDirs `json:"StaticAssetDirs"`
+	CSSEntryFiles     CSSEntryFiles   `json:"CSSEntryFiles,omitempty"`
+	PublicPathPrefix  string          `json:"PublicPathPrefix,omitempty"`
+	ServerOnlyMode    bool            `json:"ServerOnlyMode,omitempty"`
+	SequentialGoBuild bool            `json:"SequentialGoBuild,omitempty"`
 }
 
 type StaticAssetDirs struct {

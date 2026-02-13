@@ -1093,11 +1093,26 @@ func (s *server) classifyEventWithWatcherAndBuilder(evt fsnotify.Event, watcher 
 }
 
 func (s *server) isConfigFile(path string) bool {
-	if s == nil || s.cfg == nil {
+	if s == nil || s.cfg == nil || s.cfg.Core == nil {
 		return false
 	}
 
-	return s.cfg.IsResolvedConfigFilePath(path)
+	configPath := s.cfg.Core.ConfigLocation
+	if configPath == "" {
+		return false
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+
+	absConfigPath, err := filepath.Abs(configPath)
+	if err != nil {
+		absConfigPath = configPath
+	}
+
+	return absPath == absConfigPath
 }
 
 func needsHardReload(wf *wave.WatchedFile) bool {

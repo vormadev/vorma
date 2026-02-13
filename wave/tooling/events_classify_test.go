@@ -79,7 +79,7 @@ func TestIsConfigFileMatchesNormalizedPath(t *testing.T) {
 	configPath := filepath.Join(root, "backend", "wave.config.json")
 
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.ResolvedConfigFilePath = configPath
+	cfg.Core.ConfigLocation = configPath
 	s := &server{cfg: cfg}
 
 	equivalentPath := filepath.Join(root, "backend", ".", "wave.config.json")
@@ -92,7 +92,7 @@ func TestIsConfigFileMatchesNormalizedPath(t *testing.T) {
 		t.Fatalf("expected isConfigFile(%q) to be false", otherPath)
 	}
 
-	cfg.ResolvedConfigFilePath = ""
+	cfg.Core.ConfigLocation = ""
 	if s.isConfigFile(configPath) {
 		t.Fatal("expected isConfigFile to be false when config file path is empty")
 	}

@@ -3,7 +3,6 @@ package tooling
 import (
 	"errors"
 	"flag"
-	"io"
 	"os"
 	"strings"
 	"testing"
@@ -31,35 +30,9 @@ func withTemporaryCommandLineState(
 	fn()
 }
 
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-
-	originalStdout := os.Stdout
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("create stdout pipe: %v", err)
-	}
-	os.Stdout = writer
-
-	defer func() {
-		os.Stdout = originalStdout
-	}()
-
-	fn()
-
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close stdout writer: %v", err)
-	}
-	outputBytes, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("read captured stdout: %v", err)
-	}
-	return string(outputBytes)
-}
-
 func TestParseCLIOptions(t *testing.T) {
 	parsedCLIOptions, err := ParseCLIOptions(
-		[]string{"-dev", "-hook", "-no-binary", "-explain", "-doctor"},
+		[]string{"-dev", "-hook", "-no-binary"},
 	)
 	if err != nil {
 		t.Fatalf("ParseCLIOptions returned error: %v", err)
@@ -73,12 +46,6 @@ func TestParseCLIOptions(t *testing.T) {
 	}
 	if !parsedCLIOptions.NoBinary {
 		t.Fatal("expected NoBinary=true")
-	}
-	if !parsedCLIOptions.Explain {
-		t.Fatal("expected Explain=true")
-	}
-	if !parsedCLIOptions.Doctor {
-		t.Fatal("expected Doctor=true")
 	}
 }
 
@@ -147,68 +114,6 @@ func TestBuildWaveWithHookFromArgs_NoBinaryFlagRunsBuildWithoutCompile(t *testin
 	)
 	if err != nil {
 		t.Fatalf("BuildWaveWithHookFromArgs returned error: %v", err)
-	}
-}
-
-func TestBuildWaveWithHookOptions_ExplainModePrintsReportAndSkipsBuild(t *testing.T) {
-	output := captureStdout(t, func() {
-		err := BuildWaveWithHookOptions(
-			nil,
-			newDiscardLogger(),
-			CLIOptions{Explain: true},
-			nil,
-		)
-		if err != nil {
-			t.Fatalf("BuildWaveWithHookOptions returned error: %v", err)
-		}
-	})
-
-	if !strings.Contains(output, "Wave Explain") {
-		t.Fatalf("expected explain output, got %q", output)
-	}
-}
-
-func TestBuildWaveWithHookOptions_DoctorModeReturnsErrorWhenIssuesExist(t *testing.T) {
-	var returnedError error
-	output := captureStdout(t, func() {
-		returnedError = BuildWaveWithHookOptions(
-			nil,
-			newDiscardLogger(),
-			CLIOptions{Doctor: true},
-			nil,
-		)
-	})
-
-	if returnedError == nil {
-		t.Fatal("expected doctor mode to return an error for invalid config")
-	}
-	if !strings.Contains(returnedError.Error(), "wave doctor found issues") {
-		t.Fatalf("unexpected doctor error: %v", returnedError)
-	}
-	if !strings.Contains(output, "Wave Doctor") {
-		t.Fatalf("expected doctor output, got %q", output)
-	}
-}
-
-func TestBuildWaveWithHookOptions_DoctorModeReturnsNilWhenNoIssuesExist(t *testing.T) {
-	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-
-	output := captureStdout(t, func() {
-		err := BuildWaveWithHookOptions(
-			cfg,
-			newDiscardLogger(),
-			CLIOptions{Doctor: true},
-			nil,
-		)
-		if err != nil {
-			t.Fatalf("BuildWaveWithHookOptions returned error: %v", err)
-		}
-	})
-
-	if !strings.Contains(output, "issues: none") {
-		t.Fatalf("expected doctor no-issues output, got %q", output)
 	}
 }
 

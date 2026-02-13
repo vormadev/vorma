@@ -52,7 +52,7 @@ func TestBuildEventExecutionPlan_ConfigChangeHasNoPlan(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
 	configFilePath := filepath.Join(root, "backend", "wave.config.json")
-	cfg.ResolvedConfigFilePath = configFilePath
+	cfg.Core.ConfigLocation = configFilePath
 
 	if err := os.MkdirAll(filepath.Dir(configFilePath), 0755); err != nil {
 		t.Fatalf("failed creating config file directory: %v", err)

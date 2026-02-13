@@ -56,43 +56,45 @@ func TestBootstrapBuildTemplateUsesSingleAppVariable(t *testing.T) {
 	}
 }
 
-func TestBootstrapWaveTemplateUsesSingleJSONConfigPath(t *testing.T) {
-	waveTemplate, err := tmplsFS.ReadFile("tmpls/backend_wave_go_tmpl.txt")
+func TestBootstrapWaveTemplateSetUsesDevProdSplitFiles(t *testing.T) {
+	devTemplate, err := tmplsFS.ReadFile("tmpls/backend_wave_dev_go_str.txt")
 	if err != nil {
-		t.Fatalf("read wave template: %v", err)
+		t.Fatalf("read dev wave template: %v", err)
+	}
+	prodTemplate, err := tmplsFS.ReadFile("tmpls/backend_wave_prod_go_str.txt")
+	if err != nil {
+		t.Fatalf("read prod wave template: %v", err)
 	}
 
-	waveTemplateContent := string(waveTemplate)
-	requiredFragments := []string{
-		"wave.config.json",
+	for _, requiredFragment := range []string{
+		"//go:build !prod",
+		"os.DirFS(\"backend\")",
 		"WaveConfigJSON:",
 		"DistStaticFS:",
+	} {
+		if !strings.Contains(string(devTemplate), requiredFragment) {
+			t.Fatalf("expected dev wave template to contain %q", requiredFragment)
+		}
 	}
-	for _, requiredFragment := range requiredFragments {
-		if !strings.Contains(waveTemplateContent, requiredFragment) {
-			t.Fatalf("expected wave template to contain %q", requiredFragment)
+
+	for _, requiredFragment := range []string{
+		"//go:build prod",
+		"//go:embed all:dist/static wave.config.json",
+		"WaveConfigJSON:",
+		"DistStaticFS:",
+	} {
+		if !strings.Contains(string(prodTemplate), requiredFragment) {
+			t.Fatalf("expected prod wave template to contain %q", requiredFragment)
 		}
 	}
 }
 
-func TestBootstrapWaveTemplateSetDoesNotIncludeWaveOptionsSplitFiles(t *testing.T) {
-	waveOptionTemplatePaths := []string{
-		"tmpls/backend_wave_options_dev_go_tmpl.txt",
-		"tmpls/backend_wave_options_prod_embed_go_tmpl.txt",
-		"tmpls/backend_wave_options_prod_filesystem_go_tmpl.txt",
+func TestBootstrapWaveTemplateSetDoesNotIncludeSingleWaveTemplate(t *testing.T) {
+	_, err := tmplsFS.ReadFile("tmpls/backend_wave_go_tmpl.txt")
+	if err == nil {
+		t.Fatal("did not expect single wave template file to exist")
 	}
-
-	for _, waveOptionTemplatePath := range waveOptionTemplatePaths {
-		_, err := tmplsFS.ReadFile(waveOptionTemplatePath)
-		if err == nil {
-			t.Fatalf("did not expect wave options split template file to exist: %s", waveOptionTemplatePath)
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Fatalf(
-				"unexpected error reading %s: %v",
-				waveOptionTemplatePath,
-				err,
-			)
-		}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("unexpected error reading single wave template: %v", err)
 	}
 }

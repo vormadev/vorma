@@ -260,15 +260,11 @@ func (s *server) initWatcher() error {
 		return fmt.Errorf("watch root: %w", err)
 	}
 
-	if err := s.addConfigFileDirectoryToWatcher(watcher); err != nil {
+	if err := s.addConfigFileDirectory(watcher, s.cfg.Core.ConfigLocation); err != nil {
 		return fmt.Errorf("watch config file directory: %w", err)
 	}
 
 	return nil
-}
-
-func (s *server) addConfigFileDirectoryToWatcher(watcher *Watcher) error {
-	return s.addConfigFileDirectory(watcher, s.cfg.GetResolvedConfigFilePath())
 }
 
 func (s *server) addConfigFileDirectory(
@@ -328,21 +324,13 @@ func (s *server) reloadConfig() error {
 }
 
 func (s *server) loadParsedConfigForReload() (*wave.ParsedConfig, error) {
-	configFilePath := strings.TrimSpace(s.cfg.GetResolvedConfigFilePath())
+	configFilePath := strings.TrimSpace(s.cfg.Core.ConfigLocation)
 	if configFilePath == "" {
-		return nil, fmt.Errorf("reload config: resolved config file path is required")
+		return nil, nil
 	}
 
 	s.log.Info("Reloading config", "path", configFilePath)
-	configJSON, err := os.ReadFile(configFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("reload config: read config file %q: %w", configFilePath, err)
-	}
-
-	newCfg, err := wave.ParseConfigWithRuntimeMetadata(
-		configJSON,
-		configFilePath,
-	)
+	newCfg, err := wave.ParseConfigFile(configFilePath)
 	if err != nil {
 		return nil, err
 	}

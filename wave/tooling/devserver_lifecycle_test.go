@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -43,7 +42,7 @@ func TestInitWatcher_SetsWatcherOnServer(t *testing.T) {
 	}
 }
 
-func TestInitWatcher_AddsResolvedConfigFileDirectoryOutsideWatchRoot(t *testing.T) {
+func TestInitWatcher_AddsConfigFileDirectoryOutsideWatchRoot(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
@@ -55,7 +54,7 @@ func TestInitWatcher_AddsResolvedConfigFileDirectoryOutsideWatchRoot(t *testing.
 		t.Fatalf("failed writing outside config file: %v", err)
 	}
 
-	cfg.ResolvedConfigFilePath = outsideConfigFilePath
+	cfg.Core.ConfigLocation = outsideConfigFilePath
 
 	s := &server{
 		cfg: cfg,
@@ -73,7 +72,7 @@ func TestInitWatcher_AddsResolvedConfigFileDirectoryOutsideWatchRoot(t *testing.
 	}
 }
 
-func TestReloadConfig_NoConfigFilePathFails(t *testing.T) {
+func TestReloadConfig_NoConfigFilePathIsNoOp(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
 	s := &server{
@@ -81,12 +80,13 @@ func TestReloadConfig_NoConfigFilePathFails(t *testing.T) {
 		log: newDiscardLogger(),
 	}
 
+	original := s.cfg
 	err := s.reloadConfig()
-	if err == nil {
-		t.Fatal("expected reloadConfig to fail when no config file path is available")
+	if err != nil {
+		t.Fatalf("reloadConfig returned error with empty config location: %v", err)
 	}
-	if !strings.Contains(err.Error(), "resolved config file path is required") {
-		t.Fatalf("unexpected reloadConfig error: %v", err)
+	if s.cfg != original {
+		t.Fatal("expected reloadConfig with empty config location to keep previous config pointer")
 	}
 }
 
@@ -118,7 +118,7 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	if err := os.WriteFile(configPath, newConfigJSON, 0644); err != nil {
 		t.Fatalf("failed writing config JSON: %v", err)
 	}
-	cfg.ResolvedConfigFilePath = configPath
+	cfg.Core.ConfigLocation = configPath
 
 	s := &server{
 		cfg: cfg,
@@ -149,7 +149,7 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	}
 }
 
-func TestReloadConfig_UsesResolvedConfigFilePathWhenAvailable(t *testing.T) {
+func TestReloadConfig_UsesConfigLocationWhenAvailable(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "backend", "wave.config.json")
 	newConfigJSON := []byte(`{
@@ -167,7 +167,7 @@ func TestReloadConfig_UsesResolvedConfigFilePathWhenAvailable(t *testing.T) {
 	}
 
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.ResolvedConfigFilePath = configPath
+	cfg.Core.ConfigLocation = configPath
 	cfg.FrameworkWatchPatterns = []wave.WatchedFile{{Pattern: "**/*.route"}}
 
 	s := &server{
@@ -182,11 +182,8 @@ func TestReloadConfig_UsesResolvedConfigFilePathWhenAvailable(t *testing.T) {
 	if s.cfg.Core.MainAppEntry != "cmd/new" {
 		t.Fatalf("expected updated MainAppEntry, got %q", s.cfg.Core.MainAppEntry)
 	}
-	if got := s.cfg.GetResolvedConfigFingerprint(); strings.TrimSpace(got) == "" {
-		t.Fatalf("resolved config fingerprint is empty")
-	}
-	if got := s.cfg.GetResolvedConfigFilePath(); got != configPath {
-		t.Fatalf("resolved config file path = %q, want %q", got, configPath)
+	if got := s.cfg.Core.ConfigLocation; got != configPath {
+		t.Fatalf("config location = %q, want %q", got, configPath)
 	}
 	if len(s.cfg.FrameworkWatchPatterns) != 1 {
 		t.Fatalf("framework watch patterns were not preserved: %#v", s.cfg.FrameworkWatchPatterns)
@@ -214,7 +211,7 @@ func TestReloadConfig_ValidationFailureKeepsPreviousConfig(t *testing.T) {
 	if err := os.WriteFile(configPath, invalidJSON, 0644); err != nil {
 		t.Fatalf("failed writing invalid config JSON: %v", err)
 	}
-	cfg.ResolvedConfigFilePath = configPath
+	cfg.Core.ConfigLocation = configPath
 
 	s := &server{
 		cfg: cfg,
@@ -235,7 +232,7 @@ func TestReloadConfig_ConfigReadFailureKeepsPreviousConfig(t *testing.T) {
 	root := t.TempDir()
 
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.ResolvedConfigFilePath = filepath.Join(root, "backend", "missing-wave.config.json")
+	cfg.Core.ConfigLocation = filepath.Join(root, "backend", "missing-wave.config.json")
 
 	s := &server{
 		cfg: cfg,

@@ -15,7 +15,7 @@ func TestProcessEvents_ConfigWriteTriggersConfigRestart(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
 	configFilePath := filepath.Join(root, "backend", "wave.config.json")
-	cfg.ResolvedConfigFilePath = configFilePath
+	cfg.Core.ConfigLocation = configFilePath
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
 	if err := os.MkdirAll(filepath.Dir(configFilePath), 0755); err != nil {

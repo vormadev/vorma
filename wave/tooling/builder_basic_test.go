@@ -20,7 +20,7 @@ func TestBuilderConfig(t *testing.T) {
 }
 
 func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
-	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", true, false)
+	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", true)
 
 	for _, commandArgument := range cmd.Args {
 		if strings.HasPrefix(commandArgument, "-tags=") {
@@ -30,21 +30,10 @@ func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
 }
 
 func TestBuildGoBuildCommand_ProdBuildUsesEmbeddedDistStaticByDefault(t *testing.T) {
-	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", false, false)
+	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", false)
 
 	if !containsCommandArgument(cmd.Args, "-tags=prod") {
 		t.Fatalf("expected prod build tags to be -tags=prod, got args %#v", cmd.Args)
-	}
-}
-
-func TestBuildGoBuildCommand_ProdBuildCanUseFilesystemDistStatic(t *testing.T) {
-	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", false, true)
-
-	if !containsCommandArgument(cmd.Args, "-tags=prod,wave_dist_static_from_disk") {
-		t.Fatalf(
-			"expected prod build tags to include wave_dist_static_from_disk, got args %#v",
-			cmd.Args,
-		)
 	}
 }
 

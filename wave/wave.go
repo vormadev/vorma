@@ -54,10 +54,6 @@ type Config struct {
 	// This is the single app-facing configuration input path.
 	WaveConfigJSON []byte
 
-	// Optional -- path to the authored Wave config JSON file on disk.
-	// Used by dev tooling for config reload and diagnostics.
-	WaveConfigFilePath string
-
 	// Required -- be sure to pass in a file system that has your
 	// <distDir>/static directory as its ROOT.
 	// If you are using an embedded filesystem, you may need to use fs.Sub to get the
@@ -76,10 +72,7 @@ func New(c Config) *Wave {
 	}
 
 	configJSON := cloneBytes(c.WaveConfigJSON)
-	cfg, parseError := ParseConfigWithRuntimeMetadata(
-		configJSON,
-		c.WaveConfigFilePath,
-	)
+	cfg, parseError := ParseConfig(configJSON)
 	if parseError != nil {
 		panic("wave.New: " + parseError.Error())
 	}

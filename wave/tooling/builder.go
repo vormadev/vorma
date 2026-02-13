@@ -261,12 +261,7 @@ func (b *Builder) compileGo(isDev bool) error {
 
 	dest := b.cfg.Dist.Binary()
 	entry := fmt.Sprintf(".%c%s", filepath.Separator, filepath.Clean(b.cfg.Core.MainAppEntry))
-	cmd := buildGoBuildCommand(
-		dest,
-		entry,
-		isDev,
-		b.cfg.Core.UseFilesystemDistStaticInProd,
-	)
+	cmd := buildGoBuildCommand(dest, entry, isDev)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -283,19 +278,11 @@ func buildGoBuildCommand(
 	dest string,
 	entry string,
 	isDev bool,
-	useFilesystemDistStaticInProd bool,
 ) *exec.Cmd {
 	commandArguments := []string{"build"}
 
 	if !isDev {
-		buildTags := []string{"prod"}
-		if useFilesystemDistStaticInProd {
-			buildTags = append(buildTags, "wave_dist_static_from_disk")
-		}
-		commandArguments = append(
-			commandArguments,
-			"-tags="+strings.Join(buildTags, ","),
-		)
+		commandArguments = append(commandArguments, "-tags=prod")
 	}
 
 	commandArguments = append(commandArguments, "-o", dest, entry)

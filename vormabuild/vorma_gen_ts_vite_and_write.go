@@ -149,7 +149,7 @@ func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 		path.Join("**", v.Config.TSGenOutDir+"/**/*"),
 	}
 
-	if configFileIgnoredPattern := formatConfigFilePatternForViteIgnore(v.Wave.GetConfigFilePath()); configFileIgnoredPattern != "" {
+	if configFileIgnoredPattern := formatConfigFilePatternForViteIgnore(v.Wave.GetConfigFile()); configFileIgnoredPattern != "" {
 		ignoredPatterns = append(ignoredPatterns, configFileIgnoredPattern)
 	}
 
