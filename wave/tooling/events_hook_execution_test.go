@@ -379,6 +379,359 @@ func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(t *testing.T)
 	}
 }
 
+func TestFireNoWaitHooksForEvents_SkipsDuplicateHooks(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	firstPath := filepath.Join(root, "first.txt")
+	secondPath := filepath.Join(root, "second.txt")
+	commandOut := filepath.Join(root, "nowait-dedupe.log")
+	if err := os.WriteFile(firstPath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed writing first changed file: %v", err)
+	}
+	if err := os.WriteFile(secondPath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed writing second changed file: %v", err)
+	}
+
+	var firstCallbackCount int32
+	var duplicateCallbackCount int32
+
+	eventsWithHooks := []eventWithHooks{
+		newEventWithHooksForStageExecutionTest(
+			firstPath,
+			&wave.SortedHooks{
+				ConcurrentNoWait: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&firstCallbackCount, 1)
+							return nil, nil
+						},
+					},
+					{
+						Cmd: "printf 'first\\n' >> " + strconv.Quote(commandOut),
+					},
+				},
+			},
+			false,
+		),
+		newEventWithHooksForStageExecutionTest(
+			secondPath,
+			&wave.SortedHooks{
+				ConcurrentNoWait: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&duplicateCallbackCount, 1)
+							return nil, nil
+						},
+					},
+					{
+						Cmd: "printf 'duplicate\\n' >> " + strconv.Quote(commandOut),
+					},
+				},
+			},
+			true,
+		),
+	}
+
+	s.fireNoWaitHooksForEvents(eventsWithHooks, watcher)
+
+	waitDeadline := time.Now().Add(700 * time.Millisecond)
+	for atomic.LoadInt32(&firstCallbackCount) != 1 {
+		if time.Now().After(waitDeadline) {
+			t.Fatalf(
+				"timed out waiting for no-wait callback count (first=%d duplicate=%d)",
+				atomic.LoadInt32(&firstCallbackCount),
+				atomic.LoadInt32(&duplicateCallbackCount),
+			)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	commandOutputDeadline := time.Now().Add(700 * time.Millisecond)
+	for {
+		data, err := os.ReadFile(commandOut)
+		if err == nil && string(data) == "first\n" {
+			break
+		}
+		if time.Now().After(commandOutputDeadline) {
+			t.Fatalf(
+				"timed out waiting for no-wait command output (err=%v, first=%d duplicate=%d)",
+				err,
+				atomic.LoadInt32(&firstCallbackCount),
+				atomic.LoadInt32(&duplicateCallbackCount),
+			)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	time.Sleep(75 * time.Millisecond)
+	if atomic.LoadInt32(&duplicateCallbackCount) != 0 {
+		t.Fatalf(
+			"expected duplicate no-wait callback not to run, got %d calls",
+			atomic.LoadInt32(&duplicateCallbackCount),
+		)
+	}
+
+	finalCommandOutput, err := os.ReadFile(commandOut)
+	if err != nil {
+		t.Fatalf("failed reading no-wait command output: %v", err)
+	}
+	if string(finalCommandOutput) != "first\n" {
+		t.Fatalf(
+			"expected duplicate no-wait command not to run, got output %q",
+			string(finalCommandOutput),
+		)
+	}
+}
+
+func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	firstPath := filepath.Join(root, "first.txt")
+	secondPath := filepath.Join(root, "second.txt")
+	thirdPath := filepath.Join(root, "third.txt")
+
+	var firstCallbackCount int32
+	var duplicateCallbackCount int32
+	var thirdCallbackCount int32
+
+	eventsWithHooks := []eventWithHooks{
+		newEventWithHooksForStageExecutionTest(
+			firstPath,
+			&wave.SortedHooks{
+				Pre: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&firstCallbackCount, 1)
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						},
+					},
+				},
+			},
+			false,
+		),
+		newEventWithHooksForStageExecutionTest(
+			secondPath,
+			&wave.SortedHooks{
+				Pre: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&duplicateCallbackCount, 1)
+							return &wave.RefreshAction{WaitForApp: true}, nil
+						},
+					},
+				},
+			},
+			true,
+		),
+		newEventWithHooksForStageExecutionTest(
+			thirdPath,
+			&wave.SortedHooks{
+				Pre: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&thirdCallbackCount, 1)
+							return &wave.RefreshAction{WaitForVite: true}, nil
+						},
+					},
+				},
+			},
+			false,
+		),
+	}
+
+	actions := s.runPreHooksForEvents(eventsWithHooks, &workSet{}, watcher)
+	if len(actions) != 2 {
+		t.Fatalf("pre action count=%d, want 2", len(actions))
+	}
+	if !actions[0].ReloadBrowser {
+		t.Fatalf("expected first pre action from first event, got %#v", actions[0])
+	}
+	if !actions[1].WaitForVite {
+		t.Fatalf("expected second pre action from third event, got %#v", actions[1])
+	}
+	if atomic.LoadInt32(&firstCallbackCount) != 1 {
+		t.Fatalf("expected first pre callback count=1, got %d", atomic.LoadInt32(&firstCallbackCount))
+	}
+	if atomic.LoadInt32(&duplicateCallbackCount) != 0 {
+		t.Fatalf(
+			"expected duplicate pre callback count=0, got %d",
+			atomic.LoadInt32(&duplicateCallbackCount),
+		)
+	}
+	if atomic.LoadInt32(&thirdCallbackCount) != 1 {
+		t.Fatalf("expected third pre callback count=1, got %d", atomic.LoadInt32(&thirdCallbackCount))
+	}
+}
+
+func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	firstPath := filepath.Join(root, "first.txt")
+	secondPath := filepath.Join(root, "second.txt")
+	thirdPath := filepath.Join(root, "third.txt")
+
+	var firstCallbackCount int32
+	var duplicateCallbackCount int32
+	var thirdCallbackCount int32
+
+	eventsWithHooks := []eventWithHooks{
+		newEventWithHooksForStageExecutionTest(
+			firstPath,
+			&wave.SortedHooks{
+				Concurrent: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&firstCallbackCount, 1)
+							time.Sleep(20 * time.Millisecond)
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						},
+					},
+				},
+			},
+			false,
+		),
+		newEventWithHooksForStageExecutionTest(
+			secondPath,
+			&wave.SortedHooks{
+				Concurrent: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&duplicateCallbackCount, 1)
+							return &wave.RefreshAction{WaitForApp: true}, nil
+						},
+					},
+				},
+			},
+			true,
+		),
+		newEventWithHooksForStageExecutionTest(
+			thirdPath,
+			&wave.SortedHooks{
+				Concurrent: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&thirdCallbackCount, 1)
+							return &wave.RefreshAction{WaitForVite: true}, nil
+						},
+					},
+				},
+			},
+			false,
+		),
+	}
+
+	actions := s.runConcurrentHooksForEvents(eventsWithHooks, watcher)
+	if len(actions) != 2 {
+		t.Fatalf("concurrent action count=%d, want 2", len(actions))
+	}
+	if !actions[0].ReloadBrowser {
+		t.Fatalf("expected first concurrent action from first event, got %#v", actions[0])
+	}
+	if !actions[1].WaitForVite {
+		t.Fatalf("expected second concurrent action from third event, got %#v", actions[1])
+	}
+	if atomic.LoadInt32(&firstCallbackCount) != 1 {
+		t.Fatalf("expected first concurrent callback count=1, got %d", atomic.LoadInt32(&firstCallbackCount))
+	}
+	if atomic.LoadInt32(&duplicateCallbackCount) != 0 {
+		t.Fatalf(
+			"expected duplicate concurrent callback count=0, got %d",
+			atomic.LoadInt32(&duplicateCallbackCount),
+		)
+	}
+	if atomic.LoadInt32(&thirdCallbackCount) != 1 {
+		t.Fatalf("expected third concurrent callback count=1, got %d", atomic.LoadInt32(&thirdCallbackCount))
+	}
+}
+
+func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	firstPath := filepath.Join(root, "first.txt")
+	secondPath := filepath.Join(root, "second.txt")
+	thirdPath := filepath.Join(root, "third.txt")
+
+	var firstCallbackCount int32
+	var duplicateCallbackCount int32
+	var thirdCallbackCount int32
+
+	eventsWithHooks := []eventWithHooks{
+		newEventWithHooksForStageExecutionTest(
+			firstPath,
+			&wave.SortedHooks{
+				Post: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&firstCallbackCount, 1)
+							return &wave.RefreshAction{ReloadBrowser: true}, nil
+						},
+					},
+				},
+			},
+			false,
+		),
+		newEventWithHooksForStageExecutionTest(
+			secondPath,
+			&wave.SortedHooks{
+				Post: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&duplicateCallbackCount, 1)
+							return &wave.RefreshAction{WaitForApp: true}, nil
+						},
+					},
+				},
+			},
+			true,
+		),
+		newEventWithHooksForStageExecutionTest(
+			thirdPath,
+			&wave.SortedHooks{
+				Post: []wave.OnChangeHook{
+					{
+						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+							atomic.AddInt32(&thirdCallbackCount, 1)
+							return &wave.RefreshAction{WaitForVite: true}, nil
+						},
+					},
+				},
+			},
+			false,
+		),
+	}
+
+	actions := s.runPostHooksForEvents(eventsWithHooks, watcher)
+	if len(actions) != 2 {
+		t.Fatalf("post action count=%d, want 2", len(actions))
+	}
+	if !actions[0].ReloadBrowser {
+		t.Fatalf("expected first post action from first event, got %#v", actions[0])
+	}
+	if !actions[1].WaitForVite {
+		t.Fatalf("expected second post action from third event, got %#v", actions[1])
+	}
+	if atomic.LoadInt32(&firstCallbackCount) != 1 {
+		t.Fatalf("expected first post callback count=1, got %d", atomic.LoadInt32(&firstCallbackCount))
+	}
+	if atomic.LoadInt32(&duplicateCallbackCount) != 0 {
+		t.Fatalf(
+			"expected duplicate post callback count=0, got %d",
+			atomic.LoadInt32(&duplicateCallbackCount),
+		)
+	}
+	if atomic.LoadInt32(&thirdCallbackCount) != 1 {
+		t.Fatalf("expected third post callback count=1, got %d", atomic.LoadInt32(&thirdCallbackCount))
+	}
+}
+
 func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
@@ -676,6 +1029,114 @@ func TestResolveHookForStageExecution(t *testing.T) {
 	}
 }
 
+func TestDeriveExecutableHooksForStage(t *testing.T) {
+	_, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	changedPath := filepath.Join(root, "changed.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	callbackHook := wave.OnChangeHook{
+		Cmd: "echo callback-and-command",
+		Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+			return nil, nil
+		},
+	}
+	commandOnlyHook := wave.OnChangeHook{
+		Cmd: "echo command-only",
+	}
+	excludedHook := wave.OnChangeHook{
+		Cmd:     "echo excluded",
+		Exclude: []string{changedPath},
+	}
+	stageHooks := []wave.OnChangeHook{
+		excludedHook,
+		commandOnlyHook,
+		callbackHook,
+	}
+
+	t.Run("stage without run-on-change-only rules keeps command hooks", func(t *testing.T) {
+		hooksForExecution := deriveExecutableHooksForStage(
+			watcher,
+			changedPath,
+			true,
+			false,
+			stageHooks,
+		)
+		if len(hooksForExecution) != 2 {
+			t.Fatalf("expected 2 hooks for execution, got %#v", hooksForExecution)
+		}
+		if hooksForExecution[0].Cmd == "" {
+			t.Fatalf("expected command-only hook command to be preserved, got %#v", hooksForExecution[0])
+		}
+		if hooksForExecution[1].Cmd == "" {
+			t.Fatalf("expected callback hook command to be preserved, got %#v", hooksForExecution[1])
+		}
+		if hooksForExecution[1].Callback == nil {
+			t.Fatalf("expected callback hook callback to be preserved, got %#v", hooksForExecution[1])
+		}
+	})
+
+	t.Run("run-on-change-only stage strips command fields and drops command-only hooks", func(t *testing.T) {
+		hooksForExecution := deriveExecutableHooksForStage(
+			watcher,
+			changedPath,
+			true,
+			true,
+			stageHooks,
+		)
+		if len(hooksForExecution) != 1 {
+			t.Fatalf("expected 1 callback-only hook for execution, got %#v", hooksForExecution)
+		}
+		if hooksForExecution[0].Cmd != "" || hooksForExecution[0].RunCombinedDevBuildHookCommands {
+			t.Fatalf("expected run-on-change-only stage to strip command fields, got %#v", hooksForExecution[0])
+		}
+		if hooksForExecution[0].Callback == nil {
+			t.Fatalf("expected callback hook callback to remain, got %#v", hooksForExecution[0])
+		}
+	})
+
+	t.Run("run-on-change-only disabled keeps command-only hooks even when stage applies rules", func(t *testing.T) {
+		hooksForExecution := deriveExecutableHooksForStage(
+			watcher,
+			changedPath,
+			false,
+			true,
+			stageHooks,
+		)
+		if len(hooksForExecution) != 2 {
+			t.Fatalf("expected 2 hooks for execution, got %#v", hooksForExecution)
+		}
+		if hooksForExecution[0].Cmd == "" {
+			t.Fatalf("expected command-only hook command to remain, got %#v", hooksForExecution[0])
+		}
+		if hooksForExecution[1].Cmd == "" {
+			t.Fatalf("expected callback hook command to remain, got %#v", hooksForExecution[1])
+		}
+	})
+}
+
 func waveEvent(path string) fsnotify.Event {
 	return fsnotify.Event{Name: path, Op: fsnotify.Write}
+}
+
+func newEventWithHooksForStageExecutionTest(
+	filePath string,
+	hooks *wave.SortedHooks,
+	skipDuplicateHooks bool,
+) eventWithHooks {
+	return eventWithHooks{
+		classified: classifiedEvent{
+			event:    waveEvent(filePath),
+			fileType: fileTypeOther,
+		},
+		hookCtx: &wave.HookContext{
+			FilePath: filePath,
+		},
+		hooks:              hooks,
+		skipDuplicateHooks: skipDuplicateHooks,
+	}
 }

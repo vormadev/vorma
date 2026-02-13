@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
@@ -304,6 +305,177 @@ func TestWatcherEventDeduplicationIndex_MemoizesCanonicalAndAliasResolution(
 	}
 }
 
+func TestWatcherEventDeduplicationIndex_ProbeResolutionMissesKeepCachesStable(
+	t *testing.T,
+) {
+	index := newWatcherEventDeduplicationIndex()
+	mergedEventOpsByPath := make(map[string]fsnotify.Op)
+
+	if existingPathKey := index.resolveExistingPathKey(mergedEventOpsByPath, "relative/file.css"); existingPathKey != "" {
+		t.Fatalf("expected no existing path key for relative probe path, got %q", existingPathKey)
+	}
+	if canonicalPath := index.resolveCanonicalPathForAbsolutePath("relative/file.css"); canonicalPath != "" {
+		t.Fatalf("expected no canonical path for relative probe path, got %q", canonicalPath)
+	}
+	if missingAliasKey := index.resolveMissingAliasKeyForAbsolutePath("relative/missing.css"); missingAliasKey != "" {
+		t.Fatalf("expected no missing alias key for relative probe path, got %q", missingAliasKey)
+	}
+
+	if len(index.canonicalPathByAbsolutePath) != 0 {
+		t.Fatalf("expected canonical path cache to remain empty on misses, got %#v", index.canonicalPathByAbsolutePath)
+	}
+	if len(index.missingAliasKeyByAbsolutePath) != 0 {
+		t.Fatalf("expected missing alias cache to remain empty on misses, got %#v", index.missingAliasKeyByAbsolutePath)
+	}
+	if len(index.canonicalPathToPathKey) != 0 {
+		t.Fatalf("expected canonical path-key map to remain empty on misses, got %#v", index.canonicalPathToPathKey)
+	}
+	if len(index.missingFileAliasKeyToPathKey) != 0 {
+		t.Fatalf("expected missing alias path-key map to remain empty on misses, got %#v", index.missingFileAliasKeyToPathKey)
+	}
+}
+
+func TestWatcherEventDeduplicationIndex_RecordPathKeyPreservesFirstSeenProbePathKey(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	targetDirectoryPath := filepath.Join(root, "target")
+	aliasDirectoryPathA := filepath.Join(root, "alias-a")
+	aliasDirectoryPathB := filepath.Join(root, "alias-b")
+	targetFilePath := filepath.Join(targetDirectoryPath, "styles.css")
+
+	if err := os.MkdirAll(targetDirectoryPath, 0o755); err != nil {
+		t.Fatalf("failed creating target directory: %v", err)
+	}
+	if err := os.WriteFile(targetFilePath, []byte("body{}"), 0o644); err != nil {
+		t.Fatalf("failed writing target file: %v", err)
+	}
+	if err := os.Symlink(targetDirectoryPath, aliasDirectoryPathA); err != nil {
+		t.Fatalf("failed creating first alias symlink: %v", err)
+	}
+	if err := os.Symlink(targetDirectoryPath, aliasDirectoryPathB); err != nil {
+		t.Fatalf("failed creating second alias symlink: %v", err)
+	}
+
+	index := newWatcherEventDeduplicationIndex()
+
+	firstCanonicalAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathA, "styles.css"))
+	secondCanonicalAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathB, "styles.css"))
+	index.recordPathKey(firstCanonicalAliasPath)
+	index.recordPathKey(secondCanonicalAliasPath)
+
+	canonicalProbeKey := index.resolveCanonicalPathForAbsolutePath(secondCanonicalAliasPath)
+	if canonicalProbeKey == "" {
+		t.Fatal("expected canonical probe key for aliased canonical path")
+	}
+	if recordedCanonicalPathKey := index.canonicalPathToPathKey[canonicalProbeKey]; recordedCanonicalPathKey != firstCanonicalAliasPath {
+		t.Fatalf(
+			"expected canonical probe key to retain first-seen path key %q, got %q",
+			firstCanonicalAliasPath,
+			recordedCanonicalPathKey,
+		)
+	}
+
+	firstMissingAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathA, "missing.css"))
+	secondMissingAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathB, "missing.css"))
+	index.recordPathKey(firstMissingAliasPath)
+	index.recordPathKey(secondMissingAliasPath)
+
+	missingAliasProbeKey := index.resolveMissingAliasKeyForAbsolutePath(secondMissingAliasPath)
+	if missingAliasProbeKey == "" {
+		t.Fatal("expected missing alias probe key for aliased missing path")
+	}
+	if recordedMissingAliasPathKey := index.missingFileAliasKeyToPathKey[missingAliasProbeKey]; recordedMissingAliasPathKey != firstMissingAliasPath {
+		t.Fatalf(
+			"expected missing alias probe key to retain first-seen path key %q, got %q",
+			firstMissingAliasPath,
+			recordedMissingAliasPathKey,
+		)
+	}
+}
+
+func TestNormalizeWatcherEventPathForDeduplication_PathShapes(t *testing.T) {
+	root := t.TempDir()
+	absolutePathWithDotSegment := filepath.Join(root, "backend", ".", "main.go")
+
+	testCases := []struct {
+		name         string
+		rawPath      string
+		expectedPath string
+	}{
+		{
+			name:         "empty path remains empty",
+			rawPath:      "   ",
+			expectedPath: "",
+		},
+		{
+			name:         "relative path is trimmed and cleaned without absolutizing",
+			rawPath:      "  ./backend/./main.go  ",
+			expectedPath: filepath.Clean("./backend/main.go"),
+		},
+		{
+			name:         "absolute path is normalized to absolute cleaned path",
+			rawPath:      "  " + absolutePathWithDotSegment + "  ",
+			expectedPath: pathnorm.Absolute(filepath.Join(root, "backend", "main.go")),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			normalizedPath := normalizeWatcherEventPathForDeduplication(testCase.rawPath)
+			if normalizedPath != testCase.expectedPath {
+				t.Fatalf(
+					"normalizeWatcherEventPathForDeduplication(%q) = %q, want %q",
+					testCase.rawPath,
+					normalizedPath,
+					testCase.expectedPath,
+				)
+			}
+		})
+	}
+}
+
+func TestNormalizeHookContextPathShape_PathShapes(t *testing.T) {
+	root := t.TempDir()
+	absolutePathWithDotSegment := filepath.Join(root, "backend", ".", "main.go")
+
+	testCases := []struct {
+		name         string
+		rawPath      string
+		expectedPath string
+	}{
+		{
+			name:         "empty path remains empty",
+			rawPath:      "   ",
+			expectedPath: "",
+		},
+		{
+			name:         "relative path is trimmed and cleaned",
+			rawPath:      "  ./backend/./main.go  ",
+			expectedPath: filepath.Clean("./backend/main.go"),
+		},
+		{
+			name:         "absolute path is trimmed and cleaned",
+			rawPath:      "  " + absolutePathWithDotSegment + "  ",
+			expectedPath: filepath.Join(root, "backend", "main.go"),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			normalizedPath := normalizeHookContextPathShape(testCase.rawPath)
+			if normalizedPath != testCase.expectedPath {
+				t.Fatalf(
+					"normalizeHookContextPathShape(%q) = %q, want %q",
+					testCase.rawPath,
+					normalizedPath,
+					testCase.expectedPath,
+				)
+			}
+		})
+	}
+}
+
 func TestDeduplicateWatcherEventsByPath_PropertyContracts(t *testing.T) {
 	root := t.TempDir()
 	targetDirectoryPath := filepath.Join(root, "target")
@@ -596,6 +768,182 @@ func TestBuildEventHooksForProcessingDeduplicatesHooksByPattern(
 	}
 }
 
+func TestBuildEventHooksForProcessing_NormalizesHookContextPathsByPathShape(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	normalizedPath := filepath.Join(root, "backend", "main.txt")
+	pathWithDotSegment := filepath.Join(root, "backend", ".", "main.txt")
+	if err := os.MkdirAll(filepath.Dir(normalizedPath), 0o755); err != nil {
+		t.Fatalf("failed creating normalized path parent directory: %v", err)
+	}
+	if err := os.WriteFile(normalizedPath, []byte("content"), 0o644); err != nil {
+		t.Fatalf("failed writing normalized path file: %v", err)
+	}
+
+	classifiedEvents := []classifiedEvent{
+		{
+			event:    fsnotify.Event{Name: pathWithDotSegment, Op: fsnotify.Write},
+			fileType: fileTypeOther,
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.txt",
+			},
+		},
+		{
+			event:    fsnotify.Event{Name: normalizedPath, Op: fsnotify.Write},
+			fileType: fileTypeOther,
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.txt",
+			},
+		},
+	}
+
+	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
+	if len(eventsWithHooks) != 2 {
+		t.Fatalf("eventsWithHooks count = %d, want 2", len(eventsWithHooks))
+	}
+
+	if got := eventsWithHooks[0].hookCtx.FilePath; got != normalizedPath {
+		t.Fatalf("first hook context file path = %q, want %q", got, normalizedPath)
+	}
+	if got := eventsWithHooks[1].hookCtx.FilePath; got != normalizedPath {
+		t.Fatalf("second hook context file path = %q, want %q", got, normalizedPath)
+	}
+
+	expectedChangedPaths := []string{normalizedPath}
+	if got := eventsWithHooks[0].hookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
+		t.Fatalf("first hook context changed file paths = %v, want %v", got, expectedChangedPaths)
+	}
+	if got := eventsWithHooks[1].hookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
+		t.Fatalf("second hook context changed file paths = %v, want %v", got, expectedChangedPaths)
+	}
+
+	eventsWithHooks[0].hookCtx.ChangedFilePaths[0] = "mutated-path"
+	if got := eventsWithHooks[1].hookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
+		t.Fatalf(
+			"expected second hook context changed paths to remain isolated after first mutation, got %v",
+			got,
+		)
+	}
+}
+
+func TestBuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	patternAFirstNormalizedPath := filepath.Join(root, "pattern-a", "one.txt")
+	patternAFirstPathWithDotSegment := filepath.Join(root, "pattern-a", ".", "one.txt")
+	patternASecondNormalizedPath := filepath.Join(root, "pattern-a", "two.txt")
+	patternBNormalizedPath := filepath.Join(root, "pattern-b", "three.txt")
+
+	classifiedEvents := []classifiedEvent{
+		{
+			event: fsnotify.Event{Name: patternAFirstPathWithDotSegment, Op: fsnotify.Write},
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.txt",
+			},
+		},
+		{
+			event: fsnotify.Event{Name: patternAFirstNormalizedPath, Op: fsnotify.Write},
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.txt",
+			},
+		},
+		{
+			event: fsnotify.Event{Name: patternASecondNormalizedPath, Op: fsnotify.Write},
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.txt",
+			},
+		},
+		{
+			event: fsnotify.Event{Name: patternBNormalizedPath, Op: fsnotify.Write},
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.md",
+			},
+		},
+		{
+			event:       fsnotify.Event{Name: filepath.Join(root, "no-pattern.txt"), Op: fsnotify.Write},
+			watchedFile: nil,
+		},
+	}
+
+	normalizedChangedFilePathsByWatchedPattern := buildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
+		classifiedEvents,
+	)
+
+	if len(normalizedChangedFilePathsByWatchedPattern) != 2 {
+		t.Fatalf(
+			"normalized changed-path pattern count = %d, want 2",
+			len(normalizedChangedFilePathsByWatchedPattern),
+		)
+	}
+
+	expectedPatternATrackedPaths := []string{
+		patternAFirstNormalizedPath,
+		patternASecondNormalizedPath,
+	}
+	if got := normalizedChangedFilePathsByWatchedPattern["**/*.txt"]; !reflect.DeepEqual(got, expectedPatternATrackedPaths) {
+		t.Fatalf("normalized changed paths for **/*.txt = %v, want %v", got, expectedPatternATrackedPaths)
+	}
+
+	expectedPatternBTrackedPaths := []string{
+		patternBNormalizedPath,
+	}
+	if got := normalizedChangedFilePathsByWatchedPattern["**/*.md"]; !reflect.DeepEqual(got, expectedPatternBTrackedPaths) {
+		t.Fatalf("normalized changed paths for **/*.md = %v, want %v", got, expectedPatternBTrackedPaths)
+	}
+}
+
+func TestBuildSkipDuplicateHooksByClassifiedEventIndex(t *testing.T) {
+	classifiedEvents := []classifiedEvent{
+		{
+			event: fsnotify.Event{Name: "first-a.txt", Op: fsnotify.Write},
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.txt",
+			},
+		},
+		{
+			event: fsnotify.Event{Name: "without-pattern.go", Op: fsnotify.Write},
+		},
+		{
+			event: fsnotify.Event{Name: "second-a.txt", Op: fsnotify.Write},
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.txt",
+			},
+		},
+		{
+			event: fsnotify.Event{Name: "first-md.md", Op: fsnotify.Write},
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.md",
+			},
+		},
+		{
+			event: fsnotify.Event{Name: "second-md.md", Op: fsnotify.Write},
+			watchedFile: &wave.WatchedFile{
+				Pattern: "**/*.md",
+			},
+		},
+	}
+
+	skipDuplicateHooksByClassifiedEventIndex := buildSkipDuplicateHooksByClassifiedEventIndex(
+		classifiedEvents,
+	)
+	expectedSkipDuplicateHooks := []bool{
+		false,
+		false,
+		true,
+		false,
+		true,
+	}
+	if !reflect.DeepEqual(skipDuplicateHooksByClassifiedEventIndex, expectedSkipDuplicateHooks) {
+		t.Fatalf(
+			"skipDuplicateHooks flags = %v, want %v",
+			skipDuplicateHooksByClassifiedEventIndex,
+			expectedSkipDuplicateHooks,
+		)
+	}
+}
+
 func TestBuildEventHooksForProcessingNoPatternUsesSingleChangedFilePath(
 	t *testing.T,
 ) {
@@ -676,5 +1024,114 @@ func TestProcessEvents_DeduplicatesHooksByPatternForMixedFileTypes(
 
 	if got := atomic.LoadInt32(&callbackCount); got != 1 {
 		t.Fatalf("expected callback to run once for shared pattern across mixed file types, got %d", got)
+	}
+}
+
+func TestProcessEvents_DeduplicatesHooksByPatternAcrossAllHookStages(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+
+	var preHookCount int32
+	var concurrentHookCount int32
+	var postHookCount int32
+	var noWaitHookCount int32
+	noWaitDone := make(chan struct{}, 1)
+
+	cfg.Watch.Include = []wave.WatchedFile{
+		{
+			Pattern:         "**/*.txt",
+			RunOnChangeOnly: true,
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Timing: wave.OnChangeStrategyConcurrentNoWait,
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						if atomic.AddInt32(&noWaitHookCount, 1) == 1 {
+							noWaitDone <- struct{}{}
+						}
+						return nil, nil
+					},
+				},
+				{
+					Timing: wave.OnChangeStrategyPre,
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						atomic.AddInt32(&preHookCount, 1)
+						return nil, nil
+					},
+				},
+				{
+					Timing: wave.OnChangeStrategyConcurrent,
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						atomic.AddInt32(&concurrentHookCount, 1)
+						return nil, nil
+					},
+				},
+				{
+					Timing: wave.OnChangeStrategyPost,
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						atomic.AddInt32(&postHookCount, 1)
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	firstTextFilePath := filepath.Join(root, "backend", "a.txt")
+	secondTextFilePath := filepath.Join(root, "backend", "b.txt")
+
+	if err := os.MkdirAll(filepath.Dir(firstTextFilePath), 0o755); err != nil {
+		t.Fatalf("failed creating text file directory: %v", err)
+	}
+	if err := os.WriteFile(firstTextFilePath, []byte("a"), 0o644); err != nil {
+		t.Fatalf("failed writing first text file: %v", err)
+	}
+	if err := os.WriteFile(secondTextFilePath, []byte("b"), 0o644); err != nil {
+		t.Fatalf("failed writing second text file: %v", err)
+	}
+
+	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	if err != nil {
+		t.Fatalf("NewWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	serverForTest := &server{
+		cfg:       cfg,
+		log:       newDiscardLogger(),
+		watcher:   watcher,
+		builder:   builder,
+		restartCh: make(chan restartRequest, 1),
+	}
+
+	serverForTest.processEvents([]fsnotify.Event{
+		{Name: firstTextFilePath, Op: fsnotify.Write},
+		{Name: secondTextFilePath, Op: fsnotify.Write},
+	})
+
+	select {
+	case <-noWaitDone:
+	case <-time.After(700 * time.Millisecond):
+		t.Fatal("timed out waiting for concurrent-no-wait hook callback")
+	}
+
+	time.Sleep(75 * time.Millisecond)
+	if got := atomic.LoadInt32(&preHookCount); got != 1 {
+		t.Fatalf("expected pre hook to run once for shared pattern, got %d", got)
+	}
+	if got := atomic.LoadInt32(&concurrentHookCount); got != 1 {
+		t.Fatalf("expected concurrent hook to run once for shared pattern, got %d", got)
+	}
+	if got := atomic.LoadInt32(&postHookCount); got != 1 {
+		t.Fatalf("expected post hook to run once for shared pattern, got %d", got)
+	}
+	if got := atomic.LoadInt32(&noWaitHookCount); got != 1 {
+		t.Fatalf("expected concurrent-no-wait hook to run once for shared pattern, got %d", got)
 	}
 }

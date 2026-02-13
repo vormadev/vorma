@@ -6,6 +6,34 @@ import (
 	"testing"
 )
 
+func TestTrimAndCleanPath(t *testing.T) {
+	t.Run("empty and whitespace-only paths normalize to empty string", func(t *testing.T) {
+		if got := TrimAndCleanPath(""); got != "" {
+			t.Fatalf("TrimAndCleanPath(\"\") = %q, want empty", got)
+		}
+		if got := TrimAndCleanPath("   "); got != "" {
+			t.Fatalf("TrimAndCleanPath(whitespace) = %q, want empty", got)
+		}
+	})
+
+	t.Run("relative path is trimmed and cleaned without absolutizing", func(t *testing.T) {
+		rawRelativePath := "  ./backend/./main.go  "
+		wantRelativePath := filepath.Clean("./backend/main.go")
+		if got := TrimAndCleanPath(rawRelativePath); got != wantRelativePath {
+			t.Fatalf("TrimAndCleanPath(%q) = %q, want %q", rawRelativePath, got, wantRelativePath)
+		}
+	})
+
+	t.Run("absolute path is trimmed and cleaned", func(t *testing.T) {
+		root := t.TempDir()
+		rawAbsolutePath := "  " + filepath.Join(root, "backend", ".", "main.go") + "  "
+		wantAbsolutePath := filepath.Join(root, "backend", "main.go")
+		if got := TrimAndCleanPath(rawAbsolutePath); got != wantAbsolutePath {
+			t.Fatalf("TrimAndCleanPath(%q) = %q, want %q", rawAbsolutePath, got, wantAbsolutePath)
+		}
+	})
+}
+
 func TestAbsoluteDirectory(t *testing.T) {
 	root := t.TempDir()
 	configDirectoryPath := filepath.Join(root, "backend")

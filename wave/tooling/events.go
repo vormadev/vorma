@@ -50,13 +50,6 @@ type buildPhaseDecision struct {
 	privateStaticChangedFilePathSet map[string]struct{}
 }
 
-func (d buildPhaseDecision) hasFileProcessingWork() bool {
-	return d.processPublicFiles ||
-		d.processPrivateFiles ||
-		d.buildCriticalCSS ||
-		d.buildNormalCSS
-}
-
 type restartPhaseDecision struct {
 	restartApp bool
 }
@@ -78,6 +71,13 @@ type browserPhaseDecision struct {
 	cycleVite   bool
 }
 
+type browserPhaseResolution struct {
+	action         browserPhaseAction
+	applyWaitFlags bool
+	waitForApp     bool
+	waitForVite    bool
+}
+
 // workSet collects per-phase execution decisions for a watcher cycle.
 type workSet struct {
 	build   buildPhaseDecision
@@ -86,13 +86,6 @@ type workSet struct {
 
 	// User preference collected from watched files and applied during resolve.
 	preferRevalidate bool
-}
-
-type eventExecutionPlan struct {
-	eventsWithHooks       []eventWithHooks
-	showRebuildingOverlay bool
-	appStopStrategy       appStopStrategy
-	runImplicitBuild      bool
 }
 
 type appStopStrategy int
@@ -104,8 +97,31 @@ const (
 )
 
 type eventExecutionPlanningResult struct {
-	plan          *eventExecutionPlan
-	configChanged bool
+	eventsWithHooks []eventWithHooks
+	configChanged   bool
+}
+
+type watcherEventFlowDecision struct {
+	triggerConfigRestart       bool
+	broadcastRebuildingOverlay bool
+	behavioralDecision         eventExecutionPlanBehavioralDecision
+}
+
+type watcherEventExecutionInput struct {
+	flowDecision            watcherEventFlowDecision
+	eventsWithHooks         []eventWithHooks
+	watcherEventLogPayloads []watcherEventLogPayload
+}
+
+type eventExecutionPlanBehavioralDecision struct {
+	showRebuildingOverlay bool
+	appStopStrategy       appStopStrategy
+	runImplicitBuild      bool
+}
+
+type watcherEventLogPayload struct {
+	operation string
+	filePath  string
 }
 
 type refreshActionApplicationResult struct {
@@ -113,21 +129,73 @@ type refreshActionApplicationResult struct {
 	recompileGo      bool
 }
 
+type refreshActionWorkMutationDecision struct {
+	restartApp           bool
+	compileGo            bool
+	requestBrowserAction bool
+	browserAction        browserPhaseAction
+	waitForApp           bool
+	waitForVite          bool
+}
+
+type refreshActionReductionDecision struct {
+	actionsBeforeRestart     []wave.RefreshAction
+	restartActionEncountered bool
+	restartActionIndex       int
+	applicationResult        refreshActionApplicationResult
+}
+
+type implicitWorkDecision struct {
+	compileGo                    bool
+	buildCriticalCSS             bool
+	buildNormalCSS               bool
+	processPublicFiles           bool
+	processPrivateFiles          bool
+	restartApp                   bool
+	preferRevalidate             bool
+	publicStaticChangedFilePath  string
+	privateStaticChangedFilePath string
+}
+
 // addFromRefreshAction merges a RefreshAction from a callback into the work set.
 func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
+	workMutationDecision := deriveRefreshActionWorkMutationDecision(action)
+	w.applyRefreshActionWorkMutationDecision(workMutationDecision)
+}
+
+func deriveRefreshActionWorkMutationDecision(
+	action wave.RefreshAction,
+) refreshActionWorkMutationDecision {
+	workMutationDecision := refreshActionWorkMutationDecision{}
 	if action.TriggerRestart {
-		w.restart.restartApp = true
-		if action.RecompileGo {
-			w.build.compileGo = true
-		}
+		workMutationDecision.restartApp = true
+		workMutationDecision.compileGo = action.RecompileGo
 	}
 	if action.ReloadBrowser {
-		w.requestBrowserAction(browserPhaseActionHardReload)
+		workMutationDecision.requestBrowserAction = true
+		workMutationDecision.browserAction = browserPhaseActionHardReload
 	}
-	if action.WaitForApp {
+	workMutationDecision.waitForApp = action.WaitForApp
+	workMutationDecision.waitForVite = action.WaitForVite
+	return workMutationDecision
+}
+
+func (w *workSet) applyRefreshActionWorkMutationDecision(
+	workMutationDecision refreshActionWorkMutationDecision,
+) {
+	if workMutationDecision.restartApp {
+		w.restart.restartApp = true
+	}
+	if workMutationDecision.compileGo {
+		w.build.compileGo = true
+	}
+	if workMutationDecision.requestBrowserAction {
+		w.requestBrowserAction(workMutationDecision.browserAction)
+	}
+	if workMutationDecision.waitForApp {
 		w.browser.waitForApp = true
 	}
-	if action.WaitForVite {
+	if workMutationDecision.waitForVite {
 		w.browser.waitForVite = true
 	}
 }
@@ -135,30 +203,36 @@ func (w *workSet) addFromRefreshAction(action wave.RefreshAction) {
 func (w *workSet) applyRefreshActions(
 	actions []wave.RefreshAction,
 ) refreshActionApplicationResult {
-	actionsToApply, actionResult := reduceRefreshActionsInStableOrder(actions)
-	for _, action := range actionsToApply {
+	reductionDecision := reduceRefreshActionsInStableOrder(actions)
+	for _, action := range reductionDecision.actionsBeforeRestart {
 		w.addFromRefreshAction(action)
 	}
 
-	return actionResult
+	return reductionDecision.applicationResult
 }
 
 func reduceRefreshActionsInStableOrder(
 	actions []wave.RefreshAction,
-) ([]wave.RefreshAction, refreshActionApplicationResult) {
-	appliedActions := make([]wave.RefreshAction, 0, len(actions))
+) refreshActionReductionDecision {
+	reductionDecision := refreshActionReductionDecision{
+		actionsBeforeRestart: make([]wave.RefreshAction, 0, len(actions)),
+		restartActionIndex:   -1,
+	}
 
-	for _, action := range actions {
+	for actionIndex, action := range actions {
 		if action.TriggerRestart {
-			return appliedActions, refreshActionApplicationResult{
+			reductionDecision.restartActionEncountered = true
+			reductionDecision.restartActionIndex = actionIndex
+			reductionDecision.applicationResult = refreshActionApplicationResult{
 				restartRequested: true,
 				recompileGo:      action.RecompileGo,
 			}
+			return reductionDecision
 		}
-		appliedActions = append(appliedActions, action)
+		reductionDecision.actionsBeforeRestart = append(reductionDecision.actionsBeforeRestart, action)
 	}
 
-	return appliedActions, refreshActionApplicationResult{}
+	return reductionDecision
 }
 
 func normalizeChangedSourceFilePathForWorkSet(
@@ -214,60 +288,84 @@ func (d *buildPhaseDecision) addPrivateStaticChangedFilePath(
 
 // addImplicitWork adds build work implied by a file type.
 func (w *workSet) addImplicitWork(c classifiedEvent) {
-	wf := c.watchedFile
-	if wf != nil && wf.RunOnChangeOnly {
-		return
+	implicitWorkDecisionForClassifiedEvent := deriveImplicitWorkDecisionForClassifiedEvent(c)
+	w.applyImplicitWorkDecision(implicitWorkDecisionForClassifiedEvent)
+}
+
+func deriveImplicitWorkDecisionForClassifiedEvent(
+	classifiedEventForWork classifiedEvent,
+) implicitWorkDecision {
+	watchedFileForWork := classifiedEventForWork.watchedFile
+	if watchedFileForWork != nil && watchedFileForWork.RunOnChangeOnly {
+		return implicitWorkDecision{}
 	}
 
-	if wf != nil && wf.OnlyRunClientDefinedRevalidateFunc {
-		w.preferRevalidate = true
+	decision := implicitWorkDecision{}
+	if watchedFileForWork != nil && watchedFileForWork.OnlyRunClientDefinedRevalidateFunc {
+		decision.preferRevalidate = true
 	}
 
-	switch c.fileType {
+	switch classifiedEventForWork.fileType {
 	case fileTypeGo:
-		w.build.compileGo = true
-		w.restart.restartApp = true
+		decision.compileGo = true
+		decision.restartApp = true
 
 	case fileTypeCriticalCSS:
-		w.build.buildCriticalCSS = true
-		if wf != nil && needsHardReload(wf) {
-			w.restart.restartApp = true
-		}
+		decision.buildCriticalCSS = true
+		decision.restartApp = watchedFileForWork != nil && needsHardReload(watchedFileForWork)
 
 	case fileTypeNormalCSS:
-		w.build.buildNormalCSS = true
-		if wf != nil && needsHardReload(wf) {
-			w.restart.restartApp = true
-		}
+		decision.buildNormalCSS = true
+		decision.restartApp = watchedFileForWork != nil && needsHardReload(watchedFileForWork)
 
 	case fileTypeCriticalAndNormalCSS:
-		w.build.buildCriticalCSS = true
-		w.build.buildNormalCSS = true
-		if wf != nil && needsHardReload(wf) {
-			w.restart.restartApp = true
-		}
+		decision.buildCriticalCSS = true
+		decision.buildNormalCSS = true
+		decision.restartApp = watchedFileForWork != nil && needsHardReload(watchedFileForWork)
 
 	case fileTypePublicStatic:
-		w.build.processPublicFiles = true
-		w.build.addPublicStaticChangedFilePath(
-			c.event.Name,
-		)
+		decision.processPublicFiles = true
+		decision.publicStaticChangedFilePath = classifiedEventForWork.event.Name
 
 	case fileTypePrivateStatic:
-		w.build.processPrivateFiles = true
-		w.build.addPrivateStaticChangedFilePath(
-			c.event.Name,
-		)
+		decision.processPrivateFiles = true
+		decision.privateStaticChangedFilePath = classifiedEventForWork.event.Name
 
 	case fileTypeOther:
-		if wf != nil {
-			if wf.RecompileGoBinary {
-				w.build.compileGo = true
-			}
-			if wf.RestartApp || wf.RecompileGoBinary {
-				w.restart.restartApp = true
-			}
+		if watchedFileForWork != nil {
+			decision.compileGo = watchedFileForWork.RecompileGoBinary
+			decision.restartApp = watchedFileForWork.RestartApp || watchedFileForWork.RecompileGoBinary
 		}
+	}
+
+	return decision
+}
+
+func (w *workSet) applyImplicitWorkDecision(
+	decision implicitWorkDecision,
+) {
+	if decision.preferRevalidate {
+		w.preferRevalidate = true
+	}
+	if decision.compileGo {
+		w.build.compileGo = true
+	}
+	if decision.buildCriticalCSS {
+		w.build.buildCriticalCSS = true
+	}
+	if decision.buildNormalCSS {
+		w.build.buildNormalCSS = true
+	}
+	if decision.processPublicFiles {
+		w.build.processPublicFiles = true
+		w.build.addPublicStaticChangedFilePath(decision.publicStaticChangedFilePath)
+	}
+	if decision.processPrivateFiles {
+		w.build.processPrivateFiles = true
+		w.build.addPrivateStaticChangedFilePath(decision.privateStaticChangedFilePath)
+	}
+	if decision.restartApp {
+		w.restart.restartApp = true
 	}
 }
 
@@ -280,41 +378,16 @@ func (w *workSet) resolve(usingVite bool) {
 }
 
 func (w *workSet) determineBrowserBehavior(usingVite bool) {
-	if w.restart.restartApp {
-		w.requestBrowserAction(browserPhaseActionHardReload)
-		w.browser.waitForApp = true
-		w.browser.waitForVite = usingVite
-		return
-	}
-
-	// User preference takes precedence over automatic optimizations
-	if w.preferRevalidate {
-		w.requestBrowserAction(browserPhaseActionRevalidate)
-		w.browser.waitForApp = true
-		w.browser.waitForVite = usingVite
-		return
-	}
-
-	cssWork := w.build.buildCriticalCSS || w.build.buildNormalCSS
-	cssOnly := cssWork &&
-		!w.build.processPublicFiles &&
-		!w.build.processPrivateFiles
-
-	if cssOnly {
-		w.requestBrowserAction(browserPhaseActionHotReloadCSS)
-		return
-	}
-
-	if w.build.processPublicFiles {
-		w.requestBrowserAction(browserPhaseActionInvalidateVite)
-		return
-	}
-
-	if w.build.processPrivateFiles || cssWork {
-		w.requestBrowserAction(browserPhaseActionHardReload)
-		w.browser.waitForApp = true
-		w.browser.waitForVite = usingVite
-		return
+	browserPhaseResolutionForWork := deriveBrowserPhaseResolutionForWorkSet(
+		w.build,
+		w.restart,
+		w.preferRevalidate,
+		usingVite,
+	)
+	w.requestBrowserAction(browserPhaseResolutionForWork.action)
+	if browserPhaseResolutionForWork.applyWaitFlags {
+		w.browser.waitForApp = browserPhaseResolutionForWork.waitForApp
+		w.browser.waitForVite = browserPhaseResolutionForWork.waitForVite
 	}
 }
 
@@ -322,6 +395,78 @@ func (w *workSet) requestBrowserAction(action browserPhaseAction) {
 	if action > w.browser.action {
 		w.browser.action = action
 	}
+}
+
+func deriveBrowserPhaseResolutionForWorkSet(
+	buildDecision buildPhaseDecision,
+	restartDecision restartPhaseDecision,
+	preferRevalidate bool,
+	usingVite bool,
+) browserPhaseResolution {
+	if shouldUseRestartBrowserResolution(restartDecision) {
+		return browserPhaseResolution{
+			action:         browserPhaseActionHardReload,
+			applyWaitFlags: true,
+			waitForApp:     true,
+			waitForVite:    usingVite,
+		}
+	}
+
+	if shouldUseRevalidateBrowserResolution(preferRevalidate) {
+		return browserPhaseResolution{
+			action:         browserPhaseActionRevalidate,
+			applyWaitFlags: true,
+			waitForApp:     true,
+			waitForVite:    usingVite,
+		}
+	}
+
+	if isCSSOnlyBuildWorkForBrowserPhase(buildDecision) {
+		return browserPhaseResolution{
+			action: browserPhaseActionHotReloadCSS,
+		}
+	}
+
+	if buildDecision.processPublicFiles {
+		return browserPhaseResolution{
+			action: browserPhaseActionInvalidateVite,
+		}
+	}
+
+	if buildDecision.processPrivateFiles || buildDecision.buildCriticalCSS || buildDecision.buildNormalCSS {
+		return browserPhaseResolution{
+			action:         browserPhaseActionHardReload,
+			applyWaitFlags: true,
+			waitForApp:     true,
+			waitForVite:    usingVite,
+		}
+	}
+
+	return browserPhaseResolution{
+		action: browserPhaseActionNone,
+	}
+}
+
+func shouldUseRestartBrowserResolution(
+	restartDecision restartPhaseDecision,
+) bool {
+	return restartDecision.restartApp
+}
+
+func shouldUseRevalidateBrowserResolution(
+	preferRevalidate bool,
+) bool {
+	// User preference takes precedence over automatic optimizations.
+	return preferRevalidate
+}
+
+func isCSSOnlyBuildWorkForBrowserPhase(
+	buildDecision buildPhaseDecision,
+) bool {
+	cssWork := buildDecision.buildCriticalCSS || buildDecision.buildNormalCSS
+	return cssWork &&
+		!buildDecision.processPublicFiles &&
+		!buildDecision.processPrivateFiles
 }
 
 func planBrowserReloadForAction(
@@ -382,6 +527,49 @@ func planHotReloadCSSPayloads(
 	return payloads
 }
 
+type browserPhaseExecutionCategory int
+
+const (
+	browserPhaseExecutionCategoryNone browserPhaseExecutionCategory = iota
+	browserPhaseExecutionCategoryReload
+	browserPhaseExecutionCategoryHotReloadCSS
+)
+
+func shouldAttemptViteInvalidateForBrowserDecision(
+	browserDecision browserPhaseDecision,
+	usingVite bool,
+) bool {
+	return browserDecision.action == browserPhaseActionInvalidateVite && usingVite
+}
+
+func resolveBrowserDecisionAfterInvalidateViteFallback(
+	browserDecision browserPhaseDecision,
+	usingVite bool,
+) browserPhaseDecision {
+	if browserDecision.action != browserPhaseActionInvalidateVite {
+		return browserDecision
+	}
+
+	fallbackDecision := planInvalidateViteFallbackBrowserDecision(usingVite)
+	browserDecision.action = fallbackDecision.action
+	browserDecision.waitForApp = fallbackDecision.waitForApp
+	browserDecision.waitForVite = fallbackDecision.waitForVite
+	return browserDecision
+}
+
+func deriveBrowserPhaseExecutionCategory(
+	action browserPhaseAction,
+) browserPhaseExecutionCategory {
+	switch action {
+	case browserPhaseActionHardReload, browserPhaseActionRevalidate:
+		return browserPhaseExecutionCategoryReload
+	case browserPhaseActionHotReloadCSS:
+		return browserPhaseExecutionCategoryHotReloadCSS
+	default:
+		return browserPhaseExecutionCategoryNone
+	}
+}
+
 // eventWithHooks pairs a classified event with its sorted hooks
 type eventWithHooks struct {
 	classified         classifiedEvent
@@ -430,35 +618,84 @@ func (s *server) processEvents(events []fsnotify.Event) {
 	}
 
 	executionPlanningResult := s.buildEventExecutionPlan(events, watcher, builder)
-	if executionPlanningResult.configChanged {
+	watcherEventExecutionInputForPlanningResult := buildWatcherEventExecutionInputFromPlanningResult(
+		executionPlanningResult,
+	)
+	watcherEventFlowDecisionForPlanningResult := watcherEventExecutionInputForPlanningResult.flowDecision
+	if watcherEventFlowDecisionForPlanningResult.triggerConfigRestart {
 		s.log.Info("Config changed, restarting")
 		s.triggerConfigRestart()
 		return
 	}
 
-	executionPlan := executionPlanningResult.plan
-	if executionPlan == nil {
+	eventsWithHooksForExecution := watcherEventExecutionInputForPlanningResult.eventsWithHooks
+	if len(eventsWithHooksForExecution) == 0 {
 		return
 	}
 
-	if executionPlan.showRebuildingOverlay {
+	if watcherEventFlowDecisionForPlanningResult.broadcastRebuildingOverlay {
 		s.broadcastRebuilding()
 	}
 
 	work := &workSet{}
-	for _, eventWithHooksForLogging := range executionPlan.eventsWithHooks {
+	for _, watcherEventLogPayloadForExecutionPlan := range watcherEventExecutionInputForPlanningResult.watcherEventLogPayloads {
 		s.log.Info(
 			"[watcher]",
 			"op",
-			eventWithHooksForLogging.classified.event.Op.String(),
+			watcherEventLogPayloadForExecutionPlan.operation,
 			"file",
-			eventWithHooksForLogging.classified.event.Name,
+			watcherEventLogPayloadForExecutionPlan.filePath,
 		)
 	}
 
-	s.executeEventExecutionPlan(executionPlan, work, watcher)
+	s.executeEventExecutionPlan(
+		eventsWithHooksForExecution,
+		watcherEventFlowDecisionForPlanningResult.behavioralDecision,
+		work,
+		watcher,
+	)
 
 	watcher.RemoveStale()
+}
+
+func buildWatcherEventExecutionInputFromPlanningResult(
+	executionPlanningResult eventExecutionPlanningResult,
+) watcherEventExecutionInput {
+	flowDecision := deriveWatcherEventFlowDecisionFromPlanningResult(
+		executionPlanningResult,
+	)
+	executionInput := watcherEventExecutionInput{
+		flowDecision: flowDecision,
+	}
+	if flowDecision.triggerConfigRestart || len(executionPlanningResult.eventsWithHooks) == 0 {
+		return executionInput
+	}
+	executionInput.eventsWithHooks = executionPlanningResult.eventsWithHooks
+	executionInput.watcherEventLogPayloads = buildWatcherEventLogPayloadsForEventsWithHooks(
+		executionInput.eventsWithHooks,
+	)
+	return executionInput
+}
+
+func deriveWatcherEventFlowDecisionFromPlanningResult(
+	executionPlanningResult eventExecutionPlanningResult,
+) watcherEventFlowDecision {
+	if executionPlanningResult.configChanged {
+		return watcherEventFlowDecision{
+			triggerConfigRestart: true,
+		}
+	}
+	if len(executionPlanningResult.eventsWithHooks) == 0 {
+		return watcherEventFlowDecision{}
+	}
+	behavioralDecisionForExecutionPlan := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+		executionPlanningResult.eventsWithHooks,
+	)
+
+	return watcherEventFlowDecision{
+		broadcastRebuildingOverlay: behavioralDecisionForExecutionPlan.showRebuildingOverlay,
+		behavioralDecision:         behavioralDecisionForExecutionPlan,
+	}
 }
 
 func (s *server) buildEventExecutionPlan(
@@ -482,14 +719,19 @@ func (s *server) buildEventExecutionPlan(
 		return eventExecutionPlanningResult{}
 	}
 
+	eventsWithHooks := buildEventExecutionPlanFromClassifiedEvents(classifiedEvents)
+	if len(eventsWithHooks) == 0 {
+		return eventExecutionPlanningResult{}
+	}
+
 	return eventExecutionPlanningResult{
-		plan: buildEventExecutionPlanFromClassifiedEvents(classifiedEvents),
+		eventsWithHooks: eventsWithHooks,
 	}
 }
 
 func buildEventExecutionPlanFromClassifiedEvents(
 	classifiedEvents []classifiedEvent,
-) *eventExecutionPlan {
+) []eventWithHooks {
 	if len(classifiedEvents) == 0 {
 		return nil
 	}
@@ -499,12 +741,31 @@ func buildEventExecutionPlanFromClassifiedEvents(
 		return nil
 	}
 
-	return &eventExecutionPlan{
-		eventsWithHooks:       eventsWithHooks,
-		showRebuildingOverlay: shouldShowRebuildingOverlay(classifiedEvents),
+	return eventsWithHooks
+}
+
+func deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+	eventsWithHooks []eventWithHooks,
+) eventExecutionPlanBehavioralDecision {
+	return eventExecutionPlanBehavioralDecision{
+		showRebuildingOverlay: shouldShowRebuildingOverlayForEventsWithHooks(eventsWithHooks),
 		appStopStrategy:       resolveAppStopStrategy(eventsWithHooks),
 		runImplicitBuild:      shouldRunImplicitBuildForEvents(eventsWithHooks),
 	}
+}
+
+func shouldShowRebuildingOverlayForEventsWithHooks(
+	eventsWithHooks []eventWithHooks,
+) bool {
+	if len(eventsWithHooks) == 0 {
+		return false
+	}
+
+	classifiedEvents := make([]classifiedEvent, 0, len(eventsWithHooks))
+	for _, eventWithHooksForOverlay := range eventsWithHooks {
+		classifiedEvents = append(classifiedEvents, eventWithHooksForOverlay.classified)
+	}
+	return shouldShowRebuildingOverlay(classifiedEvents)
 }
 
 func deduplicateWatcherEventsByPath(
@@ -567,9 +828,6 @@ func (index *watcherEventDeduplicationIndex) resolveExistingPathKey(
 	normalizedEventPath string,
 ) string {
 	if normalizedEventPath == "" {
-		if _, alreadyExists := mergedEventOpsByPath[""]; alreadyExists {
-			return ""
-		}
 		return ""
 	}
 
@@ -577,45 +835,21 @@ func (index *watcherEventDeduplicationIndex) resolveExistingPathKey(
 		return normalizedEventPath
 	}
 
-	if !filepath.IsAbs(normalizedEventPath) {
+	if !isAbsolutePathForWatcherEventDeduplication(normalizedEventPath) {
 		return ""
 	}
 
-	canonicalPath := index.resolveCanonicalPathForAbsolutePath(normalizedEventPath)
-	if canonicalPath != "" {
-		if existingPathKey, exists := index.canonicalPathToPathKey[canonicalPath]; exists {
-			return existingPathKey
-		}
-	}
-
-	missingFileAliasKey := index.resolveMissingAliasKeyForAbsolutePath(normalizedEventPath)
-	if missingFileAliasKey != "" {
-		if existingPathKey, exists := index.missingFileAliasKeyToPathKey[missingFileAliasKey]; exists {
-			return existingPathKey
-		}
-	}
-
-	return ""
+	return index.resolveExistingPathKeyFromCanonicalAndMissingAliasProbes(
+		normalizedEventPath,
+	)
 }
 
 func (index *watcherEventDeduplicationIndex) recordPathKey(pathKey string) {
-	if pathKey == "" || !filepath.IsAbs(pathKey) {
+	if !isAbsolutePathForWatcherEventDeduplication(pathKey) {
 		return
 	}
 
-	canonicalPath := index.resolveCanonicalPathForAbsolutePath(pathKey)
-	if canonicalPath != "" {
-		if _, exists := index.canonicalPathToPathKey[canonicalPath]; !exists {
-			index.canonicalPathToPathKey[canonicalPath] = pathKey
-		}
-	}
-
-	missingFileAliasKey := index.resolveMissingAliasKeyForAbsolutePath(pathKey)
-	if missingFileAliasKey != "" {
-		if _, exists := index.missingFileAliasKeyToPathKey[missingFileAliasKey]; !exists {
-			index.missingFileAliasKeyToPathKey[missingFileAliasKey] = pathKey
-		}
-	}
+	index.recordPathKeyForCanonicalAndMissingAliasProbes(pathKey)
 }
 
 const missingAliasKeyResolutionEmptySentinel = "\x00"
@@ -623,7 +857,7 @@ const missingAliasKeyResolutionEmptySentinel = "\x00"
 func (index *watcherEventDeduplicationIndex) resolveCanonicalPathForAbsolutePath(
 	absolutePath string,
 ) string {
-	if absolutePath == "" || !filepath.IsAbs(absolutePath) {
+	if !isAbsolutePathForWatcherEventDeduplication(absolutePath) {
 		return ""
 	}
 
@@ -642,7 +876,7 @@ func (index *watcherEventDeduplicationIndex) resolveCanonicalPathForAbsolutePath
 func (index *watcherEventDeduplicationIndex) resolveMissingAliasKeyForAbsolutePath(
 	absolutePath string,
 ) string {
-	if absolutePath == "" || !filepath.IsAbs(absolutePath) {
+	if !isAbsolutePathForWatcherEventDeduplication(absolutePath) {
 		return ""
 	}
 
@@ -663,16 +897,95 @@ func (index *watcherEventDeduplicationIndex) resolveMissingAliasKeyForAbsolutePa
 	return missingAliasKey
 }
 
-func normalizeWatcherEventPathForDeduplication(
-	eventPath string,
+func (index *watcherEventDeduplicationIndex) resolveExistingPathKeyFromCanonicalAndMissingAliasProbes(
+	absolutePath string,
 ) string {
-	trimmedEventPath := strings.TrimSpace(eventPath)
-	if trimmedEventPath == "" {
+	if !isAbsolutePathForWatcherEventDeduplication(absolutePath) {
 		return ""
 	}
 
-	cleanedEventPath := filepath.Clean(trimmedEventPath)
-	if filepath.IsAbs(cleanedEventPath) {
+	if existingPathKey := index.resolveExistingPathKeyFromCanonicalPathProbe(absolutePath); existingPathKey != "" {
+		return existingPathKey
+	}
+
+	return index.resolveExistingPathKeyFromMissingAliasProbe(absolutePath)
+}
+
+func (index *watcherEventDeduplicationIndex) resolveExistingPathKeyFromCanonicalPathProbe(
+	absolutePath string,
+) string {
+	canonicalPath := index.resolveCanonicalPathForAbsolutePath(absolutePath)
+	return resolveExistingPathKeyFromProbeLookup(
+		index.canonicalPathToPathKey,
+		canonicalPath,
+	)
+}
+
+func (index *watcherEventDeduplicationIndex) resolveExistingPathKeyFromMissingAliasProbe(
+	absolutePath string,
+) string {
+	missingAliasKey := index.resolveMissingAliasKeyForAbsolutePath(absolutePath)
+	return resolveExistingPathKeyFromProbeLookup(
+		index.missingFileAliasKeyToPathKey,
+		missingAliasKey,
+	)
+}
+
+func (index *watcherEventDeduplicationIndex) recordPathKeyForCanonicalAndMissingAliasProbes(
+	pathKey string,
+) {
+	if !isAbsolutePathForWatcherEventDeduplication(pathKey) {
+		return
+	}
+
+	canonicalPath := index.resolveCanonicalPathForAbsolutePath(pathKey)
+	recordPathKeyForProbeLookupIfAbsent(
+		index.canonicalPathToPathKey,
+		canonicalPath,
+		pathKey,
+	)
+
+	missingAliasKey := index.resolveMissingAliasKeyForAbsolutePath(pathKey)
+	recordPathKeyForProbeLookupIfAbsent(
+		index.missingFileAliasKeyToPathKey,
+		missingAliasKey,
+		pathKey,
+	)
+}
+
+func resolveExistingPathKeyFromProbeLookup(
+	pathKeyByProbe map[string]string,
+	probeKey string,
+) string {
+	if pathKeyByProbe == nil || probeKey == "" {
+		return ""
+	}
+	return pathKeyByProbe[probeKey]
+}
+
+func recordPathKeyForProbeLookupIfAbsent(
+	pathKeyByProbe map[string]string,
+	probeKey string,
+	pathKey string,
+) {
+	if pathKeyByProbe == nil || probeKey == "" || pathKey == "" {
+		return
+	}
+	if _, exists := pathKeyByProbe[probeKey]; exists {
+		return
+	}
+	pathKeyByProbe[probeKey] = pathKey
+}
+
+func normalizeWatcherEventPathForDeduplication(
+	eventPath string,
+) string {
+	cleanedEventPath := pathnorm.TrimAndCleanPath(eventPath)
+	if cleanedEventPath == "" {
+		return ""
+	}
+
+	if isAbsolutePathForWatcherEventDeduplication(cleanedEventPath) {
 		return pathnorm.Absolute(cleanedEventPath)
 	}
 
@@ -688,7 +1001,7 @@ func canonicalizeAbsolutePathForWatcherEventDeduplication(
 func missingFileAliasKeyForWatcherEventDeduplication(
 	absolutePath string,
 ) string {
-	if absolutePath == "" || !filepath.IsAbs(absolutePath) {
+	if !isAbsolutePathForWatcherEventDeduplication(absolutePath) {
 		return ""
 	}
 
@@ -709,6 +1022,10 @@ func missingFileAliasKeyForWatcherEventDeduplication(
 	}
 
 	return canonicalParentDirectoryPath + "\x00" + baseName
+}
+
+func isAbsolutePathForWatcherEventDeduplication(path string) bool {
+	return path != "" && filepath.IsAbs(path)
 }
 
 func (s *server) classifyWatcherEventsForProcessing(
@@ -749,17 +1066,12 @@ func (s *server) classifyWatcherEventsForProcessing(
 			watcher,
 			builder,
 		)
-		postClassificationDecision := deriveWatcherEventPostClassificationDecision(
-			classifiedEventForProcessing,
-		)
-		if !postClassificationDecision.includeClassifiedEvent {
-			continue
-		}
-
 		classifiedEvents = append(classifiedEvents, classifiedEventForProcessing)
 	}
 
-	return classifiedEvents, false
+	return filterClassifiedEventsForProcessingByPostClassificationDecision(
+		classifiedEvents,
+	), false
 }
 
 type watcherEventPreClassificationDecision struct {
@@ -774,6 +1086,36 @@ type watcherEventPreClassificationPlan struct {
 	eventsToClassify       []fsnotify.Event
 }
 
+type watcherEventPreClassificationStepResult struct {
+	configChanged         bool
+	addDirectoryWatchPath string
+	classifyEvent         bool
+}
+
+func appendDirectoryWatchPathIfMissing(
+	addDirectoryWatchPaths []string,
+	addDirectoryWatchPathSet map[string]struct{},
+	addDirectoryWatchPath string,
+) ([]string, map[string]struct{}) {
+	if addDirectoryWatchPath == "" {
+		return addDirectoryWatchPaths, addDirectoryWatchPathSet
+	}
+
+	if addDirectoryWatchPathSet == nil {
+		addDirectoryWatchPathSet = make(map[string]struct{}, len(addDirectoryWatchPaths)+1)
+		for _, existingDirectoryWatchPath := range addDirectoryWatchPaths {
+			addDirectoryWatchPathSet[existingDirectoryWatchPath] = struct{}{}
+		}
+	}
+	if _, alreadyTracked := addDirectoryWatchPathSet[addDirectoryWatchPath]; alreadyTracked {
+		return addDirectoryWatchPaths, addDirectoryWatchPathSet
+	}
+
+	addDirectoryWatchPaths = append(addDirectoryWatchPaths, addDirectoryWatchPath)
+	addDirectoryWatchPathSet[addDirectoryWatchPath] = struct{}{}
+	return addDirectoryWatchPaths, addDirectoryWatchPathSet
+}
+
 func buildWatcherEventPreClassificationPlanFromEvents(
 	events []fsnotify.Event,
 	eventClassificationProber *watcherEventClassificationProber,
@@ -783,26 +1125,24 @@ func buildWatcherEventPreClassificationPlanFromEvents(
 	}
 
 	addDirectoryWatchPaths := make([]string, 0, len(events))
+	var addDirectoryWatchPathSet map[string]struct{}
 	eventsToClassify := make([]fsnotify.Event, 0, len(events))
 	for _, event := range events {
-		isConfigFile := eventClassificationProber.probeIsConfigFile(event.Name)
-		if isConfigMutationEvent(event, isConfigFile) {
+		preClassificationStepResult := deriveWatcherEventPreClassificationStepResult(
+			event,
+			eventClassificationProber,
+		)
+		if preClassificationStepResult.configChanged {
 			return watcherEventPreClassificationPlan{
 				configChanged: true,
 			}
 		}
-
-		directoryProbeResult := eventClassificationProber.probeEventDirectoryStatus(event.Name)
-		preClassificationDecision := deriveWatcherEventPreClassificationDecisionForNonConfigEvent(
-			event,
-			directoryProbeResult.isDirectory,
-			directoryProbeResult.statProbeSucceeded,
+		addDirectoryWatchPaths, addDirectoryWatchPathSet = appendDirectoryWatchPathIfMissing(
+			addDirectoryWatchPaths,
+			addDirectoryWatchPathSet,
+			preClassificationStepResult.addDirectoryWatchPath,
 		)
-
-		if preClassificationDecision.addDirectoryWatch {
-			addDirectoryWatchPaths = append(addDirectoryWatchPaths, event.Name)
-		}
-		if preClassificationDecision.classifyEvent {
+		if preClassificationStepResult.classifyEvent {
 			eventsToClassify = append(eventsToClassify, event)
 		}
 	}
@@ -811,6 +1151,33 @@ func buildWatcherEventPreClassificationPlanFromEvents(
 		addDirectoryWatchPaths: addDirectoryWatchPaths,
 		eventsToClassify:       eventsToClassify,
 	}
+}
+
+func deriveWatcherEventPreClassificationStepResult(
+	event fsnotify.Event,
+	eventClassificationProber *watcherEventClassificationProber,
+) watcherEventPreClassificationStepResult {
+	isConfigFile := eventClassificationProber.probeIsConfigFile(event.Name)
+	if isConfigMutationEvent(event, isConfigFile) {
+		return watcherEventPreClassificationStepResult{
+			configChanged: true,
+		}
+	}
+
+	directoryProbeResult := eventClassificationProber.probeEventDirectoryStatus(event.Name)
+	preClassificationDecision := deriveWatcherEventPreClassificationDecisionForNonConfigEvent(
+		event,
+		directoryProbeResult.isDirectory,
+		directoryProbeResult.statProbeSucceeded,
+	)
+
+	stepResult := watcherEventPreClassificationStepResult{
+		classifyEvent: preClassificationDecision.classifyEvent,
+	}
+	if preClassificationDecision.addDirectoryWatch {
+		stepResult.addDirectoryWatchPath = event.Name
+	}
+	return stepResult
 }
 
 type watcherEventDirectoryProbeResult struct {
@@ -1002,6 +1369,53 @@ func deriveWatcherEventPostClassificationDecision(
 	}
 }
 
+func filterClassifiedEventsForProcessingByPostClassificationDecision(
+	classifiedEvents []classifiedEvent,
+) []classifiedEvent {
+	if len(classifiedEvents) == 0 {
+		return nil
+	}
+
+	filteredClassifiedEvents := make([]classifiedEvent, 0, len(classifiedEvents))
+	for _, classifiedEventForProcessing := range classifiedEvents {
+		postClassificationDecision := deriveWatcherEventPostClassificationDecision(
+			classifiedEventForProcessing,
+		)
+		if !postClassificationDecision.includeClassifiedEvent {
+			continue
+		}
+		filteredClassifiedEvents = append(
+			filteredClassifiedEvents,
+			classifiedEventForProcessing,
+		)
+	}
+	return filteredClassifiedEvents
+}
+
+func buildWatcherEventLogPayloadsForEventsWithHooks(
+	eventsWithHooks []eventWithHooks,
+) []watcherEventLogPayload {
+	if len(eventsWithHooks) == 0 {
+		return nil
+	}
+
+	watcherEventLogPayloads := make(
+		[]watcherEventLogPayload,
+		0,
+		len(eventsWithHooks),
+	)
+	for _, eventWithHooksForLogging := range eventsWithHooks {
+		watcherEventLogPayloads = append(
+			watcherEventLogPayloads,
+			watcherEventLogPayload{
+				operation: eventWithHooksForLogging.classified.event.Op.String(),
+				filePath:  eventWithHooksForLogging.classified.event.Name,
+			},
+		)
+	}
+	return watcherEventLogPayloads
+}
+
 func buildEventHooksForProcessing(
 	classifiedEvents []classifiedEvent,
 ) []eventWithHooks {
@@ -1009,69 +1423,194 @@ func buildEventHooksForProcessing(
 		return nil
 	}
 
+	normalizedChangedFilePathsByWatchedPattern := buildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
+		classifiedEvents,
+	)
+	watchedPatternOccurrenceCount := buildWatchedPatternOccurrenceCountForHookContexts(
+		classifiedEvents,
+	)
+	skipDuplicateHooksByClassifiedEventIndex := buildSkipDuplicateHooksByClassifiedEventIndex(
+		classifiedEvents,
+	)
+
 	eventsWithHooks := make([]eventWithHooks, 0, len(classifiedEvents))
-	handledWatchedPatterns := make(map[string]struct{})
-	changedFilePathsByWatchedPattern := make(map[string][]string)
-
-	for _, classifiedEventForProcessing := range classifiedEvents {
-		if classifiedEventForProcessing.watchedFile != nil {
-			watchedPattern := classifiedEventForProcessing.watchedFile.Pattern
-			changedFilePathsByWatchedPattern[watchedPattern] = append(
-				changedFilePathsByWatchedPattern[watchedPattern],
-				classifiedEventForProcessing.event.Name,
-			)
-		}
-
-		watchedFile := classifiedEventForProcessing.watchedFile
-		if watchedFile == nil {
-			watchedFile = &wave.WatchedFile{}
-		}
-		if watchedFile.SortedHooks == nil {
-			watchedFile.Sort()
-		}
-		if watchedFile.SortedHooks == nil {
-			watchedFile.SortedHooks = &wave.SortedHooks{}
-		}
-
-		eventNeedsHardReload := classifiedEventForProcessing.fileType == fileTypeGo ||
-			needsHardReload(watchedFile)
-		skipDuplicateHooks := false
-		if classifiedEventForProcessing.watchedFile != nil {
-			watchedPattern := classifiedEventForProcessing.watchedFile.Pattern
-			if _, alreadyHandled := handledWatchedPatterns[watchedPattern]; alreadyHandled {
-				skipDuplicateHooks = true
-			} else {
-				handledWatchedPatterns[watchedPattern] = struct{}{}
-			}
-		}
-
-		eventsWithHooks = append(eventsWithHooks, eventWithHooks{
-			classified:         classifiedEventForProcessing,
-			hooks:              watchedFile.SortedHooks,
-			runOnChangeOnly:    watchedFile.RunOnChangeOnly,
-			needsHardReload:    eventNeedsHardReload,
-			skipDuplicateHooks: skipDuplicateHooks,
-			hookCtx: &wave.HookContext{
-				FilePath:           classifiedEventForProcessing.event.Name,
-				ChangedFilePaths:   []string{classifiedEventForProcessing.event.Name},
-				AppStoppedForBatch: false,
-			},
-		})
-	}
-
-	for i := range eventsWithHooks {
-		classifiedEventForProcessing := eventsWithHooks[i].classified
-		if classifiedEventForProcessing.watchedFile == nil {
-			continue
-		}
-		watchedPattern := classifiedEventForProcessing.watchedFile.Pattern
-		eventsWithHooks[i].hookCtx.ChangedFilePaths = append(
-			[]string(nil),
-			changedFilePathsByWatchedPattern[watchedPattern]...,
+	for eventIndex, classifiedEventForProcessing := range classifiedEvents {
+		normalizedEventPathForHookContext := normalizeHookContextPathShape(
+			classifiedEventForProcessing.event.Name,
 		)
+		changedFilePathsForHookContext := deriveChangedFilePathsForHookContext(
+			classifiedEventForProcessing,
+			normalizedChangedFilePathsByWatchedPattern,
+			watchedPatternOccurrenceCount,
+			normalizedEventPathForHookContext,
+		)
+		eventWithHooksForProcessing := buildEventWithHooksForClassifiedEvent(
+			classifiedEventForProcessing,
+			skipDuplicateHooksByClassifiedEventIndex[eventIndex],
+			changedFilePathsForHookContext,
+		)
+		eventsWithHooks = append(eventsWithHooks, eventWithHooksForProcessing)
 	}
 
 	return eventsWithHooks
+}
+
+func buildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
+	classifiedEvents []classifiedEvent,
+) map[string][]string {
+	normalizedChangedFilePathsByWatchedPattern := make(map[string][]string)
+	seenNormalizedChangedFilePathsByWatchedPattern := make(map[string]map[string]struct{})
+
+	for _, classifiedEventForProcessing := range classifiedEvents {
+		watchedFileForProcessing := classifiedEventForProcessing.watchedFile
+		if watchedFileForProcessing == nil {
+			continue
+		}
+		normalizedEventPathForHookContext := normalizeHookContextPathShape(
+			classifiedEventForProcessing.event.Name,
+		)
+		recordChangedPathForWatchedPatternIfNew(
+			watchedFileForProcessing.Pattern,
+			normalizedEventPathForHookContext,
+			normalizedChangedFilePathsByWatchedPattern,
+			seenNormalizedChangedFilePathsByWatchedPattern,
+		)
+	}
+
+	return normalizedChangedFilePathsByWatchedPattern
+}
+
+func buildSkipDuplicateHooksByClassifiedEventIndex(
+	classifiedEvents []classifiedEvent,
+) []bool {
+	skipDuplicateHooksByClassifiedEventIndex := make([]bool, len(classifiedEvents))
+	handledWatchedPatterns := make(map[string]struct{})
+
+	for eventIndex, classifiedEventForProcessing := range classifiedEvents {
+		watchedFileForProcessing := classifiedEventForProcessing.watchedFile
+		if watchedFileForProcessing == nil {
+			continue
+		}
+
+		watchedPattern := watchedFileForProcessing.Pattern
+		if _, alreadyHandled := handledWatchedPatterns[watchedPattern]; alreadyHandled {
+			skipDuplicateHooksByClassifiedEventIndex[eventIndex] = true
+			continue
+		}
+		handledWatchedPatterns[watchedPattern] = struct{}{}
+	}
+
+	return skipDuplicateHooksByClassifiedEventIndex
+}
+
+func buildWatchedPatternOccurrenceCountForHookContexts(
+	classifiedEvents []classifiedEvent,
+) map[string]int {
+	watchedPatternOccurrenceCount := make(map[string]int)
+	for _, classifiedEventForProcessing := range classifiedEvents {
+		watchedFileForProcessing := classifiedEventForProcessing.watchedFile
+		if watchedFileForProcessing == nil {
+			continue
+		}
+		watchedPatternOccurrenceCount[watchedFileForProcessing.Pattern]++
+	}
+	return watchedPatternOccurrenceCount
+}
+
+func deriveChangedFilePathsForHookContext(
+	classifiedEventForProcessing classifiedEvent,
+	normalizedChangedFilePathsByWatchedPattern map[string][]string,
+	watchedPatternOccurrenceCount map[string]int,
+	normalizedEventPathForHookContext string,
+) []string {
+	watchedFileForProcessing := classifiedEventForProcessing.watchedFile
+	if watchedFileForProcessing == nil {
+		return []string{normalizedEventPathForHookContext}
+	}
+
+	watchedPattern := watchedFileForProcessing.Pattern
+	normalizedChangedFilePathsForWatchedPattern := normalizedChangedFilePathsByWatchedPattern[watchedPattern]
+	if len(normalizedChangedFilePathsForWatchedPattern) == 0 {
+		return []string{normalizedEventPathForHookContext}
+	}
+
+	if watchedPatternOccurrenceCount[watchedPattern] <= 1 {
+		return normalizedChangedFilePathsForWatchedPattern
+	}
+
+	return append(
+		[]string(nil),
+		normalizedChangedFilePathsForWatchedPattern...,
+	)
+}
+
+func buildEventWithHooksForClassifiedEvent(
+	classifiedEventForProcessing classifiedEvent,
+	skipDuplicateHooks bool,
+	changedFilePathsForHookContext []string,
+) eventWithHooks {
+	watchedFileForProcessing := classifiedEventForProcessing.watchedFile
+	if watchedFileForProcessing == nil {
+		watchedFileForProcessing = &wave.WatchedFile{}
+	}
+	if watchedFileForProcessing.SortedHooks == nil {
+		watchedFileForProcessing.Sort()
+	}
+	if watchedFileForProcessing.SortedHooks == nil {
+		watchedFileForProcessing.SortedHooks = &wave.SortedHooks{}
+	}
+
+	normalizedEventPathForHookContext := normalizeHookContextPathShape(
+		classifiedEventForProcessing.event.Name,
+	)
+	if len(changedFilePathsForHookContext) == 0 {
+		changedFilePathsForHookContext = []string{normalizedEventPathForHookContext}
+	}
+	eventNeedsHardReload := classifiedEventForProcessing.fileType == fileTypeGo ||
+		needsHardReload(watchedFileForProcessing)
+
+	return eventWithHooks{
+		classified:         classifiedEventForProcessing,
+		hooks:              watchedFileForProcessing.SortedHooks,
+		runOnChangeOnly:    watchedFileForProcessing.RunOnChangeOnly,
+		needsHardReload:    eventNeedsHardReload,
+		skipDuplicateHooks: skipDuplicateHooks,
+		hookCtx: &wave.HookContext{
+			FilePath:           normalizedEventPathForHookContext,
+			ChangedFilePaths:   changedFilePathsForHookContext,
+			AppStoppedForBatch: false,
+		},
+	}
+}
+
+func normalizeHookContextPathShape(path string) string {
+	return pathnorm.TrimAndCleanPath(path)
+}
+
+func recordChangedPathForWatchedPatternIfNew(
+	watchedPattern string,
+	normalizedChangedPath string,
+	changedFilePathsByWatchedPattern map[string][]string,
+	seenChangedFilePathsByWatchedPattern map[string]map[string]struct{},
+) {
+	if changedFilePathsByWatchedPattern == nil || seenChangedFilePathsByWatchedPattern == nil {
+		return
+	}
+
+	seenChangedPathsForWatchedPattern, hasSeenSet := seenChangedFilePathsByWatchedPattern[watchedPattern]
+	if !hasSeenSet || seenChangedPathsForWatchedPattern == nil {
+		seenChangedPathsForWatchedPattern = make(map[string]struct{})
+		seenChangedFilePathsByWatchedPattern[watchedPattern] = seenChangedPathsForWatchedPattern
+	}
+
+	if _, alreadyTracked := seenChangedPathsForWatchedPattern[normalizedChangedPath]; alreadyTracked {
+		return
+	}
+	seenChangedPathsForWatchedPattern[normalizedChangedPath] = struct{}{}
+	changedFilePathsByWatchedPattern[watchedPattern] = append(
+		changedFilePathsByWatchedPattern[watchedPattern],
+		normalizedChangedPath,
+	)
 }
 
 func shouldShowRebuildingOverlay(
@@ -1135,6 +1674,99 @@ type implicitBuildExecutionDecision struct {
 	skipImplicitBuildLogEntry string
 }
 
+type staticFileProcessingExecutionMode int
+
+const (
+	staticFileProcessingExecutionModeNone staticFileProcessingExecutionMode = iota
+	staticFileProcessingExecutionModeFullScan
+	staticFileProcessingExecutionModeChangedPaths
+)
+
+type staticFileProcessingExecutionDecision struct {
+	mode             staticFileProcessingExecutionMode
+	changedFilePaths []string
+}
+
+func (d staticFileProcessingExecutionDecision) shouldProcess() bool {
+	return d.mode != staticFileProcessingExecutionModeNone
+}
+
+type buildPhaseExecutionDecision struct {
+	compileGo                   bool
+	publicStaticProcessing      staticFileProcessingExecutionDecision
+	privateStaticProcessing     staticFileProcessingExecutionDecision
+	buildCriticalCSS            bool
+	buildNormalCSS              bool
+	writeFrameworkPublicFileMap bool
+}
+
+func deriveStaticFileProcessingExecutionDecision(
+	shouldProcess bool,
+	changedFilePaths []string,
+) staticFileProcessingExecutionDecision {
+	if !shouldProcess {
+		return staticFileProcessingExecutionDecision{}
+	}
+	if len(changedFilePaths) == 0 {
+		return staticFileProcessingExecutionDecision{
+			mode: staticFileProcessingExecutionModeFullScan,
+		}
+	}
+	return staticFileProcessingExecutionDecision{
+		mode:             staticFileProcessingExecutionModeChangedPaths,
+		changedFilePaths: append([]string(nil), changedFilePaths...),
+	}
+}
+
+func shouldWriteFrameworkPublicFileMapTSForBuildDecision(
+	shouldProcessPublicStaticFiles bool,
+	frameworkPublicFileMapOutDir string,
+) bool {
+	return shouldProcessPublicStaticFiles && frameworkPublicFileMapOutDir != ""
+}
+
+func deriveBuildPhaseExecutionDecision(
+	buildDecision buildPhaseDecision,
+	frameworkPublicFileMapOutDir string,
+) buildPhaseExecutionDecision {
+	return buildPhaseExecutionDecision{
+		compileGo: buildDecision.compileGo,
+		publicStaticProcessing: deriveStaticFileProcessingExecutionDecision(
+			buildDecision.processPublicFiles,
+			buildDecision.publicStaticChangedFilePaths,
+		),
+		privateStaticProcessing: deriveStaticFileProcessingExecutionDecision(
+			buildDecision.processPrivateFiles,
+			buildDecision.privateStaticChangedFilePaths,
+		),
+		buildCriticalCSS: buildDecision.buildCriticalCSS,
+		buildNormalCSS:   buildDecision.buildNormalCSS,
+		writeFrameworkPublicFileMap: shouldWriteFrameworkPublicFileMapTSForBuildDecision(
+			buildDecision.processPublicFiles,
+			frameworkPublicFileMapOutDir,
+		),
+	}
+}
+
+func shouldExecuteAnyFileProcessingForBuildDecision(
+	executionDecision buildPhaseExecutionDecision,
+) bool {
+	return executionDecision.publicStaticProcessing.shouldProcess() ||
+		executionDecision.privateStaticProcessing.shouldProcess() ||
+		executionDecision.buildCriticalCSS ||
+		executionDecision.buildNormalCSS
+}
+
+type hookStageResult struct {
+	actions             []wave.RefreshAction
+	refreshActionResult refreshActionApplicationResult
+}
+
+type hookStageContinuationDecision struct {
+	shouldContinue      bool
+	restartActionResult refreshActionApplicationResult
+}
+
 func deriveImplicitBuildExecutionDecision(
 	shouldRunImplicitBuild bool,
 	eventCount int,
@@ -1156,10 +1788,64 @@ func deriveImplicitBuildExecutionDecision(
 	}
 }
 
-func shouldShortCircuitPipelineForRefreshActions(
-	actionResult refreshActionApplicationResult,
+func shouldShortCircuitPipelineForHookStageResult(
+	hookStageResultForCheck hookStageResult,
 ) bool {
-	return actionResult.restartRequested
+	return hookStageResultForCheck.refreshActionResult.restartRequested
+}
+
+func deriveHookStageContinuationDecision(
+	hookStageResultForContinuation hookStageResult,
+) hookStageContinuationDecision {
+	if shouldShortCircuitPipelineForHookStageResult(
+		hookStageResultForContinuation,
+	) {
+		return hookStageContinuationDecision{
+			restartActionResult: hookStageResultForContinuation.refreshActionResult,
+		}
+	}
+	return hookStageContinuationDecision{
+		shouldContinue: true,
+	}
+}
+
+func (s *server) continuePipelineAfterHookStageOrTriggerRestart(
+	hookStageResultForContinuation hookStageResult,
+) bool {
+	continuationDecision := deriveHookStageContinuationDecision(
+		hookStageResultForContinuation,
+	)
+	if continuationDecision.shouldContinue {
+		return true
+	}
+
+	s.triggerRestartFromRefreshActions(continuationDecision.restartActionResult)
+	return false
+}
+
+func applyHookStageActionsToWorkSet(
+	hookStageActions []wave.RefreshAction,
+	work *workSet,
+) hookStageResult {
+	hookStageResultForWork := hookStageResult{
+		actions: append([]wave.RefreshAction(nil), hookStageActions...),
+	}
+	if work == nil {
+		return hookStageResultForWork
+	}
+
+	hookStageResultForWork.refreshActionResult = work.applyRefreshActions(hookStageActions)
+	return hookStageResultForWork
+}
+
+func runAndApplyHookStageActionsToWorkSet(
+	runHookStageActions func() []wave.RefreshAction,
+	work *workSet,
+) hookStageResult {
+	if runHookStageActions == nil {
+		return applyHookStageActionsToWorkSet(nil, work)
+	}
+	return applyHookStageActionsToWorkSet(runHookStageActions(), work)
 }
 
 func shouldStartAppAfterImplicitBuild(
@@ -1169,14 +1855,15 @@ func shouldStartAppAfterImplicitBuild(
 	return shouldRunImplicitBuild && restart.restartApp
 }
 
-func shouldExecuteBrowserPhaseAfterHookActionResults(
-	preActionResult refreshActionApplicationResult,
-	concurrentActionResult refreshActionApplicationResult,
-	postActionResult refreshActionApplicationResult,
+func shouldExecuteBrowserPhaseAfterHookStageResults(
+	hookStageResults ...hookStageResult,
 ) bool {
-	return !preActionResult.restartRequested &&
-		!concurrentActionResult.restartRequested &&
-		!postActionResult.restartRequested
+	for _, hookStageResultForCheck := range hookStageResults {
+		if shouldShortCircuitPipelineForHookStageResult(hookStageResultForCheck) {
+			return false
+		}
+	}
+	return true
 }
 
 func deriveEventsWithHooksForExecution(
@@ -1208,20 +1895,21 @@ func deriveEventsWithHooksForExecution(
 }
 
 func (s *server) executeEventExecutionPlan(
-	plan *eventExecutionPlan,
+	eventsWithHooks []eventWithHooks,
+	behavioralDecision eventExecutionPlanBehavioralDecision,
 	work *workSet,
 	watcher *Watcher,
 ) {
-	if plan == nil || len(plan.eventsWithHooks) == 0 {
+	if len(eventsWithHooks) == 0 {
 		return
 	}
 
 	eventsWithHooksForExecution := deriveEventsWithHooksForExecution(
-		plan.eventsWithHooks,
-		plan.appStopStrategy,
+		eventsWithHooks,
+		behavioralDecision.appStopStrategy,
 	)
 
-	switch plan.appStopStrategy {
+	switch behavioralDecision.appStopStrategy {
 	case appStopStrategySingleEventHardReload:
 		s.log.Info("Terminating running app")
 		if err := s.stopApp(); err != nil {
@@ -1238,7 +1926,7 @@ func (s *server) executeEventExecutionPlan(
 	}
 
 	s.processEventsWithDeterministicPipeline(
-		plan,
+		behavioralDecision,
 		work,
 		watcher,
 		eventsWithHooksForExecution,
@@ -1246,26 +1934,31 @@ func (s *server) executeEventExecutionPlan(
 }
 
 func (s *server) processEventsWithDeterministicPipeline(
-	plan *eventExecutionPlan,
+	behavioralDecision eventExecutionPlanBehavioralDecision,
 	work *workSet,
 	watcher *Watcher,
 	eventsWithHooks []eventWithHooks,
 ) {
-	if plan == nil || len(eventsWithHooks) == 0 {
+	if len(eventsWithHooks) == 0 {
 		return
 	}
 
 	s.fireNoWaitHooksForEvents(eventsWithHooks, watcher)
 
-	preActions := s.runPreHooksForEvents(eventsWithHooks, work, watcher)
-	preActionResult := work.applyRefreshActions(preActions)
-	if shouldShortCircuitPipelineForRefreshActions(preActionResult) {
-		s.triggerRestartFromRefreshActions(preActionResult)
+	preHookStageResult := runAndApplyHookStageActionsToWorkSet(
+		func() []wave.RefreshAction {
+			return s.runPreHooksForEvents(eventsWithHooks, work, watcher)
+		},
+		work,
+	)
+	if !s.continuePipelineAfterHookStageOrTriggerRestart(
+		preHookStageResult,
+	) {
 		return
 	}
 
 	implicitBuildDecision := deriveImplicitBuildExecutionDecision(
-		plan.runImplicitBuild,
+		behavioralDecision.runImplicitBuild,
 		len(eventsWithHooks),
 	)
 	if !implicitBuildDecision.shouldRunImplicitBuild {
@@ -1289,16 +1982,25 @@ func (s *server) processEventsWithDeterministicPipeline(
 	})
 	_ = buildAndConcurrentHooksGroup.Wait()
 
-	concurrentActionResult := work.applyRefreshActions(concurrentActions)
-	if shouldShortCircuitPipelineForRefreshActions(concurrentActionResult) {
-		s.triggerRestartFromRefreshActions(concurrentActionResult)
+	concurrentHookStageResult := applyHookStageActionsToWorkSet(
+		concurrentActions,
+		work,
+	)
+	if !s.continuePipelineAfterHookStageOrTriggerRestart(
+		concurrentHookStageResult,
+	) {
 		return
 	}
 
-	postActions := s.runPostHooksForEvents(eventsWithHooks, watcher)
-	postActionResult := work.applyRefreshActions(postActions)
-	if shouldShortCircuitPipelineForRefreshActions(postActionResult) {
-		s.triggerRestartFromRefreshActions(postActionResult)
+	postHookStageResult := runAndApplyHookStageActionsToWorkSet(
+		func() []wave.RefreshAction {
+			return s.runPostHooksForEvents(eventsWithHooks, watcher)
+		},
+		work,
+	)
+	if !s.continuePipelineAfterHookStageOrTriggerRestart(
+		postHookStageResult,
+	) {
 		return
 	}
 
@@ -1310,10 +2012,10 @@ func (s *server) processEventsWithDeterministicPipeline(
 		s.startApp()
 	}
 
-	if shouldExecuteBrowserPhaseAfterHookActionResults(
-		preActionResult,
-		concurrentActionResult,
-		postActionResult,
+	if shouldExecuteBrowserPhaseAfterHookStageResults(
+		preHookStageResult,
+		concurrentHookStageResult,
+		postHookStageResult,
 	) {
 		s.executeBrowserPhase(work)
 	}
@@ -1435,17 +2137,14 @@ func (s *server) runPostHooksForEvents(
 }
 
 func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
-	for _, hook := range ewh.hooks.ConcurrentNoWait {
-		hookForExecution, shouldRunHook := resolveHookForStageExecution(
-			watcher,
-			ewh.classified.event.Name,
-			ewh.runOnChangeOnly,
-			false,
-			hook,
-		)
-		if !shouldRunHook {
-			continue
-		}
+	hooksForExecution := deriveExecutableHooksForStage(
+		watcher,
+		ewh.classified.event.Name,
+		ewh.runOnChangeOnly,
+		false,
+		ewh.hooks.ConcurrentNoWait,
+	)
+	for _, hookForExecution := range hooksForExecution {
 		if hookForExecution.Callback != nil {
 			go func(cb func(*wave.HookContext) (*wave.RefreshAction, error), ctx *wave.HookContext) {
 				if _, err := cb(ctx); err != nil {
@@ -1467,18 +2166,15 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
 	var actions []wave.RefreshAction
 
-	for _, preHook := range ewh.hooks.Pre {
-		hookForExecution, shouldRunHook := resolveHookForStageExecution(
-			watcher,
-			ewh.classified.event.Name,
-			ewh.runOnChangeOnly,
-			false,
-			preHook,
-		)
-		if !shouldRunHook {
-			continue
-		}
-		action, err := s.executeHook(hookForExecution, ewh.hookCtx)
+	preHooksForExecution := deriveExecutableHooksForStage(
+		watcher,
+		ewh.classified.event.Name,
+		ewh.runOnChangeOnly,
+		false,
+		ewh.hooks.Pre,
+	)
+	for _, preHookForExecution := range preHooksForExecution {
+		action, err := s.executeHook(preHookForExecution, ewh.hookCtx)
 		if action != nil {
 			actions = append(actions, *action)
 		}
@@ -1491,24 +2187,15 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 }
 
 func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
-	if len(ewh.hooks.Concurrent) == 0 {
+	concurrentHooksToRun := deriveExecutableHooksForStage(
+		watcher,
+		ewh.classified.event.Name,
+		ewh.runOnChangeOnly,
+		true,
+		ewh.hooks.Concurrent,
+	)
+	if len(concurrentHooksToRun) == 0 {
 		return nil, nil
-	}
-
-	concurrentHooksToRun := make([]wave.OnChangeHook, 0, len(ewh.hooks.Concurrent))
-	for _, concurrentHook := range ewh.hooks.Concurrent {
-		hookForExecution, shouldRunHook := resolveHookForStageExecution(
-			watcher,
-			ewh.classified.event.Name,
-			ewh.runOnChangeOnly,
-			true,
-			concurrentHook,
-		)
-		if !shouldRunHook {
-			continue
-		}
-
-		concurrentHooksToRun = append(concurrentHooksToRun, hookForExecution)
 	}
 
 	actionsByHookIndex := make([]*wave.RefreshAction, len(concurrentHooksToRun))
@@ -1538,19 +2225,15 @@ func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wav
 func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
 	var actions []wave.RefreshAction
 
-	for _, postHook := range ewh.hooks.Post {
-		hookForExecution, shouldRunHook := resolveHookForStageExecution(
-			watcher,
-			ewh.classified.event.Name,
-			ewh.runOnChangeOnly,
-			true,
-			postHook,
-		)
-		if !shouldRunHook {
-			continue
-		}
-
-		action, err := s.executeHook(hookForExecution, ewh.hookCtx)
+	postHooksForExecution := deriveExecutableHooksForStage(
+		watcher,
+		ewh.classified.event.Name,
+		ewh.runOnChangeOnly,
+		true,
+		ewh.hooks.Post,
+	)
+	for _, postHookForExecution := range postHooksForExecution {
+		action, err := s.executeHook(postHookForExecution, ewh.hookCtx)
 		if action != nil {
 			actions = append(actions, *action)
 		}
@@ -1560,6 +2243,35 @@ func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refr
 	}
 
 	return actions, nil
+}
+
+func deriveExecutableHooksForStage(
+	watcher *Watcher,
+	eventPath string,
+	isRunOnChangeOnly bool,
+	shouldApplyRunOnChangeOnlyRules bool,
+	stageHooks []wave.OnChangeHook,
+) []wave.OnChangeHook {
+	if len(stageHooks) == 0 {
+		return nil
+	}
+
+	hooksForExecution := make([]wave.OnChangeHook, 0, len(stageHooks))
+	for _, stageHook := range stageHooks {
+		hookForExecution, shouldRunHook := resolveHookForStageExecution(
+			watcher,
+			eventPath,
+			isRunOnChangeOnly,
+			shouldApplyRunOnChangeOnlyRules,
+			stageHook,
+		)
+		if !shouldRunHook {
+			continue
+		}
+		hooksForExecution = append(hooksForExecution, hookForExecution)
+	}
+
+	return hooksForExecution
 }
 
 func resolveHookForStageExecution(
@@ -1642,9 +2354,14 @@ func (s *server) executeBuildPhase(work *workSet) {
 		return
 	}
 
+	buildExecutionDecision := deriveBuildPhaseExecutionDecision(
+		work.build,
+		s.cfg.FrameworkPublicFileMapOutDir,
+	)
+
 	var g errgroup.Group
 
-	if work.build.compileGo {
+	if buildExecutionDecision.compileGo {
 		g.Go(func() error {
 			if err := builder.CompileGoOnly(true); err != nil {
 				s.log.Error("Go compilation failed", "error", err)
@@ -1654,52 +2371,27 @@ func (s *server) executeBuildPhase(work *workSet) {
 		})
 	}
 
-	needsFileProcessing := work.build.hasFileProcessingWork()
-
-	if needsFileProcessing {
+	if shouldExecuteAnyFileProcessingForBuildDecision(buildExecutionDecision) {
 		g.Go(func() error {
-			if work.build.processPublicFiles {
-				var publicProcessingError error
-				if len(work.build.publicStaticChangedFilePaths) > 0 {
-					publicProcessingError = builder.processPublicFilesOnlyForChangedPaths(
-						work.build.publicStaticChangedFilePaths,
-					)
-				} else {
-					publicProcessingError = builder.ProcessPublicFilesOnly()
-				}
-				if publicProcessingError != nil {
-					s.log.Error("Public files processing failed", "error", publicProcessingError)
-					return publicProcessingError
-				}
-				if s.cfg.FrameworkPublicFileMapOutDir != "" {
-					if err := builder.WritePublicFileMapTS(s.cfg.FrameworkPublicFileMapOutDir); err != nil {
-						s.log.Error("Write public file map TS failed", "error", err)
-						return err
-					}
-				}
+			if err := s.executePublicStaticProcessingForBuildPhase(
+				builder,
+				buildExecutionDecision,
+			); err != nil {
+				return err
 			}
 
 			var innerG errgroup.Group
 
-			if work.build.processPrivateFiles {
+			if buildExecutionDecision.privateStaticProcessing.shouldProcess() {
 				innerG.Go(func() error {
-					var privateProcessingError error
-					if len(work.build.privateStaticChangedFilePaths) > 0 {
-						privateProcessingError = builder.processPrivateFilesOnlyForChangedPaths(
-							work.build.privateStaticChangedFilePaths,
-						)
-					} else {
-						privateProcessingError = builder.ProcessPrivateFilesOnly()
-					}
-					if privateProcessingError != nil {
-						s.log.Error("Private files processing failed", "error", privateProcessingError)
-						return privateProcessingError
-					}
-					return nil
+					return s.executePrivateStaticProcessingForBuildPhase(
+						builder,
+						buildExecutionDecision.privateStaticProcessing,
+					)
 				})
 			}
 
-			if work.build.buildCriticalCSS {
+			if buildExecutionDecision.buildCriticalCSS {
 				innerG.Go(func() error {
 					if err := builder.BuildCriticalCSS(true); err != nil {
 						s.log.Error("Critical CSS build failed", "error", err)
@@ -1709,7 +2401,7 @@ func (s *server) executeBuildPhase(work *workSet) {
 				})
 			}
 
-			if work.build.buildNormalCSS {
+			if buildExecutionDecision.buildNormalCSS {
 				innerG.Go(func() error {
 					if err := builder.BuildNormalCSS(true); err != nil {
 						s.log.Error("Normal CSS build failed", "error", err)
@@ -1728,95 +2420,180 @@ func (s *server) executeBuildPhase(work *workSet) {
 	}
 }
 
+func (s *server) executePublicStaticProcessingForBuildPhase(
+	builder *Builder,
+	buildExecutionDecision buildPhaseExecutionDecision,
+) error {
+	if !buildExecutionDecision.publicStaticProcessing.shouldProcess() {
+		return nil
+	}
+
+	publicStaticProcessingError := executeStaticFileProcessingForBuildPhase(
+		builder.ProcessPublicFilesOnly,
+		builder.processPublicFilesOnlyForChangedPaths,
+		buildExecutionDecision.publicStaticProcessing,
+	)
+	if publicStaticProcessingError != nil {
+		s.log.Error("Public files processing failed", "error", publicStaticProcessingError)
+		return publicStaticProcessingError
+	}
+
+	if buildExecutionDecision.writeFrameworkPublicFileMap {
+		if err := builder.WritePublicFileMapTS(s.cfg.FrameworkPublicFileMapOutDir); err != nil {
+			s.log.Error("Write public file map TS failed", "error", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *server) executePrivateStaticProcessingForBuildPhase(
+	builder *Builder,
+	privateStaticProcessingDecision staticFileProcessingExecutionDecision,
+) error {
+	privateStaticProcessingError := executeStaticFileProcessingForBuildPhase(
+		builder.ProcessPrivateFilesOnly,
+		builder.processPrivateFilesOnlyForChangedPaths,
+		privateStaticProcessingDecision,
+	)
+	if privateStaticProcessingError != nil {
+		s.log.Error("Private files processing failed", "error", privateStaticProcessingError)
+		return privateStaticProcessingError
+	}
+	return nil
+}
+
+func executeStaticFileProcessingForBuildPhase(
+	executeFullStaticProcessing func() error,
+	executeChangedPathsStaticProcessing func([]string) error,
+	staticProcessingDecision staticFileProcessingExecutionDecision,
+) error {
+	switch staticProcessingDecision.mode {
+	case staticFileProcessingExecutionModeNone:
+		return nil
+
+	case staticFileProcessingExecutionModeChangedPaths:
+		if executeChangedPathsStaticProcessing == nil {
+			return nil
+		}
+		return executeChangedPathsStaticProcessing(staticProcessingDecision.changedFilePaths)
+
+	case staticFileProcessingExecutionModeFullScan:
+		if executeFullStaticProcessing == nil {
+			return nil
+		}
+		return executeFullStaticProcessing()
+
+	default:
+		return nil
+	}
+}
+
 func (s *server) executeBrowserPhase(work *workSet) {
 	if !s.cfg.UsingBrowser() {
 		return
 	}
 
 	builder := s.getBuilder()
-
-	switch work.browser.action {
-	case browserPhaseActionInvalidateVite:
-		if s.cfg.UsingVite() {
+	browserDecisionForExecution := work.browser
+	if browserDecisionForExecution.action == browserPhaseActionInvalidateVite {
+		if shouldAttemptViteInvalidateForBrowserDecision(
+			browserDecisionForExecution,
+			s.cfg.UsingVite(),
+		) {
 			if err := s.callViteFilemapInvalidate(); err != nil {
 				s.log.Warn("Vite filemap invalidate failed, falling back to reload", "error", err)
 			} else {
 				return
 			}
 		}
-		fallbackDecision := planInvalidateViteFallbackBrowserDecision(s.cfg.UsingVite())
-		work.browser.action = fallbackDecision.action
-		work.browser.waitForApp = fallbackDecision.waitForApp
-		work.browser.waitForVite = fallbackDecision.waitForVite
-		fallthrough
+		browserDecisionForExecution = resolveBrowserDecisionAfterInvalidateViteFallback(
+			browserDecisionForExecution,
+			s.cfg.UsingVite(),
+		)
+		work.browser = browserDecisionForExecution
+	}
 
-	case browserPhaseActionHardReload, browserPhaseActionRevalidate:
-		if reloadPlan, hasReloadPlan := planBrowserReloadForAction(work.browser.action, work.browser); hasReloadPlan {
-			if work.browser.action == browserPhaseActionHardReload {
-				s.log.Info("Hard reloading browser")
-			} else {
-				s.log.Info("Running client-defined revalidate function")
-			}
-			s.broadcastReload(reloadPlan)
+	switch deriveBrowserPhaseExecutionCategory(browserDecisionForExecution.action) {
+	case browserPhaseExecutionCategoryReload:
+		reloadPlan, hasReloadPlan := planBrowserReloadForAction(
+			browserDecisionForExecution.action,
+			browserDecisionForExecution,
+		)
+		if !hasReloadPlan {
 			return
 		}
+		if browserDecisionForExecution.action == browserPhaseActionHardReload {
+			s.log.Info("Hard reloading browser")
+		} else {
+			s.log.Info("Running client-defined revalidate function")
+		}
+		s.broadcastReload(reloadPlan)
+		return
 
-	case browserPhaseActionHotReloadCSS:
+	case browserPhaseExecutionCategoryHotReloadCSS:
 		if builder == nil {
 			return
 		}
-
-		s.log.Info("Hot reloading CSS")
-
-		criticalCSS := ""
-		criticalCSSAvailable := false
-		if work.build.buildCriticalCSS {
-			var readCriticalCSSError error
-			criticalCSS, readCriticalCSSError = builder.ReadCriticalCSSForHotReload(true)
-			if readCriticalCSSError != nil {
-				s.log.Warn(
-					"Skipping critical CSS hot reload payload due to missing fresh build output",
-					"error",
-					readCriticalCSSError,
-				)
-			} else {
-				criticalCSSAvailable = true
-			}
-		}
-
-		normalCSSURL := ""
-		normalCSSURLAvailable := false
-		if work.build.buildNormalCSS {
-			var readNormalCSSURLError error
-			normalCSSURL, readNormalCSSURLError = builder.ReadNormalCSSURLForHotReload(true)
-			if readNormalCSSURLError != nil {
-				s.log.Warn(
-					"Skipping normal CSS hot reload payload due to missing fresh build output",
-					"error",
-					readNormalCSSURLError,
-				)
-			} else {
-				normalCSSURLAvailable = true
-			}
-		}
-
-		payloads := planHotReloadCSSPayloads(
-			work.build.buildCriticalCSS,
-			criticalCSS,
-			criticalCSSAvailable,
-			work.build.buildNormalCSS,
-			normalCSSURL,
-			normalCSSURLAvailable,
-		)
-		for _, payload := range payloads {
-			s.broadcastReload(reloadOpts{
-				payload: payload,
-			})
-		}
+		s.executeHotReloadCSSBrowserPhase(builder, work.build)
 		return
 
-	case browserPhaseActionNone:
+	case browserPhaseExecutionCategoryNone:
 		return
+	}
+}
+
+func (s *server) executeHotReloadCSSBrowserPhase(
+	builder *Builder,
+	buildDecision buildPhaseDecision,
+) {
+	s.log.Info("Hot reloading CSS")
+
+	criticalCSS := ""
+	criticalCSSAvailable := false
+	if buildDecision.buildCriticalCSS {
+		var readCriticalCSSError error
+		criticalCSS, readCriticalCSSError = builder.ReadCriticalCSSForHotReload(true)
+		if readCriticalCSSError != nil {
+			s.log.Warn(
+				"Skipping critical CSS hot reload payload due to missing fresh build output",
+				"error",
+				readCriticalCSSError,
+			)
+		} else {
+			criticalCSSAvailable = true
+		}
+	}
+
+	normalCSSURL := ""
+	normalCSSURLAvailable := false
+	if buildDecision.buildNormalCSS {
+		var readNormalCSSURLError error
+		normalCSSURL, readNormalCSSURLError = builder.ReadNormalCSSURLForHotReload(true)
+		if readNormalCSSURLError != nil {
+			s.log.Warn(
+				"Skipping normal CSS hot reload payload due to missing fresh build output",
+				"error",
+				readNormalCSSURLError,
+			)
+		} else {
+			normalCSSURLAvailable = true
+		}
+	}
+
+	payloads := planHotReloadCSSPayloads(
+		buildDecision.buildCriticalCSS,
+		criticalCSS,
+		criticalCSSAvailable,
+		buildDecision.buildNormalCSS,
+		normalCSSURL,
+		normalCSSURLAvailable,
+	)
+	for _, payload := range payloads {
+		s.broadcastReload(reloadOpts{
+			payload: payload,
+		})
 	}
 }
 

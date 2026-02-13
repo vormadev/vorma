@@ -6,15 +6,23 @@ import (
 	"strings"
 )
 
-func Absolute(path string) string {
+func TrimAndCleanPath(path string) string {
 	trimmedPath := strings.TrimSpace(path)
 	if trimmedPath == "" {
 		return ""
 	}
+	return filepath.Clean(trimmedPath)
+}
 
-	absolutePath, err := filepath.Abs(trimmedPath)
+func Absolute(path string) string {
+	cleanedPath := TrimAndCleanPath(path)
+	if cleanedPath == "" {
+		return ""
+	}
+
+	absolutePath, err := filepath.Abs(cleanedPath)
 	if err != nil {
-		return filepath.Clean(trimmedPath)
+		return cleanedPath
 	}
 
 	return filepath.Clean(absolutePath)

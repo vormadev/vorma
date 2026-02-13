@@ -89,8 +89,11 @@ func TestBuildEventExecutionPlan_ConfigChangeHasNoPlan(t *testing.T) {
 					pathShapeCaseForRun.name,
 				)
 			}
-			if executionPlanningResult.plan != nil {
-				t.Fatalf("expected no plan when config changed, got %#v", executionPlanningResult.plan)
+			if executionPlanningResult.eventsWithHooks != nil {
+				t.Fatalf(
+					"expected no eventsWithHooks when config changed, got %#v",
+					executionPlanningResult.eventsWithHooks,
+				)
 			}
 		},
 	)
@@ -141,29 +144,32 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(t *testing.T)
 	if executionPlanningResult.configChanged {
 		t.Fatal("expected configChanged=false for normal file batch")
 	}
-	if executionPlanningResult.plan == nil {
-		t.Fatal("expected execution plan for batch change")
+	if len(executionPlanningResult.eventsWithHooks) == 0 {
+		t.Fatal("expected eventsWithHooks for batch change")
 	}
 
-	executionPlan := executionPlanningResult.plan
-	if len(executionPlan.eventsWithHooks) <= 1 {
+	eventsWithHooks := executionPlanningResult.eventsWithHooks
+	if len(eventsWithHooks) <= 1 {
 		t.Fatal("expected isBatch=true")
 	}
-	if executionPlan.appStopStrategy != appStopStrategyNone {
+	behavioralDecision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+		eventsWithHooks,
+	)
+	if behavioralDecision.appStopStrategy != appStopStrategyNone {
 		t.Fatal("expected batchNeedsAppStop=false for txt-only batch")
 	}
-	if !executionPlan.runImplicitBuild {
+	if !behavioralDecision.runImplicitBuild {
 		t.Fatal("expected runImplicitBuild=true for non-run-on-change-only batch")
 	}
-	if !executionPlan.showRebuildingOverlay {
+	if !behavioralDecision.showRebuildingOverlay {
 		t.Fatal("expected showRebuildingOverlay=true for txt batch")
 	}
-	if len(executionPlan.eventsWithHooks) != 2 {
-		t.Fatalf("expected 2 eventsWithHooks, got %d", len(executionPlan.eventsWithHooks))
+	if len(eventsWithHooks) != 2 {
+		t.Fatalf("expected 2 eventsWithHooks, got %d", len(eventsWithHooks))
 	}
 
-	firstHookContextPaths := executionPlan.eventsWithHooks[0].hookCtx.ChangedFilePaths
-	secondHookContextPaths := executionPlan.eventsWithHooks[1].hookCtx.ChangedFilePaths
+	firstHookContextPaths := eventsWithHooks[0].hookCtx.ChangedFilePaths
+	secondHookContextPaths := eventsWithHooks[1].hookCtx.ChangedFilePaths
 	if len(firstHookContextPaths) != 2 {
 		t.Fatalf("expected first hook context to include 2 changed paths, got %#v", firstHookContextPaths)
 	}
@@ -171,10 +177,10 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(t *testing.T)
 		t.Fatalf("expected second hook context to include 2 changed paths, got %#v", secondHookContextPaths)
 	}
 
-	if executionPlan.eventsWithHooks[0].skipDuplicateHooks {
+	if eventsWithHooks[0].skipDuplicateHooks {
 		t.Fatal("expected first matched pattern hook set not to be deduplicated")
 	}
-	if !executionPlan.eventsWithHooks[1].skipDuplicateHooks {
+	if !eventsWithHooks[1].skipDuplicateHooks {
 		t.Fatal("expected second matched pattern hook set to be deduplicated")
 	}
 }
@@ -249,30 +255,33 @@ func TestBuildEventExecutionPlan_MixedFileClassesAndHookShapes(t *testing.T) {
 	if executionPlanningResult.configChanged {
 		t.Fatal("expected configChanged=false for non-config mixed batch")
 	}
-	if executionPlanningResult.plan == nil {
-		t.Fatal("expected execution plan for mixed batch")
+	if len(executionPlanningResult.eventsWithHooks) == 0 {
+		t.Fatal("expected eventsWithHooks for mixed batch")
 	}
 
-	executionPlan := executionPlanningResult.plan
-	if executionPlan.appStopStrategy != appStopStrategyBatchHardReload {
+	eventsWithHooks := executionPlanningResult.eventsWithHooks
+	behavioralDecision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+		eventsWithHooks,
+	)
+	if behavioralDecision.appStopStrategy != appStopStrategyBatchHardReload {
 		t.Fatalf(
 			"expected batch hard reload app stop strategy, got %v",
-			executionPlan.appStopStrategy,
+			behavioralDecision.appStopStrategy,
 		)
 	}
-	if !executionPlan.runImplicitBuild {
+	if !behavioralDecision.runImplicitBuild {
 		t.Fatal("expected runImplicitBuild=true for mixed batch with implicit work")
 	}
-	if !executionPlan.showRebuildingOverlay {
+	if !behavioralDecision.showRebuildingOverlay {
 		t.Fatal("expected showRebuildingOverlay=true for mixed non-css batch")
 	}
-	if len(executionPlan.eventsWithHooks) != 4 {
-		t.Fatalf("expected 4 eventsWithHooks, got %d", len(executionPlan.eventsWithHooks))
+	if len(eventsWithHooks) != 4 {
+		t.Fatalf("expected 4 eventsWithHooks, got %d", len(eventsWithHooks))
 	}
 
 	var matchedTextPatternCount int
 	var deduplicatedTextPatternCount int
-	for _, eventWithHooksForPlan := range executionPlan.eventsWithHooks {
+	for _, eventWithHooksForPlan := range eventsWithHooks {
 		isTextEvent := eventWithHooksForPlan.classified.event.Name == textFilePathA ||
 			eventWithHooksForPlan.classified.event.Name == textFilePathB
 		if !isTextEvent {
@@ -369,13 +378,13 @@ func TestShouldRunImplicitBuildForEvents(t *testing.T) {
 }
 
 func TestBuildEventExecutionPlanFromClassifiedEvents(t *testing.T) {
-	t.Run("returns nil for empty classified events", func(t *testing.T) {
-		if plan := buildEventExecutionPlanFromClassifiedEvents(nil); plan != nil {
-			t.Fatalf("expected nil plan for empty classified events, got %#v", plan)
+	t.Run("returns nil events-with-hooks for empty classified events", func(t *testing.T) {
+		if eventsWithHooks := buildEventExecutionPlanFromClassifiedEvents(nil); eventsWithHooks != nil {
+			t.Fatalf("expected nil eventsWithHooks for empty classified events, got %#v", eventsWithHooks)
 		}
 	})
 
-	t.Run("derives plan fields for mixed classified events", func(t *testing.T) {
+	t.Run("derives events-with-hooks for mixed classified events", func(t *testing.T) {
 		classifiedEvents := []classifiedEvent{
 			{
 				event:    fsnotify.Event{Name: "main.go", Op: fsnotify.Write},
@@ -399,29 +408,357 @@ func TestBuildEventExecutionPlanFromClassifiedEvents(t *testing.T) {
 			},
 		}
 
-		plan := buildEventExecutionPlanFromClassifiedEvents(classifiedEvents)
-		if plan == nil {
-			t.Fatal("expected non-nil plan for mixed classified events")
+		eventsWithHooks := buildEventExecutionPlanFromClassifiedEvents(classifiedEvents)
+		if eventsWithHooks == nil {
+			t.Fatal("expected non-nil eventsWithHooks for mixed classified events")
 		}
-		if plan.appStopStrategy != appStopStrategyBatchHardReload {
-			t.Fatalf("expected batch hard reload app stop strategy, got %v", plan.appStopStrategy)
+		behavioralDecision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+			eventsWithHooks,
+		)
+		if behavioralDecision.appStopStrategy != appStopStrategyBatchHardReload {
+			t.Fatalf("expected batch hard reload app stop strategy, got %v", behavioralDecision.appStopStrategy)
 		}
-		if !plan.runImplicitBuild {
+		if !behavioralDecision.runImplicitBuild {
 			t.Fatal("expected runImplicitBuild=true when any event is not run-on-change-only")
 		}
-		if !plan.showRebuildingOverlay {
+		if !behavioralDecision.showRebuildingOverlay {
 			t.Fatal("expected showRebuildingOverlay=true for non-css changes")
 		}
-		if len(plan.eventsWithHooks) != 3 {
-			t.Fatalf("expected 3 eventsWithHooks, got %d", len(plan.eventsWithHooks))
+		if len(eventsWithHooks) != 3 {
+			t.Fatalf("expected 3 eventsWithHooks, got %d", len(eventsWithHooks))
 		}
 
-		if plan.eventsWithHooks[0].skipDuplicateHooks {
+		if eventsWithHooks[0].skipDuplicateHooks {
 			t.Fatal("expected first txt-pattern event to execute hooks")
 		}
-		if !plan.eventsWithHooks[1].skipDuplicateHooks &&
-			!plan.eventsWithHooks[2].skipDuplicateHooks {
+		if !eventsWithHooks[1].skipDuplicateHooks &&
+			!eventsWithHooks[2].skipDuplicateHooks {
 			t.Fatal("expected one of the txt-pattern events to skip duplicate hooks")
+		}
+	})
+}
+
+func TestDeriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(t *testing.T) {
+	t.Run("empty inputs produce zero behavioral decision", func(t *testing.T) {
+		decision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(nil)
+		if decision.showRebuildingOverlay {
+			t.Fatalf("expected showRebuildingOverlay=false, got %#v", decision)
+		}
+		if decision.appStopStrategy != appStopStrategyNone {
+			t.Fatalf("expected appStopStrategy=none, got %#v", decision)
+		}
+		if decision.runImplicitBuild {
+			t.Fatalf("expected runImplicitBuild=false, got %#v", decision)
+		}
+	})
+
+	t.Run("single hard-reload run-on-change event keeps implicit build disabled", func(t *testing.T) {
+		decision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+			[]eventWithHooks{
+				{
+					classified: classifiedEvent{
+						event:    fsnotify.Event{Name: "notes.txt", Op: fsnotify.Write},
+						fileType: fileTypeOther,
+					},
+					needsHardReload: true,
+					runOnChangeOnly: true,
+				},
+			},
+		)
+		if !decision.showRebuildingOverlay {
+			t.Fatalf("expected showRebuildingOverlay=true for non-css event, got %#v", decision)
+		}
+		if decision.appStopStrategy != appStopStrategySingleEventHardReload {
+			t.Fatalf("expected single hard-reload stop strategy, got %#v", decision)
+		}
+		if decision.runImplicitBuild {
+			t.Fatalf("expected runImplicitBuild=false for single run-on-change-only event, got %#v", decision)
+		}
+	})
+
+	t.Run("batch with hard reload and implicit build requested", func(t *testing.T) {
+		decision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+			[]eventWithHooks{
+				{
+					classified: classifiedEvent{
+						event:    fsnotify.Event{Name: "main.go", Op: fsnotify.Write},
+						fileType: fileTypeGo,
+					},
+					needsHardReload: true,
+					runOnChangeOnly: false,
+				},
+				{
+					classified: classifiedEvent{
+						event:    fsnotify.Event{Name: "notes.txt", Op: fsnotify.Write},
+						fileType: fileTypeOther,
+					},
+					needsHardReload: false,
+					runOnChangeOnly: true,
+				},
+			},
+		)
+		if !decision.showRebuildingOverlay {
+			t.Fatalf("expected showRebuildingOverlay=true for mixed non-css batch, got %#v", decision)
+		}
+		if decision.appStopStrategy != appStopStrategyBatchHardReload {
+			t.Fatalf("expected batch hard-reload stop strategy, got %#v", decision)
+		}
+		if !decision.runImplicitBuild {
+			t.Fatalf("expected runImplicitBuild=true when any event is not run-on-change-only, got %#v", decision)
+		}
+	})
+
+	t.Run("css-only classified events suppress rebuilding overlay", func(t *testing.T) {
+		decision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+			[]eventWithHooks{
+				{
+					classified:      classifiedEvent{fileType: fileTypeCriticalCSS},
+					runOnChangeOnly: false,
+				},
+				{
+					classified:      classifiedEvent{fileType: fileTypeNormalCSS},
+					runOnChangeOnly: false,
+				},
+			},
+		)
+		if decision.showRebuildingOverlay {
+			t.Fatalf("expected showRebuildingOverlay=false for css-only changes, got %#v", decision)
+		}
+		if decision.appStopStrategy != appStopStrategyNone {
+			t.Fatalf("expected appStopStrategy=none for css-only no-hard-reload batch, got %#v", decision)
+		}
+		if !decision.runImplicitBuild {
+			t.Fatalf("expected runImplicitBuild=true for non-run-on-change-only css events, got %#v", decision)
+		}
+	})
+}
+
+func TestBuildWatcherEventLogPayloadsForEventsWithHooks(t *testing.T) {
+	t.Run("returns nil for nil or empty events-with-hooks", func(t *testing.T) {
+		if watcherEventLogPayloads := buildWatcherEventLogPayloadsForEventsWithHooks(nil); watcherEventLogPayloads != nil {
+			t.Fatalf("expected nil watcher event log payloads for nil plan, got %#v", watcherEventLogPayloads)
+		}
+
+		watcherEventLogPayloads := buildWatcherEventLogPayloadsForEventsWithHooks(
+			[]eventWithHooks{},
+		)
+		if watcherEventLogPayloads != nil {
+			t.Fatalf("expected nil watcher event log payloads for empty plan, got %#v", watcherEventLogPayloads)
+		}
+	})
+
+	t.Run("builds payloads in events-with-hooks order", func(t *testing.T) {
+		eventsWithHooks := []eventWithHooks{
+			{
+				classified: classifiedEvent{
+					event: fsnotify.Event{Name: "a.go", Op: fsnotify.Create},
+				},
+			},
+			{
+				classified: classifiedEvent{
+					event: fsnotify.Event{Name: "b.txt", Op: fsnotify.Write},
+				},
+			},
+			{
+				classified: classifiedEvent{
+					event: fsnotify.Event{Name: "c.css", Op: fsnotify.Remove},
+				},
+			},
+		}
+
+		watcherEventLogPayloads := buildWatcherEventLogPayloadsForEventsWithHooks(eventsWithHooks)
+		expectedWatcherEventLogPayloads := []watcherEventLogPayload{
+			{
+				operation: fsnotify.Create.String(),
+				filePath:  "a.go",
+			},
+			{
+				operation: fsnotify.Write.String(),
+				filePath:  "b.txt",
+			},
+			{
+				operation: fsnotify.Remove.String(),
+				filePath:  "c.css",
+			},
+		}
+		if !reflect.DeepEqual(watcherEventLogPayloads, expectedWatcherEventLogPayloads) {
+			t.Fatalf(
+				"watcher event log payloads=%#v, want %#v",
+				watcherEventLogPayloads,
+				expectedWatcherEventLogPayloads,
+			)
+		}
+	})
+}
+
+func TestDeriveWatcherEventFlowDecisionFromPlanningResult(t *testing.T) {
+	testCases := []struct {
+		name             string
+		planningResult   eventExecutionPlanningResult
+		expectedDecision watcherEventFlowDecision
+	}{
+		{
+			name: "config-change planning triggers config restart and skips execution",
+			planningResult: eventExecutionPlanningResult{
+				configChanged: true,
+				eventsWithHooks: []eventWithHooks{
+					{},
+				},
+			},
+			expectedDecision: watcherEventFlowDecision{
+				triggerConfigRestart: true,
+			},
+		},
+		{
+			name: "empty eventsWithHooks does not execute",
+			planningResult: eventExecutionPlanningResult{
+				configChanged:   false,
+				eventsWithHooks: nil,
+			},
+			expectedDecision: watcherEventFlowDecision{},
+		},
+		{
+			name: "eventsWithHooks executes without rebuilding overlay",
+			planningResult: eventExecutionPlanningResult{
+				eventsWithHooks: []eventWithHooks{
+					{
+						classified: classifiedEvent{
+							fileType: fileTypeCriticalCSS,
+						},
+					},
+				},
+			},
+			expectedDecision: watcherEventFlowDecision{
+				broadcastRebuildingOverlay: false,
+				behavioralDecision: eventExecutionPlanBehavioralDecision{
+					showRebuildingOverlay: false,
+					appStopStrategy:       appStopStrategyNone,
+					runImplicitBuild:      true,
+				},
+			},
+		},
+		{
+			name: "eventsWithHooks executes with rebuilding overlay",
+			planningResult: eventExecutionPlanningResult{
+				eventsWithHooks: []eventWithHooks{
+					{
+						classified: classifiedEvent{
+							fileType: fileTypeOther,
+						},
+					},
+				},
+			},
+			expectedDecision: watcherEventFlowDecision{
+				broadcastRebuildingOverlay: true,
+				behavioralDecision: eventExecutionPlanBehavioralDecision{
+					showRebuildingOverlay: true,
+					appStopStrategy:       appStopStrategyNone,
+					runImplicitBuild:      true,
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			decision := deriveWatcherEventFlowDecisionFromPlanningResult(testCase.planningResult)
+			if !reflect.DeepEqual(decision, testCase.expectedDecision) {
+				t.Fatalf(
+					"deriveWatcherEventFlowDecisionFromPlanningResult()=%#v, want %#v",
+					decision,
+					testCase.expectedDecision,
+				)
+			}
+		})
+	}
+}
+
+func TestBuildWatcherEventExecutionInputFromPlanningResult(t *testing.T) {
+	t.Run("config change suppresses execution plan", func(t *testing.T) {
+		executionInput := buildWatcherEventExecutionInputFromPlanningResult(
+			eventExecutionPlanningResult{
+				configChanged: true,
+				eventsWithHooks: []eventWithHooks{
+					{
+						classified: classifiedEvent{fileType: fileTypeOther},
+					},
+				},
+			},
+		)
+		if !executionInput.flowDecision.triggerConfigRestart {
+			t.Fatalf("expected triggerConfigRestart=true, got %#v", executionInput.flowDecision)
+		}
+		if executionInput.eventsWithHooks != nil {
+			t.Fatalf("expected eventsWithHooks to be nil when config restart is requested, got %#v", executionInput.eventsWithHooks)
+		}
+		if executionInput.watcherEventLogPayloads != nil {
+			t.Fatalf("expected watcherEventLogPayloads to be nil when config restart is requested, got %#v", executionInput.watcherEventLogPayloads)
+		}
+	})
+
+	t.Run("nil plan returns empty execution input", func(t *testing.T) {
+		executionInput := buildWatcherEventExecutionInputFromPlanningResult(
+			eventExecutionPlanningResult{},
+		)
+		if executionInput.flowDecision.triggerConfigRestart {
+			t.Fatalf("expected triggerConfigRestart=false, got %#v", executionInput.flowDecision)
+		}
+		if executionInput.flowDecision.broadcastRebuildingOverlay {
+			t.Fatalf("expected broadcastRebuildingOverlay=false, got %#v", executionInput.flowDecision)
+		}
+		if executionInput.eventsWithHooks != nil {
+			t.Fatalf("expected eventsWithHooks to be nil for empty planning result, got %#v", executionInput.eventsWithHooks)
+		}
+		if executionInput.watcherEventLogPayloads != nil {
+			t.Fatalf("expected watcherEventLogPayloads to be nil for empty planning result, got %#v", executionInput.watcherEventLogPayloads)
+		}
+	})
+
+	t.Run("events-with-hooks and log payload are preserved alongside derived flow decision", func(t *testing.T) {
+		eventsWithHooks := []eventWithHooks{
+			{
+				classified: classifiedEvent{
+					fileType: fileTypeOther,
+					event: fsnotify.Event{
+						Name: "foo.txt",
+						Op:   fsnotify.Write,
+					},
+				},
+			},
+		}
+		executionInput := buildWatcherEventExecutionInputFromPlanningResult(
+			eventExecutionPlanningResult{
+				eventsWithHooks: eventsWithHooks,
+			},
+		)
+		if !reflect.DeepEqual(executionInput.eventsWithHooks, eventsWithHooks) {
+			t.Fatalf(
+				"expected eventsWithHooks to match planning result events, got %#v want %#v",
+				executionInput.eventsWithHooks,
+				eventsWithHooks,
+			)
+		}
+		expectedWatcherEventLogPayloads := []watcherEventLogPayload{
+			{
+				operation: fsnotify.Write.String(),
+				filePath:  "foo.txt",
+			},
+		}
+		if !reflect.DeepEqual(executionInput.watcherEventLogPayloads, expectedWatcherEventLogPayloads) {
+			t.Fatalf(
+				"expected watcherEventLogPayloads=%#v, got %#v",
+				expectedWatcherEventLogPayloads,
+				executionInput.watcherEventLogPayloads,
+			)
+		}
+		if !executionInput.flowDecision.broadcastRebuildingOverlay {
+			t.Fatalf("expected broadcastRebuildingOverlay=true for non-css event, got %#v", executionInput.flowDecision)
+		}
+		if executionInput.flowDecision.behavioralDecision.appStopStrategy != appStopStrategyNone {
+			t.Fatalf("expected appStopStrategy none for single non-hard-reload event, got %#v", executionInput.flowDecision.behavioralDecision)
+		}
+		if !executionInput.flowDecision.behavioralDecision.runImplicitBuild {
+			t.Fatalf("expected runImplicitBuild=true, got %#v", executionInput.flowDecision.behavioralDecision)
 		}
 	})
 }
@@ -613,6 +950,165 @@ func TestPlanInvalidateViteFallbackBrowserDecision(t *testing.T) {
 			decision := planInvalidateViteFallbackBrowserDecision(testCase.usingVite)
 			if !reflect.DeepEqual(decision, testCase.expectedDecision) {
 				t.Fatalf("decision=%#v, want %#v", decision, testCase.expectedDecision)
+			}
+		})
+	}
+}
+
+func TestShouldAttemptViteInvalidateForBrowserDecision(t *testing.T) {
+	testCases := []struct {
+		name                  string
+		browserDecision       browserPhaseDecision
+		usingVite             bool
+		expectedShouldAttempt bool
+	}{
+		{
+			name: "invalidate action with vite attempts invalidate",
+			browserDecision: browserPhaseDecision{
+				action: browserPhaseActionInvalidateVite,
+			},
+			usingVite:             true,
+			expectedShouldAttempt: true,
+		},
+		{
+			name: "invalidate action without vite skips invalidate attempt",
+			browserDecision: browserPhaseDecision{
+				action: browserPhaseActionInvalidateVite,
+			},
+			usingVite:             false,
+			expectedShouldAttempt: false,
+		},
+		{
+			name: "non-invalidate action never attempts invalidate",
+			browserDecision: browserPhaseDecision{
+				action: browserPhaseActionHardReload,
+			},
+			usingVite:             true,
+			expectedShouldAttempt: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			shouldAttempt := shouldAttemptViteInvalidateForBrowserDecision(
+				testCase.browserDecision,
+				testCase.usingVite,
+			)
+			if shouldAttempt != testCase.expectedShouldAttempt {
+				t.Fatalf("shouldAttempt=%t, want %t", shouldAttempt, testCase.expectedShouldAttempt)
+			}
+		})
+	}
+}
+
+func TestResolveBrowserDecisionAfterInvalidateViteFallback(t *testing.T) {
+	testCases := []struct {
+		name             string
+		browserDecision  browserPhaseDecision
+		usingVite        bool
+		expectedDecision browserPhaseDecision
+	}{
+		{
+			name: "non-invalidate action is preserved",
+			browserDecision: browserPhaseDecision{
+				action:      browserPhaseActionHardReload,
+				waitForApp:  false,
+				waitForVite: true,
+				cycleVite:   true,
+			},
+			usingVite: true,
+			expectedDecision: browserPhaseDecision{
+				action:      browserPhaseActionHardReload,
+				waitForApp:  false,
+				waitForVite: true,
+				cycleVite:   true,
+			},
+		},
+		{
+			name: "invalidate fallback with vite enabled waits for app and vite",
+			browserDecision: browserPhaseDecision{
+				action:      browserPhaseActionInvalidateVite,
+				waitForApp:  false,
+				waitForVite: false,
+				cycleVite:   true,
+			},
+			usingVite: true,
+			expectedDecision: browserPhaseDecision{
+				action:      browserPhaseActionHardReload,
+				waitForApp:  true,
+				waitForVite: true,
+				cycleVite:   true,
+			},
+		},
+		{
+			name: "invalidate fallback with vite disabled waits for app only",
+			browserDecision: browserPhaseDecision{
+				action:      browserPhaseActionInvalidateVite,
+				waitForApp:  false,
+				waitForVite: true,
+				cycleVite:   true,
+			},
+			usingVite: false,
+			expectedDecision: browserPhaseDecision{
+				action:      browserPhaseActionHardReload,
+				waitForApp:  true,
+				waitForVite: false,
+				cycleVite:   true,
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			decision := resolveBrowserDecisionAfterInvalidateViteFallback(
+				testCase.browserDecision,
+				testCase.usingVite,
+			)
+			if !reflect.DeepEqual(decision, testCase.expectedDecision) {
+				t.Fatalf("decision=%#v, want %#v", decision, testCase.expectedDecision)
+			}
+		})
+	}
+}
+
+func TestDeriveBrowserPhaseExecutionCategory(t *testing.T) {
+	testCases := []struct {
+		name             string
+		action           browserPhaseAction
+		expectedCategory browserPhaseExecutionCategory
+	}{
+		{
+			name:             "none action has no execution category",
+			action:           browserPhaseActionNone,
+			expectedCategory: browserPhaseExecutionCategoryNone,
+		},
+		{
+			name:             "hard reload maps to reload category",
+			action:           browserPhaseActionHardReload,
+			expectedCategory: browserPhaseExecutionCategoryReload,
+		},
+		{
+			name:             "revalidate maps to reload category",
+			action:           browserPhaseActionRevalidate,
+			expectedCategory: browserPhaseExecutionCategoryReload,
+		},
+		{
+			name:             "hot reload css maps to css category",
+			action:           browserPhaseActionHotReloadCSS,
+			expectedCategory: browserPhaseExecutionCategoryHotReloadCSS,
+		},
+		{
+			name:             "invalidate-vite requires prior resolution and maps to no-op category",
+			action:           browserPhaseActionInvalidateVite,
+			expectedCategory: browserPhaseExecutionCategoryNone,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			category := deriveBrowserPhaseExecutionCategory(testCase.action)
+			if category != testCase.expectedCategory {
+				t.Fatalf("category=%v, want %v", category, testCase.expectedCategory)
 			}
 		})
 	}

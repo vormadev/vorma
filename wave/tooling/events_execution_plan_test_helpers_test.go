@@ -11,10 +11,13 @@ func runEventsWithDerivedExecutionPlan(
 ) {
 	t.Helper()
 
-	executionPlan := &eventExecutionPlan{
-		eventsWithHooks:  eventsWithHooks,
-		appStopStrategy:  resolveAppStopStrategy(eventsWithHooks),
-		runImplicitBuild: shouldRunImplicitBuildForEvents(eventsWithHooks),
-	}
-	serverForTest.executeEventExecutionPlan(executionPlan, work, watcher)
+	behavioralDecision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+		eventsWithHooks,
+	)
+	serverForTest.executeEventExecutionPlan(
+		eventsWithHooks,
+		behavioralDecision,
+		work,
+		watcher,
+	)
 }
