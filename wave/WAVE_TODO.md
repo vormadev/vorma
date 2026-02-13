@@ -5,11 +5,11 @@ Context:
 - This list is rebuilt from a full `/wave/*` audit.
 - Items are tracked as candidates until explicitly accepted/completed.
 
-## 1) Watcher Intake Decomposition
+## 1) Devserver Process Orchestration Decomposition
 
-- Split watcher event intake/debounce/filter concerns into focused modules so
-  path matching and dedup rules stay pure and independently testable.
-- Keep watcher side-effect boundaries (`fsnotify` IO and channel fanout) thin.
+- Split `wave/tooling/devserver_processes.go` into focused files for app process
+  lifecycle, Vite process lifecycle, and restart/wait orchestration.
+- Keep restart/wait decisions pure and table-testable.
 
 ## 2) Diagnostics (deferred)
 
