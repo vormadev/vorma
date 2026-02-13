@@ -3,7 +3,6 @@ package tooling
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -44,21 +43,19 @@ func TestInitWatcher_SetsWatcherOnServer(t *testing.T) {
 	}
 }
 
-func TestInitWatcher_AddsResolvedConfigDependencyDirectoryOutsideWatchRoot(t *testing.T) {
+func TestInitWatcher_AddsResolvedConfigFileDirectoryOutsideWatchRoot(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	outsideDependencyDirectory := t.TempDir()
-	outsideDependencyFilePath := filepath.Join(outsideDependencyDirectory, "wave.config.go")
-	if err := os.WriteFile(outsideDependencyFilePath, []byte("package config"), 0644); err != nil {
-		t.Fatalf("failed writing outside dependency file: %v", err)
+	outsideConfigDirectory := t.TempDir()
+	outsideConfigFilePath := filepath.Join(outsideConfigDirectory, "wave.config.json")
+	if err := os.WriteFile(outsideConfigFilePath, []byte(`{"Core":{"MainAppEntry":"cmd/app","DistDir":"dist"}}`), 0644); err != nil {
+		t.Fatalf("failed writing outside config file: %v", err)
 	}
 
-	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{
-		Files: []string{outsideDependencyFilePath},
-	}
+	cfg.ResolvedConfigFilePath = outsideConfigFilePath
 
 	s := &server{
 		cfg: cfg,
@@ -70,13 +67,13 @@ func TestInitWatcher_AddsResolvedConfigDependencyDirectoryOutsideWatchRoot(t *te
 	}
 	defer s.watcher.Close()
 
-	outsideDirectoryKey := s.watcher.norm(outsideDependencyDirectory)
+	outsideDirectoryKey := s.watcher.norm(outsideConfigDirectory)
 	if _, ok := s.watcher.watchedDirs.Load(outsideDirectoryKey); !ok {
-		t.Fatalf("expected config dependency directory to be watched: %s", outsideDependencyDirectory)
+		t.Fatalf("expected config file directory to be watched: %s", outsideConfigDirectory)
 	}
 }
 
-func TestReloadConfig_NoConfigSourceFails(t *testing.T) {
+func TestReloadConfig_NoConfigFilePathFails(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
 	s := &server{
@@ -86,9 +83,9 @@ func TestReloadConfig_NoConfigSourceFails(t *testing.T) {
 
 	err := s.reloadConfig()
 	if err == nil {
-		t.Fatal("expected reloadConfig to fail when no config source is available")
+		t.Fatal("expected reloadConfig to fail when no config file path is available")
 	}
-	if !strings.Contains(err.Error(), "resolved config source is required") {
+	if !strings.Contains(err.Error(), "resolved config file path is required") {
 		t.Fatalf("unexpected reloadConfig error: %v", err)
 	}
 }
@@ -114,12 +111,14 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed marshaling config JSON: %v", err)
 	}
-	configPath := filepath.Join(root, "backend", "config", "wave.config.go")
-	configSource := wave.NewStaticConfigSource(newConfigJSON)
-	configSource.Dependencies = wave.ConfigProviderDependencies{
-		Files: []string{configPath},
+	configPath := filepath.Join(root, "backend", "wave.config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatalf("failed creating config parent directory: %v", err)
 	}
-	cfg.ResolvedConfigSource = configSource
+	if err := os.WriteFile(configPath, newConfigJSON, 0644); err != nil {
+		t.Fatalf("failed writing config JSON: %v", err)
+	}
+	cfg.ResolvedConfigFilePath = configPath
 
 	s := &server{
 		cfg: cfg,
@@ -150,31 +149,25 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	}
 }
 
-func TestReloadConfig_UsesResolvedConfigSourceWhenAvailable(t *testing.T) {
+func TestReloadConfig_UsesResolvedConfigFilePathWhenAvailable(t *testing.T) {
 	root := t.TempDir()
-	configSource := &stubConfigSourceForDevserverLifecycleTests{
-		loadedConfig: &wave.LoadedConfig{
-			ConfigJSON: []byte(`{
-				"Core": {
-					"MainAppEntry": "cmd/new",
-					"DistDir": "` + filepath.ToSlash(filepath.Join(root, "dist")) + `",
-					"StaticAssetDirs": {"Public":"` + filepath.ToSlash(filepath.Join(root, "public")) + `","Private":"` + filepath.ToSlash(filepath.Join(root, "private")) + `"}
-				}
-			}`),
-			Dependencies: wave.ConfigProviderDependencies{
-				Files: []string{filepath.Join(root, "backend", "wave.config.go")},
-				Globs: []string{filepath.Join(root, "backend/config/**/*.go")},
-				Env:   []string{"WAVE_MODE"},
-			},
-			Fingerprint: "source-fingerprint",
-		},
+	configPath := filepath.Join(root, "backend", "wave.config.json")
+	newConfigJSON := []byte(`{
+		"Core": {
+			"MainAppEntry": "cmd/new",
+			"DistDir": "` + filepath.ToSlash(filepath.Join(root, "dist")) + `",
+			"StaticAssetDirs": {"Public":"` + filepath.ToSlash(filepath.Join(root, "public")) + `","Private":"` + filepath.ToSlash(filepath.Join(root, "private")) + `"}
+		}
+	}`)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatalf("failed creating config parent directory: %v", err)
+	}
+	if err := os.WriteFile(configPath, newConfigJSON, 0644); err != nil {
+		t.Fatalf("failed writing config JSON: %v", err)
 	}
 
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.ResolvedConfigSource = configSource
-	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{
-		Files: []string{filepath.Join(root, "backend", "wave.config.go")},
-	}
+	cfg.ResolvedConfigFilePath = configPath
 	cfg.FrameworkWatchPatterns = []wave.WatchedFile{{Pattern: "**/*.route"}}
 
 	s := &server{
@@ -186,17 +179,14 @@ func TestReloadConfig_UsesResolvedConfigSourceWhenAvailable(t *testing.T) {
 		t.Fatalf("reloadConfig returned error: %v", err)
 	}
 
-	if configSource.loadCount != 1 {
-		t.Fatalf("expected config source load count 1, got %d", configSource.loadCount)
-	}
 	if s.cfg.Core.MainAppEntry != "cmd/new" {
 		t.Fatalf("expected updated MainAppEntry, got %q", s.cfg.Core.MainAppEntry)
 	}
-	if got := s.cfg.GetResolvedConfigFingerprint(); got != "source-fingerprint" {
-		t.Fatalf("resolved config fingerprint = %q, want source-fingerprint", got)
+	if got := s.cfg.GetResolvedConfigFingerprint(); strings.TrimSpace(got) == "" {
+		t.Fatalf("resolved config fingerprint is empty")
 	}
-	if len(s.cfg.GetResolvedConfigDependencies().Files) == 0 {
-		t.Fatal("expected resolved config dependency files to be preserved")
+	if got := s.cfg.GetResolvedConfigFilePath(); got != configPath {
+		t.Fatalf("resolved config file path = %q, want %q", got, configPath)
 	}
 	if len(s.cfg.FrameworkWatchPatterns) != 1 {
 		t.Fatalf("framework watch patterns were not preserved: %#v", s.cfg.FrameworkWatchPatterns)
@@ -217,8 +207,14 @@ func TestReloadConfig_ValidationFailureKeepsPreviousConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed marshaling invalid config JSON: %v", err)
 	}
-	configSource := wave.NewStaticConfigSource(invalidJSON)
-	cfg.ResolvedConfigSource = configSource
+	configPath := filepath.Join(root, "backend", "wave.config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		t.Fatalf("failed creating config parent directory: %v", err)
+	}
+	if err := os.WriteFile(configPath, invalidJSON, 0644); err != nil {
+		t.Fatalf("failed writing invalid config JSON: %v", err)
+	}
+	cfg.ResolvedConfigFilePath = configPath
 
 	s := &server{
 		cfg: cfg,
@@ -235,13 +231,11 @@ func TestReloadConfig_ValidationFailureKeepsPreviousConfig(t *testing.T) {
 	}
 }
 
-func TestReloadConfig_ConfigSourceFailureKeepsPreviousConfig(t *testing.T) {
+func TestReloadConfig_ConfigReadFailureKeepsPreviousConfig(t *testing.T) {
 	root := t.TempDir()
 
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.ResolvedConfigSource = &stubConfigSourceForDevserverLifecycleTests{
-		err: errors.New("source failure"),
-	}
+	cfg.ResolvedConfigFilePath = filepath.Join(root, "backend", "missing-wave.config.json")
 
 	s := &server{
 		cfg: cfg,
@@ -251,7 +245,7 @@ func TestReloadConfig_ConfigSourceFailureKeepsPreviousConfig(t *testing.T) {
 	original := s.cfg
 	err := s.reloadConfig()
 	if err == nil {
-		t.Fatal("expected reloadConfig to fail when config source fails")
+		t.Fatal("expected reloadConfig to fail when config read fails")
 	}
 	if s.cfg != original {
 		t.Fatal("expected reloadConfig failure to keep previous config pointer")
@@ -468,26 +462,6 @@ func TestStartViteAndStopVite_NoOpWhenViteDisabled(t *testing.T) {
 	if err := s.stopVite(); err != nil {
 		t.Fatalf("stopVite returned error with Vite disabled: %v", err)
 	}
-}
-
-type stubConfigSourceForDevserverLifecycleTests struct {
-	loadedConfig *wave.LoadedConfig
-	err          error
-	loadCount    int
-}
-
-func (source *stubConfigSourceForDevserverLifecycleTests) LoadConfig(
-	ctx context.Context,
-) (*wave.LoadedConfig, error) {
-	_ = ctx
-
-	source.loadCount++
-
-	if source.err != nil {
-		return nil, source.err
-	}
-
-	return source.loadedConfig, nil
 }
 
 func TestStartViteAndStopVite_WithViteEnabled(t *testing.T) {

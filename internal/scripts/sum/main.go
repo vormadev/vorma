@@ -29,7 +29,7 @@ func main() {
 	// 		"__old__/wave",
 	// 	},
 	// 	Exclude: []string{
-	// 		// "**/ARCHITECTURE_DECISIONS.md",
+	// 		// "**/canonical_refactor/LOCKED_DECISIONS_AND_ARCHITECTURE.md",
 	// 		"**/*.test.ts",
 	// 		"**/*.bench.ts",
 	// 		"**/*_test.go",
@@ -52,7 +52,7 @@ func main() {
 	// 		"__old__/vorma.go",
 	// 	},
 	// 	Exclude: []string{
-	// 		// "**/ARCHITECTURE_DECISIONS.md",
+	// 		// "**/canonical_refactor/LOCKED_DECISIONS_AND_ARCHITECTURE.md",
 	// 		"**/*.test.ts",
 	// 		"**/*.bench.ts",
 	// 		"**/*_test.go",
@@ -64,7 +64,7 @@ func main() {
 		"vormaruntime",
 		"vormabuild",
 		"vorma.go",
-		"ARCHITECTURE_DECISIONS.md",
+		"canonical_refactor/LOCKED_DECISIONS_AND_ARCHITECTURE.md",
 		"vormaclient/vite/vite.ts",
 		"!**/*.test.ts",
 		"!**/*.bench.ts",

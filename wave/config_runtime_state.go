@@ -1,31 +1,15 @@
 package wave
 
 import (
-	"fmt"
+	"path/filepath"
 	"strings"
 )
 
-func (cfg *ParsedConfig) GetResolvedConfigSource() ConfigSource {
+func (cfg *ParsedConfig) GetResolvedConfigFilePath() string {
 	if cfg == nil {
-		return nil
+		return ""
 	}
-	return cfg.ResolvedConfigSource
-}
-
-func (cfg *ParsedConfig) GetResolvedConfigDependencies() ConfigProviderDependencies {
-	if cfg == nil {
-		return ConfigProviderDependencies{}
-	}
-
-	configDependencyFiles := append([]string(nil), cfg.ResolvedConfigDependencies.Files...)
-	configDependencyGlobs := append([]string(nil), cfg.ResolvedConfigDependencies.Globs...)
-	configDependencyEnvVars := append([]string(nil), cfg.ResolvedConfigDependencies.Env...)
-
-	return ConfigProviderDependencies{
-		Files: normalizeProviderDependencyValues(configDependencyFiles),
-		Globs: normalizeProviderDependencyValues(configDependencyGlobs),
-		Env:   normalizeProviderDependencyValues(configDependencyEnvVars),
-	}
+	return strings.TrimSpace(cfg.ResolvedConfigFilePath)
 }
 
 func (cfg *ParsedConfig) GetResolvedConfigFingerprint() string {
@@ -35,55 +19,49 @@ func (cfg *ParsedConfig) GetResolvedConfigFingerprint() string {
 	return strings.TrimSpace(cfg.ResolvedConfigFingerprint)
 }
 
-func (cfg *ParsedConfig) IsResolvedConfigDependencyPath(
+func (cfg *ParsedConfig) IsResolvedConfigFilePath(
 	path string,
 ) bool {
 	if cfg == nil {
 		return false
 	}
 
-	configDependencyMatcher := cfg.resolvedConfigDependencyMatcher
-	if configDependencyMatcher == nil {
-		var err error
-		configDependencyMatcher, err = newResolvedConfigDependencyMatcher(
-			cfg.GetResolvedConfigDependencies(),
-		)
-		if err != nil {
-			return false
-		}
+	resolvedConfigPath := normalizeResolvedConfigPathForMatch(cfg.GetResolvedConfigFilePath())
+	if resolvedConfigPath == "" {
+		return false
 	}
 
-	return configDependencyMatcher.matchesPath(path)
+	normalizedCandidatePath := normalizeResolvedConfigPathForMatch(path)
+	if normalizedCandidatePath == "" {
+		return false
+	}
+
+	return normalizedCandidatePath == resolvedConfigPath
 }
 
 func setResolvedConfigRuntimeState(
 	cfg *ParsedConfig,
-	configSource ConfigSource,
-	configDependencies ConfigProviderDependencies,
+	configFilePath string,
 	configFingerprint string,
-) error {
+) {
 	if cfg == nil {
-		return nil
+		return
 	}
 
-	cfg.ResolvedConfigSource = configSource
-	cfg.ResolvedConfigDependencies = ConfigProviderDependencies{
-		Files: append([]string(nil), configDependencies.Files...),
-		Globs: append([]string(nil), configDependencies.Globs...),
-		Env:   append([]string(nil), configDependencies.Env...),
-	}
+	cfg.ResolvedConfigFilePath = strings.TrimSpace(configFilePath)
 	cfg.ResolvedConfigFingerprint = strings.TrimSpace(configFingerprint)
+}
 
-	resolvedDependencies := cfg.GetResolvedConfigDependencies()
-	cfg.ResolvedConfigDependencies = resolvedDependencies
-
-	resolvedConfigDependencyMatcher, err := newResolvedConfigDependencyMatcher(
-		resolvedDependencies,
-	)
-	if err != nil {
-		return fmt.Errorf("set resolved config runtime state: %w", err)
+func normalizeResolvedConfigPathForMatch(path string) string {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return ""
 	}
-	cfg.resolvedConfigDependencyMatcher = resolvedConfigDependencyMatcher
 
-	return nil
+	absolutePath, err := filepath.Abs(trimmedPath)
+	if err == nil {
+		trimmedPath = absolutePath
+	}
+
+	return filepath.Clean(trimmedPath)
 }

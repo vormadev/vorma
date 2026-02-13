@@ -111,10 +111,8 @@ type ParsedConfig struct {
 
 	Dist DistLayout `json:"-"`
 
-	ResolvedConfigSource            ConfigSource               `json:"-"`
-	ResolvedConfigDependencies      ConfigProviderDependencies `json:"-"`
-	ResolvedConfigFingerprint       string                     `json:"-"`
-	resolvedConfigDependencyMatcher *resolvedConfigDependencyMatcher
+	ResolvedConfigFilePath    string `json:"-"`
+	ResolvedConfigFingerprint string `json:"-"`
 
 	FrameworkWatchPatterns       []WatchedFile `json:"-"`
 	FrameworkIgnoredPatterns     []string      `json:"-"`

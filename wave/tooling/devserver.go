@@ -260,80 +260,44 @@ func (s *server) initWatcher() error {
 		return fmt.Errorf("watch root: %w", err)
 	}
 
-	if err := s.addConfigDependencyDirectoriesToWatcher(watcher); err != nil {
-		return fmt.Errorf("watch config dependencies: %w", err)
+	if err := s.addConfigFileDirectoryToWatcher(watcher); err != nil {
+		return fmt.Errorf("watch config file directory: %w", err)
 	}
 
 	return nil
 }
 
-func (s *server) addConfigDependencyDirectoriesToWatcher(watcher *Watcher) error {
-	configDependencies := s.cfg.GetResolvedConfigDependencies()
-
-	for _, configDependencyFilePath := range configDependencies.Files {
-		if err := s.addConfigDependencyDirectory(watcher, configDependencyFilePath); err != nil {
-			return err
-		}
-	}
-
-	for _, configDependencyGlobPattern := range configDependencies.Globs {
-		if err := s.addConfigDependencyDirectory(
-			watcher,
-			configDependencyGlobBaseDirectory(configDependencyGlobPattern),
-		); err != nil {
-			return err
-		}
-	}
-
-	return nil
+func (s *server) addConfigFileDirectoryToWatcher(watcher *Watcher) error {
+	return s.addConfigFileDirectory(watcher, s.cfg.GetResolvedConfigFilePath())
 }
 
-func configDependencyGlobBaseDirectory(configDependencyGlobPattern string) string {
-	pattern := filepath.ToSlash(strings.TrimSpace(configDependencyGlobPattern))
-	if pattern == "" {
-		return ""
-	}
-
-	wildcardIndex := strings.IndexAny(pattern, "*?[{")
-	if wildcardIndex == -1 {
-		return filepath.FromSlash(pattern)
-	}
-
-	baseDirectory := strings.TrimSuffix(pattern[:wildcardIndex], "/")
-	if baseDirectory == "" {
-		return ""
-	}
-
-	return filepath.FromSlash(baseDirectory)
-}
-
-func (s *server) addConfigDependencyDirectory(
+func (s *server) addConfigFileDirectory(
 	watcher *Watcher,
-	configDependencyPath string,
+	configFilePath string,
 ) error {
-	trimmedConfigDependencyPath := strings.TrimSpace(configDependencyPath)
-	if trimmedConfigDependencyPath == "" {
+	trimmedConfigFilePath := strings.TrimSpace(configFilePath)
+	if trimmedConfigFilePath == "" {
 		return nil
 	}
 
-	configDependencyAbsolutePath, err := filepath.Abs(trimmedConfigDependencyPath)
+	configFileAbsolutePath, err := filepath.Abs(trimmedConfigFilePath)
 	if err != nil {
-		configDependencyAbsolutePath = filepath.Clean(trimmedConfigDependencyPath)
+		configFileAbsolutePath = filepath.Clean(trimmedConfigFilePath)
 	}
 
-	info, statErr := os.Stat(configDependencyAbsolutePath)
-	configDependencyDirectory := configDependencyAbsolutePath
+	info, statErr := os.Stat(configFileAbsolutePath)
+	configFileDirectory := configFileAbsolutePath
 	if statErr == nil && !info.IsDir() {
-		configDependencyDirectory = filepath.Dir(configDependencyAbsolutePath)
+		configFileDirectory = filepath.Dir(configFileAbsolutePath)
 	}
 	if statErr != nil {
-		configDependencyDirectory = filepath.Dir(configDependencyAbsolutePath)
+		configFileDirectory = filepath.Dir(configFileAbsolutePath)
 	}
-	if configDependencyDirectory == "" {
+	if configFileDirectory == "" {
 		return nil
 	}
 
-	if err := watcher.AddDir(configDependencyDirectory); err != nil && !os.IsNotExist(err) {
+	if err := watcher.AddDir(configFileDirectory); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
@@ -364,18 +328,21 @@ func (s *server) reloadConfig() error {
 }
 
 func (s *server) loadParsedConfigForReload() (*wave.ParsedConfig, error) {
-	configSource := s.cfg.GetResolvedConfigSource()
-	if configSource == nil {
-		return nil, fmt.Errorf("reload config source: resolved config source is required")
+	configFilePath := strings.TrimSpace(s.cfg.GetResolvedConfigFilePath())
+	if configFilePath == "" {
+		return nil, fmt.Errorf("reload config: resolved config file path is required")
 	}
 
-	s.log.Info("Reloading config source")
-	loadedConfig, err := configSource.LoadConfig(context.Background())
+	s.log.Info("Reloading config", "path", configFilePath)
+	configJSON, err := os.ReadFile(configFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("reload config source: %w", err)
+		return nil, fmt.Errorf("reload config: read config file %q: %w", configFilePath, err)
 	}
 
-	newCfg, err := wave.ParseConfigFromLoadedConfig(loadedConfig, configSource)
+	newCfg, err := wave.ParseConfigWithRuntimeMetadata(
+		configJSON,
+		configFilePath,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -1,7 +1,6 @@
 package wave
 
 import (
-	"context"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -51,15 +50,13 @@ type fileMapDetails struct {
 
 // Config configures Wave initialization.
 type Config struct {
-	// Optional -- Raw Wave configuration JSON.
-	// This is the simplest app-facing path when configuration is authored in JSON.
-	// Exactly one of WaveConfigJSON or ConfigSource must be provided.
+	// Required -- Raw Wave configuration JSON.
+	// This is the single app-facing configuration input path.
 	WaveConfigJSON []byte
 
-	// Optional -- Wave loads configuration through this source.
-	// The source can be provider-backed in dev, or static/in-memory in production.
-	// Exactly one of WaveConfigJSON or ConfigSource must be provided.
-	ConfigSource ConfigSource
+	// Optional -- path to the authored Wave config JSON file on disk.
+	// Used by dev tooling for config reload and diagnostics.
+	WaveConfigFilePath string
 
 	// Required -- be sure to pass in a file system that has your
 	// <distDir>/static directory as its ROOT.
@@ -74,34 +71,22 @@ type Config struct {
 }
 
 func New(c Config) *Wave {
-	if c.ConfigSource != nil && len(c.WaveConfigJSON) > 0 {
-		panic("wave.New: exactly one of WaveConfigJSON or ConfigSource must be provided")
+	if len(c.WaveConfigJSON) == 0 {
+		panic("wave.New: WaveConfigJSON is required")
 	}
 
-	resolvedConfigSource := c.ConfigSource
-	if resolvedConfigSource == nil {
-		if len(c.WaveConfigJSON) == 0 {
-			panic("wave.New: WaveConfigJSON or ConfigSource is required")
-		}
-		resolvedConfigSource = NewStaticConfigSource(cloneBytes(c.WaveConfigJSON))
-	}
-
-	loadedCfg, parseError := resolvedConfigSource.LoadConfig(context.Background())
-	if parseError != nil {
-		panic("wave.New: load config source: " + parseError.Error())
-	}
-	if loadedCfg == nil {
-		panic("wave.New: config source returned nil")
-	}
-
-	cfg, parseError := ParseConfigFromLoadedConfig(loadedCfg, resolvedConfigSource)
+	configJSON := cloneBytes(c.WaveConfigJSON)
+	cfg, parseError := ParseConfigWithRuntimeMetadata(
+		configJSON,
+		c.WaveConfigFilePath,
+	)
 	if parseError != nil {
 		panic("wave.New: " + parseError.Error())
 	}
 
 	w := &Wave{
 		cfg:          cfg,
-		rawCfg:       cloneBytes(loadedCfg.ConfigJSON),
+		rawCfg:       configJSON,
 		log:          resolveWaveLogger(c.Logger),
 		distStaticFS: c.DistStaticFS,
 	}

@@ -13,7 +13,6 @@ import (
 
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/vormaruntime"
-	"github.com/vormadev/vorma/wave"
 )
 
 func TestExtractDynamicParamsFromPattern(t *testing.T) {
@@ -349,31 +348,17 @@ func TestBuildViteIgnoredPatterns_TrimsAndDeduplicatesRouteDefinitionPatterns(t 
 	}
 }
 
-func TestBuildViteIgnoredConfigDependencyPatterns(t *testing.T) {
-	absoluteConfigDependencyPath := filepath.ToSlash(filepath.Join(t.TempDir(), "backend", "wave.config.go"))
+func TestFormatConfigFilePatternForViteIgnore(t *testing.T) {
+	absoluteConfigFilePath := filepath.Join(t.TempDir(), "backend", "wave.config.json")
 
-	ignoredPatterns := buildViteIgnoredConfigDependencyPatterns(
-		wave.ConfigProviderDependencies{
-			Files: []string{
-				"backend/wave.config.go",
-				"backend/wave.config.go",
-				absoluteConfigDependencyPath,
-			},
-			Globs: []string{
-				"backend/config/**/*.go",
-				"backend/config/**/*.go",
-			},
-		},
-	)
-
-	expectedPatterns := []string{
-		filepath.ToSlash(path.Join("**", "backend/wave.config.go")),
-		absoluteConfigDependencyPath,
-		filepath.ToSlash(path.Join("**", "backend/config/**/*.go")),
+	if got, want := formatConfigFilePatternForViteIgnore("backend/wave.config.json"), filepath.ToSlash(path.Join("**", "backend/wave.config.json")); got != want {
+		t.Fatalf("formatConfigFilePatternForViteIgnore(relative) = %q, want %q", got, want)
 	}
-
-	if !slices.Equal(ignoredPatterns, expectedPatterns) {
-		t.Fatalf("ignored patterns = %#v, want %#v", ignoredPatterns, expectedPatterns)
+	if got, want := formatConfigFilePatternForViteIgnore(absoluteConfigFilePath), filepath.ToSlash(absoluteConfigFilePath); got != want {
+		t.Fatalf("formatConfigFilePatternForViteIgnore(absolute) = %q, want %q", got, want)
+	}
+	if got := formatConfigFilePatternForViteIgnore("   "); got != "" {
+		t.Fatalf("formatConfigFilePatternForViteIgnore(empty) = %q, want empty", got)
 	}
 }
 

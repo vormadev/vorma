@@ -1097,7 +1097,7 @@ func (s *server) isConfigFile(path string) bool {
 		return false
 	}
 
-	return s.cfg.IsResolvedConfigDependencyPath(path)
+	return s.cfg.IsResolvedConfigFilePath(path)
 }
 
 func needsHardReload(wf *wave.WatchedFile) bool {

@@ -13,8 +13,8 @@ func TestRawConfigJSONIsDefensivelyCopied(t *testing.T) {
 	expected := append([]byte(nil), originalConfigJSON...)
 
 	w := New(Config{
-		ConfigSource: NewStaticConfigSource(originalConfigJSON),
-		Logger:       newDiscardLoggerForWaveTests(),
+		WaveConfigJSON: originalConfigJSON,
+		Logger:         newDiscardLoggerForWaveTests(),
 	})
 
 	originalConfigJSON[0] = 'x'

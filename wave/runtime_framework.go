@@ -73,8 +73,8 @@ func (w *Wave) GetParsedConfig() *ParsedConfig {
 	return w.cfg
 }
 
-func (w *Wave) GetConfigDependencies() ConfigProviderDependencies {
-	return w.cfg.GetResolvedConfigDependencies()
+func (w *Wave) GetConfigFilePath() string {
+	return w.cfg.GetResolvedConfigFilePath()
 }
 
 func (w *Wave) GetConfigFingerprint() string {

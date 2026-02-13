@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,7 +13,7 @@ func TestBuildWaveExplainReport(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.DevBuildHook = "go generate ./..."
 	cfg.FrameworkDevBuildHook = "go run ./backend/cmd/build --dev --hook"
-	cfg.ResolvedConfigSource = wave.NewStaticConfigSource([]byte(`{"Core":{"DistDir":"dist"}}`))
+	cfg.ResolvedConfigFilePath = filepath.Join(root, "backend", "wave.config.json")
 	cfg.ResolvedConfigFingerprint = "fp-test"
 
 	report := BuildWaveExplainReport(cfg)
@@ -23,7 +24,7 @@ func TestBuildWaveExplainReport(t *testing.T) {
 		"watch_root: " + root,
 		"core_dev_build_hook: go generate ./...",
 		"framework_dev_build_hook: go run ./backend/cmd/build --dev --hook",
-		"config_source: *wave.StaticConfigSource",
+		"config_file_path: " + filepath.Join(root, "backend", "wave.config.json"),
 		"config_fingerprint: fp-test",
 	}
 	for _, expectedFragment := range expectedFragments {
@@ -76,39 +77,31 @@ func TestBuildWaveDoctorReport_FindsRunOnChangeOnlyWithoutHooks(t *testing.T) {
 	}
 }
 
-func TestBuildWaveDoctorReport_FindsInvalidConfigDependencyEnvName(t *testing.T) {
+func TestBuildWaveDoctorReport_FindsInaccessibleResolvedConfigFilePath(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.ResolvedConfigSource = wave.NewStaticConfigSource(
-		[]byte(`{"Core":{"MainAppEntry":"cmd/app","DistDir":"dist","ServerOnlyMode":true}}`),
-	)
-	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{
-		Env: []string{"INVALID-NAME"},
-	}
+	cfg.ResolvedConfigFilePath = filepath.Join(root, "backend", "missing-wave.config.json")
 
 	report, hasIssues := BuildWaveDoctorReport(cfg)
 	if !hasIssues {
 		t.Fatal("expected doctor report to include issues")
 	}
-	if !strings.Contains(report, "is not a valid env var name") {
-		t.Fatalf("expected env name issue, report=%q", report)
+	if !strings.Contains(report, "resolved config file path") {
+		t.Fatalf("expected config file path issue, report=%q", report)
 	}
 }
 
-func TestBuildWaveDoctorReport_NotesMissingConfigDependencyCoverage(t *testing.T) {
+func TestBuildWaveDoctorReport_NotesMissingResolvedConfigFilePath(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
-	cfg.ResolvedConfigSource = wave.NewStaticConfigSource(
-		[]byte(`{"Core":{"MainAppEntry":"cmd/app","DistDir":"dist","ServerOnlyMode":true}}`),
-	)
 
 	report, hasIssues := BuildWaveDoctorReport(cfg)
 	if hasIssues {
 		t.Fatalf("expected no doctor issues, report=%q", report)
 	}
-	if !strings.Contains(report, "resolved config source declares no dependencies") {
-		t.Fatalf("expected dependency coverage note, report=%q", report)
+	if !strings.Contains(report, "resolved config file path is unset") {
+		t.Fatalf("expected missing config file path note, report=%q", report)
 	}
 }
 

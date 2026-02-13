@@ -168,9 +168,9 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 			}
 
 			w := wave.New(wave.Config{
-				ConfigSource: wave.NewStaticConfigSource(cfgBytes),
-				DistStaticFS: os.DirFS(staticDir),
-				Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+				WaveConfigJSON: cfgBytes,
+				DistStaticFS:   os.DirFS(staticDir),
+				Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 			})
 
 			defer func() {
@@ -222,9 +222,9 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 	}
 
 	w := wave.New(wave.Config{
-		ConfigSource: wave.NewStaticConfigSource(cfgBytes),
-		DistStaticFS: os.DirFS(staticDir),
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WaveConfigJSON: cfgBytes,
+		DistStaticFS:   os.DirFS(staticDir),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
 	app := NewVormaApp(VormaAppConfig{Wave: w})
@@ -326,9 +326,9 @@ func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(t *testi
 	}
 
 	w := wave.New(wave.Config{
-		ConfigSource: wave.NewStaticConfigSource(cfgBytes),
-		DistStaticFS: os.DirFS(staticDir),
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WaveConfigJSON: cfgBytes,
+		DistStaticFS:   os.DirFS(staticDir),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
 	defer func() {

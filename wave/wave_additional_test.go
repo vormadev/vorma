@@ -16,15 +16,15 @@ func TestNewUsesProvidedOrDefaultLogger(t *testing.T) {
 	providedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	withProvided := New(Config{
-		ConfigSource: NewStaticConfigSource(fixture.configJSON(t)),
-		Logger:       providedLogger,
+		WaveConfigJSON: fixture.configJSON(t),
+		Logger:         providedLogger,
 	})
 	if withProvided.Logger() != providedLogger {
 		t.Fatal("expected New to use provided logger instance")
 	}
 
 	withDefault := New(Config{
-		ConfigSource: NewStaticConfigSource(fixture.configJSON(t)),
+		WaveConfigJSON: fixture.configJSON(t),
 	})
 	if withDefault.Logger() == nil {
 		t.Fatal("expected New to create a default logger when none is provided")
@@ -34,8 +34,8 @@ func TestNewUsesProvidedOrDefaultLogger(t *testing.T) {
 func TestWaveEnvWrapperMethods(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := New(Config{
-		ConfigSource: NewStaticConfigSource(fixture.configJSON(t)),
-		Logger:       newDiscardLoggerForWaveTests(),
+		WaveConfigJSON: fixture.configJSON(t),
+		Logger:         newDiscardLoggerForWaveTests(),
 	})
 
 	t.Setenv(envMode, "production")

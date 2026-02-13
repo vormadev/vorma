@@ -51,16 +51,14 @@ func TestBuildEventExecutionPlan_ConfigChangeHasNoPlan(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
-	configDependencyFilePath := filepath.Join(root, "backend", "config", "config.go")
-	cfg.ResolvedConfigDependencies = wave.ConfigProviderDependencies{
-		Files: []string{configDependencyFilePath},
-	}
+	configFilePath := filepath.Join(root, "backend", "wave.config.json")
+	cfg.ResolvedConfigFilePath = configFilePath
 
-	if err := os.MkdirAll(filepath.Dir(configDependencyFilePath), 0755); err != nil {
-		t.Fatalf("failed creating config dependency directory: %v", err)
+	if err := os.MkdirAll(filepath.Dir(configFilePath), 0755); err != nil {
+		t.Fatalf("failed creating config file directory: %v", err)
 	}
-	if err := os.WriteFile(configDependencyFilePath, []byte("package config"), 0644); err != nil {
-		t.Fatalf("failed writing config dependency file: %v", err)
+	if err := os.WriteFile(configFilePath, []byte(`{"Core":{"MainAppEntry":"cmd/app","DistDir":"dist"}}`), 0644); err != nil {
+		t.Fatalf("failed writing config file: %v", err)
 	}
 
 	watcher, err := NewWatcher(cfg, newDiscardLogger())
@@ -80,7 +78,7 @@ func TestBuildEventExecutionPlan_ConfigChangeHasNoPlan(t *testing.T) {
 	executionPlanningResult := serverForTest.buildEventExecutionPlan(
 		[]fsnotify.Event{
 			{
-				Name: configDependencyFilePath,
+				Name: configFilePath,
 				Op:   fsnotify.Write,
 			},
 		},
@@ -89,7 +87,7 @@ func TestBuildEventExecutionPlan_ConfigChangeHasNoPlan(t *testing.T) {
 	)
 
 	if !executionPlanningResult.configChanged {
-		t.Fatal("expected configChanged=true for config dependency write")
+		t.Fatal("expected configChanged=true for config file write")
 	}
 	if executionPlanningResult.plan != nil {
 		t.Fatalf("expected no plan when config changed, got %#v", executionPlanningResult.plan)

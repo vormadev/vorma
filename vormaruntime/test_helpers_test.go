@@ -120,9 +120,9 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	}
 
 	w := wave.New(wave.Config{
-		ConfigSource: wave.NewStaticConfigSource(cfgJSON),
-		DistStaticFS: os.DirFS(staticDir),
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WaveConfigJSON: cfgJSON,
+		DistStaticFS:   os.DirFS(staticDir),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
 	app := NewVormaApp(VormaAppConfig{

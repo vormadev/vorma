@@ -26,19 +26,19 @@ func newWaveForTest(
 	t.Helper()
 	setWaveDevModeForTest(t, isDev)
 	return New(Config{
-		ConfigSource: NewStaticConfigSource(fixture.configJSON(t)),
-		DistStaticFS: distStaticFS,
-		Logger:       newDiscardLoggerForWaveTests(),
+		WaveConfigJSON: fixture.configJSON(t),
+		DistStaticFS:   distStaticFS,
+		Logger:         newDiscardLoggerForWaveTests(),
 	})
 }
 
-func TestNewPanicsWhenNeitherConfigSourceNorConfigJSONIsProvided(t *testing.T) {
+func TestNewPanicsWhenConfigJSONIsMissing(t *testing.T) {
 	defer func() {
 		recovered := recover()
 		if recovered == nil {
 			t.Fatal("expected panic when no config input is provided")
 		}
-		if !strings.Contains(recovered.(string), "WaveConfigJSON or ConfigSource is required") {
+		if !strings.Contains(recovered.(string), "WaveConfigJSON is required") {
 			t.Fatalf("unexpected panic value: %v", recovered)
 		}
 	}()
@@ -75,7 +75,7 @@ func TestNewPanicsWhenConfigJSONIsInvalid(t *testing.T) {
 	}()
 
 	_ = New(Config{
-		ConfigSource: NewStaticConfigSource([]byte("{")),
+		WaveConfigJSON: []byte("{"),
 	})
 }
 

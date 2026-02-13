@@ -3,15 +3,12 @@ package tooling
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/vormadev/vorma/wave"
 )
-
-var configDependencyEnvVarNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func BuildWaveExplainReport(cfg *wave.ParsedConfig) string {
 	var reportBuilder strings.Builder
@@ -53,32 +50,13 @@ func BuildWaveExplainReport(cfg *wave.ParsedConfig) string {
 		fmt.Sprintf("framework_dev_build_hook: %s", emptyAsNone(frameworkHookCommand)),
 	)
 
-	resolvedConfigSource := cfg.GetResolvedConfigSource()
-	if resolvedConfigSource == nil {
-		writeReportLine(&reportBuilder, "config_source: <none>")
-	} else {
-		writeReportLine(
-			&reportBuilder,
-			fmt.Sprintf("config_source: %T", resolvedConfigSource),
-		)
-	}
+	writeReportLine(
+		&reportBuilder,
+		fmt.Sprintf("config_file_path: %s", emptyAsNone(cfg.GetResolvedConfigFilePath())),
+	)
 	writeReportLine(
 		&reportBuilder,
 		fmt.Sprintf("config_fingerprint: %s", emptyAsNone(cfg.GetResolvedConfigFingerprint())),
-	)
-
-	configDependencies := cfg.GetResolvedConfigDependencies()
-	writeReportLine(
-		&reportBuilder,
-		fmt.Sprintf("config_dependency_files: %d", len(configDependencies.Files)),
-	)
-	writeReportLine(
-		&reportBuilder,
-		fmt.Sprintf("config_dependency_globs: %d", len(configDependencies.Globs)),
-	)
-	writeReportLine(
-		&reportBuilder,
-		fmt.Sprintf("config_dependency_env_vars: %d", len(configDependencies.Env)),
 	)
 
 	hookSummary := collectHookSummary(cfg)
@@ -124,9 +102,9 @@ func BuildWaveDoctorReport(cfg *wave.ParsedConfig) (string, bool) {
 		notes = append(notes, collectDuplicatePatternNotes(cfg)...)
 		issues = append(issues, collectHookConfigurationIssues(cfg)...)
 		issues = append(issues, collectWatchPatternIssues(cfg)...)
-		configDependencyIssues, configDependencyNotes := collectConfigDependencyHealth(cfg)
-		issues = append(issues, configDependencyIssues...)
-		notes = append(notes, configDependencyNotes...)
+		configFileIssues, configFileNotes := collectConfigFileHealth(cfg)
+		issues = append(issues, configFileIssues...)
+		notes = append(notes, configFileNotes...)
 	}
 
 	var reportBuilder strings.Builder
@@ -315,7 +293,7 @@ func collectWatchPatternIssues(cfg *wave.ParsedConfig) []string {
 	return issues
 }
 
-func collectConfigDependencyHealth(cfg *wave.ParsedConfig) ([]string, []string) {
+func collectConfigFileHealth(cfg *wave.ParsedConfig) ([]string, []string) {
 	var issues []string
 	var notes []string
 
@@ -323,92 +301,25 @@ func collectConfigDependencyHealth(cfg *wave.ParsedConfig) ([]string, []string) 
 		return issues, notes
 	}
 
-	configDependencies := cfg.GetResolvedConfigDependencies()
-	hasDependencies := len(configDependencies.Files) > 0 ||
-		len(configDependencies.Globs) > 0 ||
-		len(configDependencies.Env) > 0
-
-	if cfg.GetResolvedConfigSource() != nil && !hasDependencies {
+	resolvedConfigFilePath := strings.TrimSpace(cfg.GetResolvedConfigFilePath())
+	if resolvedConfigFilePath == "" {
 		notes = append(
 			notes,
-			"resolved config source declares no dependencies; config edits may not trigger reload unless inputs are covered by default watch patterns",
+			"resolved config file path is unset; config edits will not trigger config reload",
 		)
+		slices.Sort(notes)
+		return issues, notes
 	}
 
-	for dependencyFileIndex, dependencyFile := range configDependencies.Files {
-		trimmedDependencyFile := strings.TrimSpace(dependencyFile)
-		if trimmedDependencyFile == "" {
-			continue
-		}
-		if _, err := os.Stat(trimmedDependencyFile); err != nil {
-			issues = append(
-				issues,
-				fmt.Sprintf(
-					"config dependency file[%d]=%q is not accessible (%v)",
-					dependencyFileIndex,
-					trimmedDependencyFile,
-					err,
-				),
-			)
-		}
-	}
-
-	for dependencyGlobIndex, dependencyGlob := range configDependencies.Globs {
-		trimmedDependencyGlob := strings.TrimSpace(dependencyGlob)
-		if trimmedDependencyGlob == "" {
-			continue
-		}
-		if !doublestar.ValidatePattern(trimmedDependencyGlob) {
-			issues = append(
-				issues,
-				fmt.Sprintf(
-					"config dependency glob[%d]=%q is invalid",
-					dependencyGlobIndex,
-					trimmedDependencyGlob,
-				),
-			)
-			continue
-		}
-		matchedFiles, err := doublestar.FilepathGlob(trimmedDependencyGlob)
-		if err != nil {
-			issues = append(
-				issues,
-				fmt.Sprintf(
-					"config dependency glob[%d]=%q failed to evaluate (%v)",
-					dependencyGlobIndex,
-					trimmedDependencyGlob,
-					err,
-				),
-			)
-			continue
-		}
-		if len(matchedFiles) == 0 {
-			notes = append(
-				notes,
-				fmt.Sprintf(
-					"config dependency glob[%d]=%q currently matches no files",
-					dependencyGlobIndex,
-					trimmedDependencyGlob,
-				),
-			)
-		}
-	}
-
-	for dependencyEnvVarIndex, dependencyEnvVar := range configDependencies.Env {
-		trimmedDependencyEnvVar := strings.TrimSpace(dependencyEnvVar)
-		if trimmedDependencyEnvVar == "" {
-			continue
-		}
-		if !configDependencyEnvVarNamePattern.MatchString(trimmedDependencyEnvVar) {
-			issues = append(
-				issues,
-				fmt.Sprintf(
-					"config dependency env[%d]=%q is not a valid env var name",
-					dependencyEnvVarIndex,
-					trimmedDependencyEnvVar,
-				),
-			)
-		}
+	if _, err := os.Stat(resolvedConfigFilePath); err != nil {
+		issues = append(
+			issues,
+			fmt.Sprintf(
+				"resolved config file path %q is not accessible (%v)",
+				resolvedConfigFilePath,
+				err,
+			),
+		)
 	}
 
 	slices.Sort(issues)

@@ -83,9 +83,9 @@ func newBuildTestFixture(t *testing.T, options *buildTestFixtureOptions) *buildT
 	}
 
 	w := wave.New(wave.Config{
-		ConfigSource: wave.NewStaticConfigSource(cfgJSON),
-		DistStaticFS: os.DirFS(staticDir),
-		Logger:       testLogger(),
+		WaveConfigJSON: cfgJSON,
+		DistStaticFS:   os.DirFS(staticDir),
+		Logger:         testLogger(),
 	})
 
 	var loadersOpts vormaruntime.LoadersRouterOptions

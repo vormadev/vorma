@@ -149,8 +149,8 @@ func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 		path.Join("**", v.Config.TSGenOutDir+"/**/*"),
 	}
 
-	for _, configDependencyPattern := range buildViteIgnoredConfigDependencyPatterns(v.Wave.GetConfigDependencies()) {
-		ignoredPatterns = append(ignoredPatterns, configDependencyPattern)
+	if configFileIgnoredPattern := formatConfigFilePatternForViteIgnore(v.Wave.GetConfigFilePath()); configFileIgnoredPattern != "" {
+		ignoredPatterns = append(ignoredPatterns, configFileIgnoredPattern)
 	}
 
 	for _, routeDefinitionPattern := range normalizeRouteDefinitionPatternsInInputOrder(
@@ -164,30 +164,8 @@ func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 	return ignoredPatterns
 }
 
-func buildViteIgnoredConfigDependencyPatterns(
-	configDependencies wave.ConfigProviderDependencies,
-) []string {
-	ignoredPatterns := make([]string, 0, len(configDependencies.Files)+len(configDependencies.Globs))
-
-	for _, configDependencyFilePath := range configDependencies.Files {
-		formattedPattern := formatConfigDependencyPatternForViteIgnore(configDependencyFilePath)
-		if formattedPattern != "" {
-			ignoredPatterns = append(ignoredPatterns, formattedPattern)
-		}
-	}
-
-	for _, configDependencyGlobPattern := range configDependencies.Globs {
-		formattedPattern := formatConfigDependencyPatternForViteIgnore(configDependencyGlobPattern)
-		if formattedPattern != "" {
-			ignoredPatterns = append(ignoredPatterns, formattedPattern)
-		}
-	}
-
-	return normalizeRouteDefinitionPatternsInInputOrder(ignoredPatterns)
-}
-
-func formatConfigDependencyPatternForViteIgnore(configDependencyPattern string) string {
-	trimmedPattern := strings.TrimSpace(configDependencyPattern)
+func formatConfigFilePatternForViteIgnore(configFilePattern string) string {
+	trimmedPattern := strings.TrimSpace(configFilePattern)
 	if trimmedPattern == "" {
 		return ""
 	}
