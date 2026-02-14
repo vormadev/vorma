@@ -4,8 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/vormadev/vorma/vormaruntime"
 	"io"
+	"strings"
+
+	"github.com/vormadev/vorma/vormaruntime"
 )
 
 type buildCommandOptions struct {
@@ -47,6 +49,12 @@ func parseBuildCommandOptions(commandLineArgs []string) (buildCommandOptions, er
 	flagSet.BoolVar(&options.skipGoBinaryBuildStep, "no-binary", false, "skip go binary compilation")
 	if err := flagSet.Parse(commandLineArgs); err != nil {
 		return buildCommandOptions{}, err
+	}
+	if remainingArgs := flagSet.Args(); len(remainingArgs) > 0 {
+		return buildCommandOptions{}, fmt.Errorf(
+			"unexpected positional arguments: %s",
+			strings.Join(remainingArgs, ", "),
+		)
 	}
 
 	return options, nil

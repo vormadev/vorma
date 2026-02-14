@@ -2,9 +2,7 @@ package tooling
 
 import (
 	"os"
-	"path"
 
-	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -65,7 +63,7 @@ func (b *Builder) getPublicURLBuildtimeCached(original string) string {
 				"url",
 				original,
 			)
-			return matcher.EnsureLeadingSlash(path.Join(b.cfg.PublicPathPrefix(), original))
+			return resolvePublicURLFallback(original, b.cfg.PublicPathPrefix())
 		}
 		b.css.cachedFileMap = fm
 	}

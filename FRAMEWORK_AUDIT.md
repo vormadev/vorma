@@ -59,6 +59,9 @@ and test quality.
   correctness or explicitly approved by user. This applies to both dev-time and
   runtime behavior.
 - Any non-obvious semantic/design change requires explicit user approval.
+- Any code change requires a full gate run before completion claims:
+  `make gotest`, `make tstest`, `make tscheck`, and `make tslint` (unless user
+  explicitly approves a narrower gate).
 
 ## Performance Evaluation Policy
 
@@ -101,46 +104,100 @@ and test quality.
 
 ## Matrix
 
-| Package Group          | Surface/API | Correctness | Fragility | DRY      | Performance | Test Quality | Failure Modes |
-| ---------------------- | ----------- | ----------- | --------- | -------- | ----------- | ------------ | ------------- |
-| `vorma.go`             | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `bootstrap/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormabuild/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaruntime/*`       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `wave/*`               | done        | done        | done      | done     | done        | done         | done          |
-| `wave/tooling/*`       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/client/*` | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/react/*`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/preact/*` | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/solid/*`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/vite/*`   | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/create/*` | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `kit/*`                | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `lab/*`                | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `internal/*`           | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| Package Group                  | Surface/API | Correctness | Fragility | DRY      | Performance | Test Quality | Failure Modes |
+| ------------------------------ | ----------- | ----------- | --------- | -------- | ----------- | ------------ | ------------- |
+| `vorma.go`                     | done        | done        | done      | done     | done        | done         | done          |
+| `bootstrap/*`                  | done        | done        | done      | done     | done        | done         | done          |
+| `vormabuild/*`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaruntime/*`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `wave/*`                       | done        | done        | done      | done     | done        | done         | done          |
+| `wave/tooling/*`               | done        | done        | done      | done     | done        | done         | done          |
+| `vormaclient/client/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/react/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/preact/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/solid/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/vite/*`           | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/create/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/bytesutil`                | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/colorlog`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/contextutil`              | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/cookies`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/cryptoutil`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/csrf`                     | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/envutil`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/executil`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/fsutil`                   | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/genericsutil`             | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/grace`                    | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/headels`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/htmlutil`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/id`                       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/ioutil`                   | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/jsonutil`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/keyset`                   | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/lazyget`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/lru`                      | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/matcher`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/middleware`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/middleware/etag`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/middleware/healthcheck`   | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/middleware/robotstxt`     | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/middleware/secureheaders` | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/modulegraph`              | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/mux`                      | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/netutil`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/reflectutil`              | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/response`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/securebytes`              | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/securestring`             | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/set`                      | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/tasks`                    | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/theme`                    | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/validate`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/bumper`                   | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/cliutil`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/errutil`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/esbuildutil`              | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/fsmarkdown`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/jsonschema`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/mailutil`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/parseutil`                | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/repoconcat`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/rpc`                      | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/sqlutil`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/stringsutil`              | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/timer`                    | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/tsgen`                    | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/tsgen/tsgencore`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/vitecmd`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/viteutil`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/xyz`                      | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `internal/scripts/buildts`     | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `internal/scripts/bumper`      | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `internal/scripts/npm_bumper`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `internal/scripts/sum`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 
-Matrix evidence: `wave/*` all passes complete with evidence `EV-20260214-005`.
+Matrix evidence: `wave/*` all passes complete with evidence `EV-20260214-005`
+and `EV-20260214-007`. `wave/tooling/*` all passes complete with evidence
+`EV-20260214-006`. `vorma.go` all passes complete with evidence
+`EV-20260214-008`. `bootstrap/*` all passes complete with evidence
+`EV-20260214-009`. Process-level gate/granularity evidence: `EV-20260214-011`.
 
 ## Current Focus
 
-1. Complete `wave/tooling/*` and log concrete evidence IDs.
-2. Continue through the remaining matrix groups.
+1. Continue through the remaining matrix groups starting with `vormabuild/*`.
+2. Keep package-by-package pass completion with evidence for each row.
 
 ## Open Findings
 
-1. `wave/runtime_assets.go` with `wave/cache_internal.go`: `Wave.IsPublicAsset`
-   caches negative lookup results for every distinct request path in production.
-   This creates unbounded cache-key growth and memory pressure risk under
-   high-cardinality route traffic.
+1. None currently.
 
 ## Open Test Gaps
 
-1. Add a regression test that exercises repeated unique negative
-   `Wave.IsPublicAsset` lookups in production mode and asserts miss keys are not
-   retained indefinitely.
+1. None currently.
 
 ## Next Queue
 
-1. `wave/tooling/*`: complete all passes with evidence.
-2. Resolve `wave/*` open finding on negative-lookup cache growth with tests.
+1. `vormabuild/*`: complete all passes with evidence.
+2. `vormaruntime/*`: complete all passes with evidence.
 3. Continue package-group by package-group until matrix is complete.

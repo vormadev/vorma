@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/lab/tsgen"
@@ -32,7 +33,7 @@ func (b *Builder) MustGetPublicURLBuildtime(original string) string {
 func (b *Builder) GetPublicURLBuildtime(original string) (string, error) {
 	fm, err := b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 	if err != nil {
-		return matcher.EnsureLeadingSlash(path.Join(b.cfg.PublicPathPrefix(), original)), err
+		return resolvePublicURLFallback(original, b.cfg.PublicPathPrefix()), err
 	}
 
 	url, found := fm.Lookup(original, b.cfg.PublicPathPrefix())
@@ -40,6 +41,15 @@ func (b *Builder) GetPublicURLBuildtime(original string) (string, error) {
 		b.log.Warn("no hashed URL found", "url", original)
 	}
 	return url, nil
+}
+
+func resolvePublicURLFallback(original string, publicPathPrefix string) string {
+	normalizedOriginal := strings.TrimPrefix(path.Clean("/"+original), "/")
+	if normalizedOriginal == "" || normalizedOriginal == "." {
+		return ""
+	}
+
+	return matcher.EnsureLeadingSlash(path.Join(publicPathPrefix, normalizedOriginal))
 }
 
 // PublicFileMapKeys returns sorted keys of non-prehashed public files

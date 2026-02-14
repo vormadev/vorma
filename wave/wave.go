@@ -115,5 +115,10 @@ func (w *Wave) initRuntimeCaches() {
 	w.fileMapURL = newCache(w.initFileMapURL)
 	w.fileMapDetails = newCache(w.initFileMapDetails)
 	w.publicURLs = newCacheMap(w.resolvePublicURL)
-	w.isAsset = newCacheMap(w.checkIsAsset)
+	w.isAsset = newCacheMapWithPolicy(
+		w.checkIsAsset,
+		func(isAsset bool, err error) bool {
+			return err == nil && isAsset
+		},
+	)
 }

@@ -57,6 +57,7 @@ func NewLoader[O any, CtxPtr ~*Ctx, Ctx any](
 	f func(CtxPtr) (O, error),
 	decorateCtx func(*LoaderReqData) CtxPtr,
 ) *Loader[O] {
+	panicIfNilLoaderRegistrationArguments("vorma.NewLoader", f, decorateCtx)
 	_ = app
 	_ = p
 	wrappedF := func(c *LoaderReqData) (O, error) { return f(decorateCtx(c)) }
@@ -70,6 +71,7 @@ func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	f func(CtxPtr) (O, error),
 	decorateCtx func(*mux.ReqData[I]) CtxPtr,
 ) *Action[I, O] {
+	panicIfNilActionRegistrationArguments("vorma.NewAction", f, decorateCtx)
 	_ = app
 	_ = m
 	_ = p
@@ -83,6 +85,8 @@ func Internal__RegisterDiscoveredLoader[O any, CtxPtr ~*Ctx, Ctx any](
 	f func(CtxPtr) (O, error),
 	decorateCtx func(*LoaderReqData) CtxPtr,
 ) *Loader[O] {
+	panicIfNilDiscoveredRegistrationApp("vorma.Internal__RegisterDiscoveredLoader", app)
+	panicIfNilLoaderRegistrationArguments("vorma.Internal__RegisterDiscoveredLoader", f, decorateCtx)
 	wrappedF := func(c *LoaderReqData) (O, error) { return f(decorateCtx(c)) }
 	loaderTask := mux.TaskHandlerFromFunc(wrappedF)
 	mux.RegisterNestedTaskHandler(app.LoadersRouter().NestedRouter, p, loaderTask)
@@ -96,10 +100,44 @@ func Internal__RegisterDiscoveredAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	f func(CtxPtr) (O, error),
 	decorateCtx func(*mux.ReqData[I]) CtxPtr,
 ) *Action[I, O] {
+	panicIfNilDiscoveredRegistrationApp("vorma.Internal__RegisterDiscoveredAction", app)
+	panicIfNilActionRegistrationArguments("vorma.Internal__RegisterDiscoveredAction", f, decorateCtx)
 	wrappedF := func(c *mux.ReqData[I]) (O, error) { return f(decorateCtx(c)) }
 	actionTask := mux.TaskHandlerFromFunc(wrappedF)
 	mux.RegisterTaskHandler(app.ActionsRouter().Router, m, p, actionTask)
 	return actionTask
+}
+
+func panicIfNilDiscoveredRegistrationApp(caller string, app *Vorma) {
+	if app == nil {
+		panic(caller + ": app cannot be nil")
+	}
+}
+
+func panicIfNilLoaderRegistrationArguments[O any, CtxPtr ~*Ctx, Ctx any](
+	caller string,
+	loaderFunc func(CtxPtr) (O, error),
+	decorateLoaderContext func(*LoaderReqData) CtxPtr,
+) {
+	if loaderFunc == nil {
+		panic(caller + ": loader function cannot be nil")
+	}
+	if decorateLoaderContext == nil {
+		panic(caller + ": decorateCtx cannot be nil")
+	}
+}
+
+func panicIfNilActionRegistrationArguments[I any, O any, CtxPtr ~*Ctx, Ctx any](
+	caller string,
+	actionFunc func(CtxPtr) (O, error),
+	decorateActionContext func(*mux.ReqData[I]) CtxPtr,
+) {
+	if actionFunc == nil {
+		panic(caller + ": action function cannot be nil")
+	}
+	if decorateActionContext == nil {
+		panic(caller + ": decorateCtx cannot be nil")
+	}
 }
 
 //go:embed package.json

@@ -156,6 +156,27 @@ func TestBootstrapResolveJSDevDependencyInstallCommand(t *testing.T) {
 	}
 }
 
+func TestBootstrapDerived_UnknownJSPackageManagerPanics(t *testing.T) {
+	defer func() {
+		recoveredValue := recover()
+		if recoveredValue == nil {
+			t.Fatal("expected panic for unknown JSPackageManager")
+		}
+		panicText := recoveredValue.(string)
+		if !strings.Contains(panicText, "unknown JSPackageManager") {
+			t.Fatalf("panic text = %q, expected unknown JSPackageManager guidance", panicText)
+		}
+	}()
+
+	_ = Options{
+		GoImportBase:     "example.com/app",
+		UIVariant:        "react",
+		JSPackageManager: "not-a-manager",
+		DeploymentTarget: "none",
+		GoVersion:        "go1.24.0",
+	}.derived()
+}
+
 func TestBootstrapDerived_DockerTargetRequiresNodeMajorVersion(t *testing.T) {
 	t.Run("panics when NodeMajorVersion is empty", func(t *testing.T) {
 		defer func() {

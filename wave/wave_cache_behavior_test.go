@@ -139,6 +139,25 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 	})
 }
 
+func TestIsPublicAssetProductionDoesNotCacheNegativeResults(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+
+	if w.IsPublicAsset("/assets/newly-created.txt") {
+		t.Fatal("expected missing asset to return false before file exists")
+	}
+
+	mustWriteFile(
+		t,
+		filepath.Join(fixture.cfg.Dist.StaticPublic(), "newly-created.txt"),
+		"now-present",
+	)
+
+	if !w.IsPublicAsset("/assets/newly-created.txt") {
+		t.Fatal("expected production mode to recompute and detect newly created asset")
+	}
+}
+
 func TestCriticalCSSCachingDiffersByMode(t *testing.T) {
 	t.Run("production caches first critical css payload", func(t *testing.T) {
 		fixture := newWaveTestFixture(t)

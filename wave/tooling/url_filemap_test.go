@@ -24,6 +24,21 @@ func TestGetPublicURLBuildtime_ReturnsFallbackAndErrorWhenMapIsMissing(t *testin
 	}
 }
 
+func TestGetPublicURLBuildtime_FallbackTraversalStaysUnderPublicPrefix(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.PublicPathPrefix = "/assets/"
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	url, err := builder.GetPublicURLBuildtime("../images/logo.png")
+	if err == nil {
+		t.Fatal("expected error when public file map does not exist")
+	}
+	if url != "/assets/images/logo.png" {
+		t.Fatalf("expected traversal-safe fallback URL %q, got %q", "/assets/images/logo.png", url)
+	}
+}
+
 func TestGetPublicURLBuildtime_ResolvesMappedAndUnmappedPaths(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLogger())
@@ -68,6 +83,18 @@ func TestMustGetPublicURLBuildtime_PanicsWhenMapIsMissing(t *testing.T) {
 	}()
 
 	_ = builder.MustGetPublicURLBuildtime("images/logo.png")
+}
+
+func TestGetPublicURLBuildtimeCached_FallbackTraversalStaysUnderPublicPrefix(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.PublicPathPrefix = "/assets/"
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	url := builder.getPublicURLBuildtimeCached("../images/logo.png")
+	if url != "/assets/images/logo.png" {
+		t.Fatalf("expected traversal-safe cached fallback URL %q, got %q", "/assets/images/logo.png", url)
+	}
 }
 
 func TestMustGetPublicURLBuildtime_ResolvesMappedAndUnmappedPaths(t *testing.T) {

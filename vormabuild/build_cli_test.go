@@ -56,6 +56,16 @@ func TestParseBuildCommandOptions(t *testing.T) {
 			t.Fatalf("error = %q, expected unknown-flag parse message", err)
 		}
 	})
+
+	t.Run("returns parse error for positional arguments", func(t *testing.T) {
+		_, err := parseBuildCommandOptions([]string{"--dev", "extra-positional-arg"})
+		if err == nil {
+			t.Fatal("expected parseBuildCommandOptions to return an error for positional arguments")
+		}
+		if !strings.Contains(err.Error(), "unexpected positional arguments") {
+			t.Fatalf("error = %q, expected positional-argument parse message", err)
+		}
+	})
 }
 
 func TestValidateBuildCommandHooks(t *testing.T) {

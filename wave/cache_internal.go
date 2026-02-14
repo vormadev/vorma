@@ -26,8 +26,9 @@ func (c *cache[T]) get() (T, error) {
 // cacheMap holds lazily-initialized keyed values that are cached in prod
 // but recomputed on every access in dev mode.
 type cacheMap[K comparable, V any] struct {
-	m  sync.Map
-	fn func(K) (V, error)
+	m           sync.Map
+	fn          func(K) (V, error)
+	shouldCache func(V, error) bool
 }
 
 type cacheMapEntry[V any] struct {
@@ -37,7 +38,23 @@ type cacheMapEntry[V any] struct {
 }
 
 func newCacheMap[K comparable, V any](fn func(K) (V, error)) *cacheMap[K, V] {
-	return &cacheMap[K, V]{fn: fn}
+	return newCacheMapWithPolicy(fn, nil)
+}
+
+func newCacheMapWithPolicy[K comparable, V any](
+	fn func(K) (V, error),
+	shouldCache func(V, error) bool,
+) *cacheMap[K, V] {
+	if shouldCache == nil {
+		shouldCache = func(_ V, err error) bool {
+			return err == nil
+		}
+	}
+
+	return &cacheMap[K, V]{
+		fn:          fn,
+		shouldCache: shouldCache,
+	}
 }
 
 func (c *cacheMap[K, V]) get(key K) (V, error) {
@@ -50,7 +67,7 @@ func (c *cacheMap[K, V]) get(key K) (V, error) {
 
 	entry.once.Do(func() {
 		entry.val, entry.err = c.fn(key)
-		if entry.err != nil {
+		if c.shouldCache != nil && !c.shouldCache(entry.val, entry.err) {
 			c.m.Delete(key)
 		}
 	})

@@ -97,6 +97,8 @@ func (o Options) derived() derivedOptions {
 		do.JSPackageManagerBaseCmd = "yarn"
 	case "bun":
 		do.JSPackageManagerBaseCmd = "bunx"
+	default:
+		panic("unknown JSPackageManager: " + o.JSPackageManager)
 	}
 
 	do.BackgroundColorKey = "backgroundColor"
