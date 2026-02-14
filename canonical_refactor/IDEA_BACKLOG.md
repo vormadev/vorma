@@ -42,8 +42,6 @@ Reviewed surfaces in this pass:
 
 ## Candidate API Simplification Plan
 
-- Split client exports into a stable app surface (`vorma/client`) and an
-  unstable adapter/internal surface (`vorma/client-internal`).
 - Replace bootstrap mutable request-init global with explicit API-client
   construction plus a concise default singleton.
 - Design and land a no-side-effect route registration model that keeps the
