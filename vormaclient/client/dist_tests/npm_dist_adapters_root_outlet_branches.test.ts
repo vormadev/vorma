@@ -49,7 +49,11 @@ function installImmediateRAFAndScrollSpy() {
 		options?: boolean | AddEventListenerOptions;
 	}> = [];
 
-	window.addEventListener = ((type, listener, options) => {
+	window.addEventListener = ((
+		type: string,
+		listener: EventListenerOrEventListenerObject,
+		options?: boolean | AddEventListenerOptions,
+	) => {
 		if (type === ROUTE_CHANGE_EVENT_KEY || type === LOCATION_EVENT_KEY) {
 			trackedListeners.push({
 				type,

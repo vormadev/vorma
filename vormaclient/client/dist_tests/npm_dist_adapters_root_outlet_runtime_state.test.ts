@@ -20,7 +20,11 @@ const trackedRouteAndLocationListeners: Array<{
 	options?: boolean | AddEventListenerOptions;
 }> = [];
 
-window.addEventListener = ((type, listener, options) => {
+window.addEventListener = ((
+	type: string,
+	listener: EventListenerOrEventListenerObject,
+	options?: boolean | AddEventListenerOptions,
+) => {
 	if (type === ROUTE_CHANGE_EVENT_KEY || type === LOCATION_EVENT_KEY) {
 		trackedRouteAndLocationListeners.push({
 			type,
@@ -121,7 +125,7 @@ function countAddEventListenerCalls(
 	addEventListenerSpy: ReturnType<typeof vi.spyOn>,
 	eventType: string,
 ): number {
-	return addEventListenerSpy.mock.calls.filter((args) => {
+	return addEventListenerSpy.mock.calls.filter((args: unknown[]) => {
 		return args[0] === eventType;
 	}).length;
 }

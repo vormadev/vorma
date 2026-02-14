@@ -84,7 +84,11 @@ function installImmediateRAFAndScrollSpy() {
 		options?: boolean | AddEventListenerOptions;
 	}> = [];
 
-	window.addEventListener = ((type, listener, options) => {
+	window.addEventListener = ((
+		type: string,
+		listener: EventListenerOrEventListenerObject,
+		options?: boolean | AddEventListenerOptions,
+	) => {
 		if (type === ROUTE_CHANGE_EVENT_KEY || type === LOCATION_EVENT_KEY) {
 			trackedListeners.push({
 				type,
@@ -232,7 +236,7 @@ describe("npm_dist adapter root outlets", () => {
 		const globals = installDistTestVormaGlobal();
 		vi.resetModules();
 		const reactAdapter = await import("vorma/react");
-		const { scrollToSpy, restore } = installImmediateRAFAndScrollSpy();
+		const { restore } = installImmediateRAFAndScrollSpy();
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const root = createRoot(container);
@@ -363,7 +367,7 @@ describe("npm_dist adapter root outlets", () => {
 		const globals = installDistTestVormaGlobal();
 		vi.resetModules();
 		const reactAdapter = await import("vorma/react");
-		const { scrollToSpy, restore } = installImmediateRAFAndScrollSpy();
+		const { restore } = installImmediateRAFAndScrollSpy();
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const root = createRoot(container);
