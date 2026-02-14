@@ -1,9 +1,5 @@
 # Framework Audit Tracker
 
-## Cycle
-
-- Reset date: 2026-02-14
-- Baseline: current repository state at reset time
 - Tracking model:
     - `FRAMEWORK_AUDIT.md`: high-signal current state only
     - `FRAMEWORK_AUDIT_EVIDENCE.md`: append-only detailed evidence log
@@ -82,11 +78,17 @@ and test quality.
 
 ## Completion Rules
 
-1. A package row is only `done` when all required passes are complete.
-2. Each pass completion must reference evidence IDs in
+1. Matrix cells are updated independently per pass.
+2. A package row is only `done` when all required pass cells are complete.
+3. Work one active pass column at a time and sweep vertically across rows.
+4. Do not advance a package to a different pass until the active sweep is
+   completed across rows (unless explicitly approved by user).
+5. Execution unit is one cell (or a small set of cells handled in one turn);
+   neither a full row nor a full column is atomic.
+6. Each pass completion must reference evidence IDs in
    `FRAMEWORK_AUDIT_EVIDENCE.md`.
-3. Open findings and open test gaps must remain visible here until closed.
-4. Keep this file lean: no historical closed-item narrative.
+7. Open findings and open test gaps must remain visible here until closed.
+8. Keep this file lean: no historical closed-item narrative.
 
 ## Change Authorization Policy
 
@@ -98,20 +100,18 @@ and test quality.
 
 ## Approval Log
 
-- 2026-02-14: Approved boundary fix for `wave.GetParsedConfig()` and
-  `wave/tooling.Builder.Config()` snapshot semantics with explicit unstable
-  mutable accessors.
+- None in current reset cycle.
 
 ## Matrix
 
 | Package Group                  | Surface/API | Correctness | Fragility | DRY      | Performance | Test Quality | Failure Modes |
 | ------------------------------ | ----------- | ----------- | --------- | -------- | ----------- | ------------ | ------------- |
-| `vorma.go`                     | done        | done        | done      | done     | done        | done         | done          |
-| `bootstrap/*`                  | done        | done        | done      | done     | done        | done         | done          |
+| `vorma.go`                     | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `bootstrap/*`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormabuild/*`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaruntime/*`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `wave/*`                       | done        | done        | done      | done     | done        | done         | done          |
-| `wave/tooling/*`               | done        | done        | done      | done     | done        | done         | done          |
+| `wave/*`                       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `wave/tooling/*`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaclient/client/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaclient/react/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaclient/preact/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
@@ -177,16 +177,12 @@ and test quality.
 | `internal/scripts/npm_bumper`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `internal/scripts/sum`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 
-Matrix evidence: `wave/*` all passes complete with evidence `EV-20260214-005`
-and `EV-20260214-007`. `wave/tooling/*` all passes complete with evidence
-`EV-20260214-006`. `vorma.go` all passes complete with evidence
-`EV-20260214-008`. `bootstrap/*` all passes complete with evidence
-`EV-20260214-009`. Process-level gate/granularity evidence: `EV-20260214-011`.
+Matrix evidence: none yet in this reset cycle.
 
 ## Current Focus
 
-1. Continue through the remaining matrix groups starting with `vormabuild/*`.
-2. Keep package-by-package pass completion with evidence for each row.
+1. Active pass: Surface/API.
+2. Execute a vertical Surface/API sweep cell-by-cell from the top row.
 
 ## Open Findings
 
@@ -198,6 +194,8 @@ and `EV-20260214-007`. `wave/tooling/*` all passes complete with evidence
 
 ## Next Queue
 
-1. `vormabuild/*`: complete all passes with evidence.
-2. `vormaruntime/*`: complete all passes with evidence.
-3. Continue package-group by package-group until matrix is complete.
+1. `vorma.go` Surface/API cell.
+2. `bootstrap/*` Surface/API cell.
+3. `vormabuild/*` Surface/API cell.
+4. Continue Surface/API cells downward through the matrix.
+5. Switch to Correctness only after Surface/API sweep completion is evidenced.
