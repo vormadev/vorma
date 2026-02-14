@@ -24,7 +24,7 @@ and test quality.
     - `lab/*`
     - `internal/*`
 
-## Audit Questions
+## Audit Questions To Always Be Thinking About
 
 1. Are there bad/questionable designs in framework internals?
 2. Are there user APIs that are confusing or needlessly complex?
