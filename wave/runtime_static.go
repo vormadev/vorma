@@ -58,12 +58,18 @@ func (w *Wave) FaviconRedirect() middleware.Middleware {
 		"/favicon.ico",
 		[]string{http.MethodGet, http.MethodHead},
 		func(rw http.ResponseWriter, req *http.Request) {
-			url := w.GetPublicURL("favicon.ico")
-			fallback := w.cfg.PublicPathPrefix() + "favicon.ico"
-			if url == fallback {
+			publicFileMap, err := w.fileMap.get()
+			if err != nil {
 				rw.WriteHeader(http.StatusNotFound)
 				return
 			}
+
+			url, found := publicFileMap.Lookup("favicon.ico", w.cfg.PublicPathPrefix())
+			if !found {
+				rw.WriteHeader(http.StatusNotFound)
+				return
+			}
+
 			http.Redirect(rw, req, url, http.StatusFound)
 		},
 	)

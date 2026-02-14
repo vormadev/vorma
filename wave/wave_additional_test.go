@@ -183,6 +183,16 @@ func TestStylesheetReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestStylesheetReferenceTraversalStaysUnderPublicPrefix(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	mustWriteFile(t, fixture.cfg.Dist.NormalCSSRef(), "../outside.css")
+
+	w := newWaveForTest(t, fixture, true, nil)
+	if got := w.GetStyleSheetURL(); got != "/assets/outside.css" {
+		t.Fatalf("expected stylesheet URL to stay under public prefix, got %q", got)
+	}
+}
+
 func TestServeStaticWithRootPrefix(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	fixture.cfg.Core.PublicPathPrefix = "/"
@@ -310,6 +320,16 @@ func TestPublicFileMapReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestPublicFileMapReferenceTraversalStaysUnderPublicPrefix(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	mustWriteFile(t, fixture.cfg.Dist.PublicFileMapRef(), "../outside.js")
+
+	w := newWaveForTest(t, fixture, true, nil)
+	if got := w.GetPublicFileMapURL(); got != "/assets/outside.js" {
+		t.Fatalf("expected public file map URL to stay under public prefix, got %q", got)
+	}
+}
+
 func TestCriticalCSSReadErrorsFailClosed(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	if err := os.Remove(fixture.cfg.Dist.CriticalCSS()); err != nil {
@@ -365,5 +385,31 @@ func TestFaviconRedirectMiddlewareGuardsMethodAndPath(t *testing.T) {
 	}
 	if !strings.Contains(headRec.Header().Get("Location"), "favicon") {
 		t.Fatalf("expected favicon location header on HEAD redirect, got %q", headRec.Header().Get("Location"))
+	}
+}
+
+func TestFaviconRedirectMiddlewareSupportsIdentityMappedFavicon(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	mustWriteGob(t, fixture.cfg.Dist.PublicFileMapGob(), FileMap{
+		"favicon.ico": {
+			DistName: "favicon.ico",
+		},
+	})
+
+	w := newWaveForTest(t, fixture, true, nil)
+	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusTeapot)
+	})
+	h := w.FaviconRedirect()(next)
+
+	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("expected redirect status 302 for identity-mapped favicon, got %d", rec.Code)
+	}
+	if location := rec.Header().Get("Location"); location != "/assets/favicon.ico" {
+		t.Fatalf("unexpected redirect location for identity-mapped favicon: %q", location)
 	}
 }

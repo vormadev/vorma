@@ -27,7 +27,12 @@ func joinPublicURLFromRefPath(publicPathPrefix string, refPath string) string {
 		return ""
 	}
 
-	return matcher.EnsureLeadingSlash(path.Join(publicPathPrefix, refPath))
+	normalizedRefPath := strings.TrimPrefix(path.Clean("/"+refPath), "/")
+	if normalizedRefPath == "" || normalizedRefPath == "." {
+		return ""
+	}
+
+	return matcher.EnsureLeadingSlash(path.Join(publicPathPrefix, normalizedRefPath))
 }
 
 func (w *Wave) initPublicURLFromInternalRefFile(relativePath string) (string, error) {

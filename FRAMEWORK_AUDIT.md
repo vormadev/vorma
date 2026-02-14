@@ -107,7 +107,7 @@ and test quality.
 | `bootstrap/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormabuild/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaruntime/*`       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `wave/*`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `wave/*`               | done        | done        | done      | done     | done        | done         | done          |
 | `wave/tooling/*`       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaclient/client/*` | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaclient/react/*`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
@@ -119,21 +119,28 @@ and test quality.
 | `lab/*`                | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `internal/*`           | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 
+Matrix evidence: `wave/*` all passes complete with evidence `EV-20260214-005`.
+
 ## Current Focus
 
-1. Start with `wave/*` + `wave/tooling/*` and log concrete evidence IDs.
+1. Complete `wave/tooling/*` and log concrete evidence IDs.
 2. Continue through the remaining matrix groups.
 
 ## Open Findings
 
-None currently recorded for this reset cycle.
+1. `wave/runtime_assets.go` with `wave/cache_internal.go`: `Wave.IsPublicAsset`
+   caches negative lookup results for every distinct request path in production.
+   This creates unbounded cache-key growth and memory pressure risk under
+   high-cardinality route traffic.
 
 ## Open Test Gaps
 
-None currently recorded for this reset cycle.
+1. Add a regression test that exercises repeated unique negative
+   `Wave.IsPublicAsset` lookups in production mode and asserts miss keys are not
+   retained indefinitely.
 
 ## Next Queue
 
-1. `wave/*`: complete all passes with evidence.
-2. `wave/tooling/*`: complete all passes with evidence.
+1. `wave/tooling/*`: complete all passes with evidence.
+2. Resolve `wave/*` open finding on negative-lookup cache growth with tests.
 3. Continue package-group by package-group until matrix is complete.
