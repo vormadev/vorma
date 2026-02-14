@@ -1,33 +1,32 @@
 # Framework Audit Tracker
 
+## Cycle
+
+- Reset date: 2026-02-14
+- Baseline: current repository state at reset time
+- Tracking model:
+    - `FRAMEWORK_AUDIT.md`: high-signal current state only
+    - `FRAMEWORK_AUDIT_EVIDENCE.md`: append-only detailed evidence log
+
 ## Objective
 
-Run a from-scratch audit of the Vorma + Wave frameworks for correctness,
-resilience, API quality, maintainability/refactorability, DRY abstraction
-opportunities, performance opportunities, and test quality.
+Run a from-scratch, repo-wide audit for correctness, resilience, API quality,
+maintainability/refactorability, DRY opportunities, performance opportunities,
+and test quality.
 
 ## Scope
 
-- `vorma.go` (root package surface)
-- `vormabuild/*`
-- `vormaruntime/*`
-- `wave/*`
-- `wave/tooling/*`
-- `bootstrap/*` (including generated defaults/templates)
-- `vormaclient/client/*`
-- `vormaclient/react/*`
-- `vormaclient/preact/*`
-- `vormaclient/solid/*`
-- `vormaclient/vite/*`
-- `vormaclient/create/*`
-
-## Constraints
-
-- Findings are reported as an exhaustive plain list.
-- No severity labels or triage categories.
-- Tests must not be weakened.
-- For this audit, correctness and resilience take precedence over test-suite
-  runtime.
+- All repository code and templates, including (without limitation):
+    - `vorma.go`
+    - `bootstrap/*`
+    - `vormabuild/*`
+    - `vormaruntime/*`
+    - `wave/*`
+    - `wave/tooling/*`
+    - `vormaclient/*`
+    - `kit/*`
+    - `lab/*`
+    - `internal/*`
 
 ## Audit Questions
 
@@ -52,45 +51,39 @@ opportunities, performance opportunities, and test quality.
 13. Are internal/unstable vs intended-public API boundaries drawn in the right
     places across both Go and TypeScript code?
 
-## Pass Plan
+## Non-Negotiables
 
-This audit runs as package-by-package multi-pass review with strict completion
-criteria.
+- No test weakening.
+- No severity labels or triage categories in findings.
+- Any performance regression is unacceptable unless it is required for
+  correctness or explicitly approved by user. This applies to both dev-time and
+  runtime behavior.
+- Any non-obvious semantic/design change requires explicit user approval.
 
-### Core Pass Types (Tracked in Matrix)
+## Performance Evaluation Policy
 
-1. Surface/API pass: exported APIs, naming clarity, ergonomics, consistency, and
-   correct internal/unstable vs intended-public boundary placement.
-2. Correctness/resilience pass: state transitions, lifecycle behavior, stale
-   state, race potential, error propagation.
-3. Complexity/fragility pass: identify brittle code paths and refactor/rewrite
-   opportunities that reduce latent bug risk.
-4. DRY/abstraction pass: identify duplicated logic within a package and across
-   the repo; propose or implement shared helpers/internal abstractions/kit APIs.
-5. Performance pass: avoidable work in hot paths, unnecessary process spawn/IO,
-   serialization points, sequencing/parallelism opportunities.
-6. Test-quality pass: missing scenarios, weak assertions, false-confidence
-   tests.
+1. Hot paths require benchmark evidence before claiming a perf win/regression.
+2. Non-hot paths are evaluated by first-principles logical analysis.
+3. Avoid micro-optimization churn outside proven hot paths unless required for
+   correctness.
 
-### Scoped Focus Passes (Applied Where Relevant)
+## Pass Focuses (This Cycle)
 
-1. Bootstrap defaults/templates pass: generated defaults, boilerplate
-   absorbability, user-flexibility tradeoffs (`bootstrap/*`).
-2. TypeScript client runtime pass: navigation/runtime correctness, adapter API
-   clarity, client-boundary behavior (`vormaclient/*`).
+1. Surface/API boundary pass (Go + TS).
+2. Correctness/resilience pass (state, lifecycle, races, stale state).
+3. Complexity/fragility pass (rewrite candidates).
+4. DRY/abstraction pass (within-package and cross-repo duplication).
+5. Performance pass (especially dev-loop behavior, unnecessary work).
+6. Test-quality pass (coverage quality, false confidence, missing regressions).
+7. Failure-mode pass (error paths and diagnostics quality).
 
-### Pass Completion Rules
+## Completion Rules
 
-1. A package row in `Full-Pass Matrix` flips to `done` only when all six core
-   pass columns are `done` for that package.
-2. If any pass is incomplete, status remains `not done`.
-3. Each concrete issue found must be recorded in `Findings Log`.
-4. If a fix is obvious and first-principles-correct, implement with tests.
-5. If a fix has semantics/design tradeoffs, stop and request explicit approval,
-   then record outcome in `Approval Log`.
-6. For packages with scoped focus passes, completion of relevant scoped passes
-   must be reflected in `Active Package Notes` before the package is considered
-   complete.
+1. A package row is only `done` when all required passes are complete.
+2. Each pass completion must reference evidence IDs in
+   `FRAMEWORK_AUDIT_EVIDENCE.md`.
+3. Open findings and open test gaps must remain visible here until closed.
+4. Keep this file lean: no historical closed-item narrative.
 
 ## Change Authorization Policy
 
@@ -102,119 +95,45 @@ criteria.
 
 ## Approval Log
 
-| Date       | Change                                                                                                                                              | Bucket                         | Approval Status  |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ---------------- |
-| 2026-02-14 | `vormaclient/vite/vite.ts` object-input merge preserves user entries with collision-free internal keys.                                             | design/semantics (non-obvious) | approved by user |
-| 2026-02-14 | `wave.GetParsedConfig()` and `wave/tooling.Builder.Config()` return defensive copies; mutable access moved to explicit unstable internal accessors. | design/semantics (non-obvious) | approved by user |
+- 2026-02-14: Approved boundary fix for `wave.GetParsedConfig()` and
+  `wave/tooling.Builder.Config()` snapshot semantics with explicit unstable
+  mutable accessors.
 
-## Handoff Ledger
+## Matrix
 
-### Full-Pass Matrix (Handoff-Safe)
+| Package Group          | Surface/API | Correctness | Fragility | DRY      | Performance | Test Quality | Failure Modes |
+| ---------------------- | ----------- | ----------- | --------- | -------- | ----------- | ------------ | ------------- |
+| `vorma.go`             | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `bootstrap/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormabuild/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaruntime/*`       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `wave/*`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `wave/tooling/*`       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/client/*` | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/react/*`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/preact/*` | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/solid/*`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/vite/*`   | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/create/*` | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/*`                | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `lab/*`                | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `internal/*`           | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 
-Status values are strict: `done` means complete package-wide pass, `not done`
-means the pass is still pending.
+## Current Focus
 
-| Package                | Surface/API pass | Correctness pass | Complexity/fragility pass | DRY/abstraction pass | Performance pass | Test-quality pass |
-| ---------------------- | ---------------- | ---------------- | ------------------------- | -------------------- | ---------------- | ----------------- |
-| `vorma.go`             | done             | done             | done                      | done                 | done             | done              |
-| `vormabuild/*`         | done             | done             | done                      | done                 | done             | done              |
-| `vormaruntime/*`       | done             | done             | done                      | done                 | done             | done              |
-| `wave/*`               | done             | done             | done                      | done                 | done             | done              |
-| `wave/tooling/*`       | done             | done             | done                      | done                 | done             | done              |
-| `bootstrap/*`          | done             | done             | done                      | done                 | done             | done              |
-| `vormaclient/client/*` | done             | done             | done                      | done                 | done             | done              |
-| `vormaclient/react/*`  | done             | done             | done                      | done                 | done             | done              |
-| `vormaclient/preact/*` | done             | done             | done                      | done                 | done             | done              |
-| `vormaclient/solid/*`  | done             | done             | done                      | done                 | done             | done              |
-| `vormaclient/vite/*`   | done             | done             | done                      | done                 | done             | done              |
-| `vormaclient/create/*` | done             | done             | done                      | done                 | done             | done              |
+1. Start with `wave/*` + `wave/tooling/*` and log concrete evidence IDs.
+2. Continue through the remaining matrix groups.
 
-### Active Package Notes
+## Open Findings
 
-- `vormaclient/client/*`: adapter-linked link behavior, `getRootEl()` runtime
-  guard behavior, scroll/sessionStorage failure handling, and unstable/public
-  API boundary cleanup were audited and fixed.
-- `vormaclient/*`: duplicated typed-link href construction across React/Preact/
-  Solid adapters was consolidated into shared internal helper
-  (`resolveTypedLinkHref`) with updated dist regression coverage to prevent
-  drift.
-- `vormaclient/client/*`: duplicated eligible-link target classification logic
-  in click/prefetch flows was consolidated in `core/links.ts` to reduce drift
-  risk between navigation modes.
-- `vormaclient/client/*`: duplicated `VormaRoutePropsGeneric` type shape
-  definitions were consolidated to the `app/helpers.ts` source-of-truth export
-  to prevent type drift.
-- `vormaclient/react/*`, `vormaclient/preact/*`, `vormaclient/solid/*`,
-  `vormaclient/vite/*`, `vormaclient/create/*`: Surface/API boundary backfill
-  completed. No unstable/internal API leaks found beyond intentionally unstable
-  `vorma/client/__internal` usage and CLI-internal helper files.
-- `vormaclient/create/*`: Go version parse/validation was hardened via shared
-  helpers to prevent silent parse failure and empty bootstrap GoVersion.
-- `vormaclient/client/*`: unstable `__*` exports were removed from public
-  `vorma/client` and kept on `vorma/client/__internal` to enforce clearer API
-  boundaries.
-- `vorma.go`: full pass complete. Added regression coverage for action runtime
-  semantics (`NewAction` remains registration no-op; discovered-action helper
-  performs registration) alongside existing loader checks.
-- `vormabuild/*`: full pass complete. Fixed recursive generated-artifact cleanup
-  to skip directories (prevents accidental removal of user-owned directories
-  whose names share generated prefixes) and added regression coverage.
-- `vormabuild/*`: reduced drift risk by deduplicating route-registration root
-  traversal into one shared helper used by both loader-pattern discovery and
-  discovered-registrar call discovery.
-- `vormaruntime/*`: full pass complete. Route-data cache invalidation is now
-  scoped to the current app identity, so one app reload no longer evicts other
-  apps' cache entries. Added regression coverage.
-- `vormaruntime/*`: fixed mutable API exposure for TypeScript ad-hoc types by
-  cloning on input (`NewVormaApp`) and getter output (`GetAdHocTypes`), with
-  regression coverage for caller/getter mutation isolation.
-- `wave/*`: fixed framework runtime-state copying to preserve
-  function-based/runtime-only framework fields (`FrameworkRunBuildHook`,
-  `FrameworkPrepareGoBuildOverlay`) and schema extensions across config reload,
-  with regression coverage.
-- `wave/*`: hardened runtime API boundary behavior by deep-cloning
-  `AddFrameworkWatchPatterns` inputs (prevents caller aliasing from mutating
-  framework watch config) and returning defensive copies from `GetPublicFileMap`
-  (prevents caller mutation of cached runtime file-map state).
-- `wave/tooling/*`: watcher intake now exits cleanly on closed watcher error
-  channels instead of continuing through nil-error events during shutdown.
-- `wave/*`, `wave/tooling/*`: approval-gated config-boundary fix completed.
-  `GetParsedConfig` and `Builder.Config` now return defensive copies with
-  regression coverage; internal mutable access is explicit via unstable
-  `Internal__*` accessors.
-- `wave/*`: simplified cloned-snapshot boundary design to avoid brittle generic
-  deep-clone machinery. Public snapshots now intentionally omit unstable
-  internal callback/schema fields; internal build/dev paths use explicit
-  mutable-access APIs.
+None currently recorded for this reset cycle.
 
-### Current Pass Focus
+## Open Test Gaps
 
-1. No open pass focus items; full scoped matrix is complete.
-
-### Handoff Protocol
-
-1. Do not assume anything outside this file; this document is the source of
-   truth for open scope, status, and next actions.
-2. Start from `Next Queue` item `1` and work in order unless user explicitly
-   reprioritizes.
-3. Keep `Full-Pass Matrix`, `Findings Log`, `Test Gap Notes`, and `Next Queue`
-   synchronized on every meaningful change.
-4. Keep only active/open items plus significant decision records required for
-   future context.
-
-## Findings Log
-
-No open findings.
-
-## Test Gap Notes
-
-No open test gaps.
-
-## Open Assumptions
-
-1. `internal/site` watcher temp-file event noise is treated as app/tooling
-   interaction unless reproduced as framework-default behavior.
+None currently recorded for this reset cycle.
 
 ## Next Queue
 
-1. Wait for new audit scope or newly reported regressions.
+1. `wave/*`: complete all passes with evidence.
+2. `wave/tooling/*`: complete all passes with evidence.
+3. Continue package-group by package-group until matrix is complete.
