@@ -69,13 +69,13 @@ func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	m string,
 	p string,
 	f func(CtxPtr) (O, error),
-	decorateCtx func(*mux.ReqData[I]) CtxPtr,
+	decorateCtx func(*ActionReqData[I]) CtxPtr,
 ) *Action[I, O] {
 	panicIfNilActionRegistrationArguments("vorma.NewAction", f, decorateCtx)
 	_ = app
 	_ = m
 	_ = p
-	wrappedF := func(c *mux.ReqData[I]) (O, error) { return f(decorateCtx(c)) }
+	wrappedF := func(c *ActionReqData[I]) (O, error) { return f(decorateCtx(c)) }
 	return mux.TaskHandlerFromFunc(wrappedF)
 }
 
@@ -98,11 +98,11 @@ func Internal__RegisterDiscoveredAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	m string,
 	p string,
 	f func(CtxPtr) (O, error),
-	decorateCtx func(*mux.ReqData[I]) CtxPtr,
+	decorateCtx func(*ActionReqData[I]) CtxPtr,
 ) *Action[I, O] {
 	panicIfNilDiscoveredRegistrationApp("vorma.Internal__RegisterDiscoveredAction", app)
 	panicIfNilActionRegistrationArguments("vorma.Internal__RegisterDiscoveredAction", f, decorateCtx)
-	wrappedF := func(c *mux.ReqData[I]) (O, error) { return f(decorateCtx(c)) }
+	wrappedF := func(c *ActionReqData[I]) (O, error) { return f(decorateCtx(c)) }
 	actionTask := mux.TaskHandlerFromFunc(wrappedF)
 	mux.RegisterTaskHandler(app.ActionsRouter().Router, m, p, actionTask)
 	return actionTask
@@ -130,7 +130,7 @@ func panicIfNilLoaderRegistrationArguments[O any, CtxPtr ~*Ctx, Ctx any](
 func panicIfNilActionRegistrationArguments[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	caller string,
 	actionFunc func(CtxPtr) (O, error),
-	decorateActionContext func(*mux.ReqData[I]) CtxPtr,
+	decorateActionContext func(*ActionReqData[I]) CtxPtr,
 ) {
 	if actionFunc == nil {
 		panic(caller + ": action function cannot be nil")

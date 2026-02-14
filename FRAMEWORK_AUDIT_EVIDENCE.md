@@ -17,4 +17,4 @@
 
 ---
 
-_No entries yet._
+No entries yet.

@@ -89,6 +89,14 @@ and test quality.
    `FRAMEWORK_AUDIT_EVIDENCE.md`.
 7. Open findings and open test gaps must remain visible here until closed.
 8. Keep this file lean: no historical closed-item narrative.
+9. For each finding discovered in the active queue item, do exactly one: apply
+   the fix immediately if it is obvious and first-principles-correct, or stop
+   and request explicit user guidance.
+10. Do not mark a matrix cell `done` while any finding from that cell remains
+    unresolved.
+11. Do not advance `Next Queue` past the current item until all findings in that
+    item are resolved or explicitly deferred by user decision and recorded in
+    `Approval Log`.
 
 ## Change Authorization Policy
 
@@ -177,7 +185,7 @@ and test quality.
 | `internal/scripts/npm_bumper`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `internal/scripts/sum`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 
-Matrix evidence: none yet in this reset cycle.
+Matrix evidence for completed cells: none yet in this reset cycle.
 
 ## Current Focus
 
@@ -186,16 +194,18 @@ Matrix evidence: none yet in this reset cycle.
 
 ## Open Findings
 
-1. None currently.
+TODO
 
 ## Open Test Gaps
 
-1. None currently.
+TODO
 
 ## Next Queue
 
-1. `vorma.go` Surface/API cell.
-2. `bootstrap/*` Surface/API cell.
-3. `vormabuild/*` Surface/API cell.
-4. Continue Surface/API cells downward through the matrix.
-5. Switch to Correctness only after Surface/API sweep completion is evidenced.
+TODO
+
+## Process Notes
+
+You should keep going through as many cells as you can autonomously unless and
+until a Change Authorization Requirement is triggered where you need the user's
+input.
