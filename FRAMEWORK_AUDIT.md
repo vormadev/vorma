@@ -122,11 +122,11 @@ means the pass is still pending.
 | `wave/tooling/*`       | not done         | not done         | not done                  | not done             | not done         | not done          |
 | `bootstrap/*`          | not done         | not done         | not done                  | not done             | not done         | not done          |
 | `vormaclient/client/*` | not done         | not done         | not done                  | not done             | not done         | not done          |
-| `vormaclient/react/*`  | done             | done             | not done                  | not done             | done             | done              |
-| `vormaclient/preact/*` | done             | done             | not done                  | not done             | done             | done              |
-| `vormaclient/solid/*`  | done             | done             | not done                  | not done             | done             | done              |
-| `vormaclient/vite/*`   | done             | done             | not done                  | not done             | done             | done              |
-| `vormaclient/create/*` | done             | done             | not done                  | not done             | done             | done              |
+| `vormaclient/react/*`  | not done         | done             | not done                  | not done             | done             | done              |
+| `vormaclient/preact/*` | not done         | done             | not done                  | not done             | done             | done              |
+| `vormaclient/solid/*`  | not done         | done             | not done                  | not done             | done             | done              |
+| `vormaclient/vite/*`   | not done         | done             | not done                  | not done             | done             | done              |
+| `vormaclient/create/*` | not done         | done             | not done                  | not done             | done             | done              |
 
 ### Active Package Notes
 
@@ -148,9 +148,9 @@ means the pass is still pending.
 
 1. Complete remaining package-wide passes for `vormaclient/client/*`, including
    complexity/fragility and DRY/abstraction passes.
-2. Backfill complexity/fragility and DRY/abstraction passes for
-   `vormaclient/react/*`, `vormaclient/preact/*`, `vormaclient/solid/*`,
-   `vormaclient/vite/*`, and `vormaclient/create/*`.
+2. Backfill Surface/API boundary pass plus complexity/fragility and
+   DRY/abstraction passes for `vormaclient/react/*`, `vormaclient/preact/*`,
+   `vormaclient/solid/*`, `vormaclient/vite/*`, and `vormaclient/create/*`.
 3. Then execute full package-wide passes for `vorma.go`, `vormabuild/*`,
    `vormaruntime/*`, `wave/*`, `wave/tooling/*`, and `bootstrap/*`.
 
@@ -188,9 +188,9 @@ means the pass is still pending.
 ## Next Queue
 
 1. Complete full core passes for `vormaclient/client/*`.
-2. Backfill new complexity/fragility and DRY/abstraction passes for
-   `vormaclient/react/*`, `vormaclient/preact/*`, `vormaclient/solid/*`,
-   `vormaclient/vite/*`, and `vormaclient/create/*`.
+2. Backfill Surface/API boundary pass plus new complexity/fragility and
+   DRY/abstraction passes for `vormaclient/react/*`, `vormaclient/preact/*`,
+   `vormaclient/solid/*`, `vormaclient/vite/*`, and `vormaclient/create/*`.
 3. Complete full core passes for `vorma.go`, `vormabuild/*`, `vormaruntime/*`,
    `wave/*`, `wave/tooling/*`, and `bootstrap/*`.
 4. Resolve open finding `1` (`wave.GetParsedConfig()` mutability) with explicit
