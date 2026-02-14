@@ -10,7 +10,7 @@ import {
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
 	makeFinalLinkProps,
-	resolvePath,
+	resolveTypedLinkHref,
 } from "vorma/client/__internal";
 
 export const VormaLink = memo(function VormaLink(
@@ -75,23 +75,18 @@ export function makeTypedLink<C extends VormaAppConfig>(
 			...linkProps
 		} = mergedProps as any;
 
-		const href = resolvePath({
+		const href = resolveTypedLinkHref({
 			vormaAppConfig,
-			type: "loader",
-			props: {
-				pattern,
-				...(params && { params }),
-				...(splatValues && { splatValues }),
-			},
+			pattern,
+			...(params && { params }),
+			...(splatValues && { splatValues }),
+			search,
+			hash,
 		});
-
-		const url = new URL(href, window.location.origin);
-		if (search !== undefined) url.search = search;
-		if (hash !== undefined) url.hash = hash;
 
 		const finalProps = {
 			...linkProps,
-			href: url.href,
+			href,
 			state,
 		};
 

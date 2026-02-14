@@ -2,6 +2,7 @@ export { __registerClientLoaderForAdapter as registerClientLoaderForAdapter } fr
 export { applyScrollState } from "./src/platform/scroll.ts";
 export {
 	makeFinalLinkProps,
+	resolveTypedLinkHref,
 	type VormaLinkPropsBase,
 	type UseRouterDataFunction,
 } from "./src/ui/helpers.ts";

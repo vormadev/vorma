@@ -130,6 +130,16 @@ means the pass is still pending.
 - `vormaclient/client/*`: adapter-linked link behavior, `getRootEl()` runtime
   guard behavior, and scroll/sessionStorage failure handling were audited and
   fixed; full package pass is still pending.
+- `vormaclient/*`: duplicated typed-link href construction across React/Preact/
+  Solid adapters was consolidated into shared internal helper
+  (`resolveTypedLinkHref`) with updated dist regression coverage to prevent
+  drift.
+- `vormaclient/client/*`: duplicated eligible-link target classification logic
+  in click/prefetch flows was consolidated in `core/links.ts` to reduce drift
+  risk between navigation modes.
+- `vormaclient/client/*`: duplicated `VormaRoutePropsGeneric` type shape
+  definitions were consolidated to the `app/helpers.ts` source-of-truth export
+  to prevent type drift.
 
 ### Current Pass Focus
 

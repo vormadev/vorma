@@ -6,12 +6,12 @@ import { installDistTestVormaGlobal } from "./dist_test_harness.ts";
 
 const {
 	makeFinalLinkPropsSpy,
-	resolvePathSpy,
+	resolveTypedLinkHrefSpy,
 	registerClientLoaderForAdapterSpy,
 } = vi.hoisted(() => {
 	return {
 		makeFinalLinkPropsSpy: vi.fn(),
-		resolvePathSpy: vi.fn(),
+		resolveTypedLinkHrefSpy: vi.fn(),
 		registerClientLoaderForAdapterSpy: vi.fn(),
 	};
 });
@@ -22,7 +22,7 @@ vi.mock("vorma/client/__internal", async (importOriginal) => {
 	return {
 		...actual,
 		makeFinalLinkProps: makeFinalLinkPropsSpy,
-		resolvePath: resolvePathSpy,
+		resolveTypedLinkHref: resolveTypedLinkHrefSpy,
 		registerClientLoaderForAdapter: registerClientLoaderForAdapterSpy,
 	};
 });
@@ -161,7 +161,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("react makeTypedLink builds href with search/hash and forwards state", async () => {
 		const reactAdapter = await import("vorma/react");
-		resolvePathSpy.mockReturnValue("/typed/path");
+		resolveTypedLinkHrefSpy.mockReturnValue(
+			`${window.location.origin}/typed/path?q=abc#panel`,
+		);
 		makeFinalLinkPropsSpy.mockReturnValue({
 			dataExternal: undefined,
 			onPointerEnter: vi.fn(),
@@ -187,15 +189,16 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			props: Record<string, unknown>;
 		};
 
-		expect(resolvePathSpy).toHaveBeenCalledTimes(1);
-		expect(resolvePathSpy).toHaveBeenCalledWith({
-			vormaAppConfig: {},
-			type: "loader",
-			props: {
+		expect(resolveTypedLinkHrefSpy).toHaveBeenCalledTimes(1);
+		expect(resolveTypedLinkHrefSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				vormaAppConfig: {},
 				pattern: "/typed/:id",
 				params: { id: "42" },
-			},
-		});
+				search: "?q=abc",
+				hash: "#panel",
+			}),
+		);
 		expect(element.props.href).toBe(
 			`${window.location.origin}/typed/path?q=abc#panel`,
 		);
@@ -205,7 +208,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("react makeTypedLink applies default props, forwards splatValues, and sets displayName", async () => {
 		const reactAdapter = await import("vorma/react");
-		resolvePathSpy.mockReturnValue("/typed/path");
+		resolveTypedLinkHrefSpy.mockReturnValue(
+			`${window.location.origin}/typed/path`,
+		);
 		makeFinalLinkPropsSpy.mockReturnValue({
 			dataExternal: undefined,
 			onPointerEnter: vi.fn(),
@@ -231,21 +236,22 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		expect((TypedLink as any).displayName).toBe(
 			"TypedLink(className, target)",
 		);
-		expect(resolvePathSpy).toHaveBeenCalledWith({
-			vormaAppConfig: {},
-			type: "loader",
-			props: {
+		expect(resolveTypedLinkHrefSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				vormaAppConfig: {},
 				pattern: "/typed/*",
 				splatValues: ["docs/path"],
-			},
-		});
+			}),
+		);
 		expect(element.props.className).toBe("default-class");
 		expect(element.props.target).toBe("_blank");
 	});
 
 	it("react makeTypedLink preserves default state/search/hash when not provided by caller", async () => {
 		const reactAdapter = await import("vorma/react");
-		resolvePathSpy.mockReturnValue("/typed/path");
+		resolveTypedLinkHrefSpy.mockReturnValue(
+			`${window.location.origin}/typed/path?default=true#default`,
+		);
 		makeFinalLinkPropsSpy.mockReturnValue({
 			dataExternal: undefined,
 			onPointerEnter: vi.fn(),
@@ -273,6 +279,15 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			`${window.location.origin}/typed/path?default=true#default`,
 		);
 		expect(element.props.state).toEqual({ from: "default-state" });
+		expect(resolveTypedLinkHrefSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				vormaAppConfig: {},
+				pattern: "/typed/:id",
+				params: { id: "42" },
+				search: "?default=true",
+				hash: "#default",
+			}),
+		);
 	});
 
 	it("preact VormaLink forwards final link handlers onto rendered anchors", async () => {
@@ -317,7 +332,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("preact makeTypedLink builds href with search/hash and forwards class", async () => {
 		const preactAdapter = await import("vorma/preact");
-		resolvePathSpy.mockReturnValue("/typed/path");
+		resolveTypedLinkHrefSpy.mockReturnValue(
+			`${window.location.origin}/typed/path?q=abc#panel`,
+		);
 		makeFinalLinkPropsSpy.mockReturnValue({
 			dataExternal: undefined,
 			onPointerEnter: vi.fn(),
@@ -349,15 +366,16 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		if (!anchor) {
 			throw new Error("Expected typed link to render an anchor");
 		}
-		expect(resolvePathSpy).toHaveBeenCalledTimes(1);
-		expect(resolvePathSpy).toHaveBeenCalledWith({
-			vormaAppConfig: {},
-			type: "loader",
-			props: {
+		expect(resolveTypedLinkHrefSpy).toHaveBeenCalledTimes(1);
+		expect(resolveTypedLinkHrefSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				vormaAppConfig: {},
 				pattern: "/typed/:id",
 				params: { id: "42" },
-			},
-		});
+				search: "?q=abc",
+				hash: "#panel",
+			}),
+		);
 		expect(anchor.getAttribute("href")).toBe(
 			`${window.location.origin}/typed/path?q=abc#panel`,
 		);
@@ -366,7 +384,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("preact makeTypedLink applies default props, forwards splatValues, and sets displayName", async () => {
 		const preactAdapter = await import("vorma/preact");
-		resolvePathSpy.mockReturnValue("/typed/path");
+		resolveTypedLinkHrefSpy.mockReturnValue(
+			`${window.location.origin}/typed/path`,
+		);
 		makeFinalLinkPropsSpy.mockReturnValue({
 			dataExternal: undefined,
 			onPointerEnter: vi.fn(),
@@ -398,21 +418,22 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		expect((TypedLink as any).displayName).toBe(
 			"TypedLink(className, target)",
 		);
-		expect(resolvePathSpy).toHaveBeenCalledWith({
-			vormaAppConfig: {},
-			type: "loader",
-			props: {
+		expect(resolveTypedLinkHrefSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				vormaAppConfig: {},
 				pattern: "/typed/*",
 				splatValues: ["docs/path"],
-			},
-		});
+			}),
+		);
 		expect(anchor.className).toBe("default-class");
 		expect(anchor.getAttribute("target")).toBe("_blank");
 	});
 
 	it("preact makeTypedLink preserves default state/search/hash when not provided by caller", async () => {
 		const preactAdapter = await import("vorma/preact");
-		resolvePathSpy.mockReturnValue("/typed/path");
+		resolveTypedLinkHrefSpy.mockReturnValue(
+			`${window.location.origin}/typed/path?default=true#default`,
+		);
 		makeFinalLinkPropsSpy.mockReturnValue({
 			dataExternal: undefined,
 			onPointerEnter: vi.fn(),
@@ -444,6 +465,15 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		}
 		expect(anchor.getAttribute("href")).toBe(
 			`${window.location.origin}/typed/path?default=true#default`,
+		);
+		expect(resolveTypedLinkHrefSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				vormaAppConfig: {},
+				pattern: "/typed/:id",
+				params: { id: "42" },
+				search: "?default=true",
+				hash: "#default",
+			}),
 		);
 		expect(makeFinalLinkPropsSpy).toHaveBeenCalled();
 		expect(makeFinalLinkPropsSpy.mock.calls.at(-1)?.[0]).toMatchObject({
@@ -494,7 +524,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("solid makeTypedLink builds href with search/hash and forwards class/state", async () => {
 		const solidAdapter = await import("vorma/solid");
-		resolvePathSpy.mockReturnValue("/typed/path");
+		resolveTypedLinkHrefSpy.mockReturnValue(
+			`${window.location.origin}/typed/path?q=abc#panel`,
+		);
 		makeFinalLinkPropsSpy.mockReturnValue({
 			dataExternal: undefined,
 			onPointerEnter: vi.fn(),
@@ -525,15 +557,16 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			if (!anchor) {
 				throw new Error("Expected typed link to render an anchor");
 			}
-			expect(resolvePathSpy).toHaveBeenCalledTimes(1);
-			expect(resolvePathSpy).toHaveBeenCalledWith({
-				vormaAppConfig: {},
-				type: "loader",
-				props: {
+			expect(resolveTypedLinkHrefSpy).toHaveBeenCalledTimes(1);
+			expect(resolveTypedLinkHrefSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					vormaAppConfig: {},
 					pattern: "/typed/:id",
 					params: { id: "42" },
-				},
-			});
+					search: "?q=abc",
+					hash: "#panel",
+				}),
+			);
 			expect(anchor.getAttribute("href")).toBe(
 				`${window.location.origin}/typed/path?q=abc#panel`,
 			);
@@ -545,7 +578,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("solid makeTypedLink applies default props and forwards splatValues", async () => {
 		const solidAdapter = await import("vorma/solid");
-		resolvePathSpy.mockReturnValue("/typed/path");
+		resolveTypedLinkHrefSpy.mockReturnValue(
+			`${window.location.origin}/typed/path`,
+		);
 		makeFinalLinkPropsSpy.mockReturnValue({
 			dataExternal: undefined,
 			onPointerEnter: vi.fn(),
@@ -573,14 +608,13 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			if (!anchor) {
 				throw new Error("Expected typed link to render an anchor");
 			}
-			expect(resolvePathSpy).toHaveBeenCalledWith({
-				vormaAppConfig: {},
-				type: "loader",
-				props: {
+			expect(resolveTypedLinkHrefSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					vormaAppConfig: {},
 					pattern: "/typed/*",
 					splatValues: ["docs/path"],
-				},
-			});
+				}),
+			);
 			expect(anchor.getAttribute("class")).toBe("default-class");
 			expect(anchor.getAttribute("target")).toBe("_blank");
 		} finally {

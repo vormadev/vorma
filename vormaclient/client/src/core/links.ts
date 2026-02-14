@@ -40,6 +40,23 @@ function isSameDocumentNoopNavigationTarget(
 	);
 }
 
+type EligibleAnchorTargetClassification =
+	| "same-document-noop"
+	| "hash-change"
+	| "navigate";
+
+function classifyEligibleAnchorTarget(
+	anchorDetails: EligibleInternalAnchorDetails,
+): EligibleAnchorTargetClassification {
+	if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
+		return "same-document-noop";
+	}
+	if (isJustAHashChange(anchorDetails)) {
+		return "hash-change";
+	}
+	return "navigate";
+}
+
 function getEligibleInternalAnchorDetails(
 	event: Event,
 ): EligibleInternalAnchorDetails | null {
@@ -162,17 +179,16 @@ export function createLinkOnClickFn<E extends Event>(
 		const anchorDetails = getEligibleInternalAnchorDetails(event);
 		if (!anchorDetails) return;
 
-		const { anchor } = anchorDetails;
-
-		if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
+		const targetType = classifyEligibleAnchorTarget(anchorDetails);
+		if (targetType === "same-document-noop") {
 			return;
 		}
-
-		if (isJustAHashChange(anchorDetails)) {
+		if (targetType === "hash-change") {
 			saveScrollState();
 			return;
 		}
 
+		const { anchor } = anchorDetails;
 		event.preventDefault();
 		await callbacks.beforeBegin?.(event);
 
@@ -299,12 +315,13 @@ async function handlePrefetchClick<E extends Event>(props: {
 	const anchorDetails = getEligibleInternalAnchorDetails(event);
 	if (!anchorDetails) return;
 
-	if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
+	const targetType = classifyEligibleAnchorTarget(anchorDetails);
+	if (targetType === "same-document-noop") {
 		clearPendingTimer();
 		return;
 	}
 
-	if (isJustAHashChange(anchorDetails)) {
+	if (targetType === "hash-change") {
 		clearPendingTimer();
 		saveScrollState();
 		return;

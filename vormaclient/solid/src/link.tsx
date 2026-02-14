@@ -9,7 +9,7 @@ import {
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
 	makeFinalLinkProps,
-	resolvePath,
+	resolveTypedLinkHref,
 } from "vorma/client/__internal";
 
 type VormaLinkEvent = Event;
@@ -80,21 +80,16 @@ export function makeTypedLink<C extends VormaAppConfig>(
 		]);
 
 		const href = createMemo(() => {
-			const basePath = resolvePath({
+			return resolveTypedLinkHref({
 				vormaAppConfig,
-				type: "loader",
-				props: {
-					pattern: local.pattern,
-					...(local.params && { params: local.params }),
-					...(local.splatValues && {
-						splatValues: local.splatValues,
-					}),
-				},
+				pattern: local.pattern,
+				...(local.params && { params: local.params }),
+				...(local.splatValues && {
+					splatValues: local.splatValues,
+				}),
+				search: local.search,
+				hash: local.hash,
 			});
-			const url = new URL(basePath, window.location.origin);
-			if (local.search !== undefined) url.search = local.search;
-			if (local.hash !== undefined) url.hash = local.hash;
-			return url.href;
 		});
 
 		return <VormaLink {...linkProps} href={href()} state={local.state} />;

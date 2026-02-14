@@ -6,6 +6,7 @@ import {
 	type VormaAppBase,
 	type VormaAppConfig,
 	type VormaLoaderPattern,
+	type VormaRoutePropsGeneric as AppVormaRoutePropsGeneric,
 	type VormaRouteParams,
 } from "../app/helpers.ts";
 import { __vormaClientGlobal, type getRouterData } from "../app/context.ts";
@@ -147,15 +148,40 @@ export function makeFinalLinkProps<LinkEvent>(
 	};
 }
 
+export function resolveTypedLinkHref(props: {
+	vormaAppConfig: VormaAppConfig;
+	pattern: string;
+	params?: Record<string, string>;
+	splatValues?: Array<string>;
+	search?: string;
+	hash?: string;
+}): string {
+	const href = resolvePath({
+		vormaAppConfig: props.vormaAppConfig,
+		type: "loader",
+		props: {
+			pattern: props.pattern,
+			...(props.params && { params: props.params }),
+			...(props.splatValues && { splatValues: props.splatValues }),
+		},
+	});
+
+	const url = new URL(href, window.location.origin);
+	if (props.search !== undefined) {
+		url.search = props.search;
+	}
+	if (props.hash !== undefined) {
+		url.hash = props.hash;
+	}
+
+	return url.href;
+}
+
 export type VormaRoutePropsGeneric<
 	JSXElement,
 	App extends VormaAppBase,
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
-> = {
-	idx: number;
-	Outlet: (props: Record<string, unknown>) => JSXElement;
-	__phantom_pattern: Pattern;
-} & Record<string, unknown>;
+> = AppVormaRoutePropsGeneric<JSXElement, App, Pattern>;
 
 export type VormaRouteGeneric<
 	JSXElement,
