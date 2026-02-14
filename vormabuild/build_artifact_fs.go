@@ -75,6 +75,9 @@ func removeMatchingEntriesRecursively(
 			if walkErr != nil {
 				return walkErr
 			}
+			if info != nil && info.IsDir() {
+				return nil
+			}
 			if !shouldRemove(filepath.Base(path)) {
 				return nil
 			}

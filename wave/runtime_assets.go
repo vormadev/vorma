@@ -30,7 +30,12 @@ func (w *Wave) initFileMap() (FileMap, error) {
 }
 
 func (w *Wave) GetPublicFileMap() (FileMap, error) {
-	return w.fileMap.get()
+	fileMap, err := w.fileMap.get()
+	if err != nil {
+		return nil, err
+	}
+
+	return clonePublicFileMap(fileMap), nil
 }
 
 func (w *Wave) resolvePublicURL(original string) (string, error) {
@@ -38,7 +43,7 @@ func (w *Wave) resolvePublicURL(original string) (string, error) {
 		return original, nil
 	}
 
-	fm, err := w.GetPublicFileMap()
+	fm, err := w.fileMap.get()
 	if err != nil {
 		w.log.Warn("failed to load file map", "error", err)
 	}
@@ -113,4 +118,19 @@ func (w *Wave) publicAssetPath(urlPath string) (string, bool) {
 func (w *Wave) IsPublicAsset(urlPath string) bool {
 	isAsset, _ := w.isAsset.get(urlPath)
 	return isAsset
+}
+
+func clonePublicFileMap(
+	fileMap FileMap,
+) FileMap {
+	if len(fileMap) == 0 {
+		return nil
+	}
+
+	clonedPublicFileMap := make(FileMap, len(fileMap))
+	for key, value := range fileMap {
+		clonedPublicFileMap[key] = value
+	}
+
+	return clonedPublicFileMap
 }

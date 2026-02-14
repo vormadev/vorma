@@ -431,38 +431,8 @@ func (analysis *backendRoutePackageAnalysis) discoverVormaRegistrationCalls() ([
 		discoveredVormaRegistrationCallByID: map[string]*discoveredVormaRegistrationCall{},
 	}
 
-	for _, parsedServerFile := range analysis.discoveryRootFiles() {
-		for _, declaration := range parsedServerFile.parsedAST.Decls {
-			switch typedDeclaration := declaration.(type) {
-			case *ast.GenDecl:
-				if typedDeclaration.Tok != token.VAR {
-					continue
-				}
-				if err := analysis.discoverLoaderPatternsFromVarDeclaration(
-					typedDeclaration,
-					parsedServerFile,
-					state,
-				); err != nil {
-					return nil, err
-				}
-			case *ast.FuncDecl:
-				if typedDeclaration.Recv != nil || typedDeclaration.Name.Name != "init" {
-					continue
-				}
-				if err := analysis.discoverLoaderPatternsFromFunctionDeclaration(
-					&localFunctionDeclaration{
-						name: "init",
-						decl: typedDeclaration,
-						file: parsedServerFile,
-						obj:  typedDeclaration.Name.Obj,
-					},
-					nil,
-					state,
-				); err != nil {
-					return nil, err
-				}
-			}
-		}
+	if err := analysis.discoverRouteRegistrationsInRootFiles(state); err != nil {
+		return nil, err
 	}
 
 	callIDs := make([]string, 0, len(state.discoveredVormaRegistrationCallByID))

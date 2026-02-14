@@ -6,12 +6,12 @@ import {
 } from "./dist_test_harness.ts";
 
 describe("npm_dist client runtime", () => {
-	it("resolves loader paths from compiled exports", async () => {
+	it("resolves loader paths from compiled internal exports", async () => {
 		installDistTestVormaGlobal();
 		vi.resetModules();
-		const distClient = await import("vorma/client");
+		const distClientInternal = await import("vorma/client/__internal");
 
-		const path = distClient.__resolvePath({
+		const path = distClientInternal.resolvePath({
 			vormaAppConfig: DIST_TEST_VORMA_APP_CONFIG,
 			type: "loader",
 			props: {
@@ -26,10 +26,10 @@ describe("npm_dist client runtime", () => {
 	it("registers adapter client loaders in compiled runtime", async () => {
 		const globals = installDistTestVormaGlobal();
 		vi.resetModules();
-		const distClient = await import("vorma/client");
+		const distClientInternal = await import("vorma/client/__internal");
 
 		const waitFn = vi.fn(async () => "ready");
-		distClient.__registerClientLoaderForAdapter({
+		distClientInternal.registerClientLoaderForAdapter({
 			pattern: "/items/:id",
 			waitFn,
 		});

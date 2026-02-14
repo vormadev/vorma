@@ -21,7 +21,9 @@ import {
 	buildGoModInitCommandArgs,
 	buildGoModReplaceCommandArgs,
 	buildGoRunCommandArgs,
+	isGoVersionAtLeast,
 	isNodeVersionAtLeast,
+	parseGoVersionOrNull,
 } from "./runtime_helpers.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -36,26 +38,23 @@ async function main() {
 
 	// Check Go installation
 	let goVersion = "";
+	let parsedGoVersion: ReturnType<typeof parseGoVersionOrNull> = null;
 	try {
 		goVersion = execFileSync("go", ["version"], {
 			encoding: "utf8",
 		}).trim();
-		const versionMatch = goVersion.match(/go(\d+)\.(\d+)/);
-		if (versionMatch) {
-			if (!versionMatch[1] || !versionMatch[2]) {
-				cancel(
-					"Go version not recognized. Please ensure Go is installed correctly. See https://go.dev/doc/install for installation instructions.",
-				);
-				process.exit(1);
-			}
-			const major = parseInt(versionMatch[1]);
-			const minor = parseInt(versionMatch[2]);
-			if (major < 1 || (major === 1 && minor < 24)) {
-				cancel(
-					"Go version 1.24 or higher is required. See https://go.dev/doc/install for installation instructions.",
-				);
-				process.exit(1);
-			}
+		parsedGoVersion = parseGoVersionOrNull(goVersion);
+		if (!parsedGoVersion) {
+			cancel(
+				"Go version not recognized. Please ensure Go is installed correctly. See https://go.dev/doc/install for installation instructions.",
+			);
+			process.exit(1);
+		}
+		if (!isGoVersionAtLeast(goVersion, 1, 24)) {
+			cancel(
+				"Go version 1.24 or higher is required. See https://go.dev/doc/install for installation instructions.",
+			);
+			process.exit(1);
 		}
 	} catch {
 		cancel(
@@ -311,9 +310,7 @@ async function main() {
 	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "create-vorma-"));
 	const bootstrapFile = path.join(tempDir, "main.go");
 
-	// Extract Go version string (e.g., "go1.24.0")
-	const goVersionMatch = goVersion.match(/go\d+\.\d+\.\d+/);
-	const goVersionString = goVersionMatch ? goVersionMatch[0] : "";
+	const goVersionString = parsedGoVersion?.normalizedVersion || "";
 
 	try {
 		// Write bootstrap Go file

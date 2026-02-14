@@ -36,6 +36,24 @@ describe("client utility contracts", () => {
 		expect((api as Record<string, unknown>).route).toBeUndefined();
 	});
 
+	it("does not expose unstable internal __* helpers from the runtime client entry", async () => {
+		const publicApi = await import("../../../index.ts");
+		const publicApiAsRecord = publicApi as Record<string, unknown>;
+
+		expect(publicApiAsRecord.__registerClientLoaderPattern).toBeUndefined();
+		expect(
+			publicApiAsRecord.__runClientLoadersAfterHMRUpdate,
+		).toBeUndefined();
+		expect(
+			publicApiAsRecord.__registerClientLoaderForAdapter,
+		).toBeUndefined();
+		expect(publicApiAsRecord.__applyScrollState).toBeUndefined();
+		expect(publicApiAsRecord.__makeFinalLinkProps).toBeUndefined();
+		expect(publicApiAsRecord.__resolvePath).toBeUndefined();
+		expect(publicApiAsRecord.__getClientRuntimeRenderState).toBeUndefined();
+		expect(publicApiAsRecord.__setClientLoaderWaitFn).toBeUndefined();
+	});
+
 	it("exposes route registration from the buildtime entry", async () => {
 		const buildtimeApi = await import("../../../buildtime.ts");
 

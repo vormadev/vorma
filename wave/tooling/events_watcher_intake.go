@@ -27,8 +27,13 @@ func (s *server) runWatcher() {
 				return
 			}
 			debouncer.Add(watcherEvent)
-		case watcherError := <-watcher.Errors():
-			s.log.Error("Watcher error", "error", watcherError)
+		case watcherError, ok := <-watcher.Errors():
+			if !ok {
+				return
+			}
+			if watcherError != nil {
+				s.log.Error("Watcher error", "error", watcherError)
+			}
 		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 )
@@ -99,6 +100,17 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	cfg.FrameworkPublicFileMapOutDir = filepath.Join(root, "generated")
 	cfg.FrameworkDevBuildHook = "go run ./backend/cmd/build --dev --hook"
 	cfg.FrameworkProdBuildHook = "go run ./backend/cmd/build --hook"
+	cfg.FrameworkSchemaExtensions = map[string]jsonschema.Entry{
+		"Vorma": {
+			Type: jsonschema.TypeObject,
+		},
+	}
+	cfg.FrameworkRunBuildHook = func(context.Context, bool) error { return nil }
+	cfg.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
+		return &wave.GoBuildOverlay{
+			OverlayConfigPath: filepath.Join(root, "go-overlay.json"),
+		}, nil
+	}
 
 	newConfig := map[string]any{
 		"Core": map[string]any{
@@ -146,6 +158,25 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	}
 	if s.cfg.FrameworkProdBuildHook != "go run ./backend/cmd/build --hook" {
 		t.Fatalf("framework prod build hook was not preserved: %q", s.cfg.FrameworkProdBuildHook)
+	}
+	if got := s.cfg.FrameworkSchemaExtensions["Vorma"].Type; got != jsonschema.TypeObject {
+		t.Fatalf("framework schema extension was not preserved: %#v", s.cfg.FrameworkSchemaExtensions["Vorma"])
+	}
+	if s.cfg.FrameworkRunBuildHook == nil {
+		t.Fatal("framework run build hook was not preserved")
+	}
+	if err := s.cfg.FrameworkRunBuildHook(context.Background(), true); err != nil {
+		t.Fatalf("framework run build hook returned error: %v", err)
+	}
+	if s.cfg.FrameworkPrepareGoBuildOverlay == nil {
+		t.Fatal("framework go build overlay preparer was not preserved")
+	}
+	overlay, overlayErr := s.cfg.FrameworkPrepareGoBuildOverlay()
+	if overlayErr != nil {
+		t.Fatalf("framework go build overlay preparer returned error: %v", overlayErr)
+	}
+	if overlay == nil || overlay.OverlayConfigPath != filepath.Join(root, "go-overlay.json") {
+		t.Fatalf("framework go build overlay was not preserved: %#v", overlay)
 	}
 }
 

@@ -4,7 +4,9 @@ import {
 	buildGoModInitCommandArgs,
 	buildGoModReplaceCommandArgs,
 	buildGoRunCommandArgs,
+	isGoVersionAtLeast,
 	isNodeVersionAtLeast,
+	parseGoVersionOrNull,
 	parseNodeVersionOrNull,
 } from "./runtime_helpers.js";
 
@@ -27,6 +29,49 @@ describe("create-vorma runtime helpers", () => {
 		expect(isNodeVersionAtLeast("v22.10.9", 22, 11)).toBe(false);
 		expect(isNodeVersionAtLeast("v22.11.0", 22, 11)).toBe(true);
 		expect(isNodeVersionAtLeast("v23.0.0", 22, 11)).toBe(true);
+	});
+
+	it("parses standard and devel go version output", () => {
+		expect(
+			parseGoVersionOrNull("go version go1.24.7 darwin/arm64"),
+		).toEqual({
+			major: 1,
+			minor: 24,
+			patch: 7,
+			normalizedVersion: "go1.24.7",
+		});
+
+		expect(
+			parseGoVersionOrNull(
+				"go version devel go1.25-abcdef1234 Tue Jan 1 00:00:00 2026 +0000 darwin/arm64",
+			),
+		).toEqual({
+			major: 1,
+			minor: 25,
+			patch: 0,
+			normalizedVersion: "go1.25.0",
+		});
+	});
+
+	it("returns null for invalid go version output", () => {
+		expect(parseGoVersionOrNull("go version unknown")).toBeNull();
+		expect(parseGoVersionOrNull("")).toBeNull();
+	});
+
+	it("enforces the documented minimum go version", () => {
+		expect(
+			isGoVersionAtLeast("go version go1.23.9 linux/amd64", 1, 24),
+		).toBe(false);
+		expect(
+			isGoVersionAtLeast("go version go1.24.0 linux/amd64", 1, 24),
+		).toBe(true);
+		expect(
+			isGoVersionAtLeast(
+				"go version devel go1.25-abcdef linux/amd64",
+				1,
+				24,
+			),
+		).toBe(true);
 	});
 
 	it("builds go command args without shell interpolation", () => {

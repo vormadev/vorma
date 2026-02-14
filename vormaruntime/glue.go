@@ -174,7 +174,7 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 		}
 	}
 
-	v._adHocTypes = o.AdHocTypes
+	v._adHocTypes = cloneAdHocTypesOrNil(o.AdHocTypes)
 	v._extraTSCode = o.ExtraTSCode
 	v.loadersRouter = newLoadersRouter(o.LoadersRouterOptions)
 	v.actionsRouter = newActionsRouter(o.ActionsRouterOptions)

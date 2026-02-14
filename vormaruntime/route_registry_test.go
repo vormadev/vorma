@@ -31,7 +31,8 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testin
 	app.RegisterPatternIfNeeded("/stale-no-handler")
 
 	clearRouteDataCacheForTest()
-	gmpdCache.Store("test-stale", &cachedItemSubset{ImportURLs: []string{"/stale.js"}})
+	staleCacheKey := app.buildRouteDataCacheKey(nil, app.GetIsDevMode(), app.GetBuildID())
+	gmpdCache.Store(staleCacheKey, &cachedItemSubset{ImportURLs: []string{"/stale.js"}})
 
 	newPaths := map[string]*Path{
 		"/fresh-client": {
@@ -77,6 +78,39 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testin
 	}
 	if nr.IsRegistered("/stale-no-handler") {
 		t.Fatal("expected stale no-handler pattern to be removed on SyncFromDevReload rebuild")
+	}
+}
+
+func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(t *testing.T) {
+	fixtureOne := newTestFixture(t, testFixtureOptions{})
+	appOne := fixtureOne.app
+
+	fixtureTwo := newTestFixture(t, testFixtureOptions{})
+	appTwo := fixtureTwo.app
+
+	clearRouteDataCacheForTest()
+
+	appOneCacheKey := appOne.buildRouteDataCacheKey(nil, appOne.GetIsDevMode(), appOne.GetBuildID())
+	appTwoCacheKey := appTwo.buildRouteDataCacheKey(nil, appTwo.GetIsDevMode(), appTwo.GetBuildID())
+	gmpdCache.Store(appOneCacheKey, &cachedItemSubset{ImportURLs: []string{"/one.js"}})
+	gmpdCache.Store(appTwoCacheKey, &cachedItemSubset{ImportURLs: []string{"/two.js"}})
+
+	appOne.WithLock(func(lv *LockedVorma) {
+		lv.Routes().SyncFromDevReload(map[string]*Path{
+			"/fresh-client": {
+				OriginalPattern: "/fresh-client",
+				SrcPath:         "frontend/src/routes/fresh-client.tsx",
+				OutPath:         "vorma_out/routes/fresh-client.js",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	if _, exists := gmpdCache.Load(appOneCacheKey); exists {
+		t.Fatal("expected app one cache entry to be invalidated")
+	}
+	if _, exists := gmpdCache.Load(appTwoCacheKey); !exists {
+		t.Fatal("expected app two cache entry to remain")
 	}
 }
 

@@ -7,7 +7,10 @@ func (w *Wave) RawConfigJSON() []byte {
 
 // AddFrameworkWatchPatterns adds watch patterns for use during development.
 func (w *Wave) AddFrameworkWatchPatterns(patterns []WatchedFile) {
-	w.cfg.FrameworkWatchPatterns = append(w.cfg.FrameworkWatchPatterns, patterns...)
+	w.cfg.FrameworkWatchPatterns = append(
+		w.cfg.FrameworkWatchPatterns,
+		cloneFrameworkWatchPatterns(patterns)...,
+	)
 }
 
 // AddIgnoredPatterns adds glob patterns for files/directories to ignore during watching.

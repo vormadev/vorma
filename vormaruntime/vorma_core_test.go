@@ -312,3 +312,49 @@ func TestTSGenerationGettersReflectConfiguredValues(t *testing.T) {
 		t.Fatalf("GetExtraTSCode() = %q, want %q", got, "export type Extra = string;")
 	}
 }
+
+func TestGetAdHocTypes_DoesNotExposeMutableInternalState(t *testing.T) {
+	inputAdHocTypes := []*tsgen.AdHocType{
+		{
+			TypeInstance: struct {
+				Name string
+			}{},
+			TSTypeName: "UserDTO",
+		},
+	}
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		adHocTypes: inputAdHocTypes,
+	})
+	app := fixture.app
+
+	// Mutating caller-owned input after app construction must not mutate runtime state.
+	inputAdHocTypes[0].TSTypeName = "CallerMutated"
+	inputAdHocTypes = append(inputAdHocTypes, &tsgen.AdHocType{TSTypeName: "CallerAdded"})
+
+	firstRead := app.GetAdHocTypes()
+	if len(firstRead) != 1 {
+		t.Fatalf("GetAdHocTypes length after caller mutation = %d, want %d", len(firstRead), 1)
+	}
+	if firstRead[0] == nil {
+		t.Fatal("GetAdHocTypes[0] should not be nil")
+	}
+	if firstRead[0].TSTypeName != "UserDTO" {
+		t.Fatalf("GetAdHocTypes[0].TSTypeName = %q, want %q", firstRead[0].TSTypeName, "UserDTO")
+	}
+
+	// Mutating a getter result must not leak back into runtime state.
+	firstRead[0].TSTypeName = "GetterMutated"
+	firstRead = append(firstRead, &tsgen.AdHocType{TSTypeName: "GetterAdded"})
+
+	secondRead := app.GetAdHocTypes()
+	if len(secondRead) != 1 {
+		t.Fatalf("GetAdHocTypes length after getter mutation = %d, want %d", len(secondRead), 1)
+	}
+	if secondRead[0] == nil {
+		t.Fatal("GetAdHocTypes[0] should not be nil")
+	}
+	if secondRead[0].TSTypeName != "UserDTO" {
+		t.Fatalf("GetAdHocTypes[0].TSTypeName after getter mutation = %q, want %q", secondRead[0].TSTypeName, "UserDTO")
+	}
+}

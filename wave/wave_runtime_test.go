@@ -155,6 +155,34 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 	}
 }
 
+func TestAddFrameworkWatchPatternsClonesInput(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+
+	frameworkWatchPatterns := []WatchedFile{
+		{
+			Pattern: "**/*.txt",
+			OnChangeHooks: []OnChangeHook{
+				{
+					Exclude: []string{"generated/**"},
+				},
+			},
+		},
+	}
+
+	w.AddFrameworkWatchPatterns(frameworkWatchPatterns)
+
+	frameworkWatchPatterns[0].Pattern = "**/*.changed"
+	frameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] = "changed/**"
+
+	if got := w.cfg.FrameworkWatchPatterns[0].Pattern; got != "**/*.txt" {
+		t.Fatalf("framework watch pattern = %q, want **/*.txt", got)
+	}
+	if got := w.cfg.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0]; got != "generated/**" {
+		t.Fatalf("framework watch hook exclude = %q, want generated/**", got)
+	}
+}
+
 func TestGetBaseFSUsesDiskInDevMode(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, fstest.MapFS{})
@@ -258,6 +286,29 @@ func TestPublicFileMapAndURLResolution(t *testing.T) {
 	blobURL := "blob:https://example.com/uuid"
 	if got := w.GetPublicURL(blobURL); got != blobURL {
 		t.Fatalf("expected blob URL passthrough, got %q", got)
+	}
+}
+
+func TestGetPublicFileMapReturnsDefensiveCopy(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+
+	firstMap, err := w.GetPublicFileMap()
+	if err != nil {
+		t.Fatalf("GetPublicFileMap returned error: %v", err)
+	}
+
+	firstMap["logo.txt"] = FileVal{
+		DistName: "changed/logo.txt",
+	}
+
+	secondMap, err := w.GetPublicFileMap()
+	if err != nil {
+		t.Fatalf("GetPublicFileMap returned error: %v", err)
+	}
+
+	if got := secondMap["logo.txt"].DistName; got != "vorma_out/logo.hash.txt" {
+		t.Fatalf("public file map entry persisted caller mutation: got %q", got)
 	}
 }
 

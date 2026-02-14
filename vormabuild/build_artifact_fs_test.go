@@ -96,6 +96,33 @@ func TestRemoveMatchingEntriesRecursively_RemovesOnlyMatchingEntries(t *testing.
 	}
 }
 
+func TestRemoveMatchingEntriesRecursively_DoesNotRemoveMatchingDirectories(t *testing.T) {
+	rootDir := t.TempDir()
+	matchingDirectory := filepath.Join(rootDir, vormaruntime.VormaRouteManifestPrefix+"dir")
+	matchingDirectoryFile := filepath.Join(
+		matchingDirectory,
+		vormaruntime.VormaRouteManifestPrefix+"nested.json",
+	)
+	nonMatchingFile := filepath.Join(matchingDirectory, "keep.txt")
+
+	mustWriteFile(t, matchingDirectoryFile, []byte("remove nested matching file"))
+	mustWriteFile(t, nonMatchingFile, []byte("keep nested non-matching file"))
+
+	if err := removeMatchingEntriesRecursively(rootDir, shouldRemoveGeneratedStaticPublicFile); err != nil {
+		t.Fatalf("removeMatchingEntriesRecursively returned error: %v", err)
+	}
+
+	if _, err := os.Stat(matchingDirectory); err != nil {
+		t.Fatalf("expected matching directory to remain, stat err=%v", err)
+	}
+	if _, err := os.Stat(matchingDirectoryFile); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("expected matching nested file to be removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(nonMatchingFile); err != nil {
+		t.Fatalf("expected non-matching nested file to remain, stat err=%v", err)
+	}
+}
+
 func TestRemoveMatchingEntriesRecursively_PropagatesWalkAndRemoveErrors(t *testing.T) {
 	originalWalkDirForRemovalStep := buildArtifactCleanupDeps.walkDirForRemoval
 	originalRemovePathForCleanupStep := buildArtifactCleanupDeps.removePathForCleanup

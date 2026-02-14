@@ -1,5 +1,7 @@
 package wave
 
+import "github.com/vormadev/vorma/lab/jsonschema"
+
 func (cfg *ParsedConfig) CopyFrameworkRuntimeFieldsFrom(
 	previousParsedConfig *ParsedConfig,
 ) {
@@ -7,6 +9,9 @@ func (cfg *ParsedConfig) CopyFrameworkRuntimeFieldsFrom(
 		return
 	}
 
+	cfg.FrameworkSchemaExtensions = cloneFrameworkSchemaExtensions(
+		previousParsedConfig.FrameworkSchemaExtensions,
+	)
 	cfg.FrameworkWatchPatterns = cloneFrameworkWatchPatterns(
 		previousParsedConfig.FrameworkWatchPatterns,
 	)
@@ -17,12 +22,28 @@ func (cfg *ParsedConfig) CopyFrameworkRuntimeFieldsFrom(
 	cfg.FrameworkPublicFileMapOutDir = previousParsedConfig.FrameworkPublicFileMapOutDir
 	cfg.FrameworkDevBuildHook = previousParsedConfig.FrameworkDevBuildHook
 	cfg.FrameworkProdBuildHook = previousParsedConfig.FrameworkProdBuildHook
+	cfg.FrameworkRunBuildHook = previousParsedConfig.FrameworkRunBuildHook
+	cfg.FrameworkPrepareGoBuildOverlay = previousParsedConfig.FrameworkPrepareGoBuildOverlay
 	cfg.FrameworkBrowserRuntimeNamespace = previousParsedConfig.FrameworkBrowserRuntimeNamespace
 	cfg.FrameworkBrowserPublicURLResolverFunctionName = previousParsedConfig.FrameworkBrowserPublicURLResolverFunctionName
 	cfg.FrameworkBrowserRevalidateFunctionName = previousParsedConfig.FrameworkBrowserRevalidateFunctionName
 	cfg.FrameworkRefreshRebuildingOverlayElementID = previousParsedConfig.FrameworkRefreshRebuildingOverlayElementID
 	cfg.FrameworkCriticalCSSStyleElementID = previousParsedConfig.FrameworkCriticalCSSStyleElementID
 	cfg.FrameworkNonCriticalCSSLinkElementID = previousParsedConfig.FrameworkNonCriticalCSSLinkElementID
+}
+
+func cloneFrameworkSchemaExtensions(
+	schemaExtensions map[string]jsonschema.Entry,
+) map[string]jsonschema.Entry {
+	if len(schemaExtensions) == 0 {
+		return nil
+	}
+
+	clonedSchemaExtensions := make(map[string]jsonschema.Entry, len(schemaExtensions))
+	for key, value := range schemaExtensions {
+		clonedSchemaExtensions[key] = value
+	}
+	return clonedSchemaExtensions
 }
 
 func cloneFrameworkWatchPatterns(

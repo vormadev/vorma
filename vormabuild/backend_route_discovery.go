@@ -571,6 +571,21 @@ func (analysis *backendRoutePackageAnalysis) discoverLoaderPatterns() ([]string,
 		discoveredVormaRegistrationCallByID: map[string]*discoveredVormaRegistrationCall{},
 	}
 
+	if err := analysis.discoverRouteRegistrationsInRootFiles(state); err != nil {
+		return nil, err
+	}
+
+	loaderPatterns := make([]string, 0, len(state.loaderPatternSet))
+	for loaderPattern := range state.loaderPatternSet {
+		loaderPatterns = append(loaderPatterns, loaderPattern)
+	}
+	sort.Strings(loaderPatterns)
+	return loaderPatterns, nil
+}
+
+func (analysis *backendRoutePackageAnalysis) discoverRouteRegistrationsInRootFiles(
+	state *backendRouteDiscoveryState,
+) error {
 	for _, parsedServerFile := range analysis.discoveryRootFiles() {
 		for _, declaration := range parsedServerFile.parsedAST.Decls {
 			switch typedDeclaration := declaration.(type) {
@@ -583,7 +598,7 @@ func (analysis *backendRoutePackageAnalysis) discoverLoaderPatterns() ([]string,
 					parsedServerFile,
 					state,
 				); err != nil {
-					return nil, err
+					return err
 				}
 			case *ast.FuncDecl:
 				if typedDeclaration.Recv != nil || typedDeclaration.Name.Name != "init" {
@@ -599,18 +614,12 @@ func (analysis *backendRoutePackageAnalysis) discoverLoaderPatterns() ([]string,
 					nil,
 					state,
 				); err != nil {
-					return nil, err
+					return err
 				}
 			}
 		}
 	}
-
-	loaderPatterns := make([]string, 0, len(state.loaderPatternSet))
-	for loaderPattern := range state.loaderPatternSet {
-		loaderPatterns = append(loaderPatterns, loaderPattern)
-	}
-	sort.Strings(loaderPatterns)
-	return loaderPatterns, nil
+	return nil
 }
 
 func (analysis *backendRoutePackageAnalysis) discoverLoaderPatternsFromVarDeclaration(

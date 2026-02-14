@@ -1,8 +1,25 @@
 package vormaruntime
 
+import "strings"
+
 func clearRouteDataCache() {
 	gmpdCache.Range(func(key, _ any) bool {
 		gmpdCache.Delete(key)
+		return true
+	})
+}
+
+func clearRouteDataCacheForAppIdentity(appIdentity string) {
+	if appIdentity == "" {
+		return
+	}
+
+	cacheKeyPrefix := appIdentity + "|"
+	gmpdCache.Range(func(key, _ any) bool {
+		cacheKey, isCacheKeyString := key.(string)
+		if isCacheKeyString && strings.HasPrefix(cacheKey, cacheKeyPrefix) {
+			gmpdCache.Delete(key)
+		}
 		return true
 	})
 }
@@ -13,7 +30,13 @@ func clearRouteDataCache() {
 // Caller must hold v.mu.Lock().
 func (v *Vorma) invalidateRouteDataCacheLocked() {
 	v._routeDataSnapshotVersion++
-	clearRouteDataCache()
+
+	appIdentity := v._routeDataCacheAppIdentity
+	if appIdentity == "" {
+		appIdentity = computeRouteDataCacheAppIdentity(v)
+		v._routeDataCacheAppIdentity = appIdentity
+	}
+	clearRouteDataCacheForAppIdentity(appIdentity)
 }
 
 func clonePathsMap(paths map[string]*Path) map[string]*Path {

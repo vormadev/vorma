@@ -117,7 +117,7 @@ func (v *Vorma) GetRouteManifestFile() string {
 
 // GetAdHocTypes returns the ad-hoc types for TS generation. (Immutable after init)
 func (v *Vorma) GetAdHocTypes() []*tsgen.AdHocType {
-	return v._adHocTypes
+	return cloneAdHocTypesOrNil(v._adHocTypes)
 }
 
 // GetExtraTSCode returns the extra TS code. (Immutable after init)
@@ -195,4 +195,21 @@ func clonePath(path *Path) *Path {
 		out.Deps = append([]string(nil), path.Deps...)
 	}
 	return &out
+}
+
+func cloneAdHocTypesOrNil(adHocTypes []*tsgen.AdHocType) []*tsgen.AdHocType {
+	if adHocTypes == nil {
+		return nil
+	}
+
+	cloned := make([]*tsgen.AdHocType, 0, len(adHocTypes))
+	for _, adHocType := range adHocTypes {
+		if adHocType == nil {
+			cloned = append(cloned, nil)
+			continue
+		}
+		copiedAdHocType := *adHocType
+		cloned = append(cloned, &copiedAdHocType)
+	}
+	return cloned
 }

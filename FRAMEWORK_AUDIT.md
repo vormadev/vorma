@@ -115,24 +115,24 @@ means the pass is still pending.
 
 | Package                | Surface/API pass | Correctness pass | Complexity/fragility pass | DRY/abstraction pass | Performance pass | Test-quality pass |
 | ---------------------- | ---------------- | ---------------- | ------------------------- | -------------------- | ---------------- | ----------------- |
-| `vorma.go`             | not done         | not done         | not done                  | not done             | not done         | not done          |
-| `vormabuild/*`         | not done         | not done         | not done                  | not done             | not done         | not done          |
-| `vormaruntime/*`       | not done         | not done         | not done                  | not done             | not done         | not done          |
-| `wave/*`               | not done         | not done         | not done                  | not done             | not done         | not done          |
-| `wave/tooling/*`       | not done         | not done         | not done                  | not done             | not done         | not done          |
-| `bootstrap/*`          | not done         | not done         | not done                  | not done             | not done         | not done          |
-| `vormaclient/client/*` | not done         | not done         | not done                  | not done             | not done         | not done          |
-| `vormaclient/react/*`  | not done         | done             | not done                  | not done             | done             | done              |
-| `vormaclient/preact/*` | not done         | done             | not done                  | not done             | done             | done              |
-| `vormaclient/solid/*`  | not done         | done             | not done                  | not done             | done             | done              |
-| `vormaclient/vite/*`   | not done         | done             | not done                  | not done             | done             | done              |
-| `vormaclient/create/*` | not done         | done             | not done                  | not done             | done             | done              |
+| `vorma.go`             | done             | done             | done                      | done                 | done             | done              |
+| `vormabuild/*`         | done             | done             | done                      | done                 | done             | done              |
+| `vormaruntime/*`       | done             | done             | done                      | done                 | done             | done              |
+| `wave/*`               | not done         | not done         | done                      | done                 | done             | not done          |
+| `wave/tooling/*`       | not done         | not done         | done                      | done                 | done             | not done          |
+| `bootstrap/*`          | done             | done             | done                      | done                 | done             | done              |
+| `vormaclient/client/*` | done             | done             | done                      | done                 | done             | done              |
+| `vormaclient/react/*`  | done             | done             | done                      | done                 | done             | done              |
+| `vormaclient/preact/*` | done             | done             | done                      | done                 | done             | done              |
+| `vormaclient/solid/*`  | done             | done             | done                      | done                 | done             | done              |
+| `vormaclient/vite/*`   | done             | done             | done                      | done                 | done             | done              |
+| `vormaclient/create/*` | done             | done             | done                      | done                 | done             | done              |
 
 ### Active Package Notes
 
 - `vormaclient/client/*`: adapter-linked link behavior, `getRootEl()` runtime
-  guard behavior, and scroll/sessionStorage failure handling were audited and
-  fixed; full package pass is still pending.
+  guard behavior, scroll/sessionStorage failure handling, and unstable/public
+  API boundary cleanup were audited and fixed.
 - `vormaclient/*`: duplicated typed-link href construction across React/Preact/
   Solid adapters was consolidated into shared internal helper
   (`resolveTypedLinkHref`) with updated dist regression coverage to prevent
@@ -143,16 +143,46 @@ means the pass is still pending.
 - `vormaclient/client/*`: duplicated `VormaRoutePropsGeneric` type shape
   definitions were consolidated to the `app/helpers.ts` source-of-truth export
   to prevent type drift.
+- `vormaclient/react/*`, `vormaclient/preact/*`, `vormaclient/solid/*`,
+  `vormaclient/vite/*`, `vormaclient/create/*`: Surface/API boundary backfill
+  completed. No unstable/internal API leaks found beyond intentionally unstable
+  `vorma/client/__internal` usage and CLI-internal helper files.
+- `vormaclient/create/*`: Go version parse/validation was hardened via shared
+  helpers to prevent silent parse failure and empty bootstrap GoVersion.
+- `vormaclient/client/*`: unstable `__*` exports were removed from public
+  `vorma/client` and kept on `vorma/client/__internal` to enforce clearer API
+  boundaries.
+- `vorma.go`: full pass complete. Added regression coverage for action runtime
+  semantics (`NewAction` remains registration no-op; discovered-action helper
+  performs registration) alongside existing loader checks.
+- `vormabuild/*`: full pass complete. Fixed recursive generated-artifact cleanup
+  to skip directories (prevents accidental removal of user-owned directories
+  whose names share generated prefixes) and added regression coverage.
+- `vormabuild/*`: reduced drift risk by deduplicating route-registration root
+  traversal into one shared helper used by both loader-pattern discovery and
+  discovered-registrar call discovery.
+- `vormaruntime/*`: full pass complete. Route-data cache invalidation is now
+  scoped to the current app identity, so one app reload no longer evicts other
+  apps' cache entries. Added regression coverage.
+- `vormaruntime/*`: fixed mutable API exposure for TypeScript ad-hoc types by
+  cloning on input (`NewVormaApp`) and getter output (`GetAdHocTypes`), with
+  regression coverage for caller/getter mutation isolation.
+- `wave/*`: fixed framework runtime-state copying to preserve
+  function-based/runtime-only framework fields (`FrameworkRunBuildHook`,
+  `FrameworkPrepareGoBuildOverlay`) and schema extensions across config reload,
+  with regression coverage.
+- `wave/*`: hardened runtime API boundary behavior by deep-cloning
+  `AddFrameworkWatchPatterns` inputs (prevents caller aliasing from mutating
+  framework watch config) and returning defensive copies from `GetPublicFileMap`
+  (prevents caller mutation of cached runtime file-map state).
+- `wave/tooling/*`: watcher intake now exits cleanly on closed watcher error
+  channels instead of continuing through nil-error events during shutdown.
 
 ### Current Pass Focus
 
-1. Complete remaining package-wide passes for `vormaclient/client/*`, including
-   complexity/fragility and DRY/abstraction passes.
-2. Backfill Surface/API boundary pass plus complexity/fragility and
-   DRY/abstraction passes for `vormaclient/react/*`, `vormaclient/preact/*`,
-   `vormaclient/solid/*`, `vormaclient/vite/*`, and `vormaclient/create/*`.
-3. Then execute full package-wide passes for `vorma.go`, `vormabuild/*`,
-   `vormaruntime/*`, `wave/*`, `wave/tooling/*`, and `bootstrap/*`.
+1. Resolve approval-gated API-boundary findings in `wave/*` and
+   `wave/tooling/*`, then close remaining test-quality items tied to those
+   semantics.
 
 ### Handoff Protocol
 
@@ -172,11 +202,19 @@ means the pass is still pending.
     - File: `wave/runtime_framework.go:108`
     - Status: open
     - Problem: external callers can mutate runtime internals after parse.
+2. `tooling.Builder.Config()` claims read-only semantics but returns mutable
+   internal config pointer.
+    - File: `wave/tooling/builder.go:52`
+    - Status: open
+    - Problem: callers can mutate builder internals despite read-only contract
+      wording.
 
 ## Test Gap Notes
 
 1. No contract test currently enforces immutability expectations for
    `wave.GetParsedConfig()` consumers.
+2. Current `wave/tooling` coverage enforces mutable-pointer behavior for
+   `Builder.Config()` instead of read-only semantics.
 
 ## Open Assumptions
 
@@ -184,16 +222,14 @@ means the pass is still pending.
    interaction unless reproduced as framework-default behavior.
 2. `wave.GetParsedConfig()` mutability remains open pending explicit semantics
    approval for any non-obvious fix.
+3. `tooling.Builder.Config()` read-only contract mismatch remains open pending
+   explicit semantics approval for API-shape change.
 
 ## Next Queue
 
-1. Complete full core passes for `vormaclient/client/*`.
-2. Backfill Surface/API boundary pass plus new complexity/fragility and
-   DRY/abstraction passes for `vormaclient/react/*`, `vormaclient/preact/*`,
-   `vormaclient/solid/*`, `vormaclient/vite/*`, and `vormaclient/create/*`.
-3. Complete full core passes for `vorma.go`, `vormabuild/*`, `vormaruntime/*`,
-   `wave/*`, `wave/tooling/*`, and `bootstrap/*`.
-4. Resolve open finding `1` (`wave.GetParsedConfig()` mutability) with explicit
-   approval if a semantics/design change is required.
-5. Move package-by-package through remaining full-pass matrix and keep this
+1. Resolve open findings `1` and `2` (mutable config pointer exposures) with
+   explicit approval if semantics/API-shape changes are required.
+2. Backfill test contracts for approved semantics changes (`GetParsedConfig`,
+   `Builder.Config`) and close `Test Gap Notes`.
+3. Move package-by-package through remaining full-pass matrix and keep this
    tracker synchronized with explicit `done`/`not done` states.
