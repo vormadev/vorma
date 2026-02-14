@@ -328,7 +328,7 @@ func TestInjectDefaultWatchPatterns_SkipsWhenIncludeDefaultsDisabled(t *testing.
 
 	injectDefaultWatchPatterns(fixture.app)
 
-	parsedCfg := fixture.app.Wave.GetParsedConfig()
+	parsedCfg := fixture.app.Wave.Internal__GetParsedConfigMutableReference()
 	if len(parsedCfg.FrameworkWatchPatterns) != 0 {
 		t.Fatalf("expected no framework watch patterns, got %d", len(parsedCfg.FrameworkWatchPatterns))
 	}
@@ -583,7 +583,7 @@ func TestConfigureBuildEnvironment_WiresHooksAndDefaults(t *testing.T) {
 
 	configureBuildEnvironment(app)
 
-	parsedCfg := app.Wave.GetParsedConfig()
+	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 
 	if _, hasVormaSchema := parsedCfg.FrameworkSchemaExtensions["Vorma"]; !hasVormaSchema {
 		t.Fatal("expected configureBuildEnvironment to register Vorma schema extension")
@@ -619,7 +619,7 @@ func TestConfigureBuildEnvironment_WiresHooksAndDefaults(t *testing.T) {
 func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetParsedConfig()
+	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 
 	parsedCfg.FrameworkDevBuildHook = "go run ./custom/devhook"
 	parsedCfg.FrameworkProdBuildHook = "go run ./custom/prodhook"
@@ -637,7 +637,7 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testi
 func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHookRunner(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetParsedConfig()
+	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 
 	frameworkBuildHookRunnerCalled := false
 	parsedCfg.FrameworkRunBuildHook = func(context.Context, bool) error {
@@ -661,7 +661,7 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHookRunner(t *
 func TestConfigureBuildEnvironment_PreservesExistingFrameworkGoBuildOverlayPreparation(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetParsedConfig()
+	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 
 	overlayPreparationCalled := false
 	parsedCfg.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
@@ -685,7 +685,7 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkGoBuildOverlayPrepa
 func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetParsedConfig()
+	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 
 	originalFrameworkBuildHookExecutionDeps := frameworkBuildHookExecutionDeps
 	t.Cleanup(func() {

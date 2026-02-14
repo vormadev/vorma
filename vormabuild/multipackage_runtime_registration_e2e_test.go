@@ -190,7 +190,7 @@ import (
 )
 
 func main() {
-	backend.Wave.GetParsedConfig().FrameworkRunBuildHook = func(context.Context, bool) error {
+	backend.Wave.Internal__GetParsedConfigMutableReference().FrameworkRunBuildHook = func(context.Context, bool) error {
 		return nil
 	}
 	vormabuild.Build(app.App)

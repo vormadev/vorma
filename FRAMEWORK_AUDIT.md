@@ -102,9 +102,10 @@ criteria.
 
 ## Approval Log
 
-| Date       | Change                                                                                                  | Bucket                         | Approval Status  |
-| ---------- | ------------------------------------------------------------------------------------------------------- | ------------------------------ | ---------------- |
-| 2026-02-14 | `vormaclient/vite/vite.ts` object-input merge preserves user entries with collision-free internal keys. | design/semantics (non-obvious) | approved by user |
+| Date       | Change                                                                                                                                              | Bucket                         | Approval Status  |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ---------------- |
+| 2026-02-14 | `vormaclient/vite/vite.ts` object-input merge preserves user entries with collision-free internal keys.                                             | design/semantics (non-obvious) | approved by user |
+| 2026-02-14 | `wave.GetParsedConfig()` and `wave/tooling.Builder.Config()` return defensive copies; mutable access moved to explicit unstable internal accessors. | design/semantics (non-obvious) | approved by user |
 
 ## Handoff Ledger
 
@@ -118,8 +119,8 @@ means the pass is still pending.
 | `vorma.go`             | done             | done             | done                      | done                 | done             | done              |
 | `vormabuild/*`         | done             | done             | done                      | done                 | done             | done              |
 | `vormaruntime/*`       | done             | done             | done                      | done                 | done             | done              |
-| `wave/*`               | not done         | not done         | done                      | done                 | done             | not done          |
-| `wave/tooling/*`       | not done         | not done         | done                      | done                 | done             | not done          |
+| `wave/*`               | done             | done             | done                      | done                 | done             | done              |
+| `wave/tooling/*`       | done             | done             | done                      | done                 | done             | done              |
 | `bootstrap/*`          | done             | done             | done                      | done                 | done             | done              |
 | `vormaclient/client/*` | done             | done             | done                      | done                 | done             | done              |
 | `vormaclient/react/*`  | done             | done             | done                      | done                 | done             | done              |
@@ -177,12 +178,18 @@ means the pass is still pending.
   (prevents caller mutation of cached runtime file-map state).
 - `wave/tooling/*`: watcher intake now exits cleanly on closed watcher error
   channels instead of continuing through nil-error events during shutdown.
+- `wave/*`, `wave/tooling/*`: approval-gated config-boundary fix completed.
+  `GetParsedConfig` and `Builder.Config` now return defensive copies with
+  regression coverage; internal mutable access is explicit via unstable
+  `Internal__*` accessors.
+- `wave/*`: simplified cloned-snapshot boundary design to avoid brittle generic
+  deep-clone machinery. Public snapshots now intentionally omit unstable
+  internal callback/schema fields; internal build/dev paths use explicit
+  mutable-access APIs.
 
 ### Current Pass Focus
 
-1. Resolve approval-gated API-boundary findings in `wave/*` and
-   `wave/tooling/*`, then close remaining test-quality items tied to those
-   semantics.
+1. No open pass focus items; full scoped matrix is complete.
 
 ### Handoff Protocol
 
@@ -197,39 +204,17 @@ means the pass is still pending.
 
 ## Findings Log
 
-1. `wave.GetParsedConfig()` exposes mutable internal framework config by
-   pointer.
-    - File: `wave/runtime_framework.go:108`
-    - Status: open
-    - Problem: external callers can mutate runtime internals after parse.
-2. `tooling.Builder.Config()` claims read-only semantics but returns mutable
-   internal config pointer.
-    - File: `wave/tooling/builder.go:52`
-    - Status: open
-    - Problem: callers can mutate builder internals despite read-only contract
-      wording.
+No open findings.
 
 ## Test Gap Notes
 
-1. No contract test currently enforces immutability expectations for
-   `wave.GetParsedConfig()` consumers.
-2. Current `wave/tooling` coverage enforces mutable-pointer behavior for
-   `Builder.Config()` instead of read-only semantics.
+No open test gaps.
 
 ## Open Assumptions
 
 1. `internal/site` watcher temp-file event noise is treated as app/tooling
    interaction unless reproduced as framework-default behavior.
-2. `wave.GetParsedConfig()` mutability remains open pending explicit semantics
-   approval for any non-obvious fix.
-3. `tooling.Builder.Config()` read-only contract mismatch remains open pending
-   explicit semantics approval for API-shape change.
 
 ## Next Queue
 
-1. Resolve open findings `1` and `2` (mutable config pointer exposures) with
-   explicit approval if semantics/API-shape changes are required.
-2. Backfill test contracts for approved semantics changes (`GetParsedConfig`,
-   `Builder.Config`) and close `Test Gap Notes`.
-3. Move package-by-package through remaining full-pass matrix and keep this
-   tracker synchronized with explicit `done`/`not done` states.
+1. Wait for new audit scope or newly reported regressions.

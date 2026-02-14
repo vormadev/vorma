@@ -305,7 +305,7 @@ func TestRuntimeBuildToolingDefaultSteps(t *testing.T) {
 		t.Fatalf("builder.Close returned error: %v", err)
 	}
 
-	parsedConfig := app.Wave.GetParsedConfig()
+	parsedConfig := app.Wave.Internal__GetParsedConfigMutableReference()
 	parsedConfig.Core.MainAppEntry = ""
 
 	err := runtimeBuildToolingDeps.runWaveDevelopmentMode(app)
@@ -546,7 +546,7 @@ func TestBuild(t *testing.T) {
 		if !developmentServerCalled {
 			t.Fatal("expected development build path to run")
 		}
-		parsedCfg := app.Wave.GetParsedConfig()
+		parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 		if len(parsedCfg.FrameworkWatchPatterns) == 0 {
 			t.Fatal("expected configureBuildEnvironment to inject default watch patterns")
 		}

@@ -110,7 +110,16 @@ func (w *Wave) GetStaticPublicOutDir() string {
 
 // GetParsedConfig returns the parsed configuration for use by tooling.
 // This should only be used by build-time tooling, not at runtime.
+// The returned value is a defensive snapshot and omits unstable internal-only
+// runtime callback/schema fields.
 func (w *Wave) GetParsedConfig() *ParsedConfig {
+	return w.cfg.Clone()
+}
+
+// Internal__GetParsedConfigMutableReference returns the live mutable parsed
+// config pointer. This is unstable internal API and must not be used by
+// applications.
+func (w *Wave) Internal__GetParsedConfigMutableReference() *ParsedConfig {
 	return w.cfg
 }
 

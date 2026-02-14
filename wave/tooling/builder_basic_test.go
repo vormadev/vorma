@@ -1,21 +1,81 @@
 package tooling
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/wave"
 )
 
-func TestBuilderConfig(t *testing.T) {
+func TestBuilderConfigReturnsDefensiveCopy(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.FrameworkIgnoredPatterns = []string{"generated/**"}
+	cfg.FrameworkSchemaExtensions = map[string]jsonschema.Entry{
+		"Vorma": {
+			Type: jsonschema.TypeObject,
+		},
+	}
+	cfg.FrameworkRunBuildHook = func(context.Context, bool) error { return nil }
+	cfg.FrameworkWatchPatterns = []wave.WatchedFile{
+		{
+			Pattern: "**/*.go",
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Exclude: []string{"vendor/**"},
+				},
+			},
+		},
+	}
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	configSnapshot := builder.Config()
+	if configSnapshot == cfg {
+		t.Fatal("expected Config() to return a defensive copy")
+	}
+	if configSnapshot.Core == cfg.Core {
+		t.Fatal("expected Config() to deep-clone Core config")
+	}
+
+	configSnapshot.Core.MainAppEntry = "cmd/changed"
+	configSnapshot.FrameworkIgnoredPatterns[0] = "changed/**"
+	configSnapshot.FrameworkWatchPatterns[0].Pattern = "**/*.changed"
+	configSnapshot.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] = "changed-vendor/**"
+
+	if got := cfg.Core.MainAppEntry; got == "cmd/changed" {
+		t.Fatalf("Config() snapshot mutated core main app entry: %q", got)
+	}
+	if got := cfg.FrameworkIgnoredPatterns[0]; got != "generated/**" {
+		t.Fatalf("Config() snapshot mutated framework ignored pattern: %q", got)
+	}
+	if got := cfg.FrameworkWatchPatterns[0].Pattern; got != "**/*.go" {
+		t.Fatalf("Config() snapshot mutated framework watch pattern: %q", got)
+	}
+	if got := cfg.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0]; got != "vendor/**" {
+		t.Fatalf("Config() snapshot mutated framework watch hook exclude: %q", got)
+	}
+	if configSnapshot.FrameworkSchemaExtensions != nil {
+		t.Fatal("expected Config() snapshot to omit framework schema extensions")
+	}
+	if configSnapshot.FrameworkRunBuildHook != nil {
+		t.Fatal("expected Config() snapshot to omit framework run build hook callback")
+	}
+}
+
+func TestBuilderInternalGetMutableConfigReferenceReturnsLiveConfig(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	if builder.Config() != cfg {
-		t.Fatal("expected Config() to return original parsed config pointer")
+	mutableConfig := builder.Internal__GetMutableConfigReference()
+	mutableConfig.Core.MainAppEntry = "cmd/internal-mutated"
+
+	if got := cfg.Core.MainAppEntry; got != "cmd/internal-mutated" {
+		t.Fatalf("expected live config mutation through internal accessor, got %q", got)
 	}
 }
 

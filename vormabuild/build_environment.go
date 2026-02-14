@@ -36,7 +36,7 @@ var frameworkBuildHookExecutionDeps = frameworkBuildHookExecutionDependencies{
 }
 
 func registerVormaSchema(v *vormaruntime.Vorma) {
-	cfg := v.Wave.GetParsedConfig()
+	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
 	if cfg.FrameworkSchemaExtensions == nil {
 		cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
 	}
@@ -44,7 +44,7 @@ func registerVormaSchema(v *vormaruntime.Vorma) {
 }
 
 func injectFrameworkBuildHooks(v *vormaruntime.Vorma) {
-	cfg := v.Wave.GetParsedConfig()
+	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
 	if cfg.FrameworkDevBuildHook == "" {
 		cfg.FrameworkDevBuildHook = fmt.Sprintf("go run ./%s --dev --hook", v.Config.MainBuildEntry)
 	}
@@ -62,7 +62,7 @@ func configureBuildEnvironment(v *vormaruntime.Vorma) {
 }
 
 func injectFrameworkBuildHookRunner(v *vormaruntime.Vorma) {
-	cfg := v.Wave.GetParsedConfig()
+	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
 	if cfg.FrameworkRunBuildHook != nil {
 		return
 	}
@@ -133,7 +133,7 @@ func injectFrameworkBuildHookRunner(v *vormaruntime.Vorma) {
 }
 
 func injectFrameworkGoBuildOverlayPreparation(v *vormaruntime.Vorma) {
-	cfg := v.Wave.GetParsedConfig()
+	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
 	if cfg.FrameworkPrepareGoBuildOverlay != nil {
 		return
 	}

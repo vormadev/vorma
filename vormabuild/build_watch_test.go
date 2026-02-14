@@ -93,7 +93,7 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 	injectDefaultWatchPatterns(app)
 	injectDefaultWatchPatterns(app)
 
-	parsedCfg := app.Wave.GetParsedConfig()
+	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 	if len(parsedCfg.FrameworkWatchPatterns) != 3 {
 		t.Fatalf("len(FrameworkWatchPatterns) = %d, want %d", len(parsedCfg.FrameworkWatchPatterns), 3)
 	}
@@ -123,7 +123,7 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetParsedConfig()
+	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 
 	customGoWatchPattern := wave.WatchedFile{
 		Pattern: "**/*.go",

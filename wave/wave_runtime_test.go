@@ -2,6 +2,7 @@ package wave
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -671,8 +672,69 @@ func TestConfigAccessorMethods(t *testing.T) {
 	if w.GetStaticPublicOutDir() != fixture.cfg.Dist.StaticPublic() {
 		t.Fatalf("unexpected static public out dir: %q", w.GetStaticPublicOutDir())
 	}
-	if w.GetParsedConfig() != w.cfg {
-		t.Fatal("expected GetParsedConfig to return Wave parsed config reference")
+
+	w.AddFrameworkWatchPatterns([]WatchedFile{
+		{
+			Pattern: "**/*.txt",
+			OnChangeHooks: []OnChangeHook{
+				{
+					Exclude: []string{"generated/**"},
+				},
+			},
+		},
+	})
+	w.AddIgnoredPatterns([]string{"ignored/**"})
+	w.Internal__GetParsedConfigMutableReference().FrameworkDevBuildHook = "go run ./backend/cmd/build --dev"
+	w.Internal__GetParsedConfigMutableReference().FrameworkRunBuildHook = func(context.Context, bool) error {
+		return nil
+	}
+
+	parsedConfigSnapshot := w.GetParsedConfig()
+	if parsedConfigSnapshot == w.cfg {
+		t.Fatal("expected GetParsedConfig to return a defensive copy")
+	}
+	if parsedConfigSnapshot.Core == w.cfg.Core {
+		t.Fatal("expected GetParsedConfig to deep-clone Core config")
+	}
+
+	parsedConfigSnapshot.Core.MainAppEntry = "cmd/changed"
+	parsedConfigSnapshot.FrameworkWatchPatterns[0].Pattern = "**/*.changed"
+	parsedConfigSnapshot.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] = "changed/**"
+	parsedConfigSnapshot.FrameworkIgnoredPatterns[0] = "changed-ignored/**"
+	parsedConfigSnapshot.FrameworkDevBuildHook = "go run ./backend/cmd/build --changed-dev"
+
+	if got := w.cfg.Core.MainAppEntry; got != fixture.cfg.Core.MainAppEntry {
+		t.Fatalf("GetParsedConfig snapshot mutated core main app entry: %q", got)
+	}
+	if got := w.cfg.FrameworkWatchPatterns[0].Pattern; got != "**/*.txt" {
+		t.Fatalf("GetParsedConfig snapshot mutated framework watch pattern: %q", got)
+	}
+	if got := w.cfg.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0]; got != "generated/**" {
+		t.Fatalf("GetParsedConfig snapshot mutated framework watch hook exclude: %q", got)
+	}
+	if got := w.cfg.FrameworkIgnoredPatterns[0]; got != "ignored/**" {
+		t.Fatalf("GetParsedConfig snapshot mutated framework ignored pattern: %q", got)
+	}
+	if got := w.cfg.FrameworkDevBuildHook; got != "go run ./backend/cmd/build --dev" {
+		t.Fatalf("GetParsedConfig snapshot mutated framework dev build hook: %q", got)
+	}
+	if parsedConfigSnapshot.FrameworkSchemaExtensions != nil {
+		t.Fatal("expected GetParsedConfig snapshot to omit framework schema extensions")
+	}
+	if parsedConfigSnapshot.FrameworkRunBuildHook != nil {
+		t.Fatal("expected GetParsedConfig snapshot to omit framework run build hook callback")
+	}
+}
+
+func TestInternalGetParsedConfigMutableReferenceReturnsLiveConfig(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	w := newWaveForTest(t, fixture, true, nil)
+
+	mutableParsedConfig := w.Internal__GetParsedConfigMutableReference()
+	mutableParsedConfig.Core.MainAppEntry = "cmd/internal-mutated"
+
+	if got := w.Internal__GetParsedConfigMutableReference().Core.MainAppEntry; got != "cmd/internal-mutated" {
+		t.Fatalf("mutable parsed config write was not applied: %q", got)
 	}
 }
 

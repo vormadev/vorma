@@ -48,8 +48,16 @@ func (b *Builder) Close() error {
 	return nil
 }
 
-// Config returns the builder's config (read-only access)
+// Config returns a defensive read-only config snapshot.
+// Unstable internal callback/schema fields are omitted.
 func (b *Builder) Config() *wave.ParsedConfig {
+	return b.cfg.Clone()
+}
+
+// Internal__GetMutableConfigReference returns the live mutable parsed config
+// pointer. This is unstable internal API and must not be used by
+// applications.
+func (b *Builder) Internal__GetMutableConfigReference() *wave.ParsedConfig {
 	return b.cfg
 }
 

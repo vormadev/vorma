@@ -78,7 +78,10 @@ var buildInnerBuildIDDeps = buildInnerBuildIDDependencies{
 
 var buildInnerPublicFileMapDeps = buildInnerPublicFileMapDependencies{
 	newPublicFileMapWriter: func(v *vormaruntime.Vorma) buildInnerPublicFileMapWriter {
-		return wavebuild.NewBuilder(v.Wave.GetParsedConfig(), v.Wave.Logger())
+		return wavebuild.NewBuilder(
+			v.Wave.Internal__GetParsedConfigMutableReference(),
+			v.Wave.Logger(),
+		)
 	},
 }
 

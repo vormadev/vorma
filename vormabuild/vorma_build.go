@@ -44,10 +44,16 @@ var runtimeBuildDeps = runtimeBuildDependencies{
 
 var runtimeBuildToolingDeps = runtimeBuildToolingDependencies{
 	newWaveBuilder: func(v *vormaruntime.Vorma) runtimeWaveBuilder {
-		return wavebuild.NewBuilder(v.Wave.GetParsedConfig(), v.Wave.Logger())
+		return wavebuild.NewBuilder(
+			v.Wave.Internal__GetParsedConfigMutableReference(),
+			v.Wave.Logger(),
+		)
 	},
 	runWaveDevelopmentMode: func(v *vormaruntime.Vorma) error {
-		return wavebuild.RunDev(v.Wave.GetParsedConfig(), v.Wave.Logger())
+		return wavebuild.RunDev(
+			v.Wave.Internal__GetParsedConfigMutableReference(),
+			v.Wave.Logger(),
+		)
 	},
 }
 

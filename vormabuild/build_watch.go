@@ -12,7 +12,7 @@ func injectDefaultWatchPatterns(v *vormaruntime.Vorma) {
 		return
 	}
 
-	cfg := v.Wave.GetParsedConfig()
+	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
 	patterns := getDefaultWatchPatterns(v)
 	appendMissingFrameworkWatchPatterns(cfg, patterns)
 
