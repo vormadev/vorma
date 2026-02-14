@@ -243,6 +243,38 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		expect(element.props.target).toBe("_blank");
 	});
 
+	it("react makeTypedLink preserves default state/search/hash when not provided by caller", async () => {
+		const reactAdapter = await import("vorma/react");
+		resolvePathSpy.mockReturnValue("/typed/path");
+		makeFinalLinkPropsSpy.mockReturnValue({
+			dataExternal: undefined,
+			onPointerEnter: vi.fn(),
+			onFocus: vi.fn(),
+			onPointerLeave: vi.fn(),
+			onBlur: vi.fn(),
+			onTouchCancel: vi.fn(),
+			onClick: vi.fn(),
+		});
+
+		const TypedLink = reactAdapter.makeTypedLink({} as any, {
+			state: { from: "default-state" },
+			search: "?default=true",
+			hash: "#default",
+		});
+		const result = invokeReactMemoComponent(TypedLink, {
+			pattern: "/typed/:id",
+			params: { id: "42" },
+		});
+		const element = result as {
+			props: Record<string, unknown>;
+		};
+
+		expect(element.props.href).toBe(
+			`${window.location.origin}/typed/path?default=true#default`,
+		);
+		expect(element.props.state).toEqual({ from: "default-state" });
+	});
+
 	it("preact VormaLink forwards final link handlers onto rendered anchors", async () => {
 		const preactAdapter = await import("vorma/preact");
 		const finalProps = {
@@ -376,6 +408,47 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		});
 		expect(anchor.className).toBe("default-class");
 		expect(anchor.getAttribute("target")).toBe("_blank");
+	});
+
+	it("preact makeTypedLink preserves default state/search/hash when not provided by caller", async () => {
+		const preactAdapter = await import("vorma/preact");
+		resolvePathSpy.mockReturnValue("/typed/path");
+		makeFinalLinkPropsSpy.mockReturnValue({
+			dataExternal: undefined,
+			onPointerEnter: vi.fn(),
+			onFocus: vi.fn(),
+			onPointerLeave: vi.fn(),
+			onBlur: vi.fn(),
+			onTouchCancel: vi.fn(),
+			onClick: vi.fn(),
+		});
+
+		const TypedLink = preactAdapter.makeTypedLink({} as any, {
+			state: { from: "default-state" },
+			search: "?default=true",
+			hash: "#default",
+		});
+		await actPreact(async () => {
+			renderPreact(
+				h(TypedLink as any, {
+					pattern: "/typed/:id",
+					params: { id: "42" },
+				}),
+				container,
+			);
+		});
+
+		const anchor = container.querySelector("a");
+		if (!anchor) {
+			throw new Error("Expected typed link to render an anchor");
+		}
+		expect(anchor.getAttribute("href")).toBe(
+			`${window.location.origin}/typed/path?default=true#default`,
+		);
+		expect(makeFinalLinkPropsSpy).toHaveBeenCalled();
+		expect(makeFinalLinkPropsSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+			state: { from: "default-state" },
+		});
 	});
 
 	it("solid VormaLink forwards final link handlers onto rendered anchors", async () => {

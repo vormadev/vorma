@@ -101,7 +101,16 @@ export function getBuildID(): string {
 }
 
 export function getRootEl(): HTMLDivElement {
-	return document.getElementById("vorma-root") as HTMLDivElement;
+	const rootEl = document.getElementById("vorma-root");
+	if (rootEl === null) {
+		throw new Error('Expected element with id "vorma-root" to exist');
+	}
+	if (!(rootEl instanceof HTMLDivElement)) {
+		throw new Error(
+			'Expected element with id "vorma-root" to be an HTMLDivElement',
+		);
+	}
+	return rootEl;
 }
 
 export function getHistoryInstance(): historyInstance {

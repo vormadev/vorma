@@ -17,20 +17,44 @@ type PageRefreshSnapshot = {
 	href: string;
 };
 
+function safeSessionStorageGetItem(key: string): string | null {
+	try {
+		return sessionStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function safeSessionStorageSetItem(key: string, value: string): void {
+	try {
+		sessionStorage.setItem(key, value);
+	} catch {
+		// Ignore sessionStorage write failures to keep navigation functional.
+	}
+}
+
+function safeSessionStorageRemoveItem(key: string): void {
+	try {
+		sessionStorage.removeItem(key);
+	} catch {
+		// Ignore sessionStorage remove failures to keep navigation functional.
+	}
+}
+
 function getStoredScrollStateMap(): Map<string, ScrollState> {
-	const stored = sessionStorage.getItem(STORAGE_KEY);
+	const stored = safeSessionStorageGetItem(STORAGE_KEY);
 	if (!stored) return new Map();
 
 	try {
 		return new Map(JSON.parse(stored));
 	} catch {
-		sessionStorage.removeItem(STORAGE_KEY);
+		safeSessionStorageRemoveItem(STORAGE_KEY);
 		return new Map();
 	}
 }
 
 function setStoredScrollStateMap(map: Map<string, ScrollState>): void {
-	sessionStorage.setItem(
+	safeSessionStorageSetItem(
 		STORAGE_KEY,
 		JSON.stringify(Array.from(map.entries())),
 	);
@@ -73,19 +97,19 @@ function savePageRefreshScrollStateSnapshot(): void {
 		unix: Date.now(),
 		href: window.location.href,
 	};
-	sessionStorage.setItem(PAGE_REFRESH_KEY, JSON.stringify(state));
+	safeSessionStorageSetItem(PAGE_REFRESH_KEY, JSON.stringify(state));
 }
 
 export function restoreRecentPageRefreshScrollState(
 	applyState: (x: number, y: number) => void,
 ): void {
-	const stored = sessionStorage.getItem(PAGE_REFRESH_KEY);
+	const stored = safeSessionStorageGetItem(PAGE_REFRESH_KEY);
 	if (!stored) return;
 
 	try {
 		const state = JSON.parse(stored);
 		if (!isValidSnapshot(state)) {
-			sessionStorage.removeItem(PAGE_REFRESH_KEY);
+			safeSessionStorageRemoveItem(PAGE_REFRESH_KEY);
 			return;
 		}
 
@@ -95,16 +119,16 @@ export function restoreRecentPageRefreshScrollState(
 			window.location.href,
 		);
 		if (!isCurrentLocation || !isRecentSnapshot) {
-			sessionStorage.removeItem(PAGE_REFRESH_KEY);
+			safeSessionStorageRemoveItem(PAGE_REFRESH_KEY);
 			return;
 		}
 
-		sessionStorage.removeItem(PAGE_REFRESH_KEY);
+		safeSessionStorageRemoveItem(PAGE_REFRESH_KEY);
 		window.requestAnimationFrame(() => {
 			applyState(state.x, state.y);
 		});
 	} catch {
-		sessionStorage.removeItem(PAGE_REFRESH_KEY);
+		safeSessionStorageRemoveItem(PAGE_REFRESH_KEY);
 	}
 }
 

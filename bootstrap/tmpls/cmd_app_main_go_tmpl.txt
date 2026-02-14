@@ -9,5 +9,7 @@ import (
 func main() {
 	addr, handler := router.Init()
 	fmt.Printf("Server starting at http://localhost%s\n", addr)
-	http.ListenAndServe(addr, handler)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		panic(err)
+	}
 }

@@ -1,12 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	getStoredScrollState,
+	restoreRecentPageRefreshScrollState,
 	saveStoredScrollState,
 } from "../../platform/scroll.ts";
 
 const STORAGE_KEY = "__vorma__scrollStateMap";
 
 describe("scroll_state_storage", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it("drops malformed stored maps instead of keeping corrupt state", () => {
 		sessionStorage.setItem(STORAGE_KEY, "{not-json");
 
@@ -43,5 +48,33 @@ describe("scroll_state_storage", () => {
 		expect(stored).toHaveLength(50);
 		expect(stored.some(([key]) => key === "")).toBe(false);
 		expect(stored.some(([key]) => key === "k50")).toBe(true);
+	});
+
+	it("returns undefined instead of throwing when sessionStorage getItem fails", () => {
+		vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+			throw new Error("blocked storage");
+		});
+
+		expect(() => getStoredScrollState("missing")).not.toThrow();
+		expect(getStoredScrollState("missing")).toBeUndefined();
+	});
+
+	it("does not throw when sessionStorage write/remove operations fail", () => {
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new Error("blocked storage");
+		});
+		vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+			throw new Error("blocked storage");
+		});
+
+		expect(() =>
+			saveStoredScrollState("k1", {
+				x: 10,
+				y: 20,
+			}),
+		).not.toThrow();
+		expect(() =>
+			restoreRecentPageRefreshScrollState(() => {}),
+		).not.toThrow();
 	});
 });

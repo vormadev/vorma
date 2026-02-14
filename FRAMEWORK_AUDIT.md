@@ -58,43 +58,21 @@ means the pass is still pending.
 | `wave/tooling/*`       | not done         | not done         | not done         | not done          |
 | `bootstrap/*`          | not done         | not done         | not done         | not done          |
 | `vormaclient/client/*` | not done         | not done         | not done         | not done          |
-| `vormaclient/react/*`  | not done         | not done         | not done         | not done          |
+| `vormaclient/react/*`  | done             | done             | done             | done              |
 | `vormaclient/preact/*` | done             | done             | done             | done              |
-| `vormaclient/solid/*`  | not done         | not done         | not done         | not done          |
+| `vormaclient/solid/*`  | done             | done             | done             | done              |
 | `vormaclient/vite/*`   | done             | done             | done             | done              |
 | `vormaclient/create/*` | done             | done             | done             | done              |
 
+### Active Package Notes
+
+- `vormaclient/client/*`: adapter-linked link behavior, `getRootEl()` runtime
+  guard behavior, and scroll/sessionStorage failure handling were audited and
+  fixed; full package pass is still pending.
+
 ## Findings Log
 
-1. Bootstrap server template drops `http.ListenAndServe` errors.
-    - File: `bootstrap/tmpls/cmd_app_main_go_tmpl.txt:12`
-    - Status: open
-    - Problem: generated apps can fail to bind/start without surfacing the
-      startup error through process exit semantics.
-2. Bootstrap example route template introduces unsynchronized shared mutable
-   state.
-    - File: `bootstrap/tmpls/backend_src_router_example_routes_go_tmpl.txt:11`
-    - File: `bootstrap/tmpls/backend_src_router_example_routes_go_tmpl.txt:26`
-    - Status: open
-    - Problem: generated apps get a default request-handler race footgun.
-3. Bootstrap package install path spawns one package-manager process per
-   dependency.
-    - File: `bootstrap/bootstrap.go:376`
-    - Status: open
-    - Problem: avoidable repeated lock-resolution/install overhead during
-      scaffolding.
-4. Docker bootstrap path does not guard empty `NodeMajorVersion`.
-    - File: `bootstrap/bootstrap.go:79`
-    - File: `bootstrap/tmpls/dockerfile_tmpl.txt:3`
-    - Status: open
-    - Problem: generated Dockerfile can be invalid (`setup_.x`).
-5. Wave dev config validation does not validate `Watch.HealthcheckEndpoint` path
-   shape.
-    - File: `wave/tooling/builder_validation.go:12`
-    - Related runtime use: `wave/tooling/devserver_readiness.go:38`
-    - Status: open
-    - Problem: malformed endpoints can produce invalid readiness probe URLs.
-6. `wave.GetParsedConfig()` exposes mutable internal framework config by
+1. `wave.GetParsedConfig()` exposes mutable internal framework config by
    pointer.
     - File: `wave/runtime_framework.go:108`
     - Status: open
@@ -102,23 +80,15 @@ means the pass is still pending.
 
 ## Test Gap Notes
 
-1. No bootstrap regression test currently asserts generated `cmd/serve/main.go`
-   handles `http.ListenAndServe` errors.
-2. No bootstrap regression test currently protects against unsynchronized
-   mutable `count` state in generated example routes.
-3. No bootstrap regression test currently enforces non-empty `NodeMajorVersion`
-   for docker-target scaffolds.
-4. No validation regression test currently enforces `Watch.HealthcheckEndpoint`
-   path-shape requirements in `wave/tooling`.
-5. No contract test currently enforces immutability expectations for
+1. No contract test currently enforces immutability expectations for
    `wave.GetParsedConfig()` consumers.
 
 ## Next Queue
 
-1. Complete full passes for `vormaclient/client/*`, `vormaclient/react/*`, and
-   `vormaclient/solid/*`.
+1. Complete full passes for `vormaclient/client/*`.
 2. Complete full passes for `vorma.go`, `vormabuild/*`, `vormaruntime/*`,
    `wave/*`, `wave/tooling/*`, and `bootstrap/*`.
-3. Convert open findings (`1` through `6`) into fixes + regression tests.
+3. Resolve open finding `1` (`wave.GetParsedConfig()` mutability) with explicit
+   approval if a semantics/design change is required.
 4. Move package-by-package through remaining full-pass matrix and keep this
    tracker synchronized with explicit `done`/`not done` states.

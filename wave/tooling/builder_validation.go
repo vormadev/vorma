@@ -42,6 +42,9 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 	}
 
 	if cfg.Watch != nil {
+		if err := validateHealthcheckEndpoint(cfg.Watch.HealthcheckEndpoint); err != nil {
+			return err
+		}
 		if err := validateHookCommandTimeoutConfig(cfg.Watch.HookCommandTimeouts); err != nil {
 			return err
 		}
@@ -176,6 +179,38 @@ func validateWatchedFile(wf *wave.WatchedFile, index int) error {
 				hook.Timing,
 			)
 		}
+	}
+
+	return nil
+}
+
+func validateHealthcheckEndpoint(healthcheckEndpoint string) error {
+	if healthcheckEndpoint == "" {
+		return nil
+	}
+
+	if strings.TrimSpace(healthcheckEndpoint) != healthcheckEndpoint {
+		return fmt.Errorf("config: Watch.HealthcheckEndpoint must not include surrounding whitespace")
+	}
+
+	if strings.ContainsAny(healthcheckEndpoint, "\t\r\n ") {
+		return fmt.Errorf("config: Watch.HealthcheckEndpoint must not contain whitespace")
+	}
+
+	if strings.Contains(healthcheckEndpoint, "://") {
+		return fmt.Errorf("config: Watch.HealthcheckEndpoint must be a path, not a URL")
+	}
+
+	if !strings.HasPrefix(healthcheckEndpoint, "/") {
+		return fmt.Errorf("config: Watch.HealthcheckEndpoint must start with '/'")
+	}
+
+	if strings.HasPrefix(healthcheckEndpoint, "//") {
+		return fmt.Errorf("config: Watch.HealthcheckEndpoint must be a single absolute path")
+	}
+
+	if strings.Contains(healthcheckEndpoint, "?") || strings.Contains(healthcheckEndpoint, "#") {
+		return fmt.Errorf("config: Watch.HealthcheckEndpoint must not include query or fragment segments")
 	}
 
 	return nil

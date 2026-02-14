@@ -479,3 +479,85 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 		}
 	})
 }
+
+func TestValidateConfig_HealthcheckEndpointValidation(t *testing.T) {
+	baseConfig := &wave.ParsedConfig{
+		Core: &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+		},
+		Watch: &wave.WatchConfig{},
+	}
+
+	t.Run("accepts empty healthcheck endpoint", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{HealthcheckEndpoint: ""}
+		if err := ValidateConfig(&cfg); err != nil {
+			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+
+	t.Run("accepts absolute path endpoint", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{HealthcheckEndpoint: "/healthz"}
+		if err := ValidateConfig(&cfg); err != nil {
+			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+
+	testCases := []struct {
+		name                string
+		healthcheckEndpoint string
+		expectedSubstring   string
+	}{
+		{
+			name:                "rejects missing leading slash",
+			healthcheckEndpoint: "healthz",
+			expectedSubstring:   "must start with '/'",
+		},
+		{
+			name:                "rejects full URL",
+			healthcheckEndpoint: "https://example.com/healthz",
+			expectedSubstring:   "must be a path, not a URL",
+		},
+		{
+			name:                "rejects query strings",
+			healthcheckEndpoint: "/healthz?full=1",
+			expectedSubstring:   "must not include query or fragment",
+		},
+		{
+			name:                "rejects fragments",
+			healthcheckEndpoint: "/healthz#ready",
+			expectedSubstring:   "must not include query or fragment",
+		},
+		{
+			name:                "rejects surrounding whitespace",
+			healthcheckEndpoint: " /healthz",
+			expectedSubstring:   "must not include surrounding whitespace",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			cfg := *baseConfig
+			cfg.Watch = &wave.WatchConfig{
+				HealthcheckEndpoint: testCase.healthcheckEndpoint,
+			}
+
+			err := ValidateConfig(&cfg)
+			if err == nil {
+				t.Fatal("expected validation error for healthcheck endpoint")
+			}
+			if !strings.Contains(err.Error(), "Watch.HealthcheckEndpoint") {
+				t.Fatalf("unexpected error message: %v", err)
+			}
+			if !strings.Contains(err.Error(), testCase.expectedSubstring) {
+				t.Fatalf("unexpected error message: %v", err)
+			}
+		})
+	}
+}

@@ -61,6 +61,10 @@ export function makeTypedLink<C extends VormaAppConfig>(
 	const TypedLink = memo(function TypedLink<
 		Pattern extends VormaLoaderPattern<App>,
 	>(props: TypedVormaLinkProps<App, Pattern>) {
+		const mergedProps = {
+			...defaultProps,
+			...props,
+		} as TypedVormaLinkProps<App, Pattern>;
 		const {
 			pattern,
 			params,
@@ -69,7 +73,7 @@ export function makeTypedLink<C extends VormaAppConfig>(
 			hash,
 			state,
 			...linkProps
-		} = props as any;
+		} = mergedProps as any;
 
 		const href = resolvePath({
 			vormaAppConfig,
@@ -86,7 +90,6 @@ export function makeTypedLink<C extends VormaAppConfig>(
 		if (hash !== undefined) url.hash = hash;
 
 		const finalProps = {
-			...defaultProps,
 			...linkProps,
 			href: url.href,
 			state,

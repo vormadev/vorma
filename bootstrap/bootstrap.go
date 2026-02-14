@@ -120,6 +120,14 @@ func (o Options) derived() derivedOptions {
 		o.DeploymentTarget != "docker" {
 		panic("unknown DeploymentTarget: " + o.DeploymentTarget)
 	}
+	if o.DeploymentTarget == "docker" {
+		if strings.TrimSpace(o.NodeMajorVersion) == "" {
+			panic("NodeMajorVersion must be set when DeploymentTarget is docker")
+		}
+		if !isAllASCIIDigits(o.NodeMajorVersion) {
+			panic("NodeMajorVersion must contain only digits")
+		}
+	}
 
 	// Use Go version from options or fallback to runtime
 	goVersion := o.GoVersion
@@ -284,40 +292,38 @@ func Init(o Options) {
 	// last
 	do.tmplWriteMust("tsconfig.json", "tmpls/ts_config_json_tmpl.txt")
 
-	installJSPkg(do, "typescript")
-	installJSPkg(do, "vite")
-	installJSPkg(do, fmt.Sprintf("vorma@%s", vorma.Internal__GetCurrentNPMVersion()))
-	installJSPkg(do, resolveUIVitePlugin(do))
+	installJSPkgs(
+		do,
+		"typescript",
+		"vite",
+		fmt.Sprintf("vorma@%s", vorma.Internal__GetCurrentNPMVersion()),
+		resolveUIVitePlugin(do),
+	)
 
 	if do.UIVariant == "react" {
 		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_react_tmpl.txt")
 
-		installJSPkg(do, "react")
-		installJSPkg(do, "react-dom")
-		installJSPkg(do, "@types/react")
-		installJSPkg(do, "@types/react-dom")
+		installJSPkgs(do, "react", "react-dom", "@types/react", "@types/react-dom")
 	}
 
 	if do.UIVariant == "solid" {
 		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_solid_tmpl.txt")
 
-		installJSPkg(do, "solid-js")
+		installJSPkgs(do, "solid-js")
 	}
 
 	if do.UIVariant == "preact" {
 		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_preact_tmpl.txt")
 
-		installJSPkg(do, "preact")
-		installJSPkg(do, "@preact/signals")
+		installJSPkgs(do, "preact", "@preact/signals")
 	}
 
 	if do.DeploymentTarget == "vercel" {
-		installJSPkg(do, "@vercel/node")
+		installJSPkgs(do, "@vercel/node")
 	}
 
 	if do.IncludeTailwind {
-		installJSPkg(do, "@tailwindcss/vite")
-		installJSPkg(do, "tailwindcss")
+		installJSPkgs(do, "@tailwindcss/vite", "tailwindcss")
 		strWriteMust("frontend/src/styles/tailwind.css", "tmpls/frontend_css_tailwind_css_str.txt")
 	}
 
@@ -373,27 +379,61 @@ func (do derivedOptions) ResolveJSPackageManagerInstallCmd() string {
 	panic("unknown JSPackageManager: " + pm)
 }
 
-func installJSPkg(do derivedOptions, pkg string) {
-	var cmd string
+func resolveJSDevDependencyInstallCommand(
+	jsPackageManager string,
+	packages []string,
+) (string, []string) {
+	var command string
+	var commandArguments []string
 
-	switch do.JSPackageManager {
+	switch jsPackageManager {
 	case "npm":
-		cmd = "npm i -D"
+		command = "npm"
+		commandArguments = []string{"i", "-D"}
 	case "pnpm":
-		cmd = "pnpm add -D"
+		command = "pnpm"
+		commandArguments = []string{"add", "-D"}
 	case "yarn":
-		cmd = "yarn add -D"
+		command = "yarn"
+		commandArguments = []string{"add", "-D"}
 	case "bun":
-		cmd = "bun add -d"
+		command = "bun"
+		commandArguments = []string{"add", "-d"}
+	default:
+		panic("unknown JSPackageManager: " + jsPackageManager)
 	}
 
-	cmd += " " + pkg
+	commandArguments = append(commandArguments, packages...)
+	return command, commandArguments
+}
 
-	split := strings.Split(cmd, " ")
-	err := executil.RunCmd(split...)
-	if err != nil {
-		panic("failed to install JS package: " + pkg + ": " + err.Error())
+func installJSPkgs(do derivedOptions, packages ...string) {
+	if len(packages) == 0 {
+		return
 	}
+
+	command, commandArguments := resolveJSDevDependencyInstallCommand(
+		do.JSPackageManager,
+		packages,
+	)
+	fullCommand := append([]string{command}, commandArguments...)
+	if err := executil.RunCmd(fullCommand...); err != nil {
+		panic(
+			"failed to install JS packages: " +
+				strings.Join(packages, ", ") +
+				": " +
+				err.Error(),
+		)
+	}
+}
+
+func isAllASCIIDigits(value string) bool {
+	for _, currentRune := range value {
+		if currentRune < '0' || currentRune > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func resolveUIVitePlugin(do derivedOptions) string {

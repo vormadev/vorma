@@ -1,6 +1,10 @@
 package router
 
-import "github.com/vormadev/vorma"
+import (
+	"sync/atomic"
+
+	"github.com/vormadev/vorma"
+)
 
 type RootData struct {
 	Message string
@@ -8,14 +12,14 @@ type RootData struct {
 
 const externalDocsLink = "https://vorma.dev/docs"
 
-var count = 0
+var requestCount atomic.Int64
 
 var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
 	return &RootData{Message: "Welcome to your Vorma app!"}, nil
 })
 
 var _ = NewLoader("/_index", func(c *LoaderCtx) (int, error) {
-	return count, nil
+	return int(requestCount.Load()), nil
 })
 
 var _ = NewLoader("/links", func(c *LoaderCtx) (string, error) {
@@ -23,6 +27,5 @@ var _ = NewLoader("/links", func(c *LoaderCtx) (string, error) {
 })
 
 var _ = NewAction("POST", "/increment-count", func(c *ActionCtx[vorma.None]) (int, error) {
-	count++
-	return count, nil
+	return int(requestCount.Add(1)), nil
 })

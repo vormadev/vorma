@@ -124,6 +124,25 @@ describe("client utility contracts", () => {
 		expect(api.getRootEl()).toBe(root);
 	});
 
+	it("throws when #vorma-root is missing", async () => {
+		const api = await loadClientAPI();
+
+		expect(() => api.getRootEl()).toThrow(
+			'Expected element with id "vorma-root" to exist',
+		);
+	});
+
+	it("throws when #vorma-root is not a div", async () => {
+		const api = await loadClientAPI();
+		const root = document.createElement("main");
+		root.id = "vorma-root";
+		document.body.appendChild(root);
+
+		expect(() => api.getRootEl()).toThrow(
+			'Expected element with id "vorma-root" to be an HTMLDivElement',
+		);
+	});
+
 	it("applies coordinate and hash-based scroll states", async () => {
 		const api = await loadClientAPI();
 
