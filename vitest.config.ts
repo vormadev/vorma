@@ -7,6 +7,9 @@ const sourcePath = (relativePath: string): string =>
 export default defineConfig({
 	resolve: {
 		alias: {
+			"vorma/client/__internal": sourcePath(
+				"./vormaclient/client/internal.ts",
+			),
 			"vorma/client": sourcePath("./vormaclient/client/index.ts"),
 			"vorma/buildtime": sourcePath("./vormaclient/client/buildtime.ts"),
 			"vorma/react": sourcePath("./vormaclient/react/index.ts"),

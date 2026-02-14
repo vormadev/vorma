@@ -10,12 +10,19 @@ import {
 	spinner,
 	text,
 } from "@clack/prompts";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	buildGoGetCommandArgs,
+	buildGoModInitCommandArgs,
+	buildGoModReplaceCommandArgs,
+	buildGoRunCommandArgs,
+	isNodeVersionAtLeast,
+} from "./runtime_helpers.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +37,9 @@ async function main() {
 	// Check Go installation
 	let goVersion = "";
 	try {
-		goVersion = execSync("go version", { encoding: "utf8" }).trim();
+		goVersion = execFileSync("go", ["version"], {
+			encoding: "utf8",
+		}).trim();
 		const versionMatch = goVersion.match(/go(\d+)\.(\d+)/);
 		if (versionMatch) {
 			if (!versionMatch[1] || !versionMatch[2]) {
@@ -57,18 +66,14 @@ async function main() {
 
 	// Check Node version
 	const nodeVersion = process.version;
-	const firstPart = nodeVersion.split(".")[0];
-	if (!firstPart || firstPart.length < 2 || !firstPart.startsWith("v")) {
+	if (!isNodeVersionAtLeast(nodeVersion, 22, 11)) {
 		cancel(
-			"Node.js version not recognized. Please ensure Node.js is installed correctly.",
+			"Node.js version 22.11 or higher is required. Please ensure Node.js is installed correctly.",
 		);
 		process.exit(1);
 	}
-	const nodeMajor = parseInt(firstPart.substring(1));
-	if (nodeMajor < 22) {
-		cancel("Node.js version 22.11 or higher is required");
-		process.exit(1);
-	}
+	const nodeMajorVersionMatch = nodeVersion.match(/^v(\d+)\./);
+	const nodeMajor = Number.parseInt(nodeMajorVersionMatch?.[1] || "", 10);
 
 	// Option to create a new directory at start if not already in desired location
 	const createNewDir = await confirm({
@@ -189,13 +194,14 @@ async function main() {
 		const s = spinner();
 		s.start("Initializing Go module");
 		try {
-			execSync(`go mod init ${moduleName}`, { cwd: moduleRoot });
+			execFileSync("go", buildGoModInitCommandArgs(moduleName), {
+				cwd: moduleRoot,
+			});
 			if (isLocalTest) {
 				const vormaPath = path.resolve(__dirname, "../../../../../");
-				execSync(
-					`go mod edit -replace github.com/vormadev/vorma=${vormaPath}`,
-					{ cwd: moduleRoot },
-				);
+				execFileSync("go", buildGoModReplaceCommandArgs(vormaPath), {
+					cwd: moduleRoot,
+				});
 				log.info("Using local Vorma code for testing");
 			}
 			s.stop("Go module initialized");
@@ -342,7 +348,7 @@ func main() {
 		const usingExistingModule = !createNewModule;
 		const skipVormaGet = isLocalTest && usingExistingModule;
 		if (!skipVormaGet) {
-			execSync(`go get github.com/vormadev/vorma@v${version}`, {
+			execFileSync("go", buildGoGetCommandArgs(version), {
 				cwd: process.cwd(),
 				stdio: "pipe",
 			});
@@ -351,7 +357,7 @@ func main() {
 		// Run bootstrap
 		console.log("🛠️  Running bootstrapper...");
 		try {
-			execSync(`go run ${bootstrapFile}`, {
+			execFileSync("go", buildGoRunCommandArgs(bootstrapFile), {
 				cwd: process.cwd(),
 				stdio: "inherit",
 			});

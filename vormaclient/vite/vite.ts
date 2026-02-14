@@ -11,6 +11,68 @@ type VormaVitePluginConfig = {
 	dedupeList: ReadonlyArray<string>;
 };
 
+function mergeRollupInput(
+	vormaRollupInput: ReadonlyArray<string>,
+	existingRollupInput: unknown,
+): Array<string> | Record<string, string> {
+	if (typeof existingRollupInput === "string") {
+		return [...vormaRollupInput, existingRollupInput];
+	}
+
+	if (Array.isArray(existingRollupInput)) {
+		return [...vormaRollupInput, ...existingRollupInput];
+	}
+
+	if (
+		typeof existingRollupInput === "object" &&
+		existingRollupInput !== null
+	) {
+		const existingObjectInput = existingRollupInput as Record<
+			string,
+			string
+		>;
+		const mergedObjectInput: Record<string, string> = {
+			...existingObjectInput,
+		};
+		const usedInputKeys = new Set(Object.keys(existingObjectInput));
+		let nextInternalKeyIndex = 0;
+
+		for (
+			let inputIndex = 0;
+			inputIndex < vormaRollupInput.length;
+			inputIndex++
+		) {
+			let internalKey = `__vorma_internal_entry_${nextInternalKeyIndex}`;
+			while (usedInputKeys.has(internalKey)) {
+				nextInternalKeyIndex++;
+				internalKey = `__vorma_internal_entry_${nextInternalKeyIndex}`;
+			}
+			mergedObjectInput[internalKey] = vormaRollupInput[inputIndex] || "";
+			usedInputKeys.add(internalKey);
+			nextInternalKeyIndex++;
+		}
+
+		return mergedObjectInput;
+	}
+
+	return [...vormaRollupInput];
+}
+
+function mergeServerWatchIgnoredPatterns(
+	existingIgnoredPatterns: unknown,
+	vormaIgnoredPatterns: ReadonlyArray<string>,
+): Array<unknown> {
+	if (Array.isArray(existingIgnoredPatterns)) {
+		return [...existingIgnoredPatterns, ...vormaIgnoredPatterns];
+	}
+
+	if (existingIgnoredPatterns !== undefined) {
+		return [existingIgnoredPatterns, ...vormaIgnoredPatterns];
+	}
+
+	return [...vormaIgnoredPatterns];
+}
+
 export default function vormaVitePlugin(config: VormaVitePluginConfig): any {
 	// Cache for dev mode filemap reading.
 	// In dev mode, we read from the JSON file so we can pick up changes
@@ -80,10 +142,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): any {
 					},
 					rollupOptions: {
 						...c.build?.rollupOptions,
-						input: [
-							...config.rollupInput,
-							...(Array.isArray(roi) ? roi : []),
-						],
+						input: mergeRollupInput(config.rollupInput, roi),
 						preserveEntrySignatures: "exports-only",
 						output: {
 							assetFileNames:
@@ -102,10 +161,10 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): any {
 					},
 					watch: {
 						...c.server?.watch,
-						ignored: [
-							...(Array.isArray(ign) ? ign : []),
-							...config.ignoredPatterns,
-						],
+						ignored: mergeServerWatchIgnoredPatterns(
+							ign,
+							config.ignoredPatterns,
+						),
 					},
 				},
 				resolve: {

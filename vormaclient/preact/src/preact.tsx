@@ -178,14 +178,16 @@ function initUIListeners(): void {
 
 type VormaOutletProps = {
 	idx: number;
-	Outlet: (localProps: Record<string, any> | undefined) => h.JSX.Element;
+	Outlet: (
+		localProps: Record<string, any> | undefined,
+	) => h.JSX.Element | null;
 };
 
 type VormaErrorBoundaryProps = {
 	error: unknown;
 };
 
-export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element {
+export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element | null {
 	const idx = props.idx ?? 0;
 	const isInitialRootRenderRef = useRef(true);
 	const passthroughPropsRef = useRef(props);
@@ -233,7 +235,7 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element {
 		if (routeOutletBranchState.shouldFallbackOutlet) {
 			return h(Outlet, { key: routeOutletBranchState.nextRouteKey });
 		}
-		return h("div", {});
+		return null;
 	}
 
 	return h(CurrentComp, {
