@@ -21,7 +21,7 @@ export type DistTestVormaInternal = {
 	hasRootData: boolean;
 	params: Record<string, string>;
 	splatValues: string[];
-	activeComponents: unknown[];
+	activeComponents: unknown[] | null;
 	activeErrorBoundary: unknown;
 	outermostServerError: unknown;
 	outermostClientError: unknown;
