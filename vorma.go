@@ -57,13 +57,39 @@ func NewLoader[O any, CtxPtr ~*Ctx, Ctx any](
 	f func(CtxPtr) (O, error),
 	decorateCtx func(*LoaderReqData) CtxPtr,
 ) *Loader[O] {
+	_ = app
+	_ = p
+	wrappedF := func(c *LoaderReqData) (O, error) { return f(decorateCtx(c)) }
+	return mux.TaskHandlerFromFunc(wrappedF)
+}
+
+func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
+	app *Vorma,
+	m string,
+	p string,
+	f func(CtxPtr) (O, error),
+	decorateCtx func(*mux.ReqData[I]) CtxPtr,
+) *Action[I, O] {
+	_ = app
+	_ = m
+	_ = p
+	wrappedF := func(c *mux.ReqData[I]) (O, error) { return f(decorateCtx(c)) }
+	return mux.TaskHandlerFromFunc(wrappedF)
+}
+
+func Internal__RegisterDiscoveredLoader[O any, CtxPtr ~*Ctx, Ctx any](
+	app *Vorma,
+	p string,
+	f func(CtxPtr) (O, error),
+	decorateCtx func(*LoaderReqData) CtxPtr,
+) *Loader[O] {
 	wrappedF := func(c *LoaderReqData) (O, error) { return f(decorateCtx(c)) }
 	loaderTask := mux.TaskHandlerFromFunc(wrappedF)
 	mux.RegisterNestedTaskHandler(app.LoadersRouter().NestedRouter, p, loaderTask)
 	return loaderTask
 }
 
-func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
+func Internal__RegisterDiscoveredAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	app *Vorma,
 	m string,
 	p string,

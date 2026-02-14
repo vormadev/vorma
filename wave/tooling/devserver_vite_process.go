@@ -114,5 +114,9 @@ func (s *server) waitForVite() bool {
 }
 
 func resolveViteReadyURL(vitePort int) string {
-	return fmt.Sprintf("http://localhost:%d/@vite/client", vitePort)
+	return fmt.Sprintf(
+		"http://%s:%d/@vite/client",
+		localReadinessProbeHostIPv4,
+		vitePort,
+	)
 }

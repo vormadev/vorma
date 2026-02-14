@@ -89,6 +89,14 @@ func TestWaitForVite_ReturnsTrueWhenViteContextIsNil(t *testing.T) {
 	}
 }
 
+func TestResolveViteReadyURL_UsesIPv4LoopbackHost(t *testing.T) {
+	got := resolveViteReadyURL(5151)
+	const want = "http://127.0.0.1:5151/@vite/client"
+	if got != want {
+		t.Fatalf("resolveViteReadyURL()=%q, want %q", got, want)
+	}
+}
+
 func TestGetBuilderAndSetBuilder(t *testing.T) {
 	s := &server{log: newDiscardLogger()}
 	if s.getBuilder() != nil {

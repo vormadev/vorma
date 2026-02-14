@@ -41,3 +41,11 @@ func TestWaitForApp_UsesConfiguredHealthcheckEndpoint(t *testing.T) {
 		t.Fatal("expected waitForApp to return true when healthcheck endpoint is ready")
 	}
 }
+
+func TestResolveAppReadyURL_UsesIPv4LoopbackHost(t *testing.T) {
+	got := resolveAppReadyURL(4242, "/healthz")
+	const want = "http://127.0.0.1:4242/healthz"
+	if got != want {
+		t.Fatalf("resolveAppReadyURL()=%q, want %q", got, want)
+	}
+}

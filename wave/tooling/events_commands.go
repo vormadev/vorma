@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"context"
 	"strings"
 
 	"github.com/vormadev/vorma/wave"
@@ -28,6 +29,64 @@ func (s *server) resolveHookCommand(hook wave.OnChangeHook) string {
 		)
 	}
 	return hook.Cmd
+}
+
+func (s *server) resolveHookExecutionPlan(
+	hook wave.OnChangeHook,
+) hookExecutionPlan {
+	if s == nil || s.cfg == nil {
+		return deriveHookExecutionPlanFromHook(hook, nil)
+	}
+	if !hook.RunCombinedDevBuildHookCommands || s.cfg.FrameworkRunBuildHook == nil {
+		return deriveHookExecutionPlanFromHook(hook, s.resolveHookCommand)
+	}
+
+	frameworkBuildHookRunner := s.cfg.FrameworkRunBuildHook
+	userAndExplicitCommand := resolveSequentialShellCommands(
+		hook.Cmd,
+		getUserDevBuildHook(s.cfg),
+	)
+	originalCallback := hook.Callback
+
+	return hookExecutionPlan{
+		callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+			var callbackAction *wave.RefreshAction
+			var callbackErr error
+			if originalCallback != nil {
+				callbackAction, callbackErr = originalCallback(hookContext)
+				if callbackErr != nil {
+					return callbackAction, callbackErr
+				}
+			}
+
+			hookExecutionContext := context.Background()
+			if hookContext != nil && hookContext.ExecutionContext != nil {
+				hookExecutionContext = hookContext.ExecutionContext
+			}
+
+			if strings.TrimSpace(userAndExplicitCommand) != "" {
+				if err := executeHookCommandWithContext(
+					hookExecutionContext,
+					userAndExplicitCommand,
+				); err != nil {
+					return callbackAction, err
+				}
+			}
+
+			if err := frameworkBuildHookRunner(
+				hookExecutionContext,
+				true,
+			); err != nil {
+				return callbackAction, err
+			}
+			return callbackAction, nil
+		},
+		command:                     "",
+		commandTimeoutMilliseconds:  hook.CommandTimeoutMilliseconds,
+		disableStageCommandTimeout:  hook.DisableStageCommandTimeout,
+		callbackTimeoutMilliseconds: hook.CallbackTimeoutMilliseconds,
+		disableStageCallbackTimeout: hook.DisableStageCallbackTimeout,
+	}
 }
 
 func getUserDevBuildHook(parsedConfig *wave.ParsedConfig) string {

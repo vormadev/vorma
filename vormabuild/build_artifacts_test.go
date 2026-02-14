@@ -1,6 +1,7 @@
 package vormabuild
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/wave"
 )
 
 func TestCleanRouteManifestsOnly_RemovesOnlyManifestFiles(t *testing.T) {
@@ -604,6 +606,14 @@ func TestConfigureBuildEnvironment_WiresHooksAndDefaults(t *testing.T) {
 	if parsedCfg.FrameworkPublicFileMapOutDir != app.Config.TSGenOutDir {
 		t.Fatalf("FrameworkPublicFileMapOutDir = %q, want %q", parsedCfg.FrameworkPublicFileMapOutDir, app.Config.TSGenOutDir)
 	}
+
+	if parsedCfg.FrameworkRunBuildHook == nil {
+		t.Fatal("expected configureBuildEnvironment to wire framework build hook runner")
+	}
+
+	if parsedCfg.FrameworkPrepareGoBuildOverlay == nil {
+		t.Fatal("expected configureBuildEnvironment to wire framework go-build overlay preparation")
+	}
 }
 
 func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testing.T) {
@@ -621,6 +631,122 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testi
 	}
 	if parsedCfg.FrameworkProdBuildHook != "go run ./custom/prodhook" {
 		t.Fatalf("FrameworkProdBuildHook = %q, want preserved custom hook", parsedCfg.FrameworkProdBuildHook)
+	}
+}
+
+func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHookRunner(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	parsedCfg := app.Wave.GetParsedConfig()
+
+	frameworkBuildHookRunnerCalled := false
+	parsedCfg.FrameworkRunBuildHook = func(context.Context, bool) error {
+		frameworkBuildHookRunnerCalled = true
+		return nil
+	}
+
+	configureBuildEnvironment(app)
+
+	if parsedCfg.FrameworkRunBuildHook == nil {
+		t.Fatal("expected existing framework build hook runner to remain configured")
+	}
+	if err := parsedCfg.FrameworkRunBuildHook(context.Background(), true); err != nil {
+		t.Fatalf("existing framework build hook runner returned error: %v", err)
+	}
+	if !frameworkBuildHookRunnerCalled {
+		t.Fatal("expected configureBuildEnvironment to preserve existing framework build hook runner")
+	}
+}
+
+func TestConfigureBuildEnvironment_PreservesExistingFrameworkGoBuildOverlayPreparation(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	parsedCfg := app.Wave.GetParsedConfig()
+
+	overlayPreparationCalled := false
+	parsedCfg.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
+		overlayPreparationCalled = true
+		return nil, nil
+	}
+
+	configureBuildEnvironment(app)
+
+	if parsedCfg.FrameworkPrepareGoBuildOverlay == nil {
+		t.Fatal("expected existing framework go-build overlay preparation to remain configured")
+	}
+	if _, err := parsedCfg.FrameworkPrepareGoBuildOverlay(); err != nil {
+		t.Fatalf("existing framework go-build overlay preparation returned error: %v", err)
+	}
+	if !overlayPreparationCalled {
+		t.Fatal("expected configureBuildEnvironment to preserve existing framework overlay callback")
+	}
+}
+
+func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	parsedCfg := app.Wave.GetParsedConfig()
+
+	originalFrameworkBuildHookExecutionDeps := frameworkBuildHookExecutionDeps
+	t.Cleanup(func() {
+		frameworkBuildHookExecutionDeps = originalFrameworkBuildHookExecutionDeps
+	})
+
+	overlayCleanupCalled := false
+	frameworkBuildHookExecutionDeps.prepareDiscoveredRouteRegistrarOverlay = func(*vormaruntime.Vorma) (*discoveredRouteRegistrarOverlay, error) {
+		return &discoveredRouteRegistrarOverlay{
+			goOverlayConfigPath: "/tmp/vorma-test-overlay.json",
+			cleanupTemporaryFiles: func() error {
+				overlayCleanupCalled = true
+				return nil
+			},
+		}, nil
+	}
+
+	var capturedGoRunArgs []string
+	frameworkBuildHookExecutionDeps.runGoCommandWithContext = func(
+		commandExecutionContext context.Context,
+		goRunArgs []string,
+	) error {
+		if commandExecutionContext == nil {
+			t.Fatal("expected non-nil command execution context")
+		}
+		capturedGoRunArgs = append([]string{}, goRunArgs...)
+		return nil
+	}
+
+	configureBuildEnvironment(app)
+	if parsedCfg.FrameworkRunBuildHook == nil {
+		t.Fatal("expected framework build hook runner to be configured")
+	}
+
+	if err := parsedCfg.FrameworkRunBuildHook(context.Background(), true); err != nil {
+		t.Fatalf("framework build hook runner returned error: %v", err)
+	}
+
+	expectedGoRunArgs := []string{
+		"run",
+		"-overlay=/tmp/vorma-test-overlay.json",
+		"./backend/cmd/build",
+		"--dev",
+		"--hook",
+	}
+	if len(capturedGoRunArgs) != len(expectedGoRunArgs) {
+		t.Fatalf("go run args len = %d, want %d; got %#v", len(capturedGoRunArgs), len(expectedGoRunArgs), capturedGoRunArgs)
+	}
+	for argumentIndex, expectedArgument := range expectedGoRunArgs {
+		if capturedGoRunArgs[argumentIndex] != expectedArgument {
+			t.Fatalf(
+				"go run arg[%d] = %q, want %q (args=%#v)",
+				argumentIndex,
+				capturedGoRunArgs[argumentIndex],
+				expectedArgument,
+				capturedGoRunArgs,
+			)
+		}
+	}
+	if !overlayCleanupCalled {
+		t.Fatal("expected framework build hook runner to cleanup overlay")
 	}
 }
 

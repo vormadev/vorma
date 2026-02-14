@@ -4,9 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-
 	"github.com/vormadev/vorma/vormaruntime"
+	"io"
 )
 
 type buildCommandOptions struct {

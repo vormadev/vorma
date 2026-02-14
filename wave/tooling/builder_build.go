@@ -6,9 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/vormadev/vorma/kit/executil"
+	"github.com/vormadev/vorma/wave"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -116,6 +118,7 @@ func (b *Builder) processFiles(granular bool, isDev bool) error {
 
 func (b *Builder) runHooks(isDev bool) error {
 	var userHook, frameworkHook string
+	frameworkRunBuildHook := b.cfg.FrameworkRunBuildHook
 	if isDev {
 		userHook = b.cfg.Core.DevBuildHook
 		frameworkHook = b.cfg.FrameworkDevBuildHook
@@ -136,6 +139,19 @@ func (b *Builder) runHooks(isDev bool) error {
 	}
 
 	// Framework hooks second -- Vorma reflects on the final Go types
+	if frameworkRunBuildHook != nil {
+		frameworkHookExecutionContext, cancelFrameworkHookExecutionContext := deriveExecutionContextWithOptionalTimeout(
+			context.Background(),
+			buildHookCommandTimeout,
+		)
+		if cancelFrameworkHookExecutionContext != nil {
+			defer cancelFrameworkHookExecutionContext()
+		}
+		if err := frameworkRunBuildHook(frameworkHookExecutionContext, isDev); err != nil {
+			return fmt.Errorf("framework build hook failed: %w", err)
+		}
+		return nil
+	}
 	if frameworkHook != "" {
 		if err := runBuildHookCommandWithTimeout(
 			frameworkHook,
@@ -182,27 +198,75 @@ func (b *Builder) compileGo(isDev bool) error {
 	start := time.Now()
 	b.log.Info("Compiling Go binary...")
 
+	frameworkGoBuildOverlay, err := prepareFrameworkGoBuildOverlay(b.cfg)
+	if err != nil {
+		return fmt.Errorf("prepare framework go build overlay: %w", err)
+	}
+
 	dest := b.cfg.Dist.Binary()
 	entry := fmt.Sprintf(".%c%s", filepath.Separator, filepath.Clean(b.cfg.Core.MainAppEntry))
-	cmd := buildGoBuildCommand(dest, entry, isDev)
+	goBuildOverlayPath := ""
+	if frameworkGoBuildOverlay != nil {
+		goBuildOverlayPath = strings.TrimSpace(frameworkGoBuildOverlay.OverlayConfigPath)
+	}
+	cmd := buildGoBuildCommand(dest, entry, isDev, goBuildOverlayPath)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go build: %w", err)
+	goBuildErr := cmd.Run()
+	cleanupOverlayErr := cleanupFrameworkGoBuildOverlay(frameworkGoBuildOverlay)
+	if goBuildErr != nil {
+		if cleanupOverlayErr != nil {
+			return fmt.Errorf(
+				"go build: %w (cleanup framework go build overlay failed: %v)",
+				goBuildErr,
+				cleanupOverlayErr,
+			)
+		}
+		return fmt.Errorf("go build: %w", goBuildErr)
+	}
+	if cleanupOverlayErr != nil {
+		return fmt.Errorf("cleanup framework go build overlay: %w", cleanupOverlayErr)
 	}
 
 	b.log.Info("DONE compiling Go", "duration", time.Since(start))
 	return nil
 }
 
+func prepareFrameworkGoBuildOverlay(
+	parsedCfg *wave.ParsedConfig,
+) (*wave.GoBuildOverlay, error) {
+	if parsedCfg == nil || parsedCfg.FrameworkPrepareGoBuildOverlay == nil {
+		return nil, nil
+	}
+
+	frameworkGoBuildOverlay, err := parsedCfg.FrameworkPrepareGoBuildOverlay()
+	if err != nil {
+		return nil, err
+	}
+	return frameworkGoBuildOverlay, nil
+}
+
+func cleanupFrameworkGoBuildOverlay(
+	frameworkGoBuildOverlay *wave.GoBuildOverlay,
+) error {
+	if frameworkGoBuildOverlay == nil || frameworkGoBuildOverlay.Cleanup == nil {
+		return nil
+	}
+	return frameworkGoBuildOverlay.Cleanup()
+}
+
 func buildGoBuildCommand(
 	dest string,
 	entry string,
 	isDev bool,
+	goBuildOverlayPath string,
 ) *exec.Cmd {
 	commandArguments := []string{"build"}
+	if strings.TrimSpace(goBuildOverlayPath) != "" {
+		commandArguments = append(commandArguments, "-overlay="+goBuildOverlayPath)
+	}
 
 	if !isDev {
 		commandArguments = append(commandArguments, "-tags=prod")

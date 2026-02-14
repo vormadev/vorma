@@ -20,7 +20,7 @@ func TestBuilderConfig(t *testing.T) {
 }
 
 func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
-	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", true)
+	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", true, "")
 
 	for _, commandArgument := range cmd.Args {
 		if strings.HasPrefix(commandArgument, "-tags=") {
@@ -30,10 +30,23 @@ func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
 }
 
 func TestBuildGoBuildCommand_ProdBuildUsesEmbeddedDistStaticByDefault(t *testing.T) {
-	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", false)
+	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", false, "")
 
 	if !containsCommandArgument(cmd.Args, "-tags=prod") {
 		t.Fatalf("expected prod build tags to be -tags=prod, got args %#v", cmd.Args)
+	}
+}
+
+func TestBuildGoBuildCommand_IncludesOverlayArgumentWhenProvided(t *testing.T) {
+	cmd := buildGoBuildCommand(
+		"dist/main",
+		"./cmd/serve",
+		true,
+		"/tmp/vorma-overlay.json",
+	)
+
+	if !containsCommandArgument(cmd.Args, "-overlay=/tmp/vorma-overlay.json") {
+		t.Fatalf("expected overlay argument, got args %#v", cmd.Args)
 	}
 }
 
@@ -129,6 +142,45 @@ func TestBuilderCompileGoOnly_PropagatesCompilationError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "go build") {
 		t.Fatalf("unexpected compile error: %v", err)
+	}
+}
+
+func TestBuilderCompileGoOnly_UsesFrameworkOverlayPreparationAndCleanup(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+	cfg.Core.MainAppEntry = "this/package/does/not/exist"
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	overlayConfigPath := filepath.Join(t.TempDir(), "go-overlay.json")
+	if err := os.WriteFile(overlayConfigPath, []byte(`{"Replace":{}}`), 0o644); err != nil {
+		t.Fatalf("write overlay config file: %v", err)
+	}
+
+	prepareOverlayCalled := false
+	cleanupOverlayCalled := false
+	cfg.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
+		prepareOverlayCalled = true
+		return &wave.GoBuildOverlay{
+			OverlayConfigPath: overlayConfigPath,
+			Cleanup: func() error {
+				cleanupOverlayCalled = true
+				return nil
+			},
+		}, nil
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	err := builder.CompileGoOnly(true)
+	if err == nil {
+		t.Fatal("expected CompileGoOnly to fail for missing package")
+	}
+	if !prepareOverlayCalled {
+		t.Fatal("expected framework go-build overlay preparation to run")
+	}
+	if !cleanupOverlayCalled {
+		t.Fatal("expected framework go-build overlay cleanup to run")
 	}
 }
 

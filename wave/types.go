@@ -124,12 +124,14 @@ type ParsedConfig struct {
 
 	Dist DistLayout `json:"-"`
 
-	FrameworkWatchPatterns       []WatchedFile               `json:"-"`
-	FrameworkIgnoredPatterns     []string                    `json:"-"`
-	FrameworkPublicFileMapOutDir string                      `json:"-"`
-	FrameworkSchemaExtensions    map[string]jsonschema.Entry `json:"-"`
-	FrameworkDevBuildHook        string                      `json:"-"`
-	FrameworkProdBuildHook       string                      `json:"-"`
+	FrameworkWatchPatterns         []WatchedFile                     `json:"-"`
+	FrameworkIgnoredPatterns       []string                          `json:"-"`
+	FrameworkPublicFileMapOutDir   string                            `json:"-"`
+	FrameworkSchemaExtensions      map[string]jsonschema.Entry       `json:"-"`
+	FrameworkDevBuildHook          string                            `json:"-"`
+	FrameworkProdBuildHook         string                            `json:"-"`
+	FrameworkRunBuildHook          func(context.Context, bool) error `json:"-"`
+	FrameworkPrepareGoBuildOverlay func() (*GoBuildOverlay, error)   `json:"-"`
 
 	FrameworkBrowserRuntimeNamespace              string `json:"-"`
 	FrameworkBrowserPublicURLResolverFunctionName string `json:"-"`
@@ -137,6 +139,11 @@ type ParsedConfig struct {
 	FrameworkRefreshRebuildingOverlayElementID    string `json:"-"`
 	FrameworkCriticalCSSStyleElementID            string `json:"-"`
 	FrameworkNonCriticalCSSLinkElementID          string `json:"-"`
+}
+
+type GoBuildOverlay struct {
+	OverlayConfigPath string
+	Cleanup           func() error
 }
 
 type CoreConfig struct {

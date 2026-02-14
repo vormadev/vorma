@@ -29,6 +29,8 @@ type hookExecutionPlan struct {
 	disableStageCallbackTimeout bool
 }
 
+type hookExecutionPlanResolver func(wave.OnChangeHook) hookExecutionPlan
+
 func deriveHookStageExecutionDescriptors(
 	eventsWithHooks []eventWithHooks,
 ) []hookStageExecutionDescriptor {
@@ -94,7 +96,7 @@ func deriveHookExecutionPlansForEventStage(
 	watcher *Watcher,
 	eventWithHooksForStage eventWithHooks,
 	stageType hookStageType,
-	resolveHookCommand func(wave.OnChangeHook) string,
+	resolveHookExecutionPlan hookExecutionPlanResolver,
 ) []hookExecutionPlan {
 	stageHooks, shouldApplyRunOnChangeOnlyRules := deriveStageHooksAndRunOnChangePolicyForEvent(
 		eventWithHooksForStage,
@@ -113,9 +115,16 @@ func deriveHookExecutionPlansForEventStage(
 
 	plans := make([]hookExecutionPlan, 0, len(executableHooksForStage))
 	for _, executableHook := range executableHooksForStage {
+		if resolveHookExecutionPlan != nil {
+			plans = append(
+				plans,
+				resolveHookExecutionPlan(executableHook),
+			)
+			continue
+		}
 		plans = append(
 			plans,
-			deriveHookExecutionPlanFromHook(executableHook, resolveHookCommand),
+			deriveHookExecutionPlanFromHook(executableHook, nil),
 		)
 	}
 

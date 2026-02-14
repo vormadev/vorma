@@ -15,6 +15,8 @@ type readinessWaitPolicy struct {
 	requestTimeout time.Duration
 }
 
+const localReadinessProbeHostIPv4 = "127.0.0.1"
+
 func defaultReadinessWaitPolicy() readinessWaitPolicy {
 	return readinessWaitPolicy{
 		maxAttempts:    100,
@@ -34,7 +36,12 @@ func (s *server) waitForApp() bool {
 }
 
 func resolveAppReadyURL(appPort int, healthcheckEndpoint string) string {
-	return fmt.Sprintf("http://localhost:%d%s", appPort, healthcheckEndpoint)
+	return fmt.Sprintf(
+		"http://%s:%d%s",
+		localReadinessProbeHostIPv4,
+		appPort,
+		healthcheckEndpoint,
+	)
 }
 
 func (s *server) waitForReady(url string) bool {

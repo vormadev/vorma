@@ -102,6 +102,89 @@ func TestRunConcurrentHooks_RespectsExcludesAndCollectsActions(t *testing.T) {
 	}
 }
 
+func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHookRunner(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	root := t.TempDir()
+	changedPath := filepath.Join(root, "changed.go")
+	combinedExecutionLogPath := filepath.Join(root, "combined-execution.log")
+	frameworkCommandFallbackLogPath := filepath.Join(root, "framework-command-fallback.log")
+	if err := os.WriteFile(changedPath, []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	s.cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(combinedExecutionLogPath)
+	s.cfg.FrameworkDevBuildHook = "printf 'framework-command\\n' >> " + strconv.Quote(frameworkCommandFallbackLogPath)
+
+	var frameworkRunnerCallCount atomic.Int32
+	s.cfg.FrameworkRunBuildHook = func(
+		hookExecutionContext context.Context,
+		runInDevelopmentMode bool,
+	) error {
+		frameworkRunnerCallCount.Add(1)
+		if !runInDevelopmentMode {
+			return errors.New("expected framework build hook runner to execute in development mode")
+		}
+		if hookExecutionContext == nil {
+			return errors.New("expected non-nil framework build hook execution context")
+		}
+
+		frameworkRunnerOutputFile, err := os.OpenFile(
+			combinedExecutionLogPath,
+			os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+			0o644,
+		)
+		if err != nil {
+			return err
+		}
+		defer frameworkRunnerOutputFile.Close()
+		if _, err := frameworkRunnerOutputFile.WriteString("framework-runner\n"); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			Concurrent: []wave.OnChangeHook{
+				{
+					RunCombinedDevBuildHookCommands: true,
+				},
+			},
+		},
+	}
+
+	actions, err := s.runConcurrentHooks(ewh, watcher)
+	if err != nil {
+		t.Fatalf("runConcurrentHooks returned error: %v", err)
+	}
+	if len(actions) != 0 {
+		t.Fatalf("expected no concurrent actions from combined dev hooks, got %#v", actions)
+	}
+
+	if got := frameworkRunnerCallCount.Load(); got != 1 {
+		t.Fatalf("framework build hook runner call count = %d, want 1", got)
+	}
+
+	combinedExecutionLog, err := os.ReadFile(combinedExecutionLogPath)
+	if err != nil {
+		t.Fatalf("failed reading combined execution log: %v", err)
+	}
+	if string(combinedExecutionLog) != "user\nframework-runner\n" {
+		t.Fatalf("combined execution log = %q, want %q", string(combinedExecutionLog), "user\nframework-runner\n")
+	}
+
+	if _, err := os.Stat(frameworkCommandFallbackLogPath); !os.IsNotExist(err) {
+		t.Fatalf(
+			"expected framework command fallback log not to exist when framework runner is configured, stat err: %v",
+			err,
+		)
+	}
+}
+
 func TestRunConcurrentHooks_ReturnsActionsInHookOrder(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()

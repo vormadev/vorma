@@ -305,7 +305,7 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 		watcher,
 		ewh,
 		hookStageTypeConcurrentNoWait,
-		s.resolveHookCommand,
+		s.resolveHookExecutionPlan,
 	)
 	for _, plan := range plans {
 		if plan.callback != nil {
@@ -389,7 +389,7 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 		watcher,
 		ewh,
 		hookStageTypePre,
-		s.resolveHookCommand,
+		s.resolveHookExecutionPlan,
 	)
 	for _, plan := range plans {
 		action, err := s.executeHookExecutionPlanWithContext(
@@ -426,7 +426,7 @@ func (s *server) runConcurrentHooksWithContext(
 		watcher,
 		ewh,
 		hookStageTypeConcurrent,
-		s.resolveHookCommand,
+		s.resolveHookExecutionPlan,
 	)
 	if len(plans) == 0 {
 		return nil, nil
@@ -488,7 +488,7 @@ func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refr
 		watcher,
 		ewh,
 		hookStageTypePost,
-		s.resolveHookCommand,
+		s.resolveHookExecutionPlan,
 	)
 	for _, plan := range plans {
 		action, err := s.executeHookExecutionPlanWithContext(

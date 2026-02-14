@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -112,6 +113,53 @@ func TestRunHooks_ReportsFrameworkHookErrorAfterUserHookRuns(t *testing.T) {
 	}
 	if string(content) != "user\n" {
 		t.Fatalf("unexpected content after framework failure:\n%s", string(content))
+	}
+}
+
+func TestRunHooks_UsesFrameworkBuildHookRunnerWhenConfigured(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+
+	outPath := filepath.Join(root, "hook-state.log")
+	cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(outPath)
+	cfg.FrameworkDevBuildHook = "false"
+
+	frameworkRunnerCalled := false
+	cfg.FrameworkRunBuildHook = func(commandExecutionContext context.Context, runInDevelopmentMode bool) error {
+		frameworkRunnerCalled = true
+		if commandExecutionContext == nil {
+			t.Fatal("expected non-nil framework runner context")
+		}
+		if !runInDevelopmentMode {
+			t.Fatal("expected framework runner to receive runInDevelopmentMode=true")
+		}
+		f, err := os.OpenFile(outPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if _, err := f.WriteString("framework-runner\n"); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	if err := builder.runHooks(true); err != nil {
+		t.Fatalf("runHooks(true) returned error: %v", err)
+	}
+	if !frameworkRunnerCalled {
+		t.Fatal("expected configured framework build hook runner to be called")
+	}
+
+	content, readErr := os.ReadFile(outPath)
+	if readErr != nil {
+		t.Fatalf("failed reading hook output: %v", readErr)
+	}
+	if string(content) != "user\nframework-runner\n" {
+		t.Fatalf("unexpected hook output:\n%s", string(content))
 	}
 }
 

@@ -132,9 +132,11 @@ func TestDeriveHookExecutionPlansForEventStage_ConcurrentRunOnChangeOnlyFilterin
 			},
 		},
 		hookStageTypeConcurrent,
-		func(hook wave.OnChangeHook) string {
+		func(hook wave.OnChangeHook) hookExecutionPlan {
 			resolvedCommands = append(resolvedCommands, hook.Cmd)
-			return hook.Cmd
+			return deriveHookExecutionPlanFromHook(hook, func(innerHook wave.OnChangeHook) string {
+				return innerHook.Cmd
+			})
 		},
 	)
 
@@ -183,8 +185,10 @@ func TestDeriveHookExecutionPlansForEventStage_PreStagePreservesCommands(t *test
 			},
 		},
 		hookStageTypePre,
-		func(hook wave.OnChangeHook) string {
-			return "resolved(" + hook.Cmd + ")"
+		func(hook wave.OnChangeHook) hookExecutionPlan {
+			return deriveHookExecutionPlanFromHook(hook, func(innerHook wave.OnChangeHook) string {
+				return "resolved(" + innerHook.Cmd + ")"
+			})
 		},
 	)
 
