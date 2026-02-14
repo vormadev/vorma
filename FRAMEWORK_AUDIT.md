@@ -49,6 +49,8 @@ opportunities, performance opportunities, and test quality.
 12. Where is logic duplicated (within a package or across the repo) that should
     be abstracted into shared helpers, internal packages, `kit/*` APIs, or
     entirely new `kit/*` packages?
+13. Are internal/unstable vs intended-public API boundaries drawn in the right
+    places across both Go and TypeScript code?
 
 ## Pass Plan
 
@@ -57,7 +59,8 @@ criteria.
 
 ### Core Pass Types (Tracked in Matrix)
 
-1. Surface/API pass: exported APIs, naming clarity, ergonomics, consistency.
+1. Surface/API pass: exported APIs, naming clarity, ergonomics, consistency, and
+   correct internal/unstable vs intended-public boundary placement.
 2. Correctness/resilience pass: state transitions, lifecycle behavior, stale
    state, race potential, error propagation.
 3. Complexity/fragility pass: identify brittle code paths and refactor/rewrite
