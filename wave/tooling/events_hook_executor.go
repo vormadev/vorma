@@ -35,21 +35,6 @@ func deriveHookStageLabel(
 	}
 }
 
-func deriveHookStageTypeFromTiming(
-	hookTiming wave.Timing,
-) hookStageType {
-	switch hookTiming {
-	case wave.OnChangeStrategyConcurrent:
-		return hookStageTypeConcurrent
-	case wave.OnChangeStrategyPost:
-		return hookStageTypePost
-	case wave.OnChangeStrategyConcurrentNoWait:
-		return hookStageTypeConcurrentNoWait
-	default:
-		return hookStageTypePre
-	}
-}
-
 func deriveHookExecutionContext(
 	parentHookExecutionContext context.Context,
 ) context.Context {
@@ -230,7 +215,7 @@ func (s *server) runConcurrentHooksForEvents(
 	watcher *Watcher,
 ) []wave.RefreshAction {
 	return s.runConcurrentHooksForEventsWithContext(
-		nil,
+		context.Background(),
 		eventsWithHooks,
 		watcher,
 	)
@@ -332,7 +317,7 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 			)
 			s.runNoWaitHookWithConcurrencyLimit(func() {
 				hookCallbackExecutionContext, cancelHookCallbackExecutionContext := deriveExecutionContextWithOptionalTimeout(
-					nil,
+					context.Background(),
 					hookCallbackTimeoutForExecution,
 				)
 				if cancelHookCallbackExecutionContext != nil {
@@ -369,7 +354,7 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 			)
 			s.runNoWaitHookWithConcurrencyLimit(func() {
 				hookCommandExecutionContext, cancelHookCommandExecutionContext := deriveExecutionContextWithOptionalTimeout(
-					nil,
+					context.Background(),
 					hookCommandTimeoutForExecution,
 				)
 				if cancelHookCommandExecutionContext != nil {
@@ -408,7 +393,7 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 	)
 	for _, plan := range plans {
 		action, err := s.executeHookExecutionPlanWithContext(
-			nil,
+			context.Background(),
 			hookStageTypePre,
 			plan,
 			ewh.hookCtx,
@@ -429,7 +414,7 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 }
 
 func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
-	return s.runConcurrentHooksWithContext(nil, ewh, watcher)
+	return s.runConcurrentHooksWithContext(context.Background(), ewh, watcher)
 }
 
 func (s *server) runConcurrentHooksWithContext(
@@ -507,7 +492,7 @@ func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refr
 	)
 	for _, plan := range plans {
 		action, err := s.executeHookExecutionPlanWithContext(
-			nil,
+			context.Background(),
 			hookStageTypePost,
 			plan,
 			ewh.hookCtx,
@@ -527,25 +512,13 @@ func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refr
 	return actions, nil
 }
 
-func (s *server) executeHook(
-	hook wave.OnChangeHook,
-	hookContext *wave.HookContext,
-) (*wave.RefreshAction, error) {
-	return s.executeHookExecutionPlanWithContext(
-		nil,
-		deriveHookStageTypeFromTiming(hook.Timing),
-		deriveHookExecutionPlanFromHook(hook, s.resolveHookCommand),
-		hookContext,
-	)
-}
-
 func (s *server) executeHookExecutionPlan(
 	stageType hookStageType,
 	plan hookExecutionPlan,
 	hookContext *wave.HookContext,
 ) (*wave.RefreshAction, error) {
 	return s.executeHookExecutionPlanWithContext(
-		nil,
+		context.Background(),
 		stageType,
 		plan,
 		hookContext,

@@ -403,18 +403,18 @@ func TestDeriveExecutionContextWithOptionalTimeout(t *testing.T) {
 	}
 
 	backgroundExecutionContext, cancelBackgroundExecutionContext := deriveExecutionContextWithOptionalTimeout(
-		nil,
+		context.TODO(),
 		0,
 	)
 	if cancelBackgroundExecutionContext != nil {
-		t.Fatal("expected nil cancel function when timeout is disabled with nil parent context")
+		t.Fatal("expected nil cancel function when timeout is disabled with default context")
 	}
 	if backgroundExecutionContext == nil {
-		t.Fatal("expected non-nil background context when parent context is nil and timeout is disabled")
+		t.Fatal("expected non-nil background context when timeout parent context is omitted")
 	}
 
 	timeoutExecutionContext, cancelTimeoutExecutionContext := deriveExecutionContextWithOptionalTimeout(
-		nil,
+		context.TODO(),
 		100*time.Millisecond,
 	)
 	if timeoutExecutionContext == nil {

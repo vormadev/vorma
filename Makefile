@@ -19,7 +19,7 @@ gobench:
 ####### TS
 #####################################################################
 
-tstest: tstest-source
+tstest: tstest-source tstest-dist
 
 tstest-source:
 	@pnpm vitest run --exclude "vormaclient/client/dist_tests/**"

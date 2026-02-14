@@ -1,12 +1,18 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -15,7 +21,27 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const buildCacheVersion = 1
+
 var targetDir = "./npm_dist"
+var buildCachePath = "./npm_dist/.buildts_cache.json"
+var buildInputPaths = []string{
+	"./kit/_typescript",
+	"./vormaclient/client",
+	"./vormaclient/react",
+	"./vormaclient/preact",
+	"./vormaclient/solid",
+	"./vormaclient/vite",
+	"./vormaclient/create",
+	"./internal/scripts/buildts",
+	"./package.json",
+	"./pnpm-lock.yaml",
+	"./tsconfig.base.json",
+}
+var buildOutputPaths = []string{
+	targetDir,
+	"./vormaclient/create/dist",
+}
 var tscRunMutex sync.Mutex
 
 func main() {
@@ -25,12 +51,31 @@ func main() {
 }
 
 func run() error {
-	if err := os.RemoveAll(targetDir); err != nil {
-		return fmt.Errorf("failed to remove target dir: %w", err)
-	}
-
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("failed to create target dir: %w", err)
+	}
+
+	cachedHashes, err := readBuildCache()
+	if err != nil {
+		return err
+	}
+
+	inputHash, err := hashBuildInputs()
+	if err != nil {
+		return err
+	}
+
+	currentOutputHash, err := hashBuildOutputs()
+	if err != nil {
+		return err
+	}
+
+	if cachedHashes != nil &&
+		cachedHashes.Version == buildCacheVersion &&
+		cachedHashes.InputHash == inputHash &&
+		cachedHashes.OutputHash == currentOutputHash {
+		log.Println("buildts: inputs and outputs unchanged; skipping build")
+		return nil
 	}
 
 	if err := runBuildStages(); err != nil {
@@ -41,12 +86,31 @@ func run() error {
 		return err
 	}
 
+	updatedOutputHash, err := hashBuildOutputs()
+	if err != nil {
+		return err
+	}
+
+	if err := writeBuildCache(buildHashes{
+		Version:    buildCacheVersion,
+		InputHash:  inputHash,
+		OutputHash: updatedOutputHash,
+	}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 type buildTask struct {
 	name string
 	run  func() error
+}
+
+type buildHashes struct {
+	Version    int    `json:"version"`
+	InputHash  string `json:"input_hash"`
+	OutputHash string `json:"output_hash"`
 }
 
 func runBuildStages() error {
@@ -336,6 +400,202 @@ func buildCreate() error {
 /////////////////////////////////////////////////////////////////////
 /////// Build helpers
 /////////////////////////////////////////////////////////////////////
+
+func readBuildCache() (*buildHashes, error) {
+	cacheContents, err := os.ReadFile(buildCachePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read build cache: %w", err)
+	}
+
+	var cache buildHashes
+	if err := json.Unmarshal(cacheContents, &cache); err != nil {
+		log.Printf("buildts: ignoring invalid cache file (%v)", err)
+		return nil, nil
+	}
+
+	if cache.Version != buildCacheVersion {
+		return nil, nil
+	}
+
+	return &cache, nil
+}
+
+func writeBuildCache(cache buildHashes) error {
+	cacheContents, err := json.Marshal(cache)
+	if err != nil {
+		return fmt.Errorf("failed to marshal build cache: %w", err)
+	}
+
+	if err := os.WriteFile(buildCachePath, cacheContents, 0644); err != nil {
+		return fmt.Errorf("failed to write build cache: %w", err)
+	}
+
+	return nil
+}
+
+func hashBuildInputs() (string, error) {
+	return hashFileSet(buildInputPaths, shouldSkipInputPath)
+}
+
+func hashBuildOutputs() (string, error) {
+	return hashFileSet(buildOutputPaths, shouldSkipOutputPath)
+}
+
+type fileHashEntry struct {
+	hashPath string
+	realPath string
+}
+
+func hashFileSet(
+	roots []string,
+	shouldSkipPath func(path string, isDir bool) bool,
+) (string, error) {
+	hasher := sha256.New()
+	files := make([]fileHashEntry, 0, 256)
+	presentRoots := make([]string, 0, len(roots))
+	missingRoots := make([]string, 0, len(roots))
+
+	for _, root := range roots {
+		cleanRoot := filepath.Clean(root)
+		if shouldSkipPath(cleanRoot, true) {
+			continue
+		}
+
+		fileInfo, err := os.Stat(cleanRoot)
+		if errors.Is(err, os.ErrNotExist) {
+			missingRoots = append(missingRoots, filepath.ToSlash(cleanRoot))
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to stat %s: %w", cleanRoot, err)
+		}
+
+		presentRoots = append(presentRoots, filepath.ToSlash(cleanRoot))
+		if !fileInfo.IsDir() {
+			files = append(files, fileHashEntry{
+				hashPath: filepath.ToSlash(cleanRoot),
+				realPath: cleanRoot,
+			})
+			continue
+		}
+
+		if err := filepath.WalkDir(cleanRoot, func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+
+			cleanPath := filepath.Clean(path)
+			if shouldSkipPath(cleanPath, d.IsDir()) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			if d.IsDir() {
+				return nil
+			}
+
+			files = append(files, fileHashEntry{
+				hashPath: filepath.ToSlash(cleanPath),
+				realPath: cleanPath,
+			})
+			return nil
+		}); err != nil {
+			return "", fmt.Errorf("failed to walk %s: %w", cleanRoot, err)
+		}
+	}
+
+	sort.Strings(presentRoots)
+	sort.Strings(missingRoots)
+	sort.Slice(files, func(i int, j int) bool {
+		return files[i].hashPath < files[j].hashPath
+	})
+
+	for _, root := range presentRoots {
+		if _, err := io.WriteString(hasher, "ROOT:"+root+"\n"); err != nil {
+			return "", fmt.Errorf("failed to hash present roots: %w", err)
+		}
+	}
+	for _, root := range missingRoots {
+		if _, err := io.WriteString(hasher, "MISSING:"+root+"\n"); err != nil {
+			return "", fmt.Errorf("failed to hash missing roots: %w", err)
+		}
+	}
+	for _, file := range files {
+		if _, err := io.WriteString(hasher, "FILE:"+file.hashPath+"\n"); err != nil {
+			return "", fmt.Errorf("failed to hash file path (%s): %w", file.hashPath, err)
+		}
+
+		contents, err := os.ReadFile(file.realPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read file for hash (%s): %w", file.realPath, err)
+		}
+		if _, err := hasher.Write(contents); err != nil {
+			return "", fmt.Errorf("failed to hash file contents (%s): %w", file.hashPath, err)
+		}
+		if _, err := hasher.Write([]byte{0}); err != nil {
+			return "", fmt.Errorf("failed to hash file separator (%s): %w", file.hashPath, err)
+		}
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func shouldSkipInputPath(path string, isDir bool) bool {
+	normalizedPath := filepath.ToSlash(filepath.Clean(path))
+
+	if pathHasSegment(normalizedPath, ".git") || pathHasSegment(normalizedPath, "node_modules") {
+		return true
+	}
+
+	if normalizedPath == filepath.ToSlash(filepath.Clean(targetDir)) ||
+		strings.HasPrefix(normalizedPath, filepath.ToSlash(filepath.Clean(targetDir))+"/") {
+		return true
+	}
+
+	if normalizedPath == "vormaclient/create/dist" || strings.HasPrefix(normalizedPath, "vormaclient/create/dist/") {
+		return true
+	}
+
+	// Ignore package output produced by `create`.
+	if isDir && filepath.Base(normalizedPath) == "dist" && strings.Contains(normalizedPath, "vormaclient/create") {
+		return true
+	}
+
+	return false
+}
+
+func shouldSkipOutputPath(path string, _ bool) bool {
+	normalizedPath := filepath.ToSlash(filepath.Clean(path))
+	if pathHasSegment(normalizedPath, ".git") || pathHasSegment(normalizedPath, "node_modules") {
+		return true
+	}
+	if normalizedPath == filepath.ToSlash(filepath.Clean(buildCachePath)) {
+		return true
+	}
+
+	return false
+}
+
+func pathHasSegment(path string, segment string) bool {
+	if path == segment {
+		return true
+	}
+	if strings.HasPrefix(path, segment+"/") {
+		return true
+	}
+	if strings.Contains(path, "/"+segment+"/") {
+		return true
+	}
+	if strings.HasSuffix(path, "/"+segment) {
+		return true
+	}
+	return false
+}
 
 func runTSC(tsConfig string) error {
 	tscRunMutex.Lock()

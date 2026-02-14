@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -40,6 +41,11 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
 	cfg.Core.MainAppEntry = "missing/package/for/devserver/run"
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+
+	if err := writeToolingConfigForWatchRoot(cfg.Core.ConfigLocation, cfg, cfg.Watch.WatchRoot); err != nil {
+		t.Fatalf("failed writing initial tooling config: %v", err)
+	}
 
 	s := &server{
 		cfg:       cfg,
@@ -62,7 +68,14 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 
-		cfg.Watch.WatchRoot = filepath.Join(root, "missing-after-retry")
+		if err := writeToolingConfigForWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			filepath.Join(root, "missing-after-retry"),
+		); err != nil {
+			t.Error(err)
+			return
+		}
 		s.restartCh <- restartRequest{recompileGo: false}
 	}()
 
@@ -87,6 +100,11 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(t *te
 	cfg.Core.ServerOnlyMode = true
 	cfg.Core.SequentialGoBuild = true
 	cfg.Core.MainAppEntry = "missing/package/for/devserver/sequential"
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+
+	if err := writeToolingConfigForWatchRoot(cfg.Core.ConfigLocation, cfg, cfg.Watch.WatchRoot); err != nil {
+		t.Fatalf("failed writing initial tooling config: %v", err)
+	}
 
 	s := &server{
 		cfg:       cfg,
@@ -109,7 +127,14 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(t *te
 			time.Sleep(10 * time.Millisecond)
 		}
 
-		cfg.Watch.WatchRoot = filepath.Join(root, "missing-after-sequential-retry")
+		if err := writeToolingConfigForWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			filepath.Join(root, "missing-after-sequential-retry"),
+		); err != nil {
+			t.Error(err)
+			return
+		}
 		s.restartCh <- restartRequest{recompileGo: false}
 	}()
 
@@ -137,6 +162,11 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 		JSPackageManagerBaseCmd: "command_that_does_not_exist_for_wave_run_vite_test",
 		DefaultPort:             5199,
 	}
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+
+	if err := writeToolingConfigForWatchRoot(cfg.Core.ConfigLocation, cfg, cfg.Watch.WatchRoot); err != nil {
+		t.Fatalf("failed writing initial tooling config: %v", err)
+	}
 
 	s := &server{
 		cfg:       cfg,
@@ -159,7 +189,14 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 
-		cfg.Watch.WatchRoot = filepath.Join(root, "missing-after-vite-start-failure")
+		if err := writeToolingConfigForWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			filepath.Join(root, "missing-after-vite-start-failure"),
+		); err != nil {
+			t.Error(err)
+			return
+		}
 		s.restartCh <- restartRequest{recompileGo: false}
 	}()
 
@@ -187,6 +224,11 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 	cfg.Core.ServerOnlyMode = false
 	cfg.Core.MainAppEntry = "../../internal/scripts/sum"
 	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+
+	if err := writeToolingConfigForWatchRoot(cfg.Core.ConfigLocation, cfg, cfg.Watch.WatchRoot); err != nil {
+		t.Fatalf("failed writing initial tooling config: %v", err)
+	}
 
 	appPort := wave.MustGetPort()
 	appListener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", appPort))
@@ -221,7 +263,14 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 
 		firstWatcher := waitForWatcherPointer(s, nil, 3*time.Second)
 		if firstWatcher == nil {
-			cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root-fallback")
+			if err := writeToolingConfigForWatchRoot(
+				cfg.Core.ConfigLocation,
+				cfg,
+				filepath.Join(root, "missing-watch-root-fallback"),
+			); err != nil {
+				t.Error(err)
+				return
+			}
 			sendRestartRequestWithTimeout(s.restartCh, restartRequest{recompileGo: false}, 250*time.Millisecond)
 			return
 		}
@@ -231,14 +280,28 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 			restartRequest{recompileGo: false, isConfigRestart: true},
 			2*time.Second,
 		) {
-			cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root-send-timeout")
+			if err := writeToolingConfigForWatchRoot(
+				cfg.Core.ConfigLocation,
+				cfg,
+				filepath.Join(root, "missing-watch-root-send-timeout"),
+			); err != nil {
+				t.Error(err)
+				return
+			}
 			sendRestartRequestWithTimeout(s.restartCh, restartRequest{recompileGo: false}, 250*time.Millisecond)
 			return
 		}
 
 		secondWatcher := waitForWatcherPointer(s, firstWatcher, 4*time.Second)
 		if secondWatcher == nil {
-			cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root-second-iteration-timeout")
+			if err := writeToolingConfigForWatchRoot(
+				cfg.Core.ConfigLocation,
+				cfg,
+				filepath.Join(root, "missing-watch-root-second-iteration-timeout"),
+			); err != nil {
+				t.Error(err)
+				return
+			}
 			sendRestartRequestWithTimeout(s.restartCh, restartRequest{recompileGo: false}, 250*time.Millisecond)
 			return
 		}
@@ -246,7 +309,14 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 		// Allow the config-restart iteration to execute broadcastReload(waitApp=true).
 		time.Sleep(150 * time.Millisecond)
 
-		cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root-after-config-restart")
+		if err := writeToolingConfigForWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			filepath.Join(root, "missing-watch-root-after-config-restart"),
+		); err != nil {
+			t.Error(err)
+			return
+		}
 		sendRestartRequestWithTimeout(s.restartCh, restartRequest{recompileGo: false}, 2*time.Second)
 	}()
 
@@ -265,6 +335,34 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 	case <-done:
 	case <-time.After(1 * time.Second):
 		t.Fatal("timed out waiting for orchestration helper goroutine")
+	}
+}
+
+func TestWriteToolingConfigForWatchRoot_UpdatesConfigFileOnly(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	originalWatchRoot := cfg.Watch.WatchRoot
+	updatedWatchRoot := filepath.Join(root, "updated-watch-root")
+
+	if err := writeToolingConfigForWatchRoot(cfg.Core.ConfigLocation, cfg, updatedWatchRoot); err != nil {
+		t.Fatalf("failed to write updated tooling config: %v", err)
+	}
+
+	reloadedConfig, err := wave.ParseConfigFile(cfg.Core.ConfigLocation)
+	if err != nil {
+		t.Fatalf("failed to parse updated config: %v", err)
+	}
+
+	if cfg.Watch.WatchRoot != originalWatchRoot {
+		t.Fatalf("expected base config watch root to remain %q, got %q", originalWatchRoot, cfg.Watch.WatchRoot)
+	}
+	if reloadedConfig.Watch == nil || reloadedConfig.Watch.WatchRoot != updatedWatchRoot {
+		t.Fatalf(
+			"expected reloaded config watch root to be %q, got %#v",
+			updatedWatchRoot,
+			reloadedConfig.Watch,
+		)
 	}
 }
 
@@ -298,4 +396,37 @@ func sendRestartRequestWithTimeout(
 	case <-time.After(timeout):
 		return false
 	}
+}
+
+func writeToolingConfigForWatchRoot(
+	configFilePath string,
+	baseConfig *wave.ParsedConfig,
+	watchRoot string,
+) error {
+	if baseConfig == nil || baseConfig.Core == nil {
+		return fmt.Errorf("base config missing required core section")
+	}
+
+	configForDisk := *baseConfig
+	configCoreForDisk := *baseConfig.Core
+	configCoreForDisk.ConfigLocation = configFilePath
+	configForDisk.Core = &configCoreForDisk
+
+	configWatchForDisk := &wave.WatchConfig{}
+	if baseConfig.Watch != nil {
+		*configWatchForDisk = *baseConfig.Watch
+	}
+	configWatchForDisk.WatchRoot = watchRoot
+	configForDisk.Watch = configWatchForDisk
+
+	configForDiskJSON, err := json.Marshal(configForDisk)
+	if err != nil {
+		return fmt.Errorf("marshal updated tooling config: %w", err)
+	}
+
+	if err := os.WriteFile(configFilePath, configForDiskJSON, 0o644); err != nil {
+		return fmt.Errorf("write tooling config file: %w", err)
+	}
+
+	return nil
 }
