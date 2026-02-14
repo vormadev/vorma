@@ -31,6 +31,10 @@
 			"import": "./npm_dist/vormaclient/client/index.js",
 			"types": "./npm_dist/vormaclient/client/index.d.ts"
 		},
+		"./client/__internal": {
+			"import": "./npm_dist/vormaclient/client/internal.js",
+			"types": "./npm_dist/vormaclient/client/internal.d.ts"
+		},
 		"./buildtime": {
 			"import": "./npm_dist/vormaclient/client/buildtime.js",
 			"types": "./npm_dist/vormaclient/client/buildtime.d.ts"

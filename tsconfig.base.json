@@ -14,6 +14,7 @@
 		"allowImportingTsExtensions": true,
 		"paths": {
 			"vorma/client": ["./vormaclient/client/index.ts"],
+			"vorma/client/__internal": ["./vormaclient/client/internal.ts"],
 			"vorma/buildtime": ["./vormaclient/client/buildtime.ts"],
 			"vorma/react": ["./vormaclient/react/index.ts"],
 			"vorma/solid": ["./vormaclient/solid/index.ts"],

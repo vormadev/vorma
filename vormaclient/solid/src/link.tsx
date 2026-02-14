@@ -6,11 +6,11 @@ import type {
 	VormaLoaderPattern,
 } from "vorma/client";
 import {
-	__makeFinalLinkProps,
-	__resolvePath,
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
-} from "vorma/client";
+	makeFinalLinkProps,
+	resolvePath,
+} from "vorma/client/__internal";
 
 type VormaLinkEvent = Event;
 
@@ -19,7 +19,7 @@ export function VormaLink(
 		VormaLinkPropsBase<VormaLinkEvent>,
 ) {
 	const finalLinkProps = createMemo(() =>
-		__makeFinalLinkProps<VormaLinkEvent>(props),
+		makeFinalLinkProps<VormaLinkEvent>(props),
 	);
 	const [, rest] = splitProps(props, [
 		"prefetch",
@@ -80,7 +80,7 @@ export function makeTypedLink<C extends VormaAppConfig>(
 		]);
 
 		const href = createMemo(() => {
-			const basePath = __resolvePath({
+			const basePath = resolvePath({
 				vormaAppConfig,
 				type: "loader",
 				props: {

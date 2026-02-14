@@ -1,9 +1,7 @@
 /// <reference types="vite/client" />
 
-import { useMemo } from "preact/hooks";
 import type { JSX } from "preact/jsx-runtime";
 import {
-	__registerClientLoaderForAdapter,
 	type ClientLoaderAwaitedServerData,
 	type ParamsForPattern,
 	type UseRouterDataFunction,
@@ -13,6 +11,7 @@ import {
 	type VormaRouteGeneric,
 	type VormaRoutePropsGeneric,
 } from "vorma/client";
+import { registerClientLoaderForAdapter } from "vorma/client/__internal";
 import { clientLoadersData, loadersData, routerData } from "./preact.tsx";
 
 export type VormaRouteProps<
@@ -43,11 +42,9 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 	return function usePatternLoaderData<
 		Pattern extends VormaLoaderPattern<App>,
 	>(pattern: Pattern): VormaLoaderOutput<App, Pattern> | undefined {
-		const idx = useMemo(() => {
-			return routerData.value.matchedPatterns.findIndex(
-				(p) => p === pattern,
-			);
-		}, [pattern]);
+		const idx = routerData.value.matchedPatterns.findIndex(
+			(matchedPattern) => matchedPattern === pattern,
+		);
 
 		if (idx === -1) {
 			return undefined;
@@ -76,7 +73,7 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		const p = props.pattern;
 		const fn = props.clientLoader;
 
-		__registerClientLoaderForAdapter({
+		registerClientLoaderForAdapter({
 			pattern: p as string,
 			waitFn: fn as any,
 			reRunOnModuleChange: props.reRunOnModuleChange,
@@ -87,13 +84,11 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		const useClientLoaderData = (
 			props?: VormaRouteProps<App, Pattern>,
 		): Res | undefined => {
-			const idx = useMemo(() => {
-				if (props) {
-					return props.idx;
-				}
-				const matched = routerData.value.matchedPatterns;
-				return matched.findIndex((pattern) => pattern === p);
-			}, [props]);
+			const idx = props
+				? props.idx
+				: routerData.value.matchedPatterns.findIndex(
+						(matchedPattern) => matchedPattern === p,
+					);
 
 			if (idx === -1) return undefined;
 			return clientLoadersData.value[idx] as Res | undefined;

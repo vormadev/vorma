@@ -1,285 +1,239 @@
 import {
+	type ComponentType,
 	type JSX,
-	useEffect,
 	useLayoutEffect,
 	useMemo,
 	useRef,
-	useState,
 	useSyncExternalStore,
 } from "react";
+import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
-	__applyScrollState,
-	__getClientRuntimeRenderState,
-	addLocationListener,
-	addRouteChangeListener,
-	getLocation,
-	getRouterData,
-	type RouteChangeEvent,
-} from "vorma/client";
+	applyScrollState,
+	areRouteOutletBranchInputsEqualByIdentity,
+	areRouteOutletLocationsEqual,
+	buildCurrentRouteOutletLocationState,
+	buildInitialRouteOutletNavigationState,
+	buildNextRouteOutletNavigationState,
+	buildRouteOutletBranchInputState,
+	buildRouteOutletBranchState,
+	type RouteOutletBranchInputState,
+	type RouteOutletLocationState,
+	type RouteOutletNavigationState,
+} from "vorma/client/__internal";
 
 /////////////////////////////////////////////////////////////////////
 /////// STORE
 /////////////////////////////////////////////////////////////////////
 
-type NavigationState = {
-	latestEvent: RouteChangeEvent | null;
-	loadersData: any;
-	clientLoadersData: any;
-	routerData: ReturnType<typeof getRouterData>;
-	outermostError: any;
-	outermostErrorIdx: number | undefined;
-	activeComponents: any[] | null;
-	activeErrorBoundary: any;
-	importURLs: string[];
-	exportKeys: string[];
-};
+type NavigationState = RouteOutletNavigationState;
+type RouteOutletBranchInputStateValue = RouteOutletBranchInputState;
+type LocationState = RouteOutletLocationState;
 
 type StoreState = {
 	navigation: NavigationState;
-	location: ReturnType<typeof getLocation>;
+	routeOutletBranchInputState: RouteOutletBranchInputStateValue;
+	location: LocationState;
 };
 
-function buildNavigationState(
-	latestEvent: RouteChangeEvent | null,
-): NavigationState {
-	const renderState = __getClientRuntimeRenderState();
-
+function buildInitialStoreState(): StoreState {
+	const initialNavigationState = buildInitialRouteOutletNavigationState();
 	return {
-		latestEvent,
-		loadersData: renderState.loadersData,
-		clientLoadersData: renderState.clientLoadersData,
-		routerData: getRouterData(),
-		outermostError: renderState.outermostError,
-		outermostErrorIdx: renderState.outermostErrorIdx,
-		activeComponents: renderState.activeComponents,
-		activeErrorBoundary: renderState.activeErrorBoundary,
-		importURLs: renderState.importURLs,
-		exportKeys: renderState.exportKeys,
+		navigation: initialNavigationState,
+		routeOutletBranchInputState: buildRouteOutletBranchInputState(
+			initialNavigationState,
+		),
+		location: buildCurrentRouteOutletLocationState(),
 	};
 }
 
-function getInitialState(): StoreState {
-	return {
-		navigation: buildNavigationState(null),
-		location: getLocation(),
-	};
-}
-
-let state = getInitialState();
+let state = buildInitialStoreState();
 const listeners = new Set<() => void>();
 
 const store = {
-	getSnapshot: () => state,
-	subscribe: (listener: () => void) => {
+	getSnapshot: (): StoreState => state,
+	subscribe(listener: () => void): () => void {
 		listeners.add(listener);
-		return () => listeners.delete(listener);
+		return () => {
+			listeners.delete(listener);
+		};
 	},
-	setState: (updater: (prevState: StoreState) => StoreState) => {
+	setState(updater: (prev: StoreState) => StoreState): void {
 		const nextState = updater(state);
 		if (nextState !== state) {
 			state = nextState;
-			listeners.forEach((listener) => listener());
+			listeners.forEach((listener) => {
+				listener();
+			});
 		}
 	},
 };
 
-function useStoreSelector<T>(selector: (state: StoreState) => T): T {
-	const getSelectedSnapshot = useMemo(() => {
-		let selectedSnapshot: T;
-		return () => {
-			const nextSnapshot = selector(store.getSnapshot());
-			if (
-				selectedSnapshot === undefined ||
-				!Object.is(selectedSnapshot, nextSnapshot)
-			) {
-				selectedSnapshot = nextSnapshot;
-			}
-			return selectedSnapshot;
+function syncNavigationState(): void {
+	store.setState((previousStoreState) => {
+		const nextNavigationState = buildNextRouteOutletNavigationState(
+			previousStoreState.navigation,
+		);
+		if (nextNavigationState === previousStoreState.navigation) {
+			return previousStoreState;
+		}
+		const nextRouteOutletBranchInputStateRaw =
+			buildRouteOutletBranchInputState(nextNavigationState);
+		const nextRouteOutletBranchInputState =
+			areRouteOutletBranchInputsEqualByIdentity(
+				previousStoreState.routeOutletBranchInputState,
+				nextRouteOutletBranchInputStateRaw,
+			)
+				? previousStoreState.routeOutletBranchInputState
+				: nextRouteOutletBranchInputStateRaw;
+		return {
+			...previousStoreState,
+			navigation: nextNavigationState,
+			routeOutletBranchInputState: nextRouteOutletBranchInputState,
 		};
-	}, [selector]);
-
-	return useSyncExternalStore(store.subscribe, getSelectedSnapshot);
+	});
 }
 
-export function useLoadersData() {
-	return useStoreSelector((s) => s.navigation.loadersData);
+function syncLocationState(): void {
+	store.setState((previousStoreState) => {
+		const nextLocationState = buildCurrentRouteOutletLocationState();
+		if (
+			areRouteOutletLocationsEqual(
+				previousStoreState.location,
+				nextLocationState,
+			)
+		) {
+			return previousStoreState;
+		}
+		return {
+			...previousStoreState,
+			location: nextLocationState,
+		};
+	});
 }
-export function useClientLoadersData() {
-	return useStoreSelector((s) => s.navigation.clientLoadersData);
+
+function useStoreSelector<T>(selector: (state: StoreState) => T): T {
+	return useSyncExternalStore(
+		store.subscribe,
+		() => selector(store.getSnapshot()),
+		() => selector(store.getSnapshot()),
+	);
 }
+
+export function useLoadersData(): any {
+	return useStoreSelector((storeState) => storeState.navigation.loadersData);
+}
+
+export function useClientLoadersData(): any {
+	return useStoreSelector(
+		(storeState) => storeState.navigation.clientLoadersData,
+	);
+}
+
 export function useRouterData() {
-	return useStoreSelector((s) => s.navigation.routerData);
+	return useStoreSelector((storeState) => storeState.navigation.routerData);
 }
-function useLatestEvent() {
-	return useStoreSelector((s) => s.navigation.latestEvent);
-}
-function useOutermostError() {
-	return useStoreSelector((s) => s.navigation.outermostError);
-}
-function useOutermostErrorIdx() {
-	return useStoreSelector((s) => s.navigation.outermostErrorIdx);
-}
-function useActiveComponents() {
-	return useStoreSelector((s) => s.navigation.activeComponents);
-}
-function useActiveErrorBoundary() {
-	return useStoreSelector((s) => s.navigation.activeErrorBoundary);
-}
-function useImportURLs() {
-	return useStoreSelector((s) => s.navigation.importURLs);
-}
-function useExportKeys() {
-	return useStoreSelector((s) => s.navigation.exportKeys);
+
+export function useLocation() {
+	return useStoreSelector((storeState) => storeState.location);
 }
 
 let isInited = false;
 
-function initUIListeners() {
-	if (isInited) return;
+function initUIListeners(): void {
+	if (isInited) {
+		return;
+	}
 	isInited = true;
 
-	addRouteChangeListener((e) => {
-		store.setState((prev) => {
-			return {
-				...prev,
-				navigation: buildNavigationState(e),
-			};
+	addRouteChangeListener((event) => {
+		syncNavigationState();
+		window.requestAnimationFrame(() => {
+			applyScrollState(event.detail.__scrollState);
 		});
 	});
 
 	addLocationListener(() => {
-		store.setState((prev) => {
-			return {
-				...prev,
-				location: getLocation(),
-			};
-		});
+		syncLocationState();
 	});
-}
-
-export function useLocation() {
-	return useStoreSelector((s) => s.location);
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// COMPONENT
 /////////////////////////////////////////////////////////////////////
 
+type VormaOutletProps = {
+	idx: number;
+	Outlet: (localProps: Record<string, any> | undefined) => JSX.Element;
+};
+
+type VormaErrorBoundaryProps = {
+	error: unknown;
+};
+
 export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 	const idx = props.idx ?? 0;
-
-	const initialRenderRef = useRef(true);
-
-	if (idx === 0 && initialRenderRef.current) {
-		initUIListeners();
-
-		initialRenderRef.current = false;
-		store.setState((prev) => {
-			return {
-				...prev,
-				navigation: buildNavigationState(null),
-			};
-		});
-	}
-
-	const latestEvent = useLatestEvent();
-	const loadersData = useLoadersData();
-	const outermostError = useOutermostError();
-	const outermostErrorIdx = useOutermostErrorIdx();
-	const activeComponents = useActiveComponents();
-	const activeErrorBoundary = useActiveErrorBoundary();
-	const importURLs = useImportURLs();
-	const exportKeys = useExportKeys();
-
-	const [currentImportURL, setCurrentImportURL] = useState(importURLs[idx]);
-	const [currentExportKey, setCurrentExportKey] = useState(exportKeys[idx]);
-	const [nextImportURL, setNextImportURL] = useState(importURLs[idx + 1]);
-	const [nextExportKey, setNextExportKey] = useState(exportKeys[idx + 1]);
-
-	useEffect(() => {
-		if (!currentImportURL || !latestEvent) {
-			return;
-		}
-
-		const newCurrentImportURL = importURLs[idx];
-		const newCurrentExportKey = exportKeys[idx];
-
-		if (currentImportURL !== newCurrentImportURL) {
-			setCurrentImportURL(newCurrentImportURL);
-		}
-		if (currentExportKey !== newCurrentExportKey) {
-			setCurrentExportKey(newCurrentExportKey);
-		}
-
-		// these are also needed for Outlets to render correctly
-		const newNextImportURL = importURLs[idx + 1];
-		const newNextExportKey = exportKeys[idx + 1];
-
-		if (nextImportURL !== newNextImportURL) {
-			setNextImportURL(newNextImportURL);
-		}
-		if (nextExportKey !== newNextExportKey) {
-			setNextExportKey(newNextExportKey);
-		}
-	}, [latestEvent, importURLs, exportKeys]);
+	const isInitialRootRenderRef = useRef(true);
+	const passthroughPropsRef = useRef(props);
+	passthroughPropsRef.current = props;
 
 	useLayoutEffect(() => {
-		if (!latestEvent || idx !== 0) {
+		if (idx !== 0 || !isInitialRootRenderRef.current) {
 			return;
 		}
-		window.requestAnimationFrame(() => {
-			__applyScrollState(latestEvent.detail.__scrollState);
-		});
-	}, [latestEvent, idx]);
+		initUIListeners();
+		isInitialRootRenderRef.current = false;
+		syncNavigationState();
+	}, [idx]);
 
-	const isErrorIdxMemo = useMemo(() => {
-		return idx === outermostErrorIdx;
-	}, [idx, outermostErrorIdx]);
-
-	const CurrentCompMemo = useMemo(() => {
-		if (isErrorIdxMemo) {
-			return null;
-		}
-		return activeComponents?.[idx];
-	}, [isErrorIdxMemo, currentImportURL, currentExportKey, activeComponents]);
-
-	const Outlet = useMemo(
-		() => (localProps: Record<string, any> | undefined) => {
-			return <VormaRootOutlet {...localProps} {...props} idx={idx + 1} />;
-		},
-		[nextImportURL, nextExportKey],
+	const routeOutletBranchInputState = useStoreSelector(
+		(storeState) => storeState.routeOutletBranchInputState,
 	);
+	const outermostError = useStoreSelector(
+		(storeState) => storeState.navigation.outermostError,
+	);
+	const routeOutletBranchState = buildRouteOutletBranchState({
+		navigationState: routeOutletBranchInputState,
+		idx,
+	});
 
-	const shouldFallbackOutletMemo = useMemo(() => {
-		if (isErrorIdxMemo) {
-			return false;
-		}
-		if (CurrentCompMemo) {
-			return false;
-		}
-		return idx + 1 < loadersData.length;
-	}, [isErrorIdxMemo, CurrentCompMemo, idx, loadersData]);
+	const Outlet = useMemo(() => {
+		return (localProps: Record<string, any> | undefined) => {
+			return (
+				<VormaRootOutlet
+					{...passthroughPropsRef.current}
+					{...localProps}
+					idx={idx + 1}
+				/>
+			);
+		};
+	}, [idx, routeOutletBranchState.nextRouteKey]);
 
-	const ErrorCompMemo = useMemo(() => {
-		if (!isErrorIdxMemo) {
-			return null;
-		}
-		return activeErrorBoundary;
-	}, [isErrorIdxMemo, activeErrorBoundary]);
+	const CurrentComp = routeOutletBranchState.currentComponent as
+		| ComponentType<VormaOutletProps>
+		| undefined;
+	const ErrorComp = routeOutletBranchState.errorComponent as
+		| ComponentType<VormaErrorBoundaryProps>
+		| undefined;
 
-	if (isErrorIdxMemo) {
-		if (ErrorCompMemo) {
-			return <ErrorCompMemo error={outermostError} />;
+	if (routeOutletBranchState.isErrorIdx) {
+		if (ErrorComp) {
+			return <ErrorComp error={outermostError} />;
 		}
 		return <>{`Error: ${outermostError || "unknown"}`}</>;
 	}
 
-	if (!CurrentCompMemo) {
-		if (shouldFallbackOutletMemo) {
-			return <Outlet />;
+	if (!CurrentComp) {
+		if (routeOutletBranchState.shouldFallbackOutlet) {
+			return <Outlet key={routeOutletBranchState.nextRouteKey} />;
 		}
 		return <></>;
 	}
 
-	return <CurrentCompMemo idx={idx} Outlet={Outlet} />;
+	return (
+		<CurrentComp
+			key={routeOutletBranchState.currentRouteKey}
+			idx={idx}
+			Outlet={Outlet}
+		/>
+	);
 }

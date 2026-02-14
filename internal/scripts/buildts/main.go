@@ -191,6 +191,7 @@ func buildClient() error {
 		Bundle:      true,
 		EntryPoints: []string{
 			"./vormaclient/client/index.ts",
+			"./vormaclient/client/internal.ts",
 			"./vormaclient/client/buildtime.ts",
 		},
 		External: []string{

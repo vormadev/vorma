@@ -2,209 +2,467 @@ import {
 	batch,
 	createEffect,
 	createMemo,
-	createRenderEffect,
 	createSignal,
-	type ValidComponent,
-	type JSX,
+	onCleanup,
 	Show,
+	type JSX,
+	type ValidComponent,
 } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { Dynamic, render as renderSolid } from "solid-js/web";
+import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
-	__applyScrollState,
-	__getClientRuntimeRenderState,
-	addLocationListener,
-	addRouteChangeListener,
-	getLocation,
-	getRouterData,
-	type RouteChangeEvent,
-} from "vorma/client";
+	applyScrollState,
+	areRouteOutletLocationsEqual,
+	buildCurrentRouteOutletLocationState,
+	buildInitialRouteOutletNavigationState,
+	buildNextRouteOutletNavigationState,
+	buildRouteOutletBranchState,
+	type RouteOutletBranchInputState,
+	type RouteOutletNavigationState,
+} from "vorma/client/__internal";
 
 /////////////////////////////////////////////////////////////////////
-/////// CORE SETUP
+/////// STORE
 /////////////////////////////////////////////////////////////////////
 
-const [latestEvent, setLatestEvent] = createSignal<RouteChangeEvent | null>(
-	null,
-);
-const initialRenderState = __getClientRuntimeRenderState();
+type NavigationState = RouteOutletNavigationState;
+type RouteOutletBranchInputStateValue = RouteOutletBranchInputState;
+
+const initialNavigationState = buildInitialRouteOutletNavigationState();
+
 const [loadersData, setLoadersData] = createSignal(
-	initialRenderState.loadersData,
+	initialNavigationState.loadersData,
 );
 const [clientLoadersData, setClientLoadersData] = createSignal(
-	initialRenderState.clientLoadersData,
+	initialNavigationState.clientLoadersData,
 );
-const [routerData, setRouterData] = createSignal(getRouterData());
-const [outermostErrorIdx, setOutermostErrorIdx] = createSignal(
-	initialRenderState.outermostErrorIdx,
+const [routerData, setRouterData] = createSignal(
+	initialNavigationState.routerData,
 );
 const [outermostError, setOutermostError] = createSignal(
-	initialRenderState.outermostError,
+	initialNavigationState.outermostError,
+);
+const [outermostErrorIdx, setOutermostErrorIdx] = createSignal(
+	initialNavigationState.outermostErrorIdx,
 );
 const [activeComponents, setActiveComponents] = createSignal(
-	initialRenderState.activeComponents as Array<ValidComponent> | null,
+	initialNavigationState.activeComponents,
 );
 const [activeErrorBoundary, setActiveErrorBoundary] = createSignal(
-	initialRenderState.activeErrorBoundary as ValidComponent | undefined,
+	initialNavigationState.activeErrorBoundary as ValidComponent | undefined,
 );
-const [importURLs, setImportURLs] = createSignal(initialRenderState.importURLs);
-const [exportKeys, setExportKeys] = createSignal(initialRenderState.exportKeys);
+const [importURLs, setImportURLs] = createSignal(
+	initialNavigationState.importURLs,
+);
+const [exportKeys, setExportKeys] = createSignal(
+	initialNavigationState.exportKeys,
+);
 
 export { clientLoadersData, loadersData, routerData };
 
-let isInited = false;
+const [location, setLocation] = createSignal(
+	buildCurrentRouteOutletLocationState(),
+);
 
-function syncRuntimeRenderState(): void {
-	const renderState = __getClientRuntimeRenderState();
-	setLoadersData(renderState.loadersData);
-	setClientLoadersData(renderState.clientLoadersData);
-	setOutermostErrorIdx(renderState.outermostErrorIdx);
-	setOutermostError(renderState.outermostError);
-	setActiveComponents(
-		renderState.activeComponents as Array<ValidComponent> | null,
-	);
-	setActiveErrorBoundary(() => {
-		return renderState.activeErrorBoundary as ValidComponent | undefined;
-	});
-	setImportURLs(renderState.importURLs);
-	setExportKeys(renderState.exportKeys);
+export { location };
+
+function readNavigationSignals(): NavigationState {
+	return {
+		loadersData: loadersData(),
+		clientLoadersData: clientLoadersData(),
+		routerData: routerData(),
+		outermostError: outermostError(),
+		outermostErrorIdx: outermostErrorIdx(),
+		activeComponents: activeComponents(),
+		activeErrorBoundary: activeErrorBoundary(),
+		importURLs: importURLs(),
+		exportKeys: exportKeys(),
+	};
 }
 
-function initUIListeners() {
-	if (isInited) return;
+function readRouteOutletBranchInputSignals(): RouteOutletBranchInputStateValue {
+	return {
+		loaderCount: loadersData()?.length ?? 0,
+		outermostErrorIdx: outermostErrorIdx(),
+		activeComponents: activeComponents(),
+		activeErrorBoundary: activeErrorBoundary(),
+		importURLs: importURLs(),
+		exportKeys: exportKeys(),
+	};
+}
+
+function syncNavigationSignals(): void {
+	const previousNavigationState = readNavigationSignals();
+	const nextNavigationState = buildNextRouteOutletNavigationState(
+		previousNavigationState,
+	);
+	if (nextNavigationState === previousNavigationState) {
+		return;
+	}
+
+	batch(() => {
+		if (
+			nextNavigationState.loadersData !==
+			previousNavigationState.loadersData
+		) {
+			setLoadersData(nextNavigationState.loadersData);
+		}
+		if (
+			nextNavigationState.clientLoadersData !==
+			previousNavigationState.clientLoadersData
+		) {
+			setClientLoadersData(nextNavigationState.clientLoadersData);
+		}
+		if (
+			nextNavigationState.routerData !==
+			previousNavigationState.routerData
+		) {
+			setRouterData(nextNavigationState.routerData);
+		}
+		if (
+			!Object.is(
+				nextNavigationState.outermostError,
+				previousNavigationState.outermostError,
+			)
+		) {
+			setOutermostError(nextNavigationState.outermostError);
+		}
+		if (
+			!Object.is(
+				nextNavigationState.outermostErrorIdx,
+				previousNavigationState.outermostErrorIdx,
+			)
+		) {
+			setOutermostErrorIdx(nextNavigationState.outermostErrorIdx);
+		}
+		if (
+			nextNavigationState.activeComponents !==
+			previousNavigationState.activeComponents
+		) {
+			setActiveComponents(nextNavigationState.activeComponents);
+		}
+		if (
+			!Object.is(
+				nextNavigationState.activeErrorBoundary,
+				previousNavigationState.activeErrorBoundary,
+			)
+		) {
+			setActiveErrorBoundary(() => {
+				return nextNavigationState.activeErrorBoundary as
+					| ValidComponent
+					| undefined;
+			});
+		}
+		if (
+			nextNavigationState.importURLs !==
+			previousNavigationState.importURLs
+		) {
+			setImportURLs(nextNavigationState.importURLs);
+		}
+		if (
+			nextNavigationState.exportKeys !==
+			previousNavigationState.exportKeys
+		) {
+			setExportKeys(nextNavigationState.exportKeys);
+		}
+	});
+}
+
+function syncLocationSignal(): void {
+	const nextLocationState = buildCurrentRouteOutletLocationState();
+	if (!areRouteOutletLocationsEqual(location(), nextLocationState)) {
+		setLocation(nextLocationState);
+	}
+}
+
+let isInited = false;
+
+function initUIListeners(): void {
+	if (isInited) {
+		return;
+	}
 	isInited = true;
 
-	addRouteChangeListener((e) => {
-		batch(() => {
-			setLatestEvent(e);
-			syncRuntimeRenderState();
-			setRouterData(getRouterData());
+	addRouteChangeListener((event) => {
+		syncNavigationSignals();
+		window.requestAnimationFrame(() => {
+			applyScrollState(event.detail.__scrollState);
 		});
 	});
 
 	addLocationListener(() => {
-		setLocation(getLocation());
+		syncLocationSignal();
 	});
 }
-
-const [location, setLocation] = createSignal(getLocation());
-
-export { location };
 
 /////////////////////////////////////////////////////////////////////
 /////// COMPONENT
 /////////////////////////////////////////////////////////////////////
 
-export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
+type VormaRouteComponentMountProps = {
+	getCurrentRouteKey: () => string;
+	getCurrentRouteComponent: () => ValidComponent | undefined;
+	idx: number;
+	Outlet: (localProps?: Record<string, any>) => JSX.Element;
+};
+
+type VormaErrorBranchMountProps = {
+	getIsErrorIdx: () => boolean;
+	getErrorComponent: () => ValidComponent | undefined;
+	getCurrentError: () => unknown;
+};
+
+function VormaErrorBranchMount(props: VormaErrorBranchMountProps): JSX.Element {
+	const [mountContainerEl, setMountContainerEl] = createSignal<
+		HTMLSpanElement | undefined
+	>(undefined);
+	let disposeMountedErrorBranch: (() => void) | undefined;
+
+	createEffect(() => {
+		const mountContainer = mountContainerEl();
+		if (!mountContainer) {
+			return;
+		}
+
+		const isError = props.getIsErrorIdx();
+		const ErrorComp = props.getErrorComponent();
+		const currentError = props.getCurrentError();
+
+		disposeMountedErrorBranch?.();
+		disposeMountedErrorBranch = undefined;
+		mountContainer.textContent = "";
+
+		if (!isError) {
+			return;
+		}
+
+		disposeMountedErrorBranch = renderSolid(() => {
+			if (ErrorComp) {
+				return (
+					<Dynamic
+						component={ErrorComp as ValidComponent}
+						error={currentError}
+					/>
+				);
+			}
+			return `Error: ${currentError || "unknown"}`;
+		}, mountContainer);
+	});
+
+	onCleanup(() => {
+		disposeMountedErrorBranch?.();
+	});
+
+	return <span ref={setMountContainerEl} style={{ display: "contents" }} />;
+}
+
+function VormaRouteComponentMount(
+	props: VormaRouteComponentMountProps,
+): JSX.Element {
+	const [mountContainerEl, setMountContainerEl] = createSignal<
+		HTMLSpanElement | undefined
+	>(undefined);
+	const [mountedRouteComponent, setMountedRouteComponent] = createSignal<
+		ValidComponent | undefined
+	>(undefined);
+	let disposeMountedRouteComponent: (() => void) | undefined;
+	let previousObservedRouteComponent: ValidComponent | undefined;
+
+	function mountRouteComponentIntoContainer(
+		mountContainer: HTMLSpanElement,
+	): void {
+		disposeMountedRouteComponent = renderSolid(() => {
+			const CurrentComp = mountedRouteComponent();
+			if (!CurrentComp) {
+				return <></>;
+			}
+			return (
+				<Dynamic
+					component={CurrentComp as ValidComponent}
+					idx={props.idx}
+					Outlet={props.Outlet}
+				/>
+			);
+		}, mountContainer);
+	}
+
+	createEffect((previousRouteKey: string | undefined) => {
+		const nextRouteKey = props.getCurrentRouteKey();
+		const nextRouteComponent = props.getCurrentRouteComponent();
+		const mountContainer = mountContainerEl();
+		const didComponentIdentityChange =
+			previousObservedRouteComponent !== undefined &&
+			previousObservedRouteComponent !== nextRouteComponent;
+		const shouldRemountForComponentIdentityChange =
+			didComponentIdentityChange;
+		const didRouteKeyChange =
+			typeof previousRouteKey === "string" &&
+			previousRouteKey !== nextRouteKey;
+		const shouldRemountForRouteKeyChange =
+			props.idx === 0 && didRouteKeyChange;
+		previousObservedRouteComponent = nextRouteComponent;
+		if (!mountContainer) {
+			return nextRouteKey;
+		}
+
+		if (!disposeMountedRouteComponent) {
+			setMountedRouteComponent(() => {
+				return nextRouteComponent;
+			});
+			mountRouteComponentIntoContainer(mountContainer);
+			return nextRouteKey;
+		}
+
+		if (
+			shouldRemountForRouteKeyChange ||
+			shouldRemountForComponentIdentityChange
+		) {
+			disposeMountedRouteComponent();
+			disposeMountedRouteComponent = undefined;
+			setMountedRouteComponent(() => {
+				return nextRouteComponent;
+			});
+			mountRouteComponentIntoContainer(mountContainer);
+			return nextRouteKey;
+		}
+
+		return nextRouteKey;
+	}, undefined);
+
+	onCleanup(() => {
+		disposeMountedRouteComponent?.();
+	});
+
+	return <span ref={setMountContainerEl} style={{ display: "contents" }} />;
+}
+
+type VormaNextOutletMountProps = {
+	getNextOutletRouteKey: () => string;
+	passthroughProps: Record<string, any>;
+	localProps?: Record<string, any>;
+	nextIdx: number;
+};
+
+function VormaNextOutletMount(props: VormaNextOutletMountProps): JSX.Element {
+	const [mountContainerEl, setMountContainerEl] = createSignal<
+		HTMLSpanElement | undefined
+	>(undefined);
+	let disposeMountedNextOutlet: (() => void) | undefined;
+
+	createEffect((previousNextOutletRouteKey: string | undefined) => {
+		const nextOutletRouteKey = props.getNextOutletRouteKey();
+		const mountContainer = mountContainerEl();
+		if (
+			nextOutletRouteKey === previousNextOutletRouteKey &&
+			mountContainer &&
+			disposeMountedNextOutlet
+		) {
+			return previousNextOutletRouteKey;
+		}
+
+		disposeMountedNextOutlet?.();
+		disposeMountedNextOutlet = undefined;
+
+		if (mountContainer) {
+			disposeMountedNextOutlet = renderSolid(() => {
+				return (
+					<VormaRootOutlet
+						{...props.passthroughProps}
+						{...props.localProps}
+						idx={props.nextIdx}
+					/>
+				);
+			}, mountContainer);
+		}
+
+		return nextOutletRouteKey;
+	}, undefined);
+
+	onCleanup(() => {
+		disposeMountedNextOutlet?.();
+	});
+
+	return <span ref={setMountContainerEl} style={{ display: "contents" }} />;
+}
+
+export function VormaRootOutlet(
+	props: { idx?: number } & Record<string, any>,
+): JSX.Element {
 	const idx = props.idx ?? 0;
 
 	if (idx === 0) {
 		initUIListeners();
-
-		batch(() => {
-			syncRuntimeRenderState();
-			setRouterData(getRouterData());
-		});
+		syncNavigationSignals();
 	}
 
-	const [currentImportURL, setCurrentImportURL] = createSignal(
-		importURLs()?.[idx],
-	);
-	const [currentExportKey, setCurrentExportKey] = createSignal(
-		exportKeys()?.[idx],
-	);
-
-	createEffect(() => {
-		if (!currentImportURL()) {
-			return;
-		}
-		const e = latestEvent();
-		if (!e) {
-			return;
-		}
-
-		const newCurrentImportURL = importURLs()?.[idx];
-		const newCurrentExportKey = exportKeys()?.[idx];
-
-		if (currentImportURL() !== newCurrentImportURL) {
-			setCurrentImportURL(newCurrentImportURL);
-		}
-		if (currentExportKey() !== newCurrentExportKey) {
-			setCurrentExportKey(newCurrentExportKey);
-		}
-	});
-
-	createRenderEffect(() => {
-		const e = latestEvent();
-		if (!e || idx !== 0) {
-			return;
-		}
-		window.requestAnimationFrame(() => {
-			__applyScrollState(e.detail.__scrollState);
+	const routeOutletBranchInputState =
+		createMemo<RouteOutletBranchInputStateValue>(() => {
+			return readRouteOutletBranchInputSignals();
+		});
+	const routeOutletBranchState = createMemo(() => {
+		return buildRouteOutletBranchState({
+			navigationState: routeOutletBranchInputState(),
+			idx,
 		});
 	});
-
-	const isErrorIdxMemo = createMemo(() => {
-		return idx === outermostErrorIdx();
+	const isErrorIdx = createMemo(() => {
+		return routeOutletBranchState().isErrorIdx;
 	});
-
-	const currentCompMemo = createMemo<ValidComponent | undefined>(() => {
-		if (isErrorIdxMemo()) {
+	const currentRouteComponent = createMemo<ValidComponent | undefined>(() => {
+		if (isErrorIdx()) {
 			return undefined;
 		}
-		currentImportURL();
-		currentExportKey();
-		return activeComponents()?.[idx] ?? undefined;
+		return routeOutletBranchState().currentComponent as
+			| ValidComponent
+			| undefined;
 	});
-
-	const shouldFallbackOutletMemo = createMemo(() => {
-		if (isErrorIdxMemo() || currentCompMemo()) {
-			return false;
-		}
-		return idx + 1 < loadersData().length;
+	const currentRouteKey = createMemo(() => {
+		return routeOutletBranchState().currentRouteKey;
 	});
-
-	const errorCompMemo = createMemo<ValidComponent | undefined>(() => {
-		if (!isErrorIdxMemo()) {
+	const nextOutletRouteKey = createMemo(() => {
+		return routeOutletBranchState().nextRouteKey;
+	});
+	const shouldFallbackOutlet = createMemo(() => {
+		return routeOutletBranchState().shouldFallbackOutlet;
+	});
+	const errorComponent = createMemo<ValidComponent | undefined>(() => {
+		if (!isErrorIdx()) {
 			return undefined;
 		}
-		return activeErrorBoundary() ?? undefined;
+		return routeOutletBranchState().errorComponent as
+			| ValidComponent
+			| undefined;
 	});
 
-	const remountKeyNext = createMemo(
-		() => `${importURLs()[idx + 1]}|${exportKeys()[idx + 1]}`,
-	);
-
-	const Outlet = (localProps: Record<string, any> | undefined) => (
-		<Show when={remountKeyNext()} keyed>
-			<VormaRootOutlet {...localProps} {...props} idx={idx + 1} />
-		</Show>
-	);
+	const Outlet = (localProps?: Record<string, any>): JSX.Element => {
+		return (
+			<VormaNextOutletMount
+				getNextOutletRouteKey={nextOutletRouteKey}
+				passthroughProps={props}
+				localProps={localProps}
+				nextIdx={idx + 1}
+			/>
+		);
+	};
 
 	return (
 		<>
-			<Show when={currentCompMemo()}>
-				<Dynamic
-					component={currentCompMemo()}
+			<Show when={currentRouteComponent()}>
+				<VormaRouteComponentMount
+					getCurrentRouteKey={currentRouteKey}
+					getCurrentRouteComponent={currentRouteComponent}
 					idx={idx}
 					Outlet={Outlet}
 				/>
 			</Show>
-
-			<Show when={shouldFallbackOutletMemo()}>
+			<Show when={!currentRouteComponent() && shouldFallbackOutlet()}>
 				<Outlet />
 			</Show>
-
-			<Show when={isErrorIdxMemo()}>
-				<Show
-					when={errorCompMemo()}
-					fallback={`Error: ${outermostError() || "unknown"}`}
-				>
-					<Dynamic
-						component={errorCompMemo()}
-						error={outermostError()}
-					/>
-				</Show>
-			</Show>
+			<VormaErrorBranchMount
+				getIsErrorIdx={isErrorIdx}
+				getErrorComponent={errorComponent}
+				getCurrentError={outermostError}
+			/>
 		</>
 	);
 }

@@ -16,13 +16,14 @@ const {
 	};
 });
 
-vi.mock("vorma/client", async (importOriginal) => {
-	const actual = (await importOriginal()) as typeof import("vorma/client");
+vi.mock("vorma/client/__internal", async (importOriginal) => {
+	const actual =
+		(await importOriginal()) as typeof import("vorma/client/__internal");
 	return {
 		...actual,
-		__makeFinalLinkProps: makeFinalLinkPropsSpy,
-		__resolvePath: resolvePathSpy,
-		__registerClientLoaderForAdapter: registerClientLoaderForAdapterSpy,
+		makeFinalLinkProps: makeFinalLinkPropsSpy,
+		resolvePath: resolvePathSpy,
+		registerClientLoaderForAdapter: registerClientLoaderForAdapterSpy,
 	};
 });
 
@@ -57,7 +58,7 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		container.remove();
 	});
 
-	it("react makeTypedAddClientLoader delegates registration through __registerClientLoaderForAdapter", async () => {
+	it("react makeTypedAddClientLoader delegates registration through registerClientLoaderForAdapter", async () => {
 		const reactAdapter = await import("vorma/react");
 		const addClientLoader = reactAdapter.makeTypedAddClientLoader();
 		const clientLoader = vi.fn(async () => "ok");
@@ -77,7 +78,7 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		});
 	});
 
-	it("preact makeTypedAddClientLoader delegates registration through __registerClientLoaderForAdapter", async () => {
+	it("preact makeTypedAddClientLoader delegates registration through registerClientLoaderForAdapter", async () => {
 		const preactAdapter = await import("vorma/preact");
 		const addClientLoader = preactAdapter.makeTypedAddClientLoader();
 		const clientLoader = vi.fn(async () => "ok");
@@ -97,7 +98,7 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		});
 	});
 
-	it("solid makeTypedAddClientLoader delegates registration through __registerClientLoaderForAdapter", async () => {
+	it("solid makeTypedAddClientLoader delegates registration through registerClientLoaderForAdapter", async () => {
 		const solidAdapter = await import("vorma/solid");
 		const addClientLoader = solidAdapter.makeTypedAddClientLoader();
 		const clientLoader = vi.fn(async () => "ok");

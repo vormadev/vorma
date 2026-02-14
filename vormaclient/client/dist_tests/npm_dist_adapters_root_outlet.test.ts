@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { h, render as renderPreact } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { act as actPreact } from "preact/test-utils";
-import { onCleanup } from "solid-js";
+import { createComponent, onCleanup } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -77,6 +77,24 @@ async function waitForCondition(
 
 function installImmediateRAFAndScrollSpy() {
 	const originalRAF = window.requestAnimationFrame;
+	const originalAddEventListener = window.addEventListener.bind(window);
+	const trackedListeners: Array<{
+		type: string;
+		listener: EventListenerOrEventListenerObject;
+		options?: boolean | AddEventListenerOptions;
+	}> = [];
+
+	window.addEventListener = ((type, listener, options) => {
+		if (type === ROUTE_CHANGE_EVENT_KEY || type === LOCATION_EVENT_KEY) {
+			trackedListeners.push({
+				type,
+				listener,
+				options,
+			});
+		}
+		originalAddEventListener(type, listener, options);
+	}) as typeof window.addEventListener;
+
 	window.requestAnimationFrame = (callback) => {
 		callback(0);
 		return 0;
@@ -89,6 +107,11 @@ function installImmediateRAFAndScrollSpy() {
 		scrollToSpy,
 		restore() {
 			window.requestAnimationFrame = originalRAF;
+			window.addEventListener =
+				originalAddEventListener as typeof window.addEventListener;
+			trackedListeners.forEach(({ type, listener, options }) => {
+				window.removeEventListener(type, listener, options);
+			});
 			scrollToSpy.mockRestore();
 		},
 	};
@@ -259,6 +282,72 @@ describe("npm_dist adapter root outlets", () => {
 			expect(container.textContent).toContain("child-b");
 			expect(childARenderCount).toBeGreaterThan(0);
 			expect(childBRenderCount).toBeGreaterThan(0);
+		} finally {
+			await act(async () => {
+				root.unmount();
+			});
+			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
+				originalActEnvironment;
+			container.remove();
+			restore();
+		}
+	});
+
+	it("react root outlet uses the freshest root component when route updates keep the same root key", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const reactAdapter = await import("vorma/react");
+		const { scrollToSpy, restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const originalActEnvironment = (globalThis as any)
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+		let rootARenderCount = 0;
+		let rootBRenderCount = 0;
+
+		const RootA = () => {
+			rootARenderCount += 1;
+			return React.createElement("div", {}, "root-a");
+		};
+		const RootB = () => {
+			rootBRenderCount += 1;
+			return React.createElement("div", {}, "root-b");
+		};
+
+		applyRootOutletRuntimeState(globals, {
+			activeComponents: [RootA],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{}],
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					React.createElement(reactAdapter.VormaRootOutlet as any, {
+						idx: 0,
+					}),
+				);
+			});
+			expect(container.textContent).toContain("root-a");
+
+			applyRootOutletRuntimeState(globals, {
+				activeComponents: [RootB],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{}],
+			});
+			await act(async () => {
+				dispatchRouteChangeWithScrollState({ x: 31, y: 32 });
+			});
+
+			expect(container.textContent).toContain("root-b");
+			expect(rootARenderCount).toBeGreaterThan(0);
+			expect(rootBRenderCount).toBeGreaterThan(0);
+			expect(scrollToSpy).toHaveBeenCalledWith(31, 32);
 		} finally {
 			await act(async () => {
 				root.unmount();
@@ -632,6 +721,65 @@ describe("npm_dist adapter root outlets", () => {
 		}
 	});
 
+	it("preact root outlet uses the freshest root component when route updates keep the same root key", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const preactAdapter = await import("vorma/preact");
+		const { scrollToSpy, restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		let rootARenderCount = 0;
+		let rootBRenderCount = 0;
+
+		const RootA = () => {
+			rootARenderCount += 1;
+			return h("div", {}, "root-a");
+		};
+		const RootB = () => {
+			rootBRenderCount += 1;
+			return h("div", {}, "root-b");
+		};
+
+		applyRootOutletRuntimeState(globals, {
+			activeComponents: [RootA],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{}],
+		});
+
+		try {
+			await actPreact(async () => {
+				renderPreact(
+					h(preactAdapter.VormaRootOutlet as any, {
+						idx: 0,
+					}),
+					container,
+				);
+			});
+			expect(container.textContent).toContain("root-a");
+
+			applyRootOutletRuntimeState(globals, {
+				activeComponents: [RootB],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{}],
+			});
+			await actPreact(async () => {
+				dispatchRouteChangeWithScrollState({ x: 31, y: 32 });
+			});
+
+			expect(container.textContent).toContain("root-b");
+			expect(rootARenderCount).toBeGreaterThan(0);
+			expect(rootBRenderCount).toBeGreaterThan(0);
+			expect(scrollToSpy).toHaveBeenCalledWith(31, 32);
+		} finally {
+			renderPreact(null, container);
+			container.remove();
+			restore();
+		}
+	});
+
 	it("preact keeps parent instance and local parent input state when only child route changes", async () => {
 		const globals = installDistTestVormaGlobal();
 		vi.resetModules();
@@ -834,7 +982,7 @@ describe("npm_dist adapter root outlets", () => {
 
 		const ParentComp = (props: { Outlet: any }) => {
 			parentRunCount += 1;
-			return props.Outlet(undefined);
+			return createComponent(props.Outlet as any, {});
 		};
 
 		const stableActiveComponents = [ParentComp, ChildComp];
@@ -850,7 +998,7 @@ describe("npm_dist adapter root outlets", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const dispose = renderSolid(() => {
-			return (solidAdapter.VormaRootOutlet as any)({
+			return createComponent(solidAdapter.VormaRootOutlet as any, {
 				idx: 0,
 			});
 		}, container);
@@ -911,7 +1059,8 @@ describe("npm_dist adapter root outlets", () => {
 			});
 			return `child:${mountID}`;
 		};
-		const ParentComp = (props: { Outlet: any }) => props.Outlet(undefined);
+		const ParentComp = (props: { Outlet: any }) =>
+			createComponent(props.Outlet as any, {});
 
 		applyRootOutletRuntimeState(globals, {
 			activeComponents: [ParentComp, ChildComp],
@@ -920,7 +1069,7 @@ describe("npm_dist adapter root outlets", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return (solidAdapter.VormaRootOutlet as any)({
+			return createComponent(solidAdapter.VormaRootOutlet as any, {
 				idx: 0,
 			});
 		}, container);
@@ -958,7 +1107,8 @@ describe("npm_dist adapter root outlets", () => {
 		let childARunCount = 0;
 		let childBRunCount = 0;
 
-		const ParentComp = (props: { Outlet: any }) => props.Outlet(undefined);
+		const ParentComp = (props: { Outlet: any }) =>
+			createComponent(props.Outlet as any, {});
 		const ChildA = () => {
 			childARunCount += 1;
 			return "child-a";
@@ -975,7 +1125,7 @@ describe("npm_dist adapter root outlets", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return (solidAdapter.VormaRootOutlet as any)({
+			return createComponent(solidAdapter.VormaRootOutlet as any, {
 				idx: 0,
 			});
 		}, container);
@@ -994,6 +1144,63 @@ describe("npm_dist adapter root outlets", () => {
 			});
 			expect(childARunCount).toBeGreaterThan(0);
 			expect(childBRunCount).toBeGreaterThan(0);
+		} finally {
+			dispose();
+			container.remove();
+			restore();
+		}
+	});
+
+	it("solid root outlet uses the freshest root component when route updates keep the same root key", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const solidAdapter = await import("vorma/solid");
+		const { scrollToSpy, restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		let rootARunCount = 0;
+		let rootBRunCount = 0;
+
+		const RootA = () => {
+			rootARunCount += 1;
+			return "root-a";
+		};
+		const RootB = () => {
+			rootBRunCount += 1;
+			return "root-b";
+		};
+
+		applyRootOutletRuntimeState(globals, {
+			activeComponents: [RootA],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{}],
+		});
+
+		const dispose = renderSolid(() => {
+			return createComponent(solidAdapter.VormaRootOutlet as any, {
+				idx: 0,
+			});
+		}, container);
+
+		try {
+			expect(container.textContent).toContain("root-a");
+
+			applyRootOutletRuntimeState(globals, {
+				activeComponents: [RootB],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{}],
+			});
+			dispatchRouteChangeWithScrollState({ x: 31, y: 32 });
+			await waitForCondition(() => {
+				expect(container.textContent).toContain("root-b");
+				expect(scrollToSpy).toHaveBeenCalledWith(31, 32);
+			});
+
+			expect(rootARunCount).toBeGreaterThan(0);
+			expect(rootBRunCount).toBeGreaterThan(0);
 		} finally {
 			dispose();
 			container.remove();
@@ -1041,7 +1248,7 @@ describe("npm_dist adapter root outlets", () => {
 			section.appendChild(draftNode);
 			section.appendChild(inputNode);
 
-			return [section, props.Outlet(undefined)];
+			return [section, createComponent(props.Outlet as any, {})];
 		};
 
 		applyRootOutletRuntimeState(globals, {
@@ -1051,7 +1258,7 @@ describe("npm_dist adapter root outlets", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return (solidAdapter.VormaRootOutlet as any)({
+			return createComponent(solidAdapter.VormaRootOutlet as any, {
 				idx: 0,
 			});
 		}, container);

@@ -2,7 +2,6 @@
 
 import { useMemo, type JSX } from "react";
 import {
-	__registerClientLoaderForAdapter,
 	type ClientLoaderAwaitedServerData,
 	type ParamsForPattern,
 	type UseRouterDataFunction,
@@ -12,6 +11,7 @@ import {
 	type VormaRouteGeneric,
 	type VormaRoutePropsGeneric,
 } from "vorma/client";
+import { registerClientLoaderForAdapter } from "vorma/client/__internal";
 import {
 	useClientLoadersData,
 	useLoadersData,
@@ -78,7 +78,7 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		const p = props.pattern;
 		const fn = props.clientLoader;
 
-		__registerClientLoaderForAdapter({
+		registerClientLoaderForAdapter({
 			pattern: p as string,
 			waitFn: fn as any,
 			reRunOnModuleChange: props.reRunOnModuleChange,

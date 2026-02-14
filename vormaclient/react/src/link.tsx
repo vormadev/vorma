@@ -6,17 +6,17 @@ import type {
 	VormaLoaderPattern,
 } from "vorma/client";
 import {
-	__makeFinalLinkProps,
-	__resolvePath,
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
-} from "vorma/client";
+	makeFinalLinkProps,
+	resolvePath,
+} from "vorma/client/__internal";
 
 export const VormaLink = memo(function VormaLink(
 	props: ComponentProps<"a"> &
 		VormaLinkPropsBase<React.MouseEvent<HTMLAnchorElement, MouseEvent>>,
 ) {
-	const finalLinkProps = __makeFinalLinkProps(props);
+	const finalLinkProps = makeFinalLinkProps(props);
 	// oxlint-disable-next-line no-unused-vars
 	const { prefetch, scrollToTop, replace, state, ...rest } = props;
 
@@ -70,7 +70,7 @@ export function makeTypedLink<C extends VormaAppConfig>(
 			...linkProps
 		} = props as any;
 
-		const href = __resolvePath({
+		const href = resolvePath({
 			vormaAppConfig,
 			type: "loader",
 			props: {

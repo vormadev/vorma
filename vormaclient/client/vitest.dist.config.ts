@@ -11,6 +11,9 @@ export default defineConfig({
 				"../../node_modules/solid-js/web/dist/web.js",
 			),
 			"solid-js": sourcePath("../../node_modules/solid-js/dist/solid.js"),
+			"vorma/client/__internal": sourcePath(
+				"../../npm_dist/vormaclient/client/internal.js",
+			),
 			"vorma/client": sourcePath(
 				"../../npm_dist/vormaclient/client/index.js",
 			),

@@ -1,4 +1,5 @@
 declare module "vorma/client";
+declare module "vorma/client/__internal";
 declare module "vorma/buildtime";
 declare module "vorma/react";
 declare module "vorma/solid";

@@ -2,6 +2,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { h, render as renderPreact } from "preact";
 import { act as actPreact } from "preact/test-utils";
+import { createComponent } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -10,6 +11,7 @@ import {
 } from "./dist_test_harness.ts";
 
 const ROUTE_CHANGE_EVENT_KEY = "vorma:route-change";
+const LOCATION_EVENT_KEY = "vorma:location";
 
 function dispatchRouteChange() {
 	window.dispatchEvent(
@@ -40,6 +42,24 @@ async function waitForCondition(
 
 function installImmediateRAFAndScrollSpy() {
 	const originalRAF = window.requestAnimationFrame;
+	const originalAddEventListener = window.addEventListener.bind(window);
+	const trackedListeners: Array<{
+		type: string;
+		listener: EventListenerOrEventListenerObject;
+		options?: boolean | AddEventListenerOptions;
+	}> = [];
+
+	window.addEventListener = ((type, listener, options) => {
+		if (type === ROUTE_CHANGE_EVENT_KEY || type === LOCATION_EVENT_KEY) {
+			trackedListeners.push({
+				type,
+				listener,
+				options,
+			});
+		}
+		originalAddEventListener(type, listener, options);
+	}) as typeof window.addEventListener;
+
 	window.requestAnimationFrame = (callback) => {
 		callback(0);
 		return 0;
@@ -51,6 +71,11 @@ function installImmediateRAFAndScrollSpy() {
 	return {
 		restore() {
 			window.requestAnimationFrame = originalRAF;
+			window.addEventListener =
+				originalAddEventListener as typeof window.addEventListener;
+			trackedListeners.forEach(({ type, listener, options }) => {
+				window.removeEventListener(type, listener, options);
+			});
 			scrollToSpy.mockRestore();
 		},
 	};
@@ -292,7 +317,7 @@ describe("npm_dist root outlet branch coverage", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return (adapter.VormaRootOutlet as any)({
+			return createComponent(adapter.VormaRootOutlet as any, {
 				idx: 0,
 			});
 		}, container);
@@ -520,7 +545,7 @@ describe("npm_dist root outlet branch coverage", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return (adapter.VormaRootOutlet as any)({
+			return createComponent(adapter.VormaRootOutlet as any, {
 				idx: 0,
 			});
 		}, container);
@@ -687,7 +712,7 @@ describe("npm_dist root outlet branch coverage", () => {
 			parent.setAttribute("data-parent", "true");
 			parent.textContent = "parent-node";
 			section.appendChild(parent);
-			return [section, props.Outlet(undefined)];
+			return [section, createComponent(props.Outlet as any, {})];
 		};
 		const ChildComp = () => "child-node";
 		const ErrorBoundary = (props: { error: unknown }) =>
@@ -704,7 +729,7 @@ describe("npm_dist root outlet branch coverage", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return (adapter.VormaRootOutlet as any)({
+			return createComponent(adapter.VormaRootOutlet as any, {
 				idx: 0,
 			});
 		}, container);

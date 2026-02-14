@@ -1,18 +1,179 @@
-import { batch, computed, effect, signal } from "@preact/signals";
+import { batch, signal } from "@preact/signals";
 import { h, type ComponentType } from "preact";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "preact/hooks";
+import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
+import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
-	__applyScrollState,
-	__getClientRuntimeRenderState,
-	addLocationListener,
-	addRouteChangeListener,
-	getLocation,
-	getRouterData,
-	type RouteChangeEvent,
-} from "vorma/client";
+	applyScrollState,
+	areRouteOutletBranchInputsEqualByIdentity,
+	areRouteOutletLocationsEqual,
+	buildCurrentRouteOutletLocationState,
+	buildInitialRouteOutletNavigationState,
+	buildNextRouteOutletNavigationState,
+	buildRouteOutletBranchInputState,
+	buildRouteOutletBranchState,
+	type RouteOutletBranchInputState,
+	type RouteOutletNavigationState,
+} from "vorma/client/__internal";
 
 /////////////////////////////////////////////////////////////////////
-/////// CORE SETUP
+/////// STORE
+/////////////////////////////////////////////////////////////////////
+
+type NavigationState = RouteOutletNavigationState;
+type RouteOutletBranchInputStateValue = RouteOutletBranchInputState;
+
+const initialNavigationState = buildInitialRouteOutletNavigationState();
+
+const loadersData = signal(initialNavigationState.loadersData);
+const clientLoadersData = signal(initialNavigationState.clientLoadersData);
+const routerData = signal(initialNavigationState.routerData);
+const outermostError = signal(initialNavigationState.outermostError);
+const outermostErrorIdx = signal(initialNavigationState.outermostErrorIdx);
+const activeComponents = signal(initialNavigationState.activeComponents);
+const activeErrorBoundary = signal(initialNavigationState.activeErrorBoundary);
+const importURLs = signal(initialNavigationState.importURLs);
+const exportKeys = signal(initialNavigationState.exportKeys);
+const routeOutletBranchInputState = signal<RouteOutletBranchInputStateValue>(
+	buildRouteOutletBranchInputState(initialNavigationState),
+);
+
+export { clientLoadersData, loadersData, routerData };
+
+export const location = signal(buildCurrentRouteOutletLocationState());
+
+function readNavigationSignals(): NavigationState {
+	return {
+		loadersData: loadersData.value,
+		clientLoadersData: clientLoadersData.value,
+		routerData: routerData.value,
+		outermostError: outermostError.value,
+		outermostErrorIdx: outermostErrorIdx.value,
+		activeComponents: activeComponents.value,
+		activeErrorBoundary: activeErrorBoundary.value,
+		importURLs: importURLs.value,
+		exportKeys: exportKeys.value,
+	};
+}
+
+function syncNavigationSignals(): void {
+	const previousNavigationState = readNavigationSignals();
+	const nextNavigationState = buildNextRouteOutletNavigationState(
+		previousNavigationState,
+	);
+	if (nextNavigationState === previousNavigationState) {
+		return;
+	}
+	const previousRouteOutletBranchInputState =
+		routeOutletBranchInputState.value;
+	const nextRouteOutletBranchInputStateRaw =
+		buildRouteOutletBranchInputState(nextNavigationState);
+	const nextRouteOutletBranchInputState =
+		areRouteOutletBranchInputsEqualByIdentity(
+			previousRouteOutletBranchInputState,
+			nextRouteOutletBranchInputStateRaw,
+		)
+			? previousRouteOutletBranchInputState
+			: nextRouteOutletBranchInputStateRaw;
+
+	batch(() => {
+		if (
+			nextNavigationState.loadersData !==
+			previousNavigationState.loadersData
+		) {
+			loadersData.value = nextNavigationState.loadersData;
+		}
+		if (
+			nextNavigationState.clientLoadersData !==
+			previousNavigationState.clientLoadersData
+		) {
+			clientLoadersData.value = nextNavigationState.clientLoadersData;
+		}
+		if (
+			nextNavigationState.routerData !==
+			previousNavigationState.routerData
+		) {
+			routerData.value = nextNavigationState.routerData;
+		}
+		if (
+			!Object.is(
+				nextNavigationState.outermostError,
+				previousNavigationState.outermostError,
+			)
+		) {
+			outermostError.value = nextNavigationState.outermostError;
+		}
+		if (
+			!Object.is(
+				nextNavigationState.outermostErrorIdx,
+				previousNavigationState.outermostErrorIdx,
+			)
+		) {
+			outermostErrorIdx.value = nextNavigationState.outermostErrorIdx;
+		}
+		if (
+			nextNavigationState.activeComponents !==
+			previousNavigationState.activeComponents
+		) {
+			activeComponents.value = nextNavigationState.activeComponents;
+		}
+		if (
+			!Object.is(
+				nextNavigationState.activeErrorBoundary,
+				previousNavigationState.activeErrorBoundary,
+			)
+		) {
+			activeErrorBoundary.value = nextNavigationState.activeErrorBoundary;
+		}
+		if (
+			nextNavigationState.importURLs !==
+			previousNavigationState.importURLs
+		) {
+			importURLs.value = nextNavigationState.importURLs;
+		}
+		if (
+			nextNavigationState.exportKeys !==
+			previousNavigationState.exportKeys
+		) {
+			exportKeys.value = nextNavigationState.exportKeys;
+		}
+		if (
+			nextRouteOutletBranchInputState !==
+			previousRouteOutletBranchInputState
+		) {
+			routeOutletBranchInputState.value = nextRouteOutletBranchInputState;
+		}
+	});
+}
+
+function syncLocationSignal(): void {
+	const nextLocationState = buildCurrentRouteOutletLocationState();
+	if (!areRouteOutletLocationsEqual(location.value, nextLocationState)) {
+		location.value = nextLocationState;
+	}
+}
+
+let isInited = false;
+
+function initUIListeners(): void {
+	if (isInited) {
+		return;
+	}
+	isInited = true;
+
+	addRouteChangeListener((event) => {
+		syncNavigationSignals();
+		window.requestAnimationFrame(() => {
+			applyScrollState(event.detail.__scrollState);
+		});
+	});
+
+	addLocationListener(() => {
+		syncLocationSignal();
+	});
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// COMPONENT
 /////////////////////////////////////////////////////////////////////
 
 type VormaOutletProps = {
@@ -20,193 +181,64 @@ type VormaOutletProps = {
 	Outlet: (localProps: Record<string, any> | undefined) => h.JSX.Element;
 };
 
-type VormaOutletComponent = ComponentType<VormaOutletProps>;
-
 type VormaErrorBoundaryProps = {
-	error: string | undefined;
+	error: unknown;
 };
-
-type VormaErrorBoundaryComponent = ComponentType<VormaErrorBoundaryProps>;
-
-const latestEvent = signal<RouteChangeEvent | null>(null);
-const initialRenderState = __getClientRuntimeRenderState();
-const loadersData = signal(initialRenderState.loadersData);
-const clientLoadersData = signal(initialRenderState.clientLoadersData);
-const routerData = signal(getRouterData());
-const outermostErrorIdx = signal(initialRenderState.outermostErrorIdx);
-const outermostError = signal(initialRenderState.outermostError);
-const activeComponents = signal<Array<VormaOutletComponent> | null>(
-	initialRenderState.activeComponents as Array<VormaOutletComponent> | null,
-);
-const activeErrorBoundary = signal<VormaErrorBoundaryComponent | undefined>(
-	initialRenderState.activeErrorBoundary as
-		| VormaErrorBoundaryComponent
-		| undefined,
-);
-const importURLs = signal(initialRenderState.importURLs);
-const exportKeys = signal(initialRenderState.exportKeys);
-
-export { clientLoadersData, loadersData, routerData };
-
-let isInited = false;
-
-function syncRuntimeRenderState(): void {
-	const renderState = __getClientRuntimeRenderState();
-	loadersData.value = renderState.loadersData;
-	clientLoadersData.value = renderState.clientLoadersData;
-	outermostErrorIdx.value = renderState.outermostErrorIdx;
-	outermostError.value = renderState.outermostError;
-	activeComponents.value =
-		renderState.activeComponents as Array<VormaOutletComponent> | null;
-	activeErrorBoundary.value = renderState.activeErrorBoundary as
-		| VormaErrorBoundaryComponent
-		| undefined;
-	importURLs.value = renderState.importURLs;
-	exportKeys.value = renderState.exportKeys;
-}
-
-function initUIListeners() {
-	if (isInited) return;
-	isInited = true;
-
-	addRouteChangeListener((e) => {
-		batch(() => {
-			latestEvent.value = e;
-			syncRuntimeRenderState();
-			routerData.value = getRouterData();
-		});
-	});
-
-	addLocationListener(() => {
-		location.value = getLocation();
-	});
-}
-
-export const location = signal(getLocation());
-
-/////////////////////////////////////////////////////////////////////
-/////// COMPONENT
-/////////////////////////////////////////////////////////////////////
 
 export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element {
 	const idx = props.idx ?? 0;
-
-	const initialRenderRef = useRef(true);
-
-	if (idx === 0 && initialRenderRef.current) {
-		initUIListeners();
-
-		initialRenderRef.current = false;
-		batch(() => {
-			syncRuntimeRenderState();
-			routerData.value = getRouterData();
-		});
-	}
-
-	const currentImportURL = signal(importURLs.value[idx]);
-	const currentExportKey = signal(exportKeys.value[idx]);
-	const nextImportURL = signal(importURLs.value[idx + 1]);
-	const nextExportKey = signal(exportKeys.value[idx + 1]);
-
-	useEffect(() => {
-		const dispose = effect(() => {
-			if (!currentImportURL.value || !latestEvent.value) {
-				return;
-			}
-
-			batch(() => {
-				const newCurrentImportURL = importURLs.value[idx];
-				const newCurrentExportKey = exportKeys.value[idx];
-
-				if (currentImportURL.value !== newCurrentImportURL) {
-					currentImportURL.value = newCurrentImportURL;
-				}
-				if (currentExportKey.value !== newCurrentExportKey) {
-					currentExportKey.value = newCurrentExportKey;
-				}
-
-				// these are also needed for Outlets to render correctly
-				const newNextImportURL = importURLs.value[idx + 1];
-				const newNextExportKey = exportKeys.value[idx + 1];
-
-				if (nextImportURL.value !== newNextImportURL) {
-					nextImportURL.value = newNextImportURL;
-				}
-				if (nextExportKey.value !== newNextExportKey) {
-					nextExportKey.value = newNextExportKey;
-				}
-			});
-		});
-
-		return dispose;
-	}, [idx]);
+	const isInitialRootRenderRef = useRef(true);
+	const passthroughPropsRef = useRef(props);
+	passthroughPropsRef.current = props;
 
 	useLayoutEffect(() => {
-		const dispose = effect(() => {
-			const event = latestEvent.value;
-			if (!event || idx !== 0) {
-				return;
-			}
-			window.requestAnimationFrame(() => {
-				__applyScrollState(event.detail.__scrollState);
-			});
-		});
-
-		return dispose;
+		if (idx !== 0 || !isInitialRootRenderRef.current) {
+			return;
+		}
+		initUIListeners();
+		isInitialRootRenderRef.current = false;
+		syncNavigationSignals();
 	}, [idx]);
 
-	const isErrorIdx = computed(() => idx === outermostErrorIdx.value);
-
-	const CurrentComp = computed<VormaOutletComponent | null>(() => {
-		if (isErrorIdx.value) {
-			return null;
-		}
-		void currentImportURL.value;
-		void currentExportKey.value;
-		return activeComponents.value?.[idx] ?? null;
+	const routeOutletBranchState = buildRouteOutletBranchState({
+		navigationState: routeOutletBranchInputState.value,
+		idx,
 	});
 
-	const Outlet = useMemo(
-		() => (localProps: Record<string, any> | undefined) => {
+	const Outlet = useMemo(() => {
+		return (localProps: Record<string, any> | undefined) => {
 			return h(VormaRootOutlet, {
+				...passthroughPropsRef.current,
 				...localProps,
-				...props,
 				idx: idx + 1,
 			});
-		},
-		[nextImportURL.value, nextExportKey.value],
-	);
+		};
+	}, [idx, routeOutletBranchState.nextRouteKey]);
 
-	const shouldFallbackOutlet = computed(() => {
-		if (isErrorIdx.value) {
-			return false;
-		}
-		if (CurrentComp.value) {
-			return false;
-		}
-		return idx + 1 < loadersData.value.length;
-	});
+	const CurrentComp = routeOutletBranchState.currentComponent as
+		| ComponentType<VormaOutletProps>
+		| undefined;
+	const ErrorComp = routeOutletBranchState.errorComponent as
+		| ComponentType<VormaErrorBoundaryProps>
+		| undefined;
 
-	const ErrorComp = computed<VormaErrorBoundaryComponent | null>(() => {
-		if (!isErrorIdx.value) {
-			return null;
-		}
-		return activeErrorBoundary.value ?? null;
-	});
-
-	if (isErrorIdx.value) {
-		if (ErrorComp.value) {
-			return h(ErrorComp.value, { error: outermostError.value });
+	if (routeOutletBranchState.isErrorIdx) {
+		if (ErrorComp) {
+			return h(ErrorComp, { error: outermostError.value });
 		}
 		return h("div", {}, `Error: ${outermostError.value || "unknown"}`);
 	}
 
-	if (!CurrentComp.value) {
-		if (shouldFallbackOutlet.value) {
-			return h(Outlet, {});
+	if (!CurrentComp) {
+		if (routeOutletBranchState.shouldFallbackOutlet) {
+			return h(Outlet, { key: routeOutletBranchState.nextRouteKey });
 		}
 		return h("div", {});
 	}
 
-	return h(CurrentComp.value, { idx, Outlet });
+	return h(CurrentComp, {
+		key: routeOutletBranchState.currentRouteKey,
+		idx,
+		Outlet,
+	});
 }

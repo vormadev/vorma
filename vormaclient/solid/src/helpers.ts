@@ -3,7 +3,6 @@
 import { createMemo, type Accessor } from "solid-js";
 import type { JSX } from "solid-js/jsx-runtime";
 import {
-	__registerClientLoaderForAdapter,
 	type ClientLoaderAwaitedServerData,
 	type ParamsForPattern,
 	type UseRouterDataFunction,
@@ -13,6 +12,7 @@ import {
 	type VormaRouteGeneric,
 	type VormaRoutePropsGeneric,
 } from "vorma/client";
+import { registerClientLoaderForAdapter } from "vorma/client/__internal";
 import { clientLoadersData, loadersData, routerData } from "./solid.tsx";
 
 export type VormaRouteProps<
@@ -80,7 +80,7 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		const p = props.pattern;
 		const fn = props.clientLoader;
 
-		__registerClientLoaderForAdapter({
+		registerClientLoaderForAdapter({
 			pattern: p as string,
 			waitFn: fn as any,
 			reRunOnModuleChange: props.reRunOnModuleChange,

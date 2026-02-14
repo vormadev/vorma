@@ -2,9 +2,9 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { h, render as renderPreact } from "preact";
 import { act as actPreact } from "preact/test-utils";
-import { createEffect } from "solid-js";
+import { createComponent, createEffect } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
 	installDistTestVormaGlobal,
 	type DistTestVormaInternal,
@@ -12,6 +12,36 @@ import {
 
 const ROUTE_CHANGE_EVENT_KEY = "vorma:route-change";
 const LOCATION_EVENT_KEY = "vorma:location";
+const addWindowEventListenerNative = window.addEventListener.bind(window);
+const removeWindowEventListenerNative = window.removeEventListener.bind(window);
+const trackedRouteAndLocationListeners: Array<{
+	type: string;
+	listener: EventListenerOrEventListenerObject;
+	options?: boolean | AddEventListenerOptions;
+}> = [];
+
+window.addEventListener = ((type, listener, options) => {
+	if (type === ROUTE_CHANGE_EVENT_KEY || type === LOCATION_EVENT_KEY) {
+		trackedRouteAndLocationListeners.push({
+			type,
+			listener,
+			options,
+		});
+	}
+	addWindowEventListenerNative(type, listener, options);
+}) as typeof window.addEventListener;
+
+afterEach(() => {
+	trackedRouteAndLocationListeners.forEach(({ type, listener, options }) => {
+		removeWindowEventListenerNative(type, listener, options);
+	});
+	trackedRouteAndLocationListeners.length = 0;
+});
+
+afterAll(() => {
+	window.addEventListener =
+		addWindowEventListenerNative as typeof window.addEventListener;
+});
 
 type RuntimeComponent = (props: { idx: number; Outlet: any }) => unknown;
 
@@ -169,10 +199,10 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			});
 			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
 				originalActEnvironment;
+			restore();
 			addEventListenerSpy.mockRestore();
 			containerA.remove();
 			containerB.remove();
-			restore();
 		}
 	});
 
@@ -224,10 +254,10 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			).toBe(1);
 		} finally {
 			renderPreact(null, containerB);
+			restore();
 			addEventListenerSpy.mockRestore();
 			containerA.remove();
 			containerB.remove();
-			restore();
 		}
 	});
 
@@ -249,12 +279,12 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		});
 
 		const disposeA = renderSolid(() => {
-			return (adapter.VormaRootOutlet as any)({ idx: 0 });
+			return createComponent(adapter.VormaRootOutlet as any, { idx: 0 });
 		}, containerA);
 		disposeA();
 
 		const disposeB = renderSolid(() => {
-			return (adapter.VormaRootOutlet as any)({ idx: 0 });
+			return createComponent(adapter.VormaRootOutlet as any, { idx: 0 });
 		}, containerB);
 
 		try {
@@ -272,10 +302,10 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			).toBe(1);
 		} finally {
 			disposeB();
+			restore();
 			addEventListenerSpy.mockRestore();
 			containerA.remove();
 			containerB.remove();
-			restore();
 		}
 	});
 
@@ -356,7 +386,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return (adapter.VormaRootOutlet as any)({});
+			return createComponent(adapter.VormaRootOutlet as any, {});
 		}, container);
 
 		try {
@@ -475,7 +505,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return (adapter.VormaRootOutlet as any)({ idx: 1 });
+			return createComponent(adapter.VormaRootOutlet as any, { idx: 1 });
 		}, container);
 
 		try {
@@ -677,7 +707,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 		const dispose = renderSolid(() => {
 			return [
-				(adapter.VormaRootOutlet as any)({ idx: 0 }),
+				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
 				LocationProbe(),
 			];
 		}, container);
@@ -711,6 +741,287 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		} finally {
 			dispose();
 			window.history.replaceState(null, "", "/");
+			container.remove();
+			restore();
+		}
+	});
+
+	it("react root outlet stays stable on data-only route updates while data hooks stay fresh", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/react");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const originalActEnvironment = (globalThis as any)
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+		let rootRenderCount = 0;
+		let dataRenderCount = 0;
+		const useRouterData = adapter.makeTypedUseRouterData();
+		const useLoaderData = adapter.makeTypedUseLoaderData();
+
+		const StableRootComp = () => {
+			rootRenderCount += 1;
+			return React.createElement(
+				"div",
+				{ "data-root-probe": true },
+				"root",
+			);
+		};
+		const DataProbe = () => {
+			dataRenderCount += 1;
+			const nextLoaderData = useLoaderData({ idx: 0 }) as
+				| { value?: string }
+				| undefined;
+			const nextRouterData = useRouterData();
+			return React.createElement(
+				"div",
+				{ "data-data-probe": true },
+				`${nextLoaderData?.value ?? ""}|${nextRouterData.matchedPatterns.join(",")}`,
+			);
+		};
+
+		const stableActiveComponents = [StableRootComp];
+		const stableImportURLs = ["/root.js"];
+		const stableExportKeys = ["default"];
+
+		applyRuntimeState(globals, {
+			activeComponents: stableActiveComponents,
+			importURLs: stableImportURLs,
+			exportKeys: stableExportKeys,
+			loadersData: [{ value: "a" }],
+			clientLoadersData: ["ca"],
+			matchedPatterns: ["/"],
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					React.createElement(
+						React.Fragment,
+						{},
+						React.createElement(adapter.VormaRootOutlet as any, {
+							idx: 0,
+						}),
+						React.createElement(DataProbe),
+					),
+				);
+			});
+			expect(
+				container.querySelector("[data-root-probe]")?.textContent,
+			).toBe("root");
+			expect(
+				container.querySelector("[data-data-probe]")?.textContent,
+			).toBe("a|/");
+			const rootRendersAfterInitial = rootRenderCount;
+			const dataRendersAfterInitial = dataRenderCount;
+
+			applyRuntimeState(globals, {
+				activeComponents: stableActiveComponents,
+				importURLs: stableImportURLs,
+				exportKeys: stableExportKeys,
+				loadersData: [{ value: "b" }],
+				clientLoadersData: ["cb"],
+				matchedPatterns: ["/next"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			expect(
+				container.querySelector("[data-data-probe]")?.textContent,
+			).toBe("b|/next");
+			expect(rootRenderCount).toBe(rootRendersAfterInitial);
+			expect(dataRenderCount).toBeGreaterThan(dataRendersAfterInitial);
+		} finally {
+			await act(async () => {
+				root.unmount();
+			});
+			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
+				originalActEnvironment;
+			container.remove();
+			restore();
+		}
+	});
+
+	it("preact root outlet stays stable on data-only route updates while data signals stay fresh", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/preact");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const rootContainer = document.createElement("div");
+		const dataContainer = document.createElement("div");
+		document.body.appendChild(rootContainer);
+		document.body.appendChild(dataContainer);
+
+		let rootRenderCount = 0;
+		let dataRenderCount = 0;
+		const useRouterData = adapter.makeTypedUseRouterData();
+		const useLoaderData = adapter.makeTypedUseLoaderData();
+
+		const StableRootComp = () => {
+			rootRenderCount += 1;
+			return h("div", { "data-root-probe": true }, "root");
+		};
+		const DataProbe = () => {
+			dataRenderCount += 1;
+			const nextLoaderData = useLoaderData({ idx: 0 }) as
+				| { value?: string }
+				| undefined;
+			const nextRouterData = useRouterData();
+			return h(
+				"div",
+				{ "data-data-probe": true },
+				`${nextLoaderData?.value ?? ""}|${nextRouterData.matchedPatterns.join(",")}`,
+			);
+		};
+
+		const stableActiveComponents = [StableRootComp];
+		const stableImportURLs = ["/root.js"];
+		const stableExportKeys = ["default"];
+
+		applyRuntimeState(globals, {
+			activeComponents: stableActiveComponents,
+			importURLs: stableImportURLs,
+			exportKeys: stableExportKeys,
+			loadersData: [{ value: "a" }],
+			clientLoadersData: ["ca"],
+			matchedPatterns: ["/"],
+		});
+
+		try {
+			await actPreact(async () => {
+				renderPreact(
+					h(adapter.VormaRootOutlet as any, { idx: 0 }),
+					rootContainer,
+				);
+			});
+			await actPreact(async () => {
+				renderPreact(h(DataProbe, {}), dataContainer);
+			});
+			expect(
+				rootContainer.querySelector("[data-root-probe]")?.textContent,
+			).toBe("root");
+			expect(
+				dataContainer.querySelector("[data-data-probe]")?.textContent,
+			).toBe("a|/");
+			const rootRendersAfterInitial = rootRenderCount;
+			const dataRendersAfterInitial = dataRenderCount;
+
+			applyRuntimeState(globals, {
+				activeComponents: stableActiveComponents,
+				importURLs: stableImportURLs,
+				exportKeys: stableExportKeys,
+				loadersData: [{ value: "b" }],
+				clientLoadersData: ["cb"],
+				matchedPatterns: ["/next"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			expect(
+				dataContainer.querySelector("[data-data-probe]")?.textContent,
+			).toBe("b|/next");
+			expect(rootRenderCount).toBe(rootRendersAfterInitial);
+			expect(dataRenderCount).toBeGreaterThan(dataRendersAfterInitial);
+		} finally {
+			renderPreact(null, rootContainer);
+			renderPreact(null, dataContainer);
+			rootContainer.remove();
+			dataContainer.remove();
+			restore();
+		}
+	});
+
+	it("solid root outlet stays stable on data-only route updates while data signals stay fresh", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/solid");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		let rootRunCount = 0;
+		let dataRunCount = 0;
+		const useRouterData = adapter.makeTypedUseRouterData();
+		const useLoaderData = adapter.makeTypedUseLoaderData();
+
+		const StableRootComp = () => {
+			rootRunCount += 1;
+			const node = document.createElement("div");
+			node.setAttribute("data-root-probe", "true");
+			node.textContent = "root";
+			return node;
+		};
+		const DataProbe = () => {
+			const loaderData = useLoaderData({ idx: 0 });
+			const routerData = useRouterData();
+			const node = document.createElement("div");
+			node.setAttribute("data-data-probe", "true");
+			createEffect(() => {
+				dataRunCount += 1;
+				const nextLoaderData = loaderData() as
+					| { value?: string }
+					| undefined;
+				const nextRouterData = routerData();
+				node.textContent = `${nextLoaderData?.value ?? ""}|${nextRouterData.matchedPatterns.join(",")}`;
+			});
+			return node;
+		};
+
+		const stableActiveComponents = [StableRootComp];
+		const stableImportURLs = ["/root.js"];
+		const stableExportKeys = ["default"];
+
+		applyRuntimeState(globals, {
+			activeComponents: stableActiveComponents,
+			importURLs: stableImportURLs,
+			exportKeys: stableExportKeys,
+			loadersData: [{ value: "a" }],
+			clientLoadersData: ["ca"],
+			matchedPatterns: ["/"],
+		});
+
+		const dispose = renderSolid(() => {
+			return [
+				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
+				DataProbe(),
+			];
+		}, container);
+
+		try {
+			expect(
+				container.querySelector("[data-root-probe]")?.textContent,
+			).toBe("root");
+			expect(
+				container.querySelector("[data-data-probe]")?.textContent,
+			).toBe("a|/");
+			const rootRunsAfterInitial = rootRunCount;
+			const dataRunsAfterInitial = dataRunCount;
+
+			applyRuntimeState(globals, {
+				activeComponents: stableActiveComponents,
+				importURLs: stableImportURLs,
+				exportKeys: stableExportKeys,
+				loadersData: [{ value: "b" }],
+				clientLoadersData: ["cb"],
+				matchedPatterns: ["/next"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector("[data-data-probe]")?.textContent,
+				).toBe("b|/next");
+			});
+
+			expect(rootRunCount).toBe(rootRunsAfterInitial);
+			expect(dataRunCount).toBeGreaterThan(dataRunsAfterInitial);
+		} finally {
+			dispose();
 			container.remove();
 			restore();
 		}
@@ -948,7 +1259,10 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		});
 
 		const dispose = renderSolid(() => {
-			return [(adapter.VormaRootOutlet as any)({ idx: 0 }), DataProbe()];
+			return [
+				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
+				DataProbe(),
+			];
 		}, container);
 
 		try {
@@ -1222,7 +1536,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 		const dispose = renderSolid(() => {
 			return [
-				(adapter.VormaRootOutlet as any)({ idx: 0 }),
+				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
 				PatternProbe(),
 			];
 		}, container);
@@ -1480,7 +1794,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 		const dispose = renderSolid(() => {
 			return [
-				(adapter.VormaRootOutlet as any)({ idx: 0 }),
+				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
 				PatternLoaderProbe(),
 			];
 		}, container);
@@ -1746,7 +2060,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 		const dispose = renderSolid(() => {
 			return [
-				(adapter.VormaRootOutlet as any)({ idx: 0 }),
+				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
 				PatternClientProbe(),
 			];
 		}, container);
