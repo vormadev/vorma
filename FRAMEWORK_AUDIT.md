@@ -234,6 +234,7 @@ quality.
 | `kit/id`                       | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `kit/ioutil`                   | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `kit/jsonutil`                 | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/k9`                       | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `kit/keyset`                   | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `kit/lazyget`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `kit/lru`                      | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
@@ -351,45 +352,47 @@ Matrix evidence for completed cells:
 68. `internal/scripts/bumper` + Surface/API: `EV-20260215-065`.
 69. `internal/scripts/npm_bumper` + Surface/API: `EV-20260215-066`.
 70. `internal/scripts/sum` + Surface/API: `EV-20260215-067`.
-71. `vorma.go` + Correctness/Fragility: `EV-20260215-068`.
-72. `bootstrap/*` + Correctness/Fragility: `EV-20260215-069`.
-73. `vormabuild/*` + Correctness/Fragility: `EV-20260215-070`.
-74. `internal/vormaruntime/*` + Correctness/Fragility: `EV-20260215-071`.
-75. `wave/*` + Correctness/Fragility: `EV-20260215-072`.
-76. `wave/tooling/*` + Correctness/Fragility: `EV-20260215-074`.
-77. `vormaclient/client/*` + Correctness/Fragility: `EV-20260215-075`.
-78. `vormaclient/react/*` + Correctness/Fragility: `EV-20260215-076`.
-79. `vormaclient/preact/*` + Correctness/Fragility: `EV-20260215-077`.
-80. `vormaclient/solid/*` + Correctness/Fragility: `EV-20260215-078`.
-81. `vormaclient/vite/*` + Correctness/Fragility: `EV-20260215-079`.
-82. `vormaclient/create/*` + Correctness/Fragility: `EV-20260215-080`.
-83. `kit/bytesutil` + Correctness/Fragility: `EV-20260215-081`.
-84. `kit/colorlog` + Correctness/Fragility: `EV-20260215-082`.
-85. `kit/contextutil` + Correctness/Fragility: `EV-20260215-084`.
-86. `kit/cookies` + Correctness/Fragility: `EV-20260215-085`.
-87. `kit/cryptoutil` + Correctness/Fragility: `EV-20260215-086`.
-88. `kit/csrf` + Correctness/Fragility: `EV-20260215-087`.
-89. `kit/envutil` + Correctness/Fragility: `EV-20260215-088`.
-90. `kit/executil` + Correctness/Fragility: `EV-20260215-089`.
-91. `kit/fsutil` + Correctness/Fragility: `EV-20260215-090`.
-92. `kit/genericsutil` + Correctness/Fragility: `EV-20260215-091`.
-93. `kit/grace` + Correctness/Fragility: `EV-20260215-092`.
-94. `kit/headels` + Correctness/Fragility: `EV-20260215-093`.
-95. `kit/htmlutil` + Correctness/Fragility: `EV-20260215-094`.
-96. `kit/id` + Correctness/Fragility: `EV-20260215-095`.
-97. `kit/ioutil` + Correctness/Fragility: `EV-20260215-096`.
-98. `kit/jsonutil` + Correctness/Fragility: `EV-20260215-097`.
-99. `kit/keyset` + Correctness/Fragility: `EV-20260215-098`.
-100. `kit/lazyget` + Correctness/Fragility: `EV-20260215-099`.
-101. `kit/lru` + Correctness/Fragility: `EV-20260215-100`.
-102. `kit/matcher` + Correctness/Fragility: `EV-20260215-101`.
-103. `kit/middleware` + Correctness/Fragility: `EV-20260215-102`.
-104. `kit/middleware/etag` + Correctness/Fragility: `EV-20260215-103`.
-105. `kit/middleware/healthcheck` + Correctness/Fragility: `EV-20260215-104`.
-106. `kit/middleware/robotstxt` + Correctness/Fragility: `EV-20260215-105`.
-107. `kit/middleware/secureheaders` + Correctness/Fragility: `EV-20260215-106`.
-108. `kit/mux` + Correctness/Fragility: `EV-20260215-107`.
-109. `kit/netutil` + Correctness/Fragility: `EV-20260215-108`.
+71. `kit/k9` + Surface/API: `EV-20260215-109`.
+72. `vorma.go` + Correctness/Fragility: `EV-20260215-068`.
+73. `bootstrap/*` + Correctness/Fragility: `EV-20260215-069`.
+74. `vormabuild/*` + Correctness/Fragility: `EV-20260215-070`.
+75. `internal/vormaruntime/*` + Correctness/Fragility: `EV-20260215-071`.
+76. `wave/*` + Correctness/Fragility: `EV-20260215-072`.
+77. `wave/tooling/*` + Correctness/Fragility: `EV-20260215-074`.
+78. `vormaclient/client/*` + Correctness/Fragility: `EV-20260215-075`.
+79. `vormaclient/react/*` + Correctness/Fragility: `EV-20260215-076`.
+80. `vormaclient/preact/*` + Correctness/Fragility: `EV-20260215-077`.
+81. `vormaclient/solid/*` + Correctness/Fragility: `EV-20260215-078`.
+82. `vormaclient/vite/*` + Correctness/Fragility: `EV-20260215-079`.
+83. `vormaclient/create/*` + Correctness/Fragility: `EV-20260215-080`.
+84. `kit/bytesutil` + Correctness/Fragility: `EV-20260215-081`.
+85. `kit/colorlog` + Correctness/Fragility: `EV-20260215-082`.
+86. `kit/contextutil` + Correctness/Fragility: `EV-20260215-084`.
+87. `kit/cookies` + Correctness/Fragility: `EV-20260215-085`.
+88. `kit/cryptoutil` + Correctness/Fragility: `EV-20260215-086`.
+89. `kit/csrf` + Correctness/Fragility: `EV-20260215-087`.
+90. `kit/envutil` + Correctness/Fragility: `EV-20260215-088`.
+91. `kit/executil` + Correctness/Fragility: `EV-20260215-089`.
+92. `kit/fsutil` + Correctness/Fragility: `EV-20260215-090`.
+93. `kit/genericsutil` + Correctness/Fragility: `EV-20260215-091`.
+94. `kit/grace` + Correctness/Fragility: `EV-20260215-092`.
+95. `kit/headels` + Correctness/Fragility: `EV-20260215-093`.
+96. `kit/htmlutil` + Correctness/Fragility: `EV-20260215-094`.
+97. `kit/id` + Correctness/Fragility: `EV-20260215-095`.
+98. `kit/ioutil` + Correctness/Fragility: `EV-20260215-096`.
+99. `kit/jsonutil` + Correctness/Fragility: `EV-20260215-097`.
+100. `kit/k9` + Correctness/Fragility: `EV-20260215-110`.
+101. `kit/keyset` + Correctness/Fragility: `EV-20260215-098`.
+102. `kit/lazyget` + Correctness/Fragility: `EV-20260215-099`.
+103. `kit/lru` + Correctness/Fragility: `EV-20260215-100`.
+104. `kit/matcher` + Correctness/Fragility: `EV-20260215-101`.
+105. `kit/middleware` + Correctness/Fragility: `EV-20260215-102`.
+106. `kit/middleware/etag` + Correctness/Fragility: `EV-20260215-103`.
+107. `kit/middleware/healthcheck` + Correctness/Fragility: `EV-20260215-104`.
+108. `kit/middleware/robotstxt` + Correctness/Fragility: `EV-20260215-105`.
+109. `kit/middleware/secureheaders` + Correctness/Fragility: `EV-20260215-106`.
+110. `kit/mux` + Correctness/Fragility: `EV-20260215-107`.
+111. `kit/netutil` + Correctness/Fragility: `EV-20260215-108`.
 
 ## Current Focus
 

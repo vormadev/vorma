@@ -2751,3 +2751,44 @@
     - Findings/fixes:
         - No additional Correctness/Fragility findings in `kit/netutil` after
           this sweep.
+
+## EV-20260215-109
+
+- Package group: `kit/k9`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/k9/k9.go`
+        - `kit/k9/README.md`
+        - `kit/k9/k9_test.go`
+    - Commands/tests run:
+        - `rg --files kit/k9`
+        - `ls -la kit/k9`
+        - `sed -n '1,340p' kit/k9/k9.go`
+        - `sed -n '1,320p' kit/k9/README.md`
+        - `sed -n '1,320p' kit/k9/k9_test.go`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/k9/*.go`
+        - `go test ./kit/k9 -count=1`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/k9` after this sweep.
+
+## EV-20260215-110
+
+- Package group: `kit/k9`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/k9/k9.go`
+        - `kit/k9/k9_test.go`
+        - `kit/k9/k9_bench_test.go`
+        - `kit/k9/README.md`
+    - Commands/tests run:
+        - `sed -n '1,340p' kit/k9/k9.go`
+        - `sed -n '1,320p' kit/k9/k9_test.go`
+        - `sed -n '320,680p' kit/k9/k9_test.go`
+        - `sed -n '1,260p' kit/k9/k9_bench_test.go`
+        - `sed -n '1,320p' kit/k9/README.md`
+        - `go test ./kit/k9 -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/k9` after this
+          sweep.
