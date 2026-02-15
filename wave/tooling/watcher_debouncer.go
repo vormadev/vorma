@@ -8,8 +8,8 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Debouncer batches rapid file events and ensures callbacks don't overlap.
-type Debouncer struct {
+// debouncer batches rapid file events and ensures callbacks don't overlap.
+type debouncer struct {
 	duration time.Duration
 	callback func([]fsnotify.Event)
 	mu       sync.Mutex
@@ -20,11 +20,11 @@ type Debouncer struct {
 	pending  []fsnotify.Event
 }
 
-func NewDebouncer(duration time.Duration, callback func([]fsnotify.Event)) *Debouncer {
-	return &Debouncer{duration: duration, callback: callback}
+func newDebouncer(duration time.Duration, callback func([]fsnotify.Event)) *debouncer {
+	return &debouncer{duration: duration, callback: callback}
 }
 
-func (debouncer *Debouncer) Add(event fsnotify.Event) {
+func (debouncer *debouncer) Add(event fsnotify.Event) {
 	debouncer.mu.Lock()
 	defer debouncer.mu.Unlock()
 
@@ -43,7 +43,7 @@ func (debouncer *Debouncer) Add(event fsnotify.Event) {
 
 // flush is called by the timer. It checks if a callback is in-flight and either
 // runs the callback or queues events for later.
-func (debouncer *Debouncer) flush() {
+func (debouncer *debouncer) flush() {
 	debouncer.mu.Lock()
 
 	if debouncer.stopped {
@@ -89,7 +89,7 @@ func (debouncer *Debouncer) flush() {
 // Stop cancels any pending debounced callback and prevents future events.
 // This should be called when the watcher is being closed to prevent
 // callbacks from firing during or after cleanup.
-func (debouncer *Debouncer) Stop() {
+func (debouncer *debouncer) Stop() {
 	debouncer.mu.Lock()
 	defer debouncer.mu.Unlock()
 

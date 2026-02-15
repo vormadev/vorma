@@ -7,7 +7,7 @@ func runEventsWithDerivedExecutionPlan(
 	serverForTest *server,
 	eventsWithHooks []eventWithHooks,
 	work *workSet,
-	watcher *Watcher,
+	watcher *watcher,
 ) {
 	t.Helper()
 

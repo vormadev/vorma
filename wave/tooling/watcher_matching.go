@@ -9,7 +9,7 @@ import (
 
 // MatchPattern checks if a path matches a glob pattern.
 // Both pattern and path should already be normalized (absolute + forward slashes).
-func (w *Watcher) MatchPattern(pattern, path string) bool {
+func (w *watcher) MatchPattern(pattern, path string) bool {
 	key := pattern + "\x00" + path
 
 	if cached, found := w.matchCache.Get(key); found {
@@ -28,7 +28,7 @@ func (w *Watcher) MatchPattern(pattern, path string) bool {
 
 // IsIgnored checks if a path matches any of the ignored patterns.
 // Normalizes the path before matching.
-func (w *Watcher) IsIgnored(path string, patterns []string) bool {
+func (w *watcher) IsIgnored(path string, patterns []string) bool {
 	normalizedPath := w.norm(path)
 	for _, pattern := range patterns {
 		if w.MatchPattern(pattern, normalizedPath) {
@@ -39,12 +39,12 @@ func (w *Watcher) IsIgnored(path string, patterns []string) bool {
 }
 
 // IsIgnoredFile checks if a file path should be ignored
-func (w *Watcher) IsIgnoredFile(path string) bool {
+func (w *watcher) IsIgnoredFile(path string) bool {
 	return w.IsIgnored(path, w.ignoredFiles)
 }
 
 // IsIgnoredDir checks if a directory path should be ignored
-func (w *Watcher) IsIgnoredDir(path string) bool {
+func (w *watcher) IsIgnoredDir(path string) bool {
 	return w.IsIgnored(path, w.ignoredDirs)
 }
 
@@ -52,7 +52,7 @@ func (w *Watcher) IsIgnoredDir(path string) bool {
 // Framework patterns are matched first, then user patterns. Settings are merged
 // with "strongest wins" semantics: destructive flags use OR, suppressive flags use AND,
 // and hooks are concatenated (framework first, then user).
-func (w *Watcher) FindWatchedFile(path string) *wave.WatchedFile {
+func (w *watcher) FindWatchedFile(path string) *wave.WatchedFile {
 	normalizedPath := w.norm(path)
 
 	var matches []*wave.WatchedFile
@@ -160,7 +160,7 @@ func mergeWatchedFiles(matches []*wave.WatchedFile) *wave.WatchedFile {
 }
 
 // IsPublicStaticFile checks if a path is within the public static directory
-func (w *Watcher) IsPublicStaticFile(path string) bool {
+func (w *watcher) IsPublicStaticFile(path string) bool {
 	if w.absPublicStatic == "" {
 		return false
 	}
@@ -169,7 +169,7 @@ func (w *Watcher) IsPublicStaticFile(path string) bool {
 }
 
 // IsPrivateStaticFile checks if a path is within the private static directory
-func (w *Watcher) IsPrivateStaticFile(path string) bool {
+func (w *watcher) IsPrivateStaticFile(path string) bool {
 	if w.absPrivateStatic == "" {
 		return false
 	}

@@ -954,7 +954,7 @@ func TestResolveRouteModulePath(t *testing.T) {
 			},
 			Log: testLogger(),
 		}
-		routeCall := RouteCall{
+		routeCall := routeCall{
 			Pattern: "/users",
 			Module:  "./routes/users.tsx",
 		}

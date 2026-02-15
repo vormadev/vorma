@@ -15,7 +15,7 @@ func (s *server) runWatcher() {
 		return
 	}
 
-	debouncer := NewDebouncer(30*time.Millisecond, func(events []fsnotify.Event) {
+	debouncer := newDebouncer(30*time.Millisecond, func(events []fsnotify.Event) {
 		s.processEvents(events)
 	})
 	defer debouncer.Stop()
@@ -32,7 +32,7 @@ func (s *server) runWatcher() {
 				return
 			}
 			if watcherError != nil {
-				s.log.Error("Watcher error", "error", watcherError)
+				s.log.Error("watcher error", "error", watcherError)
 			}
 		}
 	}

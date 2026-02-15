@@ -205,9 +205,9 @@ func TestProcessEvents_DeduplicatesEventsByMatchedPattern(t *testing.T) {
 		t.Fatalf("failed writing %s: %v", fileB, err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -277,9 +277,9 @@ func TestProcessEvents_BatchHardReloadSetsAppStoppedForBatchOnHookContext(t *tes
 		t.Fatalf("failed writing %s: %v", txtFile, err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -334,9 +334,9 @@ func TestProcessEvents_IgnoresChmodOnNonEmptyFile(t *testing.T) {
 		t.Fatalf("failed writing %s: %v", filePath, err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -364,9 +364,9 @@ func TestProcessEvents_NewDirectoryCreateEventAddsWatchDir(t *testing.T) {
 	cfg.Core.ServerOnlyMode = true
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -405,9 +405,9 @@ func TestProcessEvents_PublicStaticMixedOpsBatchAppliesCreateDeleteAndRenameChan
 	cfg.Core.ServerOnlyMode = false
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -513,9 +513,9 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 		t.Fatalf("failed writing initial critical css file: %v", err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 

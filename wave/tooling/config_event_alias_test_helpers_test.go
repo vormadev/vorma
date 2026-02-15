@@ -144,12 +144,12 @@ func setupConfigEventTestConfig(t *testing.T) (*wave.ParsedConfig, string, strin
 func setupWatcherAndBuilderForToolingTests(
 	t *testing.T,
 	cfg *wave.ParsedConfig,
-) (*Watcher, *Builder) {
+) (*watcher, *Builder) {
 	t.Helper()
 
-	watcher, watcherError := NewWatcher(cfg, newDiscardLogger())
+	watcher, watcherError := newWatcher(cfg, newDiscardLogger())
 	if watcherError != nil {
-		t.Fatalf("NewWatcher returned error: %v", watcherError)
+		t.Fatalf("newWatcher returned error: %v", watcherError)
 	}
 	t.Cleanup(func() {
 		_ = watcher.Close()

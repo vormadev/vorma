@@ -18,7 +18,7 @@ import (
 )
 
 type generatedTSAssemblyDependencies struct {
-	generateTypeScript  func(TSGenInput) (string, error)
+	generateTypeScript  func(tsGenInput) (string, error)
 	generateRollupInput func(*vormaruntime.LockedVorma, []string) (string, error)
 	getEntrypoints      func(*vormaruntime.LockedVorma) []string
 }
@@ -130,11 +130,11 @@ func buildVitePluginTemplateData(v *vormaruntime.Vorma, entrypoints []string) vi
 
 func dedupeListForUIVariant(uiVariant string) []string {
 	switch vormaruntime.UIVariant(uiVariant) {
-	case vormaruntime.UIVariants.React:
+	case vormaruntime.UIVariantReact:
 		return reactDedupeList
-	case vormaruntime.UIVariants.Preact:
+	case vormaruntime.UIVariantPreact:
 		return preactDedupeList
-	case vormaruntime.UIVariants.Solid:
+	case vormaruntime.UIVariantSolid:
 		return solidDedupeList
 	default:
 		return nil
@@ -203,8 +203,8 @@ func getEntrypoints(l *vormaruntime.LockedVorma) []string {
 	return keys
 }
 
-// WriteGeneratedTS generates and writes the complete TypeScript output file.
-func WriteGeneratedTS(l *vormaruntime.LockedVorma) error {
+// writeGeneratedTS generates and writes the complete TypeScript output file.
+func writeGeneratedTS(l *vormaruntime.LockedVorma) error {
 	v := l.Vorma()
 
 	contentBytes, err := generatedTSWriteDeps.generateAndAssembleTSContent(v, l)
@@ -265,8 +265,8 @@ func writeGeneratedTSContentIfChanged(
 	return nil
 }
 
-func tsGenInputForLockedVorma(v *vormaruntime.Vorma, l *vormaruntime.LockedVorma) TSGenInput {
-	return TSGenInput{
+func tsGenInputForLockedVorma(v *vormaruntime.Vorma, l *vormaruntime.LockedVorma) tsGenInput {
+	return tsGenInput{
 		LoadersRouter: v.LoadersRouter().NestedRouter,
 		ActionsRouter: v.ActionsRouter().Router,
 		Paths:         l.GetPaths(),

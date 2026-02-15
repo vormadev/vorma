@@ -15,9 +15,9 @@ func TestNewWatcher_FrameworkIgnoredPatternsAreRelativeToWatchRoot(t *testing.T)
 		"generated_file.txt",
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -54,9 +54,9 @@ func TestFindWatchedFile_MergesFrameworkAndUserMatches(t *testing.T) {
 		},
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -87,9 +87,9 @@ func TestWatcherStaticClassificationUsesDirectoryBoundaries(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 

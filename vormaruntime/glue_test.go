@@ -40,7 +40,7 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 		},
 		Vorma: VormaConfig{
 			MainBuildEntry:       "backend/cmd/build",
-			UIVariant:            string(UIVariants.React),
+			UIVariant:            string(UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
 			ClientEntry:          "frontend/src/vorma.entry.tsx",
 			ClientRouteDefinitionPatterns: []string{
@@ -207,7 +207,7 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 		},
 		Vorma: VormaConfig{
 			MainBuildEntry:       "backend/cmd/build",
-			UIVariant:            string(UIVariants.React),
+			UIVariant:            string(UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
 			ClientEntry:          "frontend/src/vorma.entry.tsx",
 			ClientRouteDefinitionPatterns: []string{

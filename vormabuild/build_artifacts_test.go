@@ -313,7 +313,7 @@ func TestInjectDefaultWatchPatterns_SkipsWhenIncludeDefaultsDisabled(t *testing.
 	cfg := vormaruntime.VormaConfig{
 		IncludeDefaults:      &includeDefaults,
 		MainBuildEntry:       "backend/cmd/build",
-		UIVariant:            string(vormaruntime.UIVariants.React),
+		UIVariant:            string(vormaruntime.UIVariantReact),
 		HTMLTemplateLocation: "entry.go.html",
 		ClientEntry:          "frontend/src/vorma.entry.tsx",
 		ClientRouteDefinitionPatterns: []string{

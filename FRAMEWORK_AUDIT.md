@@ -117,11 +117,11 @@ and test quality.
 | Package Group                  | Surface/API | Correctness | Fragility | DRY      | Performance | Test Quality | Failure Modes |
 | ------------------------------ | ----------- | ----------- | --------- | -------- | ----------- | ------------ | ------------- |
 | `vorma.go`                     | done        | not done    | not done  | not done | not done    | not done     | not done      |
-| `bootstrap/*`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormabuild/*`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaruntime/*`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `wave/*`                       | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `wave/tooling/*`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `bootstrap/*`                  | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormabuild/*`                 | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaruntime/*`               | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `wave/*`                       | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `wave/tooling/*`               | done        | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaclient/client/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaclient/react/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaclient/preact/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
@@ -190,6 +190,11 @@ and test quality.
 Matrix evidence for completed cells:
 
 1. `vorma.go` + Surface/API: `EV-20260214-001`, `EV-20260214-002`.
+2. `bootstrap/*` + Surface/API: `EV-20260214-003`.
+3. `vormabuild/*` + Surface/API: `EV-20260214-004`.
+4. `vormaruntime/*` + Surface/API: `EV-20260214-005`.
+5. `wave/*` + Surface/API: `EV-20260214-006`.
+6. `wave/tooling/*` + Surface/API: `EV-20260214-007`.
 
 ## Current Focus
 
@@ -206,7 +211,7 @@ Matrix evidence for completed cells:
 
 ## Next Queue
 
-1. `bootstrap/*` + Surface/API.
+1. `vormaclient/client/*` + Surface/API.
 
 ## Process Notes
 

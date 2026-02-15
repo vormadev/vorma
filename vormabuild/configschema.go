@@ -2,7 +2,7 @@ package vormabuild
 
 import "github.com/vormadev/vorma/lab/jsonschema"
 
-var VormaSchema = jsonschema.OptionalObject(jsonschema.Def{
+var vormaSchema = jsonschema.OptionalObject(jsonschema.Def{
 	Description: "Vorma framework configuration.",
 	RequiredChildren: []string{
 		"MainBuildEntry",

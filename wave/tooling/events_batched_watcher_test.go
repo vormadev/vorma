@@ -161,9 +161,9 @@ func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 	}
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 
 	if err := watcher.AddDir(root); err != nil {
@@ -215,9 +215,9 @@ func TestWaitForBuildRetry_ConsumesRestartAndCleansUp(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	builder := NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()

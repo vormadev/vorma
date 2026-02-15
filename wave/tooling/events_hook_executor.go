@@ -164,8 +164,8 @@ func (s *server) ensureConcurrentNoWaitHookExecutionLimiter() chan struct{} {
 
 func (s *server) runSequentialHookStageForEligibleEvents(
 	eventsWithHooks []eventWithHooks,
-	watcher *Watcher,
-	runHooksForEvent func(eventWithHooks, *Watcher) ([]wave.RefreshAction, error),
+	watcher *watcher,
+	runHooksForEvent func(eventWithHooks, *watcher) ([]wave.RefreshAction, error),
 	hookExecutionFailureLogMessage string,
 ) []wave.RefreshAction {
 	if runHooksForEvent == nil {
@@ -186,7 +186,7 @@ func (s *server) runSequentialHookStageForEligibleEvents(
 
 func (s *server) fireNoWaitHooksForEvents(
 	eventsWithHooks []eventWithHooks,
-	watcher *Watcher,
+	watcher *watcher,
 ) {
 	descriptors := deriveHookStageExecutionDescriptors(eventsWithHooks)
 	for _, descriptor := range descriptors {
@@ -197,7 +197,7 @@ func (s *server) fireNoWaitHooksForEvents(
 func (s *server) runPreHooksForEvents(
 	eventsWithHooks []eventWithHooks,
 	work *workSet,
-	watcher *Watcher,
+	watcher *watcher,
 ) []wave.RefreshAction {
 	for _, eventWithHooksForPre := range eventsWithHooks {
 		work.addImplicitWork(eventWithHooksForPre.classified)
@@ -212,7 +212,7 @@ func (s *server) runPreHooksForEvents(
 
 func (s *server) runConcurrentHooksForEvents(
 	eventsWithHooks []eventWithHooks,
-	watcher *Watcher,
+	watcher *watcher,
 ) []wave.RefreshAction {
 	return s.runConcurrentHooksForEventsWithContext(
 		context.Background(),
@@ -239,7 +239,7 @@ func shouldContinueConcurrentHookExecution(
 func (s *server) runConcurrentHooksForEventsWithContext(
 	concurrentHookExecutionContext context.Context,
 	eventsWithHooks []eventWithHooks,
-	watcher *Watcher,
+	watcher *watcher,
 ) []wave.RefreshAction {
 	descriptors := deriveHookStageExecutionDescriptors(eventsWithHooks)
 	actionsByDescriptorIndex := make([][]wave.RefreshAction, len(descriptors))
@@ -290,7 +290,7 @@ func (s *server) runConcurrentHooksForEventsWithContext(
 
 func (s *server) runPostHooksForEvents(
 	eventsWithHooks []eventWithHooks,
-	watcher *Watcher,
+	watcher *watcher,
 ) []wave.RefreshAction {
 	return s.runSequentialHookStageForEligibleEvents(
 		eventsWithHooks,
@@ -300,7 +300,7 @@ func (s *server) runPostHooksForEvents(
 	)
 }
 
-func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
+func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *watcher) {
 	plans := deriveHookExecutionPlansForEventStage(
 		watcher,
 		ewh,
@@ -382,7 +382,7 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *Watcher) {
 	}
 }
 
-func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
+func (s *server) runPreHooks(ewh eventWithHooks, watcher *watcher) ([]wave.RefreshAction, error) {
 	var actions []wave.RefreshAction
 
 	plans := deriveHookExecutionPlansForEventStage(
@@ -413,14 +413,14 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.Refre
 	return actions, nil
 }
 
-func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
+func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *watcher) ([]wave.RefreshAction, error) {
 	return s.runConcurrentHooksWithContext(context.Background(), ewh, watcher)
 }
 
 func (s *server) runConcurrentHooksWithContext(
 	concurrentHookExecutionContext context.Context,
 	ewh eventWithHooks,
-	watcher *Watcher,
+	watcher *watcher,
 ) ([]wave.RefreshAction, error) {
 	plans := deriveHookExecutionPlansForEventStage(
 		watcher,
@@ -481,7 +481,7 @@ func (s *server) runConcurrentHooksWithContext(
 	return actions, joinHookExecutionErrorsInOrder(hookExecutionErrorsByHookIndex)
 }
 
-func (s *server) runPostHooks(ewh eventWithHooks, watcher *Watcher) ([]wave.RefreshAction, error) {
+func (s *server) runPostHooks(ewh eventWithHooks, watcher *watcher) ([]wave.RefreshAction, error) {
 	var actions []wave.RefreshAction
 
 	plans := deriveHookExecutionPlansForEventStage(

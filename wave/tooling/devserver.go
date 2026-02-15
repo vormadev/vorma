@@ -29,7 +29,7 @@ type server struct {
 	portResolver *wave.PortResolver
 
 	// File watching
-	watcher *Watcher
+	watcher *watcher
 
 	// Running processes
 	mu      sync.Mutex
@@ -51,7 +51,7 @@ type server struct {
 	concurrentNoWaitHookExecutionLimiter         chan struct{}
 	concurrentNoWaitHookExecutionLimiterInitOnce sync.Once
 
-	// Watcher control - used to delay watcher start until after config restart reload
+	// watcher control - used to delay watcher start until after config restart reload
 	watcherStartCh chan struct{}
 }
 

@@ -63,7 +63,7 @@ func sortedActionKeys(allActions []mux.AnyRoute) []actionKey {
 }
 
 func buildGeneratedTypeScriptBlock(
-	input TSGenInput,
+	input tsGenInput,
 	foundRootData bool,
 	metadataConfig routePatternMetadataConfig,
 ) string {

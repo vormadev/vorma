@@ -292,7 +292,7 @@ func TestInit_PanicsWhenPrivateFSUnavailable(t *testing.T) {
 		},
 		Vorma: VormaConfig{
 			MainBuildEntry:       "backend/cmd/build",
-			UIVariant:            string(UIVariants.React),
+			UIVariant:            string(UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
 			ClientEntry:          "frontend/src/vorma.entry.tsx",
 			ClientRouteDefinitionPatterns: []string{

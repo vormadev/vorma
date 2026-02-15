@@ -19,9 +19,9 @@ func TestClassifyEventWithWatcherAndBuilder_GoFileCanBeTreatedAsNonGo(t *testing
 		},
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -50,9 +50,9 @@ func TestClassifyEventWithWatcherAndBuilder_UnmatchedOtherFilesAreIgnored(t *tes
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -116,9 +116,9 @@ func TestNeedsHardReload(t *testing.T) {
 func TestClassifyEventWithWatcherAndBuilder_EmptyPathIsIgnored(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -137,9 +137,9 @@ func TestClassifyEventWithWatcherAndBuilder_PublicAndPrivateStaticFiles(t *testi
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -174,9 +174,9 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(t *testing
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -245,9 +245,9 @@ func TestClassifyEventWithWatcherAndBuilder_RespectsIgnoredFiles(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Watch.Exclude.Files = []string{"ignored.tmp"}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 

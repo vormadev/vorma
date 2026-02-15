@@ -368,9 +368,9 @@ func TestWriteToolingConfigForWatchRoot_UpdatesConfigFileOnly(t *testing.T) {
 
 func waitForWatcherPointer(
 	s *server,
-	previousWatcher *Watcher,
+	previousWatcher *watcher,
 	timeout time.Duration,
-) *Watcher {
+) *watcher {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		s.mu.Lock()

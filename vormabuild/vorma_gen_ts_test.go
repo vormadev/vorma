@@ -175,7 +175,7 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T
 		}),
 	)
 
-	content, err := generateTypeScript(TSGenInput{
+	content, err := generateTypeScript(tsGenInput{
 		LoadersRouter: loadersRouter,
 		ActionsRouter: actionsRouter,
 		Paths: map[string]*vormaruntime.Path{
@@ -186,7 +186,7 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T
 			},
 		},
 		Config: &vormaruntime.VormaConfig{
-			UIVariant: string(vormaruntime.UIVariants.React),
+			UIVariant: string(vormaruntime.UIVariantReact),
 		},
 	})
 	if err != nil {
@@ -236,7 +236,7 @@ func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(t *testing.T
 		SplatSegmentRune:       '*',
 	})
 
-	content, err := generateTypeScript(TSGenInput{
+	content, err := generateTypeScript(tsGenInput{
 		LoadersRouter: loadersRouter,
 		ActionsRouter: actionsRouter,
 		Paths: map[string]*vormaruntime.Path{
@@ -252,7 +252,7 @@ func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(t *testing.T
 			},
 		},
 		Config: &vormaruntime.VormaConfig{
-			UIVariant: string(vormaruntime.UIVariants.React),
+			UIVariant: string(vormaruntime.UIVariantReact),
 		},
 	})
 	if err != nil {
@@ -274,13 +274,13 @@ func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(t *testing.T
 }
 
 func TestDedupeListForUIVariant(t *testing.T) {
-	if got := dedupeListForUIVariant(string(vormaruntime.UIVariants.React)); !slices.Equal(got, reactDedupeList) {
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantReact)); !slices.Equal(got, reactDedupeList) {
 		t.Fatalf("react dedupe list = %#v, want %#v", got, reactDedupeList)
 	}
-	if got := dedupeListForUIVariant(string(vormaruntime.UIVariants.Preact)); !slices.Equal(got, preactDedupeList) {
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantPreact)); !slices.Equal(got, preactDedupeList) {
 		t.Fatalf("preact dedupe list = %#v, want %#v", got, preactDedupeList)
 	}
-	if got := dedupeListForUIVariant(string(vormaruntime.UIVariants.Solid)); !slices.Equal(got, solidDedupeList) {
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantSolid)); !slices.Equal(got, solidDedupeList) {
 		t.Fatalf("solid dedupe list = %#v, want %#v", got, solidDedupeList)
 	}
 	if got := dedupeListForUIVariant("unknown"); got != nil {

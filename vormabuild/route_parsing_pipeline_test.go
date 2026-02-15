@@ -288,14 +288,14 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 
 	t.Run("runs resolve-parse-warn-merge flow", func(t *testing.T) {
 		observedSteps := make([]string, 0, 4)
-		routeCalls := []RouteCall{
+		routeCalls := []routeCall{
 			{
 				Pattern: "/home",
 				Module:  "./routes/home.tsx",
 				Key:     "default",
 			},
 		}
-		unresolvedRoutes := []UnresolvedRouteCall{
+		unresolvedRoutes := []unresolvedRouteCall{
 			{
 				Pattern:       "/dynamic",
 				RawModuleExpr: "getPath(...)",
@@ -330,7 +330,7 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 		routeParsingPipelineDeps.warnUnresolvedRouteCalls = func(
 			_ *vormaruntime.Vorma,
 			routeDefinitionFile string,
-			unresolved []UnresolvedRouteCall,
+			unresolved []unresolvedRouteCall,
 		) {
 			observedSteps = append(observedSteps, "warn")
 			if routeDefinitionFile != "frontend/src/vorma.routes.ts" {
@@ -344,7 +344,7 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 			_ *vormaruntime.Vorma,
 			paths map[string]*vormaruntime.Path,
 			routeDefinitionFile string,
-			calls []RouteCall,
+			calls []routeCall,
 		) error {
 			observedSteps = append(observedSteps, "merge")
 			if routeDefinitionFile != "frontend/src/vorma.routes.ts" {
@@ -379,10 +379,10 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 			t.Fatal("did not expect parse step after resolver error")
 			return parsedRouteDefinitionsCode{}, nil
 		}
-		routeParsingPipelineDeps.warnUnresolvedRouteCalls = func(*vormaruntime.Vorma, string, []UnresolvedRouteCall) {
+		routeParsingPipelineDeps.warnUnresolvedRouteCalls = func(*vormaruntime.Vorma, string, []unresolvedRouteCall) {
 			t.Fatal("did not expect warning step after resolver error")
 		}
-		routeParsingPipelineDeps.mergeRouteCallsIntoPaths = func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []RouteCall) error {
+		routeParsingPipelineDeps.mergeRouteCallsIntoPaths = func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []routeCall) error {
 			t.Fatal("did not expect merge step after resolver error")
 			return nil
 		}
@@ -404,10 +404,10 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 		routeParsingPipelineDeps.parseRouteDefinitionFileIntoCalls = func(*vormaruntime.Vorma, string) (parsedRouteDefinitionsCode, error) {
 			return parsedRouteDefinitionsCode{}, expectedErr
 		}
-		routeParsingPipelineDeps.warnUnresolvedRouteCalls = func(*vormaruntime.Vorma, string, []UnresolvedRouteCall) {
+		routeParsingPipelineDeps.warnUnresolvedRouteCalls = func(*vormaruntime.Vorma, string, []unresolvedRouteCall) {
 			t.Fatal("did not expect warning step after parse error")
 		}
-		routeParsingPipelineDeps.mergeRouteCallsIntoPaths = func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []RouteCall) error {
+		routeParsingPipelineDeps.mergeRouteCallsIntoPaths = func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []routeCall) error {
 			t.Fatal("did not expect merge step after parse error")
 			return nil
 		}
@@ -429,14 +429,14 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 		}
 		routeParsingPipelineDeps.parseRouteDefinitionFileIntoCalls = func(*vormaruntime.Vorma, string) (parsedRouteDefinitionsCode, error) {
 			return parsedRouteDefinitionsCode{
-				routeCalls: []RouteCall{
+				routeCalls: []routeCall{
 					{
 						Pattern: "/home",
 						Module:  "./routes/home.tsx",
 						Key:     "default",
 					},
 				},
-				unresolvedRoutes: []UnresolvedRouteCall{
+				unresolvedRoutes: []unresolvedRouteCall{
 					{
 						Pattern:       "/dynamic",
 						RawModuleExpr: "getPath(...)",
@@ -445,10 +445,10 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 				},
 			}, nil
 		}
-		routeParsingPipelineDeps.warnUnresolvedRouteCalls = func(*vormaruntime.Vorma, string, []UnresolvedRouteCall) {
+		routeParsingPipelineDeps.warnUnresolvedRouteCalls = func(*vormaruntime.Vorma, string, []unresolvedRouteCall) {
 			warnCalled = true
 		}
-		routeParsingPipelineDeps.mergeRouteCallsIntoPaths = func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []RouteCall) error {
+		routeParsingPipelineDeps.mergeRouteCallsIntoPaths = func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []routeCall) error {
 			return expectedErr
 		}
 
@@ -480,17 +480,17 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 			}
 			return "transformed route defs", nil
 		}
-		routeDefinitionsCodeParsingDeps.extractRouteCallsFromTransformedCode = func(code string) ([]RouteCall, []UnresolvedRouteCall, error) {
+		routeDefinitionsCodeParsingDeps.extractRouteCallsFromTransformedCode = func(code string) ([]routeCall, []unresolvedRouteCall, error) {
 			if code != "transformed route defs" {
 				t.Fatalf("extract code = %q, want %q", code, "transformed route defs")
 			}
-			return []RouteCall{
+			return []routeCall{
 					{
 						Pattern: "/home",
 						Module:  "./routes/home.tsx",
 						Key:     "default",
 					},
-				}, []UnresolvedRouteCall{
+				}, []unresolvedRouteCall{
 					{
 						Pattern:       "/dynamic",
 						RawModuleExpr: "getPath(...)",
@@ -516,7 +516,7 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 		routeDefinitionsCodeParsingDeps.transformRouteDefinitionsCode = func(*vormaruntime.Vorma, []byte) (string, error) {
 			return "", expectedErr
 		}
-		routeDefinitionsCodeParsingDeps.extractRouteCallsFromTransformedCode = func(string) ([]RouteCall, []UnresolvedRouteCall, error) {
+		routeDefinitionsCodeParsingDeps.extractRouteCallsFromTransformedCode = func(string) ([]routeCall, []unresolvedRouteCall, error) {
 			t.Fatal("did not expect extract step after transform error")
 			return nil, nil, nil
 		}
@@ -535,7 +535,7 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 		routeDefinitionsCodeParsingDeps.transformRouteDefinitionsCode = func(*vormaruntime.Vorma, []byte) (string, error) {
 			return "transformed route defs", nil
 		}
-		routeDefinitionsCodeParsingDeps.extractRouteCallsFromTransformedCode = func(string) ([]RouteCall, []UnresolvedRouteCall, error) {
+		routeDefinitionsCodeParsingDeps.extractRouteCallsFromTransformedCode = func(string) ([]routeCall, []unresolvedRouteCall, error) {
 			return nil, nil, expectedErr
 		}
 
@@ -576,7 +576,7 @@ func TestMergeRouteCallsIntoPaths(t *testing.T) {
 		}
 
 		paths := map[string]*vormaruntime.Path{}
-		err := mergeRouteCallsIntoPaths(v, paths, "frontend/src/vorma.routes.ts", []RouteCall{{
+		err := mergeRouteCallsIntoPaths(v, paths, "frontend/src/vorma.routes.ts", []routeCall{{
 			Pattern: "/missing-module",
 			Module:  "",
 			Key:     "default",
@@ -610,7 +610,7 @@ func TestMergeRouteCallsIntoPaths(t *testing.T) {
 		}
 
 		paths := map[string]*vormaruntime.Path{}
-		err := mergeRouteCallsIntoPaths(v, paths, "frontend/src/vorma.routes.ts", []RouteCall{
+		err := mergeRouteCallsIntoPaths(v, paths, "frontend/src/vorma.routes.ts", []routeCall{
 			{
 				Pattern: "/dup",
 				Module:  "./routes/first.tsx",

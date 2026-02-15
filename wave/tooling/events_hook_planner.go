@@ -93,7 +93,7 @@ func deriveHookExecutionPlanFromHook(
 }
 
 func deriveHookExecutionPlansForEventStage(
-	watcher *Watcher,
+	watcher *watcher,
 	eventWithHooksForStage eventWithHooks,
 	stageType hookStageType,
 	resolveHookExecutionPlan hookExecutionPlanResolver,
@@ -132,7 +132,7 @@ func deriveHookExecutionPlansForEventStage(
 }
 
 func deriveExecutableHooksForStage(
-	watcher *Watcher,
+	watcher *watcher,
 	eventPath string,
 	isRunOnChangeOnly bool,
 	shouldApplyRunOnChangeOnlyRules bool,
@@ -161,7 +161,7 @@ func deriveExecutableHooksForStage(
 }
 
 func resolveHookForStageExecution(
-	watcher *Watcher,
+	watcher *watcher,
 	eventPath string,
 	isRunOnChangeOnly bool,
 	shouldApplyRunOnChangeOnlyRules bool,

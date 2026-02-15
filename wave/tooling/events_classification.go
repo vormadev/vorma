@@ -7,7 +7,7 @@ import (
 
 func (s *server) classifyWatcherEventsForProcessing(
 	events []fsnotify.Event,
-	watcher *Watcher,
+	watcher *watcher,
 	builder *Builder,
 ) ([]classifiedEvent, bool) {
 	if len(events) == 0 {
@@ -36,7 +36,7 @@ func (s *server) classifyWatcherEventsForProcessing(
 }
 
 func (s *server) applyWatcherEventPreClassificationSideEffects(
-	watcher *Watcher,
+	watcher *watcher,
 	preClassificationPlan watcherEventPreClassificationPlan,
 ) {
 	for _, directoryPathToWatch := range preClassificationPlan.addDirectoryWatchPaths {
@@ -55,7 +55,7 @@ func (s *server) applyWatcherEventPreClassificationSideEffects(
 
 func (s *server) classifyWatcherEventsFromPreClassificationPlan(
 	preClassificationPlan watcherEventPreClassificationPlan,
-	watcher *Watcher,
+	watcher *watcher,
 	builder *Builder,
 ) []classifiedEvent {
 	if len(preClassificationPlan.eventsToClassify) == 0 {

@@ -622,9 +622,9 @@ func TestClassifyWatcherEventsForProcessingDoesNotCollapseImplicitFileTypes(
 		t.Fatalf("failed writing go file: %v", err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -696,9 +696,9 @@ func TestClassifyWatcherEventsForProcessingPreservesSharedPatternEvents(
 		t.Fatalf("failed writing text file: %v", err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -1000,9 +1000,9 @@ func TestProcessEvents_DeduplicatesHooksByPatternForMixedFileTypes(
 		t.Fatalf("failed writing text file: %v", err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -1093,9 +1093,9 @@ func TestProcessEvents_DeduplicatesHooksByPatternAcrossAllHookStages(
 		t.Fatalf("failed writing second text file: %v", err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 

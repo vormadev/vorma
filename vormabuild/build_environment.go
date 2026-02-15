@@ -40,7 +40,7 @@ func registerVormaSchema(v *vormaruntime.Vorma) {
 	if cfg.FrameworkSchemaExtensions == nil {
 		cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
 	}
-	cfg.FrameworkSchemaExtensions["Vorma"] = VormaSchema
+	cfg.FrameworkSchemaExtensions["Vorma"] = vormaSchema
 }
 
 func injectFrameworkBuildHooks(v *vormaruntime.Vorma) {

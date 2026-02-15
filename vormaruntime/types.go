@@ -20,15 +20,11 @@ type Path struct {
 // UIVariant represents the UI framework variant.
 type UIVariant string
 
-var UIVariants = struct {
-	React  UIVariant
-	Preact UIVariant
-	Solid  UIVariant
-}{
-	React:  "react",
-	Preact: "preact",
-	Solid:  "solid",
-}
+const (
+	UIVariantReact  UIVariant = "react"
+	UIVariantPreact UIVariant = "preact"
+	UIVariantSolid  UIVariant = "solid"
+)
 
 // VormaConfig holds Vorma-specific configuration.
 type VormaConfig struct {

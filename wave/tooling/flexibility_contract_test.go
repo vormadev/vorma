@@ -47,9 +47,9 @@ func TestFlexibilityContract_WatchExcludeDirsExcludesDirectoryTree(t *testing.T)
 		t.Fatalf("failed creating allowed test directory: %v", err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -91,9 +91,9 @@ func TestFlexibilityContract_AbsoluteWatchIncludePatternMatches(t *testing.T) {
 		},
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 

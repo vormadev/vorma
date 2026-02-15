@@ -24,9 +24,9 @@ var mutationMethods = map[string]struct{}{
 	http.MethodPost: {}, http.MethodPut: {}, http.MethodPatch: {}, http.MethodDelete: {},
 }
 
-// TSGenInput contains all data needed for TypeScript generation.
+// tsGenInput contains all data needed for TypeScript generation.
 // This makes the function pure - it takes inputs and returns output.
-type TSGenInput struct {
+type tsGenInput struct {
 	LoadersRouter *mux.NestedRouter
 	ActionsRouter *mux.Router
 	Paths         map[string]*vormaruntime.Path
@@ -49,7 +49,7 @@ type routePatternMetadataConfig struct {
 	actionsSplatRune        rune
 }
 
-func deriveRoutePatternMetadataConfig(input TSGenInput) routePatternMetadataConfig {
+func deriveRoutePatternMetadataConfig(input tsGenInput) routePatternMetadataConfig {
 	config := routePatternMetadataConfig{
 		loadersDynamicRune: input.LoadersRouter.GetDynamicParamPrefixRune(),
 		loadersSplatRune:   input.LoadersRouter.GetSplatSegmentRune(),
@@ -65,7 +65,7 @@ func deriveRoutePatternMetadataConfig(input TSGenInput) routePatternMetadataConf
 }
 
 // generateTypeScript generates the route type definitions using live reflection.
-func generateTypeScript(input TSGenInput) (string, error) {
+func generateTypeScript(input tsGenInput) (string, error) {
 	collection := make([]tsgen.CollectionItem, 0)
 	allLoaders := input.LoadersRouter.AllRoutes()
 	metadataConfig := deriveRoutePatternMetadataConfig(input)
@@ -105,7 +105,7 @@ func generateTypeScript(input TSGenInput) (string, error) {
 }
 
 func appendLoaderCollectionItems(
-	input TSGenInput,
+	input tsGenInput,
 	allLoaders map[string]mux.AnyNestedRoute,
 	collection *[]tsgen.CollectionItem,
 	seen map[string]struct{},
@@ -142,7 +142,7 @@ func appendLoaderCollectionItems(
 }
 
 func appendClientOnlyLoaderCollectionItems(
-	input TSGenInput,
+	input tsGenInput,
 	collection *[]tsgen.CollectionItem,
 	seen map[string]struct{},
 	metadataConfig routePatternMetadataConfig,

@@ -21,8 +21,8 @@ const (
 	globNodeModules = "**/node_modules"
 )
 
-// Watcher manages file watching for the dev server
-type Watcher struct {
+// watcher manages file watching for the dev server
+type watcher struct {
 	cfg     *wave.ParsedConfig
 	log     *slog.Logger
 	fsWatch *fsnotify.Watcher
@@ -43,8 +43,8 @@ type Watcher struct {
 	absPrivateStatic string
 }
 
-// NewWatcher creates a new file watcher
-func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
+// newWatcher creates a new file watcher
+func newWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*watcher, error) {
 	if log == nil {
 		log = colorlog.New("wave")
 	}
@@ -63,7 +63,7 @@ func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 		absPrivateStatic = pathnorm.AbsoluteSlash(cfg.Core.StaticAssetDirs.Private)
 	}
 
-	w := &Watcher{
+	w := &watcher{
 		cfg:              cfg,
 		log:              log,
 		fsWatch:          fsWatch,
@@ -78,11 +78,11 @@ func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 }
 
 // norm converts a path to absolute with forward slashes for consistent matching
-func (w *Watcher) norm(p string) string {
+func (w *watcher) norm(p string) string {
 	return pathnorm.AbsoluteSlash(p)
 }
 
-func (w *Watcher) normalizePathOrPatternFromWatchRoot(pathOrPattern string) string {
+func (w *watcher) normalizePathOrPatternFromWatchRoot(pathOrPattern string) string {
 	if filepath.IsAbs(pathOrPattern) {
 		return w.norm(pathOrPattern)
 	}
@@ -90,14 +90,14 @@ func (w *Watcher) normalizePathOrPatternFromWatchRoot(pathOrPattern string) stri
 	return w.norm(filepath.Join(w.cfg.WatchRoot(), pathOrPattern))
 }
 
-func (w *Watcher) Events() <-chan fsnotify.Event {
+func (w *watcher) Events() <-chan fsnotify.Event {
 	return w.fsWatch.Events
 }
 
-func (w *Watcher) Errors() <-chan error {
+func (w *watcher) Errors() <-chan error {
 	return w.fsWatch.Errors
 }
 
-func (w *Watcher) Close() error {
+func (w *watcher) Close() error {
 	return w.fsWatch.Close()
 }

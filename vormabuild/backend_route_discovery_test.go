@@ -93,7 +93,7 @@ func notInitReachable() {
 	t.Run("discovers helper call chains defined in compiled same-package files outside matched roots", func(t *testing.T) {
 		cfg := vormaruntime.VormaConfig{
 			MainBuildEntry:       "backend/cmd/build",
-			UIVariant:            string(vormaruntime.UIVariants.React),
+			UIVariant:            string(vormaruntime.UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
 			ClientEntry:          "frontend/src/vorma.entry.tsx",
 			ClientRouteDefinitionPatterns: []string{
@@ -828,7 +828,7 @@ func newBackendRouteDiscoveryFixtureWithServerPatterns(t *testing.T) *buildTestF
 
 	cfg := vormaruntime.VormaConfig{
 		MainBuildEntry:       "backend/cmd/build",
-		UIVariant:            string(vormaruntime.UIVariants.React),
+		UIVariant:            string(vormaruntime.UIVariantReact),
 		HTMLTemplateLocation: "entry.go.html",
 		ClientEntry:          "frontend/src/vorma.entry.tsx",
 		ClientRouteDefinitionPatterns: []string{

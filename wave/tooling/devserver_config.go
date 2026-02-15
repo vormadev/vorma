@@ -9,7 +9,7 @@ import (
 )
 
 func (s *server) initWatcher() error {
-	watcher, err := NewWatcher(s.cfg, s.log)
+	watcher, err := newWatcher(s.cfg, s.log)
 	if err != nil {
 		return fmt.Errorf("create watcher: %w", err)
 	}
@@ -30,7 +30,7 @@ func (s *server) initWatcher() error {
 }
 
 func (s *server) addConfigFileDirectory(
-	watcher *Watcher,
+	watcher *watcher,
 	configFilePath string,
 ) error {
 	normalizedConfigDirectoryPath := pathnorm.AbsoluteDirectory(configFilePath)

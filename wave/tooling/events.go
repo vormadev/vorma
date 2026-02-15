@@ -146,7 +146,7 @@ type implicitWorkDecision struct {
 
 func (s *server) buildEventExecutionPlan(
 	events []fsnotify.Event,
-	watcher *Watcher,
+	watcher *watcher,
 	builder *Builder,
 ) eventExecutionPlanningResult {
 	deduplicatedEvents := deduplicateWatcherEventsByPath(events)

@@ -20,15 +20,10 @@ const (
 	VormaRouteManifestPrefix     = VormaOutPrefix + "vorma_internal_route_manifest_"
 )
 
-// VormaPaths provides path construction helpers for Vorma-specific paths.
-var VormaPaths = vormaPaths{}
-
-type vormaPaths struct{}
-
-func (vormaPaths) StageOneJSON() string {
+func VormaPathsStageOneJSONPath() string {
 	return path.Join(VormaOutDirname, VormaPathsStageOneJSONFileName)
 }
 
-func (vormaPaths) StageTwoJSON() string {
+func VormaPathsStageTwoJSONPath() string {
 	return path.Join(VormaOutDirname, VormaPathsStageTwoJSONFileName)
 }

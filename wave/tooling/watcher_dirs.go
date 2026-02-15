@@ -7,7 +7,7 @@ import (
 )
 
 // AddDir adds a directory and its subdirectories to the watcher
-func (w *Watcher) AddDir(root string) error {
+func (w *watcher) AddDir(root string) error {
 	return filepath.WalkDir(root, func(path string, directoryEntry fs.DirEntry, err error) error {
 		if err != nil || !directoryEntry.IsDir() {
 			return err
@@ -33,7 +33,7 @@ func (w *Watcher) AddDir(root string) error {
 }
 
 // RemoveStale removes watches for directories that no longer exist
-func (w *Watcher) RemoveStale() {
+func (w *watcher) RemoveStale() {
 	w.watchedDirs.Range(func(key, _ any) bool {
 		path := key.(string)
 		if _, err := os.Stat(path); os.IsNotExist(err) {

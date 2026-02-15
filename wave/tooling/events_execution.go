@@ -26,7 +26,7 @@ func (s *server) executeEventExecutionPlan(
 	eventsWithHooks []eventWithHooks,
 	behavioralDecision eventExecutionPlanBehavioralDecision,
 	work *workSet,
-	watcher *Watcher,
+	watcher *watcher,
 ) {
 	if len(eventsWithHooks) == 0 {
 		return
@@ -52,7 +52,7 @@ func (s *server) executeEventExecutionPlan(
 func (s *server) processEventsWithDeterministicPipeline(
 	behavioralDecision eventExecutionPlanBehavioralDecision,
 	work *workSet,
-	watcher *Watcher,
+	watcher *watcher,
 	eventsWithHooks []eventWithHooks,
 ) {
 	if len(eventsWithHooks) == 0 {

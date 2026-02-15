@@ -17,16 +17,16 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-func newServerAndWatcherForHookExecutionTest(t *testing.T) (*server, *Watcher) {
+func newServerAndWatcherForHookExecutionTest(t *testing.T) (*server, *watcher) {
 	t.Helper()
 
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 
 	s := &server{

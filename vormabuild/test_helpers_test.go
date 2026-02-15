@@ -42,7 +42,7 @@ func newBuildTestFixture(t *testing.T, options *buildTestFixtureOptions) *buildT
 
 	cfg := vormaruntime.VormaConfig{
 		MainBuildEntry:       "backend/cmd/build",
-		UIVariant:            string(vormaruntime.UIVariants.React),
+		UIVariant:            string(vormaruntime.UIVariantReact),
 		HTMLTemplateLocation: "entry.go.html",
 		ClientEntry:          "frontend/src/vorma.entry.tsx",
 		ClientRouteDefinitionPatterns: []string{

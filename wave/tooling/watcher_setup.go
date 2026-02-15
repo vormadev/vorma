@@ -7,7 +7,7 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-func (w *Watcher) setupPatterns() {
+func (w *watcher) setupPatterns() {
 	w.ignoredFiles = []string{
 		w.norm(w.cfg.Dist.Binary()),
 	}
@@ -79,7 +79,7 @@ func (w *Watcher) setupPatterns() {
 }
 
 // addFrameworkWatchPatterns adds patterns injected by frameworks (e.g., Vorma)
-func (w *Watcher) addFrameworkWatchPatterns() {
+func (w *watcher) addFrameworkWatchPatterns() {
 	for _, wf := range w.cfg.FrameworkWatchPatterns {
 		// Create a copy with normalized pattern
 		normalizedWatchedFile := wf
@@ -96,7 +96,7 @@ func (w *Watcher) addFrameworkWatchPatterns() {
 	}
 }
 
-func (w *Watcher) joinPatternsWithRoot() {
+func (w *watcher) joinPatternsWithRoot() {
 	if w.cfg.Watch == nil {
 		return
 	}
@@ -113,7 +113,7 @@ func (w *Watcher) joinPatternsWithRoot() {
 }
 
 // preSortHooks pre-sorts hooks for all watched files to avoid repeated sorting during event handling
-func (w *Watcher) preSortHooks() {
+func (w *watcher) preSortHooks() {
 	if w.cfg.Watch != nil {
 		for i := range w.cfg.Watch.Include {
 			w.cfg.Watch.Include[i].Sort()

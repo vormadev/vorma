@@ -118,9 +118,9 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(t *testing.T)
 		t.Fatalf("failed writing %s: %v", fileB, err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
@@ -227,9 +227,9 @@ func TestBuildEventExecutionPlan_MixedFileClassesAndHookShapes(t *testing.T) {
 		t.Fatalf("failed writing public static file: %v", err)
 	}
 
-	watcher, err := NewWatcher(cfg, newDiscardLogger())
+	watcher, err := newWatcher(cfg, newDiscardLogger())
 	if err != nil {
-		t.Fatalf("NewWatcher returned error: %v", err)
+		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 

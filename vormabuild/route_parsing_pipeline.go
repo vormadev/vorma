@@ -20,13 +20,13 @@ var importRegex = regexp.MustCompile(`import\((` + "`" + `[^` + "`" + `]+` + "`"
 type routeParsingPipelineDependencies struct {
 	resolveClientRouteDefinitionFiles func(*vormaruntime.Vorma) ([]string, error)
 	parseRouteDefinitionFileIntoCalls func(*vormaruntime.Vorma, string) (parsedRouteDefinitionsCode, error)
-	warnUnresolvedRouteCalls          func(*vormaruntime.Vorma, string, []UnresolvedRouteCall)
-	mergeRouteCallsIntoPaths          func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []RouteCall) error
+	warnUnresolvedRouteCalls          func(*vormaruntime.Vorma, string, []unresolvedRouteCall)
+	mergeRouteCallsIntoPaths          func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []routeCall) error
 }
 
 type routeDefinitionsCodeParsingDependencies struct {
 	transformRouteDefinitionsCode        func(*vormaruntime.Vorma, []byte) (string, error)
-	extractRouteCallsFromTransformedCode func(string) ([]RouteCall, []UnresolvedRouteCall, error)
+	extractRouteCallsFromTransformedCode func(string) ([]routeCall, []unresolvedRouteCall, error)
 }
 
 type routeModuleResolutionDependencies struct {
@@ -62,8 +62,8 @@ var routeDefinitionsFileResolutionDeps = routeDefinitionsFileResolutionDependenc
 }
 
 type parsedRouteDefinitionsCode struct {
-	routeCalls       []RouteCall
-	unresolvedRoutes []UnresolvedRouteCall
+	routeCalls       []routeCall
+	unresolvedRoutes []unresolvedRouteCall
 }
 
 func parseClientRoutes(v *vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
@@ -234,7 +234,7 @@ func logEsbuildTransformErrors(v *vormaruntime.Vorma, messages []esbuild.Message
 func warnUnresolvedRouteCalls(
 	v *vormaruntime.Vorma,
 	routeDefinitionFile string,
-	unresolvedRoutes []UnresolvedRouteCall,
+	unresolvedRoutes []unresolvedRouteCall,
 ) {
 	for _, unresolved := range unresolvedRoutes {
 		v.Log.Warn(
@@ -253,7 +253,7 @@ func mergeRouteCallsIntoPaths(
 	v *vormaruntime.Vorma,
 	paths map[string]*vormaruntime.Path,
 	routeDefinitionFile string,
-	routeCalls []RouteCall,
+	routeCalls []routeCall,
 ) error {
 	for _, routeCall := range routeCalls {
 		if routeCall.Module == "" {
@@ -282,7 +282,7 @@ func mergeRouteCallsIntoPaths(
 func resolveRouteModulePath(
 	v *vormaruntime.Vorma,
 	routeDefinitionFile string,
-	routeCall RouteCall,
+	routeCall routeCall,
 ) string {
 	routeDefinitionsDirectory := filepath.Dir(routeDefinitionFile)
 	resolvedModulePath, err := routeModuleResolutionDeps.computeRelativeModulePath(

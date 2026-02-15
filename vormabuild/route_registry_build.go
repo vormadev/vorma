@@ -30,7 +30,7 @@ var routeRegistryBuildDeps = routeRegistryBuildDependencies{
 	readStageOnePathsArtifact:   os.ReadFile,
 	writeStageOnePathsArtifact:  writeFileAtomically,
 	removeStageOnePathsArtifact: os.Remove,
-	writeGeneratedTypeScript:    WriteGeneratedTS,
+	writeGeneratedTypeScript:    writeGeneratedTS,
 }
 
 // writeRouteArtifacts writes all route-related artifacts to disk.

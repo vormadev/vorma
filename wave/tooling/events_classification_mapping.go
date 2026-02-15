@@ -9,7 +9,7 @@ import (
 
 func (s *server) classifyEventWithWatcherAndBuilder(
 	watcherEvent fsnotify.Event,
-	watcher *Watcher,
+	watcher *watcher,
 	builder *Builder,
 ) classifiedEvent {
 	classifiedEventForProcessing := classifiedEvent{event: watcherEvent}
@@ -42,7 +42,7 @@ func (s *server) classifyEventWithWatcherAndBuilder(
 
 func deriveInitialFileTypeForWatcherEvent(
 	watcherEventPath string,
-	watcher *Watcher,
+	watcher *watcher,
 	builder *Builder,
 ) fileType {
 	isCriticalCSSFile := builder.IsCriticalCSSFile(watcherEventPath)

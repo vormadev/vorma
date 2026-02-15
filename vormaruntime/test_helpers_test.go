@@ -100,7 +100,7 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		Core: coreCfg,
 		Vorma: VormaConfig{
 			MainBuildEntry:       "backend/cmd/build",
-			UIVariant:            string(UIVariants.React),
+			UIVariant:            string(UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
 			ClientEntry:          "frontend/src/vorma.entry.tsx",
 			ClientRouteDefinitionPatterns: []string{

@@ -8,17 +8,17 @@ import (
 	"github.com/tdewolff/parse/v2/js"
 )
 
-type RouteCall struct {
+type routeCall struct {
 	Pattern  string
 	Module   string
 	Key      string
 	ErrorKey string
 }
 
-// UnresolvedRouteCall represents a route() call where the module path could not
+// unresolvedRouteCall represents a route() call where the module path could not
 // be statically determined. This happens when the module argument is a variable,
 // function call, or other dynamic expression.
-type UnresolvedRouteCall struct {
+type unresolvedRouteCall struct {
 	Pattern       string
 	RawModuleExpr string
 	Reason        string
@@ -27,8 +27,8 @@ type UnresolvedRouteCall struct {
 type routeCallVisitor struct {
 	routeFuncNames    map[string]bool
 	trackedModuleVars map[string]string
-	routes            []RouteCall
-	unresolvedRoutes  []UnresolvedRouteCall
+	routes            []routeCall
+	unresolvedRoutes  []unresolvedRouteCall
 }
 
 func (rv *routeCallVisitor) Enter(n js.INode) js.IVisitor {
@@ -65,8 +65,8 @@ func (rv *routeCallVisitor) Exit(n js.INode) {
 
 func (rv *routeCallVisitor) extractRouteCall(
 	argsList []js.Arg,
-) (*RouteCall, *UnresolvedRouteCall) {
-	route := RouteCall{Key: "default"}
+) (*routeCall, *unresolvedRouteCall) {
+	route := routeCall{Key: "default"}
 
 	pattern, ok := extractStaticStringArg(argsList, 0)
 	if !ok {
@@ -95,7 +95,7 @@ func (rv *routeCallVisitor) extractRouteCall(
 func (rv *routeCallVisitor) resolveModuleArgument(
 	routePattern string,
 	moduleExpr js.IExpr,
-) (string, *UnresolvedRouteCall) {
+) (string, *unresolvedRouteCall) {
 	if varRef, ok := moduleExpr.(*js.Var); ok {
 		varName := string(varRef.Data)
 		if trackedModulePath, exists := rv.trackedModuleVars[varName]; exists {
@@ -126,7 +126,7 @@ func (rv *routeCallVisitor) resolveModuleArgument(
 func resolveModuleArgumentFromFunctionCall(
 	routePattern string,
 	functionCall *js.CallExpr,
-) (string, *UnresolvedRouteCall) {
+) (string, *unresolvedRouteCall) {
 	if functionCallTargetsJSImport(functionCall) {
 		if modulePath, ok := extractStaticStringArg(functionCall.Args.List, 0); ok {
 			return modulePath, nil
@@ -153,8 +153,8 @@ func unresolvedModuleArgument(
 	routePattern string,
 	rawModuleExpr string,
 	reason string,
-) *UnresolvedRouteCall {
-	return &UnresolvedRouteCall{
+) *unresolvedRouteCall {
+	return &unresolvedRouteCall{
 		Pattern:       routePattern,
 		RawModuleExpr: rawModuleExpr,
 		Reason:        reason,
@@ -185,7 +185,7 @@ func extractStaticStringLiteral(expr js.IExpr) (string, bool) {
 	return unquoted, true
 }
 
-func extractRouteCalls(code string) ([]RouteCall, []UnresolvedRouteCall, error) {
+func extractRouteCalls(code string) ([]routeCall, []unresolvedRouteCall, error) {
 	parsedAST, err := js.Parse(parse.NewInputString(code), js.Options{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse JS/TS: %w", err)

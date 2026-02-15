@@ -31,7 +31,7 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 		app := fixture.app
 
 		expectedErr := errors.New("generate TS failed")
-		generatedTSAssemblyDeps.generateTypeScript = func(TSGenInput) (string, error) {
+		generatedTSAssemblyDeps.generateTypeScript = func(tsGenInput) (string, error) {
 			return "", expectedErr
 		}
 		generatedTSAssemblyDeps.generateRollupInput = func(*vormaruntime.LockedVorma, []string) (string, error) {
@@ -58,7 +58,7 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		generatedTSAssemblyDeps.generateTypeScript = func(TSGenInput) (string, error) {
+		generatedTSAssemblyDeps.generateTypeScript = func(tsGenInput) (string, error) {
 			return "type A = 1;", nil
 		}
 		generatedTSAssemblyDeps.getEntrypoints = func(*vormaruntime.LockedVorma) []string {
@@ -88,7 +88,7 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		generatedTSAssemblyDeps.generateTypeScript = func(TSGenInput) (string, error) {
+		generatedTSAssemblyDeps.generateTypeScript = func(tsGenInput) (string, error) {
 			return "TS_OUTPUT", nil
 		}
 		generatedTSAssemblyDeps.getEntrypoints = func(*vormaruntime.LockedVorma) []string {
@@ -143,8 +143,8 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 		}
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			if err := WriteGeneratedTS(l); err != nil {
-				t.Fatalf("WriteGeneratedTS returned error: %v", err)
+			if err := writeGeneratedTS(l); err != nil {
+				t.Fatalf("writeGeneratedTS returned error: %v", err)
 			}
 		})
 		if !writeCalled {
@@ -167,9 +167,9 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 		}
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			err := WriteGeneratedTS(l)
+			err := writeGeneratedTS(l)
 			if err == nil {
-				t.Fatal("expected WriteGeneratedTS to return assembly error")
+				t.Fatal("expected writeGeneratedTS to return assembly error")
 			}
 			if !errors.Is(err, expectedErr) {
 				t.Fatalf("error = %v, expected wrapped assembly error", err)
@@ -191,9 +191,9 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 		}
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			err := WriteGeneratedTS(l)
+			err := writeGeneratedTS(l)
 			if err == nil {
-				t.Fatal("expected WriteGeneratedTS to return write step error")
+				t.Fatal("expected writeGeneratedTS to return write step error")
 			}
 			if !errors.Is(err, expectedErr) {
 				t.Fatalf("error = %v, expected wrapped write step error", err)
@@ -351,11 +351,11 @@ func TestBuildGeneratedTypeScriptBlock_AppendsExtraTSCodeAndNullRootData(t *test
 	actionsRouter := mux.NewRouter(&mux.Options{MountRoot: "/api/"})
 
 	generatedCode := buildGeneratedTypeScriptBlock(
-		TSGenInput{
+		tsGenInput{
 			LoadersRouter: loadersRouter,
 			ActionsRouter: actionsRouter,
 			Config: &vormaruntime.VormaConfig{
-				UIVariant: string(vormaruntime.UIVariants.React),
+				UIVariant: string(vormaruntime.UIVariantReact),
 			},
 			ExtraTSCode: "export const extraCode = true;",
 		},
