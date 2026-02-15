@@ -174,6 +174,16 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 }
 
 func TestValidateConfig_StaticDirRules(t *testing.T) {
+	t.Run("rejects nil parsed config", func(t *testing.T) {
+		err := ValidateConfig(nil)
+		if err == nil {
+			t.Fatal("expected validation error for nil parsed config")
+		}
+		if !strings.Contains(err.Error(), "parsed config is required") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
 	base := &wave.ParsedConfig{
 		Core: &wave.CoreConfig{
 			MainAppEntry: "cmd/app",

@@ -113,6 +113,9 @@ func Attempt[R any](ks *Keyset, f func(cryptoutil.Key32) (R, error)) (R, error) 
 // provided salt and info string, returning a new Keyset consisting
 // of the derived keys.
 func (ks *Keyset) HKDF(salt []byte, info string) (*Keyset, error) {
+	if ks == nil {
+		return nil, fmt.Errorf("root keyset is nil")
+	}
 	uks := ks.Unwrap()
 	if len(uks) == 0 {
 		return nil, fmt.Errorf("root keyset is empty")

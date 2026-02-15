@@ -3,6 +3,7 @@ package fsutil
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -88,6 +89,17 @@ func CopyFile(src, dest string) error {
 
 	sourceInfo, err := sourceFile.Stat()
 	if err != nil {
+		return err
+	}
+	destInfo, err := os.Stat(dest)
+	if err == nil {
+		if os.SameFile(sourceInfo, destInfo) {
+			return fmt.Errorf(
+				"fsutil.CopyFile: source and destination refer to the same file: %s",
+				src,
+			)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 

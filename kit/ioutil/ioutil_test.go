@@ -154,6 +154,13 @@ func TestReadLimitedLimitTooLarge(t *testing.T) {
 	}
 }
 
+func TestReadLimitedNilReader(t *testing.T) {
+	_, err := ReadLimited(nil, 64)
+	if !errors.Is(err, errReaderIsNil) {
+		t.Fatalf("expected nil-reader error, got %v", err)
+	}
+}
+
 // Helper error reader that always returns an error
 type errorReader struct {
 	err error

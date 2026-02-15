@@ -2014,3 +2014,740 @@
         - Updated dependent tests and e2e fixture code to use explicit buildtime
           APIs; resolved a transient `vormabuild` test regression where a
           refactored test accidentally exercised real dev-server startup.
+
+## EV-20260215-074
+
+- Package group: `wave/tooling/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `wave/tooling/builder_validation.go`
+        - `wave/tooling/run_dev_test.go`
+        - `wave/tooling/builder_validate_test.go`
+        - `wave/tooling/devserver.go`
+        - `wave/tooling/devserver_runtime.go`
+        - `wave/tooling/watcher.go`
+        - `wave/tooling/events_watcher_intake.go`
+        - `wave/tooling/devserver_config.go`
+        - `wave/tooling/devserver_restart.go`
+    - Commands/tests run:
+        - `rg --files wave/tooling | sort`
+        - `rg -n "^func |^type |^var |^const " wave/tooling/*.go`
+        - `sed -n '1,240p' wave/tooling/builder_validation.go`
+        - `sed -n '1,220p' wave/tooling/devserver.go`
+        - `sed -n '1,260p' wave/tooling/devserver_runtime.go`
+        - `sed -n '1,180p' wave/tooling/builder.go`
+        - `sed -n '1,180p' wave/tooling/cli.go`
+        - `sed -n '1,140p' wave/tooling/run_dev_test.go`
+        - `sed -n '1,220p' wave/tooling/watcher.go`
+        - `go test -race ./wave/tooling -count=1`
+        - `gofmt -w wave/tooling/builder_validation.go wave/tooling/builder_validate_test.go wave/tooling/run_dev_test.go`
+        - `go test ./wave/tooling -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-015`: `ValidateConfig` dereferenced `cfg`
+          without a nil guard, so `RunDev(nil, ...)` and builder flows could
+          panic instead of returning a deterministic validation error.
+        - Added explicit nil-guard validation in
+          `wave/tooling/builder_validation.go`.
+        - Added regression tests:
+            - `TestRunDev_ReturnsValidationErrorForNilConfig`
+            - `TestValidateConfig_StaticDirRules/rejects nil parsed config`
+
+## EV-20260215-075
+
+- Package group: `vormaclient/client/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vormaclient/client/src/client.ts`
+        - `vormaclient/client/src/app/init.ts`
+        - `vormaclient/client/src/core/navigation/runtime.ts`
+        - `vormaclient/client/src/core/navigation/begin_navigation.ts`
+        - `vormaclient/client/src/core/navigation/runtime_navigation_outcome.ts`
+        - `vormaclient/client/src/core/extras.ts`
+        - `vormaclient/client/src/platform/history.ts`
+    - Commands/tests run:
+        - `rg --files vormaclient/client/src | sort`
+        - `rg -n "export (function|const|class|type)|function [A-Za-z0-9_]+\\(" vormaclient/client/src -g'*.ts' -g'*.tsx'`
+        - `sed -n '1,220p' vormaclient/client/src/client.ts`
+        - `sed -n '1,280p' vormaclient/client/src/app/init.ts`
+        - `sed -n '1,320p' vormaclient/client/src/core/navigation/runtime.ts`
+        - `sed -n '1,300p' vormaclient/client/src/platform/history.ts`
+        - `sed -n '1,280p' vormaclient/client/src/core/navigation/begin_navigation.ts`
+        - `sed -n '1,640p' vormaclient/client/src/core/navigation/runtime_navigation_outcome.ts`
+        - `sed -n '1,320p' vormaclient/client/src/core/extras.ts`
+        - `make gotest`
+        - `make tscheck`
+        - `make tstest`
+        - `make tslint`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `vormaclient/client/*`
+          after this sweep.
+
+## EV-20260215-076
+
+- Package group: `vormaclient/react/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vormaclient/react/src/react.tsx`
+        - `vormaclient/react/src/link.tsx`
+        - `vormaclient/react/src/helpers.ts`
+        - `vormaclient/react/index.tsx`
+    - Commands/tests run:
+        - `rg --files vormaclient/react | sort`
+        - `rg -n "export (function|const|type|class)|function [A-Za-z0-9_]+\\(" vormaclient/react -g'*.ts' -g'*.tsx'`
+        - `sed -n '1,260p' vormaclient/react/src/react.tsx`
+        - `sed -n '1,220p' vormaclient/react/src/link.tsx`
+        - `sed -n '1,220p' vormaclient/react/src/helpers.ts`
+        - `sed -n '1,200p' vormaclient/react/index.tsx`
+        - `pnpm tsgo --noEmit --project ./vormaclient/react`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `vormaclient/react/*`
+          after this sweep.
+
+## EV-20260215-077
+
+- Package group: `vormaclient/preact/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vormaclient/preact/src/preact.tsx`
+        - `vormaclient/preact/src/helpers.ts`
+        - `vormaclient/preact/src/link.tsx`
+        - `vormaclient/preact/index.tsx`
+    - Commands/tests run:
+        - `rg --files vormaclient/preact | sort`
+        - `rg -n "export (function|const|type|class)|function [A-Za-z0-9_]+\\(" vormaclient/preact -g'*.ts' -g'*.tsx'`
+        - `sed -n '1,320p' vormaclient/preact/src/preact.tsx`
+        - `sed -n '1,260p' vormaclient/preact/src/helpers.ts`
+        - `sed -n '1,260p' vormaclient/preact/src/link.tsx`
+        - `pnpm tsgo --noEmit --project ./vormaclient/preact`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `vormaclient/preact/*`
+          after this sweep.
+
+## EV-20260215-078
+
+- Package group: `vormaclient/solid/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vormaclient/solid/src/solid.tsx`
+        - `vormaclient/solid/src/helpers.ts`
+        - `vormaclient/solid/src/link.tsx`
+        - `vormaclient/solid/index.tsx`
+    - Commands/tests run:
+        - `rg --files vormaclient/solid | sort`
+        - `rg -n "export (function|const|type|class)|function [A-Za-z0-9_]+\\(" vormaclient/solid -g'*.ts' -g'*.tsx'`
+        - `sed -n '1,520p' vormaclient/solid/src/solid.tsx`
+        - `sed -n '1,260p' vormaclient/solid/src/helpers.ts`
+        - `sed -n '1,260p' vormaclient/solid/src/link.tsx`
+        - `pnpm tsgo --noEmit --project ./vormaclient/solid`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `vormaclient/solid/*`
+          after this sweep.
+
+## EV-20260215-079
+
+- Package group: `vormaclient/vite/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vormaclient/vite/vite.ts`
+        - `vormaclient/vite/vite.test.ts`
+    - Commands/tests run:
+        - `rg --files vormaclient/vite | sort`
+        - `sed -n '1,260p' vormaclient/vite/vite.ts`
+        - `sed -n '1,260p' vormaclient/vite/vite.test.ts`
+        - `pnpm tsgo --noEmit --project ./vormaclient/vite`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `vormaclient/vite/*`
+          after this sweep.
+
+## EV-20260215-080
+
+- Package group: `vormaclient/create/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vormaclient/create/main.ts`
+        - `vormaclient/create/runtime_helpers.ts`
+        - `vormaclient/create/runtime_helpers.test.ts`
+    - Commands/tests run:
+        - `rg --files vormaclient/create | sort`
+        - `rg -n "function |export |const |class " vormaclient/create -g'*.ts' -g'*.tsx' -g'*.js'`
+        - `sed -n '1,420p' vormaclient/create/main.ts`
+        - `sed -n '1,320p' vormaclient/create/runtime_helpers.ts`
+        - `pnpm tsgo --noEmit --project ./vormaclient/create`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `vormaclient/create/*`
+          after this sweep.
+
+## EV-20260215-081
+
+- Package group: `kit/bytesutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/bytesutil/bytesutil.go`
+        - `kit/bytesutil/bytesutil_test.go`
+        - `kit/bytesutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/bytesutil`
+        - `sed -n '1,260p' kit/bytesutil/bytesutil.go`
+        - `sed -n '1,300p' kit/bytesutil/bytesutil_test.go`
+        - `go test ./kit/bytesutil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/bytesutil` after
+          this sweep.
+
+## EV-20260215-082
+
+- Package group: `kit/colorlog`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/colorlog/colorlog.go`
+        - `kit/colorlog/colorlog_test.go`
+        - `kit/colorlog/README.md`
+    - Commands/tests run:
+        - `ls -la kit/colorlog`
+        - `sed -n '1,260p' kit/colorlog/colorlog.go`
+        - `sed -n '1,340p' kit/colorlog/colorlog_test.go`
+        - `go test ./kit/colorlog -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/colorlog` after
+          this sweep.
+
+## EV-20260215-083
+
+- Package group: `lab/viteutil`
+- Pass name: Test Quality (Regression Backfill)
+- Evidence
+    - Files reviewed:
+        - `lab/viteutil/viteutil.go`
+        - `lab/viteutil/viteutil_test.go`
+        - `FRAMEWORK_AUDIT_EVIDENCE.md`
+    - Commands/tests run:
+        - `sed -n '1,220p' lab/viteutil/viteutil.go`
+        - `sed -n '1680,1765p' FRAMEWORK_AUDIT_EVIDENCE.md`
+        - `rg -n "package viteutil|InitPort\\(|VITE_PORT|GetFreePort" lab/viteutil -n`
+        - `gofmt -w lab/viteutil/viteutil_test.go`
+        - `go test ./lab/viteutil -count=1`
+    - Findings/fixes:
+        - Added regression test
+          `TestInitPort_UsesCallerDefaultPortWhenAvailable` to close
+          `F-20260215-013`.
+        - Regression asserts `InitPort(defaultPort)` honors the caller-provided
+          default port when available and persists the chosen value in
+          `__VITE_PORT`.
+
+## EV-20260215-084
+
+- Package group: `kit/contextutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/contextutil/contextutil.go`
+        - `kit/contextutil/contextutil_test.go`
+        - `kit/contextutil/README.md`
+        - `kit/genericsutil/genericsutil.go`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/contextutil/contextutil.go`
+        - `sed -n '1,340p' kit/contextutil/contextutil_test.go`
+        - `sed -n '1,260p' kit/contextutil/README.md`
+        - `sed -n '1,240p' kit/genericsutil/genericsutil.go`
+        - `go test ./kit/contextutil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/contextutil`
+          after this sweep.
+
+## EV-20260215-085
+
+- Package group: `kit/cookies`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/cookies/cookies.go`
+        - `kit/cookies/cookies_test.go`
+        - `kit/cookies/README.md`
+    - Commands/tests run:
+        - `ls -la kit/cookies`
+        - `sed -n '1,320p' kit/cookies/cookies.go`
+        - `sed -n '320,620p' kit/cookies/cookies.go`
+        - `sed -n '1,360p' kit/cookies/cookies_test.go`
+        - `sed -n '1,320p' kit/cookies/README.md`
+        - `rg -n "panic\\(|Get\\(r \\*http.Request\\)|NewDeletion|MaxAge|SetWithWriter|SetWithProxy" kit/cookies/cookies.go kit/cookies/cookies_test.go`
+        - `rg -n "nil request|nil manager|empty name|MaxAge|TTL|session cookie|Partitioned" kit/cookies/cookies_test.go`
+        - `go test ./kit/cookies -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/cookies` after
+          this sweep.
+
+## EV-20260215-086
+
+- Package group: `kit/cryptoutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/cryptoutil/cryptoutil.go`
+        - `kit/cryptoutil/cryptoutil_test.go`
+        - `kit/cryptoutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/cryptoutil`
+        - `sed -n '1,320p' kit/cryptoutil/cryptoutil.go`
+        - `sed -n '1,360p' kit/cryptoutil/cryptoutil_test.go`
+        - `sed -n '1,320p' kit/cryptoutil/README.md`
+        - `go test ./kit/cryptoutil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/cryptoutil` after
+          this sweep.
+
+## EV-20260215-087
+
+- Package group: `kit/csrf`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/csrf/csrf.go`
+        - `kit/csrf/csrf_test.go`
+        - `kit/csrf/README.md`
+    - Commands/tests run:
+        - `ls -la kit/csrf`
+        - `sed -n '1,340p' kit/csrf/csrf.go`
+        - `sed -n '1,420p' kit/csrf/csrf_test.go`
+        - `sed -n '1,320p' kit/csrf/README.md`
+        - `go test ./kit/csrf -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/csrf` after this
+          sweep.
+
+## EV-20260215-088
+
+- Package group: `kit/envutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/envutil/envutil.go`
+        - `kit/envutil/envutil_test.go`
+        - `kit/envutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/envutil`
+        - `sed -n '1,340p' kit/envutil/envutil.go`
+        - `sed -n '1,400p' kit/envutil/envutil_test.go`
+        - `sed -n '1,320p' kit/envutil/README.md`
+        - `go test ./kit/envutil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/envutil` after
+          this sweep.
+
+## EV-20260215-089
+
+- Package group: `kit/executil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/executil/executil.go`
+        - `kit/executil/executil_test.go`
+        - `kit/executil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/executil`
+        - `sed -n '1,360p' kit/executil/executil.go`
+        - `sed -n '1,420p' kit/executil/executil_test.go`
+        - `sed -n '1,320p' kit/executil/README.md`
+        - `go test ./kit/executil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/executil` after
+          this sweep.
+
+## EV-20260215-090
+
+- Package group: `kit/fsutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/fsutil/fsutil.go`
+        - `kit/fsutil/fsutil_test.go`
+        - `kit/fsutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/fsutil`
+        - `sed -n '1,360p' kit/fsutil/fsutil.go`
+        - `sed -n '1,420p' kit/fsutil/fsutil_test.go`
+        - `sed -n '1,320p' kit/fsutil/README.md`
+        - `gofmt -w kit/fsutil/fsutil.go kit/fsutil/fsutil_test.go`
+        - `go test ./kit/fsutil -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-016`: `CopyFile(src, dest)` could truncate
+          data when source and destination resolved to the same file path/inode.
+        - Added same-file guard in `CopyFile` using `os.SameFile`.
+        - Added regression test
+          `TestCopyFile_ReturnsErrorWhenSourceAndDestinationAreSameFile`,
+          asserting `CopyFile` returns an error and leaves file contents
+          unchanged.
+
+## EV-20260215-091
+
+- Package group: `kit/genericsutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/genericsutil/genericsutil.go`
+        - `kit/genericsutil/genericsutil_test.go`
+        - `kit/genericsutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/genericsutil`
+        - `sed -n '1,340p' kit/genericsutil/genericsutil.go`
+        - `sed -n '1,420p' kit/genericsutil/genericsutil_test.go`
+        - `sed -n '1,320p' kit/genericsutil/README.md`
+        - `go test ./kit/genericsutil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/genericsutil`
+          after this sweep.
+
+## EV-20260215-092
+
+- Package group: `kit/grace`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/grace/grace.go`
+        - `kit/grace/grace_test.go`
+        - `kit/grace/README.md`
+    - Commands/tests run:
+        - `ls -la kit/grace`
+        - `sed -n '1,360p' kit/grace/grace.go`
+        - `sed -n '1,420p' kit/grace/grace_test.go`
+        - `sed -n '1,320p' kit/grace/README.md`
+        - `gofmt -w kit/grace/grace.go kit/grace/grace_test.go`
+        - `go test ./kit/grace -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-017`: `TerminateProcess` dereferenced a
+          nil `*os.Process`, causing a panic instead of returning an error.
+        - Added nil-process guard in `TerminateProcess`.
+        - Added regression test `TestTerminateProcess_NilProcessReturnsError`.
+
+## EV-20260215-093
+
+- Package group: `kit/headels`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/headels/headblocks.go`
+        - `kit/headels/headblocks_test.go`
+        - `kit/headels/README.md`
+    - Commands/tests run:
+        - `ls -la kit/headels`
+        - `sed -n '1,380p' kit/headels/headblocks.go`
+        - `sed -n '380,760p' kit/headels/headblocks.go`
+        - `sed -n '1,460p' kit/headels/headblocks_test.go`
+        - `sed -n '460,920p' kit/headels/headblocks_test.go`
+        - `sed -n '1,320p' kit/headels/README.md`
+        - `gofmt -w kit/headels/headblocks.go kit/headels/headblocks_test.go`
+        - `go test ./kit/headels -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-018`: exported `headels` APIs panicked on
+          nil inputs (`(*Instance).Render(nil)` and
+          `(*HeadEls).AddElements(nil)`), creating avoidable runtime crashes.
+        - Added nil guards:
+            - `Render(nil)` now treats nil as empty input.
+            - `AddElements(nil)` now no-ops.
+        - Added regression tests:
+            - `TestRender_NilInputDoesNotPanicAndRendersMarkers`
+            - `TestHeadElsAddElements_NilSourceIsNoOp`
+
+## EV-20260215-094
+
+- Package group: `kit/htmlutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/htmlutil/htmlutil.go`
+        - `kit/htmlutil/htmlutil_test.go`
+        - `kit/htmlutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/htmlutil`
+        - `sed -n '1,360p' kit/htmlutil/htmlutil.go`
+        - `sed -n '1,460p' kit/htmlutil/htmlutil_test.go`
+        - `sed -n '1,320p' kit/htmlutil/README.md`
+        - `gofmt -w kit/htmlutil/htmlutil.go kit/htmlutil/htmlutil_test.go`
+        - `go test ./kit/htmlutil -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-019`: `EscapeIntoTrusted` aliased
+          `BooleanAttributes` from the source element, allowing later caller
+          mutations to corrupt the escaped/trusted copy.
+        - Cloned `BooleanAttributes` in `EscapeIntoTrusted`.
+        - Added regression test
+          `TestEscapeIntoTrusted_DoesNotAliasBooleanAttributesSlice`.
+
+## EV-20260215-095
+
+- Package group: `kit/id`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/id/id.go`
+        - `kit/id/id_test.go`
+        - `kit/id/README.md`
+    - Commands/tests run:
+        - `ls -la kit/id`
+        - `sed -n '1,340p' kit/id/id.go`
+        - `sed -n '1,420p' kit/id/id_test.go`
+        - `sed -n '1,320p' kit/id/README.md`
+        - `go test ./kit/id -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/id` after this
+          sweep.
+
+## EV-20260215-096
+
+- Package group: `kit/ioutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/ioutil/ioutil.go`
+        - `kit/ioutil/ioutil_test.go`
+        - `kit/ioutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/ioutil`
+        - `sed -n '1,340p' kit/ioutil/ioutil.go`
+        - `sed -n '1,420p' kit/ioutil/ioutil_test.go`
+        - `sed -n '1,320p' kit/ioutil/README.md`
+        - `gofmt -w kit/ioutil/ioutil.go kit/ioutil/ioutil_test.go`
+        - `go test ./kit/ioutil -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-020`: `ReadLimited(nil, limit)` could
+          panic via `io.LimitReader` on a nil reader interface.
+        - Added explicit nil-reader guard in `ReadLimited`.
+        - Added regression test `TestReadLimitedNilReader`.
+
+## EV-20260215-097
+
+- Package group: `kit/jsonutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/jsonutil/jsonutil.go`
+        - `kit/jsonutil/jsonutil_test.go`
+        - `kit/jsonutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/jsonutil`
+        - `sed -n '1,380p' kit/jsonutil/jsonutil.go`
+        - `sed -n '1,460p' kit/jsonutil/jsonutil_test.go`
+        - `sed -n '1,320p' kit/jsonutil/README.md`
+        - `go test ./kit/jsonutil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/jsonutil` after
+          this sweep.
+
+## EV-20260215-098
+
+- Package group: `kit/keyset`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/keyset/keyset.go`
+        - `kit/keyset/keyset_test.go`
+        - `kit/keyset/README.md`
+    - Commands/tests run:
+        - `ls -la kit/keyset`
+        - `sed -n '1,420p' kit/keyset/keyset.go`
+        - `sed -n '1,520p' kit/keyset/keyset_test.go`
+        - `sed -n '1,320p' kit/keyset/README.md`
+        - `gofmt -w kit/keyset/keyset.go kit/keyset/keyset_test.go`
+        - `go test ./kit/keyset -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-021`: `(*Keyset).HKDF` dereferenced a nil
+          receiver, panicking instead of returning an error.
+        - Added nil receiver guard in `(*Keyset).HKDF`.
+        - Added regression case `"nil keyset"` in `TestKeyset_HKDF`.
+
+## EV-20260215-099
+
+- Package group: `kit/lazyget`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/lazyget/lazyget.go`
+        - `kit/lazyget/lazyget_test.go`
+        - `kit/lazyget/README.md`
+    - Commands/tests run:
+        - `ls -la kit/lazyget`
+        - `sed -n '1,340p' kit/lazyget/lazyget.go`
+        - `sed -n '1,420p' kit/lazyget/lazyget_test.go`
+        - `sed -n '1,320p' kit/lazyget/README.md`
+        - `go test ./kit/lazyget -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/lazyget` after
+          this sweep.
+
+## EV-20260215-100
+
+- Package group: `kit/lru`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/lru/lru.go`
+        - `kit/lru/lru_test.go`
+        - `kit/lru/README.md`
+    - Commands/tests run:
+        - `ls -la kit/lru`
+        - `sed -n '1,380p' kit/lru/lru.go`
+        - `sed -n '1,460p' kit/lru/lru_test.go`
+        - `sed -n '1,320p' kit/lru/README.md`
+        - `go test ./kit/lru -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/lru` after this
+          sweep.
+
+## EV-20260215-101
+
+- Package group: `kit/matcher`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/matcher/matcher.go`
+        - `kit/matcher/register.go`
+        - `kit/matcher/find_best_match.go`
+        - `kit/matcher/find_nested_matches.go`
+        - `kit/matcher/parse_segments.go`
+        - `kit/matcher/README.md`
+    - Commands/tests run:
+        - `ls -la kit/matcher`
+        - `sed -n '1,420p' kit/matcher/matcher.go`
+        - `sed -n '1,420p' kit/matcher/register.go`
+        - `sed -n '1,360p' kit/matcher/find_best_match.go`
+        - `sed -n '1,420p' kit/matcher/find_nested_matches.go`
+        - `sed -n '1,260p' kit/matcher/parse_segments.go`
+        - `go test ./kit/matcher -count=1`
+        - `go test ./kit/matcher -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/matcher` after
+          this sweep.
+
+## EV-20260215-102
+
+- Package group: `kit/middleware`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/middleware.go`
+        - `kit/middleware/README.md`
+    - Commands/tests run:
+        - `ls -la kit/middleware`
+        - `rg --files kit/middleware`
+        - `sed -n '1,320p' kit/middleware/middleware.go`
+        - `sed -n '1,320p' kit/middleware/README.md`
+        - `go test ./kit/middleware -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/middleware` after
+          this sweep.
+
+## EV-20260215-103
+
+- Package group: `kit/middleware/etag`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/etag/etag.go`
+        - `kit/middleware/etag/etag_test.go`
+        - `kit/middleware/etag/README.md`
+    - Commands/tests run:
+        - `sed -n '1,360p' kit/middleware/etag/etag.go`
+        - `sed -n '1,420p' kit/middleware/etag/etag_test.go`
+        - `sed -n '1,320p' kit/middleware/etag/README.md`
+        - `go test ./kit/middleware/etag -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/middleware/etag`
+          after this sweep.
+
+## EV-20260215-104
+
+- Package group: `kit/middleware/healthcheck`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/healthcheck/healthcheck.go`
+        - `kit/middleware/healthcheck/healthcheck_test.go`
+        - `kit/middleware/healthcheck/README.md`
+    - Commands/tests run:
+        - `sed -n '1,320p' kit/middleware/healthcheck/healthcheck.go`
+        - `sed -n '1,360p' kit/middleware/healthcheck/healthcheck_test.go`
+        - `sed -n '1,280p' kit/middleware/healthcheck/README.md`
+        - `go test ./kit/middleware/healthcheck -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in
+          `kit/middleware/healthcheck` after this sweep.
+
+## EV-20260215-105
+
+- Package group: `kit/middleware/robotstxt`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/robotstxt/robotstxt.go`
+        - `kit/middleware/robotstxt/robotstxt_test.go`
+        - `kit/middleware/robotstxt/README.md`
+    - Commands/tests run:
+        - `sed -n '1,320p' kit/middleware/robotstxt/robotstxt.go`
+        - `sed -n '1,380p' kit/middleware/robotstxt/robotstxt_test.go`
+        - `sed -n '1,280p' kit/middleware/robotstxt/README.md`
+        - `go test ./kit/middleware/robotstxt -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in
+          `kit/middleware/robotstxt` after this sweep.
+
+## EV-20260215-106
+
+- Package group: `kit/middleware/secureheaders`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/secureheaders/secureheaders.go`
+        - `kit/middleware/secureheaders/secureheaders_test.go`
+        - `kit/middleware/secureheaders/README.md`
+    - Commands/tests run:
+        - `sed -n '1,360p' kit/middleware/secureheaders/secureheaders.go`
+        - `sed -n '1,420p' kit/middleware/secureheaders/secureheaders_test.go`
+        - `sed -n '1,320p' kit/middleware/secureheaders/README.md`
+        - `go test ./kit/middleware/secureheaders -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in
+          `kit/middleware/secureheaders` after this sweep.
+
+## EV-20260215-107
+
+- Package group: `kit/mux`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/mux/mux.go`
+        - `kit/mux/mux_test.go`
+        - `kit/mux/README.md`
+    - Commands/tests run:
+        - `ls -la kit/mux`
+        - `sed -n '1,420p' kit/mux/mux.go`
+        - `sed -n '1,520p' kit/mux/mux_test.go`
+        - `sed -n '1,320p' kit/mux/README.md`
+        - `go test ./kit/mux -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/mux` after this
+          sweep.
+
+## EV-20260215-108
+
+- Package group: `kit/netutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/netutil/netutil.go`
+        - `kit/netutil/netutil_test.go`
+        - `kit/netutil/README.md`
+    - Commands/tests run:
+        - `sed -n '1,340p' kit/netutil/netutil.go`
+        - `sed -n '1,420p' kit/netutil/netutil_test.go`
+        - `sed -n '1,300p' kit/netutil/README.md`
+        - `go test ./kit/netutil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/netutil` after
+          this sweep.

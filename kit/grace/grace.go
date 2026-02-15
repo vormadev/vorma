@@ -2,6 +2,7 @@ package grace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/vormadev/vorma/kit/colorlog"
 )
+
+var errProcessIsNil = errors.New("process is nil")
 
 func defaultSignals() []os.Signal {
 	if runtime.GOOS == "windows" {
@@ -119,6 +122,10 @@ func Orchestrate(options OrchestrateOptions) {
 // TerminateProcess attempts to gracefully terminate a process, falling back to force kill after timeout.
 // If logger is nil, defaults to stdout.
 func TerminateProcess(process *os.Process, timeToWait time.Duration, logger *slog.Logger) error {
+	if process == nil {
+		return errProcessIsNil
+	}
+
 	if logger == nil {
 		logger = newDefaultLogger()
 	}

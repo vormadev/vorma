@@ -262,6 +262,16 @@ func TestTerminateProcess_InvalidProcess(t *testing.T) {
 	}
 }
 
+func TestTerminateProcess_NilProcessReturnsError(
+	t *testing.T,
+) {
+	logger, _ := testLogger()
+	err := TerminateProcess(nil, time.Second, logger)
+	if !errors.Is(err, errProcessIsNil) {
+		t.Fatalf("expected errProcessIsNil, got %v", err)
+	}
+}
+
 func TestNewDefaultLogger(t *testing.T) {
 	logger := newDefaultLogger()
 	if logger == nil {

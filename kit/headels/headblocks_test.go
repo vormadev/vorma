@@ -37,6 +37,29 @@ func TestGetHeadElements(t *testing.T) {
 	}
 }
 
+func TestRender_NilInputDoesNotPanicAndRendersMarkers(t *testing.T) {
+	inst := NewInstance("nil-input")
+
+	rendered, err := inst.Render(nil)
+	if err != nil {
+		t.Fatalf("Render(nil) returned error: %v", err)
+	}
+
+	renderedText := string(rendered)
+	if !strings.Contains(renderedText, `data-nil-input="meta-start"`) {
+		t.Fatalf("Render(nil) missing meta-start marker: %s", renderedText)
+	}
+	if !strings.Contains(renderedText, `data-nil-input="meta-end"`) {
+		t.Fatalf("Render(nil) missing meta-end marker: %s", renderedText)
+	}
+	if !strings.Contains(renderedText, `data-nil-input="rest-start"`) {
+		t.Fatalf("Render(nil) missing rest-start marker: %s", renderedText)
+	}
+	if !strings.Contains(renderedText, `data-nil-input="rest-end"`) {
+		t.Fatalf("Render(nil) missing rest-end marker: %s", renderedText)
+	}
+}
+
 const (
 	testTitle         = "Test Title"
 	testTitle_2       = "Different Test Title"
@@ -704,6 +727,21 @@ func TestHeadElsConcurrentAddElements(t *testing.T) {
 
 	if len(h.Collect()) != n*2 {
 		t.Errorf("expected %d elements, got %d", n*2, len(h.Collect()))
+	}
+}
+
+func TestHeadElsAddElements_NilSourceIsNoOp(t *testing.T) {
+	h := New()
+	h.Add(Tag("title"), TextContent("Original"))
+
+	h.AddElements(nil)
+
+	collected := h.Collect()
+	if len(collected) != 1 {
+		t.Fatalf("expected 1 element after AddElements(nil), got %d", len(collected))
+	}
+	if collected[0].Tag != "title" || collected[0].TextContent != "Original" {
+		t.Fatalf("unexpected element after AddElements(nil): %+v", collected[0])
 	}
 }
 

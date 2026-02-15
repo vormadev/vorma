@@ -77,6 +77,9 @@ const roughSafeAvgElLen = 80
 
 func (inst *Instance) Render(input *SortedAndPreEscapedHeadEls) (template.HTML, error) {
 	inst.InitUniqueRules(nil)
+	if input == nil {
+		input = &SortedAndPreEscapedHeadEls{}
+	}
 
 	metaSize := len(inst.metaStart) + len(inst.metaEnd)
 	restSize := len(inst.restStart) + len(inst.restEnd)
@@ -408,6 +411,9 @@ func (h *HeadEls) Add(defs ...typeInterface) {
 }
 
 func (h *HeadEls) AddElements(other *HeadEls) {
+	if other == nil {
+		return
+	}
 	otherEls := other.Collect()
 	h.mu.Lock()
 	h.els = append(h.els, otherEls...)

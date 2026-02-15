@@ -168,7 +168,7 @@ func EscapeIntoTrusted(el *Element) Element {
 		Tag:                 el.Tag,
 		Attributes:          nil,
 		AttributesKnownSafe: combineIntoDangerousAttributes(el),
-		BooleanAttributes:   el.BooleanAttributes,
+		BooleanAttributes:   slices.Clone(el.BooleanAttributes),
 		TextContent:         "",
 		DangerousInnerHTML:  combineIntoDangerousInnerHTML(el),
 		SelfClosing:         el.SelfClosing,

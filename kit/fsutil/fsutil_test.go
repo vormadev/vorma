@@ -127,6 +127,35 @@ func TestCopyFileCreatesDestinationDirectories(t *testing.T) {
 	}
 }
 
+func TestCopyFile_ReturnsErrorWhenSourceAndDestinationAreSameFile(
+	t *testing.T,
+) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "same-file.txt")
+	originalContent := []byte("keep me")
+
+	if err := os.WriteFile(filePath, originalContent, 0o600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	err := CopyFile(filePath, filePath)
+	if err == nil {
+		t.Fatal("expected CopyFile to fail for same source/destination file")
+	}
+
+	currentContent, readErr := os.ReadFile(filePath)
+	if readErr != nil {
+		t.Fatalf("failed to read source file after CopyFile: %v", readErr)
+	}
+	if !bytes.Equal(currentContent, originalContent) {
+		t.Fatalf(
+			"CopyFile modified source file for same source/destination; got %q, want %q",
+			string(currentContent),
+			string(originalContent),
+		)
+	}
+}
+
 // TestCopyDir tests the CopyDir function.
 func TestCopyDir(t *testing.T) {
 	srcDir := filepath.Join(os.TempDir(), "testdir_src")

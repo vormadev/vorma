@@ -10,6 +10,9 @@ import (
 // ValidateConfig performs full validation of the Wave configuration.
 // This should be called at build time before any build operations.
 func ValidateConfig(cfg *wave.ParsedConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("config: parsed config is required")
+	}
 	if cfg.Core == nil {
 		return fmt.Errorf("config: Core section is required")
 	}

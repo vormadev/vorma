@@ -251,6 +251,13 @@ func TestKeyset_HKDF(t *testing.T) {
 		wantErr bool
 	}{
 		{
+			name:    "nil keyset",
+			keyset:  nil,
+			salt:    []byte("salt"),
+			info:    "info",
+			wantErr: true,
+		},
+		{
 			name:    "empty keyset",
 			keyset:  &Keyset{uks: UnwrappedKeyset{}},
 			salt:    []byte("salt"),

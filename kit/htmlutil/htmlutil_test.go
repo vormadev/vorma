@@ -377,6 +377,25 @@ func TestEscapeIntoTrusted(t *testing.T) {
 	}
 }
 
+func TestEscapeIntoTrusted_DoesNotAliasBooleanAttributesSlice(
+	t *testing.T,
+) {
+	el := Element{
+		Tag:               "script",
+		BooleanAttributes: []string{"async"},
+	}
+
+	trustedElement := EscapeIntoTrusted(&el)
+	el.BooleanAttributes[0] = "defer"
+
+	if trustedElement.BooleanAttributes[0] != "async" {
+		t.Fatalf(
+			"trusted element boolean attributes were mutated via source aliasing: got %q",
+			trustedElement.BooleanAttributes[0],
+		)
+	}
+}
+
 func TestComputeContentSha256NoMutation(t *testing.T) {
 	el := &Element{DangerousInnerHTML: "<b>x</b>"}
 	if _, err := ComputeContentSha256(el); err != nil {

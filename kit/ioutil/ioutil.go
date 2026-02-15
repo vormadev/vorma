@@ -14,6 +14,7 @@ const (
 
 var ErrReadLimitExceeded = errors.New("read limit exceeded")
 var errReadLimitTooLarge = errors.New("read limit too large")
+var errReaderIsNil = errors.New("reader is nil")
 
 // ReadLimited reads data from the provided reader up to the given limit.
 // It returns ErrReadLimitExceeded if the data exceeds the specified limit.
@@ -21,6 +22,10 @@ var errReadLimitTooLarge = errors.New("read limit too large")
 // exceeded. If that is a concern for your use case, just use io.LimitReader
 // directly.
 func ReadLimited(r io.Reader, limit uint64) ([]byte, error) {
+	if r == nil {
+		return nil, errReaderIsNil
+	}
+
 	if limit > uint64(math.MaxInt64-1) {
 		return nil, errReadLimitTooLarge
 	}

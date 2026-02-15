@@ -20,6 +20,19 @@ func TestRunDev_ReturnsValidationErrorForInvalidConfig(t *testing.T) {
 	}
 }
 
+func TestRunDev_ReturnsValidationErrorForNilConfig(t *testing.T) {
+	err := RunDev(nil, newDiscardLogger())
+	if err == nil {
+		t.Fatal("expected RunDev to fail validation for nil config")
+	}
+	if !strings.Contains(err.Error(), "config validation failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "parsed config is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunDev_ReturnsLockHeldErrorWhenProjectIsAlreadyLocked(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true

@@ -52,6 +52,10 @@ quality.
 
 - No test weakening.
 - No severity labels or triage categories in findings.
+- Every discovered bug must be closed with a regression test that would fail
+  without the fix and pass with the fix. If a regression test is truly not
+  possible, explicitly record why in evidence and get user approval before
+  closing the finding.
 - Any performance regression is unacceptable unless it is required for
   correctness or explicitly approved by user. This applies to both dev-time and
   runtime behavior.
@@ -160,6 +164,8 @@ quality.
 11. Do not advance `Next Queue` past the current item until all findings in that
     item are resolved or explicitly deferred by user decision and recorded in
     `Approval Log`.
+12. Do not close any bug finding without a linked regression test in
+    `FRAMEWORK_AUDIT_EVIDENCE.md` (or an explicit user-approved exception).
 
 ## Change Authorization Policy
 
@@ -205,40 +211,40 @@ quality.
 | `vormabuild/*`                 | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `internal/vormaruntime/*`      | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `wave/*`                       | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
-| `wave/tooling/*`               | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `vormaclient/client/*`         | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `vormaclient/react/*`          | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `vormaclient/preact/*`         | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `vormaclient/solid/*`          | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `vormaclient/vite/*`           | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `vormaclient/create/*`         | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/bytesutil`                | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/colorlog`                 | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/contextutil`              | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/cookies`                  | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/cryptoutil`               | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/csrf`                     | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/envutil`                  | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/executil`                 | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/fsutil`                   | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/genericsutil`             | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/grace`                    | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/headels`                  | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/htmlutil`                 | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/id`                       | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/ioutil`                   | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/jsonutil`                 | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/keyset`                   | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/lazyget`                  | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/lru`                      | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/matcher`                  | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/middleware`               | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/middleware/etag`          | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/middleware/healthcheck`   | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/middleware/robotstxt`     | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/middleware/secureheaders` | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/mux`                      | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
-| `kit/netutil`                  | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
+| `wave/tooling/*`               | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `vormaclient/client/*`         | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `vormaclient/react/*`          | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `vormaclient/preact/*`         | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `vormaclient/solid/*`          | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `vormaclient/vite/*`           | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `vormaclient/create/*`         | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/bytesutil`                | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/colorlog`                 | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/contextutil`              | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/cookies`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/cryptoutil`               | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/csrf`                     | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/envutil`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/executil`                 | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/fsutil`                   | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/genericsutil`             | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/grace`                    | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/headels`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/htmlutil`                 | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/id`                       | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/ioutil`                   | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/jsonutil`                 | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/keyset`                   | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/lazyget`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/lru`                      | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/matcher`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/middleware`               | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/middleware/etag`          | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/middleware/healthcheck`   | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/middleware/robotstxt`     | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/middleware/secureheaders` | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/mux`                      | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/netutil`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `kit/reflectutil`              | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
 | `kit/response`                 | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
 | `kit/securebytes`              | done        | not done              | not done | not done    | not done      | not done | not done     | not done |
@@ -350,6 +356,40 @@ Matrix evidence for completed cells:
 73. `vormabuild/*` + Correctness/Fragility: `EV-20260215-070`.
 74. `internal/vormaruntime/*` + Correctness/Fragility: `EV-20260215-071`.
 75. `wave/*` + Correctness/Fragility: `EV-20260215-072`.
+76. `wave/tooling/*` + Correctness/Fragility: `EV-20260215-074`.
+77. `vormaclient/client/*` + Correctness/Fragility: `EV-20260215-075`.
+78. `vormaclient/react/*` + Correctness/Fragility: `EV-20260215-076`.
+79. `vormaclient/preact/*` + Correctness/Fragility: `EV-20260215-077`.
+80. `vormaclient/solid/*` + Correctness/Fragility: `EV-20260215-078`.
+81. `vormaclient/vite/*` + Correctness/Fragility: `EV-20260215-079`.
+82. `vormaclient/create/*` + Correctness/Fragility: `EV-20260215-080`.
+83. `kit/bytesutil` + Correctness/Fragility: `EV-20260215-081`.
+84. `kit/colorlog` + Correctness/Fragility: `EV-20260215-082`.
+85. `kit/contextutil` + Correctness/Fragility: `EV-20260215-084`.
+86. `kit/cookies` + Correctness/Fragility: `EV-20260215-085`.
+87. `kit/cryptoutil` + Correctness/Fragility: `EV-20260215-086`.
+88. `kit/csrf` + Correctness/Fragility: `EV-20260215-087`.
+89. `kit/envutil` + Correctness/Fragility: `EV-20260215-088`.
+90. `kit/executil` + Correctness/Fragility: `EV-20260215-089`.
+91. `kit/fsutil` + Correctness/Fragility: `EV-20260215-090`.
+92. `kit/genericsutil` + Correctness/Fragility: `EV-20260215-091`.
+93. `kit/grace` + Correctness/Fragility: `EV-20260215-092`.
+94. `kit/headels` + Correctness/Fragility: `EV-20260215-093`.
+95. `kit/htmlutil` + Correctness/Fragility: `EV-20260215-094`.
+96. `kit/id` + Correctness/Fragility: `EV-20260215-095`.
+97. `kit/ioutil` + Correctness/Fragility: `EV-20260215-096`.
+98. `kit/jsonutil` + Correctness/Fragility: `EV-20260215-097`.
+99. `kit/keyset` + Correctness/Fragility: `EV-20260215-098`.
+100. `kit/lazyget` + Correctness/Fragility: `EV-20260215-099`.
+101. `kit/lru` + Correctness/Fragility: `EV-20260215-100`.
+102. `kit/matcher` + Correctness/Fragility: `EV-20260215-101`.
+103. `kit/middleware` + Correctness/Fragility: `EV-20260215-102`.
+104. `kit/middleware/etag` + Correctness/Fragility: `EV-20260215-103`.
+105. `kit/middleware/healthcheck` + Correctness/Fragility: `EV-20260215-104`.
+106. `kit/middleware/robotstxt` + Correctness/Fragility: `EV-20260215-105`.
+107. `kit/middleware/secureheaders` + Correctness/Fragility: `EV-20260215-106`.
+108. `kit/mux` + Correctness/Fragility: `EV-20260215-107`.
+109. `kit/netutil` + Correctness/Fragility: `EV-20260215-108`.
 
 ## Current Focus
 
@@ -370,7 +410,7 @@ Matrix evidence for completed cells:
 
 ## Next Queue
 
-1. `wave/tooling/*` + Correctness/Fragility.
+1. `kit/reflectutil` + Correctness/Fragility.
 
 ## Process Notes
 
