@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 func TestParseClientAndBackendRoutesForSync(t *testing.T) {

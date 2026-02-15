@@ -3,7 +3,7 @@ package vormabuild
 import (
 	"fmt"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 func postViteProdBuild(v *vormaruntime.Vorma) error {

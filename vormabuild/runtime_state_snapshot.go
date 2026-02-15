@@ -1,6 +1,6 @@
 package vormabuild
 
-import "github.com/vormadev/vorma/vormaruntime"
+import "github.com/vormadev/vorma/internal/vormaruntime"
 
 type routeBuildRuntimeStateSnapshot struct {
 	paths             map[string]*vormaruntime.Path
@@ -8,8 +8,14 @@ type routeBuildRuntimeStateSnapshot struct {
 	routeManifestFile string
 }
 
+type routeBuildRuntimeStateReader interface {
+	GetPaths() map[string]*vormaruntime.Path
+	GetBuildID() string
+	GetRouteManifestFile() string
+}
+
 func captureRouteBuildRuntimeStateSnapshot(
-	l *vormaruntime.LockedVorma,
+	l routeBuildRuntimeStateReader,
 ) routeBuildRuntimeStateSnapshot {
 	return routeBuildRuntimeStateSnapshot{
 		paths:             cloneRouteBuildRuntimePathsMap(l.GetPaths()),

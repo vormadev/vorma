@@ -122,7 +122,7 @@ func TestLockedVormaGettersAndSetters(t *testing.T) {
 		t.Fatal("GetPathsSnapshot() missing /locked after SetPaths")
 	}
 
-	app.WithRLock(func(lv *LockedVorma) {
+	app.WithRLock(func(lv *ReadLockedVorma) {
 		if got := lv.Vorma(); got != app {
 			t.Fatal("LockedVorma.Vorma() did not return underlying app instance")
 		}
@@ -162,7 +162,7 @@ func TestLockedVormaGetPaths_DoesNotExposeMutableInternalState(t *testing.T) {
 	app := fixture.app
 
 	var leakedPaths map[string]*Path
-	app.WithRLock(func(lv *LockedVorma) {
+	app.WithRLock(func(lv *ReadLockedVorma) {
 		leakedPaths = lv.GetPaths()
 	})
 

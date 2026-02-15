@@ -11,9 +11,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/lab/stringsutil"
 	"github.com/vormadev/vorma/lab/tsgen"
-	"github.com/vormadev/vorma/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
 

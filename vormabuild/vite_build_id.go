@@ -9,8 +9,8 @@ import (
 	"os"
 	"path"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/cryptoutil"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 type stageTwoBuildIDDependencies struct {

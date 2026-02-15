@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {

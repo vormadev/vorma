@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 type fakeBuildInnerPublicFileMapWriter struct {

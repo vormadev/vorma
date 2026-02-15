@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 func setPatternMetadata(properties map[string]any, pattern string, dynamicRune rune, splatRune rune) {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 type postRouteSyncHook func(*vormaruntime.LockedVorma) error

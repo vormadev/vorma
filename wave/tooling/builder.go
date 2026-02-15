@@ -1,5 +1,8 @@
 // Package tooling provides build-time and dev-time functionality for Wave.
-// This package has heavy dependencies and should not be imported at runtime.
+//
+// This package intentionally has heavy dependencies and should not be imported
+// by runtime request-serving code paths. Keep it out of production app binaries
+// to preserve a smaller dependency set and binary size.
 package tooling
 
 import (
@@ -52,13 +55,6 @@ func (b *Builder) Close() error {
 // Unstable internal callback/schema fields are omitted.
 func (b *Builder) Config() *wave.ParsedConfig {
 	return b.cfg.Clone()
-}
-
-// Internal__GetMutableConfigReference returns the live mutable parsed config
-// pointer. This is unstable internal API and must not be used by
-// applications.
-func (b *Builder) Internal__GetMutableConfigReference() *wave.ParsedConfig {
-	return b.cfg
 }
 
 // RegisterSchemaSection adds a custom section to the generated JSON schema.

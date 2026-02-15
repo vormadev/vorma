@@ -4,11 +4,11 @@ import (
 	_ "embed"
 	"net/http"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/lab/parseutil"
 	"github.com/vormadev/vorma/lab/tsgen"
-	"github.com/vormadev/vorma/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
 

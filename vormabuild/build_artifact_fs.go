@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 type buildArtifactCleanupDependencies struct {

@@ -1691,3 +1691,326 @@
           logger variable `Log` without an app-facing use case.
         - Unexported logger variable (`Log` -> `log`) and updated internal call
           sites.
+
+## EV-20260215-062
+
+- Package group: `lab/viteutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/viteutil/viteutil.go`
+        - `lab/vitecmd/cmd.go`
+        - `vormaruntime/get_root_handler.go`
+        - `vormabuild/vite_manifest_paths.go`
+        - `vormabuild/vite_paths_stage_two.go`
+    - Commands/tests run:
+        - `rg --files lab/viteutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/viteutil/*.go`
+        - `sed -n '1,360p' lab/viteutil/viteutil.go`
+        - `rg -n "\\bviteutil\\.(Manifest|ManifestChunk|ReadManifest|FindAllDependencies|FindRelativeEntrypointPath|Variant|VariantReact|VariantOther|ToDevScriptsOptions|ToDevScripts|PortEnvName|InitPort|GetVitePortStr)\\b" --glob '!FRAMEWORK_AUDIT*.md'`
+        - `rg -n "InitPort\\(|PortEnvName|VariantReact|VariantOther" lab/viteutil lab/vitecmd vormaruntime vormabuild --glob '*.go'`
+        - `gofmt -w lab/viteutil/viteutil.go`
+        - `go test ./lab/viteutil ./lab/vitecmd`
+        - `go test ./vormaruntime ./vormabuild`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-013`: `InitPort(defaultPort int)` ignored
+          its `defaultPort` argument, creating a misleading app-facing API
+          contract.
+        - Updated `InitPort` to pass caller-provided `defaultPort` to
+          `netutil.GetFreePort`.
+
+## EV-20260215-063
+
+- Package group: `lab/xyz`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/xyz/xyz.go`
+    - Commands/tests run:
+        - `rg --files lab/xyz`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/xyz/*.go`
+        - `sed -n '1,320p' lab/xyz/xyz.go`
+        - `rg -n "\\bxyz\\.MakeEmojiDataURL\\b|\\bMakeEmojiDataURL\\(" --glob '!FRAMEWORK_AUDIT*.md'`
+        - `go test ./lab/xyz`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/xyz` after this sweep.
+
+## EV-20260215-064
+
+- Package group: `internal/scripts/buildts`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `internal/scripts/buildts/main.go`
+    - Commands/tests run:
+        - `rg --files internal/scripts/buildts`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" internal/scripts/buildts/*.go`
+        - `sed -n '1,340p' internal/scripts/buildts/main.go`
+        - `sed -n '320,760p' internal/scripts/buildts/main.go`
+        - `go test ./internal/scripts/buildts`
+    - Findings/fixes:
+        - No additional Surface/API findings in `internal/scripts/buildts` after
+          this sweep.
+
+## EV-20260215-065
+
+- Package group: `internal/scripts/bumper`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `internal/scripts/bumper/main.go`
+    - Commands/tests run:
+        - `rg --files internal/scripts/bumper`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" internal/scripts/bumper/*.go`
+        - `sed -n '1,320p' internal/scripts/bumper/main.go`
+        - `go test ./internal/scripts/bumper`
+    - Findings/fixes:
+        - No additional Surface/API findings in `internal/scripts/bumper` after
+          this sweep.
+
+## EV-20260215-066
+
+- Package group: `internal/scripts/npm_bumper`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `internal/scripts/npm_bumper/main.go`
+    - Commands/tests run:
+        - `rg --files internal/scripts/npm_bumper`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" internal/scripts/npm_bumper/*.go`
+        - `sed -n '1,320p' internal/scripts/npm_bumper/main.go`
+        - `go test ./internal/scripts/npm_bumper`
+    - Findings/fixes:
+        - No additional Surface/API findings in `internal/scripts/npm_bumper`
+          after this sweep.
+
+## EV-20260215-067
+
+- Package group: `internal/scripts/sum`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `internal/scripts/sum/main.go`
+    - Commands/tests run:
+        - `rg --files internal/scripts/sum`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" internal/scripts/sum/*.go`
+        - `sed -n '1,320p' internal/scripts/sum/main.go`
+        - `go test ./internal/scripts/sum`
+    - Findings/fixes:
+        - No additional Surface/API findings in `internal/scripts/sum` after
+          this sweep.
+
+## EV-20260215-068
+
+- Package group: `vorma.go`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vorma.go`
+    - Commands/tests run:
+        - `sed -n '1,360p' vorma.go`
+        - `rg -n "^type |^func |^const |^var " vorma.go`
+        - `go test ./...`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `vorma.go` after this
+          sweep.
+
+## EV-20260215-069
+
+- Package group: `bootstrap/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `bootstrap/bootstrap.go`
+        - `bootstrap/utils.go`
+    - Commands/tests run:
+        - `rg --files bootstrap`
+        - `rg -n "^func |^type |^const |^var " bootstrap/*.go`
+        - `sed -n '1,360p' bootstrap/bootstrap.go`
+        - `sed -n '360,520p' bootstrap/bootstrap.go`
+        - `sed -n '1,220p' bootstrap/utils.go`
+        - `go test ./bootstrap`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `bootstrap/*` after
+          this sweep.
+
+## EV-20260215-070
+
+- Package group: `vormabuild/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vormabuild/build_inner.go`
+        - `vormabuild/route_sync.go`
+        - `vormabuild/rollback_transaction.go`
+        - `vormabuild/build_watch.go`
+        - `vormabuild/reload_endpoint.go`
+        - `vormabuild/rebuild_routes.go`
+        - `vormabuild/build_environment.go`
+        - `vormabuild/vorma_build.go`
+        - `vormabuild/vite_paths_stage_two.go`
+        - `vormabuild/route_parsing_pipeline.go`
+        - `vormabuild/backend_route_discovery.go`
+        - `vormabuild/backend_route_registration_generation.go`
+        - `vormabuild/route_registry_build.go`
+        - `vormabuild/runtime_state_snapshot.go`
+        - `vormabuild/build_artifact_fs.go`
+        - `vormabuild/atomic_file_write.go`
+        - `vormabuild/resource_runner.go`
+        - `vormabuild/build_cli.go`
+        - `vormabuild/vite_cmd.go`
+        - `vormabuild/vite_manifest_paths.go`
+    - Commands/tests run:
+        - `rg --files vormabuild`
+        - `rg -n "^func |^type |^const |^var " vormabuild/*.go`
+        - `ls -la vormabuild`
+        - `sed -n '1,260p' vormabuild/build_inner.go`
+        - `sed -n '1,240p' vormabuild/route_sync.go`
+        - `sed -n '1,220p' vormabuild/rollback_transaction.go`
+        - `sed -n '1,320p' vormabuild/build_watch.go`
+        - `sed -n '1,280p' vormabuild/reload_endpoint.go`
+        - `sed -n '1,260p' vormabuild/rebuild_routes.go`
+        - `sed -n '1,280p' vormabuild/build_environment.go`
+        - `sed -n '1,260p' vormabuild/vorma_build.go`
+        - `sed -n '1,260p' vormabuild/vite_paths_stage_two.go`
+        - `sed -n '1,260p' vormabuild/route_parsing_pipeline.go`
+        - `sed -n '260,520p' vormabuild/route_parsing_pipeline.go`
+        - `sed -n '1,260p' vormabuild/backend_route_discovery.go`
+        - `rg -n "ensureGoTypesInfoInitialized|packageContainsRouteRegistrationHints|discoverRouteRegistrationsInRootFiles|discoverRouteRegistrationsInFunctionDeclaration|discoverCanonicalRouteRegistrationCallsInNode|goTypes" vormabuild/backend_route_discovery.go`
+        - `sed -n '240,500p' vormabuild/backend_route_discovery.go`
+        - `sed -n '560,920p' vormabuild/backend_route_discovery.go`
+        - `sed -n '920,1320p' vormabuild/backend_route_discovery.go`
+        - `sed -n '1,240p' vormabuild/backend_route_registration_generation.go`
+        - `sed -n '240,520p' vormabuild/backend_route_registration_generation.go`
+        - `sed -n '520,780p' vormabuild/backend_route_registration_generation.go`
+        - `sed -n '1,260p' vormabuild/route_registry_build.go`
+        - `sed -n '1,240p' vormabuild/runtime_state_snapshot.go`
+        - `sed -n '1,220p' vormabuild/build_artifact_fs.go`
+        - `sed -n '1,260p' vormabuild/atomic_file_write.go`
+        - `sed -n '1,220p' vormabuild/resource_runner.go`
+        - `sed -n '1,320p' vormabuild/build_cli.go`
+        - `sed -n '1,280p' vormabuild/vite_cmd.go`
+        - `sed -n '1,260p' vormabuild/vite_manifest_paths.go`
+        - `go test ./vormabuild -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `vormabuild/*` after
+          this sweep.
+
+## EV-20260215-071
+
+- Package group: `vormaruntime/*`, `vormabuild/*` callsites
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `vormaruntime/vorma_core.go`
+        - `vormaruntime/runtime_state.go`
+        - `vormaruntime/route_registry.go`
+        - `vormaruntime/route_reload.go`
+        - `vormaruntime/glue.go`
+        - `vormaruntime/gmpd.go`
+        - `vormabuild/build_inner.go`
+        - `vormabuild/runtime_state_snapshot.go`
+        - `vormabuild/route_registry_build.go`
+    - Commands/tests run:
+        - `rg --files vormaruntime`
+        - `rg -n "^func |^type |^const |^var " vormaruntime/*.go`
+        - `ls -la vormaruntime`
+        - `sed -n '1,260p' vormaruntime/runtime_state.go`
+        - `sed -n '1,260p' vormaruntime/route_registry.go`
+        - `sed -n '1,260p' vormaruntime/route_reload.go`
+        - `sed -n '1,260p' vormaruntime/glue.go`
+        - `sed -n '260,420p' vormaruntime/glue.go`
+        - `sed -n '1,260p' vormaruntime/vorma_core.go`
+        - `sed -n '1,260p' vormaruntime/gmpd.go`
+        - `sed -n '260,560p' vormaruntime/gmpd.go`
+        - `sed -n '560,760p' vormaruntime/gmpd.go`
+        - `rg -n "WithRLock\\(func\\(" --glob '!**/node_modules/**'`
+        - `gofmt -w vormaruntime/vorma_core.go vormabuild/build_inner.go vormabuild/runtime_state_snapshot.go vormabuild/build_artifacts_test.go vormabuild/route_registry_build.go vormaruntime/vorma_core_test.go vormaruntime/gmpd_cache_test.go`
+        - `go test ./vormaruntime ./vormabuild`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-014`: `WithRLock` exposed `*LockedVorma`,
+          which includes mutating setters and therefore allowed write operations
+          under a read lock.
+        - Added `ReadLockedVorma` and changed `WithRLock` to expose read-only
+          state access.
+        - Updated dependent callsites/signatures to consume read-only access
+          where required (`vormabuild/runtime_state_snapshot.go`,
+          `vormabuild/route_registry_build.go`, and tests).
+
+## EV-20260215-072
+
+- Package group: `wave/*`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `wave/wave.go`
+        - `wave/runtime_framework.go`
+        - `wave/parse.go`
+        - `wave/cache_internal.go`
+        - `wave/runtime_assets.go`
+        - `wave/filemap.go`
+        - `wave/css.go`
+    - Commands/tests run:
+        - `rg --files wave | head -n 200`
+        - `rg -n "^func |^type |^const |^var " wave/*.go`
+        - `ls -la wave`
+        - `sed -n '1,260p' wave/wave.go`
+        - `sed -n '1,260p' wave/runtime_framework.go`
+        - `sed -n '1,260p' wave/parse.go`
+        - `sed -n '1,220p' wave/cache_internal.go`
+        - `sed -n '1,220p' wave/runtime_assets.go`
+        - `sed -n '1,220p' wave/filemap.go`
+        - `sed -n '1,220p' wave/css.go`
+        - `go test ./wave -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `wave/*` after this
+          sweep.
+
+## EV-20260215-073
+
+- Package group: `internal/vormaruntime/*`, `vorma.go`, `vormabuild/*`,
+  `wave/*`, `wave/tooling/*`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `vorma.go`
+        - `internal/vormaruntime/*`
+        - `vormabuild/vorma_build.go`
+        - `vormabuild/build_environment.go`
+        - `vormabuild/build_watch.go`
+        - `wave/runtime_framework.go`
+        - `wave/parsed_config_clone.go`
+        - `wave/tooling/builder.go`
+    - Commands/tests run:
+        - `mv vormaruntime internal/vormaruntime`
+        - `rg -l 'github.com/vormadev/vorma/vormaruntime' | xargs perl -0pi -e 's#github.com/vormadev/vorma/vormaruntime#github.com/vormadev/vorma/internal/vormaruntime#g'`
+        - `rg -n 'Internal__GetParsedConfigMutableReference|Internal__GetMutableConfigReference'`
+        - `gofmt -w vorma.go wave/*.go wave/tooling/*.go vormabuild/*.go internal/vormaruntime/*.go`
+        - `go test ./... -count=1`
+        - `make gotest`
+        - `make tstest`
+        - `make tscheck`
+        - `make tslint`
+    - Findings/fixes:
+        - Internalized `vormaruntime` to root `internal` boundary
+          (`internal/vormaruntime`) so external consumers cannot import runtime
+          internals directly.
+        - Updated `vorma.go` and `vormabuild/*` imports to consume
+          `internal/vormaruntime`.
+        - Removed mutable parsed-config escape hatches from public API:
+            - removed `(*wave.Wave).Internal__GetParsedConfigMutableReference`
+            - removed `(*tooling.Builder).Internal__GetMutableConfigReference`
+        - Added explicit Wave framework-facing APIs for buildtime wiring without
+          exposing live mutable config pointers:
+            - `RegisterFrameworkSchemaSection`
+            - `SetFrameworkDevBuildHookCommand`
+            - `SetFrameworkProdBuildHookCommand`
+            - `SetFrameworkRunBuildHookRunner`
+            - `SetFrameworkPrepareGoBuildOverlay`
+            - `GetBuildtimeParsedConfig`
+        - Refactored `vormabuild` build-environment wiring to operate on
+          buildtime config snapshots (`configureBuildEnvironment*`) instead of
+          mutating Wave internals through a raw pointer.
+        - Updated dependent tests and e2e fixture code to use explicit buildtime
+          APIs; resolved a transient `vormabuild` test regression where a
+          refactored test accidentally exercised real dev-server startup.

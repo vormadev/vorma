@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 const discoveredRouteRegistrarGeneratedFilename = "vorma_discovered_routes.gen.go"

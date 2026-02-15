@@ -1,5 +1,8 @@
-// Package wave provides runtime services for Wave applications.
+// Package wave provides runtime services that may be linked into production binaries.
+//
 // Build-time and dev-time functionality is in the wave/tooling subpackage.
+// Keeping this split explicit lets applications use runtime-only code in
+// production while avoiding build-tool dependencies in shipped binaries.
 package wave
 
 import (

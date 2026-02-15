@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
 

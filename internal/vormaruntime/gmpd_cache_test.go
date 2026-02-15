@@ -42,7 +42,7 @@ func TestLoadOrBuildCachedItemSubset_DoesNotStoreWhenSnapshotVersionIsStale(t *t
 	}
 
 	var staleSnapshotVersion uint64
-	app.WithRLock(func(lv *LockedVorma) {
+	app.WithRLock(func(lv *ReadLockedVorma) {
 		staleSnapshotVersion = lv.v._routeDataSnapshotVersion
 	})
 
@@ -81,7 +81,7 @@ func TestLoadOrBuildCachedItemSubset_DoesNotStoreWhenSnapshotVersionIsStale(t *t
 	}
 
 	var currentSnapshotVersion uint64
-	app.WithRLock(func(lv *LockedVorma) {
+	app.WithRLock(func(lv *ReadLockedVorma) {
 		currentSnapshotVersion = lv.v._routeDataSnapshotVersion
 	})
 

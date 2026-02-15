@@ -8,8 +8,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/lab/jsonschema"
-	"github.com/vormadev/vorma/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -35,16 +35,23 @@ var frameworkBuildHookExecutionDeps = frameworkBuildHookExecutionDependencies{
 	},
 }
 
-func registerVormaSchema(v *vormaruntime.Vorma) {
-	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
+func registerVormaSchemaInConfig(cfg *wave.ParsedConfig) {
+	if cfg == nil {
+		return
+	}
 	if cfg.FrameworkSchemaExtensions == nil {
 		cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
 	}
 	cfg.FrameworkSchemaExtensions["Vorma"] = vormaSchema
 }
 
-func injectFrameworkBuildHooks(v *vormaruntime.Vorma) {
-	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
+func injectFrameworkBuildHooksInConfig(
+	cfg *wave.ParsedConfig,
+	v *vormaruntime.Vorma,
+) {
+	if cfg == nil {
+		return
+	}
 	if cfg.FrameworkDevBuildHook == "" {
 		cfg.FrameworkDevBuildHook = fmt.Sprintf("go run ./%s --dev --hook", v.Config.MainBuildEntry)
 	}
@@ -53,16 +60,29 @@ func injectFrameworkBuildHooks(v *vormaruntime.Vorma) {
 	}
 }
 
-func configureBuildEnvironment(v *vormaruntime.Vorma) {
-	registerVormaSchema(v)
-	injectDefaultWatchPatterns(v)
-	injectFrameworkBuildHooks(v)
-	injectFrameworkBuildHookRunner(v)
-	injectFrameworkGoBuildOverlayPreparation(v)
+func configureBuildEnvironment(v *vormaruntime.Vorma) *wave.ParsedConfig {
+	return configureBuildEnvironmentInConfig(v, v.Wave.GetBuildtimeParsedConfig())
 }
 
-func injectFrameworkBuildHookRunner(v *vormaruntime.Vorma) {
-	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
+func configureBuildEnvironmentInConfig(
+	v *vormaruntime.Vorma,
+	cfg *wave.ParsedConfig,
+) *wave.ParsedConfig {
+	registerVormaSchemaInConfig(cfg)
+	injectDefaultWatchPatternsInConfig(cfg, v)
+	injectFrameworkBuildHooksInConfig(cfg, v)
+	injectFrameworkBuildHookRunnerInConfig(cfg, v)
+	injectFrameworkGoBuildOverlayPreparationInConfig(cfg, v)
+	return cfg
+}
+
+func injectFrameworkBuildHookRunnerInConfig(
+	cfg *wave.ParsedConfig,
+	v *vormaruntime.Vorma,
+) {
+	if cfg == nil {
+		return
+	}
 	if cfg.FrameworkRunBuildHook != nil {
 		return
 	}
@@ -132,8 +152,13 @@ func injectFrameworkBuildHookRunner(v *vormaruntime.Vorma) {
 	}
 }
 
-func injectFrameworkGoBuildOverlayPreparation(v *vormaruntime.Vorma) {
-	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
+func injectFrameworkGoBuildOverlayPreparationInConfig(
+	cfg *wave.ParsedConfig,
+	v *vormaruntime.Vorma,
+) {
+	if cfg == nil {
+		return
+	}
 	if cfg.FrameworkPrepareGoBuildOverlay != nil {
 		return
 	}

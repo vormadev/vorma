@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -90,10 +90,10 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	injectDefaultWatchPatterns(app)
-	injectDefaultWatchPatterns(app)
+	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
+	injectDefaultWatchPatternsInConfig(parsedCfg, app)
+	injectDefaultWatchPatternsInConfig(parsedCfg, app)
 
-	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
 	if len(parsedCfg.FrameworkWatchPatterns) != 3 {
 		t.Fatalf("len(FrameworkWatchPatterns) = %d, want %d", len(parsedCfg.FrameworkWatchPatterns), 3)
 	}
@@ -123,7 +123,7 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
+	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
 
 	customGoWatchPattern := wave.WatchedFile{
 		Pattern: "**/*.go",
@@ -140,7 +140,7 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(t *testin
 	existingIgnoredPattern := filepath.Join(app.Config.TSGenOutDir, wave.GeneratedTSFileName)
 	parsedCfg.FrameworkIgnoredPatterns = append(parsedCfg.FrameworkIgnoredPatterns, existingIgnoredPattern)
 
-	injectDefaultWatchPatterns(app)
+	injectDefaultWatchPatternsInConfig(parsedCfg, app)
 
 	if parsedCfg.FrameworkPublicFileMapOutDir != existingOutDir {
 		t.Fatalf("FrameworkPublicFileMapOutDir = %q, want %q", parsedCfg.FrameworkPublicFileMapOutDir, existingOutDir)

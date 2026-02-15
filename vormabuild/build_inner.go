@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/id"
-	"github.com/vormadev/vorma/vormaruntime"
 	wavebuild "github.com/vormadev/vorma/wave/tooling"
 )
 
@@ -79,7 +79,7 @@ var buildInnerBuildIDDeps = buildInnerBuildIDDependencies{
 var buildInnerPublicFileMapDeps = buildInnerPublicFileMapDependencies{
 	newPublicFileMapWriter: func(v *vormaruntime.Vorma) buildInnerPublicFileMapWriter {
 		return wavebuild.NewBuilder(
-			v.Wave.Internal__GetParsedConfigMutableReference(),
+			configureBuildEnvironment(v),
 			v.Wave.Logger(),
 		)
 	},
@@ -137,7 +137,7 @@ func normalizeBuildInnerOptions(opts *buildInnerOptions) buildInnerOptions {
 
 func captureBuildInnerRuntimeState(v *vormaruntime.Vorma) buildInnerRuntimeStateSnapshot {
 	var runtimeStateSnapshot buildInnerRuntimeStateSnapshot
-	v.WithRLock(func(l *vormaruntime.LockedVorma) {
+	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
 		runtimeStateSnapshot = buildInnerRuntimeStateSnapshot{
 			isDev:                  l.GetIsDev(),
 			routeBuildRuntimeState: captureRouteBuildRuntimeStateSnapshot(l),

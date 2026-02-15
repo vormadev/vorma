@@ -66,19 +66,6 @@ func TestBuilderConfigReturnsDefensiveCopy(t *testing.T) {
 	}
 }
 
-func TestBuilderInternalGetMutableConfigReferenceReturnsLiveConfig(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	mutableConfig := builder.Internal__GetMutableConfigReference()
-	mutableConfig.Core.MainAppEntry = "cmd/internal-mutated"
-
-	if got := cfg.Core.MainAppEntry; got != "cmd/internal-mutated" {
-		t.Fatalf("expected live config mutation through internal accessor, got %q", got)
-	}
-}
-
 func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
 	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", true, "")
 

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -25,6 +25,7 @@ type buildTestFixtureOptions struct {
 	config              *vormaruntime.VormaConfig
 	loadersRouterConfig vormaruntime.LoadersRouterOptions
 	actionsRouterConfig vormaruntime.ActionsRouterOptions
+	waveMainAppEntry    *string
 }
 
 func newBuildTestFixture(t *testing.T, options *buildTestFixtureOptions) *buildTestFixture {
@@ -75,6 +76,9 @@ func newBuildTestFixture(t *testing.T, options *buildTestFixtureOptions) *buildT
 			PublicPathPrefix: "/",
 		},
 		Vorma: cfg,
+	}
+	if options != nil && options.waveMainAppEntry != nil {
+		rawConfig.Core.MainAppEntry = *options.waveMainAppEntry
 	}
 
 	cfgJSON, err := json.Marshal(rawConfig)

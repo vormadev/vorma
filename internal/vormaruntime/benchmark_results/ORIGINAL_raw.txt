@@ -1,6 +1,6 @@
 goos: darwin
 goarch: arm64
-pkg: github.com/vormadev/vorma/vormaruntime
+pkg: github.com/vormadev/vorma/internal/vormaruntime
 cpu: Apple M3 Max
 BenchmarkLoadersHandler_JSONCurrentBuild-14              	  160969	      8228 ns/op	   11757 B/op	      91 allocs/op
 BenchmarkLoadersHandler_JSONCurrentBuild-14              	  147508	      8433 ns/op	   11760 B/op	      91 allocs/op
@@ -24,4 +24,4 @@ BenchmarkActionsHandler_GETQueryCurrentBuild-14          	  398101	      3273 ns
 BenchmarkActionsHandler_GETQueryCurrentBuild-14          	  364575	      3318 ns/op	    8357 B/op	      56 allocs/op
 BenchmarkActionsHandler_GETQueryCurrentBuild-14          	  343971	      3350 ns/op	    8357 B/op	      56 allocs/op
 PASS
-ok  	github.com/vormadev/vorma/vormaruntime	54.184s
+ok  	github.com/vormadev/vorma/internal/vormaruntime	54.184s

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/vormadev/vorma/lab/jsonschema"
 )
 
 func newDiscardLoggerForWaveTests() *slog.Logger {
@@ -684,10 +686,10 @@ func TestConfigAccessorMethods(t *testing.T) {
 		},
 	})
 	w.AddIgnoredPatterns([]string{"ignored/**"})
-	w.Internal__GetParsedConfigMutableReference().FrameworkDevBuildHook = "go run ./backend/cmd/build --dev"
-	w.Internal__GetParsedConfigMutableReference().FrameworkRunBuildHook = func(context.Context, bool) error {
+	w.SetFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
+	w.SetFrameworkRunBuildHookRunner(func(context.Context, bool) error {
 		return nil
-	}
+	})
 
 	parsedConfigSnapshot := w.GetParsedConfig()
 	if parsedConfigSnapshot == w.cfg {
@@ -726,15 +728,33 @@ func TestConfigAccessorMethods(t *testing.T) {
 	}
 }
 
-func TestInternalGetParsedConfigMutableReferenceReturnsLiveConfig(t *testing.T) {
+func TestGetBuildtimeParsedConfigIncludesFrameworkBuildCallbacks(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	mutableParsedConfig := w.Internal__GetParsedConfigMutableReference()
-	mutableParsedConfig.Core.MainAppEntry = "cmd/internal-mutated"
+	w.SetFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
+	w.RegisterFrameworkSchemaSection(
+		"Custom",
+		jsonschema.Entry{Type: jsonschema.TypeObject},
+	)
+	w.SetFrameworkRunBuildHookRunner(func(context.Context, bool) error {
+		return nil
+	})
 
-	if got := w.Internal__GetParsedConfigMutableReference().Core.MainAppEntry; got != "cmd/internal-mutated" {
-		t.Fatalf("mutable parsed config write was not applied: %q", got)
+	buildtimeParsedConfig := w.GetBuildtimeParsedConfig()
+	buildtimeParsedConfig.Core.MainAppEntry = "cmd/internal-mutated"
+
+	if got := w.cfg.Core.MainAppEntry; got != fixture.cfg.Core.MainAppEntry {
+		t.Fatalf("GetBuildtimeParsedConfig snapshot mutated core main app entry: %q", got)
+	}
+	if got := buildtimeParsedConfig.FrameworkDevBuildHook; got != "go run ./backend/cmd/build --dev" {
+		t.Fatalf("FrameworkDevBuildHook = %q, want configured value", got)
+	}
+	if _, ok := buildtimeParsedConfig.FrameworkSchemaExtensions["Custom"]; !ok {
+		t.Fatal("expected GetBuildtimeParsedConfig snapshot to include framework schema extensions")
+	}
+	if buildtimeParsedConfig.FrameworkRunBuildHook == nil {
+		t.Fatal("expected GetBuildtimeParsedConfig snapshot to include framework run build hook")
 	}
 }
 

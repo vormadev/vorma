@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 type buildCommandOptions struct {
@@ -30,7 +30,9 @@ type buildCommandExecutor struct {
 
 func defaultBuildCommandHooks() buildCommandHooks {
 	return buildCommandHooks{
-		configureBuildEnvironment: configureBuildEnvironment,
+		configureBuildEnvironment: func(v *vormaruntime.Vorma) {
+			_ = configureBuildEnvironment(v)
+		},
 		runBuildHook: func(v *vormaruntime.Vorma, isDev bool) error {
 			return buildInner(v, &buildInnerOptions{isDev: isDev})
 		},

@@ -3,7 +3,7 @@ package vormabuild
 import (
 	"testing"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 func TestCaptureRouteBuildRuntimeStateSnapshot(t *testing.T) {

@@ -3,9 +3,9 @@ package vormabuild
 import (
 	"net/http"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/lab/tsgen"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 // TypeScript generation lives entirely in the build package.

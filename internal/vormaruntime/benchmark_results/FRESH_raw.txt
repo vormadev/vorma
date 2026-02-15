@@ -1,6 +1,6 @@
 goos: darwin
 goarch: arm64
-pkg: github.com/vormadev/vorma/vormaruntime
+pkg: github.com/vormadev/vorma/internal/vormaruntime
 BenchmarkLoadersHandler_JSONCurrentBuild-14              	  261764	      4675 ns/op	   11332 B/op	      83 allocs/op
 BenchmarkLoadersHandler_JSONCurrentBuild-14              	  268406	      4736 ns/op	   11332 B/op	      83 allocs/op
 BenchmarkLoadersHandler_JSONCurrentBuild-14              	  255069	      4657 ns/op	   11332 B/op	      83 allocs/op
@@ -14,10 +14,10 @@ BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache-14    	  124804	      9679 ns
 BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache-14    	  131677	      9053 ns/op	   11707 B/op	      93 allocs/op
 BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache-14    	  139576	      8878 ns/op	   11707 B/op	      93 allocs/op
 PASS
-ok  	github.com/vormadev/vorma/vormaruntime	36.067s
+ok  	github.com/vormadev/vorma/internal/vormaruntime	36.067s
 goos: darwin
 goarch: arm64
-pkg: github.com/vormadev/vorma/vormaruntime
+pkg: github.com/vormadev/vorma/internal/vormaruntime
 BenchmarkActionsHandler_POSTJSONCurrentBuild-14    	  337632	      4856 ns/op	    9203 B/op	      62 allocs/op
 BenchmarkActionsHandler_POSTJSONCurrentBuild-14    	  359782	      3460 ns/op	    9203 B/op	      62 allocs/op
 BenchmarkActionsHandler_POSTJSONCurrentBuild-14    	  352003	      3430 ns/op	    9203 B/op	      62 allocs/op
@@ -25,12 +25,12 @@ BenchmarkActionsHandler_GETQueryCurrentBuild-14    	  374308	      3033 ns/op	  
 BenchmarkActionsHandler_GETQueryCurrentBuild-14    	  408033	      3121 ns/op	    8353 B/op	      56 allocs/op
 BenchmarkActionsHandler_GETQueryCurrentBuild-14    	  387698	      3066 ns/op	    8353 B/op	      56 allocs/op
 PASS
-ok  	github.com/vormadev/vorma/vormaruntime	9.160s
+ok  	github.com/vormadev/vorma/internal/vormaruntime	9.160s
 goos: darwin
 goarch: arm64
-pkg: github.com/vormadev/vorma/vormaruntime
+pkg: github.com/vormadev/vorma/internal/vormaruntime
 BenchmarkSSRInnerHTMLGeneration-14    	   71644	     16720 ns/op	   11087 B/op	     266 allocs/op
 BenchmarkSSRInnerHTMLGeneration-14    	   70801	     17118 ns/op	   11088 B/op	     266 allocs/op
 BenchmarkSSRInnerHTMLGeneration-14    	   70489	     17443 ns/op	   11088 B/op	     266 allocs/op
 PASS
-ok  	github.com/vormadev/vorma/vormaruntime	4.386s
+ok  	github.com/vormadev/vorma/internal/vormaruntime	4.386s

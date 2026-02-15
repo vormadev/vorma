@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 func TestWriteRouteManifestToDisk_WrapsMarshalError(t *testing.T) {

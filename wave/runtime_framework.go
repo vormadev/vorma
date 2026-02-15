@@ -1,5 +1,11 @@
 package wave
 
+import (
+	"context"
+
+	"github.com/vormadev/vorma/lab/jsonschema"
+)
+
 // RawConfigJSON returns the raw bytes of the configuration file.
 func (w *Wave) RawConfigJSON() []byte {
 	return append([]byte(nil), w.rawCfg...)
@@ -21,6 +27,42 @@ func (w *Wave) AddIgnoredPatterns(patterns []string) {
 // SetPublicFileMapOutDir sets the directory where Wave should write the public filemap TypeScript file.
 func (w *Wave) SetPublicFileMapOutDir(dir string) {
 	w.cfg.FrameworkPublicFileMapOutDir = dir
+}
+
+// RegisterFrameworkSchemaSection registers a framework-owned schema extension
+// for wave.config.json generation at build time.
+func (w *Wave) RegisterFrameworkSchemaSection(
+	name string,
+	schema jsonschema.Entry,
+) {
+	if w.cfg.FrameworkSchemaExtensions == nil {
+		w.cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
+	}
+	w.cfg.FrameworkSchemaExtensions[name] = schema
+}
+
+// SetFrameworkDevBuildHookCommand sets the framework dev build hook command.
+func (w *Wave) SetFrameworkDevBuildHookCommand(command string) {
+	w.cfg.FrameworkDevBuildHook = command
+}
+
+// SetFrameworkProdBuildHookCommand sets the framework production build hook command.
+func (w *Wave) SetFrameworkProdBuildHookCommand(command string) {
+	w.cfg.FrameworkProdBuildHook = command
+}
+
+// SetFrameworkRunBuildHookRunner sets the framework build hook runner callback.
+func (w *Wave) SetFrameworkRunBuildHookRunner(
+	runner func(context.Context, bool) error,
+) {
+	w.cfg.FrameworkRunBuildHook = runner
+}
+
+// SetFrameworkPrepareGoBuildOverlay sets the framework Go build overlay callback.
+func (w *Wave) SetFrameworkPrepareGoBuildOverlay(
+	preparer func() (*GoBuildOverlay, error),
+) {
+	w.cfg.FrameworkPrepareGoBuildOverlay = preparer
 }
 
 func (w *Wave) SetBrowserRuntimeNamespace(namespace string) {
@@ -116,11 +158,11 @@ func (w *Wave) GetParsedConfig() *ParsedConfig {
 	return w.cfg.Clone()
 }
 
-// Internal__GetParsedConfigMutableReference returns the live mutable parsed
-// config pointer. This is unstable internal API and must not be used by
-// applications.
-func (w *Wave) Internal__GetParsedConfigMutableReference() *ParsedConfig {
-	return w.cfg
+// GetBuildtimeParsedConfig returns a defensive parsed-config snapshot for
+// build/dev tooling. Unlike GetParsedConfig, this includes framework build
+// callbacks and schema extensions.
+func (w *Wave) GetBuildtimeParsedConfig() *ParsedConfig {
+	return w.cfg.cloneForBuildtime()
 }
 
 func (w *Wave) GetConfigFile() string {

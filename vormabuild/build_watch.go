@@ -3,16 +3,27 @@ package vormabuild
 import (
 	"path/filepath"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
 
-func injectDefaultWatchPatterns(v *vormaruntime.Vorma) {
+func injectDefaultWatchPatterns(v *vormaruntime.Vorma) *wave.ParsedConfig {
+	cfg := v.Wave.GetBuildtimeParsedConfig()
+	injectDefaultWatchPatternsInConfig(cfg, v)
+	return cfg
+}
+
+func injectDefaultWatchPatternsInConfig(
+	cfg *wave.ParsedConfig,
+	v *vormaruntime.Vorma,
+) {
 	if !shouldInjectDefaultWatchPatterns(v) {
 		return
 	}
+	if cfg == nil {
+		return
+	}
 
-	cfg := v.Wave.Internal__GetParsedConfigMutableReference()
 	patterns := getDefaultWatchPatterns(v)
 	appendMissingFrameworkWatchPatterns(cfg, patterns)
 

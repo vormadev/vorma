@@ -126,8 +126,14 @@ func (v *Vorma) GetExtraTSCode() string {
 }
 
 // --- LockedVorma Pattern ---
-// LockedVorma provides compile-time safe access to fields that require the lock.
-// Use WithLock to obtain a LockedVorma instance.
+// Use ReadLockedVorma for read-only access under WithRLock.
+// Use LockedVorma for mutable access under WithLock.
+
+// ReadLockedVorma wraps a Vorma instance for read-only access while holding
+// the read lock. This type can only be obtained via Vorma.WithRLock.
+type ReadLockedVorma struct {
+	v *Vorma
+}
 
 // LockedVorma wraps a Vorma instance and provides access to lock-protected fields.
 // This type can only be obtained via Vorma.WithLock, ensuring the lock is held.
@@ -143,17 +149,26 @@ func (v *Vorma) WithLock(fn func(*LockedVorma)) {
 	fn(&LockedVorma{v: v})
 }
 
-// WithRLock acquires the read lock and calls fn with a LockedVorma.
+// WithRLock acquires the read lock and calls fn with a ReadLockedVorma.
 // The lock is released when fn returns. Use this for read-only operations.
-func (v *Vorma) WithRLock(fn func(*LockedVorma)) {
+func (v *Vorma) WithRLock(fn func(*ReadLockedVorma)) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	fn(&LockedVorma{v: v})
+	fn(&ReadLockedVorma{v: v})
 }
 
 // --- LockedVorma Getters ---
 
 // Vorma returns the underlying Vorma instance for accessing non-lock-protected fields.
+func (l *ReadLockedVorma) Vorma() *Vorma { return l.v }
+func (l *ReadLockedVorma) GetPaths() map[string]*Path {
+	return clonePathsMapOrNil(l.v._paths)
+}
+func (l *ReadLockedVorma) GetBuildID() string                  { return l.v._buildID }
+func (l *ReadLockedVorma) GetRouteManifestFile() string        { return l.v._routeManifestFile }
+func (l *ReadLockedVorma) GetRootTemplate() *template.Template { return l.v._rootTemplate }
+func (l *ReadLockedVorma) GetIsDev() bool                      { return l.v._isDev }
+
 func (l *LockedVorma) Vorma() *Vorma { return l.v }
 func (l *LockedVorma) GetPaths() map[string]*Path {
 	return clonePathsMapOrNil(l.v._paths)

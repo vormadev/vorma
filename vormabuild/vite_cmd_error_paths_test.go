@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/lab/viteutil"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {

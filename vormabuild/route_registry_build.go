@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 type routeRegistryBuildDependencies struct {
@@ -124,6 +124,11 @@ func writeRouteManifestToDisk(v *vormaruntime.Vorma, manifest map[string]int) (s
 
 type stageOnePathsArtifactSnapshot = buildArtifactFileSnapshot
 
+type routeManifestStateReader interface {
+	Vorma() *vormaruntime.Vorma
+	GetPaths() map[string]*vormaruntime.Path
+}
+
 func stageOnePathsArtifactOutputPath(v *vormaruntime.Vorma) string {
 	return pathsOutputPath(v, vormaruntime.VormaPathsStageOneJSONFileName)
 }
@@ -191,7 +196,7 @@ func restoreStageOnePathsArtifactFromSnapshot(
 	)
 }
 
-func generateRouteManifest(l *vormaruntime.LockedVorma, nestedRouter *mux.NestedRouter) map[string]int {
+func generateRouteManifest(l routeManifestStateReader, nestedRouter *mux.NestedRouter) map[string]int {
 	manifest := make(map[string]int)
 	paths := l.GetPaths()
 

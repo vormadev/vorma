@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	wavebuild "github.com/vormadev/vorma/wave/tooling"
 )
 
@@ -151,7 +151,10 @@ func TestRunWaveDevelopmentServer(t *testing.T) {
 		runtimeBuildToolingDeps.runWaveDevelopmentMode = originalRunWaveDevelopmentModeStep
 	})
 
-	fixture := newBuildTestFixture(t, nil)
+	emptyMainAppEntry := ""
+	fixture := newBuildTestFixture(t, &buildTestFixtureOptions{
+		waveMainAppEntry: &emptyMainAppEntry,
+	})
 	app := fixture.app
 
 	var developmentModeCalled bool
@@ -291,7 +294,10 @@ func TestRuntimeBuildToolingDefaultSteps(t *testing.T) {
 		runtimeBuildToolingDeps.runWaveDevelopmentMode = originalRunWaveDevelopmentModeStep
 	})
 
-	fixture := newBuildTestFixture(t, nil)
+	emptyMainAppEntry := ""
+	fixture := newBuildTestFixture(t, &buildTestFixtureOptions{
+		waveMainAppEntry: &emptyMainAppEntry,
+	})
 	app := fixture.app
 
 	runtimeBuildToolingDeps.newWaveBuilder = originalNewWaveBuilderStep
@@ -304,9 +310,6 @@ func TestRuntimeBuildToolingDefaultSteps(t *testing.T) {
 	if err := builder.Close(); err != nil {
 		t.Fatalf("builder.Close returned error: %v", err)
 	}
-
-	parsedConfig := app.Wave.Internal__GetParsedConfigMutableReference()
-	parsedConfig.Core.MainAppEntry = ""
 
 	err := runtimeBuildToolingDeps.runWaveDevelopmentMode(app)
 	if err == nil {
@@ -546,7 +549,7 @@ func TestBuild(t *testing.T) {
 		if !developmentServerCalled {
 			t.Fatal("expected development build path to run")
 		}
-		parsedCfg := app.Wave.Internal__GetParsedConfigMutableReference()
+		parsedCfg := configureBuildEnvironment(app)
 		if len(parsedCfg.FrameworkWatchPatterns) == 0 {
 			t.Fatal("expected configureBuildEnvironment to inject default watch patterns")
 		}

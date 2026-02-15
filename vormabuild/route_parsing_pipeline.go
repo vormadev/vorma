@@ -12,7 +12,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 var importRegex = regexp.MustCompile(`import\((` + "`" + `[^` + "`" + `]+` + "`" + `|'[^']+'|"[^"]+")\)`)

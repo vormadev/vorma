@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/id"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 type fastRouteRebuildDependencies struct {

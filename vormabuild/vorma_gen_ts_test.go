@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 func TestExtractDynamicParamsFromPattern(t *testing.T) {

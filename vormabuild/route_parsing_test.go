@@ -13,7 +13,7 @@ import (
 	esbuild "github.com/evanw/esbuild/pkg/api"
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/js"
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 func TestExtractRouteCalls_HandlesAliasesAndUnresolvedModules(t *testing.T) {

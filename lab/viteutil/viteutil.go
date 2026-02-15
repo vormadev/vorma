@@ -158,7 +158,7 @@ func stripPrecedingSlash(s string) string {
 const PortEnvName = "__VITE_PORT"
 
 func InitPort(defaultPort int) (int, error) {
-	vitePort, err := netutil.GetFreePort(5199)
+	vitePort, err := netutil.GetFreePort(defaultPort)
 	if err != nil {
 		return 0, err
 	}

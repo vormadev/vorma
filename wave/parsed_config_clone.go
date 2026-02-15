@@ -36,6 +36,42 @@ func (parsedConfig *ParsedConfig) Clone() *ParsedConfig {
 	}
 }
 
+func (parsedConfig *ParsedConfig) cloneForBuildtime() *ParsedConfig {
+	if parsedConfig == nil {
+		return nil
+	}
+
+	return &ParsedConfig{
+		Core:  cloneCoreConfig(parsedConfig.Core),
+		Vite:  cloneViteConfig(parsedConfig.Vite),
+		Watch: cloneWatchConfig(parsedConfig.Watch),
+
+		Dist: parsedConfig.Dist,
+
+		FrameworkWatchPatterns: cloneFrameworkWatchPatterns(
+			parsedConfig.FrameworkWatchPatterns,
+		),
+		FrameworkIgnoredPatterns: append(
+			[]string(nil),
+			parsedConfig.FrameworkIgnoredPatterns...,
+		),
+		FrameworkPublicFileMapOutDir: parsedConfig.FrameworkPublicFileMapOutDir,
+		FrameworkSchemaExtensions: cloneFrameworkSchemaExtensions(
+			parsedConfig.FrameworkSchemaExtensions,
+		),
+		FrameworkDevBuildHook:                         parsedConfig.FrameworkDevBuildHook,
+		FrameworkProdBuildHook:                        parsedConfig.FrameworkProdBuildHook,
+		FrameworkRunBuildHook:                         parsedConfig.FrameworkRunBuildHook,
+		FrameworkPrepareGoBuildOverlay:                parsedConfig.FrameworkPrepareGoBuildOverlay,
+		FrameworkBrowserRuntimeNamespace:              parsedConfig.FrameworkBrowserRuntimeNamespace,
+		FrameworkBrowserPublicURLResolverFunctionName: parsedConfig.FrameworkBrowserPublicURLResolverFunctionName,
+		FrameworkBrowserRevalidateFunctionName:        parsedConfig.FrameworkBrowserRevalidateFunctionName,
+		FrameworkRefreshRebuildingOverlayElementID:    parsedConfig.FrameworkRefreshRebuildingOverlayElementID,
+		FrameworkCriticalCSSStyleElementID:            parsedConfig.FrameworkCriticalCSSStyleElementID,
+		FrameworkNonCriticalCSSLinkElementID:          parsedConfig.FrameworkNonCriticalCSSLinkElementID,
+	}
+}
+
 func cloneCoreConfig(
 	coreConfig *CoreConfig,
 ) *CoreConfig {

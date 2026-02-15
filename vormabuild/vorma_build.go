@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 	wavebuild "github.com/vormadev/vorma/wave/tooling"
 )
@@ -45,13 +45,13 @@ var runtimeBuildDeps = runtimeBuildDependencies{
 var runtimeBuildToolingDeps = runtimeBuildToolingDependencies{
 	newWaveBuilder: func(v *vormaruntime.Vorma) runtimeWaveBuilder {
 		return wavebuild.NewBuilder(
-			v.Wave.Internal__GetParsedConfigMutableReference(),
+			configureBuildEnvironment(v),
 			v.Wave.Logger(),
 		)
 	},
 	runWaveDevelopmentMode: func(v *vormaruntime.Vorma) error {
 		return wavebuild.RunDev(
-			v.Wave.Internal__GetParsedConfigMutableReference(),
+			configureBuildEnvironment(v),
 			v.Wave.Logger(),
 		)
 	},
@@ -75,8 +75,6 @@ func Build(v *vormaruntime.Vorma) {
 
 // build performs a full Vorma build.
 func build(v *vormaruntime.Vorma, isDev bool, noBinary bool) error {
-	configureBuildEnvironment(v)
-
 	return newRuntimeBuildExecutor(v).run(isDev, noBinary)
 }
 

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vormadev/vorma/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 func TestCleanRouteManifestsOnly_IgnoresMissingPublicOutDir(t *testing.T) {

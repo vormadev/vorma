@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/lab/viteutil"
-	"github.com/vormadev/vorma/vormaruntime"
 )
 
 type stageTwoPathsWriteDependencies struct {
