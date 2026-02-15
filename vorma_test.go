@@ -62,7 +62,7 @@ func TestNewLoaderUsesDecoratedContext(t *testing.T) {
 func TestNewActionUsesDecoratedContext(t *testing.T) {
 	requestData := &ActionReqData[None]{}
 
-	actionTask := NewAction[None, string](
+	actionTask := NewAction(
 		nil,
 		"POST",
 		"/action",
@@ -105,7 +105,7 @@ func TestNewLoaderPanicsWhenLoaderFunctionIsNil(t *testing.T) {
 		t,
 		"vorma.NewLoader: loader function cannot be nil",
 		func() {
-			_ = NewLoader[string](
+			_ = NewLoader(
 				nil,
 				"/loader",
 				loaderFunc,
@@ -122,7 +122,7 @@ func TestNewLoaderPanicsWhenDecorateContextIsNil(t *testing.T) {
 		t,
 		"vorma.NewLoader: decorateCtx cannot be nil",
 		func() {
-			_ = NewLoader[string](
+			_ = NewLoader(
 				nil,
 				"/loader",
 				func(rd *LoaderReqData) (string, error) { return "ok", nil },
@@ -139,7 +139,7 @@ func TestNewActionPanicsWhenActionFunctionIsNil(t *testing.T) {
 		t,
 		"vorma.NewAction: action function cannot be nil",
 		func() {
-			_ = NewAction[None, string](
+			_ = NewAction(
 				nil,
 				"POST",
 				"/action",
@@ -157,7 +157,7 @@ func TestNewActionPanicsWhenDecorateContextIsNil(t *testing.T) {
 		t,
 		"vorma.NewAction: decorateCtx cannot be nil",
 		func() {
-			_ = NewAction[None, string](
+			_ = NewAction(
 				nil,
 				"POST",
 				"/action",
@@ -188,7 +188,7 @@ func TestInternalRegisterDiscoveredActionPanicsWhenAppIsNil(t *testing.T) {
 		t,
 		"vorma.Internal__RegisterDiscoveredAction: app cannot be nil",
 		func() {
-			_ = Internal__RegisterDiscoveredAction[None, string](
+			_ = Internal__RegisterDiscoveredAction(
 				(*Vorma)(nil),
 				"POST",
 				"/action",

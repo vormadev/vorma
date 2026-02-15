@@ -2,6 +2,7 @@ package vorma
 
 import (
 	_ "embed"
+	"net/http"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
@@ -35,17 +36,24 @@ type (
 	LoaderError                       = vormaruntime.LoaderError
 )
 
-// Re-exported functions
-var (
-	MustGetPort                       = wave.MustGetPort
-	GetIsDev                          = wave.GetIsDev
-	SetModeToDev                      = wave.SetModeToDev
-	IsJSONRequest                     = vormaruntime.IsJSONRequest
-	VormaBuildIDHeaderKey             = vormaruntime.VormaBuildIDHeaderKey
-	EnableThirdPartyRouter            = mux.InjectTasksCtxMiddleware
-	NewAppRoot                        = vormaruntime.NewAppRoot
-	RunAppModuleRegistrationLifecycle = vormaruntime.RunAppModuleRegistrationLifecycle
-)
+const VormaBuildIDHeaderKey = vormaruntime.VormaBuildIDHeaderKey
+
+func MustGetPort() int { return wave.MustGetPort() }
+func GetIsDev() bool   { return wave.GetIsDev() }
+func SetModeToDev()    { wave.SetModeToDev() }
+
+func IsJSONRequest(r *http.Request) bool {
+	return vormaruntime.IsJSONRequest(r)
+}
+func EnableThirdPartyRouter(next http.Handler) http.Handler {
+	return mux.InjectTasksCtxMiddleware(next)
+}
+func NewAppRoot(app *Vorma, modules []AppModule) *AppRoot {
+	return vormaruntime.NewAppRoot(app, modules)
+}
+func RunAppModuleRegistrationLifecycle(app *Vorma, modules []AppModule) error {
+	return vormaruntime.RunAppModuleRegistrationLifecycle(app, modules)
+}
 
 func NewVormaApp(o VormaAppConfig) *Vorma {
 	return vormaruntime.NewVormaApp(o)
@@ -58,8 +66,7 @@ func NewLoader[O any, CtxPtr ~*Ctx, Ctx any](
 	decorateCtx func(*LoaderReqData) CtxPtr,
 ) *Loader[O] {
 	panicIfNilLoaderRegistrationArguments("vorma.NewLoader", f, decorateCtx)
-	_ = app
-	_ = p
+	_, _ = app, p
 	wrappedF := func(c *LoaderReqData) (O, error) { return f(decorateCtx(c)) }
 	return mux.TaskHandlerFromFunc(wrappedF)
 }
@@ -72,9 +79,7 @@ func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	decorateCtx func(*ActionReqData[I]) CtxPtr,
 ) *Action[I, O] {
 	panicIfNilActionRegistrationArguments("vorma.NewAction", f, decorateCtx)
-	_ = app
-	_ = m
-	_ = p
+	_, _, _ = app, m, p
 	wrappedF := func(c *ActionReqData[I]) (O, error) { return f(decorateCtx(c)) }
 	return mux.TaskHandlerFromFunc(wrappedF)
 }

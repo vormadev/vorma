@@ -108,13 +108,15 @@ and test quality.
 
 ## Approval Log
 
-- None in current reset cycle.
+1. 2026-02-15: User confirmed AST discovery + generated registration is the
+   intended architecture and explicitly rejected a runtime side-effect
+   registration model for `vorma.NewLoader`/`vorma.NewAction`.
 
 ## Matrix
 
 | Package Group                  | Surface/API | Correctness | Fragility | DRY      | Performance | Test Quality | Failure Modes |
 | ------------------------------ | ----------- | ----------- | --------- | -------- | ----------- | ------------ | ------------- |
-| `vorma.go`                     | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vorma.go`                     | done        | not done    | not done  | not done | not done    | not done     | not done      |
 | `bootstrap/*`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormabuild/*`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `vormaruntime/*`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
@@ -185,7 +187,9 @@ and test quality.
 | `internal/scripts/npm_bumper`  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `internal/scripts/sum`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 
-Matrix evidence for completed cells: none yet in this reset cycle.
+Matrix evidence for completed cells:
+
+1. `vorma.go` + Surface/API: `EV-20260214-001`, `EV-20260214-002`.
 
 ## Current Focus
 
@@ -194,15 +198,15 @@ Matrix evidence for completed cells: none yet in this reset cycle.
 
 ## Open Findings
 
-TODO
+1. None.
 
 ## Open Test Gaps
 
-TODO
+1. None.
 
 ## Next Queue
 
-TODO
+1. `bootstrap/*` + Surface/API.
 
 ## Process Notes
 
