@@ -17,9 +17,6 @@ type (
 	Vorma                             = vormaruntime.Vorma
 	HeadEls                           = headels.HeadEls
 	AdHocType                         = tsgen.AdHocType
-	AppRoot                           = vormaruntime.AppRoot
-	AppModule                         = vormaruntime.AppModule
-	AppModuleRegistrationHook         = vormaruntime.AppModuleRegistrationHook
 	VormaAppConfig                    = vormaruntime.VormaAppConfig
 	LoadersRouter                     = vormaruntime.LoadersRouter
 	LoaderReqData                     = vormaruntime.LoaderReqData
@@ -47,12 +44,6 @@ func IsJSONRequest(r *http.Request) bool {
 }
 func EnableThirdPartyRouter(next http.Handler) http.Handler {
 	return mux.InjectTasksCtxMiddleware(next)
-}
-func NewAppRoot(app *Vorma, modules []AppModule) *AppRoot {
-	return vormaruntime.NewAppRoot(app, modules)
-}
-func RunAppModuleRegistrationLifecycle(app *Vorma, modules []AppModule) error {
-	return vormaruntime.RunAppModuleRegistrationLifecycle(app, modules)
 }
 
 func NewVormaApp(o VormaAppConfig) *Vorma {

@@ -1000,7 +1000,7 @@ func TestLoadersHandler_GenericLoaderErrorDoesNotLeakInternalMessage(t *testing.
 		t.Fatalf("ErrorExportKeys = %#v, want only parent error boundary", routeData.ErrorExportKeys)
 	}
 
-	if strings.Contains(string(rec.Body.Bytes()), "sensitive upstream database failure") {
+	if strings.Contains(rec.Body.String(), "sensitive upstream database failure") {
 		t.Fatalf("response body leaked internal error detail: %s", rec.Body.String())
 	}
 }

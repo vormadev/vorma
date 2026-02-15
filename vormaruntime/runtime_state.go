@@ -2,13 +2,6 @@ package vormaruntime
 
 import "strings"
 
-func clearRouteDataCache() {
-	gmpdCache.Range(func(key, _ any) bool {
-		gmpdCache.Delete(key)
-		return true
-	})
-}
-
 func clearRouteDataCacheForAppIdentity(appIdentity string) {
 	if appIdentity == "" {
 		return

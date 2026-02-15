@@ -676,5 +676,1018 @@
           `registerClientLoaderPattern` from `vorma/client` public exports in
           `vormaclient/client/index.ts`; adapters continue using
           `registerClientLoaderForAdapter` from `vorma/client/__internal`.
-        - This supersedes the public-export placement portion of
-          `EV-20260215-011`.
+    - This supersedes the public-export placement portion of `EV-20260215-011`.
+
+## EV-20260215-014
+
+- Package group: `kit/csrf`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/csrf/csrf.go`
+        - `kit/csrf/csrf_test.go`
+        - `kit/csrf/README.md`
+    - Commands/tests run:
+        - `rg --files kit/csrf`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/csrf/*.go`
+        - `sed -n '1,260p' kit/csrf/csrf.go`
+        - `sed -n '1,260p' kit/csrf/csrf_test.go`
+        - `sed -n '260,620p' kit/csrf/csrf_test.go`
+        - `sed -n '1,260p' kit/csrf/README.md`
+        - `rg -n "CycleTokenWithProxy|CycleTokenWithWriter|Middleware|NewProtector|ProtectorConfig|AllowedOrigins|HeaderName|CookieName" kit/csrf/csrf_test.go`
+        - `go test ./kit/csrf`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/csrf` after this sweep.
+
+## EV-20260215-015
+
+- Package group: `kit/envutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/envutil/envutil.go`
+        - `kit/envutil/envutil_test.go`
+        - `kit/envutil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/envutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/envutil/*.go`
+        - `sed -n '1,260p' kit/envutil/envutil.go`
+        - `sed -n '1,260p' kit/envutil/envutil_test.go`
+        - `sed -n '1,240p' kit/envutil/README.md`
+        - `rg -n "\benvutil\.(GetStr|GetInt|GetBool)\b|github.com/vormadev/vorma/kit/envutil" --glob '!**/node_modules/**'`
+        - `go test ./kit/envutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/envutil` after this sweep.
+
+## EV-20260215-016
+
+- Package group: `kit/executil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/executil/executil.go`
+        - `kit/executil/executil_test.go`
+        - `kit/executil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/executil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/executil/*.go`
+        - `sed -n '1,260p' kit/executil/executil.go`
+        - `sed -n '260,520p' kit/executil/executil.go`
+        - `sed -n '1,320p' kit/executil/executil_test.go`
+        - `sed -n '1,260p' kit/executil/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/executil|\bexecutil\.(MakeCmdRunner|RunCmd|RunCmdCapture|RunShell|RunShellWithContext|GetExecutableDir|ErrCommandExecutionTimedOut|ErrCommandExecutionCanceled)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/executil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/executil` after this sweep.
+
+## EV-20260215-017
+
+- Package group: `kit/fsutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/fsutil/fsutil.go`
+        - `kit/fsutil/fsutil_test.go`
+        - `kit/fsutil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/fsutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/fsutil/*.go`
+        - `sed -n '1,300p' kit/fsutil/fsutil.go`
+        - `sed -n '300,620p' kit/fsutil/fsutil.go`
+        - `sed -n '1,320p' kit/fsutil/fsutil_test.go`
+        - `sed -n '320,700p' kit/fsutil/fsutil_test.go`
+        - `sed -n '1,280p' kit/fsutil/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/fsutil|\bfsutil\.(EnsureDir|EnsureDirs|GetCallerDir|CopyDir|CopyFile|CopyFiles|FromGobInto|FromGob|MustSub|MustReadFile)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/fsutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/fsutil` after this sweep.
+
+## EV-20260215-018
+
+- Package group: `kit/genericsutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/genericsutil/genericsutil.go`
+        - `kit/genericsutil/genericsutil_test.go`
+        - `kit/genericsutil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/genericsutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/genericsutil/*.go`
+        - `sed -n '1,320p' kit/genericsutil/genericsutil.go`
+        - `sed -n '1,360p' kit/genericsutil/genericsutil_test.go`
+        - `sed -n '1,280p' kit/genericsutil/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/genericsutil|\bgenericsutil\.(AnyZeroHelper|None|ZeroHelper|Zero|AssertOrZero|OrDefault|IsNone)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/genericsutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/genericsutil` after this
+          sweep.
+
+## EV-20260215-019
+
+- Package group: `kit/grace`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/grace/grace.go`
+        - `kit/grace/grace_test.go`
+        - `kit/grace/README.md`
+    - Commands/tests run:
+        - `rg --files kit/grace`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/grace/*.go`
+        - `sed -n '1,320p' kit/grace/grace.go`
+        - `sed -n '1,380p' kit/grace/grace_test.go`
+        - `sed -n '1,260p' kit/grace/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/grace|\bgrace\.(OrchestrateOptions|Orchestrate|TerminateProcess)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/grace`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/grace` after this sweep.
+
+## EV-20260215-020
+
+- Package group: `kit/headels`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/headels/headblocks.go`
+        - `kit/headels/headblocks_test.go`
+        - `kit/headels/README.md`
+    - Commands/tests run:
+        - `rg --files kit/headels`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/headels/*.go`
+        - `sed -n '1,360p' kit/headels/headblocks.go`
+        - `sed -n '360,760p' kit/headels/headblocks.go`
+        - `sed -n '1,360p' kit/headels/headblocks_test.go`
+        - `sed -n '360,760p' kit/headels/headblocks_test.go`
+        - `sed -n '1,260p' kit/headels/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/headels|\bheadels\.(NewInstance|FromRaw|New|HeadEls|Instance|Tag|Attr|BooleanAttribute|InnerHTML|TextContent|SelfClosing|SortedAndPreEscapedHeadEls)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/headels`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/headels` after this sweep.
+
+## EV-20260215-021
+
+- Package group: `kit/htmlutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/htmlutil/htmlutil.go`
+        - `kit/htmlutil/htmlutil_test.go`
+        - `kit/htmlutil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/htmlutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/htmlutil/*.go`
+        - `sed -n '1,360p' kit/htmlutil/htmlutil.go`
+        - `sed -n '360,760p' kit/htmlutil/htmlutil.go`
+        - `sed -n '1,400p' kit/htmlutil/htmlutil_test.go`
+        - `sed -n '400,820p' kit/htmlutil/htmlutil_test.go`
+        - `sed -n '1,280p' kit/htmlutil/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/htmlutil|\bhtmlutil\.(Element|AddNonce|ComputeContentSha256|EscapeIntoTrusted|RenderElement|RenderElementToBuilder|RenderModuleScriptToBuilder|SetSha256Integrity)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/htmlutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/htmlutil` after this sweep.
+
+## EV-20260215-022
+
+- Package group: `kit/id`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/id/id.go`
+        - `kit/id/id_test.go`
+        - `kit/id/README.md`
+    - Commands/tests run:
+        - `rg --files kit/id`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/id/*.go`
+        - `sed -n '1,320p' kit/id/id.go`
+        - `sed -n '1,380p' kit/id/id_test.go`
+        - `sed -n '1,260p' kit/id/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/id|\bid\.(New|NewMulti)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/id`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/id` after this sweep.
+
+## EV-20260215-023
+
+- Package group: `kit/ioutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/ioutil/ioutil.go`
+        - `kit/ioutil/ioutil_test.go`
+        - `kit/ioutil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/ioutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/ioutil/*.go`
+        - `sed -n '1,360p' kit/ioutil/ioutil.go`
+        - `sed -n '1,420p' kit/ioutil/ioutil_test.go`
+        - `sed -n '1,280p' kit/ioutil/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/ioutil|\bioutil\.(ReadLimited|ErrReadLimitExceeded|OneKB|OneMB|OneGB)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/ioutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/ioutil` after this sweep.
+
+## EV-20260215-024
+
+- Package group: `kit/jsonutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/jsonutil/jsonutil.go`
+        - `kit/jsonutil/jsonutil_test.go`
+        - `kit/jsonutil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/jsonutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/jsonutil/*.go`
+        - `sed -n '1,360p' kit/jsonutil/jsonutil.go`
+        - `sed -n '1,420p' kit/jsonutil/jsonutil_test.go`
+        - `sed -n '1,280p' kit/jsonutil/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/jsonutil|\bjsonutil\.(JSONString|Serialize|Parse)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/jsonutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/jsonutil` after this sweep.
+
+## EV-20260215-025
+
+- Package group: `kit/keyset`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/keyset/keyset.go`
+        - `kit/keyset/keyset_test.go`
+        - `kit/keyset/README.md`
+    - Commands/tests run:
+        - `rg --files kit/keyset`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/keyset/*.go`
+        - `sed -n '1,360p' kit/keyset/keyset.go`
+        - `sed -n '360,760p' kit/keyset/keyset.go`
+        - `sed -n '1,420p' kit/keyset/keyset_test.go`
+        - `sed -n '420,860p' kit/keyset/keyset_test.go`
+        - `sed -n '1,320p' kit/keyset/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/keyset|\bkeyset\.(RootSecret|RootSecrets|UnwrappedKeyset|Keyset|FromUnwrapped|Attempt|LoadRootKeyset|RootSecretsToRootKeyset|LoadRootSecrets|AppKeysetConfig|AppKeyset|MustAppKeyset)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/keyset`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/keyset` after this sweep.
+
+## EV-20260215-026
+
+- Package group: `kit/lazyget`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/lazyget/lazyget.go`
+        - `kit/lazyget/lazyget_test.go`
+        - `kit/lazyget/README.md`
+    - Commands/tests run:
+        - `rg --files kit/lazyget`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/lazyget/*.go`
+        - `sed -n '1,280p' kit/lazyget/lazyget.go`
+        - `sed -n '1,340p' kit/lazyget/lazyget_test.go`
+        - `sed -n '1,260p' kit/lazyget/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/lazyget|\blazyget\.(Cache|New)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/lazyget`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/lazyget` after this sweep.
+
+## EV-20260215-027
+
+- Package group: `kit/lru`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/lru/lru.go`
+        - `kit/lru/lru_test.go`
+        - `kit/lru/README.md`
+    - Commands/tests run:
+        - `rg --files kit/lru`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/lru/*.go`
+        - `sed -n '1,360p' kit/lru/lru.go`
+        - `sed -n '360,760p' kit/lru/lru.go`
+        - `sed -n '1,420p' kit/lru/lru_test.go`
+        - `sed -n '420,860p' kit/lru/lru_test.go`
+        - `sed -n '1,320p' kit/lru/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/lru|\blru\.(Cache|NewCache|NewCacheWithTTL)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/lru`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/lru` after this sweep.
+
+## EV-20260215-028
+
+- Package group: `kit/matcher`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/matcher/matcher.go`
+        - `kit/matcher/register.go`
+        - `kit/matcher/find_best_match.go`
+        - `kit/matcher/find_nested_matches.go`
+        - `kit/matcher/parse_segments.go`
+        - `kit/matcher/find_best_match_test.go`
+        - `kit/matcher/find_nested_matches_test.go`
+        - `kit/matcher/parse_segments_test.go`
+        - `kit/matcher/README.md`
+    - Commands/tests run:
+        - `rg --files kit/matcher`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/matcher/*.go`
+        - `sed -n '1,360p' kit/matcher/matcher.go`
+        - `sed -n '360,760p' kit/matcher/matcher.go`
+        - `sed -n '1,320p' kit/matcher/register.go`
+        - `sed -n '1,320p' kit/matcher/find_best_match.go`
+        - `sed -n '1,360p' kit/matcher/find_nested_matches.go`
+        - `sed -n '1,220p' kit/matcher/parse_segments.go`
+        - `sed -n '1,360p' kit/matcher/find_best_match_test.go`
+        - `sed -n '1,360p' kit/matcher/find_nested_matches_test.go`
+        - `sed -n '1,260p' kit/matcher/parse_segments_test.go`
+        - `sed -n '1,320p' kit/matcher/README.md`
+        - `rg -n "github.com/vormadev/vorma/kit/matcher|\bmatcher\.(Matcher|Options|RegisteredPattern|BestMatch|FindNestedMatchesResults|ParseSegments|JoinPatterns|HasLeadingSlash|HasTrailingSlash|EnsureLeadingSlash|EnsureTrailingSlash|EnsureLeadingAndTrailingSlash|StripLeadingSlash|StripTrailingSlash|New)\b" --glob '!**/node_modules/**'`
+        - `go test ./kit/matcher`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/matcher` after this sweep.
+
+## EV-20260215-029
+
+- Package group: `kit/middleware`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/middleware.go`
+        - `kit/middleware/README.md`
+    - Commands/tests run:
+        - `rg --files kit/middleware`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/middleware/*.go`
+        - `sed -n '1,360p' kit/middleware/middleware.go`
+        - `sed -n '1,320p' kit/middleware/README.md`
+        - `go test ./kit/middleware`
+        - `rg -n "github.com/vormadev/vorma/kit/middleware|\bmiddleware\.(Middleware|ToHandlerMiddleware)\b" --glob '!**/node_modules/**'`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/middleware` after this
+          sweep.
+
+## EV-20260215-030
+
+- Package group: `kit/middleware/etag`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/etag/etag.go`
+        - `kit/middleware/etag/etag_test.go`
+        - `kit/middleware/etag/README.md`
+    - Commands/tests run:
+        - `rg --files kit/middleware/etag`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/middleware/etag/*.go`
+        - `sed -n '1,340p' kit/middleware/etag/etag.go`
+        - `sed -n '1,380p' kit/middleware/etag/etag_test.go`
+        - `sed -n '1,280p' kit/middleware/etag/README.md`
+        - `go test ./kit/middleware/etag`
+        - `rg -n "github.com/vormadev/vorma/kit/middleware/etag|\betag\.(Config|Auto)\b" --glob '!**/node_modules/**'`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/middleware/etag` after this
+          sweep.
+
+## EV-20260215-031
+
+- Package group: `kit/middleware/healthcheck`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/healthcheck/healthcheck.go`
+        - `kit/middleware/healthcheck/healthcheck_test.go`
+        - `kit/middleware/healthcheck/README.md`
+    - Commands/tests run:
+        - `rg --files kit/middleware/healthcheck`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/middleware/healthcheck/*.go`
+        - `sed -n '1,260p' kit/middleware/healthcheck/healthcheck.go`
+        - `sed -n '1,320p' kit/middleware/healthcheck/healthcheck_test.go`
+        - `sed -n '1,260p' kit/middleware/healthcheck/README.md`
+        - `gofmt -w kit/middleware/healthcheck/healthcheck.go`
+        - `pnpm prettier --write kit/middleware/healthcheck/README.md`
+        - `go test ./kit/middleware/healthcheck`
+        - `rg -n "healthcheck\.Healthz\b" --glob '!**/node_modules/**'`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-006`: `Healthz` was exported as a mutable
+          package variable, allowing external reassignment of the default
+          healthcheck middleware entrypoint.
+        - Replaced `var Healthz = OK("/healthz")` with a stable exported
+          function `Healthz(next http.Handler) http.Handler` that preserves the
+          same call style (`healthcheck.Healthz(next)`) without mutable global
+          state.
+        - Updated `kit/middleware/healthcheck/README.md` API reference to match
+          the function export.
+
+## EV-20260215-032
+
+- Package group: `kit/middleware/robotstxt`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/robotstxt/robotstxt.go`
+        - `kit/middleware/robotstxt/robotstxt_test.go`
+        - `kit/middleware/robotstxt/README.md`
+    - Commands/tests run:
+        - `rg --files kit/middleware/robotstxt`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/middleware/robotstxt/*.go`
+        - `sed -n '1,280p' kit/middleware/robotstxt/robotstxt.go`
+        - `sed -n '1,320p' kit/middleware/robotstxt/robotstxt_test.go`
+        - `sed -n '1,260p' kit/middleware/robotstxt/README.md`
+        - `gofmt -w kit/middleware/robotstxt/robotstxt.go`
+        - `pnpm prettier --write kit/middleware/robotstxt/README.md`
+        - `go test ./kit/middleware/robotstxt`
+        - `rg -n "robotstxt\.(Allow|Disallow)\b" --glob '!**/node_modules/**'`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-007`: `Allow` and `Disallow` were exported
+          as mutable package variables, allowing external reassignment of
+          default robots.txt middleware entrypoints.
+        - Replaced those mutable vars with stable exported functions
+          (`Allow(next http.Handler) http.Handler` and
+          `Disallow(next http.Handler) http.Handler`) that preserve existing
+          call style while eliminating mutable global state.
+        - Updated `kit/middleware/robotstxt/README.md` API reference to match
+          the function exports.
+
+## EV-20260215-033
+
+- Package group: `kit/middleware/secureheaders`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/middleware/secureheaders/secureheaders.go`
+        - `kit/middleware/secureheaders/secureheaders_test.go`
+        - `kit/middleware/secureheaders/README.md`
+    - Commands/tests run:
+        - `rg --files kit/middleware/secureheaders`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/middleware/secureheaders/*.go`
+        - `sed -n '1,340p' kit/middleware/secureheaders/secureheaders.go`
+        - `sed -n '1,360p' kit/middleware/secureheaders/secureheaders_test.go`
+        - `sed -n '1,300p' kit/middleware/secureheaders/README.md`
+        - `go test ./kit/middleware/secureheaders`
+        - `rg -n "github.com/vormadev/vorma/kit/middleware/secureheaders|\bsecureheaders\.Middleware\b" --glob '!**/node_modules/**'`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/middleware/secureheaders`
+          after this sweep.
+
+## EV-20260215-034
+
+- Package group: `kit/modulegraph`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/modulegraph/module_graph.go`
+        - `kit/modulegraph/module_graph_test.go`
+    - Commands/tests run:
+        - `rg --files kit/modulegraph`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/modulegraph/*.go`
+        - `sed -n '1,360p' kit/modulegraph/module_graph.go`
+        - `sed -n '360,760p' kit/modulegraph/module_graph.go`
+        - `sed -n '1,420p' kit/modulegraph/module_graph_test.go`
+        - `sed -n '420,900p' kit/modulegraph/module_graph_test.go`
+        - `go test ./kit/modulegraph`
+        - `rg -n "github.com/vormadev/vorma/kit/modulegraph|\bmodulegraph\.(Module|RegistrationPhase|ResolveDeterministicModuleRegistrationOrder|RunDeterministicModuleRegistrationLifecycle|RegistrationPhaseRegisterLoaders|RegistrationPhaseRegisterActions|RegistrationPhaseRegisterRoutes|RegistrationPhaseFinalize)\b" --glob '!**/node_modules/**'`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/modulegraph` after this
+          sweep.
+
+## EV-20260215-035
+
+- Package group: `kit/mux`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/mux/mux.go`
+        - `kit/mux/README.md`
+    - Commands/tests run:
+        - `rg -n "HandlerNeedsTasksCtxImplReflectType|handlerNeedsTasksCtxImplReflectType" kit/mux/mux.go`
+        - `gofmt -w kit/mux/mux.go`
+        - `pnpm prettier --write kit/mux/README.md`
+        - `go test ./kit/mux`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-008`: `kit/mux` exported a mutable
+          package-level reflect cache value
+          (`HandlerNeedsTasksCtxImplReflectType`) that had no app-level use case
+          and unnecessarily expanded public mutation surface.
+        - Unexported the cache value to `handlerNeedsTasksCtxImplReflectType`
+          and updated internal call sites.
+        - Removed corresponding public API mention from `kit/mux/README.md`.
+
+## EV-20260215-036
+
+- Package group: `kit/modulegraph`, `vormaruntime/*`, `vorma.go`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `vormaruntime/app_root.go`
+        - `vormaruntime/app_root_test.go`
+        - `vormaruntime/internal/modulegraph/module_graph.go`
+        - `vormaruntime/internal/modulegraph/module_graph_test.go`
+        - `vorma.go`
+    - Commands/tests run:
+        - `rg -n "modulegraph|NewAppRoot|RunAppModuleRegistrationLifecycle|AppModule" --glob '!FRAMEWORK_AUDIT*.md'`
+        - `rm -f vormaruntime/internal/modulegraph/module_graph.go vormaruntime/internal/modulegraph/module_graph_test.go`
+        - `rmdir vormaruntime/internal/modulegraph`
+        - `rm -f vormaruntime/app_root.go vormaruntime/app_root_test.go`
+        - `gofmt -w vorma.go`
+        - `go test ./...`
+        - `make gotest`
+        - `make tstest`
+        - `make tscheck`
+        - `make tslint`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-009`: `modulegraph` and `AppRoot` /
+          `AppModule` formed a separate runtime module-registration API that was
+          not part of AST-discovered route registration architecture and had no
+          non-test in-repo runtime consumers.
+        - User requested deletion experiment and approved removal if gates pass.
+        - Removed vestigial surface and implementation:
+            - Deleted `vormaruntime/internal/modulegraph/*`.
+            - Deleted `vormaruntime/app_root.go` and
+              `vormaruntime/app_root_test.go`.
+            - Removed public aliases/wrappers from `vorma.go`: `AppRoot`,
+              `AppModule`, `AppModuleRegistrationHook`, `NewAppRoot`,
+              `RunAppModuleRegistrationLifecycle`.
+        - Initial `go test ./...` after deleting implementation failed only due
+          `vormaruntime/app_root_test.go` referencing removed API.
+        - After deleting that vestigial test file, full gates pass
+          (`make gotest`, `make tstest`, `make tscheck`, `make tslint`).
+        - `make tslint` reports existing warnings in
+          `internal/site/frontend/src/components/rendered-markdown.tsx` and no
+          errors.
+
+## EV-20260215-037
+
+- Package group: `kit/netutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/netutil/netutil.go`
+        - `kit/netutil/netutil_test.go`
+        - `kit/netutil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/netutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/netutil/*.go`
+        - `sed -n '1,320p' kit/netutil/netutil.go`
+        - `sed -n '1,340p' kit/netutil/netutil_test.go`
+        - `sed -n '1,260p' kit/netutil/README.md`
+        - `go test ./kit/netutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/netutil` after this sweep.
+
+## EV-20260215-038
+
+- Package group: `kit/reflectutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/reflectutil/reflectutil.go`
+        - `kit/reflectutil/reflectutil_test.go`
+        - `kit/reflectutil/README.md`
+    - Commands/tests run:
+        - `rg --files kit/reflectutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/reflectutil/*.go`
+        - `sed -n '1,320p' kit/reflectutil/reflectutil.go`
+        - `sed -n '1,320p' kit/reflectutil/reflectutil_test.go`
+        - `sed -n '1,260p' kit/reflectutil/README.md`
+        - `go test ./kit/reflectutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/reflectutil` after this
+          sweep.
+
+## EV-20260215-039
+
+- Package group: `kit/response`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/response/response.go`
+        - `kit/response/response_test.go`
+        - `kit/response/proxy.go`
+        - `kit/response/proxy_test.go`
+        - `kit/response/README.md`
+    - Commands/tests run:
+        - `rg --files kit/response`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/response/*.go`
+        - `sed -n '1,360p' kit/response/response.go`
+        - `sed -n '1,360p' kit/response/response_test.go`
+        - `sed -n '1,380p' kit/response/proxy.go`
+        - `sed -n '1,260p' kit/response/README.md`
+        - `gofmt -w kit/response/proxy.go`
+        - `go test ./kit/response`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/response` after this sweep.
+        - Corrected an internal stale comment in `kit/response/proxy.go`
+          referencing `GetHeadElements()` to `GetHeadEls()` for API-name
+          accuracy.
+
+## EV-20260215-040
+
+- Package group: `kit/securebytes`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/securebytes/securebytes.go`
+        - `kit/securebytes/securebytes_test.go`
+        - `kit/securebytes/README.md`
+    - Commands/tests run:
+        - `rg --files kit/securebytes`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/securebytes/*.go`
+        - `sed -n '1,320p' kit/securebytes/securebytes.go`
+        - `sed -n '1,360p' kit/securebytes/securebytes_test.go`
+        - `sed -n '1,260p' kit/securebytes/README.md`
+        - `go test ./kit/securebytes`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/securebytes` after this
+          sweep.
+
+## EV-20260215-041
+
+- Package group: `kit/securestring`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/securestring/securestring.go`
+        - `kit/securestring/securestring_test.go`
+        - `kit/securestring/README.md`
+    - Commands/tests run:
+        - `rg --files kit/securestring`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/securestring/*.go`
+        - `sed -n '1,320p' kit/securestring/securestring.go`
+        - `sed -n '1,360p' kit/securestring/securestring_test.go`
+        - `sed -n '1,260p' kit/securestring/README.md`
+        - `go test ./kit/securestring`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/securestring` after this
+          sweep.
+
+## EV-20260215-042
+
+- Package group: `kit/set`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/set/set.go`
+        - `kit/set/set_test.go`
+        - `kit/set/README.md`
+    - Commands/tests run:
+        - `rg --files kit/set`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/set/*.go`
+        - `sed -n '1,320p' kit/set/set.go`
+        - `sed -n '1,340p' kit/set/set_test.go`
+        - `sed -n '1,260p' kit/set/README.md`
+        - `go test ./kit/set`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/set` after this sweep.
+
+## EV-20260215-043
+
+- Package group: `kit/tasks`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/tasks/tasks.go`
+        - `kit/tasks/tasks_test.go`
+        - `kit/tasks/tasks_bench_test.go`
+        - `kit/tasks/README.md`
+    - Commands/tests run:
+        - `rg --files kit/tasks`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/tasks/*.go`
+        - `sed -n '1,340p' kit/tasks/tasks.go`
+        - `sed -n '1,360p' kit/tasks/tasks_test.go`
+        - `sed -n '1,260p' kit/tasks/README.md`
+        - `go test ./kit/tasks`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/tasks` after this sweep.
+
+## EV-20260215-044
+
+- Package group: `kit/theme`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/theme/theme.go`
+        - `kit/theme/theme_test.go`
+        - `kit/theme/README.md`
+        - `internal/site/backend/src/router/app.go`
+    - Commands/tests run:
+        - `rg --files kit/theme`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/theme/*.go`
+        - `sed -n '1,320p' kit/theme/theme.go`
+        - `sed -n '1,340p' kit/theme/theme_test.go`
+        - `sed -n '1,260p' kit/theme/README.md`
+        - `rg -n "theme\\.SystemThemeScript(Sha256Hash)?\\b|SystemThemeScriptSha256Hash|SystemThemeScript\\b" --glob '!FRAMEWORK_AUDIT*.md'`
+        - `gofmt -w kit/theme/theme.go internal/site/backend/src/router/app.go`
+        - `pnpm prettier --write kit/theme/README.md`
+        - `go test ./kit/theme`
+        - `go test ./backend/src/router` (from `internal/site`)
+    - Findings/fixes:
+        - Found and fixed `F-20260215-010`: `kit/theme` exported mutable package
+          variables (`SystemThemeScript`, `SystemThemeScriptSha256Hash`) that
+          could be reassigned by consumers.
+        - Replaced those exports with stable functions:
+          `SystemThemeScript() template.HTML` and
+          `SystemThemeScriptSha256Hash() string`, backed by unexported cached
+          values.
+        - Updated call sites in `internal/site/backend/src/router/app.go` and
+          API docs in `kit/theme/README.md`.
+        - `kit/theme` tests pass after change.
+
+## EV-20260215-045
+
+- Package group: `kit/validate`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `kit/validate/validate.go`
+        - `kit/validate/error_collector.go`
+        - `kit/validate/rules.go`
+        - `kit/validate/search_params.go`
+        - `kit/validate/validate_test.go`
+        - `kit/validate/error_collector_test.go`
+        - `kit/validate/rules_test.go`
+        - `kit/validate/search_params_test.go`
+        - `kit/validate/README.md`
+    - Commands/tests run:
+        - `rg --files kit/validate`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" kit/validate/*.go`
+        - `sed -n '1,360p' kit/validate/validate.go`
+        - `sed -n '1,360p' kit/validate/validate_test.go`
+        - `sed -n '1,320p' kit/validate/README.md`
+        - `go test ./kit/validate`
+    - Findings/fixes:
+        - No additional Surface/API findings in `kit/validate` after this sweep.
+
+## EV-20260215-046
+
+- Package group: `lab/bumper`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/bumper/bumper.go`
+        - `internal/scripts/bumper/main.go`
+    - Commands/tests run:
+        - `rg --files lab/bumper`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/bumper/*.go`
+        - `sed -n '1,340p' lab/bumper/bumper.go`
+        - `rg -n "lab/bumper|bumper\\.Run\\(" --glob '!FRAMEWORK_AUDIT*.md'`
+        - `go test ./lab/bumper`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/bumper` after this sweep.
+
+## EV-20260215-047
+
+- Package group: `lab/cliutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/cliutil/cliutil.go`
+    - Commands/tests run:
+        - `rg --files lab/cliutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/cliutil/*.go`
+        - `sed -n '1,360p' lab/cliutil/cliutil.go`
+        - `go test ./lab/cliutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/cliutil` after this sweep.
+
+## EV-20260215-048
+
+- Package group: `lab/errutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/errutil/errutil.go`
+    - Commands/tests run:
+        - `rg --files lab/errutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/errutil/*.go`
+        - `sed -n '1,320p' lab/errutil/errutil.go`
+        - `go test ./lab/errutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/errutil` after this sweep.
+
+## EV-20260215-049
+
+- Package group: `lab/esbuildutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/esbuildutil/esbuildutil.go`
+        - `wave/tooling/css_build_execution.go`
+    - Commands/tests run:
+        - `rg --files lab/esbuildutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/esbuildutil/*.go`
+        - `sed -n '1,360p' lab/esbuildutil/esbuildutil.go`
+        - `rg -n "KindDymanicImport|KindDynamicImport|CollectErrors|UnmarshalOutput|FindAllDependencies|FindRelativeEntrypointPath|ESBuildMetafileSubset" --glob '!FRAMEWORK_AUDIT*.md'`
+        - `gofmt -w lab/esbuildutil/esbuildutil.go`
+        - `go test ./lab/esbuildutil ./wave/tooling`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-011`: exported constant was misspelled as
+          `KindDymanicImport`, creating a typoed public API name.
+        - Renamed to `KindDynamicImport` and updated internal usage.
+
+## EV-20260215-050
+
+- Package group: `lab/fsmarkdown`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/fsmarkdown/fsmarkdown.go`
+    - Commands/tests run:
+        - `rg --files lab/fsmarkdown`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/fsmarkdown/*.go`
+        - `sed -n '1,360p' lab/fsmarkdown/fsmarkdown.go`
+        - `sed -n '360,760p' lab/fsmarkdown/fsmarkdown.go`
+        - `go test ./lab/fsmarkdown`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/fsmarkdown` after this
+          sweep.
+
+## EV-20260215-051
+
+- Package group: `lab/jsonschema`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/jsonschema/jsonschema.go`
+    - Commands/tests run:
+        - `rg --files lab/jsonschema`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/jsonschema/*.go`
+        - `sed -n '1,360p' lab/jsonschema/jsonschema.go`
+        - `go test ./lab/jsonschema`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/jsonschema` after this
+          sweep.
+
+## EV-20260215-052
+
+- Package group: `lab/mailutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/mailutil/mailutil.go`
+        - `lab/mailutil/mailutil_test.go`
+    - Commands/tests run:
+        - `rg --files lab/mailutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/mailutil/*.go`
+        - `sed -n '1,360p' lab/mailutil/mailutil.go`
+        - `sed -n '1,360p' lab/mailutil/mailutil_test.go`
+        - `go test ./lab/mailutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/mailutil` after this sweep.
+
+## EV-20260215-053
+
+- Package group: `lab/parseutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/parseutil/parseutil.go`
+    - Commands/tests run:
+        - `rg --files lab/parseutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/parseutil/*.go`
+        - `sed -n '1,360p' lab/parseutil/parseutil.go`
+        - `go test ./lab/parseutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/parseutil` after this
+          sweep.
+
+## EV-20260215-054
+
+- Package group: `lab/repoconcat`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/repoconcat/repoconcat.go`
+        - `lab/repoconcat/repoconcat_test.go`
+    - Commands/tests run:
+        - `rg --files lab/repoconcat`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/repoconcat/*.go`
+        - `sed -n '1,360p' lab/repoconcat/repoconcat.go`
+        - `sed -n '1,360p' lab/repoconcat/repoconcat_test.go`
+        - `go test ./lab/repoconcat`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/repoconcat` after this
+          sweep.
+
+## EV-20260215-055
+
+- Package group: `lab/rpc`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/rpc/rpc.go`
+        - `lab/rpc/rpc_test.go`
+    - Commands/tests run:
+        - `rg --files lab/rpc`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/rpc/*.go`
+        - `sed -n '1,360p' lab/rpc/rpc.go`
+        - `sed -n '1,360p' lab/rpc/rpc_test.go`
+        - `go test ./lab/rpc`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/rpc` after this sweep.
+
+## EV-20260215-056
+
+- Package group: `lab/sqlutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/sqlutil/sqlutil.go`
+    - Commands/tests run:
+        - `rg --files lab/sqlutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/sqlutil/*.go`
+        - `sed -n '1,360p' lab/sqlutil/sqlutil.go`
+        - `go test ./lab/sqlutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/sqlutil` after this sweep.
+
+## EV-20260215-057
+
+- Package group: `lab/stringsutil`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/stringsutil/stringsutil.go`
+        - `lab/stringsutil/collect_lines.go`
+    - Commands/tests run:
+        - `rg --files lab/stringsutil`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/stringsutil/*.go`
+        - `sed -n '1,360p' lab/stringsutil/stringsutil.go`
+        - `sed -n '1,240p' lab/stringsutil/collect_lines.go`
+        - `go test ./lab/stringsutil`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/stringsutil` after this
+          sweep.
+
+## EV-20260215-058
+
+- Package group: `lab/timer`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/timer/timer.go`
+    - Commands/tests run:
+        - `rg --files lab/timer`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/timer/*.go`
+        - `sed -n '1,320p' lab/timer/timer.go`
+        - `go test ./lab/timer`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/timer` after this sweep.
+
+## EV-20260215-059
+
+- Package group: `lab/tsgen`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/tsgen/generate_ts_content.go`
+        - `lab/tsgen/to_file.go`
+        - `lab/tsgen/statements.go`
+        - `lab/tsgen/generate_ts_content_test.go`
+    - Commands/tests run:
+        - `rg --files lab/tsgen`
+        - `for f in lab/tsgen/*.go; do if [[ $f != *_test.go ]]; then rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" "$f"; fi; done`
+        - `for f in lab/tsgen/*.go; do if [[ $f != *_test.go ]]; then rg -n "^var [A-Z]" "$f"; fi; done`
+        - `sed -n '1,360p' lab/tsgen/generate_ts_content.go`
+        - `sed -n '1,360p' lab/tsgen/to_file.go`
+        - `sed -n '1,260p' lab/tsgen/statements.go`
+        - `go test ./lab/tsgen`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/tsgen` after this sweep.
+
+## EV-20260215-060
+
+- Package group: `lab/tsgen/tsgencore`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/tsgen/tsgencore/tsgencore.go`
+        - `lab/tsgen/tsgencore/tsgencore_test.go`
+    - Commands/tests run:
+        - `rg --files lab/tsgen/tsgencore`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/tsgen/tsgencore/*.go`
+        - `rg -n "^var [A-Z]" lab/tsgen/tsgencore/*.go`
+        - `sed -n '1,420p' lab/tsgen/tsgencore/tsgencore.go`
+        - `sed -n '420,840p' lab/tsgen/tsgencore/tsgencore.go`
+        - `sed -n '1,240p' lab/tsgen/tsgencore/tsgencore_test.go`
+        - `go test ./lab/tsgen/tsgencore`
+    - Findings/fixes:
+        - No additional Surface/API findings in `lab/tsgen/tsgencore` after this
+          sweep.
+
+## EV-20260215-061
+
+- Package group: `lab/vitecmd`
+- Pass name: Surface/API
+- Evidence
+    - Files reviewed:
+        - `lab/vitecmd/cmd.go`
+        - `lab/vitecmd/cmd_test.go`
+    - Commands/tests run:
+        - `rg --files lab/vitecmd`
+        - `rg -n "^func [A-Z]|^type [A-Z]|^const [A-Z]|^var [A-Z]" lab/vitecmd/*.go`
+        - `sed -n '1,420p' lab/vitecmd/cmd.go`
+        - `sed -n '1,420p' lab/vitecmd/cmd_test.go`
+        - `rg -n "\\bvitecmd\\.Log\\b|\\bLog\\.(Info|Warn|Error)\\(" --glob '!FRAMEWORK_AUDIT*.md'`
+        - `gofmt -w lab/vitecmd/cmd.go`
+        - `go test ./lab/vitecmd`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-012`: `lab/vitecmd` exported mutable
+          logger variable `Log` without an app-facing use case.
+        - Unexported logger variable (`Log` -> `log`) and updated internal call
+          sites.

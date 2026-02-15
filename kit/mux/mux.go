@@ -107,7 +107,7 @@ type TasksCtxRequirer interface {
 	NeedsTasksCtx()
 }
 
-var HandlerNeedsTasksCtxImplReflectType = reflectutil.ToInterfaceReflectType[TasksCtxRequirer]()
+var handlerNeedsTasksCtxImplReflectType = reflectutil.ToInterfaceReflectType[TasksCtxRequirer]()
 
 type TasksCtxRequirerFunc func(http.ResponseWriter, *http.Request)
 
@@ -310,7 +310,7 @@ func RegisterHandler(
 	route.handlerType = "http"
 	route.userHTTPHandler = httpHandler
 	route.needsTasksCtx = reflectutil.ImplementsInterface(
-		reflect.TypeOf(httpHandler), HandlerNeedsTasksCtxImplReflectType,
+		reflect.TypeOf(httpHandler), handlerNeedsTasksCtxImplReflectType,
 	)
 	mm := router.getOrCreateMethodMatcher(method)
 	mm.reqDataGetters[pattern] = createReqDataGetter(route)

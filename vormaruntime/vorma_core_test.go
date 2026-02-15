@@ -80,10 +80,10 @@ func TestGettersPreserveNilShape(t *testing.T) {
 	}
 
 	app.WithLock(func(lv *LockedVorma) {
-		lv.SetPaths(map[string]*Path{"/": &Path{OriginalPattern: "/"}})
+		lv.SetPaths(map[string]*Path{"/": {OriginalPattern: "/"}})
 	})
 	paths := app.GetPathsSnapshot()
-	if !reflect.DeepEqual(paths, map[string]*Path{"/": &Path{OriginalPattern: "/"}}) {
+	if !reflect.DeepEqual(paths, map[string]*Path{"/": {OriginalPattern: "/"}}) {
 		t.Fatalf("unexpected paths snapshot after set: %#v", paths)
 	}
 }

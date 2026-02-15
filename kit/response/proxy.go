@@ -264,7 +264,7 @@ type cookieWithIdx struct {
 }
 
 // Consumers should deduplicate head els after calling MergeProxyResponses
-// by using headels.ToHeadEls(proxy.GetHeadElements())
+// by using headels.ToHeadEls(proxy.GetHeadEls())
 func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 	merged := NewProxy()
 

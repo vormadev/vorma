@@ -33,10 +33,7 @@ Behavior:
 
 ## API Coverage
 
-### Variables
-
-- `var Healthz`
-
 ### Functions
 
+- `func Healthz(next http.Handler) http.Handler`
 - `func OK(endpoint string) middleware.Middleware`

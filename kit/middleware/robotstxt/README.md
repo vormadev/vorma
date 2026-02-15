@@ -41,11 +41,8 @@ Behavior:
 
 ## API Coverage
 
-### Variables
-
-- `var Allow`
-- `var Disallow`
-
 ### Functions
 
+- `func Allow(next http.Handler) http.Handler`
+- `func Disallow(next http.Handler) http.Handler`
 - `func Content(content string) middleware.Middleware`

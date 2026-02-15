@@ -18,7 +18,7 @@ import (
 	"github.com/vormadev/vorma/lab/viteutil"
 )
 
-var Log = colorlog.New("vitecmd")
+var log = colorlog.New("vitecmd")
 var initPort = viteutil.InitPort
 
 type BuildCtx struct {
@@ -88,7 +88,7 @@ func (c *BuildCtx) DevBuild() error {
 	err := c.terminateProcessLockedAndWait()
 	if err != nil {
 		c.mu.Unlock()
-		Log.Warn(fmt.Sprintf("DevBuild: Error terminating vite process: %s", err))
+		log.Warn(fmt.Sprintf("DevBuild: Error terminating vite process: %s", err))
 		return err
 	}
 
@@ -100,7 +100,7 @@ func (c *BuildCtx) DevBuild() error {
 	c.port, err = initPort(c.port)
 	if err != nil {
 		c.mu.Unlock()
-		Log.Error(fmt.Sprintf("Error initializing vite port: %s", err))
+		log.Error(fmt.Sprintf("Error initializing vite port: %s", err))
 		return err
 	}
 
@@ -114,14 +114,14 @@ func (c *BuildCtx) DevBuild() error {
 		c.cmd.Args = append(c.cmd.Args, "--config", c.opts.ViteConfigFile)
 	}
 
-	Log.Info("Running vite (dev)...",
+	log.Info("Running vite (dev)...",
 		"command", fmt.Sprintf(`"%s"`, strings.Join(c.cmd.Args, " ")),
 	)
 
 	err = c.cmd.Start()
 	if err != nil {
 		c.mu.Unlock()
-		Log.Error(fmt.Sprintf("Error running vite (dev): %s", err))
+		log.Error(fmt.Sprintf("Error running vite (dev): %s", err))
 		return err
 	}
 
@@ -158,7 +158,7 @@ func (c *BuildCtx) Wait() {
 	c.mu.Unlock()
 
 	if err != nil {
-		Log.Info(fmt.Sprintf("vitecmd: BuildCtx: Wait: %s", err))
+		log.Info(fmt.Sprintf("vitecmd: BuildCtx: Wait: %s", err))
 	}
 }
 
@@ -169,12 +169,12 @@ func (c *BuildCtx) Cleanup() {
 	c.mu.Unlock()
 
 	if err != nil {
-		Log.Info(fmt.Sprintf("vitecmd: BuildCtx: Cleanup: %s", err))
+		log.Info(fmt.Sprintf("vitecmd: BuildCtx: Cleanup: %s", err))
 		return
 	}
 
 	if cmd != nil && cmd.Process != nil {
-		Log.Info("Cleanup: Terminated vite process", "pid", cmd.Process.Pid)
+		log.Info("Cleanup: Terminated vite process", "pid", cmd.Process.Pid)
 	}
 }
 
@@ -205,23 +205,23 @@ func (c *BuildCtx) ProdBuild() error {
 
 	c.cmd.Env = append(os.Environ(), "ROLLDOWN_OPTIONS_VALIDATION=loose")
 
-	Log.Info("Running vite build (prod)...",
+	log.Info("Running vite build (prod)...",
 		"command", fmt.Sprintf(`"%s"`, strings.Join(c.cmd.Args, " ")),
 	)
 
 	if err := c.cmd.Run(); err != nil {
-		Log.Error(fmt.Sprintf("Error running vite build (prod): %s", err))
+		log.Error(fmt.Sprintf("Error running vite build (prod): %s", err))
 		return err
 	}
 
 	// Move __temp_viteutil_manifest__.json to the specified location
 	manifestPath := filepath.Join(".", c.opts.OutDir, "__temp_viteutil_manifest__.json")
 	if err := os.Rename(manifestPath, c.opts.ManifestOut); err != nil {
-		Log.Error(fmt.Sprintf("Error moving vite manifest: %s", err))
+		log.Error(fmt.Sprintf("Error moving vite manifest: %s", err))
 		return err
 	}
 
-	Log.Info("DONE running vite build (prod)",
+	log.Info("DONE running vite build (prod)",
 		"manifest", c.opts.ManifestOut,
 		"outDir", c.opts.OutDir,
 	)

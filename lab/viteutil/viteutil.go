@@ -91,13 +91,10 @@ func FindRelativeEntrypointPath(manifest Manifest, entrypointToFind string) (str
 
 type Variant string
 
-var Variants = struct {
-	React Variant
-	Other Variant
-}{
-	React: "react",
-	Other: "other",
-}
+const (
+	VariantReact Variant = "react"
+	VariantOther Variant = "other"
+)
 
 type ToDevScriptsOptions struct {
 	ClientEntry string
@@ -110,7 +107,7 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 
 	port := GetVitePortStr()
 
-	if options.Variant == Variants.React {
+	if options.Variant == VariantReact {
 		var b stringsutil.Builder
 
 		b.Linef(`import RefreshRuntime from "http://localhost:%s/@react-refresh";`, port)

@@ -94,7 +94,15 @@ func normalizeResolvedTheme(value string) string {
 	}
 }
 
-var SystemThemeScript, SystemThemeScriptSha256Hash = mustGetSystemThemeScript()
+var systemThemeScript, systemThemeScriptSha256Hash = mustGetSystemThemeScript()
+
+func SystemThemeScript() template.HTML {
+	return systemThemeScript
+}
+
+func SystemThemeScriptSha256Hash() string {
+	return systemThemeScriptSha256Hash
+}
 
 func mustGetSystemThemeScript() (template.HTML, string) {
 	el := &htmlutil.Element{Tag: "script", DangerousInnerHTML: string(systemThemeScriptInnerHTML)}

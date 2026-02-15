@@ -77,8 +77,8 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	GetRootTemplateData: func(r *http.Request) (map[string]any, error) {
 		return map[string]any{
 			"HTMLClass":                   theme.GetThemeData(r).HTMLClass,
-			"SystemThemeScript":           theme.SystemThemeScript,
-			"SystemThemeScriptSha256Hash": theme.SystemThemeScriptSha256Hash,
+			"SystemThemeScript":           theme.SystemThemeScript(),
+			"SystemThemeScriptSha256Hash": theme.SystemThemeScriptSha256Hash(),
 		}, nil
 	},
 })

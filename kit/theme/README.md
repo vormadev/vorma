@@ -31,13 +31,13 @@ Use `td.HTMLClass` on `<html>`:
 Inject the system script early in `<head>`:
 
 ```go
-theme.SystemThemeScript
+theme.SystemThemeScript()
 ```
 
 If you use CSP, include:
 
 ```go
-theme.SystemThemeScriptSha256Hash
+theme.SystemThemeScriptSha256Hash()
 ```
 
 ## Theme Values
@@ -74,11 +74,6 @@ required).
 - `const LightValue`
 - `const SystemValue`
 
-### Variables
-
-- `var SystemThemeScript`
-- `var SystemThemeScriptSha256Hash`
-
 ### Types
 
 - `type ThemeData`
@@ -93,3 +88,5 @@ required).
 ### Functions
 
 - `func GetThemeData(r *http.Request) ThemeData`
+- `func SystemThemeScript() template.HTML`
+- `func SystemThemeScriptSha256Hash() string`

@@ -399,9 +399,9 @@ func (v *Vorma) getBodyScriptsForTemplate(htmlRenderSnapshot loadersHTMLRenderSn
 
 	opts := viteutil.ToDevScriptsOptions{ClientEntry: v.Config.ClientEntry}
 	if UIVariant(v.Config.UIVariant) == UIVariantReact {
-		opts.Variant = viteutil.Variants.React
+		opts.Variant = viteutil.VariantReact
 	} else {
-		opts.Variant = viteutil.Variants.Other
+		opts.Variant = viteutil.VariantOther
 	}
 
 	devScripts, err := viteutil.ToDevScripts(opts)

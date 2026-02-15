@@ -40,7 +40,7 @@ type ESBuildMetafileSubset struct {
 }
 
 const (
-	KindDymanicImport = "dynamic-import"
+	KindDynamicImport = "dynamic-import"
 )
 
 func UnmarshalOutput(result esbuild.BuildResult) (*ESBuildMetafileSubset, error) {
@@ -67,7 +67,7 @@ func FindAllDependencies(metafile *ESBuildMetafileSubset, importPath string) []s
 
 		if output, exists := metafile.Outputs[ip]; exists {
 			for _, imp := range output.Imports {
-				if imp.Kind == KindDymanicImport {
+				if imp.Kind == KindDynamicImport {
 					continue
 				}
 				recurse(imp.Path)

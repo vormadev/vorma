@@ -10,11 +10,10 @@ import (
 )
 
 var (
-	benchRouteDataSink RouteDataFinal
-	benchBodyLenSink   int
-	benchDepsSink      []string
-	benchCSSSink       []string
-	benchStringSink    string
+	benchBodyLenSink int
+	benchDepsSink    []string
+	benchCSSSink     []string
+	benchStringSink  string
 )
 
 type benchActionInput struct {

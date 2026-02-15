@@ -164,10 +164,6 @@ from request paths.
 
 ## Public API Reference
 
-### Variables
-
-- `var HandlerNeedsTasksCtxImplReflectType`
-
 ### Core Type Aliases
 
 - `type None = genericsutil.None`
