@@ -11,17 +11,35 @@ export type ParsedGoVersion = {
 	normalizedVersion: string;
 };
 
-export function parseNodeVersionOrNull(
-	nodeVersion: string,
-): ParsedNodeVersion | null {
-	const versionMatch = nodeVersion.trim().match(/^v(\d+)\.(\d+)\.(\d+)$/);
-	if (!versionMatch) {
+type ParsedMajorMinorPatchVersion = {
+	major: number;
+	minor: number;
+	patch: number;
+};
+
+function parseMajorMinorPatchVersionFromRegexMatch(props: {
+	match: RegExpMatchArray | null;
+	allowMissingPatch: boolean;
+}): ParsedMajorMinorPatchVersion | null {
+	const { match, allowMissingPatch } = props;
+	if (!match) {
 		return null;
 	}
 
-	const major = Number.parseInt(versionMatch[1] || "", 10);
-	const minor = Number.parseInt(versionMatch[2] || "", 10);
-	const patch = Number.parseInt(versionMatch[3] || "", 10);
+	const majorText = match[1];
+	const minorText = match[2];
+	const patchText = match[3];
+
+	if (!majorText || !minorText) {
+		return null;
+	}
+
+	const major = Number.parseInt(majorText, 10);
+	const minor = Number.parseInt(minorText, 10);
+	const patch = Number.parseInt(
+		patchText || (allowMissingPatch ? "0" : ""),
+		10,
+	);
 	if (
 		!Number.isFinite(major) ||
 		!Number.isFinite(minor) ||
@@ -30,7 +48,25 @@ export function parseNodeVersionOrNull(
 		return null;
 	}
 
-	return { major, minor, patch };
+	return {
+		major,
+		minor,
+		patch,
+	};
+}
+
+export function parseNodeVersionOrNull(
+	nodeVersion: string,
+): ParsedNodeVersion | null {
+	const version = parseMajorMinorPatchVersionFromRegexMatch({
+		match: nodeVersion.trim().match(/^v(\d+)\.(\d+)\.(\d+)$/),
+		allowMissingPatch: false,
+	});
+	if (!version) {
+		return null;
+	}
+
+	return version;
 }
 
 export function isNodeVersionAtLeast(props: {
@@ -49,29 +85,21 @@ export function isNodeVersionAtLeast(props: {
 export function parseGoVersionOrNull(
 	goVersionOutput: string,
 ): ParsedGoVersion | null {
-	const versionMatch = goVersionOutput
-		.trim()
-		.match(/(?:^|\s)go(\d+)\.(\d+)(?:\.(\d+))?/);
-	if (!versionMatch) {
-		return null;
-	}
-
-	const major = Number.parseInt(versionMatch[1] || "", 10);
-	const minor = Number.parseInt(versionMatch[2] || "", 10);
-	const patch = Number.parseInt(versionMatch[3] || "0", 10);
-	if (
-		!Number.isFinite(major) ||
-		!Number.isFinite(minor) ||
-		!Number.isFinite(patch)
-	) {
+	const version = parseMajorMinorPatchVersionFromRegexMatch({
+		match: goVersionOutput
+			.trim()
+			.match(/(?:^|\s)go(\d+)\.(\d+)(?:\.(\d+))?/),
+		allowMissingPatch: true,
+	});
+	if (!version) {
 		return null;
 	}
 
 	return {
-		major,
-		minor,
-		patch,
-		normalizedVersion: `go${major}.${minor}.${patch}`,
+		major: version.major,
+		minor: version.minor,
+		patch: version.patch,
+		normalizedVersion: `go${version.major}.${version.minor}.${version.patch}`,
 	};
 }
 
