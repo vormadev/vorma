@@ -1,5 +1,6 @@
+import { resolveAbsoluteHref } from "vorma/kit/url";
 import { dispatchBuildIDEvent } from "../../platform/events.ts";
-import { hasSameDataTarget, resolveAbsoluteHref } from "../../platform/url.ts";
+import { hasSameDataTarget } from "../../platform/url.ts";
 import {
 	__vormaClientGlobal,
 	type GetRouteDataOutput,

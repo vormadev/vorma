@@ -1,4 +1,4 @@
-import { resolveAbsoluteHref } from "../../platform/url.ts";
+import { resolveAbsoluteHref } from "vorma/kit/url";
 import { observePromiseRejection } from "../../platform/safety.ts";
 import type {
 	NavigateProps,

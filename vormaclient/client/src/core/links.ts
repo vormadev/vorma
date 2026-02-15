@@ -1,10 +1,14 @@
-import { getAnchorDetailsFromEvent, getHrefDetails } from "vorma/kit/url";
+import {
+	getAnchorDetailsFromEvent,
+	getHrefDetails,
+	resolveAbsoluteHref,
+	resolveAbsoluteHrefWithOptionalSearchAndHash,
+} from "vorma/kit/url";
 import { navigationStateManager, vormaNavigate } from "../client.ts";
 import {
 	hasSameNavigationTarget,
 	isSameDocumentHashChange,
 	isSameDocumentLocation,
-	resolveAbsoluteHref,
 } from "../platform/url.ts";
 import {
 	hasNavigationControlPromiseOwnership,
@@ -282,10 +286,11 @@ function buildPrefetchTargetHref(props: {
 	search?: string;
 	hash?: string;
 }): string {
-	const fullUrl = new URL(resolveAbsoluteHref(props.relativeURL));
-	if (props.search !== undefined) fullUrl.search = props.search;
-	if (props.hash !== undefined) fullUrl.hash = props.hash;
-	return fullUrl.href;
+	return resolveAbsoluteHrefWithOptionalSearchAndHash({
+		href: props.relativeURL,
+		search: props.search,
+		hash: props.hash,
+	});
 }
 
 type ClickNavigationOptions = {

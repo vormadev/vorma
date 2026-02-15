@@ -29,7 +29,7 @@ export function bytesToBase64(bytes: Uint8Array): Base64 {
 }
 
 // --> BASE64URL
-export function bytesToBase64URL(bytes: Uint8Array): Base64 {
+export function bytesToBase64URL(bytes: Uint8Array): Base64URL {
 	const base64 = bytesToBase64(bytes);
 	return base64ToBase64URL(base64);
 }
@@ -56,7 +56,7 @@ export function utf8ToBase64(utf8: UTF8): Base64 {
 }
 
 // --> BASE64URL
-export function utf8ToBase64URL(utf8: UTF8): Base64 {
+export function utf8ToBase64URL(utf8: UTF8): Base64URL {
 	const bytes = utf8ToBytes(utf8);
 	return bytesToBase64URL(bytes);
 }
@@ -69,7 +69,8 @@ export function utf8ToBase64URL(utf8: UTF8): Base64 {
 export function hexToBytes(hex: Hex): Uint8Array {
 	const cleanHex = hex.startsWith("0x") ? hex.slice(2) : hex;
 	const bytes =
-		cleanHex.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) || [];
+		cleanHex.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) ||
+		[];
 	return new Uint8Array(bytes);
 }
 
@@ -86,7 +87,7 @@ export function hexToBase64(hex: Hex): Base64 {
 }
 
 // --> BASE64URL
-export function hexToBase64URL(hex: Hex): Base64 {
+export function hexToBase64URL(hex: Hex): Base64URL {
 	const bytes = hexToBytes(hex);
 	return bytesToBase64URL(bytes);
 }
@@ -113,7 +114,7 @@ export function base64ToHex(base64: Base64): Hex {
 }
 
 // --> BASE64URL
-export function base64ToBase64URL(base64: Base64): Base64 {
+export function base64ToBase64URL(base64: Base64): Base64URL {
 	return base64
 		.replace(/[\r\n\t ]+/g, "")
 		.replace(/\+/g, "-")

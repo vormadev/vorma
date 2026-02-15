@@ -25,6 +25,15 @@ export type VormaRoute<
 	Pattern extends VormaLoaderPattern<App> = string,
 > = VormaRouteGeneric<JSX.Element, App, Pattern>;
 
+function createMatchedPatternIndexAccessor(pattern: string): Accessor<number> {
+	return createMemo(() => {
+		const matchedPatterns = routerData().matchedPatterns;
+		return matchedPatterns.findIndex(
+			(matchedPattern) => matchedPattern === pattern,
+		);
+	});
+}
+
 export function makeTypedUseRouterData<App extends VormaAppBase>() {
 	return (() => routerData) as UseRouterDataFunction<App, true>;
 }
@@ -43,14 +52,11 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 	return function usePatternLoaderData<
 		Pattern extends VormaLoaderPattern<App>,
 	>(pattern: Pattern): Accessor<VormaLoaderOutput<App, Pattern> | undefined> {
-		const idx = createMemo(() => {
-			const matchedPatterns = routerData().matchedPatterns;
-			return matchedPatterns.findIndex((p) => p === pattern);
-		});
+		const matchedPatternIndex = createMatchedPatternIndexAccessor(pattern);
 		const loaderData = createMemo<
 			VormaLoaderOutput<App, Pattern> | undefined
 		>(() => {
-			const index = idx();
+			const index = matchedPatternIndex();
 			if (index === -1) {
 				return undefined;
 			}
@@ -91,12 +97,12 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		const useClientLoaderData = (
 			props?: VormaRouteProps<App, Pattern>,
 		): Accessor<Res | undefined> => {
+			const matchedPatternIndex = createMatchedPatternIndexAccessor(p);
 			return createMemo<Res | undefined>(() => {
 				if (props) {
 					return clientLoadersData()[props.idx] as Res | undefined;
 				}
-				const matched = routerData().matchedPatterns;
-				const idx = matched.findIndex((pattern) => pattern === p);
+				const idx = matchedPatternIndex();
 				if (idx === -1) return undefined;
 				return clientLoadersData()[idx] as Res | undefined;
 			});

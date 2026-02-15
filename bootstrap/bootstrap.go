@@ -76,6 +76,68 @@ const tw_vite_call = ", tailwindcss()"
 const tw_file_import = "import \"./styles/tailwind.css\";\n"
 const dynamic_link_params_prop = `{{ id: "42790214" }}`
 
+type jsPackageManagerConfig struct {
+	BaseCmd                     string
+	RunScriptPrefix             string
+	InstallCmd                  string
+	DevDependencyCommand        string
+	DevDependencyBaseArgs       []string
+	DockerLockFile              string
+	DockerInstallCommand        string
+	DockerPackageManagerInstall string
+}
+
+var jsPackageManagerConfigByName = map[string]jsPackageManagerConfig{
+	"npm": {
+		BaseCmd:                     "npx",
+		RunScriptPrefix:             "npm run",
+		InstallCmd:                  "npm i",
+		DevDependencyCommand:        "npm",
+		DevDependencyBaseArgs:       []string{"i", "-D"},
+		DockerLockFile:              "package-lock.json",
+		DockerInstallCommand:        "npm ci",
+		DockerPackageManagerInstall: "",
+	},
+	"pnpm": {
+		BaseCmd:                     "pnpm",
+		RunScriptPrefix:             "pnpm",
+		InstallCmd:                  "pnpm i",
+		DevDependencyCommand:        "pnpm",
+		DevDependencyBaseArgs:       []string{"add", "-D"},
+		DockerLockFile:              "pnpm-lock.yaml",
+		DockerInstallCommand:        "pnpm i --frozen-lockfile",
+		DockerPackageManagerInstall: "\nRUN npm i -g pnpm",
+	},
+	"yarn": {
+		BaseCmd:                     "yarn",
+		RunScriptPrefix:             "yarn",
+		InstallCmd:                  "yarn",
+		DevDependencyCommand:        "yarn",
+		DevDependencyBaseArgs:       []string{"add", "-D"},
+		DockerLockFile:              "yarn.lock",
+		DockerInstallCommand:        "yarn install --frozen-lockfile",
+		DockerPackageManagerInstall: "\nRUN npm i -g yarn",
+	},
+	"bun": {
+		BaseCmd:                     "bunx",
+		RunScriptPrefix:             "bun",
+		InstallCmd:                  "bun i",
+		DevDependencyCommand:        "bun",
+		DevDependencyBaseArgs:       []string{"add", "-d"},
+		DockerLockFile:              "bun.lockb",
+		DockerInstallCommand:        "bun install --frozen-lockfile",
+		DockerPackageManagerInstall: "\nRUN npm i -g bun",
+	},
+}
+
+func mustGetJSPackageManagerConfig(jsPackageManager string) jsPackageManagerConfig {
+	config, exists := jsPackageManagerConfigByName[jsPackageManager]
+	if !exists {
+		panic("unknown JSPackageManager: " + jsPackageManager)
+	}
+	return config
+}
+
 func (o Options) derived() derivedOptions {
 	if o.UIVariant == "" {
 		o.UIVariant = "react"
@@ -88,18 +150,8 @@ func (o Options) derived() derivedOptions {
 		Options: o,
 	}
 
-	switch o.JSPackageManager {
-	case "npm":
-		do.JSPackageManagerBaseCmd = "npx"
-	case "pnpm":
-		do.JSPackageManagerBaseCmd = "pnpm"
-	case "yarn":
-		do.JSPackageManagerBaseCmd = "yarn"
-	case "bun":
-		do.JSPackageManagerBaseCmd = "bunx"
-	default:
-		panic("unknown JSPackageManager: " + o.JSPackageManager)
-	}
+	jsPackageManagerConfig := mustGetJSPackageManagerConfig(o.JSPackageManager)
+	do.JSPackageManagerBaseCmd = jsPackageManagerConfig.BaseCmd
 
 	do.BackgroundColorKey = "backgroundColor"
 
@@ -184,25 +236,9 @@ func (o Options) derived() derivedOptions {
 		"docker-run": "docker run -d -p ${PORT:-8080}:${PORT:-8080} -e PORT=${PORT:-8080} vorma-app"`,
 			dockerBuildCmd)
 
-		// Set lock file and install command based on package manager
-		switch o.JSPackageManager {
-		case "npm":
-			do.DockerLockFile = "package-lock.json"
-			do.DockerInstallCommand = "npm ci"
-			do.DockerPackageManagerInstall = ""
-		case "pnpm":
-			do.DockerLockFile = "pnpm-lock.yaml"
-			do.DockerInstallCommand = "pnpm i --frozen-lockfile"
-			do.DockerPackageManagerInstall = "\nRUN npm i -g pnpm"
-		case "yarn":
-			do.DockerLockFile = "yarn.lock"
-			do.DockerInstallCommand = "yarn install --frozen-lockfile"
-			do.DockerPackageManagerInstall = "\nRUN npm i -g yarn"
-		case "bun":
-			do.DockerLockFile = "bun.lockb"
-			do.DockerInstallCommand = "bun install --frozen-lockfile"
-			do.DockerPackageManagerInstall = "\nRUN npm i -g bun"
-		}
+		do.DockerLockFile = jsPackageManagerConfig.DockerLockFile
+		do.DockerInstallCommand = jsPackageManagerConfig.DockerInstallCommand
+		do.DockerPackageManagerInstall = jsPackageManagerConfig.DockerPackageManagerInstall
 
 		// Resolve Docker template fields
 		if do.IsMonorepo {
@@ -359,54 +395,23 @@ func Init(o Options) {
 }
 
 func (do derivedOptions) ResolveJSPackageManagerRunScriptPrefix() string {
-	cmd := "npm run"
-	if do.JSPackageManager != "npm" {
-		cmd = do.JSPackageManager
-	}
-	return cmd
+	return mustGetJSPackageManagerConfig(do.JSPackageManager).RunScriptPrefix
 }
 
 func (do derivedOptions) ResolveJSPackageManagerInstallCmd() string {
-	pm := do.JSPackageManager
-	switch pm {
-	case "npm":
-		return "npm i"
-	case "pnpm":
-		return "pnpm i"
-	case "yarn":
-		return "yarn"
-	case "bun":
-		return "bun i"
-	}
-	panic("unknown JSPackageManager: " + pm)
+	return mustGetJSPackageManagerConfig(do.JSPackageManager).InstallCmd
 }
 
 func resolveJSDevDependencyInstallCommand(
 	jsPackageManager string,
 	packages []string,
 ) (string, []string) {
-	var command string
-	var commandArguments []string
-
-	switch jsPackageManager {
-	case "npm":
-		command = "npm"
-		commandArguments = []string{"i", "-D"}
-	case "pnpm":
-		command = "pnpm"
-		commandArguments = []string{"add", "-D"}
-	case "yarn":
-		command = "yarn"
-		commandArguments = []string{"add", "-D"}
-	case "bun":
-		command = "bun"
-		commandArguments = []string{"add", "-d"}
-	default:
-		panic("unknown JSPackageManager: " + jsPackageManager)
-	}
-
-	commandArguments = append(commandArguments, packages...)
-	return command, commandArguments
+	jsPackageManagerConfig := mustGetJSPackageManagerConfig(jsPackageManager)
+	commandArguments := append(
+		append([]string(nil), jsPackageManagerConfig.DevDependencyBaseArgs...),
+		packages...,
+	)
+	return jsPackageManagerConfig.DevDependencyCommand, commandArguments
 }
 
 func installJSPkgs(do derivedOptions, packages ...string) {

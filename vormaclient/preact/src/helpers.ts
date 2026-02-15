@@ -24,6 +24,12 @@ export type VormaRoute<
 	Pattern extends VormaLoaderPattern<App> = string,
 > = VormaRouteGeneric<JSX.Element, App, Pattern>;
 
+function getMatchedPatternIndex(pattern: string): number {
+	return routerData.value.matchedPatterns.findIndex(
+		(matchedPattern) => matchedPattern === pattern,
+	);
+}
+
 export function makeTypedUseRouterData<App extends VormaAppBase>() {
 	return (() => {
 		return routerData.value;
@@ -42,9 +48,7 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 	return function usePatternLoaderData<
 		Pattern extends VormaLoaderPattern<App>,
 	>(pattern: Pattern): VormaLoaderOutput<App, Pattern> | undefined {
-		const idx = routerData.value.matchedPatterns.findIndex(
-			(matchedPattern) => matchedPattern === pattern,
-		);
+		const idx = getMatchedPatternIndex(pattern);
 
 		if (idx === -1) {
 			return undefined;
@@ -84,11 +88,7 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		const useClientLoaderData = (
 			props?: VormaRouteProps<App, Pattern>,
 		): Res | undefined => {
-			const idx = props
-				? props.idx
-				: routerData.value.matchedPatterns.findIndex(
-						(matchedPattern) => matchedPattern === p,
-					);
+			const idx = props ? props.idx : getMatchedPatternIndex(p);
 
 			if (idx === -1) return undefined;
 			return clientLoadersData.value[idx] as Res | undefined;

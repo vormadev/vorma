@@ -3,11 +3,21 @@ package wave
 // Clone returns a defensive public snapshot of parsed config values.
 // Internal framework-only mutable fields are intentionally omitted.
 func (parsedConfig *ParsedConfig) Clone() *ParsedConfig {
+	return parsedConfig.cloneParsedConfig(false)
+}
+
+func (parsedConfig *ParsedConfig) cloneForBuildtime() *ParsedConfig {
+	return parsedConfig.cloneParsedConfig(true)
+}
+
+func (parsedConfig *ParsedConfig) cloneParsedConfig(
+	includeBuildtimeFrameworkInternals bool,
+) *ParsedConfig {
 	if parsedConfig == nil {
 		return nil
 	}
 
-	return &ParsedConfig{
+	clonedParsedConfig := &ParsedConfig{
 		Core:  cloneCoreConfig(parsedConfig.Core),
 		Vite:  cloneViteConfig(parsedConfig.Vite),
 		Watch: cloneWatchConfig(parsedConfig.Watch),
@@ -34,42 +44,16 @@ func (parsedConfig *ParsedConfig) Clone() *ParsedConfig {
 		FrameworkCriticalCSSStyleElementID:            parsedConfig.FrameworkCriticalCSSStyleElementID,
 		FrameworkNonCriticalCSSLinkElementID:          parsedConfig.FrameworkNonCriticalCSSLinkElementID,
 	}
-}
 
-func (parsedConfig *ParsedConfig) cloneForBuildtime() *ParsedConfig {
-	if parsedConfig == nil {
-		return nil
-	}
-
-	return &ParsedConfig{
-		Core:  cloneCoreConfig(parsedConfig.Core),
-		Vite:  cloneViteConfig(parsedConfig.Vite),
-		Watch: cloneWatchConfig(parsedConfig.Watch),
-
-		Dist: parsedConfig.Dist,
-
-		FrameworkWatchPatterns: cloneFrameworkWatchPatterns(
-			parsedConfig.FrameworkWatchPatterns,
-		),
-		FrameworkIgnoredPatterns: append(
-			[]string(nil),
-			parsedConfig.FrameworkIgnoredPatterns...,
-		),
-		FrameworkPublicFileMapOutDir: parsedConfig.FrameworkPublicFileMapOutDir,
-		FrameworkSchemaExtensions: cloneFrameworkSchemaExtensions(
+	if includeBuildtimeFrameworkInternals {
+		clonedParsedConfig.FrameworkSchemaExtensions = cloneFrameworkSchemaExtensions(
 			parsedConfig.FrameworkSchemaExtensions,
-		),
-		FrameworkDevBuildHook:                         parsedConfig.FrameworkDevBuildHook,
-		FrameworkProdBuildHook:                        parsedConfig.FrameworkProdBuildHook,
-		FrameworkRunBuildHook:                         parsedConfig.FrameworkRunBuildHook,
-		FrameworkPrepareGoBuildOverlay:                parsedConfig.FrameworkPrepareGoBuildOverlay,
-		FrameworkBrowserRuntimeNamespace:              parsedConfig.FrameworkBrowserRuntimeNamespace,
-		FrameworkBrowserPublicURLResolverFunctionName: parsedConfig.FrameworkBrowserPublicURLResolverFunctionName,
-		FrameworkBrowserRevalidateFunctionName:        parsedConfig.FrameworkBrowserRevalidateFunctionName,
-		FrameworkRefreshRebuildingOverlayElementID:    parsedConfig.FrameworkRefreshRebuildingOverlayElementID,
-		FrameworkCriticalCSSStyleElementID:            parsedConfig.FrameworkCriticalCSSStyleElementID,
-		FrameworkNonCriticalCSSLinkElementID:          parsedConfig.FrameworkNonCriticalCSSLinkElementID,
+		)
+		clonedParsedConfig.FrameworkRunBuildHook = parsedConfig.FrameworkRunBuildHook
+		clonedParsedConfig.FrameworkPrepareGoBuildOverlay = parsedConfig.FrameworkPrepareGoBuildOverlay
 	}
+
+	return clonedParsedConfig
 }
 
 func cloneCoreConfig(

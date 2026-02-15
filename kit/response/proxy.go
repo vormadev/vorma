@@ -61,21 +61,23 @@ func (p *Proxy) GetStatus() (int, string) {
 /////// HEADERS
 
 func (p *Proxy) SetHeader(key, value string) {
-	p._headerOps[key] = append(
-		p._headerOps[key],
+	canonicalHeaderKey := http.CanonicalHeaderKey(key)
+	p._headerOps[canonicalHeaderKey] = append(
+		p._headerOps[canonicalHeaderKey],
 		headerOp{op: "set", value: value},
 	)
 }
 
 func (p *Proxy) AddHeader(key, value string) {
-	p._headerOps[key] = append(
-		p._headerOps[key],
+	canonicalHeaderKey := http.CanonicalHeaderKey(key)
+	p._headerOps[canonicalHeaderKey] = append(
+		p._headerOps[canonicalHeaderKey],
 		headerOp{op: "add", value: value},
 	)
 }
 
 func (p *Proxy) GetHeader(key string) string {
-	values := p.computeHeaderValues(key)
+	values := p.computeHeaderValues(http.CanonicalHeaderKey(key))
 	if len(values) == 0 {
 		return ""
 	}
@@ -83,7 +85,7 @@ func (p *Proxy) GetHeader(key string) string {
 }
 
 func (p *Proxy) GetHeaders(key string) []string {
-	return p.computeHeaderValues(key)
+	return p.computeHeaderValues(http.CanonicalHeaderKey(key))
 }
 
 func (p *Proxy) computeHeaderValues(key string) []string {
@@ -138,8 +140,10 @@ func (p *Proxy) GetHeadEls() *headels.HeadEls {
 // Returns whether a client redirect was used and any error from URL validation.
 func (p *Proxy) Redirect(r *http.Request, url string, code ...int) (bool, error) {
 	if doesAcceptClientRedirect(r) {
-		err := p.clientRedirect(url)
-		return true, err
+		if err := p.clientRedirect(url); err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 	p.serverRedirect(url, resolveSpreadCode(code))
 	return false, nil
@@ -216,17 +220,18 @@ func (p *Proxy) IsSuccess() bool {
 func (p *Proxy) ApplyToResponseWriter(w http.ResponseWriter, r *http.Request) {
 	// Headers
 	for key, ops := range p._headerOps {
+		canonicalHeaderKey := http.CanonicalHeaderKey(key)
 		currentValues := []string{}
 		for _, op := range ops {
 			if op.op == "set" {
-				w.Header().Del(key)
+				w.Header().Del(canonicalHeaderKey)
 				currentValues = []string{op.value}
 			} else {
 				currentValues = append(currentValues, op.value)
 			}
 		}
 		for _, v := range currentValues {
-			w.Header().Add(key, v)
+			w.Header().Add(canonicalHeaderKey, v)
 		}
 	}
 
@@ -240,6 +245,11 @@ func (p *Proxy) ApplyToResponseWriter(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect (only if not an error status)
 	if p.isServerRedirect() && !p.IsError() {
+		if r == nil {
+			w.Header().Set("Location", p._location)
+			w.WriteHeader(p._status)
+			return
+		}
 		http.Redirect(w, r, p._location, p._status)
 		return
 	}

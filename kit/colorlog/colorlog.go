@@ -131,14 +131,9 @@ func (h *ColorLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	for _, a := range attrs {
 		newAttrs = append(newAttrs, h.prefixAttr(a))
 	}
-	return &ColorLogHandler{
-		label:  h.label,
-		opts:   h.opts,
-		mu:     h.mu,
-		attrs:  newAttrs,
-		groups: h.groups,
-		color:  h.color,
-	}
+	clone := h.clone()
+	clone.attrs = newAttrs
+	return clone
 }
 
 func (h *ColorLogHandler) WithGroup(name string) slog.Handler {
@@ -148,12 +143,18 @@ func (h *ColorLogHandler) WithGroup(name string) slog.Handler {
 	newGroups := make([]string, len(h.groups)+1)
 	copy(newGroups, h.groups)
 	newGroups[len(h.groups)] = name
+	clone := h.clone()
+	clone.groups = newGroups
+	return clone
+}
+
+func (h *ColorLogHandler) clone() *ColorLogHandler {
 	return &ColorLogHandler{
 		label:  h.label,
 		opts:   h.opts,
 		mu:     h.mu,
 		attrs:  h.attrs,
-		groups: newGroups,
+		groups: h.groups,
 		color:  h.color,
 	}
 }

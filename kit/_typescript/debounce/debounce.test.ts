@@ -66,4 +66,18 @@ describe("debounce", () => {
 		vi.advanceTimersByTime(30);
 		await expect(p).resolves.toBe(15);
 	});
+
+	it("rejects when the debounced function throws", async () => {
+		const boom = new Error("boom");
+		const spy = vi.fn(() => {
+			throw boom;
+		});
+		const debounced = debounce(spy, 20);
+
+		const p = debounced();
+		vi.advanceTimersByTime(20);
+
+		await expect(p).rejects.toThrow("boom");
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
 });

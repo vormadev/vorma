@@ -22,11 +22,19 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 	if cfg.Core.DistDir == "" {
 		return fmt.Errorf("config: Core.DistDir is required")
 	}
-	if cfg.Core.DevBuildHookTimeoutMilliseconds < 0 {
-		return fmt.Errorf("config: Core.DevBuildHookTimeoutMilliseconds must be >= 0")
-	}
-	if cfg.Core.ProdBuildHookTimeoutMilliseconds < 0 {
-		return fmt.Errorf("config: Core.ProdBuildHookTimeoutMilliseconds must be >= 0")
+	if err := validateNonNegativeTimeoutFields(
+		[]timeoutFieldValidation{
+			{
+				fieldPath:           "Core.DevBuildHookTimeoutMilliseconds",
+				timeoutMilliseconds: cfg.Core.DevBuildHookTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Core.ProdBuildHookTimeoutMilliseconds",
+				timeoutMilliseconds: cfg.Core.ProdBuildHookTimeoutMilliseconds,
+			},
+		},
+	); err != nil {
+		return err
 	}
 
 	if !cfg.Core.ServerOnlyMode {
@@ -68,58 +76,68 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 func validateHookCallbackTimeoutConfig(
 	hookCallbackTimeoutConfig wave.HookCallbackTimeoutConfig,
 ) error {
-	if hookCallbackTimeoutConfig.PreCallbackTimeoutMilliseconds < 0 {
-		return fmt.Errorf(
-			"config: Watch.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds must be >= 0",
-		)
-	}
-
-	if hookCallbackTimeoutConfig.ConcurrentCallbackTimeoutMilliseconds < 0 {
-		return fmt.Errorf(
-			"config: Watch.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds must be >= 0",
-		)
-	}
-
-	if hookCallbackTimeoutConfig.ConcurrentNoWaitCallbackTimeoutMilliseconds < 0 {
-		return fmt.Errorf(
-			"config: Watch.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds must be >= 0",
-		)
-	}
-
-	if hookCallbackTimeoutConfig.PostCallbackTimeoutMilliseconds < 0 {
-		return fmt.Errorf(
-			"config: Watch.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds must be >= 0",
-		)
-	}
-
-	return nil
+	return validateNonNegativeTimeoutFields(
+		[]timeoutFieldValidation{
+			{
+				fieldPath:           "Watch.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds",
+				timeoutMilliseconds: hookCallbackTimeoutConfig.PreCallbackTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds",
+				timeoutMilliseconds: hookCallbackTimeoutConfig.ConcurrentCallbackTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds",
+				timeoutMilliseconds: hookCallbackTimeoutConfig.ConcurrentNoWaitCallbackTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds",
+				timeoutMilliseconds: hookCallbackTimeoutConfig.PostCallbackTimeoutMilliseconds,
+			},
+		},
+	)
 }
 
 func validateHookCommandTimeoutConfig(
 	hookCommandTimeoutConfig wave.HookCommandTimeoutConfig,
 ) error {
-	if hookCommandTimeoutConfig.PreCommandTimeoutMilliseconds < 0 {
-		return fmt.Errorf(
-			"config: Watch.HookCommandTimeouts.PreCommandTimeoutMilliseconds must be >= 0",
-		)
-	}
+	return validateNonNegativeTimeoutFields(
+		[]timeoutFieldValidation{
+			{
+				fieldPath:           "Watch.HookCommandTimeouts.PreCommandTimeoutMilliseconds",
+				timeoutMilliseconds: hookCommandTimeoutConfig.PreCommandTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds",
+				timeoutMilliseconds: hookCommandTimeoutConfig.ConcurrentCommandTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds",
+				timeoutMilliseconds: hookCommandTimeoutConfig.ConcurrentNoWaitCommandTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCommandTimeouts.PostCommandTimeoutMilliseconds",
+				timeoutMilliseconds: hookCommandTimeoutConfig.PostCommandTimeoutMilliseconds,
+			},
+		},
+	)
+}
 
-	if hookCommandTimeoutConfig.ConcurrentCommandTimeoutMilliseconds < 0 {
-		return fmt.Errorf(
-			"config: Watch.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds must be >= 0",
-		)
-	}
+type timeoutFieldValidation struct {
+	fieldPath           string
+	timeoutMilliseconds int
+}
 
-	if hookCommandTimeoutConfig.ConcurrentNoWaitCommandTimeoutMilliseconds < 0 {
-		return fmt.Errorf(
-			"config: Watch.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds must be >= 0",
-		)
-	}
-
-	if hookCommandTimeoutConfig.PostCommandTimeoutMilliseconds < 0 {
-		return fmt.Errorf(
-			"config: Watch.HookCommandTimeouts.PostCommandTimeoutMilliseconds must be >= 0",
-		)
+func validateNonNegativeTimeoutFields(
+	timeoutFieldValidations []timeoutFieldValidation,
+) error {
+	for _, timeoutFieldValidation := range timeoutFieldValidations {
+		if timeoutFieldValidation.timeoutMilliseconds < 0 {
+			return fmt.Errorf(
+				"config: %s must be >= 0",
+				timeoutFieldValidation.fieldPath,
+			)
+		}
 	}
 
 	return nil

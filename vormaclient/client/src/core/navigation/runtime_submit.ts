@@ -1,5 +1,4 @@
-import { getIsGETRequest } from "vorma/kit/url";
-import { resolveAbsoluteHref } from "../../platform/url.ts";
+import { getIsGETRequest, resolveAbsoluteHref } from "vorma/kit/url";
 import { __vormaClientGlobal } from "../../app/context.ts";
 import { isAbortError, logError } from "../../platform/safety.ts";
 import {

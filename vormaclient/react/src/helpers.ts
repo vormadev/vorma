@@ -28,6 +28,15 @@ export type VormaRoute<
 	Pattern extends VormaLoaderPattern<App> = string,
 > = VormaRouteGeneric<JSX.Element, App, Pattern>;
 
+function useMatchedPatternIndex(pattern: string): number {
+	const routerData = useRouterData();
+	return useMemo(() => {
+		return routerData.matchedPatterns.findIndex(
+			(matchedPattern) => matchedPattern === pattern,
+		);
+	}, [routerData.matchedPatterns, pattern]);
+}
+
 export function makeTypedUseRouterData<App extends VormaAppBase>() {
 	return useRouterData as UseRouterDataFunction<App, false>;
 }
@@ -45,11 +54,8 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 	return function usePatternLoaderData<
 		Pattern extends VormaLoaderPattern<App>,
 	>(pattern: Pattern): VormaLoaderOutput<App, Pattern> | undefined {
-		const routerData = useRouterData();
 		const loadersData = useLoadersData();
-		const idx = useMemo(() => {
-			return routerData.matchedPatterns.findIndex((p) => p === pattern);
-		}, [routerData.matchedPatterns, pattern]);
+		const idx = useMatchedPatternIndex(pattern);
 
 		if (idx === -1) {
 			return undefined;
@@ -90,15 +96,14 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 			props?: VormaRouteProps<App, Pattern>,
 		): Res | undefined => {
 			const clientLoadersData = useClientLoadersData();
-			const routerData = useRouterData();
+			const matchedPatternIndex = useMatchedPatternIndex(p);
 
 			const idx = useMemo(() => {
 				if (props) {
 					return props.idx;
 				}
-				const matched = routerData.matchedPatterns;
-				return matched.findIndex((pattern) => pattern === p);
-			}, [props, routerData.matchedPatterns]);
+				return matchedPatternIndex;
+			}, [props, matchedPatternIndex]);
 
 			if (idx === -1) return undefined;
 			return clientLoadersData[idx];

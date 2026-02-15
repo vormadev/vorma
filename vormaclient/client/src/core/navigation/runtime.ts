@@ -1,8 +1,8 @@
+import { resolveAbsoluteHref } from "vorma/kit/url";
 import {
 	dispatchStatusEvent,
 	type StatusEventDetail,
 } from "../../platform/events.ts";
-import { resolveAbsoluteHref } from "../../platform/url.ts";
 import {
 	beginNavigation as executeBeginNavigation,
 	createNavigationControls,

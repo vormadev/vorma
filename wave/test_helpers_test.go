@@ -110,18 +110,6 @@ func mustWriteGob(t *testing.T, filePath string, data any) {
 	}
 }
 
-func mustEncodeGobBytes(t *testing.T, data any) []byte {
-	t.Helper()
-
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(data); err != nil {
-		t.Fatalf("failed to encode gob bytes: %v", err)
-	}
-
-	return buf.Bytes()
-}
-
 func setWaveDevModeForTest(t *testing.T, isDev bool) {
 	t.Helper()
 	if isDev {

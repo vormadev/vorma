@@ -38,20 +38,11 @@ export function isNodeVersionAtLeast(
 	minimumMajor: number,
 	minimumMinor: number,
 ): boolean {
-	const parsedVersion = parseNodeVersionOrNull(nodeVersion);
-	if (!parsedVersion) {
-		return false;
-	}
-
-	if (parsedVersion.major > minimumMajor) {
-		return true;
-	}
-
-	if (parsedVersion.major < minimumMajor) {
-		return false;
-	}
-
-	return parsedVersion.minor >= minimumMinor;
+	return isMajorMinorVersionAtLeast(
+		parseNodeVersionOrNull(nodeVersion),
+		minimumMajor,
+		minimumMinor,
+	);
 }
 
 export function parseGoVersionOrNull(
@@ -88,7 +79,23 @@ export function isGoVersionAtLeast(
 	minimumMajor: number,
 	minimumMinor: number,
 ): boolean {
-	const parsedVersion = parseGoVersionOrNull(goVersionOutput);
+	return isMajorMinorVersionAtLeast(
+		parseGoVersionOrNull(goVersionOutput),
+		minimumMajor,
+		minimumMinor,
+	);
+}
+
+type MajorMinorVersion = {
+	major: number;
+	minor: number;
+} | null;
+
+function isMajorMinorVersionAtLeast(
+	parsedVersion: MajorMinorVersion,
+	minimumMajor: number,
+	minimumMinor: number,
+): boolean {
 	if (!parsedVersion) {
 		return false;
 	}

@@ -40,18 +40,15 @@ func deriveHookCommandStageTimeoutMilliseconds(
 		return 0
 	}
 
-	switch stageType {
-	case hookStageTypePre:
-		return watchConfig.HookCommandTimeouts.PreCommandTimeoutMilliseconds
-	case hookStageTypeConcurrent:
-		return watchConfig.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds
-	case hookStageTypePost:
-		return watchConfig.HookCommandTimeouts.PostCommandTimeoutMilliseconds
-	case hookStageTypeConcurrentNoWait:
-		return watchConfig.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds
-	default:
-		return 0
-	}
+	return deriveHookStageTimeoutMilliseconds(
+		stageType,
+		hookStageTimeoutMilliseconds{
+			pre:              watchConfig.HookCommandTimeouts.PreCommandTimeoutMilliseconds,
+			concurrent:       watchConfig.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds,
+			post:             watchConfig.HookCommandTimeouts.PostCommandTimeoutMilliseconds,
+			concurrentNoWait: watchConfig.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds,
+		},
+	)
 }
 
 func deriveHookCallbackStageTimeoutMilliseconds(
@@ -62,15 +59,37 @@ func deriveHookCallbackStageTimeoutMilliseconds(
 		return 0
 	}
 
+	return deriveHookStageTimeoutMilliseconds(
+		stageType,
+		hookStageTimeoutMilliseconds{
+			pre:              watchConfig.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds,
+			concurrent:       watchConfig.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds,
+			post:             watchConfig.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds,
+			concurrentNoWait: watchConfig.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds,
+		},
+	)
+}
+
+type hookStageTimeoutMilliseconds struct {
+	pre              int
+	concurrent       int
+	post             int
+	concurrentNoWait int
+}
+
+func deriveHookStageTimeoutMilliseconds(
+	stageType hookStageType,
+	timeoutMillisecondsByStage hookStageTimeoutMilliseconds,
+) int {
 	switch stageType {
 	case hookStageTypePre:
-		return watchConfig.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds
+		return timeoutMillisecondsByStage.pre
 	case hookStageTypeConcurrent:
-		return watchConfig.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds
+		return timeoutMillisecondsByStage.concurrent
 	case hookStageTypePost:
-		return watchConfig.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds
+		return timeoutMillisecondsByStage.post
 	case hookStageTypeConcurrentNoWait:
-		return watchConfig.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds
+		return timeoutMillisecondsByStage.concurrentNoWait
 	default:
 		return 0
 	}

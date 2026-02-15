@@ -3,8 +3,15 @@
  * found, otherwise undefined. Does not do any encoding or decoding.
  */
 export function getClientCookie(name: string) {
-	const match = document.cookie.match(new RegExp(`(^| )${name}=([^;]*)`));
-	return match ? match[2] : undefined;
+	const expectedPrefix = `${name}=`;
+	const cookiePairs = document.cookie.split(";");
+	for (const cookiePair of cookiePairs) {
+		const trimmedPair = cookiePair.trim();
+		if (trimmedPair.startsWith(expectedPrefix)) {
+			return trimmedPair.slice(expectedPrefix.length);
+		}
+	}
+	return undefined;
 }
 
 /**

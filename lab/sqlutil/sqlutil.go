@@ -12,7 +12,22 @@ func Transaction(db *sql.DB, f func(tx *sql.Tx) error) error {
 }
 
 // TransactionContext runs a function within a transaction using the provided context and options.
-func TransactionContext(db *sql.DB, ctx context.Context, opts *sql.TxOptions, f func(tx *sql.Tx) error) error {
+func TransactionContext(
+	db *sql.DB,
+	ctx context.Context,
+	opts *sql.TxOptions,
+	f func(tx *sql.Tx) error,
+) error {
+	if db == nil {
+		return fmt.Errorf("db is nil")
+	}
+	if f == nil {
+		return fmt.Errorf("transaction function is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	tx, err := db.BeginTx(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)

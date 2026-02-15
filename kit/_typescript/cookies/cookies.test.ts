@@ -6,7 +6,8 @@ describe("Cookie Utilities", () => {
 		// Clear all cookies before each test
 		document.cookie.split(";").forEach((cookie) => {
 			const eqPos = cookie.indexOf("=");
-			const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+			const name =
+				eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
 			if (name) {
 				document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
 			}
@@ -50,6 +51,11 @@ describe("Cookie Utilities", () => {
 			const base64Value = "wPrENSVOhk97/V0l6nkZrnH+DNZseEigminmJAbH0Go=";
 			document.cookie = `base64Cookie=${base64Value}`;
 			expect(getClientCookie("base64Cookie")).toBe(base64Value);
+		});
+
+		it("should handle cookie names containing regex metacharacters", () => {
+			document.cookie = "cookie+name=value-plus";
+			expect(getClientCookie("cookie+name")).toBe("value-plus");
 		});
 	});
 

@@ -12,6 +12,7 @@ import {
 import { __vormaClientGlobal, type getRouterData } from "../app/context.ts";
 import type { RouteErrorComponent } from "../app/context.ts";
 import { __getPrefetchHandlers, __makeLinkOnClickFn } from "../core/links.ts";
+import { resolveAbsoluteHrefWithOptionalSearchAndHash } from "vorma/kit/url";
 
 export const defaultErrorBoundary: RouteErrorComponent = (props: {
 	error: string;
@@ -166,15 +167,12 @@ export function resolveTypedLinkHref(props: {
 		},
 	});
 
-	const url = new URL(href, window.location.origin);
-	if (props.search !== undefined) {
-		url.search = props.search;
-	}
-	if (props.hash !== undefined) {
-		url.hash = props.hash;
-	}
-
-	return url.href;
+	return resolveAbsoluteHrefWithOptionalSearchAndHash({
+		href,
+		search: props.search,
+		hash: props.hash,
+		baseHref: window.location.origin,
+	});
 }
 
 export type VormaRoutePropsGeneric<

@@ -7,6 +7,8 @@ import {
 	getIsGETRequest,
 	getPrefetchHandlers,
 	prefetch,
+	resolveAbsoluteHref,
+	resolveAbsoluteHrefWithOptionalSearchAndHash,
 } from "./url.ts";
 
 describe("getIsErrorRes", () => {
@@ -44,6 +46,48 @@ describe("getIsGETRequest", () => {
 	});
 });
 
+describe("resolveAbsoluteHref", () => {
+	it("resolves relative and URL inputs to absolute hrefs", () => {
+		expect(
+			resolveAbsoluteHref(
+				"/next?mode=1#section",
+				"http://localhost:3000/base",
+			),
+		).toBe("http://localhost:3000/next?mode=1#section");
+		expect(resolveAbsoluteHref("child", "https://example.com/base/")).toBe(
+			"https://example.com/base/child",
+		);
+		expect(
+			resolveAbsoluteHref(new URL("/x?y=1", "https://example.com")),
+		).toBe("https://example.com/x?y=1");
+	});
+});
+
+describe("resolveAbsoluteHrefWithOptionalSearchAndHash", () => {
+	it("applies search/hash overrides when provided", () => {
+		expect(
+			resolveAbsoluteHrefWithOptionalSearchAndHash({
+				href: "/next?mode=1#old",
+				search: "?mode=2",
+				hash: "#new",
+				baseHref: "http://localhost:3000/base",
+			}),
+		).toBe("http://localhost:3000/next?mode=2#new");
+		expect(
+			resolveAbsoluteHrefWithOptionalSearchAndHash({
+				href: "https://example.com/path?existing=1#old",
+				hash: "",
+			}),
+		).toBe("https://example.com/path?existing=1");
+		expect(
+			resolveAbsoluteHrefWithOptionalSearchAndHash({
+				href: "child",
+				baseHref: "https://example.com/base/",
+			}),
+		).toBe("https://example.com/base/child");
+	});
+});
+
 let dom: JSDOM;
 
 describe("getAnchorDetailsFromEvent", () => {
@@ -52,19 +96,23 @@ describe("getAnchorDetailsFromEvent", () => {
 		dom = new JSDOM("<!DOCTYPE html><body></body>", {
 			url: "https://example.com",
 		});
-		(global as any).window = dom.window as unknown as Window & typeof globalThis;
+		(global as any).window = dom.window as unknown as Window &
+			typeof globalThis;
 		(global as any).document = dom.window.document;
 	});
 
 	afterEach(() => {
 		// Clean up the JSDOM environment after each test
 		dom.window.close();
-		(global as any).window = undefined as unknown as Window & typeof globalThis;
+		(global as any).window = undefined as unknown as Window &
+			typeof globalThis;
 		(global as any).document = undefined as unknown as Document;
 	});
 
 	it("should return null if the event is not a click event", () => {
-		const fakeEvent = new dom.window.Event("keydown") as unknown as MouseEvent;
+		const fakeEvent = new dom.window.Event(
+			"keydown",
+		) as unknown as MouseEvent;
 		const result = getAnchorDetailsFromEvent(fakeEvent);
 		expect(result).toBeNull();
 	});
@@ -73,7 +121,9 @@ describe("getAnchorDetailsFromEvent", () => {
 		const div = dom.window.document.createElement("div");
 		dom.window.document.body.appendChild(div);
 
-		const clickEvent = new dom.window.MouseEvent("click", { bubbles: true });
+		const clickEvent = new dom.window.MouseEvent("click", {
+			bubbles: true,
+		});
 		div.dispatchEvent(clickEvent);
 
 		const result = getAnchorDetailsFromEvent(clickEvent);
@@ -85,7 +135,9 @@ describe("getAnchorDetailsFromEvent", () => {
 		anchor.href = "https://example.com/some-page";
 		dom.window.document.body.appendChild(anchor);
 
-		const clickEvent = new dom.window.MouseEvent("click", { bubbles: true });
+		const clickEvent = new dom.window.MouseEvent("click", {
+			bubbles: true,
+		});
 		anchor.dispatchEvent(clickEvent);
 
 		const result = getAnchorDetailsFromEvent(clickEvent);
@@ -101,7 +153,9 @@ describe("getAnchorDetailsFromEvent", () => {
 		anchor.href = "https://external.com";
 		dom.window.document.body.appendChild(anchor);
 
-		const clickEvent = new dom.window.MouseEvent("click", { bubbles: true });
+		const clickEvent = new dom.window.MouseEvent("click", {
+			bubbles: true,
+		});
 		anchor.dispatchEvent(clickEvent);
 
 		const result = getAnchorDetailsFromEvent(clickEvent);
@@ -176,13 +230,15 @@ describe("getHrefDetails", () => {
 		dom = new JSDOM("<!DOCTYPE html><body></body>", {
 			url: "https://example.com",
 		});
-		(global as any).window = dom.window as unknown as Window & typeof globalThis;
+		(global as any).window = dom.window as unknown as Window &
+			typeof globalThis;
 		(global as any).document = dom.window.document;
 	});
 
 	afterEach(() => {
 		dom.window.close();
-		(global as any).window = undefined as unknown as Window & typeof globalThis;
+		(global as any).window = undefined as unknown as Window &
+			typeof globalThis;
 		(global as any).document = undefined as unknown as Document;
 	});
 
@@ -268,14 +324,16 @@ describe("getPrefetchHandlers", () => {
 		dom = new JSDOM("<!DOCTYPE html><body></body>", {
 			url: "https://example.com",
 		});
-		(global as any).window = dom.window as unknown as Window & typeof globalThis;
+		(global as any).window = dom.window as unknown as Window &
+			typeof globalThis;
 		(global as any).document = dom.window.document;
 		vi.useFakeTimers(); // Mock timers for the prefetch timeout
 	});
 
 	afterEach(() => {
 		dom.window.close();
-		(global as any).window = undefined as unknown as Window & typeof globalThis;
+		(global as any).window = undefined as unknown as Window &
+			typeof globalThis;
 		(global as any).document = undefined as unknown as Document;
 		vi.useRealTimers(); // Restore real timers after each test
 	});
@@ -327,19 +385,23 @@ describe("prefetch", () => {
 		dom = new JSDOM("<!DOCTYPE html><body></body>", {
 			url: "https://example.com",
 		});
-		(global as any).window = dom.window as unknown as Window & typeof globalThis;
+		(global as any).window = dom.window as unknown as Window &
+			typeof globalThis;
 		(global as any).document = dom.window.document;
 	});
 
 	afterEach(() => {
 		dom.window.close();
-		(global as any).window = undefined as unknown as Window & typeof globalThis;
+		(global as any).window = undefined as unknown as Window &
+			typeof globalThis;
 		(global as any).document = undefined as unknown as Document;
 	});
 
 	it("should add a prefetch link to the document head", () => {
 		prefetch("/relative-path");
-		const link = dom.window.document.querySelector(`link[href="/relative-path"]`);
+		const link = dom.window.document.querySelector(
+			`link[href="/relative-path"]`,
+		);
 
 		expect(link).not.toBeNull();
 		if (!link || !("rel" in link)) {
@@ -358,7 +420,9 @@ describe("prefetch", () => {
 		// Call prefetch again, which should remove the existing link
 		prefetch("/relative-path");
 
-		const links = dom.window.document.querySelectorAll(`link[href="/relative-path"]`);
+		const links = dom.window.document.querySelectorAll(
+			`link[href="/relative-path"]`,
+		);
 		expect(links.length).toBe(1); // Only one link should remain
 	});
 });

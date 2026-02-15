@@ -5,12 +5,12 @@ import {
 	type Location,
 	type Update,
 } from "history";
+import { resolveAbsoluteHref } from "vorma/kit/url";
 import { dispatchLocationEvent } from "./events.ts";
 import {
 	hasSameDataTarget,
 	hashFragmentFromHash,
 	normalizedHashFragmentFromHash,
-	resolveAbsoluteHref,
 } from "./url.ts";
 import { getNavigationStateAccess } from "../app/context.ts";
 import {

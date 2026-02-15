@@ -58,8 +58,7 @@ func NewLoader[O any, CtxPtr ~*Ctx, Ctx any](
 ) *Loader[O] {
 	panicIfNilLoaderRegistrationArguments("vorma.NewLoader", f, decorateCtx)
 	_, _ = app, p
-	wrappedF := func(c *LoaderReqData) (O, error) { return f(decorateCtx(c)) }
-	return mux.TaskHandlerFromFunc(wrappedF)
+	return newLoaderTask(f, decorateCtx)
 }
 
 func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
@@ -71,8 +70,7 @@ func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 ) *Action[I, O] {
 	panicIfNilActionRegistrationArguments("vorma.NewAction", f, decorateCtx)
 	_, _, _ = app, m, p
-	wrappedF := func(c *ActionReqData[I]) (O, error) { return f(decorateCtx(c)) }
-	return mux.TaskHandlerFromFunc(wrappedF)
+	return newActionTask(f, decorateCtx)
 }
 
 func Internal__RegisterDiscoveredLoader[O any, CtxPtr ~*Ctx, Ctx any](
@@ -83,8 +81,7 @@ func Internal__RegisterDiscoveredLoader[O any, CtxPtr ~*Ctx, Ctx any](
 ) *Loader[O] {
 	panicIfNilDiscoveredRegistrationApp("vorma.Internal__RegisterDiscoveredLoader", app)
 	panicIfNilLoaderRegistrationArguments("vorma.Internal__RegisterDiscoveredLoader", f, decorateCtx)
-	wrappedF := func(c *LoaderReqData) (O, error) { return f(decorateCtx(c)) }
-	loaderTask := mux.TaskHandlerFromFunc(wrappedF)
+	loaderTask := newLoaderTask(f, decorateCtx)
 	mux.RegisterNestedTaskHandler(app.LoadersRouter().NestedRouter, p, loaderTask)
 	return loaderTask
 }
@@ -98,10 +95,27 @@ func Internal__RegisterDiscoveredAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 ) *Action[I, O] {
 	panicIfNilDiscoveredRegistrationApp("vorma.Internal__RegisterDiscoveredAction", app)
 	panicIfNilActionRegistrationArguments("vorma.Internal__RegisterDiscoveredAction", f, decorateCtx)
-	wrappedF := func(c *ActionReqData[I]) (O, error) { return f(decorateCtx(c)) }
-	actionTask := mux.TaskHandlerFromFunc(wrappedF)
+	actionTask := newActionTask(f, decorateCtx)
 	mux.RegisterTaskHandler(app.ActionsRouter().Router, m, p, actionTask)
 	return actionTask
+}
+
+func newLoaderTask[O any, CtxPtr ~*Ctx, Ctx any](
+	loaderFunc func(CtxPtr) (O, error),
+	decorateLoaderContext func(*LoaderReqData) CtxPtr,
+) *Loader[O] {
+	return mux.TaskHandlerFromFunc(func(loaderReqData *LoaderReqData) (O, error) {
+		return loaderFunc(decorateLoaderContext(loaderReqData))
+	})
+}
+
+func newActionTask[I any, O any, CtxPtr ~*Ctx, Ctx any](
+	actionFunc func(CtxPtr) (O, error),
+	decorateActionContext func(*ActionReqData[I]) CtxPtr,
+) *Action[I, O] {
+	return mux.TaskHandlerFromFunc(func(actionReqData *ActionReqData[I]) (O, error) {
+		return actionFunc(decorateActionContext(actionReqData))
+	})
 }
 
 func panicIfNilDiscoveredRegistrationApp(caller string, app *Vorma) {

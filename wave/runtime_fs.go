@@ -17,19 +17,21 @@ func (w *Wave) initBaseFS() (fs.FS, error) {
 }
 
 func (w *Wave) initPublicFS() (fs.FS, error) {
-	base, err := w.GetBaseFS()
-	if err != nil {
-		return nil, err
-	}
-	return fs.Sub(base, RelPaths.AssetsPublic())
+	return w.initSubFS(RelPaths.AssetsPublic())
 }
 
 func (w *Wave) initPrivateFS() (fs.FS, error) {
+	return w.initSubFS(RelPaths.AssetsPrivate())
+}
+
+func (w *Wave) initSubFS(
+	relativeSubdirectoryPath string,
+) (fs.FS, error) {
 	base, err := w.GetBaseFS()
 	if err != nil {
 		return nil, err
 	}
-	return fs.Sub(base, RelPaths.AssetsPrivate())
+	return fs.Sub(base, relativeSubdirectoryPath)
 }
 
 func (w *Wave) GetBaseFS() (fs.FS, error) {
@@ -45,17 +47,19 @@ func (w *Wave) GetPrivateFS() (fs.FS, error) {
 }
 
 func (w *Wave) MustGetPublicFS() fs.FS {
-	f, err := w.publicFS.get()
-	if err != nil {
-		panic(err)
-	}
-	return f
+	return mustGetCachedFileSystem(w.publicFS)
 }
 
 func (w *Wave) MustGetPrivateFS() fs.FS {
-	f, err := w.privateFS.get()
+	return mustGetCachedFileSystem(w.privateFS)
+}
+
+func mustGetCachedFileSystem(
+	cachedFileSystem *cache[fs.FS],
+) fs.FS {
+	fileSystem, err := cachedFileSystem.get()
 	if err != nil {
 		panic(err)
 	}
-	return f
+	return fileSystem
 }

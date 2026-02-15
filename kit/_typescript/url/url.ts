@@ -1,6 +1,7 @@
 export function getIsErrorRes(response: Response) {
 	return (
-		String(response.status).startsWith("4") || String(response.status).startsWith("5")
+		String(response.status).startsWith("4") ||
+		String(response.status).startsWith("5")
 	);
 }
 
@@ -10,6 +11,29 @@ export function getIsGETRequest(requestInit?: RequestInit) {
 		requestInit.method.toLowerCase() === "get" ||
 		requestInit.method.toLowerCase() === "head"
 	);
+}
+
+export function resolveAbsoluteHref(
+	href: string | URL,
+	baseHref = window.location.href,
+): string {
+	return new URL(href, baseHref).href;
+}
+
+export function resolveAbsoluteHrefWithOptionalSearchAndHash(props: {
+	href: string | URL;
+	search?: string;
+	hash?: string;
+	baseHref?: string;
+}): string {
+	const url = new URL(props.href, props.baseHref ?? window.location.href);
+	if (props.search !== undefined) {
+		url.search = props.search;
+	}
+	if (props.hash !== undefined) {
+		url.hash = props.hash;
+	}
+	return url.href;
 }
 
 export function getAnchorDetailsFromEvent(event: MouseEvent) {

@@ -7,10 +7,14 @@ export function debounce<T extends Fn>(
 	let timeoutID: number;
 
 	return (...args: Parameters<T>) => {
-		return new Promise<Awaited<ReturnType<T>>>((resolve) => {
+		return new Promise<Awaited<ReturnType<T>>>((resolve, reject) => {
 			clearTimeout(timeoutID);
 			timeoutID = window.setTimeout(() => {
-				resolve(fn(...args));
+				try {
+					resolve(fn(...args));
+				} catch (error) {
+					reject(error);
+				}
 			}, delayInMs);
 		});
 	};

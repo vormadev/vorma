@@ -2792,3 +2792,1443 @@
     - Findings/fixes:
         - No additional Correctness/Fragility findings in `kit/k9` after this
           sweep.
+
+## EV-20260215-111
+
+- Package group: `kit/reflectutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/reflectutil/reflectutil.go`
+        - `kit/reflectutil/reflectutil_test.go`
+        - `kit/reflectutil/README.md`
+    - Commands/tests run:
+        - `ls -la kit/reflectutil`
+        - `sed -n '1,320p' kit/reflectutil/reflectutil.go`
+        - `sed -n '1,360p' kit/reflectutil/reflectutil_test.go`
+        - `sed -n '1,260p' kit/reflectutil/README.md`
+        - `go test ./kit/reflectutil -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/reflectutil`
+          after this sweep.
+
+## EV-20260215-112
+
+- Package group: `kit/response`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/response/response.go`
+        - `kit/response/response_test.go`
+        - `kit/response/proxy.go`
+        - `kit/response/proxy_test.go`
+        - `kit/response/README.md`
+    - Commands/tests run:
+        - `ls -la kit/response`
+        - `sed -n '1,260p' kit/response/response.go`
+        - `sed -n '1,320p' kit/response/proxy.go`
+        - `sed -n '320,640p' kit/response/proxy.go`
+        - `sed -n '1,420p' kit/response/response_test.go`
+        - `sed -n '1,420p' kit/response/proxy_test.go`
+        - `sed -n '420,1200p' kit/response/proxy_test.go`
+        - `sed -n '1,300p' kit/response/README.md`
+        - `go test ./kit/response -count=1`
+        - `go test ./kit/response -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-022`: `Proxy` header operations used
+          case-sensitive map keys, which allowed mixed-case duplicates and
+          nondeterministic final header values due map iteration order; fixed by
+          canonicalizing header keys on set/add/get and when applying to
+          `http.ResponseWriter`.
+        - Found and fixed `F-20260215-023`: `Proxy.ApplyToResponseWriter` could
+          panic when applying a server redirect with a nil request; fixed by
+          adding the same nil-request fallback behavior used by
+          `Response.ServerRedirect` (`Location` + status write path).
+        - Found and fixed `F-20260215-024`: `Proxy.Redirect` returned
+          `usedClientRedirect=true` even when client redirect URL validation
+          failed; fixed to return `false, err` on validation failure for
+          consistent and accurate call-site semantics.
+        - Added regression tests in `kit/response/proxy_test.go`:
+          `Header_Key_Canonicalized`,
+          `TestProxy_ApplyToResponseWriter_NilRequest_ServerRedirect`, and
+          strengthened `TestProxy_Redirect_InvalidURL` to assert
+          `usedClientRedirect == false` on error.
+
+## EV-20260215-113
+
+- Package group: `kit/securebytes`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/securebytes/securebytes.go`
+        - `kit/securebytes/securebytes_test.go`
+        - `kit/securebytes/README.md`
+    - Commands/tests run:
+        - `ls -la kit/securebytes`
+        - `sed -n '1,320p' kit/securebytes/securebytes.go`
+        - `sed -n '1,420p' kit/securebytes/securebytes_test.go`
+        - `sed -n '420,840p' kit/securebytes/securebytes_test.go`
+        - `sed -n '1,320p' kit/securebytes/README.md`
+        - `go test ./kit/securebytes -count=1`
+        - `go test ./kit/securebytes -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/securebytes`
+          after this sweep.
+
+## EV-20260215-114
+
+- Package group: `kit/securestring`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/securestring/securestring.go`
+        - `kit/securestring/securestring_test.go`
+        - `kit/securestring/README.md`
+    - Commands/tests run:
+        - `ls -la kit/securestring`
+        - `sed -n '1,320p' kit/securestring/securestring.go`
+        - `sed -n '1,420p' kit/securestring/securestring_test.go`
+        - `sed -n '420,840p' kit/securestring/securestring_test.go`
+        - `sed -n '1,320p' kit/securestring/README.md`
+        - `go test ./kit/securestring -count=1`
+        - `go test ./kit/securestring -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/securestring`
+          after this sweep.
+
+## EV-20260215-115
+
+- Package group: `kit/set`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/set/set.go`
+        - `kit/set/set_test.go`
+        - `kit/set/README.md`
+    - Commands/tests run:
+        - `ls -la kit/set`
+        - `sed -n '1,320p' kit/set/set.go`
+        - `sed -n '1,420p' kit/set/set_test.go`
+        - `sed -n '1,320p' kit/set/README.md`
+        - `go test ./kit/set -count=1`
+        - `go test ./kit/set -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/set` after this
+          sweep.
+
+## EV-20260215-116
+
+- Package group: `kit/tasks`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/tasks/tasks.go`
+        - `kit/tasks/tasks_test.go`
+        - `kit/tasks/README.md`
+    - Commands/tests run:
+        - `ls -la kit/tasks`
+        - `sed -n '1,320p' kit/tasks/tasks.go`
+        - `sed -n '320,680p' kit/tasks/tasks.go`
+        - `sed -n '1,420p' kit/tasks/tasks_test.go`
+        - `sed -n '420,860p' kit/tasks/tasks_test.go`
+        - `sed -n '1,320p' kit/tasks/README.md`
+        - `go test ./kit/tasks -count=1`
+        - `go test ./kit/tasks -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/tasks` after this
+          sweep.
+
+## EV-20260215-117
+
+- Package group: `kit/theme`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/theme/theme.go`
+        - `kit/theme/theme_test.go`
+        - `kit/theme/README.md`
+    - Commands/tests run:
+        - `ls -la kit/theme`
+        - `sed -n '1,340p' kit/theme/theme.go`
+        - `sed -n '1,420p' kit/theme/theme_test.go`
+        - `sed -n '1,320p' kit/theme/README.md`
+        - `go test ./kit/theme -count=1`
+        - `go test ./kit/theme -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/theme` after this
+          sweep.
+
+## EV-20260215-118
+
+- Package group: `kit/validate`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/validate/validate.go`
+        - `kit/validate/validate_test.go`
+        - `kit/validate/README.md`
+        - `kit/validate/rules.go`
+        - `kit/validate/error_collector.go`
+        - `kit/validate/search_params.go`
+    - Commands/tests run:
+        - `ls -la kit/validate`
+        - `sed -n '1,380p' kit/validate/validate.go`
+        - `sed -n '1,520p' kit/validate/validate_test.go`
+        - `sed -n '1,340p' kit/validate/README.md`
+        - `go test ./kit/validate -count=1`
+        - `go test ./kit/validate -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `kit/validate` after
+          this sweep.
+
+## EV-20260215-119
+
+- Package group: `lab/bumper`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/bumper/bumper.go`
+    - Commands/tests run:
+        - `ls -la lab/bumper`
+        - `sed -n '1,360p' lab/bumper/bumper.go`
+        - `go test ./lab/bumper -count=1`
+        - `go test ./lab/bumper -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/bumper` after
+          this sweep.
+
+## EV-20260215-120
+
+- Package group: `lab/cliutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/cliutil/cliutil.go`
+    - Commands/tests run:
+        - `ls -la lab/cliutil`
+        - `sed -n '1,360p' lab/cliutil/cliutil.go`
+        - `go test ./lab/cliutil -count=1`
+        - `go test ./lab/cliutil -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/cliutil` after
+          this sweep.
+
+## EV-20260215-121
+
+- Package group: `lab/errutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/errutil/errutil.go`
+    - Commands/tests run:
+        - `ls -la lab/errutil`
+        - `sed -n '1,360p' lab/errutil/errutil.go`
+        - `go test ./lab/errutil -count=1`
+        - `go test ./lab/errutil -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/errutil` after
+          this sweep.
+
+## EV-20260215-122
+
+- Package group: `lab/esbuildutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/esbuildutil/esbuildutil.go`
+    - Commands/tests run:
+        - `ls -la lab/esbuildutil`
+        - `sed -n '1,420p' lab/esbuildutil/esbuildutil.go`
+        - `go test ./lab/esbuildutil -count=1`
+        - `go test ./lab/esbuildutil -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/esbuildutil`
+          after this sweep.
+
+## EV-20260215-123
+
+- Package group: `lab/fsmarkdown`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/fsmarkdown/fsmarkdown.go`
+    - Commands/tests run:
+        - `ls -la lab/fsmarkdown`
+        - `sed -n '1,420p' lab/fsmarkdown/fsmarkdown.go`
+        - `sed -n '420,780p' lab/fsmarkdown/fsmarkdown.go`
+        - `go test ./lab/fsmarkdown -count=1`
+        - `go test ./lab/fsmarkdown -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/fsmarkdown` after
+          this sweep.
+
+## EV-20260215-124
+
+- Package group: `lab/jsonschema`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/jsonschema/jsonschema.go`
+        - `lab/jsonschema/jsonschema_test.go`
+    - Commands/tests run:
+        - `ls -la lab/jsonschema`
+        - `sed -n '1,420p' lab/jsonschema/jsonschema.go`
+        - `go test ./lab/jsonschema -count=1`
+        - `go test ./lab/jsonschema -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-025`: `toOxfordList(items, conjunction)`
+          hardcoded `"or"` for 3+ items and ignored the passed conjunction,
+          which made `UniqueFrom(...)` generate incorrect grammar for lists
+          longer than two elements.
+        - Added regression tests in `lab/jsonschema/jsonschema_test.go`:
+          `TestToOxfordList_UsesProvidedConjunction` and
+          `TestUniqueFrom_UsesAndForThreeItems`.
+
+## EV-20260215-125
+
+- Package group: `lab/mailutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/mailutil/mailutil.go`
+        - `lab/mailutil/mailutil_test.go`
+    - Commands/tests run:
+        - `ls -la lab/mailutil`
+        - `sed -n '1,420p' lab/mailutil/mailutil.go`
+        - `sed -n '1,520p' lab/mailutil/mailutil_test.go`
+        - `go test ./lab/mailutil -count=1`
+        - `go test ./lab/mailutil -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/mailutil` after
+          this sweep.
+
+## EV-20260215-126
+
+- Package group: `lab/parseutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/parseutil/parseutil.go`
+    - Commands/tests run:
+        - `ls -la lab/parseutil`
+        - `sed -n '1,420p' lab/parseutil/parseutil.go`
+        - `go test ./lab/parseutil -count=1`
+        - `go test ./lab/parseutil -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/parseutil` after
+          this sweep.
+
+## EV-20260215-127
+
+- Package group: `lab/repoconcat`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/repoconcat/repoconcat.go`
+        - `lab/repoconcat/repoconcat_test.go`
+    - Commands/tests run:
+        - `ls -la lab/repoconcat`
+        - `sed -n '1,420p' lab/repoconcat/repoconcat.go`
+        - `sed -n '1,520p' lab/repoconcat/repoconcat_test.go`
+        - `go test ./lab/repoconcat -count=1`
+        - `go test ./lab/repoconcat -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/repoconcat` after
+          this sweep.
+
+## EV-20260215-128
+
+- Package group: `lab/rpc`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/rpc/rpc.go`
+        - `lab/rpc/rpc_test.go`
+    - Commands/tests run:
+        - `ls -la lab/rpc`
+        - `sed -n '1,420p' lab/rpc/rpc.go`
+        - `sed -n '1,520p' lab/rpc/rpc_test.go`
+        - `go test ./lab/rpc -count=1`
+        - `go test ./lab/rpc -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/rpc` after this
+          sweep.
+
+## EV-20260215-129
+
+- Package group: `lab/sqlutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/sqlutil/sqlutil.go`
+        - `lab/sqlutil/sqlutil_test.go`
+    - Commands/tests run:
+        - `ls -la lab/sqlutil`
+        - `sed -n '1,420p' lab/sqlutil/sqlutil.go`
+        - `go test ./lab/sqlutil -count=1`
+        - `go test ./lab/sqlutil -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-026`: `TransactionContext` could panic on
+          nil `db` (nil receiver call to `BeginTx`) and could panic on nil
+          callback function; fixed with explicit nil guards and deterministic
+          errors (`"db is nil"`, `"transaction function is nil"`).
+        - Added regression tests in `lab/sqlutil/sqlutil_test.go`:
+          `TestTransactionContext_NilDB` and `TestTransactionContext_NilRunner`.
+
+## EV-20260215-130
+
+- Package group: `lab/stringsutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/stringsutil/collect_lines.go`
+        - `lab/stringsutil/collect_lines_test.go`
+        - `lab/stringsutil/stringsutil.go`
+    - Commands/tests run:
+        - `ls -la lab/stringsutil`
+        - `sed -n '1,240p' lab/stringsutil/collect_lines.go`
+        - `sed -n '1,420p' lab/stringsutil/stringsutil.go`
+        - `go test ./lab/stringsutil -count=1`
+        - `go test ./lab/stringsutil -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-027`: `CollectLines` used `bufio.Scanner`
+          with the default 64KiB token limit, causing unexpected failures on
+          long single-line inputs; fixed by raising the scanner max token size
+          to `len(input)+1`.
+        - Added regression tests in `lab/stringsutil/collect_lines_test.go`:
+          `TestCollectLines_EmptyString`, `TestCollectLines_MultipleLines`, and
+          `TestCollectLines_LongSingleLine`.
+
+## EV-20260215-131
+
+- Package group: `lab/timer`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/timer/timer.go`
+        - `lab/timer/timer_test.go`
+    - Commands/tests run:
+        - `ls -la lab/timer`
+        - `sed -n '1,420p' lab/timer/timer.go`
+        - `go test ./lab/timer -count=1`
+        - `go test ./lab/timer -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-028`: nil `*Timer` receivers panicked in
+          `Checkpoint` and `Reset`; fixed by adding nil-receiver guards so both
+          methods are safe no-ops when called on nil timers.
+        - Added regression tests in `lab/timer/timer_test.go`:
+          `TestNilTimerMethodsDoNotPanic` and `TestConditionalFalseIsNoOp`.
+
+## EV-20260215-132
+
+- Package group: `lab/tsgen`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/tsgen/generate_ts_content.go`
+        - `lab/tsgen/generate_ts_content_test.go`
+        - `lab/tsgen/statements.go`
+        - `lab/tsgen/to_file.go`
+    - Commands/tests run:
+        - `ls -la lab/tsgen`
+        - `sed -n '1,420p' lab/tsgen/generate_ts_content.go`
+        - `sed -n '460,980p' lab/tsgen/generate_ts_content_test.go`
+        - `sed -n '1,320p' lab/tsgen/statements.go`
+        - `sed -n '1,260p' lab/tsgen/to_file.go`
+        - `go test ./lab/tsgen/... -count=1`
+        - `go test ./lab/tsgen/... -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/tsgen` after this
+          sweep.
+
+## EV-20260215-133
+
+- Package group: `lab/tsgen/tsgencore`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/tsgen/tsgencore/tsgencore.go`
+        - `lab/tsgen/tsgencore/tsgencore_test.go`
+    - Commands/tests run:
+        - `sed -n '1,420p' lab/tsgen/tsgencore/tsgencore.go`
+        - `sed -n '1,520p' lab/tsgen/tsgencore/tsgencore_test.go`
+        - `go test ./lab/tsgen/... -count=1`
+        - `go test ./lab/tsgen/... -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/tsgen/tsgencore`
+          after this sweep.
+
+## EV-20260215-134
+
+- Package group: `lab/vitecmd`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/vitecmd/cmd.go`
+        - `lab/vitecmd/cmd_test.go`
+    - Commands/tests run:
+        - `ls -la lab/vitecmd`
+        - `sed -n '1,420p' lab/vitecmd/cmd.go`
+        - `sed -n '1,520p' lab/vitecmd/cmd_test.go`
+        - `go test ./lab/vitecmd -count=1`
+        - `go test ./lab/vitecmd -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/vitecmd` after
+          this sweep.
+
+## EV-20260215-135
+
+- Package group: `lab/viteutil`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/viteutil/viteutil.go`
+        - `lab/viteutil/viteutil_test.go`
+    - Commands/tests run:
+        - `ls -la lab/viteutil`
+        - `sed -n '1,420p' lab/viteutil/viteutil.go`
+        - `sed -n '1,560p' lab/viteutil/viteutil_test.go`
+        - `go test ./lab/viteutil -count=1`
+        - `go test ./lab/viteutil -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/viteutil` after
+          this sweep.
+
+## EV-20260215-136
+
+- Package group: `lab/xyz`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `lab/xyz/xyz.go`
+    - Commands/tests run:
+        - `ls -la lab/xyz`
+        - `sed -n '1,420p' lab/xyz/xyz.go`
+        - `go test ./lab/xyz -count=1`
+        - `go test ./lab/xyz -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in `lab/xyz` after this
+          sweep.
+
+## EV-20260215-137
+
+- Package group: `internal/scripts/buildts`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `internal/scripts/buildts/main.go`
+        - `internal/scripts/buildts/build-solid.mjs`
+    - Commands/tests run:
+        - `ls -la internal/scripts/buildts`
+        - `sed -n '1,460p' internal/scripts/buildts/main.go`
+        - `go test ./internal/scripts/buildts -count=1`
+        - `go test ./internal/scripts/buildts -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in
+          `internal/scripts/buildts` after this sweep.
+
+## EV-20260215-138
+
+- Package group: `internal/scripts/bumper`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `internal/scripts/bumper/main.go`
+    - Commands/tests run:
+        - `ls -la internal/scripts/bumper`
+        - `sed -n '1,360p' internal/scripts/bumper/main.go`
+        - `go test ./internal/scripts/bumper -count=1`
+        - `go test ./internal/scripts/bumper -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in
+          `internal/scripts/bumper` after this sweep.
+
+## EV-20260215-139
+
+- Package group: `internal/scripts/npm_bumper`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `internal/scripts/npm_bumper/main.go`
+    - Commands/tests run:
+        - `ls -la internal/scripts/npm_bumper`
+        - `sed -n '1,420p' internal/scripts/npm_bumper/main.go`
+        - `go test ./internal/scripts/npm_bumper -count=1`
+        - `go test ./internal/scripts/npm_bumper -race -count=1`
+    - Findings/fixes:
+        - No additional Correctness/Fragility findings in
+          `internal/scripts/npm_bumper` after this sweep.
+
+## EV-20260215-140
+
+- Package group: `internal/scripts/sum`
+- Pass name: Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `internal/scripts/sum/main.go`
+    - Commands/tests run:
+        - `ls -la internal/scripts/sum`
+        - `sed -n '1,420p' internal/scripts/sum/main.go`
+        - `go test ./internal/scripts/sum -count=1`
+        - `go test ./internal/scripts/sum -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-029`: script still referenced the old
+          `vormaruntime` path after runtime relocation, causing incorrect
+          concatenation input for the Vorma runtime block; fixed to
+          `internal/vormaruntime`.
+
+## EV-20260215-141
+
+- Package group: `vorma.go`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `vorma.go`
+    - Commands/tests run:
+        - `sed -n '1,420p' vorma.go`
+        - `go test . -count=1`
+        - `go test . -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-030`: loader/action task construction
+          wrapping logic was duplicated across `NewLoader`, `NewAction`,
+          `Internal__RegisterDiscoveredLoader`, and
+          `Internal__RegisterDiscoveredAction`; extracted shared helpers
+          `newLoaderTask` and `newActionTask` and routed all callsites through
+          them.
+        - Evaluated duplication between `panicIfNilLoaderRegistrationArguments`
+          and `panicIfNilActionRegistrationArguments`; kept separate for now as
+          deliberate typed duplication to preserve direct type-specific
+          signatures without reflection/interface nil-edge handling.
+
+## EV-20260215-142
+
+- Package group: `bootstrap/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `bootstrap/bootstrap.go`
+        - `bootstrap/utils.go`
+        - `bootstrap/ux_conformance_test.go`
+    - Commands/tests run:
+        - `ls -la bootstrap`
+        - `rg --files bootstrap`
+        - `sed -n '1,760p' bootstrap/bootstrap.go`
+        - `sed -n '1,260p' bootstrap/utils.go`
+        - `sed -n '1,360p' bootstrap/ux_conformance_test.go`
+        - `go test ./bootstrap -count=1`
+        - `go test ./bootstrap -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-031`: package-manager behavior was
+          duplicated across multiple switches (`derived`,
+          `ResolveJSPackageManagerRunScriptPrefix`,
+          `ResolveJSPackageManagerInstallCmd`,
+          `resolveJSDevDependencyInstallCommand`, and Docker field setup);
+          consolidated into one shared `jsPackageManagerConfigByName` table and
+          `mustGetJSPackageManagerConfig` helper.
+        - This keeps one source of truth for base command, script prefix,
+          install commands, dev-dependency command args, and docker lock/install
+          settings.
+
+## EV-20260215-143
+
+- Package group: `vormabuild/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `vormabuild/build_cli.go`
+        - `vormabuild/build_watch.go`
+        - `vormabuild/build_inner.go`
+        - `vormabuild/vorma_build.go`
+        - `vormabuild/vite_paths_stage_two.go`
+        - `vormabuild/vite_manifest_paths.go`
+        - `vormabuild/build_artifact_fs.go`
+    - Commands/tests run:
+        - `ls -la vormabuild`
+        - `rg --files vormabuild`
+        - `sed -n '1,320p' vormabuild/build_cli.go`
+        - `sed -n '1,340p' vormabuild/build_watch.go`
+        - `sed -n '1,360p' vormabuild/build_inner.go`
+        - `sed -n '1,320p' vormabuild/vorma_build.go`
+        - `sed -n '1,340p' vormabuild/vite_paths_stage_two.go`
+        - `sed -n '1,340p' vormabuild/vite_manifest_paths.go`
+        - `sed -n '1,260p' vormabuild/build_artifact_fs.go`
+        - `go test ./vormabuild -count=1`
+        - `go test ./vormabuild -race -count=1`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+        - Candidate evaluated and marked deliberate: stage-one and stage-two
+          paths-file write flows are structurally similar but intentionally keep
+          separate dependency seams and stage-specific error contexts used by
+          failure-path tests; normalization would add indirection with limited
+          maintenance gain relative to current explicitness.
+
+## EV-20260215-144
+
+- Package group: `internal/vormaruntime/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `internal/vormaruntime/glue.go`
+    - Commands/tests run:
+        - `sed -n '1,520p' internal/vormaruntime/glue.go`
+        - `go test ./internal/vormaruntime -count=1`
+        - `go test ./internal/vormaruntime -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-032`: `validateConfig` repeated default
+          assignment + trim logic across multiple framework browser integration
+          string fields; extracted shared helpers
+          `applyDefaultConfigStringValue`, `trimConfigStringValue`, and
+          `applyDefaultAndTrimConfigStringValue` and routed repeated callsites
+          through them.
+
+## EV-20260215-145
+
+- Package group: `wave/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `wave/parsed_config_clone.go`
+        - `wave/runtime_fs.go`
+    - Commands/tests run:
+        - `sed -n '1,260p' wave/parsed_config_clone.go`
+        - `sed -n '1,220p' wave/runtime_fs.go`
+        - `gofmt -w wave/parsed_config_clone.go`
+        - `gofmt -w wave/runtime_fs.go`
+        - `go test ./wave -count=1`
+        - `go test ./wave -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-033`: `Clone` and `cloneForBuildtime`
+          duplicated the same large `ParsedConfig` cloning literal with only
+          buildtime-internal field differences; consolidated into shared helper
+          `cloneParsedConfig(includeBuildtimeFrameworkInternals bool)` with
+          conditional inclusion of internal-only fields.
+        - Found and fixed `F-20260215-034`: `initPublicFS`/`initPrivateFS` and
+          `MustGetPublicFS`/`MustGetPrivateFS` duplicated the same internal FS
+          setup and cache panic-handling logic; consolidated into shared helpers
+          `initSubFS` and `mustGetCachedFileSystem`.
+
+## EV-20260215-146
+
+- Package group: `wave/tooling/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `wave/tooling/timeout_policy.go`
+        - `wave/tooling/watcher_matching.go`
+        - `wave/tooling/builder_validation.go`
+        - `wave/tooling/url.go`
+        - `wave/runtime_refs.go`
+    - Commands/tests run:
+        - `sed -n '1,260p' wave/tooling/timeout_policy.go`
+        - `sed -n '1,280p' wave/tooling/watcher_matching.go`
+        - `sed -n '1,320p' wave/tooling/builder_validation.go`
+        - `sed -n '1,240p' wave/tooling/url.go`
+        - `sed -n '1,220p' wave/runtime_refs.go`
+        - `gofmt -w wave/tooling/timeout_policy.go wave/tooling/watcher_matching.go`
+        - `gofmt -w wave/tooling/builder_validation.go`
+        - `go test ./wave/tooling -count=1`
+        - `go test ./wave/tooling -race -count=1`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-035`:
+          `deriveHookCommandStageTimeoutMilliseconds` and
+          `deriveHookCallbackStageTimeoutMilliseconds` duplicated stage-switch
+          timeout selection logic; extracted shared
+          `deriveHookStageTimeoutMilliseconds` and
+          `hookStageTimeoutMilliseconds`.
+        - Found and fixed `F-20260215-036`: `IsPublicStaticFile` and
+          `IsPrivateStaticFile` duplicated normalized static-dir prefix checks;
+          extracted shared `isPathWithinStaticDirectory`.
+        - Found and fixed `F-20260215-037`:
+          `ValidateConfig`/`validateHookCommandTimeoutConfig`/`validateHookCallbackTimeoutConfig`
+          duplicated non-negative timeout field validation logic; extracted
+          shared `validateNonNegativeTimeoutFields` with
+          `timeoutFieldValidation`.
+        - Global candidate review (`GC-20260215-001`): considered extracting a
+          cross-package helper for URL fallback normalization shared by
+          `wave/runtime_refs.go` and `wave/tooling/url.go`; rejected for now as
+          deliberate duplication because introducing another single-purpose
+          `wave/internal/*` package for one callsite pair would increase package
+          fragmentation with limited net maintenance gain.
+
+## EV-20260215-147
+
+- Package group: `vormaclient/client/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `vormaclient/client/src/platform/url.ts`
+        - `vormaclient/client/src/client.ts`
+        - `vormaclient/client/src/core/links.ts`
+        - `vormaclient/client/src/platform/events.ts`
+        - `vormaclient/client/src/tests/unit/hash_fragment.test.ts`
+    - Commands/tests run:
+        - `sed -n '1,280p' vormaclient/client/src/platform/url.ts`
+        - `sed -n '1,260p' vormaclient/client/src/client.ts`
+        - `sed -n '1,320p' vormaclient/client/src/core/links.ts`
+        - `sed -n '1,220p' vormaclient/client/src/platform/events.ts`
+        - `sed -n '1,260p' vormaclient/client/src/tests/unit/hash_fragment.test.ts`
+        - `pnpm prettier --write vormaclient/client/src/platform/url.ts vormaclient/client/src/client.ts vormaclient/client/src/core/links.ts vormaclient/client/src/tests/unit/hash_fragment.test.ts`
+        - `pnpm prettier --write vormaclient/client/src/platform/events.ts`
+        - `pnpm vitest run vormaclient/client/src/tests/unit/hash_fragment.test.ts vormaclient/client/src/tests/unit/links_internal.test.ts`
+        - `pnpm vitest run vormaclient/client/src/tests/contracts/client.events.contract.test.ts vormaclient/client/src/tests/unit/history_listener_prelude.test.ts`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-038`: absolute href construction with
+          optional `search`/`hash` overrides was duplicated between
+          `src/client.ts` and `src/core/links.ts`; extracted
+          `resolveAbsoluteHrefWithOptionalSearchAndHash` in
+          `src/platform/url.ts`, migrated both callsites, and added a regression
+          test in `src/tests/unit/hash_fragment.test.ts`.
+        - Found and fixed `F-20260215-039`: event dispatch boilerplate for
+          CustomEvent creation was duplicated across
+          route-change/status/build-id/ location emitters in
+          `src/platform/events.ts`; extracted shared dispatch helpers
+          `dispatchCustomEventWithDetail` and
+          `dispatchCustomEventWithoutDetail`.
+        - Global candidate opened (`GC-20260215-002`): evaluate cross-adapter
+          duplication in `vormaclient/react/*`, `vormaclient/preact/*`, and
+          `vormaclient/solid/*` for potential shared internal adapter helper.
+
+## EV-20260215-148
+
+- Package group: `kit/_typescript/converters`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/converters/converters.ts`
+        - `kit/_typescript/converters/converters.test.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/converters/converters.ts`
+        - `sed -n '1,320p' kit/_typescript/converters/converters.test.ts`
+        - `pnpm vitest run kit/_typescript/converters/converters.test.ts`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+        - Candidate evaluated and marked deliberate: pairwise conversion APIs
+          are explicit convenience surface area, and collapsing into dynamic
+          conversion dispatch would reduce clarity/type ergonomics.
+
+## EV-20260215-149
+
+- Package group: `kit/_typescript/cookies`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/cookies/cookies.ts`
+        - `kit/_typescript/cookies/cookies.test.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/cookies/cookies.ts`
+        - `pnpm vitest run kit/_typescript/cookies/cookies.test.ts`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+
+## EV-20260215-150
+
+- Package group: `kit/_typescript/csrf`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/csrf/csrf.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/csrf/csrf.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+
+## EV-20260215-151
+
+- Package group: `kit/_typescript/debounce`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/debounce/debounce.ts`
+        - `kit/_typescript/debounce/debounce.test.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/debounce/debounce.ts`
+        - `pnpm vitest run kit/_typescript/debounce/debounce.test.ts`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+
+## EV-20260215-152
+
+- Package group: `kit/_typescript/fmt`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/fmt/fmt.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/fmt/fmt.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+
+## EV-20260215-153
+
+- Package group: `kit/_typescript/json`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/json/json.ts`
+        - `kit/_typescript/json/deep_equals.ts`
+        - `kit/_typescript/json/stringify_stable.ts`
+        - `kit/_typescript/json/search_param_serializer.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/json/json.ts`
+        - `sed -n '1,300p' kit/_typescript/json/deep_equals.ts`
+        - `sed -n '1,260p' kit/_typescript/json/stringify_stable.ts`
+        - `sed -n '1,260p' kit/_typescript/json/search_param_serializer.ts`
+        - `pnpm vitest run kit/_typescript/json/deep_equals.test.ts kit/_typescript/json/stringify_stable.test.ts kit/_typescript/json/search_params_serializer.test.ts`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+
+## EV-20260215-154
+
+- Package group: `kit/_typescript/listeners`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/listeners/listeners.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/listeners/listeners.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+
+## EV-20260215-155
+
+- Package group: `kit/_typescript/matcher`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/matcher/register.ts`
+        - `kit/_typescript/matcher/find_best_match.ts`
+        - `kit/_typescript/matcher/find_nested_matches.ts`
+        - `kit/_typescript/matcher/parse_segments.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/matcher/register.ts`
+        - `sed -n '1,320p' kit/_typescript/matcher/find_best_match.ts`
+        - `sed -n '1,360p' kit/_typescript/matcher/find_nested_matches.ts`
+        - `sed -n '1,300p' kit/_typescript/matcher/parse_segments.ts`
+        - `pnpm vitest run kit/_typescript/matcher/**/*.test.ts`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+        - Candidate evaluated and marked deliberate: `find_best_match` and
+          `find_nested_matches` have overlapping traversal concerns but serve
+          different matching semantics and output contracts; unifying traversal
+          into shared generic walkers would increase indirection and reduce
+          readability in hot path logic.
+
+## EV-20260215-156
+
+- Package group: `kit/_typescript/theme`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/theme/theme.ts`
+    - Commands/tests run:
+        - `sed -n '1,260p' kit/_typescript/theme/theme.ts`
+        - `pnpm prettier --write kit/_typescript/theme/theme.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-040`: cookie-backed and local-storage-
+          backed theme read/write flows were duplicated across
+          `getTheme`/`getThemeLocal`,
+          `getResolvedTheme`/`getResolvedThemeLocal`, and
+          `setTheme`/`setThemeLocal`; extracted shared storage-backed helpers
+          with `ThemeStorageBackend`, `readThemeOrDefault`,
+          `readResolvedThemeOrDefault`, and `writeThemeAndBroadcast`.
+
+## EV-20260215-157
+
+- Package group: `kit/_typescript/url`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/url/url.ts`
+        - `kit/_typescript/url/url.test.ts`
+        - `vormaclient/client/src/platform/url.ts`
+        - `vormaclient/client/src/tests/unit/hash_fragment.test.ts`
+    - Commands/tests run:
+        - `sed -n '1,320p' kit/_typescript/url/url.ts`
+        - `sed -n '1,360p' kit/_typescript/url/url.test.ts`
+        - `pnpm prettier --write kit/_typescript/url/url.ts kit/_typescript/url/url.test.ts vormaclient/client/src/platform/url.ts`
+        - `pnpm vitest run kit/_typescript/url/url.test.ts`
+        - `pnpm vitest run vormaclient/client/src/tests/unit/hash_fragment.test.ts vormaclient/client/src/tests/unit/links_internal.test.ts`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-041`: absolute-href URL helper logic was
+          duplicated between `kit/_typescript/url`-adjacent client runtime code
+          and `vormaclient/client/src/platform/url.ts`; moved
+          `resolveAbsoluteHref` and
+          `resolveAbsoluteHrefWithOptionalSearchAndHash` into
+          `kit/_typescript/url/url.ts` and switched client platform URL module
+          to consume/re-export those helpers.
+
+## EV-20260215-158
+
+- Package group: `vormaclient/react/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `vormaclient/react/src/helpers.ts`
+    - Commands/tests run:
+        - `sed -n '1,280p' vormaclient/react/src/helpers.ts`
+        - `pnpm prettier --write vormaclient/react/src/helpers.ts`
+        - `pnpm tsc --noEmit -p vormaclient/react/tsconfig.json`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-042`: matched-pattern index memoization
+          logic was duplicated between `makeTypedUsePatternLoaderData` and
+          `makeTypedAddClientLoader`; extracted shared hook
+          `useMatchedPatternIndex`.
+
+## EV-20260215-159
+
+- Package group: `vormaclient/preact/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `vormaclient/preact/src/helpers.ts`
+    - Commands/tests run:
+        - `sed -n '1,320p' vormaclient/preact/src/helpers.ts`
+        - `pnpm prettier --write vormaclient/preact/src/helpers.ts`
+        - `pnpm tsc --noEmit -p vormaclient/preact/tsconfig.json`
+        - `pnpm vitest run vormaclient/preact/src/preact.test.tsx`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-043`: matched-pattern index lookup logic
+          was duplicated between `makeTypedUsePatternLoaderData` and
+          `makeTypedAddClientLoader`; extracted shared helper
+          `getMatchedPatternIndex`.
+
+## EV-20260215-160
+
+- Package group: `vormaclient/solid/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `vormaclient/solid/src/helpers.ts`
+        - `vormaclient/react/src/helpers.ts`
+        - `vormaclient/preact/src/helpers.ts`
+    - Commands/tests run:
+        - `sed -n '1,320p' vormaclient/solid/src/helpers.ts`
+        - `pnpm prettier --write vormaclient/solid/src/helpers.ts`
+        - `pnpm tsc --noEmit -p vormaclient/solid/tsconfig.json`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-044`: matched-pattern index accessor logic
+          was duplicated between `makeTypedUsePatternLoaderData` and
+          `makeTypedAddClientLoader`; extracted shared accessor factory
+          `createMatchedPatternIndexAccessor`.
+        - Global candidate resolution (`GC-20260215-002`): rejected a single
+          shared cross-adapter abstraction for `react`/`preact`/`solid` helper
+          factories as deliberate duplication boundary because each adapter has
+          framework-specific reactive return contracts and hook semantics that
+          would require leaky, less readable indirection to unify.
+
+## EV-20260215-161
+
+- Package group: `vormaclient/vite/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `vormaclient/vite/vite.ts`
+        - `vormaclient/vite/vite.test.ts`
+    - Commands/tests run:
+        - `sed -n '1,320p' vormaclient/vite/vite.ts`
+        - `sed -n '1,360p' vormaclient/vite/vite.test.ts`
+        - `pnpm vitest run vormaclient/vite/vite.test.ts`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+        - Candidate evaluated and marked deliberate: merge helpers in this file
+          already centralize the duplicated merge concerns (`rollup input` and
+          `server.watch.ignored`), and further abstraction would primarily add
+          generic indirection around heterogeneous config shape handling.
+
+## EV-20260215-162
+
+- Package group: `vormaclient/create/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `vormaclient/create/runtime_helpers.ts`
+        - `vormaclient/create/runtime_helpers.test.ts`
+    - Commands/tests run:
+        - `nl -ba vormaclient/create/runtime_helpers.ts | sed -n '1,260p'`
+        - `pnpm vitest run vormaclient/create/runtime_helpers.test.ts`
+        - `pnpm tsc --noEmit -p vormaclient/create/tsconfig.json`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-045`: node/go minimum-version threshold
+          comparison logic was duplicated between
+          `isNodeVersionAtLeast`/`isGoVersionAtLeast`; extracted shared helper
+          `isMajorMinorVersionAtLeast` and routed both checks through it.
+
+## EV-20260215-163
+
+- Package group: `kit/_typescript/url`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/url/url.ts`
+        - `vormaclient/client/src/platform/url.ts`
+        - `vormaclient/client/src/tests/unit/hash_fragment.test.ts`
+        - `vormaclient/client/src/tests/unit/history_listener_prelude.test.ts`
+        - `vormaclient/client/src/tests/unit/links_internal.test.ts`
+    - Commands/tests run:
+        - `pnpm prettier --write kit/_typescript/url/url.ts vormaclient/client/src/platform/url.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+        - `pnpm tsc --noEmit -p vormaclient/client/tsconfig.json`
+        - `pnpm vitest run kit/_typescript/url/url.test.ts`
+        - `pnpm vitest run vormaclient/client/src/tests/unit/hash_fragment.test.ts vormaclient/client/src/tests/unit/history_listener_prelude.test.ts vormaclient/client/src/tests/unit/links_internal.test.ts`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-046`: hash-fragment and navigation-target
+          URL helpers remained duplicated on the `vormaclient` side after prior
+          absolute-href extraction; moved
+          `hrefWithoutHash`/`hasSameDataTarget`/`hasSameNavigationTarget`/
+          `findMapEntryByNavigationTarget`/hash-fragment helpers into
+          `kit/_typescript/url/url.ts`, and reduced
+          `vormaclient/client/src/platform/url.ts` to re-export those shared
+          helpers plus client-specific `resolvePublicHref`.
+
+## EV-20260215-164
+
+- Package group: `kit/bytesutil`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/bytesutil/bytesutil.go`
+        - `kit/bytesutil/bytesutil_test.go`
+        - `kit/bytesutil/README.md`
+        - `kit/fsutil/fsutil.go` (cross-package DRY candidate check)
+    - Commands/tests run:
+        - `rg --files kit/bytesutil`
+        - `nl -ba kit/bytesutil/bytesutil.go | sed -n '1,260p'`
+        - `nl -ba kit/bytesutil/bytesutil_test.go | sed -n '1,320p'`
+        - `nl -ba kit/bytesutil/README.md | sed -n '1,240p'`
+        - `rg -n "base64\\.StdEncoding|base64\\.RawURLEncoding|base32\\.StdEncoding\\.WithPadding\\(base32\\.NoPadding\\)|gob\\.NewEncoder|gob\\.NewDecoder" --glob '*.go'`
+        - `nl -ba kit/fsutil/fsutil.go | sed -n '120,220p'`
+        - `go test ./kit/bytesutil`
+    - Findings/fixes:
+        - No additional DRY refactor applied in this cell.
+        - Global candidate resolution (`GC-20260215-003`): rejected unifying gob
+          decode helpers between `kit/bytesutil` and `kit/fsutil` because they
+          intentionally model different input surfaces (`[]byte` vs `fs.File`)
+          and package responsibilities; extracting a shared helper would add
+          indirection without reducing meaningful complexity.
+
+## EV-20260215-165
+
+- Package group: `kit/colorlog`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/colorlog/colorlog.go`
+        - `kit/colorlog/colorlog_test.go`
+        - `kit/colorlog/README.md`
+    - Commands/tests run:
+        - `rg --files kit/colorlog`
+        - `nl -ba kit/colorlog/colorlog.go | sed -n '1,320p'`
+        - `nl -ba kit/colorlog/colorlog_test.go | sed -n '1,520p'`
+        - `nl -ba kit/colorlog/README.md | sed -n '1,260p'`
+        - `gofmt -w kit/colorlog/colorlog.go`
+        - `go test ./kit/colorlog`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-047`: `WithAttrs` and `WithGroup`
+          duplicated `ColorLogHandler` clone construction; extracted shared
+          `clone()` helper and reused it in both methods to keep handler field
+          propagation in one place.
+
+## EV-20260215-166
+
+- Package group: `kit/_typescript/converters`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/converters/converters.ts`
+        - `kit/_typescript/converters/converters.test.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/converters/converters.ts | sed -n '1,340p'`
+        - `nl -ba kit/_typescript/converters/converters.test.ts | sed -n '1,360p'`
+        - `pnpm vitest run kit/_typescript/converters/converters.test.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - Applied Surface/API typing alignment: corrected return annotations for
+          Base64URL-producing helpers
+          (`bytesToBase64URL`/`utf8ToBase64URL`/`hexToBase64URL`/
+          `base64ToBase64URL`) from `Base64` to `Base64URL`.
+        - No additional correctness/fragility finding after this sweep.
+
+## EV-20260215-167
+
+- Package group: `kit/_typescript/cookies`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/cookies/cookies.ts`
+        - `kit/_typescript/cookies/cookies.test.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/cookies/cookies.ts | sed -n '1,260p'`
+        - `nl -ba kit/_typescript/cookies/cookies.test.ts | sed -n '1,320p'`
+        - `pnpm prettier --write kit/_typescript/cookies/cookies.ts kit/_typescript/cookies/cookies.test.ts`
+        - `pnpm vitest run kit/_typescript/cookies/cookies.test.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-048`: `getClientCookie` interpolated the
+          cookie name directly into a regular expression, which caused incorrect
+          lookups for names containing regex metacharacters.
+        - Replaced regex lookup with deterministic `document.cookie` pair
+          parsing (`split(";")` + exact prefix match).
+        - Added regression test: `kit/_typescript/cookies/cookies.test.ts` case
+          "should handle cookie names containing regex metacharacters".
+
+## EV-20260215-168
+
+- Package group: `kit/_typescript/csrf`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/csrf/csrf.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/csrf/csrf.ts | sed -n '1,260p'`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+        - `pnpm vitest run kit/_typescript/**/*.test.ts`
+    - Findings/fixes:
+        - No additional Surface/API or Correctness/Fragility finding in this
+          cell.
+
+## EV-20260215-169
+
+- Package group: `kit/_typescript/debounce`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/debounce/debounce.ts`
+        - `kit/_typescript/debounce/debounce.test.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/debounce/debounce.ts | sed -n '1,260p'`
+        - `nl -ba kit/_typescript/debounce/debounce.test.ts | sed -n '1,260p'`
+        - `pnpm prettier --write kit/_typescript/debounce/debounce.ts kit/_typescript/debounce/debounce.test.ts`
+        - `pnpm vitest run kit/_typescript/debounce/debounce.test.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-049`: if the debounced function threw
+          inside the timer callback, the returned promise never resolved or
+          rejected and the error escaped asynchronously.
+        - Added `try/catch` in the timer callback and reject the promise on
+          thrown errors.
+        - Added regression test: `kit/_typescript/debounce/debounce.test.ts`
+          case "rejects when the debounced function throws".
+
+## EV-20260215-170
+
+- Package group: `kit/_typescript/fmt`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/fmt/fmt.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/fmt/fmt.ts | sed -n '1,200p'`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+        - `pnpm vitest run kit/_typescript/**/*.test.ts`
+    - Findings/fixes:
+        - No additional Surface/API or Correctness/Fragility finding in this
+          cell.
+
+## EV-20260215-171
+
+- Package group: `kit/_typescript/json`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/json/json.ts`
+        - `kit/_typescript/json/deep_equals.ts`
+        - `kit/_typescript/json/search_param_serializer.ts`
+        - `kit/_typescript/json/stringify_stable.ts`
+        - `kit/_typescript/json/deep_equals.test.ts`
+        - `kit/_typescript/json/search_params_serializer.test.ts`
+        - `kit/_typescript/json/stringify_stable.test.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/json/json.ts | sed -n '1,200p'`
+        - `nl -ba kit/_typescript/json/deep_equals.ts | sed -n '1,320p'`
+        - `nl -ba kit/_typescript/json/search_param_serializer.ts | sed -n '1,320p'`
+        - `nl -ba kit/_typescript/json/stringify_stable.ts | sed -n '1,320p'`
+        - `pnpm vitest run kit/_typescript/json/deep_equals.test.ts kit/_typescript/json/search_params_serializer.test.ts kit/_typescript/json/stringify_stable.test.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - No additional Surface/API or Correctness/Fragility finding in this
+          cell.
+
+## EV-20260215-172
+
+- Package group: `kit/_typescript/listeners`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/listeners/listeners.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/listeners/listeners.ts | sed -n '1,260p'`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+        - `pnpm vitest run kit/_typescript/**/*.test.ts`
+    - Findings/fixes:
+        - No additional Surface/API or Correctness/Fragility finding in this
+          cell.
+
+## EV-20260215-173
+
+- Package group: `kit/_typescript/matcher`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/matcher/register.ts`
+        - `kit/_typescript/matcher/find_best_match.ts`
+        - `kit/_typescript/matcher/find_nested_matches.ts`
+        - `kit/_typescript/matcher/parse_segments.ts`
+        - matcher test files under `kit/_typescript/matcher/*.test.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/matcher/register.ts | sed -n '1,360p'`
+        - `nl -ba kit/_typescript/matcher/find_best_match.ts | sed -n '1,360p'`
+        - `nl -ba kit/_typescript/matcher/find_nested_matches.ts | sed -n '1,360p'`
+        - `nl -ba kit/_typescript/matcher/parse_segments.ts | sed -n '1,220p'`
+        - `pnpm vitest run kit/_typescript/matcher/**/*.test.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - No additional Surface/API or Correctness/Fragility finding in this
+          cell.
+
+## EV-20260215-174
+
+- Package group: `kit/_typescript/theme`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/theme/theme.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/theme/theme.ts | sed -n '1,320p'`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+        - `pnpm vitest run kit/_typescript/**/*.test.ts`
+    - Findings/fixes:
+        - No additional Surface/API or Correctness/Fragility finding in this
+          cell.
+
+## EV-20260215-175
+
+- Package group: `kit/_typescript/url`
+- Pass name: Surface/API + Correctness/Fragility
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/url/url.ts`
+        - `kit/_typescript/url/url.test.ts`
+    - Commands/tests run:
+        - `nl -ba kit/_typescript/url/url.ts | sed -n '1,360p'`
+        - `nl -ba kit/_typescript/url/url.test.ts | sed -n '1,520p'`
+        - `pnpm vitest run kit/_typescript/url/url.test.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+    - Findings/fixes:
+        - No additional Surface/API or Correctness/Fragility finding in this
+          cell.
+
+## EV-20260215-176
+
+- Package group: `kit/_typescript/url` + `vormaclient/client/*`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/_typescript/url/url.ts`
+        - `kit/_typescript/url/url.test.ts`
+        - `vormaclient/client/src/platform/url.ts`
+        - `vormaclient/client/src/tests/unit/hash_fragment.test.ts`
+    - Commands/tests run:
+        - `rg -n "from \"vorma/kit/url\"" . -g '*.ts' -g '*.tsx'`
+        - `rg -n "\\b(hrefWithoutHash|hasSameDataTarget|hasSameNavigationTarget|findMapEntryByNavigationTarget|decodeHashFragment|normalizedHashFragmentFromHash|hashFragmentFromHash|normalizedHashFragmentFromHref|hashFragmentFromHref|isSameDocumentHashChange|isSameDocumentLocation)\\b" . -g '*.ts' -g '*.tsx'`
+        - `pnpm prettier --write vormaclient/client/src/platform/url.ts kit/_typescript/url/url.ts kit/_typescript/url/url.test.ts`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+        - `pnpm tsc --noEmit -p vormaclient/client/tsconfig.json`
+        - `pnpm vitest run kit/_typescript/url/url.test.ts`
+        - `pnpm vitest run vormaclient/client/src/tests/unit/hash_fragment.test.ts vormaclient/client/src/tests/unit/history_listener_prelude.test.ts vormaclient/client/src/tests/unit/links_internal.test.ts`
+        - `pnpm vitest run kit/_typescript/**/*.test.ts`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-050`: prior URL helper extraction moved
+          `vormaclient`-specific navigation/hash identity helpers into
+          `kit/_typescript/url` despite single-consumer usage, which did not
+          satisfy DRY.
+        - Reverted those helpers back to
+          `vormaclient/client/src/platform/url.ts`: `hrefWithoutHash`,
+          `hasSameDataTarget`, `hasSameNavigationTarget`,
+          `findMapEntryByNavigationTarget`, `decodeHashFragment`,
+          `normalizedHashFragmentFromHash`, `hashFragmentFromHash`,
+          `normalizedHashFragmentFromHref`, `hashFragmentFromHref`,
+          `isSameDocumentHashChange`, and `isSameDocumentLocation`.
+        - Kept genuinely generic absolute URL resolvers in
+          `kit/_typescript/url/url.ts` (`resolveAbsoluteHref`,
+          `resolveAbsoluteHrefWithOptionalSearchAndHash`).
+        - Trimmed `kit/_typescript/url/url.ts` back to broadly shared URL/link
+          helpers and removed non-shared hash-target policy tests from
+          `kit/_typescript/url/url.test.ts`.
+
+## EV-20260215-177
+
+- Package group: `vormaclient/*` + `kit/_typescript/*`
+- Pass name: DRY (re-audit)
+- Evidence
+    - Files reviewed:
+        - `vormaclient/client/src/ui/helpers.ts`
+        - `vormaclient/client/src/platform/url.ts`
+        - `kit/_typescript/url/url.ts`
+        - `vormaclient/react/src/helpers.ts`
+        - `vormaclient/preact/src/helpers.ts`
+        - `vormaclient/solid/src/helpers.ts`
+        - `vormaclient/create/runtime_helpers.ts`
+        - `vormaclient/client/src/platform/events.ts`
+        - `vormaclient/vite/vite.ts`
+        - `FRAMEWORK_AUDIT_EVIDENCE.md` entries `EV-20260215-147` through
+          `EV-20260215-176`
+    - Commands/tests run:
+        - `rg --files vormaclient kit/_typescript -g '*.ts' -g '*.tsx'`
+        - `rg -n "F-20260215-04[0-9]|F-20260215-050|EV-20260215-14[7-9]|EV-20260215-15[0-9]|EV-20260215-16[0-9]|EV-20260215-17[0-6]" FRAMEWORK_AUDIT_EVIDENCE.md FRAMEWORK_AUDIT.md`
+        - `rg -n "resolveAbsoluteHref|resolveAbsoluteHrefWithOptionalSearchAndHash|getIsGETRequest|getIsErrorRes|isMajorMinorVersionAtLeast|useMatchedPatternIndex|getMatchedPatternIndex|createMatchedPatternIndexAccessor|ThemeStorageBackend|readThemeOrDefault|writeThemeAndBroadcast" vormaclient kit/_typescript -g '*.ts' -g '*.tsx'`
+        - `pnpm prettier --write vormaclient/client/src/ui/helpers.ts kit/_typescript/url/url.ts kit/_typescript/url/url.test.ts vormaclient/client/src/platform/url.ts`
+        - `pnpm tsc --noEmit -p vormaclient/client/tsconfig.json`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+        - `pnpm vitest run vormaclient/client/src/tests/unit/links_internal.test.ts vormaclient/client/src/tests/unit/hash_fragment.test.ts`
+        - `pnpm vitest run --config vormaclient/client/vitest.dist.config.ts vormaclient/client/dist_tests/npm_dist_adapters_helpers_link_mocked.test.ts`
+        - `pnpm vitest run kit/_typescript/url/url.test.ts`
+        - `pnpm vitest run kit/_typescript/**/*.test.ts`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-051`: `resolveTypedLinkHref` in
+          `vormaclient/client/src/ui/helpers.ts` duplicated search/hash override
+          absolute-URL construction already provided by shared
+          `kit/_typescript/url`; switched it to use
+          `resolveAbsoluteHrefWithOptionalSearchAndHash`.
+        - No additional helpers met the bar for promotion to public
+          `kit/_typescript/*` surface after re-audit; remaining duplications are
+          adapter-runtime-specific or single-package concerns.
+
+## EV-20260215-178
+
+- Package group: `vormaclient/client/*` + `kit/_typescript/url`
+- Pass name: DRY follow-up (boundary cleanup)
+- Evidence
+    - Files reviewed:
+        - `vormaclient/client/src/platform/url.ts`
+        - `vormaclient/client/src/client.ts`
+        - `vormaclient/client/src/core/links.ts`
+        - `vormaclient/client/src/core/redirects.ts`
+        - `vormaclient/client/src/core/navigation/begin_navigation.ts`
+        - `vormaclient/client/src/core/navigation/navigation_controls.ts`
+        - `vormaclient/client/src/core/navigation/runtime.ts`
+        - `vormaclient/client/src/core/navigation/runtime_navigation_outcome.ts`
+        - `vormaclient/client/src/core/navigation/runtime_submit.ts`
+        - `vormaclient/client/src/platform/history.ts`
+        - `vormaclient/client/src/tests/unit/hash_fragment.test.ts`
+        - `vormaclient/client/src/ui/helpers.ts`
+    - Commands/tests run:
+        - `rg -nUP "export\\s*\\{[^}]*\\}\\s*from\\s*['\\\"]vorma/kit/|export\\s+\\*\\s+from\\s*['\\\"]vorma/kit/" .`
+        - `rg -n "^export .* from" vormaclient/client/src/platform vormaclient/client/src`
+        - `rg -n "resolveAbsoluteHref|resolveAbsoluteHrefWithOptionalSearchAndHash" vormaclient/client/src`
+        - `pnpm prettier --write vormaclient/client/src/client.ts vormaclient/client/src/core/links.ts vormaclient/client/src/core/navigation/begin_navigation.ts vormaclient/client/src/core/navigation/navigation_controls.ts vormaclient/client/src/core/navigation/runtime.ts vormaclient/client/src/core/navigation/runtime_navigation_outcome.ts vormaclient/client/src/core/navigation/runtime_submit.ts vormaclient/client/src/core/redirects.ts vormaclient/client/src/platform/history.ts vormaclient/client/src/platform/url.ts vormaclient/client/src/tests/unit/hash_fragment.test.ts vormaclient/client/src/ui/helpers.ts kit/_typescript/url/url.ts kit/_typescript/url/url.test.ts FRAMEWORK_AUDIT.md FRAMEWORK_AUDIT_EVIDENCE.md`
+        - `pnpm tsc --noEmit -p kit/_typescript/tsconfig.json`
+        - `pnpm tsc --noEmit -p vormaclient/client/tsconfig.json`
+        - `pnpm vitest run kit/_typescript/url/url.test.ts`
+        - `pnpm vitest run vormaclient/client/src/tests/unit/hash_fragment.test.ts vormaclient/client/src/tests/unit/history_listener_prelude.test.ts vormaclient/client/src/tests/unit/links_internal.test.ts`
+        - `pnpm vitest run --config vormaclient/client/vitest.dist.config.ts vormaclient/client/dist_tests/npm_dist_adapters_helpers_link_mocked.test.ts`
+        - `pnpm vitest run vormaclient/client/src/tests/contracts/client.utilities.contract.test.ts`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-052`:
+          `vormaclient/client/src/platform/url.ts` still acted as a passthrough
+          boundary for generic resolvers after DRY extraction. Removed that
+          passthrough and updated callsites to import generic resolvers directly
+          from `vorma/kit/url` so `platform/url.ts` remains client-policy-only.

@@ -208,19 +208,19 @@ func (v *Vorma) validateConfig() {
 	if v.Config.TSGenOutDir == "" {
 		panic("config: Vorma.TSGenOutDir is required")
 	}
-	if v.Config.BuildtimePublicURLFuncName == "" {
-		v.Config.BuildtimePublicURLFuncName = "waveBuildtimeURL"
-	}
+	applyDefaultConfigStringValue(&v.Config.BuildtimePublicURLFuncName, "waveBuildtimeURL")
 
-	if v.Config.DevReloadRoutesEndpointPath == "" {
-		v.Config.DevReloadRoutesEndpointPath = DefaultDevReloadRoutesEndpointPath
-	}
-	if v.Config.DevReloadTemplateEndpointPath == "" {
-		v.Config.DevReloadTemplateEndpointPath = DefaultDevReloadTemplateEndpointPath
-	}
+	applyDefaultConfigStringValue(
+		&v.Config.DevReloadRoutesEndpointPath,
+		DefaultDevReloadRoutesEndpointPath,
+	)
+	applyDefaultConfigStringValue(
+		&v.Config.DevReloadTemplateEndpointPath,
+		DefaultDevReloadTemplateEndpointPath,
+	)
 
-	v.Config.DevReloadRoutesEndpointPath = strings.TrimSpace(v.Config.DevReloadRoutesEndpointPath)
-	v.Config.DevReloadTemplateEndpointPath = strings.TrimSpace(v.Config.DevReloadTemplateEndpointPath)
+	trimConfigStringValue(&v.Config.DevReloadRoutesEndpointPath)
+	trimConfigStringValue(&v.Config.DevReloadTemplateEndpointPath)
 	if !strings.HasPrefix(v.Config.DevReloadRoutesEndpointPath, "/") {
 		panic("config: Vorma.DevReloadRoutesEndpointPath must start with '/'")
 	}
@@ -231,31 +231,30 @@ func (v *Vorma) validateConfig() {
 		panic("config: Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadTemplateEndpointPath must differ")
 	}
 
-	if v.Config.TemplateDataKeyHeadElements == "" {
-		v.Config.TemplateDataKeyHeadElements = DefaultTemplateDataKeyHeadElements
-	}
-	if v.Config.TemplateDataKeyBodyScripts == "" {
-		v.Config.TemplateDataKeyBodyScripts = DefaultTemplateDataKeyBodyScripts
-	}
-	if v.Config.TemplateDataKeySSRScript == "" {
-		v.Config.TemplateDataKeySSRScript = DefaultTemplateDataKeySSRScript
-	}
-	if v.Config.TemplateDataKeySSRScriptHash == "" {
-		v.Config.TemplateDataKeySSRScriptHash = DefaultTemplateDataKeySSRScriptHash
-	}
-	if v.Config.TemplateDataKeyRootElementID == "" {
-		v.Config.TemplateDataKeyRootElementID = DefaultTemplateDataKeyRootElementID
-	}
-	if v.Config.ClientRootElementID == "" {
-		v.Config.ClientRootElementID = DefaultClientRootElementID
-	}
-
-	v.Config.TemplateDataKeyHeadElements = strings.TrimSpace(v.Config.TemplateDataKeyHeadElements)
-	v.Config.TemplateDataKeyBodyScripts = strings.TrimSpace(v.Config.TemplateDataKeyBodyScripts)
-	v.Config.TemplateDataKeySSRScript = strings.TrimSpace(v.Config.TemplateDataKeySSRScript)
-	v.Config.TemplateDataKeySSRScriptHash = strings.TrimSpace(v.Config.TemplateDataKeySSRScriptHash)
-	v.Config.TemplateDataKeyRootElementID = strings.TrimSpace(v.Config.TemplateDataKeyRootElementID)
-	v.Config.ClientRootElementID = strings.TrimSpace(v.Config.ClientRootElementID)
+	applyDefaultAndTrimConfigStringValue(
+		&v.Config.TemplateDataKeyHeadElements,
+		DefaultTemplateDataKeyHeadElements,
+	)
+	applyDefaultAndTrimConfigStringValue(
+		&v.Config.TemplateDataKeyBodyScripts,
+		DefaultTemplateDataKeyBodyScripts,
+	)
+	applyDefaultAndTrimConfigStringValue(
+		&v.Config.TemplateDataKeySSRScript,
+		DefaultTemplateDataKeySSRScript,
+	)
+	applyDefaultAndTrimConfigStringValue(
+		&v.Config.TemplateDataKeySSRScriptHash,
+		DefaultTemplateDataKeySSRScriptHash,
+	)
+	applyDefaultAndTrimConfigStringValue(
+		&v.Config.TemplateDataKeyRootElementID,
+		DefaultTemplateDataKeyRootElementID,
+	)
+	applyDefaultAndTrimConfigStringValue(
+		&v.Config.ClientRootElementID,
+		DefaultClientRootElementID,
+	)
 
 	templateDataKeys := []string{
 		v.Config.TemplateDataKeyHeadElements,
@@ -279,6 +278,27 @@ func (v *Vorma) validateConfig() {
 	if v.Config.ClientRootElementID == "" {
 		panic("config: Vorma.ClientRootElementID is required")
 	}
+}
+
+func applyDefaultConfigStringValue(configField *string, defaultValue string) {
+	if configField == nil {
+		return
+	}
+	if *configField == "" {
+		*configField = defaultValue
+	}
+}
+
+func trimConfigStringValue(configField *string) {
+	if configField == nil {
+		return
+	}
+	*configField = strings.TrimSpace(*configField)
+}
+
+func applyDefaultAndTrimConfigStringValue(configField *string, defaultValue string) {
+	applyDefaultConfigStringValue(configField, defaultValue)
+	trimConfigStringValue(configField)
 }
 
 type Loaders struct{ vorma *Vorma }

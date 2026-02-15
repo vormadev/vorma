@@ -1,3 +1,4 @@
+import { resolveAbsoluteHrefWithOptionalSearchAndHash } from "vorma/kit/url";
 import type { StatusEventDetail } from "./platform/events.ts";
 import { HistoryManager } from "./platform/history.ts";
 import type { historyInstance } from "./platform/history.ts";
@@ -42,17 +43,14 @@ export async function vormaNavigate(
 		state?: unknown;
 	},
 ): Promise<void> {
-	const url = new URL(href, window.location.href);
-
-	if (options?.search !== undefined) {
-		url.search = options.search;
-	}
-	if (options?.hash !== undefined) {
-		url.hash = options.hash;
-	}
+	const targetHref = resolveAbsoluteHrefWithOptionalSearchAndHash({
+		href,
+		search: options?.search,
+		hash: options?.hash,
+	});
 
 	await navigationStateManager.navigate({
-		href: url.href,
+		href: targetHref,
 		navigationType: "userNavigation",
 		replace: options?.replace,
 		scrollToTop: options?.scrollToTop,

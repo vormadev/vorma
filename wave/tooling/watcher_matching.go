@@ -161,18 +161,21 @@ func mergeWatchedFiles(matches []*wave.WatchedFile) *wave.WatchedFile {
 
 // IsPublicStaticFile checks if a path is within the public static directory
 func (w *watcher) IsPublicStaticFile(path string) bool {
-	if w.absPublicStatic == "" {
-		return false
-	}
-	normalizedPath := w.norm(path)
-	return strings.HasPrefix(normalizedPath, w.absPublicStatic+"/")
+	return w.isPathWithinStaticDirectory(path, w.absPublicStatic)
 }
 
 // IsPrivateStaticFile checks if a path is within the private static directory
 func (w *watcher) IsPrivateStaticFile(path string) bool {
-	if w.absPrivateStatic == "" {
+	return w.isPathWithinStaticDirectory(path, w.absPrivateStatic)
+}
+
+func (w *watcher) isPathWithinStaticDirectory(
+	path string,
+	absoluteStaticDirectoryPath string,
+) bool {
+	if absoluteStaticDirectoryPath == "" {
 		return false
 	}
 	normalizedPath := w.norm(path)
-	return strings.HasPrefix(normalizedPath, w.absPrivateStatic+"/")
+	return strings.HasPrefix(normalizedPath, absoluteStaticDirectoryPath+"/")
 }

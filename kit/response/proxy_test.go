@@ -130,6 +130,20 @@ func TestProxy_Headers(t *testing.T) {
 			t.Errorf("Expected nil for missing headers, got %v", vals)
 		}
 	})
+
+	t.Run("Header_Key_Canonicalized", func(t *testing.T) {
+		p := NewProxy()
+		p.SetHeader("content-type", "application/json")
+		p.AddHeader("x-forwarded-for", "10.0.0.1")
+
+		if got := p.GetHeader("Content-Type"); got != "application/json" {
+			t.Fatalf("expected canonical key lookup to work, got %q", got)
+		}
+		forwarded := p.GetHeaders("X-Forwarded-For")
+		if len(forwarded) != 1 || forwarded[0] != "10.0.0.1" {
+			t.Fatalf("expected canonical header values, got %v", forwarded)
+		}
+	})
 }
 
 func TestProxy_Cookies(t *testing.T) {
@@ -861,8 +875,26 @@ func TestProxy_Redirect_InvalidURL(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set(ClientAcceptsRedirectHeader, "true")
 	p := NewProxy()
-	_, err := p.Redirect(req, "javascript:alert(1)")
+	usedClientRedirect, err := p.Redirect(req, "javascript:alert(1)")
 	if err == nil {
 		t.Error("Expected error for invalid URL scheme")
+	}
+	if usedClientRedirect {
+		t.Error("Expected usedClientRedirect to be false when redirect validation fails")
+	}
+}
+
+func TestProxy_ApplyToResponseWriter_NilRequest_ServerRedirect(t *testing.T) {
+	p := NewProxy()
+	p.serverRedirect("/login", http.StatusFound)
+
+	w := httptest.NewRecorder()
+	p.ApplyToResponseWriter(w, nil)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected status %d, got %d", http.StatusFound, w.Code)
+	}
+	if location := w.Header().Get("Location"); location != "/login" {
+		t.Fatalf("expected Location '/login', got %q", location)
 	}
 }

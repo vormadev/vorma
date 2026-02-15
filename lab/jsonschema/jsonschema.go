@@ -137,7 +137,12 @@ func toOxfordList(items []string, conjunction string) string {
 	}
 	lastItem := quotedItems[length-1]
 	initialItems := quotedItems[:length-1]
-	return fmt.Sprintf("%s, or %s", strings.Join(initialItems, ", "), lastItem)
+	return fmt.Sprintf(
+		"%s, %s %s",
+		strings.Join(initialItems, ", "),
+		conjunction,
+		lastItem,
+	)
 }
 
 func UniqueFrom(strs ...string) string {

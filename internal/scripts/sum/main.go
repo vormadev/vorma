@@ -61,7 +61,7 @@ func main() {
 	// })
 
 	repoconcat.MustConcat(OUTDIR+"VORMA_CURRENT_CODE.txt", []string{
-		"vormaruntime",
+		"internal/vormaruntime",
 		"vormabuild",
 		"vorma.go",
 		"canonical_refactor/LOCKED_DECISIONS_AND_ARCHITECTURE.md",

@@ -1,9 +1,10 @@
-import { getHrefDetails, type HrefDetails } from "vorma/kit/url";
-import { dispatchBuildIDEvent } from "../platform/events.ts";
 import {
-	isSameDocumentLocation,
+	getHrefDetails,
 	resolveAbsoluteHref,
-} from "../platform/url.ts";
+	type HrefDetails,
+} from "vorma/kit/url";
+import { dispatchBuildIDEvent } from "../platform/events.ts";
+import { isSameDocumentLocation } from "../platform/url.ts";
 import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../platform/url.ts";
 import type { NavigateProps, NavigationEntry } from "./navigation/types.ts";
 import { getNavigationStateAccess } from "../app/context.ts";

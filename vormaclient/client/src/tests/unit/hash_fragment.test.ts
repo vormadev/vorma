@@ -1,16 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+	resolveAbsoluteHref,
+	resolveAbsoluteHrefWithOptionalSearchAndHash,
+} from "vorma/kit/url";
+import {
 	findMapEntryByNavigationTarget,
 	hasSameDataTarget,
 	hasSameNavigationTarget,
 	hashFragmentFromHash,
 	hashFragmentFromHref,
 	hrefWithoutHash,
-	isSameDocumentLocation,
 	isSameDocumentHashChange,
+	isSameDocumentLocation,
 	normalizedHashFragmentFromHash,
 	normalizedHashFragmentFromHref,
-	resolveAbsoluteHref,
 } from "../../platform/url.ts";
 
 describe("hash fragment helpers", () => {
@@ -110,6 +113,30 @@ describe("hash fragment helpers", () => {
 		expect(
 			resolveAbsoluteHref(new URL("/x?y=1", "https://example.com")),
 		).toBe("https://example.com/x?y=1");
+	});
+
+	it("resolves absolute hrefs with optional search and hash overrides", () => {
+		window.history.replaceState({}, "", "/base-path");
+
+		expect(
+			resolveAbsoluteHrefWithOptionalSearchAndHash({
+				href: "/next?mode=1#old",
+				search: "?mode=2",
+				hash: "#new",
+			}),
+		).toBe("http://localhost:3000/next?mode=2#new");
+		expect(
+			resolveAbsoluteHrefWithOptionalSearchAndHash({
+				href: "https://example.com/path?existing=1#old",
+				hash: "",
+			}),
+		).toBe("https://example.com/path?existing=1");
+		expect(
+			resolveAbsoluteHrefWithOptionalSearchAndHash({
+				href: "child",
+				baseHref: "https://example.com/base/",
+			}),
+		).toBe("https://example.com/base/child");
 	});
 
 	it("detects same-document hash-only transitions", () => {

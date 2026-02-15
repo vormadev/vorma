@@ -8,9 +8,7 @@ export const addRouteChangeListener = makeListenerAdder<RouteChangeEventDetail>(
 	VORMA_ROUTE_CHANGE_EVENT_KEY,
 );
 export function dispatchRouteChangeEvent(detail: RouteChangeEventDetail): void {
-	window.dispatchEvent(
-		new CustomEvent(VORMA_ROUTE_CHANGE_EVENT_KEY, { detail }),
-	);
+	dispatchCustomEventWithDetail(VORMA_ROUTE_CHANGE_EVENT_KEY, detail);
 }
 
 // Status Event
@@ -22,7 +20,7 @@ export type StatusEventDetail = {
 	isRevalidating: boolean;
 };
 export function dispatchStatusEvent(detail: StatusEventDetail): void {
-	window.dispatchEvent(new CustomEvent(STATUS_EVENT_KEY, { detail }));
+	dispatchCustomEventWithDetail(STATUS_EVENT_KEY, detail);
 }
 export const addStatusListener =
 	makeListenerAdder<StatusEventDetail>(STATUS_EVENT_KEY);
@@ -31,7 +29,7 @@ export const addStatusListener =
 const BUILD_ID_EVENT_KEY = "vorma:build-id";
 type BuildIDEventDetail = { oldID: string; newID: string };
 export function dispatchBuildIDEvent(detail: BuildIDEventDetail): void {
-	window.dispatchEvent(new CustomEvent(BUILD_ID_EVENT_KEY, { detail }));
+	dispatchCustomEventWithDetail(BUILD_ID_EVENT_KEY, detail);
 }
 export const addBuildIDListener =
 	makeListenerAdder<BuildIDEventDetail>(BUILD_ID_EVENT_KEY);
@@ -39,11 +37,19 @@ export const addBuildIDListener =
 // Location Event
 const LOCATION_EVENT_KEY = "vorma:location";
 export function dispatchLocationEvent(): void {
-	window.dispatchEvent(new CustomEvent(LOCATION_EVENT_KEY));
+	dispatchCustomEventWithoutDetail(LOCATION_EVENT_KEY);
 }
 export const addLocationListener = makeListenerAdder<void>(LOCATION_EVENT_KEY);
 
 // Helper to create listener adders
+function dispatchCustomEventWithDetail<T>(eventKey: string, detail: T): void {
+	window.dispatchEvent(new CustomEvent(eventKey, { detail }));
+}
+
+function dispatchCustomEventWithoutDetail(eventKey: string): void {
+	window.dispatchEvent(new CustomEvent(eventKey));
+}
+
 function makeListenerAdder<T>(key: string) {
 	return function addListener(
 		listener: (event: CustomEvent<T>) => void,

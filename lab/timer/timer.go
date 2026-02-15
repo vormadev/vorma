@@ -24,6 +24,9 @@ func Conditional(condition bool) *Timer {
 
 // Checkpoint prints the duration since the last checkpoint and resets the timer.
 func (t *Timer) Checkpoint(label string) {
+	if t == nil {
+		return
+	}
 	if !t.on {
 		return
 	}
@@ -33,6 +36,9 @@ func (t *Timer) Checkpoint(label string) {
 
 // Reset resets the timer.
 func (t *Timer) Reset() {
+	if t == nil {
+		return
+	}
 	if !t.on {
 		return
 	}
