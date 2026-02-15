@@ -136,16 +136,9 @@ func CopyFiles(srcDestTuples ...[2]string) error {
 // FromGobInto decodes a gob-encoded file into a destination.
 // The destination must be a pointer to the destination type.
 func FromGobInto(file fs.File, destPtr any) error {
-	if file == nil {
-		return fmt.Errorf("fsutil.FromGobInto: cannot decode nil file")
-	}
-	if destPtr == nil {
-		return fmt.Errorf("fsutil.FromGobInto: cannot decode into nil destination")
-	}
-	dec := gob.NewDecoder(file)
-	err := dec.Decode(destPtr)
+	err := decodeGobFileIntoDestination(file, destPtr)
 	if err != nil {
-		return fmt.Errorf("fsutil.FromGobInto: failed to decode file into dest: %w", err)
+		return fmt.Errorf("fsutil.FromGobInto: %w", err)
 	}
 	return nil
 }
@@ -153,16 +146,26 @@ func FromGobInto(file fs.File, destPtr any) error {
 // FromGob decodes a gob-encoded file into a value of type T.
 func FromGob[T any](file fs.File) (T, error) {
 	var zeroT T
-	if file == nil {
-		return zeroT, fmt.Errorf("fsutil.FromGob: cannot decode nil file")
-	}
-	dec := gob.NewDecoder(file)
 	destPtr := new(T)
-	err := dec.Decode(destPtr)
+	err := decodeGobFileIntoDestination(file, destPtr)
 	if err != nil {
-		return zeroT, fmt.Errorf("fsutil.FromGob: failed to decode file into dest: %w", err)
+		return zeroT, fmt.Errorf("fsutil.FromGob: %w", err)
 	}
 	return *destPtr, nil
+}
+
+func decodeGobFileIntoDestination(file fs.File, destPtr any) error {
+	if file == nil {
+		return fmt.Errorf("cannot decode nil file")
+	}
+	if destPtr == nil {
+		return fmt.Errorf("cannot decode into nil destination")
+	}
+	decoder := gob.NewDecoder(file)
+	if err := decoder.Decode(destPtr); err != nil {
+		return fmt.Errorf("failed to decode file into dest: %w", err)
+	}
+	return nil
 }
 
 func MustSub(f fs.FS, dirElems ...string) fs.FS {

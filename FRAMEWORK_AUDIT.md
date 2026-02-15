@@ -244,14 +244,14 @@ quality.
 | `kit/_typescript/url`          | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
 | `kit/bytesutil`                | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
 | `kit/colorlog`                 | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
-| `kit/contextutil`              | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
-| `kit/cookies`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
-| `kit/cryptoutil`               | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
-| `kit/csrf`                     | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
-| `kit/envutil`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
-| `kit/executil`                 | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
-| `kit/fsutil`                   | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
-| `kit/genericsutil`             | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
+| `kit/contextutil`              | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
+| `kit/cookies`                  | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
+| `kit/cryptoutil`               | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
+| `kit/csrf`                     | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
+| `kit/envutil`                  | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
+| `kit/executil`                 | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
+| `kit/fsutil`                   | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
+| `kit/genericsutil`             | done        | done                  | done     | not done    | not done      | not done | not done     | not done |
 | `kit/grace`                    | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `kit/headels`                  | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
 | `kit/htmlutil`                 | done        | done                  | not done | not done    | not done      | not done | not done     | not done |
@@ -496,6 +496,14 @@ Matrix evidence for completed cells:
 178. `vormaclient/*` + `kit/_typescript/*` DRY re-audit: `EV-20260215-177`.
 179. `vormaclient/client/*` + `kit/_typescript/url` DRY boundary cleanup:
      `EV-20260215-178`.
+180. `kit/contextutil` + DRY: `EV-20260215-179`.
+181. `kit/cookies` + DRY: `EV-20260215-180`.
+182. `kit/cryptoutil` + DRY: `EV-20260215-181`.
+183. `kit/csrf` + DRY: `EV-20260215-182`.
+184. `kit/envutil` + DRY: `EV-20260215-183`.
+185. `kit/executil` + DRY: `EV-20260215-184`.
+186. `kit/fsutil` + DRY: `EV-20260215-185`.
+187. `kit/genericsutil` + DRY: `EV-20260215-186`.
 
 ## Current Focus
 
@@ -517,7 +525,7 @@ Matrix evidence for completed cells:
 
 ## Next Queue
 
-1. `kit/contextutil` + DRY.
+1. `kit/grace` + DRY.
 
 ## Process Notes
 

@@ -4232,3 +4232,201 @@
           boundary for generic resolvers after DRY extraction. Removed that
           passthrough and updated callsites to import generic resolvers directly
           from `vorma/kit/url` so `platform/url.ts` remains client-policy-only.
+
+## EV-20260215-179
+
+- Package group: `kit/contextutil`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/contextutil/contextutil.go`
+        - `kit/contextutil/contextutil_test.go`
+        - `kit/contextutil/README.md`
+        - `kit/mux/mux.go` (callsite check)
+    - Commands/tests run:
+        - `rg --files kit/contextutil`
+        - `nl -ba kit/contextutil/contextutil.go`
+        - `nl -ba kit/contextutil/contextutil_test.go`
+        - `nl -ba kit/contextutil/README.md`
+        - `rg -n "context\\.WithValue\\(|\\.Value\\(" --glob '*.go'`
+        - `rg -n "type .*Store\\[|NewStore\\[|GetContextWithValue|GetValueFromContext|GetRequestWithContext" --glob '*.go'`
+        - `rg -n "type .*contextKey|ctxKey|context key|WithContext\\(" --glob '*.go'`
+        - `go test ./kit/contextutil`
+    - Findings/fixes:
+        - No DRY issue found in this cell.
+        - No additional intra-package or global DRY candidate met the extraction
+          bar.
+
+## EV-20260215-180
+
+- Package group: `kit/cookies`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/cookies/cookies.go`
+        - `kit/cookies/cookies_test.go`
+        - `kit/cookies/README.md`
+        - `kit/csrf/csrf.go` (usage boundary check)
+    - Commands/tests run:
+        - `rg --files kit/cookies`
+        - `nl -ba kit/cookies/cookies.go`
+        - `nl -ba kit/cookies/cookies_test.go`
+        - `nl -ba kit/cookies/README.md`
+        - `rg -n "SetCookie\\(|http\\.SetCookie\\(|cookie\\.|Cookies\\(" --glob '*.go'`
+        - `rg -n "__Host-|__Dev-|PartitionTrue|PartitionFalse|SameSiteLaxMode|HttpOnlyTrue" --glob '*.go'`
+        - `rg -n "NewSecureCookie|NewClientReadableCookie|SetWithProxy\\(|DeleteWithProxy\\(|SetWithWriter\\(|DeleteWithWriter\\(" --glob '*.go'`
+        - `go test ./kit/cookies`
+    - Findings/fixes:
+        - No DRY issue found in this cell.
+        - Cookie-policy logic remains appropriately centralized in `kit/cookies`
+          with no duplicate implementation in sibling packages.
+
+## EV-20260215-181
+
+- Package group: `kit/cryptoutil`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/cryptoutil/cryptoutil.go`
+        - `kit/cryptoutil/cryptoutil_test.go`
+        - `kit/cryptoutil/README.md`
+        - `wave/tooling/hash.go` (SHA-256 helper boundary check)
+        - `kit/htmlutil/htmlutil.go` (SHA-256 callsite check)
+    - Commands/tests run:
+        - `rg --files kit/cryptoutil`
+        - `nl -ba kit/cryptoutil/cryptoutil.go`
+        - `nl -ba kit/cryptoutil/cryptoutil_test.go`
+        - `nl -ba kit/cryptoutil/README.md`
+        - `rg -n "hmac\\.New|sha256\\.New|subtle\\.ConstantTimeCompare|cryptoutil\\.|SHA256" --glob '*.go'`
+        - `rg -n "\\[32\\]byte|KeySize|len\\(.*\\) != 32|byte slice must be exactly 32 bytes" --glob '*.go'`
+        - `rg -n "func .*Sha256|sha256\\.Sum256\\(|hmac\\.Equal\\(|ValidateHmac|HmacSha256" --glob '*.go'`
+        - `nl -ba wave/tooling/hash.go | sed -n '1,220p'`
+        - `nl -ba kit/htmlutil/htmlutil.go | sed -n '1,180p'`
+        - `nl -ba vormabuild/fs_to_hash.go | sed -n '1,180p'`
+        - `go test ./kit/cryptoutil`
+    - Findings/fixes:
+        - No DRY issue found in this cell.
+        - No additional global DRY candidate met extraction criteria from this
+          package scan.
+
+## EV-20260215-182
+
+- Package group: `kit/csrf`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/csrf/csrf.go`
+        - `kit/csrf/csrf_test.go`
+        - `kit/csrf/README.md`
+        - `kit/cookies/cookies.go` (dependency boundary check)
+    - Commands/tests run:
+        - `rg --files kit/csrf`
+        - `nl -ba kit/csrf/csrf.go`
+        - `nl -ba kit/csrf/csrf_test.go`
+        - `nl -ba kit/csrf/README.md`
+        - `rg -n "csrf\\.|CycleTokenWith|ValidateWith|ExtractSessionID|SetCookie|Name\\(\\)|ConstantTimeCompare" --glob '*.go'`
+        - `rg -n "CycleTokenWithProxy|CycleTokenWithWriter|SetCookie\\(|Name\\(\\)" --glob '*.go'`
+        - `go test ./kit/csrf`
+    - Findings/fixes:
+        - No DRY issue found in this cell.
+        - CSRF flow-specific logic is appropriately local to `kit/csrf`; no
+          additional extraction candidate met global DRY criteria.
+
+## EV-20260215-183
+
+- Package group: `kit/envutil`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/envutil/envutil.go`
+        - `kit/envutil/envutil_test.go`
+        - `kit/envutil/README.md`
+        - `wave/env.go` (env parse usage boundary check)
+    - Commands/tests run:
+        - `rg --files kit/envutil`
+        - `nl -ba kit/envutil/envutil.go`
+        - `nl -ba kit/envutil/envutil_test.go`
+        - `nl -ba kit/envutil/README.md`
+        - `rg -n "os\\.Getenv|LookupEnv|ParseBool|ParseInt|envutil\\.|must.*env|Env" --glob '*.go'`
+        - `nl -ba wave/env.go | sed -n '1,190p'`
+        - `rg -n "strconv\\.Atoi\\(os\\.Getenv\\(|os\\.Getenv\\(.*\\) == \\\"true\\\"|LookupEnv\\(.*\\)" --glob '*.go'`
+        - `go test ./kit/envutil`
+    - Findings/fixes:
+        - No DRY issue found in this cell.
+        - No additional intra-package or global DRY candidate met extraction
+          criteria from this scan.
+
+## EV-20260215-184
+
+- Package group: `kit/executil`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/executil/executil.go`
+        - `kit/executil/executil_test.go`
+        - `kit/executil/README.md`
+        - `lab/cliutil/cliutil.go` (execution helper boundary check)
+        - `wave/tooling/events_hook_executor.go` (shared helper usage check)
+    - Commands/tests run:
+        - `rg --files kit/executil`
+        - `nl -ba kit/executil/executil.go`
+        - `nl -ba kit/executil/executil_test.go`
+        - `nl -ba kit/executil/README.md`
+        - `rg -n "exec\\.Command|RunShellWithContext|RunShell\\(|CombinedOutput|StdoutPipe|executil\\." --glob '*.go'`
+        - `nl -ba lab/cliutil/cliutil.go | sed -n '1,180p'`
+        - `nl -ba wave/tooling/events_hook_executor.go | sed -n '520,620p'`
+        - `nl -ba wave/tooling/builder_build.go | sed -n '160,320p'`
+        - `go test ./kit/executil`
+    - Findings/fixes:
+        - No DRY issue found in this cell.
+        - No additional global DRY candidate met extraction criteria from this
+          package scan.
+
+## EV-20260215-185
+
+- Package group: `kit/fsutil`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/fsutil/fsutil.go`
+        - `kit/fsutil/fsutil_test.go`
+        - `kit/fsutil/README.md`
+        - `wave/runtime_assets.go` (callsite boundary check)
+    - Commands/tests run:
+        - `rg --files kit/fsutil`
+        - `nl -ba kit/fsutil/fsutil.go`
+        - `nl -ba kit/fsutil/fsutil_test.go`
+        - `nl -ba kit/fsutil/README.md`
+        - `rg -n "os\\.(ReadFile|WriteFile|MkdirAll|Copy|Open|Create)|io\\.(Copy|ReadAll)|filepath\\.Walk|WalkDir|fsutil\\." --glob '*.go'`
+        - `gofmt -w kit/fsutil/fsutil.go`
+        - `go test ./kit/fsutil`
+    - Findings/fixes:
+        - Found and fixed `F-20260215-053`: gob decode path was duplicated
+          across `FromGobInto` and `FromGob`.
+        - Added shared private helper `decodeGobFileIntoDestination` and routed
+          both public decode helpers through it to keep validation/decoder logic
+          centralized.
+
+## EV-20260215-186
+
+- Package group: `kit/genericsutil`
+- Pass name: DRY
+- Evidence
+    - Files reviewed:
+        - `kit/genericsutil/genericsutil.go`
+        - `kit/genericsutil/genericsutil_test.go`
+        - `kit/genericsutil/README.md`
+        - `kit/mux/mux.go` (usage boundary check)
+        - `kit/matcher/matcher.go` (usage boundary check)
+    - Commands/tests run:
+        - `rg --files kit/genericsutil`
+        - `nl -ba kit/genericsutil/genericsutil.go`
+        - `nl -ba kit/genericsutil/genericsutil_test.go`
+        - `nl -ba kit/genericsutil/README.md`
+        - `rg -n "AssertOrZero|Assert\\[|SliceContains|MapContains|genericsutil\\." --glob '*.go'`
+        - `go test ./kit/genericsutil`
+    - Findings/fixes:
+        - No DRY issue found in this cell.
+        - Existing cross-package generic fallback/default helpers are already
+          centralized in this package; no further extraction candidate met the
+          global DRY bar.
