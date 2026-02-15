@@ -54,14 +54,22 @@ export type RouteOutletBranchInputState = Pick<
 	loaderCount: number;
 };
 
-function canonicalizeWithJsonDeepEquals<T>(previousValue: T, nextValue: T): T {
+function canonicalizeWithJsonDeepEquals<T>(props: {
+	previousValue: T;
+	nextValue: T;
+}): T {
+	const { previousValue, nextValue } = props;
 	if (jsonDeepEquals(previousValue, nextValue)) {
 		return previousValue;
 	}
 	return nextValue;
 }
 
-function canonicalizeWithObjectIdentity<T>(previousValue: T, nextValue: T): T {
+function canonicalizeWithObjectIdentity<T>(props: {
+	previousValue: T;
+	nextValue: T;
+}): T {
+	const { previousValue, nextValue } = props;
 	if (Object.is(previousValue, nextValue)) {
 		return previousValue;
 	}
@@ -94,42 +102,42 @@ export function buildNextRouteOutletNavigationState(
 		buildCurrentRouteOutletNavigationStateFromRuntime();
 
 	const nextNavigationState: RouteOutletNavigationState = {
-		loadersData: canonicalizeWithJsonDeepEquals(
-			previousNavigationState.loadersData,
-			nextNavigationStateRaw.loadersData,
-		),
-		clientLoadersData: canonicalizeWithJsonDeepEquals(
-			previousNavigationState.clientLoadersData,
-			nextNavigationStateRaw.clientLoadersData,
-		),
-		routerData: canonicalizeWithJsonDeepEquals(
-			previousNavigationState.routerData,
-			nextNavigationStateRaw.routerData,
-		),
-		outermostError: canonicalizeWithObjectIdentity(
-			previousNavigationState.outermostError,
-			nextNavigationStateRaw.outermostError,
-		),
-		outermostErrorIdx: canonicalizeWithObjectIdentity(
-			previousNavigationState.outermostErrorIdx,
-			nextNavigationStateRaw.outermostErrorIdx,
-		),
-		activeComponents: canonicalizeWithJsonDeepEquals(
-			previousNavigationState.activeComponents,
-			nextNavigationStateRaw.activeComponents,
-		),
-		activeErrorBoundary: canonicalizeWithObjectIdentity(
-			previousNavigationState.activeErrorBoundary,
-			nextNavigationStateRaw.activeErrorBoundary,
-		),
-		importURLs: canonicalizeWithJsonDeepEquals(
-			previousNavigationState.importURLs,
-			nextNavigationStateRaw.importURLs,
-		),
-		exportKeys: canonicalizeWithJsonDeepEquals(
-			previousNavigationState.exportKeys,
-			nextNavigationStateRaw.exportKeys,
-		),
+		loadersData: canonicalizeWithJsonDeepEquals({
+			previousValue: previousNavigationState.loadersData,
+			nextValue: nextNavigationStateRaw.loadersData,
+		}),
+		clientLoadersData: canonicalizeWithJsonDeepEquals({
+			previousValue: previousNavigationState.clientLoadersData,
+			nextValue: nextNavigationStateRaw.clientLoadersData,
+		}),
+		routerData: canonicalizeWithJsonDeepEquals({
+			previousValue: previousNavigationState.routerData,
+			nextValue: nextNavigationStateRaw.routerData,
+		}),
+		outermostError: canonicalizeWithObjectIdentity({
+			previousValue: previousNavigationState.outermostError,
+			nextValue: nextNavigationStateRaw.outermostError,
+		}),
+		outermostErrorIdx: canonicalizeWithObjectIdentity({
+			previousValue: previousNavigationState.outermostErrorIdx,
+			nextValue: nextNavigationStateRaw.outermostErrorIdx,
+		}),
+		activeComponents: canonicalizeWithJsonDeepEquals({
+			previousValue: previousNavigationState.activeComponents,
+			nextValue: nextNavigationStateRaw.activeComponents,
+		}),
+		activeErrorBoundary: canonicalizeWithObjectIdentity({
+			previousValue: previousNavigationState.activeErrorBoundary,
+			nextValue: nextNavigationStateRaw.activeErrorBoundary,
+		}),
+		importURLs: canonicalizeWithJsonDeepEquals({
+			previousValue: previousNavigationState.importURLs,
+			nextValue: nextNavigationStateRaw.importURLs,
+		}),
+		exportKeys: canonicalizeWithJsonDeepEquals({
+			previousValue: previousNavigationState.exportKeys,
+			nextValue: nextNavigationStateRaw.exportKeys,
+		}),
 	};
 
 	if (

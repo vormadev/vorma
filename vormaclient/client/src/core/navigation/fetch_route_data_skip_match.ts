@@ -71,11 +71,12 @@ function getSkipCheckContextGlobalSnapshot():
 	};
 }
 
-export function getMatchedPatternOrThrow(
-	match: SkipMatch | undefined,
-	index: number,
-	context: string,
-): string {
+export function getMatchedPatternOrThrow(props: {
+	match: SkipMatch | undefined;
+	index: number;
+	context: string;
+}): string {
+	const { match, index, context } = props;
 	if (!match) {
 		throw new Error(
 			`${context} returned a sparse matches array at index ${index}.`,
@@ -100,21 +101,31 @@ export function getMatchedPatternsOrThrow(props: {
 	const matchedPatterns: string[] = [];
 
 	for (let i = 0; i < matches.length; i++) {
-		matchedPatterns.push(getMatchedPatternOrThrow(matches[i], i, context));
+		matchedPatterns.push(
+			getMatchedPatternOrThrow({
+				match: matches[i],
+				index: i,
+				context,
+			}),
+		);
 	}
 
 	return matchedPatterns;
 }
 
-function doesMatchResultContainPattern(
-	matchResult: SkipMatchResult,
-	pattern: string,
-	context: string,
-): boolean {
+function doesMatchResultContainPattern(props: {
+	matchResult: SkipMatchResult;
+	pattern: string;
+	context: string;
+}): boolean {
+	const { matchResult, pattern, context } = props;
 	for (let i = 0; i < matchResult.matches.length; i++) {
 		if (
-			getMatchedPatternOrThrow(matchResult.matches[i], i, context) ===
-			pattern
+			getMatchedPatternOrThrow({
+				match: matchResult.matches[i],
+				index: i,
+				context,
+			}) === pattern
 		) {
 			return true;
 		}
@@ -152,11 +163,11 @@ function hasServerLoaderRemoval(ctx: SkipCheckContext): boolean {
 	for (const pattern of ctx.currentMatchedPatterns) {
 		const hasServerLoader = ctx.routeManifest[pattern] === 1;
 		if (hasServerLoader) {
-			const stillMatched = doesMatchResultContainPattern(
-				ctx.matchResult,
+			const stillMatched = doesMatchResultContainPattern({
+				matchResult: ctx.matchResult,
 				pattern,
-				"Route matcher",
-			);
+				context: "Route matcher",
+			});
 			if (!stillMatched) {
 				return true;
 			}
@@ -167,11 +178,11 @@ function hasServerLoaderRemoval(ctx: SkipCheckContext): boolean {
 
 function hasNewClientLoader(ctx: SkipCheckContext): boolean {
 	for (let i = 0; i < ctx.matchResult.matches.length; i++) {
-		const pattern = getMatchedPatternOrThrow(
-			ctx.matchResult.matches[i],
-			i,
-			"Route matcher",
-		);
+		const pattern = getMatchedPatternOrThrow({
+			match: ctx.matchResult.matches[i],
+			index: i,
+			context: "Route matcher",
+		});
 		const hasClientLoader = !!ctx.patternToWaitFnMap[pattern];
 		const wasAlreadyMatched = ctx.currentMatchedPatterns.includes(pattern);
 		if (hasClientLoader && !wasAlreadyMatched) {
@@ -183,11 +194,11 @@ function hasNewClientLoader(ctx: SkipCheckContext): boolean {
 
 function findOutermostLoaderIndex(ctx: SkipCheckContext): number {
 	for (let i = ctx.matchResult.matches.length - 1; i >= 0; i--) {
-		const pattern = getMatchedPatternOrThrow(
-			ctx.matchResult.matches[i],
-			i,
-			"Route matcher",
-		);
+		const pattern = getMatchedPatternOrThrow({
+			match: ctx.matchResult.matches[i],
+			index: i,
+			context: "Route matcher",
+		});
 		const hasServerLoader = ctx.routeManifest[pattern] === 1;
 		const hasClientLoader = !!ctx.patternToWaitFnMap[pattern];
 

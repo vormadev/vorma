@@ -186,7 +186,7 @@ export function createNavigationRuntime(
 				controlPromise: control.promise,
 			});
 		} catch {
-			const targetUrl = resolveAbsoluteHref(props.href);
+			const targetUrl = resolveAbsoluteHref({ href: props.href });
 			const entry = findNavigationEntry(targetUrl);
 			if (hasNavigationControlPromiseOwnership(entry, control.promise)) {
 				deleteNavigation(targetUrl);

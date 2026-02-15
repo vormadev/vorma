@@ -54,7 +54,7 @@ function resolveHTTPRedirectTarget(href: string): {
 } | null {
 	let newURL: URL;
 	try {
-		newURL = new URL(resolveAbsoluteHref(href));
+		newURL = new URL(resolveAbsoluteHref({ href: href }));
 	} catch {
 		return null;
 	}
@@ -140,10 +140,10 @@ function parseBrowserRedirect(
 	if (!shouldRedirectData) {
 		return null;
 	}
-	const isCurrent = isSameDocumentLocation(
-		shouldRedirectData.href,
-		window.location.href,
-	);
+	const isCurrent = isSameDocumentLocation({
+		targetHref: shouldRedirectData.href,
+		currentHref: window.location.href,
+	});
 	if (isCurrent) {
 		return {
 			hrefDetails: shouldRedirectData.hrefDetails,

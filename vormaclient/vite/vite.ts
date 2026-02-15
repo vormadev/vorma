@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import type { Plugin } from "vite";
+import type { ConfigEnv, Plugin, UserConfig, ViteDevServer } from "vite";
 
 type VormaVitePluginConfig = {
 	rollupInput: ReadonlyArray<string>;
@@ -11,6 +11,10 @@ type VormaVitePluginConfig = {
 	ignoredPatterns: ReadonlyArray<string>;
 	dedupeList: ReadonlyArray<string>;
 };
+
+type UserConfigServerWatchIgnored = NonNullable<
+	NonNullable<UserConfig["server"]>["watch"]
+>["ignored"];
 
 function mergeRollupInput(
 	vormaRollupInput: ReadonlyArray<string>,
@@ -60,18 +64,21 @@ function mergeRollupInput(
 }
 
 function mergeServerWatchIgnoredPatterns(
-	existingIgnoredPatterns: unknown,
+	existingIgnoredPatterns: UserConfigServerWatchIgnored,
 	vormaIgnoredPatterns: ReadonlyArray<string>,
-): Array<unknown> {
+): UserConfigServerWatchIgnored {
 	if (Array.isArray(existingIgnoredPatterns)) {
 		return [...existingIgnoredPatterns, ...vormaIgnoredPatterns];
 	}
 
 	if (existingIgnoredPatterns !== undefined) {
-		return [existingIgnoredPatterns, ...vormaIgnoredPatterns];
+		return [
+			existingIgnoredPatterns,
+			...vormaIgnoredPatterns,
+		] as UserConfigServerWatchIgnored;
 	}
 
-	return [...vormaIgnoredPatterns];
+	return [...vormaIgnoredPatterns] as UserConfigServerWatchIgnored;
 }
 
 export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
@@ -124,7 +131,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 	return {
 		name: "vorma-vite-plugin",
 
-		config(c: any, { command }: any) {
+		config(c: UserConfig, { command }: ConfigEnv) {
 			isDev = command === "serve";
 
 			const mp = c.build?.modulePreload;
@@ -186,8 +193,8 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 		 *
 		 * This is much faster than cycling Vite (stopping and restarting the process).
 		 */
-		configureServer(server: any) {
-			server.middlewares.use((req: any, res: any, next: any) => {
+		configureServer(server: ViteDevServer) {
+			server.middlewares.use((req, res, next) => {
 				if (req.url !== "/__vorma_invalidate_filemap") {
 					return next();
 				}
@@ -218,7 +225,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 			});
 		},
 
-		transform(code: any, id: any) {
+		transform(code: string, id: string) {
 			const isNodeModules = /node_modules/.test(id);
 			if (isNodeModules) return null;
 
@@ -235,7 +242,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 
 			const replacedCode = code.replace(
 				regex,
-				(_: any, __: any, assetPath: any) => {
+				(_fullMatch: string, _quoteChar: string, assetPath: string) => {
 					const hashed = filemap[assetPath];
 					if (!hashed) return `"${assetPath}"`;
 					return `"${config.publicPathPrefix}${hashed}"`;

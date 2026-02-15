@@ -70,10 +70,11 @@ export const api = {
 	resolveBody,
 };
 
-function mergeRequestInitWithHeaders(
-	baseRequestInit: RequestInit,
-	overrideRequestInit?: RequestInit,
-): RequestInit {
+function mergeRequestInitWithHeaders(props: {
+	baseRequestInit: RequestInit;
+	overrideRequestInit?: RequestInit;
+}): RequestInit {
+	const { baseRequestInit, overrideRequestInit } = props;
 	if (!overrideRequestInit) {
 		return baseRequestInit;
 	}
@@ -98,11 +99,14 @@ function resolveRequestInit(
 	fallbackRequestInit: RequestInit,
 ): RequestInit {
 	const resolverRequestInit = apiRequestInitResolver?.(input);
-	const baseRequestInit = mergeRequestInitWithHeaders(
-		fallbackRequestInit,
-		resolverRequestInit,
-	);
-	return mergeRequestInitWithHeaders(baseRequestInit, input.requestInit);
+	const baseRequestInit = mergeRequestInitWithHeaders({
+		baseRequestInit: fallbackRequestInit,
+		overrideRequestInit: resolverRequestInit,
+	});
+	return mergeRequestInitWithHeaders({
+		baseRequestInit,
+		overrideRequestInit: input.requestInit,
+	});
 }
 
 async function query<P extends QueryPattern>(props: QueryProps<P>) {

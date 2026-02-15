@@ -308,10 +308,11 @@ export const differentOptsToTest: (RegistrationOptions | undefined)[] = [
 ];
 
 // Helper function to normalize a pattern for testing
-function normalizePatternForTesting(
-	pattern: string,
-	incomingIndexSegment: string,
-): RegisteredPattern {
+function normalizePatternForTesting(props: {
+	pattern: string;
+	incomingIndexSegment: string;
+}): RegisteredPattern {
+	const { pattern, incomingIndexSegment } = props;
 	// Create a temporary registry just for normalization
 	const tempRegistry = createPatternRegistry({
 		explicitIndexSegment: incomingIndexSegment,
@@ -328,7 +329,10 @@ export function modifyPatternsToOpts(
 	opts?: RegistrationOptions,
 ): string[] {
 	const rps = incomingPatterns.map((p) =>
-		normalizePatternForTesting(p, incomingIndexSegment),
+		normalizePatternForTesting({
+			pattern: p,
+			incomingIndexSegment,
+		}),
 	);
 	const newPatterns: string[] = [];
 

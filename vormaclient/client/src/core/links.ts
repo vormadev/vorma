@@ -29,19 +29,19 @@ type EligibleInternalAnchorDetails = Exclude<
 function isJustAHashChange(
 	anchorDetails: EligibleInternalAnchorDetails,
 ): boolean {
-	return isSameDocumentHashChange(
-		anchorDetails.anchor.href,
-		window.location.href,
-	);
+	return isSameDocumentHashChange({
+		targetHref: anchorDetails.anchor.href,
+		currentHref: window.location.href,
+	});
 }
 
 function isSameDocumentNoopNavigationTarget(
 	anchorDetails: EligibleInternalAnchorDetails,
 ): boolean {
-	return isSameDocumentLocation(
-		anchorDetails.anchor.href,
-		window.location.href,
-	);
+	return isSameDocumentLocation({
+		targetHref: anchorDetails.anchor.href,
+		currentHref: window.location.href,
+	});
 }
 
 type EligibleAnchorTargetClassification =
@@ -208,7 +208,7 @@ export function createLinkOnClickFn<E extends Event>(
 		try {
 			outcome = await controlPromise;
 		} catch (error) {
-			const targetUrl = resolveAbsoluteHref(anchor.href);
+			const targetUrl = resolveAbsoluteHref({ href: anchor.href });
 			const currentEntry =
 				navigationStateManager.getNavigation(targetUrl);
 			if (
@@ -223,7 +223,7 @@ export function createLinkOnClickFn<E extends Event>(
 			return;
 		}
 
-		const targetUrl = resolveAbsoluteHref(anchor.href);
+		const targetUrl = resolveAbsoluteHref({ href: anchor.href });
 		await handleLinkNavigationOutcome({
 			event,
 			outcome,
@@ -249,7 +249,10 @@ function findIdlePrefetchNavigationByDataTarget(
 		if (
 			nav.type === "prefetch" &&
 			nav.intent === "none" &&
-			hasSameNavigationTarget(nav.targetUrl, targetHref)
+			hasSameNavigationTarget({
+				firstHref: nav.targetUrl,
+				secondHref: targetHref,
+			})
 		) {
 			return nav;
 		}

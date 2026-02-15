@@ -13,11 +13,11 @@ export function getIsGETRequest(requestInit?: RequestInit) {
 	);
 }
 
-export function resolveAbsoluteHref(
-	href: string | URL,
-	baseHref = window.location.href,
-): string {
-	return new URL(href, baseHref).href;
+export function resolveAbsoluteHref(props: {
+	href: string | URL;
+	baseHref?: string;
+}): string {
+	return new URL(props.href, props.baseHref ?? window.location.href).href;
 }
 
 export function resolveAbsoluteHrefWithOptionalSearchAndHash(props: {

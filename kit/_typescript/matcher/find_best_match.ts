@@ -24,15 +24,24 @@ type DfsBestState = {
 	foundMatch: boolean;
 };
 
-function dfsBest(
-	registry: PatternRegistry,
-	node: SegmentNode,
-	segments: string[],
-	depth: number,
-	score: number,
-	state: DfsBestState,
-	checkTrailingSlash: boolean,
-): void {
+function dfsBest(props: {
+	registry: PatternRegistry;
+	node: SegmentNode;
+	segments: string[];
+	depth: number;
+	score: number;
+	state: DfsBestState;
+	checkTrailingSlash: boolean;
+}): void {
+	const {
+		registry,
+		node,
+		segments,
+		depth,
+		score,
+		state,
+		checkTrailingSlash,
+	} = props;
 	const atNormalEnd = checkTrailingSlash && depth === segments.length - 1;
 
 	if (node.pattern.length > 0) {
@@ -62,15 +71,15 @@ function dfsBest(
 	if (node.children !== null) {
 		const child = node.children.get(segments[depth]!);
 		if (child) {
-			dfsBest(
+			dfsBest({
 				registry,
-				child,
+				node: child,
 				segments,
-				depth + 1,
-				score + SCORE_STATIC_MATCH,
+				depth: depth + 1,
+				score: score + SCORE_STATIC_MATCH,
 				state,
 				checkTrailingSlash,
-			);
+			});
 
 			if (
 				state.foundMatch &&
@@ -86,15 +95,15 @@ function dfsBest(
 		switch (child.nodeType) {
 			case NODE_DYNAMIC:
 				if (segments[depth] !== "") {
-					dfsBest(
+					dfsBest({
 						registry,
-						child,
+						node: child,
 						segments,
-						depth + 1,
-						score + SCORE_DYNAMIC,
+						depth: depth + 1,
+						score: score + SCORE_DYNAMIC,
 						state,
 						checkTrailingSlash,
-					);
+					});
 				}
 				break;
 
@@ -161,15 +170,15 @@ export function findBestMatch(
 		foundMatch: false,
 	};
 
-	dfsBest(
+	dfsBest({
 		registry,
-		registry.rootNode,
+		node: registry.rootNode,
 		segments,
-		0,
-		0,
+		depth: 0,
+		score: 0,
 		state,
-		hasTrailingSlash,
-	);
+		checkTrailingSlash: hasTrailingSlash,
+	});
 
 	if (!state.foundMatch || !state.best) {
 		return null;

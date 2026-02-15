@@ -122,10 +122,12 @@ function installImmediateRAFAndScrollSpy() {
 }
 
 function countAddEventListenerCalls(
-	addEventListenerSpy: ReturnType<typeof vi.spyOn>,
+	addEventListenerSpy: {
+		mock: { calls: Array<readonly unknown[]> };
+	},
 	eventType: string,
 ): number {
-	return addEventListenerSpy.mock.calls.filter((args: unknown[]) => {
+	return addEventListenerSpy.mock.calls.filter((args: readonly unknown[]) => {
 		return args[0] === eventType;
 	}).length;
 }

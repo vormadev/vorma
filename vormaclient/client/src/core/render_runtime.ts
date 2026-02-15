@@ -606,7 +606,10 @@ function runHistoryAndDeriveScrollState(props: {
 			navigationType === "redirect"
 		) {
 			const currentHref = window.location.href;
-			const isSameLocation = isSameDocumentLocation(href, currentHref);
+			const isSameLocation = isSameDocumentLocation({
+				targetHref: href,
+				currentHref: currentHref,
+			});
 
 			if (!isSameLocation && !replace) {
 				history.push(href, runHistoryOptions.state);

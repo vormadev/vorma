@@ -236,11 +236,12 @@ function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function replaceDynamicParam(
-	path: string,
-	token: string,
-	value: string,
-): string {
+function replaceDynamicParam(props: {
+	path: string;
+	token: string;
+	value: string;
+}): string {
+	const { path, token, value } = props;
 	const tokenRegex = new RegExp(`${escapeRegex(token)}(?=/|$)`, "g");
 	return path.replace(tokenRegex, encodeURIComponent(value));
 }
@@ -263,11 +264,11 @@ export function resolveVormaPath(input: ResolvePathInput): string {
 
 	if ("params" in props && props.params) {
 		for (const [key, value] of Object.entries(props.params)) {
-			path = replaceDynamicParam(
+			path = replaceDynamicParam({
 				path,
-				`${dynamicParamPrefixRune}${key}`,
-				String(value),
-			);
+				token: `${dynamicParamPrefixRune}${key}`,
+				value: String(value),
+			});
 		}
 	}
 

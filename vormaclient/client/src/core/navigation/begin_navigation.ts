@@ -44,7 +44,7 @@ export function beginNavigation(
 	context: BeginNavigationContext,
 	props: NavigateProps,
 ): NavigationControl {
-	const targetUrl = resolveAbsoluteHref(props.href);
+	const targetUrl = resolveAbsoluteHref({ href: props.href });
 
 	switch (props.navigationType) {
 		case "userNavigation":

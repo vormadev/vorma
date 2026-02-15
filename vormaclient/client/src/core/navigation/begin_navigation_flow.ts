@@ -18,10 +18,10 @@ export function findPrefetchByNavigationTarget(
 	prefetchCache: Map<string, NavigationEntry>,
 	targetUrl: string,
 ): PrefetchCacheMatch | undefined {
-	const matchedPrefetch = findMapEntryByNavigationTarget(
-		prefetchCache,
-		targetUrl,
-	);
+	const matchedPrefetch = findMapEntryByNavigationTarget({
+		map: prefetchCache,
+		targetHref: targetUrl,
+	});
 	if (!matchedPrefetch) {
 		return undefined;
 	}
@@ -34,7 +34,13 @@ export function hasEntryWithSameNavigationTarget(
 	entry: Pick<NavigationEntry, "targetUrl"> | null | undefined,
 	targetUrl: string,
 ): boolean {
-	return !!entry && hasSameNavigationTarget(entry.targetUrl, targetUrl);
+	return (
+		!!entry &&
+		hasSameNavigationTarget({
+			firstHref: entry.targetUrl,
+			secondHref: targetUrl,
+		})
+	);
 }
 
 function promoteEntryToUserNavigation(
@@ -213,7 +219,12 @@ export function decideBeginPrefetchAction(props: {
 		};
 	}
 
-	if (hasSameNavigationTarget(window.location.href, targetUrl)) {
+	if (
+		hasSameNavigationTarget({
+			firstHref: window.location.href,
+			secondHref: targetUrl,
+		})
+	) {
 		return { type: "abortImmediately" };
 	}
 

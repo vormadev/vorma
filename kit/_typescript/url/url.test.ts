@@ -49,16 +49,21 @@ describe("getIsGETRequest", () => {
 describe("resolveAbsoluteHref", () => {
 	it("resolves relative and URL inputs to absolute hrefs", () => {
 		expect(
-			resolveAbsoluteHref(
-				"/next?mode=1#section",
-				"http://localhost:3000/base",
-			),
+			resolveAbsoluteHref({
+				href: "/next?mode=1#section",
+				baseHref: "http://localhost:3000/base",
+			}),
 		).toBe("http://localhost:3000/next?mode=1#section");
-		expect(resolveAbsoluteHref("child", "https://example.com/base/")).toBe(
-			"https://example.com/base/child",
-		);
 		expect(
-			resolveAbsoluteHref(new URL("/x?y=1", "https://example.com")),
+			resolveAbsoluteHref({
+				href: "child",
+				baseHref: "https://example.com/base/",
+			}),
+		).toBe("https://example.com/base/child");
+		expect(
+			resolveAbsoluteHref({
+				href: new URL("/x?y=1", "https://example.com"),
+			}),
 		).toBe("https://example.com/x?y=1");
 	});
 });

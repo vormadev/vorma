@@ -152,10 +152,11 @@ function buildCurrentElementsMap(
 	return currentElementsMap;
 }
 
-function reconcileHeadElements(
-	currentElements: Array<Element>,
-	newElements: Array<Element>,
-): { finalElements: Array<Element>; usedCurrentElements: Set<Element> } {
+function reconcileHeadElements(props: {
+	currentElements: Array<Element>;
+	newElements: Array<Element>;
+}): { finalElements: Array<Element>; usedCurrentElements: Set<Element> } {
+	const { currentElements, newElements } = props;
 	const currentElementsMap = buildCurrentElementsMap(currentElements);
 	const finalElements: Array<Element> = [];
 	const usedCurrentElements = new Set<Element>();
@@ -198,13 +199,20 @@ function removeStaleManagedNodes(
 	}
 }
 
-function placeReconciledHeadElements(
-	parent: Node,
-	startComment: Comment,
-	endComment: Comment,
-	finalElements: Array<Element>,
-	usedCurrentElements: Set<Element>,
-): void {
+function placeReconciledHeadElements(props: {
+	parent: Node;
+	startComment: Comment;
+	endComment: Comment;
+	finalElements: Array<Element>;
+	usedCurrentElements: Set<Element>;
+}): void {
+	const {
+		parent,
+		startComment,
+		endComment,
+		finalElements,
+		usedCurrentElements,
+	} = props;
 	let lastProcessedElement: Element | null = null;
 
 	for (let i = 0; i < finalElements.length; i++) {
@@ -258,16 +266,16 @@ export function updateHeadEls(type: "meta" | "rest", blocks: Array<HeadEl>) {
 	);
 
 	const newElements = buildDedupedElementsFromBlocks(blocks);
-	const { finalElements, usedCurrentElements } = reconcileHeadElements(
+	const { finalElements, usedCurrentElements } = reconcileHeadElements({
 		currentElements,
 		newElements,
-	);
+	});
 	removeStaleManagedNodes(parent, currentNodes, usedCurrentElements);
-	placeReconciledHeadElements(
+	placeReconciledHeadElements({
 		parent,
 		startComment,
 		endComment,
 		finalElements,
 		usedCurrentElements,
-	);
+	});
 }

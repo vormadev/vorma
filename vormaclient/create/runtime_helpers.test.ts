@@ -26,9 +26,27 @@ describe("create-vorma runtime helpers", () => {
 	});
 
 	it("enforces the documented minimum node version", () => {
-		expect(isNodeVersionAtLeast("v22.10.9", 22, 11)).toBe(false);
-		expect(isNodeVersionAtLeast("v22.11.0", 22, 11)).toBe(true);
-		expect(isNodeVersionAtLeast("v23.0.0", 22, 11)).toBe(true);
+		expect(
+			isNodeVersionAtLeast({
+				nodeVersion: "v22.10.9",
+				minimumMajor: 22,
+				minimumMinor: 11,
+			}),
+		).toBe(false);
+		expect(
+			isNodeVersionAtLeast({
+				nodeVersion: "v22.11.0",
+				minimumMajor: 22,
+				minimumMinor: 11,
+			}),
+		).toBe(true);
+		expect(
+			isNodeVersionAtLeast({
+				nodeVersion: "v23.0.0",
+				minimumMajor: 22,
+				minimumMinor: 11,
+			}),
+		).toBe(true);
 	});
 
 	it("parses standard and devel go version output", () => {
@@ -60,17 +78,25 @@ describe("create-vorma runtime helpers", () => {
 
 	it("enforces the documented minimum go version", () => {
 		expect(
-			isGoVersionAtLeast("go version go1.23.9 linux/amd64", 1, 24),
+			isGoVersionAtLeast({
+				goVersionOutput: "go version go1.23.9 linux/amd64",
+				minimumMajor: 1,
+				minimumMinor: 24,
+			}),
 		).toBe(false);
 		expect(
-			isGoVersionAtLeast("go version go1.24.0 linux/amd64", 1, 24),
+			isGoVersionAtLeast({
+				goVersionOutput: "go version go1.24.0 linux/amd64",
+				minimumMajor: 1,
+				minimumMinor: 24,
+			}),
 		).toBe(true);
 		expect(
-			isGoVersionAtLeast(
-				"go version devel go1.25-abcdef linux/amd64",
-				1,
-				24,
-			),
+			isGoVersionAtLeast({
+				goVersionOutput: "go version devel go1.25-abcdef linux/amd64",
+				minimumMajor: 1,
+				minimumMinor: 24,
+			}),
 		).toBe(true);
 	});
 

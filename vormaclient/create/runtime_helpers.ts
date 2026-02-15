@@ -33,16 +33,17 @@ export function parseNodeVersionOrNull(
 	return { major, minor, patch };
 }
 
-export function isNodeVersionAtLeast(
-	nodeVersion: string,
-	minimumMajor: number,
-	minimumMinor: number,
-): boolean {
-	return isMajorMinorVersionAtLeast(
-		parseNodeVersionOrNull(nodeVersion),
+export function isNodeVersionAtLeast(props: {
+	nodeVersion: string;
+	minimumMajor: number;
+	minimumMinor: number;
+}): boolean {
+	const { nodeVersion, minimumMajor, minimumMinor } = props;
+	return isMajorMinorVersionAtLeast({
+		parsedVersion: parseNodeVersionOrNull(nodeVersion),
 		minimumMajor,
 		minimumMinor,
-	);
+	});
 }
 
 export function parseGoVersionOrNull(
@@ -74,16 +75,17 @@ export function parseGoVersionOrNull(
 	};
 }
 
-export function isGoVersionAtLeast(
-	goVersionOutput: string,
-	minimumMajor: number,
-	minimumMinor: number,
-): boolean {
-	return isMajorMinorVersionAtLeast(
-		parseGoVersionOrNull(goVersionOutput),
+export function isGoVersionAtLeast(props: {
+	goVersionOutput: string;
+	minimumMajor: number;
+	minimumMinor: number;
+}): boolean {
+	const { goVersionOutput, minimumMajor, minimumMinor } = props;
+	return isMajorMinorVersionAtLeast({
+		parsedVersion: parseGoVersionOrNull(goVersionOutput),
 		minimumMajor,
 		minimumMinor,
-	);
+	});
 }
 
 type MajorMinorVersion = {
@@ -91,11 +93,12 @@ type MajorMinorVersion = {
 	minor: number;
 } | null;
 
-function isMajorMinorVersionAtLeast(
-	parsedVersion: MajorMinorVersion,
-	minimumMajor: number,
-	minimumMinor: number,
-): boolean {
+function isMajorMinorVersionAtLeast(props: {
+	parsedVersion: MajorMinorVersion;
+	minimumMajor: number;
+	minimumMinor: number;
+}): boolean {
+	const { parsedVersion, minimumMajor, minimumMinor } = props;
 	if (!parsedVersion) {
 		return false;
 	}

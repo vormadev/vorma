@@ -38,6 +38,27 @@ func someFuncWithManyArgsFormattedVertically(
 )
 ```
 
+## TypeScript Faux Named Params
+
+For internal/private TypeScript implementation code, function signatures that
+take multiple parameters of the same type are prohibited because they are
+order-fragile and unclear at callsites.
+
+- Do not write signatures like `(a: string, b: string)` or
+  `(x: number, y: number, z: number)` unless the shape is imposed by an external
+  interface or callback contract you do not control.
+- Prefer a single object parameter with explicitly named fields (faux named
+  params), for example:
+  `someFunc({ sourcePath, destinationPath }: { sourcePath: string; destinationPath: string })`.
+- When a function currently violates this rule, refactor both the function
+  signature and all callsites to the object-parameter form.
+- Do not break established public API signatures for this rule unless explicitly
+  requested. New APIs should follow this rule by default.
+- Some exceptions may be appropriate, such as extremely simple key-value setters
+  that are near-impossible to get wrong such as `setItem(key, value)`.
+  Additionally, no need to follow this for compare functions where order doesn't
+  actually matter.
+
 ## Report All Issues. No Severity Labels. Never Triage.
 
 When doing reviews or audits, the goal is to find and report **all** issues, not

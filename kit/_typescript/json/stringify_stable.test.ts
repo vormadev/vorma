@@ -59,15 +59,21 @@ describe("jsonStringifyStable", () => {
 			const nested1 = { a: 1, b: { d: 4, c: 3 } };
 			const nested2 = { a: 1, b: { c: 3, d: 4 } };
 
-			expect(jsonStringifyStable(nested1)).toBe(jsonStringifyStable(nested2));
-			expect(jsonStringifyStable(nested1)).toBe('{"a":1,"b":{"c":3,"d":4}}');
+			expect(jsonStringifyStable(nested1)).toBe(
+				jsonStringifyStable(nested2),
+			);
+			expect(jsonStringifyStable(nested1)).toBe(
+				'{"a":1,"b":{"c":3,"d":4}}',
+			);
 		});
 
 		it("should handle nested arrays consistently", () => {
 			const arrObj1 = { a: [1, { c: 3, b: 2 }] };
 			const arrObj2 = { a: [1, { b: 2, c: 3 }] };
 
-			expect(jsonStringifyStable(arrObj1)).toBe(jsonStringifyStable(arrObj2));
+			expect(jsonStringifyStable(arrObj1)).toBe(
+				jsonStringifyStable(arrObj2),
+			);
 		});
 
 		it("should handle deeply nested mixed structures", () => {
@@ -157,7 +163,9 @@ describe("jsonStringifyStable", () => {
 			const arr3 = [1, 2, 3]; // Different order
 
 			expect(jsonStringifyStable(arr1)).toBe(jsonStringifyStable(arr2));
-			expect(jsonStringifyStable(arr1)).not.toBe(jsonStringifyStable(arr3));
+			expect(jsonStringifyStable(arr1)).not.toBe(
+				jsonStringifyStable(arr3),
+			);
 		});
 
 		// The critical test that's missing: objects within arrays should have stable key order
@@ -288,7 +296,7 @@ describe("jsonStringifyStable", () => {
 		it("should handle large arrays", () => {
 			const largeArray = Array(10000)
 				.fill(0)
-				.map((_, i) => i);
+				.map((_unusedValue: number, index: number) => index);
 			expect(() => jsonStringifyStable(largeArray)).not.toThrow();
 		});
 	});

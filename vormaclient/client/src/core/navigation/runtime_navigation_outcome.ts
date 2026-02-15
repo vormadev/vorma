@@ -45,7 +45,7 @@ export async function handleNavigationOutcome(props: {
 		outcome,
 		controlPromise,
 	} = props;
-	const targetUrl = resolveAbsoluteHref(navigationProps.href);
+	const targetUrl = resolveAbsoluteHref({ href: navigationProps.href });
 	const action = decideNavigationOutcomeAction({
 		outcome,
 		targetUrl,
@@ -308,7 +308,10 @@ export function syncBuildIDFromResponse(response: Response): void {
 function isStaleRevalidationEntry(entry: NavigationEntry): boolean {
 	return (
 		entry.type === "revalidation" &&
-		!hasSameDataTarget(window.location.href, entry.originUrl)
+		!hasSameDataTarget({
+			firstHref: window.location.href,
+			secondHref: entry.originUrl,
+		})
 	);
 }
 

@@ -121,7 +121,7 @@ export function createNavigationControls(
 			deleteNavigation,
 		} = context;
 
-		const targetUrl = resolveAbsoluteHref(props.href);
+		const targetUrl = resolveAbsoluteHref({ href: props.href });
 		let entry: NavigationEntry;
 		entry = createControlEntry({
 			navigationProps: props,
@@ -172,7 +172,7 @@ export function createNavigationControls(
 			scheduleStatusUpdate,
 		} = context;
 
-		const targetUrl = resolveAbsoluteHref(props.href);
+		const targetUrl = resolveAbsoluteHref({ href: props.href });
 		let entry: NavigationEntry;
 		entry = createControlEntry({
 			navigationProps: props,

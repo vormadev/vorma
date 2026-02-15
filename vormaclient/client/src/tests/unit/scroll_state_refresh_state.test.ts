@@ -62,7 +62,7 @@ describe("scroll_state_refresh_state", () => {
 
 		restoreRecentPageRefreshScrollState(applyState);
 
-		expect(applyState).toHaveBeenCalledWith(123, 456);
+		expect(applyState).toHaveBeenCalledWith({ x: 123, y: 456 });
 		expect(sessionStorage.getItem(PAGE_REFRESH_KEY)).toBeNull();
 	});
 

@@ -27,16 +27,20 @@ vi.mock("vorma/client/__internal", async (importOriginal) => {
 	};
 });
 
-function invokeReactMemoComponent(component: unknown, props: unknown) {
+function invokeReactMemoComponent(props: {
+	component: unknown;
+	componentProps: unknown;
+}) {
+	const { component, componentProps } = props;
 	if (typeof component === "function") {
-		return (component as (nextProps: unknown) => unknown)(props);
+		return (component as (nextProps: unknown) => unknown)(componentProps);
 	}
 
 	const maybeMemo = component as {
 		type?: (nextProps: unknown) => unknown;
 	};
 	if (typeof maybeMemo.type === "function") {
-		return maybeMemo.type(props);
+		return maybeMemo.type(componentProps);
 	}
 
 	throw new Error("React component is not invokable");
@@ -131,14 +135,17 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		};
 		makeFinalLinkPropsSpy.mockReturnValue(finalProps);
 
-		const result = invokeReactMemoComponent(reactAdapter.VormaLink, {
-			href: "/docs",
-			id: "docs-link",
-			children: "Docs",
-			prefetch: "intent",
-			scrollToTop: false,
-			replace: true,
-			state: { from: "test" },
+		const result = invokeReactMemoComponent({
+			component: reactAdapter.VormaLink,
+			componentProps: {
+				href: "/docs",
+				id: "docs-link",
+				children: "Docs",
+				prefetch: "intent",
+				scrollToTop: false,
+				replace: true,
+				state: { from: "test" },
+			},
 		});
 		const element = result as {
 			props: Record<string, unknown>;
@@ -177,13 +184,16 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		const TypedLink = reactAdapter.makeTypedLink({} as any, {
 			className: "default-class",
 		});
-		const result = invokeReactMemoComponent(TypedLink, {
-			pattern: "/typed/:id",
-			params: { id: "42" },
-			search: "?q=abc",
-			hash: "#panel",
-			state: { from: "typed-test" },
-			className: "custom-class",
+		const result = invokeReactMemoComponent({
+			component: TypedLink,
+			componentProps: {
+				pattern: "/typed/:id",
+				params: { id: "42" },
+				search: "?q=abc",
+				hash: "#panel",
+				state: { from: "typed-test" },
+				className: "custom-class",
+			},
 		});
 		const element = result as {
 			props: Record<string, unknown>;
@@ -225,9 +235,12 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			className: "default-class",
 			target: "_blank",
 		});
-		const result = invokeReactMemoComponent(TypedLink, {
-			pattern: "/typed/*",
-			splatValues: ["docs/path"],
+		const result = invokeReactMemoComponent({
+			component: TypedLink,
+			componentProps: {
+				pattern: "/typed/*",
+				splatValues: ["docs/path"],
+			},
 		});
 		const element = result as {
 			props: Record<string, unknown>;
@@ -267,9 +280,12 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			search: "?default=true",
 			hash: "#default",
 		});
-		const result = invokeReactMemoComponent(TypedLink, {
-			pattern: "/typed/:id",
-			params: { id: "42" },
+		const result = invokeReactMemoComponent({
+			component: TypedLink,
+			componentProps: {
+				pattern: "/typed/:id",
+				params: { id: "42" },
+			},
 		});
 		const element = result as {
 			props: Record<string, unknown>;

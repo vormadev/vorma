@@ -50,7 +50,13 @@ async function main() {
 			);
 			process.exit(1);
 		}
-		if (!isGoVersionAtLeast(goVersion, 1, 24)) {
+		if (
+			!isGoVersionAtLeast({
+				goVersionOutput: goVersion,
+				minimumMajor: 1,
+				minimumMinor: 24,
+			})
+		) {
 			cancel(
 				"Go version 1.24 or higher is required. See https://go.dev/doc/install for installation instructions.",
 			);
@@ -65,7 +71,13 @@ async function main() {
 
 	// Check Node version
 	const nodeVersion = process.version;
-	if (!isNodeVersionAtLeast(nodeVersion, 22, 11)) {
+	if (
+		!isNodeVersionAtLeast({
+			nodeVersion,
+			minimumMajor: 22,
+			minimumMinor: 11,
+		})
+	) {
 		cancel(
 			"Node.js version 22.11 or higher is required. Please ensure Node.js is installed correctly.",
 		);

@@ -8,26 +8,31 @@ import {
 	installDistTestVormaGlobal,
 } from "./dist_test_harness.ts";
 
-function invokeReactMemoComponent(component: unknown, props: unknown) {
+function invokeReactMemoComponent(props: {
+	component: unknown;
+	componentProps: unknown;
+}) {
+	const { component, componentProps } = props;
 	if (typeof component === "function") {
-		return (component as (nextProps: unknown) => unknown)(props);
+		return (component as (nextProps: unknown) => unknown)(componentProps);
 	}
 
 	const maybeMemo = component as {
 		type?: (nextProps: unknown) => unknown;
 	};
 	if (typeof maybeMemo.type === "function") {
-		return maybeMemo.type(props);
+		return maybeMemo.type(componentProps);
 	}
 
 	throw new Error("React component is not invokable");
 }
 
-async function assertCompiledAdapterClientLoaderRegistration(
-	adapterImportPath: "vorma/react" | "vorma/preact" | "vorma/solid",
-	pattern: string,
-	resolvedPath: string,
-) {
+async function assertCompiledAdapterClientLoaderRegistration(props: {
+	adapterImportPath: "vorma/react" | "vorma/preact" | "vorma/solid";
+	pattern: string;
+	resolvedPath: string;
+}) {
+	const { adapterImportPath, pattern, resolvedPath } = props;
 	const globals = installDistTestVormaGlobal();
 	vi.resetModules();
 	const adapter = await import(adapterImportPath);
@@ -59,12 +64,15 @@ describe("npm_dist adapters", () => {
 				className: "default-class",
 			},
 		);
-		const element = invokeReactMemoComponent(TypedLink, {
-			pattern: "/products/:id",
-			params: { id: "42" },
-			search: "?q=abc",
-			hash: "#panel",
-			className: "custom-class",
+		const element = invokeReactMemoComponent({
+			component: TypedLink,
+			componentProps: {
+				pattern: "/products/:id",
+				params: { id: "42" },
+				search: "?q=abc",
+				hash: "#panel",
+				className: "custom-class",
+			},
 		});
 
 		expect((element as { props: Record<string, unknown> }).props.href).toBe(
@@ -148,26 +156,26 @@ describe("npm_dist adapters", () => {
 	});
 
 	it("react compiled helpers register client loaders into client runtime", async () => {
-		await assertCompiledAdapterClientLoaderRegistration(
-			"vorma/react",
-			"/react/:id",
-			"/react/42",
-		);
+		await assertCompiledAdapterClientLoaderRegistration({
+			adapterImportPath: "vorma/react",
+			pattern: "/react/:id",
+			resolvedPath: "/react/42",
+		});
 	});
 
 	it("preact compiled helpers register client loaders into client runtime", async () => {
-		await assertCompiledAdapterClientLoaderRegistration(
-			"vorma/preact",
-			"/preact/:id",
-			"/preact/42",
-		);
+		await assertCompiledAdapterClientLoaderRegistration({
+			adapterImportPath: "vorma/preact",
+			pattern: "/preact/:id",
+			resolvedPath: "/preact/42",
+		});
 	});
 
 	it("solid compiled helpers register client loaders into client runtime", async () => {
-		await assertCompiledAdapterClientLoaderRegistration(
-			"vorma/solid",
-			"/solid/:id",
-			"/solid/42",
-		);
+		await assertCompiledAdapterClientLoaderRegistration({
+			adapterImportPath: "vorma/solid",
+			pattern: "/solid/:id",
+			resolvedPath: "/solid/42",
+		});
 	});
 });

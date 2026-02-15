@@ -1,7 +1,7 @@
-export function serializeToSearchParams(obj: Record<any, any>): URLSearchParams {
+export function serializeToSearchParams(obj: unknown): URLSearchParams {
 	const params = new URLSearchParams();
 
-	function appendValue(key: string, value: any) {
+	function appendValue(key: string, value: unknown) {
 		if (value === null || value === undefined) {
 			params.append(key, "");
 			return;
@@ -19,7 +19,7 @@ export function serializeToSearchParams(obj: Record<any, any>): URLSearchParams 
 		}
 
 		if (typeof value === "object") {
-			const entries = Object.entries(value);
+			const entries = Object.entries(value as Record<string, unknown>);
 			if (entries.length === 0) {
 				params.append(key, "");
 			} else {

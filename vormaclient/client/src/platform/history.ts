@@ -57,10 +57,10 @@ function setLastKnownHistoryLocation(
 type HistoryLocationPrelude = Pick<Location, "key" | "pathname" | "search">;
 
 function toAbsoluteHref(location: HistoryLocationPrelude): string {
-	return resolveAbsoluteHref(
-		`${location.pathname}${location.search}`,
-		window.location.origin,
-	);
+	return resolveAbsoluteHref({
+		href: `${location.pathname}${location.search}`,
+		baseHref: window.location.origin,
+	});
 }
 
 export function analyzeHistoryListenerPrelude(props: {
@@ -76,10 +76,10 @@ export function analyzeHistoryListenerPrelude(props: {
 	const didLocationKeyChange = location.key !== lastKnownLocation.key;
 	const popWithinSameDoc =
 		action === "POP" &&
-		hasSameDataTarget(
-			toAbsoluteHref(location),
-			toAbsoluteHref(lastKnownLocation),
-		);
+		hasSameDataTarget({
+			firstHref: toAbsoluteHref(location),
+			secondHref: toAbsoluteHref(lastKnownLocation),
+		});
 
 	return {
 		didLocationKeyChange,
@@ -88,11 +88,12 @@ export function analyzeHistoryListenerPrelude(props: {
 	};
 }
 
-function applyHashDrivenPopScrollState(
-	location: historyInstance["location"],
-	lastKnownLocation: historyInstance["location"],
-	popWithinSameDoc: boolean,
-): void {
+function applyHashDrivenPopScrollState(props: {
+	location: historyInstance["location"];
+	lastKnownLocation: historyInstance["location"];
+	popWithinSameDoc: boolean;
+}): void {
+	const { location, lastKnownLocation, popWithinSameDoc } = props;
 	const locationHashTarget = normalizedHashFragmentFromHash(location.hash);
 	const lastKnownHashTarget = normalizedHashFragmentFromHash(
 		lastKnownLocation.hash,
@@ -122,10 +123,10 @@ function applyHashDrivenPopScrollState(
 function buildListenerLocationHref(
 	location: historyInstance["location"],
 ): string {
-	return resolveAbsoluteHref(
-		`${location.pathname}${location.search}${location.hash}`,
-		window.location.origin,
-	);
+	return resolveAbsoluteHref({
+		href: `${location.pathname}${location.search}${location.hash}`,
+		baseHref: window.location.origin,
+	});
 }
 
 function isJSDOMEnvironment(): boolean {
@@ -168,16 +169,17 @@ async function navigateCrossDocumentPop(
 	return false;
 }
 
-async function handlePopNavigationForHistoryUpdate(
-	location: historyInstance["location"],
-	lastKnownLocation: historyInstance["location"],
-	popWithinSameDoc: boolean,
-): Promise<boolean> {
-	applyHashDrivenPopScrollState(
+async function handlePopNavigationForHistoryUpdate(props: {
+	location: historyInstance["location"];
+	lastKnownLocation: historyInstance["location"];
+	popWithinSameDoc: boolean;
+}): Promise<boolean> {
+	const { location, lastKnownLocation, popWithinSameDoc } = props;
+	applyHashDrivenPopScrollState({
 		location,
 		lastKnownLocation,
 		popWithinSameDoc,
-	);
+	});
 
 	if (popWithinSameDoc) {
 		return true;
@@ -230,11 +232,11 @@ export async function customHistoryListener({
 
 	let navigationSucceeded = true;
 	if (action === "POP") {
-		navigationSucceeded = await handlePopNavigationForHistoryUpdate(
+		navigationSucceeded = await handlePopNavigationForHistoryUpdate({
 			location,
 			lastKnownLocation,
 			popWithinSameDoc,
-		);
+		});
 	}
 
 	if (navigationSucceeded) {

@@ -116,7 +116,10 @@ function findMatchingPrefetchKey(
 	slots: NavigationSlots,
 	key: string,
 ): string | undefined {
-	return findMapEntryByNavigationTarget(slots.prefetchCache, key)?.[0];
+	return findMapEntryByNavigationTarget({
+		map: slots.prefetchCache,
+		targetHref: key,
+	})?.[0];
 }
 
 function matchSlotByTargetURL(
@@ -125,7 +128,10 @@ function matchSlotByTargetURL(
 ): NavigationSlotMatch | undefined {
 	if (
 		slots.activeNavigation &&
-		hasSameNavigationTarget(slots.activeNavigation.targetUrl, targetUrl)
+		hasSameNavigationTarget({
+			firstHref: slots.activeNavigation.targetUrl,
+			secondHref: targetUrl,
+		})
 	) {
 		return {
 			slot: "active",
@@ -144,7 +150,10 @@ function matchSlotByTargetURL(
 
 	if (
 		slots.pendingRevalidation &&
-		hasSameNavigationTarget(slots.pendingRevalidation.targetUrl, targetUrl)
+		hasSameNavigationTarget({
+			firstHref: slots.pendingRevalidation.targetUrl,
+			secondHref: targetUrl,
+		})
 	) {
 		return {
 			slot: "pendingRevalidation",

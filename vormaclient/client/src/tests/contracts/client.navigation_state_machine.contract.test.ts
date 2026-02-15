@@ -27,7 +27,8 @@ function createSeededRandom(seed: number): () => number {
 	};
 }
 
-function shuffledIndices(length: number, seed: number): number[] {
+function shuffledIndices(props: { length: number; seed: number }): number[] {
+	const { length, seed } = props;
 	const random = createSeededRandom(seed);
 	const indices = Array.from({ length }, (_, index) => index);
 	for (let i = indices.length - 1; i > 0; i--) {
@@ -144,10 +145,10 @@ describe("client navigation state machine contracts", () => {
 							count: navigationCount,
 						});
 
-						const resolveOrder = shuffledIndices(
-							navigationCount,
+						const resolveOrder = shuffledIndices({
+							length: navigationCount,
 							seed,
-						);
+						});
 						for (const requestIndex of resolveOrder) {
 							const request = requests[requestIndex];
 							if (!request) {
@@ -321,10 +322,10 @@ describe("client navigation state machine contracts", () => {
 				await Promise.resolve();
 				expect(requests.length).toBeGreaterThan(0);
 
-				const resolveOrder = shuffledIndices(
-					requests.length,
-					modelSeed ^ 0x5a5a,
-				);
+				const resolveOrder = shuffledIndices({
+					length: requests.length,
+					seed: modelSeed ^ 0x5a5a,
+				});
 				for (const requestIndex of resolveOrder) {
 					const request = requests[requestIndex];
 					if (!request) {

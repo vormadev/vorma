@@ -30,23 +30,32 @@ export function jsonDeepEquals(a: unknown, b: unknown): boolean {
 
 	// Handle arrays
 	if (aIsArray && bIsArray) {
-		if (a.length !== b.length) {
+		const leftArray = a as unknown[];
+		const rightArray = b as unknown[];
+		if (leftArray.length !== rightArray.length) {
 			return false;
 		}
-		return a.every((item, index) => jsonDeepEquals(item, b[index]));
+		return leftArray.every((item, index) =>
+			jsonDeepEquals(item, rightArray[index]),
+		);
 	}
 
 	// Handle objects
 	if (typeof a === "object" && typeof b === "object") {
-		const aKeys = Object.keys(a as object);
-		const bKeys = Object.keys(b as object);
+		const leftObject = a as Record<string, unknown>;
+		const rightObject = b as Record<string, unknown>;
+		const aKeys = Object.keys(leftObject);
+		const bKeys = Object.keys(rightObject);
 
 		if (aKeys.length !== bKeys.length) {
 			return false;
 		}
 
 		return aKeys.every((key) => {
-			return Object.hasOwn(b, key) && jsonDeepEquals((a as any)[key], (b as any)[key]);
+			return (
+				Object.hasOwn(rightObject, key) &&
+				jsonDeepEquals(leftObject[key], rightObject[key])
+			);
 		});
 	}
 

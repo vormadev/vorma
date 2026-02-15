@@ -109,11 +109,12 @@ function addDynamicChild(node: SegmentNode, segment: string): SegmentNode {
 	return child;
 }
 
-function getSegmentType(
-	segment: string,
-	dynamicPrefix: string,
-	splatRune: string,
-): SegType {
+function getSegmentType(props: {
+	segment: string;
+	dynamicPrefix: string;
+	splatRune: string;
+}): SegType {
+	const { segment, dynamicPrefix, splatRune } = props;
 	if (segment === "") return SEG_TYPES.index;
 	if (segment.length === 1 && segment === splatRune) return SEG_TYPES.splat;
 	if (segment.length > 0 && segment[0] === dynamicPrefix)
@@ -160,11 +161,11 @@ function normalizePattern(
 
 	for (const seg of rawSegments) {
 		let normalizedVal = seg;
-		const segType = getSegmentType(
-			seg,
-			config.dynamicParamPrefixRune,
-			config.splatSegmentRune,
-		);
+		const segType = getSegmentType({
+			segment: seg,
+			dynamicPrefix: config.dynamicParamPrefixRune,
+			splatRune: config.splatSegmentRune,
+		});
 
 		if (segType === SEG_TYPES.dynamic) {
 			numberOfDynamicParamSegs++;

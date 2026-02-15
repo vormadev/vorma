@@ -6,42 +6,58 @@ function stripHashPrefix(hash: string): string {
 	return hash.startsWith("#") ? hash.slice(1) : hash;
 }
 
-export function hrefWithoutHash(
-	href: string,
-	baseHref = window.location.href,
-): string {
+export function hrefWithoutHash(props: {
+	href: string;
+	baseHref?: string;
+}): string {
+	const { href, baseHref = window.location.href } = props;
 	const url = new URL(href, baseHref);
 	url.hash = "";
 	return url.href;
 }
 
-export function hasSameDataTarget(
-	a: string,
-	b: string,
-	baseHref = window.location.href,
-): boolean {
-	return hrefWithoutHash(a, baseHref) === hrefWithoutHash(b, baseHref);
+export function hasSameDataTarget(props: {
+	firstHref: string;
+	secondHref: string;
+	baseHref?: string;
+}): boolean {
+	const { firstHref, secondHref, baseHref = window.location.href } = props;
+	return (
+		hrefWithoutHash({ href: firstHref, baseHref }) ===
+		hrefWithoutHash({ href: secondHref, baseHref })
+	);
 }
 
-export function hasSameNavigationTarget(
-	a: string,
-	b: string,
-	baseHref = window.location.href,
-): boolean {
-	return a === b || hasSameDataTarget(a, b, baseHref);
+export function hasSameNavigationTarget(props: {
+	firstHref: string;
+	secondHref: string;
+	baseHref?: string;
+}): boolean {
+	const { firstHref, secondHref, baseHref = window.location.href } = props;
+	return (
+		firstHref === secondHref ||
+		hasSameDataTarget({ firstHref, secondHref, baseHref })
+	);
 }
 
-export function findMapEntryByNavigationTarget<T>(
-	map: ReadonlyMap<string, T>,
-	targetHref: string,
-	baseHref = window.location.href,
-): [string, T] | undefined {
+export function findMapEntryByNavigationTarget<T>(props: {
+	map: ReadonlyMap<string, T>;
+	targetHref: string;
+	baseHref?: string;
+}): [string, T] | undefined {
+	const { map, targetHref, baseHref = window.location.href } = props;
 	if (map.has(targetHref)) {
 		return [targetHref, map.get(targetHref)!];
 	}
 
 	for (const [key, value] of map.entries()) {
-		if (hasSameDataTarget(key, targetHref, baseHref)) {
+		if (
+			hasSameDataTarget({
+				firstHref: key,
+				secondHref: targetHref,
+				baseHref,
+			})
+		) {
 			return [key, value];
 		}
 	}
@@ -74,23 +90,33 @@ export function hashFragmentFromHref(href: string): string {
 	return hashFragmentFromHash(url.hash);
 }
 
-export function isSameDocumentHashChange(
-	targetHref: string,
-	currentHref = window.location.href,
-): boolean {
+export function isSameDocumentHashChange(props: {
+	targetHref: string;
+	currentHref?: string;
+}): boolean {
+	const { targetHref, currentHref = window.location.href } = props;
 	return (
-		hasSameDataTarget(targetHref, currentHref, currentHref) &&
+		hasSameDataTarget({
+			firstHref: targetHref,
+			secondHref: currentHref,
+			baseHref: currentHref,
+		}) &&
 		normalizedHashFragmentFromHref(targetHref) !==
 			normalizedHashFragmentFromHref(currentHref)
 	);
 }
 
-export function isSameDocumentLocation(
-	targetHref: string,
-	currentHref = window.location.href,
-): boolean {
+export function isSameDocumentLocation(props: {
+	targetHref: string;
+	currentHref?: string;
+}): boolean {
+	const { targetHref, currentHref = window.location.href } = props;
 	return (
-		hasSameDataTarget(targetHref, currentHref, currentHref) &&
+		hasSameDataTarget({
+			firstHref: targetHref,
+			secondHref: currentHref,
+			baseHref: currentHref,
+		}) &&
 		normalizedHashFragmentFromHref(targetHref) ===
 			normalizedHashFragmentFromHref(currentHref)
 	);

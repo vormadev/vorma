@@ -12,10 +12,16 @@ describe("debounce", () => {
 	});
 
 	it("delays the call by the specified time and resolves with return value", async () => {
-		const spy = vi.fn((a: number, b: number) => a + b);
+		const spy = vi.fn(
+			(props: { firstNumber: number; secondNumber: number }) =>
+				props.firstNumber + props.secondNumber,
+		);
 		const debounced = debounce(spy, 100);
 
-		const resultPromise = debounced(1, 2);
+		const resultPromise = debounced({
+			firstNumber: 1,
+			secondNumber: 2,
+		});
 		// not called immediately
 		expect(spy).not.toHaveBeenCalled();
 
@@ -28,7 +34,10 @@ describe("debounce", () => {
 		await expect(resultPromise).resolves.toBe(3);
 
 		expect(spy).toHaveBeenCalledTimes(1);
-		expect(spy).toHaveBeenCalledWith(1, 2);
+		expect(spy).toHaveBeenCalledWith({
+			firstNumber: 1,
+			secondNumber: 2,
+		});
 	});
 
 	it("only the last call within the delay window executes", async () => {

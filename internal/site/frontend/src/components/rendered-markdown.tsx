@@ -19,16 +19,19 @@ export function RenderedMarkdown(props: {
 	};
 
 	// Process the markdown content
-	const processContent = () => {
+	const processContent = (content: {
+		markdown: string;
+		stripLeadingH1: boolean;
+	}) => {
 		if (!containerRef) {
 			return;
 		}
 
 		cleanupPreviousRender();
 
-		containerRef.innerHTML = props.markdown; // Set the HTML content
+		containerRef.innerHTML = content.markdown; // Set the HTML content
 
-		if (props.stripLeadingH1) {
+		if (content.stripLeadingH1) {
 			for (const node of Array.from(containerRef.childNodes)) {
 				if (
 					node.nodeType === Node.TEXT_NODE &&
@@ -129,16 +132,22 @@ export function RenderedMarkdown(props: {
 	const ref = (el: HTMLDivElement | null) => {
 		containerRef = el;
 		if (el) {
-			processContent();
+			processContent({
+				markdown: props.markdown,
+				stripLeadingH1: props.stripLeadingH1 === true,
+			});
 		}
 	};
 
 	// Create effect to run processContent when markdown changes
 	createEffect(() => {
-		props.markdown; // Access props.markdown to track changes
-		props.stripLeadingH1;
+		const markdown = props.markdown;
+		const stripLeadingH1 = props.stripLeadingH1 === true;
 		if (containerRef) {
-			processContent();
+			processContent({
+				markdown,
+				stripLeadingH1,
+			});
 		}
 	});
 

@@ -132,7 +132,7 @@ function prepareSubmitRequest(props: {
 }): PreparedSubmitRequest {
 	const { url, requestInit, signal } = props;
 	return {
-		url: new URL(resolveAbsoluteHref(url)),
+		url: new URL(resolveAbsoluteHref({ href: url })),
 		requestInit: buildSubmitRequestInit({
 			requestInit,
 			signal,

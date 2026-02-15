@@ -101,7 +101,7 @@ function savePageRefreshScrollStateSnapshot(): void {
 }
 
 export function restoreRecentPageRefreshScrollState(
-	applyState: (x: number, y: number) => void,
+	applyState: (props: { x: number; y: number }) => void,
 ): void {
 	const stored = safeSessionStorageGetItem(PAGE_REFRESH_KEY);
 	if (!stored) return;
@@ -114,10 +114,10 @@ export function restoreRecentPageRefreshScrollState(
 		}
 
 		const isRecentSnapshot = Date.now() - state.unix < 5000;
-		const isCurrentLocation = isSameDocumentLocation(
-			state.href,
-			window.location.href,
-		);
+		const isCurrentLocation = isSameDocumentLocation({
+			targetHref: state.href,
+			currentHref: window.location.href,
+		});
 		if (!isCurrentLocation || !isRecentSnapshot) {
 			safeSessionStorageRemoveItem(PAGE_REFRESH_KEY);
 			return;
@@ -125,7 +125,7 @@ export function restoreRecentPageRefreshScrollState(
 
 		safeSessionStorageRemoveItem(PAGE_REFRESH_KEY);
 		window.requestAnimationFrame(() => {
-			applyState(state.x, state.y);
+			applyState({ x: state.x, y: state.y });
 		});
 	} catch {
 		safeSessionStorageRemoveItem(PAGE_REFRESH_KEY);
@@ -146,7 +146,7 @@ function createScrollStateManager() {
 	}
 
 	function restorePageRefreshState(): void {
-		restoreRecentPageRefreshScrollState((x, y) => {
+		restoreRecentPageRefreshScrollState(({ x, y }) => {
 			applyScrollState({ x, y });
 		});
 	}
