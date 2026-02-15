@@ -199,31 +199,63 @@ func TestInternalRegisterDiscoveredActionPanicsWhenAppIsNil(t *testing.T) {
 	)
 }
 
-func TestInternalGetCurrentNPMVersionMatchesPackageJSON(t *testing.T) {
-	currentVersion := strings.TrimSpace(Internal__GetCurrentNPMVersion())
+func TestInternalGetCurrentReleaseVersionMatchesCanonicalVersionArtifacts(t *testing.T) {
+	currentVersion := strings.TrimSpace(Internal__GetCurrentReleaseVersion())
 	if currentVersion == "" {
-		t.Fatal("expected Internal__GetCurrentNPMVersion to return non-empty version")
+		t.Fatal("expected Internal__GetCurrentReleaseVersion to return non-empty version")
 	}
 
-	packageJSONContents, err := os.ReadFile("package.json")
+	versionFileContents, err := os.ReadFile("internal/__LAST_RELEASE.txt")
 	if err != nil {
-		t.Fatalf("read package.json: %v", err)
+		t.Fatalf("read internal/__LAST_RELEASE.txt: %v", err)
+	}
+	canonicalVersion := strings.TrimSpace(string(versionFileContents))
+	if canonicalVersion == "" {
+		t.Fatal("expected internal/__LAST_RELEASE.txt to contain non-empty version")
+	}
+	if currentVersion != canonicalVersion {
+		t.Fatalf(
+			"Internal__GetCurrentReleaseVersion() = %q, want %q (from internal/__LAST_RELEASE.txt)",
+			currentVersion,
+			canonicalVersion,
+		)
 	}
 
-	var parsedPackageJSON struct {
+	type packageJSON struct {
 		Version string `json:"version"`
 	}
-	if err := json.Unmarshal(packageJSONContents, &parsedPackageJSON); err != nil {
-		t.Fatalf("parse package.json: %v", err)
+	readPackageVersion := func(path string) string {
+		t.Helper()
+		packageJSONContents, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Fatalf("read %s: %v", path, readErr)
+		}
+
+		var parsedPackageJSON packageJSON
+		if unmarshalErr := json.Unmarshal(packageJSONContents, &parsedPackageJSON); unmarshalErr != nil {
+			t.Fatalf("parse %s: %v", path, unmarshalErr)
+		}
+		if parsedPackageJSON.Version == "" {
+			t.Fatalf("expected %s version to be non-empty", path)
+		}
+		return parsedPackageJSON.Version
 	}
-	if parsedPackageJSON.Version == "" {
-		t.Fatal("expected package.json version to be non-empty")
-	}
-	if currentVersion != parsedPackageJSON.Version {
+
+	rootNPMVersion := readPackageVersion("package.json")
+	if rootNPMVersion != canonicalVersion {
 		t.Fatalf(
-			"Internal__GetCurrentNPMVersion() = %q, want %q",
-			currentVersion,
-			parsedPackageJSON.Version,
+			"package.json version = %q, want %q (from internal/__LAST_RELEASE.txt)",
+			rootNPMVersion,
+			canonicalVersion,
+		)
+	}
+
+	createNPMVersion := readPackageVersion("vormaclient/create/package.json")
+	if createNPMVersion != canonicalVersion {
+		t.Fatalf(
+			"vormaclient/create/package.json version = %q, want %q (from internal/__LAST_RELEASE.txt)",
+			createNPMVersion,
+			canonicalVersion,
 		)
 	}
 }

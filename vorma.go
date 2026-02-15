@@ -3,11 +3,11 @@ package vorma
 import (
 	_ "embed"
 	"net/http"
+	"strings"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/lab/parseutil"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
@@ -150,10 +150,9 @@ func panicIfNilActionRegistrationArguments[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	}
 }
 
-//go:embed package.json
-var packageJSON string
+//go:embed internal/__LAST_RELEASE.txt
+var canonicalVersion string
 
-func Internal__GetCurrentNPMVersion() string {
-	_, _, currentVersion := parseutil.PackageJSONFromString(packageJSON)
-	return currentVersion
+func Internal__GetCurrentReleaseVersion() string {
+	return strings.TrimSpace(canonicalVersion)
 }

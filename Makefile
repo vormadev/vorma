@@ -1,3 +1,15 @@
+release: release-gate
+	@go run ./internal/scripts/release
+
+release-gate:
+	@$(MAKE) gotest
+	@$(MAKE) tsreset
+	@$(MAKE) tstest-source
+	@$(MAKE) tslint
+	@$(MAKE) tscheck
+	@$(MAKE) npmbuild
+	@$(MAKE) tstest-dist
+
 #####################################################################
 ####### GO
 #####################################################################
@@ -7,9 +19,6 @@ gotest:
 
 gotestloud:
 	@go test -race -v ./...
-
-gobump: gotest
-	@go run ./internal/scripts/bumper
 
 # call with `make gobench pkg=./kit/mux` (or whatever)
 gobench:
@@ -46,7 +55,7 @@ tsreset: nuke-node-modules tsinstall
 tslint:
 	@pnpm oxlint
 
-tscheck: tscheck-kit tscheck-fw-client tscheck-fw-client-dist tscheck-fw-react tscheck-fw-solid tscheck-fw-preact tscheck-fw-vite
+tscheck: tscheck-kit tscheck-fw-client tscheck-fw-client-dist tscheck-fw-react tscheck-fw-solid tscheck-fw-preact tscheck-fw-vite tscheck-fw-create
 
 tscheck-kit:
 	@pnpm tsgo --noEmit --project ./kit/_typescript
@@ -69,27 +78,11 @@ tscheck-fw-preact:
 tscheck-fw-vite:
 	@pnpm tsgo --noEmit --project ./vormaclient/vite
 
-tsprepforpub:
-	@$(MAKE) tsreset
-	@$(MAKE) tstest-source
-	@$(MAKE) tslint
-	@$(MAKE) tscheck
-	@$(MAKE) npmbuild
-	@$(MAKE) tstest-dist
-
-tspublishpre: tsprepforpub
-	@npm publish --access public --tag pre
-	@cd vormaclient/create && npm publish --access public --tag pre
-
-tspublishnonpre: tsprepforpub
-	@npm publish --access public
-	@cd vormaclient/create && npm publish --access public
+tscheck-fw-create:
+	@pnpm tsgo --noEmit --project ./vormaclient/create
 
 npmbuild:
 	@go run ./internal/scripts/buildts
-
-npmbump:
-	@go run ./internal/scripts/npm_bumper
 
 docker-site:
 	@docker build -t vorma-site -f Dockerfile.site .

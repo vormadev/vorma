@@ -13,7 +13,7 @@ type RootData struct {
 	LatestVersion string
 }
 
-var currentNPMVersion = "v" + vorma.Internal__GetCurrentNPMVersion()
+var currentReleaseVersion = "v" + vorma.Internal__GetCurrentReleaseVersion()
 
 var jsonCacheControlVal = strings.Join([]string{
 	"public",
@@ -48,7 +48,7 @@ var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
 		}
 	}
 
-	return &RootData{LatestVersion: currentNPMVersion}, nil
+	return &RootData{LatestVersion: currentReleaseVersion}, nil
 })
 
 var _ = NewLoader("/_index", func(c *LoaderCtx) (string, error) {

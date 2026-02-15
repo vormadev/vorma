@@ -334,7 +334,7 @@ func Init(o Options) {
 		do,
 		"typescript",
 		"vite",
-		fmt.Sprintf("vorma@%s", vorma.Internal__GetCurrentNPMVersion()),
+		fmt.Sprintf("vorma@%s", vorma.Internal__GetCurrentReleaseVersion()),
 		resolveUIVitePlugin(do),
 	)
 
