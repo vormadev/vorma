@@ -21,17 +21,13 @@ set -e
 
 run_test() {
   echo "[pre-commit]  INFO   Running cmd '$1'."
-  $1
-  if [ $? -ne 0 ]; then
+  if ! $1; then
     echo "[pre-commit]  ERROR  Cmd '$1' failed. Commit aborted."
     exit 1
   fi
   echo "[pre-commit]  OK     Cmd '$1' passed."
 }
 
-run_test "make gotest"
-run_test "make tstest"
-run_test "make tslint"
-run_test "make tscheck"
+run_test "make release-gate"
 
 echo "[pre-commit]  OK     Done."

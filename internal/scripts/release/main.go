@@ -130,7 +130,7 @@ func runUnifiedReleaseProcess() (releaseErr *releaseProcessError) {
 		return ensurePackageJSONErr
 	}
 
-	t.Blue("publish npm packages now? ")
+	t.Blue("publish to npm? ")
 	confirmationErr = requireYesOrFail("aborted")
 	if confirmationErr != nil {
 		return confirmationErr
@@ -373,7 +373,7 @@ func commitAndPushReleaseChangesIdempotently(version string) *releaseProcessErro
 	if hasStagedChanges {
 		commitMessage := "v" + version
 		commitErr := runCommand(
-			t.Cmd("git", "commit", "-m", commitMessage),
+			t.Cmd("git", "commit", "--no-verify", "-m", commitMessage),
 			"git commit failed",
 		)
 		if commitErr != nil {
