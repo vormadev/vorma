@@ -624,7 +624,7 @@ func getTSTypeMap(t reflect.Type) map[string]string {
 		return nil
 	}
 	// We need to check both the value and a pointer to it for the interface.
-	ifaceType := reflect.TypeOf((*TSTyper)(nil)).Elem()
+	ifaceType := reflectutil.ToInterfaceReflectType[TSTyper]()
 
 	// Case 1: The type itself implements the interface.
 	if t.Implements(ifaceType) {
@@ -634,8 +634,7 @@ func getTSTypeMap(t reflect.Type) map[string]string {
 	}
 
 	// Case 2: A pointer to the type implements the interface.
-	pt := reflect.PointerTo(t)
-	if pt.Implements(ifaceType) {
+	if reflectutil.ImplementsInterface(t, ifaceType) {
 		instance := reflect.New(t) // Get a pointer to a new value
 		initializeEmbeddedPointers(instance)
 		return instance.Interface().(TSTyper).TSType()

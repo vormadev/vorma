@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+
+	"github.com/vormadev/vorma/kit/reflectutil"
 )
 
 type Validator interface{ Validate() error }
@@ -214,7 +216,7 @@ func validateRecursive(label string, currentValue reflect.Value) []error {
 	}
 
 	validatedByDirectCall := false
-	validatorInterface := reflect.TypeOf((*Validator)(nil)).Elem()
+	validatorInterface := reflectutil.ToInterfaceReflectType[Validator]()
 
 	if currentValue.CanInterface() {
 		if impl, ok := currentValue.Interface().(Validator); ok {
@@ -231,7 +233,7 @@ func validateRecursive(label string, currentValue reflect.Value) []error {
 
 	if !validatedByDirectCall && currentValue.Kind() != reflect.Ptr && currentValue.CanAddr() {
 		ptrValue := currentValue.Addr()
-		if ptrValue.Type().Implements(validatorInterface) && ptrValue.CanInterface() {
+		if reflectutil.ImplementsInterface(ptrValue.Type(), validatorInterface) && ptrValue.CanInterface() {
 			if impl, ok := ptrValue.Interface().(Validator); ok {
 				if err := impl.Validate(); err != nil {
 					if !IsValidationError(err) {
@@ -380,16 +382,11 @@ func attemptValidation(label string, x any) error {
 	v := reflect.ValueOf(x)
 	var effectiveValue reflect.Value = v
 
-	validatorInterface := reflect.TypeOf((*Validator)(nil)).Elem()
+	validatorInterface := reflectutil.ToInterfaceReflectType[Validator]()
+	implementsValidator := reflectutil.ImplementsInterface(v.Type(), validatorInterface)
+	canCallDirectly := implementsValidator && (v.Type().Implements(validatorInterface) || v.CanAddr())
 
-	canCallDirectly := false
-	if v.Type().Implements(validatorInterface) {
-		canCallDirectly = true
-	} else if v.CanAddr() && reflect.PointerTo(v.Type()).Implements(validatorInterface) {
-		canCallDirectly = true
-	}
-
-	if !canCallDirectly && v.Kind() != reflect.Ptr && reflect.PointerTo(v.Type()).Implements(validatorInterface) {
+	if !canCallDirectly && v.Kind() != reflect.Ptr && implementsValidator {
 		copyPtr := reflect.New(v.Type())
 		copyPtr.Elem().Set(v)
 		effectiveValue = copyPtr
