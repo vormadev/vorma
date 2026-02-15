@@ -17,6 +17,9 @@
 	"bin": {
 		"create-vorma": "./dist/main.js"
 	},
+	"exports": {
+		".": "./dist/main.js"
+	},
 	"files": [
 		"dist"
 	],

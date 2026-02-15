@@ -1,5 +1,4 @@
 export { __registerClientLoaderForAdapter as registerClientLoaderForAdapter } from "./src/core/extras.ts";
-export { runClientLoadersAfterHMRUpdate } from "./src/core/extras.ts";
 export { applyScrollState } from "./src/platform/scroll.ts";
 export {
 	makeFinalLinkProps,
@@ -8,7 +7,6 @@ export {
 	type UseRouterDataFunction,
 } from "./src/ui/helpers.ts";
 export { resolvePath, type VormaAppConfig } from "./src/app/helpers.ts";
-export { registerClientLoaderPattern } from "./src/core/render_runtime.ts";
 export {
 	getClientRuntimeRenderState,
 	setClientLoaderWaitFn,

@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import type { Plugin } from "vite";
 
 type VormaVitePluginConfig = {
 	rollupInput: ReadonlyArray<string>;
@@ -73,7 +74,7 @@ function mergeServerWatchIgnoredPatterns(
 	return [...vormaIgnoredPatterns];
 }
 
-export default function vormaVitePlugin(config: VormaVitePluginConfig): any {
+export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 	// Cache for dev mode filemap reading.
 	// In dev mode, we read from the JSON file so we can pick up changes
 	// without restarting Vite. The mtime check allows us to avoid re-reading

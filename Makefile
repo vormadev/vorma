@@ -46,7 +46,7 @@ tsreset: nuke-node-modules tsinstall
 tslint:
 	@pnpm oxlint
 
-tscheck: tscheck-kit tscheck-fw-client tscheck-fw-client-dist tscheck-fw-react tscheck-fw-solid tscheck-fw-preact
+tscheck: tscheck-kit tscheck-fw-client tscheck-fw-client-dist tscheck-fw-react tscheck-fw-solid tscheck-fw-preact tscheck-fw-vite
 
 tscheck-kit:
 	@pnpm tsgo --noEmit --project ./kit/_typescript
@@ -65,6 +65,9 @@ tscheck-fw-solid:
 
 tscheck-fw-preact:
 	@pnpm tsgo --noEmit --project ./vormaclient/preact
+
+tscheck-fw-vite:
+	@pnpm tsgo --noEmit --project ./vormaclient/vite
 
 tsprepforpub:
 	@$(MAKE) tsreset

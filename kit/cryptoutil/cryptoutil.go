@@ -227,13 +227,13 @@ func DecryptSymmetricAESGCM(encryptedMsg []byte, secretKey Key32) ([]byte, error
 	return DecryptSymmetricGeneric(ToAEADFuncAESGCM, encryptedMsg, secretKey)
 }
 
-// ToAEADFuncXChaCha20Poly1305 returns an AEAD function for XChaCha20-Poly1305.
-var ToAEADFuncXChaCha20Poly1305 ToAEADFunc = func(secretKey Key32) (cipher.AEAD, error) {
+// ToAEADFuncXChaCha20Poly1305 returns an AEAD for XChaCha20-Poly1305.
+func ToAEADFuncXChaCha20Poly1305(secretKey Key32) (cipher.AEAD, error) {
 	return chacha20poly1305.NewX(secretKey[:])
 }
 
-// ToAEADFuncAESGCM returns an AEAD function for AES-256-GCM.
-var ToAEADFuncAESGCM ToAEADFunc = func(secretKey Key32) (cipher.AEAD, error) {
+// ToAEADFuncAESGCM returns an AEAD for AES-256-GCM.
+func ToAEADFuncAESGCM(secretKey Key32) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(secretKey[:])
 	if err != nil {
 		return nil, err

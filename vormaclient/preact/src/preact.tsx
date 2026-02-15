@@ -1,4 +1,4 @@
-import { batch, signal } from "@preact/signals";
+import { batch, computed, signal } from "@preact/signals";
 import { h, type ComponentType } from "preact";
 import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import { addLocationListener, addRouteChangeListener } from "vorma/client";
@@ -39,7 +39,8 @@ const routeOutletBranchInputState = signal<RouteOutletBranchInputStateValue>(
 
 export { clientLoadersData, loadersData, routerData };
 
-export const location = signal(buildCurrentRouteOutletLocationState());
+const locationState = signal(buildCurrentRouteOutletLocationState());
+export const location = computed(() => locationState.value);
 
 function readNavigationSignals(): NavigationState {
 	return {
@@ -147,8 +148,8 @@ function syncNavigationSignals(): void {
 
 function syncLocationSignal(): void {
 	const nextLocationState = buildCurrentRouteOutletLocationState();
-	if (!areRouteOutletLocationsEqual(location.value, nextLocationState)) {
-		location.value = nextLocationState;
+	if (!areRouteOutletLocationsEqual(locationState.value, nextLocationState)) {
+		locationState.value = nextLocationState;
 	}
 }
 

@@ -125,8 +125,6 @@ Callers must check the boolean, not just the error.
 - `var ErrCipherTextTooShort`
 - `var ErrHMACInvalid`
 - `var ErrSecretKeyIsNil`
-- `var ToAEADFuncAESGCM ToAEADFunc`
-- `var ToAEADFuncXChaCha20Poly1305 ToAEADFunc`
 
 ### Types
 
@@ -148,6 +146,8 @@ Callers must check the boolean, not just the error.
 - `func RandomBytes(byteLen int) ([]byte, error)`
 - `func Sha256Hash(msg []byte) []byte`
 - `func SignSymmetric(msg []byte, secretKey Key32) ([]byte, error)`
+- `func ToAEADFuncAESGCM(secretKey Key32) (cipher.AEAD, error)`
+- `func ToAEADFuncXChaCha20Poly1305(secretKey Key32) (cipher.AEAD, error)`
 - `func ToKey32(b []byte) (Key32, error)`
 - `func ValidateHmacSha256(attemptedMsg, attemptedKey, knownGoodMAC []byte) (bool, error)`
 - `func VerifyAndReadAsymmetric(signedMsg []byte, publicKey Key32) ([]byte, error)`

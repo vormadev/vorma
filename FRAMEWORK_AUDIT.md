@@ -59,6 +59,22 @@ and test quality.
   `make gotest`, `make tstest`, `make tscheck`, and `make tslint` (unless user
   explicitly approves a narrower gate).
 
+## Public vs Internal API Boundary Standard
+
+1. Public/private API decisions must be made from first principles, not from
+   in-repo callsite evidence.
+2. Required question for each candidate symbol: "Is there a valid app-developer
+   use case for this API, or is this reaching into framework internals?"
+3. "Not currently called in this repo" is never sufficient evidence to unexport
+   or move an API in a public framework.
+4. App-facing APIs belong on stable public package surfaces; unstable internals
+   belong on explicitly internal surfaces (for example `__internal`).
+5. If an API is app-facing but currently placed on an internal surface, move it
+   to the correct public package (or re-export from that package) rather than
+   removing it.
+6. If intent is genuinely ambiguous after first-principles analysis, stop and
+   ask the user before changing surface area.
+
 ## Performance Evaluation Policy
 
 1. Hot paths require benchmark evidence before claiming a perf win/regression.
@@ -102,6 +118,8 @@ and test quality.
 
 - Automatic fixes are allowed only when the answer is obvious and
   first-principles-correct with no reasonable semantics/design alternative.
+- Public/private boundary changes must satisfy
+  `Public vs Internal API Boundary Standard`.
 - If a change involves design or semantics choices with multiple reasonable
   options, stop and get explicit user approval before changing code.
 - Any non-obvious change must be recorded in `Approval Log` with outcome.
@@ -111,6 +129,10 @@ and test quality.
 1. 2026-02-15: User confirmed AST discovery + generated registration is the
    intended architecture and explicitly rejected a runtime side-effect
    registration model for `vorma.NewLoader`/`vorma.NewAction`.
+2. 2026-02-15: User confirmed custom client-loader abstractions are not a
+   supported app-level extension goal; keep
+   `runClientLoadersAfterHMRUpdate`/`registerClientLoaderPattern` off the public
+   `vorma/client` surface.
 
 ## Matrix
 
@@ -122,17 +144,17 @@ and test quality.
 | `vormaruntime/*`               | done        | not done    | not done  | not done | not done    | not done     | not done      |
 | `wave/*`                       | done        | not done    | not done  | not done | not done    | not done     | not done      |
 | `wave/tooling/*`               | done        | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/client/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/react/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/preact/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/solid/*`          | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/vite/*`           | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `vormaclient/create/*`         | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `kit/bytesutil`                | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `kit/colorlog`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `kit/contextutil`              | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `kit/cookies`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
-| `kit/cryptoutil`               | not done    | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/client/*`         | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/react/*`          | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/preact/*`         | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/solid/*`          | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/vite/*`           | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `vormaclient/create/*`         | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/bytesutil`                | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/colorlog`                 | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/contextutil`              | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/cookies`                  | done        | not done    | not done  | not done | not done    | not done     | not done      |
+| `kit/cryptoutil`               | done        | not done    | not done  | not done | not done    | not done     | not done      |
 | `kit/csrf`                     | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `kit/envutil`                  | not done    | not done    | not done  | not done | not done    | not done     | not done      |
 | `kit/executil`                 | not done    | not done    | not done  | not done | not done    | not done     | not done      |
@@ -195,6 +217,19 @@ Matrix evidence for completed cells:
 4. `vormaruntime/*` + Surface/API: `EV-20260214-005`.
 5. `wave/*` + Surface/API: `EV-20260214-006`.
 6. `wave/tooling/*` + Surface/API: `EV-20260214-007`.
+7. `vormaclient/client/*` + Surface/API: `EV-20260215-001`.
+8. `vormaclient/react/*` + Surface/API: `EV-20260215-002`.
+9. `vormaclient/preact/*` + Surface/API: `EV-20260215-003`.
+10. `vormaclient/solid/*` + Surface/API: `EV-20260215-004`.
+11. `vormaclient/vite/*` + Surface/API: `EV-20260215-005`.
+12. `vormaclient/create/*` + Surface/API: `EV-20260215-006`.
+13. `kit/bytesutil` + Surface/API: `EV-20260215-007`.
+14. `kit/colorlog` + Surface/API: `EV-20260215-008`.
+15. `kit/contextutil` + Surface/API: `EV-20260215-009`.
+16. `kit/cookies` + Surface/API: `EV-20260215-010`.
+17. `kit/cryptoutil` + Surface/API: `EV-20260215-012`.
+18. `vormaclient/client/*` + Surface/API boundary confirmation:
+    `EV-20260215-013`.
 
 ## Current Focus
 
@@ -211,7 +246,7 @@ Matrix evidence for completed cells:
 
 ## Next Queue
 
-1. `vormaclient/client/*` + Surface/API.
+1. `kit/csrf` + Surface/API.
 
 ## Process Notes
 
