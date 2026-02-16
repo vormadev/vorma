@@ -18,6 +18,9 @@ type atomicFileWriteDependencies struct {
 	renameTempFile            func(string, string) error
 	removeExistingTargetFile  func(string) error
 	removeTempFile            func(string) error
+	openParentDirectory       func(string) (*os.File, error)
+	syncParentDirectory       func(*os.File) error
+	closeParentDirectory      func(*os.File) error
 }
 
 var atomicFileWriteDeps = atomicFileWriteDependencies{
@@ -35,6 +38,13 @@ var atomicFileWriteDeps = atomicFileWriteDependencies{
 	renameTempFile:           os.Rename,
 	removeExistingTargetFile: os.Remove,
 	removeTempFile:           os.Remove,
+	openParentDirectory:      os.Open,
+	syncParentDirectory: func(dir *os.File) error {
+		return dir.Sync()
+	},
+	closeParentDirectory: func(dir *os.File) error {
+		return dir.Close()
+	},
 }
 
 const atomicFileWriteTempFilePattern = ".vorma-atomic-write-*"
@@ -83,6 +93,9 @@ func writeFileAtomically(
 	if err := renameAtomicWriteTempPath(tempPath, targetPath); err != nil {
 		return err
 	}
+	if err := syncParentDirectoryAfterAtomicRename(targetPath); err != nil {
+		return err
+	}
 
 	shouldRemoveTempPath = false
 	return nil
@@ -126,4 +139,29 @@ func closeTempFileAfterAtomicWriteFailure(
 	}
 
 	return fmt.Errorf("%s: %w", operationContext, operationError)
+}
+
+func syncParentDirectoryAfterAtomicRename(targetPath string) error {
+	parentDirectoryPath := filepath.Dir(targetPath)
+	parentDirectory, err := atomicFileWriteDeps.openParentDirectory(parentDirectoryPath)
+	if err != nil {
+		return fmt.Errorf("open parent directory for sync: %w", err)
+	}
+
+	syncErr := atomicFileWriteDeps.syncParentDirectory(parentDirectory)
+	closeErr := atomicFileWriteDeps.closeParentDirectory(parentDirectory)
+	if syncErr == nil && closeErr == nil {
+		return nil
+	}
+
+	if syncErr != nil && closeErr != nil {
+		return fmt.Errorf(
+			"sync parent directory: %w",
+			errors.Join(syncErr, fmt.Errorf("close parent directory: %w", closeErr)),
+		)
+	}
+	if syncErr != nil {
+		return fmt.Errorf("sync parent directory: %w", syncErr)
+	}
+	return fmt.Errorf("close parent directory: %w", closeErr)
 }

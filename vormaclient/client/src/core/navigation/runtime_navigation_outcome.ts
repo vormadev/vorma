@@ -1,6 +1,5 @@
 import { resolveAbsoluteHref } from "vorma/kit/url";
 import { dispatchBuildIDEvent } from "../../platform/events.ts";
-import { hasSameDataTarget } from "../../platform/url.ts";
 import {
 	__vormaClientGlobal,
 	type GetRouteDataOutput,
@@ -16,17 +15,35 @@ import {
 	__reRenderApp,
 	setClientLoadersState,
 } from "../render_runtime.ts";
+import {
+	decideBuildIDSyncTimingForSuccessfulEntry,
+	decideNavigationOutcomeExecutionPlan,
+	decideSuccessfulNavigationPostAssetSideEffectPlan,
+	decideSuccessfulNavigationLifecycleStageExecutionPlan,
+	isIdlePrefetchNavigationEntry,
+	toPublicNavigateResult,
+	type InternalNavigateResult,
+	type NavigationOutcomeExecutionPlan,
+	type SuccessfulNavigationLifecycleStage,
+	type SuccessfulNavigationLifecycleStageExecutionPlan,
+} from "./runtime_navigation_outcome_state_machine.ts";
+import {
+	buildSuccessfulNavigationLifecycleStageCommands,
+	buildSuccessfulNavigationPostAssetLifecycleCommands,
+	buildSuccessfulNavigationPreAssetWaitCommands,
+	type SuccessfulNavigationLifecycleCommand,
+} from "./runtime_navigation_successful_commands.ts";
+import { mergeClientModuleMapWithRouteModuleMetadata } from "./route_metadata.ts";
 import type {
 	NavigateProps,
 	NavigationEntry,
 	NavigationOutcome,
 	NavigationPhase,
 } from "./types.ts";
-import { hasNavigationControlPromiseOwnership } from "./types.ts";
 
 export async function handleNavigationOutcome(props: {
 	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
-	deleteNavigation: (key: string) => boolean;
+	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
 	processSuccessfulNavigation: (
 		outcome: Extract<NavigationOutcome, { type: "success" }>,
 		entry: NavigationEntry,
@@ -36,6 +53,26 @@ export async function handleNavigationOutcome(props: {
 	outcome: NavigationOutcome;
 	controlPromise: Promise<NavigationOutcome>;
 }): Promise<{ didNavigate: boolean }> {
+	const internalResult =
+		await handleNavigationOutcomeWithInternalResult(props);
+
+	return toPublicNavigateResult({
+		internalResult,
+	});
+}
+
+export async function handleNavigationOutcomeWithInternalResult(props: {
+	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
+	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
+	processSuccessfulNavigation: (
+		outcome: Extract<NavigationOutcome, { type: "success" }>,
+		entry: NavigationEntry,
+	) => Promise<void>;
+	onNavigationIntentResolved?: () => void;
+	navigationProps: NavigateProps;
+	outcome: NavigationOutcome;
+	controlPromise: Promise<NavigationOutcome>;
+}): Promise<InternalNavigateResult> {
 	const {
 		findNavigationEntry,
 		deleteNavigation,
@@ -46,36 +83,39 @@ export async function handleNavigationOutcome(props: {
 		controlPromise,
 	} = props;
 	const targetUrl = resolveAbsoluteHref({ href: navigationProps.href });
-	const action = decideNavigationOutcomeAction({
+	const entry = findNavigationEntry(targetUrl);
+	const executionPlan = decideNavigationOutcomeExecutionPlan({
 		outcome,
 		targetUrl,
-		findNavigationEntry,
+		entry,
 		controlPromise,
+		currentHref: window.location.href,
 	});
 
-	return executeNavigationOutcomeAction({
-		action,
+	const internalResult = await executeNavigationOutcomeExecutionPlan({
+		executionPlan,
 		targetUrl,
 		deleteNavigation,
 		processSuccessfulNavigation,
 		onNavigationIntentResolved,
 		navigationProps,
 	});
+	return internalResult;
 }
 
-async function executeNavigationOutcomeAction(props: {
-	action: NavigationOutcomeAction;
+async function executeNavigationOutcomeExecutionPlan(props: {
+	executionPlan: NavigationOutcomeExecutionPlan;
 	targetUrl: string;
-	deleteNavigation: (key: string) => boolean;
+	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
 	processSuccessfulNavigation: (
 		outcome: Extract<NavigationOutcome, { type: "success" }>,
 		entry: NavigationEntry,
 	) => Promise<void>;
 	onNavigationIntentResolved?: () => void;
 	navigationProps: NavigateProps;
-}): Promise<{ didNavigate: boolean }> {
+}): Promise<InternalNavigateResult> {
 	const {
-		action,
+		executionPlan,
 		targetUrl,
 		deleteNavigation,
 		processSuccessfulNavigation,
@@ -83,155 +123,83 @@ async function executeNavigationOutcomeAction(props: {
 		navigationProps,
 	} = props;
 
-	switch (action.type) {
+	switch (executionPlan.type) {
 		case "deleteAndStop":
-			deleteNavigation(action.targetUrl);
-			return { didNavigate: false };
+			deleteNavigation({
+				targetUrl: executionPlan.targetUrl,
+				reason: executionPlan.reason,
+			});
+			return {
+				type: "cancelled",
+				reason: executionPlan.reason,
+			};
 		case "stop":
-			return { didNavigate: false };
+			return {
+				type: "cancelled",
+				reason: executionPlan.reason,
+			};
 		case "redirect":
-			return await handleRedirectOutcomeForEntry({
-				entry: action.entry,
-				outcome: action.outcome,
+			return await handleRedirectOutcomeExecutionPlan({
+				executionPlan,
 				deleteNavigation,
 				targetUrl,
 				navigationProps,
 			});
 		case "success":
-			if (action.shouldResolveIntent) {
+			if (executionPlan.shouldResolveIntent) {
 				onNavigationIntentResolved?.();
 			}
 
-			await processSuccessfulNavigation(action.outcome, action.entry);
-			return { didNavigate: action.didNavigate };
+			await processSuccessfulNavigation(
+				executionPlan.outcome,
+				executionPlan.entry,
+			);
+			return {
+				type: "committed",
+				didNavigate: executionPlan.didNavigate,
+			};
 	}
 }
 
-type NavigationOutcomeAction =
-	| {
-			type: "deleteAndStop";
-			targetUrl: string;
-	  }
-	| {
-			type: "stop";
-	  }
-	| {
-			type: "redirect";
-			entry: NavigationEntry;
-			outcome: Extract<NavigationOutcome, { type: "redirect" }>;
-	  }
-	| {
-			type: "success";
-			entry: NavigationEntry;
-			outcome: Extract<NavigationOutcome, { type: "success" }>;
-			shouldResolveIntent: boolean;
-			didNavigate: boolean;
-	  };
-
-function decideNavigationOutcomeAction(props: {
-	outcome: NavigationOutcome;
+async function handleRedirectOutcomeExecutionPlan(props: {
+	executionPlan: Extract<
+		NavigationOutcomeExecutionPlan,
+		{ type: "redirect" }
+	>;
+	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
 	targetUrl: string;
-	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
-	controlPromise: Promise<NavigationOutcome>;
-}): NavigationOutcomeAction {
-	const { outcome, targetUrl, findNavigationEntry, controlPromise } = props;
+	navigationProps: NavigateProps;
+}): Promise<InternalNavigateResult> {
+	const { executionPlan, deleteNavigation, targetUrl, navigationProps } =
+		props;
 
-	const entry = findNavigationEntry(targetUrl);
-	if (!entry) {
-		return { type: "stop" };
+	if (executionPlan.shouldSyncBuildIDBeforeRedirect) {
+		syncBuildIDFromRedirectData(executionPlan.outcome.redirectData);
 	}
 
-	if (
-		!isNavigationOutcomeCurrentForEntry({
-			entry,
-			controlPromise,
-		})
-	) {
-		return { type: "stop" };
-	}
-
-	if (outcome.type === "aborted") {
-		return {
-			type: "deleteAndStop",
-			targetUrl,
-		};
-	}
-
-	if (outcome.type === "redirect") {
-		return {
-			type: "redirect",
-			entry,
-			outcome,
-		};
-	}
-
+	deleteNavigation({
+		targetUrl,
+		reason: executionPlan.reason,
+	});
+	const redirectResult = await effectuateRedirectDataResult(
+		executionPlan.outcome.redirectData,
+		navigationProps.redirectCount || 0,
+		navigationProps,
+	);
 	return {
-		type: "success",
-		entry,
-		outcome,
-		shouldResolveIntent: shouldResolveNavigationIntentForEntry(entry),
-		didNavigate: !isIdlePrefetchEntry(entry),
+		type: "committed",
+		didNavigate: redirectResult?.status === "did",
 	};
 }
 
-function isNavigationOutcomeCurrentForEntry(props: {
-	entry: NavigationEntry;
-	controlPromise: Promise<NavigationOutcome>;
-}): boolean {
-	const { entry, controlPromise } = props;
-	return hasNavigationControlPromiseOwnership(entry, controlPromise);
-}
-
-function isIdlePrefetchEntry(entry: NavigationEntry): boolean {
-	return entry.type === "prefetch" && entry.intent === "none";
-}
-
-function shouldResolveNavigationIntentForEntry(
-	entry: NavigationEntry,
-): boolean {
-	return entry.intent === "navigate" || entry.intent === "revalidate";
-}
-
-function shouldIgnoreRedirectOutcomeForEntry(entry: NavigationEntry): boolean {
-	return isStaleRevalidationEntry(entry) || isIdlePrefetchEntry(entry);
-}
-
-type RedirectOutcomeStep = "ignore" | "effectuate";
-
-function getRedirectOutcomeStep(entry: NavigationEntry): RedirectOutcomeStep {
-	return shouldIgnoreRedirectOutcomeForEntry(entry) ? "ignore" : "effectuate";
-}
-
-async function handleRedirectOutcomeForEntry(props: {
-	entry: NavigationEntry;
-	outcome: Extract<NavigationOutcome, { type: "redirect" }>;
-	deleteNavigation: (key: string) => boolean;
-	targetUrl: string;
-	navigationProps: NavigateProps;
-}): Promise<{ didNavigate: boolean }> {
-	const { entry, outcome, deleteNavigation, targetUrl, navigationProps } =
-		props;
-
-	switch (getRedirectOutcomeStep(entry)) {
-		case "ignore":
-			deleteNavigation(targetUrl);
-			return { didNavigate: false };
-		case "effectuate":
-			syncBuildIDFromRedirectData(outcome.redirectData);
-			deleteNavigation(targetUrl);
-			const redirectResult = await effectuateRedirectDataResult(
-				outcome.redirectData,
-				navigationProps.redirectCount || 0,
-				navigationProps,
-			);
-			return { didNavigate: redirectResult?.status === "did" };
-	}
-}
-
 export type ProcessSuccessfulNavigationContext = {
-	transitionPhase: (targetUrl: string, phase: NavigationPhase) => void;
+	transitionPhase: (props: {
+		targetUrl: string;
+		phase: NavigationPhase;
+		reason: string;
+	}) => void;
 	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
-	deleteNavigation: (key: string) => boolean;
+	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
 };
 
 function isCurrentNavigationEntry(props: {
@@ -246,46 +214,36 @@ function transitionPhaseForCurrentEntry(props: {
 	context: ProcessSuccessfulNavigationContext;
 	entry: NavigationEntry;
 	phase: NavigationPhase;
+	reason: string;
 }): void {
-	const { context, entry, phase } = props;
+	const { context, entry, phase, reason } = props;
 	if (!isCurrentNavigationEntry({ context, entry })) {
 		return;
 	}
 
-	context.transitionPhase(entry.targetUrl, phase);
+	context.transitionPhase({
+		targetUrl: entry.targetUrl,
+		phase,
+		reason,
+	});
 }
 
-function applyResponseArtifactsWhenBuildMatches(
-	response: Response,
-	json: GetRouteDataOutput,
-): void {
-	const currentBuildID = __vormaClientGlobal.get("buildID");
+function applyResponseArtifactsWhenBuildMatches(props: {
+	response: Response;
+	json: GetRouteDataOutput;
+	expectedBuildID: string;
+}): void {
+	const { response, json, expectedBuildID } = props;
 	const responseBuildID = getBuildIDFromResponse(response);
 
-	if (responseBuildID !== currentBuildID) {
+	if (responseBuildID !== expectedBuildID) {
 		return;
 	}
 
-	const clientModuleMap = __vormaClientGlobal.get("clientModuleMap") || {};
-	const matchedPatterns = json.matchedPatterns || [];
-	const importURLs = json.importURLs || [];
-	const exportKeys = json.exportKeys || [];
-	const errorExportKeys = json.errorExportKeys || [];
-
-	for (let i = 0; i < matchedPatterns.length; i++) {
-		const pattern = matchedPatterns[i];
-		const importURL = importURLs[i];
-		const exportKey = exportKeys[i];
-		const errorExportKey = errorExportKeys[i];
-
-		if (pattern && importURL) {
-			clientModuleMap[pattern] = {
-				importURL,
-				exportKey: exportKey || "default",
-				errorExportKey: errorExportKey || "",
-			};
-		}
-	}
+	const clientModuleMap = mergeClientModuleMapWithRouteModuleMetadata({
+		currentClientModuleMap: __vormaClientGlobal.get("clientModuleMap"),
+		routeModuleMetadata: json,
+	});
 
 	__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
 
@@ -305,23 +263,18 @@ export function syncBuildIDFromResponse(response: Response): void {
 	dispatchBuildIDEvent({ newID, oldID });
 }
 
-function isStaleRevalidationEntry(entry: NavigationEntry): boolean {
-	return (
-		entry.type === "revalidation" &&
-		!hasSameDataTarget({
-			firstHref: window.location.href,
-			secondHref: entry.originUrl,
-		})
-	);
-}
-
 async function waitForSuccessfulNavigationAssets(
 	outcome: Extract<NavigationOutcome, { type: "success" }>,
-): Promise<void> {
+): Promise<{
+	clientLoadersResult:
+		| Awaited<
+				Extract<NavigationOutcome, { type: "success" }>["waitFnPromise"]
+		  >
+		| undefined;
+}> {
 	const { waitFnPromise, cssBundlePromises } = outcome;
 
 	const clientLoadersResult = await waitFnPromise;
-	setClientLoadersState(clientLoadersResult);
 
 	if (cssBundlePromises.length > 0) {
 		try {
@@ -330,6 +283,10 @@ async function waitForSuccessfulNavigationAssets(
 			logError("Error preloading CSS bundles:", error);
 		}
 	}
+
+	return {
+		clientLoadersResult,
+	};
 }
 
 function buildRunHistoryOptions(
@@ -358,6 +315,7 @@ async function renderSuccessfulNavigation(
 		context,
 		entry,
 		phase: "rendering",
+		reason: "process_successful_navigation_rendering",
 	});
 
 	try {
@@ -365,11 +323,17 @@ async function renderSuccessfulNavigation(
 			json: outcome.json,
 			navigationType: entry.type,
 			runHistoryOptions: buildRunHistoryOptions(entry, outcome.props),
+			shouldCommit: () =>
+				isCurrentNavigationEntry({
+					context,
+					entry,
+				}),
 			onFinish: () => {
 				transitionPhaseForCurrentEntry({
 					context,
 					entry,
 					phase: "complete",
+					reason: "process_successful_navigation_complete",
 				});
 			},
 		});
@@ -378,6 +342,7 @@ async function renderSuccessfulNavigation(
 			context,
 			entry,
 			phase: "complete",
+			reason: "process_successful_navigation_complete",
 		});
 		if (!isAbortError(error)) {
 			logError("Error completing navigation", error);
@@ -386,97 +351,144 @@ async function renderSuccessfulNavigation(
 	}
 }
 
-type SuccessfulNavigationPreWaitingAction =
-	| "stopAndDelete"
-	| "stop"
-	| "continue";
-
-function decideSuccessfulNavigationPreWaitingAction(
-	context: ProcessSuccessfulNavigationContext,
-	entry: NavigationEntry,
-): SuccessfulNavigationPreWaitingAction {
-	if (!isCurrentNavigationEntry({ context, entry })) {
-		return "stop";
-	}
-
-	return isStaleRevalidationEntry(entry) ? "stopAndDelete" : "continue";
-}
-
-function executeSuccessfulNavigationPreWaitingAction(props: {
-	context: ProcessSuccessfulNavigationContext;
-	entry: NavigationEntry;
-	action: SuccessfulNavigationPreWaitingAction;
-}): { shouldStop: boolean } {
-	const { context, entry, action } = props;
-	switch (action) {
-		case "stopAndDelete":
-			context.deleteNavigation(entry.targetUrl);
-			return { shouldStop: true };
-		case "stop":
-			return { shouldStop: true };
-		case "continue":
-			return { shouldStop: false };
-	}
-}
-
-type SuccessfulNavigationPostWaitingAction = "stop" | "continue";
-
-function decideSuccessfulNavigationPostWaitingAction(
-	context: ProcessSuccessfulNavigationContext,
-	entry: NavigationEntry,
-): SuccessfulNavigationPostWaitingAction {
-	return isCurrentNavigationEntry({ context, entry }) ? "continue" : "stop";
-}
-
-function executeSuccessfulNavigationPostWaitingAction(
-	action: SuccessfulNavigationPostWaitingAction,
-): { shouldStop: boolean } {
-	return { shouldStop: action === "stop" };
-}
-
-type SuccessfulNavigationPostAssetAction =
-	| "completeWithoutRender"
-	| "stop"
-	| "render";
-
-function decideSuccessfulNavigationPostAssetAction(
-	context: ProcessSuccessfulNavigationContext,
-	entry: NavigationEntry,
-): SuccessfulNavigationPostAssetAction {
-	if (!isCurrentNavigationEntry({ context, entry })) {
-		return "stop";
-	}
-
-	if (entry.intent === "none") {
-		return "completeWithoutRender";
-	}
-	if (isStaleRevalidationEntry(entry)) {
-		return "stop";
-	}
-	return "render";
-}
-
-async function executeSuccessfulNavigationPostAssetAction(props: {
+async function executeSuccessfulNavigationLifecycleCommands(props: {
+	commands: SuccessfulNavigationLifecycleCommand[];
 	context: ProcessSuccessfulNavigationContext;
 	outcome: Extract<NavigationOutcome, { type: "success" }>;
 	entry: NavigationEntry;
-	action: SuccessfulNavigationPostAssetAction;
-}): Promise<void> {
-	const { context, outcome, entry, action } = props;
-	switch (action) {
-		case "completeWithoutRender":
-			transitionPhaseForCurrentEntry({
-				context,
-				entry,
-				phase: "complete",
-			});
-			return;
-		case "stop":
-			return;
-		case "render":
-			await renderSuccessfulNavigation(context, outcome, entry);
-			return;
+}): Promise<{ shouldStop: boolean }> {
+	const { commands, context, outcome, entry } = props;
+	for (const command of commands) {
+		switch (command.type) {
+			case "stop":
+				return { shouldStop: true };
+			case "delete_navigation":
+				context.deleteNavigation({
+					targetUrl: command.targetUrl,
+					reason: command.reason,
+				});
+				break;
+			case "transition_phase":
+				transitionPhaseForCurrentEntry({
+					context,
+					entry,
+					phase: command.phase,
+					reason: command.reason,
+				});
+				break;
+			case "complete_without_render":
+				transitionPhaseForCurrentEntry({
+					context,
+					entry,
+					phase: "complete",
+					reason: "process_successful_navigation_complete",
+				});
+				break;
+			case "render":
+				await renderSuccessfulNavigation(context, outcome, entry);
+				break;
+			case "commit_client_loaders_state":
+				setClientLoadersState(command.clientLoadersResult);
+				break;
+			case "sync_build_id_from_response":
+				syncBuildIDFromResponse(command.response);
+				break;
+			case "apply_response_artifacts_when_build_matches":
+				applyResponseArtifactsWhenBuildMatches({
+					response: command.response,
+					json: command.json,
+					expectedBuildID: command.expectedBuildID,
+				});
+				break;
+		}
 	}
+
+	return { shouldStop: false };
+}
+
+function decideSuccessfulNavigationLifecycleStageExecutionPlanForEntry(props: {
+	stage: "pre_waiting";
+	context: ProcessSuccessfulNavigationContext;
+	entry: NavigationEntry;
+}): Extract<
+	SuccessfulNavigationLifecycleStageExecutionPlan,
+	{ stage: "pre_waiting" }
+>;
+function decideSuccessfulNavigationLifecycleStageExecutionPlanForEntry(props: {
+	stage: "post_waiting";
+	context: ProcessSuccessfulNavigationContext;
+	entry: NavigationEntry;
+}): Extract<
+	SuccessfulNavigationLifecycleStageExecutionPlan,
+	{ stage: "post_waiting" }
+>;
+function decideSuccessfulNavigationLifecycleStageExecutionPlanForEntry(props: {
+	stage: "post_asset";
+	context: ProcessSuccessfulNavigationContext;
+	entry: NavigationEntry;
+}): Extract<
+	SuccessfulNavigationLifecycleStageExecutionPlan,
+	{ stage: "post_asset" }
+>;
+function decideSuccessfulNavigationLifecycleStageExecutionPlanForEntry(props: {
+	stage: SuccessfulNavigationLifecycleStage;
+	context: ProcessSuccessfulNavigationContext;
+	entry: NavigationEntry;
+}): SuccessfulNavigationLifecycleStageExecutionPlan {
+	return decideSuccessfulNavigationLifecycleStageExecutionPlan({
+		stage: props.stage,
+		entry: props.entry,
+		isCurrentEntry: isCurrentNavigationEntry({
+			context: props.context,
+			entry: props.entry,
+		}),
+		currentHref: window.location.href,
+	});
+}
+
+async function executeSuccessfulNavigationLifecycleStage(props: {
+	stageExecutionPlan: SuccessfulNavigationLifecycleStageExecutionPlan;
+	context: ProcessSuccessfulNavigationContext;
+	outcome: Extract<NavigationOutcome, { type: "success" }>;
+	entry: NavigationEntry;
+}): Promise<{ shouldStop: boolean }> {
+	const { stageExecutionPlan, context, outcome, entry } = props;
+	return executeSuccessfulNavigationLifecycleCommands({
+		commands: buildSuccessfulNavigationLifecycleStageCommands({
+			stageExecutionPlan,
+		}),
+		context,
+		outcome,
+		entry,
+	});
+}
+
+async function decideAndExecuteSuccessfulNavigationLifecycleStage(props: {
+	stage: Exclude<SuccessfulNavigationLifecycleStage, "post_asset">;
+	context: ProcessSuccessfulNavigationContext;
+	outcome: Extract<NavigationOutcome, { type: "success" }>;
+	entry: NavigationEntry;
+}): Promise<{
+	shouldStop: boolean;
+}> {
+	const stageExecutionPlan =
+		decideSuccessfulNavigationLifecycleStageExecutionPlanForEntry({
+			stage: props.stage,
+			context: props.context,
+			entry: props.entry,
+		});
+
+	const stageExecutionResult =
+		await executeSuccessfulNavigationLifecycleStage({
+			stageExecutionPlan,
+			context: props.context,
+			outcome: props.outcome,
+			entry: props.entry,
+		});
+
+	return {
+		shouldStop: stageExecutionResult.shouldStop,
+	};
 }
 
 export async function processSuccessfulNavigationRuntime(
@@ -486,59 +498,86 @@ export async function processSuccessfulNavigationRuntime(
 ): Promise<void> {
 	try {
 		const { response, json } = outcome;
+		const expectedBuildIDForResponseArtifacts =
+			__vormaClientGlobal.get("buildID");
 
-		const preWaitingAction = decideSuccessfulNavigationPreWaitingAction(
-			context,
+		for (const stage of ["pre_waiting", "post_waiting"] as const) {
+			const stageResult =
+				await decideAndExecuteSuccessfulNavigationLifecycleStage({
+					stage,
+					context,
+					outcome,
+					entry,
+				});
+			if (stageResult.shouldStop) {
+				return;
+			}
+		}
+
+		const buildIDSyncTiming = decideBuildIDSyncTimingForSuccessfulEntry({
 			entry,
-		);
-		if (
-			executeSuccessfulNavigationPreWaitingAction({
+		});
+		const preAssetWaitCommandExecutionResult =
+			await executeSuccessfulNavigationLifecycleCommands({
+				commands: buildSuccessfulNavigationPreAssetWaitCommands({
+					buildIDSyncTiming,
+					response,
+				}),
+				context,
+				outcome,
+				entry,
+			});
+		if (preAssetWaitCommandExecutionResult.shouldStop) {
+			return;
+		}
+
+		const assetWaitResult =
+			await waitForSuccessfulNavigationAssets(outcome);
+
+		const postAssetExecutionPlan =
+			decideSuccessfulNavigationLifecycleStageExecutionPlanForEntry({
+				stage: "post_asset",
 				context,
 				entry,
-				action: preWaitingAction,
-			}).shouldStop
-		) {
-			return;
-		}
+			});
 
-		applyResponseArtifactsWhenBuildMatches(response, json);
+		const postAssetSideEffectPlan =
+			decideSuccessfulNavigationPostAssetSideEffectPlan({
+				postAssetStageExecutionPlan: postAssetExecutionPlan,
+				buildIDSyncTiming,
+			});
 
-		transitionPhaseForCurrentEntry({
-			context,
-			entry,
-			phase: "waiting",
-		});
-
-		const postWaitingAction = decideSuccessfulNavigationPostWaitingAction(
-			context,
-			entry,
-		);
 		if (
-			executeSuccessfulNavigationPostWaitingAction(postWaitingAction)
-				.shouldStop
+			(
+				await executeSuccessfulNavigationLifecycleCommands({
+					commands:
+						buildSuccessfulNavigationPostAssetLifecycleCommands({
+							postAssetExecutionPlan: postAssetExecutionPlan.plan,
+							postAssetSideEffectPlan,
+							response,
+							json,
+							expectedBuildID:
+								expectedBuildIDForResponseArtifacts,
+							clientLoadersResult:
+								assetWaitResult.clientLoadersResult,
+						}),
+					context,
+					outcome,
+					entry,
+				})
+			).shouldStop
 		) {
 			return;
 		}
-
-		syncBuildIDFromResponse(response);
-		await waitForSuccessfulNavigationAssets(outcome);
-
-		const postAssetAction = decideSuccessfulNavigationPostAssetAction(
-			context,
-			entry,
-		);
-		await executeSuccessfulNavigationPostAssetAction({
-			context,
-			outcome,
-			entry,
-			action: postAssetAction,
-		});
 	} finally {
 		if (
-			!isIdlePrefetchEntry(entry) &&
+			!isIdlePrefetchNavigationEntry(entry) &&
 			isCurrentNavigationEntry({ context, entry })
 		) {
-			context.deleteNavigation(entry.targetUrl);
+			context.deleteNavigation({
+				targetUrl: entry.targetUrl,
+				reason: "successful_navigation_cleanup",
+			});
 		}
 	}
 }

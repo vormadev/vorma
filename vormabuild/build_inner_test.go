@@ -733,6 +733,61 @@ func TestInitializeBuildInnerState(t *testing.T) {
 		}
 	})
 
+	t.Run("development mode does not expose mixed runtime state while build ID is pending", func(t *testing.T) {
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		app.SetIsDev(false)
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetBuildID("build-before-dev-init")
+		})
+
+		buildIDGenerationStarted := make(chan struct{})
+		continueBuildIDGeneration := make(chan struct{})
+		releaseBuildIDGeneration := func() {
+			select {
+			case <-continueBuildIDGeneration:
+			default:
+				close(continueBuildIDGeneration)
+			}
+		}
+		defer releaseBuildIDGeneration()
+
+		buildInnerBuildIDDeps.generateDevBuildIDSuffix = func() (string, error) {
+			close(buildIDGenerationStarted)
+			<-continueBuildIDGeneration
+			return "stubid", nil
+		}
+
+		initializeErrCh := make(chan error, 1)
+		go func() {
+			initializeErrCh <- initializeBuildInnerState(app, &buildInnerOptions{isDev: true})
+		}()
+
+		<-buildIDGenerationStarted
+
+		if app.GetIsDevMode() {
+			t.Fatal("expected runtime to keep previous isDev value until build state commits atomically")
+		}
+		if app.GetBuildID() != "build-before-dev-init" {
+			t.Fatalf(
+				"build ID during pending dev initialization = %q, want %q",
+				app.GetBuildID(),
+				"build-before-dev-init",
+			)
+		}
+
+		releaseBuildIDGeneration()
+		select {
+		case err := <-initializeErrCh:
+			if err != nil {
+				t.Fatalf("initializeBuildInnerState returned error: %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for initializeBuildInnerState to return")
+		}
+	})
+
 	t.Run("development mode wraps build ID generation error", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app

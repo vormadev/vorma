@@ -7,7 +7,11 @@ import (
 )
 
 func (v *Vorma) getViteDevURL() string {
-	if !v.GetIsDevMode() {
+	return getViteDevURLForMode(v.GetIsDevMode())
+}
+
+func getViteDevURLForMode(isDevMode bool) string {
+	if !isDevMode {
 		return ""
 	}
 	return fmt.Sprintf("http://localhost:%s", viteutil.GetVitePortStr())

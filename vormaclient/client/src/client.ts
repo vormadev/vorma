@@ -114,3 +114,11 @@ export function getRootEl(): HTMLDivElement {
 export function getHistoryInstance(): historyInstance {
 	return HistoryManager.getInstance();
 }
+
+export function getNavigationDebugJournal() {
+	return navigationStateManager.getDebugJournal();
+}
+
+export function clearNavigationDebugJournal(): void {
+	navigationStateManager.clearDebugJournal();
+}

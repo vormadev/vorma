@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 )
@@ -39,6 +40,40 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 		}
 	})
 
+	t.Run("post-sync hook runs without holding runtime write lock", func(t *testing.T) {
+		err := syncClientRoutesFromParsedPathsWithLock(
+			app,
+			map[string]*vormaruntime.Path{
+				"/lock-check": {
+					OriginalPattern: "/lock-check",
+					SrcPath:         "frontend/src/routes/lock-check.tsx",
+					ExportKey:       "default",
+				},
+			},
+			"dev_fast_lock_check",
+			func(*vormaruntime.Vorma) error {
+				readLockAcquired := make(chan struct{})
+				go func() {
+					app.WithRLock(func(*vormaruntime.ReadLockedVorma) {})
+					close(readLockAcquired)
+				}()
+
+				select {
+				case <-readLockAcquired:
+					return nil
+				case <-time.After(100 * time.Millisecond):
+					return errors.New("post-sync hook executed while runtime write lock was held")
+				}
+			},
+		)
+		if err != nil {
+			t.Fatalf(
+				"syncClientRoutesFromParsedPathsWithLock returned error: %v",
+				err,
+			)
+		}
+	})
+
 	t.Run("propagates post-sync hook error", func(t *testing.T) {
 		expectedErr := errors.New("post-sync failed")
 		wasCalled := false
@@ -64,19 +99,21 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 				},
 			},
 			"build-after-sync-but-before-post-sync",
-			func(l *vormaruntime.LockedVorma) error {
+			func(v *vormaruntime.Vorma) error {
 				wasCalled = true
-				l.SetRouteManifestFile("manifest-set-in-failing-post-sync-hook.json")
-				if l.GetBuildID() != "build-after-sync-but-before-post-sync" {
-					t.Fatalf(
-						"build ID before post-sync failure = %q, want %q",
-						l.GetBuildID(),
-						"build-after-sync-but-before-post-sync",
-					)
-				}
-				if _, ok := l.GetPaths()["/about"]; !ok {
-					t.Fatalf("expected /about path to be synced before post-sync hook, got %#v", l.GetPaths())
-				}
+				v.WithLock(func(l *vormaruntime.LockedVorma) {
+					l.SetRouteManifestFile("manifest-set-in-failing-post-sync-hook.json")
+					if l.GetBuildID() != "build-after-sync-but-before-post-sync" {
+						t.Fatalf(
+							"build ID before post-sync failure = %q, want %q",
+							l.GetBuildID(),
+							"build-after-sync-but-before-post-sync",
+						)
+					}
+					if _, ok := l.GetPaths()["/about"]; !ok {
+						t.Fatalf("expected /about path to be synced before post-sync hook, got %#v", l.GetPaths())
+					}
+				})
 				return expectedErr
 			},
 		)
@@ -165,8 +202,10 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 				},
 			},
 			"build-after-sync-before-panic-post-sync",
-			func(l *vormaruntime.LockedVorma) error {
-				l.SetRouteManifestFile("manifest-set-in-panicking-post-sync-hook.json")
+			func(v *vormaruntime.Vorma) error {
+				v.WithLock(func(l *vormaruntime.LockedVorma) {
+					l.SetRouteManifestFile("manifest-set-in-panicking-post-sync-hook.json")
+				})
 				panic(expectedPanic)
 			},
 		)
@@ -355,14 +394,16 @@ func TestRunRouteSyncExecution(t *testing.T) {
 					observedStepOrder = append(observedStepOrder, "build-id")
 					return "dev_fast_stub", nil
 				},
-				postSyncHook: func(l *vormaruntime.LockedVorma) error {
+				postSyncHook: func(v *vormaruntime.Vorma) error {
 					observedStepOrder = append(observedStepOrder, "post-sync")
-					if l.GetBuildID() != "dev_fast_stub" {
-						t.Fatalf("build ID = %q, want %q", l.GetBuildID(), "dev_fast_stub")
-					}
-					if l.GetPaths()["/ok"] == nil {
-						t.Fatalf("expected synced /ok route, got %#v", l.GetPaths())
-					}
+					v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
+						if l.GetBuildID() != "dev_fast_stub" {
+							t.Fatalf("build ID = %q, want %q", l.GetBuildID(), "dev_fast_stub")
+						}
+						if l.GetPaths()["/ok"] == nil {
+							t.Fatalf("expected synced /ok route, got %#v", l.GetPaths())
+						}
+					})
 					return nil
 				},
 			},

@@ -1,6 +1,7 @@
 package vormaruntime
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/vormadev/vorma/kit/mux"
@@ -30,9 +31,14 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testin
 	)
 	app.RegisterPatternIfNeeded("/stale-no-handler")
 
-	clearRouteDataCacheForTest()
-	staleCacheKey := app.buildRouteDataCacheKey(nil, app.GetIsDevMode(), app.GetBuildID())
-	gmpdCache.Store(staleCacheKey, &cachedItemSubset{ImportURLs: []string{"/stale.js"}})
+	clearRouteDataCacheForTest(app)
+	staleCacheKey := app.buildRouteDataCacheKey(
+		nil,
+		app.GetIsDevMode(),
+		app.GetBuildID(),
+		routeDataSnapshotVersionForTest(app),
+	)
+	putRouteDataCacheEntryForTest(app, staleCacheKey, &cachedItemSubset{ImportURLs: []string{"/stale.js"}})
 
 	newPaths := map[string]*Path{
 		"/fresh-client": {
@@ -47,7 +53,7 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testin
 		lv.Routes().SyncFromDevReload(newPaths)
 	})
 
-	if got := routeDataCacheLenForTest(); got != 0 {
+	if got := routeDataCacheLenForTest(app); got != 0 {
 		t.Fatalf("route-data cache size = %d, want 0 after SyncFromDevReload", got)
 	}
 
@@ -88,12 +94,22 @@ func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(t *test
 	fixtureTwo := newTestFixture(t, testFixtureOptions{})
 	appTwo := fixtureTwo.app
 
-	clearRouteDataCacheForTest()
+	clearRouteDataCacheForTest(appOne, appTwo)
 
-	appOneCacheKey := appOne.buildRouteDataCacheKey(nil, appOne.GetIsDevMode(), appOne.GetBuildID())
-	appTwoCacheKey := appTwo.buildRouteDataCacheKey(nil, appTwo.GetIsDevMode(), appTwo.GetBuildID())
-	gmpdCache.Store(appOneCacheKey, &cachedItemSubset{ImportURLs: []string{"/one.js"}})
-	gmpdCache.Store(appTwoCacheKey, &cachedItemSubset{ImportURLs: []string{"/two.js"}})
+	appOneCacheKey := appOne.buildRouteDataCacheKey(
+		nil,
+		appOne.GetIsDevMode(),
+		appOne.GetBuildID(),
+		routeDataSnapshotVersionForTest(appOne),
+	)
+	appTwoCacheKey := appTwo.buildRouteDataCacheKey(
+		nil,
+		appTwo.GetIsDevMode(),
+		appTwo.GetBuildID(),
+		routeDataSnapshotVersionForTest(appTwo),
+	)
+	putRouteDataCacheEntryForTest(appOne, appOneCacheKey, &cachedItemSubset{ImportURLs: []string{"/one.js"}})
+	putRouteDataCacheEntryForTest(appTwo, appTwoCacheKey, &cachedItemSubset{ImportURLs: []string{"/two.js"}})
 
 	appOne.WithLock(func(lv *LockedVorma) {
 		lv.Routes().SyncFromDevReload(map[string]*Path{
@@ -106,10 +122,10 @@ func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(t *test
 		})
 	})
 
-	if _, exists := gmpdCache.Load(appOneCacheKey); exists {
+	if hasRouteDataCacheEntryForTest(appOne, appOneCacheKey) {
 		t.Fatal("expected app one cache entry to be invalidated")
 	}
-	if _, exists := gmpdCache.Load(appTwoCacheKey); !exists {
+	if !hasRouteDataCacheEntryForTest(appTwo, appTwoCacheKey) {
 		t.Fatal("expected app two cache entry to remain")
 	}
 }
@@ -236,18 +252,53 @@ func TestRouteRegistryReplaceParsedPathsForInit_ClonesPathEntries(t *testing.T) 
 	}
 }
 
-func clearRouteDataCacheForTest() {
-	gmpdCache.Range(func(key, _ any) bool {
-		gmpdCache.Delete(key)
-		return true
+func clearRouteDataCacheForTest(apps ...*Vorma) {
+	for _, app := range apps {
+		if app == nil {
+			continue
+		}
+		app.WithLock(func(lv *LockedVorma) {
+			lv.v._routeDataCache = &sync.Map{}
+		})
+	}
+}
+
+func routeDataCacheLenForTest(apps ...*Vorma) int {
+	total := 0
+	for _, app := range apps {
+		if app == nil {
+			continue
+		}
+		app.WithRLock(func(lv *ReadLockedVorma) {
+			cache := lv.v._routeDataCache
+			if cache == nil {
+				return
+			}
+			cache.Range(func(_, _ any) bool {
+				total++
+				return true
+			})
+		})
+	}
+	return total
+}
+
+func putRouteDataCacheEntryForTest(app *Vorma, cacheKey string, value *cachedItemSubset) {
+	if app == nil {
+		return
+	}
+	app.WithRLock(func(lv *ReadLockedVorma) {
+		lv.v._routeDataCache.Store(cacheKey, value)
 	})
 }
 
-func routeDataCacheLenForTest() int {
-	n := 0
-	gmpdCache.Range(func(_, _ any) bool {
-		n++
-		return true
+func hasRouteDataCacheEntryForTest(app *Vorma, cacheKey string) bool {
+	if app == nil {
+		return false
+	}
+	found := false
+	app.WithRLock(func(lv *ReadLockedVorma) {
+		_, found = lv.v._routeDataCache.Load(cacheKey)
 	})
-	return n
+	return found
 }

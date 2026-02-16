@@ -54,6 +54,7 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 			requestedBuildID,
 		)
 		if routeResult.terminalState == routeTerminalStateStaleBuild {
+			ensureLoadersCacheControlHeader(w, res)
 			res.SetHeader(VormaBuildIDHeaderKey, routeResult.buildID)
 			res.SetHeader("X-Vorma-Reload", buildLoadersReloadURL(r))
 			res.OK()
@@ -84,16 +85,6 @@ func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRe
 		}
 		res.HTMLBytes(htmlBytes)
 	})
-}
-
-func (v *Vorma) captureLoadersHTMLRenderSnapshot() loadersHTMLRenderSnapshot {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
-	return loadersHTMLRenderSnapshot{
-		isDevMode:      v._isDev,
-		clientEntryOut: v._clientEntryOut,
-		rootTemplate:   v._rootTemplate,
-	}
 }
 
 func (v *Vorma) handleDevReloadEndpoints(
@@ -275,7 +266,7 @@ func writeLoadersJSONResponse(
 }
 
 func (v *Vorma) renderHeadAndSSRForTemplate(
-	assets *RouteAssets,
+	routeResult *RouteResult,
 	routeData *RouteDataFinal,
 ) (template.HTML, *template.HTML, string, error) {
 	var eg errgroup.Group
@@ -284,7 +275,7 @@ func (v *Vorma) renderHeadAndSSRForTemplate(
 	var headElements template.HTML
 
 	eg.Go(func() error {
-		he, err := v.headElsInst.Render(assets.SortedAndPreEscapedHeadEls)
+		he, err := v.headElsInst.Render(routeResult.assets.SortedAndPreEscapedHeadEls)
 		if err != nil {
 			return fmt.Errorf("error getting head elements: %w", err)
 		}
@@ -295,7 +286,11 @@ func (v *Vorma) renderHeadAndSSRForTemplate(
 	})
 
 	eg.Go(func() error {
-		sih, err := v.getSSRInnerHTML(routeData)
+		sih, err := v.getSSRInnerHTMLFromSnapshot(routeData, ssrRuntimeSnapshot{
+			isDev:             routeResult.htmlRenderSnapshot.isDevMode,
+			buildID:           routeResult.buildID,
+			routeManifestFile: routeResult.routeManifestFileSnapshot,
+		})
 		if err != nil {
 			return fmt.Errorf("error getting SSR inner HTML: %w", err)
 		}
@@ -317,7 +312,7 @@ func (v *Vorma) buildLoadersHTMLResponseBytes(
 	routeData *RouteDataFinal,
 ) ([]byte, string, error) {
 	headElements, ssrScript, ssrScriptSha256Hash, err := v.renderHeadAndSSRForTemplate(
-		routeResult.assets,
+		routeResult,
 		routeData,
 	)
 	if err != nil {
@@ -335,7 +330,7 @@ func (v *Vorma) buildLoadersHTMLResponseBytes(
 		ssrScriptSha256Hash,
 	)
 
-	htmlRenderSnapshot := v.captureLoadersHTMLRenderSnapshot()
+	htmlRenderSnapshot := routeResult.htmlRenderSnapshot
 	bodyScripts, err := v.getBodyScriptsForTemplate(htmlRenderSnapshot)
 	if err != nil {
 		return nil, "Error getting dev scripts", err

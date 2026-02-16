@@ -19,6 +19,7 @@ export type SkipCheckResult =
 			matchResult: SkipMatchResult;
 			importURLs: string[];
 			exportKeys: string[];
+			errorExportKeys: string[];
 			loadersData: unknown[];
 	  };
 
@@ -45,7 +46,12 @@ function getClientOnlyOutcomeGlobalSnapshot(): ClientOnlyOutcomeGlobalSnapshot {
 function buildSkipResultItem(props: {
 	ctx: SkipCheckContext;
 	pattern: string;
-}): { importURL: string; exportKey: string; loaderData: unknown } | null {
+}): {
+	importURL: string;
+	exportKey: string;
+	errorExportKey: string;
+	loaderData: unknown;
+} | null {
 	const { ctx, pattern } = props;
 	const moduleInfo = ctx.clientModuleMap[pattern];
 	if (!moduleInfo) {
@@ -57,6 +63,7 @@ function buildSkipResultItem(props: {
 		return {
 			importURL: moduleInfo.importURL,
 			exportKey: moduleInfo.exportKey,
+			errorExportKey: moduleInfo.errorExportKey || "",
 			loaderData: undefined,
 		};
 	}
@@ -73,6 +80,7 @@ function buildSkipResultItem(props: {
 	return {
 		importURL: moduleInfo.importURL,
 		exportKey: moduleInfo.exportKey,
+		errorExportKey: moduleInfo.errorExportKey || "",
 		loaderData,
 	};
 }
@@ -80,6 +88,7 @@ function buildSkipResultItem(props: {
 function buildSkipResultFromContext(ctx: SkipCheckContext): SkipCheckResult {
 	const importURLs: string[] = [];
 	const exportKeys: string[] = [];
+	const errorExportKeys: string[] = [];
 	const loadersData: unknown[] = [];
 	const matchedPatterns = getMatchedPatternsOrThrow({
 		matches: ctx.matchResult.matches,
@@ -94,6 +103,7 @@ function buildSkipResultFromContext(ctx: SkipCheckContext): SkipCheckResult {
 
 		importURLs.push(item.importURL);
 		exportKeys.push(item.exportKey);
+		errorExportKeys.push(item.errorExportKey);
 		loadersData.push(item.loaderData);
 	}
 
@@ -102,6 +112,7 @@ function buildSkipResultFromContext(ctx: SkipCheckContext): SkipCheckResult {
 		matchResult: ctx.matchResult,
 		importURLs,
 		exportKeys,
+		errorExportKeys,
 		loadersData,
 	};
 }
@@ -124,7 +135,13 @@ function buildClientOnlyOutcome(
 	props: NavigateProps,
 	controller: AbortController,
 ): NavigationOutcome {
-	const { matchResult, importURLs, exportKeys, loadersData } = skipCheck;
+	const {
+		matchResult,
+		importURLs,
+		exportKeys,
+		errorExportKeys,
+		loadersData,
+	} = skipCheck;
 	const matchedPatterns = getMatchedPatternsOrThrow({
 		matches: matchResult.matches,
 		context: "Route matcher",
@@ -151,7 +168,7 @@ function buildClientOnlyOutcome(
 		cssBundles: [],
 		outermostServerError: undefined,
 		outermostServerErrorIdx: undefined,
-		errorExportKeys: [],
+		errorExportKeys,
 		title: undefined,
 		metaHeadEls: undefined,
 		restHeadEls: undefined,

@@ -22,6 +22,7 @@ var vormaSchema = jsonschema.OptionalObject(jsonschema.Def{
 		ServerRouteDefinitionPatterns jsonschema.Entry
 		TSGenOutDir                   jsonschema.Entry
 		BuildtimePublicURLFuncName    jsonschema.Entry
+		UnresolvedRoutePolicy         jsonschema.Entry
 		DevReloadRoutesEndpointPath   jsonschema.Entry
 		DevReloadTemplateEndpointPath jsonschema.Entry
 		TemplateDataKeyHeadElements   jsonschema.Entry
@@ -40,6 +41,7 @@ var vormaSchema = jsonschema.OptionalObject(jsonschema.Def{
 		ServerRouteDefinitionPatterns: serverRouteDefinitionPatternsSchema,
 		TSGenOutDir:                   tsGenOutDirSchema,
 		BuildtimePublicURLFuncName:    buildtimePublicURLFuncNameSchema,
+		UnresolvedRoutePolicy:         unresolvedRoutePolicySchema,
 		DevReloadRoutesEndpointPath:   devReloadRoutesEndpointPathSchema,
 		DevReloadTemplateEndpointPath: devReloadTemplateEndpointPathSchema,
 		TemplateDataKeyHeadElements:   templateDataKeyHeadElementsSchema,
@@ -100,6 +102,12 @@ var buildtimePublicURLFuncNameSchema = jsonschema.OptionalString(jsonschema.Def{
 	Description: `Name of the global function injected by the Vite plugin for resolving public asset URLs at build time.`,
 	Default:     "waveBuildtimeURL",
 	Examples:    []string{"waveBuildtimeURL", "getAssetURL"},
+})
+
+var unresolvedRoutePolicySchema = jsonschema.OptionalString(jsonschema.Def{
+	Description: `How unresolved route module expressions are handled. Defaults to "warn" in dev and "error" in production.`,
+	Enum:        []string{"warn", "error"},
+	Examples:    []string{"warn", "error"},
 })
 
 var devReloadRoutesEndpointPathSchema = jsonschema.OptionalString(jsonschema.Def{

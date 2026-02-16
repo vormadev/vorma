@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"unsafe"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
@@ -15,8 +14,6 @@ import (
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 )
-
-var gmpdCache sync.Map
 
 type cachedItemSubset struct {
 	ImportURLs      []string
@@ -56,11 +53,14 @@ type RouteResult struct {
 	terminalState routeTerminalState
 	buildID       string
 
-	core         *RouteDataCore
-	headElements []*htmlutil.Element
-	cssBundles   []string
-	assets       *RouteAssets
-	isDev        bool
+	core                      *RouteDataCore
+	headElements              []*htmlutil.Element
+	cssBundles                []string
+	assets                    *RouteAssets
+	isDev                     bool
+	htmlRenderSnapshot        loadersHTMLRenderSnapshot
+	routeManifestFileSnapshot string
+	mergedResponseProxy       *response.Proxy
 }
 
 type routeTerminalState uint8
@@ -84,16 +84,11 @@ type RouteDataFinal struct {
 }
 
 type routeDataExecutionInputs struct {
-	matchResults            *matcher.FindNestedMatchesResults
-	matches                 []*matcher.Match
-	matchedPatterns         []string
-	pathsSnapshot           map[string]*Path
-	clientEntryDepsSnapshot []string
-	clientEntryOutSnapshot  string
-	depToCSSBundlesSnapshot map[string][]string
-	cached                  *cachedItemSubset
-	buildID                 string
-	isDev                   bool
+	matchResults    *matcher.FindNestedMatchesResults
+	matches         []*matcher.Match
+	matchedPatterns []string
+	cached          *cachedItemSubset
+	runtimeSnapshot RuntimeSnapshot
 }
 
 type routeErrorCutPlan struct {
@@ -103,6 +98,20 @@ type routeErrorCutPlan struct {
 	depsForRouteData []string
 }
 
+type routeStageOnePlannerInput struct {
+	matchResults              *matcher.FindNestedMatchesResults
+	matches                   []*matcher.Match
+	matchedPatterns           []string
+	cached                    *cachedItemSubset
+	runtimeSnapshot           RuntimeSnapshot
+	hasRootData               bool
+	loadersData               []any
+	outermostLoaderErrorIndex *int
+	clientLoaderErrorMessage  string
+	responseProxies           []*response.Proxy
+	mergedResponseProxy       *response.Proxy
+}
+
 func (v *Vorma) getRouteDataStage1(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -110,19 +119,39 @@ func (v *Vorma) getRouteDataStage1(
 	requestedBuildID string,
 ) *RouteResult {
 	inputs, found := v.prepareRouteDataExecutionInputs(r, nestedRouter)
-	if inputs.buildID != "" {
-		w.Header().Set(VormaBuildIDHeaderKey, inputs.buildID)
+	if inputs.runtimeSnapshot.buildID != "" {
+		w.Header().Set(VormaBuildIDHeaderKey, inputs.runtimeSnapshot.buildID)
 	}
-	if requestedBuildID != "" && requestedBuildID != inputs.buildID {
+	if requestedBuildID != "" && requestedBuildID != inputs.runtimeSnapshot.buildID {
+		v.Log.Debug(
+			"Stale build loaders request",
+			"path",
+			r.URL.Path,
+			"requested_build_id",
+			requestedBuildID,
+			"current_build_id",
+			inputs.runtimeSnapshot.buildID,
+			"route_data_snapshot_version",
+			inputs.runtimeSnapshot.routeDataSnapshotVersion,
+		)
 		return &RouteResult{
 			terminalState: routeTerminalStateStaleBuild,
-			buildID:       inputs.buildID,
+			buildID:       inputs.runtimeSnapshot.buildID,
 		}
 	}
 	if !found {
+		v.Log.Debug(
+			"No route match for loaders request",
+			"path",
+			r.URL.Path,
+			"build_id",
+			inputs.runtimeSnapshot.buildID,
+			"route_data_snapshot_version",
+			inputs.runtimeSnapshot.routeDataSnapshotVersion,
+		)
 		return &RouteResult{
 			terminalState: routeTerminalStateNotFound,
-			buildID:       inputs.buildID,
+			buildID:       inputs.runtimeSnapshot.buildID,
 		}
 	}
 
@@ -133,78 +162,131 @@ func (v *Vorma) getRouteDataStage1(
 		res.InternalServerError()
 		return &RouteResult{
 			terminalState: routeTerminalStateError,
-			buildID:       inputs.buildID,
+			buildID:       inputs.runtimeSnapshot.buildID,
 		}
 	}
 
+	return v.planRouteResultFromTaskResults(inputs, tasksResults)
+}
+
+func (v *Vorma) planRouteResultFromTaskResults(
+	inputs routeDataExecutionInputs,
+	tasksResults *mux.NestedTasksResults,
+) *RouteResult {
+	mergedResponseProxy := response.MergeProxyResponses(tasksResults.ResponseProxies...)
 	hasRootData := computeHasRootData(inputs.matchResults, tasksResults)
-
-	terminalState := applyMergedResponseProxyAndDetectTerminalState(w, r, tasksResults)
-	if terminalState != routeTerminalStateNone {
-		return &RouteResult{
-			terminalState: terminalState,
-			buildID:       inputs.buildID,
-		}
-	}
 
 	loadersData, loadersErrs := v.collectLoadersDataAndErrors(tasksResults, inputs.matchedPatterns)
 	outermostErrorIdx := findFirstErrorIndex(loadersErrs)
-	cutPlan := v.buildRouteErrorCutPlan(inputs, loadersErrs, outermostErrorIdx)
+	clientLoaderErrorMessage := ""
+	if outermostErrorIdx != nil {
+		derefErrorIdx := *outermostErrorIdx
+		clientLoaderErrorMessage = v.resolveClientLoaderErrorMessage(
+			loadersErrs[derefErrorIdx],
+			inputs.matchedPatterns[derefErrorIdx],
+		)
+	}
+
+	return planRouteResultFromResolvedTaskOutcomes(routeStageOnePlannerInput{
+		matchResults:              inputs.matchResults,
+		matches:                   inputs.matches,
+		matchedPatterns:           inputs.matchedPatterns,
+		cached:                    inputs.cached,
+		runtimeSnapshot:           inputs.runtimeSnapshot,
+		hasRootData:               hasRootData,
+		loadersData:               loadersData,
+		outermostLoaderErrorIndex: outermostErrorIdx,
+		clientLoaderErrorMessage:  clientLoaderErrorMessage,
+		responseProxies:           tasksResults.ResponseProxies,
+		mergedResponseProxy:       mergedResponseProxy,
+	})
+}
+
+func planRouteResultFromResolvedTaskOutcomes(input routeStageOnePlannerInput) *RouteResult {
+	terminalState := detectTerminalStateFromMergedResponseProxy(input.mergedResponseProxy)
+	if terminalState != routeTerminalStateNone {
+		return &RouteResult{
+			terminalState:       terminalState,
+			buildID:             input.runtimeSnapshot.buildID,
+			mergedResponseProxy: input.mergedResponseProxy,
+		}
+	}
+
+	cached := input.cached
+	if cached == nil {
+		cached = buildEmptyCachedItemSubset(len(input.matches))
+	}
+	matchResults := input.matchResults
+	if matchResults == nil {
+		matchResults = &matcher.FindNestedMatchesResults{}
+	}
+
+	normalizedInput := input
+	normalizedInput.cached = cached
+	normalizedInput.matchResults = matchResults
+
+	cutPlan := buildRouteErrorCutPlan(normalizedInput)
 	core := buildRouteDataCore(
-		inputs.matchResults,
-		inputs.matchedPatterns,
-		loadersData,
-		inputs.cached,
-		hasRootData,
-		outermostErrorIdx,
+		normalizedInput.matchResults,
+		normalizedInput.matchedPatterns,
+		normalizedInput.loadersData,
+		normalizedInput.cached,
+		normalizedInput.hasRootData,
+		normalizedInput.outermostLoaderErrorIndex,
 		cutPlan.clientMessage,
 		cutPlan.cutIdx,
 		cutPlan.depsForRouteData,
 	)
 	cssBundles := getCSSBundlesFromSnapshot(
 		core.Deps,
-		inputs.clientEntryOutSnapshot,
-		inputs.depToCSSBundlesSnapshot,
+		normalizedInput.runtimeSnapshot.clientEntryOut,
+		normalizedInput.runtimeSnapshot.depToCSSBundleMap,
 	)
 
 	return &RouteResult{
-		buildID: inputs.buildID,
+		buildID: normalizedInput.runtimeSnapshot.buildID,
 		core:    core,
 		headElements: collectFlattenedHeadElementsForPrefix(
-			tasksResults.ResponseProxies,
+			normalizedInput.responseProxies,
 			cutPlan.headRouteCount,
 		),
-		cssBundles: cssBundles,
-		isDev:      inputs.isDev,
+		cssBundles:                cssBundles,
+		isDev:                     normalizedInput.runtimeSnapshot.isDev,
+		htmlRenderSnapshot:        normalizedInput.runtimeSnapshot.toLoadersHTMLRenderSnapshot(),
+		routeManifestFileSnapshot: normalizedInput.runtimeSnapshot.routeManifestFile,
+		mergedResponseProxy:       normalizedInput.mergedResponseProxy,
 	}
 }
 
-func (v *Vorma) buildRouteErrorCutPlan(
-	inputs routeDataExecutionInputs,
-	loadersErrs []error,
-	outermostErrorIdx *int,
-) routeErrorCutPlan {
-	plan := routeErrorCutPlan{
-		cutIdx:           len(inputs.matches),
-		headRouteCount:   len(inputs.matches),
-		depsForRouteData: inputs.cached.Deps,
+func buildEmptyCachedItemSubset(routeCount int) *cachedItemSubset {
+	return &cachedItemSubset{
+		ImportURLs:      make([]string, routeCount),
+		ExportKeys:      make([]string, routeCount),
+		ErrorExportKeys: make([]string, routeCount),
 	}
-	if outermostErrorIdx == nil {
+}
+
+func buildRouteErrorCutPlan(input routeStageOnePlannerInput) routeErrorCutPlan {
+	plan := routeErrorCutPlan{
+		cutIdx:         len(input.matches),
+		headRouteCount: len(input.matches),
+	}
+	if input.cached != nil {
+		plan.depsForRouteData = input.cached.Deps
+	}
+	if input.outermostLoaderErrorIndex == nil {
 		return plan
 	}
 
-	derefErrorIdx := *outermostErrorIdx
-	plan.clientMessage = v.resolveClientLoaderErrorMessage(
-		loadersErrs[derefErrorIdx],
-		inputs.matchedPatterns[derefErrorIdx],
-	)
+	derefErrorIdx := *input.outermostLoaderErrorIndex
+	plan.clientMessage = input.clientLoaderErrorMessage
 	plan.cutIdx = derefErrorIdx + 1
 	plan.headRouteCount = derefErrorIdx
-	if plan.cutIdx < len(inputs.matches) {
+	if plan.cutIdx < len(input.matches) {
 		plan.depsForRouteData = getDepsFromData(
-			inputs.matches[:plan.cutIdx],
-			inputs.pathsSnapshot,
-			inputs.clientEntryDepsSnapshot,
+			input.matches[:plan.cutIdx],
+			input.runtimeSnapshot.paths,
+			input.runtimeSnapshot.clientEntryDeps,
 		)
 	}
 	return plan
@@ -215,50 +297,43 @@ func (v *Vorma) prepareRouteDataExecutionInputs(
 	nestedRouter *mux.NestedRouter,
 ) (routeDataExecutionInputs, bool) {
 	v.mu.RLock()
-
-	buildID := v._buildID
-	isDev := v._isDev
+	runtimeSnapshot := v.captureRuntimeSnapshotLocked()
 
 	matchResults, found := mux.FindNestedMatches(nestedRouter, r)
 	if !found {
 		v.mu.RUnlock()
 		return routeDataExecutionInputs{
-			buildID: buildID,
-			isDev:   isDev,
+			runtimeSnapshot: runtimeSnapshot,
 		}, false
 	}
 
 	matches := matchResults.Matches
-	routeDataSnapshotVersion := v._routeDataSnapshotVersion
-	pathsSnapshot := v._paths
-	clientEntryDepsSnapshot := v._clientEntryDeps
-	clientEntryOutSnapshot := v._clientEntryOut
-	depToCSSBundlesSnapshot := v._depToCSSBundleMap
 	v.mu.RUnlock()
 
 	matchedPatterns := collectMatchedPatterns(matches)
-	cacheKey := v.buildRouteDataCacheKey(matches, isDev, buildID)
+	cacheKey := v.buildRouteDataCacheKey(
+		matches,
+		runtimeSnapshot.isDev,
+		runtimeSnapshot.buildID,
+		runtimeSnapshot.routeDataSnapshotVersion,
+	)
 	cached := loadOrBuildCachedItemSubset(
 		v,
 		cacheKey,
 		matches,
-		pathsSnapshot,
-		clientEntryDepsSnapshot,
-		isDev,
-		routeDataSnapshotVersion,
+		runtimeSnapshot.paths,
+		runtimeSnapshot.clientEntryDeps,
+		runtimeSnapshot.isDev,
+		runtimeSnapshot.routeDataSnapshotVersion,
+		runtimeSnapshot.routeDataCache,
 	)
 
 	return routeDataExecutionInputs{
-		matchResults:            matchResults,
-		matches:                 matches,
-		matchedPatterns:         matchedPatterns,
-		pathsSnapshot:           pathsSnapshot,
-		clientEntryDepsSnapshot: clientEntryDepsSnapshot,
-		clientEntryOutSnapshot:  clientEntryOutSnapshot,
-		depToCSSBundlesSnapshot: depToCSSBundlesSnapshot,
-		cached:                  cached,
-		buildID:                 buildID,
-		isDev:                   isDev,
+		matchResults:    matchResults,
+		matches:         matches,
+		matchedPatterns: matchedPatterns,
+		cached:          cached,
+		runtimeSnapshot: runtimeSnapshot,
 	}, true
 }
 
@@ -278,14 +353,19 @@ func loadOrBuildCachedItemSubset(
 	clientEntryDepsSnapshot []string,
 	isDev bool,
 	expectedSnapshotVersion uint64,
+	routeDataCacheSnapshot *sync.Map,
 ) *cachedItemSubset {
-	if cachedValue, isCached := gmpdCache.Load(cacheKey); isCached {
+	if routeDataCacheSnapshot == nil {
+		return buildCachedItemSubset(matches, pathsSnapshot, clientEntryDepsSnapshot, isDev)
+	}
+
+	if cachedValue, isCached := routeDataCacheSnapshot.Load(cacheKey); isCached {
 		return cachedValue.(*cachedItemSubset)
 	}
 
 	cached := buildCachedItemSubset(matches, pathsSnapshot, clientEntryDepsSnapshot, isDev)
 	if v.isRouteDataSnapshotVersionCurrent(expectedSnapshotVersion) {
-		gmpdCache.Store(cacheKey, cached)
+		routeDataCacheSnapshot.Store(cacheKey, cached)
 	}
 	return cached
 }
@@ -305,17 +385,11 @@ func computeHasRootData(
 		tasksResults.GetHasTaskHandler(0)
 }
 
-func applyMergedResponseProxyAndDetectTerminalState(
-	w http.ResponseWriter,
-	r *http.Request,
-	tasksResults *mux.NestedTasksResults,
-) routeTerminalState {
-	mergedResponseProxy := response.MergeProxyResponses(tasksResults.ResponseProxies...)
+func detectTerminalStateFromMergedResponseProxy(mergedResponseProxy *response.Proxy) routeTerminalState {
 	if mergedResponseProxy == nil {
 		return routeTerminalStateNone
 	}
 
-	mergedResponseProxy.ApplyToResponseWriter(w, r)
 	if mergedResponseProxy.IsError() {
 		return routeTerminalStateError
 	}
@@ -472,24 +546,22 @@ func collectFlattenedHeadElementsForPrefix(
 	return flattenedHeadEls
 }
 
-func (v *Vorma) buildRouteDataCacheKey(matches []*matcher.Match, isDev bool, buildID string) string {
+func (v *Vorma) buildRouteDataCacheKey(
+	matches []*matcher.Match,
+	isDev bool,
+	buildID string,
+	routeDataSnapshotVersion uint64,
+) string {
+	snapshotVersionString := strconv.FormatUint(routeDataSnapshotVersion, 10)
 	var sb strings.Builder
-
-	appIdentity := v._routeDataCacheAppIdentity
-	if appIdentity == "" {
-		appIdentity = computeRouteDataCacheAppIdentity(v)
-	}
-
-	// Include app identity + mode + build to prevent cross-app/mode/build cache leakage.
-	sb.Grow(len(appIdentity) + len(buildID) + (len(matches) * 16) + 3)
-	sb.WriteString(appIdentity)
-	sb.WriteByte('|')
-
+	sb.Grow(len(buildID) + len(snapshotVersionString) + (len(matches) * 16) + 3)
 	if isDev {
 		sb.WriteByte('1')
 	} else {
 		sb.WriteByte('0')
 	}
+	sb.WriteByte('|')
+	sb.WriteString(snapshotVersionString)
 	sb.WriteByte('|')
 	sb.WriteString(buildID)
 	sb.WriteByte('|')
@@ -498,12 +570,6 @@ func (v *Vorma) buildRouteDataCacheKey(matches []*matcher.Match, isDev bool, bui
 		sb.WriteByte(';')
 	}
 	return sb.String()
-}
-
-func computeRouteDataCacheAppIdentity(v *Vorma) string {
-	var ptrBuf [20]byte
-	ptrBytes := strconv.AppendUint(ptrBuf[:0], uint64(uintptr(unsafe.Pointer(v))), 16)
-	return string(ptrBytes)
 }
 
 func (v *Vorma) getUIRouteData(
@@ -515,6 +581,9 @@ func (v *Vorma) getUIRouteData(
 ) *RouteResult {
 	res := response.New(w)
 	routeResult := v.getRouteDataStage1(w, r, nestedRouter, requestedBuildID)
+	if routeResult.mergedResponseProxy != nil {
+		routeResult.mergedResponseProxy.ApplyToResponseWriter(w, r)
+	}
 	if routeResult.terminalState != routeTerminalStateNone {
 		return routeResult
 	}
@@ -531,9 +600,11 @@ func (v *Vorma) getUIRouteData(
 
 	assets := v.buildRouteAssets(routeResult, defaultHeadElsRaw, isJSON)
 	return &RouteResult{
-		buildID: routeResult.buildID,
-		core:    routeResult.core,
-		assets:  assets,
+		buildID:                   routeResult.buildID,
+		core:                      routeResult.core,
+		assets:                    assets,
+		htmlRenderSnapshot:        routeResult.htmlRenderSnapshot,
+		routeManifestFileSnapshot: routeResult.routeManifestFileSnapshot,
 	}
 }
 
@@ -569,7 +640,7 @@ func (v *Vorma) buildRouteAssets(
 	return &RouteAssets{
 		SortedAndPreEscapedHeadEls: headEls,
 		CSSBundles:                 cssBundles,
-		ViteDevURL:                 v.getViteDevURL(),
+		ViteDevURL:                 getViteDevURLForMode(routeResult.isDev),
 	}
 }
 

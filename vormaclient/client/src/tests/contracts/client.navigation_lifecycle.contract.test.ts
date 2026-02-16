@@ -50,8 +50,8 @@ describe("client navigation lifecycle contracts", () => {
 		const { navigationStateManager } = await import("../../client.ts");
 		const { requests } = createAbortAwareFetchRecorder();
 
-		const { result, unhandledRejections } = await withUnhandledRejectionCapture(
-			{
+		const { result, unhandledRejections } =
+			await withUnhandledRejectionCapture({
 				run: async () => {
 					const navPromise = api.vormaNavigate("/clear-all-nav");
 					const submitPromise = api.submit(
@@ -77,8 +77,7 @@ describe("client navigation lifecycle contracts", () => {
 
 					return { submitResult };
 				},
-			},
-		);
+			});
 
 		expect(result.submitResult).toEqual({
 			success: false,
@@ -138,7 +137,8 @@ describe("client navigation lifecycle contracts", () => {
 		navigationStateManager.clearAll();
 		expect(fetchCall.getSignal()?.aborted).toBe(true);
 
-		const rAFCallCountBeforeResolve = requestAnimationFrameSpy.mock.calls.length;
+		const rAFCallCountBeforeResolve =
+			requestAnimationFrameSpy.mock.calls.length;
 		fetchCall.deferred.resolve(
 			createRouteDataResponse({
 				title: { dangerousInnerHTML: "Late Stale Title" },
@@ -387,6 +387,58 @@ describe("client navigation lifecycle contracts", () => {
 			splatValues: ["tail"],
 			rootData: { user: { id: "123" } },
 		});
+	});
+
+	it("preserves server-equivalent metadata when a same-route client-only skip navigation runs", async () => {
+		vi.doMock("/metadata-parity.js", () => ({
+			default: () => null,
+			RouteError: () => null,
+		}));
+		installContractVormaGlobal({
+			routeManifest: undefined,
+		});
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValueOnce(
+			createRouteDataResponse({
+				matchedPatterns: ["/metadata-parity"],
+				loadersData: [{}],
+				importURLs: ["/metadata-parity.js"],
+				exportKeys: ["default"],
+				errorExportKeys: ["RouteError"],
+				title: { dangerousInnerHTML: "Metadata Parity Title" },
+				metaHeadEls: [
+					{
+						tag: "meta",
+						attributesKnownSafe: {
+							name: "description",
+							content: "Metadata parity description",
+						},
+					},
+				],
+			}),
+		);
+
+		await api.vormaNavigate("/metadata-parity");
+		await vi.runAllTimersAsync();
+
+		const moduleMapBeforeSkip = JSON.parse(
+			JSON.stringify(api.__vormaClientGlobal.get("clientModuleMap")),
+		);
+		expect(document.title).toBe("Metadata Parity Title");
+
+		api.__vormaClientGlobal.set("routeManifest", {
+			"/metadata-parity": 0,
+		});
+		await api.__registerClientLoaderPattern("/metadata-parity");
+
+		await api.vormaNavigate("/metadata-parity#skip");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(document.title).toBe("Metadata Parity Title");
+		expect(api.__vormaClientGlobal.get("clientModuleMap")).toEqual(
+			moduleMapBeforeSkip,
+		);
 	});
 
 	it("pushes history for user navigation to a different URL", async () => {

@@ -121,6 +121,54 @@ describe("client state/revalidation contracts", () => {
 		expect(api.getStatus().isRevalidating).toBe(false);
 	});
 
+	it("keeps one revalidation in-flight and runs at most one trailing pass for rapid repeated requests", async () => {
+		const api = await loadClientAPI();
+		const firstRevalidationFetch = createDeferred<Response>();
+		const trailingRevalidationFetch = createDeferred<Response>();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementationOnce(
+				() => firstRevalidationFetch.promise as Promise<Response>,
+			)
+			.mockImplementationOnce(
+				() => trailingRevalidationFetch.promise as Promise<Response>,
+			);
+
+		const first = api.revalidate();
+		await vi.advanceTimersByTimeAsync(8);
+
+		const second = api.revalidate();
+		const third = api.revalidate();
+		await vi.advanceTimersByTimeAsync(16);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+		firstRevalidationFetch.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "First Revalidation" },
+			}),
+		);
+		await first;
+		await vi.advanceTimersByTimeAsync(8);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+		trailingRevalidationFetch.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Trailing Revalidation" },
+			}),
+		);
+		await Promise.all([second, third]);
+		await vi.runAllTimersAsync();
+
+		expect(document.title).toBe("Trailing Revalidation");
+		expect(api.getStatus()).toEqual({
+			isNavigating: false,
+			isSubmitting: false,
+			isRevalidating: false,
+		});
+	});
+
 	it("does not coalesce revalidation across data-target changes", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/revalidate-a");

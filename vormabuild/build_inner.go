@@ -1,6 +1,7 @@
 package vormabuild
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -89,6 +90,18 @@ func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 	normalizedOptions := normalizeBuildInnerOptions(opts)
 
 	start := time.Now()
+	buildLifecycleStateMachine, err := newBuildLifecycleStateMachine(
+		buildLifecycleWorkflowFullBuild,
+		v.Log,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("configure build lifecycle state machine: %w", err)
+	}
+	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseStarted, "full build started"); err != nil {
+		return fmt.Errorf("transition build lifecycle to started: %w", err)
+	}
+
 	initialRuntimeState := buildInnerDeps.captureBuildInnerRuntimeState(v)
 	buildErr := runWithRollbackOnFailureAndPanic(
 		rollbackTransactionOptions{
@@ -96,21 +109,51 @@ func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 				if err := buildInnerDeps.initializeBuildInnerState(v, &normalizedOptions); err != nil {
 					return err
 				}
+				if err := buildLifecycleStateMachine.transitionTo(
+					buildLifecyclePhaseRuntimeStateInitialized,
+					"runtime state initialized",
+				); err != nil {
+					return fmt.Errorf("transition build lifecycle to runtime-state-initialized: %w", err)
+				}
 
 				if err := buildInnerDeps.parseAndSyncClientRoutes(v); err != nil {
 					return fmt.Errorf("parse client routes: %w", err)
+				}
+				if err := buildLifecycleStateMachine.transitionTo(
+					buildLifecyclePhaseRoutesSynchronized,
+					"client routes synchronized",
+				); err != nil {
+					return fmt.Errorf("transition build lifecycle to routes-synchronized: %w", err)
 				}
 
 				if err := buildInnerDeps.cleanStaticPublicOutDir(v); err != nil {
 					return fmt.Errorf("clean static public out dir: %w", err)
 				}
+				if err := buildLifecycleStateMachine.transitionTo(
+					buildLifecyclePhasePublicOutputCleaned,
+					"static public output cleaned",
+				); err != nil {
+					return fmt.Errorf("transition build lifecycle to public-output-cleaned: %w", err)
+				}
 
 				if err := buildInnerDeps.writePublicFileMapTypeScript(v); err != nil {
 					return fmt.Errorf("write public file map TS: %w", err)
 				}
+				if err := buildLifecycleStateMachine.transitionTo(
+					buildLifecyclePhasePublicFileMapWritten,
+					"public file map written",
+				); err != nil {
+					return fmt.Errorf("transition build lifecycle to public-file-map-written: %w", err)
+				}
 
 				if err := buildInnerDeps.writeRouteArtifactsWithLock(v); err != nil {
 					return fmt.Errorf("write route artifacts: %w", err)
+				}
+				if err := buildLifecycleStateMachine.transitionTo(
+					buildLifecyclePhaseRouteArtifactsWritten,
+					"route artifacts written",
+				); err != nil {
+					return fmt.Errorf("transition build lifecycle to route-artifacts-written: %w", err)
 				}
 				return nil
 			},
@@ -121,7 +164,16 @@ func buildInner(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
 		},
 	)
 	if buildErr != nil {
+		if transitionErr := buildLifecycleStateMachine.transitionToFailed("full build failed", buildErr); transitionErr != nil {
+			return errors.Join(
+				buildErr,
+				fmt.Errorf("transition build lifecycle to failed: %w", transitionErr),
+			)
+		}
 		return buildErr
+	}
+	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseCompleted, "full build completed"); err != nil {
+		return fmt.Errorf("transition build lifecycle to completed: %w", err)
 	}
 
 	buildInnerDeps.logBuildInnerCompletion(v, start)
@@ -150,16 +202,17 @@ func restoreBuildInnerRuntimeState(
 	v *vormaruntime.Vorma,
 	state buildInnerRuntimeStateSnapshot,
 ) {
-	v.SetIsDev(state.isDev)
 	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetIsDev(state.isDev)
 		restoreRouteBuildRuntimeStateSnapshot(l, state.routeBuildRuntimeState)
 	})
 }
 
 func initializeBuildInnerState(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
-	v.SetIsDev(opts.isDev)
-
 	if !opts.isDev {
+		v.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+		})
 		v.Log.Info("START building Vorma (PROD)")
 		return nil
 	}
@@ -170,6 +223,7 @@ func initializeBuildInnerState(v *vormaruntime.Vorma, opts *buildInnerOptions) e
 	}
 
 	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetIsDev(true)
 		l.SetBuildID(buildID)
 	})
 	v.Log.Info("START building Vorma (DEV)")

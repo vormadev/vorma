@@ -17,6 +17,7 @@ type CreateEntryOptions = {
 	props: NavigateProps;
 	fetchRouteData: FetchRouteDataFn;
 	onFetchError: (error: unknown) => void;
+	operationID: number;
 };
 
 function createEntryControl(options: CreateEntryOptions): {
@@ -47,6 +48,7 @@ function createNavigationEntry(props: {
 	const control = createEntryControl(options);
 
 	return {
+		operationID: options.operationID,
 		control,
 		type,
 		intent,
@@ -67,11 +69,12 @@ export type CreateNavigationControlsContext = {
 	) => Promise<NavigationOutcome>;
 	getActiveNavigation: () => NavigationEntry | null;
 	setActiveNavigation: (entry: NavigationEntry | null) => void;
-	prefetchCache: Map<string, NavigationEntry>;
-	getPendingRevalidation: () => NavigationEntry | null;
-	setPendingRevalidation: (entry: NavigationEntry | null) => void;
+	prefetchNavigationsByTargetUrl: Map<string, NavigationEntry>;
+	getRevalidationNavigation: () => NavigationEntry | null;
+	setRevalidationNavigation: (entry: NavigationEntry | null) => void;
 	scheduleStatusUpdate: () => void;
-	deleteNavigation: (key: string) => boolean;
+	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
+	allocateNavigationOperationID: () => number;
 };
 
 export type NavigationControls = {
@@ -103,6 +106,7 @@ export function createNavigationControls(
 				props: props.navigationProps,
 				fetchRouteData,
 				onFetchError: props.onFetchError,
+				operationID: context.allocateNavigationOperationID(),
 			},
 			type: props.type,
 			intent: props.intent,
@@ -130,7 +134,10 @@ export function createNavigationControls(
 			intent,
 			onFetchError: () => {
 				if (getActiveNavigation() === entry) {
-					deleteNavigation(targetUrl);
+					deleteNavigation({
+						targetUrl,
+						reason: "active_navigation_fetch_rejected",
+					});
 				}
 			},
 		});
@@ -144,7 +151,7 @@ export function createNavigationControls(
 		props: NavigateProps,
 		targetUrl: string,
 	): NavigationControl {
-		const { prefetchCache } = context;
+		const { prefetchNavigationsByTargetUrl } = context;
 
 		let entry: NavigationEntry;
 		entry = createControlEntry({
@@ -153,13 +160,16 @@ export function createNavigationControls(
 			type: "prefetch",
 			intent: "none",
 			onFetchError: () => {
-				if (prefetchCache.get(targetUrl) === entry) {
-					prefetchCache.delete(targetUrl);
+				if (prefetchNavigationsByTargetUrl.get(targetUrl) === entry) {
+					context.deleteNavigation({
+						targetUrl,
+						reason: "prefetch_fetch_rejected",
+					});
 				}
 			},
 		});
 
-		prefetchCache.set(targetUrl, entry);
+		prefetchNavigationsByTargetUrl.set(targetUrl, entry);
 		return entry.control;
 	}
 
@@ -167,8 +177,8 @@ export function createNavigationControls(
 		props: NavigateProps,
 	): NavigationControl {
 		const {
-			getPendingRevalidation,
-			setPendingRevalidation,
+			getRevalidationNavigation,
+			setRevalidationNavigation,
 			scheduleStatusUpdate,
 		} = context;
 
@@ -180,15 +190,17 @@ export function createNavigationControls(
 			type: "revalidation",
 			intent: "revalidate",
 			onFetchError: () => {
-				const pendingRevalidation = getPendingRevalidation();
-				if (pendingRevalidation === entry) {
-					setPendingRevalidation(null);
-					scheduleStatusUpdate();
+				const revalidationNavigation = getRevalidationNavigation();
+				if (revalidationNavigation === entry) {
+					context.deleteNavigation({
+						targetUrl,
+						reason: "revalidation_fetch_rejected",
+					});
 				}
 			},
 		});
 
-		setPendingRevalidation(entry);
+		setRevalidationNavigation(entry);
 		scheduleStatusUpdate();
 		return entry.control;
 	}

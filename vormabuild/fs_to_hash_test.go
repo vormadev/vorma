@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestGetFSSummaryHash_UsesPathAndSizeOnly(t *testing.T) {
+func TestGetFSSummaryHash_ChangesWhenFileContentChangesAtSamePathAndSize(t *testing.T) {
 	fsA := fstest.MapFS{
 		"alpha.txt": {Data: []byte("ab")},
 		"beta.txt":  {Data: []byte("xyz")},
@@ -28,8 +28,11 @@ func TestGetFSSummaryHash_UsesPathAndSizeOnly(t *testing.T) {
 		t.Fatalf("getFSSummaryHash(fsB) failed: %v", err)
 	}
 
-	if !bytes.Equal(hashA, hashB) {
-		t.Fatalf("expected equal hashes for same file paths/sizes, got %x and %x", hashA, hashB)
+	if bytes.Equal(hashA, hashB) {
+		t.Fatalf(
+			"expected different hashes when file content changes at same path/size, got %x",
+			hashA,
+		)
 	}
 }
 

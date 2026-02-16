@@ -3,11 +3,19 @@ package vormaruntime
 import (
 	"fmt"
 	"html/template"
-	"path/filepath"
 )
 
 func (v *Vorma) guardDevOnlyReload(op string) error {
-	if !v.GetIsDevMode() {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	if !v._isDev {
+		return fmt.Errorf("%s is dev-only and cannot run outside dev mode", op)
+	}
+	return nil
+}
+
+func (v *Vorma) guardDevOnlyReloadLocked(op string) error {
+	if !v._isDev {
 		return fmt.Errorf("%s is dev-only and cannot run outside dev mode", op)
 	}
 	return nil
@@ -21,16 +29,33 @@ func (v *Vorma) devReloadRoutesFromDisk() error {
 		return err
 	}
 
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	v.mu.RLock()
+	privateFS := v._privateFS
+	v.mu.RUnlock()
 
-	pathsFile, err := v.getBasePaths_StageOneOrTwo(true)
+	pathsFile, err := v.getBasePathsFromFS(privateFS, true)
 	if err != nil {
 		return fmt.Errorf("load paths from disk: %w", err)
 	}
+	runtimeArtifacts, err := buildRuntimeRouteArtifacts(pathsFile)
+	if err != nil {
+		return fmt.Errorf("build runtime route artifacts: %w", err)
+	}
 
-	v.applyPathsFileMetadataLocked(pathsFile)
-	v.routes().SyncFromDevReload(pathsFile.Paths)
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	if err := v.guardDevOnlyReloadLocked("route reload"); err != nil {
+		return err
+	}
+
+	v.transitionLifecycleStateLocked(
+		runtimeLifecycleStateReloadingRoutes,
+		"dev route artifacts commit start",
+		"",
+	)
+	v.commitRouteArtifactsLocked(runtimeArtifacts, true, routeArtifactCommitModeDevReload)
+	v.transitionLifecycleStateLocked(runtimeLifecycleStateReady, "dev route artifacts commit complete", "")
 
 	v.Log.Info("Routes reloaded from disk", "buildID", v._buildID)
 	return nil
@@ -42,15 +67,31 @@ func (v *Vorma) devReloadTemplateFromDisk() error {
 		return err
 	}
 
-	srcPath := filepath.Join(v.Wave.GetPrivateStaticDir(), v.Config.HTMLTemplateLocation)
-	tmpl, err := template.ParseFiles(srcPath)
+	v.mu.RLock()
+	privateFS := v._privateFS
+	rootTemplateLocation := v.Config.HTMLTemplateLocation
+	v.mu.RUnlock()
+	if privateFS == nil {
+		return fmt.Errorf("private fs is nil")
+	}
+
+	tmpl, err := template.ParseFS(privateFS, rootTemplateLocation)
 	if err != nil {
 		return fmt.Errorf("parse template: %w", err)
 	}
 
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	v._rootTemplate = tmpl
+	if err := v.guardDevOnlyReloadLocked("template reload"); err != nil {
+		return err
+	}
+	v.transitionLifecycleStateLocked(
+		runtimeLifecycleStateReloadingHTML,
+		"dev html template commit start",
+		"",
+	)
+	v.commitRootTemplateLocked(tmpl)
+	v.transitionLifecycleStateLocked(runtimeLifecycleStateReady, "dev html template commit complete", "")
 
 	v.Log.Info("HTML template reloaded")
 	return nil

@@ -169,16 +169,15 @@ async function loadComponents(
 	return loadComponentModules(importURLs);
 }
 
-async function handleComponents(
-	importURLs?: string[],
-): Promise<ComponentModulesMap> {
-	const modulesMap = await loadComponents(importURLs);
-	const originalImportURLs = __vormaClientGlobal.get("importURLs") ?? [];
-	const exportKeys = __vormaClientGlobal.get("exportKeys") ?? [];
+function setActiveComponentsFromModules(props: {
+	importURLs: Array<string> | undefined;
+	exportKeys: Array<string> | undefined;
+	modulesMap: ComponentModulesMap;
+}): void {
 	const newActiveComponents = buildActiveComponents({
-		importURLs: originalImportURLs,
-		exportKeys,
-		modulesMap,
+		importURLs: props.importURLs ?? [],
+		exportKeys: props.exportKeys ?? [],
+		modulesMap: props.modulesMap,
 	});
 
 	if (
@@ -189,7 +188,41 @@ async function handleComponents(
 	) {
 		__vormaClientGlobal.set("activeComponents", newActiveComponents);
 	}
+}
 
+function setActiveErrorBoundaryFromModules(props: {
+	importURLs: Array<string> | undefined;
+	errorExportKeys: Array<string> | undefined;
+	modulesMap: ComponentModulesMap;
+}): void {
+	const errorIdx = getEffectiveErrorData().index;
+	if (errorIdx == null) {
+		return;
+	}
+
+	const newErrorBoundary = resolveErrorBoundaryComponent({
+		errorIdx,
+		importURLs: props.importURLs ?? [],
+		errorExportKeys: props.errorExportKeys,
+		modulesMap: props.modulesMap,
+		defaultErrorBoundary: __vormaClientGlobal.get("defaultErrorBoundary"),
+	});
+
+	const currentErrorBoundary = __vormaClientGlobal.get("activeErrorBoundary");
+	if (currentErrorBoundary !== newErrorBoundary) {
+		__vormaClientGlobal.set("activeErrorBoundary", newErrorBoundary);
+	}
+}
+
+async function handleComponents(
+	importURLs?: string[],
+): Promise<ComponentModulesMap> {
+	const modulesMap = await loadComponents(importURLs);
+	setActiveComponentsFromModules({
+		importURLs: __vormaClientGlobal.get("importURLs"),
+		exportKeys: __vormaClientGlobal.get("exportKeys"),
+		modulesMap,
+	});
 	return modulesMap;
 }
 
@@ -198,27 +231,11 @@ async function handleErrorBoundaryComponent(
 	modulesMapOverride?: ComponentModulesMap,
 ): Promise<void> {
 	const modulesMap = modulesMapOverride ?? (await loadComponents(importURLs));
-	const originalImportURLs = __vormaClientGlobal.get("importURLs") ?? [];
-	const errorIdx = getEffectiveErrorData().index;
-
-	if (errorIdx != null) {
-		const newErrorBoundary = resolveErrorBoundaryComponent({
-			errorIdx,
-			importURLs: originalImportURLs,
-			errorExportKeys: __vormaClientGlobal.get("errorExportKeys"),
-			modulesMap,
-			defaultErrorBoundary: __vormaClientGlobal.get(
-				"defaultErrorBoundary",
-			),
-		});
-
-		const currentErrorBoundary = __vormaClientGlobal.get(
-			"activeErrorBoundary",
-		);
-		if (currentErrorBoundary !== newErrorBoundary) {
-			__vormaClientGlobal.set("activeErrorBoundary", newErrorBoundary);
-		}
-	}
+	setActiveErrorBoundaryFromModules({
+		importURLs: __vormaClientGlobal.get("importURLs"),
+		errorExportKeys: __vormaClientGlobal.get("errorExportKeys"),
+		modulesMap,
+	});
 }
 
 export const ComponentLoader = {
@@ -677,8 +694,18 @@ type RerenderAppProps = {
 	json: GetRouteDataOutput;
 	navigationType: VormaNavigationType;
 	runHistoryOptions?: RenderingHistoryOptions;
+	shouldCommit?: () => boolean;
 	onFinish: () => void;
 };
+
+function canCommitRender(props: {
+	shouldCommit: RerenderAppProps["shouldCommit"];
+}): boolean {
+	if (!props.shouldCommit) {
+		return true;
+	}
+	return props.shouldCommit();
+}
 
 export async function __reRenderApp(props: RerenderAppProps): Promise<void> {
 	const shouldUseViewTransitions =
@@ -698,16 +725,30 @@ export async function __reRenderApp(props: RerenderAppProps): Promise<void> {
 }
 
 async function __reRenderAppInner(props: RerenderAppProps): Promise<void> {
-	const { json, navigationType, runHistoryOptions } = props;
+	const { json, navigationType, runHistoryOptions, shouldCommit } = props;
+
+	if (!canCommitRender({ shouldCommit })) {
+		return;
+	}
+
+	const modulesMap = await ComponentLoader.loadComponents(json.importURLs);
+
+	if (!canCommitRender({ shouldCommit })) {
+		return;
+	}
 
 	applyRouteDataToGlobalState(json);
 	deriveAndSetErrorState();
-
-	const modulesMap = await ComponentLoader.handleComponents(json.importURLs);
-	await ComponentLoader.handleErrorBoundaryComponent(
-		json.importURLs,
+	setActiveComponentsFromModules({
+		importURLs: json.importURLs,
+		exportKeys: json.exportKeys,
 		modulesMap,
-	);
+	});
+	setActiveErrorBoundaryFromModules({
+		importURLs: json.importURLs,
+		errorExportKeys: json.errorExportKeys,
+		modulesMap,
+	});
 
 	const scrollStateToDispatch: ScrollState | undefined =
 		runHistoryAndDeriveScrollState({ navigationType, runHistoryOptions });

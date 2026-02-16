@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/vormadev/vorma/kit/mux"
@@ -259,7 +260,7 @@ func BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		clearGMPDCacheForBenchmark()
+		clearGMPDCacheForBenchmark(app)
 		b.StartTimer()
 
 		req := httptest.NewRequest(http.MethodGet, url, nil)
@@ -400,9 +401,11 @@ func BenchmarkActionsHandler_GETQueryCurrentBuild(b *testing.B) {
 	}
 }
 
-func clearGMPDCacheForBenchmark() {
-	gmpdCache.Range(func(key, _ any) bool {
-		gmpdCache.Delete(key)
-		return true
+func clearGMPDCacheForBenchmark(app *Vorma) {
+	if app == nil {
+		return
+	}
+	app.WithLock(func(lv *LockedVorma) {
+		lv.v._routeDataCache = &sync.Map{}
 	})
 }

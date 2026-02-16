@@ -174,10 +174,24 @@ func prepareDiscoveredRouteRegistrarOverlay(
 }
 
 func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
-	if v == nil {
+	if v == nil || v.Wave == nil || v.Config == nil {
 		return "<nil-vorma>"
 	}
-	return fmt.Sprintf("%p", v)
+
+	normalizedServerRoutePatterns := normalizeRouteDefinitionPatternsInInputOrder(
+		v.Config.ServerRouteDefinitionPatterns,
+	)
+	return strings.Join(
+		[]string{
+			filepath.ToSlash(filepath.Clean(v.Wave.GetConfigFile())),
+			filepath.ToSlash(filepath.Clean(v.Wave.GetDistDir())),
+			filepath.ToSlash(filepath.Clean(v.Wave.GetStaticPrivateOutDir())),
+			filepath.ToSlash(filepath.Clean(v.Wave.GetStaticPublicOutDir())),
+			strings.TrimSpace(v.Config.MainBuildEntry),
+			strings.Join(normalizedServerRoutePatterns, ","),
+		},
+		"|",
+	)
 }
 
 func computeDiscoveredRouteRegistrarDiscoveryFingerprint(

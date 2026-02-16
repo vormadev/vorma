@@ -18,6 +18,7 @@ function createClickEvent(href: string): MouseEvent {
 
 function createIdlePrefetchEntry(targetHref: string): NavigationEntry {
 	return {
+		operationID: 1,
 		control: {
 			abortController: new AbortController(),
 			promise: Promise.resolve({ type: "aborted" }),
@@ -52,6 +53,7 @@ describe("links internal branches", () => {
 			promise: controlPromise,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
+			operationID: 1,
 			control: {
 				abortController: new AbortController(),
 				promise: controlPromise,
@@ -86,6 +88,7 @@ describe("links internal branches", () => {
 			promise: staleControlPromise,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
+			operationID: 1,
 			control: {
 				abortController: new AbortController(),
 				promise: currentControlPromise,
@@ -122,6 +125,7 @@ describe("links internal branches", () => {
 			promise: controlPromise,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
+			operationID: 1,
 			control: {
 				abortController: new AbortController(),
 				promise: controlPromise,
@@ -167,6 +171,7 @@ describe("links internal branches", () => {
 		};
 		const controlPromise = Promise.resolve(redirectOutcome);
 		const staleEntry: NavigationEntry = {
+			operationID: 1,
 			control: {
 				abortController: new AbortController(),
 				promise: controlPromise,
@@ -179,6 +184,7 @@ describe("links internal branches", () => {
 			originUrl: window.location.href,
 		};
 		const replacementEntry: NavigationEntry = {
+			operationID: 2,
 			control: {
 				abortController: new AbortController(),
 				promise: Promise.resolve({ type: "aborted" as const }),
@@ -247,6 +253,7 @@ describe("links internal branches", () => {
 		};
 		const controlPromise = Promise.resolve(redirectOutcome);
 		const entry: NavigationEntry = {
+			operationID: 1,
 			control: {
 				abortController: new AbortController(),
 				promise: controlPromise,
@@ -295,6 +302,7 @@ describe("links internal branches", () => {
 			promise: staleControlPromise,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
+			operationID: 1,
 			control: {
 				abortController: new AbortController(),
 				promise: currentControlPromise,
@@ -353,6 +361,7 @@ describe("links internal branches", () => {
 		};
 		const controlPromise = Promise.resolve(successOutcome);
 		const entry: NavigationEntry = {
+			operationID: 1,
 			control: {
 				abortController: new AbortController(),
 				promise: controlPromise,

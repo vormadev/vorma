@@ -21,7 +21,7 @@ type fastRouteRebuildDependencies struct {
 
 type fastRouteRebuildArtifactDependencies struct {
 	cleanRouteManifestsOnly     func(*vormaruntime.Vorma) error
-	writeRouteArtifacts         func(*vormaruntime.LockedVorma) error
+	writeRouteArtifacts         func(*vormaruntime.Vorma) error
 	readRouteManifestArtifact   func(string) ([]byte, error)
 	writeRouteManifestArtifact  func(string, []byte, os.FileMode) error
 	removeRouteManifestArtifact func(string) error
@@ -40,7 +40,7 @@ var fastRouteRebuildDeps = fastRouteRebuildDependencies{
 
 var fastRouteRebuildArtifactDeps = fastRouteRebuildArtifactDependencies{
 	cleanRouteManifestsOnly:     cleanRouteManifestsOnly,
-	writeRouteArtifacts:         writeRouteArtifacts,
+	writeRouteArtifacts:         writeRouteArtifactsWithLock,
 	readRouteManifestArtifact:   os.ReadFile,
 	writeRouteManifestArtifact:  writeFileAtomically,
 	removeRouteManifestArtifact: os.Remove,
@@ -69,21 +69,57 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 		return errors.New("rebuildRoutesOnly should only be called in dev mode")
 	}
 
+	buildLifecycleStateMachine, err := newBuildLifecycleStateMachine(
+		buildLifecycleWorkflowFastRouteRebuild,
+		v.Log,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("configure build lifecycle state machine: %w", err)
+	}
+	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseStarted, "fast route rebuild started"); err != nil {
+		return fmt.Errorf("transition build lifecycle to started: %w", err)
+	}
+
 	v.Log.Info("START fast route rebuild")
 
-	err := fastRouteRebuildDeps.runRouteSyncExecution(
+	err = fastRouteRebuildDeps.runRouteSyncExecution(
 		v,
 		routeSyncExecutionOptions{
 			parseClientRoutes:          fastRouteRebuildDeps.parseClientRoutes,
 			generateBuildID:            fastRouteRebuildDeps.newFastRebuildID,
 			parseClientRoutesErrorText: "parse client routes",
-			postSyncHook: func(l *vormaruntime.LockedVorma) error {
-				return writeFastRebuildArtifactsAfterRouteSync(v, l)
+			postSyncHook: func(v *vormaruntime.Vorma) error {
+				if err := buildLifecycleStateMachine.transitionTo(
+					buildLifecyclePhaseRoutesSynchronized,
+					"client routes synchronized",
+				); err != nil {
+					return fmt.Errorf("transition build lifecycle to routes-synchronized: %w", err)
+				}
+				if err := writeFastRebuildArtifactsAfterRouteSync(v); err != nil {
+					return err
+				}
+				if err := buildLifecycleStateMachine.transitionTo(
+					buildLifecyclePhaseRouteArtifactsWritten,
+					"route artifacts written",
+				); err != nil {
+					return fmt.Errorf("transition build lifecycle to route-artifacts-written: %w", err)
+				}
+				return nil
 			},
 		},
 	)
 	if err != nil {
+		if transitionErr := buildLifecycleStateMachine.transitionToFailed("fast route rebuild failed", err); transitionErr != nil {
+			return errors.Join(
+				err,
+				fmt.Errorf("transition build lifecycle to failed: %w", transitionErr),
+			)
+		}
 		return err
+	}
+	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseCompleted, "fast route rebuild completed"); err != nil {
+		return fmt.Errorf("transition build lifecycle to completed: %w", err)
 	}
 
 	fastRouteRebuildDeps.logFastRouteRebuildCompletion(v, start)
@@ -99,9 +135,11 @@ func newFastRebuildID() (string, error) {
 
 func writeFastRebuildArtifactsAfterRouteSync(
 	v *vormaruntime.Vorma,
-	l *vormaruntime.LockedVorma,
 ) error {
-	previousRouteManifestFile := l.GetRouteManifestFile()
+	var previousRouteManifestFile string
+	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
+		previousRouteManifestFile = l.GetRouteManifestFile()
+	})
 	previousRouteManifestSnapshot, err := captureFastRebuildRouteManifestArtifactSnapshot(
 		v,
 		previousRouteManifestFile,
@@ -117,7 +155,7 @@ func writeFastRebuildArtifactsAfterRouteSync(
 					return fmt.Errorf("clean route manifests: %w", err)
 				}
 
-				return fastRouteRebuildArtifactDeps.writeRouteArtifacts(l)
+				return fastRouteRebuildArtifactDeps.writeRouteArtifacts(v)
 			},
 			rollbackOnFailure: func() error {
 				return restoreFastRebuildRouteManifestArtifactSnapshot(

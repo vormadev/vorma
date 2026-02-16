@@ -32,6 +32,17 @@ const historyState: {
 };
 
 let cleanupHistoryListener: (() => void) | null = null;
+let latestHistoryListenerSequenceIssued = 0;
+let historyListenerProcessingTail: Promise<void> = Promise.resolve();
+
+function issueHistoryListenerSequence(): number {
+	latestHistoryListenerSequenceIssued += 1;
+	return latestHistoryListenerSequenceIssued;
+}
+
+function isLatestHistoryListenerSequence(sequence: number): boolean {
+	return sequence === latestHistoryListenerSequenceIssued;
+}
 
 function getHistoryInstance(): historyInstance {
 	if (!historyState.instance) {
@@ -210,10 +221,11 @@ export const HistoryManager = {
 	init: initHistory,
 };
 
-export async function customHistoryListener({
+async function processHistoryUpdate({
 	action,
 	location,
 }: Update): Promise<void> {
+	const listenerSequence = issueHistoryListenerSequence();
 	const lastKnownLocation = getLastKnownHistoryLocation();
 	const { didLocationKeyChange, popWithinSameDoc, shouldSaveScrollState } =
 		analyzeHistoryListenerPrelude({
@@ -239,7 +251,22 @@ export async function customHistoryListener({
 		});
 	}
 
-	if (navigationSucceeded) {
+	if (
+		navigationSucceeded &&
+		isLatestHistoryListenerSequence(listenerSequence)
+	) {
 		setLastKnownHistoryLocation(location);
 	}
+}
+
+export function customHistoryListener(update: Update): Promise<void> {
+	const queuedHistoryUpdate = historyListenerProcessingTail.then(
+		() => processHistoryUpdate(update),
+		() => processHistoryUpdate(update),
+	);
+	historyListenerProcessingTail = queuedHistoryUpdate.then(
+		() => undefined,
+		() => undefined,
+	);
+	return queuedHistoryUpdate;
 }

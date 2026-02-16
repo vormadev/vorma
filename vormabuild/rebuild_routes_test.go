@@ -48,8 +48,8 @@ func TestRunRouteSyncExecution_ForFastRebuildSuccess(t *testing.T) {
 			generateBuildID: func() (string, error) {
 				return "dev_fast_test", nil
 			},
-			postSyncHook: func(l *vormaruntime.LockedVorma) error {
-				return writeFastRebuildArtifactsAfterRouteSync(app, l)
+			postSyncHook: func(*vormaruntime.Vorma) error {
+				return writeFastRebuildArtifactsAfterRouteSync(app)
 			},
 		},
 	); err != nil {
@@ -121,8 +121,8 @@ func TestRunRouteSyncExecution_ForFastRebuildReturnsCleanError(t *testing.T) {
 			generateBuildID: func() (string, error) {
 				return "dev_fast_test", nil
 			},
-			postSyncHook: func(l *vormaruntime.LockedVorma) error {
-				return writeFastRebuildArtifactsAfterRouteSync(app, l)
+			postSyncHook: func(*vormaruntime.Vorma) error {
+				return writeFastRebuildArtifactsAfterRouteSync(app)
 			},
 		},
 	)
@@ -182,15 +182,12 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.LockedVorma) error {
+		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			t.Fatal("did not expect writeRouteArtifacts after clean failure")
 			return nil
 		}
 
-		var err error
-		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			err = writeFastRebuildArtifactsAfterRouteSync(app, l)
-		})
+		err := writeFastRebuildArtifactsAfterRouteSync(app)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return clean error")
 		}
@@ -216,16 +213,15 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 			}
 			return expectedErr
 		}
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.LockedVorma) error {
+		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			t.Fatal("did not expect writeRouteArtifacts after clean failure")
 			return nil
 		}
 
-		var err error
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
-			err = writeFastRebuildArtifactsAfterRouteSync(app, l)
 		})
+		err := writeFastRebuildArtifactsAfterRouteSync(app)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return clean error")
 		}
@@ -260,11 +256,10 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 			return nil
 		}
 
-		var err error
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(vormaruntime.VormaRouteManifestPrefix + "current.json")
-			err = writeFastRebuildArtifactsAfterRouteSync(app, l)
 		})
+		err := writeFastRebuildArtifactsAfterRouteSync(app)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return snapshot error")
 		}
@@ -282,14 +277,11 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			return nil
 		}
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.LockedVorma) error {
+		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 
-		var err error
-		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			err = writeFastRebuildArtifactsAfterRouteSync(app, l)
-		})
+		err := writeFastRebuildArtifactsAfterRouteSync(app)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return write-artifacts error")
 		}
@@ -309,15 +301,14 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 			return os.Remove(previousManifestPath)
 		}
 		expectedErr := errors.New("write artifacts failed")
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.LockedVorma) error {
+		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 
-		var err error
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
-			err = writeFastRebuildArtifactsAfterRouteSync(app, l)
 		})
+		err := writeFastRebuildArtifactsAfterRouteSync(app)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return write-artifacts error")
 		}
@@ -348,7 +339,7 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 			return os.Remove(previousManifestPath)
 		}
 		expectedErr := errors.New("write artifacts failed")
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.LockedVorma) error {
+		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 		restoreErr := errors.New("restore failed")
@@ -356,11 +347,10 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 			return restoreErr
 		}
 
-		var err error
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
-			err = writeFastRebuildArtifactsAfterRouteSync(app, l)
 		})
+		err := writeFastRebuildArtifactsAfterRouteSync(app)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return joined error")
 		}
@@ -387,7 +377,7 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 		}
 
 		expectedPanic := errors.New("write panic")
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.LockedVorma) error {
+		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			panic(expectedPanic)
 		}
 
@@ -419,8 +409,8 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
-			_ = writeFastRebuildArtifactsAfterRouteSync(app, l)
 		})
+		_ = writeFastRebuildArtifactsAfterRouteSync(app)
 	})
 
 	t.Run("re-panics when manifest restore after panic fails", func(t *testing.T) {
@@ -434,7 +424,7 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 		}
 
 		expectedPanic := errors.New("write panic")
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.LockedVorma) error {
+		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			panic(expectedPanic)
 		}
 		fastRouteRebuildArtifactDeps.writeRouteManifestArtifact = func(string, []byte, os.FileMode) error {
@@ -457,8 +447,8 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
-			_ = writeFastRebuildArtifactsAfterRouteSync(app, l)
 		})
+		_ = writeFastRebuildArtifactsAfterRouteSync(app)
 	})
 
 	t.Run("runs clean then writes artifacts", func(t *testing.T) {
@@ -468,15 +458,12 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 			observedSteps = append(observedSteps, "clean")
 			return nil
 		}
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.LockedVorma) error {
+		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			observedSteps = append(observedSteps, "write")
 			return nil
 		}
 
-		var err error
-		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			err = writeFastRebuildArtifactsAfterRouteSync(app, l)
-		})
+		err := writeFastRebuildArtifactsAfterRouteSync(app)
 		if err != nil {
 			t.Fatalf("writeFastRebuildArtifactsAfterRouteSync returned error: %v", err)
 		}
@@ -740,6 +727,11 @@ func TestRebuildRoutesOnly(t *testing.T) {
 			}
 			observedBuildID = buildID
 			observedPathsCount = len(parsedPaths)
+			if options.postSyncHook != nil {
+				if postSyncHookErr := options.postSyncHook(v); postSyncHookErr != nil {
+					return postSyncHookErr
+				}
+			}
 			return nil
 		}
 

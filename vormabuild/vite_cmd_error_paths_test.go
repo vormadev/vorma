@@ -225,6 +225,67 @@ func TestToPathsFileStageTwo_ReturnsManifestReadError(t *testing.T) {
 	}
 }
 
+func TestToPathsFileStageTwo_ReturnsErrorWhenClientEntryChunkIsMissing(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/root.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), viteutil.Manifest{
+		"frontend/src/routes/root.tsx": {
+			Src:  "frontend/src/routes/root.tsx",
+			File: "assets/vorma_out/root.js",
+		},
+	})
+
+	_, err := toPathsFileStageTwo(app)
+	if err == nil {
+		t.Fatal("expected toPathsFileStageTwo to fail when client entry chunk is missing")
+	}
+	if !strings.Contains(err.Error(), "client entry") {
+		t.Fatalf("error = %q, expected missing-client-entry context", err)
+	}
+}
+
+func TestToPathsFileStageTwo_ReturnsErrorWhenRouteChunkIsMissing(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/orders/:id": {
+				OriginalPattern: "/orders/:id",
+				SrcPath:         "frontend/src/routes/orders.$id.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), viteutil.Manifest{
+		"frontend/src/vorma.entry.tsx": {
+			Src:     "frontend/src/vorma.entry.tsx",
+			File:    "assets/vorma_out/entry.js",
+			IsEntry: true,
+		},
+	})
+
+	_, err := toPathsFileStageTwo(app)
+	if err == nil {
+		t.Fatal("expected toPathsFileStageTwo to fail when a route chunk is missing from manifest")
+	}
+	if !strings.Contains(err.Error(), "route chunk") {
+		t.Fatalf("error = %q, expected missing-route-chunk context", err)
+	}
+}
+
 func TestComputeStageTwoBuildID_ErrorWrapping(t *testing.T) {
 	restoreStageTwoBuildIDHelpers := func(t *testing.T) {
 		t.Helper()

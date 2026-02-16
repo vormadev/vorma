@@ -56,7 +56,28 @@ type GetSSRInnerHTMLOutput struct {
 	Sha256Hash string
 }
 
+type ssrRuntimeSnapshot struct {
+	isDev             bool
+	buildID           string
+	routeManifestFile string
+}
+
 func (v *Vorma) getSSRInnerHTML(routeData *RouteDataFinal) (*GetSSRInnerHTMLOutput, error) {
+	v.mu.RLock()
+	snapshot := ssrRuntimeSnapshot{
+		isDev:             v._isDev,
+		buildID:           v._buildID,
+		routeManifestFile: v._routeManifestFile,
+	}
+	v.mu.RUnlock()
+
+	return v.getSSRInnerHTMLFromSnapshot(routeData, snapshot)
+}
+
+func (v *Vorma) getSSRInnerHTMLFromSnapshot(
+	routeData *RouteDataFinal,
+	snapshot ssrRuntimeSnapshot,
+) (*GetSSRInnerHTMLOutput, error) {
 	if routeData == nil {
 		return nil, fmt.Errorf("routeData cannot be nil")
 	}
@@ -72,19 +93,13 @@ func (v *Vorma) getSSRInnerHTML(routeData *RouteDataFinal) (*GetSSRInnerHTMLOutp
 	var htmlBuilder strings.Builder
 	publicPathPrefix := v.Wave.GetPublicPathPrefix()
 
-	v.mu.RLock()
-	isDev := v._isDev
-	buildID := v._buildID
-	routeManifestFile := v._routeManifestFile
-	v.mu.RUnlock()
-
 	dto := SSRInnerHTMLInput{
 		VormaSymbolStr:   VormaSymbolStr,
-		IsDev:            isDev,
+		IsDev:            snapshot.isDev,
 		ViteDevURL:       routeData.ViteDevURL,
-		BuildID:          buildID,
+		BuildID:          snapshot.buildID,
 		PublicPathPrefix: publicPathPrefix,
-		RouteManifestURL: path.Join(publicPathPrefix, routeManifestFile),
+		RouteManifestURL: path.Join(publicPathPrefix, snapshot.routeManifestFile),
 		RouteDataCore:    routeData.RouteDataCore,
 		CSSBundles:       routeData.CSSBundles,
 	}

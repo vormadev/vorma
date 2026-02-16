@@ -358,6 +358,8 @@ type ContractInternalAPI = {
 	__makeLinkOnClickFn: typeof import("../../core/links.ts").__makeLinkOnClickFn;
 	__applyScrollState: typeof import("../../platform/scroll.ts").__applyScrollState;
 	__vormaClientGlobal: typeof import("../../app/context.ts").__vormaClientGlobal;
+	__getNavigationDebugJournal: typeof import("../../client.ts").getNavigationDebugJournal;
+	__clearNavigationDebugJournal: typeof import("../../client.ts").clearNavigationDebugJournal;
 	__registerClientLoaderPattern: typeof import("../../core/render_runtime.ts").__registerClientLoaderPattern;
 	__makeFinalLinkProps: typeof import("../../ui/helpers.ts").__makeFinalLinkProps;
 	__resolvePath: typeof import("../../app/helpers.ts").__resolvePath;
@@ -373,6 +375,7 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		linksInternal,
 		scrollInternal,
 		contextInternal,
+		clientRuntimeInternal,
 		renderRuntimeInternal,
 		extrasInternal,
 		uiHelpersInternal,
@@ -382,6 +385,7 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		import("../../core/links.ts"),
 		import("../../platform/scroll.ts"),
 		import("../../app/context.ts"),
+		import("../../client.ts"),
 		import("../../core/render_runtime.ts"),
 		import("../../core/extras.ts"),
 		import("../../ui/helpers.ts"),
@@ -396,6 +400,10 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		__makeLinkOnClickFn: linksInternal.__makeLinkOnClickFn,
 		__applyScrollState: scrollInternal.__applyScrollState,
 		__vormaClientGlobal: contextInternal.__vormaClientGlobal,
+		__getNavigationDebugJournal:
+			clientRuntimeInternal.getNavigationDebugJournal,
+		__clearNavigationDebugJournal:
+			clientRuntimeInternal.clearNavigationDebugJournal,
 		__registerClientLoaderPattern:
 			renderRuntimeInternal.__registerClientLoaderPattern,
 		__makeFinalLinkProps: uiHelpersInternal.__makeFinalLinkProps,

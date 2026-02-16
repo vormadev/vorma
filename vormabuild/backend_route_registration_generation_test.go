@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
 type goOverlayReplaceConfigForTest struct {
@@ -58,6 +60,26 @@ func readOverlayReplacementSourceForGeneratedTargetPath(
 		t.Fatalf("read overlay source %q: %v", overlayReplacementSourcePath, err)
 	}
 	return string(overlayReplacementSourceBytes)
+}
+
+func TestDiscoveredRouteRegistrarDiscoveryCacheKey_IsStableForSameProjectIdentity(t *testing.T) {
+	fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+
+	appOne := fixture.app
+	appTwo := vormaruntime.NewVormaApp(vormaruntime.VormaAppConfig{
+		Wave:   appOne.Wave,
+		Logger: testLogger(),
+	})
+
+	cacheKeyOne := discoveredRouteRegistrarDiscoveryCacheKey(appOne)
+	cacheKeyTwo := discoveredRouteRegistrarDiscoveryCacheKey(appTwo)
+	if cacheKeyOne != cacheKeyTwo {
+		t.Fatalf(
+			"cache key for same project identity should be stable across app instances: %q vs %q",
+			cacheKeyOne,
+			cacheKeyTwo,
+		)
+	}
 }
 
 func TestPrepareDiscoveredRouteRegistrarOverlay(t *testing.T) {

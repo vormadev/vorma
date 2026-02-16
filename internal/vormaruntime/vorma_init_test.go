@@ -137,6 +137,109 @@ func TestGetBasePathsStageOneOrTwo_ErrorPaths(t *testing.T) {
 	})
 }
 
+func TestInit_ReinitSemanticArtifactValidationFailuresDoNotMutateRuntimeState(t *testing.T) {
+	testCases := []struct {
+		name                string
+		mutateInvalidStage2 func(*PathsFile)
+	}{
+		{
+			name: "missing_route_manifest_file",
+			mutateInvalidStage2: func(pathsFile *PathsFile) {
+				pathsFile.RouteManifestFile = ""
+			},
+		},
+		{
+			name: "missing_stage_two_client_entry_out",
+			mutateInvalidStage2: func(pathsFile *PathsFile) {
+				pathsFile.ClientEntryOut = ""
+			},
+		},
+		{
+			name: "missing_stage_two_route_out_path",
+			mutateInvalidStage2: func(pathsFile *PathsFile) {
+				pathsFile.Paths["/products/:id"].OutPath = ""
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			initialStage := defaultPathsFile("semantic-old-build", map[string]*Path{
+				"/products/:id": {
+					OriginalPattern: "/products/:id",
+					SrcPath:         "frontend/src/routes/products.$id.old.tsx",
+					OutPath:         "vorma_out/routes/products.$id.old.js",
+					ExportKey:       "default",
+				},
+			})
+
+			fixture := newTestFixture(t, testFixtureOptions{
+				stageOne: initialStage,
+				stageTwo: initialStage,
+			})
+			app := fixture.app
+			handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+			recBefore := httptest.NewRecorder()
+			reqBefore := httptest.NewRequest(http.MethodGet, "/products/1?vorma_json=semantic-old-build", nil)
+			handler.ServeHTTP(recBefore, reqBefore)
+			if recBefore.Code != http.StatusOK {
+				t.Fatalf("before failed init status = %d, want %d", recBefore.Code, http.StatusOK)
+			}
+			if !strings.Contains(recBefore.Body.String(), "/vorma_out/routes/products.$id.old.js") {
+				t.Fatalf("before failed init body missing old import URL, body=%q", recBefore.Body.String())
+			}
+
+			invalidStage := defaultPathsFile("semantic-invalid-build", map[string]*Path{
+				"/products/:id": {
+					OriginalPattern: "/products/:id",
+					SrcPath:         "frontend/src/routes/products.$id.invalid.tsx",
+					OutPath:         "vorma_out/routes/products.$id.invalid.js",
+					ExportKey:       "default",
+				},
+			})
+			tc.mutateInvalidStage2(invalidStage)
+
+			mustWriteJSONFile(
+				t,
+				filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageTwoJSONFileName),
+				invalidStage,
+			)
+
+			didPanic := false
+			func() {
+				defer func() {
+					if recover() != nil {
+						didPanic = true
+					}
+				}()
+				app.Init()
+			}()
+			if !didPanic {
+				t.Fatal("expected Init() to panic for semantic stage-two artifact validation issue")
+			}
+
+			if got, want := app.GetBuildID(), "semantic-old-build"; got != want {
+				t.Fatalf("build ID = %q, want %q after failed semantic re-init", got, want)
+			}
+
+			recAfter := httptest.NewRecorder()
+			reqAfter := httptest.NewRequest(http.MethodGet, "/products/2?vorma_json=semantic-old-build", nil)
+			handler.ServeHTTP(recAfter, reqAfter)
+			if recAfter.Code != http.StatusOK {
+				t.Fatalf("after failed init status = %d, want %d", recAfter.Code, http.StatusOK)
+			}
+			if !strings.Contains(recAfter.Body.String(), "/vorma_out/routes/products.$id.old.js") {
+				t.Fatalf("after failed init body missing old import URL, body=%q", recAfter.Body.String())
+			}
+			if strings.Contains(recAfter.Body.String(), "/vorma_out/routes/products.$id.invalid.js") {
+				t.Fatalf("after failed init body leaked invalid import URL, body=%q", recAfter.Body.String())
+			}
+		})
+	}
+}
+
 func TestValidateAndDecorateNestedRouter(t *testing.T) {
 	stage := defaultPathsFile("build", map[string]*Path{
 		"/": {
@@ -409,7 +512,7 @@ func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(t *testing.T) 
 	app := fixture.app
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 
-	clearRouteDataCacheForTest()
+	clearRouteDataCacheForTest(app)
 
 	v1Req := httptest.NewRequest(http.MethodGet, "/items?vorma_json="+buildID, nil)
 	v1Rec := httptest.NewRecorder()
@@ -420,7 +523,7 @@ func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(t *testing.T) 
 	if !strings.Contains(v1Rec.Body.String(), "/vorma_out/routes/items.v1.js") {
 		t.Fatalf("v1 body missing expected import URL, body=%q", v1Rec.Body.String())
 	}
-	if got := routeDataCacheLenForTest(); got == 0 {
+	if got := routeDataCacheLenForTest(app); got == 0 {
 		t.Fatal("expected route-data cache to contain entries after first request")
 	}
 

@@ -36,8 +36,6 @@ type Vorma struct {
 	getDefaultHeadEls   GetDefaultHeadElsFunc
 	getHeadDedupeKeys   GetHeadDedupeKeysFunc
 	getRootTemplateData GetRootTemplateDataFunc
-	// Immutable per-app identity string used in route-data cache keys.
-	_routeDataCacheAppIdentity string
 
 	// mu protects mutable state that can be modified during dev rebuilds.
 	mu                 sync.RWMutex
@@ -55,6 +53,11 @@ type Vorma struct {
 	// Monotonic version for route-data snapshot coherence. Increment whenever
 	// route-data inputs that influence stage-1/cacheable outputs are mutated.
 	_routeDataSnapshotVersion uint64
+	_routeDataCache           *sync.Map
+
+	_lifecycleState         runtimeLifecycleState
+	_lifecycleTransitionSeq uint64
+	_lifecycleLastError     string
 
 	// Config for TS Generation
 	_adHocTypes  []*tsgen.AdHocType
@@ -181,12 +184,23 @@ func (l *LockedVorma) GetIsDev() bool                      { return l.v._isDev }
 // --- LockedVorma Setters ---
 
 func (l *LockedVorma) SetPaths(paths map[string]*Path) {
-	l.v._paths = clonePathsMapOrNil(paths)
+	l.v.routes().ReplaceParsedPathsForInit(paths, false)
+}
+func (l *LockedVorma) SetIsDev(isDev bool) { l.v.setIsDevModeLocked(isDev) }
+func (l *LockedVorma) SetBuildID(buildID string) {
+	if l.v._buildID == buildID {
+		return
+	}
+	l.v._buildID = buildID
 	l.v.invalidateRouteDataCacheLocked()
 }
-func (l *LockedVorma) SetBuildID(id string)                 { l.v._buildID = id }
-func (l *LockedVorma) SetRouteManifestFile(f string)        { l.v._routeManifestFile = f }
-func (l *LockedVorma) SetRootTemplate(t *template.Template) { l.v._rootTemplate = t }
+func (l *LockedVorma) SetRouteManifestFile(routeManifestFile string) {
+	if l.v._routeManifestFile == routeManifestFile {
+		return
+	}
+	l.v._routeManifestFile = routeManifestFile
+	l.v.invalidateRouteDataCacheLocked()
+}
 
 // Routes returns the RouteRegistry for route management operations.
 func (l *LockedVorma) Routes() *RouteRegistry {
@@ -198,7 +212,15 @@ func (l *LockedVorma) Routes() *RouteRegistry {
 func (v *Vorma) SetIsDev(isDev bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	v.setIsDevModeLocked(isDev)
+}
+
+func (v *Vorma) setIsDevModeLocked(isDev bool) {
+	if v._isDev == isDev {
+		return
+	}
 	v._isDev = isDev
+	v.invalidateRouteDataCacheLocked()
 }
 
 func clonePath(path *Path) *Path {

@@ -6,9 +6,9 @@ import {
 } from "vorma/kit/matcher/register";
 import {
 	createNavigationRuntime,
-	deleteNavigationFromSlots,
-	findNavigationEntryInSlots,
-	transitionNavigationPhaseInSlots,
+	deleteNavigationFromNavigationLanes,
+	findNavigationEntryInNavigationLanes,
+	transitionNavigationPhaseInNavigationLanes,
 	type NavigationSlots,
 } from "../../core/navigation/runtime.ts";
 import {
@@ -52,6 +52,7 @@ function createEntry(props: {
 	intent: NavigationEntry["intent"];
 }): NavigationEntry {
 	return {
+		operationID: 1,
 		control: {
 			abortController: new AbortController(),
 			promise: Promise.resolve({ type: "aborted" as const }),
@@ -138,6 +139,7 @@ function createSuccessNavigationOutcome(
 			data: Array<unknown>;
 			errorMessage?: string;
 		}>;
+		responseBuildID?: string;
 		props?: Partial<
 			Extract<NavigationOutcome, { type: "success" }>["props"]
 		>;
@@ -157,7 +159,7 @@ function createSuccessNavigationOutcome(
 			status: 200,
 			headers: {
 				"Content-Type": "application/json",
-				"X-Vorma-Build-Id": "1",
+				"X-Vorma-Build-Id": overrides.responseBuildID ?? "1",
 			},
 		}),
 		json: {
@@ -264,15 +266,15 @@ describe("navigation bookkeeping key aliasing", () => {
 			intent: "navigate",
 		});
 		const slots: NavigationSlots = {
-			activeNavigation: active,
-			prefetchCache: new Map(),
-			pendingRevalidation: null,
+			active: active,
+			prefetch: new Map(),
+			revalidation: null,
 		};
 
-		const found = findNavigationEntryInSlots(
-			slots,
-			"http://localhost:3000/alias#second",
-		);
+		const found = findNavigationEntryInNavigationLanes({
+			lanes: slots,
+			targetUrl: "http://localhost:3000/alias#second",
+		});
 		expect(found).toBe(active);
 	});
 
@@ -283,15 +285,15 @@ describe("navigation bookkeeping key aliasing", () => {
 			intent: "navigate",
 		});
 		const slots: NavigationSlots = {
-			activeNavigation: active,
-			prefetchCache: new Map(),
-			pendingRevalidation: null,
+			active: active,
+			prefetch: new Map(),
+			revalidation: null,
 		};
 
-		const found = findNavigationEntryInSlots(
-			slots,
-			"http://localhost:3000/alias?tab=b#first",
-		);
+		const found = findNavigationEntryInNavigationLanes({
+			lanes: slots,
+			targetUrl: "http://localhost:3000/alias?tab=b#first",
+		});
 		expect(found).toBeUndefined();
 	});
 
@@ -302,20 +304,20 @@ describe("navigation bookkeeping key aliasing", () => {
 			intent: "none",
 		});
 		const slots: NavigationSlots = {
-			activeNavigation: null,
-			prefetchCache: new Map([[prefetch.targetUrl, prefetch]]),
-			pendingRevalidation: null,
+			active: null,
+			prefetch: new Map([[prefetch.targetUrl, prefetch]]),
+			revalidation: null,
 		};
 		const onStatusRelevantChange = vi.fn();
 
-		const deleted = deleteNavigationFromSlots(
-			slots,
-			"http://localhost:3000/prefetch#second",
+		const deleted = deleteNavigationFromNavigationLanes({
+			lanes: slots,
+			targetUrl: "http://localhost:3000/prefetch#second",
 			onStatusRelevantChange,
-		);
+		});
 
 		expect(deleted).toBe(true);
-		expect(slots.prefetchCache.size).toBe(0);
+		expect(slots.prefetch.size).toBe(0);
 		expect(onStatusRelevantChange).not.toHaveBeenCalled();
 	});
 
@@ -326,68 +328,68 @@ describe("navigation bookkeeping key aliasing", () => {
 			intent: "none",
 		});
 		const slots: NavigationSlots = {
-			activeNavigation: null,
-			prefetchCache: new Map([[prefetch.targetUrl, prefetch]]),
-			pendingRevalidation: null,
+			active: null,
+			prefetch: new Map([[prefetch.targetUrl, prefetch]]),
+			revalidation: null,
 		};
 		const onStatusRelevantChange = vi.fn();
 
-		const deleted = deleteNavigationFromSlots(
-			slots,
-			"http://localhost:3000/prefetch?tab=b#first",
+		const deleted = deleteNavigationFromNavigationLanes({
+			lanes: slots,
+			targetUrl: "http://localhost:3000/prefetch?tab=b#first",
 			onStatusRelevantChange,
-		);
+		});
 
 		expect(deleted).toBe(false);
-		expect(slots.prefetchCache.size).toBe(1);
+		expect(slots.prefetch.size).toBe(1);
 		expect(onStatusRelevantChange).not.toHaveBeenCalled();
 	});
 
 	it("transitions pending revalidation phase by same data target alias", () => {
-		const pendingRevalidation = createEntry({
+		const revalidation = createEntry({
 			targetUrl: "http://localhost:3000/revalidate#first",
 			type: "revalidation",
 			intent: "revalidate",
 		});
 		const slots: NavigationSlots = {
-			activeNavigation: null,
-			prefetchCache: new Map(),
-			pendingRevalidation,
+			active: null,
+			prefetch: new Map(),
+			revalidation,
 		};
 		const onStatusRelevantChange = vi.fn();
 
-		transitionNavigationPhaseInSlots(
-			slots,
-			"http://localhost:3000/revalidate#second",
-			"waiting",
+		transitionNavigationPhaseInNavigationLanes({
+			lanes: slots,
+			targetUrl: "http://localhost:3000/revalidate#second",
+			phase: "waiting",
 			onStatusRelevantChange,
-		);
+		});
 
-		expect(slots.pendingRevalidation?.phase).toBe("waiting");
+		expect(slots.revalidation?.phase).toBe("waiting");
 		expect(onStatusRelevantChange).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not transition pending revalidation phase when search params differ", () => {
-		const pendingRevalidation = createEntry({
+		const revalidation = createEntry({
 			targetUrl: "http://localhost:3000/revalidate?view=a#first",
 			type: "revalidation",
 			intent: "revalidate",
 		});
 		const slots: NavigationSlots = {
-			activeNavigation: null,
-			prefetchCache: new Map(),
-			pendingRevalidation,
+			active: null,
+			prefetch: new Map(),
+			revalidation,
 		};
 		const onStatusRelevantChange = vi.fn();
 
-		transitionNavigationPhaseInSlots(
-			slots,
-			"http://localhost:3000/revalidate?view=b#first",
-			"waiting",
+		transitionNavigationPhaseInNavigationLanes({
+			lanes: slots,
+			targetUrl: "http://localhost:3000/revalidate?view=b#first",
+			phase: "waiting",
 			onStatusRelevantChange,
-		);
+		});
 
-		expect(slots.pendingRevalidation?.phase).toBe("fetching");
+		expect(slots.revalidation?.phase).toBe("fetching");
 		expect(onStatusRelevantChange).not.toHaveBeenCalled();
 	});
 });
@@ -558,6 +560,119 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 		}
 	});
 
+	it("reuses same-target prefetch control for browser-history navigation and promotes it to active", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		try {
+			const runtime = createNavigationRuntime();
+			const prefetchControl = runtime.beginNavigation({
+				href: "/browser-history-prefetch#first",
+				navigationType: "prefetch",
+			});
+			const prefetchPromise = prefetchControl.promise.catch(
+				(error) => error,
+			);
+
+			const browserHistoryControl = runtime.beginNavigation({
+				href: "/browser-history-prefetch#second",
+				navigationType: "browserHistory",
+			});
+
+			expect(browserHistoryControl).toBe(prefetchControl);
+			expect(runtime.getNavigationsSize()).toBe(1);
+			const promotedEntry = runtime.getNavigation(
+				new URL(
+					"/browser-history-prefetch#second",
+					window.location.href,
+				).href,
+			);
+			expect(promotedEntry?.type).toBe("browserHistory");
+			expect(promotedEntry?.intent).toBe("navigate");
+
+			runtime.clearAll();
+			await expect(prefetchPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("reuses same-target revalidation control for redirect navigation and promotes it to active", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		try {
+			window.history.replaceState({}, "", "/redirect-revalidation");
+
+			const runtime = createNavigationRuntime();
+			const revalidationControl = runtime.beginNavigation({
+				href: "/ignored-by-revalidation",
+				navigationType: "revalidation",
+			});
+			const revalidationPromise = revalidationControl.promise.catch(
+				(error) => error,
+			);
+
+			const redirectControl = runtime.beginNavigation({
+				href: "/redirect-revalidation#target",
+				navigationType: "redirect",
+			});
+
+			expect(redirectControl).toBe(revalidationControl);
+			expect(runtime.getNavigationsSize()).toBe(1);
+			const promotedEntry = runtime.getNavigation(
+				new URL("/redirect-revalidation#target", window.location.href)
+					.href,
+			);
+			expect(promotedEntry?.type).toBe("redirect");
+			expect(promotedEntry?.intent).toBe("navigate");
+
+			runtime.clearAll();
+			await expect(revalidationPromise).resolves.toMatchObject({
+				name: "AbortError",
+			});
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("aborts stale prefetch and revalidation work when browser-history navigation starts to a different target", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		try {
+			window.history.replaceState({}, "", "/browser-history-matrix-base");
+			const runtime = createNavigationRuntime();
+			const stalePrefetchControl = runtime.beginNavigation({
+				href: "/browser-history-stale-prefetch",
+				navigationType: "prefetch",
+			});
+			const staleRevalidationControl = runtime.beginNavigation({
+				href: "/ignored-by-revalidation",
+				navigationType: "revalidation",
+			});
+
+			runtime.beginNavigation({
+				href: "/browser-history-fresh-target",
+				navigationType: "browserHistory",
+			});
+
+			expect(stalePrefetchControl.abortController?.signal.aborted).toBe(
+				true,
+			);
+			expect(
+				staleRevalidationControl.abortController?.signal.aborted,
+			).toBe(true);
+			expect(runtime.getNavigationsSize()).toBe(1);
+			expect(
+				runtime.getNavigation(
+					new URL(
+						"/browser-history-fresh-target",
+						window.location.href,
+					).href,
+				)?.type,
+			).toBe("browserHistory");
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
 	it("removeNavigation aborts and removes entries addressed by hash-alias key", async () => {
 		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
 			(_url, init) =>
@@ -682,6 +797,18 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 				didNavigate: false,
 			});
 			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
+			expect(
+				runtime
+					.getDebugJournal()
+					.some(
+						(journalEntry) =>
+							journalEntry.reason ===
+								"navigate_promise_rejected" &&
+							journalEntry.toState === "failed" &&
+							journalEntry.operationID === null &&
+							journalEntry.targetUrl === targetUrl,
+					),
+			).toBe(true);
 
 			runtime.clearAll();
 			await expect(secondControlPromise).resolves.toMatchObject({
@@ -824,6 +951,164 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 		).not.toThrow();
 		expect(runtime.getNavigationsSize()).toBe(0);
 	});
+
+	it("records debug-journal navigation transitions with operation IDs and reasons", async () => {
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: [],
+					loadersData: [],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+					outermostServerError: undefined,
+					outermostServerErrorIdx: undefined,
+					title: undefined,
+					metaHeadEls: undefined,
+					restHeadEls: undefined,
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				},
+			),
+		);
+		const runtime = createNavigationRuntime();
+
+		await runtime.navigate({
+			href: "/journal-nav",
+			navigationType: "userNavigation",
+		});
+
+		const journal = runtime.getDebugJournal();
+		const startedEntry = journal.find(
+			(entry) => entry.reason === "started_by_userNavigation",
+		);
+		expect(startedEntry).toBeDefined();
+		expect(startedEntry?.operationID).toEqual(expect.any(Number));
+		expect(startedEntry?.lane).toBe("active");
+		expect(
+			journal.some(
+				(entry) =>
+					entry.reason === "process_successful_navigation_waiting",
+			),
+		).toBe(true);
+		expect(
+			journal.some(
+				(entry) => entry.reason === "successful_navigation_cleanup",
+			),
+		).toBe(true);
+	});
+
+	it("records submission dedupe causal links in debug journal", async () => {
+		const firstSubmitRequest = createDeferred<Response>();
+		const secondSubmitRequest = createDeferred<Response>();
+		let submitRequestCount = 0;
+		vi.spyOn(window, "fetch").mockImplementation(() => {
+			submitRequestCount += 1;
+			if (submitRequestCount === 1) {
+				return firstSubmitRequest.promise;
+			}
+			if (submitRequestCount === 2) {
+				return secondSubmitRequest.promise;
+			}
+			throw new Error(`Unexpected submit fetch #${submitRequestCount}`);
+		});
+		const runtime = createNavigationRuntime();
+
+		const firstSubmitPromise = runtime.submit(
+			"/api/journal-submit",
+			{ method: "POST" },
+			{
+				dedupeKey: "journal-submit",
+				revalidate: false,
+			},
+		);
+		await Promise.resolve();
+
+		const secondSubmitPromise = runtime.submit(
+			"/api/journal-submit",
+			{ method: "POST" },
+			{
+				dedupeKey: "journal-submit",
+				revalidate: false,
+			},
+		);
+
+		secondSubmitRequest.resolve(
+			createSubmitResponse({
+				json: async () => ({ ok: true }),
+			}),
+		);
+		firstSubmitRequest.reject(new DOMException("Aborted", "AbortError"));
+
+		await expect(firstSubmitPromise).resolves.toEqual({
+			success: false,
+			error: "Aborted",
+		});
+		await expect(secondSubmitPromise).resolves.toEqual({
+			success: true,
+			data: { ok: true },
+		});
+
+		const journal = runtime.getDebugJournal();
+		const dedupeEntry = journal.find(
+			(entry) =>
+				entry.reason === "submission_deduped_by_newer_submission",
+		);
+		expect(dedupeEntry).toBeDefined();
+		expect(dedupeEntry?.lane).toBe("submission");
+		expect(dedupeEntry?.operationID).toEqual(expect.any(Number));
+		expect(dedupeEntry?.causedByOperationID).toEqual(expect.any(Number));
+	});
+
+	it("records explicit fetch-rejection reasons across active, prefetch, and revalidation lanes", async () => {
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockRejectedValue(new Error("fetch failed"));
+
+		try {
+			const runtime = createNavigationRuntime();
+			const activeControl = runtime.beginNavigation({
+				href: "/fetch-reject-active",
+				navigationType: "userNavigation",
+			});
+			const prefetchControl = runtime.beginNavigation({
+				href: "/fetch-reject-prefetch",
+				navigationType: "prefetch",
+			});
+			window.history.replaceState({}, "", "/fetch-reject-revalidation");
+			const revalidationControl = runtime.beginNavigation({
+				href: window.location.href,
+				navigationType: "revalidation",
+			});
+
+			await Promise.allSettled([
+				activeControl.promise,
+				prefetchControl.promise,
+				revalidationControl.promise,
+			]);
+
+			const journalReasons = runtime
+				.getDebugJournal()
+				.map((entry) => entry.reason);
+			expect(journalReasons).toContain(
+				"active_navigation_fetch_rejected",
+			);
+			expect(journalReasons).toContain("prefetch_fetch_rejected");
+			expect(journalReasons).toContain("revalidation_fetch_rejected");
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
 });
 
 describe("navigation runtime outcome stale control guards", () => {
@@ -940,7 +1225,10 @@ describe("navigation runtime outcome stale control guards", () => {
 
 		expect(result).toEqual({ didNavigate: false });
 		expect(deleteNavigation).toHaveBeenCalledOnce();
-		expect(deleteNavigation).toHaveBeenCalledWith(targetUrl);
+		expect(deleteNavigation).toHaveBeenCalledWith({
+			targetUrl,
+			reason: "outcome_aborted",
+		});
 		expect(processSuccessfulNavigation).not.toHaveBeenCalled();
 	});
 });
@@ -1014,9 +1302,83 @@ describe("navigation runtime outcome redirect signaling", () => {
 
 			expect(result).toEqual({ didNavigate: true });
 			expect(deleteNavigation).toHaveBeenCalledOnce();
-			expect(deleteNavigation).toHaveBeenCalledWith(targetUrl);
+			expect(deleteNavigation).toHaveBeenCalledWith({
+				targetUrl,
+				reason: "redirect_effectuate",
+			});
 			expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
 		} finally {
+			effectuateRedirectSpy.mockRestore();
+		}
+	});
+
+	it("does not synchronize build IDs or effectuate redirects for stale redirect outcomes", async () => {
+		const targetUrl = new URL(
+			"/stale-control-redirect",
+			window.location.href,
+		).href;
+		const redirectOutcome = {
+			type: "redirect" as const,
+			redirectData: {
+				status: "should" as const,
+				shouldRedirectStrategy: "soft" as const,
+				latestBuildID: "stale-redirect-build",
+				href: "/stale-redirect-target",
+				hrefDetails: {
+					url: new URL("http://localhost:3000/stale-redirect-target"),
+					isHTTP: true,
+					isInternal: true,
+					isExternal: false,
+					absoluteURL: "http://localhost:3000/stale-redirect-target",
+					relativeURL: "/stale-redirect-target",
+				},
+			},
+			props: {
+				href: targetUrl,
+				navigationType: "browserHistory" as const,
+			},
+		} as NavigationOutcome;
+		const staleControlPromise = Promise.resolve(redirectOutcome);
+		const currentEntry = createEntry({
+			targetUrl,
+			type: "browserHistory",
+			intent: "navigate",
+		});
+		currentEntry.control.promise = Promise.resolve(
+			createSuccessNavigationOutcome(),
+		);
+
+		const deleteNavigation = vi.fn(() => true);
+		const processSuccessfulNavigation = vi
+			.fn()
+			.mockResolvedValue(undefined);
+		const syncBuildIDSpy = vi.spyOn(
+			redirectsModule,
+			"syncBuildIDFromRedirectData",
+		);
+		const effectuateRedirectSpy = vi
+			.spyOn(redirectsModule, "effectuateRedirectDataResult")
+			.mockResolvedValue(null);
+
+		try {
+			const result = await handleNavigationOutcome({
+				findNavigationEntry: () => currentEntry,
+				deleteNavigation,
+				processSuccessfulNavigation,
+				navigationProps: {
+					href: targetUrl,
+					navigationType: "browserHistory",
+				},
+				outcome: redirectOutcome,
+				controlPromise: staleControlPromise,
+			});
+
+			expect(result).toEqual({ didNavigate: false });
+			expect(syncBuildIDSpy).not.toHaveBeenCalled();
+			expect(effectuateRedirectSpy).not.toHaveBeenCalled();
+			expect(deleteNavigation).not.toHaveBeenCalled();
+		} finally {
+			syncBuildIDSpy.mockRestore();
 			effectuateRedirectSpy.mockRestore();
 		}
 	});
@@ -1353,11 +1715,12 @@ describe("navigation runtime success-processing defensive branches", () => {
 			});
 			let ownedEntry: NavigationEntry | undefined = entry;
 			const transitionPhase = vi.fn(
-				(
-					_nextTargetUrl: string,
-					phase: "fetching" | "waiting" | "rendering" | "complete",
-				) => {
-					if (phase === "waiting") {
+				(props: {
+					targetUrl: string;
+					phase: "fetching" | "waiting" | "rendering" | "complete";
+					reason: string;
+				}) => {
+					if (props.phase === "waiting") {
 						ownedEntry = undefined;
 					}
 				},
@@ -1386,7 +1749,67 @@ describe("navigation runtime success-processing defensive branches", () => {
 			).resolves.toBeUndefined();
 
 			expect(reRenderSpy).not.toHaveBeenCalled();
-			expect(transitionPhase).toHaveBeenCalledWith(targetUrl, "waiting");
+			expect(transitionPhase).toHaveBeenCalledWith({
+				targetUrl,
+				phase: "waiting",
+				reason: "process_successful_navigation_waiting",
+			});
+			expect(deleteNavigation).not.toHaveBeenCalled();
+		} finally {
+			reRenderSpy.mockRestore();
+		}
+	});
+
+	it("does not commit client-loader state when ownership is lost during asset wait", async () => {
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockResolvedValue();
+
+		try {
+			const targetUrl = new URL(
+				"/removed-during-asset-wait",
+				window.location.href,
+			).href;
+			const entry = createEntry({
+				targetUrl,
+				type: "browserHistory",
+				intent: "navigate",
+			});
+			let ownedEntry: NavigationEntry | undefined = entry;
+			const transitionPhase = vi.fn();
+			const deleteNavigation = vi.fn(() => true);
+			installVormaGlobal({
+				clientLoadersData: [{ stable: true }],
+			});
+
+			await expect(
+				processSuccessfulNavigationRuntime(
+					{
+						transitionPhase,
+						findNavigationEntry: (_nextTargetUrl: string) =>
+							ownedEntry,
+						deleteNavigation,
+					},
+					createSuccessNavigationOutcome({
+						waitFnPromise: Promise.resolve().then(() => {
+							ownedEntry = undefined;
+							return {
+								data: [{ stale: true }],
+							};
+						}),
+						props: {
+							href: targetUrl,
+							navigationType: "browserHistory",
+						},
+					}),
+					entry,
+				),
+			).resolves.toBeUndefined();
+
+			expect(reRenderSpy).not.toHaveBeenCalled();
+			expect((globalThis as any)[VORMA_SYMBOL].clientLoadersData).toEqual(
+				[{ stable: true }],
+			);
 			expect(deleteNavigation).not.toHaveBeenCalled();
 		} finally {
 			reRenderSpy.mockRestore();
@@ -1443,6 +1866,10 @@ describe("navigation runtime success-processing defensive branches", () => {
 		const reRenderSpy = vi
 			.spyOn(renderRuntimeModule, "__reRenderApp")
 			.mockResolvedValue();
+		const buildIDEvents: Array<{ oldID: string; newID: string }> = [];
+		const removeBuildIDListener = addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
 
 		try {
 			const runtime = createNavigationRuntime();
@@ -1466,15 +1893,21 @@ describe("navigation runtime success-processing defensive branches", () => {
 				data: Array<unknown>;
 				errorMessage?: string;
 			}>();
+			const staleSuccessOutcome = createSuccessNavigationOutcome({
+				waitFnPromise: waitDeferred.promise,
+				responseBuildID: "stale-replaced-build-id",
+				props: {
+					href: targetUrl,
+					navigationType: "browserHistory",
+				},
+			});
+			staleSuccessOutcome.json.matchedPatterns = ["/stale-route"];
+			staleSuccessOutcome.json.importURLs = ["/stale-route.js"];
+			staleSuccessOutcome.json.exportKeys = ["default"];
+			staleSuccessOutcome.json.errorExportKeys = [""];
 			const olderSuccessProcessingPromise =
 				runtime.processSuccessfulNavigation(
-					createSuccessNavigationOutcome({
-						waitFnPromise: waitDeferred.promise,
-						props: {
-							href: targetUrl,
-							navigationType: "browserHistory",
-						},
-					}),
+					staleSuccessOutcome,
 					firstEntry,
 				);
 
@@ -1499,6 +1932,11 @@ describe("navigation runtime success-processing defensive branches", () => {
 
 			expect(reRenderSpy).not.toHaveBeenCalled();
 			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
+			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
+			expect((globalThis as any)[VORMA_SYMBOL].clientModuleMap).toEqual(
+				{},
+			);
+			expect(buildIDEvents).toEqual([]);
 
 			runtime.clearAll();
 			await expect(firstControlPromise).resolves.toMatchObject({
@@ -1510,6 +1948,7 @@ describe("navigation runtime success-processing defensive branches", () => {
 		} finally {
 			fetchSpy.mockRestore();
 			reRenderSpy.mockRestore();
+			removeBuildIDListener();
 		}
 	});
 
@@ -1594,6 +2033,86 @@ describe("navigation runtime success-processing defensive branches", () => {
 			renderDeferred.resolve();
 			fetchSpy.mockRestore();
 			reRenderSpy.mockRestore();
+		}
+	});
+
+	it("does not commit render side effects when ownership is lost during async module resolution", async () => {
+		const targetUrl = new URL(
+			"/stale-render-commit-fence",
+			window.location.href,
+		).href;
+		const entry = createEntry({
+			targetUrl,
+			type: "browserHistory",
+			intent: "navigate",
+		});
+		let ownedEntry: NavigationEntry | undefined = entry;
+		const transitionPhase = vi.fn();
+		const deleteNavigation = vi.fn(() => true);
+		document.title = "Before Commit Fence";
+		window.history.replaceState({}, "", "/before-commit-fence");
+
+		const staleSuccessOutcome = createSuccessNavigationOutcome({
+			props: {
+				href: targetUrl,
+				navigationType: "browserHistory",
+			},
+		});
+		staleSuccessOutcome.json.title = {
+			dangerousInnerHTML: "Stale Commit Should Not Apply",
+		};
+		staleSuccessOutcome.json.matchedPatterns = ["/stale-commit-fence"];
+		staleSuccessOutcome.json.importURLs = ["/stale-commit-fence.js"];
+		staleSuccessOutcome.json.exportKeys = ["default"];
+		staleSuccessOutcome.json.errorExportKeys = [""];
+		staleSuccessOutcome.json.metaHeadEls = [
+			{
+				tag: "meta",
+				attributesKnownSafe: {
+					name: "stale-commit-fence",
+					content: "1",
+				},
+			},
+		];
+
+		const loadComponentsSpy = vi
+			.spyOn(renderRuntimeModule.ComponentLoader, "loadComponents")
+			.mockImplementation(async (importURLs) => {
+				ownedEntry = undefined;
+				const modulesMapEntries: Array<
+					[string, Record<string, unknown>]
+				> = (importURLs || []).map((importURL) => [
+					importURL,
+					{ default: () => null },
+				]);
+				return new Map(modulesMapEntries);
+			});
+
+		try {
+			await expect(
+				processSuccessfulNavigationRuntime(
+					{
+						transitionPhase,
+						findNavigationEntry: (_nextTargetUrl: string) =>
+							ownedEntry,
+						deleteNavigation,
+					},
+					staleSuccessOutcome,
+					entry,
+				),
+			).resolves.toBeUndefined();
+
+			expect(document.title).toBe("Before Commit Fence");
+			expect(window.location.pathname).toBe("/before-commit-fence");
+			expect(
+				document.head.querySelector('meta[name="stale-commit-fence"]'),
+			).toBeNull();
+			expect((globalThis as any)[VORMA_SYMBOL].matchedPatterns).toEqual(
+				[],
+			);
+			expect(deleteNavigation).not.toHaveBeenCalled();
+		} finally {
+			loadComponentsSpy.mockRestore();
 		}
 	});
 });
@@ -2086,6 +2605,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 		context = {
 			submissions: new Map(),
 			scheduleStatusUpdate: () => {},
+			allocateSubmissionOperationID: () => 1,
 			navigate: async () => {
 				if (!replacementSubmit) {
 					replacementSubmit = executeSubmitRuntime(
@@ -3348,6 +3868,118 @@ describe("fetchRouteData client-only skip path", () => {
 			expect(preloadModuleSpy).toHaveBeenCalledTimes(1);
 			expect(preloadModuleSpy).toHaveBeenCalledWith("/prod-dep.js");
 		} finally {
+			preloadModuleSpy.mockRestore();
+			(import.meta.env as any).DEV = originalDev;
+		}
+	});
+
+	it("does not preload stale deps or update build ID from superseded browser-history responses", async () => {
+		const originalDev = import.meta.env.DEV;
+		(import.meta.env as any).DEV = false;
+		const preloadModuleSpy = vi
+			.spyOn(renderRuntimeModule.AssetManager, "preloadModule")
+			.mockImplementation(() => {});
+		const staleNavigationFetch = createDeferred<Response>();
+		const winnerNavigationFetch = createDeferred<Response>();
+		const buildIDEvents: Array<{ oldID: string; newID: string }> = [];
+		const removeBuildIDListener = addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+		let fetchCallCount = 0;
+		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return staleNavigationFetch.promise;
+			}
+			if (fetchCallCount === 2) {
+				return winnerNavigationFetch.promise;
+			}
+
+			throw new Error(`Unexpected fetch call #${fetchCallCount}`);
+		});
+
+		try {
+			const runtime = createNavigationRuntime();
+			const staleNavigation = runtime.navigate({
+				href: "/stale-browser-history-race",
+				navigationType: "browserHistory",
+			});
+			await Promise.resolve();
+
+			const winnerNavigation = runtime.navigate({
+				href: "/winner-browser-history-race",
+				navigationType: "userNavigation",
+			});
+			await Promise.resolve();
+
+			winnerNavigationFetch.resolve(
+				new Response(
+					JSON.stringify({
+						matchedPatterns: [],
+						loadersData: [],
+						importURLs: ["/winner-import.js"],
+						exportKeys: [],
+						errorExportKeys: [],
+						hasRootData: false,
+						params: {},
+						splatValues: [],
+						deps: ["/winner-dep.js"],
+						cssBundles: [],
+						outermostServerError: undefined,
+						outermostServerErrorIdx: undefined,
+						title: { dangerousInnerHTML: "Winner" },
+						metaHeadEls: undefined,
+						restHeadEls: undefined,
+					}),
+					{
+						status: 200,
+						headers: {
+							"Content-Type": "application/json",
+							"X-Vorma-Build-Id": "1",
+						},
+					},
+				),
+			);
+			await winnerNavigation;
+
+			staleNavigationFetch.resolve(
+				new Response(
+					JSON.stringify({
+						matchedPatterns: [],
+						loadersData: [],
+						importURLs: ["/stale-import.js"],
+						exportKeys: [],
+						errorExportKeys: [],
+						hasRootData: false,
+						params: {},
+						splatValues: [],
+						deps: ["/stale-dep.js"],
+						cssBundles: [],
+						outermostServerError: undefined,
+						outermostServerErrorIdx: undefined,
+						title: { dangerousInnerHTML: "Stale" },
+						metaHeadEls: undefined,
+						restHeadEls: undefined,
+					}),
+					{
+						status: 200,
+						headers: {
+							"Content-Type": "application/json",
+							"X-Vorma-Build-Id": "stale-browser-history-build",
+						},
+					},
+				),
+			);
+			await staleNavigation;
+			await Promise.resolve();
+
+			expect(preloadModuleSpy).toHaveBeenCalledTimes(1);
+			expect(preloadModuleSpy).toHaveBeenCalledWith("/winner-dep.js");
+			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+		} finally {
+			removeBuildIDListener();
+			fetchSpy.mockRestore();
 			preloadModuleSpy.mockRestore();
 			(import.meta.env as any).DEV = originalDev;
 		}

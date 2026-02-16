@@ -7,7 +7,7 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
-type postRouteSyncHook func(*vormaruntime.LockedVorma) error
+type postRouteSyncHook func(*vormaruntime.Vorma) error
 
 type routeSyncExecutionOptions struct {
 	parseClientRoutes          func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error)
@@ -68,32 +68,34 @@ func syncClientRoutesFromParsedPathsWithLock(
 	buildID string,
 	postSyncHook postRouteSyncHook,
 ) error {
-	var syncErr error
-	v.WithLock(func(l *vormaruntime.LockedVorma) {
-		previousRuntimeState := captureRouteBuildRuntimeStateSnapshot(l)
-		syncErr = runWithRollbackOnFailureAndPanic(
-			rollbackTransactionOptions{
-				run: func() error {
+	var previousRuntimeState routeBuildRuntimeStateSnapshot
+	return runWithRollbackOnFailureAndPanic(
+		rollbackTransactionOptions{
+			run: func() error {
+				v.WithLock(func(l *vormaruntime.LockedVorma) {
+					previousRuntimeState = captureRouteBuildRuntimeStateSnapshot(l)
 					if buildID != "" {
 						l.SetBuildID(buildID)
 					}
 					l.Routes().SyncFromDevReload(clientPaths)
-					if postSyncHook != nil {
-						return postSyncHook(l)
-					}
-					return nil
-				},
-				rollbackOnFailure: func() error {
+				})
+
+				if postSyncHook != nil {
+					return postSyncHook(v)
+				}
+				return nil
+			},
+			rollbackOnFailure: func() error {
+				v.WithLock(func(l *vormaruntime.LockedVorma) {
 					rollbackRouteSyncStateAfterPostSyncFailure(
 						l,
 						previousRuntimeState,
 					)
-					return nil
-				},
+				})
+				return nil
 			},
-		)
-	})
-	return syncErr
+		},
+	)
 }
 
 func rollbackRouteSyncStateAfterPostSyncFailure(

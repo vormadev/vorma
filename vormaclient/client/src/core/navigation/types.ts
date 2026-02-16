@@ -43,7 +43,14 @@ export type NavigationPhase = "fetching" | "waiting" | "rendering" | "complete";
 
 export type NavigationIntent = "none" | "navigate" | "revalidate";
 
+export type NavigationLane =
+	| "active"
+	| "revalidation"
+	| "prefetch"
+	| "submission";
+
 export type NavigationEntry = {
+	operationID: number;
 	control: NavigationControl;
 	type: VormaNavigationType;
 	intent: NavigationIntent;
@@ -57,12 +64,24 @@ export type NavigationEntry = {
 };
 
 export type SubmissionEntry = {
+	operationID: number;
 	control: {
 		abortController: AbortController | undefined;
 		promise: Promise<unknown>;
 	};
 	startTime: number;
 	skipGlobalLoadingIndicator?: boolean;
+};
+
+export type NavigationDebugJournalEntry = {
+	timestampMS: number;
+	operationID: number | null;
+	lane: NavigationLane;
+	targetUrl: string;
+	fromState: string;
+	toState: string;
+	reason: string;
+	causedByOperationID: number | null;
 };
 
 export type SubmitOptions = {
@@ -92,6 +111,8 @@ export type NavigationStateManager = {
 	getNavigationsSize: () => number;
 	getNavigations: () => Map<string, NavigationEntry>;
 	getStatus: () => StatusEventDetail;
+	getDebugJournal: () => ReadonlyArray<NavigationDebugJournalEntry>;
+	clearDebugJournal: () => void;
 	clearAll: () => void;
 };
 

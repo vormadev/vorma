@@ -112,6 +112,13 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 			wantMsg: "Vorma.TSGenOutDir is required",
 		},
 		{
+			name: "UnresolvedRoutePolicy_Invalid",
+			mutate: func(c *VormaConfig) {
+				c.UnresolvedRoutePolicy = "invalid"
+			},
+			wantMsg: `Vorma.UnresolvedRoutePolicy must be "warn" or "error" when set`,
+		},
+		{
 			name: "DevReloadRoutesEndpointPath_MissingLeadingSlash",
 			mutate: func(c *VormaConfig) {
 				c.DevReloadRoutesEndpointPath = "reload-routes"
@@ -231,6 +238,9 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 	if app.Config.BuildtimePublicURLFuncName != "waveBuildtimeURL" {
 		t.Fatalf("expected default buildtime URL function name, got %q", app.Config.BuildtimePublicURLFuncName)
 	}
+	if app.Config.UnresolvedRoutePolicy != "" {
+		t.Fatalf("expected unresolved route policy to be unset by default, got %q", app.Config.UnresolvedRoutePolicy)
+	}
 	if app.Config.DevReloadRoutesEndpointPath != DefaultDevReloadRoutesEndpointPath {
 		t.Fatalf(
 			"expected default routes reload endpoint path %q, got %q",
@@ -286,6 +296,18 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 			DefaultClientRootElementID,
 			app.Config.ClientRootElementID,
 		)
+	}
+}
+
+func TestNewVormaApp_NormalizesUnresolvedRoutePolicy(t *testing.T) {
+	fixture := newTestFixture(t, testFixtureOptions{
+		configureVormaConfig: func(config *VormaConfig) {
+			config.UnresolvedRoutePolicy = " Warn "
+		},
+	})
+
+	if got, want := fixture.app.Config.UnresolvedRoutePolicy, UnresolvedRoutePolicyWarn; got != want {
+		t.Fatalf("unresolved route policy = %q, want %q", got, want)
 	}
 }
 

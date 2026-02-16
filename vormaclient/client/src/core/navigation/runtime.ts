@@ -3,27 +3,37 @@ import {
 	dispatchStatusEvent,
 	type StatusEventDetail,
 } from "../../platform/events.ts";
+import { hasSameNavigationTarget } from "../../platform/url.ts";
 import {
 	beginNavigation as executeBeginNavigation,
 	createNavigationControls,
 	type BeginNavigationContext,
 } from "./begin_navigation.ts";
+import { resolveBeginNavigationTargetURL } from "./begin_navigation_state_machine.ts";
 import { fetchRouteData } from "./fetch_route_data.ts";
 import {
-	buildNavigationsMapFromSlots,
-	clearSlotsAndSubmissions,
+	buildNavigationsMapFromNavigationLanes,
+	clearRuntimeLanes,
 	computeNavigationStatus,
+	createRuntimeLanes,
 	createStatusSignaler,
-	deleteNavigationFromSlots,
-	findNavigationEntryInSlots,
-	getNavigationsSizeFromSlots,
-	transitionNavigationPhaseInSlots,
-	type NavigationSlots,
+	deleteNavigationFromNavigationLanes,
+	findNavigationEntryInNavigationLanes,
+	getNavigationsSizeFromNavigationLanes,
+	transitionNavigationPhaseInNavigationLanes,
+	type NavigationLanes,
 } from "./runtime_slots.ts";
 import {
-	handleNavigationOutcome,
+	handleNavigationOutcomeWithInternalResult,
 	processSuccessfulNavigationRuntime,
 } from "./runtime_navigation_outcome.ts";
+import { toPublicNavigateResult } from "./runtime_navigation_outcome_state_machine.ts";
+import { buildNavigationEntriesByOperationIDFromNavigationLanes } from "./runtime_state_machine.ts";
+import { createDeterministicRevalidationLane } from "./runtime_revalidation_lane.ts";
+import {
+	buildNavigationEntriesBeforeClearAll,
+	createNavigationLifecycleRuntime,
+} from "./runtime_lifecycle_runtime.ts";
 import { executeSubmitRuntime } from "./runtime_submit.ts";
 import type {
 	NavigateProps,
@@ -36,14 +46,12 @@ import type {
 } from "./types.ts";
 import { hasNavigationControlPromiseOwnership } from "./types.ts";
 
-const REVALIDATION_COALESCE_MS = 8;
-
 export {
-	deleteNavigationFromSlots,
-	findNavigationEntryInSlots,
-	transitionNavigationPhaseInSlots,
+	deleteNavigationFromNavigationLanes,
+	findNavigationEntryInNavigationLanes,
+	transitionNavigationPhaseInNavigationLanes,
 };
-export type { NavigationSlots };
+export type { NavigationLanes as NavigationSlots };
 
 export type CreateNavigationRuntimeOptions = {
 	onNavigationIntentResolved?: () => void;
@@ -54,33 +62,59 @@ export function createNavigationRuntime(
 ): NavigationStateManager {
 	const { onNavigationIntentResolved } = options;
 
-	const submissions = new Map<string | symbol, SubmissionEntry>();
-	const slots: NavigationSlots = {
-		activeNavigation: null,
-		prefetchCache: new Map<string, NavigationEntry>(),
-		pendingRevalidation: null,
-	};
+	const lanes = createRuntimeLanes();
+	let nextNavigationOperationID = 1;
+	let nextSubmissionOperationID = 1;
 	let scheduleStatusUpdate: () => void = () => {};
 
-	const getActiveNavigation = (): NavigationEntry | null =>
-		slots.activeNavigation;
+	const getActiveNavigation = (): NavigationEntry | null => lanes.active;
 	const setActiveNavigation = (entry: NavigationEntry | null): void => {
-		slots.activeNavigation = entry;
+		lanes.active = entry;
 	};
 
-	const getPendingRevalidation = (): NavigationEntry | null =>
-		slots.pendingRevalidation;
-	const setPendingRevalidation = (entry: NavigationEntry | null): void => {
-		slots.pendingRevalidation = entry;
+	const getRevalidationNavigation = (): NavigationEntry | null =>
+		lanes.revalidation;
+	const setRevalidationNavigation = (entry: NavigationEntry | null): void => {
+		lanes.revalidation = entry;
 	};
 
-	const findNavigationEntry = (
-		targetUrl: string,
-	): NavigationEntry | undefined =>
-		findNavigationEntryInSlots(slots, targetUrl);
+	const navigationLifecycleRuntime = createNavigationLifecycleRuntime({
+		lanes,
+		getScheduleStatusUpdate: () => scheduleStatusUpdate,
+	});
+	const findNavigationEntry = navigationLifecycleRuntime.findNavigationEntry;
+	const deleteNavigation = (props: {
+		targetUrl: string;
+		reason: string;
+		causedByOperationID?: number | null;
+	}): boolean =>
+		navigationLifecycleRuntime.deleteNavigation({
+			key: props.targetUrl,
+			reason: props.reason,
+			causedByOperationID: props.causedByOperationID ?? null,
+		});
 
-	const deleteNavigation = (key: string): boolean =>
-		deleteNavigationFromSlots(slots, key, scheduleStatusUpdate);
+	const deterministicRevalidationLane = createDeterministicRevalidationLane({
+		getCurrentHref: () => window.location.href,
+		onInFlightTargetMismatch: () => {
+			const revalidationNavigation = getRevalidationNavigation();
+			if (
+				!revalidationNavigation ||
+				hasSameNavigationTarget({
+					firstHref: revalidationNavigation.targetUrl,
+					secondHref: window.location.href,
+				})
+			) {
+				return;
+			}
+
+			revalidationNavigation.control.abortController?.abort();
+			deleteNavigation({
+				targetUrl: revalidationNavigation.targetUrl,
+				reason: "revalidation_target_mismatch",
+			});
+		},
+	});
 
 	const removeNavigation = (key: string): void => {
 		const entry = findNavigationEntry(key);
@@ -88,31 +122,38 @@ export function createNavigationRuntime(
 			return;
 		}
 		entry.control.abortController?.abort();
-		deleteNavigation(key);
+		deleteNavigation({
+			targetUrl: key,
+			reason: "remove_navigation",
+		});
 	};
 
 	const getNavigation = (key: string): NavigationEntry | undefined =>
 		findNavigationEntry(key);
 	const hasNavigation = (key: string): boolean =>
 		getNavigation(key) !== undefined;
-	const getNavigationsSize = (): number => getNavigationsSizeFromSlots(slots);
+	const getNavigationsSize = (): number =>
+		getNavigationsSizeFromNavigationLanes({
+			lanes,
+		});
 	const getNavigations = (): Map<string, NavigationEntry> =>
-		buildNavigationsMapFromSlots(slots);
-	const transitionPhase = (targetUrl: string, phase: NavigationPhase): void =>
-		transitionNavigationPhaseInSlots(
-			slots,
-			targetUrl,
-			phase,
-			scheduleStatusUpdate,
-		);
+		buildNavigationsMapFromNavigationLanes({
+			lanes,
+		});
+	const transitionPhase = (props: {
+		targetUrl: string;
+		phase: NavigationPhase;
+		reason: string;
+	}): void => navigationLifecycleRuntime.transitionPhase(props);
 	const clearNavigationsAndSubmissions = (): void =>
-		clearSlotsAndSubmissions(slots, submissions, scheduleStatusUpdate);
+		clearRuntimeLanes({
+			lanes,
+			onStatusRelevantChange: scheduleStatusUpdate,
+		});
 
 	function getStatus(): StatusEventDetail {
 		return computeNavigationStatus({
-			activeNavigation: slots.activeNavigation,
-			pendingRevalidation: slots.pendingRevalidation,
-			submissions,
+			lanes,
 		});
 	}
 
@@ -122,28 +163,36 @@ export function createNavigationRuntime(
 	});
 	scheduleStatusUpdate = statusSignaler.scheduleStatusUpdate;
 
-	const prefetchCache = slots.prefetchCache;
+	const prefetchNavigationsByTargetUrl = lanes.prefetch;
 
 	const { createActiveNavigation, createPrefetch, createRevalidation } =
 		createNavigationControls({
 			fetchRouteData,
 			getActiveNavigation,
 			setActiveNavigation,
-			prefetchCache,
-			getPendingRevalidation,
-			setPendingRevalidation,
+			prefetchNavigationsByTargetUrl,
+			getRevalidationNavigation,
+			setRevalidationNavigation,
 			scheduleStatusUpdate,
-			deleteNavigation: (key: string) => deleteNavigation(key),
+			deleteNavigation: ({ targetUrl, reason }) =>
+				deleteNavigation({
+					targetUrl,
+					reason,
+				}),
+			allocateNavigationOperationID: () => {
+				const operationID = nextNavigationOperationID;
+				nextNavigationOperationID += 1;
+				return operationID;
+			},
 		});
 
 	const beginNavigationContext: BeginNavigationContext = {
 		getActiveNavigation,
 		setActiveNavigation,
-		getPendingRevalidation,
-		setPendingRevalidation,
-		prefetchCache,
+		getRevalidationNavigation,
+		setRevalidationNavigation,
+		prefetchNavigationsByTargetUrl,
 		scheduleStatusUpdate,
-		revalidationCoalesceMS: REVALIDATION_COALESCE_MS,
 		createActiveNavigation,
 		createPrefetch,
 		createRevalidation,
@@ -155,44 +204,105 @@ export function createNavigationRuntime(
 	): Promise<void> =>
 		processSuccessfulNavigationRuntime(
 			{
-				transitionPhase: (
-					targetUrl: string,
-					phase: NavigationPhase,
-				): void => transitionPhase(targetUrl, phase),
+				transitionPhase: ({ targetUrl, phase, reason }): void =>
+					transitionPhase({
+						targetUrl,
+						phase,
+						reason,
+					}),
 				findNavigationEntry,
-				deleteNavigation,
+				deleteNavigation: ({ targetUrl, reason }) =>
+					deleteNavigation({
+						targetUrl,
+						reason,
+					}),
 			},
 			outcome,
 			entry,
 		);
 
-	const beginNavigation = (props: NavigateProps) =>
-		executeBeginNavigation(beginNavigationContext, props);
+	const beginNavigation = (props: NavigateProps) => {
+		const beforeEntriesByOperationID =
+			buildNavigationEntriesByOperationIDFromNavigationLanes({
+				lanes,
+			});
+		const targetUrl = resolveBeginNavigationTargetURL({
+			navigationProps: props,
+			currentHref: window.location.href,
+		});
+		const control = executeBeginNavigation(beginNavigationContext, props);
+		navigationLifecycleRuntime.dispatchBeginNavigationArbitrated({
+			navigationType: props.navigationType,
+			targetUrl,
+			beforeEntriesByOperationID,
+		});
+		return control;
+	};
 
-	const navigate = async (
+	const navigateSinglePass = async (
 		props: NavigateProps,
 	): Promise<{ didNavigate: boolean }> => {
 		const control = beginNavigation(props);
 
 		try {
 			const outcome = await control.promise;
-			return await handleNavigationOutcome({
-				findNavigationEntry,
-				deleteNavigation,
-				processSuccessfulNavigation,
-				onNavigationIntentResolved,
-				navigationProps: props,
-				outcome,
-				controlPromise: control.promise,
+			const internalResult =
+				await handleNavigationOutcomeWithInternalResult({
+					findNavigationEntry,
+					deleteNavigation: ({ targetUrl, reason }) =>
+						deleteNavigation({
+							targetUrl,
+							reason,
+						}),
+					processSuccessfulNavigation,
+					onNavigationIntentResolved,
+					navigationProps: props,
+					outcome,
+					controlPromise: control.promise,
+				});
+			return toPublicNavigateResult({
+				internalResult,
 			});
 		} catch {
 			const targetUrl = resolveAbsoluteHref({ href: props.href });
-			const entry = findNavigationEntry(targetUrl);
-			if (hasNavigationControlPromiseOwnership(entry, control.promise)) {
-				deleteNavigation(targetUrl);
+			const candidateEntry = findNavigationEntry(targetUrl);
+			const ownedEntry = hasNavigationControlPromiseOwnership(
+				candidateEntry,
+				control.promise,
+			)
+				? candidateEntry
+				: undefined;
+			if (ownedEntry) {
+				deleteNavigation({
+					targetUrl,
+					reason: "navigate_promise_rejected",
+				});
 			}
-			return { didNavigate: false };
+			navigationLifecycleRuntime.dispatchNavigationFailure({
+				targetUrl,
+				entry: ownedEntry,
+				reason: "navigate_promise_rejected",
+			});
+			return toPublicNavigateResult({
+				internalResult: {
+					type: "failed",
+					reason: "navigate_promise_rejected",
+				},
+			});
 		}
+	};
+
+	const navigate = async (
+		props: NavigateProps,
+	): Promise<{ didNavigate: boolean }> => {
+		if (props.navigationType !== "revalidation") {
+			deterministicRevalidationLane.clearQueuedTrailingRequest();
+			return navigateSinglePass(props);
+		}
+
+		return deterministicRevalidationLane.runRevalidation({
+			navigateSinglePass,
+		});
 	};
 
 	const submit = <T = unknown>(
@@ -204,8 +314,31 @@ export function createNavigationRuntime(
 	> =>
 		executeSubmitRuntime(
 			{
-				submissions,
+				submissions: lanes.submissions,
 				scheduleStatusUpdate,
+				allocateSubmissionOperationID: () => {
+					const operationID = nextSubmissionOperationID;
+					nextSubmissionOperationID += 1;
+					return operationID;
+				},
+				onSubmissionStateTransition: ({
+					submissionEntry,
+					fromState,
+					toState,
+					reason,
+					causedByOperationID,
+				}) => {
+					navigationLifecycleRuntime.dispatchSubmissionStateTransition(
+						{
+							submissionEntry,
+							targetUrl: window.location.href,
+							fromState,
+							toState,
+							reason,
+							causedByOperationID,
+						},
+					);
+				},
 				navigate,
 			},
 			url,
@@ -214,11 +347,23 @@ export function createNavigationRuntime(
 		);
 
 	function clearAll(): void {
+		const entriesBeforeClearAll = buildNavigationEntriesBeforeClearAll({
+			lanes,
+		});
+		const submissionsBeforeClearAll = [...lanes.submissions.values()];
+
+		deterministicRevalidationLane.reset();
 		clearNavigationsAndSubmissions();
+
+		navigationLifecycleRuntime.dispatchClearAll({
+			navigationEntries: entriesBeforeClearAll,
+			submissionEntries: submissionsBeforeClearAll,
+			targetUrl: window.location.href,
+		});
 	}
 
 	return {
-		_submissions: submissions,
+		_submissions: lanes.submissions,
 		navigate,
 		beginNavigation,
 		processSuccessfulNavigation,
@@ -229,6 +374,8 @@ export function createNavigationRuntime(
 		getNavigationsSize,
 		getNavigations,
 		getStatus,
+		getDebugJournal: navigationLifecycleRuntime.getDebugJournal,
+		clearDebugJournal: navigationLifecycleRuntime.clearDebugJournal,
 		clearAll,
 	};
 }

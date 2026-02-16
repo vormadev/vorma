@@ -36,6 +36,187 @@ func TestWriteFileAtomically(t *testing.T) {
 		}
 	})
 
+	t.Run("syncs parent directory after rename", func(t *testing.T) {
+		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		t.Cleanup(func() {
+			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+		})
+
+		outputDirectory := t.TempDir()
+		targetPath := filepath.Join(outputDirectory, "artifact.json")
+
+		openedParentDirectoryPath := ""
+		syncParentDirectoryCalled := false
+		closeParentDirectoryCalled := false
+		atomicFileWriteDeps.openParentDirectory = func(path string) (*os.File, error) {
+			openedParentDirectoryPath = path
+			return os.Open(path)
+		}
+		atomicFileWriteDeps.syncParentDirectory = func(dir *os.File) error {
+			syncParentDirectoryCalled = true
+			return dir.Sync()
+		}
+		atomicFileWriteDeps.closeParentDirectory = func(dir *os.File) error {
+			closeParentDirectoryCalled = true
+			return dir.Close()
+		}
+
+		if err := writeFileAtomically(targetPath, []byte(`{"new":true}`), 0o644); err != nil {
+			t.Fatalf("writeFileAtomically returned error: %v", err)
+		}
+		if openedParentDirectoryPath != outputDirectory {
+			t.Fatalf("opened parent directory path = %q, want %q", openedParentDirectoryPath, outputDirectory)
+		}
+		if !syncParentDirectoryCalled {
+			t.Fatal("expected parent directory sync after rename")
+		}
+		if !closeParentDirectoryCalled {
+			t.Fatal("expected parent directory close after sync")
+		}
+	})
+
+	t.Run("returns open-parent-directory error after rename", func(t *testing.T) {
+		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		t.Cleanup(func() {
+			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+		})
+
+		outputDirectory := t.TempDir()
+		targetPath := filepath.Join(outputDirectory, "artifact.json")
+		mustWriteFile(t, targetPath, []byte(`{"old":true}`))
+
+		openParentDirectoryErr := errors.New("open parent directory failed")
+		atomicFileWriteDeps.openParentDirectory = func(string) (*os.File, error) {
+			return nil, openParentDirectoryErr
+		}
+
+		err := writeFileAtomically(targetPath, []byte(`{"new":true}`), 0o644)
+		if err == nil {
+			t.Fatal("expected writeFileAtomically to return open-parent-directory error")
+		}
+		if !strings.Contains(err.Error(), "open parent directory for sync") {
+			t.Fatalf("error = %q, expected open-parent-directory context", err)
+		}
+		if !errors.Is(err, openParentDirectoryErr) {
+			t.Fatalf("error = %v, expected wrapped open-parent-directory error", err)
+		}
+
+		rawBytes, readErr := os.ReadFile(targetPath)
+		if readErr != nil {
+			t.Fatalf("read target file: %v", readErr)
+		}
+		if string(rawBytes) != `{"new":true}` {
+			t.Fatalf("target file contents = %q, want %q", string(rawBytes), `{"new":true}`)
+		}
+	})
+
+	t.Run("returns sync-parent-directory error and closes directory", func(t *testing.T) {
+		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		t.Cleanup(func() {
+			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+		})
+
+		outputDirectory := t.TempDir()
+		targetPath := filepath.Join(outputDirectory, "artifact.json")
+
+		syncParentDirectoryErr := errors.New("sync parent directory failed")
+		closeParentDirectoryCalled := false
+		atomicFileWriteDeps.openParentDirectory = func(path string) (*os.File, error) {
+			return os.Open(path)
+		}
+		atomicFileWriteDeps.syncParentDirectory = func(*os.File) error {
+			return syncParentDirectoryErr
+		}
+		atomicFileWriteDeps.closeParentDirectory = func(dir *os.File) error {
+			closeParentDirectoryCalled = true
+			return dir.Close()
+		}
+
+		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		if err == nil {
+			t.Fatal("expected writeFileAtomically to return sync-parent-directory error")
+		}
+		if !strings.Contains(err.Error(), "sync parent directory") {
+			t.Fatalf("error = %q, expected sync-parent-directory context", err)
+		}
+		if !errors.Is(err, syncParentDirectoryErr) {
+			t.Fatalf("error = %v, expected wrapped sync-parent-directory error", err)
+		}
+		if !closeParentDirectoryCalled {
+			t.Fatal("expected close parent directory call after sync failure")
+		}
+	})
+
+	t.Run("joins sync and close errors for parent directory", func(t *testing.T) {
+		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		t.Cleanup(func() {
+			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+		})
+
+		outputDirectory := t.TempDir()
+		targetPath := filepath.Join(outputDirectory, "artifact.json")
+
+		syncParentDirectoryErr := errors.New("sync parent directory failed")
+		closeParentDirectoryErr := errors.New("close parent directory failed")
+		atomicFileWriteDeps.openParentDirectory = func(path string) (*os.File, error) {
+			return os.Open(path)
+		}
+		atomicFileWriteDeps.syncParentDirectory = func(*os.File) error {
+			return syncParentDirectoryErr
+		}
+		atomicFileWriteDeps.closeParentDirectory = func(dir *os.File) error {
+			_ = dir.Close()
+			return closeParentDirectoryErr
+		}
+
+		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		if err == nil {
+			t.Fatal("expected writeFileAtomically to return joined sync+close parent-directory errors")
+		}
+		if !strings.Contains(err.Error(), "sync parent directory") {
+			t.Fatalf("error = %q, expected sync-parent-directory context", err)
+		}
+		if !errors.Is(err, syncParentDirectoryErr) {
+			t.Fatalf("error = %v, expected sync-parent-directory error in joined chain", err)
+		}
+		if !errors.Is(err, closeParentDirectoryErr) {
+			t.Fatalf("error = %v, expected close-parent-directory error in joined chain", err)
+		}
+	})
+
+	t.Run("returns close-parent-directory error when sync succeeds", func(t *testing.T) {
+		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		t.Cleanup(func() {
+			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+		})
+
+		outputDirectory := t.TempDir()
+		targetPath := filepath.Join(outputDirectory, "artifact.json")
+
+		closeParentDirectoryErr := errors.New("close parent directory failed")
+		atomicFileWriteDeps.openParentDirectory = func(path string) (*os.File, error) {
+			return os.Open(path)
+		}
+		atomicFileWriteDeps.syncParentDirectory = func(*os.File) error {
+			return nil
+		}
+		atomicFileWriteDeps.closeParentDirectory = func(dir *os.File) error {
+			_ = dir.Close()
+			return closeParentDirectoryErr
+		}
+
+		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		if err == nil {
+			t.Fatal("expected writeFileAtomically to return close-parent-directory error")
+		}
+		if !strings.Contains(err.Error(), "close parent directory") {
+			t.Fatalf("error = %q, expected close-parent-directory context", err)
+		}
+		if !errors.Is(err, closeParentDirectoryErr) {
+			t.Fatalf("error = %v, expected wrapped close-parent-directory error", err)
+		}
+	})
+
 	t.Run("wraps create-temp-file errors", func(t *testing.T) {
 		targetPath := filepath.Join(t.TempDir(), "missing-directory", "artifact.json")
 		err := writeFileAtomically(targetPath, []byte(`{}`), 0o644)

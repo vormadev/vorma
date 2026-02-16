@@ -16,6 +16,16 @@ type HistoryLikeLocation = {
 	key: string;
 };
 
+function createDeferred<T>() {
+	let resolve: (value: T) => void = () => {};
+	let reject: (reason?: unknown) => void = () => {};
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+}
+
 function createHistoryLikeLocation(
 	overrides: Partial<HistoryLikeLocation>,
 ): HistoryLikeLocation {
@@ -242,6 +252,71 @@ describe("history_listener_prelude", () => {
 
 		expect(navigate).toHaveBeenCalledTimes(1);
 		expect(HistoryManager.getLastKnownLocation().key).toBe("target-key");
+	});
+
+	it("serializes overlapping POP updates and applies location updates in enqueue order", async () => {
+		const firstPOPDeferred = createDeferred<{ didNavigate: boolean }>();
+		const secondPOPDeferred = createDeferred<{ didNavigate: boolean }>();
+		const navigate = vi
+			.fn()
+			.mockImplementationOnce(() => firstPOPDeferred.promise)
+			.mockImplementationOnce(() => secondPOPDeferred.promise);
+		setNavigationStateAccess({
+			navigate,
+			removeNavigation: vi.fn(),
+			getNavigations: vi.fn(() => new Map()),
+		});
+
+		HistoryManager.updateLastKnownLocation(
+			createHistoryLikeLocation({
+				pathname: "/origin",
+				key: "origin-key",
+			}) as any,
+		);
+
+		const firstPOP = customHistoryListener({
+			action: "POP" as any,
+			location: createHistoryLikeLocation({
+				pathname: "/slow-first",
+				key: "slow-first-key",
+			}) as any,
+		});
+		const secondPOP = customHistoryListener({
+			action: "POP" as any,
+			location: createHistoryLikeLocation({
+				pathname: "/fast-second",
+				key: "fast-second-key",
+			}) as any,
+		});
+		try {
+			await Promise.resolve();
+			expect(navigate).toHaveBeenCalledTimes(1);
+			expect(HistoryManager.getLastKnownLocation().key).toBe(
+				"origin-key",
+			);
+			secondPOPDeferred.resolve({ didNavigate: true });
+			await Promise.resolve();
+			expect(navigate).toHaveBeenCalledTimes(1);
+
+			firstPOPDeferred.resolve({ didNavigate: true });
+			await firstPOP;
+			expect(HistoryManager.getLastKnownLocation().key).toBe(
+				"slow-first-key",
+			);
+			await Promise.resolve();
+			expect(navigate).toHaveBeenCalledTimes(2);
+
+			await secondPOP;
+
+			expect(HistoryManager.getLastKnownLocation().key).toBe(
+				"fast-second-key",
+			);
+		} finally {
+			firstPOPDeferred.resolve({ didNavigate: true });
+			secondPOPDeferred.resolve({ didNavigate: true });
+			await firstPOP.catch(() => undefined);
+			await secondPOP.catch(() => undefined);
+		}
 	});
 
 	it("restores stored scroll coordinates when same-document POP removes hash", async () => {

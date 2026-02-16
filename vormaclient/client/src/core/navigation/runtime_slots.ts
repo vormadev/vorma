@@ -11,23 +11,42 @@ import type {
 	SubmissionEntry,
 } from "./types.ts";
 
-export function computeNavigationStatus(props: {
-	activeNavigation: NavigationEntry | null;
-	pendingRevalidation: NavigationEntry | null;
+export type NavigationLanes = {
+	active: NavigationEntry | null;
+	revalidation: NavigationEntry | null;
+	prefetch: Map<string, NavigationEntry>;
+};
+
+export type RuntimeLanes = NavigationLanes & {
 	submissions: Map<string | symbol, SubmissionEntry>;
+};
+
+export function createRuntimeLanes(): RuntimeLanes {
+	return {
+		active: null,
+		revalidation: null,
+		prefetch: new Map<string, NavigationEntry>(),
+		submissions: new Map<string | symbol, SubmissionEntry>(),
+	};
+}
+
+// Deprecated alias kept temporarily for incremental migration in tests.
+export type NavigationSlots = NavigationLanes;
+
+export function computeNavigationStatus(props: {
+	lanes: RuntimeLanes;
 }): StatusEventDetail {
-	const { activeNavigation, pendingRevalidation, submissions } = props;
+	const { lanes } = props;
 
 	const isNavigating =
-		activeNavigation !== null &&
-		activeNavigation.intent === "navigate" &&
-		activeNavigation.phase !== "complete";
+		lanes.active !== null &&
+		lanes.active.intent === "navigate" &&
+		lanes.active.phase !== "complete";
 
 	const isRevalidating =
-		pendingRevalidation !== null &&
-		pendingRevalidation.phase !== "complete";
+		lanes.revalidation !== null && lanes.revalidation.phase !== "complete";
 
-	const isSubmitting = Array.from(submissions.values()).some(
+	const isSubmitting = Array.from(lanes.submissions.values()).some(
 		(x) => !x.skipGlobalLoadingIndicator,
 	);
 
@@ -60,124 +79,130 @@ export function createStatusSignaler(props: {
 	};
 }
 
-export type NavigationSlots = {
-	activeNavigation: NavigationEntry | null;
-	prefetchCache: Map<string, NavigationEntry>;
-	pendingRevalidation: NavigationEntry | null;
-};
-
-type NavigationSlotMatch =
+type NavigationLaneMatch =
 	| {
-			slot: "active";
+			lane: "active";
 			entry: NavigationEntry;
 	  }
 	| {
-			slot: "prefetch";
+			lane: "prefetch";
 			key: string;
 			entry: NavigationEntry;
 	  }
 	| {
-			slot: "pendingRevalidation";
+			lane: "revalidation";
 			entry: NavigationEntry;
 	  };
 
-export function findNavigationEntryInSlots(
-	slots: NavigationSlots,
-	targetUrl: string,
-): NavigationEntry | undefined {
-	return matchSlotByTargetURL(slots, targetUrl)?.entry;
+export function findNavigationEntryInNavigationLanes(props: {
+	lanes: NavigationLanes;
+	targetUrl: string;
+}): NavigationEntry | undefined {
+	return matchNavigationLaneByTargetURL(props)?.entry;
 }
 
-export function getNavigationsSizeFromSlots(slots: NavigationSlots): number {
+export function getNavigationsSizeFromNavigationLanes(props: {
+	lanes: NavigationLanes;
+}): number {
+	const { lanes } = props;
 	let size = 0;
-	if (slots.activeNavigation) size++;
-	size += slots.prefetchCache.size;
-	if (slots.pendingRevalidation) size++;
+	if (lanes.active) size++;
+	size += lanes.prefetch.size;
+	if (lanes.revalidation) size++;
 	return size;
 }
 
-export function buildNavigationsMapFromSlots(
-	slots: NavigationSlots,
-): Map<string, NavigationEntry> {
+export function buildNavigationsMapFromNavigationLanes(props: {
+	lanes: NavigationLanes;
+}): Map<string, NavigationEntry> {
+	const { lanes } = props;
 	const map = new Map<string, NavigationEntry>();
-	if (slots.activeNavigation) {
-		map.set(slots.activeNavigation.targetUrl, slots.activeNavigation);
+	if (lanes.active) {
+		map.set(lanes.active.targetUrl, lanes.active);
 	}
-	for (const [key, entry] of slots.prefetchCache) {
+	for (const [key, entry] of lanes.prefetch) {
 		map.set(key, entry);
 	}
-	if (slots.pendingRevalidation) {
-		map.set(slots.pendingRevalidation.targetUrl, slots.pendingRevalidation);
+	if (lanes.revalidation) {
+		map.set(lanes.revalidation.targetUrl, lanes.revalidation);
 	}
 	return map;
 }
 
-function findMatchingPrefetchKey(
-	slots: NavigationSlots,
-	key: string,
-): string | undefined {
+function findMatchingPrefetchLaneKey(props: {
+	lanes: NavigationLanes;
+	key: string;
+}): string | undefined {
 	return findMapEntryByNavigationTarget({
-		map: slots.prefetchCache,
-		targetHref: key,
+		map: props.lanes.prefetch,
+		targetHref: props.key,
 	})?.[0];
 }
 
-function matchSlotByTargetURL(
-	slots: NavigationSlots,
-	targetUrl: string,
-): NavigationSlotMatch | undefined {
+function matchNavigationLaneByTargetURL(props: {
+	lanes: NavigationLanes;
+	targetUrl: string;
+}): NavigationLaneMatch | undefined {
+	const { lanes, targetUrl } = props;
 	if (
-		slots.activeNavigation &&
+		lanes.active &&
 		hasSameNavigationTarget({
-			firstHref: slots.activeNavigation.targetUrl,
+			firstHref: lanes.active.targetUrl,
 			secondHref: targetUrl,
 		})
 	) {
 		return {
-			slot: "active",
-			entry: slots.activeNavigation,
+			lane: "active",
+			entry: lanes.active,
 		};
 	}
 
-	const prefetchKey = findMatchingPrefetchKey(slots, targetUrl);
-	if (prefetchKey) {
+	const prefetchLaneKey = findMatchingPrefetchLaneKey({
+		lanes,
+		key: targetUrl,
+	});
+	if (prefetchLaneKey) {
 		return {
-			slot: "prefetch",
-			key: prefetchKey,
-			entry: slots.prefetchCache.get(prefetchKey)!,
+			lane: "prefetch",
+			key: prefetchLaneKey,
+			entry: lanes.prefetch.get(prefetchLaneKey)!,
 		};
 	}
 
 	if (
-		slots.pendingRevalidation &&
+		lanes.revalidation &&
 		hasSameNavigationTarget({
-			firstHref: slots.pendingRevalidation.targetUrl,
+			firstHref: lanes.revalidation.targetUrl,
 			secondHref: targetUrl,
 		})
 	) {
 		return {
-			slot: "pendingRevalidation",
-			entry: slots.pendingRevalidation,
+			lane: "revalidation",
+			entry: lanes.revalidation,
 		};
 	}
 
 	return undefined;
 }
 
-export function deleteNavigationFromSlots(
-	slots: NavigationSlots,
-	key: string,
-	onStatusRelevantChange: () => void,
-): boolean {
-	const action = decideDeleteNavigationSlotAction(slots, key);
-	return executeDeleteNavigationSlotAction(
-		slots,
+export function deleteNavigationFromNavigationLanes(props: {
+	lanes: NavigationLanes;
+	targetUrl: string;
+	onStatusRelevantChange: () => void;
+}): boolean {
+	const { lanes, targetUrl, onStatusRelevantChange } = props;
+	const action = decideDeleteNavigationLaneAction({
+		lanes,
+		targetUrl,
+	});
+	return executeDeleteNavigationLaneAction({
+		lanes,
 		action,
 		onStatusRelevantChange,
-	);
+	});
 }
 
-type DeleteNavigationSlotAction =
+type DeleteNavigationLaneAction =
 	| {
 			type: "stop";
 	  }
@@ -189,65 +214,65 @@ type DeleteNavigationSlotAction =
 			key: string;
 	  }
 	| {
-			type: "clearPendingRevalidation";
+			type: "clearRevalidation";
 	  };
 
-function decideDeleteNavigationSlotAction(
-	slots: NavigationSlots,
-	key: string,
-): DeleteNavigationSlotAction {
-	const matchedSlot = matchSlotByTargetURL(slots, key);
-	if (!matchedSlot) {
+function decideDeleteNavigationLaneAction(props: {
+	lanes: NavigationLanes;
+	targetUrl: string;
+}): DeleteNavigationLaneAction {
+	const matchedLane = matchNavigationLaneByTargetURL(props);
+	if (!matchedLane) {
 		return { type: "stop" };
 	}
 
-	switch (matchedSlot.slot) {
+	switch (matchedLane.lane) {
 		case "active":
 			return { type: "clearActive" };
 		case "prefetch":
 			return {
 				type: "deletePrefetch",
-				key: matchedSlot.key,
+				key: matchedLane.key,
 			};
-		case "pendingRevalidation":
-			return { type: "clearPendingRevalidation" };
+		case "revalidation":
+			return { type: "clearRevalidation" };
 	}
 }
 
-function executeDeleteNavigationSlotAction(
-	slots: NavigationSlots,
-	action: DeleteNavigationSlotAction,
-	onStatusRelevantChange: () => void,
-): boolean {
+function executeDeleteNavigationLaneAction(props: {
+	lanes: NavigationLanes;
+	action: DeleteNavigationLaneAction;
+	onStatusRelevantChange: () => void;
+}): boolean {
+	const { lanes, action, onStatusRelevantChange } = props;
 	switch (action.type) {
 		case "stop":
 			return false;
 		case "clearActive":
-			slots.activeNavigation = null;
+			lanes.active = null;
 			onStatusRelevantChange();
 			return true;
 		case "deletePrefetch":
-			slots.prefetchCache.delete(action.key);
+			lanes.prefetch.delete(action.key);
 			return true;
-		case "clearPendingRevalidation":
-			slots.pendingRevalidation = null;
+		case "clearRevalidation":
+			lanes.revalidation = null;
 			onStatusRelevantChange();
 			return true;
 	}
 }
 
-export function transitionNavigationPhaseInSlots(
-	slots: NavigationSlots,
-	targetUrl: string,
-	phase: NavigationPhase,
-	onStatusRelevantChange: () => void,
-): void {
-	const action = decideTransitionNavigationPhaseAction(
-		slots,
-		targetUrl,
-		phase,
-	);
-	executeTransitionNavigationPhaseAction(action, onStatusRelevantChange);
+export function transitionNavigationPhaseInNavigationLanes(props: {
+	lanes: NavigationLanes;
+	targetUrl: string;
+	phase: NavigationPhase;
+	onStatusRelevantChange: () => void;
+}): void {
+	const action = decideTransitionNavigationPhaseAction(props);
+	executeTransitionNavigationPhaseAction({
+		action,
+		onStatusRelevantChange: props.onStatusRelevantChange,
+	});
 }
 
 type TransitionNavigationPhaseAction =
@@ -261,28 +286,32 @@ type TransitionNavigationPhaseAction =
 			shouldSignalStatusChange: boolean;
 	  };
 
-function decideTransitionNavigationPhaseAction(
-	slots: NavigationSlots,
-	targetUrl: string,
-	phase: NavigationPhase,
-): TransitionNavigationPhaseAction {
-	const matchedSlot = matchSlotByTargetURL(slots, targetUrl);
-	if (!matchedSlot) {
+function decideTransitionNavigationPhaseAction(props: {
+	lanes: NavigationLanes;
+	targetUrl: string;
+	phase: NavigationPhase;
+}): TransitionNavigationPhaseAction {
+	const matchedLane = matchNavigationLaneByTargetURL({
+		lanes: props.lanes,
+		targetUrl: props.targetUrl,
+	});
+	if (!matchedLane) {
 		return { type: "stop" };
 	}
 
 	return {
 		type: "setPhase",
-		entry: matchedSlot.entry,
-		phase,
-		shouldSignalStatusChange: matchedSlot.slot !== "prefetch",
+		entry: matchedLane.entry,
+		phase: props.phase,
+		shouldSignalStatusChange: matchedLane.lane !== "prefetch",
 	};
 }
 
-function executeTransitionNavigationPhaseAction(
-	action: TransitionNavigationPhaseAction,
-	onStatusRelevantChange: () => void,
-): void {
+function executeTransitionNavigationPhaseAction(props: {
+	action: TransitionNavigationPhaseAction;
+	onStatusRelevantChange: () => void;
+}): void {
+	const { action, onStatusRelevantChange } = props;
 	switch (action.type) {
 		case "stop":
 			return;
@@ -295,28 +324,107 @@ function executeTransitionNavigationPhaseAction(
 	}
 }
 
+export function clearRuntimeLanes(props: {
+	lanes: RuntimeLanes;
+	onStatusRelevantChange: () => void;
+}): void {
+	const { lanes, onStatusRelevantChange } = props;
+	if (lanes.active) {
+		lanes.active.control.abortController?.abort();
+		lanes.active = null;
+	}
+
+	for (const prefetchEntry of lanes.prefetch.values()) {
+		prefetchEntry.control.abortController?.abort();
+	}
+	lanes.prefetch.clear();
+
+	if (lanes.revalidation) {
+		lanes.revalidation.control.abortController?.abort();
+		lanes.revalidation = null;
+	}
+
+	for (const submissionEntry of lanes.submissions.values()) {
+		submissionEntry.control.abortController?.abort();
+	}
+	lanes.submissions.clear();
+
+	onStatusRelevantChange();
+}
+
+// Deprecated aliases kept temporarily for incremental migration in tests.
+export function findNavigationEntryInSlots(
+	slots: NavigationSlots,
+	targetUrl: string,
+): NavigationEntry | undefined {
+	return findNavigationEntryInNavigationLanes({
+		lanes: slots,
+		targetUrl,
+	});
+}
+
+export function getNavigationsSizeFromSlots(slots: NavigationSlots): number {
+	return getNavigationsSizeFromNavigationLanes({
+		lanes: slots,
+	});
+}
+
+export function buildNavigationsMapFromSlots(
+	slots: NavigationSlots,
+): Map<string, NavigationEntry> {
+	return buildNavigationsMapFromNavigationLanes({
+		lanes: slots,
+	});
+}
+
+export function deleteNavigationFromSlots(
+	slots: NavigationSlots,
+	key: string,
+	onStatusRelevantChange: () => void,
+): boolean {
+	return deleteNavigationFromNavigationLanes({
+		lanes: slots,
+		targetUrl: key,
+		onStatusRelevantChange,
+	});
+}
+
+export function transitionNavigationPhaseInSlots(
+	slots: NavigationSlots,
+	targetUrl: string,
+	phase: NavigationPhase,
+	onStatusRelevantChange: () => void,
+): void {
+	transitionNavigationPhaseInNavigationLanes({
+		lanes: slots,
+		targetUrl,
+		phase,
+		onStatusRelevantChange,
+	});
+}
+
 export function clearSlotsAndSubmissions(
 	slots: NavigationSlots,
 	submissions: Map<string | symbol, SubmissionEntry>,
 	onStatusRelevantChange: () => void,
 ): void {
-	if (slots.activeNavigation) {
-		slots.activeNavigation.control.abortController?.abort();
-		slots.activeNavigation = null;
+	if (slots.active) {
+		slots.active.control.abortController?.abort();
+		slots.active = null;
 	}
 
-	for (const prefetch of slots.prefetchCache.values()) {
-		prefetch.control.abortController?.abort();
+	for (const prefetchEntry of slots.prefetch.values()) {
+		prefetchEntry.control.abortController?.abort();
 	}
-	slots.prefetchCache.clear();
+	slots.prefetch.clear();
 
-	if (slots.pendingRevalidation) {
-		slots.pendingRevalidation.control.abortController?.abort();
-		slots.pendingRevalidation = null;
+	if (slots.revalidation) {
+		slots.revalidation.control.abortController?.abort();
+		slots.revalidation = null;
 	}
 
-	for (const sub of submissions.values()) {
-		sub.control.abortController?.abort();
+	for (const submissionEntry of submissions.values()) {
+		submissionEntry.control.abortController?.abort();
 	}
 	submissions.clear();
 

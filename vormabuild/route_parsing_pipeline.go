@@ -20,7 +20,7 @@ var importRegex = regexp.MustCompile(`import\((` + "`" + `[^` + "`" + `]+` + "`"
 type routeParsingPipelineDependencies struct {
 	resolveClientRouteDefinitionFiles func(*vormaruntime.Vorma) ([]string, error)
 	parseRouteDefinitionFileIntoCalls func(*vormaruntime.Vorma, string) (parsedRouteDefinitionsCode, error)
-	warnUnresolvedRouteCalls          func(*vormaruntime.Vorma, string, []unresolvedRouteCall)
+	handleUnresolvedRouteCalls        func(*vormaruntime.Vorma, string, []unresolvedRouteCall) error
 	mergeRouteCallsIntoPaths          func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []routeCall) error
 }
 
@@ -42,7 +42,7 @@ type routeDefinitionsFileResolutionDependencies struct {
 var routeParsingPipelineDeps = routeParsingPipelineDependencies{
 	resolveClientRouteDefinitionFiles: resolveClientRouteDefinitionFiles,
 	parseRouteDefinitionFileIntoCalls: parseRouteDefinitionFileIntoCalls,
-	warnUnresolvedRouteCalls:          warnUnresolvedRouteCalls,
+	handleUnresolvedRouteCalls:        handleUnresolvedRouteCalls,
 	mergeRouteCallsIntoPaths:          mergeRouteCallsIntoPaths,
 }
 
@@ -82,11 +82,13 @@ func parseClientRoutes(v *vormaruntime.Vorma) (map[string]*vormaruntime.Path, er
 			return nil, err
 		}
 
-		routeParsingPipelineDeps.warnUnresolvedRouteCalls(
+		if err := routeParsingPipelineDeps.handleUnresolvedRouteCalls(
 			v,
 			routeDefinitionFile,
 			parsedRouteDefinitions.unresolvedRoutes,
-		)
+		); err != nil {
+			return nil, err
+		}
 
 		if err := routeParsingPipelineDeps.mergeRouteCallsIntoPaths(
 			v,
@@ -231,7 +233,59 @@ func logEsbuildTransformErrors(v *vormaruntime.Vorma, messages []esbuild.Message
 	}
 }
 
-func warnUnresolvedRouteCalls(
+func handleUnresolvedRouteCalls(
+	v *vormaruntime.Vorma,
+	routeDefinitionFile string,
+	unresolvedRoutes []unresolvedRouteCall,
+) error {
+	if len(unresolvedRoutes) == 0 {
+		return nil
+	}
+
+	unresolvedRoutePolicy, err := resolveUnresolvedRoutePolicy(v)
+	if err != nil {
+		return err
+	}
+
+	if unresolvedRoutePolicy == vormaruntime.UnresolvedRoutePolicyWarn {
+		logUnresolvedRouteCallsAsWarnings(v, routeDefinitionFile, unresolvedRoutes)
+		return nil
+	}
+
+	return buildUnresolvedRouteCallsError(routeDefinitionFile, unresolvedRoutes)
+}
+
+func resolveUnresolvedRoutePolicy(v *vormaruntime.Vorma) (string, error) {
+	if v == nil {
+		return "", errors.New("Vorma runtime is required to resolve unresolved route policy")
+	}
+	if v.Config == nil {
+		return "", errors.New("Vorma config is required to resolve unresolved route policy")
+	}
+
+	configuredPolicy := strings.TrimSpace(v.Config.UnresolvedRoutePolicy)
+	if configuredPolicy != "" {
+		switch configuredPolicy {
+		case vormaruntime.UnresolvedRoutePolicyWarn:
+			return vormaruntime.UnresolvedRoutePolicyWarn, nil
+		case vormaruntime.UnresolvedRoutePolicyError:
+			return vormaruntime.UnresolvedRoutePolicyError, nil
+		default:
+			return "", fmt.Errorf(
+				"Vorma.UnresolvedRoutePolicy must be %q or %q",
+				vormaruntime.UnresolvedRoutePolicyWarn,
+				vormaruntime.UnresolvedRoutePolicyError,
+			)
+		}
+	}
+
+	if v.GetIsDevMode() {
+		return vormaruntime.UnresolvedRoutePolicyWarn, nil
+	}
+	return vormaruntime.UnresolvedRoutePolicyError, nil
+}
+
+func logUnresolvedRouteCallsAsWarnings(
 	v *vormaruntime.Vorma,
 	routeDefinitionFile string,
 	unresolvedRoutes []unresolvedRouteCall,
@@ -247,6 +301,30 @@ func warnUnresolvedRouteCalls(
 			"This route will be ignored. Use a static string path or a const variable assigned to a string literal.",
 		)
 	}
+}
+
+func buildUnresolvedRouteCallsError(
+	routeDefinitionFile string,
+	unresolvedRoutes []unresolvedRouteCall,
+) error {
+	unresolvedRouteErrors := make([]error, 0, len(unresolvedRoutes))
+	for _, unresolvedRoute := range unresolvedRoutes {
+		unresolvedRouteErrors = append(
+			unresolvedRouteErrors,
+			fmt.Errorf(
+				"pattern %q has unresolved module expression %q (%s)",
+				unresolvedRoute.Pattern,
+				unresolvedRoute.RawModuleExpr,
+				unresolvedRoute.Reason,
+			),
+		)
+	}
+
+	return fmt.Errorf(
+		"unresolved route calls are not allowed in %q: %w",
+		routeDefinitionFile,
+		errors.Join(unresolvedRouteErrors...),
+	)
 }
 
 func mergeRouteCallsIntoPaths(

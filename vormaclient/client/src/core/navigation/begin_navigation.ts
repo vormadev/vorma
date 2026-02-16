@@ -1,4 +1,3 @@
-import { resolveAbsoluteHref } from "vorma/kit/url";
 import type {
 	NavigateProps,
 	NavigationControl,
@@ -6,15 +5,12 @@ import type {
 	NavigationIntent,
 } from "./types.ts";
 import {
-	decideBeginPrefetchAction,
-	decideBeginRevalidationAction,
-	decideReusableUserNavigationEntryCandidate,
-	executeBeginPrefetchAction,
-	executeBeginRevalidationAction,
-	executeReusableUserNavigationEntryCandidate,
-	findPrefetchByNavigationTarget,
-	hasEntryWithSameNavigationTarget,
-} from "./begin_navigation_flow.ts";
+	decideBeginNavigationExecutionPlan,
+	type BeginNavigationAbortInstruction,
+	type BeginNavigationExecutionPlan,
+	type BeginNavigationPromotion,
+	type BeginNavigationReuseInstruction,
+} from "./begin_navigation_state_machine.ts";
 export { createNavigationControls } from "./navigation_controls.ts";
 export type {
 	CreateNavigationControlsContext,
@@ -24,11 +20,10 @@ export type {
 export type BeginNavigationContext = {
 	getActiveNavigation: () => NavigationEntry | null;
 	setActiveNavigation: (entry: NavigationEntry | null) => void;
-	getPendingRevalidation: () => NavigationEntry | null;
-	setPendingRevalidation: (entry: NavigationEntry | null) => void;
-	prefetchCache: Map<string, NavigationEntry>;
+	getRevalidationNavigation: () => NavigationEntry | null;
+	setRevalidationNavigation: (entry: NavigationEntry | null) => void;
+	prefetchNavigationsByTargetUrl: Map<string, NavigationEntry>;
 	scheduleStatusUpdate: () => void;
-	revalidationCoalesceMS: number;
 	createActiveNavigation: (
 		props: NavigateProps,
 		intent: NavigationIntent,
@@ -40,138 +35,204 @@ export type BeginNavigationContext = {
 	createRevalidation: (props: NavigateProps) => NavigationControl;
 };
 
+function promoteEntryToActiveLane(props: {
+	entry: NavigationEntry;
+	promotion: BeginNavigationPromotion;
+}): void {
+	const { entry, promotion } = props;
+	entry.targetUrl = promotion.targetUrl;
+	entry.scrollToTop = promotion.scrollToTop;
+	entry.replace = promotion.replace;
+	entry.state = promotion.state;
+	entry.type = promotion.type;
+	entry.intent = promotion.intent;
+}
+
+function executeAbortInstruction(props: {
+	context: BeginNavigationContext;
+	abortInstruction: BeginNavigationAbortInstruction;
+}): { changedStatusRelevantLane: boolean } {
+	const { context, abortInstruction } = props;
+	abortInstruction.entry.control.abortController?.abort();
+
+	switch (abortInstruction.slot) {
+		case "active":
+			if (context.getActiveNavigation() === abortInstruction.entry) {
+				context.setActiveNavigation(null);
+				return { changedStatusRelevantLane: true };
+			}
+			return { changedStatusRelevantLane: false };
+		case "revalidation":
+			if (
+				context.getRevalidationNavigation() === abortInstruction.entry
+			) {
+				context.setRevalidationNavigation(null);
+				return { changedStatusRelevantLane: true };
+			}
+			return { changedStatusRelevantLane: false };
+		case "prefetch":
+			if (
+				context.prefetchNavigationsByTargetUrl.get(
+					abortInstruction.key,
+				) === abortInstruction.entry
+			) {
+				context.prefetchNavigationsByTargetUrl.delete(
+					abortInstruction.key,
+				);
+			}
+			return { changedStatusRelevantLane: false };
+	}
+}
+
+function createImmediatelyAbortedNavigationControl(): NavigationControl {
+	return {
+		abortController: new AbortController(),
+		promise: Promise.resolve({ type: "aborted" as const }),
+	};
+}
+
+function executeBeginNavigationReuseInstruction(props: {
+	context: BeginNavigationContext;
+	reuseInstruction: BeginNavigationReuseInstruction;
+}): { control: NavigationControl; changedStatusRelevantLane: boolean } {
+	const { context, reuseInstruction } = props;
+	let changedStatusRelevantLane = false;
+
+	if (reuseInstruction.promotion) {
+		promoteEntryToActiveLane({
+			entry: reuseInstruction.entry,
+			promotion: reuseInstruction.promotion,
+		});
+	}
+
+	switch (reuseInstruction.sourceSlot) {
+		case "active":
+			return {
+				control: reuseInstruction.entry.control,
+				changedStatusRelevantLane,
+			};
+		case "prefetch":
+			if (reuseInstruction.promotion) {
+				if (
+					reuseInstruction.sourcePrefetchKey &&
+					context.prefetchNavigationsByTargetUrl.get(
+						reuseInstruction.sourcePrefetchKey,
+					) === reuseInstruction.entry
+				) {
+					context.prefetchNavigationsByTargetUrl.delete(
+						reuseInstruction.sourcePrefetchKey,
+					);
+				}
+				context.setActiveNavigation(reuseInstruction.entry);
+				changedStatusRelevantLane = true;
+			}
+			return {
+				control: reuseInstruction.entry.control,
+				changedStatusRelevantLane,
+			};
+		case "revalidation":
+			if (reuseInstruction.promotion) {
+				if (
+					context.getRevalidationNavigation() ===
+					reuseInstruction.entry
+				) {
+					context.setRevalidationNavigation(null);
+				}
+				context.setActiveNavigation(reuseInstruction.entry);
+				changedStatusRelevantLane = true;
+			}
+			return {
+				control: reuseInstruction.entry.control,
+				changedStatusRelevantLane,
+			};
+	}
+}
+
+function executeBeginNavigationExecutionPlan(props: {
+	context: BeginNavigationContext;
+	navigationProps: NavigateProps;
+	executionPlan: BeginNavigationExecutionPlan;
+}): NavigationControl {
+	const { context, navigationProps, executionPlan } = props;
+	let shouldScheduleStatusUpdate = false;
+
+	for (const abortInstruction of executionPlan.abortInstructions) {
+		const abortResult = executeAbortInstruction({
+			context,
+			abortInstruction,
+		});
+		if (abortResult.changedStatusRelevantLane) {
+			shouldScheduleStatusUpdate = true;
+		}
+	}
+
+	if (executionPlan.reuseInstruction) {
+		const reuseResult = executeBeginNavigationReuseInstruction({
+			context,
+			reuseInstruction: executionPlan.reuseInstruction,
+		});
+		if (reuseResult.changedStatusRelevantLane) {
+			shouldScheduleStatusUpdate = true;
+		}
+		if (shouldScheduleStatusUpdate) {
+			context.scheduleStatusUpdate();
+		}
+		return reuseResult.control;
+	}
+
+	if (executionPlan.shouldReturnImmediatelyAbortedControl) {
+		if (shouldScheduleStatusUpdate) {
+			context.scheduleStatusUpdate();
+		}
+		return createImmediatelyAbortedNavigationControl();
+	}
+
+	const createInstruction = executionPlan.createInstruction;
+	if (!createInstruction) {
+		throw new Error(
+			"Begin navigation execution plan was missing both reuse and create instructions.",
+		);
+	}
+
+	switch (createInstruction.slot) {
+		case "active":
+			return context.createActiveNavigation(
+				navigationProps,
+				createInstruction.intent,
+			);
+		case "prefetch":
+			if (shouldScheduleStatusUpdate) {
+				context.scheduleStatusUpdate();
+			}
+			return context.createPrefetch(
+				navigationProps,
+				createInstruction.targetUrl,
+			);
+		case "revalidation":
+			return context.createRevalidation({
+				...navigationProps,
+				href: createInstruction.revalidationHref,
+			});
+	}
+}
+
 export function beginNavigation(
 	context: BeginNavigationContext,
 	props: NavigateProps,
 ): NavigationControl {
-	const targetUrl = resolveAbsoluteHref({ href: props.href });
-
-	switch (props.navigationType) {
-		case "userNavigation":
-			return beginUserNavigation(context, props, targetUrl);
-		case "prefetch":
-			return beginPrefetch(context, props, targetUrl);
-		case "revalidation":
-			return beginRevalidation(context, props);
-		case "browserHistory":
-		case "redirect":
-		default:
-			return context.createActiveNavigation(props, "navigate");
-	}
-}
-
-export function beginUserNavigation(
-	context: BeginNavigationContext,
-	props: NavigateProps,
-	targetUrl: string,
-): NavigationControl {
-	const {
-		getActiveNavigation,
-		setActiveNavigation,
-		getPendingRevalidation,
-		setPendingRevalidation,
-		prefetchCache,
-		scheduleStatusUpdate,
-		createActiveNavigation,
-	} = context;
-
-	const activeNavigation = getActiveNavigation();
-	const pendingRevalidation = getPendingRevalidation();
-	const activeHasSameNavigationTarget = hasEntryWithSameNavigationTarget(
-		activeNavigation,
-		targetUrl,
-	);
-	const pendingHasSameNavigationTarget = hasEntryWithSameNavigationTarget(
-		pendingRevalidation,
-		targetUrl,
-	);
-	const prefetchMatch = !activeHasSameNavigationTarget
-		? findPrefetchByNavigationTarget(prefetchCache, targetUrl)
-		: undefined;
-
-	if (activeNavigation && !activeHasSameNavigationTarget) {
-		activeNavigation.control.abortController?.abort();
-		setActiveNavigation(null);
-	}
-
-	for (const [url, prefetch] of prefetchCache.entries()) {
-		if (url !== prefetchMatch?.key) {
-			prefetch.control.abortController?.abort();
-			prefetchCache.delete(url);
-		}
-	}
-
-	if (pendingRevalidation && !pendingHasSameNavigationTarget) {
-		pendingRevalidation.control.abortController?.abort();
-		setPendingRevalidation(null);
-	}
-
-	const reusableEntryCandidate = decideReusableUserNavigationEntryCandidate({
-		activeNavigation,
-		activeHasSameNavigationTarget,
-		prefetchMatch,
-		pendingRevalidation,
-		pendingHasSameNavigationTarget,
-	});
-
-	return executeReusableUserNavigationEntryCandidate({
-		candidate: reusableEntryCandidate,
+	const executionPlan = decideBeginNavigationExecutionPlan({
 		navigationProps: props,
-		targetUrl,
-		prefetchCache,
-		setActiveNavigation,
-		setPendingRevalidation,
-		scheduleStatusUpdate,
-		createActiveNavigation,
-	});
-}
-
-export function beginPrefetch(
-	context: BeginNavigationContext,
-	props: NavigateProps,
-	targetUrl: string,
-): NavigationControl {
-	const { getActiveNavigation, getPendingRevalidation, prefetchCache } =
-		context;
-	const activeNavigation = getActiveNavigation();
-	const pendingRevalidation = getPendingRevalidation();
-	const prefetchMatch = findPrefetchByNavigationTarget(
-		prefetchCache,
-		targetUrl,
-	);
-
-	const prefetchAction = decideBeginPrefetchAction({
-		activeNavigation,
-		targetUrl,
-		prefetchMatch,
-		pendingRevalidation,
+		currentHref: window.location.href,
+		lanes: {
+			active: context.getActiveNavigation(),
+			revalidation: context.getRevalidationNavigation(),
+			prefetch: context.prefetchNavigationsByTargetUrl,
+		},
 	});
 
-	return executeBeginPrefetchAction({
-		action: prefetchAction,
+	return executeBeginNavigationExecutionPlan({
+		context,
 		navigationProps: props,
-		targetUrl,
-		createPrefetch: context.createPrefetch,
-	});
-}
-
-export function beginRevalidation(
-	context: BeginNavigationContext,
-	props: NavigateProps,
-): NavigationControl {
-	const currentUrl = window.location.href;
-	const pendingRevalidation = context.getPendingRevalidation();
-	const revalidationAction = decideBeginRevalidationAction({
-		pendingRevalidation,
-		currentUrl,
-		revalidationCoalesceMS: context.revalidationCoalesceMS,
-	});
-
-	return executeBeginRevalidationAction({
-		action: revalidationAction,
-		navigationProps: props,
-		currentUrl,
-		setPendingRevalidation: context.setPendingRevalidation,
-		createRevalidation: context.createRevalidation,
+		executionPlan,
 	});
 }

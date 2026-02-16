@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
@@ -179,7 +180,8 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v.loadersRouter = newLoadersRouter(o.LoadersRouterOptions)
 	v.actionsRouter = newActionsRouter(o.ActionsRouterOptions)
 	v.headElsInst = headels.NewInstance("vorma")
-	v._routeDataCacheAppIdentity = computeRouteDataCacheAppIdentity(&v)
+	v._routeDataCache = &sync.Map{}
+	v._lifecycleState = runtimeLifecycleStateUninitialized
 
 	return &v
 }
@@ -209,6 +211,11 @@ func (v *Vorma) validateConfig() {
 		panic("config: Vorma.TSGenOutDir is required")
 	}
 	applyDefaultConfigStringValue(&v.Config.BuildtimePublicURLFuncName, "waveBuildtimeURL")
+	trimConfigStringValue(&v.Config.UnresolvedRoutePolicy)
+	v.Config.UnresolvedRoutePolicy = strings.ToLower(v.Config.UnresolvedRoutePolicy)
+	if !isValidUnresolvedRoutePolicy(v.Config.UnresolvedRoutePolicy) {
+		panic(`config: Vorma.UnresolvedRoutePolicy must be "warn" or "error" when set`)
+	}
 
 	applyDefaultConfigStringValue(
 		&v.Config.DevReloadRoutesEndpointPath,
@@ -299,6 +306,14 @@ func trimConfigStringValue(configField *string) {
 func applyDefaultAndTrimConfigStringValue(configField *string, defaultValue string) {
 	applyDefaultConfigStringValue(configField, defaultValue)
 	trimConfigStringValue(configField)
+}
+
+func isValidUnresolvedRoutePolicy(policy string) bool {
+	if policy == "" {
+		return true
+	}
+
+	return policy == UnresolvedRoutePolicyWarn || policy == UnresolvedRoutePolicyError
 }
 
 type Loaders struct{ vorma *Vorma }

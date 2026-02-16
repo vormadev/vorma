@@ -59,8 +59,8 @@ func TestNewReloadEndpointRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newReloadEndpointRequest returned error: %v", err)
 	}
-	if request.Method != http.MethodGet {
-		t.Fatalf("request method = %q, want %q", request.Method, http.MethodGet)
+	if request.Method != http.MethodPost {
+		t.Fatalf("request method = %q, want %q", request.Method, http.MethodPost)
 	}
 	if request.URL.String() != "http://localhost:8080/path" {
 		t.Fatalf("request URL = %q, want %q", request.URL.String(), "http://localhost:8080/path")
@@ -94,6 +94,29 @@ func TestCallReloadEndpoint(t *testing.T) {
 	v := &vormaruntime.Vorma{
 		Log: testLogger(),
 	}
+
+	t.Run("uses mutation-safe request method", func(t *testing.T) {
+		reloadEndpointDeps.reloadEndpointURLForApp = func(*vormaruntime.Vorma, string) string {
+			return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
+		}
+		reloadEndpointDeps.newReloadEndpointRequest = func(ctx context.Context, url string) (*http.Request, error) {
+			return newReloadEndpointRequest(ctx, url)
+		}
+		reloadEndpointDeps.doReloadEndpointRequest = func(request *http.Request) (*http.Response, error) {
+			if request.Method != http.MethodPost {
+				return nil, errors.New("reload endpoint request method must be POST")
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("ok")),
+			}, nil
+		}
+
+		err := callReloadEndpoint(v, vormaruntime.DefaultDevReloadRoutesEndpointPath)
+		if err != nil {
+			t.Fatalf("callReloadEndpoint returned error: %v", err)
+		}
+	})
 
 	t.Run("wraps request creation error", func(t *testing.T) {
 		expectedErr := errors.New("request construction failed")

@@ -259,6 +259,7 @@ func TestParseClientRoutes_ResolvesStaticAndImportModules(t *testing.T) {
 		},
 		Log: testLogger(),
 	}
+	v.SetIsDev(true)
 
 	paths, err := parseClientRoutes(v)
 	if err != nil {
@@ -297,6 +298,64 @@ func TestParseClientRoutes_ResolvesStaticAndImportModules(t *testing.T) {
 	}
 	if settings.ExportKey != "Settings" {
 		t.Fatalf("settings export key = %q, want %q", settings.ExportKey, "Settings")
+	}
+}
+
+func TestParseClientRoutes_UnresolvedRouteDefaultPolicyFailsInProd(t *testing.T) {
+	rootDir := t.TempDir()
+	t.Chdir(rootDir)
+
+	routesFile := filepath.Join("frontend", "src", "vorma.routes.ts")
+	mustWriteFile(t, routesFile, []byte(`
+		import { route } from "vorma/buildtime";
+		route("/dynamic", getPath());
+	`))
+
+	v := &vormaruntime.Vorma{
+		Config: &vormaruntime.VormaConfig{
+			ClientRouteDefinitionPatterns: []string{routesFile},
+		},
+		Log: testLogger(),
+	}
+
+	_, err := parseClientRoutes(v)
+	if err == nil {
+		t.Fatal("expected unresolved route call to fail in production mode")
+	}
+	if !strings.Contains(err.Error(), "unresolved route calls are not allowed") {
+		t.Fatalf("error = %q, expected unresolved-route policy failure", err)
+	}
+}
+
+func TestParseClientRoutes_UnresolvedRoutePolicyOverrideWarnInProd(t *testing.T) {
+	rootDir := t.TempDir()
+	t.Chdir(rootDir)
+
+	routesFile := filepath.Join("frontend", "src", "vorma.routes.ts")
+	mustWriteFile(t, filepath.Join("frontend", "src", "routes", "home.tsx"), []byte("export default function Home() {}"))
+	mustWriteFile(t, routesFile, []byte(`
+		import { route } from "vorma/buildtime";
+		route("/", "./routes/home.tsx", "default");
+		route("/dynamic", getPath());
+	`))
+
+	v := &vormaruntime.Vorma{
+		Config: &vormaruntime.VormaConfig{
+			ClientRouteDefinitionPatterns: []string{routesFile},
+			UnresolvedRoutePolicy:         vormaruntime.UnresolvedRoutePolicyWarn,
+		},
+		Log: testLogger(),
+	}
+
+	paths, err := parseClientRoutes(v)
+	if err != nil {
+		t.Fatalf("parseClientRoutes returned error: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 resolved path, got %d", len(paths))
+	}
+	if got := paths["/"]; got == nil || got.SrcPath != "frontend/src/routes/home.tsx" {
+		t.Fatalf("paths[/] = %#v, want frontend/src/routes/home.tsx", got)
 	}
 }
 

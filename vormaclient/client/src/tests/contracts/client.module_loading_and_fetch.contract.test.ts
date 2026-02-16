@@ -230,6 +230,55 @@ describe("client module-loading and fetch contracts", () => {
 		]);
 	});
 
+	it("preserves server-established module error exports when equivalent client-only skip navigation runs", async () => {
+		vi.doMock("/parity-module.js", () => ({
+			default: () => null,
+			RouteError: () => null,
+		}));
+		installContractVormaGlobal({
+			routeManifest: undefined,
+		});
+
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValueOnce(
+			createRouteDataResponse({
+				matchedPatterns: ["/parity-module"],
+				loadersData: [{}],
+				importURLs: ["/parity-module.js"],
+				exportKeys: ["default"],
+				errorExportKeys: ["RouteError"],
+			}),
+		);
+
+		await api.vormaNavigate("/parity-module");
+		await vi.runAllTimersAsync();
+
+		expect(
+			api.__vormaClientGlobal.get("clientModuleMap")["/parity-module"],
+		).toEqual({
+			importURL: "/parity-module.js",
+			exportKey: "default",
+			errorExportKey: "RouteError",
+		});
+
+		api.__vormaClientGlobal.set("routeManifest", {
+			"/parity-module": 0,
+		});
+		await api.__registerClientLoaderPattern("/parity-module");
+
+		await api.vormaNavigate("/parity-module#skip");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(
+			api.__vormaClientGlobal.get("clientModuleMap")["/parity-module"],
+		).toEqual({
+			importURL: "/parity-module.js",
+			exportKey: "default",
+			errorExportKey: "RouteError",
+		});
+	});
+
 	it("resolves module imports from viteDevURL when present", async () => {
 		const devComponent = () => "DevComponent";
 		vi.doMock("http://localhost:5173/dev-module.js", () => ({

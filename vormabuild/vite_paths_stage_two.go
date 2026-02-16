@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/lab/viteutil"
@@ -46,6 +47,13 @@ func toPathsFileStageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error)
 		paths,
 		cleanClientEntry,
 	)
+	if err := validateStageTwoManifestCoverage(
+		paths,
+		cleanClientEntry,
+		manifestApplicationResult,
+	); err != nil {
+		return nil, err
+	}
 
 	pathsFile := buildStageTwoPathsFile(
 		v,
@@ -102,4 +110,33 @@ func buildStageTwoPathsFile(
 		ClientEntryDeps:   manifestApplicationResult.clientEntryDeps,
 		RouteManifestFile: v.GetRouteManifestFile(),
 	}
+}
+
+func validateStageTwoManifestCoverage(
+	paths map[string]*vormaruntime.Path,
+	cleanClientEntry string,
+	manifestApplicationResult viteManifestApplicationResult,
+) error {
+	if strings.TrimSpace(manifestApplicationResult.clientEntryOut) == "" {
+		return fmt.Errorf(
+			"client entry chunk missing from Vite manifest for %q",
+			cleanClientEntry,
+		)
+	}
+
+	for routePattern, routePath := range paths {
+		if routePath == nil || strings.TrimSpace(routePath.SrcPath) == "" {
+			continue
+		}
+		if strings.TrimSpace(routePath.OutPath) != "" {
+			continue
+		}
+		return fmt.Errorf(
+			"route chunk missing from Vite manifest for %q (source: %q)",
+			routePattern,
+			routePath.SrcPath,
+		)
+	}
+
+	return nil
 }

@@ -23,6 +23,7 @@ function createRedirectEntryForCleanup(type: NavigationEntry["type"]): {
 	return {
 		key: targetUrl,
 		entry: {
+			operationID: 1,
 			control: {
 				abortController: new AbortController(),
 				promise: Promise.resolve({ type: "aborted" }),

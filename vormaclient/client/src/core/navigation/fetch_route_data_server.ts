@@ -231,11 +231,13 @@ export function buildServerSuccessOutcome(props: {
 }): Extract<NavigationOutcome, { type: "success" }> {
 	const { response, json, navigationProps, runningLoaders, signal } = props;
 
-	const depsToPreload = import.meta.env.DEV
-		? [...new Set(json.importURLs)]
-		: json.deps;
-	for (const dep of depsToPreload ?? []) {
-		if (dep) AssetManager.preloadModule(dep);
+	if (!signal.aborted) {
+		const depsToPreload = import.meta.env.DEV
+			? [...new Set(json.importURLs)]
+			: json.deps;
+		for (const dep of depsToPreload ?? []) {
+			if (dep) AssetManager.preloadModule(dep);
+		}
 	}
 
 	const buildID = getBuildIDFromResponse(response);
@@ -249,8 +251,10 @@ export function buildServerSuccessOutcome(props: {
 	observePromiseRejection(waitFnPromise);
 
 	const cssBundlePromises: Array<Promise<unknown>> = [];
-	for (const bundle of json.cssBundles ?? []) {
-		cssBundlePromises.push(AssetManager.preloadCSS(bundle));
+	if (!signal.aborted) {
+		for (const bundle of json.cssBundles ?? []) {
+			cssBundlePromises.push(AssetManager.preloadCSS(bundle));
+		}
 	}
 
 	return {

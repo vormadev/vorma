@@ -62,7 +62,7 @@ func newRestartWithoutRecompileAction() *wave.RefreshAction {
 	}
 }
 
-// callReloadEndpoint makes an HTTP GET request to the running app's reload endpoint.
+// callReloadEndpoint makes an HTTP POST request to the running app's reload endpoint.
 func callReloadEndpoint(v *vormaruntime.Vorma, endpoint string) error {
 	url := reloadEndpointDeps.reloadEndpointURLForApp(v, endpoint)
 
@@ -92,7 +92,7 @@ func reloadEndpointURL(port int, endpoint string) string {
 }
 
 func newReloadEndpointRequest(ctx context.Context, url string) (*http.Request, error) {
-	return http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	return http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 }
 
 func validateReloadEndpointStatus(statusCode int) error {

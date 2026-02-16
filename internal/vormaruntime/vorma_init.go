@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io/fs"
 	"path"
+	"strings"
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
@@ -56,6 +57,10 @@ func (v *Vorma) initInner(isDev bool) error {
 	if err != nil {
 		return fmt.Errorf("could not get base paths: %w", err)
 	}
+	runtimeArtifacts, err := buildRuntimeRouteArtifacts(pathsFile)
+	if err != nil {
+		return fmt.Errorf("could not build runtime route artifacts: %w", err)
+	}
 
 	tmpl, err := template.ParseFS(privateFS, v.Config.HTMLTemplateLocation)
 	if err != nil {
@@ -73,12 +78,16 @@ func (v *Vorma) initInner(isDev bool) error {
 	defer v.mu.Unlock()
 	wasInitialized := v._paths != nil
 
-	v._isDev = isDev
+	v.setIsDevModeLocked(isDev)
 	v._privateFS = privateFS
-	v.applyPathsFileMetadataLocked(pathsFile)
-	v.routes().ReplaceParsedPathsForInit(pathsFile.Paths, wasInitialized)
+	v.transitionLifecycleStateLocked(
+		v.lifecycleStateForRouteCommitLocked(),
+		"init route artifacts commit start",
+		"",
+	)
+	v.commitRouteArtifactsLocked(runtimeArtifacts, wasInitialized, routeArtifactCommitModeInit)
 
-	v._rootTemplate = tmpl
+	v.commitRootTemplateLocked(tmpl)
 	if v.headElsInst == nil {
 		v.headElsInst = headels.NewInstance("vorma")
 	}
@@ -90,6 +99,7 @@ func (v *Vorma) initInner(isDev bool) error {
 	}
 
 	v._serverAddr = fmt.Sprintf(":%d", v.MustGetPort())
+	v.transitionLifecycleStateLocked(runtimeLifecycleStateReady, "init commit complete", "")
 	return nil
 }
 
@@ -120,6 +130,9 @@ func (v *Vorma) getBasePathsFromFS(privateFS fs.FS, isDev bool) (*PathsFile, err
 	if err := validatePathsFileStructuralIntegrity(&pathsFile); err != nil {
 		return nil, fmt.Errorf("invalid %s: %w", fileToUse, err)
 	}
+	if err := validatePathsFileSemanticIntegrity(&pathsFile, isDev); err != nil {
+		return nil, fmt.Errorf("invalid %s: %w", fileToUse, err)
+	}
 	return &pathsFile, nil
 }
 
@@ -145,6 +158,32 @@ func validatePathsFileStructuralIntegrity(pathsFile *PathsFile) error {
 			)
 		}
 	}
+	return nil
+}
+
+func validatePathsFileSemanticIntegrity(pathsFile *PathsFile, isDev bool) error {
+	if pathsFile == nil {
+		return fmt.Errorf("paths file is nil")
+	}
+	if strings.TrimSpace(pathsFile.RouteManifestFile) == "" {
+		return fmt.Errorf("routeManifestFile is required")
+	}
+	if strings.TrimSpace(pathsFile.ClientEntryOut) == "" {
+		return fmt.Errorf("clientEntryOut is required")
+	}
+
+	for mapKeyPattern, pathEntry := range pathsFile.Paths {
+		if pathEntry == nil {
+			continue
+		}
+		if pathEntry.SrcPath != "" && strings.TrimSpace(pathEntry.ExportKey) == "" {
+			return fmt.Errorf("paths[%q].exportKey is required when srcPath is set", mapKeyPattern)
+		}
+		if !isDev && pathEntry.SrcPath != "" && strings.TrimSpace(pathEntry.OutPath) == "" {
+			return fmt.Errorf("paths[%q].outPath is required in production mode", mapKeyPattern)
+		}
+	}
+
 	return nil
 }
 

@@ -194,3 +194,15 @@ func mustMkdirAll(tb testing.TB, dir string) {
 		tb.Fatalf("mkdir %s: %v", dir, err)
 	}
 }
+
+func routeDataSnapshotVersionForTest(app *Vorma) uint64 {
+	if app == nil {
+		return 0
+	}
+
+	var snapshotVersion uint64
+	app.WithRLock(func(lv *ReadLockedVorma) {
+		snapshotVersion = lv.v._routeDataSnapshotVersion
+	})
+	return snapshotVersion
+}

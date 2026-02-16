@@ -26,6 +26,11 @@ const (
 	UIVariantSolid  UIVariant = "solid"
 )
 
+const (
+	UnresolvedRoutePolicyWarn  = "warn"
+	UnresolvedRoutePolicyError = "error"
+)
+
 // VormaConfig holds Vorma-specific configuration.
 type VormaConfig struct {
 	IncludeDefaults               *bool    `json:"IncludeDefaults,omitempty"`
@@ -37,6 +42,7 @@ type VormaConfig struct {
 	ServerRouteDefinitionPatterns []string `json:"ServerRouteDefinitionPatterns,omitempty"`
 	TSGenOutDir                   string   `json:"TSGenOutDir"`
 	BuildtimePublicURLFuncName    string   `json:"BuildtimePublicURLFuncName,omitempty"`
+	UnresolvedRoutePolicy         string   `json:"UnresolvedRoutePolicy,omitempty"`
 	DevReloadRoutesEndpointPath   string   `json:"DevReloadRoutesEndpointPath,omitempty"`
 	DevReloadTemplateEndpointPath string   `json:"DevReloadTemplateEndpointPath,omitempty"`
 	TemplateDataKeyHeadElements   string   `json:"TemplateDataKeyHeadElements,omitempty"`

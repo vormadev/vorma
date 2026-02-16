@@ -381,6 +381,107 @@ func TestDevReloadRoutesFromDisk_InvalidPathsFileDoesNotMutateRuntimeState(t *te
 	}
 }
 
+func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeState(t *testing.T) {
+	testCases := []struct {
+		name                string
+		mutateInvalidStage1 func(*PathsFile)
+	}{
+		{
+			name: "missing_route_manifest_file",
+			mutateInvalidStage1: func(pathsFile *PathsFile) {
+				pathsFile.RouteManifestFile = ""
+			},
+		},
+		{
+			name: "missing_client_entry_out",
+			mutateInvalidStage1: func(pathsFile *PathsFile) {
+				pathsFile.ClientEntryOut = ""
+			},
+		},
+		{
+			name: "missing_export_key_on_client_route",
+			mutateInvalidStage1: func(pathsFile *PathsFile) {
+				pathsFile.Paths["/products/:id"].ExportKey = ""
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			initialStage := defaultPathsFile("build-old", map[string]*Path{
+				"/products/:id": {
+					OriginalPattern: "/products/:id",
+					SrcPath:         "frontend/src/routes/products.$id.old.tsx",
+					OutPath:         "vorma_out/routes/products.$id.old.js",
+					ExportKey:       "default",
+					Deps:            []string{"vorma_out/chunk-old.js"},
+				},
+			})
+			initialStage.Stage = "stage-one"
+
+			fixture := newTestFixture(t, testFixtureOptions{
+				stageOne: initialStage,
+				stageTwo: initialStage,
+			})
+			app := fixture.app
+			app.SetIsDev(true)
+
+			handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+
+			recBefore := httptest.NewRecorder()
+			reqBefore := httptest.NewRequest(http.MethodGet, "/products/1?vorma_json=build-old", nil)
+			handler.ServeHTTP(recBefore, reqBefore)
+			if recBefore.Code != http.StatusOK {
+				t.Fatalf("before failed reload status = %d, want %d", recBefore.Code, http.StatusOK)
+			}
+			if !strings.Contains(recBefore.Body.String(), "/frontend/src/routes/products.$id.old.tsx") {
+				t.Fatalf("before failed reload body missing old import URL, body=%q", recBefore.Body.String())
+			}
+
+			invalidStage := defaultPathsFile("build-invalid", map[string]*Path{
+				"/products/:id": {
+					OriginalPattern: "/products/:id",
+					SrcPath:         "frontend/src/routes/products.$id.invalid.tsx",
+					OutPath:         "vorma_out/routes/products.$id.invalid.js",
+					ExportKey:       "default",
+					Deps:            []string{"vorma_out/chunk-invalid.js"},
+				},
+			})
+			invalidStage.Stage = "stage-one"
+			tc.mutateInvalidStage1(invalidStage)
+
+			mustWriteJSONFile(
+				t,
+				filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName),
+				invalidStage,
+			)
+
+			err := app.devReloadRoutesFromDisk()
+			if err == nil {
+				t.Fatal("expected devReloadRoutesFromDisk to fail for semantic stage-one artifact validation issue")
+			}
+
+			if got, want := app.GetBuildID(), "build-old"; got != want {
+				t.Fatalf("build ID = %q, want %q after failed semantic reload", got, want)
+			}
+
+			recAfter := httptest.NewRecorder()
+			reqAfter := httptest.NewRequest(http.MethodGet, "/products/2?vorma_json=build-old", nil)
+			handler.ServeHTTP(recAfter, reqAfter)
+			if recAfter.Code != http.StatusOK {
+				t.Fatalf("after failed reload status = %d, want %d", recAfter.Code, http.StatusOK)
+			}
+			if !strings.Contains(recAfter.Body.String(), "/frontend/src/routes/products.$id.old.tsx") {
+				t.Fatalf("after failed reload body missing old import URL, body=%q", recAfter.Body.String())
+			}
+			if strings.Contains(recAfter.Body.String(), "/frontend/src/routes/products.$id.invalid.tsx") {
+				t.Fatalf("after failed reload body leaked invalid import URL, body=%q", recAfter.Body.String())
+			}
+		})
+	}
+}
+
 func TestDevReloadRoutesFromDisk_NilPathsClearsClientRoutesAndPreservesServerHandlers(t *testing.T) {
 	initial := defaultPathsFile("build-old", map[string]*Path{
 		"/client-old": {
@@ -987,6 +1088,219 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(t *testing
 	}
 	if containsString(routeData.CSSBundles, "vorma_out/chunk-new.css") {
 		t.Fatalf("CSSBundles should not include new-build route CSS: %#v", routeData.CSSBundles)
+	}
+}
+
+func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGenerationAligned(
+	t *testing.T,
+) {
+	oldStage := defaultPathsFile("build-old", map[string]*Path{
+		"/products/:id": {
+			OriginalPattern: "/products/:id",
+			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
+			OutPath:         "vorma_out/routes/products.$id.old.js",
+			ExportKey:       "default",
+			Deps:            []string{"vorma_out/chunk-old.js"},
+		},
+	})
+	oldStage.Stage = "stage-one"
+	oldStage.RouteManifestFile = "vorma_out/route-manifest-old.js"
+	oldStage.ClientEntryOut = "vorma_out/client-old.js"
+	oldStage.ClientEntryDeps = []string{"vorma_out/shared-old.js"}
+	oldStage.DepToCSSBundleMap = map[string][]string{
+		"vorma_out/client-old.js": {"vorma_out/client-old.css"},
+		"vorma_out/shared-old.js": {"vorma_out/shared-old.css"},
+		"vorma_out/chunk-old.js":  {"vorma_out/chunk-old.css"},
+	}
+
+	newStage := defaultPathsFile("build-new", map[string]*Path{
+		"/products/:id": {
+			OriginalPattern: "/products/:id",
+			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
+			OutPath:         "vorma_out/routes/products.$id.new.js",
+			ExportKey:       "default",
+			Deps:            []string{"vorma_out/chunk-new.js"},
+		},
+	})
+	newStage.Stage = "stage-one"
+	newStage.RouteManifestFile = "vorma_out/route-manifest-new.js"
+	newStage.ClientEntryOut = "vorma_out/client-new.js"
+	newStage.ClientEntryDeps = []string{"vorma_out/shared-new.js"}
+	newStage.DepToCSSBundleMap = map[string][]string{
+		"vorma_out/client-new.js": {"vorma_out/client-new.css"},
+		"vorma_out/shared-new.js": {"vorma_out/shared-new.css"},
+		"vorma_out/chunk-new.js":  {"vorma_out/chunk-new.css"},
+	}
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne:         oldStage,
+		stageTwo:         oldStage,
+		publicPathPrefix: "/",
+	})
+	app := fixture.app
+	app.SetIsDev(true)
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/products/:id",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+			return map[string]any{"id": rd.Params()["id"]}, nil
+		}),
+	)
+
+	stageOnePath := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName)
+	var didReload atomic.Bool
+	app.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
+		if !didReload.CompareAndSwap(false, true) {
+			return nil
+		}
+		mustWriteJSONFile(t, stageOnePath, newStage)
+		return app.devReloadRoutesFromDisk()
+	}
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+	req := httptest.NewRequest(http.MethodGet, "/products/123", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got, want := rec.Header().Get(VormaBuildIDHeaderKey), "build-old"; got != want {
+		t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, want)
+	}
+	if !didReload.Load() {
+		t.Fatal("expected test hook to trigger a dev reload during request handling")
+	}
+
+	body := rec.Body.String()
+	expectedOldFragments := []string{
+		`x.buildID = "build-old";`,
+		`x.routeManifestURL = "/vorma_out/route-manifest-old.js";`,
+		"/frontend/src/routes/products.$id.old.tsx",
+		"vorma_out/shared-old.js",
+		"vorma_out/chunk-old.js",
+		"vorma_out/client-old.css",
+		"vorma_out/shared-old.css",
+		"vorma_out/chunk-old.css",
+	}
+	for _, expectedOldFragment := range expectedOldFragments {
+		if !strings.Contains(body, expectedOldFragment) {
+			t.Fatalf("body missing old-generation fragment %q, body=%q", expectedOldFragment, body)
+		}
+	}
+
+	unexpectedNewFragments := []string{
+		`x.buildID = "build-new";`,
+		`x.routeManifestURL = "/vorma_out/route-manifest-new.js";`,
+		"/frontend/src/routes/products.$id.new.tsx",
+		"vorma_out/shared-new.js",
+		"vorma_out/chunk-new.js",
+		"vorma_out/client-new.css",
+		"vorma_out/shared-new.css",
+		"vorma_out/chunk-new.css",
+	}
+	for _, unexpectedNewFragment := range unexpectedNewFragments {
+		if strings.Contains(body, unexpectedNewFragment) {
+			t.Fatalf("body leaked new-generation fragment %q, body=%q", unexpectedNewFragment, body)
+		}
+	}
+}
+
+func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScriptGeneration(
+	t *testing.T,
+) {
+	oldStage := defaultPathsFile("build-old", map[string]*Path{
+		"/products/:id": {
+			OriginalPattern: "/products/:id",
+			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
+			OutPath:         "vorma_out/routes/products.$id.old.js",
+			ExportKey:       "default",
+			Deps:            []string{"vorma_out/chunk-old.js"},
+		},
+	})
+	oldStage.Stage = "stage-one"
+	oldStage.ClientEntryOut = "vorma_out/client-old.js"
+	oldStage.ClientEntryDeps = []string{"vorma_out/shared-old.js"}
+	oldStage.DepToCSSBundleMap = map[string][]string{
+		"vorma_out/client-old.js": {"vorma_out/client-old.css"},
+		"vorma_out/shared-old.js": {"vorma_out/shared-old.css"},
+		"vorma_out/chunk-old.js":  {"vorma_out/chunk-old.css"},
+	}
+
+	newStage := defaultPathsFile("build-new", map[string]*Path{
+		"/products/:id": {
+			OriginalPattern: "/products/:id",
+			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
+			OutPath:         "vorma_out/routes/products.$id.new.js",
+			ExportKey:       "default",
+			Deps:            []string{"vorma_out/chunk-new.js"},
+		},
+	})
+	newStage.Stage = "stage-one"
+	newStage.ClientEntryOut = "vorma_out/client-new.js"
+	newStage.ClientEntryDeps = []string{"vorma_out/shared-new.js"}
+	newStage.DepToCSSBundleMap = map[string][]string{
+		"vorma_out/client-new.js": {"vorma_out/client-new.css"},
+		"vorma_out/shared-new.js": {"vorma_out/shared-new.css"},
+		"vorma_out/chunk-new.js":  {"vorma_out/chunk-new.css"},
+	}
+
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne:         oldStage,
+		stageTwo:         oldStage,
+		publicPathPrefix: "/",
+	})
+	app := fixture.app
+	app.SetIsDev(false)
+
+	mux.RegisterNestedTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/products/:id",
+		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+			return map[string]any{"id": rd.Params()["id"]}, nil
+		}),
+	)
+
+	stageOnePath := filepath.Join(fixture.privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName)
+	var didReload atomic.Bool
+	app.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
+		if !didReload.CompareAndSwap(false, true) {
+			return nil
+		}
+		mustWriteJSONFile(t, stageOnePath, newStage)
+		app.SetIsDev(true)
+		defer app.SetIsDev(false)
+		return app.devReloadRoutesFromDisk()
+	}
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+	req := httptest.NewRequest(http.MethodGet, "/products/123", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got, want := rec.Header().Get(VormaBuildIDHeaderKey), "build-old"; got != want {
+		t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, want)
+	}
+	if !didReload.Load() {
+		t.Fatal("expected test hook to trigger a dev reload during request handling")
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "/vorma_out/routes/products.$id.old.js") {
+		t.Fatalf("body missing old route import URL, body=%q", body)
+	}
+	if strings.Contains(body, "/vorma_out/routes/products.$id.new.js") {
+		t.Fatalf("body leaked new route import URL, body=%q", body)
+	}
+	if !strings.Contains(body, `<script type="module" src="/vorma_out/client-old.js"></script>`) {
+		t.Fatalf("body missing old-generation client entry script, body=%q", body)
+	}
+	if strings.Contains(body, `<script type="module" src="/vorma_out/client-new.js"></script>`) {
+		t.Fatalf("body leaked new-generation client entry script, body=%q", body)
 	}
 }
 

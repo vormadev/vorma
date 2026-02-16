@@ -358,4 +358,64 @@ describe("client navigation state machine contracts", () => {
 		);
 		expectStatusIdle(api.getStatus());
 	});
+
+	it("records terminal lifecycle states with explicit reasons for settled operations", async () => {
+		const api = await loadClientAPI();
+		api.__clearNavigationDebugJournal();
+		const { requests } = createAbortAwareFetchRecorder();
+
+		const prefetchHandlers = api.__getPrefetchHandlers({
+			href: "/journal-prefetch",
+			delayMs: 0,
+		});
+		prefetchHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		await waitForRequestCount({ requests, count: 1 });
+
+		const navigatePromise = api.vormaNavigate("/journal-target");
+		await waitForRequestCount({ requests, count: 2 });
+		requests[1]?.resolve(routeTitle("Journal Target"));
+		await navigatePromise;
+		requests[0]?.resolve(routeTitle("Journal Prefetch Late"));
+
+		const submitPromise = api.submit(
+			"/journal-submit",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		await waitForRequestCount({ requests, count: 3 });
+		requests[2]?.resolve(createJSONResponse({ ok: true }));
+		await submitPromise;
+
+		await vi.runAllTimersAsync();
+		prefetchHandlers?.stop();
+
+		const journal = api.__getNavigationDebugJournal();
+		expect(journal.length).toBeGreaterThan(0);
+		expect(
+			journal.every(
+				(entry) =>
+					typeof entry.reason === "string" && entry.reason.length > 0,
+			),
+		).toBe(true);
+
+		const terminalToStates = new Set([
+			"removed",
+			"complete",
+			"failed",
+			"aborted",
+		]);
+		const latestEntryByOperationID = new Map<number, (typeof journal)[0]>();
+		for (const entry of journal) {
+			if (entry.operationID !== null) {
+				latestEntryByOperationID.set(entry.operationID, entry);
+			}
+		}
+		expect(latestEntryByOperationID.size).toBeGreaterThan(0);
+		for (const latestEntry of latestEntryByOperationID.values()) {
+			expect(terminalToStates.has(latestEntry.toState)).toBe(true);
+		}
+
+		expectStatusIdle(api.getStatus());
+	});
 });

@@ -4,6 +4,7 @@ import {
 } from "vorma/kit/matcher/register";
 import { setupClientLoaders } from "../core/render_runtime.ts";
 import { ComponentLoader } from "../core/render_runtime.ts";
+import { buildClientModuleMapFromRouteModuleMetadata } from "../core/navigation/route_metadata.ts";
 import { defaultErrorBoundary } from "../ui/helpers.ts";
 import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../platform/url.ts";
 import { HistoryManager } from "../platform/history.ts";
@@ -69,30 +70,14 @@ function applyInitClientOptions(options: InitClientOptions): void {
 }
 
 function initializeClientModuleMapFromInitialRouteState(): void {
-	const clientModuleMap: VormaClientGlobal["clientModuleMap"] = {};
-
-	const initialMatchedPatterns =
-		__vormaClientGlobal.get("matchedPatterns") || [];
-	const initialImportURLs = __vormaClientGlobal.get("importURLs") || [];
-	const initialExportKeys = __vormaClientGlobal.get("exportKeys") || [];
-	const initialErrorExportKeys =
-		__vormaClientGlobal.get("errorExportKeys") || [];
-
-	for (let i = 0; i < initialMatchedPatterns.length; i++) {
-		const pattern = initialMatchedPatterns[i];
-		const importURL = initialImportURLs[i];
-		const exportKey = initialExportKeys[i];
-		const errorExportKey = initialErrorExportKeys[i];
-
-		if (pattern && importURL) {
-			clientModuleMap[pattern] = {
-				importURL,
-				exportKey: exportKey || "default",
-				errorExportKey: errorExportKey || "",
-			};
-		}
-	}
-
+	const clientModuleMap = buildClientModuleMapFromRouteModuleMetadata({
+		routeModuleMetadata: {
+			matchedPatterns: __vormaClientGlobal.get("matchedPatterns"),
+			importURLs: __vormaClientGlobal.get("importURLs"),
+			exportKeys: __vormaClientGlobal.get("exportKeys"),
+			errorExportKeys: __vormaClientGlobal.get("errorExportKeys"),
+		},
+	});
 	__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
 }
 

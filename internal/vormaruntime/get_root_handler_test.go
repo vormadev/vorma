@@ -144,6 +144,9 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		if got := rec.Header().Get("X-Vorma-Reload"); got != "/items/42?foo=bar" {
 			t.Fatalf("X-Vorma-Reload = %q, want %q", got, "/items/42?foo=bar")
 		}
+		if got, want := rec.Header().Get("Cache-Control"), "private, max-age=0, must-revalidate, no-cache"; got != want {
+			t.Fatalf("Cache-Control = %q, want %q", got, want)
+		}
 		if body := strings.TrimSpace(rec.Body.String()); body != `{"ok":true}` {
 			t.Fatalf("body = %q, want %q", body, `{"ok":true}`)
 		}

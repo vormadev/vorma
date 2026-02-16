@@ -1,21 +1,6 @@
 package vormaruntime
 
-import "strings"
-
-func clearRouteDataCacheForAppIdentity(appIdentity string) {
-	if appIdentity == "" {
-		return
-	}
-
-	cacheKeyPrefix := appIdentity + "|"
-	gmpdCache.Range(func(key, _ any) bool {
-		cacheKey, isCacheKeyString := key.(string)
-		if isCacheKeyString && strings.HasPrefix(cacheKey, cacheKeyPrefix) {
-			gmpdCache.Delete(key)
-		}
-		return true
-	})
-}
+import "sync"
 
 // invalidateRouteDataCacheLocked invalidates route-data cache entries for
 // requests that still reference an older runtime snapshot.
@@ -23,13 +8,7 @@ func clearRouteDataCacheForAppIdentity(appIdentity string) {
 // Caller must hold v.mu.Lock().
 func (v *Vorma) invalidateRouteDataCacheLocked() {
 	v._routeDataSnapshotVersion++
-
-	appIdentity := v._routeDataCacheAppIdentity
-	if appIdentity == "" {
-		appIdentity = computeRouteDataCacheAppIdentity(v)
-		v._routeDataCacheAppIdentity = appIdentity
-	}
-	clearRouteDataCacheForAppIdentity(appIdentity)
+	v._routeDataCache = &sync.Map{}
 }
 
 func clonePathsMap(paths map[string]*Path) map[string]*Path {
@@ -77,11 +56,23 @@ func cloneDepToCSSBundleMapOrNil(depToBundles map[string][]string) map[string][]
 	return cloneDepToCSSBundleMapOrEmpty(depToBundles)
 }
 
-func (v *Vorma) applyPathsFileMetadataLocked(pathsFile *PathsFile) {
-	v._buildID = pathsFile.BuildID
-	v._clientEntrySrc = pathsFile.ClientEntrySrc
-	v._clientEntryOut = pathsFile.ClientEntryOut
-	v._clientEntryDeps = cloneStringSliceOrNil(pathsFile.ClientEntryDeps)
-	v._depToCSSBundleMap = cloneDepToCSSBundleMapOrEmpty(pathsFile.DepToCSSBundleMap)
-	v._routeManifestFile = pathsFile.RouteManifestFile
+func (v *Vorma) applyRuntimeRouteArtifactsMetadataLocked(
+	artifacts *runtimeRouteArtifacts,
+) {
+	if artifacts == nil {
+		v._buildID = ""
+		v._clientEntrySrc = ""
+		v._clientEntryOut = ""
+		v._clientEntryDeps = nil
+		v._depToCSSBundleMap = make(map[string][]string)
+		v._routeManifestFile = ""
+		return
+	}
+
+	v._buildID = artifacts.buildID
+	v._clientEntrySrc = artifacts.clientEntrySrc
+	v._clientEntryOut = artifacts.clientEntryOut
+	v._clientEntryDeps = cloneStringSliceOrNil(artifacts.clientEntryDeps)
+	v._depToCSSBundleMap = cloneDepToCSSBundleMapOrEmpty(artifacts.depToCSSBundleMap)
+	v._routeManifestFile = artifacts.routeManifestFile
 }

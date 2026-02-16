@@ -18,9 +18,11 @@ type SubmissionLifecycle = {
 
 function createSubmissionEntry(
 	abortController: AbortController,
+	operationID: number,
 	options?: SubmitOptions,
 ): SubmissionEntry {
 	return {
+		operationID,
 		control: {
 			abortController,
 			promise: Promise.resolve() as Promise<unknown>,
@@ -33,6 +35,14 @@ function createSubmissionEntry(
 export type SubmitExecutionContext = {
 	submissions: Map<string | symbol, SubmissionEntry>;
 	scheduleStatusUpdate: () => void;
+	allocateSubmissionOperationID: () => number;
+	onSubmissionStateTransition?: (props: {
+		submissionEntry: SubmissionEntry;
+		fromState: string;
+		toState: string;
+		reason: string;
+		causedByOperationID?: number | null;
+	}) => void;
 	navigate: (props: NavigateProps) => Promise<{
 		didNavigate: boolean;
 	}>;
@@ -43,7 +53,11 @@ function createSubmissionLifecycle(
 	options?: SubmitOptions,
 ): SubmissionLifecycle {
 	const abortController = new AbortController();
-	const submissionEntry = createSubmissionEntry(abortController, options);
+	const submissionEntry = createSubmissionEntry(
+		abortController,
+		context.allocateSubmissionOperationID(),
+		options,
+	);
 	const submissionKey = options?.dedupeKey
 		? `submission:${options.dedupeKey}`
 		: Symbol("submission");
@@ -56,16 +70,35 @@ function createSubmissionLifecycle(
 			const existing = context.submissions.get(submissionKey);
 			if (existing) {
 				existing.control.abortController?.abort("deduped");
+				context.onSubmissionStateTransition?.({
+					submissionEntry: existing,
+					fromState: "submitting",
+					toState: "aborted",
+					reason: "submission_deduped_by_newer_submission",
+					causedByOperationID: submissionEntry.operationID,
+				});
 			}
 		}
 
 		context.submissions.set(submissionKey, submissionEntry);
+		context.onSubmissionStateTransition?.({
+			submissionEntry,
+			fromState: "none",
+			toState: "submitting",
+			reason: "submission_started",
+		});
 		context.scheduleStatusUpdate();
 	};
 
 	const finish = (): void => {
 		if (isCurrent()) {
 			context.submissions.delete(submissionKey);
+			context.onSubmissionStateTransition?.({
+				submissionEntry,
+				fromState: "submitting",
+				toState: "removed",
+				reason: "submission_finished",
+			});
 		}
 
 		context.scheduleStatusUpdate();

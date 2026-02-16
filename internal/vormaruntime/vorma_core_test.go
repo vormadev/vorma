@@ -2,7 +2,6 @@ package vormaruntime
 
 import (
 	"encoding/json"
-	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -93,12 +92,14 @@ func TestLockedVormaGettersAndSetters(t *testing.T) {
 	app := fixture.app
 	app.SetIsDev(true)
 
-	tmpl := template.Must(template.New("root").Parse("<html>{{.VormaBodyScripts}}</html>"))
+	initialBuildID := app.GetBuildID()
+	initialRouteManifestFile := app.GetRouteManifestFile()
+	initialRootTemplate := app.GetRootTemplate()
+	if initialRootTemplate == nil {
+		t.Fatal("expected initial root template to be non-nil")
+	}
 
 	app.WithLock(func(lv *LockedVorma) {
-		lv.SetBuildID("locked-build")
-		lv.SetRouteManifestFile("vorma_out/locked-route-manifest.js")
-		lv.SetRootTemplate(tmpl)
 		lv.SetPaths(map[string]*Path{
 			"/locked": {
 				OriginalPattern: "/locked",
@@ -109,14 +110,14 @@ func TestLockedVormaGettersAndSetters(t *testing.T) {
 		})
 	})
 
-	if got := app.GetBuildID(); got != "locked-build" {
-		t.Fatalf("GetBuildID() = %q, want %q", got, "locked-build")
+	if got := app.GetBuildID(); got != initialBuildID {
+		t.Fatalf("GetBuildID() = %q, want %q", got, initialBuildID)
 	}
-	if got := app.GetRouteManifestFile(); got != "vorma_out/locked-route-manifest.js" {
-		t.Fatalf("GetRouteManifestFile() = %q, want %q", got, "vorma_out/locked-route-manifest.js")
+	if got := app.GetRouteManifestFile(); got != initialRouteManifestFile {
+		t.Fatalf("GetRouteManifestFile() = %q, want %q", got, initialRouteManifestFile)
 	}
 	if got := app.GetRootTemplate(); got == nil {
-		t.Fatal("GetRootTemplate() returned nil after SetRootTemplate")
+		t.Fatal("GetRootTemplate() returned nil")
 	}
 	if got := app.GetPathsSnapshot(); got["/locked"] == nil {
 		t.Fatal("GetPathsSnapshot() missing /locked after SetPaths")
@@ -126,11 +127,11 @@ func TestLockedVormaGettersAndSetters(t *testing.T) {
 		if got := lv.Vorma(); got != app {
 			t.Fatal("LockedVorma.Vorma() did not return underlying app instance")
 		}
-		if got := lv.GetBuildID(); got != "locked-build" {
-			t.Fatalf("LockedVorma.GetBuildID() = %q, want %q", got, "locked-build")
+		if got := lv.GetBuildID(); got != initialBuildID {
+			t.Fatalf("LockedVorma.GetBuildID() = %q, want %q", got, initialBuildID)
 		}
-		if got := lv.GetRouteManifestFile(); got != "vorma_out/locked-route-manifest.js" {
-			t.Fatalf("LockedVorma.GetRouteManifestFile() = %q, want %q", got, "vorma_out/locked-route-manifest.js")
+		if got := lv.GetRouteManifestFile(); got != initialRouteManifestFile {
+			t.Fatalf("LockedVorma.GetRouteManifestFile() = %q, want %q", got, initialRouteManifestFile)
 		}
 		if got := lv.GetRootTemplate(); got == nil {
 			t.Fatal("LockedVorma.GetRootTemplate() returned nil")
@@ -142,6 +143,34 @@ func TestLockedVormaGettersAndSetters(t *testing.T) {
 			t.Fatal("LockedVorma.GetIsDev() = false, want true")
 		}
 	})
+}
+
+func TestSetIsDev_InvalidatesRouteDataCacheWhenModeChanges(t *testing.T) {
+	fixture := newTestFixture(t, testFixtureOptions{})
+	app := fixture.app
+
+	cacheKey := app.buildRouteDataCacheKey(
+		nil,
+		app.GetIsDevMode(),
+		app.GetBuildID(),
+		routeDataSnapshotVersionForTest(app),
+	)
+	putRouteDataCacheEntryForTest(app, cacheKey, &cachedItemSubset{ImportURLs: []string{"/cached.js"}})
+
+	snapshotVersionBefore := routeDataSnapshotVersionForTest(app)
+	app.SetIsDev(!app.GetIsDevMode())
+	snapshotVersionAfter := routeDataSnapshotVersionForTest(app)
+
+	if got := routeDataCacheLenForTest(app); got != 0 {
+		t.Fatalf("route-data cache size = %d, want 0 after SetIsDev mode change", got)
+	}
+	if snapshotVersionAfter <= snapshotVersionBefore {
+		t.Fatalf(
+			"route-data snapshot version should increase on mode change: before=%d after=%d",
+			snapshotVersionBefore,
+			snapshotVersionAfter,
+		)
+	}
 }
 
 func TestLockedVormaGetPaths_DoesNotExposeMutableInternalState(t *testing.T) {
