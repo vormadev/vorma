@@ -63,8 +63,8 @@ func TestNewReloadEndpointRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newReloadEndpointRequest returned error: %v", err)
 	}
-	if request.Method != http.MethodPost {
-		t.Fatalf("request method = %q, want %q", request.Method, http.MethodPost)
+	if request.Method != http.MethodGet {
+		t.Fatalf("request method = %q, want %q", request.Method, http.MethodGet)
 	}
 	if request.URL.String() != "http://localhost:8080/path" {
 		t.Fatalf("request URL = %q, want %q", request.URL.String(), "http://localhost:8080/path")
@@ -96,7 +96,7 @@ func TestCallReloadEndpoint(t *testing.T) {
 		reloadTrigger:   reloadTriggerRouteDefinitionsWatch,
 	}
 
-	t.Run("uses mutation-safe request method", func(t *testing.T) {
+	t.Run("uses loaders reload endpoint request method", func(t *testing.T) {
 		executor := newReloadEndpointRequestExecutor(reloadEndpointDependencies{
 			reloadEndpointURLForApp: func(*vormaruntime.Vorma, string) string {
 				return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
@@ -105,8 +105,8 @@ func TestCallReloadEndpoint(t *testing.T) {
 				return newReloadEndpointRequest(ctx, url)
 			},
 			doReloadEndpointRequest: func(request *http.Request) (*http.Response, error) {
-				if request.Method != http.MethodPost {
-					return nil, errors.New("reload endpoint request method must be POST")
+				if request.Method != http.MethodGet {
+					return nil, errors.New("reload endpoint request method must be GET")
 				}
 				if got, want := request.Header.Get(reloadAttemptIDHeaderName), "reload-123"; got != want {
 					return nil, errors.New("reload endpoint request missing reload attempt header")

@@ -269,14 +269,23 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 				t.Fatalf("routes pattern should skip rebuilding notification")
 			}
 		}
-		templatePath := filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation)
+		templatePath := normalizeFrameworkWatchPatternPath(
+			filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation),
+		)
 		if pattern.Pattern == templatePath {
 			foundTemplatePattern = true
-			if !pattern.RunOnChangeOnly {
-				t.Fatalf("template pattern should use RunOnChangeOnly")
+			if pattern.RunOnChangeOnly {
+				t.Fatalf("template pattern should not use RunOnChangeOnly")
 			}
 			if len(pattern.OnChangeHooks) != 1 || pattern.OnChangeHooks[0].Callback == nil {
 				t.Fatalf("template pattern should include one callback hook")
+			}
+			if pattern.OnChangeHooks[0].Timing != wave.OnChangeStrategyPost {
+				t.Fatalf(
+					"template hook timing = %q, want %q",
+					pattern.OnChangeHooks[0].Timing,
+					wave.OnChangeStrategyPost,
+				)
 			}
 		}
 		if pattern.Pattern == "**/*.go" {

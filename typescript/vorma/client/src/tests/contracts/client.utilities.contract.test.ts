@@ -29,6 +29,17 @@ function stubElementScrollIntoView(
 	return scrollIntoView;
 }
 
+function createAnchorClickEvent(href: string): MouseEvent {
+	const event = new MouseEvent("click", {
+		bubbles: true,
+		cancelable: true,
+	});
+	const anchor = document.createElement("a");
+	anchor.href = href;
+	Object.defineProperty(event, "target", { value: anchor });
+	return event;
+}
+
 describe("client utility contracts", () => {
 	it("does not expose buildtime-only route registration from the runtime client entry", async () => {
 		const api = await loadClientAPI();
@@ -335,6 +346,47 @@ describe("client utility contracts", () => {
 		expect(onBlurred).toHaveBeenCalledWith(event);
 		expect(onCancel).toHaveBeenCalledWith(event);
 		expect(onPress).toHaveBeenCalledWith(event);
+	});
+
+	it("prevents default for same-document no-op clicks through __makeFinalLinkProps", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const finalProps = api.__makeFinalLinkProps({
+			href: "/current-page",
+		} as any);
+
+		const event = createAnchorClickEvent("/current-page");
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		await finalProps.onClick(event);
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("prevents default for same-document no-op prefetch clicks through __makeFinalLinkProps", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const finalProps = api.__makeFinalLinkProps({
+			href: "/current-page",
+			prefetch: "intent",
+			prefetchDelayMs: 200,
+		} as any);
+
+		finalProps.onPointerEnter(new Event("pointerenter"));
+
+		const event = createAnchorClickEvent("/current-page");
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		await finalProps.onClick(event);
+		await vi.advanceTimersByTimeAsync(200);
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	it("supports intent-prefetch link props without requiring user callbacks", async () => {

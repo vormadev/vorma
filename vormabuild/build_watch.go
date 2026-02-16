@@ -114,13 +114,37 @@ func htmlTemplateWatchPattern(v *vormaruntime.Vorma) *wave.WatchedFile {
 		return nil
 	}
 
-	templatePath := filepath.Join(privateStaticDir, htmlTemplateLocation)
-	watchPattern := runOnChangeOnlyWatchPattern(
-		templatePath,
-		htmlTemplateOnChangeCallback(v),
-		false,
+	templatePath := normalizeFrameworkWatchPatternPath(
+		filepath.Join(privateStaticDir, htmlTemplateLocation),
 	)
+	watchPattern := wave.WatchedFile{
+		Pattern: templatePath,
+		OnChangeHooks: []wave.OnChangeHook{{
+			Timing:   wave.OnChangeStrategyPost,
+			Callback: htmlTemplateOnChangeCallback(v),
+		}},
+	}
 	return &watchPattern
+}
+
+func normalizeFrameworkWatchPatternPath(
+	pathPattern string,
+) string {
+	if pathPattern == "" {
+		return ""
+	}
+
+	cleanedPathPattern := filepath.Clean(pathPattern)
+	if filepath.IsAbs(cleanedPathPattern) {
+		return cleanedPathPattern
+	}
+
+	absolutePathPattern, absolutePathError := filepath.Abs(cleanedPathPattern)
+	if absolutePathError != nil {
+		return cleanedPathPattern
+	}
+
+	return filepath.Clean(absolutePathPattern)
 }
 
 func goFilesWatchPattern() wave.WatchedFile {

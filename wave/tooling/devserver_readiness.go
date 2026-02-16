@@ -16,6 +16,7 @@ type readinessWaitPolicy struct {
 }
 
 const localReadinessProbeHostIPv4 = "127.0.0.1"
+const localReadinessProbeHostLocalhost = "localhost"
 
 func defaultReadinessWaitPolicy() readinessWaitPolicy {
 	return readinessWaitPolicy{
@@ -36,8 +37,7 @@ func (s *server) waitForApp() bool {
 }
 
 func resolveAppReadyURL(appPort int, healthcheckEndpoint string) string {
-	return fmt.Sprintf(
-		"http://%s:%d%s",
+	return resolveReadinessProbeURL(
 		localReadinessProbeHostIPv4,
 		appPort,
 		healthcheckEndpoint,
@@ -45,18 +45,40 @@ func resolveAppReadyURL(appPort int, healthcheckEndpoint string) string {
 }
 
 func (s *server) waitForReady(url string) bool {
+	return s.waitForAnyReady([]string{url})
+}
+
+func (s *server) waitForAnyReady(urls []string) bool {
 	policy := defaultReadinessWaitPolicy()
 	client := &http.Client{Timeout: policy.requestTimeout}
 	var total time.Duration
 
-	for attemptIndex := range policy.maxAttempts {
-		resp, err := client.Get(url)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			resp.Body.Close()
-			return true
+	uniqueURLs := make([]string, 0, len(urls))
+	seenURLs := make(map[string]struct{}, len(urls))
+	for _, url := range urls {
+		if url == "" {
+			continue
 		}
-		if resp != nil {
-			resp.Body.Close()
+		if _, exists := seenURLs[url]; exists {
+			continue
+		}
+		seenURLs[url] = struct{}{}
+		uniqueURLs = append(uniqueURLs, url)
+	}
+	if len(uniqueURLs) == 0 {
+		return false
+	}
+
+	for attemptIndex := range policy.maxAttempts {
+		for _, url := range uniqueURLs {
+			resp, err := client.Get(url)
+			if err == nil && resp.StatusCode == http.StatusOK {
+				resp.Body.Close()
+				return true
+			}
+			if resp != nil {
+				resp.Body.Close()
+			}
 		}
 
 		delay := deriveReadinessWaitDelay(attemptIndex, policy.baseDelay)
@@ -69,6 +91,14 @@ func (s *server) waitForReady(url string) bool {
 	}
 
 	return false
+}
+
+func resolveReadinessProbeURL(
+	host string,
+	port int,
+	endpoint string,
+) string {
+	return fmt.Sprintf("http://%s:%d%s", host, port, endpoint)
 }
 
 func deriveReadinessWaitDelay(

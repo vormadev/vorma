@@ -58,13 +58,33 @@ func shouldShowRebuildingOverlay(
 			continue
 		}
 
-		if classifiedEventForOverlay.watchedFile == nil ||
-			!classifiedEventForOverlay.watchedFile.SkipRebuildingNotification {
-			return true
+		if shouldSuppressRebuildingNotificationForClassifiedEvent(
+			classifiedEventForOverlay,
+		) {
+			continue
 		}
+
+		return true
 	}
 
 	return false
+}
+
+func shouldSuppressRebuildingNotificationForClassifiedEvent(
+	classifiedEventForOverlay classifiedEvent,
+) bool {
+	watchedFileForOverlay := classifiedEventForOverlay.watchedFile
+	if watchedFileForOverlay == nil {
+		return false
+	}
+
+	if watchedFileForOverlay.SkipRebuildingNotification {
+		return true
+	}
+
+	return watchedFileForOverlay.OnlyRunClientDefinedRevalidateFunc &&
+		classifiedEventForOverlay.fileType != fileTypeGo &&
+		!needsHardReload(watchedFileForOverlay)
 }
 
 func anyEventNeedsHardReload(eventsWithHooks []eventWithHooks) bool {

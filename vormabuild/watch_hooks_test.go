@@ -29,7 +29,9 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 	templatePatternHook := findWatchHookByPattern(
 		t,
 		patterns,
-		filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation),
+		normalizeFrameworkWatchPatternPath(
+			filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation),
+		),
 	)
 	if routePatternHook == nil || templatePatternHook == nil {
 		t.Fatal("expected route and template watch callbacks to be configured")

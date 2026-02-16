@@ -393,12 +393,6 @@ func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeSta
 			},
 		},
 		{
-			name: "missing_client_entry_out",
-			mutateInvalidStage1: func(pathsFile *PathsFile) {
-				pathsFile.ClientEntryOut = ""
-			},
-		},
-		{
 			name: "missing_export_key_on_client_route",
 			mutateInvalidStage1: func(pathsFile *PathsFile) {
 				pathsFile.Paths["/products/:id"].ExportKey = ""

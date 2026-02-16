@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -129,18 +130,33 @@ func (s *server) waitForVite() bool {
 	if viteCtx == nil {
 		return true
 	}
-	url := resolveViteReadyURL(viteCtx.GetPort())
-	ok := s.waitForReady(url)
+	urls := resolveViteReadyURLs(viteCtx.GetPort())
+	ok := s.waitForAnyReady(urls)
 	if !ok {
-		s.log.Warn("Vite did not become ready in time", "url", url)
+		s.log.Warn(
+			"Vite did not become ready in time",
+			"urls",
+			strings.Join(urls, ", "),
+		)
 	}
 	return ok
 }
 
 func resolveViteReadyURL(vitePort int) string {
-	return fmt.Sprintf(
-		"http://%s:%d/@vite/client",
-		localReadinessProbeHostIPv4,
-		vitePort,
-	)
+	return resolveViteReadyURLs(vitePort)[0]
+}
+
+func resolveViteReadyURLs(vitePort int) []string {
+	return []string{
+		resolveReadinessProbeURL(
+			localReadinessProbeHostIPv4,
+			vitePort,
+			"/@vite/client",
+		),
+		resolveReadinessProbeURL(
+			localReadinessProbeHostLocalhost,
+			vitePort,
+			"/@vite/client",
+		),
+	}
 }

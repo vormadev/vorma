@@ -40,6 +40,36 @@ func TestShouldShowRebuildingOverlay(t *testing.T) {
 		}
 	})
 
+	t.Run("returns false when non-go change only runs client revalidate", func(t *testing.T) {
+		classifiedEvents := []classifiedEvent{
+			{
+				fileType: fileTypePrivateStatic,
+				watchedFile: &wave.WatchedFile{
+					OnlyRunClientDefinedRevalidateFunc: true,
+				},
+			},
+		}
+
+		if shouldShowRebuildingOverlay(classifiedEvents) {
+			t.Fatal("expected rebuilding overlay to be skipped for revalidate-only change")
+		}
+	})
+
+	t.Run("returns true for go change even when client revalidate is requested", func(t *testing.T) {
+		classifiedEvents := []classifiedEvent{
+			{
+				fileType: fileTypeGo,
+				watchedFile: &wave.WatchedFile{
+					OnlyRunClientDefinedRevalidateFunc: true,
+				},
+			},
+		}
+
+		if !shouldShowRebuildingOverlay(classifiedEvents) {
+			t.Fatal("expected rebuilding overlay for go change")
+		}
+	})
+
 	t.Run("returns true when non-css change does not skip rebuilding notification", func(t *testing.T) {
 		classifiedEvents := []classifiedEvent{
 			{fileType: fileTypeOther},
@@ -505,6 +535,30 @@ func TestDeriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(t *testin
 		}
 		if decision.runImplicitBuild {
 			t.Fatalf("expected runImplicitBuild=false for single run-on-change-only event, got %#v", decision)
+		}
+	})
+
+	t.Run("revalidate-only event suppresses rebuilding overlay", func(t *testing.T) {
+		decision := deriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
+			[]eventWithHooks{
+				{
+					classified: classifiedEvent{
+						event:    fsnotify.Event{Name: "content.md", Op: fsnotify.Write},
+						fileType: fileTypePrivateStatic,
+						watchedFile: &wave.WatchedFile{
+							OnlyRunClientDefinedRevalidateFunc: true,
+						},
+					},
+					needsHardReload: false,
+					runOnChangeOnly: false,
+				},
+			},
+		)
+		if decision.showRebuildingOverlay {
+			t.Fatalf(
+				"expected showRebuildingOverlay=false for revalidate-only event, got %#v",
+				decision,
+			)
 		}
 	})
 

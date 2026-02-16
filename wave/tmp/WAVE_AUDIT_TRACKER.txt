@@ -1,0 +1,184 @@
+Wave Audit Tracker (Declarative, Resume-Safe)
+
+Purpose
+
+- This document is the canonical, current-state tracker for the comprehensive
+  Wave behavioral audit and regression comparison.
+- It is explicitly designed so work can resume without relying on chat history.
+
+Non-Negotiable Analysis Method
+
+- Perform first-principles source analysis by reading implementation files
+  directly.
+- Do not treat test execution as the primary discovery mechanism.
+- Do not treat pattern-grep/search hits as evidence of behavior by themselves.
+- Every recorded behavior must be justified from direct code reading and
+  control-flow reasoning.
+- For each behavior, answer:
+    1. What observable behavior occurs?
+    2. Under what conditions?
+    3. What user interest does this protect?
+    4. What would break if this behavior changed?
+
+Explicit Clarification Captured
+
+- This audit should NOT be run as a command-heavy process.
+- The intended workflow is direct file reading and careful reasoning, not
+  running tests and not grep-led pattern hunting.
+
+Primary Deliverables
+
+- Permanent normative spec:
+    - wave/spec/wave-normative-spec.md
+- Permanent normative-spec test coverage traceability map:
+    - wave/spec/wave-normative-test-coverage.md
+- Temporary branch-comparison report (disposable before merge):
+    - wave/tmp/main-vs-current-regressions.md
+- High-level coverage checkpoint:
+    - wave/tmp/wave-high-level-topic-map.md
+- File-by-file full-read coverage ledger:
+    - wave/tmp/wave-file-read-ledger.md
+
+Audit Scope Definition
+
+- In scope: all `/wave/*` behavior that is externally observable to developers
+  and users.
+- Includes: wave runtime package contracts, build orchestration, watcher/event
+  pipelines, static/CSS processing, devserver lifecycle, refresh signaling, and
+  framework integration surfaces exposed by wave.
+- Excludes: non-`/wave/*` package behavior unless required to explain a wave
+  behavior dependency.
+
+Regression Definition
+
+- Regression = an observable user story/behavior that worked on main and no
+  longer works on current branch, assuming application code is migrated
+  correctly to current APIs.
+- API signature changes alone are not regressions.
+
+Additional Intent Source Rule
+
+- `refactor-2026-1` is an explicit additional intent source for wave behavior.
+- When `main` and `refactor-2026-1` diverge, normative intent follows the
+  clearer correctness-preserving behavior (not historical precedence).
+- Branch comparison records a regression when current behavior violates a
+  normative requirement supported by either baseline source and not classified
+  as a baseline defect.
+
+Baseline Bug Filter Rule
+
+- Baseline (`main`) behavior is evidence for intended semantics, not automatic
+  normative truth.
+- Clearly incorrect or footgun behavior in baseline shall be treated as a
+  baseline defect and shall not be enshrined in the normative spec.
+- Branch comparison shall evaluate current behavior against normative intent,
+  not against baseline defects.
+
+Workstream State
+
+- Phase A (main branch scope inventory): COMPLETED
+- Phase B (main branch exhaustive behavior spec extraction): COMPLETED
+- Phase C (current branch scope inventory): COMPLETED
+- Phase D (current branch exhaustive behavior spec extraction): COMPLETED
+- Phase E (spec-to-spec diff and regression determination): COMPLETED
+- Phase F (normative spec finalization and cleanup): IN PROGRESS
+
+Progress Ledger (Declarative Snapshot)
+
+- Active branch under analysis: main + refactor-2026-1 + refactor-2026-8
+- Current file under analysis: wave/spec/wave-normative-test-coverage.md and
+  wave/spec/wave-normative-spec.md for Phase F finalization and coverage
+  tightening.
+- Last completed behavior block: requirement extraction and normative encoding
+  completed for `WAVE-HL01-001`..`WAVE-HL26-012`; requirement comparison
+  recorded for `WAVE-HL01-001`..`WAVE-HL26-012`; full-read coverage ledger has
+  no pending `/wave/*` files for `main` and `refactor-2026-8`, and full-file
+  read coverage for `refactor-2026-1` is complete; targeted coverage-hardening
+  tests were added for server-only refresh-server no-op and framework-setter
+  core-field isolation, and `HL23`..`HL26` coverage mapping rows were tightened
+  with concrete test-file references.
+- Next required action: complete remaining Phase F coverage tightening for
+  `WAVE-HL01-001`..`WAVE-HL22-010`, then finalize normative-spec and
+  coverage-map wording.
+
+Specification Authoring Rules
+
+- Normative spec entries must be implementation-backed and observable.
+- Each entry must include:
+    - Stable Spec ID (for cross-branch mapping)
+    - User story statement
+    - Trigger conditions
+    - Expected observable behavior
+    - Protected user interest
+    - Notes on cancellation/ordering/race constraints where relevant
+- Avoid historical narration; keep statements in present-tense normative form.
+
+Documentation Declarative Discipline
+
+- The tracker, high-level topic map, normative spec, and temporary regression
+  report shall remain strictly declarative and present-tense.
+- Prohibited content includes historical timelines, backward-looking narration,
+  conversational commentary, and changelog-style accumulation.
+- Progress shall be represented by updating current-state fields in place, not
+  by appending historical logs.
+- Superseded statements shall be replaced or removed, not preserved as document
+  history.
+
+Framework Integration Normalization Rule
+
+- Do not create separate full behavior sections per individual framework
+  integration path.
+- State framework-integration behavior once in generic contract form.
+- Clarify that observable behavior and usage patterns are expected to be
+  equivalent across all current and future framework integrations unless a
+  difference is explicitly intended and user-observable.
+
+Comparison Rules
+
+- Compare behavior by spec ID and explicit behavior statements, not by API
+  naming.
+- A changed implementation is acceptable if the same user story still holds.
+- Record only true behavior regressions in temporary report.
+
+Execution Plan
+
+- Step 1: Create/maintain `wave/spec/wave-normative-spec.md` as the permanent
+  authoritative spec.
+- Step 2: Use `wave/tmp/wave-high-level-topic-map.md` (`HL-01`..`HL-26`) as
+  the mandatory topic index and sectioning backbone.
+- Step 3: Extract baseline behavior from `main` first, line-by-line, and encode
+  each requirement with stable IDs.
+- Step 3a: Extract corroborating/alternative baseline behavior from
+  `refactor-2026-1` line-by-line and map it to existing requirement IDs.
+- Step 4: Required extraction order:
+    - bootstrap/config/state/layout
+    - build/static/css/url/filemap behavior
+    - dev lifecycle/watch/event/reload behavior
+    - framework integration and public API contracts
+- Step 5: For each requirement ID, record:
+    - user story
+    - trigger conditions
+    - expected observable behavior
+    - protected user interest
+    - cancellation/ordering/race constraints when applicable
+- Step 6: Map current-branch behavior to the same requirement IDs and classify
+  only as:
+    - preserved behavior
+    - changed implementation with preserved semantics
+    - regression (behavior no longer satisfies the same user story)
+- Step 6a: For each requirement, reconcile `main` and `refactor-2026-1`
+  baselines against normative correctness before final regression
+  classification.
+- Step 7: Write regressions only to
+  `wave/tmp/main-vs-current-regressions.md`.
+- Step 8: Keep branch-comparison content temporary and keep normative spec
+  branch-agnostic.
+
+Handoff Contract
+
+- Any agent resuming this work shall:
+    - Continue using first-principles file reading.
+    - Preserve existing requirement IDs once introduced.
+    - Continue extraction from the next unfinished `HL-*` section.
+    - Update `Workstream State` and `Progress Ledger` after each completed
+      section block.

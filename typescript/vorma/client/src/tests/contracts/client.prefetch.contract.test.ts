@@ -270,9 +270,40 @@ describe("client prefetch contracts", () => {
 		expect(beforeBegin).not.toHaveBeenCalled();
 
 		const { anchor, event } = buildAnchorClick("/hash-page#section-a");
+		const preventDefault = vi.spyOn(event, "preventDefault");
 		await handlers?.onClick(event);
 		await vi.advanceTimersByTimeAsync(200);
 
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(beforeBegin).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		document.body.removeChild(anchor);
+	});
+
+	it("prevents default on same-document no-op prefetch clicks without hash", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page");
+		const beforeBegin = vi.fn();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/current-page",
+			delayMs: 200,
+			beforeBegin,
+		});
+
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(beforeBegin).not.toHaveBeenCalled();
+
+		const { anchor, event } = buildAnchorClick("/current-page");
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		await handlers?.onClick(event);
+		await vi.advanceTimersByTimeAsync(200);
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
 		expect(beforeBegin).not.toHaveBeenCalled();
 		expect(fetchSpy).not.toHaveBeenCalled();
 		document.body.removeChild(anchor);

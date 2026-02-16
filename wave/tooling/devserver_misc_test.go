@@ -97,6 +97,22 @@ func TestResolveViteReadyURL_UsesIPv4LoopbackHost(t *testing.T) {
 	}
 }
 
+func TestResolveViteReadyURLs_UsesLoopbackHosts(t *testing.T) {
+	got := resolveViteReadyURLs(5151)
+	want := []string{
+		"http://127.0.0.1:5151/@vite/client",
+		"http://localhost:5151/@vite/client",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("resolveViteReadyURLs() len=%d, want %d", len(got), len(want))
+	}
+	for idx := range want {
+		if got[idx] != want[idx] {
+			t.Fatalf("resolveViteReadyURLs()[%d]=%q, want %q", idx, got[idx], want[idx])
+		}
+	}
+}
+
 func TestGetBuilderAndSetBuilder(t *testing.T) {
 	s := &server{log: newDiscardLogger()}
 	if s.getBuilder() != nil {

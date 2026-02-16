@@ -265,6 +265,32 @@ func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(t *testing.T
 	}
 }
 
+func TestStartRefreshServer_NoOpWhenServerOnlyMode(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	t.Setenv("WAVE_REFRESH_SERVER_PORT", "")
+
+	s := &server{
+		cfg: cfg,
+		log: newDiscardLogger(),
+	}
+
+	actualPort, err := s.startRefreshServer(5173)
+	if err != nil {
+		t.Fatalf("startRefreshServer returned error in server-only mode: %v", err)
+	}
+	if actualPort != 0 {
+		t.Fatalf("expected no refresh server port in server-only mode, got %d", actualPort)
+	}
+	if s.refreshServer != nil {
+		t.Fatalf("expected no refresh server instance in server-only mode, got %#v", s.refreshServer)
+	}
+	if got := wave.GetRefreshServerPort(); got != 0 {
+		t.Fatalf("expected refresh server env port to remain unset in server-only mode, got %d", got)
+	}
+}
+
 func TestServerRun_BrowserModeInitWatcherFailureCleansRefreshResources(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)

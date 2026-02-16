@@ -345,34 +345,7 @@ func (buildLifecycleMachine *buildLifecycleStateMachine) transition(
 	if buildLifecycleMachine.transitionObserver != nil {
 		buildLifecycleMachine.transitionObserver(transitionRecord)
 	}
-	if nextPhase == buildLifecyclePhaseCompleted || nextPhase == buildLifecyclePhaseFailed {
-		buildLifecycleMachine.emitTerminalTrace(nextPhase)
-	}
 	return nil
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) emitTerminalTrace(
-	terminalPhase buildLifecyclePhase,
-) {
-	if buildLifecycleMachine.logger == nil {
-		return
-	}
-
-	buildLifecycleMachine.logger.Info(
-		"Vorma build lifecycle attempt trace",
-		"attempt_id",
-		buildLifecycleMachine.attemptID,
-		"workflow",
-		buildLifecycleMachine.workflow,
-		"terminal_phase",
-		terminalPhase,
-		"inputs",
-		buildLifecycleMachine.attemptInputsSnapshot(),
-		"transitions",
-		buildLifecycleMachine.transitionHistorySnapshot(),
-		"rollbacks",
-		buildLifecycleMachine.rollbackHistorySnapshot(),
-	)
 }
 
 func normalizeBuildLifecycleAttemptInputs(

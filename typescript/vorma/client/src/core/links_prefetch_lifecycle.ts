@@ -95,6 +95,7 @@ async function handlePrefetchClick<E extends Event>(props: {
 
 	const targetType = classifyEligibleAnchorTarget(anchorDetails);
 	if (targetType === "same-document-noop") {
+		event.preventDefault();
 		clearPendingTimer();
 		return;
 	}

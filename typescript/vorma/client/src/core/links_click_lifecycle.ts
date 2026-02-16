@@ -131,6 +131,7 @@ export function createLinkOnClickFn<E extends Event>(
 
 		const targetType = classifyEligibleAnchorTarget(anchorDetails);
 		if (targetType === "same-document-noop") {
+			event.preventDefault();
 			return;
 		}
 		if (targetType === "hash-change") {

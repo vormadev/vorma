@@ -1,7 +1,9 @@
 {
+	"$schema": "dist/static/internal/schema.json",
 	"Core": {
 		"MainAppEntry": "backend/cmd/serve",
 		"DistDir": "backend/dist",
+		"ConfigLocation": "backend/wave.config.json",
 		"StaticAssetDirs": {
 			"Private": "backend/assets",
 			"Public": "frontend/assets"

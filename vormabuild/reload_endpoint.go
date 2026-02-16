@@ -283,7 +283,7 @@ func reloadEndpointURL(port int, endpoint string) string {
 }
 
 func newReloadEndpointRequest(ctx context.Context, url string) (*http.Request, error) {
-	return http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	return http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 }
 
 func validateReloadEndpointStatus(statusCode int) error {

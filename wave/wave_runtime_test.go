@@ -158,6 +158,43 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 	}
 }
 
+func TestFrameworkSettersDoNotMutateCoreConfigFields(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+
+	originalCoreConfig := *w.cfg.Core
+
+	w.AddFrameworkWatchPatterns([]WatchedFile{{Pattern: "**/*.route"}})
+	w.AddIgnoredPatterns([]string{"generated/**"})
+	w.SetPublicFileMapOutDir("generated/public")
+	w.SetFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
+	w.SetFrameworkProdBuildHookCommand("go run ./backend/cmd/build --prod")
+	w.RegisterFrameworkSchemaSection(
+		"Vorma",
+		jsonschema.Entry{Type: jsonschema.TypeObject},
+	)
+	w.SetFrameworkRunBuildHookRunner(func(context.Context, bool) error {
+		return nil
+	})
+	w.SetFrameworkPrepareGoBuildOverlay(func() (*GoBuildOverlay, error) {
+		return &GoBuildOverlay{OverlayConfigPath: "/tmp/vorma-overlay.json"}, nil
+	})
+	w.SetBrowserRuntimeNamespace("__vorma_runtime")
+	w.SetBrowserPublicURLResolverFunctionName("resolvePublicURL")
+	w.SetBrowserRevalidateFunctionName("__vorma_revalidate")
+	w.SetRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
+	w.SetCriticalCSSStyleElementID("vorma-critical-css")
+	w.SetNonCriticalCSSLinkElementID("vorma-normal-css")
+
+	if got := *w.cfg.Core; got != originalCoreConfig {
+		t.Fatalf(
+			"framework setters mutated core config: got %#v want %#v",
+			got,
+			originalCoreConfig,
+		)
+	}
+}
+
 func TestAddFrameworkWatchPatternsClonesInput(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))

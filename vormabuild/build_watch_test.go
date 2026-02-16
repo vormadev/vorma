@@ -132,8 +132,8 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 
 	templatePath := filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation)
 	expectedPatternCounts := map[string]int{
-		templatePath: 1,
-		"**/*.go":    1,
+		normalizeFrameworkWatchPatternPath(templatePath): 1,
+		"**/*.go": 1,
 	}
 	for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
 		expectedPatternCounts[routeDefinitionPattern] = 1
@@ -383,17 +383,28 @@ func TestHTMLTemplateWatchPattern_UsesPrivateStaticDirPrefix(t *testing.T) {
 	}
 
 	expectedPattern := filepath.Join(app.Wave.GetPrivateStaticDir(), "templates/custom.entry.go.html")
+	expectedPattern = normalizeFrameworkWatchPatternPath(expectedPattern)
 	if pattern.Pattern != expectedPattern {
 		t.Fatalf("Pattern = %q, want %q", pattern.Pattern, expectedPattern)
 	}
-	if !pattern.RunOnChangeOnly {
-		t.Fatal("expected html template watch pattern to be RunOnChangeOnly")
+	if !filepath.IsAbs(pattern.Pattern) {
+		t.Fatalf("expected absolute template watch pattern, got %q", pattern.Pattern)
+	}
+	if pattern.RunOnChangeOnly {
+		t.Fatal("expected html template watch pattern not to be RunOnChangeOnly")
 	}
 	if pattern.SkipRebuildingNotification {
 		t.Fatal("expected html template watch pattern not to skip rebuild notifications")
 	}
 	if len(pattern.OnChangeHooks) != 1 || pattern.OnChangeHooks[0].Callback == nil {
 		t.Fatalf("OnChangeHooks = %#v, expected one callback hook", pattern.OnChangeHooks)
+	}
+	if pattern.OnChangeHooks[0].Timing != wave.OnChangeStrategyPost {
+		t.Fatalf(
+			"OnChangeHooks[0].Timing = %q, want %q",
+			pattern.OnChangeHooks[0].Timing,
+			wave.OnChangeStrategyPost,
+		)
 	}
 }
 

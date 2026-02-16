@@ -138,11 +138,27 @@ describe("client link click contracts", () => {
 		const onClick = api.__makeLinkOnClickFn({});
 		await onClick(event);
 
-		expect(preventDefault).not.toHaveBeenCalled();
+		expect(preventDefault).toHaveBeenCalledTimes(1);
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(sessionStorage.getItem("__vorma__scrollStateMap")).toBe(
 			initialScrollStateMap,
 		);
+	});
+
+	it("prevents default for same-document no-op links without hash and does not fetch", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/current-page");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const { event } = createClickEvent("/current-page");
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
 	it("does not trigger navigation for encoding-equivalent hash links", async () => {
@@ -160,7 +176,7 @@ describe("client link click contracts", () => {
 		const onClick = api.__makeLinkOnClickFn({});
 		await onClick(event);
 
-		expect(preventDefault).not.toHaveBeenCalled();
+		expect(preventDefault).toHaveBeenCalledTimes(1);
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(sessionStorage.getItem("__vorma__scrollStateMap")).toBe(
 			initialScrollStateMap,
