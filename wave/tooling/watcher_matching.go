@@ -66,12 +66,10 @@ func (w *watcher) FindWatchedFile(path string) *wave.WatchedFile {
 	}
 
 	// Collect user-defined matches second (these run after framework hooks)
-	if w.cfg.Watch != nil {
-		for i := range w.cfg.Watch.Include {
-			watchedFile := &w.cfg.Watch.Include[i]
-			if w.MatchPattern(watchedFile.Pattern, normalizedPath) {
-				matches = append(matches, watchedFile)
-			}
+	for i := range w.configuredWatched {
+		watchedFile := &w.configuredWatched[i]
+		if w.MatchPattern(watchedFile.Pattern, normalizedPath) {
+			matches = append(matches, watchedFile)
 		}
 	}
 

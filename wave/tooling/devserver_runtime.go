@@ -7,10 +7,50 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type runIntent struct {
+	recompileGo     bool
+	isConfigRestart bool
+}
+
+type runLifecycleCommand string
+
+const (
+	runLifecycleCommandPrepareCycle        runLifecycleCommand = "prepare_cycle"
+	runLifecycleCommandBuildCycle          runLifecycleCommand = "build_cycle"
+	runLifecycleCommandAwaitBuildRetry     runLifecycleCommand = "await_build_retry"
+	runLifecycleCommandStartRuntime        runLifecycleCommand = "start_runtime"
+	runLifecycleCommandAwaitRestartRequest runLifecycleCommand = "await_restart_request"
+	runLifecycleCommandCleanupForNextCycle runLifecycleCommand = "cleanup_for_next_cycle"
+)
+
+type runLifecycleCommandInput struct {
+	firstRun         bool
+	currentRunIntent runIntent
+}
+
+type runLifecycleCommandResult struct {
+	runLifecycleEvent               runLifecycleEvent
+	updatedRunIntent                *runIntent
+	shouldMarkFirstRunAsNotFirstRun bool
+}
+
+func deriveRunIntentFromRestartRequest(
+	restartRequestForIntent restartRequest,
+) runIntent {
+	normalizedRestartRequest := normalizeRestartRequest(restartRequestForIntent)
+	return runIntent{
+		recompileGo:     normalizedRestartRequest.recompileGo,
+		isConfigRestart: normalizedRestartRequest.isConfigRestart,
+	}
+}
+
 func (s *server) run() error {
 	firstRun := true
-	recompileGo := true // First run always compiles
-	isConfigRestart := false
+	currentRunIntent := runIntent{
+		recompileGo: true, // First run always compiles
+	}
+	currentRunLifecycleState := runLifecycleStatePreparingCycle
+	currentLifecycleCycleID := uint64(1)
 
 	// Initialize refresh server once (crucial -- persists across rebuilds)
 	s.mustGetPort()
@@ -28,147 +68,272 @@ func (s *server) run() error {
 	defer s.cleanupRefreshServer()
 
 	for {
-		if !firstRun {
-			if err := s.reloadConfig(); err != nil {
-				s.log.Error("config reload failed", "error", err)
-			}
+		runLifecycleCommandForState, err := deriveRunLifecycleCommandForState(
+			currentRunLifecycleState,
+		)
+		if err != nil {
+			return err
 		}
 
-		// Create/recreate builder with current config
-		s.setBuilder(NewBuilder(s.cfg, s.log))
-
-		if err := s.initWatcher(); err != nil {
-			return fmt.Errorf("init watcher: %w", err)
+		runLifecycleCommandResultForState, err := s.executeRunLifecycleCommand(
+			runLifecycleCommandForState,
+			runLifecycleCommandInput{
+				firstRun:         firstRun,
+				currentRunIntent: currentRunIntent,
+			},
+		)
+		if err != nil {
+			return err
 		}
 
-		isRebuild := !firstRun
-		sequentialGo := s.cfg.Core.SequentialGoBuild
+		if runLifecycleCommandResultForState.updatedRunIntent != nil {
+			currentRunIntent = *runLifecycleCommandResultForState.updatedRunIntent
+		}
+		if runLifecycleCommandResultForState.shouldMarkFirstRunAsNotFirstRun {
+			firstRun = false
+		}
 
-		// Run builds - either in parallel or sequentially based on config
-		var buildEg errgroup.Group
+		nextRunLifecycleState, err := s.transitionRunLifecycleState(
+			currentRunLifecycleState,
+			runLifecycleCommandResultForState.runLifecycleEvent,
+			currentLifecycleCycleID,
+		)
+		if err != nil {
+			return err
+		}
+		currentRunLifecycleState = nextRunLifecycleState
+		if currentRunLifecycleState == runLifecycleStatePreparingCycle &&
+			runLifecycleCommandForState != runLifecycleCommandPrepareCycle {
+			currentLifecycleCycleID++
+		}
+	}
+}
 
-		buildEg.Go(func() error {
-			b := s.getBuilder()
-			if b == nil {
+func deriveRunLifecycleCommandForState(
+	currentRunLifecycleState runLifecycleState,
+) (runLifecycleCommand, error) {
+	switch currentRunLifecycleState {
+	case runLifecycleStatePreparingCycle:
+		return runLifecycleCommandPrepareCycle, nil
+	case runLifecycleStateBuildingCycle:
+		return runLifecycleCommandBuildCycle, nil
+	case runLifecycleStateAwaitingBuildRetry:
+		return runLifecycleCommandAwaitBuildRetry, nil
+	case runLifecycleStateStartingRuntime:
+		return runLifecycleCommandStartRuntime, nil
+	case runLifecycleStateAwaitingRestart:
+		return runLifecycleCommandAwaitRestartRequest, nil
+	case runLifecycleStateCleaningUpForNextCycle:
+		return runLifecycleCommandCleanupForNextCycle, nil
+	default:
+		return "", fmt.Errorf("unknown run lifecycle state: %q", currentRunLifecycleState)
+	}
+}
+
+func (s *server) executeRunLifecycleCommand(
+	runLifecycleCommandForState runLifecycleCommand,
+	runLifecycleCommandInputForState runLifecycleCommandInput,
+) (runLifecycleCommandResult, error) {
+	switch runLifecycleCommandForState {
+	case runLifecycleCommandPrepareCycle:
+		return s.executeRunLifecycleCommandPrepareCycle(
+			runLifecycleCommandInputForState,
+		)
+	case runLifecycleCommandBuildCycle:
+		return s.executeRunLifecycleCommandBuildCycle(
+			runLifecycleCommandInputForState,
+		)
+	case runLifecycleCommandAwaitBuildRetry:
+		return s.executeRunLifecycleCommandAwaitBuildRetry(
+			runLifecycleCommandInputForState,
+		)
+	case runLifecycleCommandStartRuntime:
+		return s.executeRunLifecycleCommandStartRuntime(
+			runLifecycleCommandInputForState,
+		)
+	case runLifecycleCommandAwaitRestartRequest:
+		return s.executeRunLifecycleCommandAwaitRestartRequest(
+			runLifecycleCommandInputForState,
+		)
+	case runLifecycleCommandCleanupForNextCycle:
+		return s.executeRunLifecycleCommandCleanupForNextCycle(
+			runLifecycleCommandInputForState,
+		)
+	default:
+		return runLifecycleCommandResult{}, fmt.Errorf(
+			"unknown run lifecycle command: %q",
+			runLifecycleCommandForState,
+		)
+	}
+}
+
+func (s *server) prepareRunCycle(firstRun bool) error {
+	if !firstRun {
+		if err := s.reloadConfig(); err != nil {
+			s.log.Error("config reload failed", "error", err)
+		}
+	}
+
+	// Create/recreate builder with current config.
+	s.setBuilder(NewBuilder(s.cfg, s.log))
+
+	if err := s.initWatcher(); err != nil {
+		return fmt.Errorf("init watcher: %w", err)
+	}
+
+	return nil
+}
+
+func (s *server) executeRunBuildForIntent(
+	isRebuild bool,
+	currentRunIntent runIntent,
+) error {
+	buildExecutionOrderingDecision := deriveRunBuildExecutionOrderingDecision(
+		currentRunIntent.recompileGo,
+		s.cfg.Core.SequentialGoBuild,
+	)
+	s.log.Debug(
+		"resolved build execution ordering decision",
+		"go_compilation_ordering_policy",
+		buildExecutionOrderingDecision.goCompilationOrderingPolicy,
+		"compile_in_parallel",
+		buildExecutionOrderingDecision.runCompileInParallel,
+		"compile_after_build_hooks",
+		buildExecutionOrderingDecision.runCompileAfterBuildHooks,
+	)
+
+	// Run builds - either in parallel or sequentially based on config.
+	var buildGroup errgroup.Group
+
+	buildGroup.Go(func() error {
+		builderForBuild := s.getBuilder()
+		if builderForBuild == nil {
+			return fmt.Errorf("builder is nil")
+		}
+		return builderForBuild.Build(BuildOpts{
+			IsDev:     true,
+			CompileGo: false,
+			IsRebuild: isRebuild,
+		})
+	})
+
+	if buildExecutionOrderingDecision.runCompileInParallel {
+		buildGroup.Go(func() error {
+			builderForCompile := s.getBuilder()
+			if builderForCompile == nil {
 				return fmt.Errorf("builder is nil")
 			}
-			return b.Build(BuildOpts{
-				IsDev:     true,
-				CompileGo: false,
-				IsRebuild: isRebuild,
-			})
+			return builderForCompile.CompileGoOnly(true)
 		})
-
-		// Compile Go concurrently only if recompileGo is true AND sequential mode is disabled
-		if recompileGo && !sequentialGo {
-			buildEg.Go(func() error {
-				b := s.getBuilder()
-				if b == nil {
-					return fmt.Errorf("builder is nil")
-				}
-				return b.CompileGoOnly(true)
-			})
-		}
-
-		if err := buildEg.Wait(); err != nil {
-			s.log.Error("build failed", "error", err)
-			s.log.Info("Waiting for file changes to retry build...")
-			s.waitForBuildRetry()
-			firstRun = false
-			continue
-		}
-
-		// If sequential mode is enabled, compile Go after build hooks have completed
-		if recompileGo && sequentialGo {
-			b := s.getBuilder()
-			if b == nil {
-				s.log.Error("builder is nil for sequential Go compile")
-				s.log.Info("Waiting for file changes to retry build...")
-				s.waitForBuildRetry()
-				firstRun = false
-				continue
-			}
-			if err := b.CompileGoOnly(true); err != nil {
-				s.log.Error("go compilation failed", "error", err)
-				s.log.Info("Waiting for file changes to retry build...")
-				s.waitForBuildRetry()
-				firstRun = false
-				continue
-			}
-		}
-
-		// Start Vite AFTER build completes (TypeScript files now exist)
-		if s.viteCtx == nil && s.cfg.UsingVite() {
-			if err := s.startVite(); err != nil {
-				s.log.Error("vite start failed", "error", err)
-			}
-		}
-
-		// Start the app
-		s.startApp()
-
-		// Initialize watcher start channel for this iteration
-		s.watcherStartCh = make(chan struct{})
-
-		// Start watching in a goroutine that waits for signal
-		go func() {
-			<-s.watcherStartCh
-			s.runWatcher()
-		}()
-
-		// If this was a config restart, broadcast reload after app is ready,
-		// THEN signal watcher to start (prevents watcher from triggering reload first)
-		if isConfigRestart {
-			s.broadcastReload(reloadOpts{
-				payload:   refreshPayload{ChangeType: changeTypeOther},
-				waitApp:   true,
-				waitVite:  true,
-				cycleVite: true,
-			})
-			isConfigRestart = false
-		}
-
-		// Now signal watcher to start processing events
-		close(s.watcherStartCh)
-
-		firstRun = false
-
-		// Wait for restart request
-		restartRequestForRun := <-s.restartCh
-		recompileGo = restartRequestForRun.recompileGo
-		isConfigRestart = restartRequestForRun.isConfigRestart
-		s.log.Info("Restarting dev server...", "recompile_go", recompileGo, "config_restart", isConfigRestart)
-
-		// Send rebuilding signal while refresh server is still alive
-		s.broadcastRebuilding()
-
-		// Clean up everything except refresh server and Vite
-		s.cleanupForRebuild()
 	}
+
+	if err := buildGroup.Wait(); err != nil {
+		return err
+	}
+
+	if buildExecutionOrderingDecision.runCompileAfterBuildHooks {
+		builderForSequentialCompile := s.getBuilder()
+		if builderForSequentialCompile == nil {
+			return fmt.Errorf("builder is nil for sequential Go compile")
+		}
+		if err := builderForSequentialCompile.CompileGoOnly(true); err != nil {
+			return fmt.Errorf("go compilation failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *server) startRunCycleRuntime(currentRunIntent *runIntent) {
+	// Start Vite after build completes (TypeScript files now exist).
+	if s.viteCtx == nil && s.cfg.UsingVite() {
+		if err := s.startVite(); err != nil {
+			s.log.Error("vite start failed", "error", err)
+		}
+	}
+
+	// Start the app.
+	s.startApp()
+
+	currentRunCycleScope := s.startRunCycleScope()
+
+	// Initialize watcher start channel for this iteration.
+	s.watcherStartCh = make(chan struct{})
+
+	// Start watching in a cycle-scoped goroutine that waits for signal.
+	if currentRunCycleScope != nil {
+		currentRunCycleScope.launchAsyncWork(func(
+			currentRunCycleContext context.Context,
+		) {
+			select {
+			case <-s.watcherStartCh:
+			case <-currentRunCycleContext.Done():
+				return
+			}
+			s.runWatcherWithContext(currentRunCycleContext)
+		})
+	}
+
+	// If this was a config restart, broadcast reload after app is ready,
+	// then signal watcher to start (prevents watcher from triggering reload first).
+	if currentRunIntent != nil && currentRunIntent.isConfigRestart {
+		s.broadcastReload(reloadOpts{
+			payload:   refreshPayload{ChangeType: changeTypeOther},
+			waitApp:   true,
+			waitVite:  true,
+			cycleVite: true,
+		})
+		currentRunIntent.isConfigRestart = false
+	}
+
+	// Now signal watcher to start processing events.
+	close(s.watcherStartCh)
 }
 
 // waitForBuildRetry waits for a file change that might fix the build error.
 // It starts the watcher and waits for any restart request.
-func (s *server) waitForBuildRetry() {
+func (s *server) waitForBuildRetry() restartRequest {
+	s.setWaitingForBuildRetry(true)
+	defer s.setWaitingForBuildRetry(false)
+
+	if pendingRestartRequest, hasPendingRestartRequest := s.consumePendingRestartRequest(); hasPendingRestartRequest {
+		normalizedPendingRestartRequest := normalizeRestartRequest(pendingRestartRequest)
+		s.cleanupForRebuild()
+		return normalizedPendingRestartRequest
+	}
+
 	// Initialize watcher start channel
 	s.watcherStartCh = make(chan struct{})
+	buildRetryRunCycleScope := s.startRunCycleScope()
 
 	// Start watcher immediately since we're waiting for fixes
-	go func() {
-		<-s.watcherStartCh
-		s.runWatcher()
-	}()
+	if buildRetryRunCycleScope != nil {
+		buildRetryRunCycleScope.launchAsyncWork(func(
+			buildRetryRunCycleContext context.Context,
+		) {
+			select {
+			case <-s.watcherStartCh:
+			case <-buildRetryRunCycleContext.Done():
+				return
+			}
+			s.runWatcherWithContext(buildRetryRunCycleContext)
+		})
+	}
 	close(s.watcherStartCh)
 
 	// Wait for any file change to trigger a restart
-	<-s.restartCh
+	restartRequestForRetry := s.consumeRestartRequestBlocking()
 
 	// Clean up for the retry
 	s.cleanupForRebuild()
+	return restartRequestForRetry
 }
 
 // cleanupForRebuild cleans up resources but keeps refresh server and Vite alive
 func (s *server) cleanupForRebuild() {
+	s.cancelAndJoinCurrentRunCycleScope()
+	s.cancelConcurrentNoWaitHookLifecycleContext()
+
 	if err := s.stopApp(); err != nil {
 		s.log.Error("stop app failed", "error", err)
 	}
@@ -202,6 +367,9 @@ func (s *server) cleanupForRebuild() {
 
 // cleanupRefreshServer cleans up the refresh server (called on full shutdown)
 func (s *server) cleanupRefreshServer() {
+	s.cancelAndJoinCurrentRunCycleScope()
+	s.cancelConcurrentNoWaitHookLifecycleContext()
+
 	if err := s.stopRefreshServer(); err != nil {
 		s.log.Error("stop refresh server failed", "error", err)
 	}

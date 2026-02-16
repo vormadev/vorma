@@ -182,12 +182,13 @@ type ViteConfig struct {
 }
 
 type WatchConfig struct {
-	WatchRoot            string                    `json:"WatchRoot,omitempty"`
-	HealthcheckEndpoint  string                    `json:"HealthcheckEndpoint,omitempty"`
-	HookCommandTimeouts  HookCommandTimeoutConfig  `json:"HookCommandTimeouts,omitempty"`
-	HookCallbackTimeouts HookCallbackTimeoutConfig `json:"HookCallbackTimeouts,omitempty"`
-	Include              []WatchedFile             `json:"Include,omitempty"`
-	Exclude              struct {
+	WatchRoot              string                    `json:"WatchRoot,omitempty"`
+	HealthcheckEndpoint    string                    `json:"HealthcheckEndpoint,omitempty"`
+	HookStageFailurePolicy string                    `json:"HookStageFailurePolicy,omitempty"`
+	HookCommandTimeouts    HookCommandTimeoutConfig  `json:"HookCommandTimeouts"`
+	HookCallbackTimeouts   HookCallbackTimeoutConfig `json:"HookCallbackTimeouts"`
+	Include                []WatchedFile             `json:"Include,omitempty"`
+	Exclude                struct {
 		Dirs  []string `json:"Dirs,omitempty"`
 		Files []string `json:"Files,omitempty"`
 	} `json:"Exclude,omitempty"`

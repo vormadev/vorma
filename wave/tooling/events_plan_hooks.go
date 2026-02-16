@@ -142,12 +142,9 @@ func buildEventWithHooksForClassifiedEvent(
 	if watchedFileForProcessing == nil {
 		watchedFileForProcessing = &wave.WatchedFile{}
 	}
-	if watchedFileForProcessing.SortedHooks == nil {
-		watchedFileForProcessing.Sort()
-	}
-	if watchedFileForProcessing.SortedHooks == nil {
-		watchedFileForProcessing.SortedHooks = &wave.SortedHooks{}
-	}
+	sortedHooksForProcessing := deriveSortedHooksForWatchedFileWithoutMutation(
+		watchedFileForProcessing,
+	)
 
 	normalizedEventPathForHookContext := normalizeHookContextPathShape(
 		classifiedEventForProcessing.event.Name,
@@ -160,7 +157,7 @@ func buildEventWithHooksForClassifiedEvent(
 
 	return eventWithHooks{
 		classified:         classifiedEventForProcessing,
-		hooks:              watchedFileForProcessing.SortedHooks,
+		hooks:              sortedHooksForProcessing,
 		runOnChangeOnly:    watchedFileForProcessing.RunOnChangeOnly,
 		needsHardReload:    eventNeedsHardReload,
 		skipDuplicateHooks: skipDuplicateHooks,
@@ -172,8 +169,22 @@ func buildEventWithHooksForClassifiedEvent(
 	}
 }
 
+func deriveSortedHooksForWatchedFileWithoutMutation(
+	watchedFileForProcessing *wave.WatchedFile,
+) *wave.SortedHooks {
+	if watchedFileForProcessing == nil {
+		return &wave.SortedHooks{}
+	}
+
+	if watchedFileForProcessing.SortedHooks != nil {
+		return cloneSortedHooksForWatcherPlan(watchedFileForProcessing.SortedHooks)
+	}
+
+	return deriveSortedHooksForWatcherPlan(watchedFileForProcessing.OnChangeHooks)
+}
+
 func normalizeHookContextPathShape(path string) string {
-	return pathnorm.TrimAndCleanPath(path)
+	return pathnorm.Absolute(path)
 }
 
 func recordChangedPathForWatchedPatternIfNew(

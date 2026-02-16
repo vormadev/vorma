@@ -571,3 +571,60 @@ func TestValidateConfig_HealthcheckEndpointValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateConfig_HookStageFailurePolicyValidation(t *testing.T) {
+	baseConfig := &wave.ParsedConfig{
+		Core: &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+		},
+		Watch: &wave.WatchConfig{},
+	}
+
+	t.Run("accepts default empty value", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{}
+		if err := ValidateConfig(&cfg); err != nil {
+			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+
+	t.Run("accepts explicit fail-open", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookStageFailurePolicy: configuredHookStageFailurePolicyFailOpen,
+		}
+		if err := ValidateConfig(&cfg); err != nil {
+			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+
+	t.Run("accepts explicit fail-closed", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookStageFailurePolicy: configuredHookStageFailurePolicyFailClosed,
+		}
+		if err := ValidateConfig(&cfg); err != nil {
+			t.Fatalf("ValidateConfig returned error: %v", err)
+		}
+	})
+
+	t.Run("rejects unknown hook-stage failure policy", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			HookStageFailurePolicy: "invalid-policy",
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error for invalid hook-stage failure policy")
+		}
+		if !strings.Contains(err.Error(), "Watch.HookStageFailurePolicy") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+}

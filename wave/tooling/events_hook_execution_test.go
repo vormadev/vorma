@@ -30,9 +30,9 @@ func newServerAndWatcherForHookExecutionTest(t *testing.T) (*server, *watcher) {
 	}
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	return s, watcher
@@ -1244,6 +1244,58 @@ func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(t *testi
 	}
 }
 
+func TestFireNoWaitHooks_CleanupForRebuildCancelsInFlightHooks(t *testing.T) {
+	s, watcher := newServerAndWatcherForHookExecutionTest(t)
+	defer watcher.Close()
+
+	s.watcher = watcher
+	s.builder = NewBuilder(s.cfg, newDiscardLogger())
+	defer s.builder.Close()
+
+	changedPath := filepath.Join(t.TempDir(), "no-wait-cleanup-cancel.txt")
+	if err := os.WriteFile(changedPath, []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed writing changed file: %v", err)
+	}
+
+	hookStarted := make(chan struct{}, 1)
+	hookCanceled := make(chan struct{}, 1)
+	ewh := eventWithHooks{
+		classified: classifiedEvent{event: waveEvent(changedPath)},
+		hookCtx:    &wave.HookContext{FilePath: changedPath},
+		hooks: &wave.SortedHooks{
+			ConcurrentNoWait: []wave.OnChangeHook{
+				{
+					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+						hookStarted <- struct{}{}
+						select {
+						case <-hookContext.ExecutionContext.Done():
+							hookCanceled <- struct{}{}
+						case <-time.After(600 * time.Millisecond):
+						}
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+
+	s.fireNoWaitHooks(ewh, watcher)
+
+	select {
+	case <-hookStarted:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for no-wait hook to start")
+	}
+
+	s.cleanupForRebuild()
+
+	select {
+	case <-hookCanceled:
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("expected cleanupForRebuild to cancel in-flight no-wait hook execution")
+	}
+}
+
 func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
@@ -1761,13 +1813,16 @@ func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 
 	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
-	select {
-	case req := <-s.restartCh:
-		if req.recompileGo {
-			t.Fatalf("expected no-go restart from prehook action, got %#v", req)
-		}
-	default:
-		t.Fatal("expected restart request from prehook action")
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		s,
+		200*time.Millisecond,
+	)
+	if pendingRestartRequest.recompileGo {
+		t.Fatalf(
+			"expected no-go restart from prehook action, got %#v",
+			pendingRestartRequest,
+		)
 	}
 }
 
@@ -1797,13 +1852,16 @@ func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(t *testing.T)
 
 	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
-	select {
-	case req := <-s.restartCh:
-		if !req.recompileGo {
-			t.Fatalf("expected Go recompilation restart, got %#v", req)
-		}
-	default:
-		t.Fatal("expected restart request from concurrent hook action")
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		s,
+		200*time.Millisecond,
+	)
+	if !pendingRestartRequest.recompileGo {
+		t.Fatalf(
+			"expected Go recompilation restart, got %#v",
+			pendingRestartRequest,
+		)
 	}
 }
 

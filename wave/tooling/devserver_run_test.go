@@ -22,9 +22,9 @@ func TestServerRun_ReturnsInitWatcherErrorWhenWatchRootMissing(t *testing.T) {
 	cfg.Watch.WatchRoot = filepath.Join(root, "does-not-exist")
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	err := s.run()
@@ -48,9 +48,9 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 	}
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	done := make(chan struct{})
@@ -76,7 +76,7 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		s.restartCh <- restartRequest{recompileGo: false}
+		queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
 	}()
 
 	err := s.run()
@@ -107,9 +107,9 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(t *te
 	}
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	done := make(chan struct{})
@@ -135,7 +135,7 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(t *te
 			t.Error(err)
 			return
 		}
-		s.restartCh <- restartRequest{recompileGo: false}
+		queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
 	}()
 
 	err := s.run()
@@ -169,9 +169,9 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 	}
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	done := make(chan struct{})
@@ -197,7 +197,7 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		s.restartCh <- restartRequest{recompileGo: false}
+		queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
 	}()
 
 	err := s.run()
@@ -252,9 +252,9 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 	go appServer.Serve(appListener)
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	done := make(chan struct{})
@@ -271,12 +271,12 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 				t.Error(err)
 				return
 			}
-			sendRestartRequestWithTimeout(s.restartCh, restartRequest{recompileGo: false}, 250*time.Millisecond)
+			sendRestartRequestWithTimeout(s, restartRequest{recompileGo: false}, 250*time.Millisecond)
 			return
 		}
 
 		if !sendRestartRequestWithTimeout(
-			s.restartCh,
+			s,
 			restartRequest{recompileGo: false, isConfigRestart: true},
 			2*time.Second,
 		) {
@@ -288,7 +288,7 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 				t.Error(err)
 				return
 			}
-			sendRestartRequestWithTimeout(s.restartCh, restartRequest{recompileGo: false}, 250*time.Millisecond)
+			sendRestartRequestWithTimeout(s, restartRequest{recompileGo: false}, 250*time.Millisecond)
 			return
 		}
 
@@ -302,7 +302,7 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 				t.Error(err)
 				return
 			}
-			sendRestartRequestWithTimeout(s.restartCh, restartRequest{recompileGo: false}, 250*time.Millisecond)
+			sendRestartRequestWithTimeout(s, restartRequest{recompileGo: false}, 250*time.Millisecond)
 			return
 		}
 
@@ -317,7 +317,7 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 			t.Error(err)
 			return
 		}
-		sendRestartRequestWithTimeout(s.restartCh, restartRequest{recompileGo: false}, 2*time.Second)
+		sendRestartRequestWithTimeout(s, restartRequest{recompileGo: false}, 2*time.Second)
 	}()
 
 	err = s.run()
@@ -335,6 +335,30 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 	case <-done:
 	case <-time.After(1 * time.Second):
 		t.Fatal("timed out waiting for orchestration helper goroutine")
+	}
+}
+
+func TestWaitForBuildRetry_QueuedNoGoRestartIntentIsPreservedForNextPass(t *testing.T) {
+	s := &server{
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	}
+	queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
+
+	restartRequestForRetry := s.waitForBuildRetry()
+	nextRunIntent := deriveRunIntentFromRestartRequest(restartRequestForRetry)
+
+	if nextRunIntent.recompileGo {
+		t.Fatalf("expected queued retry restart to preserve recompileGo=false, got %#v", nextRunIntent)
+	}
+	if nextRunIntent.isConfigRestart {
+		t.Fatalf("expected queued retry restart to preserve isConfigRestart=false, got %#v", nextRunIntent)
+	}
+	s.restartIntents.mu.Lock()
+	waitingForBuildRetry := s.restartIntents.waitingForBuildRetry
+	s.restartIntents.mu.Unlock()
+	if waitingForBuildRetry {
+		t.Fatal("expected waitForBuildRetry to clear waiting-for-retry guard")
 	}
 }
 
@@ -386,15 +410,30 @@ func waitForWatcherPointer(
 }
 
 func sendRestartRequestWithTimeout(
-	restartChannel chan restartRequest,
+	s *server,
 	request restartRequest,
 	timeout time.Duration,
 ) bool {
-	select {
-	case restartChannel <- request:
-		return true
-	case <-time.After(timeout):
+	if s == nil {
 		return false
+	}
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		s.queueRestartRequest(request)
+		return true
+	}
+	return false
+}
+
+func drainRestartRequests(s *server) {
+	if s == nil {
+		return
+	}
+	for {
+		if _, hasPendingRestartRequest := s.consumePendingRestartRequest(); !hasPendingRestartRequest {
+			return
+		}
 	}
 }
 

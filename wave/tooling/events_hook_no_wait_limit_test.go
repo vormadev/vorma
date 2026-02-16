@@ -13,7 +13,7 @@ func TestRunNoWaitHookWithConcurrencyLimit_EnforcesExecutionCap(t *testing.T) {
 
 	started := make(chan struct{}, 3)
 	release := make(chan struct{})
-	schedulingDone := make(chan struct{})
+	thirdSchedulingDone := make(chan struct{})
 
 	for range 2 {
 		s.runNoWaitHookWithConcurrencyLimit(func() {
@@ -34,32 +34,63 @@ func TestRunNoWaitHookWithConcurrencyLimit_EnforcesExecutionCap(t *testing.T) {
 		t.Fatal("timed out waiting for second no-wait hook to start")
 	}
 
-	go func() {
-		s.runNoWaitHookWithConcurrencyLimit(func() {
-			started <- struct{}{}
-			<-release
-		})
-		close(schedulingDone)
-	}()
+	s.runNoWaitHookWithConcurrencyLimit(func() {
+		started <- struct{}{}
+		<-release
+	})
+	close(thirdSchedulingDone)
 
 	select {
-	case <-schedulingDone:
-		t.Fatal("expected third no-wait hook scheduling to block while execution cap is full")
+	case <-thirdSchedulingDone:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected third no-wait hook scheduling to return promptly")
+	}
+
+	select {
+	case <-started:
+		t.Fatal("expected third no-wait hook execution to wait for capacity")
 	case <-time.After(100 * time.Millisecond):
 	}
 
 	close(release)
 
 	select {
-	case <-schedulingDone:
-	case <-time.After(1 * time.Second):
-		t.Fatal("timed out waiting for blocked no-wait hook scheduling to continue")
-	}
-
-	select {
 	case <-started:
 	case <-time.After(1 * time.Second):
 		t.Fatal("timed out waiting for third no-wait hook to start after capacity was released")
+	}
+}
+
+func TestRunNoWaitHookWithConcurrencyLimit_DoesNotBlockSchedulingWhenLimiterIsSaturated(t *testing.T) {
+	s := &server{
+		concurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
+	}
+
+	firstHookStarted := make(chan struct{}, 1)
+	releaseFirstHook := make(chan struct{})
+	defer close(releaseFirstHook)
+
+	s.runNoWaitHookWithConcurrencyLimit(func() {
+		firstHookStarted <- struct{}{}
+		<-releaseFirstHook
+	})
+
+	select {
+	case <-firstHookStarted:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for first no-wait hook to start")
+	}
+
+	secondSchedulingDone := make(chan struct{})
+	go func() {
+		s.runNoWaitHookWithConcurrencyLimit(func() {})
+		close(secondSchedulingDone)
+	}()
+
+	select {
+	case <-secondSchedulingDone:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected no-wait hook scheduling to remain non-blocking when limiter is saturated")
 	}
 }
 

@@ -137,13 +137,32 @@ func (s *server) runNoWaitHookWithConcurrencyLimit(
 	}
 
 	concurrentNoWaitHookExecutionLimiter := s.ensureConcurrentNoWaitHookExecutionLimiter()
-	concurrentNoWaitHookExecutionLimiter <- struct{}{}
-	go func() {
+	if concurrentNoWaitHookExecutionLimiter == nil {
+		return
+	}
+	lifecycleExecutionContext := s.getOrCreateConcurrentNoWaitHookLifecycleContext()
+
+	s.launchRunCycleScopedAsyncWorkOrDetached(func(
+		context.Context,
+	) {
+		if lifecycleExecutionContext == nil {
+			lifecycleExecutionContext = context.Background()
+		}
+
+		select {
+		case concurrentNoWaitHookExecutionLimiter <- struct{}{}:
+		case <-lifecycleExecutionContext.Done():
+			return
+		}
 		defer func() {
 			<-concurrentNoWaitHookExecutionLimiter
 		}()
+
+		if !shouldContinueConcurrentHookExecution(lifecycleExecutionContext) {
+			return
+		}
 		runNoWaitHook()
-	}()
+	})
 }
 
 func (s *server) ensureConcurrentNoWaitHookExecutionLimiter() chan struct{} {
@@ -162,26 +181,91 @@ func (s *server) ensureConcurrentNoWaitHookExecutionLimiter() chan struct{} {
 	return s.concurrentNoWaitHookExecutionLimiter
 }
 
+func (s *server) getOrCreateConcurrentNoWaitHookLifecycleContext() context.Context {
+	if s == nil {
+		return context.Background()
+	}
+
+	currentRunCycleScope := s.getCurrentRunCycleScope()
+	if currentRunCycleScope != nil {
+		return currentRunCycleScope.executionContext
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.concurrentNoWaitHookLifecycleCtx == nil ||
+		!shouldContinueConcurrentHookExecution(s.concurrentNoWaitHookLifecycleCtx) {
+		s.concurrentNoWaitHookLifecycleCtx, s.concurrentNoWaitHookLifecycleCancel = context.WithCancel(
+			context.Background(),
+		)
+	}
+
+	return s.concurrentNoWaitHookLifecycleCtx
+}
+
+func (s *server) cancelConcurrentNoWaitHookLifecycleContext() {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	cancelConcurrentNoWaitHookLifecycleContext := s.concurrentNoWaitHookLifecycleCancel
+	s.concurrentNoWaitHookLifecycleCtx = nil
+	s.concurrentNoWaitHookLifecycleCancel = nil
+	s.mu.Unlock()
+
+	if cancelConcurrentNoWaitHookLifecycleContext != nil {
+		cancelConcurrentNoWaitHookLifecycleContext()
+	}
+}
+
 func (s *server) runSequentialHookStageForEligibleEvents(
 	eventsWithHooks []eventWithHooks,
 	watcher *watcher,
 	runHooksForEvent func(eventWithHooks, *watcher) ([]wave.RefreshAction, error),
 	hookExecutionFailureLogMessage string,
 ) []wave.RefreshAction {
+	stageActions, _ := s.runSequentialHookStageForEligibleEventsWithErrors(
+		eventsWithHooks,
+		watcher,
+		runHooksForEvent,
+		hookExecutionFailureLogMessage,
+	)
+	return stageActions
+}
+
+func (s *server) runSequentialHookStageForEligibleEventsWithErrors(
+	eventsWithHooks []eventWithHooks,
+	watcher *watcher,
+	runHooksForEvent func(eventWithHooks, *watcher) ([]wave.RefreshAction, error),
+	hookExecutionFailureLogMessage string,
+) ([]wave.RefreshAction, []error) {
 	if runHooksForEvent == nil {
-		return nil
+		return nil, nil
 	}
 
 	descriptors := deriveHookStageExecutionDescriptors(eventsWithHooks)
 	allStageActions := make([]wave.RefreshAction, 0)
+	stageExecutionErrors := make([]error, 0)
+	traceContextForHookStage := s.getCurrentWatcherExecutionTraceContext()
 	for _, descriptor := range descriptors {
 		stageActions, err := runHooksForEvent(descriptor.eventWithHooks, watcher)
 		if err != nil {
-			s.log.Error(hookExecutionFailureLogMessage, "error", err)
+			s.log.Error(
+				hookExecutionFailureLogMessage,
+				"error",
+				err,
+				"cycle_id",
+				traceContextForHookStage.cycleID,
+				"batch_id",
+				traceContextForHookStage.batchID,
+			)
+			stageExecutionErrors = append(stageExecutionErrors, err)
 		}
 		allStageActions = append(allStageActions, stageActions...)
 	}
-	return allStageActions
+	return allStageActions, stageExecutionErrors
 }
 
 func (s *server) fireNoWaitHooksForEvents(
@@ -199,10 +283,23 @@ func (s *server) runPreHooksForEvents(
 	work *workSet,
 	watcher *watcher,
 ) []wave.RefreshAction {
+	stageActions, _ := s.runPreHooksForEventsWithErrors(
+		eventsWithHooks,
+		work,
+		watcher,
+	)
+	return stageActions
+}
+
+func (s *server) runPreHooksForEventsWithErrors(
+	eventsWithHooks []eventWithHooks,
+	work *workSet,
+	watcher *watcher,
+) ([]wave.RefreshAction, []error) {
 	for _, eventWithHooksForPre := range eventsWithHooks {
 		work.addImplicitWork(eventWithHooksForPre.classified)
 	}
-	return s.runSequentialHookStageForEligibleEvents(
+	return s.runSequentialHookStageForEligibleEventsWithErrors(
 		eventsWithHooks,
 		watcher,
 		s.runPreHooks,
@@ -214,11 +311,12 @@ func (s *server) runConcurrentHooksForEvents(
 	eventsWithHooks []eventWithHooks,
 	watcher *watcher,
 ) []wave.RefreshAction {
-	return s.runConcurrentHooksForEventsWithContext(
+	concurrentActions, _ := s.runConcurrentHooksForEventsWithContextAndErrors(
 		context.Background(),
 		eventsWithHooks,
 		watcher,
 	)
+	return concurrentActions
 }
 
 func shouldContinueConcurrentHookExecution(
@@ -241,8 +339,23 @@ func (s *server) runConcurrentHooksForEventsWithContext(
 	eventsWithHooks []eventWithHooks,
 	watcher *watcher,
 ) []wave.RefreshAction {
+	concurrentActions, _ := s.runConcurrentHooksForEventsWithContextAndErrors(
+		concurrentHookExecutionContext,
+		eventsWithHooks,
+		watcher,
+	)
+	return concurrentActions
+}
+
+func (s *server) runConcurrentHooksForEventsWithContextAndErrors(
+	concurrentHookExecutionContext context.Context,
+	eventsWithHooks []eventWithHooks,
+	watcher *watcher,
+) ([]wave.RefreshAction, []error) {
 	descriptors := deriveHookStageExecutionDescriptors(eventsWithHooks)
+	traceContextForHookStage := s.getCurrentWatcherExecutionTraceContext()
 	actionsByDescriptorIndex := make([][]wave.RefreshAction, len(descriptors))
+	executionErrorsByDescriptorIndex := make([]error, len(descriptors))
 	var concurrentHooksGroup errgroup.Group
 
 	for descriptorIndex := range descriptors {
@@ -270,7 +383,16 @@ func (s *server) runConcurrentHooksForEventsWithContext(
 				if shouldContinueConcurrentHookExecution(
 					concurrentHookExecutionContext,
 				) {
-					s.log.Error("Concurrent hook execution failed", "error", err)
+					s.log.Error(
+						"Concurrent hook execution failed",
+						"error",
+						err,
+						"cycle_id",
+						traceContextForHookStage.cycleID,
+						"batch_id",
+						traceContextForHookStage.batchID,
+					)
+					executionErrorsByDescriptorIndex[descriptorIndexForResult] = err
 				}
 			}
 			actionsByDescriptorIndex[descriptorIndexForResult] = concurrentActions
@@ -284,15 +406,33 @@ func (s *server) runConcurrentHooksForEventsWithContext(
 	for _, concurrentActionsForEvent := range actionsByDescriptorIndex {
 		allConcurrentActions = append(allConcurrentActions, concurrentActionsForEvent...)
 	}
+	concurrentHookExecutionErrors := make([]error, 0)
+	for _, concurrentHookExecutionError := range executionErrorsByDescriptorIndex {
+		if concurrentHookExecutionError == nil {
+			continue
+		}
+		concurrentHookExecutionErrors = append(concurrentHookExecutionErrors, concurrentHookExecutionError)
+	}
 
-	return allConcurrentActions
+	return allConcurrentActions, concurrentHookExecutionErrors
 }
 
 func (s *server) runPostHooksForEvents(
 	eventsWithHooks []eventWithHooks,
 	watcher *watcher,
 ) []wave.RefreshAction {
-	return s.runSequentialHookStageForEligibleEvents(
+	stageActions, _ := s.runPostHooksForEventsWithErrors(
+		eventsWithHooks,
+		watcher,
+	)
+	return stageActions
+}
+
+func (s *server) runPostHooksForEventsWithErrors(
+	eventsWithHooks []eventWithHooks,
+	watcher *watcher,
+) ([]wave.RefreshAction, []error) {
+	return s.runSequentialHookStageForEligibleEventsWithErrors(
 		eventsWithHooks,
 		watcher,
 		s.runPostHooks,
@@ -301,6 +441,9 @@ func (s *server) runPostHooksForEvents(
 }
 
 func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *watcher) {
+	concurrentNoWaitHookLifecycleContext := s.getOrCreateConcurrentNoWaitHookLifecycleContext()
+	traceContextForHookExecution := s.getCurrentWatcherExecutionTraceContext()
+
 	plans := deriveHookExecutionPlansForEventStage(
 		watcher,
 		ewh,
@@ -317,7 +460,7 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *watcher) {
 			)
 			s.runNoWaitHookWithConcurrencyLimit(func() {
 				hookCallbackExecutionContext, cancelHookCallbackExecutionContext := deriveExecutionContextWithOptionalTimeout(
-					context.Background(),
+					concurrentNoWaitHookLifecycleContext,
 					hookCallbackTimeoutForExecution,
 				)
 				if cancelHookCallbackExecutionContext != nil {
@@ -341,6 +484,10 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *watcher) {
 						changedFilePathForExecution,
 						"error",
 						err,
+						"cycle_id",
+						traceContextForHookExecution.cycleID,
+						"batch_id",
+						traceContextForHookExecution.batchID,
 					)
 				}
 			})
@@ -354,7 +501,7 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *watcher) {
 			)
 			s.runNoWaitHookWithConcurrencyLimit(func() {
 				hookCommandExecutionContext, cancelHookCommandExecutionContext := deriveExecutionContextWithOptionalTimeout(
-					context.Background(),
+					concurrentNoWaitHookLifecycleContext,
 					hookCommandTimeoutForExecution,
 				)
 				if cancelHookCommandExecutionContext != nil {
@@ -375,6 +522,10 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *watcher) {
 						commandForExecution,
 						"error",
 						err,
+						"cycle_id",
+						traceContextForHookExecution.cycleID,
+						"batch_id",
+						traceContextForHookExecution.batchID,
 					)
 				}
 			})

@@ -2,6 +2,21 @@ package tooling
 
 import "context"
 
+type reloadReadinessOutcome struct {
+	waitedForApp     bool
+	waitedForVite    bool
+	cycleViteApplied bool
+}
+
+type reloadOrchestrationOutcome struct {
+	broadcastEnabled       bool
+	broadcastContextActive bool
+
+	readinessOutcome       reloadReadinessOutcome
+	shouldBroadcastPayload bool
+	payloadBroadcasted     bool
+}
+
 // broadcastRebuilding sends the "rebuilding" signal to show UI overlay.
 // Uses blocking send, but guarded by context to prevent deadlock during shutdown.
 func (s *server) broadcastRebuilding() {
@@ -13,9 +28,9 @@ func (s *server) broadcastRebuilding() {
 		return
 	}
 
-	if !s.sendRefreshPayloadWhenBroadcastContextActive(refreshPayload{ChangeType: changeTypeRebuilding}) {
-		return
-	}
+	_ = s.sendRefreshPayloadWhenBroadcastContextActive(
+		refreshPayload{ChangeType: changeTypeRebuilding},
+	)
 }
 
 // broadcastReload handles browser reload orchestration.
@@ -30,21 +45,34 @@ func (s *server) broadcastRebuilding() {
 // When cycleVite is false:
 //  1. Wait for app/vite as specified
 //  2. Send Wave's reload signal to trigger browser reload
-func (s *server) broadcastReload(opts reloadOpts) {
-	if !s.shouldBroadcastToBrowserClients() {
-		return
+func (s *server) broadcastReload(
+	reloadOptions reloadOpts,
+) reloadOrchestrationOutcome {
+	reloadOutcome := reloadOrchestrationOutcome{
+		broadcastEnabled: s.shouldBroadcastToBrowserClients(),
+	}
+	if !reloadOutcome.broadcastEnabled {
+		return reloadOutcome
 	}
 
-	if !isBroadcastContextActive(s.refreshMgrCtx) {
-		return
+	reloadOutcome.broadcastContextActive = isBroadcastContextActive(s.refreshMgrCtx)
+	if !reloadOutcome.broadcastContextActive {
+		return reloadOutcome
 	}
 
-	cycleViteApplied := s.waitForReloadReadiness(opts)
-	if !shouldBroadcastReloadPayloadAfterReadiness(opts, cycleViteApplied) {
-		return
+	reloadOutcome.readinessOutcome = s.waitForReloadReadiness(reloadOptions)
+	reloadOutcome.shouldBroadcastPayload = shouldBroadcastReloadPayloadAfterReadiness(
+		reloadOptions,
+		reloadOutcome.readinessOutcome.cycleViteApplied,
+	)
+	if !reloadOutcome.shouldBroadcastPayload {
+		return reloadOutcome
 	}
 
-	s.sendRefreshPayloadWhenBroadcastContextActive(opts.payload)
+	reloadOutcome.payloadBroadcasted = s.sendRefreshPayloadWhenBroadcastContextActive(
+		reloadOptions.payload,
+	)
+	return reloadOutcome
 }
 
 func (s *server) shouldBroadcastToBrowserClients() bool {
@@ -85,21 +113,27 @@ func (s *server) sendRefreshPayloadWhenBroadcastContextActive(
 
 func (s *server) waitForReloadReadiness(
 	reloadOptions reloadOpts,
-) bool {
+) reloadReadinessOutcome {
+	reloadReadinessOutcomeForReload := reloadReadinessOutcome{}
+
 	if reloadOptions.waitApp {
+		reloadReadinessOutcomeForReload.waitedForApp = true
 		s.waitForApp()
 	}
 
-	cycleViteApplied := s.cycleViteForReloadIfRequested(reloadOptions.cycleVite)
-	if cycleViteApplied {
-		return true
+	reloadReadinessOutcomeForReload.cycleViteApplied = s.cycleViteForReloadIfRequested(
+		reloadOptions.cycleVite,
+	)
+	if reloadReadinessOutcomeForReload.cycleViteApplied {
+		return reloadReadinessOutcomeForReload
 	}
 
 	if reloadOptions.waitVite {
+		reloadReadinessOutcomeForReload.waitedForVite = true
 		s.waitForVite()
 	}
 
-	return false
+	return reloadReadinessOutcomeForReload
 }
 
 func (s *server) cycleViteForReloadIfRequested(
@@ -116,8 +150,7 @@ func (s *server) cycleViteForReloadIfRequested(
 		return false
 	}
 
-	s.cycleVite()
-	return true
+	return s.cycleViteAndWaitForReadiness()
 }
 
 func shouldBroadcastReloadPayloadAfterReadiness(

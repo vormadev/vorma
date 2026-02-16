@@ -35,16 +35,15 @@ func TestProcessEvents_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 				Op:   configMutationCaseForRun.op,
 			}})
 
-			select {
-			case req := <-s.restartCh:
-				if !req.isConfigRestart || !req.recompileGo {
-					t.Fatalf("expected config restart with Go recompile, got %#v", req)
-				}
-			default:
+			pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+				t,
+				s,
+				200*time.Millisecond,
+			)
+			if !pendingRestartRequest.isConfigRestart || !pendingRestartRequest.recompileGo {
 				t.Fatalf(
-					"expected config restart request for op=%s pathShape=%s",
-					configMutationCaseForRun.name,
-					pathShapeCaseForRun.name,
+					"expected config restart with Go recompile, got %#v",
+					pendingRestartRequest,
 				)
 			}
 		},
@@ -107,16 +106,15 @@ func TestProcessEvents_ConfigChangeBatchSkipsNonConfigHookProcessing(t *testing.
 				},
 			})
 
-			select {
-			case req := <-s.restartCh:
-				if !req.isConfigRestart || !req.recompileGo {
-					t.Fatalf("expected config restart with Go recompile, got %#v", req)
-				}
-			default:
+			pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+				t,
+				s,
+				200*time.Millisecond,
+			)
+			if !pendingRestartRequest.isConfigRestart || !pendingRestartRequest.recompileGo {
 				t.Fatalf(
-					"expected config restart request for op=%s pathShape=%s",
-					configMutationCaseForRun.name,
-					pathShapeCaseForRun.name,
+					"expected config restart with Go recompile, got %#v",
+					pendingRestartRequest,
 				)
 			}
 
@@ -164,11 +162,7 @@ func TestProcessEvents_CreateForMissingFileStillRunsMatchingHooks(t *testing.T) 
 		t.Fatalf("expected matching hook to run exactly once for missing-file create, got %d", atomic.LoadInt32(&hookCallCount))
 	}
 
-	select {
-	case req := <-s.restartCh:
-		t.Fatalf("did not expect restart request for missing-file create, got %#v", req)
-	default:
-	}
+	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
 func TestProcessEvents_DeduplicatesEventsByMatchedPattern(t *testing.T) {
@@ -215,11 +209,11 @@ func TestProcessEvents_DeduplicatesEventsByMatchedPattern(t *testing.T) {
 	defer builder.Close()
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	s.processEvents([]fsnotify.Event{
@@ -287,11 +281,11 @@ func TestProcessEvents_BatchHardReloadSetsAppStoppedForBatchOnHookContext(t *tes
 	defer builder.Close()
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	s.processEvents([]fsnotify.Event{
@@ -344,11 +338,11 @@ func TestProcessEvents_IgnoresChmodOnNonEmptyFile(t *testing.T) {
 	defer builder.Close()
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	s.processEvents([]fsnotify.Event{{Name: filePath, Op: fsnotify.Chmod}})
@@ -374,11 +368,11 @@ func TestProcessEvents_NewDirectoryCreateEventAddsWatchDir(t *testing.T) {
 	defer builder.Close()
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	newDirectory := filepath.Join(root, "new-child-dir")
@@ -452,11 +446,11 @@ func TestProcessEvents_PublicStaticMixedOpsBatchAppliesCreateDeleteAndRenameChan
 	}
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	s.processEvents([]fsnotify.Event{
@@ -537,11 +531,11 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 	}
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 		refreshMgr: &clientManager{
 			broadcast: make(chan refreshPayload, 2),
 		},

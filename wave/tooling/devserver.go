@@ -32,10 +32,11 @@ type server struct {
 	watcher *watcher
 
 	// Running processes
-	mu      sync.Mutex
-	appCmd  *exec.Cmd
-	viteCtx *vitecmd.BuildCtx
-	builder *Builder
+	mu                sync.Mutex
+	appCmd            *exec.Cmd
+	appProcessManager *appProcessManager
+	viteCtx           *vitecmd.BuildCtx
+	builder           *Builder
 
 	// Browser refresh
 	refreshServer    *http.Server
@@ -43,16 +44,25 @@ type server struct {
 	refreshMgrCtx    context.Context
 	refreshMgrCancel context.CancelFunc
 
-	// Lifecycle - buffered channel for restart requests
-	restartCh   chan restartRequest
-	restartChMu sync.Mutex
+	// Lifecycle restart intents
+	restartIntents *restartIntentAccumulator
 
 	// Concurrent-no-wait hook execution gate
 	concurrentNoWaitHookExecutionLimiter         chan struct{}
 	concurrentNoWaitHookExecutionLimiterInitOnce sync.Once
+	concurrentNoWaitHookLifecycleCtx             context.Context
+	concurrentNoWaitHookLifecycleCancel          context.CancelFunc
 
 	// watcher control - used to delay watcher start until after config restart reload
 	watcherStartCh chan struct{}
+
+	// Cycle-scoped async lifecycle management
+	nextRunCycleID       uint64
+	currentRunCycleScope *runCycleScope
+
+	// Trace correlation for watcher batches and hook-stage logs
+	nextWatcherBatchID                  uint64
+	currentWatcherExecutionTraceContext watcherExecutionTraceContext
 }
 
 // RunDev starts the development server
@@ -80,12 +90,12 @@ func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
 		cfg:          cfg,
 		log:          log,
 		portResolver: wave.NewPortResolver(),
-		restartCh:    make(chan restartRequest, 1),
 		concurrentNoWaitHookExecutionLimiter: make(
 			chan struct{},
 			maxConcurrentNoWaitHookExecutions,
 		),
 	}
+	s.restartIntents = newRestartIntentAccumulator(make(chan restartRequest, 1))
 
 	return s.run()
 }

@@ -171,10 +171,10 @@ func setupProcessEventsServerForToolingTests(
 
 	watcher, builder := setupWatcherAndBuilderForToolingTests(t, cfg)
 	return &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 }

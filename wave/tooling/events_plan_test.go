@@ -9,6 +9,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/pathnorm"
 )
 
 func TestShouldShowRebuildingOverlay(t *testing.T) {
@@ -436,6 +437,37 @@ func TestBuildEventExecutionPlanFromClassifiedEvents(t *testing.T) {
 			t.Fatal("expected one of the txt-pattern events to skip duplicate hooks")
 		}
 	})
+}
+
+func TestBuildEventExecutionPlanFromClassifiedEvents_HookContextFilePathIsAbsolute(
+	t *testing.T,
+) {
+	relativeChangedPath := filepath.Join("relative", "changed.txt")
+
+	eventsWithHooks := buildEventExecutionPlanFromClassifiedEvents(
+		[]classifiedEvent{
+			{
+				event:    fsnotify.Event{Name: relativeChangedPath, Op: fsnotify.Write},
+				fileType: fileTypeOther,
+				watchedFile: &wave.WatchedFile{
+					Pattern: "**/*.txt",
+				},
+			},
+		},
+	)
+	if len(eventsWithHooks) != 1 {
+		t.Fatalf("expected one eventWithHooks entry, got %#v", eventsWithHooks)
+	}
+
+	gotHookContextFilePath := eventsWithHooks[0].hookCtx.FilePath
+	wantHookContextFilePath := pathnorm.Absolute(relativeChangedPath)
+	if gotHookContextFilePath != wantHookContextFilePath {
+		t.Fatalf(
+			"expected hook context FilePath to be absolute %q, got %q",
+			wantHookContextFilePath,
+			gotHookContextFilePath,
+		)
+	}
 }
 
 func TestDeriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(t *testing.T) {

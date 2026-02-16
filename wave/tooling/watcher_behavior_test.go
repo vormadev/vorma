@@ -83,6 +83,70 @@ func TestFindWatchedFile_MergesFrameworkAndUserMatches(t *testing.T) {
 	}
 }
 
+func TestNewWatcher_DoesNotMutateConfigWatchPatternsOrHookExcludes(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.FrameworkWatchPatterns = []wave.WatchedFile{
+		{
+			Pattern: "framework/**/*.txt",
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Cmd:     "framework-hook",
+					Exclude: []string{"framework/exclude/**"},
+				},
+			},
+		},
+	}
+	cfg.Watch.Include = []wave.WatchedFile{
+		{
+			Pattern: "user/**/*.txt",
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Cmd:     "user-hook",
+					Exclude: []string{"user/exclude/**"},
+				},
+			},
+		},
+	}
+
+	watcher, err := newWatcher(cfg, newDiscardLogger())
+	if err != nil {
+		t.Fatalf("newWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	if cfg.FrameworkWatchPatterns[0].Pattern != "framework/**/*.txt" {
+		t.Fatalf("expected framework pattern to remain relative, got %q", cfg.FrameworkWatchPatterns[0].Pattern)
+	}
+	if cfg.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] != "framework/exclude/**" {
+		t.Fatalf(
+			"expected framework exclude to remain relative, got %q",
+			cfg.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0],
+		)
+	}
+	if cfg.Watch.Include[0].Pattern != "user/**/*.txt" {
+		t.Fatalf("expected user pattern to remain relative, got %q", cfg.Watch.Include[0].Pattern)
+	}
+	if cfg.Watch.Include[0].OnChangeHooks[0].Exclude[0] != "user/exclude/**" {
+		t.Fatalf(
+			"expected user exclude to remain relative, got %q",
+			cfg.Watch.Include[0].OnChangeHooks[0].Exclude[0],
+		)
+	}
+
+	frameworkMatch := watcher.FindWatchedFile(
+		filepath.Join(root, "framework", "file.txt"),
+	)
+	if frameworkMatch == nil {
+		t.Fatal("expected framework pattern to match after watcher normalization")
+	}
+
+	userMatch := watcher.FindWatchedFile(filepath.Join(root, "user", "file.txt"))
+	if userMatch == nil {
+		t.Fatal("expected user pattern to match after watcher normalization")
+	}
+}
+
 func TestWatcherStaticClassificationUsesDirectoryBoundaries(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)

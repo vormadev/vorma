@@ -15,10 +15,13 @@ type implicitBuildExecutionDecision struct {
 type hookStageResult struct {
 	actions             []wave.RefreshAction
 	refreshActionResult refreshActionApplicationResult
+	stageType           hookStageType
+	executionErrors     []error
 }
 
 type hookStageContinuationDecision struct {
 	shouldContinue      bool
+	stopReason          hookStageContinuationStopReason
 	restartActionResult refreshActionApplicationResult
 }
 
@@ -61,9 +64,10 @@ func (s *server) processEventsWithDeterministicPipeline(
 
 	s.fireNoWaitHooksForEvents(eventsWithHooks, watcher)
 
-	preHookStageResult := runAndApplyHookStageActionsToWorkSet(
-		func() []wave.RefreshAction {
-			return s.runPreHooksForEvents(eventsWithHooks, work, watcher)
+	preHookStageResult := runAndApplyHookStageActionsAndErrorsToWorkSet(
+		hookStageTypePre,
+		func() ([]wave.RefreshAction, []error) {
+			return s.runPreHooksForEventsWithErrors(eventsWithHooks, work, watcher)
 		},
 		work,
 	)
@@ -84,7 +88,7 @@ func (s *server) processEventsWithDeterministicPipeline(
 	}
 
 	buildAndConcurrentHooksContext, cancelBuildAndConcurrentHooks := context.WithCancel(
-		context.Background(),
+		s.currentRunCycleContextOrBackground(),
 	)
 	defer cancelBuildAndConcurrentHooks()
 
@@ -101,8 +105,9 @@ func (s *server) processEventsWithDeterministicPipeline(
 	}
 
 	var concurrentActions []wave.RefreshAction
+	var concurrentHookExecutionErrors []error
 	buildAndConcurrentHooksGroup.Go(func() error {
-		concurrentActions = s.runConcurrentHooksForEventsWithContext(
+		concurrentActions, concurrentHookExecutionErrors = s.runConcurrentHooksForEventsWithContextAndErrors(
 			buildAndConcurrentHooksContext,
 			eventsWithHooks,
 			watcher,
@@ -119,8 +124,10 @@ func (s *server) processEventsWithDeterministicPipeline(
 		return
 	}
 
-	concurrentHookStageResult := applyHookStageActionsToWorkSet(
+	concurrentHookStageResult := applyHookStageActionsAndErrorsToWorkSet(
+		hookStageTypeConcurrent,
 		concurrentActions,
+		concurrentHookExecutionErrors,
 		work,
 	)
 	if !s.continuePipelineAfterHookStageOrTriggerRestart(
@@ -129,9 +136,10 @@ func (s *server) processEventsWithDeterministicPipeline(
 		return
 	}
 
-	postHookStageResult := runAndApplyHookStageActionsToWorkSet(
-		func() []wave.RefreshAction {
-			return s.runPostHooksForEvents(eventsWithHooks, watcher)
+	postHookStageResult := runAndApplyHookStageActionsAndErrorsToWorkSet(
+		hookStageTypePost,
+		func() ([]wave.RefreshAction, []error) {
+			return s.runPostHooksForEventsWithErrors(eventsWithHooks, watcher)
 		},
 		work,
 	)

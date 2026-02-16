@@ -37,27 +37,51 @@ func (s *server) stopVite() error {
 // cycleVite stops and restarts Vite, waiting for it to be ready.
 // Called after the Go app is ready so Vite's client reconnect hits a working server.
 func (s *server) cycleVite() {
-	if !s.cfg.UsingVite() {
-		return
+	_ = s.cycleViteAndWaitForReadiness()
+}
+
+func (s *server) cycleViteAndWaitForReadiness() bool {
+	if s == nil || s.cfg == nil || !s.cfg.UsingVite() {
+		return false
 	}
 
 	s.mu.Lock()
 	hasVite := s.viteCtx != nil
 	s.mu.Unlock()
-
 	if !hasVite {
-		return
+		return false
 	}
 
 	s.log.Info("Cycling Vite...")
 	if err := s.stopVite(); err != nil {
 		s.log.Error("stop vite failed during cycle", "error", err)
+		return false
 	}
 	if err := s.startVite(); err != nil {
 		s.log.Error("start vite failed during cycle", "error", err)
+		return false
 	}
-	s.waitForVite()
+
+	s.mu.Lock()
+	hasVite = s.viteCtx != nil
+	s.mu.Unlock()
+	if !hasVite {
+		return false
+	}
+
+	if !s.waitForVite() {
+		return false
+	}
+
+	s.mu.Lock()
+	hasVite = s.viteCtx != nil
+	s.mu.Unlock()
+	if !hasVite {
+		return false
+	}
+
 	s.log.Info("Vite cycled and ready")
+	return true
 }
 
 // callViteFilemapInvalidate calls the Vite plugin's filemap invalidation endpoint.

@@ -103,9 +103,18 @@ func TestBroadcastReload_StopsWhenContextCanceled(t *testing.T) {
 		refreshMgrCtx: ctx,
 	}
 
-	s.broadcastReload(reloadOpts{
+	reloadOutcome := s.broadcastReload(reloadOpts{
 		payload: refreshPayload{ChangeType: changeTypeOther},
 	})
+	if !reloadOutcome.broadcastEnabled {
+		t.Fatalf("expected broadcast to be enabled, got %#v", reloadOutcome)
+	}
+	if reloadOutcome.broadcastContextActive {
+		t.Fatalf("expected canceled context to mark outcome inactive, got %#v", reloadOutcome)
+	}
+	if reloadOutcome.payloadBroadcasted {
+		t.Fatalf("expected no payload broadcast after cancellation, got %#v", reloadOutcome)
+	}
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -177,10 +186,19 @@ func TestBroadcastReload_CycleViteWithoutActiveContextFallsBackToPayloadBroadcas
 		refreshMgrCtx: context.Background(),
 	}
 
-	s.broadcastReload(reloadOpts{
+	reloadOutcome := s.broadcastReload(reloadOpts{
 		payload:   refreshPayload{ChangeType: changeTypeOther},
 		cycleVite: true,
 	})
+	if !reloadOutcome.broadcastEnabled || !reloadOutcome.broadcastContextActive {
+		t.Fatalf("expected active broadcast context, got %#v", reloadOutcome)
+	}
+	if reloadOutcome.readinessOutcome.cycleViteApplied {
+		t.Fatalf("expected cycle-vite to be unapplied without active vite context, got %#v", reloadOutcome)
+	}
+	if !reloadOutcome.shouldBroadcastPayload || !reloadOutcome.payloadBroadcasted {
+		t.Fatalf("expected payload fallback broadcast outcome, got %#v", reloadOutcome)
+	}
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -189,6 +207,54 @@ func TestBroadcastReload_CycleViteWithoutActiveContextFallsBackToPayloadBroadcas
 		}
 	default:
 		t.Fatal("expected fallback broadcast payload when cycleVite cannot be applied")
+	}
+}
+
+func TestBroadcastReload_CycleViteFailureFallsBackToPayloadBroadcast(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+	cfg.Vite = &wave.ViteConfig{
+		JSPackageManagerBaseCmd: "command_that_does_not_exist_for_cycle_vite_failure_test",
+		DefaultPort:             5211,
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &server{
+		cfg:     cfg,
+		log:     newDiscardLogger(),
+		builder: builder,
+		viteCtx: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
+			DefaultPort: cfg.Vite.DefaultPort,
+		}),
+		refreshMgr: &clientManager{
+			broadcast: make(chan refreshPayload, 1),
+		},
+		refreshMgrCtx: context.Background(),
+	}
+
+	reloadOutcome := s.broadcastReload(reloadOpts{
+		payload:   refreshPayload{ChangeType: changeTypeOther},
+		cycleVite: true,
+	})
+	if !reloadOutcome.broadcastEnabled || !reloadOutcome.broadcastContextActive {
+		t.Fatalf("expected active broadcast context, got %#v", reloadOutcome)
+	}
+	if reloadOutcome.readinessOutcome.cycleViteApplied {
+		t.Fatalf("expected failed cycle-vite to be reported as unapplied, got %#v", reloadOutcome)
+	}
+	if !reloadOutcome.shouldBroadcastPayload || !reloadOutcome.payloadBroadcasted {
+		t.Fatalf("expected payload fallback broadcast after cycle failure, got %#v", reloadOutcome)
+	}
+
+	select {
+	case msg := <-s.refreshMgr.broadcast:
+		if msg.ChangeType != changeTypeOther {
+			t.Fatalf("expected fallback hard reload payload, got %#v", msg)
+		}
+	default:
+		t.Fatal("expected fallback broadcast payload when cycleVite restart fails")
 	}
 }
 

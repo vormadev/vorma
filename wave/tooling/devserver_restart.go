@@ -1,5 +1,147 @@
 package tooling
 
+import "sync"
+
+type restartIntentAccumulator struct {
+	mu                   sync.Mutex
+	restartRequests      chan restartRequest
+	waitingForBuildRetry bool
+}
+
+func newRestartIntentAccumulator(
+	restartRequests chan restartRequest,
+) *restartIntentAccumulator {
+	if restartRequests == nil {
+		restartRequests = make(chan restartRequest, 1)
+	}
+	return &restartIntentAccumulator{
+		restartRequests: restartRequests,
+	}
+}
+
+func (accumulator *restartIntentAccumulator) setWaitingForBuildRetry(
+	waitingForBuildRetry bool,
+) {
+	if accumulator == nil {
+		return
+	}
+
+	accumulator.mu.Lock()
+	accumulator.waitingForBuildRetry = waitingForBuildRetry
+	accumulator.mu.Unlock()
+}
+
+func (accumulator *restartIntentAccumulator) queueRestartRequest(
+	restartRequestForQueue restartRequest,
+) {
+	if accumulator == nil {
+		return
+	}
+
+	accumulator.mu.Lock()
+	defer accumulator.mu.Unlock()
+
+	incomingRequest := normalizeRestartRequest(restartRequestForQueue)
+	if accumulator.waitingForBuildRetry {
+		// During build-retry wait, first queued request deterministically
+		// controls next pass. Do not merge/upgrade while waiting.
+		_ = tryEnqueueRestartRequest(accumulator.restartRequests, incomingRequest)
+		return
+	}
+
+	if tryEnqueueRestartRequest(accumulator.restartRequests, incomingRequest) {
+		return
+	}
+
+	pendingRequest, hasPendingRequest := tryDequeueRestartRequest(
+		accumulator.restartRequests,
+	)
+	if !hasPendingRequest {
+		_ = tryEnqueueRestartRequest(accumulator.restartRequests, incomingRequest)
+		return
+	}
+
+	queuedRequest := resolveQueuedRestartRequest(
+		&pendingRequest,
+		incomingRequest,
+	)
+	_ = tryEnqueueRestartRequest(accumulator.restartRequests, queuedRequest)
+}
+
+func (accumulator *restartIntentAccumulator) consumePendingRestartRequest() (restartRequest, bool) {
+	if accumulator == nil {
+		return restartRequest{}, false
+	}
+
+	accumulator.mu.Lock()
+	defer accumulator.mu.Unlock()
+
+	return tryDequeueRestartRequest(accumulator.restartRequests)
+}
+
+func (accumulator *restartIntentAccumulator) consumeRestartRequestBlocking() restartRequest {
+	if accumulator == nil {
+		return restartRequest{}
+	}
+
+	if pendingRequest, hasPendingRequest := accumulator.consumePendingRestartRequest(); hasPendingRequest {
+		return normalizeRestartRequest(pendingRequest)
+	}
+
+	return normalizeRestartRequest(<-accumulator.restartRequests)
+}
+
+func (s *server) getOrCreateRestartIntentAccumulator() *restartIntentAccumulator {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.restartIntents == nil {
+		s.restartIntents = newRestartIntentAccumulator(make(chan restartRequest, 1))
+	}
+	return s.restartIntents
+}
+
+func (s *server) setWaitingForBuildRetry(waitingForBuildRetry bool) {
+	if s == nil {
+		return
+	}
+
+	accumulator := s.getOrCreateRestartIntentAccumulator()
+	if accumulator != nil {
+		accumulator.setWaitingForBuildRetry(waitingForBuildRetry)
+	}
+}
+
+func (s *server) queueRestartRequest(
+	restartRequestForQueue restartRequest,
+) {
+	accumulator := s.getOrCreateRestartIntentAccumulator()
+	if accumulator == nil {
+		return
+	}
+	accumulator.queueRestartRequest(restartRequestForQueue)
+}
+
+func (s *server) consumePendingRestartRequest() (restartRequest, bool) {
+	accumulator := s.getOrCreateRestartIntentAccumulator()
+	if accumulator == nil {
+		return restartRequest{}, false
+	}
+	return accumulator.consumePendingRestartRequest()
+}
+
+func (s *server) consumeRestartRequestBlocking() restartRequest {
+	accumulator := s.getOrCreateRestartIntentAccumulator()
+	if accumulator == nil {
+		return restartRequest{}
+	}
+	return accumulator.consumeRestartRequestBlocking()
+}
+
 // triggerRestart triggers a restart with Go recompilation
 func (s *server) triggerRestart() {
 	s.triggerRestartWithOpts(true, false)
@@ -18,30 +160,11 @@ func (s *server) triggerConfigRestart() {
 
 // triggerRestartWithOpts handles restart requests with upgrade semantics.
 func (s *server) triggerRestartWithOpts(recompileGo bool, isConfigRestart bool) {
-	s.restartChMu.Lock()
-	defer s.restartChMu.Unlock()
-
 	incomingRequest := normalizeRestartRequest(restartRequest{
 		recompileGo:     recompileGo,
 		isConfigRestart: isConfigRestart,
 	})
-
-	// Try to enqueue directly when no restart is pending.
-	if tryEnqueueRestartRequest(s.restartCh, incomingRequest) {
-		return
-	}
-
-	// Merge with the currently pending request.
-	pendingRequest, hasPendingRequest := tryDequeueRestartRequest(s.restartCh)
-	if !hasPendingRequest {
-		// Channel became empty after the initial check (consumer took pending).
-		// Best effort enqueue of current request.
-		_ = tryEnqueueRestartRequest(s.restartCh, incomingRequest)
-		return
-	}
-
-	queuedRequest := resolveQueuedRestartRequest(&pendingRequest, incomingRequest)
-	_ = tryEnqueueRestartRequest(s.restartCh, queuedRequest)
+	s.queueRestartRequest(incomingRequest)
 }
 
 func normalizeRestartRequest(request restartRequest) restartRequest {

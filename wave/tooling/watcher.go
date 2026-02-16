@@ -33,9 +33,10 @@ type watcher struct {
 	matchCache *lru.Cache[string, bool]
 
 	// Patterns stored as absolute paths with forward slashes
-	ignoredDirs    []string
-	ignoredFiles   []string
-	defaultWatched []wave.WatchedFile
+	ignoredDirs       []string
+	ignoredFiles      []string
+	defaultWatched    []wave.WatchedFile
+	configuredWatched []wave.WatchedFile
 
 	// Absolute watch root for reference
 	absWatchRoot     string

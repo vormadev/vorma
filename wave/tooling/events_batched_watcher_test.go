@@ -45,11 +45,7 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlySkipsBuildAndRestart(t *testing.
 		t.Fatalf("expected both pre hooks to run, got %d", preCount.Load())
 	}
 
-	select {
-	case req := <-s.restartCh:
-		t.Fatalf("did not expect restart request for run-on-change-only batch, got %#v", req)
-	default:
-	}
+	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
 func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
@@ -88,13 +84,16 @@ func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
 	work := &workSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
-	select {
-	case req := <-s.restartCh:
-		if !req.recompileGo {
-			t.Fatalf("expected restart to request Go recompilation, got %#v", req)
-		}
-	default:
-		t.Fatal("expected restart request from concurrent hook action")
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		s,
+		200*time.Millisecond,
+	)
+	if !pendingRestartRequest.recompileGo {
+		t.Fatalf(
+			"expected restart to request Go recompilation, got %#v",
+			pendingRestartRequest,
+		)
 	}
 
 	if postRan.Load() {
@@ -129,13 +128,16 @@ func TestProcessBatchedEvents_PostHookRestartNoGo(t *testing.T) {
 	work := &workSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
-	select {
-	case req := <-s.restartCh:
-		if req.recompileGo {
-			t.Fatalf("expected no-go restart request, got %#v", req)
-		}
-	default:
-		t.Fatal("expected restart request from post hook action")
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		s,
+		200*time.Millisecond,
+	)
+	if pendingRestartRequest.recompileGo {
+		t.Fatalf(
+			"expected no-go restart request, got %#v",
+			pendingRestartRequest,
+		)
 	}
 }
 
@@ -174,11 +176,11 @@ func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 	defer builder.Close()
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	done := make(chan struct{})
@@ -223,15 +225,18 @@ func TestWaitForBuildRetry_ConsumesRestartAndCleansUp(t *testing.T) {
 	defer builder.Close()
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
-	s.restartCh <- restartRequest{recompileGo: true}
+	queueRestartRequestForToolingTests(
+		s,
+		restartRequest{recompileGo: true},
+	)
 
-	s.waitForBuildRetry()
+	_ = s.waitForBuildRetry()
 
 	if s.watcher != nil {
 		t.Fatal("expected waitForBuildRetry to clear watcher during cleanup")

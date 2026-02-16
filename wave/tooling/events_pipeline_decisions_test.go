@@ -8,6 +8,8 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
+var errSynthetic = errors.New("synthetic error")
+
 func TestDeriveStaticFileProcessingExecutionDecision(t *testing.T) {
 	t.Run("processing disabled returns no-op decision", func(t *testing.T) {
 		decision := deriveStaticFileProcessingExecutionDecision(
@@ -587,6 +589,129 @@ func TestDeriveHookStageContinuationDecision(t *testing.T) {
 	}
 }
 
+func TestDeriveHookStageContinuationDecisionWithFailurePolicy(t *testing.T) {
+	t.Run("fail-open policy continues despite stage errors when restart not requested", func(t *testing.T) {
+		continuationDecision := deriveHookStageContinuationDecisionWithFailurePolicy(
+			hookStageResult{
+				stageType:       hookStageTypePre,
+				executionErrors: []error{errSynthetic},
+				refreshActionResult: refreshActionApplicationResult{
+					restartRequested: false,
+				},
+			},
+			hookStageFailurePolicyFailOpen,
+		)
+
+		if !continuationDecision.shouldContinue {
+			t.Fatalf("expected fail-open hook-stage policy to continue, got %#v", continuationDecision)
+		}
+		if continuationDecision.stopReason != hookStageContinuationStopReasonNone {
+			t.Fatalf("expected no stop reason for fail-open continuation, got %#v", continuationDecision)
+		}
+	})
+
+	t.Run("fail-closed policy stops on stage errors when restart not requested", func(t *testing.T) {
+		continuationDecision := deriveHookStageContinuationDecisionWithFailurePolicy(
+			hookStageResult{
+				stageType:       hookStageTypePost,
+				executionErrors: []error{errSynthetic},
+				refreshActionResult: refreshActionApplicationResult{
+					restartRequested: false,
+				},
+			},
+			hookStageFailurePolicyFailClosed,
+		)
+
+		if continuationDecision.shouldContinue {
+			t.Fatalf("expected fail-closed hook-stage policy to stop, got %#v", continuationDecision)
+		}
+		if continuationDecision.stopReason != hookStageContinuationStopReasonStageFailure {
+			t.Fatalf("expected stage-failure stop reason, got %#v", continuationDecision)
+		}
+	})
+
+	t.Run("restart request takes precedence over stage failure policy", func(t *testing.T) {
+		expectedRestartActionResult := refreshActionApplicationResult{
+			restartRequested: true,
+			recompileGo:      true,
+		}
+		continuationDecision := deriveHookStageContinuationDecisionWithFailurePolicy(
+			hookStageResult{
+				stageType:           hookStageTypeConcurrent,
+				executionErrors:     []error{errSynthetic},
+				refreshActionResult: expectedRestartActionResult,
+			},
+			hookStageFailurePolicyFailClosed,
+		)
+
+		if continuationDecision.shouldContinue {
+			t.Fatalf("expected restart request to stop continuation, got %#v", continuationDecision)
+		}
+		if continuationDecision.stopReason != hookStageContinuationStopReasonRestartRequested {
+			t.Fatalf("expected restart-request stop reason, got %#v", continuationDecision)
+		}
+		if !reflect.DeepEqual(continuationDecision.restartActionResult, expectedRestartActionResult) {
+			t.Fatalf(
+				"restartActionResult=%#v, want %#v",
+				continuationDecision.restartActionResult,
+				expectedRestartActionResult,
+			)
+		}
+	})
+}
+
+func TestDeriveHookStageFailurePolicy_FromConfiguredValue(t *testing.T) {
+	testCases := []struct {
+		name                             string
+		stageType                        hookStageType
+		configuredHookStageFailurePolicy string
+		expectedHookStageFailurePolicy   hookStageFailurePolicy
+	}{
+		{
+			name:                             "empty policy defaults fail-open",
+			stageType:                        hookStageTypePre,
+			configuredHookStageFailurePolicy: "",
+			expectedHookStageFailurePolicy:   hookStageFailurePolicyFailOpen,
+		},
+		{
+			name:                             "explicit fail-open remains fail-open",
+			stageType:                        hookStageTypeConcurrent,
+			configuredHookStageFailurePolicy: "fail-open",
+			expectedHookStageFailurePolicy:   hookStageFailurePolicyFailOpen,
+		},
+		{
+			name:                             "explicit fail-closed applies fail-closed",
+			stageType:                        hookStageTypePost,
+			configuredHookStageFailurePolicy: "fail-closed",
+			expectedHookStageFailurePolicy:   hookStageFailurePolicyFailClosed,
+		},
+		{
+			name:                             "invalid configured policy falls back fail-open",
+			stageType:                        hookStageTypePre,
+			configuredHookStageFailurePolicy: "invalid-policy",
+			expectedHookStageFailurePolicy:   hookStageFailurePolicyFailOpen,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			hookStageFailurePolicyForStage := deriveHookStageFailurePolicy(
+				testCase.stageType,
+				testCase.configuredHookStageFailurePolicy,
+			)
+			if hookStageFailurePolicyForStage != testCase.expectedHookStageFailurePolicy {
+				t.Fatalf(
+					"deriveHookStageFailurePolicy(%q, %q)=%v, want %v",
+					testCase.stageType,
+					testCase.configuredHookStageFailurePolicy,
+					hookStageFailurePolicyForStage,
+					testCase.expectedHookStageFailurePolicy,
+				)
+			}
+		})
+	}
+}
+
 func TestShouldStartAppAfterImplicitBuild(t *testing.T) {
 	testCases := []struct {
 		name                   string
@@ -750,6 +875,57 @@ func TestRunAndApplyHookStageActionsToWorkSet(t *testing.T) {
 		}
 		if !work.browser.waitForVite {
 			t.Fatal("expected wait-for-vite applied")
+		}
+	})
+}
+
+func TestRunAndApplyHookStageActionsAndErrorsToWorkSet(t *testing.T) {
+	t.Run("nil stage runner yields empty stage result metadata", func(t *testing.T) {
+		work := &workSet{}
+		stageResult := runAndApplyHookStageActionsAndErrorsToWorkSet(
+			hookStageTypePre,
+			nil,
+			work,
+		)
+		if stageResult.stageType != hookStageTypePre {
+			t.Fatalf("expected stageType=pre, got %#v", stageResult.stageType)
+		}
+		if len(stageResult.actions) != 0 {
+			t.Fatalf("expected no stage actions, got %#v", stageResult.actions)
+		}
+		if len(stageResult.executionErrors) != 0 {
+			t.Fatalf("expected no stage execution errors, got %#v", stageResult.executionErrors)
+		}
+	})
+
+	t.Run("runner stage actions and errors are captured and isolated", func(t *testing.T) {
+		work := &workSet{}
+		stageResult := runAndApplyHookStageActionsAndErrorsToWorkSet(
+			hookStageTypeConcurrent,
+			func() ([]wave.RefreshAction, []error) {
+				return []wave.RefreshAction{
+						{ReloadBrowser: true},
+						{WaitForApp: true},
+					},
+					[]error{errSynthetic}
+			},
+			work,
+		)
+
+		if stageResult.stageType != hookStageTypeConcurrent {
+			t.Fatalf("expected stageType=concurrent, got %#v", stageResult.stageType)
+		}
+		if len(stageResult.actions) != 2 {
+			t.Fatalf("expected 2 actions, got %#v", stageResult.actions)
+		}
+		if len(stageResult.executionErrors) != 1 {
+			t.Fatalf("expected 1 stage execution error, got %#v", stageResult.executionErrors)
+		}
+		if stageResult.executionErrors[0] != errSynthetic {
+			t.Fatalf("expected errSynthetic execution error, got %#v", stageResult.executionErrors[0])
+		}
+		if work.browser.action != browserPhaseActionHardReload {
+			t.Fatalf("expected hard reload to be applied, got %v", work.browser.action)
 		}
 	})
 }

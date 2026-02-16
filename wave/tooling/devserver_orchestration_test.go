@@ -120,10 +120,19 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) 
 	}
 	firstPID := fetchViteProcessID(t, s.viteCtx.GetPort())
 
-	s.broadcastReload(reloadOpts{
+	reloadOutcome := s.broadcastReload(reloadOpts{
 		payload:   refreshPayload{ChangeType: changeTypeOther},
 		cycleVite: true,
 	})
+	if !reloadOutcome.broadcastEnabled || !reloadOutcome.broadcastContextActive {
+		t.Fatalf("expected cycle-vite reload to run with active broadcast context, got %#v", reloadOutcome)
+	}
+	if !reloadOutcome.readinessOutcome.cycleViteApplied {
+		t.Fatalf("expected cycle-vite reload outcome to report applied cycle, got %#v", reloadOutcome)
+	}
+	if reloadOutcome.shouldBroadcastPayload || reloadOutcome.payloadBroadcasted {
+		t.Fatalf("expected cycle-vite reload to avoid payload broadcast, got %#v", reloadOutcome)
+	}
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -192,11 +201,17 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 		viteCtx:       vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: vitePort}),
 	}
 
-	s.broadcastReload(reloadOpts{
+	reloadOutcome := s.broadcastReload(reloadOpts{
 		payload:  refreshPayload{ChangeType: changeTypeRevalidate},
 		waitApp:  true,
 		waitVite: true,
 	})
+	if !reloadOutcome.readinessOutcome.waitedForApp || !reloadOutcome.readinessOutcome.waitedForVite {
+		t.Fatalf("expected readiness outcome to record waitApp+waitVite, got %#v", reloadOutcome)
+	}
+	if !reloadOutcome.payloadBroadcasted {
+		t.Fatalf("expected payload broadcast after readiness waits, got %#v", reloadOutcome)
+	}
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -257,9 +272,9 @@ func TestServerRun_BrowserModeInitWatcherFailureCleansRefreshResources(t *testin
 	cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root")
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	err := s.run()

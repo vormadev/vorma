@@ -452,7 +452,7 @@ func TestNormalizeHookContextPathShape_PathShapes(t *testing.T) {
 		{
 			name:         "relative path is trimmed and cleaned",
 			rawPath:      "  ./backend/./main.go  ",
-			expectedPath: filepath.Clean("./backend/main.go"),
+			expectedPath: pathnorm.Absolute("./backend/main.go"),
 		},
 		{
 			name:         "absolute path is trimmed and cleaned",
@@ -760,10 +760,16 @@ func TestBuildEventHooksForProcessingDeduplicatesHooksByPattern(
 	if !anyEventNeedsHardReload(eventsWithHooks) {
 		t.Fatal("expected batchNeedsAppStop=true when one event requires hard reload")
 	}
-	if got, want := eventsWithHooks[0].hookCtx.ChangedFilePaths, []string{"a.go", "b.txt"}; !reflect.DeepEqual(got, want) {
+	if got, want := eventsWithHooks[0].hookCtx.ChangedFilePaths, []string{
+		pathnorm.Absolute("a.go"),
+		pathnorm.Absolute("b.txt"),
+	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("first hook context changed file paths = %v, want %v", got, want)
 	}
-	if got, want := eventsWithHooks[1].hookCtx.ChangedFilePaths, []string{"a.go", "b.txt"}; !reflect.DeepEqual(got, want) {
+	if got, want := eventsWithHooks[1].hookCtx.ChangedFilePaths, []string{
+		pathnorm.Absolute("a.go"),
+		pathnorm.Absolute("b.txt"),
+	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("second hook context changed file paths = %v, want %v", got, want)
 	}
 }
@@ -1010,11 +1016,11 @@ func TestProcessEvents_DeduplicatesHooksByPatternForMixedFileTypes(
 	defer builder.Close()
 
 	serverForTest := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	serverForTest.processEvents([]fsnotify.Event{
@@ -1103,11 +1109,11 @@ func TestProcessEvents_DeduplicatesHooksByPatternAcrossAllHookStages(
 	defer builder.Close()
 
 	serverForTest := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		watcher:   watcher,
-		builder:   builder,
-		restartCh: make(chan restartRequest, 1),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		watcher:        watcher,
+		builder:        builder,
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 
 	serverForTest.processEvents([]fsnotify.Event{

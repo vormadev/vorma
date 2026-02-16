@@ -56,6 +56,9 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 		if err := validateHealthcheckEndpoint(cfg.Watch.HealthcheckEndpoint); err != nil {
 			return err
 		}
+		if err := validateHookStageFailurePolicy(cfg.Watch.HookStageFailurePolicy); err != nil {
+			return err
+		}
 		if err := validateHookCommandTimeoutConfig(cfg.Watch.HookCommandTimeouts); err != nil {
 			return err
 		}
@@ -71,6 +74,26 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 	}
 
 	return nil
+}
+
+func validateHookStageFailurePolicy(
+	hookStageFailurePolicy string,
+) error {
+	normalizedHookStageFailurePolicy := normalizeConfiguredHookStageFailurePolicy(
+		hookStageFailurePolicy,
+	)
+	switch normalizedHookStageFailurePolicy {
+	case "",
+		configuredHookStageFailurePolicyFailOpen,
+		configuredHookStageFailurePolicyFailClosed:
+		return nil
+	default:
+		return fmt.Errorf(
+			"config: Watch.HookStageFailurePolicy must be one of %q or %q",
+			configuredHookStageFailurePolicyFailOpen,
+			configuredHookStageFailurePolicyFailClosed,
+		)
+	}
 }
 
 func validateHookCallbackTimeoutConfig(

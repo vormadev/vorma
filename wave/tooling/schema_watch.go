@@ -5,19 +5,21 @@ import "github.com/vormadev/vorma/lab/jsonschema"
 var watchSchema = jsonschema.OptionalObject(jsonschema.Def{
 	Description: `File watching configuration for development mode. Controls which files trigger rebuilds and how.`,
 	Properties: struct {
-		WatchRoot            jsonschema.Entry
-		HealthcheckEndpoint  jsonschema.Entry
-		HookCommandTimeouts  jsonschema.Entry
-		HookCallbackTimeouts jsonschema.Entry
-		Include              jsonschema.Entry
-		Exclude              jsonschema.Entry
+		WatchRoot              jsonschema.Entry
+		HealthcheckEndpoint    jsonschema.Entry
+		HookStageFailurePolicy jsonschema.Entry
+		HookCommandTimeouts    jsonschema.Entry
+		HookCallbackTimeouts   jsonschema.Entry
+		Include                jsonschema.Entry
+		Exclude                jsonschema.Entry
 	}{
-		WatchRoot:            watchRootSchema,
-		HealthcheckEndpoint:  healthcheckEndpointSchema,
-		HookCommandTimeouts:  hookCommandTimeoutsSchema,
-		HookCallbackTimeouts: hookCallbackTimeoutsSchema,
-		Include:              includeSchema,
-		Exclude:              excludeSchema,
+		WatchRoot:              watchRootSchema,
+		HealthcheckEndpoint:    healthcheckEndpointSchema,
+		HookStageFailurePolicy: hookStageFailurePolicySchema,
+		HookCommandTimeouts:    hookCommandTimeoutsSchema,
+		HookCallbackTimeouts:   hookCallbackTimeoutsSchema,
+		Include:                includeSchema,
+		Exclude:                excludeSchema,
 	},
 })
 
@@ -31,6 +33,14 @@ var healthcheckEndpointSchema = jsonschema.OptionalString(jsonschema.Def{
 	Description: `Path to your app's healthcheck endpoint. Must return 200 OK when healthy. During dev-time rebuilds and restarts, this endpoint will be polled to determine when your app is ready to begin serving normal requests.`,
 	Examples:    []string{"/healthz", "/health", "/api/health"},
 	Default:     "/",
+})
+
+var hookStageFailurePolicySchema = jsonschema.OptionalString(jsonschema.Def{
+	Description: `Hook-stage continuation policy when command/callback execution returns errors.
+"fail-open" continues pipeline execution (current default behavior).
+"fail-closed" stops the pipeline at the failing stage unless a restart action was requested.`,
+	Enum:    []string{"fail-open", "fail-closed"},
+	Default: "fail-open",
 })
 
 var hookCommandTimeoutsSchema = jsonschema.OptionalObject(jsonschema.Def{

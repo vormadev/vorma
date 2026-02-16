@@ -1,12 +1,19 @@
 package tooling
 
 import (
+	"context"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
 
 func (s *server) runWatcher() {
+	s.runWatcherWithContext(context.Background())
+}
+
+func (s *server) runWatcherWithContext(
+	watcherExecutionContext context.Context,
+) {
 	s.mu.Lock()
 	watcher := s.watcher
 	s.mu.Unlock()
@@ -16,12 +23,21 @@ func (s *server) runWatcher() {
 	}
 
 	debouncer := newDebouncer(30*time.Millisecond, func(events []fsnotify.Event) {
+		if watcherExecutionContext != nil {
+			select {
+			case <-watcherExecutionContext.Done():
+				return
+			default:
+			}
+		}
 		s.processEvents(events)
 	})
 	defer debouncer.Stop()
 
 	for {
 		select {
+		case <-watcherExecutionContext.Done():
+			return
 		case watcherEvent, ok := <-watcher.Events():
 			if !ok {
 				return
@@ -47,6 +63,10 @@ func (s *server) processEvents(events []fsnotify.Event) {
 	if watcher == nil || builder == nil {
 		return
 	}
+
+	traceContextForWatcherExecution := s.deriveWatcherExecutionTraceContext()
+	s.setCurrentWatcherExecutionTraceContext(traceContextForWatcherExecution)
+	defer s.clearCurrentWatcherExecutionTraceContext()
 
 	executionPlanningResult := s.buildEventExecutionPlan(events, watcher, builder)
 	watcherEventExecutionInputForPlanningResult := buildWatcherEventExecutionInputFromPlanningResult(
@@ -76,6 +96,10 @@ func (s *server) processEvents(events []fsnotify.Event) {
 			watcherEventLogPayloadForExecutionPlan.operation,
 			"file",
 			watcherEventLogPayloadForExecutionPlan.filePath,
+			"cycle_id",
+			traceContextForWatcherExecution.cycleID,
+			"batch_id",
+			traceContextForWatcherExecution.batchID,
 		)
 	}
 

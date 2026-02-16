@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
@@ -135,21 +136,17 @@ func TestFlexibilityContract_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 				Op:   configMutationCaseForRun.op,
 			}})
 
-			select {
-			case req := <-s.restartCh:
-				if !req.isConfigRestart || !req.recompileGo {
-					t.Fatalf(
-						"expected config restart with Go recompile on config %s/%s, got %#v",
-						configMutationCaseForRun.name,
-						pathShapeCaseForRun.name,
-						req,
-					)
-				}
-			default:
+			pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+				t,
+				s,
+				200*time.Millisecond,
+			)
+			if !pendingRestartRequest.isConfigRestart || !pendingRestartRequest.recompileGo {
 				t.Fatalf(
-					"expected config %s/%s to trigger config restart request",
+					"expected config restart with Go recompile on config %s/%s, got %#v",
 					configMutationCaseForRun.name,
 					pathShapeCaseForRun.name,
+					pendingRestartRequest,
 				)
 			}
 		},

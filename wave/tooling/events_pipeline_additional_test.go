@@ -31,9 +31,9 @@ func newServerAndWatcherForEventPipelineTest(
 	}
 
 	s := &server{
-		cfg:       cfg,
-		log:       newDiscardLogger(),
-		restartCh: make(chan restartRequest, 2),
+		cfg:            cfg,
+		log:            newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 2)),
 	}
 	return s, watcher
 }
@@ -76,13 +76,16 @@ func TestProcessSingleEvent_PreHookRestartCanRequestGoRecompile(t *testing.T) {
 
 	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
-	select {
-	case req := <-s.restartCh:
-		if !req.recompileGo {
-			t.Fatalf("expected restart to request Go recompilation, got %#v", req)
-		}
-	default:
-		t.Fatal("expected restart request from pre-hook action")
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		s,
+		200*time.Millisecond,
+	)
+	if !pendingRestartRequest.recompileGo {
+		t.Fatalf(
+			"expected restart to request Go recompilation, got %#v",
+			pendingRestartRequest,
+		)
 	}
 }
 
@@ -120,11 +123,7 @@ func TestProcessSingleEvent_RunOnChangeOnlyWithHardReloadStopsRunningApp(t *test
 		t.Fatalf("expected run-on-change-only event to skip implicit build/restart work, got %#v", work)
 	}
 
-	select {
-	case req := <-s.restartCh:
-		t.Fatalf("did not expect restart request, got %#v", req)
-	default:
-	}
+	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
 func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(t *testing.T) {
@@ -163,13 +162,16 @@ func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(t *testing
 
 	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
 
-	select {
-	case req := <-s.restartCh:
-		if req.recompileGo {
-			t.Fatalf("expected no-go restart from post hook, got %#v", req)
-		}
-	default:
-		t.Fatal("expected restart request from post hook action")
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		s,
+		200*time.Millisecond,
+	)
+	if pendingRestartRequest.recompileGo {
+		t.Fatalf(
+			"expected no-go restart from post hook, got %#v",
+			pendingRestartRequest,
+		)
 	}
 
 	select {
@@ -217,11 +219,7 @@ func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(t *testing.T
 		t.Fatal("timed out waiting for browser reload payload")
 	}
 
-	select {
-	case req := <-s.restartCh:
-		t.Fatalf("did not expect restart request, got %#v", req)
-	default:
-	}
+	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
 func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(t *testing.T) {
@@ -264,11 +262,7 @@ func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(t
 		t.Fatal("timed out waiting for run-on-change-only post callback reload payload")
 	}
 
-	select {
-	case req := <-s.restartCh:
-		t.Fatalf("did not expect restart request, got %#v", req)
-	default:
-	}
+	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
 func TestProcessSingleEvent_ImplicitRestartStartsApp(t *testing.T) {
@@ -403,13 +397,16 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(t *testi
 	work := &workSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
-	select {
-	case req := <-s.restartCh:
-		if req.recompileGo {
-			t.Fatalf("expected no-go restart from batched pre hook, got %#v", req)
-		}
-	default:
-		t.Fatal("expected restart request from batched pre hook")
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		s,
+		200*time.Millisecond,
+	)
+	if pendingRestartRequest.recompileGo {
+		t.Fatalf(
+			"expected no-go restart from batched pre hook, got %#v",
+			pendingRestartRequest,
+		)
 	}
 
 	if postHookRan.Load() {
@@ -484,11 +481,7 @@ func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(t *test
 	default:
 	}
 
-	select {
-	case req := <-s.restartCh:
-		t.Fatalf("did not expect restart request, got %#v", req)
-	default:
-	}
+	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
 func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserReload(t *testing.T) {
@@ -533,11 +526,7 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserRe
 		t.Fatal("timed out waiting for batched run-on-change-only reload payload")
 	}
 
-	select {
-	case req := <-s.restartCh:
-		t.Fatalf("did not expect restart request, got %#v", req)
-	default:
-	}
+	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
 func TestProcessBatchedEvents_MixedBatchRunsRunOnChangeOnlyPostCallbacks(t *testing.T) {

@@ -9,19 +9,45 @@ import (
 
 func newServerForRestartChannelTest() *server {
 	return &server{
-		log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		restartCh: make(chan restartRequest, 1),
+		log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
 	}
 }
 
+func mustConsumePendingRestartRequestForRestartTests(
+	t *testing.T,
+	s *server,
+) restartRequest {
+	t.Helper()
+
+	pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(s)
+	if !hasPendingRestartRequest {
+		t.Fatal("expected pending restart request")
+	}
+	return pendingRestartRequest
+}
+
 func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
+	t.Run("waiting for build retry keeps first pending restart request", func(t *testing.T) {
+		s := newServerForRestartChannelTest()
+		s.setWaitingForBuildRetry(true)
+
+		s.triggerRestartNoGo()
+		s.triggerRestart()
+
+		req := mustConsumePendingRestartRequestForRestartTests(t, s)
+		if req.recompileGo || req.isConfigRestart {
+			t.Fatalf("expected first pending no-go restart to be preserved, got %#v", req)
+		}
+	})
+
 	t.Run("upgrades pending no-go restart to go-recompile restart", func(t *testing.T) {
 		s := newServerForRestartChannelTest()
 
 		s.triggerRestartNoGo()
 		s.triggerRestart()
 
-		req := <-s.restartCh
+		req := mustConsumePendingRestartRequestForRestartTests(t, s)
 		if !req.recompileGo {
 			t.Fatalf("expected recompileGo=true, got %#v", req)
 		}
@@ -36,7 +62,7 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 		s.triggerRestartNoGo()
 		s.triggerConfigRestart()
 
-		req := <-s.restartCh
+		req := mustConsumePendingRestartRequestForRestartTests(t, s)
 		if !req.isConfigRestart || !req.recompileGo {
 			t.Fatalf("expected config restart with recompile, got %#v", req)
 		}
@@ -48,7 +74,7 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 		s.triggerConfigRestart()
 		s.triggerRestartNoGo()
 
-		req := <-s.restartCh
+		req := mustConsumePendingRestartRequestForRestartTests(t, s)
 		if !req.isConfigRestart || !req.recompileGo {
 			t.Fatalf("expected config restart to remain pending, got %#v", req)
 		}
@@ -60,7 +86,7 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 		s.triggerRestart()
 		s.triggerRestartNoGo()
 
-		req := <-s.restartCh
+		req := mustConsumePendingRestartRequestForRestartTests(t, s)
 		if !req.recompileGo {
 			t.Fatalf("expected pending request to keep recompileGo=true, got %#v", req)
 		}
@@ -222,7 +248,7 @@ func TestTriggerRestartFromRefreshActions(t *testing.T) {
 			},
 		)
 
-		req := <-s.restartCh
+		req := mustConsumePendingRestartRequestForRestartTests(t, s)
 		if req.recompileGo {
 			t.Fatalf("expected recompileGo=false, got %#v", req)
 		}
@@ -241,7 +267,7 @@ func TestTriggerRestartFromRefreshActions(t *testing.T) {
 			},
 		)
 
-		req := <-s.restartCh
+		req := mustConsumePendingRestartRequestForRestartTests(t, s)
 		if !req.recompileGo {
 			t.Fatalf("expected recompileGo=true, got %#v", req)
 		}
@@ -249,4 +275,24 @@ func TestTriggerRestartFromRefreshActions(t *testing.T) {
 			t.Fatalf("expected isConfigRestart=false, got %#v", req)
 		}
 	})
+}
+
+func TestRestartIntentAccumulator_ConsumePendingRestartRequestClearsPendingState(t *testing.T) {
+	accumulator := newRestartIntentAccumulator(make(chan restartRequest, 1))
+	accumulator.queueRestartRequest(restartRequest{
+		recompileGo: true,
+	})
+
+	consumedRequest, hasConsumedRequest := accumulator.consumePendingRestartRequest()
+	if !hasConsumedRequest {
+		t.Fatal("expected pending restart request to be consumed")
+	}
+	if !consumedRequest.recompileGo || consumedRequest.isConfigRestart {
+		t.Fatalf("unexpected consumed restart request: %#v", consumedRequest)
+	}
+
+	_, hasSecondPendingRequest := accumulator.consumePendingRestartRequest()
+	if hasSecondPendingRequest {
+		t.Fatal("expected consumed restart request to be atomically cleared")
+	}
 }
