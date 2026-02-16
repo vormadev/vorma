@@ -1,6 +1,7 @@
 package vormabuild
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,6 +69,37 @@ func TestRouteDefinitionsOnChangeCallback_ReturnsErrorWhenNotInDevMode(t *testin
 	}
 	if action != nil {
 		t.Fatalf("expected nil action when callback errors, got %#v", action)
+	}
+}
+
+func TestWatchReloadCallback_WrapsPreReloadActionErrorWithTriggerContext(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	expectedErr := errors.New("pre-reload action failed")
+	callback := watchReloadCallback(
+		app,
+		"/reload-routes",
+		"reload endpoint failed",
+		"test-trigger",
+		func(*vormaruntime.Vorma) error {
+			return expectedErr
+		},
+		nil,
+	)
+
+	action, err := callback(&wave.HookContext{AppStoppedForBatch: false})
+	if err == nil {
+		t.Fatal("expected callback to return wrapped pre-reload error")
+	}
+	if action != nil {
+		t.Fatalf("expected nil action on pre-reload failure, got %#v", action)
+	}
+	if !strings.Contains(err.Error(), `run pre-reload action for trigger "test-trigger"`) {
+		t.Fatalf("error = %q, expected trigger context", err)
+	}
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("error = %v, expected wrapped pre-reload error", err)
 	}
 }
 

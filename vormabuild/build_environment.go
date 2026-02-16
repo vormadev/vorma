@@ -14,25 +14,59 @@ import (
 )
 
 type frameworkBuildHookExecutionDependencies struct {
-	prepareDiscoveredRouteRegistrarOverlay func(*vormaruntime.Vorma) (*discoveredRouteRegistrarOverlay, error)
-	runGoCommandWithContext                func(context.Context, []string) error
+	prepareDiscoveredRouteRegistrarOverlayWithArtifactCache func(
+		*vormaruntime.Vorma,
+		*discoveredRouteRegistrarArtifactCache,
+	) (*discoveredRouteRegistrarOverlay, error)
+	runGoCommandWithContext func(context.Context, []string) error
 }
 
-var frameworkBuildHookExecutionDeps = frameworkBuildHookExecutionDependencies{
-	prepareDiscoveredRouteRegistrarOverlay: prepareDiscoveredRouteRegistrarOverlay,
-	runGoCommandWithContext: func(
-		commandExecutionContext context.Context,
-		goArguments []string,
-	) error {
-		if commandExecutionContext == nil {
-			commandExecutionContext = context.Background()
-		}
+type frameworkBuildHookExecutor struct {
+	dependencies frameworkBuildHookExecutionDependencies
+}
 
-		goCommand := exec.CommandContext(commandExecutionContext, "go", goArguments...)
-		goCommand.Stdout = os.Stdout
-		goCommand.Stderr = os.Stderr
-		return goCommand.Run()
-	},
+var defaultFrameworkBuildHookExecutor = newFrameworkBuildHookExecutor(
+	frameworkBuildHookExecutionDependencies{},
+)
+
+func defaultFrameworkBuildHookExecutionDependencies() frameworkBuildHookExecutionDependencies {
+	return frameworkBuildHookExecutionDependencies{
+		prepareDiscoveredRouteRegistrarOverlayWithArtifactCache: prepareDiscoveredRouteRegistrarOverlayWithArtifactCache,
+		runGoCommandWithContext: func(
+			commandExecutionContext context.Context,
+			goArguments []string,
+		) error {
+			if commandExecutionContext == nil {
+				commandExecutionContext = context.Background()
+			}
+
+			goCommand := exec.CommandContext(commandExecutionContext, "go", goArguments...)
+			goCommand.Stdout = os.Stdout
+			goCommand.Stderr = os.Stderr
+			return goCommand.Run()
+		},
+	}
+}
+
+func normalizeFrameworkBuildHookExecutionDependencies(
+	dependencies frameworkBuildHookExecutionDependencies,
+) frameworkBuildHookExecutionDependencies {
+	defaultDependencies := defaultFrameworkBuildHookExecutionDependencies()
+	if dependencies.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache == nil {
+		dependencies.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache = defaultDependencies.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache
+	}
+	if dependencies.runGoCommandWithContext == nil {
+		dependencies.runGoCommandWithContext = defaultDependencies.runGoCommandWithContext
+	}
+	return dependencies
+}
+
+func newFrameworkBuildHookExecutor(
+	dependencies frameworkBuildHookExecutionDependencies,
+) frameworkBuildHookExecutor {
+	return frameworkBuildHookExecutor{
+		dependencies: normalizeFrameworkBuildHookExecutionDependencies(dependencies),
+	}
 }
 
 func registerVormaSchemaInConfig(cfg *wave.ParsedConfig) {
@@ -68,17 +102,49 @@ func configureBuildEnvironmentInConfig(
 	v *vormaruntime.Vorma,
 	cfg *wave.ParsedConfig,
 ) *wave.ParsedConfig {
+	return configureBuildEnvironmentInConfigWithFrameworkBuildHookExecutor(
+		v,
+		cfg,
+		defaultFrameworkBuildHookExecutor,
+	)
+}
+
+func configureBuildEnvironmentInConfigWithFrameworkBuildHookExecutor(
+	v *vormaruntime.Vorma,
+	cfg *wave.ParsedConfig,
+	frameworkBuildHookExecutor frameworkBuildHookExecutor,
+) *wave.ParsedConfig {
+	if cfg == nil {
+		return nil
+	}
+
+	discoveredRegistrarArtifactsCache := newDiscoveredRouteRegistrarArtifactCache(
+		discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
+	)
+
 	registerVormaSchemaInConfig(cfg)
 	injectDefaultWatchPatternsInConfig(cfg, v)
 	injectFrameworkBuildHooksInConfig(cfg, v)
-	injectFrameworkBuildHookRunnerInConfig(cfg, v)
-	injectFrameworkGoBuildOverlayPreparationInConfig(cfg, v)
+	injectFrameworkBuildHookRunnerInConfig(
+		cfg,
+		v,
+		discoveredRegistrarArtifactsCache,
+		frameworkBuildHookExecutor,
+	)
+	injectFrameworkGoBuildOverlayPreparationInConfig(
+		cfg,
+		v,
+		discoveredRegistrarArtifactsCache,
+		frameworkBuildHookExecutor,
+	)
 	return cfg
 }
 
 func injectFrameworkBuildHookRunnerInConfig(
 	cfg *wave.ParsedConfig,
 	v *vormaruntime.Vorma,
+	discoveredRegistrarArtifactsCache *discoveredRouteRegistrarArtifactCache,
+	frameworkBuildHookExecutor frameworkBuildHookExecutor,
 ) {
 	if cfg == nil {
 		return
@@ -106,7 +172,10 @@ func injectFrameworkBuildHookRunnerInConfig(
 		}
 
 		goRunArgs := []string{"run"}
-		discoveredRouteRegistrarOverlay, err := frameworkBuildHookExecutionDeps.prepareDiscoveredRouteRegistrarOverlay(v)
+		discoveredRouteRegistrarOverlay, err := frameworkBuildHookExecutor.dependencies.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
+			v,
+			discoveredRegistrarArtifactsCache,
+		)
 		if err != nil {
 			return fmt.Errorf(
 				"prepare discovered route registrar overlay for framework build hook: %w",
@@ -124,7 +193,7 @@ func injectFrameworkBuildHookRunnerInConfig(
 		}
 		goRunArgs = append(goRunArgs, "--hook")
 
-		runHookCommandErr := frameworkBuildHookExecutionDeps.runGoCommandWithContext(
+		runHookCommandErr := frameworkBuildHookExecutor.dependencies.runGoCommandWithContext(
 			commandExecutionContext,
 			goRunArgs,
 		)
@@ -155,6 +224,8 @@ func injectFrameworkBuildHookRunnerInConfig(
 func injectFrameworkGoBuildOverlayPreparationInConfig(
 	cfg *wave.ParsedConfig,
 	v *vormaruntime.Vorma,
+	discoveredRegistrarArtifactsCache *discoveredRouteRegistrarArtifactCache,
+	frameworkBuildHookExecutor frameworkBuildHookExecutor,
 ) {
 	if cfg == nil {
 		return
@@ -164,7 +235,10 @@ func injectFrameworkGoBuildOverlayPreparationInConfig(
 	}
 
 	cfg.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
-		discoveredRouteRegistrarOverlay, err := prepareDiscoveredRouteRegistrarOverlay(v)
+		discoveredRouteRegistrarOverlay, err := frameworkBuildHookExecutor.dependencies.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
+			v,
+			discoveredRegistrarArtifactsCache,
+		)
 		if err != nil {
 			return nil, err
 		}

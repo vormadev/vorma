@@ -8,31 +8,27 @@ import (
 )
 
 func TestParseClientAndBackendRoutesForSync(t *testing.T) {
-	originalParseClientRoutes := buildInnerRouteSyncDeps.parseClientRoutes
-	originalParseBackendLoaderPatterns := buildInnerRouteSyncDeps.parseBackendLoaderPatterns
-	originalMergeBackendLoaderPatternsInPath := buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath
-	t.Cleanup(func() {
-		buildInnerRouteSyncDeps.parseClientRoutes = originalParseClientRoutes
-		buildInnerRouteSyncDeps.parseBackendLoaderPatterns = originalParseBackendLoaderPatterns
-		buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath = originalMergeBackendLoaderPatternsInPath
-	})
-
 	t.Run("merges backend loader patterns into parsed client paths", func(t *testing.T) {
-		buildInnerRouteSyncDeps.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
-			return map[string]*vormaruntime.Path{
-				"/": {
-					OriginalPattern: "/",
-					SrcPath:         "frontend/src/routes/home.tsx",
-					ExportKey:       "default",
-				},
-			}, nil
+		dependencies := buildInnerRouteSyncDependencies{
+			parseClientRoutes: func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+				return map[string]*vormaruntime.Path{
+					"/": {
+						OriginalPattern: "/",
+						SrcPath:         "frontend/src/routes/home.tsx",
+						ExportKey:       "default",
+					},
+				}, nil
+			},
+			parseBackendLoaderPatterns: func(*vormaruntime.Vorma) ([]string, error) {
+				return []string{"/", "/admin"}, nil
+			},
+			mergeBackendLoaderPatternsInPath: mergeBackendLoaderPatternsInPath,
 		}
-		buildInnerRouteSyncDeps.parseBackendLoaderPatterns = func(*vormaruntime.Vorma) ([]string, error) {
-			return []string{"/", "/admin"}, nil
-		}
-		buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath = mergeBackendLoaderPatternsInPath
 
-		paths, err := parseClientAndBackendRoutesForSync(&vormaruntime.Vorma{})
+		paths, err := parseClientAndBackendRoutesForSyncWithDependencies(
+			&vormaruntime.Vorma{},
+			dependencies,
+		)
 		if err != nil {
 			t.Fatalf("parseClientAndBackendRoutesForSync returned error: %v", err)
 		}
@@ -59,21 +55,26 @@ func TestParseClientAndBackendRoutesForSync(t *testing.T) {
 
 	t.Run("returns backend parser error", func(t *testing.T) {
 		expectedErr := errors.New("backend parse failed")
-		buildInnerRouteSyncDeps.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
-			return map[string]*vormaruntime.Path{}, nil
-		}
-		buildInnerRouteSyncDeps.parseBackendLoaderPatterns = func(*vormaruntime.Vorma) ([]string, error) {
-			return nil, expectedErr
-		}
-		buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath = func(
-			map[string]*vormaruntime.Path,
-			[]string,
-		) map[string]*vormaruntime.Path {
-			t.Fatal("did not expect merge after backend parse error")
-			return nil
+		dependencies := buildInnerRouteSyncDependencies{
+			parseClientRoutes: func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+				return map[string]*vormaruntime.Path{}, nil
+			},
+			parseBackendLoaderPatterns: func(*vormaruntime.Vorma) ([]string, error) {
+				return nil, expectedErr
+			},
+			mergeBackendLoaderPatternsInPath: func(
+				map[string]*vormaruntime.Path,
+				[]string,
+			) map[string]*vormaruntime.Path {
+				t.Fatal("did not expect merge after backend parse error")
+				return nil
+			},
 		}
 
-		_, err := parseClientAndBackendRoutesForSync(&vormaruntime.Vorma{})
+		_, err := parseClientAndBackendRoutesForSyncWithDependencies(
+			&vormaruntime.Vorma{},
+			dependencies,
+		)
 		if err == nil {
 			t.Fatal("expected backend parser error")
 		}

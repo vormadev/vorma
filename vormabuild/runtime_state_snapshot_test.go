@@ -129,3 +129,96 @@ func TestCloneRouteBuildRuntimePath(t *testing.T) {
 		t.Fatalf("cloneRouteBuildRuntimePath(nil) = %#v, want nil", got)
 	}
 }
+
+func TestBuildRuntimeStateSnapshot(t *testing.T) {
+	t.Run("captures and restores full build runtime state", func(t *testing.T) {
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		var runtimeStateSnapshot buildRuntimeStateSnapshot
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+			l.Routes().ReplaceParsedPathsForInit(map[string]*vormaruntime.Path{
+				"/before": {
+					OriginalPattern: "/before",
+					SrcPath:         "frontend/src/routes/before.tsx",
+					ExportKey:       "default",
+				},
+			}, true)
+			l.SetBuildID("build-before")
+			l.SetRouteManifestFile("route-manifest-before.json")
+
+			runtimeStateSnapshot = captureBuildRuntimeStateSnapshot(l)
+
+			l.SetIsDev(true)
+			l.Routes().ReplaceParsedPathsForInit(map[string]*vormaruntime.Path{
+				"/after": {
+					OriginalPattern: "/after",
+					SrcPath:         "frontend/src/routes/after.tsx",
+					ExportKey:       "default",
+				},
+			}, true)
+			l.SetBuildID("build-after")
+			l.SetRouteManifestFile("route-manifest-after.json")
+
+			restoreBuildRuntimeStateSnapshot(l, runtimeStateSnapshot)
+
+			if !buildRuntimeStateSnapshotMatches(l, runtimeStateSnapshot) {
+				t.Fatalf("restored runtime state does not match captured snapshot: %#v", runtimeStateSnapshot)
+			}
+		})
+
+		if app.GetIsDevMode() {
+			t.Fatal("expected isDev=false after restore")
+		}
+		if got := app.GetBuildID(); got != "build-before" {
+			t.Fatalf("build ID after restore = %q, want %q", got, "build-before")
+		}
+		if got := app.GetRouteManifestFile(); got != "route-manifest-before.json" {
+			t.Fatalf(
+				"route manifest after restore = %q, want %q",
+				got,
+				"route-manifest-before.json",
+			)
+		}
+
+		restoredPaths := app.GetPathsSnapshot()
+		if len(restoredPaths) != 1 {
+			t.Fatalf("restored paths length = %d, want 1 (%#v)", len(restoredPaths), restoredPaths)
+		}
+		if restoredPaths["/before"] == nil {
+			t.Fatalf("expected /before path after restore, got %#v", restoredPaths)
+		}
+		if restoredPaths["/after"] != nil {
+			t.Fatalf("did not expect /after path after restore, got %#v", restoredPaths["/after"])
+		}
+	})
+
+	t.Run("snapshot match reports false when build runtime state changed", func(t *testing.T) {
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+			l.SetBuildID("build-before")
+			l.SetRouteManifestFile("route-manifest-before.json")
+			l.Routes().ReplaceParsedPathsForInit(map[string]*vormaruntime.Path{
+				"/before": {
+					OriginalPattern: "/before",
+					SrcPath:         "frontend/src/routes/before.tsx",
+					ExportKey:       "default",
+				},
+			}, true)
+
+			runtimeStateSnapshot := captureBuildRuntimeStateSnapshot(l)
+
+			l.SetBuildID("build-after")
+			if buildRuntimeStateSnapshotMatches(l, runtimeStateSnapshot) {
+				t.Fatalf(
+					"expected changed build state not to match snapshot: %#v",
+					runtimeStateSnapshot,
+				)
+			}
+		})
+	})
+}

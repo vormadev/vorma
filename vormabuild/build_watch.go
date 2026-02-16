@@ -1,11 +1,24 @@
 package vormabuild
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 )
+
+const (
+	reloadTriggerRouteDefinitionsWatch = "route-definitions-watch"
+	reloadTriggerHTMLTemplateWatch     = "html-template-watch"
+)
+
+type reloadActionResolver func(
+	v *vormaruntime.Vorma,
+	reloadEndpoint string,
+	warnMessage string,
+	reloadTrigger string,
+) *wave.RefreshAction
 
 func injectDefaultWatchPatterns(v *vormaruntime.Vorma) *wave.ParsedConfig {
 	cfg := v.Wave.GetBuildtimeParsedConfig()
@@ -121,20 +134,44 @@ func goFilesWatchPattern() wave.WatchedFile {
 }
 
 func routeDefinitionsOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
+	return routeDefinitionsOnChangeCallbackWithReloadActionResolver(
+		v,
+		getReloadActionForEndpointWithFallback,
+	)
+}
+
+func routeDefinitionsOnChangeCallbackWithReloadActionResolver(
+	v *vormaruntime.Vorma,
+	resolveReloadAction reloadActionResolver,
+) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return watchReloadCallback(
 		v,
 		v.DevReloadRoutesEndpointPath(),
 		"route reload endpoint failed, falling back to restart",
+		reloadTriggerRouteDefinitionsWatch,
 		rebuildRoutesOnly,
+		resolveReloadAction,
 	)
 }
 
 func htmlTemplateOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
+	return htmlTemplateOnChangeCallbackWithReloadActionResolver(
+		v,
+		getReloadActionForEndpointWithFallback,
+	)
+}
+
+func htmlTemplateOnChangeCallbackWithReloadActionResolver(
+	v *vormaruntime.Vorma,
+	resolveReloadAction reloadActionResolver,
+) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return watchReloadCallback(
 		v,
 		v.DevReloadTemplateEndpointPath(),
 		"template reload endpoint failed, falling back to restart",
+		reloadTriggerHTMLTemplateWatch,
 		nil,
+		resolveReloadAction,
 	)
 }
 
@@ -142,23 +179,45 @@ func watchReloadCallback(
 	v *vormaruntime.Vorma,
 	reloadEndpoint string,
 	reloadEndpointFailureWarnMessage string,
+	reloadTrigger string,
 	preReloadAction func(*vormaruntime.Vorma) error,
+	resolveReloadAction reloadActionResolver,
 ) func(*wave.HookContext) (*wave.RefreshAction, error) {
+	if resolveReloadAction == nil {
+		resolveReloadAction = getReloadActionForEndpointWithFallback
+	}
+
 	return func(ctx *wave.HookContext) (*wave.RefreshAction, error) {
 		if preReloadAction != nil {
 			if err := preReloadAction(v); err != nil {
-				return nil, err
+				return nil, fmt.Errorf(
+					"run pre-reload action for trigger %q: %w",
+					reloadTrigger,
+					err,
+				)
 			}
 		}
 
 		if ctx != nil && ctx.AppStoppedForBatch {
+			if v.Log != nil {
+				v.Log.Debug(
+					"watch reload callback skipped",
+					"reload_endpoint",
+					reloadEndpoint,
+					"reload_trigger",
+					reloadTrigger,
+					"skip_reason",
+					"app-stopped-for-batch",
+				)
+			}
 			return nil, nil
 		}
 
-		return getReloadActionForEndpointWithFallback(
+		return resolveReloadAction(
 			v,
 			reloadEndpoint,
 			reloadEndpointFailureWarnMessage,
+			reloadTrigger,
 		), nil
 	}
 }

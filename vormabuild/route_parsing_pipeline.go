@@ -39,26 +39,94 @@ type routeDefinitionsFileResolutionDependencies struct {
 	statRouteDefinitionPath      func(string) (fs.FileInfo, error)
 }
 
-var routeParsingPipelineDeps = routeParsingPipelineDependencies{
-	resolveClientRouteDefinitionFiles: resolveClientRouteDefinitionFiles,
-	parseRouteDefinitionFileIntoCalls: parseRouteDefinitionFileIntoCalls,
-	handleUnresolvedRouteCalls:        handleUnresolvedRouteCalls,
-	mergeRouteCallsIntoPaths:          mergeRouteCallsIntoPaths,
+type routeParsingExecutorDependencies struct {
+	routeParsingPipelineDependencies           routeParsingPipelineDependencies
+	routeDefinitionsCodeParsingDependencies    routeDefinitionsCodeParsingDependencies
+	routeModuleResolutionDependencies          routeModuleResolutionDependencies
+	routeDefinitionsFileResolutionDependencies routeDefinitionsFileResolutionDependencies
+	readRouteDefinitionFile                    func(string) ([]byte, error)
 }
 
-var routeDefinitionsCodeParsingDeps = routeDefinitionsCodeParsingDependencies{
-	transformRouteDefinitionsCode:        transformRouteDefinitionsCode,
-	extractRouteCallsFromTransformedCode: extractRouteCalls,
+type routeParsingExecutor struct {
+	dependencies routeParsingExecutorDependencies
 }
 
-var routeModuleResolutionDeps = routeModuleResolutionDependencies{
-	computeRelativeModulePath: filepath.Rel,
-	statRouteModulePath:       os.Stat,
+var defaultRouteParsingExecutor = newRouteParsingExecutor(
+	routeParsingExecutorDependencies{},
+)
+
+func defaultRouteParsingExecutorDependencies() routeParsingExecutorDependencies {
+	return routeParsingExecutorDependencies{
+		routeDefinitionsCodeParsingDependencies: routeDefinitionsCodeParsingDependencies{
+			transformRouteDefinitionsCode:        transformRouteDefinitionsCode,
+			extractRouteCallsFromTransformedCode: extractRouteCalls,
+		},
+		routeModuleResolutionDependencies: routeModuleResolutionDependencies{
+			computeRelativeModulePath: filepath.Rel,
+			statRouteModulePath:       os.Stat,
+		},
+		routeDefinitionsFileResolutionDependencies: routeDefinitionsFileResolutionDependencies{
+			expandRouteDefinitionPattern: expandRouteDefinitionPatternWithDoublestar,
+			statRouteDefinitionPath:      os.Stat,
+		},
+		readRouteDefinitionFile: os.ReadFile,
+	}
 }
 
-var routeDefinitionsFileResolutionDeps = routeDefinitionsFileResolutionDependencies{
-	expandRouteDefinitionPattern: expandRouteDefinitionPatternWithDoublestar,
-	statRouteDefinitionPath:      os.Stat,
+func normalizeRouteParsingExecutorDependencies(
+	dependencies routeParsingExecutorDependencies,
+) routeParsingExecutorDependencies {
+	defaultDependencies := defaultRouteParsingExecutorDependencies()
+
+	if dependencies.routeDefinitionsCodeParsingDependencies.transformRouteDefinitionsCode == nil {
+		dependencies.routeDefinitionsCodeParsingDependencies.transformRouteDefinitionsCode = defaultDependencies.routeDefinitionsCodeParsingDependencies.transformRouteDefinitionsCode
+	}
+	if dependencies.routeDefinitionsCodeParsingDependencies.extractRouteCallsFromTransformedCode == nil {
+		dependencies.routeDefinitionsCodeParsingDependencies.extractRouteCallsFromTransformedCode = defaultDependencies.routeDefinitionsCodeParsingDependencies.extractRouteCallsFromTransformedCode
+	}
+
+	if dependencies.routeModuleResolutionDependencies.computeRelativeModulePath == nil {
+		dependencies.routeModuleResolutionDependencies.computeRelativeModulePath = defaultDependencies.routeModuleResolutionDependencies.computeRelativeModulePath
+	}
+	if dependencies.routeModuleResolutionDependencies.statRouteModulePath == nil {
+		dependencies.routeModuleResolutionDependencies.statRouteModulePath = defaultDependencies.routeModuleResolutionDependencies.statRouteModulePath
+	}
+
+	if dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern == nil {
+		dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern = defaultDependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern
+	}
+	if dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath == nil {
+		dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath = defaultDependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath
+	}
+
+	if dependencies.routeParsingPipelineDependencies.handleUnresolvedRouteCalls == nil {
+		dependencies.routeParsingPipelineDependencies.handleUnresolvedRouteCalls = handleUnresolvedRouteCalls
+	}
+
+	if dependencies.readRouteDefinitionFile == nil {
+		dependencies.readRouteDefinitionFile = defaultDependencies.readRouteDefinitionFile
+	}
+
+	return dependencies
+}
+
+func newRouteParsingExecutor(
+	dependencies routeParsingExecutorDependencies,
+) routeParsingExecutor {
+	dependencies = normalizeRouteParsingExecutorDependencies(dependencies)
+	executor := routeParsingExecutor{dependencies: dependencies}
+
+	if executor.dependencies.routeParsingPipelineDependencies.resolveClientRouteDefinitionFiles == nil {
+		executor.dependencies.routeParsingPipelineDependencies.resolveClientRouteDefinitionFiles = executor.resolveClientRouteDefinitionFiles
+	}
+	if executor.dependencies.routeParsingPipelineDependencies.parseRouteDefinitionFileIntoCalls == nil {
+		executor.dependencies.routeParsingPipelineDependencies.parseRouteDefinitionFileIntoCalls = executor.parseRouteDefinitionFileIntoCalls
+	}
+	if executor.dependencies.routeParsingPipelineDependencies.mergeRouteCallsIntoPaths == nil {
+		executor.dependencies.routeParsingPipelineDependencies.mergeRouteCallsIntoPaths = executor.mergeRouteCallsIntoPaths
+	}
+
+	return executor
 }
 
 type parsedRouteDefinitionsCode struct {
@@ -67,14 +135,20 @@ type parsedRouteDefinitionsCode struct {
 }
 
 func parseClientRoutes(v *vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
-	routeDefinitionFiles, err := routeParsingPipelineDeps.resolveClientRouteDefinitionFiles(v)
+	return defaultRouteParsingExecutor.parseClientRoutes(v)
+}
+
+func (executor routeParsingExecutor) parseClientRoutes(
+	v *vormaruntime.Vorma,
+) (map[string]*vormaruntime.Path, error) {
+	routeDefinitionFiles, err := executor.dependencies.routeParsingPipelineDependencies.resolveClientRouteDefinitionFiles(v)
 	if err != nil {
 		return nil, err
 	}
 
 	paths := make(map[string]*vormaruntime.Path)
 	for _, routeDefinitionFile := range routeDefinitionFiles {
-		parsedRouteDefinitions, err := routeParsingPipelineDeps.parseRouteDefinitionFileIntoCalls(
+		parsedRouteDefinitions, err := executor.dependencies.routeParsingPipelineDependencies.parseRouteDefinitionFileIntoCalls(
 			v,
 			routeDefinitionFile,
 		)
@@ -82,7 +156,7 @@ func parseClientRoutes(v *vormaruntime.Vorma) (map[string]*vormaruntime.Path, er
 			return nil, err
 		}
 
-		if err := routeParsingPipelineDeps.handleUnresolvedRouteCalls(
+		if err := executor.dependencies.routeParsingPipelineDependencies.handleUnresolvedRouteCalls(
 			v,
 			routeDefinitionFile,
 			parsedRouteDefinitions.unresolvedRoutes,
@@ -90,7 +164,7 @@ func parseClientRoutes(v *vormaruntime.Vorma) (map[string]*vormaruntime.Path, er
 			return nil, err
 		}
 
-		if err := routeParsingPipelineDeps.mergeRouteCallsIntoPaths(
+		if err := executor.dependencies.routeParsingPipelineDependencies.mergeRouteCallsIntoPaths(
 			v,
 			paths,
 			routeDefinitionFile,
@@ -103,6 +177,12 @@ func parseClientRoutes(v *vormaruntime.Vorma) (map[string]*vormaruntime.Path, er
 }
 
 func resolveClientRouteDefinitionFiles(v *vormaruntime.Vorma) ([]string, error) {
+	return defaultRouteParsingExecutor.resolveClientRouteDefinitionFiles(v)
+}
+
+func (executor routeParsingExecutor) resolveClientRouteDefinitionFiles(
+	v *vormaruntime.Vorma,
+) ([]string, error) {
 	if v == nil {
 		return nil, errors.New("Vorma runtime is required")
 	}
@@ -123,12 +203,16 @@ func resolveClientRouteDefinitionFiles(v *vormaruntime.Vorma) ([]string, error) 
 	matchedFilesByPath := make(map[string]struct{})
 	for _, routeDefinitionPattern := range normalizedRouteDefinitionPatterns {
 		if patternContainsGlobMeta(routeDefinitionPattern) {
-			routeDefinitionMatches, err := routeDefinitionsFileResolutionDeps.expandRouteDefinitionPattern(routeDefinitionPattern)
+			routeDefinitionMatches, err := executor.dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern(
+				routeDefinitionPattern,
+			)
 			if err != nil {
 				return nil, fmt.Errorf("expand route definition pattern %q: %w", routeDefinitionPattern, err)
 			}
 			for _, routeDefinitionMatch := range routeDefinitionMatches {
-				routeDefinitionInfo, err := routeDefinitionsFileResolutionDeps.statRouteDefinitionPath(routeDefinitionMatch)
+				routeDefinitionInfo, err := executor.dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath(
+					routeDefinitionMatch,
+				)
 				if err != nil {
 					return nil, fmt.Errorf("stat route definition path %q: %w", routeDefinitionMatch, err)
 				}
@@ -140,7 +224,9 @@ func resolveClientRouteDefinitionFiles(v *vormaruntime.Vorma) ([]string, error) 
 			continue
 		}
 
-		routeDefinitionInfo, err := routeDefinitionsFileResolutionDeps.statRouteDefinitionPath(routeDefinitionPattern)
+		routeDefinitionInfo, err := executor.dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath(
+			routeDefinitionPattern,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("stat route definition path %q: %w", routeDefinitionPattern, err)
 		}
@@ -177,11 +263,18 @@ func parseRouteDefinitionFileIntoCalls(
 	v *vormaruntime.Vorma,
 	routeDefinitionFile string,
 ) (parsedRouteDefinitionsCode, error) {
-	code, err := os.ReadFile(routeDefinitionFile)
+	return defaultRouteParsingExecutor.parseRouteDefinitionFileIntoCalls(v, routeDefinitionFile)
+}
+
+func (executor routeParsingExecutor) parseRouteDefinitionFileIntoCalls(
+	v *vormaruntime.Vorma,
+	routeDefinitionFile string,
+) (parsedRouteDefinitionsCode, error) {
+	code, err := executor.dependencies.readRouteDefinitionFile(routeDefinitionFile)
 	if err != nil {
 		return parsedRouteDefinitionsCode{}, fmt.Errorf("read route definitions file %q: %w", routeDefinitionFile, err)
 	}
-	parsedRouteDefinitions, err := parseRouteDefinitionsCodeIntoCalls(v, code)
+	parsedRouteDefinitions, err := executor.parseRouteDefinitionsCodeIntoCalls(v, code)
 	if err != nil {
 		return parsedRouteDefinitionsCode{}, fmt.Errorf("parse route definitions file %q: %w", routeDefinitionFile, err)
 	}
@@ -192,12 +285,24 @@ func parseRouteDefinitionsCodeIntoCalls(
 	v *vormaruntime.Vorma,
 	code []byte,
 ) (parsedRouteDefinitionsCode, error) {
-	transformedCode, err := routeDefinitionsCodeParsingDeps.transformRouteDefinitionsCode(v, code)
+	return defaultRouteParsingExecutor.parseRouteDefinitionsCodeIntoCalls(v, code)
+}
+
+func (executor routeParsingExecutor) parseRouteDefinitionsCodeIntoCalls(
+	v *vormaruntime.Vorma,
+	code []byte,
+) (parsedRouteDefinitionsCode, error) {
+	transformedCode, err := executor.dependencies.routeDefinitionsCodeParsingDependencies.transformRouteDefinitionsCode(
+		v,
+		code,
+	)
 	if err != nil {
 		return parsedRouteDefinitionsCode{}, err
 	}
 
-	routeCalls, unresolvedRoutes, err := routeDefinitionsCodeParsingDeps.extractRouteCallsFromTransformedCode(transformedCode)
+	routeCalls, unresolvedRoutes, err := executor.dependencies.routeDefinitionsCodeParsingDependencies.extractRouteCallsFromTransformedCode(
+		transformedCode,
+	)
 	if err != nil {
 		return parsedRouteDefinitionsCode{}, fmt.Errorf("extract route calls: %w", err)
 	}
@@ -333,6 +438,15 @@ func mergeRouteCallsIntoPaths(
 	routeDefinitionFile string,
 	routeCalls []routeCall,
 ) error {
+	return defaultRouteParsingExecutor.mergeRouteCallsIntoPaths(v, paths, routeDefinitionFile, routeCalls)
+}
+
+func (executor routeParsingExecutor) mergeRouteCallsIntoPaths(
+	v *vormaruntime.Vorma,
+	paths map[string]*vormaruntime.Path,
+	routeDefinitionFile string,
+	routeCalls []routeCall,
+) error {
 	for _, routeCall := range routeCalls {
 		if routeCall.Module == "" {
 			return fmt.Errorf("component module is required for pattern: %s", routeCall.Pattern)
@@ -342,8 +456,8 @@ func mergeRouteCallsIntoPaths(
 			return fmt.Errorf("duplicate route pattern: %s", routeCall.Pattern)
 		}
 
-		modulePath := resolveRouteModulePath(v, routeDefinitionFile, routeCall)
-		if err := ensureRouteModuleExists(modulePath, routeCall.Pattern); err != nil {
+		modulePath := executor.resolveRouteModulePath(v, routeDefinitionFile, routeCall)
+		if err := executor.ensureRouteModuleExists(modulePath, routeCall.Pattern); err != nil {
 			return err
 		}
 
@@ -362,8 +476,16 @@ func resolveRouteModulePath(
 	routeDefinitionFile string,
 	routeCall routeCall,
 ) string {
+	return defaultRouteParsingExecutor.resolveRouteModulePath(v, routeDefinitionFile, routeCall)
+}
+
+func (executor routeParsingExecutor) resolveRouteModulePath(
+	v *vormaruntime.Vorma,
+	routeDefinitionFile string,
+	routeCall routeCall,
+) string {
 	routeDefinitionsDirectory := filepath.Dir(routeDefinitionFile)
-	resolvedModulePath, err := routeModuleResolutionDeps.computeRelativeModulePath(
+	resolvedModulePath, err := executor.dependencies.routeModuleResolutionDependencies.computeRelativeModulePath(
 		".",
 		filepath.Join(routeDefinitionsDirectory, routeCall.Module),
 	)
@@ -375,7 +497,14 @@ func resolveRouteModulePath(
 }
 
 func ensureRouteModuleExists(modulePath string, pattern string) error {
-	fileInfo, err := routeModuleResolutionDeps.statRouteModulePath(modulePath)
+	return defaultRouteParsingExecutor.ensureRouteModuleExists(modulePath, pattern)
+}
+
+func (executor routeParsingExecutor) ensureRouteModuleExists(
+	modulePath string,
+	pattern string,
+) error {
+	fileInfo, err := executor.dependencies.routeModuleResolutionDependencies.statRouteModulePath(modulePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("component module does not exist: %s (pattern: %s)", modulePath, pattern)

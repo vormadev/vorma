@@ -68,16 +68,23 @@ func syncClientRoutesFromParsedPathsWithLock(
 	buildID string,
 	postSyncHook postRouteSyncHook,
 ) error {
-	var previousRuntimeState routeBuildRuntimeStateSnapshot
+	var previousRuntimeState buildRuntimeStateSnapshot
+	var currentAttemptCommittedBuildID string
 	return runWithRollbackOnFailureAndPanic(
 		rollbackTransactionOptions{
 			run: func() error {
 				v.WithLock(func(l *vormaruntime.LockedVorma) {
-					previousRuntimeState = captureRouteBuildRuntimeStateSnapshot(l)
-					if buildID != "" {
-						l.SetBuildID(buildID)
-					}
-					l.Routes().SyncFromDevReload(clientPaths)
+					previousRuntimeState = captureBuildRuntimeStateSnapshot(l)
+					commitRuntimeStateWithLock(
+						l,
+						runtimeStateCommitInput{
+							shouldCommitBuildID:  buildID != "",
+							buildID:              buildID,
+							routePaths:           clientPaths,
+							routePathsUpdateMode: runtimeStateRoutePathsUpdateModeSyncFromDevReload,
+						},
+					)
+					currentAttemptCommittedBuildID = l.GetBuildID()
 				})
 
 				if postSyncHook != nil {
@@ -90,6 +97,7 @@ func syncClientRoutesFromParsedPathsWithLock(
 					rollbackRouteSyncStateAfterPostSyncFailure(
 						l,
 						previousRuntimeState,
+						currentAttemptCommittedBuildID,
 					)
 				})
 				return nil
@@ -100,7 +108,24 @@ func syncClientRoutesFromParsedPathsWithLock(
 
 func rollbackRouteSyncStateAfterPostSyncFailure(
 	l *vormaruntime.LockedVorma,
-	previousRuntimeState routeBuildRuntimeStateSnapshot,
+	previousRuntimeState buildRuntimeStateSnapshot,
+	currentAttemptCommittedBuildID string,
 ) {
-	restoreRouteBuildRuntimeStateSnapshot(l, previousRuntimeState)
+	if !shouldRollbackRouteSyncStateAfterPostSyncFailure(
+		l.GetBuildID(),
+		currentAttemptCommittedBuildID,
+	) {
+		return
+	}
+	restoreBuildRuntimeStateSnapshot(l, previousRuntimeState)
+}
+
+func shouldRollbackRouteSyncStateAfterPostSyncFailure(
+	currentBuildID string,
+	currentAttemptCommittedBuildID string,
+) bool {
+	if currentAttemptCommittedBuildID == "" {
+		return true
+	}
+	return currentBuildID == currentAttemptCommittedBuildID
 }

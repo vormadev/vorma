@@ -1,7 +1,6 @@
 package vormabuild
 
 import (
-	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,37 +25,56 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		t.Fatalf("expected 3 default watch patterns, got %d", len(patterns))
 	}
 
-	routesHook := findWatchHookByPattern(t, patterns, app.Config.ClientRouteDefinitionPatterns[0])
-	templateHook := findWatchHookByPattern(
+	routePatternHook := findWatchHookByPattern(t, patterns, app.Config.ClientRouteDefinitionPatterns[0])
+	templatePatternHook := findWatchHookByPattern(
 		t,
 		patterns,
 		filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation),
 	)
+	if routePatternHook == nil || templatePatternHook == nil {
+		t.Fatal("expected route and template watch callbacks to be configured")
+	}
 
-	var routeReloadEndpointErr error
-	var templateReloadEndpointErr error
-	routeReloadEndpointCalls := 0
-	templateReloadEndpointCalls := 0
-
-	originalCallReloadEndpointStep := reloadActionDeps.callReloadEndpoint
-	reloadActionDeps.callReloadEndpoint = func(_ *vormaruntime.Vorma, endpoint string) error {
-		switch endpoint {
+	var routeResolverCalls int
+	var templateResolverCalls int
+	var shouldRouteFallback bool
+	var shouldTemplateFallback bool
+	resolveReloadAction := func(
+		_ *vormaruntime.Vorma,
+		reloadEndpoint string,
+		_ string,
+		_ string,
+	) *wave.RefreshAction {
+		switch reloadEndpoint {
 		case app.DevReloadRoutesEndpointPath():
-			routeReloadEndpointCalls++
-			return routeReloadEndpointErr
+			routeResolverCalls++
+			if shouldRouteFallback {
+				return newRestartWithoutRecompileAction()
+			}
+			return newReloadBrowserAndWaitAction()
 		case app.DevReloadTemplateEndpointPath():
-			templateReloadEndpointCalls++
-			return templateReloadEndpointErr
+			templateResolverCalls++
+			if shouldTemplateFallback {
+				return newRestartWithoutRecompileAction()
+			}
+			return newReloadBrowserAndWaitAction()
 		default:
-			return errors.New("unexpected endpoint path")
+			t.Fatalf("unexpected reload endpoint %q", reloadEndpoint)
+			return nil
 		}
 	}
-	t.Cleanup(func() {
-		reloadActionDeps.callReloadEndpoint = originalCallReloadEndpointStep
-	})
+
+	routesHook := routeDefinitionsOnChangeCallbackWithReloadActionResolver(
+		app,
+		resolveReloadAction,
+	)
+	templateHook := htmlTemplateOnChangeCallbackWithReloadActionResolver(
+		app,
+		resolveReloadAction,
+	)
 
 	t.Run("routes callback success returns browser reload action", func(t *testing.T) {
-		routeReloadEndpointErr = nil
+		shouldRouteFallback = false
 
 		action, err := routesHook(&wave.HookContext{AppStoppedForBatch: false})
 		if err != nil {
@@ -74,13 +92,13 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if !strings.HasPrefix(app.GetBuildID(), "dev_fast_") {
 			t.Fatalf("expected dev_fast build ID after route rebuild, got %q", app.GetBuildID())
 		}
-		if routeReloadEndpointCalls != 1 {
-			t.Fatalf("expected exactly one route endpoint call, got %d", routeReloadEndpointCalls)
+		if routeResolverCalls != 1 {
+			t.Fatalf("expected exactly one route resolver call, got %d", routeResolverCalls)
 		}
 	})
 
 	t.Run("routes callback nil context still returns browser reload action", func(t *testing.T) {
-		routeReloadEndpointErr = nil
+		shouldRouteFallback = false
 
 		action, err := routesHook(nil)
 		if err != nil {
@@ -92,8 +110,8 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if !action.ReloadBrowser || !action.WaitForApp || !action.WaitForVite {
 			t.Fatalf("unexpected action with nil route hook context: %#v", action)
 		}
-		if routeReloadEndpointCalls != 2 {
-			t.Fatalf("expected exactly one additional route endpoint call, got %d", routeReloadEndpointCalls)
+		if routeResolverCalls != 2 {
+			t.Fatalf("expected exactly one additional route resolver call, got %d", routeResolverCalls)
 		}
 	})
 
@@ -108,13 +126,13 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if !strings.HasPrefix(app.GetBuildID(), "dev_fast_") {
 			t.Fatalf("expected route rebuild to still run, got build ID %q", app.GetBuildID())
 		}
-		if routeReloadEndpointCalls != 2 {
-			t.Fatalf("expected no additional route endpoint call when app stopped, got %d", routeReloadEndpointCalls)
+		if routeResolverCalls != 2 {
+			t.Fatalf("expected no additional route resolver call when app stopped, got %d", routeResolverCalls)
 		}
 	})
 
 	t.Run("routes callback endpoint failure falls back to restart", func(t *testing.T) {
-		routeReloadEndpointErr = errors.New("route endpoint failed")
+		shouldRouteFallback = true
 
 		action, err := routesHook(&wave.HookContext{AppStoppedForBatch: false})
 		if err != nil {
@@ -126,13 +144,13 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if !action.TriggerRestart || action.RecompileGo {
 			t.Fatalf("expected restart without recompilation, got %#v", action)
 		}
-		if routeReloadEndpointCalls != 3 {
-			t.Fatalf("expected route endpoint call on failure path, got %d", routeReloadEndpointCalls)
+		if routeResolverCalls != 3 {
+			t.Fatalf("expected route resolver call on failure path, got %d", routeResolverCalls)
 		}
 	})
 
 	t.Run("template callback success returns browser reload action", func(t *testing.T) {
-		templateReloadEndpointErr = nil
+		shouldTemplateFallback = false
 
 		action, err := templateHook(&wave.HookContext{AppStoppedForBatch: false})
 		if err != nil {
@@ -147,13 +165,13 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if action.TriggerRestart || action.RecompileGo {
 			t.Fatalf("template success should not restart/recompile: %#v", action)
 		}
-		if templateReloadEndpointCalls != 1 {
-			t.Fatalf("expected exactly one template endpoint call, got %d", templateReloadEndpointCalls)
+		if templateResolverCalls != 1 {
+			t.Fatalf("expected exactly one template resolver call, got %d", templateResolverCalls)
 		}
 	})
 
 	t.Run("template callback nil context still returns browser reload action", func(t *testing.T) {
-		templateReloadEndpointErr = nil
+		shouldTemplateFallback = false
 
 		action, err := templateHook(nil)
 		if err != nil {
@@ -165,8 +183,8 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if !action.ReloadBrowser || !action.WaitForApp || !action.WaitForVite {
 			t.Fatalf("unexpected action with nil template hook context: %#v", action)
 		}
-		if templateReloadEndpointCalls != 2 {
-			t.Fatalf("expected exactly one additional template endpoint call, got %d", templateReloadEndpointCalls)
+		if templateResolverCalls != 2 {
+			t.Fatalf("expected exactly one additional template resolver call, got %d", templateResolverCalls)
 		}
 	})
 
@@ -178,13 +196,13 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if action != nil {
 			t.Fatalf("expected nil action when app stopped for batch, got %#v", action)
 		}
-		if templateReloadEndpointCalls != 2 {
-			t.Fatalf("expected no additional template endpoint call when app stopped, got %d", templateReloadEndpointCalls)
+		if templateResolverCalls != 2 {
+			t.Fatalf("expected no additional template resolver call when app stopped, got %d", templateResolverCalls)
 		}
 	})
 
 	t.Run("template callback endpoint failure falls back to restart", func(t *testing.T) {
-		templateReloadEndpointErr = errors.New("template endpoint failed")
+		shouldTemplateFallback = true
 
 		action, err := templateHook(&wave.HookContext{AppStoppedForBatch: false})
 		if err != nil {
@@ -196,8 +214,8 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if !action.TriggerRestart || action.RecompileGo {
 			t.Fatalf("expected restart without recompilation, got %#v", action)
 		}
-		if templateReloadEndpointCalls != 3 {
-			t.Fatalf("expected template endpoint call on failure path, got %d", templateReloadEndpointCalls)
+		if templateResolverCalls != 3 {
+			t.Fatalf("expected template resolver call on failure path, got %d", templateResolverCalls)
 		}
 	})
 }

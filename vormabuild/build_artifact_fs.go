@@ -25,26 +25,92 @@ type stageOnePathsWriteDependencies struct {
 	writeStageOnePathsJSON           func(string, []byte, fs.FileMode) error
 }
 
-var buildArtifactCleanupDeps = buildArtifactCleanupDependencies{
-	walkDirForRemoval:            filepath.Walk,
-	removePathForCleanup:         os.Remove,
-	readDirEntriesForCleanup:     os.ReadDir,
-	removeTopLevelFileForCleanup: os.Remove,
-	statStaticPublicOutDir:       os.Stat,
+type buildArtifactFileSystemExecutorDependencies struct {
+	buildArtifactCleanupDependencies buildArtifactCleanupDependencies
+	stageOnePathsWriteDependencies   stageOnePathsWriteDependencies
 }
 
-var stageOnePathsWriteDeps = stageOnePathsWriteDependencies{
-	marshalStageOnePathsFile: func(pathsFile *vormaruntime.PathsFile) ([]byte, error) {
-		return json.MarshalIndent(pathsFile, "", "\t")
-	},
-	makeStageOnePathsOutputDirectory: os.MkdirAll,
-	writeStageOnePathsJSON:           writeFileAtomically,
+type buildArtifactFileSystemExecutor struct {
+	dependencies buildArtifactFileSystemExecutorDependencies
+}
+
+var defaultBuildArtifactFileSystemExecutor = newBuildArtifactFileSystemExecutor(
+	buildArtifactFileSystemExecutorDependencies{},
+)
+
+func defaultBuildArtifactFileSystemExecutorDependencies() buildArtifactFileSystemExecutorDependencies {
+	return buildArtifactFileSystemExecutorDependencies{
+		buildArtifactCleanupDependencies: buildArtifactCleanupDependencies{
+			walkDirForRemoval:            filepath.Walk,
+			removePathForCleanup:         os.Remove,
+			readDirEntriesForCleanup:     os.ReadDir,
+			removeTopLevelFileForCleanup: os.Remove,
+			statStaticPublicOutDir:       os.Stat,
+		},
+		stageOnePathsWriteDependencies: stageOnePathsWriteDependencies{
+			marshalStageOnePathsFile: func(pathsFile *vormaruntime.PathsFile) ([]byte, error) {
+				return json.MarshalIndent(pathsFile, "", "\t")
+			},
+			makeStageOnePathsOutputDirectory: os.MkdirAll,
+			writeStageOnePathsJSON:           writeFileAtomically,
+		},
+	}
+}
+
+func normalizeBuildArtifactFileSystemExecutorDependencies(
+	dependencies buildArtifactFileSystemExecutorDependencies,
+) buildArtifactFileSystemExecutorDependencies {
+	defaultDependencies := defaultBuildArtifactFileSystemExecutorDependencies()
+
+	if dependencies.buildArtifactCleanupDependencies.walkDirForRemoval == nil {
+		dependencies.buildArtifactCleanupDependencies.walkDirForRemoval = defaultDependencies.buildArtifactCleanupDependencies.walkDirForRemoval
+	}
+	if dependencies.buildArtifactCleanupDependencies.removePathForCleanup == nil {
+		dependencies.buildArtifactCleanupDependencies.removePathForCleanup = defaultDependencies.buildArtifactCleanupDependencies.removePathForCleanup
+	}
+	if dependencies.buildArtifactCleanupDependencies.readDirEntriesForCleanup == nil {
+		dependencies.buildArtifactCleanupDependencies.readDirEntriesForCleanup = defaultDependencies.buildArtifactCleanupDependencies.readDirEntriesForCleanup
+	}
+	if dependencies.buildArtifactCleanupDependencies.removeTopLevelFileForCleanup == nil {
+		dependencies.buildArtifactCleanupDependencies.removeTopLevelFileForCleanup = defaultDependencies.buildArtifactCleanupDependencies.removeTopLevelFileForCleanup
+	}
+	if dependencies.buildArtifactCleanupDependencies.statStaticPublicOutDir == nil {
+		dependencies.buildArtifactCleanupDependencies.statStaticPublicOutDir = defaultDependencies.buildArtifactCleanupDependencies.statStaticPublicOutDir
+	}
+
+	if dependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile == nil {
+		dependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile = defaultDependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile
+	}
+	if dependencies.stageOnePathsWriteDependencies.makeStageOnePathsOutputDirectory == nil {
+		dependencies.stageOnePathsWriteDependencies.makeStageOnePathsOutputDirectory = defaultDependencies.stageOnePathsWriteDependencies.makeStageOnePathsOutputDirectory
+	}
+	if dependencies.stageOnePathsWriteDependencies.writeStageOnePathsJSON == nil {
+		dependencies.stageOnePathsWriteDependencies.writeStageOnePathsJSON = defaultDependencies.stageOnePathsWriteDependencies.writeStageOnePathsJSON
+	}
+
+	return dependencies
+}
+
+func newBuildArtifactFileSystemExecutor(
+	dependencies buildArtifactFileSystemExecutorDependencies,
+) buildArtifactFileSystemExecutor {
+	return buildArtifactFileSystemExecutor{
+		dependencies: normalizeBuildArtifactFileSystemExecutorDependencies(dependencies),
+	}
 }
 
 func cleanStaticPublicOutDir(v *vormaruntime.Vorma) error {
+	return defaultBuildArtifactFileSystemExecutor.cleanStaticPublicOutDir(v)
+}
+
+func (executor buildArtifactFileSystemExecutor) cleanStaticPublicOutDir(
+	v *vormaruntime.Vorma,
+) error {
 	staticPublicOutDir := v.Wave.GetStaticPublicOutDir()
 
-	fileInfo, err := buildArtifactCleanupDeps.statStaticPublicOutDir(staticPublicOutDir)
+	fileInfo, err := executor.dependencies.buildArtifactCleanupDependencies.statStaticPublicOutDir(
+		staticPublicOutDir,
+	)
 	if err != nil {
 		if os.IsNotExist(err) {
 			v.Log.Warn(fmt.Sprintf("static public out dir does not exist: %s", staticPublicOutDir))
@@ -57,7 +123,10 @@ func cleanStaticPublicOutDir(v *vormaruntime.Vorma) error {
 		return fmt.Errorf("%s is not a directory", staticPublicOutDir)
 	}
 
-	return removeMatchingEntriesRecursively(staticPublicOutDir, shouldRemoveGeneratedStaticPublicFile)
+	return executor.removeMatchingEntriesRecursively(
+		staticPublicOutDir,
+		shouldRemoveGeneratedStaticPublicFile,
+	)
 }
 
 func shouldRemoveGeneratedStaticPublicFile(fileBaseName string) bool {
@@ -69,7 +138,14 @@ func removeMatchingEntriesRecursively(
 	rootDir string,
 	shouldRemove func(string) bool,
 ) error {
-	return buildArtifactCleanupDeps.walkDirForRemoval(
+	return defaultBuildArtifactFileSystemExecutor.removeMatchingEntriesRecursively(rootDir, shouldRemove)
+}
+
+func (executor buildArtifactFileSystemExecutor) removeMatchingEntriesRecursively(
+	rootDir string,
+	shouldRemove func(string) bool,
+) error {
+	return executor.dependencies.buildArtifactCleanupDependencies.walkDirForRemoval(
 		rootDir,
 		func(path string, info fs.FileInfo, walkErr error) error {
 			if walkErr != nil {
@@ -81,7 +157,7 @@ func removeMatchingEntriesRecursively(
 			if !shouldRemove(filepath.Base(path)) {
 				return nil
 			}
-			return buildArtifactCleanupDeps.removePathForCleanup(path)
+			return executor.dependencies.buildArtifactCleanupDependencies.removePathForCleanup(path)
 		},
 	)
 }
@@ -90,7 +166,14 @@ func removeMatchingTopLevelFiles(
 	rootDir string,
 	shouldRemove func(string) bool,
 ) error {
-	entries, err := buildArtifactCleanupDeps.readDirEntriesForCleanup(rootDir)
+	return defaultBuildArtifactFileSystemExecutor.removeMatchingTopLevelFiles(rootDir, shouldRemove)
+}
+
+func (executor buildArtifactFileSystemExecutor) removeMatchingTopLevelFiles(
+	rootDir string,
+	shouldRemove func(string) bool,
+) error {
+	entries, err := executor.dependencies.buildArtifactCleanupDependencies.readDirEntriesForCleanup(rootDir)
 	if err != nil {
 		return err
 	}
@@ -103,7 +186,9 @@ func removeMatchingTopLevelFiles(
 		if !shouldRemove(name) {
 			continue
 		}
-		if err := buildArtifactCleanupDeps.removeTopLevelFileForCleanup(filepath.Join(rootDir, name)); err != nil {
+		if err := executor.dependencies.buildArtifactCleanupDependencies.removeTopLevelFileForCleanup(
+			filepath.Join(rootDir, name),
+		); err != nil {
 			return fmt.Errorf("remove %s: %w", name, err)
 		}
 	}
@@ -112,17 +197,69 @@ func removeMatchingTopLevelFiles(
 }
 
 func writePathsToDiskStageOne(l *vormaruntime.LockedVorma) error {
-	return writePathsToDiskStageOneWithRouteManifest(l, l.GetRouteManifestFile())
+	return defaultBuildArtifactFileSystemExecutor.writePathsToDiskStageOne(l)
+}
+
+func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOne(
+	l *vormaruntime.LockedVorma,
+) error {
+	return executor.writePathsToDiskStageOneWithRouteManifest(l, l.GetRouteManifestFile())
 }
 
 func writePathsToDiskStageOneWithRouteManifest(
 	l *vormaruntime.LockedVorma,
 	routeManifestFile string,
 ) error {
-	v := l.Vorma()
-	pathsJSONOut := pathsOutputPath(v, vormaruntime.VormaPathsStageOneJSONFileName)
-	pathsAsJSON, err := stageOnePathsWriteDeps.marshalStageOnePathsFile(
+	return defaultBuildArtifactFileSystemExecutor.writePathsToDiskStageOneWithRouteManifest(
+		l,
+		routeManifestFile,
+	)
+}
+
+func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOneWithRouteManifest(
+	l *vormaruntime.LockedVorma,
+	routeManifestFile string,
+) error {
+	return executor.writeStageOnePathsFileToDisk(
+		l.Vorma(),
 		stageOnePathsFile(l, routeManifestFile),
+	)
+}
+
+func writePathsToDiskStageOneFromRuntimeStateSnapshot(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+	routeManifestFile string,
+) error {
+	return defaultBuildArtifactFileSystemExecutor.writePathsToDiskStageOneFromRuntimeStateSnapshot(
+		v,
+		runtimeStateSnapshot,
+		routeManifestFile,
+	)
+}
+
+func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOneFromRuntimeStateSnapshot(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+	routeManifestFile string,
+) error {
+	return executor.writeStageOnePathsFileToDisk(
+		v,
+		stageOnePathsFileFromRuntimeStateSnapshot(
+			v,
+			runtimeStateSnapshot,
+			routeManifestFile,
+		),
+	)
+}
+
+func (executor buildArtifactFileSystemExecutor) writeStageOnePathsFileToDisk(
+	v *vormaruntime.Vorma,
+	stageOnePathsFileData *vormaruntime.PathsFile,
+) error {
+	pathsJSONOut := pathsOutputPath(v, vormaruntime.VormaPathsStageOneJSONFileName)
+	pathsAsJSON, err := executor.dependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile(
+		stageOnePathsFileData,
 	)
 	if err != nil {
 		return fmt.Errorf("marshal stage-one paths file: %w", err)
@@ -131,8 +268,8 @@ func writePathsToDiskStageOneWithRouteManifest(
 		pathsJSONOut,
 		pathsAsJSON,
 		pathsJSONWriteDependencies{
-			makePathsOutputDirectory: stageOnePathsWriteDeps.makeStageOnePathsOutputDirectory,
-			writePathsJSON:           stageOnePathsWriteDeps.writeStageOnePathsJSON,
+			makePathsOutputDirectory: executor.dependencies.stageOnePathsWriteDependencies.makeStageOnePathsOutputDirectory,
+			writePathsJSON:           executor.dependencies.stageOnePathsWriteDependencies.writeStageOnePathsJSON,
 		},
 		"create stage-one paths output directory",
 		"write stage-one paths JSON",
@@ -149,6 +286,20 @@ func stageOnePathsFile(
 		Paths:             l.GetPaths(),
 		ClientEntrySrc:    v.Config.ClientEntry,
 		BuildID:           l.GetBuildID(),
+		RouteManifestFile: routeManifestFile,
+	}
+}
+
+func stageOnePathsFileFromRuntimeStateSnapshot(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+	routeManifestFile string,
+) *vormaruntime.PathsFile {
+	return &vormaruntime.PathsFile{
+		Stage:             "one",
+		Paths:             runtimeStateSnapshot.paths,
+		ClientEntrySrc:    v.Config.ClientEntry,
+		BuildID:           runtimeStateSnapshot.buildID,
 		RouteManifestFile: routeManifestFile,
 	}
 }

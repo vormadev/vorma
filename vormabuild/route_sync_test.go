@@ -146,6 +146,75 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 		}
 	})
 
+	t.Run("skips rollback when runtime state changed after sync but before post-sync error", func(t *testing.T) {
+		expectedErr := errors.New("post-sync failed")
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+			l.SetBuildID("build-before-failed-post-sync")
+			l.SetRouteManifestFile("manifest-before-failed-post-sync.json")
+			l.SetPaths(map[string]*vormaruntime.Path{
+				"/existing": {
+					OriginalPattern: "/existing",
+					SrcPath:         "frontend/src/routes/existing.tsx",
+					ExportKey:       "default",
+				},
+			})
+		})
+
+		err := syncClientRoutesFromParsedPathsWithLock(
+			app,
+			map[string]*vormaruntime.Path{
+				"/about": {
+					OriginalPattern: "/about",
+					SrcPath:         "frontend/src/routes/about.tsx",
+					ExportKey:       "default",
+				},
+			},
+			"build-after-sync-but-before-post-sync",
+			func(v *vormaruntime.Vorma) error {
+				v.WithLock(func(l *vormaruntime.LockedVorma) {
+					l.SetIsDev(true)
+					l.SetBuildID("build-after-newer-sync")
+					l.SetRouteManifestFile("manifest-after-newer-sync.json")
+					l.Routes().SyncFromDevReload(map[string]*vormaruntime.Path{
+						"/newer": {
+							OriginalPattern: "/newer",
+							SrcPath:         "frontend/src/routes/newer.tsx",
+							ExportKey:       "default",
+						},
+					})
+				})
+				return expectedErr
+			},
+		)
+		if err == nil {
+			t.Fatal("expected syncClientRoutesFromParsedPathsWithLock to return hook error")
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped hook error", err)
+		}
+		if !app.GetIsDevMode() {
+			t.Fatal("expected newer runtime state to remain after stale rollback attempt")
+		}
+		if got := app.GetBuildID(); got != "build-after-newer-sync" {
+			t.Fatalf("build ID after stale rollback = %q, want %q", got, "build-after-newer-sync")
+		}
+		if got := app.GetRouteManifestFile(); got != "manifest-after-newer-sync.json" {
+			t.Fatalf(
+				"route manifest after stale rollback = %q, want %q",
+				got,
+				"manifest-after-newer-sync.json",
+			)
+		}
+		paths := app.GetPathsSnapshot()
+		if paths["/newer"] == nil {
+			t.Fatalf("expected /newer path to remain after stale rollback, got %#v", paths)
+		}
+		if paths["/existing"] != nil {
+			t.Fatalf("did not expect /existing baseline path after stale rollback, got %#v", paths["/existing"])
+		}
+	})
+
 	t.Run("restores runtime state then re-panics when post-sync hook panics", func(t *testing.T) {
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetBuildID("build-before-panic-post-sync")
@@ -205,6 +274,84 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 			func(v *vormaruntime.Vorma) error {
 				v.WithLock(func(l *vormaruntime.LockedVorma) {
 					l.SetRouteManifestFile("manifest-set-in-panicking-post-sync-hook.json")
+				})
+				panic(expectedPanic)
+			},
+		)
+	})
+
+	t.Run("preserves newer runtime state when post-sync hook panics after newer commit", func(t *testing.T) {
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+			l.SetBuildID("build-before-panic-post-sync")
+			l.SetRouteManifestFile("manifest-before-panic-post-sync.json")
+			l.SetPaths(map[string]*vormaruntime.Path{
+				"/existing": {
+					OriginalPattern: "/existing",
+					SrcPath:         "frontend/src/routes/existing.tsx",
+					ExportKey:       "default",
+				},
+			})
+		})
+
+		expectedPanic := errors.New("post-sync panic")
+		defer func() {
+			recoveredPanicValue := recover()
+			if recoveredPanicValue == nil {
+				t.Fatal("expected syncClientRoutesFromParsedPathsWithLock to panic")
+			}
+			recoveredPanicErr, ok := recoveredPanicValue.(error)
+			if !ok {
+				t.Fatalf("recovered panic type = %T, want error", recoveredPanicValue)
+			}
+			if !errors.Is(recoveredPanicErr, expectedPanic) {
+				t.Fatalf("recovered panic = %v, want %v", recoveredPanicErr, expectedPanic)
+			}
+
+			if !app.GetIsDevMode() {
+				t.Fatal("expected newer runtime state to remain after stale panic rollback attempt")
+			}
+			if got := app.GetBuildID(); got != "build-after-newer-sync" {
+				t.Fatalf("build ID after stale panic rollback = %q, want %q", got, "build-after-newer-sync")
+			}
+			if got := app.GetRouteManifestFile(); got != "manifest-after-newer-sync.json" {
+				t.Fatalf(
+					"route manifest after stale panic rollback = %q, want %q",
+					got,
+					"manifest-after-newer-sync.json",
+				)
+			}
+			paths := app.GetPathsSnapshot()
+			if paths["/newer"] == nil {
+				t.Fatalf("expected /newer path to remain after stale panic rollback, got %#v", paths)
+			}
+			if paths["/existing"] != nil {
+				t.Fatalf("did not expect /existing baseline path after stale panic rollback, got %#v", paths["/existing"])
+			}
+		}()
+
+		_ = syncClientRoutesFromParsedPathsWithLock(
+			app,
+			map[string]*vormaruntime.Path{
+				"/about": {
+					OriginalPattern: "/about",
+					SrcPath:         "frontend/src/routes/about.tsx",
+					ExportKey:       "default",
+				},
+			},
+			"build-after-sync-before-panic-post-sync",
+			func(v *vormaruntime.Vorma) error {
+				v.WithLock(func(l *vormaruntime.LockedVorma) {
+					l.SetIsDev(true)
+					l.SetBuildID("build-after-newer-sync")
+					l.SetRouteManifestFile("manifest-after-newer-sync.json")
+					l.Routes().SyncFromDevReload(map[string]*vormaruntime.Path{
+						"/newer": {
+							OriginalPattern: "/newer",
+							SrcPath:         "frontend/src/routes/newer.tsx",
+							ExportKey:       "default",
+						},
+					})
 				})
 				panic(expectedPanic)
 			},

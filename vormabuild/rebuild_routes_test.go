@@ -13,6 +13,16 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
+func newFastRouteRebuildIDExecutorForTest(
+	mutateDependencies func(*fastRouteRebuildBuildIDDependencies),
+) fastRouteRebuildIDExecutor {
+	dependencies := fastRouteRebuildBuildIDDependencies{}
+	if mutateDependencies != nil {
+		mutateDependencies(&dependencies)
+	}
+	return newFastRouteRebuildIDExecutor(dependencies)
+}
+
 func TestCleanRouteManifestsOnly_IgnoresMissingPublicOutDir(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
@@ -49,7 +59,10 @@ func TestRunRouteSyncExecution_ForFastRebuildSuccess(t *testing.T) {
 				return "dev_fast_test", nil
 			},
 			postSyncHook: func(*vormaruntime.Vorma) error {
-				return writeFastRebuildArtifactsAfterRouteSync(app)
+				return writeFastRebuildArtifactsAfterRouteSyncWithDependencies(
+					app,
+					fastRouteRebuildArtifactDependencies{},
+				)
 			},
 		},
 	); err != nil {
@@ -89,6 +102,7 @@ func TestRunRouteSyncExecution_ForFastRebuildSuccess(t *testing.T) {
 func TestRunRouteSyncExecution_ForFastRebuildReturnsCleanError(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
+	t.Chdir(fixture.rootDir)
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetBuildID("build-before-fast-rebuild-failure")
 		l.SetRouteManifestFile("manifest-before-fast-rebuild-failure.json")
@@ -122,7 +136,10 @@ func TestRunRouteSyncExecution_ForFastRebuildReturnsCleanError(t *testing.T) {
 				return "dev_fast_test", nil
 			},
 			postSyncHook: func(*vormaruntime.Vorma) error {
-				return writeFastRebuildArtifactsAfterRouteSync(app)
+				return writeFastRebuildArtifactsAfterRouteSyncWithDependencies(
+					app,
+					fastRouteRebuildArtifactDependencies{},
+				)
 			},
 		},
 	)
@@ -152,42 +169,26 @@ func TestRunRouteSyncExecution_ForFastRebuildReturnsCleanError(t *testing.T) {
 }
 
 func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
-	originalCleanRouteManifestsOnlyForFastRebuildStep := fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly
-	originalWriteRouteArtifactsForFastRebuildStep := fastRouteRebuildArtifactDeps.writeRouteArtifacts
-	originalReadRouteManifestArtifactForFastRebuildStep := fastRouteRebuildArtifactDeps.readRouteManifestArtifact
-	originalWriteRouteManifestArtifactForFastRebuildStep := fastRouteRebuildArtifactDeps.writeRouteManifestArtifact
-	originalRemoveRouteManifestArtifactForFastRebuildStep := fastRouteRebuildArtifactDeps.removeRouteManifestArtifact
-	t.Cleanup(func() {
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = originalCleanRouteManifestsOnlyForFastRebuildStep
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = originalWriteRouteArtifactsForFastRebuildStep
-		fastRouteRebuildArtifactDeps.readRouteManifestArtifact = originalReadRouteManifestArtifactForFastRebuildStep
-		fastRouteRebuildArtifactDeps.writeRouteManifestArtifact = originalWriteRouteManifestArtifactForFastRebuildStep
-		fastRouteRebuildArtifactDeps.removeRouteManifestArtifact = originalRemoveRouteManifestArtifactForFastRebuildStep
-	})
-
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-
-	resetFastRebuildArtifactDeps := func() {
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = originalCleanRouteManifestsOnlyForFastRebuildStep
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = originalWriteRouteArtifactsForFastRebuildStep
-		fastRouteRebuildArtifactDeps.readRouteManifestArtifact = originalReadRouteManifestArtifactForFastRebuildStep
-		fastRouteRebuildArtifactDeps.writeRouteManifestArtifact = originalWriteRouteManifestArtifactForFastRebuildStep
-		fastRouteRebuildArtifactDeps.removeRouteManifestArtifact = originalRemoveRouteManifestArtifactForFastRebuildStep
+	t.Chdir(fixture.rootDir)
+	defaultDependencies := defaultFastRouteRebuildArtifactDependencies()
+	newDependencies := func() fastRouteRebuildArtifactDependencies {
+		return defaultDependencies
 	}
 
 	t.Run("wraps clean route manifests error", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		expectedErr := errors.New("clean failed")
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies := newDependencies()
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			t.Fatal("did not expect writeRouteArtifacts after clean failure")
 			return nil
 		}
 
-		err := writeFastRebuildArtifactsAfterRouteSync(app)
+		err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return clean error")
 		}
@@ -200,20 +201,20 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 	})
 
 	t.Run("restores previous route manifest artifact when clean step fails after removal", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		previousManifestFile := vormaruntime.VormaRouteManifestPrefix + "previous_clean.json"
 		previousManifestPath := filepath.Join(fixture.publicDir, previousManifestFile)
 		previousManifestContent := []byte(`{"/":0}`)
 		mustWriteFile(t, previousManifestPath, previousManifestContent)
 
 		expectedErr := errors.New("clean failed")
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies := newDependencies()
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			if err := os.Remove(previousManifestPath); err != nil {
 				t.Fatalf("remove previous manifest during clean simulation: %v", err)
 			}
 			return expectedErr
 		}
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			t.Fatal("did not expect writeRouteArtifacts after clean failure")
 			return nil
 		}
@@ -221,7 +222,7 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
 		})
-		err := writeFastRebuildArtifactsAfterRouteSync(app)
+		err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return clean error")
 		}
@@ -246,12 +247,12 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 	})
 
 	t.Run("returns snapshot error when reading current manifest artifact fails", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		snapshotErr := errors.New("snapshot failed")
-		fastRouteRebuildArtifactDeps.readRouteManifestArtifact = func(string) ([]byte, error) {
+		dependencies := newDependencies()
+		dependencies.readRouteManifestArtifact = func(string) ([]byte, error) {
 			return nil, snapshotErr
 		}
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			t.Fatal("did not expect clean step after snapshot failure")
 			return nil
 		}
@@ -259,7 +260,7 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(vormaruntime.VormaRouteManifestPrefix + "current.json")
 		})
-		err := writeFastRebuildArtifactsAfterRouteSync(app)
+		err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return snapshot error")
 		}
@@ -272,16 +273,16 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 	})
 
 	t.Run("returns write route artifacts error", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		expectedErr := errors.New("write artifacts failed")
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies := newDependencies()
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			return nil
 		}
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 
-		err := writeFastRebuildArtifactsAfterRouteSync(app)
+		err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return write-artifacts error")
 		}
@@ -291,24 +292,24 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 	})
 
 	t.Run("restores previous route manifest artifact when write step fails", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		previousManifestFile := vormaruntime.VormaRouteManifestPrefix + "previous.json"
 		previousManifestPath := filepath.Join(fixture.publicDir, previousManifestFile)
 		previousManifestContent := []byte(`{"/":0}`)
 		mustWriteFile(t, previousManifestPath, previousManifestContent)
 
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies := newDependencies()
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			return os.Remove(previousManifestPath)
 		}
 		expectedErr := errors.New("write artifacts failed")
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
 		})
-		err := writeFastRebuildArtifactsAfterRouteSync(app)
+		err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return write-artifacts error")
 		}
@@ -330,27 +331,27 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 	})
 
 	t.Run("joins restore error when write step fails and restore fails", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		previousManifestFile := vormaruntime.VormaRouteManifestPrefix + "previous_join.json"
 		previousManifestPath := filepath.Join(fixture.publicDir, previousManifestFile)
 		mustWriteFile(t, previousManifestPath, []byte(`{"/":0}`))
 
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies := newDependencies()
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			return os.Remove(previousManifestPath)
 		}
 		expectedErr := errors.New("write artifacts failed")
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 		restoreErr := errors.New("restore failed")
-		fastRouteRebuildArtifactDeps.writeRouteManifestArtifact = func(string, []byte, os.FileMode) error {
+		dependencies.writeRouteManifestArtifact = func(string, []byte, os.FileMode) error {
 			return restoreErr
 		}
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
 		})
-		err := writeFastRebuildArtifactsAfterRouteSync(app)
+		err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return joined error")
 		}
@@ -366,18 +367,18 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 	})
 
 	t.Run("restores previous route manifest artifact then re-panics when write step panics", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		previousManifestFile := vormaruntime.VormaRouteManifestPrefix + "previous_panic.json"
 		previousManifestPath := filepath.Join(fixture.publicDir, previousManifestFile)
 		previousManifestContent := []byte(`{"/":0}`)
 		mustWriteFile(t, previousManifestPath, previousManifestContent)
 
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies := newDependencies()
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			return os.Remove(previousManifestPath)
 		}
 
 		expectedPanic := errors.New("write panic")
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			panic(expectedPanic)
 		}
 
@@ -410,24 +411,24 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
 		})
-		_ = writeFastRebuildArtifactsAfterRouteSync(app)
+		_ = writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 	})
 
 	t.Run("re-panics when manifest restore after panic fails", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		previousManifestFile := vormaruntime.VormaRouteManifestPrefix + "previous_panic_join.json"
 		previousManifestPath := filepath.Join(fixture.publicDir, previousManifestFile)
 		mustWriteFile(t, previousManifestPath, []byte(`{"/":0}`))
 
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies := newDependencies()
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			return os.Remove(previousManifestPath)
 		}
 
 		expectedPanic := errors.New("write panic")
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			panic(expectedPanic)
 		}
-		fastRouteRebuildArtifactDeps.writeRouteManifestArtifact = func(string, []byte, os.FileMode) error {
+		dependencies.writeRouteManifestArtifact = func(string, []byte, os.FileMode) error {
 			return errors.New("restore failed")
 		}
 
@@ -448,22 +449,22 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetRouteManifestFile(previousManifestFile)
 		})
-		_ = writeFastRebuildArtifactsAfterRouteSync(app)
+		_ = writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 	})
 
 	t.Run("runs clean then writes artifacts", func(t *testing.T) {
-		resetFastRebuildArtifactDeps()
 		var observedSteps []string
-		fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+		dependencies := newDependencies()
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
 			observedSteps = append(observedSteps, "clean")
 			return nil
 		}
-		fastRouteRebuildArtifactDeps.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			observedSteps = append(observedSteps, "write")
 			return nil
 		}
 
-		err := writeFastRebuildArtifactsAfterRouteSync(app)
+		err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
 		if err != nil {
 			t.Fatalf("writeFastRebuildArtifactsAfterRouteSync returned error: %v", err)
 		}
@@ -476,7 +477,11 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 	t.Run("returns zero snapshot when manifest file name is empty", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
-		snapshot, err := captureFastRebuildRouteManifestArtifactSnapshot(fixture.app, "")
+		snapshot, err := captureFastRebuildRouteManifestArtifactSnapshotWithDependencies(
+			fixture.app,
+			"",
+			fastRouteRebuildArtifactDependencies{},
+		)
 		if err != nil {
 			t.Fatalf("captureFastRebuildRouteManifestArtifactSnapshot returned error: %v", err)
 		}
@@ -489,19 +494,17 @@ func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 	})
 
 	t.Run("returns non-existent snapshot for ENOTDIR errors", func(t *testing.T) {
-		originalReadRouteManifestArtifactForFastRebuildStep := fastRouteRebuildArtifactDeps.readRouteManifestArtifact
-		t.Cleanup(func() {
-			fastRouteRebuildArtifactDeps.readRouteManifestArtifact = originalReadRouteManifestArtifactForFastRebuildStep
-		})
-
-		fastRouteRebuildArtifactDeps.readRouteManifestArtifact = func(string) ([]byte, error) {
-			return nil, syscall.ENOTDIR
+		dependencies := fastRouteRebuildArtifactDependencies{
+			readRouteManifestArtifact: func(string) ([]byte, error) {
+				return nil, syscall.ENOTDIR
+			},
 		}
 
 		fixture := newBuildTestFixture(t, nil)
-		snapshot, err := captureFastRebuildRouteManifestArtifactSnapshot(
+		snapshot, err := captureFastRebuildRouteManifestArtifactSnapshotWithDependencies(
 			fixture.app,
 			"ignored.json",
+			dependencies,
 		)
 		if err != nil {
 			t.Fatalf("captureFastRebuildRouteManifestArtifactSnapshot returned error: %v", err)
@@ -515,20 +518,18 @@ func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 	})
 
 	t.Run("returns error for non-ENOENT/ENOTDIR failures", func(t *testing.T) {
-		originalReadRouteManifestArtifactForFastRebuildStep := fastRouteRebuildArtifactDeps.readRouteManifestArtifact
-		t.Cleanup(func() {
-			fastRouteRebuildArtifactDeps.readRouteManifestArtifact = originalReadRouteManifestArtifactForFastRebuildStep
-		})
-
 		readErr := errors.New("read failed")
-		fastRouteRebuildArtifactDeps.readRouteManifestArtifact = func(string) ([]byte, error) {
-			return nil, readErr
+		dependencies := fastRouteRebuildArtifactDependencies{
+			readRouteManifestArtifact: func(string) ([]byte, error) {
+				return nil, readErr
+			},
 		}
 
 		fixture := newBuildTestFixture(t, nil)
-		_, err := captureFastRebuildRouteManifestArtifactSnapshot(
+		_, err := captureFastRebuildRouteManifestArtifactSnapshotWithDependencies(
 			fixture.app,
 			vormaruntime.VormaRouteManifestPrefix+"current.json",
+			dependencies,
 		)
 		if err == nil {
 			t.Fatal("expected captureFastRebuildRouteManifestArtifactSnapshot to return read error")
@@ -542,10 +543,11 @@ func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 func TestRestoreFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 	t.Run("returns nil when manifest file name is empty", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
-		err := restoreFastRebuildRouteManifestArtifactSnapshot(
+		err := restoreFastRebuildRouteManifestArtifactSnapshotWithDependencies(
 			fixture.app,
 			"",
 			fastRebuildRouteManifestArtifactSnapshot{},
+			fastRouteRebuildArtifactDependencies{},
 		)
 		if err != nil {
 			t.Fatalf("restoreFastRebuildRouteManifestArtifactSnapshot returned error: %v", err)
@@ -553,21 +555,19 @@ func TestRestoreFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 	})
 
 	t.Run("returns error when removing missing-snapshot manifest fails", func(t *testing.T) {
-		originalRemoveRouteManifestArtifactForFastRebuildStep := fastRouteRebuildArtifactDeps.removeRouteManifestArtifact
-		t.Cleanup(func() {
-			fastRouteRebuildArtifactDeps.removeRouteManifestArtifact = originalRemoveRouteManifestArtifactForFastRebuildStep
-		})
-
 		removeErr := errors.New("remove failed")
-		fastRouteRebuildArtifactDeps.removeRouteManifestArtifact = func(string) error {
-			return removeErr
+		dependencies := fastRouteRebuildArtifactDependencies{
+			removeRouteManifestArtifact: func(string) error {
+				return removeErr
+			},
 		}
 
 		fixture := newBuildTestFixture(t, nil)
-		err := restoreFastRebuildRouteManifestArtifactSnapshot(
+		err := restoreFastRebuildRouteManifestArtifactSnapshotWithDependencies(
 			fixture.app,
 			vormaruntime.VormaRouteManifestPrefix+"current.json",
 			fastRebuildRouteManifestArtifactSnapshot{},
+			dependencies,
 		)
 		if err == nil {
 			t.Fatal("expected restoreFastRebuildRouteManifestArtifactSnapshot to return remove error")
@@ -578,20 +578,18 @@ func TestRestoreFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 	})
 
 	t.Run("ignores ENOTDIR when removing missing-snapshot manifest", func(t *testing.T) {
-		originalRemoveRouteManifestArtifactForFastRebuildStep := fastRouteRebuildArtifactDeps.removeRouteManifestArtifact
-		t.Cleanup(func() {
-			fastRouteRebuildArtifactDeps.removeRouteManifestArtifact = originalRemoveRouteManifestArtifactForFastRebuildStep
-		})
-
-		fastRouteRebuildArtifactDeps.removeRouteManifestArtifact = func(string) error {
-			return syscall.ENOTDIR
+		dependencies := fastRouteRebuildArtifactDependencies{
+			removeRouteManifestArtifact: func(string) error {
+				return syscall.ENOTDIR
+			},
 		}
 
 		fixture := newBuildTestFixture(t, nil)
-		if err := restoreFastRebuildRouteManifestArtifactSnapshot(
+		if err := restoreFastRebuildRouteManifestArtifactSnapshotWithDependencies(
 			fixture.app,
 			vormaruntime.VormaRouteManifestPrefix+"current.json",
 			fastRebuildRouteManifestArtifactSnapshot{},
+			dependencies,
 		); err != nil {
 			t.Fatalf("restoreFastRebuildRouteManifestArtifactSnapshot returned error: %v", err)
 		}
@@ -599,36 +597,30 @@ func TestRestoreFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 }
 
 func TestRebuildRoutesOnly(t *testing.T) {
-	restoreFastRebuildSteps := func(t *testing.T) {
-		t.Helper()
-		originalParseClientRoutesForFastRebuild := fastRouteRebuildDeps.parseClientRoutes
-		originalNewFastRebuildIDStep := fastRouteRebuildDeps.newFastRebuildID
-		originalRunRouteSyncExecutionStep := fastRouteRebuildDeps.runRouteSyncExecution
-		originalLogFastRouteRebuildCompletionStep := fastRouteRebuildDeps.logFastRouteRebuildCompletion
-		t.Cleanup(func() {
-			fastRouteRebuildDeps.parseClientRoutes = originalParseClientRoutesForFastRebuild
-			fastRouteRebuildDeps.newFastRebuildID = originalNewFastRebuildIDStep
-			fastRouteRebuildDeps.runRouteSyncExecution = originalRunRouteSyncExecutionStep
-			fastRouteRebuildDeps.logFastRouteRebuildCompletion = originalLogFastRouteRebuildCompletionStep
-		})
+	defaultDependencies := defaultFastRouteRebuildDependencies()
+	newDependencies := func() fastRouteRebuildDependencies {
+		return defaultDependencies
 	}
 
 	t.Run("returns parse error with context", func(t *testing.T) {
-		restoreFastRebuildSteps(t)
-
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 		app.SetIsDev(true)
 
-		fastRouteRebuildDeps.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+		dependencies := newDependencies()
+		dependencies.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
 			return nil, os.ErrInvalid
 		}
-		fastRouteRebuildDeps.newFastRebuildID = func() (string, error) {
+		dependencies.newFastRebuildID = func() (string, error) {
 			t.Fatal("did not expect ID generation after parse error")
 			return "", nil
 		}
 
-		err := rebuildRoutesOnly(app)
+		err := rebuildRoutesOnlyWithDependencies(
+			app,
+			dependencies,
+			fastRouteRebuildArtifactDependencies{},
+		)
 		if err == nil {
 			t.Fatal("expected rebuildRoutesOnly to return parse error")
 		}
@@ -638,21 +630,24 @@ func TestRebuildRoutesOnly(t *testing.T) {
 	})
 
 	t.Run("propagates build ID generation error", func(t *testing.T) {
-		restoreFastRebuildSteps(t)
-
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 		app.SetIsDev(true)
 
-		fastRouteRebuildDeps.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+		dependencies := newDependencies()
+		dependencies.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
 			return map[string]*vormaruntime.Path{}, nil
 		}
 		expectedErr := os.ErrPermission
-		fastRouteRebuildDeps.newFastRebuildID = func() (string, error) {
+		dependencies.newFastRebuildID = func() (string, error) {
 			return "", expectedErr
 		}
 
-		err := rebuildRoutesOnly(app)
+		err := rebuildRoutesOnlyWithDependencies(
+			app,
+			dependencies,
+			fastRouteRebuildArtifactDependencies{},
+		)
 		if err == nil {
 			t.Fatal("expected rebuildRoutesOnly to return build ID generation error")
 		}
@@ -662,13 +657,12 @@ func TestRebuildRoutesOnly(t *testing.T) {
 	})
 
 	t.Run("propagates artifact sync error", func(t *testing.T) {
-		restoreFastRebuildSteps(t)
-
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 		app.SetIsDev(true)
 
-		fastRouteRebuildDeps.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+		dependencies := newDependencies()
+		dependencies.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
 			return map[string]*vormaruntime.Path{
 				"/ok": {
 					OriginalPattern: "/ok",
@@ -677,15 +671,19 @@ func TestRebuildRoutesOnly(t *testing.T) {
 				},
 			}, nil
 		}
-		fastRouteRebuildDeps.newFastRebuildID = func() (string, error) {
+		dependencies.newFastRebuildID = func() (string, error) {
 			return "dev_fast_stub", nil
 		}
 		expectedErr := os.ErrInvalid
-		fastRouteRebuildDeps.runRouteSyncExecution = func(*vormaruntime.Vorma, routeSyncExecutionOptions) error {
+		dependencies.runRouteSyncExecution = func(*vormaruntime.Vorma, routeSyncExecutionOptions) error {
 			return expectedErr
 		}
 
-		err := rebuildRoutesOnly(app)
+		err := rebuildRoutesOnlyWithDependencies(
+			app,
+			dependencies,
+			fastRouteRebuildArtifactDependencies{},
+		)
 		if err == nil {
 			t.Fatal("expected rebuildRoutesOnly to return artifact sync error")
 		}
@@ -695,13 +693,13 @@ func TestRebuildRoutesOnly(t *testing.T) {
 	})
 
 	t.Run("success path logs completion", func(t *testing.T) {
-		restoreFastRebuildSteps(t)
-
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
+		t.Chdir(fixture.rootDir)
 		app.SetIsDev(true)
 
-		fastRouteRebuildDeps.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+		dependencies := newDependencies()
+		dependencies.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
 			return map[string]*vormaruntime.Path{
 				"/ok": {
 					OriginalPattern: "/ok",
@@ -710,13 +708,13 @@ func TestRebuildRoutesOnly(t *testing.T) {
 				},
 			}, nil
 		}
-		fastRouteRebuildDeps.newFastRebuildID = func() (string, error) {
+		dependencies.newFastRebuildID = func() (string, error) {
 			return "dev_fast_stub", nil
 		}
 
 		var observedBuildID string
 		var observedPathsCount int
-		fastRouteRebuildDeps.runRouteSyncExecution = func(v *vormaruntime.Vorma, options routeSyncExecutionOptions) error {
+		dependencies.runRouteSyncExecution = func(v *vormaruntime.Vorma, options routeSyncExecutionOptions) error {
 			parsedPaths, parseErr := options.parseClientRoutes(v)
 			if parseErr != nil {
 				return parseErr
@@ -736,11 +734,15 @@ func TestRebuildRoutesOnly(t *testing.T) {
 		}
 
 		var completionLogged bool
-		fastRouteRebuildDeps.logFastRouteRebuildCompletion = func(*vormaruntime.Vorma, time.Time) {
+		dependencies.logFastRouteRebuildCompletion = func(*vormaruntime.Vorma, time.Time) {
 			completionLogged = true
 		}
 
-		err := rebuildRoutesOnly(app)
+		err := rebuildRoutesOnlyWithDependencies(
+			app,
+			dependencies,
+			fastRouteRebuildArtifactDependencies{},
+		)
 		if err != nil {
 			t.Fatalf("rebuildRoutesOnly returned error: %v", err)
 		}
@@ -757,16 +759,15 @@ func TestRebuildRoutesOnly(t *testing.T) {
 }
 
 func TestNewFastRebuildID_ReturnsErrorWhenIDGenerationFails(t *testing.T) {
-	originalGenerateFastRebuildIDSuffix := fastRouteRebuildBuildIDDeps.generateFastRebuildIDSuffix
-	t.Cleanup(func() {
-		fastRouteRebuildBuildIDDeps.generateFastRebuildIDSuffix = originalGenerateFastRebuildIDSuffix
-	})
+	fastRouteRebuildIDExecutor := newFastRouteRebuildIDExecutorForTest(
+		func(dependencies *fastRouteRebuildBuildIDDependencies) {
+			dependencies.generateFastRebuildIDSuffix = func() (string, error) {
+				return "", os.ErrPermission
+			}
+		},
+	)
 
-	fastRouteRebuildBuildIDDeps.generateFastRebuildIDSuffix = func() (string, error) {
-		return "", os.ErrPermission
-	}
-
-	_, err := newFastRebuildID()
+	_, err := fastRouteRebuildIDExecutor.newFastRebuildID()
 	if err == nil {
 		t.Fatal("expected newFastRebuildID to return an error")
 	}

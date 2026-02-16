@@ -683,35 +683,40 @@ func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(
 	app := fixture.app
 	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
 
-	originalFrameworkBuildHookExecutionDeps := frameworkBuildHookExecutionDeps
-	t.Cleanup(func() {
-		frameworkBuildHookExecutionDeps = originalFrameworkBuildHookExecutionDeps
-	})
-
 	overlayCleanupCalled := false
-	frameworkBuildHookExecutionDeps.prepareDiscoveredRouteRegistrarOverlay = func(*vormaruntime.Vorma) (*discoveredRouteRegistrarOverlay, error) {
-		return &discoveredRouteRegistrarOverlay{
-			goOverlayConfigPath: "/tmp/vorma-test-overlay.json",
-			cleanupTemporaryFiles: func() error {
-				overlayCleanupCalled = true
+	var capturedGoRunArgs []string
+	frameworkBuildHookExecutor := newFrameworkBuildHookExecutor(
+		frameworkBuildHookExecutionDependencies{
+			prepareDiscoveredRouteRegistrarOverlayWithArtifactCache: func(
+				*vormaruntime.Vorma,
+				*discoveredRouteRegistrarArtifactCache,
+			) (*discoveredRouteRegistrarOverlay, error) {
+				return &discoveredRouteRegistrarOverlay{
+					goOverlayConfigPath: "/tmp/vorma-test-overlay.json",
+					cleanupTemporaryFiles: func() error {
+						overlayCleanupCalled = true
+						return nil
+					},
+				}, nil
+			},
+			runGoCommandWithContext: func(
+				commandExecutionContext context.Context,
+				goRunArgs []string,
+			) error {
+				if commandExecutionContext == nil {
+					t.Fatal("expected non-nil command execution context")
+				}
+				capturedGoRunArgs = append([]string{}, goRunArgs...)
 				return nil
 			},
-		}, nil
-	}
+		},
+	)
 
-	var capturedGoRunArgs []string
-	frameworkBuildHookExecutionDeps.runGoCommandWithContext = func(
-		commandExecutionContext context.Context,
-		goRunArgs []string,
-	) error {
-		if commandExecutionContext == nil {
-			t.Fatal("expected non-nil command execution context")
-		}
-		capturedGoRunArgs = append([]string{}, goRunArgs...)
-		return nil
-	}
-
-	configureBuildEnvironmentInConfig(app, parsedCfg)
+	configureBuildEnvironmentInConfigWithFrameworkBuildHookExecutor(
+		app,
+		parsedCfg,
+		frameworkBuildHookExecutor,
+	)
 	if parsedCfg.FrameworkRunBuildHook == nil {
 		t.Fatal("expected framework build hook runner to be configured")
 	}
@@ -743,6 +748,78 @@ func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(
 	}
 	if !overlayCleanupCalled {
 		t.Fatal("expected framework build hook runner to cleanup overlay")
+	}
+}
+
+func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(t *testing.T) {
+	var capturedCaches []*discoveredRouteRegistrarArtifactCache
+	frameworkBuildHookExecutor := newFrameworkBuildHookExecutor(
+		frameworkBuildHookExecutionDependencies{
+			prepareDiscoveredRouteRegistrarOverlayWithArtifactCache: func(
+				_ *vormaruntime.Vorma,
+				discoveredRegistrarArtifactsCache *discoveredRouteRegistrarArtifactCache,
+			) (*discoveredRouteRegistrarOverlay, error) {
+				if discoveredRegistrarArtifactsCache == nil {
+					t.Fatal("expected non-nil discovered registrar artifacts cache")
+				}
+				capturedCaches = append(capturedCaches, discoveredRegistrarArtifactsCache)
+				return nil, nil
+			},
+			runGoCommandWithContext: func(
+				commandExecutionContext context.Context,
+				_ []string,
+			) error {
+				if commandExecutionContext == nil {
+					t.Fatal("expected non-nil command execution context")
+				}
+				return nil
+			},
+		},
+	)
+
+	fixtureOne := newBuildTestFixture(t, nil)
+	parsedCfgOne := fixtureOne.app.Wave.GetBuildtimeParsedConfig()
+	configureBuildEnvironmentInConfigWithFrameworkBuildHookExecutor(
+		fixtureOne.app,
+		parsedCfgOne,
+		frameworkBuildHookExecutor,
+	)
+
+	if err := parsedCfgOne.FrameworkRunBuildHook(context.Background(), true); err != nil {
+		t.Fatalf("first framework build hook run returned error: %v", err)
+	}
+	if _, err := parsedCfgOne.FrameworkPrepareGoBuildOverlay(); err != nil {
+		t.Fatalf("first framework go build overlay preparation returned error: %v", err)
+	}
+	if err := parsedCfgOne.FrameworkRunBuildHook(context.Background(), false); err != nil {
+		t.Fatalf("second framework build hook run returned error: %v", err)
+	}
+
+	if len(capturedCaches) != 3 {
+		t.Fatalf("captured cache count = %d, want 3", len(capturedCaches))
+	}
+	firstLifecycleCache := capturedCaches[0]
+	if capturedCaches[1] != firstLifecycleCache || capturedCaches[2] != firstLifecycleCache {
+		t.Fatalf("expected same cache instance within lifecycle, got %#v", capturedCaches)
+	}
+
+	fixtureTwo := newBuildTestFixture(t, nil)
+	parsedCfgTwo := fixtureTwo.app.Wave.GetBuildtimeParsedConfig()
+	configureBuildEnvironmentInConfigWithFrameworkBuildHookExecutor(
+		fixtureTwo.app,
+		parsedCfgTwo,
+		frameworkBuildHookExecutor,
+	)
+
+	if err := parsedCfgTwo.FrameworkRunBuildHook(context.Background(), true); err != nil {
+		t.Fatalf("third framework build hook run returned error: %v", err)
+	}
+	if len(capturedCaches) != 4 {
+		t.Fatalf("captured cache count = %d, want 4", len(capturedCaches))
+	}
+	secondLifecycleCache := capturedCaches[3]
+	if secondLifecycleCache == firstLifecycleCache {
+		t.Fatal("expected distinct lifecycle cache for second configured runtime")
 	}
 }
 

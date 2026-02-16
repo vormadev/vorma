@@ -11,6 +11,26 @@ import (
 	"github.com/vormadev/vorma/lab/viteutil"
 )
 
+func newStageTwoPathsWriteExecutorForTest(
+	mutateDependencies func(*stageTwoPathsWriteDependencies),
+) stageTwoPathsWriteExecutor {
+	dependencies := stageTwoPathsWriteDependencies{}
+	if mutateDependencies != nil {
+		mutateDependencies(&dependencies)
+	}
+	return newStageTwoPathsWriteExecutor(dependencies)
+}
+
+func newStageTwoBuildIDExecutorForTest(
+	mutateDependencies func(*stageTwoBuildIDDependencies),
+) stageTwoBuildIDExecutor {
+	dependencies := stageTwoBuildIDDependencies{}
+	if mutateDependencies != nil {
+		mutateDependencies(&dependencies)
+	}
+	return newStageTwoBuildIDExecutor(dependencies)
+}
+
 func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 	t.Run("wraps conversion error", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
@@ -29,13 +49,6 @@ func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 	})
 
 	t.Run("wraps stage-two write error", func(t *testing.T) {
-		originalMarshalStageTwoPathsFileStep := stageTwoPathsWriteDeps.marshalStageTwoPathsFile
-		originalWriteStageTwoPathsJSONStep := stageTwoPathsWriteDeps.writeStageTwoPathsJSON
-		t.Cleanup(func() {
-			stageTwoPathsWriteDeps.marshalStageTwoPathsFile = originalMarshalStageTwoPathsFileStep
-			stageTwoPathsWriteDeps.writeStageTwoPathsJSON = originalWriteStageTwoPathsJSONStep
-		})
-
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
@@ -61,14 +74,23 @@ func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 		})
 
 		expectedErr := errors.New("write stage-two failed")
-		stageTwoPathsWriteDeps.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
-			return []byte(`{"stage":"two"}`), nil
-		}
-		stageTwoPathsWriteDeps.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
-			return expectedErr
-		}
+		stageTwoWriteExecutor := newStageTwoPathsWriteExecutorForTest(
+			func(dependencies *stageTwoPathsWriteDependencies) {
+				dependencies.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+					return []byte(`{"stage":"two"}`), nil
+				}
+				dependencies.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
+					return expectedErr
+				}
+			},
+		)
 
-		err := postViteProdBuild(app)
+		err := postViteProdBuildWithDependencies(
+			app,
+			postViteProdBuildDependencies{
+				writePathsToDiskStageTwo: stageTwoWriteExecutor.writePathsToDiskStageTwo,
+			},
+		)
 		if err == nil {
 			t.Fatal("expected postViteProdBuild to return stage-two write error")
 		}
@@ -89,28 +111,24 @@ func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 }
 
 func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
-	restoreStageTwoWriteSteps := func(t *testing.T) {
-		t.Helper()
-		originalMarshalStageTwoPathsFileStep := stageTwoPathsWriteDeps.marshalStageTwoPathsFile
-		originalWriteStageTwoPathsJSONStep := stageTwoPathsWriteDeps.writeStageTwoPathsJSON
-		t.Cleanup(func() {
-			stageTwoPathsWriteDeps.marshalStageTwoPathsFile = originalMarshalStageTwoPathsFileStep
-			stageTwoPathsWriteDeps.writeStageTwoPathsJSON = originalWriteStageTwoPathsJSONStep
-		})
-	}
-
 	t.Run("wraps marshal error", func(t *testing.T) {
-		restoreStageTwoWriteSteps(t)
 		expectedErr := errors.New("marshal failed")
-		stageTwoPathsWriteDeps.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
-			return nil, expectedErr
-		}
-		stageTwoPathsWriteDeps.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
-			t.Fatal("did not expect write stage after marshal error")
-			return nil
-		}
+		executor := newStageTwoPathsWriteExecutorForTest(
+			func(dependencies *stageTwoPathsWriteDependencies) {
+				dependencies.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+					return nil, expectedErr
+				}
+				dependencies.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
+					t.Fatal("did not expect write stage after marshal error")
+					return nil
+				}
+			},
+		)
 
-		err := writePathsToDiskStageTwo(&vormaruntime.Vorma{}, &vormaruntime.PathsFile{Stage: "two"})
+		err := executor.writePathsToDiskStageTwo(
+			&vormaruntime.Vorma{},
+			&vormaruntime.PathsFile{Stage: "two"},
+		)
 		if err == nil {
 			t.Fatal("expected writePathsToDiskStageTwo to return marshal error")
 		}
@@ -123,16 +141,22 @@ func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
 	})
 
 	t.Run("wraps write error", func(t *testing.T) {
-		restoreStageTwoWriteSteps(t)
 		expectedErr := errors.New("write failed")
-		stageTwoPathsWriteDeps.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
-			return []byte(`{"stage":"two"}`), nil
-		}
-		stageTwoPathsWriteDeps.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
-			return expectedErr
-		}
+		executor := newStageTwoPathsWriteExecutorForTest(
+			func(dependencies *stageTwoPathsWriteDependencies) {
+				dependencies.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+					return []byte(`{"stage":"two"}`), nil
+				}
+				dependencies.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
+					return expectedErr
+				}
+			},
+		)
 
-		err := writePathsToDiskStageTwo(&vormaruntime.Vorma{}, &vormaruntime.PathsFile{Stage: "two"})
+		err := executor.writePathsToDiskStageTwo(
+			&vormaruntime.Vorma{},
+			&vormaruntime.PathsFile{Stage: "two"},
+		)
 		if err == nil {
 			t.Fatal("expected writePathsToDiskStageTwo to return write error")
 		}
@@ -145,25 +169,28 @@ func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
 	})
 
 	t.Run("runs marshal and write in order", func(t *testing.T) {
-		restoreStageTwoWriteSteps(t)
 		var observedSteps []string
 		pathsFile := &vormaruntime.PathsFile{Stage: "two"}
-		stageTwoPathsWriteDeps.marshalStageTwoPathsFile = func(gotPathsFile *vormaruntime.PathsFile) ([]byte, error) {
-			observedSteps = append(observedSteps, "marshal")
-			if gotPathsFile != pathsFile {
-				t.Fatalf("marshal received unexpected paths file pointer: %p vs %p", gotPathsFile, pathsFile)
-			}
-			return []byte(`{"stage":"two"}`), nil
-		}
-		stageTwoPathsWriteDeps.writeStageTwoPathsJSON = func(_ *vormaruntime.Vorma, pathsJSON []byte) error {
-			observedSteps = append(observedSteps, "write")
-			if string(pathsJSON) != `{"stage":"two"}` {
-				t.Fatalf("write received unexpected marshaled JSON: %q", string(pathsJSON))
-			}
-			return nil
-		}
+		executor := newStageTwoPathsWriteExecutorForTest(
+			func(dependencies *stageTwoPathsWriteDependencies) {
+				dependencies.marshalStageTwoPathsFile = func(gotPathsFile *vormaruntime.PathsFile) ([]byte, error) {
+					observedSteps = append(observedSteps, "marshal")
+					if gotPathsFile != pathsFile {
+						t.Fatalf("marshal received unexpected paths file pointer: %p vs %p", gotPathsFile, pathsFile)
+					}
+					return []byte(`{"stage":"two"}`), nil
+				}
+				dependencies.writeStageTwoPathsJSON = func(_ *vormaruntime.Vorma, pathsJSON []byte) error {
+					observedSteps = append(observedSteps, "write")
+					if string(pathsJSON) != `{"stage":"two"}` {
+						t.Fatalf("write received unexpected marshaled JSON: %q", string(pathsJSON))
+					}
+					return nil
+				}
+			},
+		)
 
-		if err := writePathsToDiskStageTwo(&vormaruntime.Vorma{}, pathsFile); err != nil {
+		if err := executor.writePathsToDiskStageTwo(&vormaruntime.Vorma{}, pathsFile); err != nil {
 			t.Fatalf("writePathsToDiskStageTwo returned error: %v", err)
 		}
 		if strings.Join(observedSteps, ",") != "marshal,write" {
@@ -287,36 +314,27 @@ func TestToPathsFileStageTwo_ReturnsErrorWhenRouteChunkIsMissing(t *testing.T) {
 }
 
 func TestComputeStageTwoBuildID_ErrorWrapping(t *testing.T) {
-	restoreStageTwoBuildIDHelpers := func(t *testing.T) {
-		t.Helper()
-		originalReadHTMLTemplateForStageTwoBuildID := stageTwoBuildIDDeps.readHTMLTemplate
-		originalMarshalPathsFileForStageTwoBuildID := stageTwoBuildIDDeps.marshalPathsFile
-		originalSummarizePublicFSForStageTwoBuildID := stageTwoBuildIDDeps.summarizePublicFS
-		t.Cleanup(func() {
-			stageTwoBuildIDDeps.readHTMLTemplate = originalReadHTMLTemplateForStageTwoBuildID
-			stageTwoBuildIDDeps.marshalPathsFile = originalMarshalPathsFileForStageTwoBuildID
-			stageTwoBuildIDDeps.summarizePublicFS = originalSummarizePublicFSForStageTwoBuildID
-		})
-	}
-
 	t.Run("wraps marshal paths file error", func(t *testing.T) {
-		restoreStageTwoBuildIDHelpers(t)
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		stageTwoBuildIDDeps.readHTMLTemplate = func(path string) ([]byte, error) {
-			return []byte("<html></html>"), nil
-		}
 		expectedErr := errors.New("marshal failed")
-		stageTwoBuildIDDeps.marshalPathsFile = func(any) ([]byte, error) {
-			return nil, expectedErr
-		}
-		stageTwoBuildIDDeps.summarizePublicFS = func(fs.FS) ([]byte, error) {
-			t.Fatal("did not expect FS summary step after marshal error")
-			return nil, nil
-		}
+		stageTwoBuildIDExecutor := newStageTwoBuildIDExecutorForTest(
+			func(dependencies *stageTwoBuildIDDependencies) {
+				dependencies.readHTMLTemplate = func(path string) ([]byte, error) {
+					return []byte("<html></html>"), nil
+				}
+				dependencies.marshalPathsFile = func(any) ([]byte, error) {
+					return nil, expectedErr
+				}
+				dependencies.summarizePublicFS = func(fs.FS) ([]byte, error) {
+					t.Fatal("did not expect FS summary step after marshal error")
+					return nil, nil
+				}
+			},
+		)
 
-		_, err := computeStageTwoBuildID(app, &vormaruntime.PathsFile{})
+		_, err := stageTwoBuildIDExecutor.computeStageTwoBuildID(app, &vormaruntime.PathsFile{})
 		if err == nil {
 			t.Fatal("expected computeStageTwoBuildID to return marshal error")
 		}
@@ -329,22 +347,25 @@ func TestComputeStageTwoBuildID_ErrorWrapping(t *testing.T) {
 	})
 
 	t.Run("wraps FS summary error", func(t *testing.T) {
-		restoreStageTwoBuildIDHelpers(t)
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		stageTwoBuildIDDeps.readHTMLTemplate = func(path string) ([]byte, error) {
-			return []byte("<html></html>"), nil
-		}
-		stageTwoBuildIDDeps.marshalPathsFile = func(any) ([]byte, error) {
-			return []byte(`{"stage":"two"}`), nil
-		}
 		expectedErr := errors.New("summary failed")
-		stageTwoBuildIDDeps.summarizePublicFS = func(fs.FS) ([]byte, error) {
-			return nil, expectedErr
-		}
+		stageTwoBuildIDExecutor := newStageTwoBuildIDExecutorForTest(
+			func(dependencies *stageTwoBuildIDDependencies) {
+				dependencies.readHTMLTemplate = func(path string) ([]byte, error) {
+					return []byte("<html></html>"), nil
+				}
+				dependencies.marshalPathsFile = func(any) ([]byte, error) {
+					return []byte(`{"stage":"two"}`), nil
+				}
+				dependencies.summarizePublicFS = func(fs.FS) ([]byte, error) {
+					return nil, expectedErr
+				}
+			},
+		)
 
-		_, err := computeStageTwoBuildID(app, &vormaruntime.PathsFile{})
+		_, err := stageTwoBuildIDExecutor.computeStageTwoBuildID(app, &vormaruntime.PathsFile{})
 		if err == nil {
 			t.Fatal("expected computeStageTwoBuildID to return FS summary error")
 		}

@@ -2,35 +2,44 @@ package vormabuild
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
-func TestWriteRouteManifestToDisk_WrapsMarshalError(t *testing.T) {
-	originalMarshalRouteManifestJSONStep := routeRegistryBuildDeps.marshalRouteManifestJSON
-	originalWriteRouteManifestJSONFileStep := routeRegistryBuildDeps.writeRouteManifestJSON
-	t.Cleanup(func() {
-		routeRegistryBuildDeps.marshalRouteManifestJSON = originalMarshalRouteManifestJSONStep
-		routeRegistryBuildDeps.writeRouteManifestJSON = originalWriteRouteManifestJSONFileStep
-	})
+func newRouteRegistryBuildExecutorForTest(
+	mutateDependencies func(*routeRegistryBuildDependencies),
+) routeRegistryBuildExecutor {
+	dependencies := routeRegistryBuildDependencies{}
+	if mutateDependencies != nil {
+		mutateDependencies(&dependencies)
+	}
+	return newRouteRegistryBuildExecutor(dependencies)
+}
 
+func TestWriteRouteManifestToDisk_WrapsMarshalError(t *testing.T) {
 	expectedErr := errors.New("marshal failed")
-	routeRegistryBuildDeps.marshalRouteManifestJSON = func(any) ([]byte, error) {
-		return nil, expectedErr
-	}
-	routeRegistryBuildDeps.writeRouteManifestJSON = func(string, []byte, os.FileMode) error {
-		t.Fatal("did not expect route manifest file write when marshal fails")
-		return nil
-	}
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.marshalRouteManifestJSON = func(any) ([]byte, error) {
+				return nil, expectedErr
+			}
+			dependencies.writeRouteManifestJSON = func(string, []byte, os.FileMode) error {
+				t.Fatal("did not expect route manifest file write when marshal fails")
+				return nil
+			}
+		},
+	)
 
 	fixture := newBuildTestFixture(t, nil)
-	_, err := writeRouteManifestToDisk(fixture.app, map[string]int{
+	_, err := routeRegistryBuildExecutor.writeRouteManifestToDisk(fixture.app, map[string]int{
 		"/": 1,
 	})
 	if err == nil {
@@ -65,25 +74,28 @@ func TestWriteRouteManifestToDisk_ReturnsWriteErrorWhenPublicOutDirIsFile(t *tes
 }
 
 func TestWriteRouteManifestToDisk_UsesBuildArtifactFileMode(t *testing.T) {
-	originalMarshalRouteManifestJSONStep := routeRegistryBuildDeps.marshalRouteManifestJSON
-	originalWriteRouteManifestJSONFileStep := routeRegistryBuildDeps.writeRouteManifestJSON
-	t.Cleanup(func() {
-		routeRegistryBuildDeps.marshalRouteManifestJSON = originalMarshalRouteManifestJSONStep
-		routeRegistryBuildDeps.writeRouteManifestJSON = originalWriteRouteManifestJSONFileStep
-	})
-
-	routeRegistryBuildDeps.marshalRouteManifestJSON = func(any) ([]byte, error) {
-		return []byte(`{"/":1}`), nil
-	}
-
 	var capturedFileMode os.FileMode
-	routeRegistryBuildDeps.writeRouteManifestJSON = func(_ string, _ []byte, fileMode os.FileMode) error {
-		capturedFileMode = fileMode
-		return nil
-	}
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.marshalRouteManifestJSON = func(any) ([]byte, error) {
+				return []byte(`{"/":1}`), nil
+			}
+			dependencies.writeRouteManifestJSON = func(
+				_ string,
+				_ []byte,
+				fileMode os.FileMode,
+			) error {
+				capturedFileMode = fileMode
+				return nil
+			}
+		},
+	)
 
 	fixture := newBuildTestFixture(t, nil)
-	if _, err := writeRouteManifestToDisk(fixture.app, map[string]int{"/": 1}); err != nil {
+	if _, err := routeRegistryBuildExecutor.writeRouteManifestToDisk(
+		fixture.app,
+		map[string]int{"/": 1},
+	); err != nil {
 		t.Fatalf("writeRouteManifestToDisk returned error: %v", err)
 	}
 
@@ -162,11 +174,6 @@ func TestWriteRouteArtifacts_ReturnsWrappedErrorForEachArtifactStep(t *testing.T
 }
 
 func TestWriteRouteArtifacts_RestoresArtifactsThenRePanicsWhenGeneratedTypeScriptPanics(t *testing.T) {
-	originalWriteGeneratedTypeScriptStep := routeRegistryBuildDeps.writeGeneratedTypeScript
-	t.Cleanup(func() {
-		routeRegistryBuildDeps.writeGeneratedTypeScript = originalWriteGeneratedTypeScriptStep
-	})
-
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	t.Chdir(fixture.rootDir)
@@ -176,9 +183,13 @@ func TestWriteRouteArtifacts_RestoresArtifactsThenRePanicsWhenGeneratedTypeScrip
 	mustWriteFile(t, previousStageOnePathsPath, previousStageOnePathsContent)
 
 	expectedPanic := errors.New("generated ts panic")
-	routeRegistryBuildDeps.writeGeneratedTypeScript = func(*vormaruntime.LockedVorma) error {
-		panic(expectedPanic)
-	}
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.writeGeneratedTypeScript = func(*vormaruntime.LockedVorma) error {
+				panic(expectedPanic)
+			}
+		},
+	)
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetRouteManifestFile("manifest-before-generated-ts-panic.json")
@@ -231,18 +242,11 @@ func TestWriteRouteArtifacts_RestoresArtifactsThenRePanicsWhenGeneratedTypeScrip
 	}()
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
-		_ = writeRouteArtifacts(l)
+		_ = routeRegistryBuildExecutor.writeRouteArtifacts(l)
 	})
 }
 
 func TestWriteRouteArtifacts_RePanicsWhenCleanupAfterPanicFails(t *testing.T) {
-	originalWriteGeneratedTypeScriptStep := routeRegistryBuildDeps.writeGeneratedTypeScript
-	originalRemoveStageOnePathsArtifactStep := routeRegistryBuildDeps.removeStageOnePathsArtifact
-	t.Cleanup(func() {
-		routeRegistryBuildDeps.writeGeneratedTypeScript = originalWriteGeneratedTypeScriptStep
-		routeRegistryBuildDeps.removeStageOnePathsArtifact = originalRemoveStageOnePathsArtifactStep
-	})
-
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	t.Chdir(fixture.rootDir)
@@ -252,12 +256,16 @@ func TestWriteRouteArtifacts_RePanicsWhenCleanupAfterPanicFails(t *testing.T) {
 	_ = os.Remove(stageOnePathsPath)
 
 	expectedPanic := errors.New("generated ts panic")
-	routeRegistryBuildDeps.writeGeneratedTypeScript = func(*vormaruntime.LockedVorma) error {
-		panic(expectedPanic)
-	}
-	routeRegistryBuildDeps.removeStageOnePathsArtifact = func(string) error {
-		return errors.New("cleanup stage-one remove failed")
-	}
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.writeGeneratedTypeScript = func(*vormaruntime.LockedVorma) error {
+				panic(expectedPanic)
+			}
+			dependencies.removeStageOnePathsArtifact = func(string) error {
+				return errors.New("cleanup stage-one remove failed")
+			}
+		},
+	)
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetPaths(map[string]*vormaruntime.Path{
@@ -284,7 +292,7 @@ func TestWriteRouteArtifacts_RePanicsWhenCleanupAfterPanicFails(t *testing.T) {
 	}()
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
-		_ = writeRouteArtifacts(l)
+		_ = routeRegistryBuildExecutor.writeRouteArtifacts(l)
 	})
 }
 
@@ -467,7 +475,7 @@ func TestWriteRouteArtifacts_PreservesCommittedRouteManifestWhenFilenameIsUnchan
 	app := fixture.app
 	t.Chdir(fixture.rootDir)
 
-	manifestJSON, err := routeRegistryBuildDeps.marshalRouteManifestJSON(map[string]int{
+	manifestJSON, err := json.Marshal(map[string]int{
 		"/": 0,
 	})
 	if err != nil {
@@ -503,17 +511,16 @@ func TestWriteRouteArtifacts_PreservesCommittedRouteManifestWhenFilenameIsUnchan
 }
 
 func TestWriteRouteArtifacts_JoinsManifestCleanupErrorWithDownstreamWriteError(t *testing.T) {
-	originalRemoveRouteManifestJSONStep := routeRegistryBuildDeps.removeRouteManifestJSON
-	t.Cleanup(func() {
-		routeRegistryBuildDeps.removeRouteManifestJSON = originalRemoveRouteManifestJSONStep
-	})
-
 	cleanupErr := errors.New("cleanup failed")
 	cleanupCalled := false
-	routeRegistryBuildDeps.removeRouteManifestJSON = func(string) error {
-		cleanupCalled = true
-		return cleanupErr
-	}
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.removeRouteManifestJSON = func(string) error {
+				cleanupCalled = true
+				return cleanupErr
+			}
+		},
+	)
 
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
@@ -534,7 +541,7 @@ func TestWriteRouteArtifacts_JoinsManifestCleanupErrorWithDownstreamWriteError(t
 				ExportKey:       "default",
 			},
 		})
-		gotErr = writeRouteArtifacts(l)
+		gotErr = routeRegistryBuildExecutor.writeRouteArtifacts(l)
 	})
 
 	if gotErr == nil {
@@ -631,15 +638,14 @@ func TestWriteRouteArtifacts_RemovesStageOnePathsArtifactWhenNoPreviousSnapshot(
 }
 
 func TestWriteRouteArtifacts_JoinsStageOnePathsCleanupErrorWithDownstreamWriteError(t *testing.T) {
-	originalWriteStageOnePathsArtifactStep := routeRegistryBuildDeps.writeStageOnePathsArtifact
-	t.Cleanup(func() {
-		routeRegistryBuildDeps.writeStageOnePathsArtifact = originalWriteStageOnePathsArtifactStep
-	})
-
 	cleanupErr := errors.New("restore stage-one paths failed")
-	routeRegistryBuildDeps.writeStageOnePathsArtifact = func(string, []byte, os.FileMode) error {
-		return cleanupErr
-	}
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.writeStageOnePathsArtifact = func(string, []byte, os.FileMode) error {
+				return cleanupErr
+			}
+		},
+	)
 
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
@@ -660,7 +666,7 @@ func TestWriteRouteArtifacts_JoinsStageOnePathsCleanupErrorWithDownstreamWriteEr
 				ExportKey:       "default",
 			},
 		})
-		gotErr = writeRouteArtifacts(l)
+		gotErr = routeRegistryBuildExecutor.writeRouteArtifacts(l)
 	})
 
 	if gotErr == nil {
@@ -745,15 +751,14 @@ func listGeneratedRouteManifestFiles(t *testing.T, staticPublicOutDir string) []
 }
 
 func TestWriteRouteArtifacts_ReturnsSnapshotErrorWhenStageOneSnapshotReadFails(t *testing.T) {
-	originalReadStageOnePathsArtifactStep := routeRegistryBuildDeps.readStageOnePathsArtifact
-	t.Cleanup(func() {
-		routeRegistryBuildDeps.readStageOnePathsArtifact = originalReadStageOnePathsArtifactStep
-	})
-
 	snapshotErr := errors.New("snapshot read failed")
-	routeRegistryBuildDeps.readStageOnePathsArtifact = func(string) ([]byte, error) {
-		return nil, snapshotErr
-	}
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.readStageOnePathsArtifact = func(string) ([]byte, error) {
+				return nil, snapshotErr
+			}
+		},
+	)
 
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
@@ -768,7 +773,7 @@ func TestWriteRouteArtifacts_ReturnsSnapshotErrorWhenStageOneSnapshotReadFails(t
 				ExportKey:       "default",
 			},
 		})
-		gotErr = writeRouteArtifacts(l)
+		gotErr = routeRegistryBuildExecutor.writeRouteArtifacts(l)
 	})
 
 	if gotErr == nil {
@@ -784,16 +789,15 @@ func TestWriteRouteArtifacts_ReturnsSnapshotErrorWhenStageOneSnapshotReadFails(t
 
 func TestCaptureStageOnePathsArtifactSnapshot(t *testing.T) {
 	t.Run("returns non-existent snapshot for ENOTDIR errors", func(t *testing.T) {
-		originalReadStageOnePathsArtifactStep := routeRegistryBuildDeps.readStageOnePathsArtifact
-		t.Cleanup(func() {
-			routeRegistryBuildDeps.readStageOnePathsArtifact = originalReadStageOnePathsArtifactStep
-		})
+		routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+			func(dependencies *routeRegistryBuildDependencies) {
+				dependencies.readStageOnePathsArtifact = func(string) ([]byte, error) {
+					return nil, syscall.ENOTDIR
+				}
+			},
+		)
 
-		routeRegistryBuildDeps.readStageOnePathsArtifact = func(string) ([]byte, error) {
-			return nil, syscall.ENOTDIR
-		}
-
-		snapshot, err := captureStageOnePathsArtifactSnapshot("ignored")
+		snapshot, err := routeRegistryBuildExecutor.captureStageOnePathsArtifactSnapshot("ignored")
 		if err != nil {
 			t.Fatalf("captureStageOnePathsArtifactSnapshot returned error: %v", err)
 		}
@@ -806,17 +810,16 @@ func TestCaptureStageOnePathsArtifactSnapshot(t *testing.T) {
 	})
 
 	t.Run("returns error for non-ENOENT/ENOTDIR failures", func(t *testing.T) {
-		originalReadStageOnePathsArtifactStep := routeRegistryBuildDeps.readStageOnePathsArtifact
-		t.Cleanup(func() {
-			routeRegistryBuildDeps.readStageOnePathsArtifact = originalReadStageOnePathsArtifactStep
-		})
-
 		readErr := errors.New("read failed")
-		routeRegistryBuildDeps.readStageOnePathsArtifact = func(string) ([]byte, error) {
-			return nil, readErr
-		}
+		routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+			func(dependencies *routeRegistryBuildDependencies) {
+				dependencies.readStageOnePathsArtifact = func(string) ([]byte, error) {
+					return nil, readErr
+				}
+			},
+		)
 
-		_, err := captureStageOnePathsArtifactSnapshot("ignored")
+		_, err := routeRegistryBuildExecutor.captureStageOnePathsArtifactSnapshot("ignored")
 		if err == nil {
 			t.Fatal("expected captureStageOnePathsArtifactSnapshot to return error")
 		}
@@ -828,37 +831,34 @@ func TestCaptureStageOnePathsArtifactSnapshot(t *testing.T) {
 
 func TestRestoreStageOnePathsArtifactFromSnapshot(t *testing.T) {
 	t.Run("restores existing snapshot using stage-one writer and build artifact mode", func(t *testing.T) {
-		originalWriteStageOnePathsArtifactStep := routeRegistryBuildDeps.writeStageOnePathsArtifact
-		originalRemoveStageOnePathsArtifactStep := routeRegistryBuildDeps.removeStageOnePathsArtifact
-		t.Cleanup(func() {
-			routeRegistryBuildDeps.writeStageOnePathsArtifact = originalWriteStageOnePathsArtifactStep
-			routeRegistryBuildDeps.removeStageOnePathsArtifact = originalRemoveStageOnePathsArtifactStep
-		})
-
 		var writeCalled bool
-		routeRegistryBuildDeps.writeStageOnePathsArtifact = func(
-			path string,
-			content []byte,
-			fileMode os.FileMode,
-		) error {
-			writeCalled = true
-			if path != "stage-one-path.json" {
-				t.Fatalf("restore write path = %q, want %q", path, "stage-one-path.json")
-			}
-			if string(content) != "snapshot-content" {
-				t.Fatalf("restore write content = %q, want %q", string(content), "snapshot-content")
-			}
-			if fileMode != os.FileMode(buildArtifactFileMode) {
-				t.Fatalf("restore write mode = %v, want %v", fileMode, buildArtifactFileMode)
-			}
-			return nil
-		}
-		routeRegistryBuildDeps.removeStageOnePathsArtifact = func(string) error {
-			t.Fatal("did not expect removal when snapshot exists")
-			return nil
-		}
+		routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+			func(dependencies *routeRegistryBuildDependencies) {
+				dependencies.writeStageOnePathsArtifact = func(
+					path string,
+					content []byte,
+					fileMode os.FileMode,
+				) error {
+					writeCalled = true
+					if path != "stage-one-path.json" {
+						t.Fatalf("restore write path = %q, want %q", path, "stage-one-path.json")
+					}
+					if string(content) != "snapshot-content" {
+						t.Fatalf("restore write content = %q, want %q", string(content), "snapshot-content")
+					}
+					if fileMode != os.FileMode(buildArtifactFileMode) {
+						t.Fatalf("restore write mode = %v, want %v", fileMode, buildArtifactFileMode)
+					}
+					return nil
+				}
+				dependencies.removeStageOnePathsArtifact = func(string) error {
+					t.Fatal("did not expect removal when snapshot exists")
+					return nil
+				}
+			},
+		)
 
-		err := restoreStageOnePathsArtifactFromSnapshot(
+		err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromSnapshot(
 			"stage-one-path.json",
 			stageOnePathsArtifactSnapshot{existed: true, content: []byte("snapshot-content")},
 		)
@@ -871,32 +871,36 @@ func TestRestoreStageOnePathsArtifactFromSnapshot(t *testing.T) {
 	})
 
 	t.Run("ignores ENOTDIR when removing non-existent snapshot artifact", func(t *testing.T) {
-		originalRemoveStageOnePathsArtifactStep := routeRegistryBuildDeps.removeStageOnePathsArtifact
-		t.Cleanup(func() {
-			routeRegistryBuildDeps.removeStageOnePathsArtifact = originalRemoveStageOnePathsArtifactStep
-		})
+		routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+			func(dependencies *routeRegistryBuildDependencies) {
+				dependencies.removeStageOnePathsArtifact = func(string) error {
+					return syscall.ENOTDIR
+				}
+			},
+		)
 
-		routeRegistryBuildDeps.removeStageOnePathsArtifact = func(string) error {
-			return syscall.ENOTDIR
-		}
-
-		if err := restoreStageOnePathsArtifactFromSnapshot("ignored", stageOnePathsArtifactSnapshot{}); err != nil {
+		if err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromSnapshot(
+			"ignored",
+			stageOnePathsArtifactSnapshot{},
+		); err != nil {
 			t.Fatalf("restoreStageOnePathsArtifactFromSnapshot returned error: %v", err)
 		}
 	})
 
 	t.Run("returns removal error for non-ENOENT/ENOTDIR failures", func(t *testing.T) {
-		originalRemoveStageOnePathsArtifactStep := routeRegistryBuildDeps.removeStageOnePathsArtifact
-		t.Cleanup(func() {
-			routeRegistryBuildDeps.removeStageOnePathsArtifact = originalRemoveStageOnePathsArtifactStep
-		})
-
 		removeErr := errors.New("remove failed")
-		routeRegistryBuildDeps.removeStageOnePathsArtifact = func(string) error {
-			return removeErr
-		}
+		routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+			func(dependencies *routeRegistryBuildDependencies) {
+				dependencies.removeStageOnePathsArtifact = func(string) error {
+					return removeErr
+				}
+			},
+		)
 
-		err := restoreStageOnePathsArtifactFromSnapshot("ignored", stageOnePathsArtifactSnapshot{})
+		err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromSnapshot(
+			"ignored",
+			stageOnePathsArtifactSnapshot{},
+		)
 		if err == nil {
 			t.Fatal("expected restoreStageOnePathsArtifactFromSnapshot to return remove error")
 		}
@@ -904,4 +908,385 @@ func TestRestoreStageOnePathsArtifactFromSnapshot(t *testing.T) {
 			t.Fatalf("error = %v, expected wrapped remove error", err)
 		}
 	})
+}
+
+func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_RunsHeavyArtifactStepsOutsideRuntimeWriteLock(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	t.Chdir(fixture.rootDir)
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("captured-build-id")
+		l.SetRouteManifestFile("manifest-before-success.json")
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/home.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.writeStageOnePathsJSONForRuntimeState = func(
+				v *vormaruntime.Vorma,
+				runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+				routeManifestFile string,
+			) error {
+				if runtimeStateSnapshot.buildID != "captured-build-id" {
+					t.Fatalf(
+						"runtime snapshot build ID = %q, want %q",
+						runtimeStateSnapshot.buildID,
+						"captured-build-id",
+					)
+				}
+				if routeManifestFile == "" {
+					t.Fatal("expected non-empty route manifest file during stage-one write")
+				}
+				assertRuntimeWriteLockCanBeAcquiredPromptly(
+					t,
+					v,
+					"writeStageOnePathsJSONForRuntimeState",
+				)
+				return nil
+			}
+			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
+				v *vormaruntime.Vorma,
+				runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+			) error {
+				if runtimeStateSnapshot.buildID != "captured-build-id" {
+					t.Fatalf(
+						"runtime snapshot build ID = %q, want %q",
+						runtimeStateSnapshot.buildID,
+						"captured-build-id",
+					)
+				}
+				assertRuntimeWriteLockCanBeAcquiredPromptly(
+					t,
+					v,
+					"writeGeneratedTypeScriptForRuntimeState",
+				)
+				return nil
+			}
+		},
+	)
+
+	if err := routeRegistryBuildExecutor.writeRouteArtifactsWithoutHoldingRuntimeLock(app); err != nil {
+		t.Fatalf("writeRouteArtifactsWithoutHoldingRuntimeLock returned error: %v", err)
+	}
+
+	if got := app.GetRouteManifestFile(); got == "" {
+		t.Fatal("expected committed route manifest file after successful write")
+	}
+}
+
+func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_DoesNotCommitRouteManifestFileWhenGeneratedTypeScriptWriteFails(t *testing.T) {
+	expectedErr := errors.New("generated TS failed")
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.writeStageOnePathsJSONForRuntimeState = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+				string,
+			) error {
+				return nil
+			}
+			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+			) error {
+				return expectedErr
+			}
+		},
+	)
+
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	t.Chdir(fixture.rootDir)
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetRouteManifestFile("manifest-before-failure.json")
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/home.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	gotErr := routeRegistryBuildExecutor.writeRouteArtifactsWithoutHoldingRuntimeLock(app)
+	if gotErr == nil {
+		t.Fatal("expected writeRouteArtifactsWithoutHoldingRuntimeLock to return an error")
+	}
+	if !strings.Contains(gotErr.Error(), "write generated TypeScript") {
+		t.Fatalf("error = %q, expected generated TypeScript write context", gotErr)
+	}
+	if !errors.Is(gotErr, expectedErr) {
+		t.Fatalf("error = %v, expected wrapped generated TypeScript error", gotErr)
+	}
+	if got := app.GetRouteManifestFile(); got != "manifest-before-failure.json" {
+		t.Fatalf(
+			"routeManifestFile = %q, want unchanged %q",
+			got,
+			"manifest-before-failure.json",
+		)
+	}
+
+	manifestFiles := listGeneratedRouteManifestFiles(t, fixture.publicDir)
+	if len(manifestFiles) != 0 {
+		t.Fatalf("expected no generated route manifest artifacts after failed downstream write, got %#v", manifestFiles)
+	}
+}
+
+func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_UsesSingleCapturedRuntimeSnapshotAcrossArtifactSteps(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	t.Chdir(fixture.rootDir)
+
+	initialPaths := map[string]*vormaruntime.Path{
+		"/stable": {
+			OriginalPattern: "/stable",
+			SrcPath:         "frontend/src/routes/stable.tsx",
+			ExportKey:       "default",
+		},
+	}
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("build-before-mutation")
+		l.SetPaths(initialPaths)
+	})
+
+	var snapshotSeenByStageOne routeBuildRuntimeStateSnapshot
+	var snapshotSeenByGeneratedTS routeBuildRuntimeStateSnapshot
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.writeStageOnePathsJSONForRuntimeState = func(
+				_ *vormaruntime.Vorma,
+				runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+				_ string,
+			) error {
+				snapshotSeenByStageOne = runtimeStateSnapshot
+				return nil
+			}
+			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
+				v *vormaruntime.Vorma,
+				runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+			) error {
+				snapshotSeenByGeneratedTS = runtimeStateSnapshot
+				v.WithLock(func(l *vormaruntime.LockedVorma) {
+					l.SetBuildID("build-after-mutation")
+					l.SetPaths(map[string]*vormaruntime.Path{
+						"/mutated": {
+							OriginalPattern: "/mutated",
+							SrcPath:         "frontend/src/routes/mutated.tsx",
+							ExportKey:       "default",
+						},
+					})
+				})
+				return nil
+			}
+		},
+	)
+
+	if err := routeRegistryBuildExecutor.writeRouteArtifactsWithoutHoldingRuntimeLock(app); err != nil {
+		t.Fatalf("writeRouteArtifactsWithoutHoldingRuntimeLock returned error: %v", err)
+	}
+
+	if snapshotSeenByStageOne.buildID != "build-before-mutation" {
+		t.Fatalf(
+			"stage-one snapshot build ID = %q, want %q",
+			snapshotSeenByStageOne.buildID,
+			"build-before-mutation",
+		)
+	}
+	if snapshotSeenByGeneratedTS.buildID != "build-before-mutation" {
+		t.Fatalf(
+			"generated TS snapshot build ID = %q, want %q",
+			snapshotSeenByGeneratedTS.buildID,
+			"build-before-mutation",
+		)
+	}
+	if !routeBuildRuntimePathsMapMatches(snapshotSeenByGeneratedTS.paths, initialPaths) {
+		t.Fatalf(
+			"generated TS snapshot paths = %#v, want stable initial paths %#v",
+			snapshotSeenByGeneratedTS.paths,
+			initialPaths,
+		)
+	}
+}
+
+func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_StopsBeforeWritingArtifactsWhenSnapshotIsStale(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	t.Chdir(fixture.rootDir)
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("stale-build-id")
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/home.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.isRouteBuildRuntimeStateSnapshotCurrent = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+			) bool {
+				return false
+			}
+			dependencies.writeStageOnePathsJSONForRuntimeState = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+				string,
+			) error {
+				t.Fatal("did not expect stage-one write when runtime snapshot is stale")
+				return nil
+			}
+			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+			) error {
+				t.Fatal("did not expect TypeScript write when runtime snapshot is stale")
+				return nil
+			}
+			dependencies.commitRouteManifestFileWithRuntimeLock = func(
+				*vormaruntime.Vorma,
+				routeManifestCommitInput,
+			) bool {
+				t.Fatal("did not expect route manifest commit when runtime snapshot is stale")
+				return false
+			}
+		},
+	)
+
+	if err := routeRegistryBuildExecutor.writeRouteArtifactsWithoutHoldingRuntimeLock(app); err != nil {
+		t.Fatalf("writeRouteArtifactsWithoutHoldingRuntimeLock returned error: %v", err)
+	}
+}
+
+func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_SkipsRollbackCleanupWhenRuntimeStateBecomesStaleAfterStageOneWrite(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	t.Chdir(fixture.rootDir)
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("build-before-staleness")
+		l.SetRouteManifestFile("manifest-before-staleness.json")
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/home.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	stalenessCheckCount := 0
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.isRouteBuildRuntimeStateSnapshotCurrent = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+			) bool {
+				stalenessCheckCount++
+				return stalenessCheckCount == 1
+			}
+			dependencies.writeStageOnePathsJSONForRuntimeState = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+				string,
+			) error {
+				return nil
+			}
+			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+			) error {
+				t.Fatal("did not expect TypeScript write after runtime snapshot became stale")
+				return nil
+			}
+			dependencies.removeRouteManifestJSON = func(string) error {
+				t.Fatal("did not expect manifest cleanup when stale guard skips rollback")
+				return nil
+			}
+			dependencies.writeStageOnePathsArtifact = func(string, []byte, os.FileMode) error {
+				t.Fatal("did not expect stage-one restore when stale guard skips rollback")
+				return nil
+			}
+			dependencies.removeStageOnePathsArtifact = func(string) error {
+				t.Fatal("did not expect stage-one remove when stale guard skips rollback")
+				return nil
+			}
+			dependencies.commitRouteManifestFileWithRuntimeLock = func(
+				*vormaruntime.Vorma,
+				routeManifestCommitInput,
+			) bool {
+				t.Fatal("did not expect route manifest commit after stale guard")
+				return false
+			}
+		},
+	)
+
+	if err := routeRegistryBuildExecutor.writeRouteArtifactsWithoutHoldingRuntimeLock(app); err != nil {
+		t.Fatalf("writeRouteArtifactsWithoutHoldingRuntimeLock returned error: %v", err)
+	}
+}
+
+func TestRouteBuildRuntimeStateSnapshotIsCurrent(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("build-snapshot")
+	})
+
+	if !routeBuildRuntimeStateSnapshotIsCurrent(
+		app,
+		routeBuildRuntimeStateSnapshot{buildID: "build-snapshot"},
+	) {
+		t.Fatal("expected runtime snapshot to be current when build IDs match")
+	}
+	if routeBuildRuntimeStateSnapshotIsCurrent(
+		app,
+		routeBuildRuntimeStateSnapshot{buildID: "different-build"},
+	) {
+		t.Fatal("expected runtime snapshot to be stale when build IDs differ")
+	}
+}
+
+func TestShouldCommitRouteManifestFileForRuntimeState(t *testing.T) {
+	if !shouldCommitRouteManifestFileForRuntimeState("build-id", "build-id") {
+		t.Fatal("expected manifest commit when build IDs match")
+	}
+	if shouldCommitRouteManifestFileForRuntimeState("build-id-current", "build-id-expected") {
+		t.Fatal("expected manifest commit to be rejected when build IDs differ")
+	}
+}
+
+func assertRuntimeWriteLockCanBeAcquiredPromptly(
+	t *testing.T,
+	v *vormaruntime.Vorma,
+	stepName string,
+) {
+	t.Helper()
+
+	lockAcquired := make(chan struct{})
+	go func() {
+		v.WithLock(func(*vormaruntime.LockedVorma) {})
+		close(lockAcquired)
+	}()
+
+	select {
+	case <-lockAcquired:
+		return
+	case <-time.After(time.Second):
+		t.Fatalf("%s appears to run while runtime write lock is held", stepName)
+	}
 }

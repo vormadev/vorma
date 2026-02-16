@@ -996,14 +996,16 @@ func stringLiteralExpr(value string) *js.LiteralExpr {
 
 func TestResolveRouteModulePath(t *testing.T) {
 	t.Run("falls back to original module path when relative path resolution fails", func(t *testing.T) {
-		originalComputeRelativeModulePath := routeModuleResolutionDeps.computeRelativeModulePath
-		t.Cleanup(func() {
-			routeModuleResolutionDeps.computeRelativeModulePath = originalComputeRelativeModulePath
-		})
-
-		routeModuleResolutionDeps.computeRelativeModulePath = func(basePath string, targetPath string) (string, error) {
-			return "", errors.New("cannot resolve relative path")
-		}
+		executor := newRouteParsingExecutorForTest(
+			func(dependencies *routeParsingExecutorDependencies) {
+				dependencies.routeModuleResolutionDependencies.computeRelativeModulePath = func(
+					basePath string,
+					targetPath string,
+				) (string, error) {
+					return "", errors.New("cannot resolve relative path")
+				}
+			},
+		)
 
 		v := &vormaruntime.Vorma{
 			Config: &vormaruntime.VormaConfig{
@@ -1018,7 +1020,7 @@ func TestResolveRouteModulePath(t *testing.T) {
 			Module:  "./routes/users.tsx",
 		}
 
-		resolvedPath := resolveRouteModulePath(v, "frontend/src/vorma.routes.ts", routeCall)
+		resolvedPath := executor.resolveRouteModulePath(v, "frontend/src/vorma.routes.ts", routeCall)
 		if resolvedPath != "./routes/users.tsx" {
 			t.Fatalf("resolved path = %q, want fallback module path %q", resolvedPath, "./routes/users.tsx")
 		}
@@ -1027,16 +1029,17 @@ func TestResolveRouteModulePath(t *testing.T) {
 
 func TestEnsureRouteModuleExists(t *testing.T) {
 	t.Run("returns missing-module error when stat reports not-exist", func(t *testing.T) {
-		originalStatRouteModulePath := routeModuleResolutionDeps.statRouteModulePath
-		t.Cleanup(func() {
-			routeModuleResolutionDeps.statRouteModulePath = originalStatRouteModulePath
-		})
+		executor := newRouteParsingExecutorForTest(
+			func(dependencies *routeParsingExecutorDependencies) {
+				dependencies.routeModuleResolutionDependencies.statRouteModulePath = func(
+					path string,
+				) (fs.FileInfo, error) {
+					return nil, fs.ErrNotExist
+				}
+			},
+		)
 
-		routeModuleResolutionDeps.statRouteModulePath = func(path string) (fs.FileInfo, error) {
-			return nil, fs.ErrNotExist
-		}
-
-		err := ensureRouteModuleExists("frontend/src/routes/missing.tsx", "/missing")
+		err := executor.ensureRouteModuleExists("frontend/src/routes/missing.tsx", "/missing")
 		if err == nil {
 			t.Fatal("expected ensureRouteModuleExists to return missing-module error")
 		}
@@ -1046,17 +1049,18 @@ func TestEnsureRouteModuleExists(t *testing.T) {
 	})
 
 	t.Run("returns wrapped access error when stat fails for other reasons", func(t *testing.T) {
-		originalStatRouteModulePath := routeModuleResolutionDeps.statRouteModulePath
-		t.Cleanup(func() {
-			routeModuleResolutionDeps.statRouteModulePath = originalStatRouteModulePath
-		})
-
 		expectedErr := fs.ErrPermission
-		routeModuleResolutionDeps.statRouteModulePath = func(path string) (fs.FileInfo, error) {
-			return nil, expectedErr
-		}
+		executor := newRouteParsingExecutorForTest(
+			func(dependencies *routeParsingExecutorDependencies) {
+				dependencies.routeModuleResolutionDependencies.statRouteModulePath = func(
+					path string,
+				) (fs.FileInfo, error) {
+					return nil, expectedErr
+				}
+			},
+		)
 
-		err := ensureRouteModuleExists("frontend/src/routes/secret.tsx", "/secret")
+		err := executor.ensureRouteModuleExists("frontend/src/routes/secret.tsx", "/secret")
 		if err == nil {
 			t.Fatal("expected ensureRouteModuleExists to return access error")
 		}

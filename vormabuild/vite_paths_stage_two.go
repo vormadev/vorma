@@ -16,22 +16,55 @@ type stageTwoPathsWriteDependencies struct {
 	writeStageTwoPathsJSON   func(*vormaruntime.Vorma, []byte) error
 }
 
-var stageTwoPathsWriteDeps = stageTwoPathsWriteDependencies{
-	marshalStageTwoPathsFile: func(pathsFile *vormaruntime.PathsFile) ([]byte, error) {
-		return json.MarshalIndent(pathsFile, "", "\t")
-	},
-	writeStageTwoPathsJSON: func(v *vormaruntime.Vorma, pathsAsJSON []byte) error {
-		return writePathsJSONBytesToOutputPath(
-			pathsOutputPath(v, vormaruntime.VormaPathsStageTwoJSONFileName),
-			pathsAsJSON,
-			pathsJSONWriteDependencies{
-				makePathsOutputDirectory: os.MkdirAll,
-				writePathsJSON:           writeFileAtomically,
-			},
-			"create stage-two paths output directory",
-			"write stage-two paths JSON",
-		)
-	},
+type stageTwoPathsWriteExecutor struct {
+	dependencies stageTwoPathsWriteDependencies
+}
+
+var defaultStageTwoPathsWriteExecutor = newStageTwoPathsWriteExecutor(
+	stageTwoPathsWriteDependencies{},
+)
+
+func defaultStageTwoPathsWriteDependencies() stageTwoPathsWriteDependencies {
+	return stageTwoPathsWriteDependencies{
+		marshalStageTwoPathsFile: func(pathsFile *vormaruntime.PathsFile) ([]byte, error) {
+			return json.MarshalIndent(pathsFile, "", "\t")
+		},
+		writeStageTwoPathsJSON: func(v *vormaruntime.Vorma, pathsAsJSON []byte) error {
+			return writePathsJSONBytesToOutputPath(
+				pathsOutputPath(v, vormaruntime.VormaPathsStageTwoJSONFileName),
+				pathsAsJSON,
+				pathsJSONWriteDependencies{
+					makePathsOutputDirectory: os.MkdirAll,
+					writePathsJSON:           writeFileAtomically,
+				},
+				"create stage-two paths output directory",
+				"write stage-two paths JSON",
+			)
+		},
+	}
+}
+
+func normalizeStageTwoPathsWriteDependencies(
+	dependencies stageTwoPathsWriteDependencies,
+) stageTwoPathsWriteDependencies {
+	defaultDependencies := defaultStageTwoPathsWriteDependencies()
+
+	if dependencies.marshalStageTwoPathsFile == nil {
+		dependencies.marshalStageTwoPathsFile = defaultDependencies.marshalStageTwoPathsFile
+	}
+	if dependencies.writeStageTwoPathsJSON == nil {
+		dependencies.writeStageTwoPathsJSON = defaultDependencies.writeStageTwoPathsJSON
+	}
+
+	return dependencies
+}
+
+func newStageTwoPathsWriteExecutor(
+	dependencies stageTwoPathsWriteDependencies,
+) stageTwoPathsWriteExecutor {
+	return stageTwoPathsWriteExecutor{
+		dependencies: normalizeStageTwoPathsWriteDependencies(dependencies),
+	}
 }
 
 func toPathsFileStageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error) {
@@ -71,12 +104,19 @@ func toPathsFileStageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error)
 }
 
 func writePathsToDiskStageTwo(v *vormaruntime.Vorma, pathsFile *vormaruntime.PathsFile) error {
-	pathsAsJSON, err := stageTwoPathsWriteDeps.marshalStageTwoPathsFile(pathsFile)
+	return defaultStageTwoPathsWriteExecutor.writePathsToDiskStageTwo(v, pathsFile)
+}
+
+func (executor stageTwoPathsWriteExecutor) writePathsToDiskStageTwo(
+	v *vormaruntime.Vorma,
+	pathsFile *vormaruntime.PathsFile,
+) error {
+	pathsAsJSON, err := executor.dependencies.marshalStageTwoPathsFile(pathsFile)
 	if err != nil {
 		return fmt.Errorf("marshal stage-two paths file: %w", err)
 	}
 
-	if err := stageTwoPathsWriteDeps.writeStageTwoPathsJSON(v, pathsAsJSON); err != nil {
+	if err := executor.dependencies.writeStageTwoPathsJSON(v, pathsAsJSON); err != nil {
 		return fmt.Errorf("write stage-two paths JSON: %w", err)
 	}
 	return nil
@@ -91,9 +131,13 @@ func applyBuildIDToPathsFile(pathsFile *vormaruntime.PathsFile, buildID string) 
 }
 
 func applyBuildIDToVorma(v *vormaruntime.Vorma, buildID string) {
-	v.WithLock(func(l *vormaruntime.LockedVorma) {
-		l.SetBuildID(buildID)
-	})
+	commitRuntimeState(
+		v,
+		runtimeStateCommitInput{
+			shouldCommitBuildID: true,
+			buildID:             buildID,
+		},
+	)
 }
 
 func buildStageTwoPathsFile(

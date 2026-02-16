@@ -29,72 +29,46 @@ func (writer *fakeBuildInnerPublicFileMapWriter) Close() error {
 }
 
 func TestBuildInner(t *testing.T) {
-	restoreBuildInnerSteps := func(t *testing.T) {
-		t.Helper()
-		originalCaptureBuildInnerRuntimeStateStep := buildInnerDeps.captureBuildInnerRuntimeState
-		originalRestoreBuildInnerRuntimeStateStep := buildInnerDeps.restoreBuildInnerRuntimeState
-		originalInitializeBuildInnerStateStep := buildInnerDeps.initializeBuildInnerState
-		originalParseAndSyncClientRoutesStep := buildInnerDeps.parseAndSyncClientRoutes
-		originalCleanStaticPublicOutDirStep := buildInnerDeps.cleanStaticPublicOutDir
-		originalWritePublicFileMapTypeScriptStep := buildInnerDeps.writePublicFileMapTypeScript
-		originalWriteRouteArtifactsWithLockStep := buildInnerDeps.writeRouteArtifactsWithLock
-		originalLogBuildInnerCompletionStep := buildInnerDeps.logBuildInnerCompletion
-		originalParseClientRoutesForSync := buildInnerRouteSyncDeps.parseClientRoutes
-		originalParseBackendLoaderPatternsForSync := buildInnerRouteSyncDeps.parseBackendLoaderPatterns
-		originalMergeBackendLoaderPatternsInPathForSync := buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath
-		originalRunRouteSyncExecution := buildInnerRouteSyncDeps.runRouteSyncExecution
-		originalGenerateDevBuildIDSuffixStep := buildInnerBuildIDDeps.generateDevBuildIDSuffix
-		originalNewPublicFileMapWriterStep := buildInnerPublicFileMapDeps.newPublicFileMapWriter
-		t.Cleanup(func() {
-			buildInnerDeps.captureBuildInnerRuntimeState = originalCaptureBuildInnerRuntimeStateStep
-			buildInnerDeps.restoreBuildInnerRuntimeState = originalRestoreBuildInnerRuntimeStateStep
-			buildInnerDeps.initializeBuildInnerState = originalInitializeBuildInnerStateStep
-			buildInnerDeps.parseAndSyncClientRoutes = originalParseAndSyncClientRoutesStep
-			buildInnerDeps.cleanStaticPublicOutDir = originalCleanStaticPublicOutDirStep
-			buildInnerDeps.writePublicFileMapTypeScript = originalWritePublicFileMapTypeScriptStep
-			buildInnerDeps.writeRouteArtifactsWithLock = originalWriteRouteArtifactsWithLockStep
-			buildInnerDeps.logBuildInnerCompletion = originalLogBuildInnerCompletionStep
-			buildInnerRouteSyncDeps.parseClientRoutes = originalParseClientRoutesForSync
-			buildInnerRouteSyncDeps.parseBackendLoaderPatterns = originalParseBackendLoaderPatternsForSync
-			buildInnerRouteSyncDeps.mergeBackendLoaderPatternsInPath = originalMergeBackendLoaderPatternsInPathForSync
-			buildInnerRouteSyncDeps.runRouteSyncExecution = originalRunRouteSyncExecution
-			buildInnerBuildIDDeps.generateDevBuildIDSuffix = originalGenerateDevBuildIDSuffixStep
-			buildInnerPublicFileMapDeps.newPublicFileMapWriter = originalNewPublicFileMapWriterStep
-		})
+	defaultDependencies := defaultBuildInnerDependencies()
+	newDependencies := func() buildInnerDependencies {
+		return defaultDependencies
 	}
 
 	t.Run("runs all build steps in order", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
 		var observedStepOrder []string
-		buildInnerDeps.initializeBuildInnerState = func(_ *vormaruntime.Vorma, options *buildInnerOptions) error {
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(_ *vormaruntime.Vorma, options *buildInnerOptions) error {
 			if !options.isDev {
 				t.Fatal("expected buildInner options to preserve isDev value")
 			}
 			observedStepOrder = append(observedStepOrder, "initialize")
 			return nil
 		}
-		buildInnerDeps.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
+		dependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
 			observedStepOrder = append(observedStepOrder, "parse-and-sync")
 			return nil
 		}
-		buildInnerDeps.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+		dependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
 			observedStepOrder = append(observedStepOrder, "clean-public")
 			return nil
 		}
-		buildInnerDeps.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
+		dependencies.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
 			observedStepOrder = append(observedStepOrder, "write-file-map-ts")
 			return nil
 		}
-		buildInnerDeps.writeRouteArtifactsWithLock = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			observedStepOrder = append(observedStepOrder, "write-route-artifacts")
 			return nil
 		}
-		buildInnerDeps.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
+		dependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
 			observedStepOrder = append(observedStepOrder, "log-completion")
 		}
 
-		err := buildInner(&vormaruntime.Vorma{}, &buildInnerOptions{isDev: true})
+		err := buildInnerWithDependencies(
+			&vormaruntime.Vorma{},
+			&buildInnerOptions{isDev: true},
+			dependencies,
+		)
 		if err != nil {
 			t.Fatalf("buildInner returned error: %v", err)
 		}
@@ -118,10 +92,9 @@ func TestBuildInner(t *testing.T) {
 	})
 
 	t.Run("defaults to non-dev mode when options are nil", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
 		initializeCalled := false
-		buildInnerDeps.initializeBuildInnerState = func(_ *vormaruntime.Vorma, options *buildInnerOptions) error {
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(_ *vormaruntime.Vorma, options *buildInnerOptions) error {
 			initializeCalled = true
 			if options == nil {
 				t.Fatal("expected buildInner to normalize nil options")
@@ -131,13 +104,13 @@ func TestBuildInner(t *testing.T) {
 			}
 			return nil
 		}
-		buildInnerDeps.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error { return nil }
-		buildInnerDeps.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error { return nil }
-		buildInnerDeps.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error { return nil }
-		buildInnerDeps.writeRouteArtifactsWithLock = func(*vormaruntime.Vorma) error { return nil }
-		buildInnerDeps.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {}
+		dependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error { return nil }
+		dependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error { return nil }
+		dependencies.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error { return nil }
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error { return nil }
+		dependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {}
 
-		if err := buildInner(&vormaruntime.Vorma{}, nil); err != nil {
+		if err := buildInnerWithDependencies(&vormaruntime.Vorma{}, nil, dependencies); err != nil {
 			t.Fatalf("buildInner returned error with nil options: %v", err)
 		}
 		if !initializeCalled {
@@ -146,8 +119,6 @@ func TestBuildInner(t *testing.T) {
 	})
 
 	t.Run("restores runtime state snapshot when a step fails", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
 		type buildStepFailureCase struct {
 			name              string
 			failingStep       string
@@ -186,8 +157,6 @@ func TestBuildInner(t *testing.T) {
 			failureCase := failureCase
 
 			t.Run(failureCase.name, func(t *testing.T) {
-				restoreBuildInnerSteps(t)
-
 				fixture := newBuildTestFixture(t, nil)
 				app := fixture.app
 
@@ -227,46 +196,51 @@ func TestBuildInner(t *testing.T) {
 				}
 
 				expectedErr := errors.New("step failed")
-				buildInnerDeps.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
+				dependencies := newDependencies()
+				dependencies.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
 					mutateRuntimeStateForBuildInnerFailure(v, "initialize")
 					if failureCase.failingStep == "initialize" {
 						return expectedErr
 					}
 					return nil
 				}
-				buildInnerDeps.parseAndSyncClientRoutes = func(v *vormaruntime.Vorma) error {
+				dependencies.parseAndSyncClientRoutes = func(v *vormaruntime.Vorma) error {
 					mutateRuntimeStateForBuildInnerFailure(v, "parse")
 					if failureCase.failingStep == "parse" {
 						return expectedErr
 					}
 					return nil
 				}
-				buildInnerDeps.cleanStaticPublicOutDir = func(v *vormaruntime.Vorma) error {
+				dependencies.cleanStaticPublicOutDir = func(v *vormaruntime.Vorma) error {
 					mutateRuntimeStateForBuildInnerFailure(v, "clean")
 					if failureCase.failingStep == "clean" {
 						return expectedErr
 					}
 					return nil
 				}
-				buildInnerDeps.writePublicFileMapTypeScript = func(v *vormaruntime.Vorma) error {
+				dependencies.writePublicFileMapTypeScript = func(v *vormaruntime.Vorma) error {
 					mutateRuntimeStateForBuildInnerFailure(v, "write-public-file-map")
 					if failureCase.failingStep == "write-public-file-map" {
 						return expectedErr
 					}
 					return nil
 				}
-				buildInnerDeps.writeRouteArtifactsWithLock = func(v *vormaruntime.Vorma) error {
+				dependencies.writeRouteArtifacts = func(v *vormaruntime.Vorma) error {
 					mutateRuntimeStateForBuildInnerFailure(v, "write-route-artifacts")
 					if failureCase.failingStep == "write-route-artifacts" {
 						return expectedErr
 					}
 					return nil
 				}
-				buildInnerDeps.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
+				dependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
 					t.Fatal("did not expect completion log when buildInner step fails")
 				}
 
-				err := buildInner(app, &buildInnerOptions{isDev: true})
+				err := buildInnerWithDependencies(
+					app,
+					&buildInnerOptions{isDev: true},
+					dependencies,
+				)
 				if err == nil {
 					t.Fatal("expected buildInner to return error")
 				}
@@ -302,8 +276,6 @@ func TestBuildInner(t *testing.T) {
 	})
 
 	t.Run("restores runtime state snapshot then re-panics when a step panics", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
@@ -343,19 +315,20 @@ func TestBuildInner(t *testing.T) {
 		}
 
 		expectedPanic := errors.New("parse panic")
-		buildInnerDeps.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
 			mutateRuntimeStateForBuildInnerPanic(v, "initialize")
 			return nil
 		}
-		buildInnerDeps.parseAndSyncClientRoutes = func(v *vormaruntime.Vorma) error {
+		dependencies.parseAndSyncClientRoutes = func(v *vormaruntime.Vorma) error {
 			mutateRuntimeStateForBuildInnerPanic(v, "parse")
 			panic(expectedPanic)
 		}
-		buildInnerDeps.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+		dependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
 			t.Fatal("did not expect clean step after parse panic")
 			return nil
 		}
-		buildInnerDeps.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
+		dependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
 			t.Fatal("did not expect completion log when buildInner panics")
 		}
 
@@ -394,22 +367,29 @@ func TestBuildInner(t *testing.T) {
 			}
 		}()
 
-		_ = buildInner(app, &buildInnerOptions{isDev: true})
+		_ = buildInnerWithDependencies(
+			app,
+			&buildInnerOptions{isDev: true},
+			dependencies,
+		)
 	})
 
 	t.Run("returns initialization error directly", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
 		expectedErr := errors.New("initialize failed")
-		buildInnerDeps.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
 			return expectedErr
 		}
-		buildInnerDeps.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
-			t.Fatal("did not expect buildInnerDeps.parseAndSyncClientRoutes after initialization error")
+		dependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect dependencies.parseAndSyncClientRoutes after initialization error")
 			return nil
 		}
 
-		err := buildInner(&vormaruntime.Vorma{}, &buildInnerOptions{})
+		err := buildInnerWithDependencies(
+			&vormaruntime.Vorma{},
+			&buildInnerOptions{},
+			dependencies,
+		)
 		if err == nil {
 			t.Fatal("expected initialization error")
 		}
@@ -419,17 +399,20 @@ func TestBuildInner(t *testing.T) {
 	})
 
 	t.Run("wraps parse-and-sync errors", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
-		buildInnerDeps.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
 			return nil
 		}
 		expectedErr := errors.New("parse failed")
-		buildInnerDeps.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
+		dependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 
-		err := buildInner(&vormaruntime.Vorma{}, &buildInnerOptions{})
+		err := buildInnerWithDependencies(
+			&vormaruntime.Vorma{},
+			&buildInnerOptions{},
+			dependencies,
+		)
 		if err == nil {
 			t.Fatal("expected parse-and-sync error")
 		}
@@ -442,20 +425,23 @@ func TestBuildInner(t *testing.T) {
 	})
 
 	t.Run("wraps clean static public out dir errors", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
-		buildInnerDeps.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
 			return nil
 		}
-		buildInnerDeps.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
+		dependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
 			return nil
 		}
 		expectedErr := errors.New("clean failed")
-		buildInnerDeps.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+		dependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 
-		err := buildInner(&vormaruntime.Vorma{}, &buildInnerOptions{})
+		err := buildInnerWithDependencies(
+			&vormaruntime.Vorma{},
+			&buildInnerOptions{},
+			dependencies,
+		)
 		if err == nil {
 			t.Fatal("expected clean-static-public error")
 		}
@@ -468,23 +454,26 @@ func TestBuildInner(t *testing.T) {
 	})
 
 	t.Run("wraps write public file map TS errors", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
-		buildInnerDeps.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
 			return nil
 		}
-		buildInnerDeps.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
+		dependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
 			return nil
 		}
-		buildInnerDeps.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+		dependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
 			return nil
 		}
 		expectedErr := errors.New("write file map failed")
-		buildInnerDeps.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
+		dependencies.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 
-		err := buildInner(&vormaruntime.Vorma{}, &buildInnerOptions{})
+		err := buildInnerWithDependencies(
+			&vormaruntime.Vorma{},
+			&buildInnerOptions{},
+			dependencies,
+		)
 		if err == nil {
 			t.Fatal("expected write-public-file-map-ts error")
 		}
@@ -497,26 +486,29 @@ func TestBuildInner(t *testing.T) {
 	})
 
 	t.Run("wraps write route artifacts errors", func(t *testing.T) {
-		restoreBuildInnerSteps(t)
-
-		buildInnerDeps.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(*vormaruntime.Vorma, *buildInnerOptions) error {
 			return nil
 		}
-		buildInnerDeps.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
+		dependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
 			return nil
 		}
-		buildInnerDeps.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+		dependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
 			return nil
 		}
-		buildInnerDeps.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
+		dependencies.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
 			return nil
 		}
 		expectedErr := errors.New("write route artifacts failed")
-		buildInnerDeps.writeRouteArtifactsWithLock = func(*vormaruntime.Vorma) error {
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
 			return expectedErr
 		}
 
-		err := buildInner(&vormaruntime.Vorma{}, &buildInnerOptions{})
+		err := buildInnerWithDependencies(
+			&vormaruntime.Vorma{},
+			&buildInnerOptions{},
+			dependencies,
+		)
 		if err == nil {
 			t.Fatal("expected write-route-artifacts error")
 		}
@@ -530,24 +522,21 @@ func TestBuildInner(t *testing.T) {
 }
 
 func TestWritePublicFileMapTypeScript(t *testing.T) {
-	originalNewPublicFileMapWriterStep := buildInnerPublicFileMapDeps.newPublicFileMapWriter
-	t.Cleanup(func() {
-		buildInnerPublicFileMapDeps.newPublicFileMapWriter = originalNewPublicFileMapWriterStep
-	})
-
 	t.Run("writes TS into configured output directory", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
 		writer := &fakeBuildInnerPublicFileMapWriter{}
-		buildInnerPublicFileMapDeps.newPublicFileMapWriter = func(v *vormaruntime.Vorma) buildInnerPublicFileMapWriter {
-			if v != app {
-				t.Fatalf("writer received app %p, want %p", v, app)
-			}
-			return writer
+		dependencies := buildInnerPublicFileMapDependencies{
+			newPublicFileMapWriter: func(v *vormaruntime.Vorma) buildInnerPublicFileMapWriter {
+				if v != app {
+					t.Fatalf("writer received app %p, want %p", v, app)
+				}
+				return writer
+			},
 		}
 
-		if err := writePublicFileMapTypeScript(app); err != nil {
+		if err := writePublicFileMapTypeScriptWithDependencies(app, dependencies); err != nil {
 			t.Fatalf("writePublicFileMapTypeScript returned error: %v", err)
 		}
 		if !writer.writeCalled {
@@ -569,11 +558,13 @@ func TestWritePublicFileMapTypeScript(t *testing.T) {
 		writer := &fakeBuildInnerPublicFileMapWriter{
 			writeErr: expectedErr,
 		}
-		buildInnerPublicFileMapDeps.newPublicFileMapWriter = func(*vormaruntime.Vorma) buildInnerPublicFileMapWriter {
-			return writer
+		dependencies := buildInnerPublicFileMapDependencies{
+			newPublicFileMapWriter: func(*vormaruntime.Vorma) buildInnerPublicFileMapWriter {
+				return writer
+			},
 		}
 
-		err := writePublicFileMapTypeScript(app)
+		err := writePublicFileMapTypeScriptWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writePublicFileMapTypeScript to return write error")
 		}
@@ -593,11 +584,13 @@ func TestWritePublicFileMapTypeScript(t *testing.T) {
 		writer := &fakeBuildInnerPublicFileMapWriter{
 			closeErr: expectedErr,
 		}
-		buildInnerPublicFileMapDeps.newPublicFileMapWriter = func(*vormaruntime.Vorma) buildInnerPublicFileMapWriter {
-			return writer
+		dependencies := buildInnerPublicFileMapDependencies{
+			newPublicFileMapWriter: func(*vormaruntime.Vorma) buildInnerPublicFileMapWriter {
+				return writer
+			},
 		}
 
-		err := writePublicFileMapTypeScript(app)
+		err := writePublicFileMapTypeScriptWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writePublicFileMapTypeScript to return close error")
 		}
@@ -619,11 +612,13 @@ func TestWritePublicFileMapTypeScript(t *testing.T) {
 			writeErr: expectedWriteErr,
 			closeErr: expectedCloseErr,
 		}
-		buildInnerPublicFileMapDeps.newPublicFileMapWriter = func(*vormaruntime.Vorma) buildInnerPublicFileMapWriter {
-			return writer
+		dependencies := buildInnerPublicFileMapDependencies{
+			newPublicFileMapWriter: func(*vormaruntime.Vorma) buildInnerPublicFileMapWriter {
+				return writer
+			},
 		}
 
-		err := writePublicFileMapTypeScript(app)
+		err := writePublicFileMapTypeScriptWithDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected writePublicFileMapTypeScript to return joined write+close error")
 		}
@@ -640,20 +635,15 @@ func TestWritePublicFileMapTypeScript(t *testing.T) {
 }
 
 func TestParseAndSyncClientRoutes(t *testing.T) {
-	originalParseClientRoutesForSync := buildInnerRouteSyncDeps.parseClientRoutes
-	originalRunRouteSyncExecution := buildInnerRouteSyncDeps.runRouteSyncExecution
-	t.Cleanup(func() {
-		buildInnerRouteSyncDeps.parseClientRoutes = originalParseClientRoutesForSync
-		buildInnerRouteSyncDeps.runRouteSyncExecution = originalRunRouteSyncExecution
-	})
-
 	t.Run("returns parse error", func(t *testing.T) {
 		expectedErr := errors.New("parse failed")
-		buildInnerRouteSyncDeps.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
-			return nil, expectedErr
+		dependencies := buildInnerRouteSyncDependencies{
+			parseClientRoutes: func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+				return nil, expectedErr
+			},
 		}
 
-		err := parseAndSyncClientRoutes(&vormaruntime.Vorma{})
+		err := parseAndSyncClientRoutesWithDependencies(&vormaruntime.Vorma{}, dependencies)
 		if err == nil {
 			t.Fatal("expected parseAndSyncClientRoutes to return error")
 		}
@@ -666,17 +656,19 @@ func TestParseAndSyncClientRoutes(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		buildInnerRouteSyncDeps.parseClientRoutes = func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
-			return map[string]*vormaruntime.Path{
-				"/synced": {
-					OriginalPattern: "/synced",
-					SrcPath:         "frontend/src/routes/synced.tsx",
-					ExportKey:       "default",
-				},
-			}, nil
+		dependencies := buildInnerRouteSyncDependencies{
+			parseClientRoutes: func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+				return map[string]*vormaruntime.Path{
+					"/synced": {
+						OriginalPattern: "/synced",
+						SrcPath:         "frontend/src/routes/synced.tsx",
+						ExportKey:       "default",
+					},
+				}, nil
+			},
 		}
 
-		if err := parseAndSyncClientRoutes(app); err != nil {
+		if err := parseAndSyncClientRoutesWithDependencies(app, dependencies); err != nil {
 			t.Fatalf("parseAndSyncClientRoutes returned error: %v", err)
 		}
 		if app.GetPathsSnapshot()["/synced"] == nil {
@@ -686,11 +678,6 @@ func TestParseAndSyncClientRoutes(t *testing.T) {
 }
 
 func TestInitializeBuildInnerState(t *testing.T) {
-	originalGenerateDevBuildIDSuffixStep := buildInnerBuildIDDeps.generateDevBuildIDSuffix
-	t.Cleanup(func() {
-		buildInnerBuildIDDeps.generateDevBuildIDSuffix = originalGenerateDevBuildIDSuffixStep
-	})
-
 	t.Run("production mode marks app as non-dev and skips build ID generation", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
@@ -698,12 +685,18 @@ func TestInitializeBuildInnerState(t *testing.T) {
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetBuildID("existing-build-id")
 		})
-		buildInnerBuildIDDeps.generateDevBuildIDSuffix = func() (string, error) {
-			t.Fatal("did not expect dev build ID generation in production mode")
-			return "", nil
+		dependencies := buildInnerBuildIDDependencies{
+			generateDevBuildIDSuffix: func() (string, error) {
+				t.Fatal("did not expect dev build ID generation in production mode")
+				return "", nil
+			},
 		}
 
-		if err := initializeBuildInnerState(app, &buildInnerOptions{isDev: false}); err != nil {
+		if err := initializeBuildInnerStateWithBuildIDDependencies(
+			app,
+			&buildInnerOptions{isDev: false},
+			dependencies,
+		); err != nil {
 			t.Fatalf("initializeBuildInnerState returned error: %v", err)
 		}
 		if app.GetIsDevMode() {
@@ -718,11 +711,17 @@ func TestInitializeBuildInnerState(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		buildInnerBuildIDDeps.generateDevBuildIDSuffix = func() (string, error) {
-			return "stubid", nil
+		dependencies := buildInnerBuildIDDependencies{
+			generateDevBuildIDSuffix: func() (string, error) {
+				return "stubid", nil
+			},
 		}
 
-		if err := initializeBuildInnerState(app, &buildInnerOptions{isDev: true}); err != nil {
+		if err := initializeBuildInnerStateWithBuildIDDependencies(
+			app,
+			&buildInnerOptions{isDev: true},
+			dependencies,
+		); err != nil {
 			t.Fatalf("initializeBuildInnerState returned error: %v", err)
 		}
 		if !app.GetIsDevMode() {
@@ -753,15 +752,21 @@ func TestInitializeBuildInnerState(t *testing.T) {
 		}
 		defer releaseBuildIDGeneration()
 
-		buildInnerBuildIDDeps.generateDevBuildIDSuffix = func() (string, error) {
-			close(buildIDGenerationStarted)
-			<-continueBuildIDGeneration
-			return "stubid", nil
+		dependencies := buildInnerBuildIDDependencies{
+			generateDevBuildIDSuffix: func() (string, error) {
+				close(buildIDGenerationStarted)
+				<-continueBuildIDGeneration
+				return "stubid", nil
+			},
 		}
 
 		initializeErrCh := make(chan error, 1)
 		go func() {
-			initializeErrCh <- initializeBuildInnerState(app, &buildInnerOptions{isDev: true})
+			initializeErrCh <- initializeBuildInnerStateWithBuildIDDependencies(
+				app,
+				&buildInnerOptions{isDev: true},
+				dependencies,
+			)
 		}()
 
 		<-buildIDGenerationStarted
@@ -793,11 +798,17 @@ func TestInitializeBuildInnerState(t *testing.T) {
 		app := fixture.app
 
 		expectedErr := errors.New("id generation failed")
-		buildInnerBuildIDDeps.generateDevBuildIDSuffix = func() (string, error) {
-			return "", expectedErr
+		dependencies := buildInnerBuildIDDependencies{
+			generateDevBuildIDSuffix: func() (string, error) {
+				return "", expectedErr
+			},
 		}
 
-		err := initializeBuildInnerState(app, &buildInnerOptions{isDev: true})
+		err := initializeBuildInnerStateWithBuildIDDependencies(
+			app,
+			&buildInnerOptions{isDev: true},
+			dependencies,
+		)
 		if err == nil {
 			t.Fatal("expected initializeBuildInnerState to return build ID generation error")
 		}

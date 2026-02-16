@@ -42,14 +42,69 @@ type backendRouteRegistrarOverlayDependencies struct {
 	absolutePath func(string) (string, error)
 }
 
-var backendRouteRegistrarOverlayDeps = backendRouteRegistrarOverlayDependencies{
-	makeTempDir:  os.MkdirTemp,
-	writeFile:    os.WriteFile,
-	readDir:      os.ReadDir,
-	readFile:     os.ReadFile,
-	removeAll:    os.RemoveAll,
-	marshalJSON:  json.Marshal,
-	absolutePath: filepath.Abs,
+type backendRouteRegistrarOverlayExecutor struct {
+	dependencies           backendRouteRegistrarOverlayDependencies
+	routeDiscoveryExecutor backendRouteDiscoveryExecutor
+}
+
+var defaultBackendRouteRegistrarOverlayExecutor = newBackendRouteRegistrarOverlayExecutor(
+	backendRouteRegistrarOverlayDependencies{},
+	backendRouteDiscoveryExecutor{},
+)
+
+func defaultBackendRouteRegistrarOverlayDependencies() backendRouteRegistrarOverlayDependencies {
+	return backendRouteRegistrarOverlayDependencies{
+		makeTempDir:  os.MkdirTemp,
+		writeFile:    os.WriteFile,
+		readDir:      os.ReadDir,
+		readFile:     os.ReadFile,
+		removeAll:    os.RemoveAll,
+		marshalJSON:  json.Marshal,
+		absolutePath: filepath.Abs,
+	}
+}
+
+func normalizeBackendRouteRegistrarOverlayDependencies(
+	dependencies backendRouteRegistrarOverlayDependencies,
+) backendRouteRegistrarOverlayDependencies {
+	defaultDependencies := defaultBackendRouteRegistrarOverlayDependencies()
+
+	if dependencies.makeTempDir == nil {
+		dependencies.makeTempDir = defaultDependencies.makeTempDir
+	}
+	if dependencies.writeFile == nil {
+		dependencies.writeFile = defaultDependencies.writeFile
+	}
+	if dependencies.readDir == nil {
+		dependencies.readDir = defaultDependencies.readDir
+	}
+	if dependencies.readFile == nil {
+		dependencies.readFile = defaultDependencies.readFile
+	}
+	if dependencies.removeAll == nil {
+		dependencies.removeAll = defaultDependencies.removeAll
+	}
+	if dependencies.marshalJSON == nil {
+		dependencies.marshalJSON = defaultDependencies.marshalJSON
+	}
+	if dependencies.absolutePath == nil {
+		dependencies.absolutePath = defaultDependencies.absolutePath
+	}
+
+	return dependencies
+}
+
+func newBackendRouteRegistrarOverlayExecutor(
+	dependencies backendRouteRegistrarOverlayDependencies,
+	routeDiscoveryExecutor backendRouteDiscoveryExecutor,
+) backendRouteRegistrarOverlayExecutor {
+	if routeDiscoveryExecutor.dependencies.expandPattern == nil {
+		routeDiscoveryExecutor = defaultBackendRouteDiscoveryExecutor
+	}
+	return backendRouteRegistrarOverlayExecutor{
+		dependencies:           normalizeBackendRouteRegistrarOverlayDependencies(dependencies),
+		routeDiscoveryExecutor: routeDiscoveryExecutor,
+	}
 }
 
 type goOverlayReplaceConfiguration struct {
@@ -64,15 +119,29 @@ type discoveredRouteRegistrarSourceArtifact struct {
 type discoveredRouteRegistrarArtifactCacheEntry struct {
 	sourceFingerprint string
 	artifacts         []discoveredRouteRegistrarSourceArtifact
+	lastAccessSeq     uint64
 }
 
 type discoveredRouteRegistrarArtifactCache struct {
-	mutex   sync.Mutex
-	entries map[string]discoveredRouteRegistrarArtifactCacheEntry
+	mutex      sync.Mutex
+	maxEntries int
+	accessSeq  uint64
+	entries    map[string]discoveredRouteRegistrarArtifactCacheEntry
 }
 
-var discoveredRouteRegistrarArtifactsCache = discoveredRouteRegistrarArtifactCache{
-	entries: map[string]discoveredRouteRegistrarArtifactCacheEntry{},
+const discoveredRouteRegistrarArtifactCacheDefaultMaxEntries = 128
+
+func newDiscoveredRouteRegistrarArtifactCache(
+	maxEntries int,
+) *discoveredRouteRegistrarArtifactCache {
+	if maxEntries <= 0 {
+		maxEntries = discoveredRouteRegistrarArtifactCacheDefaultMaxEntries
+	}
+
+	return &discoveredRouteRegistrarArtifactCache{
+		maxEntries: maxEntries,
+		entries:    map[string]discoveredRouteRegistrarArtifactCacheEntry{},
+	}
 }
 
 func (cache *discoveredRouteRegistrarArtifactCache) get(
@@ -87,8 +156,14 @@ func (cache *discoveredRouteRegistrarArtifactCache) get(
 		return nil, false
 	}
 	if cacheEntry.sourceFingerprint != sourceFingerprint {
+		delete(cache.entries, cacheKey)
 		return nil, false
 	}
+
+	cache.accessSeq++
+	cacheEntry.lastAccessSeq = cache.accessSeq
+	cache.entries[cacheKey] = cacheEntry
+
 	return cloneDiscoveredRouteRegistrarSourceArtifacts(cacheEntry.artifacts), true
 }
 
@@ -100,17 +175,53 @@ func (cache *discoveredRouteRegistrarArtifactCache) set(
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
+	cache.accessSeq++
 	cache.entries[cacheKey] = discoveredRouteRegistrarArtifactCacheEntry{
 		sourceFingerprint: sourceFingerprint,
 		artifacts:         cloneDiscoveredRouteRegistrarSourceArtifacts(artifacts),
+		lastAccessSeq:     cache.accessSeq,
 	}
+	cache.evictEntriesOverCapacityLocked()
 }
 
 func (cache *discoveredRouteRegistrarArtifactCache) clear() {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
+	cache.accessSeq = 0
 	cache.entries = map[string]discoveredRouteRegistrarArtifactCacheEntry{}
+}
+
+func (cache *discoveredRouteRegistrarArtifactCache) snapshotStats() (int, int) {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
+	return len(cache.entries), cache.maxEntries
+}
+
+func (cache *discoveredRouteRegistrarArtifactCache) evictEntriesOverCapacityLocked() {
+	for cache.maxEntries > 0 && len(cache.entries) > cache.maxEntries {
+		leastRecentlyUsedCacheKey := ""
+		var leastRecentlyUsedAccessSeq uint64
+		for candidateCacheKey, candidateCacheEntry := range cache.entries {
+			if leastRecentlyUsedCacheKey == "" {
+				leastRecentlyUsedCacheKey = candidateCacheKey
+				leastRecentlyUsedAccessSeq = candidateCacheEntry.lastAccessSeq
+				continue
+			}
+
+			if candidateCacheEntry.lastAccessSeq < leastRecentlyUsedAccessSeq {
+				leastRecentlyUsedCacheKey = candidateCacheKey
+				leastRecentlyUsedAccessSeq = candidateCacheEntry.lastAccessSeq
+				continue
+			}
+			if candidateCacheEntry.lastAccessSeq == leastRecentlyUsedAccessSeq &&
+				candidateCacheKey < leastRecentlyUsedCacheKey {
+				leastRecentlyUsedCacheKey = candidateCacheKey
+			}
+		}
+		delete(cache.entries, leastRecentlyUsedCacheKey)
+	}
 }
 
 func cloneDiscoveredRouteRegistrarSourceArtifacts(
@@ -136,7 +247,54 @@ func cloneDiscoveredRouteRegistrarSourceArtifacts(
 func prepareDiscoveredRouteRegistrarOverlay(
 	v *vormaruntime.Vorma,
 ) (*discoveredRouteRegistrarOverlay, error) {
-	serverRouteDefinitionFiles, err := resolveServerRouteDefinitionFiles(v)
+	return defaultBackendRouteRegistrarOverlayExecutor.prepareDiscoveredRouteRegistrarOverlay(v)
+}
+
+func prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
+	v *vormaruntime.Vorma,
+	discoveredRouteRegistrarArtifactsCache *discoveredRouteRegistrarArtifactCache,
+) (*discoveredRouteRegistrarOverlay, error) {
+	return defaultBackendRouteRegistrarOverlayExecutor.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
+		v,
+		discoveredRouteRegistrarArtifactsCache,
+	)
+}
+
+func prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
+	v *vormaruntime.Vorma,
+	discoveredRouteRegistrarArtifactsCache *discoveredRouteRegistrarArtifactCache,
+	discoveryDependencies backendRouteDiscoveryDependencies,
+) (*discoveredRouteRegistrarOverlay, error) {
+	overlayExecutor := newBackendRouteRegistrarOverlayExecutor(
+		backendRouteRegistrarOverlayDependencies{},
+		newBackendRouteDiscoveryExecutor(discoveryDependencies),
+	)
+	return overlayExecutor.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
+		v,
+		discoveredRouteRegistrarArtifactsCache,
+	)
+}
+
+func (executor backendRouteRegistrarOverlayExecutor) prepareDiscoveredRouteRegistrarOverlay(
+	v *vormaruntime.Vorma,
+) (*discoveredRouteRegistrarOverlay, error) {
+	return executor.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
+		v,
+		newDiscoveredRouteRegistrarArtifactCache(discoveredRouteRegistrarArtifactCacheDefaultMaxEntries),
+	)
+}
+
+func (executor backendRouteRegistrarOverlayExecutor) prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
+	v *vormaruntime.Vorma,
+	discoveredRouteRegistrarArtifactsCache *discoveredRouteRegistrarArtifactCache,
+) (*discoveredRouteRegistrarOverlay, error) {
+	if discoveredRouteRegistrarArtifactsCache == nil {
+		discoveredRouteRegistrarArtifactsCache = newDiscoveredRouteRegistrarArtifactCache(
+			discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
+		)
+	}
+
+	serverRouteDefinitionFiles, err := executor.routeDiscoveryExecutor.resolveServerRouteDefinitionFiles(v)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +302,7 @@ func prepareDiscoveredRouteRegistrarOverlay(
 		return nil, nil
 	}
 
-	discoverySourceFingerprint, err := computeDiscoveredRouteRegistrarDiscoveryFingerprint(
+	discoverySourceFingerprint, err := executor.computeDiscoveredRouteRegistrarDiscoveryFingerprint(
 		serverRouteDefinitionFiles,
 	)
 	if err != nil {
@@ -157,7 +315,7 @@ func prepareDiscoveredRouteRegistrarOverlay(
 		discoverySourceFingerprint,
 	)
 	if !hasCachedArtifacts {
-		discoveredRegistrarArtifacts, err = discoverRouteRegistrarSourceArtifacts(
+		discoveredRegistrarArtifacts, err = executor.discoverRouteRegistrarSourceArtifacts(
 			serverRouteDefinitionFiles,
 		)
 		if err != nil {
@@ -170,7 +328,7 @@ func prepareDiscoveredRouteRegistrarOverlay(
 		)
 	}
 
-	return writeDiscoveredRouteRegistrarOverlay(discoveredRegistrarArtifacts)
+	return executor.writeDiscoveredRouteRegistrarOverlay(discoveredRegistrarArtifacts)
 }
 
 func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
@@ -197,10 +355,18 @@ func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
 func computeDiscoveredRouteRegistrarDiscoveryFingerprint(
 	serverRouteDefinitionFiles []string,
 ) (string, error) {
+	return defaultBackendRouteRegistrarOverlayExecutor.computeDiscoveredRouteRegistrarDiscoveryFingerprint(
+		serverRouteDefinitionFiles,
+	)
+}
+
+func (executor backendRouteRegistrarOverlayExecutor) computeDiscoveredRouteRegistrarDiscoveryFingerprint(
+	serverRouteDefinitionFiles []string,
+) (string, error) {
 	normalizedRouteDefinitionFiles := make([]string, 0, len(serverRouteDefinitionFiles))
 	packageDirSet := map[string]struct{}{}
 	for _, serverRouteDefinitionFile := range serverRouteDefinitionFiles {
-		absoluteRouteDefinitionFilePath, err := backendRouteRegistrarOverlayDeps.absolutePath(
+		absoluteRouteDefinitionFilePath, err := executor.dependencies.absolutePath(
 			serverRouteDefinitionFile,
 		)
 		if err != nil {
@@ -245,7 +411,7 @@ func computeDiscoveredRouteRegistrarDiscoveryFingerprint(
 		appendFingerprintSegment("package-dir")
 		appendFingerprintSegment(packageDir)
 
-		packageDirEntries, err := backendRouteRegistrarOverlayDeps.readDir(packageDir)
+		packageDirEntries, err := executor.dependencies.readDir(packageDir)
 		if err != nil {
 			return "", fmt.Errorf(
 				"read package directory %q for discovered route registrar cache fingerprint: %w",
@@ -271,7 +437,7 @@ func computeDiscoveredRouteRegistrarDiscoveryFingerprint(
 
 		for _, packageGoFile := range packageGoFiles {
 			packageGoFilePath := filepath.ToSlash(filepath.Clean(filepath.Join(packageDir, packageGoFile)))
-			packageGoFileBytes, err := backendRouteRegistrarOverlayDeps.readFile(packageGoFilePath)
+			packageGoFileBytes, err := executor.dependencies.readFile(packageGoFilePath)
 			if err != nil {
 				return "", fmt.Errorf(
 					"read package Go source file %q for discovered route registrar cache fingerprint: %w",
@@ -291,7 +457,15 @@ func computeDiscoveredRouteRegistrarDiscoveryFingerprint(
 func discoverRouteRegistrarSourceArtifacts(
 	serverRouteDefinitionFiles []string,
 ) ([]discoveredRouteRegistrarSourceArtifact, error) {
-	packageAnalyses, err := parseServerRouteFilesIntoPackageAnalyses(
+	return defaultBackendRouteRegistrarOverlayExecutor.discoverRouteRegistrarSourceArtifacts(
+		serverRouteDefinitionFiles,
+	)
+}
+
+func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourceArtifacts(
+	serverRouteDefinitionFiles []string,
+) ([]discoveredRouteRegistrarSourceArtifact, error) {
+	packageAnalyses, err := executor.routeDiscoveryExecutor.parseServerRouteFilesIntoPackageAnalyses(
 		serverRouteDefinitionFiles,
 	)
 	if err != nil {
@@ -317,7 +491,7 @@ func discoverRouteRegistrarSourceArtifacts(
 			packageAnalysis.packageDir,
 			discoveredRouteRegistrarGeneratedFilename,
 		)
-		absoluteGeneratedFilePath, err := backendRouteRegistrarOverlayDeps.absolutePath(generatedFilePath)
+		absoluteGeneratedFilePath, err := executor.dependencies.absolutePath(generatedFilePath)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"resolve absolute generated backend route registrar path %q: %w",
@@ -343,11 +517,19 @@ func discoverRouteRegistrarSourceArtifacts(
 func writeDiscoveredRouteRegistrarOverlay(
 	discoveredRegistrarArtifacts []discoveredRouteRegistrarSourceArtifact,
 ) (*discoveredRouteRegistrarOverlay, error) {
+	return defaultBackendRouteRegistrarOverlayExecutor.writeDiscoveredRouteRegistrarOverlay(
+		discoveredRegistrarArtifacts,
+	)
+}
+
+func (executor backendRouteRegistrarOverlayExecutor) writeDiscoveredRouteRegistrarOverlay(
+	discoveredRegistrarArtifacts []discoveredRouteRegistrarSourceArtifact,
+) (*discoveredRouteRegistrarOverlay, error) {
 	if len(discoveredRegistrarArtifacts) == 0 {
 		return nil, nil
 	}
 
-	overlayTempDir, err := backendRouteRegistrarOverlayDeps.makeTempDir(
+	overlayTempDir, err := executor.dependencies.makeTempDir(
 		"",
 		"vorma_discovered_route_registrars_*",
 	)
@@ -358,7 +540,7 @@ func writeDiscoveredRouteRegistrarOverlay(
 		)
 	}
 	cleanupOverlayTempDir := func() error {
-		return backendRouteRegistrarOverlayDeps.removeAll(overlayTempDir)
+		return executor.dependencies.removeAll(overlayTempDir)
 	}
 
 	overlayReplacements := map[string]string{}
@@ -367,7 +549,7 @@ func writeDiscoveredRouteRegistrarOverlay(
 			overlayTempDir,
 			fmt.Sprintf("discovered_route_registrar_%d.gen.go", artifactIndex),
 		))
-		if err := backendRouteRegistrarOverlayDeps.writeFile(
+		if err := executor.dependencies.writeFile(
 			overlaySourceFilePath,
 			discoveredArtifact.sourceBytes,
 			0o644,
@@ -389,7 +571,7 @@ func writeDiscoveredRouteRegistrarOverlay(
 		overlayReplacements[discoveredArtifact.targetFilePath] = overlaySourceFilePath
 	}
 
-	overlayConfigBytes, err := backendRouteRegistrarOverlayDeps.marshalJSON(
+	overlayConfigBytes, err := executor.dependencies.marshalJSON(
 		goOverlayReplaceConfiguration{Replace: overlayReplacements},
 	)
 	if err != nil {
@@ -410,7 +592,7 @@ func writeDiscoveredRouteRegistrarOverlay(
 		overlayTempDir,
 		"go-overlay.json",
 	))
-	if err := backendRouteRegistrarOverlayDeps.writeFile(
+	if err := executor.dependencies.writeFile(
 		overlayConfigPath,
 		overlayConfigBytes,
 		0o644,

@@ -18,14 +18,17 @@ import (
 )
 
 type generatedTSAssemblyDependencies struct {
-	generateTypeScript  func(tsGenInput) (string, error)
-	generateRollupInput func(*vormaruntime.LockedVorma, []string) (string, error)
-	getEntrypoints      func(*vormaruntime.LockedVorma) []string
+	generateTypeScript                func(tsGenInput) (string, error)
+	generateRollupInput               func(*vormaruntime.LockedVorma, []string) (string, error)
+	generateRollupInputForEntrypoints func(*vormaruntime.Vorma, []string) (string, error)
+	getEntrypoints                    func(*vormaruntime.LockedVorma) []string
+	getEntrypointsForPaths            func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) []string
 }
 
 type generatedTSWriteDependencies struct {
-	generateAndAssembleTSContent     func(*vormaruntime.Vorma, *vormaruntime.LockedVorma) ([]byte, error)
-	writeGeneratedTSContentIfChanged func(*vormaruntime.Vorma, string, []byte) error
+	generateAndAssembleTSContent                        func(*vormaruntime.Vorma, *vormaruntime.LockedVorma) ([]byte, error)
+	generateAndAssembleTSContentForRuntimeStateSnapshot func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot) ([]byte, error)
+	writeGeneratedTSContentIfChanged                    func(*vormaruntime.Vorma, string, []byte) error
 }
 
 type generatedTSWriteFileDependencies struct {
@@ -34,22 +37,156 @@ type generatedTSWriteFileDependencies struct {
 	writeGeneratedTSFile     func(string, []byte, fs.FileMode) error
 }
 
-var generatedTSAssemblyDeps = generatedTSAssemblyDependencies{
-	generateTypeScript:  generateTypeScript,
-	generateRollupInput: generateRollupOptions,
-	getEntrypoints:      getEntrypoints,
+type generatedTSAssemblyExecutor struct {
+	dependencies generatedTSAssemblyDependencies
 }
 
-var generatedTSWriteDeps = generatedTSWriteDependencies{
-	generateAndAssembleTSContent:     generateAndAssembleTSContent,
-	writeGeneratedTSContentIfChanged: writeGeneratedTSContentIfChanged,
+type generatedTSWriteExecutor struct {
+	dependencies generatedTSWriteDependencies
 }
 
-var generatedTSWriteFileDeps = generatedTSWriteFileDependencies{
-	generatedTSUnchanged:     generatedTSUnchanged,
-	makeGeneratedTSDirectory: os.MkdirAll,
-	writeGeneratedTSFile:     writeFileAtomically,
+type generatedTSWriteFileExecutor struct {
+	dependencies generatedTSWriteFileDependencies
 }
+
+func defaultGeneratedTSAssemblyDependencies() generatedTSAssemblyDependencies {
+	return generatedTSAssemblyDependencies{
+		generateTypeScript:                generateTypeScript,
+		generateRollupInput:               generateRollupOptions,
+		generateRollupInputForEntrypoints: generateRollupOptionsForEntrypoints,
+		getEntrypoints:                    getEntrypoints,
+		getEntrypointsForPaths:            getEntrypointsForPaths,
+	}
+}
+
+func normalizeGeneratedTSAssemblyDependencies(
+	dependencies generatedTSAssemblyDependencies,
+) generatedTSAssemblyDependencies {
+	defaultDependencies := defaultGeneratedTSAssemblyDependencies()
+	if dependencies.generateTypeScript == nil {
+		dependencies.generateTypeScript = defaultDependencies.generateTypeScript
+	}
+	if dependencies.generateRollupInput == nil {
+		dependencies.generateRollupInput = defaultDependencies.generateRollupInput
+	}
+	if dependencies.generateRollupInputForEntrypoints == nil {
+		dependencies.generateRollupInputForEntrypoints = defaultDependencies.generateRollupInputForEntrypoints
+	}
+	if dependencies.getEntrypoints == nil {
+		dependencies.getEntrypoints = defaultDependencies.getEntrypoints
+	}
+	if dependencies.getEntrypointsForPaths == nil {
+		dependencies.getEntrypointsForPaths = defaultDependencies.getEntrypointsForPaths
+	}
+	return dependencies
+}
+
+func newGeneratedTSAssemblyExecutor(
+	dependencies generatedTSAssemblyDependencies,
+) generatedTSAssemblyExecutor {
+	return generatedTSAssemblyExecutor{
+		dependencies: normalizeGeneratedTSAssemblyDependencies(dependencies),
+	}
+}
+
+func defaultGeneratedTSWriteFileDependencies() generatedTSWriteFileDependencies {
+	return generatedTSWriteFileDependencies{
+		generatedTSUnchanged:     generatedTSUnchanged,
+		makeGeneratedTSDirectory: os.MkdirAll,
+		writeGeneratedTSFile:     writeFileAtomically,
+	}
+}
+
+func normalizeGeneratedTSWriteFileDependencies(
+	dependencies generatedTSWriteFileDependencies,
+) generatedTSWriteFileDependencies {
+	defaultDependencies := defaultGeneratedTSWriteFileDependencies()
+	if dependencies.generatedTSUnchanged == nil {
+		dependencies.generatedTSUnchanged = defaultDependencies.generatedTSUnchanged
+	}
+	if dependencies.makeGeneratedTSDirectory == nil {
+		dependencies.makeGeneratedTSDirectory = defaultDependencies.makeGeneratedTSDirectory
+	}
+	if dependencies.writeGeneratedTSFile == nil {
+		dependencies.writeGeneratedTSFile = defaultDependencies.writeGeneratedTSFile
+	}
+	return dependencies
+}
+
+func newGeneratedTSWriteFileExecutor(
+	dependencies generatedTSWriteFileDependencies,
+) generatedTSWriteFileExecutor {
+	return generatedTSWriteFileExecutor{
+		dependencies: normalizeGeneratedTSWriteFileDependencies(dependencies),
+	}
+}
+
+func defaultGeneratedTSWriteDependencies() generatedTSWriteDependencies {
+	return generatedTSWriteDependencies{
+		generateAndAssembleTSContent: func(
+			v *vormaruntime.Vorma,
+			l *vormaruntime.LockedVorma,
+		) ([]byte, error) {
+			return defaultGeneratedTSAssemblyExecutor.generateAndAssembleTSContent(v, l)
+		},
+		generateAndAssembleTSContentForRuntimeStateSnapshot: func(
+			v *vormaruntime.Vorma,
+			runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+		) ([]byte, error) {
+			return defaultGeneratedTSAssemblyExecutor.generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot(
+				v,
+				runtimeStateSnapshot,
+			)
+		},
+		writeGeneratedTSContentIfChanged: func(
+			v *vormaruntime.Vorma,
+			targetPath string,
+			contentBytes []byte,
+		) error {
+			return defaultGeneratedTSWriteFileExecutor.writeGeneratedTSContentIfChanged(
+				v,
+				targetPath,
+				contentBytes,
+			)
+		},
+	}
+}
+
+func normalizeGeneratedTSWriteDependencies(
+	dependencies generatedTSWriteDependencies,
+) generatedTSWriteDependencies {
+	defaultDependencies := defaultGeneratedTSWriteDependencies()
+	if dependencies.generateAndAssembleTSContent == nil {
+		dependencies.generateAndAssembleTSContent = defaultDependencies.generateAndAssembleTSContent
+	}
+	if dependencies.generateAndAssembleTSContentForRuntimeStateSnapshot == nil {
+		dependencies.generateAndAssembleTSContentForRuntimeStateSnapshot = defaultDependencies.generateAndAssembleTSContentForRuntimeStateSnapshot
+	}
+	if dependencies.writeGeneratedTSContentIfChanged == nil {
+		dependencies.writeGeneratedTSContentIfChanged = defaultDependencies.writeGeneratedTSContentIfChanged
+	}
+	return dependencies
+}
+
+func newGeneratedTSWriteExecutor(
+	dependencies generatedTSWriteDependencies,
+) generatedTSWriteExecutor {
+	return generatedTSWriteExecutor{
+		dependencies: normalizeGeneratedTSWriteDependencies(dependencies),
+	}
+}
+
+var defaultGeneratedTSAssemblyExecutor = newGeneratedTSAssemblyExecutor(
+	generatedTSAssemblyDependencies{},
+)
+
+var defaultGeneratedTSWriteFileExecutor = newGeneratedTSWriteFileExecutor(
+	generatedTSWriteFileDependencies{},
+)
+
+var defaultGeneratedTSWriteExecutor = newGeneratedTSWriteExecutor(
+	generatedTSWriteDependencies{},
+)
 
 var (
 	reactDedupeList  = []string{"react", "react-dom"}
@@ -102,8 +239,10 @@ type vitePluginTemplateData struct {
 }
 
 func generateRollupOptions(l *vormaruntime.LockedVorma, entrypoints []string) (string, error) {
-	v := l.Vorma()
+	return generateRollupOptionsForEntrypoints(l.Vorma(), entrypoints)
+}
 
+func generateRollupOptionsForEntrypoints(v *vormaruntime.Vorma, entrypoints []string) (string, error) {
 	var sb stringsutil.Builder
 	sb.Return()
 	sb.Write(tsgen.Comment("Vorma Vite Config:"))
@@ -186,8 +325,13 @@ func renderVitePluginConfig(templateData vitePluginTemplateData) (string, error)
 }
 
 func getEntrypoints(l *vormaruntime.LockedVorma) []string {
-	v := l.Vorma()
-	paths := l.GetPaths()
+	return getEntrypointsForPaths(l.Vorma(), l.GetPaths())
+}
+
+func getEntrypointsForPaths(
+	v *vormaruntime.Vorma,
+	paths map[string]*vormaruntime.Path,
+) []string {
 	entryPoints := make(map[string]struct{}, len(paths)+1)
 	entryPoints[path.Clean(v.Config.ClientEntry)] = struct{}{}
 	for _, currentPath := range paths {
@@ -205,26 +349,131 @@ func getEntrypoints(l *vormaruntime.LockedVorma) []string {
 
 // writeGeneratedTS generates and writes the complete TypeScript output file.
 func writeGeneratedTS(l *vormaruntime.LockedVorma) error {
+	return defaultGeneratedTSWriteExecutor.writeGeneratedTS(l)
+}
+
+func writeGeneratedTSForRouteBuildRuntimeStateSnapshot(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+) error {
+	return defaultGeneratedTSWriteExecutor.writeGeneratedTSForRouteBuildRuntimeStateSnapshot(
+		v,
+		runtimeStateSnapshot,
+	)
+}
+
+func writeGeneratedTSWithDependencies(
+	l *vormaruntime.LockedVorma,
+	dependencies generatedTSWriteDependencies,
+) error {
+	return newGeneratedTSWriteExecutor(dependencies).writeGeneratedTS(l)
+}
+
+func (generatedTSWriteExecutor generatedTSWriteExecutor) writeGeneratedTS(
+	l *vormaruntime.LockedVorma,
+) error {
 	v := l.Vorma()
 
-	contentBytes, err := generatedTSWriteDeps.generateAndAssembleTSContent(v, l)
+	contentBytes, err := generatedTSWriteExecutor.dependencies.generateAndAssembleTSContent(v, l)
 	if err != nil {
 		return err
 	}
 
 	targetPath := filepath.Join(".", v.Config.TSGenOutDir, wave.GeneratedTSFileName)
-	return generatedTSWriteDeps.writeGeneratedTSContentIfChanged(v, targetPath, contentBytes)
+	return generatedTSWriteExecutor.dependencies.writeGeneratedTSContentIfChanged(v, targetPath, contentBytes)
+}
+
+func (generatedTSWriteExecutor generatedTSWriteExecutor) writeGeneratedTSForRouteBuildRuntimeStateSnapshot(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+) error {
+	contentBytes, err := generatedTSWriteExecutor.dependencies.generateAndAssembleTSContentForRuntimeStateSnapshot(
+		v,
+		runtimeStateSnapshot,
+	)
+	if err != nil {
+		return err
+	}
+
+	targetPath := filepath.Join(".", v.Config.TSGenOutDir, wave.GeneratedTSFileName)
+	return generatedTSWriteExecutor.dependencies.writeGeneratedTSContentIfChanged(v, targetPath, contentBytes)
 }
 
 func generateAndAssembleTSContent(v *vormaruntime.Vorma, l *vormaruntime.LockedVorma) ([]byte, error) {
-	tsOutput, err := generatedTSAssemblyDeps.generateTypeScript(tsGenInputForLockedVorma(v, l))
+	return generateAndAssembleTSContentWithDependencies(v, l, generatedTSAssemblyDependencies{})
+}
+
+func generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+) ([]byte, error) {
+	return generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshotWithDependencies(
+		v,
+		runtimeStateSnapshot,
+		generatedTSAssemblyDependencies{},
+	)
+}
+
+func generateAndAssembleTSContentWithDependencies(
+	v *vormaruntime.Vorma,
+	l *vormaruntime.LockedVorma,
+	dependencies generatedTSAssemblyDependencies,
+) ([]byte, error) {
+	return newGeneratedTSAssemblyExecutor(dependencies).generateAndAssembleTSContent(v, l)
+}
+
+func generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshotWithDependencies(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+	dependencies generatedTSAssemblyDependencies,
+) ([]byte, error) {
+	return newGeneratedTSAssemblyExecutor(
+		dependencies,
+	).generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot(
+		v,
+		runtimeStateSnapshot,
+	)
+}
+
+func (generatedTSAssemblyExecutor generatedTSAssemblyExecutor) generateAndAssembleTSContent(
+	v *vormaruntime.Vorma,
+	l *vormaruntime.LockedVorma,
+) ([]byte, error) {
+	tsOutput, err := generatedTSAssemblyExecutor.dependencies.generateTypeScript(
+		tsGenInputForLockedVorma(v, l),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("generate TypeScript: %w", err)
 	}
 
-	rollupOptions, err := generatedTSAssemblyDeps.generateRollupInput(
+	rollupOptions, err := generatedTSAssemblyExecutor.dependencies.generateRollupInput(
 		l,
-		generatedTSAssemblyDeps.getEntrypoints(l),
+		generatedTSAssemblyExecutor.dependencies.getEntrypoints(l),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("generate rollup options: %w", err)
+	}
+
+	return assembleGeneratedTSContent(tsOutput, rollupOptions), nil
+}
+
+func (generatedTSAssemblyExecutor generatedTSAssemblyExecutor) generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+) ([]byte, error) {
+	tsOutput, err := generatedTSAssemblyExecutor.dependencies.generateTypeScript(
+		tsGenInputForRouteBuildRuntimeStateSnapshot(v, runtimeStateSnapshot),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("generate TypeScript: %w", err)
+	}
+
+	rollupOptions, err := generatedTSAssemblyExecutor.dependencies.generateRollupInputForEntrypoints(
+		v,
+		generatedTSAssemblyExecutor.dependencies.getEntrypointsForPaths(
+			v,
+			runtimeStateSnapshot.paths,
+		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("generate rollup options: %w", err)
@@ -246,7 +495,36 @@ func writeGeneratedTSContentIfChanged(
 	targetPath string,
 	contentBytes []byte,
 ) error {
-	unchanged, err := generatedTSWriteFileDeps.generatedTSUnchanged(targetPath, contentBytes)
+	return writeGeneratedTSContentIfChangedWithDependencies(
+		v,
+		targetPath,
+		contentBytes,
+		generatedTSWriteFileDependencies{},
+	)
+}
+
+func writeGeneratedTSContentIfChangedWithDependencies(
+	v *vormaruntime.Vorma,
+	targetPath string,
+	contentBytes []byte,
+	dependencies generatedTSWriteFileDependencies,
+) error {
+	return newGeneratedTSWriteFileExecutor(dependencies).writeGeneratedTSContentIfChanged(
+		v,
+		targetPath,
+		contentBytes,
+	)
+}
+
+func (generatedTSWriteFileExecutor generatedTSWriteFileExecutor) writeGeneratedTSContentIfChanged(
+	v *vormaruntime.Vorma,
+	targetPath string,
+	contentBytes []byte,
+) error {
+	unchanged, err := generatedTSWriteFileExecutor.dependencies.generatedTSUnchanged(
+		targetPath,
+		contentBytes,
+	)
 	if err != nil {
 		return fmt.Errorf("check existing generated file: %w", err)
 	}
@@ -255,11 +533,18 @@ func writeGeneratedTSContentIfChanged(
 		return nil
 	}
 
-	if err := generatedTSWriteFileDeps.makeGeneratedTSDirectory(filepath.Dir(targetPath), os.ModePerm); err != nil {
+	if err := generatedTSWriteFileExecutor.dependencies.makeGeneratedTSDirectory(
+		filepath.Dir(targetPath),
+		os.ModePerm,
+	); err != nil {
 		return fmt.Errorf("create directory: %w", err)
 	}
 
-	if err := generatedTSWriteFileDeps.writeGeneratedTSFile(targetPath, contentBytes, buildArtifactFileMode); err != nil {
+	if err := generatedTSWriteFileExecutor.dependencies.writeGeneratedTSFile(
+		targetPath,
+		contentBytes,
+		buildArtifactFileMode,
+	); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
 	return nil
@@ -270,6 +555,20 @@ func tsGenInputForLockedVorma(v *vormaruntime.Vorma, l *vormaruntime.LockedVorma
 		LoadersRouter: v.LoadersRouter().NestedRouter,
 		ActionsRouter: v.ActionsRouter().Router,
 		Paths:         l.GetPaths(),
+		Config:        v.Config,
+		AdHocTypes:    v.GetAdHocTypes(),
+		ExtraTSCode:   v.GetExtraTSCode(),
+	}
+}
+
+func tsGenInputForRouteBuildRuntimeStateSnapshot(
+	v *vormaruntime.Vorma,
+	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+) tsGenInput {
+	return tsGenInput{
+		LoadersRouter: v.LoadersRouter().NestedRouter,
+		ActionsRouter: v.ActionsRouter().Router,
+		Paths:         runtimeStateSnapshot.paths,
 		Config:        v.Config,
 		AdHocTypes:    v.GetAdHocTypes(),
 		ExtraTSCode:   v.GetExtraTSCode(),

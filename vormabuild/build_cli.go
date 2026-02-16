@@ -13,6 +13,7 @@ import (
 type buildCommandOptions struct {
 	runInDevelopmentMode  bool
 	runHookOnly           bool
+	printDiagnosticsOnly  bool
 	skipGoBinaryBuildStep bool
 }
 
@@ -20,6 +21,7 @@ type buildCommandHooks struct {
 	configureBuildEnvironment func(*vormaruntime.Vorma)
 	runBuildHook              func(*vormaruntime.Vorma, bool) error
 	runProdHookPostProcessing func(*vormaruntime.Vorma) error
+	printDiagnostics          func(*vormaruntime.Vorma) error
 	runFullBuild              func(*vormaruntime.Vorma, bool, bool) error
 }
 
@@ -37,6 +39,7 @@ func defaultBuildCommandHooks() buildCommandHooks {
 			return buildInner(v, &buildInnerOptions{isDev: isDev})
 		},
 		runProdHookPostProcessing: runProdHookPostProcessing,
+		printDiagnostics:          printBuildDiagnostics,
 		runFullBuild:              build,
 	}
 }
@@ -48,6 +51,12 @@ func parseBuildCommandOptions(commandLineArgs []string) (buildCommandOptions, er
 	flagSet.SetOutput(io.Discard)
 	flagSet.BoolVar(&options.runInDevelopmentMode, "dev", false, "run in development mode")
 	flagSet.BoolVar(&options.runHookOnly, "hook", false, "run build hook only (internal use)")
+	flagSet.BoolVar(
+		&options.printDiagnosticsOnly,
+		"diagnostics",
+		false,
+		"print build discovery and overlay diagnostics",
+	)
 	flagSet.BoolVar(&options.skipGoBinaryBuildStep, "no-binary", false, "skip go binary compilation")
 	if err := flagSet.Parse(commandLineArgs); err != nil {
 		return buildCommandOptions{}, err
@@ -110,11 +119,25 @@ func newBuildCommandExecutor(
 }
 
 func (commandExecutor buildCommandExecutor) run(options buildCommandOptions) error {
+	if options.printDiagnosticsOnly {
+		return commandExecutor.runDiagnosticsOnly()
+	}
+
 	if options.runHookOnly {
 		return commandExecutor.runHookOnly(options.runInDevelopmentMode)
 	}
 
 	return commandExecutor.runFullBuild(options.runInDevelopmentMode, options.skipGoBinaryBuildStep)
+}
+
+func (commandExecutor buildCommandExecutor) runDiagnosticsOnly() error {
+	if commandExecutor.hooks.printDiagnostics == nil {
+		return errors.New("build command hook printDiagnostics is required in diagnostics mode")
+	}
+	if err := commandExecutor.hooks.printDiagnostics(commandExecutor.vorma); err != nil {
+		return fmt.Errorf("print diagnostics failed: %w", err)
+	}
+	return nil
 }
 
 func (commandExecutor buildCommandExecutor) runHookOnly(

@@ -36,24 +36,21 @@ func (builder *fakeRuntimeWaveBuilder) Close() error {
 }
 
 func TestRunWaveViteProductionBuild(t *testing.T) {
-	originalNewWaveBuilderStep := runtimeBuildToolingDeps.newWaveBuilder
-	t.Cleanup(func() {
-		runtimeBuildToolingDeps.newWaveBuilder = originalNewWaveBuilderStep
-	})
-
 	t.Run("runs Vite build and closes builder", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
 		builder := &fakeRuntimeWaveBuilder{}
-		runtimeBuildToolingDeps.newWaveBuilder = func(v *vormaruntime.Vorma) runtimeWaveBuilder {
-			if v != app {
-				t.Fatalf("builder received app %p, want %p", v, app)
-			}
-			return builder
+		dependencies := runtimeBuildToolingDependencies{
+			newWaveBuilder: func(v *vormaruntime.Vorma) runtimeWaveBuilder {
+				if v != app {
+					t.Fatalf("builder received app %p, want %p", v, app)
+				}
+				return builder
+			},
 		}
 
-		if err := runWaveViteProductionBuild(app); err != nil {
+		if err := runWaveViteProductionBuildWithToolingDependencies(app, dependencies); err != nil {
 			t.Fatalf("runWaveViteProductionBuild returned error: %v", err)
 		}
 		if !builder.viteCalled {
@@ -72,11 +69,13 @@ func TestRunWaveViteProductionBuild(t *testing.T) {
 		builder := &fakeRuntimeWaveBuilder{
 			viteErr: expectedErr,
 		}
-		runtimeBuildToolingDeps.newWaveBuilder = func(*vormaruntime.Vorma) runtimeWaveBuilder {
-			return builder
+		dependencies := runtimeBuildToolingDependencies{
+			newWaveBuilder: func(*vormaruntime.Vorma) runtimeWaveBuilder {
+				return builder
+			},
 		}
 
-		err := runWaveViteProductionBuild(app)
+		err := runWaveViteProductionBuildWithToolingDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected runWaveViteProductionBuild to return error")
 		}
@@ -96,11 +95,13 @@ func TestRunWaveViteProductionBuild(t *testing.T) {
 		builder := &fakeRuntimeWaveBuilder{
 			closeErr: expectedCloseErr,
 		}
-		runtimeBuildToolingDeps.newWaveBuilder = func(*vormaruntime.Vorma) runtimeWaveBuilder {
-			return builder
+		dependencies := runtimeBuildToolingDependencies{
+			newWaveBuilder: func(*vormaruntime.Vorma) runtimeWaveBuilder {
+				return builder
+			},
 		}
 
-		err := runWaveViteProductionBuild(app)
+		err := runWaveViteProductionBuildWithToolingDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected runWaveViteProductionBuild to return close error")
 		}
@@ -125,11 +126,13 @@ func TestRunWaveViteProductionBuild(t *testing.T) {
 			viteErr:  expectedBuildErr,
 			closeErr: expectedCloseErr,
 		}
-		runtimeBuildToolingDeps.newWaveBuilder = func(*vormaruntime.Vorma) runtimeWaveBuilder {
-			return builder
+		dependencies := runtimeBuildToolingDependencies{
+			newWaveBuilder: func(*vormaruntime.Vorma) runtimeWaveBuilder {
+				return builder
+			},
 		}
 
-		err := runWaveViteProductionBuild(app)
+		err := runWaveViteProductionBuildWithToolingDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected runWaveViteProductionBuild to return joined build+close error")
 		}
@@ -146,11 +149,6 @@ func TestRunWaveViteProductionBuild(t *testing.T) {
 }
 
 func TestRunWaveDevelopmentServer(t *testing.T) {
-	originalRunWaveDevelopmentModeStep := runtimeBuildToolingDeps.runWaveDevelopmentMode
-	t.Cleanup(func() {
-		runtimeBuildToolingDeps.runWaveDevelopmentMode = originalRunWaveDevelopmentModeStep
-	})
-
 	emptyMainAppEntry := ""
 	fixture := newBuildTestFixture(t, &buildTestFixtureOptions{
 		waveMainAppEntry: &emptyMainAppEntry,
@@ -158,35 +156,34 @@ func TestRunWaveDevelopmentServer(t *testing.T) {
 	app := fixture.app
 
 	var developmentModeCalled bool
-	runtimeBuildToolingDeps.runWaveDevelopmentMode = func(v *vormaruntime.Vorma) error {
-		developmentModeCalled = true
-		if v != app {
-			t.Fatalf("runWaveDevelopmentMode received app %p, want %p", v, app)
-		}
-		return nil
+	dependencies := runtimeBuildToolingDependencies{
+		runWaveDevelopmentMode: func(v *vormaruntime.Vorma) error {
+			developmentModeCalled = true
+			if v != app {
+				t.Fatalf("runWaveDevelopmentMode received app %p, want %p", v, app)
+			}
+			return nil
+		},
 	}
 
-	if err := runWaveDevelopmentServer(app); err != nil {
+	if err := runWaveDevelopmentServerWithToolingDependencies(app, dependencies); err != nil {
 		t.Fatalf("runWaveDevelopmentServer returned error: %v", err)
 	}
 	if !developmentModeCalled {
-		t.Fatal("expected runtimeBuildToolingDeps.runWaveDevelopmentMode to be called")
+		t.Fatal("expected runWaveDevelopmentMode to be called")
 	}
 }
 
 func TestRunWaveProductionBuild(t *testing.T) {
-	originalNewWaveBuilderStep := runtimeBuildToolingDeps.newWaveBuilder
-	t.Cleanup(func() {
-		runtimeBuildToolingDeps.newWaveBuilder = originalNewWaveBuilderStep
-	})
-
 	t.Run("runs production build with options and closes builder", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
 		builder := &fakeRuntimeWaveBuilder{}
-		runtimeBuildToolingDeps.newWaveBuilder = func(*vormaruntime.Vorma) runtimeWaveBuilder {
-			return builder
+		dependencies := runtimeBuildToolingDependencies{
+			newWaveBuilder: func(*vormaruntime.Vorma) runtimeWaveBuilder {
+				return builder
+			},
 		}
 
 		buildOptions := wavebuild.BuildOpts{
@@ -194,7 +191,7 @@ func TestRunWaveProductionBuild(t *testing.T) {
 			IsDev:     false,
 			IsRebuild: false,
 		}
-		if err := runWaveProductionBuild(app, buildOptions); err != nil {
+		if err := runWaveProductionBuildWithToolingDependencies(app, buildOptions, dependencies); err != nil {
 			t.Fatalf("runWaveProductionBuild returned error: %v", err)
 		}
 		if !builder.buildCalled {
@@ -216,11 +213,13 @@ func TestRunWaveProductionBuild(t *testing.T) {
 		builder := &fakeRuntimeWaveBuilder{
 			buildErr: expectedErr,
 		}
-		runtimeBuildToolingDeps.newWaveBuilder = func(*vormaruntime.Vorma) runtimeWaveBuilder {
-			return builder
+		dependencies := runtimeBuildToolingDependencies{
+			newWaveBuilder: func(*vormaruntime.Vorma) runtimeWaveBuilder {
+				return builder
+			},
 		}
 
-		err := runWaveProductionBuild(app, productionBuildOptions(false))
+		err := runWaveProductionBuildWithToolingDependencies(app, productionBuildOptions(false), dependencies)
 		if err == nil {
 			t.Fatal("expected runWaveProductionBuild to return error")
 		}
@@ -240,11 +239,13 @@ func TestRunWaveProductionBuild(t *testing.T) {
 		builder := &fakeRuntimeWaveBuilder{
 			closeErr: expectedCloseErr,
 		}
-		runtimeBuildToolingDeps.newWaveBuilder = func(*vormaruntime.Vorma) runtimeWaveBuilder {
-			return builder
+		dependencies := runtimeBuildToolingDependencies{
+			newWaveBuilder: func(*vormaruntime.Vorma) runtimeWaveBuilder {
+				return builder
+			},
 		}
 
-		err := runWaveProductionBuild(app, productionBuildOptions(false))
+		err := runWaveProductionBuildWithToolingDependencies(app, productionBuildOptions(false), dependencies)
 		if err == nil {
 			t.Fatal("expected runWaveProductionBuild to return close error")
 		}
@@ -266,11 +267,13 @@ func TestRunWaveProductionBuild(t *testing.T) {
 			buildErr: expectedBuildErr,
 			closeErr: expectedCloseErr,
 		}
-		runtimeBuildToolingDeps.newWaveBuilder = func(*vormaruntime.Vorma) runtimeWaveBuilder {
-			return builder
+		dependencies := runtimeBuildToolingDependencies{
+			newWaveBuilder: func(*vormaruntime.Vorma) runtimeWaveBuilder {
+				return builder
+			},
 		}
 
-		err := runWaveProductionBuild(app, productionBuildOptions(false))
+		err := runWaveProductionBuildWithToolingDependencies(app, productionBuildOptions(false), dependencies)
 		if err == nil {
 			t.Fatal("expected runWaveProductionBuild to return joined build+close error")
 		}
@@ -287,31 +290,23 @@ func TestRunWaveProductionBuild(t *testing.T) {
 }
 
 func TestRuntimeBuildToolingDefaultSteps(t *testing.T) {
-	originalNewWaveBuilderStep := runtimeBuildToolingDeps.newWaveBuilder
-	originalRunWaveDevelopmentModeStep := runtimeBuildToolingDeps.runWaveDevelopmentMode
-	t.Cleanup(func() {
-		runtimeBuildToolingDeps.newWaveBuilder = originalNewWaveBuilderStep
-		runtimeBuildToolingDeps.runWaveDevelopmentMode = originalRunWaveDevelopmentModeStep
-	})
-
 	emptyMainAppEntry := ""
 	fixture := newBuildTestFixture(t, &buildTestFixtureOptions{
 		waveMainAppEntry: &emptyMainAppEntry,
 	})
 	app := fixture.app
 
-	runtimeBuildToolingDeps.newWaveBuilder = originalNewWaveBuilderStep
-	runtimeBuildToolingDeps.runWaveDevelopmentMode = originalRunWaveDevelopmentModeStep
+	dependencies := defaultRuntimeBuildToolingDependencies()
 
-	builder := runtimeBuildToolingDeps.newWaveBuilder(app)
+	builder := dependencies.newWaveBuilder(app)
 	if builder == nil {
-		t.Fatal("expected runtimeBuildToolingDeps.newWaveBuilder to return a builder")
+		t.Fatal("expected default newWaveBuilder to return a builder")
 	}
 	if err := builder.Close(); err != nil {
 		t.Fatalf("builder.Close returned error: %v", err)
 	}
 
-	err := runtimeBuildToolingDeps.runWaveDevelopmentMode(app)
+	err := dependencies.runWaveDevelopmentMode(app)
 	if err == nil {
 		t.Fatal("expected default runWaveDevelopmentMode to return config validation error")
 	}
@@ -325,33 +320,28 @@ func TestRunProdHookPostProcessing(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		originalRunWaveViteProductionBuildStep := runtimeBuildDeps.runWaveViteProductionBuild
-		originalRunPostViteProductionBuildStep := runtimeBuildDeps.runPostViteProductionBuild
-		t.Cleanup(func() {
-			runtimeBuildDeps.runWaveViteProductionBuild = originalRunWaveViteProductionBuildStep
-			runtimeBuildDeps.runPostViteProductionBuild = originalRunPostViteProductionBuildStep
-		})
-
 		var viteBuildCalled bool
 		var postProcessingCalled bool
-		runtimeBuildDeps.runWaveViteProductionBuild = func(_ *vormaruntime.Vorma) error {
-			viteBuildCalled = true
-			return nil
-		}
-		runtimeBuildDeps.runPostViteProductionBuild = func(_ *vormaruntime.Vorma) error {
-			postProcessingCalled = true
-			return nil
+		dependencies := runtimeBuildDependencies{
+			runWaveViteProductionBuild: func(_ *vormaruntime.Vorma) error {
+				viteBuildCalled = true
+				return nil
+			},
+			runPostViteProductionBuild: func(_ *vormaruntime.Vorma) error {
+				postProcessingCalled = true
+				return nil
+			},
 		}
 
-		err := runProdHookPostProcessing(app)
+		err := runProdHookPostProcessingWithRuntimeBuildDependencies(app, dependencies)
 		if err != nil {
 			t.Fatalf("runProdHookPostProcessing returned error: %v", err)
 		}
 		if !viteBuildCalled {
-			t.Fatal("expected runtimeBuildDeps.runWaveViteProductionBuild to be called")
+			t.Fatal("expected runWaveViteProductionBuild to be called")
 		}
 		if !postProcessingCalled {
-			t.Fatal("expected runtimeBuildDeps.runPostViteProductionBuild to be called")
+			t.Fatal("expected runPostViteProductionBuild to be called")
 		}
 	})
 
@@ -359,23 +349,18 @@ func TestRunProdHookPostProcessing(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		originalRunWaveViteProductionBuildStep := runtimeBuildDeps.runWaveViteProductionBuild
-		originalRunPostViteProductionBuildStep := runtimeBuildDeps.runPostViteProductionBuild
-		t.Cleanup(func() {
-			runtimeBuildDeps.runWaveViteProductionBuild = originalRunWaveViteProductionBuildStep
-			runtimeBuildDeps.runPostViteProductionBuild = originalRunPostViteProductionBuildStep
-		})
-
 		expectedErr := errors.New("vite step failed")
-		runtimeBuildDeps.runWaveViteProductionBuild = func(_ *vormaruntime.Vorma) error {
-			return expectedErr
-		}
-		runtimeBuildDeps.runPostViteProductionBuild = func(_ *vormaruntime.Vorma) error {
-			t.Fatal("did not expect post-processing after vite failure")
-			return nil
+		dependencies := runtimeBuildDependencies{
+			runWaveViteProductionBuild: func(_ *vormaruntime.Vorma) error {
+				return expectedErr
+			},
+			runPostViteProductionBuild: func(_ *vormaruntime.Vorma) error {
+				t.Fatal("did not expect post-processing after vite failure")
+				return nil
+			},
 		}
 
-		err := runProdHookPostProcessing(app)
+		err := runProdHookPostProcessingWithRuntimeBuildDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected runProdHookPostProcessing to return error")
 		}
@@ -388,22 +373,17 @@ func TestRunProdHookPostProcessing(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		originalRunWaveViteProductionBuildStep := runtimeBuildDeps.runWaveViteProductionBuild
-		originalRunPostViteProductionBuildStep := runtimeBuildDeps.runPostViteProductionBuild
-		t.Cleanup(func() {
-			runtimeBuildDeps.runWaveViteProductionBuild = originalRunWaveViteProductionBuildStep
-			runtimeBuildDeps.runPostViteProductionBuild = originalRunPostViteProductionBuildStep
-		})
-
 		expectedErr := errors.New("post-processing failed")
-		runtimeBuildDeps.runWaveViteProductionBuild = func(_ *vormaruntime.Vorma) error {
-			return nil
-		}
-		runtimeBuildDeps.runPostViteProductionBuild = func(_ *vormaruntime.Vorma) error {
-			return expectedErr
+		dependencies := runtimeBuildDependencies{
+			runWaveViteProductionBuild: func(_ *vormaruntime.Vorma) error {
+				return nil
+			},
+			runPostViteProductionBuild: func(_ *vormaruntime.Vorma) error {
+				return expectedErr
+			},
 		}
 
-		err := runProdHookPostProcessing(app)
+		err := runProdHookPostProcessingWithRuntimeBuildDependencies(app, dependencies)
 		if err == nil {
 			t.Fatal("expected runProdHookPostProcessing to return error")
 		}
@@ -417,32 +397,26 @@ func TestRuntimeBuildExecutorRunDevelopmentMode(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	originalSetWaveModeToDevStep := runtimeBuildDeps.setWaveModeToDev
-	originalRunWaveDevelopmentServer := runtimeBuildDeps.runWaveDevelopmentServer
-	t.Cleanup(func() {
-		runtimeBuildDeps.setWaveModeToDev = originalSetWaveModeToDevStep
-		runtimeBuildDeps.runWaveDevelopmentServer = originalRunWaveDevelopmentServer
-	})
-
 	var setModeToDevCalled bool
-	runtimeBuildDeps.setWaveModeToDev = func() {
-		setModeToDevCalled = true
-	}
-
 	var developmentServerCalled bool
-	runtimeBuildDeps.runWaveDevelopmentServer = func(_ *vormaruntime.Vorma) error {
-		developmentServerCalled = true
-		return nil
+	dependencies := runtimeBuildDependencies{
+		setWaveModeToDev: func() {
+			setModeToDevCalled = true
+		},
+		runWaveDevelopmentServer: func(_ *vormaruntime.Vorma) error {
+			developmentServerCalled = true
+			return nil
+		},
 	}
 
-	if err := newRuntimeBuildExecutor(app).runDevelopmentMode(); err != nil {
+	if err := newRuntimeBuildExecutorWithDependencies(app, dependencies).runDevelopmentMode(); err != nil {
 		t.Fatalf("runtimeBuildExecutor.runDevelopmentMode returned error: %v", err)
 	}
 	if !developmentServerCalled {
-		t.Fatal("expected runtimeBuildDeps.runWaveDevelopmentServer to be called")
+		t.Fatal("expected runWaveDevelopmentServer to be called")
 	}
 	if !setModeToDevCalled {
-		t.Fatal("expected runtimeBuildDeps.setWaveModeToDev to be called")
+		t.Fatal("expected setWaveModeToDev to be called")
 	}
 	if !app.GetIsDevMode() {
 		t.Fatal("expected app to be marked as dev mode")
@@ -454,18 +428,18 @@ func TestRuntimeBuildExecutorRunProductionMode(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		originalRunWaveProductionBuildStep := runtimeBuildDeps.runWaveProductionBuild
-		t.Cleanup(func() {
-			runtimeBuildDeps.runWaveProductionBuild = originalRunWaveProductionBuildStep
-		})
-
 		var capturedOptions wavebuild.BuildOpts
-		runtimeBuildDeps.runWaveProductionBuild = func(_ *vormaruntime.Vorma, options wavebuild.BuildOpts) error {
-			capturedOptions = options
-			return nil
+		dependencies := runtimeBuildDependencies{
+			runWaveProductionBuild: func(
+				_ *vormaruntime.Vorma,
+				options wavebuild.BuildOpts,
+			) error {
+				capturedOptions = options
+				return nil
+			},
 		}
 
-		if err := newRuntimeBuildExecutor(app).runProductionMode(true); err != nil {
+		if err := newRuntimeBuildExecutorWithDependencies(app, dependencies).runProductionMode(true); err != nil {
 			t.Fatalf("runtimeBuildExecutor.runProductionMode returned error: %v", err)
 		}
 		if capturedOptions.CompileGo {
@@ -483,17 +457,17 @@ func TestRuntimeBuildExecutorRunProductionMode(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		originalRunWaveProductionBuildStep := runtimeBuildDeps.runWaveProductionBuild
-		t.Cleanup(func() {
-			runtimeBuildDeps.runWaveProductionBuild = originalRunWaveProductionBuildStep
-		})
-
 		expectedErr := errors.New("wave build failed")
-		runtimeBuildDeps.runWaveProductionBuild = func(_ *vormaruntime.Vorma, _ wavebuild.BuildOpts) error {
-			return expectedErr
+		dependencies := runtimeBuildDependencies{
+			runWaveProductionBuild: func(
+				_ *vormaruntime.Vorma,
+				_ wavebuild.BuildOpts,
+			) error {
+				return expectedErr
+			},
 		}
 
-		err := newRuntimeBuildExecutor(app).runProductionMode(false)
+		err := newRuntimeBuildExecutorWithDependencies(app, dependencies).runProductionMode(false)
 		if err == nil {
 			t.Fatal("expected runtimeBuildExecutor.runProductionMode to return error")
 		}
@@ -532,18 +506,15 @@ func TestBuild(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		originalRunWaveDevelopmentServer := runtimeBuildDeps.runWaveDevelopmentServer
-		t.Cleanup(func() {
-			runtimeBuildDeps.runWaveDevelopmentServer = originalRunWaveDevelopmentServer
-		})
-
 		var developmentServerCalled bool
-		runtimeBuildDeps.runWaveDevelopmentServer = func(_ *vormaruntime.Vorma) error {
-			developmentServerCalled = true
-			return nil
+		dependencies := runtimeBuildDependencies{
+			runWaveDevelopmentServer: func(_ *vormaruntime.Vorma) error {
+				developmentServerCalled = true
+				return nil
+			},
 		}
 
-		if err := build(app, true, false); err != nil {
+		if err := buildWithRuntimeBuildDependencies(app, true, false, dependencies); err != nil {
 			t.Fatalf("build returned error: %v", err)
 		}
 		if !developmentServerCalled {
@@ -559,17 +530,14 @@ func TestBuild(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		originalRunWaveProductionBuildStep := runtimeBuildDeps.runWaveProductionBuild
-		t.Cleanup(func() {
-			runtimeBuildDeps.runWaveProductionBuild = originalRunWaveProductionBuildStep
-		})
-
 		expectedErr := errors.New("production build failed")
-		runtimeBuildDeps.runWaveProductionBuild = func(_ *vormaruntime.Vorma, _ wavebuild.BuildOpts) error {
-			return expectedErr
+		dependencies := runtimeBuildDependencies{
+			runWaveProductionBuild: func(_ *vormaruntime.Vorma, _ wavebuild.BuildOpts) error {
+				return expectedErr
+			},
 		}
 
-		err := build(app, false, false)
+		err := buildWithRuntimeBuildDependencies(app, false, false, dependencies)
 		if err == nil {
 			t.Fatal("expected build to return production error")
 		}

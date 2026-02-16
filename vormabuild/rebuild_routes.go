@@ -27,29 +27,138 @@ type fastRouteRebuildArtifactDependencies struct {
 	removeRouteManifestArtifact func(string) error
 }
 
+type fastRouteRebuildExecutor struct {
+	dependencies     fastRouteRebuildDependencies
+	artifactExecutor fastRouteRebuildArtifactExecutor
+}
+
+type fastRouteRebuildArtifactExecutor struct {
+	dependencies fastRouteRebuildArtifactDependencies
+}
+
 type fastRouteRebuildBuildIDDependencies struct {
 	generateFastRebuildIDSuffix func() (string, error)
 }
 
-var fastRouteRebuildDeps = fastRouteRebuildDependencies{
-	parseClientRoutes:             parseClientRoutes,
-	newFastRebuildID:              newFastRebuildID,
-	runRouteSyncExecution:         runRouteSyncExecution,
-	logFastRouteRebuildCompletion: logFastRouteRebuildCompletion,
+type fastRouteRebuildIDExecutor struct {
+	dependencies fastRouteRebuildBuildIDDependencies
 }
 
-var fastRouteRebuildArtifactDeps = fastRouteRebuildArtifactDependencies{
-	cleanRouteManifestsOnly:     cleanRouteManifestsOnly,
-	writeRouteArtifacts:         writeRouteArtifactsWithLock,
-	readRouteManifestArtifact:   os.ReadFile,
-	writeRouteManifestArtifact:  writeFileAtomically,
-	removeRouteManifestArtifact: os.Remove,
+func defaultFastRouteRebuildDependencies() fastRouteRebuildDependencies {
+	return fastRouteRebuildDependencies{
+		parseClientRoutes:             parseClientRoutes,
+		newFastRebuildID:              newFastRebuildID,
+		runRouteSyncExecution:         runRouteSyncExecution,
+		logFastRouteRebuildCompletion: logFastRouteRebuildCompletion,
+	}
 }
 
-var fastRouteRebuildBuildIDDeps = fastRouteRebuildBuildIDDependencies{
-	generateFastRebuildIDSuffix: func() (string, error) {
-		return id.New(16)
-	},
+func normalizeFastRouteRebuildDependencies(
+	dependencies fastRouteRebuildDependencies,
+) fastRouteRebuildDependencies {
+	defaultDependencies := defaultFastRouteRebuildDependencies()
+	if dependencies.parseClientRoutes == nil {
+		dependencies.parseClientRoutes = defaultDependencies.parseClientRoutes
+	}
+	if dependencies.newFastRebuildID == nil {
+		dependencies.newFastRebuildID = defaultDependencies.newFastRebuildID
+	}
+	if dependencies.runRouteSyncExecution == nil {
+		dependencies.runRouteSyncExecution = defaultDependencies.runRouteSyncExecution
+	}
+	if dependencies.logFastRouteRebuildCompletion == nil {
+		dependencies.logFastRouteRebuildCompletion = defaultDependencies.logFastRouteRebuildCompletion
+	}
+	return dependencies
+}
+
+func defaultFastRouteRebuildArtifactDependencies() fastRouteRebuildArtifactDependencies {
+	return fastRouteRebuildArtifactDependencies{
+		cleanRouteManifestsOnly:     cleanRouteManifestsOnly,
+		writeRouteArtifacts:         writeRouteArtifactsWithoutHoldingRuntimeLock,
+		readRouteManifestArtifact:   os.ReadFile,
+		writeRouteManifestArtifact:  writeFileAtomically,
+		removeRouteManifestArtifact: os.Remove,
+	}
+}
+
+func normalizeFastRouteRebuildArtifactDependencies(
+	dependencies fastRouteRebuildArtifactDependencies,
+) fastRouteRebuildArtifactDependencies {
+	defaultDependencies := defaultFastRouteRebuildArtifactDependencies()
+	if dependencies.cleanRouteManifestsOnly == nil {
+		dependencies.cleanRouteManifestsOnly = defaultDependencies.cleanRouteManifestsOnly
+	}
+	if dependencies.writeRouteArtifacts == nil {
+		dependencies.writeRouteArtifacts = defaultDependencies.writeRouteArtifacts
+	}
+	if dependencies.readRouteManifestArtifact == nil {
+		dependencies.readRouteManifestArtifact = defaultDependencies.readRouteManifestArtifact
+	}
+	if dependencies.writeRouteManifestArtifact == nil {
+		dependencies.writeRouteManifestArtifact = defaultDependencies.writeRouteManifestArtifact
+	}
+	if dependencies.removeRouteManifestArtifact == nil {
+		dependencies.removeRouteManifestArtifact = defaultDependencies.removeRouteManifestArtifact
+	}
+	return dependencies
+}
+
+func newFastRouteRebuildArtifactExecutor(
+	dependencies fastRouteRebuildArtifactDependencies,
+) fastRouteRebuildArtifactExecutor {
+	return fastRouteRebuildArtifactExecutor{
+		dependencies: normalizeFastRouteRebuildArtifactDependencies(dependencies),
+	}
+}
+
+func newFastRouteRebuildExecutor(
+	dependencies fastRouteRebuildDependencies,
+	artifactDependencies fastRouteRebuildArtifactDependencies,
+) fastRouteRebuildExecutor {
+	return fastRouteRebuildExecutor{
+		dependencies:     normalizeFastRouteRebuildDependencies(dependencies),
+		artifactExecutor: newFastRouteRebuildArtifactExecutor(artifactDependencies),
+	}
+}
+
+var defaultFastRouteRebuildIDExecutor = newFastRouteRebuildIDExecutor(
+	fastRouteRebuildBuildIDDependencies{},
+)
+
+var defaultFastRouteRebuildArtifactExecutor = newFastRouteRebuildArtifactExecutor(
+	fastRouteRebuildArtifactDependencies{},
+)
+
+var defaultFastRouteRebuildExecutor = newFastRouteRebuildExecutor(
+	fastRouteRebuildDependencies{},
+	fastRouteRebuildArtifactDependencies{},
+)
+
+func defaultFastRouteRebuildBuildIDDependencies() fastRouteRebuildBuildIDDependencies {
+	return fastRouteRebuildBuildIDDependencies{
+		generateFastRebuildIDSuffix: func() (string, error) {
+			return id.New(16)
+		},
+	}
+}
+
+func normalizeFastRouteRebuildBuildIDDependencies(
+	dependencies fastRouteRebuildBuildIDDependencies,
+) fastRouteRebuildBuildIDDependencies {
+	defaultDependencies := defaultFastRouteRebuildBuildIDDependencies()
+	if dependencies.generateFastRebuildIDSuffix == nil {
+		dependencies.generateFastRebuildIDSuffix = defaultDependencies.generateFastRebuildIDSuffix
+	}
+	return dependencies
+}
+
+func newFastRouteRebuildIDExecutor(
+	dependencies fastRouteRebuildBuildIDDependencies,
+) fastRouteRebuildIDExecutor {
+	return fastRouteRebuildIDExecutor{
+		dependencies: normalizeFastRouteRebuildBuildIDDependencies(dependencies),
+	}
 }
 
 // rebuildRoutesOnly is the fast path for rebuilding when only vorma.routes.ts changes.
@@ -63,16 +172,35 @@ var fastRouteRebuildBuildIDDeps = fastRouteRebuildBuildIDDependencies{
 //
 // Performance: ~50ms vs ~1.5s for full rebuild
 func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
+	return defaultFastRouteRebuildExecutor.rebuildRoutesOnly(v)
+}
+
+func rebuildRoutesOnlyWithDependencies(
+	v *vormaruntime.Vorma,
+	dependencies fastRouteRebuildDependencies,
+	artifactDependencies fastRouteRebuildArtifactDependencies,
+) error {
+	return newFastRouteRebuildExecutor(dependencies, artifactDependencies).rebuildRoutesOnly(v)
+}
+
+func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 	start := time.Now()
 
 	if !v.GetIsDevMode() {
 		return errors.New("rebuildRoutesOnly should only be called in dev mode")
 	}
 
-	buildLifecycleStateMachine, err := newBuildLifecycleStateMachine(
+	buildLifecycleStateMachine, err := newBuildLifecycleStateMachineWithOptions(
 		buildLifecycleWorkflowFastRouteRebuild,
 		v.Log,
-		nil,
+		buildLifecycleStateMachineOptions{
+			attemptInputs: []buildLifecycleAttemptInput{
+				{
+					Key:   "is_dev_mode",
+					Value: "true",
+				},
+			},
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("configure build lifecycle state machine: %w", err)
@@ -83,11 +211,11 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 
 	v.Log.Info("START fast route rebuild")
 
-	err = fastRouteRebuildDeps.runRouteSyncExecution(
+	err = executor.dependencies.runRouteSyncExecution(
 		v,
 		routeSyncExecutionOptions{
-			parseClientRoutes:          fastRouteRebuildDeps.parseClientRoutes,
-			generateBuildID:            fastRouteRebuildDeps.newFastRebuildID,
+			parseClientRoutes:          executor.dependencies.parseClientRoutes,
+			generateBuildID:            executor.dependencies.newFastRebuildID,
 			parseClientRoutesErrorText: "parse client routes",
 			postSyncHook: func(v *vormaruntime.Vorma) error {
 				if err := buildLifecycleStateMachine.transitionTo(
@@ -96,7 +224,7 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 				); err != nil {
 					return fmt.Errorf("transition build lifecycle to routes-synchronized: %w", err)
 				}
-				if err := writeFastRebuildArtifactsAfterRouteSync(v); err != nil {
+				if err := executor.artifactExecutor.writeFastRebuildArtifactsAfterRouteSync(v); err != nil {
 					return err
 				}
 				if err := buildLifecycleStateMachine.transitionTo(
@@ -110,6 +238,17 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 		},
 	)
 	if err != nil {
+		if rollbackTraceErr := buildLifecycleStateMachine.recordRollback(
+			buildLifecycleRollbackDecisionRequired,
+			buildLifecycleRollbackOutcomeNotAttempted,
+			"fast rebuild failure path requires route-manifest rollback in artifact writer",
+			nil,
+		); rollbackTraceErr != nil {
+			err = errors.Join(
+				err,
+				fmt.Errorf("record lifecycle rollback decision: %w", rollbackTraceErr),
+			)
+		}
 		if transitionErr := buildLifecycleStateMachine.transitionToFailed("fast route rebuild failed", err); transitionErr != nil {
 			return errors.Join(
 				err,
@@ -118,29 +257,54 @@ func rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 		}
 		return err
 	}
+	if rollbackTraceErr := buildLifecycleStateMachine.recordRollback(
+		buildLifecycleRollbackDecisionNotRequired,
+		buildLifecycleRollbackOutcomeNotRequired,
+		"fast route rebuild completed successfully without requiring rollback",
+		nil,
+	); rollbackTraceErr != nil {
+		return fmt.Errorf("record lifecycle rollback decision: %w", rollbackTraceErr)
+	}
 	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseCompleted, "fast route rebuild completed"); err != nil {
 		return fmt.Errorf("transition build lifecycle to completed: %w", err)
 	}
 
-	fastRouteRebuildDeps.logFastRouteRebuildCompletion(v, start)
+	executor.dependencies.logFastRouteRebuildCompletion(v, start)
 	return nil
 }
 
 func newFastRebuildID() (string, error) {
+	return defaultFastRouteRebuildIDExecutor.newFastRebuildID()
+}
+
+func (executor fastRouteRebuildIDExecutor) newFastRebuildID() (string, error) {
 	return generateBuildIDWithPrefix(
 		"dev_fast_",
-		fastRouteRebuildBuildIDDeps.generateFastRebuildIDSuffix,
+		executor.dependencies.generateFastRebuildIDSuffix,
 	)
 }
 
 func writeFastRebuildArtifactsAfterRouteSync(
 	v *vormaruntime.Vorma,
 ) error {
+	return defaultFastRouteRebuildArtifactExecutor.writeFastRebuildArtifactsAfterRouteSync(v)
+}
+
+func writeFastRebuildArtifactsAfterRouteSyncWithDependencies(
+	v *vormaruntime.Vorma,
+	dependencies fastRouteRebuildArtifactDependencies,
+) error {
+	return newFastRouteRebuildArtifactExecutor(dependencies).writeFastRebuildArtifactsAfterRouteSync(v)
+}
+
+func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterRouteSync(
+	v *vormaruntime.Vorma,
+) error {
 	var previousRouteManifestFile string
 	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
 		previousRouteManifestFile = l.GetRouteManifestFile()
 	})
-	previousRouteManifestSnapshot, err := captureFastRebuildRouteManifestArtifactSnapshot(
+	previousRouteManifestSnapshot, err := executor.captureFastRebuildRouteManifestArtifactSnapshot(
 		v,
 		previousRouteManifestFile,
 	)
@@ -151,14 +315,14 @@ func writeFastRebuildArtifactsAfterRouteSync(
 	return runWithRollbackOnFailureAndPanic(
 		rollbackTransactionOptions{
 			run: func() error {
-				if err := fastRouteRebuildArtifactDeps.cleanRouteManifestsOnly(v); err != nil {
+				if err := executor.dependencies.cleanRouteManifestsOnly(v); err != nil {
 					return fmt.Errorf("clean route manifests: %w", err)
 				}
 
-				return fastRouteRebuildArtifactDeps.writeRouteArtifacts(v)
+				return executor.dependencies.writeRouteArtifacts(v)
 			},
 			rollbackOnFailure: func() error {
-				return restoreFastRebuildRouteManifestArtifactSnapshot(
+				return executor.restoreFastRebuildRouteManifestArtifactSnapshot(
 					v,
 					previousRouteManifestFile,
 					previousRouteManifestSnapshot,
@@ -180,6 +344,26 @@ func captureFastRebuildRouteManifestArtifactSnapshot(
 	v *vormaruntime.Vorma,
 	manifestFile string,
 ) (fastRebuildRouteManifestArtifactSnapshot, error) {
+	return defaultFastRouteRebuildArtifactExecutor.captureFastRebuildRouteManifestArtifactSnapshot(
+		v,
+		manifestFile,
+	)
+}
+
+func captureFastRebuildRouteManifestArtifactSnapshotWithDependencies(
+	v *vormaruntime.Vorma,
+	manifestFile string,
+	dependencies fastRouteRebuildArtifactDependencies,
+) (fastRebuildRouteManifestArtifactSnapshot, error) {
+	return newFastRouteRebuildArtifactExecutor(
+		dependencies,
+	).captureFastRebuildRouteManifestArtifactSnapshot(v, manifestFile)
+}
+
+func (executor fastRouteRebuildArtifactExecutor) captureFastRebuildRouteManifestArtifactSnapshot(
+	v *vormaruntime.Vorma,
+	manifestFile string,
+) (fastRebuildRouteManifestArtifactSnapshot, error) {
 	if manifestFile == "" {
 		return fastRebuildRouteManifestArtifactSnapshot{}, nil
 	}
@@ -187,11 +371,34 @@ func captureFastRebuildRouteManifestArtifactSnapshot(
 	manifestFilePath := filepath.Join(v.Wave.GetStaticPublicOutDir(), manifestFile)
 	return captureBuildArtifactFileSnapshot(
 		manifestFilePath,
-		fastRouteRebuildArtifactDeps.readRouteManifestArtifact,
+		executor.dependencies.readRouteManifestArtifact,
 	)
 }
 
 func restoreFastRebuildRouteManifestArtifactSnapshot(
+	v *vormaruntime.Vorma,
+	manifestFile string,
+	snapshot fastRebuildRouteManifestArtifactSnapshot,
+) error {
+	return defaultFastRouteRebuildArtifactExecutor.restoreFastRebuildRouteManifestArtifactSnapshot(
+		v,
+		manifestFile,
+		snapshot,
+	)
+}
+
+func restoreFastRebuildRouteManifestArtifactSnapshotWithDependencies(
+	v *vormaruntime.Vorma,
+	manifestFile string,
+	snapshot fastRebuildRouteManifestArtifactSnapshot,
+	dependencies fastRouteRebuildArtifactDependencies,
+) error {
+	return newFastRouteRebuildArtifactExecutor(
+		dependencies,
+	).restoreFastRebuildRouteManifestArtifactSnapshot(v, manifestFile, snapshot)
+}
+
+func (executor fastRouteRebuildArtifactExecutor) restoreFastRebuildRouteManifestArtifactSnapshot(
 	v *vormaruntime.Vorma,
 	manifestFile string,
 	snapshot fastRebuildRouteManifestArtifactSnapshot,
@@ -204,8 +411,8 @@ func restoreFastRebuildRouteManifestArtifactSnapshot(
 	return restoreBuildArtifactFileSnapshot(
 		manifestFilePath,
 		snapshot,
-		fastRouteRebuildArtifactDeps.writeRouteManifestArtifact,
-		fastRouteRebuildArtifactDeps.removeRouteManifestArtifact,
+		executor.dependencies.writeRouteManifestArtifact,
+		executor.dependencies.removeRouteManifestArtifact,
 	)
 }
 

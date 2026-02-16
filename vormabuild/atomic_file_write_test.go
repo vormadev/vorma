@@ -11,11 +11,12 @@ import (
 
 func TestWriteFileAtomically(t *testing.T) {
 	t.Run("replaces target file contents without leaving temp files", func(t *testing.T) {
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
 		outputDirectory := t.TempDir()
 		targetPath := filepath.Join(outputDirectory, "artifact.json")
 		mustWriteFile(t, targetPath, []byte(`{"old":true}`))
 
-		if err := writeFileAtomically(targetPath, []byte(`{"new":true}`), 0o644); err != nil {
+		if err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"new":true}`), 0o644, atomicWriteDependencies); err != nil {
 			t.Fatalf("writeFileAtomically returned error: %v", err)
 		}
 
@@ -37,9 +38,10 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("syncs parent directory after rename", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		outputDirectory := t.TempDir()
@@ -48,20 +50,20 @@ func TestWriteFileAtomically(t *testing.T) {
 		openedParentDirectoryPath := ""
 		syncParentDirectoryCalled := false
 		closeParentDirectoryCalled := false
-		atomicFileWriteDeps.openParentDirectory = func(path string) (*os.File, error) {
+		atomicWriteDependencies.openParentDirectory = func(path string) (*os.File, error) {
 			openedParentDirectoryPath = path
 			return os.Open(path)
 		}
-		atomicFileWriteDeps.syncParentDirectory = func(dir *os.File) error {
+		atomicWriteDependencies.syncParentDirectory = func(dir *os.File) error {
 			syncParentDirectoryCalled = true
 			return dir.Sync()
 		}
-		atomicFileWriteDeps.closeParentDirectory = func(dir *os.File) error {
+		atomicWriteDependencies.closeParentDirectory = func(dir *os.File) error {
 			closeParentDirectoryCalled = true
 			return dir.Close()
 		}
 
-		if err := writeFileAtomically(targetPath, []byte(`{"new":true}`), 0o644); err != nil {
+		if err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"new":true}`), 0o644, atomicWriteDependencies); err != nil {
 			t.Fatalf("writeFileAtomically returned error: %v", err)
 		}
 		if openedParentDirectoryPath != outputDirectory {
@@ -76,9 +78,10 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("returns open-parent-directory error after rename", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		outputDirectory := t.TempDir()
@@ -86,11 +89,11 @@ func TestWriteFileAtomically(t *testing.T) {
 		mustWriteFile(t, targetPath, []byte(`{"old":true}`))
 
 		openParentDirectoryErr := errors.New("open parent directory failed")
-		atomicFileWriteDeps.openParentDirectory = func(string) (*os.File, error) {
+		atomicWriteDependencies.openParentDirectory = func(string) (*os.File, error) {
 			return nil, openParentDirectoryErr
 		}
 
-		err := writeFileAtomically(targetPath, []byte(`{"new":true}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"new":true}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return open-parent-directory error")
 		}
@@ -111,9 +114,10 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("returns sync-parent-directory error and closes directory", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		outputDirectory := t.TempDir()
@@ -121,18 +125,18 @@ func TestWriteFileAtomically(t *testing.T) {
 
 		syncParentDirectoryErr := errors.New("sync parent directory failed")
 		closeParentDirectoryCalled := false
-		atomicFileWriteDeps.openParentDirectory = func(path string) (*os.File, error) {
+		atomicWriteDependencies.openParentDirectory = func(path string) (*os.File, error) {
 			return os.Open(path)
 		}
-		atomicFileWriteDeps.syncParentDirectory = func(*os.File) error {
+		atomicWriteDependencies.syncParentDirectory = func(*os.File) error {
 			return syncParentDirectoryErr
 		}
-		atomicFileWriteDeps.closeParentDirectory = func(dir *os.File) error {
+		atomicWriteDependencies.closeParentDirectory = func(dir *os.File) error {
 			closeParentDirectoryCalled = true
 			return dir.Close()
 		}
 
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return sync-parent-directory error")
 		}
@@ -148,9 +152,10 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("joins sync and close errors for parent directory", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		outputDirectory := t.TempDir()
@@ -158,18 +163,18 @@ func TestWriteFileAtomically(t *testing.T) {
 
 		syncParentDirectoryErr := errors.New("sync parent directory failed")
 		closeParentDirectoryErr := errors.New("close parent directory failed")
-		atomicFileWriteDeps.openParentDirectory = func(path string) (*os.File, error) {
+		atomicWriteDependencies.openParentDirectory = func(path string) (*os.File, error) {
 			return os.Open(path)
 		}
-		atomicFileWriteDeps.syncParentDirectory = func(*os.File) error {
+		atomicWriteDependencies.syncParentDirectory = func(*os.File) error {
 			return syncParentDirectoryErr
 		}
-		atomicFileWriteDeps.closeParentDirectory = func(dir *os.File) error {
+		atomicWriteDependencies.closeParentDirectory = func(dir *os.File) error {
 			_ = dir.Close()
 			return closeParentDirectoryErr
 		}
 
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return joined sync+close parent-directory errors")
 		}
@@ -185,27 +190,28 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("returns close-parent-directory error when sync succeeds", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		outputDirectory := t.TempDir()
 		targetPath := filepath.Join(outputDirectory, "artifact.json")
 
 		closeParentDirectoryErr := errors.New("close parent directory failed")
-		atomicFileWriteDeps.openParentDirectory = func(path string) (*os.File, error) {
+		atomicWriteDependencies.openParentDirectory = func(path string) (*os.File, error) {
 			return os.Open(path)
 		}
-		atomicFileWriteDeps.syncParentDirectory = func(*os.File) error {
+		atomicWriteDependencies.syncParentDirectory = func(*os.File) error {
 			return nil
 		}
-		atomicFileWriteDeps.closeParentDirectory = func(dir *os.File) error {
+		atomicWriteDependencies.closeParentDirectory = func(dir *os.File) error {
 			_ = dir.Close()
 			return closeParentDirectoryErr
 		}
 
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return close-parent-directory error")
 		}
@@ -218,8 +224,9 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("wraps create-temp-file errors", func(t *testing.T) {
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
 		targetPath := filepath.Join(t.TempDir(), "missing-directory", "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return create-temp-file error")
 		}
@@ -229,23 +236,24 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("removes temp file when rename step fails", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		renameErr := errors.New("rename failed")
 		var removedTempPath string
-		atomicFileWriteDeps.renameTempFile = func(string, string) error {
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
 			return renameErr
 		}
-		atomicFileWriteDeps.removeTempFile = func(path string) error {
+		atomicWriteDependencies.removeTempFile = func(path string) error {
 			removedTempPath = path
 			return os.Remove(path)
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return rename error")
 		}
@@ -264,33 +272,34 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("closes and removes temp file when write step fails", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		writeErr := errors.New("write failed")
 		closeCalled := false
 		renameCalled := false
 		removeCalled := false
-		atomicFileWriteDeps.writeAllBytesToTempFile = func(*os.File, []byte) (int, error) {
+		atomicWriteDependencies.writeAllBytesToTempFile = func(*os.File, []byte) (int, error) {
 			return 0, writeErr
 		}
-		atomicFileWriteDeps.closeTempFile = func(file *os.File) error {
+		atomicWriteDependencies.closeTempFile = func(file *os.File) error {
 			closeCalled = true
 			return file.Close()
 		}
-		atomicFileWriteDeps.renameTempFile = func(string, string) error {
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
 			renameCalled = true
 			return nil
 		}
-		atomicFileWriteDeps.removeTempFile = func(path string) error {
+		atomicWriteDependencies.removeTempFile = func(path string) error {
 			removeCalled = true
 			return os.Remove(path)
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return write error")
 		}
@@ -312,32 +321,33 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("treats partial writes as short-write errors", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		closeCalled := false
 		renameCalled := false
 		removeCalled := false
-		atomicFileWriteDeps.writeAllBytesToTempFile = func(_ *os.File, fileContents []byte) (int, error) {
+		atomicWriteDependencies.writeAllBytesToTempFile = func(_ *os.File, fileContents []byte) (int, error) {
 			return len(fileContents) - 1, nil
 		}
-		atomicFileWriteDeps.closeTempFile = func(file *os.File) error {
+		atomicWriteDependencies.closeTempFile = func(file *os.File) error {
 			closeCalled = true
 			return file.Close()
 		}
-		atomicFileWriteDeps.renameTempFile = func(string, string) error {
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
 			renameCalled = true
 			return nil
 		}
-		atomicFileWriteDeps.removeTempFile = func(path string) error {
+		atomicWriteDependencies.removeTempFile = func(path string) error {
 			removeCalled = true
 			return os.Remove(path)
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return short-write error")
 		}
@@ -359,33 +369,34 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("closes and removes temp file when set-mode fails", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		modeErr := errors.New("chmod failed")
 		closeCalled := false
 		renameCalled := false
 		removeCalled := false
-		atomicFileWriteDeps.setTempFileMode = func(*os.File, os.FileMode) error {
+		atomicWriteDependencies.setTempFileMode = func(*os.File, os.FileMode) error {
 			return modeErr
 		}
-		atomicFileWriteDeps.closeTempFile = func(file *os.File) error {
+		atomicWriteDependencies.closeTempFile = func(file *os.File) error {
 			closeCalled = true
 			return file.Close()
 		}
-		atomicFileWriteDeps.renameTempFile = func(string, string) error {
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
 			renameCalled = true
 			return nil
 		}
-		atomicFileWriteDeps.removeTempFile = func(path string) error {
+		atomicWriteDependencies.removeTempFile = func(path string) error {
 			removeCalled = true
 			return os.Remove(path)
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return set-mode error")
 		}
@@ -407,33 +418,34 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("closes and removes temp file when sync fails", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		syncErr := errors.New("sync failed")
 		closeCalled := false
 		renameCalled := false
 		removeCalled := false
-		atomicFileWriteDeps.syncTempFileToDisk = func(*os.File) error {
+		atomicWriteDependencies.syncTempFileToDisk = func(*os.File) error {
 			return syncErr
 		}
-		atomicFileWriteDeps.closeTempFile = func(file *os.File) error {
+		atomicWriteDependencies.closeTempFile = func(file *os.File) error {
 			closeCalled = true
 			return file.Close()
 		}
-		atomicFileWriteDeps.renameTempFile = func(string, string) error {
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
 			renameCalled = true
 			return nil
 		}
-		atomicFileWriteDeps.removeTempFile = func(path string) error {
+		atomicWriteDependencies.removeTempFile = func(path string) error {
 			removeCalled = true
 			return os.Remove(path)
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return sync error")
 		}
@@ -455,28 +467,29 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("returns close error before rename and removes temp file", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		closeErr := errors.New("close failed")
 		renameCalled := false
 		removeCalled := false
-		atomicFileWriteDeps.closeTempFile = func(file *os.File) error {
+		atomicWriteDependencies.closeTempFile = func(file *os.File) error {
 			return errors.Join(closeErr, file.Close())
 		}
-		atomicFileWriteDeps.renameTempFile = func(string, string) error {
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
 			renameCalled = true
 			return nil
 		}
-		atomicFileWriteDeps.removeTempFile = func(path string) error {
+		atomicWriteDependencies.removeTempFile = func(path string) error {
 			removeCalled = true
 			return os.Remove(path)
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return close error")
 		}
@@ -495,28 +508,29 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("joins operation and close errors when cleanup close fails", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		writeErr := errors.New("write failed")
 		closeErr := errors.New("close failed")
 		removeCalled := false
-		atomicFileWriteDeps.writeAllBytesToTempFile = func(*os.File, []byte) (int, error) {
+		atomicWriteDependencies.writeAllBytesToTempFile = func(*os.File, []byte) (int, error) {
 			return 0, writeErr
 		}
-		atomicFileWriteDeps.closeTempFile = func(file *os.File) error {
+		atomicWriteDependencies.closeTempFile = func(file *os.File) error {
 			_ = file.Close()
 			return closeErr
 		}
-		atomicFileWriteDeps.removeTempFile = func(path string) error {
+		atomicWriteDependencies.removeTempFile = func(path string) error {
 			removeCalled = true
 			return os.Remove(path)
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return joined write+close error")
 		}
@@ -535,9 +549,10 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("retries rename after removing existing target when rename reports target exists", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		outputDirectory := t.TempDir()
@@ -546,19 +561,19 @@ func TestWriteFileAtomically(t *testing.T) {
 
 		renameCalls := 0
 		removeTargetCalls := 0
-		atomicFileWriteDeps.renameTempFile = func(oldPath string, newPath string) error {
+		atomicWriteDependencies.renameTempFile = func(oldPath string, newPath string) error {
 			renameCalls++
 			if renameCalls == 1 {
 				return os.ErrExist
 			}
 			return os.Rename(oldPath, newPath)
 		}
-		atomicFileWriteDeps.removeExistingTargetFile = func(path string) error {
+		atomicWriteDependencies.removeExistingTargetFile = func(path string) error {
 			removeTargetCalls++
 			return os.Remove(path)
 		}
 
-		if err := writeFileAtomically(targetPath, []byte(`{"new":true}`), 0o644); err != nil {
+		if err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"new":true}`), 0o644, atomicWriteDependencies); err != nil {
 			t.Fatalf("writeFileAtomically returned error: %v", err)
 		}
 		if renameCalls != 2 {
@@ -578,21 +593,22 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("returns remove-existing-target-file error when replace step fails", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		removeErr := errors.New("remove existing failed")
-		atomicFileWriteDeps.renameTempFile = func(string, string) error {
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
 			return os.ErrExist
 		}
-		atomicFileWriteDeps.removeExistingTargetFile = func(string) error {
+		atomicWriteDependencies.removeExistingTargetFile = func(string) error {
 			return removeErr
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return remove-existing-target error")
 		}
@@ -605,26 +621,27 @@ func TestWriteFileAtomically(t *testing.T) {
 	})
 
 	t.Run("returns second rename error after removing existing target", func(t *testing.T) {
-		originalAtomicFileWriteDependencies := atomicFileWriteDeps
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
 		t.Cleanup(func() {
-			atomicFileWriteDeps = originalAtomicFileWriteDependencies
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
 		})
 
 		secondRenameErr := errors.New("second rename failed")
 		renameCalls := 0
-		atomicFileWriteDeps.renameTempFile = func(string, string) error {
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
 			renameCalls++
 			if renameCalls == 1 {
 				return os.ErrExist
 			}
 			return secondRenameErr
 		}
-		atomicFileWriteDeps.removeExistingTargetFile = func(string) error {
+		atomicWriteDependencies.removeExistingTargetFile = func(string) error {
 			return nil
 		}
 
 		targetPath := filepath.Join(t.TempDir(), "artifact.json")
-		err := writeFileAtomically(targetPath, []byte(`{"value":1}`), 0o644)
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
 		if err == nil {
 			t.Fatal("expected writeFileAtomically to return second rename error")
 		}

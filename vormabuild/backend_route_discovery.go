@@ -29,16 +29,58 @@ type backendRouteDiscoveryDependencies struct {
 	importGoPackageDir func(string) (*gobuild.Package, error)
 }
 
-var backendRouteDiscoveryDeps = backendRouteDiscoveryDependencies{
-	expandPattern: func(pattern string) ([]string, error) {
-		return doublestar.FilepathGlob(pattern)
-	},
-	statPath:         os.Stat,
-	readFile:         os.ReadFile,
-	parseGoSourceAST: parser.ParseFile,
-	importGoPackageDir: func(packageDir string) (*gobuild.Package, error) {
-		return gobuild.Default.ImportDir(packageDir, 0)
-	},
+type backendRouteDiscoveryExecutor struct {
+	dependencies backendRouteDiscoveryDependencies
+}
+
+var defaultBackendRouteDiscoveryExecutor = newBackendRouteDiscoveryExecutor(
+	backendRouteDiscoveryDependencies{},
+)
+
+func defaultBackendRouteDiscoveryDependencies() backendRouteDiscoveryDependencies {
+	return backendRouteDiscoveryDependencies{
+		expandPattern: func(pattern string) ([]string, error) {
+			return doublestar.FilepathGlob(pattern)
+		},
+		statPath:         os.Stat,
+		readFile:         os.ReadFile,
+		parseGoSourceAST: parser.ParseFile,
+		importGoPackageDir: func(packageDir string) (*gobuild.Package, error) {
+			return gobuild.Default.ImportDir(packageDir, 0)
+		},
+	}
+}
+
+func normalizeBackendRouteDiscoveryDependencies(
+	dependencies backendRouteDiscoveryDependencies,
+) backendRouteDiscoveryDependencies {
+	defaultDependencies := defaultBackendRouteDiscoveryDependencies()
+
+	if dependencies.expandPattern == nil {
+		dependencies.expandPattern = defaultDependencies.expandPattern
+	}
+	if dependencies.statPath == nil {
+		dependencies.statPath = defaultDependencies.statPath
+	}
+	if dependencies.readFile == nil {
+		dependencies.readFile = defaultDependencies.readFile
+	}
+	if dependencies.parseGoSourceAST == nil {
+		dependencies.parseGoSourceAST = defaultDependencies.parseGoSourceAST
+	}
+	if dependencies.importGoPackageDir == nil {
+		dependencies.importGoPackageDir = defaultDependencies.importGoPackageDir
+	}
+
+	return dependencies
+}
+
+func newBackendRouteDiscoveryExecutor(
+	dependencies backendRouteDiscoveryDependencies,
+) backendRouteDiscoveryExecutor {
+	return backendRouteDiscoveryExecutor{
+		dependencies: normalizeBackendRouteDiscoveryDependencies(dependencies),
+	}
 }
 
 type parsedServerRouteFile struct {
@@ -71,6 +113,7 @@ type backendRoutePackageAnalysis struct {
 	goTypesInfoInitializationAttempted bool
 	goTypesInitializationCount         int
 	functionScopeRanges                []tokenPosRange
+	dependencies                       backendRouteDiscoveryDependencies
 }
 
 type tokenPosRange struct {
@@ -106,7 +149,13 @@ type discoveredVormaRegistrationCall struct {
 }
 
 func parseBackendLoaderPatterns(v *vormaruntime.Vorma) ([]string, error) {
-	serverRouteDefinitionFiles, err := resolveServerRouteDefinitionFiles(v)
+	return defaultBackendRouteDiscoveryExecutor.parseBackendLoaderPatterns(v)
+}
+
+func (executor backendRouteDiscoveryExecutor) parseBackendLoaderPatterns(
+	v *vormaruntime.Vorma,
+) ([]string, error) {
+	serverRouteDefinitionFiles, err := executor.resolveServerRouteDefinitionFiles(v)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +163,7 @@ func parseBackendLoaderPatterns(v *vormaruntime.Vorma) ([]string, error) {
 		return nil, nil
 	}
 
-	packageAnalyses, err := parseServerRouteFilesIntoPackageAnalyses(
+	packageAnalyses, err := executor.parseServerRouteFilesIntoPackageAnalyses(
 		serverRouteDefinitionFiles,
 	)
 	if err != nil {
@@ -143,6 +192,14 @@ func parseBackendLoaderPatterns(v *vormaruntime.Vorma) ([]string, error) {
 func parseServerRouteFilesIntoPackageAnalyses(
 	serverRouteDefinitionFiles []string,
 ) ([]*backendRoutePackageAnalysis, error) {
+	return defaultBackendRouteDiscoveryExecutor.parseServerRouteFilesIntoPackageAnalyses(
+		serverRouteDefinitionFiles,
+	)
+}
+
+func (executor backendRouteDiscoveryExecutor) parseServerRouteFilesIntoPackageAnalyses(
+	serverRouteDefinitionFiles []string,
+) ([]*backendRoutePackageAnalysis, error) {
 	goFileSet := token.NewFileSet()
 	analysesByPackageKey := map[string]*backendRoutePackageAnalysis{}
 
@@ -156,9 +213,10 @@ func parseServerRouteFilesIntoPackageAnalyses(
 			)
 		}
 
-		parsedAST, err := parseServerRouteDefinitionFile(
+		parsedAST, err := parseServerRouteDefinitionFileWithDependencies(
 			goFileSet,
 			absoluteRouteDefinitionFile,
+			executor.dependencies,
 		)
 		if err != nil {
 			return nil, err
@@ -180,6 +238,7 @@ func parseServerRouteFilesIntoPackageAnalyses(
 				packageDir:                  filepath.ToSlash(filepath.Dir(parsedServerFile.path)),
 				packageName:                 parsedServerFile.parsedAST.Name.Name,
 				filesByPath:                 map[string]*parsedServerRouteFile{},
+				dependencies:                executor.dependencies,
 			}
 			analysesByPackageKey[packageKey] = packageAnalysis
 		}
@@ -329,7 +388,7 @@ func (analysis *backendRoutePackageAnalysis) packageContainsRouteRegistrationHin
 			continue
 		}
 		entryFilePath := filepath.ToSlash(filepath.Clean(filepath.Join(analysis.packageDir, entryName)))
-		entryFileBytes, readErr := backendRouteDiscoveryDeps.readFile(entryFilePath)
+		entryFileBytes, readErr := analysis.dependencies.readFile(entryFilePath)
 		if readErr != nil {
 			return false, fmt.Errorf(
 				"read file %q for route registration hint scan: %w",
@@ -381,7 +440,11 @@ func (analysis *backendRoutePackageAnalysis) expandAndFilterFilesForCompiledPack
 		if _, hasParsedFile := analysis.filesByPath[compiledFilePath]; hasParsedFile {
 			continue
 		}
-		parsedAST, err := parseServerRouteDefinitionFile(analysis.goFileSet, compiledFilePath)
+		parsedAST, err := parseServerRouteDefinitionFileWithDependencies(
+			analysis.goFileSet,
+			compiledFilePath,
+			analysis.dependencies,
+		)
 		if err != nil {
 			return err
 		}
@@ -394,7 +457,7 @@ func (analysis *backendRoutePackageAnalysis) expandAndFilterFilesForCompiledPack
 }
 
 func (analysis *backendRoutePackageAnalysis) resolveCompiledFilePathSetForPackageDir() (map[string]struct{}, error) {
-	importedPackage, err := backendRouteDiscoveryDeps.importGoPackageDir(analysis.packageDir)
+	importedPackage, err := analysis.dependencies.importGoPackageDir(analysis.packageDir)
 	if err != nil {
 		if _, isNoGoError := err.(*gobuild.NoGoError); isNoGoError {
 			return map[string]struct{}{}, nil
@@ -1480,6 +1543,12 @@ func (analysis *backendRoutePackageAnalysis) withPositionError(
 }
 
 func resolveServerRouteDefinitionFiles(v *vormaruntime.Vorma) ([]string, error) {
+	return defaultBackendRouteDiscoveryExecutor.resolveServerRouteDefinitionFiles(v)
+}
+
+func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionFiles(
+	v *vormaruntime.Vorma,
+) ([]string, error) {
 	if v == nil {
 		return nil, fmt.Errorf("Vorma runtime is required")
 	}
@@ -1496,7 +1565,7 @@ func resolveServerRouteDefinitionFiles(v *vormaruntime.Vorma) ([]string, error) 
 
 	matchedFilesByPath := map[string]struct{}{}
 	for _, routeDefinitionPattern := range normalizedPatterns {
-		matchedFiles, err := resolveServerRouteDefinitionPattern(routeDefinitionPattern)
+		matchedFiles, err := executor.resolveServerRouteDefinitionPattern(routeDefinitionPattern)
 		if err != nil {
 			return nil, err
 		}
@@ -1524,8 +1593,16 @@ func resolveServerRouteDefinitionFiles(v *vormaruntime.Vorma) ([]string, error) 
 }
 
 func resolveServerRouteDefinitionPattern(routeDefinitionPattern string) ([]string, error) {
+	return defaultBackendRouteDiscoveryExecutor.resolveServerRouteDefinitionPattern(
+		routeDefinitionPattern,
+	)
+}
+
+func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionPattern(
+	routeDefinitionPattern string,
+) ([]string, error) {
 	if !patternContainsGlobMeta(routeDefinitionPattern) {
-		fileInfo, err := backendRouteDiscoveryDeps.statPath(routeDefinitionPattern)
+		fileInfo, err := executor.dependencies.statPath(routeDefinitionPattern)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"stat server route definition path %q: %w",
@@ -1548,7 +1625,7 @@ func resolveServerRouteDefinitionPattern(routeDefinitionPattern string) ([]strin
 		return []string{routeDefinitionPattern}, nil
 	}
 
-	matchedPaths, err := backendRouteDiscoveryDeps.expandPattern(routeDefinitionPattern)
+	matchedPaths, err := executor.dependencies.expandPattern(routeDefinitionPattern)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"expand server route definition pattern %q: %w",
@@ -1559,7 +1636,7 @@ func resolveServerRouteDefinitionPattern(routeDefinitionPattern string) ([]strin
 
 	matchedGoFiles := make([]string, 0, len(matchedPaths))
 	for _, matchedPath := range matchedPaths {
-		fileInfo, err := backendRouteDiscoveryDeps.statPath(matchedPath)
+		fileInfo, err := executor.dependencies.statPath(matchedPath)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"stat server route definition path %q: %w",
@@ -1582,7 +1659,21 @@ func parseServerRouteDefinitionFile(
 	goFileSet *token.FileSet,
 	serverRouteDefinitionFile string,
 ) (*ast.File, error) {
-	fileBytes, err := backendRouteDiscoveryDeps.readFile(serverRouteDefinitionFile)
+	return parseServerRouteDefinitionFileWithDependencies(
+		goFileSet,
+		serverRouteDefinitionFile,
+		defaultBackendRouteDiscoveryExecutor.dependencies,
+	)
+}
+
+func parseServerRouteDefinitionFileWithDependencies(
+	goFileSet *token.FileSet,
+	serverRouteDefinitionFile string,
+	dependencies backendRouteDiscoveryDependencies,
+) (*ast.File, error) {
+	dependencies = normalizeBackendRouteDiscoveryDependencies(dependencies)
+
+	fileBytes, err := dependencies.readFile(serverRouteDefinitionFile)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"read server route definition file %q: %w",
@@ -1590,7 +1681,7 @@ func parseServerRouteDefinitionFile(
 			err,
 		)
 	}
-	parsedFile, err := backendRouteDiscoveryDeps.parseGoSourceAST(
+	parsedFile, err := dependencies.parseGoSourceAST(
 		goFileSet,
 		serverRouteDefinitionFile,
 		fileBytes,

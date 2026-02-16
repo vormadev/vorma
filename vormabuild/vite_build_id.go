@@ -19,14 +19,57 @@ type stageTwoBuildIDDependencies struct {
 	summarizePublicFS func(fs.FS) ([]byte, error)
 }
 
-var stageTwoBuildIDDeps = stageTwoBuildIDDependencies{
-	readHTMLTemplate:  os.ReadFile,
-	marshalPathsFile:  json.Marshal,
-	summarizePublicFS: getFSSummaryHash,
+type stageTwoBuildIDExecutor struct {
+	dependencies stageTwoBuildIDDependencies
+}
+
+var defaultStageTwoBuildIDExecutor = newStageTwoBuildIDExecutor(
+	stageTwoBuildIDDependencies{},
+)
+
+func defaultStageTwoBuildIDDependencies() stageTwoBuildIDDependencies {
+	return stageTwoBuildIDDependencies{
+		readHTMLTemplate:  os.ReadFile,
+		marshalPathsFile:  json.Marshal,
+		summarizePublicFS: getFSSummaryHash,
+	}
+}
+
+func normalizeStageTwoBuildIDDependencies(
+	dependencies stageTwoBuildIDDependencies,
+) stageTwoBuildIDDependencies {
+	defaultDependencies := defaultStageTwoBuildIDDependencies()
+
+	if dependencies.readHTMLTemplate == nil {
+		dependencies.readHTMLTemplate = defaultDependencies.readHTMLTemplate
+	}
+	if dependencies.marshalPathsFile == nil {
+		dependencies.marshalPathsFile = defaultDependencies.marshalPathsFile
+	}
+	if dependencies.summarizePublicFS == nil {
+		dependencies.summarizePublicFS = defaultDependencies.summarizePublicFS
+	}
+
+	return dependencies
+}
+
+func newStageTwoBuildIDExecutor(
+	dependencies stageTwoBuildIDDependencies,
+) stageTwoBuildIDExecutor {
+	return stageTwoBuildIDExecutor{
+		dependencies: normalizeStageTwoBuildIDDependencies(dependencies),
+	}
 }
 
 func computeStageTwoBuildID(v *vormaruntime.Vorma, pathsFile *vormaruntime.PathsFile) (string, error) {
-	htmlTemplateContent, err := stageTwoBuildIDDeps.readHTMLTemplate(
+	return defaultStageTwoBuildIDExecutor.computeStageTwoBuildID(v, pathsFile)
+}
+
+func (executor stageTwoBuildIDExecutor) computeStageTwoBuildID(
+	v *vormaruntime.Vorma,
+	pathsFile *vormaruntime.PathsFile,
+) (string, error) {
+	htmlTemplateContent, err := executor.dependencies.readHTMLTemplate(
 		path.Join(v.Wave.GetPrivateStaticDir(), v.Config.HTMLTemplateLocation),
 	)
 	if err != nil {
@@ -34,13 +77,15 @@ func computeStageTwoBuildID(v *vormaruntime.Vorma, pathsFile *vormaruntime.Paths
 	}
 	htmlContentHash := cryptoutil.Sha256Hash(htmlTemplateContent)
 
-	asJSON, err := stageTwoBuildIDDeps.marshalPathsFile(pathsFile)
+	asJSON, err := executor.dependencies.marshalPathsFile(pathsFile)
 	if err != nil {
 		return "", fmt.Errorf("marshal paths file: %w", err)
 	}
 	pathsFileJSONHash := cryptoutil.Sha256Hash(asJSON)
 
-	publicFSSummaryHash, err := stageTwoBuildIDDeps.summarizePublicFS(os.DirFS(v.Wave.GetStaticPublicOutDir()))
+	publicFSSummaryHash, err := executor.dependencies.summarizePublicFS(
+		os.DirFS(v.Wave.GetStaticPublicOutDir()),
+	)
 	if err != nil {
 		return "", fmt.Errorf("get FS summary hash: %w", err)
 	}

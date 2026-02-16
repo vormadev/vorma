@@ -25,6 +25,13 @@ Keep this file current so work can be handed off without losing context.
 - New seams must be instance-scoped, not package-global mutable state.
 - Every completed item includes tests that validate intended semantics.
 
+## Active Tracks
+
+- Track A: continue extending plan/stage/commit lock minimization beyond route
+  artifacts into remaining build phases.
+- Track B: continue rolling out the shared runtime-state commit API to replace
+  ad hoc multi-step runtime mutation sequences.
+
 ## Workstreams
 
 ## 1) Explicit Lifecycle State Machine
@@ -48,6 +55,14 @@ Keep this file current so work can be handed off without losing context.
 - [ ] Add tests proving no long-running IO executes during commit locks.
 - Note: route-sync post-sync hooks now execute outside the initial route-sync
   write lock, and this is covered by regression tests.
+- Note: route artifact writes now use a captured route-build runtime snapshot
+  and perform stage-one JSON + generated TypeScript writes outside runtime write
+  locks; only manifest-state capture and manifest-file commit are lock-scoped,
+  and regression tests assert both lock-boundary behavior and snapshot
+  consistency across artifact steps.
+- Note: non-lock route artifact writes now include staleness guards (build-ID
+  snapshot checks) before/after heavy artifact steps, skip stale rollback
+  cleanup, and gate manifest-file commit on expected/current build-ID match.
 
 ## 3) Atomic Runtime State Commit API
 
@@ -60,6 +75,17 @@ Keep this file current so work can be handed off without losing context.
 - [ ] Add race-focused tests for concurrent watch/build events.
 - Note: dev/prod build-inner initialization and runtime-state restore now apply
   `isDev` under lock with related state updates.
+- Note: `buildRuntimeStateSnapshot` now captures/restores `isDev` + route-build
+  state through one helper path, and route-sync rollback now uses a build-ID
+  guard to avoid stale rollback overwriting a newer concurrent commit; stale
+  rollback behavior is covered by regression tests.
+- Note: a shared `runtimeStateCommitInput` commit path now backs snapshot
+  restore and core mutation callsites (build init mode/ID commit, route-sync
+  route+build-ID commit, dev-runtime mode commit, manifest-file commit), with
+  focused regression tests covering full-field commits and dev-reload route-sync
+  semantics.
+- Note: stage-two build-ID application now also routes through the shared
+  runtime-state commit path.
 
 ## 4) Artifact Correctness and Strict Validation
 
@@ -83,10 +109,10 @@ Keep this file current so work can be handed off without losing context.
 ## 6) Reload Protocol Semantics
 
 - [x] Switch dev reload endpoint calls to mutation-safe HTTP semantics.
-- [ ] Include structured request/response payload fields for debugging
+- [x] Include structured request/response payload fields for debugging
       (attempt/build identifiers).
-- [ ] Keep fallback behavior deterministic when reload endpoint fails.
-- [ ] Add integration tests for success/fallback paths.
+- [x] Keep fallback behavior deterministic when reload endpoint fails.
+- [x] Add integration tests for success/fallback paths.
 
 ## 7) Atomic File Write Durability
 
@@ -96,28 +122,56 @@ Keep this file current so work can be handed off without losing context.
 
 ## 8) Dependency Seams and Executor Structure
 
-- [ ] Refactor package-global mutable dependency vars into instance-scoped
+- [x] Refactor package-global mutable dependency vars into instance-scoped
       executors.
-- [ ] Make production wiring explicit and test wiring local to each test.
-- [ ] Remove cross-test/global seam coupling risks.
-- [ ] Add targeted tests for executor wiring and behavior parity.
+- [x] Make production wiring explicit and test wiring local to each test.
+- [x] Remove cross-test/global seam coupling risks.
+- [x] Add targeted tests for executor wiring and behavior parity.
+- Note: reload endpoint/action paths and build diagnostics now run through
+  instance executors with local dependency wiring in tests, and framework build
+  hook wiring now uses an executor injected at config wiring time; lifecycle
+  state-machine attempt/timestamp dependencies are now instance-scoped as well;
+  route parsing pipeline/code/module/file seams now run through a route parsing
+  executor with local test wiring; static-public cleanup and stage-one/stage-two
+  paths writers now run through instance executors (with post-vite write seam
+  wiring explicit); stage-two build ID hashing and route-registry artifact
+  writing/rollback seams now also run through instance executors with local test
+  wiring; fast-rebuild build-ID generation is now instance-scoped; backend route
+  discovery and discovered-registrar overlay generation now also run through
+  instance executors with local test wiring; runtime build tooling/core
+  orchestration and CLI entrypoint dispatch now also use instance-scoped
+  executors with local dependency wiring in tests; generated TS
+  assembly/write/write-file seams are now also executor-scoped; atomic file
+  write operations now also use an executor-scoped dependency seam with local
+  test wiring; build-inner build-ID generation and public-file-map writer seams
+  now also use instance-scoped executors; build-inner route-sync parsing/merge
+  execution seams are now also executor-scoped; fast-rebuild route-rebuild and
+  route-artifact seams now also use executor-scoped dependency wiring with local
+  test injection; build-inner orchestration now also uses a scoped executor with
+  local dependency injection in tests, and there are no remaining package-global
+  mutable `*Deps` seams in `vormabuild`.
 
 ## 9) Overlay Cache Lifecycle
 
-- [ ] Replace pointer-keyed global overlay cache with lifecycle-owned bounded
+- [x] Replace pointer-keyed global overlay cache with lifecycle-owned bounded
       cache.
-- [ ] Define cache invalidation/eviction rules.
+- [x] Define cache invalidation/eviction rules.
 - [x] Ensure cache behavior is deterministic across repeated app instances.
-- [ ] Add tests for cache hit/miss/invalidation cases.
+- [x] Add tests for cache hit/miss/invalidation cases.
+- Note: framework build hook and go-build overlay preparation now capture a
+  lifecycle-owned bounded cache instance per configured runtime.
 
 ## 10) Debuggability and Diagnostics
 
-- [ ] Add structured per-attempt lifecycle traces (phases, inputs, decisions,
+- [x] Add structured per-attempt lifecycle traces (phases, inputs, decisions,
       rollbacks).
-- [ ] Emit clear reasons for skip/fallback/error outcomes.
-- [ ] Provide one command/entrypoint to print discovery/overlay/build
+- [x] Emit clear reasons for skip/fallback/error outcomes.
+- [x] Provide one command/entrypoint to print discovery/overlay/build
       diagnostics.
-- [ ] Add tests that verify diagnostic output contains required fields.
+- [x] Add tests that verify diagnostic output contains required fields.
+- Note: lifecycle traces now include attempt IDs, normalized inputs, transition
+  history, and recorded rollback decisions; watch reload callbacks now emit
+  explicit skip/pre-reload-failure reasons.
 
 ## 11) Cleanup and Documentation
 
