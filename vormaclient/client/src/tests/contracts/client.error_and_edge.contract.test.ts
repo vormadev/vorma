@@ -310,9 +310,7 @@ describe("client error and edge contracts", () => {
 		const patternToWaitFnMap =
 			api.__vormaClientGlobal.get("patternToWaitFnMap");
 
-		patternToWaitFnMap[pattern] = async ({
-			serverDataPromise,
-		}) => {
+		patternToWaitFnMap[pattern] = async ({ serverDataPromise }) => {
 			const { loaderData } = (await serverDataPromise) as {
 				loaderData: { LatestVersion: string };
 			};
@@ -351,9 +349,7 @@ describe("client error and edge contracts", () => {
 		const patternToWaitFnMap =
 			api.__vormaClientGlobal.get("patternToWaitFnMap");
 
-		patternToWaitFnMap[stalePattern] = async ({
-			serverDataPromise,
-		}) => {
+		patternToWaitFnMap[stalePattern] = async ({ serverDataPromise }) => {
 			const { loaderData } = (await serverDataPromise) as {
 				loaderData: { Title: string };
 			};
@@ -374,9 +370,11 @@ describe("client error and edge contracts", () => {
 			}
 
 			fetchCallCount++;
-			return (fetchCallCount === 1
-				? staleDeferred.promise
-				: freshDeferred.promise) as any;
+			return (
+				fetchCallCount === 1
+					? staleDeferred.promise
+					: freshDeferred.promise
+			) as any;
 		});
 
 		const { unhandledRejections } = await withUnhandledRejectionCapture({
@@ -470,7 +468,9 @@ describe("client error and edge contracts", () => {
 			staleDeferred.resolve(
 				createRouteDataResponse(
 					{
-						title: { dangerousInnerHTML: "Stale Side Effect Title" },
+						title: {
+							dangerousInnerHTML: "Stale Side Effect Title",
+						},
 						cssBundles: ["/stale-side-effects.css"],
 					},
 					{
@@ -606,7 +606,8 @@ describe("client error and edge contracts", () => {
 		await handlers?.onClick(clickEvent);
 		await vi.runAllTimersAsync();
 		expect(window.location.pathname).toBe("/about");
-		const rAFCallCountBeforeStale = requestAnimationFrameSpy.mock.calls.length;
+		const rAFCallCountBeforeStale =
+			requestAnimationFrameSpy.mock.calls.length;
 
 		revalidationDeferred.resolve(
 			createRouteDataResponse({

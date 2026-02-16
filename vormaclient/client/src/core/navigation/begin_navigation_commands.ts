@@ -1,9 +1,7 @@
 import type {
+	BeginNavigationAbortInstruction,
 	BeginNavigationCreateInstruction,
 	BeginNavigationExecutionPlan,
-} from "./begin_navigation_state_machine.ts";
-import type {
-	BeginNavigationAbortInstruction,
 	BeginNavigationReuseInstruction,
 } from "./begin_navigation_state_machine.ts";
 import type { NavigationIntent } from "./types.ts";

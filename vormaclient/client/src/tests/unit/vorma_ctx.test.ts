@@ -1,16 +1,6 @@
 import { JSDOM } from "jsdom";
-import {
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	vi,
-} from "vitest";
-import {
-	__getVormaClientGlobal,
-	VORMA_SYMBOL,
-} from "../../app/context.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { __getVormaClientGlobal, VORMA_SYMBOL } from "../../app/context.ts";
 
 let dom: JSDOM;
 let mockGlobal: any;

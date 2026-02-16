@@ -461,9 +461,9 @@ describe("client prefetch contracts", () => {
 	it("does not abort upgraded navigation when prefetch handlers stop", async () => {
 		const api = await loadClientAPI();
 		const fetchCall = createDeferredFetchCall();
-		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
-			fetchCall.mock,
-		);
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementation(fetchCall.mock);
 
 		const handlers = api.__getPrefetchHandlers({ href: "/abort-test" });
 		handlers?.start(new Event("mouseenter"));
@@ -487,9 +487,9 @@ describe("client prefetch contracts", () => {
 	it("upgrades same-data prefetch to navigation even when only hash differs", async () => {
 		const api = await loadClientAPI();
 		const fetchCall = createDeferredFetchCall();
-		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
-			fetchCall.mock,
-		);
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementation(fetchCall.mock);
 
 		const handlers = api.__getPrefetchHandlers({
 			href: "/prefetch-hash-upgrade#prefetch",

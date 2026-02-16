@@ -27,7 +27,7 @@ export function mergeClientModuleMapWithRouteModuleMetadata(props: {
 }): VormaClientGlobal["clientModuleMap"] {
 	const { currentClientModuleMap, routeModuleMetadata } = props;
 	const nextClientModuleMap: VormaClientGlobal["clientModuleMap"] = {
-		...(currentClientModuleMap || {}),
+		...currentClientModuleMap,
 	};
 	const { matchedPatterns, importURLs, exportKeys, errorExportKeys } =
 		toRouteModuleMetadataArrays(routeModuleMetadata);

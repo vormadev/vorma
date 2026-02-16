@@ -1,8 +1,8 @@
-import type { StatusEventDetail } from "../../platform/events.ts";
-import type { RedirectData } from "../redirects.ts";
-import type { ScrollState } from "../../platform/scroll.ts";
-import type { ClientLoadersResult } from "../render_runtime.ts";
 import type { GetRouteDataOutput } from "../../app/context.ts";
+import type { StatusEventDetail } from "../../platform/events.ts";
+import type { ScrollState } from "../../platform/scroll.ts";
+import type { RedirectData } from "../redirects.ts";
+import type { ClientLoadersResult } from "../render_runtime.ts";
 import type { ServerSuccessPreloadCommand } from "./fetch_route_data_preload_commands.ts";
 
 export type VormaNavigationType =
@@ -119,7 +119,7 @@ export type NavigationStateManager = {
 };
 
 export function hasNavigationOperationOwnership(props: {
-	entry: NavigationEntry | undefined;
+	entry: NavigationEntry | null | undefined;
 	expectedOperationID: number | undefined;
 }): props is { entry: NavigationEntry; expectedOperationID: number } {
 	return (
@@ -130,7 +130,7 @@ export function hasNavigationOperationOwnership(props: {
 }
 
 export function hasSubmissionOperationOwnership(props: {
-	entry: SubmissionEntry | undefined;
+	entry: SubmissionEntry | null | undefined;
 	expectedOperationID: number | undefined;
 }): props is { entry: SubmissionEntry; expectedOperationID: number } {
 	return (

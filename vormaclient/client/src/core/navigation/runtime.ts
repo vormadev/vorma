@@ -5,12 +5,22 @@ import {
 } from "../../platform/events.ts";
 import { hasSameNavigationTarget } from "../../platform/url.ts";
 import {
-	beginNavigation as executeBeginNavigation,
 	createNavigationControls,
+	beginNavigation as executeBeginNavigation,
 	type BeginNavigationContext,
 } from "./begin_navigation.ts";
 import { resolveBeginNavigationTargetURL } from "./begin_navigation_state_machine.ts";
 import { fetchRouteData } from "./fetch_route_data.ts";
+import {
+	buildNavigationEntriesBeforeClearAll,
+	createNavigationLifecycleRuntime,
+} from "./runtime_lifecycle_runtime.ts";
+import {
+	handleNavigationOutcomeWithInternalResult,
+	processSuccessfulNavigationRuntime,
+} from "./runtime_navigation_outcome.ts";
+import { toPublicNavigateResult } from "./runtime_navigation_outcome_state_machine.ts";
+import { createDeterministicRevalidationLane } from "./runtime_revalidation_lane.ts";
 import {
 	buildNavigationsMapFromNavigationLanes,
 	clearRuntimeLanes,
@@ -23,17 +33,7 @@ import {
 	transitionNavigationPhaseInNavigationLanes,
 	type NavigationLanes,
 } from "./runtime_slots.ts";
-import {
-	handleNavigationOutcomeWithInternalResult,
-	processSuccessfulNavigationRuntime,
-} from "./runtime_navigation_outcome.ts";
-import { toPublicNavigateResult } from "./runtime_navigation_outcome_state_machine.ts";
 import { buildNavigationEntriesByOperationIDFromNavigationLanes } from "./runtime_state_machine.ts";
-import { createDeterministicRevalidationLane } from "./runtime_revalidation_lane.ts";
-import {
-	buildNavigationEntriesBeforeClearAll,
-	createNavigationLifecycleRuntime,
-} from "./runtime_lifecycle_runtime.ts";
 import { executeSubmitRuntime } from "./runtime_submit.ts";
 import {
 	hasNavigationOperationOwnership,
@@ -43,7 +43,6 @@ import {
 	type NavigationPhase,
 	type NavigationStateManager,
 	type SubmitOptions,
-	type SubmissionEntry,
 } from "./types.ts";
 
 export {
