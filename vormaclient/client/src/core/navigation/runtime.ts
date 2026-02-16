@@ -35,16 +35,16 @@ import {
 	createNavigationLifecycleRuntime,
 } from "./runtime_lifecycle_runtime.ts";
 import { executeSubmitRuntime } from "./runtime_submit.ts";
-import type {
-	NavigateProps,
-	NavigationEntry,
-	NavigationOutcome,
-	NavigationPhase,
-	NavigationStateManager,
-	SubmitOptions,
-	SubmissionEntry,
+import {
+	hasNavigationOperationOwnership,
+	type NavigateProps,
+	type NavigationEntry,
+	type NavigationOutcome,
+	type NavigationPhase,
+	type NavigationStateManager,
+	type SubmitOptions,
+	type SubmissionEntry,
 } from "./types.ts";
-import { hasNavigationControlPromiseOwnership } from "./types.ts";
 
 export {
 	deleteNavigationFromNavigationLanes,
@@ -216,6 +216,16 @@ export function createNavigationRuntime(
 						targetUrl,
 						reason,
 					}),
+				onSuccessfulNavigationCommitted: ({
+					entry: committedEntry,
+				}): void => {
+					if (
+						committedEntry.intent === "navigate" ||
+						committedEntry.intent === "revalidate"
+					) {
+						onNavigationIntentResolved?.();
+					}
+				},
 			},
 			outcome,
 			entry,
@@ -255,10 +265,9 @@ export function createNavigationRuntime(
 							reason,
 						}),
 					processSuccessfulNavigation,
-					onNavigationIntentResolved,
 					navigationProps: props,
 					outcome,
-					controlPromise: control.promise,
+					expectedOperationID: control.operationID,
 				});
 			return toPublicNavigateResult({
 				internalResult,
@@ -266,10 +275,10 @@ export function createNavigationRuntime(
 		} catch {
 			const targetUrl = resolveAbsoluteHref({ href: props.href });
 			const candidateEntry = findNavigationEntry(targetUrl);
-			const ownedEntry = hasNavigationControlPromiseOwnership(
-				candidateEntry,
-				control.promise,
-			)
+			const ownedEntry = hasNavigationOperationOwnership({
+				entry: candidateEntry,
+				expectedOperationID: control.operationID,
+			})
 				? candidateEntry
 				: undefined;
 			if (ownedEntry) {

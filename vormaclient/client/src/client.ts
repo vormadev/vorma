@@ -8,6 +8,7 @@ import type {
 	NavigationControl,
 	SubmitOptions,
 } from "./core/navigation/types.ts";
+import { createRevalidationTriggerTimestampRuntime } from "./core/revalidation_trigger_timestamp_state_machine.ts";
 import { setNavigationStateAccess } from "./app/context.ts";
 import { __vormaClientGlobal } from "./app/context.ts";
 
@@ -19,12 +20,13 @@ export type {
 	VormaNavigationType,
 } from "./core/navigation/types.ts";
 
-let lastTriggeredNavOrRevalidateTimestampMS = Date.now();
+const revalidationTriggerTimestampRuntime =
+	createRevalidationTriggerTimestampRuntime();
 
 // Global singleton instance
 export const navigationStateManager = createNavigationRuntime({
 	onNavigationIntentResolved: () => {
-		lastTriggeredNavOrRevalidateTimestampMS = Date.now();
+		revalidationTriggerTimestampRuntime.recordNavigationOrRevalidationIntentCommitted();
 	},
 });
 setNavigationStateAccess(navigationStateManager);
@@ -59,7 +61,7 @@ export async function vormaNavigate(
 }
 
 export function getLastTriggeredNavOrRevalidateTimestampMS(): number {
-	return lastTriggeredNavOrRevalidateTimestampMS;
+	return revalidationTriggerTimestampRuntime.getLastTriggeredNavOrRevalidateTimestampMS();
 }
 
 export async function revalidate() {

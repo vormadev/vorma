@@ -25,16 +25,16 @@ This checklist tracks the deterministic lifecycle/state-machine refactor for
 ### 1. Transactional Navigation State Machine
 
 - [x] Define explicit navigation events and terminal states.
-- [ ] Centralize transition logic into one reducer/transition seam.
-- [ ] Remove scattered lifecycle branching in begin/outcome/render paths.
+- [x] Centralize transition logic into one reducer/transition seam.
+- [x] Remove scattered lifecycle branching in begin/outcome/render paths.
 - [x] Ensure every transition has a reason/cause string for diagnostics.
 
 ### 2. Operation IDs and Commit Fences
 
 - [x] Add monotonic operation IDs for navigation and submission entries.
-- [ ] Gate side effects (history, global state, head, render, CSS/module
+- [x] Gate side effects (history, global state, head, render, CSS/module
       preload) on current ownership.
-- [ ] Ensure stale completions are no-ops by construction, not by best-effort
+- [x] Ensure stale completions are no-ops by construction, not by best-effort
       checks.
 
 ### 3. Explicit Concurrency Lanes and Arbitration Rules
@@ -51,7 +51,7 @@ This checklist tracks the deterministic lifecycle/state-machine refactor for
 - [x] Replace `Date.now()` micro-window coalescing with state-based conflation.
 - [x] Implement one-in-flight plus optional trailing revalidation
       (`needsRevalidateAgain` style).
-- [ ] Keep policy-level throttling/debounce at trigger layer (for example focus
+- [x] Keep policy-level throttling/debounce at trigger layer (for example focus
       revalidate), not core state machine.
 
 ### 5. Lifecycle Debug Journal
@@ -96,11 +96,44 @@ This checklist tracks the deterministic lifecycle/state-machine refactor for
 
 ## Incremental Delivery Plan
 
-- [ ] Phase A: State machine core + operation IDs + arbitration matrix.
-- [ ] Phase B: Revalidation conflation + POP serialization.
-- [ ] Phase C: Metadata seam unification + skip/server parity.
-- [ ] Phase D: Debug journal + rich internal navigate result.
-- [ ] Phase E: Test hardening and cleanup.
+- [x] Phase A: State machine core + operation IDs + arbitration matrix.
+- [x] Phase B: Revalidation conflation + POP serialization.
+- [x] Phase C: Metadata seam unification + skip/server parity.
+- [x] Phase D: Debug journal + rich internal navigate result.
+- [x] Phase E: Test hardening and cleanup.
+
+## Follow-Up Simplification Wave
+
+Post-checklist audit follow-ups to reduce abstraction layering and file
+complexity while preserving deterministic behavior.
+
+### 1. Successful Navigation Decision/Execution Simplification
+
+- [x] Collapse overlapping successful-navigation decision layers
+      (`stage`/`checkpoint`/`post-asset lifecycle`) into one checkpoint plan.
+- [x] Replace thin per-stage command mappers with one checkpoint-to-command
+      builder seam.
+- [x] Convert successful-navigation checkpoint execution to table-driven
+      decide/build/execute flow with fewer per-case branches.
+
+### 2. Submit Runtime Simplification and Ownership Hardening
+
+- [x] Replace duplicated submit staleness checkpoint branching with a generated
+      map/template-based reducer.
+- [x] Switch submit ownership/staleness gating from object identity to explicit
+      submission operation-ID ownership.
+- [x] Flatten submit post-request/finalize/error action layering into one
+      linearized pipeline with explicit checkpoint guards.
+
+### 3. Runtime Surface Area Reduction
+
+- [x] Split `render_runtime.ts` into focused modules
+      (`component_runtime`/`client_loader_runtime`/`render_commit_runtime`) with
+      a thin compatibility facade.
+- [x] Split `links.ts` into click lifecycle and prefetch lifecycle modules with
+      shared target classification utilities.
+- [x] Remove one outcome passthrough layer by merging redundant
+      planner/command-wrapper indirection in navigation outcome execution.
 
 ## Handoff Log
 
@@ -287,6 +320,59 @@ Update this section each working session.
       branch logic in `runtime_navigation_outcome.ts`.
 - [x] Added unit coverage asserting deterministic post-asset command ordering
       (commit client loaders, sync build ID, apply artifacts, then render/stop).
+- [x] Added explicit top-level navigation outcome command seam in
+      `runtime_navigation_outcome_commands.ts`
+      (`buildNavigationOutcomeExecutionCommands`) to reducerize
+      `stop`/`deleteAndStop`/`redirect`/`success` effectuation.
+- [x] Rewired `runtime_navigation_outcome.ts` to execute top-level outcome
+      command plans generically (delete, redirect build-ID sync, redirect
+      effectuation, intent resolution, success execution, and terminal result
+      commands) instead of direct per-outcome branching.
+- [x] Added focused unit coverage for top-level outcome command mapping in
+      `navigation_outcome_commands_internal.test.ts`.
+- [x] Added explicit successful-navigation cleanup reducer seam in
+      `runtime_navigation_outcome_state_machine.ts`
+      (`decideSuccessfulNavigationCleanupExecutionPlan`) for deterministic
+      ownership/idle-prefetch cleanup decisions.
+- [x] Added cleanup command builder in
+      `runtime_navigation_successful_commands.ts`
+      (`buildSuccessfulNavigationCleanupCommands`) and rewired
+      `runtime_navigation_outcome.ts` finally-block cleanup to execute through
+      typed command plans.
+- [x] Added focused unit coverage for cleanup decision/command seams in
+      `navigation_outcome_state_machine_internal.test.ts` and
+      `navigation_successful_commands_internal.test.ts`.
+- [x] Added explicit pre-asset wait decision seam in
+      `runtime_navigation_outcome_state_machine.ts`
+      (`decideSuccessfulNavigationPreAssetWaitExecutionPlan`) so build-ID
+      sync-before-wait policy is represented as a typed execution plan.
+- [x] Added explicit combined post-asset lifecycle decision seam in
+      `runtime_navigation_outcome_state_machine.ts`
+      (`decideSuccessfulNavigationPostAssetLifecycleExecutionPlan`) so
+      post-asset stage + side-effect decisions are composed in one reducerized
+      plan object.
+- [x] Rewired successful-navigation command builders to consume composed
+      execution plans (`preAssetWaitExecutionPlan`,
+      `postAssetLifecycleExecutionPlan`) instead of raw policy and split plan
+      inputs, reducing cross-layer orchestration coupling in
+      `runtime_navigation_outcome.ts`.
+- [x] Added focused unit coverage for the new pre-asset and combined post-asset
+      decision seams in `navigation_outcome_state_machine_internal.test.ts`.
+- [x] Added explicit successful-navigation lifecycle checkpoint seam in
+      `runtime_navigation_outcome_state_machine.ts`
+      (`decideSuccessfulNavigationLifecycleCheckpointExecutionPlan`) that
+      unifies decision routing for `pre_waiting`, `post_waiting`,
+      `pre_asset_wait`, `post_asset`, and `cleanup`.
+- [x] Added unified checkpoint command seam in
+      `runtime_navigation_successful_commands.ts`
+      (`buildSuccessfulNavigationLifecycleCheckpointCommands`) so checkpoint
+      plans map to commands in one place.
+- [x] Rewired `processSuccessfulNavigationRuntime` checkpoint orchestration in
+      `runtime_navigation_outcome.ts` to decide-and-execute via one checkpoint
+      executor helper, reducing direct stage/policy branching in runtime code.
+- [x] Added focused unit coverage for lifecycle checkpoint decision + command
+      seams in `navigation_outcome_state_machine_internal.test.ts` and
+      `navigation_successful_commands_internal.test.ts`.
 - [x] In progress:
 - [x] Begin-path and outcome-stage branching are now reducerized, but full
       transition unification into one navigation lifecycle reducer, contract
@@ -401,3 +487,407 @@ Update this section each working session.
 - [x] Result: `2 files, 30 tests passed`.
 - [x] `pnpm vitest vormaclient/client/src/tests`
 - [x] Result: `34 files, 523 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `3 files, 111 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `35 files, 529 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_successful_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `3 files, 114 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `35 files, 531 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_successful_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `3 files, 116 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `35 files, 533 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_successful_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `3 files, 118 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `35 files, 535 tests passed`.
+- [x] Added explicit begin-navigation command seam in
+      `begin_navigation_commands.ts` (`buildBeginNavigationExecutionCommands`)
+      so begin execution plans map to typed commands in one reducerized path.
+- [x] Rewired `begin_navigation.ts` to execute begin-navigation behavior through
+      command interpretation (`abort`/`reuse`/`immediate-abort`/`create`) rather
+      than direct per-plan branching.
+- [x] Added focused unit coverage for begin command mapping in
+      `begin_navigation_commands_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/begin_navigation_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_successful_commands_internal.test.ts`
+- [x] Result: `5 files, 130 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `36 files, 541 tests passed`.
+- [x] Moved navigation-intent resolution behind successful commit fences by
+      introducing `onSuccessfulNavigationCommitted` in
+      `processSuccessfulNavigationRuntime` context and wiring
+      `onNavigationIntentResolved` through that post-commit callback in
+      `runtime.ts`.
+- [x] Removed top-level outcome-layer intent-resolution branching
+      (`resolve_navigation_intent` command and `shouldResolveIntent` metadata),
+      so intent side effects are no longer emitted before post-wait/post-asset
+      ownership checks.
+- [x] Added focused runtime regression coverage proving intent-resolution fires
+      on committed success and is suppressed for stale successful completions.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/begin_navigation_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.loading_and_focus.contract.test.ts`
+- [x] Result: `5 files, 155 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `36 files, 543 tests passed`.
+- [x] Added explicit focus-trigger policy state-machine seam in
+      `revalidation_focus_trigger_policy_state_machine.ts`
+      (`decideFocusRevalidationTriggerExecutionPlan`) so focus revalidation
+      trigger decisions (`navigating`/`submitting`/`revalidating`/ stale-window
+      gating) are reducerized with explicit reason strings.
+- [x] Rewired `revalidateOnWindowFocus` in `core/extras.ts` to execute
+      revalidation via the focus-trigger execution plan instead of inline
+      branching.
+- [x] Added focused unit coverage for focus-trigger policy decisions in
+      `revalidation_focus_trigger_policy_state_machine_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/revalidation_focus_trigger_policy_state_machine_internal.test.ts vormaclient/client/src/tests/unit/extras_internal.test.ts vormaclient/client/src/tests/contracts/client.loading_and_focus.contract.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `4 files, 133 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `37 files, 548 tests passed`.
+- [x] Replaced mutable trigger timestamp singleton in `client.ts` with explicit
+      timestamp-state runtime (`createRevalidationTriggerTimestampRuntime`)
+      backed by reducer seam (`reduceRevalidationTriggerTimestampState`), so
+      navigation/revalidation-intent committed events drive timestamp state
+      transitions explicitly.
+- [x] Added focused unit coverage for trigger timestamp reducer/runtime in
+      `revalidation_trigger_timestamp_state_machine_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/revalidation_trigger_timestamp_state_machine_internal.test.ts vormaclient/client/src/tests/unit/revalidation_focus_trigger_policy_state_machine_internal.test.ts vormaclient/client/src/tests/contracts/client.loading_and_focus.contract.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `4 files, 134 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `38 files, 552 tests passed`.
+- [x] Added explicit render commit checkpoint state-machine seam in
+      `render_runtime_commit_state_machine.ts`
+      (`decideRenderCommitCheckpointExecutionPlan`) so pre/post module-load
+      commit-fence checks run through typed execution plans.
+- [x] Added explicit render commit command seam in
+      `render_runtime_commit_commands.ts` (`buildRenderCommitCommands`) so
+      render side-effect sequencing (route/global state apply, history/scroll,
+      title, CSS, route-change event, head updates, finish) executes via typed
+      commands rather than inline branching.
+- [x] Rewired `__reRenderAppInner` in `render_runtime.ts` to execute render
+      commit checkpoints + command plans generically.
+- [x] Added focused unit coverage for render commit checkpoint and command seams
+      in `render_runtime_commit_state_machine_internal.test.ts` and
+      `render_runtime_commit_commands_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/render_runtime_commit_state_machine_internal.test.ts vormaclient/client/src/tests/unit/render_runtime_commit_commands_internal.test.ts vormaclient/client/src/tests/unit/render_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `5 files, 139 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `40 files, 558 tests passed`.
+- [x] Added explicit redirect effectuation state-machine seam in
+      `redirect_effectuation_state_machine.ts`
+      (`decideRedirectEffectuationExecutionPlan`) to reducerize
+      `not-should`/`hard`/`soft`/`unknown` strategy routing.
+- [x] Added explicit redirect effectuation command seam in
+      `redirect_effectuation_commands.ts` (`buildRedirectEffectuationCommands`)
+      so cleanup and strategy execution are command-driven.
+- [x] Rewired `effectuateRedirectDataResult` in `redirects.ts` to execute
+      redirect cleanup/strategy through execution plan + command interpreter
+      instead of inline branching.
+- [x] Added focused unit coverage for redirect effectuation decision/command
+      seams in `redirect_effectuation_state_machine_internal.test.ts` and
+      `redirect_effectuation_commands_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/redirect_effectuation_state_machine_internal.test.ts vormaclient/client/src/tests/unit/redirect_effectuation_commands_internal.test.ts vormaclient/client/src/tests/unit/redirects_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts`
+- [x] Result: `5 files, 139 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `42 files, 566 tests passed`.
+- [x] Added explicit submission lifecycle command seam in
+      `runtime_submit_lifecycle_commands.ts`
+      (`buildSubmissionLifecycleBeginCommands`,
+      `buildSubmissionLifecycleFinishCommands`) so submission
+      dedupe/start/finish transitions are command-driven.
+- [x] Rewired `createSubmissionLifecycle` in `runtime_submit.ts` to execute
+      submission lifecycle begin/finish behavior through command interpretation,
+      removing inline mutation/transition branching.
+- [x] Added focused unit coverage for submission lifecycle command mapping in
+      `submission_lifecycle_commands_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts vormaclient/client/src/tests/contracts/client.loading_and_focus.contract.test.ts`
+- [x] Result: `4 files, 158 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `43 files, 570 tests passed`.
+- [x] Added unified lifecycle transition reducer seam in
+      `runtime_lifecycle_transitions.ts` (`reduceNavigationLifecycleTransition`)
+      that centralizes transition reduction for navigation removal, phase
+      transitions, begin arbitration, submission transitions, navigation
+      failures, and clear-all snapshots.
+- [x] Rewired `runtime_lifecycle_runtime.ts` to dispatch journal events via the
+      unified transition reducer seam instead of calling multiple transition
+      builders directly.
+- [x] Extended focused lifecycle transition unit coverage to assert reducer-seam
+      behavior in `navigation_lifecycle_transitions_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts vormaclient/client/src/tests/unit/navigation_lifecycle_runtime_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `4 files, 114 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `43 files, 572 tests passed`.
+- [x] Added explicit submit staleness-checkpoint reducer seam in
+      `runtime_submit_staleness_state_machine.ts`
+      (`decideSubmitStalenessCheckpointExecutionPlan`) covering post-request,
+      pre-finalize, post-classification, post-redirect-effectuation,
+      pre-success-return, and post-auto-revalidate ownership gates.
+- [x] Rewired submit runtime stale ownership checks in `runtime_submit.ts` to
+      execute through the staleness checkpoint seam rather than direct repeated
+      inline `isCurrent` branching.
+- [x] Added focused unit coverage for submit staleness checkpoint decisions in
+      `submission_staleness_state_machine_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/submission_staleness_state_machine_internal.test.ts vormaclient/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts vormaclient/client/src/tests/contracts/client.loading_and_focus.contract.test.ts`
+- [x] Result: `5 files, 160 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `44 files, 574 tests passed`.
+- [x] Added explicit server-success preload decision seam in
+      `fetch_route_data_preload_state_machine.ts`
+      (`decideServerSuccessPreloadExecutionPlan`) that reducerizes
+      signal-aborted skip behavior and dev/prod module-preload source selection.
+- [x] Added explicit server-success preload command seam in
+      `fetch_route_data_preload_commands.ts`
+      (`buildServerSuccessPreloadCommands`) so module and CSS preload side
+      effects are emitted as typed commands from one mapping path.
+- [x] Rewired `buildServerSuccessOutcome` in `fetch_route_data_server.ts` to
+      execute preload behavior through the new execution-plan + command seams
+      with per-command abort fencing.
+- [x] Added focused unit coverage for preload decision/command seams in
+      `fetch_route_data_preload_state_machine_internal.test.ts` and
+      `fetch_route_data_preload_commands_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/fetch_route_data_preload_state_machine_internal.test.ts vormaclient/client/src/tests/unit/fetch_route_data_preload_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts`
+- [x] Result: `5 files, 132 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 579 tests passed`.
+- [x] Moved server-success preload effectuation behind successful-navigation
+      lifecycle checkpoints by changing success outcomes to carry
+      `preloadCommands` instead of pre-executed `cssBundlePromises`.
+- [x] Rewired `buildServerSuccessOutcome` in `fetch_route_data_server.ts` and
+      client-only skip success in `fetch_route_data_skip.ts` to emit typed
+      preload commands without executing module/CSS preload side effects during
+      fetch outcome construction.
+- [x] Rewired successful-navigation asset waiting in
+      `runtime_navigation_successful_runtime.ts` to execute preload commands
+      only after pre-waiting/post-waiting/pre-asset checkpoint gating, then
+      await CSS preload promises with existing error logging behavior.
+- [x] Hardened preload command mapping in `fetch_route_data_preload_commands.ts`
+      by filtering empty/non-string dependency and CSS entries at the seam
+      boundary.
+- [x] Updated runtime and outcome fixtures/tests for the new success outcome
+      shape and preload timing semantics, including malformed preload-entry
+      filtering coverage.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/fetch_route_data_preload_state_machine_internal.test.ts vormaclient/client/src/tests/unit/fetch_route_data_preload_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_commands_internal.test.ts vormaclient/client/src/tests/unit/links_internal.test.ts vormaclient/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts`
+- [x] Result: `8 files, 167 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 580 tests passed`.
+- [x] Added explicit operation-ID ownership on navigation controls
+      (`NavigationControl.operationID`) and propagated it through
+      `navigation_controls.ts` so runtime outcome handling can fence stale work
+      by operation identity.
+- [x] Rewired runtime outcome execution path (`runtime.ts` ->
+      `handleNavigationOutcomeWithInternalResult`) to pass `expectedOperationID`
+      instead of relying on promise-reference ownership in the main navigation
+      flow.
+- [x] Updated `decideNavigationOutcomeExecutionPlan` ownership checks to honor
+      expected operation-ID ownership first, with legacy promise-ownership
+      fallback for compatibility callsites.
+- [x] Rewired navigate rejection cleanup in `runtime.ts` to use operation-ID
+      ownership fencing before deleting entries and dispatching failure journal
+      transitions.
+- [x] Added focused unit coverage proving explicit operation-ID ownership allows
+      correct outcome processing even when promise ownership is stale in
+      `navigation_outcome_state_machine_internal.test.ts`.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/unit/links_internal.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts`
+- [x] Result: `6 files, 158 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 581 tests passed`.
+- [x] Rewired link-click navigation ownership fences in `links.ts` to use
+      explicit control operation IDs when available, with promise-ownership
+      fallback only for compatibility paths.
+- [x] Added `doesNavigationEntryBelongToControl` helper in `links.ts` so link
+      outcome processing (`aborted`/`redirect`/`success`) and failed-click
+      cleanup consistently share one ownership seam.
+- [x] Hardened stale-suppression semantics for link flows: mismatched
+      operation-ID ownership now suppresses navigation mutation side effects
+      even if promise references match.
+- [x] Added focused `links_internal.test.ts` coverage for operation-ID-owned
+      stale-promise acceptance and operation-ID mismatch rejection semantics.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/links_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/contracts/client.link_click.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts`
+- [x] Result: `6 files, 166 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 583 tests passed`.
+- [x] Cleanup pass: removed redundant redirect-plan fields from
+      `runtime_navigation_outcome_state_machine.ts` (`entry`,
+      `shouldSyncBuildIDBeforeRedirect`) and simplified
+      `runtime_navigation_outcome.ts` redirect execution to unconditionally sync
+      redirect build IDs.
+- [x] Cleanup pass: removed unused runtime context payload (`context`) from
+      successful-navigation checkpoint execution context in
+      `runtime_navigation_successful_runtime.ts`.
+- [x] Updated focused navigation outcome state-machine coverage for the trimmed
+      redirect plan shape.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_runtime_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `3 files, 117 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 581 tests passed`.
+- [x] Converted successful-navigation checkpoint runtime orchestration in
+      `runtime_navigation_successful_runtime.ts` to a table-driven checkpoint
+      definition map (decision input + command input builders) and removed the
+      long per-checkpoint switch scaffolding.
+- [x] Replaced duplicated submit staleness checkpoint branching in
+      `runtime_submit_staleness_state_machine.ts` with template-derived reasons
+      and a single reducer path.
+- [x] Added explicit submission operation-ID ownership helper in `types.ts` and
+      rewired submit currentness checks in `runtime_submit.ts` to use
+      operation-ID ownership instead of object identity.
+- [x] Flattened submit runtime post-request/finalize/error layering in
+      `runtime_submit.ts` into one linearized pipeline with explicit staleness
+      checkpoint guards.
+- [x] Added regression coverage in `navigation_runtime_internal.test.ts` proving
+      submit ownership remains valid when the stored submission entry instance
+      changes but keeps the same operation ID.
+- [x] Updated stale auto-revalidate submit fixture to use monotonic submission
+      operation IDs so dedupe replacement semantics match runtime invariants.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_successful_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/unit/submission_staleness_state_machine_internal.test.ts`
+- [x] Result: `4 files, 122 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 582 tests passed`.
+- [x] Removed the navigation outcome command-wrapper passthrough in
+      `runtime_navigation_outcome.ts` by executing
+      `NavigationOutcomeExecutionPlan` directly, eliminating one plan->command
+      indirection layer from runtime outcome handling.
+- [x] Added focused runtime-outcome execution coverage in
+      `navigation_outcome_runtime_internal.test.ts` and removed the obsolete
+      command-builder internal test coverage.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_runtime_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `3 files, 117 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 581 tests passed`.
+- [x] Split `core/links.ts` into focused lifecycle modules:
+      `links_click_lifecycle.ts` and `links_prefetch_lifecycle.ts`, with shared
+      target classification + shared callback option types extracted into
+      `links_target_classification.ts` and `links_lifecycle_types.ts`.
+- [x] Reduced `core/links.ts` to a thin facade that re-exports click and
+      prefetch handlers and preserves existing internal testing seams
+      (`__makeLinkOnClickFn`, `__getPrefetchHandlers`).
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/links_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.link_click.contract.test.ts vormaclient/client/src/tests/contracts/client.prefetch.contract.test.ts`
+- [x] Result: `4 files, 145 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 581 tests passed`.
+- [x] Split monolithic `core/render_runtime.ts` into focused runtime modules:
+      `render_asset_runtime.ts`, `render_component_runtime.ts`,
+      `render_client_loader_runtime.ts`, and `render_commit_runtime.ts`.
+- [x] Reduced `core/render_runtime.ts` to a thin compatibility facade that
+      re-exports the existing public/internal runtime APIs.
+- [x] Preserved deterministic render commit and client-loader behavior by
+      keeping existing reducer/command seams intact while relocating runtime
+      ownership to focused files.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/render_runtime_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts vormaclient/client/src/tests/contracts/client.history_and_init.contract.test.ts`
+- [x] Result: `4 files, 177 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 581 tests passed`.
+- [x] Follow-up simplification wave started: collapsed successful-navigation
+      plan layering by removing intermediate stage wrapper plans and moving to
+      direct checkpoint payloads (`preWaitingExecutionPlan`,
+      `postWaitingExecutionPlan`, `postAssetExecutionPlan`).
+- [x] Simplified post-asset lifecycle composition to consume direct
+      `postAssetExecutionPlan` instead of nested stage plan wrappers in
+      `runtime_navigation_outcome_state_machine.ts`.
+- [x] Removed redundant stage command seam in
+      `runtime_navigation_successful_commands.ts` and rewired checkpoint command
+      building to map directly from checkpoint plan payloads.
+- [x] Updated focused state-machine and successful-command unit coverage to
+      assert the flattened checkpoint plan shapes.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_successful_commands_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts`
+- [x] Result: `3 files, 119 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 581 tests passed`.
+- [x] Rewired fetch-rejection lane ownership checks in `navigation_controls.ts`
+      (`active`, `prefetch`, `revalidation`) from object-identity guards to
+      shared operation-ID ownership helper (`hasNavigationOperationOwnership`).
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts`
+- [x] Result: `3 files, 123 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 583 tests passed`.
+- [x] Completed ownership-seam DRY cleanup by switching
+      `runtime_navigation_successful_runtime.ts` current-entry checks from
+      object-identity comparison to shared operation-ID ownership helper
+      (`hasNavigationOperationOwnership`).
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts`
+- [x] Result: `4 files, 142 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 583 tests passed`.
+- [x] Extracted shared operation-ID ownership helper in `types.ts`
+      (`hasNavigationOperationOwnership`) and rewired runtime outcome
+      state-machine, runtime catch cleanup, and link-click ownership checks to
+      use one seam.
+- [x] Removed duplicated inline operation-ID ownership predicates in
+      `runtime_navigation_outcome_state_machine.ts`, `runtime.ts`, and
+      `links.ts`, reducing ownership drift risk across execution paths.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/links_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.link_click.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts`
+- [x] Result: `6 files, 166 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 583 tests passed`.
+- [x] Removed promise-reference ownership fallback from runtime navigation
+      outcome state machine by requiring explicit `expectedOperationID` matching
+      in `decideNavigationOutcomeExecutionPlan`.
+- [x] Rewired
+      `handleNavigationOutcome`/`handleNavigationOutcomeWithInternalResult` to
+      require explicit `expectedOperationID` and removed legacy `controlPromise`
+      ownership plumbing from runtime execution paths.
+- [x] Removed promise-fallback ownership checks from link-click lifecycle in
+      `links.ts`; link side effects now require operation-ID ownership via
+      `doesNavigationEntryBelongToControl`.
+- [x] Removed dead promise-ownership helper from `types.ts` now that runtime and
+      link outcome paths are operation-ID-fenced.
+- [x] Updated runtime/link/state-machine focused tests to assert strict
+      operation-ID stale suppression semantics.
+- [x] `pnpm vitest vormaclient/client/src/tests/unit/links_internal.test.ts vormaclient/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts vormaclient/client/src/tests/unit/navigation_runtime_internal.test.ts vormaclient/client/src/tests/contracts/client.link_click.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts`
+- [x] Result: `6 files, 166 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts vormaclient/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts`
+- [x] Result: `2 files, 30 tests passed`.
+- [x] `pnpm vitest vormaclient/client/src/tests`
+- [x] Result: `46 files, 583 tests passed`.

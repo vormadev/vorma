@@ -1,11 +1,12 @@
 import { resolveAbsoluteHref } from "vorma/kit/url";
 import { observePromiseRejection } from "../../platform/safety.ts";
-import type {
-	NavigateProps,
-	NavigationControl,
-	NavigationEntry,
-	NavigationIntent,
-	NavigationOutcome,
+import {
+	hasNavigationOperationOwnership,
+	type NavigateProps,
+	type NavigationControl,
+	type NavigationEntry,
+	type NavigationIntent,
+	type NavigationOutcome,
 } from "./types.ts";
 
 type FetchRouteDataFn = (
@@ -23,6 +24,7 @@ type CreateEntryOptions = {
 function createEntryControl(options: CreateEntryOptions): {
 	abortController: AbortController;
 	promise: Promise<NavigationOutcome>;
+	operationID: number;
 } {
 	const { props, fetchRouteData, onFetchError } = options;
 	const abortController = new AbortController();
@@ -35,6 +37,7 @@ function createEntryControl(options: CreateEntryOptions): {
 				throw error;
 			}),
 		),
+		operationID: options.operationID,
 	};
 }
 
@@ -133,7 +136,12 @@ export function createNavigationControls(
 			type: props.navigationType,
 			intent,
 			onFetchError: () => {
-				if (getActiveNavigation() === entry) {
+				if (
+					hasNavigationOperationOwnership({
+						entry: getActiveNavigation(),
+						expectedOperationID: entry.operationID,
+					})
+				) {
 					deleteNavigation({
 						targetUrl,
 						reason: "active_navigation_fetch_rejected",
@@ -160,7 +168,12 @@ export function createNavigationControls(
 			type: "prefetch",
 			intent: "none",
 			onFetchError: () => {
-				if (prefetchNavigationsByTargetUrl.get(targetUrl) === entry) {
+				if (
+					hasNavigationOperationOwnership({
+						entry: prefetchNavigationsByTargetUrl.get(targetUrl),
+						expectedOperationID: entry.operationID,
+					})
+				) {
 					context.deleteNavigation({
 						targetUrl,
 						reason: "prefetch_fetch_rejected",
@@ -191,7 +204,12 @@ export function createNavigationControls(
 			intent: "revalidate",
 			onFetchError: () => {
 				const revalidationNavigation = getRevalidationNavigation();
-				if (revalidationNavigation === entry) {
+				if (
+					hasNavigationOperationOwnership({
+						entry: revalidationNavigation,
+						expectedOperationID: entry.operationID,
+					})
+				) {
 					context.deleteNavigation({
 						targetUrl,
 						reason: "revalidation_fetch_rejected",

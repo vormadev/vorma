@@ -134,7 +134,10 @@ function createMatch(
 
 function createSuccessNavigationOutcome(
 	overrides: {
-		cssBundlePromises?: Array<Promise<unknown>>;
+		preloadCommands?: Extract<
+			NavigationOutcome,
+			{ type: "success" }
+		>["preloadCommands"];
 		waitFnPromise?: Promise<{
 			data: Array<unknown>;
 			errorMessage?: string;
@@ -179,7 +182,7 @@ function createSuccessNavigationOutcome(
 			metaHeadEls: undefined,
 			restHeadEls: undefined,
 		},
-		cssBundlePromises: overrides.cssBundlePromises ?? [],
+		preloadCommands: overrides.preloadCommands ?? [],
 		waitFnPromise: overrides.waitFnPromise ?? Promise.resolve({ data: [] }),
 		props: {
 			...defaultProps,
@@ -1117,9 +1120,6 @@ describe("navigation runtime outcome stale control guards", () => {
 			"/stale-control-aborted",
 			window.location.href,
 		).href;
-		const staleControlPromise = Promise.resolve({
-			type: "aborted",
-		} as NavigationOutcome);
 		const currentEntry = createEntry({
 			targetUrl,
 			type: "userNavigation",
@@ -1143,7 +1143,7 @@ describe("navigation runtime outcome stale control guards", () => {
 				navigationType: "browserHistory",
 			},
 			outcome: { type: "aborted" },
-			controlPromise: staleControlPromise,
+			expectedOperationID: currentEntry.operationID + 1,
 		});
 
 		expect(result).toEqual({ didNavigate: false });
@@ -1151,7 +1151,7 @@ describe("navigation runtime outcome stale control guards", () => {
 		expect(processSuccessfulNavigation).not.toHaveBeenCalled();
 	});
 
-	it("does not process success when stale control promise no longer owns target", async () => {
+	it("does not process success when stale operation ID no longer owns target", async () => {
 		const targetUrl = new URL(
 			"/stale-control-success",
 			window.location.href,
@@ -1162,7 +1162,6 @@ describe("navigation runtime outcome stale control guards", () => {
 				navigationType: "browserHistory",
 			},
 		});
-		const staleControlPromise = Promise.resolve(staleOutcome);
 		const currentEntry = createEntry({
 			targetUrl,
 			type: "userNavigation",
@@ -1183,7 +1182,7 @@ describe("navigation runtime outcome stale control guards", () => {
 			processSuccessfulNavigation,
 			navigationProps: staleOutcome.props,
 			outcome: staleOutcome,
-			controlPromise: staleControlPromise,
+			expectedOperationID: currentEntry.operationID + 1,
 		});
 
 		expect(result).toEqual({ didNavigate: false });
@@ -1191,20 +1190,16 @@ describe("navigation runtime outcome stale control guards", () => {
 		expect(processSuccessfulNavigation).not.toHaveBeenCalled();
 	});
 
-	it("deletes target for current aborted outcome when control promise matches", async () => {
+	it("deletes target for current aborted outcome when operation ID matches", async () => {
 		const targetUrl = new URL(
 			"/current-control-aborted",
 			window.location.href,
 		).href;
-		const controlPromise = Promise.resolve({
-			type: "aborted",
-		} as NavigationOutcome);
 		const currentEntry = createEntry({
 			targetUrl,
 			type: "userNavigation",
 			intent: "navigate",
 		});
-		currentEntry.control.promise = controlPromise;
 
 		const deleteNavigation = vi.fn(() => true);
 		const processSuccessfulNavigation = vi
@@ -1220,7 +1215,7 @@ describe("navigation runtime outcome stale control guards", () => {
 				navigationType: "browserHistory",
 			},
 			outcome: { type: "aborted" },
-			controlPromise,
+			expectedOperationID: currentEntry.operationID,
 		});
 
 		expect(result).toEqual({ didNavigate: false });
@@ -1297,7 +1292,7 @@ describe("navigation runtime outcome redirect signaling", () => {
 					navigationType: "browserHistory",
 				},
 				outcome: redirectOutcome,
-				controlPromise,
+				expectedOperationID: currentEntry.operationID,
 			});
 
 			expect(result).toEqual({ didNavigate: true });
@@ -1338,7 +1333,6 @@ describe("navigation runtime outcome redirect signaling", () => {
 				navigationType: "browserHistory" as const,
 			},
 		} as NavigationOutcome;
-		const staleControlPromise = Promise.resolve(redirectOutcome);
 		const currentEntry = createEntry({
 			targetUrl,
 			type: "browserHistory",
@@ -1370,7 +1364,7 @@ describe("navigation runtime outcome redirect signaling", () => {
 					navigationType: "browserHistory",
 				},
 				outcome: redirectOutcome,
-				controlPromise: staleControlPromise,
+				expectedOperationID: currentEntry.operationID + 1,
 			});
 
 			expect(result).toEqual({ didNavigate: false });
@@ -1415,7 +1409,7 @@ describe("navigation runtime success-processing defensive branches", () => {
 		}
 	});
 
-	it("continues successful processing when css preload promises reject", async () => {
+	it("continues successful processing when css preload commands reject", async () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
 		const reRenderSpy = vi
 			.spyOn(renderRuntimeModule, "__reRenderApp")
@@ -1423,6 +1417,10 @@ describe("navigation runtime success-processing defensive branches", () => {
 		const consoleErrorSpy = vi
 			.spyOn(console, "error")
 			.mockImplementation(() => {});
+		const cssPreloadError = new Error("css preload failed");
+		const preloadCSSSpy = vi
+			.spyOn(renderRuntimeModule.AssetManager, "preloadCSS")
+			.mockRejectedValue(cssPreloadError);
 
 		try {
 			const runtime = createNavigationRuntime();
@@ -1438,9 +1436,14 @@ describe("navigation runtime success-processing defensive branches", () => {
 			expect(entry).toBeDefined();
 			if (!entry) return;
 
-			const cssPreloadError = new Error("css preload failed");
 			const outcome = createSuccessNavigationOutcome({
-				cssBundlePromises: [Promise.reject(cssPreloadError)],
+				preloadCommands: [
+					{
+						type: "preload_css_bundle",
+						bundle: "/failure.css",
+						reason: "server_success_preload_allowed",
+					},
+				],
 				props: {
 					href: targetUrl,
 					navigationType: "browserHistory",
@@ -1463,6 +1466,7 @@ describe("navigation runtime success-processing defensive branches", () => {
 			fetchSpy.mockRestore();
 			reRenderSpy.mockRestore();
 			consoleErrorSpy.mockRestore();
+			preloadCSSSpy.mockRestore();
 		}
 	});
 
@@ -1813,6 +1817,95 @@ describe("navigation runtime success-processing defensive branches", () => {
 			expect(deleteNavigation).not.toHaveBeenCalled();
 		} finally {
 			reRenderSpy.mockRestore();
+		}
+	});
+
+	it("resolves navigation intent only after successful navigation commit", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		const onNavigationIntentResolved = vi.fn();
+		try {
+			const runtime = createNavigationRuntime({
+				onNavigationIntentResolved,
+			});
+			const control = runtime.beginNavigation({
+				href: "/intent-resolution-committed",
+				navigationType: "browserHistory",
+			});
+			const targetUrl = new URL(
+				"/intent-resolution-committed",
+				window.location.href,
+			).href;
+			const entry = runtime.getNavigation(targetUrl);
+			expect(entry).toBeDefined();
+			if (!entry) {
+				control.abortController?.abort();
+				return;
+			}
+
+			await expect(
+				runtime.processSuccessfulNavigation(
+					createSuccessNavigationOutcome({
+						props: {
+							href: targetUrl,
+							navigationType: "browserHistory",
+						},
+					}),
+					entry,
+				),
+			).resolves.toBeUndefined();
+
+			expect(onNavigationIntentResolved).toHaveBeenCalledTimes(1);
+			control.abortController?.abort();
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("does not resolve navigation intent for stale successful completions", async () => {
+		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
+		const onNavigationIntentResolved = vi.fn();
+		try {
+			const runtime = createNavigationRuntime({
+				onNavigationIntentResolved,
+			});
+			const control = runtime.beginNavigation({
+				href: "/intent-resolution-stale-first",
+				navigationType: "browserHistory",
+			});
+			const firstTargetUrl = new URL(
+				"/intent-resolution-stale-first",
+				window.location.href,
+			).href;
+			const firstEntry = runtime.getNavigation(firstTargetUrl);
+			expect(firstEntry).toBeDefined();
+			if (!firstEntry) {
+				control.abortController?.abort();
+				return;
+			}
+
+			await expect(
+				runtime.processSuccessfulNavigation(
+					createSuccessNavigationOutcome({
+						waitFnPromise: Promise.resolve().then(() => {
+							runtime.beginNavigation({
+								href: "/intent-resolution-stale-second",
+								navigationType: "browserHistory",
+							});
+							return { data: [] };
+						}),
+						props: {
+							href: firstTargetUrl,
+							navigationType: "browserHistory",
+						},
+					}),
+					firstEntry,
+				),
+			).resolves.toBeUndefined();
+
+			expect(onNavigationIntentResolved).not.toHaveBeenCalled();
+			control.abortController?.abort();
+		} finally {
+			fetchSpy.mockRestore();
 		}
 	});
 
@@ -2602,10 +2695,11 @@ describe("navigation runtime submit stale checkpoints", () => {
 			  >
 			| undefined;
 		let context: SubmitExecutionContext;
+		let nextSubmissionOperationID = 1;
 		context = {
 			submissions: new Map(),
 			scheduleStatusUpdate: () => {},
-			allocateSubmissionOperationID: () => 1,
+			allocateSubmissionOperationID: () => nextSubmissionOperationID++,
 			navigate: async () => {
 				if (!replacementSubmit) {
 					replacementSubmit = executeSubmitRuntime(
@@ -2665,6 +2759,64 @@ describe("navigation runtime submit stale checkpoints", () => {
 				data: { fresh: true },
 			});
 			expect(requestCount).toBe(2);
+		} finally {
+			handleRedirectsSpy.mockRestore();
+		}
+	});
+
+	it("keeps submit ownership when submission map entry instance changes but operation ID stays the same", async () => {
+		const parseDeferred = createDeferred<unknown>();
+		const submissionKey = "submission:submit-ownership";
+		const submissionOperationID = 101;
+		let context: SubmitExecutionContext;
+		context = {
+			submissions: new Map(),
+			scheduleStatusUpdate: () => {},
+			allocateSubmissionOperationID: () => submissionOperationID,
+			navigate: async () => ({ didNavigate: true }),
+		};
+
+		const handleRedirectsSpy = vi
+			.spyOn(redirectsModule, "handleRedirects")
+			.mockResolvedValue({
+				redirectData: null,
+				response: createSubmitResponse({
+					buildID: "1",
+					json: () => parseDeferred.promise,
+				}),
+			} as any);
+
+		try {
+			const submitPromise = executeSubmitRuntime(
+				context,
+				"/api/original",
+				{ method: "POST" },
+				{
+					dedupeKey: "submit-ownership",
+					revalidate: false,
+				},
+			);
+
+			await vi.waitFor(() => {
+				expect(context.submissions.has(submissionKey)).toBe(true);
+			});
+			const currentSubmissionEntry =
+				context.submissions.get(submissionKey);
+			expect(currentSubmissionEntry).toBeDefined();
+			if (!currentSubmissionEntry) {
+				throw new Error("Expected current submission entry to exist.");
+			}
+			context.submissions.set(submissionKey, {
+				...currentSubmissionEntry,
+			});
+
+			parseDeferred.resolve({ ok: true });
+
+			await expect(submitPromise).resolves.toEqual({
+				success: true,
+				data: { ok: true },
+			});
+			expect(context.submissions.has(submissionKey)).toBe(false);
 		} finally {
 			handleRedirectsSpy.mockRestore();
 		}
@@ -3820,7 +3972,7 @@ describe("fetchRouteData client-only skip path", () => {
 			if (outcome.type !== "success") {
 				throw new Error("Expected success outcome");
 			}
-			expect(outcome.cssBundlePromises).toEqual([]);
+			expect(outcome.preloadCommands).toEqual([]);
 		} finally {
 			(import.meta.env as any).DEV = originalDev;
 		}
@@ -3829,9 +3981,6 @@ describe("fetchRouteData client-only skip path", () => {
 	it("preloads only truthy production deps", async () => {
 		const originalDev = import.meta.env.DEV;
 		(import.meta.env as any).DEV = false;
-		const preloadModuleSpy = vi
-			.spyOn(renderRuntimeModule.AssetManager, "preloadModule")
-			.mockImplementation(() => {});
 		try {
 			vi.spyOn(window, "fetch").mockResolvedValue(
 				new Response(
@@ -3865,10 +4014,17 @@ describe("fetchRouteData client-only skip path", () => {
 				navigationType: "userNavigation",
 			});
 			expect(outcome.type).toBe("success");
-			expect(preloadModuleSpy).toHaveBeenCalledTimes(1);
-			expect(preloadModuleSpy).toHaveBeenCalledWith("/prod-dep.js");
+			if (outcome.type !== "success") {
+				throw new Error("Expected success outcome");
+			}
+			expect(outcome.preloadCommands).toEqual([
+				{
+					type: "preload_module_dependency",
+					dependency: "/prod-dep.js",
+					reason: "server_success_preload_allowed",
+				},
+			]);
 		} finally {
-			preloadModuleSpy.mockRestore();
 			(import.meta.env as any).DEV = originalDev;
 		}
 	});

@@ -17,6 +17,7 @@ import {
 	registerClientLoaderPatternOrThrow,
 	setupClientLoaders,
 } from "./render_runtime.ts";
+import { decideFocusRevalidationTriggerExecutionPlan } from "./revalidation_focus_trigger_policy_state_machine.ts";
 
 let devTimeSetupClientLoadersDebounced: () => Promise<void> = () =>
 	Promise.resolve();
@@ -332,18 +333,14 @@ function getIsWorking(
 export function revalidateOnWindowFocus(options?: { staleTimeMS?: number }) {
 	const staleTimeMS = options?.staleTimeMS ?? 5_000;
 	return addOnWindowFocusListener(() => {
-		const status = getStatus();
-		if (
-			!status.isNavigating &&
-			!status.isSubmitting &&
-			!status.isRevalidating
-		) {
-			if (
-				Date.now() - getLastTriggeredNavOrRevalidateTimestampMS() <
-				staleTimeMS
-			) {
-				return;
-			}
+		const executionPlan = decideFocusRevalidationTriggerExecutionPlan({
+			status: getStatus(),
+			nowTimestampMS: Date.now(),
+			lastTriggeredNavOrRevalidateTimestampMS:
+				getLastTriggeredNavOrRevalidateTimestampMS(),
+			staleTimeMS,
+		});
+		if (executionPlan.type === "trigger_revalidate") {
 			revalidate();
 		}
 	});

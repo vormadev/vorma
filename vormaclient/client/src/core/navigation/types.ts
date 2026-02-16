@@ -3,6 +3,7 @@ import type { RedirectData } from "../redirects.ts";
 import type { ScrollState } from "../../platform/scroll.ts";
 import type { ClientLoadersResult } from "../render_runtime.ts";
 import type { GetRouteDataOutput } from "../../app/context.ts";
+import type { ServerSuccessPreloadCommand } from "./fetch_route_data_preload_commands.ts";
 
 export type VormaNavigationType =
 	| "browserHistory"
@@ -29,7 +30,7 @@ export type NavigationOutcome =
 			type: "success";
 			response: Response;
 			json: GetRouteDataOutput;
-			cssBundlePromises: Array<Promise<unknown>>;
+			preloadCommands: ServerSuccessPreloadCommand[];
 			waitFnPromise: Promise<ClientLoadersResult> | undefined;
 			props: NavigateProps;
 	  };
@@ -37,6 +38,7 @@ export type NavigationOutcome =
 export type NavigationControl = {
 	abortController: AbortController | undefined;
 	promise: Promise<NavigationOutcome>;
+	operationID?: number;
 };
 
 export type NavigationPhase = "fetching" | "waiting" | "rendering" | "complete";
@@ -116,9 +118,24 @@ export type NavigationStateManager = {
 	clearAll: () => void;
 };
 
-export function hasNavigationControlPromiseOwnership(
-	entry: NavigationEntry | undefined,
-	controlPromise: Promise<NavigationOutcome>,
-): entry is NavigationEntry {
-	return !!entry && entry.control.promise === controlPromise;
+export function hasNavigationOperationOwnership(props: {
+	entry: NavigationEntry | undefined;
+	expectedOperationID: number | undefined;
+}): props is { entry: NavigationEntry; expectedOperationID: number } {
+	return (
+		!!props.entry &&
+		typeof props.expectedOperationID === "number" &&
+		props.entry.operationID === props.expectedOperationID
+	);
+}
+
+export function hasSubmissionOperationOwnership(props: {
+	entry: SubmissionEntry | undefined;
+	expectedOperationID: number | undefined;
+}): props is { entry: SubmissionEntry; expectedOperationID: number } {
+	return (
+		!!props.entry &&
+		typeof props.expectedOperationID === "number" &&
+		props.entry.operationID === props.expectedOperationID
+	);
 }

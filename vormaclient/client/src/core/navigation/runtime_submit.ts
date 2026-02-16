@@ -7,7 +7,17 @@ import {
 	type RedirectData,
 } from "../redirects.ts";
 import type { NavigateProps, SubmitOptions, SubmissionEntry } from "./types.ts";
+import { hasSubmissionOperationOwnership } from "./types.ts";
 import { syncBuildIDFromResponse } from "./runtime_navigation_outcome.ts";
+import {
+	buildSubmissionLifecycleBeginCommands,
+	buildSubmissionLifecycleFinishCommands,
+	type SubmissionLifecycleCommand,
+} from "./runtime_submit_lifecycle_commands.ts";
+import {
+	decideSubmitStalenessCheckpointExecutionPlan,
+	type SubmitStalenessCheckpoint,
+} from "./runtime_submit_staleness_state_machine.ts";
 
 type SubmissionLifecycle = {
 	abortController: AbortController;
@@ -30,6 +40,44 @@ function createSubmissionEntry(
 		startTime: Date.now(),
 		skipGlobalLoadingIndicator: options?.skipGlobalLoadingIndicator,
 	};
+}
+
+function executeSubmissionLifecycleCommands(props: {
+	context: SubmitExecutionContext;
+	commands: SubmissionLifecycleCommand[];
+}): void {
+	const { context, commands } = props;
+
+	for (const command of commands) {
+		switch (command.type) {
+			case "abort_submission_entry":
+				command.submissionEntry.control.abortController?.abort(
+					"deduped",
+				);
+				break;
+			case "set_submission_entry":
+				context.submissions.set(
+					command.submissionKey,
+					command.submissionEntry,
+				);
+				break;
+			case "delete_submission_entry":
+				context.submissions.delete(command.submissionKey);
+				break;
+			case "emit_submission_state_transition":
+				context.onSubmissionStateTransition?.({
+					submissionEntry: command.submissionEntry,
+					fromState: command.fromState,
+					toState: command.toState,
+					reason: command.reason,
+					causedByOperationID: command.causedByOperationID ?? null,
+				});
+				break;
+			case "schedule_status_update":
+				context.scheduleStatusUpdate();
+				break;
+		}
+	}
 }
 
 export type SubmitExecutionContext = {
@@ -63,45 +111,35 @@ function createSubmissionLifecycle(
 		: Symbol("submission");
 
 	const isCurrent = (): boolean =>
-		context.submissions.get(submissionKey) === submissionEntry;
+		hasSubmissionOperationOwnership({
+			entry: context.submissions.get(submissionKey),
+			expectedOperationID: submissionEntry.operationID,
+		});
 
 	const begin = (): void => {
-		if (typeof submissionKey === "string") {
-			const existing = context.submissions.get(submissionKey);
-			if (existing) {
-				existing.control.abortController?.abort("deduped");
-				context.onSubmissionStateTransition?.({
-					submissionEntry: existing,
-					fromState: "submitting",
-					toState: "aborted",
-					reason: "submission_deduped_by_newer_submission",
-					causedByOperationID: submissionEntry.operationID,
-				});
-			}
-		}
-
-		context.submissions.set(submissionKey, submissionEntry);
-		context.onSubmissionStateTransition?.({
-			submissionEntry,
-			fromState: "none",
-			toState: "submitting",
-			reason: "submission_started",
+		const existingSubmissionEntry =
+			typeof submissionKey === "string"
+				? context.submissions.get(submissionKey)
+				: undefined;
+		executeSubmissionLifecycleCommands({
+			context,
+			commands: buildSubmissionLifecycleBeginCommands({
+				submissionKey,
+				submissionEntry,
+				existingSubmissionEntry,
+			}),
 		});
-		context.scheduleStatusUpdate();
 	};
 
 	const finish = (): void => {
-		if (isCurrent()) {
-			context.submissions.delete(submissionKey);
-			context.onSubmissionStateTransition?.({
+		executeSubmissionLifecycleCommands({
+			context,
+			commands: buildSubmissionLifecycleFinishCommands({
+				submissionKey,
 				submissionEntry,
-				fromState: "submitting",
-				toState: "removed",
-				reason: "submission_finished",
-			});
-		}
-
-		context.scheduleStatusUpdate();
+				shouldRemoveSubmissionEntry: isCurrent(),
+			}),
+		});
 	};
 
 	return {
@@ -193,12 +231,19 @@ function getSubmitRedirectFailureResult<T>(): SubmitResult<T> {
 	return getSubmitErrorResult<T>("Redirect failed");
 }
 
-function getStaleSubmitResultIfAny<T>(
-	isSubmissionCurrent: () => boolean,
-): SubmitResult<T> | null {
-	if (isSubmissionCurrent()) {
+function getStaleSubmitResultFromCheckpointIfAny<T>(props: {
+	checkpoint: SubmitStalenessCheckpoint;
+	isSubmissionCurrent: () => boolean;
+}): SubmitResult<T> | null {
+	const stalenessCheckpointExecutionPlan =
+		decideSubmitStalenessCheckpointExecutionPlan({
+			checkpoint: props.checkpoint,
+			isSubmissionCurrent: props.isSubmissionCurrent(),
+		});
+	if (stalenessCheckpointExecutionPlan.type === "continue") {
 		return null;
 	}
+
 	return getAbortedSubmitResult<T>();
 }
 
@@ -319,7 +364,10 @@ async function executeSubmitResponseAction<T>(props: {
 				0,
 			);
 			const staleAfterRedirectEffectuation =
-				getStaleSubmitResultIfAny<T>(isSubmissionCurrent);
+				getStaleSubmitResultFromCheckpointIfAny<T>({
+					checkpoint: "post_redirect_effectuation",
+					isSubmissionCurrent,
+				});
 			if (staleAfterRedirectEffectuation) {
 				return staleAfterRedirectEffectuation;
 			}
@@ -331,7 +379,10 @@ async function executeSubmitResponseAction<T>(props: {
 		case "parseJSON": {
 			const data = await readSubmitSuccessResponseData(response);
 			const staleBeforeReturn =
-				getStaleSubmitResultIfAny<T>(isSubmissionCurrent);
+				getStaleSubmitResultFromCheckpointIfAny<T>({
+					checkpoint: "pre_success_return",
+					isSubmissionCurrent,
+				});
 			if (staleBeforeReturn) {
 				return staleBeforeReturn;
 			}
@@ -342,7 +393,10 @@ async function executeSubmitResponseAction<T>(props: {
 					navigationType: "revalidation",
 				});
 				const staleAfterAutoRevalidate =
-					getStaleSubmitResultIfAny<T>(isSubmissionCurrent);
+					getStaleSubmitResultFromCheckpointIfAny<T>({
+						checkpoint: "post_auto_revalidate",
+						isSubmissionCurrent,
+					});
 				if (staleAfterAutoRevalidate) {
 					return staleAfterAutoRevalidate;
 				}
@@ -353,153 +407,22 @@ async function executeSubmitResponseAction<T>(props: {
 	}
 }
 
-async function finalizeSubmitResponse<T>(props: {
-	response: Response;
-	redirectData: RedirectData | null;
-	requestInit?: RequestInit;
-	options?: SubmitOptions;
-	navigate: (props: NavigateProps) => Promise<{ didNavigate: boolean }>;
-	isSubmissionCurrent: () => boolean;
-}): Promise<SubmitResult<T>> {
-	const {
-		response,
-		redirectData,
-		requestInit,
-		options,
-		navigate,
-		isSubmissionCurrent,
-	} = props;
-
-	const staleBeforeResponse =
-		getStaleSubmitResultIfAny<T>(isSubmissionCurrent);
-	if (staleBeforeResponse) {
-		return staleBeforeResponse;
-	}
-
-	const responseAction = decideSubmitResponseAction({
-		response,
-		redirectData,
-		requestInit,
-		options,
-	});
-	const staleAfterResponseClassification =
-		getStaleSubmitResultIfAny<T>(isSubmissionCurrent);
-	if (staleAfterResponseClassification) {
-		return staleAfterResponseClassification;
-	}
-
-	return await executeSubmitResponseAction({
-		action: responseAction,
-		response,
-		navigate,
-		isSubmissionCurrent,
-	});
-}
-
-type SubmitPostRequestAction<T> =
-	| {
-			type: "stop";
-			result: SubmitResult<T>;
-	  }
-	| {
-			type: "finalize";
-			response: Response;
-			redirectData: RedirectData | null;
-	  };
-
-function decideSubmitPostRequestAction<T>(props: {
-	response: Response;
-	redirectData: RedirectData | null;
-	isSubmissionCurrent: () => boolean;
-}): SubmitPostRequestAction<T> {
-	const { response, redirectData, isSubmissionCurrent } = props;
-	const staleAfterRequest = getStaleSubmitResultIfAny<T>(isSubmissionCurrent);
-	if (staleAfterRequest) {
-		return {
-			type: "stop",
-			result: staleAfterRequest,
-		};
-	}
-
-	return {
-		type: "finalize",
-		response,
-		redirectData,
-	};
-}
-
-async function executeSubmitPostRequestAction<T>(props: {
-	action: SubmitPostRequestAction<T>;
-	requestInit?: RequestInit;
-	options?: SubmitOptions;
-	navigate: (props: NavigateProps) => Promise<{ didNavigate: boolean }>;
-	isSubmissionCurrent: () => boolean;
-}): Promise<SubmitResult<T>> {
-	const { action, requestInit, options, navigate, isSubmissionCurrent } =
-		props;
-
-	switch (action.type) {
-		case "stop":
-			return action.result;
-		case "finalize":
-			syncBuildIDFromResponse(action.response);
-			return await finalizeSubmitResponse<T>({
-				response: action.response,
-				redirectData: action.redirectData,
-				requestInit,
-				options,
-				navigate,
-				isSubmissionCurrent,
-			});
-	}
-}
-
-type SubmitRuntimeErrorAction =
-	| {
-			type: "aborted";
-	  }
-	| {
-			type: "known";
-			error: Error;
-	  }
-	| {
-			type: "unknown";
-			error: unknown;
-	  };
-
-function decideSubmitRuntimeErrorAction(props: {
+function getSubmitRuntimeErrorResult<T>(props: {
 	error: unknown;
 	abortSignal: AbortSignal;
-}): SubmitRuntimeErrorAction {
+}): SubmitResult<T> {
 	const { error, abortSignal } = props;
 	if (isAbortError(error) || abortSignal.aborted) {
-		return { type: "aborted" };
+		return getAbortedSubmitResult<T>();
 	}
-	if (error instanceof Error) {
-		return {
-			type: "known",
-			error,
-		};
-	}
-	return {
-		type: "unknown",
-		error,
-	};
-}
 
-function executeSubmitRuntimeErrorAction<T>(
-	action: SubmitRuntimeErrorAction,
-): SubmitResult<T> {
-	switch (action.type) {
-		case "aborted":
-			return getAbortedSubmitResult<T>();
-		case "known":
-			logError(action.error);
-			return getSubmitErrorResult<T>(action.error.message);
-		case "unknown":
-			logError(action.error);
-			return getUnknownSubmitErrorResult<T>();
+	if (error instanceof Error) {
+		logError(error);
+		return getSubmitErrorResult<T>(error.message);
 	}
+
+	logError(error);
+	return getUnknownSubmitErrorResult<T>();
 }
 
 export async function executeSubmitRuntime<T = unknown>(
@@ -523,26 +446,50 @@ export async function executeSubmitRuntime<T = unknown>(
 			url: preparedSubmitRequest.url,
 			requestInit: preparedSubmitRequest.requestInit,
 		});
-
-		const postRequestAction = decideSubmitPostRequestAction<T>({
-			response,
-			redirectData,
+		const staleAfterRequest = getStaleSubmitResultFromCheckpointIfAny<T>({
+			checkpoint: "post_request",
 			isSubmissionCurrent: submissionLifecycle.isCurrent,
 		});
+		if (staleAfterRequest) {
+			return staleAfterRequest;
+		}
 
-		return await executeSubmitPostRequestAction<T>({
-			action: postRequestAction,
+		syncBuildIDFromResponse(response);
+
+		const staleBeforeFinalize = getStaleSubmitResultFromCheckpointIfAny<T>({
+			checkpoint: "pre_finalize",
+			isSubmissionCurrent: submissionLifecycle.isCurrent,
+		});
+		if (staleBeforeFinalize) {
+			return staleBeforeFinalize;
+		}
+
+		const responseAction = decideSubmitResponseAction({
+			response,
+			redirectData,
 			requestInit,
 			options,
+		});
+		const staleAfterResponseClassification =
+			getStaleSubmitResultFromCheckpointIfAny<T>({
+				checkpoint: "post_response_classification",
+				isSubmissionCurrent: submissionLifecycle.isCurrent,
+			});
+		if (staleAfterResponseClassification) {
+			return staleAfterResponseClassification;
+		}
+
+		return await executeSubmitResponseAction({
+			action: responseAction,
+			response,
 			navigate: context.navigate,
 			isSubmissionCurrent: submissionLifecycle.isCurrent,
 		});
 	} catch (error) {
-		const errorAction = decideSubmitRuntimeErrorAction({
+		return getSubmitRuntimeErrorResult<T>({
 			error,
 			abortSignal: submissionLifecycle.abortController.signal,
 		});
-		return executeSubmitRuntimeErrorAction<T>(errorAction);
 	} finally {
 		submissionLifecycle.finish();
 	}

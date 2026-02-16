@@ -4,7 +4,6 @@ import {
 	createUnavailableServerDataError,
 	findPartialMatchesOnClient,
 } from "../render_runtime.ts";
-import { AssetManager } from "../render_runtime.ts";
 import {
 	getBuildIDFromResponse,
 	handleRedirects,
@@ -22,6 +21,8 @@ import {
 	type SkipMatch,
 } from "./fetch_route_data_skip_match.ts";
 import type { NavigateProps, NavigationOutcome } from "./types.ts";
+import { buildServerSuccessPreloadCommands } from "./fetch_route_data_preload_commands.ts";
+import { decideServerSuccessPreloadExecutionPlan } from "./fetch_route_data_preload_state_machine.ts";
 
 type RouteDataRequestGlobalSnapshot = {
 	buildID: string;
@@ -230,16 +231,16 @@ export function buildServerSuccessOutcome(props: {
 	signal: AbortSignal;
 }): Extract<NavigationOutcome, { type: "success" }> {
 	const { response, json, navigationProps, runningLoaders, signal } = props;
-
-	if (!signal.aborted) {
-		const depsToPreload = import.meta.env.DEV
-			? [...new Set(json.importURLs)]
-			: json.deps;
-		for (const dep of depsToPreload ?? []) {
-			if (dep) AssetManager.preloadModule(dep);
-		}
-	}
-
+	const preloadExecutionPlan = decideServerSuccessPreloadExecutionPlan({
+		signalAborted: signal.aborted,
+		isDev: import.meta.env.DEV,
+		importURLs: json.importURLs ?? [],
+		deps: json.deps ?? [],
+		cssBundles: json.cssBundles ?? [],
+	});
+	const preloadCommands = buildServerSuccessPreloadCommands({
+		executionPlan: preloadExecutionPlan,
+	});
 	const buildID = getBuildIDFromResponse(response);
 
 	const waitFnPromise = completeClientLoaders(
@@ -250,19 +251,12 @@ export function buildServerSuccessOutcome(props: {
 	);
 	observePromiseRejection(waitFnPromise);
 
-	const cssBundlePromises: Array<Promise<unknown>> = [];
-	if (!signal.aborted) {
-		for (const bundle of json.cssBundles ?? []) {
-			cssBundlePromises.push(AssetManager.preloadCSS(bundle));
-		}
-	}
-
 	return {
 		type: "success",
 		response,
 		json,
 		props: navigationProps,
-		cssBundlePromises,
+		preloadCommands,
 		waitFnPromise,
 	};
 }

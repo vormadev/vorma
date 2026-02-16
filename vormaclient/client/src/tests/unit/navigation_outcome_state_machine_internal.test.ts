@@ -6,10 +6,13 @@ import type {
 import {
 	decideBuildIDSyncTimingForSuccessfulEntry,
 	decideNavigationOutcomeExecutionPlan,
-	decideSuccessfulNavigationLifecycleStageExecutionPlan,
+	decideSuccessfulNavigationCleanupExecutionPlan,
+	decideSuccessfulNavigationLifecycleCheckpointExecutionPlan,
+	decideSuccessfulNavigationPostAssetLifecycleExecutionPlan,
 	decideSuccessfulNavigationPostAssetSideEffectPlan,
 	decideSuccessfulNavigationPostAssetExecutionPlan,
 	decideSuccessfulNavigationPostWaitingExecutionPlan,
+	decideSuccessfulNavigationPreAssetWaitExecutionPlan,
 	decideSuccessfulNavigationPreWaitingExecutionPlan,
 	toPublicNavigateResult,
 } from "../../core/navigation/runtime_navigation_outcome_state_machine.ts";
@@ -19,15 +22,12 @@ function createEntry(props: {
 	intent: NavigationEntry["intent"];
 	targetUrl?: string;
 	originUrl?: string;
-	controlPromise?: Promise<NavigationOutcome>;
 }): NavigationEntry {
-	const promise =
-		props.controlPromise || Promise.resolve({ type: "aborted" as const });
 	return {
 		operationID: 1,
 		control: {
 			abortController: new AbortController(),
-			promise,
+			promise: Promise.resolve({ type: "aborted" as const }),
 		},
 		type: props.type,
 		intent: props.intent,
@@ -68,7 +68,7 @@ function createSuccessOutcome(): Extract<
 			metaHeadEls: undefined,
 			restHeadEls: undefined,
 		},
-		cssBundlePromises: [],
+		preloadCommands: [],
 		waitFnPromise: Promise.resolve({ data: [] }),
 		props: {
 			href: "http://localhost:3000/target",
@@ -106,12 +106,11 @@ function createRedirectOutcome(): Extract<
 
 describe("navigation outcome state machine", () => {
 	it("stops when target entry is missing", () => {
-		const controlPromise = Promise.resolve({ type: "aborted" as const });
 		const plan = decideNavigationOutcomeExecutionPlan({
 			outcome: { type: "aborted" },
 			targetUrl: "http://localhost:3000/missing",
 			entry: undefined,
-			controlPromise,
+			expectedOperationID: undefined,
 			currentHref: "http://localhost:3000/",
 		});
 
@@ -121,20 +120,17 @@ describe("navigation outcome state machine", () => {
 		});
 	});
 
-	it("stops when control ownership is stale", () => {
-		const currentPromise = Promise.resolve(createSuccessOutcome());
-		const stalePromise = Promise.resolve(createSuccessOutcome());
+	it("stops when operation-id ownership is stale", () => {
 		const entry = createEntry({
 			type: "userNavigation",
 			intent: "navigate",
-			controlPromise: currentPromise,
 		});
 
 		const plan = decideNavigationOutcomeExecutionPlan({
 			outcome: createSuccessOutcome(),
 			targetUrl: entry.targetUrl,
 			entry,
-			controlPromise: stalePromise,
+			expectedOperationID: entry.operationID + 1,
 			currentHref: "http://localhost:3000/",
 		});
 
@@ -144,20 +140,39 @@ describe("navigation outcome state machine", () => {
 		});
 	});
 
+	it("accepts explicit operation-id ownership", () => {
+		const entry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+		});
+
+		const plan = decideNavigationOutcomeExecutionPlan({
+			outcome: createSuccessOutcome(),
+			targetUrl: entry.targetUrl,
+			entry,
+			expectedOperationID: entry.operationID,
+			currentHref: "http://localhost:3000/",
+		});
+
+		expect(plan).toMatchObject({
+			type: "success",
+			didNavigate: true,
+			reason: "success_process",
+		});
+	});
+
 	it("ignores redirect outcomes for idle prefetch entries", () => {
 		const redirectOutcome = createRedirectOutcome();
-		const controlPromise = Promise.resolve(redirectOutcome);
 		const entry = createEntry({
 			type: "prefetch",
 			intent: "none",
-			controlPromise,
 		});
 
 		const plan = decideNavigationOutcomeExecutionPlan({
 			outcome: redirectOutcome,
 			targetUrl: entry.targetUrl,
 			entry,
-			controlPromise,
+			expectedOperationID: entry.operationID,
 			currentHref: "http://localhost:3000/",
 		});
 
@@ -170,18 +185,16 @@ describe("navigation outcome state machine", () => {
 
 	it("effectuates redirect outcomes for current navigate entries", () => {
 		const redirectOutcome = createRedirectOutcome();
-		const controlPromise = Promise.resolve(redirectOutcome);
 		const entry = createEntry({
 			type: "userNavigation",
 			intent: "navigate",
-			controlPromise,
 		});
 
 		const plan = decideNavigationOutcomeExecutionPlan({
 			outcome: redirectOutcome,
 			targetUrl: entry.targetUrl,
 			entry,
-			controlPromise,
+			expectedOperationID: entry.operationID,
 			currentHref: "http://localhost:3000/",
 		});
 
@@ -189,30 +202,26 @@ describe("navigation outcome state machine", () => {
 		if (plan.type !== "redirect") {
 			return;
 		}
-		expect(plan.shouldSyncBuildIDBeforeRedirect).toBe(true);
 		expect(plan.reason).toBe("redirect_effectuate");
 	});
 
 	it("emits success execution metadata for current non-prefetch entries", () => {
 		const successOutcome = createSuccessOutcome();
-		const controlPromise = Promise.resolve(successOutcome);
 		const entry = createEntry({
 			type: "userNavigation",
 			intent: "navigate",
-			controlPromise,
 		});
 
 		const plan = decideNavigationOutcomeExecutionPlan({
 			outcome: successOutcome,
 			targetUrl: entry.targetUrl,
 			entry,
-			controlPromise,
+			expectedOperationID: entry.operationID,
 			currentHref: "http://localhost:3000/",
 		});
 
 		expect(plan).toMatchObject({
 			type: "success",
-			shouldResolveIntent: true,
 			didNavigate: true,
 			reason: "success_process",
 		});
@@ -220,24 +229,21 @@ describe("navigation outcome state machine", () => {
 
 	it("marks idle prefetch success as non-navigating", () => {
 		const successOutcome = createSuccessOutcome();
-		const controlPromise = Promise.resolve(successOutcome);
 		const entry = createEntry({
 			type: "prefetch",
 			intent: "none",
-			controlPromise,
 		});
 
 		const plan = decideNavigationOutcomeExecutionPlan({
 			outcome: successOutcome,
 			targetUrl: entry.targetUrl,
 			entry,
-			controlPromise,
+			expectedOperationID: entry.operationID,
 			currentHref: "http://localhost:3000/",
 		});
 
 		expect(plan).toMatchObject({
 			type: "success",
-			shouldResolveIntent: false,
 			didNavigate: false,
 		});
 	});
@@ -330,62 +336,52 @@ describe("successful outcome stage plans", () => {
 		});
 	});
 
-	it("decides stage execution plans through one unified stage-plan seam", () => {
-		const entry = createEntry({
+	it("decides successful-navigation cleanup through one explicit cleanup seam", () => {
+		const activeEntry = createEntry({
 			type: "userNavigation",
 			intent: "navigate",
+			targetUrl: "http://localhost:3000/cleanup-target",
 		});
-
 		expect(
-			decideSuccessfulNavigationLifecycleStageExecutionPlan({
-				stage: "pre_waiting",
-				entry,
+			decideSuccessfulNavigationCleanupExecutionPlan({
+				entry: activeEntry,
 				isCurrentEntry: true,
-				currentHref: "http://localhost:3000/current",
 			}),
 		).toEqual({
-			stage: "pre_waiting",
-			plan: {
-				type: "continue",
-				reason: "entry_current_and_fresh",
-			},
+			type: "deleteNavigation",
+			targetUrl: "http://localhost:3000/cleanup-target",
+			reason: "successful_navigation_cleanup",
+		});
+
+		const idlePrefetchEntry = createEntry({
+			type: "prefetch",
+			intent: "none",
+			targetUrl: "http://localhost:3000/prefetch-cleanup-target",
+		});
+		expect(
+			decideSuccessfulNavigationCleanupExecutionPlan({
+				entry: idlePrefetchEntry,
+				isCurrentEntry: true,
+			}),
+		).toEqual({
+			type: "skip",
+			reason: "cleanup_skipped_idle_prefetch_or_non_current_entry",
 		});
 
 		expect(
-			decideSuccessfulNavigationLifecycleStageExecutionPlan({
-				stage: "post_waiting",
-				entry,
+			decideSuccessfulNavigationCleanupExecutionPlan({
+				entry: activeEntry,
 				isCurrentEntry: false,
-				currentHref: "http://localhost:3000/current",
 			}),
 		).toEqual({
-			stage: "post_waiting",
-			plan: {
-				type: "stop",
-				reason: "post_waiting_entry_lost",
-			},
-		});
-
-		expect(
-			decideSuccessfulNavigationLifecycleStageExecutionPlan({
-				stage: "post_asset",
-				entry,
-				isCurrentEntry: true,
-				currentHref: "http://localhost:3000/current",
-			}),
-		).toEqual({
-			stage: "post_asset",
-			plan: {
-				type: "render",
-				reason: "post_asset_render",
-			},
+			type: "skip",
+			reason: "cleanup_skipped_idle_prefetch_or_non_current_entry",
 		});
 	});
 
 	it("decides post-asset side-effect commits through one reducer seam", () => {
-		const stoppedPostAssetStagePlan =
-			decideSuccessfulNavigationLifecycleStageExecutionPlan({
-				stage: "post_asset",
+		const stoppedPostAssetExecutionPlan =
+			decideSuccessfulNavigationPostAssetExecutionPlan({
 				entry: createEntry({
 					type: "userNavigation",
 					intent: "navigate",
@@ -395,7 +391,7 @@ describe("successful outcome stage plans", () => {
 			});
 		expect(
 			decideSuccessfulNavigationPostAssetSideEffectPlan({
-				postAssetStageExecutionPlan: stoppedPostAssetStagePlan,
+				postAssetExecutionPlan: stoppedPostAssetExecutionPlan,
 				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
 			}),
 		).toEqual({
@@ -404,9 +400,8 @@ describe("successful outcome stage plans", () => {
 			shouldApplyResponseArtifacts: false,
 		});
 
-		const renderingPostAssetStagePlan =
-			decideSuccessfulNavigationLifecycleStageExecutionPlan({
-				stage: "post_asset",
+		const renderingPostAssetExecutionPlan =
+			decideSuccessfulNavigationPostAssetExecutionPlan({
 				entry: createEntry({
 					type: "userNavigation",
 					intent: "navigate",
@@ -416,13 +411,128 @@ describe("successful outcome stage plans", () => {
 			});
 		expect(
 			decideSuccessfulNavigationPostAssetSideEffectPlan({
-				postAssetStageExecutionPlan: renderingPostAssetStagePlan,
+				postAssetExecutionPlan: renderingPostAssetExecutionPlan,
 				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
 			}),
 		).toEqual({
 			shouldCommitClientLoadersState: true,
 			shouldSyncBuildIDAfterAssetWait: true,
 			shouldApplyResponseArtifacts: true,
+		});
+	});
+
+	it("decides pre-asset wait execution through one reducer seam", () => {
+		expect(
+			decideSuccessfulNavigationPreAssetWaitExecutionPlan({
+				buildIDSyncTiming: "before_asset_wait",
+			}),
+		).toEqual({
+			shouldSyncBuildIDBeforeAssetWait: true,
+			reason: "pre_asset_wait_sync_build_id_before_asset_wait",
+		});
+
+		expect(
+			decideSuccessfulNavigationPreAssetWaitExecutionPlan({
+				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
+			}),
+		).toEqual({
+			shouldSyncBuildIDBeforeAssetWait: false,
+			reason: "pre_asset_wait_skip_sync_build_id_before_asset_wait",
+		});
+	});
+
+	it("decides post-asset stage plus side effects through one combined reducer seam", () => {
+		const entry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+		});
+
+		expect(
+			decideSuccessfulNavigationPostAssetLifecycleExecutionPlan({
+				entry,
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
+				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
+			}),
+		).toEqual({
+			postAssetExecutionPlan: {
+				type: "render",
+				reason: "post_asset_render",
+			},
+			postAssetSideEffectPlan: {
+				shouldCommitClientLoadersState: true,
+				shouldSyncBuildIDAfterAssetWait: true,
+				shouldApplyResponseArtifacts: true,
+			},
+		});
+
+		expect(
+			decideSuccessfulNavigationPostAssetLifecycleExecutionPlan({
+				entry,
+				isCurrentEntry: false,
+				currentHref: "http://localhost:3000/current",
+				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
+			}),
+		).toEqual({
+			postAssetExecutionPlan: {
+				type: "stop",
+				reason: "post_asset_entry_lost",
+			},
+			postAssetSideEffectPlan: {
+				shouldCommitClientLoadersState: false,
+				shouldSyncBuildIDAfterAssetWait: false,
+				shouldApplyResponseArtifacts: false,
+			},
+		});
+	});
+
+	it("decides lifecycle checkpoint execution plans through one checkpoint seam", () => {
+		const entry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+			targetUrl: "http://localhost:3000/checkpoint-target",
+		});
+
+		expect(
+			decideSuccessfulNavigationLifecycleCheckpointExecutionPlan({
+				checkpoint: "pre_waiting",
+				entry,
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
+			}),
+		).toEqual({
+			checkpoint: "pre_waiting",
+			preWaitingExecutionPlan: {
+				type: "continue",
+				reason: "entry_current_and_fresh",
+			},
+		});
+
+		expect(
+			decideSuccessfulNavigationLifecycleCheckpointExecutionPlan({
+				checkpoint: "pre_asset_wait",
+				buildIDSyncTiming: "before_asset_wait",
+			}),
+		).toEqual({
+			checkpoint: "pre_asset_wait",
+			preAssetWaitExecutionPlan: {
+				shouldSyncBuildIDBeforeAssetWait: true,
+				reason: "pre_asset_wait_sync_build_id_before_asset_wait",
+			},
+		});
+
+		expect(
+			decideSuccessfulNavigationLifecycleCheckpointExecutionPlan({
+				checkpoint: "cleanup",
+				entry,
+				isCurrentEntry: false,
+			}),
+		).toEqual({
+			checkpoint: "cleanup",
+			cleanupExecutionPlan: {
+				type: "skip",
+				reason: "cleanup_skipped_idle_prefetch_or_non_current_entry",
+			},
 		});
 	});
 });

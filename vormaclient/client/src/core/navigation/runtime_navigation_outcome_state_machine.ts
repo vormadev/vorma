@@ -1,15 +1,12 @@
 import { hasSameDataTarget } from "../../platform/url.ts";
-import type { NavigationEntry, NavigationOutcome } from "./types.ts";
-import { hasNavigationControlPromiseOwnership } from "./types.ts";
+import {
+	hasNavigationOperationOwnership,
+	type NavigationEntry,
+	type NavigationOutcome,
+} from "./types.ts";
 
 export function isIdlePrefetchNavigationEntry(entry: NavigationEntry): boolean {
 	return entry.type === "prefetch" && entry.intent === "none";
-}
-
-export function shouldResolveNavigationIntentForEntry(
-	entry: NavigationEntry,
-): boolean {
-	return entry.intent === "navigate" || entry.intent === "revalidate";
 }
 
 export function isStaleRevalidationNavigationEntry(props: {
@@ -47,16 +44,13 @@ export type NavigationOutcomeExecutionPlan =
 	  }
 	| {
 			type: "redirect";
-			entry: NavigationEntry;
 			outcome: Extract<NavigationOutcome, { type: "redirect" }>;
-			shouldSyncBuildIDBeforeRedirect: boolean;
 			reason: "redirect_effectuate";
 	  }
 	| {
 			type: "success";
 			entry: NavigationEntry;
 			outcome: Extract<NavigationOutcome, { type: "success" }>;
-			shouldResolveIntent: boolean;
 			didNavigate: boolean;
 			reason: "success_process";
 	  };
@@ -65,10 +59,11 @@ export function decideNavigationOutcomeExecutionPlan(props: {
 	outcome: NavigationOutcome;
 	targetUrl: string;
 	entry: NavigationEntry | undefined;
-	controlPromise: Promise<NavigationOutcome>;
+	expectedOperationID: number | undefined;
 	currentHref: string;
 }): NavigationOutcomeExecutionPlan {
-	const { outcome, targetUrl, entry, controlPromise, currentHref } = props;
+	const { outcome, targetUrl, entry, expectedOperationID, currentHref } =
+		props;
 
 	if (!entry) {
 		return {
@@ -77,7 +72,12 @@ export function decideNavigationOutcomeExecutionPlan(props: {
 		};
 	}
 
-	if (!hasNavigationControlPromiseOwnership(entry, controlPromise)) {
+	if (
+		!hasNavigationOperationOwnership({
+			entry,
+			expectedOperationID,
+		})
+	) {
 		return {
 			type: "stop",
 			reason: "stale_control_ownership",
@@ -109,9 +109,7 @@ export function decideNavigationOutcomeExecutionPlan(props: {
 
 		return {
 			type: "redirect",
-			entry,
 			outcome,
-			shouldSyncBuildIDBeforeRedirect: true,
 			reason: "redirect_effectuate",
 		};
 	}
@@ -120,7 +118,6 @@ export function decideNavigationOutcomeExecutionPlan(props: {
 		type: "success",
 		entry,
 		outcome,
-		shouldResolveIntent: shouldResolveNavigationIntentForEntry(entry),
 		didNavigate: !isIdlePrefetchNavigationEntry(entry),
 		reason: "success_process",
 	};
@@ -213,91 +210,6 @@ export type SuccessfulNavigationPostAssetExecutionPlan =
 			reason: "post_asset_render";
 	  };
 
-export type SuccessfulNavigationLifecycleStage =
-	| "pre_waiting"
-	| "post_waiting"
-	| "post_asset";
-
-export type SuccessfulNavigationLifecycleStageExecutionPlan =
-	| {
-			stage: "pre_waiting";
-			plan: SuccessfulNavigationPreWaitingExecutionPlan;
-	  }
-	| {
-			stage: "post_waiting";
-			plan: SuccessfulNavigationPostWaitingExecutionPlan;
-	  }
-	| {
-			stage: "post_asset";
-			plan: SuccessfulNavigationPostAssetExecutionPlan;
-	  };
-
-type SuccessfulNavigationLifecycleStageDecisionContext = {
-	entry: NavigationEntry;
-	isCurrentEntry: boolean;
-	currentHref: string;
-};
-
-export function decideSuccessfulNavigationLifecycleStageExecutionPlan(
-	props: {
-		stage: "pre_waiting";
-	} & SuccessfulNavigationLifecycleStageDecisionContext,
-): {
-	stage: "pre_waiting";
-	plan: SuccessfulNavigationPreWaitingExecutionPlan;
-};
-export function decideSuccessfulNavigationLifecycleStageExecutionPlan(
-	props: {
-		stage: "post_waiting";
-	} & SuccessfulNavigationLifecycleStageDecisionContext,
-): {
-	stage: "post_waiting";
-	plan: SuccessfulNavigationPostWaitingExecutionPlan;
-};
-export function decideSuccessfulNavigationLifecycleStageExecutionPlan(
-	props: {
-		stage: "post_asset";
-	} & SuccessfulNavigationLifecycleStageDecisionContext,
-): {
-	stage: "post_asset";
-	plan: SuccessfulNavigationPostAssetExecutionPlan;
-};
-export function decideSuccessfulNavigationLifecycleStageExecutionPlan(
-	props: {
-		stage: SuccessfulNavigationLifecycleStage;
-	} & SuccessfulNavigationLifecycleStageDecisionContext,
-): SuccessfulNavigationLifecycleStageExecutionPlan {
-	const { stage, entry, isCurrentEntry, currentHref } = props;
-
-	switch (stage) {
-		case "pre_waiting":
-			return {
-				stage,
-				plan: decideSuccessfulNavigationPreWaitingExecutionPlan({
-					entry,
-					isCurrentEntry,
-					currentHref,
-				}),
-			};
-		case "post_waiting":
-			return {
-				stage,
-				plan: decideSuccessfulNavigationPostWaitingExecutionPlan({
-					isCurrentEntry,
-				}),
-			};
-		case "post_asset":
-			return {
-				stage,
-				plan: decideSuccessfulNavigationPostAssetExecutionPlan({
-					entry,
-					isCurrentEntry,
-					currentHref,
-				}),
-			};
-	}
-}
-
 export function decideSuccessfulNavigationPostAssetExecutionPlan(props: {
 	entry: NavigationEntry;
 	isCurrentEntry: boolean;
@@ -333,6 +245,36 @@ export function decideSuccessfulNavigationPostAssetExecutionPlan(props: {
 	return {
 		type: "render",
 		reason: "post_asset_render",
+	};
+}
+
+export type SuccessfulNavigationCleanupExecutionPlan =
+	| {
+			type: "deleteNavigation";
+			targetUrl: string;
+			reason: "successful_navigation_cleanup";
+	  }
+	| {
+			type: "skip";
+			reason: "cleanup_skipped_idle_prefetch_or_non_current_entry";
+	  };
+
+export function decideSuccessfulNavigationCleanupExecutionPlan(props: {
+	entry: NavigationEntry;
+	isCurrentEntry: boolean;
+}): SuccessfulNavigationCleanupExecutionPlan {
+	const { entry, isCurrentEntry } = props;
+	if (!isCurrentEntry || isIdlePrefetchNavigationEntry(entry)) {
+		return {
+			type: "skip",
+			reason: "cleanup_skipped_idle_prefetch_or_non_current_entry",
+		};
+	}
+
+	return {
+		type: "deleteNavigation",
+		targetUrl: entry.targetUrl,
+		reason: "successful_navigation_cleanup",
 	};
 }
 
@@ -376,6 +318,29 @@ export function decideBuildIDSyncTimingForSuccessfulEntry(props: {
 		: "after_asset_wait_if_not_stopped";
 }
 
+export type SuccessfulNavigationPreAssetWaitExecutionPlan = {
+	shouldSyncBuildIDBeforeAssetWait: boolean;
+	reason:
+		| "pre_asset_wait_sync_build_id_before_asset_wait"
+		| "pre_asset_wait_skip_sync_build_id_before_asset_wait";
+};
+
+export function decideSuccessfulNavigationPreAssetWaitExecutionPlan(props: {
+	buildIDSyncTiming: BuildIDSyncTiming;
+}): SuccessfulNavigationPreAssetWaitExecutionPlan {
+	if (props.buildIDSyncTiming === "before_asset_wait") {
+		return {
+			shouldSyncBuildIDBeforeAssetWait: true,
+			reason: "pre_asset_wait_sync_build_id_before_asset_wait",
+		};
+	}
+
+	return {
+		shouldSyncBuildIDBeforeAssetWait: false,
+		reason: "pre_asset_wait_skip_sync_build_id_before_asset_wait",
+	};
+}
+
 export type SuccessfulNavigationPostAssetSideEffectPlan = {
 	shouldCommitClientLoadersState: boolean;
 	shouldSyncBuildIDAfterAssetWait: boolean;
@@ -383,14 +348,11 @@ export type SuccessfulNavigationPostAssetSideEffectPlan = {
 };
 
 export function decideSuccessfulNavigationPostAssetSideEffectPlan(props: {
-	postAssetStageExecutionPlan: Extract<
-		SuccessfulNavigationLifecycleStageExecutionPlan,
-		{ stage: "post_asset" }
-	>;
+	postAssetExecutionPlan: SuccessfulNavigationPostAssetExecutionPlan;
 	buildIDSyncTiming: BuildIDSyncTiming;
 }): SuccessfulNavigationPostAssetSideEffectPlan {
-	const { postAssetStageExecutionPlan, buildIDSyncTiming } = props;
-	const shouldStop = postAssetStageExecutionPlan.plan.type === "stop";
+	const { postAssetExecutionPlan, buildIDSyncTiming } = props;
+	const shouldStop = postAssetExecutionPlan.type === "stop";
 
 	return {
 		shouldCommitClientLoadersState: !shouldStop,
@@ -399,4 +361,207 @@ export function decideSuccessfulNavigationPostAssetSideEffectPlan(props: {
 			!shouldStop,
 		shouldApplyResponseArtifacts: !shouldStop,
 	};
+}
+
+export type SuccessfulNavigationPostAssetLifecycleExecutionPlan = {
+	postAssetExecutionPlan: SuccessfulNavigationPostAssetExecutionPlan;
+	postAssetSideEffectPlan: SuccessfulNavigationPostAssetSideEffectPlan;
+};
+
+export function decideSuccessfulNavigationPostAssetLifecycleExecutionPlan(props: {
+	entry: NavigationEntry;
+	isCurrentEntry: boolean;
+	currentHref: string;
+	buildIDSyncTiming: BuildIDSyncTiming;
+}): SuccessfulNavigationPostAssetLifecycleExecutionPlan {
+	const postAssetExecutionPlan =
+		decideSuccessfulNavigationPostAssetExecutionPlan({
+			entry: props.entry,
+			isCurrentEntry: props.isCurrentEntry,
+			currentHref: props.currentHref,
+		});
+
+	const postAssetSideEffectPlan =
+		decideSuccessfulNavigationPostAssetSideEffectPlan({
+			postAssetExecutionPlan,
+			buildIDSyncTiming: props.buildIDSyncTiming,
+		});
+
+	return {
+		postAssetExecutionPlan,
+		postAssetSideEffectPlan,
+	};
+}
+
+export type SuccessfulNavigationLifecycleCheckpoint =
+	| "pre_waiting"
+	| "post_waiting"
+	| "pre_asset_wait"
+	| "post_asset"
+	| "cleanup";
+
+export type SuccessfulNavigationLifecycleCheckpointExecutionPlan =
+	| {
+			checkpoint: "pre_waiting";
+			preWaitingExecutionPlan: SuccessfulNavigationPreWaitingExecutionPlan;
+	  }
+	| {
+			checkpoint: "post_waiting";
+			postWaitingExecutionPlan: SuccessfulNavigationPostWaitingExecutionPlan;
+	  }
+	| {
+			checkpoint: "pre_asset_wait";
+			preAssetWaitExecutionPlan: SuccessfulNavigationPreAssetWaitExecutionPlan;
+	  }
+	| {
+			checkpoint: "post_asset";
+			postAssetLifecycleExecutionPlan: SuccessfulNavigationPostAssetLifecycleExecutionPlan;
+	  }
+	| {
+			checkpoint: "cleanup";
+			cleanupExecutionPlan: SuccessfulNavigationCleanupExecutionPlan;
+	  };
+
+function requireSuccessfulNavigationCheckpointContextValue<T>(props: {
+	value: T | undefined;
+	checkpoint: SuccessfulNavigationLifecycleCheckpoint;
+	field: string;
+}): T {
+	if (props.value === undefined) {
+		throw new Error(
+			`Missing '${props.field}' for successful navigation checkpoint '${props.checkpoint}'.`,
+		);
+	}
+
+	return props.value;
+}
+
+export function decideSuccessfulNavigationLifecycleCheckpointExecutionPlan(props: {
+	checkpoint: SuccessfulNavigationLifecycleCheckpoint;
+	entry?: NavigationEntry;
+	isCurrentEntry?: boolean;
+	currentHref?: string;
+	buildIDSyncTiming?: BuildIDSyncTiming;
+}): SuccessfulNavigationLifecycleCheckpointExecutionPlan {
+	switch (props.checkpoint) {
+		case "pre_waiting": {
+			const entry = requireSuccessfulNavigationCheckpointContextValue({
+				value: props.entry,
+				checkpoint: props.checkpoint,
+				field: "entry",
+			});
+			const isCurrentEntry =
+				requireSuccessfulNavigationCheckpointContextValue({
+					value: props.isCurrentEntry,
+					checkpoint: props.checkpoint,
+					field: "isCurrentEntry",
+				});
+			const currentHref =
+				requireSuccessfulNavigationCheckpointContextValue({
+					value: props.currentHref,
+					checkpoint: props.checkpoint,
+					field: "currentHref",
+				});
+
+			return {
+				checkpoint: props.checkpoint,
+				preWaitingExecutionPlan:
+					decideSuccessfulNavigationPreWaitingExecutionPlan({
+						entry,
+						isCurrentEntry,
+						currentHref,
+					}),
+			};
+		}
+		case "post_waiting": {
+			const isCurrentEntry =
+				requireSuccessfulNavigationCheckpointContextValue({
+					value: props.isCurrentEntry,
+					checkpoint: props.checkpoint,
+					field: "isCurrentEntry",
+				});
+
+			return {
+				checkpoint: props.checkpoint,
+				postWaitingExecutionPlan:
+					decideSuccessfulNavigationPostWaitingExecutionPlan({
+						isCurrentEntry,
+					}),
+			};
+		}
+		case "pre_asset_wait": {
+			const buildIDSyncTiming =
+				requireSuccessfulNavigationCheckpointContextValue({
+					value: props.buildIDSyncTiming,
+					checkpoint: props.checkpoint,
+					field: "buildIDSyncTiming",
+				});
+
+			return {
+				checkpoint: props.checkpoint,
+				preAssetWaitExecutionPlan:
+					decideSuccessfulNavigationPreAssetWaitExecutionPlan({
+						buildIDSyncTiming,
+					}),
+			};
+		}
+		case "post_asset": {
+			const entry = requireSuccessfulNavigationCheckpointContextValue({
+				value: props.entry,
+				checkpoint: props.checkpoint,
+				field: "entry",
+			});
+			const isCurrentEntry =
+				requireSuccessfulNavigationCheckpointContextValue({
+					value: props.isCurrentEntry,
+					checkpoint: props.checkpoint,
+					field: "isCurrentEntry",
+				});
+			const currentHref =
+				requireSuccessfulNavigationCheckpointContextValue({
+					value: props.currentHref,
+					checkpoint: props.checkpoint,
+					field: "currentHref",
+				});
+			const buildIDSyncTiming =
+				requireSuccessfulNavigationCheckpointContextValue({
+					value: props.buildIDSyncTiming,
+					checkpoint: props.checkpoint,
+					field: "buildIDSyncTiming",
+				});
+
+			return {
+				checkpoint: props.checkpoint,
+				postAssetLifecycleExecutionPlan:
+					decideSuccessfulNavigationPostAssetLifecycleExecutionPlan({
+						entry,
+						isCurrentEntry,
+						currentHref,
+						buildIDSyncTiming,
+					}),
+			};
+		}
+		case "cleanup": {
+			const entry = requireSuccessfulNavigationCheckpointContextValue({
+				value: props.entry,
+				checkpoint: props.checkpoint,
+				field: "entry",
+			});
+			const isCurrentEntry =
+				requireSuccessfulNavigationCheckpointContextValue({
+					value: props.isCurrentEntry,
+					checkpoint: props.checkpoint,
+					field: "isCurrentEntry",
+				});
+
+			return {
+				checkpoint: props.checkpoint,
+				cleanupExecutionPlan:
+					decideSuccessfulNavigationCleanupExecutionPlan({
+						entry,
+						isCurrentEntry,
+					}),
+			};
+		}
+	}
 }

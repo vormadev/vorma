@@ -11,6 +11,11 @@ import { getNavigationStateAccess } from "../app/context.ts";
 import { isArrayBufferView, isInstanceOfGlobal } from "../platform/safety.ts";
 import { logError } from "../platform/safety.ts";
 import { __vormaClientGlobal } from "../app/context.ts";
+import {
+	buildRedirectEffectuationCommands,
+	type RedirectEffectuationCommand,
+} from "./redirect_effectuation_commands.ts";
+import { decideRedirectEffectuationExecutionPlan } from "./redirect_effectuation_state_machine.ts";
 
 export type RedirectData = { href: string; hrefDetails: HrefDetails } & (
 	| {
@@ -336,28 +341,34 @@ async function effectuateSoftRedirect(
 	return toDidRedirectData(redirectData);
 }
 
-async function executeShouldRedirectStrategy(props: {
+async function executeRedirectEffectuationCommands(props: {
+	commands: RedirectEffectuationCommand[];
 	navigationState: RedirectNavigationState;
-	redirectData: ShouldRedirectData;
-	redirectCount: number;
-	originalProps?: NavigateProps;
 }): Promise<RedirectData | null> {
-	const { navigationState, redirectData, redirectCount, originalProps } =
-		props;
+	const { commands, navigationState } = props;
 
-	switch (redirectData.shouldRedirectStrategy) {
-		case "hard":
-			return effectuateHardRedirect(redirectData);
-		case "soft":
-			return effectuateSoftRedirect(
-				navigationState,
-				redirectData,
-				redirectCount,
-				originalProps,
-			);
-		default:
-			return null;
+	for (const command of commands) {
+		switch (command.type) {
+			case "cleanup_redirect_related_navigations":
+				cleanupRedirectRelatedNavigations(navigationState);
+				break;
+			case "effectuate_hard_redirect":
+				return effectuateHardRedirect(command.redirectData);
+			case "effectuate_soft_redirect":
+				return effectuateSoftRedirect(
+					navigationState,
+					command.redirectData,
+					command.redirectCount,
+					command.originalProps,
+				);
+			case "return_null":
+				return null;
+		}
 	}
+
+	throw new Error(
+		"Redirect effectuation command plan ended without a terminal command.",
+	);
 }
 
 export function getBuildIDFromResponse(response: Response | undefined): string {
@@ -382,17 +393,25 @@ export async function effectuateRedirectDataResult(
 	redirectCount: number,
 	originalProps?: NavigateProps,
 ): Promise<RedirectData | null> {
-	if (redirectData.status !== "should") {
+	const executionPlan = decideRedirectEffectuationExecutionPlan({
+		redirectData,
+	});
+
+	if (executionPlan.type === "stop") {
 		return null;
 	}
 
-	const navigationState = getNavigationStateAccess();
-	cleanupRedirectRelatedNavigations(navigationState);
-	return executeShouldRedirectStrategy({
-		navigationState,
+	const commands = buildRedirectEffectuationCommands({
+		executionPlan,
 		redirectData,
 		redirectCount,
 		originalProps,
+	});
+	const navigationState = getNavigationStateAccess();
+
+	return executeRedirectEffectuationCommands({
+		commands,
+		navigationState,
 	});
 }
 

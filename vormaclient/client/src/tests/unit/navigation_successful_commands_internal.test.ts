@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	buildSuccessfulNavigationLifecycleStageCommands,
+	buildSuccessfulNavigationCleanupCommands,
+	buildSuccessfulNavigationLifecycleCheckpointCommands,
 	buildSuccessfulNavigationPostAssetLifecycleCommands,
 	buildSuccessfulNavigationPostAssetCommands,
 	buildSuccessfulNavigationPostWaitingCommands,
@@ -131,14 +132,42 @@ describe("successful navigation command builder", () => {
 		]);
 	});
 
-	it("builds stage commands through the unified stage-plan command seam", () => {
+	it("builds cleanup commands from cleanup execution plans", () => {
 		expect(
-			buildSuccessfulNavigationLifecycleStageCommands({
-				stageExecutionPlan: {
-					stage: "pre_waiting",
-					plan: {
+			buildSuccessfulNavigationCleanupCommands({
+				cleanupExecutionPlan: {
+					type: "deleteNavigation",
+					targetUrl: "http://localhost:3000/cleanup-target",
+					reason: "successful_navigation_cleanup",
+				},
+			}),
+		).toEqual([
+			{
+				type: "delete_navigation",
+				targetUrl: "http://localhost:3000/cleanup-target",
+				reason: "successful_navigation_cleanup",
+			},
+		]);
+
+		expect(
+			buildSuccessfulNavigationCleanupCommands({
+				cleanupExecutionPlan: {
+					type: "skip",
+					reason: "cleanup_skipped_idle_prefetch_or_non_current_entry",
+				},
+			}),
+		).toEqual([]);
+	});
+
+	it("builds checkpoint commands through one checkpoint command seam", () => {
+		expect(
+			buildSuccessfulNavigationLifecycleCheckpointCommands({
+				checkpointExecutionPlan: {
+					checkpoint: "pre_waiting",
+					preWaitingExecutionPlan: {
 						type: "deleteAndStop",
-						targetUrl: "http://localhost:3000/stage-test",
+						targetUrl:
+							"http://localhost:3000/checkpoint-stage-target",
 						reason: "stale_revalidation_pre_waiting",
 					},
 				},
@@ -146,7 +175,7 @@ describe("successful navigation command builder", () => {
 		).toEqual([
 			{
 				type: "delete_navigation",
-				targetUrl: "http://localhost:3000/stage-test",
+				targetUrl: "http://localhost:3000/checkpoint-stage-target",
 				reason: "stale_revalidation_pre_waiting",
 			},
 			{
@@ -155,17 +184,30 @@ describe("successful navigation command builder", () => {
 			},
 		]);
 
+		const response = new Response(JSON.stringify({ ok: true }), {
+			status: 200,
+			headers: {
+				"Content-Type": "application/json",
+				"X-Vorma-Build-Id": "1",
+			},
+		});
 		expect(
-			buildSuccessfulNavigationLifecycleStageCommands({
-				stageExecutionPlan: {
-					stage: "post_waiting",
-					plan: {
-						type: "continue",
-						reason: "post_waiting_entry_current",
+			buildSuccessfulNavigationLifecycleCheckpointCommands({
+				checkpointExecutionPlan: {
+					checkpoint: "pre_asset_wait",
+					preAssetWaitExecutionPlan: {
+						shouldSyncBuildIDBeforeAssetWait: true,
+						reason: "pre_asset_wait_sync_build_id_before_asset_wait",
 					},
 				},
+				response,
 			}),
-		).toEqual([]);
+		).toEqual([
+			{
+				type: "sync_build_id_from_response",
+				response,
+			},
+		]);
 	});
 
 	it("builds pre-asset-wait commands from build-id sync timing policy", () => {
@@ -179,7 +221,10 @@ describe("successful navigation command builder", () => {
 
 		expect(
 			buildSuccessfulNavigationPreAssetWaitCommands({
-				buildIDSyncTiming: "before_asset_wait",
+				preAssetWaitExecutionPlan: {
+					shouldSyncBuildIDBeforeAssetWait: true,
+					reason: "pre_asset_wait_sync_build_id_before_asset_wait",
+				},
 				response,
 			}),
 		).toEqual([
@@ -191,7 +236,10 @@ describe("successful navigation command builder", () => {
 
 		expect(
 			buildSuccessfulNavigationPreAssetWaitCommands({
-				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
+				preAssetWaitExecutionPlan: {
+					shouldSyncBuildIDBeforeAssetWait: false,
+					reason: "pre_asset_wait_skip_sync_build_id_before_asset_wait",
+				},
 				response,
 			}),
 		).toEqual([]);
@@ -228,14 +276,16 @@ describe("successful navigation command builder", () => {
 
 		expect(
 			buildSuccessfulNavigationPostAssetLifecycleCommands({
-				postAssetExecutionPlan: {
-					type: "render",
-					reason: "post_asset_render",
-				},
-				postAssetSideEffectPlan: {
-					shouldCommitClientLoadersState: true,
-					shouldSyncBuildIDAfterAssetWait: true,
-					shouldApplyResponseArtifacts: true,
+				postAssetLifecycleExecutionPlan: {
+					postAssetExecutionPlan: {
+						type: "render",
+						reason: "post_asset_render",
+					},
+					postAssetSideEffectPlan: {
+						shouldCommitClientLoadersState: true,
+						shouldSyncBuildIDAfterAssetWait: true,
+						shouldApplyResponseArtifacts: true,
+					},
 				},
 				response,
 				json,
@@ -265,14 +315,16 @@ describe("successful navigation command builder", () => {
 
 		expect(
 			buildSuccessfulNavigationPostAssetLifecycleCommands({
-				postAssetExecutionPlan: {
-					type: "stop",
-					reason: "post_asset_entry_lost",
-				},
-				postAssetSideEffectPlan: {
-					shouldCommitClientLoadersState: false,
-					shouldSyncBuildIDAfterAssetWait: false,
-					shouldApplyResponseArtifacts: false,
+				postAssetLifecycleExecutionPlan: {
+					postAssetExecutionPlan: {
+						type: "stop",
+						reason: "post_asset_entry_lost",
+					},
+					postAssetSideEffectPlan: {
+						shouldCommitClientLoadersState: false,
+						shouldSyncBuildIDAfterAssetWait: false,
+						shouldApplyResponseArtifacts: false,
+					},
 				},
 				response,
 				json,

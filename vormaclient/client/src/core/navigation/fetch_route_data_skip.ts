@@ -214,7 +214,7 @@ function buildClientOnlyOutcome(
 		response,
 		props,
 		json,
-		cssBundlePromises: [],
+		preloadCommands: [],
 		waitFnPromise,
 	};
 }

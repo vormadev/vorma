@@ -1,9 +1,10 @@
 import type { NavigationOutcome, NavigationPhase } from "./types.ts";
 import type {
-	BuildIDSyncTiming,
-	SuccessfulNavigationLifecycleStageExecutionPlan,
+	SuccessfulNavigationCleanupExecutionPlan,
+	SuccessfulNavigationLifecycleCheckpointExecutionPlan,
+	SuccessfulNavigationPostAssetLifecycleExecutionPlan,
 	SuccessfulNavigationPostAssetExecutionPlan,
-	SuccessfulNavigationPostAssetSideEffectPlan,
+	SuccessfulNavigationPreAssetWaitExecutionPlan,
 	SuccessfulNavigationPostWaitingExecutionPlan,
 	SuccessfulNavigationPreWaitingExecutionPlan,
 } from "./runtime_navigation_outcome_state_machine.ts";
@@ -15,6 +16,9 @@ type SuccessfulNavigationSuccessOutcome = Extract<
 type SuccessfulNavigationClientLoadersResult =
 	| Awaited<SuccessfulNavigationSuccessOutcome["waitFnPromise"]>
 	| undefined;
+type SuccessfulNavigationDeleteReason =
+	| SuccessfulNavigationPreWaitingExecutionPlan["reason"]
+	| SuccessfulNavigationCleanupExecutionPlan["reason"];
 
 export type SuccessfulNavigationLifecycleCommand =
 	| {
@@ -27,7 +31,7 @@ export type SuccessfulNavigationLifecycleCommand =
 	| {
 			type: "delete_navigation";
 			targetUrl: string;
-			reason: SuccessfulNavigationPreWaitingExecutionPlan["reason"];
+			reason: SuccessfulNavigationDeleteReason;
 	  }
 	| {
 			type: "transition_phase";
@@ -137,10 +141,10 @@ export function buildSuccessfulNavigationPostAssetCommands(props: {
 }
 
 export function buildSuccessfulNavigationPreAssetWaitCommands(props: {
-	buildIDSyncTiming: BuildIDSyncTiming;
+	preAssetWaitExecutionPlan: SuccessfulNavigationPreAssetWaitExecutionPlan;
 	response: SuccessfulNavigationSuccessOutcome["response"];
 }): SuccessfulNavigationLifecycleCommand[] {
-	if (props.buildIDSyncTiming !== "before_asset_wait") {
+	if (!props.preAssetWaitExecutionPlan.shouldSyncBuildIDBeforeAssetWait) {
 		return [];
 	}
 
@@ -153,30 +157,31 @@ export function buildSuccessfulNavigationPreAssetWaitCommands(props: {
 }
 
 export function buildSuccessfulNavigationPostAssetLifecycleCommands(props: {
-	postAssetExecutionPlan: SuccessfulNavigationPostAssetExecutionPlan;
-	postAssetSideEffectPlan: SuccessfulNavigationPostAssetSideEffectPlan;
+	postAssetLifecycleExecutionPlan: SuccessfulNavigationPostAssetLifecycleExecutionPlan;
 	response: SuccessfulNavigationSuccessOutcome["response"];
 	json: SuccessfulNavigationSuccessOutcome["json"];
 	expectedBuildID: string;
 	clientLoadersResult: SuccessfulNavigationClientLoadersResult;
 }): SuccessfulNavigationLifecycleCommand[] {
+	const { postAssetSideEffectPlan, postAssetExecutionPlan } =
+		props.postAssetLifecycleExecutionPlan;
 	const sideEffectCommands: SuccessfulNavigationLifecycleCommand[] = [];
 
-	if (props.postAssetSideEffectPlan.shouldCommitClientLoadersState) {
+	if (postAssetSideEffectPlan.shouldCommitClientLoadersState) {
 		sideEffectCommands.push({
 			type: "commit_client_loaders_state",
 			clientLoadersResult: props.clientLoadersResult,
 		});
 	}
 
-	if (props.postAssetSideEffectPlan.shouldSyncBuildIDAfterAssetWait) {
+	if (postAssetSideEffectPlan.shouldSyncBuildIDAfterAssetWait) {
 		sideEffectCommands.push({
 			type: "sync_build_id_from_response",
 			response: props.response,
 		});
 	}
 
-	if (props.postAssetSideEffectPlan.shouldApplyResponseArtifacts) {
+	if (postAssetSideEffectPlan.shouldApplyResponseArtifacts) {
 		sideEffectCommands.push({
 			type: "apply_response_artifacts_when_build_matches",
 			response: props.response,
@@ -188,28 +193,99 @@ export function buildSuccessfulNavigationPostAssetLifecycleCommands(props: {
 	return [
 		...sideEffectCommands,
 		...buildSuccessfulNavigationPostAssetCommands({
-			postAssetExecutionPlan: props.postAssetExecutionPlan,
+			postAssetExecutionPlan,
 		}),
 	];
 }
 
-export function buildSuccessfulNavigationLifecycleStageCommands(props: {
-	stageExecutionPlan: SuccessfulNavigationLifecycleStageExecutionPlan;
+export function buildSuccessfulNavigationCleanupCommands(props: {
+	cleanupExecutionPlan: SuccessfulNavigationCleanupExecutionPlan;
 }): SuccessfulNavigationLifecycleCommand[] {
-	const { stageExecutionPlan } = props;
+	const { cleanupExecutionPlan } = props;
 
-	switch (stageExecutionPlan.stage) {
+	switch (cleanupExecutionPlan.type) {
+		case "deleteNavigation":
+			return [
+				{
+					type: "delete_navigation",
+					targetUrl: cleanupExecutionPlan.targetUrl,
+					reason: cleanupExecutionPlan.reason,
+				},
+			];
+		case "skip":
+			return [];
+	}
+}
+
+function requireSuccessfulNavigationCheckpointCommandInput<T>(props: {
+	value: T | undefined;
+	checkpoint: SuccessfulNavigationLifecycleCheckpointExecutionPlan["checkpoint"];
+	field: string;
+}): T {
+	if (props.value === undefined) {
+		throw new Error(
+			`Missing '${props.field}' for successful navigation checkpoint command build '${props.checkpoint}'.`,
+		);
+	}
+
+	return props.value;
+}
+
+export function buildSuccessfulNavigationLifecycleCheckpointCommands(props: {
+	checkpointExecutionPlan: SuccessfulNavigationLifecycleCheckpointExecutionPlan;
+	response?: SuccessfulNavigationSuccessOutcome["response"];
+	json?: SuccessfulNavigationSuccessOutcome["json"];
+	expectedBuildID?: string;
+	clientLoadersResult?: SuccessfulNavigationClientLoadersResult;
+}): SuccessfulNavigationLifecycleCommand[] {
+	switch (props.checkpointExecutionPlan.checkpoint) {
 		case "pre_waiting":
 			return buildSuccessfulNavigationPreWaitingCommands({
-				preWaitingExecutionPlan: stageExecutionPlan.plan,
+				preWaitingExecutionPlan:
+					props.checkpointExecutionPlan.preWaitingExecutionPlan,
 			});
 		case "post_waiting":
 			return buildSuccessfulNavigationPostWaitingCommands({
-				postWaitingExecutionPlan: stageExecutionPlan.plan,
+				postWaitingExecutionPlan:
+					props.checkpointExecutionPlan.postWaitingExecutionPlan,
+			});
+		case "pre_asset_wait":
+			return buildSuccessfulNavigationPreAssetWaitCommands({
+				preAssetWaitExecutionPlan:
+					props.checkpointExecutionPlan.preAssetWaitExecutionPlan,
+				response: requireSuccessfulNavigationCheckpointCommandInput({
+					value: props.response,
+					checkpoint: props.checkpointExecutionPlan.checkpoint,
+					field: "response",
+				}),
 			});
 		case "post_asset":
-			return buildSuccessfulNavigationPostAssetCommands({
-				postAssetExecutionPlan: stageExecutionPlan.plan,
+			return buildSuccessfulNavigationPostAssetLifecycleCommands({
+				postAssetLifecycleExecutionPlan:
+					props.checkpointExecutionPlan
+						.postAssetLifecycleExecutionPlan,
+				response: requireSuccessfulNavigationCheckpointCommandInput({
+					value: props.response,
+					checkpoint: props.checkpointExecutionPlan.checkpoint,
+					field: "response",
+				}),
+				json: requireSuccessfulNavigationCheckpointCommandInput({
+					value: props.json,
+					checkpoint: props.checkpointExecutionPlan.checkpoint,
+					field: "json",
+				}),
+				expectedBuildID:
+					requireSuccessfulNavigationCheckpointCommandInput({
+						value: props.expectedBuildID,
+						checkpoint: props.checkpointExecutionPlan.checkpoint,
+						field: "expectedBuildID",
+					}),
+				clientLoadersResult: props.clientLoadersResult,
+			});
+		case "cleanup":
+			return buildSuccessfulNavigationCleanupCommands({
+				cleanupExecutionPlan:
+					props.checkpointExecutionPlan.cleanupExecutionPlan,
 			});
 	}
 }

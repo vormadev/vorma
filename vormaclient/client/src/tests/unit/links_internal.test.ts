@@ -51,6 +51,7 @@ describe("links internal branches", () => {
 		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
 			abortController: undefined,
 			promise: controlPromise,
+			operationID: 1,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
 			operationID: 1,
@@ -86,6 +87,7 @@ describe("links internal branches", () => {
 		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
 			abortController: undefined,
 			promise: staleControlPromise,
+			operationID: 2,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
 			operationID: 1,
@@ -116,6 +118,80 @@ describe("links internal branches", () => {
 		expect(processSuccessfulNavigationSpy).not.toHaveBeenCalled();
 	});
 
+	it("uses operation-id ownership for aborted outcomes when promise ownership is stale", async () => {
+		const targetHref = "/aborted-operation-id-owned";
+		const targetUrl = new URL(targetHref, window.location.href).href;
+		const staleControlPromise = Promise.resolve({
+			type: "aborted" as const,
+		});
+		const currentControlPromise = Promise.resolve({
+			type: "aborted" as const,
+		});
+
+		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
+			abortController: undefined,
+			promise: staleControlPromise,
+			operationID: 77,
+		});
+		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
+			operationID: 77,
+			control: {
+				abortController: new AbortController(),
+				promise: currentControlPromise,
+			},
+			type: "userNavigation",
+			intent: "navigate",
+			phase: "fetching",
+			startTime: Date.now(),
+			targetUrl,
+			originUrl: window.location.href,
+		});
+		const removeNavigationSpy = vi
+			.spyOn(navigationStateManager, "removeNavigation")
+			.mockImplementation(() => {});
+
+		const onClick = __makeLinkOnClickFn({});
+		await onClick(createClickEvent(targetHref));
+
+		expect(removeNavigationSpy).toHaveBeenCalledWith(targetUrl);
+	});
+
+	it("treats mismatched operation-id ownership as stale even when promise matches", async () => {
+		const targetHref = "/aborted-operation-id-stale";
+		const targetUrl = new URL(targetHref, window.location.href).href;
+		const controlPromise = Promise.resolve({
+			type: "aborted" as const,
+		});
+
+		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
+			abortController: undefined,
+			promise: controlPromise,
+			operationID: 99,
+		});
+		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
+			operationID: 1,
+			control: {
+				abortController: new AbortController(),
+				promise: controlPromise,
+			},
+			type: "userNavigation",
+			intent: "navigate",
+			phase: "fetching",
+			startTime: Date.now(),
+			targetUrl,
+			originUrl: window.location.href,
+		});
+		const removeNavigationSpy = vi.spyOn(
+			navigationStateManager,
+			"removeNavigation",
+		);
+
+		const onClick = __makeLinkOnClickFn({});
+		await onClick(createClickEvent(targetHref));
+
+		expect(removeNavigationSpy).not.toHaveBeenCalled();
+	});
+
 	it("cleans up current failed link navigations without throwing", async () => {
 		const targetHref = "/failed-link-navigation";
 		const targetUrl = new URL(targetHref, window.location.href).href;
@@ -123,6 +199,7 @@ describe("links internal branches", () => {
 		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
 			abortController: undefined,
 			promise: controlPromise,
+			operationID: 1,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
 			operationID: 1,
@@ -201,6 +278,7 @@ describe("links internal branches", () => {
 		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
 			abortController: undefined,
 			promise: controlPromise,
+			operationID: 1,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
 			() => currentEntry,
@@ -269,6 +347,7 @@ describe("links internal branches", () => {
 		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
 			abortController: undefined,
 			promise: controlPromise,
+			operationID: 1,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
 			() => entry,
@@ -300,6 +379,7 @@ describe("links internal branches", () => {
 		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
 			abortController: undefined,
 			promise: staleControlPromise,
+			operationID: 2,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
 			operationID: 1,
@@ -352,7 +432,7 @@ describe("links internal branches", () => {
 				deps: [],
 				cssBundles: [],
 			},
-			cssBundlePromises: [],
+			preloadCommands: [],
 			waitFnPromise: Promise.resolve({ data: [] }),
 			props: {
 				href: targetHref,
@@ -377,6 +457,7 @@ describe("links internal branches", () => {
 		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
 			abortController: undefined,
 			promise: controlPromise,
+			operationID: 1,
 		});
 		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
 			() => entry,

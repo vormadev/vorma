@@ -10,13 +10,7 @@ import {
 	buildNavigationEntriesByOperationIDFromNavigationLanes,
 	createNavigationRuntimeStateMachine,
 } from "./runtime_state_machine.ts";
-import {
-	applyNavigationPhaseLifecycleTransition,
-	applyNavigationRemovalLifecycleTransition,
-	buildClearAllLifecycleTransitionEvent,
-	buildNavigationBeginArbitratedLifecycleTransitionEvent,
-	buildSubmissionStateLifecycleTransitionEvent,
-} from "./runtime_lifecycle_transitions.ts";
+import { reduceNavigationLifecycleTransition } from "./runtime_lifecycle_transitions.ts";
 import { findNavigationEntryInNavigationLanes } from "./runtime_slots.ts";
 
 export type NavigationLifecycleRuntime = {
@@ -88,17 +82,18 @@ export function createNavigationLifecycleRuntime(props: {
 		reason: string;
 		causedByOperationID?: number | null;
 	}): boolean => {
-		const causedByOperationID = deleteProps.causedByOperationID ?? null;
-		const { deleted, transitionEvent } =
-			applyNavigationRemovalLifecycleTransition({
-				lanes: props.lanes,
+		const reductionResult = reduceNavigationLifecycleTransition({
+			lanes: props.lanes,
+			scheduleStatusUpdate: props.getScheduleStatusUpdate(),
+			action: {
+				type: "remove_navigation",
 				targetUrl: deleteProps.key,
-				scheduleStatusUpdate: props.getScheduleStatusUpdate(),
 				reason: deleteProps.reason,
-				causedByOperationID,
-			});
-		dispatchRuntimeTransitionEvent(transitionEvent);
-		return deleted;
+				causedByOperationID: deleteProps.causedByOperationID,
+			},
+		});
+		dispatchRuntimeTransitionEvent(reductionResult.transitionEvent);
+		return reductionResult.deleted ?? false;
 	};
 
 	const transitionPhase = (transitionProps: {
@@ -106,14 +101,17 @@ export function createNavigationLifecycleRuntime(props: {
 		phase: NavigationPhase;
 		reason: string;
 	}): void => {
-		const transitionEvent = applyNavigationPhaseLifecycleTransition({
+		const reductionResult = reduceNavigationLifecycleTransition({
 			lanes: props.lanes,
-			targetUrl: transitionProps.targetUrl,
-			phase: transitionProps.phase,
 			scheduleStatusUpdate: props.getScheduleStatusUpdate(),
-			reason: transitionProps.reason,
+			action: {
+				type: "transition_navigation_phase",
+				targetUrl: transitionProps.targetUrl,
+				phase: transitionProps.phase,
+				reason: transitionProps.reason,
+			},
 		});
-		dispatchRuntimeTransitionEvent(transitionEvent);
+		dispatchRuntimeTransitionEvent(reductionResult.transitionEvent);
 	};
 
 	const dispatchBeginNavigationArbitrated = (beginProps: {
@@ -122,14 +120,18 @@ export function createNavigationLifecycleRuntime(props: {
 		beforeEntriesByOperationID: Map<number, NavigationEntry>;
 	}): void => {
 		dispatchRuntimeTransitionEvent(
-			buildNavigationBeginArbitratedLifecycleTransitionEvent({
-				navigationType: beginProps.navigationType,
-				targetUrl: beginProps.targetUrl,
-				beforeEntriesByOperationID:
-					beginProps.beforeEntriesByOperationID,
+			reduceNavigationLifecycleTransition({
 				lanes: props.lanes,
-				winnerEntry: findNavigationEntry(beginProps.targetUrl),
-			}),
+				scheduleStatusUpdate: props.getScheduleStatusUpdate(),
+				action: {
+					type: "begin_navigation_arbitrated",
+					navigationType: beginProps.navigationType,
+					targetUrl: beginProps.targetUrl,
+					beforeEntriesByOperationID:
+						beginProps.beforeEntriesByOperationID,
+					winnerEntry: findNavigationEntry(beginProps.targetUrl),
+				},
+			}).transitionEvent,
 		);
 	};
 
@@ -142,14 +144,19 @@ export function createNavigationLifecycleRuntime(props: {
 		causedByOperationID?: number | null;
 	}): void => {
 		dispatchRuntimeTransitionEvent(
-			buildSubmissionStateLifecycleTransitionEvent({
-				submissionEntry: submissionProps.submissionEntry,
-				targetUrl: submissionProps.targetUrl,
-				fromState: submissionProps.fromState,
-				toState: submissionProps.toState,
-				reason: submissionProps.reason,
-				causedByOperationID: submissionProps.causedByOperationID,
-			}),
+			reduceNavigationLifecycleTransition({
+				lanes: props.lanes,
+				scheduleStatusUpdate: props.getScheduleStatusUpdate(),
+				action: {
+					type: "submission_state_transition",
+					submissionEntry: submissionProps.submissionEntry,
+					targetUrl: submissionProps.targetUrl,
+					fromState: submissionProps.fromState,
+					toState: submissionProps.toState,
+					reason: submissionProps.reason,
+					causedByOperationID: submissionProps.causedByOperationID,
+				},
+			}).transitionEvent,
 		);
 	};
 
@@ -158,12 +165,18 @@ export function createNavigationLifecycleRuntime(props: {
 		entry: NavigationEntry | undefined;
 		reason: string;
 	}): void => {
-		dispatchRuntimeTransitionEvent({
-			type: "navigation_failed",
-			targetUrl: failureProps.targetUrl,
-			entry: failureProps.entry,
-			reason: failureProps.reason,
-		});
+		dispatchRuntimeTransitionEvent(
+			reduceNavigationLifecycleTransition({
+				lanes: props.lanes,
+				scheduleStatusUpdate: props.getScheduleStatusUpdate(),
+				action: {
+					type: "navigation_failed",
+					targetUrl: failureProps.targetUrl,
+					entry: failureProps.entry,
+					reason: failureProps.reason,
+				},
+			}).transitionEvent,
+		);
 	};
 
 	const dispatchClearAll = (clearProps: {
@@ -172,11 +185,16 @@ export function createNavigationLifecycleRuntime(props: {
 		targetUrl: string;
 	}): void => {
 		dispatchRuntimeTransitionEvent(
-			buildClearAllLifecycleTransitionEvent({
-				navigationEntries: clearProps.navigationEntries,
-				submissionEntries: clearProps.submissionEntries,
-				targetUrl: clearProps.targetUrl,
-			}),
+			reduceNavigationLifecycleTransition({
+				lanes: props.lanes,
+				scheduleStatusUpdate: props.getScheduleStatusUpdate(),
+				action: {
+					type: "clear_all",
+					navigationEntries: clearProps.navigationEntries,
+					submissionEntries: clearProps.submissionEntries,
+					targetUrl: clearProps.targetUrl,
+				},
+			}).transitionEvent,
 		);
 	};
 

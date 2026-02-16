@@ -5,6 +5,7 @@ import {
 	buildClearAllLifecycleTransitionEvent,
 	buildNavigationBeginArbitratedLifecycleTransitionEvent,
 	buildSubmissionStateLifecycleTransitionEvent,
+	reduceNavigationLifecycleTransition,
 } from "../../core/navigation/runtime_lifecycle_transitions.ts";
 import type {
 	NavigationEntry,
@@ -235,6 +236,75 @@ describe("runtime lifecycle transitions", () => {
 			navigationEntries: [navigationEntry],
 			submissionEntries: [submissionEntry],
 			targetUrl: "http://localhost:3000/current",
+		});
+	});
+
+	it("reduces remove-navigation actions through one transition reducer seam", () => {
+		const entry = createNavigationEntry({
+			operationID: 30,
+			targetUrl: "http://localhost:3000/reducer-remove",
+			type: "browserHistory",
+			intent: "navigate",
+		});
+		const slots: NavigationSlots = {
+			active: entry,
+			prefetch: new Map(),
+			revalidation: null,
+		};
+		const scheduleStatusUpdate = vi.fn();
+
+		const reductionResult = reduceNavigationLifecycleTransition({
+			lanes: slots,
+			scheduleStatusUpdate,
+			action: {
+				type: "remove_navigation",
+				targetUrl: entry.targetUrl,
+				reason: "reducer_remove",
+				causedByOperationID: 31,
+			},
+		});
+
+		expect(reductionResult.deleted).toBe(true);
+		expect(reductionResult.transitionEvent).toEqual({
+			type: "navigation_removed",
+			entry,
+			reason: "reducer_remove",
+			causedByOperationID: 31,
+		});
+		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
+	});
+
+	it("reduces navigation-failed actions through one transition reducer seam", () => {
+		const entry = createNavigationEntry({
+			operationID: 40,
+			targetUrl: "http://localhost:3000/reducer-failed",
+			type: "userNavigation",
+			intent: "navigate",
+			phase: "waiting",
+		});
+		const slots: NavigationSlots = {
+			active: entry,
+			prefetch: new Map(),
+			revalidation: null,
+		};
+
+		const reductionResult = reduceNavigationLifecycleTransition({
+			lanes: slots,
+			scheduleStatusUpdate: vi.fn(),
+			action: {
+				type: "navigation_failed",
+				targetUrl: entry.targetUrl,
+				entry,
+				reason: "reducer_failed",
+			},
+		});
+
+		expect(reductionResult.deleted).toBeNull();
+		expect(reductionResult.transitionEvent).toEqual({
+			type: "navigation_failed",
+			targetUrl: entry.targetUrl,
+			entry,
+			reason: "reducer_failed",
 		});
 	});
 });
