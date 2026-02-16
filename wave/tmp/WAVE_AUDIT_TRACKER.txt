@@ -81,25 +81,23 @@ Workstream State
 - Phase C (current branch scope inventory): COMPLETED
 - Phase D (current branch exhaustive behavior spec extraction): COMPLETED
 - Phase E (spec-to-spec diff and regression determination): COMPLETED
-- Phase F (normative spec finalization and cleanup): IN PROGRESS
+- Phase F (normative spec finalization and cleanup): COMPLETED
 
 Progress Ledger (Declarative Snapshot)
 
 - Active branch under analysis: main + refactor-2026-1 + refactor-2026-8
-- Current file under analysis: wave/spec/wave-normative-test-coverage.md and
-  wave/spec/wave-normative-spec.md for Phase F finalization and coverage
-  tightening.
+- Current file under analysis: none (Phase F complete).
 - Last completed behavior block: requirement extraction and normative encoding
   completed for `WAVE-HL01-001`..`WAVE-HL26-012`; requirement comparison
   recorded for `WAVE-HL01-001`..`WAVE-HL26-012`; full-read coverage ledger has
   no pending `/wave/*` files for `main` and `refactor-2026-8`, and full-file
   read coverage for `refactor-2026-1` is complete; targeted coverage-hardening
   tests were added for server-only refresh-server no-op and framework-setter
-  core-field isolation, and `HL23`..`HL26` coverage mapping rows were tightened
-  with concrete test-file references.
-- Next required action: complete remaining Phase F coverage tightening for
-  `WAVE-HL01-001`..`WAVE-HL22-010`, then finalize normative-spec and
-  coverage-map wording.
+  core-field isolation; coverage mapping rows for `HL01`..`HL26` are tightened
+  with explicit representative test-function evidence, and row/file mismatches
+  are corrected for lifecycle, watcher, browser-phase, readiness, and
+  non-mutation/panic-recovery requirements.
+- Next required action: none within the declared workstream.
 
 Specification Authoring Rules
 
