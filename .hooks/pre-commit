@@ -28,6 +28,6 @@ run_test() {
   echo "[pre-commit]  OK     Cmd '$1' passed."
 }
 
-run_test "make release-gate"
+run_test "make full-gate"
 
 echo "[pre-commit]  OK     Done."

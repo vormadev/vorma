@@ -8,40 +8,48 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"vorma/client/__internal": sourcePath(
-				"./vormaclient/client/internal.ts",
+				"./typescript/vorma/client/internal.ts",
 			),
-			"vorma/client": sourcePath("./vormaclient/client/index.ts"),
-			"vorma/buildtime": sourcePath("./vormaclient/client/buildtime.ts"),
-			"vorma/react": sourcePath("./vormaclient/react/index.ts"),
-			"vorma/solid": sourcePath("./vormaclient/solid/index.ts"),
-			"vorma/preact": sourcePath("./vormaclient/preact/index.ts"),
-			"vorma/vite": sourcePath("./vormaclient/vite/vite.ts"),
+			"vorma/client": sourcePath("./typescript/vorma/client/index.ts"),
+			"vorma/buildtime": sourcePath(
+				"./typescript/vorma/client/buildtime.ts",
+			),
+			"vorma/react": sourcePath(
+				"./typescript/vorma/ui-adapters/react/index.tsx",
+			),
+			"vorma/solid": sourcePath(
+				"./typescript/vorma/ui-adapters/solid/index.tsx",
+			),
+			"vorma/preact": sourcePath(
+				"./typescript/vorma/ui-adapters/preact/index.tsx",
+			),
+			"vorma/vite": sourcePath("./typescript/vorma/vite/vite.ts"),
 			"vorma/kit/converters": sourcePath(
-				"./kit/_typescript/converters/converters.ts",
+				"./typescript/kit/converters/converters.ts",
 			),
 			"vorma/kit/cookies": sourcePath(
-				"./kit/_typescript/cookies/cookies.ts",
+				"./typescript/kit/cookies/cookies.ts",
 			),
-			"vorma/kit/csrf": sourcePath("./kit/_typescript/csrf/csrf.ts"),
+			"vorma/kit/csrf": sourcePath("./typescript/kit/csrf/csrf.ts"),
 			"vorma/kit/debounce": sourcePath(
-				"./kit/_typescript/debounce/debounce.ts",
+				"./typescript/kit/debounce/debounce.ts",
 			),
-			"vorma/kit/fmt": sourcePath("./kit/_typescript/fmt/fmt.ts"),
-			"vorma/kit/json": sourcePath("./kit/_typescript/json/json.ts"),
+			"vorma/kit/fmt": sourcePath("./typescript/kit/fmt/fmt.ts"),
+			"vorma/kit/json": sourcePath("./typescript/kit/json/json.ts"),
 			"vorma/kit/listeners": sourcePath(
-				"./kit/_typescript/listeners/listeners.ts",
+				"./typescript/kit/listeners/listeners.ts",
 			),
 			"vorma/kit/matcher/register": sourcePath(
-				"./kit/_typescript/matcher/register.ts",
+				"./typescript/kit/matcher/register.ts",
 			),
 			"vorma/kit/matcher/find-best": sourcePath(
-				"./kit/_typescript/matcher/find_best_match.ts",
+				"./typescript/kit/matcher/find_best_match.ts",
 			),
 			"vorma/kit/matcher/find-nested": sourcePath(
-				"./kit/_typescript/matcher/find_nested_matches.ts",
+				"./typescript/kit/matcher/find_nested_matches.ts",
 			),
-			"vorma/kit/theme": sourcePath("./kit/_typescript/theme/theme.ts"),
-			"vorma/kit/url": sourcePath("./kit/_typescript/url/url.ts"),
+			"vorma/kit/theme": sourcePath("./typescript/kit/theme/theme.ts"),
+			"vorma/kit/url": sourcePath("./typescript/kit/url/url.ts"),
 		},
 	},
 	test: { environment: "jsdom" },

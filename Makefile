@@ -1,14 +1,12 @@
-release: release-gate
-	@go run ./internal/scripts/release
+#####################################################################
+####### RELEASES
+#####################################################################
 
-release-gate:
-	@$(MAKE) gotest
-	@$(MAKE) tsreset
-	@$(MAKE) tstest-source
-	@$(MAKE) tslint
-	@$(MAKE) tscheck
-	@$(MAKE) npmbuild
-	@$(MAKE) tstest-dist
+release: full-gate
+	@go run ./internal/cmd/release
+
+full-gate:
+	@go run ./internal/cmd/full_gate
 
 #####################################################################
 ####### GO
@@ -25,19 +23,19 @@ gobench:
 	@go test -bench=. $(pkg)
 
 #####################################################################
-####### TS
+####### TYPESCRIPT
 #####################################################################
 
 tstest: tstest-source tstest-dist
 
 tstest-source:
-	@pnpm vitest run --exclude "vormaclient/client/dist_tests/**"
+	@pnpm vitest run --exclude "typescript/vorma/client/src/tests/dist/**"
 
 tstest-dist:
-	@pnpm vitest --run --config vormaclient/client/vitest.dist.config.ts
+	@pnpm vitest --run --config typescript/vorma/client/vitest.dist.config.ts
 
 tstestwatch:
-	@pnpm vitest --exclude "vormaclient/client/dist_tests/**"
+	@pnpm vitest --exclude "typescript/vorma/client/src/tests/dist/**"
 
 tsbench:
 	@npx vitest bench
@@ -48,7 +46,7 @@ nuke-node-modules:
 
 tsinstall:
 	@pnpm i
-	@cd vormaclient/create && pnpm i
+	@cd typescript/vorma/create && pnpm i
 
 tsreset: nuke-node-modules tsinstall
 
@@ -58,31 +56,35 @@ tslint:
 tscheck: tscheck-kit tscheck-fw-client tscheck-fw-client-dist tscheck-fw-react tscheck-fw-solid tscheck-fw-preact tscheck-fw-vite tscheck-fw-create
 
 tscheck-kit:
-	@pnpm tsgo --noEmit --project ./kit/_typescript
+	@pnpm tsgo --noEmit --project ./typescript/kit
 
 tscheck-fw-client:
-	@pnpm tsgo --noEmit --project ./vormaclient/client
+	@pnpm tsgo --noEmit --project ./typescript/vorma/client
 
 tscheck-fw-client-dist:
-	@pnpm tsgo --noEmit --project ./vormaclient/client/dist_tests/tsconfig.json
+	@pnpm tsgo --noEmit --project ./typescript/vorma/client/src/tests/dist/tsconfig.json
 
 tscheck-fw-react:
-	@pnpm tsgo --noEmit --project ./vormaclient/react
+	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/react
 
 tscheck-fw-solid:
-	@pnpm tsgo --noEmit --project ./vormaclient/solid
+	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/solid
 
 tscheck-fw-preact:
-	@pnpm tsgo --noEmit --project ./vormaclient/preact
+	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/preact
 
 tscheck-fw-vite:
-	@pnpm tsgo --noEmit --project ./vormaclient/vite
+	@pnpm tsgo --noEmit --project ./typescript/vorma/vite
 
 tscheck-fw-create:
-	@pnpm tsgo --noEmit --project ./vormaclient/create
+	@pnpm tsgo --noEmit --project ./typescript/vorma/create
 
 npmbuild:
-	@go run ./internal/scripts/buildts
+	@go run ./internal/cmd/buildts
+
+#####################################################################
+####### OTHER
+#####################################################################
 
 docker-site:
 	@docker build -t vorma-site -f Dockerfile.site .
@@ -90,10 +92,10 @@ docker-site:
 docker-run-site:
 	@docker run -d -p $(PORT):$(PORT) -e PORT=$(PORT) vorma-site
 
-sum:
-	@go run ./internal/scripts/sum
-
 run-create: tsreset npmbuild nuke-node-modules
 	@mkdir -p test_create.local && \
 		cd test_create.local && \
-		node ../vormaclient/create/dist/main.js --local-test
+		node ../typescript/vorma/create/dist/main.js --local-test
+
+sum:
+	@go run ./internal/cmd/sum

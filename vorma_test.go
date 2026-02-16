@@ -250,10 +250,10 @@ func TestInternalGetCurrentReleaseVersionMatchesCanonicalVersionArtifacts(t *tes
 		)
 	}
 
-	createNPMVersion := readPackageVersion("vormaclient/create/package.json")
+	createNPMVersion := readPackageVersion("typescript/vorma/create/package.json")
 	if createNPMVersion != canonicalVersion {
 		t.Fatalf(
-			"vormaclient/create/package.json version = %q, want %q (from internal/__LAST_RELEASE.txt)",
+			"typescript/vorma/create/package.json version = %q, want %q (from internal/__LAST_RELEASE.txt)",
 			createNPMVersion,
 			canonicalVersion,
 		)

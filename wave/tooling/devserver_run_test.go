@@ -157,7 +157,7 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
-	cfg.Core.MainAppEntry = "../../internal/scripts/sum"
+	cfg.Core.MainAppEntry = "../../internal/cmd/sum"
 	cfg.Vite = &wave.ViteConfig{
 		JSPackageManagerBaseCmd: "command_that_does_not_exist_for_wave_run_vite_test",
 		DefaultPort:             5199,
@@ -222,7 +222,7 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
-	cfg.Core.MainAppEntry = "../../internal/scripts/sum"
+	cfg.Core.MainAppEntry = "../../internal/cmd/sum"
 	cfg.Watch.HealthcheckEndpoint = "/healthz"
 	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
 
