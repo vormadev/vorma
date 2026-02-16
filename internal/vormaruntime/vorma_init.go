@@ -168,7 +168,7 @@ func validatePathsFileSemanticIntegrity(pathsFile *PathsFile, isDev bool) error 
 	if strings.TrimSpace(pathsFile.RouteManifestFile) == "" {
 		return fmt.Errorf("routeManifestFile is required")
 	}
-	if strings.TrimSpace(pathsFile.ClientEntryOut) == "" {
+	if !isDev && strings.TrimSpace(pathsFile.ClientEntryOut) == "" {
 		return fmt.Errorf("clientEntryOut is required")
 	}
 

@@ -82,6 +82,45 @@ func TestGetBasePathsStageOneOrTwo_ErrorPaths(t *testing.T) {
 		}
 	})
 
+	t.Run("DevStageOneAllowsMissingClientEntryOut", func(t *testing.T) {
+		app.WithLock(func(lv *LockedVorma) {
+			lv.v._privateFS = fstest.MapFS{
+				"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+					Data: []byte(`{"stage":"stage-one","buildID":"b","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/":{"originalPattern":"/","srcPath":"frontend/src/routes/root.tsx","exportKey":"default"}},"routeManifestFile":"vorma_out/route-manifest.js"}`),
+				},
+			}
+		})
+
+		got, err := app.getBasePaths_StageOneOrTwo(true)
+		if err != nil {
+			t.Fatalf("expected stage one in dev mode to allow missing clientEntryOut, got error: %v", err)
+		}
+		if got == nil {
+			t.Fatal("expected stage one result, got nil")
+		}
+		if got.ClientEntryOut != "" {
+			t.Fatalf("stage one clientEntryOut = %q, want empty value", got.ClientEntryOut)
+		}
+	})
+
+	t.Run("ProdStageTwoRequiresClientEntryOut", func(t *testing.T) {
+		app.WithLock(func(lv *LockedVorma) {
+			lv.v._privateFS = fstest.MapFS{
+				"vorma_out/" + VormaPathsStageTwoJSONFileName: &fstest.MapFile{
+					Data: []byte(`{"stage":"stage-two","buildID":"b","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/":{"originalPattern":"/","srcPath":"frontend/src/routes/root.tsx","outPath":"vorma_out/root.js","exportKey":"default"}},"routeManifestFile":"vorma_out/route-manifest.js"}`),
+				},
+			}
+		})
+
+		_, err := app.getBasePaths_StageOneOrTwo(false)
+		if err == nil {
+			t.Fatal("expected stage two in production mode to require clientEntryOut")
+		}
+		if !strings.Contains(err.Error(), "clientEntryOut is required") {
+			t.Fatalf("error = %q, expected missing clientEntryOut validation error", err)
+		}
+	})
+
 	t.Run("NullPathEntry", func(t *testing.T) {
 		app.WithLock(func(lv *LockedVorma) {
 			lv.v._privateFS = fstest.MapFS{
