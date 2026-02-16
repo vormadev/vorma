@@ -15,8 +15,13 @@ type buildInnerOptions struct {
 }
 
 type buildInnerDependencies struct {
-	captureBuildInnerRuntimeState func(*vormaruntime.Vorma) buildInnerRuntimeStateSnapshot
-	restoreBuildInnerRuntimeState func(*vormaruntime.Vorma, buildInnerRuntimeStateSnapshot)
+	captureBuildInnerRuntimeState             func(*vormaruntime.Vorma) buildInnerRuntimeStateSnapshot
+	restoreBuildInnerRuntimeStateAfterFailure func(
+		*vormaruntime.Vorma,
+		buildInnerRuntimeStateSnapshot,
+		string,
+	) bool
+	getCurrentBuildIDWithReadLock func(*vormaruntime.Vorma) string
 	initializeBuildInnerState     func(*vormaruntime.Vorma, *buildInnerOptions) error
 	parseAndSyncClientRoutes      func(*vormaruntime.Vorma) error
 	cleanStaticPublicOutDir       func(*vormaruntime.Vorma) error
@@ -68,14 +73,15 @@ type buildInnerPublicFileMapWriter interface {
 
 func defaultBuildInnerDependencies() buildInnerDependencies {
 	return buildInnerDependencies{
-		captureBuildInnerRuntimeState: captureBuildInnerRuntimeState,
-		restoreBuildInnerRuntimeState: restoreBuildInnerRuntimeState,
-		initializeBuildInnerState:     initializeBuildInnerState,
-		parseAndSyncClientRoutes:      parseAndSyncClientRoutes,
-		cleanStaticPublicOutDir:       cleanStaticPublicOutDir,
-		writePublicFileMapTypeScript:  writePublicFileMapTypeScript,
-		writeRouteArtifacts:           writeRouteArtifactsWithoutHoldingRuntimeLock,
-		logBuildInnerCompletion:       logBuildInnerCompletion,
+		captureBuildInnerRuntimeState:             captureBuildInnerRuntimeState,
+		restoreBuildInnerRuntimeStateAfterFailure: restoreBuildInnerRuntimeStateAfterFailure,
+		getCurrentBuildIDWithReadLock:             currentBuildIDWithReadLock,
+		initializeBuildInnerState:                 initializeBuildInnerState,
+		parseAndSyncClientRoutes:                  parseAndSyncClientRoutes,
+		cleanStaticPublicOutDir:                   cleanStaticPublicOutDir,
+		writePublicFileMapTypeScript:              writePublicFileMapTypeScript,
+		writeRouteArtifacts:                       writeRouteArtifactsWithoutHoldingRuntimeLock,
+		logBuildInnerCompletion:                   logBuildInnerCompletion,
 	}
 }
 
@@ -86,8 +92,11 @@ func normalizeBuildInnerDependencies(
 	if dependencies.captureBuildInnerRuntimeState == nil {
 		dependencies.captureBuildInnerRuntimeState = defaultDependencies.captureBuildInnerRuntimeState
 	}
-	if dependencies.restoreBuildInnerRuntimeState == nil {
-		dependencies.restoreBuildInnerRuntimeState = defaultDependencies.restoreBuildInnerRuntimeState
+	if dependencies.restoreBuildInnerRuntimeStateAfterFailure == nil {
+		dependencies.restoreBuildInnerRuntimeStateAfterFailure = defaultDependencies.restoreBuildInnerRuntimeStateAfterFailure
+	}
+	if dependencies.getCurrentBuildIDWithReadLock == nil {
+		dependencies.getCurrentBuildIDWithReadLock = defaultDependencies.getCurrentBuildIDWithReadLock
 	}
 	if dependencies.initializeBuildInnerState == nil {
 		dependencies.initializeBuildInnerState = defaultDependencies.initializeBuildInnerState
@@ -207,18 +216,6 @@ func newBuildInnerPublicFileMapExecutor(
 	}
 }
 
-var defaultBuildInnerBuildIDExecutor = newBuildInnerBuildIDExecutor(
-	buildInnerBuildIDDependencies{},
-)
-
-var defaultBuildInnerRouteSyncExecutor = newBuildInnerRouteSyncExecutor(
-	buildInnerRouteSyncDependencies{},
-)
-
-var defaultBuildInnerPublicFileMapExecutor = newBuildInnerPublicFileMapExecutor(
-	buildInnerPublicFileMapDependencies{},
-)
-
 var defaultBuildInnerExecutor = newBuildInnerExecutor(
 	buildInnerDependencies{},
 )
@@ -264,63 +261,94 @@ func (executor buildInnerExecutor) buildInner(v *vormaruntime.Vorma, opts *build
 
 	initialRuntimeState := executor.dependencies.captureBuildInnerRuntimeState(v)
 	rollbackAttempted := false
+	rollbackSkippedForSupersededBuildID := false
+	currentAttemptCommittedBuildID := executor.dependencies.getCurrentBuildIDWithReadLock(v)
+	runBuildInnerStep := func(
+		step func() error,
+		stepFailureErrorContext string,
+		transitionToPhase buildLifecyclePhase,
+		transitionReason string,
+		transitionFailureErrorContext string,
+	) error {
+		if err := step(); err != nil {
+			if stepFailureErrorContext == "" {
+				return err
+			}
+			return fmt.Errorf("%s: %w", stepFailureErrorContext, err)
+		}
+		if err := buildLifecycleStateMachine.transitionTo(transitionToPhase, transitionReason); err != nil {
+			return fmt.Errorf("%s: %w", transitionFailureErrorContext, err)
+		}
+		return nil
+	}
 	buildErr := runWithRollbackOnFailureAndPanic(
 		rollbackTransactionOptions{
 			run: func() error {
-				if err := executor.dependencies.initializeBuildInnerState(v, &normalizedOptions); err != nil {
-					return err
-				}
-				if err := buildLifecycleStateMachine.transitionTo(
+				if err := runBuildInnerStep(
+					func() error {
+						return executor.dependencies.initializeBuildInnerState(v, &normalizedOptions)
+					},
+					"",
 					buildLifecyclePhaseRuntimeStateInitialized,
 					"runtime state initialized",
+					"transition build lifecycle to runtime-state-initialized",
 				); err != nil {
-					return fmt.Errorf("transition build lifecycle to runtime-state-initialized: %w", err)
+					return err
 				}
-
-				if err := executor.dependencies.parseAndSyncClientRoutes(v); err != nil {
-					return fmt.Errorf("parse client routes: %w", err)
-				}
-				if err := buildLifecycleStateMachine.transitionTo(
+				currentAttemptCommittedBuildID = executor.dependencies.getCurrentBuildIDWithReadLock(v)
+				if err := runBuildInnerStep(
+					func() error {
+						return executor.dependencies.parseAndSyncClientRoutes(v)
+					},
+					"parse client routes",
 					buildLifecyclePhaseRoutesSynchronized,
 					"client routes synchronized",
+					"transition build lifecycle to routes-synchronized",
 				); err != nil {
-					return fmt.Errorf("transition build lifecycle to routes-synchronized: %w", err)
+					return err
 				}
-
-				if err := executor.dependencies.cleanStaticPublicOutDir(v); err != nil {
-					return fmt.Errorf("clean static public out dir: %w", err)
-				}
-				if err := buildLifecycleStateMachine.transitionTo(
+				if err := runBuildInnerStep(
+					func() error {
+						return executor.dependencies.cleanStaticPublicOutDir(v)
+					},
+					"clean static public out dir",
 					buildLifecyclePhasePublicOutputCleaned,
 					"static public output cleaned",
+					"transition build lifecycle to public-output-cleaned",
 				); err != nil {
-					return fmt.Errorf("transition build lifecycle to public-output-cleaned: %w", err)
+					return err
 				}
-
-				if err := executor.dependencies.writePublicFileMapTypeScript(v); err != nil {
-					return fmt.Errorf("write public file map TS: %w", err)
-				}
-				if err := buildLifecycleStateMachine.transitionTo(
+				if err := runBuildInnerStep(
+					func() error {
+						return executor.dependencies.writePublicFileMapTypeScript(v)
+					},
+					"write public file map TS",
 					buildLifecyclePhasePublicFileMapWritten,
 					"public file map written",
+					"transition build lifecycle to public-file-map-written",
 				); err != nil {
-					return fmt.Errorf("transition build lifecycle to public-file-map-written: %w", err)
+					return err
 				}
-
-				if err := executor.dependencies.writeRouteArtifacts(v); err != nil {
-					return fmt.Errorf("write route artifacts: %w", err)
-				}
-				if err := buildLifecycleStateMachine.transitionTo(
+				if err := runBuildInnerStep(
+					func() error {
+						return executor.dependencies.writeRouteArtifacts(v)
+					},
+					"write route artifacts",
 					buildLifecyclePhaseRouteArtifactsWritten,
 					"route artifacts written",
+					"transition build lifecycle to route-artifacts-written",
 				); err != nil {
-					return fmt.Errorf("transition build lifecycle to route-artifacts-written: %w", err)
+					return err
 				}
 				return nil
 			},
 			rollbackOnFailure: func() error {
-				rollbackAttempted = true
-				executor.dependencies.restoreBuildInnerRuntimeState(v, initialRuntimeState)
+				rollbackAttempted = executor.dependencies.restoreBuildInnerRuntimeStateAfterFailure(
+					v,
+					initialRuntimeState,
+					currentAttemptCommittedBuildID,
+				)
+				rollbackSkippedForSupersededBuildID = !rollbackAttempted
 				return nil
 			},
 		},
@@ -331,6 +359,8 @@ func (executor buildInnerExecutor) buildInner(v *vormaruntime.Vorma, opts *build
 		if rollbackAttempted {
 			rollbackOutcome = buildLifecycleRollbackOutcomeSucceeded
 			rollbackReason = "restored captured runtime state after full build failure"
+		} else if rollbackSkippedForSupersededBuildID {
+			rollbackReason = "skipped runtime-state rollback because build ID was superseded by a newer build"
 		}
 		if rollbackTraceErr := buildLifecycleStateMachine.recordRollback(
 			buildLifecycleRollbackDecisionRequired,
@@ -382,13 +412,33 @@ func captureBuildInnerRuntimeState(v *vormaruntime.Vorma) buildInnerRuntimeState
 	return runtimeStateSnapshot
 }
 
-func restoreBuildInnerRuntimeState(
+func restoreBuildInnerRuntimeStateAfterFailure(
 	v *vormaruntime.Vorma,
 	state buildInnerRuntimeStateSnapshot,
-) {
+	currentAttemptCommittedBuildID string,
+) bool {
+	restored := false
 	v.WithLock(func(l *vormaruntime.LockedVorma) {
+		if !shouldRollbackBuildInnerRuntimeStateAfterFailure(
+			l.GetBuildID(),
+			currentAttemptCommittedBuildID,
+		) {
+			return
+		}
 		restoreBuildRuntimeStateSnapshot(l, state)
+		restored = true
 	})
+	return restored
+}
+
+func shouldRollbackBuildInnerRuntimeStateAfterFailure(
+	currentBuildID string,
+	currentAttemptCommittedBuildID string,
+) bool {
+	return shouldRestoreRuntimeStateSnapshotForAttemptBuildID(
+		currentBuildID,
+		currentAttemptCommittedBuildID,
+	)
 }
 
 func initializeBuildInnerState(v *vormaruntime.Vorma, opts *buildInnerOptions) error {
@@ -434,10 +484,6 @@ func initializeBuildInnerStateWithBuildIDDependencies(
 	return nil
 }
 
-func newDevBuildID() (string, error) {
-	return newDevBuildIDWithDependencies(buildInnerBuildIDDependencies{})
-}
-
 func newDevBuildIDWithDependencies(
 	dependencies buildInnerBuildIDDependencies,
 ) (string, error) {
@@ -468,15 +514,6 @@ func (executor buildInnerRouteSyncExecutor) parseAndSyncClientRoutes(v *vormarun
 		routeSyncExecutionOptions{
 			parseClientRoutes: executor.parseClientAndBackendRoutesForSync,
 		},
-	)
-}
-
-func parseClientAndBackendRoutesForSync(
-	v *vormaruntime.Vorma,
-) (map[string]*vormaruntime.Path, error) {
-	return parseClientAndBackendRoutesForSyncWithDependencies(
-		v,
-		buildInnerRouteSyncDependencies{},
 	)
 }
 

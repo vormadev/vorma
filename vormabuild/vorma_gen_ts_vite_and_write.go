@@ -403,17 +403,6 @@ func generateAndAssembleTSContent(v *vormaruntime.Vorma, l *vormaruntime.LockedV
 	return generateAndAssembleTSContentWithDependencies(v, l, generatedTSAssemblyDependencies{})
 }
 
-func generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot(
-	v *vormaruntime.Vorma,
-	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
-) ([]byte, error) {
-	return generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshotWithDependencies(
-		v,
-		runtimeStateSnapshot,
-		generatedTSAssemblyDependencies{},
-	)
-}
-
 func generateAndAssembleTSContentWithDependencies(
 	v *vormaruntime.Vorma,
 	l *vormaruntime.LockedVorma,

@@ -48,11 +48,11 @@ Keep this file current so work can be handed off without losing context.
 
 ## 2) Plan/Stage/Commit Pipeline
 
-- [ ] Split flows into pure planning, artifact staging, and runtime commit
+- [x] Split flows into pure planning, artifact staging, and runtime commit
       phases.
-- [ ] Move filesystem/codegen-heavy steps out of lock-held sections.
-- [ ] Keep lock-held commit phase short and bounded.
-- [ ] Add tests proving no long-running IO executes during commit locks.
+- [x] Move filesystem/codegen-heavy steps out of lock-held sections.
+- [x] Keep lock-held commit phase short and bounded.
+- [x] Add tests proving no long-running IO executes during commit locks.
 - Note: route-sync post-sync hooks now execute outside the initial route-sync
   write lock, and this is covered by regression tests.
 - Note: route artifact writes now use a captured route-build runtime snapshot
@@ -63,16 +63,28 @@ Keep this file current so work can be handed off without losing context.
 - Note: non-lock route artifact writes now include staleness guards (build-ID
   snapshot checks) before/after heavy artifact steps, skip stale rollback
   cleanup, and gate manifest-file commit on expected/current build-ID match.
+- Note: fast-rebuild artifact orchestration now also uses build-ID token guards
+  to skip stale clean/write phases and skip stale manifest-restore rollback when
+  a newer build supersedes the in-flight attempt.
+- Note: full-build (`buildInner`) now has an explicit lock-boundary regression
+  test asserting runtime write lock acquisition remains prompt during each
+  non-commit step (initialize, parse/sync, clean, public-file-map write, route
+  artifact write).
+- Note: non-lock route artifact writing now uses explicit plan/stage/commit
+  helpers (`planRouteArtifactWrite`, `stageRouteArtifactWrite`,
+  `commitRouteArtifactWrite`) with manifest generation moved out of lock-held
+  sections; regression tests now assert route manifest planning and
+  stage-one/generated-TS steps all execute without holding runtime write lock.
 
 ## 3) Atomic Runtime State Commit API
 
-- [ ] Add one runtime commit path that updates `isDev`, `buildID`, `paths`, and
+- [x] Add one runtime commit path that updates `isDev`, `buildID`, `paths`, and
       route manifest together.
-- [ ] Remove/replace multi-step runtime mutation sequences in build/rebuild
+- [x] Remove/replace multi-step runtime mutation sequences in build/rebuild
       paths.
-- [ ] Add version/snapshot guarding or CAS-style protection for concurrent dev
+- [x] Add version/snapshot guarding or CAS-style protection for concurrent dev
       events.
-- [ ] Add race-focused tests for concurrent watch/build events.
+- [x] Add race-focused tests for concurrent watch/build events.
 - Note: dev/prod build-inner initialization and runtime-state restore now apply
   `isDev` under lock with related state updates.
 - Note: `buildRuntimeStateSnapshot` now captures/restores `isDev` + route-build
@@ -84,8 +96,28 @@ Keep this file current so work can be handed off without losing context.
   route+build-ID commit, dev-runtime mode commit, manifest-file commit), with
   focused regression tests covering full-field commits and dev-reload route-sync
   semantics.
+- Note: non-test `vormabuild` runtime mutation callsites now route through the
+  shared runtime-state commit path (no remaining direct `SetIsDev`/`SetBuildID`
+  /`SetRouteManifestFile` writes outside `runtime_state_commit.go`).
 - Note: stage-two build-ID application now also routes through the shared
   runtime-state commit path.
+- Note: full-build (`buildInner`) failure rollback now captures the attempt
+  build-ID token after initialization commit and only restores captured runtime
+  state when the current runtime build-ID still matches that attempt, preventing
+  stale rollbacks from overwriting newer committed state; regression tests cover
+  restore/skip behavior in both error and panic failure paths.
+- Note: full-build step execution now routes through a shared deterministic step
+  runner that applies uniform error-context wrapping and lifecycle transition
+  error handling across all build phases.
+- Note: route-sync and full-build rollback token checks now share one helper
+  (`shouldRestoreRuntimeStateSnapshotForAttemptBuildID`) to keep
+  attempt-build-ID rollback semantics consistent and test-backed.
+- Note: added overlapping concurrent full-build regression coverage to ensure a
+  failed earlier build cannot roll back over runtime state committed by a newer
+  concurrent build attempt.
+- Note: added overlapping concurrent route-sync regression coverage so a failed
+  earlier post-sync hook cannot roll back over runtime state committed by a
+  newer concurrent route-sync attempt.
 
 ## 4) Artifact Correctness and Strict Validation
 
@@ -175,11 +207,17 @@ Keep this file current so work can be handed off without losing context.
 
 ## 11) Cleanup and Documentation
 
-- [ ] Remove dead transitional helpers after each workstream lands.
-- [ ] Keep this checklist updated as items move.
-- [ ] Add/update package docs for new lifecycle model and invariants.
-- [ ] Final verification pass: run full `vormabuild` tests and confirm no
+- [x] Remove dead transitional helpers after each workstream lands.
+- [x] Keep this checklist updated as items move.
+- [x] Add/update package docs for new lifecycle model and invariants.
+- [x] Final verification pass: run full `vormabuild` tests and confirm no
       behavior regressions.
+- Note: removed the non-test unused wrapper/default-symbol set surfaced by
+  `gopls check -severity=hint` (`unusedfunc`), and validated zero remaining
+  `is unused` diagnostics for `vormabuild` non-test Go files.
+- Note: package docs now define lifecycle model/invariants in
+  `vormabuild/doc.go`, and `go test ./vormabuild -count=1` passes after the
+  latest plan/stage/commit refactor.
 
 ## Handoff Notes
 

@@ -220,10 +220,6 @@ func (entrypointExecutor buildEntrypointExecutor) runBuildCommand(
 	}
 }
 
-func runWaveViteProductionBuild(v *vormaruntime.Vorma) error {
-	return defaultRuntimeBuildToolingExecutor.runWaveViteProductionBuild(v)
-}
-
 func runWaveViteProductionBuildWithToolingDependencies(
 	v *vormaruntime.Vorma,
 	dependencies runtimeBuildToolingDependencies,
@@ -231,22 +227,11 @@ func runWaveViteProductionBuildWithToolingDependencies(
 	return newRuntimeBuildToolingExecutor(dependencies).runWaveViteProductionBuild(v)
 }
 
-func runWaveDevelopmentServer(v *vormaruntime.Vorma) error {
-	return defaultRuntimeBuildToolingExecutor.runWaveDevelopmentServer(v)
-}
-
 func runWaveDevelopmentServerWithToolingDependencies(
 	v *vormaruntime.Vorma,
 	dependencies runtimeBuildToolingDependencies,
 ) error {
 	return newRuntimeBuildToolingExecutor(dependencies).runWaveDevelopmentServer(v)
-}
-
-func runWaveProductionBuild(
-	v *vormaruntime.Vorma,
-	options wavebuild.BuildOpts,
-) error {
-	return defaultRuntimeBuildToolingExecutor.runWaveProductionBuild(v, options)
 }
 
 func runWaveProductionBuildWithToolingDependencies(
@@ -315,10 +300,6 @@ func (runtimeBuildOperations runtimeBuildOperationExecutor) runProdHookPostProce
 	}
 
 	return nil
-}
-
-func prepareDevBuildRuntime(v *vormaruntime.Vorma) {
-	defaultRuntimeBuildOperationExecutor.prepareDevBuildRuntime(v)
 }
 
 func (runtimeBuildOperations runtimeBuildOperationExecutor) prepareDevBuildRuntime(

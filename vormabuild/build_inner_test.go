@@ -91,6 +91,62 @@ func TestBuildInner(t *testing.T) {
 		}
 	})
 
+	t.Run("runs non-commit build steps without holding runtime write lock", func(t *testing.T) {
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		dependencies := newDependencies()
+		dependencies.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
+			assertRuntimeWriteLockCanBeAcquiredPromptly(
+				t,
+				v,
+				"initializeBuildInnerState",
+			)
+			return nil
+		}
+		dependencies.parseAndSyncClientRoutes = func(v *vormaruntime.Vorma) error {
+			assertRuntimeWriteLockCanBeAcquiredPromptly(
+				t,
+				v,
+				"parseAndSyncClientRoutes",
+			)
+			return nil
+		}
+		dependencies.cleanStaticPublicOutDir = func(v *vormaruntime.Vorma) error {
+			assertRuntimeWriteLockCanBeAcquiredPromptly(
+				t,
+				v,
+				"cleanStaticPublicOutDir",
+			)
+			return nil
+		}
+		dependencies.writePublicFileMapTypeScript = func(v *vormaruntime.Vorma) error {
+			assertRuntimeWriteLockCanBeAcquiredPromptly(
+				t,
+				v,
+				"writePublicFileMapTypeScript",
+			)
+			return nil
+		}
+		dependencies.writeRouteArtifacts = func(v *vormaruntime.Vorma) error {
+			assertRuntimeWriteLockCanBeAcquiredPromptly(
+				t,
+				v,
+				"writeRouteArtifacts",
+			)
+			return nil
+		}
+		dependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {}
+
+		if err := buildInnerWithDependencies(
+			app,
+			&buildInnerOptions{isDev: true},
+			dependencies,
+		); err != nil {
+			t.Fatalf("buildInner returned error: %v", err)
+		}
+	})
+
 	t.Run("defaults to non-dev mode when options are nil", func(t *testing.T) {
 		initializeCalled := false
 		dependencies := newDependencies()
@@ -162,6 +218,7 @@ func TestBuildInner(t *testing.T) {
 
 				const baselineBuildID = "build-before-inner-failure"
 				const baselineRouteManifestFile = "route-manifest-before-inner-failure.json"
+				const currentAttemptBuildID = "build-current-attempt"
 				baselinePaths := map[string]*vormaruntime.Path{
 					"/existing": {
 						OriginalPattern: "/existing",
@@ -183,7 +240,7 @@ func TestBuildInner(t *testing.T) {
 				) {
 					v.SetIsDev(true)
 					v.WithLock(func(l *vormaruntime.LockedVorma) {
-						l.SetBuildID("build-after-" + stateID)
+						l.SetBuildID(currentAttemptBuildID)
 						l.SetRouteManifestFile("route-manifest-after-" + stateID + ".json")
 						l.SetPaths(map[string]*vormaruntime.Path{
 							"/mutated-" + stateID: {
@@ -198,10 +255,10 @@ func TestBuildInner(t *testing.T) {
 				expectedErr := errors.New("step failed")
 				dependencies := newDependencies()
 				dependencies.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
-					mutateRuntimeStateForBuildInnerFailure(v, "initialize")
 					if failureCase.failingStep == "initialize" {
 						return expectedErr
 					}
+					mutateRuntimeStateForBuildInnerFailure(v, "initialize")
 					return nil
 				}
 				dependencies.parseAndSyncClientRoutes = func(v *vormaruntime.Vorma) error {
@@ -281,6 +338,7 @@ func TestBuildInner(t *testing.T) {
 
 		const baselineBuildID = "build-before-inner-panic"
 		const baselineRouteManifestFile = "route-manifest-before-inner-panic.json"
+		const currentAttemptBuildID = "build-current-panic-attempt"
 		baselinePaths := map[string]*vormaruntime.Path{
 			"/existing": {
 				OriginalPattern: "/existing",
@@ -302,7 +360,7 @@ func TestBuildInner(t *testing.T) {
 		) {
 			v.SetIsDev(true)
 			v.WithLock(func(l *vormaruntime.LockedVorma) {
-				l.SetBuildID("build-after-" + stateID)
+				l.SetBuildID(currentAttemptBuildID)
 				l.SetRouteManifestFile("route-manifest-after-" + stateID + ".json")
 				l.SetPaths(map[string]*vormaruntime.Path{
 					"/mutated-" + stateID: {
@@ -372,6 +430,363 @@ func TestBuildInner(t *testing.T) {
 			&buildInnerOptions{isDev: true},
 			dependencies,
 		)
+	})
+
+	t.Run("skips rollback and re-panics when build ID token is superseded before panic rollback", func(t *testing.T) {
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+			l.SetBuildID("build-before")
+			l.SetRouteManifestFile("route-manifest-before.json")
+			l.SetPaths(map[string]*vormaruntime.Path{
+				"/before": {
+					OriginalPattern: "/before",
+					SrcPath:         "frontend/src/routes/before.tsx",
+					ExportKey:       "default",
+				},
+			})
+		})
+
+		expectedPanic := errors.New("parse panic after newer build committed")
+		dependencies := newDependencies()
+		dependencies.getCurrentBuildIDWithReadLock = func(*vormaruntime.Vorma) string {
+			return "build-attempt"
+		}
+		dependencies.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
+			v.WithLock(func(l *vormaruntime.LockedVorma) {
+				l.SetIsDev(true)
+				l.SetBuildID("build-attempt")
+				l.SetRouteManifestFile("route-manifest-attempt.json")
+				l.SetPaths(map[string]*vormaruntime.Path{
+					"/attempt": {
+						OriginalPattern: "/attempt",
+						SrcPath:         "frontend/src/routes/attempt.tsx",
+						ExportKey:       "default",
+					},
+				})
+			})
+			return nil
+		}
+		dependencies.parseAndSyncClientRoutes = func(v *vormaruntime.Vorma) error {
+			v.WithLock(func(l *vormaruntime.LockedVorma) {
+				l.SetIsDev(true)
+				l.SetBuildID("build-after-newer-sync")
+				l.SetRouteManifestFile("route-manifest-after-newer-sync.json")
+				l.SetPaths(map[string]*vormaruntime.Path{
+					"/newer": {
+						OriginalPattern: "/newer",
+						SrcPath:         "frontend/src/routes/newer.tsx",
+						ExportKey:       "default",
+					},
+				})
+			})
+			panic(expectedPanic)
+		}
+		dependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect clean step after parse panic")
+			return nil
+		}
+		dependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
+			t.Fatal("did not expect completion log when buildInner panics")
+		}
+
+		defer func() {
+			recoveredPanicValue := recover()
+			if recoveredPanicValue == nil {
+				t.Fatal("expected buildInner to panic")
+			}
+			recoveredPanicErr, ok := recoveredPanicValue.(error)
+			if !ok {
+				t.Fatalf("recovered panic type = %T, want error", recoveredPanicValue)
+			}
+			if !errors.Is(recoveredPanicErr, expectedPanic) {
+				t.Fatalf("recovered panic = %v, want %v", recoveredPanicErr, expectedPanic)
+			}
+
+			if !app.GetIsDevMode() {
+				t.Fatal("expected newer runtime state to remain in dev mode after stale panic rollback skip")
+			}
+			if got := app.GetBuildID(); got != "build-after-newer-sync" {
+				t.Fatalf("build ID after stale panic rollback skip = %q, want %q", got, "build-after-newer-sync")
+			}
+			if got := app.GetRouteManifestFile(); got != "route-manifest-after-newer-sync.json" {
+				t.Fatalf(
+					"route manifest after stale panic rollback skip = %q, want %q",
+					got,
+					"route-manifest-after-newer-sync.json",
+				)
+			}
+			paths := app.GetPathsSnapshot()
+			if len(paths) != 1 {
+				t.Fatalf("paths after stale panic rollback skip length = %d, want 1 (%#v)", len(paths), paths)
+			}
+			if paths["/newer"] == nil {
+				t.Fatalf("expected newer path to remain after stale panic rollback skip, got %#v", paths)
+			}
+		}()
+
+		_ = buildInnerWithDependencies(
+			app,
+			&buildInnerOptions{isDev: true},
+			dependencies,
+		)
+	})
+
+	t.Run("skips rollback when build ID token is superseded before failure rollback", func(t *testing.T) {
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+			l.SetBuildID("build-before")
+			l.SetRouteManifestFile("route-manifest-before.json")
+			l.SetPaths(map[string]*vormaruntime.Path{
+				"/before": {
+					OriginalPattern: "/before",
+					SrcPath:         "frontend/src/routes/before.tsx",
+					ExportKey:       "default",
+				},
+			})
+		})
+
+		expectedErr := errors.New("parse failed after newer build committed")
+		dependencies := newDependencies()
+		dependencies.getCurrentBuildIDWithReadLock = func(*vormaruntime.Vorma) string {
+			return "build-attempt"
+		}
+		dependencies.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
+			v.WithLock(func(l *vormaruntime.LockedVorma) {
+				l.SetIsDev(true)
+				l.SetBuildID("build-attempt")
+				l.SetRouteManifestFile("route-manifest-attempt.json")
+				l.SetPaths(map[string]*vormaruntime.Path{
+					"/attempt": {
+						OriginalPattern: "/attempt",
+						SrcPath:         "frontend/src/routes/attempt.tsx",
+						ExportKey:       "default",
+					},
+				})
+			})
+			return nil
+		}
+		dependencies.parseAndSyncClientRoutes = func(v *vormaruntime.Vorma) error {
+			v.WithLock(func(l *vormaruntime.LockedVorma) {
+				l.SetIsDev(true)
+				l.SetBuildID("build-after-newer-sync")
+				l.SetRouteManifestFile("route-manifest-after-newer-sync.json")
+				l.SetPaths(map[string]*vormaruntime.Path{
+					"/newer": {
+						OriginalPattern: "/newer",
+						SrcPath:         "frontend/src/routes/newer.tsx",
+						ExportKey:       "default",
+					},
+				})
+			})
+			return expectedErr
+		}
+		dependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect clean step after parse failure")
+			return nil
+		}
+		dependencies.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect public file map write after parse failure")
+			return nil
+		}
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect route artifact write after parse failure")
+			return nil
+		}
+		dependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
+			t.Fatal("did not expect completion log when buildInner fails")
+		}
+
+		err := buildInnerWithDependencies(
+			app,
+			&buildInnerOptions{isDev: true},
+			dependencies,
+		)
+		if err == nil {
+			t.Fatal("expected buildInner to return parse error")
+		}
+		if !strings.Contains(err.Error(), "parse client routes") {
+			t.Fatalf("error = %q, expected parse context", err)
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped parse error", err)
+		}
+
+		if !app.GetIsDevMode() {
+			t.Fatal("expected newer runtime state to remain in dev mode after stale rollback skip")
+		}
+		if got := app.GetBuildID(); got != "build-after-newer-sync" {
+			t.Fatalf("build ID after stale rollback skip = %q, want %q", got, "build-after-newer-sync")
+		}
+		if got := app.GetRouteManifestFile(); got != "route-manifest-after-newer-sync.json" {
+			t.Fatalf(
+				"route manifest after stale rollback skip = %q, want %q",
+				got,
+				"route-manifest-after-newer-sync.json",
+			)
+		}
+		paths := app.GetPathsSnapshot()
+		if len(paths) != 1 {
+			t.Fatalf("paths after stale rollback skip length = %d, want 1 (%#v)", len(paths), paths)
+		}
+		if paths["/newer"] == nil {
+			t.Fatalf("expected newer path to remain after stale rollback skip, got %#v", paths)
+		}
+	})
+
+	t.Run("preserves newer runtime state when overlapping build attempts race", func(t *testing.T) {
+		fixture := newBuildTestFixture(t, nil)
+		app := fixture.app
+
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+			l.SetBuildID("build-before")
+			l.SetRouteManifestFile("manifest-before.json")
+			l.SetPaths(map[string]*vormaruntime.Path{
+				"/before": {
+					OriginalPattern: "/before",
+					SrcPath:         "frontend/src/routes/before.tsx",
+					ExportKey:       "default",
+				},
+			})
+		})
+
+		firstBuildParseStarted := make(chan struct{})
+		allowFirstBuildParseFailure := make(chan struct{})
+		firstBuildErrCh := make(chan error, 1)
+		firstBuildExpectedErr := errors.New("first build parse failed")
+
+		firstBuildDependencies := newDependencies()
+		firstBuildDependencies.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
+			v.WithLock(func(l *vormaruntime.LockedVorma) {
+				l.SetIsDev(true)
+				l.SetBuildID("build-first-attempt")
+				l.SetRouteManifestFile("manifest-first-attempt.json")
+				l.SetPaths(map[string]*vormaruntime.Path{
+					"/first": {
+						OriginalPattern: "/first",
+						SrcPath:         "frontend/src/routes/first.tsx",
+						ExportKey:       "default",
+					},
+				})
+			})
+			return nil
+		}
+		firstBuildDependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
+			close(firstBuildParseStarted)
+			<-allowFirstBuildParseFailure
+			return firstBuildExpectedErr
+		}
+		firstBuildDependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect clean step in first build after parse failure")
+			return nil
+		}
+		firstBuildDependencies.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect write public file map step in first build after parse failure")
+			return nil
+		}
+		firstBuildDependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect write route artifacts step in first build after parse failure")
+			return nil
+		}
+		firstBuildDependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {
+			t.Fatal("did not expect completion log for failed first build")
+		}
+
+		secondBuildDependencies := newDependencies()
+		secondBuildDependencies.initializeBuildInnerState = func(v *vormaruntime.Vorma, _ *buildInnerOptions) error {
+			v.WithLock(func(l *vormaruntime.LockedVorma) {
+				l.SetIsDev(true)
+				l.SetBuildID("build-second-attempt")
+				l.SetRouteManifestFile("manifest-second-attempt.json")
+				l.SetPaths(map[string]*vormaruntime.Path{
+					"/second": {
+						OriginalPattern: "/second",
+						SrcPath:         "frontend/src/routes/second.tsx",
+						ExportKey:       "default",
+					},
+				})
+			})
+			return nil
+		}
+		secondBuildDependencies.parseAndSyncClientRoutes = func(*vormaruntime.Vorma) error {
+			return nil
+		}
+		secondBuildDependencies.cleanStaticPublicOutDir = func(*vormaruntime.Vorma) error {
+			return nil
+		}
+		secondBuildDependencies.writePublicFileMapTypeScript = func(*vormaruntime.Vorma) error {
+			return nil
+		}
+		secondBuildDependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+			return nil
+		}
+		secondBuildDependencies.logBuildInnerCompletion = func(*vormaruntime.Vorma, time.Time) {}
+
+		go func() {
+			firstBuildErrCh <- buildInnerWithDependencies(
+				app,
+				&buildInnerOptions{isDev: true},
+				firstBuildDependencies,
+			)
+		}()
+
+		select {
+		case <-firstBuildParseStarted:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for first build parse step to start")
+		}
+
+		if err := buildInnerWithDependencies(
+			app,
+			&buildInnerOptions{isDev: true},
+			secondBuildDependencies,
+		); err != nil {
+			t.Fatalf("second concurrent buildInner returned error: %v", err)
+		}
+
+		close(allowFirstBuildParseFailure)
+
+		select {
+		case err := <-firstBuildErrCh:
+			if err == nil {
+				t.Fatal("expected first concurrent buildInner to return parse error")
+			}
+			if !strings.Contains(err.Error(), "parse client routes") {
+				t.Fatalf("first concurrent build error = %q, expected parse context", err)
+			}
+			if !errors.Is(err, firstBuildExpectedErr) {
+				t.Fatalf("first concurrent build error = %v, expected wrapped parse error", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for first concurrent build to return")
+		}
+
+		if !app.GetIsDevMode() {
+			t.Fatal("expected newer runtime state from second build to remain in dev mode")
+		}
+		if got := app.GetBuildID(); got != "build-second-attempt" {
+			t.Fatalf("build ID after overlapping builds = %q, want %q", got, "build-second-attempt")
+		}
+		if got := app.GetRouteManifestFile(); got != "manifest-second-attempt.json" {
+			t.Fatalf(
+				"route manifest after overlapping builds = %q, want %q",
+				got,
+				"manifest-second-attempt.json",
+			)
+		}
+		paths := app.GetPathsSnapshot()
+		if len(paths) != 1 {
+			t.Fatalf("paths after overlapping builds length = %d, want 1 (%#v)", len(paths), paths)
+		}
+		if paths["/second"] == nil {
+			t.Fatalf("expected second-build path to remain after overlapping builds, got %#v", paths)
+		}
 	})
 
 	t.Run("returns initialization error directly", func(t *testing.T) {
@@ -519,6 +934,18 @@ func TestBuildInner(t *testing.T) {
 			t.Fatalf("error = %v, expected wrapped write-route-artifacts error", err)
 		}
 	})
+}
+
+func TestShouldRollbackBuildInnerRuntimeStateAfterFailure(t *testing.T) {
+	if !shouldRollbackBuildInnerRuntimeStateAfterFailure("any-build", "") {
+		t.Fatal("expected rollback when no attempt build ID token was captured")
+	}
+	if !shouldRollbackBuildInnerRuntimeStateAfterFailure("build-id", "build-id") {
+		t.Fatal("expected rollback when current build ID matches attempt build ID token")
+	}
+	if shouldRollbackBuildInnerRuntimeStateAfterFailure("build-current", "build-attempt") {
+		t.Fatal("expected rollback to skip when current build ID differs from attempt build ID token")
+	}
 }
 
 func TestWritePublicFileMapTypeScript(t *testing.T) {

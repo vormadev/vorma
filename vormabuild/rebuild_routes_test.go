@@ -472,6 +472,77 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 			t.Fatalf("observed steps = %#v, want [clean write]", observedSteps)
 		}
 	})
+
+	t.Run("skips clean and write when build ID token is stale before artifact write", func(t *testing.T) {
+		buildIDReadCount := 0
+		dependencies := newDependencies()
+		dependencies.getCurrentBuildIDWithReadLock = func(*vormaruntime.Vorma) string {
+			buildIDReadCount++
+			if buildIDReadCount == 1 {
+				return "build-before"
+			}
+			return "build-after"
+		}
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect clean route manifests when build ID token is stale")
+			return nil
+		}
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+			t.Fatal("did not expect writeRouteArtifacts when build ID token is stale")
+			return nil
+		}
+
+		if err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies); err != nil {
+			t.Fatalf("writeFastRebuildArtifactsAfterRouteSync returned error: %v", err)
+		}
+	})
+
+	t.Run("skips manifest snapshot restore when build ID token becomes stale before rollback", func(t *testing.T) {
+		previousManifestFile := vormaruntime.VormaRouteManifestPrefix + "previous_stale_skip_restore.json"
+		previousManifestPath := filepath.Join(fixture.publicDir, previousManifestFile)
+		mustWriteFile(t, previousManifestPath, []byte(`{"/":0}`))
+
+		buildIDReadCount := 0
+		dependencies := newDependencies()
+		dependencies.getCurrentBuildIDWithReadLock = func(*vormaruntime.Vorma) string {
+			buildIDReadCount++
+			if buildIDReadCount <= 3 {
+				return "build-before"
+			}
+			return "build-after"
+		}
+		dependencies.cleanRouteManifestsOnly = func(*vormaruntime.Vorma) error {
+			return os.Remove(previousManifestPath)
+		}
+
+		expectedErr := errors.New("write artifacts failed")
+		dependencies.writeRouteArtifacts = func(*vormaruntime.Vorma) error {
+			return expectedErr
+		}
+		dependencies.writeRouteManifestArtifact = func(string, []byte, os.FileMode) error {
+			t.Fatal("did not expect manifest restore write when build ID token is stale")
+			return nil
+		}
+		dependencies.removeRouteManifestArtifact = func(string) error {
+			t.Fatal("did not expect manifest restore removal when build ID token is stale")
+			return nil
+		}
+
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetBuildID("build-before")
+			l.SetRouteManifestFile(previousManifestFile)
+		})
+		err := writeFastRebuildArtifactsAfterRouteSyncWithDependencies(app, dependencies)
+		if err == nil {
+			t.Fatal("expected writeFastRebuildArtifactsAfterRouteSync to return write-artifacts error")
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected write-artifacts error", err)
+		}
+		if _, statErr := os.Stat(previousManifestPath); !os.IsNotExist(statErr) {
+			t.Fatalf("expected previous manifest artifact to stay removed when stale rollback is skipped, stat err=%v", statErr)
+		}
+	})
 }
 
 func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
@@ -773,5 +844,23 @@ func TestNewFastRebuildID_ReturnsErrorWhenIDGenerationFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "generate build ID") {
 		t.Fatalf("error = %q, expected generate-build-id context", err)
+	}
+}
+
+func TestShouldRunFastRebuildArtifactWriteForBuildID(t *testing.T) {
+	if !shouldRunFastRebuildArtifactWriteForBuildID("build", "build") {
+		t.Fatal("expected artifact write to run when build IDs match")
+	}
+	if shouldRunFastRebuildArtifactWriteForBuildID("build-current", "build-expected") {
+		t.Fatal("expected artifact write to skip when build IDs differ")
+	}
+}
+
+func TestShouldRestoreFastRebuildManifestSnapshotForBuildID(t *testing.T) {
+	if !shouldRestoreFastRebuildManifestSnapshotForBuildID("build", "build") {
+		t.Fatal("expected manifest snapshot restore when build IDs match")
+	}
+	if shouldRestoreFastRebuildManifestSnapshotForBuildID("build-current", "build-expected") {
+		t.Fatal("expected manifest snapshot restore to skip when build IDs differ")
 	}
 }

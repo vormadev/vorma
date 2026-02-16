@@ -24,7 +24,8 @@ type routeRegistryBuildDependencies struct {
 	writeStageOnePathsJSONForRuntimeState     func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot, string) error
 	writeGeneratedTypeScriptForRuntimeState   func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot) error
 	captureRouteBuildRuntimeStateWithReadLock func(*vormaruntime.Vorma) routeBuildRuntimeStateSnapshot
-	captureRouteManifestStateWithRuntimeLock  func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot) routeManifestStateSnapshot
+	readRouteManifestFileWithRuntimeLock      func(*vormaruntime.Vorma) string
+	generateRouteManifestFromPaths            func(map[string]*vormaruntime.Path, *mux.NestedRouter) map[string]int
 	isRouteBuildRuntimeStateSnapshotCurrent   func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot) bool
 	commitRouteManifestFileWithRuntimeLock    func(*vormaruntime.Vorma, routeManifestCommitInput) bool
 }
@@ -65,24 +66,14 @@ func defaultRouteRegistryBuildDependencies() routeRegistryBuildDependencies {
 			})
 			return runtimeStateSnapshot
 		},
-		captureRouteManifestStateWithRuntimeLock: func(
-			v *vormaruntime.Vorma,
-			runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
-		) routeManifestStateSnapshot {
+		readRouteManifestFileWithRuntimeLock: func(v *vormaruntime.Vorma) string {
 			var previousRouteManifestFile string
-			var routeManifest map[string]int
 			v.WithLock(func(l *vormaruntime.LockedVorma) {
 				previousRouteManifestFile = l.GetRouteManifestFile()
-				routeManifest = generateRouteManifestFromPaths(
-					runtimeStateSnapshot.paths,
-					v.LoadersRouter().NestedRouter,
-				)
 			})
-			return routeManifestStateSnapshot{
-				previousRouteManifestFile: previousRouteManifestFile,
-				routeManifest:             routeManifest,
-			}
+			return previousRouteManifestFile
 		},
+		generateRouteManifestFromPaths:          generateRouteManifestFromPaths,
 		isRouteBuildRuntimeStateSnapshotCurrent: routeBuildRuntimeStateSnapshotIsCurrent,
 		commitRouteManifestFileWithRuntimeLock: func(
 			v *vormaruntime.Vorma,
@@ -145,8 +136,11 @@ func normalizeRouteRegistryBuildDependencies(
 	if dependencies.captureRouteBuildRuntimeStateWithReadLock == nil {
 		dependencies.captureRouteBuildRuntimeStateWithReadLock = defaultDependencies.captureRouteBuildRuntimeStateWithReadLock
 	}
-	if dependencies.captureRouteManifestStateWithRuntimeLock == nil {
-		dependencies.captureRouteManifestStateWithRuntimeLock = defaultDependencies.captureRouteManifestStateWithRuntimeLock
+	if dependencies.readRouteManifestFileWithRuntimeLock == nil {
+		dependencies.readRouteManifestFileWithRuntimeLock = defaultDependencies.readRouteManifestFileWithRuntimeLock
+	}
+	if dependencies.generateRouteManifestFromPaths == nil {
+		dependencies.generateRouteManifestFromPaths = defaultDependencies.generateRouteManifestFromPaths
 	}
 	if dependencies.isRouteBuildRuntimeStateSnapshotCurrent == nil {
 		dependencies.isRouteBuildRuntimeStateSnapshotCurrent = defaultDependencies.isRouteBuildRuntimeStateSnapshotCurrent
@@ -221,7 +215,13 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifacts(l *vormaruntime.L
 		return transactionErr
 	}
 
-	l.SetRouteManifestFile(manifestFile)
+	commitRuntimeStateWithLock(
+		l,
+		runtimeStateCommitInput{
+			shouldCommitRouteManifestFile: true,
+			routeManifestFile:             manifestFile,
+		},
+	)
 	return nil
 }
 
@@ -237,12 +237,14 @@ func (executor routeRegistryBuildExecutor) writeAndSetRouteManifest(
 		return err
 	}
 
-	l.SetRouteManifestFile(manifestFile)
+	commitRuntimeStateWithLock(
+		l,
+		runtimeStateCommitInput{
+			shouldCommitRouteManifestFile: true,
+			routeManifestFile:             manifestFile,
+		},
+	)
 	return nil
-}
-
-func writeRouteManifestArtifact(l *vormaruntime.LockedVorma) (string, error) {
-	return defaultRouteRegistryBuildExecutor.writeRouteManifestArtifact(l)
 }
 
 func (executor routeRegistryBuildExecutor) writeRouteManifestArtifact(
@@ -296,6 +298,13 @@ type routeManifestCommitInput struct {
 	routeManifestFile string
 }
 
+type routeArtifactWritePlan struct {
+	runtimeStateSnapshot      routeBuildRuntimeStateSnapshot
+	manifestStateSnapshot     routeManifestStateSnapshot
+	stageOnePathsArtifactPath string
+	stageOnePathsSnapshot     stageOnePathsArtifactSnapshot
+}
+
 type routeManifestStateReader interface {
 	Vorma() *vormaruntime.Vorma
 	GetPaths() map[string]*vormaruntime.Path
@@ -312,23 +321,64 @@ func writeRouteArtifactsWithoutHoldingRuntimeLock(v *vormaruntime.Vorma) error {
 func (executor routeRegistryBuildExecutor) writeRouteArtifactsWithoutHoldingRuntimeLock(
 	v *vormaruntime.Vorma,
 ) error {
-	runtimeStateSnapshot := executor.dependencies.captureRouteBuildRuntimeStateWithReadLock(v)
-	manifestStateSnapshot := executor.dependencies.captureRouteManifestStateWithRuntimeLock(
+	plannedWrite, err := executor.planRouteArtifactWrite(v)
+	if err != nil {
+		return err
+	}
+
+	manifestFile, shouldCommit, err := executor.stageRouteArtifactWrite(
 		v,
-		runtimeStateSnapshot,
+		plannedWrite,
 	)
+	if err != nil {
+		return err
+	}
+	if !shouldCommit {
+		return nil
+	}
+
+	executor.commitRouteArtifactWrite(v, plannedWrite, manifestFile)
+	return nil
+}
+
+func (executor routeRegistryBuildExecutor) planRouteArtifactWrite(
+	v *vormaruntime.Vorma,
+) (routeArtifactWritePlan, error) {
+	runtimeStateSnapshot := executor.dependencies.captureRouteBuildRuntimeStateWithReadLock(v)
+	manifestStateSnapshot := routeManifestStateSnapshot{
+		previousRouteManifestFile: executor.dependencies.readRouteManifestFileWithRuntimeLock(v),
+		routeManifest: executor.dependencies.generateRouteManifestFromPaths(
+			runtimeStateSnapshot.paths,
+			v.LoadersRouter().NestedRouter,
+		),
+	}
 
 	stageOnePathsArtifactPath := stageOnePathsArtifactOutputPath(v)
-	stageOnePathsArtifactSnapshot, err := executor.captureStageOnePathsArtifactSnapshot(
+	stageOnePathsSnapshot, err := executor.captureStageOnePathsArtifactSnapshot(
 		stageOnePathsArtifactPath,
 	)
 	if err != nil {
-		return fmt.Errorf("snapshot stage-one paths artifact: %w", err)
+		return routeArtifactWritePlan{}, fmt.Errorf("snapshot stage-one paths artifact: %w", err)
 	}
 
-	manifestFile, err := executor.writeRouteManifestToDisk(v, manifestStateSnapshot.routeManifest)
+	return routeArtifactWritePlan{
+		runtimeStateSnapshot:      runtimeStateSnapshot,
+		manifestStateSnapshot:     manifestStateSnapshot,
+		stageOnePathsArtifactPath: stageOnePathsArtifactPath,
+		stageOnePathsSnapshot:     stageOnePathsSnapshot,
+	}, nil
+}
+
+func (executor routeRegistryBuildExecutor) stageRouteArtifactWrite(
+	v *vormaruntime.Vorma,
+	plannedWrite routeArtifactWritePlan,
+) (string, bool, error) {
+	manifestFile, err := executor.writeRouteManifestToDisk(
+		v,
+		plannedWrite.manifestStateSnapshot.routeManifest,
+	)
 	if err != nil {
-		return fmt.Errorf("write route manifest: %w", err)
+		return "", false, fmt.Errorf("write route manifest: %w", err)
 	}
 
 	skipRollbackForSupersededRuntimeState := false
@@ -337,7 +387,7 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifactsWithoutHoldingRunt
 			run: func() error {
 				if !executor.dependencies.isRouteBuildRuntimeStateSnapshotCurrent(
 					v,
-					runtimeStateSnapshot,
+					plannedWrite.runtimeStateSnapshot,
 				) {
 					skipRollbackForSupersededRuntimeState = true
 					return errRouteBuildRuntimeStateSuperseded
@@ -345,14 +395,14 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifactsWithoutHoldingRunt
 
 				if err := executor.dependencies.writeStageOnePathsJSONForRuntimeState(
 					v,
-					runtimeStateSnapshot,
+					plannedWrite.runtimeStateSnapshot,
 					manifestFile,
 				); err != nil {
 					return fmt.Errorf("write paths JSON: %w", err)
 				}
 				if !executor.dependencies.isRouteBuildRuntimeStateSnapshotCurrent(
 					v,
-					runtimeStateSnapshot,
+					plannedWrite.runtimeStateSnapshot,
 				) {
 					skipRollbackForSupersededRuntimeState = true
 					return errRouteBuildRuntimeStateSuperseded
@@ -360,13 +410,13 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifactsWithoutHoldingRunt
 
 				if err := executor.dependencies.writeGeneratedTypeScriptForRuntimeState(
 					v,
-					runtimeStateSnapshot,
+					plannedWrite.runtimeStateSnapshot,
 				); err != nil {
 					return fmt.Errorf("write generated TypeScript: %w", err)
 				}
 				if !executor.dependencies.isRouteBuildRuntimeStateSnapshotCurrent(
 					v,
-					runtimeStateSnapshot,
+					plannedWrite.runtimeStateSnapshot,
 				) {
 					skipRollbackForSupersededRuntimeState = true
 					return errRouteBuildRuntimeStateSuperseded
@@ -380,9 +430,9 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifactsWithoutHoldingRunt
 				return executor.cleanupRouteArtifactsAfterWriteFailure(
 					v,
 					manifestFile,
-					manifestStateSnapshot.previousRouteManifestFile,
-					stageOnePathsArtifactPath,
-					stageOnePathsArtifactSnapshot,
+					plannedWrite.manifestStateSnapshot.previousRouteManifestFile,
+					plannedWrite.stageOnePathsArtifactPath,
+					plannedWrite.stageOnePathsSnapshot,
 				)
 			},
 			logRollbackFailureAfterPanic: func(rollbackErr error) {
@@ -394,19 +444,26 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifactsWithoutHoldingRunt
 	)
 	if transactionErr != nil {
 		if errors.Is(transactionErr, errRouteBuildRuntimeStateSuperseded) {
-			return nil
+			return "", false, nil
 		}
-		return transactionErr
+		return "", false, transactionErr
 	}
 
+	return manifestFile, true, nil
+}
+
+func (executor routeRegistryBuildExecutor) commitRouteArtifactWrite(
+	v *vormaruntime.Vorma,
+	plannedWrite routeArtifactWritePlan,
+	manifestFile string,
+) {
 	executor.dependencies.commitRouteManifestFileWithRuntimeLock(
 		v,
 		routeManifestCommitInput{
-			expectedBuildID:   runtimeStateSnapshot.buildID,
+			expectedBuildID:   plannedWrite.runtimeStateSnapshot.buildID,
 			routeManifestFile: manifestFile,
 		},
 	)
-	return nil
 }
 
 func routeBuildRuntimeStateSnapshotIsCurrent(
@@ -431,36 +488,12 @@ func stageOnePathsArtifactOutputPath(v *vormaruntime.Vorma) string {
 	return pathsOutputPath(v, vormaruntime.VormaPathsStageOneJSONFileName)
 }
 
-func captureStageOnePathsArtifactSnapshot(
-	stageOnePathsArtifactPath string,
-) (stageOnePathsArtifactSnapshot, error) {
-	return defaultRouteRegistryBuildExecutor.captureStageOnePathsArtifactSnapshot(
-		stageOnePathsArtifactPath,
-	)
-}
-
 func (executor routeRegistryBuildExecutor) captureStageOnePathsArtifactSnapshot(
 	stageOnePathsArtifactPath string,
 ) (stageOnePathsArtifactSnapshot, error) {
 	return captureBuildArtifactFileSnapshot(
 		stageOnePathsArtifactPath,
 		executor.dependencies.readStageOnePathsArtifact,
-	)
-}
-
-func cleanupRouteArtifactsAfterWriteFailure(
-	v *vormaruntime.Vorma,
-	manifestFile string,
-	previousRouteManifestFile string,
-	stageOnePathsArtifactPath string,
-	stageOnePathsSnapshot stageOnePathsArtifactSnapshot,
-) error {
-	return defaultRouteRegistryBuildExecutor.cleanupRouteArtifactsAfterWriteFailure(
-		v,
-		manifestFile,
-		previousRouteManifestFile,
-		stageOnePathsArtifactPath,
-		stageOnePathsSnapshot,
 	)
 }
 
@@ -500,10 +533,6 @@ func shouldRemoveRouteManifestArtifactAfterWriteFailure(
 	return manifestFile != "" && manifestFile != previousRouteManifestFile
 }
 
-func removeRouteManifestArtifactFile(v *vormaruntime.Vorma, manifestFile string) error {
-	return defaultRouteRegistryBuildExecutor.removeRouteManifestArtifactFile(v, manifestFile)
-}
-
 func (executor routeRegistryBuildExecutor) removeRouteManifestArtifactFile(
 	v *vormaruntime.Vorma,
 	manifestFile string,
@@ -514,16 +543,6 @@ func (executor routeRegistryBuildExecutor) removeRouteManifestArtifactFile(
 		return nil
 	}
 	return err
-}
-
-func restoreStageOnePathsArtifactFromSnapshot(
-	stageOnePathsArtifactPath string,
-	stageOnePathsSnapshot stageOnePathsArtifactSnapshot,
-) error {
-	return defaultRouteRegistryBuildExecutor.restoreStageOnePathsArtifactFromSnapshot(
-		stageOnePathsArtifactPath,
-		stageOnePathsSnapshot,
-	)
 }
 
 func (executor routeRegistryBuildExecutor) restoreStageOnePathsArtifactFromSnapshot(

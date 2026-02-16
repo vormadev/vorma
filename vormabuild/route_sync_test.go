@@ -215,6 +215,91 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves newer runtime state when overlapping route sync attempts race", func(t *testing.T) {
+		app.WithLock(func(l *vormaruntime.LockedVorma) {
+			l.SetIsDev(false)
+			l.SetBuildID("build-before-overlap")
+			l.SetRouteManifestFile("manifest-before-overlap.json")
+			l.SetPaths(map[string]*vormaruntime.Path{
+				"/before": {
+					OriginalPattern: "/before",
+					SrcPath:         "frontend/src/routes/before.tsx",
+					ExportKey:       "default",
+				},
+			})
+		})
+
+		firstPostSyncStarted := make(chan struct{})
+		allowFirstPostSyncFailure := make(chan struct{})
+		firstSyncErrCh := make(chan error, 1)
+		firstSyncExpectedErr := errors.New("first post-sync failed")
+
+		go func() {
+			firstSyncErrCh <- syncClientRoutesFromParsedPathsWithLock(
+				app,
+				map[string]*vormaruntime.Path{
+					"/first": {
+						OriginalPattern: "/first",
+						SrcPath:         "frontend/src/routes/first.tsx",
+						ExportKey:       "default",
+					},
+				},
+				"build-first-sync",
+				func(*vormaruntime.Vorma) error {
+					close(firstPostSyncStarted)
+					<-allowFirstPostSyncFailure
+					return firstSyncExpectedErr
+				},
+			)
+		}()
+
+		select {
+		case <-firstPostSyncStarted:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for first route sync post-sync hook to start")
+		}
+
+		if err := syncClientRoutesFromParsedPathsWithLock(
+			app,
+			map[string]*vormaruntime.Path{
+				"/second": {
+					OriginalPattern: "/second",
+					SrcPath:         "frontend/src/routes/second.tsx",
+					ExportKey:       "default",
+				},
+			},
+			"build-second-sync",
+			nil,
+		); err != nil {
+			t.Fatalf("second overlapping route sync returned error: %v", err)
+		}
+
+		close(allowFirstPostSyncFailure)
+
+		select {
+		case err := <-firstSyncErrCh:
+			if err == nil {
+				t.Fatal("expected first overlapping route sync to return post-sync error")
+			}
+			if !errors.Is(err, firstSyncExpectedErr) {
+				t.Fatalf("first overlapping route sync error = %v, expected wrapped post-sync error", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for first overlapping route sync to return")
+		}
+
+		if got := app.GetBuildID(); got != "build-second-sync" {
+			t.Fatalf("build ID after overlapping route syncs = %q, want %q", got, "build-second-sync")
+		}
+		paths := app.GetPathsSnapshot()
+		if paths["/second"] == nil {
+			t.Fatalf("expected second-sync path to remain after overlapping route syncs, got %#v", paths)
+		}
+		if paths["/first"] != nil {
+			t.Fatalf("did not expect first-sync path after overlapping route syncs, got %#v", paths["/first"])
+		}
+	})
+
 	t.Run("restores runtime state then re-panics when post-sync hook panics", func(t *testing.T) {
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
 			l.SetBuildID("build-before-panic-post-sync")

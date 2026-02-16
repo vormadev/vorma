@@ -1592,12 +1592,6 @@ func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionFiles(
 	return serverRouteDefinitionFiles, nil
 }
 
-func resolveServerRouteDefinitionPattern(routeDefinitionPattern string) ([]string, error) {
-	return defaultBackendRouteDiscoveryExecutor.resolveServerRouteDefinitionPattern(
-		routeDefinitionPattern,
-	)
-}
-
 func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionPattern(
 	routeDefinitionPattern string,
 ) ([]string, error) {
@@ -1653,17 +1647,6 @@ func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionPatter
 		matchedGoFiles = append(matchedGoFiles, matchedPath)
 	}
 	return matchedGoFiles, nil
-}
-
-func parseServerRouteDefinitionFile(
-	goFileSet *token.FileSet,
-	serverRouteDefinitionFile string,
-) (*ast.File, error) {
-	return parseServerRouteDefinitionFileWithDependencies(
-		goFileSet,
-		serverRouteDefinitionFile,
-		defaultBackendRouteDiscoveryExecutor.dependencies,
-	)
 }
 
 func parseServerRouteDefinitionFileWithDependencies(

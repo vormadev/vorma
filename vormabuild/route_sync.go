@@ -124,8 +124,8 @@ func shouldRollbackRouteSyncStateAfterPostSyncFailure(
 	currentBuildID string,
 	currentAttemptCommittedBuildID string,
 ) bool {
-	if currentAttemptCommittedBuildID == "" {
-		return true
-	}
-	return currentBuildID == currentAttemptCommittedBuildID
+	return shouldRestoreRuntimeStateSnapshotForAttemptBuildID(
+		currentBuildID,
+		currentAttemptCommittedBuildID,
+	)
 }

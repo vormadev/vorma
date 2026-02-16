@@ -144,3 +144,15 @@ func TestCommitRuntimeStateWithLock_PanicsForUnsupportedRoutePathUpdateMode(t *t
 		)
 	})
 }
+
+func TestShouldRestoreRuntimeStateSnapshotForAttemptBuildID(t *testing.T) {
+	if !shouldRestoreRuntimeStateSnapshotForAttemptBuildID("build-id", "") {
+		t.Fatal("expected runtime snapshot restore when no attempt build ID token is captured")
+	}
+	if !shouldRestoreRuntimeStateSnapshotForAttemptBuildID("build-id", "build-id") {
+		t.Fatal("expected runtime snapshot restore when current build ID matches attempt build ID token")
+	}
+	if shouldRestoreRuntimeStateSnapshotForAttemptBuildID("build-current", "build-attempt") {
+		t.Fatal("expected runtime snapshot restore to skip when build IDs differ")
+	}
+}

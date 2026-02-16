@@ -211,11 +211,6 @@ func newRestartWithoutRecompileAction() *wave.RefreshAction {
 	}
 }
 
-// callReloadEndpoint makes an HTTP POST request to the running app's reload endpoint.
-func callReloadEndpoint(v *vormaruntime.Vorma, options callReloadEndpointOptions) error {
-	return defaultReloadEndpointRequestExecutor.callReloadEndpoint(v, options)
-}
-
 func (executor reloadEndpointRequestExecutor) callReloadEndpoint(
 	v *vormaruntime.Vorma,
 	options callReloadEndpointOptions,

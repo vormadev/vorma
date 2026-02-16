@@ -184,21 +184,6 @@ func (cache *discoveredRouteRegistrarArtifactCache) set(
 	cache.evictEntriesOverCapacityLocked()
 }
 
-func (cache *discoveredRouteRegistrarArtifactCache) clear() {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
-
-	cache.accessSeq = 0
-	cache.entries = map[string]discoveredRouteRegistrarArtifactCacheEntry{}
-}
-
-func (cache *discoveredRouteRegistrarArtifactCache) snapshotStats() (int, int) {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
-
-	return len(cache.entries), cache.maxEntries
-}
-
 func (cache *discoveredRouteRegistrarArtifactCache) evictEntriesOverCapacityLocked() {
 	for cache.maxEntries > 0 && len(cache.entries) > cache.maxEntries {
 		leastRecentlyUsedCacheKey := ""
@@ -352,14 +337,6 @@ func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
 	)
 }
 
-func computeDiscoveredRouteRegistrarDiscoveryFingerprint(
-	serverRouteDefinitionFiles []string,
-) (string, error) {
-	return defaultBackendRouteRegistrarOverlayExecutor.computeDiscoveredRouteRegistrarDiscoveryFingerprint(
-		serverRouteDefinitionFiles,
-	)
-}
-
 func (executor backendRouteRegistrarOverlayExecutor) computeDiscoveredRouteRegistrarDiscoveryFingerprint(
 	serverRouteDefinitionFiles []string,
 ) (string, error) {
@@ -454,14 +431,6 @@ func (executor backendRouteRegistrarOverlayExecutor) computeDiscoveredRouteRegis
 	return hex.EncodeToString(discoveryFingerprintHasher.Sum(nil)), nil
 }
 
-func discoverRouteRegistrarSourceArtifacts(
-	serverRouteDefinitionFiles []string,
-) ([]discoveredRouteRegistrarSourceArtifact, error) {
-	return defaultBackendRouteRegistrarOverlayExecutor.discoverRouteRegistrarSourceArtifacts(
-		serverRouteDefinitionFiles,
-	)
-}
-
 func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourceArtifacts(
 	serverRouteDefinitionFiles []string,
 ) ([]discoveredRouteRegistrarSourceArtifact, error) {
@@ -512,14 +481,6 @@ func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourc
 		return discoveredRegistrarArtifacts[i].targetFilePath < discoveredRegistrarArtifacts[j].targetFilePath
 	})
 	return discoveredRegistrarArtifacts, nil
-}
-
-func writeDiscoveredRouteRegistrarOverlay(
-	discoveredRegistrarArtifacts []discoveredRouteRegistrarSourceArtifact,
-) (*discoveredRouteRegistrarOverlay, error) {
-	return defaultBackendRouteRegistrarOverlayExecutor.writeDiscoveredRouteRegistrarOverlay(
-		discoveredRegistrarArtifacts,
-	)
 }
 
 func (executor backendRouteRegistrarOverlayExecutor) writeDiscoveredRouteRegistrarOverlay(

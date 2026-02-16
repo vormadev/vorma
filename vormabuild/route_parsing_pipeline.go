@@ -281,13 +281,6 @@ func (executor routeParsingExecutor) parseRouteDefinitionFileIntoCalls(
 	return parsedRouteDefinitions, nil
 }
 
-func parseRouteDefinitionsCodeIntoCalls(
-	v *vormaruntime.Vorma,
-	code []byte,
-) (parsedRouteDefinitionsCode, error) {
-	return defaultRouteParsingExecutor.parseRouteDefinitionsCodeIntoCalls(v, code)
-}
-
 func (executor routeParsingExecutor) parseRouteDefinitionsCodeIntoCalls(
 	v *vormaruntime.Vorma,
 	code []byte,
@@ -469,14 +462,6 @@ func (executor routeParsingExecutor) mergeRouteCallsIntoPaths(
 		}
 	}
 	return nil
-}
-
-func resolveRouteModulePath(
-	v *vormaruntime.Vorma,
-	routeDefinitionFile string,
-	routeCall routeCall,
-) string {
-	return defaultRouteParsingExecutor.resolveRouteModulePath(v, routeDefinitionFile, routeCall)
 }
 
 func (executor routeParsingExecutor) resolveRouteModulePath(

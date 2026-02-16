@@ -72,3 +72,21 @@ func shouldRebuildNestedRouterFromCurrentRuntimeState(
 	return l.Vorma().LoadersRouter() != nil &&
 		l.Vorma().LoadersRouter().NestedRouter != nil
 }
+
+func currentBuildIDWithReadLock(v *vormaruntime.Vorma) string {
+	var currentBuildID string
+	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
+		currentBuildID = l.GetBuildID()
+	})
+	return currentBuildID
+}
+
+func shouldRestoreRuntimeStateSnapshotForAttemptBuildID(
+	currentBuildID string,
+	currentAttemptCommittedBuildID string,
+) bool {
+	if currentAttemptCommittedBuildID == "" {
+		return true
+	}
+	return currentBuildID == currentAttemptCommittedBuildID
+}

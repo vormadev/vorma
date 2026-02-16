@@ -9,9 +9,9 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/kit/mux"
 )
 
 func newRouteRegistryBuildExecutorForTest(
@@ -981,6 +981,57 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_RunsHeavyArtifactStepsOuts
 	}
 }
 
+func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_GeneratesManifestOutsideRuntimeWriteLock(t *testing.T) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	t.Chdir(fixture.rootDir)
+
+	app.WithLock(func(l *vormaruntime.LockedVorma) {
+		l.SetBuildID("manifest-planning-build-id")
+		l.SetPaths(map[string]*vormaruntime.Path{
+			"/": {
+				OriginalPattern: "/",
+				SrcPath:         "frontend/src/routes/home.tsx",
+				ExportKey:       "default",
+			},
+		})
+	})
+
+	defaultManifestGenerator := generateRouteManifestFromPaths
+	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
+		func(dependencies *routeRegistryBuildDependencies) {
+			dependencies.generateRouteManifestFromPaths = func(
+				paths map[string]*vormaruntime.Path,
+				nestedRouter *mux.NestedRouter,
+			) map[string]int {
+				assertRuntimeWriteLockCanBeAcquiredPromptly(
+					t,
+					app,
+					"generateRouteManifestFromPaths",
+				)
+				return defaultManifestGenerator(paths, nestedRouter)
+			}
+			dependencies.writeStageOnePathsJSONForRuntimeState = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+				string,
+			) error {
+				return nil
+			}
+			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
+				*vormaruntime.Vorma,
+				routeBuildRuntimeStateSnapshot,
+			) error {
+				return nil
+			}
+		},
+	)
+
+	if err := routeRegistryBuildExecutor.writeRouteArtifactsWithoutHoldingRuntimeLock(app); err != nil {
+		t.Fatalf("writeRouteArtifactsWithoutHoldingRuntimeLock returned error: %v", err)
+	}
+}
+
 func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_DoesNotCommitRouteManifestFileWhenGeneratedTypeScriptWriteFails(t *testing.T) {
 	expectedErr := errors.New("generated TS failed")
 	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
@@ -1267,26 +1318,5 @@ func TestShouldCommitRouteManifestFileForRuntimeState(t *testing.T) {
 	}
 	if shouldCommitRouteManifestFileForRuntimeState("build-id-current", "build-id-expected") {
 		t.Fatal("expected manifest commit to be rejected when build IDs differ")
-	}
-}
-
-func assertRuntimeWriteLockCanBeAcquiredPromptly(
-	t *testing.T,
-	v *vormaruntime.Vorma,
-	stepName string,
-) {
-	t.Helper()
-
-	lockAcquired := make(chan struct{})
-	go func() {
-		v.WithLock(func(*vormaruntime.LockedVorma) {})
-		close(lockAcquired)
-	}()
-
-	select {
-	case <-lockAcquired:
-		return
-	case <-time.After(time.Second):
-		t.Fatalf("%s appears to run while runtime write lock is held", stepName)
 	}
 }

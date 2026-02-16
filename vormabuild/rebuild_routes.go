@@ -20,11 +20,12 @@ type fastRouteRebuildDependencies struct {
 }
 
 type fastRouteRebuildArtifactDependencies struct {
-	cleanRouteManifestsOnly     func(*vormaruntime.Vorma) error
-	writeRouteArtifacts         func(*vormaruntime.Vorma) error
-	readRouteManifestArtifact   func(string) ([]byte, error)
-	writeRouteManifestArtifact  func(string, []byte, os.FileMode) error
-	removeRouteManifestArtifact func(string) error
+	cleanRouteManifestsOnly       func(*vormaruntime.Vorma) error
+	writeRouteArtifacts           func(*vormaruntime.Vorma) error
+	readRouteManifestArtifact     func(string) ([]byte, error)
+	writeRouteManifestArtifact    func(string, []byte, os.FileMode) error
+	removeRouteManifestArtifact   func(string) error
+	getCurrentBuildIDWithReadLock func(*vormaruntime.Vorma) string
 }
 
 type fastRouteRebuildExecutor struct {
@@ -74,11 +75,12 @@ func normalizeFastRouteRebuildDependencies(
 
 func defaultFastRouteRebuildArtifactDependencies() fastRouteRebuildArtifactDependencies {
 	return fastRouteRebuildArtifactDependencies{
-		cleanRouteManifestsOnly:     cleanRouteManifestsOnly,
-		writeRouteArtifacts:         writeRouteArtifactsWithoutHoldingRuntimeLock,
-		readRouteManifestArtifact:   os.ReadFile,
-		writeRouteManifestArtifact:  writeFileAtomically,
-		removeRouteManifestArtifact: os.Remove,
+		cleanRouteManifestsOnly:       cleanRouteManifestsOnly,
+		writeRouteArtifacts:           writeRouteArtifactsWithoutHoldingRuntimeLock,
+		readRouteManifestArtifact:     os.ReadFile,
+		writeRouteManifestArtifact:    writeFileAtomically,
+		removeRouteManifestArtifact:   os.Remove,
+		getCurrentBuildIDWithReadLock: currentBuildIDWithReadLock,
 	}
 }
 
@@ -100,6 +102,9 @@ func normalizeFastRouteRebuildArtifactDependencies(
 	}
 	if dependencies.removeRouteManifestArtifact == nil {
 		dependencies.removeRouteManifestArtifact = defaultDependencies.removeRouteManifestArtifact
+	}
+	if dependencies.getCurrentBuildIDWithReadLock == nil {
+		dependencies.getCurrentBuildIDWithReadLock = defaultDependencies.getCurrentBuildIDWithReadLock
 	}
 	return dependencies
 }
@@ -124,10 +129,6 @@ func newFastRouteRebuildExecutor(
 
 var defaultFastRouteRebuildIDExecutor = newFastRouteRebuildIDExecutor(
 	fastRouteRebuildBuildIDDependencies{},
-)
-
-var defaultFastRouteRebuildArtifactExecutor = newFastRouteRebuildArtifactExecutor(
-	fastRouteRebuildArtifactDependencies{},
 )
 
 var defaultFastRouteRebuildExecutor = newFastRouteRebuildExecutor(
@@ -284,12 +285,6 @@ func (executor fastRouteRebuildIDExecutor) newFastRebuildID() (string, error) {
 	)
 }
 
-func writeFastRebuildArtifactsAfterRouteSync(
-	v *vormaruntime.Vorma,
-) error {
-	return defaultFastRouteRebuildArtifactExecutor.writeFastRebuildArtifactsAfterRouteSync(v)
-}
-
 func writeFastRebuildArtifactsAfterRouteSyncWithDependencies(
 	v *vormaruntime.Vorma,
 	dependencies fastRouteRebuildArtifactDependencies,
@@ -300,6 +295,8 @@ func writeFastRebuildArtifactsAfterRouteSyncWithDependencies(
 func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterRouteSync(
 	v *vormaruntime.Vorma,
 ) error {
+	expectedBuildID := executor.dependencies.getCurrentBuildIDWithReadLock(v)
+
 	var previousRouteManifestFile string
 	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
 		previousRouteManifestFile = l.GetRouteManifestFile()
@@ -312,16 +309,42 @@ func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterR
 		return fmt.Errorf("snapshot current route manifest artifact: %w", err)
 	}
 
+	skipRollbackForSupersededBuildID := false
 	return runWithRollbackOnFailureAndPanic(
 		rollbackTransactionOptions{
 			run: func() error {
+				if !shouldRunFastRebuildArtifactWriteForBuildID(
+					executor.dependencies.getCurrentBuildIDWithReadLock(v),
+					expectedBuildID,
+				) {
+					skipRollbackForSupersededBuildID = true
+					return nil
+				}
+
 				if err := executor.dependencies.cleanRouteManifestsOnly(v); err != nil {
 					return fmt.Errorf("clean route manifests: %w", err)
+				}
+
+				if !shouldRunFastRebuildArtifactWriteForBuildID(
+					executor.dependencies.getCurrentBuildIDWithReadLock(v),
+					expectedBuildID,
+				) {
+					skipRollbackForSupersededBuildID = true
+					return nil
 				}
 
 				return executor.dependencies.writeRouteArtifacts(v)
 			},
 			rollbackOnFailure: func() error {
+				if skipRollbackForSupersededBuildID {
+					return nil
+				}
+				if !shouldRestoreFastRebuildManifestSnapshotForBuildID(
+					executor.dependencies.getCurrentBuildIDWithReadLock(v),
+					expectedBuildID,
+				) {
+					return nil
+				}
 				return executor.restoreFastRebuildRouteManifestArtifactSnapshot(
 					v,
 					previousRouteManifestFile,
@@ -338,17 +361,21 @@ func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterR
 	)
 }
 
-type fastRebuildRouteManifestArtifactSnapshot = buildArtifactFileSnapshot
-
-func captureFastRebuildRouteManifestArtifactSnapshot(
-	v *vormaruntime.Vorma,
-	manifestFile string,
-) (fastRebuildRouteManifestArtifactSnapshot, error) {
-	return defaultFastRouteRebuildArtifactExecutor.captureFastRebuildRouteManifestArtifactSnapshot(
-		v,
-		manifestFile,
-	)
+func shouldRunFastRebuildArtifactWriteForBuildID(
+	currentBuildID string,
+	expectedBuildID string,
+) bool {
+	return currentBuildID == expectedBuildID
 }
+
+func shouldRestoreFastRebuildManifestSnapshotForBuildID(
+	currentBuildID string,
+	expectedBuildID string,
+) bool {
+	return currentBuildID == expectedBuildID
+}
+
+type fastRebuildRouteManifestArtifactSnapshot = buildArtifactFileSnapshot
 
 func captureFastRebuildRouteManifestArtifactSnapshotWithDependencies(
 	v *vormaruntime.Vorma,
@@ -372,18 +399,6 @@ func (executor fastRouteRebuildArtifactExecutor) captureFastRebuildRouteManifest
 	return captureBuildArtifactFileSnapshot(
 		manifestFilePath,
 		executor.dependencies.readRouteManifestArtifact,
-	)
-}
-
-func restoreFastRebuildRouteManifestArtifactSnapshot(
-	v *vormaruntime.Vorma,
-	manifestFile string,
-	snapshot fastRebuildRouteManifestArtifactSnapshot,
-) error {
-	return defaultFastRouteRebuildArtifactExecutor.restoreFastRebuildRouteManifestArtifactSnapshot(
-		v,
-		manifestFile,
-		snapshot,
 	)
 }
 
