@@ -14,7 +14,23 @@ import {
 	isSameDocumentLocation,
 	normalizedHashFragmentFromHash,
 	normalizedHashFragmentFromHref,
+	resolvePublicHref,
 } from "../../platform/url.ts";
+import { VORMA_SYMBOL } from "../../app/context.ts";
+
+function setPublicHrefResolutionBase(props: {
+	viteDevURL: string;
+	publicPathPrefix: string;
+}): void {
+	const vormaGlobal = globalThis as typeof globalThis & {
+		[VORMA_SYMBOL]?: { viteDevURL?: string; publicPathPrefix?: string };
+	};
+	vormaGlobal[VORMA_SYMBOL] = {
+		...vormaGlobal[VORMA_SYMBOL],
+		viteDevURL: props.viteDevURL,
+		publicPathPrefix: props.publicPathPrefix,
+	};
+}
 
 describe("hash fragment helpers", () => {
 	it("normalizes and decodes hash fragments", () => {
@@ -201,5 +217,27 @@ describe("hash fragment helpers", () => {
 		expect(
 			isSameDocumentLocation({ targetHref: "/same-doc?mode=2#~" }),
 		).toBe(false);
+	});
+
+	it("preserves absolute module URLs when resolving public hrefs", () => {
+		setPublicHrefResolutionBase({
+			viteDevURL: "",
+			publicPathPrefix: "/public",
+		});
+
+		expect(resolvePublicHref("https://cdn.example.com/entry.js")).toBe(
+			"https://cdn.example.com/entry.js",
+		);
+	});
+
+	it("preserves protocol-relative module URLs when resolving public hrefs", () => {
+		setPublicHrefResolutionBase({
+			viteDevURL: "",
+			publicPathPrefix: "/public",
+		});
+
+		expect(resolvePublicHref("//cdn.example.com/entry.js")).toBe(
+			"//cdn.example.com/entry.js",
+		);
 	});
 });

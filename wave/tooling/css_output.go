@@ -121,5 +121,5 @@ func (p *cssProcessor) readNormalCSSHotReloadURL(
 		return "", readError
 	}
 
-	return p.cfg.PublicPathPrefix() + string(normalCSSRefBytes), nil
+	return resolvePublicURLFallback(string(normalCSSRefBytes), p.cfg.PublicPathPrefix()), nil
 }

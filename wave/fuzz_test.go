@@ -13,6 +13,8 @@ func FuzzFileMapLookup(f *testing.F) {
 	f.Add("/logo.txt", "/")
 	f.Add("nested/../logo.txt", "assets")
 	f.Add("missing.txt", "/assets/")
+	f.Add("/assets/logo.txt", "/assets/")
+	f.Add("0/logo.txt", "/0/")
 
 	fm := FileMap{
 		"logo.txt": {
@@ -27,19 +29,39 @@ func FuzzFileMapLookup(f *testing.F) {
 		}
 
 		normalizedOriginal := strings.TrimPrefix(path.Clean("/"+original), "/")
-		if normalizedOriginal == "logo.txt" {
-			if !found {
-				t.Fatalf("expected cleaned original %q to match mapped key", original)
+		normalizedPrefix := strings.Trim(path.Clean("/"+prefix), "/")
+		originalReferencesMappedKey := normalizedOriginal == "logo.txt"
+		if !originalReferencesMappedKey && normalizedPrefix != "" {
+			normalizedPrefixWithTrailingSlash := normalizedPrefix + "/"
+			if strings.HasPrefix(normalizedOriginal, normalizedPrefixWithTrailingSlash) {
+				deprefixedOriginal := strings.TrimPrefix(
+					normalizedOriginal,
+					normalizedPrefixWithTrailingSlash,
+				)
+				originalReferencesMappedKey = deprefixedOriginal == "logo.txt"
 			}
-			expected := matcher.EnsureLeadingSlash(path.Join(prefix, "vorma_out/logo.hash.txt"))
-			if url != expected {
-				t.Fatalf("unexpected mapped URL: got %q want %q", url, expected)
+		}
+
+		if originalReferencesMappedKey != found {
+			t.Fatalf(
+				"Lookup mismatch for original %q prefix %q: expected found=%v got %v",
+				original,
+				prefix,
+				originalReferencesMappedKey,
+				found,
+			)
+		}
+
+		if !found {
+			if strings.Contains(url, "vorma_out/logo.hash.txt") {
+				t.Fatalf("unmatched lookup must not resolve mapped dist path, got %q", url)
 			}
 			return
 		}
 
-		if found {
-			t.Fatalf("unexpected found=true for unmatched original %q", original)
+		expected := matcher.EnsureLeadingSlash(path.Join(prefix, "vorma_out/logo.hash.txt"))
+		if url != expected {
+			t.Fatalf("unexpected mapped URL: got %q want %q", url, expected)
 		}
 	})
 }

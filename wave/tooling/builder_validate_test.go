@@ -10,6 +10,7 @@ import (
 func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 	t.Run("allows non-run-on-change-only regardless of timing", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern:         "**/*.go",
 			RunOnChangeOnly: false,
 			OnChangeHooks: []wave.OnChangeHook{
 				{Cmd: "echo hello", Timing: wave.OnChangeStrategyPost},
@@ -22,6 +23,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("allows pre timing and default timing when run-on-change-only", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern:         "**/*.go",
 			RunOnChangeOnly: true,
 			OnChangeHooks: []wave.OnChangeHook{
 				{Cmd: "echo hello"},
@@ -35,6 +37,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("allows callback-only hooks with non-pre timing", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern:         "**/*.go",
 			RunOnChangeOnly: true,
 			OnChangeHooks: []wave.OnChangeHook{
 				{
@@ -50,6 +53,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("allows run-combined-dev-build-hook commands with pre timing when run-on-change-only", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern:         "**/*.go",
 			RunOnChangeOnly: true,
 			OnChangeHooks: []wave.OnChangeHook{
 				{RunCombinedDevBuildHookCommands: true},
@@ -63,6 +67,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("rejects non-pre command timing when run-on-change-only", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern:         "**/*.go",
 			RunOnChangeOnly: true,
 			OnChangeHooks: []wave.OnChangeHook{
 				{Cmd: "echo hello", Timing: wave.OnChangeStrategyConcurrent},
@@ -79,6 +84,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("rejects cmd and run-combined-dev-build-hook combination", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern:         "**/*.go",
 			RunOnChangeOnly: false,
 			OnChangeHooks: []wave.OnChangeHook{
 				{
@@ -98,6 +104,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("rejects negative per-hook command timeout", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern: "**/*.go",
 			OnChangeHooks: []wave.OnChangeHook{
 				{
 					Cmd:                        "echo hello",
@@ -117,6 +124,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("rejects simultaneous disable-stage-timeout and per-hook-timeout", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern: "**/*.go",
 			OnChangeHooks: []wave.OnChangeHook{
 				{
 					Cmd:                        "echo hello",
@@ -137,6 +145,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("rejects negative per-hook callback timeout", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern: "**/*.go",
 			OnChangeHooks: []wave.OnChangeHook{
 				{
 					CallbackTimeoutMilliseconds: -1,
@@ -155,6 +164,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 	t.Run("rejects simultaneous disable-stage-callback-timeout and per-hook-callback-timeout", func(t *testing.T) {
 		wf := &wave.WatchedFile{
+			Pattern: "**/*.go",
 			OnChangeHooks: []wave.OnChangeHook{
 				{
 					CallbackTimeoutMilliseconds: 100,
@@ -314,6 +324,92 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 			t.Fatal("expected validation error for negative post timeout")
 		}
 		if !strings.Contains(err.Error(), "PostCommandTimeoutMilliseconds") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+}
+
+func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
+	baseConfig := &wave.ParsedConfig{
+		Core: &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: wave.StaticAssetDirs{
+				Private: "static/private",
+				Public:  "static/public",
+			},
+		},
+		Watch: &wave.WatchConfig{},
+	}
+
+	t.Run("rejects invalid Watch.Include pattern", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			Include: []wave.WatchedFile{
+				{
+					Pattern: "[",
+				},
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "Watch.Include[0].Pattern") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects invalid Watch.Exclude.Dirs pattern", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{}
+		cfg.Watch.Exclude.Dirs = []string{"["}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "Watch.Exclude.Dirs[0]") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects invalid Watch.Exclude.Files pattern", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{}
+		cfg.Watch.Exclude.Files = []string{"["}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "Watch.Exclude.Files[0]") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("rejects invalid OnChangeHooks exclude pattern", func(t *testing.T) {
+		cfg := *baseConfig
+		cfg.Watch = &wave.WatchConfig{
+			Include: []wave.WatchedFile{
+				{
+					Pattern: "**/*.go",
+					OnChangeHooks: []wave.OnChangeHook{
+						{
+							Cmd:     "echo hello",
+							Exclude: []string{"["},
+						},
+					},
+				},
+			},
+		}
+
+		err := ValidateConfig(&cfg)
+		if err == nil {
+			t.Fatal("expected validation error, got nil")
+		}
+		if !strings.Contains(err.Error(), "Watch.Include[0].OnChangeHooks[0].Exclude[0]") {
 			t.Fatalf("unexpected error message: %v", err)
 		}
 	})

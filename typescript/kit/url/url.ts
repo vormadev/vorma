@@ -36,21 +36,53 @@ export function resolveAbsoluteHrefWithOptionalSearchAndHash(props: {
 	return url.href;
 }
 
-export function getAnchorDetailsFromEvent(event: MouseEvent) {
-	if (!event || !event.target || !(event.target as HTMLElement).closest) {
+type EventTargetWithElementNavigation = {
+	closest?: (selector: string) => Element | null;
+	parentElement?: Element | null;
+};
+
+function resolveClosestAnchorFromEventTarget(
+	eventTarget: EventTarget | null,
+): HTMLAnchorElement | null {
+	if (!eventTarget) {
 		return null;
 	}
 
-	const anchor = (event.target as HTMLElement).closest("a");
+	const targetWithElementNavigation =
+		eventTarget as EventTargetWithElementNavigation;
+	if (typeof targetWithElementNavigation.closest === "function") {
+		return (eventTarget as Element).closest(
+			"a",
+		) as HTMLAnchorElement | null;
+	}
+
+	const parentElement = targetWithElementNavigation.parentElement;
+	if (!parentElement) {
+		return null;
+	}
+
+	return parentElement.closest("a") as HTMLAnchorElement | null;
+}
+
+function isCurrentBrowsingContextAnchorTarget(target: string): boolean {
+	const normalizedTarget = target.trim().toLowerCase();
+	return normalizedTarget === "" || normalizedTarget === "_self";
+}
+
+export function getAnchorDetailsFromEvent(event: MouseEvent) {
+	if (!event) {
+		return null;
+	}
+
+	const anchor = resolveClosestAnchorFromEventTarget(event.target);
 
 	if (!anchor) {
 		return null;
 	}
 
 	const isEligibleForDefaultPrevention =
-		anchor.target !== "_blank" && // ignore new tabs
-		event.button !== 1 && // middle mouse button click
-		!anchor.href.startsWith("#") && // ignore hash links
+		isCurrentBrowsingContextAnchorTarget(anchor.target) &&
+		event.button === 0 &&
 		!anchor.hasAttribute("download") && // ignore downloads
 		!event.ctrlKey && // ignore ctrl+click
 		!event.shiftKey && // ignore shift+click
@@ -92,8 +124,8 @@ export function getHrefDetails(href: string): HrefDetails {
 	const isExternal = url.origin !== window.location.origin;
 	const isInternal = !isExternal;
 
-	// Filter out things like "#", "tel:", "mailto:", etc.
-	const isHTTP = url.protocol.startsWith("http");
+	// Filter out things like "#", "tel:", "mailto:", or custom schemes.
+	const isHTTP = url.protocol === "http:" || url.protocol === "https:";
 	if (!isHTTP) {
 		return { isHTTP: false };
 	}

@@ -24,6 +24,30 @@ func TestGetPublicURLBuildtime_ReturnsFallbackAndErrorWhenMapIsMissing(t *testin
 	}
 }
 
+func TestGetPublicURLBuildtime_PassthroughURLsBypassFileMapLookup(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	for _, passthroughURL := range passthroughPublicURLSamplesForBuildtimeTests() {
+		resolvedURL, resolveError := builder.GetPublicURLBuildtime(passthroughURL)
+		if resolveError != nil {
+			t.Fatalf(
+				"GetPublicURLBuildtime(%q) returned error for passthrough URL: %v",
+				passthroughURL,
+				resolveError,
+			)
+		}
+		if resolvedURL != passthroughURL {
+			t.Fatalf(
+				"GetPublicURLBuildtime(%q) = %q, want unchanged passthrough URL",
+				passthroughURL,
+				resolvedURL,
+			)
+		}
+	}
+}
+
 func TestGetPublicURLBuildtime_FallbackTraversalStaysUnderPublicPrefix(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.PublicPathPrefix = "/assets/"
@@ -36,6 +60,25 @@ func TestGetPublicURLBuildtime_FallbackTraversalStaysUnderPublicPrefix(t *testin
 	}
 	if url != "/assets/images/logo.png" {
 		t.Fatalf("expected traversal-safe fallback URL %q, got %q", "/assets/images/logo.png", url)
+	}
+}
+
+func TestGetPublicURLBuildtime_FallbackAlreadyPrefixedInputDoesNotDuplicatePrefix(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.PublicPathPrefix = "/assets/"
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	url, err := builder.GetPublicURLBuildtime("/assets/images/logo.png")
+	if err == nil {
+		t.Fatal("expected error when public file map does not exist")
+	}
+	if url != "/assets/images/logo.png" {
+		t.Fatalf(
+			"expected already-prefixed fallback URL %q, got %q",
+			"/assets/images/logo.png",
+			url,
+		)
 	}
 }
 
@@ -85,6 +128,35 @@ func TestMustGetPublicURLBuildtime_PanicsWhenMapIsMissing(t *testing.T) {
 	_ = builder.MustGetPublicURLBuildtime("images/logo.png")
 }
 
+func TestMustGetPublicURLBuildtime_PassthroughURLsBypassFileMapLookup(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	for _, passthroughURL := range passthroughPublicURLSamplesForBuildtimeTests() {
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf(
+						"MustGetPublicURLBuildtime(%q) panicked for passthrough URL: %v",
+						passthroughURL,
+						recovered,
+					)
+				}
+			}()
+
+			resolvedURL := builder.MustGetPublicURLBuildtime(passthroughURL)
+			if resolvedURL != passthroughURL {
+				t.Fatalf(
+					"MustGetPublicURLBuildtime(%q) = %q, want unchanged passthrough URL",
+					passthroughURL,
+					resolvedURL,
+				)
+			}
+		}()
+	}
+}
+
 func TestGetPublicURLBuildtimeCached_FallbackTraversalStaysUnderPublicPrefix(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.PublicPathPrefix = "/assets/"
@@ -94,6 +166,39 @@ func TestGetPublicURLBuildtimeCached_FallbackTraversalStaysUnderPublicPrefix(t *
 	url := builder.getPublicURLBuildtimeCached("../images/logo.png")
 	if url != "/assets/images/logo.png" {
 		t.Fatalf("expected traversal-safe cached fallback URL %q, got %q", "/assets/images/logo.png", url)
+	}
+}
+
+func TestGetPublicURLBuildtimeCached_FallbackAlreadyPrefixedInputDoesNotDuplicatePrefix(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.PublicPathPrefix = "/assets/"
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	url := builder.getPublicURLBuildtimeCached("/assets/images/logo.png")
+	if url != "/assets/images/logo.png" {
+		t.Fatalf(
+			"expected already-prefixed cached fallback URL %q, got %q",
+			"/assets/images/logo.png",
+			url,
+		)
+	}
+}
+
+func TestGetPublicURLBuildtimeCached_PassthroughURLsBypassFileMapLookup(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	for _, passthroughURL := range passthroughPublicURLSamplesForBuildtimeTests() {
+		resolvedURL := builder.getPublicURLBuildtimeCached(passthroughURL)
+		if resolvedURL != passthroughURL {
+			t.Fatalf(
+				"getPublicURLBuildtimeCached(%q) = %q, want unchanged passthrough URL",
+				passthroughURL,
+				resolvedURL,
+			)
+		}
 	}
 }
 
@@ -251,5 +356,19 @@ func TestAddPublicAssetKeys_ReturnsErrorWhenFileMapIsMissing(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "public file map keys") {
 		t.Fatalf("unexpected AddPublicAssetKeys error: %v", err)
+	}
+}
+
+func passthroughPublicURLSamplesForBuildtimeTests() []string {
+	return []string{
+		"data:image/svg+xml;base64,AAAA",
+		"DATA:image/svg+xml;base64,AAAA",
+		"https://cdn.example.com/logo.svg",
+		"http://cdn.example.com/logo.svg",
+		"wss://cdn.example.com/socket",
+		"ws://cdn.example.com/socket",
+		"blob:https://example.com/uuid",
+		"file:///tmp/logo.svg",
+		"//cdn.example.com/logo.svg",
 	}
 }

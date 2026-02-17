@@ -832,6 +832,28 @@ describe("client submit/redirect contracts", () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it("returns success with undefined data for null-body 200 submit responses without content type", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(null, {
+				status: 200,
+				headers: {
+					"X-Vorma-Build-Id": "1",
+				},
+			}),
+		);
+
+		const result = await api.submit(
+			"/api/empty-200-submit",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		await vi.runAllTimersAsync();
+
+		expect(result).toEqual({ success: true, data: undefined });
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it("returns text data for successful non-JSON submit responses", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(

@@ -2,7 +2,6 @@ import { h, type JSX } from "preact";
 import { memo } from "preact/compat";
 import type {
 	ExtractApp,
-	PermissivePatternBasedProps,
 	VormaAppBase,
 	VormaLoaderPattern,
 } from "vorma/client";
@@ -10,8 +9,13 @@ import {
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
 	makeFinalLinkProps,
-	resolveTypedLinkHref,
 } from "vorma/client/__internal";
+import {
+	buildTypedLinkDisplayName,
+	buildTypedLinkResolvedProps,
+	type TypedAdapterLinkDefaultProps,
+	type TypedAdapterLinkProps,
+} from "../../shared/src/typed_link_props.ts";
 
 export const VormaLink = memo(function VormaLink(
 	props: JSX.HTMLAttributes<HTMLAnchorElement> &
@@ -40,20 +44,19 @@ export const VormaLink = memo(function VormaLink(
 type TypedVormaLinkProps<
 	App extends VormaAppBase,
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
-> = Omit<JSX.HTMLAttributes<HTMLAnchorElement>, "href" | "pattern"> &
-	VormaLinkPropsBase<JSX.TargetedMouseEvent<HTMLAnchorElement>> &
-	PermissivePatternBasedProps<App, Pattern> & {
-		search?: string;
-		hash?: string;
-	};
+> = TypedAdapterLinkProps<
+	App,
+	Pattern,
+	JSX.HTMLAttributes<HTMLAnchorElement>,
+	JSX.TargetedMouseEvent<HTMLAnchorElement>
+>;
 
 export function makeTypedLink<C extends VormaAppConfig>(
 	vormaAppConfig: C,
-	defaultProps?: Partial<
-		Omit<
-			TypedVormaLinkProps<ExtractApp<C>>,
-			"pattern" | "params" | "splatValues"
-		>
+	defaultProps?: TypedAdapterLinkDefaultProps<
+		ExtractApp<C>,
+		JSX.HTMLAttributes<HTMLAnchorElement>,
+		JSX.TargetedMouseEvent<HTMLAnchorElement>
 	>,
 ) {
 	type App = ExtractApp<C>;
@@ -61,39 +64,24 @@ export function makeTypedLink<C extends VormaAppConfig>(
 	const TypedLink = memo(function TypedLink<
 		Pattern extends VormaLoaderPattern<App>,
 	>(props: TypedVormaLinkProps<App, Pattern>) {
-		const mergedProps = {
+		const mergedProps: TypedVormaLinkProps<App, Pattern> = {
 			...defaultProps,
 			...props,
-		} as TypedVormaLinkProps<App, Pattern>;
-		const {
-			pattern,
-			params,
-			splatValues,
-			search,
-			hash,
-			state,
-			...linkProps
-		} = mergedProps as any;
-
-		const href = resolveTypedLinkHref({
+		};
+		const resolvedProps = buildTypedLinkResolvedProps({
 			vormaAppConfig,
-			pattern,
-			...(params && { params }),
-			...(splatValues && { splatValues }),
-			search,
-			hash,
+			mergedProps,
 		});
 
-		const finalProps = {
-			...linkProps,
-			href,
-			state,
-		};
-
-		return h(VormaLink, finalProps);
+		return h(VormaLink, {
+			...resolvedProps.linkProps,
+			href: resolvedProps.href,
+			state: resolvedProps.state,
+		});
 	});
 
-	(TypedLink as any).displayName =
-		`TypedLink(${Object.keys(defaultProps || {}).join(", ")})`;
+	(TypedLink as any).displayName = buildTypedLinkDisplayName({
+		defaultProps: defaultProps as Record<string, unknown> | undefined,
+	});
 	return TypedLink;
 }

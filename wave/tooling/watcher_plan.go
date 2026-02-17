@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -8,30 +9,31 @@ import (
 )
 
 type watcherPlan struct {
-	ignoredFiles     []string
-	ignoredDirs      []string
-	defaultWatched   []wave.WatchedFile
+	ignoredFiles      []string
+	ignoredDirs       []string
+	defaultWatched    []wave.WatchedFile
 	configuredWatched []wave.WatchedFile
 }
 
-func (w *watcher) buildWatcherPlan() watcherPlan {
+func (w *watcher) buildWatcherPlan() (watcherPlan, error) {
 	watcherPlanForSetup := watcherPlan{
 		ignoredFiles: []string{
-			w.norm(w.cfg.Dist.Binary()),
+			w.normalizeLiteralPathForPattern(w.cfg.Dist.Binary()),
 		},
-		ignoredDirs:      make([]string, 0),
-		defaultWatched:   make([]wave.WatchedFile, 0),
+		ignoredDirs:       make([]string, 0),
+		defaultWatched:    make([]wave.WatchedFile, 0),
 		configuredWatched: make([]wave.WatchedFile, 0),
 	}
 
 	// Add dist static as absolute path.
+	normalizedDistStaticPathPattern := w.normalizeLiteralPathForPattern(w.cfg.Dist.Static())
 	watcherPlanForSetup.ignoredDirs = append(
 		watcherPlanForSetup.ignoredDirs,
-		w.norm(w.cfg.Dist.Static()),
+		normalizedDistStaticPathPattern,
 	)
 	watcherPlanForSetup.ignoredDirs = append(
 		watcherPlanForSetup.ignoredDirs,
-		w.norm(w.cfg.Dist.Static())+"/**",
+		normalizedDistStaticPathPattern+"/**",
 	)
 
 	// Only add static asset patterns if not in server-only mode.
@@ -39,14 +41,14 @@ func (w *watcher) buildWatcherPlan() watcherPlan {
 		publicStatic := filepath.Clean(w.cfg.Core.StaticAssetDirs.Public)
 		privateStatic := filepath.Clean(w.cfg.Core.StaticAssetDirs.Private)
 
-		nohashDir := w.norm(filepath.Join(publicStatic, wave.NohashDirname))
+		nohashDir := w.normalizeLiteralPathForPattern(filepath.Join(publicStatic, wave.NohashDirname))
 		watcherPlanForSetup.ignoredDirs = append(
 			watcherPlanForSetup.ignoredDirs,
 			nohashDir,
 			nohashDir+"/**",
 		)
 
-		prehashedDir := w.norm(filepath.Join(publicStatic, wave.PrehashedDirname))
+		prehashedDir := w.normalizeLiteralPathForPattern(filepath.Join(publicStatic, wave.PrehashedDirname))
 		watcherPlanForSetup.ignoredDirs = append(
 			watcherPlanForSetup.ignoredDirs,
 			prehashedDir,
@@ -55,83 +57,137 @@ func (w *watcher) buildWatcherPlan() watcherPlan {
 
 		// Public static files: Wave handles processing and writes filemap.ts directly.
 		// No explicit dev build hook command is needed - Vite HMR picks up the TS file change.
+		publicStaticPatternPrefix := w.normalizeLiteralPathForPattern(publicStatic)
 		watcherPlanForSetup.defaultWatched = append(
 			watcherPlanForSetup.defaultWatched,
 			wave.WatchedFile{
-				Pattern: w.norm(publicStatic) + "/**/*",
+				Pattern: publicStaticPatternPrefix + "/**/*",
 			},
 		)
 
 		// Private static files: Wave handles processing and triggers browser reload.
+		privateStaticPatternPrefix := w.normalizeLiteralPathForPattern(privateStatic)
 		watcherPlanForSetup.defaultWatched = append(
 			watcherPlanForSetup.defaultWatched,
 			wave.WatchedFile{
-				Pattern: w.norm(privateStatic) + "/**/*",
+				Pattern: privateStaticPatternPrefix + "/**/*",
 			},
 		)
 	}
 
 	// Add framework-injected watch patterns.
-	for _, watchedFile := range w.cfg.FrameworkWatchPatterns {
+	for frameworkWatchPatternIndex, watchedFile := range w.cfg.FrameworkWatchPatterns {
+		normalizedWatchedFile, normalizeWatchedFileError := w.normalizeWatchedFileForWatcherPlan(
+			normalizeWatchedFileForWatcherPlanArgs{
+				watchedFile: watchedFile,
+				fieldPath: fmt.Sprintf(
+					"FrameworkWatchPatterns[%d]",
+					frameworkWatchPatternIndex,
+				),
+			},
+		)
+		if normalizeWatchedFileError != nil {
+			return watcherPlan{}, normalizeWatchedFileError
+		}
 		watcherPlanForSetup.defaultWatched = append(
 			watcherPlanForSetup.defaultWatched,
-			w.normalizeWatchedFileForWatcherPlan(watchedFile),
+			normalizedWatchedFile,
 		)
 	}
 
 	// Add framework-injected ignored patterns.
-	for _, ignoredPattern := range w.cfg.FrameworkIgnoredPatterns {
+	for ignoredPatternIndex, ignoredPattern := range w.cfg.FrameworkIgnoredPatterns {
 		normalizedPattern := w.normalizePathOrPatternFromWatchRoot(ignoredPattern)
+		if validatePatternError := validateWatcherGlobPatternInputForRuntime(
+			fmt.Sprintf("FrameworkIgnoredPatterns[%d]", ignoredPatternIndex),
+			ignoredPattern,
+		); validatePatternError != nil {
+			return watcherPlan{}, validatePatternError
+		}
 
-		// Heuristic: if it ends in /** or looks like a dir, treat as ignored dir.
-		if strings.HasSuffix(ignoredPattern, "/**") {
-			watcherPlanForSetup.ignoredDirs = append(
-				watcherPlanForSetup.ignoredDirs,
-				normalizedPattern,
-			)
-		} else {
-			// It might be a file or a pattern.
+		// Framework ignored patterns apply to both file and directory checks.
+		watcherPlanForSetup.ignoredFiles = append(
+			watcherPlanForSetup.ignoredFiles,
+			normalizedPattern,
+		)
+		if !strings.HasSuffix(ignoredPattern, "/**") {
 			watcherPlanForSetup.ignoredFiles = append(
 				watcherPlanForSetup.ignoredFiles,
-				normalizedPattern,
+				normalizedPattern+"/**",
+			)
+		}
+		watcherPlanForSetup.ignoredDirs = append(
+			watcherPlanForSetup.ignoredDirs,
+			normalizedPattern,
+		)
+		if !strings.HasSuffix(ignoredPattern, "/**") {
+			watcherPlanForSetup.ignoredDirs = append(
+				watcherPlanForSetup.ignoredDirs,
+				normalizedPattern+"/**",
 			)
 		}
 	}
 
 	// For ** patterns, we need to anchor them to watch root.
+	normalizedWatchRootPathPattern := w.normalizeLiteralPathForPattern(w.cfg.WatchRoot())
 	watcherPlanForSetup.ignoredDirs = append(
 		watcherPlanForSetup.ignoredDirs,
-		w.absWatchRoot+"/"+globGit,
-		w.absWatchRoot+"/"+globNodeModules,
+		normalizedWatchRootPathPattern+"/"+globGit,
+		normalizedWatchRootPathPattern+"/"+globNodeModules,
 	)
 
 	if w.cfg.Watch != nil {
-		for _, watchedFile := range w.cfg.Watch.Include {
+		for watchedFileIndex, watchedFile := range w.cfg.Watch.Include {
+			normalizedWatchedFile, normalizeWatchedFileError := w.normalizeWatchedFileForWatcherPlan(
+				normalizeWatchedFileForWatcherPlanArgs{
+					watchedFile: watchedFile,
+					fieldPath: fmt.Sprintf(
+						"Watch.Include[%d]",
+						watchedFileIndex,
+					),
+				},
+			)
+			if normalizeWatchedFileError != nil {
+				return watcherPlan{}, normalizeWatchedFileError
+			}
 			watcherPlanForSetup.configuredWatched = append(
 				watcherPlanForSetup.configuredWatched,
-				w.normalizeWatchedFileForWatcherPlan(watchedFile),
+				normalizedWatchedFile,
 			)
 		}
 
-		for _, excludedDirectoryPattern := range w.cfg.Watch.Exclude.Dirs {
+		for excludedDirectoryPatternIndex, excludedDirectoryPattern := range w.cfg.Watch.Exclude.Dirs {
 			normalizedDirectoryPattern := w.normalizePathOrPatternFromWatchRoot(
 				excludedDirectoryPattern,
 			)
+			if validatePatternError := validateWatcherGlobPatternInputForRuntime(
+				fmt.Sprintf("Watch.Exclude.Dirs[%d]", excludedDirectoryPatternIndex),
+				excludedDirectoryPattern,
+			); validatePatternError != nil {
+				return watcherPlan{}, validatePatternError
+			}
 			watcherPlanForSetup.ignoredDirs = append(
 				watcherPlanForSetup.ignoredDirs,
 				normalizedDirectoryPattern,
 				normalizedDirectoryPattern+"/**",
 			)
 		}
-		for _, excludedFilePattern := range w.cfg.Watch.Exclude.Files {
+		for excludedFilePatternIndex, excludedFilePattern := range w.cfg.Watch.Exclude.Files {
+			normalizedExcludedFilePattern := w.normalizePathOrPatternFromWatchRoot(excludedFilePattern)
+			if validatePatternError := validateWatcherGlobPatternInputForRuntime(
+				fmt.Sprintf("Watch.Exclude.Files[%d]", excludedFilePatternIndex),
+				excludedFilePattern,
+			); validatePatternError != nil {
+				return watcherPlan{}, validatePatternError
+			}
 			watcherPlanForSetup.ignoredFiles = append(
 				watcherPlanForSetup.ignoredFiles,
-				w.normalizePathOrPatternFromWatchRoot(excludedFilePattern),
+				normalizedExcludedFilePattern,
 			)
 		}
 	}
 
-	return watcherPlanForSetup
+	return watcherPlanForSetup, nil
 }
 
 func (w *watcher) applyWatcherPlan(
@@ -143,37 +199,77 @@ func (w *watcher) applyWatcherPlan(
 	w.configuredWatched = watcherPlanForSetup.configuredWatched
 }
 
+type normalizeWatchedFileForWatcherPlanArgs struct {
+	watchedFile wave.WatchedFile
+	fieldPath   string
+}
+
 func (w *watcher) normalizeWatchedFileForWatcherPlan(
-	watchedFile wave.WatchedFile,
-) wave.WatchedFile {
+	args normalizeWatchedFileForWatcherPlanArgs,
+) (wave.WatchedFile, error) {
+	watchedFile := args.watchedFile
 	normalizedWatchedFile := watchedFile
 	normalizedWatchedFile.Pattern = w.normalizePathOrPatternFromWatchRoot(
 		watchedFile.Pattern,
 	)
-	normalizedWatchedFile.OnChangeHooks = cloneOnChangeHooksForWatcherPlan(
-		watchedFile.OnChangeHooks,
-		w.normalizePathOrPatternFromWatchRoot,
+	if validatePatternError := validateWatcherGlobPatternInputForRuntime(
+		args.fieldPath+".Pattern",
+		watchedFile.Pattern,
+	); validatePatternError != nil {
+		return wave.WatchedFile{}, validatePatternError
+	}
+
+	normalizedOnChangeHooks, normalizeOnChangeHookExcludesError := cloneOnChangeHooksForWatcherPlan(
+		cloneOnChangeHooksForWatcherPlanArgs{
+			onChangeHooks:                    watchedFile.OnChangeHooks,
+			normalizePathOrPatternForExclude: w.normalizePathOrPatternFromWatchRoot,
+			fieldPath:                        args.fieldPath + ".OnChangeHooks",
+		},
 	)
+	if normalizeOnChangeHookExcludesError != nil {
+		return wave.WatchedFile{}, normalizeOnChangeHookExcludesError
+	}
+	normalizedWatchedFile.OnChangeHooks = normalizedOnChangeHooks
 	normalizedWatchedFile.SortedHooks = deriveSortedHooksForWatcherPlan(
 		normalizedWatchedFile.OnChangeHooks,
 	)
-	return normalizedWatchedFile
+
+	return normalizedWatchedFile, nil
+}
+
+type cloneOnChangeHooksForWatcherPlanArgs struct {
+	onChangeHooks                    []wave.OnChangeHook
+	normalizePathOrPatternForExclude func(string) string
+	fieldPath                        string
 }
 
 func cloneOnChangeHooksForWatcherPlan(
-	onChangeHooks []wave.OnChangeHook,
-	normalizePathOrPatternForExclude func(string) string,
-) []wave.OnChangeHook {
+	args cloneOnChangeHooksForWatcherPlanArgs,
+) ([]wave.OnChangeHook, error) {
+	onChangeHooks := args.onChangeHooks
+	normalizePathOrPatternForExclude := args.normalizePathOrPatternForExclude
+
 	if len(onChangeHooks) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	clonedOnChangeHooks := make([]wave.OnChangeHook, 0, len(onChangeHooks))
-	for _, onChangeHook := range onChangeHooks {
+	for hookIndex, onChangeHook := range onChangeHooks {
 		clonedOnChangeHook := onChangeHook
 		clonedOnChangeHook.Exclude = append([]string(nil), onChangeHook.Exclude...)
 		if normalizePathOrPatternForExclude != nil {
 			for excludeIndex, excludePattern := range clonedOnChangeHook.Exclude {
+				if validatePatternError := validateWatcherGlobPatternInputForRuntime(
+					fmt.Sprintf(
+						"%s[%d].Exclude[%d]",
+						args.fieldPath,
+						hookIndex,
+						excludeIndex,
+					),
+					excludePattern,
+				); validatePatternError != nil {
+					return nil, validatePatternError
+				}
 				clonedOnChangeHook.Exclude[excludeIndex] = normalizePathOrPatternForExclude(
 					excludePattern,
 				)
@@ -182,7 +278,7 @@ func cloneOnChangeHooksForWatcherPlan(
 		clonedOnChangeHooks = append(clonedOnChangeHooks, clonedOnChangeHook)
 	}
 
-	return clonedOnChangeHooks
+	return clonedOnChangeHooks, nil
 }
 
 func deriveSortedHooksForWatcherPlan(
@@ -193,7 +289,9 @@ func deriveSortedHooksForWatcherPlan(
 	}
 
 	watchedFileForSorting := wave.WatchedFile{
-		OnChangeHooks: cloneOnChangeHooksForWatcherPlan(onChangeHooks, nil),
+		OnChangeHooks: cloneOnChangeHooksForSortingWithoutNormalization(
+			onChangeHooks,
+		),
 	}
 	watchedFileForSorting.Sort()
 	return cloneSortedHooksForWatcherPlan(watchedFileForSorting.SortedHooks)
@@ -207,16 +305,31 @@ func cloneSortedHooksForWatcherPlan(
 	}
 
 	return &wave.SortedHooks{
-		Pre: cloneOnChangeHooksForWatcherPlan(sortedHooks.Pre, nil),
-		Concurrent: cloneOnChangeHooksForWatcherPlan(
+		Pre: cloneOnChangeHooksForSortingWithoutNormalization(sortedHooks.Pre),
+		Concurrent: cloneOnChangeHooksForSortingWithoutNormalization(
 			sortedHooks.Concurrent,
-			nil,
 		),
-		ConcurrentNoWait: cloneOnChangeHooksForWatcherPlan(
+		ConcurrentNoWait: cloneOnChangeHooksForSortingWithoutNormalization(
 			sortedHooks.ConcurrentNoWait,
-			nil,
 		),
-		Post: cloneOnChangeHooksForWatcherPlan(sortedHooks.Post, nil),
+		Post: cloneOnChangeHooksForSortingWithoutNormalization(sortedHooks.Post),
 	}
 }
 
+func cloneOnChangeHooksForSortingWithoutNormalization(
+	onChangeHooks []wave.OnChangeHook,
+) []wave.OnChangeHook {
+	clonedOnChangeHooks, _ := cloneOnChangeHooksForWatcherPlan(
+		cloneOnChangeHooksForWatcherPlanArgs{
+			onChangeHooks: onChangeHooks,
+		},
+	)
+	return clonedOnChangeHooks
+}
+
+func validateWatcherGlobPatternInputForRuntime(
+	fieldPath string,
+	pattern string,
+) error {
+	return validateNamedGlobPatternInput("watcher setup", fieldPath, pattern)
+}

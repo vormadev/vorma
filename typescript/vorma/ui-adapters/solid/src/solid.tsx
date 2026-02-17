@@ -170,7 +170,12 @@ function syncNavigationSignals(): void {
 
 function syncLocationSignal(): void {
 	const nextLocationState = buildCurrentRouteOutletLocationState();
-	if (!areRouteOutletLocationsEqual(location(), nextLocationState)) {
+	if (
+		!areRouteOutletLocationsEqual({
+			firstLocationState: location(),
+			secondLocationState: nextLocationState,
+		})
+	) {
 		setLocation(nextLocationState);
 	}
 }

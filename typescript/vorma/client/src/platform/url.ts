@@ -122,7 +122,15 @@ export function isSameDocumentLocation(props: {
 	);
 }
 
+function isAbsoluteOrProtocolRelativeHref(href: string): boolean {
+	return href.startsWith("//") || /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(href);
+}
+
 export function resolvePublicHref(relativeHref: string): string {
+	if (isAbsoluteOrProtocolRelativeHref(relativeHref)) {
+		return relativeHref;
+	}
+
 	let baseURL = __vormaClientGlobal.get("viteDevURL");
 	if (!baseURL) {
 		baseURL = __vormaClientGlobal.get("publicPathPrefix");

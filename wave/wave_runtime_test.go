@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -155,6 +156,17 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 	w.SetPortResolver(NewPortResolver())
 	if got := w.MustGetPort(); got != 4501 {
 		t.Fatalf("expected Wave instance resolver reset to pick updated port 4501, got %d", got)
+	}
+}
+
+func TestGetConfigFileReturnsParsedConfigLocation(t *testing.T) {
+	fixture := newWaveTestFixture(t)
+	expectedConfigLocation := filepath.Join(fixture.root, "configs", "wave.config.json")
+	fixture.cfg.Core.ConfigLocation = expectedConfigLocation
+
+	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+	if got := w.GetConfigFile(); got != expectedConfigLocation {
+		t.Fatalf("GetConfigFile() = %q, want %q", got, expectedConfigLocation)
 	}
 }
 
@@ -307,6 +319,18 @@ func TestPublicFileMapAndURLResolution(t *testing.T) {
 	if got := w.GetPublicURL("missing.txt"); got != "/assets/missing.txt" {
 		t.Fatalf("unexpected fallback public URL: %q", got)
 	}
+	if got := w.GetPublicURL("/assets/logo.txt"); got != "/assets/vorma_out/logo.hash.txt" {
+		t.Fatalf("unexpected already-prefixed mapped public URL: %q", got)
+	}
+	if got := w.GetPublicURL("/assets/missing.txt"); got != "/assets/missing.txt" {
+		t.Fatalf("unexpected already-prefixed fallback public URL: %q", got)
+	}
+	if mappedOnce, mappedTwice := w.GetPublicURL("logo.txt"), w.GetPublicURL(w.GetPublicURL("logo.txt")); mappedTwice != mappedOnce {
+		t.Fatalf("expected mapped public URL resolution to be idempotent, got once=%q twice=%q", mappedOnce, mappedTwice)
+	}
+	if fallbackOnce, fallbackTwice := w.GetPublicURL("missing.txt"), w.GetPublicURL(w.GetPublicURL("missing.txt")); fallbackTwice != fallbackOnce {
+		t.Fatalf("expected fallback public URL resolution to be idempotent, got once=%q twice=%q", fallbackOnce, fallbackTwice)
+	}
 	dataURL := "data:image/svg+xml;base64,AAAA"
 	if got := w.GetPublicURL(dataURL); got != dataURL {
 		t.Fatalf("expected data URL passthrough, got %q", got)
@@ -366,6 +390,21 @@ func TestPublicFileMapElementsAndHash(t *testing.T) {
 	}
 	if !strings.Contains(elements, `const browserRuntimeNamespace = "__wave";`) {
 		t.Fatalf("expected default browser runtime namespace in filemap script, got %q", elements)
+	}
+	if !strings.Contains(elements, `const normalizedPublicPathPrefixForLookup = "assets";`) {
+		t.Fatalf("expected normalized public path prefix in filemap script, got %q", elements)
+	}
+	if !strings.Contains(elements, `function trimConfiguredPublicPathPrefixFromLookupPath`) {
+		t.Fatalf("expected deprefix helper in filemap script, got %q", elements)
+	}
+	if !strings.Contains(elements, `lowerOriginalPublicURL.startsWith("https://")`) {
+		t.Fatalf("expected passthrough URL guard in filemap script, got %q", elements)
+	}
+	if !strings.Contains(elements, `originalPublicURL.startsWith("//")`) {
+		t.Fatalf("expected protocol-relative passthrough guard in filemap script, got %q", elements)
+	}
+	if !strings.Contains(elements, `return originalPublicURL;`) {
+		t.Fatalf("expected passthrough URL short-circuit in filemap script, got %q", elements)
 	}
 	if !strings.Contains(elements, `window[browserRuntimeNamespace][publicURLResolverFunctionName] = getPublicURL;`) {
 		t.Fatalf("expected public URL resolver registration in filemap elements, got %q", elements)

@@ -56,6 +56,71 @@ describe("client link click contracts", () => {
 		expect(preventDefault).not.toHaveBeenCalled();
 	});
 
+	it("does not prevent default for non-primary button clicks", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const { event } = createClickEvent("/internal", {
+			button: 2,
+			cancelable: true,
+		});
+		const preventDefault = vi.spyOn(event, "preventDefault");
+
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("does not prevent default for internal links targeting non-self browsing contexts", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const { event, anchor } = createClickEvent("/internal", {
+			cancelable: true,
+		});
+		anchor.target = "_BLANK";
+		const preventDefault = vi.spyOn(event, "preventDefault");
+
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("handles text-node click targets inside internal anchors", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const anchor = document.createElement("a");
+		anchor.href = "/text-node-target";
+		const textNode = document.createTextNode("go");
+		anchor.appendChild(textNode);
+		document.body.appendChild(anchor);
+
+		const event = new MouseEvent("click", {
+			bubbles: true,
+			cancelable: true,
+		});
+		Object.defineProperty(event, "target", { value: textNode });
+		const preventDefault = vi.spyOn(event, "preventDefault");
+
+		const onClick = api.__makeLinkOnClickFn({});
+		await onClick(event);
+		await vi.runAllTimersAsync();
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not save scroll state for modifier-key same-document hash clicks", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/current-page");

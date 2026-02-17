@@ -153,6 +153,26 @@ describe("getAnchorDetailsFromEvent", () => {
 		});
 	});
 
+	it("should resolve anchor details when the event target is a text node", () => {
+		const anchor = dom.window.document.createElement("a");
+		anchor.href = "https://example.com/text-target";
+		const textNode = dom.window.document.createTextNode("Open");
+		anchor.appendChild(textNode);
+		dom.window.document.body.appendChild(anchor);
+
+		const clickEvent = new dom.window.MouseEvent("click", {
+			bubbles: true,
+		});
+		Object.defineProperty(clickEvent, "target", { value: textNode });
+
+		const result = getAnchorDetailsFromEvent(clickEvent);
+		expect(result).toEqual({
+			anchor,
+			isEligibleForDefaultPrevention: true,
+			isInternal: true,
+		});
+	});
+
 	it("should correctly identify external links", () => {
 		const anchor = dom.window.document.createElement("a");
 		anchor.href = "https://external.com";
@@ -183,6 +203,63 @@ describe("getAnchorDetailsFromEvent", () => {
 		anchor.dispatchEvent(middleClickEvent);
 
 		const result = getAnchorDetailsFromEvent(middleClickEvent);
+		expect(result).toEqual({
+			anchor,
+			isEligibleForDefaultPrevention: false,
+			isInternal: true,
+		});
+	});
+
+	it("should mark as not eligible for default prevention on non-primary button clicks", () => {
+		const anchor = dom.window.document.createElement("a");
+		anchor.href = "https://example.com";
+		dom.window.document.body.appendChild(anchor);
+
+		const rightClickEvent = new dom.window.MouseEvent("click", {
+			bubbles: true,
+			button: 2,
+		});
+		anchor.dispatchEvent(rightClickEvent);
+
+		const result = getAnchorDetailsFromEvent(rightClickEvent);
+		expect(result).toEqual({
+			anchor,
+			isEligibleForDefaultPrevention: false,
+			isInternal: true,
+		});
+	});
+
+	it("should mark as not eligible for default prevention on non-self target", () => {
+		const anchor = dom.window.document.createElement("a");
+		anchor.href = "https://example.com";
+		anchor.target = "_top";
+		dom.window.document.body.appendChild(anchor);
+
+		const clickEvent = new dom.window.MouseEvent("click", {
+			bubbles: true,
+		});
+		anchor.dispatchEvent(clickEvent);
+
+		const result = getAnchorDetailsFromEvent(clickEvent);
+		expect(result).toEqual({
+			anchor,
+			isEligibleForDefaultPrevention: false,
+			isInternal: true,
+		});
+	});
+
+	it("should mark as not eligible for default prevention on case-variant _blank target", () => {
+		const anchor = dom.window.document.createElement("a");
+		anchor.href = "https://example.com";
+		anchor.target = "_BLANK";
+		dom.window.document.body.appendChild(anchor);
+
+		const clickEvent = new dom.window.MouseEvent("click", {
+			bubbles: true,
+		});
+		anchor.dispatchEvent(clickEvent);
+
+		const result = getAnchorDetailsFromEvent(clickEvent);
 		expect(result).toEqual({
 			anchor,
 			isEligibleForDefaultPrevention: false,
@@ -290,6 +367,11 @@ describe("getHrefDetails", () => {
 
 	it("should return isHTTP: false for non-HTTP protocols", () => {
 		const result = getHrefDetails("mailto:user@example.com");
+		expect(result).toEqual({ isHTTP: false });
+	});
+
+	it("should return isHTTP: false for custom protocols that start with 'http'", () => {
+		const result = getHrefDetails("httpx://example.com/path");
 		expect(result).toEqual({ isHTTP: false });
 	});
 

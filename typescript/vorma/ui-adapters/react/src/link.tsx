@@ -1,16 +1,20 @@
 import { memo, type ComponentProps, type JSX } from "react";
 import type {
 	ExtractApp,
-	PermissivePatternBasedProps,
 	VormaAppBase,
 	VormaLoaderPattern,
 } from "vorma/client";
 import {
 	makeFinalLinkProps,
-	resolveTypedLinkHref,
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
 } from "vorma/client/__internal";
+import {
+	buildTypedLinkDisplayName,
+	buildTypedLinkResolvedProps,
+	type TypedAdapterLinkDefaultProps,
+	type TypedAdapterLinkProps,
+} from "../../shared/src/typed_link_props.ts";
 
 export const VormaLink = memo(function VormaLink(
 	props: ComponentProps<"a"> &
@@ -39,20 +43,19 @@ export const VormaLink = memo(function VormaLink(
 type TypedVormaLinkProps<
 	App extends VormaAppBase,
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
-> = Omit<ComponentProps<"a">, "href" | "pattern"> &
-	VormaLinkPropsBase<React.MouseEvent<HTMLAnchorElement, MouseEvent>> &
-	PermissivePatternBasedProps<App, Pattern> & {
-		search?: string;
-		hash?: string;
-	};
+> = TypedAdapterLinkProps<
+	App,
+	Pattern,
+	ComponentProps<"a">,
+	React.MouseEvent<HTMLAnchorElement, MouseEvent>
+>;
 
 export function makeTypedLink<C extends VormaAppConfig>(
 	vormaAppConfig: C,
-	defaultProps?: Partial<
-		Omit<
-			TypedVormaLinkProps<ExtractApp<C>>,
-			"pattern" | "params" | "splatValues"
-		>
+	defaultProps?: TypedAdapterLinkDefaultProps<
+		ExtractApp<C>,
+		ComponentProps<"a">,
+		React.MouseEvent<HTMLAnchorElement, MouseEvent>
 	>,
 ) {
 	type App = ExtractApp<C>;
@@ -60,36 +63,22 @@ export function makeTypedLink<C extends VormaAppConfig>(
 	const TypedLink = <Pattern extends VormaLoaderPattern<App>>(
 		props: TypedVormaLinkProps<App, Pattern>,
 	) => {
-		const mergedProps = {
+		const mergedProps: TypedVormaLinkProps<App, Pattern> = {
 			...defaultProps,
 			...props,
-		} as TypedVormaLinkProps<App, Pattern>;
-		const {
-			pattern,
-			params,
-			splatValues,
-			search,
-			hash,
-			state,
-			...linkProps
-		} = mergedProps as any;
-
-		const href = resolveTypedLinkHref({
+		};
+		const resolvedProps = buildTypedLinkResolvedProps({
 			vormaAppConfig,
-			pattern,
-			...(params && { params }),
-			...(splatValues && { splatValues }),
-			search,
-			hash,
+			mergedProps,
 		});
 
-		const finalProps = {
-			...linkProps,
-			href,
-			state,
-		};
-
-		return <VormaLink {...finalProps} />;
+		return (
+			<VormaLink
+				{...resolvedProps.linkProps}
+				href={resolvedProps.href}
+				state={resolvedProps.state}
+			/>
+		);
 	};
 
 	const MemoizedTypedLink = memo(TypedLink) as <
@@ -98,8 +87,9 @@ export function makeTypedLink<C extends VormaAppConfig>(
 		props: TypedVormaLinkProps<App, Pattern>,
 	) => JSX.Element;
 
-	(MemoizedTypedLink as any).displayName =
-		`TypedLink(${Object.keys(defaultProps || {}).join(", ")})`;
+	(MemoizedTypedLink as any).displayName = buildTypedLinkDisplayName({
+		defaultProps: defaultProps as Record<string, unknown> | undefined,
+	});
 
 	return MemoizedTypedLink;
 }

@@ -70,7 +70,9 @@ func (p *cssProcessor) build(buildNature cssBuildNature, isDev bool) error {
 	if writeError != nil {
 		return writeError
 	}
-	p.setCachedNormalCSSHotReloadURL(p.cfg.PublicPathPrefix() + normalCSSOutputFileName)
+	p.setCachedNormalCSSHotReloadURL(
+		resolvePublicURLFallback(normalCSSOutputFileName, p.cfg.PublicPathPrefix()),
+	)
 	return nil
 }
 

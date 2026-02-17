@@ -69,10 +69,10 @@ function syncNavigationSignals(): void {
 	const nextRouteOutletBranchInputStateRaw =
 		buildRouteOutletBranchInputState(nextNavigationState);
 	const nextRouteOutletBranchInputState =
-		areRouteOutletBranchInputsEqualByIdentity(
-			previousRouteOutletBranchInputState,
-			nextRouteOutletBranchInputStateRaw,
-		)
+		areRouteOutletBranchInputsEqualByIdentity({
+			firstInputState: previousRouteOutletBranchInputState,
+			secondInputState: nextRouteOutletBranchInputStateRaw,
+		})
 			? previousRouteOutletBranchInputState
 			: nextRouteOutletBranchInputStateRaw;
 
@@ -148,7 +148,12 @@ function syncNavigationSignals(): void {
 
 function syncLocationSignal(): void {
 	const nextLocationState = buildCurrentRouteOutletLocationState();
-	if (!areRouteOutletLocationsEqual(locationState.value, nextLocationState)) {
+	if (
+		!areRouteOutletLocationsEqual({
+			firstLocationState: locationState.value,
+			secondLocationState: nextLocationState,
+		})
+	) {
 		locationState.value = nextLocationState;
 	}
 }

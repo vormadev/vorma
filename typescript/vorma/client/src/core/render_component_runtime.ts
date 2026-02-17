@@ -11,18 +11,36 @@ export function getEffectiveErrorData(): {
 } {
 	const serverErrorIdx = __vormaClientGlobal.get("outermostServerErrorIdx");
 	const clientErrorIdx = __vormaClientGlobal.get("outermostClientErrorIdx");
+	const serverError = __vormaClientGlobal.get("outermostServerError");
+	const clientError = __vormaClientGlobal.get("outermostClientError");
 	let errorIdx: number | undefined;
 	if (serverErrorIdx != null && clientErrorIdx != null) {
 		errorIdx = Math.min(serverErrorIdx, clientErrorIdx);
 	} else {
 		errorIdx = serverErrorIdx ?? clientErrorIdx;
 	}
+
+	if (errorIdx == null) {
+		return {
+			index: undefined,
+			error: undefined,
+		};
+	}
+
+	let error: string | undefined;
+	if (serverErrorIdx != null && clientErrorIdx != null) {
+		if (serverErrorIdx === clientErrorIdx) {
+			error = serverError ?? clientError;
+		} else {
+			error = errorIdx === serverErrorIdx ? serverError : clientError;
+		}
+	} else {
+		error = errorIdx === serverErrorIdx ? serverError : clientError;
+	}
+
 	return {
 		index: errorIdx,
-		error:
-			errorIdx === serverErrorIdx
-				? __vormaClientGlobal.get("outermostServerError")
-				: __vormaClientGlobal.get("outermostClientError"),
+		error,
 	};
 }
 

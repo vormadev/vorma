@@ -50,11 +50,67 @@ func (refreshAction RefreshAction) IsZero() bool {
 }
 
 func (fileMap FileMap) Lookup(original string, prefix string) (url string, found bool) {
-	normalizedOriginal := strings.TrimPrefix(path.Clean("/"+original), "/")
+	normalizedOriginal := normalizePublicAssetPathForLookup(original)
 	if entry, ok := fileMap[normalizedOriginal]; ok {
-		return matcher.EnsureLeadingSlash(path.Join(prefix, entry.DistName)), true
+		return joinPublicURLPrefixAndPath(prefix, entry.DistName), true
 	}
-	return matcher.EnsureLeadingSlash(path.Join(prefix, normalizedOriginal)), false
+
+	deprefixedOriginal := trimConfiguredPublicPathPrefixFromLookupPath(
+		normalizedOriginal,
+		prefix,
+	)
+	if deprefixedOriginal != normalizedOriginal {
+		if entry, ok := fileMap[deprefixedOriginal]; ok {
+			return joinPublicURLPrefixAndPath(prefix, entry.DistName), true
+		}
+		normalizedOriginal = deprefixedOriginal
+	}
+
+	return joinPublicURLPrefixAndPath(prefix, normalizedOriginal), false
+}
+
+func normalizePublicAssetPathForLookup(original string) string {
+	return strings.TrimPrefix(path.Clean("/"+original), "/")
+}
+
+func trimConfiguredPublicPathPrefixFromLookupPath(
+	normalizedLookupPath string,
+	publicPathPrefix string,
+) string {
+	normalizedPublicPathPrefix := normalizeConfiguredPublicPathPrefixForLookup(
+		publicPathPrefix,
+	)
+	if normalizedPublicPathPrefix == "" {
+		return normalizedLookupPath
+	}
+
+	if normalizedLookupPath == normalizedPublicPathPrefix {
+		return ""
+	}
+
+	normalizedPublicPathPrefixWithTrailingSlash := normalizedPublicPathPrefix + "/"
+	if strings.HasPrefix(
+		normalizedLookupPath,
+		normalizedPublicPathPrefixWithTrailingSlash,
+	) {
+		return strings.TrimPrefix(
+			normalizedLookupPath,
+			normalizedPublicPathPrefixWithTrailingSlash,
+		)
+	}
+
+	return normalizedLookupPath
+}
+
+func normalizeConfiguredPublicPathPrefixForLookup(publicPathPrefix string) string {
+	return strings.Trim(path.Clean("/"+publicPathPrefix), "/")
+}
+
+func joinPublicURLPrefixAndPath(
+	publicPathPrefix string,
+	publicPath string,
+) string {
+	return matcher.EnsureLeadingSlash(path.Join(publicPathPrefix, publicPath))
 }
 
 func (parsedConfig *ParsedConfig) PublicPathPrefix() string {

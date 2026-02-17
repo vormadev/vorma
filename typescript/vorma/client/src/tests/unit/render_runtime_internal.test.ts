@@ -122,6 +122,34 @@ describe("render runtime internals", () => {
 		expect(__vormaClientGlobal.get("outermostError")).toBe("client-error");
 	});
 
+	it("ignores stale error text when no error index is set", () => {
+		installVormaGlobal({
+			outermostServerErrorIdx: undefined,
+			outermostClientErrorIdx: undefined,
+			outermostServerError: "stale-server-error",
+			outermostClientError: "stale-client-error",
+		});
+
+		deriveAndSetErrorState();
+
+		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBeUndefined();
+		expect(__vormaClientGlobal.get("outermostError")).toBeUndefined();
+	});
+
+	it("uses available error text when indices tie", () => {
+		installVormaGlobal({
+			outermostServerErrorIdx: 1,
+			outermostServerError: undefined,
+			outermostClientErrorIdx: 1,
+			outermostClientError: "client-error",
+		});
+
+		deriveAndSetErrorState();
+
+		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBe(1);
+		expect(__vormaClientGlobal.get("outermostError")).toBe("client-error");
+	});
+
 	it("clears derived error state when no server/client error exists", () => {
 		installVormaGlobal({
 			outermostServerErrorIdx: undefined,

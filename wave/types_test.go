@@ -99,6 +99,138 @@ func TestFileMapLookupMappedAndFallback(t *testing.T) {
 	}
 }
 
+func TestResolvePublicURLFromReferencedPath(t *testing.T) {
+	testCases := []struct {
+		name                string
+		publicPathPrefix    string
+		referencedPath      string
+		expectedResolvedURL string
+	}{
+		{
+			name:                "joins normalized referenced path under prefix",
+			publicPathPrefix:    "/assets/",
+			referencedPath:      "vorma_out/styles.hash.css",
+			expectedResolvedURL: "/assets/vorma_out/styles.hash.css",
+		},
+		{
+			name:                "trims and normalizes traversal path under prefix",
+			publicPathPrefix:    "/assets/",
+			referencedPath:      " ../outside.css \n",
+			expectedResolvedURL: "/assets/outside.css",
+		},
+		{
+			name:                "root prefix remains rooted",
+			publicPathPrefix:    "/",
+			referencedPath:      "/styles/site.css",
+			expectedResolvedURL: "/styles/site.css",
+		},
+		{
+			name:                "empty path resolves to empty URL",
+			publicPathPrefix:    "/assets/",
+			referencedPath:      "",
+			expectedResolvedURL: "",
+		},
+		{
+			name:                "whitespace-only path resolves to empty URL",
+			publicPathPrefix:    "/assets/",
+			referencedPath:      " \n\t ",
+			expectedResolvedURL: "",
+		},
+		{
+			name:                "slash-only path resolves to empty URL",
+			publicPathPrefix:    "/assets/",
+			referencedPath:      "/",
+			expectedResolvedURL: "",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			resolvedURL := ResolvePublicURLFromReferencedPath(
+				testCase.publicPathPrefix,
+				testCase.referencedPath,
+			)
+			if resolvedURL != testCase.expectedResolvedURL {
+				t.Fatalf(
+					"ResolvePublicURLFromReferencedPath(%q, %q) = %q, want %q",
+					testCase.publicPathPrefix,
+					testCase.referencedPath,
+					resolvedURL,
+					testCase.expectedResolvedURL,
+				)
+			}
+		})
+	}
+}
+
+func TestIsPassthroughPublicURL(t *testing.T) {
+	testCases := []struct {
+		name                   string
+		originalURL            string
+		expectPassthroughMatch bool
+	}{
+		{
+			name:                   "data URL",
+			originalURL:            "data:image/svg+xml;base64,AAAA",
+			expectPassthroughMatch: true,
+		},
+		{
+			name:                   "uppercase data URL",
+			originalURL:            "DATA:image/svg+xml;base64,AAAA",
+			expectPassthroughMatch: true,
+		},
+		{
+			name:                   "https URL",
+			originalURL:            "https://cdn.example.com/logo.svg",
+			expectPassthroughMatch: true,
+		},
+		{
+			name:                   "wss URL",
+			originalURL:            "wss://cdn.example.com/socket",
+			expectPassthroughMatch: true,
+		},
+		{
+			name:                   "blob URL",
+			originalURL:            "blob:https://example.com/uuid",
+			expectPassthroughMatch: true,
+		},
+		{
+			name:                   "file URL",
+			originalURL:            "file:///tmp/logo.svg",
+			expectPassthroughMatch: true,
+		},
+		{
+			name:                   "protocol relative URL",
+			originalURL:            "//cdn.example.com/logo.svg",
+			expectPassthroughMatch: true,
+		},
+		{
+			name:                   "relative asset path",
+			originalURL:            "images/logo.png",
+			expectPassthroughMatch: false,
+		},
+		{
+			name:                   "absolute asset path",
+			originalURL:            "/assets/logo.png",
+			expectPassthroughMatch: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			actualPassthroughMatch := IsPassthroughPublicURL(testCase.originalURL)
+			if actualPassthroughMatch != testCase.expectPassthroughMatch {
+				t.Fatalf(
+					"IsPassthroughPublicURL(%q) = %v, want %v",
+					testCase.originalURL,
+					actualPassthroughMatch,
+					testCase.expectPassthroughMatch,
+				)
+			}
+		})
+	}
+}
+
 func TestFileMapLookupPreventsPrefixEscapeFromTraversalInput(t *testing.T) {
 	fm := FileMap{
 		"nested/logo.txt": {
@@ -120,6 +252,38 @@ func TestFileMapLookupPreventsPrefixEscapeFromTraversalInput(t *testing.T) {
 	}
 	if mappedURL != "/assets/vorma_out/nested.logo.hash.txt" {
 		t.Fatalf("unexpected mapped URL for normalized traversal input: %q", mappedURL)
+	}
+}
+
+func TestFileMapLookupWithAlreadyPrefixedInputDoesNotDuplicatePrefix(t *testing.T) {
+	fm := FileMap{
+		"logo.txt": {
+			DistName: "vorma_out/logo.hash.txt",
+		},
+	}
+
+	mappedURL, mappedFound := fm.Lookup("/assets/logo.txt", "/assets/")
+	if !mappedFound {
+		t.Fatal("expected already-prefixed mapped input to be found")
+	}
+	if mappedURL != "/assets/vorma_out/logo.hash.txt" {
+		t.Fatalf("unexpected mapped URL for already-prefixed input: %q", mappedURL)
+	}
+
+	fallbackURL, fallbackFound := fm.Lookup("/assets/missing.txt", "/assets/")
+	if fallbackFound {
+		t.Fatal("expected missing already-prefixed input to return fallback")
+	}
+	if fallbackURL != "/assets/missing.txt" {
+		t.Fatalf("unexpected fallback URL for already-prefixed input: %q", fallbackURL)
+	}
+
+	idempotentURL, idempotentFound := fm.Lookup("/assets/vorma_out/logo.hash.txt", "/assets/")
+	if idempotentFound {
+		t.Fatal("expected already-resolved hashed URL to remain a fallback lookup")
+	}
+	if idempotentURL != "/assets/vorma_out/logo.hash.txt" {
+		t.Fatalf("expected already-resolved URL to remain unchanged, got %q", idempotentURL)
 	}
 }
 

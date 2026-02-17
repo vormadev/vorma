@@ -79,10 +79,10 @@ function syncNavigationState(): void {
 		const nextRouteOutletBranchInputStateRaw =
 			buildRouteOutletBranchInputState(nextNavigationState);
 		const nextRouteOutletBranchInputState =
-			areRouteOutletBranchInputsEqualByIdentity(
-				previousStoreState.routeOutletBranchInputState,
-				nextRouteOutletBranchInputStateRaw,
-			)
+			areRouteOutletBranchInputsEqualByIdentity({
+				firstInputState: previousStoreState.routeOutletBranchInputState,
+				secondInputState: nextRouteOutletBranchInputStateRaw,
+			})
 				? previousStoreState.routeOutletBranchInputState
 				: nextRouteOutletBranchInputStateRaw;
 		return {
@@ -97,10 +97,10 @@ function syncLocationState(): void {
 	store.setState((previousStoreState) => {
 		const nextLocationState = buildCurrentRouteOutletLocationState();
 		if (
-			areRouteOutletLocationsEqual(
-				previousStoreState.location,
-				nextLocationState,
-			)
+			areRouteOutletLocationsEqual({
+				firstLocationState: previousStoreState.location,
+				secondLocationState: nextLocationState,
+			})
 		) {
 			return previousStoreState;
 		}

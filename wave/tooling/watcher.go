@@ -3,6 +3,7 @@ package tooling
 import (
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
@@ -74,7 +75,10 @@ func newWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*watcher, error) {
 		matchCache:       lru.NewCache[string, bool](matchCacheMaxSize),
 	}
 
-	w.setupPatterns()
+	if err := w.setupPatterns(); err != nil {
+		_ = fsWatch.Close()
+		return nil, err
+	}
 	return w, nil
 }
 
@@ -83,12 +87,46 @@ func (w *watcher) norm(p string) string {
 	return pathnorm.AbsoluteSlash(p)
 }
 
+func (w *watcher) normalizeLiteralPathForPattern(path string) string {
+	return escapePatternMetaCharactersForDoublestarPattern(w.norm(path))
+}
+
 func (w *watcher) normalizePathOrPatternFromWatchRoot(pathOrPattern string) string {
 	if filepath.IsAbs(pathOrPattern) {
 		return w.norm(pathOrPattern)
 	}
 
-	return w.norm(filepath.Join(w.cfg.WatchRoot(), pathOrPattern))
+	normalizedJoinedPathOrPattern := w.norm(filepath.Join(w.cfg.WatchRoot(), pathOrPattern))
+	normalizedWatchRoot := w.norm(w.cfg.WatchRoot())
+	normalizedWatchRootPrefix := normalizedWatchRoot + "/"
+	escapedWatchRoot := w.normalizeLiteralPathForPattern(w.cfg.WatchRoot())
+
+	if normalizedJoinedPathOrPattern == normalizedWatchRoot {
+		return escapedWatchRoot
+	}
+	if strings.HasPrefix(normalizedJoinedPathOrPattern, normalizedWatchRootPrefix) {
+		return escapedWatchRoot + "/" + strings.TrimPrefix(
+			normalizedJoinedPathOrPattern,
+			normalizedWatchRootPrefix,
+		)
+	}
+
+	return normalizedJoinedPathOrPattern
+}
+
+func escapePatternMetaCharactersForDoublestarPattern(path string) string {
+	var escapedPathBuilder strings.Builder
+	escapedPathBuilder.Grow(len(path))
+
+	for _, character := range path {
+		switch character {
+		case '\\', '*', '?', '[', ']', '{', '}':
+			escapedPathBuilder.WriteByte('\\')
+		}
+		escapedPathBuilder.WriteRune(character)
+	}
+
+	return escapedPathBuilder.String()
 }
 
 func (w *watcher) Events() <-chan fsnotify.Event {

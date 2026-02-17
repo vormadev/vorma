@@ -12,7 +12,10 @@ import {
 import { __vormaClientGlobal, type getRouterData } from "../app/context.ts";
 import type { RouteErrorComponent } from "../app/context.ts";
 import { __getPrefetchHandlers, __makeLinkOnClickFn } from "../core/links.ts";
-import { resolveAbsoluteHrefWithOptionalSearchAndHash } from "vorma/kit/url";
+import {
+	getHrefDetails,
+	resolveAbsoluteHrefWithOptionalSearchAndHash,
+} from "vorma/kit/url";
 
 export const defaultErrorBoundary: RouteErrorComponent = (props: {
 	error: string;
@@ -102,6 +105,7 @@ export function makeFinalLinkProps<LinkEvent>(
 	keys: HandlerKeys = standardCamelHandlerKeys,
 ) {
 	const prefetchObj = linkPropsToPrefetchObj(props);
+	const hrefDetails = props.href ? getHrefDetails(props.href) : null;
 	const propsBag = props as Record<string, unknown>;
 
 	function callOriginalHandlerIfPresent(
@@ -115,7 +119,8 @@ export function makeFinalLinkProps<LinkEvent>(
 	}
 
 	return {
-		dataExternal: prefetchObj?.isExternal || undefined,
+		dataExternal:
+			hrefDetails?.isHTTP && hrefDetails.isExternal ? true : undefined,
 		onPointerEnter: (event: LinkEvent) => {
 			prefetchObj?.start(event as Event);
 			callOriginalHandlerIfPresent(keys.onPointerEnter, event);

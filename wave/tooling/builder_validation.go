@@ -66,6 +66,23 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 			return err
 		}
 
+		for excludedDirectoryPatternIndex, excludedDirectoryPattern := range cfg.Watch.Exclude.Dirs {
+			if err := validateWatchGlobPattern(
+				fmt.Sprintf("Watch.Exclude.Dirs[%d]", excludedDirectoryPatternIndex),
+				excludedDirectoryPattern,
+			); err != nil {
+				return err
+			}
+		}
+		for excludedFilePatternIndex, excludedFilePattern := range cfg.Watch.Exclude.Files {
+			if err := validateWatchGlobPattern(
+				fmt.Sprintf("Watch.Exclude.Files[%d]", excludedFilePatternIndex),
+				excludedFilePattern,
+			); err != nil {
+				return err
+			}
+		}
+
 		for i, watchedFile := range cfg.Watch.Include {
 			if err := validateWatchedFile(&watchedFile, i); err != nil {
 				return err
@@ -167,7 +184,28 @@ func validateNonNegativeTimeoutFields(
 }
 
 func validateWatchedFile(wf *wave.WatchedFile, index int) error {
+	if err := validateWatchGlobPattern(
+		fmt.Sprintf("Watch.Include[%d].Pattern", index),
+		wf.Pattern,
+	); err != nil {
+		return err
+	}
+
 	for hookIndex, hook := range wf.OnChangeHooks {
+		for excludedPatternIndex, excludedPattern := range hook.Exclude {
+			if err := validateWatchGlobPattern(
+				fmt.Sprintf(
+					"Watch.Include[%d].OnChangeHooks[%d].Exclude[%d]",
+					index,
+					hookIndex,
+					excludedPatternIndex,
+				),
+				excludedPattern,
+			); err != nil {
+				return err
+			}
+		}
+
 		if hook.CommandTimeoutMilliseconds < 0 {
 			return fmt.Errorf(
 				"config: Watch.Include[%d].OnChangeHooks[%d].CommandTimeoutMilliseconds must be >= 0",
@@ -258,4 +296,11 @@ func validateHealthcheckEndpoint(healthcheckEndpoint string) error {
 	}
 
 	return nil
+}
+
+func validateWatchGlobPattern(
+	fieldPath string,
+	globPattern string,
+) error {
+	return validateNamedGlobPatternInput("config", fieldPath, globPattern)
 }

@@ -167,10 +167,11 @@ export function buildCurrentRouteOutletLocationState(): RouteOutletLocationState
 	return getLocation();
 }
 
-export function areRouteOutletLocationsEqual(
-	firstLocationState: RouteOutletLocationState,
-	secondLocationState: RouteOutletLocationState,
-): boolean {
+export function areRouteOutletLocationsEqual(props: {
+	firstLocationState: RouteOutletLocationState;
+	secondLocationState: RouteOutletLocationState;
+}): boolean {
+	const { firstLocationState, secondLocationState } = props;
 	return (
 		Object.is(firstLocationState.pathname, secondLocationState.pathname) &&
 		Object.is(firstLocationState.search, secondLocationState.search) &&
@@ -186,7 +187,7 @@ export function buildRouteOutletRouteKey(props: {
 }): string {
 	const importURL = props.importURLs?.[props.idx] || "";
 	const exportKey = props.exportKeys?.[props.idx] || "";
-	return `${importURL}|${exportKey}`;
+	return JSON.stringify([props.idx, importURL, exportKey]);
 }
 
 export function buildRouteOutletBranchInputState(
@@ -202,10 +203,11 @@ export function buildRouteOutletBranchInputState(
 	};
 }
 
-export function areRouteOutletBranchInputsEqualByIdentity(
-	firstInputState: RouteOutletBranchInputState,
-	secondInputState: RouteOutletBranchInputState,
-): boolean {
+export function areRouteOutletBranchInputsEqualByIdentity(props: {
+	firstInputState: RouteOutletBranchInputState;
+	secondInputState: RouteOutletBranchInputState;
+}): boolean {
+	const { firstInputState, secondInputState } = props;
 	return (
 		firstInputState.loaderCount === secondInputState.loaderCount &&
 		Object.is(

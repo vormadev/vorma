@@ -50,6 +50,10 @@ func (b *Builder) ReadNormalCSSURLForHotReload(requireFreshBuildOutput bool) (st
 // getPublicURLBuildtimeCached resolves a public URL using cached file map (for CSS builds).
 // Panics if the file map cannot be loaded (this is build-time, not runtime).
 func (b *Builder) getPublicURLBuildtimeCached(original string) string {
+	if wave.IsPassthroughPublicURL(original) {
+		return original
+	}
+
 	b.css.cachedFileMapMu.Lock()
 	defer b.css.cachedFileMapMu.Unlock()
 

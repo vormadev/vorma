@@ -60,6 +60,26 @@ func TestAbsoluteDirectory(t *testing.T) {
 	}
 }
 
+func TestAbsoluteSlash(t *testing.T) {
+	t.Run("empty and whitespace-only paths normalize to empty", func(t *testing.T) {
+		if got := AbsoluteSlash(""); got != "" {
+			t.Fatalf("AbsoluteSlash(\"\") = %q, want empty", got)
+		}
+		if got := AbsoluteSlash("   "); got != "" {
+			t.Fatalf("AbsoluteSlash(whitespace) = %q, want empty", got)
+		}
+	})
+
+	t.Run("absolute path is normalized with forward slashes", func(t *testing.T) {
+		root := t.TempDir()
+		rawPath := "  " + filepath.Join(root, "backend", ".", "wave.config.json") + "  "
+		wantPath := filepath.ToSlash(filepath.Join(root, "backend", "wave.config.json"))
+		if got := AbsoluteSlash(rawPath); got != wantPath {
+			t.Fatalf("AbsoluteSlash(%q) = %q, want %q", rawPath, got, wantPath)
+		}
+	})
+}
+
 func TestPathsReferToSameLocation(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "backend", "wave.config.json")

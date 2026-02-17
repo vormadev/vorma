@@ -629,6 +629,92 @@ func TestReadNormalCSSURLForHotReload_RequiresFreshOutputAfterFailedRebuild(t *t
 	}
 }
 
+func TestReadNormalCSSURLForHotReload_NormalizesRefFilePath(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.PublicPathPrefix = "/assets/"
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	if err := SetupDistDir(cfg); err != nil {
+		t.Fatalf("SetupDistDir returned error: %v", err)
+	}
+	if err := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte(" ../outside.css \n"), 0o644); err != nil {
+		t.Fatalf("failed writing normal css ref file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	normalCSSURL, readError := builder.ReadNormalCSSURLForHotReload(false)
+	if readError != nil {
+		t.Fatalf("ReadNormalCSSURLForHotReload returned error: %v", readError)
+	}
+	if normalCSSURL != "/assets/outside.css" {
+		t.Fatalf("expected normalized normal css URL %q, got %q", "/assets/outside.css", normalCSSURL)
+	}
+
+	normalCSSURLViaWrapper, wrapperReadError := builder.ReadNormalCSSURL()
+	if wrapperReadError != nil {
+		t.Fatalf("ReadNormalCSSURL returned error: %v", wrapperReadError)
+	}
+	if normalCSSURLViaWrapper != normalCSSURL {
+		t.Fatalf(
+			"expected ReadNormalCSSURL wrapper result %q, got %q",
+			normalCSSURL,
+			normalCSSURLViaWrapper,
+		)
+	}
+}
+
+func TestReadNormalCSSURLForHotReload_WhitespaceOnlyRefReturnsEmptyURL(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.PublicPathPrefix = "/assets/"
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	if err := SetupDistDir(cfg); err != nil {
+		t.Fatalf("SetupDistDir returned error: %v", err)
+	}
+	if err := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte(" \n\t "), 0o644); err != nil {
+		t.Fatalf("failed writing whitespace-only normal css ref file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	normalCSSURL, readError := builder.ReadNormalCSSURLForHotReload(false)
+	if readError != nil {
+		t.Fatalf("ReadNormalCSSURLForHotReload returned error: %v", readError)
+	}
+	if normalCSSURL != "" {
+		t.Fatalf("expected empty normal css URL for whitespace-only ref file, got %q", normalCSSURL)
+	}
+}
+
+func TestReadCriticalCSS_ReadsFromDist(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
+
+	if err := SetupDistDir(cfg); err != nil {
+		t.Fatalf("SetupDistDir returned error: %v", err)
+	}
+	if err := os.WriteFile(cfg.Dist.CriticalCSS(), []byte("body { color: navy; }"), 0o644); err != nil {
+		t.Fatalf("failed writing critical css file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	criticalCSS, readError := builder.ReadCriticalCSS()
+	if readError != nil {
+		t.Fatalf("ReadCriticalCSS returned error: %v", readError)
+	}
+	if criticalCSS != "body { color: navy; }" {
+		t.Fatalf("unexpected critical css output %q", criticalCSS)
+	}
+}
+
 func TestCSSHotReloadCaches_DoNotLeakAcrossBuilderReplacement(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)

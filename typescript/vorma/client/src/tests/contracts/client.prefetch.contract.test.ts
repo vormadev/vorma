@@ -62,6 +62,28 @@ describe("client prefetch contracts", () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
+	it("does not client-navigate prefetch clicks for non-self target anchors", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/targeted-prefetch-click",
+			delayMs: 0,
+		});
+		const { anchor, event } = buildAnchorClick("/targeted-prefetch-click");
+		anchor.target = "_top";
+		const preventDefault = vi.spyOn(event, "preventDefault");
+
+		await handlers?.onClick(event);
+		await vi.runAllTimersAsync();
+
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+		document.body.removeChild(anchor);
+	});
+
 	it("retries prefetch after a current-page no-op when location changes", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/current-page");

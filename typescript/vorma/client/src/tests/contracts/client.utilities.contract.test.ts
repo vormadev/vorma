@@ -348,6 +348,24 @@ describe("client utility contracts", () => {
 		expect(onPress).toHaveBeenCalledWith(event);
 	});
 
+	it("marks external hrefs with dataExternal in __makeFinalLinkProps", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const finalProps = api.__makeFinalLinkProps({
+			href: "https://example.com/external",
+		} as any);
+
+		const event = createAnchorClickEvent("https://example.com/external");
+		const preventDefault = vi.spyOn(event, "preventDefault");
+		await finalProps.onClick(event);
+
+		expect(finalProps.dataExternal).toBe(true);
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
 	it("prevents default for same-document no-op clicks through __makeFinalLinkProps", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/current-page");

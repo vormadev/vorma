@@ -1,7 +1,6 @@
 import { createMemo, mergeProps, splitProps, type JSX } from "solid-js";
 import type {
 	ExtractApp,
-	PermissivePatternBasedProps,
 	VormaAppBase,
 	VormaLoaderPattern,
 } from "vorma/client";
@@ -9,8 +8,13 @@ import {
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
 	makeFinalLinkProps,
-	resolveTypedLinkHref,
 } from "vorma/client/__internal";
+import {
+	buildTypedLinkDisplayName,
+	buildTypedLinkHrefForRouteResolution,
+	type TypedAdapterLinkDefaultProps,
+	type TypedAdapterLinkProps,
+} from "../../shared/src/typed_link_props.ts";
 
 type VormaLinkEvent = Event;
 
@@ -47,20 +51,27 @@ export function VormaLink(
 type TypedVormaLinkProps<
 	App extends VormaAppBase,
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
-> = Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "href" | "pattern"> &
-	VormaLinkPropsBase<VormaLinkEvent> &
-	PermissivePatternBasedProps<App, Pattern> & {
-		search?: string;
-		hash?: string;
-	};
+> = TypedAdapterLinkProps<
+	App,
+	Pattern,
+	JSX.AnchorHTMLAttributes<HTMLAnchorElement>,
+	VormaLinkEvent
+>;
+
+type SplittableTypedVormaLinkProps<
+	App extends VormaAppBase,
+	Pattern extends VormaLoaderPattern<App>,
+> = TypedVormaLinkProps<App, Pattern> & {
+	params?: Record<string, string>;
+	splatValues?: string[];
+};
 
 export function makeTypedLink<C extends VormaAppConfig>(
 	vormaAppConfig: C,
-	defaultProps?: Partial<
-		Omit<
-			TypedVormaLinkProps<ExtractApp<C>>,
-			"pattern" | "params" | "splatValues"
-		>
+	defaultProps?: TypedAdapterLinkDefaultProps<
+		ExtractApp<C>,
+		JSX.AnchorHTMLAttributes<HTMLAnchorElement>,
+		VormaLinkEvent
 	>,
 ) {
 	type App = ExtractApp<C>;
@@ -68,32 +79,33 @@ export function makeTypedLink<C extends VormaAppConfig>(
 	const TypedLink = <Pattern extends VormaLoaderPattern<App>>(
 		props: TypedVormaLinkProps<App, Pattern>,
 	) => {
-		const merged = mergeProps(defaultProps || {}, props);
+		const mergedProps = mergeProps(defaultProps || {}, props);
 
-		const [local, linkProps] = splitProps(merged as any, [
-			"pattern",
-			"params",
-			"splatValues",
-			"search",
-			"hash",
-			"state",
-		]);
+		const [local, linkProps] = splitProps(
+			mergedProps as SplittableTypedVormaLinkProps<App, Pattern>,
+			[
+				"pattern",
+				"params",
+				"splatValues",
+				"search",
+				"hash",
+				"state",
+			] as const,
+		);
 
 		const href = createMemo(() => {
-			return resolveTypedLinkHref({
+			return buildTypedLinkHrefForRouteResolution({
 				vormaAppConfig,
-				pattern: local.pattern,
-				...(local.params && { params: local.params }),
-				...(local.splatValues && {
-					splatValues: local.splatValues,
-				}),
-				search: local.search,
-				hash: local.hash,
+				routeResolutionInput: local,
 			});
 		});
 
 		return <VormaLink {...linkProps} href={href()} state={local.state} />;
 	};
+
+	(TypedLink as any).displayName = buildTypedLinkDisplayName({
+		defaultProps: defaultProps as Record<string, unknown> | undefined,
+	});
 
 	return TypedLink;
 }

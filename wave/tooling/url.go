@@ -2,11 +2,8 @@ package tooling
 
 import (
 	"fmt"
-	"path"
 	"sort"
-	"strings"
 
-	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
@@ -15,6 +12,10 @@ import (
 // This function reads the file map from disk on each call and panics on error.
 // For hot paths (like CSS URL resolution), use getPublicURLBuildtimeCached instead.
 func (b *Builder) MustGetPublicURLBuildtime(original string) string {
+	if wave.IsPassthroughPublicURL(original) {
+		return original
+	}
+
 	fm, err := b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 	if err != nil {
 		b.log.Error("failed to load file map", "error", err)
@@ -31,6 +32,10 @@ func (b *Builder) MustGetPublicURLBuildtime(original string) string {
 // GetPublicURLBuildtime resolves a public URL at build time without panicking.
 // Returns the resolved URL and any error that occurred.
 func (b *Builder) GetPublicURLBuildtime(original string) (string, error) {
+	if wave.IsPassthroughPublicURL(original) {
+		return original, nil
+	}
+
 	fm, err := b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 	if err != nil {
 		return resolvePublicURLFallback(original, b.cfg.PublicPathPrefix()), err
@@ -44,12 +49,20 @@ func (b *Builder) GetPublicURLBuildtime(original string) (string, error) {
 }
 
 func resolvePublicURLFallback(original string, publicPathPrefix string) string {
-	normalizedOriginal := strings.TrimPrefix(path.Clean("/"+original), "/")
-	if normalizedOriginal == "" || normalizedOriginal == "." {
+	if wave.IsPassthroughPublicURL(original) {
+		return original
+	}
+
+	normalizedOriginalURL := wave.ResolvePublicURLFromReferencedPath("/", original)
+	if normalizedOriginalURL == "" {
 		return ""
 	}
 
-	return matcher.EnsureLeadingSlash(path.Join(publicPathPrefix, normalizedOriginal))
+	fallbackURL, _ := wave.FileMap(nil).Lookup(
+		normalizedOriginalURL,
+		publicPathPrefix,
+	)
+	return fallbackURL
 }
 
 // PublicFileMapKeys returns sorted keys of non-prehashed public files

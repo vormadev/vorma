@@ -286,19 +286,32 @@ async function readSubmitSuccessResponseData(
 		return undefined;
 	}
 
-	if (responseDeclaresJSON(response)) {
-		return await response.json();
-	}
-
 	const maybeTextFn = (
-		response as Response & { text?: () => Promise<string> }
+		response as Response & {
+			text?: () => Promise<string>;
+		}
 	).text;
-	if (typeof maybeTextFn !== "function") {
-		return undefined;
+	if (typeof maybeTextFn === "function") {
+		const text = await maybeTextFn.call(response);
+		if (text === "") {
+			return undefined;
+		}
+		if (responseDeclaresJSON(response)) {
+			return JSON.parse(text);
+		}
+		return text;
 	}
 
-	const text = await maybeTextFn.call(response);
-	return text === "" ? undefined : text;
+	if (responseDeclaresJSON(response)) {
+		const maybeJSONFn = (
+			response as Response & { json?: () => Promise<unknown> }
+		).json;
+		if (typeof maybeJSONFn === "function") {
+			return maybeJSONFn.call(response);
+		}
+	}
+
+	return undefined;
 }
 
 type SubmitResponseAction =

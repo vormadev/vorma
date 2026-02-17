@@ -86,11 +86,58 @@ const publicFileMapModuleScriptFormat = `
 		import { wavePublicFileMap } from %q;
 		const browserRuntimeNamespace = %q;
 		const publicURLResolverFunctionName = %q;
+		const publicPathPrefix = %q;
+		const normalizedPublicPathPrefixForLookup = %q;
 		if (!window[browserRuntimeNamespace]) window[browserRuntimeNamespace] = {};
-		function getPublicURL(originalPublicURL) { 
-			if (originalPublicURL.startsWith("/")) originalPublicURL = originalPublicURL.slice(1);
-			return %q + (wavePublicFileMap[originalPublicURL] || originalPublicURL);
+
+		function trimConfiguredPublicPathPrefixFromLookupPath(normalizedLookupPath) {
+			if (!normalizedPublicPathPrefixForLookup) return normalizedLookupPath;
+			if (normalizedLookupPath === normalizedPublicPathPrefixForLookup) return "";
+
+			const normalizedPublicPathPrefixWithTrailingSlash = normalizedPublicPathPrefixForLookup + "/";
+			if (normalizedLookupPath.startsWith(normalizedPublicPathPrefixWithTrailingSlash)) {
+				return normalizedLookupPath.slice(normalizedPublicPathPrefixWithTrailingSlash.length);
+			}
+
+			return normalizedLookupPath;
 		}
+
+		function getPublicURL(originalPublicURL) {
+			const lowerOriginalPublicURL = originalPublicURL.toLowerCase();
+			if (
+				lowerOriginalPublicURL.startsWith("data:") ||
+				lowerOriginalPublicURL.startsWith("http://") ||
+				lowerOriginalPublicURL.startsWith("https://") ||
+				lowerOriginalPublicURL.startsWith("ws://") ||
+				lowerOriginalPublicURL.startsWith("wss://") ||
+				lowerOriginalPublicURL.startsWith("blob:") ||
+				lowerOriginalPublicURL.startsWith("file:") ||
+				originalPublicURL.startsWith("//")
+			) {
+				return originalPublicURL;
+			}
+
+			let normalizedOriginalPublicURL = originalPublicURL;
+			if (normalizedOriginalPublicURL.startsWith("/")) {
+				normalizedOriginalPublicURL = normalizedOriginalPublicURL.slice(1);
+			}
+
+			const directLookupMatch = wavePublicFileMap[normalizedOriginalPublicURL];
+			if (directLookupMatch) {
+				return publicPathPrefix + directLookupMatch;
+			}
+
+			const deprefixedOriginalPublicURL = trimConfiguredPublicPathPrefixFromLookupPath(
+				normalizedOriginalPublicURL,
+			);
+			const deprefixedLookupMatch = wavePublicFileMap[deprefixedOriginalPublicURL];
+			if (deprefixedLookupMatch) {
+				return publicPathPrefix + deprefixedLookupMatch;
+			}
+
+			return publicPathPrefix + deprefixedOriginalPublicURL;
+		}
+
 		window[browserRuntimeNamespace][publicURLResolverFunctionName] = getPublicURL;
 `
 
@@ -100,12 +147,17 @@ func buildPublicFileMapModuleScript(
 	browserRuntimeNamespace string,
 	publicURLResolverFunctionName string,
 ) string {
+	normalizedPublicPathPrefixForLookup := normalizeConfiguredPublicPathPrefixForLookup(
+		publicPathPrefix,
+	)
+
 	return fmt.Sprintf(
 		publicFileMapModuleScriptFormat,
 		fileMapURL,
 		browserRuntimeNamespace,
 		publicURLResolverFunctionName,
 		publicPathPrefix,
+		normalizedPublicPathPrefixForLookup,
 	)
 }
 

@@ -39,7 +39,7 @@ func (w *Wave) GetPublicFileMap() (FileMap, error) {
 }
 
 func (w *Wave) resolvePublicURL(original string) (string, error) {
-	if isPassthroughPublicURL(original) {
+	if IsPassthroughPublicURL(original) {
 		return original, nil
 	}
 
@@ -54,19 +54,6 @@ func (w *Wave) resolvePublicURL(original string) (string, error) {
 	}
 
 	return url, nil
-}
-
-func isPassthroughPublicURL(original string) bool {
-	lowerOriginal := strings.ToLower(original)
-
-	return strings.HasPrefix(lowerOriginal, "data:") ||
-		strings.HasPrefix(lowerOriginal, "http://") ||
-		strings.HasPrefix(lowerOriginal, "https://") ||
-		strings.HasPrefix(lowerOriginal, "ws://") ||
-		strings.HasPrefix(lowerOriginal, "wss://") ||
-		strings.HasPrefix(lowerOriginal, "blob:") ||
-		strings.HasPrefix(lowerOriginal, "file:") ||
-		strings.HasPrefix(original, "//")
 }
 
 func (w *Wave) GetPublicURL(original string) string {
