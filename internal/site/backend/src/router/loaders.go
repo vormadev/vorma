@@ -13,7 +13,7 @@ type RootData struct {
 	LatestVersion string
 }
 
-var currentReleaseVersion = "v" + vorma.Internal__GetCurrentReleaseVersion()
+var currentReleaseVersion = "v" + vorma.CurrentReleaseVersion()
 
 var jsonCacheControlVal = strings.Join([]string{
 	"public",
@@ -31,7 +31,7 @@ var htmlCacheControlVal = strings.Join([]string{
 	"must-revalidate",                // revalidate after 1 day in CDN
 }, ", ")
 
-var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
+var _ = DefineLoader("/", func(c *LoaderCtx) (*RootData, error) {
 	r, rp := c.Request(), c.ResponseProxy()
 
 	if !wave.GetIsDev() {
@@ -51,27 +51,30 @@ var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
 	return &RootData{LatestVersion: currentReleaseVersion}, nil
 })
 
-var _ = NewLoader("/_index", func(c *LoaderCtx) (string, error) {
+var _ = DefineLoader("/_index", func(c *LoaderCtx) (string, error) {
 	return SiteDescription, nil
 })
 
-var _ = NewLoader("/*", func(c *LoaderCtx) (*fsmarkdown.DetailedPage, error) {
-	data, err := Markdown.GetPageDetails(c.Request())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get page details: %w", err)
-	}
+var _ = DefineLoader(
+	"/*",
+	func(c *LoaderCtx) (*fsmarkdown.DetailedPage, error) {
+		data, err := Markdown.PageDetails(c.Request())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get page details: %w", err)
+		}
 
-	h := c.HeadEls()
+		h := c.HeadEls()
 
-	if data.Title != "" {
-		h.Title(fmt.Sprintf("%s | %s", SiteTitle, data.Title))
-		h.MetaPropertyContent("og:title", data.Title)
-	}
+		if data.Title != "" {
+			h.Title(fmt.Sprintf("%s | %s", SiteTitle, data.Title))
+			h.MetaPropertyContent("og:title", data.Title)
+		}
 
-	if data.Description != "" {
-		h.Description(data.Description)
-		h.MetaPropertyContent("og:description", data.Description)
-	}
+		if data.Description != "" {
+			h.Description(data.Description)
+			h.MetaPropertyContent("og:description", data.Description)
+		}
 
-	return data, nil
-})
+		return data, nil
+	},
+)

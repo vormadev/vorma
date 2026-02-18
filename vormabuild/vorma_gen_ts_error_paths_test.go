@@ -134,7 +134,7 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 			dependencies,
 		)
 		if err == nil {
-			t.Fatal("expected generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot to return error")
+			t.Fatal("expected generateAndAssembleTSContentForRouteBuildRuntimeState to return error")
 		}
 		if !strings.Contains(err.Error(), "generate TypeScript") {
 			t.Fatalf("error = %q, expected generate-TypeScript context", err)
@@ -167,7 +167,7 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 			dependencies,
 		)
 		if err == nil {
-			t.Fatal("expected generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot to return rollup error")
+			t.Fatal("expected generateAndAssembleTSContentForRouteBuildRuntimeState to return rollup error")
 		}
 		if !strings.Contains(err.Error(), "generate rollup options") {
 			t.Fatalf("error = %q, expected generate-rollup-options context", err)
@@ -199,7 +199,7 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 			dependencies,
 		)
 		if err != nil {
-			t.Fatalf("generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot returned error: %v", err)
+			t.Fatalf("generateAndAssembleTSContentForRouteBuildRuntimeState returned error: %v", err)
 		}
 		if string(contentBytes) != "TS_OUTPUTROLLUP_OUTPUT" {
 			t.Fatalf("assembled output = %q, want %q", string(contentBytes), "TS_OUTPUTROLLUP_OUTPUT")
@@ -338,8 +338,8 @@ func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(t
 		}
 
 		executor := newGeneratedTSWriteExecutor(dependencies)
-		if err := executor.writeGeneratedTSForRouteBuildRuntimeStateSnapshot(app, runtimeStateSnapshot); err != nil {
-			t.Fatalf("writeGeneratedTSForRouteBuildRuntimeStateSnapshot returned error: %v", err)
+		if err := executor.writeGeneratedTSForRouteBuildRuntimeState(app, runtimeStateSnapshot); err != nil {
+			t.Fatalf("writeGeneratedTSForRouteBuildRuntimeState returned error: %v", err)
 		}
 		if !writeCalled {
 			t.Fatal("expected writeGeneratedTSContentIfChanged to be called")
@@ -362,9 +362,9 @@ func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(t
 		}
 
 		executor := newGeneratedTSWriteExecutor(dependencies)
-		err := executor.writeGeneratedTSForRouteBuildRuntimeStateSnapshot(app, runtimeStateSnapshot)
+		err := executor.writeGeneratedTSForRouteBuildRuntimeState(app, runtimeStateSnapshot)
 		if err == nil {
-			t.Fatal("expected writeGeneratedTSForRouteBuildRuntimeStateSnapshot to return assembly error")
+			t.Fatal("expected writeGeneratedTSForRouteBuildRuntimeState to return assembly error")
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped assembly error", err)
@@ -386,9 +386,9 @@ func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(t
 		}
 
 		executor := newGeneratedTSWriteExecutor(dependencies)
-		err := executor.writeGeneratedTSForRouteBuildRuntimeStateSnapshot(app, runtimeStateSnapshot)
+		err := executor.writeGeneratedTSForRouteBuildRuntimeState(app, runtimeStateSnapshot)
 		if err == nil {
-			t.Fatal("expected writeGeneratedTSForRouteBuildRuntimeStateSnapshot to return write step error")
+			t.Fatal("expected writeGeneratedTSForRouteBuildRuntimeState to return write step error")
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped write step error", err)

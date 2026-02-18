@@ -8,14 +8,10 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-// MustGetPublicURLBuildtime resolves a public URL at build time.
+// MustPublicURLBuildtime resolves a public URL at build time.
 // This function reads the file map from disk on each call and panics on error.
 // For hot paths (like CSS URL resolution), use getPublicURLBuildtimeCached instead.
-func (b *Builder) MustGetPublicURLBuildtime(original string) string {
-	if wave.IsPassthroughPublicURL(original) {
-		return original
-	}
-
+func (b *Builder) MustPublicURLBuildtime(original string) string {
 	fm, err := b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 	if err != nil {
 		b.log.Error("failed to load file map", "error", err)
@@ -24,45 +20,26 @@ func (b *Builder) MustGetPublicURLBuildtime(original string) string {
 
 	url, found := fm.Lookup(original, b.cfg.PublicPathPrefix())
 	if !found {
-		b.log.Warn("no hashed URL found", "url", original)
+		resolveError := fmt.Errorf("no hashed URL found for %q", original)
+		b.log.Error("no hashed URL found", "url", original)
+		panic(resolveError)
 	}
 	return url
 }
 
-// GetPublicURLBuildtime resolves a public URL at build time without panicking.
+// PublicURLBuildtime resolves a public URL at build time without panicking.
 // Returns the resolved URL and any error that occurred.
-func (b *Builder) GetPublicURLBuildtime(original string) (string, error) {
-	if wave.IsPassthroughPublicURL(original) {
-		return original, nil
-	}
-
+func (b *Builder) PublicURLBuildtime(original string) (string, error) {
 	fm, err := b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 	if err != nil {
-		return resolvePublicURLFallback(original, b.cfg.PublicPathPrefix()), err
+		return "", err
 	}
 
 	url, found := fm.Lookup(original, b.cfg.PublicPathPrefix())
 	if !found {
-		b.log.Warn("no hashed URL found", "url", original)
+		return "", fmt.Errorf("no hashed URL found for %q", original)
 	}
 	return url, nil
-}
-
-func resolvePublicURLFallback(original string, publicPathPrefix string) string {
-	if wave.IsPassthroughPublicURL(original) {
-		return original
-	}
-
-	normalizedOriginalURL := wave.ResolvePublicURLFromReferencedPath("/", original)
-	if normalizedOriginalURL == "" {
-		return ""
-	}
-
-	fallbackURL, _ := wave.FileMap(nil).Lookup(
-		normalizedOriginalURL,
-		publicPathPrefix,
-	)
-	return fallbackURL
 }
 
 // PublicFileMapKeys returns sorted keys of non-prehashed public files
@@ -129,7 +106,7 @@ func (b *Builder) AddPublicAssetKeys(
 		return nil, fmt.Errorf("public file map keys: %w", err)
 	}
 
-	resolvedStatements.Serialize("const WAVE_PUBLIC_ASSETS", keys)
+	resolvedStatements.MustSerialize("const WAVE_PUBLIC_ASSETS", keys)
 	resolvedStatements.Raw(
 		"export type WavePublicAsset",
 		"`${\"/\" | \"\"}${(typeof WAVE_PUBLIC_ASSETS)[number]}`",

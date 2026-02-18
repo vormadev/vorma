@@ -21,10 +21,9 @@ import (
 var (
 	muxLog           = colorlog.New("mux")
 	requestStore     = contextutil.NewStore[*rdTransport]("__vorma_kit_mux_request_data")
-	emptyParams      = make(Params, 0)
 	emptyHTTPMws     = []httpMiddlewareWithOptions{}
 	emptyTaskMws     = []taskMiddlewareWithOptions{}
-	emptySplatValues = []string{}
+	emptySplatValues []string
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -34,8 +33,11 @@ var (
 // NOTES:
 // Order of registration of handlers does not matter. Order of middleware
 // registration DOES matter. For traditional middleware, it will run sequentially,
-// first to last. For task middleware, they will run with maximum parallelism, but
-// their response proxies will be merged according to the rules of response.Proxy.
+// first to last. For task middleware, they will run with maximum parallelism based
+// on the dependency graph of the associated underlying tasks, but their response
+// proxies will be merged according to the rules of response.Proxy (which means
+// that ordering sometimes matters in tie-breaking scenarios). See response.Proxy
+// and tasks.Task documentation and source code for more details.
 
 type (
 	None                      = genericsutil.None
@@ -77,27 +79,29 @@ type Router struct {
 }
 
 func (rt *Router) AllRoutes() []AnyRoute {
-	return rt.allRoutes
+	allRoutesCopy := make([]AnyRoute, len(rt.allRoutes))
+	copy(allRoutesCopy, rt.allRoutes)
+	return allRoutesCopy
 }
-func (rt *Router) GetExplicitIndexSegment() string {
-	return rt.matcherOpts.ExplicitIndexSegment
+
+func (rt *Router) DynamicParamPrefix() rune {
+	return rt.matcherOpts.DynamicParamPrefix
 }
-func (rt *Router) GetDynamicParamPrefixRune() rune {
-	return rt.matcherOpts.DynamicParamPrefixRune
-}
-func (rt *Router) GetSplatSegmentRune() rune {
-	return rt.matcherOpts.SplatSegmentRune
+func (rt *Router) SplatSegmentIdentifier() rune {
+	return rt.matcherOpts.SplatSegmentIdentifier
 }
 
 // Takes zero or one pattern strings. If no arguments are provided, returns
 // the mount root, otherwise returns the mount root joined with the
-// provided pattern. Discards any extra arguments. For example, if
-// mux.MountRoot() were to return "/api/", then mux.MountRoot("foo") would
-// return "/api/foo", and mux.MountRoot("foo", "bar") would still just
-// return "/api/foo".
+// provided pattern. For example, if mux.MountRoot() were to return "/api/",
+// then mux.MountRoot("foo") would return "/api/foo". Panics if you pass more
+// than one argument.
 func (rt *Router) MountRoot(optionalPatternToAppend ...string) string {
 	if len(optionalPatternToAppend) == 0 {
 		return rt.mountRoot
+	}
+	if len(optionalPatternToAppend) > 1 {
+		panic("MountRoot accepts zero or one optional pattern")
 	}
 	return path.Join(rt.mountRoot, optionalPatternToAppend[0])
 }
@@ -107,7 +111,7 @@ type TasksCtxRequirer interface {
 	NeedsTasksCtx()
 }
 
-var handlerNeedsTasksCtxImplReflectType = reflectutil.ToInterfaceReflectType[TasksCtxRequirer]()
+var handlerNeedsTasksCtxImplReflectType = reflect.TypeFor[TasksCtxRequirer]()
 
 type TasksCtxRequirerFunc func(http.ResponseWriter, *http.Request)
 
@@ -121,8 +125,8 @@ type Options struct {
 	// the router will strip the provided mount root from the beginning of
 	// incoming url paths before matching them against registered patterns.
 	MountRoot              string
-	DynamicParamPrefixRune rune // Optional. Defaults to ':'.
-	SplatSegmentRune       rune // Optional. Defaults to '*'.
+	DynamicParamPrefix     rune // Optional. Defaults to ':'.
+	SplatSegmentIdentifier rune // Optional. Defaults to '*'.
 	// Required if using task handlers. Do validation or whatever you want here,
 	// and mutate the input ptr to the desired value (this is what will ultimately
 	// be returned by c.Input()).
@@ -139,8 +143,8 @@ func NewRouter(options ...*Options) *Router {
 	if opts == nil {
 		opts = new(Options)
 	}
-	matcherOpts.DynamicParamPrefixRune = genericsutil.OrDefault(opts.DynamicParamPrefixRune, ':')
-	matcherOpts.SplatSegmentRune = genericsutil.OrDefault(opts.SplatSegmentRune, '*')
+	matcherOpts.DynamicParamPrefix = genericsutil.OrDefault(opts.DynamicParamPrefix, ':')
+	matcherOpts.SplatSegmentIdentifier = genericsutil.OrDefault(opts.SplatSegmentIdentifier, '*')
 	mountRootToUse := opts.MountRoot
 	if mountRootToUse != "" {
 		if len(mountRootToUse) == 1 && mountRootToUse[0] == '/' {
@@ -178,25 +182,25 @@ func TaskMiddlewareFromFunc[O any](userFunc TaskMiddlewareFunc[O]) *TaskMiddlewa
 	})
 }
 
-func SetGlobalTaskMiddleware[O any](router *Router, taskMw *TaskMiddleware[O], opts ...*MiddlewareOptions) {
+func AddGlobalTaskMiddleware[O any](router *Router, taskMw *TaskMiddleware[O], opts ...*MiddlewareOptions) {
 	router.taskMws = append(router.taskMws, taskMiddlewareWithOptions{
 		mw:   taskMw,
 		opts: getFirstOpt(opts),
 	})
 }
 
-func SetGlobalHTTPMiddleware(router *Router, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+func AddGlobalHTTPMiddleware(router *Router, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
 	router.httpMws = append(router.httpMws, httpMiddlewareWithOptions{
 		mw:   httpMw,
 		opts: getFirstOpt(opts),
 	})
 }
 
-func (rt *Router) SetGlobalHTTPMiddleware(httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
-	SetGlobalHTTPMiddleware(rt, httpMw, opts...)
+func (rt *Router) AddGlobalHTTPMiddleware(httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+	AddGlobalHTTPMiddleware(rt, httpMw, opts...)
 }
 
-func SetMethodLevelTaskMiddleware[O any](
+func AddMethodLevelTaskMiddleware[O any](
 	router *Router, method string, taskMw *TaskMiddleware[O], opts ...*MiddlewareOptions,
 ) {
 	mm := router.getOrCreateMethodMatcher(method)
@@ -206,7 +210,7 @@ func SetMethodLevelTaskMiddleware[O any](
 	})
 }
 
-func SetMethodLevelHTTPMiddleware(router *Router, method string, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+func AddMethodLevelHTTPMiddleware(router *Router, method string, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
 	mm := router.getOrCreateMethodMatcher(method)
 	mm.httpMws = append(mm.httpMws, httpMiddlewareWithOptions{
 		mw:   httpMw,
@@ -214,26 +218,26 @@ func SetMethodLevelHTTPMiddleware(router *Router, method string, httpMw HTTPMidd
 	})
 }
 
-func (rt *Router) SetMethodLevelHTTPMiddleware(method string, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
-	SetMethodLevelHTTPMiddleware(rt, method, httpMw, opts...)
+func (rt *Router) AddMethodLevelHTTPMiddleware(method string, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+	AddMethodLevelHTTPMiddleware(rt, method, httpMw, opts...)
 }
 
-func SetPatternLevelTaskMiddleware[PI any, PO any, MWO any](route *Route[PI, PO], taskMw *TaskMiddleware[MWO], opts ...*MiddlewareOptions) {
+func AddPatternLevelTaskMiddleware[PI any, PO any, MWO any](route *Route[PI, PO], taskMw *TaskMiddleware[MWO], opts ...*MiddlewareOptions) {
 	route.taskMws = append(route.taskMws, taskMiddlewareWithOptions{
 		mw:   taskMw,
 		opts: getFirstOpt(opts),
 	})
 }
 
-func SetPatternLevelHTTPMiddleware[I any, O any](route *Route[I, O], httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+func AddPatternLevelHTTPMiddleware[I any, O any](route *Route[I, O], httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
 	route.httpMws = append(route.httpMws, httpMiddlewareWithOptions{
 		mw:   httpMw,
 		opts: getFirstOpt(opts),
 	})
 }
 
-func (route *Route[I, O]) SetPatternLevelHTTPMiddleware(httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
-	SetPatternLevelHTTPMiddleware(route, httpMw, opts...)
+func (route *Route[I, O]) AddPatternLevelHTTPMiddleware(httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+	AddPatternLevelHTTPMiddleware(route, httpMw, opts...)
 }
 
 func SetGlobalNotFoundHTTPHandler(router *Router, httpHandler http.Handler) {
@@ -281,7 +285,7 @@ func (route *Route[I, O]) Method() string {
 // TaskHandlers are used for JSON responses only, and they are intended to
 // be particularly convenient for sending JSON. If you need to send a different
 // content type, use a traditional http.Handler instead.
-func RegisterTaskHandler[I any, O any](
+func AddTaskHandler[I any, O any](
 	router *Router, method, pattern string, taskHandler *TaskHandler[I, O],
 ) *Route[I, O] {
 	route := newRouteStruct[I, O](router, method, pattern)
@@ -293,23 +297,23 @@ func RegisterTaskHandler[I any, O any](
 	return route
 }
 
-func RegisterHandlerFunc(
+func AddHTTPHandlerFunc(
 	router *Router, method, pattern string, httpHandlerFunc http.HandlerFunc,
 ) *Route[any, any] {
-	return RegisterHandler(router, method, pattern, httpHandlerFunc)
+	return AddHTTPHandler(router, method, pattern, httpHandlerFunc)
 }
 
-func (rt *Router) RegisterHandlerFunc(method, pattern string, httpHandlerFunc http.HandlerFunc) *Route[any, any] {
-	return RegisterHandlerFunc(rt, method, pattern, httpHandlerFunc)
+func (rt *Router) AddHTTPHandlerFunc(method, pattern string, httpHandlerFunc http.HandlerFunc) *Route[any, any] {
+	return AddHTTPHandlerFunc(rt, method, pattern, httpHandlerFunc)
 }
 
-func RegisterHandler(
+func AddHTTPHandler(
 	router *Router, method, pattern string, httpHandler http.Handler,
 ) *Route[any, any] {
 	route := newRouteStruct[any, any](router, method, pattern)
 	route.handlerType = "http"
 	route.userHTTPHandler = httpHandler
-	route.needsTasksCtx = reflectutil.ImplementsInterface(
+	route.needsTasksCtx = reflectutil.DoesTypeImplementInterface(
 		reflect.TypeOf(httpHandler), handlerNeedsTasksCtxImplReflectType,
 	)
 	mm := router.getOrCreateMethodMatcher(method)
@@ -318,8 +322,8 @@ func RegisterHandler(
 	return route
 }
 
-func (rt *Router) RegisterHandler(method, pattern string, httpHandler http.Handler) *Route[any, any] {
-	return RegisterHandler(rt, method, pattern, httpHandler)
+func (rt *Router) AddHTTPHandler(method, pattern string, httpHandler http.Handler) *Route[any, any] {
+	return AddHTTPHandler(rt, method, pattern, httpHandler)
 }
 
 func (rd *ReqData[I]) Params() Params                 { return rd.params }
@@ -331,7 +335,7 @@ func (rd *ReqData[I]) ResponseProxy() *response.Proxy { return rd.responseProxy 
 func (rd *ReqData[I]) Input() I                       { return rd.input }
 
 func GetTasksCtx(r *http.Request) *tasks.Ctx {
-	if rd := requestStore.GetValueFromContext(r.Context()); rd != nil {
+	if rd := requestStore.Value(r.Context()); rd != nil {
 		return rd.tasksCtx
 	}
 	return nil
@@ -342,15 +346,19 @@ func GetParam(r *http.Request, key string) string {
 }
 
 func GetParams(r *http.Request) Params {
-	if rd := requestStore.GetValueFromContext(r.Context()); rd != nil {
-		return rd.params
+	if rd := requestStore.Value(r.Context()); rd != nil {
+		if rd.params != nil {
+			return rd.params
+		}
 	}
-	return emptyParams
+	return nil
 }
 
 func GetSplatValues(r *http.Request) []string {
-	if rd := requestStore.GetValueFromContext(r.Context()); rd != nil {
-		return rd.splatVals
+	if rd := requestStore.Value(r.Context()); rd != nil {
+		if rd.splatVals != nil {
+			return rd.splatVals
+		}
 	}
 	return emptySplatValues
 }
@@ -382,7 +390,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				splatVals: match.SplatValues,
 				req:       r,
 			}
-			r = requestStore.GetRequestWithContext(r, rd)
+			r = requestStore.RequestWithContextValue(r, rd)
 		}
 		handler := route.httpChain(rt, mm)
 		if best.headFellBackToGet {
@@ -401,7 +409,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req:           r,
 		responseProxy: response.NewProxy(),
 	}
-	r = requestStore.GetRequestWithContext(r, rd)
+	r = requestStore.RequestWithContextValue(r, rd)
 	reqGetter := mm.reqDataGetters[match.OriginalPattern()]
 	reqData, err := reqGetter.getReqData(r, tasksCtx, match)
 	if err != nil {
@@ -778,11 +786,11 @@ func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
 			tasksCtx:      tasksCtx,
 			req:           r,
 			responseProxy: response.NewProxy(),
-			params:        emptyParams,
+			params:        nil,
 			splatVals:     emptySplatValues,
 		}
 
-		next.ServeHTTP(w, requestStore.GetRequestWithContext(r, rd))
+		next.ServeHTTP(w, requestStore.RequestWithContextValue(r, rd))
 	})
 }
 
@@ -797,9 +805,10 @@ func (rd *ReqData[I]) HeadEls() *headels.HeadEls {
 	return e
 }
 
-// Redirect sets a redirect on the response proxy. Defaults to 302 if no code is provided.
-func (rd *ReqData[I]) Redirect(url string, code ...int) {
-	rd.responseProxy.Redirect(rd.req, url, code...)
+// Redirect sets a redirect on the response proxy. Defaults to 302 if no code
+// is provided. It returns the same result contract as response.Proxy.Redirect.
+func (rd *ReqData[I]) Redirect(url string, code ...int) (bool, error) {
+	return rd.responseProxy.Redirect(rd.req, url, code...)
 }
 
 // SetResponseStatus sets the status code and optional error text on the response proxy.
@@ -822,29 +831,29 @@ func (rd *ReqData[I]) AddResponseHeader(key, value string) {
 	rd.responseProxy.AddHeader(key, value)
 }
 
-// GetResponseStatus returns the status code and error text from the response proxy.
-func (rd *ReqData[I]) GetResponseStatus() (int, string) {
-	return rd.responseProxy.GetStatus()
+// ResponseStatus returns the status code and error text from the response proxy.
+func (rd *ReqData[I]) ResponseStatus() (int, string) {
+	return rd.responseProxy.Status()
 }
 
-// GetResponseHeader returns the first value for a header on the response proxy, or empty string if not set.
-func (rd *ReqData[I]) GetResponseHeader(key string) string {
-	return rd.responseProxy.GetHeader(key)
+// ResponseHeader returns the first value for a header on the response proxy, or empty string if not set.
+func (rd *ReqData[I]) ResponseHeader(key string) string {
+	return rd.responseProxy.Header(key)
 }
 
-// GetResponseHeaders returns all values for a header on the response proxy.
-func (rd *ReqData[I]) GetResponseHeaders(key string) []string {
-	return rd.responseProxy.GetHeaders(key)
+// ResponseHeaders returns all values for a header on the response proxy.
+func (rd *ReqData[I]) ResponseHeaders(key string) []string {
+	return rd.responseProxy.Headers(key)
 }
 
-// GetResponseCookies returns all cookies set on the response proxy.
-func (rd *ReqData[I]) GetResponseCookies() []*http.Cookie {
-	return rd.responseProxy.GetCookies()
+// ResponseCookies returns all cookies set on the response proxy.
+func (rd *ReqData[I]) ResponseCookies() []*http.Cookie {
+	return rd.responseProxy.Cookies()
 }
 
-// GetResponseLocation returns the redirect URL from the response proxy, if a redirect has been set.
-func (rd *ReqData[I]) GetResponseLocation() string {
-	return rd.responseProxy.GetLocation()
+// ResponseLocation returns the redirect URL from the response proxy, if a redirect has been set.
+func (rd *ReqData[I]) ResponseLocation() string {
+	return rd.responseProxy.Location()
 }
 
 // IsResponseError returns true if the response proxy status is 400 or higher.

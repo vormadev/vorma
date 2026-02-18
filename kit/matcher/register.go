@@ -106,9 +106,9 @@ var segTypes = struct {
 	index:   "index",
 }
 
-func getAppropriateWarningMsg(pattern string, usingExplicitIndexSegment bool) string {
+func getAppropriateWarningMsg(pattern string, usingExplicitIndexSegmentIdentifier bool) string {
 	base := fmt.Sprintf("Pattern '%s' is already registered.", pattern)
-	if usingExplicitIndexSegment {
+	if usingExplicitIndexSegmentIdentifier {
 		return base + " When you use an explicit index segment, trailing slashes are ignored, which may be the reason for your effectively duplicated patterns."
 	}
 	return base
@@ -120,7 +120,7 @@ func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern {
 	normalizedPattern := originalPattern
 
 	// if using an index sig
-	if m.usingExplicitIndexSegment {
+	if m.usingExplicitIndexSegmentIdentifier {
 		// ignore trailing slashes
 		if strings.HasSuffix(normalizedPattern, "/") {
 			if normalizedPattern != "/" {
@@ -202,12 +202,12 @@ func (m *Matcher) RegisterPattern(originalPattern string) *RegisteredPattern {
 
 	if _, alreadyRegistered := m.staticPatterns[_normalized.normalizedPattern]; alreadyRegistered {
 		if !m.quiet {
-			matcherLog.Warn(getAppropriateWarningMsg(originalPattern, m.usingExplicitIndexSegment))
+			matcherLog.Warn(getAppropriateWarningMsg(originalPattern, m.usingExplicitIndexSegmentIdentifier))
 		}
 	}
 	if _, alreadyRegistered := m.dynamicPatterns[_normalized.normalizedPattern]; alreadyRegistered {
 		if !m.quiet {
-			matcherLog.Warn(getAppropriateWarningMsg(originalPattern, m.usingExplicitIndexSegment))
+			matcherLog.Warn(getAppropriateWarningMsg(originalPattern, m.usingExplicitIndexSegmentIdentifier))
 		}
 	}
 

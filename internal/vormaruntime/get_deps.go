@@ -4,7 +4,10 @@ import (
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
-func (v *Vorma) getDepsFromSnapshot(_matches []*matcher.Match, paths map[string]*Path) []string {
+func (v *Vorma) getDeps(
+	_matches []*matcher.Match,
+	paths map[string]*Path,
+) []string {
 	v.mu.RLock()
 	clientEntryDeps := v._clientEntryDeps
 	v.mu.RUnlock()
@@ -12,7 +15,11 @@ func (v *Vorma) getDepsFromSnapshot(_matches []*matcher.Match, paths map[string]
 	return getDepsFromData(_matches, paths, clientEntryDeps)
 }
 
-func getDepsFromData(_matches []*matcher.Match, paths map[string]*Path, clientEntryDeps []string) []string {
+func getDepsFromData(
+	_matches []*matcher.Match,
+	paths map[string]*Path,
+	clientEntryDeps []string,
+) []string {
 	var deps []string
 	seen := make(map[string]struct{}, len(_matches))
 	handleDeps := func(src []string) {
@@ -42,10 +49,10 @@ func (v *Vorma) getCSSBundles(deps []string) []string {
 	depToCSSBundleMap := v._depToCSSBundleMap
 	v.mu.RUnlock()
 
-	return getCSSBundlesFromSnapshot(deps, clientEntryOut, depToCSSBundleMap)
+	return getCSSBundles(deps, clientEntryOut, depToCSSBundleMap)
 }
 
-func getCSSBundlesFromSnapshot(
+func getCSSBundles(
 	deps []string,
 	clientEntryOut string,
 	depToCSSBundleMap map[string][]string,

@@ -2,12 +2,9 @@ import type {
 	PermissivePatternBasedProps,
 	VormaAppBase,
 	VormaLoaderPattern,
-} from "vorma/client";
-import {
-	resolveTypedLinkHref,
-	type VormaAppConfig,
-	type VormaLinkPropsBase,
-} from "vorma/client/__internal";
+} from "../app/helpers.ts";
+import { type VormaAppConfig } from "../app/helpers.ts";
+import { type VormaLinkPropsBase, resolveTypedLinkHref } from "./helpers.ts";
 
 type TypedLinkRouteResolutionInput = {
 	pattern: string;

@@ -96,11 +96,11 @@ func normalizeResolvedTheme(value string) string {
 
 var systemThemeScript, systemThemeScriptSha256Hash = mustGetSystemThemeScript()
 
-func SystemThemeScript() template.HTML {
+func GetSystemThemeScript() template.HTML {
 	return systemThemeScript
 }
 
-func SystemThemeScriptSha256Hash() string {
+func GetSystemThemeScriptSha256Hash() string {
 	return systemThemeScriptSha256Hash
 }
 

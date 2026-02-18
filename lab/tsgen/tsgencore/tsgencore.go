@@ -45,8 +45,8 @@ func ProcessTypes(adHocTypes []*AdHocType) Results {
 	return mergeTypeResults(allResults...)
 }
 
-// GetTypeInfo allows retrieving the information for a specific type from the final results.
-func (r *Results) GetTypeInfo(adHocType *AdHocType) *TypeInfo {
+// TypeInfo allows retrieving the information for a specific type from the final results.
+func (r *Results) TypeInfo(adHocType *AdHocType) *TypeInfo {
 	id := getID(adHocType)
 	if idx, ok := r.id_to_idx[id]; ok {
 		return r.Types[idx]
@@ -382,7 +382,7 @@ func (c *typeCollector) generateStructTypeFields(t reflect.Type) []string {
 				continue
 			}
 
-			jsonFieldName := reflectutil.GetJSONFieldName(field)
+			jsonFieldName := reflectutil.JSONFieldName(field)
 			if jsonFieldName == "" {
 				continue
 			}
@@ -624,7 +624,7 @@ func getTSTypeMap(t reflect.Type) map[string]string {
 		return nil
 	}
 	// We need to check both the value and a pointer to it for the interface.
-	ifaceType := reflectutil.ToInterfaceReflectType[TSTyper]()
+	ifaceType := reflect.TypeFor[TSTyper]()
 
 	// Case 1: The type itself implements the interface.
 	if t.Implements(ifaceType) {
@@ -634,7 +634,7 @@ func getTSTypeMap(t reflect.Type) map[string]string {
 	}
 
 	// Case 2: A pointer to the type implements the interface.
-	if reflectutil.ImplementsInterface(t, ifaceType) {
+	if reflectutil.DoesTypeImplementInterface(t, ifaceType) {
 		instance := reflect.New(t) // Get a pointer to a new value
 		initializeEmbeddedPointers(instance)
 		return instance.Interface().(TSTyper).TSType()

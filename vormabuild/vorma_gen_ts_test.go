@@ -16,7 +16,10 @@ import (
 )
 
 func TestExtractDynamicParamsFromPattern(t *testing.T) {
-	params := extractDynamicParamsFromPattern("/teams/:teamID/users/:userID", ':')
+	params := extractDynamicParamsFromPattern(
+		"/teams/:teamID/users/:userID",
+		':',
+	)
 	if !slices.Equal(params, []string{"teamID", "userID"}) {
 		t.Fatalf("params = %#v, want %#v", params, []string{"teamID", "userID"})
 	}
@@ -83,36 +86,57 @@ func TestGenerateRollupOptions_ContainsExpectedConfig(t *testing.T) {
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		content, err := generateRollupOptions(
 			l,
-			[]string{"frontend/src/vorma.entry.tsx", "frontend/src/routes/home.tsx"},
+			[]string{
+				"frontend/src/vorma.entry.tsx",
+				"frontend/src/routes/home.tsx",
+			},
 		)
 		if err != nil {
 			t.Fatalf("generateRollupOptions returned error: %v", err)
 		}
 
-		if !strings.Contains(content, `buildtimePublicURLFuncName: "waveBuildtimeURL"`) {
-			t.Fatalf("rollup options missing buildtime function name:\n%s", content)
+		if !strings.Contains(
+			content,
+			`buildtimePublicURLFuncName: "waveBuildtimeURL"`,
+		) {
+			t.Fatalf(
+				"rollup options missing buildtime function name:\n%s",
+				content,
+			)
 		}
-		if !strings.Contains(content, `filemapJSONPath: "frontend/src/vorma.gen/filemap.json"`) {
+		if !strings.Contains(
+			content,
+			`filemapJSONPath: "frontend/src/vorma.gen/filemap.json"`,
+		) {
 			t.Fatalf("rollup options missing filemap path:\n%s", content)
 		}
-		if !strings.Contains(content, `"react"`) || !strings.Contains(content, `"react-dom"`) {
+		if !strings.Contains(content, `"react"`) ||
+			!strings.Contains(content, `"react-dom"`) {
 			t.Fatalf("rollup options missing react dedupe list:\n%s", content)
 		}
 		for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
 			if strings.Contains(content, routeDefinitionPattern) {
 				continue
 			}
-			t.Fatalf("rollup options missing client route defs pattern in ignored patterns:\n%s", content)
+			t.Fatalf(
+				"rollup options missing client route defs pattern in ignored patterns:\n%s",
+				content,
+			)
 		}
 		if !strings.Contains(content, app.Config.TSGenOutDir+"/**/*") {
-			t.Fatalf("rollup options missing TS output dir in ignored patterns:\n%s", content)
+			t.Fatalf(
+				"rollup options missing TS output dir in ignored patterns:\n%s",
+				content,
+			)
 		}
 	})
 }
 
-func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T) {
+func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(
+	t *testing.T,
+) {
 	loadersRouter := mux.NewNestedRouter(&mux.NestedOptions{
-		ExplicitIndexSegment: "_index",
+		ExplicitIndexSegmentIdentifier: "_index",
 	})
 	actionsRouter := mux.NewRouter(&mux.Options{MountRoot: "/api/"})
 
@@ -135,44 +159,54 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T
 		OK bool `json:"ok"`
 	}
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		loadersRouter,
 		"/",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (RootData, error) {
-			return RootData{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[mux.None]) (RootData, error) {
+				return RootData{}, nil
+			},
+		),
 	)
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		loadersRouter,
 		"/users/:id",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (LoaderData, error) {
-			return LoaderData{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[mux.None]) (LoaderData, error) {
+				return LoaderData{}, nil
+			},
+		),
 	)
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		actionsRouter,
 		http.MethodGet,
 		"/users/:id",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[QueryInput]) (QueryOutput, error) {
-			return QueryOutput{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[QueryInput]) (QueryOutput, error) {
+				return QueryOutput{}, nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		actionsRouter,
 		http.MethodPut,
 		"/users/:id",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[MutationInput]) (MutationOutput, error) {
-			return MutationOutput{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[MutationInput]) (MutationOutput, error) {
+				return MutationOutput{}, nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		actionsRouter,
 		http.MethodOptions,
 		"/users/:id",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
-			return mux.None{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+				return mux.None{}, nil
+			},
+		),
 	)
 
 	content, err := generateTypeScript(tsGenInput{
@@ -194,7 +228,10 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T
 	}
 
 	if !strings.Contains(content, `type VormaRootData = Extract`) {
-		t.Fatalf("expected root data type extraction in generated output:\n%s", content)
+		t.Fatalf(
+			"expected root data type extraction in generated output:\n%s",
+			content,
+		)
 	}
 	if !strings.Contains(content, `isRootData: true`) {
 		t.Fatalf("expected root loader to be marked as root data:\n%s", content)
@@ -209,10 +246,16 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T
 		t.Fatalf("expected mutation category in output:\n%s", content)
 	}
 	if !strings.Contains(content, `method: "PUT"`) {
-		t.Fatalf("expected non-POST mutation method to be emitted:\n%s", content)
+		t.Fatalf(
+			"expected non-POST mutation method to be emitted:\n%s",
+			content,
+		)
 	}
 	if strings.Contains(content, `method: "OPTIONS"`) {
-		t.Fatalf("did not expect unsupported action methods in output:\n%s", content)
+		t.Fatalf(
+			"did not expect unsupported action methods in output:\n%s",
+			content,
+		)
 	}
 	if !strings.Contains(content, `pattern: "/client-only/:slug"`) {
 		t.Fatalf("expected client-only route in output:\n%s", content)
@@ -220,20 +263,25 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(t *testing.T
 	if !strings.Contains(content, `actionsRouterMountRoot: "/api/"`) {
 		t.Fatalf("expected actions mount root config in output:\n%s", content)
 	}
-	if !strings.Contains(content, `import type { VormaRouteProps } from "vorma/react";`) {
+	if !strings.Contains(
+		content,
+		`import type { VormaRouteProps } from "vorma/react";`,
+	) {
 		t.Fatalf("expected UI variant import path in output:\n%s", content)
 	}
 }
 
-func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(t *testing.T) {
+func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(
+	t *testing.T,
+) {
 	loadersRouter := mux.NewNestedRouter(&mux.NestedOptions{
-		DynamicParamPrefixRune: '@',
-		SplatSegmentRune:       '#',
+		DynamicParamPrefix:     '@',
+		SplatSegmentIdentifier: '#',
 	})
 	actionsRouter := mux.NewRouter(&mux.Options{
 		MountRoot:              "/api/",
-		DynamicParamPrefixRune: ':',
-		SplatSegmentRune:       '*',
+		DynamicParamPrefix:     ':',
+		SplatSegmentIdentifier: '*',
 	})
 
 	content, err := generateTypeScript(tsGenInput{
@@ -260,27 +308,48 @@ func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(t *testing.T
 	}
 
 	if !strings.Contains(content, `pattern: "/client-only/@slug"`) {
-		t.Fatalf("expected client-only dynamic route pattern in output:\n%s", content)
+		t.Fatalf(
+			"expected client-only dynamic route pattern in output:\n%s",
+			content,
+		)
 	}
 	if !strings.Contains(content, `params: ["slug"]`) {
-		t.Fatalf("expected loader dynamic rune metadata params for client-only route:\n%s", content)
+		t.Fatalf(
+			"expected loader dynamic rune metadata params for client-only route:\n%s",
+			content,
+		)
 	}
 	if !strings.Contains(content, `pattern: "/client-only/#"`) {
-		t.Fatalf("expected client-only splat route pattern in output:\n%s", content)
+		t.Fatalf(
+			"expected client-only splat route pattern in output:\n%s",
+			content,
+		)
 	}
 	if !strings.Contains(content, `isSplat: true`) {
-		t.Fatalf("expected loader splat rune metadata for client-only route:\n%s", content)
+		t.Fatalf(
+			"expected loader splat rune metadata for client-only route:\n%s",
+			content,
+		)
 	}
 }
 
 func TestDedupeListForUIVariant(t *testing.T) {
-	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantReact)); !slices.Equal(got, reactDedupeList) {
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantReact)); !slices.Equal(
+		got,
+		reactDedupeList,
+	) {
 		t.Fatalf("react dedupe list = %#v, want %#v", got, reactDedupeList)
 	}
-	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantPreact)); !slices.Equal(got, preactDedupeList) {
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantPreact)); !slices.Equal(
+		got,
+		preactDedupeList,
+	) {
 		t.Fatalf("preact dedupe list = %#v, want %#v", got, preactDedupeList)
 	}
-	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantSolid)); !slices.Equal(got, solidDedupeList) {
+	if got := dedupeListForUIVariant(string(vormaruntime.UIVariantSolid)); !slices.Equal(
+		got,
+		solidDedupeList,
+	) {
 		t.Fatalf("solid dedupe list = %#v, want %#v", got, solidDedupeList)
 	}
 	if got := dedupeListForUIVariant("unknown"); got != nil {
@@ -292,20 +361,35 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	entrypoints := []string{"frontend/src/vorma.entry.tsx", "frontend/src/routes/home.tsx"}
+	entrypoints := []string{
+		"frontend/src/vorma.entry.tsx",
+		"frontend/src/routes/home.tsx",
+	}
 	data := buildVitePluginTemplateData(app, entrypoints)
 
 	if !slices.Equal(data.Entrypoints, entrypoints) {
 		t.Fatalf("Entrypoints = %#v, want %#v", data.Entrypoints, entrypoints)
 	}
-	if data.PublicPathPrefix != app.Wave.GetPublicPathPrefix() {
-		t.Fatalf("PublicPathPrefix = %q, want %q", data.PublicPathPrefix, app.Wave.GetPublicPathPrefix())
+	if data.PublicPathPrefix != app.Wave.PublicPathPrefix() {
+		t.Fatalf(
+			"PublicPathPrefix = %q, want %q",
+			data.PublicPathPrefix,
+			app.Wave.PublicPathPrefix(),
+		)
 	}
 	if data.FuncName != app.Config.BuildtimePublicURLFuncName {
-		t.Fatalf("FuncName = %q, want %q", data.FuncName, app.Config.BuildtimePublicURLFuncName)
+		t.Fatalf(
+			"FuncName = %q, want %q",
+			data.FuncName,
+			app.Config.BuildtimePublicURLFuncName,
+		)
 	}
 	if data.FilemapJSONPath != "frontend/src/vorma.gen/filemap.json" {
-		t.Fatalf("FilemapJSONPath = %q, want %q", data.FilemapJSONPath, "frontend/src/vorma.gen/filemap.json")
+		t.Fatalf(
+			"FilemapJSONPath = %q, want %q",
+			data.FilemapJSONPath,
+			"frontend/src/vorma.gen/filemap.json",
+		)
 	}
 	if !slices.Equal(data.DedupeList, reactDedupeList) {
 		t.Fatalf("DedupeList = %#v, want %#v", data.DedupeList, reactDedupeList)
@@ -315,7 +399,9 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 	}
 }
 
-func TestBuildViteIgnoredPatterns_TrimsAndDeduplicatesRouteDefinitionPatterns(t *testing.T) {
+func TestBuildViteIgnoredPatterns_TrimsAndDeduplicatesRouteDefinitionPatterns(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	app.Config.ClientRouteDefinitionPatterns = []string{
@@ -326,8 +412,12 @@ func TestBuildViteIgnoredPatterns_TrimsAndDeduplicatesRouteDefinitionPatterns(t 
 	}
 
 	ignoredPatterns := buildViteIgnoredPatterns(app)
-	corePattern := filepath.ToSlash(path.Join("**", "frontend/src/routes/core.vorma.routes.ts"))
-	extraPattern := filepath.ToSlash(path.Join("**", "frontend/src/routes/extra.vorma.routes.ts"))
+	corePattern := filepath.ToSlash(
+		path.Join("**", "frontend/src/routes/core.vorma.routes.ts"),
+	)
+	extraPattern := filepath.ToSlash(
+		path.Join("**", "frontend/src/routes/extra.vorma.routes.ts"),
+	)
 
 	coreCount := 0
 	extraCount := 0
@@ -341,24 +431,47 @@ func TestBuildViteIgnoredPatterns_TrimsAndDeduplicatesRouteDefinitionPatterns(t 
 	}
 
 	if coreCount != 1 {
-		t.Fatalf("core pattern count = %d, want 1 (%#v)", coreCount, ignoredPatterns)
+		t.Fatalf(
+			"core pattern count = %d, want 1 (%#v)",
+			coreCount,
+			ignoredPatterns,
+		)
 	}
 	if extraCount != 1 {
-		t.Fatalf("extra pattern count = %d, want 1 (%#v)", extraCount, ignoredPatterns)
+		t.Fatalf(
+			"extra pattern count = %d, want 1 (%#v)",
+			extraCount,
+			ignoredPatterns,
+		)
 	}
 }
 
 func TestFormatConfigFilePatternForViteIgnore(t *testing.T) {
-	absoluteConfigFilePath := filepath.Join(t.TempDir(), "backend", "wave.config.json")
+	absoluteConfigFilePath := filepath.Join(
+		t.TempDir(),
+		"backend",
+		"wave.config.json",
+	)
 
 	if got, want := formatConfigFilePatternForViteIgnore("backend/wave.config.json"), filepath.ToSlash(path.Join("**", "backend/wave.config.json")); got != want {
-		t.Fatalf("formatConfigFilePatternForViteIgnore(relative) = %q, want %q", got, want)
+		t.Fatalf(
+			"formatConfigFilePatternForViteIgnore(relative) = %q, want %q",
+			got,
+			want,
+		)
 	}
 	if got, want := formatConfigFilePatternForViteIgnore(absoluteConfigFilePath), filepath.ToSlash(absoluteConfigFilePath); got != want {
-		t.Fatalf("formatConfigFilePatternForViteIgnore(absolute) = %q, want %q", got, want)
+		t.Fatalf(
+			"formatConfigFilePatternForViteIgnore(absolute) = %q, want %q",
+			got,
+			want,
+		)
 	}
 	if got := formatConfigFilePatternForViteIgnore("   "); got != "" {
-		t.Fatalf("formatConfigFilePatternForViteIgnore(empty) = %q, want empty", got)
+		t.Fatalf(
+			"formatConfigFilePatternForViteIgnore(empty) = %q, want empty",
+			got,
+		)
 	}
 }
 
@@ -406,37 +519,45 @@ func TestActionCategoryForMethod(t *testing.T) {
 func TestSortedActionKeys_SortsByPatternThenMethod(t *testing.T) {
 	actionsRouter := mux.NewRouter(&mux.Options{MountRoot: "/api/"})
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		actionsRouter,
 		http.MethodPatch,
 		"/b",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
-			return mux.None{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+				return mux.None{}, nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		actionsRouter,
 		http.MethodGet,
 		"/a",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
-			return mux.None{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+				return mux.None{}, nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		actionsRouter,
 		http.MethodPost,
 		"/a",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
-			return mux.None{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+				return mux.None{}, nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		actionsRouter,
 		http.MethodDelete,
 		"/b",
-		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (mux.None, error) {
-			return mux.None{}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(_ *mux.ReqData[mux.None]) (mux.None, error) {
+				return mux.None{}, nil
+			},
+		),
 	)
 
 	sorted := sortedActionKeys(actionsRouter.AllRoutes())
@@ -535,10 +656,16 @@ func TestGenerateAndAssembleTSContent(t *testing.T) {
 		}
 		content := string(contentBytes)
 		if !strings.Contains(content, "const routes = [") {
-			t.Fatalf("expected routes collection in generated content:\n%s", content)
+			t.Fatalf(
+				"expected routes collection in generated content:\n%s",
+				content,
+			)
 		}
 		if !strings.Contains(content, "Vorma Vite Config:") {
-			t.Fatalf("expected rollup config block in generated content:\n%s", content)
+			t.Fatalf(
+				"expected rollup config block in generated content:\n%s",
+				content,
+			)
 		}
 	})
 }

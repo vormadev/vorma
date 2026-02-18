@@ -8,7 +8,7 @@ export type VormaAppConfig = {
 	actionsSplatRune: string;
 	loadersDynamicRune: string;
 	loadersSplatRune: string;
-	loadersExplicitIndexSegment: string;
+	loadersExplicitIndexSegmentIdentifier: string;
 	__phantom?: unknown;
 };
 
@@ -164,7 +164,7 @@ export type PermissivePatternBasedProps<
 type PermissiveLoaderPattern<
 	App extends VormaAppBase,
 	P extends VormaLoaderPattern<App>,
-> = P extends `${infer Prefix}/${App["appConfig"]["loadersExplicitIndexSegment"]}`
+> = P extends `${infer Prefix}/${App["appConfig"]["loadersExplicitIndexSegmentIdentifier"]}`
 	? P | (Prefix extends "" ? "/" : Prefix)
 	: P;
 
@@ -237,7 +237,7 @@ type PathResolutionConfig = {
 	actionsSplatRune: string;
 	loadersDynamicRune: string;
 	loadersSplatRune: string;
-	loadersExplicitIndexSegment: string;
+	loadersExplicitIndexSegmentIdentifier: string;
 };
 
 type ResolvePathInput = {
@@ -292,8 +292,11 @@ export function resolveVormaPath(input: ResolvePathInput): string {
 	}
 
 	// Strip explicit index segment
-	if (input.type === "loader" && vormaAppConfig.loadersExplicitIndexSegment) {
-		const indexSegment = `/${vormaAppConfig.loadersExplicitIndexSegment}`;
+	if (
+		input.type === "loader" &&
+		vormaAppConfig.loadersExplicitIndexSegmentIdentifier
+	) {
+		const indexSegment = `/${vormaAppConfig.loadersExplicitIndexSegmentIdentifier}`;
 		if (path.endsWith(indexSegment)) {
 			path = path.slice(0, -indexSegment.length) || "/";
 		}
@@ -315,7 +318,7 @@ type URLBuildConfig = {
 	actionsSplatRune: string;
 	loadersDynamicRune: string;
 	loadersSplatRune: string;
-	loadersExplicitIndexSegment: string;
+	loadersExplicitIndexSegmentIdentifier: string;
 };
 
 type URLBuildInput = {

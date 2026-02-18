@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/vormadev/vorma/internal/waveport"
 )
 
 type waveTestFixture struct {
@@ -120,7 +122,7 @@ func setWaveDevModeForTest(t *testing.T, isDev bool) {
 }
 
 func resetPortCacheForTest() {
-	defaultPortResolver = NewPortResolver()
+	waveport.ResetDefaultResolverForTest()
 }
 
 func mustReadFileFromFS(t *testing.T, filesystem fs.FS, filePath string) string {

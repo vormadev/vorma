@@ -83,7 +83,7 @@ type SitemapItem struct {
 
 type Sitemap []SitemapItem
 
-func (inst *Instance) GetPageDetails(r *http.Request) (detailedPage *DetailedPage, err error) {
+func (inst *Instance) PageDetails(r *http.Request) (detailedPage *DetailedPage, err error) {
 	cleanPath := filepath.Clean(r.URL.Path)
 
 	if p, ok := inst.pageDetailsCache.Get(cleanPath); ok && !inst.IsDev {
@@ -142,8 +142,8 @@ func (inst *Instance) GetPageDetails(r *http.Request) (detailedPage *DetailedPag
 	return p, nil
 }
 
-func (inst *Instance) GetPlainMarkdown(r *http.Request) (string, error) {
-	p, err := inst.GetPageDetails(r)
+func (inst *Instance) PlainMarkdown(r *http.Request) (string, error) {
+	p, err := inst.PageDetails(r)
 	if err != nil {
 		return "", err
 	}
@@ -412,12 +412,13 @@ func (md *Instance) PlainTextMiddleware(patterns ...string) func(http.Handler) h
 			}
 
 			accept := r.Header.Get("Accept")
-			if !strings.Contains(accept, "text/plain") && !strings.Contains(accept, "text/markdown") {
+			normalizedAccept := strings.ToLower(accept)
+			if !strings.Contains(normalizedAccept, "text/plain") && !strings.Contains(normalizedAccept, "text/markdown") {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			markdown, err := md.GetPlainMarkdown(r)
+			markdown, err := md.PlainMarkdown(r)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

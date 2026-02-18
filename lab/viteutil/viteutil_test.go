@@ -2,6 +2,7 @@ package viteutil
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/vormadev/vorma/kit/netutil"
@@ -50,4 +51,106 @@ func findAvailablePortInRangeForInitPortTest(
 		rangeEnd,
 	)
 	return 0
+}
+
+func TestFindRelativeEntrypointPath_ResolvesFromManifestSourceEntryPath(
+	t *testing.T,
+) {
+	manifest := Manifest{
+		"src/main.ts": {
+			Src:     "src/main.ts",
+			File:    "assets/main-abcdef.js",
+			IsEntry: true,
+		},
+	}
+
+	got, err := FindRelativeEntrypointPath(manifest, "src/main.ts")
+	if err != nil {
+		t.Fatalf("FindRelativeEntrypointPath() error = %v", err)
+	}
+	if got != "src/main.ts" {
+		t.Fatalf("FindRelativeEntrypointPath() = %q, want %q", got, "src/main.ts")
+	}
+}
+
+func TestFindAllDependencies_RecursesThroughManifestImports(t *testing.T) {
+	manifest := Manifest{
+		"src/main.ts": {
+			File:    "assets/main-123.js",
+			IsEntry: true,
+			Imports: []string{"src/chunk.ts"},
+		},
+		"src/chunk.ts": {
+			File:    "assets/chunk-456.js",
+			Imports: []string{"src/vendor.ts"},
+		},
+		"src/vendor.ts": {
+			File: "assets/vendor-789.js",
+		},
+	}
+
+	dependencies := FindAllDependencies(manifest, "src/main.ts")
+	expected := []string{"main-123.js", "chunk-456.js", "vendor-789.js"}
+	if len(dependencies) != len(expected) {
+		t.Fatalf("len(FindAllDependencies()) = %d, want %d", len(dependencies), len(expected))
+	}
+	for i := range expected {
+		if dependencies[i] != expected[i] {
+			t.Fatalf("FindAllDependencies()[%d] = %q, want %q", i, dependencies[i], expected[i])
+		}
+	}
+}
+
+func TestToDevScripts_UsesDefaultPortWhenVitePortIsUnset(t *testing.T) {
+	t.Setenv(PortEnvName, "")
+
+	scripts, err := ToDevScripts(ToDevScriptsOptions{
+		ClientEntry: "/src/vorma.entry.tsx",
+		Variant:     VariantOther,
+	})
+	if err != nil {
+		t.Fatalf("ToDevScripts() error = %v", err)
+	}
+	if !strings.Contains(string(scripts), "http://localhost:5173/@vite/client") {
+		t.Fatalf("expected scripts to use default port 5173, got %q", string(scripts))
+	}
+}
+
+func TestToDevScripts_UsesDefaultPortWhenVitePortIsInvalid(t *testing.T) {
+	t.Setenv(PortEnvName, "not-a-port")
+
+	scripts, err := ToDevScripts(ToDevScriptsOptions{
+		ClientEntry: "/src/vorma.entry.tsx",
+		Variant:     VariantOther,
+	})
+	if err != nil {
+		t.Fatalf("ToDevScripts() error = %v", err)
+	}
+	if !strings.Contains(string(scripts), "http://localhost:5173/@vite/client") {
+		t.Fatalf("expected scripts to use default port 5173, got %q", string(scripts))
+	}
+}
+
+func TestToDevScripts_ReactIncludesRefreshPreambleAndClientScripts(t *testing.T) {
+	t.Setenv(PortEnvName, "5173")
+
+	scripts, err := ToDevScripts(ToDevScriptsOptions{
+		ClientEntry: "/src/vorma.entry.tsx",
+		Variant:     VariantReact,
+	})
+	if err != nil {
+		t.Fatalf("ToDevScripts() error = %v", err)
+	}
+
+	scriptsAsString := string(scripts)
+	requiredFragments := []string{
+		"@react-refresh",
+		"http://localhost:5173/@vite/client",
+		"http://localhost:5173/src/vorma.entry.tsx",
+	}
+	for _, requiredFragment := range requiredFragments {
+		if !strings.Contains(scriptsAsString, requiredFragment) {
+			t.Fatalf("expected scripts to contain %q, got %q", requiredFragment, scriptsAsString)
+		}
+	}
 }

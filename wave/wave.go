@@ -19,7 +19,7 @@ type Wave struct {
 	rawCfg []byte
 	log    *slog.Logger
 
-	portResolver *PortResolver
+	portResolver *portResolver
 
 	distStaticFS fs.FS
 
@@ -84,7 +84,7 @@ func New(c Config) *Wave {
 		rawCfg:       configJSON,
 		log:          resolveWaveLogger(c.Logger),
 		distStaticFS: c.DistStaticFS,
-		portResolver: NewPortResolver(),
+		portResolver: newPortResolver(),
 	}
 
 	w.initRuntimeCaches()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -94,5 +95,29 @@ func TestRunShellWithContext_CancelClassifiesCanceledCommand(t *testing.T) {
 	}
 	if !errors.Is(err, ErrCommandExecutionCanceled) {
 		t.Fatalf("expected canceled command classification, got %v", err)
+	}
+}
+
+func TestRunCmdCapture_ReturnsErrorWhenNoCommandProvided(t *testing.T) {
+	_, err := RunCmdCapture()
+	if err == nil {
+		t.Fatal("expected error for empty command list")
+	}
+}
+
+func TestRunCmd_ReturnsErrorWhenNoCommandProvided(t *testing.T) {
+	err := RunCmd()
+	if err == nil {
+		t.Fatal("expected error for empty command list")
+	}
+}
+
+func TestRunCmdCapture_CapturesOutputFromSuccessfulCommand(t *testing.T) {
+	output, err := RunCmdCapture("echo", "hello")
+	if err != nil {
+		t.Fatalf("RunCmdCapture() unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "hello") {
+		t.Fatalf("expected output to contain %q, got %q", "hello", output)
 	}
 }

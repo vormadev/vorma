@@ -7,7 +7,9 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 )
 
-func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testing.T) {
+func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(
+	t *testing.T,
+) {
 	stage := defaultPathsFile("route-registry-build", map[string]*Path{
 		"/old-client": {
 			OriginalPattern: "/old-client",
@@ -22,23 +24,29 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testin
 	})
 	app := fixture.app
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server-only",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
-			return map[string]any{"ok": true}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+				return map[string]any{"ok": true}, nil
+			},
+		),
 	)
 	app.RegisterPatternIfNeeded("/stale-no-handler")
 
 	clearRouteDataCacheForTest(app)
 	staleCacheKey := app.buildRouteDataCacheKey(
 		nil,
-		app.GetIsDevMode(),
-		app.GetBuildID(),
+		app.IsDevMode(),
+		app.BuildID(),
 		routeDataSnapshotVersionForTest(app),
 	)
-	putRouteDataCacheEntryForTest(app, staleCacheKey, &cachedItemSubset{ImportURLs: []string{"/stale.js"}})
+	putRouteDataCacheEntryForTest(
+		app,
+		staleCacheKey,
+		&cachedItemSubset{ImportURLs: []string{"/stale.js"}},
+	)
 
 	newPaths := map[string]*Path{
 		"/fresh-client": {
@@ -54,10 +62,13 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testin
 	})
 
 	if got := routeDataCacheLenForTest(app); got != 0 {
-		t.Fatalf("route-data cache size = %d, want 0 after SyncFromDevReload", got)
+		t.Fatalf(
+			"route-data cache size = %d, want 0 after SyncFromDevReload",
+			got,
+		)
 	}
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	if _, ok := paths["/fresh-client"]; !ok {
 		t.Fatal("expected /fresh-client in synced paths")
 	}
@@ -69,7 +80,11 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testin
 		t.Fatalf("server-only SrcPath = %q, want empty", serverOnly.SrcPath)
 	}
 	if serverOnly.ExportKey != "default" {
-		t.Fatalf("server-only ExportKey = %q, want %q", serverOnly.ExportKey, "default")
+		t.Fatalf(
+			"server-only ExportKey = %q, want %q",
+			serverOnly.ExportKey,
+			"default",
+		)
 	}
 	if _, ok := paths["/old-client"]; ok {
 		t.Fatal("expected /old-client to be replaced by SyncFromDevReload")
@@ -77,17 +92,23 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(t *testin
 
 	nr := app.LoadersRouter().NestedRouter
 	if !nr.IsRegistered("/fresh-client") {
-		t.Fatal("expected /fresh-client to be registered in nested router after SyncFromDevReload")
+		t.Fatal(
+			"expected /fresh-client to be registered in nested router after SyncFromDevReload",
+		)
 	}
 	if !nr.IsRegistered("/server-only") {
 		t.Fatal("expected /server-only handler route to remain registered")
 	}
 	if nr.IsRegistered("/stale-no-handler") {
-		t.Fatal("expected stale no-handler pattern to be removed on SyncFromDevReload rebuild")
+		t.Fatal(
+			"expected stale no-handler pattern to be removed on SyncFromDevReload rebuild",
+		)
 	}
 }
 
-func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(t *testing.T) {
+func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(
+	t *testing.T,
+) {
 	fixtureOne := newTestFixture(t, testFixtureOptions{})
 	appOne := fixtureOne.app
 
@@ -98,18 +119,26 @@ func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(t *test
 
 	appOneCacheKey := appOne.buildRouteDataCacheKey(
 		nil,
-		appOne.GetIsDevMode(),
-		appOne.GetBuildID(),
+		appOne.IsDevMode(),
+		appOne.BuildID(),
 		routeDataSnapshotVersionForTest(appOne),
 	)
 	appTwoCacheKey := appTwo.buildRouteDataCacheKey(
 		nil,
-		appTwo.GetIsDevMode(),
-		appTwo.GetBuildID(),
+		appTwo.IsDevMode(),
+		appTwo.BuildID(),
 		routeDataSnapshotVersionForTest(appTwo),
 	)
-	putRouteDataCacheEntryForTest(appOne, appOneCacheKey, &cachedItemSubset{ImportURLs: []string{"/one.js"}})
-	putRouteDataCacheEntryForTest(appTwo, appTwoCacheKey, &cachedItemSubset{ImportURLs: []string{"/two.js"}})
+	putRouteDataCacheEntryForTest(
+		appOne,
+		appOneCacheKey,
+		&cachedItemSubset{ImportURLs: []string{"/one.js"}},
+	)
+	putRouteDataCacheEntryForTest(
+		appTwo,
+		appTwoCacheKey,
+		&cachedItemSubset{ImportURLs: []string{"/two.js"}},
+	)
 
 	appOne.WithLock(func(lv *LockedVorma) {
 		lv.Routes().SyncFromDevReload(map[string]*Path{
@@ -130,49 +159,62 @@ func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(t *test
 	}
 }
 
-func TestRouteRegistrySyncFromDevReload_NilPathsStillPreservesServerHandlers(t *testing.T) {
+func TestRouteRegistrySyncFromDevReload_NilPathsStillPreservesServerHandlers(
+	t *testing.T,
+) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/internal/status",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (string, error) {
-			return "ok", nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
+				return "ok", nil
+			},
+		),
 	)
 
 	app.WithLock(func(lv *LockedVorma) {
 		lv.Routes().SyncFromDevReload(nil)
 	})
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	if paths == nil {
 		t.Fatal("paths should never be nil after SyncFromDevReload(nil)")
 	}
 	if _, ok := paths["/internal/status"]; !ok {
-		t.Fatal("expected server handler route to be preserved when SyncFromDevReload(nil)")
+		t.Fatal(
+			"expected server handler route to be preserved when SyncFromDevReload(nil)",
+		)
 	}
 }
 
-func TestRouteRegistrySyncFromDevReload_MergeServerRoutesSkipsNoHandlerRoutes(t *testing.T) {
+func TestRouteRegistrySyncFromDevReload_MergeServerRoutesSkipsNoHandlerRoutes(
+	t *testing.T,
+) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
-	mux.RegisterNestedPatternWithoutHandler(app.LoadersRouter().NestedRouter, "/no-handler-only")
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedPatternWithoutHandler(
+		app.LoadersRouter().NestedRouter,
+		"/no-handler-only",
+	)
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/has-handler",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (string, error) {
-			return "ok", nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
+				return "ok", nil
+			},
+		),
 	)
 
 	app.WithLock(func(lv *LockedVorma) {
 		lv.Routes().SyncFromDevReload(map[string]*Path{})
 	})
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	if _, ok := paths["/has-handler"]; !ok {
 		t.Fatal("expected handler route to be merged into paths")
 	}
@@ -204,7 +246,7 @@ func TestRouteRegistrySyncFromDevReload_ClonesPathEntries(t *testing.T) {
 	inputPaths["/products/:id"].SrcPath = "MUTATED_SRC"
 	inputPaths["/products/:id"].Deps[0] = "MUTATED_DEP"
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	got := paths["/products/:id"]
 	if got == nil {
 		t.Fatal("expected /products/:id in synced paths")
@@ -213,11 +255,17 @@ func TestRouteRegistrySyncFromDevReload_ClonesPathEntries(t *testing.T) {
 		t.Fatalf("SrcPath = %q, want original value", got.SrcPath)
 	}
 	if len(got.Deps) != 1 || got.Deps[0] != "vorma_out/chunk-products.js" {
-		t.Fatalf("Deps = %#v, want %#v", got.Deps, []string{"vorma_out/chunk-products.js"})
+		t.Fatalf(
+			"Deps = %#v, want %#v",
+			got.Deps,
+			[]string{"vorma_out/chunk-products.js"},
+		)
 	}
 }
 
-func TestRouteRegistryReplaceParsedPathsForInit_ClonesPathEntries(t *testing.T) {
+func TestRouteRegistryReplaceParsedPathsForInit_ClonesPathEntries(
+	t *testing.T,
+) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
@@ -239,7 +287,7 @@ func TestRouteRegistryReplaceParsedPathsForInit_ClonesPathEntries(t *testing.T) 
 	inputPaths["/docs"].OutPath = "MUTATED_OUT"
 	inputPaths["/docs"].Deps[0] = "MUTATED_DEP"
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	got := paths["/docs"]
 	if got == nil {
 		t.Fatal("expected /docs in replaced paths")
@@ -248,7 +296,11 @@ func TestRouteRegistryReplaceParsedPathsForInit_ClonesPathEntries(t *testing.T) 
 		t.Fatalf("OutPath = %q, want original value", got.OutPath)
 	}
 	if len(got.Deps) != 1 || got.Deps[0] != "vorma_out/chunk-docs.js" {
-		t.Fatalf("Deps = %#v, want %#v", got.Deps, []string{"vorma_out/chunk-docs.js"})
+		t.Fatalf(
+			"Deps = %#v, want %#v",
+			got.Deps,
+			[]string{"vorma_out/chunk-docs.js"},
+		)
 	}
 }
 
@@ -283,7 +335,11 @@ func routeDataCacheLenForTest(apps ...*Vorma) int {
 	return total
 }
 
-func putRouteDataCacheEntryForTest(app *Vorma, cacheKey string, value *cachedItemSubset) {
+func putRouteDataCacheEntryForTest(
+	app *Vorma,
+	cacheKey string,
+	value *cachedItemSubset,
+) {
 	if app == nil {
 		return
 	}

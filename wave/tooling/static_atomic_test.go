@@ -11,7 +11,9 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-func TestWriteFileAtomicBytes_CreatesParentDirectoriesAndReplacesContent(t *testing.T) {
+func TestWriteFileAtomicBytes_CreatesParentDirectoriesAndReplacesContent(
+	t *testing.T,
+) {
 	target := filepath.Join(t.TempDir(), "nested", "dir", "file.txt")
 
 	if err := writeFileAtomicBytes(target, []byte("first")); err != nil {
@@ -51,7 +53,10 @@ func TestWriteFileAtomic_CleansUpTempFileOnWriteError(t *testing.T) {
 		t.Fatalf("failed reading target file: %v", readErr)
 	}
 	if string(content) != "original" {
-		t.Fatalf("target file was modified on failed atomic write, got %q", string(content))
+		t.Fatalf(
+			"target file was modified on failed atomic write, got %q",
+			string(content),
+		)
 	}
 
 	tmpFiles, globErr := filepath.Glob(filepath.Join(dir, ".tmp-*"))
@@ -59,7 +64,105 @@ func TestWriteFileAtomic_CleansUpTempFileOnWriteError(t *testing.T) {
 		t.Fatalf("failed globbing temp files: %v", globErr)
 	}
 	if len(tmpFiles) != 0 {
-		t.Fatalf("expected no leftover temp files, found: %s", strings.Join(tmpFiles, ", "))
+		t.Fatalf(
+			"expected no leftover temp files, found: %s",
+			strings.Join(tmpFiles, ", "),
+		)
+	}
+}
+
+func TestWriteFileAtomic_RetriesRenameByReplacingExistingTargetOnPermissionDenied(
+	t *testing.T,
+) {
+	target := filepath.Join(t.TempDir(), "target.txt")
+	if err := os.WriteFile(target, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("failed seeding existing target: %v", err)
+	}
+
+	renameCallCount := 0
+	removeCallCount := 0
+	err := writeFileAtomicWithDependencies(
+		target,
+		func(file *os.File) error {
+			_, writeError := file.Write([]byte("updated"))
+			return writeError
+		},
+		atomicFileWriteDependencies{
+			renameTempFile: func(oldPath string, newPath string) error {
+				renameCallCount++
+				if renameCallCount == 1 {
+					return os.ErrPermission
+				}
+				return os.Rename(oldPath, newPath)
+			},
+			removeExistingTarget: func(path string) error {
+				removeCallCount++
+				return os.Remove(path)
+			},
+			statTarget: os.Stat,
+		},
+	)
+	if err != nil {
+		t.Fatalf("writeFileAtomicWithDependencies returned error: %v", err)
+	}
+	if renameCallCount != 2 {
+		t.Fatalf(
+			"expected rename to be retried once, got %d calls",
+			renameCallCount,
+		)
+	}
+	if removeCallCount != 1 {
+		t.Fatalf(
+			"expected existing target to be removed once, got %d calls",
+			removeCallCount,
+		)
+	}
+
+	content, readErr := os.ReadFile(target)
+	if readErr != nil {
+		t.Fatalf("failed reading updated target file: %v", readErr)
+	}
+	if string(content) != "updated" {
+		t.Fatalf(
+			"expected updated target file contents, got %q",
+			string(content),
+		)
+	}
+}
+
+func TestWriteFileAtomic_DoesNotReplaceTargetWhenPermissionDeniedAndTargetMissing(
+	t *testing.T,
+) {
+	target := filepath.Join(t.TempDir(), "target.txt")
+
+	removeCallCount := 0
+	err := writeFileAtomicWithDependencies(
+		target,
+		func(file *os.File) error {
+			_, writeError := file.Write([]byte("updated"))
+			return writeError
+		},
+		atomicFileWriteDependencies{
+			renameTempFile: func(_, _ string) error {
+				return os.ErrPermission
+			},
+			removeExistingTarget: func(path string) error {
+				removeCallCount++
+				return os.Remove(path)
+			},
+			statTarget: func(path string) (os.FileInfo, error) {
+				return nil, os.ErrNotExist
+			},
+		},
+	)
+	if err == nil {
+		t.Fatal("expected rename permission error for missing target")
+	}
+	if removeCallCount != 0 {
+		t.Fatalf(
+			"expected missing target not to be removed, got %d remove calls",
+			removeCallCount,
+		)
 	}
 }
 
@@ -92,7 +195,11 @@ func TestFileMapSaveAndLoadRoundTrip(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(output, input) {
-		t.Fatalf("loaded file map mismatch\noutput=%#v\ninput=%#v", output, input)
+		t.Fatalf(
+			"loaded file map mismatch\noutput=%#v\ninput=%#v",
+			output,
+			input,
+		)
 	}
 }
 

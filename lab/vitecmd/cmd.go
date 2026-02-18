@@ -30,7 +30,7 @@ type BuildCtx struct {
 	waitDone       chan struct{}
 }
 
-func (c *BuildCtx) GetPort() int {
+func (c *BuildCtx) Port() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.port
@@ -194,7 +194,7 @@ func (c *BuildCtx) ProdBuild() error {
 	}
 
 	c.cmd.Args = append(c.cmd.Args, "vite", "build",
-		"--outDir", filepath.Join(".", c.opts.OutDir),
+		"--outDir", c.opts.OutDir,
 		"--assetsDir", filepath.Join("."),
 		"--manifest", "__temp_viteutil_manifest__.json",
 	)
@@ -215,7 +215,12 @@ func (c *BuildCtx) ProdBuild() error {
 	}
 
 	// Move __temp_viteutil_manifest__.json to the specified location
-	manifestPath := filepath.Join(".", c.opts.OutDir, "__temp_viteutil_manifest__.json")
+	manifestPath := filepath.Join(c.opts.OutDir, "__temp_viteutil_manifest__.json")
+	manifestOutputDirectory := filepath.Dir(c.opts.ManifestOut)
+	if err := os.MkdirAll(manifestOutputDirectory, 0o755); err != nil {
+		log.Error(fmt.Sprintf("Error creating manifest output directory: %s", err))
+		return fmt.Errorf("create manifest output directory: %w", err)
+	}
 	if err := os.Rename(manifestPath, c.opts.ManifestOut); err != nil {
 		log.Error(fmt.Sprintf("Error moving vite manifest: %s", err))
 		return err

@@ -308,20 +308,20 @@ func TestBuildInner(t *testing.T) {
 					t.Fatalf("error = %v, expected wrapped step error", err)
 				}
 
-				if app.GetIsDevMode() {
+				if app.IsDevMode() {
 					t.Fatal("expected runtime state rollback to restore isDev=false")
 				}
-				if got := app.GetBuildID(); got != baselineBuildID {
+				if got := app.BuildID(); got != baselineBuildID {
 					t.Fatalf("build ID after rollback = %q, want %q", got, baselineBuildID)
 				}
-				if got := app.GetRouteManifestFile(); got != baselineRouteManifestFile {
+				if got := app.RouteManifestFile(); got != baselineRouteManifestFile {
 					t.Fatalf(
 						"route manifest after rollback = %q, want %q",
 						got,
 						baselineRouteManifestFile,
 					)
 				}
-				paths := app.GetPathsSnapshot()
+				paths := app.Paths()
 				if len(paths) != 1 {
 					t.Fatalf("paths after rollback length = %d, want 1 (%#v)", len(paths), paths)
 				}
@@ -403,20 +403,20 @@ func TestBuildInner(t *testing.T) {
 				t.Fatalf("recovered panic = %v, want %v", recoveredPanicErr, expectedPanic)
 			}
 
-			if app.GetIsDevMode() {
+			if app.IsDevMode() {
 				t.Fatal("expected panic rollback to restore isDev=false")
 			}
-			if got := app.GetBuildID(); got != baselineBuildID {
+			if got := app.BuildID(); got != baselineBuildID {
 				t.Fatalf("build ID after panic rollback = %q, want %q", got, baselineBuildID)
 			}
-			if got := app.GetRouteManifestFile(); got != baselineRouteManifestFile {
+			if got := app.RouteManifestFile(); got != baselineRouteManifestFile {
 				t.Fatalf(
 					"route manifest after panic rollback = %q, want %q",
 					got,
 					baselineRouteManifestFile,
 				)
 			}
-			paths := app.GetPathsSnapshot()
+			paths := app.Paths()
 			if len(paths) != 1 {
 				t.Fatalf("paths after panic rollback length = %d, want 1 (%#v)", len(paths), paths)
 			}
@@ -505,20 +505,20 @@ func TestBuildInner(t *testing.T) {
 				t.Fatalf("recovered panic = %v, want %v", recoveredPanicErr, expectedPanic)
 			}
 
-			if !app.GetIsDevMode() {
+			if !app.IsDevMode() {
 				t.Fatal("expected newer runtime state to remain in dev mode after stale panic rollback skip")
 			}
-			if got := app.GetBuildID(); got != "build-after-newer-sync" {
+			if got := app.BuildID(); got != "build-after-newer-sync" {
 				t.Fatalf("build ID after stale panic rollback skip = %q, want %q", got, "build-after-newer-sync")
 			}
-			if got := app.GetRouteManifestFile(); got != "route-manifest-after-newer-sync.json" {
+			if got := app.RouteManifestFile(); got != "route-manifest-after-newer-sync.json" {
 				t.Fatalf(
 					"route manifest after stale panic rollback skip = %q, want %q",
 					got,
 					"route-manifest-after-newer-sync.json",
 				)
 			}
-			paths := app.GetPathsSnapshot()
+			paths := app.Paths()
 			if len(paths) != 1 {
 				t.Fatalf("paths after stale panic rollback skip length = %d, want 1 (%#v)", len(paths), paths)
 			}
@@ -617,20 +617,20 @@ func TestBuildInner(t *testing.T) {
 			t.Fatalf("error = %v, expected wrapped parse error", err)
 		}
 
-		if !app.GetIsDevMode() {
+		if !app.IsDevMode() {
 			t.Fatal("expected newer runtime state to remain in dev mode after stale rollback skip")
 		}
-		if got := app.GetBuildID(); got != "build-after-newer-sync" {
+		if got := app.BuildID(); got != "build-after-newer-sync" {
 			t.Fatalf("build ID after stale rollback skip = %q, want %q", got, "build-after-newer-sync")
 		}
-		if got := app.GetRouteManifestFile(); got != "route-manifest-after-newer-sync.json" {
+		if got := app.RouteManifestFile(); got != "route-manifest-after-newer-sync.json" {
 			t.Fatalf(
 				"route manifest after stale rollback skip = %q, want %q",
 				got,
 				"route-manifest-after-newer-sync.json",
 			)
 		}
-		paths := app.GetPathsSnapshot()
+		paths := app.Paths()
 		if len(paths) != 1 {
 			t.Fatalf("paths after stale rollback skip length = %d, want 1 (%#v)", len(paths), paths)
 		}
@@ -767,20 +767,20 @@ func TestBuildInner(t *testing.T) {
 			t.Fatal("timed out waiting for first concurrent build to return")
 		}
 
-		if !app.GetIsDevMode() {
+		if !app.IsDevMode() {
 			t.Fatal("expected newer runtime state from second build to remain in dev mode")
 		}
-		if got := app.GetBuildID(); got != "build-second-attempt" {
+		if got := app.BuildID(); got != "build-second-attempt" {
 			t.Fatalf("build ID after overlapping builds = %q, want %q", got, "build-second-attempt")
 		}
-		if got := app.GetRouteManifestFile(); got != "manifest-second-attempt.json" {
+		if got := app.RouteManifestFile(); got != "manifest-second-attempt.json" {
 			t.Fatalf(
 				"route manifest after overlapping builds = %q, want %q",
 				got,
 				"manifest-second-attempt.json",
 			)
 		}
-		paths := app.GetPathsSnapshot()
+		paths := app.Paths()
 		if len(paths) != 1 {
 			t.Fatalf("paths after overlapping builds length = %d, want 1 (%#v)", len(paths), paths)
 		}
@@ -1098,7 +1098,7 @@ func TestParseAndSyncClientRoutes(t *testing.T) {
 		if err := parseAndSyncClientRoutesWithDependencies(app, dependencies); err != nil {
 			t.Fatalf("parseAndSyncClientRoutes returned error: %v", err)
 		}
-		if app.GetPathsSnapshot()["/synced"] == nil {
+		if app.Paths()["/synced"] == nil {
 			t.Fatal("expected parsed route to be synced into app paths")
 		}
 	})
@@ -1126,11 +1126,11 @@ func TestInitializeBuildInnerState(t *testing.T) {
 		); err != nil {
 			t.Fatalf("initializeBuildInnerState returned error: %v", err)
 		}
-		if app.GetIsDevMode() {
+		if app.IsDevMode() {
 			t.Fatal("expected app not to be in dev mode after production initialization")
 		}
-		if app.GetBuildID() != "existing-build-id" {
-			t.Fatalf("build ID = %q, want %q", app.GetBuildID(), "existing-build-id")
+		if app.BuildID() != "existing-build-id" {
+			t.Fatalf("build ID = %q, want %q", app.BuildID(), "existing-build-id")
 		}
 	})
 
@@ -1151,11 +1151,11 @@ func TestInitializeBuildInnerState(t *testing.T) {
 		); err != nil {
 			t.Fatalf("initializeBuildInnerState returned error: %v", err)
 		}
-		if !app.GetIsDevMode() {
+		if !app.IsDevMode() {
 			t.Fatal("expected app to be in dev mode after development initialization")
 		}
-		if app.GetBuildID() != "dev_stubid" {
-			t.Fatalf("build ID = %q, want %q", app.GetBuildID(), "dev_stubid")
+		if app.BuildID() != "dev_stubid" {
+			t.Fatalf("build ID = %q, want %q", app.BuildID(), "dev_stubid")
 		}
 	})
 
@@ -1198,13 +1198,13 @@ func TestInitializeBuildInnerState(t *testing.T) {
 
 		<-buildIDGenerationStarted
 
-		if app.GetIsDevMode() {
+		if app.IsDevMode() {
 			t.Fatal("expected runtime to keep previous isDev value until build state commits atomically")
 		}
-		if app.GetBuildID() != "build-before-dev-init" {
+		if app.BuildID() != "build-before-dev-init" {
 			t.Fatalf(
 				"build ID during pending dev initialization = %q, want %q",
-				app.GetBuildID(),
+				app.BuildID(),
 				"build-before-dev-init",
 			)
 		}

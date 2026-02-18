@@ -24,20 +24,24 @@ func newWatcherEventClassificationProber(
 	isConfigFileFn func(string) bool,
 ) *watcherEventClassificationProber {
 	return &watcherEventClassificationProber{
-		pathProbeSnapshotByPath: make(map[string]*watcherEventPathProbeSnapshot),
-		isConfigFileFn:          isConfigFileFn,
-		statPathFn:              os.Stat,
+		pathProbeSnapshotByPath: make(
+			map[string]*watcherEventPathProbeSnapshot,
+		),
+		isConfigFileFn: isConfigFileFn,
+		statPathFn:     os.Stat,
 	}
 }
 
-func (prober *watcherEventClassificationProber) resolvePathProbeSnapshot(
+func (prober *watcherEventClassificationProber) resolvePathProbe(
 	path string,
 ) *watcherEventPathProbeSnapshot {
 	if prober == nil {
 		return nil
 	}
 	if prober.pathProbeSnapshotByPath == nil {
-		prober.pathProbeSnapshotByPath = make(map[string]*watcherEventPathProbeSnapshot)
+		prober.pathProbeSnapshotByPath = make(
+			map[string]*watcherEventPathProbeSnapshot,
+		)
 	}
 
 	pathProbeSnapshot, hasCachedSnapshot := prober.pathProbeSnapshotByPath[path]
@@ -54,7 +58,7 @@ func (prober *watcherEventClassificationProber) probeIsConfigFile(
 	if prober == nil {
 		return false
 	}
-	pathProbeSnapshot := prober.resolvePathProbeSnapshot(path)
+	pathProbeSnapshot := prober.resolvePathProbe(path)
 	if pathProbeSnapshot == nil {
 		return false
 	}
@@ -78,7 +82,7 @@ func (prober *watcherEventClassificationProber) probeEventDirectoryStatus(
 	if prober == nil {
 		return watcherEventDirectoryProbeResult{}
 	}
-	pathProbeSnapshot := prober.resolvePathProbeSnapshot(path)
+	pathProbeSnapshot := prober.resolvePathProbe(path)
 	if pathProbeSnapshot == nil {
 		return watcherEventDirectoryProbeResult{}
 	}
@@ -86,7 +90,6 @@ func (prober *watcherEventClassificationProber) probeEventDirectoryStatus(
 		return pathProbeSnapshot.directoryProbeState
 	}
 
-	directoryProbeResult := watcherEventDirectoryProbeResult{}
 	isDirectory := false
 	statProbeSucceeded := false
 	if prober.statPathFn != nil {
@@ -95,7 +98,7 @@ func (prober *watcherEventClassificationProber) probeEventDirectoryStatus(
 		isDirectory = statProbeSucceeded && pathInfo.IsDir()
 	}
 
-	directoryProbeResult = watcherEventDirectoryProbeResult{
+	directoryProbeResult := watcherEventDirectoryProbeResult{
 		statProbeSucceeded: statProbeSucceeded,
 		isDirectory:        isDirectory,
 	}

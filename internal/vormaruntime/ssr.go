@@ -62,7 +62,9 @@ type ssrRuntimeSnapshot struct {
 	routeManifestFile string
 }
 
-func (v *Vorma) getSSRInnerHTML(routeData *RouteDataFinal) (*GetSSRInnerHTMLOutput, error) {
+func (v *Vorma) getSSRInnerHTML(
+	routeData *RouteDataFinal,
+) (*GetSSRInnerHTMLOutput, error) {
 	v.mu.RLock()
 	snapshot := ssrRuntimeSnapshot{
 		isDev:             v._isDev,
@@ -71,10 +73,10 @@ func (v *Vorma) getSSRInnerHTML(routeData *RouteDataFinal) (*GetSSRInnerHTMLOutp
 	}
 	v.mu.RUnlock()
 
-	return v.getSSRInnerHTMLFromSnapshot(routeData, snapshot)
+	return v.getSSRInnerHTMLWithRuntimeState(routeData, snapshot)
 }
 
-func (v *Vorma) getSSRInnerHTMLFromSnapshot(
+func (v *Vorma) getSSRInnerHTMLWithRuntimeState(
 	routeData *RouteDataFinal,
 	snapshot ssrRuntimeSnapshot,
 ) (*GetSSRInnerHTMLOutput, error) {
@@ -86,12 +88,16 @@ func (v *Vorma) getSSRInnerHTMLFromSnapshot(
 	}
 	for i, loaderData := range routeData.RouteDataCore.LoadersData {
 		if err := json.NewEncoder(io.Discard).Encode(loaderData); err != nil {
-			return nil, fmt.Errorf("routeData.LoadersData[%d] must be JSON-serializable: %w", i, err)
+			return nil, fmt.Errorf(
+				"routeData.LoadersData[%d] must be JSON-serializable: %w",
+				i,
+				err,
+			)
 		}
 	}
 
 	var htmlBuilder strings.Builder
-	publicPathPrefix := v.Wave.GetPublicPathPrefix()
+	publicPathPrefix := v.Wave.PublicPathPrefix()
 
 	dto := SSRInnerHTMLInput{
 		VormaSymbolStr:   VormaSymbolStr,
@@ -99,9 +105,12 @@ func (v *Vorma) getSSRInnerHTMLFromSnapshot(
 		ViteDevURL:       routeData.ViteDevURL,
 		BuildID:          snapshot.buildID,
 		PublicPathPrefix: publicPathPrefix,
-		RouteManifestURL: path.Join(publicPathPrefix, snapshot.routeManifestFile),
-		RouteDataCore:    routeData.RouteDataCore,
-		CSSBundles:       routeData.CSSBundles,
+		RouteManifestURL: path.Join(
+			publicPathPrefix,
+			snapshot.routeManifestFile,
+		),
+		RouteDataCore: routeData.RouteDataCore,
+		CSSBundles:    routeData.CSSBundles,
 	}
 
 	if envutil.GetBool("VERCEL_SKEW_PROTECTION_ENABLED", false) {
@@ -109,7 +118,10 @@ func (v *Vorma) getSSRInnerHTMLFromSnapshot(
 	}
 
 	if err := ssrInnerTmpl.Execute(&htmlBuilder, dto); err != nil {
-		return nil, fmt.Errorf("could not execute SSR inner HTML template: %w", err)
+		return nil, fmt.Errorf(
+			"could not execute SSR inner HTML template: %w",
+			err,
+		)
 	}
 
 	innerHTML := htmlBuilder.String()
@@ -132,5 +144,8 @@ func (v *Vorma) getSSRInnerHTMLFromSnapshot(
 		return nil, fmt.Errorf("could not render SSR inner HTML: %w", err)
 	}
 
-	return &GetSSRInnerHTMLOutput{Script: &renderedEl, Sha256Hash: sha256Hash}, nil
+	return &GetSSRInnerHTMLOutput{
+		Script:     &renderedEl,
+		Sha256Hash: sha256Hash,
+	}, nil
 }

@@ -51,7 +51,9 @@ func main() {
 }
 
 func runUnifiedReleaseProcess() (releaseErr *releaseProcessError) {
-	currentCanonicalVersion := readCanonicalVersionOrExit(canonicalVersionFilePath)
+	currentCanonicalVersion := readCanonicalVersionOrExit(
+		canonicalVersionFilePath,
+	)
 	rootPackageJSON := loadPackageJSONVersionFile(rootPackageJSONPath)
 	createPackageJSON := loadPackageJSONVersionFile(createPackageJSONPath)
 	rootPackageJSONWasUpdated := false
@@ -62,7 +64,10 @@ func runUnifiedReleaseProcess() (releaseErr *releaseProcessError) {
 		if releaseErr == nil {
 			return
 		}
-		rollbackCanonicalVersionIfUpdated(canonicalVersionWasUpdated, currentCanonicalVersion)
+		rollbackCanonicalVersionIfUpdated(
+			canonicalVersionWasUpdated,
+			currentCanonicalVersion,
+		)
 		rollbackPackageJSONVersionsIfUpdated(
 			rootPackageJSONWasUpdated,
 			createPackageJSONWasUpdated,
@@ -108,7 +113,10 @@ func runUnifiedReleaseProcess() (releaseErr *releaseProcessError) {
 			return confirmationErr
 		}
 
-		writeRootErr := writePackageJSONVersionFile(rootPackageJSON, targetVersion)
+		writeRootErr := writePackageJSONVersionFile(
+			rootPackageJSON,
+			targetVersion,
+		)
 		if writeRootErr != nil {
 			return writeRootErr
 		}
@@ -118,7 +126,10 @@ func runUnifiedReleaseProcess() (releaseErr *releaseProcessError) {
 		t.Plain(" --> ")
 		t.Green(targetVersion)
 		t.NewLine()
-		writeCreateErr := writePackageJSONVersionFile(createPackageJSON, targetVersion)
+		writeCreateErr := writePackageJSONVersionFile(
+			createPackageJSON,
+			targetVersion,
+		)
 		if writeCreateErr != nil {
 			return writeCreateErr
 		}
@@ -168,7 +179,10 @@ func runUnifiedReleaseProcess() (releaseErr *releaseProcessError) {
 	}
 
 	if currentCanonicalVersion != targetVersion {
-		writeCanonicalErr := writeCanonicalVersionFile(canonicalVersionFilePath, targetVersion)
+		writeCanonicalErr := writeCanonicalVersionFile(
+			canonicalVersionFilePath,
+			targetVersion,
+		)
 		if writeCanonicalErr != nil {
 			return writeCanonicalErr
 		}
@@ -185,7 +199,9 @@ func runUnifiedReleaseProcess() (releaseErr *releaseProcessError) {
 		return tagErr
 	}
 
-	ensureCanonicalVersionErr := ensureCanonicalVersionMatchesExpected(targetVersion)
+	ensureCanonicalVersionErr := ensureCanonicalVersionMatchesExpected(
+		targetVersion,
+	)
 	if ensureCanonicalVersionErr != nil {
 		return ensureCanonicalVersionErr
 	}
@@ -257,7 +273,10 @@ func publishNPMPackageVersionIdempotently(
 	version string,
 	hasPreReleaseTag bool,
 ) *releaseProcessError {
-	alreadyPublished := isNPMPackageVersionPublished(target.packageName, version)
+	alreadyPublished := isNPMPackageVersionPublished(
+		target.packageName,
+		version,
+	)
 	if alreadyPublished {
 		t.Plain("npm package already published: ")
 		t.Green(target.packageName + "@" + version)
@@ -360,8 +379,13 @@ func readNPMDistTagVersion(packageName string, tagName string) (string, bool) {
 	return tagVersion, true
 }
 
-func commitAndPushReleaseChangesIdempotently(version string) *releaseProcessError {
-	gitAddErr := runCommand(t.Cmd("git", "add", "."), "failed to stage git changes")
+func commitAndPushReleaseChangesIdempotently(
+	version string,
+) *releaseProcessError {
+	gitAddErr := runCommand(
+		t.Cmd("git", "add", "."),
+		"failed to stage git changes",
+	)
 	if gitAddErr != nil {
 		return gitAddErr
 	}
@@ -412,7 +436,10 @@ func tagAndPublishGoProxyIdempotently(version string) *releaseProcessError {
 		return localTagLookupErr
 	}
 	if !tagExistsLocally {
-		createTagErr := runCommand(t.Cmd("git", "tag", tagName), "git tag creation failed")
+		createTagErr := runCommand(
+			t.Cmd("git", "tag", tagName),
+			"git tag creation failed",
+		)
 		if createTagErr != nil {
 			return createTagErr
 		}
@@ -467,7 +494,9 @@ func gitTagExistsOnOriginOrFail(tagName string) (bool, *releaseProcessError) {
 }
 
 func ensurePackageJSONVersionsMatch(targetVersion string) *releaseProcessError {
-	rootPackageVersion, readRootErr := readPackageJSONVersionFromFile(rootPackageJSONPath)
+	rootPackageVersion, readRootErr := readPackageJSONVersionFromFile(
+		rootPackageJSONPath,
+	)
 	if readRootErr != nil {
 		return readRootErr
 	}
@@ -478,7 +507,9 @@ func ensurePackageJSONVersionsMatch(targetVersion string) *releaseProcessError {
 		}
 	}
 
-	createPackageVersion, readCreateErr := readPackageJSONVersionFromFile(createPackageJSONPath)
+	createPackageVersion, readCreateErr := readPackageJSONVersionFromFile(
+		createPackageJSONPath,
+	)
 	if readCreateErr != nil {
 		return readCreateErr
 	}
@@ -492,8 +523,12 @@ func ensurePackageJSONVersionsMatch(targetVersion string) *releaseProcessError {
 	return nil
 }
 
-func ensureCanonicalVersionMatchesExpected(targetVersion string) *releaseProcessError {
-	canonicalVersion, readCanonicalErr := readCanonicalVersionFromFile(canonicalVersionFilePath)
+func ensureCanonicalVersionMatchesExpected(
+	targetVersion string,
+) *releaseProcessError {
+	canonicalVersion, readCanonicalErr := readCanonicalVersionFromFile(
+		canonicalVersionFilePath,
+	)
 	if readCanonicalErr != nil {
 		return readCanonicalErr
 	}
@@ -507,7 +542,10 @@ func ensureCanonicalVersionMatchesExpected(targetVersion string) *releaseProcess
 	return nil
 }
 
-func writeCanonicalVersionFile(path string, version string) *releaseProcessError {
+func writeCanonicalVersionFile(
+	path string,
+	version string,
+) *releaseProcessError {
 	err := os.WriteFile(path, []byte(version+"\n"), 0644)
 	if err != nil {
 		return &releaseProcessError{
@@ -519,7 +557,9 @@ func writeCanonicalVersionFile(path string, version string) *releaseProcessError
 }
 
 func loadPackageJSONVersionFile(path string) packageJSONVersionFile {
-	lines, versionLine, currentVersion := parseutil.PackageJSONFromFile(path)
+	lines, versionLine, currentVersion := parseutil.MustPackageJSONFromFile(
+		path,
+	)
 	return packageJSONVersionFile{
 		path:           path,
 		lines:          lines,
@@ -539,7 +579,11 @@ func writePackageJSONVersionFile(
 		newVersion,
 		1,
 	)
-	err := os.WriteFile(packageJSON.path, []byte(strings.Join(updatedLines, "\n")+"\n"), 0644)
+	err := os.WriteFile(
+		packageJSON.path,
+		[]byte(strings.Join(updatedLines, "\n")+"\n"),
+		0644,
+	)
 	if err != nil {
 		return &releaseProcessError{
 			message: "failed to write package.json version for " + packageJSON.path,
@@ -584,7 +628,9 @@ func readCanonicalVersionFromFile(path string) (string, *releaseProcessError) {
 	return version, nil
 }
 
-func readPackageJSONVersionFromFile(path string) (string, *releaseProcessError) {
+func readPackageJSONVersionFromFile(
+	path string,
+) (string, *releaseProcessError) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		return "", &releaseProcessError{
@@ -619,7 +665,10 @@ func rollbackCanonicalVersionIfUpdated(
 		return
 	}
 
-	rollbackErr := writeCanonicalVersionFile(canonicalVersionFilePath, previousCanonicalVersion)
+	rollbackErr := writeCanonicalVersionFile(
+		canonicalVersionFilePath,
+		previousCanonicalVersion,
+	)
 	if rollbackErr != nil {
 		t.Plain("WARNING: failed to rollback internal/__LAST_RELEASE.txt: ")
 		t.Red(rollbackErr.err.Error())
@@ -662,7 +711,9 @@ func rollbackPackageJSONVersionsIfUpdated(
 			createPackageJSON.currentVersion,
 		)
 		if rollbackCreateErr != nil {
-			t.Plain("WARNING: failed to rollback typescript/vorma/create/package.json: ")
+			t.Plain(
+				"WARNING: failed to rollback typescript/vorma/create/package.json: ",
+			)
 			if rollbackCreateErr.err != nil {
 				t.Red(rollbackCreateErr.err.Error())
 			} else {

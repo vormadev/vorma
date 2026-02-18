@@ -22,9 +22,9 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 			rd.ResponseProxy().SetStatus(http.StatusForbidden, "Forbidden by Task MW")
 			return None{}, errors.New("task middleware intentional error") // Task also returns an error
 		})
-		SetGlobalTaskMiddleware(r, taskMw)
+		AddGlobalTaskMiddleware(r, taskMw)
 
-		RegisterHandlerFunc(r, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(r, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
 			mainHandlerRan = true
 			t.Error("Main handler should not be called if task middleware errors")
 		})
@@ -56,10 +56,10 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 			rd.ResponseProxy().SetHeader("X-Tea-Type", "Earl Grey")
 			return None{}, nil // Task itself doesn't return an error, but proxy is set to an error status
 		})
-		SetGlobalTaskMiddleware(r, taskMw)
+		AddGlobalTaskMiddleware(r, taskMw)
 
 		mainHandlerRan := false
-		RegisterHandlerFunc(r, http.MethodGet, "/tea", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(r, http.MethodGet, "/tea", func(w http.ResponseWriter, r *http.Request) {
 			mainHandlerRan = true
 		})
 
@@ -108,12 +108,12 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 			return None{}, nil
 		})
 
-		SetGlobalTaskMiddleware(r, tmw1)
-		SetMethodLevelTaskMiddleware(r, http.MethodGet, tmw2)
-		route := RegisterHandlerFunc(r, http.MethodGet, "/multi", func(w http.ResponseWriter, r *http.Request) {
+		AddGlobalTaskMiddleware(r, tmw1)
+		AddMethodLevelTaskMiddleware(r, http.MethodGet, tmw2)
+		route := AddHTTPHandlerFunc(r, http.MethodGet, "/multi", func(w http.ResponseWriter, r *http.Request) {
 			mainHandlerRan = true
 		})
-		SetPatternLevelTaskMiddleware(route, tmw3)
+		AddPatternLevelTaskMiddleware(route, tmw3)
 
 		req := httptest.NewRequest(http.MethodGet, "/multi", nil)
 		w := httptest.NewRecorder()
@@ -153,14 +153,14 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 			executionOrder = append(executionOrder, id)
 		}
 
-		SetGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				appendOrder("GlobalHTTP-Pre")
 				next.ServeHTTP(w, r)
 				appendOrder("GlobalHTTP-Post")
 			})
 		})
-		SetMethodLevelHTTPMiddleware(r, http.MethodGet, func(next http.Handler) http.Handler {
+		AddMethodLevelHTTPMiddleware(r, http.MethodGet, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				appendOrder("MethodHTTP-Pre")
 				next.ServeHTTP(w, r)
@@ -172,14 +172,14 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(3)
 
-		SetGlobalTaskMiddleware(r, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+		AddGlobalTaskMiddleware(r, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
 			defer wg.Done()
 			appendOrder("GlobalTask")
 			rd.ResponseProxy().SetHeader("X-Global-Task", "Done")
 			globalTaskDone = true
 			return None{}, nil
 		}))
-		SetMethodLevelTaskMiddleware(r, http.MethodGet, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+		AddMethodLevelTaskMiddleware(r, http.MethodGet, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
 			defer wg.Done()
 			appendOrder("MethodTask")
 			rd.ResponseProxy().SetHeader("X-Method-Task", "Done")
@@ -187,19 +187,19 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 			return None{}, nil
 		}))
 
-		route := RegisterTaskHandler(r, http.MethodGet, "/complex", TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
+		route := AddTaskHandler(r, http.MethodGet, "/complex", TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
 			appendOrder("TaskHandler")
 			rd.ResponseProxy().SetHeader("X-Handler-Task", "Done")
 			return "handler_done", nil
 		}))
-		SetPatternLevelHTTPMiddleware(route, func(next http.Handler) http.Handler {
+		AddPatternLevelHTTPMiddleware(route, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				appendOrder("PatternHTTP-Pre")
 				next.ServeHTTP(w, r)
 				appendOrder("PatternHTTP-Post")
 			})
 		})
-		SetPatternLevelTaskMiddleware(route, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+		AddPatternLevelTaskMiddleware(route, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
 			defer wg.Done()
 			appendOrder("PatternTask")
 			rd.ResponseProxy().SetHeader("X-Pattern-Task", "Done")
@@ -261,7 +261,7 @@ func TestReqDataAccess(t *testing.T) {
 		var (
 			paramsChecked, splatChecked, tasksCtxChecked, requestChecked, proxyChecked bool
 		)
-		RegisterTaskHandler(r, http.MethodGet, "/task/:id/path/*", TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
+		AddTaskHandler(r, http.MethodGet, "/task/:id/path/*", TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
 			if len(rd.Params()) > 0 && rd.Params()["id"] == "123" {
 				paramsChecked = true
 			}
@@ -311,9 +311,9 @@ func TestReqDataAccess(t *testing.T) {
 	t.Run("InHTTPHandler_StandardPath", func(t *testing.T) {
 		r := NewRouter(nil)
 		var paramsChecked, splatChecked bool
-		SetGlobalTaskMiddleware(r, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) { return None{}, nil }))
+		AddGlobalTaskMiddleware(r, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) { return None{}, nil }))
 
-		RegisterHandlerFunc(r, http.MethodGet, "/http/:id/path/*", func(w http.ResponseWriter, req *http.Request) {
+		AddHTTPHandlerFunc(r, http.MethodGet, "/http/:id/path/*", func(w http.ResponseWriter, req *http.Request) {
 			params := GetParams(req)
 			splats := GetSplatValues(req)
 			if len(params) > 0 && params["id"] == "456" {
@@ -344,8 +344,8 @@ func TestRoutingEdgeCases(t *testing.T) {
 	t.Run("StaticVsParam", func(t *testing.T) {
 		r := NewRouter(nil)
 		var staticCalled, paramCalled bool
-		RegisterHandlerFunc(r, http.MethodGet, "/users/new", func(w http.ResponseWriter, r *http.Request) { staticCalled = true })
-		RegisterHandlerFunc(r, http.MethodGet, "/users/:id", func(w http.ResponseWriter, r *http.Request) { paramCalled = true })
+		AddHTTPHandlerFunc(r, http.MethodGet, "/users/new", func(w http.ResponseWriter, r *http.Request) { staticCalled = true })
+		AddHTTPHandlerFunc(r, http.MethodGet, "/users/:id", func(w http.ResponseWriter, r *http.Request) { paramCalled = true })
 
 		req := httptest.NewRequest(http.MethodGet, "/users/new", nil)
 		r.ServeHTTP(httptest.NewRecorder(), req)
@@ -366,7 +366,7 @@ func TestRoutingEdgeCases(t *testing.T) {
 		var capturedSplatValues []string
 
 		// Use a splat pattern
-		RegisterHandlerFunc(r, http.MethodGet, "/test/*", func(w http.ResponseWriter, req *http.Request) {
+		AddHTTPHandlerFunc(r, http.MethodGet, "/test/*", func(w http.ResponseWriter, req *http.Request) {
 			capturedSplatValues = GetSplatValues(req)
 			w.WriteHeader(http.StatusOK)
 		})
@@ -398,7 +398,7 @@ func TestRoutingEdgeCases(t *testing.T) {
 	t.Run("EmptySplat", func(t *testing.T) {
 		r := NewRouter(nil)
 		var splatValues []string
-		RegisterHandlerFunc(r, http.MethodGet, "/files/*", func(w http.ResponseWriter, req *http.Request) {
+		AddHTTPHandlerFunc(r, http.MethodGet, "/files/*", func(w http.ResponseWriter, req *http.Request) {
 			splatValues = GetSplatValues(req)
 		})
 		req := httptest.NewRequest(http.MethodGet, "/files/", nil)
@@ -413,7 +413,7 @@ func TestRoutingEdgeCases(t *testing.T) {
 func TestServeHTTP_ErrorHandling(t *testing.T) {
 	t.Run("PanicRecoveryMiddleware", func(t *testing.T) {
 		r := NewRouter(nil)
-		SetGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				defer func() {
 					if err := recover(); err != nil {
@@ -424,7 +424,7 @@ func TestServeHTTP_ErrorHandling(t *testing.T) {
 				next.ServeHTTP(w, r)
 			})
 		})
-		RegisterHandlerFunc(r, http.MethodGet, "/panic", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(r, http.MethodGet, "/panic", func(w http.ResponseWriter, r *http.Request) {
 			panic("intentional panic in handler")
 		})
 		req := httptest.NewRequest(http.MethodGet, "/panic", nil)
@@ -441,7 +441,7 @@ func TestServeHTTP_ErrorHandling(t *testing.T) {
 	t.Run("NilTaskHandlerLeadsToError", func(t *testing.T) {
 		r := NewRouter(nil)
 		var nilTask *TaskHandler[None, None]
-		_ = RegisterTaskHandler(r, http.MethodGet, "/nil-task", nilTask)
+		_ = AddTaskHandler(r, http.MethodGet, "/nil-task", nilTask)
 		req := httptest.NewRequest(http.MethodGet, "/nil-task", nil)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -464,7 +464,7 @@ func TestParseInputEdgeCases(t *testing.T) {
 	t.Run("NilParseInputWithTaskExpectingInput", func(t *testing.T) {
 		r := NewRouter(&Options{ParseInput: nil})
 		var receivedInput MyInput
-		RegisterTaskHandler(r, http.MethodPost, "/test", TaskHandlerFromFunc(func(rd *ReqData[MyInput]) (MyOutput, error) {
+		AddTaskHandler(r, http.MethodPost, "/test", TaskHandlerFromFunc(func(rd *ReqData[MyInput]) (MyOutput, error) {
 			receivedInput = rd.Input()
 			return MyOutput{OutputField: "got: " + rd.Input().Field}, nil
 		}))
@@ -493,7 +493,7 @@ func TestParseInputEdgeCases(t *testing.T) {
 			},
 		})
 		var receivedInput MyInput
-		RegisterTaskHandler(r, http.MethodPost, "/test", TaskHandlerFromFunc(func(rd *ReqData[MyInput]) (MyOutput, error) {
+		AddTaskHandler(r, http.MethodPost, "/test", TaskHandlerFromFunc(func(rd *ReqData[MyInput]) (MyOutput, error) {
 			receivedInput = rd.Input()
 			return MyOutput{OutputField: "final: " + rd.Input().Field}, nil
 		}))
@@ -520,11 +520,11 @@ func TestParseInputSkipsHTTPRoutes(t *testing.T) {
 			},
 		})
 
-		SetGlobalTaskMiddleware(router, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+		AddGlobalTaskMiddleware(router, TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
 			return None{}, nil
 		}))
 
-		RegisterHandlerFunc(router, http.MethodGet, "/http", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/http", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		})
 
@@ -549,7 +549,7 @@ func TestParseInputSkipsHTTPRoutes(t *testing.T) {
 			},
 		})
 
-		RegisterHandler(router, http.MethodGet, "/http", TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandler(router, http.MethodGet, "/http", TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if GetTasksCtx(r) == nil {
 				t.Fatal("TasksCtx should be available for TasksCtxRequirer")
 			}
@@ -584,7 +584,7 @@ func TestTasksCtxRequirer(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		RegisterHandler(router, http.MethodGet, "/test", handler)
+		AddHTTPHandler(router, http.MethodGet, "/test", handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
@@ -599,7 +599,7 @@ func TestTasksCtxRequirer(t *testing.T) {
 		router := NewRouter(nil)
 
 		h := customHandler{t: t}
-		RegisterHandler(router, http.MethodGet, "/test", h)
+		AddHTTPHandler(router, http.MethodGet, "/test", h)
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
@@ -614,7 +614,7 @@ func TestTasksCtxRequirer(t *testing.T) {
 		router := NewRouter(nil)
 
 		// Regular handler that doesn't implement TasksCtxRequirer
-		RegisterHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
 			tasksCtx := GetTasksCtx(r)
 			if tasksCtx != nil {
 				t.Error("TasksCtx should not be available for regular handlers without middleware")
@@ -658,9 +658,9 @@ func TestResponseProxy(t *testing.T) {
 			return None{}, nil
 		})
 
-		SetGlobalTaskMiddleware(router, taskMw)
+		AddGlobalTaskMiddleware(router, taskMw)
 
-		RegisterHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
 			// This should not be called
 			t.Error("Handler should not be called when response proxy has error")
 			w.WriteHeader(http.StatusOK)
@@ -684,7 +684,7 @@ func TestTaskHandlerErrors(t *testing.T) {
 			return None{}, errors.New("handler error")
 		})
 
-		RegisterTaskHandler(router, http.MethodGet, "/test", handler)
+		AddTaskHandler(router, http.MethodGet, "/test", handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rec := httptest.NewRecorder()
@@ -705,10 +705,10 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 			return None{}, errors.New("database connection failed")
 		})
 
-		SetGlobalTaskMiddleware(router, taskMw)
+		AddGlobalTaskMiddleware(router, taskMw)
 
 		var handlerCalled bool
-		RegisterHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 			w.WriteHeader(http.StatusOK)
 		})
@@ -741,10 +741,10 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 			return None{}, nil
 		})
 
-		SetGlobalTaskMiddleware(router, taskMw)
+		AddGlobalTaskMiddleware(router, taskMw)
 
 		var handlerCalled bool
-		RegisterHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 			w.WriteHeader(http.StatusOK)
 		})
@@ -783,10 +783,10 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 			return None{}, nil
 		})
 
-		SetGlobalTaskMiddleware(router, taskMw)
+		AddGlobalTaskMiddleware(router, taskMw)
 
 		var handlerCalled bool
-		RegisterHandlerFunc(router, http.MethodGet, "/protected", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/protected", func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 			w.WriteHeader(http.StatusOK)
 		})
@@ -827,12 +827,12 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 			return None{}, nil // success
 		})
 
-		SetGlobalTaskMiddleware(router, taskMw1)
-		SetGlobalTaskMiddleware(router, taskMw2)
-		SetGlobalTaskMiddleware(router, taskMw3)
+		AddGlobalTaskMiddleware(router, taskMw1)
+		AddGlobalTaskMiddleware(router, taskMw2)
+		AddGlobalTaskMiddleware(router, taskMw3)
 
 		var handlerCalled bool
-		RegisterHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 			w.WriteHeader(http.StatusOK)
 		})
@@ -874,12 +874,12 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 			return None{}, nil // No Go error
 		})
 
-		SetGlobalTaskMiddleware(router, taskMw1)
-		SetGlobalTaskMiddleware(router, taskMw2)
-		SetGlobalTaskMiddleware(router, taskMw3)
+		AddGlobalTaskMiddleware(router, taskMw1)
+		AddGlobalTaskMiddleware(router, taskMw2)
+		AddGlobalTaskMiddleware(router, taskMw3)
 
 		var handlerCalled bool
-		RegisterHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 			w.WriteHeader(http.StatusOK)
 		})
@@ -917,11 +917,11 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 			return None{}, nil
 		})
 
-		SetGlobalTaskMiddleware(router, taskMw1)
-		SetGlobalTaskMiddleware(router, taskMw2)
+		AddGlobalTaskMiddleware(router, taskMw1)
+		AddGlobalTaskMiddleware(router, taskMw2)
 
 		var handlerCalled bool
-		RegisterHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
+		AddHTTPHandlerFunc(router, http.MethodGet, "/test", func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("Success"))

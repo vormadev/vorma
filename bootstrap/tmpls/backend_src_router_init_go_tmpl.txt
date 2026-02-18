@@ -7,10 +7,10 @@ import (
 )
 
 func Init() (addr string, handler http.Handler) {
-	r := App.InitWithDefaultRouter()
+	r := App.MustInitWithDefaultRouter()
 
-	r.SetGlobalHTTPMiddleware(App.ServeStatic())
-	r.SetGlobalHTTPMiddleware(healthcheck.Healthz)
+	r.AddGlobalHTTPMiddleware(App.MustStaticMiddleware())
+	r.AddGlobalHTTPMiddleware(healthcheck.Healthz)
 
 	return App.ServerAddr(), r
 }

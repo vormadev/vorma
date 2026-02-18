@@ -418,7 +418,7 @@ func TestRuntimeBuildExecutorRunDevelopmentMode(t *testing.T) {
 	if !setModeToDevCalled {
 		t.Fatal("expected setWaveModeToDev to be called")
 	}
-	if !app.GetIsDevMode() {
+	if !app.IsDevMode() {
 		t.Fatal("expected app to be marked as dev mode")
 	}
 }

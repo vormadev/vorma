@@ -216,7 +216,7 @@ func validateRecursive(label string, currentValue reflect.Value) []error {
 	}
 
 	validatedByDirectCall := false
-	validatorInterface := reflectutil.ToInterfaceReflectType[Validator]()
+	validatorInterface := reflect.TypeFor[Validator]()
 
 	if currentValue.CanInterface() {
 		if impl, ok := currentValue.Interface().(Validator); ok {
@@ -233,7 +233,7 @@ func validateRecursive(label string, currentValue reflect.Value) []error {
 
 	if !validatedByDirectCall && currentValue.Kind() != reflect.Ptr && currentValue.CanAddr() {
 		ptrValue := currentValue.Addr()
-		if reflectutil.ImplementsInterface(ptrValue.Type(), validatorInterface) && ptrValue.CanInterface() {
+		if reflectutil.DoesTypeImplementInterface(ptrValue.Type(), validatorInterface) && ptrValue.CanInterface() {
 			if impl, ok := ptrValue.Interface().(Validator); ok {
 				if err := impl.Validate(); err != nil {
 					if !IsValidationError(err) {
@@ -382,8 +382,8 @@ func attemptValidation(label string, x any) error {
 	v := reflect.ValueOf(x)
 	var effectiveValue reflect.Value = v
 
-	validatorInterface := reflectutil.ToInterfaceReflectType[Validator]()
-	implementsValidator := reflectutil.ImplementsInterface(v.Type(), validatorInterface)
+	validatorInterface := reflect.TypeFor[Validator]()
+	implementsValidator := reflectutil.DoesTypeImplementInterface(v.Type(), validatorInterface)
 	canCallDirectly := implementsValidator && (v.Type().Implements(validatorInterface) || v.CanAddr())
 
 	if !canCallDirectly && v.Kind() != reflect.Ptr && implementsValidator {

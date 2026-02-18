@@ -239,15 +239,33 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 
 			// Get the current filemap (reads from disk in dev mode)
 			const filemap = getFilemap();
+			const missingStaticPublicAssets = new Set<string>();
 
 			const replacedCode = code.replace(
 				regex,
 				(_fullMatch: string, _quoteChar: string, assetPath: string) => {
 					const hashed = filemap[assetPath];
-					if (!hashed) return `"${assetPath}"`;
+					if (!hashed) {
+						missingStaticPublicAssets.add(assetPath);
+						return _fullMatch;
+					}
 					return `"${config.publicPathPrefix}${hashed}"`;
 				},
 			);
+
+			if (missingStaticPublicAssets.size > 0) {
+				const unresolvedCalls = Array.from(missingStaticPublicAssets)
+					.sort()
+					.map(
+						(assetPath) =>
+							`${config.buildtimePublicURLFuncName}("${assetPath}")`,
+					)
+					.join(", ");
+
+				throw new Error(
+					`[vorma-vite-plugin] unresolved static public asset lookup(s): ${unresolvedCalls}`,
+				);
+			}
 
 			if (replacedCode === code) return null;
 			return replacedCode;

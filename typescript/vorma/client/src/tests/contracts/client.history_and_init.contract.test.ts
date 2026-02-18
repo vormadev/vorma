@@ -16,7 +16,7 @@ const TEST_APP_CONFIG = {
 	actionsSplatRune: "*",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
-	loadersExplicitIndexSegment: "_index",
+	loadersExplicitIndexSegmentIdentifier: "_index",
 };
 
 function stubElementScrollIntoView(
@@ -1421,7 +1421,8 @@ describe("client history/init contracts", () => {
 		const replacementRegistry = createPatternRegistry({
 			dynamicParamPrefixRune: TEST_APP_CONFIG.loadersDynamicRune,
 			splatSegmentRune: TEST_APP_CONFIG.loadersSplatRune,
-			explicitIndexSegment: TEST_APP_CONFIG.loadersExplicitIndexSegment,
+			explicitIndexSegment:
+				TEST_APP_CONFIG.loadersExplicitIndexSegmentIdentifier,
 		});
 		api.__vormaClientGlobal.set("patternRegistry", replacementRegistry);
 

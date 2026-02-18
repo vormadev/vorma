@@ -34,17 +34,17 @@ func TestCommitRuntimeStateWithLock_CommitsAllCoreBuildFields(t *testing.T) {
 		)
 	})
 
-	if !app.GetIsDevMode() {
+	if !app.IsDevMode() {
 		t.Fatal("expected isDev mode to be committed to true")
 	}
-	if got := app.GetBuildID(); got != "committed-build-id" {
+	if got := app.BuildID(); got != "committed-build-id" {
 		t.Fatalf("build ID = %q, want %q", got, "committed-build-id")
 	}
-	if got := app.GetRouteManifestFile(); got != "committed-manifest.json" {
+	if got := app.RouteManifestFile(); got != "committed-manifest.json" {
 		t.Fatalf("route manifest file = %q, want %q", got, "committed-manifest.json")
 	}
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	if _, hasCommittedPath := paths["/committed"]; !hasCommittedPath {
 		t.Fatalf("expected committed path in runtime state, got %#v", paths)
 	}
@@ -54,7 +54,7 @@ func TestCommitRuntimeStateWithLock_SyncFromDevReloadMergesServerOnlyHandlers(t 
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server-only",
 		mux.TaskHandlerFromFunc(func(*mux.ReqData[mux.None]) (map[string]any, error) {
@@ -78,7 +78,7 @@ func TestCommitRuntimeStateWithLock_SyncFromDevReloadMergesServerOnlyHandlers(t 
 		)
 	})
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	if _, hasClientPath := paths["/client"]; !hasClientPath {
 		t.Fatalf("expected committed client path in runtime state, got %#v", paths)
 	}
@@ -106,7 +106,7 @@ func TestCommitRuntimeState_AppliesMutationViaInternalLockingPath(t *testing.T) 
 		},
 	)
 
-	if got := app.GetBuildID(); got != "lock-wrapper-build-id" {
+	if got := app.BuildID(); got != "lock-wrapper-build-id" {
 		t.Fatalf("build ID = %q, want %q", got, "lock-wrapper-build-id")
 	}
 }

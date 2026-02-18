@@ -30,11 +30,11 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 			t.Fatalf("syncClientRoutesFromParsedPathsWithLock returned error: %v", err)
 		}
 
-		if got := app.GetBuildID(); got != "dev_fast_build" {
+		if got := app.BuildID(); got != "dev_fast_build" {
 			t.Fatalf("build ID = %q, want %q", got, "dev_fast_build")
 		}
 
-		paths := app.GetPathsSnapshot()
+		paths := app.Paths()
 		if _, ok := paths["/home"]; !ok {
 			t.Fatalf("expected /home path after sync, got %#v", paths)
 		}
@@ -103,15 +103,15 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 				wasCalled = true
 				v.WithLock(func(l *vormaruntime.LockedVorma) {
 					l.SetRouteManifestFile("manifest-set-in-failing-post-sync-hook.json")
-					if l.GetBuildID() != "build-after-sync-but-before-post-sync" {
+					if l.BuildID() != "build-after-sync-but-before-post-sync" {
 						t.Fatalf(
 							"build ID before post-sync failure = %q, want %q",
-							l.GetBuildID(),
+							l.BuildID(),
 							"build-after-sync-but-before-post-sync",
 						)
 					}
-					if _, ok := l.GetPaths()["/about"]; !ok {
-						t.Fatalf("expected /about path to be synced before post-sync hook, got %#v", l.GetPaths())
+					if _, ok := l.Paths()["/about"]; !ok {
+						t.Fatalf("expected /about path to be synced before post-sync hook, got %#v", l.Paths())
 					}
 				})
 				return expectedErr
@@ -127,17 +127,17 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 			t.Fatal("expected post-sync hook to be called")
 		}
 
-		if got := app.GetBuildID(); got != "build-before-failed-post-sync" {
+		if got := app.BuildID(); got != "build-before-failed-post-sync" {
 			t.Fatalf("build ID after failed post-sync = %q, want %q", got, "build-before-failed-post-sync")
 		}
-		if got := app.GetRouteManifestFile(); got != "manifest-before-failed-post-sync.json" {
+		if got := app.RouteManifestFile(); got != "manifest-before-failed-post-sync.json" {
 			t.Fatalf(
 				"route manifest after failed post-sync = %q, want %q",
 				got,
 				"manifest-before-failed-post-sync.json",
 			)
 		}
-		paths := app.GetPathsSnapshot()
+		paths := app.Paths()
 		if paths["/existing"] == nil {
 			t.Fatalf("expected rollback to restore /existing path, got %#v", paths)
 		}
@@ -193,20 +193,20 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped hook error", err)
 		}
-		if !app.GetIsDevMode() {
+		if !app.IsDevMode() {
 			t.Fatal("expected newer runtime state to remain after stale rollback attempt")
 		}
-		if got := app.GetBuildID(); got != "build-after-newer-sync" {
+		if got := app.BuildID(); got != "build-after-newer-sync" {
 			t.Fatalf("build ID after stale rollback = %q, want %q", got, "build-after-newer-sync")
 		}
-		if got := app.GetRouteManifestFile(); got != "manifest-after-newer-sync.json" {
+		if got := app.RouteManifestFile(); got != "manifest-after-newer-sync.json" {
 			t.Fatalf(
 				"route manifest after stale rollback = %q, want %q",
 				got,
 				"manifest-after-newer-sync.json",
 			)
 		}
-		paths := app.GetPathsSnapshot()
+		paths := app.Paths()
 		if paths["/newer"] == nil {
 			t.Fatalf("expected /newer path to remain after stale rollback, got %#v", paths)
 		}
@@ -288,10 +288,10 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 			t.Fatal("timed out waiting for first overlapping route sync to return")
 		}
 
-		if got := app.GetBuildID(); got != "build-second-sync" {
+		if got := app.BuildID(); got != "build-second-sync" {
 			t.Fatalf("build ID after overlapping route syncs = %q, want %q", got, "build-second-sync")
 		}
-		paths := app.GetPathsSnapshot()
+		paths := app.Paths()
 		if paths["/second"] == nil {
 			t.Fatalf("expected second-sync path to remain after overlapping route syncs, got %#v", paths)
 		}
@@ -327,17 +327,17 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 				t.Fatalf("recovered panic = %v, want %v", recoveredPanicErr, expectedPanic)
 			}
 
-			if got := app.GetBuildID(); got != "build-before-panic-post-sync" {
+			if got := app.BuildID(); got != "build-before-panic-post-sync" {
 				t.Fatalf("build ID after panic rollback = %q, want %q", got, "build-before-panic-post-sync")
 			}
-			if got := app.GetRouteManifestFile(); got != "manifest-before-panic-post-sync.json" {
+			if got := app.RouteManifestFile(); got != "manifest-before-panic-post-sync.json" {
 				t.Fatalf(
 					"route manifest after panic rollback = %q, want %q",
 					got,
 					"manifest-before-panic-post-sync.json",
 				)
 			}
-			paths := app.GetPathsSnapshot()
+			paths := app.Paths()
 			if paths["/existing"] == nil {
 				t.Fatalf("expected /existing path after panic rollback, got %#v", paths)
 			}
@@ -393,20 +393,20 @@ func TestSyncClientRoutesFromParsedPathsWithLock(t *testing.T) {
 				t.Fatalf("recovered panic = %v, want %v", recoveredPanicErr, expectedPanic)
 			}
 
-			if !app.GetIsDevMode() {
+			if !app.IsDevMode() {
 				t.Fatal("expected newer runtime state to remain after stale panic rollback attempt")
 			}
-			if got := app.GetBuildID(); got != "build-after-newer-sync" {
+			if got := app.BuildID(); got != "build-after-newer-sync" {
 				t.Fatalf("build ID after stale panic rollback = %q, want %q", got, "build-after-newer-sync")
 			}
-			if got := app.GetRouteManifestFile(); got != "manifest-after-newer-sync.json" {
+			if got := app.RouteManifestFile(); got != "manifest-after-newer-sync.json" {
 				t.Fatalf(
 					"route manifest after stale panic rollback = %q, want %q",
 					got,
 					"manifest-after-newer-sync.json",
 				)
 			}
-			paths := app.GetPathsSnapshot()
+			paths := app.Paths()
 			if paths["/newer"] == nil {
 				t.Fatalf("expected /newer path to remain after stale panic rollback, got %#v", paths)
 			}
@@ -629,11 +629,11 @@ func TestRunRouteSyncExecution(t *testing.T) {
 				postSyncHook: func(v *vormaruntime.Vorma) error {
 					observedStepOrder = append(observedStepOrder, "post-sync")
 					v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
-						if l.GetBuildID() != "dev_fast_stub" {
-							t.Fatalf("build ID = %q, want %q", l.GetBuildID(), "dev_fast_stub")
+						if l.BuildID() != "dev_fast_stub" {
+							t.Fatalf("build ID = %q, want %q", l.BuildID(), "dev_fast_stub")
 						}
-						if l.GetPaths()["/ok"] == nil {
-							t.Fatalf("expected synced /ok route, got %#v", l.GetPaths())
+						if l.Paths()["/ok"] == nil {
+							t.Fatalf("expected synced /ok route, got %#v", l.Paths())
 						}
 					})
 					return nil

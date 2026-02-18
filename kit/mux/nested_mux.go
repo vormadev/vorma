@@ -47,7 +47,9 @@ type NestedRouter struct {
 func (nr *NestedRouter) AllRoutes() map[string]AnyNestedRoute {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
-	return nr.routes
+	allRoutesCopy := make(map[string]AnyNestedRoute, len(nr.routes))
+	maps.Copy(allRoutesCopy, nr.routes)
+	return allRoutesCopy
 }
 
 func (nr *NestedRouter) IsRegistered(originalPattern string) bool {
@@ -67,34 +69,44 @@ func (nr *NestedRouter) HasTaskHandler(originalPattern string) bool {
 	return route.getTaskHandler() != nil
 }
 
-func (nr *NestedRouter) GetExplicitIndexSegment() string {
+func (nr *NestedRouter) ExplicitIndexSegmentIdentifier() string {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
-	return nr.matcher.GetExplicitIndexSegment()
+	return nr.matcher.ExplicitIndexSegmentIdentifier()
 }
 
-func (nr *NestedRouter) GetDynamicParamPrefixRune() rune {
+func (nr *NestedRouter) DynamicParamPrefix() rune {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
-	return nr.matcher.GetDynamicParamPrefixRune()
+	return nr.matcher.DynamicParamPrefix()
 }
 
-func (nr *NestedRouter) GetSplatSegmentRune() rune {
+func (nr *NestedRouter) SplatSegmentIdentifier() rune {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
-	return nr.matcher.GetSplatSegmentRune()
+	return nr.matcher.SplatSegmentIdentifier()
 }
 
-func (nr *NestedRouter) GetMatcher() *matcher.Matcher {
+func (nr *NestedRouter) Matcher() *matcher.Matcher {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
-	return nr.matcher
+
+	matcherCopy := matcher.New(&matcher.Options{
+		DynamicParamPrefix:             nr.matcher.DynamicParamPrefix(),
+		SplatSegmentIdentifier:         nr.matcher.SplatSegmentIdentifier(),
+		ExplicitIndexSegmentIdentifier: nr.matcher.ExplicitIndexSegmentIdentifier(),
+		Quiet:                          true,
+	})
+	for pattern := range nr.routes {
+		matcherCopy.RegisterPattern(pattern)
+	}
+	return matcherCopy
 }
 
 type NestedOptions struct {
-	DynamicParamPrefixRune rune
-	SplatSegmentRune       rune
-	ExplicitIndexSegment   string
+	DynamicParamPrefix             rune
+	SplatSegmentIdentifier         rune
+	ExplicitIndexSegmentIdentifier string
 }
 
 func NewNestedRouter(opts *NestedOptions) *NestedRouter {
@@ -102,9 +114,9 @@ func NewNestedRouter(opts *NestedOptions) *NestedRouter {
 	if opts == nil {
 		opts = new(NestedOptions)
 	}
-	matcherOpts.DynamicParamPrefixRune = genericsutil.OrDefault(opts.DynamicParamPrefixRune, ':')
-	matcherOpts.SplatSegmentRune = genericsutil.OrDefault(opts.SplatSegmentRune, '*')
-	matcherOpts.ExplicitIndexSegment = genericsutil.OrDefault(opts.ExplicitIndexSegment, "")
+	matcherOpts.DynamicParamPrefix = genericsutil.OrDefault(opts.DynamicParamPrefix, ':')
+	matcherOpts.SplatSegmentIdentifier = genericsutil.OrDefault(opts.SplatSegmentIdentifier, '*')
+	matcherOpts.ExplicitIndexSegmentIdentifier = genericsutil.OrDefault(opts.ExplicitIndexSegmentIdentifier, "")
 	nr := &NestedRouter{
 		matcher: matcher.New(matcherOpts),
 		routes:  make(map[string]AnyNestedRoute),
@@ -136,7 +148,7 @@ func (route *NestedRoute[O]) getTaskHandler() tasks.AnyTask {
 	return route.taskHandler
 }
 
-func RegisterNestedTaskHandler[O any](
+func AddNestedTaskHandler[O any](
 	router *NestedRouter, pattern string, taskHandler *TaskHandler[None, O],
 ) *NestedRoute[O] {
 	route := &NestedRoute[O]{
@@ -157,7 +169,7 @@ func RegisterNestedTaskHandler[O any](
 	return route
 }
 
-func RegisterNestedPatternWithoutHandler(router *NestedRouter, pattern string) {
+func AddNestedPatternWithoutHandler(router *NestedRouter, pattern string) {
 	route := &NestedRoute[None]{
 		router:          router,
 		originalPattern: pattern,
@@ -173,6 +185,39 @@ func RegisterNestedPatternWithoutHandler(router *NestedRouter, pattern string) {
 	}
 	router.addCompiledRoute(compiled)
 	router.mu.Unlock()
+}
+
+// AddNestedPatternWithoutHandlerIfMissing registers a pattern without a task
+// handler only when it is not already present. It returns true if a new route
+// was registered.
+func (nr *NestedRouter) AddNestedPatternWithoutHandlerIfMissing(
+	pattern string,
+) bool {
+	if nr == nil {
+		return false
+	}
+
+	nr.mu.Lock()
+	defer nr.mu.Unlock()
+
+	if _, exists := nr.routes[pattern]; exists {
+		return false
+	}
+
+	route := &NestedRoute[None]{
+		router:          nr,
+		originalPattern: pattern,
+		taskHandler:     nil,
+	}
+	nr.matcher.RegisterPattern(pattern)
+	nr.routes[pattern] = route
+	nr.addCompiledRoute(compiledRoute{
+		pattern:     pattern,
+		taskHandler: nil,
+		hasHandler:  false,
+	})
+
+	return true
 }
 
 type NestedTasksResult struct {
@@ -196,7 +241,7 @@ type NestedTasksResults struct {
 	ResponseProxies []*response.Proxy
 }
 
-func (ntr *NestedTasksResults) GetHasTaskHandler(i int) bool {
+func (ntr *NestedTasksResults) HasTaskHandlerAt(i int) bool {
 	if i < 0 || i >= len(ntr.Slice) {
 		return false
 	}
@@ -476,23 +521,26 @@ func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
 
 // replaceRoutesLocked is the internal implementation. Caller must hold nr.mu.Lock().
 func (nr *NestedRouter) replaceRoutesLocked(newRoutes map[string]AnyNestedRoute) {
+	routesCopy := make(map[string]AnyNestedRoute, len(newRoutes))
+	maps.Copy(routesCopy, newRoutes)
+
 	opts := &matcher.Options{
-		DynamicParamPrefixRune: nr.matcher.GetDynamicParamPrefixRune(),
-		SplatSegmentRune:       nr.matcher.GetSplatSegmentRune(),
-		ExplicitIndexSegment:   nr.matcher.GetExplicitIndexSegment(),
-		Quiet:                  true,
+		DynamicParamPrefix:             nr.matcher.DynamicParamPrefix(),
+		SplatSegmentIdentifier:         nr.matcher.SplatSegmentIdentifier(),
+		ExplicitIndexSegmentIdentifier: nr.matcher.ExplicitIndexSegmentIdentifier(),
+		Quiet:                          true,
 	}
 
 	newMatcher := matcher.New(opts)
 
-	for pattern := range newRoutes {
+	for pattern := range routesCopy {
 		newMatcher.RegisterPattern(pattern)
 	}
 
-	newCompiled := make([]compiledRoute, 0, len(newRoutes))
-	newIndexMap := make(map[string]int, len(newRoutes))
+	newCompiled := make([]compiledRoute, 0, len(routesCopy))
+	newIndexMap := make(map[string]int, len(routesCopy))
 
-	for pattern, route := range newRoutes {
+	for pattern, route := range routesCopy {
 		taskHandler := route.getTaskHandler()
 		compiled := compiledRoute{
 			pattern:     pattern,
@@ -504,7 +552,7 @@ func (nr *NestedRouter) replaceRoutesLocked(newRoutes map[string]AnyNestedRoute)
 	}
 
 	nr.matcher = newMatcher
-	nr.routes = newRoutes
+	nr.routes = routesCopy
 	nr.compiledRoutes.Store(newCompiled)
 	nr.routeIndexMap.Store(newIndexMap)
 	atomic.AddUint64(&nr.version, 1)

@@ -30,8 +30,8 @@ Host-only variants are the safest default when possible.
 
 ```go
 mgr := cookies.NewManager(cookies.ManagerConfig{
-	GetKeyset: appKeysetProvider, // required
-	GetIsDev:  func() bool { return env == "dev" },
+	KeysetFunc: appKeysetProvider, // required
+	IsDevFunc:  func() bool { return env == "dev" },
 	// Optional defaults:
 	DefaultSameSite:  cookies.SameSiteLaxMode,
 	DefaultPartition: cookies.PartitionTrue,
@@ -49,7 +49,7 @@ Zero-value manager defaults are:
 
 These constructors panic for missing required config:
 
-- `NewManager`: panics if `ManagerConfig.GetKeyset == nil`
+- `NewManager`: panics if `ManagerConfig.KeysetFunc == nil`
 - all cookie constructors: panic if `Manager == nil` or `Name == ""`
 
 Constructors are intended for app startup wiring, where fail-fast panics are
@@ -59,12 +59,12 @@ usually desirable.
 
 ### Production vs dev mode
 
-- `Manager.GetIsDev() == false` (production behavior):
+- `Manager.IsDev() == false` (production behavior):
 - cookies are `Secure=true`
 - host-only constructors enforce `Path=/` and empty `Domain`
 - partitioning follows config/default
 
-- `Manager.GetIsDev() == true` (development behavior):
+- `Manager.IsDev() == true` (development behavior):
 - cookies are `Secure=false`
 - partitioning is forcibly disabled
 - host-only variants use `__Dev-` prefix and do not force production host-only
@@ -164,7 +164,7 @@ Type:
 
 `ManagerConfig` fields:
 
-- `GetKeyset func() *keyset.Keyset`
+- `KeysetFunc func() *keyset.Keyset`
 - `GetIsDev func() bool`
 - `DefaultSameSite SameSite`
 - `DefaultPartition PartitionOption`

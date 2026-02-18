@@ -122,7 +122,8 @@ func (v *Vorma) getRouteDataStage1(
 	if inputs.runtimeSnapshot.buildID != "" {
 		w.Header().Set(VormaBuildIDHeaderKey, inputs.runtimeSnapshot.buildID)
 	}
-	if requestedBuildID != "" && requestedBuildID != inputs.runtimeSnapshot.buildID {
+	if requestedBuildID != "" &&
+		requestedBuildID != inputs.runtimeSnapshot.buildID {
 		v.Log.Debug(
 			"Stale build loaders request",
 			"path",
@@ -157,7 +158,9 @@ func (v *Vorma) getRouteDataStage1(
 
 	tasksResults := mux.RunNestedTasks(nestedRouter, r, inputs.matchResults)
 	if tasksResults == nil {
-		v.Log.Error("Missing TasksCtx for loaders request. Use a mux.Router stack or wrap with mux.InjectTasksCtxMiddleware.")
+		v.Log.Error(
+			"Missing TasksCtx for loaders request. Use a mux.Router stack or wrap with mux.InjectTasksCtxMiddleware.",
+		)
 		res := response.New(w)
 		res.InternalServerError()
 		return &RouteResult{
@@ -173,10 +176,14 @@ func (v *Vorma) planRouteResultFromTaskResults(
 	inputs routeDataExecutionInputs,
 	tasksResults *mux.NestedTasksResults,
 ) *RouteResult {
-	mergedResponseProxy := response.MergeProxyResponses(tasksResults.ResponseProxies...)
+	mergedResponseProxy := response.MergeProxyResponses(
+		tasksResults.ResponseProxies...)
 	hasRootData := computeHasRootData(inputs.matchResults, tasksResults)
 
-	loadersData, loadersErrs := v.collectLoadersDataAndErrors(tasksResults, inputs.matchedPatterns)
+	loadersData, loadersErrs := v.collectLoadersDataAndErrors(
+		tasksResults,
+		inputs.matchedPatterns,
+	)
 	outermostErrorIdx := findFirstErrorIndex(loadersErrs)
 	clientLoaderErrorMessage := ""
 	if outermostErrorIdx != nil {
@@ -202,8 +209,12 @@ func (v *Vorma) planRouteResultFromTaskResults(
 	})
 }
 
-func planRouteResultFromResolvedTaskOutcomes(input routeStageOnePlannerInput) *RouteResult {
-	terminalState := detectTerminalStateFromMergedResponseProxy(input.mergedResponseProxy)
+func planRouteResultFromResolvedTaskOutcomes(
+	input routeStageOnePlannerInput,
+) *RouteResult {
+	terminalState := detectTerminalStateFromMergedResponseProxy(
+		input.mergedResponseProxy,
+	)
 	if terminalState != routeTerminalStateNone {
 		return &RouteResult{
 			terminalState:       terminalState,
@@ -237,7 +248,7 @@ func planRouteResultFromResolvedTaskOutcomes(input routeStageOnePlannerInput) *R
 		cutPlan.cutIdx,
 		cutPlan.depsForRouteData,
 	)
-	cssBundles := getCSSBundlesFromSnapshot(
+	cssBundles := getCSSBundles(
 		core.Deps,
 		normalizedInput.runtimeSnapshot.clientEntryOut,
 		normalizedInput.runtimeSnapshot.depToCSSBundleMap,
@@ -252,7 +263,7 @@ func planRouteResultFromResolvedTaskOutcomes(input routeStageOnePlannerInput) *R
 		),
 		cssBundles:                cssBundles,
 		isDev:                     normalizedInput.runtimeSnapshot.isDev,
-		htmlRenderSnapshot:        normalizedInput.runtimeSnapshot.toLoadersHTMLRenderSnapshot(),
+		htmlRenderSnapshot:        normalizedInput.runtimeSnapshot.toLoadersHTMLRender(),
 		routeManifestFileSnapshot: normalizedInput.runtimeSnapshot.routeManifestFile,
 		mergedResponseProxy:       normalizedInput.mergedResponseProxy,
 	}
@@ -356,21 +367,33 @@ func loadOrBuildCachedItemSubset(
 	routeDataCacheSnapshot *sync.Map,
 ) *cachedItemSubset {
 	if routeDataCacheSnapshot == nil {
-		return buildCachedItemSubset(matches, pathsSnapshot, clientEntryDepsSnapshot, isDev)
+		return buildCachedItemSubset(
+			matches,
+			pathsSnapshot,
+			clientEntryDepsSnapshot,
+			isDev,
+		)
 	}
 
 	if cachedValue, isCached := routeDataCacheSnapshot.Load(cacheKey); isCached {
 		return cachedValue.(*cachedItemSubset)
 	}
 
-	cached := buildCachedItemSubset(matches, pathsSnapshot, clientEntryDepsSnapshot, isDev)
+	cached := buildCachedItemSubset(
+		matches,
+		pathsSnapshot,
+		clientEntryDepsSnapshot,
+		isDev,
+	)
 	if v.isRouteDataSnapshotVersionCurrent(expectedSnapshotVersion) {
 		routeDataCacheSnapshot.Store(cacheKey, cached)
 	}
 	return cached
 }
 
-func (v *Vorma) isRouteDataSnapshotVersionCurrent(expectedSnapshotVersion uint64) bool {
+func (v *Vorma) isRouteDataSnapshotVersionCurrent(
+	expectedSnapshotVersion uint64,
+) bool {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._routeDataSnapshotVersion == expectedSnapshotVersion
@@ -382,10 +405,12 @@ func computeHasRootData(
 ) bool {
 	return len(matchResults.Matches) > 0 &&
 		matchResults.Matches[0].NormalizedPattern() == "" &&
-		tasksResults.GetHasTaskHandler(0)
+		tasksResults.HasTaskHandlerAt(0)
 }
 
-func detectTerminalStateFromMergedResponseProxy(mergedResponseProxy *response.Proxy) routeTerminalState {
+func detectTerminalStateFromMergedResponseProxy(
+	mergedResponseProxy *response.Proxy,
+) routeTerminalState {
 	if mergedResponseProxy == nil {
 		return routeTerminalStateNone
 	}
@@ -426,10 +451,17 @@ func buildCachedItemSubset(
 		}
 		cached.ImportURLs = append(cached.ImportURLs, "/"+pathToUse)
 		cached.ExportKeys = append(cached.ExportKeys, foundPath.ExportKey)
-		cached.ErrorExportKeys = append(cached.ErrorExportKeys, foundPath.ErrorExportKey)
+		cached.ErrorExportKeys = append(
+			cached.ErrorExportKeys,
+			foundPath.ErrorExportKey,
+		)
 	}
 
-	cached.Deps = getDepsFromData(matches, pathsSnapshot, clientEntryDepsSnapshot)
+	cached.Deps = getDepsFromData(
+		matches,
+		pathsSnapshot,
+		clientEntryDepsSnapshot,
+	)
 	return cached
 }
 
@@ -450,10 +482,15 @@ func (v *Vorma) collectLoadersDataAndErrors(
 		loadersErrs[i] = result.Err()
 
 		if result.RanTask() && loadersErrs[i] == nil {
-			shouldWarn := reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(loadersData[i])
+			shouldWarn := reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(
+				loadersData[i],
+			)
 			if shouldWarn {
-				v.Log.Warn("Do not return nil values from loaders unless the underlying type is an empty struct or you are returning an error.",
-					"pattern", matchedPatterns[i])
+				v.Log.Warn(
+					"Do not return nil values from loaders unless the underlying type is an empty struct or you are returning an error.",
+					"pattern",
+					matchedPatterns[i],
+				)
 			}
 		}
 	}
@@ -470,7 +507,10 @@ func findFirstErrorIndex(errs []error) *int {
 	return nil
 }
 
-func (v *Vorma) resolveClientLoaderErrorMessage(err error, pattern string) string {
+func (v *Vorma) resolveClientLoaderErrorMessage(
+	err error,
+	pattern string,
+) string {
 	var clientMsg string
 	var errToLog error
 
@@ -480,7 +520,9 @@ func (v *Vorma) resolveClientLoaderErrorMessage(err error, pattern string) strin
 		errToLog = loaderErr.ServerError()
 		if clientMsg == "" {
 			clientMsg = "An error occurred"
-			v.Log.Warn("LoaderError has empty ClientMessage(); sending generic error to client.")
+			v.Log.Warn(
+				"LoaderError has empty ClientMessage(); sending generic error to client.",
+			)
 		}
 	} else {
 		clientMsg = "An error occurred"
@@ -534,7 +576,7 @@ func collectFlattenedHeadElementsForPrefix(
 	headElsByRoute := make([][]*htmlutil.Element, 0, routeCount)
 	total := 0
 	for routeIdx := 0; routeIdx < routeCount; routeIdx++ {
-		routeElements := responseProxies[routeIdx].GetHeadEls().Collect()
+		routeElements := responseProxies[routeIdx].HeadEls().Collect()
 		headElsByRoute = append(headElsByRoute, routeElements)
 		total += len(routeElements)
 	}
@@ -608,7 +650,9 @@ func (v *Vorma) getUIRouteData(
 	}
 }
 
-func (v *Vorma) getDefaultHeadElsRaw(r *http.Request) ([]*htmlutil.Element, error) {
+func (v *Vorma) getDefaultHeadElsRaw(
+	r *http.Request,
+) ([]*htmlutil.Element, error) {
 	defaultHeadEls := headels.New()
 	if v.getDefaultHeadEls == nil {
 		return defaultHeadEls.Collect(), nil
@@ -625,12 +669,15 @@ func (v *Vorma) buildRouteAssets(
 	isJSON bool,
 ) *RouteAssets {
 	cssBundles := routeResult.cssBundles
-	combinedHeadEls := combineDefaultAndRouteHeadElements(defaultHeadElsRaw, routeResult.headElements)
+	combinedHeadEls := combineDefaultAndRouteHeadElements(
+		defaultHeadElsRaw,
+		routeResult.headElements,
+	)
 
 	if shouldAppendProductionAssetLinks(routeResult.isDev, isJSON) {
 		combinedHeadEls = appendProductionAssetLinks(
 			combinedHeadEls,
-			v.Wave.GetPublicPathPrefix(),
+			v.Wave.PublicPathPrefix(),
 			routeResult.core.Deps,
 			cssBundles,
 		)
@@ -648,7 +695,11 @@ func combineDefaultAndRouteHeadElements(
 	defaultHeadElsRaw []*htmlutil.Element,
 	routeHeadEls []*htmlutil.Element,
 ) []*htmlutil.Element {
-	out := make([]*htmlutil.Element, 0, len(defaultHeadElsRaw)+len(routeHeadEls))
+	out := make(
+		[]*htmlutil.Element,
+		0,
+		len(defaultHeadElsRaw)+len(routeHeadEls),
+	)
 	out = append(out, defaultHeadElsRaw...)
 	out = append(out, routeHeadEls...)
 	return out
@@ -670,18 +721,26 @@ func appendProductionAssetLinks(
 
 	for _, dep := range deps {
 		out = append(out, &htmlutil.Element{
-			Tag:                 "link",
-			AttributesKnownSafe: map[string]string{"rel": "modulepreload", "href": publicPathPrefix + dep},
-			SelfClosing:         true,
+			Tag: "link",
+			AttributesKnownSafe: map[string]string{
+				"rel":  "modulepreload",
+				"href": publicPathPrefix + dep,
+			},
+			SelfClosing: true,
 		})
 	}
 
 	for _, cssBundle := range cssBundles {
 		out = append(out, &htmlutil.Element{
-			Tag:                 "link",
-			AttributesKnownSafe: map[string]string{"rel": "stylesheet", "href": publicPathPrefix + cssBundle},
-			Attributes:          map[string]string{"data-vorma-css-bundle": cssBundle},
-			SelfClosing:         true,
+			Tag: "link",
+			AttributesKnownSafe: map[string]string{
+				"rel":  "stylesheet",
+				"href": publicPathPrefix + cssBundle,
+			},
+			Attributes: map[string]string{
+				"data-vorma-css-bundle": cssBundle,
+			},
+			SelfClosing: true,
 		})
 	}
 

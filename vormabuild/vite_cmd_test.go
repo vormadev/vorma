@@ -49,7 +49,7 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(t *testing
 			Imports: []string{"shared-chunk.js"},
 		},
 	}
-	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), manifest)
+	mustWriteJSONFile(t, app.Wave.ViteManifestLocation(), manifest)
 
 	pathsFile, err := toPathsFileStageTwo(app)
 	if err != nil {
@@ -95,8 +95,8 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(t *testing
 	if pathsFile.BuildID == "" {
 		t.Fatal("expected non-empty build ID")
 	}
-	if app.GetBuildID() != "build-before-stage-two" {
-		t.Fatalf("app build ID = %q, want %q", app.GetBuildID(), "build-before-stage-two")
+	if app.BuildID() != "build-before-stage-two" {
+		t.Fatalf("app build ID = %q, want %q", app.BuildID(), "build-before-stage-two")
 	}
 }
 
@@ -126,7 +126,7 @@ func TestPostViteProdBuild_WritesStageTwoPathsFile(t *testing.T) {
 			File: "assets/vorma_out/root.js",
 		},
 	}
-	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), manifest)
+	mustWriteJSONFile(t, app.Wave.ViteManifestLocation(), manifest)
 
 	if err := postViteProdBuild(app); err != nil {
 		t.Fatalf("postViteProdBuild returned error: %v", err)
@@ -158,8 +158,8 @@ func TestPostViteProdBuild_WritesStageTwoPathsFile(t *testing.T) {
 	if parsed.BuildID == "" {
 		t.Fatal("expected non-empty stage-two build ID")
 	}
-	if app.GetBuildID() != parsed.BuildID {
-		t.Fatalf("app build ID = %q, want %q", app.GetBuildID(), parsed.BuildID)
+	if app.BuildID() != parsed.BuildID {
+		t.Fatalf("app build ID = %q, want %q", app.BuildID(), parsed.BuildID)
 	}
 }
 
@@ -284,7 +284,7 @@ func TestPathsOutputPath_StageTwoFile(t *testing.T) {
 
 	got := pathsOutputPath(app, vormaruntime.VormaPathsStageTwoJSONFileName)
 	want := filepath.Join(
-		app.Wave.GetStaticPrivateOutDir(),
+		app.Wave.StaticPrivateOutDir(),
 		vormaruntime.VormaOutDirname,
 		vormaruntime.VormaPathsStageTwoJSONFileName,
 	)
@@ -298,7 +298,7 @@ func TestPathsOutputPath(t *testing.T) {
 	app := fixture.app
 
 	got := pathsOutputPath(app, "custom.json")
-	want := filepath.Join(app.Wave.GetStaticPrivateOutDir(), vormaruntime.VormaOutDirname, "custom.json")
+	want := filepath.Join(app.Wave.StaticPrivateOutDir(), vormaruntime.VormaOutDirname, "custom.json")
 	if got != want {
 		t.Fatalf("pathsOutputPath() = %q, want %q", got, want)
 	}
@@ -308,7 +308,7 @@ func TestWritePathsToDiskStageTwo_ReturnsErrorWhenParentIsNotDirectory(t *testin
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	stageTwoDir := filepath.Join(app.Wave.GetStaticPrivateOutDir(), vormaruntime.VormaOutDirname)
+	stageTwoDir := filepath.Join(app.Wave.StaticPrivateOutDir(), vormaruntime.VormaOutDirname)
 	if err := os.RemoveAll(stageTwoDir); err != nil {
 		t.Fatalf("remove stage two dir: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestWritePathsToDiskStageTwo_CreatesOutputDirectoryWhenMissing(t *testing.T
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	stageTwoDir := filepath.Join(app.Wave.GetStaticPrivateOutDir(), vormaruntime.VormaOutDirname)
+	stageTwoDir := filepath.Join(app.Wave.StaticPrivateOutDir(), vormaruntime.VormaOutDirname)
 	if err := os.RemoveAll(stageTwoDir); err != nil {
 		t.Fatalf("remove stage two dir: %v", err)
 	}
@@ -376,7 +376,7 @@ func TestPostViteProdBuild_ReturnsErrorWhenTemplateMissing(t *testing.T) {
 			File: "assets/vorma_out/root.js",
 		},
 	}
-	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), manifest)
+	mustWriteJSONFile(t, app.Wave.ViteManifestLocation(), manifest)
 
 	err := postViteProdBuild(app)
 	if err == nil {

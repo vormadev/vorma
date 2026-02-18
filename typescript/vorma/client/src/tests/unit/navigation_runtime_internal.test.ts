@@ -43,7 +43,7 @@ const TEST_VORMA_APP_CONFIG = {
 	actionsSplatRune: "*",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
-	loadersExplicitIndexSegment: "_index",
+	loadersExplicitIndexSegmentIdentifier: "_index",
 };
 
 function createEntry(props: {
@@ -70,7 +70,8 @@ function createRegisteredPatternRegistry(patterns: string[]) {
 	const registry = createPatternRegistry({
 		dynamicParamPrefixRune: TEST_VORMA_APP_CONFIG.loadersDynamicRune,
 		splatSegmentRune: TEST_VORMA_APP_CONFIG.loadersSplatRune,
-		explicitIndexSegment: TEST_VORMA_APP_CONFIG.loadersExplicitIndexSegment,
+		explicitIndexSegment:
+			TEST_VORMA_APP_CONFIG.loadersExplicitIndexSegmentIdentifier,
 	});
 	for (const pattern of patterns) {
 		registerPattern(registry, pattern);

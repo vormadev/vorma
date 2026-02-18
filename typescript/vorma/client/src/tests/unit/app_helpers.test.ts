@@ -69,7 +69,7 @@ const TEST_CONFIG = {
 	actionsSplatRune: "*",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
-	loadersExplicitIndexSegment: "_index",
+	loadersExplicitIndexSegmentIdentifier: "_index",
 };
 
 const CUSTOM_RUNE_CONFIG = {
@@ -78,7 +78,7 @@ const CUSTOM_RUNE_CONFIG = {
 	actionsSplatRune: "**",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
-	loadersExplicitIndexSegment: "_index",
+	loadersExplicitIndexSegmentIdentifier: "_index",
 };
 
 describe("resolveVormaPath", () => {

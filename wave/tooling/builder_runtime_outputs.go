@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/vormadev/vorma/wave"
@@ -22,7 +23,11 @@ func SetupDistDir(cfg *wave.ParsedConfig) error {
 
 	// Create .keep file for go:embed
 	keepPath := cfg.Dist.KeepFile()
-	return os.WriteFile(keepPath, []byte("//go:embed directives require at least one file to compile\n"), 0o644)
+	return os.WriteFile(
+		keepPath,
+		[]byte("//go:embed directives require at least one file to compile\n"),
+		0o644,
+	)
 }
 
 // ReadCriticalCSS reads the critical CSS content from dist
@@ -37,44 +42,37 @@ func (b *Builder) ReadNormalCSSURL() (string, error) {
 
 // ReadCriticalCSSForHotReload reads critical CSS for browser hot reload.
 // When requireFreshBuildOutput is true, stale fallback reads from dist are disabled.
-func (b *Builder) ReadCriticalCSSForHotReload(requireFreshBuildOutput bool) (string, error) {
+func (b *Builder) ReadCriticalCSSForHotReload(
+	requireFreshBuildOutput bool,
+) (string, error) {
 	return b.css.readCriticalCSSHotReloadOutput(requireFreshBuildOutput)
 }
 
 // ReadNormalCSSURLForHotReload reads the normal CSS URL for browser hot reload.
 // When requireFreshBuildOutput is true, stale fallback reads from dist are disabled.
-func (b *Builder) ReadNormalCSSURLForHotReload(requireFreshBuildOutput bool) (string, error) {
+func (b *Builder) ReadNormalCSSURLForHotReload(
+	requireFreshBuildOutput bool,
+) (string, error) {
 	return b.css.readNormalCSSHotReloadURL(requireFreshBuildOutput)
 }
 
 // getPublicURLBuildtimeCached resolves a public URL using cached file map (for CSS builds).
-// Panics if the file map cannot be loaded (this is build-time, not runtime).
+// Panics if the file map cannot be loaded or if the lookup misses.
 func (b *Builder) getPublicURLBuildtimeCached(original string) string {
-	if wave.IsPassthroughPublicURL(original) {
-		return original
-	}
-
 	b.css.cachedFileMapMu.Lock()
 	defer b.css.cachedFileMapMu.Unlock()
 
 	if b.css.cachedFileMap == nil {
 		fm, err := b.loadFileMapFromPath(b.cfg.Dist.PublicFileMapGob())
 		if err != nil {
-			b.log.Warn(
-				"failed to load file map for CSS URL resolution; using fallback URL",
-				"error",
-				err,
-				"url",
-				original,
-			)
-			return resolvePublicURLFallback(original, b.cfg.PublicPathPrefix())
+			panic(fmt.Errorf("load file map for CSS URL resolution: %w", err))
 		}
 		b.css.cachedFileMap = fm
 	}
 
 	url, found := b.css.cachedFileMap.Lookup(original, b.cfg.PublicPathPrefix())
 	if !found {
-		b.log.Warn("no hashed URL found", "url", original)
+		panic(fmt.Errorf("no hashed URL found for %q", original))
 	}
 
 	return url

@@ -49,7 +49,7 @@ Security note:
 ## Executable Directory
 
 ```go
-dir, err := executil.GetExecutableDir()
+dir, err := executil.ExecutableDir()
 ```
 
 ## Behavior Notes
@@ -63,4 +63,4 @@ dir, err := executil.GetExecutableDir()
 - `func MakeCmdRunner(commands ...string) func() error`
 - `func RunCmd(commands ...string) error`
 - `func RunShell(command string) error`
-- `func GetExecutableDir() (string, error)`
+- `func ExecutableDir() (string, error)`

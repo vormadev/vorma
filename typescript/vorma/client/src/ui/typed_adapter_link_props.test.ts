@@ -3,7 +3,7 @@ import {
 	buildTypedLinkDisplayName,
 	buildTypedLinkHrefForRouteResolution,
 	buildTypedLinkResolvedProps,
-} from "./typed_link_props.ts";
+} from "./typed_adapter_link_props.ts";
 
 const TEST_VORMA_APP_CONFIG = {
 	actionsRouterMountRoot: "/api/",
@@ -11,7 +11,7 @@ const TEST_VORMA_APP_CONFIG = {
 	actionsSplatRune: "*",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
-	loadersExplicitIndexSegment: "_index",
+	loadersExplicitIndexSegmentIdentifier: "_index",
 };
 
 describe("typed link props helpers", () => {

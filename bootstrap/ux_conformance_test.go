@@ -9,15 +9,17 @@ import (
 )
 
 func TestBootstrapRouteTemplateUsesTopLevelRegistrations(t *testing.T) {
-	exampleRoutesTemplate, err := tmplsFS.ReadFile("tmpls/backend_src_router_example_routes_go_tmpl.txt")
+	exampleRoutesTemplate, err := tmplsFS.ReadFile(
+		"tmpls/backend_src_router_example_routes_go_tmpl.txt",
+	)
 	if err != nil {
 		t.Fatalf("read example routes template: %v", err)
 	}
 	content := string(exampleRoutesTemplate)
 
 	expectedSubstrings := []string{
-		"var _ = NewLoader(",
-		"var _ = NewAction(",
+		"var _ = DefineLoader(",
+		"var _ = DefineAction(",
 	}
 	for _, expectedSubstring := range expectedSubstrings {
 		if !strings.Contains(content, expectedSubstring) {
@@ -32,18 +34,28 @@ func TestBootstrapRouteTemplateUsesTopLevelRegistrations(t *testing.T) {
 	}
 	for _, forbiddenSubstring := range forbiddenSubstrings {
 		if strings.Contains(content, forbiddenSubstring) {
-			t.Fatalf("did not expect template to contain %q", forbiddenSubstring)
+			t.Fatalf(
+				"did not expect template to contain %q",
+				forbiddenSubstring,
+			)
 		}
 	}
 }
 
-func TestBootstrapTemplateSetDoesNotIncludeRegistrationWrapperFile(t *testing.T) {
-	_, err := tmplsFS.ReadFile("tmpls/backend_src_router_registration_go_tmpl.txt")
+func TestBootstrapTemplateSetDoesNotIncludeRegistrationWrapperFile(
+	t *testing.T,
+) {
+	_, err := tmplsFS.ReadFile(
+		"tmpls/backend_src_router_registration_go_tmpl.txt",
+	)
 	if err == nil {
 		t.Fatal("did not expect registration wrapper template file to exist")
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("unexpected error reading registration wrapper template: %v", err)
+		t.Fatalf(
+			"unexpected error reading registration wrapper template: %v",
+			err,
+		)
 	}
 }
 
@@ -52,7 +64,10 @@ func TestBootstrapBuildTemplateUsesSingleAppVariable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read build command template: %v", err)
 	}
-	if !strings.Contains(string(buildTemplate), "vormabuild.Build(router.App)") {
+	if !strings.Contains(
+		string(buildTemplate),
+		"vormabuild.Build(router.App)",
+	) {
 		t.Fatalf("expected build template to call vormabuild.Build(router.App)")
 	}
 }
@@ -73,7 +88,9 @@ func TestBootstrapServeTemplateHandlesListenAndServeErrors(t *testing.T) {
 }
 
 func TestBootstrapExampleRouteTemplateUsesAtomicCounter(t *testing.T) {
-	exampleRoutesTemplate, err := tmplsFS.ReadFile("tmpls/backend_src_router_example_routes_go_tmpl.txt")
+	exampleRoutesTemplate, err := tmplsFS.ReadFile(
+		"tmpls/backend_src_router_example_routes_go_tmpl.txt",
+	)
 	if err != nil {
 		t.Fatalf("read example routes template: %v", err)
 	}
@@ -97,7 +114,10 @@ func TestBootstrapExampleRouteTemplateUsesAtomicCounter(t *testing.T) {
 	}
 	for _, forbiddenSubstring := range forbiddenSubstrings {
 		if strings.Contains(content, forbiddenSubstring) {
-			t.Fatalf("did not expect template to contain %q", forbiddenSubstring)
+			t.Fatalf(
+				"did not expect template to contain %q",
+				forbiddenSubstring,
+			)
 		}
 	}
 }
@@ -147,10 +167,18 @@ func TestBootstrapResolveJSDevDependencyInstallCommand(t *testing.T) {
 				testCase.packages,
 			)
 			if gotCommand != testCase.expectedCommand {
-				t.Fatalf("command = %q, want %q", gotCommand, testCase.expectedCommand)
+				t.Fatalf(
+					"command = %q, want %q",
+					gotCommand,
+					testCase.expectedCommand,
+				)
 			}
 			if !reflect.DeepEqual(gotCommandArgs, testCase.expectedCommandArg) {
-				t.Fatalf("args = %#v, want %#v", gotCommandArgs, testCase.expectedCommandArg)
+				t.Fatalf(
+					"args = %#v, want %#v",
+					gotCommandArgs,
+					testCase.expectedCommandArg,
+				)
 			}
 		})
 	}
@@ -164,7 +192,10 @@ func TestBootstrapDerived_UnknownJSPackageManagerPanics(t *testing.T) {
 		}
 		panicText := recoveredValue.(string)
 		if !strings.Contains(panicText, "unknown JSPackageManager") {
-			t.Fatalf("panic text = %q, expected unknown JSPackageManager guidance", panicText)
+			t.Fatalf(
+				"panic text = %q, expected unknown JSPackageManager guidance",
+				panicText,
+			)
 		}
 	}()
 
@@ -181,7 +212,9 @@ func TestBootstrapDerived_DockerTargetRequiresNodeMajorVersion(t *testing.T) {
 	t.Run("panics when NodeMajorVersion is empty", func(t *testing.T) {
 		defer func() {
 			if r := recover(); r == nil {
-				t.Fatal("expected panic when NodeMajorVersion is empty for docker target")
+				t.Fatal(
+					"expected panic when NodeMajorVersion is empty for docker target",
+				)
 			}
 		}()
 
@@ -200,27 +233,30 @@ func TestBootstrapDerived_DockerTargetRequiresNodeMajorVersion(t *testing.T) {
 		}.derived()
 	})
 
-	t.Run("panics when NodeMajorVersion has non-digit runes", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Fatal("expected panic for non-digit NodeMajorVersion")
-			}
-		}()
+	t.Run(
+		"panics when NodeMajorVersion has non-digit runes",
+		func(t *testing.T) {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Fatal("expected panic for non-digit NodeMajorVersion")
+				}
+			}()
 
-		Options{
-			GoImportBase:     "example.com/app",
-			DeploymentTarget: "docker",
-			JSPackageManager: "npm",
-			NodeMajorVersion: "22.x",
-			GoVersion:        "go1.24.0",
-			HasParentModule:  false,
-			IncludeTailwind:  false,
-			CreatedInDir:     "",
-			ModuleRoot:       "",
-			CurrentDir:       "",
-			UIVariant:        "react",
-		}.derived()
-	})
+			Options{
+				GoImportBase:     "example.com/app",
+				DeploymentTarget: "docker",
+				JSPackageManager: "npm",
+				NodeMajorVersion: "22.x",
+				GoVersion:        "go1.24.0",
+				HasParentModule:  false,
+				IncludeTailwind:  false,
+				CreatedInDir:     "",
+				ModuleRoot:       "",
+				CurrentDir:       "",
+				UIVariant:        "react",
+			}.derived()
+		},
+	)
 
 	t.Run("does not panic for numeric NodeMajorVersion", func(t *testing.T) {
 		defer func() {
@@ -262,7 +298,10 @@ func TestBootstrapWaveTemplateSetUsesDevProdSplitFiles(t *testing.T) {
 		"DistStaticFS:",
 	} {
 		if !strings.Contains(string(devTemplate), requiredFragment) {
-			t.Fatalf("expected dev wave template to contain %q", requiredFragment)
+			t.Fatalf(
+				"expected dev wave template to contain %q",
+				requiredFragment,
+			)
 		}
 	}
 
@@ -273,12 +312,17 @@ func TestBootstrapWaveTemplateSetUsesDevProdSplitFiles(t *testing.T) {
 		"DistStaticFS:",
 	} {
 		if !strings.Contains(string(prodTemplate), requiredFragment) {
-			t.Fatalf("expected prod wave template to contain %q", requiredFragment)
+			t.Fatalf(
+				"expected prod wave template to contain %q",
+				requiredFragment,
+			)
 		}
 	}
 }
 
-func TestBootstrapWaveTemplateSetDoesNotIncludeSingleWaveTemplate(t *testing.T) {
+func TestBootstrapWaveTemplateSetDoesNotIncludeSingleWaveTemplate(
+	t *testing.T,
+) {
 	_, err := tmplsFS.ReadFile("tmpls/backend_wave_go_tmpl.txt")
 	if err == nil {
 		t.Fatal("did not expect single wave template file to exist")

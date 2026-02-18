@@ -49,15 +49,17 @@ type routePatternMetadataConfig struct {
 	actionsSplatRune        rune
 }
 
-func deriveRoutePatternMetadataConfig(input tsGenInput) routePatternMetadataConfig {
+func deriveRoutePatternMetadataConfig(
+	input tsGenInput,
+) routePatternMetadataConfig {
 	config := routePatternMetadataConfig{
-		loadersDynamicRune: input.LoadersRouter.GetDynamicParamPrefixRune(),
-		loadersSplatRune:   input.LoadersRouter.GetSplatSegmentRune(),
-		actionsDynamicRune: input.ActionsRouter.GetDynamicParamPrefixRune(),
-		actionsSplatRune:   input.ActionsRouter.GetSplatSegmentRune(),
+		loadersDynamicRune: input.LoadersRouter.DynamicParamPrefix(),
+		loadersSplatRune:   input.LoadersRouter.SplatSegmentIdentifier(),
+		actionsDynamicRune: input.ActionsRouter.DynamicParamPrefix(),
+		actionsSplatRune:   input.ActionsRouter.SplatSegmentIdentifier(),
 	}
 
-	if input.LoadersRouter.GetExplicitIndexSegment() != "" {
+	if input.LoadersRouter.ExplicitIndexSegmentIdentifier() != "" {
 		config.expectedRootDataPattern = "/"
 	}
 
@@ -131,7 +133,8 @@ func appendLoaderCollectionItems(
 				"phantomOutputType": {TypeInstance: loader.O()},
 			}
 		}
-		if pattern == metadataConfig.expectedRootDataPattern && input.LoadersRouter.HasTaskHandler(pattern) {
+		if pattern == metadataConfig.expectedRootDataPattern &&
+			input.LoadersRouter.HasTaskHandler(pattern) {
 			foundRootData = true
 			item.ArbitraryProperties["isRootData"] = true
 		}
@@ -178,7 +181,12 @@ func appendActionCollectionItems(
 		action := allActions[currentActionKey.index]
 		method := action.Method()
 		pattern := action.OriginalPattern()
-		item, ok := buildActionCollectionItem(action, method, pattern, metadataConfig)
+		item, ok := buildActionCollectionItem(
+			action,
+			method,
+			pattern,
+			metadataConfig,
+		)
 		if !ok {
 			continue
 		}

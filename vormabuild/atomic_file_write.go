@@ -183,7 +183,7 @@ func (executor atomicFileWriteExecutor) renameAtomicWriteTempPath(
 		return nil
 	}
 
-	if !errors.Is(renameErr, fs.ErrExist) && !errors.Is(renameErr, os.ErrExist) {
+	if !shouldRetryRenameByReplacingTarget(renameErr, targetPath) {
 		return fmt.Errorf("rename temp file: %w", renameErr)
 	}
 
@@ -198,6 +198,22 @@ func (executor atomicFileWriteExecutor) renameAtomicWriteTempPath(
 	}
 
 	return nil
+}
+
+func shouldRetryRenameByReplacingTarget(
+	renameErr error,
+	targetPath string,
+) bool {
+	if errors.Is(renameErr, fs.ErrExist) || errors.Is(renameErr, os.ErrExist) {
+		return true
+	}
+
+	if errors.Is(renameErr, fs.ErrPermission) || errors.Is(renameErr, os.ErrPermission) {
+		_, statErr := os.Stat(targetPath)
+		return statErr == nil
+	}
+
+	return false
 }
 
 func (executor atomicFileWriteExecutor) closeTempFileAfterAtomicWriteFailure(

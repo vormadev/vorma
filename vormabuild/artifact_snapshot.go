@@ -11,7 +11,7 @@ type buildArtifactFileSnapshot struct {
 	content []byte
 }
 
-func captureBuildArtifactFileSnapshot(
+func captureBuildArtifactFile(
 	artifactPath string,
 	readArtifactFile func(string) ([]byte, error),
 ) (buildArtifactFileSnapshot, error) {
@@ -26,7 +26,7 @@ func captureBuildArtifactFileSnapshot(
 	return buildArtifactFileSnapshot{existed: true, content: artifactContent}, nil
 }
 
-func restoreBuildArtifactFileSnapshot(
+func restoreBuildArtifactFile(
 	artifactPath string,
 	snapshot buildArtifactFileSnapshot,
 	writeArtifactFile func(string, []byte, os.FileMode) error,

@@ -16,14 +16,14 @@ import "github.com/vormadev/vorma/kit/reflectutil"
 ### Check interface implementation (value or pointer receiver)
 
 ```go
-readerIface := reflectutil.ToInterfaceReflectType[io.Reader]()
-if reflectutil.ImplementsInterface(t, readerIface) {
+readerIface := reflect.TypeFor[io.Reader]()
+if reflectutil.DoesTypeImplementInterface(t, readerIface) {
 	// supports io.Reader
 }
 ```
 
-`ImplementsInterface` returns false for nil types and panics if `iface` is not
-an interface type.
+`DoesTypeImplementInterface` returns false for nil types and panics if `iface`
+is not an interface type.
 
 ### Nil-or-points-to-nil checks
 
@@ -37,7 +37,7 @@ This follows pointers/interfaces recursively and treats `struct{}`/`*struct{}`
 ### JSON field name extraction
 
 ```go
-name := reflectutil.GetJSONFieldName(field)
+name := reflectutil.JSONFieldName(field)
 ```
 
 - returns tag name if present (`json:"id,omitempty"` -> `id`)
@@ -49,6 +49,5 @@ name := reflectutil.GetJSONFieldName(field)
 ### Functions
 
 - `func ExcludingNoneGetIsNilOrUltimatelyPointsToNil(v any) bool`
-- `func GetJSONFieldName(field reflect.StructField) string`
-- `func ImplementsInterface(t reflect.Type, iface reflect.Type) bool`
-- `func ToInterfaceReflectType[T any]() reflect.Type`
+- `func JSONFieldName(field reflect.StructField) string`
+- `func DoesTypeImplementInterface(t reflect.Type, iface reflect.Type) bool`

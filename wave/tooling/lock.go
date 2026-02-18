@@ -16,7 +16,9 @@ const maxLockAcquireAttempts = 8
 const invalidLockFileStaleThreshold = 1 * time.Second
 
 // ErrLockHeld is returned when another wave dev instance is running on this project.
-var ErrLockHeld = errors.New("another wave dev instance is running on this project")
+var ErrLockHeld = errors.New(
+	"another wave dev instance is running on this project",
+)
 
 // devLock manages a project-level lock to prevent multiple wave dev instances.
 type devLock struct {
@@ -48,19 +50,18 @@ func (l *devLock) acquire() error {
 			return nil
 		}
 
-		staleLockFileRemoved, lockHeldErr, err := l.tryRecoverStaleLockFile()
+		_, lockHeldErr, err := l.tryRecoverStaleLockFile()
 		if err != nil {
 			return err
 		}
 		if lockHeldErr != nil {
 			return lockHeldErr
 		}
-		if staleLockFileRemoved {
-			continue
-		}
 	}
 
-	return fmt.Errorf("acquire lock file: lock contention exceeded retry budget")
+	return fmt.Errorf(
+		"acquire lock file: lock contention exceeded retry budget",
+	)
 }
 
 func (l *devLock) tryCreateLockFileWithCurrentPID() (bool, error) {
@@ -169,5 +170,5 @@ func (l *devLock) release() error {
 
 // isLockFile returns true if the filename is a wave lock file.
 func isLockFile(name string) bool {
-	return strings.HasPrefix(name, ".wave-")
+	return name == lockFileName
 }

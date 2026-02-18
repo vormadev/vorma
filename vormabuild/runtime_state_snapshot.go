@@ -14,38 +14,38 @@ type routeBuildRuntimeStateSnapshot struct {
 }
 
 type buildRuntimeStateReader interface {
-	GetIsDev() bool
-	GetPaths() map[string]*vormaruntime.Path
-	GetBuildID() string
-	GetRouteManifestFile() string
+	IsDev() bool
+	Paths() map[string]*vormaruntime.Path
+	BuildID() string
+	RouteManifestFile() string
 }
 
 type routeBuildRuntimeStateReader interface {
-	GetPaths() map[string]*vormaruntime.Path
-	GetBuildID() string
-	GetRouteManifestFile() string
+	Paths() map[string]*vormaruntime.Path
+	BuildID() string
+	RouteManifestFile() string
 }
 
-func captureBuildRuntimeStateSnapshot(
+func captureBuildRuntimeState(
 	l buildRuntimeStateReader,
 ) buildRuntimeStateSnapshot {
 	return buildRuntimeStateSnapshot{
-		isDev:                  l.GetIsDev(),
-		routeBuildRuntimeState: captureRouteBuildRuntimeStateSnapshot(l),
+		isDev:                  l.IsDev(),
+		routeBuildRuntimeState: captureRouteBuildRuntimeState(l),
 	}
 }
 
-func captureRouteBuildRuntimeStateSnapshot(
+func captureRouteBuildRuntimeState(
 	l routeBuildRuntimeStateReader,
 ) routeBuildRuntimeStateSnapshot {
 	return routeBuildRuntimeStateSnapshot{
-		paths:             cloneRouteBuildRuntimePathsMap(l.GetPaths()),
-		buildID:           l.GetBuildID(),
-		routeManifestFile: l.GetRouteManifestFile(),
+		paths:             cloneRouteBuildRuntimePathsMap(l.Paths()),
+		buildID:           l.BuildID(),
+		routeManifestFile: l.RouteManifestFile(),
 	}
 }
 
-func restoreBuildRuntimeStateSnapshot(
+func restoreBuildRuntimeState(
 	l *vormaruntime.LockedVorma,
 	snapshot buildRuntimeStateSnapshot,
 ) {
@@ -65,7 +65,7 @@ func restoreBuildRuntimeStateSnapshot(
 	)
 }
 
-func restoreRouteBuildRuntimeStateSnapshot(
+func restoreRouteBuildRuntimeState(
 	l *vormaruntime.LockedVorma,
 	snapshot routeBuildRuntimeStateSnapshot,
 ) {
@@ -87,7 +87,7 @@ func buildRuntimeStateSnapshotMatches(
 	l buildRuntimeStateReader,
 	snapshot buildRuntimeStateSnapshot,
 ) bool {
-	if l.GetIsDev() != snapshot.isDev {
+	if l.IsDev() != snapshot.isDev {
 		return false
 	}
 	return routeBuildRuntimeStateSnapshotMatches(l, snapshot.routeBuildRuntimeState)
@@ -97,13 +97,13 @@ func routeBuildRuntimeStateSnapshotMatches(
 	l routeBuildRuntimeStateReader,
 	snapshot routeBuildRuntimeStateSnapshot,
 ) bool {
-	if l.GetBuildID() != snapshot.buildID {
+	if l.BuildID() != snapshot.buildID {
 		return false
 	}
-	if l.GetRouteManifestFile() != snapshot.routeManifestFile {
+	if l.RouteManifestFile() != snapshot.routeManifestFile {
 		return false
 	}
-	return routeBuildRuntimePathsMapMatches(l.GetPaths(), snapshot.paths)
+	return routeBuildRuntimePathsMapMatches(l.Paths(), snapshot.paths)
 }
 
 func routeBuildRuntimePathsMapMatches(

@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/vormadev/vorma/kit/bytesutil"
 	"github.com/vormadev/vorma/kit/cryptoutil"
-	"github.com/vormadev/vorma/kit/lazyget"
 )
 
 // Base64-encoded 32-byte root secret.
@@ -233,7 +233,7 @@ func MustAppKeyset(cfg AppKeysetConfig) *AppKeyset {
 	if !cfg.DeferPanic {
 		validateOrPanic()
 	}
-	rootFn := lazyget.New(func() *Keyset {
+	rootFn := sync.OnceValue(func() *Keyset {
 		if cfg.DeferPanic {
 			validateOrPanic()
 		}
@@ -246,7 +246,7 @@ func MustAppKeyset(cfg AppKeysetConfig) *AppKeyset {
 	return &AppKeyset{
 		rootFn: rootFn,
 		hkdfFnMaker: func(purpose string) func() *Keyset {
-			return lazyget.New(func() *Keyset {
+			return sync.OnceValue(func() *Keyset {
 				if cfg.DeferPanic {
 					validateOrPanic()
 				}

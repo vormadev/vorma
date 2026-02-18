@@ -68,12 +68,12 @@ func newStageTwoPathsWriteExecutor(
 }
 
 func toPathsFileStageTwo(v *vormaruntime.Vorma) (*vormaruntime.PathsFile, error) {
-	viteManifest, err := viteutil.ReadManifest(v.Wave.GetViteManifestLocation())
+	viteManifest, err := viteutil.ReadManifest(v.Wave.ViteManifestLocation())
 	if err != nil {
 		return nil, fmt.Errorf("read vite manifest: %w", err)
 	}
 
-	paths := v.GetPathsSnapshot()
+	paths := v.Paths()
 	cleanClientEntry := filepath.Clean(v.Config.ClientEntry)
 	manifestApplicationResult := applyViteManifestToPaths(
 		viteManifest,
@@ -123,7 +123,7 @@ func (executor stageTwoPathsWriteExecutor) writePathsToDiskStageTwo(
 }
 
 func pathsOutputPath(v *vormaruntime.Vorma, fileName string) string {
-	return filepath.Join(v.Wave.GetStaticPrivateOutDir(), vormaruntime.VormaOutDirname, fileName)
+	return filepath.Join(v.Wave.StaticPrivateOutDir(), vormaruntime.VormaOutDirname, fileName)
 }
 
 func applyBuildIDToPathsFile(pathsFile *vormaruntime.PathsFile, buildID string) {
@@ -152,7 +152,7 @@ func buildStageTwoPathsFile(
 		ClientEntrySrc:    v.Config.ClientEntry,
 		ClientEntryOut:    manifestApplicationResult.clientEntryOut,
 		ClientEntryDeps:   manifestApplicationResult.clientEntryDeps,
-		RouteManifestFile: v.GetRouteManifestFile(),
+		RouteManifestFile: v.RouteManifestFile(),
 	}
 }
 

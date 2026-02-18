@@ -21,10 +21,10 @@ type testActionContext[I any] struct {
 	marker string
 }
 
-func TestNewLoaderUsesDecoratedContext(t *testing.T) {
+func TestDefineLoaderForRegistrationUsesDecoratedContext(t *testing.T) {
 	requestData := &LoaderReqData{}
 
-	loaderTask := NewLoader(
+	loaderTask := DefineLoaderForRegistration(
 		nil,
 		"/loader",
 		func(ctx *testLoaderContext) (string, error) {
@@ -32,10 +32,16 @@ func TestNewLoaderUsesDecoratedContext(t *testing.T) {
 				t.Fatal("expected decorated loader context")
 			}
 			if ctx.req != requestData {
-				t.Fatal("expected loader context to contain original request data")
+				t.Fatal(
+					"expected loader context to contain original request data",
+				)
 			}
 			if ctx.marker != "loader-decorated" {
-				t.Fatalf("loader context marker = %q, want %q", ctx.marker, "loader-decorated")
+				t.Fatalf(
+					"loader context marker = %q, want %q",
+					ctx.marker,
+					"loader-decorated",
+				)
 			}
 			return "loader-ok", nil
 		},
@@ -47,7 +53,7 @@ func TestNewLoaderUsesDecoratedContext(t *testing.T) {
 		},
 	)
 	if loaderTask == nil {
-		t.Fatal("expected NewLoader to return non-nil task")
+		t.Fatal("expected DefineLoaderForRegistration to return non-nil task")
 	}
 
 	got, err := loaderTask.Run(tasks.NewCtx(context.Background()), requestData)
@@ -59,10 +65,10 @@ func TestNewLoaderUsesDecoratedContext(t *testing.T) {
 	}
 }
 
-func TestNewActionUsesDecoratedContext(t *testing.T) {
+func TestDefineActionForRegistrationUsesDecoratedContext(t *testing.T) {
 	requestData := &ActionReqData[None]{}
 
-	actionTask := NewAction(
+	actionTask := DefineActionForRegistration(
 		nil,
 		"POST",
 		"/action",
@@ -71,10 +77,16 @@ func TestNewActionUsesDecoratedContext(t *testing.T) {
 				t.Fatal("expected decorated action context")
 			}
 			if ctx.req != requestData {
-				t.Fatal("expected action context to contain original request data")
+				t.Fatal(
+					"expected action context to contain original request data",
+				)
 			}
 			if ctx.marker != "action-decorated" {
-				t.Fatalf("action context marker = %q, want %q", ctx.marker, "action-decorated")
+				t.Fatalf(
+					"action context marker = %q, want %q",
+					ctx.marker,
+					"action-decorated",
+				)
 			}
 			return "action-ok", nil
 		},
@@ -86,7 +98,7 @@ func TestNewActionUsesDecoratedContext(t *testing.T) {
 		},
 	)
 	if actionTask == nil {
-		t.Fatal("expected NewAction to return non-nil task")
+		t.Fatal("expected DefineActionForRegistration to return non-nil task")
 	}
 
 	got, err := actionTask.Run(tasks.NewCtx(context.Background()), requestData)
@@ -98,14 +110,16 @@ func TestNewActionUsesDecoratedContext(t *testing.T) {
 	}
 }
 
-func TestNewLoaderPanicsWhenLoaderFunctionIsNil(t *testing.T) {
+func TestDefineLoaderForRegistrationPanicsWhenLoaderFunctionIsNil(
+	t *testing.T,
+) {
 	var loaderFunc func(*LoaderReqData) (string, error)
 
 	expectPanicContaining(
 		t,
-		"vorma.NewLoader: loader function cannot be nil",
+		"vorma.DefineLoaderForRegistration: loader function cannot be nil",
 		func() {
-			_ = NewLoader(
+			_ = DefineLoaderForRegistration(
 				nil,
 				"/loader",
 				loaderFunc,
@@ -115,14 +129,16 @@ func TestNewLoaderPanicsWhenLoaderFunctionIsNil(t *testing.T) {
 	)
 }
 
-func TestNewLoaderPanicsWhenDecorateContextIsNil(t *testing.T) {
+func TestDefineLoaderForRegistrationPanicsWhenDecorateContextIsNil(
+	t *testing.T,
+) {
 	var decorateLoaderContext func(*LoaderReqData) *LoaderReqData
 
 	expectPanicContaining(
 		t,
-		"vorma.NewLoader: decorateCtx cannot be nil",
+		"vorma.DefineLoaderForRegistration: decorateCtx cannot be nil",
 		func() {
-			_ = NewLoader(
+			_ = DefineLoaderForRegistration(
 				nil,
 				"/loader",
 				func(rd *LoaderReqData) (string, error) { return "ok", nil },
@@ -132,14 +148,16 @@ func TestNewLoaderPanicsWhenDecorateContextIsNil(t *testing.T) {
 	)
 }
 
-func TestNewActionPanicsWhenActionFunctionIsNil(t *testing.T) {
+func TestDefineActionForRegistrationPanicsWhenActionFunctionIsNil(
+	t *testing.T,
+) {
 	var actionFunc func(*ActionReqData[None]) (string, error)
 
 	expectPanicContaining(
 		t,
-		"vorma.NewAction: action function cannot be nil",
+		"vorma.DefineActionForRegistration: action function cannot be nil",
 		func() {
-			_ = NewAction(
+			_ = DefineActionForRegistration(
 				nil,
 				"POST",
 				"/action",
@@ -150,14 +168,16 @@ func TestNewActionPanicsWhenActionFunctionIsNil(t *testing.T) {
 	)
 }
 
-func TestNewActionPanicsWhenDecorateContextIsNil(t *testing.T) {
+func TestDefineActionForRegistrationPanicsWhenDecorateContextIsNil(
+	t *testing.T,
+) {
 	var decorateActionContext func(*ActionReqData[None]) *ActionReqData[None]
 
 	expectPanicContaining(
 		t,
-		"vorma.NewAction: decorateCtx cannot be nil",
+		"vorma.DefineActionForRegistration: decorateCtx cannot be nil",
 		func() {
-			_ = NewAction(
+			_ = DefineActionForRegistration(
 				nil,
 				"POST",
 				"/action",
@@ -168,41 +188,10 @@ func TestNewActionPanicsWhenDecorateContextIsNil(t *testing.T) {
 	)
 }
 
-func TestInternalRegisterDiscoveredLoaderPanicsWhenAppIsNil(t *testing.T) {
-	expectPanicContaining(
-		t,
-		"vorma.Internal__RegisterDiscoveredLoader: app cannot be nil",
-		func() {
-			_ = Internal__RegisterDiscoveredLoader(
-				(*Vorma)(nil),
-				"/loader",
-				func(rd *LoaderReqData) (string, error) { return "ok", nil },
-				func(rd *LoaderReqData) *LoaderReqData { return rd },
-			)
-		},
-	)
-}
-
-func TestInternalRegisterDiscoveredActionPanicsWhenAppIsNil(t *testing.T) {
-	expectPanicContaining(
-		t,
-		"vorma.Internal__RegisterDiscoveredAction: app cannot be nil",
-		func() {
-			_ = Internal__RegisterDiscoveredAction(
-				(*Vorma)(nil),
-				"POST",
-				"/action",
-				func(rd *ActionReqData[None]) (string, error) { return "ok", nil },
-				func(rd *ActionReqData[None]) *ActionReqData[None] { return rd },
-			)
-		},
-	)
-}
-
-func TestInternalGetCurrentReleaseVersionMatchesCanonicalVersionArtifacts(t *testing.T) {
-	currentVersion := strings.TrimSpace(Internal__GetCurrentReleaseVersion())
+func TestCurrentReleaseVersionMatchesCanonicalVersionArtifacts(t *testing.T) {
+	currentVersion := strings.TrimSpace(CurrentReleaseVersion())
 	if currentVersion == "" {
-		t.Fatal("expected Internal__GetCurrentReleaseVersion to return non-empty version")
+		t.Fatal("expected CurrentReleaseVersion to return non-empty version")
 	}
 
 	versionFileContents, err := os.ReadFile("internal/__LAST_RELEASE.txt")
@@ -211,11 +200,13 @@ func TestInternalGetCurrentReleaseVersionMatchesCanonicalVersionArtifacts(t *tes
 	}
 	canonicalVersion := strings.TrimSpace(string(versionFileContents))
 	if canonicalVersion == "" {
-		t.Fatal("expected internal/__LAST_RELEASE.txt to contain non-empty version")
+		t.Fatal(
+			"expected internal/__LAST_RELEASE.txt to contain non-empty version",
+		)
 	}
 	if currentVersion != canonicalVersion {
 		t.Fatalf(
-			"Internal__GetCurrentReleaseVersion() = %q, want %q (from internal/__LAST_RELEASE.txt)",
+			"CurrentReleaseVersion() = %q, want %q (from internal/__LAST_RELEASE.txt)",
 			currentVersion,
 			canonicalVersion,
 		)
@@ -250,7 +241,9 @@ func TestInternalGetCurrentReleaseVersionMatchesCanonicalVersionArtifacts(t *tes
 		)
 	}
 
-	createNPMVersion := readPackageVersion("typescript/vorma/create/package.json")
+	createNPMVersion := readPackageVersion(
+		"typescript/vorma/create/package.json",
+	)
 	if createNPMVersion != canonicalVersion {
 		t.Fatalf(
 			"typescript/vorma/create/package.json version = %q, want %q (from internal/__LAST_RELEASE.txt)",
@@ -269,7 +262,11 @@ func expectPanicContaining(t *testing.T, expectedSubstring string, fn func()) {
 		}
 		panicText := fmt.Sprint(recoveredValue)
 		if !strings.Contains(panicText, expectedSubstring) {
-			t.Fatalf("panic = %q, expected to contain %q", panicText, expectedSubstring)
+			t.Fatalf(
+				"panic = %q, expected to contain %q",
+				panicText,
+				expectedSubstring,
+			)
 		}
 	}()
 

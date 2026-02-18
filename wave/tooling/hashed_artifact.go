@@ -24,13 +24,21 @@ func publishHashedArtifactWithRef(
 		return "", fmt.Errorf("mkdir output directory: %w", err)
 	}
 
-	desiredOutputPath := filepath.Join(opts.outputDirectoryPath, opts.desiredHashedFileName)
-	previousHashedFileName, hasPreviousRefFile, readRefError := readHashedArtifactRefFileName(opts.refFilePath)
+	desiredOutputPath := filepath.Join(
+		opts.outputDirectoryPath,
+		opts.desiredHashedFileName,
+	)
+	previousHashedFileName, hasPreviousRefFile, readRefError := readHashedArtifactRefFileName(
+		opts.refFilePath,
+	)
 	if readRefError != nil {
 		return "", readRefError
 	}
+	hasValidPreviousRefFile := hasPreviousRefFile &&
+		previousHashedFileName != ""
 
-	if hasPreviousRefFile && previousHashedFileName == opts.desiredHashedFileName {
+	if hasValidPreviousRefFile &&
+		previousHashedFileName == opts.desiredHashedFileName {
 		if _, statError := os.Stat(desiredOutputPath); statError == nil {
 			return opts.desiredHashedFileName, nil
 		} else if !os.IsNotExist(statError) {
@@ -38,15 +46,14 @@ func publishHashedArtifactWithRef(
 		}
 	}
 
-	if hasPreviousRefFile &&
-		previousHashedFileName != "" &&
+	if hasValidPreviousRefFile &&
 		previousHashedFileName != opts.desiredHashedFileName {
 		removeHashedArtifactIfPresent(
 			opts.log,
 			filepath.Join(opts.outputDirectoryPath, previousHashedFileName),
 		)
 	}
-	if !hasPreviousRefFile {
+	if !hasValidPreviousRefFile {
 		cleanupOldHashedArtifactsWhenRefFileMissing(
 			opts.log,
 			opts.outputDirectoryPath,
@@ -84,9 +91,16 @@ func removeHashedArtifactIfPresent(
 	logger *slog.Logger,
 	artifactPath string,
 ) {
-	if removeError := os.Remove(artifactPath); removeError != nil && !os.IsNotExist(removeError) {
+	if removeError := os.Remove(artifactPath); removeError != nil &&
+		!os.IsNotExist(removeError) {
 		if logger != nil {
-			logger.Warn("failed to remove old hashed artifact", "file", artifactPath, "error", removeError)
+			logger.Warn(
+				"failed to remove old hashed artifact",
+				"file",
+				artifactPath,
+				"error",
+				removeError,
+			)
 		}
 	}
 }
@@ -97,10 +111,16 @@ func cleanupOldHashedArtifactsWhenRefFileMissing(
 	globPattern string,
 	desiredHashedFileName string,
 ) {
-	oldFiles, globError := filepath.Glob(filepath.Join(outputDirectoryPath, globPattern))
+	oldFiles, globError := filepath.Glob(
+		filepath.Join(outputDirectoryPath, globPattern),
+	)
 	if globError != nil {
 		if logger != nil {
-			logger.Warn("failed to glob old hashed artifacts", "error", globError)
+			logger.Warn(
+				"failed to glob old hashed artifacts",
+				"error",
+				globError,
+			)
 		}
 		return
 	}
@@ -111,7 +131,13 @@ func cleanupOldHashedArtifactsWhenRefFileMissing(
 		}
 		if removeError := os.Remove(oldFilePath); removeError != nil {
 			if logger != nil {
-				logger.Warn("failed to remove old hashed artifact", "file", oldFilePath, "error", removeError)
+				logger.Warn(
+					"failed to remove old hashed artifact",
+					"file",
+					oldFilePath,
+					"error",
+					removeError,
+				)
 			}
 		}
 	}

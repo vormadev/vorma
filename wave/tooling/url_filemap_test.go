@@ -10,79 +10,21 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-func TestGetPublicURLBuildtime_ReturnsFallbackAndErrorWhenMapIsMissing(t *testing.T) {
+func TestPublicURLBuildtime_ReturnsErrorWhenMapIsMissing(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	url, err := builder.GetPublicURLBuildtime("images/logo.png")
+	url, err := builder.PublicURLBuildtime("images/logo.png")
 	if err == nil {
 		t.Fatal("expected error when public file map does not exist")
 	}
-	if url != "/images/logo.png" {
-		t.Fatalf("expected fallback URL %q, got %q", "/images/logo.png", url)
+	if url != "" {
+		t.Fatalf("expected empty URL when file map is missing, got %q", url)
 	}
 }
 
-func TestGetPublicURLBuildtime_PassthroughURLsBypassFileMapLookup(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	for _, passthroughURL := range passthroughPublicURLSamplesForBuildtimeTests() {
-		resolvedURL, resolveError := builder.GetPublicURLBuildtime(passthroughURL)
-		if resolveError != nil {
-			t.Fatalf(
-				"GetPublicURLBuildtime(%q) returned error for passthrough URL: %v",
-				passthroughURL,
-				resolveError,
-			)
-		}
-		if resolvedURL != passthroughURL {
-			t.Fatalf(
-				"GetPublicURLBuildtime(%q) = %q, want unchanged passthrough URL",
-				passthroughURL,
-				resolvedURL,
-			)
-		}
-	}
-}
-
-func TestGetPublicURLBuildtime_FallbackTraversalStaysUnderPublicPrefix(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.PublicPathPrefix = "/assets/"
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	url, err := builder.GetPublicURLBuildtime("../images/logo.png")
-	if err == nil {
-		t.Fatal("expected error when public file map does not exist")
-	}
-	if url != "/assets/images/logo.png" {
-		t.Fatalf("expected traversal-safe fallback URL %q, got %q", "/assets/images/logo.png", url)
-	}
-}
-
-func TestGetPublicURLBuildtime_FallbackAlreadyPrefixedInputDoesNotDuplicatePrefix(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.PublicPathPrefix = "/assets/"
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	url, err := builder.GetPublicURLBuildtime("/assets/images/logo.png")
-	if err == nil {
-		t.Fatal("expected error when public file map does not exist")
-	}
-	if url != "/assets/images/logo.png" {
-		t.Fatalf(
-			"expected already-prefixed fallback URL %q, got %q",
-			"/assets/images/logo.png",
-			url,
-		)
-	}
-}
-
-func TestGetPublicURLBuildtime_ResolvesMappedAndUnmappedPaths(t *testing.T) {
+func TestPublicURLBuildtime_ReturnsErrorWhenLookupMisses(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
@@ -97,112 +39,59 @@ func TestGetPublicURLBuildtime_ResolvesMappedAndUnmappedPaths(t *testing.T) {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
-	mappedURL, mappedErr := builder.GetPublicURLBuildtime("images/logo.png")
+	missingURL, missingError := builder.PublicURLBuildtime("images/other.png")
+	if missingError == nil {
+		t.Fatal("expected lookup miss to return an error")
+	}
+	if missingURL != "" {
+		t.Fatalf("expected empty URL for lookup miss, got %q", missingURL)
+	}
+}
+
+func TestPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	fileMap := wave.FileMap{
+		"images/logo.png": {
+			DistName:    "vorma_out_images_logo_deadbeef.png",
+			ContentHash: "vorma_out_images_logo_deadbeef.png",
+		},
+	}
+	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	mappedURL, mappedErr := builder.PublicURLBuildtime("images/logo.png")
 	if mappedErr != nil {
-		t.Fatalf("GetPublicURLBuildtime for mapped file returned error: %v", mappedErr)
+		t.Fatalf(
+			"PublicURLBuildtime for mapped file returned error: %v",
+			mappedErr,
+		)
 	}
 	if mappedURL != "/vorma_out_images_logo_deadbeef.png" {
 		t.Fatalf("unexpected mapped URL: %q", mappedURL)
 	}
-
-	unmappedURL, unmappedErr := builder.GetPublicURLBuildtime("images/other.png")
-	if unmappedErr != nil {
-		t.Fatalf("GetPublicURLBuildtime for unmapped file returned error: %v", unmappedErr)
-	}
-	if unmappedURL != "/images/other.png" {
-		t.Fatalf("unexpected unmapped URL fallback: %q", unmappedURL)
-	}
 }
 
-func TestMustGetPublicURLBuildtime_PanicsWhenMapIsMissing(t *testing.T) {
+func TestMustPublicURLBuildtime_PanicsWhenMapIsMissing(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	defer func() {
 		if recover() == nil {
-			t.Fatal("expected MustGetPublicURLBuildtime to panic when map is missing")
+			t.Fatal(
+				"expected MustPublicURLBuildtime to panic when map is missing",
+			)
 		}
 	}()
 
-	_ = builder.MustGetPublicURLBuildtime("images/logo.png")
+	_ = builder.MustPublicURLBuildtime("images/logo.png")
 }
 
-func TestMustGetPublicURLBuildtime_PassthroughURLsBypassFileMapLookup(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	for _, passthroughURL := range passthroughPublicURLSamplesForBuildtimeTests() {
-		func() {
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					t.Fatalf(
-						"MustGetPublicURLBuildtime(%q) panicked for passthrough URL: %v",
-						passthroughURL,
-						recovered,
-					)
-				}
-			}()
-
-			resolvedURL := builder.MustGetPublicURLBuildtime(passthroughURL)
-			if resolvedURL != passthroughURL {
-				t.Fatalf(
-					"MustGetPublicURLBuildtime(%q) = %q, want unchanged passthrough URL",
-					passthroughURL,
-					resolvedURL,
-				)
-			}
-		}()
-	}
-}
-
-func TestGetPublicURLBuildtimeCached_FallbackTraversalStaysUnderPublicPrefix(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.PublicPathPrefix = "/assets/"
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	url := builder.getPublicURLBuildtimeCached("../images/logo.png")
-	if url != "/assets/images/logo.png" {
-		t.Fatalf("expected traversal-safe cached fallback URL %q, got %q", "/assets/images/logo.png", url)
-	}
-}
-
-func TestGetPublicURLBuildtimeCached_FallbackAlreadyPrefixedInputDoesNotDuplicatePrefix(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.PublicPathPrefix = "/assets/"
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	url := builder.getPublicURLBuildtimeCached("/assets/images/logo.png")
-	if url != "/assets/images/logo.png" {
-		t.Fatalf(
-			"expected already-prefixed cached fallback URL %q, got %q",
-			"/assets/images/logo.png",
-			url,
-		)
-	}
-}
-
-func TestGetPublicURLBuildtimeCached_PassthroughURLsBypassFileMapLookup(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
-	defer builder.Close()
-
-	for _, passthroughURL := range passthroughPublicURLSamplesForBuildtimeTests() {
-		resolvedURL := builder.getPublicURLBuildtimeCached(passthroughURL)
-		if resolvedURL != passthroughURL {
-			t.Fatalf(
-				"getPublicURLBuildtimeCached(%q) = %q, want unchanged passthrough URL",
-				passthroughURL,
-				resolvedURL,
-			)
-		}
-	}
-}
-
-func TestMustGetPublicURLBuildtime_ResolvesMappedAndUnmappedPaths(t *testing.T) {
+func TestMustPublicURLBuildtime_PanicsWhenLookupMisses(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
@@ -217,15 +106,78 @@ func TestMustGetPublicURLBuildtime_ResolvesMappedAndUnmappedPaths(t *testing.T) 
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
-	mapped := builder.MustGetPublicURLBuildtime("images/logo.png")
+	defer func() {
+		if recover() == nil {
+			t.Fatal(
+				"expected MustPublicURLBuildtime to panic on lookup miss",
+			)
+		}
+	}()
+
+	_ = builder.MustPublicURLBuildtime("images/missing.png")
+}
+
+func TestMustPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	fileMap := wave.FileMap{
+		"images/logo.png": {
+			DistName:    "vorma_out_images_logo_deadbeef.png",
+			ContentHash: "vorma_out_images_logo_deadbeef.png",
+		},
+	}
+	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	mapped := builder.MustPublicURLBuildtime("images/logo.png")
 	if mapped != "/vorma_out_images_logo_deadbeef.png" {
 		t.Fatalf("unexpected mapped URL: %q", mapped)
 	}
+}
 
-	unmapped := builder.MustGetPublicURLBuildtime("images/missing.png")
-	if unmapped != "/images/missing.png" {
-		t.Fatalf("unexpected unmapped fallback URL: %q", unmapped)
+func TestPublicURLBuildtimeCached_PanicsWhenMapIsMissing(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal(
+				"expected getPublicURLBuildtimeCached to panic when map is missing",
+			)
+		}
+	}()
+
+	_ = builder.getPublicURLBuildtimeCached("images/logo.png")
+}
+
+func TestPublicURLBuildtimeCached_PanicsWhenLookupMisses(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	fileMap := wave.FileMap{
+		"images/logo.png": {
+			DistName:    "vorma_out_images_logo_deadbeef.png",
+			ContentHash: "vorma_out_images_logo_deadbeef.png",
+		},
 	}
+	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal(
+				"expected getPublicURLBuildtimeCached to panic on lookup miss",
+			)
+		}
+	}()
+
+	_ = builder.getPublicURLBuildtimeCached("images/missing.png")
 }
 
 func TestPublicFileMapViews_ExcludePrehashedEntries(t *testing.T) {
@@ -334,13 +286,23 @@ func TestAddPublicAssetKeys_EmitsTypedAssetKeyDefinitions(t *testing.T) {
 	generated := statements.BuildString()
 
 	if !strings.Contains(generated, "const WAVE_PUBLIC_ASSETS") {
-		t.Fatalf("expected generated output to define WAVE_PUBLIC_ASSETS, got:\n%s", generated)
+		t.Fatalf(
+			"expected generated output to define WAVE_PUBLIC_ASSETS, got:\n%s",
+			generated,
+		)
 	}
 	if !strings.Contains(generated, "export type WavePublicAsset") {
-		t.Fatalf("expected generated output to define WavePublicAsset type, got:\n%s", generated)
+		t.Fatalf(
+			"expected generated output to define WavePublicAsset type, got:\n%s",
+			generated,
+		)
 	}
-	if !strings.Contains(generated, "images/logo.png") || !strings.Contains(generated, "scripts/app.js") {
-		t.Fatalf("expected generated output to include public asset keys, got:\n%s", generated)
+	if !strings.Contains(generated, "images/logo.png") ||
+		!strings.Contains(generated, "scripts/app.js") {
+		t.Fatalf(
+			"expected generated output to include public asset keys, got:\n%s",
+			generated,
+		)
 	}
 }
 
@@ -352,23 +314,11 @@ func TestAddPublicAssetKeys_ReturnsErrorWhenFileMapIsMissing(t *testing.T) {
 
 	_, err := builder.AddPublicAssetKeys(nil)
 	if err == nil {
-		t.Fatal("expected AddPublicAssetKeys to return error when file map is missing")
+		t.Fatal(
+			"expected AddPublicAssetKeys to return error when file map is missing",
+		)
 	}
 	if !strings.Contains(err.Error(), "public file map keys") {
 		t.Fatalf("unexpected AddPublicAssetKeys error: %v", err)
-	}
-}
-
-func passthroughPublicURLSamplesForBuildtimeTests() []string {
-	return []string{
-		"data:image/svg+xml;base64,AAAA",
-		"DATA:image/svg+xml;base64,AAAA",
-		"https://cdn.example.com/logo.svg",
-		"http://cdn.example.com/logo.svg",
-		"wss://cdn.example.com/socket",
-		"ws://cdn.example.com/socket",
-		"blob:https://example.com/uuid",
-		"file:///tmp/logo.svg",
-		"//cdn.example.com/logo.svg",
 	}
 }

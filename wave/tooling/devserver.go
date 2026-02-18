@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"sync"
 
+	"github.com/vormadev/vorma/internal/waveport"
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
@@ -23,10 +24,9 @@ type restartRequest struct {
 
 // server is the dev server instance
 type server struct {
-	cfg *wave.ParsedConfig
-	log *slog.Logger
-
-	portResolver *wave.PortResolver
+	cfg          *wave.ParsedConfig
+	log          *slog.Logger
+	portResolver *waveport.Resolver
 
 	// File watching
 	watcher *watcher
@@ -89,7 +89,7 @@ func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
 	s := &server{
 		cfg:          cfg,
 		log:          log,
-		portResolver: wave.NewPortResolver(),
+		portResolver: waveport.NewResolver(),
 		concurrentNoWaitHookExecutionLimiter: make(
 			chan struct{},
 			maxConcurrentNoWaitHookExecutions,

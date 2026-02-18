@@ -592,6 +592,87 @@ func TestWriteFileAtomically(t *testing.T) {
 		}
 	})
 
+	t.Run("retries rename after removing existing target when rename reports permission denied", func(t *testing.T) {
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
+		t.Cleanup(func() {
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
+		})
+
+		outputDirectory := t.TempDir()
+		targetPath := filepath.Join(outputDirectory, "artifact.json")
+		mustWriteFile(t, targetPath, []byte(`{"old":true}`))
+
+		renameCalls := 0
+		removeTargetCalls := 0
+		atomicWriteDependencies.renameTempFile = func(oldPath string, newPath string) error {
+			renameCalls++
+			if renameCalls == 1 {
+				return os.ErrPermission
+			}
+			return os.Rename(oldPath, newPath)
+		}
+		atomicWriteDependencies.removeExistingTargetFile = func(path string) error {
+			removeTargetCalls++
+			return os.Remove(path)
+		}
+
+		if err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"new":true}`), 0o644, atomicWriteDependencies); err != nil {
+			t.Fatalf("writeFileAtomically returned error: %v", err)
+		}
+		if renameCalls != 2 {
+			t.Fatalf("rename calls = %d, want %d", renameCalls, 2)
+		}
+		if removeTargetCalls != 1 {
+			t.Fatalf("remove target calls = %d, want %d", removeTargetCalls, 1)
+		}
+
+		contents, err := os.ReadFile(targetPath)
+		if err != nil {
+			t.Fatalf("read target file: %v", err)
+		}
+		if string(contents) != `{"new":true}` {
+			t.Fatalf("target contents = %q, want %q", string(contents), `{"new":true}`)
+		}
+	})
+
+	t.Run("does not replace target when rename reports permission denied and target is absent", func(t *testing.T) {
+		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
+		originalAtomicFileWriteDependencies := atomicWriteDependencies
+		t.Cleanup(func() {
+			atomicWriteDependencies = originalAtomicFileWriteDependencies
+		})
+
+		removeTargetCalls := 0
+		renameCalls := 0
+		atomicWriteDependencies.renameTempFile = func(string, string) error {
+			renameCalls++
+			return os.ErrPermission
+		}
+		atomicWriteDependencies.removeExistingTargetFile = func(string) error {
+			removeTargetCalls++
+			return nil
+		}
+
+		targetPath := filepath.Join(t.TempDir(), "missing-target.json")
+		err := writeFileAtomicallyWithDependencies(targetPath, []byte(`{"value":1}`), 0o644, atomicWriteDependencies)
+		if err == nil {
+			t.Fatal("expected permission-denied rename error when target is absent")
+		}
+		if !strings.Contains(err.Error(), "rename temp file") {
+			t.Fatalf("error = %q, expected rename context", err)
+		}
+		if !errors.Is(err, os.ErrPermission) {
+			t.Fatalf("error = %v, expected wrapped permission error", err)
+		}
+		if removeTargetCalls != 0 {
+			t.Fatalf("remove target calls = %d, want 0", removeTargetCalls)
+		}
+		if renameCalls != 1 {
+			t.Fatalf("rename calls = %d, want 1", renameCalls)
+		}
+	})
+
 	t.Run("returns remove-existing-target-file error when replace step fails", func(t *testing.T) {
 		atomicWriteDependencies := defaultAtomicFileWriteDependencies()
 		originalAtomicFileWriteDependencies := atomicWriteDependencies

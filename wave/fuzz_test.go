@@ -24,9 +24,6 @@ func FuzzFileMapLookup(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, original string, prefix string) {
 		url, found := fm.Lookup(original, prefix)
-		if url == "" || !strings.HasPrefix(url, "/") {
-			t.Fatalf("Lookup must always return a leading-slash URL, got %q", url)
-		}
 
 		normalizedOriginal := strings.TrimPrefix(path.Clean("/"+original), "/")
 		normalizedPrefix := strings.Trim(path.Clean("/"+prefix), "/")
@@ -53,10 +50,14 @@ func FuzzFileMapLookup(f *testing.F) {
 		}
 
 		if !found {
-			if strings.Contains(url, "vorma_out/logo.hash.txt") {
-				t.Fatalf("unmatched lookup must not resolve mapped dist path, got %q", url)
+			if url != "" {
+				t.Fatalf("missing lookup must return empty URL, got %q", url)
 			}
 			return
+		}
+
+		if url == "" || !strings.HasPrefix(url, "/") {
+			t.Fatalf("mapped lookup must return a leading-slash URL, got %q", url)
 		}
 
 		expected := matcher.EnsureLeadingSlash(path.Join(prefix, "vorma_out/logo.hash.txt"))

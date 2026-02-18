@@ -10,7 +10,10 @@ import (
 func main() {
 	app := router.App
 
-	if _, err := docsync.SyncAndResolvePublicURLs(app.GetParsedConfig(), app.Logger()); err != nil {
+	if _, err := docsync.SyncAndResolvePublicURLs(
+		app.ParsedConfig(),
+		app.Logger(),
+	); err != nil {
 		panic(err)
 	}
 	vormabuild.Build(app)

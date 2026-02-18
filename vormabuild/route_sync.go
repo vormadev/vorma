@@ -74,7 +74,7 @@ func syncClientRoutesFromParsedPathsWithLock(
 		rollbackTransactionOptions{
 			run: func() error {
 				v.WithLock(func(l *vormaruntime.LockedVorma) {
-					previousRuntimeState = captureBuildRuntimeStateSnapshot(l)
+					previousRuntimeState = captureBuildRuntimeState(l)
 					commitRuntimeStateWithLock(
 						l,
 						runtimeStateCommitInput{
@@ -84,7 +84,7 @@ func syncClientRoutesFromParsedPathsWithLock(
 							routePathsUpdateMode: runtimeStateRoutePathsUpdateModeSyncFromDevReload,
 						},
 					)
-					currentAttemptCommittedBuildID = l.GetBuildID()
+					currentAttemptCommittedBuildID = l.BuildID()
 				})
 
 				if postSyncHook != nil {
@@ -112,12 +112,12 @@ func rollbackRouteSyncStateAfterPostSyncFailure(
 	currentAttemptCommittedBuildID string,
 ) {
 	if !shouldRollbackRouteSyncStateAfterPostSyncFailure(
-		l.GetBuildID(),
+		l.BuildID(),
 		currentAttemptCommittedBuildID,
 	) {
 		return
 	}
-	restoreBuildRuntimeStateSnapshot(l, previousRuntimeState)
+	restoreBuildRuntimeState(l, previousRuntimeState)
 }
 
 func shouldRollbackRouteSyncStateAfterPostSyncFailure(

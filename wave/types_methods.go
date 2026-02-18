@@ -63,10 +63,9 @@ func (fileMap FileMap) Lookup(original string, prefix string) (url string, found
 		if entry, ok := fileMap[deprefixedOriginal]; ok {
 			return joinPublicURLPrefixAndPath(prefix, entry.DistName), true
 		}
-		normalizedOriginal = deprefixedOriginal
 	}
 
-	return joinPublicURLPrefixAndPath(prefix, normalizedOriginal), false
+	return "", false
 }
 
 func normalizePublicAssetPathForLookup(original string) string {

@@ -41,7 +41,7 @@ func Init() (addr string, handler http.Handler) {
     loaders, actions := app.Loaders(), app.Actions()
 
     // Apply global middlewares
-    r.Use(app.ServeStatic())
+    r.Use(app.MustStaticMiddleware())
     r.Use(healthcheck.Healthz)
     r.Use(vorma.EnableThirdPartyRouter) // <-- KEY PIECE
 

@@ -377,7 +377,7 @@ func resolveUnresolvedRoutePolicy(v *vormaruntime.Vorma) (string, error) {
 		}
 	}
 
-	if v.GetIsDevMode() {
+	if v.IsDevMode() {
 		return vormaruntime.UnresolvedRoutePolicyWarn, nil
 	}
 	return vormaruntime.UnresolvedRoutePolicyError, nil

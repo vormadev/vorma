@@ -7,7 +7,13 @@ import (
 	"github.com/vormadev/vorma/kit/genericsutil"
 )
 
-func ImplementsInterface(t reflect.Type, iface reflect.Type) bool {
+// DoesTypeImplementInterface reports whether t implements iface, accounting
+// for both value and pointer receiver method sets.
+//
+// It returns false when t or iface is nil. It panics when iface is not an
+// interface type; this panic enforces the developer invariant that callers
+// must pass an actual interface type for iface.
+func DoesTypeImplementInterface(t reflect.Type, iface reflect.Type) bool {
 	if t == nil {
 		return false
 	}
@@ -26,10 +32,6 @@ func ImplementsInterface(t reflect.Type, iface reflect.Type) bool {
 		}
 	}
 	return false
-}
-
-func ToInterfaceReflectType[T any]() reflect.Type {
-	return reflect.TypeOf((*T)(nil)).Elem()
 }
 
 func ExcludingNoneGetIsNilOrUltimatelyPointsToNil(v any) bool {
@@ -62,7 +64,7 @@ func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck b
 	}
 }
 
-func GetJSONFieldName(field reflect.StructField) string {
+func JSONFieldName(field reflect.StructField) string {
 	tag := field.Tag.Get("json")
 	if tag == "" {
 		return field.Name

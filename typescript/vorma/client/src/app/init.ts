@@ -85,7 +85,8 @@ function initializeClientPatternRegistry(vormaAppConfig: VormaAppConfig): void {
 	const patternRegistry = createPatternRegistry({
 		dynamicParamPrefixRune: vormaAppConfig.loadersDynamicRune,
 		splatSegmentRune: vormaAppConfig.loadersSplatRune,
-		explicitIndexSegment: vormaAppConfig.loadersExplicitIndexSegment,
+		explicitIndexSegment:
+			vormaAppConfig.loadersExplicitIndexSegmentIdentifier,
 	});
 	__vormaClientGlobal.set("patternRegistry", patternRegistry);
 }

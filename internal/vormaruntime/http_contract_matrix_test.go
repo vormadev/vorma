@@ -65,104 +65,127 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
-			return map[string]string{"id": rd.Params()["id"]}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
+				return map[string]string{"id": rd.Params()["id"]}, nil
+			},
+		),
 	)
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/error",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
-			return nil, errors.New("internal loader failure")
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]bool, error) {
+				return nil, errors.New("internal loader failure")
+			},
+		),
 	)
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/cache",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
-			rd.ResponseProxy().SetHeader("Cache-Control", "public, max-age=120")
-			rd.ResponseProxy().SetHeader("X-Loader-Header", "present")
-			return map[string]string{"cache": "custom"}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
+				rd.ResponseProxy().
+					SetHeader("Cache-Control", "public, max-age=120")
+				rd.ResponseProxy().SetHeader("X-Loader-Header", "present")
+				return map[string]string{"cache": "custom"}, nil
+			},
+		),
 	)
 
 	type actionInput struct {
 		Name  string `json:"name"`
 		Count int    `json:"count"`
 	}
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodGet,
 		"/echo",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[actionInput]) (actionInput, error) {
-			return rd.Input(), nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[actionInput]) (actionInput, error) {
+				return rd.Input(), nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/echo",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[actionInput]) (actionInput, error) {
-			return rd.Input(), nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[actionInput]) (actionInput, error) {
+				return rd.Input(), nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPut,
 		"/echo",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[actionInput]) (actionInput, error) {
-			return rd.Input(), nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[actionInput]) (actionInput, error) {
+				return rd.Input(), nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPatch,
 		"/echo",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[actionInput]) (actionInput, error) {
-			return rd.Input(), nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[actionInput]) (actionInput, error) {
+				return rd.Input(), nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodDelete,
 		"/echo",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[actionInput]) (actionInput, error) {
-			return rd.Input(), nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[actionInput]) (actionInput, error) {
+				return rd.Input(), nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/submit-form",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[FormData]) (map[string]string, error) {
-			return map[string]string{
-				"name":  rd.Request().FormValue("name"),
-				"count": rd.Request().FormValue("count"),
-			}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[FormData]) (map[string]string, error) {
+				return map[string]string{
+					"name":  rd.Request().FormValue("name"),
+					"count": rd.Request().FormValue("count"),
+				}, nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/forbid",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[actionInput]) (map[string]string, error) {
-			rd.ResponseProxy().SetStatus(http.StatusForbidden, "blocked")
-			return map[string]string{"ignored": "true"}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[actionInput]) (map[string]string, error) {
+				rd.ResponseProxy().SetStatus(http.StatusForbidden, "blocked")
+				return map[string]string{"ignored": "true"}, nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/go",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[actionInput]) (map[string]string, error) {
-			if _, err := rd.ResponseProxy().Redirect(rd.Request(), "/go-done", http.StatusSeeOther); err != nil {
-				return nil, err
-			}
-			return map[string]string{"ignored": "true"}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[actionInput]) (map[string]string, error) {
+				if _, err := rd.ResponseProxy().Redirect(rd.Request(), "/go-done", http.StatusSeeOther); err != nil {
+					return nil, err
+				}
+				return map[string]string{"ignored": "true"}, nil
+			},
+		),
 	)
 
 	loadersHandler := func(app *Vorma) http.Handler {
@@ -177,14 +200,17 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			name:                  "Loaders_JSON_CurrentBuild_SuccessShape",
 			handler:               loadersHandler,
 			method:                http.MethodGet,
-			target:                func(app *Vorma) string { return "/items/42?" + VormaJSONQueryKey + "=" + app.GetBuildID() },
+			target:                func(app *Vorma) string { return "/items/42?" + VormaJSONQueryKey + "=" + app.BuildID() },
 			wantStatus:            http.StatusOK,
 			wantBuildHeader:       true,
 			wantContentTypePrefix: "application/json",
 			wantJSONKeysPresent: []string{
 				"matchedPatterns", "loadersData", "importURLs", "exportKeys", "deps", "cssBundles",
 			},
-			wantJSONKeysAbsent: []string{"outermostServerError", "outermostServerErrorIdx"},
+			wantJSONKeysAbsent: []string{
+				"outermostServerError",
+				"outermostServerErrorIdx",
+			},
 		},
 		{
 			name:                  "Loaders_JSON_StaleBuild_ReloadSignalShape",
@@ -196,13 +222,19 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			wantReloadHeader:      "/items/42?foo=bar",
 			wantContentTypePrefix: "application/json",
 			wantJSONKeysPresent:   []string{"ok"},
-			wantJSONKeysAbsent:    []string{"matchedPatterns", "loadersData", "importURLs", "exportKeys", "deps"},
+			wantJSONKeysAbsent: []string{
+				"matchedPatterns",
+				"loadersData",
+				"importURLs",
+				"exportKeys",
+				"deps",
+			},
 		},
 		{
 			name:            "Loaders_JSON_NotFound",
 			handler:         loadersHandler,
 			method:          http.MethodGet,
-			target:          func(app *Vorma) string { return "/missing?" + VormaJSONQueryKey + "=" + app.GetBuildID() },
+			target:          func(app *Vorma) string { return "/missing?" + VormaJSONQueryKey + "=" + app.BuildID() },
 			wantStatus:      http.StatusNotFound,
 			wantBuildHeader: true,
 		},
@@ -220,7 +252,7 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			name:                  "Loaders_JSON_GenericErrorShape",
 			handler:               loadersHandler,
 			method:                http.MethodGet,
-			target:                func(app *Vorma) string { return "/error?" + VormaJSONQueryKey + "=" + app.GetBuildID() },
+			target:                func(app *Vorma) string { return "/error?" + VormaJSONQueryKey + "=" + app.BuildID() },
 			wantStatus:            http.StatusOK,
 			wantBuildHeader:       true,
 			wantContentTypePrefix: "application/json",
@@ -233,7 +265,7 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			name:                  "Loaders_JSON_CustomHeadersPreserved",
 			handler:               loadersHandler,
 			method:                http.MethodGet,
-			target:                func(app *Vorma) string { return "/cache?" + VormaJSONQueryKey + "=" + app.GetBuildID() },
+			target:                func(app *Vorma) string { return "/cache?" + VormaJSONQueryKey + "=" + app.BuildID() },
 			wantStatus:            http.StatusOK,
 			wantBuildHeader:       true,
 			wantContentTypePrefix: "application/json",
@@ -370,13 +402,15 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			wantNoClientRedirect: true,
 		},
 		{
-			name:                 "Actions_POST_ResponseProxyClientRedirectShortCircuit",
-			handler:              actionsHandler,
-			method:               http.MethodPost,
-			target:               func(app *Vorma) string { return "/api/go" },
-			body:                 `{"name":"ana","count":2}`,
-			contentType:          "application/json",
-			requestHeaders:       map[string]string{response.ClientAcceptsRedirectHeader: "true"},
+			name:        "Actions_POST_ResponseProxyClientRedirectShortCircuit",
+			handler:     actionsHandler,
+			method:      http.MethodPost,
+			target:      func(app *Vorma) string { return "/api/go" },
+			body:        `{"name":"ana","count":2}`,
+			contentType: "application/json",
+			requestHeaders: map[string]string{
+				response.ClientAcceptsRedirectHeader: "true",
+			},
 			wantStatus:           http.StatusOK,
 			wantBuildHeader:      true,
 			wantClientRedirect:   "/go-done",
@@ -412,19 +446,33 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			tt.handler(app).ServeHTTP(rec, req)
 
 			if rec.Code != tt.wantStatus {
-				t.Fatalf("status = %d, want %d (body=%q)", rec.Code, tt.wantStatus, rec.Body.String())
+				t.Fatalf(
+					"status = %d, want %d (body=%q)",
+					rec.Code,
+					tt.wantStatus,
+					rec.Body.String(),
+				)
 			}
 
 			buildIDHeader := rec.Header().Get(VormaBuildIDHeaderKey)
 			if tt.wantBuildHeader {
-				if buildIDHeader != app.GetBuildID() {
-					t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, buildIDHeader, app.GetBuildID())
+				if buildIDHeader != app.BuildID() {
+					t.Fatalf(
+						"%s = %q, want %q",
+						VormaBuildIDHeaderKey,
+						buildIDHeader,
+						app.BuildID(),
+					)
 				}
 			}
 
 			if tt.wantReloadHeader != "" {
 				if got := rec.Header().Get("X-Vorma-Reload"); got != tt.wantReloadHeader {
-					t.Fatalf("X-Vorma-Reload = %q, want %q", got, tt.wantReloadHeader)
+					t.Fatalf(
+						"X-Vorma-Reload = %q, want %q",
+						got,
+						tt.wantReloadHeader,
+					)
 				}
 			} else {
 				if got := rec.Header().Get("X-Vorma-Reload"); got != "" {
@@ -434,7 +482,11 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 
 			if tt.wantLocationHeader != "" {
 				if got := rec.Header().Get("Location"); got != tt.wantLocationHeader {
-					t.Fatalf("Location = %q, want %q", got, tt.wantLocationHeader)
+					t.Fatalf(
+						"Location = %q, want %q",
+						got,
+						tt.wantLocationHeader,
+					)
 				}
 			}
 			if tt.wantNoLocationHeader {
@@ -445,19 +497,32 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 
 			if tt.wantClientRedirect != "" {
 				if got := rec.Header().Get(response.ClientRedirectHeader); got != tt.wantClientRedirect {
-					t.Fatalf("%s = %q, want %q", response.ClientRedirectHeader, got, tt.wantClientRedirect)
+					t.Fatalf(
+						"%s = %q, want %q",
+						response.ClientRedirectHeader,
+						got,
+						tt.wantClientRedirect,
+					)
 				}
 			}
 			if tt.wantNoClientRedirect {
 				if got := rec.Header().Get(response.ClientRedirectHeader); got != "" {
-					t.Fatalf("%s = %q, want empty", response.ClientRedirectHeader, got)
+					t.Fatalf(
+						"%s = %q, want empty",
+						response.ClientRedirectHeader,
+						got,
+					)
 				}
 			}
 
 			if tt.wantContentTypePrefix != "" {
 				got := rec.Header().Get("Content-Type")
 				if !strings.HasPrefix(got, tt.wantContentTypePrefix) {
-					t.Fatalf("Content-Type = %q, want prefix %q", got, tt.wantContentTypePrefix)
+					t.Fatalf(
+						"Content-Type = %q, want prefix %q",
+						got,
+						tt.wantContentTypePrefix,
+					)
 				}
 			}
 			for key, wantValue := range tt.wantHeaders {
@@ -466,24 +531,38 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 				}
 			}
 
-			if tt.wantBodyContains != "" && !strings.Contains(rec.Body.String(), tt.wantBodyContains) {
-				t.Fatalf("body %q missing expected substring %q", rec.Body.String(), tt.wantBodyContains)
+			if tt.wantBodyContains != "" &&
+				!strings.Contains(rec.Body.String(), tt.wantBodyContains) {
+				t.Fatalf(
+					"body %q missing expected substring %q",
+					rec.Body.String(),
+					tt.wantBodyContains,
+				)
 			}
 			if tt.wantEmptyBody && rec.Body.Len() != 0 {
 				t.Fatalf("expected empty body, got %q", rec.Body.String())
 			}
 
-			if len(tt.wantJSONKeysPresent) > 0 || len(tt.wantJSONKeysAbsent) > 0 {
+			if len(tt.wantJSONKeysPresent) > 0 ||
+				len(tt.wantJSONKeysAbsent) > 0 {
 				keys := decodeTopLevelJSONKeys(t, rec.Body.Bytes())
 
 				for _, k := range tt.wantJSONKeysPresent {
 					if _, ok := keys[k]; !ok {
-						t.Fatalf("expected JSON key %q to be present; keys=%v", k, mapKeys(keys))
+						t.Fatalf(
+							"expected JSON key %q to be present; keys=%v",
+							k,
+							mapKeys(keys),
+						)
 					}
 				}
 				for _, k := range tt.wantJSONKeysAbsent {
 					if _, ok := keys[k]; ok {
-						t.Fatalf("expected JSON key %q to be absent; keys=%v", k, mapKeys(keys))
+						t.Fatalf(
+							"expected JSON key %q to be absent; keys=%v",
+							k,
+							mapKeys(keys),
+						)
 					}
 				}
 			}
@@ -502,7 +581,7 @@ func TestHTTPContractMatrix_ActionsUnsupportedMethodValidation(t *testing.T) {
 	type input struct {
 		Name string `json:"name"`
 	}
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/only-get-supported",
@@ -523,11 +602,15 @@ func TestHTTPContractMatrix_ActionsUnsupportedMethodValidation(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
-	if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.GetBuildID() {
-		t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.GetBuildID())
+	if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.BuildID() {
+		t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.BuildID())
 	}
 	if !strings.Contains(rec.Body.String(), "unsupported method") {
-		t.Fatalf("body %q missing expected substring %q", rec.Body.String(), "unsupported method")
+		t.Fatalf(
+			"body %q missing expected substring %q",
+			rec.Body.String(),
+			"unsupported method",
+		)
 	}
 }
 

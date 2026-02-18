@@ -16,6 +16,8 @@ const (
 	ColorPlain = "\033[0m"
 )
 
+var processExit = os.Exit
+
 func NewReader() *bufio.Reader {
 	return bufio.NewReader(os.Stdin)
 }
@@ -42,7 +44,7 @@ func RequireYes(failMsg string) {
 	NewLine()
 
 	if buf[0] != 'y' && buf[0] != 'Y' {
-		Exit(failMsg, err)
+		Exit(failMsg, nil)
 	}
 }
 
@@ -68,12 +70,7 @@ func Exit(msg string, err error) {
 	}
 	NewLine()
 
-	code := 0
-	if err != nil {
-		code = 1
-	}
-
-	os.Exit(code)
+	processExit(1)
 }
 
 func Red(s string) {

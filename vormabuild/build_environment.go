@@ -95,7 +95,7 @@ func injectFrameworkBuildHooksInConfig(
 }
 
 func configureBuildEnvironment(v *vormaruntime.Vorma) *wave.ParsedConfig {
-	return configureBuildEnvironmentInConfig(v, v.Wave.GetBuildtimeParsedConfig())
+	return configureBuildEnvironmentInConfig(v, v.Wave.BuildtimeParsedConfig())
 }
 
 func configureBuildEnvironmentInConfig(

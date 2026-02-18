@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/htmlutil"
@@ -81,12 +82,33 @@ func FindAllDependencies(manifest Manifest, importPath string) []string {
 
 // FindRelativeEntrypointPath finds the manifest key for a given entry point file
 func FindRelativeEntrypointPath(manifest Manifest, entrypointToFind string) (string, error) {
+	normalizedEntrypointToFind := normalizeViteManifestPath(entrypointToFind)
+
 	for key, chunk := range manifest {
-		if chunk.IsEntry && path.Base(chunk.File) == path.Base(entrypointToFind) {
+		if !chunk.IsEntry {
+			continue
+		}
+
+		if normalizeViteManifestPath(chunk.Src) == normalizedEntrypointToFind {
+			return key, nil
+		}
+
+		if normalizeViteManifestPath(key) == normalizedEntrypointToFind {
 			return key, nil
 		}
 	}
+
 	return "", errors.New("entrypoint not found")
+}
+
+func normalizeViteManifestPath(pathValue string) string {
+	trimmedPathValue := strings.TrimSpace(pathValue)
+	trimmedPathValue = strings.TrimPrefix(trimmedPathValue, "/")
+	trimmedPathValue = strings.TrimPrefix(trimmedPathValue, "./")
+	if trimmedPathValue == "" {
+		return ""
+	}
+	return path.Clean(trimmedPathValue)
 }
 
 type Variant string
@@ -105,7 +127,7 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 	var htmlBuilder strings.Builder
 	var err error
 
-	port := GetVitePortStr()
+	port := resolveVitePortOrDefault(strings.TrimSpace(GetVitePortStr()))
 
 	if options.Variant == VariantReact {
 		var b stringsutil.Builder
@@ -146,6 +168,17 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 	}
 
 	return template.HTML(htmlBuilder.String()), nil
+}
+
+func resolveVitePortOrDefault(port string) string {
+	const defaultVitePort = "5173"
+
+	parsedPort, parseError := strconv.Atoi(port)
+	if parseError != nil || parsedPort <= 0 || parsedPort > 65535 {
+		return defaultVitePort
+	}
+
+	return strconv.Itoa(parsedPort)
 }
 
 func stripPrecedingSlash(s string) string {

@@ -23,12 +23,12 @@ Solution: Remove these from the public app-facing API surface. If lock-scoped
 helpers are still needed, expose a separate public-safe lock API that does not
 reference internal package types.
 
-## Proposal 3: Make Route Declaration API Semantics Explicit
+## [Already Addressed, Right?] Proposal 3: Make Route Declaration API Semantics Explicit
 
-Problem: `NewLoader`/`NewAction` currently look like runtime
-constructors/registrars but actually act as declaration markers for discovery
-(`vorma.go:53`, `vorma.go:64`). The semantic mismatch makes callsites harder to
-reason about.
+Problem: `DefineLoaderForRegistration`/`DefineActionForRegistration` currently
+look like runtime constructors/registrars but actually act as declaration
+markers for discovery (`vorma.go:53`, `vorma.go:64`). The semantic mismatch
+makes callsites harder to reason about.
 
 Solution: Keep top-level generic declaration APIs (not receiver methods) and
 rename them to declaration semantics:
@@ -44,11 +44,11 @@ For application ergonomics, generated starter wrappers should remain concise:
 - app-local wrapper `Loader(...)` -> calls `vorma.DeclareLoader(...)`
 - app-local wrapper `Action(...)` -> calls `vorma.DeclareAction(...)`
 
-## Proposal 4: Move Generated-Only Registration Entrypoints off Main Public API
+## [Already Addressed, Right?] Proposal 4: Move Generated-Only Registration Entrypoints off Main Public API
 
-Problem: `Internal__RegisterDiscoveredLoader` and
-`Internal__RegisterDiscoveredAction` are exported from the root public package
-(`vorma.go:76`, `vorma.go:89`) even though they are generated-code plumbing.
+Problem: `RegisterLoaderDiscoveredByBuild` and `RegisterActionDiscoveredByBuild`
+are exported from the root public package (`vorma.go:76`, `vorma.go:89`) even
+though they are generated-code plumbing.
 
 Solution: Move generated-only entrypoints to a dedicated generated-support
 package/path intended for build output use, not general app authoring.
@@ -94,7 +94,7 @@ on process-global environment state (`wave/env.go:19`,
 Solution: Move mode and cache policy to instance-scoped state on
 `*Wave`/`*Vorma`. Treat environment variables as startup defaults only.
 
-## Proposal 9: Replace Panic-First Core APIs with Error-Returning APIs + OrPanic Variants
+## [Already Addressed, Right?] Proposal 9: Replace Panic-First Core APIs with Error-Returning APIs + OrPanic Variants
 
 Problem: Core creation/init flows panic on configuration/runtime errors
 (`wave/wave.go:71`, `internal/vormaruntime/glue.go:136`,
@@ -175,7 +175,8 @@ aside.
 
 Problem: Bootstrap templates currently hardcode APIs that are targeted by
 earlier proposals (for example `wave.New`, `vorma.NewVormaApp`,
-`vorma.NewLoader`, `vorma.NewAction`) across:
+`vorma.DefineLoaderForRegistration`, `vorma.DefineActionForRegistration`)
+across:
 
 - `bootstrap/tmpls/backend_wave_dev_go_str.txt:14`
 - `bootstrap/tmpls/backend_wave_prod_go_str.txt:15`
@@ -192,7 +193,7 @@ Solution: Treat bootstrap as a first-class compatibility surface:
 - Expand bootstrap conformance tests to assert new API usage patterns.
 - Fail CI when template APIs drift from intended public guidance.
 
-## Proposal 16: Keep Starter Route Boilerplate Minimal and Intentional
+## [Already Addressed, Right?] Proposal 16: Keep Starter Route Boilerplate Minimal and Intentional
 
 Problem: Starter apps include context/wrapper boilerplate before route
 declarations:
@@ -212,7 +213,7 @@ improvements only:
   boundaries.
 - Revisit only if a clearly better typed abstraction emerges.
 
-## Proposal 17: Align Bootstrap Defaults with Error-First Core APIs
+## [Already Addressed, Right?] Proposal 17: Align Bootstrap Defaults with Error-First Core APIs
 
 Problem: Bootstrap defaults currently follow panic-first constructor usage:
 

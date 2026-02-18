@@ -23,6 +23,9 @@ func TestReloadEndpointURL(t *testing.T) {
 
 func TestReloadEndpointDefaultDependencySteps(t *testing.T) {
 	t.Run("builds app reload URL with endpoint suffix", func(t *testing.T) {
+		t.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
+		t.Setenv("PORT", "8081")
+
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 

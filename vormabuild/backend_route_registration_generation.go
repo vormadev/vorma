@@ -326,10 +326,10 @@ func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
 	)
 	return strings.Join(
 		[]string{
-			filepath.ToSlash(filepath.Clean(v.Wave.GetConfigFile())),
-			filepath.ToSlash(filepath.Clean(v.Wave.GetDistDir())),
-			filepath.ToSlash(filepath.Clean(v.Wave.GetStaticPrivateOutDir())),
-			filepath.ToSlash(filepath.Clean(v.Wave.GetStaticPublicOutDir())),
+			filepath.ToSlash(filepath.Clean(v.Wave.ConfigFile())),
+			filepath.ToSlash(filepath.Clean(v.Wave.DistDir())),
+			filepath.ToSlash(filepath.Clean(v.Wave.StaticPrivateOutDir())),
+			filepath.ToSlash(filepath.Clean(v.Wave.StaticPublicOutDir())),
 			strings.TrimSpace(v.Config.MainBuildEntry),
 			strings.Join(normalizedServerRoutePatterns, ","),
 		},
@@ -609,7 +609,7 @@ func (analysis *backendRoutePackageAnalysis) renderDiscoveredRouteRegistrarSourc
 	discoveredCalls []*discoveredVormaRegistrationCall,
 ) ([]byte, error) {
 	requiredImports := map[string]string{
-		"vorma": "github.com/vormadev/vorma",
+		"vormagogen": "github.com/vormadev/vorma/vormagogen",
 	}
 	for _, discoveredCall := range discoveredCalls {
 		if err := analysis.collectRequiredImportsForDiscoveredCall(discoveredCall, requiredImports); err != nil {
@@ -667,7 +667,7 @@ func (analysis *backendRoutePackageAnalysis) renderDiscoveredCallExpression(
 
 	if discoveredCall.isLoader {
 		return fmt.Sprintf(
-			"vorma.Internal__RegisterDiscoveredLoader(%s, %s, %s, %s)",
+			"vormagogen.RegisterLoaderDiscoveredByBuild(%s, %s, %s, %s)",
 			appExpression,
 			patternExpression,
 			handlerExpression,
@@ -680,7 +680,7 @@ func (analysis *backendRoutePackageAnalysis) renderDiscoveredCallExpression(
 		return "", err
 	}
 	return fmt.Sprintf(
-		"vorma.Internal__RegisterDiscoveredAction(%s, %s, %s, %s, %s)",
+		"vormagogen.RegisterActionDiscoveredByBuild(%s, %s, %s, %s, %s)",
 		appExpression,
 		methodExpression,
 		patternExpression,

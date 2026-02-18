@@ -6,7 +6,7 @@ export const DIST_TEST_VORMA_APP_CONFIG = {
 	actionsSplatRune: "*",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
-	loadersExplicitIndexSegment: "_index",
+	loadersExplicitIndexSegmentIdentifier: "_index",
 };
 
 type DistGlobalRecord = Record<PropertyKey, unknown>;
@@ -50,7 +50,7 @@ export function installDistTestVormaGlobal(): DistTestVormaInternal {
 		dynamicParamPrefixRune: DIST_TEST_VORMA_APP_CONFIG.loadersDynamicRune,
 		splatSegmentRune: DIST_TEST_VORMA_APP_CONFIG.loadersSplatRune,
 		explicitIndexSegment:
-			DIST_TEST_VORMA_APP_CONFIG.loadersExplicitIndexSegment,
+			DIST_TEST_VORMA_APP_CONFIG.loadersExplicitIndexSegmentIdentifier,
 	});
 
 	const globals = {

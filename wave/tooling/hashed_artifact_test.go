@@ -6,7 +6,9 @@ import (
 	"testing"
 )
 
-func TestPublishHashedArtifactWithRef_RefMissingCleansStaleArtifacts(t *testing.T) {
+func TestPublishHashedArtifactWithRef_RefMissingCleansStaleArtifacts(
+	t *testing.T,
+) {
 	root := t.TempDir()
 	outputDirectoryPath := filepath.Join(root, "assets")
 	refFilePath := filepath.Join(root, "assets.ref")
@@ -22,31 +24,50 @@ func TestPublishHashedArtifactWithRef_RefMissingCleansStaleArtifacts(t *testing.
 
 	desiredHashedFileName := "styles-new.css"
 	desiredContent := []byte("new")
-	publishedFileName, publishError := publishHashedArtifactWithRef(hashedArtifactPublishOptions{
-		outputDirectoryPath:   outputDirectoryPath,
-		refFilePath:           refFilePath,
-		desiredHashedFileName: desiredHashedFileName,
-		content:               desiredContent,
-		globPattern:           "styles-*.css",
-	})
+	publishedFileName, publishError := publishHashedArtifactWithRef(
+		hashedArtifactPublishOptions{
+			outputDirectoryPath:   outputDirectoryPath,
+			refFilePath:           refFilePath,
+			desiredHashedFileName: desiredHashedFileName,
+			content:               desiredContent,
+			globPattern:           "styles-*.css",
+		},
+	)
 	if publishError != nil {
-		t.Fatalf("publishHashedArtifactWithRef returned error: %v", publishError)
+		t.Fatalf(
+			"publishHashedArtifactWithRef returned error: %v",
+			publishError,
+		)
 	}
 	if publishedFileName != desiredHashedFileName {
-		t.Fatalf("expected published file name %q, got %q", desiredHashedFileName, publishedFileName)
+		t.Fatalf(
+			"expected published file name %q, got %q",
+			desiredHashedFileName,
+			publishedFileName,
+		)
 	}
 
 	if _, statError := os.Stat(staleArtifactPath); !os.IsNotExist(statError) {
-		t.Fatalf("expected stale artifact to be deleted, stat error: %v", statError)
+		t.Fatalf(
+			"expected stale artifact to be deleted, stat error: %v",
+			statError,
+		)
 	}
 
-	desiredArtifactPath := filepath.Join(outputDirectoryPath, desiredHashedFileName)
+	desiredArtifactPath := filepath.Join(
+		outputDirectoryPath,
+		desiredHashedFileName,
+	)
 	desiredArtifactBytes, readArtifactError := os.ReadFile(desiredArtifactPath)
 	if readArtifactError != nil {
 		t.Fatalf("failed reading desired artifact: %v", readArtifactError)
 	}
 	if string(desiredArtifactBytes) != string(desiredContent) {
-		t.Fatalf("expected desired artifact content %q, got %q", string(desiredContent), string(desiredArtifactBytes))
+		t.Fatalf(
+			"expected desired artifact content %q, got %q",
+			string(desiredContent),
+			string(desiredArtifactBytes),
+		)
 	}
 
 	refBytes, readRefError := os.ReadFile(refFilePath)
@@ -54,11 +75,17 @@ func TestPublishHashedArtifactWithRef_RefMissingCleansStaleArtifacts(t *testing.
 		t.Fatalf("failed reading ref file: %v", readRefError)
 	}
 	if string(refBytes) != desiredHashedFileName {
-		t.Fatalf("expected ref file to contain %q, got %q", desiredHashedFileName, string(refBytes))
+		t.Fatalf(
+			"expected ref file to contain %q, got %q",
+			desiredHashedFileName,
+			string(refBytes),
+		)
 	}
 }
 
-func TestPublishHashedArtifactWithRef_RefUpdateRemovesPreviousArtifact(t *testing.T) {
+func TestPublishHashedArtifactWithRef_RefUpdateRemovesPreviousArtifact(
+	t *testing.T,
+) {
 	root := t.TempDir()
 	outputDirectoryPath := filepath.Join(root, "assets")
 	refFilePath := filepath.Join(root, "assets.ref")
@@ -77,28 +104,45 @@ func TestPublishHashedArtifactWithRef_RefUpdateRemovesPreviousArtifact(t *testin
 	}
 
 	desiredHashedFileName := "styles-next.css"
-	_, publishError := publishHashedArtifactWithRef(hashedArtifactPublishOptions{
-		outputDirectoryPath:   outputDirectoryPath,
-		refFilePath:           refFilePath,
-		desiredHashedFileName: desiredHashedFileName,
-		content:               []byte("next"),
-		globPattern:           "styles-*.css",
-	})
+	_, publishError := publishHashedArtifactWithRef(
+		hashedArtifactPublishOptions{
+			outputDirectoryPath:   outputDirectoryPath,
+			refFilePath:           refFilePath,
+			desiredHashedFileName: desiredHashedFileName,
+			content:               []byte("next"),
+			globPattern:           "styles-*.css",
+		},
+	)
 	if publishError != nil {
-		t.Fatalf("publishHashedArtifactWithRef returned error: %v", publishError)
+		t.Fatalf(
+			"publishHashedArtifactWithRef returned error: %v",
+			publishError,
+		)
 	}
 
-	if _, statError := os.Stat(previousArtifactPath); !os.IsNotExist(statError) {
-		t.Fatalf("expected previous artifact to be deleted, stat error: %v", statError)
+	if _, statError := os.Stat(previousArtifactPath); !os.IsNotExist(
+		statError,
+	) {
+		t.Fatalf(
+			"expected previous artifact to be deleted, stat error: %v",
+			statError,
+		)
 	}
 
-	nextArtifactPath := filepath.Join(outputDirectoryPath, desiredHashedFileName)
+	nextArtifactPath := filepath.Join(
+		outputDirectoryPath,
+		desiredHashedFileName,
+	)
 	nextArtifactBytes, readArtifactError := os.ReadFile(nextArtifactPath)
 	if readArtifactError != nil {
 		t.Fatalf("failed reading next artifact: %v", readArtifactError)
 	}
 	if string(nextArtifactBytes) != "next" {
-		t.Fatalf("expected next artifact content %q, got %q", "next", string(nextArtifactBytes))
+		t.Fatalf(
+			"expected next artifact content %q, got %q",
+			"next",
+			string(nextArtifactBytes),
+		)
 	}
 
 	refBytes, readRefError := os.ReadFile(refFilePath)
@@ -106,6 +150,54 @@ func TestPublishHashedArtifactWithRef_RefUpdateRemovesPreviousArtifact(t *testin
 		t.Fatalf("failed reading ref file: %v", readRefError)
 	}
 	if string(refBytes) != desiredHashedFileName {
-		t.Fatalf("expected ref file to contain %q, got %q", desiredHashedFileName, string(refBytes))
+		t.Fatalf(
+			"expected ref file to contain %q, got %q",
+			desiredHashedFileName,
+			string(refBytes),
+		)
+	}
+}
+
+func TestPublishHashedArtifactWithRef_EmptyRefFileCleansStaleArtifacts(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	outputDirectoryPath := filepath.Join(root, "assets")
+	refFilePath := filepath.Join(root, "assets.ref")
+
+	if err := os.MkdirAll(outputDirectoryPath, 0o755); err != nil {
+		t.Fatalf("failed creating output directory: %v", err)
+	}
+
+	staleArtifactPath := filepath.Join(outputDirectoryPath, "styles-old.css")
+	if err := os.WriteFile(staleArtifactPath, []byte("old"), 0o644); err != nil {
+		t.Fatalf("failed writing stale artifact: %v", err)
+	}
+	if err := os.WriteFile(refFilePath, []byte(" \n "), 0o644); err != nil {
+		t.Fatalf("failed writing empty ref file: %v", err)
+	}
+
+	desiredHashedFileName := "styles-new.css"
+	_, publishError := publishHashedArtifactWithRef(
+		hashedArtifactPublishOptions{
+			outputDirectoryPath:   outputDirectoryPath,
+			refFilePath:           refFilePath,
+			desiredHashedFileName: desiredHashedFileName,
+			content:               []byte("new"),
+			globPattern:           "styles-*.css",
+		},
+	)
+	if publishError != nil {
+		t.Fatalf(
+			"publishHashedArtifactWithRef returned error: %v",
+			publishError,
+		)
+	}
+
+	if _, statError := os.Stat(staleArtifactPath); !os.IsNotExist(statError) {
+		t.Fatalf(
+			"expected stale artifact to be deleted when ref is empty, stat error: %v",
+			statError,
+		)
 	}
 }

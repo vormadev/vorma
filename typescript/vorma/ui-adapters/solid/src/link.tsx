@@ -5,16 +5,14 @@ import type {
 	VormaLoaderPattern,
 } from "vorma/client";
 import {
+	buildTypedLinkDisplayName,
+	buildTypedLinkResolvedProps,
+	type TypedAdapterLinkDefaultProps,
+	type TypedAdapterLinkProps,
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
 	makeFinalLinkProps,
 } from "vorma/client/__internal";
-import {
-	buildTypedLinkDisplayName,
-	buildTypedLinkHrefForRouteResolution,
-	type TypedAdapterLinkDefaultProps,
-	type TypedAdapterLinkProps,
-} from "../../shared/src/typed_link_props.ts";
 
 type VormaLinkEvent = Event;
 
@@ -79,28 +77,26 @@ export function makeTypedLink<C extends VormaAppConfig>(
 	const TypedLink = <Pattern extends VormaLoaderPattern<App>>(
 		props: TypedVormaLinkProps<App, Pattern>,
 	) => {
-		const mergedProps = mergeProps(defaultProps || {}, props);
+		const mergedProps = mergeProps(
+			defaultProps || {},
+			props,
+		) as SplittableTypedVormaLinkProps<App, Pattern>;
 
-		const [local, linkProps] = splitProps(
-			mergedProps as SplittableTypedVormaLinkProps<App, Pattern>,
-			[
-				"pattern",
-				"params",
-				"splatValues",
-				"search",
-				"hash",
-				"state",
-			] as const,
-		);
-
-		const href = createMemo(() => {
-			return buildTypedLinkHrefForRouteResolution({
+		const resolvedProps = createMemo(() => {
+			return buildTypedLinkResolvedProps({
 				vormaAppConfig,
-				routeResolutionInput: local,
+				mergedProps,
 			});
 		});
 
-		return <VormaLink {...linkProps} href={href()} state={local.state} />;
+		return (
+			<VormaLink
+				{...(resolvedProps()
+					.linkProps as JSX.AnchorHTMLAttributes<HTMLAnchorElement>)}
+				href={resolvedProps().href}
+				state={resolvedProps().state}
+			/>
+		);
 	};
 
 	(TypedLink as any).displayName = buildTypedLinkDisplayName({

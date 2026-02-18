@@ -68,7 +68,7 @@ func TestCycleVite_RestartsRunningViteProcess(t *testing.T) {
 	if !s.waitForVite() {
 		t.Fatal("expected first vite process to become ready")
 	}
-	firstPID := fetchViteProcessID(t, s.viteCtx.GetPort())
+	firstPID := fetchViteProcessID(t, s.viteCtx.Port())
 
 	s.cycleVite()
 
@@ -78,14 +78,19 @@ func TestCycleVite_RestartsRunningViteProcess(t *testing.T) {
 	if !s.waitForVite() {
 		t.Fatal("expected cycled vite process to become ready")
 	}
-	secondPID := fetchViteProcessID(t, s.viteCtx.GetPort())
+	secondPID := fetchViteProcessID(t, s.viteCtx.Port())
 
 	if firstPID == secondPID {
-		t.Fatalf("expected cycleVite to restart process, got same pid %q", firstPID)
+		t.Fatalf(
+			"expected cycleVite to restart process, got same pid %q",
+			firstPID,
+		)
 	}
 }
 
-func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) {
+func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(
+	t *testing.T,
+) {
 	t.Setenv(testViteHelperProcessEnv, "1")
 
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
@@ -118,36 +123,56 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) 
 	if !s.waitForVite() {
 		t.Fatal("expected first vite process to become ready")
 	}
-	firstPID := fetchViteProcessID(t, s.viteCtx.GetPort())
+	firstPID := fetchViteProcessID(t, s.viteCtx.Port())
 
 	reloadOutcome := s.broadcastReload(reloadOpts{
 		payload:   refreshPayload{ChangeType: changeTypeOther},
 		cycleVite: true,
 	})
-	if !reloadOutcome.broadcastEnabled || !reloadOutcome.broadcastContextActive {
-		t.Fatalf("expected cycle-vite reload to run with active broadcast context, got %#v", reloadOutcome)
+	if !reloadOutcome.broadcastEnabled ||
+		!reloadOutcome.broadcastContextActive {
+		t.Fatalf(
+			"expected cycle-vite reload to run with active broadcast context, got %#v",
+			reloadOutcome,
+		)
 	}
 	if !reloadOutcome.readinessOutcome.cycleViteApplied {
-		t.Fatalf("expected cycle-vite reload outcome to report applied cycle, got %#v", reloadOutcome)
+		t.Fatalf(
+			"expected cycle-vite reload outcome to report applied cycle, got %#v",
+			reloadOutcome,
+		)
 	}
-	if reloadOutcome.shouldBroadcastPayload || reloadOutcome.payloadBroadcasted {
-		t.Fatalf("expected cycle-vite reload to avoid payload broadcast, got %#v", reloadOutcome)
+	if reloadOutcome.shouldBroadcastPayload ||
+		reloadOutcome.payloadBroadcasted {
+		t.Fatalf(
+			"expected cycle-vite reload to avoid payload broadcast, got %#v",
+			reloadOutcome,
+		)
 	}
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
-		t.Fatalf("expected cycleVite reload to skip direct broadcast payload, got %#v", msg)
+		t.Fatalf(
+			"expected cycleVite reload to skip direct broadcast payload, got %#v",
+			msg,
+		)
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	secondPID := fetchViteProcessID(t, s.viteCtx.GetPort())
+	secondPID := fetchViteProcessID(t, s.viteCtx.Port())
 	if firstPID == secondPID {
-		t.Fatalf("expected cycleVite reload to restart vite process, got same pid %q", firstPID)
+		t.Fatalf(
+			"expected cycleVite reload to restart vite process, got same pid %q",
+			firstPID,
+		)
 	}
 
 	select {
 	case extra := <-s.refreshMgr.broadcast:
-		t.Fatalf("expected no direct broadcast payload after cycleVite reload, got %#v", extra)
+		t.Fatalf(
+			"expected no direct broadcast payload after cycleVite reload, got %#v",
+			extra,
+		)
 	case <-time.After(100 * time.Millisecond):
 	}
 }
@@ -157,10 +182,14 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 	cfg.Core.ServerOnlyMode = false
 	cfg.Watch.HealthcheckEndpoint = "/healthz"
 
-	appPort := wave.MustGetPort()
+	appPort := mustConfigureAndGetWaveAppPortForToolingTests(t)
 	appListener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", appPort))
 	if err != nil {
-		t.Skipf("unable to bind app port %d for wait-for-app test: %v", appPort, err)
+		t.Skipf(
+			"unable to bind app port %d for wait-for-app test: %v",
+			appPort,
+			err,
+		)
 	}
 	defer appListener.Close()
 
@@ -179,14 +208,16 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 	go appServer.Serve(appListener)
 
 	var viteHits atomic.Int32
-	viteServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/@vite/client" {
-			viteHits.Add(1)
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
+	viteServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/@vite/client" {
+				viteHits.Add(1)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}),
+	)
 	defer viteServer.Close()
 
 	vitePort := mustPortFromURL(t, viteServer.URL)
@@ -198,7 +229,9 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 			broadcast: make(chan refreshPayload, 1),
 		},
 		refreshMgrCtx: context.Background(),
-		viteCtx:       vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: vitePort}),
+		viteCtx: vitecmd.NewBuildCtx(
+			&vitecmd.BuildCtxOptions{DefaultPort: vitePort},
+		),
 	}
 
 	reloadOutcome := s.broadcastReload(reloadOpts{
@@ -206,11 +239,18 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 		waitApp:  true,
 		waitVite: true,
 	})
-	if !reloadOutcome.readinessOutcome.waitedForApp || !reloadOutcome.readinessOutcome.waitedForVite {
-		t.Fatalf("expected readiness outcome to record waitApp+waitVite, got %#v", reloadOutcome)
+	if !reloadOutcome.readinessOutcome.waitedForApp ||
+		!reloadOutcome.readinessOutcome.waitedForVite {
+		t.Fatalf(
+			"expected readiness outcome to record waitApp+waitVite, got %#v",
+			reloadOutcome,
+		)
 	}
 	if !reloadOutcome.payloadBroadcasted {
-		t.Fatalf("expected payload broadcast after readiness waits, got %#v", reloadOutcome)
+		t.Fatalf(
+			"expected payload broadcast after readiness waits, got %#v",
+			reloadOutcome,
+		)
 	}
 
 	select {
@@ -223,14 +263,20 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 	}
 
 	if appHits.Load() == 0 {
-		t.Fatal("expected broadcastReload(waitApp=true) to probe app health endpoint")
+		t.Fatal(
+			"expected broadcastReload(waitApp=true) to probe app health endpoint",
+		)
 	}
 	if viteHits.Load() == 0 {
-		t.Fatal("expected broadcastReload(waitVite=true) to probe vite endpoint")
+		t.Fatal(
+			"expected broadcastReload(waitVite=true) to probe vite endpoint",
+		)
 	}
 }
 
-func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(t *testing.T) {
+func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(
+	t *testing.T,
+) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
 
@@ -256,12 +302,21 @@ func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(t *testing.T
 		t.Fatalf("expected positive fallback port, got %d", actualPort)
 	}
 	if actualPort == occupiedPort {
-		t.Fatalf("expected fallback port to differ from occupied port %d", occupiedPort)
+		t.Fatalf(
+			"expected fallback port to differ from occupied port %d",
+			occupiedPort,
+		)
 	}
 
-	url := fmt.Sprintf("http://localhost:%d/get-refresh-script-inner", actualPort)
+	url := fmt.Sprintf(
+		"http://localhost:%d/get-refresh-script-inner",
+		actualPort,
+	)
 	if !s.waitForReady(url) {
-		t.Fatalf("refresh server did not become ready on fallback port: %s", url)
+		t.Fatalf(
+			"refresh server did not become ready on fallback port: %s",
+			url,
+		)
 	}
 }
 
@@ -269,7 +324,7 @@ func TestStartRefreshServer_NoOpWhenServerOnlyMode(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	t.Setenv("WAVE_REFRESH_SERVER_PORT", "")
+	t.Setenv("__WAVE_REFRESH_SERVER_PORT", "")
 
 	s := &server{
 		cfg: cfg,
@@ -278,29 +333,45 @@ func TestStartRefreshServer_NoOpWhenServerOnlyMode(t *testing.T) {
 
 	actualPort, err := s.startRefreshServer(5173)
 	if err != nil {
-		t.Fatalf("startRefreshServer returned error in server-only mode: %v", err)
+		t.Fatalf(
+			"startRefreshServer returned error in server-only mode: %v",
+			err,
+		)
 	}
 	if actualPort != 0 {
-		t.Fatalf("expected no refresh server port in server-only mode, got %d", actualPort)
+		t.Fatalf(
+			"expected no refresh server port in server-only mode, got %d",
+			actualPort,
+		)
 	}
 	if s.refreshServer != nil {
-		t.Fatalf("expected no refresh server instance in server-only mode, got %#v", s.refreshServer)
+		t.Fatalf(
+			"expected no refresh server instance in server-only mode, got %#v",
+			s.refreshServer,
+		)
 	}
 	if got := wave.GetRefreshServerPort(); got != 0 {
-		t.Fatalf("expected refresh server env port to remain unset in server-only mode, got %d", got)
+		t.Fatalf(
+			"expected refresh server env port to remain unset in server-only mode, got %d",
+			got,
+		)
 	}
 }
 
-func TestServerRun_BrowserModeInitWatcherFailureCleansRefreshResources(t *testing.T) {
+func TestServerRun_BrowserModeInitWatcherFailureCleansRefreshResources(
+	t *testing.T,
+) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
 	cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root")
 
 	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+		cfg: cfg,
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 1),
+		),
 	}
 
 	err := s.run()
@@ -315,7 +386,9 @@ func TestServerRun_BrowserModeInitWatcherFailureCleansRefreshResources(t *testin
 		t.Fatal("expected refresh server to be cleaned up on run() exit")
 	}
 	if s.refreshMgrCancel != nil {
-		t.Fatal("expected refresh manager cancel func to be cleared on run() exit")
+		t.Fatal(
+			"expected refresh manager cancel func to be cleared on run() exit",
+		)
 	}
 }
 
@@ -326,10 +399,13 @@ func runWaveToolingViteHelperProcess() error {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/@vite/client", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, strconv.Itoa(os.Getpid()))
-	})
+	mux.HandleFunc(
+		"/@vite/client",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, strconv.Itoa(os.Getpid()))
+		},
+	)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
@@ -362,7 +438,9 @@ func runWaveToolingViteHelperProcess() error {
 		}
 		return nil
 	case <-time.After(30 * time.Second):
-		return fmt.Errorf("vite helper process timed out without termination signal")
+		return fmt.Errorf(
+			"vite helper process timed out without termination signal",
+		)
 	}
 }
 
@@ -371,7 +449,11 @@ func parseVitePortFromArgs(args []string) (int, error) {
 		if args[i] == "--port" {
 			port, err := strconv.Atoi(args[i+1])
 			if err != nil {
-				return 0, fmt.Errorf("invalid --port value %q: %w", args[i+1], err)
+				return 0, fmt.Errorf(
+					"invalid --port value %q: %w",
+					args[i+1],
+					err,
+				)
 			}
 			return port, nil
 		}
@@ -395,7 +477,9 @@ func helperViteBaseCommand(t *testing.T) string {
 	}
 
 	if strings.ContainsAny(executablePath, " \t\n") {
-		t.Skip("test binary path contains whitespace; strings.Fields parser cannot represent this safely")
+		t.Skip(
+			"test binary path contains whitespace; strings.Fields parser cannot represent this safely",
+		)
 	}
 
 	return executablePath + " -test.run=^TestWaveToolingViteHelperProcess$ --"

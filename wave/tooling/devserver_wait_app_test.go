@@ -5,15 +5,13 @@ import (
 	"net"
 	"net/http"
 	"testing"
-
-	"github.com/vormadev/vorma/wave"
 )
 
 func TestWaitForApp_UsesConfiguredHealthcheckEndpoint(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Watch.HealthcheckEndpoint = "/healthz"
 
-	port := wave.MustGetPort()
+	port := mustConfigureAndGetWaveAppPortForToolingTests(t)
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		t.Skipf("unable to bind app port %d for waitForApp test: %v", port, err)
@@ -38,7 +36,9 @@ func TestWaitForApp_UsesConfiguredHealthcheckEndpoint(t *testing.T) {
 	}
 
 	if !s.waitForApp() {
-		t.Fatal("expected waitForApp to return true when healthcheck endpoint is ready")
+		t.Fatal(
+			"expected waitForApp to return true when healthcheck endpoint is ready",
+		)
 	}
 }
 

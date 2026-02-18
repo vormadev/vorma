@@ -41,7 +41,7 @@ func decorateLoaderCtx(rd *vorma.LoaderReqData) *vorma.LoaderReqData {
 }
 
 func registerLoaderAtPath(pattern string, loader any) any {
-	return vorma.NewLoader(App, pattern, nil, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(App, pattern, nil, decorateLoaderCtx)
 }
 `))
 
@@ -54,7 +54,7 @@ const apiPrefix = "/api"
 const usersPath = apiPrefix + "/users"
 
 var _ = registerLoaderAtPath(usersPath, nil)
-var _ = vorma.NewLoader(App, "/direct", nil, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/direct", nil, decorateLoaderCtx)
 
 func init() {
 	registerMoreRoutes()
@@ -120,7 +120,7 @@ func decorateLoaderCtx(rd *vorma.LoaderReqData) *vorma.LoaderReqData {
 }
 
 func registerLoaderAtPath(pattern string) any {
-	return vorma.NewLoader(App, pattern, nil, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(App, pattern, nil, decorateLoaderCtx)
 }
 `))
 
@@ -171,17 +171,17 @@ package router
 
 import vormaImport "github.com/vormadev/vorma"
 
-var _ = vormaImport.NewLoader(App, "/actual", nil, decorateLoaderCtx)
+var _ = vormaImport.DefineLoaderForRegistration(App, "/actual", nil, decorateLoaderCtx)
 
 type fakeVormaRegistrar struct{}
 
-func (fakeVormaRegistrar) NewLoader(_ any, _ string, _ any, _ any) any {
+func (fakeVormaRegistrar) DefineLoaderForRegistration(_ any, _ string, _ any, _ any) any {
 	return nil
 }
 
 func init() {
 	vormaImport := fakeVormaRegistrar{}
-	_ = vormaImport.NewLoader(App, "/shadowed", nil, decorateLoaderCtx)
+	_ = vormaImport.DefineLoaderForRegistration(App, "/shadowed", nil, decorateLoaderCtx)
 }
 `))
 
@@ -222,7 +222,7 @@ func decorateLoaderCtx(rd *vorma.LoaderReqData) *vorma.LoaderReqData {
 }
 
 func registerLoaderAtPath(pattern string) any {
-	return vorma.NewLoader(App, pattern, nil, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(App, pattern, nil, decorateLoaderCtx)
 }
 `))
 
@@ -232,7 +232,7 @@ package router
 import . "github.com/vormadev/vorma"
 
 var _ = registerLoaderAtPath("/helper")
-var _ = NewLoader(App, "/dot", nil, decorateLoaderCtx)
+var _ = DefineLoaderForRegistration(App, "/dot", nil, decorateLoaderCtx)
 
 func init() {
 	registerLoaderAtPath := func(pattern string) any {
@@ -240,10 +240,10 @@ func init() {
 	}
 	_ = registerLoaderAtPath("/helper-shadowed")
 
-	NewLoader := func(_ any, _ string, _ any, _ any) any {
+	DefineLoaderForRegistration := func(_ any, _ string, _ any, _ any) any {
 		return nil
 	}
-	_ = NewLoader(App, "/dot-shadowed", nil, decorateLoaderCtx)
+	_ = DefineLoaderForRegistration(App, "/dot-shadowed", nil, decorateLoaderCtx)
 }
 `))
 
@@ -284,7 +284,7 @@ func decorateLoaderCtx(rd *vorma.LoaderReqData) *vorma.LoaderReqData {
 }
 
 func registerLoaderAtPath(pattern string, loader any) any {
-	return vorma.NewLoader(App, pattern, nil, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(App, pattern, nil, decorateLoaderCtx)
 }
 `))
 
@@ -328,7 +328,7 @@ func registerLoaderAtPath(
 	handler func(*vorma.LoaderReqData) (string, error),
 	decorateCtx func(*vorma.LoaderReqData) *vorma.LoaderReqData,
 ) any {
-	return vorma.NewLoader(App, pattern, handler, decorateCtx)
+	return vorma.DefineLoaderForRegistration(App, pattern, handler, decorateCtx)
 }
 `))
 
@@ -374,18 +374,18 @@ func decorateLoaderCtx(rd *vorma.LoaderReqData) *LoaderCtx {
 	return &LoaderCtx{LoaderReqData: rd}
 }
 
-func NewLoader[O any](
+func DefineLoaderForRegistration[O any](
 	pattern string,
 	loader func(*LoaderCtx) (O, error),
 ) *vorma.Loader[O] {
-	return vorma.NewLoader(App, pattern, loader, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(App, pattern, loader, decorateLoaderCtx)
 }
 `))
 
 		mustWriteFile(t, "backend/src/router/routes.go", []byte(`
 package router
 
-var _ = NewLoader("/users", func(r *LoaderCtx) (string, error) {
+var _ = DefineLoaderForRegistration("/users", func(r *LoaderCtx) (string, error) {
 	return "users", nil
 })
 `))
@@ -428,7 +428,7 @@ func registerLoaderAtPath[O any](
 	loader func(*LoaderCtx) (O, error),
 	decorateCtx func(*vorma.LoaderReqData) *LoaderCtx,
 ) *vorma.Loader[O] {
-	return vorma.NewLoader(App, pattern, loader, decorateCtx)
+	return vorma.DefineLoaderForRegistration(App, pattern, loader, decorateCtx)
 }
 `))
 
@@ -486,7 +486,7 @@ func registerActionAtPath[I any, O any](
 	action func(*ActionCtx[I]) (O, error),
 	decorateCtx func(*vorma.ActionReqData[I]) *ActionCtx[I],
 ) *vorma.Action[I, O] {
-	return vorma.NewAction(App, method, pattern, action, decorateCtx)
+	return vorma.DefineActionForRegistration(App, method, pattern, action, decorateCtx)
 }
 `))
 
@@ -535,7 +535,7 @@ package router
 
 import "github.com/vormadev/vorma"
 
-var _ = vorma.NewLoader(
+var _ = vorma.DefineLoaderForRegistration(
 	App,
 	"/direct-inline",
 	func(r *LoaderCtx) (string, error) {
@@ -548,7 +548,7 @@ var _ = vorma.NewLoader(
 	},
 )
 
-var _ = vorma.NewAction(
+var _ = vorma.DefineActionForRegistration(
 	App,
 	"POST",
 	"/direct-inline-action",
@@ -605,11 +605,11 @@ package router
 import "github.com/vormadev/vorma"
 
 var _ = func() any {
-	return vorma.NewLoader(App, "/iife-direct", nil, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(App, "/iife-direct", nil, decorateLoaderCtx)
 }()
 
 var _ = func(path string) any {
-	return vorma.NewLoader(App, path, nil, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(App, path, nil, decorateLoaderCtx)
 }("/iife-bound")
 `))
 
@@ -656,7 +656,7 @@ package router
 
 import "github.com/vormadev/vorma"
 
-var _ = vorma.NewLoader(App, "/dev-only", nil, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/dev-only", nil, decorateLoaderCtx)
 `))
 
 		mustWriteFile(t, "backend/src/router/routes_prod.go", []byte(`
@@ -666,7 +666,7 @@ package router
 
 import "github.com/vormadev/vorma"
 
-var _ = vorma.NewLoader(App, "/prod-only", nil, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/prod-only", nil, decorateLoaderCtx)
 `))
 
 		loaderPatterns, err := parseBackendLoaderPatterns(fixture.app)
@@ -732,7 +732,7 @@ package router
 
 import "github.com/vormadev/vorma"
 
-var _ = vorma.NewLoader(App, "/users", usersLoader, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/users", usersLoader, decorateLoaderCtx)
 `))
 
 		serverRouteDefinitionFiles, err := resolveServerRouteDefinitionFiles(fixture.app)
@@ -773,7 +773,7 @@ var _ = vorma.NewLoader(App, "/users", usersLoader, decorateLoaderCtx)
 	})
 
 	t.Run("falls back to go types when AST import metadata is unavailable", func(t *testing.T) {
-		expression, err := parser.ParseExpr(`vormaAlias.NewLoader(App, "/fallback", usersLoader, decorateLoaderCtx)`)
+		expression, err := parser.ParseExpr(`vormaAlias.DefineLoaderForRegistration(App, "/fallback", usersLoader, decorateLoaderCtx)`)
 		if err != nil {
 			t.Fatalf("ParseExpr returned error: %v", err)
 		}
@@ -793,7 +793,7 @@ var _ = vorma.NewLoader(App, "/users", usersLoader, decorateLoaderCtx)
 				calleeSelectorExpression.Sel: types.NewVar(
 					token.NoPos,
 					types.NewPackage("github.com/vormadev/vorma", "vorma"),
-					"NewLoader",
+					"DefineLoaderForRegistration",
 					types.Typ[types.Int],
 				),
 			},

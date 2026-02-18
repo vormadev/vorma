@@ -20,10 +20,10 @@ const (
 	VormaRouteManifestPrefix     = VormaOutPrefix + "vorma_internal_route_manifest_"
 )
 
-func VormaPathsStageOneJSONPath() string {
+func GetVormaPathsStageOneJSONPath() string {
 	return path.Join(VormaOutDirname, VormaPathsStageOneJSONFileName)
 }
 
-func VormaPathsStageTwoJSONPath() string {
+func GetVormaPathsStageTwoJSONPath() string {
 	return path.Join(VormaOutDirname, VormaPathsStageTwoJSONFileName)
 }

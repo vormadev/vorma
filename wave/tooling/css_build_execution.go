@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
+	"github.com/vormadev/vorma/internal/waveurl"
 	"github.com/vormadev/vorma/lab/esbuildutil"
 )
 
@@ -38,7 +39,11 @@ func (p *cssProcessor) build(buildNature cssBuildNature, isDev bool) error {
 		return nil
 	}
 
-	ctx, err := p.getOrCreateContextForBuildNature(buildNature, entryPoint, isDev)
+	ctx, err := p.getOrCreateContextForBuildNature(
+		buildNature,
+		entryPoint,
+		isDev,
+	)
 	if err != nil {
 		return err
 	}
@@ -49,10 +54,15 @@ func (p *cssProcessor) build(buildNature cssBuildNature, isDev bool) error {
 	}
 
 	if len(result.OutputFiles) == 0 {
-		return fmt.Errorf("esbuild produced no output files for %s CSS", buildNature)
+		return fmt.Errorf(
+			"esbuild produced no output files for %s CSS",
+			buildNature,
+		)
 	}
 
-	cssInputPaths, parseMetafileError := parseCSSInputPathsFromBuildResultMetafile(result)
+	cssInputPaths, parseMetafileError := parseCSSInputPathsFromBuildResultMetafile(
+		result,
+	)
 	if parseMetafileError != nil {
 		return parseMetafileError
 	}
@@ -62,17 +72,22 @@ func (p *cssProcessor) build(buildNature cssBuildNature, isDev bool) error {
 		if writeError := p.writeCriticalCSSOutput(result.OutputFiles[0].Contents); writeError != nil {
 			return writeError
 		}
-		p.setCachedCriticalCSSHotReloadOutput(string(result.OutputFiles[0].Contents))
+		p.setCachedCriticalCSSHotReloadOutput(
+			string(result.OutputFiles[0].Contents),
+		)
 		return nil
 	}
 
-	normalCSSOutputFileName, writeError := p.writeNormalCSSOutput(result.OutputFiles[0].Contents)
+	normalCSSOutputFileName, writeError := p.writeNormalCSSOutput(
+		result.OutputFiles[0].Contents,
+	)
 	if writeError != nil {
 		return writeError
 	}
-	p.setCachedNormalCSSHotReloadURL(
-		resolvePublicURLFallback(normalCSSOutputFileName, p.cfg.PublicPathPrefix()),
-	)
+	p.setCachedNormalCSSHotReloadURL(waveurl.ResolveFromReferencedPath(
+		p.cfg.PublicPathPrefix(),
+		normalCSSOutputFileName,
+	))
 	return nil
 }
 

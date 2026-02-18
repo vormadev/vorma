@@ -21,7 +21,7 @@ type reloadActionResolver func(
 ) *wave.RefreshAction
 
 func injectDefaultWatchPatterns(v *vormaruntime.Vorma) *wave.ParsedConfig {
-	cfg := v.Wave.GetBuildtimeParsedConfig()
+	cfg := v.Wave.BuildtimeParsedConfig()
 	injectDefaultWatchPatternsInConfig(cfg, v)
 	return cfg
 }
@@ -109,7 +109,7 @@ func routeDefinitionWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 
 func htmlTemplateWatchPattern(v *vormaruntime.Vorma) *wave.WatchedFile {
 	htmlTemplateLocation := v.Config.HTMLTemplateLocation
-	privateStaticDir := v.Wave.GetPrivateStaticDir()
+	privateStaticDir := v.Wave.PrivateStaticDir()
 	if htmlTemplateLocation == "" || privateStaticDir == "" {
 		return nil
 	}

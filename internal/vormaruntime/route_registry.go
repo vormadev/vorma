@@ -1,9 +1,5 @@
 package vormaruntime
 
-import (
-	"github.com/vormadev/vorma/kit/mux"
-)
-
 // RouteRegistry consolidates route state management.
 // All methods require the Vorma mutex to be held.
 type RouteRegistry struct {
@@ -78,8 +74,7 @@ func (r *RouteRegistry) rebuildNestedRouterFromCurrentPaths() {
 // This method is safe to call without holding the lock as the router handles
 // its own synchronization.
 func (v *Vorma) RegisterPatternIfNeeded(pattern string) {
-	nestedRouter := v.LoadersRouter().NestedRouter
-	if !nestedRouter.IsRegistered(pattern) {
-		mux.RegisterNestedPatternWithoutHandler(nestedRouter, pattern)
-	}
+	v.LoadersRouter().NestedRouter.AddNestedPatternWithoutHandlerIfMissing(
+		pattern,
+	)
 }

@@ -30,19 +30,19 @@ type Matcher struct {
 	dynamicParamPrefixRune rune
 	splatSegmentRune       rune
 
-	slashIndexSegment         string
-	usingExplicitIndexSegment bool
+	slashIndexSegment                   string
+	usingExplicitIndexSegmentIdentifier bool
 
 	quiet bool
 }
 
-func (m *Matcher) GetExplicitIndexSegment() string {
+func (m *Matcher) ExplicitIndexSegmentIdentifier() string {
 	return m.explicitIndexSegment
 }
-func (m *Matcher) GetDynamicParamPrefixRune() rune {
+func (m *Matcher) DynamicParamPrefix() rune {
 	return m.dynamicParamPrefixRune
 }
-func (m *Matcher) GetSplatSegmentRune() rune {
+func (m *Matcher) SplatSegmentIdentifier() rune {
 	return m.splatSegmentRune
 }
 
@@ -61,12 +61,12 @@ type BestMatch struct {
 }
 
 type Options struct {
-	DynamicParamPrefixRune rune // Optional. Defaults to ':'.
-	SplatSegmentRune       rune // Optional. Defaults to '*'.
+	DynamicParamPrefix     rune // Optional. Defaults to ':'.
+	SplatSegmentIdentifier rune // Optional. Defaults to '*'.
 
 	// Optional. Defaults to empty string (effectively a trailing slash in the pattern).
 	// Could also be something like "_index" if preferred by the user.
-	ExplicitIndexSegment string
+	ExplicitIndexSegmentIdentifier string
 
 	Quiet bool // Optional. Defaults to false. Set to true if you want to quash warnings.
 }
@@ -80,13 +80,13 @@ func New(opts *Options) *Matcher {
 
 	mungedOpts := mungeOptsToDefaults(opts)
 
-	instance.explicitIndexSegment = mungedOpts.ExplicitIndexSegment
-	instance.dynamicParamPrefixRune = mungedOpts.DynamicParamPrefixRune
-	instance.splatSegmentRune = mungedOpts.SplatSegmentRune
+	instance.explicitIndexSegment = mungedOpts.ExplicitIndexSegmentIdentifier
+	instance.dynamicParamPrefixRune = mungedOpts.DynamicParamPrefix
+	instance.splatSegmentRune = mungedOpts.SplatSegmentIdentifier
 	instance.quiet = mungedOpts.Quiet
 
 	instance.slashIndexSegment = "/" + instance.explicitIndexSegment
-	instance.usingExplicitIndexSegment = instance.explicitIndexSegment != ""
+	instance.usingExplicitIndexSegmentIdentifier = instance.explicitIndexSegment != ""
 
 	return instance
 }
@@ -98,13 +98,13 @@ func mungeOptsToDefaults(opts *Options) Options {
 
 	copy := *opts
 
-	if strings.Contains(copy.ExplicitIndexSegment, "/") {
+	if strings.Contains(copy.ExplicitIndexSegmentIdentifier, "/") {
 		panic("explicit index segment cannot contain a slash")
 	}
 
-	copy.DynamicParamPrefixRune = genericsutil.OrDefault(copy.DynamicParamPrefixRune, ':')
-	copy.SplatSegmentRune = genericsutil.OrDefault(copy.SplatSegmentRune, '*')
-	copy.ExplicitIndexSegment = genericsutil.OrDefault(copy.ExplicitIndexSegment, "")
+	copy.DynamicParamPrefix = genericsutil.OrDefault(copy.DynamicParamPrefix, ':')
+	copy.SplatSegmentIdentifier = genericsutil.OrDefault(copy.SplatSegmentIdentifier, '*')
+	copy.ExplicitIndexSegmentIdentifier = genericsutil.OrDefault(copy.ExplicitIndexSegmentIdentifier, "")
 
 	return copy
 }

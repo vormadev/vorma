@@ -564,7 +564,7 @@ func TestFindAllMatchesAdditionalScenarios(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			m := New(&Options{ExplicitIndexSegment: "_index", Quiet: true})
+			m := New(&Options{ExplicitIndexSegmentIdentifier: "_index", Quiet: true})
 			for _, p := range tc.patterns {
 				m.RegisterPattern(p)
 			}
@@ -644,7 +644,7 @@ func max(a, b int) int {
 func modifyPatternsToOpts(incomingPatterns []string, incomingIndexSegment string, opts_ *Options) []string {
 	opts := mungeOptsToDefaults(opts_)
 
-	m := New(&Options{ExplicitIndexSegment: incomingIndexSegment, Quiet: true})
+	m := New(&Options{ExplicitIndexSegmentIdentifier: incomingIndexSegment, Quiet: true})
 
 	rps := make([]*RegisteredPattern, len(incomingPatterns))
 	for i, p := range incomingPatterns {
@@ -662,12 +662,12 @@ func modifyPatternsToOpts(incomingPatterns []string, incomingIndexSegment string
 			case segTypes.static:
 				sb.WriteString(seg.NormalizedVal)
 			case segTypes.dynamic:
-				sb.WriteString(string(opts.DynamicParamPrefixRune))
+				sb.WriteString(string(opts.DynamicParamPrefix))
 				sb.WriteString(seg.NormalizedVal[1:])
 			case segTypes.splat:
-				sb.WriteString(string(opts.SplatSegmentRune))
+				sb.WriteString(string(opts.SplatSegmentIdentifier))
 			case segTypes.index:
-				sb.WriteString(string(opts.ExplicitIndexSegment))
+				sb.WriteString(string(opts.ExplicitIndexSegmentIdentifier))
 			}
 		}
 
@@ -850,7 +850,7 @@ func TestTrailingSlashBehavior(t *testing.T) {
 		},
 	}
 
-	m := New(&Options{ExplicitIndexSegment: "_index", Quiet: true})
+	m := New(&Options{ExplicitIndexSegmentIdentifier: "_index", Quiet: true})
 	for _, p := range patterns {
 		m.RegisterPattern(p)
 	}
@@ -910,7 +910,7 @@ func TestTrailingSlashBehavior(t *testing.T) {
 
 func TestPartialMatchingWithGaps(t *testing.T) {
 	t.Run("should match parent and deeply nested route without intermediate routes", func(t *testing.T) {
-		m := New(&Options{ExplicitIndexSegment: "_index"})
+		m := New(&Options{ExplicitIndexSegmentIdentifier: "_index"})
 
 		// Register only the parent and the deeply nested route
 		// NOT registering /bob/larry or /bob/larry/susan
@@ -952,7 +952,7 @@ func TestPartialMatchingWithGaps(t *testing.T) {
 	})
 
 	t.Run("should not match intermediate paths that aren't registered", func(t *testing.T) {
-		m := New(&Options{ExplicitIndexSegment: "_index"})
+		m := New(&Options{ExplicitIndexSegmentIdentifier: "_index"})
 
 		m.RegisterPattern("/bob")
 		m.RegisterPattern("/bob/larry/susan/jeff")

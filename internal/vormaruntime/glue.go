@@ -31,9 +31,9 @@ type LoaderReqData = mux.NestedReqData
 type ActionReqData[I any] = mux.ReqData[I]
 
 type LoadersRouterOptions struct {
-	DynamicParamPrefix     rune
-	SplatSegmentIdentifier rune
-	IndexSegmentIdentifier string
+	DynamicParamPrefix             rune
+	SplatSegmentIdentifier         rune
+	ExplicitIndexSegmentIdentifier string
 }
 
 type ActionsRouterOptions struct {
@@ -48,15 +48,15 @@ func newLoadersRouter(options ...LoadersRouterOptions) *LoadersRouter {
 	if len(options) > 0 {
 		o = options[0]
 	}
-	explicitIndexSegment := o.IndexSegmentIdentifier
+	explicitIndexSegment := o.ExplicitIndexSegmentIdentifier
 	if explicitIndexSegment == "" {
 		explicitIndexSegment = "_index"
 	}
 	return &LoadersRouter{
 		NestedRouter: mux.NewNestedRouter(&mux.NestedOptions{
-			DynamicParamPrefixRune: o.DynamicParamPrefix,
-			SplatSegmentRune:       o.SplatSegmentIdentifier,
-			ExplicitIndexSegment:   explicitIndexSegment,
+			DynamicParamPrefix:             o.DynamicParamPrefix,
+			SplatSegmentIdentifier:         o.SplatSegmentIdentifier,
+			ExplicitIndexSegmentIdentifier: explicitIndexSegment,
 		}),
 	}
 }
@@ -88,25 +88,33 @@ func newActionsRouter(options ...ActionsRouterOptions) *ActionsRouter {
 	}
 	return &ActionsRouter{
 		Router: mux.NewRouter(&mux.Options{
-			DynamicParamPrefixRune: o.DynamicParamPrefix,
-			SplatSegmentRune:       o.SplatSegmentIdentifier,
+			DynamicParamPrefix:     o.DynamicParamPrefix,
+			SplatSegmentIdentifier: o.SplatSegmentIdentifier,
 			MountRoot:              mountRoot,
 			ParseInput: func(r *http.Request, iPtr any) error {
 				if r.Method == http.MethodGet || r.Method == http.MethodHead {
 					return validate.URLSearchParamsInto(r, iPtr)
 				}
 				if supportedMethods[r.Method] {
-					contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+					contentType, _, _ := mime.ParseMediaType(
+						r.Header.Get("Content-Type"),
+					)
 					if contentType == "application/x-www-form-urlencoded" ||
 						contentType == "multipart/form-data" {
 						if _, isFormData := iPtr.(*FormData); isFormData {
 							return nil
 						}
-						return &validate.ValidationError{Err: errors.New("form content type requires vormaruntime.FormData input")}
+						return &validate.ValidationError{
+							Err: errors.New(
+								"form content type requires vormaruntime.FormData input",
+							),
+						}
 					}
 					return validate.JSONBodyInto(r, iPtr)
 				}
-				return &validate.ValidationError{Err: errors.New("unsupported method")}
+				return &validate.ValidationError{
+					Err: errors.New("unsupported method"),
+				}
 			},
 		}),
 		supportedMethods: supportedMethods,
@@ -120,9 +128,9 @@ func (m FormData) TSTypeRaw() string { return "FormData" }
 
 type VormaAppConfig struct {
 	Wave                 *wave.Wave
-	GetDefaultHeadEls    GetDefaultHeadElsFunc
-	GetHeadDedupeKeys    GetHeadDedupeKeysFunc
-	GetRootTemplateData  GetRootTemplateDataFunc
+	DefaultHeadElsFunc   GetDefaultHeadElsFunc
+	HeadDedupeKeysFunc   GetHeadDedupeKeysFunc
+	RootTemplateDataFunc GetRootTemplateDataFunc
 	LoadersRouterOptions LoadersRouterOptions
 	ActionsRouterOptions ActionsRouterOptions
 	AdHocTypes           []*tsgen.AdHocType
@@ -158,17 +166,17 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v.Config = wrapper.Vorma
 	v.validateConfig()
 
-	v.getDefaultHeadEls = o.GetDefaultHeadEls
+	v.getDefaultHeadEls = o.DefaultHeadElsFunc
 	if v.getDefaultHeadEls == nil {
 		v.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
 			return nil
 		}
 	}
-	v.getHeadDedupeKeys = o.GetHeadDedupeKeys
+	v.getHeadDedupeKeys = o.HeadDedupeKeysFunc
 	if v.getHeadDedupeKeys == nil {
 		v.getHeadDedupeKeys = func(h *headels.HeadEls) {}
 	}
-	v.getRootTemplateData = o.GetRootTemplateData
+	v.getRootTemplateData = o.RootTemplateDataFunc
 	if v.getRootTemplateData == nil {
 		v.getRootTemplateData = func(r *http.Request) (map[string]any, error) {
 			return map[string]any{}, nil
@@ -204,17 +212,26 @@ func (v *Vorma) validateConfig() {
 	}
 	for _, pattern := range v.Config.ClientRouteDefinitionPatterns {
 		if strings.TrimSpace(pattern) == "" {
-			panic("config: Vorma.ClientRouteDefinitionPatterns cannot contain empty entries")
+			panic(
+				"config: Vorma.ClientRouteDefinitionPatterns cannot contain empty entries",
+			)
 		}
 	}
 	if v.Config.TSGenOutDir == "" {
 		panic("config: Vorma.TSGenOutDir is required")
 	}
-	applyDefaultConfigStringValue(&v.Config.BuildtimePublicURLFuncName, "waveBuildtimeURL")
+	applyDefaultConfigStringValue(
+		&v.Config.BuildtimePublicURLFuncName,
+		"waveBuildtimeURL",
+	)
 	trimConfigStringValue(&v.Config.UnresolvedRoutePolicy)
-	v.Config.UnresolvedRoutePolicy = strings.ToLower(v.Config.UnresolvedRoutePolicy)
+	v.Config.UnresolvedRoutePolicy = strings.ToLower(
+		v.Config.UnresolvedRoutePolicy,
+	)
 	if !isValidUnresolvedRoutePolicy(v.Config.UnresolvedRoutePolicy) {
-		panic(`config: Vorma.UnresolvedRoutePolicy must be "warn" or "error" when set`)
+		panic(
+			`config: Vorma.UnresolvedRoutePolicy must be "warn" or "error" when set`,
+		)
 	}
 
 	applyDefaultConfigStringValue(
@@ -235,7 +252,9 @@ func (v *Vorma) validateConfig() {
 		panic("config: Vorma.DevReloadTemplateEndpointPath must start with '/'")
 	}
 	if v.Config.DevReloadRoutesEndpointPath == v.Config.DevReloadTemplateEndpointPath {
-		panic("config: Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadTemplateEndpointPath must differ")
+		panic(
+			"config: Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadTemplateEndpointPath must differ",
+		)
 	}
 
 	applyDefaultAndTrimConfigStringValue(
@@ -303,7 +322,10 @@ func trimConfigStringValue(configField *string) {
 	*configField = strings.TrimSpace(*configField)
 }
 
-func applyDefaultAndTrimConfigStringValue(configField *string, defaultValue string) {
+func applyDefaultAndTrimConfigStringValue(
+	configField *string,
+	defaultValue string,
+) {
 	applyDefaultConfigStringValue(configField, defaultValue)
 	trimConfigStringValue(configField)
 }
@@ -313,14 +335,15 @@ func isValidUnresolvedRoutePolicy(policy string) bool {
 		return true
 	}
 
-	return policy == UnresolvedRoutePolicyWarn || policy == UnresolvedRoutePolicyError
+	return policy == UnresolvedRoutePolicyWarn ||
+		policy == UnresolvedRoutePolicyError
 }
 
 type Loaders struct{ vorma *Vorma }
 type Actions struct{ vorma *Vorma }
 
-func (v *Vorma) ServeStatic() func(http.Handler) http.Handler {
-	return v.Wave.ServeStatic(true)
+func (v *Vorma) MustStaticMiddleware() func(http.Handler) http.Handler {
+	return v.Wave.MustStaticMiddleware(true)
 }
 
 func (v *Vorma) Loaders() *Loaders { return &Loaders{vorma: v} }
@@ -328,14 +351,14 @@ func (v *Vorma) Actions() *Actions { return &Actions{vorma: v} }
 
 func (h *Loaders) HandlerMountPattern() string { return "/*" }
 func (h *Loaders) Handler() http.Handler {
-	return h.vorma.GetLoadersHandler(h.vorma.LoadersRouter().NestedRouter)
+	return h.vorma.LoadersHandler()
 }
 
 func (h *Actions) HandlerMountPattern() string {
 	return h.vorma.ActionsRouter().MountRoot("*")
 }
 func (h *Actions) Handler() http.Handler {
-	return h.vorma.GetActionsHandler(h.vorma.ActionsRouter().Router)
+	return h.vorma.ActionsHandler()
 }
 func (h *Actions) SupportedMethods() map[string]bool {
 	original := h.vorma.ActionsRouter().supportedMethods

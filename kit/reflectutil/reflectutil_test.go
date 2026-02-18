@@ -19,56 +19,44 @@ func (*testPointerImpl) Foo() {}
 
 type testNoImpl struct{}
 
-func TestImplementsInterface(t *testing.T) {
-	iface := ToInterfaceReflectType[testIface]()
+func TestDoesTypeImplementInterface(t *testing.T) {
+	iface := reflect.TypeFor[testIface]()
 
-	if ImplementsInterface(nil, iface) {
+	if DoesTypeImplementInterface(nil, iface) {
 		t.Fatal("expected nil concrete type to return false")
 	}
-	if ImplementsInterface(reflect.TypeOf(testValueImpl{}), nil) {
+	if DoesTypeImplementInterface(reflect.TypeOf(testValueImpl{}), nil) {
 		t.Fatal("expected nil interface type to return false")
 	}
 
-	if !ImplementsInterface(reflect.TypeOf(testValueImpl{}), iface) {
+	if !DoesTypeImplementInterface(reflect.TypeOf(testValueImpl{}), iface) {
 		t.Fatal("expected value receiver implementation to match")
 	}
-	if !ImplementsInterface(reflect.TypeOf(&testValueImpl{}), iface) {
+	if !DoesTypeImplementInterface(reflect.TypeOf(&testValueImpl{}), iface) {
 		t.Fatal("expected pointer to value receiver type to match")
 	}
-	if !ImplementsInterface(reflect.TypeOf(testPointerImpl{}), iface) {
+	if !DoesTypeImplementInterface(reflect.TypeOf(testPointerImpl{}), iface) {
 		t.Fatal("expected pointer receiver implementation to match via PointerTo")
 	}
-	if !ImplementsInterface(reflect.TypeOf(&testPointerImpl{}), iface) {
+	if !DoesTypeImplementInterface(reflect.TypeOf(&testPointerImpl{}), iface) {
 		t.Fatal("expected pointer receiver implementation to match")
 	}
-	if ImplementsInterface(reflect.TypeOf(testNoImpl{}), iface) {
+	if DoesTypeImplementInterface(reflect.TypeOf(testNoImpl{}), iface) {
 		t.Fatal("expected non-implementation to return false")
 	}
 }
 
-func TestImplementsInterface_PanicsWhenIfaceNotInterface(t *testing.T) {
+func TestDoesTypeImplementInterface_PanicsWhenIfaceNotInterface(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Fatal("expected panic for non-interface iface type")
 		}
 	}()
 
-	ImplementsInterface(
+	DoesTypeImplementInterface(
 		reflect.TypeOf(testValueImpl{}),
 		reflect.TypeOf(testValueImpl{}),
 	)
-}
-
-func TestToInterfaceReflectType(t *testing.T) {
-	iface := ToInterfaceReflectType[testIface]()
-	if iface.Kind() != reflect.Interface {
-		t.Fatalf("expected interface kind, got %s", iface.Kind())
-	}
-
-	concrete := ToInterfaceReflectType[testValueImpl]()
-	if concrete != reflect.TypeOf(testValueImpl{}) {
-		t.Fatalf("expected concrete reflect type %v, got %v", reflect.TypeOf(testValueImpl{}), concrete)
-	}
 }
 
 func TestExcludingNoneGetIsNilOrUltimatelyPointsToNil(t *testing.T) {
@@ -136,10 +124,10 @@ func TestGetJSONFieldName(t *testing.T) {
 		"ExtraOpts": "name",
 	}
 
-	typ := reflect.TypeOf(sample{})
+	typ := reflect.TypeFor[sample]()
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
-		got := GetJSONFieldName(f)
+		got := JSONFieldName(f)
 		want := fields[f.Name]
 		if got != want {
 			t.Fatalf("field %s: expected %q, got %q", f.Name, want, got)

@@ -22,7 +22,7 @@ import "github.com/vormadev/vorma/kit/csrf"
 ```go
 protector := csrf.NewProtector(csrf.ProtectorConfig{
 	CookieManager: cookieMgr, // required
-	GetSessionID: func(r *http.Request) string {
+	SessionIDFunc: func(r *http.Request) string {
 		s := sessionFromRequest(r)
 		if s == nil {
 			return ""
@@ -71,7 +71,7 @@ Validation requires:
 - token payload decrypts/parses and is unexpired
 - header token (`HeaderName`) is present
 - header value equals cookie value (constant-time compare)
-- token session ID equals `GetSessionID(r)` (constant-time compare)
+- token session ID equals `SessionIDFunc(r)` (constant-time compare)
 
 ## Failure And Self-Heal Behavior
 
@@ -114,7 +114,7 @@ When possible, middleware also self-heals by issuing a fresh cookie in the same
 `NewProtector` panics when:
 
 - `CookieManager == nil`
-- `GetSessionID == nil`
+- `SessionIDFunc == nil`
 - `TokenTTL < 0`
 - an `AllowedOrigins` entry is malformed or missing scheme/host
 
@@ -140,7 +140,7 @@ Dev-mode guard:
 ### Exported Fields (`ProtectorConfig`)
 
 - `CookieManager *cookies.Manager`
-- `GetSessionID func(r *http.Request) string`
+- `SessionIDFunc func(r *http.Request) string`
 - `AllowedOrigins []string`
 - `TokenTTL time.Duration`
 - `CookieName string`

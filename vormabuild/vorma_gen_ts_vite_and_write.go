@@ -127,13 +127,16 @@ func defaultGeneratedTSWriteDependencies() generatedTSWriteDependencies {
 			v *vormaruntime.Vorma,
 			l *vormaruntime.LockedVorma,
 		) ([]byte, error) {
-			return defaultGeneratedTSAssemblyExecutor.generateAndAssembleTSContent(v, l)
+			return defaultGeneratedTSAssemblyExecutor.generateAndAssembleTSContent(
+				v,
+				l,
+			)
 		},
 		generateAndAssembleTSContentForRuntimeStateSnapshot: func(
 			v *vormaruntime.Vorma,
 			runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
 		) ([]byte, error) {
-			return defaultGeneratedTSAssemblyExecutor.generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot(
+			return defaultGeneratedTSAssemblyExecutor.generateAndAssembleTSContentForRouteBuildRuntimeState(
 				v,
 				runtimeStateSnapshot,
 			)
@@ -190,8 +193,15 @@ var defaultGeneratedTSWriteExecutor = newGeneratedTSWriteExecutor(
 
 var (
 	reactDedupeList  = []string{"react", "react-dom"}
-	preactDedupeList = []string{"preact", "preact/hooks", "@preact/signals", "preact/jsx-runtime", "preact/compat", "preact/test-utils"}
-	solidDedupeList  = []string{"solid-js", "solid-js/web"}
+	preactDedupeList = []string{
+		"preact",
+		"preact/hooks",
+		"@preact/signals",
+		"preact/jsx-runtime",
+		"preact/compat",
+		"preact/test-utils",
+	}
+	solidDedupeList = []string{"solid-js", "solid-js/web"}
 )
 
 const vitePluginTemplateStr = `
@@ -206,8 +216,11 @@ declare global {
 export const publicPathPrefix = "{{.PublicPathPrefix}}";
 
 export function waveRuntimeURL(originalPublicURL: StaticPublicAsset) {
-	const url = staticPublicAssetMap[originalPublicURL] ?? originalPublicURL;
-	return publicPathPrefix + url;
+	const hashedPublicURL = staticPublicAssetMap[originalPublicURL];
+	if (!hashedPublicURL) {
+		throw new Error("Wave public URL lookup miss: " + originalPublicURL);
+	}
+	return publicPathPrefix + hashedPublicURL;
 }
 
 export const vormaViteConfig = {
@@ -227,7 +240,9 @@ export const vormaViteConfig = {
 } as const;
 `
 
-var vitePluginTemplate = template.Must(template.New("vitePlugin").Parse(vitePluginTemplateStr))
+var vitePluginTemplate = template.Must(
+	template.New("vitePlugin").Parse(vitePluginTemplateStr),
+)
 
 type vitePluginTemplateData struct {
 	Entrypoints      []string
@@ -238,17 +253,25 @@ type vitePluginTemplateData struct {
 	DedupeList       []string
 }
 
-func generateRollupOptions(l *vormaruntime.LockedVorma, entrypoints []string) (string, error) {
+func generateRollupOptions(
+	l *vormaruntime.LockedVorma,
+	entrypoints []string,
+) (string, error) {
 	return generateRollupOptionsForEntrypoints(l.Vorma(), entrypoints)
 }
 
-func generateRollupOptionsForEntrypoints(v *vormaruntime.Vorma, entrypoints []string) (string, error) {
+func generateRollupOptionsForEntrypoints(
+	v *vormaruntime.Vorma,
+	entrypoints []string,
+) (string, error) {
 	var sb stringsutil.Builder
 	sb.Return()
 	sb.Write(tsgen.Comment("Vorma Vite Config:"))
 	sb.Return()
 
-	renderedViteConfig, err := renderVitePluginConfig(buildVitePluginTemplateData(v, entrypoints))
+	renderedViteConfig, err := renderVitePluginConfig(
+		buildVitePluginTemplateData(v, entrypoints),
+	)
 	if err != nil {
 		return "", fmt.Errorf("render vite plugin config: %w", err)
 	}
@@ -256,14 +279,20 @@ func generateRollupOptionsForEntrypoints(v *vormaruntime.Vorma, entrypoints []st
 	return sb.String(), nil
 }
 
-func buildVitePluginTemplateData(v *vormaruntime.Vorma, entrypoints []string) vitePluginTemplateData {
+func buildVitePluginTemplateData(
+	v *vormaruntime.Vorma,
+	entrypoints []string,
+) vitePluginTemplateData {
 	return vitePluginTemplateData{
 		Entrypoints:      entrypoints,
-		PublicPathPrefix: v.Wave.GetPublicPathPrefix(),
+		PublicPathPrefix: v.Wave.PublicPathPrefix(),
 		FuncName:         v.Config.BuildtimePublicURLFuncName,
-		FilemapJSONPath:  path.Join(v.Config.TSGenOutDir, wave.RelPaths.PublicFileMapJSONName()),
-		IgnoredPatterns:  buildViteIgnoredPatterns(v),
-		DedupeList:       dedupeListForUIVariant(v.Config.UIVariant),
+		FilemapJSONPath: path.Join(
+			v.Config.TSGenOutDir,
+			wave.RelPaths.PublicFileMapJSONName(),
+		),
+		IgnoredPatterns: buildViteIgnoredPatterns(v),
+		DedupeList:      dedupeListForUIVariant(v.Config.UIVariant),
 	}
 }
 
@@ -283,12 +312,12 @@ func dedupeListForUIVariant(uiVariant string) []string {
 func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 	ignoredPatterns := []string{
 		"**/*.go",
-		path.Join("**", v.Wave.GetDistDir()+"/**/*"),
-		path.Join("**", v.Wave.GetPrivateStaticDir()+"/**/*"),
+		path.Join("**", v.Wave.DistDir()+"/**/*"),
+		path.Join("**", v.Wave.PrivateStaticDir()+"/**/*"),
 		path.Join("**", v.Config.TSGenOutDir+"/**/*"),
 	}
 
-	if configFileIgnoredPattern := formatConfigFilePatternForViteIgnore(v.Wave.GetConfigFile()); configFileIgnoredPattern != "" {
+	if configFileIgnoredPattern := formatConfigFilePatternForViteIgnore(v.Wave.ConfigFile()); configFileIgnoredPattern != "" {
 		ignoredPatterns = append(ignoredPatterns, configFileIgnoredPattern)
 	}
 
@@ -316,7 +345,9 @@ func formatConfigFilePatternForViteIgnore(configFilePattern string) string {
 	return filepath.ToSlash(path.Join("**", trimmedPattern))
 }
 
-func renderVitePluginConfig(templateData vitePluginTemplateData) (string, error) {
+func renderVitePluginConfig(
+	templateData vitePluginTemplateData,
+) (string, error) {
 	var buffer bytes.Buffer
 	if err := vitePluginTemplate.Execute(&buffer, templateData); err != nil {
 		return "", fmt.Errorf("error executing template: %w", err)
@@ -325,7 +356,7 @@ func renderVitePluginConfig(templateData vitePluginTemplateData) (string, error)
 }
 
 func getEntrypoints(l *vormaruntime.LockedVorma) []string {
-	return getEntrypointsForPaths(l.Vorma(), l.GetPaths())
+	return getEntrypointsForPaths(l.Vorma(), l.Paths())
 }
 
 func getEntrypointsForPaths(
@@ -352,11 +383,11 @@ func writeGeneratedTS(l *vormaruntime.LockedVorma) error {
 	return defaultGeneratedTSWriteExecutor.writeGeneratedTS(l)
 }
 
-func writeGeneratedTSForRouteBuildRuntimeStateSnapshot(
+func writeGeneratedTSForRouteBuildRuntimeState(
 	v *vormaruntime.Vorma,
 	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
 ) error {
-	return defaultGeneratedTSWriteExecutor.writeGeneratedTSForRouteBuildRuntimeStateSnapshot(
+	return defaultGeneratedTSWriteExecutor.writeGeneratedTSForRouteBuildRuntimeState(
 		v,
 		runtimeStateSnapshot,
 	)
@@ -374,16 +405,27 @@ func (generatedTSWriteExecutor generatedTSWriteExecutor) writeGeneratedTS(
 ) error {
 	v := l.Vorma()
 
-	contentBytes, err := generatedTSWriteExecutor.dependencies.generateAndAssembleTSContent(v, l)
+	contentBytes, err := generatedTSWriteExecutor.dependencies.generateAndAssembleTSContent(
+		v,
+		l,
+	)
 	if err != nil {
 		return err
 	}
 
-	targetPath := filepath.Join(".", v.Config.TSGenOutDir, wave.GeneratedTSFileName)
-	return generatedTSWriteExecutor.dependencies.writeGeneratedTSContentIfChanged(v, targetPath, contentBytes)
+	targetPath := filepath.Join(
+		".",
+		v.Config.TSGenOutDir,
+		wave.GeneratedTSFileName,
+	)
+	return generatedTSWriteExecutor.dependencies.writeGeneratedTSContentIfChanged(
+		v,
+		targetPath,
+		contentBytes,
+	)
 }
 
-func (generatedTSWriteExecutor generatedTSWriteExecutor) writeGeneratedTSForRouteBuildRuntimeStateSnapshot(
+func (generatedTSWriteExecutor generatedTSWriteExecutor) writeGeneratedTSForRouteBuildRuntimeState(
 	v *vormaruntime.Vorma,
 	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
 ) error {
@@ -395,12 +437,27 @@ func (generatedTSWriteExecutor generatedTSWriteExecutor) writeGeneratedTSForRout
 		return err
 	}
 
-	targetPath := filepath.Join(".", v.Config.TSGenOutDir, wave.GeneratedTSFileName)
-	return generatedTSWriteExecutor.dependencies.writeGeneratedTSContentIfChanged(v, targetPath, contentBytes)
+	targetPath := filepath.Join(
+		".",
+		v.Config.TSGenOutDir,
+		wave.GeneratedTSFileName,
+	)
+	return generatedTSWriteExecutor.dependencies.writeGeneratedTSContentIfChanged(
+		v,
+		targetPath,
+		contentBytes,
+	)
 }
 
-func generateAndAssembleTSContent(v *vormaruntime.Vorma, l *vormaruntime.LockedVorma) ([]byte, error) {
-	return generateAndAssembleTSContentWithDependencies(v, l, generatedTSAssemblyDependencies{})
+func generateAndAssembleTSContent(
+	v *vormaruntime.Vorma,
+	l *vormaruntime.LockedVorma,
+) ([]byte, error) {
+	return generateAndAssembleTSContentWithDependencies(
+		v,
+		l,
+		generatedTSAssemblyDependencies{},
+	)
 }
 
 func generateAndAssembleTSContentWithDependencies(
@@ -408,7 +465,9 @@ func generateAndAssembleTSContentWithDependencies(
 	l *vormaruntime.LockedVorma,
 	dependencies generatedTSAssemblyDependencies,
 ) ([]byte, error) {
-	return newGeneratedTSAssemblyExecutor(dependencies).generateAndAssembleTSContent(v, l)
+	return newGeneratedTSAssemblyExecutor(
+		dependencies,
+	).generateAndAssembleTSContent(v, l)
 }
 
 func generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshotWithDependencies(
@@ -418,7 +477,7 @@ func generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshotWithDependenci
 ) ([]byte, error) {
 	return newGeneratedTSAssemblyExecutor(
 		dependencies,
-	).generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot(
+	).generateAndAssembleTSContentForRouteBuildRuntimeState(
 		v,
 		runtimeStateSnapshot,
 	)
@@ -446,12 +505,12 @@ func (generatedTSAssemblyExecutor generatedTSAssemblyExecutor) generateAndAssemb
 	return assembleGeneratedTSContent(tsOutput, rollupOptions), nil
 }
 
-func (generatedTSAssemblyExecutor generatedTSAssemblyExecutor) generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot(
+func (generatedTSAssemblyExecutor generatedTSAssemblyExecutor) generateAndAssembleTSContentForRouteBuildRuntimeState(
 	v *vormaruntime.Vorma,
 	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
 ) ([]byte, error) {
 	tsOutput, err := generatedTSAssemblyExecutor.dependencies.generateTypeScript(
-		tsGenInputForRouteBuildRuntimeStateSnapshot(v, runtimeStateSnapshot),
+		tsGenInputForRouteBuildRuntimeState(v, runtimeStateSnapshot),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("generate TypeScript: %w", err)
@@ -498,7 +557,9 @@ func writeGeneratedTSContentIfChangedWithDependencies(
 	contentBytes []byte,
 	dependencies generatedTSWriteFileDependencies,
 ) error {
-	return newGeneratedTSWriteFileExecutor(dependencies).writeGeneratedTSContentIfChanged(
+	return newGeneratedTSWriteFileExecutor(
+		dependencies,
+	).writeGeneratedTSContentIfChanged(
 		v,
 		targetPath,
 		contentBytes,
@@ -539,18 +600,21 @@ func (generatedTSWriteFileExecutor generatedTSWriteFileExecutor) writeGeneratedT
 	return nil
 }
 
-func tsGenInputForLockedVorma(v *vormaruntime.Vorma, l *vormaruntime.LockedVorma) tsGenInput {
+func tsGenInputForLockedVorma(
+	v *vormaruntime.Vorma,
+	l *vormaruntime.LockedVorma,
+) tsGenInput {
 	return tsGenInput{
 		LoadersRouter: v.LoadersRouter().NestedRouter,
 		ActionsRouter: v.ActionsRouter().Router,
-		Paths:         l.GetPaths(),
+		Paths:         l.Paths(),
 		Config:        v.Config,
-		AdHocTypes:    v.GetAdHocTypes(),
-		ExtraTSCode:   v.GetExtraTSCode(),
+		AdHocTypes:    v.AdHocTypes(),
+		ExtraTSCode:   v.ExtraTSCode(),
 	}
 }
 
-func tsGenInputForRouteBuildRuntimeStateSnapshot(
+func tsGenInputForRouteBuildRuntimeState(
 	v *vormaruntime.Vorma,
 	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
 ) tsGenInput {
@@ -559,8 +623,8 @@ func tsGenInputForRouteBuildRuntimeStateSnapshot(
 		ActionsRouter: v.ActionsRouter().Router,
 		Paths:         runtimeStateSnapshot.paths,
 		Config:        v.Config,
-		AdHocTypes:    v.GetAdHocTypes(),
-		ExtraTSCode:   v.GetExtraTSCode(),
+		AdHocTypes:    v.AdHocTypes(),
+		ExtraTSCode:   v.ExtraTSCode(),
 	}
 }
 

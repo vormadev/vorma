@@ -14,18 +14,18 @@ const externalDocsLink = "https://vorma.dev/docs"
 
 var requestCount atomic.Int64
 
-var _ = NewLoader("/", func(c *LoaderCtx) (*RootData, error) {
+var _ = DefineLoader("/", func(c *LoaderCtx) (*RootData, error) {
 	return &RootData{Message: "Welcome to your Vorma app!"}, nil
 })
 
-var _ = NewLoader("/_index", func(c *LoaderCtx) (int, error) {
+var _ = DefineLoader("/_index", func(c *LoaderCtx) (int, error) {
 	return int(requestCount.Load()), nil
 })
 
-var _ = NewLoader("/links", func(c *LoaderCtx) (string, error) {
+var _ = DefineLoader("/links", func(c *LoaderCtx) (string, error) {
 	return externalDocsLink, nil
 })
 
-var _ = NewAction("POST", "/increment-count", func(c *ActionCtx[vorma.None]) (int, error) {
+var _ = DefineAction("POST", "/increment-count", func(c *ActionCtx[vorma.None]) (int, error) {
 	return int(requestCount.Add(1)), nil
 })

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -40,16 +42,24 @@ func (b *Builder) savePublicFileMapJS(fm wave.FileMap) error {
 		return err
 	}
 
-	content := fmt.Sprintf("export const wavePublicFileMap = %s;", string(jsonBytes))
-	hashedName := hashBytes([]byte(content), wave.RelPaths.PublicFileMapJSName())
-	_, publishError := publishHashedArtifactWithRef(hashedArtifactPublishOptions{
-		log:                   b.log,
-		outputDirectoryPath:   b.cfg.Dist.StaticPublic(),
-		refFilePath:           b.cfg.Dist.PublicFileMapRef(),
-		desiredHashedFileName: hashedName,
-		content:               []byte(content),
-		globPattern:           wave.FileMapJSGlobPattern,
-	})
+	content := fmt.Sprintf(
+		"export const wavePublicFileMap = %s;",
+		string(jsonBytes),
+	)
+	hashedName := hashBytes(
+		[]byte(content),
+		wave.RelPaths.PublicFileMapJSName(),
+	)
+	_, publishError := publishHashedArtifactWithRef(
+		hashedArtifactPublishOptions{
+			log:                   b.log,
+			outputDirectoryPath:   b.cfg.Dist.StaticPublic(),
+			refFilePath:           b.cfg.Dist.PublicFileMapRef(),
+			desiredHashedFileName: hashedName,
+			content:               []byte(content),
+			globPattern:           wave.FileMapJSGlobPattern,
+		},
+	)
 	return publishError
 }
 
@@ -113,9 +123,72 @@ func (b *Builder) writePublicFileMapJSON(outDir string, fm wave.FileMap) error {
 	return err
 }
 
+type atomicFileWriteDependencies struct {
+	renameTempFile       func(string, string) error
+	removeExistingTarget func(string) error
+	statTarget           func(string) (os.FileInfo, error)
+}
+
+func defaultAtomicFileWriteDependencies() atomicFileWriteDependencies {
+	return atomicFileWriteDependencies{
+		renameTempFile:       os.Rename,
+		removeExistingTarget: os.Remove,
+		statTarget:           os.Stat,
+	}
+}
+
+func normalizeAtomicFileWriteDependencies(
+	dependencies atomicFileWriteDependencies,
+) atomicFileWriteDependencies {
+	defaultDependencies := defaultAtomicFileWriteDependencies()
+	if dependencies.renameTempFile == nil {
+		dependencies.renameTempFile = defaultDependencies.renameTempFile
+	}
+	if dependencies.removeExistingTarget == nil {
+		dependencies.removeExistingTarget = defaultDependencies.removeExistingTarget
+	}
+	if dependencies.statTarget == nil {
+		dependencies.statTarget = defaultDependencies.statTarget
+	}
+	return dependencies
+}
+
+func shouldRetryRenameByReplacingTarget(
+	renameError error,
+	targetPath string,
+	dependencies atomicFileWriteDependencies,
+) bool {
+	if errors.Is(renameError, fs.ErrExist) ||
+		errors.Is(renameError, os.ErrExist) {
+		return true
+	}
+
+	if errors.Is(renameError, fs.ErrPermission) ||
+		errors.Is(renameError, os.ErrPermission) {
+		_, targetStatError := dependencies.statTarget(targetPath)
+		return targetStatError == nil
+	}
+
+	return false
+}
+
 // writeFileAtomic writes data to a file atomically using a randomized temp file
 // and rename. The write function is called with the temp file to write content.
 func writeFileAtomic(path string, write func(*os.File) error) error {
+	return writeFileAtomicWithDependencies(
+		path,
+		write,
+		atomicFileWriteDependencies{},
+	)
+}
+
+func writeFileAtomicWithDependencies(
+	path string,
+	write func(*os.File) error,
+	dependencies atomicFileWriteDependencies,
+) error {
+	dependencies = normalizeAtomicFileWriteDependencies(dependencies)
+
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -143,8 +216,32 @@ func writeFileAtomic(path string, write func(*os.File) error) error {
 		return err
 	}
 
-	if err := os.Rename(tmpPath, path); err != nil {
-		return err
+	renameError := dependencies.renameTempFile(tmpPath, path)
+	if renameError != nil {
+		if !shouldRetryRenameByReplacingTarget(
+			renameError,
+			path,
+			dependencies,
+		) {
+			return fmt.Errorf("rename temp file: %w", renameError)
+		}
+
+		removeExistingTargetError := dependencies.removeExistingTarget(path)
+		if removeExistingTargetError != nil &&
+			!os.IsNotExist(removeExistingTargetError) {
+			return fmt.Errorf(
+				"remove existing target file before rename: %w",
+				removeExistingTargetError,
+			)
+		}
+
+		retryRenameError := dependencies.renameTempFile(tmpPath, path)
+		if retryRenameError != nil {
+			return fmt.Errorf(
+				"rename temp file after replacing existing target: %w",
+				retryRenameError,
+			)
+		}
 	}
 
 	success = true

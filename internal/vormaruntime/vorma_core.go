@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
@@ -36,6 +37,11 @@ type Vorma struct {
 	getDefaultHeadEls   GetDefaultHeadElsFunc
 	getHeadDedupeKeys   GetHeadDedupeKeysFunc
 	getRootTemplateData GetRootTemplateDataFunc
+
+	loadersHandlerOnce sync.Once
+	loadersHandler     mux.TasksCtxRequirerFunc
+	actionsHandlerOnce sync.Once
+	actionsHandler     mux.TasksCtxRequirerFunc
 
 	// mu protects mutable state that can be modified during dev rebuilds.
 	mu                 sync.RWMutex
@@ -70,61 +76,61 @@ func (v *Vorma) ServerAddr() string            { return v._serverAddr }
 func (v *Vorma) LoadersRouter() *LoadersRouter { return v.loadersRouter }
 func (v *Vorma) ActionsRouter() *ActionsRouter { return v.actionsRouter }
 
-func (v *Vorma) GetPathsSnapshot() map[string]*Path {
+func (v *Vorma) Paths() map[string]*Path {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return clonePathsMapOrNil(v._paths)
 }
 
-func (v *Vorma) GetIsDevMode() bool {
+func (v *Vorma) IsDevMode() bool {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._isDev
 }
 
-func (v *Vorma) GetBuildID() string {
+func (v *Vorma) BuildID() string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._buildID
 }
 
-func (v *Vorma) GetClientEntryOut() string {
+func (v *Vorma) ClientEntryOut() string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._clientEntryOut
 }
 
-func (v *Vorma) GetClientEntryDeps() []string {
+func (v *Vorma) ClientEntryDeps() []string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return cloneStringSliceOrNil(v._clientEntryDeps)
 }
 
-func (v *Vorma) GetDepToCSSBundleMap() map[string][]string {
+func (v *Vorma) DepToCSSBundleMap() map[string][]string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return cloneDepToCSSBundleMapOrNil(v._depToCSSBundleMap)
 }
 
-func (v *Vorma) GetRootTemplate() *template.Template {
+func (v *Vorma) RootTemplate() *template.Template {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._rootTemplate
 }
 
-func (v *Vorma) GetRouteManifestFile() string {
+func (v *Vorma) RouteManifestFile() string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._routeManifestFile
 }
 
-// GetAdHocTypes returns the ad-hoc types for TS generation. (Immutable after init)
-func (v *Vorma) GetAdHocTypes() []*tsgen.AdHocType {
+// AdHocTypes returns a defensive copy of ad-hoc TS types.
+func (v *Vorma) AdHocTypes() []*tsgen.AdHocType {
 	return cloneAdHocTypesOrNil(v._adHocTypes)
 }
 
-// GetExtraTSCode returns the extra TS code. (Immutable after init)
-func (v *Vorma) GetExtraTSCode() string {
+// ExtraTSCode returns the extra TS code. (Immutable after init)
+func (v *Vorma) ExtraTSCode() string {
 	return v._extraTSCode
 }
 
@@ -164,22 +170,28 @@ func (v *Vorma) WithRLock(fn func(*ReadLockedVorma)) {
 
 // Vorma returns the underlying Vorma instance for accessing non-lock-protected fields.
 func (l *ReadLockedVorma) Vorma() *Vorma { return l.v }
-func (l *ReadLockedVorma) GetPaths() map[string]*Path {
+func (l *ReadLockedVorma) Paths() map[string]*Path {
 	return clonePathsMapOrNil(l.v._paths)
 }
-func (l *ReadLockedVorma) GetBuildID() string                  { return l.v._buildID }
-func (l *ReadLockedVorma) GetRouteManifestFile() string        { return l.v._routeManifestFile }
-func (l *ReadLockedVorma) GetRootTemplate() *template.Template { return l.v._rootTemplate }
-func (l *ReadLockedVorma) GetIsDev() bool                      { return l.v._isDev }
+
+func (l *ReadLockedVorma) BuildID() string { return l.v._buildID }
+
+func (l *ReadLockedVorma) RouteManifestFile() string { return l.v._routeManifestFile }
+
+func (l *ReadLockedVorma) RootTemplate() *template.Template { return l.v._rootTemplate }
+
+func (l *ReadLockedVorma) IsDev() bool { return l.v._isDev }
 
 func (l *LockedVorma) Vorma() *Vorma { return l.v }
-func (l *LockedVorma) GetPaths() map[string]*Path {
+func (l *LockedVorma) Paths() map[string]*Path {
 	return clonePathsMapOrNil(l.v._paths)
 }
-func (l *LockedVorma) GetBuildID() string                  { return l.v._buildID }
-func (l *LockedVorma) GetRouteManifestFile() string        { return l.v._routeManifestFile }
-func (l *LockedVorma) GetRootTemplate() *template.Template { return l.v._rootTemplate }
-func (l *LockedVorma) GetIsDev() bool                      { return l.v._isDev }
+func (l *LockedVorma) BuildID() string { return l.v._buildID }
+
+func (l *LockedVorma) RouteManifestFile() string { return l.v._routeManifestFile }
+
+func (l *LockedVorma) RootTemplate() *template.Template { return l.v._rootTemplate }
+func (l *LockedVorma) IsDev() bool                      { return l.v._isDev }
 
 // --- LockedVorma Setters ---
 

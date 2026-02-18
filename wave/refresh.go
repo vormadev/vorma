@@ -10,7 +10,7 @@ import (
 
 const defaultRefreshPort = 10000
 
-func (w *Wave) GetRefreshScript() template.HTML {
+func (w *Wave) RefreshScript() template.HTML {
 	if !GetIsDev() {
 		return ""
 	}
@@ -25,7 +25,7 @@ func (w *Wave) GetRefreshScript() template.HTML {
 	)
 }
 
-func (w *Wave) GetRefreshScriptSha256Hash() string {
+func (w *Wave) RefreshScriptSha256Hash() string {
 	if !GetIsDev() {
 		return ""
 	}

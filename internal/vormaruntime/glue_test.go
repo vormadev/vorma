@@ -236,10 +236,16 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 
 	app := NewVormaApp(VormaAppConfig{Wave: w})
 	if app.Config.BuildtimePublicURLFuncName != "waveBuildtimeURL" {
-		t.Fatalf("expected default buildtime URL function name, got %q", app.Config.BuildtimePublicURLFuncName)
+		t.Fatalf(
+			"expected default buildtime URL function name, got %q",
+			app.Config.BuildtimePublicURLFuncName,
+		)
 	}
 	if app.Config.UnresolvedRoutePolicy != "" {
-		t.Fatalf("expected unresolved route policy to be unset by default, got %q", app.Config.UnresolvedRoutePolicy)
+		t.Fatalf(
+			"expected unresolved route policy to be unset by default, got %q",
+			app.Config.UnresolvedRoutePolicy,
+		)
 	}
 	if app.Config.DevReloadRoutesEndpointPath != DefaultDevReloadRoutesEndpointPath {
 		t.Fatalf(
@@ -317,15 +323,23 @@ func TestNewVormaApp_RequiresWaveInstance(t *testing.T) {
 		if r == nil {
 			t.Fatal("expected panic when Wave is nil")
 		}
-		if got := fmt.Sprint(r); !strings.Contains(got, "Wave instance is required") {
-			t.Fatalf("panic = %q, expected to mention missing Wave instance", got)
+		if got := fmt.Sprint(r); !strings.Contains(
+			got,
+			"Wave instance is required",
+		) {
+			t.Fatalf(
+				"panic = %q, expected to mention missing Wave instance",
+				got,
+			)
 		}
 	}()
 
 	_ = NewVormaApp(VormaAppConfig{})
 }
 
-func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(t *testing.T) {
+func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(
+	t *testing.T,
+) {
 	rootDir := t.TempDir()
 	staticDir := filepath.Join(rootDir, "dist", "static")
 	mustMkdirAll(t, staticDir)
@@ -358,8 +372,14 @@ func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(t *testi
 		if r == nil {
 			t.Fatal("expected panic when Vorma section is omitted")
 		}
-		if got := fmt.Sprint(r); !strings.Contains(got, "Vorma.MainBuildEntry is required") {
-			t.Fatalf("panic = %q, expected required Vorma config validation error", got)
+		if got := fmt.Sprint(r); !strings.Contains(
+			got,
+			"Vorma.MainBuildEntry is required",
+		) {
+			t.Fatalf(
+				"panic = %q, expected required Vorma config validation error",
+				got,
+			)
 		}
 	}()
 
@@ -390,14 +410,26 @@ func TestVorma_DefaultRouterContracts(t *testing.T) {
 		}
 	}
 	if len(methods) != 5 {
-		t.Fatalf("expected exactly 5 default supported methods, got %d", len(methods))
+		t.Fatalf(
+			"expected exactly 5 default supported methods, got %d",
+			len(methods),
+		)
 	}
 }
 
-func TestActionsSupportedMethods_NormalizesConfiguredMethodCasing(t *testing.T) {
+func TestActionsSupportedMethods_NormalizesConfiguredMethodCasing(
+	t *testing.T,
+) {
 	fixture := newTestFixture(t, testFixtureOptions{
 		actionsRouterOpts: ActionsRouterOptions{
-			SupportedMethods: []string{" get ", "PoSt", "PATCH", " ", "", "patch"},
+			SupportedMethods: []string{
+				" get ",
+				"PoSt",
+				"PATCH",
+				" ",
+				"",
+				"patch",
+			},
 		},
 	})
 	app := fixture.app
@@ -405,12 +437,19 @@ func TestActionsSupportedMethods_NormalizesConfiguredMethodCasing(t *testing.T) 
 	methods := app.Actions().SupportedMethods()
 	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPatch} {
 		if !methods[method] {
-			t.Fatalf("expected normalized method %q to be supported, methods=%v", method, methods)
+			t.Fatalf(
+				"expected normalized method %q to be supported, methods=%v",
+				method,
+				methods,
+			)
 		}
 	}
 	for _, method := range []string{" get ", "PoSt"} {
 		if methods[method] {
-			t.Fatalf("unexpected non-normalized method key %q in supported methods map", method)
+			t.Fatalf(
+				"unexpected non-normalized method key %q in supported methods map",
+				method,
+			)
 		}
 	}
 	if methods[""] {
@@ -440,7 +479,7 @@ func TestVormaServeStatic_PublicAssetAndPassthroughContracts(t *testing.T) {
 			w.WriteHeader(http.StatusTeapot)
 			w.Write([]byte("next-handler"))
 		})
-		handler := app.ServeStatic()(next)
+		handler := app.MustStaticMiddleware()(next)
 
 		req := httptest.NewRequest(http.MethodGet, "/static/hello.txt", nil)
 		rec := httptest.NewRecorder()
@@ -453,10 +492,15 @@ func TestVormaServeStatic_PublicAssetAndPassthroughContracts(t *testing.T) {
 			t.Fatalf("body = %q, want %q", got, "hello-static")
 		}
 		if !strings.Contains(rec.Header().Get("Cache-Control"), "immutable") {
-			t.Fatalf("Cache-Control = %q, expected immutable caching", rec.Header().Get("Cache-Control"))
+			t.Fatalf(
+				"Cache-Control = %q, expected immutable caching",
+				rec.Header().Get("Cache-Control"),
+			)
 		}
 		if nextCalled {
-			t.Fatal("next handler should not be called for existing public asset")
+			t.Fatal(
+				"next handler should not be called for existing public asset",
+			)
 		}
 	})
 
@@ -467,7 +511,7 @@ func TestVormaServeStatic_PublicAssetAndPassthroughContracts(t *testing.T) {
 			w.WriteHeader(http.StatusTeapot)
 			w.Write([]byte("next-handler"))
 		})
-		handler := app.ServeStatic()(next)
+		handler := app.MustStaticMiddleware()(next)
 
 		req := httptest.NewRequest(http.MethodGet, "/dynamic-route", nil)
 		rec := httptest.NewRecorder()
@@ -484,29 +528,40 @@ func TestVormaServeStatic_PublicAssetAndPassthroughContracts(t *testing.T) {
 		}
 	})
 
-	t.Run("missing_static_namespace_path_passthroughs_to_next", func(t *testing.T) {
-		nextCalled := false
-		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			nextCalled = true
-			w.WriteHeader(http.StatusTeapot)
-			w.Write([]byte("next-handler"))
-		})
-		handler := app.ServeStatic()(next)
+	t.Run(
+		"missing_static_namespace_path_passthroughs_to_next",
+		func(t *testing.T) {
+			nextCalled := false
+			next := http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					nextCalled = true
+					w.WriteHeader(http.StatusTeapot)
+					w.Write([]byte("next-handler"))
+				},
+			)
+			handler := app.MustStaticMiddleware()(next)
 
-		req := httptest.NewRequest(http.MethodGet, "/static/missing.txt", nil)
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
+			req := httptest.NewRequest(
+				http.MethodGet,
+				"/static/missing.txt",
+				nil,
+			)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusTeapot {
-			t.Fatalf("status = %d, want %d", rec.Code, http.StatusTeapot)
-		}
-		if got := rec.Body.String(); got != "next-handler" {
-			t.Fatalf("body = %q, want %q", got, "next-handler")
-		}
-		if !nextCalled {
-			t.Fatal("next handler should be called when static namespace path is missing")
-		}
-	})
+			if rec.Code != http.StatusTeapot {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusTeapot)
+			}
+			if got := rec.Body.String(); got != "next-handler" {
+				t.Fatalf("body = %q, want %q", got, "next-handler")
+			}
+			if !nextCalled {
+				t.Fatal(
+					"next handler should be called when static namespace path is missing",
+				)
+			}
+		},
+	)
 }
 
 func TestVormaServeStatic_RootPublicPathPrefixContracts(t *testing.T) {
@@ -528,7 +583,7 @@ func TestVormaServeStatic_RootPublicPathPrefixContracts(t *testing.T) {
 			w.WriteHeader(http.StatusTeapot)
 			w.Write([]byte("next-handler"))
 		})
-		handler := app.ServeStatic()(next)
+		handler := app.MustStaticMiddleware()(next)
 
 		req := httptest.NewRequest(http.MethodGet, "/asset.txt", nil)
 		rec := httptest.NewRecorder()
@@ -541,7 +596,9 @@ func TestVormaServeStatic_RootPublicPathPrefixContracts(t *testing.T) {
 			t.Fatalf("body = %q, want %q", got, "root-prefix-asset")
 		}
 		if nextCalled {
-			t.Fatal("next handler should not be called for existing root-level asset")
+			t.Fatal(
+				"next handler should not be called for existing root-level asset",
+			)
 		}
 	})
 
@@ -552,7 +609,7 @@ func TestVormaServeStatic_RootPublicPathPrefixContracts(t *testing.T) {
 			w.WriteHeader(http.StatusTeapot)
 			w.Write([]byte("next-handler"))
 		})
-		handler := app.ServeStatic()(next)
+		handler := app.MustStaticMiddleware()(next)
 
 		req := httptest.NewRequest(http.MethodGet, "/dynamic-page", nil)
 		rec := httptest.NewRecorder()
@@ -565,7 +622,9 @@ func TestVormaServeStatic_RootPublicPathPrefixContracts(t *testing.T) {
 			t.Fatalf("body = %q, want %q", got, "next-handler")
 		}
 		if !nextCalled {
-			t.Fatal("next handler should be called when root-level asset is missing")
+			t.Fatal(
+				"next handler should be called when root-level asset is missing",
+			)
 		}
 	})
 }
@@ -579,7 +638,7 @@ func TestActionsHandler_ParsesInputAndSetsBuildHeader(t *testing.T) {
 		Count int    `json:"count"`
 	}
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodGet,
 		"/echo",
@@ -587,7 +646,7 @@ func TestActionsHandler_ParsesInputAndSetsBuildHeader(t *testing.T) {
 			return rd.Input(), nil
 		}),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/echo",
@@ -599,15 +658,24 @@ func TestActionsHandler_ParsesInputAndSetsBuildHeader(t *testing.T) {
 	handler := app.Actions().Handler()
 
 	t.Run("GET_UsesQueryParams", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/echo?name=alice&count=3", nil)
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/api/echo?name=alice&count=3",
+			nil,
+		)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
-		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.GetBuildID() {
-			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.GetBuildID())
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.BuildID() {
+			t.Fatalf(
+				"%s = %q, want %q",
+				VormaBuildIDHeaderKey,
+				got,
+				app.BuildID(),
+			)
 		}
 
 		var got Input
@@ -620,7 +688,11 @@ func TestActionsHandler_ParsesInputAndSetsBuildHeader(t *testing.T) {
 	})
 
 	t.Run("POST_UsesJSONBody", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/echo", strings.NewReader(`{"name":"bob","count":7}`))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/echo",
+			strings.NewReader(`{"name":"bob","count":7}`),
+		)
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -639,7 +711,11 @@ func TestActionsHandler_ParsesInputAndSetsBuildHeader(t *testing.T) {
 	})
 
 	t.Run("POST_InvalidJSON_IsBadRequest", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/echo", strings.NewReader("{"))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/echo",
+			strings.NewReader("{"),
+		)
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -654,22 +730,28 @@ func TestActionsHandler_ResponseProxyRedirectContracts(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/go",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[struct{}]) (map[string]bool, error) {
-			if _, err := rd.ResponseProxy().Redirect(rd.Request(), "/done", http.StatusSeeOther); err != nil {
-				return nil, err
-			}
-			return map[string]bool{"ok": true}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[struct{}]) (map[string]bool, error) {
+				if _, err := rd.ResponseProxy().Redirect(rd.Request(), "/done", http.StatusSeeOther); err != nil {
+					return nil, err
+				}
+				return map[string]bool{"ok": true}, nil
+			},
+		),
 	)
 
 	handler := app.Actions().Handler()
 
 	t.Run("server_redirect_when_client_header_absent", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/go", strings.NewReader(`{}`))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/go",
+			strings.NewReader(`{}`),
+		)
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -681,15 +763,27 @@ func TestActionsHandler_ResponseProxyRedirectContracts(t *testing.T) {
 			t.Fatalf("Location = %q, want %q", got, "/done")
 		}
 		if strings.Contains(rec.Body.String(), `"ok"`) {
-			t.Fatalf("redirect response unexpectedly contained normal action payload: %q", rec.Body.String())
+			t.Fatalf(
+				"redirect response unexpectedly contained normal action payload: %q",
+				rec.Body.String(),
+			)
 		}
-		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.GetBuildID() {
-			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.GetBuildID())
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.BuildID() {
+			t.Fatalf(
+				"%s = %q, want %q",
+				VormaBuildIDHeaderKey,
+				got,
+				app.BuildID(),
+			)
 		}
 	})
 
 	t.Run("client_redirect_when_header_present", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/go", strings.NewReader(`{}`))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/go",
+			strings.NewReader(`{}`),
+		)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set(response.ClientAcceptsRedirectHeader, "true")
 		rec := httptest.NewRecorder()
@@ -699,16 +793,32 @@ func TestActionsHandler_ResponseProxyRedirectContracts(t *testing.T) {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
 		if got := rec.Header().Get(response.ClientRedirectHeader); got != "/done" {
-			t.Fatalf("%s = %q, want %q", response.ClientRedirectHeader, got, "/done")
+			t.Fatalf(
+				"%s = %q, want %q",
+				response.ClientRedirectHeader,
+				got,
+				"/done",
+			)
 		}
 		if got := rec.Header().Get("Location"); got != "" {
-			t.Fatalf("Location = %q, want empty when using client redirect", got)
+			t.Fatalf(
+				"Location = %q, want empty when using client redirect",
+				got,
+			)
 		}
 		if strings.Contains(rec.Body.String(), `"ok"`) {
-			t.Fatalf("client redirect response unexpectedly contained normal action payload: %q", rec.Body.String())
+			t.Fatalf(
+				"client redirect response unexpectedly contained normal action payload: %q",
+				rec.Body.String(),
+			)
 		}
-		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.GetBuildID() {
-			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.GetBuildID())
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.BuildID() {
+			t.Fatalf(
+				"%s = %q, want %q",
+				VormaBuildIDHeaderKey,
+				got,
+				app.BuildID(),
+			)
 		}
 	})
 }
@@ -717,34 +827,42 @@ func TestActionsHandler_FormContentTypesAndNonJSONFallback(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/submit-form",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[FormData]) (map[string]string, error) {
-			return map[string]string{
-				"name":  rd.Request().FormValue("name"),
-				"count": rd.Request().FormValue("count"),
-			}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[FormData]) (map[string]string, error) {
+				return map[string]string{
+					"name":  rd.Request().FormValue("name"),
+					"count": rd.Request().FormValue("count"),
+				}, nil
+			},
+		),
 	)
 
 	type JSONInput struct {
 		Name string `json:"name"`
 	}
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/submit-json",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[JSONInput]) (JSONInput, error) {
-			return rd.Input(), nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[JSONInput]) (JSONInput, error) {
+				return rd.Input(), nil
+			},
+		),
 	)
 
 	handler := app.Actions().Handler()
 
 	t.Run("POST_URLEncodedForm_ExposedViaRequest", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/submit-form", strings.NewReader("name=alice&count=3"))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/submit-form",
+			strings.NewReader("name=alice&count=3"),
+		)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 
@@ -796,7 +914,11 @@ func TestActionsHandler_FormContentTypesAndNonJSONFallback(t *testing.T) {
 	})
 
 	t.Run("POST_URLEncodedForm_RejectsTypedJSONInput", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/submit-json", strings.NewReader("name=charlie"))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/submit-json",
+			strings.NewReader("name=charlie"),
+		)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 
@@ -808,7 +930,11 @@ func TestActionsHandler_FormContentTypesAndNonJSONFallback(t *testing.T) {
 	})
 
 	t.Run("POST_NonJSONContentType_RejectsTypedJSONInput", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/submit-json", strings.NewReader("name=charlie"))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/submit-json",
+			strings.NewReader("name=charlie"),
+		)
 		req.Header.Set("Content-Type", "text/plain")
 		rec := httptest.NewRecorder()
 
@@ -832,7 +958,7 @@ func TestActionsHandler_UnsupportedMethodIsBadRequest(t *testing.T) {
 		Name string `json:"name"`
 	}
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/only-get-supported",
@@ -855,7 +981,10 @@ func TestActionsHandler_UnsupportedMethodIsBadRequest(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 	if !strings.Contains(rec.Body.String(), "unsupported method") {
-		t.Fatalf("response body = %q, expected to mention unsupported method", rec.Body.String())
+		t.Fatalf(
+			"response body = %q, expected to mention unsupported method",
+			rec.Body.String(),
+		)
 	}
 }
 
@@ -891,14 +1020,16 @@ func TestInitWithDefaultRouter_Integration(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/hello",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
-			return map[string]string{"message": "hi"}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
+				return map[string]string{"message": "hi"}, nil
+			},
+		),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/echo",
@@ -909,9 +1040,13 @@ func TestInitWithDefaultRouter_Integration(t *testing.T) {
 		}),
 	)
 
-	router := app.InitWithDefaultRouter()
+	router := app.MustInitWithDefaultRouter()
 
-	reqLoader := httptest.NewRequest(http.MethodGet, "/hello?vorma_json="+app.GetBuildID(), nil)
+	reqLoader := httptest.NewRequest(
+		http.MethodGet,
+		"/hello?vorma_json="+app.BuildID(),
+		nil,
+	)
 	recLoader := httptest.NewRecorder()
 	router.ServeHTTP(recLoader, reqLoader)
 	if recLoader.Code != http.StatusOK {
@@ -925,7 +1060,11 @@ func TestInitWithDefaultRouter_Integration(t *testing.T) {
 		t.Fatalf("loader MatchedPatterns = %#v", loaderData.MatchedPatterns)
 	}
 
-	reqAction := httptest.NewRequest(http.MethodPost, "/api/echo", strings.NewReader(`{"name":"sam"}`))
+	reqAction := httptest.NewRequest(
+		http.MethodPost,
+		"/api/echo",
+		strings.NewReader(`{"name":"sam"}`),
+	)
 	reqAction.Header.Set("Content-Type", "application/json")
 	recAction := httptest.NewRecorder()
 	router.ServeHTTP(recAction, reqAction)
@@ -953,7 +1092,7 @@ func TestInitWithDefaultRouter_RespectsSupportedMethods(t *testing.T) {
 		Name string `json:"name"`
 	}
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodGet,
 		"/echo",
@@ -961,7 +1100,7 @@ func TestInitWithDefaultRouter_RespectsSupportedMethods(t *testing.T) {
 			return rd.Input(), nil
 		}),
 	)
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/echo",
@@ -970,7 +1109,7 @@ func TestInitWithDefaultRouter_RespectsSupportedMethods(t *testing.T) {
 		}),
 	)
 
-	router := app.InitWithDefaultRouter()
+	router := app.MustInitWithDefaultRouter()
 
 	reqGet := httptest.NewRequest(http.MethodGet, "/api/echo?name=ok", nil)
 	recGet := httptest.NewRecorder()
@@ -979,26 +1118,47 @@ func TestInitWithDefaultRouter_RespectsSupportedMethods(t *testing.T) {
 		t.Fatalf("GET status = %d, want %d", recGet.Code, http.StatusOK)
 	}
 
-	reqHead := httptest.NewRequest(http.MethodHead, "/api/echo?name=head-ok", nil)
+	reqHead := httptest.NewRequest(
+		http.MethodHead,
+		"/api/echo?name=head-ok",
+		nil,
+	)
 	recHead := httptest.NewRecorder()
 	router.ServeHTTP(recHead, reqHead)
 	if recHead.Code != http.StatusOK {
-		t.Fatalf("HEAD status = %d, want %d when GET is mounted", recHead.Code, http.StatusOK)
+		t.Fatalf(
+			"HEAD status = %d, want %d when GET is mounted",
+			recHead.Code,
+			http.StatusOK,
+		)
 	}
 	if recHead.Body.Len() != 0 {
-		t.Fatalf("HEAD response should not include body, got %q", recHead.Body.String())
+		t.Fatalf(
+			"HEAD response should not include body, got %q",
+			recHead.Body.String(),
+		)
 	}
 
-	reqPost := httptest.NewRequest(http.MethodPost, "/api/echo", strings.NewReader(`{"name":"nope"}`))
+	reqPost := httptest.NewRequest(
+		http.MethodPost,
+		"/api/echo",
+		strings.NewReader(`{"name":"nope"}`),
+	)
 	reqPost.Header.Set("Content-Type", "application/json")
 	recPost := httptest.NewRecorder()
 	router.ServeHTTP(recPost, reqPost)
 	if recPost.Code != http.StatusNotFound {
-		t.Fatalf("POST status = %d, want %d when method not mounted", recPost.Code, http.StatusNotFound)
+		t.Fatalf(
+			"POST status = %d, want %d when method not mounted",
+			recPost.Code,
+			http.StatusNotFound,
+		)
 	}
 }
 
-func TestInitWithDefaultRouter_HeadRequiresMountedGetActionHandler(t *testing.T) {
+func TestInitWithDefaultRouter_HeadRequiresMountedGetActionHandler(
+	t *testing.T,
+) {
 	fixture := newTestFixture(t, testFixtureOptions{
 		actionsRouterOpts: ActionsRouterOptions{
 			SupportedMethods: []string{http.MethodPost},
@@ -1010,7 +1170,7 @@ func TestInitWithDefaultRouter_HeadRequiresMountedGetActionHandler(t *testing.T)
 		Name string `json:"name"`
 	}
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/echo",
@@ -1019,14 +1179,22 @@ func TestInitWithDefaultRouter_HeadRequiresMountedGetActionHandler(t *testing.T)
 		}),
 	)
 
-	router := app.InitWithDefaultRouter()
+	router := app.MustInitWithDefaultRouter()
 
-	reqHead := httptest.NewRequest(http.MethodHead, "/api/echo?name=missing", nil)
+	reqHead := httptest.NewRequest(
+		http.MethodHead,
+		"/api/echo?name=missing",
+		nil,
+	)
 	recHead := httptest.NewRecorder()
 	router.ServeHTTP(recHead, reqHead)
 
 	if recHead.Code != http.StatusNotFound {
-		t.Fatalf("HEAD status = %d, want %d when GET is not mounted", recHead.Code, http.StatusNotFound)
+		t.Fatalf(
+			"HEAD status = %d, want %d when GET is not mounted",
+			recHead.Code,
+			http.StatusNotFound,
+		)
 	}
 }
 
@@ -1042,7 +1210,7 @@ func TestInitWithDefaultRouter_RespectsCustomActionsMountRoot(t *testing.T) {
 		Name string `json:"name"`
 	}
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodGet,
 		"/echo",
@@ -1055,24 +1223,34 @@ func TestInitWithDefaultRouter_RespectsCustomActionsMountRoot(t *testing.T) {
 		t.Fatalf("HandlerMountPattern() = %q, want %q", got, want)
 	}
 
-	router := app.InitWithDefaultRouter()
+	router := app.MustInitWithDefaultRouter()
 
 	reqRPC := httptest.NewRequest(http.MethodGet, "/rpc/echo?name=ok", nil)
 	recRPC := httptest.NewRecorder()
 	router.ServeHTTP(recRPC, reqRPC)
 	if recRPC.Code != http.StatusOK {
-		t.Fatalf("GET /rpc/echo status = %d, want %d", recRPC.Code, http.StatusOK)
+		t.Fatalf(
+			"GET /rpc/echo status = %d, want %d",
+			recRPC.Code,
+			http.StatusOK,
+		)
 	}
 
 	reqAPI := httptest.NewRequest(http.MethodGet, "/api/echo?name=ok", nil)
 	recAPI := httptest.NewRecorder()
 	router.ServeHTTP(recAPI, reqAPI)
 	if recAPI.Code != http.StatusNotFound {
-		t.Fatalf("GET /api/echo status = %d, want %d with custom mount root", recAPI.Code, http.StatusNotFound)
+		t.Fatalf(
+			"GET /api/echo status = %d, want %d with custom mount root",
+			recAPI.Code,
+			http.StatusNotFound,
+		)
 	}
 }
 
-func TestInitWithDefaultRouter_SupportedMethodsCasingIsNormalized(t *testing.T) {
+func TestInitWithDefaultRouter_SupportedMethodsCasingIsNormalized(
+	t *testing.T,
+) {
 	fixture := newTestFixture(t, testFixtureOptions{
 		actionsRouterOpts: ActionsRouterOptions{
 			SupportedMethods: []string{"get"},
@@ -1084,7 +1262,7 @@ func TestInitWithDefaultRouter_SupportedMethodsCasingIsNormalized(t *testing.T) 
 		Name string `json:"name"`
 	}
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodGet,
 		"/echo",
@@ -1093,18 +1271,24 @@ func TestInitWithDefaultRouter_SupportedMethodsCasingIsNormalized(t *testing.T) 
 		}),
 	)
 
-	router := app.InitWithDefaultRouter()
+	router := app.MustInitWithDefaultRouter()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/echo?name=ok", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET status = %d, want %d with lowercase configured method", rec.Code, http.StatusOK)
+		t.Fatalf(
+			"GET status = %d, want %d with lowercase configured method",
+			rec.Code,
+			http.StatusOK,
+		)
 	}
 }
 
-func TestInitWithDefaultRouter_ActionsHeadFallsBackToGetWithoutBody(t *testing.T) {
+func TestInitWithDefaultRouter_ActionsHeadFallsBackToGetWithoutBody(
+	t *testing.T,
+) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
@@ -1113,7 +1297,7 @@ func TestInitWithDefaultRouter_ActionsHeadFallsBackToGetWithoutBody(t *testing.T
 		Count int    `json:"count"`
 	}
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodGet,
 		"/echo",
@@ -1122,23 +1306,33 @@ func TestInitWithDefaultRouter_ActionsHeadFallsBackToGetWithoutBody(t *testing.T
 		}),
 	)
 
-	router := app.InitWithDefaultRouter()
+	router := app.MustInitWithDefaultRouter()
 
-	req := httptest.NewRequest(http.MethodHead, "/api/echo?name=head&count=5", nil)
+	req := httptest.NewRequest(
+		http.MethodHead,
+		"/api/echo?name=head&count=5",
+		nil,
+	)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("HEAD status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.GetBuildID() {
-		t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.GetBuildID())
+	if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.BuildID() {
+		t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.BuildID())
 	}
-	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(
+		got,
+		"application/json",
+	) {
 		t.Fatalf("Content-Type = %q, want application/json prefix", got)
 	}
 	if rec.Body.Len() != 0 {
-		t.Fatalf("HEAD response should not include body, got %q", rec.Body.String())
+		t.Fatalf(
+			"HEAD response should not include body, got %q",
+			rec.Body.String(),
+		)
 	}
 }
 
@@ -1157,34 +1351,54 @@ func TestInitWithDefaultRouter_LoadersHeadContracts(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/hello",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
-			return map[string]string{"message": "hi"}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
+				return map[string]string{"message": "hi"}, nil
+			},
+		),
 	)
 
-	router := app.InitWithDefaultRouter()
+	router := app.MustInitWithDefaultRouter()
 
-	t.Run("current_build_json_head_has_headers_and_no_body", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodHead, "/hello?vorma_json="+app.GetBuildID(), nil)
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
+	t.Run(
+		"current_build_json_head_has_headers_and_no_body",
+		func(t *testing.T) {
+			req := httptest.NewRequest(
+				http.MethodHead,
+				"/hello?vorma_json="+app.BuildID(),
+				nil,
+			)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("HEAD status = %d, want %d", rec.Code, http.StatusOK)
-		}
-		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.GetBuildID() {
-			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.GetBuildID())
-		}
-		if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
-			t.Fatalf("Content-Type = %q, want application/json prefix", got)
-		}
-		if rec.Body.Len() != 0 {
-			t.Fatalf("HEAD response should not include body, got %q", rec.Body.String())
-		}
-	})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("HEAD status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.BuildID() {
+				t.Fatalf(
+					"%s = %q, want %q",
+					VormaBuildIDHeaderKey,
+					got,
+					app.BuildID(),
+				)
+			}
+			if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(
+				got,
+				"application/json",
+			) {
+				t.Fatalf("Content-Type = %q, want application/json prefix", got)
+			}
+			if rec.Body.Len() != 0 {
+				t.Fatalf(
+					"HEAD response should not include body, got %q",
+					rec.Body.String(),
+				)
+			}
+		},
+	)
 
 	t.Run("html_head_has_headers_and_no_body", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodHead, "/hello", nil)
@@ -1194,38 +1408,67 @@ func TestInitWithDefaultRouter_LoadersHeadContracts(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("HEAD status = %d, want %d", rec.Code, http.StatusOK)
 		}
-		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.GetBuildID() {
-			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.GetBuildID())
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.BuildID() {
+			t.Fatalf(
+				"%s = %q, want %q",
+				VormaBuildIDHeaderKey,
+				got,
+				app.BuildID(),
+			)
 		}
-		if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(
+			got,
+			"text/html",
+		) {
 			t.Fatalf("Content-Type = %q, want text/html prefix", got)
 		}
 		if rec.Body.Len() != 0 {
-			t.Fatalf("HEAD response should not include body, got %q", rec.Body.String())
+			t.Fatalf(
+				"HEAD response should not include body, got %q",
+				rec.Body.String(),
+			)
 		}
 	})
 
-	t.Run("stale_build_json_head_sets_reload_header_and_no_body", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodHead, "/hello?vorma_json=stale-build&x=1", nil)
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
+	t.Run(
+		"stale_build_json_head_sets_reload_header_and_no_body",
+		func(t *testing.T) {
+			req := httptest.NewRequest(
+				http.MethodHead,
+				"/hello?vorma_json=stale-build&x=1",
+				nil,
+			)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("HEAD status = %d, want %d", rec.Code, http.StatusOK)
-		}
-		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.GetBuildID() {
-			t.Fatalf("%s = %q, want %q", VormaBuildIDHeaderKey, got, app.GetBuildID())
-		}
-		if got, want := rec.Header().Get("X-Vorma-Reload"), "/hello?x=1"; got != want {
-			t.Fatalf("X-Vorma-Reload = %q, want %q", got, want)
-		}
-		if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
-			t.Fatalf("Content-Type = %q, want application/json prefix", got)
-		}
-		if rec.Body.Len() != 0 {
-			t.Fatalf("HEAD response should not include body, got %q", rec.Body.String())
-		}
-	})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("HEAD status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if got := rec.Header().Get(VormaBuildIDHeaderKey); got != app.BuildID() {
+				t.Fatalf(
+					"%s = %q, want %q",
+					VormaBuildIDHeaderKey,
+					got,
+					app.BuildID(),
+				)
+			}
+			if got, want := rec.Header().Get("X-Vorma-Reload"), "/hello?x=1"; got != want {
+				t.Fatalf("X-Vorma-Reload = %q, want %q", got, want)
+			}
+			if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(
+				got,
+				"application/json",
+			) {
+				t.Fatalf("Content-Type = %q, want application/json prefix", got)
+			}
+			if rec.Body.Len() != 0 {
+				t.Fatalf(
+					"HEAD response should not include body, got %q",
+					rec.Body.String(),
+				)
+			}
+		},
+	)
 }
 
 func TestFormDataTSTypeRaw(t *testing.T) {

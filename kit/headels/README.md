@@ -114,12 +114,12 @@ _ = headHTML
 - `func (h *HeadEls) CrossOrigin(crossOrigin string) *Attr`
 - `func (h *HeadEls) DangerousInnerHTML(content string) InnerHTML`
 - `func (h *HeadEls) Description(description string)`
-- `func (Attr) GetType() htmlutilType`
-- `func (BooleanAttribute) GetType() htmlutilType`
-- `func (InnerHTML) GetType() htmlutilType`
-- `func (SelfClosing) GetType() htmlutilType`
-- `func (Tag) GetType() htmlutilType`
-- `func (TextContent) GetType() htmlutilType`
+- `func (Attr) Type() htmlutilType`
+- `func (BooleanAttribute) Type() htmlutilType`
+- `func (InnerHTML) Type() htmlutilType`
+- `func (SelfClosing) Type() htmlutilType`
+- `func (Tag) Type() htmlutilType`
+- `func (TextContent) Type() htmlutilType`
 - `func (h *HeadEls) Href(href string) *Attr`
 - `func (inst *Instance) InitUniqueRules(e *HeadEls)`
 - `func (a *Attr) KnownSafe() *Attr`

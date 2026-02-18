@@ -120,11 +120,11 @@ func decorateLoaderCtx(rd *vorma.LoaderReqData) *LoaderCtx {
 	return &LoaderCtx{LoaderReqData: rd}
 }
 
-func NewLoader[O any](
+func DefineLoaderForRegistration[O any](
 	pattern string,
 	loader func(*LoaderCtx) (O, error),
 ) *vorma.Loader[O] {
-	return vorma.NewLoader(
+	return vorma.DefineLoaderForRegistration(
 		app.App,
 		pattern,
 		loader,
@@ -132,7 +132,7 @@ func NewLoader[O any](
 	)
 }
 
-var _ = NewLoader("/users", func(*LoaderCtx) (string, error) {
+var _ = DefineLoaderForRegistration("/users", func(*LoaderCtx) (string, error) {
 	return "users", nil
 })
 `))
@@ -158,7 +158,7 @@ func newLoader(
 	pattern string,
 	loader func(*LoaderCtx) (string, error),
 ) *vorma.Loader[string] {
-	return vorma.NewLoader(
+	return vorma.DefineLoaderForRegistration(
 		app.App,
 		pattern,
 		loader,

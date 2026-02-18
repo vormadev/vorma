@@ -12,7 +12,7 @@ func TestProxy_Status(t *testing.T) {
 		p := NewProxy()
 		p.SetStatus(200)
 
-		status, text := p.GetStatus()
+		status, text := p.Status()
 		if status != 200 {
 			t.Errorf("Expected status 200, got %d", status)
 		}
@@ -25,7 +25,7 @@ func TestProxy_Status(t *testing.T) {
 		p := NewProxy()
 		p.SetStatus(400, "Bad Request Custom")
 
-		status, text := p.GetStatus()
+		status, text := p.Status()
 		if status != 400 {
 			t.Errorf("Expected status 400, got %d", status)
 		}
@@ -74,7 +74,7 @@ func TestProxy_Status(t *testing.T) {
 		p.SetStatus(400, "Bad Request Custom")
 		p.SetStatus(500)
 
-		status, text := p.GetStatus()
+		status, text := p.Status()
 		if status != 500 {
 			t.Fatalf("expected status 500, got %d", status)
 		}
@@ -90,11 +90,11 @@ func TestProxy_Headers(t *testing.T) {
 		p.SetHeader("X-Test", "value1")
 		p.SetHeader("X-Test", "value2")
 
-		if v := p.GetHeader("X-Test"); v != "value2" {
+		if v := p.Header("X-Test"); v != "value2" {
 			t.Errorf("Expected 'value2', got %q", v)
 		}
 
-		if vals := p.GetHeaders("X-Test"); len(vals) != 1 || vals[0] != "value2" {
+		if vals := p.Headers("X-Test"); len(vals) != 1 || vals[0] != "value2" {
 			t.Errorf("Expected ['value2'], got %v", vals)
 		}
 	})
@@ -105,11 +105,11 @@ func TestProxy_Headers(t *testing.T) {
 		p.AddHeader("X-Test", "value2")
 		p.AddHeader("X-Test", "value3")
 
-		if v := p.GetHeader("X-Test"); v != "value1" {
-			t.Errorf("GetHeader should return first value, got %q", v)
+		if v := p.Header("X-Test"); v != "value1" {
+			t.Errorf("Header should return first value, got %q", v)
 		}
 
-		vals := p.GetHeaders("X-Test")
+		vals := p.Headers("X-Test")
 		if len(vals) != 3 {
 			t.Errorf("Expected 3 values, got %d", len(vals))
 		}
@@ -121,12 +121,12 @@ func TestProxy_Headers(t *testing.T) {
 		}
 	})
 
-	t.Run("GetHeader_NonExistent", func(t *testing.T) {
+	t.Run("Header_NonExistent", func(t *testing.T) {
 		p := NewProxy()
-		if v := p.GetHeader("X-Missing"); v != "" {
+		if v := p.Header("X-Missing"); v != "" {
 			t.Errorf("Expected empty string for missing header, got %q", v)
 		}
-		if vals := p.GetHeaders("X-Missing"); vals != nil {
+		if vals := p.Headers("X-Missing"); vals != nil {
 			t.Errorf("Expected nil for missing headers, got %v", vals)
 		}
 	})
@@ -136,10 +136,10 @@ func TestProxy_Headers(t *testing.T) {
 		p.SetHeader("content-type", "application/json")
 		p.AddHeader("x-forwarded-for", "10.0.0.1")
 
-		if got := p.GetHeader("Content-Type"); got != "application/json" {
+		if got := p.Header("Content-Type"); got != "application/json" {
 			t.Fatalf("expected canonical key lookup to work, got %q", got)
 		}
-		forwarded := p.GetHeaders("X-Forwarded-For")
+		forwarded := p.Headers("X-Forwarded-For")
 		if len(forwarded) != 1 || forwarded[0] != "10.0.0.1" {
 			t.Fatalf("expected canonical header values, got %v", forwarded)
 		}
@@ -156,7 +156,7 @@ func TestProxy_Cookies(t *testing.T) {
 		p.SetCookie(cookie1)
 		p.SetCookie(cookie2)
 
-		cookies := p.GetCookies()
+		cookies := p.Cookies()
 		if len(cookies) != 2 {
 			t.Errorf("Expected 2 cookies, got %d", len(cookies))
 		}
@@ -174,7 +174,7 @@ func TestProxy_Cookies(t *testing.T) {
 		p := NewProxy()
 		p.SetCookie(nil)
 
-		cookies := p.GetCookies()
+		cookies := p.Cookies()
 		if len(cookies) != 0 {
 			t.Fatalf("expected no cookies, got %d", len(cookies))
 		}
@@ -195,10 +195,10 @@ func TestProxy_Redirects(t *testing.T) {
 		if !p.IsRedirect() {
 			t.Error("Expected IsRedirect to be true")
 		}
-		if p.GetLocation() != "/login" {
-			t.Errorf("Expected location '/login', got %q", p.GetLocation())
+		if p.Location() != "/login" {
+			t.Errorf("Expected location '/login', got %q", p.Location())
 		}
-		status, _ := p.GetStatus()
+		status, _ := p.Status()
 		if status != 302 {
 			t.Errorf("Expected status 302, got %d", status)
 		}
@@ -222,13 +222,13 @@ func TestProxy_Redirects(t *testing.T) {
 		}
 
 		// Should set status to 200 if not already set
-		status, _ := p.GetStatus()
+		status, _ := p.Status()
 		if status != 200 {
 			t.Errorf("Expected status 200, got %d", status)
 		}
 
 		// Should have client redirect header
-		if h := p.GetHeader(ClientRedirectHeader); h != "https://example.com" {
+		if h := p.Header(ClientRedirectHeader); h != "https://example.com" {
 			t.Errorf("Expected client redirect header, got %q", h)
 		}
 	})
@@ -355,7 +355,7 @@ func TestMergeProxyResponses(t *testing.T) {
 
 		merged := MergeProxyResponses(p1, p2, p3)
 
-		status, text := merged.GetStatus()
+		status, text := merged.Status()
 		if status != 403 {
 			t.Errorf("Expected first error (403) to win, got %d", status)
 		}
@@ -376,7 +376,7 @@ func TestMergeProxyResponses(t *testing.T) {
 
 		merged := MergeProxyResponses(p1, p2, p3)
 
-		status, _ := merged.GetStatus()
+		status, _ := merged.Status()
 		if status != 202 {
 			t.Errorf("Expected last success (202) to win, got %d", status)
 		}
@@ -394,15 +394,15 @@ func TestMergeProxyResponses(t *testing.T) {
 		merged := MergeProxyResponses(p1, p2)
 
 		// Headers should be merged in order
-		vals := merged.GetHeaders("X-Test")
+		vals := merged.Headers("X-Test")
 		if len(vals) != 2 || vals[0] != "val1" || vals[1] != "val2" {
 			t.Errorf("Expected merged headers [val1, val2], got %v", vals)
 		}
 
-		if v := merged.GetHeader("X-Only-P1"); v != "p1" {
+		if v := merged.Header("X-Only-P1"); v != "p1" {
 			t.Errorf("Expected 'p1', got %q", v)
 		}
-		if v := merged.GetHeader("X-Only-P2"); v != "p2" {
+		if v := merged.Header("X-Only-P2"); v != "p2" {
 			t.Errorf("Expected 'p2', got %q", v)
 		}
 	})
@@ -418,7 +418,7 @@ func TestMergeProxyResponses(t *testing.T) {
 
 		merged := MergeProxyResponses(p1, p2)
 
-		cookies := merged.GetCookies()
+		cookies := merged.Cookies()
 		// Should have 3 unique cookies
 		cookieMap := make(map[string]string)
 		for _, c := range cookies {
@@ -448,11 +448,11 @@ func TestMergeProxyResponses(t *testing.T) {
 
 		merged := MergeProxyResponses(p1, p2, p3)
 
-		status, _ := merged.GetStatus()
+		status, _ := merged.Status()
 		if status != 302 {
 			t.Errorf("Expected status 302 (first redirect), got %d", status)
 		}
-		if loc := merged.GetLocation(); loc != "/login" {
+		if loc := merged.Location(); loc != "/login" {
 			t.Errorf("Expected location '/login' (first redirect), got %q", loc)
 		}
 	})
@@ -467,7 +467,7 @@ func TestMergeProxyResponses(t *testing.T) {
 
 		merged := MergeProxyResponses(p1, p2)
 
-		status, _ := merged.GetStatus()
+		status, _ := merged.Status()
 		if status != 403 {
 			t.Errorf("Expected error (403) to beat redirect, got %d", status)
 		}
@@ -486,7 +486,7 @@ func TestMergeProxyResponses(t *testing.T) {
 		merged := MergeProxyResponses(p1, p2)
 
 		// Redirect should override success status
-		status, _ := merged.GetStatus()
+		status, _ := merged.Status()
 		if status != 302 {
 			t.Errorf("Expected redirect to override success, got %d", status)
 		}
@@ -503,11 +503,11 @@ func TestMergeProxyResponses(t *testing.T) {
 
 		merged := MergeProxyResponses(nil, p1, nil)
 
-		status, _ := merged.GetStatus()
+		status, _ := merged.Status()
 		if status != 200 {
 			t.Fatalf("expected status 200, got %d", status)
 		}
-		cookies := merged.GetCookies()
+		cookies := merged.Cookies()
 		if len(cookies) != 1 {
 			t.Fatalf("expected one cookie, got %d", len(cookies))
 		}
@@ -535,7 +535,7 @@ func TestProxy_ClientRedirect_Override(t *testing.T) {
 		}
 
 		// Should only have one redirect header value - the last one
-		vals := p.GetHeaders(ClientRedirectHeader)
+		vals := p.Headers(ClientRedirectHeader)
 		if len(vals) != 1 {
 			t.Errorf("Expected 1 redirect value, got %d", len(vals))
 		}
@@ -556,7 +556,7 @@ func TestProxy_ClientRedirect_Override(t *testing.T) {
 		p.Redirect(req, "/third")
 
 		// Should have only the last redirect
-		vals := p.GetHeaders(ClientRedirectHeader)
+		vals := p.Headers(ClientRedirectHeader)
 		if len(vals) != 1 {
 			t.Errorf("Expected 1 redirect value, got %d", len(vals))
 		}
@@ -577,7 +577,7 @@ func TestProxy_SetHeader_Clears(t *testing.T) {
 		p.SetHeader("X-Custom", "value3") // Should clear previous
 		p.AddHeader("X-Custom", "value4")
 
-		vals := p.GetHeaders("X-Custom")
+		vals := p.Headers("X-Custom")
 
 		if len(vals) != 2 {
 			t.Errorf("Expected 2 values, got %d: %v", len(vals), vals)
@@ -594,7 +594,7 @@ func TestProxy_SetHeader_Clears(t *testing.T) {
 		p.SetHeader("X-Test", "second")
 		p.SetHeader("X-Test", "third")
 
-		vals := p.GetHeaders("X-Test")
+		vals := p.Headers("X-Test")
 		if len(vals) != 1 || vals[0] != "third" {
 			t.Errorf("Expected ['third'], got %v", vals)
 		}
@@ -747,7 +747,7 @@ func TestMergeProxyResponses_HeaderOperations(t *testing.T) {
 
 		merged := MergeProxyResponses(p1, p2)
 
-		vals := merged.GetHeaders("X-Test")
+		vals := merged.Headers("X-Test")
 		if len(vals) != 2 {
 			t.Errorf("Expected 2 values, got %d: %v", len(vals), vals)
 		}
@@ -769,7 +769,7 @@ func TestMergeProxyResponses_HeaderOperations(t *testing.T) {
 
 		merged := MergeProxyResponses(p1, p2, p3)
 
-		vals := merged.GetHeaders("Cache-Control")
+		vals := merged.Headers("Cache-Control")
 		// Should be ["max-age=3600", "must-revalidate"]
 		if len(vals) != 2 {
 			t.Errorf("Expected 2 values, got %d: %v", len(vals), vals)
@@ -791,7 +791,7 @@ func TestMergeProxyResponses_HeaderOperations(t *testing.T) {
 
 		merged := MergeProxyResponses(p1, p2, p3)
 
-		vals := merged.GetHeaders(ClientRedirectHeader)
+		vals := merged.Headers(ClientRedirectHeader)
 		if len(vals) != 1 {
 			t.Errorf("Expected 1 redirect value, got %d", len(vals))
 		}

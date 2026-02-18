@@ -317,7 +317,7 @@ func isMeta(el *htmlutil.Element) bool {
 /////// HIGH LEVEL
 /////////////////////////////////////////////////////////////////////
 
-type typeInterface interface{ GetType() htmlutilType }
+type typeInterface interface{ Type() htmlutilType }
 
 type htmlutilType string
 
@@ -345,12 +345,12 @@ func (a *Attr) KnownSafe() *Attr {
 	return a
 }
 
-func (Tag) GetType() htmlutilType              { return typeTag }
-func (Attr) GetType() htmlutilType             { return typeAttribute }
-func (BooleanAttribute) GetType() htmlutilType { return typeBooleanAttribute }
-func (InnerHTML) GetType() htmlutilType        { return typeInnerHTML }
-func (TextContent) GetType() htmlutilType      { return typeTextContent }
-func (SelfClosing) GetType() htmlutilType      { return typeSelfClosing }
+func (Tag) Type() htmlutilType              { return typeTag }
+func (Attr) Type() htmlutilType             { return typeAttribute }
+func (BooleanAttribute) Type() htmlutilType { return typeBooleanAttribute }
+func (InnerHTML) Type() htmlutilType        { return typeInnerHTML }
+func (TextContent) Type() htmlutilType      { return typeTextContent }
+func (SelfClosing) Type() htmlutilType      { return typeSelfClosing }
 
 // HeadEls is a collection of HTML head elements.
 // It is safe for concurrent use.
@@ -377,7 +377,7 @@ func (h *HeadEls) Add(defs ...typeInterface) {
 	el.BooleanAttributes = make([]string, 0)
 
 	for _, def := range defs {
-		switch def.GetType() {
+		switch def.Type() {
 		case typeTag:
 			el.Tag = string(def.(Tag))
 		case typeAttribute:

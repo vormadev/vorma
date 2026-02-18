@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"testing/fstest"
 )
 
 // TestEnsureDir tests the EnsureDir function.
@@ -39,7 +40,7 @@ func TestEnsureDir(t *testing.T) {
 	}
 }
 
-// TestGetCallerDir tests the GetCallerDir function.
+// TestGetCallerDir tests the CallerDir function.
 func TestGetCallerDir(t *testing.T) {
 	expectedDir := filepath.Dir(getCurrentFilePath())
 	callerDir := GetCallerDir()
@@ -301,4 +302,56 @@ func TestFromGob(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for nil file, got nil")
 	}
+}
+
+func TestMustSub_ReturnsSubFS(t *testing.T) {
+	fileSystem := fstest.MapFS{
+		"parent/child.txt": {
+			Data: []byte("hello"),
+		},
+	}
+
+	subFileSystem := MustSub(fileSystem, "parent")
+	readBytes, err := fs.ReadFile(subFileSystem, "child.txt")
+	if err != nil {
+		t.Fatalf("failed to read file from MustSub result: %v", err)
+	}
+	if string(readBytes) != "hello" {
+		t.Fatalf("MustSub file content = %q, want %q", string(readBytes), "hello")
+	}
+}
+
+func TestMustSub_PanicsForInvalidSubdirectoryPath(t *testing.T) {
+	defer func() {
+		recoveredValue := recover()
+		if recoveredValue == nil {
+			t.Fatal("expected MustSub to panic for invalid subdirectory path")
+		}
+	}()
+
+	_ = MustSub(fstest.MapFS{}, "..")
+}
+
+func TestMustReadFile_ReturnsFileContents(t *testing.T) {
+	fileSystem := fstest.MapFS{
+		"content.txt": {
+			Data: []byte("value"),
+		},
+	}
+
+	readBytes := MustReadFile(fileSystem, "content.txt")
+	if string(readBytes) != "value" {
+		t.Fatalf("MustReadFile() = %q, want %q", string(readBytes), "value")
+	}
+}
+
+func TestMustReadFile_PanicsForMissingFile(t *testing.T) {
+	defer func() {
+		recoveredValue := recover()
+		if recoveredValue == nil {
+			t.Fatal("expected MustReadFile to panic for missing file")
+		}
+	}()
+
+	_ = MustReadFile(fstest.MapFS{}, "missing.txt")
 }

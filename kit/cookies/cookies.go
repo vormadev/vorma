@@ -33,8 +33,8 @@ type Manager struct {
 }
 
 type ManagerConfig struct {
-	GetKeyset func() *keyset.Keyset
-	GetIsDev  func() bool // Optional. Resolves to false if nil.
+	KeysetFunc func() *keyset.Keyset
+	IsDevFunc  func() bool // Optional. Resolves to false if nil.
 	// The manager's default SameSite setting.
 	DefaultSameSite SameSite
 	// The manager's default for cookie partitioning.
@@ -44,8 +44,8 @@ type ManagerConfig struct {
 }
 
 func NewManager(cfg ManagerConfig) *Manager {
-	if cfg.GetKeyset == nil {
-		panic("GetKeyset function cannot be nil")
+	if cfg.KeysetFunc == nil {
+		panic("KeysetFunc function cannot be nil")
 	}
 	if cfg.DefaultSameSite == sameSiteDefault {
 		cfg.DefaultSameSite = SameSiteLaxMode
@@ -59,8 +59,8 @@ func NewManager(cfg ManagerConfig) *Manager {
 	return &Manager{cfg: &cfg}
 }
 
-func (mgr *Manager) GetIsDev() bool {
-	return mgr.cfg.GetIsDev != nil && mgr.cfg.GetIsDev()
+func (mgr *Manager) IsDev() bool {
+	return mgr.cfg.IsDevFunc != nil && mgr.cfg.IsDevFunc()
 }
 
 type SecureCookieConfig struct {
@@ -145,12 +145,12 @@ func (mgr *Manager) buildCookie(spec cookieSpec) *http.Cookie {
 	name := spec.name
 	path := spec.path
 	domain := spec.domain
-	secure := !mgr.GetIsDev()
-	partitioned := spec.partitioned && !mgr.GetIsDev()
+	secure := !mgr.IsDev()
+	partitioned := spec.partitioned && !mgr.IsDev()
 
 	if spec.useHostPrefix {
 		name = mgr.hostPrefixName(spec.name)
-		if !mgr.GetIsDev() {
+		if !mgr.IsDev() {
 			secure = true
 			domain = ""
 			path = "/"
@@ -171,7 +171,7 @@ func (mgr *Manager) buildCookie(spec cookieSpec) *http.Cookie {
 }
 
 func (mgr *Manager) hostPrefixName(name string) string {
-	if mgr.GetIsDev() {
+	if mgr.IsDev() {
 		return "__Dev-" + name
 	}
 	return "__Host-" + name
@@ -190,7 +190,7 @@ type secureCookie[T any] struct {
 }
 
 func (c *secureCookie[T]) New(data T) (*http.Cookie, error) {
-	encrypted, err := securestring.Serialize(c.mgr.cfg.GetKeyset(), data)
+	encrypted, err := securestring.Serialize(c.mgr.cfg.KeysetFunc(), data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode cookie value: %w", err)
 	}
@@ -212,7 +212,10 @@ func (c *secureCookie[T]) Get(r *http.Request) (T, error) {
 	if cookie.Value == "" {
 		return *new(T), fmt.Errorf("cookie value is empty")
 	}
-	return securestring.Parse[T](c.mgr.cfg.GetKeyset(), securestring.SecureString(cookie.Value))
+	return securestring.Parse[T](
+		c.mgr.cfg.KeysetFunc(),
+		securestring.SecureString(cookie.Value),
+	)
 }
 
 func (c *secureCookie[T]) NewDeletion() *http.Cookie {
@@ -291,7 +294,11 @@ func (c *clientReadableCookie[T]) SetWithProxy(rp *response.Proxy, value T) {
 	cookie := c.New(value)
 	rp.SetCookie(cookie)
 }
-func (c *clientReadableCookie[T]) SetWithWriter(w http.ResponseWriter, value T) {
+
+func (c *clientReadableCookie[T]) SetWithWriter(
+	w http.ResponseWriter,
+	value T,
+) {
 	cookie := c.New(value)
 	http.SetCookie(w, cookie)
 }
@@ -341,7 +348,9 @@ type SecureCookieNonHostOnly[T any] struct {
 }
 
 // Panics if you fail to provide a Manager or Name via config struct.
-func NewSecureCookieNonHostOnly[T any](cfg SecureCookieNonHostOnlyConfig) *SecureCookieNonHostOnly[T] {
+func NewSecureCookieNonHostOnly[T any](
+	cfg SecureCookieNonHostOnlyConfig,
+) *SecureCookieNonHostOnly[T] {
 	if cfg.Manager == nil {
 		panic("NewSecureCookieNonHostOnly: Manager is required.")
 	}
@@ -358,7 +367,9 @@ func NewSecureCookieNonHostOnly[T any](cfg SecureCookieNonHostOnlyConfig) *Secur
 		useHostPrefix: false,
 		partitioned:   cfg.Manager.resolvePartition(cfg.Partition),
 	}
-	return &SecureCookieNonHostOnly[T]{secureCookie[T]{mgr: cfg.Manager, spec: spec}}
+	return &SecureCookieNonHostOnly[T]{
+		secureCookie[T]{mgr: cfg.Manager, spec: spec},
+	}
 }
 
 type ClientReadableCookie[T ~string] struct {
@@ -366,7 +377,9 @@ type ClientReadableCookie[T ~string] struct {
 }
 
 // Panics if you fail to provide a Manager or Name via config struct.
-func NewClientReadableCookie[T ~string](cfg ClientReadableCookieConfig) *ClientReadableCookie[T] {
+func NewClientReadableCookie[T ~string](
+	cfg ClientReadableCookieConfig,
+) *ClientReadableCookie[T] {
 	if cfg.Manager == nil {
 		panic("NewClientReadableCookie: Manager is required.")
 	}
@@ -383,7 +396,9 @@ func NewClientReadableCookie[T ~string](cfg ClientReadableCookieConfig) *ClientR
 		useHostPrefix: true,
 		partitioned:   cfg.Manager.resolvePartition(cfg.Partition),
 	}
-	return &ClientReadableCookie[T]{clientReadableCookie[T]{mgr: cfg.Manager, spec: spec}}
+	return &ClientReadableCookie[T]{
+		clientReadableCookie[T]{mgr: cfg.Manager, spec: spec},
+	}
 }
 
 type ClientReadableCookieNonHostOnly[T ~string] struct {
@@ -391,7 +406,9 @@ type ClientReadableCookieNonHostOnly[T ~string] struct {
 }
 
 // Panics if you fail to provide a Manager or Name via config struct.
-func NewClientReadableCookieNonHostOnly[T ~string](cfg ClientReadableCookieNonHostOnlyConfig) *ClientReadableCookieNonHostOnly[T] {
+func NewClientReadableCookieNonHostOnly[T ~string](
+	cfg ClientReadableCookieNonHostOnlyConfig,
+) *ClientReadableCookieNonHostOnly[T] {
 	if cfg.Manager == nil {
 		panic("NewClientReadableCookieNonHostOnly: Manager is required.")
 	}
@@ -408,5 +425,7 @@ func NewClientReadableCookieNonHostOnly[T ~string](cfg ClientReadableCookieNonHo
 		useHostPrefix: false,
 		partitioned:   cfg.Manager.resolvePartition(cfg.Partition),
 	}
-	return &ClientReadableCookieNonHostOnly[T]{clientReadableCookie[T]{mgr: cfg.Manager, spec: spec}}
+	return &ClientReadableCookieNonHostOnly[T]{
+		clientReadableCookie[T]{mgr: cfg.Manager, spec: spec},
+	}
 }

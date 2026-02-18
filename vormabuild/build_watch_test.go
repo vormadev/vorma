@@ -122,7 +122,7 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
+	parsedCfg := app.Wave.BuildtimeParsedConfig()
 	injectDefaultWatchPatternsInConfig(parsedCfg, app)
 	injectDefaultWatchPatternsInConfig(parsedCfg, app)
 
@@ -130,7 +130,7 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 		t.Fatalf("len(FrameworkWatchPatterns) = %d, want %d", len(parsedCfg.FrameworkWatchPatterns), 3)
 	}
 
-	templatePath := filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation)
+	templatePath := filepath.Join(app.Wave.PrivateStaticDir(), app.Config.HTMLTemplateLocation)
 	expectedPatternCounts := map[string]int{
 		normalizeFrameworkWatchPatternPath(templatePath): 1,
 		"**/*.go": 1,
@@ -155,7 +155,7 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
+	parsedCfg := app.Wave.BuildtimeParsedConfig()
 
 	customGoWatchPattern := wave.WatchedFile{
 		Pattern: "**/*.go",
@@ -382,7 +382,7 @@ func TestHTMLTemplateWatchPattern_UsesPrivateStaticDirPrefix(t *testing.T) {
 		t.Fatal("expected html template watch pattern")
 	}
 
-	expectedPattern := filepath.Join(app.Wave.GetPrivateStaticDir(), "templates/custom.entry.go.html")
+	expectedPattern := filepath.Join(app.Wave.PrivateStaticDir(), "templates/custom.entry.go.html")
 	expectedPattern = normalizeFrameworkWatchPatternPath(expectedPattern)
 	if pattern.Pattern != expectedPattern {
 		t.Fatalf("Pattern = %q, want %q", pattern.Pattern, expectedPattern)

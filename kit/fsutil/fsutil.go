@@ -30,7 +30,7 @@ func EnsureDirs(paths ...string) error {
 	return nil
 }
 
-// GetCallerDir returns the directory of the calling function.
+// CallerDir returns the directory of the calling function.
 func GetCallerDir() string {
 	_, file, _, _ := runtime.Caller(1)
 	return filepath.Dir(file)

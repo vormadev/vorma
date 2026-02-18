@@ -39,9 +39,9 @@ type testFixtureOptions struct {
 func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	tb.Helper()
 
-	tb.Setenv("WAVE_MODE", "")
+	tb.Setenv("__WAVE_MODE", "")
 	tb.Setenv("PORT", "8080")
-	tb.Setenv("WAVE_PORT_HAS_BEEN_SET", "true")
+	tb.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
 
 	rootDir := tb.TempDir()
 	staticDir := filepath.Join(rootDir, "dist", "static")
@@ -67,8 +67,24 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	if stageTwo == nil {
 		stageTwo = defaultPathsFile("build-stage2", nil)
 	}
-	mustWriteJSONFile(tb, filepath.Join(privateDir, VormaOutDirname, VormaPathsStageOneJSONFileName), stageOne)
-	mustWriteJSONFile(tb, filepath.Join(privateDir, VormaOutDirname, VormaPathsStageTwoJSONFileName), stageTwo)
+	mustWriteJSONFile(
+		tb,
+		filepath.Join(
+			privateDir,
+			VormaOutDirname,
+			VormaPathsStageOneJSONFileName,
+		),
+		stageOne,
+	)
+	mustWriteJSONFile(
+		tb,
+		filepath.Join(
+			privateDir,
+			VormaOutDirname,
+			VormaPathsStageTwoJSONFileName,
+		),
+		stageTwo,
+	)
 
 	coreCfg := wave.CoreConfig{
 		MainAppEntry: "backend/cmd/serve",
@@ -87,10 +103,18 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	}
 
 	if o.enableCriticalCSS {
-		mustWriteFile(tb, filepath.Join(internalDir, "critical.css"), []byte("body{color:black;}"))
+		mustWriteFile(
+			tb,
+			filepath.Join(internalDir, "critical.css"),
+			[]byte("body{color:black;}"),
+		)
 	}
 	if o.enableNonCriticalCSS {
-		mustWriteFile(tb, filepath.Join(internalDir, "normal_css_file_ref.txt"), []byte("vorma_out_styles.css"))
+		mustWriteFile(
+			tb,
+			filepath.Join(internalDir, "normal_css_file_ref.txt"),
+			[]byte("vorma_out_styles.css"),
+		)
 	}
 
 	rawCfg := struct {
@@ -127,16 +151,16 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 
 	app := NewVormaApp(VormaAppConfig{
 		Wave:                 w,
-		GetDefaultHeadEls:    o.getDefaultHeadEls,
-		GetHeadDedupeKeys:    o.getHeadDedupeKeys,
-		GetRootTemplateData:  o.getRootTemplateData,
+		DefaultHeadElsFunc:   o.getDefaultHeadEls,
+		HeadDedupeKeysFunc:   o.getHeadDedupeKeys,
+		RootTemplateDataFunc: o.getRootTemplateData,
 		LoadersRouterOptions: o.loadersRouterOpts,
 		ActionsRouterOptions: o.actionsRouterOpts,
 		AdHocTypes:           o.adHocTypes,
 		ExtraTSCode:          o.extraTSCode,
 		Logger:               slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
-	app.Init()
+	app.MustInit()
 
 	return &testFixture{
 		app:        app,

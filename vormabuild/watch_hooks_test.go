@@ -30,7 +30,7 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		t,
 		patterns,
 		normalizeFrameworkWatchPatternPath(
-			filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation),
+			filepath.Join(app.Wave.PrivateStaticDir(), app.Config.HTMLTemplateLocation),
 		),
 	)
 	if routePatternHook == nil || templatePatternHook == nil {
@@ -91,8 +91,8 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if action.TriggerRestart || action.RecompileGo {
 			t.Fatalf("success action should not restart/recompile: %#v", action)
 		}
-		if !strings.HasPrefix(app.GetBuildID(), "dev_fast_") {
-			t.Fatalf("expected dev_fast build ID after route rebuild, got %q", app.GetBuildID())
+		if !strings.HasPrefix(app.BuildID(), "dev_fast_") {
+			t.Fatalf("expected dev_fast build ID after route rebuild, got %q", app.BuildID())
 		}
 		if routeResolverCalls != 1 {
 			t.Fatalf("expected exactly one route resolver call, got %d", routeResolverCalls)
@@ -125,8 +125,8 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		if action != nil {
 			t.Fatalf("expected nil action when app stopped for batch, got %#v", action)
 		}
-		if !strings.HasPrefix(app.GetBuildID(), "dev_fast_") {
-			t.Fatalf("expected route rebuild to still run, got build ID %q", app.GetBuildID())
+		if !strings.HasPrefix(app.BuildID(), "dev_fast_") {
+			t.Fatalf("expected route rebuild to still run, got build ID %q", app.BuildID())
 		}
 		if routeResolverCalls != 2 {
 			t.Fatalf("expected no additional route resolver call when app stopped, got %d", routeResolverCalls)

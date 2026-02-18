@@ -16,7 +16,7 @@ import (
 )
 
 // Returns: linesSlice, versionLineIdx, currentVersionStr
-func PackageJSONFromString(content string) ([]string, int, string) {
+func MustPackageJSONFromString(content string) ([]string, int, string) {
 	lines, err := stringsutil.CollectLines(content)
 	if err != nil {
 		panic(err)
@@ -43,10 +43,10 @@ func PackageJSONFromString(content string) ([]string, int, string) {
 }
 
 // Returns: linesSlice, versionLineIdx, currentVersionStr
-func PackageJSONFromFile(targetFile string) ([]string, int, string) {
+func MustPackageJSONFromFile(targetFile string) ([]string, int, string) {
 	file, err := os.ReadFile(targetFile)
 	if err != nil {
 		panic(err)
 	}
-	return PackageJSONFromString(string(file))
+	return MustPackageJSONFromString(string(file))
 }

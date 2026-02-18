@@ -10,7 +10,12 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 )
 
-func setPatternMetadata(properties map[string]any, pattern string, dynamicRune rune, splatRune rune) {
+func setPatternMetadata(
+	properties map[string]any,
+	pattern string,
+	dynamicRune rune,
+	splatRune rune,
+) {
 	params := extractDynamicParamsFromPattern(pattern, dynamicRune)
 	if len(params) > 0 {
 		properties["params"] = params
@@ -82,7 +87,7 @@ export const vormaAppConfig = {
 	actionsSplatRune: "%s",
 	loadersDynamicRune: "%s",
 	loadersSplatRune: "%s",
-	loadersExplicitIndexSegment: "%s",
+	loadersExplicitIndexSegmentIdentifier: "%s",
 	__phantom: null as unknown as VormaApp,
 } as const;
 
@@ -116,7 +121,7 @@ export type RouteProps<P extends VormaLoaderPattern<VormaApp>> = VormaRouteProps
 		string(metadataConfig.actionsSplatRune),
 		string(metadataConfig.loadersDynamicRune),
 		string(metadataConfig.loadersSplatRune),
-		input.LoadersRouter.GetExplicitIndexSegment(),
+		input.LoadersRouter.ExplicitIndexSegmentIdentifier(),
 		input.Config.UIVariant,
 	))
 
@@ -137,7 +142,10 @@ func rootDataTypeAlias(foundRootData bool) string {
 	return "type VormaRootData = null;"
 }
 
-func extractDynamicParamsFromPattern(pattern string, dynamicRune rune) []string {
+func extractDynamicParamsFromPattern(
+	pattern string,
+	dynamicRune rune,
+) []string {
 	var dynamicParams []string
 	segments := matcher.ParseSegments(pattern)
 	for _, segment := range segments {

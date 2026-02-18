@@ -363,10 +363,10 @@ func (analysis *backendRoutePackageAnalysis) initialize() error {
 }
 
 var routeRegistrationHintNeedles = [][]byte{
-	[]byte("NewLoader"),
-	[]byte("NewAction"),
-	[]byte("RegisterNestedTaskHandler"),
-	[]byte("RegisterTaskHandler"),
+	[]byte("DefineLoaderForRegistration"),
+	[]byte("DefineActionForRegistration"),
+	[]byte("AddNestedTaskHandler"),
+	[]byte("AddTaskHandler"),
 }
 
 func (analysis *backendRoutePackageAnalysis) packageContainsRouteRegistrationHints() (bool, error) {
@@ -850,10 +850,10 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalRouteRegistrationCall
 }
 
 var canonicalRouteRegistrationFunctionNames = map[string]struct{}{
-	"NewLoader":                 {},
-	"NewAction":                 {},
-	"RegisterNestedTaskHandler": {},
-	"RegisterTaskHandler":       {},
+	"DefineLoaderForRegistration": {},
+	"DefineActionForRegistration": {},
+	"AddNestedTaskHandler":        {},
+	"AddTaskHandler":              {},
 }
 
 func callExpressionCouldReferenceCanonicalRouteRegistrationByName(
@@ -947,30 +947,30 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalRouteRegistrationCall
 	functionName string,
 ) (*canonicalRouteRegistrationCall, bool, error) {
 	switch {
-	case importPath == "github.com/vormadev/vorma" && functionName == "NewLoader":
+	case importPath == "github.com/vormadev/vorma" && functionName == "DefineLoaderForRegistration":
 		return analysis.parseCanonicalVormaLoaderRegistrationCall(
 			call,
 			parsedServerFile,
 			bindings,
 		)
-	case importPath == "github.com/vormadev/vorma" && functionName == "NewAction":
+	case importPath == "github.com/vormadev/vorma" && functionName == "DefineActionForRegistration":
 		return analysis.parseCanonicalVormaActionRegistrationCall(
 			call,
 			parsedServerFile,
 			bindings,
 		)
-	case importPath == "github.com/vormadev/vorma/kit/mux" && functionName == "RegisterNestedTaskHandler":
+	case importPath == "github.com/vormadev/vorma/kit/mux" && functionName == "AddNestedTaskHandler":
 		return analysis.parseCanonicalLoaderRegistrationCall(
 			call,
 			bindings,
-			"github.com/vormadev/vorma/kit/mux.RegisterNestedTaskHandler",
+			"github.com/vormadev/vorma/kit/mux.AddNestedTaskHandler",
 			1,
 		)
-	case importPath == "github.com/vormadev/vorma/kit/mux" && functionName == "RegisterTaskHandler":
+	case importPath == "github.com/vormadev/vorma/kit/mux" && functionName == "AddTaskHandler":
 		return analysis.parseCanonicalActionRegistrationCall(
 			call,
 			bindings,
-			"github.com/vormadev/vorma/kit/mux.RegisterTaskHandler",
+			"github.com/vormadev/vorma/kit/mux.AddTaskHandler",
 			1,
 			2,
 		)
@@ -988,7 +988,7 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaLoaderRegistrati
 	canonicalCall, isCanonicalCall, err := analysis.parseCanonicalLoaderRegistrationCall(
 		call,
 		bindings,
-		"github.com/vormadev/vorma.NewLoader",
+		"github.com/vormadev/vorma.DefineLoaderForRegistration",
 		1,
 	)
 	if err != nil || !isCanonicalCall {
@@ -996,7 +996,7 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaLoaderRegistrati
 	}
 	if len(call.Args) < 4 {
 		return nil, false, fmt.Errorf(
-			"github.com/vormadev/vorma.NewLoader requires app, pattern, handler, and decorateCtx arguments",
+			"github.com/vormadev/vorma.DefineLoaderForRegistration requires app, pattern, handler, and decorateCtx arguments",
 		)
 	}
 
@@ -1006,21 +1006,21 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaLoaderRegistrati
 
 	if err := analysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
 		appExpression,
-		"github.com/vormadev/vorma.NewLoader app argument",
+		"github.com/vormadev/vorma.DefineLoaderForRegistration app argument",
 		call.Pos(),
 	); err != nil {
 		return nil, false, err
 	}
 	if err := analysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
 		handlerExpression,
-		"github.com/vormadev/vorma.NewLoader handler argument",
+		"github.com/vormadev/vorma.DefineLoaderForRegistration handler argument",
 		call.Pos(),
 	); err != nil {
 		return nil, false, err
 	}
 	if err := analysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
 		decorateCtxExpression,
-		"github.com/vormadev/vorma.NewLoader decorateCtx argument",
+		"github.com/vormadev/vorma.DefineLoaderForRegistration decorateCtx argument",
 		call.Pos(),
 	); err != nil {
 		return nil, false, err
@@ -1045,7 +1045,7 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaActionRegistrati
 	canonicalCall, isCanonicalCall, err := analysis.parseCanonicalActionRegistrationCall(
 		call,
 		bindings,
-		"github.com/vormadev/vorma.NewAction",
+		"github.com/vormadev/vorma.DefineActionForRegistration",
 		1,
 		2,
 	)
@@ -1054,7 +1054,7 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaActionRegistrati
 	}
 	if len(call.Args) < 5 {
 		return nil, false, fmt.Errorf(
-			"github.com/vormadev/vorma.NewAction requires app, method, pattern, handler, and decorateCtx arguments",
+			"github.com/vormadev/vorma.DefineActionForRegistration requires app, method, pattern, handler, and decorateCtx arguments",
 		)
 	}
 
@@ -1066,7 +1066,7 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaActionRegistrati
 	)
 	if !isMethod {
 		return nil, false, fmt.Errorf(
-			"github.com/vormadev/vorma.NewAction method argument must resolve to compile-time string",
+			"github.com/vormadev/vorma.DefineActionForRegistration method argument must resolve to compile-time string",
 		)
 	}
 	resolvedPattern, isPattern := resolveCompileTimeStringExpression(
@@ -1077,7 +1077,7 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaActionRegistrati
 	)
 	if !isPattern {
 		return nil, false, fmt.Errorf(
-			"github.com/vormadev/vorma.NewAction pattern argument must resolve to compile-time string",
+			"github.com/vormadev/vorma.DefineActionForRegistration pattern argument must resolve to compile-time string",
 		)
 	}
 
@@ -1087,21 +1087,21 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaActionRegistrati
 
 	if err := analysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
 		appExpression,
-		"github.com/vormadev/vorma.NewAction app argument",
+		"github.com/vormadev/vorma.DefineActionForRegistration app argument",
 		call.Pos(),
 	); err != nil {
 		return nil, false, err
 	}
 	if err := analysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
 		handlerExpression,
-		"github.com/vormadev/vorma.NewAction handler argument",
+		"github.com/vormadev/vorma.DefineActionForRegistration handler argument",
 		call.Pos(),
 	); err != nil {
 		return nil, false, err
 	}
 	if err := analysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
 		decorateCtxExpression,
-		"github.com/vormadev/vorma.NewAction decorateCtx argument",
+		"github.com/vormadev/vorma.DefineActionForRegistration decorateCtx argument",
 		call.Pos(),
 	); err != nil {
 		return nil, false, err

@@ -22,9 +22,11 @@ func TestServerRun_ReturnsInitWatcherErrorWhenWatchRootMissing(t *testing.T) {
 	cfg.Watch.WatchRoot = filepath.Join(root, "does-not-exist")
 
 	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+		cfg: cfg,
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 1),
+		),
 	}
 
 	err := s.run()
@@ -48,9 +50,11 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 	}
 
 	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+		cfg: cfg,
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 1),
+		),
 	}
 
 	done := make(chan struct{})
@@ -76,12 +80,17 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
+		queueRestartRequestForToolingTests(
+			s,
+			restartRequest{recompileGo: false},
+		)
 	}()
 
 	err := s.run()
 	if err == nil {
-		t.Fatal("expected run to exit with watcher init error after retry cycle")
+		t.Fatal(
+			"expected run to exit with watcher init error after retry cycle",
+		)
 	}
 	if !strings.Contains(err.Error(), "init watcher") {
 		t.Fatalf("unexpected run error: %v", err)
@@ -94,7 +103,9 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 	}
 }
 
-func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(t *testing.T) {
+func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
+	t *testing.T,
+) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
@@ -107,9 +118,11 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(t *te
 	}
 
 	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+		cfg: cfg,
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 1),
+		),
 	}
 
 	done := make(chan struct{})
@@ -135,12 +148,17 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(t *te
 			t.Error(err)
 			return
 		}
-		queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
+		queueRestartRequestForToolingTests(
+			s,
+			restartRequest{recompileGo: false},
+		)
 	}()
 
 	err := s.run()
 	if err == nil {
-		t.Fatal("expected run to exit with watcher init error after sequential compile retry")
+		t.Fatal(
+			"expected run to exit with watcher init error after sequential compile retry",
+		)
 	}
 	if !strings.Contains(err.Error(), "init watcher") {
 		t.Fatalf("unexpected run error: %v", err)
@@ -169,9 +187,11 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 	}
 
 	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+		cfg: cfg,
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 1),
+		),
 	}
 
 	done := make(chan struct{})
@@ -197,7 +217,10 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
+		queueRestartRequestForToolingTests(
+			s,
+			restartRequest{recompileGo: false},
+		)
 	}()
 
 	err := s.run()
@@ -208,7 +231,10 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 		t.Fatalf("unexpected run error: %v", err)
 	}
 	if _, statErr := os.Stat(cfg.Dist.Binary()); statErr != nil {
-		t.Fatalf("expected first pass to compile binary before Vite start attempt, stat error: %v", statErr)
+		t.Fatalf(
+			"expected first pass to compile binary before Vite start attempt, stat error: %v",
+			statErr,
+		)
 	}
 
 	select {
@@ -218,7 +244,9 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 	}
 }
 
-func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T) {
+func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
+	t *testing.T,
+) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
@@ -230,10 +258,14 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 		t.Fatalf("failed writing initial tooling config: %v", err)
 	}
 
-	appPort := wave.MustGetPort()
+	appPort := mustConfigureAndGetWaveAppPortForToolingTests(t)
 	appListener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", appPort))
 	if err != nil {
-		t.Skipf("unable to bind app port %d for config-restart test: %v", appPort, err)
+		t.Skipf(
+			"unable to bind app port %d for config-restart test: %v",
+			appPort,
+			err,
+		)
 	}
 	defer appListener.Close()
 
@@ -252,9 +284,11 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 	go appServer.Serve(appListener)
 
 	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+		cfg: cfg,
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 1),
+		),
 	}
 
 	done := make(chan struct{})
@@ -271,7 +305,11 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 				t.Error(err)
 				return
 			}
-			sendRestartRequestWithTimeout(s, restartRequest{recompileGo: false}, 250*time.Millisecond)
+			sendRestartRequestWithTimeout(
+				s,
+				restartRequest{recompileGo: false},
+				250*time.Millisecond,
+			)
 			return
 		}
 
@@ -288,7 +326,11 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 				t.Error(err)
 				return
 			}
-			sendRestartRequestWithTimeout(s, restartRequest{recompileGo: false}, 250*time.Millisecond)
+			sendRestartRequestWithTimeout(
+				s,
+				restartRequest{recompileGo: false},
+				250*time.Millisecond,
+			)
 			return
 		}
 
@@ -302,7 +344,11 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 				t.Error(err)
 				return
 			}
-			sendRestartRequestWithTimeout(s, restartRequest{recompileGo: false}, 250*time.Millisecond)
+			sendRestartRequestWithTimeout(
+				s,
+				restartRequest{recompileGo: false},
+				250*time.Millisecond,
+			)
 			return
 		}
 
@@ -317,18 +363,26 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 			t.Error(err)
 			return
 		}
-		sendRestartRequestWithTimeout(s, restartRequest{recompileGo: false}, 2*time.Second)
+		sendRestartRequestWithTimeout(
+			s,
+			restartRequest{recompileGo: false},
+			2*time.Second,
+		)
 	}()
 
 	err = s.run()
 	if err == nil {
-		t.Fatal("expected run to exit with watcher init error after orchestration path")
+		t.Fatal(
+			"expected run to exit with watcher init error after orchestration path",
+		)
 	}
 	if !strings.Contains(err.Error(), "init watcher") {
 		t.Fatalf("unexpected run error: %v", err)
 	}
 	if appHealthHits.Load() == 0 {
-		t.Fatal("expected config restart path to wait for app health before reload")
+		t.Fatal(
+			"expected config restart path to wait for app health before reload",
+		)
 	}
 
 	select {
@@ -338,10 +392,14 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(t *testing.T
 	}
 }
 
-func TestWaitForBuildRetry_QueuedNoGoRestartIntentIsPreservedForNextPass(t *testing.T) {
+func TestWaitForBuildRetry_QueuedNoGoRestartIntentIsPreservedForNextPass(
+	t *testing.T,
+) {
 	s := &server{
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 1),
+		),
 	}
 	queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
 
@@ -349,10 +407,16 @@ func TestWaitForBuildRetry_QueuedNoGoRestartIntentIsPreservedForNextPass(t *test
 	nextRunIntent := deriveRunIntentFromRestartRequest(restartRequestForRetry)
 
 	if nextRunIntent.recompileGo {
-		t.Fatalf("expected queued retry restart to preserve recompileGo=false, got %#v", nextRunIntent)
+		t.Fatalf(
+			"expected queued retry restart to preserve recompileGo=false, got %#v",
+			nextRunIntent,
+		)
 	}
 	if nextRunIntent.isConfigRestart {
-		t.Fatalf("expected queued retry restart to preserve isConfigRestart=false, got %#v", nextRunIntent)
+		t.Fatalf(
+			"expected queued retry restart to preserve isConfigRestart=false, got %#v",
+			nextRunIntent,
+		)
 	}
 	s.restartIntents.mu.Lock()
 	waitingForBuildRetry := s.restartIntents.waitingForBuildRetry
@@ -379,9 +443,14 @@ func TestWriteToolingConfigForWatchRoot_UpdatesConfigFileOnly(t *testing.T) {
 	}
 
 	if cfg.Watch.WatchRoot != originalWatchRoot {
-		t.Fatalf("expected base config watch root to remain %q, got %q", originalWatchRoot, cfg.Watch.WatchRoot)
+		t.Fatalf(
+			"expected base config watch root to remain %q, got %q",
+			originalWatchRoot,
+			cfg.Watch.WatchRoot,
+		)
 	}
-	if reloadedConfig.Watch == nil || reloadedConfig.Watch.WatchRoot != updatedWatchRoot {
+	if reloadedConfig.Watch == nil ||
+		reloadedConfig.Watch.WatchRoot != updatedWatchRoot {
 		t.Fatalf(
 			"expected reloaded config watch root to be %q, got %#v",
 			updatedWatchRoot,
@@ -424,17 +493,6 @@ func sendRestartRequestWithTimeout(
 		return true
 	}
 	return false
-}
-
-func drainRestartRequests(s *server) {
-	if s == nil {
-		return
-	}
-	for {
-		if _, hasPendingRestartRequest := s.consumePendingRestartRequest(); !hasPendingRestartRequest {
-			return
-		}
-	}
 }
 
 func writeToolingConfigForWatchRoot(

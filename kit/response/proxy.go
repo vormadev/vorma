@@ -54,7 +54,7 @@ func (p *Proxy) SetStatus(status int, errorStatusText ...string) {
 	p._status_text = ""
 }
 
-func (p *Proxy) GetStatus() (int, string) {
+func (p *Proxy) Status() (int, string) {
 	return p._status, p._status_text
 }
 
@@ -76,7 +76,7 @@ func (p *Proxy) AddHeader(key, value string) {
 	)
 }
 
-func (p *Proxy) GetHeader(key string) string {
+func (p *Proxy) Header(key string) string {
 	values := p.computeHeaderValues(http.CanonicalHeaderKey(key))
 	if len(values) == 0 {
 		return ""
@@ -84,7 +84,7 @@ func (p *Proxy) GetHeader(key string) string {
 	return values[0]
 }
 
-func (p *Proxy) GetHeaders(key string) []string {
+func (p *Proxy) Headers(key string) []string {
 	return p.computeHeaderValues(http.CanonicalHeaderKey(key))
 }
 
@@ -113,7 +113,7 @@ func (p *Proxy) SetCookie(cookie *http.Cookie) {
 	p._cookies = append(p._cookies, cookie)
 }
 
-func (p *Proxy) GetCookies() []*http.Cookie {
+func (p *Proxy) Cookies() []*http.Cookie {
 	return p._cookies
 }
 
@@ -126,7 +126,7 @@ func (p *Proxy) AddHeadEls(els *headels.HeadEls) {
 	p._head_els.AddElements(els)
 }
 
-func (p *Proxy) GetHeadEls() *headels.HeadEls {
+func (p *Proxy) HeadEls() *headels.HeadEls {
 	if p._head_els == nil {
 		p._head_els = headels.New()
 	}
@@ -179,7 +179,7 @@ func (p *Proxy) clientRedirect(url string) error {
 	return nil
 }
 
-func (p *Proxy) GetLocation() string {
+func (p *Proxy) Location() string {
 	return p._location
 }
 
@@ -210,7 +210,7 @@ func (p *Proxy) isServerRedirect() bool {
 }
 
 func (p *Proxy) isClientRedirect() bool {
-	return p.GetHeader(ClientRedirectHeader) != ""
+	return p.Header(ClientRedirectHeader) != ""
 }
 
 func (p *Proxy) IsSuccess() bool {
@@ -274,7 +274,7 @@ type cookieWithIdx struct {
 }
 
 // Consumers should deduplicate head els after calling MergeProxyResponses
-// by using headels.ToHeadEls(proxy.GetHeadEls())
+// by using headels.ToHeadEls(proxy.HeadEls())
 func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 	merged := NewProxy()
 
@@ -355,7 +355,7 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 				if p.isClientRedirect() {
 					merged.SetHeader(
 						ClientRedirectHeader,
-						p.GetHeader(ClientRedirectHeader),
+						p.Header(ClientRedirectHeader),
 					)
 				}
 				break

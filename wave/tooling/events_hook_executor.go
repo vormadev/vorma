@@ -55,7 +55,9 @@ func cloneHookContextForExecution(
 	}
 
 	clonedHookContext := *hookContext
-	clonedHookContext.ChangedFilePaths = append([]string(nil), hookContext.ChangedFilePaths...)
+	clonedHookContext.ChangedFilePaths = append(
+		[]string(nil),
+		hookContext.ChangedFilePaths...)
 	clonedHookContext.ExecutionContext = hookExecutionContext
 	return &clonedHookContext
 }
@@ -92,7 +94,11 @@ func joinHookExecutionErrorsInOrder(
 		return nil
 	}
 
-	orderedHookExecutionErrors := make([]error, 0, len(hookExecutionErrorsByHookIndex))
+	orderedHookExecutionErrors := make(
+		[]error,
+		0,
+		len(hookExecutionErrorsByHookIndex),
+	)
 	for _, hookExecutionError := range hookExecutionErrorsByHookIndex {
 		if hookExecutionError == nil {
 			continue
@@ -195,7 +201,9 @@ func (s *server) getOrCreateConcurrentNoWaitHookLifecycleContext() context.Conte
 	defer s.mu.Unlock()
 
 	if s.concurrentNoWaitHookLifecycleCtx == nil ||
-		!shouldContinueConcurrentHookExecution(s.concurrentNoWaitHookLifecycleCtx) {
+		!shouldContinueConcurrentHookExecution(
+			s.concurrentNoWaitHookLifecycleCtx,
+		) {
 		s.concurrentNoWaitHookLifecycleCtx, s.concurrentNoWaitHookLifecycleCancel = context.WithCancel(
 			context.Background(),
 		)
@@ -220,21 +228,6 @@ func (s *server) cancelConcurrentNoWaitHookLifecycleContext() {
 	}
 }
 
-func (s *server) runSequentialHookStageForEligibleEvents(
-	eventsWithHooks []eventWithHooks,
-	watcher *watcher,
-	runHooksForEvent func(eventWithHooks, *watcher) ([]wave.RefreshAction, error),
-	hookExecutionFailureLogMessage string,
-) []wave.RefreshAction {
-	stageActions, _ := s.runSequentialHookStageForEligibleEventsWithErrors(
-		eventsWithHooks,
-		watcher,
-		runHooksForEvent,
-		hookExecutionFailureLogMessage,
-	)
-	return stageActions
-}
-
 func (s *server) runSequentialHookStageForEligibleEventsWithErrors(
 	eventsWithHooks []eventWithHooks,
 	watcher *watcher,
@@ -250,7 +243,10 @@ func (s *server) runSequentialHookStageForEligibleEventsWithErrors(
 	stageExecutionErrors := make([]error, 0)
 	traceContextForHookStage := s.getCurrentWatcherExecutionTraceContext()
 	for _, descriptor := range descriptors {
-		stageActions, err := runHooksForEvent(descriptor.eventWithHooks, watcher)
+		stageActions, err := runHooksForEvent(
+			descriptor.eventWithHooks,
+			watcher,
+		)
 		if err != nil {
 			s.log.Error(
 				hookExecutionFailureLogMessage,
@@ -404,14 +400,19 @@ func (s *server) runConcurrentHooksForEventsWithContextAndErrors(
 
 	allConcurrentActions := make([]wave.RefreshAction, 0)
 	for _, concurrentActionsForEvent := range actionsByDescriptorIndex {
-		allConcurrentActions = append(allConcurrentActions, concurrentActionsForEvent...)
+		allConcurrentActions = append(
+			allConcurrentActions,
+			concurrentActionsForEvent...)
 	}
 	concurrentHookExecutionErrors := make([]error, 0)
 	for _, concurrentHookExecutionError := range executionErrorsByDescriptorIndex {
 		if concurrentHookExecutionError == nil {
 			continue
 		}
-		concurrentHookExecutionErrors = append(concurrentHookExecutionErrors, concurrentHookExecutionError)
+		concurrentHookExecutionErrors = append(
+			concurrentHookExecutionErrors,
+			concurrentHookExecutionError,
+		)
 	}
 
 	return allConcurrentActions, concurrentHookExecutionErrors
@@ -533,7 +534,10 @@ func (s *server) fireNoWaitHooks(ewh eventWithHooks, watcher *watcher) {
 	}
 }
 
-func (s *server) runPreHooks(ewh eventWithHooks, watcher *watcher) ([]wave.RefreshAction, error) {
+func (s *server) runPreHooks(
+	ewh eventWithHooks,
+	watcher *watcher,
+) ([]wave.RefreshAction, error) {
 	var actions []wave.RefreshAction
 
 	plans := deriveHookExecutionPlansForEventStage(
@@ -564,7 +568,10 @@ func (s *server) runPreHooks(ewh eventWithHooks, watcher *watcher) ([]wave.Refre
 	return actions, nil
 }
 
-func (s *server) runConcurrentHooks(ewh eventWithHooks, watcher *watcher) ([]wave.RefreshAction, error) {
+func (s *server) runConcurrentHooks(
+	ewh eventWithHooks,
+	watcher *watcher,
+) ([]wave.RefreshAction, error) {
 	return s.runConcurrentHooksWithContext(context.Background(), ewh, watcher)
 }
 
@@ -629,10 +636,15 @@ func (s *server) runConcurrentHooksWithContext(
 		}
 	}
 
-	return actions, joinHookExecutionErrorsInOrder(hookExecutionErrorsByHookIndex)
+	return actions, joinHookExecutionErrorsInOrder(
+		hookExecutionErrorsByHookIndex,
+	)
 }
 
-func (s *server) runPostHooks(ewh eventWithHooks, watcher *watcher) ([]wave.RefreshAction, error) {
+func (s *server) runPostHooks(
+	ewh eventWithHooks,
+	watcher *watcher,
+) ([]wave.RefreshAction, error) {
 	var actions []wave.RefreshAction
 
 	plans := deriveHookExecutionPlansForEventStage(
@@ -744,7 +756,9 @@ func (s *server) executeHookExecutionPlanWithContext(
 			defer cancelHookCallbackExecutionContext()
 		}
 
-		hookExecutionContext := deriveHookExecutionContext(hookCallbackExecutionContext)
+		hookExecutionContext := deriveHookExecutionContext(
+			hookCallbackExecutionContext,
+		)
 		hookContextForExecution := cloneHookContextForExecution(
 			hookContext,
 			hookExecutionContext,
@@ -770,7 +784,9 @@ func (s *server) executeHookExecutionPlanWithContext(
 		}
 
 		if !shouldContinueConcurrentHookExecution(hookCommandExecutionContext) {
-			return action, deriveHookExecutionContextError(hookCommandExecutionContext)
+			return action, deriveHookExecutionContextError(
+				hookCommandExecutionContext,
+			)
 		}
 
 		if err := executeHookCommandWithContext(

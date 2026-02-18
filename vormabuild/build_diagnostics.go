@@ -116,7 +116,7 @@ func printBuildDiagnostics(v *vormaruntime.Vorma) error {
 }
 
 func (executor buildDiagnosticsExecutor) printBuildDiagnostics(v *vormaruntime.Vorma) error {
-	diagnosticsSnapshot, err := executor.collectBuildDiagnosticsSnapshot(v)
+	diagnosticsSnapshot, err := executor.collectBuildDiagnostics(v)
 	if err != nil {
 		return err
 	}
@@ -131,13 +131,13 @@ func (executor buildDiagnosticsExecutor) printBuildDiagnostics(v *vormaruntime.V
 	return nil
 }
 
-func collectBuildDiagnosticsSnapshot(
+func collectBuildDiagnostics(
 	v *vormaruntime.Vorma,
 ) (*buildDiagnosticsSnapshot, error) {
-	return defaultBuildDiagnosticsExecutor.collectBuildDiagnosticsSnapshot(v)
+	return defaultBuildDiagnosticsExecutor.collectBuildDiagnostics(v)
 }
 
-func (executor buildDiagnosticsExecutor) collectBuildDiagnosticsSnapshot(
+func (executor buildDiagnosticsExecutor) collectBuildDiagnostics(
 	v *vormaruntime.Vorma,
 ) (*buildDiagnosticsSnapshot, error) {
 	if v == nil {
@@ -158,24 +158,24 @@ func (executor buildDiagnosticsExecutor) collectBuildDiagnosticsSnapshot(
 	}
 
 	cacheEntryCount, cacheMaxEntries := executor.dependencies.discoveredRegistrarCacheStats()
-	currentRouteSnapshot := v.GetPathsSnapshot()
+	currentRouteSnapshot := v.Paths()
 
 	return &buildDiagnosticsSnapshot{
 		GeneratedAtUTC: executor.dependencies.nowUTC().Format(time.RFC3339Nano),
 
-		ConfigFile:       filepath.ToSlash(filepath.Clean(v.Wave.GetConfigFile())),
-		DistDir:          filepath.ToSlash(filepath.Clean(v.Wave.GetDistDir())),
-		StaticPrivateOut: filepath.ToSlash(filepath.Clean(v.Wave.GetStaticPrivateOutDir())),
-		StaticPublicOut:  filepath.ToSlash(filepath.Clean(v.Wave.GetStaticPublicOutDir())),
+		ConfigFile:       filepath.ToSlash(filepath.Clean(v.Wave.ConfigFile())),
+		DistDir:          filepath.ToSlash(filepath.Clean(v.Wave.DistDir())),
+		StaticPrivateOut: filepath.ToSlash(filepath.Clean(v.Wave.StaticPrivateOutDir())),
+		StaticPublicOut:  filepath.ToSlash(filepath.Clean(v.Wave.StaticPublicOutDir())),
 		MainBuildEntry:   v.Config.MainBuildEntry,
 		ClientEntry:      v.Config.ClientEntry,
 		UIVariant:        v.Config.UIVariant,
 		TSGenOutDir:      v.Config.TSGenOutDir,
-		IsDevMode:        v.GetIsDevMode(),
-		CurrentBuildID:   v.GetBuildID(),
+		IsDevMode:        v.IsDevMode(),
+		CurrentBuildID:   v.BuildID(),
 		CurrentRoutes:    len(currentRouteSnapshot),
-		CurrentManifest:  v.GetRouteManifestFile(),
-		CurrentClientOut: v.GetClientEntryOut(),
+		CurrentManifest:  v.RouteManifestFile(),
+		CurrentClientOut: v.ClientEntryOut(),
 
 		ClientRouteDefinitionPatterns: normalizeRouteDefinitionPatternsInInputOrder(
 			v.Config.ClientRouteDefinitionPatterns,

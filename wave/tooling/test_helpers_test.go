@@ -3,10 +3,13 @@ package tooling
 import (
 	"io"
 	"log/slog"
+	"net"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/vormadev/vorma/internal/waveport"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -61,7 +64,10 @@ func assertNoPendingRestartRequestForToolingTests(
 		s,
 	)
 	if hasPendingRestartRequest {
-		t.Fatalf("expected no pending restart request, got %#v", pendingRestartRequest)
+		t.Fatalf(
+			"expected no pending restart request, got %#v",
+			pendingRestartRequest,
+		)
 	}
 }
 
@@ -85,4 +91,30 @@ func waitForPendingRestartRequestForToolingTests(
 
 	t.Fatalf("timed out waiting for pending restart request after %s", timeout)
 	return restartRequest{}
+}
+
+func mustConfigureAndGetWaveAppPortForToolingTests(t *testing.T) int {
+	t.Helper()
+
+	waveport.ResetDefaultResolverForTest()
+	t.Cleanup(waveport.ResetDefaultResolverForTest)
+
+	listener, listenError := net.Listen("tcp", "127.0.0.1:0")
+	if listenError != nil {
+		t.Fatalf("failed to reserve app port for test: %v", listenError)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	if closeError := listener.Close(); closeError != nil {
+		t.Fatalf(
+			"failed to release reserved app port %d for test: %v",
+			port,
+			closeError,
+		)
+	}
+
+	t.Setenv("__WAVE_MODE", "production")
+	t.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
+	t.Setenv("PORT", strconv.Itoa(port))
+
+	return wave.MustGetPort()
 }

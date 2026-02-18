@@ -3,6 +3,7 @@ package sqlutil
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 )
 
@@ -17,7 +18,7 @@ func TransactionContext(
 	ctx context.Context,
 	opts *sql.TxOptions,
 	f func(tx *sql.Tx) error,
-) error {
+) (transactionError error) {
 	if db == nil {
 		return fmt.Errorf("db is nil")
 	}
@@ -28,20 +29,30 @@ func TransactionContext(
 		ctx = context.Background()
 	}
 
-	tx, err := db.BeginTx(ctx, opts)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+	transaction, beginTransactionError := db.BeginTx(ctx, opts)
+	if beginTransactionError != nil {
+		return fmt.Errorf(
+			"failed to begin transaction: %w",
+			beginTransactionError,
+		)
 	}
 	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p) // re-throw panic after Rollback
-		} else if err != nil {
-			_ = tx.Rollback() // err is non-nil; don't change it
-		} else {
-			err = tx.Commit() // err is nil; if Commit returns error update err
+		if panicValue := recover(); panicValue != nil {
+			_ = transaction.Rollback()
+			panic(panicValue) // re-throw panic after Rollback
 		}
+		if transactionError != nil {
+			rollbackError := transaction.Rollback()
+			if rollbackError != nil && !errors.Is(rollbackError, sql.ErrTxDone) {
+				transactionError = errors.Join(
+					transactionError,
+					fmt.Errorf("rollback transaction: %w", rollbackError),
+				)
+			}
+			return
+		}
+		transactionError = transaction.Commit()
 	}()
-	err = f(tx)
-	return err
+	transactionError = f(transaction)
+	return transactionError
 }

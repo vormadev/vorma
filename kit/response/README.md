@@ -114,7 +114,7 @@ When multiple proxies are merged:
 - `func New(w http.ResponseWriter) Response`
 - `func NewProxy() *Proxy`
 - `func MergeProxyResponses(proxies ...*Proxy) *Proxy`
-- `func GetClientRedirectURL(w http.ResponseWriter) string`
+- `func ClientRedirectURL(w http.ResponseWriter) string`
 
 ### `Response` methods
 
@@ -145,17 +145,17 @@ When multiple proxies are merged:
 ### `Proxy` methods
 
 - `func (p *Proxy) SetStatus(status int, errorStatusText ...string)`
-- `func (p *Proxy) GetStatus() (int, string)`
+- `func (p *Proxy) Status() (int, string)`
 - `func (p *Proxy) SetHeader(key, value string)`
 - `func (p *Proxy) AddHeader(key, value string)`
-- `func (p *Proxy) GetHeader(key string) string`
-- `func (p *Proxy) GetHeaders(key string) []string`
+- `func (p *Proxy) Header(key string) string`
+- `func (p *Proxy) Headers(key string) []string`
 - `func (p *Proxy) SetCookie(cookie *http.Cookie)`
-- `func (p *Proxy) GetCookies() []*http.Cookie`
+- `func (p *Proxy) Cookies() []*http.Cookie`
 - `func (p *Proxy) AddHeadEls(els *headels.HeadEls)`
-- `func (p *Proxy) GetHeadEls() *headels.HeadEls`
+- `func (p *Proxy) HeadEls() *headels.HeadEls`
 - `func (p *Proxy) Redirect(r *http.Request, url string, code ...int) (bool, error)`
-- `func (p *Proxy) GetLocation() string`
+- `func (p *Proxy) Location() string`
 - `func (p *Proxy) IsError() bool`
 - `func (p *Proxy) IsRedirect() bool`
 - `func (p *Proxy) IsSuccess() bool`

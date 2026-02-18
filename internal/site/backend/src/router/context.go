@@ -13,17 +13,28 @@ func decorateActionCtx[I any](rd *vorma.ActionReqData[I]) *ActionCtx[I] {
 	return &ActionCtx[I]{ActionReqData: rd}
 }
 
-func NewLoader[O any](
+func DefineLoader[O any](
 	pattern string,
 	loader vorma.LoaderFunc[LoaderCtx, O],
 ) *vorma.Loader[O] {
-	return vorma.NewLoader(App, pattern, loader, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(
+		App,
+		pattern,
+		loader,
+		decorateLoaderCtx,
+	)
 }
 
-func NewAction[I any, O any](
+func DefineAction[I any, O any](
 	method string,
 	pattern string,
 	action vorma.ActionFunc[ActionCtx[I], I, O],
 ) *vorma.Action[I, O] {
-	return vorma.NewAction(App, method, pattern, action, decorateActionCtx)
+	return vorma.DefineActionForRegistration(
+		App,
+		method,
+		pattern,
+		action,
+		decorateActionCtx,
+	)
 }

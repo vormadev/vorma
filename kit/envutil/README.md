@@ -21,13 +21,13 @@ service := envutil.GetStr("SERVICE_NAME", "api")
 ## Behavior
 
 - If a variable is unset, the default is returned.
-- If parse fails (`GetInt`/`GetBool`), the default is returned.
+- If parse fails (`Int`/`Bool`), the default is returned.
 - No function returns an error.
 
 Parsing details:
 
-- `GetInt` uses `strconv.Atoi`.
-- `GetBool` uses `strconv.ParseBool` (`1/0`, `t/f`, `true/false`,
+- `Int` uses `strconv.Atoi`.
+- `Bool` uses `strconv.ParseBool` (`1/0`, `t/f`, `true/false`,
   case-insensitive).
 
 ## When Not To Use

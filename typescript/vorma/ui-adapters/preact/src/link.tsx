@@ -1,4 +1,4 @@
-import { h, type JSX } from "preact";
+import { h, type HTMLAttributes, type TargetedMouseEvent } from "preact";
 import { memo } from "preact/compat";
 import type {
 	ExtractApp,
@@ -6,20 +6,18 @@ import type {
 	VormaLoaderPattern,
 } from "vorma/client";
 import {
-	type VormaAppConfig,
-	type VormaLinkPropsBase,
-	makeFinalLinkProps,
-} from "vorma/client/__internal";
-import {
 	buildTypedLinkDisplayName,
 	buildTypedLinkResolvedProps,
+	makeFinalLinkProps,
 	type TypedAdapterLinkDefaultProps,
 	type TypedAdapterLinkProps,
-} from "../../shared/src/typed_link_props.ts";
+	type VormaAppConfig,
+	type VormaLinkPropsBase,
+} from "vorma/client/__internal";
 
 export const VormaLink = memo(function VormaLink(
-	props: JSX.HTMLAttributes<HTMLAnchorElement> &
-		VormaLinkPropsBase<JSX.TargetedMouseEvent<HTMLAnchorElement>>,
+	props: HTMLAttributes<HTMLAnchorElement> &
+		VormaLinkPropsBase<TargetedMouseEvent<HTMLAnchorElement>>,
 ) {
 	const finalLinkProps = makeFinalLinkProps(props);
 	// oxlint-disable-next-line no-unused-vars
@@ -47,16 +45,16 @@ type TypedVormaLinkProps<
 > = TypedAdapterLinkProps<
 	App,
 	Pattern,
-	JSX.HTMLAttributes<HTMLAnchorElement>,
-	JSX.TargetedMouseEvent<HTMLAnchorElement>
+	HTMLAttributes<HTMLAnchorElement>,
+	TargetedMouseEvent<HTMLAnchorElement>
 >;
 
 export function makeTypedLink<C extends VormaAppConfig>(
 	vormaAppConfig: C,
 	defaultProps?: TypedAdapterLinkDefaultProps<
 		ExtractApp<C>,
-		JSX.HTMLAttributes<HTMLAnchorElement>,
-		JSX.TargetedMouseEvent<HTMLAnchorElement>
+		HTMLAttributes<HTMLAnchorElement>,
+		TargetedMouseEvent<HTMLAnchorElement>
 	>,
 ) {
 	type App = ExtractApp<C>;

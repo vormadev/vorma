@@ -115,6 +115,9 @@ func shouldContinueReadinessWait(
 	return total <= maxTotal
 }
 
+// mustGetPort returns the app runtime port for devserver orchestration.
+// It panics in dev mode if a free port cannot be resolved.
+// It panics in non-dev mode when PORT is missing or invalid.
 func (s *server) mustGetPort() int {
 	if s == nil || s.portResolver == nil {
 		return wave.MustGetPort()

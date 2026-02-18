@@ -32,6 +32,8 @@ func TestBuildCtxHelperProcess(t *testing.T) {
 		os.Exit(0)
 	case "prod_success":
 		runProdBuildHelperAndExit(0)
+	case "prod_success_require_absolute_outdir":
+		runProdBuildHelperRequiringAbsoluteOutDirAndExit(0)
 	case "prod_fail":
 		os.Exit(17)
 	default:
@@ -41,7 +43,7 @@ func TestBuildCtxHelperProcess(t *testing.T) {
 
 func TestNewBuildCtx_DefaultPortAndNilOptions(t *testing.T) {
 	ctx := NewBuildCtx(nil)
-	if got := ctx.GetPort(); got != 5173 {
+	if got := ctx.Port(); got != 5173 {
 		t.Fatalf("expected default port 5173, got %d", got)
 	}
 }
@@ -123,7 +125,7 @@ func TestDevBuild_UsesInitPortAndAppendsExpectedArgs(t *testing.T) {
 	}
 	t.Cleanup(ctx.Cleanup)
 
-	if got := ctx.GetPort(); got != 6200 {
+	if got := ctx.Port(); got != 6200 {
 		t.Fatalf("expected initPort return value to become current port, got %d", got)
 	}
 
@@ -323,6 +325,34 @@ func TestProdBuild_WritesManifestAndLeavesParentEnvUnchanged(t *testing.T) {
 	}
 }
 
+func TestProdBuild_CreatesMissingManifestOutputParentDirectory(t *testing.T) {
+	t.Setenv(testHelperProcessEnv, "1")
+	t.Setenv(testHelperModeEnv, "prod_success_require_absolute_outdir")
+
+	outDir := filepath.Join(t.TempDir(), "dist", "static", "assets", "public")
+	manifestOut := filepath.Join(
+		t.TempDir(),
+		"nested",
+		"manifest",
+		"dir",
+		"manifest.json",
+	)
+
+	ctx := NewBuildCtx(&BuildCtxOptions{
+		JSPackageManagerBaseCmd: helperBaseCommand(t),
+		OutDir:                  outDir,
+		ManifestOut:             manifestOut,
+	})
+
+	if err := ctx.ProdBuild(); err != nil {
+		t.Fatalf("ProdBuild() error = %v", err)
+	}
+
+	if _, err := os.Stat(manifestOut); err != nil {
+		t.Fatalf("expected manifest file at nested output location: %v", err)
+	}
+}
+
 func TestProdBuild_ReturnsCommandError(t *testing.T) {
 	t.Setenv(testHelperProcessEnv, "1")
 	t.Setenv(testHelperModeEnv, "prod_fail")
@@ -356,6 +386,36 @@ func runProdBuildHelperAndExit(exitCode int) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
+	}
+
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	manifestPath := filepath.Join(outDir, manifestName)
+	if err := os.WriteFile(manifestPath, []byte(`{"index.html":{"file":"assets/index.js"}}`), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	os.Exit(0)
+}
+
+func runProdBuildHelperRequiringAbsoluteOutDirAndExit(exitCode int) {
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
+
+	outDir, manifestName, err := parseProdBuildArgs(os.Args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	if !filepath.IsAbs(outDir) {
+		fmt.Fprintf(os.Stderr, "expected absolute --outDir, got %q\n", outDir)
+		os.Exit(3)
 	}
 
 	if err := os.MkdirAll(outDir, 0o755); err != nil {

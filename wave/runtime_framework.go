@@ -89,12 +89,14 @@ func (w *Wave) SetNonCriticalCSSLinkElementID(elementID string) {
 	w.cfg.FrameworkNonCriticalCSSLinkElementID = elementID
 }
 
-// GetIsDev returns true if running in development mode.
-func (w *Wave) GetIsDev() bool {
+// IsDev returns true if running in development mode.
+func (w *Wave) IsDev() bool {
 	return GetIsDev()
 }
 
-// MustGetPort returns the application port.
+// MustGetPort returns the application runtime port.
+// It panics in dev mode if a free port cannot be resolved.
+// It panics in non-dev mode when PORT is missing or invalid.
 func (w *Wave) MustGetPort() int {
 	if w == nil || w.portResolver == nil {
 		return MustGetPort()
@@ -107,64 +109,53 @@ func (w *Wave) SetModeToDev() {
 	SetModeToDev()
 }
 
-func (w *Wave) SetPortResolver(portResolver *PortResolver) {
-	if w == nil {
-		return
-	}
-	if portResolver == nil {
-		w.portResolver = NewPortResolver()
-		return
-	}
-	w.portResolver = portResolver
-}
-
-func (w *Wave) GetPublicPathPrefix() string {
+func (w *Wave) PublicPathPrefix() string {
 	return w.cfg.PublicPathPrefix()
 }
 
-func (w *Wave) GetDistDir() string {
+func (w *Wave) DistDir() string {
 	return w.cfg.Core.DistDir
 }
 
-func (w *Wave) GetPublicStaticDir() string {
+func (w *Wave) PublicStaticDir() string {
 	return w.cfg.Core.StaticAssetDirs.Public
 }
 
-func (w *Wave) GetPrivateStaticDir() string {
+func (w *Wave) PrivateStaticDir() string {
 	return w.cfg.Core.StaticAssetDirs.Private
 }
 
-func (w *Wave) GetViteManifestLocation() string {
+func (w *Wave) ViteManifestLocation() string {
 	return w.cfg.ViteManifestPath()
 }
 
-func (w *Wave) GetViteOutDir() string {
+func (w *Wave) ViteOutDir() string {
 	return w.cfg.Dist.StaticPublic()
 }
 
-func (w *Wave) GetStaticPrivateOutDir() string {
+func (w *Wave) StaticPrivateOutDir() string {
 	return w.cfg.Dist.StaticPrivate()
 }
 
-func (w *Wave) GetStaticPublicOutDir() string {
+func (w *Wave) StaticPublicOutDir() string {
 	return w.cfg.Dist.StaticPublic()
 }
 
-// GetParsedConfig returns the parsed configuration for use by tooling.
+// ParsedConfig returns the parsed configuration for use by tooling.
 // This should only be used by build-time tooling, not at runtime.
 // The returned value is a defensive snapshot and omits unstable internal-only
 // runtime callback/schema fields.
-func (w *Wave) GetParsedConfig() *ParsedConfig {
+func (w *Wave) ParsedConfig() *ParsedConfig {
 	return w.cfg.Clone()
 }
 
-// GetBuildtimeParsedConfig returns a defensive parsed-config snapshot for
-// build/dev tooling. Unlike GetParsedConfig, this includes framework build
+// BuildtimeParsedConfig returns a defensive parsed-config snapshot for
+// build/dev tooling. Unlike ParsedConfig, this includes framework build
 // callbacks and schema extensions.
-func (w *Wave) GetBuildtimeParsedConfig() *ParsedConfig {
+func (w *Wave) BuildtimeParsedConfig() *ParsedConfig {
 	return w.cfg.cloneForBuildtime()
 }
 
-func (w *Wave) GetConfigFile() string {
+func (w *Wave) ConfigFile() string {
 	return w.cfg.Core.ConfigLocation
 }

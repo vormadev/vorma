@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/vormadev/vorma/wave"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -38,13 +39,12 @@ func deriveRunIntentFromRestartRequest(
 	restartRequestForIntent restartRequest,
 ) runIntent {
 	normalizedRestartRequest := normalizeRestartRequest(restartRequestForIntent)
-	return runIntent{
-		recompileGo:     normalizedRestartRequest.recompileGo,
-		isConfigRestart: normalizedRestartRequest.isConfigRestart,
-	}
+	return runIntent(normalizedRestartRequest)
 }
 
 func (s *server) run() error {
+	wave.SetModeToDev()
+
 	firstRun := true
 	currentRunIntent := runIntent{
 		recompileGo: true, // First run always compiles
@@ -56,7 +56,9 @@ func (s *server) run() error {
 	s.mustGetPort()
 
 	if s.cfg.UsingBrowser() {
-		s.refreshMgrCtx, s.refreshMgrCancel = context.WithCancel(context.Background())
+		s.refreshMgrCtx, s.refreshMgrCancel = context.WithCancel(
+			context.Background(),
+		)
 		s.refreshMgr = newClientManager()
 		go s.refreshMgr.start(s.refreshMgrCtx)
 		if _, err := s.startRefreshServer(defaultRefreshPort); err != nil {
@@ -126,7 +128,10 @@ func deriveRunLifecycleCommandForState(
 	case runLifecycleStateCleaningUpForNextCycle:
 		return runLifecycleCommandCleanupForNextCycle, nil
 	default:
-		return "", fmt.Errorf("unknown run lifecycle state: %q", currentRunLifecycleState)
+		return "", fmt.Errorf(
+			"unknown run lifecycle state: %q",
+			currentRunLifecycleState,
+		)
 	}
 }
 
@@ -297,7 +302,9 @@ func (s *server) waitForBuildRetry() restartRequest {
 	defer s.setWaitingForBuildRetry(false)
 
 	if pendingRestartRequest, hasPendingRestartRequest := s.consumePendingRestartRequest(); hasPendingRestartRequest {
-		normalizedPendingRestartRequest := normalizeRestartRequest(pendingRestartRequest)
+		normalizedPendingRestartRequest := normalizeRestartRequest(
+			pendingRestartRequest,
+		)
 		s.cleanupForRebuild()
 		return normalizedPendingRestartRequest
 	}

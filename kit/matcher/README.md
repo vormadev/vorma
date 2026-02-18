@@ -45,14 +45,14 @@ if ok {
 
 Defaults:
 
-- `DynamicParamPrefixRune`: `':'`
-- `SplatSegmentRune`: `'*'`
-- `ExplicitIndexSegment`: `""` (trailing-slash style indexes)
+- `DynamicParamPrefix`: `':'`
+- `SplatSegmentIdentifier`: `'*'`
+- `ExplicitIndexSegmentIdentifier`: `""` (trailing-slash style indexes)
 - `Quiet`: `false` (duplicate-registration warnings enabled)
 
 ### Explicit index segment mode
 
-If you set `ExplicitIndexSegment` (for example `"_index"`):
+If you set `ExplicitIndexSegmentIdentifier` (for example `"_index"`):
 
 - trailing slashes are not allowed for non-root patterns
 - `/about/_index` behaves like the index route for `/about/`
@@ -96,8 +96,8 @@ Result fields:
   concurrent registration/mutation structure.
 - Duplicate registrations overwrite map entries and may log warnings when
   `Quiet` is false.
-- `NormalizePattern` panics if `ExplicitIndexSegment` contains `/` or if invalid
-  trailing-slash usage is provided in explicit-index mode.
+- `NormalizePattern` panics if `ExplicitIndexSegmentIdentifier` contains `/` or
+  if invalid trailing-slash usage is provided in explicit-index mode.
 - Dynamic params match non-empty segments.
 - `RegisteredPattern.NormalizedSegments()` returns a copy of normalized segment
   metadata, so mutating that returned slice does not mutate matcher internals.
@@ -137,9 +137,9 @@ Result fields:
 - `func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern`
 - `func (m *Matcher) FindBestMatch(realPath string) (*BestMatch, bool)`
 - `func (m *Matcher) FindNestedMatches(realPath string) (*FindNestedMatchesResults, bool)`
-- `func (m *Matcher) GetExplicitIndexSegment() string`
-- `func (m *Matcher) GetDynamicParamPrefixRune() rune`
-- `func (m *Matcher) GetSplatSegmentRune() rune`
+- `func (m *Matcher) ExplicitIndexSegmentIdentifier() string`
+- `func (m *Matcher) DynamicParamPrefix() rune`
+- `func (m *Matcher) SplatSegmentIdentifier() rune`
 
 ### `RegisteredPattern` methods
 

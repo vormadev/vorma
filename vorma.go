@@ -35,9 +35,13 @@ type (
 
 const VormaBuildIDHeaderKey = vormaruntime.VormaBuildIDHeaderKey
 
+// MustGetPort returns the application runtime port.
+// It panics in dev mode if a free port cannot be resolved.
+// It panics in non-dev mode when PORT is missing or invalid.
 func MustGetPort() int { return wave.MustGetPort() }
-func GetIsDev() bool   { return wave.GetIsDev() }
-func SetModeToDev()    { wave.SetModeToDev() }
+
+func GetIsDev() bool { return wave.GetIsDev() }
+func SetModeToDev()  { wave.SetModeToDev() }
 
 func IsJSONRequest(r *http.Request) bool {
 	return vormaruntime.IsJSONRequest(r)
@@ -50,78 +54,63 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	return vormaruntime.NewVormaApp(o)
 }
 
-func NewLoader[O any, CtxPtr ~*Ctx, Ctx any](
+// DefineLoaderForRegistration marks a loader declaration for build discovery and generated
+// auto-registration. This call returns a task handler but does not directly
+// mutate runtime router registration state.
+func DefineLoaderForRegistration[O any, CtxPtr ~*Ctx, Ctx any](
 	app *Vorma,
 	p string,
 	f func(CtxPtr) (O, error),
 	decorateCtx func(*LoaderReqData) CtxPtr,
 ) *Loader[O] {
-	panicIfNilLoaderRegistrationArguments("vorma.NewLoader", f, decorateCtx)
+	panicIfNilLoaderRegistrationArguments(
+		"vorma.DefineLoaderForRegistration",
+		f,
+		decorateCtx,
+	)
 	_, _ = app, p
 	return newLoaderTask(f, decorateCtx)
 }
 
-func NewAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
+// DefineActionForRegistration marks an action declaration for build discovery and generated
+// auto-registration. This call returns a task handler but does not directly
+// mutate runtime router registration state.
+func DefineActionForRegistration[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	app *Vorma,
 	m string,
 	p string,
 	f func(CtxPtr) (O, error),
 	decorateCtx func(*ActionReqData[I]) CtxPtr,
 ) *Action[I, O] {
-	panicIfNilActionRegistrationArguments("vorma.NewAction", f, decorateCtx)
+	panicIfNilActionRegistrationArguments(
+		"vorma.DefineActionForRegistration",
+		f,
+		decorateCtx,
+	)
 	_, _, _ = app, m, p
 	return newActionTask(f, decorateCtx)
-}
-
-func Internal__RegisterDiscoveredLoader[O any, CtxPtr ~*Ctx, Ctx any](
-	app *Vorma,
-	p string,
-	f func(CtxPtr) (O, error),
-	decorateCtx func(*LoaderReqData) CtxPtr,
-) *Loader[O] {
-	panicIfNilDiscoveredRegistrationApp("vorma.Internal__RegisterDiscoveredLoader", app)
-	panicIfNilLoaderRegistrationArguments("vorma.Internal__RegisterDiscoveredLoader", f, decorateCtx)
-	loaderTask := newLoaderTask(f, decorateCtx)
-	mux.RegisterNestedTaskHandler(app.LoadersRouter().NestedRouter, p, loaderTask)
-	return loaderTask
-}
-
-func Internal__RegisterDiscoveredAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
-	app *Vorma,
-	m string,
-	p string,
-	f func(CtxPtr) (O, error),
-	decorateCtx func(*ActionReqData[I]) CtxPtr,
-) *Action[I, O] {
-	panicIfNilDiscoveredRegistrationApp("vorma.Internal__RegisterDiscoveredAction", app)
-	panicIfNilActionRegistrationArguments("vorma.Internal__RegisterDiscoveredAction", f, decorateCtx)
-	actionTask := newActionTask(f, decorateCtx)
-	mux.RegisterTaskHandler(app.ActionsRouter().Router, m, p, actionTask)
-	return actionTask
 }
 
 func newLoaderTask[O any, CtxPtr ~*Ctx, Ctx any](
 	loaderFunc func(CtxPtr) (O, error),
 	decorateLoaderContext func(*LoaderReqData) CtxPtr,
 ) *Loader[O] {
-	return mux.TaskHandlerFromFunc(func(loaderReqData *LoaderReqData) (O, error) {
-		return loaderFunc(decorateLoaderContext(loaderReqData))
-	})
+	return mux.TaskHandlerFromFunc(
+		func(loaderReqData *LoaderReqData) (O, error) {
+			return loaderFunc(decorateLoaderContext(loaderReqData))
+		},
+	)
 }
 
 func newActionTask[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	actionFunc func(CtxPtr) (O, error),
 	decorateActionContext func(*ActionReqData[I]) CtxPtr,
 ) *Action[I, O] {
-	return mux.TaskHandlerFromFunc(func(actionReqData *ActionReqData[I]) (O, error) {
-		return actionFunc(decorateActionContext(actionReqData))
-	})
-}
-
-func panicIfNilDiscoveredRegistrationApp(caller string, app *Vorma) {
-	if app == nil {
-		panic(caller + ": app cannot be nil")
-	}
+	return mux.TaskHandlerFromFunc(
+		func(actionReqData *ActionReqData[I]) (O, error) {
+			return actionFunc(decorateActionContext(actionReqData))
+		},
+	)
 }
 
 func panicIfNilLoaderRegistrationArguments[O any, CtxPtr ~*Ctx, Ctx any](
@@ -153,6 +142,6 @@ func panicIfNilActionRegistrationArguments[I any, O any, CtxPtr ~*Ctx, Ctx any](
 //go:embed internal/__LAST_RELEASE.txt
 var canonicalVersion string
 
-func Internal__GetCurrentReleaseVersion() string {
+func CurrentReleaseVersion() string {
 	return strings.TrimSpace(canonicalVersion)
 }

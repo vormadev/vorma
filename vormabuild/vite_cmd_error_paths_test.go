@@ -61,7 +61,7 @@ func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 				},
 			})
 		})
-		mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), viteutil.Manifest{
+		mustWriteJSONFile(t, app.Wave.ViteManifestLocation(), viteutil.Manifest{
 			"frontend/src/vorma.entry.tsx": {
 				Src:     "frontend/src/vorma.entry.tsx",
 				File:    "assets/vorma_out/entry.js",
@@ -100,10 +100,10 @@ func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped stage-two write error", err)
 		}
-		if app.GetBuildID() != "build-before-stage-two-write-failure" {
+		if app.BuildID() != "build-before-stage-two-write-failure" {
 			t.Fatalf(
 				"app build ID = %q, want unchanged build ID %q",
-				app.GetBuildID(),
+				app.BuildID(),
 				"build-before-stage-two-write-failure",
 			)
 		}
@@ -224,7 +224,7 @@ func TestToPathsFileStageTwo_ReturnsErrorWhenPublicOutDirMissing(t *testing.T) {
 			File: "assets/vorma_out/root.js",
 		},
 	}
-	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), manifest)
+	mustWriteJSONFile(t, app.Wave.ViteManifestLocation(), manifest)
 
 	if err := os.RemoveAll(fixture.publicDir); err != nil {
 		t.Fatalf("remove public out dir: %v", err)
@@ -266,7 +266,7 @@ func TestToPathsFileStageTwo_ReturnsErrorWhenClientEntryChunkIsMissing(t *testin
 		})
 	})
 
-	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), viteutil.Manifest{
+	mustWriteJSONFile(t, app.Wave.ViteManifestLocation(), viteutil.Manifest{
 		"frontend/src/routes/root.tsx": {
 			Src:  "frontend/src/routes/root.tsx",
 			File: "assets/vorma_out/root.js",
@@ -296,7 +296,7 @@ func TestToPathsFileStageTwo_ReturnsErrorWhenRouteChunkIsMissing(t *testing.T) {
 		})
 	})
 
-	mustWriteJSONFile(t, app.Wave.GetViteManifestLocation(), viteutil.Manifest{
+	mustWriteJSONFile(t, app.Wave.ViteManifestLocation(), viteutil.Manifest{
 		"frontend/src/vorma.entry.tsx": {
 			Src:     "frontend/src/vorma.entry.tsx",
 			File:    "assets/vorma_out/entry.js",

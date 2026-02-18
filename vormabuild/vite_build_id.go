@@ -70,7 +70,7 @@ func (executor stageTwoBuildIDExecutor) computeStageTwoBuildID(
 	pathsFile *vormaruntime.PathsFile,
 ) (string, error) {
 	htmlTemplateContent, err := executor.dependencies.readHTMLTemplate(
-		path.Join(v.Wave.GetPrivateStaticDir(), v.Config.HTMLTemplateLocation),
+		path.Join(v.Wave.PrivateStaticDir(), v.Config.HTMLTemplateLocation),
 	)
 	if err != nil {
 		return "", fmt.Errorf("read HTML template: %w", err)
@@ -84,7 +84,7 @@ func (executor stageTwoBuildIDExecutor) computeStageTwoBuildID(
 	pathsFileJSONHash := cryptoutil.Sha256Hash(asJSON)
 
 	publicFSSummaryHash, err := executor.dependencies.summarizePublicFS(
-		os.DirFS(v.Wave.GetStaticPublicOutDir()),
+		os.DirFS(v.Wave.StaticPublicOutDir()),
 	)
 	if err != nil {
 		return "", fmt.Errorf("get FS summary hash: %w", err)

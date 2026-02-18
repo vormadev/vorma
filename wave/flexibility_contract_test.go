@@ -11,11 +11,11 @@ func TestFlexibilityContract_CustomNestedPublicPathPrefix(t *testing.T) {
 	fixture.cfg.Core.PublicPathPrefix = "/cdn/assets/v2"
 	waveInstance := newWaveForTest(t, fixture, true, nil)
 
-	if got := waveInstance.GetPublicPathPrefix(); got != "/cdn/assets/v2/" {
+	if got := waveInstance.PublicPathPrefix(); got != "/cdn/assets/v2/" {
 		t.Fatalf("expected normalized nested public path prefix %q, got %q", "/cdn/assets/v2/", got)
 	}
 
-	if got := waveInstance.GetPublicURL("logo.txt"); got != "/cdn/assets/v2/vorma_out/logo.hash.txt" {
+	if got := waveInstance.PublicURL("logo.txt"); got != "/cdn/assets/v2/vorma_out/logo.hash.txt" {
 		t.Fatalf("expected mapped URL to honor custom nested prefix, got %q", got)
 	}
 
@@ -25,7 +25,7 @@ func TestFlexibilityContract_CustomNestedPublicPathPrefix(t *testing.T) {
 		writer.WriteHeader(http.StatusAccepted)
 	})
 
-	staticMiddleware := waveInstance.ServeStatic(false)(next)
+	staticMiddleware := waveInstance.MustStaticMiddleware(false)(next)
 
 	assetRequest := httptest.NewRequest(http.MethodGet, "/cdn/assets/v2/logo.txt", nil)
 	assetResponse := httptest.NewRecorder()

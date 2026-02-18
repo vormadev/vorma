@@ -224,11 +224,11 @@ func decorateActionCtx(rd *vorma.ActionReqData[map[string]any]) *vorma.ActionReq
 }
 
 func registerLoaderAtPath(pattern string, loader any) any {
-	return vorma.NewLoader(App, pattern, nil, decorateLoaderCtx)
+	return vorma.DefineLoaderForRegistration(App, pattern, nil, decorateLoaderCtx)
 }
 
 func registerActionAtPath(method string, pattern string, action any) any {
-	return vorma.NewAction(App, method, pattern, nil, decorateActionCtx)
+	return vorma.DefineActionForRegistration(App, method, pattern, nil, decorateActionCtx)
 }
 `))
 
@@ -290,13 +290,13 @@ var _ = registerActionAtPath("POST", "/submit", nil)
 		overlayReplacementSource := string(overlayReplacementSourceBytes)
 		if !strings.Contains(
 			overlayReplacementSource,
-			`vorma.Internal__RegisterDiscoveredLoader(App, "/api/users", nil, decorateLoaderCtx)`,
+			`vormagogen.RegisterLoaderDiscoveredByBuild(App, "/api/users", nil, decorateLoaderCtx)`,
 		) {
 			t.Fatalf("overlay source missing loader registration call:\n%s", overlayReplacementSource)
 		}
 		if !strings.Contains(
 			overlayReplacementSource,
-			`vorma.Internal__RegisterDiscoveredAction(App, "POST", "/submit", nil, decorateActionCtx)`,
+			`vormagogen.RegisterActionDiscoveredByBuild(App, "POST", "/submit", nil, decorateActionCtx)`,
 		) {
 			t.Fatalf("overlay source missing action registration call:\n%s", overlayReplacementSource)
 		}
@@ -373,7 +373,7 @@ import (
 	"github.com/vormadev/vorma"
 )
 
-var _ = vorma.NewLoader(App, "/a", foo.Clone, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/a", foo.Clone, decorateLoaderCtx)
 `))
 
 		mustWriteFile(t, "backend/src/router/routes_b.go", []byte(`
@@ -385,7 +385,7 @@ import (
 	"github.com/vormadev/vorma"
 )
 
-var _ = vorma.NewLoader(App, "/b", foo.Clone, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/b", foo.Clone, decorateLoaderCtx)
 `))
 
 		_, err := prepareDiscoveredRouteRegistrarOverlay(fixture.app)
@@ -425,7 +425,7 @@ package router
 
 import "github.com/vormadev/vorma"
 
-var _ = vorma.NewLoader(App, "/cached", usersLoader, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/cached", usersLoader, decorateLoaderCtx)
 `))
 
 		parseGoSourceASTCallCount := 0
@@ -504,7 +504,7 @@ package router
 
 import "github.com/vormadev/vorma"
 
-var _ = vorma.NewLoader(App, "/before", usersLoader, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/before", usersLoader, decorateLoaderCtx)
 `))
 
 		parseGoSourceASTCallCount := 0
@@ -546,7 +546,7 @@ package router
 
 import "github.com/vormadev/vorma"
 
-var _ = vorma.NewLoader(App, "/after", usersLoader, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/after", usersLoader, decorateLoaderCtx)
 `))
 
 		secondOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
@@ -699,7 +699,7 @@ package router
 
 import "github.com/vormadev/vorma"
 
-var _ = vorma.NewLoader(App, "/version", usersLoader, decorateLoaderCtx)
+var _ = vorma.DefineLoaderForRegistration(App, "/version", usersLoader, decorateLoaderCtx)
 `))
 
 		mustWriteFile(t, "backend/cmd/check/main.go", []byte(`

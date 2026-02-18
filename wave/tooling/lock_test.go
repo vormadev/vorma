@@ -43,6 +43,11 @@ func TestIsLockFile(t *testing.T) {
 	if !isLockFile(".wave-dev.lock") {
 		t.Fatal("expected .wave-dev.lock to be recognized as lock file")
 	}
+	if isLockFile(".wave-custom") {
+		t.Fatal(
+			"expected non-lock .wave-* file to not be recognized as lock file",
+		)
+	}
 	if isLockFile("wave-dev.lock") {
 		t.Fatal("expected wave-dev.lock to not be recognized as lock file")
 	}
@@ -83,7 +88,10 @@ func TestDevLock_AcquireRecoversInvalidLockFileContents(t *testing.T) {
 	}
 
 	if err := lock.acquire(); err != nil {
-		t.Fatalf("expected invalid lock contents to be recoverable, got: %v", err)
+		t.Fatalf(
+			"expected invalid lock contents to be recoverable, got: %v",
+			err,
+		)
 	}
 	defer lock.release()
 }
@@ -101,7 +109,10 @@ func TestDevLock_AcquireTreatsFreshInvalidLockContentsAsHeld(t *testing.T) {
 		t.Fatal("expected fresh invalid lock contents to be treated as held")
 	}
 	if !errors.Is(err, ErrLockHeld) {
-		t.Fatalf("expected ErrLockHeld for fresh invalid lock contents, got: %v", err)
+		t.Fatalf(
+			"expected ErrLockHeld for fresh invalid lock contents, got: %v",
+			err,
+		)
 	}
 }
 
@@ -141,7 +152,10 @@ func TestDevLock_AtomicCreateAllowsOnlyOneConcurrentAcquire(t *testing.T) {
 				continue
 			}
 			if !errors.Is(err, ErrLockHeld) {
-				t.Fatalf("expected ErrLockHeld for contended acquire, got: %v", err)
+				t.Fatalf(
+					"expected ErrLockHeld for contended acquire, got: %v",
+					err,
+				)
 			}
 			lockHeldCount++
 		case <-time.After(3 * time.Second):
@@ -150,10 +164,17 @@ func TestDevLock_AtomicCreateAllowsOnlyOneConcurrentAcquire(t *testing.T) {
 	}
 
 	if successCount != 1 {
-		t.Fatalf("expected exactly one successful concurrent acquire, got %d", successCount)
+		t.Fatalf(
+			"expected exactly one successful concurrent acquire, got %d",
+			successCount,
+		)
 	}
 	if lockHeldCount != contenderCount-1 {
-		t.Fatalf("expected %d ErrLockHeld results, got %d", contenderCount-1, lockHeldCount)
+		t.Fatalf(
+			"expected %d ErrLockHeld results, got %d",
+			contenderCount-1,
+			lockHeldCount,
+		)
 	}
 
 	close(releaseChannel)

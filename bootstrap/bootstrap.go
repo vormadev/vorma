@@ -130,7 +130,9 @@ var jsPackageManagerConfigByName = map[string]jsPackageManagerConfig{
 	},
 }
 
-func mustGetJSPackageManagerConfig(jsPackageManager string) jsPackageManagerConfig {
+func mustGetJSPackageManagerConfig(
+	jsPackageManager string,
+) jsPackageManagerConfig {
 	config, exists := jsPackageManagerConfigByName[jsPackageManager]
 	if !exists {
 		panic("unknown JSPackageManager: " + jsPackageManager)
@@ -176,7 +178,9 @@ func (o Options) derived() derivedOptions {
 	}
 	if o.DeploymentTarget == "docker" {
 		if strings.TrimSpace(o.NodeMajorVersion) == "" {
-			panic("NodeMajorVersion must be set when DeploymentTarget is docker")
+			panic(
+				"NodeMajorVersion must be set when DeploymentTarget is docker",
+			)
 		}
 		if !isAllASCIIDigits(o.NodeMajorVersion) {
 			panic("NodeMajorVersion must contain only digits")
@@ -215,11 +219,14 @@ func (o Options) derived() derivedOptions {
 	}
 
 	if o.DeploymentTarget == "vercel" {
-		do.PackageJSONExtras = fmt.Sprintf(`,
+		do.PackageJSONExtras = fmt.Sprintf(
+			`,
 		"vercel-install-go": "curl -L https://go.dev/dl/%s.linux-amd64.tar.gz | tar -C /tmp -xz",
 		"vercel-install": "%s vercel-install-go && %s",
 		"vercel-build": "export PATH=/tmp/go/bin:$PATH && go run ./backend/cmd/build"`,
-			goVersion, do.ResolveJSPackageManagerRunScriptPrefix(), do.ResolveJSPackageManagerInstallCmd(),
+			goVersion,
+			do.ResolveJSPackageManagerRunScriptPrefix(),
+			do.ResolveJSPackageManagerInstallCmd(),
 		)
 	}
 
@@ -228,7 +235,10 @@ func (o Options) derived() derivedOptions {
 		dockerBuildCmd := "docker build -t vorma-app ."
 		if do.IsMonorepo && do.DockerBuildContextPath != "" {
 			// For monorepo, build from module root
-			dockerBuildCmd = fmt.Sprintf("docker build -f Dockerfile -t vorma-app %s", do.DockerBuildContextPath)
+			dockerBuildCmd = fmt.Sprintf(
+				"docker build -f Dockerfile -t vorma-app %s",
+				do.DockerBuildContextPath,
+			)
 		}
 
 		do.PackageJSONExtras = fmt.Sprintf(`,
@@ -273,7 +283,7 @@ var (
 	assetsFS embed.FS
 )
 
-func Init(o Options) {
+func MustInit(o Options) {
 	if o.GoImportBase == "" {
 		panic("GoImportBase must be set")
 	}
@@ -296,77 +306,143 @@ func Init(o Options) {
 		fsutil.EnsureDirs("api")
 	}
 
-	do.tmplWriteMust("backend/cmd/serve/main.go", "tmpls/cmd_app_main_go_tmpl.txt")
-	do.tmplWriteMust("backend/cmd/build/main.go", "tmpls/cmd_build_main_go_tmpl.txt")
-	do.tmplWriteMust("backend/dist/static/.keep", "tmpls/dist_static_keep_tmpl.txt")
-	strWriteMust("backend/assets/entry.go.html", "tmpls/backend_static_entry_go_html_str.txt")
-	do.tmplWriteMust("backend/src/router/app.go", "tmpls/backend_src_router_app_go_tmpl.txt")
-	do.tmplWriteMust("backend/src/router/context.go", "tmpls/backend_src_router_context_go_tmpl.txt")
-	do.tmplWriteMust("backend/src/router/init.go", "tmpls/backend_src_router_init_go_tmpl.txt")
-	do.tmplWriteMust("backend/src/router/example_routes.go", "tmpls/backend_src_router_example_routes_go_tmpl.txt")
-	strWriteMust("backend/wave.dev.go", "tmpls/backend_wave_dev_go_str.txt")
-	strWriteMust("backend/wave.prod.go", "tmpls/backend_wave_prod_go_str.txt")
-	do.tmplWriteMust("backend/wave.config.json", "tmpls/wave_config_json_tmpl.txt")
-	do.tmplWriteMust("vite.config.ts", "tmpls/vite_config_ts_tmpl.txt")
-	do.tmplWriteMust("package.json", "tmpls/package_json_tmpl.txt")
-	strWriteMust(".gitignore", "tmpls/gitignore_str.txt")
-	strWriteMust("frontend/src/styles/main.css", "tmpls/main_css_str.txt")
-	strWriteMust("frontend/src/styles/main.critical.css", "tmpls/main_critical_css_str.txt")
-	strWriteMust("frontend/src/routes/core.vorma.routes.ts", "tmpls/frontend_routes_core_ts_str.txt")
-	strWriteMust("frontend/src/routes/links.vorma.routes.ts", "tmpls/frontend_routes_links_ts_str.txt")
-	do.tmplWriteMust("frontend/src/components/root.tsx", "tmpls/frontend_root_tsx_tmpl.txt")
-	do.tmplWriteMust("frontend/src/components/home.tsx", "tmpls/frontend_home_tsx_tmpl.txt")
-	do.tmplWriteMust("frontend/src/components/links.tsx", "tmpls/frontend_links_tsx_tmpl.txt")
-	do.tmplWriteMust("frontend/src/vorma.app.tsx", "tmpls/frontend_app_tsx_tmpl.txt")
-	strWriteMust("frontend/vite.d.ts", "tmpls/frontend_vite_d_ts_str.txt")
+	do.mustWriteTmpl(
+		"backend/cmd/serve/main.go",
+		"tmpls/cmd_app_main_go_tmpl.txt",
+	)
+	do.mustWriteTmpl(
+		"backend/cmd/build/main.go",
+		"tmpls/cmd_build_main_go_tmpl.txt",
+	)
+	do.mustWriteTmpl(
+		"backend/dist/static/.keep",
+		"tmpls/dist_static_keep_tmpl.txt",
+	)
+	mustWriteStr(
+		"backend/assets/entry.go.html",
+		"tmpls/backend_static_entry_go_html_str.txt",
+	)
+	do.mustWriteTmpl(
+		"backend/src/router/app.go",
+		"tmpls/backend_src_router_app_go_tmpl.txt",
+	)
+	do.mustWriteTmpl(
+		"backend/src/router/context.go",
+		"tmpls/backend_src_router_context_go_tmpl.txt",
+	)
+	do.mustWriteTmpl(
+		"backend/src/router/init.go",
+		"tmpls/backend_src_router_init_go_tmpl.txt",
+	)
+	do.mustWriteTmpl(
+		"backend/src/router/example_routes.go",
+		"tmpls/backend_src_router_example_routes_go_tmpl.txt",
+	)
+	mustWriteStr("backend/wave.dev.go", "tmpls/backend_wave_dev_go_str.txt")
+	mustWriteStr("backend/wave.prod.go", "tmpls/backend_wave_prod_go_str.txt")
+	do.mustWriteTmpl(
+		"backend/wave.config.json",
+		"tmpls/wave_config_json_tmpl.txt",
+	)
+	do.mustWriteTmpl("vite.config.ts", "tmpls/vite_config_ts_tmpl.txt")
+	do.mustWriteTmpl("package.json", "tmpls/package_json_tmpl.txt")
+	mustWriteStr(".gitignore", "tmpls/gitignore_str.txt")
+	mustWriteStr("frontend/src/styles/main.css", "tmpls/main_css_str.txt")
+	mustWriteStr(
+		"frontend/src/styles/main.critical.css",
+		"tmpls/main_critical_css_str.txt",
+	)
+	mustWriteStr(
+		"frontend/src/routes/core.vorma.routes.ts",
+		"tmpls/frontend_routes_core_ts_str.txt",
+	)
+	mustWriteStr(
+		"frontend/src/routes/links.vorma.routes.ts",
+		"tmpls/frontend_routes_links_ts_str.txt",
+	)
+	do.mustWriteTmpl(
+		"frontend/src/components/root.tsx",
+		"tmpls/frontend_root_tsx_tmpl.txt",
+	)
+	do.mustWriteTmpl(
+		"frontend/src/components/home.tsx",
+		"tmpls/frontend_home_tsx_tmpl.txt",
+	)
+	do.mustWriteTmpl(
+		"frontend/src/components/links.tsx",
+		"tmpls/frontend_links_tsx_tmpl.txt",
+	)
+	do.mustWriteTmpl(
+		"frontend/src/vorma.app.tsx",
+		"tmpls/frontend_app_tsx_tmpl.txt",
+	)
+	mustWriteStr("frontend/vite.d.ts", "tmpls/frontend_vite_d_ts_str.txt")
 	if o.DeploymentTarget == "vercel" {
-		do.tmplWriteMust("vercel.json", "tmpls/vercel_json_tmpl.txt")
-		do.tmplWriteMust("api/proxy.ts", "tmpls/api_proxy_ts_str.txt")
+		do.mustWriteTmpl("vercel.json", "tmpls/vercel_json_tmpl.txt")
+		do.mustWriteTmpl("api/proxy.ts", "tmpls/api_proxy_ts_str.txt")
 	}
 	if o.DeploymentTarget == "docker" {
-		do.tmplWriteMust("Dockerfile", "tmpls/dockerfile_tmpl.txt")
+		do.mustWriteTmpl("Dockerfile", "tmpls/dockerfile_tmpl.txt")
 	}
 
 	// last
-	do.tmplWriteMust("tsconfig.json", "tmpls/ts_config_json_tmpl.txt")
+	do.mustWriteTmpl("tsconfig.json", "tmpls/ts_config_json_tmpl.txt")
 
-	installJSPkgs(
+	mustInstallJSPkgs(
 		do,
 		"typescript",
 		"vite",
-		fmt.Sprintf("vorma@%s", vorma.Internal__GetCurrentReleaseVersion()),
+		fmt.Sprintf("vorma@%s", vorma.CurrentReleaseVersion()),
 		resolveUIVitePlugin(do),
 	)
 
 	if do.UIVariant == "react" {
-		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_react_tmpl.txt")
+		do.mustWriteTmpl(
+			"frontend/src/vorma.entry.tsx",
+			"tmpls/frontend_entry_tsx_react_tmpl.txt",
+		)
 
-		installJSPkgs(do, "react", "react-dom", "@types/react", "@types/react-dom")
+		mustInstallJSPkgs(
+			do,
+			"react",
+			"react-dom",
+			"@types/react",
+			"@types/react-dom",
+		)
 	}
 
 	if do.UIVariant == "solid" {
-		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_solid_tmpl.txt")
+		do.mustWriteTmpl(
+			"frontend/src/vorma.entry.tsx",
+			"tmpls/frontend_entry_tsx_solid_tmpl.txt",
+		)
 
-		installJSPkgs(do, "solid-js")
+		mustInstallJSPkgs(do, "solid-js")
 	}
 
 	if do.UIVariant == "preact" {
-		do.tmplWriteMust("frontend/src/vorma.entry.tsx", "tmpls/frontend_entry_tsx_preact_tmpl.txt")
+		do.mustWriteTmpl(
+			"frontend/src/vorma.entry.tsx",
+			"tmpls/frontend_entry_tsx_preact_tmpl.txt",
+		)
 
-		installJSPkgs(do, "preact", "@preact/signals")
+		mustInstallJSPkgs(do, "preact", "@preact/signals")
 	}
 
 	if do.DeploymentTarget == "vercel" {
-		installJSPkgs(do, "@vercel/node")
+		mustInstallJSPkgs(do, "@vercel/node")
 	}
 
 	if do.IncludeTailwind {
-		installJSPkgs(do, "@tailwindcss/vite", "tailwindcss")
-		strWriteMust("frontend/src/styles/tailwind.css", "tmpls/frontend_css_tailwind_css_str.txt")
+		mustInstallJSPkgs(do, "@tailwindcss/vite", "tailwindcss")
+		mustWriteStr(
+			"frontend/src/styles/tailwind.css",
+			"tmpls/frontend_css_tailwind_css_str.txt",
+		)
 	}
 
 	// write assets
-	fileWriteMust("frontend/assets/favicon.svg", "assets/favicon.svg")
+	mustWriteFile("frontend/assets/favicon.svg", "assets/favicon.svg")
 
 	// tidy go modules
 	if err := executil.RunCmd("go", "mod", "tidy"); err != nil {
@@ -414,7 +490,7 @@ func resolveJSDevDependencyInstallCommand(
 	return jsPackageManagerConfig.DevDependencyCommand, commandArguments
 }
 
-func installJSPkgs(do derivedOptions, packages ...string) {
+func mustInstallJSPkgs(do derivedOptions, packages ...string) {
 	if len(packages) == 0 {
 		return
 	}

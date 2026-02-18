@@ -476,7 +476,7 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 	})
 }
 
-func TestWritePathsToDiskStageOneFromRuntimeStateSnapshot(t *testing.T) {
+func TestWritePathsToDiskStageOneFromRuntimeState(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -492,12 +492,12 @@ func TestWritePathsToDiskStageOneFromRuntimeStateSnapshot(t *testing.T) {
 		routeManifestFile: "manifest-from-snapshot-state.json",
 	}
 
-	if err := writePathsToDiskStageOneFromRuntimeStateSnapshot(
+	if err := writePathsToDiskStageOneFromRuntimeState(
 		app,
 		runtimeStateSnapshot,
 		"manifest-written-this-build.json",
 	); err != nil {
-		t.Fatalf("writePathsToDiskStageOneFromRuntimeStateSnapshot returned error: %v", err)
+		t.Fatalf("writePathsToDiskStageOneFromRuntimeState returned error: %v", err)
 	}
 
 	outputPath := pathsOutputPath(app, vormaruntime.VormaPathsStageOneJSONFileName)

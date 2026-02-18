@@ -27,7 +27,7 @@ func (w *Wave) initCriticalCSS() (*criticalCSSData, error) {
 }
 
 func (w *Wave) readCriticalCSSContent() (string, bool, error) {
-	baseFS, err := w.GetBaseFS()
+	baseFS, err := w.BaseFS()
 	if err != nil {
 		return "", false, err
 	}
@@ -47,9 +47,11 @@ func (w *Wave) buildCriticalCSSData(content string) (*criticalCSSData, error) {
 	result := &criticalCSSData{content: content}
 
 	el := htmlutil.Element{
-		Tag:                 "style",
-		AttributesKnownSafe: map[string]string{"id": w.cfg.CriticalCSSStyleElementID()},
-		DangerousInnerHTML:  "\n" + result.content,
+		Tag: "style",
+		AttributesKnownSafe: map[string]string{
+			"id": w.cfg.CriticalCSSStyleElementID(),
+		},
+		DangerousInnerHTML: "\n" + result.content,
 	}
 
 	sha256Hash, err := htmlutil.ComputeContentSha256(&el)
@@ -77,7 +79,7 @@ func (w *Wave) getCriticalCSSData() *criticalCSSData {
 	return data
 }
 
-func (w *Wave) GetCriticalCSS() template.CSS {
+func (w *Wave) CriticalCSS() template.CSS {
 	data := w.getCriticalCSSData()
 	if data == nil {
 		return ""
@@ -85,7 +87,7 @@ func (w *Wave) GetCriticalCSS() template.CSS {
 	return template.CSS(data.content)
 }
 
-func (w *Wave) GetCriticalCSSStyleElement() template.HTML {
+func (w *Wave) CriticalCSSStyleElement() template.HTML {
 	data := w.getCriticalCSSData()
 	if data == nil {
 		return ""
@@ -93,7 +95,7 @@ func (w *Wave) GetCriticalCSSStyleElement() template.HTML {
 	return data.styleEl
 }
 
-func (w *Wave) GetCriticalCSSStyleElementSha256Hash() string {
+func (w *Wave) CriticalCSSStyleElementSha256Hash() string {
 	data := w.getCriticalCSSData()
 	if data == nil {
 		return ""
@@ -101,7 +103,7 @@ func (w *Wave) GetCriticalCSSStyleElementSha256Hash() string {
 	return data.sha256Hash
 }
 
-func (w *Wave) GetCriticalCSSElementID() string {
+func (w *Wave) CriticalCSSElementID() string {
 	return w.cfg.CriticalCSSStyleElementID()
 }
 
@@ -113,13 +115,13 @@ func (w *Wave) initStylesheetURL() (string, error) {
 	return w.initPublicURLFromInternalRefFile(RelPaths.NormalCSSRef())
 }
 
-func (w *Wave) GetStyleSheetURL() string {
+func (w *Wave) StyleSheetURL() string {
 	url, _ := w.stylesheetURL.get()
 	return url
 }
 
 func (w *Wave) initStylesheetLink() (string, error) {
-	url := w.GetStyleSheetURL()
+	url := w.StyleSheetURL()
 	if url == "" {
 		return "", nil
 	}
@@ -134,11 +136,11 @@ func (w *Wave) initStylesheetLink() (string, error) {
 	return sb.String(), nil
 }
 
-func (w *Wave) GetStyleSheetLinkElement() template.HTML {
+func (w *Wave) StyleSheetLinkElement() template.HTML {
 	link, _ := w.stylesheetLink.get()
 	return template.HTML(link)
 }
 
-func (w *Wave) GetStyleSheetElementID() string {
+func (w *Wave) StyleSheetElementID() string {
 	return w.cfg.NonCriticalCSSLinkElementID()
 }

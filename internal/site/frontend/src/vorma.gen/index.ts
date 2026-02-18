@@ -85,7 +85,7 @@ export const vormaAppConfig = {
 	actionsSplatRune: "*",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
-	loadersExplicitIndexSegment: "_index",
+	loadersExplicitIndexSegmentIdentifier: "_index",
 	__phantom: null as unknown as VormaApp,
 } as const;
 
@@ -129,8 +129,11 @@ declare global {
 export const publicPathPrefix = "/";
 
 export function waveRuntimeURL(originalPublicURL: StaticPublicAsset) {
-	const url = staticPublicAssetMap[originalPublicURL] ?? originalPublicURL;
-	return publicPathPrefix + url;
+	const hashedPublicURL = staticPublicAssetMap[originalPublicURL];
+	if (!hashedPublicURL) {
+		throw new Error("Wave public URL lookup miss: " + originalPublicURL);
+	}
+	return publicPathPrefix + hashedPublicURL;
 }
 
 export const vormaViteConfig = {

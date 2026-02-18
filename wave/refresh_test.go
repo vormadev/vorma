@@ -12,15 +12,15 @@ func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 
 	wProd := newWaveForTest(t, fixture, false, nil)
-	if got := wProd.GetRefreshScript(); got != "" {
+	if got := wProd.RefreshScript(); got != "" {
 		t.Fatalf("expected empty refresh script in non-dev mode, got %q", got)
 	}
-	if got := wProd.GetRefreshScriptSha256Hash(); got != "" {
+	if got := wProd.RefreshScriptSha256Hash(); got != "" {
 		t.Fatalf("expected empty refresh script hash in non-dev mode, got %q", got)
 	}
 
 	wDev := newWaveForTest(t, fixture, true, nil)
-	script := string(wDev.GetRefreshScript())
+	script := string(wDev.RefreshScript())
 	if !strings.Contains(script, "<script>") || !strings.Contains(script, "</script>") {
 		t.Fatalf("expected refresh script to include script tag wrapper, got %q", script)
 	}
@@ -32,7 +32,7 @@ func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
 	}
 
 	expectedHash := bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(RefreshScriptInner(defaultRefreshPort))))
-	if got := wDev.GetRefreshScriptSha256Hash(); got != expectedHash {
+	if got := wDev.RefreshScriptSha256Hash(); got != expectedHash {
 		t.Fatalf("unexpected refresh script hash: got=%q want=%q", got, expectedHash)
 	}
 }
@@ -42,13 +42,13 @@ func TestRefreshScriptUsesConfiguredRefreshServerPort(t *testing.T) {
 	t.Setenv(envRefreshServerPort, "12345")
 	w := newWaveForTest(t, fixture, true, nil)
 
-	script := string(w.GetRefreshScript())
+	script := string(w.RefreshScript())
 	if !strings.Contains(script, "refreshWebSocketURL.port = String(12345);") {
 		t.Fatalf("expected configured refresh port in script, got %q", script)
 	}
 
 	expectedHash := bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(RefreshScriptInner(12345))))
-	if got := w.GetRefreshScriptSha256Hash(); got != expectedHash {
+	if got := w.RefreshScriptSha256Hash(); got != expectedHash {
 		t.Fatalf("unexpected refresh script hash for configured port: got=%q want=%q", got, expectedHash)
 	}
 }
@@ -58,7 +58,7 @@ func TestRefreshScriptFallsBackToDefaultWhenRefreshPortIsInvalid(t *testing.T) {
 	t.Setenv(envRefreshServerPort, "-1")
 	w := newWaveForTest(t, fixture, true, nil)
 
-	script := string(w.GetRefreshScript())
+	script := string(w.RefreshScript())
 	if !strings.Contains(script, "refreshWebSocketURL.port = String(10000);") {
 		t.Fatalf("expected default refresh port for invalid configured value, got %q", script)
 	}
@@ -79,7 +79,7 @@ func TestRefreshScriptUsesConfiguredBrowserRuntimeSettings(t *testing.T) {
 	w.SetCriticalCSSStyleElementID("vorma-critical-css")
 	w.SetNonCriticalCSSLinkElementID("vorma-normal-css")
 
-	script := string(w.GetRefreshScript())
+	script := string(w.RefreshScript())
 	if !strings.Contains(script, `const browserRevalidateFunctionName = "__vorma_revalidate";`) {
 		t.Fatalf("expected configured revalidate function name in refresh script, got %q", script)
 	}

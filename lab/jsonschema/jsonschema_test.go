@@ -17,3 +17,13 @@ func TestUniqueFrom_UsesAndForThreeItems(t *testing.T) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
+
+func TestOptionalString_DefaultDescriptionDoesNotUseInvalidQuotedFormatting(
+	t *testing.T,
+) {
+	got := OptionalString(Def{Default: 123}).Description
+	want := "Optional string.\n\nDefault: 123"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}

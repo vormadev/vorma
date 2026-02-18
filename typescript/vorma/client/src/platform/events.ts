@@ -41,12 +41,27 @@ export function dispatchLocationEvent(): void {
 }
 export const addLocationListener = makeListenerAdder<void>(LOCATION_EVENT_KEY);
 
+function canUseWindowEventTarget(): boolean {
+	return (
+		typeof window !== "undefined" &&
+		typeof window.dispatchEvent === "function" &&
+		typeof window.addEventListener === "function" &&
+		typeof window.removeEventListener === "function"
+	);
+}
+
 // Helper to create listener adders
 function dispatchCustomEventWithDetail<T>(eventKey: string, detail: T): void {
+	if (!canUseWindowEventTarget()) {
+		return;
+	}
 	window.dispatchEvent(new CustomEvent(eventKey, { detail }));
 }
 
 function dispatchCustomEventWithoutDetail(eventKey: string): void {
+	if (!canUseWindowEventTarget()) {
+		return;
+	}
 	window.dispatchEvent(new CustomEvent(eventKey));
 }
 
@@ -54,6 +69,10 @@ function makeListenerAdder<T>(key: string) {
 	return function addListener(
 		listener: (event: CustomEvent<T>) => void,
 	): () => void {
+		if (!canUseWindowEventTarget()) {
+			return () => {};
+		}
+
 		const wrappedListener: EventListener = (event) => {
 			listener(event as CustomEvent<T>);
 		};

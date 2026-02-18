@@ -9,16 +9,19 @@ import (
 func genericTest[T comparable](t *testing.T, val T) {
 	store := NewStore[T]("key")
 
-	ctx := store.GetContextWithValue(context.Background(), val)
+	ctx := store.ContextWithValue(context.Background(), val)
 
-	if store.GetValueFromContext(ctx) != val {
-		t.Error("expected value in context, got", store.GetValueFromContext(ctx))
+	if store.Value(ctx) != val {
+		t.Error("expected value in context, got", store.Value(ctx))
 	}
 
-	r := store.GetRequestWithContext(&http.Request{}, val)
+	r := store.RequestWithContextValue(&http.Request{}, val)
 
-	if store.GetValueFromContext(r.Context()) != val {
-		t.Error("expected value in request context, got", store.GetValueFromContext(r.Context()))
+	if store.Value(r.Context()) != val {
+		t.Error(
+			"expected value in request context, got",
+			store.Value(r.Context()),
+		)
 	}
 }
 
@@ -37,13 +40,13 @@ func TestStoreKeysDoNotCollideAcrossInstances(t *testing.T) {
 	storeA := NewStore[string]("shared-key")
 	storeB := NewStore[string]("shared-key")
 
-	ctx := storeA.GetContextWithValue(context.Background(), "a")
-	ctx = storeB.GetContextWithValue(ctx, "b")
+	ctx := storeA.ContextWithValue(context.Background(), "a")
+	ctx = storeB.ContextWithValue(ctx, "b")
 
-	if got := storeA.GetValueFromContext(ctx); got != "a" {
+	if got := storeA.Value(ctx); got != "a" {
 		t.Fatalf("storeA value mismatch: got %q", got)
 	}
-	if got := storeB.GetValueFromContext(ctx); got != "b" {
+	if got := storeB.Value(ctx); got != "b" {
 		t.Fatalf("storeB value mismatch: got %q", got)
 	}
 }

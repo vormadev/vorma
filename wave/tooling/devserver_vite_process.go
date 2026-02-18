@@ -97,7 +97,10 @@ func (s *server) callViteFilemapInvalidate() error {
 		return fmt.Errorf("vite not running")
 	}
 
-	url := fmt.Sprintf("http://localhost:%d/__vorma_invalidate_filemap", viteCtx.GetPort())
+	url := fmt.Sprintf(
+		"http://localhost:%d/__vorma_invalidate_filemap",
+		viteCtx.Port(),
+	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -130,7 +133,7 @@ func (s *server) waitForVite() bool {
 	if viteCtx == nil {
 		return true
 	}
-	urls := resolveViteReadyURLs(viteCtx.GetPort())
+	urls := resolveViteReadyURLs(viteCtx.Port())
 	ok := s.waitForAnyReady(urls)
 	if !ok {
 		s.log.Warn(

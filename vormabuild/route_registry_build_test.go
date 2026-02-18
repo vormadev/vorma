@@ -232,7 +232,7 @@ func TestWriteRouteArtifacts_RestoresArtifactsThenRePanicsWhenGeneratedTypeScrip
 			)
 		}
 
-		if got := app.GetRouteManifestFile(); got != "manifest-before-generated-ts-panic.json" {
+		if got := app.RouteManifestFile(); got != "manifest-before-generated-ts-panic.json" {
 			t.Fatalf(
 				"route manifest file after panic = %q, want unchanged %q",
 				got,
@@ -323,7 +323,7 @@ func TestWriteRouteArtifacts_OnlyCommitsRouteManifestFileOnSuccess(t *testing.T)
 					},
 				})
 				gotErr = writeRouteArtifacts(l)
-				routeManifestFileAfterWriteAttempt = l.GetRouteManifestFile()
+				routeManifestFileAfterWriteAttempt = l.RouteManifestFile()
 			})
 
 			if gotErr == nil {
@@ -383,7 +383,7 @@ func TestWriteRouteArtifacts_OnlyCommitsRouteManifestFileOnSuccess(t *testing.T)
 				t.Fatalf("writeRouteArtifacts returned error: %v", err)
 			}
 
-			routeManifestFileAfterSuccess = l.GetRouteManifestFile()
+			routeManifestFileAfterSuccess = l.RouteManifestFile()
 		})
 
 		if routeManifestFileAfterSuccess == "" {
@@ -420,7 +420,7 @@ func TestWriteAndSetRouteManifest_DoesNotMutateStateWhenWriteFails(t *testing.T)
 		})
 
 		gotErr = writeAndSetRouteManifest(l)
-		routeManifestFileAfterFailure = l.GetRouteManifestFile()
+		routeManifestFileAfterFailure = l.RouteManifestFile()
 	})
 
 	if gotErr == nil {
@@ -604,7 +604,7 @@ func TestWriteRouteArtifacts_RestoresStageOnePathsArtifactAfterGeneratedTypeScri
 	}
 }
 
-func TestWriteRouteArtifacts_RemovesStageOnePathsArtifactWhenNoPreviousSnapshot(t *testing.T) {
+func TestWriteRouteArtifacts_RemovesStageOnePathsArtifactWhenNoPreviousState(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	t.Chdir(fixture.rootDir)
@@ -787,7 +787,7 @@ func TestWriteRouteArtifacts_ReturnsSnapshotErrorWhenStageOneSnapshotReadFails(t
 	}
 }
 
-func TestCaptureStageOnePathsArtifactSnapshot(t *testing.T) {
+func TestCaptureStageOnePathsArtifact(t *testing.T) {
 	t.Run("returns non-existent snapshot for ENOTDIR errors", func(t *testing.T) {
 		routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
 			func(dependencies *routeRegistryBuildDependencies) {
@@ -797,9 +797,9 @@ func TestCaptureStageOnePathsArtifactSnapshot(t *testing.T) {
 			},
 		)
 
-		snapshot, err := routeRegistryBuildExecutor.captureStageOnePathsArtifactSnapshot("ignored")
+		snapshot, err := routeRegistryBuildExecutor.captureStageOnePathsArtifact("ignored")
 		if err != nil {
-			t.Fatalf("captureStageOnePathsArtifactSnapshot returned error: %v", err)
+			t.Fatalf("captureStageOnePathsArtifact returned error: %v", err)
 		}
 		if snapshot.existed {
 			t.Fatalf("snapshot.existed = %v, want false for ENOTDIR", snapshot.existed)
@@ -819,9 +819,9 @@ func TestCaptureStageOnePathsArtifactSnapshot(t *testing.T) {
 			},
 		)
 
-		_, err := routeRegistryBuildExecutor.captureStageOnePathsArtifactSnapshot("ignored")
+		_, err := routeRegistryBuildExecutor.captureStageOnePathsArtifact("ignored")
 		if err == nil {
-			t.Fatal("expected captureStageOnePathsArtifactSnapshot to return error")
+			t.Fatal("expected captureStageOnePathsArtifact to return error")
 		}
 		if !errors.Is(err, readErr) {
 			t.Fatalf("error = %v, expected wrapped read error", err)
@@ -829,7 +829,7 @@ func TestCaptureStageOnePathsArtifactSnapshot(t *testing.T) {
 	})
 }
 
-func TestRestoreStageOnePathsArtifactFromSnapshot(t *testing.T) {
+func TestRestoreStageOnePathsArtifactFromState(t *testing.T) {
 	t.Run("restores existing snapshot using stage-one writer and build artifact mode", func(t *testing.T) {
 		var writeCalled bool
 		routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
@@ -858,12 +858,12 @@ func TestRestoreStageOnePathsArtifactFromSnapshot(t *testing.T) {
 			},
 		)
 
-		err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromSnapshot(
+		err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromState(
 			"stage-one-path.json",
 			stageOnePathsArtifactSnapshot{existed: true, content: []byte("snapshot-content")},
 		)
 		if err != nil {
-			t.Fatalf("restoreStageOnePathsArtifactFromSnapshot returned error: %v", err)
+			t.Fatalf("restoreStageOnePathsArtifactFromState returned error: %v", err)
 		}
 		if !writeCalled {
 			t.Fatal("expected stage-one snapshot restore write to be called")
@@ -879,11 +879,11 @@ func TestRestoreStageOnePathsArtifactFromSnapshot(t *testing.T) {
 			},
 		)
 
-		if err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromSnapshot(
+		if err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromState(
 			"ignored",
 			stageOnePathsArtifactSnapshot{},
 		); err != nil {
-			t.Fatalf("restoreStageOnePathsArtifactFromSnapshot returned error: %v", err)
+			t.Fatalf("restoreStageOnePathsArtifactFromState returned error: %v", err)
 		}
 	})
 
@@ -897,12 +897,12 @@ func TestRestoreStageOnePathsArtifactFromSnapshot(t *testing.T) {
 			},
 		)
 
-		err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromSnapshot(
+		err := routeRegistryBuildExecutor.restoreStageOnePathsArtifactFromState(
 			"ignored",
 			stageOnePathsArtifactSnapshot{},
 		)
 		if err == nil {
-			t.Fatal("expected restoreStageOnePathsArtifactFromSnapshot to return remove error")
+			t.Fatal("expected restoreStageOnePathsArtifactFromState to return remove error")
 		}
 		if !errors.Is(err, removeErr) {
 			t.Fatalf("error = %v, expected wrapped remove error", err)
@@ -976,7 +976,7 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_RunsHeavyArtifactStepsOuts
 		t.Fatalf("writeRouteArtifactsWithoutHoldingRuntimeLock returned error: %v", err)
 	}
 
-	if got := app.GetRouteManifestFile(); got == "" {
+	if got := app.RouteManifestFile(); got == "" {
 		t.Fatal("expected committed route manifest file after successful write")
 	}
 }
@@ -1077,7 +1077,7 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_DoesNotCommitRouteManifest
 	if !errors.Is(gotErr, expectedErr) {
 		t.Fatalf("error = %v, expected wrapped generated TypeScript error", gotErr)
 	}
-	if got := app.GetRouteManifestFile(); got != "manifest-before-failure.json" {
+	if got := app.RouteManifestFile(); got != "manifest-before-failure.json" {
 		t.Fatalf(
 			"routeManifestFile = %q, want unchanged %q",
 			got,

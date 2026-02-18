@@ -80,14 +80,14 @@ func TestGenerateAndWriteRouteManifest(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/has-loader",
 		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
 			return "ok", nil
 		}),
 	)
-	mux.RegisterNestedPatternWithoutHandler(app.LoadersRouter().NestedRouter, "/client-only")
+	mux.AddNestedPatternWithoutHandler(app.LoadersRouter().NestedRouter, "/client-only")
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetPaths(map[string]*vormaruntime.Path{
@@ -196,7 +196,7 @@ func TestPathsOutputPath_StageOneFile(t *testing.T) {
 
 	got := pathsOutputPath(app, vormaruntime.VormaPathsStageOneJSONFileName)
 	want := filepath.Join(
-		app.Wave.GetStaticPrivateOutDir(),
+		app.Wave.StaticPrivateOutDir(),
 		vormaruntime.VormaOutDirname,
 		vormaruntime.VormaPathsStageOneJSONFileName,
 	)
@@ -270,7 +270,7 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 			}
 		}
 		templatePath := normalizeFrameworkWatchPatternPath(
-			filepath.Join(app.Wave.GetPrivateStaticDir(), app.Config.HTMLTemplateLocation),
+			filepath.Join(app.Wave.PrivateStaticDir(), app.Config.HTMLTemplateLocation),
 		)
 		if pattern.Pattern == templatePath {
 			foundTemplatePattern = true
@@ -479,11 +479,11 @@ func TestInitializeBuildInnerState_ProdMode(t *testing.T) {
 	if err := initializeBuildInnerState(app, &buildInnerOptions{isDev: false}); err != nil {
 		t.Fatalf("initializeBuildInnerState returned error: %v", err)
 	}
-	if app.GetIsDevMode() {
+	if app.IsDevMode() {
 		t.Fatal("expected production mode to set isDev to false")
 	}
-	if app.GetBuildID() != "existing-build-id" {
-		t.Fatalf("build ID = %q, want %q", app.GetBuildID(), "existing-build-id")
+	if app.BuildID() != "existing-build-id" {
+		t.Fatalf("build ID = %q, want %q", app.BuildID(), "existing-build-id")
 	}
 }
 
@@ -494,14 +494,14 @@ func TestInitializeBuildInnerState_DevMode(t *testing.T) {
 	if err := initializeBuildInnerState(app, &buildInnerOptions{isDev: true}); err != nil {
 		t.Fatalf("initializeBuildInnerState returned error: %v", err)
 	}
-	if !app.GetIsDevMode() {
+	if !app.IsDevMode() {
 		t.Fatal("expected dev mode to set isDev to true")
 	}
-	if !strings.HasPrefix(app.GetBuildID(), "dev_") {
-		t.Fatalf("build ID = %q, expected dev_ prefix", app.GetBuildID())
+	if !strings.HasPrefix(app.BuildID(), "dev_") {
+		t.Fatalf("build ID = %q, expected dev_ prefix", app.BuildID())
 	}
-	if len(app.GetBuildID()) <= len("dev_") {
-		t.Fatalf("build ID = %q, expected non-empty suffix", app.GetBuildID())
+	if len(app.BuildID()) <= len("dev_") {
+		t.Fatalf("build ID = %q, expected non-empty suffix", app.BuildID())
 	}
 }
 
@@ -517,7 +517,7 @@ import { route } from "vorma/buildtime";
 route("/client", import("./components/client.tsx"), "Client");
 `))
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server-only",
 		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
@@ -529,7 +529,7 @@ route("/client", import("./components/client.tsx"), "Client");
 		t.Fatalf("parseAndSyncClientRoutes returned error: %v", err)
 	}
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	clientPath := paths["/client"]
 	if clientPath == nil {
 		t.Fatal("missing parsed client route /client")
@@ -624,7 +624,7 @@ func TestConfigureBuildEnvironment_WiresHooksAndDefaults(t *testing.T) {
 func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
+	parsedCfg := app.Wave.BuildtimeParsedConfig()
 
 	parsedCfg.FrameworkDevBuildHook = "go run ./custom/devhook"
 	parsedCfg.FrameworkProdBuildHook = "go run ./custom/prodhook"
@@ -642,7 +642,7 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testi
 func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHookRunner(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
+	parsedCfg := app.Wave.BuildtimeParsedConfig()
 
 	frameworkBuildHookRunnerCalled := false
 	parsedCfg.FrameworkRunBuildHook = func(context.Context, bool) error {
@@ -666,7 +666,7 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHookRunner(t *
 func TestConfigureBuildEnvironment_PreservesExistingFrameworkGoBuildOverlayPreparation(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
+	parsedCfg := app.Wave.BuildtimeParsedConfig()
 
 	overlayPreparationCalled := false
 	parsedCfg.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
@@ -690,7 +690,7 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkGoBuildOverlayPrepa
 func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	parsedCfg := app.Wave.GetBuildtimeParsedConfig()
+	parsedCfg := app.Wave.BuildtimeParsedConfig()
 
 	overlayCleanupCalled := false
 	var capturedGoRunArgs []string
@@ -787,7 +787,7 @@ func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(t 
 	)
 
 	fixtureOne := newBuildTestFixture(t, nil)
-	parsedCfgOne := fixtureOne.app.Wave.GetBuildtimeParsedConfig()
+	parsedCfgOne := fixtureOne.app.Wave.BuildtimeParsedConfig()
 	configureBuildEnvironmentInConfigWithFrameworkBuildHookExecutor(
 		fixtureOne.app,
 		parsedCfgOne,
@@ -813,7 +813,7 @@ func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(t 
 	}
 
 	fixtureTwo := newBuildTestFixture(t, nil)
-	parsedCfgTwo := fixtureTwo.app.Wave.GetBuildtimeParsedConfig()
+	parsedCfgTwo := fixtureTwo.app.Wave.BuildtimeParsedConfig()
 	configureBuildEnvironmentInConfigWithFrameworkBuildHookExecutor(
 		fixtureTwo.app,
 		parsedCfgTwo,
@@ -843,11 +843,11 @@ func TestBuildInner_DevBuildInnerFlow(t *testing.T) {
 		t.Fatalf("buildInner returned error: %v", err)
 	}
 
-	if !app.GetIsDevMode() {
+	if !app.IsDevMode() {
 		t.Fatal("expected dev hook to set app to dev mode")
 	}
-	if !strings.HasPrefix(app.GetBuildID(), "dev_") {
-		t.Fatalf("build ID = %q, expected dev_ prefix", app.GetBuildID())
+	if !strings.HasPrefix(app.BuildID(), "dev_") {
+		t.Fatalf("build ID = %q, expected dev_ prefix", app.BuildID())
 	}
 
 	stageOnePath := filepath.Join(
@@ -864,7 +864,7 @@ func TestBuildInner_DevBuildInnerFlow(t *testing.T) {
 		t.Fatalf("expected generated TS output to exist: %v", err)
 	}
 
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	if len(paths) != 3 {
 		t.Fatalf("expected 3 routes from bootstrap-style defs, got %d", len(paths))
 	}
@@ -887,7 +887,7 @@ func TestWriteAndSetRouteManifest(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server",
 		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
@@ -909,7 +909,7 @@ func TestWriteAndSetRouteManifest(t *testing.T) {
 		}
 	})
 
-	manifestFile := app.GetRouteManifestFile()
+	manifestFile := app.RouteManifestFile()
 	if manifestFile == "" {
 		t.Fatal("expected route manifest filename to be set")
 	}
@@ -939,8 +939,8 @@ func TestRouteManifestFilename(t *testing.T) {
 
 func TestRouteManifestServerLoaderFlag(t *testing.T) {
 	nestedRouter := mux.NewNestedRouter(nil)
-	mux.RegisterNestedPatternWithoutHandler(nestedRouter, "/client-only")
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedPatternWithoutHandler(nestedRouter, "/client-only")
+	mux.AddNestedTaskHandler(
 		nestedRouter,
 		"/with-loader",
 		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {

@@ -97,13 +97,12 @@ func (d Def) descStr() string {
 		x.Return()
 		x.Return()
 		x.Write("Default: ")
-		defaultToUse := d.Default
-		// If the default is a string, we need to add quotes around it
-		// to make it valid JSON.
-		if d.Type == TypeString {
-			defaultToUse = fmt.Sprintf("%q", d.Default)
+		defaultToUse := fmt.Sprintf("%v", d.Default)
+		// If the default value is a string, add quotes to make it valid JSON.
+		if defaultStringValue, defaultIsString := d.Default.(string); defaultIsString {
+			defaultToUse = fmt.Sprintf("%q", defaultStringValue)
 		}
-		x.Write(fmt.Sprintf("%v", defaultToUse))
+		x.Write(defaultToUse)
 	}
 
 	if len(d.Examples) > 0 {

@@ -11,17 +11,17 @@ import (
 )
 
 func Init() (addr string, handler http.Handler) {
-	r := App.InitWithDefaultRouter()
+	r := App.MustInitWithDefaultRouter()
 
-	r.SetGlobalHTTPMiddleware(chimw.Logger)
-	r.SetGlobalHTTPMiddleware(chimw.Recoverer)
-	r.SetGlobalHTTPMiddleware(etag.Auto())
-	r.SetGlobalHTTPMiddleware(chimw.Compress(5))
-	r.SetGlobalHTTPMiddleware(App.ServeStatic())
-	r.SetGlobalHTTPMiddleware(secureheaders.Middleware)
-	r.SetGlobalHTTPMiddleware(healthcheck.Healthz)
-	r.SetGlobalHTTPMiddleware(robotstxt.Allow)
-	r.SetGlobalHTTPMiddleware(Markdown.PlainTextMiddleware(
+	r.AddGlobalHTTPMiddleware(chimw.Logger)
+	r.AddGlobalHTTPMiddleware(chimw.Recoverer)
+	r.AddGlobalHTTPMiddleware(etag.Auto())
+	r.AddGlobalHTTPMiddleware(chimw.Compress(5))
+	r.AddGlobalHTTPMiddleware(App.MustStaticMiddleware())
+	r.AddGlobalHTTPMiddleware(secureheaders.Middleware)
+	r.AddGlobalHTTPMiddleware(healthcheck.Healthz)
+	r.AddGlobalHTTPMiddleware(robotstxt.Allow)
+	r.AddGlobalHTTPMiddleware(Markdown.PlainTextMiddleware(
 		"/docs", "/docs/*",
 		"/blog", "/blog/*",
 	))

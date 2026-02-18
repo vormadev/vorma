@@ -34,57 +34,68 @@ type loadersHTMLRenderSnapshot struct {
 	rootTemplate   *template.Template
 }
 
-func (v *Vorma) GetLoadersHandler(nestedRouter *mux.NestedRouter) mux.TasksCtxRequirerFunc {
-	v.validateAndDecorateNestedRouter(nestedRouter)
+func (v *Vorma) LoadersHandler() mux.TasksCtxRequirerFunc {
+	v.loadersHandlerOnce.Do(func() {
+		v.ensureLoaderPatternsRegisteredForHandler()
+		nestedRouter := v.LoadersRouter().NestedRouter
+		v.loadersHandler = mux.TasksCtxRequirerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				if v.handleDevReloadEndpoints(w, r, v.IsDevMode()) {
+					return
+				}
 
-	return mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if v.handleDevReloadEndpoints(w, r, v.GetIsDevMode()) {
-			return
-		}
+				res := response.New(w)
+				requestedBuildID := r.URL.Query().Get(VormaJSONQueryKey)
+				isJSON := requestedBuildID != ""
 
-		res := response.New(w)
-		requestedBuildID := r.URL.Query().Get(VormaJSONQueryKey)
-		isJSON := requestedBuildID != ""
+				routeResult := v.getUIRouteData(
+					w,
+					r,
+					nestedRouter,
+					isJSON,
+					requestedBuildID,
+				)
+				if routeResult.terminalState == routeTerminalStateStaleBuild {
+					ensureLoadersCacheControlHeader(w, res)
+					res.SetHeader(VormaBuildIDHeaderKey, routeResult.buildID)
+					res.SetHeader("X-Vorma-Reload", buildLoadersReloadURL(r))
+					res.OK()
+					return
+				}
+				if writeTerminalLoadersResponse(res, routeResult) {
+					return
+				}
 
-		routeResult := v.getUIRouteData(
-			w,
-			r,
-			nestedRouter,
-			isJSON,
-			requestedBuildID,
+				routeData := buildRouteDataFinal(routeResult)
+
+				ensureLoadersCacheControlHeader(w, res)
+
+				if isJSON {
+					if err := writeLoadersJSONResponse(res, routeData); err != nil {
+						v.Log.Error(
+							fmt.Sprintf("Error marshalling JSON: %v", err),
+						)
+						res.InternalServerError()
+						return
+					}
+					return
+				}
+
+				htmlBytes, errorPrefix, err := v.buildLoadersHTMLResponseBytes(
+					r,
+					routeResult,
+					routeData,
+				)
+				if err != nil {
+					v.Log.Error(fmt.Sprintf("%s: %v", errorPrefix, err))
+					res.InternalServerError()
+					return
+				}
+				res.HTMLBytes(htmlBytes)
+			},
 		)
-		if routeResult.terminalState == routeTerminalStateStaleBuild {
-			ensureLoadersCacheControlHeader(w, res)
-			res.SetHeader(VormaBuildIDHeaderKey, routeResult.buildID)
-			res.SetHeader("X-Vorma-Reload", buildLoadersReloadURL(r))
-			res.OK()
-			return
-		}
-		if writeTerminalLoadersResponse(res, routeResult) {
-			return
-		}
-
-		routeData := buildRouteDataFinal(routeResult)
-
-		ensureLoadersCacheControlHeader(w, res)
-
-		if isJSON {
-			if err := writeLoadersJSONResponse(res, routeData); err != nil {
-				v.Log.Error(fmt.Sprintf("Error marshalling JSON: %v", err))
-				res.InternalServerError()
-				return
-			}
-			return
-		}
-
-		htmlBytes, errorPrefix, err := v.buildLoadersHTMLResponseBytes(r, routeResult, routeData)
-		if err != nil {
-			v.Log.Error(fmt.Sprintf("%s: %v", errorPrefix, err))
-			res.InternalServerError()
-			return
-		}
-		res.HTMLBytes(htmlBytes)
 	})
+	return v.loadersHandler
 }
 
 func (v *Vorma) handleDevReloadEndpoints(
@@ -249,7 +260,10 @@ func ensureLoadersCacheControlHeader(
 	res response.Response,
 ) {
 	if w.Header().Get("Cache-Control") == "" {
-		res.SetHeader("Cache-Control", "private, max-age=0, must-revalidate, no-cache")
+		res.SetHeader(
+			"Cache-Control",
+			"private, max-age=0, must-revalidate, no-cache",
+		)
 	}
 }
 
@@ -275,22 +289,27 @@ func (v *Vorma) renderHeadAndSSRForTemplate(
 	var headElements template.HTML
 
 	eg.Go(func() error {
-		he, err := v.headElsInst.Render(routeResult.assets.SortedAndPreEscapedHeadEls)
+		he, err := v.headElsInst.Render(
+			routeResult.assets.SortedAndPreEscapedHeadEls,
+		)
 		if err != nil {
 			return fmt.Errorf("error getting head elements: %w", err)
 		}
 		headElements = he
-		headElements += "\n" + v.Wave.GetCriticalCSSStyleElement()
-		headElements += "\n" + v.Wave.GetStyleSheetLinkElement()
+		headElements += "\n" + v.Wave.CriticalCSSStyleElement()
+		headElements += "\n" + v.Wave.StyleSheetLinkElement()
 		return nil
 	})
 
 	eg.Go(func() error {
-		sih, err := v.getSSRInnerHTMLFromSnapshot(routeData, ssrRuntimeSnapshot{
-			isDev:             routeResult.htmlRenderSnapshot.isDevMode,
-			buildID:           routeResult.buildID,
-			routeManifestFile: routeResult.routeManifestFileSnapshot,
-		})
+		sih, err := v.getSSRInnerHTMLWithRuntimeState(
+			routeData,
+			ssrRuntimeSnapshot{
+				isDev:             routeResult.htmlRenderSnapshot.isDevMode,
+				buildID:           routeResult.buildID,
+				routeManifestFile: routeResult.routeManifestFileSnapshot,
+			},
+		)
 		if err != nil {
 			return fmt.Errorf("error getting SSR inner HTML: %w", err)
 		}
@@ -337,7 +356,10 @@ func (v *Vorma) buildLoadersHTMLResponseBytes(
 	}
 	rootTemplateData[v.TemplateDataKeyBodyScripts()] = bodyScripts
 
-	htmlBytes, err := executeRootTemplate(htmlRenderSnapshot.rootTemplate, rootTemplateData)
+	htmlBytes, err := executeRootTemplate(
+		htmlRenderSnapshot.rootTemplate,
+		rootTemplateData,
+	)
 	if err != nil {
 		return nil, "Error executing template", err
 	}
@@ -345,7 +367,9 @@ func (v *Vorma) buildLoadersHTMLResponseBytes(
 	return htmlBytes, "", nil
 }
 
-func (v *Vorma) getRootTemplateDataOrEmpty(r *http.Request) (map[string]any, error) {
+func (v *Vorma) getRootTemplateDataOrEmpty(
+	r *http.Request,
+) (map[string]any, error) {
 	if v.getRootTemplateData == nil {
 		return make(map[string]any), nil
 	}
@@ -381,12 +405,14 @@ func (v *Vorma) injectVormaTemplateFields(
 	rootTemplateData[v.TemplateDataKeyRootElementID()] = v.ClientRootElementID()
 }
 
-func (v *Vorma) getBodyScriptsForTemplate(htmlRenderSnapshot loadersHTMLRenderSnapshot) (template.HTML, error) {
+func (v *Vorma) getBodyScriptsForTemplate(
+	htmlRenderSnapshot loadersHTMLRenderSnapshot,
+) (template.HTML, error) {
 	if !htmlRenderSnapshot.isDevMode {
 		return template.HTML(
 			fmt.Sprintf(
 				`<script type="module" src="%s%s"></script>`,
-				v.Wave.GetPublicPathPrefix(),
+				v.Wave.PublicPathPrefix(),
 				htmlRenderSnapshot.clientEntryOut,
 			),
 		), nil
@@ -404,7 +430,7 @@ func (v *Vorma) getBodyScriptsForTemplate(htmlRenderSnapshot loadersHTMLRenderSn
 		return "", err
 	}
 
-	return devScripts + "\n" + v.Wave.GetRefreshScript(), nil
+	return devScripts + "\n" + v.Wave.RefreshScript(), nil
 }
 
 func executeRootTemplate(
@@ -423,13 +449,19 @@ func IsJSONRequest(r *http.Request) bool {
 }
 
 func (v *Vorma) IsCurrentBuildJSONRequest(r *http.Request) bool {
-	return r.URL.Query().Get(VormaJSONQueryKey) == v.GetBuildID()
+	return r.URL.Query().Get(VormaJSONQueryKey) == v.BuildID()
 }
 
-func (v *Vorma) GetActionsHandler(router *mux.Router) mux.TasksCtxRequirerFunc {
-	return mux.TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
-		res := response.New(w)
-		res.SetHeader(VormaBuildIDHeaderKey, v.GetBuildID())
-		router.ServeHTTP(w, r)
+func (v *Vorma) ActionsHandler() mux.TasksCtxRequirerFunc {
+	v.actionsHandlerOnce.Do(func() {
+		router := v.ActionsRouter().Router
+		v.actionsHandler = mux.TasksCtxRequirerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				res := response.New(w)
+				res.SetHeader(VormaBuildIDHeaderKey, v.BuildID())
+				router.ServeHTTP(w, r)
+			},
+		)
 	})
+	return v.actionsHandler
 }

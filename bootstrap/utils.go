@@ -6,7 +6,7 @@ import (
 	"text/template"
 )
 
-func (d *derivedOptions) tmplWriteMust(target, name string) {
+func (d *derivedOptions) mustWriteTmpl(target, name string) {
 	tmplStr, err := tmplsFS.ReadFile(name)
 	if err != nil {
 		panic(err)
@@ -22,7 +22,7 @@ func (d *derivedOptions) tmplWriteMust(target, name string) {
 	}
 }
 
-func strWriteMust(target, name string) {
+func mustWriteStr(target, name string) {
 	content, err := tmplsFS.ReadFile(name)
 	if err != nil {
 		panic(err)
@@ -32,7 +32,7 @@ func strWriteMust(target, name string) {
 	}
 }
 
-func fileWriteMust(target, source string) {
+func mustWriteFile(target, source string) {
 	b, err := assetsFS.ReadFile(source)
 	if err != nil {
 		panic(err)

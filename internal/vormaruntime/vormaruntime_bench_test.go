@@ -55,16 +55,18 @@ func BenchmarkLoadersHandler_JSONCurrentBuild(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
-			return map[string]any{"id": rd.Params()["id"]}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+				return map[string]any{"id": rd.Params()["id"]}, nil
+			},
+		),
 	)
 
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
-	url := "/items/42?vorma_json=" + app.GetBuildID()
+	url := "/items/42?vorma_json=" + app.BuildID()
 
 	warmReq := httptest.NewRequest(http.MethodGet, url, nil)
 	warmRec := httptest.NewRecorder()
@@ -108,8 +110,14 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 		"vorma_out/client-entry.js": {"vorma_out/client.css"},
 		"vorma_out/chunk-root.js":   {"vorma_out/root.css"},
 		"vorma_out/chunk-a.js":      {"vorma_out/a.css"},
-		"vorma_out/chunk-b.js":      {"vorma_out/b.css", "vorma_out/shared.css"},
-		"vorma_out/chunk-c.js":      {"vorma_out/c.css", "vorma_out/shared.css"},
+		"vorma_out/chunk-b.js": {
+			"vorma_out/b.css",
+			"vorma_out/shared.css",
+		},
+		"vorma_out/chunk-c.js": {
+			"vorma_out/c.css",
+			"vorma_out/shared.css",
+		},
 	}
 
 	fixture := newTestFixture(b, testFixtureOptions{
@@ -119,20 +127,26 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.RegisterNestedPatternWithoutHandler(app.LoadersRouter().NestedRouter, "/products/:id")
+	mux.AddNestedPatternWithoutHandler(
+		app.LoadersRouter().NestedRouter,
+		"/products/:id",
+	)
 	req := httptest.NewRequest(http.MethodGet, "/products/123", nil)
-	findResults, found := mux.FindNestedMatches(app.LoadersRouter().NestedRouter, req)
+	findResults, found := mux.FindNestedMatches(
+		app.LoadersRouter().NestedRouter,
+		req,
+	)
 	if !found {
 		b.Fatal("failed to find nested match for benchmark setup")
 	}
 
-	pathsSnapshot := app.GetPathsSnapshot()
+	pathsSnapshot := app.Paths()
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		deps := app.getDepsFromSnapshot(findResults.Matches, pathsSnapshot)
+		deps := app.getDeps(findResults.Matches, pathsSnapshot)
 		css := app.getCSSBundles(deps)
 		benchDepsSink = deps
 		benchCSSSink = css
@@ -172,12 +186,14 @@ func BenchmarkLoadersHandler_HTMLCurrentBuild(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
-			return map[string]any{"id": rd.Params()["id"]}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+				return map[string]any{"id": rd.Params()["id"]}, nil
+			},
+		),
 	)
 
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
@@ -237,16 +253,18 @@ func BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.RegisterNestedTaskHandler(
+	mux.AddNestedTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
-			return map[string]any{"id": rd.Params()["id"]}, nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]any, error) {
+				return map[string]any{"id": rd.Params()["id"]}, nil
+			},
+		),
 	)
 
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
-	url := "/items/42?vorma_json=" + app.GetBuildID()
+	url := "/items/42?vorma_json=" + app.BuildID()
 
 	warmReq := httptest.NewRequest(http.MethodGet, url, nil)
 	warmRec := httptest.NewRecorder()
@@ -328,19 +346,25 @@ func BenchmarkActionsHandler_POSTJSONCurrentBuild(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodPost,
 		"/echo",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[benchActionInput]) (benchActionInput, error) {
-			return rd.Input(), nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[benchActionInput]) (benchActionInput, error) {
+				return rd.Input(), nil
+			},
+		),
 	)
 
 	handler := app.Actions().Handler()
 	body := `{"name":"bench","count":7}`
 
-	warmReq := httptest.NewRequest(http.MethodPost, "/api/echo", strings.NewReader(body))
+	warmReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/echo",
+		strings.NewReader(body),
+	)
 	warmReq.Header.Set("Content-Type", "application/json")
 	warmRec := httptest.NewRecorder()
 	handler.ServeHTTP(warmRec, warmReq)
@@ -352,7 +376,11 @@ func BenchmarkActionsHandler_POSTJSONCurrentBuild(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest(http.MethodPost, "/api/echo", strings.NewReader(body))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/echo",
+			strings.NewReader(body),
+		)
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -368,13 +396,15 @@ func BenchmarkActionsHandler_GETQueryCurrentBuild(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.RegisterTaskHandler(
+	mux.AddTaskHandler(
 		app.ActionsRouter().Router,
 		http.MethodGet,
 		"/echo",
-		mux.TaskHandlerFromFunc(func(rd *mux.ReqData[benchActionInput]) (benchActionInput, error) {
-			return rd.Input(), nil
-		}),
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[benchActionInput]) (benchActionInput, error) {
+				return rd.Input(), nil
+			},
+		),
 	)
 
 	handler := app.Actions().Handler()

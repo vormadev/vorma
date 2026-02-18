@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/vormadev/vorma/internal/waveurl"
 )
 
 func TestRelPathsAreStable(t *testing.T) {
@@ -11,37 +13,67 @@ func TestRelPathsAreStable(t *testing.T) {
 		t.Fatalf("unexpected internal rel path: %q", RelPaths.Internal())
 	}
 	if RelPaths.AssetsPublic() != "assets/public" {
-		t.Fatalf("unexpected public assets rel path: %q", RelPaths.AssetsPublic())
+		t.Fatalf(
+			"unexpected public assets rel path: %q",
+			RelPaths.AssetsPublic(),
+		)
 	}
 	if RelPaths.AssetsPrivate() != "assets/private" {
-		t.Fatalf("unexpected private assets rel path: %q", RelPaths.AssetsPrivate())
+		t.Fatalf(
+			"unexpected private assets rel path: %q",
+			RelPaths.AssetsPrivate(),
+		)
 	}
 	if RelPaths.CriticalCSS() != "internal/critical.css" {
 		t.Fatalf("unexpected critical css rel path: %q", RelPaths.CriticalCSS())
 	}
 	if RelPaths.NormalCSSRef() != "internal/normal_css_file_ref.txt" {
-		t.Fatalf("unexpected normal css ref rel path: %q", RelPaths.NormalCSSRef())
+		t.Fatalf(
+			"unexpected normal css ref rel path: %q",
+			RelPaths.NormalCSSRef(),
+		)
 	}
 	if RelPaths.PublicFileMapRef() != "internal/public_file_map_file_ref.txt" {
-		t.Fatalf("unexpected public file map ref rel path: %q", RelPaths.PublicFileMapRef())
+		t.Fatalf(
+			"unexpected public file map ref rel path: %q",
+			RelPaths.PublicFileMapRef(),
+		)
 	}
 	if RelPaths.PublicFileMapGob() != "internal/public_filemap.gob" {
-		t.Fatalf("unexpected public file map gob rel path: %q", RelPaths.PublicFileMapGob())
+		t.Fatalf(
+			"unexpected public file map gob rel path: %q",
+			RelPaths.PublicFileMapGob(),
+		)
 	}
 	if RelPaths.PublicFileMapGobName() != "public_filemap.gob" {
-		t.Fatalf("unexpected public file map gob name: %q", RelPaths.PublicFileMapGobName())
+		t.Fatalf(
+			"unexpected public file map gob name: %q",
+			RelPaths.PublicFileMapGobName(),
+		)
 	}
 	if RelPaths.PrivateFileMapGobName() != "private_filemap.gob" {
-		t.Fatalf("unexpected private file map gob name: %q", RelPaths.PrivateFileMapGobName())
+		t.Fatalf(
+			"unexpected private file map gob name: %q",
+			RelPaths.PrivateFileMapGobName(),
+		)
 	}
 	if RelPaths.PublicFileMapJSName() != "vorma_internal_public_filemap.js" {
-		t.Fatalf("unexpected public file map js name: %q", RelPaths.PublicFileMapJSName())
+		t.Fatalf(
+			"unexpected public file map js name: %q",
+			RelPaths.PublicFileMapJSName(),
+		)
 	}
 	if RelPaths.PublicFileMapTSName() != "filemap.ts" {
-		t.Fatalf("unexpected public file map ts name: %q", RelPaths.PublicFileMapTSName())
+		t.Fatalf(
+			"unexpected public file map ts name: %q",
+			RelPaths.PublicFileMapTSName(),
+		)
 	}
 	if RelPaths.PublicFileMapJSONName() != "filemap.json" {
-		t.Fatalf("unexpected public file map json name: %q", RelPaths.PublicFileMapJSONName())
+		t.Fatalf(
+			"unexpected public file map json name: %q",
+			RelPaths.PublicFileMapJSONName(),
+		)
 	}
 }
 
@@ -61,21 +93,39 @@ func TestDistLayoutBuildsExpectedPaths(t *testing.T) {
 	if d.StaticPublic() != filepath.Join(d.Root, "static", "assets", "public") {
 		t.Fatalf("unexpected static public path: %q", d.StaticPublic())
 	}
-	if d.StaticPrivate() != filepath.Join(d.Root, "static", "assets", "private") {
+	if d.StaticPrivate() != filepath.Join(
+		d.Root,
+		"static",
+		"assets",
+		"private",
+	) {
 		t.Fatalf("unexpected static private path: %q", d.StaticPrivate())
 	}
-	if d.PublicFileMapGob() != filepath.Join(d.Root, "static", "internal", "public_filemap.gob") {
+	if d.PublicFileMapGob() != filepath.Join(
+		d.Root,
+		"static",
+		"internal",
+		"public_filemap.gob",
+	) {
 		t.Fatalf("unexpected public filemap gob path: %q", d.PublicFileMapGob())
 	}
-	if d.PrivateFileMapGob() != filepath.Join(d.Root, "static", "internal", "private_filemap.gob") {
-		t.Fatalf("unexpected private filemap gob path: %q", d.PrivateFileMapGob())
+	if d.PrivateFileMapGob() != filepath.Join(
+		d.Root,
+		"static",
+		"internal",
+		"private_filemap.gob",
+	) {
+		t.Fatalf(
+			"unexpected private filemap gob path: %q",
+			d.PrivateFileMapGob(),
+		)
 	}
 	if d.KeepFile() != filepath.Join(d.Root, "static", ".keep") {
 		t.Fatalf("unexpected keep file path: %q", d.KeepFile())
 	}
 }
 
-func TestFileMapLookupMappedAndFallback(t *testing.T) {
+func TestFileMapLookupMappedAndMiss(t *testing.T) {
 	fm := FileMap{
 		"logo.txt": {
 			DistName: "vorma_out/logo.hash.txt",
@@ -90,12 +140,12 @@ func TestFileMapLookupMappedAndFallback(t *testing.T) {
 		t.Fatalf("unexpected mapped URL: %q", url)
 	}
 
-	fallback, fallbackFound := fm.Lookup("missing.txt", "/assets/")
-	if fallbackFound {
+	missing, missingFound := fm.Lookup("missing.txt", "/assets/")
+	if missingFound {
 		t.Fatal("expected missing asset lookup to report not found")
 	}
-	if fallback != "/assets/missing.txt" {
-		t.Fatalf("unexpected fallback URL: %q", fallback)
+	if missing != "" {
+		t.Fatalf("expected empty URL for missing lookup, got %q", missing)
 	}
 }
 
@@ -146,85 +196,17 @@ func TestResolvePublicURLFromReferencedPath(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			resolvedURL := ResolvePublicURLFromReferencedPath(
+			resolvedURL := waveurl.ResolveFromReferencedPath(
 				testCase.publicPathPrefix,
 				testCase.referencedPath,
 			)
 			if resolvedURL != testCase.expectedResolvedURL {
 				t.Fatalf(
-					"ResolvePublicURLFromReferencedPath(%q, %q) = %q, want %q",
+					"resolvePublicURLFromReferencedPath(%q, %q) = %q, want %q",
 					testCase.publicPathPrefix,
 					testCase.referencedPath,
 					resolvedURL,
 					testCase.expectedResolvedURL,
-				)
-			}
-		})
-	}
-}
-
-func TestIsPassthroughPublicURL(t *testing.T) {
-	testCases := []struct {
-		name                   string
-		originalURL            string
-		expectPassthroughMatch bool
-	}{
-		{
-			name:                   "data URL",
-			originalURL:            "data:image/svg+xml;base64,AAAA",
-			expectPassthroughMatch: true,
-		},
-		{
-			name:                   "uppercase data URL",
-			originalURL:            "DATA:image/svg+xml;base64,AAAA",
-			expectPassthroughMatch: true,
-		},
-		{
-			name:                   "https URL",
-			originalURL:            "https://cdn.example.com/logo.svg",
-			expectPassthroughMatch: true,
-		},
-		{
-			name:                   "wss URL",
-			originalURL:            "wss://cdn.example.com/socket",
-			expectPassthroughMatch: true,
-		},
-		{
-			name:                   "blob URL",
-			originalURL:            "blob:https://example.com/uuid",
-			expectPassthroughMatch: true,
-		},
-		{
-			name:                   "file URL",
-			originalURL:            "file:///tmp/logo.svg",
-			expectPassthroughMatch: true,
-		},
-		{
-			name:                   "protocol relative URL",
-			originalURL:            "//cdn.example.com/logo.svg",
-			expectPassthroughMatch: true,
-		},
-		{
-			name:                   "relative asset path",
-			originalURL:            "images/logo.png",
-			expectPassthroughMatch: false,
-		},
-		{
-			name:                   "absolute asset path",
-			originalURL:            "/assets/logo.png",
-			expectPassthroughMatch: false,
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			actualPassthroughMatch := IsPassthroughPublicURL(testCase.originalURL)
-			if actualPassthroughMatch != testCase.expectPassthroughMatch {
-				t.Fatalf(
-					"IsPassthroughPublicURL(%q) = %v, want %v",
-					testCase.originalURL,
-					actualPassthroughMatch,
-					testCase.expectPassthroughMatch,
 				)
 			}
 		})
@@ -240,10 +222,13 @@ func TestFileMapLookupPreventsPrefixEscapeFromTraversalInput(t *testing.T) {
 
 	escapedURL, found := fm.Lookup("../secret.txt", "/assets/")
 	if found {
-		t.Fatal("expected traversal input to be treated as fallback (not found)")
+		t.Fatal("expected traversal input to be reported as not found")
 	}
-	if escapedURL != "/assets/secret.txt" {
-		t.Fatalf("expected traversal fallback to stay under prefix, got %q", escapedURL)
+	if escapedURL != "" {
+		t.Fatalf(
+			"expected empty URL for missing traversal lookup, got %q",
+			escapedURL,
+		)
 	}
 
 	mappedURL, mappedFound := fm.Lookup("/../nested/logo.txt", "/assets/")
@@ -251,11 +236,16 @@ func TestFileMapLookupPreventsPrefixEscapeFromTraversalInput(t *testing.T) {
 		t.Fatal("expected normalized traversal input to match mapped entry")
 	}
 	if mappedURL != "/assets/vorma_out/nested.logo.hash.txt" {
-		t.Fatalf("unexpected mapped URL for normalized traversal input: %q", mappedURL)
+		t.Fatalf(
+			"unexpected mapped URL for normalized traversal input: %q",
+			mappedURL,
+		)
 	}
 }
 
-func TestFileMapLookupWithAlreadyPrefixedInputDoesNotDuplicatePrefix(t *testing.T) {
+func TestFileMapLookupWithAlreadyPrefixedInputDoesNotDuplicatePrefix(
+	t *testing.T,
+) {
 	fm := FileMap{
 		"logo.txt": {
 			DistName: "vorma_out/logo.hash.txt",
@@ -267,23 +257,35 @@ func TestFileMapLookupWithAlreadyPrefixedInputDoesNotDuplicatePrefix(t *testing.
 		t.Fatal("expected already-prefixed mapped input to be found")
 	}
 	if mappedURL != "/assets/vorma_out/logo.hash.txt" {
-		t.Fatalf("unexpected mapped URL for already-prefixed input: %q", mappedURL)
+		t.Fatalf(
+			"unexpected mapped URL for already-prefixed input: %q",
+			mappedURL,
+		)
 	}
 
 	fallbackURL, fallbackFound := fm.Lookup("/assets/missing.txt", "/assets/")
 	if fallbackFound {
-		t.Fatal("expected missing already-prefixed input to return fallback")
+		t.Fatal("expected missing already-prefixed input to report not found")
 	}
-	if fallbackURL != "/assets/missing.txt" {
-		t.Fatalf("unexpected fallback URL for already-prefixed input: %q", fallbackURL)
+	if fallbackURL != "" {
+		t.Fatalf(
+			"expected empty URL for missing already-prefixed input, got %q",
+			fallbackURL,
+		)
 	}
 
-	idempotentURL, idempotentFound := fm.Lookup("/assets/vorma_out/logo.hash.txt", "/assets/")
+	idempotentURL, idempotentFound := fm.Lookup(
+		"/assets/vorma_out/logo.hash.txt",
+		"/assets/",
+	)
 	if idempotentFound {
-		t.Fatal("expected already-resolved hashed URL to remain a fallback lookup")
+		t.Fatal("expected already-resolved hashed URL to report not found")
 	}
-	if idempotentURL != "/assets/vorma_out/logo.hash.txt" {
-		t.Fatalf("expected already-resolved URL to remain unchanged, got %q", idempotentURL)
+	if idempotentURL != "" {
+		t.Fatalf(
+			"expected empty URL for already-resolved hashed lookup, got %q",
+			idempotentURL,
+		)
 	}
 }
 
@@ -325,7 +327,10 @@ func TestParsedConfigAccessors(t *testing.T) {
 		t.Fatalf("unexpected watch root: %q", cfg.WatchRoot())
 	}
 	if cfg.HealthcheckEndpoint() != "/ok" {
-		t.Fatalf("unexpected healthcheck endpoint: %q", cfg.HealthcheckEndpoint())
+		t.Fatalf(
+			"unexpected healthcheck endpoint: %q",
+			cfg.HealthcheckEndpoint(),
+		)
 	}
 	if cfg.UsingBrowser() {
 		t.Fatal("expected server-only mode to disable browser usage")
@@ -334,7 +339,11 @@ func TestParsedConfigAccessors(t *testing.T) {
 		t.Fatal("expected non-nil Vite config to report UsingVite=true")
 	}
 
-	expectedManifest := filepath.Join(cfg.Dist.StaticPrivate(), "vorma_out", "vorma_vite_manifest.json")
+	expectedManifest := filepath.Join(
+		cfg.Dist.StaticPrivate(),
+		"vorma_out",
+		"vorma_vite_manifest.json",
+	)
 	if cfg.ViteManifestPath() != expectedManifest {
 		t.Fatalf("unexpected manifest path: %q", cfg.ViteManifestPath())
 	}
@@ -347,39 +356,62 @@ func TestParsedConfigDefaultsWhenWatchConfigMissing(t *testing.T) {
 		t.Fatalf("expected default watch root '.', got %q", cfg.WatchRoot())
 	}
 	if cfg.HealthcheckEndpoint() != "/" {
-		t.Fatalf("expected default healthcheck endpoint '/', got %q", cfg.HealthcheckEndpoint())
+		t.Fatalf(
+			"expected default healthcheck endpoint '/', got %q",
+			cfg.HealthcheckEndpoint(),
+		)
 	}
 }
 
 func TestParsedConfigCSSEntryCleaning(t *testing.T) {
 	cfg := &ParsedConfig{Core: &CoreConfig{}}
 	if cfg.CriticalCSSEntry() != "" {
-		t.Fatalf("expected empty critical css entry by default, got %q", cfg.CriticalCSSEntry())
+		t.Fatalf(
+			"expected empty critical css entry by default, got %q",
+			cfg.CriticalCSSEntry(),
+		)
 	}
 	if cfg.NonCriticalCSSEntry() != "" {
-		t.Fatalf("expected empty non-critical css entry by default, got %q", cfg.NonCriticalCSSEntry())
+		t.Fatalf(
+			"expected empty non-critical css entry by default, got %q",
+			cfg.NonCriticalCSSEntry(),
+		)
 	}
 
 	cfg.Core.CSSEntryFiles.Critical = "./styles/../critical.css"
 	cfg.Core.CSSEntryFiles.NonCritical = "./styles/./app.css"
 
 	if cfg.CriticalCSSEntry() != filepath.Clean("./styles/../critical.css") {
-		t.Fatalf("unexpected cleaned critical css entry: %q", cfg.CriticalCSSEntry())
+		t.Fatalf(
+			"unexpected cleaned critical css entry: %q",
+			cfg.CriticalCSSEntry(),
+		)
 	}
 	if cfg.NonCriticalCSSEntry() != filepath.Clean("./styles/./app.css") {
-		t.Fatalf("unexpected cleaned non-critical css entry: %q", cfg.NonCriticalCSSEntry())
+		t.Fatalf(
+			"unexpected cleaned non-critical css entry: %q",
+			cfg.NonCriticalCSSEntry(),
+		)
 	}
 }
 
 func TestParsedConfigBrowserRuntimeDefaultsAndOverrides(t *testing.T) {
 	var nilCfg *ParsedConfig
 	if got := nilCfg.BrowserRuntimeNamespace(); got != DefaultBrowserRuntimeNamespace {
-		t.Fatalf("nil config browser runtime namespace = %q, want %q", got, DefaultBrowserRuntimeNamespace)
+		t.Fatalf(
+			"nil config browser runtime namespace = %q, want %q",
+			got,
+			DefaultBrowserRuntimeNamespace,
+		)
 	}
 
 	cfg := &ParsedConfig{Core: &CoreConfig{}}
 	if got := cfg.BrowserRuntimeNamespace(); got != DefaultBrowserRuntimeNamespace {
-		t.Fatalf("default browser runtime namespace = %q, want %q", got, DefaultBrowserRuntimeNamespace)
+		t.Fatalf(
+			"default browser runtime namespace = %q, want %q",
+			got,
+			DefaultBrowserRuntimeNamespace,
+		)
 	}
 	if got := cfg.BrowserPublicURLResolverFunctionName(); got != DefaultBrowserPublicURLResolverFunctionName {
 		t.Fatalf(
@@ -425,22 +457,40 @@ func TestParsedConfigBrowserRuntimeDefaultsAndOverrides(t *testing.T) {
 	cfg.FrameworkNonCriticalCSSLinkElementID = "vorma-noncritical-css"
 
 	if got := cfg.BrowserRuntimeNamespace(); got != "__vorma_runtime" {
-		t.Fatalf("configured browser runtime namespace = %q, want __vorma_runtime", got)
+		t.Fatalf(
+			"configured browser runtime namespace = %q, want __vorma_runtime",
+			got,
+		)
 	}
 	if got := cfg.BrowserPublicURLResolverFunctionName(); got != "resolvePublicURL" {
-		t.Fatalf("configured public URL resolver function name = %q, want resolvePublicURL", got)
+		t.Fatalf(
+			"configured public URL resolver function name = %q, want resolvePublicURL",
+			got,
+		)
 	}
 	if got := cfg.BrowserRevalidateFunctionName(); got != "__vorma_revalidate" {
-		t.Fatalf("configured browser revalidate function name = %q, want __vorma_revalidate", got)
+		t.Fatalf(
+			"configured browser revalidate function name = %q, want __vorma_revalidate",
+			got,
+		)
 	}
 	if got := cfg.RefreshRebuildingOverlayElementID(); got != "vorma-refresh-overlay" {
-		t.Fatalf("configured refresh rebuilding overlay element ID = %q, want vorma-refresh-overlay", got)
+		t.Fatalf(
+			"configured refresh rebuilding overlay element ID = %q, want vorma-refresh-overlay",
+			got,
+		)
 	}
 	if got := cfg.CriticalCSSStyleElementID(); got != "vorma-critical-css" {
-		t.Fatalf("configured critical CSS style element ID = %q, want vorma-critical-css", got)
+		t.Fatalf(
+			"configured critical CSS style element ID = %q, want vorma-critical-css",
+			got,
+		)
 	}
 	if got := cfg.NonCriticalCSSLinkElementID(); got != "vorma-noncritical-css" {
-		t.Fatalf("configured non-critical CSS link element ID = %q, want vorma-noncritical-css", got)
+		t.Fatalf(
+			"configured non-critical CSS link element ID = %q, want vorma-noncritical-css",
+			got,
+		)
 	}
 }
 
@@ -464,15 +514,22 @@ func TestWatchedFileSortGroupsHooksAndIsIdempotent(t *testing.T) {
 	if len(wf.SortedHooks.Post) != 1 || wf.SortedHooks.Post[0].Cmd != "post" {
 		t.Fatalf("unexpected post hooks: %+v", wf.SortedHooks.Post)
 	}
-	if len(wf.SortedHooks.Concurrent) != 1 || wf.SortedHooks.Concurrent[0].Cmd != "concurrent" {
+	if len(wf.SortedHooks.Concurrent) != 1 ||
+		wf.SortedHooks.Concurrent[0].Cmd != "concurrent" {
 		t.Fatalf("unexpected concurrent hooks: %+v", wf.SortedHooks.Concurrent)
 	}
-	if len(wf.SortedHooks.ConcurrentNoWait) != 1 || wf.SortedHooks.ConcurrentNoWait[0].Cmd != "fire-and-forget" {
-		t.Fatalf("unexpected concurrent-no-wait hooks: %+v", wf.SortedHooks.ConcurrentNoWait)
+	if len(wf.SortedHooks.ConcurrentNoWait) != 1 ||
+		wf.SortedHooks.ConcurrentNoWait[0].Cmd != "fire-and-forget" {
+		t.Fatalf(
+			"unexpected concurrent-no-wait hooks: %+v",
+			wf.SortedHooks.ConcurrentNoWait,
+		)
 	}
 
 	wf.Sort()
-	if len(wf.SortedHooks.Pre) != 1 || len(wf.SortedHooks.Post) != 1 || len(wf.SortedHooks.Concurrent) != 1 || len(wf.SortedHooks.ConcurrentNoWait) != 1 {
+	if len(wf.SortedHooks.Pre) != 1 || len(wf.SortedHooks.Post) != 1 ||
+		len(wf.SortedHooks.Concurrent) != 1 ||
+		len(wf.SortedHooks.ConcurrentNoWait) != 1 {
 		t.Fatal("expected second Sort call to be a no-op")
 	}
 }
@@ -484,10 +541,16 @@ func TestRefreshActionMergeAndIsZero(t *testing.T) {
 	}
 
 	a := RefreshAction{ReloadBrowser: true, WaitForVite: true}
-	b := RefreshAction{WaitForApp: true, TriggerRestart: true, RecompileGo: true}
+	b := RefreshAction{
+		WaitForApp:     true,
+		TriggerRestart: true,
+		RecompileGo:    true,
+	}
 	merged := a.Merge(b)
 
-	if !merged.ReloadBrowser || !merged.WaitForVite || !merged.WaitForApp || !merged.TriggerRestart || !merged.RecompileGo {
+	if !merged.ReloadBrowser || !merged.WaitForVite || !merged.WaitForApp ||
+		!merged.TriggerRestart ||
+		!merged.RecompileGo {
 		t.Fatalf("unexpected merged refresh action: %+v", merged)
 	}
 	if merged.IsZero() {

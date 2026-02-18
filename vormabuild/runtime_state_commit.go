@@ -76,7 +76,7 @@ func shouldRebuildNestedRouterFromCurrentRuntimeState(
 func currentBuildIDWithReadLock(v *vormaruntime.Vorma) string {
 	var currentBuildID string
 	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
-		currentBuildID = l.GetBuildID()
+		currentBuildID = l.BuildID()
 	})
 	return currentBuildID
 }

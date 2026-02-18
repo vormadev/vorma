@@ -8,11 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/waveport"
 	"github.com/vormadev/vorma/lab/vitecmd"
-	"github.com/vormadev/vorma/wave"
 )
 
-func TestCallViteFilemapInvalidate_ReturnsErrorWhenViteNotRunning(t *testing.T) {
+func TestCallViteFilemapInvalidate_ReturnsErrorWhenViteNotRunning(
+	t *testing.T,
+) {
 	s := &server{log: newDiscardLogger()}
 	err := s.callViteFilemapInvalidate()
 	if err == nil {
@@ -25,10 +27,12 @@ func TestCallViteFilemapInvalidate_ReturnsErrorWhenViteNotRunning(t *testing.T) 
 
 func TestCallViteFilemapInvalidate_ReturnsSuccessOn200(t *testing.T) {
 	var requestedPath string
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestedPath = r.URL.Path
-		w.WriteHeader(http.StatusOK)
-	}))
+	testServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestedPath = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
 	defer testServer.Close()
 
 	parsedURL, err := url.Parse(testServer.URL)
@@ -41,8 +45,10 @@ func TestCallViteFilemapInvalidate_ReturnsSuccessOn200(t *testing.T) {
 	}
 
 	s := &server{
-		log:     newDiscardLogger(),
-		viteCtx: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: port}),
+		log: newDiscardLogger(),
+		viteCtx: vitecmd.NewBuildCtx(
+			&vitecmd.BuildCtxOptions{DefaultPort: port},
+		),
 	}
 
 	if err := s.callViteFilemapInvalidate(); err != nil {
@@ -54,9 +60,11 @@ func TestCallViteFilemapInvalidate_ReturnsSuccessOn200(t *testing.T) {
 }
 
 func TestCallViteFilemapInvalidate_ReturnsErrorOnNon200(t *testing.T) {
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
+	testServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}),
+	)
 	defer testServer.Close()
 
 	parsedURL, err := url.Parse(testServer.URL)
@@ -69,8 +77,10 @@ func TestCallViteFilemapInvalidate_ReturnsErrorOnNon200(t *testing.T) {
 	}
 
 	s := &server{
-		log:     newDiscardLogger(),
-		viteCtx: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: port}),
+		log: newDiscardLogger(),
+		viteCtx: vitecmd.NewBuildCtx(
+			&vitecmd.BuildCtxOptions{DefaultPort: port},
+		),
 	}
 
 	err = s.callViteFilemapInvalidate()
@@ -85,7 +95,9 @@ func TestCallViteFilemapInvalidate_ReturnsErrorOnNon200(t *testing.T) {
 func TestWaitForVite_ReturnsTrueWhenViteContextIsNil(t *testing.T) {
 	s := &server{log: newDiscardLogger()}
 	if !s.waitForVite() {
-		t.Fatal("expected waitForVite to return true when no vite context exists")
+		t.Fatal(
+			"expected waitForVite to return true when no vite context exists",
+		)
 	}
 }
 
@@ -108,7 +120,12 @@ func TestResolveViteReadyURLs_UsesLoopbackHosts(t *testing.T) {
 	}
 	for idx := range want {
 		if got[idx] != want[idx] {
-			t.Fatalf("resolveViteReadyURLs()[%d]=%q, want %q", idx, got[idx], want[idx])
+			t.Fatalf(
+				"resolveViteReadyURLs()[%d]=%q, want %q",
+				idx,
+				got[idx],
+				want[idx],
+			)
 		}
 	}
 }
@@ -126,14 +143,14 @@ func TestGetBuilderAndSetBuilder(t *testing.T) {
 	}
 }
 
-func TestServerMustGetPortUsesOwnedResolverState(t *testing.T) {
-	t.Setenv("WAVE_MODE", "production")
-	t.Setenv("WAVE_PORT_HAS_BEEN_SET", "true")
+func TestServerPortUsesOwnedResolverState(t *testing.T) {
+	t.Setenv("__WAVE_MODE", "production")
+	t.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
 	t.Setenv("PORT", "6001")
 
 	s := &server{
 		log:          newDiscardLogger(),
-		portResolver: wave.NewPortResolver(),
+		portResolver: waveport.NewResolver(),
 	}
 
 	if got := s.mustGetPort(); got != 6001 {
@@ -142,11 +159,17 @@ func TestServerMustGetPortUsesOwnedResolverState(t *testing.T) {
 
 	t.Setenv("PORT", "6002")
 	if got := s.mustGetPort(); got != 6001 {
-		t.Fatalf("expected server resolver to cache first value 6001, got %d", got)
+		t.Fatalf(
+			"expected server resolver to cache first value 6001, got %d",
+			got,
+		)
 	}
 
-	s.portResolver = wave.NewPortResolver()
+	s.portResolver = waveport.NewResolver()
 	if got := s.mustGetPort(); got != 6002 {
-		t.Fatalf("expected refreshed server resolver to return 6002, got %d", got)
+		t.Fatalf(
+			"expected refreshed server resolver to return 6002, got %d",
+			got,
+		)
 	}
 }

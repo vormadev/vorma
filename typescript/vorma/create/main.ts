@@ -331,7 +331,7 @@ async function main() {
 import "github.com/vormadev/vorma/bootstrap"
 
 func main() {
-	bootstrap.Init(bootstrap.Options{
+	bootstrap.MustInit(bootstrap.Options{
 		GoImportBase:     "${importPath}",
 		UIVariant:        "${uiVariant}",
 		JSPackageManager: "${packageManager}",

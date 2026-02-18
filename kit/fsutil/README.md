@@ -60,7 +60,7 @@ _ = state
   metadata.
 - `MustSub` and `MustReadFile` panic on error; use them where failure is
   unrecoverable (for example required embedded assets).
-- `GetCallerDir` returns the directory of the direct caller frame.
+- `CallerDir` returns the directory of the direct caller frame.
 
 ## API Coverage
 
@@ -73,6 +73,6 @@ _ = state
 - `func EnsureDirs(paths ...string) error`
 - `func FromGob[T any](file fs.File) (T, error)`
 - `func FromGobInto(file fs.File, destPtr any) error`
-- `func GetCallerDir() string`
+- `func CallerDir() string`
 - `func MustReadFile(f fs.FS, name string) []byte`
 - `func MustSub(f fs.FS, dirElems ...string) fs.FS`

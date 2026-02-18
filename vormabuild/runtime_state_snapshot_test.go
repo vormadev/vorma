@@ -6,7 +6,7 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
-func TestCaptureRouteBuildRuntimeStateSnapshot(t *testing.T) {
+func TestCaptureRouteBuildRuntimeState(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -23,11 +23,11 @@ func TestCaptureRouteBuildRuntimeStateSnapshot(t *testing.T) {
 			},
 		})
 
-		runtimeStateSnapshot = captureRouteBuildRuntimeStateSnapshot(l)
+		runtimeStateSnapshot = captureRouteBuildRuntimeState(l)
 
 		l.SetBuildID("build-after")
 		l.SetRouteManifestFile("route-manifest-after.json")
-		paths := l.GetPaths()
+		paths := l.Paths()
 		paths["/before"].SrcPath = "frontend/src/routes/after.tsx"
 		paths["/before"].Deps[0] = "vorma_out/chunk-after.js"
 	})
@@ -63,7 +63,7 @@ func TestCaptureRouteBuildRuntimeStateSnapshot(t *testing.T) {
 	}
 }
 
-func TestRestoreRouteBuildRuntimeStateSnapshot(t *testing.T) {
+func TestRestoreRouteBuildRuntimeState(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -79,7 +79,7 @@ func TestRestoreRouteBuildRuntimeStateSnapshot(t *testing.T) {
 		l.SetBuildID("build-before")
 		l.SetRouteManifestFile("route-manifest-before.json")
 
-		runtimeStateSnapshot = captureRouteBuildRuntimeStateSnapshot(l)
+		runtimeStateSnapshot = captureRouteBuildRuntimeState(l)
 
 		l.Routes().ReplaceParsedPathsForInit(map[string]*vormaruntime.Path{
 			"/after": {
@@ -91,21 +91,21 @@ func TestRestoreRouteBuildRuntimeStateSnapshot(t *testing.T) {
 		l.SetBuildID("build-after")
 		l.SetRouteManifestFile("route-manifest-after.json")
 
-		restoreRouteBuildRuntimeStateSnapshot(l, runtimeStateSnapshot)
+		restoreRouteBuildRuntimeState(l, runtimeStateSnapshot)
 	})
 
-	if app.GetBuildID() != "build-before" {
-		t.Fatalf("build ID after restore = %q, want %q", app.GetBuildID(), "build-before")
+	if app.BuildID() != "build-before" {
+		t.Fatalf("build ID after restore = %q, want %q", app.BuildID(), "build-before")
 	}
-	if app.GetRouteManifestFile() != "route-manifest-before.json" {
+	if app.RouteManifestFile() != "route-manifest-before.json" {
 		t.Fatalf(
 			"route manifest after restore = %q, want %q",
-			app.GetRouteManifestFile(),
+			app.RouteManifestFile(),
 			"route-manifest-before.json",
 		)
 	}
 
-	restoredPaths := app.GetPathsSnapshot()
+	restoredPaths := app.Paths()
 	if len(restoredPaths) != 1 {
 		t.Fatalf("restored paths length = %d, want 1 (%#v)", len(restoredPaths), restoredPaths)
 	}
@@ -130,7 +130,7 @@ func TestCloneRouteBuildRuntimePath(t *testing.T) {
 	}
 }
 
-func TestBuildRuntimeStateSnapshot(t *testing.T) {
+func TestBuildRuntimeState(t *testing.T) {
 	t.Run("captures and restores full build runtime state", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
@@ -148,7 +148,7 @@ func TestBuildRuntimeStateSnapshot(t *testing.T) {
 			l.SetBuildID("build-before")
 			l.SetRouteManifestFile("route-manifest-before.json")
 
-			runtimeStateSnapshot = captureBuildRuntimeStateSnapshot(l)
+			runtimeStateSnapshot = captureBuildRuntimeState(l)
 
 			l.SetIsDev(true)
 			l.Routes().ReplaceParsedPathsForInit(map[string]*vormaruntime.Path{
@@ -161,20 +161,20 @@ func TestBuildRuntimeStateSnapshot(t *testing.T) {
 			l.SetBuildID("build-after")
 			l.SetRouteManifestFile("route-manifest-after.json")
 
-			restoreBuildRuntimeStateSnapshot(l, runtimeStateSnapshot)
+			restoreBuildRuntimeState(l, runtimeStateSnapshot)
 
 			if !buildRuntimeStateSnapshotMatches(l, runtimeStateSnapshot) {
 				t.Fatalf("restored runtime state does not match captured snapshot: %#v", runtimeStateSnapshot)
 			}
 		})
 
-		if app.GetIsDevMode() {
+		if app.IsDevMode() {
 			t.Fatal("expected isDev=false after restore")
 		}
-		if got := app.GetBuildID(); got != "build-before" {
+		if got := app.BuildID(); got != "build-before" {
 			t.Fatalf("build ID after restore = %q, want %q", got, "build-before")
 		}
-		if got := app.GetRouteManifestFile(); got != "route-manifest-before.json" {
+		if got := app.RouteManifestFile(); got != "route-manifest-before.json" {
 			t.Fatalf(
 				"route manifest after restore = %q, want %q",
 				got,
@@ -182,7 +182,7 @@ func TestBuildRuntimeStateSnapshot(t *testing.T) {
 			)
 		}
 
-		restoredPaths := app.GetPathsSnapshot()
+		restoredPaths := app.Paths()
 		if len(restoredPaths) != 1 {
 			t.Fatalf("restored paths length = %d, want 1 (%#v)", len(restoredPaths), restoredPaths)
 		}
@@ -210,7 +210,7 @@ func TestBuildRuntimeStateSnapshot(t *testing.T) {
 				},
 			}, true)
 
-			runtimeStateSnapshot := captureBuildRuntimeStateSnapshot(l)
+			runtimeStateSnapshot := captureBuildRuntimeState(l)
 
 			l.SetBuildID("build-after")
 			if buildRuntimeStateSnapshotMatches(l, runtimeStateSnapshot) {

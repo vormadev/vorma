@@ -69,10 +69,10 @@ func TestRunRouteSyncExecution_ForFastRebuildSuccess(t *testing.T) {
 		t.Fatalf("runRouteSyncExecution returned error: %v", err)
 	}
 
-	if got := app.GetBuildID(); got != "dev_fast_test" {
+	if got := app.BuildID(); got != "dev_fast_test" {
 		t.Fatalf("build ID = %q, want %q", got, "dev_fast_test")
 	}
-	if app.GetPathsSnapshot()["/products/:id"] == nil {
+	if app.Paths()["/products/:id"] == nil {
 		t.Fatal("expected synced route to be present in app paths")
 	}
 
@@ -85,7 +85,7 @@ func TestRunRouteSyncExecution_ForFastRebuildSuccess(t *testing.T) {
 		t.Fatalf("expected stage one paths file to exist: %v", err)
 	}
 
-	manifestFile := app.GetRouteManifestFile()
+	manifestFile := app.RouteManifestFile()
 	if manifestFile == "" {
 		t.Fatal("expected route manifest file name to be set")
 	}
@@ -149,17 +149,17 @@ func TestRunRouteSyncExecution_ForFastRebuildReturnsCleanError(t *testing.T) {
 	if !strings.Contains(err.Error(), "clean route manifests") {
 		t.Fatalf("error = %q, expected clean-route-manifests context", err)
 	}
-	if got := app.GetBuildID(); got != "build-before-fast-rebuild-failure" {
+	if got := app.BuildID(); got != "build-before-fast-rebuild-failure" {
 		t.Fatalf("build ID after failed fast rebuild = %q, want %q", got, "build-before-fast-rebuild-failure")
 	}
-	if got := app.GetRouteManifestFile(); got != "manifest-before-fast-rebuild-failure.json" {
+	if got := app.RouteManifestFile(); got != "manifest-before-fast-rebuild-failure.json" {
 		t.Fatalf(
 			"route manifest after failed fast rebuild = %q, want %q",
 			got,
 			"manifest-before-fast-rebuild-failure.json",
 		)
 	}
-	paths := app.GetPathsSnapshot()
+	paths := app.Paths()
 	if paths["/existing"] == nil {
 		t.Fatalf("expected /existing path to remain after failed fast rebuild, got %#v", paths)
 	}
@@ -545,7 +545,7 @@ func TestWriteFastRebuildArtifactsAfterRouteSync(t *testing.T) {
 	})
 }
 
-func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
+func TestCaptureFastRebuildRouteManifestArtifact(t *testing.T) {
 	t.Run("returns zero snapshot when manifest file name is empty", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		snapshot, err := captureFastRebuildRouteManifestArtifactSnapshotWithDependencies(
@@ -554,7 +554,7 @@ func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 			fastRouteRebuildArtifactDependencies{},
 		)
 		if err != nil {
-			t.Fatalf("captureFastRebuildRouteManifestArtifactSnapshot returned error: %v", err)
+			t.Fatalf("captureFastRebuildRouteManifestArtifact returned error: %v", err)
 		}
 		if snapshot.existed {
 			t.Fatalf("snapshot.existed = %v, want false", snapshot.existed)
@@ -578,7 +578,7 @@ func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 			dependencies,
 		)
 		if err != nil {
-			t.Fatalf("captureFastRebuildRouteManifestArtifactSnapshot returned error: %v", err)
+			t.Fatalf("captureFastRebuildRouteManifestArtifact returned error: %v", err)
 		}
 		if snapshot.existed {
 			t.Fatalf("snapshot.existed = %v, want false for ENOTDIR", snapshot.existed)
@@ -603,7 +603,7 @@ func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 			dependencies,
 		)
 		if err == nil {
-			t.Fatal("expected captureFastRebuildRouteManifestArtifactSnapshot to return read error")
+			t.Fatal("expected captureFastRebuildRouteManifestArtifact to return read error")
 		}
 		if !errors.Is(err, readErr) {
 			t.Fatalf("error = %v, expected wrapped read error", err)
@@ -611,7 +611,7 @@ func TestCaptureFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 	})
 }
 
-func TestRestoreFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
+func TestRestoreFastRebuildRouteManifestArtifact(t *testing.T) {
 	t.Run("returns nil when manifest file name is empty", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		err := restoreFastRebuildRouteManifestArtifactSnapshotWithDependencies(
@@ -621,7 +621,7 @@ func TestRestoreFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 			fastRouteRebuildArtifactDependencies{},
 		)
 		if err != nil {
-			t.Fatalf("restoreFastRebuildRouteManifestArtifactSnapshot returned error: %v", err)
+			t.Fatalf("restoreFastRebuildRouteManifestArtifact returned error: %v", err)
 		}
 	})
 
@@ -641,7 +641,7 @@ func TestRestoreFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 			dependencies,
 		)
 		if err == nil {
-			t.Fatal("expected restoreFastRebuildRouteManifestArtifactSnapshot to return remove error")
+			t.Fatal("expected restoreFastRebuildRouteManifestArtifact to return remove error")
 		}
 		if !errors.Is(err, removeErr) {
 			t.Fatalf("error = %v, expected wrapped remove error", err)
@@ -662,7 +662,7 @@ func TestRestoreFastRebuildRouteManifestArtifactSnapshot(t *testing.T) {
 			fastRebuildRouteManifestArtifactSnapshot{},
 			dependencies,
 		); err != nil {
-			t.Fatalf("restoreFastRebuildRouteManifestArtifactSnapshot returned error: %v", err)
+			t.Fatalf("restoreFastRebuildRouteManifestArtifact returned error: %v", err)
 		}
 	})
 }

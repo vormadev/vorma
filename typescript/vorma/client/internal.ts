@@ -6,6 +6,13 @@ export {
 	type VormaLinkPropsBase,
 	type UseRouterDataFunction,
 } from "./src/ui/helpers.ts";
+export {
+	buildTypedLinkDisplayName,
+	buildTypedLinkHrefForRouteResolution,
+	buildTypedLinkResolvedProps,
+	type TypedAdapterLinkDefaultProps,
+	type TypedAdapterLinkProps,
+} from "./src/ui/typed_adapter_link_props.ts";
 export { resolvePath, type VormaAppConfig } from "./src/app/helpers.ts";
 export {
 	getClientRuntimeRenderState,

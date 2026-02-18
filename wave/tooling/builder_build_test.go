@@ -18,7 +18,9 @@ func TestBuild_FileOnlyModeSkipsHooks(t *testing.T) {
 
 	markerPath := filepath.Join(root, "hook-marker.txt")
 	cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(markerPath)
-	cfg.FrameworkDevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(markerPath)
+	cfg.FrameworkDevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(
+		markerPath,
+	)
 
 	builder := NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
@@ -34,7 +36,10 @@ func TestBuild_FileOnlyModeSkipsHooks(t *testing.T) {
 	}
 
 	if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
-		t.Fatalf("expected hooks not to run in file-only mode, stat error: %v", statErr)
+		t.Fatalf(
+			"expected hooks not to run in file-only mode, stat error: %v",
+			statErr,
+		)
 	}
 }
 
@@ -119,7 +124,9 @@ func TestBuild_IncludesRegisteredSchemaSection(t *testing.T) {
 			Properties: struct {
 				Enabled jsonschema.Entry
 			}{
-				Enabled: jsonschema.OptionalBoolean(jsonschema.Def{Default: true}),
+				Enabled: jsonschema.OptionalBoolean(
+					jsonschema.Def{Default: true},
+				),
 			},
 		}),
 	)
@@ -160,9 +167,64 @@ func TestBuild_CompileGoFailureIsReported(t *testing.T) {
 		IsRebuild: false,
 	})
 	if err == nil {
-		t.Fatal("expected build to fail when Go compilation target does not exist")
+		t.Fatal(
+			"expected build to fail when Go compilation target does not exist",
+		)
 	}
 	if !strings.Contains(err.Error(), "go compilation failed") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProcessFiles_FullCleanupPreservesOnlyWaveDevLockFile(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	builder := NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	staticDir := cfg.Dist.Static()
+	if mkdirErr := os.MkdirAll(staticDir, 0o755); mkdirErr != nil {
+		t.Fatalf("os.MkdirAll(%q) error = %v", staticDir, mkdirErr)
+	}
+
+	lockFilePath := filepath.Join(staticDir, lockFileName)
+	if writeErr := os.WriteFile(lockFilePath, []byte("123"), 0o644); writeErr != nil {
+		t.Fatalf("os.WriteFile(lock) error = %v", writeErr)
+	}
+
+	nonLockWavePrefixedFilePath := filepath.Join(
+		staticDir,
+		".wave-should-be-cleaned",
+	)
+	if writeErr := os.WriteFile(nonLockWavePrefixedFilePath, []byte("stale"), 0o644); writeErr != nil {
+		t.Fatalf("os.WriteFile(non-lock wave-prefixed) error = %v", writeErr)
+	}
+
+	regularFilePath := filepath.Join(staticDir, "regular.txt")
+	if writeErr := os.WriteFile(regularFilePath, []byte("stale"), 0o644); writeErr != nil {
+		t.Fatalf("os.WriteFile(regular) error = %v", writeErr)
+	}
+
+	if processErr := builder.processFiles(false, true); processErr != nil {
+		t.Fatalf("processFiles(false, true) error = %v", processErr)
+	}
+
+	if _, statErr := os.Stat(lockFilePath); statErr != nil {
+		t.Fatalf("expected lock file to be preserved, stat error = %v", statErr)
+	}
+	if _, statErr := os.Stat(nonLockWavePrefixedFilePath); !os.IsNotExist(
+		statErr,
+	) {
+		t.Fatalf(
+			"expected non-lock .wave-* file to be removed, stat error = %v",
+			statErr,
+		)
+	}
+	if _, statErr := os.Stat(regularFilePath); !os.IsNotExist(statErr) {
+		t.Fatalf(
+			"expected regular file to be removed, stat error = %v",
+			statErr,
+		)
 	}
 }

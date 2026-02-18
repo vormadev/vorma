@@ -179,7 +179,7 @@ func getCollectionStr(opts Opts, merged tsgencore.Results) (string, error) {
 				write(phantomTypeLine, "null as unknown as ")
 				write(phantomTypeLine, x.TSTypeRaw())
 			} else {
-				typeInfo := merged.GetTypeInfo(&adHocType)
+				typeInfo := merged.TypeInfo(&adHocType)
 
 				// NOTE: This assumes that your handlers are resilient
 				// against return nil values. Technically, Go's JSON

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma"
+	"github.com/vormadev/vorma/vormagogen"
 )
 
 func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
@@ -14,7 +15,7 @@ func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 		t.Fatalf("expected no pre-registered actions, got %d", got)
 	}
 
-	loaderTask := vorma.NewLoader(
+	loaderTask := vorma.DefineLoaderForRegistration(
 		app,
 		"/no-op",
 		func(rd *vorma.LoaderReqData) (string, error) {
@@ -25,13 +26,13 @@ func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 		},
 	)
 	if loaderTask == nil {
-		t.Fatal("expected NewLoader to return loader task")
+		t.Fatal("expected DefineLoaderForRegistration to return loader task")
 	}
 	if app.LoadersRouter().NestedRouter.HasTaskHandler("/no-op") {
-		t.Fatal("expected NewLoader to avoid direct router registration")
+		t.Fatal("expected DefineLoaderForRegistration to avoid direct router registration")
 	}
 
-	_ = vorma.Internal__RegisterDiscoveredLoader(
+	_ = vormagogen.RegisterLoaderDiscoveredByBuild(
 		app,
 		"/registered",
 		func(rd *vorma.LoaderReqData) (string, error) {
@@ -42,10 +43,10 @@ func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 		},
 	)
 	if !app.LoadersRouter().NestedRouter.HasTaskHandler("/registered") {
-		t.Fatal("expected Internal__RegisterDiscoveredLoader to register nested handler")
+		t.Fatal("expected RegisterLoaderDiscoveredByBuild to register nested handler")
 	}
 
-	actionTask := vorma.NewAction(
+	actionTask := vorma.DefineActionForRegistration(
 		app,
 		"POST",
 		"/no-op-action",
@@ -57,13 +58,13 @@ func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 		},
 	)
 	if actionTask == nil {
-		t.Fatal("expected NewAction to return action task")
+		t.Fatal("expected DefineActionForRegistration to return action task")
 	}
 	if got := len(app.ActionsRouter().AllRoutes()); got != 0 {
-		t.Fatalf("expected NewAction to avoid direct action registration, got %d routes", got)
+		t.Fatalf("expected DefineActionForRegistration to avoid direct action registration, got %d routes", got)
 	}
 
-	_ = vorma.Internal__RegisterDiscoveredAction(
+	_ = vormagogen.RegisterActionDiscoveredByBuild(
 		app,
 		"POST",
 		"/registered-action",

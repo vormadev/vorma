@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-func TestCaptureBuildArtifactFileSnapshot(t *testing.T) {
+func TestCaptureBuildArtifactFile(t *testing.T) {
 	t.Run("returns existing snapshot with content", func(t *testing.T) {
 		var readPath string
-		snapshot, err := captureBuildArtifactFileSnapshot(
+		snapshot, err := captureBuildArtifactFile(
 			"/tmp/artifact.json",
 			func(path string) ([]byte, error) {
 				readPath = path
@@ -19,7 +19,7 @@ func TestCaptureBuildArtifactFileSnapshot(t *testing.T) {
 			},
 		)
 		if err != nil {
-			t.Fatalf("captureBuildArtifactFileSnapshot returned error: %v", err)
+			t.Fatalf("captureBuildArtifactFile returned error: %v", err)
 		}
 		if readPath != "/tmp/artifact.json" {
 			t.Fatalf("read path = %q, want %q", readPath, "/tmp/artifact.json")
@@ -33,14 +33,14 @@ func TestCaptureBuildArtifactFileSnapshot(t *testing.T) {
 	})
 
 	t.Run("returns zero snapshot for missing artifact", func(t *testing.T) {
-		snapshot, err := captureBuildArtifactFileSnapshot(
+		snapshot, err := captureBuildArtifactFile(
 			"/tmp/missing-artifact.json",
 			func(string) ([]byte, error) {
 				return nil, &os.PathError{Op: "open", Path: "missing", Err: os.ErrNotExist}
 			},
 		)
 		if err != nil {
-			t.Fatalf("captureBuildArtifactFileSnapshot returned error: %v", err)
+			t.Fatalf("captureBuildArtifactFile returned error: %v", err)
 		}
 		if snapshot.existed {
 			t.Fatalf("snapshot.existed = %v, want false", snapshot.existed)
@@ -51,14 +51,14 @@ func TestCaptureBuildArtifactFileSnapshot(t *testing.T) {
 	})
 
 	t.Run("returns zero snapshot for ENOTDIR", func(t *testing.T) {
-		snapshot, err := captureBuildArtifactFileSnapshot(
+		snapshot, err := captureBuildArtifactFile(
 			"/tmp/not-a-directory/artifact.json",
 			func(string) ([]byte, error) {
 				return nil, &os.PathError{Op: "open", Path: "not-a-directory", Err: syscall.ENOTDIR}
 			},
 		)
 		if err != nil {
-			t.Fatalf("captureBuildArtifactFileSnapshot returned error: %v", err)
+			t.Fatalf("captureBuildArtifactFile returned error: %v", err)
 		}
 		if snapshot.existed {
 			t.Fatalf("snapshot.existed = %v, want false", snapshot.existed)
@@ -70,14 +70,14 @@ func TestCaptureBuildArtifactFileSnapshot(t *testing.T) {
 
 	t.Run("returns read error", func(t *testing.T) {
 		expectedErr := errors.New("read failed")
-		_, err := captureBuildArtifactFileSnapshot(
+		_, err := captureBuildArtifactFile(
 			"/tmp/artifact.json",
 			func(string) ([]byte, error) {
 				return nil, expectedErr
 			},
 		)
 		if err == nil {
-			t.Fatal("expected captureBuildArtifactFileSnapshot to return error")
+			t.Fatal("expected captureBuildArtifactFile to return error")
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped read error", err)
@@ -85,14 +85,14 @@ func TestCaptureBuildArtifactFileSnapshot(t *testing.T) {
 	})
 }
 
-func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
+func TestRestoreBuildArtifactFile(t *testing.T) {
 	t.Run("writes snapshot content when artifact existed", func(t *testing.T) {
 		var writePath string
 		var writtenContent []byte
 		var writeMode os.FileMode
 		removeCalled := false
 
-		err := restoreBuildArtifactFileSnapshot(
+		err := restoreBuildArtifactFile(
 			"/tmp/artifact.json",
 			buildArtifactFileSnapshot{existed: true, content: []byte("restore-content")},
 			func(path string, content []byte, mode os.FileMode) error {
@@ -107,7 +107,7 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 			},
 		)
 		if err != nil {
-			t.Fatalf("restoreBuildArtifactFileSnapshot returned error: %v", err)
+			t.Fatalf("restoreBuildArtifactFile returned error: %v", err)
 		}
 		if writePath != "/tmp/artifact.json" {
 			t.Fatalf("write path = %q, want %q", writePath, "/tmp/artifact.json")
@@ -125,7 +125,7 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 
 	t.Run("returns write error when restoring existing artifact", func(t *testing.T) {
 		expectedErr := errors.New("write failed")
-		err := restoreBuildArtifactFileSnapshot(
+		err := restoreBuildArtifactFile(
 			"/tmp/artifact.json",
 			buildArtifactFileSnapshot{existed: true, content: []byte("restore-content")},
 			func(string, []byte, os.FileMode) error {
@@ -137,7 +137,7 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 			},
 		)
 		if err == nil {
-			t.Fatal("expected restoreBuildArtifactFileSnapshot to return write error")
+			t.Fatal("expected restoreBuildArtifactFile to return write error")
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped write error", err)
@@ -146,7 +146,7 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 
 	t.Run("removes artifact when snapshot did not exist", func(t *testing.T) {
 		var removePath string
-		err := restoreBuildArtifactFileSnapshot(
+		err := restoreBuildArtifactFile(
 			"/tmp/artifact.json",
 			buildArtifactFileSnapshot{},
 			func(string, []byte, os.FileMode) error {
@@ -159,7 +159,7 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 			},
 		)
 		if err != nil {
-			t.Fatalf("restoreBuildArtifactFileSnapshot returned error: %v", err)
+			t.Fatalf("restoreBuildArtifactFile returned error: %v", err)
 		}
 		if removePath != "/tmp/artifact.json" {
 			t.Fatalf("remove path = %q, want %q", removePath, "/tmp/artifact.json")
@@ -167,7 +167,7 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 	})
 
 	t.Run("ignores missing artifact during remove", func(t *testing.T) {
-		err := restoreBuildArtifactFileSnapshot(
+		err := restoreBuildArtifactFile(
 			"/tmp/missing-artifact.json",
 			buildArtifactFileSnapshot{},
 			func(string, []byte, os.FileMode) error {
@@ -179,12 +179,12 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 			},
 		)
 		if err != nil {
-			t.Fatalf("restoreBuildArtifactFileSnapshot returned error: %v", err)
+			t.Fatalf("restoreBuildArtifactFile returned error: %v", err)
 		}
 	})
 
 	t.Run("ignores ENOTDIR during remove", func(t *testing.T) {
-		err := restoreBuildArtifactFileSnapshot(
+		err := restoreBuildArtifactFile(
 			"/tmp/not-a-directory/artifact.json",
 			buildArtifactFileSnapshot{},
 			func(string, []byte, os.FileMode) error {
@@ -196,13 +196,13 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 			},
 		)
 		if err != nil {
-			t.Fatalf("restoreBuildArtifactFileSnapshot returned error: %v", err)
+			t.Fatalf("restoreBuildArtifactFile returned error: %v", err)
 		}
 	})
 
 	t.Run("returns remove error", func(t *testing.T) {
 		expectedErr := errors.New("remove failed")
-		err := restoreBuildArtifactFileSnapshot(
+		err := restoreBuildArtifactFile(
 			"/tmp/artifact.json",
 			buildArtifactFileSnapshot{},
 			func(string, []byte, os.FileMode) error {
@@ -214,7 +214,7 @@ func TestRestoreBuildArtifactFileSnapshot(t *testing.T) {
 			},
 		)
 		if err == nil {
-			t.Fatal("expected restoreBuildArtifactFileSnapshot to return remove error")
+			t.Fatal("expected restoreBuildArtifactFile to return remove error")
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped remove error", err)

@@ -407,7 +407,7 @@ func normalizeBuildInnerOptions(opts *buildInnerOptions) buildInnerOptions {
 func captureBuildInnerRuntimeState(v *vormaruntime.Vorma) buildInnerRuntimeStateSnapshot {
 	var runtimeStateSnapshot buildInnerRuntimeStateSnapshot
 	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
-		runtimeStateSnapshot = captureBuildRuntimeStateSnapshot(l)
+		runtimeStateSnapshot = captureBuildRuntimeState(l)
 	})
 	return runtimeStateSnapshot
 }
@@ -420,12 +420,12 @@ func restoreBuildInnerRuntimeStateAfterFailure(
 	restored := false
 	v.WithLock(func(l *vormaruntime.LockedVorma) {
 		if !shouldRollbackBuildInnerRuntimeStateAfterFailure(
-			l.GetBuildID(),
+			l.BuildID(),
 			currentAttemptCommittedBuildID,
 		) {
 			return
 		}
-		restoreBuildRuntimeStateSnapshot(l, state)
+		restoreBuildRuntimeState(l, state)
 		restored = true
 	})
 	return restored
@@ -600,8 +600,8 @@ func (executor buildInnerPublicFileMapExecutor) runWithPublicFileMapWriter(
 
 func logBuildInnerCompletion(v *vormaruntime.Vorma, start time.Time) {
 	v.Log.Info("DONE building Vorma",
-		"buildID", v.GetBuildID(),
-		"routes found", len(v.GetPathsSnapshot()),
+		"buildID", v.BuildID(),
+		"routes found", len(v.Paths()),
 		"duration", time.Since(start),
 	)
 }

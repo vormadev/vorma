@@ -22,23 +22,23 @@ type User struct {
 
 var userStore = contextutil.NewStore[User]("current-user")
 
-ctx := userStore.GetContextWithValue(context.Background(), User{ID: "u-1"})
-user := userStore.GetValueFromContext(ctx)
+ctx := userStore.ContextWithValue(context.Background(), User{ID: "u-1"})
+user := userStore.Value(ctx)
 ```
 
 ## Request Usage
 
 ```go
-req = userStore.GetRequestWithContext(req, User{ID: "u-1"})
-user := userStore.GetValueFromContext(req.Context())
+req = userStore.RequestWithContextValue(req, User{ID: "u-1"})
+user := userStore.Value(req.Context())
 ```
 
 ## Important Semantics
 
 - Store identity is per `Store[T]` instance, not just key string text.
 - Missing or mismatched values return zero-value `T`.
-- Because zero-value can also be valid data, treat `GetValueFromContext` as a
-  convenience API, not presence-proof.
+- Because zero-value can also be valid data, treat `Value` as a convenience API,
+  not presence-proof.
 
 Recommended pattern:
 
@@ -49,6 +49,6 @@ Recommended pattern:
 
 - `type Store[T any]`
 - `func NewStore[T any](key string) *Store[T]`
-- `func (s *Store[T]) GetContextWithValue(c context.Context, val T) context.Context`
-- `func (s *Store[T]) GetValueFromContext(c context.Context) T`
-- `func (s *Store[T]) GetRequestWithContext(r *http.Request, val T) *http.Request`
+- `func (s *Store[T]) ContextWithValue(c context.Context, val T) context.Context`
+- `func (s *Store[T]) Value(c context.Context) T`
+- `func (s *Store[T]) RequestWithContextValue(r *http.Request, val T) *http.Request`

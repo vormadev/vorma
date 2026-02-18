@@ -17,7 +17,7 @@ const DEFAULT_VORMA_APP_CONFIG = {
 	actionsSplatRune: "*",
 	loadersDynamicRune: ":",
 	loadersSplatRune: "*",
-	loadersExplicitIndexSegment: "_index",
+	loadersExplicitIndexSegmentIdentifier: "_index",
 };
 
 export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
@@ -55,7 +55,7 @@ export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
 			dynamicParamPrefixRune: DEFAULT_VORMA_APP_CONFIG.loadersDynamicRune,
 			splatSegmentRune: DEFAULT_VORMA_APP_CONFIG.loadersSplatRune,
 			explicitIndexSegment:
-				DEFAULT_VORMA_APP_CONFIG.loadersExplicitIndexSegment,
+				DEFAULT_VORMA_APP_CONFIG.loadersExplicitIndexSegmentIdentifier,
 		}),
 	};
 

@@ -49,7 +49,7 @@ func setNestedField(v reflect.Value, values map[string][]string) error {
 			continue
 		}
 
-		tag := reflectutil.GetJSONFieldName(field)
+		tag := reflectutil.JSONFieldName(field)
 
 		// Handle embedded structs
 		if field.Anonymous {

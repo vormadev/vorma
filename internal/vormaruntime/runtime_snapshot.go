@@ -35,7 +35,7 @@ func (v *Vorma) captureRuntimeSnapshotLocked() RuntimeSnapshot {
 	}
 }
 
-func (snapshot RuntimeSnapshot) toLoadersHTMLRenderSnapshot() loadersHTMLRenderSnapshot {
+func (snapshot RuntimeSnapshot) toLoadersHTMLRender() loadersHTMLRenderSnapshot {
 	return loadersHTMLRenderSnapshot{
 		isDevMode:      snapshot.isDev,
 		clientEntryOut: snapshot.clientEntryOut,

@@ -31,7 +31,10 @@ func (s *server) startRefreshServer(port int) (int, error) {
 	tcpAddress, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
 		listener.Close()
-		return 0, fmt.Errorf("unexpected listener address type: %T", listener.Addr())
+		return 0, fmt.Errorf(
+			"unexpected listener address type: %T",
+			listener.Addr(),
+		)
 	}
 
 	actualPort := tcpAddress.Port
@@ -45,7 +48,8 @@ func (s *server) startRefreshServer(port int) (int, error) {
 
 	go func() {
 		s.log.Info("Refresh server started", "port", actualPort)
-		if err := refreshServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := refreshServer.Serve(listener); err != nil &&
+			err != http.ErrServerClosed {
 			s.log.Error("Refresh server error", "error", err)
 		}
 	}()
@@ -63,18 +67,21 @@ func newRefreshServerMux(s *server) *http.ServeMux {
 	})
 
 	// Script endpoint for dynamic script loading
-	mux.HandleFunc("/get-refresh-script-inner", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Content-Type", "text/javascript")
-		w.Write(
-			[]byte(
-				wave.RefreshScriptInnerWithParsedConfig(
-					wave.GetRefreshServerPort(),
-					s.cfg,
+	mux.HandleFunc(
+		"/get-refresh-script-inner",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Content-Type", "text/javascript")
+			w.Write(
+				[]byte(
+					wave.RefreshScriptInnerWithParsedConfig(
+						wave.GetRefreshServerPort(),
+						s.cfg,
+					),
 				),
-			),
-		)
-	})
+			)
+		},
+	)
 
 	return mux
 }

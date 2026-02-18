@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/vormadev/vorma/internal/waveurl"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -87,8 +88,11 @@ func (p *cssProcessor) readCriticalCSSHotReloadOutput(
 	if hasCachedCriticalCSSHotReloadOutput {
 		return cachedCriticalCSSHotReloadOutput, nil
 	}
-	if requireFreshBuildOutput && criticalCSSHotReloadOutputInvalidatedByRebuild {
-		return "", fmt.Errorf("critical CSS hot-reload output unavailable from the latest rebuild")
+	if requireFreshBuildOutput &&
+		criticalCSSHotReloadOutputInvalidatedByRebuild {
+		return "", fmt.Errorf(
+			"critical CSS hot-reload output unavailable from the latest rebuild",
+		)
 	}
 
 	criticalCSSOutputPath := p.cfg.Dist.CriticalCSS()
@@ -113,7 +117,9 @@ func (p *cssProcessor) readNormalCSSHotReloadURL(
 		return cachedNormalCSSHotReloadURL, nil
 	}
 	if requireFreshBuildOutput && normalCSSHotReloadOutputInvalidatedByRebuild {
-		return "", fmt.Errorf("normal CSS hot-reload URL unavailable from the latest rebuild")
+		return "", fmt.Errorf(
+			"normal CSS hot-reload URL unavailable from the latest rebuild",
+		)
 	}
 
 	normalCSSRefBytes, readError := os.ReadFile(p.cfg.Dist.NormalCSSRef())
@@ -121,5 +127,8 @@ func (p *cssProcessor) readNormalCSSHotReloadURL(
 		return "", readError
 	}
 
-	return resolvePublicURLFallback(string(normalCSSRefBytes), p.cfg.PublicPathPrefix()), nil
+	return waveurl.ResolveFromReferencedPath(
+		p.cfg.PublicPathPrefix(),
+		string(normalCSSRefBytes),
+	), nil
 }

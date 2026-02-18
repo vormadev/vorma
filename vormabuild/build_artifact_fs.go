@@ -106,7 +106,7 @@ func cleanStaticPublicOutDir(v *vormaruntime.Vorma) error {
 func (executor buildArtifactFileSystemExecutor) cleanStaticPublicOutDir(
 	v *vormaruntime.Vorma,
 ) error {
-	staticPublicOutDir := v.Wave.GetStaticPublicOutDir()
+	staticPublicOutDir := v.Wave.StaticPublicOutDir()
 
 	fileInfo, err := executor.dependencies.buildArtifactCleanupDependencies.statStaticPublicOutDir(
 		staticPublicOutDir,
@@ -203,7 +203,7 @@ func writePathsToDiskStageOne(l *vormaruntime.LockedVorma) error {
 func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOne(
 	l *vormaruntime.LockedVorma,
 ) error {
-	return executor.writePathsToDiskStageOneWithRouteManifest(l, l.GetRouteManifestFile())
+	return executor.writePathsToDiskStageOneWithRouteManifest(l, l.RouteManifestFile())
 }
 
 func writePathsToDiskStageOneWithRouteManifest(
@@ -226,26 +226,26 @@ func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOneWithRout
 	)
 }
 
-func writePathsToDiskStageOneFromRuntimeStateSnapshot(
+func writePathsToDiskStageOneFromRuntimeState(
 	v *vormaruntime.Vorma,
 	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
 	routeManifestFile string,
 ) error {
-	return defaultBuildArtifactFileSystemExecutor.writePathsToDiskStageOneFromRuntimeStateSnapshot(
+	return defaultBuildArtifactFileSystemExecutor.writePathsToDiskStageOneFromRuntimeState(
 		v,
 		runtimeStateSnapshot,
 		routeManifestFile,
 	)
 }
 
-func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOneFromRuntimeStateSnapshot(
+func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOneFromRuntimeState(
 	v *vormaruntime.Vorma,
 	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
 	routeManifestFile string,
 ) error {
 	return executor.writeStageOnePathsFileToDisk(
 		v,
-		stageOnePathsFileFromRuntimeStateSnapshot(
+		stageOnePathsFileFromRuntimeState(
 			v,
 			runtimeStateSnapshot,
 			routeManifestFile,
@@ -283,14 +283,14 @@ func stageOnePathsFile(
 	v := l.Vorma()
 	return &vormaruntime.PathsFile{
 		Stage:             "one",
-		Paths:             l.GetPaths(),
+		Paths:             l.Paths(),
 		ClientEntrySrc:    v.Config.ClientEntry,
-		BuildID:           l.GetBuildID(),
+		BuildID:           l.BuildID(),
 		RouteManifestFile: routeManifestFile,
 	}
 }
 
-func stageOnePathsFileFromRuntimeStateSnapshot(
+func stageOnePathsFileFromRuntimeState(
 	v *vormaruntime.Vorma,
 	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
 	routeManifestFile string,

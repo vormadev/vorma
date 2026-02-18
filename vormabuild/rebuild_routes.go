@@ -187,7 +187,7 @@ func rebuildRoutesOnlyWithDependencies(
 func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(v *vormaruntime.Vorma) error {
 	start := time.Now()
 
-	if !v.GetIsDevMode() {
+	if !v.IsDevMode() {
 		return errors.New("rebuildRoutesOnly should only be called in dev mode")
 	}
 
@@ -299,9 +299,9 @@ func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterR
 
 	var previousRouteManifestFile string
 	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
-		previousRouteManifestFile = l.GetRouteManifestFile()
+		previousRouteManifestFile = l.RouteManifestFile()
 	})
-	previousRouteManifestSnapshot, err := executor.captureFastRebuildRouteManifestArtifactSnapshot(
+	previousRouteManifestSnapshot, err := executor.captureFastRebuildRouteManifestArtifact(
 		v,
 		previousRouteManifestFile,
 	)
@@ -345,7 +345,7 @@ func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterR
 				) {
 					return nil
 				}
-				return executor.restoreFastRebuildRouteManifestArtifactSnapshot(
+				return executor.restoreFastRebuildRouteManifestArtifact(
 					v,
 					previousRouteManifestFile,
 					previousRouteManifestSnapshot,
@@ -384,10 +384,10 @@ func captureFastRebuildRouteManifestArtifactSnapshotWithDependencies(
 ) (fastRebuildRouteManifestArtifactSnapshot, error) {
 	return newFastRouteRebuildArtifactExecutor(
 		dependencies,
-	).captureFastRebuildRouteManifestArtifactSnapshot(v, manifestFile)
+	).captureFastRebuildRouteManifestArtifact(v, manifestFile)
 }
 
-func (executor fastRouteRebuildArtifactExecutor) captureFastRebuildRouteManifestArtifactSnapshot(
+func (executor fastRouteRebuildArtifactExecutor) captureFastRebuildRouteManifestArtifact(
 	v *vormaruntime.Vorma,
 	manifestFile string,
 ) (fastRebuildRouteManifestArtifactSnapshot, error) {
@@ -395,8 +395,8 @@ func (executor fastRouteRebuildArtifactExecutor) captureFastRebuildRouteManifest
 		return fastRebuildRouteManifestArtifactSnapshot{}, nil
 	}
 
-	manifestFilePath := filepath.Join(v.Wave.GetStaticPublicOutDir(), manifestFile)
-	return captureBuildArtifactFileSnapshot(
+	manifestFilePath := filepath.Join(v.Wave.StaticPublicOutDir(), manifestFile)
+	return captureBuildArtifactFile(
 		manifestFilePath,
 		executor.dependencies.readRouteManifestArtifact,
 	)
@@ -410,10 +410,10 @@ func restoreFastRebuildRouteManifestArtifactSnapshotWithDependencies(
 ) error {
 	return newFastRouteRebuildArtifactExecutor(
 		dependencies,
-	).restoreFastRebuildRouteManifestArtifactSnapshot(v, manifestFile, snapshot)
+	).restoreFastRebuildRouteManifestArtifact(v, manifestFile, snapshot)
 }
 
-func (executor fastRouteRebuildArtifactExecutor) restoreFastRebuildRouteManifestArtifactSnapshot(
+func (executor fastRouteRebuildArtifactExecutor) restoreFastRebuildRouteManifestArtifact(
 	v *vormaruntime.Vorma,
 	manifestFile string,
 	snapshot fastRebuildRouteManifestArtifactSnapshot,
@@ -422,8 +422,8 @@ func (executor fastRouteRebuildArtifactExecutor) restoreFastRebuildRouteManifest
 		return nil
 	}
 
-	manifestFilePath := filepath.Join(v.Wave.GetStaticPublicOutDir(), manifestFile)
-	return restoreBuildArtifactFileSnapshot(
+	manifestFilePath := filepath.Join(v.Wave.StaticPublicOutDir(), manifestFile)
+	return restoreBuildArtifactFile(
 		manifestFilePath,
 		snapshot,
 		executor.dependencies.writeRouteManifestArtifact,
@@ -433,14 +433,14 @@ func (executor fastRouteRebuildArtifactExecutor) restoreFastRebuildRouteManifest
 
 func logFastRouteRebuildCompletion(v *vormaruntime.Vorma, start time.Time) {
 	v.Log.Info("DONE fast route rebuild",
-		"buildID", v.GetBuildID(),
-		"routes", len(v.GetPathsSnapshot()),
+		"buildID", v.BuildID(),
+		"routes", len(v.Paths()),
 		"duration", time.Since(start),
 	)
 }
 
 func cleanRouteManifestsOnly(v *vormaruntime.Vorma) error {
-	staticPublicOutDir := v.Wave.GetStaticPublicOutDir()
+	staticPublicOutDir := v.Wave.StaticPublicOutDir()
 	err := removeMatchingTopLevelFiles(staticPublicOutDir, isGeneratedRouteManifestFilename)
 	if err != nil {
 		if os.IsNotExist(err) {

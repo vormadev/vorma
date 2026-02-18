@@ -288,11 +288,11 @@ func getTestCases() []testCase {
 
 var differentOptsToTest = []*Options{
 	{},
-	{ExplicitIndexSegment: "_index"},
-	{DynamicParamPrefixRune: '$'},
-	{SplatSegmentRune: '#'},
-	{ExplicitIndexSegment: "_______", DynamicParamPrefixRune: '<', SplatSegmentRune: '>'},
-	{ExplicitIndexSegment: "", DynamicParamPrefixRune: '<', SplatSegmentRune: '>'},
+	{ExplicitIndexSegmentIdentifier: "_index"},
+	{DynamicParamPrefix: '$'},
+	{SplatSegmentIdentifier: '#'},
+	{ExplicitIndexSegmentIdentifier: "_______", DynamicParamPrefix: '<', SplatSegmentIdentifier: '>'},
+	{ExplicitIndexSegmentIdentifier: "", DynamicParamPrefix: '<', SplatSegmentIdentifier: '>'},
 }
 
 func TestFindBestMatch(t *testing.T) {
@@ -344,7 +344,7 @@ func TestFindBestMatch(t *testing.T) {
 
 func TestFindBestMatchAdditionalScenarios(t *testing.T) {
 	// register /, /:slug, /_index, and /app, and make sure that /settings/account does not match
-	m := New(&Options{ExplicitIndexSegment: "_index", Quiet: true})
+	m := New(&Options{ExplicitIndexSegmentIdentifier: "_index", Quiet: true})
 
 	m.RegisterPattern("/")
 	m.RegisterPattern("/:slug")

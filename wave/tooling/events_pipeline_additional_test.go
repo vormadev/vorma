@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vormadev/vorma/internal/waveport"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -31,14 +32,19 @@ func newServerAndWatcherForEventPipelineTest(
 	}
 
 	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 2)),
+		cfg: cfg,
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 2),
+		),
 	}
 	return s, watcher
 }
 
-func makeExecutableSleepScriptForToolingTest(t *testing.T, cfg *wave.ParsedConfig) {
+func makeExecutableSleepScriptForToolingTest(
+	t *testing.T,
+	cfg *wave.ParsedConfig,
+) {
 	t.Helper()
 
 	if err := SetupDistDir(cfg); err != nil {
@@ -66,7 +72,10 @@ func TestProcessSingleEvent_PreHookRestartCanRequestGoRecompile(t *testing.T) {
 			Pre: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
-						return &wave.RefreshAction{TriggerRestart: true, RecompileGo: true}, nil
+						return &wave.RefreshAction{
+							TriggerRestart: true,
+							RecompileGo:    true,
+						}, nil
 					},
 				},
 			},
@@ -74,7 +83,13 @@ func TestProcessSingleEvent_PreHookRestartCanRequestGoRecompile(t *testing.T) {
 		runOnChangeOnly: false,
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 
 	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
 		t,
@@ -89,7 +104,9 @@ func TestProcessSingleEvent_PreHookRestartCanRequestGoRecompile(t *testing.T) {
 	}
 }
 
-func TestProcessSingleEvent_RunOnChangeOnlyWithHardReloadStopsRunningApp(t *testing.T) {
+func TestProcessSingleEvent_RunOnChangeOnlyWithHardReloadStopsRunningApp(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
@@ -114,19 +131,32 @@ func TestProcessSingleEvent_RunOnChangeOnlyWithHardReloadStopsRunningApp(t *test
 		needsHardReload: true,
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 
 	if s.appCmd != nil {
-		t.Fatal("expected hard-reload run-on-change-only event to stop running app")
+		t.Fatal(
+			"expected hard-reload run-on-change-only event to stop running app",
+		)
 	}
 	if work.build.compileGo || work.restart.restartApp {
-		t.Fatalf("expected run-on-change-only event to skip implicit build/restart work, got %#v", work)
+		t.Fatalf(
+			"expected run-on-change-only event to skip implicit build/restart work, got %#v",
+			work,
+		)
 	}
 
 	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
-func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(t *testing.T) {
+func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
@@ -153,14 +183,23 @@ func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(t *testing
 			Post: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
-						return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
+						return &wave.RefreshAction{
+							TriggerRestart: true,
+							RecompileGo:    false,
+						}, nil
 					},
 				},
 			},
 		},
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 
 	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
 		t,
@@ -176,12 +215,17 @@ func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(t *testing
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
-		t.Fatalf("did not expect browser broadcast after post-hook restart, got %#v", msg)
+		t.Fatalf(
+			"did not expect browser broadcast after post-hook restart, got %#v",
+			msg,
+		)
 	default:
 	}
 }
 
-func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(t *testing.T) {
+func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
@@ -208,7 +252,13 @@ func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(t *testing.T
 		},
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -222,7 +272,9 @@ func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(t *testing.T
 	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
-func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(t *testing.T) {
+func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
@@ -251,7 +303,13 @@ func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(t
 		runOnChangeOnly: true,
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
@@ -259,7 +317,9 @@ func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(t
 			t.Fatalf("expected hard reload payload, got %#v", msg)
 		}
 	case <-time.After(1 * time.Second):
-		t.Fatal("timed out waiting for run-on-change-only post callback reload payload")
+		t.Fatal(
+			"timed out waiting for run-on-change-only post callback reload payload",
+		)
 	}
 
 	assertNoPendingRestartRequestForToolingTests(t, s)
@@ -284,7 +344,13 @@ func TestProcessSingleEvent_ImplicitRestartStartsApp(t *testing.T) {
 		hooks:   &wave.SortedHooks{},
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 	if s.appCmd == nil || s.appCmd.Process == nil {
 		t.Fatal("expected implicit restart work to start app")
 	}
@@ -294,7 +360,9 @@ func TestProcessSingleEvent_ImplicitRestartStartsApp(t *testing.T) {
 	}
 }
 
-func TestProcessSingleEvent_BuildFailureShortCircuitsRestartAndBrowserReload(t *testing.T) {
+func TestProcessSingleEvent_BuildFailureShortCircuitsRestartAndBrowserReload(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
@@ -303,11 +371,13 @@ func TestProcessSingleEvent_BuildFailureShortCircuitsRestartAndBrowserReload(t *
 	s.refreshMgr = &clientManager{
 		broadcast: make(chan refreshPayload, 1),
 	}
-	s.portResolver = wave.NewPortResolver()
+	s.portResolver = waveport.NewResolver()
 
-	appHealthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	appHealthServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
 	defer appHealthServer.Close()
 
 	parsedAppHealthURL, parseURLPathError := url.Parse(appHealthServer.URL)
@@ -319,7 +389,7 @@ func TestProcessSingleEvent_BuildFailureShortCircuitsRestartAndBrowserReload(t *
 		t.Fatalf("failed parsing app health port: %v", parsePortError)
 	}
 	t.Setenv("PORT", strconv.Itoa(appHealthPort))
-	t.Setenv("WAVE_PORT_HAS_BEEN_SET", "true")
+	t.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
 
 	builder := NewBuilder(s.cfg, newDiscardLogger())
 	defer builder.Close()
@@ -335,20 +405,34 @@ func TestProcessSingleEvent_BuildFailureShortCircuitsRestartAndBrowserReload(t *
 		hooks:   &wave.SortedHooks{},
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 
 	if s.appCmd != nil {
-		t.Fatalf("did not expect app to start after build failure, got %#v", s.appCmd)
+		t.Fatalf(
+			"did not expect app to start after build failure, got %#v",
+			s.appCmd,
+		)
 	}
 
 	select {
 	case msg := <-s.refreshMgr.broadcast:
-		t.Fatalf("did not expect browser payload after build failure, got %#v", msg)
+		t.Fatalf(
+			"did not expect browser payload after build failure, got %#v",
+			msg,
+		)
 	default:
 	}
 }
 
-func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(t *testing.T) {
+func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
@@ -369,7 +453,10 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(t *testi
 				Pre: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
-							return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
+							return &wave.RefreshAction{
+								TriggerRestart: true,
+								RecompileGo:    false,
+							}, nil
 						},
 					},
 				},
@@ -410,16 +497,23 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(t *testi
 	}
 
 	if postHookRan.Load() {
-		t.Fatal("did not expect post hooks to run after batched pre-hook restart")
+		t.Fatal(
+			"did not expect post hooks to run after batched pre-hook restart",
+		)
 	}
 	select {
 	case msg := <-s.refreshMgr.broadcast:
-		t.Fatalf("did not expect browser broadcast after pre-hook restart, got %#v", msg)
+		t.Fatalf(
+			"did not expect browser broadcast after pre-hook restart, got %#v",
+			msg,
+		)
 	default:
 	}
 }
 
-func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(t *testing.T) {
+func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
@@ -484,7 +578,9 @@ func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(t *test
 	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
-func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserReload(t *testing.T) {
+func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserReload(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
@@ -523,13 +619,17 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserRe
 			t.Fatalf("expected hard reload payload, got %#v", msg)
 		}
 	case <-time.After(1 * time.Second):
-		t.Fatal("timed out waiting for batched run-on-change-only reload payload")
+		t.Fatal(
+			"timed out waiting for batched run-on-change-only reload payload",
+		)
 	}
 
 	assertNoPendingRestartRequestForToolingTests(t, s)
 }
 
-func TestProcessBatchedEvents_MixedBatchRunsRunOnChangeOnlyPostCallbacks(t *testing.T) {
+func TestProcessBatchedEvents_MixedBatchRunsRunOnChangeOnlyPostCallbacks(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
@@ -569,7 +669,9 @@ func TestProcessBatchedEvents_MixedBatchRunsRunOnChangeOnlyPostCallbacks(t *test
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	if !runOnChangeOnlyPostCallbackRan.Load() {
-		t.Fatal("expected run-on-change-only post callback to run in mixed batch")
+		t.Fatal(
+			"expected run-on-change-only post callback to run in mixed batch",
+		)
 	}
 }
 
@@ -609,8 +711,12 @@ func TestRunPreHooks_CallbackAndCommandErrorsAreReturned(t *testing.T) {
 	defer watcher.Close()
 
 	callbackFailureEvent := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(filepath.Join(t.TempDir(), "callback-failure.txt"))},
-		hookCtx:    &wave.HookContext{},
+		classified: classifiedEvent{
+			event: waveEvent(
+				filepath.Join(t.TempDir(), "callback-failure.txt"),
+			),
+		},
+		hookCtx: &wave.HookContext{},
 		hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
@@ -627,8 +733,10 @@ func TestRunPreHooks_CallbackAndCommandErrorsAreReturned(t *testing.T) {
 	}
 
 	commandFailureEvent := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(filepath.Join(t.TempDir(), "command-failure.txt"))},
-		hookCtx:    &wave.HookContext{},
+		classified: classifiedEvent{
+			event: waveEvent(filepath.Join(t.TempDir(), "command-failure.txt")),
+		},
+		hookCtx: &wave.HookContext{},
 		hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
@@ -646,17 +754,26 @@ func TestRunPreHooks_CallbackAndCommandErrorsAreReturned(t *testing.T) {
 		t.Fatal("expected command failure to be returned by runPreHooks")
 	}
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
-		t.Fatalf("expected callback actions before command failure, got %#v", actions)
+		t.Fatalf(
+			"expected callback actions before command failure, got %#v",
+			actions,
+		)
 	}
 }
 
-func TestRunConcurrentHooks_AndRunPostHooks_PropagateCallbackErrors(t *testing.T) {
+func TestRunConcurrentHooks_AndRunPostHooks_PropagateCallbackErrors(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
 	concurrentErrorEvent := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(filepath.Join(t.TempDir(), "concurrent-callback-error.txt"))},
-		hookCtx:    &wave.HookContext{},
+		classified: classifiedEvent{
+			event: waveEvent(
+				filepath.Join(t.TempDir(), "concurrent-callback-error.txt"),
+			),
+		},
+		hookCtx: &wave.HookContext{},
 		hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
@@ -672,8 +789,12 @@ func TestRunConcurrentHooks_AndRunPostHooks_PropagateCallbackErrors(t *testing.T
 	}
 
 	postErrorEvent := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(filepath.Join(t.TempDir(), "post-callback-error.txt"))},
-		hookCtx:    &wave.HookContext{},
+		classified: classifiedEvent{
+			event: waveEvent(
+				filepath.Join(t.TempDir(), "post-callback-error.txt"),
+			),
+		},
+		hookCtx: &wave.HookContext{},
 		hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{

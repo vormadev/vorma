@@ -10,7 +10,7 @@ import (
 )
 
 func (w *Wave) initFileMap() (FileMap, error) {
-	base, err := w.GetBaseFS()
+	base, err := w.BaseFS()
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func (w *Wave) initFileMap() (FileMap, error) {
 	return fm, nil
 }
 
-func (w *Wave) GetPublicFileMap() (FileMap, error) {
+func (w *Wave) PublicFileMap() (FileMap, error) {
 	fileMap, err := w.fileMap.get()
 	if err != nil {
 		return nil, err
@@ -39,24 +39,22 @@ func (w *Wave) GetPublicFileMap() (FileMap, error) {
 }
 
 func (w *Wave) resolvePublicURL(original string) (string, error) {
-	if IsPassthroughPublicURL(original) {
-		return original, nil
-	}
-
 	fm, err := w.fileMap.get()
 	if err != nil {
 		w.log.Warn("failed to load file map", "error", err)
+		return "", err
 	}
 
 	url, found := fm.Lookup(original, w.cfg.PublicPathPrefix())
 	if !found {
 		w.log.Warn("no hashed URL found", "url", original)
+		return "", fmt.Errorf("no hashed URL found for %q", original)
 	}
 
 	return url, nil
 }
 
-func (w *Wave) GetPublicURL(original string) string {
+func (w *Wave) PublicURL(original string) string {
 	url, _ := w.publicURLs.get(original)
 	return url
 }
@@ -67,7 +65,7 @@ func (w *Wave) checkIsAsset(urlPath string) (bool, error) {
 		return false, nil
 	}
 
-	publicFS, err := w.GetPublicFS()
+	publicFS, err := w.PublicFS()
 	if err != nil {
 		return false, err
 	}

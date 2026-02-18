@@ -170,29 +170,29 @@ func newBuildLifecycleStateMachineWithOptions(
 	}, nil
 }
 
-func (buildLifecycleMachine *buildLifecycleStateMachine) currentPhaseSnapshot() buildLifecyclePhase {
+func (buildLifecycleMachine *buildLifecycleStateMachine) currentPhaseValue() buildLifecyclePhase {
 	return buildLifecycleMachine.currentPhase
 }
 
-func (buildLifecycleMachine *buildLifecycleStateMachine) attemptIDSnapshot() string {
+func (buildLifecycleMachine *buildLifecycleStateMachine) attemptIDValue() string {
 	return buildLifecycleMachine.attemptID
 }
 
-func (buildLifecycleMachine *buildLifecycleStateMachine) attemptInputsSnapshot() []buildLifecycleAttemptInput {
+func (buildLifecycleMachine *buildLifecycleStateMachine) attemptInputValues() []buildLifecycleAttemptInput {
 	if len(buildLifecycleMachine.attemptInputs) == 0 {
 		return nil
 	}
 	return append([]buildLifecycleAttemptInput(nil), buildLifecycleMachine.attemptInputs...)
 }
 
-func (buildLifecycleMachine *buildLifecycleStateMachine) transitionHistorySnapshot() []buildLifecycleTransitionRecord {
+func (buildLifecycleMachine *buildLifecycleStateMachine) transitionHistoryEntries() []buildLifecycleTransitionRecord {
 	if len(buildLifecycleMachine.transitionHistory) == 0 {
 		return nil
 	}
 	return append([]buildLifecycleTransitionRecord(nil), buildLifecycleMachine.transitionHistory...)
 }
 
-func (buildLifecycleMachine *buildLifecycleStateMachine) rollbackHistorySnapshot() []buildLifecycleRollbackRecord {
+func (buildLifecycleMachine *buildLifecycleStateMachine) rollbackHistoryEntries() []buildLifecycleRollbackRecord {
 	if len(buildLifecycleMachine.rollbackHistory) == 0 {
 		return nil
 	}

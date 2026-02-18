@@ -22,7 +22,7 @@ const (
 var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
 
-	GetHeadDedupeKeys: func(h *vorma.HeadEls) {
+	HeadDedupeKeysFunc: func(h *vorma.HeadEls) {
 		h.Meta(h.Property("og:title"))
 		h.Meta(h.Property("og:description"))
 		h.Meta(h.Property("og:type"))
@@ -33,11 +33,11 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 		h.Link(h.Rel("icon"))
 	},
 
-	GetDefaultHeadEls: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadEls) error {
+	DefaultHeadElsFunc: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadEls) error {
 		currentURL := "https://" + path.Join(Domain, r.URL.Path)
 
-		ogImgURL := app.GetPublicURL("vorma-banner.webp")
-		favURL := app.GetPublicURL("favicon.svg")
+		ogImgURL := app.PublicURL("vorma-banner.webp")
+		favURL := app.PublicURL("favicon.svg")
 
 		if !wave.GetIsDev() {
 			ogImgURL = "https://" + path.Join(Domain, ogImgURL)
@@ -61,7 +61,7 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 			"fonts/jetbrains_mono.woff2",
 			"fonts/jetbrains_mono_italic.woff2",
 		} {
-			fontURL := app.GetPublicURL(fontFile)
+			fontURL := app.PublicURL(fontFile)
 			h.Link(
 				h.Rel("preload"),
 				h.As("font"),
@@ -74,11 +74,11 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 		return nil
 	},
 
-	GetRootTemplateData: func(r *http.Request) (map[string]any, error) {
+	RootTemplateDataFunc: func(r *http.Request) (map[string]any, error) {
 		return map[string]any{
 			"HTMLClass":                   theme.GetThemeData(r).HTMLClass,
-			"SystemThemeScript":           theme.SystemThemeScript(),
-			"SystemThemeScriptSha256Hash": theme.SystemThemeScriptSha256Hash(),
+			"SystemThemeScript":           theme.GetSystemThemeScript(),
+			"SystemThemeScriptSha256Hash": theme.GetSystemThemeScriptSha256Hash(),
 		}, nil
 	},
 })

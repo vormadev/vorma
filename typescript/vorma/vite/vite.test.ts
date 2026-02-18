@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import type { ConfigEnv, UserConfig } from "vite";
+import type { ConfigEnv, Plugin, UserConfig } from "vite";
 import vormaVitePlugin from "./vite.ts";
 
 function buildPluginConfig() {
@@ -38,6 +38,13 @@ type PluginConfigHook = (
 	| null
 	| Promise<void | Omit<UserConfig, "plugins"> | null>;
 
+type PluginTransformResult = string | { code: string } | null;
+
+type PluginTransformHook = (
+	code: string,
+	id: string,
+) => PluginTransformResult | Promise<PluginTransformResult>;
+
 function getPluginConfigHandler(): PluginConfigHook {
 	const plugin = vormaVitePlugin(buildPluginConfig());
 	const configHook = plugin.config;
@@ -62,6 +69,41 @@ async function invokePluginConfig(
 		);
 	}
 	return result as PluginConfigResult;
+}
+
+function getPluginTransformHandler(plugin: Plugin): PluginTransformHook {
+	const transformHook = plugin.transform;
+	if (!transformHook) {
+		throw new Error(
+			"Expected Vorma Vite plugin to provide a transform hook.",
+		);
+	}
+	if (typeof transformHook === "function") {
+		return transformHook as PluginTransformHook;
+	}
+	return transformHook.handler as PluginTransformHook;
+}
+
+async function invokePluginTransform(
+	plugin: Plugin,
+	code: string,
+): Promise<PluginTransformResult> {
+	const transformHandler = getPluginTransformHandler(plugin);
+	return transformHandler(code, "/tmp/source.ts");
+}
+
+function getTransformedCode(result: PluginTransformResult): string {
+	if (typeof result === "string") {
+		return result;
+	}
+	if (
+		result &&
+		typeof result === "object" &&
+		typeof result.code === "string"
+	) {
+		return result.code;
+	}
+	throw new Error("Expected transform result to include code.");
 }
 
 describe("vorma vite plugin config merge behavior", () => {
@@ -168,5 +210,39 @@ describe("vorma vite plugin config merge behavior", () => {
 		}
 		expect(mergedIgnored[0]).toEqual(/\\.swp$/);
 		expect(mergedIgnored.slice(1)).toEqual(["**/.DS_Store", "**/*~"]);
+	});
+});
+
+describe("vorma vite plugin static public URL transform behavior", () => {
+	it("replaces mapped buildtime public URL calls", async () => {
+		const plugin = vormaVitePlugin({
+			...buildPluginConfig(),
+			staticPublicAssetMap: {
+				"images/logo.svg": "vorma_out_images_logo_deadbeef.svg",
+			},
+		});
+
+		const transformed = await invokePluginTransform(
+			plugin,
+			`const logoURL = waveBuildtimeURL("images/logo.svg");`,
+		);
+		const transformedCode = getTransformedCode(transformed);
+		expect(transformedCode).toContain(
+			`const logoURL = "/static/vorma_out_images_logo_deadbeef.svg";`,
+		);
+	});
+
+	it("throws when a buildtime public URL lookup is missing from the file map", async () => {
+		const plugin = vormaVitePlugin({
+			...buildPluginConfig(),
+			staticPublicAssetMap: {},
+		});
+
+		await expect(
+			invokePluginTransform(
+				plugin,
+				`const logoURL = waveBuildtimeURL("images/missing.svg");`,
+			),
+		).rejects.toThrow("unresolved static public asset lookup(s)");
 	});
 });

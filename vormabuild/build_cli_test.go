@@ -285,10 +285,10 @@ func TestDefaultBuildCommandHooks_RunBuildHookUsesBuildInner(t *testing.T) {
 		t.Fatalf("default runBuildHook returned error: %v", err)
 	}
 
-	if !app.GetIsDevMode() {
+	if !app.IsDevMode() {
 		t.Fatal("expected default runBuildHook to set app to dev mode")
 	}
-	if app.GetBuildID() == "" {
+	if app.BuildID() == "" {
 		t.Fatal("expected default runBuildHook to assign a build ID")
 	}
 }

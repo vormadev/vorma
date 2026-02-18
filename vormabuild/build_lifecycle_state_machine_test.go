@@ -36,7 +36,7 @@ func TestBuildLifecycleStateMachine_FullBuildHappyPath(t *testing.T) {
 		}
 	}
 
-	if currentPhase := buildLifecycleMachine.currentPhaseSnapshot(); currentPhase != buildLifecyclePhaseCompleted {
+	if currentPhase := buildLifecycleMachine.currentPhaseValue(); currentPhase != buildLifecyclePhaseCompleted {
 		t.Fatalf("current phase = %q, want %q", currentPhase, buildLifecyclePhaseCompleted)
 	}
 
@@ -78,7 +78,7 @@ func TestBuildLifecycleStateMachine_AttemptMetadataPropagatesToTransitions(t *te
 		t.Fatalf("newBuildLifecycleStateMachineWithOptions returned error: %v", err)
 	}
 
-	if attemptID := buildLifecycleMachine.attemptIDSnapshot(); attemptID == "" {
+	if attemptID := buildLifecycleMachine.attemptIDValue(); attemptID == "" {
 		t.Fatal("expected non-empty lifecycle attempt ID")
 	}
 
@@ -95,7 +95,7 @@ func TestBuildLifecycleStateMachine_AttemptMetadataPropagatesToTransitions(t *te
 		t.Fatalf("transitionTo(completed) returned error: %v", err)
 	}
 
-	attemptInputs := buildLifecycleMachine.attemptInputsSnapshot()
+	attemptInputs := buildLifecycleMachine.attemptInputValues()
 	if len(attemptInputs) != 2 {
 		t.Fatalf("attempt input count = %d, want 2 (%#v)", len(attemptInputs), attemptInputs)
 	}
@@ -110,11 +110,11 @@ func TestBuildLifecycleStateMachine_AttemptMetadataPropagatesToTransitions(t *te
 		t.Fatalf("observed transitions = %d, want 4", len(observedTransitions))
 	}
 	for _, observedTransition := range observedTransitions {
-		if observedTransition.AttemptID != buildLifecycleMachine.attemptIDSnapshot() {
+		if observedTransition.AttemptID != buildLifecycleMachine.attemptIDValue() {
 			t.Fatalf(
 				"transition attempt ID = %q, want %q",
 				observedTransition.AttemptID,
-				buildLifecycleMachine.attemptIDSnapshot(),
+				buildLifecycleMachine.attemptIDValue(),
 			)
 		}
 		if observedTransition.AtUTC == "" {
@@ -194,7 +194,7 @@ func TestBuildLifecycleStateMachine_AllowsFailedTransitionFromIntermediatePhase(
 		t.Fatalf("transitionToFailed returned error: %v", err)
 	}
 
-	if currentPhase := buildLifecycleMachine.currentPhaseSnapshot(); currentPhase != buildLifecyclePhaseFailed {
+	if currentPhase := buildLifecycleMachine.currentPhaseValue(); currentPhase != buildLifecyclePhaseFailed {
 		t.Fatalf("current phase = %q, want %q", currentPhase, buildLifecyclePhaseFailed)
 	}
 }
@@ -241,7 +241,7 @@ func TestBuildLifecycleStateMachine_RecordRollback(t *testing.T) {
 		t.Fatalf("recordRollback returned error: %v", err)
 	}
 
-	rollbackHistory := buildLifecycleMachine.rollbackHistorySnapshot()
+	rollbackHistory := buildLifecycleMachine.rollbackHistoryEntries()
 	if len(rollbackHistory) != 1 {
 		t.Fatalf("rollback history count = %d, want 1", len(rollbackHistory))
 	}
@@ -307,10 +307,10 @@ func TestBuildLifecycleStateMachine_UsesProvidedDependencyOverrides(t *testing.T
 		t.Fatalf("newBuildLifecycleStateMachineWithOptions returned error: %v", err)
 	}
 
-	if buildLifecycleMachine.attemptIDSnapshot() != "fixed-attempt-id" {
+	if buildLifecycleMachine.attemptIDValue() != "fixed-attempt-id" {
 		t.Fatalf(
 			"attemptID = %q, want %q",
-			buildLifecycleMachine.attemptIDSnapshot(),
+			buildLifecycleMachine.attemptIDValue(),
 			"fixed-attempt-id",
 		)
 	}
@@ -327,7 +327,7 @@ func TestBuildLifecycleStateMachine_UsesProvidedDependencyOverrides(t *testing.T
 		t.Fatalf("recordRollback returned error: %v", err)
 	}
 
-	transitionHistory := buildLifecycleMachine.transitionHistorySnapshot()
+	transitionHistory := buildLifecycleMachine.transitionHistoryEntries()
 	if len(transitionHistory) != 1 {
 		t.Fatalf("transition history count = %d, want 1", len(transitionHistory))
 	}
@@ -339,7 +339,7 @@ func TestBuildLifecycleStateMachine_UsesProvidedDependencyOverrides(t *testing.T
 		)
 	}
 
-	rollbackHistory := buildLifecycleMachine.rollbackHistorySnapshot()
+	rollbackHistory := buildLifecycleMachine.rollbackHistoryEntries()
 	if len(rollbackHistory) != 1 {
 		t.Fatalf("rollback history count = %d, want 1", len(rollbackHistory))
 	}

@@ -5,16 +5,14 @@ import type {
 	VormaLoaderPattern,
 } from "vorma/client";
 import {
+	buildTypedLinkDisplayName,
+	buildTypedLinkResolvedProps,
 	makeFinalLinkProps,
+	type TypedAdapterLinkDefaultProps,
+	type TypedAdapterLinkProps,
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
 } from "vorma/client/__internal";
-import {
-	buildTypedLinkDisplayName,
-	buildTypedLinkResolvedProps,
-	type TypedAdapterLinkDefaultProps,
-	type TypedAdapterLinkProps,
-} from "../../shared/src/typed_link_props.ts";
 
 export const VormaLink = memo(function VormaLink(
 	props: ComponentProps<"a"> &

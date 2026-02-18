@@ -153,7 +153,7 @@ func (executor reloadActionExecutor) getReloadActionForEndpointWithFallback(
 	reloadOptions := callReloadEndpointOptions{
 		endpoint:        endpoint,
 		reloadAttemptID: executor.dependencies.nextReloadAttemptID(),
-		expectedBuildID: strings.TrimSpace(v.GetBuildID()),
+		expectedBuildID: strings.TrimSpace(v.BuildID()),
 		reloadTrigger:   reloadTrigger,
 	}
 

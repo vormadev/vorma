@@ -14,14 +14,20 @@ func (m *Statements) Raw(prefix string, value string) *Statements {
 	return m
 }
 
-func (m *Statements) Serialize(prefix string, value any) *Statements {
-	*m = append(*m, [2]string{prefix, serialize(value)})
+func (m *Statements) MustSerialize(prefix string, value any) *Statements {
+	*m = append(*m, [2]string{prefix, mustSerialize(value)})
 	return m
 }
 
-func (m *Statements) Enum(constName, typeName string, enumStruct any) *Statements {
-	m.Serialize(fmt.Sprintf("export const %s", constName), enumStruct)
-	m.Raw(fmt.Sprintf("export type %s", typeName), fmt.Sprintf("(typeof %s)[keyof typeof %s]", constName, constName))
+func (m *Statements) Enum(
+	constName, typeName string,
+	enumStruct any,
+) *Statements {
+	m.MustSerialize(fmt.Sprintf("export const %s", constName), enumStruct)
+	m.Raw(
+		fmt.Sprintf("export type %s", typeName),
+		fmt.Sprintf("(typeof %s)[keyof typeof %s]", constName, constName),
+	)
 	return m
 }
 
@@ -38,7 +44,7 @@ func (m *Statements) BuildString() string {
 	return code.String()
 }
 
-func serialize(v any) string {
+func mustSerialize(v any) string {
 	json, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
 		panic(err)
