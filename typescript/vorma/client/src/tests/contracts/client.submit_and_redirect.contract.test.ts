@@ -1156,8 +1156,9 @@ describe("client submit/redirect contracts", () => {
 		cleanup();
 	});
 
-	it("ignores non-http redirect targets and continues normal rendering", async () => {
+	it("treats non-http redirect targets as explicit navigation errors", async () => {
 		const api = await loadClientAPI();
+		document.title = "Before Redirect Error";
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse(
 				{
@@ -1171,7 +1172,7 @@ describe("client submit/redirect contracts", () => {
 		await vi.runAllTimersAsync();
 
 		expect(window.location.href).not.toContain("mailto:");
-		expect(document.title).toBe("Normal Page");
+		expect(document.title).toBe("Before Redirect Error");
 	});
 
 	it("returns failure results for status and thrown errors", async () => {

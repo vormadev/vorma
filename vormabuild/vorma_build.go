@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/wave"
 	wavebuild "github.com/vormadev/vorma/wave/tooling"
@@ -92,18 +93,25 @@ func newRuntimeBuildToolingExecutor(
 func defaultRuntimeBuildDependencies() runtimeBuildDependencies {
 	return runtimeBuildDependencies{
 		runWaveViteProductionBuild: func(v *vormaruntime.Vorma) error {
-			return defaultRuntimeBuildToolingExecutor.runWaveViteProductionBuild(v)
+			return defaultRuntimeBuildToolingExecutor.runWaveViteProductionBuild(
+				v,
+			)
 		},
 		runPostViteProductionBuild: postViteProdBuild,
 		setWaveModeToDev:           wave.SetModeToDev,
 		runWaveDevelopmentServer: func(v *vormaruntime.Vorma) error {
-			return defaultRuntimeBuildToolingExecutor.runWaveDevelopmentServer(v)
+			return defaultRuntimeBuildToolingExecutor.runWaveDevelopmentServer(
+				v,
+			)
 		},
 		runWaveProductionBuild: func(
 			v *vormaruntime.Vorma,
 			options wavebuild.BuildOpts,
 		) error {
-			return defaultRuntimeBuildToolingExecutor.runWaveProductionBuild(v, options)
+			return defaultRuntimeBuildToolingExecutor.runWaveProductionBuild(
+				v,
+				options,
+			)
 		},
 	}
 }
@@ -179,9 +187,9 @@ var defaultBuildEntrypointExecutor = newBuildEntrypointExecutor(
 )
 
 // Build parses flags and runs the build or dev server.
-func Build(v *vormaruntime.Vorma) {
+func Build(v *vorma.Vorma) {
 	defaultBuildEntrypointExecutor.runBuildCommand(
-		v,
+		v.UnsafeRuntimeForFrameworkInternals(),
 		os.Args[1:],
 		defaultBuildCommandHooks(),
 	)
@@ -193,7 +201,9 @@ func runBuildEntrypointWithDependencies(
 	hooks buildCommandHooks,
 	dependencies buildEntrypointDependencies,
 ) {
-	newBuildEntrypointExecutor(dependencies).runBuildCommand(v, commandLineArgs, hooks)
+	newBuildEntrypointExecutor(
+		dependencies,
+	).runBuildCommand(v, commandLineArgs, hooks)
 }
 
 // build performs a full Vorma build.
@@ -207,7 +217,10 @@ func buildWithRuntimeBuildDependencies(
 	noBinary bool,
 	dependencies runtimeBuildDependencies,
 ) error {
-	return newRuntimeBuildExecutorWithDependencies(v, dependencies).run(isDev, noBinary)
+	return newRuntimeBuildExecutorWithDependencies(
+		v,
+		dependencies,
+	).run(isDev, noBinary)
 }
 
 func (entrypointExecutor buildEntrypointExecutor) runBuildCommand(
@@ -224,14 +237,18 @@ func runWaveViteProductionBuildWithToolingDependencies(
 	v *vormaruntime.Vorma,
 	dependencies runtimeBuildToolingDependencies,
 ) error {
-	return newRuntimeBuildToolingExecutor(dependencies).runWaveViteProductionBuild(v)
+	return newRuntimeBuildToolingExecutor(
+		dependencies,
+	).runWaveViteProductionBuild(v)
 }
 
 func runWaveDevelopmentServerWithToolingDependencies(
 	v *vormaruntime.Vorma,
 	dependencies runtimeBuildToolingDependencies,
 ) error {
-	return newRuntimeBuildToolingExecutor(dependencies).runWaveDevelopmentServer(v)
+	return newRuntimeBuildToolingExecutor(
+		dependencies,
+	).runWaveDevelopmentServer(v)
 }
 
 func runWaveProductionBuildWithToolingDependencies(
@@ -239,15 +256,20 @@ func runWaveProductionBuildWithToolingDependencies(
 	options wavebuild.BuildOpts,
 	dependencies runtimeBuildToolingDependencies,
 ) error {
-	return newRuntimeBuildToolingExecutor(dependencies).runWaveProductionBuild(v, options)
+	return newRuntimeBuildToolingExecutor(
+		dependencies,
+	).runWaveProductionBuild(v, options)
 }
 
 func (toolingExecutor runtimeBuildToolingExecutor) runWaveViteProductionBuild(
 	v *vormaruntime.Vorma,
 ) error {
-	return toolingExecutor.runWithRuntimeWaveBuilder(v, func(builder runtimeWaveBuilder) error {
-		return builder.ViteProdBuild()
-	})
+	return toolingExecutor.runWithRuntimeWaveBuilder(
+		v,
+		func(builder runtimeWaveBuilder) error {
+			return builder.ViteProdBuild()
+		},
+	)
 }
 
 func (toolingExecutor runtimeBuildToolingExecutor) runWaveDevelopmentServer(
@@ -260,9 +282,12 @@ func (toolingExecutor runtimeBuildToolingExecutor) runWaveProductionBuild(
 	v *vormaruntime.Vorma,
 	options wavebuild.BuildOpts,
 ) error {
-	return toolingExecutor.runWithRuntimeWaveBuilder(v, func(builder runtimeWaveBuilder) error {
-		return builder.Build(options)
-	})
+	return toolingExecutor.runWithRuntimeWaveBuilder(
+		v,
+		func(builder runtimeWaveBuilder) error {
+			return builder.Build(options)
+		},
+	)
 }
 
 func (toolingExecutor runtimeBuildToolingExecutor) runWithRuntimeWaveBuilder(
@@ -285,7 +310,9 @@ func runProdHookPostProcessingWithRuntimeBuildDependencies(
 	v *vormaruntime.Vorma,
 	dependencies runtimeBuildDependencies,
 ) error {
-	return newRuntimeBuildOperationExecutor(dependencies).runProdHookPostProcessing(v)
+	return newRuntimeBuildOperationExecutor(
+		dependencies,
+	).runProdHookPostProcessing(v)
 }
 
 func (runtimeBuildOperations runtimeBuildOperationExecutor) runProdHookPostProcessing(
@@ -353,13 +380,17 @@ func (buildExecutor runtimeBuildExecutor) run(
 }
 
 func (buildExecutor runtimeBuildExecutor) runDevelopmentMode() error {
-	buildExecutor.runtimeBuildOperations.prepareDevBuildRuntime(buildExecutor.vorma)
+	buildExecutor.runtimeBuildOperations.prepareDevBuildRuntime(
+		buildExecutor.vorma,
+	)
 	return buildExecutor.runtimeBuildOperations.dependencies.runWaveDevelopmentServer(
 		buildExecutor.vorma,
 	)
 }
 
-func (buildExecutor runtimeBuildExecutor) runProductionMode(noBinary bool) error {
+func (buildExecutor runtimeBuildExecutor) runProductionMode(
+	noBinary bool,
+) error {
 	// Production Build
 	//
 	// The build flow is:

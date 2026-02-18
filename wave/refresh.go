@@ -11,7 +11,7 @@ import (
 const defaultRefreshPort = 10000
 
 func (w *Wave) RefreshScript() template.HTML {
-	if !GetIsDev() {
+	if !w.IsDev() {
 		return ""
 	}
 
@@ -21,12 +21,15 @@ func (w *Wave) RefreshScript() template.HTML {
 	}
 
 	return template.HTML(
-		fmt.Sprintf("<script>%s</script>", RefreshScriptInnerWithParsedConfig(port, w.cfg)),
+		fmt.Sprintf(
+			"<script>%s</script>",
+			RefreshScriptInnerWithParsedConfig(port, w.cfg),
+		),
 	)
 }
 
 func (w *Wave) RefreshScriptSha256Hash() string {
-	if !GetIsDev() {
+	if !w.IsDev() {
 		return ""
 	}
 
@@ -35,7 +38,9 @@ func (w *Wave) RefreshScriptSha256Hash() string {
 		port = defaultRefreshPort
 	}
 
-	hash := cryptoutil.Sha256Hash([]byte(RefreshScriptInnerWithParsedConfig(port, w.cfg)))
+	hash := cryptoutil.Sha256Hash(
+		[]byte(RefreshScriptInnerWithParsedConfig(port, w.cfg)),
+	)
 	return bytesutil.ToBase64(hash)
 }
 
@@ -55,7 +60,10 @@ func RefreshScriptInner(port int) string {
 
 // RefreshScriptInnerWithParsedConfig returns the raw JavaScript for the refresh
 // script, resolving runtime browser integration names from ParsedConfig.
-func RefreshScriptInnerWithParsedConfig(port int, parsedConfig *ParsedConfig) string {
+func RefreshScriptInnerWithParsedConfig(
+	port int,
+	parsedConfig *ParsedConfig,
+) string {
 	return refreshScriptInnerWithConfig(
 		port,
 		refreshScriptConfig{

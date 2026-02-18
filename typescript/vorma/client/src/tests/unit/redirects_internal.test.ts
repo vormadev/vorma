@@ -218,23 +218,22 @@ describe("redirects internal defensive branches", () => {
 		});
 	});
 
-	it("ignores non-http native redirect response URLs", async () => {
+	it("throws explicit error for non-http native redirect response URLs", async () => {
 		const { redirectsModule } = await loadRedirectModules();
 		const response = createResponseMarkedAsRedirected({
 			url: "mailto:test@example.com",
 		});
 		vi.spyOn(window, "fetch").mockResolvedValue(response);
 
-		const result = await redirectsModule.handleRedirects({
-			abortController: new AbortController(),
-			url: new URL("http://localhost:3000/start"),
-		});
-
-		expect(result.redirectData).toBeNull();
-		expect(result.response).toBe(response);
+		await expect(
+			redirectsModule.handleRedirects({
+				abortController: new AbortController(),
+				url: new URL("http://localhost:3000/start"),
+			}),
+		).rejects.toThrow("must be an HTTP(S) URL");
 	});
 
-	it("ignores invalid redirect header targets without throwing", async () => {
+	it("throws explicit error for invalid redirect header targets", async () => {
 		const { redirectsModule } = await loadRedirectModules();
 		const response = new Response(
 			JSON.stringify({
@@ -249,29 +248,29 @@ describe("redirects internal defensive branches", () => {
 		);
 		vi.spyOn(window, "fetch").mockResolvedValue(response);
 
-		const result = await redirectsModule.handleRedirects({
-			abortController: new AbortController(),
-			url: new URL("http://localhost:3000/start"),
-		});
-
-		expect(result.redirectData).toBeNull();
-		expect(result.response).toBe(response);
+		await expect(
+			redirectsModule.handleRedirects({
+				abortController: new AbortController(),
+				url: new URL("http://localhost:3000/start"),
+			}),
+		).rejects.toThrow("X-Client-Redirect has invalid redirect target");
 	});
 
-	it("ignores invalid native redirect response URLs without throwing", async () => {
+	it("throws explicit error for invalid native redirect response URLs", async () => {
 		const { redirectsModule } = await loadRedirectModules();
 		const response = createResponseMarkedAsRedirected({
 			url: "http://%zz",
 		});
 		vi.spyOn(window, "fetch").mockResolvedValue(response);
 
-		const result = await redirectsModule.handleRedirects({
-			abortController: new AbortController(),
-			url: new URL("http://localhost:3000/start"),
-		});
-
-		expect(result.redirectData).toBeNull();
-		expect(result.response).toBe(response);
+		await expect(
+			redirectsModule.handleRedirects({
+				abortController: new AbortController(),
+				url: new URL("http://localhost:3000/start"),
+			}),
+		).rejects.toThrow(
+			"redirected fetch response URL has invalid redirect target",
+		);
 	});
 });
 

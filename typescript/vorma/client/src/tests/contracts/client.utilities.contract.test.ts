@@ -172,6 +172,18 @@ describe("client utility contracts", () => {
 		);
 	});
 
+	it("uses configured root element id from SSR runtime state", async () => {
+		const api = await loadClientAPI();
+		const symbol = Symbol.for("__vorma_internal__");
+		(globalThis as any)[symbol].rootElementID = "app-root-custom";
+
+		const root = document.createElement("div");
+		root.id = "app-root-custom";
+		document.body.appendChild(root);
+
+		expect(api.getRootEl()).toBe(root);
+	});
+
 	it("applies coordinate and hash-based scroll states", async () => {
 		const api = await loadClientAPI();
 

@@ -2,6 +2,7 @@ package vorma
 
 import (
 	_ "embed"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -12,27 +13,66 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-// Type aliases for public API
 type (
-	Vorma                             = vormaruntime.Vorma
-	HeadEls                           = headels.HeadEls
-	AdHocType                         = tsgen.AdHocType
-	VormaAppConfig                    = vormaruntime.VormaAppConfig
-	LoadersRouter                     = vormaruntime.LoadersRouter
-	LoaderReqData                     = vormaruntime.LoaderReqData
-	ActionsRouter                     = vormaruntime.ActionsRouter
-	ActionReqData[I any]              = vormaruntime.ActionReqData[I]
-	None                              = mux.None
-	Action[I any, O any]              = mux.TaskHandler[I, O]
-	Loader[O any]                     = mux.TaskHandler[None, O]
-	LoaderFunc[Ctx any, O any]        = func(*Ctx) (O, error)
-	ActionFunc[Ctx any, I any, O any] = func(*Ctx) (O, error)
-	LoadersRouterOptions              = vormaruntime.LoadersRouterOptions
-	ActionsRouterOptions              = vormaruntime.ActionsRouterOptions
-	FormData                          = vormaruntime.FormData
-	LoaderError                       = vormaruntime.LoaderError
+	// HeadEls aliases the canonical head element collection type.
+	HeadEls = headels.HeadEls
+	// AdHocType aliases the TypeScript ad-hoc type declaration helper.
+	AdHocType = tsgen.AdHocType
+	// LoaderReqData aliases loader request context data.
+	LoaderReqData = vormaruntime.LoaderReqData
+	// ActionReqData aliases action request context data.
+	ActionReqData[I any] = vormaruntime.ActionReqData[I]
+	// None aliases the empty task input marker.
+	None = mux.None
+	// Action aliases a typed action task handler.
+	Action[I any, O any] = mux.TaskHandler[I, O]
+	// Loader aliases a typed loader task handler.
+	Loader[O any] = mux.TaskHandler[None, O]
+	// LoaderFunc is the public loader function signature.
+	LoaderFunc[Ctx any, O any] = func(*Ctx) (O, error)
+	// ActionFunc is the public action function signature.
+	ActionFunc[Ctx any, O any] = func(*Ctx) (O, error)
+	// LoadersRouterOptions aliases loader router configuration.
+	LoadersRouterOptions = vormaruntime.LoadersRouterOptions
+	// ActionsRouterOptions aliases action router configuration.
+	ActionsRouterOptions = vormaruntime.ActionsRouterOptions
+	// FormData aliases normalized action form-data representation.
+	FormData = vormaruntime.FormData
+	// LoaderError aliases loader error payload shape.
+	LoaderError = vormaruntime.LoaderError
+	// DefaultHeadElsFunc defines default head element population.
+	DefaultHeadElsFunc = func(r *http.Request, app *Vorma, head *HeadEls) error
+	// HeadDedupeKeysFunc defines head-element dedupe key registration.
+	HeadDedupeKeysFunc = func(head *HeadEls)
+	// RootTemplateDataFunc provides template data per request.
+	RootTemplateDataFunc = func(r *http.Request) (map[string]any, error)
+	// DiscoveredRegisteredAction describes a discovered registered action route.
+	DiscoveredRegisteredAction = struct{ Method, Pattern string }
+	// DiscoveredLoaderTaskExecutor executes discovered loader tasks for a
+	// request.
+	DiscoveredLoaderTaskExecutor = func(r *http.Request) (*mux.NestedTasksResults, bool)
 )
 
+// Vorma is the public app facade over internal runtime state.
+type Vorma struct {
+	*wave.Wave
+	runtime *vormaruntime.Vorma
+}
+
+// VormaAppConfig configures NewVormaApp.
+type VormaAppConfig struct {
+	Wave                 *wave.Wave
+	DefaultHeadElsFunc   DefaultHeadElsFunc
+	HeadDedupeKeysFunc   HeadDedupeKeysFunc
+	RootTemplateDataFunc RootTemplateDataFunc
+	LoadersRouterOptions LoadersRouterOptions
+	ActionsRouterOptions ActionsRouterOptions
+	AdHocTypes           []*AdHocType
+	ExtraTSCode          string
+	Logger               *slog.Logger
+}
+
+// VormaBuildIDHeaderKey is the response header containing the active build id.
 const VormaBuildIDHeaderKey = vormaruntime.VormaBuildIDHeaderKey
 
 // MustGetPort returns the application runtime port.
@@ -40,18 +80,170 @@ const VormaBuildIDHeaderKey = vormaruntime.VormaBuildIDHeaderKey
 // It panics in non-dev mode when PORT is missing or invalid.
 func MustGetPort() int { return wave.MustGetPort() }
 
+// GetIsDev reports whether the current process is running in dev mode.
 func GetIsDev() bool { return wave.GetIsDev() }
-func SetModeToDev()  { wave.SetModeToDev() }
 
+// SetModeToDev marks the current process as development mode.
+func SetModeToDev() { wave.SetModeToDev() }
+
+// IsJSONRequest reports whether the request is a Vorma JSON route-data request.
 func IsJSONRequest(r *http.Request) bool {
 	return vormaruntime.IsJSONRequest(r)
 }
+
+// EnableThirdPartyRouter injects task context middleware for external routers.
 func EnableThirdPartyRouter(next http.Handler) http.Handler {
 	return mux.InjectTasksCtxMiddleware(next)
 }
 
+// NewVormaApp constructs a Vorma app facade from config.
 func NewVormaApp(o VormaAppConfig) *Vorma {
-	return vormaruntime.NewVormaApp(o)
+	var defaultHeadElsFunc vormaruntime.GetDefaultHeadElsFunc
+	if o.DefaultHeadElsFunc != nil {
+		defaultHeadElsFunc = func(
+			r *http.Request,
+			runtimeApp *vormaruntime.Vorma,
+			head *headels.HeadEls,
+		) error {
+			return o.DefaultHeadElsFunc(
+				r,
+				newPublicVormaFromRuntime(runtimeApp),
+				head,
+			)
+		}
+	}
+
+	runtimeApp := vormaruntime.NewVormaApp(vormaruntime.VormaAppConfig{
+		Wave:                 o.Wave,
+		DefaultHeadElsFunc:   defaultHeadElsFunc,
+		HeadDedupeKeysFunc:   o.HeadDedupeKeysFunc,
+		RootTemplateDataFunc: o.RootTemplateDataFunc,
+		LoadersRouterOptions: o.LoadersRouterOptions,
+		ActionsRouterOptions: o.ActionsRouterOptions,
+		AdHocTypes:           o.AdHocTypes,
+		ExtraTSCode:          o.ExtraTSCode,
+		Logger:               o.Logger,
+	})
+	return newPublicVormaFromRuntime(runtimeApp)
+}
+
+func newPublicVormaFromRuntime(runtimeApp *vormaruntime.Vorma) *Vorma {
+	if runtimeApp == nil {
+		return &Vorma{}
+	}
+	return &Vorma{
+		Wave:    runtimeApp.Wave,
+		runtime: runtimeApp,
+	}
+}
+
+func (v *Vorma) requireRuntime(caller string) *vormaruntime.Vorma {
+	if v == nil || v.runtime == nil {
+		panic(caller + ": app cannot be nil")
+	}
+	return v.runtime
+}
+
+// MustInit initializes runtime route/template artifacts and panics on failure.
+func (v *Vorma) MustInit() {
+	v.requireRuntime("vorma.Vorma.MustInit").MustInit()
+}
+
+// MustInitWithDefaultRouter initializes Vorma and returns a default mux.Router.
+func (v *Vorma) MustInitWithDefaultRouter() *mux.Router {
+	return v.requireRuntime("vorma.Vorma.MustInitWithDefaultRouter").
+		MustInitWithDefaultRouter()
+}
+
+// MustStaticMiddleware returns static-file middleware and panics on setup
+// errors.
+func (v *Vorma) MustStaticMiddleware() func(http.Handler) http.Handler {
+	return v.requireRuntime("vorma.Vorma.MustStaticMiddleware").
+		MustStaticMiddleware()
+}
+
+// ServerAddr returns the bound server address once initialized.
+func (v *Vorma) ServerAddr() string {
+	return v.requireRuntime("vorma.Vorma.ServerAddr").ServerAddr()
+}
+
+// BuildID returns the current runtime build identifier.
+func (v *Vorma) BuildID() string {
+	return v.requireRuntime("vorma.Vorma.BuildID").BuildID()
+}
+
+// UnsafeRuntimeForFrameworkInternals exposes the internal runtime object for
+// framework integration code.
+func (v *Vorma) UnsafeRuntimeForFrameworkInternals() *vormaruntime.Vorma {
+	return v.requireRuntime("vorma.Vorma.UnsafeRuntimeForFrameworkInternals")
+}
+
+// RegisterDiscoveredLoaderTask registers a discovered loader handler into the
+// runtime loader router.
+func RegisterDiscoveredLoaderTask[O any](
+	app *Vorma,
+	pattern string,
+	task *Loader[O],
+) {
+	runtimeApp := app.requireRuntime("vorma.RegisterDiscoveredLoaderTask")
+	mux.AddNestedTaskHandler(
+		runtimeApp.LoadersRouter().NestedRouter,
+		pattern,
+		task,
+	)
+}
+
+// RegisterDiscoveredActionTask registers a discovered action handler into the
+// runtime action router.
+func RegisterDiscoveredActionTask[I any, O any](
+	app *Vorma,
+	method string,
+	pattern string,
+	task *Action[I, O],
+) {
+	runtimeApp := app.requireRuntime("vorma.RegisterDiscoveredActionTask")
+	mux.AddTaskHandler(runtimeApp.ActionsRouter().Router, method, pattern, task)
+}
+
+// HasRegisteredLoaderTask reports whether a loader is registered for pattern.
+func (v *Vorma) HasRegisteredLoaderTask(pattern string) bool {
+	runtimeApp := v.requireRuntime("vorma.Vorma.HasRegisteredLoaderTask")
+	return runtimeApp.LoadersRouter().NestedRouter.HasTaskHandler(pattern)
+}
+
+// RegisteredActionRoutes returns all currently registered action routes.
+func (v *Vorma) RegisteredActionRoutes() []DiscoveredRegisteredAction {
+	runtimeApp := v.requireRuntime("vorma.Vorma.RegisteredActionRoutes")
+	routes := runtimeApp.ActionsRouter().AllRoutes()
+	if len(routes) == 0 {
+		return nil
+	}
+
+	out := make([]DiscoveredRegisteredAction, 0, len(routes))
+	for _, route := range routes {
+		out = append(
+			out,
+			DiscoveredRegisteredAction{
+				Method:  route.Method(),
+				Pattern: route.OriginalPattern(),
+			},
+		)
+	}
+	return out
+}
+
+// FindNestedMatchesAndRunLoaderTasks resolves nested loader matches and runs
+// their task graph for the request.
+func (v *Vorma) FindNestedMatchesAndRunLoaderTasks(
+	r *http.Request,
+) (*mux.NestedTasksResults, bool) {
+	runtimeApp := v.requireRuntime(
+		"vorma.Vorma.FindNestedMatchesAndRunLoaderTasks",
+	)
+	return mux.FindNestedMatchesAndRunTasks(
+		runtimeApp.LoadersRouter().NestedRouter,
+		r,
+	)
 }
 
 // DefineLoaderForRegistration marks a loader declaration for build discovery and generated
@@ -142,6 +334,7 @@ func panicIfNilActionRegistrationArguments[I any, O any, CtxPtr ~*Ctx, Ctx any](
 //go:embed internal/__LAST_RELEASE.txt
 var canonicalVersion string
 
+// CurrentReleaseVersion returns the version string embedded at build time.
 func CurrentReleaseVersion() string {
 	return strings.TrimSpace(canonicalVersion)
 }

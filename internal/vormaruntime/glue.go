@@ -18,24 +18,31 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
+// LoadersRouter wraps mux.NestedRouter for loader route registration.
 type LoadersRouter struct {
 	*mux.NestedRouter
 }
 
+// ActionsRouter wraps mux.Router for action route registration.
 type ActionsRouter struct {
 	*mux.Router
 	supportedMethods map[string]bool
 }
 
+// LoaderReqData is loader task request data.
 type LoaderReqData = mux.NestedReqData
+
+// ActionReqData is action task request data.
 type ActionReqData[I any] = mux.ReqData[I]
 
+// LoadersRouterOptions configures loader route pattern semantics.
 type LoadersRouterOptions struct {
 	DynamicParamPrefix             rune
 	SplatSegmentIdentifier         rune
 	ExplicitIndexSegmentIdentifier string
 }
 
+// ActionsRouterOptions configures action route matching and accepted methods.
 type ActionsRouterOptions struct {
 	DynamicParamPrefix     rune
 	SplatSegmentIdentifier rune
@@ -124,8 +131,10 @@ func newActionsRouter(options ...ActionsRouterOptions) *ActionsRouter {
 // FormData is used as the input type for actions that accept form data.
 type FormData struct{}
 
+// TSTypeRaw returns the TypeScript-side type name for generated declarations.
 func (m FormData) TSTypeRaw() string { return "FormData" }
 
+// VormaAppConfig configures a Vorma runtime app instance.
 type VormaAppConfig struct {
 	Wave                 *wave.Wave
 	DefaultHeadElsFunc   GetDefaultHeadElsFunc
@@ -142,6 +151,7 @@ type configWrapper struct {
 	Vorma *VormaConfig `json:"Vorma,omitempty"`
 }
 
+// NewVormaApp constructs a Vorma runtime from Wave config and runtime hooks.
 func NewVormaApp(o VormaAppConfig) *Vorma {
 	var v Vorma
 
@@ -339,27 +349,42 @@ func isValidUnresolvedRoutePolicy(policy string) bool {
 		policy == UnresolvedRoutePolicyError
 }
 
+// Loaders exposes convenience helpers for mounting loader handlers.
 type Loaders struct{ vorma *Vorma }
+
+// Actions exposes convenience helpers for mounting action handlers.
 type Actions struct{ vorma *Vorma }
 
+// MustStaticMiddleware returns static asset middleware configured for Vorma runtime.
 func (v *Vorma) MustStaticMiddleware() func(http.Handler) http.Handler {
 	return v.Wave.MustStaticMiddleware(true)
 }
 
+// Loaders returns loader mounting helpers.
 func (v *Vorma) Loaders() *Loaders { return &Loaders{vorma: v} }
+
+// Actions returns action mounting helpers.
 func (v *Vorma) Actions() *Actions { return &Actions{vorma: v} }
 
+// HandlerMountPattern returns the mount pattern for loader handlers.
 func (h *Loaders) HandlerMountPattern() string { return "/*" }
+
+// Handler returns the loader HTTP handler.
 func (h *Loaders) Handler() http.Handler {
 	return h.vorma.LoadersHandler()
 }
 
+// HandlerMountPattern returns the mount pattern for action handlers.
 func (h *Actions) HandlerMountPattern() string {
 	return h.vorma.ActionsRouter().MountRoot("*")
 }
+
+// Handler returns the action HTTP handler.
 func (h *Actions) Handler() http.Handler {
 	return h.vorma.ActionsHandler()
 }
+
+// SupportedMethods returns a copy of methods accepted by the actions router.
 func (h *Actions) SupportedMethods() map[string]bool {
 	original := h.vorma.ActionsRouter().supportedMethods
 	if original == nil {
@@ -372,5 +397,8 @@ func (h *Actions) SupportedMethods() map[string]bool {
 	return clone
 }
 
+// Route aliases mux.Route for public runtime surface continuity.
 type Route[I any, O any] = mux.Route[I, O]
+
+// TaskHandler aliases mux.TaskHandler for public runtime surface continuity.
 type TaskHandler[I any, O any] = mux.TaskHandler[I, O]

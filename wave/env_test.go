@@ -65,7 +65,9 @@ func TestMustGetPortNonDevPanicsWhenPortMissing(t *testing.T) {
 
 	defer func() {
 		if recover() == nil {
-			t.Fatal("expected MustGetPort to panic when PORT is missing in production mode")
+			t.Fatal(
+				"expected MustGetPort to panic when PORT is missing in production mode",
+			)
 		}
 	}()
 	_ = MustGetPort()
@@ -90,7 +92,9 @@ func TestMustGetPortNonDevPanicsWhenPortInvalid(t *testing.T) {
 
 	defer func() {
 		if recover() == nil {
-			t.Fatal("expected MustGetPort to panic when PORT is invalid in production mode")
+			t.Fatal(
+				"expected MustGetPort to panic when PORT is invalid in production mode",
+			)
 		}
 	}()
 	_ = MustGetPort()
@@ -113,32 +117,61 @@ func TestMustGetPortDevChoosesPortAndMarksSet(t *testing.T) {
 		t.Fatalf("expected deterministic free-port result 32124, got %d", got)
 	}
 	if env := parseEnvPort(); env != got {
-		t.Fatalf("expected PORT env to match returned port (%d), got %d", got, env)
+		t.Fatalf(
+			"expected PORT env to match returned port (%d), got %d",
+			got,
+			env,
+		)
 	}
 	if flag := os.Getenv(envPortSet); flag != "true" {
 		t.Fatalf("expected %s to be true, got %q", envPortSet, flag)
 	}
 }
 
-func TestMustGetPortDevWithInvalidRequestedPortStillReturnsUsablePort(t *testing.T) {
+func TestMustGetPortDevUsesFallbackBasePortWhenPortMissing(t *testing.T) {
 	resetPortCacheForTest()
 	t.Setenv(envMode, envModeDev)
 	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "0")
+	t.Setenv(envPort, "")
+
 	stubGetFreePortForTest(t, func(port int) (int, error) {
-		if port != 8080 {
-			t.Fatalf("expected fallback free-port lookup from 8080, got %d", port)
+		if port != 0 {
+			t.Fatalf(
+				"expected free-port lookup from fallback base port 0, got %d",
+				port,
+			)
 		}
-		return 8081, nil
+		return 38080, nil
 	})
 
 	got := MustGetPort()
-	if got != 8081 {
-		t.Fatalf("expected deterministic fallback free-port result 8081, got %d", got)
+	if got != 38080 {
+		t.Fatalf("expected fallback free-port result 38080, got %d", got)
+	}
+	if env := parseEnvPort(); env != got {
+		t.Fatalf(
+			"expected PORT env to match returned port (%d), got %d",
+			got,
+			env,
+		)
 	}
 	if flag := os.Getenv(envPortSet); flag != "true" {
 		t.Fatalf("expected %s to be true, got %q", envPortSet, flag)
 	}
+}
+
+func TestMustGetPortDevPanicsWhenRequestedPortIsInvalid(t *testing.T) {
+	resetPortCacheForTest()
+	t.Setenv(envMode, envModeDev)
+	t.Setenv(envPortSet, "")
+	t.Setenv(envPort, "0")
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected MustGetPort to panic when dev PORT is invalid")
+		}
+	}()
+	_ = MustGetPort()
 }
 
 func TestMustGetPortDevPanicsWhenFreePortResolutionFails(t *testing.T) {
@@ -170,7 +203,11 @@ func TestMustGetPortCachesResultAfterFirstCall(t *testing.T) {
 	second := MustGetPort()
 
 	if first != 5001 || second != 5001 {
-		t.Fatalf("expected Port to cache first result, got first=%d second=%d", first, second)
+		t.Fatalf(
+			"expected Port to cache first result, got first=%d second=%d",
+			first,
+			second,
+		)
 	}
 }
 
@@ -214,7 +251,9 @@ func TestMustGetPortDevAlreadySetPanicsForInvalidPort(t *testing.T) {
 
 	defer func() {
 		if recover() == nil {
-			t.Fatal("expected MustGetPort to panic for invalid pre-set dev port")
+			t.Fatal(
+				"expected MustGetPort to panic for invalid pre-set dev port",
+			)
 		}
 	}()
 	_ = MustGetPort()

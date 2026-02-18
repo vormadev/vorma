@@ -17,6 +17,7 @@ type SSRInnerHTMLInput struct {
 	IsDev            bool
 	ViteDevURL       string
 	BuildID          string
+	RootElementID    string
 	PublicPathPrefix string
 	DeploymentID     string
 	RouteManifestURL string
@@ -32,6 +33,7 @@ x.clientLoadersData = [];
 x.isDev = {{.IsDev}};
 x.viteDevURL = {{.ViteDevURL}};
 x.buildID = {{.BuildID}};
+x.rootElementID = "{{.RootElementID}}";
 x.publicPathPrefix = "{{.PublicPathPrefix}}";
 x.outermostServerError = {{.OutermostServerError}};
 x.outermostServerErrorIdx = {{.OutermostServerErrorIdx}};
@@ -104,6 +106,7 @@ func (v *Vorma) getSSRInnerHTMLWithRuntimeState(
 		IsDev:            snapshot.isDev,
 		ViteDevURL:       routeData.ViteDevURL,
 		BuildID:          snapshot.buildID,
+		RootElementID:    v.ClientRootElementID(),
 		PublicPathPrefix: publicPathPrefix,
 		RouteManifestURL: path.Join(
 			publicPathPrefix,

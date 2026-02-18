@@ -1,23 +1,45 @@
 package vormabuild
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func normalizeRouteDefinitionPatternsInInputOrder(
 	routeDefinitionPatterns []string,
-) []string {
+) ([]string, error) {
 	normalizedPatterns := make([]string, 0, len(routeDefinitionPatterns))
 	seenPatterns := make(map[string]struct{}, len(routeDefinitionPatterns))
-	for _, routeDefinitionPattern := range routeDefinitionPatterns {
-		trimmedRouteDefinitionPattern := strings.TrimSpace(routeDefinitionPattern)
+	for index, routeDefinitionPattern := range routeDefinitionPatterns {
+		trimmedRouteDefinitionPattern := strings.TrimSpace(
+			routeDefinitionPattern,
+		)
 		if trimmedRouteDefinitionPattern == "" {
-			continue
+			return nil, fmt.Errorf(
+				"Vorma.ClientRouteDefinitionPatterns[%d] cannot be empty or whitespace",
+				index,
+			)
+		}
+		if trimmedRouteDefinitionPattern != routeDefinitionPattern {
+			return nil, fmt.Errorf(
+				"Vorma.ClientRouteDefinitionPatterns[%d]=%q must not contain surrounding whitespace",
+				index,
+				routeDefinitionPattern,
+			)
 		}
 		if _, hasSeenPattern := seenPatterns[trimmedRouteDefinitionPattern]; hasSeenPattern {
-			continue
+			return nil, fmt.Errorf(
+				"Vorma.ClientRouteDefinitionPatterns[%d]=%q duplicates an earlier pattern",
+				index,
+				trimmedRouteDefinitionPattern,
+			)
 		}
 
 		seenPatterns[trimmedRouteDefinitionPattern] = struct{}{}
-		normalizedPatterns = append(normalizedPatterns, trimmedRouteDefinitionPattern)
+		normalizedPatterns = append(
+			normalizedPatterns,
+			trimmedRouteDefinitionPattern,
+		)
 	}
-	return normalizedPatterns
+	return normalizedPatterns, nil
 }

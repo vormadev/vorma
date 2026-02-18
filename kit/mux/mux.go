@@ -19,8 +19,10 @@ import (
 )
 
 var (
-	muxLog           = colorlog.New("mux")
-	requestStore     = contextutil.NewStore[*rdTransport]("__vorma_kit_mux_request_data")
+	muxLog       = colorlog.New("mux")
+	requestStore = contextutil.NewStore[*rdTransport](
+		"__vorma_kit_mux_request_data",
+	)
 	emptyHTTPMws     = []httpMiddlewareWithOptions{}
 	emptyTaskMws     = []taskMiddlewareWithOptions{}
 	emptySplatValues []string
@@ -40,11 +42,15 @@ var (
 // and tasks.Task documentation and source code for more details.
 
 type (
-	None                      = genericsutil.None
+	// None is the no-input marker for route and middleware generics.
+	None = genericsutil.None
+	// TaskHandler is a task-backed route handler.
 	TaskHandler[I any, O any] = tasks.Task[*ReqData[I], O]
-	Params                    = matcher.Params
+	// Params contains route params extracted by matcher.
+	Params = matcher.Params
 )
 
+// ReqData is the request-scoped data passed to task handlers and task middleware.
 type ReqData[I any] struct {
 	params        Params
 	splatVals     []string
@@ -54,6 +60,7 @@ type ReqData[I any] struct {
 	responseProxy *response.Proxy
 }
 
+// MiddlewareOptions configures conditional middleware execution.
 type MiddlewareOptions struct {
 	// Return true if the middleware should be run for this request.
 	// If nil, the middleware will always run.
@@ -61,12 +68,17 @@ type MiddlewareOptions struct {
 }
 
 type (
-	HTTPMiddleware                = func(http.Handler) http.Handler
-	TaskMiddlewareFunc[O any]     func(*ReqData[None]) (O, error)
-	TaskMiddleware[O any]         = tasks.Task[*ReqData[None], O]
+	// HTTPMiddleware is standard net/http middleware.
+	HTTPMiddleware = func(http.Handler) http.Handler
+	// TaskMiddlewareFunc creates task middleware from a function.
+	TaskMiddlewareFunc[O any] func(*ReqData[None]) (O, error)
+	// TaskMiddleware is task-based middleware run in a tasks.Ctx.
+	TaskMiddleware[O any] = tasks.Task[*ReqData[None], O]
+	// TaskHandlerFunc creates a task route handler from a function.
 	TaskHandlerFunc[I any, O any] func(*ReqData[I]) (O, error)
 )
 
+// Router matches routes by method and path and executes HTTP/task middleware layers.
 type Router struct {
 	parseInput         func(r *http.Request, iPtr any) error
 	httpMws            []httpMiddlewareWithOptions
@@ -78,15 +90,19 @@ type Router struct {
 	allRoutes          []AnyRoute
 }
 
+// AllRoutes returns a snapshot copy of every registered route.
 func (rt *Router) AllRoutes() []AnyRoute {
 	allRoutesCopy := make([]AnyRoute, len(rt.allRoutes))
 	copy(allRoutesCopy, rt.allRoutes)
 	return allRoutesCopy
 }
 
+// DynamicParamPrefix returns the matcher's dynamic param prefix rune.
 func (rt *Router) DynamicParamPrefix() rune {
 	return rt.matcherOpts.DynamicParamPrefix
 }
+
+// SplatSegmentIdentifier returns the matcher's splat segment identifier rune.
 func (rt *Router) SplatSegmentIdentifier() rune {
 	return rt.matcherOpts.SplatSegmentIdentifier
 }
@@ -106,6 +122,7 @@ func (rt *Router) MountRoot(optionalPatternToAppend ...string) string {
 	return path.Join(rt.mountRoot, optionalPatternToAppend[0])
 }
 
+// TasksCtxRequirer marks HTTP handlers that require tasks context injection.
 type TasksCtxRequirer interface {
 	http.Handler
 	NeedsTasksCtx()
@@ -113,13 +130,18 @@ type TasksCtxRequirer interface {
 
 var handlerNeedsTasksCtxImplReflectType = reflect.TypeFor[TasksCtxRequirer]()
 
+// TasksCtxRequirerFunc adapts a function to a TasksCtxRequirer handler.
 type TasksCtxRequirerFunc func(http.ResponseWriter, *http.Request)
 
-func (h TasksCtxRequirerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h TasksCtxRequirerFunc) ServeHTTP(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	h(w, r)
 }
 func (h TasksCtxRequirerFunc) NeedsTasksCtx() {}
 
+// Options configures router matching behavior and task input parsing.
 type Options struct {
 	// Used for mounting a router at a specific path, e.g., "/api/". If set,
 	// the router will strip the provided mount root from the beginning of
@@ -133,6 +155,7 @@ type Options struct {
 	ParseInput func(r *http.Request, inputPtr any) error
 }
 
+// NewRouter creates a router with optional matcher and mount configuration.
 func NewRouter(options ...*Options) *Router {
 	var opts *Options
 	if len(options) > 0 {
@@ -143,8 +166,14 @@ func NewRouter(options ...*Options) *Router {
 	if opts == nil {
 		opts = new(Options)
 	}
-	matcherOpts.DynamicParamPrefix = genericsutil.OrDefault(opts.DynamicParamPrefix, ':')
-	matcherOpts.SplatSegmentIdentifier = genericsutil.OrDefault(opts.SplatSegmentIdentifier, '*')
+	matcherOpts.DynamicParamPrefix = genericsutil.OrDefault(
+		opts.DynamicParamPrefix,
+		':',
+	)
+	matcherOpts.SplatSegmentIdentifier = genericsutil.OrDefault(
+		opts.SplatSegmentIdentifier,
+		'*',
+	)
 	mountRootToUse := opts.MountRoot
 	if mountRootToUse != "" {
 		if len(mountRootToUse) == 1 && mountRootToUse[0] == '/' {
@@ -153,7 +182,8 @@ func NewRouter(options ...*Options) *Router {
 		if len(mountRootToUse) > 1 && mountRootToUse[0] != '/' {
 			mountRootToUse = "/" + mountRootToUse
 		}
-		if len(mountRootToUse) > 0 && mountRootToUse[len(mountRootToUse)-1] != '/' {
+		if len(mountRootToUse) > 0 &&
+			mountRootToUse[len(mountRootToUse)-1] != '/' {
 			mountRootToUse = mountRootToUse + "/"
 		}
 	}
@@ -170,38 +200,61 @@ func NewRouter(options ...*Options) *Router {
 // TaskHandlers are used for JSON responses only, and they are intended to
 // be particularly convenient for sending JSON. If you need to send a different
 // content type, use a traditional http.Handler instead.
-func TaskHandlerFromFunc[I any, O any](taskHandlerFunc TaskHandlerFunc[I, O]) *TaskHandler[I, O] {
+func TaskHandlerFromFunc[I any, O any](
+	taskHandlerFunc TaskHandlerFunc[I, O],
+) *TaskHandler[I, O] {
 	return tasks.NewTask(func(c *tasks.Ctx, rd *ReqData[I]) (O, error) {
 		return taskHandlerFunc(rd)
 	})
 }
 
-func TaskMiddlewareFromFunc[O any](userFunc TaskMiddlewareFunc[O]) *TaskMiddleware[O] {
+// TaskMiddlewareFromFunc converts a function into task middleware.
+func TaskMiddlewareFromFunc[O any](
+	userFunc TaskMiddlewareFunc[O],
+) *TaskMiddleware[O] {
 	return tasks.NewTask(func(c *tasks.Ctx, rd *ReqData[None]) (O, error) {
 		return userFunc(rd)
 	})
 }
 
-func AddGlobalTaskMiddleware[O any](router *Router, taskMw *TaskMiddleware[O], opts ...*MiddlewareOptions) {
+// AddGlobalTaskMiddleware registers task middleware for all routes.
+func AddGlobalTaskMiddleware[O any](
+	router *Router,
+	taskMw *TaskMiddleware[O],
+	opts ...*MiddlewareOptions,
+) {
 	router.taskMws = append(router.taskMws, taskMiddlewareWithOptions{
 		mw:   taskMw,
 		opts: getFirstOpt(opts),
 	})
 }
 
-func AddGlobalHTTPMiddleware(router *Router, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+// AddGlobalHTTPMiddleware registers HTTP middleware for all routes.
+func AddGlobalHTTPMiddleware(
+	router *Router,
+	httpMw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
 	router.httpMws = append(router.httpMws, httpMiddlewareWithOptions{
 		mw:   httpMw,
 		opts: getFirstOpt(opts),
 	})
 }
 
-func (rt *Router) AddGlobalHTTPMiddleware(httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+// AddGlobalHTTPMiddleware registers HTTP middleware on the receiver router.
+func (rt *Router) AddGlobalHTTPMiddleware(
+	httpMw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
 	AddGlobalHTTPMiddleware(rt, httpMw, opts...)
 }
 
+// AddMethodLevelTaskMiddleware registers task middleware for one method.
 func AddMethodLevelTaskMiddleware[O any](
-	router *Router, method string, taskMw *TaskMiddleware[O], opts ...*MiddlewareOptions,
+	router *Router,
+	method string,
+	taskMw *TaskMiddleware[O],
+	opts ...*MiddlewareOptions,
 ) {
 	mm := router.getOrCreateMethodMatcher(method)
 	mm.taskMws = append(mm.taskMws, taskMiddlewareWithOptions{
@@ -210,7 +263,13 @@ func AddMethodLevelTaskMiddleware[O any](
 	})
 }
 
-func AddMethodLevelHTTPMiddleware(router *Router, method string, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+// AddMethodLevelHTTPMiddleware registers HTTP middleware for one method.
+func AddMethodLevelHTTPMiddleware(
+	router *Router,
+	method string,
+	httpMw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
 	mm := router.getOrCreateMethodMatcher(method)
 	mm.httpMws = append(mm.httpMws, httpMiddlewareWithOptions{
 		mw:   httpMw,
@@ -218,36 +277,58 @@ func AddMethodLevelHTTPMiddleware(router *Router, method string, httpMw HTTPMidd
 	})
 }
 
-func (rt *Router) AddMethodLevelHTTPMiddleware(method string, httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+// AddMethodLevelHTTPMiddleware registers HTTP middleware for one method on the receiver router.
+func (rt *Router) AddMethodLevelHTTPMiddleware(
+	method string,
+	httpMw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
 	AddMethodLevelHTTPMiddleware(rt, method, httpMw, opts...)
 }
 
-func AddPatternLevelTaskMiddleware[PI any, PO any, MWO any](route *Route[PI, PO], taskMw *TaskMiddleware[MWO], opts ...*MiddlewareOptions) {
+// AddPatternLevelTaskMiddleware registers task middleware for one route pattern.
+func AddPatternLevelTaskMiddleware[PI any, PO any, MWO any](
+	route *Route[PI, PO],
+	taskMw *TaskMiddleware[MWO],
+	opts ...*MiddlewareOptions,
+) {
 	route.taskMws = append(route.taskMws, taskMiddlewareWithOptions{
 		mw:   taskMw,
 		opts: getFirstOpt(opts),
 	})
 }
 
-func AddPatternLevelHTTPMiddleware[I any, O any](route *Route[I, O], httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+// AddPatternLevelHTTPMiddleware registers HTTP middleware for one route pattern.
+func AddPatternLevelHTTPMiddleware[I any, O any](
+	route *Route[I, O],
+	httpMw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
 	route.httpMws = append(route.httpMws, httpMiddlewareWithOptions{
 		mw:   httpMw,
 		opts: getFirstOpt(opts),
 	})
 }
 
-func (route *Route[I, O]) AddPatternLevelHTTPMiddleware(httpMw HTTPMiddleware, opts ...*MiddlewareOptions) {
+// AddPatternLevelHTTPMiddleware registers HTTP middleware on the receiver route.
+func (route *Route[I, O]) AddPatternLevelHTTPMiddleware(
+	httpMw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
 	AddPatternLevelHTTPMiddleware(route, httpMw, opts...)
 }
 
+// SetGlobalNotFoundHTTPHandler sets the fallback handler used when no route matches.
 func SetGlobalNotFoundHTTPHandler(router *Router, httpHandler http.Handler) {
 	router.notFoundHandler = httpHandler
 }
 
+// SetGlobalNotFoundHTTPHandler sets the receiver router's not-found handler.
 func (rt *Router) SetGlobalNotFoundHTTPHandler(httpHandler http.Handler) {
 	SetGlobalNotFoundHTTPHandler(rt, httpHandler)
 }
 
+// Route stores registration metadata and handlers for a method+pattern pair.
 type Route[I, O any] struct {
 	genericsutil.ZeroHelper[I, O]
 	router          *Router
@@ -262,6 +343,7 @@ type Route[I, O any] struct {
 	compiledHTTP    atomic.Value
 }
 
+// AnyRoute is the internal polymorphic route contract used by Router.
 type AnyRoute interface {
 	OriginalPattern() string
 	Method() string
@@ -275,9 +357,12 @@ type AnyRoute interface {
 	httpChain(rt *Router, mm *methodMatcher) http.Handler
 }
 
+// OriginalPattern returns the route pattern as registered.
 func (route *Route[I, O]) OriginalPattern() string {
 	return route.originalPattern
 }
+
+// Method returns the registered HTTP method.
 func (route *Route[I, O]) Method() string {
 	return route.method
 }
@@ -297,16 +382,22 @@ func AddTaskHandler[I any, O any](
 	return route
 }
 
+// AddHTTPHandlerFunc registers an http.HandlerFunc route.
 func AddHTTPHandlerFunc(
 	router *Router, method, pattern string, httpHandlerFunc http.HandlerFunc,
 ) *Route[any, any] {
 	return AddHTTPHandler(router, method, pattern, httpHandlerFunc)
 }
 
-func (rt *Router) AddHTTPHandlerFunc(method, pattern string, httpHandlerFunc http.HandlerFunc) *Route[any, any] {
+// AddHTTPHandlerFunc registers an http.HandlerFunc route on the receiver router.
+func (rt *Router) AddHTTPHandlerFunc(
+	method, pattern string,
+	httpHandlerFunc http.HandlerFunc,
+) *Route[any, any] {
 	return AddHTTPHandlerFunc(rt, method, pattern, httpHandlerFunc)
 }
 
+// AddHTTPHandler registers an http.Handler route.
 func AddHTTPHandler(
 	router *Router, method, pattern string, httpHandler http.Handler,
 ) *Route[any, any] {
@@ -322,18 +413,36 @@ func AddHTTPHandler(
 	return route
 }
 
-func (rt *Router) AddHTTPHandler(method, pattern string, httpHandler http.Handler) *Route[any, any] {
+// AddHTTPHandler registers an http.Handler route on the receiver router.
+func (rt *Router) AddHTTPHandler(
+	method, pattern string,
+	httpHandler http.Handler,
+) *Route[any, any] {
 	return AddHTTPHandler(rt, method, pattern, httpHandler)
 }
 
-func (rd *ReqData[I]) Params() Params                 { return rd.params }
-func (rd *ReqData[I]) Param(key string) string        { return rd.params[key] }
-func (rd *ReqData[I]) SplatValues() []string          { return rd.splatVals }
-func (rd *ReqData[I]) TasksCtx() *tasks.Ctx           { return rd.tasksCtx }
-func (rd *ReqData[I]) Request() *http.Request         { return rd.req }
-func (rd *ReqData[I]) ResponseProxy() *response.Proxy { return rd.responseProxy }
-func (rd *ReqData[I]) Input() I                       { return rd.input }
+// Params returns matched route params.
+func (rd *ReqData[I]) Params() Params { return rd.params }
 
+// Param returns a single matched route param.
+func (rd *ReqData[I]) Param(key string) string { return rd.params[key] }
+
+// SplatValues returns matched splat segments.
+func (rd *ReqData[I]) SplatValues() []string { return rd.splatVals }
+
+// TasksCtx returns the request's task context.
+func (rd *ReqData[I]) TasksCtx() *tasks.Ctx { return rd.tasksCtx }
+
+// Request returns the underlying HTTP request.
+func (rd *ReqData[I]) Request() *http.Request { return rd.req }
+
+// ResponseProxy returns the response proxy associated with the request.
+func (rd *ReqData[I]) ResponseProxy() *response.Proxy { return rd.responseProxy }
+
+// Input returns parsed input for the route handler.
+func (rd *ReqData[I]) Input() I { return rd.input }
+
+// GetTasksCtx returns the request's tasks context when present.
 func GetTasksCtx(r *http.Request) *tasks.Ctx {
 	if rd := requestStore.Value(r.Context()); rd != nil {
 		return rd.tasksCtx
@@ -341,10 +450,12 @@ func GetTasksCtx(r *http.Request) *tasks.Ctx {
 	return nil
 }
 
+// GetParam returns one route param by key.
 func GetParam(r *http.Request, key string) string {
 	return GetParams(r)[key]
 }
 
+// GetParams returns all route params for the request.
 func GetParams(r *http.Request) Params {
 	if rd := requestStore.Value(r.Context()); rd != nil {
 		if rd.params != nil {
@@ -354,6 +465,7 @@ func GetParams(r *http.Request) Params {
 	return nil
 }
 
+// GetSplatValues returns all matched splat values for the request.
 func GetSplatValues(r *http.Request) []string {
 	if rd := requestStore.Value(r.Context()); rd != nil {
 		if rd.splatVals != nil {
@@ -363,6 +475,7 @@ func GetSplatValues(r *http.Request) []string {
 	return emptySplatValues
 }
 
+// ServeHTTP matches the request and executes the resolved route pipeline.
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	pathToUse := r.URL.Path
 	if rt.mountRoot != "" && strings.HasPrefix(pathToUse, rt.mountRoot) {
@@ -414,7 +527,13 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reqData, err := reqGetter.getReqData(r, tasksCtx, match)
 	if err != nil {
 		if validate.IsValidationError(err) {
-			muxLog.Error("Validation error", "error", err, "pattern", match.OriginalPattern())
+			muxLog.Error(
+				"Validation error",
+				"error",
+				err,
+				"pattern",
+				match.OriginalPattern(),
+			)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		} else {
 			muxLog.Error("Internal server error", "error", err, "pattern", match.OriginalPattern())
@@ -428,7 +547,13 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		finalHandler = rt.createTaskFinalHandler(route, reqData)
 	}
-	handlerWithMW := rt.runAppropriateMws(tasksCtx, reqData, mm, route, finalHandler)
+	handlerWithMW := rt.runAppropriateMws(
+		tasksCtx,
+		reqData,
+		mm,
+		route,
+		finalHandler,
+	)
 	if best.headFellBackToGet {
 		treatGetAsHead(handlerWithMW, w, r)
 	} else {
@@ -448,7 +573,10 @@ type rdTransport struct {
 	responseProxy *response.Proxy
 }
 
-func applyHTTPMiddlewareWithOptions(mwWithOpts httpMiddlewareWithOptions, handler http.Handler) http.Handler {
+func applyHTTPMiddlewareWithOptions(
+	mwWithOpts httpMiddlewareWithOptions,
+	handler http.Handler,
+) http.Handler {
 	if mwWithOpts.opts != nil && mwWithOpts.opts.If != nil {
 		originalHandler := handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -494,7 +622,8 @@ func (rt *Router) gatherAllTaskMiddlewares(
 	methodMatcher *methodMatcher, routeMarker AnyRoute,
 ) []taskMiddlewareWithOptions {
 	taskMwsRoute := routeMarker.getTaskMws()
-	if len(rt.taskMws) == 0 && len(methodMatcher.taskMws) == 0 && len(taskMwsRoute) == 0 {
+	if len(rt.taskMws) == 0 && len(methodMatcher.taskMws) == 0 &&
+		len(taskMwsRoute) == 0 {
 		return nil
 	}
 	cap := len(taskMwsRoute) + len(methodMatcher.taskMws) + len(rt.taskMws)
@@ -505,14 +634,26 @@ func (rt *Router) gatherAllTaskMiddlewares(
 	return allTaskMws
 }
 
-func (rt *Router) createTaskFinalHandler(route AnyRoute, reqDataMarker reqDataMarker) http.Handler {
+func (rt *Router) createTaskFinalHandler(
+	route AnyRoute,
+	reqDataMarker reqDataMarker,
+) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
 		taskHandler := route.getTaskHandler()
 		inputData := reqDataMarker.getUnderlyingReqDataInstance()
-		data, err := taskHandler.RunWithAnyInput(reqDataMarker.TasksCtx(), inputData)
+		data, err := taskHandler.RunWithAnyInput(
+			reqDataMarker.TasksCtx(),
+			inputData,
+		)
 		if err != nil {
-			muxLog.Error("Error executing task handler", "error", err, "pattern", route.OriginalPattern())
+			muxLog.Error(
+				"Error executing task handler",
+				"error",
+				err,
+				"pattern",
+				route.OriginalPattern(),
+			)
 			res.InternalServerError()
 			return
 		}
@@ -524,7 +665,8 @@ func (rt *Router) createTaskFinalHandler(route AnyRoute, reqDataMarker reqDataMa
 		if reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(data) {
 			muxLog.Warn(
 				"Do not return nil values from task handlers unless: (i) the underlying type is an empty struct or pointer to an empty struct; or (ii) you are returning an error.",
-				"pattern", route.OriginalPattern(),
+				"pattern",
+				route.OriginalPattern(),
 			)
 		}
 		res.JSON(data)
@@ -552,7 +694,8 @@ func (rt *Router) runAppropriateMws(
 		boundTasks := make([]tasks.BoundTask, 0, len(collected))
 		reqDataInstances := make([]*ReqData[None], 0, len(collected))
 		for _, taskWithOpts := range collected {
-			if taskWithOpts.opts != nil && taskWithOpts.opts.If != nil && !taskWithOpts.opts.If(r) {
+			if taskWithOpts.opts != nil && taskWithOpts.opts.If != nil &&
+				!taskWithOpts.opts.If(r) {
 				continue
 			}
 			rdForMw := &ReqData[None]{
@@ -570,8 +713,16 @@ func (rt *Router) runAppropriateMws(
 			})
 		}
 		if err := tasksCtx.RunParallel(boundTasks...); err != nil {
-			muxLog.Error("Error during parallel middleware execution", "error", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			muxLog.Error(
+				"Error during parallel middleware execution",
+				"error",
+				err,
+			)
+			http.Error(
+				w,
+				"Internal Server Error",
+				http.StatusInternalServerError,
+			)
 			return
 		}
 		proxies := make([]*response.Proxy, len(reqDataInstances))
@@ -587,7 +738,10 @@ func (rt *Router) runAppropriateMws(
 	})
 }
 
-func newRouteStruct[I any, O any](router *Router, method, originalPattern string) *Route[I, O] {
+func newRouteStruct[I any, O any](
+	router *Router,
+	method, originalPattern string,
+) *Route[I, O] {
 	return &Route[I, O]{
 		router: router, method: method, originalPattern: originalPattern,
 		httpMws: emptyHTTPMws, taskMws: emptyTaskMws,
@@ -611,7 +765,8 @@ func createReqDataGetter[I any, O any](route *Route[I, O]) reqDataGetter {
 			reqData.req = r
 			reqData.responseProxy = response.NewProxy()
 			inputPtr := route.IPtr()
-			if route.handlerType == "task" && route.router.parseInput != nil && !genericsutil.IsNone(route.I()) {
+			if route.handlerType == "task" && route.router.parseInput != nil &&
+				!genericsutil.IsNone(route.I()) {
 				if err := route.router.parseInput(reqData.Request(), inputPtr); err != nil {
 					return nil, err
 				}
@@ -644,7 +799,10 @@ type findBestOutput struct {
 	headFellBackToGet bool
 }
 
-func (rt *Router) findBestMatcherAndMatch(method string, realPath string) *findBestOutput {
+func (rt *Router) findBestMatcherAndMatch(
+	method string,
+	realPath string,
+) *findBestOutput {
 	isHead := method == http.MethodHead
 	if isHead {
 		if headMatcher, ok := rt.methodToMatcherMap[http.MethodHead]; ok {
@@ -674,7 +832,10 @@ func (rt *Router) findBestMatcherAndMatch(method string, realPath string) *findB
 	}
 }
 
-func (rt *Router) hasAnyTaskMiddleware(methodMatcher *methodMatcher, route AnyRoute) bool {
+func (rt *Router) hasAnyTaskMiddleware(
+	methodMatcher *methodMatcher,
+	route AnyRoute,
+) bool {
 	return len(route.getTaskMws()) > 0 ||
 		len(methodMatcher.taskMws) > 0 ||
 		len(rt.taskMws) > 0
@@ -705,17 +866,27 @@ func getFirstOpt(opts []*MiddlewareOptions) *MiddlewareOptions {
 	return nil
 }
 
-func (route *Route[I, O]) getHandlerType() string                  { return route.handlerType }
-func (route *Route[I, O]) getHTTPHandler() http.Handler            { return route.userHTTPHandler }
-func (route *Route[I, O]) getTaskHandler() tasks.AnyTask           { return route.taskHandler }
+func (route *Route[I, O]) getHandlerType() string { return route.handlerType }
+
+func (route *Route[I, O]) getHTTPHandler() http.Handler { return route.userHTTPHandler }
+
+func (route *Route[I, O]) getTaskHandler() tasks.AnyTask { return route.taskHandler }
+
 func (route *Route[I, O]) getHTTPMws() []httpMiddlewareWithOptions { return route.httpMws }
+
 func (route *Route[I, O]) getTaskMws() []taskMiddlewareWithOptions { return route.taskMws }
-func (route *Route[I, O]) getNeedsTasksCtx() bool                  { return route.needsTasksCtx }
+
+func (route *Route[I, O]) getNeedsTasksCtx() bool { return route.needsTasksCtx }
 func (r *Route[I, O]) httpChain(rt *Router, mm *methodMatcher) http.Handler {
 	if h, ok := r.compiledHTTP.Load().(http.Handler); ok {
 		return h
 	}
-	h := applyHTTPMiddlewares(r.getHTTPHandler(), r.httpMws, mm.httpMws, rt.httpMws)
+	h := applyHTTPMiddlewares(
+		r.getHTTPHandler(),
+		r.httpMws,
+		mm.httpMws,
+		rt.httpMws,
+	)
 	r.compiledHTTP.Store(h)
 	return h
 }
@@ -755,11 +926,25 @@ type headResponseWriter struct {
 	statusCode int
 }
 
-func (hw *headResponseWriter) Header() http.Header            { return hw.header }
-func (hw *headResponseWriter) WriteHeader(statusCode int)     { hw.statusCode = statusCode }
-func (hw *headResponseWriter) Write(data []byte) (int, error) { return len(data), nil }
+func (hw *headResponseWriter) Header() http.Header { return hw.header }
 
-func treatGetAsHead(handler http.Handler, w http.ResponseWriter, r *http.Request) {
+func (hw *headResponseWriter) WriteHeader(
+	statusCode int,
+) {
+	hw.statusCode = statusCode
+}
+
+func (hw *headResponseWriter) Write(
+	data []byte,
+) (int, error) {
+	return len(data), nil
+}
+
+func treatGetAsHead(
+	handler http.Handler,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	headRW := &headResponseWriter{
 		ResponseWriter: w,
 		header:         make(http.Header),
@@ -774,6 +959,8 @@ func treatGetAsHead(handler http.Handler, w http.ResponseWriter, r *http.Request
 	w.WriteHeader(headRW.statusCode)
 }
 
+// InjectTasksCtxMiddleware ensures requests have a tasks context in request store.
+// This is primarily useful when nested task execution is used outside Router.ServeHTTP.
 func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if GetTasksCtx(r) != nil {

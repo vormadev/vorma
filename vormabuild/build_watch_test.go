@@ -10,52 +10,74 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-func TestRouteDefinitionWatchPatterns_ReturnNilWhenRouteDefsPatternsMissing(t *testing.T) {
+func TestRouteDefinitionWatchPatterns_ReturnNilWhenRouteDefsPatternsMissing(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	app.Config.ClientRouteDefinitionPatterns = nil
 
 	patterns := routeDefinitionWatchPatterns(app)
 	if len(patterns) != 0 {
-		t.Fatalf("expected no watch patterns when route definitions patterns are empty, got %#v", patterns)
+		t.Fatalf(
+			"expected no watch patterns when route definitions patterns are empty, got %#v",
+			patterns,
+		)
 	}
 }
 
-func TestRouteDefinitionWatchPatterns_TrimsAndDeduplicatesPatternsInInputOrder(t *testing.T) {
+func TestRouteDefinitionWatchPatterns_PreservesInputOrderForValidPatterns(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	app.Config.ClientRouteDefinitionPatterns = []string{
-		"  frontend/src/routes/alpha.vorma.routes.ts  ",
 		"frontend/src/routes/alpha.vorma.routes.ts",
-		"",
-		"\nfrontend/src/routes/beta.vorma.routes.ts\n",
-		"frontend/src/routes/alpha.vorma.routes.ts",
+		"frontend/src/routes/beta.vorma.routes.ts",
 	}
 
 	patterns := routeDefinitionWatchPatterns(app)
 	if len(patterns) != 2 {
-		t.Fatalf("len(patterns) = %d, want %d (%#v)", len(patterns), 2, patterns)
+		t.Fatalf(
+			"len(patterns) = %d, want %d (%#v)",
+			len(patterns),
+			2,
+			patterns,
+		)
 	}
 	if patterns[0].Pattern != "frontend/src/routes/alpha.vorma.routes.ts" {
-		t.Fatalf("patterns[0].Pattern = %q, want trimmed alpha pattern", patterns[0].Pattern)
+		t.Fatalf(
+			"patterns[0].Pattern = %q, want alpha pattern",
+			patterns[0].Pattern,
+		)
 	}
 	if patterns[1].Pattern != "frontend/src/routes/beta.vorma.routes.ts" {
-		t.Fatalf("patterns[1].Pattern = %q, want trimmed beta pattern", patterns[1].Pattern)
+		t.Fatalf(
+			"patterns[1].Pattern = %q, want beta pattern",
+			patterns[1].Pattern,
+		)
 	}
 }
 
-func TestHTMLTemplateWatchPattern_ReturnsNilWhenTemplateLocationMissing(t *testing.T) {
+func TestHTMLTemplateWatchPattern_ReturnsNilWhenTemplateLocationMissing(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	app.Config.HTMLTemplateLocation = ""
 
 	pattern := htmlTemplateWatchPattern(app)
 	if pattern != nil {
-		t.Fatalf("expected no watch pattern when html template location is empty, got %#v", pattern)
+		t.Fatalf(
+			"expected no watch pattern when html template location is empty, got %#v",
+			pattern,
+		)
 	}
 }
 
-func TestRouteDefinitionsOnChangeCallback_ReturnsErrorWhenNotInDevMode(t *testing.T) {
+func TestRouteDefinitionsOnChangeCallback_ReturnsErrorWhenNotInDevMode(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -72,7 +94,9 @@ func TestRouteDefinitionsOnChangeCallback_ReturnsErrorWhenNotInDevMode(t *testin
 	}
 }
 
-func TestWatchReloadCallback_WrapsPreReloadActionErrorWithTriggerContext(t *testing.T) {
+func TestWatchReloadCallback_WrapsPreReloadActionErrorWithTriggerContext(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -95,7 +119,10 @@ func TestWatchReloadCallback_WrapsPreReloadActionErrorWithTriggerContext(t *test
 	if action != nil {
 		t.Fatalf("expected nil action on pre-reload failure, got %#v", action)
 	}
-	if !strings.Contains(err.Error(), `run pre-reload action for trigger "test-trigger"`) {
+	if !strings.Contains(
+		err.Error(),
+		`run pre-reload action for trigger "test-trigger"`,
+	) {
 		t.Fatalf("error = %q, expected trigger context", err)
 	}
 	if !errors.Is(err, expectedErr) {
@@ -111,7 +138,11 @@ func TestGetDefaultWatchPatterns_SkipsMissingOptionalPatterns(t *testing.T) {
 
 	patterns := getDefaultWatchPatterns(app)
 	if len(patterns) != 1 {
-		t.Fatalf("len(patterns) = %d, want %d when optional patterns are missing", len(patterns), 1)
+		t.Fatalf(
+			"len(patterns) = %d, want %d when optional patterns are missing",
+			len(patterns),
+			1,
+		)
 	}
 	if patterns[0].Pattern != "**/*.go" {
 		t.Fatalf("pattern[0] = %q, want %q", patterns[0].Pattern, "**/*.go")
@@ -127,10 +158,17 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 	injectDefaultWatchPatternsInConfig(parsedCfg, app)
 
 	if len(parsedCfg.FrameworkWatchPatterns) != 3 {
-		t.Fatalf("len(FrameworkWatchPatterns) = %d, want %d", len(parsedCfg.FrameworkWatchPatterns), 3)
+		t.Fatalf(
+			"len(FrameworkWatchPatterns) = %d, want %d",
+			len(parsedCfg.FrameworkWatchPatterns),
+			3,
+		)
 	}
 
-	templatePath := filepath.Join(app.Wave.PrivateStaticDir(), app.Config.HTMLTemplateLocation)
+	templatePath := filepath.Join(
+		app.Wave.PrivateStaticDir(),
+		app.Config.HTMLTemplateLocation,
+	)
 	expectedPatternCounts := map[string]int{
 		normalizeFrameworkWatchPatternPath(templatePath): 1,
 		"**/*.go": 1,
@@ -138,21 +176,36 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 	for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
 		expectedPatternCounts[routeDefinitionPattern] = 1
 	}
-	assertFrameworkWatchPatternCounts(t, parsedCfg.FrameworkWatchPatterns, expectedPatternCounts)
+	assertFrameworkWatchPatternCounts(
+		t,
+		parsedCfg.FrameworkWatchPatterns,
+		expectedPatternCounts,
+	)
 
 	expectedIgnoredPaths := []string{
 		filepath.Join(app.Config.TSGenOutDir, wave.GeneratedTSFileName),
 		filepath.Join(app.Config.TSGenOutDir, wave.PublicFileMapTSName),
 		filepath.Join(app.Config.TSGenOutDir, wave.PublicFileMapJSONName),
 	}
-	assertIgnoredPatternCounts(t, parsedCfg.FrameworkIgnoredPatterns, expectedIgnoredPaths, 1)
+	assertIgnoredPatternCounts(
+		t,
+		parsedCfg.FrameworkIgnoredPatterns,
+		expectedIgnoredPaths,
+		1,
+	)
 
 	if parsedCfg.FrameworkPublicFileMapOutDir != app.Config.TSGenOutDir {
-		t.Fatalf("FrameworkPublicFileMapOutDir = %q, want %q", parsedCfg.FrameworkPublicFileMapOutDir, app.Config.TSGenOutDir)
+		t.Fatalf(
+			"FrameworkPublicFileMapOutDir = %q, want %q",
+			parsedCfg.FrameworkPublicFileMapOutDir,
+			app.Config.TSGenOutDir,
+		)
 	}
 }
 
-func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(t *testing.T) {
+func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	parsedCfg := app.Wave.BuildtimeParsedConfig()
@@ -164,22 +217,39 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(t *testin
 			Timing: wave.OnChangeStrategyConcurrent,
 		}},
 	}
-	parsedCfg.FrameworkWatchPatterns = append(parsedCfg.FrameworkWatchPatterns, customGoWatchPattern)
+	parsedCfg.FrameworkWatchPatterns = append(
+		parsedCfg.FrameworkWatchPatterns,
+		customGoWatchPattern,
+	)
 
 	existingOutDir := "custom/framework/public-map"
 	parsedCfg.FrameworkPublicFileMapOutDir = existingOutDir
 
-	existingIgnoredPattern := filepath.Join(app.Config.TSGenOutDir, wave.GeneratedTSFileName)
-	parsedCfg.FrameworkIgnoredPatterns = append(parsedCfg.FrameworkIgnoredPatterns, existingIgnoredPattern)
+	existingIgnoredPattern := filepath.Join(
+		app.Config.TSGenOutDir,
+		wave.GeneratedTSFileName,
+	)
+	parsedCfg.FrameworkIgnoredPatterns = append(
+		parsedCfg.FrameworkIgnoredPatterns,
+		existingIgnoredPattern,
+	)
 
 	injectDefaultWatchPatternsInConfig(parsedCfg, app)
 
 	if parsedCfg.FrameworkPublicFileMapOutDir != existingOutDir {
-		t.Fatalf("FrameworkPublicFileMapOutDir = %q, want %q", parsedCfg.FrameworkPublicFileMapOutDir, existingOutDir)
+		t.Fatalf(
+			"FrameworkPublicFileMapOutDir = %q, want %q",
+			parsedCfg.FrameworkPublicFileMapOutDir,
+			existingOutDir,
+		)
 	}
 
 	if len(parsedCfg.FrameworkWatchPatterns) != 3 {
-		t.Fatalf("len(FrameworkWatchPatterns) = %d, want %d", len(parsedCfg.FrameworkWatchPatterns), 3)
+		t.Fatalf(
+			"len(FrameworkWatchPatterns) = %d, want %d",
+			len(parsedCfg.FrameworkWatchPatterns),
+			3,
+		)
 	}
 
 	var observedGoPattern *wave.WatchedFile
@@ -195,8 +265,12 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(t *testin
 	if observedGoPattern == nil {
 		t.Fatal("missing go watch pattern")
 	}
-	if len(observedGoPattern.OnChangeHooks) != 1 || observedGoPattern.OnChangeHooks[0].Cmd != "CustomGoHook" {
-		t.Fatalf("go watch pattern hooks = %#v, expected existing user-defined hooks to be preserved", observedGoPattern.OnChangeHooks)
+	if len(observedGoPattern.OnChangeHooks) != 1 ||
+		observedGoPattern.OnChangeHooks[0].Cmd != "CustomGoHook" {
+		t.Fatalf(
+			"go watch pattern hooks = %#v, expected existing user-defined hooks to be preserved",
+			observedGoPattern.OnChangeHooks,
+		)
 	}
 
 	expectedIgnoredPaths := []string{
@@ -204,7 +278,12 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(t *testin
 		filepath.Join(app.Config.TSGenOutDir, wave.PublicFileMapTSName),
 		filepath.Join(app.Config.TSGenOutDir, wave.PublicFileMapJSONName),
 	}
-	assertIgnoredPatternCounts(t, parsedCfg.FrameworkIgnoredPatterns, expectedIgnoredPaths, 1)
+	assertIgnoredPatternCounts(
+		t,
+		parsedCfg.FrameworkIgnoredPatterns,
+		expectedIgnoredPaths,
+		1,
+	)
 }
 
 func assertFrameworkWatchPatternCounts(
@@ -222,7 +301,12 @@ func assertFrameworkWatchPatternCounts(
 	for expectedPattern, expectedCount := range expectedCounts {
 		actualCount := actualCounts[expectedPattern]
 		if actualCount != expectedCount {
-			t.Fatalf("watch pattern count for %q = %d, want %d", expectedPattern, actualCount, expectedCount)
+			t.Fatalf(
+				"watch pattern count for %q = %d, want %d",
+				expectedPattern,
+				actualCount,
+				expectedCount,
+			)
 		}
 	}
 }
@@ -243,20 +327,34 @@ func assertIgnoredPatternCounts(
 			}
 		}
 		if actualCount != expectedCount {
-			t.Fatalf("ignored pattern count for %q = %d, want %d", targetPattern, actualCount, expectedCount)
+			t.Fatalf(
+				"ignored pattern count for %q = %d, want %d",
+				targetPattern,
+				actualCount,
+				expectedCount,
+			)
 		}
 	}
 }
 
-func TestInjectGeneratedOutputPathsForDefaultWatchPatterns_DoesNotOverrideExistingOutputDir(t *testing.T) {
+func TestInjectGeneratedOutputPathsForDefaultWatchPatterns_DoesNotOverrideExistingOutputDir(
+	t *testing.T,
+) {
 	cfg := &wave.ParsedConfig{
 		FrameworkPublicFileMapOutDir: "existing/filemap/out",
 	}
 
-	injectGeneratedOutputPathsForDefaultWatchPatterns(cfg, "frontend/src/vorma.gen")
+	injectGeneratedOutputPathsForDefaultWatchPatterns(
+		cfg,
+		"frontend/src/vorma.gen",
+	)
 
 	if cfg.FrameworkPublicFileMapOutDir != "existing/filemap/out" {
-		t.Fatalf("FrameworkPublicFileMapOutDir = %q, want %q", cfg.FrameworkPublicFileMapOutDir, "existing/filemap/out")
+		t.Fatalf(
+			"FrameworkPublicFileMapOutDir = %q, want %q",
+			cfg.FrameworkPublicFileMapOutDir,
+			"existing/filemap/out",
+		)
 	}
 }
 
@@ -270,7 +368,11 @@ func TestRunOnChangeOnlyWatchPattern_UsesCallbackOnly(t *testing.T) {
 		return &wave.RefreshAction{ReloadBrowser: true}, nil
 	}
 
-	pattern := runOnChangeOnlyWatchPattern("frontend/src/vorma.routes.ts", callback, true)
+	pattern := runOnChangeOnlyWatchPattern(
+		"frontend/src/vorma.routes.ts",
+		callback,
+		true,
+	)
 	if !pattern.RunOnChangeOnly {
 		t.Fatal("expected RunOnChangeOnly to be true")
 	}
@@ -284,10 +386,15 @@ func TestRunOnChangeOnlyWatchPattern_UsesCallbackOnly(t *testing.T) {
 		t.Fatal("expected callback hook to be set")
 	}
 	if pattern.OnChangeHooks[0].Cmd != "" {
-		t.Fatalf("expected callback-only hook cmd to be empty, got %q", pattern.OnChangeHooks[0].Cmd)
+		t.Fatalf(
+			"expected callback-only hook cmd to be empty, got %q",
+			pattern.OnChangeHooks[0].Cmd,
+		)
 	}
 
-	_, err := pattern.OnChangeHooks[0].Callback(&wave.HookContext{AppStoppedForBatch: false})
+	_, err := pattern.OnChangeHooks[0].Callback(
+		&wave.HookContext{AppStoppedForBatch: false},
+	)
 	if err != nil {
 		t.Fatalf("callback returned error: %v", err)
 	}
@@ -320,7 +427,11 @@ func TestGoFilesWatchPattern_UsesCombinedDevBuildHookCommands(t *testing.T) {
 		t.Fatal("expected RunCombinedDevBuildHookCommands=true")
 	}
 	if hook.Timing != wave.OnChangeStrategyConcurrent {
-		t.Fatalf("Timing = %q, want %q", hook.Timing, wave.OnChangeStrategyConcurrent)
+		t.Fatalf(
+			"Timing = %q, want %q",
+			hook.Timing,
+			wave.OnChangeStrategyConcurrent,
+		)
 	}
 	if hook.Callback != nil {
 		t.Fatal("expected go watch pattern hook callback to be nil")
@@ -350,7 +461,9 @@ func TestShouldInjectDefaultWatchPatterns(t *testing.T) {
 func TestRouteDefinitionWatchPatterns_UseConfiguredRoutePattern(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
-	app.Config.ClientRouteDefinitionPatterns = []string{"frontend/src/custom.routes.ts"}
+	app.Config.ClientRouteDefinitionPatterns = []string{
+		"frontend/src/custom.routes.ts",
+	}
 
 	patterns := routeDefinitionWatchPatterns(app)
 	if len(patterns) != 1 {
@@ -359,16 +472,28 @@ func TestRouteDefinitionWatchPatterns_UseConfiguredRoutePattern(t *testing.T) {
 
 	pattern := patterns[0]
 	if pattern.Pattern != "frontend/src/custom.routes.ts" {
-		t.Fatalf("Pattern = %q, want %q", pattern.Pattern, "frontend/src/custom.routes.ts")
+		t.Fatalf(
+			"Pattern = %q, want %q",
+			pattern.Pattern,
+			"frontend/src/custom.routes.ts",
+		)
 	}
 	if !pattern.RunOnChangeOnly {
-		t.Fatal("expected route definitions watch pattern to be RunOnChangeOnly")
+		t.Fatal(
+			"expected route definitions watch pattern to be RunOnChangeOnly",
+		)
 	}
 	if !pattern.SkipRebuildingNotification {
-		t.Fatal("expected route definitions watch pattern to skip rebuild notifications")
+		t.Fatal(
+			"expected route definitions watch pattern to skip rebuild notifications",
+		)
 	}
-	if len(pattern.OnChangeHooks) != 1 || pattern.OnChangeHooks[0].Callback == nil {
-		t.Fatalf("OnChangeHooks = %#v, expected one callback hook", pattern.OnChangeHooks)
+	if len(pattern.OnChangeHooks) != 1 ||
+		pattern.OnChangeHooks[0].Callback == nil {
+		t.Fatalf(
+			"OnChangeHooks = %#v, expected one callback hook",
+			pattern.OnChangeHooks,
+		)
 	}
 }
 
@@ -382,22 +507,36 @@ func TestHTMLTemplateWatchPattern_UsesPrivateStaticDirPrefix(t *testing.T) {
 		t.Fatal("expected html template watch pattern")
 	}
 
-	expectedPattern := filepath.Join(app.Wave.PrivateStaticDir(), "templates/custom.entry.go.html")
+	expectedPattern := filepath.Join(
+		app.Wave.PrivateStaticDir(),
+		"templates/custom.entry.go.html",
+	)
 	expectedPattern = normalizeFrameworkWatchPatternPath(expectedPattern)
 	if pattern.Pattern != expectedPattern {
 		t.Fatalf("Pattern = %q, want %q", pattern.Pattern, expectedPattern)
 	}
 	if !filepath.IsAbs(pattern.Pattern) {
-		t.Fatalf("expected absolute template watch pattern, got %q", pattern.Pattern)
+		t.Fatalf(
+			"expected absolute template watch pattern, got %q",
+			pattern.Pattern,
+		)
 	}
 	if pattern.RunOnChangeOnly {
-		t.Fatal("expected html template watch pattern not to be RunOnChangeOnly")
+		t.Fatal(
+			"expected html template watch pattern not to be RunOnChangeOnly",
+		)
 	}
 	if pattern.SkipRebuildingNotification {
-		t.Fatal("expected html template watch pattern not to skip rebuild notifications")
+		t.Fatal(
+			"expected html template watch pattern not to skip rebuild notifications",
+		)
 	}
-	if len(pattern.OnChangeHooks) != 1 || pattern.OnChangeHooks[0].Callback == nil {
-		t.Fatalf("OnChangeHooks = %#v, expected one callback hook", pattern.OnChangeHooks)
+	if len(pattern.OnChangeHooks) != 1 ||
+		pattern.OnChangeHooks[0].Callback == nil {
+		t.Fatalf(
+			"OnChangeHooks = %#v, expected one callback hook",
+			pattern.OnChangeHooks,
+		)
 	}
 	if pattern.OnChangeHooks[0].Timing != wave.OnChangeStrategyPost {
 		t.Fatalf(
@@ -408,8 +547,13 @@ func TestHTMLTemplateWatchPattern_UsesPrivateStaticDirPrefix(t *testing.T) {
 	}
 }
 
-func TestIsGeneratedRouteManifestFilename_PrefixOnlyIsNotManifest(t *testing.T) {
+func TestIsGeneratedRouteManifestFilename_PrefixOnlyIsNotManifest(
+	t *testing.T,
+) {
 	if isGeneratedRouteManifestFilename(vormaruntime.VormaRouteManifestPrefix) {
-		t.Fatalf("isGeneratedRouteManifestFilename(%q) = true, want false", vormaruntime.VormaRouteManifestPrefix)
+		t.Fatalf(
+			"isGeneratedRouteManifestFilename(%q) = true, want false",
+			vormaruntime.VormaRouteManifestPrefix,
+		)
 	}
 }

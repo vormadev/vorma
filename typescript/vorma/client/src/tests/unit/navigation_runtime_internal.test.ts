@@ -4,22 +4,6 @@ import {
 	createPatternRegistry,
 	registerPattern,
 } from "vorma/kit/matcher/register";
-import {
-	createNavigationRuntime,
-	deleteNavigationFromNavigationLanes,
-	findNavigationEntryInNavigationLanes,
-	transitionNavigationPhaseInNavigationLanes,
-	type NavigationLanes,
-} from "../../core/navigation/runtime.ts";
-import {
-	executeSubmitRuntime,
-	type SubmitExecutionContext,
-} from "../../core/navigation/runtime_submit.ts";
-import {
-	handleNavigationOutcome,
-	processSuccessfulNavigationRuntime,
-} from "../../core/navigation/runtime_navigation_outcome.ts";
-import type { NavigationEntry } from "../../core/navigation/types.ts";
 import { VORMA_SYMBOL } from "../../app/context.ts";
 import { fetchRouteData } from "../../core/navigation/fetch_route_data.ts";
 import { canSkipServerFetch } from "../../core/navigation/fetch_route_data_skip.ts";
@@ -28,13 +12,31 @@ import {
 	type SkipCheckContext,
 } from "../../core/navigation/fetch_route_data_skip_match.ts";
 import {
+	createNavigationRuntime,
+	deleteNavigationFromNavigationLanes,
+	findNavigationEntryInNavigationLanes,
+	transitionNavigationPhaseInNavigationLanes,
+	type NavigationLanes,
+} from "../../core/navigation/runtime.ts";
+import {
+	handleNavigationOutcome,
+	processSuccessfulNavigationRuntime,
+} from "../../core/navigation/runtime_navigation_outcome.ts";
+import {
+	executeSubmitRuntime,
+	type SubmitExecutionContext,
+} from "../../core/navigation/runtime_submit.ts";
+import type {
+	NavigationEntry,
+	NavigationOutcome,
+} from "../../core/navigation/types.ts";
+import * as redirectsModule from "../../core/redirects.ts";
+import * as renderRuntimeModule from "../../core/render_runtime.ts";
+import {
 	__registerClientLoaderPattern,
 	findPartialMatchesOnClient,
 	setupClientLoaders,
 } from "../../core/render_runtime.ts";
-import * as renderRuntimeModule from "../../core/render_runtime.ts";
-import * as redirectsModule from "../../core/redirects.ts";
-import type { NavigationOutcome } from "../../core/navigation/types.ts";
 import { addBuildIDListener } from "../../platform/events.ts";
 
 const TEST_VORMA_APP_CONFIG = {
@@ -4094,7 +4096,7 @@ describe("fetchRouteData client-only skip path", () => {
 					JSON.stringify({
 						matchedPatterns: [],
 						loadersData: [],
-						importURLs: ["/winner-import.js"],
+						importURLs: [],
 						exportKeys: [],
 						errorExportKeys: [],
 						hasRootData: false,
@@ -4124,7 +4126,7 @@ describe("fetchRouteData client-only skip path", () => {
 					JSON.stringify({
 						matchedPatterns: [],
 						loadersData: [],
-						importURLs: ["/stale-import.js"],
+						importURLs: [],
 						exportKeys: [],
 						errorExportKeys: [],
 						hasRootData: false,

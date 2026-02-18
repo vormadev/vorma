@@ -1,12 +1,16 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
-import { fileURLToPath } from "node:url";
 
 const sourcePath = (relativePath: string): string =>
-	fileURLToPath(new URL(relativePath, import.meta.url));
+	resolve(process.cwd(), relativePath);
 
 export default defineConfig({
 	resolve: {
 		alias: {
+			"solid-js/web": sourcePath(
+				"./node_modules/solid-js/web/dist/web.js",
+			),
+			"solid-js": sourcePath("./node_modules/solid-js/dist/solid.js"),
 			"vorma/client/__internal": sourcePath(
 				"./typescript/vorma/client/internal.ts",
 			),

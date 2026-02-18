@@ -24,6 +24,7 @@ const (
 	TypeNumber  = "number"
 )
 
+// Def describes a schema field before conversion to an Entry.
 type Def struct {
 	Type                string
 	Required            bool
@@ -38,6 +39,7 @@ type Def struct {
 	Enum                []string
 }
 
+// Entry is a JSON-serializable schema fragment.
 type Entry struct {
 	Schema      string   `json:"$schema,omitempty"`
 	Type        string   `json:"type"`
@@ -51,11 +53,13 @@ type Entry struct {
 	Examples    []string `json:"examples,omitempty"`
 }
 
+// IfThen models a JSON schema conditional branch.
 type IfThen struct {
 	If   any `json:"if,omitempty"`
 	Then any `json:"then,omitempty"`
 }
 
+// ToJSONSchema converts Def into an Entry.
 func ToJSONSchema(sd Def) Entry {
 	x := Entry{
 		Type:        sd.Type,
@@ -144,58 +148,75 @@ func toOxfordList(items []string, conjunction string) string {
 	)
 }
 
+// UniqueFrom builds a common uniqueness constraint description.
 func UniqueFrom(strs ...string) string {
 	return "Must be unique from " + toOxfordList(strs, "and")
 }
 
+// RequiredObject builds a required object schema entry.
 func RequiredObject(sd Def) Entry {
 	sd.Required = true
 	sd.Type = TypeObject
 	return ToJSONSchema(sd)
 }
+
+// RequiredString builds a required string schema entry.
 func RequiredString(sd Def) Entry {
 	sd.Required = true
 	sd.Type = TypeString
 	return ToJSONSchema(sd)
 }
+
+// RequiredBoolean builds a required boolean schema entry.
 func RequiredBoolean(sd Def) Entry {
 	sd.Required = true
 	sd.Type = TypeBoolean
 	return ToJSONSchema(sd)
 }
+
+// RequiredArray builds a required array schema entry.
 func RequiredArray(sd Def) Entry {
 	sd.Required = true
 	sd.Type = TypeArray
 	return ToJSONSchema(sd)
 }
 
+// OptionalObject builds an optional object schema entry.
 func OptionalObject(sd Def) Entry {
 	sd.Type = TypeObject
 	sd.Required = false
 	return ToJSONSchema(sd)
 }
+
+// OptionalString builds an optional string schema entry.
 func OptionalString(sd Def) Entry {
 	sd.Type = TypeString
 	sd.Required = false
 	return ToJSONSchema(sd)
 }
+
+// OptionalBoolean builds an optional boolean schema entry.
 func OptionalBoolean(sd Def) Entry {
 	sd.Type = TypeBoolean
 	sd.Required = false
 	return ToJSONSchema(sd)
 }
+
+// OptionalArray builds an optional array schema entry.
 func OptionalArray(sd Def) Entry {
 	sd.Type = TypeArray
 	sd.Required = false
 	return ToJSONSchema(sd)
 }
 
+// ObjectWithOverride builds an object schema entry with explicit description text.
 func ObjectWithOverride(override string, sd Def) Entry {
 	sd.Type = TypeObject
 	sd.DescriptionOverride = override
 	return ToJSONSchema(sd)
 }
 
+// OptionalNumber builds an optional number schema entry.
 func OptionalNumber(sd Def) Entry {
 	sd.Type = TypeNumber
 	sd.Required = false

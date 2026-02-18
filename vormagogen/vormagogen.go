@@ -2,7 +2,6 @@ package vormagogen
 
 import (
 	"github.com/vormadev/vorma"
-	"github.com/vormadev/vorma/kit/mux"
 )
 
 func RegisterLoaderDiscoveredByBuild[O any, CtxPtr ~*Ctx, Ctx any](
@@ -26,11 +25,7 @@ func RegisterLoaderDiscoveredByBuild[O any, CtxPtr ~*Ctx, Ctx any](
 		loaderFunc,
 		decorateLoaderContext,
 	)
-	mux.AddNestedTaskHandler(
-		app.LoadersRouter().NestedRouter,
-		pattern,
-		loaderTask,
-	)
+	vorma.RegisterDiscoveredLoaderTask(app, pattern, loaderTask)
 	return loaderTask
 }
 
@@ -57,12 +52,7 @@ func RegisterActionDiscoveredByBuild[I any, O any, CtxPtr ~*Ctx, Ctx any](
 		actionFunc,
 		decorateActionContext,
 	)
-	mux.AddTaskHandler(
-		app.ActionsRouter().Router,
-		method,
-		pattern,
-		actionTask,
-	)
+	vorma.RegisterDiscoveredActionTask(app, method, pattern, actionTask)
 	return actionTask
 }
 

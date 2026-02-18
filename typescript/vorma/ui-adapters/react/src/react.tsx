@@ -9,44 +9,19 @@ import {
 import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
 	applyScrollState,
-	areRouteOutletBranchInputsEqualByIdentity,
-	areRouteOutletLocationsEqual,
-	buildCurrentRouteOutletLocationState,
-	buildInitialRouteOutletNavigationState,
-	buildNextRouteOutletNavigationState,
-	buildRouteOutletBranchInputState,
+	buildInitialRouteOutletStoreState,
+	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
-	type RouteOutletBranchInputState,
-	type RouteOutletLocationState,
-	type RouteOutletNavigationState,
+	type RouteOutletStoreState,
 } from "vorma/client/__internal";
 
 /////////////////////////////////////////////////////////////////////
 /////// STORE
 /////////////////////////////////////////////////////////////////////
 
-type NavigationState = RouteOutletNavigationState;
-type RouteOutletBranchInputStateValue = RouteOutletBranchInputState;
-type LocationState = RouteOutletLocationState;
+type StoreState = RouteOutletStoreState;
 
-type StoreState = {
-	navigation: NavigationState;
-	routeOutletBranchInputState: RouteOutletBranchInputStateValue;
-	location: LocationState;
-};
-
-function buildInitialStoreState(): StoreState {
-	const initialNavigationState = buildInitialRouteOutletNavigationState();
-	return {
-		navigation: initialNavigationState,
-		routeOutletBranchInputState: buildRouteOutletBranchInputState(
-			initialNavigationState,
-		),
-		location: buildCurrentRouteOutletLocationState(),
-	};
-}
-
-let state = buildInitialStoreState();
+let state = buildInitialRouteOutletStoreState();
 const listeners = new Set<() => void>();
 
 const store = {
@@ -68,46 +43,9 @@ const store = {
 	},
 };
 
-function syncNavigationState(): void {
+function syncStoreState(): void {
 	store.setState((previousStoreState) => {
-		const nextNavigationState = buildNextRouteOutletNavigationState(
-			previousStoreState.navigation,
-		);
-		if (nextNavigationState === previousStoreState.navigation) {
-			return previousStoreState;
-		}
-		const nextRouteOutletBranchInputStateRaw =
-			buildRouteOutletBranchInputState(nextNavigationState);
-		const nextRouteOutletBranchInputState =
-			areRouteOutletBranchInputsEqualByIdentity({
-				firstInputState: previousStoreState.routeOutletBranchInputState,
-				secondInputState: nextRouteOutletBranchInputStateRaw,
-			})
-				? previousStoreState.routeOutletBranchInputState
-				: nextRouteOutletBranchInputStateRaw;
-		return {
-			...previousStoreState,
-			navigation: nextNavigationState,
-			routeOutletBranchInputState: nextRouteOutletBranchInputState,
-		};
-	});
-}
-
-function syncLocationState(): void {
-	store.setState((previousStoreState) => {
-		const nextLocationState = buildCurrentRouteOutletLocationState();
-		if (
-			areRouteOutletLocationsEqual({
-				firstLocationState: previousStoreState.location,
-				secondLocationState: nextLocationState,
-			})
-		) {
-			return previousStoreState;
-		}
-		return {
-			...previousStoreState,
-			location: nextLocationState,
-		};
+		return buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
 	});
 }
 
@@ -146,14 +84,14 @@ function initUIListeners(): void {
 	isInited = true;
 
 	addRouteChangeListener((event) => {
-		syncNavigationState();
+		syncStoreState();
 		window.requestAnimationFrame(() => {
 			applyScrollState(event.detail.__scrollState);
 		});
 	});
 
 	addLocationListener(() => {
-		syncLocationState();
+		syncStoreState();
 	});
 }
 
@@ -182,7 +120,7 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 		}
 		initUIListeners();
 		isInitialRootRenderRef.current = false;
-		syncNavigationState();
+		syncStoreState();
 	}, [idx]);
 
 	const routeOutletBranchInputState = useStoreSelector(

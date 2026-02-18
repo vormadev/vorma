@@ -32,118 +32,165 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 		}
 	})
 
-	t.Run("returns required error when runtime config is nil", func(t *testing.T) {
-		v := &vormaruntime.Vorma{
-			Log: testLogger(),
-		}
+	t.Run(
+		"returns required error when runtime config is nil",
+		func(t *testing.T) {
+			v := &vormaruntime.Vorma{
+				Log: testLogger(),
+			}
 
-		_, err := resolveClientRouteDefinitionFiles(v)
-		if err == nil {
-			t.Fatal("expected error when runtime config is nil")
-		}
-		if !strings.Contains(err.Error(), "Vorma config is required") {
-			t.Fatalf("error = %q, expected nil-config message", err)
-		}
-	})
+			_, err := resolveClientRouteDefinitionFiles(v)
+			if err == nil {
+				t.Fatal("expected error when runtime config is nil")
+			}
+			if !strings.Contains(err.Error(), "Vorma config is required") {
+				t.Fatalf("error = %q, expected nil-config message", err)
+			}
+		},
+	)
 
-	t.Run("returns required error when route definition patterns are missing", func(t *testing.T) {
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{},
-			Log:    testLogger(),
-		}
+	t.Run(
+		"returns required error when route definition patterns are missing",
+		func(t *testing.T) {
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{},
+				Log:    testLogger(),
+			}
 
-		_, err := resolveClientRouteDefinitionFiles(v)
-		if err == nil {
-			t.Fatal("expected error when route definition patterns are missing")
-		}
-		if !strings.Contains(err.Error(), "Vorma.ClientRouteDefinitionPatterns is required") {
-			t.Fatalf("error = %q, expected required-patterns message", err)
-		}
-	})
+			_, err := resolveClientRouteDefinitionFiles(v)
+			if err == nil {
+				t.Fatal(
+					"expected error when route definition patterns are missing",
+				)
+			}
+			if !strings.Contains(
+				err.Error(),
+				"Vorma.ClientRouteDefinitionPatterns is required",
+			) {
+				t.Fatalf("error = %q, expected required-patterns message", err)
+			}
+		},
+	)
 
-	t.Run("returns error when route definition patterns contain only whitespace", func(t *testing.T) {
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{" ", "\n\t"},
-			},
-			Log: testLogger(),
-		}
-
-		_, err := resolveClientRouteDefinitionFiles(v)
-		if err == nil {
-			t.Fatal("expected error when route definition patterns contain only whitespace")
-		}
-		if !strings.Contains(err.Error(), "Vorma.ClientRouteDefinitionPatterns cannot contain only empty values") {
-			t.Fatalf("error = %q, expected whitespace-only-patterns message", err)
-		}
-	})
-
-	t.Run("trims and deduplicates patterns and returns sorted cleaned file list", func(t *testing.T) {
-		expandedPatterns := make([]string, 0, 1)
-		executor := newRouteParsingExecutorForTest(
-			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern = func(
-					pattern string,
-				) ([]string, error) {
-					expandedPatterns = append(expandedPatterns, pattern)
-					return []string{
-						filepath.Join("frontend", "src", "routes", "..", "routes", "b.vorma.routes.ts"),
-						filepath.Join("frontend", "src", "routes", "nested"),
-						filepath.Join("frontend", "src", "routes", "a.vorma.routes.ts"),
-					}, nil
-				}
-				dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath = func(
-					path string,
-				) (fs.FileInfo, error) {
-					return staticFileInfo{
-						name:  filepath.Base(path),
-						mode:  0o644,
-						isDir: strings.HasSuffix(path, "nested"),
-					}, nil
-				}
-			},
-		)
-
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{
-					" frontend/src/**/*vorma.routes.ts ",
-					"frontend/src/**/*vorma.routes.ts",
-					" frontend/src/vorma.routes.ts ",
+	t.Run(
+		"returns error when route definition patterns contain only whitespace",
+		func(t *testing.T) {
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{
+					ClientRouteDefinitionPatterns: []string{" ", "\n\t"},
 				},
-			},
-			Log: testLogger(),
-		}
+				Log: testLogger(),
+			}
 
-		files, err := executor.resolveClientRouteDefinitionFiles(v)
-		if err != nil {
-			t.Fatalf("resolveClientRouteDefinitionFiles returned error: %v", err)
-		}
+			_, err := resolveClientRouteDefinitionFiles(v)
+			if err == nil {
+				t.Fatal(
+					"expected error when route definition patterns contain only whitespace",
+				)
+			}
+			if !strings.Contains(err.Error(), "cannot be empty or whitespace") {
+				t.Fatalf(
+					"error = %q, expected whitespace-only-patterns message",
+					err,
+				)
+			}
+		},
+	)
 
-		if !slices.Equal(expandedPatterns, []string{"frontend/src/**/*vorma.routes.ts"}) {
-			t.Fatalf("expandedPatterns = %#v, want one trimmed glob pattern", expandedPatterns)
-		}
+	t.Run(
+		"returns sorted cleaned file list for already-valid patterns",
+		func(t *testing.T) {
+			expandedPatterns := make([]string, 0, 2)
+			executor := newRouteParsingExecutorForTest(
+				func(dependencies *routeParsingExecutorDependencies) {
+					dependencies.expandRouteDefinitionPattern = func(
+						pattern string,
+					) ([]string, error) {
+						expandedPatterns = append(expandedPatterns, pattern)
+						return []string{
+							filepath.Join(
+								"frontend",
+								"src",
+								"routes",
+								"..",
+								"routes",
+								"b.vorma.routes.ts",
+							),
+							filepath.Join(
+								"frontend",
+								"src",
+								"routes",
+								"nested",
+							),
+							filepath.Join(
+								"frontend",
+								"src",
+								"routes",
+								"a.vorma.routes.ts",
+							),
+						}, nil
+					}
+					dependencies.statRouteDefinitionPath = func(
+						path string,
+					) (fs.FileInfo, error) {
+						return staticFileInfo{
+							name:  filepath.Base(path),
+							mode:  0o644,
+							isDir: strings.HasSuffix(path, "nested"),
+						}, nil
+					}
+				},
+			)
 
-		wantFiles := []string{
-			"frontend/src/routes/a.vorma.routes.ts",
-			"frontend/src/routes/b.vorma.routes.ts",
-			"frontend/src/vorma.routes.ts",
-		}
-		if !slices.Equal(files, wantFiles) {
-			t.Fatalf("files = %#v, want %#v", files, wantFiles)
-		}
-	})
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{
+					ClientRouteDefinitionPatterns: []string{
+						"frontend/src/**/*vorma.routes.ts",
+						"frontend/src/vorma.routes.ts",
+					},
+				},
+				Log: testLogger(),
+			}
+
+			files, err := executor.resolveClientRouteDefinitionFiles(v)
+			if err != nil {
+				t.Fatalf(
+					"resolveClientRouteDefinitionFiles returned error: %v",
+					err,
+				)
+			}
+
+			if !slices.Equal(
+				expandedPatterns,
+				[]string{"frontend/src/**/*vorma.routes.ts"},
+			) {
+				t.Fatalf(
+					"expandedPatterns = %#v, want one explicit glob pattern",
+					expandedPatterns,
+				)
+			}
+
+			wantFiles := []string{
+				"frontend/src/routes/a.vorma.routes.ts",
+				"frontend/src/routes/b.vorma.routes.ts",
+				"frontend/src/vorma.routes.ts",
+			}
+			if !slices.Equal(files, wantFiles) {
+				t.Fatalf("files = %#v, want %#v", files, wantFiles)
+			}
+		},
+	)
 
 	t.Run("returns expansion error for glob pattern", func(t *testing.T) {
 		expectedErr := errors.New("glob expansion failed")
 		executor := newRouteParsingExecutorForTest(
 			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern = func(
+				dependencies.expandRouteDefinitionPattern = func(
 					string,
 				) ([]string, error) {
 					return nil, expectedErr
 				}
-				dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath = func(
+				dependencies.statRouteDefinitionPath = func(
 					string,
 				) (fs.FileInfo, error) {
 					t.Fatal("did not expect stat when glob expansion fails")
@@ -154,7 +201,9 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 
 		v := &vormaruntime.Vorma{
 			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{"frontend/src/**/*vorma.routes.ts"},
+				ClientRouteDefinitionPatterns: []string{
+					"frontend/src/**/*vorma.routes.ts",
+				},
 			},
 			Log: testLogger(),
 		}
@@ -163,7 +212,10 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected expansion error")
 		}
-		if !strings.Contains(err.Error(), "expand route definition pattern \"frontend/src/**/*vorma.routes.ts\"") {
+		if !strings.Contains(
+			err.Error(),
+			"expand route definition pattern \"frontend/src/**/*vorma.routes.ts\"",
+		) {
 			t.Fatalf("error = %q, expected expansion context", err)
 		}
 		if !errors.Is(err, expectedErr) {
@@ -171,157 +223,205 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 		}
 	})
 
-	t.Run("returns stat error for matched file from glob pattern", func(t *testing.T) {
-		expectedErr := errors.New("stat failed")
-		executor := newRouteParsingExecutorForTest(
-			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern = func(
-					string,
-				) ([]string, error) {
-					return []string{"frontend/src/routes/matched.vorma.routes.ts"}, nil
-				}
-				dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath = func(
-					string,
-				) (fs.FileInfo, error) {
-					return nil, expectedErr
-				}
-			},
-		)
-
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{"frontend/src/**/*vorma.routes.ts"},
-			},
-			Log: testLogger(),
-		}
-
-		_, err := executor.resolveClientRouteDefinitionFiles(v)
-		if err == nil {
-			t.Fatal("expected stat error")
-		}
-		if !strings.Contains(err.Error(), "stat route definition path \"frontend/src/routes/matched.vorma.routes.ts\"") {
-			t.Fatalf("error = %q, expected stat context", err)
-		}
-		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected wrapped stat error", err)
-		}
-	})
-
-	t.Run("returns stat error for explicit route definition file", func(t *testing.T) {
-		expectedErr := errors.New("stat failed")
-		executor := newRouteParsingExecutorForTest(
-			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern = func(
-					string,
-				) ([]string, error) {
-					t.Fatal("did not expect glob expansion for explicit route definition file")
-					return nil, nil
-				}
-				dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath = func(
-					path string,
-				) (fs.FileInfo, error) {
-					if path != "frontend/src/vorma.routes.ts" {
-						t.Fatalf("path = %q, want %q", path, "frontend/src/vorma.routes.ts")
+	t.Run(
+		"returns stat error for matched file from glob pattern",
+		func(t *testing.T) {
+			expectedErr := errors.New("stat failed")
+			executor := newRouteParsingExecutorForTest(
+				func(dependencies *routeParsingExecutorDependencies) {
+					dependencies.expandRouteDefinitionPattern = func(
+						string,
+					) ([]string, error) {
+						return []string{
+							"frontend/src/routes/matched.vorma.routes.ts",
+						}, nil
 					}
-					return nil, expectedErr
-				}
-			},
-		)
-
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{" frontend/src/vorma.routes.ts "},
-			},
-			Log: testLogger(),
-		}
-
-		_, err := executor.resolveClientRouteDefinitionFiles(v)
-		if err == nil {
-			t.Fatal("expected stat error for explicit route definition file")
-		}
-		if !strings.Contains(err.Error(), "stat route definition path \"frontend/src/vorma.routes.ts\"") {
-			t.Fatalf("error = %q, expected stat context", err)
-		}
-		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected wrapped stat error", err)
-		}
-	})
-
-	t.Run("returns error for explicit route definition directory", func(t *testing.T) {
-		executor := newRouteParsingExecutorForTest(
-			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern = func(
-					string,
-				) ([]string, error) {
-					t.Fatal("did not expect glob expansion for explicit route definition directory")
-					return nil, nil
-				}
-				dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath = func(
-					path string,
-				) (fs.FileInfo, error) {
-					if path != "frontend/src/routes" {
-						t.Fatalf("path = %q, want %q", path, "frontend/src/routes")
+					dependencies.statRouteDefinitionPath = func(
+						string,
+					) (fs.FileInfo, error) {
+						return nil, expectedErr
 					}
-					return staticFileInfo{
-						name:  filepath.Base(path),
-						mode:  fs.ModeDir,
-						isDir: true,
-					}, nil
-				}
-			},
-		)
+				},
+			)
 
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{"frontend/src/routes"},
-			},
-			Log: testLogger(),
-		}
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{
+					ClientRouteDefinitionPatterns: []string{
+						"frontend/src/**/*vorma.routes.ts",
+					},
+				},
+				Log: testLogger(),
+			}
 
-		_, err := executor.resolveClientRouteDefinitionFiles(v)
-		if err == nil {
-			t.Fatal("expected explicit-directory error")
-		}
-		if !strings.Contains(err.Error(), "route definition path \"frontend/src/routes\" is a directory") {
-			t.Fatalf("error = %q, expected explicit-directory message", err)
-		}
-	})
+			_, err := executor.resolveClientRouteDefinitionFiles(v)
+			if err == nil {
+				t.Fatal("expected stat error")
+			}
+			if !strings.Contains(
+				err.Error(),
+				"stat route definition path \"frontend/src/routes/matched.vorma.routes.ts\"",
+			) {
+				t.Fatalf("error = %q, expected stat context", err)
+			}
+			if !errors.Is(err, expectedErr) {
+				t.Fatalf("error = %v, expected wrapped stat error", err)
+			}
+		},
+	)
 
-	t.Run("returns no-match error when glob matches only directories", func(t *testing.T) {
-		executor := newRouteParsingExecutorForTest(
-			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsFileResolutionDependencies.expandRouteDefinitionPattern = func(
-					string,
-				) ([]string, error) {
-					return []string{"frontend/src/routes/nested"}, nil
-				}
-				dependencies.routeDefinitionsFileResolutionDependencies.statRouteDefinitionPath = func(
-					path string,
-				) (fs.FileInfo, error) {
-					return staticFileInfo{
-						name:  filepath.Base(path),
-						mode:  fs.ModeDir,
-						isDir: true,
-					}, nil
-				}
-			},
-		)
+	t.Run(
+		"returns stat error for explicit route definition file",
+		func(t *testing.T) {
+			expectedErr := errors.New("stat failed")
+			executor := newRouteParsingExecutorForTest(
+				func(dependencies *routeParsingExecutorDependencies) {
+					dependencies.expandRouteDefinitionPattern = func(
+						string,
+					) ([]string, error) {
+						t.Fatal(
+							"did not expect glob expansion for explicit route definition file",
+						)
+						return nil, nil
+					}
+					dependencies.statRouteDefinitionPath = func(
+						path string,
+					) (fs.FileInfo, error) {
+						if path != "frontend/src/vorma.routes.ts" {
+							t.Fatalf(
+								"path = %q, want %q",
+								path,
+								"frontend/src/vorma.routes.ts",
+							)
+						}
+						return nil, expectedErr
+					}
+				},
+			)
 
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{" frontend/src/**/*vorma.routes.ts "},
-			},
-			Log: testLogger(),
-		}
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{
+					ClientRouteDefinitionPatterns: []string{
+						"frontend/src/vorma.routes.ts",
+					},
+				},
+				Log: testLogger(),
+			}
 
-		_, err := executor.resolveClientRouteDefinitionFiles(v)
-		if err == nil {
-			t.Fatal("expected no-match error")
-		}
-		if !strings.Contains(err.Error(), "no route definition files matched patterns: frontend/src/**/*vorma.routes.ts") {
-			t.Fatalf("error = %q, expected no-match message with trimmed pattern", err)
-		}
-	})
+			_, err := executor.resolveClientRouteDefinitionFiles(v)
+			if err == nil {
+				t.Fatal(
+					"expected stat error for explicit route definition file",
+				)
+			}
+			if !strings.Contains(
+				err.Error(),
+				"stat route definition path \"frontend/src/vorma.routes.ts\"",
+			) {
+				t.Fatalf("error = %q, expected stat context", err)
+			}
+			if !errors.Is(err, expectedErr) {
+				t.Fatalf("error = %v, expected wrapped stat error", err)
+			}
+		},
+	)
+
+	t.Run(
+		"returns error for explicit route definition directory",
+		func(t *testing.T) {
+			executor := newRouteParsingExecutorForTest(
+				func(dependencies *routeParsingExecutorDependencies) {
+					dependencies.expandRouteDefinitionPattern = func(
+						string,
+					) ([]string, error) {
+						t.Fatal(
+							"did not expect glob expansion for explicit route definition directory",
+						)
+						return nil, nil
+					}
+					dependencies.statRouteDefinitionPath = func(
+						path string,
+					) (fs.FileInfo, error) {
+						if path != "frontend/src/routes" {
+							t.Fatalf(
+								"path = %q, want %q",
+								path,
+								"frontend/src/routes",
+							)
+						}
+						return staticFileInfo{
+							name:  filepath.Base(path),
+							mode:  fs.ModeDir,
+							isDir: true,
+						}, nil
+					}
+				},
+			)
+
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{
+					ClientRouteDefinitionPatterns: []string{
+						"frontend/src/routes",
+					},
+				},
+				Log: testLogger(),
+			}
+
+			_, err := executor.resolveClientRouteDefinitionFiles(v)
+			if err == nil {
+				t.Fatal("expected explicit-directory error")
+			}
+			if !strings.Contains(
+				err.Error(),
+				"route definition path \"frontend/src/routes\" is a directory",
+			) {
+				t.Fatalf("error = %q, expected explicit-directory message", err)
+			}
+		},
+	)
+
+	t.Run(
+		"returns no-match error when glob matches only directories",
+		func(t *testing.T) {
+			executor := newRouteParsingExecutorForTest(
+				func(dependencies *routeParsingExecutorDependencies) {
+					dependencies.expandRouteDefinitionPattern = func(
+						string,
+					) ([]string, error) {
+						return []string{"frontend/src/routes/nested"}, nil
+					}
+					dependencies.statRouteDefinitionPath = func(
+						path string,
+					) (fs.FileInfo, error) {
+						return staticFileInfo{
+							name:  filepath.Base(path),
+							mode:  fs.ModeDir,
+							isDir: true,
+						}, nil
+					}
+				},
+			)
+
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{
+					ClientRouteDefinitionPatterns: []string{
+						"frontend/src/**/*vorma.routes.ts",
+					},
+				},
+				Log: testLogger(),
+			}
+
+			_, err := executor.resolveClientRouteDefinitionFiles(v)
+			if err == nil {
+				t.Fatal("expected no-match error")
+			}
+			if !strings.Contains(
+				err.Error(),
+				"no route definition files matched patterns: frontend/src/**/*vorma.routes.ts",
+			) {
+				t.Fatalf("error = %q, expected no-match message", err)
+			}
+		},
+	)
 }
 
 func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
@@ -360,40 +460,52 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 
 		executor := newRouteParsingExecutorForTest(
 			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeParsingPipelineDependencies.resolveClientRouteDefinitionFiles = func(
+				dependencies.resolveClientRouteDefinitionFiles = func(
 					_ *vormaruntime.Vorma,
 				) ([]string, error) {
 					observedSteps = append(observedSteps, "resolve")
 					return []string{"frontend/src/vorma.routes.ts"}, nil
 				}
-				dependencies.routeParsingPipelineDependencies.parseRouteDefinitionFileIntoCalls = func(
+				dependencies.parseRouteDefinitionFileIntoCalls = func(
 					_ *vormaruntime.Vorma,
 					routeDefinitionFile string,
 				) (parsedRouteDefinitionsCode, error) {
 					observedSteps = append(observedSteps, "parse")
 					if routeDefinitionFile != "frontend/src/vorma.routes.ts" {
-						t.Fatalf("routeDefinitionFile = %q, want %q", routeDefinitionFile, "frontend/src/vorma.routes.ts")
+						t.Fatalf(
+							"routeDefinitionFile = %q, want %q",
+							routeDefinitionFile,
+							"frontend/src/vorma.routes.ts",
+						)
 					}
 					return parsedRouteDefinitionsCode{
 						routeCalls:       routeCalls,
 						unresolvedRoutes: unresolvedRoutes,
 					}, nil
 				}
-				dependencies.routeParsingPipelineDependencies.handleUnresolvedRouteCalls = func(
+				dependencies.handleUnresolvedRouteCalls = func(
 					_ *vormaruntime.Vorma,
 					routeDefinitionFile string,
 					unresolved []unresolvedRouteCall,
 				) error {
 					observedSteps = append(observedSteps, "handle-unresolved")
 					if routeDefinitionFile != "frontend/src/vorma.routes.ts" {
-						t.Fatalf("routeDefinitionFile = %q, want %q", routeDefinitionFile, "frontend/src/vorma.routes.ts")
+						t.Fatalf(
+							"routeDefinitionFile = %q, want %q",
+							routeDefinitionFile,
+							"frontend/src/vorma.routes.ts",
+						)
 					}
-					if len(unresolved) != 1 || unresolved[0].Pattern != "/dynamic" {
-						t.Fatalf("warn unresolved = %#v, want dynamic unresolved route", unresolved)
+					if len(unresolved) != 1 ||
+						unresolved[0].Pattern != "/dynamic" {
+						t.Fatalf(
+							"warn unresolved = %#v, want dynamic unresolved route",
+							unresolved,
+						)
 					}
 					return nil
 				}
-				dependencies.routeParsingPipelineDependencies.mergeRouteCallsIntoPaths = func(
+				dependencies.mergeRouteCallsIntoPaths = func(
 					_ *vormaruntime.Vorma,
 					paths map[string]*vormaruntime.Path,
 					routeDefinitionFile string,
@@ -401,10 +513,17 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 				) error {
 					observedSteps = append(observedSteps, "merge")
 					if routeDefinitionFile != "frontend/src/vorma.routes.ts" {
-						t.Fatalf("routeDefinitionFile = %q, want %q", routeDefinitionFile, "frontend/src/vorma.routes.ts")
+						t.Fatalf(
+							"routeDefinitionFile = %q, want %q",
+							routeDefinitionFile,
+							"frontend/src/vorma.routes.ts",
+						)
 					}
 					if len(calls) != 1 || calls[0].Pattern != "/home" {
-						t.Fatalf("merge route calls = %#v, want /home route call", calls)
+						t.Fatalf(
+							"merge route calls = %#v, want /home route call",
+							calls,
+						)
 					}
 					for pattern, pathValue := range expectedPaths {
 						paths[pattern] = pathValue
@@ -418,11 +537,21 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parseClientRoutes returned error: %v", err)
 		}
-		if gotPath := paths["/home"]; gotPath == nil || gotPath.SrcPath != "frontend/src/routes/home.tsx" {
-			t.Fatalf("paths[/home] = %#v, want frontend/src/routes/home.tsx", gotPath)
+		if gotPath := paths["/home"]; gotPath == nil ||
+			gotPath.SrcPath != "frontend/src/routes/home.tsx" {
+			t.Fatalf(
+				"paths[/home] = %#v, want frontend/src/routes/home.tsx",
+				gotPath,
+			)
 		}
-		if !slices.Equal(observedSteps, []string{"resolve", "parse", "handle-unresolved", "merge"}) {
-			t.Fatalf("observed steps = %#v, want resolve->parse->handle-unresolved->merge", observedSteps)
+		if !slices.Equal(
+			observedSteps,
+			[]string{"resolve", "parse", "handle-unresolved", "merge"},
+		) {
+			t.Fatalf(
+				"observed steps = %#v, want resolve->parse->handle-unresolved->merge",
+				observedSteps,
+			)
 		}
 	})
 
@@ -430,27 +559,29 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 		expectedErr := errors.New("resolve failed")
 		executor := newRouteParsingExecutorForTest(
 			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeParsingPipelineDependencies.resolveClientRouteDefinitionFiles = func(
+				dependencies.resolveClientRouteDefinitionFiles = func(
 					*vormaruntime.Vorma,
 				) ([]string, error) {
 					return nil, expectedErr
 				}
-				dependencies.routeParsingPipelineDependencies.parseRouteDefinitionFileIntoCalls = func(
+				dependencies.parseRouteDefinitionFileIntoCalls = func(
 					*vormaruntime.Vorma,
 					string,
 				) (parsedRouteDefinitionsCode, error) {
 					t.Fatal("did not expect parse step after resolver error")
 					return parsedRouteDefinitionsCode{}, nil
 				}
-				dependencies.routeParsingPipelineDependencies.handleUnresolvedRouteCalls = func(
+				dependencies.handleUnresolvedRouteCalls = func(
 					*vormaruntime.Vorma,
 					string,
 					[]unresolvedRouteCall,
 				) error {
-					t.Fatal("did not expect unresolved-route handling step after resolver error")
+					t.Fatal(
+						"did not expect unresolved-route handling step after resolver error",
+					)
 					return nil
 				}
-				dependencies.routeParsingPipelineDependencies.mergeRouteCallsIntoPaths = func(
+				dependencies.mergeRouteCallsIntoPaths = func(
 					*vormaruntime.Vorma,
 					map[string]*vormaruntime.Path,
 					string,
@@ -471,162 +602,184 @@ func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 		}
 	})
 
-	t.Run("returns parse-file error without unresolved-route handling/merge steps", func(t *testing.T) {
-		expectedErr := errors.New("parse failed")
-		executor := newRouteParsingExecutorForTest(
-			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeParsingPipelineDependencies.resolveClientRouteDefinitionFiles = func(
-					*vormaruntime.Vorma,
-				) ([]string, error) {
-					return []string{"frontend/src/vorma.routes.ts"}, nil
-				}
-				dependencies.routeParsingPipelineDependencies.parseRouteDefinitionFileIntoCalls = func(
-					*vormaruntime.Vorma,
-					string,
-				) (parsedRouteDefinitionsCode, error) {
-					return parsedRouteDefinitionsCode{}, expectedErr
-				}
-				dependencies.routeParsingPipelineDependencies.handleUnresolvedRouteCalls = func(
-					*vormaruntime.Vorma,
-					string,
-					[]unresolvedRouteCall,
-				) error {
-					t.Fatal("did not expect unresolved-route handling step after parse error")
-					return nil
-				}
-				dependencies.routeParsingPipelineDependencies.mergeRouteCallsIntoPaths = func(
-					*vormaruntime.Vorma,
-					map[string]*vormaruntime.Path,
-					string,
-					[]routeCall,
-				) error {
-					t.Fatal("did not expect merge step after parse error")
-					return nil
-				}
-			},
-		)
+	t.Run(
+		"returns parse-file error without unresolved-route handling/merge steps",
+		func(t *testing.T) {
+			expectedErr := errors.New("parse failed")
+			executor := newRouteParsingExecutorForTest(
+				func(dependencies *routeParsingExecutorDependencies) {
+					dependencies.resolveClientRouteDefinitionFiles = func(
+						*vormaruntime.Vorma,
+					) ([]string, error) {
+						return []string{"frontend/src/vorma.routes.ts"}, nil
+					}
+					dependencies.parseRouteDefinitionFileIntoCalls = func(
+						*vormaruntime.Vorma,
+						string,
+					) (parsedRouteDefinitionsCode, error) {
+						return parsedRouteDefinitionsCode{}, expectedErr
+					}
+					dependencies.handleUnresolvedRouteCalls = func(
+						*vormaruntime.Vorma,
+						string,
+						[]unresolvedRouteCall,
+					) error {
+						t.Fatal(
+							"did not expect unresolved-route handling step after parse error",
+						)
+						return nil
+					}
+					dependencies.mergeRouteCallsIntoPaths = func(
+						*vormaruntime.Vorma,
+						map[string]*vormaruntime.Path,
+						string,
+						[]routeCall,
+					) error {
+						t.Fatal("did not expect merge step after parse error")
+						return nil
+					}
+				},
+			)
 
-		_, err := executor.parseClientRoutes(v)
-		if err == nil {
-			t.Fatal("expected parseClientRoutes to return parse error")
-		}
-		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected parse error", err)
-		}
-	})
+			_, err := executor.parseClientRoutes(v)
+			if err == nil {
+				t.Fatal("expected parseClientRoutes to return parse error")
+			}
+			if !errors.Is(err, expectedErr) {
+				t.Fatalf("error = %v, expected parse error", err)
+			}
+		},
+	)
 
-	t.Run("returns merge-paths error after unresolved-route handling step", func(t *testing.T) {
-		expectedErr := errors.New("merge paths failed")
-		unresolvedHandlerCalled := false
-		executor := newRouteParsingExecutorForTest(
-			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeParsingPipelineDependencies.resolveClientRouteDefinitionFiles = func(
-					*vormaruntime.Vorma,
-				) ([]string, error) {
-					return []string{"frontend/src/vorma.routes.ts"}, nil
-				}
-				dependencies.routeParsingPipelineDependencies.parseRouteDefinitionFileIntoCalls = func(
-					*vormaruntime.Vorma,
-					string,
-				) (parsedRouteDefinitionsCode, error) {
-					return parsedRouteDefinitionsCode{
-						routeCalls: []routeCall{
-							{
-								Pattern: "/home",
-								Module:  "./routes/home.tsx",
-								Key:     "default",
+	t.Run(
+		"returns merge-paths error after unresolved-route handling step",
+		func(t *testing.T) {
+			expectedErr := errors.New("merge paths failed")
+			unresolvedHandlerCalled := false
+			executor := newRouteParsingExecutorForTest(
+				func(dependencies *routeParsingExecutorDependencies) {
+					dependencies.resolveClientRouteDefinitionFiles = func(
+						*vormaruntime.Vorma,
+					) ([]string, error) {
+						return []string{"frontend/src/vorma.routes.ts"}, nil
+					}
+					dependencies.parseRouteDefinitionFileIntoCalls = func(
+						*vormaruntime.Vorma,
+						string,
+					) (parsedRouteDefinitionsCode, error) {
+						return parsedRouteDefinitionsCode{
+							routeCalls: []routeCall{
+								{
+									Pattern: "/home",
+									Module:  "./routes/home.tsx",
+									Key:     "default",
+								},
 							},
-						},
-						unresolvedRoutes: []unresolvedRouteCall{
-							{
-								Pattern:       "/dynamic",
-								RawModuleExpr: "getPath(...)",
-								Reason:        "cannot statically analyze",
+							unresolvedRoutes: []unresolvedRouteCall{
+								{
+									Pattern:       "/dynamic",
+									RawModuleExpr: "getPath(...)",
+									Reason:        "cannot statically analyze",
+								},
 							},
-						},
-					}, nil
-				}
-				dependencies.routeParsingPipelineDependencies.handleUnresolvedRouteCalls = func(
-					*vormaruntime.Vorma,
-					string,
-					[]unresolvedRouteCall,
-				) error {
-					unresolvedHandlerCalled = true
-					return nil
-				}
-				dependencies.routeParsingPipelineDependencies.mergeRouteCallsIntoPaths = func(
-					*vormaruntime.Vorma,
-					map[string]*vormaruntime.Path,
-					string,
-					[]routeCall,
-				) error {
-					return expectedErr
-				}
-			},
-		)
+						}, nil
+					}
+					dependencies.handleUnresolvedRouteCalls = func(
+						*vormaruntime.Vorma,
+						string,
+						[]unresolvedRouteCall,
+					) error {
+						unresolvedHandlerCalled = true
+						return nil
+					}
+					dependencies.mergeRouteCallsIntoPaths = func(
+						*vormaruntime.Vorma,
+						map[string]*vormaruntime.Path,
+						string,
+						[]routeCall,
+					) error {
+						return expectedErr
+					}
+				},
+			)
 
-		_, err := executor.parseClientRoutes(v)
-		if err == nil {
-			t.Fatal("expected parseClientRoutes to return merge-paths error")
-		}
-		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected merge-paths error", err)
-		}
-		if !unresolvedHandlerCalled {
-			t.Fatal("expected unresolved-route handling step before merge-paths error")
-		}
-	})
+			_, err := executor.parseClientRoutes(v)
+			if err == nil {
+				t.Fatal(
+					"expected parseClientRoutes to return merge-paths error",
+				)
+			}
+			if !errors.Is(err, expectedErr) {
+				t.Fatalf("error = %v, expected merge-paths error", err)
+			}
+			if !unresolvedHandlerCalled {
+				t.Fatal(
+					"expected unresolved-route handling step before merge-paths error",
+				)
+			}
+		},
+	)
 
-	t.Run("returns unresolved-route handling error and skips merge", func(t *testing.T) {
-		expectedErr := errors.New("unresolved route policy failed")
-		executor := newRouteParsingExecutorForTest(
-			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeParsingPipelineDependencies.resolveClientRouteDefinitionFiles = func(
-					*vormaruntime.Vorma,
-				) ([]string, error) {
-					return []string{"frontend/src/vorma.routes.ts"}, nil
-				}
-				dependencies.routeParsingPipelineDependencies.parseRouteDefinitionFileIntoCalls = func(
-					*vormaruntime.Vorma,
-					string,
-				) (parsedRouteDefinitionsCode, error) {
-					return parsedRouteDefinitionsCode{
-						unresolvedRoutes: []unresolvedRouteCall{
-							{
-								Pattern:       "/dynamic",
-								RawModuleExpr: "getPath(...)",
-								Reason:        "cannot statically analyze",
+	t.Run(
+		"returns unresolved-route handling error and skips merge",
+		func(t *testing.T) {
+			expectedErr := errors.New("unresolved route policy failed")
+			executor := newRouteParsingExecutorForTest(
+				func(dependencies *routeParsingExecutorDependencies) {
+					dependencies.resolveClientRouteDefinitionFiles = func(
+						*vormaruntime.Vorma,
+					) ([]string, error) {
+						return []string{"frontend/src/vorma.routes.ts"}, nil
+					}
+					dependencies.parseRouteDefinitionFileIntoCalls = func(
+						*vormaruntime.Vorma,
+						string,
+					) (parsedRouteDefinitionsCode, error) {
+						return parsedRouteDefinitionsCode{
+							unresolvedRoutes: []unresolvedRouteCall{
+								{
+									Pattern:       "/dynamic",
+									RawModuleExpr: "getPath(...)",
+									Reason:        "cannot statically analyze",
+								},
 							},
-						},
-					}, nil
-				}
-				dependencies.routeParsingPipelineDependencies.handleUnresolvedRouteCalls = func(
-					*vormaruntime.Vorma,
-					string,
-					[]unresolvedRouteCall,
-				) error {
-					return expectedErr
-				}
-				dependencies.routeParsingPipelineDependencies.mergeRouteCallsIntoPaths = func(
-					*vormaruntime.Vorma,
-					map[string]*vormaruntime.Path,
-					string,
-					[]routeCall,
-				) error {
-					t.Fatal("did not expect merge step when unresolved-route handling fails")
-					return nil
-				}
-			},
-		)
+						}, nil
+					}
+					dependencies.handleUnresolvedRouteCalls = func(
+						*vormaruntime.Vorma,
+						string,
+						[]unresolvedRouteCall,
+					) error {
+						return expectedErr
+					}
+					dependencies.mergeRouteCallsIntoPaths = func(
+						*vormaruntime.Vorma,
+						map[string]*vormaruntime.Path,
+						string,
+						[]routeCall,
+					) error {
+						t.Fatal(
+							"did not expect merge step when unresolved-route handling fails",
+						)
+						return nil
+					}
+				},
+			)
 
-		_, err := executor.parseClientRoutes(v)
-		if err == nil {
-			t.Fatal("expected parseClientRoutes to return unresolved-route handling error")
-		}
-		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected unresolved-route handling error", err)
-		}
-	})
+			_, err := executor.parseClientRoutes(v)
+			if err == nil {
+				t.Fatal(
+					"expected parseClientRoutes to return unresolved-route handling error",
+				)
+			}
+			if !errors.Is(err, expectedErr) {
+				t.Fatalf(
+					"error = %v, expected unresolved-route handling error",
+					err,
+				)
+			}
+		},
+	)
 }
 
 func TestResolveUnresolvedRoutePolicy(t *testing.T) {
@@ -641,7 +794,9 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 	})
 
 	t.Run("returns required error when config is nil", func(t *testing.T) {
-		_, err := resolveUnresolvedRoutePolicy(&vormaruntime.Vorma{Log: testLogger()})
+		_, err := resolveUnresolvedRoutePolicy(
+			&vormaruntime.Vorma{Log: testLogger()},
+		)
 		if err == nil {
 			t.Fatal("expected error when config is nil")
 		}
@@ -662,11 +817,15 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 			t.Fatalf("resolveUnresolvedRoutePolicy returned error: %v", err)
 		}
 		if policy != vormaruntime.UnresolvedRoutePolicyError {
-			t.Fatalf("policy = %q, want %q", policy, vormaruntime.UnresolvedRoutePolicyError)
+			t.Fatalf(
+				"policy = %q, want %q",
+				policy,
+				vormaruntime.UnresolvedRoutePolicyError,
+			)
 		}
 	})
 
-	t.Run("defaults to warn in dev mode", func(t *testing.T) {
+	t.Run("defaults to error in dev mode", func(t *testing.T) {
 		v := &vormaruntime.Vorma{
 			Config: &vormaruntime.VormaConfig{},
 			Log:    testLogger(),
@@ -677,8 +836,12 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveUnresolvedRoutePolicy returned error: %v", err)
 		}
-		if policy != vormaruntime.UnresolvedRoutePolicyWarn {
-			t.Fatalf("policy = %q, want %q", policy, vormaruntime.UnresolvedRoutePolicyWarn)
+		if policy != vormaruntime.UnresolvedRoutePolicyError {
+			t.Fatalf(
+				"policy = %q, want %q",
+				policy,
+				vormaruntime.UnresolvedRoutePolicyError,
+			)
 		}
 	})
 
@@ -696,7 +859,11 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 			t.Fatalf("resolveUnresolvedRoutePolicy returned error: %v", err)
 		}
 		if policy != vormaruntime.UnresolvedRoutePolicyWarn {
-			t.Fatalf("policy = %q, want %q", policy, vormaruntime.UnresolvedRoutePolicyWarn)
+			t.Fatalf(
+				"policy = %q, want %q",
+				policy,
+				vormaruntime.UnresolvedRoutePolicyWarn,
+			)
 		}
 	})
 
@@ -712,7 +879,10 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for unknown unresolved-route policy")
 		}
-		if !strings.Contains(err.Error(), "Vorma.UnresolvedRoutePolicy must be") {
+		if !strings.Contains(
+			err.Error(),
+			"Vorma.UnresolvedRoutePolicy must be",
+		) {
 			t.Fatalf("error = %q, expected invalid-policy message", err)
 		}
 	})
@@ -727,17 +897,22 @@ func TestHandleUnresolvedRouteCalls(t *testing.T) {
 		},
 	}
 
-	t.Run("returns nil for warn policy", func(t *testing.T) {
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{},
-			Log:    testLogger(),
-		}
-		v.SetIsDev(true)
+	t.Run(
+		"returns nil when warn policy is explicitly configured",
+		func(t *testing.T) {
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{
+					UnresolvedRoutePolicy: vormaruntime.UnresolvedRoutePolicyWarn,
+				},
+				Log: testLogger(),
+			}
+			v.SetIsDev(true)
 
-		if err := handleUnresolvedRouteCalls(v, "frontend/src/vorma.routes.ts", unresolvedRoutes); err != nil {
-			t.Fatalf("handleUnresolvedRouteCalls returned error: %v", err)
-		}
-	})
+			if err := handleUnresolvedRouteCalls(v, "frontend/src/vorma.routes.ts", unresolvedRoutes); err != nil {
+				t.Fatalf("handleUnresolvedRouteCalls returned error: %v", err)
+			}
+		},
+	)
 
 	t.Run("returns detailed error for strict policy", func(t *testing.T) {
 		v := &vormaruntime.Vorma{
@@ -746,11 +921,18 @@ func TestHandleUnresolvedRouteCalls(t *testing.T) {
 		}
 		v.SetIsDev(false)
 
-		err := handleUnresolvedRouteCalls(v, "frontend/src/vorma.routes.ts", unresolvedRoutes)
+		err := handleUnresolvedRouteCalls(
+			v,
+			"frontend/src/vorma.routes.ts",
+			unresolvedRoutes,
+		)
 		if err == nil {
 			t.Fatal("expected strict unresolved-route policy to fail")
 		}
-		if !strings.Contains(err.Error(), `unresolved route calls are not allowed in "frontend/src/vorma.routes.ts"`) {
+		if !strings.Contains(
+			err.Error(),
+			`unresolved route calls are not allowed in "frontend/src/vorma.routes.ts"`,
+		) {
 			t.Fatalf("error = %q, expected route definition file context", err)
 		}
 		if !strings.Contains(err.Error(), `pattern "/dynamic"`) {
@@ -765,20 +947,28 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 	t.Run("transforms and extracts calls", func(t *testing.T) {
 		executor := newRouteParsingExecutorForTest(
 			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsCodeParsingDependencies.transformRouteDefinitionsCode = func(
+				dependencies.transformRouteDefinitionsCode = func(
 					_ *vormaruntime.Vorma,
 					code []byte,
 				) (string, error) {
 					if string(code) != "raw route defs" {
-						t.Fatalf("transform code = %q, want %q", string(code), "raw route defs")
+						t.Fatalf(
+							"transform code = %q, want %q",
+							string(code),
+							"raw route defs",
+						)
 					}
 					return "transformed route defs", nil
 				}
-				dependencies.routeDefinitionsCodeParsingDependencies.extractRouteCallsFromTransformedCode = func(
+				dependencies.extractRouteCallsFromTransformedCode = func(
 					code string,
 				) ([]routeCall, []unresolvedRouteCall, error) {
 					if code != "transformed route defs" {
-						t.Fatalf("extract code = %q, want %q", code, "transformed route defs")
+						t.Fatalf(
+							"extract code = %q, want %q",
+							code,
+							"transformed route defs",
+						)
 					}
 					return []routeCall{
 							{
@@ -797,15 +987,29 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 			},
 		)
 
-		parsed, err := executor.parseRouteDefinitionsCodeIntoCalls(v, []byte("raw route defs"))
+		parsed, err := executor.parseRouteDefinitionsCodeIntoCalls(
+			v,
+			[]byte("raw route defs"),
+		)
 		if err != nil {
-			t.Fatalf("parseRouteDefinitionsCodeIntoCalls returned error: %v", err)
+			t.Fatalf(
+				"parseRouteDefinitionsCodeIntoCalls returned error: %v",
+				err,
+			)
 		}
-		if len(parsed.routeCalls) != 1 || parsed.routeCalls[0].Pattern != "/home" {
-			t.Fatalf("route calls = %#v, want /home route call", parsed.routeCalls)
+		if len(parsed.routeCalls) != 1 ||
+			parsed.routeCalls[0].Pattern != "/home" {
+			t.Fatalf(
+				"route calls = %#v, want /home route call",
+				parsed.routeCalls,
+			)
 		}
-		if len(parsed.unresolvedRoutes) != 1 || parsed.unresolvedRoutes[0].Pattern != "/dynamic" {
-			t.Fatalf("unresolved routes = %#v, want /dynamic unresolved route", parsed.unresolvedRoutes)
+		if len(parsed.unresolvedRoutes) != 1 ||
+			parsed.unresolvedRoutes[0].Pattern != "/dynamic" {
+			t.Fatalf(
+				"unresolved routes = %#v, want /dynamic unresolved route",
+				parsed.unresolvedRoutes,
+			)
 		}
 	})
 
@@ -813,13 +1017,13 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 		expectedErr := errors.New("transform failed")
 		executor := newRouteParsingExecutorForTest(
 			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsCodeParsingDependencies.transformRouteDefinitionsCode = func(
+				dependencies.transformRouteDefinitionsCode = func(
 					*vormaruntime.Vorma,
 					[]byte,
 				) (string, error) {
 					return "", expectedErr
 				}
-				dependencies.routeDefinitionsCodeParsingDependencies.extractRouteCallsFromTransformedCode = func(
+				dependencies.extractRouteCallsFromTransformedCode = func(
 					string,
 				) ([]routeCall, []unresolvedRouteCall, error) {
 					t.Fatal("did not expect extract step after transform error")
@@ -828,9 +1032,14 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 			},
 		)
 
-		_, err := executor.parseRouteDefinitionsCodeIntoCalls(v, []byte("raw route defs"))
+		_, err := executor.parseRouteDefinitionsCodeIntoCalls(
+			v,
+			[]byte("raw route defs"),
+		)
 		if err == nil {
-			t.Fatal("expected parseRouteDefinitionsCodeIntoCalls to return transform error")
+			t.Fatal(
+				"expected parseRouteDefinitionsCodeIntoCalls to return transform error",
+			)
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected transform error", err)
@@ -841,13 +1050,13 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 		expectedErr := errors.New("extract failed")
 		executor := newRouteParsingExecutorForTest(
 			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeDefinitionsCodeParsingDependencies.transformRouteDefinitionsCode = func(
+				dependencies.transformRouteDefinitionsCode = func(
 					*vormaruntime.Vorma,
 					[]byte,
 				) (string, error) {
 					return "transformed route defs", nil
 				}
-				dependencies.routeDefinitionsCodeParsingDependencies.extractRouteCallsFromTransformedCode = func(
+				dependencies.extractRouteCallsFromTransformedCode = func(
 					string,
 				) ([]routeCall, []unresolvedRouteCall, error) {
 					return nil, nil, expectedErr
@@ -855,9 +1064,14 @@ func TestParseRouteDefinitionsCodeIntoCalls(t *testing.T) {
 			},
 		)
 
-		_, err := executor.parseRouteDefinitionsCodeIntoCalls(v, []byte("raw route defs"))
+		_, err := executor.parseRouteDefinitionsCodeIntoCalls(
+			v,
+			[]byte("raw route defs"),
+		)
 		if err == nil {
-			t.Fatal("expected parseRouteDefinitionsCodeIntoCalls to return extract error")
+			t.Fatal(
+				"expected parseRouteDefinitionsCodeIntoCalls to return extract error",
+			)
 		}
 		if !strings.Contains(err.Error(), "extract route calls") {
 			t.Fatalf("error = %q, expected extract context", err)
@@ -873,7 +1087,10 @@ func TestParseRouteDefinitionFileIntoCalls_ReturnsReadError(t *testing.T) {
 		Log: testLogger(),
 	}
 
-	_, err := parseRouteDefinitionFileIntoCalls(v, filepath.Join(t.TempDir(), "missing.vorma.routes.ts"))
+	_, err := parseRouteDefinitionFileIntoCalls(
+		v,
+		filepath.Join(t.TempDir(), "missing.vorma.routes.ts"),
+	)
 	if err == nil {
 		t.Fatal("expected read error for missing route definition file")
 	}
@@ -883,38 +1100,53 @@ func TestParseRouteDefinitionFileIntoCalls_ReturnsReadError(t *testing.T) {
 }
 
 func TestMergeRouteCallsIntoPaths(t *testing.T) {
-	t.Run("returns error when a route call has no module argument", func(t *testing.T) {
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{"frontend/src/**/*vorma.routes.ts"},
-			},
-			Log: testLogger(),
-		}
+	t.Run(
+		"returns error when a route call has no module argument",
+		func(t *testing.T) {
+			v := &vormaruntime.Vorma{
+				Config: &vormaruntime.VormaConfig{
+					ClientRouteDefinitionPatterns: []string{
+						"frontend/src/**/*vorma.routes.ts",
+					},
+				},
+				Log: testLogger(),
+			}
 
-		paths := map[string]*vormaruntime.Path{}
-		err := mergeRouteCallsIntoPaths(v, paths, "frontend/src/vorma.routes.ts", []routeCall{{
-			Pattern: "/missing-module",
-			Module:  "",
-			Key:     "default",
-		}})
-		if err == nil {
-			t.Fatal("expected mergeRouteCallsIntoPaths to fail when module argument is missing")
-		}
-		if !strings.Contains(err.Error(), "component module is required for pattern: /missing-module") {
-			t.Fatalf("error = %q, expected missing-module context", err)
-		}
-	})
+			paths := map[string]*vormaruntime.Path{}
+			err := mergeRouteCallsIntoPaths(
+				v,
+				paths,
+				"frontend/src/vorma.routes.ts",
+				[]routeCall{{
+					Pattern: "/missing-module",
+					Module:  "",
+					Key:     "default",
+				}},
+			)
+			if err == nil {
+				t.Fatal(
+					"expected mergeRouteCallsIntoPaths to fail when module argument is missing",
+				)
+			}
+			if !strings.Contains(
+				err.Error(),
+				"component module is required for pattern: /missing-module",
+			) {
+				t.Fatalf("error = %q, expected missing-module context", err)
+			}
+		},
+	)
 
 	t.Run("returns error when route pattern is duplicated", func(t *testing.T) {
 		executor := newRouteParsingExecutorForTest(
 			func(dependencies *routeParsingExecutorDependencies) {
-				dependencies.routeModuleResolutionDependencies.computeRelativeModulePath = func(
+				dependencies.computeRelativeModulePath = func(
 					string,
 					string,
 				) (string, error) {
 					return "frontend/src/routes/example.tsx", nil
 				}
-				dependencies.routeModuleResolutionDependencies.statRouteModulePath = func(
+				dependencies.statRouteModulePath = func(
 					string,
 				) (fs.FileInfo, error) {
 					return nil, nil
@@ -924,26 +1156,35 @@ func TestMergeRouteCallsIntoPaths(t *testing.T) {
 
 		v := &vormaruntime.Vorma{
 			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{"frontend/src/**/*vorma.routes.ts"},
+				ClientRouteDefinitionPatterns: []string{
+					"frontend/src/**/*vorma.routes.ts",
+				},
 			},
 			Log: testLogger(),
 		}
 
 		paths := map[string]*vormaruntime.Path{}
-		err := executor.mergeRouteCallsIntoPaths(v, paths, "frontend/src/vorma.routes.ts", []routeCall{
-			{
-				Pattern: "/dup",
-				Module:  "./routes/first.tsx",
-				Key:     "default",
+		err := executor.mergeRouteCallsIntoPaths(
+			v,
+			paths,
+			"frontend/src/vorma.routes.ts",
+			[]routeCall{
+				{
+					Pattern: "/dup",
+					Module:  "./routes/first.tsx",
+					Key:     "default",
+				},
+				{
+					Pattern: "/dup",
+					Module:  "./routes/second.tsx",
+					Key:     "default",
+				},
 			},
-			{
-				Pattern: "/dup",
-				Module:  "./routes/second.tsx",
-				Key:     "default",
-			},
-		})
+		)
 		if err == nil {
-			t.Fatal("expected mergeRouteCallsIntoPaths to fail on duplicate route pattern")
+			t.Fatal(
+				"expected mergeRouteCallsIntoPaths to fail on duplicate route pattern",
+			)
 		}
 		if !strings.Contains(err.Error(), "duplicate route pattern: /dup") {
 			t.Fatalf("error = %q, expected duplicate-pattern context", err)

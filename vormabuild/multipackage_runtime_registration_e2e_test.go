@@ -11,11 +11,16 @@ import (
 	"testing"
 )
 
-func TestBuildRuntimeRegistration_E2EMultiPackageDiscoveredRoutes(t *testing.T) {
+func TestBuildRuntimeRegistration_E2EMultiPackageDiscoveredRoutes(
+	t *testing.T,
+) {
 	repoRootDir := mustResolveRepositoryRootDir(t)
 	fixtureRootDir := t.TempDir()
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "go.mod"), []byte(fmt.Sprintf(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "go.mod"),
+		[]byte(fmt.Sprintf(`
 module e2eapp
 
 go 1.24
@@ -23,7 +28,8 @@ go 1.24
 require github.com/vormadev/vorma v0.0.0
 
 replace github.com/vormadev/vorma => %s
-`, filepath.ToSlash(repoRootDir))))
+`, filepath.ToSlash(repoRootDir))),
+	)
 
 	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/wave.go"), []byte(`
 package backend
@@ -43,7 +49,10 @@ var Wave = wave.New(wave.Config{
 })
 `))
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/wave.config.json"), []byte(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "backend/wave.config.json"),
+		[]byte(`
 {
 	"Core": {
 		"MainAppEntry": "backend/cmd/check",
@@ -66,21 +75,33 @@ var Wave = wave.New(wave.Config{
 		"BuildtimePublicURLFuncName": "waveBuildtimeURL"
 	}
 }
-`))
+`),
+	)
 
 	mustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/assets/private/entry.go.html"),
 		[]byte("<!doctype html><html><body></body></html>"),
 	)
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "frontend/src/components/root.tsx"), []byte("export const Root = () => null;"))
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "frontend/src/vorma.routes.ts"), []byte(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "frontend/src/components/root.tsx"),
+		[]byte("export const Root = () => null;"),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "frontend/src/vorma.routes.ts"),
+		[]byte(`
 import { route } from "vorma/buildtime";
 
 route("/", import("./components/root.tsx"), "Root");
-`))
+`),
+	)
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/src/app/app.go"), []byte(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "backend/src/app/app.go"),
+		[]byte(`
 package app
 
 import (
@@ -92,18 +113,26 @@ import (
 var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
 })
-`))
+`),
+	)
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/src/routes/register.go"), []byte(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "backend/src/routes/register.go"),
+		[]byte(`
 package routes
 
 import (
 	_ "e2eapp/backend/src/routes/accounts"
 	_ "e2eapp/backend/src/routes/users"
 )
-`))
+`),
+	)
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/src/routes/users/routes.go"), []byte(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "backend/src/routes/users/routes.go"),
+		[]byte(`
 package users
 
 import (
@@ -135,9 +164,13 @@ func DefineLoaderForRegistration[O any](
 var _ = DefineLoaderForRegistration("/users", func(*LoaderCtx) (string, error) {
 	return "users", nil
 })
-`))
+`),
+	)
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/src/routes/accounts/routes.go"), []byte(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "backend/src/routes/accounts/routes.go"),
+		[]byte(`
 package accounts
 
 import (
@@ -174,9 +207,13 @@ func registerAccountsRoute() any {
 }
 
 var _ = registerAccountsRoute()
-`))
+`),
+	)
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/cmd/build/main.go"), []byte(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "backend/cmd/build/main.go"),
+		[]byte(`
 package main
 
 import (
@@ -195,9 +232,13 @@ func main() {
 	})
 	vormabuild.Build(app.App)
 }
-`))
+`),
+	)
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/cmd/check/main.go"), []byte(`
+	mustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "backend/cmd/check/main.go"),
+		[]byte(`
 package main
 
 import (
@@ -209,17 +250,18 @@ import (
 )
 
 func main() {
-	if !app.App.LoadersRouter().NestedRouter.HasTaskHandler("/users") {
+	if !app.App.HasRegisteredLoaderTask("/users") {
 		fmt.Println("missing /users loader registration")
 		os.Exit(1)
 	}
-	if !app.App.LoadersRouter().NestedRouter.HasTaskHandler("/accounts") {
+	if !app.App.HasRegisteredLoaderTask("/accounts") {
 		fmt.Println("missing /accounts loader registration")
 		os.Exit(1)
 	}
 	fmt.Println("registered")
 }
-`))
+`),
+	)
 
 	buildOutput, buildErr := runCommandAndCaptureOutput(
 		fixtureRootDir,
@@ -241,10 +283,17 @@ func main() {
 		compiledBinaryPath,
 	)
 	if runtimeCheckErr != nil {
-		t.Fatalf("compiled runtime check failed: %v\n%s", runtimeCheckErr, runtimeCheckOutput)
+		t.Fatalf(
+			"compiled runtime check failed: %v\n%s",
+			runtimeCheckErr,
+			runtimeCheckOutput,
+		)
 	}
 	if !strings.Contains(runtimeCheckOutput, "registered") {
-		t.Fatalf("runtime check output = %q, expected \"registered\"", runtimeCheckOutput)
+		t.Fatalf(
+			"runtime check output = %q, expected \"registered\"",
+			runtimeCheckOutput,
+		)
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 func (w *Wave) initBaseFS() (fs.FS, error) {
-	if GetIsDev() {
+	if w.IsDev() {
 		return os.DirFS(w.cfg.Dist.Static()), nil
 	}
 	if w.distStaticFS == nil {

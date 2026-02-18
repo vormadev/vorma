@@ -57,7 +57,10 @@ var defaultReloadActionExecutor = newReloadActionExecutor(
 			v *vormaruntime.Vorma,
 			options callReloadEndpointOptions,
 		) error {
-			return defaultReloadEndpointRequestExecutor.callReloadEndpoint(v, options)
+			return defaultReloadEndpointRequestExecutor.callReloadEndpoint(
+				v,
+				options,
+			)
 		},
 		nextReloadAttemptID: nextReloadAttemptID,
 	},
@@ -113,7 +116,10 @@ func normalizeReloadActionDependencies(
 			v *vormaruntime.Vorma,
 			options callReloadEndpointOptions,
 		) error {
-			return defaultReloadEndpointRequestExecutor.callReloadEndpoint(v, options)
+			return defaultReloadEndpointRequestExecutor.callReloadEndpoint(
+				v,
+				options,
+			)
 		}
 	}
 	if dependencies.nextReloadAttemptID == nil {
@@ -269,7 +275,10 @@ func applyReloadEndpointRequestHeaders(
 
 	trimmedExpectedBuildID := strings.TrimSpace(options.expectedBuildID)
 	if trimmedExpectedBuildID != "" {
-		request.Header.Set(reloadExpectedBuildIDHeaderName, trimmedExpectedBuildID)
+		request.Header.Set(
+			reloadExpectedBuildIDHeaderName,
+			trimmedExpectedBuildID,
+		)
 	}
 
 	trimmedReloadTrigger := strings.TrimSpace(options.reloadTrigger)
@@ -282,8 +291,11 @@ func reloadEndpointURL(port int, endpoint string) string {
 	return fmt.Sprintf("http://localhost:%d%s", port, endpoint)
 }
 
-func newReloadEndpointRequest(ctx context.Context, url string) (*http.Request, error) {
-	return http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func newReloadEndpointRequest(
+	ctx context.Context,
+	url string,
+) (*http.Request, error) {
+	return http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 }
 
 func validateReloadEndpointStatus(statusCode int) error {

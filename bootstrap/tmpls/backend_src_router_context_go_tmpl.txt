@@ -23,7 +23,7 @@ func DefineLoader[O any](
 func DefineAction[I any, O any](
 	method string,
 	pattern string,
-	action vorma.ActionFunc[ActionCtx[I], I, O],
+	action vorma.ActionFunc[ActionCtx[I], O],
 ) *vorma.Action[I, O] {
 	return vorma.DefineActionForRegistration(App, method, pattern, action, decorateActionCtx)
 }

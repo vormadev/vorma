@@ -102,7 +102,9 @@ func newBackendRouteRegistrarOverlayExecutor(
 		routeDiscoveryExecutor = defaultBackendRouteDiscoveryExecutor
 	}
 	return backendRouteRegistrarOverlayExecutor{
-		dependencies:           normalizeBackendRouteRegistrarOverlayDependencies(dependencies),
+		dependencies: normalizeBackendRouteRegistrarOverlayDependencies(
+			dependencies,
+		),
 		routeDiscoveryExecutor: routeDiscoveryExecutor,
 	}
 }
@@ -164,7 +166,9 @@ func (cache *discoveredRouteRegistrarArtifactCache) get(
 	cacheEntry.lastAccessSeq = cache.accessSeq
 	cache.entries[cacheKey] = cacheEntry
 
-	return cloneDiscoveredRouteRegistrarSourceArtifacts(cacheEntry.artifacts), true
+	return cloneDiscoveredRouteRegistrarSourceArtifacts(
+		cacheEntry.artifacts,
+	), true
 }
 
 func (cache *discoveredRouteRegistrarArtifactCache) set(
@@ -178,8 +182,10 @@ func (cache *discoveredRouteRegistrarArtifactCache) set(
 	cache.accessSeq++
 	cache.entries[cacheKey] = discoveredRouteRegistrarArtifactCacheEntry{
 		sourceFingerprint: sourceFingerprint,
-		artifacts:         cloneDiscoveredRouteRegistrarSourceArtifacts(artifacts),
-		lastAccessSeq:     cache.accessSeq,
+		artifacts: cloneDiscoveredRouteRegistrarSourceArtifacts(
+			artifacts,
+		),
+		lastAccessSeq: cache.accessSeq,
 	}
 	cache.evictEntriesOverCapacityLocked()
 }
@@ -216,7 +222,11 @@ func cloneDiscoveredRouteRegistrarSourceArtifacts(
 		return nil
 	}
 
-	clonedArtifacts := make([]discoveredRouteRegistrarSourceArtifact, 0, len(artifacts))
+	clonedArtifacts := make(
+		[]discoveredRouteRegistrarSourceArtifact,
+		0,
+		len(artifacts),
+	)
 	for _, artifact := range artifacts {
 		clonedArtifacts = append(
 			clonedArtifacts,
@@ -232,7 +242,9 @@ func cloneDiscoveredRouteRegistrarSourceArtifacts(
 func prepareDiscoveredRouteRegistrarOverlay(
 	v *vormaruntime.Vorma,
 ) (*discoveredRouteRegistrarOverlay, error) {
-	return defaultBackendRouteRegistrarOverlayExecutor.prepareDiscoveredRouteRegistrarOverlay(v)
+	return defaultBackendRouteRegistrarOverlayExecutor.prepareDiscoveredRouteRegistrarOverlay(
+		v,
+	)
 }
 
 func prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
@@ -265,7 +277,9 @@ func (executor backendRouteRegistrarOverlayExecutor) prepareDiscoveredRouteRegis
 ) (*discoveredRouteRegistrarOverlay, error) {
 	return executor.prepareDiscoveredRouteRegistrarOverlayWithArtifactCache(
 		v,
-		newDiscoveredRouteRegistrarArtifactCache(discoveredRouteRegistrarArtifactCacheDefaultMaxEntries),
+		newDiscoveredRouteRegistrarArtifactCache(
+			discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
+		),
 	)
 }
 
@@ -279,7 +293,9 @@ func (executor backendRouteRegistrarOverlayExecutor) prepareDiscoveredRouteRegis
 		)
 	}
 
-	serverRouteDefinitionFiles, err := executor.routeDiscoveryExecutor.resolveServerRouteDefinitionFiles(v)
+	serverRouteDefinitionFiles, err := executor.routeDiscoveryExecutor.resolveServerRouteDefinitionFiles(
+		v,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +329,9 @@ func (executor backendRouteRegistrarOverlayExecutor) prepareDiscoveredRouteRegis
 		)
 	}
 
-	return executor.writeDiscoveredRouteRegistrarOverlay(discoveredRegistrarArtifacts)
+	return executor.writeDiscoveredRouteRegistrarOverlay(
+		discoveredRegistrarArtifacts,
+	)
 }
 
 func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
@@ -321,9 +339,14 @@ func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
 		return "<nil-vorma>"
 	}
 
-	normalizedServerRoutePatterns := normalizeRouteDefinitionPatternsInInputOrder(
+	normalizedServerRoutePatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ServerRouteDefinitionPatterns,
 	)
+	if err != nil {
+		normalizedServerRoutePatterns = []string{
+			"<invalid-server-route-patterns>",
+		}
+	}
 	return strings.Join(
 		[]string{
 			filepath.ToSlash(filepath.Clean(v.Wave.ConfigFile())),
@@ -340,7 +363,11 @@ func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
 func (executor backendRouteRegistrarOverlayExecutor) computeDiscoveredRouteRegistrarDiscoveryFingerprint(
 	serverRouteDefinitionFiles []string,
 ) (string, error) {
-	normalizedRouteDefinitionFiles := make([]string, 0, len(serverRouteDefinitionFiles))
+	normalizedRouteDefinitionFiles := make(
+		[]string,
+		0,
+		len(serverRouteDefinitionFiles),
+	)
 	packageDirSet := map[string]struct{}{}
 	for _, serverRouteDefinitionFile := range serverRouteDefinitionFiles {
 		absoluteRouteDefinitionFilePath, err := executor.dependencies.absolutePath(
@@ -354,7 +381,9 @@ func (executor backendRouteRegistrarOverlayExecutor) computeDiscoveredRouteRegis
 			)
 		}
 
-		normalizedRouteDefinitionFile := filepath.ToSlash(filepath.Clean(absoluteRouteDefinitionFilePath))
+		normalizedRouteDefinitionFile := filepath.ToSlash(
+			filepath.Clean(absoluteRouteDefinitionFilePath),
+		)
 		normalizedRouteDefinitionFiles = append(
 			normalizedRouteDefinitionFiles,
 			normalizedRouteDefinitionFile,
@@ -404,7 +433,8 @@ func (executor backendRouteRegistrarOverlayExecutor) computeDiscoveredRouteRegis
 			}
 
 			entryName := packageDirEntry.Name()
-			if filepath.Ext(entryName) != ".go" || strings.HasSuffix(entryName, "_test.go") {
+			if filepath.Ext(entryName) != ".go" ||
+				strings.HasSuffix(entryName, "_test.go") {
 				continue
 			}
 
@@ -413,8 +443,12 @@ func (executor backendRouteRegistrarOverlayExecutor) computeDiscoveredRouteRegis
 		sort.Strings(packageGoFiles)
 
 		for _, packageGoFile := range packageGoFiles {
-			packageGoFilePath := filepath.ToSlash(filepath.Clean(filepath.Join(packageDir, packageGoFile)))
-			packageGoFileBytes, err := executor.dependencies.readFile(packageGoFilePath)
+			packageGoFilePath := filepath.ToSlash(
+				filepath.Clean(filepath.Join(packageDir, packageGoFile)),
+			)
+			packageGoFileBytes, err := executor.dependencies.readFile(
+				packageGoFilePath,
+			)
 			if err != nil {
 				return "", fmt.Errorf(
 					"read package Go source file %q for discovered route registrar cache fingerprint: %w",
@@ -441,7 +475,10 @@ func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourc
 		return nil, err
 	}
 
-	discoveredRegistrarArtifacts := make([]discoveredRouteRegistrarSourceArtifact, 0)
+	discoveredRegistrarArtifacts := make(
+		[]discoveredRouteRegistrarSourceArtifact,
+		0,
+	)
 	for _, packageAnalysis := range packageAnalyses {
 		discoveredCalls, err := packageAnalysis.discoverVormaRegistrationCalls()
 		if err != nil {
@@ -451,7 +488,9 @@ func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourc
 			continue
 		}
 
-		generatedSource, err := packageAnalysis.renderDiscoveredRouteRegistrarSource(discoveredCalls)
+		generatedSource, err := packageAnalysis.renderDiscoveredRouteRegistrarSource(
+			discoveredCalls,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -460,7 +499,9 @@ func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourc
 			packageAnalysis.packageDir,
 			discoveredRouteRegistrarGeneratedFilename,
 		)
-		absoluteGeneratedFilePath, err := executor.dependencies.absolutePath(generatedFilePath)
+		absoluteGeneratedFilePath, err := executor.dependencies.absolutePath(
+			generatedFilePath,
+		)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"resolve absolute generated backend route registrar path %q: %w",
@@ -472,8 +513,10 @@ func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourc
 		discoveredRegistrarArtifacts = append(
 			discoveredRegistrarArtifacts,
 			discoveredRouteRegistrarSourceArtifact{
-				targetFilePath: filepath.ToSlash(filepath.Clean(absoluteGeneratedFilePath)),
-				sourceBytes:    generatedSource,
+				targetFilePath: filepath.ToSlash(
+					filepath.Clean(absoluteGeneratedFilePath),
+				),
+				sourceBytes: generatedSource,
 			},
 		)
 	}
@@ -600,7 +643,10 @@ func (analysis *backendRoutePackageAnalysis) discoverVormaRegistrationCalls() ([
 
 	discoveredCalls := make([]*discoveredVormaRegistrationCall, 0, len(callIDs))
 	for _, callID := range callIDs {
-		discoveredCalls = append(discoveredCalls, state.discoveredVormaRegistrationCallByID[callID])
+		discoveredCalls = append(
+			discoveredCalls,
+			state.discoveredVormaRegistrationCallByID[callID],
+		)
 	}
 	return discoveredCalls, nil
 }
@@ -628,12 +674,16 @@ func (analysis *backendRoutePackageAnalysis) renderDiscoveredRouteRegistrarSourc
 	sb.WriteString("package " + analysis.packageName + "\n\n")
 	sb.WriteString("import (\n")
 	for _, importAlias := range importAliases {
-		sb.WriteString(fmt.Sprintf("\t%s %q\n", importAlias, requiredImports[importAlias]))
+		sb.WriteString(
+			fmt.Sprintf("\t%s %q\n", importAlias, requiredImports[importAlias]),
+		)
 	}
 	sb.WriteString(")\n\n")
 	sb.WriteString("func init() {\n")
 	for _, discoveredCall := range discoveredCalls {
-		callExpression, err := analysis.renderDiscoveredCallExpression(discoveredCall)
+		callExpression, err := analysis.renderDiscoveredCallExpression(
+			discoveredCall,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -648,19 +698,27 @@ func (analysis *backendRoutePackageAnalysis) renderDiscoveredRouteRegistrarSourc
 func (analysis *backendRoutePackageAnalysis) renderDiscoveredCallExpression(
 	discoveredCall *discoveredVormaRegistrationCall,
 ) (string, error) {
-	appExpression, err := analysis.formatDiscoveredCallExpression(discoveredCall.appExpression)
+	appExpression, err := analysis.formatDiscoveredCallExpression(
+		discoveredCall.appExpression,
+	)
 	if err != nil {
 		return "", err
 	}
-	patternExpression, err := analysis.formatDiscoveredCallExpression(discoveredCall.patternExpression)
+	patternExpression, err := analysis.formatDiscoveredCallExpression(
+		discoveredCall.patternExpression,
+	)
 	if err != nil {
 		return "", err
 	}
-	handlerExpression, err := analysis.formatDiscoveredCallExpression(discoveredCall.handlerExpression)
+	handlerExpression, err := analysis.formatDiscoveredCallExpression(
+		discoveredCall.handlerExpression,
+	)
 	if err != nil {
 		return "", err
 	}
-	decorateCtxExpression, err := analysis.formatDiscoveredCallExpression(discoveredCall.decorateCtxExpression)
+	decorateCtxExpression, err := analysis.formatDiscoveredCallExpression(
+		discoveredCall.decorateCtxExpression,
+	)
 	if err != nil {
 		return "", err
 	}
@@ -675,7 +733,9 @@ func (analysis *backendRoutePackageAnalysis) renderDiscoveredCallExpression(
 		), nil
 	}
 
-	methodExpression, err := analysis.formatDiscoveredCallExpression(discoveredCall.methodExpression)
+	methodExpression, err := analysis.formatDiscoveredCallExpression(
+		discoveredCall.methodExpression,
+	)
 	if err != nil {
 		return "", err
 	}
@@ -694,7 +754,10 @@ func (analysis *backendRoutePackageAnalysis) formatDiscoveredCallExpression(
 ) (string, error) {
 	var expressionBuffer bytes.Buffer
 	if err := printer.Fprint(&expressionBuffer, analysis.goFileSet, expression); err != nil {
-		return "", fmt.Errorf("format discovered registration expression: %w", err)
+		return "", fmt.Errorf(
+			"format discovered registration expression: %w",
+			err,
+		)
 	}
 	return strings.TrimSpace(expressionBuffer.String()), nil
 }
@@ -702,7 +765,9 @@ func (analysis *backendRoutePackageAnalysis) formatDiscoveredCallExpression(
 func (analysis *backendRoutePackageAnalysis) discoveredVormaRegistrationCallID(
 	discoveredCall *discoveredVormaRegistrationCall,
 ) (string, error) {
-	renderedExpression, err := analysis.renderDiscoveredCallExpression(discoveredCall)
+	renderedExpression, err := analysis.renderDiscoveredCallExpression(
+		discoveredCall,
+	)
 	if err != nil {
 		return "", err
 	}
@@ -720,7 +785,10 @@ func (analysis *backendRoutePackageAnalysis) collectRequiredImportsForDiscovered
 		discoveredCall.decorateCtxExpression,
 	}
 	if !discoveredCall.isLoader {
-		callExpressions = append(callExpressions, discoveredCall.methodExpression)
+		callExpressions = append(
+			callExpressions,
+			discoveredCall.methodExpression,
+		)
 	}
 
 	for _, callExpression := range callExpressions {
@@ -832,7 +900,9 @@ func (analysis *backendRoutePackageAnalysis) resolveImportPathForAliasAtPosition
 	importAlias string,
 	position token.Pos,
 ) (string, bool) {
-	parsedServerFile, hasParsedServerFile := analysis.getParsedServerRouteFileForPosition(position)
+	parsedServerFile, hasParsedServerFile := analysis.getParsedServerRouteFileForPosition(
+		position,
+	)
 	if !hasParsedServerFile {
 		return "", false
 	}

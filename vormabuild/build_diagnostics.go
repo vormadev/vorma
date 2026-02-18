@@ -52,7 +52,9 @@ type buildDiagnosticsExecutor struct {
 	dependencies buildDiagnosticsDependencies
 }
 
-var defaultBuildDiagnosticsExecutor = newBuildDiagnosticsExecutor(buildDiagnosticsDependencies{})
+var defaultBuildDiagnosticsExecutor = newBuildDiagnosticsExecutor(
+	buildDiagnosticsDependencies{},
+)
 
 func defaultBuildDiagnosticsDependencies() buildDiagnosticsDependencies {
 	return buildDiagnosticsDependencies{
@@ -115,13 +117,17 @@ func printBuildDiagnostics(v *vormaruntime.Vorma) error {
 	return defaultBuildDiagnosticsExecutor.printBuildDiagnostics(v)
 }
 
-func (executor buildDiagnosticsExecutor) printBuildDiagnostics(v *vormaruntime.Vorma) error {
+func (executor buildDiagnosticsExecutor) printBuildDiagnostics(
+	v *vormaruntime.Vorma,
+) error {
 	diagnosticsSnapshot, err := executor.collectBuildDiagnostics(v)
 	if err != nil {
 		return err
 	}
 
-	diagnosticsJSON, err := executor.dependencies.marshalBuildDiagnosticsJSON(diagnosticsSnapshot)
+	diagnosticsJSON, err := executor.dependencies.marshalBuildDiagnosticsJSON(
+		diagnosticsSnapshot,
+	)
 	if err != nil {
 		return fmt.Errorf("marshal build diagnostics JSON: %w", err)
 	}
@@ -147,14 +153,36 @@ func (executor buildDiagnosticsExecutor) collectBuildDiagnostics(
 		return nil, errors.New("Vorma config is required")
 	}
 
-	resolvedClientRouteFiles, err := executor.dependencies.resolveClientRouteDefinitionFiles(v)
+	resolvedClientRouteFiles, err := executor.dependencies.resolveClientRouteDefinitionFiles(
+		v,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("resolve client route definition files: %w", err)
 	}
 
-	resolvedServerRouteFiles, err := executor.dependencies.resolveServerRouteDefinitionFiles(v)
+	resolvedServerRouteFiles, err := executor.dependencies.resolveServerRouteDefinitionFiles(
+		v,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("resolve server route definition files: %w", err)
+	}
+	normalizedClientRouteDefinitionPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
+		v.Config.ClientRouteDefinitionPatterns,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"normalize client route definition patterns: %w",
+			err,
+		)
+	}
+	normalizedServerRouteDefinitionPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
+		v.Config.ServerRouteDefinitionPatterns,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"normalize server route definition patterns: %w",
+			err,
+		)
 	}
 
 	cacheEntryCount, cacheMaxEntries := executor.dependencies.discoveredRegistrarCacheStats()
@@ -163,10 +191,14 @@ func (executor buildDiagnosticsExecutor) collectBuildDiagnostics(
 	return &buildDiagnosticsSnapshot{
 		GeneratedAtUTC: executor.dependencies.nowUTC().Format(time.RFC3339Nano),
 
-		ConfigFile:       filepath.ToSlash(filepath.Clean(v.Wave.ConfigFile())),
-		DistDir:          filepath.ToSlash(filepath.Clean(v.Wave.DistDir())),
-		StaticPrivateOut: filepath.ToSlash(filepath.Clean(v.Wave.StaticPrivateOutDir())),
-		StaticPublicOut:  filepath.ToSlash(filepath.Clean(v.Wave.StaticPublicOutDir())),
+		ConfigFile: filepath.ToSlash(filepath.Clean(v.Wave.ConfigFile())),
+		DistDir:    filepath.ToSlash(filepath.Clean(v.Wave.DistDir())),
+		StaticPrivateOut: filepath.ToSlash(
+			filepath.Clean(v.Wave.StaticPrivateOutDir()),
+		),
+		StaticPublicOut: filepath.ToSlash(
+			filepath.Clean(v.Wave.StaticPublicOutDir()),
+		),
 		MainBuildEntry:   v.Config.MainBuildEntry,
 		ClientEntry:      v.Config.ClientEntry,
 		UIVariant:        v.Config.UIVariant,
@@ -177,16 +209,14 @@ func (executor buildDiagnosticsExecutor) collectBuildDiagnostics(
 		CurrentManifest:  v.RouteManifestFile(),
 		CurrentClientOut: v.ClientEntryOut(),
 
-		ClientRouteDefinitionPatterns: normalizeRouteDefinitionPatternsInInputOrder(
-			v.Config.ClientRouteDefinitionPatterns,
-		),
-		ServerRouteDefinitionPatterns: normalizeRouteDefinitionPatternsInInputOrder(
-			v.Config.ServerRouteDefinitionPatterns,
-		),
-		ResolvedClientRouteFiles: resolvedClientRouteFiles,
-		ResolvedServerRouteFiles: resolvedServerRouteFiles,
+		ClientRouteDefinitionPatterns: normalizedClientRouteDefinitionPatterns,
+		ServerRouteDefinitionPatterns: normalizedServerRouteDefinitionPatterns,
+		ResolvedClientRouteFiles:      resolvedClientRouteFiles,
+		ResolvedServerRouteFiles:      resolvedServerRouteFiles,
 
-		DiscoveredRegistrarCacheKey:        executor.dependencies.discoveredRegistrarCacheKey(v),
+		DiscoveredRegistrarCacheKey: executor.dependencies.discoveredRegistrarCacheKey(
+			v,
+		),
 		DiscoveredRegistrarCacheEntryCount: cacheEntryCount,
 		DiscoveredRegistrarCacheMaxEntries: cacheMaxEntries,
 	}, nil

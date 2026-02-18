@@ -41,7 +41,10 @@ func injectDefaultWatchPatternsInConfig(
 	appendMissingFrameworkWatchPatterns(cfg, patterns)
 
 	if v.Config.TSGenOutDir != "" {
-		injectGeneratedOutputPathsForDefaultWatchPatterns(cfg, v.Config.TSGenOutDir)
+		injectGeneratedOutputPathsForDefaultWatchPatterns(
+			cfg,
+			v.Config.TSGenOutDir,
+		)
 	}
 }
 
@@ -50,10 +53,16 @@ func appendMissingFrameworkWatchPatterns(
 	defaultPatterns []wave.WatchedFile,
 ) {
 	for _, defaultPattern := range defaultPatterns {
-		if hasFrameworkWatchPattern(cfg.FrameworkWatchPatterns, defaultPattern.Pattern) {
+		if hasFrameworkWatchPattern(
+			cfg.FrameworkWatchPatterns,
+			defaultPattern.Pattern,
+		) {
 			continue
 		}
-		cfg.FrameworkWatchPatterns = append(cfg.FrameworkWatchPatterns, defaultPattern)
+		cfg.FrameworkWatchPatterns = append(
+			cfg.FrameworkWatchPatterns,
+			defaultPattern,
+		)
 	}
 }
 
@@ -85,15 +94,24 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 }
 
 func routeDefinitionWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
-	normalizedRouteDefinitionPatterns := normalizeRouteDefinitionPatternsInInputOrder(
+	normalizedRouteDefinitionPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ClientRouteDefinitionPatterns,
 	)
+	if err != nil {
+		panic(
+			fmt.Sprintf("normalize client route definition patterns: %v", err),
+		)
+	}
 	if len(normalizedRouteDefinitionPatterns) == 0 {
 		return nil
 	}
 
 	onChangeCallback := routeDefinitionsOnChangeCallback(v)
-	watchPatterns := make([]wave.WatchedFile, 0, len(normalizedRouteDefinitionPatterns))
+	watchPatterns := make(
+		[]wave.WatchedFile,
+		0,
+		len(normalizedRouteDefinitionPatterns),
+	)
 	for _, routeDefinitionPattern := range normalizedRouteDefinitionPatterns {
 		watchPatterns = append(
 			watchPatterns,
@@ -157,7 +175,9 @@ func goFilesWatchPattern() wave.WatchedFile {
 	}
 }
 
-func routeDefinitionsOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
+func routeDefinitionsOnChangeCallback(
+	v *vormaruntime.Vorma,
+) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return routeDefinitionsOnChangeCallbackWithReloadActionResolver(
 		v,
 		getReloadActionForEndpointWithFallback,
@@ -178,7 +198,9 @@ func routeDefinitionsOnChangeCallbackWithReloadActionResolver(
 	)
 }
 
-func htmlTemplateOnChangeCallback(v *vormaruntime.Vorma) func(*wave.HookContext) (*wave.RefreshAction, error) {
+func htmlTemplateOnChangeCallback(
+	v *vormaruntime.Vorma,
+) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return htmlTemplateOnChangeCallbackWithReloadActionResolver(
 		v,
 		getReloadActionForEndpointWithFallback,
@@ -276,7 +298,10 @@ func appendMissingFrameworkIgnoredPatterns(
 		if hasString(cfg.FrameworkIgnoredPatterns, defaultIgnoredPattern) {
 			continue
 		}
-		cfg.FrameworkIgnoredPatterns = append(cfg.FrameworkIgnoredPatterns, defaultIgnoredPattern)
+		cfg.FrameworkIgnoredPatterns = append(
+			cfg.FrameworkIgnoredPatterns,
+			defaultIgnoredPattern,
+		)
 	}
 }
 

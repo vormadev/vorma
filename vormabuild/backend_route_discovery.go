@@ -155,7 +155,9 @@ func parseBackendLoaderPatterns(v *vormaruntime.Vorma) ([]string, error) {
 func (executor backendRouteDiscoveryExecutor) parseBackendLoaderPatterns(
 	v *vormaruntime.Vorma,
 ) ([]string, error) {
-	serverRouteDefinitionFiles, err := executor.resolveServerRouteDefinitionFiles(v)
+	serverRouteDefinitionFiles, err := executor.resolveServerRouteDefinitionFiles(
+		v,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +206,9 @@ func (executor backendRouteDiscoveryExecutor) parseServerRouteFilesIntoPackageAn
 	analysesByPackageKey := map[string]*backendRoutePackageAnalysis{}
 
 	for _, serverRouteDefinitionFile := range serverRouteDefinitionFiles {
-		absoluteRouteDefinitionFile, err := filepath.Abs(serverRouteDefinitionFile)
+		absoluteRouteDefinitionFile, err := filepath.Abs(
+			serverRouteDefinitionFile,
+		)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"resolve absolute server route definition file %q: %w",
@@ -235,10 +239,12 @@ func (executor backendRouteDiscoveryExecutor) parseServerRouteFilesIntoPackageAn
 				localFunctionsByName:        map[string][]*localFunctionDeclaration{},
 				localFunctionsByObject:      map[*ast.Object]*localFunctionDeclaration{},
 				packageLevelIdentifierNames: map[string]struct{}{},
-				packageDir:                  filepath.ToSlash(filepath.Dir(parsedServerFile.path)),
-				packageName:                 parsedServerFile.parsedAST.Name.Name,
-				filesByPath:                 map[string]*parsedServerRouteFile{},
-				dependencies:                executor.dependencies,
+				packageDir: filepath.ToSlash(
+					filepath.Dir(parsedServerFile.path),
+				),
+				packageName:  parsedServerFile.parsedAST.Name.Name,
+				filesByPath:  map[string]*parsedServerRouteFile{},
+				dependencies: executor.dependencies,
 			}
 			analysesByPackageKey[packageKey] = packageAnalysis
 		}
@@ -269,7 +275,9 @@ func parseServerRouteFileMetadata(
 	parsedAST *ast.File,
 ) *parsedServerRouteFile {
 	parsedServerFile := &parsedServerRouteFile{
-		path:           filepath.ToSlash(filepath.Clean(serverRouteDefinitionFile)),
+		path: filepath.ToSlash(
+			filepath.Clean(serverRouteDefinitionFile),
+		),
 		parsedAST:      parsedAST,
 		importAliases:  map[string]string{},
 		dotImportPaths: map[string]struct{}{},
@@ -305,7 +313,9 @@ func parseServerRouteFileMetadata(
 func deriveServerRoutePackageAnalysisKey(
 	parsedServerFile *parsedServerRouteFile,
 ) string {
-	return filepath.ToSlash(filepath.Dir(parsedServerFile.path)) + "|" + parsedServerFile.parsedAST.Name.Name
+	return filepath.ToSlash(
+		filepath.Dir(parsedServerFile.path),
+	) + "|" + parsedServerFile.parsedAST.Name.Name
 }
 
 func (analysis *backendRoutePackageAnalysis) initialize() error {
@@ -335,7 +345,9 @@ func (analysis *backendRoutePackageAnalysis) initialize() error {
 
 	for _, parsedServerFile := range analysis.files {
 		for _, declaration := range parsedServerFile.parsedAST.Decls {
-			analysis.collectPackageLevelIdentifierNamesFromDeclaration(declaration)
+			analysis.collectPackageLevelIdentifierNamesFromDeclaration(
+				declaration,
+			)
 
 			functionDeclaration, isFunctionDeclaration := declaration.(*ast.FuncDecl)
 			if !isFunctionDeclaration || functionDeclaration.Recv != nil {
@@ -357,7 +369,9 @@ func (analysis *backendRoutePackageAnalysis) initialize() error {
 		}
 	}
 
-	analysis.functionScopeRanges = collectFunctionScopeRangesFromParsedFiles(analysis.files)
+	analysis.functionScopeRanges = collectFunctionScopeRangesFromParsedFiles(
+		analysis.files,
+	)
 
 	return nil
 }
@@ -384,10 +398,13 @@ func (analysis *backendRoutePackageAnalysis) packageContainsRouteRegistrationHin
 			continue
 		}
 		entryName := packageDirEntry.Name()
-		if filepath.Ext(entryName) != ".go" || strings.HasSuffix(entryName, "_test.go") {
+		if filepath.Ext(entryName) != ".go" ||
+			strings.HasSuffix(entryName, "_test.go") {
 			continue
 		}
-		entryFilePath := filepath.ToSlash(filepath.Clean(filepath.Join(analysis.packageDir, entryName)))
+		entryFilePath := filepath.ToSlash(
+			filepath.Clean(filepath.Join(analysis.packageDir, entryName)),
+		)
 		entryFileBytes, readErr := analysis.dependencies.readFile(entryFilePath)
 		if readErr != nil {
 			return false, fmt.Errorf(
@@ -448,7 +465,10 @@ func (analysis *backendRoutePackageAnalysis) expandAndFilterFilesForCompiledPack
 		if err != nil {
 			return err
 		}
-		parsedServerFile := parseServerRouteFileMetadata(compiledFilePath, parsedAST)
+		parsedServerFile := parseServerRouteFileMetadata(
+			compiledFilePath,
+			parsedAST,
+		)
 		analysis.files = append(analysis.files, parsedServerFile)
 		analysis.filesByPath[parsedServerFile.path] = parsedServerFile
 	}
@@ -457,7 +477,9 @@ func (analysis *backendRoutePackageAnalysis) expandAndFilterFilesForCompiledPack
 }
 
 func (analysis *backendRoutePackageAnalysis) resolveCompiledFilePathSetForPackageDir() (map[string]struct{}, error) {
-	importedPackage, err := analysis.dependencies.importGoPackageDir(analysis.packageDir)
+	importedPackage, err := analysis.dependencies.importGoPackageDir(
+		analysis.packageDir,
+	)
 	if err != nil {
 		if _, isNoGoError := err.(*gobuild.NoGoError); isNoGoError {
 			return map[string]struct{}{}, nil
@@ -473,7 +495,9 @@ func (analysis *backendRoutePackageAnalysis) resolveCompiledFilePathSetForPackag
 	compiledGoFiles := append([]string{}, importedPackage.GoFiles...)
 	compiledGoFiles = append(compiledGoFiles, importedPackage.CgoFiles...)
 	for _, compiledGoFile := range compiledGoFiles {
-		compiledFilePath := filepath.ToSlash(filepath.Clean(filepath.Join(importedPackage.Dir, compiledGoFile)))
+		compiledFilePath := filepath.ToSlash(
+			filepath.Clean(filepath.Join(importedPackage.Dir, compiledGoFile)),
+		)
 		compiledFilePathSet[compiledFilePath] = struct{}{}
 	}
 	return compiledFilePathSet, nil
@@ -515,7 +539,8 @@ func (analysis *backendRoutePackageAnalysis) initializeGoTypesInfo() error {
 }
 
 func (analysis *backendRoutePackageAnalysis) ensureGoTypesInfoInitialized() error {
-	if analysis.goTypesInfo != nil || analysis.goTypesInfoInitializationAttempted {
+	if analysis.goTypesInfo != nil ||
+		analysis.goTypesInfoInitializationAttempted {
 		return nil
 	}
 	analysis.goTypesInfoInitializationAttempted = true
@@ -573,40 +598,46 @@ func collectFunctionScopeRangesFromParsedFiles(
 ) []tokenPosRange {
 	functionScopeRanges := make([]tokenPosRange, 0)
 	for _, parsedServerFile := range parsedServerFiles {
-		ast.Inspect(parsedServerFile.parsedAST, func(currentNode ast.Node) bool {
-			if currentNode == nil {
+		ast.Inspect(
+			parsedServerFile.parsedAST,
+			func(currentNode ast.Node) bool {
+				if currentNode == nil {
+					return true
+				}
+				switch typedNode := currentNode.(type) {
+				case *ast.FuncDecl:
+					if typedNode.Body == nil {
+						return true
+					}
+					functionScopeRanges = append(functionScopeRanges, tokenPosRange{
+						start: typedNode.Body.Pos(),
+						end:   typedNode.Body.End(),
+					})
+				case *ast.FuncLit:
+					if typedNode.Body == nil {
+						return true
+					}
+					functionScopeRanges = append(functionScopeRanges, tokenPosRange{
+						start: typedNode.Body.Pos(),
+						end:   typedNode.Body.End(),
+					})
+				}
 				return true
-			}
-			switch typedNode := currentNode.(type) {
-			case *ast.FuncDecl:
-				if typedNode.Body == nil {
-					return true
-				}
-				functionScopeRanges = append(functionScopeRanges, tokenPosRange{
-					start: typedNode.Body.Pos(),
-					end:   typedNode.Body.End(),
-				})
-			case *ast.FuncLit:
-				if typedNode.Body == nil {
-					return true
-				}
-				functionScopeRanges = append(functionScopeRanges, tokenPosRange{
-					start: typedNode.Body.Pos(),
-					end:   typedNode.Body.End(),
-				})
-			}
-			return true
-		})
+			},
+		)
 	}
 	return functionScopeRanges
 }
 
-func (analysis *backendRoutePackageAnalysis) isPositionInFunctionScope(position token.Pos) bool {
+func (analysis *backendRoutePackageAnalysis) isPositionInFunctionScope(
+	position token.Pos,
+) bool {
 	if position == token.NoPos {
 		return false
 	}
 	for _, functionScopeRange := range analysis.functionScopeRanges {
-		if position >= functionScopeRange.start && position <= functionScopeRange.end {
+		if position >= functionScopeRange.start &&
+			position <= functionScopeRange.end {
 			return true
 		}
 	}
@@ -614,7 +645,11 @@ func (analysis *backendRoutePackageAnalysis) isPositionInFunctionScope(position 
 }
 
 func (analysis *backendRoutePackageAnalysis) discoveryRootFiles() []*parsedServerRouteFile {
-	rootFiles := make([]*parsedServerRouteFile, 0, len(analysis.rootFilePathSet))
+	rootFiles := make(
+		[]*parsedServerRouteFile,
+		0,
+		len(analysis.rootFilePathSet),
+	)
 	for _, parsedServerFile := range analysis.files {
 		if _, isRootFile := analysis.rootFilePathSet[parsedServerFile.path]; !isRootFile {
 			continue
@@ -888,7 +923,9 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalRouteRegistrationCall
 		return nil, false, nil
 	}
 
-	importPath, functionName, hasGoTypesIdentity := analysis.resolveGoTypesFunctionIdentityForCall(call)
+	importPath, functionName, hasGoTypesIdentity := analysis.resolveGoTypesFunctionIdentityForCall(
+		call,
+	)
 	if !hasGoTypesIdentity {
 		return nil, false, nil
 	}
@@ -927,7 +964,9 @@ func (analysis *backendRoutePackageAnalysis) resolveGoTypesFunctionIdentityForCa
 	}
 }
 
-func qualifiedGoTypesObjectIdentity(functionObject types.Object) (string, string, bool) {
+func qualifiedGoTypesObjectIdentity(
+	functionObject types.Object,
+) (string, string, bool) {
 	if functionObject == nil {
 		return "", "", false
 	}
@@ -1000,9 +1039,21 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaLoaderRegistrati
 		)
 	}
 
-	appExpression := resolveExpressionWithBindingsForDiscoveredRegistration(call.Args[0], bindings, 0)
-	handlerExpression := resolveExpressionWithBindingsForDiscoveredRegistration(call.Args[2], bindings, 0)
-	decorateCtxExpression := resolveExpressionWithBindingsForDiscoveredRegistration(call.Args[3], bindings, 0)
+	appExpression := resolveExpressionWithBindingsForDiscoveredRegistration(
+		call.Args[0],
+		bindings,
+		0,
+	)
+	handlerExpression := resolveExpressionWithBindingsForDiscoveredRegistration(
+		call.Args[2],
+		bindings,
+		0,
+	)
+	decorateCtxExpression := resolveExpressionWithBindingsForDiscoveredRegistration(
+		call.Args[3],
+		bindings,
+		0,
+	)
 
 	if err := analysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
 		appExpression,
@@ -1081,9 +1132,21 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalVormaActionRegistrati
 		)
 	}
 
-	appExpression := resolveExpressionWithBindingsForDiscoveredRegistration(call.Args[0], bindings, 0)
-	handlerExpression := resolveExpressionWithBindingsForDiscoveredRegistration(call.Args[3], bindings, 0)
-	decorateCtxExpression := resolveExpressionWithBindingsForDiscoveredRegistration(call.Args[4], bindings, 0)
+	appExpression := resolveExpressionWithBindingsForDiscoveredRegistration(
+		call.Args[0],
+		bindings,
+		0,
+	)
+	handlerExpression := resolveExpressionWithBindingsForDiscoveredRegistration(
+		call.Args[3],
+		bindings,
+		0,
+	)
+	decorateCtxExpression := resolveExpressionWithBindingsForDiscoveredRegistration(
+		call.Args[4],
+		bindings,
+		0,
+	)
 
 	if err := analysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
 		appExpression,
@@ -1251,7 +1314,10 @@ func bindCallArgumentsToParameterNames(
 	parentBindings *expressionBindings,
 ) *expressionBindings {
 	if functionType == nil || functionType.Params == nil {
-		return &expressionBindings{values: map[string]ast.Expr{}, parent: parentBindings}
+		return &expressionBindings{
+			values: map[string]ast.Expr{},
+			parent: parentBindings,
+		}
 	}
 
 	parameterNames := make([]string, 0)
@@ -1487,7 +1553,8 @@ func (analysis *backendRoutePackageAnalysis) validateDiscoveredRegistrationExpre
 		}
 		// Symbols declared inside the emitted expression itself are safe.
 		if expressionStart != token.NoPos && expressionEnd != token.NoPos {
-			if identifierDefinitionPosition >= expressionStart && identifierDefinitionPosition <= expressionEnd {
+			if identifierDefinitionPosition >= expressionStart &&
+				identifierDefinitionPosition <= expressionEnd {
 				return true
 			}
 		}
@@ -1519,7 +1586,8 @@ func (bindings *expressionBindings) resolveBoundExpression(
 		if !hasBoundExpression {
 			continue
 		}
-		if boundIdentifier, isBoundIdentifier := boundExpression.(*ast.Ident); isBoundIdentifier && boundIdentifier.Name == expressionName {
+		if boundIdentifier, isBoundIdentifier := boundExpression.(*ast.Ident); isBoundIdentifier &&
+			boundIdentifier.Name == expressionName {
 			continue
 		}
 		return boundExpression, true
@@ -1539,11 +1607,20 @@ func (analysis *backendRoutePackageAnalysis) withPositionError(
 	if lineNumber <= 0 {
 		lineNumber = 1
 	}
-	return fmt.Errorf("%s:%d: %w", filepath.ToSlash(filePosition.Filename), lineNumber, err)
+	return fmt.Errorf(
+		"%s:%d: %w",
+		filepath.ToSlash(filePosition.Filename),
+		lineNumber,
+		err,
+	)
 }
 
-func resolveServerRouteDefinitionFiles(v *vormaruntime.Vorma) ([]string, error) {
-	return defaultBackendRouteDiscoveryExecutor.resolveServerRouteDefinitionFiles(v)
+func resolveServerRouteDefinitionFiles(
+	v *vormaruntime.Vorma,
+) ([]string, error) {
+	return defaultBackendRouteDiscoveryExecutor.resolveServerRouteDefinitionFiles(
+		v,
+	)
 }
 
 func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionFiles(
@@ -1556,16 +1633,24 @@ func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionFiles(
 		return nil, fmt.Errorf("Vorma config is required")
 	}
 
-	normalizedPatterns := normalizeRouteDefinitionPatternsInInputOrder(
+	normalizedPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ServerRouteDefinitionPatterns,
 	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"normalize server route definition patterns: %w",
+			err,
+		)
+	}
 	if len(normalizedPatterns) == 0 {
 		return nil, nil
 	}
 
 	matchedFilesByPath := map[string]struct{}{}
 	for _, routeDefinitionPattern := range normalizedPatterns {
-		matchedFiles, err := executor.resolveServerRouteDefinitionPattern(routeDefinitionPattern)
+		matchedFiles, err := executor.resolveServerRouteDefinitionPattern(
+			routeDefinitionPattern,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -1619,7 +1704,9 @@ func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionPatter
 		return []string{routeDefinitionPattern}, nil
 	}
 
-	matchedPaths, err := executor.dependencies.expandPattern(routeDefinitionPattern)
+	matchedPaths, err := executor.dependencies.expandPattern(
+		routeDefinitionPattern,
+	)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"expand server route definition pattern %q: %w",
@@ -1680,7 +1767,9 @@ func parseServerRouteDefinitionFileWithDependencies(
 	return parsedFile, nil
 }
 
-func collectPackageStringConstExpressions(parsedGoFiles []*ast.File) map[string]ast.Expr {
+func collectPackageStringConstExpressions(
+	parsedGoFiles []*ast.File,
+) map[string]ast.Expr {
 	stringConstExpressions := map[string]ast.Expr{}
 	for _, parsedFile := range parsedGoFiles {
 		for _, declaration := range parsedFile.Decls {
@@ -1729,7 +1818,9 @@ func newGoStringConstResolver(
 	}
 }
 
-func (resolver *goStringConstResolver) Resolve(expression ast.Expr) (string, bool) {
+func (resolver *goStringConstResolver) Resolve(
+	expression ast.Expr,
+) (string, bool) {
 	switch typedExpression := expression.(type) {
 	case *ast.BasicLit:
 		if typedExpression.Kind != token.STRING {

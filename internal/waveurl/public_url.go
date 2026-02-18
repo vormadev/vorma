@@ -7,6 +7,8 @@ import (
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
+// ResolveFromReferencedPath resolves a referenced asset path under publicPathPrefix.
+// It trims, normalizes, and rejects empty/effectively-empty referenced paths.
 func ResolveFromReferencedPath(
 	publicPathPrefix string,
 	referencedPath string,

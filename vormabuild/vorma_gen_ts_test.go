@@ -3,6 +3,7 @@ package vormabuild
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -399,7 +400,7 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 	}
 }
 
-func TestBuildViteIgnoredPatterns_TrimsAndDeduplicatesRouteDefinitionPatterns(
+func TestBuildViteIgnoredPatterns_PanicsForInvalidRouteDefinitionPatterns(
 	t *testing.T,
 ) {
 	fixture := newBuildTestFixture(t, nil)
@@ -411,39 +412,26 @@ func TestBuildViteIgnoredPatterns_TrimsAndDeduplicatesRouteDefinitionPatterns(
 		"\nfrontend/src/routes/extra.vorma.routes.ts\n",
 	}
 
-	ignoredPatterns := buildViteIgnoredPatterns(app)
-	corePattern := filepath.ToSlash(
-		path.Join("**", "frontend/src/routes/core.vorma.routes.ts"),
-	)
-	extraPattern := filepath.ToSlash(
-		path.Join("**", "frontend/src/routes/extra.vorma.routes.ts"),
-	)
-
-	coreCount := 0
-	extraCount := 0
-	for _, ignoredPattern := range ignoredPatterns {
-		if filepath.ToSlash(ignoredPattern) == corePattern {
-			coreCount++
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal(
+				"expected panic for invalid client route definition patterns",
+			)
 		}
-		if filepath.ToSlash(ignoredPattern) == extraPattern {
-			extraCount++
+		recoveredMessage := fmt.Sprint(recovered)
+		if !strings.Contains(
+			recoveredMessage,
+			"must not contain surrounding whitespace",
+		) {
+			t.Fatalf(
+				"panic = %q, expected surrounding-whitespace validation message",
+				recoveredMessage,
+			)
 		}
-	}
+	}()
 
-	if coreCount != 1 {
-		t.Fatalf(
-			"core pattern count = %d, want 1 (%#v)",
-			coreCount,
-			ignoredPatterns,
-		)
-	}
-	if extraCount != 1 {
-		t.Fatalf(
-			"extra pattern count = %d, want 1 (%#v)",
-			extraCount,
-			ignoredPatterns,
-		)
-	}
+	_ = buildViteIgnoredPatterns(app)
 }
 
 func TestFormatConfigFilePatternForViteIgnore(t *testing.T) {

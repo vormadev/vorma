@@ -10,12 +10,14 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
+// CLIOptions controls Wave CLI execution behavior.
 type CLIOptions struct {
 	IsDev    bool
 	HookOnly bool
 	NoBinary bool
 }
 
+// ParseCLIOptions parses Wave build/dev CLI flags.
 func ParseCLIOptions(commandLineArgs []string) (CLIOptions, error) {
 	flagSet := flag.NewFlagSet("wave", flag.ContinueOnError)
 
@@ -34,6 +36,8 @@ func ParseCLIOptions(commandLineArgs []string) (CLIOptions, error) {
 	}, nil
 }
 
+// BuildWaveWithHookFromArgs runs Wave build/dev flow from explicit args and an
+// optional custom hook.
 func BuildWaveWithHookFromArgs(
 	cfg *wave.ParsedConfig,
 	log *slog.Logger,
@@ -48,6 +52,8 @@ func BuildWaveWithHookFromArgs(
 	return BuildWaveWithHookOptions(cfg, log, cliOptions, hook)
 }
 
+// BuildWaveWithHookOptions runs Wave build/dev flow using already-parsed
+// options.
 func BuildWaveWithHookOptions(
 	cfg *wave.ParsedConfig,
 	log *slog.Logger,

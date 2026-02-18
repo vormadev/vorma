@@ -8,6 +8,8 @@ import (
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
+// Sort partitions hook entries by execution timing for efficient watch
+// pipeline planning.
 func (wf *WatchedFile) Sort() {
 	if wf.SortedHooks != nil {
 		return
@@ -19,9 +21,15 @@ func (wf *WatchedFile) Sort() {
 		case OnChangeStrategyPost:
 			wf.SortedHooks.Post = append(wf.SortedHooks.Post, onChangeHook)
 		case OnChangeStrategyConcurrent:
-			wf.SortedHooks.Concurrent = append(wf.SortedHooks.Concurrent, onChangeHook)
+			wf.SortedHooks.Concurrent = append(
+				wf.SortedHooks.Concurrent,
+				onChangeHook,
+			)
 		case OnChangeStrategyConcurrentNoWait:
-			wf.SortedHooks.ConcurrentNoWait = append(wf.SortedHooks.ConcurrentNoWait, onChangeHook)
+			wf.SortedHooks.ConcurrentNoWait = append(
+				wf.SortedHooks.ConcurrentNoWait,
+				onChangeHook,
+			)
 		default:
 			wf.SortedHooks.Pre = append(wf.SortedHooks.Pre, onChangeHook)
 		}
@@ -49,7 +57,14 @@ func (refreshAction RefreshAction) IsZero() bool {
 		!refreshAction.RecompileGo
 }
 
-func (fileMap FileMap) Lookup(original string, prefix string) (url string, found bool) {
+// Lookup resolves a source public asset path to its built public URL.
+//
+// It supports both raw lookup keys and keys that already include the configured
+// public path prefix.
+func (fileMap FileMap) Lookup(
+	original string,
+	prefix string,
+) (url string, found bool) {
 	normalizedOriginal := normalizePublicAssetPathForLookup(original)
 	if entry, ok := fileMap[normalizedOriginal]; ok {
 		return joinPublicURLPrefixAndPath(prefix, entry.DistName), true
@@ -101,7 +116,9 @@ func trimConfiguredPublicPathPrefixFromLookupPath(
 	return normalizedLookupPath
 }
 
-func normalizeConfiguredPublicPathPrefixForLookup(publicPathPrefix string) string {
+func normalizeConfiguredPublicPathPrefixForLookup(
+	publicPathPrefix string,
+) string {
 	return strings.Trim(path.Clean("/"+publicPathPrefix), "/")
 }
 
@@ -112,6 +129,8 @@ func joinPublicURLPrefixAndPath(
 	return matcher.EnsureLeadingSlash(path.Join(publicPathPrefix, publicPath))
 }
 
+// PublicPathPrefix returns the normalized configured public path prefix.
+// The root prefix is represented as "/".
 func (parsedConfig *ParsedConfig) PublicPathPrefix() string {
 	prefix := parsedConfig.Core.PublicPathPrefix
 	if prefix == "" || prefix == "/" {
@@ -120,6 +139,8 @@ func (parsedConfig *ParsedConfig) PublicPathPrefix() string {
 	return matcher.EnsureLeadingAndTrailingSlash(prefix)
 }
 
+// ViteManifestPath returns the expected private output path for the Vite
+// manifest produced during builds.
 func (parsedConfig *ParsedConfig) ViteManifestPath() string {
 	return filepath.Join(
 		parsedConfig.Dist.StaticPrivate(),
@@ -128,6 +149,7 @@ func (parsedConfig *ParsedConfig) ViteManifestPath() string {
 	)
 }
 
+// WatchRoot returns the normalized watch root path used by dev tooling.
 func (parsedConfig *ParsedConfig) WatchRoot() string {
 	if parsedConfig.Watch != nil && parsedConfig.Watch.WatchRoot != "" {
 		return filepath.Clean(parsedConfig.Watch.WatchRoot)
@@ -135,21 +157,27 @@ func (parsedConfig *ParsedConfig) WatchRoot() string {
 	return "."
 }
 
+// HealthcheckEndpoint returns the app healthcheck endpoint used by dev
+// readiness probes.
 func (parsedConfig *ParsedConfig) HealthcheckEndpoint() string {
-	if parsedConfig.Watch != nil && parsedConfig.Watch.HealthcheckEndpoint != "" {
+	if parsedConfig.Watch != nil &&
+		parsedConfig.Watch.HealthcheckEndpoint != "" {
 		return parsedConfig.Watch.HealthcheckEndpoint
 	}
 	return "/"
 }
 
+// UsingBrowser reports whether browser runtime integration is enabled.
 func (parsedConfig *ParsedConfig) UsingBrowser() bool {
 	return !parsedConfig.Core.ServerOnlyMode
 }
 
+// UsingVite reports whether Vite integration is configured.
 func (parsedConfig *ParsedConfig) UsingVite() bool {
 	return parsedConfig.Vite != nil
 }
 
+// CriticalCSSEntry returns the normalized critical CSS entry path, if set.
 func (parsedConfig *ParsedConfig) CriticalCSSEntry() string {
 	if parsedConfig.Core.CSSEntryFiles.Critical == "" {
 		return ""
@@ -157,6 +185,8 @@ func (parsedConfig *ParsedConfig) CriticalCSSEntry() string {
 	return filepath.Clean(parsedConfig.Core.CSSEntryFiles.Critical)
 }
 
+// NonCriticalCSSEntry returns the normalized non-critical CSS entry path, if
+// set.
 func (parsedConfig *ParsedConfig) NonCriticalCSSEntry() string {
 	if parsedConfig.Core.CSSEntryFiles.NonCritical == "" {
 		return ""
@@ -164,43 +194,61 @@ func (parsedConfig *ParsedConfig) NonCriticalCSSEntry() string {
 	return filepath.Clean(parsedConfig.Core.CSSEntryFiles.NonCritical)
 }
 
+// BrowserRuntimeNamespace returns the browser global namespace used by runtime
+// integration scripts.
 func (parsedConfig *ParsedConfig) BrowserRuntimeNamespace() string {
-	if parsedConfig == nil || parsedConfig.FrameworkBrowserRuntimeNamespace == "" {
+	if parsedConfig == nil ||
+		parsedConfig.FrameworkBrowserRuntimeNamespace == "" {
 		return DefaultBrowserRuntimeNamespace
 	}
 	return parsedConfig.FrameworkBrowserRuntimeNamespace
 }
 
+// BrowserPublicURLResolverFunctionName returns the browser helper function name
+// used for resolving public asset URLs.
 func (parsedConfig *ParsedConfig) BrowserPublicURLResolverFunctionName() string {
-	if parsedConfig == nil || parsedConfig.FrameworkBrowserPublicURLResolverFunctionName == "" {
+	if parsedConfig == nil ||
+		parsedConfig.FrameworkBrowserPublicURLResolverFunctionName == "" {
 		return DefaultBrowserPublicURLResolverFunctionName
 	}
 	return parsedConfig.FrameworkBrowserPublicURLResolverFunctionName
 }
 
+// BrowserRevalidateFunctionName returns the browser helper function name used
+// for route revalidation.
 func (parsedConfig *ParsedConfig) BrowserRevalidateFunctionName() string {
-	if parsedConfig == nil || parsedConfig.FrameworkBrowserRevalidateFunctionName == "" {
+	if parsedConfig == nil ||
+		parsedConfig.FrameworkBrowserRevalidateFunctionName == "" {
 		return DefaultBrowserRevalidateFunctionName
 	}
 	return parsedConfig.FrameworkBrowserRevalidateFunctionName
 }
 
+// RefreshRebuildingOverlayElementID returns the DOM element id used for the
+// rebuild overlay during dev refresh cycles.
 func (parsedConfig *ParsedConfig) RefreshRebuildingOverlayElementID() string {
-	if parsedConfig == nil || parsedConfig.FrameworkRefreshRebuildingOverlayElementID == "" {
+	if parsedConfig == nil ||
+		parsedConfig.FrameworkRefreshRebuildingOverlayElementID == "" {
 		return DefaultRefreshRebuildingOverlayElementID
 	}
 	return parsedConfig.FrameworkRefreshRebuildingOverlayElementID
 }
 
+// CriticalCSSStyleElementID returns the DOM element id used for injected
+// critical CSS.
 func (parsedConfig *ParsedConfig) CriticalCSSStyleElementID() string {
-	if parsedConfig == nil || parsedConfig.FrameworkCriticalCSSStyleElementID == "" {
+	if parsedConfig == nil ||
+		parsedConfig.FrameworkCriticalCSSStyleElementID == "" {
 		return DefaultCriticalCSSStyleElementID
 	}
 	return parsedConfig.FrameworkCriticalCSSStyleElementID
 }
 
+// NonCriticalCSSLinkElementID returns the DOM element id used for injected
+// non-critical stylesheet links.
 func (parsedConfig *ParsedConfig) NonCriticalCSSLinkElementID() string {
-	if parsedConfig == nil || parsedConfig.FrameworkNonCriticalCSSLinkElementID == "" {
+	if parsedConfig == nil ||
+		parsedConfig.FrameworkNonCriticalCSSLinkElementID == "" {
 		return DefaultNonCriticalCSSLinkElementID
 	}
 	return parsedConfig.FrameworkNonCriticalCSSLinkElementID

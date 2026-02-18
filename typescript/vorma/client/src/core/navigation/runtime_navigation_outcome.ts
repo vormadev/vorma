@@ -21,7 +21,7 @@ export {
 	type ProcessSuccessfulNavigationContext,
 } from "./runtime_navigation_successful_runtime.ts";
 
-export async function handleNavigationOutcome(props: {
+type HandleNavigationOutcomeProps = {
 	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
 	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
 	processSuccessfulNavigation: (
@@ -31,7 +31,14 @@ export async function handleNavigationOutcome(props: {
 	navigationProps: NavigateProps;
 	outcome: NavigationOutcome;
 	expectedOperationID: number | undefined;
-}): Promise<{ didNavigate: boolean }> {
+};
+
+/**
+ * Applies a completed navigation outcome and returns whether navigation committed.
+ */
+export async function handleNavigationOutcome(
+	props: HandleNavigationOutcomeProps,
+): Promise<{ didNavigate: boolean }> {
 	const internalResult =
 		await handleNavigationOutcomeWithInternalResult(props);
 
@@ -40,17 +47,12 @@ export async function handleNavigationOutcome(props: {
 	});
 }
 
-export async function handleNavigationOutcomeWithInternalResult(props: {
-	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
-	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
-	processSuccessfulNavigation: (
-		outcome: Extract<NavigationOutcome, { type: "success" }>,
-		entry: NavigationEntry,
-	) => Promise<void>;
-	navigationProps: NavigateProps;
-	outcome: NavigationOutcome;
-	expectedOperationID: number | undefined;
-}): Promise<InternalNavigateResult> {
+/**
+ * Internal outcome handler that returns a richer result for runtime state machines.
+ */
+export async function handleNavigationOutcomeWithInternalResult(
+	props: HandleNavigationOutcomeProps,
+): Promise<InternalNavigateResult> {
 	const {
 		findNavigationEntry,
 		deleteNavigation,
@@ -82,11 +84,8 @@ export async function handleNavigationOutcomeWithInternalResult(props: {
 async function executeNavigationOutcomeExecutionPlan(props: {
 	executionPlan: NavigationOutcomeExecutionPlan;
 	targetUrl: string;
-	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
-	processSuccessfulNavigation: (
-		outcome: Extract<NavigationOutcome, { type: "success" }>,
-		entry: NavigationEntry,
-	) => Promise<void>;
+	deleteNavigation: HandleNavigationOutcomeProps["deleteNavigation"];
+	processSuccessfulNavigation: HandleNavigationOutcomeProps["processSuccessfulNavigation"];
 	navigationProps: NavigateProps;
 }): Promise<InternalNavigateResult> {
 	switch (props.executionPlan.type) {

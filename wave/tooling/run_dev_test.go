@@ -53,6 +53,8 @@ func TestRunDev_ReturnsLockHeldErrorWhenProjectIsAlreadyLocked(t *testing.T) {
 }
 
 func TestRunDev_WithNilLoggerReleasesLockWhenRunReturnsError(t *testing.T) {
+	mustConfigureAndGetWaveAppPortForToolingTests(t)
+
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
@@ -68,7 +70,10 @@ func TestRunDev_WithNilLoggerReleasesLockWhenRunReturnsError(t *testing.T) {
 
 	lock := newDevLock(cfg.Dist.Static())
 	if lockErr := lock.acquire(); lockErr != nil {
-		t.Fatalf("expected lock to be released after RunDev error, acquire failed: %v", lockErr)
+		t.Fatalf(
+			"expected lock to be released after RunDev error, acquire failed: %v",
+			lockErr,
+		)
 	}
 	defer lock.release()
 }

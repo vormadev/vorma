@@ -1,160 +1,48 @@
-import { batch, computed, signal } from "@preact/signals";
+import { computed, signal } from "@preact/signals";
 import { h, type ComponentType } from "preact";
 import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
 	applyScrollState,
-	areRouteOutletBranchInputsEqualByIdentity,
-	areRouteOutletLocationsEqual,
-	buildCurrentRouteOutletLocationState,
-	buildInitialRouteOutletNavigationState,
-	buildNextRouteOutletNavigationState,
-	buildRouteOutletBranchInputState,
+	buildInitialRouteOutletStoreState,
+	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
 	type RouteOutletBranchInputState,
-	type RouteOutletNavigationState,
+	type RouteOutletStoreState,
 } from "vorma/client/__internal";
 
 /////////////////////////////////////////////////////////////////////
 /////// STORE
 /////////////////////////////////////////////////////////////////////
 
-type NavigationState = RouteOutletNavigationState;
+type StoreState = RouteOutletStoreState;
+
 type RouteOutletBranchInputStateValue = RouteOutletBranchInputState;
 
-const initialNavigationState = buildInitialRouteOutletNavigationState();
+const storeState = signal<StoreState>(buildInitialRouteOutletStoreState());
 
-const loadersData = signal(initialNavigationState.loadersData);
-const clientLoadersData = signal(initialNavigationState.clientLoadersData);
-const routerData = signal(initialNavigationState.routerData);
-const outermostError = signal(initialNavigationState.outermostError);
-const outermostErrorIdx = signal(initialNavigationState.outermostErrorIdx);
-const activeComponents = signal(initialNavigationState.activeComponents);
-const activeErrorBoundary = signal(initialNavigationState.activeErrorBoundary);
-const importURLs = signal(initialNavigationState.importURLs);
-const exportKeys = signal(initialNavigationState.exportKeys);
-const routeOutletBranchInputState = signal<RouteOutletBranchInputStateValue>(
-	buildRouteOutletBranchInputState(initialNavigationState),
+const loadersData = computed(() => storeState.value.navigation.loadersData);
+const clientLoadersData = computed(
+	() => storeState.value.navigation.clientLoadersData,
+);
+const routerData = computed(() => storeState.value.navigation.routerData);
+const outermostError = computed(
+	() => storeState.value.navigation.outermostError,
+);
+const routeOutletBranchInputState = computed<RouteOutletBranchInputStateValue>(
+	() => storeState.value.routeOutletBranchInputState,
 );
 
 export { clientLoadersData, loadersData, routerData };
 
-const locationState = signal(buildCurrentRouteOutletLocationState());
-export const location = computed(() => locationState.value);
+export const location = computed(() => storeState.value.location);
 
-function readNavigationSignals(): NavigationState {
-	return {
-		loadersData: loadersData.value,
-		clientLoadersData: clientLoadersData.value,
-		routerData: routerData.value,
-		outermostError: outermostError.value,
-		outermostErrorIdx: outermostErrorIdx.value,
-		activeComponents: activeComponents.value,
-		activeErrorBoundary: activeErrorBoundary.value,
-		importURLs: importURLs.value,
-		exportKeys: exportKeys.value,
-	};
-}
-
-function syncNavigationSignals(): void {
-	const previousNavigationState = readNavigationSignals();
-	const nextNavigationState = buildNextRouteOutletNavigationState(
-		previousNavigationState,
-	);
-	if (nextNavigationState === previousNavigationState) {
-		return;
-	}
-	const previousRouteOutletBranchInputState =
-		routeOutletBranchInputState.value;
-	const nextRouteOutletBranchInputStateRaw =
-		buildRouteOutletBranchInputState(nextNavigationState);
-	const nextRouteOutletBranchInputState =
-		areRouteOutletBranchInputsEqualByIdentity({
-			firstInputState: previousRouteOutletBranchInputState,
-			secondInputState: nextRouteOutletBranchInputStateRaw,
-		})
-			? previousRouteOutletBranchInputState
-			: nextRouteOutletBranchInputStateRaw;
-
-	batch(() => {
-		if (
-			nextNavigationState.loadersData !==
-			previousNavigationState.loadersData
-		) {
-			loadersData.value = nextNavigationState.loadersData;
-		}
-		if (
-			nextNavigationState.clientLoadersData !==
-			previousNavigationState.clientLoadersData
-		) {
-			clientLoadersData.value = nextNavigationState.clientLoadersData;
-		}
-		if (
-			nextNavigationState.routerData !==
-			previousNavigationState.routerData
-		) {
-			routerData.value = nextNavigationState.routerData;
-		}
-		if (
-			!Object.is(
-				nextNavigationState.outermostError,
-				previousNavigationState.outermostError,
-			)
-		) {
-			outermostError.value = nextNavigationState.outermostError;
-		}
-		if (
-			!Object.is(
-				nextNavigationState.outermostErrorIdx,
-				previousNavigationState.outermostErrorIdx,
-			)
-		) {
-			outermostErrorIdx.value = nextNavigationState.outermostErrorIdx;
-		}
-		if (
-			nextNavigationState.activeComponents !==
-			previousNavigationState.activeComponents
-		) {
-			activeComponents.value = nextNavigationState.activeComponents;
-		}
-		if (
-			!Object.is(
-				nextNavigationState.activeErrorBoundary,
-				previousNavigationState.activeErrorBoundary,
-			)
-		) {
-			activeErrorBoundary.value = nextNavigationState.activeErrorBoundary;
-		}
-		if (
-			nextNavigationState.importURLs !==
-			previousNavigationState.importURLs
-		) {
-			importURLs.value = nextNavigationState.importURLs;
-		}
-		if (
-			nextNavigationState.exportKeys !==
-			previousNavigationState.exportKeys
-		) {
-			exportKeys.value = nextNavigationState.exportKeys;
-		}
-		if (
-			nextRouteOutletBranchInputState !==
-			previousRouteOutletBranchInputState
-		) {
-			routeOutletBranchInputState.value = nextRouteOutletBranchInputState;
-		}
-	});
-}
-
-function syncLocationSignal(): void {
-	const nextLocationState = buildCurrentRouteOutletLocationState();
-	if (
-		!areRouteOutletLocationsEqual({
-			firstLocationState: locationState.value,
-			secondLocationState: nextLocationState,
-		})
-	) {
-		locationState.value = nextLocationState;
+function syncStoreState(): void {
+	const previousStoreState = storeState.value;
+	const nextStoreState =
+		buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+	if (nextStoreState !== previousStoreState) {
+		storeState.value = nextStoreState;
 	}
 }
 
@@ -167,14 +55,14 @@ function initUIListeners(): void {
 	isInited = true;
 
 	addRouteChangeListener((event) => {
-		syncNavigationSignals();
+		syncStoreState();
 		window.requestAnimationFrame(() => {
 			applyScrollState(event.detail.__scrollState);
 		});
 	});
 
 	addLocationListener(() => {
-		syncLocationSignal();
+		syncStoreState();
 	});
 }
 
@@ -205,7 +93,7 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element | null {
 		}
 		initUIListeners();
 		isInitialRootRenderRef.current = false;
-		syncNavigationSignals();
+		syncStoreState();
 	}, [idx]);
 
 	const routeOutletBranchState = buildRouteOutletBranchState({

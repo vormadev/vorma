@@ -361,6 +361,8 @@ func TestStartRefreshServer_NoOpWhenServerOnlyMode(t *testing.T) {
 func TestServerRun_BrowserModeInitWatcherFailureCleansRefreshResources(
 	t *testing.T,
 ) {
+	mustConfigureAndGetWaveAppPortForToolingTests(t)
+
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false

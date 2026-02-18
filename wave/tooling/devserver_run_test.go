@@ -16,6 +16,8 @@ import (
 )
 
 func TestServerRun_ReturnsInitWatcherErrorWhenWatchRootMissing(t *testing.T) {
+	mustConfigureAndGetWaveAppPortForToolingTests(t)
+
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
@@ -39,6 +41,8 @@ func TestServerRun_ReturnsInitWatcherErrorWhenWatchRootMissing(t *testing.T) {
 }
 
 func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
+	mustConfigureAndGetWaveAppPortForToolingTests(t)
+
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
@@ -106,6 +110,8 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
 	t *testing.T,
 ) {
+	mustConfigureAndGetWaveAppPortForToolingTests(t)
+
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
@@ -172,6 +178,8 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
 }
 
 func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
+	mustConfigureAndGetWaveAppPortForToolingTests(t)
+
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true

@@ -3,8 +3,8 @@ import {
 	createDeferred,
 	createRouteDataResponse,
 	loadClientAPI,
-	requestInputToHref,
 	registerServerDataFieldProbeLoader,
+	requestInputToHref,
 	setupContractTestSuite,
 	withUnhandledRejectionCapture,
 } from "./contract_test_harness.ts";
@@ -321,8 +321,8 @@ describe("client error and edge contracts", () => {
 		vi.spyOn(window, "fetch").mockResolvedValueOnce(
 			createRouteDataResponse({
 				matchedPatterns: [pattern],
-				importURLs: ["/client-loader-data-shape-failure.js"],
-				exportKeys: ["default"],
+				importURLs: [],
+				exportKeys: [],
 				loadersData: [],
 				hasRootData: false,
 			}),

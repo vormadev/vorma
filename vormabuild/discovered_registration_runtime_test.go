@@ -9,9 +9,14 @@ import (
 
 func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	app := vorma.NewVormaApp(
+		vorma.VormaAppConfig{
+			Wave:   fixture.app.Wave,
+			Logger: testLogger(),
+		},
+	)
 
-	if got := len(app.ActionsRouter().AllRoutes()); got != 0 {
+	if got := len(app.RegisteredActionRoutes()); got != 0 {
 		t.Fatalf("expected no pre-registered actions, got %d", got)
 	}
 
@@ -28,8 +33,10 @@ func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 	if loaderTask == nil {
 		t.Fatal("expected DefineLoaderForRegistration to return loader task")
 	}
-	if app.LoadersRouter().NestedRouter.HasTaskHandler("/no-op") {
-		t.Fatal("expected DefineLoaderForRegistration to avoid direct router registration")
+	if app.HasRegisteredLoaderTask("/no-op") {
+		t.Fatal(
+			"expected DefineLoaderForRegistration to avoid direct router registration",
+		)
 	}
 
 	_ = vormagogen.RegisterLoaderDiscoveredByBuild(
@@ -42,8 +49,10 @@ func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 			return rd
 		},
 	)
-	if !app.LoadersRouter().NestedRouter.HasTaskHandler("/registered") {
-		t.Fatal("expected RegisterLoaderDiscoveredByBuild to register nested handler")
+	if !app.HasRegisteredLoaderTask("/registered") {
+		t.Fatal(
+			"expected RegisterLoaderDiscoveredByBuild to register nested handler",
+		)
 	}
 
 	actionTask := vorma.DefineActionForRegistration(
@@ -60,8 +69,11 @@ func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 	if actionTask == nil {
 		t.Fatal("expected DefineActionForRegistration to return action task")
 	}
-	if got := len(app.ActionsRouter().AllRoutes()); got != 0 {
-		t.Fatalf("expected DefineActionForRegistration to avoid direct action registration, got %d routes", got)
+	if got := len(app.RegisteredActionRoutes()); got != 0 {
+		t.Fatalf(
+			"expected DefineActionForRegistration to avoid direct action registration, got %d routes",
+			got,
+		)
 	}
 
 	_ = vormagogen.RegisterActionDiscoveredByBuild(
@@ -75,15 +87,16 @@ func TestDiscoveredRegistrationRuntimeHelpers(t *testing.T) {
 			return rd
 		},
 	)
-	registeredActionRoutes := app.ActionsRouter().AllRoutes()
+	registeredActionRoutes := app.RegisteredActionRoutes()
 	if got := len(registeredActionRoutes); got != 1 {
 		t.Fatalf("expected one discovered action registration, got %d", got)
 	}
-	if registeredActionRoutes[0].Method() != "POST" || registeredActionRoutes[0].OriginalPattern() != "/registered-action" {
+	if registeredActionRoutes[0].Method != "POST" ||
+		registeredActionRoutes[0].Pattern != "/registered-action" {
 		t.Fatalf(
 			"unexpected registered action route: method=%q pattern=%q",
-			registeredActionRoutes[0].Method(),
-			registeredActionRoutes[0].OriginalPattern(),
+			registeredActionRoutes[0].Method,
+			registeredActionRoutes[0].Pattern,
 		)
 	}
 }

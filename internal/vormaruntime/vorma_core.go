@@ -13,13 +13,19 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
+// VormaSymbolStr is the global runtime symbol namespace used by browser
+// integration code.
 const VormaSymbolStr = "__vorma_internal__"
 
+// RouteType represents a route classification identifier.
 type RouteType = string
 
 type (
-	GetDefaultHeadElsFunc   func(r *http.Request, app *Vorma, head *headels.HeadEls) error
-	GetHeadDedupeKeysFunc   func(head *headels.HeadEls)
+	// GetDefaultHeadElsFunc fills default head elements for requests.
+	GetDefaultHeadElsFunc func(r *http.Request, app *Vorma, head *headels.HeadEls) error
+	// GetHeadDedupeKeysFunc configures head element dedupe keys.
+	GetHeadDedupeKeysFunc func(head *headels.HeadEls)
+	// GetRootTemplateDataFunc provides per-request root template data.
 	GetRootTemplateDataFunc func(r *http.Request) (map[string]any, error)
 )
 
@@ -70,54 +76,72 @@ type Vorma struct {
 	_extraTSCode string
 }
 
-// --- Public Getters (thread-safe, acquire read lock) ---
+// --- Public Getters ---
 
-func (v *Vorma) ServerAddr() string            { return v._serverAddr }
+// ServerAddr returns the configured server address.
+func (v *Vorma) ServerAddr() string {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v._serverAddr
+}
+
+// LoadersRouter and ActionsRouter return long-lived router instances.
+// These pointers are initialized once and then reused for the app lifetime.
 func (v *Vorma) LoadersRouter() *LoadersRouter { return v.loadersRouter }
+
+// ActionsRouter returns the long-lived actions router instance.
 func (v *Vorma) ActionsRouter() *ActionsRouter { return v.actionsRouter }
 
+// Paths returns a defensive copy of registered route path metadata.
 func (v *Vorma) Paths() map[string]*Path {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return clonePathsMapOrNil(v._paths)
 }
 
+// IsDevMode reports whether runtime is currently in development mode.
 func (v *Vorma) IsDevMode() bool {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._isDev
 }
 
+// BuildID returns the current build identifier.
 func (v *Vorma) BuildID() string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._buildID
 }
 
+// ClientEntryOut returns the built client entry output path.
 func (v *Vorma) ClientEntryOut() string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._clientEntryOut
 }
 
+// ClientEntryDeps returns a defensive copy of client entry dependency paths.
 func (v *Vorma) ClientEntryDeps() []string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return cloneStringSliceOrNil(v._clientEntryDeps)
 }
 
+// DepToCSSBundleMap returns a defensive copy of dep-to-css-bundle mappings.
 func (v *Vorma) DepToCSSBundleMap() map[string][]string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return cloneDepToCSSBundleMapOrNil(v._depToCSSBundleMap)
 }
 
+// RootTemplate returns the current compiled root template.
 func (v *Vorma) RootTemplate() *template.Template {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._rootTemplate
 }
 
+// RouteManifestFile returns the route manifest asset path.
 func (v *Vorma) RouteManifestFile() string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
@@ -170,35 +194,55 @@ func (v *Vorma) WithRLock(fn func(*ReadLockedVorma)) {
 
 // Vorma returns the underlying Vorma instance for accessing non-lock-protected fields.
 func (l *ReadLockedVorma) Vorma() *Vorma { return l.v }
+
+// Paths returns a defensive copy of route path metadata.
 func (l *ReadLockedVorma) Paths() map[string]*Path {
 	return clonePathsMapOrNil(l.v._paths)
 }
 
+// BuildID returns the current build identifier.
 func (l *ReadLockedVorma) BuildID() string { return l.v._buildID }
 
+// RouteManifestFile returns the current route manifest file path.
 func (l *ReadLockedVorma) RouteManifestFile() string { return l.v._routeManifestFile }
 
+// RootTemplate returns the currently active root template.
 func (l *ReadLockedVorma) RootTemplate() *template.Template { return l.v._rootTemplate }
 
+// IsDev reports whether runtime is in development mode.
 func (l *ReadLockedVorma) IsDev() bool { return l.v._isDev }
 
+// Vorma returns the underlying mutable runtime instance.
 func (l *LockedVorma) Vorma() *Vorma { return l.v }
+
+// Paths returns a defensive copy of route path metadata.
 func (l *LockedVorma) Paths() map[string]*Path {
 	return clonePathsMapOrNil(l.v._paths)
 }
+
+// BuildID returns the current build identifier.
 func (l *LockedVorma) BuildID() string { return l.v._buildID }
 
+// RouteManifestFile returns the current route manifest file path.
 func (l *LockedVorma) RouteManifestFile() string { return l.v._routeManifestFile }
 
+// RootTemplate returns the currently active root template.
 func (l *LockedVorma) RootTemplate() *template.Template { return l.v._rootTemplate }
-func (l *LockedVorma) IsDev() bool                      { return l.v._isDev }
+
+// IsDev reports whether runtime is in development mode.
+func (l *LockedVorma) IsDev() bool { return l.v._isDev }
 
 // --- LockedVorma Setters ---
 
+// SetPaths replaces parsed paths and runs route-registry synchronization.
 func (l *LockedVorma) SetPaths(paths map[string]*Path) {
 	l.v.routes().ReplaceParsedPathsForInit(paths, false)
 }
+
+// SetIsDev updates runtime mode and invalidates route-data cache if changed.
 func (l *LockedVorma) SetIsDev(isDev bool) { l.v.setIsDevModeLocked(isDev) }
+
+// SetBuildID updates build id and invalidates route-data cache when changed.
 func (l *LockedVorma) SetBuildID(buildID string) {
 	if l.v._buildID == buildID {
 		return
@@ -206,6 +250,9 @@ func (l *LockedVorma) SetBuildID(buildID string) {
 	l.v._buildID = buildID
 	l.v.invalidateRouteDataCacheLocked()
 }
+
+// SetRouteManifestFile updates route manifest reference and invalidates
+// route-data cache when changed.
 func (l *LockedVorma) SetRouteManifestFile(routeManifestFile string) {
 	if l.v._routeManifestFile == routeManifestFile {
 		return
@@ -221,6 +268,7 @@ func (l *LockedVorma) Routes() *RouteRegistry {
 
 // --- Thread-safe Setters (acquire lock internally) ---
 
+// SetIsDev updates runtime dev-mode flag with internal locking.
 func (v *Vorma) SetIsDev(isDev bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()

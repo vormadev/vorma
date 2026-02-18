@@ -9,8 +9,12 @@ import (
 )
 
 const (
+	// CriticalCSSElementID is the default DOM id used for the injected critical
+	// CSS style element.
 	CriticalCSSElementID = DefaultCriticalCSSStyleElementID
-	StyleSheetElementID  = DefaultNonCriticalCSSLinkElementID
+	// StyleSheetElementID is the default DOM id used for the injected
+	// non-critical stylesheet link element.
+	StyleSheetElementID = DefaultNonCriticalCSSLinkElementID
 )
 
 // Wave provides runtime services for Wave applications.
@@ -18,6 +22,8 @@ type Wave struct {
 	cfg    *ParsedConfig
 	rawCfg []byte
 	log    *slog.Logger
+
+	isDevMode bool
 
 	portResolver *portResolver
 
@@ -36,6 +42,7 @@ type Wave struct {
 	isAsset        *cacheMap[string, bool]
 }
 
+// Logger returns the Wave logger instance.
 func (w *Wave) Logger() *slog.Logger { return w.log }
 
 type criticalCSSData struct {
@@ -68,6 +75,8 @@ type Config struct {
 	Logger *slog.Logger
 }
 
+// New constructs a Wave runtime instance from raw config JSON and a dist/static
+// file system root.
 func New(c Config) *Wave {
 	if len(c.WaveConfigJSON) == 0 {
 		panic("wave.New: WaveConfigJSON is required")
@@ -83,6 +92,7 @@ func New(c Config) *Wave {
 		cfg:          cfg,
 		rawCfg:       configJSON,
 		log:          resolveWaveLogger(c.Logger),
+		isDevMode:    GetIsDev(),
 		distStaticFS: c.DistStaticFS,
 		portResolver: newPortResolver(),
 	}
@@ -104,21 +114,29 @@ func cloneBytes(data []byte) []byte {
 	return append([]byte(nil), data...)
 }
 
+// initRuntimeCaches wires all runtime caches against the current mode resolver.
+// When mode changes (for example via SetModeToDev), caches are rebuilt so mode-
+// sensitive values do not leak across environments.
 func (w *Wave) initRuntimeCaches() {
-	w.baseFS = newCache(w.initBaseFS)
-	w.publicFS = newCache(w.initPublicFS)
-	w.privateFS = newCache(w.initPrivateFS)
-	w.fileMap = newCache(w.initFileMap)
-	w.criticalCSS = newCache(w.initCriticalCSS)
-	w.stylesheetURL = newCache(w.initStylesheetURL)
-	w.stylesheetLink = newCache(w.initStylesheetLink)
-	w.fileMapURL = newCache(w.initFileMapURL)
-	w.fileMapDetails = newCache(w.initFileMapDetails)
-	w.publicURLs = newCacheMap(w.resolvePublicURL)
-	w.isAsset = newCacheMapWithPolicy(
+	w.baseFS = newCacheWithModeResolver(w.initBaseFS, w.IsDev)
+	w.publicFS = newCacheWithModeResolver(w.initPublicFS, w.IsDev)
+	w.privateFS = newCacheWithModeResolver(w.initPrivateFS, w.IsDev)
+	w.fileMap = newCacheWithModeResolver(w.initFileMap, w.IsDev)
+	w.criticalCSS = newCacheWithModeResolver(w.initCriticalCSS, w.IsDev)
+	w.stylesheetURL = newCacheWithModeResolver(w.initStylesheetURL, w.IsDev)
+	w.stylesheetLink = newCacheWithModeResolver(w.initStylesheetLink, w.IsDev)
+	w.fileMapURL = newCacheWithModeResolver(w.initFileMapURL, w.IsDev)
+	w.fileMapDetails = newCacheWithModeResolver(w.initFileMapDetails, w.IsDev)
+	w.publicURLs = newCacheMapWithPolicyAndModeResolver(
+		w.resolvePublicURL,
+		nil,
+		w.IsDev,
+	)
+	w.isAsset = newCacheMapWithPolicyAndModeResolver(
 		w.checkIsAsset,
 		func(isAsset bool, err error) bool {
 			return err == nil && isAsset
 		},
+		w.IsDev,
 	)
 }

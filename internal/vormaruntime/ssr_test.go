@@ -62,6 +62,7 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 		`Symbol.for("__vorma_internal__")`,
 		`x.isDev =`,
 		`x.buildID = "build-ssr";`,
+		`x.rootElementID = "vorma-root";`,
 		`x.publicPathPrefix = "\/static\/";`,
 		`x.routeManifestURL = "/static/vorma_out/route-manifest.js";`,
 		`x.matchedPatterns = ["/items/:id"];`,
@@ -69,7 +70,11 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 		`x.cssBundles = ["vorma_out/chunk-items.css"];`,
 	} {
 		if !strings.Contains(script, expected) {
-			t.Fatalf("SSR script missing expected fragment %q\nscript=%s", expected, script)
+			t.Fatalf(
+				"SSR script missing expected fragment %q\nscript=%s",
+				expected,
+				script,
+			)
 		}
 	}
 	if !strings.Contains(script, "true") {
@@ -86,7 +91,10 @@ func TestGetSSRInnerHTML_HashChangesWhenPayloadChanges(t *testing.T) {
 			ExportKey:       "default",
 		},
 	})
-	fixture := newTestFixture(t, testFixtureOptions{stageOne: stage, stageTwo: stage})
+	fixture := newTestFixture(
+		t,
+		testFixtureOptions{stageOne: stage, stageTwo: stage},
+	)
 	app := fixture.app
 
 	base := &RouteDataFinal{
@@ -117,7 +125,10 @@ func TestGetSSRInnerHTML_HashChangesWhenPayloadChanges(t *testing.T) {
 		t.Fatalf("getSSRInnerHTML(mutated): %v", err)
 	}
 	if out1.Sha256Hash == out2.Sha256Hash {
-		t.Fatalf("expected hash to change when SSR payload changes, got same hash %q", out1.Sha256Hash)
+		t.Fatalf(
+			"expected hash to change when SSR payload changes, got same hash %q",
+			out1.Sha256Hash,
+		)
 	}
 }
 
@@ -130,7 +141,10 @@ func TestGetSSRInnerHTML_VercelDeploymentIDGate(t *testing.T) {
 			ExportKey:       "default",
 		},
 	})
-	fixture := newTestFixture(t, testFixtureOptions{stageOne: stage, stageTwo: stage})
+	fixture := newTestFixture(
+		t,
+		testFixtureOptions{stageOne: stage, stageTwo: stage},
+	)
 	app := fixture.app
 
 	routeData := &RouteDataFinal{RouteDataCore: &RouteDataCore{}}
@@ -144,7 +158,10 @@ func TestGetSSRInnerHTML_VercelDeploymentIDGate(t *testing.T) {
 	}
 	script := string(*out.Script)
 	if !strings.Contains(script, `x.deploymentID = "dep-123";`) {
-		t.Fatalf("expected deployment ID in SSR script when skew protection is enabled\nscript=%s", script)
+		t.Fatalf(
+			"expected deployment ID in SSR script when skew protection is enabled\nscript=%s",
+			script,
+		)
 	}
 }
 
@@ -157,7 +174,10 @@ func TestGetSSRInnerHTML_NilRouteDataReturnsError(t *testing.T) {
 			ExportKey:       "default",
 		},
 	})
-	fixture := newTestFixture(t, testFixtureOptions{stageOne: stage, stageTwo: stage})
+	fixture := newTestFixture(
+		t,
+		testFixtureOptions{stageOne: stage, stageTwo: stage},
+	)
 	app := fixture.app
 
 	out, err := app.getSSRInnerHTML(nil)
@@ -178,7 +198,10 @@ func TestGetSSRInnerHTML_NilRouteDataCoreReturnsError(t *testing.T) {
 			ExportKey:       "default",
 		},
 	})
-	fixture := newTestFixture(t, testFixtureOptions{stageOne: stage, stageTwo: stage})
+	fixture := newTestFixture(
+		t,
+		testFixtureOptions{stageOne: stage, stageTwo: stage},
+	)
 	app := fixture.app
 
 	out, err := app.getSSRInnerHTML(&RouteDataFinal{})

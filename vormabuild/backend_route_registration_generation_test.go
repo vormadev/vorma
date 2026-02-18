@@ -61,7 +61,9 @@ func readOverlayReplacementSourceForGeneratedTargetPath(
 	if err != nil {
 		t.Fatalf("resolve expected overlay target path: %v", err)
 	}
-	normalizedGeneratedTargetPath := filepath.ToSlash(filepath.Clean(absoluteGeneratedTargetPath))
+	normalizedGeneratedTargetPath := filepath.ToSlash(
+		filepath.Clean(absoluteGeneratedTargetPath),
+	)
 
 	overlayReplacementSourcePath, hasReplacement := overlayConfig.Replace[normalizedGeneratedTargetPath]
 	if !hasReplacement {
@@ -72,14 +74,22 @@ func readOverlayReplacementSourceForGeneratedTargetPath(
 		)
 	}
 
-	overlayReplacementSourceBytes, err := os.ReadFile(overlayReplacementSourcePath)
+	overlayReplacementSourceBytes, err := os.ReadFile(
+		overlayReplacementSourcePath,
+	)
 	if err != nil {
-		t.Fatalf("read overlay source %q: %v", overlayReplacementSourcePath, err)
+		t.Fatalf(
+			"read overlay source %q: %v",
+			overlayReplacementSourcePath,
+			err,
+		)
 	}
 	return string(overlayReplacementSourceBytes)
 }
 
-func TestDiscoveredRouteRegistrarDiscoveryCacheKey_IsStableForSameProjectIdentity(t *testing.T) {
+func TestDiscoveredRouteRegistrarDiscoveryCacheKey_IsStableForSameProjectIdentity(
+	t *testing.T,
+) {
 	fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
 
 	appOne := fixture.app
@@ -118,7 +128,10 @@ func TestDiscoveredRouteRegistrarArtifactCache(t *testing.T) {
 			t.Fatal("expected cache hit for matching fingerprint")
 		}
 		if len(firstReadArtifacts) != 1 {
-			t.Fatalf("first read artifacts length = %d, want 1", len(firstReadArtifacts))
+			t.Fatalf(
+				"first read artifacts length = %d, want 1",
+				len(firstReadArtifacts),
+			)
 		}
 		firstReadArtifacts[0].sourceBytes[0] = 'X'
 
@@ -127,67 +140,83 @@ func TestDiscoveredRouteRegistrarArtifactCache(t *testing.T) {
 			t.Fatal("expected second cache hit for matching fingerprint")
 		}
 		if string(secondReadArtifacts[0].sourceBytes) != "first" {
-			t.Fatalf("cached artifacts should be immutable clones, got %q", string(secondReadArtifacts[0].sourceBytes))
+			t.Fatalf(
+				"cached artifacts should be immutable clones, got %q",
+				string(secondReadArtifacts[0].sourceBytes),
+			)
 		}
 	})
 
-	t.Run("cache miss for mismatched fingerprint invalidates stale entry", func(t *testing.T) {
-		cache := newDiscoveredRouteRegistrarArtifactCache(4)
-		cache.set(
-			"cache-key",
-			"fp-one",
-			[]discoveredRouteRegistrarSourceArtifact{
-				{
-					targetFilePath: "backend/src/router/discovered_route_registrar_0.gen.go",
-					sourceBytes:    []byte("first"),
+	t.Run(
+		"cache miss for mismatched fingerprint invalidates stale entry",
+		func(t *testing.T) {
+			cache := newDiscoveredRouteRegistrarArtifactCache(4)
+			cache.set(
+				"cache-key",
+				"fp-one",
+				[]discoveredRouteRegistrarSourceArtifact{
+					{
+						targetFilePath: "backend/src/router/discovered_route_registrar_0.gen.go",
+						sourceBytes:    []byte("first"),
+					},
 				},
-			},
-		)
+			)
 
-		_, staleFingerprintHit := cache.get("cache-key", "fp-two")
-		if staleFingerprintHit {
-			t.Fatal("expected cache miss for mismatched fingerprint")
-		}
+			_, staleFingerprintHit := cache.get("cache-key", "fp-two")
+			if staleFingerprintHit {
+				t.Fatal("expected cache miss for mismatched fingerprint")
+			}
 
-		_, oldFingerprintHitAfterInvalidation := cache.get("cache-key", "fp-one")
-		if oldFingerprintHitAfterInvalidation {
-			t.Fatal("expected stale cache entry to be invalidated after fingerprint mismatch")
-		}
-	})
+			_, oldFingerprintHitAfterInvalidation := cache.get(
+				"cache-key",
+				"fp-one",
+			)
+			if oldFingerprintHitAfterInvalidation {
+				t.Fatal(
+					"expected stale cache entry to be invalidated after fingerprint mismatch",
+				)
+			}
+		},
+	)
 
-	t.Run("evicts least recently used entry when capacity is exceeded", func(t *testing.T) {
-		cache := newDiscoveredRouteRegistrarArtifactCache(2)
-		cache.set("cache-key-a", "fp-a", nil)
-		cache.set("cache-key-b", "fp-b", nil)
+	t.Run(
+		"evicts least recently used entry when capacity is exceeded",
+		func(t *testing.T) {
+			cache := newDiscoveredRouteRegistrarArtifactCache(2)
+			cache.set("cache-key-a", "fp-a", nil)
+			cache.set("cache-key-b", "fp-b", nil)
 
-		_, entryAHit := cache.get("cache-key-a", "fp-a")
-		if !entryAHit {
-			t.Fatal("expected entry A cache hit before eviction step")
-		}
+			_, entryAHit := cache.get("cache-key-a", "fp-a")
+			if !entryAHit {
+				t.Fatal("expected entry A cache hit before eviction step")
+			}
 
-		cache.set("cache-key-c", "fp-c", nil)
+			cache.set("cache-key-c", "fp-c", nil)
 
-		_, entryAHitAfterEviction := cache.get("cache-key-a", "fp-a")
-		if !entryAHitAfterEviction {
-			t.Fatal("expected entry A to remain after LRU eviction")
-		}
-		_, entryBHitAfterEviction := cache.get("cache-key-b", "fp-b")
-		if entryBHitAfterEviction {
-			t.Fatal("expected least recently used entry B to be evicted")
-		}
-		_, entryCHitAfterEviction := cache.get("cache-key-c", "fp-c")
-		if !entryCHitAfterEviction {
-			t.Fatal("expected entry C to be present after insertion")
-		}
-	})
+			_, entryAHitAfterEviction := cache.get("cache-key-a", "fp-a")
+			if !entryAHitAfterEviction {
+				t.Fatal("expected entry A to remain after LRU eviction")
+			}
+			_, entryBHitAfterEviction := cache.get("cache-key-b", "fp-b")
+			if entryBHitAfterEviction {
+				t.Fatal("expected least recently used entry B to be evicted")
+			}
+			_, entryCHitAfterEviction := cache.get("cache-key-c", "fp-c")
+			if !entryCHitAfterEviction {
+				t.Fatal("expected entry C to be present after insertion")
+			}
+		},
+	)
 }
 
 func TestPrepareDiscoveredRouteRegistrarOverlay(t *testing.T) {
-	t.Run("returns nil when no discovered registrations exist", func(t *testing.T) {
-		fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
-		t.Chdir(fixture.rootDir)
+	t.Run(
+		"returns nil when no discovered registrations exist",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.rootDir)
 
-		mustWriteFile(t, "backend/src/router/context.go", []byte(`
+			mustWriteFile(t, "backend/src/router/context.go", []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -195,20 +224,28 @@ import "github.com/vormadev/vorma"
 var App = &vorma.Vorma{}
 `))
 
-		overlay, err := prepareDiscoveredRouteRegistrarOverlay(fixture.app)
-		if err != nil {
-			t.Fatalf("prepareDiscoveredRouteRegistrarOverlay returned error: %v", err)
-		}
-		if overlay != nil {
-			t.Fatal("expected no overlay when no discovered registrations exist")
-		}
-	})
+			overlay, err := prepareDiscoveredRouteRegistrarOverlay(fixture.app)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay returned error: %v",
+					err,
+				)
+			}
+			if overlay != nil {
+				t.Fatal(
+					"expected no overlay when no discovered registrations exist",
+				)
+			}
+		},
+	)
 
-	t.Run("prepares overlay sources without writing consumer registrar files", func(t *testing.T) {
-		fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
-		t.Chdir(fixture.rootDir)
+	t.Run(
+		"prepares overlay sources without writing consumer registrar files",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.rootDir)
 
-		mustWriteFile(t, "backend/src/router/context.go", []byte(`
+			mustWriteFile(t, "backend/src/router/context.go", []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -232,7 +269,7 @@ func registerActionAtPath(method string, pattern string, action any) any {
 }
 `))
 
-		mustWriteFile(t, "backend/src/router/routes.go", []byte(`
+			mustWriteFile(t, "backend/src/router/routes.go", []byte(`
 package router
 
 const apiPrefix = "/api"
@@ -241,118 +278,157 @@ var _ = registerLoaderAtPath(apiPrefix + "/users", nil)
 var _ = registerActionAtPath("POST", "/submit", nil)
 `))
 
-		overlay, err := prepareDiscoveredRouteRegistrarOverlay(fixture.app)
-		if err != nil {
-			t.Fatalf("prepareDiscoveredRouteRegistrarOverlay returned error: %v", err)
-		}
-		if overlay == nil {
-			t.Fatal("expected overlay for discovered registrations")
-		}
+			overlay, err := prepareDiscoveredRouteRegistrarOverlay(fixture.app)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay returned error: %v",
+					err,
+				)
+			}
+			if overlay == nil {
+				t.Fatal("expected overlay for discovered registrations")
+			}
 
-		generatedFilePath := filepath.Join(
-			fixture.rootDir,
-			"backend/src/router",
-			discoveredRouteRegistrarGeneratedFilename,
-		)
-		if _, err := os.Stat(generatedFilePath); !os.IsNotExist(err) {
-			t.Fatalf(
-				"expected no consumer-visible generated registrar file, stat err=%v",
-				err,
+			generatedFilePath := filepath.Join(
+				fixture.rootDir,
+				"backend/src/router",
+				discoveredRouteRegistrarGeneratedFilename,
 			)
-		}
+			if _, err := os.Stat(generatedFilePath); !os.IsNotExist(err) {
+				t.Fatalf(
+					"expected no consumer-visible generated registrar file, stat err=%v",
+					err,
+				)
+			}
 
-		overlayConfigBytes, err := os.ReadFile(overlay.goOverlayConfigPath)
-		if err != nil {
-			t.Fatalf("read overlay config %q: %v", overlay.goOverlayConfigPath, err)
-		}
-		var overlayConfig goOverlayReplaceConfigForTest
-		if err := json.Unmarshal(overlayConfigBytes, &overlayConfig); err != nil {
-			t.Fatalf("unmarshal overlay config: %v", err)
-		}
+			overlayConfigBytes, err := os.ReadFile(overlay.goOverlayConfigPath)
+			if err != nil {
+				t.Fatalf(
+					"read overlay config %q: %v",
+					overlay.goOverlayConfigPath,
+					err,
+				)
+			}
+			var overlayConfig goOverlayReplaceConfigForTest
+			if err := json.Unmarshal(overlayConfigBytes, &overlayConfig); err != nil {
+				t.Fatalf("unmarshal overlay config: %v", err)
+			}
 
-		expectedOverlayTargetPath, err := filepath.Abs(generatedFilePath)
-		if err != nil {
-			t.Fatalf("resolve expected overlay target path: %v", err)
-		}
-		overlayReplacementSourcePath, hasReplacement := overlayConfig.Replace[filepath.ToSlash(expectedOverlayTargetPath)]
-		if !hasReplacement {
-			t.Fatalf(
-				"overlay config missing generated registrar target path %q; got keys %#v",
-				filepath.ToSlash(expectedOverlayTargetPath),
-				overlayConfig.Replace,
+			expectedOverlayTargetPath, err := filepath.Abs(generatedFilePath)
+			if err != nil {
+				t.Fatalf("resolve expected overlay target path: %v", err)
+			}
+			overlayReplacementSourcePath, hasReplacement := overlayConfig.Replace[filepath.ToSlash(expectedOverlayTargetPath)]
+			if !hasReplacement {
+				t.Fatalf(
+					"overlay config missing generated registrar target path %q; got keys %#v",
+					filepath.ToSlash(expectedOverlayTargetPath),
+					overlayConfig.Replace,
+				)
+			}
+
+			overlayReplacementSourceBytes, err := os.ReadFile(
+				overlayReplacementSourcePath,
 			)
-		}
+			if err != nil {
+				t.Fatalf(
+					"read overlay source %q: %v",
+					overlayReplacementSourcePath,
+					err,
+				)
+			}
+			overlayReplacementSource := string(overlayReplacementSourceBytes)
+			if !strings.Contains(
+				overlayReplacementSource,
+				`vormagogen.RegisterLoaderDiscoveredByBuild(App, "/api/users", nil, decorateLoaderCtx)`,
+			) {
+				t.Fatalf(
+					"overlay source missing loader registration call:\n%s",
+					overlayReplacementSource,
+				)
+			}
+			if !strings.Contains(
+				overlayReplacementSource,
+				`vormagogen.RegisterActionDiscoveredByBuild(App, "POST", "/submit", nil, decorateActionCtx)`,
+			) {
+				t.Fatalf(
+					"overlay source missing action registration call:\n%s",
+					overlayReplacementSource,
+				)
+			}
 
-		overlayReplacementSourceBytes, err := os.ReadFile(overlayReplacementSourcePath)
-		if err != nil {
-			t.Fatalf("read overlay source %q: %v", overlayReplacementSourcePath, err)
-		}
-		overlayReplacementSource := string(overlayReplacementSourceBytes)
-		if !strings.Contains(
-			overlayReplacementSource,
-			`vormagogen.RegisterLoaderDiscoveredByBuild(App, "/api/users", nil, decorateLoaderCtx)`,
-		) {
-			t.Fatalf("overlay source missing loader registration call:\n%s", overlayReplacementSource)
-		}
-		if !strings.Contains(
-			overlayReplacementSource,
-			`vormagogen.RegisterActionDiscoveredByBuild(App, "POST", "/submit", nil, decorateActionCtx)`,
-		) {
-			t.Fatalf("overlay source missing action registration call:\n%s", overlayReplacementSource)
-		}
+			overlayDirectoryPath := filepath.Dir(overlay.goOverlayConfigPath)
+			if err := overlay.cleanup(); err != nil {
+				t.Fatalf("cleanup overlay temporary files: %v", err)
+			}
+			if _, err := os.Stat(overlayDirectoryPath); !os.IsNotExist(err) {
+				t.Fatalf(
+					"expected overlay temp dir to be removed, stat err=%v",
+					err,
+				)
+			}
+		},
+	)
 
-		overlayDirectoryPath := filepath.Dir(overlay.goOverlayConfigPath)
-		if err := overlay.cleanup(); err != nil {
-			t.Fatalf("cleanup overlay temporary files: %v", err)
-		}
-		if _, err := os.Stat(overlayDirectoryPath); !os.IsNotExist(err) {
-			t.Fatalf("expected overlay temp dir to be removed, stat err=%v", err)
-		}
-	})
+	t.Run(
+		"fails fast on unqualified external symbols in discovered expressions",
+		func(t *testing.T) {
+			expression, err := parser.ParseExpr("ExternalSymbol")
+			if err != nil {
+				t.Fatalf("parse expression: %v", err)
+			}
+			expressionIdentifier, isExpressionIdentifier := expression.(*ast.Ident)
+			if !isExpressionIdentifier {
+				t.Fatalf("expression type = %T, want *ast.Ident", expression)
+			}
 
-	t.Run("fails fast on unqualified external symbols in discovered expressions", func(t *testing.T) {
-		expression, err := parser.ParseExpr("ExternalSymbol")
-		if err != nil {
-			t.Fatalf("parse expression: %v", err)
-		}
-		expressionIdentifier, isExpressionIdentifier := expression.(*ast.Ident)
-		if !isExpressionIdentifier {
-			t.Fatalf("expression type = %T, want *ast.Ident", expression)
-		}
-
-		externalPackage := types.NewPackage("example.com/dothelpers", "dothelpers")
-		externalObject := types.NewVar(
-			token.NoPos,
-			externalPackage,
-			"ExternalSymbol",
-			types.Typ[types.String],
-		)
-		analysis := &backendRoutePackageAnalysis{
-			goTypesInfo: &types.Info{
-				Uses: map[*ast.Ident]types.Object{
-					expressionIdentifier: externalObject,
+			externalPackage := types.NewPackage(
+				"example.com/dothelpers",
+				"dothelpers",
+			)
+			externalObject := types.NewVar(
+				token.NoPos,
+				externalPackage,
+				"ExternalSymbol",
+				types.Typ[types.String],
+			)
+			analysis := &backendRoutePackageAnalysis{
+				goTypesInfo: &types.Info{
+					Uses: map[*ast.Ident]types.Object{
+						expressionIdentifier: externalObject,
+					},
 				},
-			},
-			goTypesPackagePath: "example.com/localpkg",
-		}
+				goTypesPackagePath: "example.com/localpkg",
+			}
 
-		err = analysis.collectRequiredImportsForExpression(expression, map[string]string{})
-		if err == nil {
-			t.Fatal("expected collectRequiredImportsForExpression to return error")
-		}
-		if !strings.Contains(err.Error(), "unqualified external symbol") {
-			t.Fatalf("error = %q, expected unqualified external symbol guidance", err)
-		}
-		if !strings.Contains(err.Error(), "dot-imported symbols") {
-			t.Fatalf("error = %q, expected dot-import guidance", err)
-		}
-	})
+			err = analysis.collectRequiredImportsForExpression(
+				expression,
+				map[string]string{},
+			)
+			if err == nil {
+				t.Fatal(
+					"expected collectRequiredImportsForExpression to return error",
+				)
+			}
+			if !strings.Contains(err.Error(), "unqualified external symbol") {
+				t.Fatalf(
+					"error = %q, expected unqualified external symbol guidance",
+					err,
+				)
+			}
+			if !strings.Contains(err.Error(), "dot-imported symbols") {
+				t.Fatalf("error = %q, expected dot-import guidance", err)
+			}
+		},
+	)
 
-	t.Run("fails fast on conflicting import aliases across discovered expressions", func(t *testing.T) {
-		fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
-		t.Chdir(fixture.rootDir)
+	t.Run(
+		"fails fast on conflicting import aliases across discovered expressions",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.rootDir)
 
-		mustWriteFile(t, "backend/src/router/context.go", []byte(`
+			mustWriteFile(t, "backend/src/router/context.go", []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -364,7 +440,7 @@ func decorateLoaderCtx(rd *vorma.LoaderReqData) *vorma.LoaderReqData {
 }
 `))
 
-		mustWriteFile(t, "backend/src/router/routes_a.go", []byte(`
+			mustWriteFile(t, "backend/src/router/routes_a.go", []byte(`
 package router
 
 import (
@@ -376,7 +452,7 @@ import (
 var _ = vorma.DefineLoaderForRegistration(App, "/a", foo.Clone, decorateLoaderCtx)
 `))
 
-		mustWriteFile(t, "backend/src/router/routes_b.go", []byte(`
+			mustWriteFile(t, "backend/src/router/routes_b.go", []byte(`
 package router
 
 import (
@@ -388,23 +464,31 @@ import (
 var _ = vorma.DefineLoaderForRegistration(App, "/b", foo.Clone, decorateLoaderCtx)
 `))
 
-		_, err := prepareDiscoveredRouteRegistrarOverlay(fixture.app)
-		if err == nil {
-			t.Fatal("expected prepareDiscoveredRouteRegistrarOverlay to return error")
-		}
-		if !strings.Contains(err.Error(), "conflicting import alias") {
-			t.Fatalf("error = %q, expected conflicting import alias guidance", err)
-		}
-	})
+			_, err := prepareDiscoveredRouteRegistrarOverlay(fixture.app)
+			if err == nil {
+				t.Fatal(
+					"expected prepareDiscoveredRouteRegistrarOverlay to return error",
+				)
+			}
+			if !strings.Contains(err.Error(), "conflicting import alias") {
+				t.Fatalf(
+					"error = %q, expected conflicting import alias guidance",
+					err,
+				)
+			}
+		},
+	)
 
-	t.Run("caches discovered registrar artifacts when source fingerprint is unchanged", func(t *testing.T) {
-		fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
-		t.Chdir(fixture.rootDir)
-		discoveredRegistrarArtifactsCache := newDiscoveredRouteRegistrarArtifactCache(
-			discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
-		)
+	t.Run(
+		"caches discovered registrar artifacts when source fingerprint is unchanged",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.rootDir)
+			discoveredRegistrarArtifactsCache := newDiscoveredRouteRegistrarArtifactCache(
+				discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
+			)
 
-		mustWriteFile(t, "backend/src/router/context.go", []byte(`
+			mustWriteFile(t, "backend/src/router/context.go", []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -420,7 +504,7 @@ func usersLoader(rd *vorma.LoaderReqData) (string, error) {
 }
 `))
 
-		mustWriteFile(t, "backend/src/router/routes.go", []byte(`
+			mustWriteFile(t, "backend/src/router/routes.go", []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -428,61 +512,74 @@ import "github.com/vormadev/vorma"
 var _ = vorma.DefineLoaderForRegistration(App, "/cached", usersLoader, decorateLoaderCtx)
 `))
 
-		parseGoSourceASTCallCount := 0
-		discoveryDependencies := discoveryDependenciesWithParseGoSourceASTCounter(
-			&parseGoSourceASTCallCount,
-		)
-
-		firstOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
-			fixture.app,
-			discoveredRegistrarArtifactsCache,
-			discoveryDependencies,
-		)
-		if err != nil {
-			t.Fatalf("prepareDiscoveredRouteRegistrarOverlay returned error: %v", err)
-		}
-		if firstOverlay == nil {
-			t.Fatal("expected overlay for discovered registrations")
-		}
-		firstParseGoSourceASTCallCount := parseGoSourceASTCallCount
-		if firstParseGoSourceASTCallCount == 0 {
-			t.Fatal("expected parseServerRouteFilesIntoPackageAnalyses to parse Go source files")
-		}
-		if err := firstOverlay.cleanup(); err != nil {
-			t.Fatalf("cleanup first discovered overlay: %v", err)
-		}
-
-		secondOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
-			fixture.app,
-			discoveredRegistrarArtifactsCache,
-			discoveryDependencies,
-		)
-		if err != nil {
-			t.Fatalf("prepareDiscoveredRouteRegistrarOverlay second call returned error: %v", err)
-		}
-		if secondOverlay == nil {
-			t.Fatal("expected overlay for discovered registrations on second call")
-		}
-		if parseGoSourceASTCallCount != firstParseGoSourceASTCallCount {
-			t.Fatalf(
-				"parseGoSourceAST call count after cache hit = %d, want %d",
-				parseGoSourceASTCallCount,
-				firstParseGoSourceASTCallCount,
+			parseGoSourceASTCallCount := 0
+			discoveryDependencies := discoveryDependenciesWithParseGoSourceASTCounter(
+				&parseGoSourceASTCallCount,
 			)
-		}
-		if err := secondOverlay.cleanup(); err != nil {
-			t.Fatalf("cleanup second discovered overlay: %v", err)
-		}
-	})
 
-	t.Run("invalidates cached discovered registrar artifacts when package source changes", func(t *testing.T) {
-		fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
-		t.Chdir(fixture.rootDir)
-		discoveredRegistrarArtifactsCache := newDiscoveredRouteRegistrarArtifactCache(
-			discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
-		)
+			firstOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
+				fixture.app,
+				discoveredRegistrarArtifactsCache,
+				discoveryDependencies,
+			)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay returned error: %v",
+					err,
+				)
+			}
+			if firstOverlay == nil {
+				t.Fatal("expected overlay for discovered registrations")
+			}
+			firstParseGoSourceASTCallCount := parseGoSourceASTCallCount
+			if firstParseGoSourceASTCallCount == 0 {
+				t.Fatal(
+					"expected parseServerRouteFilesIntoPackageAnalyses to parse Go source files",
+				)
+			}
+			if err := firstOverlay.cleanup(); err != nil {
+				t.Fatalf("cleanup first discovered overlay: %v", err)
+			}
 
-		mustWriteFile(t, "backend/src/router/context.go", []byte(`
+			secondOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
+				fixture.app,
+				discoveredRegistrarArtifactsCache,
+				discoveryDependencies,
+			)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay second call returned error: %v",
+					err,
+				)
+			}
+			if secondOverlay == nil {
+				t.Fatal(
+					"expected overlay for discovered registrations on second call",
+				)
+			}
+			if parseGoSourceASTCallCount != firstParseGoSourceASTCallCount {
+				t.Fatalf(
+					"parseGoSourceAST call count after cache hit = %d, want %d",
+					parseGoSourceASTCallCount,
+					firstParseGoSourceASTCallCount,
+				)
+			}
+			if err := secondOverlay.cleanup(); err != nil {
+				t.Fatalf("cleanup second discovered overlay: %v", err)
+			}
+		},
+	)
+
+	t.Run(
+		"invalidates cached discovered registrar artifacts when package source changes",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.rootDir)
+			discoveredRegistrarArtifactsCache := newDiscoveredRouteRegistrarArtifactCache(
+				discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
+			)
+
+			mustWriteFile(t, "backend/src/router/context.go", []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -498,8 +595,8 @@ func usersLoader(rd *vorma.LoaderReqData) (string, error) {
 }
 `))
 
-		routesFilePath := "backend/src/router/routes.go"
-		mustWriteFile(t, routesFilePath, []byte(`
+			routesFilePath := "backend/src/router/routes.go"
+			mustWriteFile(t, routesFilePath, []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -507,41 +604,47 @@ import "github.com/vormadev/vorma"
 var _ = vorma.DefineLoaderForRegistration(App, "/before", usersLoader, decorateLoaderCtx)
 `))
 
-		parseGoSourceASTCallCount := 0
-		discoveryDependencies := discoveryDependenciesWithParseGoSourceASTCounter(
-			&parseGoSourceASTCallCount,
-		)
+			parseGoSourceASTCallCount := 0
+			discoveryDependencies := discoveryDependenciesWithParseGoSourceASTCounter(
+				&parseGoSourceASTCallCount,
+			)
 
-		firstOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
-			fixture.app,
-			discoveredRegistrarArtifactsCache,
-			discoveryDependencies,
-		)
-		if err != nil {
-			t.Fatalf("prepareDiscoveredRouteRegistrarOverlay first call returned error: %v", err)
-		}
-		if firstOverlay == nil {
-			t.Fatal("expected overlay for discovered registrations")
-		}
-		generatedFilePath := filepath.Join(
-			fixture.rootDir,
-			"backend/src/router",
-			discoveredRouteRegistrarGeneratedFilename,
-		)
-		firstOverlaySource := readOverlayReplacementSourceForGeneratedTargetPath(
-			t,
-			firstOverlay,
-			generatedFilePath,
-		)
-		if !strings.Contains(firstOverlaySource, `"/before"`) {
-			t.Fatalf("first overlay source missing /before pattern:\n%s", firstOverlaySource)
-		}
-		firstParseGoSourceASTCallCount := parseGoSourceASTCallCount
-		if err := firstOverlay.cleanup(); err != nil {
-			t.Fatalf("cleanup first discovered overlay: %v", err)
-		}
+			firstOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
+				fixture.app,
+				discoveredRegistrarArtifactsCache,
+				discoveryDependencies,
+			)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay first call returned error: %v",
+					err,
+				)
+			}
+			if firstOverlay == nil {
+				t.Fatal("expected overlay for discovered registrations")
+			}
+			generatedFilePath := filepath.Join(
+				fixture.rootDir,
+				"backend/src/router",
+				discoveredRouteRegistrarGeneratedFilename,
+			)
+			firstOverlaySource := readOverlayReplacementSourceForGeneratedTargetPath(
+				t,
+				firstOverlay,
+				generatedFilePath,
+			)
+			if !strings.Contains(firstOverlaySource, `"/before"`) {
+				t.Fatalf(
+					"first overlay source missing /before pattern:\n%s",
+					firstOverlaySource,
+				)
+			}
+			firstParseGoSourceASTCallCount := parseGoSourceASTCallCount
+			if err := firstOverlay.cleanup(); err != nil {
+				t.Fatalf("cleanup first discovered overlay: %v", err)
+			}
 
-		mustWriteFile(t, routesFilePath, []byte(`
+			mustWriteFile(t, routesFilePath, []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -549,46 +652,57 @@ import "github.com/vormadev/vorma"
 var _ = vorma.DefineLoaderForRegistration(App, "/after", usersLoader, decorateLoaderCtx)
 `))
 
-		secondOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
-			fixture.app,
-			discoveredRegistrarArtifactsCache,
-			discoveryDependencies,
-		)
-		if err != nil {
-			t.Fatalf("prepareDiscoveredRouteRegistrarOverlay second call returned error: %v", err)
-		}
-		if secondOverlay == nil {
-			t.Fatal("expected overlay for discovered registrations after source change")
-		}
-		secondOverlaySource := readOverlayReplacementSourceForGeneratedTargetPath(
-			t,
-			secondOverlay,
-			generatedFilePath,
-		)
-		if !strings.Contains(secondOverlaySource, `"/after"`) {
-			t.Fatalf("second overlay source missing /after pattern:\n%s", secondOverlaySource)
-		}
-		if parseGoSourceASTCallCount <= firstParseGoSourceASTCallCount {
-			t.Fatalf(
-				"expected cache invalidation to re-run Go source parsing; parse call count after change = %d, before change = %d",
-				parseGoSourceASTCallCount,
-				firstParseGoSourceASTCallCount,
+			secondOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
+				fixture.app,
+				discoveredRegistrarArtifactsCache,
+				discoveryDependencies,
 			)
-		}
-		if err := secondOverlay.cleanup(); err != nil {
-			t.Fatalf("cleanup second discovered overlay: %v", err)
-		}
-	})
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay second call returned error: %v",
+					err,
+				)
+			}
+			if secondOverlay == nil {
+				t.Fatal(
+					"expected overlay for discovered registrations after source change",
+				)
+			}
+			secondOverlaySource := readOverlayReplacementSourceForGeneratedTargetPath(
+				t,
+				secondOverlay,
+				generatedFilePath,
+			)
+			if !strings.Contains(secondOverlaySource, `"/after"`) {
+				t.Fatalf(
+					"second overlay source missing /after pattern:\n%s",
+					secondOverlaySource,
+				)
+			}
+			if parseGoSourceASTCallCount <= firstParseGoSourceASTCallCount {
+				t.Fatalf(
+					"expected cache invalidation to re-run Go source parsing; parse call count after change = %d, before change = %d",
+					parseGoSourceASTCallCount,
+					firstParseGoSourceASTCallCount,
+				)
+			}
+			if err := secondOverlay.cleanup(); err != nil {
+				t.Fatalf("cleanup second discovered overlay: %v", err)
+			}
+		},
+	)
 
-	t.Run("dependency-only handler changes are reflected under cached discovery artifacts", func(t *testing.T) {
-		repositoryRootDir := mustResolveRepositoryRootDir(t)
-		fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
-		t.Chdir(fixture.rootDir)
-		discoveredRegistrarArtifactsCache := newDiscoveredRouteRegistrarArtifactCache(
-			discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
-		)
+	t.Run(
+		"dependency-only handler changes are reflected under cached discovery artifacts",
+		func(t *testing.T) {
+			repositoryRootDir := mustResolveRepositoryRootDir(t)
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.rootDir)
+			discoveredRegistrarArtifactsCache := newDiscoveredRouteRegistrarArtifactCache(
+				discoveredRouteRegistrarArtifactCacheDefaultMaxEntries,
+			)
 
-		mustWriteFile(t, "go.mod", []byte(fmt.Sprintf(`
+			mustWriteFile(t, "go.mod", []byte(fmt.Sprintf(`
 module cachee2e
 
 go 1.24
@@ -598,7 +712,7 @@ require github.com/vormadev/vorma v0.0.0
 replace github.com/vormadev/vorma => %s
 `, filepath.ToSlash(repositoryRootDir))))
 
-		mustWriteFile(t, "backend/wave.go", []byte(`
+			mustWriteFile(t, "backend/wave.go", []byte(`
 package backend
 
 import (
@@ -616,7 +730,7 @@ var Wave = wave.New(wave.Config{
 })
 `))
 
-		mustWriteFile(t, "backend/wave.config.json", []byte(`
+			mustWriteFile(t, "backend/wave.config.json", []byte(`
 {
 	"Core": {
 		"MainAppEntry": "backend/cmd/check",
@@ -641,13 +755,13 @@ var Wave = wave.New(wave.Config{
 }
 `))
 
-		mustWriteFile(
-			t,
-			filepath.Join("backend", "assets", "private", "entry.go.html"),
-			[]byte("<!doctype html><html><body></body></html>"),
-		)
+			mustWriteFile(
+				t,
+				filepath.Join("backend", "assets", "private", "entry.go.html"),
+				[]byte("<!doctype html><html><body></body></html>"),
+			)
 
-		mustWriteFile(t, "backend/src/app/app.go", []byte(`
+			mustWriteFile(t, "backend/src/app/app.go", []byte(`
 package app
 
 import (
@@ -661,7 +775,7 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 })
 `))
 
-		mustWriteFile(t, "backend/src/lib/version/version.go", []byte(`
+			mustWriteFile(t, "backend/src/lib/version/version.go", []byte(`
 package version
 
 func LatestVersion() string {
@@ -669,7 +783,7 @@ func LatestVersion() string {
 }
 `))
 
-		mustWriteFile(t, "backend/src/router/context.go", []byte(`
+			mustWriteFile(t, "backend/src/router/context.go", []byte(`
 package router
 
 import (
@@ -694,7 +808,7 @@ func usersLoader(*LoaderCtx) (string, error) {
 var App = app.App
 `))
 
-		mustWriteFile(t, "backend/src/router/routes.go", []byte(`
+			mustWriteFile(t, "backend/src/router/routes.go", []byte(`
 package router
 
 import "github.com/vormadev/vorma"
@@ -702,7 +816,7 @@ import "github.com/vormadev/vorma"
 var _ = vorma.DefineLoaderForRegistration(App, "/version", usersLoader, decorateLoaderCtx)
 `))
 
-		mustWriteFile(t, "backend/cmd/check/main.go", []byte(`
+			mustWriteFile(t, "backend/cmd/check/main.go", []byte(`
 package main
 
 import (
@@ -730,7 +844,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	results, found := mux.FindNestedMatchesAndRunTasks(app.App.LoadersRouter().NestedRouter, reqWithTasksCtx)
+	results, found := app.App.FindNestedMatchesAndRunLoaderTasks(reqWithTasksCtx)
 	if !found || results == nil {
 		fmt.Println("route not found")
 		os.Exit(1)
@@ -755,61 +869,81 @@ func main() {
 }
 `))
 
-		parseGoSourceASTCallCount := 0
-		discoveryDependencies := discoveryDependenciesWithParseGoSourceASTCounter(
-			&parseGoSourceASTCallCount,
-		)
+			parseGoSourceASTCallCount := 0
+			discoveryDependencies := discoveryDependenciesWithParseGoSourceASTCounter(
+				&parseGoSourceASTCallCount,
+			)
 
-		firstOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
-			fixture.app,
-			discoveredRegistrarArtifactsCache,
-			discoveryDependencies,
-		)
-		if err != nil {
-			t.Fatalf("prepareDiscoveredRouteRegistrarOverlay first call returned error: %v", err)
-		}
-		if firstOverlay == nil {
-			t.Fatal("expected first discovered overlay")
-		}
-		firstParseGoSourceASTCallCount := parseGoSourceASTCallCount
-		if firstParseGoSourceASTCallCount == 0 {
-			t.Fatal("expected first overlay preparation to parse Go source")
-		}
+			firstOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
+				fixture.app,
+				discoveredRegistrarArtifactsCache,
+				discoveryDependencies,
+			)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay first call returned error: %v",
+					err,
+				)
+			}
+			if firstOverlay == nil {
+				t.Fatal("expected first discovered overlay")
+			}
+			firstParseGoSourceASTCallCount := parseGoSourceASTCallCount
+			if firstParseGoSourceASTCallCount == 0 {
+				t.Fatal("expected first overlay preparation to parse Go source")
+			}
 
-		compiledBinaryPath := filepath.Join(fixture.rootDir, "backend", "dist", "check")
-		if runtime.GOOS == "windows" {
-			compiledBinaryPath += ".exe"
-		}
+			compiledBinaryPath := filepath.Join(
+				fixture.rootDir,
+				"backend",
+				"dist",
+				"check",
+			)
+			if runtime.GOOS == "windows" {
+				compiledBinaryPath += ".exe"
+			}
 
-		firstBuildOutput, firstBuildErr := runCommandAndCaptureOutput(
-			fixture.rootDir,
-			"go",
-			"build",
-			"-mod=mod",
-			"-overlay="+firstOverlay.goOverlayConfigPath,
-			"-o",
-			compiledBinaryPath,
-			"./backend/cmd/check",
-		)
-		if cleanupErr := firstOverlay.cleanup(); cleanupErr != nil {
-			t.Fatalf("cleanup first discovered overlay: %v", cleanupErr)
-		}
-		if firstBuildErr != nil {
-			t.Fatalf("first go build failed: %v\n%s", firstBuildErr, firstBuildOutput)
-		}
+			firstBuildOutput, firstBuildErr := runCommandAndCaptureOutput(
+				fixture.rootDir,
+				"go",
+				"build",
+				"-mod=mod",
+				"-overlay="+firstOverlay.goOverlayConfigPath,
+				"-o",
+				compiledBinaryPath,
+				"./backend/cmd/check",
+			)
+			if cleanupErr := firstOverlay.cleanup(); cleanupErr != nil {
+				t.Fatalf("cleanup first discovered overlay: %v", cleanupErr)
+			}
+			if firstBuildErr != nil {
+				t.Fatalf(
+					"first go build failed: %v\n%s",
+					firstBuildErr,
+					firstBuildOutput,
+				)
+			}
 
-		firstRuntimeOutput, firstRuntimeErr := runCommandAndCaptureOutput(
-			fixture.rootDir,
-			compiledBinaryPath,
-		)
-		if firstRuntimeErr != nil {
-			t.Fatalf("first compiled runtime check failed: %v\n%s", firstRuntimeErr, firstRuntimeOutput)
-		}
-		if !strings.Contains(firstRuntimeOutput, "v1") {
-			t.Fatalf("first runtime output = %q, expected version marker %q", firstRuntimeOutput, "v1")
-		}
+			firstRuntimeOutput, firstRuntimeErr := runCommandAndCaptureOutput(
+				fixture.rootDir,
+				compiledBinaryPath,
+			)
+			if firstRuntimeErr != nil {
+				t.Fatalf(
+					"first compiled runtime check failed: %v\n%s",
+					firstRuntimeErr,
+					firstRuntimeOutput,
+				)
+			}
+			if !strings.Contains(firstRuntimeOutput, "v1") {
+				t.Fatalf(
+					"first runtime output = %q, expected version marker %q",
+					firstRuntimeOutput,
+					"v1",
+				)
+			}
 
-		mustWriteFile(t, "backend/src/lib/version/version.go", []byte(`
+			mustWriteFile(t, "backend/src/lib/version/version.go", []byte(`
 package version
 
 func LatestVersion() string {
@@ -817,51 +951,67 @@ func LatestVersion() string {
 }
 `))
 
-		secondOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
-			fixture.app,
-			discoveredRegistrarArtifactsCache,
-			discoveryDependencies,
-		)
-		if err != nil {
-			t.Fatalf("prepareDiscoveredRouteRegistrarOverlay second call returned error: %v", err)
-		}
-		if secondOverlay == nil {
-			t.Fatal("expected second discovered overlay")
-		}
-		if parseGoSourceASTCallCount != firstParseGoSourceASTCallCount {
-			t.Fatalf(
-				"parseGoSourceAST call count after dependency-only change = %d, want cached count %d",
-				parseGoSourceASTCallCount,
-				firstParseGoSourceASTCallCount,
+			secondOverlay, err := prepareDiscoveredRouteRegistrarOverlayWithArtifactCacheAndDiscoveryDependencies(
+				fixture.app,
+				discoveredRegistrarArtifactsCache,
+				discoveryDependencies,
 			)
-		}
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay second call returned error: %v",
+					err,
+				)
+			}
+			if secondOverlay == nil {
+				t.Fatal("expected second discovered overlay")
+			}
+			if parseGoSourceASTCallCount != firstParseGoSourceASTCallCount {
+				t.Fatalf(
+					"parseGoSourceAST call count after dependency-only change = %d, want cached count %d",
+					parseGoSourceASTCallCount,
+					firstParseGoSourceASTCallCount,
+				)
+			}
 
-		secondBuildOutput, secondBuildErr := runCommandAndCaptureOutput(
-			fixture.rootDir,
-			"go",
-			"build",
-			"-mod=mod",
-			"-overlay="+secondOverlay.goOverlayConfigPath,
-			"-o",
-			compiledBinaryPath,
-			"./backend/cmd/check",
-		)
-		if cleanupErr := secondOverlay.cleanup(); cleanupErr != nil {
-			t.Fatalf("cleanup second discovered overlay: %v", cleanupErr)
-		}
-		if secondBuildErr != nil {
-			t.Fatalf("second go build failed: %v\n%s", secondBuildErr, secondBuildOutput)
-		}
+			secondBuildOutput, secondBuildErr := runCommandAndCaptureOutput(
+				fixture.rootDir,
+				"go",
+				"build",
+				"-mod=mod",
+				"-overlay="+secondOverlay.goOverlayConfigPath,
+				"-o",
+				compiledBinaryPath,
+				"./backend/cmd/check",
+			)
+			if cleanupErr := secondOverlay.cleanup(); cleanupErr != nil {
+				t.Fatalf("cleanup second discovered overlay: %v", cleanupErr)
+			}
+			if secondBuildErr != nil {
+				t.Fatalf(
+					"second go build failed: %v\n%s",
+					secondBuildErr,
+					secondBuildOutput,
+				)
+			}
 
-		secondRuntimeOutput, secondRuntimeErr := runCommandAndCaptureOutput(
-			fixture.rootDir,
-			compiledBinaryPath,
-		)
-		if secondRuntimeErr != nil {
-			t.Fatalf("second compiled runtime check failed: %v\n%s", secondRuntimeErr, secondRuntimeOutput)
-		}
-		if !strings.Contains(secondRuntimeOutput, "v2") {
-			t.Fatalf("second runtime output = %q, expected version marker %q", secondRuntimeOutput, "v2")
-		}
-	})
+			secondRuntimeOutput, secondRuntimeErr := runCommandAndCaptureOutput(
+				fixture.rootDir,
+				compiledBinaryPath,
+			)
+			if secondRuntimeErr != nil {
+				t.Fatalf(
+					"second compiled runtime check failed: %v\n%s",
+					secondRuntimeErr,
+					secondRuntimeOutput,
+				)
+			}
+			if !strings.Contains(secondRuntimeOutput, "v2") {
+				t.Fatalf(
+					"second runtime output = %q, expected version marker %q",
+					secondRuntimeOutput,
+					"v2",
+				)
+			}
+		},
+	)
 }

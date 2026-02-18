@@ -2404,7 +2404,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 		)
 
 		req := httptest.NewRequest(
-			http.MethodGet,
+			http.MethodPost,
 			app.DevReloadRoutesEndpointPath(),
 			nil,
 		)
@@ -2473,7 +2473,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			),
 		)
 		req := httptest.NewRequest(
-			http.MethodGet,
+			http.MethodPost,
 			app.DevReloadTemplateEndpointPath(),
 			nil,
 		)
@@ -2504,6 +2504,34 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 		}
 	})
 
+	t.Run("reload_endpoints_require_post", func(t *testing.T) {
+		for _, path := range []string{
+			app.DevReloadRoutesEndpointPath(),
+			app.DevReloadTemplateEndpointPath(),
+		} {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusMethodNotAllowed {
+				t.Fatalf(
+					"path %q status = %d, want %d",
+					path,
+					rec.Code,
+					http.StatusMethodNotAllowed,
+				)
+			}
+			if got := rec.Header().Get("Allow"); got != http.MethodPost {
+				t.Fatalf(
+					"path %q Allow header = %q, want %q",
+					path,
+					got,
+					http.MethodPost,
+				)
+			}
+		}
+	})
+
 	t.Run("reload_routes_error", func(t *testing.T) {
 		stageOnePath := filepath.Join(
 			fixture.privateDir,
@@ -2515,7 +2543,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 		}
 
 		req := httptest.NewRequest(
-			http.MethodGet,
+			http.MethodPost,
 			app.DevReloadRoutesEndpointPath(),
 			nil,
 		)
@@ -2535,7 +2563,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 		app.Config.HTMLTemplateLocation = "missing-template.go.html"
 
 		req := httptest.NewRequest(
-			http.MethodGet,
+			http.MethodPost,
 			app.DevReloadTemplateEndpointPath(),
 			nil,
 		)

@@ -321,9 +321,15 @@ func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 		ignoredPatterns = append(ignoredPatterns, configFileIgnoredPattern)
 	}
 
-	for _, routeDefinitionPattern := range normalizeRouteDefinitionPatternsInInputOrder(
+	normalizedRouteDefinitionPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ClientRouteDefinitionPatterns,
-	) {
+	)
+	if err != nil {
+		panic(
+			fmt.Sprintf("normalize client route definition patterns: %v", err),
+		)
+	}
+	for _, routeDefinitionPattern := range normalizedRouteDefinitionPatterns {
 		ignoredPatterns = append(
 			ignoredPatterns,
 			path.Join("**", routeDefinitionPattern),

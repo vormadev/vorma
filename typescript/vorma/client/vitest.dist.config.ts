@@ -1,5 +1,5 @@
-import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
 
 const sourcePath = (relativePath: string): string =>
 	fileURLToPath(new URL(relativePath, import.meta.url));

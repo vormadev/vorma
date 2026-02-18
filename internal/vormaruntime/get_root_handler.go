@@ -14,18 +14,37 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// VormaBuildIDHeaderKey carries the runtime build id in responses.
 const VormaBuildIDHeaderKey = "X-Vorma-Build-Id"
+
+// VormaJSONQueryKey toggles JSON route-data response mode for loaders.
 const VormaJSONQueryKey = "vorma_json"
 
 const (
-	DefaultDevReloadRoutesEndpointPath   = "/__vorma_internal/reload-routes"
+	// DefaultDevReloadRoutesEndpointPath is the default dev endpoint for route
+	// reloading.
+	DefaultDevReloadRoutesEndpointPath = "/__vorma_internal/reload-routes"
+	// DefaultDevReloadTemplateEndpointPath is the default dev endpoint for root
+	// template reloading.
 	DefaultDevReloadTemplateEndpointPath = "/__vorma_internal/reload-template"
-	DefaultTemplateDataKeyHeadElements   = "VormaHeadEls"
-	DefaultTemplateDataKeyBodyScripts    = "VormaBodyScripts"
-	DefaultTemplateDataKeySSRScript      = "VormaSSRScript"
-	DefaultTemplateDataKeySSRScriptHash  = "VormaSSRScriptSha256Hash"
-	DefaultTemplateDataKeyRootElementID  = "VormaRootID"
-	DefaultClientRootElementID           = "vorma-root"
+	// DefaultTemplateDataKeyHeadElements is the default key for rendered head
+	// elements in template data.
+	DefaultTemplateDataKeyHeadElements = "VormaHeadEls"
+	// DefaultTemplateDataKeyBodyScripts is the default key for body script tags
+	// in template data.
+	DefaultTemplateDataKeyBodyScripts = "VormaBodyScripts"
+	// DefaultTemplateDataKeySSRScript is the default key for SSR inner HTML in
+	// template data.
+	DefaultTemplateDataKeySSRScript = "VormaSSRScript"
+	// DefaultTemplateDataKeySSRScriptHash is the default key for the SSR script
+	// SHA-256 hash in template data.
+	DefaultTemplateDataKeySSRScriptHash = "VormaSSRScriptSha256Hash"
+	// DefaultTemplateDataKeyRootElementID is the default key for the client root
+	// element id in template data.
+	DefaultTemplateDataKeyRootElementID = "VormaRootID"
+	// DefaultClientRootElementID is the default DOM id expected by client mount
+	// logic.
+	DefaultClientRootElementID = "vorma-root"
 )
 
 type loadersHTMLRenderSnapshot struct {
@@ -34,6 +53,8 @@ type loadersHTMLRenderSnapshot struct {
 	rootTemplate   *template.Template
 }
 
+// LoadersHandler returns the main GET handler for loader and document
+// rendering requests.
 func (v *Vorma) LoadersHandler() mux.TasksCtxRequirerFunc {
 	v.loadersHandlerOnce.Do(func() {
 		v.ensureLoaderPatternsRegisteredForHandler()
@@ -109,6 +130,11 @@ func (v *Vorma) handleDevReloadEndpoints(
 
 	switch r.URL.Path {
 	case v.DevReloadRoutesEndpointPath():
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return true
+		}
 		if err := v.devReloadRoutesFromDisk(); err != nil {
 			v.Log.Error(fmt.Sprintf("route reload failed: %s", err))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -117,6 +143,11 @@ func (v *Vorma) handleDevReloadEndpoints(
 		w.Write([]byte("ok"))
 		return true
 	case v.DevReloadTemplateEndpointPath():
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return true
+		}
 		if err := v.devReloadTemplateFromDisk(); err != nil {
 			v.Log.Error(fmt.Sprintf("template reload failed: %s", err))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -129,6 +160,8 @@ func (v *Vorma) handleDevReloadEndpoints(
 	}
 }
 
+// DevReloadRoutesEndpointPath returns the configured (or default) dev routes
+// reload endpoint path.
 func (v *Vorma) DevReloadRoutesEndpointPath() string {
 	if v == nil || v.Config == nil {
 		return DefaultDevReloadRoutesEndpointPath
@@ -142,6 +175,8 @@ func (v *Vorma) DevReloadRoutesEndpointPath() string {
 	return configuredPath
 }
 
+// DevReloadTemplateEndpointPath returns the configured (or default) dev
+// template reload endpoint path.
 func (v *Vorma) DevReloadTemplateEndpointPath() string {
 	if v == nil || v.Config == nil {
 		return DefaultDevReloadTemplateEndpointPath
@@ -155,6 +190,8 @@ func (v *Vorma) DevReloadTemplateEndpointPath() string {
 	return configuredPath
 }
 
+// TemplateDataKeyHeadElements returns the template data key used for rendered
+// head elements.
 func (v *Vorma) TemplateDataKeyHeadElements() string {
 	if v == nil || v.Config == nil {
 		return DefaultTemplateDataKeyHeadElements
@@ -166,6 +203,8 @@ func (v *Vorma) TemplateDataKeyHeadElements() string {
 	return configuredKey
 }
 
+// TemplateDataKeyBodyScripts returns the template data key used for rendered
+// body scripts.
 func (v *Vorma) TemplateDataKeyBodyScripts() string {
 	if v == nil || v.Config == nil {
 		return DefaultTemplateDataKeyBodyScripts
@@ -177,6 +216,8 @@ func (v *Vorma) TemplateDataKeyBodyScripts() string {
 	return configuredKey
 }
 
+// TemplateDataKeySSRScript returns the template data key used for SSR inner
+// HTML.
 func (v *Vorma) TemplateDataKeySSRScript() string {
 	if v == nil || v.Config == nil {
 		return DefaultTemplateDataKeySSRScript
@@ -188,6 +229,8 @@ func (v *Vorma) TemplateDataKeySSRScript() string {
 	return configuredKey
 }
 
+// TemplateDataKeySSRScriptHash returns the template data key used for the SSR
+// script hash.
 func (v *Vorma) TemplateDataKeySSRScriptHash() string {
 	if v == nil || v.Config == nil {
 		return DefaultTemplateDataKeySSRScriptHash
@@ -199,6 +242,8 @@ func (v *Vorma) TemplateDataKeySSRScriptHash() string {
 	return configuredKey
 }
 
+// TemplateDataKeyRootElementID returns the template data key used for the
+// client root element id.
 func (v *Vorma) TemplateDataKeyRootElementID() string {
 	if v == nil || v.Config == nil {
 		return DefaultTemplateDataKeyRootElementID
@@ -210,6 +255,7 @@ func (v *Vorma) TemplateDataKeyRootElementID() string {
 	return configuredKey
 }
 
+// ClientRootElementID returns the configured (or default) client mount root id.
 func (v *Vorma) ClientRootElementID() string {
 	if v == nil || v.Config == nil {
 		return DefaultClientRootElementID
@@ -444,14 +490,18 @@ func executeRootTemplate(
 	return buf.Bytes(), nil
 }
 
+// IsJSONRequest reports whether a request asks for JSON loader data response.
 func IsJSONRequest(r *http.Request) bool {
 	return r.URL.Query().Get(VormaJSONQueryKey) != ""
 }
 
+// IsCurrentBuildJSONRequest reports whether a JSON request explicitly targets
+// the current runtime build id.
 func (v *Vorma) IsCurrentBuildJSONRequest(r *http.Request) bool {
 	return r.URL.Query().Get(VormaJSONQueryKey) == v.BuildID()
 }
 
+// ActionsHandler returns the task-backed HTTP handler for action routes.
 func (v *Vorma) ActionsHandler() mux.TasksCtxRequirerFunc {
 	v.actionsHandlerOnce.Do(func() {
 		router := v.ActionsRouter().Router

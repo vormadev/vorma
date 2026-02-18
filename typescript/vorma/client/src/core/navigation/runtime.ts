@@ -16,10 +16,9 @@ import {
 	createNavigationLifecycleRuntime,
 } from "./runtime_lifecycle_runtime.ts";
 import {
-	handleNavigationOutcomeWithInternalResult,
+	handleNavigationOutcome,
 	processSuccessfulNavigationRuntime,
 } from "./runtime_navigation_outcome.ts";
-import { toPublicNavigateResult } from "./runtime_navigation_outcome_state_machine.ts";
 import { createDeterministicRevalidationLane } from "./runtime_revalidation_lane.ts";
 import {
 	buildNavigationsMapFromNavigationLanes,
@@ -53,9 +52,14 @@ export {
 export type { NavigationLanes };
 
 export type CreateNavigationRuntimeOptions = {
+	// Called after a navigate/revalidate intent commits successfully.
 	onNavigationIntentResolved?: () => void;
 };
 
+/**
+ * Creates the client navigation runtime that coordinates active navigation,
+ * prefetch, revalidation, and submissions over shared slot state.
+ */
 export function createNavigationRuntime(
 	options: CreateNavigationRuntimeOptions = {},
 ): NavigationStateManager {
@@ -255,21 +259,17 @@ export function createNavigationRuntime(
 
 		try {
 			const outcome = await control.promise;
-			const internalResult =
-				await handleNavigationOutcomeWithInternalResult({
-					findNavigationEntry,
-					deleteNavigation: ({ targetUrl, reason }) =>
-						deleteNavigation({
-							targetUrl,
-							reason,
-						}),
-					processSuccessfulNavigation,
-					navigationProps: props,
-					outcome,
-					expectedOperationID: control.operationID,
-				});
-			return toPublicNavigateResult({
-				internalResult,
+			return handleNavigationOutcome({
+				findNavigationEntry,
+				deleteNavigation: ({ targetUrl, reason }) =>
+					deleteNavigation({
+						targetUrl,
+						reason,
+					}),
+				processSuccessfulNavigation,
+				navigationProps: props,
+				outcome,
+				expectedOperationID: control.operationID,
 			});
 		} catch {
 			const targetUrl = resolveAbsoluteHref({ href: props.href });
@@ -291,18 +291,14 @@ export function createNavigationRuntime(
 				entry: ownedEntry,
 				reason: "navigate_promise_rejected",
 			});
-			return toPublicNavigateResult({
-				internalResult: {
-					type: "failed",
-					reason: "navigate_promise_rejected",
-				},
-			});
+			return { didNavigate: false };
 		}
 	};
 
 	const navigate = async (
 		props: NavigateProps,
 	): Promise<{ didNavigate: boolean }> => {
+		// Revalidation lane sequencing only applies to revalidation requests.
 		if (props.navigationType !== "revalidation") {
 			deterministicRevalidationLane.clearQueuedTrailingRequest();
 			return navigateSinglePass(props);

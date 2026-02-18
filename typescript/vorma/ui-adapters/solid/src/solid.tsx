@@ -1,5 +1,4 @@
 import {
-	batch,
 	createEffect,
 	createMemo,
 	createSignal,
@@ -12,171 +11,68 @@ import { Dynamic, render as renderSolid } from "solid-js/web";
 import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
 	applyScrollState,
-	areRouteOutletLocationsEqual,
-	buildCurrentRouteOutletLocationState,
-	buildInitialRouteOutletNavigationState,
-	buildNextRouteOutletNavigationState,
+	buildInitialRouteOutletStoreState,
+	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
 	type RouteOutletBranchInputState,
-	type RouteOutletNavigationState,
+	type RouteOutletStoreState,
 } from "vorma/client/__internal";
 
 /////////////////////////////////////////////////////////////////////
 /////// STORE
 /////////////////////////////////////////////////////////////////////
 
-type NavigationState = RouteOutletNavigationState;
+type StoreState = RouteOutletStoreState;
 type RouteOutletBranchInputStateValue = RouteOutletBranchInputState;
 
-const initialNavigationState = buildInitialRouteOutletNavigationState();
+const initialStoreState = buildInitialRouteOutletStoreState();
+const [navigationState, setNavigationState] = createSignal(
+	initialStoreState.navigation,
+);
+const [routeOutletBranchInputStateSignal, setRouteOutletBranchInputState] =
+	createSignal(initialStoreState.routeOutletBranchInputState);
+const [locationState, setLocationState] = createSignal(
+	initialStoreState.location,
+);
 
-const [loadersData, setLoadersData] = createSignal(
-	initialNavigationState.loadersData,
-);
-const [clientLoadersData, setClientLoadersData] = createSignal(
-	initialNavigationState.clientLoadersData,
-);
-const [routerData, setRouterData] = createSignal(
-	initialNavigationState.routerData,
-);
-const [outermostError, setOutermostError] = createSignal(
-	initialNavigationState.outermostError,
-);
-const [outermostErrorIdx, setOutermostErrorIdx] = createSignal(
-	initialNavigationState.outermostErrorIdx,
-);
-const [activeComponents, setActiveComponents] = createSignal(
-	initialNavigationState.activeComponents,
-);
-const [activeErrorBoundary, setActiveErrorBoundary] = createSignal(
-	initialNavigationState.activeErrorBoundary as ValidComponent | undefined,
-);
-const [importURLs, setImportURLs] = createSignal(
-	initialNavigationState.importURLs,
-);
-const [exportKeys, setExportKeys] = createSignal(
-	initialNavigationState.exportKeys,
-);
+const loadersData = () => navigationState().loadersData;
+const clientLoadersData = () => navigationState().clientLoadersData;
+const routerData = () => navigationState().routerData;
+const outermostError = () => navigationState().outermostError;
 
 export { clientLoadersData, loadersData, routerData };
 
-const [location, setLocation] = createSignal(
-	buildCurrentRouteOutletLocationState(),
-);
+const location = () => locationState();
 
 export { location };
 
-function readNavigationSignals(): NavigationState {
-	return {
-		loadersData: loadersData(),
-		clientLoadersData: clientLoadersData(),
-		routerData: routerData(),
-		outermostError: outermostError(),
-		outermostErrorIdx: outermostErrorIdx(),
-		activeComponents: activeComponents(),
-		activeErrorBoundary: activeErrorBoundary(),
-		importURLs: importURLs(),
-		exportKeys: exportKeys(),
-	};
-}
-
 function readRouteOutletBranchInputSignals(): RouteOutletBranchInputStateValue {
-	return {
-		loaderCount: loadersData()?.length ?? 0,
-		outermostErrorIdx: outermostErrorIdx(),
-		activeComponents: activeComponents(),
-		activeErrorBoundary: activeErrorBoundary(),
-		importURLs: importURLs(),
-		exportKeys: exportKeys(),
+	return routeOutletBranchInputStateSignal();
+}
+
+function syncStoreState(): void {
+	const previousStoreState: StoreState = {
+		navigation: navigationState(),
+		routeOutletBranchInputState: routeOutletBranchInputStateSignal(),
+		location: locationState(),
 	};
-}
-
-function syncNavigationSignals(): void {
-	const previousNavigationState = readNavigationSignals();
-	const nextNavigationState = buildNextRouteOutletNavigationState(
-		previousNavigationState,
-	);
-	if (nextNavigationState === previousNavigationState) {
-		return;
-	}
-
-	batch(() => {
-		if (
-			nextNavigationState.loadersData !==
-			previousNavigationState.loadersData
-		) {
-			setLoadersData(nextNavigationState.loadersData);
+	const nextStoreState =
+		buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+	if (nextStoreState !== previousStoreState) {
+		if (nextStoreState.navigation !== previousStoreState.navigation) {
+			setNavigationState(nextStoreState.navigation);
 		}
 		if (
-			nextNavigationState.clientLoadersData !==
-			previousNavigationState.clientLoadersData
+			nextStoreState.routeOutletBranchInputState !==
+			previousStoreState.routeOutletBranchInputState
 		) {
-			setClientLoadersData(nextNavigationState.clientLoadersData);
+			setRouteOutletBranchInputState(
+				nextStoreState.routeOutletBranchInputState,
+			);
 		}
-		if (
-			nextNavigationState.routerData !==
-			previousNavigationState.routerData
-		) {
-			setRouterData(nextNavigationState.routerData);
+		if (nextStoreState.location !== previousStoreState.location) {
+			setLocationState(nextStoreState.location);
 		}
-		if (
-			!Object.is(
-				nextNavigationState.outermostError,
-				previousNavigationState.outermostError,
-			)
-		) {
-			setOutermostError(nextNavigationState.outermostError);
-		}
-		if (
-			!Object.is(
-				nextNavigationState.outermostErrorIdx,
-				previousNavigationState.outermostErrorIdx,
-			)
-		) {
-			setOutermostErrorIdx(nextNavigationState.outermostErrorIdx);
-		}
-		if (
-			nextNavigationState.activeComponents !==
-			previousNavigationState.activeComponents
-		) {
-			setActiveComponents(nextNavigationState.activeComponents);
-		}
-		if (
-			!Object.is(
-				nextNavigationState.activeErrorBoundary,
-				previousNavigationState.activeErrorBoundary,
-			)
-		) {
-			setActiveErrorBoundary(() => {
-				return nextNavigationState.activeErrorBoundary as
-					| ValidComponent
-					| undefined;
-			});
-		}
-		if (
-			nextNavigationState.importURLs !==
-			previousNavigationState.importURLs
-		) {
-			setImportURLs(nextNavigationState.importURLs);
-		}
-		if (
-			nextNavigationState.exportKeys !==
-			previousNavigationState.exportKeys
-		) {
-			setExportKeys(nextNavigationState.exportKeys);
-		}
-	});
-}
-
-function syncLocationSignal(): void {
-	const nextLocationState = buildCurrentRouteOutletLocationState();
-	if (
-		!areRouteOutletLocationsEqual({
-			firstLocationState: location(),
-			secondLocationState: nextLocationState,
-		})
-	) {
-		setLocation(nextLocationState);
 	}
 }
 
@@ -189,14 +85,14 @@ function initUIListeners(): void {
 	isInited = true;
 
 	addRouteChangeListener((event) => {
-		syncNavigationSignals();
+		syncStoreState();
 		window.requestAnimationFrame(() => {
 			applyScrollState(event.detail.__scrollState);
 		});
 	});
 
 	addLocationListener(() => {
-		syncLocationSignal();
+		syncStoreState();
 	});
 }
 
@@ -397,7 +293,7 @@ export function VormaRootOutlet(
 
 	if (idx === 0) {
 		initUIListeners();
-		syncNavigationSignals();
+		syncStoreState();
 	}
 
 	const routeOutletBranchInputState =

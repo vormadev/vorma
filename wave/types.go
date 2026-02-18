@@ -37,29 +37,52 @@ const (
 
 // Public constants
 const (
+	// PrehashedDirname is the static directory segment for prehashed assets.
 	PrehashedDirname = "prehashed"
-	NohashDirname    = "__nohash"
+	// NohashDirname is the static directory segment for assets that should not
+	// be hashed.
+	NohashDirname = "__nohash"
 
-	HashedOutputPrefix           = "vorma_out_"
+	// HashedOutputPrefix is the generated filename prefix for hashed artifacts.
+	HashedOutputPrefix = "vorma_out_"
+	// HashedOutputPrefixNoTrailing is the unhashed directory prefix used in
+	// generated output paths.
 	HashedOutputPrefixNoTrailing = "vorma_out"
 
-	NormalCSSBaseName    = "vorma_internal_normal.css"
+	// NormalCSSBaseName is the canonical non-critical CSS output base name.
+	NormalCSSBaseName = "vorma_internal_normal.css"
+	// NormalCSSGlobPattern matches hashed non-critical CSS output files.
 	NormalCSSGlobPattern = HashedOutputPrefix + "vorma_internal_normal_*.css"
 
-	GeneratedTSFileName   = "index.ts"
-	PublicFileMapTSName   = "filemap.ts"
+	// GeneratedTSFileName is the default generated TypeScript file name.
+	GeneratedTSFileName = "index.ts"
+	// PublicFileMapTSName is the generated TypeScript public filemap name.
+	PublicFileMapTSName = "filemap.ts"
+	// PublicFileMapJSONName is the generated JSON public filemap name.
 	PublicFileMapJSONName = "filemap.json"
-	FileMapJSGlobPattern  = HashedOutputPrefix + "vorma_internal_public_filemap_*.js"
+	// FileMapJSGlobPattern matches hashed public filemap runtime script files.
+	FileMapJSGlobPattern = HashedOutputPrefix + "vorma_internal_public_filemap_*.js"
 )
 
 // Runtime browser integration defaults.
 const (
-	DefaultBrowserRuntimeNamespace              = "__wave"
+	// DefaultBrowserRuntimeNamespace is the default browser global namespace.
+	DefaultBrowserRuntimeNamespace = "__wave"
+	// DefaultBrowserPublicURLResolverFunctionName is the default browser helper
+	// name for public URL resolution.
 	DefaultBrowserPublicURLResolverFunctionName = "getPublicURL"
-	DefaultBrowserRevalidateFunctionName        = "__waveRevalidate"
-	DefaultRefreshRebuildingOverlayElementID    = "wave-refreshscript-rebuilding"
-	DefaultCriticalCSSStyleElementID            = "wave-critical-css"
-	DefaultNonCriticalCSSLinkElementID          = "wave-normal-css"
+	// DefaultBrowserRevalidateFunctionName is the default browser helper name for
+	// route revalidation.
+	DefaultBrowserRevalidateFunctionName = "__waveRevalidate"
+	// DefaultRefreshRebuildingOverlayElementID is the default DOM element id for
+	// rebuild overlays.
+	DefaultRefreshRebuildingOverlayElementID = "wave-refreshscript-rebuilding"
+	// DefaultCriticalCSSStyleElementID is the default DOM id for critical CSS
+	// style injection.
+	DefaultCriticalCSSStyleElementID = "wave-critical-css"
+	// DefaultNonCriticalCSSLinkElementID is the default DOM id for non-critical
+	// stylesheet link injection.
+	DefaultNonCriticalCSSLinkElementID = "wave-normal-css"
 )
 
 // Timing represents when an OnChangeHook runs relative to Wave's rebuild process
@@ -81,17 +104,40 @@ var RelPaths = relPaths{}
 
 type relPaths struct{}
 
-func (relPaths) Internal() string              { return segInternal }
-func (relPaths) AssetsPublic() string          { return segAssets + "/" + segPublic }
-func (relPaths) AssetsPrivate() string         { return segAssets + "/" + segPrivate }
-func (relPaths) CriticalCSS() string           { return segInternal + "/" + fileCriticalCSS }
-func (relPaths) NormalCSSRef() string          { return segInternal + "/" + fileNormalCSSRef }
-func (relPaths) PublicFileMapRef() string      { return segInternal + "/" + filePublicMapRef }
-func (relPaths) PublicFileMapGob() string      { return segInternal + "/" + filePublicMapGob }
-func (relPaths) PublicFileMapGobName() string  { return filePublicMapGob }
+// Internal returns the internal metadata path segment.
+func (relPaths) Internal() string { return segInternal }
+
+// AssetsPublic returns the relative public assets path.
+func (relPaths) AssetsPublic() string { return segAssets + "/" + segPublic }
+
+// AssetsPrivate returns the relative private assets path.
+func (relPaths) AssetsPrivate() string { return segAssets + "/" + segPrivate }
+
+// CriticalCSS returns the relative critical CSS metadata file path.
+func (relPaths) CriticalCSS() string { return segInternal + "/" + fileCriticalCSS }
+
+// NormalCSSRef returns the relative normal CSS reference metadata path.
+func (relPaths) NormalCSSRef() string { return segInternal + "/" + fileNormalCSSRef }
+
+// PublicFileMapRef returns the relative public filemap reference metadata path.
+func (relPaths) PublicFileMapRef() string { return segInternal + "/" + filePublicMapRef }
+
+// PublicFileMapGob returns the relative gob-encoded public filemap path.
+func (relPaths) PublicFileMapGob() string { return segInternal + "/" + filePublicMapGob }
+
+// PublicFileMapGobName returns the public filemap gob filename.
+func (relPaths) PublicFileMapGobName() string { return filePublicMapGob }
+
+// PrivateFileMapGobName returns the private filemap gob filename.
 func (relPaths) PrivateFileMapGobName() string { return filePrivateMapGob }
-func (relPaths) PublicFileMapJSName() string   { return filePublicMapJS }
-func (relPaths) PublicFileMapTSName() string   { return PublicFileMapTSName }
+
+// PublicFileMapJSName returns the runtime public filemap JavaScript filename.
+func (relPaths) PublicFileMapJSName() string { return filePublicMapJS }
+
+// PublicFileMapTSName returns the generated TypeScript public filemap filename.
+func (relPaths) PublicFileMapTSName() string { return PublicFileMapTSName }
+
+// PublicFileMapJSONName returns the generated JSON public filemap filename.
 func (relPaths) PublicFileMapJSONName() string { return PublicFileMapJSONName }
 
 // DistLayout provides computed paths for the dist directory structure.
@@ -99,6 +145,7 @@ type DistLayout struct {
 	Root string
 }
 
+// Binary returns the platform-specific app binary path.
 func (d DistLayout) Binary() string {
 	name := fileBinary
 	if runtime.GOOS == "windows" {
@@ -107,17 +154,40 @@ func (d DistLayout) Binary() string {
 	return filepath.Join(d.Root, name)
 }
 
-func (d DistLayout) Static() string            { return filepath.Join(d.Root, segStatic) }
-func (d DistLayout) StaticAssets() string      { return filepath.Join(d.Static(), segAssets) }
-func (d DistLayout) StaticPublic() string      { return filepath.Join(d.StaticAssets(), segPublic) }
-func (d DistLayout) StaticPrivate() string     { return filepath.Join(d.StaticAssets(), segPrivate) }
-func (d DistLayout) Internal() string          { return filepath.Join(d.Static(), segInternal) }
-func (d DistLayout) CriticalCSS() string       { return filepath.Join(d.Internal(), fileCriticalCSS) }
-func (d DistLayout) NormalCSSRef() string      { return filepath.Join(d.Internal(), fileNormalCSSRef) }
-func (d DistLayout) PublicFileMapRef() string  { return filepath.Join(d.Internal(), filePublicMapRef) }
-func (d DistLayout) PublicFileMapGob() string  { return filepath.Join(d.Internal(), filePublicMapGob) }
-func (d DistLayout) PrivateFileMapGob() string { return filepath.Join(d.Internal(), filePrivateMapGob) }
-func (d DistLayout) KeepFile() string          { return filepath.Join(d.Static(), fileKeep) }
+// Static returns the dist static directory path.
+func (d DistLayout) Static() string { return filepath.Join(d.Root, segStatic) }
+
+// StaticAssets returns the dist static assets directory path.
+func (d DistLayout) StaticAssets() string { return filepath.Join(d.Static(), segAssets) }
+
+// StaticPublic returns the dist public assets directory path.
+func (d DistLayout) StaticPublic() string { return filepath.Join(d.StaticAssets(), segPublic) }
+
+// StaticPrivate returns the dist private assets directory path.
+func (d DistLayout) StaticPrivate() string { return filepath.Join(d.StaticAssets(), segPrivate) }
+
+// Internal returns the dist internal metadata directory path.
+func (d DistLayout) Internal() string { return filepath.Join(d.Static(), segInternal) }
+
+// CriticalCSS returns the dist critical CSS metadata file path.
+func (d DistLayout) CriticalCSS() string { return filepath.Join(d.Internal(), fileCriticalCSS) }
+
+// NormalCSSRef returns the dist normal CSS reference metadata file path.
+func (d DistLayout) NormalCSSRef() string { return filepath.Join(d.Internal(), fileNormalCSSRef) }
+
+// PublicFileMapRef returns the dist public filemap reference metadata path.
+func (d DistLayout) PublicFileMapRef() string { return filepath.Join(d.Internal(), filePublicMapRef) }
+
+// PublicFileMapGob returns the dist gob-encoded public filemap path.
+func (d DistLayout) PublicFileMapGob() string { return filepath.Join(d.Internal(), filePublicMapGob) }
+
+// PrivateFileMapGob returns the dist gob-encoded private filemap path.
+func (d DistLayout) PrivateFileMapGob() string {
+	return filepath.Join(d.Internal(), filePrivateMapGob)
+}
+
+// KeepFile returns the dist keep-file path used to retain directories.
+func (d DistLayout) KeepFile() string { return filepath.Join(d.Static(), fileKeep) }
 
 // ParsedConfig is the parsed and validated Wave configuration payload.
 type ParsedConfig struct {
@@ -144,11 +214,13 @@ type ParsedConfig struct {
 	FrameworkNonCriticalCSSLinkElementID          string `json:"-"`
 }
 
+// GoBuildOverlay describes a temporary overlay used for Go build execution.
 type GoBuildOverlay struct {
 	OverlayConfigPath string
 	Cleanup           func() error
 }
 
+// CoreConfig contains framework/runtime core configuration.
 type CoreConfig struct {
 	ConfigLocation                   string          `json:"ConfigLocation,omitempty"`
 	DevBuildHook                     string          `json:"DevBuildHook,omitempty"`
@@ -164,16 +236,19 @@ type CoreConfig struct {
 	SequentialGoBuild                bool            `json:"SequentialGoBuild,omitempty"`
 }
 
+// StaticAssetDirs configures public/private static asset source directories.
 type StaticAssetDirs struct {
 	Private string `json:"Private"`
 	Public  string `json:"Public"`
 }
 
+// CSSEntryFiles configures optional critical and non-critical CSS entry files.
 type CSSEntryFiles struct {
 	Critical    string `json:"Critical,omitempty"`
 	NonCritical string `json:"NonCritical,omitempty"`
 }
 
+// ViteConfig configures optional Vite integration.
 type ViteConfig struct {
 	JSPackageManagerBaseCmd string `json:"JSPackageManagerBaseCmd"`
 	JSPackageManagerCmdDir  string `json:"JSPackageManagerCmdDir,omitempty"`
@@ -181,6 +256,7 @@ type ViteConfig struct {
 	ViteConfigFile          string `json:"ViteConfigFile,omitempty"`
 }
 
+// WatchConfig configures dev watch behavior and hooks.
 type WatchConfig struct {
 	WatchRoot              string                    `json:"WatchRoot,omitempty"`
 	HealthcheckEndpoint    string                    `json:"HealthcheckEndpoint,omitempty"`
@@ -194,6 +270,7 @@ type WatchConfig struct {
 	} `json:"Exclude,omitempty"`
 }
 
+// HookCommandTimeoutConfig configures command timeout overrides per hook stage.
 type HookCommandTimeoutConfig struct {
 	PreCommandTimeoutMilliseconds              int `json:"PreCommandTimeoutMilliseconds,omitempty"`
 	ConcurrentCommandTimeoutMilliseconds       int `json:"ConcurrentCommandTimeoutMilliseconds,omitempty"`
@@ -201,6 +278,8 @@ type HookCommandTimeoutConfig struct {
 	PostCommandTimeoutMilliseconds             int `json:"PostCommandTimeoutMilliseconds,omitempty"`
 }
 
+// HookCallbackTimeoutConfig configures callback timeout overrides per hook
+// stage.
 type HookCallbackTimeoutConfig struct {
 	PreCallbackTimeoutMilliseconds              int `json:"PreCallbackTimeoutMilliseconds,omitempty"`
 	ConcurrentCallbackTimeoutMilliseconds       int `json:"ConcurrentCallbackTimeoutMilliseconds,omitempty"`
@@ -208,6 +287,7 @@ type HookCallbackTimeoutConfig struct {
 	PostCallbackTimeoutMilliseconds             int `json:"PostCallbackTimeoutMilliseconds,omitempty"`
 }
 
+// WatchedFile configures file-pattern watch behavior and hooks.
 type WatchedFile struct {
 	Pattern                            string         `json:"Pattern"`
 	OnChangeHooks                      []OnChangeHook `json:"OnChangeHooks,omitempty"`
@@ -220,6 +300,7 @@ type WatchedFile struct {
 	SortedHooks                        *SortedHooks   `json:"-"`
 }
 
+// SortedHooks stores hooks partitioned by execution timing stage.
 type SortedHooks struct {
 	Pre              []OnChangeHook
 	Concurrent       []OnChangeHook
@@ -290,8 +371,10 @@ type OnChangeHook struct {
 	Callback func(*HookContext) (*RefreshAction, error) `json:"-"`
 }
 
+// FileMap maps source public asset paths to built artifact metadata.
 type FileMap map[string]FileVal
 
+// FileVal describes a single built public asset mapping entry.
 type FileVal struct {
 	DistName    string
 	ContentHash string

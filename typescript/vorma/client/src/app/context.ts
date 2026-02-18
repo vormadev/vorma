@@ -1,10 +1,13 @@
 import type { PatternRegistry } from "vorma/kit/matcher/register";
-import type { VormaAppConfig } from "./helpers.ts";
 import type {
 	NavigateProps,
 	NavigationStateManager,
 } from "../core/navigation/types.ts";
+import type { VormaAppConfig } from "./helpers.ts";
 
+/**
+ * Serialized head element shape transferred between server/runtime boundaries.
+ */
 export type HeadEl = {
 	tag?: string;
 	attributesKnownSafe?: Record<string, string>;
@@ -40,21 +43,34 @@ type RuntimeRouteState = RouteDataState & {
 	outermostErrorIdx?: number;
 
 	buildID: string;
+	rootElementID?: string;
 
 	activeComponents: Array<unknown> | null;
 	activeErrorBoundary?: unknown;
 };
 
+/**
+ * Canonical route-data payload shape consumed by adapters and runtime helpers.
+ */
 export type GetRouteDataOutput = RouteDataState &
 	Meta & {
 		deps: Array<string>;
 		cssBundles: Array<string>;
 	};
 
+/**
+ * Process-wide symbol key used to store runtime state on globalThis.
+ */
 export const VORMA_SYMBOL = Symbol.for("__vorma_internal__");
 
+/**
+ * Contract for route-level error boundary components.
+ */
 export type RouteErrorComponent = (props: { error: string }) => unknown;
 
+/**
+ * Data returned from server loaders and awaited by client loaders.
+ */
 export type ClientLoaderAwaitedServerData<RD, LD> = {
 	matchedPatterns: string[];
 	loaderData: LD;
@@ -62,6 +78,9 @@ export type ClientLoaderAwaitedServerData<RD, LD> = {
 	buildID: string;
 };
 
+/**
+ * Client loader wait function contract, keyed by route pattern.
+ */
 export type PatternWaitFn = (props: {
 	params: Record<string, string>;
 	splatValues: string[];
@@ -69,6 +88,9 @@ export type PatternWaitFn = (props: {
 	signal: AbortSignal;
 }) => Promise<unknown>;
 
+/**
+ * Global runtime state container mounted on `globalThis[VORMA_SYMBOL]`.
+ */
 export type VormaClientGlobal = RuntimeRouteState & {
 	isDev: boolean;
 	viteDevURL: string;
@@ -97,6 +119,9 @@ type VormaGlobalThis = typeof globalThis & {
 	[VORMA_SYMBOL]: VormaClientGlobal;
 };
 
+/**
+ * Returns typed `get`/`set` accessors for the shared global runtime state.
+ */
 export function __getVormaClientGlobal() {
 	const dangerousGlobalThis = globalThis as VormaGlobalThis;
 	function get<K extends keyof VormaClientGlobal>(key: K) {
@@ -113,6 +138,9 @@ export function __getVormaClientGlobal() {
 
 export const __vormaClientGlobal = __getVormaClientGlobal();
 
+/**
+ * Returns router data snapshot for application consumption.
+ */
 export function getRouterData<
 	T = unknown,
 	P extends Record<string, string> = Record<string, string>,
@@ -143,6 +171,9 @@ export type ClientRuntimeRenderState = Pick<
 	| "exportKeys"
 >;
 
+/**
+ * Returns render-state fields required by route outlet runtime reconciliation.
+ */
 export function getClientRuntimeRenderState(): ClientRuntimeRenderState {
 	return {
 		loadersData: __vormaClientGlobal.get("loadersData"),
@@ -156,6 +187,9 @@ export function getClientRuntimeRenderState(): ClientRuntimeRenderState {
 	};
 }
 
+/**
+ * Registers a client loader wait function for a route pattern.
+ */
 export function setClientLoaderWaitFn(
 	pattern: string,
 	waitFn: PatternWaitFn,
@@ -167,6 +201,10 @@ export function setClientLoaderWaitFn(
 	});
 }
 
+/**
+ * Minimal navigation runtime surface exposed to modules that should not depend
+ * on the full navigation manager implementation.
+ */
 export type NavigationStateAccess = Pick<
 	NavigationStateManager,
 	"navigate" | "removeNavigation" | "getNavigations"
@@ -176,10 +214,16 @@ export type NavigationStateAccess = Pick<
 
 let navigationStateAccess: NavigationStateAccess | null = null;
 
+/**
+ * Sets the shared navigation runtime access object.
+ */
 export function setNavigationStateAccess(access: NavigationStateAccess): void {
 	navigationStateAccess = access;
 }
 
+/**
+ * Returns the shared navigation runtime access object.
+ */
 export function getNavigationStateAccess(): NavigationStateAccess {
 	if (!navigationStateAccess) {
 		throw new Error("Navigation state access has not been initialized.");

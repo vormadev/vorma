@@ -531,12 +531,10 @@ func newBuildDiagnosticsTestConfig() *vormaruntime.VormaConfig {
 		HTMLTemplateLocation: "entry.go.html",
 		ClientEntry:          "frontend/src/vorma.entry.tsx",
 		ClientRouteDefinitionPatterns: []string{
-			" frontend/src/routes/*.client.ts ",
 			"frontend/src/routes/*.client.ts",
 			"frontend/src/routes/*.extra.client.ts",
 		},
 		ServerRouteDefinitionPatterns: []string{
-			" backend/src/routes/*.go ",
 			"backend/src/routes/*.go",
 			"backend/src/routes/admin/*.go",
 		},

@@ -114,7 +114,11 @@ func run() error {
 func cleanBuildOutputs() error {
 	for _, outputPath := range buildOutputPaths {
 		if err := os.RemoveAll(outputPath); err != nil {
-			return fmt.Errorf("failed to clean output path %s: %w", outputPath, err)
+			return fmt.Errorf(
+				"failed to clean output path %s: %w",
+				outputPath,
+				err,
+			)
 		}
 	}
 
@@ -202,7 +206,12 @@ func runTasksInParallel(stageName string, tasks []buildTask) error {
 		parallelism = 4
 	}
 
-	log.Printf("%s: starting %d tasks with parallelism=%d", stageName, len(tasks), parallelism)
+	log.Printf(
+		"%s: starting %d tasks with parallelism=%d",
+		stageName,
+		len(tasks),
+		parallelism,
+	)
 
 	var g errgroup.Group
 	g.SetLimit(parallelism)
@@ -550,18 +559,34 @@ func hashFileSet(
 	}
 	for _, file := range files {
 		if _, err := io.WriteString(hasher, "FILE:"+file.hashPath+"\n"); err != nil {
-			return "", fmt.Errorf("failed to hash file path (%s): %w", file.hashPath, err)
+			return "", fmt.Errorf(
+				"failed to hash file path (%s): %w",
+				file.hashPath,
+				err,
+			)
 		}
 
 		contents, err := os.ReadFile(file.realPath)
 		if err != nil {
-			return "", fmt.Errorf("failed to read file for hash (%s): %w", file.realPath, err)
+			return "", fmt.Errorf(
+				"failed to read file for hash (%s): %w",
+				file.realPath,
+				err,
+			)
 		}
 		if _, err := hasher.Write(contents); err != nil {
-			return "", fmt.Errorf("failed to hash file contents (%s): %w", file.hashPath, err)
+			return "", fmt.Errorf(
+				"failed to hash file contents (%s): %w",
+				file.hashPath,
+				err,
+			)
 		}
 		if _, err := hasher.Write([]byte{0}); err != nil {
-			return "", fmt.Errorf("failed to hash file separator (%s): %w", file.hashPath, err)
+			return "", fmt.Errorf(
+				"failed to hash file separator (%s): %w",
+				file.hashPath,
+				err,
+			)
 		}
 	}
 
@@ -571,21 +596,27 @@ func hashFileSet(
 func shouldSkipInputPath(path string, isDir bool) bool {
 	normalizedPath := filepath.ToSlash(filepath.Clean(path))
 
-	if pathHasSegment(normalizedPath, ".git") || pathHasSegment(normalizedPath, "node_modules") {
+	if pathHasSegment(normalizedPath, ".git") ||
+		pathHasSegment(normalizedPath, "node_modules") {
 		return true
 	}
 
 	if normalizedPath == filepath.ToSlash(filepath.Clean(targetDir)) ||
-		strings.HasPrefix(normalizedPath, filepath.ToSlash(filepath.Clean(targetDir))+"/") {
+		strings.HasPrefix(
+			normalizedPath,
+			filepath.ToSlash(filepath.Clean(targetDir))+"/",
+		) {
 		return true
 	}
 
-	if normalizedPath == "typescript/vorma/create/dist" || strings.HasPrefix(normalizedPath, "typescript/vorma/create/dist/") {
+	if normalizedPath == "typescript/vorma/create/dist" ||
+		strings.HasPrefix(normalizedPath, "typescript/vorma/create/dist/") {
 		return true
 	}
 
 	// Ignore package output produced by `create`.
-	if isDir && filepath.Base(normalizedPath) == "dist" && strings.Contains(normalizedPath, "typescript/vorma/create") {
+	if isDir && filepath.Base(normalizedPath) == "dist" &&
+		strings.Contains(normalizedPath, "typescript/vorma/create") {
 		return true
 	}
 
@@ -594,7 +625,8 @@ func shouldSkipInputPath(path string, isDir bool) bool {
 
 func shouldSkipOutputPath(path string, _ bool) bool {
 	normalizedPath := filepath.ToSlash(filepath.Clean(path))
-	if pathHasSegment(normalizedPath, ".git") || pathHasSegment(normalizedPath, "node_modules") {
+	if pathHasSegment(normalizedPath, ".git") ||
+		pathHasSegment(normalizedPath, "node_modules") {
 		return true
 	}
 	if normalizedPath == filepath.ToSlash(filepath.Clean(buildCachePath)) {
@@ -673,19 +705,22 @@ func removeTestFiles() error {
 		return fmt.Errorf("failed to remove client test declarations: %w", err)
 	}
 
-	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	err := filepath.Walk(
+		targetDir,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
 
-		// Remove test files and their source maps
-		if strings.Contains(path, ".test.") ||
-			strings.Contains(path, ".bench.") {
-			return os.Remove(path)
-		}
+			// Remove test files and their source maps
+			if strings.Contains(path, ".test.") ||
+				strings.Contains(path, ".bench.") {
+				return os.Remove(path)
+			}
 
-		return nil
-	})
+			return nil
+		},
+	)
 
 	if err != nil {
 		return fmt.Errorf("failed to remove test files: %w", err)
@@ -709,9 +744,15 @@ func assertBuildOutputsAreConsistent() error {
 }
 
 func assertClientTestDeclarationsAbsent() error {
-	clientTestsPath := filepath.Join(targetDir, "typescript/vorma/client/src/tests")
+	clientTestsPath := filepath.Join(
+		targetDir,
+		"typescript/vorma/client/src/tests",
+	)
 	if _, err := os.Stat(clientTestsPath); err == nil {
-		return fmt.Errorf("client test declarations leaked into build output: %s", filepath.ToSlash(clientTestsPath))
+		return fmt.Errorf(
+			"client test declarations leaked into build output: %s",
+			filepath.ToSlash(clientTestsPath),
+		)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("failed to stat %s: %w", filepath.ToSlash(clientTestsPath), err)
 	}
@@ -728,48 +769,64 @@ func assertClientDeclarationsHaveSourceFiles() error {
 	}
 
 	var staleDeclarationPaths []string
-	err := filepath.WalkDir(clientSrcDistPath, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(path, ".d.ts") {
-			return nil
-		}
-
-		relativeDistPath, err := filepath.Rel(targetDir, path)
-		if err != nil {
-			return fmt.Errorf("failed to compute relative path for %s: %w", filepath.ToSlash(path), err)
-		}
-		relativeDistPath = filepath.ToSlash(relativeDistPath)
-		relativeSourcePathWithoutDeclarationSuffix := strings.TrimSuffix(relativeDistPath, ".d.ts")
-
-		candidateSourcePaths := []string{
-			"./" + relativeSourcePathWithoutDeclarationSuffix + ".ts",
-			"./" + relativeSourcePathWithoutDeclarationSuffix + ".tsx",
-			"./" + relativeSourcePathWithoutDeclarationSuffix + ".d.ts",
-		}
-
-		for _, sourcePath := range candidateSourcePaths {
-			if _, err := os.Stat(sourcePath); err == nil {
-				return nil
-			} else if !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("failed to stat source candidate %s: %w", filepath.ToSlash(sourcePath), err)
+	err := filepath.WalkDir(
+		clientSrcDistPath,
+		func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
 			}
-		}
+			if d.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(path, ".d.ts") {
+				return nil
+			}
 
-		staleDeclarationPaths = append(staleDeclarationPaths, relativeDistPath)
-		return nil
-	})
+			relativeDistPath, err := filepath.Rel(targetDir, path)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to compute relative path for %s: %w",
+					filepath.ToSlash(path),
+					err,
+				)
+			}
+			relativeDistPath = filepath.ToSlash(relativeDistPath)
+			relativeSourcePathWithoutDeclarationSuffix := strings.TrimSuffix(
+				relativeDistPath,
+				".d.ts",
+			)
+
+			candidateSourcePaths := []string{
+				"./" + relativeSourcePathWithoutDeclarationSuffix + ".ts",
+				"./" + relativeSourcePathWithoutDeclarationSuffix + ".tsx",
+				"./" + relativeSourcePathWithoutDeclarationSuffix + ".d.ts",
+			}
+
+			for _, sourcePath := range candidateSourcePaths {
+				if _, err := os.Stat(sourcePath); err == nil {
+					return nil
+				} else if !errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("failed to stat source candidate %s: %w", filepath.ToSlash(sourcePath), err)
+				}
+			}
+
+			staleDeclarationPaths = append(
+				staleDeclarationPaths,
+				relativeDistPath,
+			)
+			return nil
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("failed to validate client declarations: %w", err)
 	}
 
 	if len(staleDeclarationPaths) > 0 {
 		sort.Strings(staleDeclarationPaths)
-		return fmt.Errorf("client build output contains declarations without source files: %s", strings.Join(staleDeclarationPaths, ", "))
+		return fmt.Errorf(
+			"client build output contains declarations without source files: %s",
+			strings.Join(staleDeclarationPaths, ", "),
+		)
 	}
 
 	return nil
@@ -789,7 +846,9 @@ func assertNoOrphanClientChunks() error {
 		return err
 	}
 
-	chunkPaths, err := filepath.Glob(filepath.Join(clientDistPath, "chunk-*.js"))
+	chunkPaths, err := filepath.Glob(
+		filepath.Join(clientDistPath, "chunk-*.js"),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to glob client chunks: %w", err)
 	}
@@ -804,20 +863,27 @@ func assertNoOrphanClientChunks() error {
 
 	if len(orphanChunkNames) > 0 {
 		sort.Strings(orphanChunkNames)
-		return fmt.Errorf("client build output contains orphan chunks: %s", strings.Join(orphanChunkNames, ", "))
+		return fmt.Errorf(
+			"client build output contains orphan chunks: %s",
+			strings.Join(orphanChunkNames, ", "),
+		)
 	}
 
 	return nil
 }
 
-func collectReachableClientChunks(clientDistPath string) (map[string]struct{}, error) {
+func collectReachableClientChunks(
+	clientDistPath string,
+) (map[string]struct{}, error) {
 	entryPaths := []string{
 		filepath.Join(clientDistPath, "index.js"),
 		filepath.Join(clientDistPath, "internal.js"),
 		filepath.Join(clientDistPath, "buildtime.js"),
 	}
 
-	chunkImportPattern := regexp.MustCompile(`(?:from\s+|import\()\s*["']\./(chunk-[^"']+\.js)["']`)
+	chunkImportPattern := regexp.MustCompile(
+		`(?:from\s+|import\()\s*["']\./(chunk-[^"']+\.js)["']`,
+	)
 	reachableChunks := make(map[string]struct{})
 	visitedScriptPaths := make(map[string]struct{})
 
@@ -840,7 +906,11 @@ func collectReachableClientChunks(clientDistPath string) (map[string]struct{}, e
 
 		fileContents, err := os.ReadFile(currentScriptPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read script %s: %w", filepath.ToSlash(currentScriptPath), err)
+			return nil, fmt.Errorf(
+				"failed to read script %s: %w",
+				filepath.ToSlash(currentScriptPath),
+				err,
+			)
 		}
 
 		for _, match := range chunkImportPattern.FindAllStringSubmatch(string(fileContents), -1) {
@@ -849,7 +919,10 @@ func collectReachableClientChunks(clientDistPath string) (map[string]struct{}, e
 				continue
 			}
 			reachableChunks[chunkName] = struct{}{}
-			scriptQueue = append(scriptQueue, filepath.Join(clientDistPath, chunkName))
+			scriptQueue = append(
+				scriptQueue,
+				filepath.Join(clientDistPath, chunkName),
+			)
 		}
 	}
 

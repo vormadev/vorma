@@ -54,6 +54,12 @@ export type RouteOutletBranchInputState = Pick<
 	loaderCount: number;
 };
 
+export type RouteOutletStoreState = {
+	navigation: RouteOutletNavigationState;
+	routeOutletBranchInputState: RouteOutletBranchInputState;
+	location: RouteOutletLocationState;
+};
+
 function canonicalizeWithJsonDeepEquals<T>(props: {
 	previousValue: T;
 	nextValue: T;
@@ -76,7 +82,31 @@ function canonicalizeWithObjectIdentity<T>(props: {
 	return nextValue;
 }
 
-function buildCurrentRouteOutletNavigationStateFromRuntime(): RouteOutletNavigationState {
+function didNavigationStateReferenceChange(props: {
+	previousNavigationState: RouteOutletNavigationState;
+	nextNavigationState: RouteOutletNavigationState;
+}): boolean {
+	const { previousNavigationState, nextNavigationState } = props;
+	return !(
+		nextNavigationState.loadersData ===
+			previousNavigationState.loadersData &&
+		nextNavigationState.clientLoadersData ===
+			previousNavigationState.clientLoadersData &&
+		nextNavigationState.routerData === previousNavigationState.routerData &&
+		nextNavigationState.outermostError ===
+			previousNavigationState.outermostError &&
+		nextNavigationState.outermostErrorIdx ===
+			previousNavigationState.outermostErrorIdx &&
+		nextNavigationState.activeComponents ===
+			previousNavigationState.activeComponents &&
+		nextNavigationState.activeErrorBoundary ===
+			previousNavigationState.activeErrorBoundary &&
+		nextNavigationState.importURLs === previousNavigationState.importURLs &&
+		nextNavigationState.exportKeys === previousNavigationState.exportKeys
+	);
+}
+
+export function buildCurrentRouteOutletNavigationState(): RouteOutletNavigationState {
 	const runtimeRenderState = getClientRuntimeRenderState();
 	return {
 		loadersData: runtimeRenderState.loadersData,
@@ -92,14 +122,13 @@ function buildCurrentRouteOutletNavigationStateFromRuntime(): RouteOutletNavigat
 }
 
 export function buildInitialRouteOutletNavigationState(): RouteOutletNavigationState {
-	return buildCurrentRouteOutletNavigationStateFromRuntime();
+	return buildCurrentRouteOutletNavigationState();
 }
 
 export function buildNextRouteOutletNavigationState(
 	previousNavigationState: RouteOutletNavigationState,
 ): RouteOutletNavigationState {
-	const nextNavigationStateRaw =
-		buildCurrentRouteOutletNavigationStateFromRuntime();
+	const nextNavigationStateRaw = buildCurrentRouteOutletNavigationState();
 
 	const nextNavigationState: RouteOutletNavigationState = {
 		loadersData: canonicalizeWithJsonDeepEquals({
@@ -141,21 +170,10 @@ export function buildNextRouteOutletNavigationState(
 	};
 
 	if (
-		nextNavigationState.loadersData ===
-			previousNavigationState.loadersData &&
-		nextNavigationState.clientLoadersData ===
-			previousNavigationState.clientLoadersData &&
-		nextNavigationState.routerData === previousNavigationState.routerData &&
-		nextNavigationState.outermostError ===
-			previousNavigationState.outermostError &&
-		nextNavigationState.outermostErrorIdx ===
-			previousNavigationState.outermostErrorIdx &&
-		nextNavigationState.activeComponents ===
-			previousNavigationState.activeComponents &&
-		nextNavigationState.activeErrorBoundary ===
-			previousNavigationState.activeErrorBoundary &&
-		nextNavigationState.importURLs === previousNavigationState.importURLs &&
-		nextNavigationState.exportKeys === previousNavigationState.exportKeys
+		!didNavigationStateReferenceChange({
+			previousNavigationState,
+			nextNavigationState,
+		})
 	) {
 		return previousNavigationState;
 	}
@@ -223,6 +241,64 @@ export function areRouteOutletBranchInputsEqualByIdentity(props: {
 		firstInputState.importURLs === secondInputState.importURLs &&
 		firstInputState.exportKeys === secondInputState.exportKeys
 	);
+}
+
+export function buildInitialRouteOutletStoreState(): RouteOutletStoreState {
+	const initialNavigationState = buildInitialRouteOutletNavigationState();
+	return {
+		navigation: initialNavigationState,
+		routeOutletBranchInputState: buildRouteOutletBranchInputState(
+			initialNavigationState,
+		),
+		location: buildCurrentRouteOutletLocationState(),
+	};
+}
+
+export function buildNextRouteOutletStoreStateFromRuntime(
+	previousStoreState: RouteOutletStoreState,
+): RouteOutletStoreState {
+	const nextNavigationState = buildNextRouteOutletNavigationState(
+		previousStoreState.navigation,
+	);
+
+	let nextRouteOutletBranchInputState =
+		previousStoreState.routeOutletBranchInputState;
+	if (nextNavigationState !== previousStoreState.navigation) {
+		const nextRouteOutletBranchInputStateRaw =
+			buildRouteOutletBranchInputState(nextNavigationState);
+		if (
+			!areRouteOutletBranchInputsEqualByIdentity({
+				firstInputState: previousStoreState.routeOutletBranchInputState,
+				secondInputState: nextRouteOutletBranchInputStateRaw,
+			})
+		) {
+			nextRouteOutletBranchInputState =
+				nextRouteOutletBranchInputStateRaw;
+		}
+	}
+
+	const nextLocationStateRaw = buildCurrentRouteOutletLocationState();
+	const nextLocationState = areRouteOutletLocationsEqual({
+		firstLocationState: previousStoreState.location,
+		secondLocationState: nextLocationStateRaw,
+	})
+		? previousStoreState.location
+		: nextLocationStateRaw;
+
+	if (
+		nextNavigationState === previousStoreState.navigation &&
+		nextRouteOutletBranchInputState ===
+			previousStoreState.routeOutletBranchInputState &&
+		nextLocationState === previousStoreState.location
+	) {
+		return previousStoreState;
+	}
+
+	return {
+		navigation: nextNavigationState,
+		routeOutletBranchInputState: nextRouteOutletBranchInputState,
+		location: nextLocationState,
+	};
 }
 
 export function buildRouteOutletBranchState(props: {

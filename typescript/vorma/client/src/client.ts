@@ -1,7 +1,8 @@
 import { resolveAbsoluteHrefWithOptionalSearchAndHash } from "vorma/kit/url";
-import type { StatusEventDetail } from "./platform/events.ts";
-import { HistoryManager } from "./platform/history.ts";
-import type { historyInstance } from "./platform/history.ts";
+import {
+	__vormaClientGlobal,
+	setNavigationStateAccess,
+} from "./app/context.ts";
 import { createNavigationRuntime } from "./core/navigation/runtime.ts";
 import type {
 	NavigateProps,
@@ -9,8 +10,9 @@ import type {
 	SubmitOptions,
 } from "./core/navigation/types.ts";
 import { createRevalidationTriggerTimestampRuntime } from "./core/revalidation_trigger_timestamp_state_machine.ts";
-import { setNavigationStateAccess } from "./app/context.ts";
-import { __vormaClientGlobal } from "./app/context.ts";
+import type { StatusEventDetail } from "./platform/events.ts";
+import type { historyInstance } from "./platform/history.ts";
+import { HistoryManager } from "./platform/history.ts";
 
 export type {
 	NavigateProps,
@@ -35,6 +37,9 @@ setNavigationStateAccess(navigationStateManager);
 // PUBLIC API
 /////////////////////////////////////////////////////////////////////
 
+/**
+ * Navigates to a route and drives the full client navigation lifecycle.
+ */
 export async function vormaNavigate(
 	href: string,
 	options?: {
@@ -60,10 +65,17 @@ export async function vormaNavigate(
 	});
 }
 
+/**
+ * Returns the last navigation/revalidation trigger timestamp used by client
+ * state machines to reason about staleness.
+ */
 export function getLastTriggeredNavOrRevalidateTimestampMS(): number {
 	return revalidationTriggerTimestampRuntime.getLastTriggeredNavOrRevalidateTimestampMS();
 }
 
+/**
+ * Revalidates the current location without changing history.
+ */
 export async function revalidate() {
 	await navigationStateManager.navigate({
 		href: window.location.href,
@@ -71,6 +83,9 @@ export async function revalidate() {
 	});
 }
 
+/**
+ * Submits an action request through the shared navigation runtime.
+ */
 export async function submit<T = unknown>(
 	url: string | URL,
 	requestInit?: RequestInit,
@@ -79,14 +94,23 @@ export async function submit<T = unknown>(
 	return navigationStateManager.submit(url, requestInit, options);
 }
 
+/**
+ * Starts a controllable navigation lifecycle operation.
+ */
 export function beginNavigation(props: NavigateProps): NavigationControl {
 	return navigationStateManager.beginNavigation(props);
 }
 
+/**
+ * Returns current navigation status event detail.
+ */
 export function getStatus(): StatusEventDetail {
 	return navigationStateManager.getStatus();
 }
 
+/**
+ * Returns a normalized browser location snapshot used by adapters.
+ */
 export function getLocation() {
 	return {
 		pathname: window.location.pathname,
@@ -96,31 +120,56 @@ export function getLocation() {
 	};
 }
 
+/**
+ * Returns the current runtime build id.
+ */
 export function getBuildID(): string {
 	return __vormaClientGlobal.get("buildID");
 }
 
+function getClientRootElementID(): string {
+	const rootElementID = __vormaClientGlobal.get("rootElementID");
+	if (typeof rootElementID === "string" && rootElementID.trim().length > 0) {
+		return rootElementID;
+	}
+	return "vorma-root";
+}
+
+/**
+ * Returns the client root element and validates both existence and element
+ * type.
+ */
 export function getRootEl(): HTMLDivElement {
-	const rootEl = document.getElementById("vorma-root");
+	const rootElementID = getClientRootElementID();
+	const rootEl = document.getElementById(rootElementID);
 	if (rootEl === null) {
-		throw new Error('Expected element with id "vorma-root" to exist');
+		throw new Error(`Expected element with id "${rootElementID}" to exist`);
 	}
 	if (!(rootEl instanceof HTMLDivElement)) {
 		throw new Error(
-			'Expected element with id "vorma-root" to be an HTMLDivElement',
+			`Expected element with id "${rootElementID}" to be an HTMLDivElement`,
 		);
 	}
 	return rootEl;
 }
 
+/**
+ * Returns the singleton history integration instance.
+ */
 export function getHistoryInstance(): historyInstance {
 	return HistoryManager.getInstance();
 }
 
+/**
+ * Returns the in-memory navigation debug journal.
+ */
 export function getNavigationDebugJournal() {
 	return navigationStateManager.getDebugJournal();
 }
 
+/**
+ * Clears the in-memory navigation debug journal.
+ */
 export function clearNavigationDebugJournal(): void {
 	navigationStateManager.clearDebugJournal();
 }

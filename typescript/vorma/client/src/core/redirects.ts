@@ -3,14 +3,21 @@ import {
 	resolveAbsoluteHref,
 	type HrefDetails,
 } from "vorma/kit/url";
+import {
+	__vormaClientGlobal,
+	getNavigationStateAccess,
+} from "../app/context.ts";
 import { dispatchBuildIDEvent } from "../platform/events.ts";
-import { isSameDocumentLocation } from "../platform/url.ts";
-import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../platform/url.ts";
+import {
+	isArrayBufferView,
+	isInstanceOfGlobal,
+	logError,
+} from "../platform/safety.ts";
+import {
+	isSameDocumentLocation,
+	VORMA_HARD_RELOAD_QUERY_PARAM,
+} from "../platform/url.ts";
 import type { NavigateProps, NavigationEntry } from "./navigation/types.ts";
-import { getNavigationStateAccess } from "../app/context.ts";
-import { isArrayBufferView, isInstanceOfGlobal } from "../platform/safety.ts";
-import { logError } from "../platform/safety.ts";
-import { __vormaClientGlobal } from "../app/context.ts";
 import {
 	buildRedirectEffectuationCommands,
 	type RedirectEffectuationCommand,
@@ -53,20 +60,25 @@ type RedirectRequestFlowResult =
 			response: Response;
 	  };
 
-function resolveHTTPRedirectTarget(href: string): {
+function resolveHTTPRedirectTarget(props: { href: string; source: string }): {
 	newURL: URL;
 	hrefDetails: Extract<HrefDetails, { isHTTP: true }>;
-} | null {
+} {
+	const { href, source } = props;
 	let newURL: URL;
 	try {
 		newURL = new URL(resolveAbsoluteHref({ href: href }));
 	} catch {
-		return null;
+		throw new Error(
+			`${source} has invalid redirect target ${JSON.stringify(href)}`,
+		);
 	}
 
 	const hrefDetails = getHrefDetails(newURL.href);
 	if (!hrefDetails.isHTTP) {
-		return null;
+		throw new Error(
+			`${source} redirect target ${JSON.stringify(href)} must be an HTTP(S) URL`,
+		);
 	}
 	return { newURL, hrefDetails };
 }
@@ -99,11 +111,12 @@ function buildShouldRedirectFromHref(props: {
 	latestBuildID: string;
 	shouldRedirectStrategy?: ShouldRedirectData["shouldRedirectStrategy"];
 	normalizeToAbsoluteHref?: boolean;
-}): ShouldRedirectData | null {
-	const resolvedTarget = resolveHTTPRedirectTarget(props.href);
-	if (!resolvedTarget) {
-		return null;
-	}
+	source: string;
+}): ShouldRedirectData {
+	const resolvedTarget = resolveHTTPRedirectTarget({
+		href: props.href,
+		source: props.source,
+	});
 
 	const href = props.normalizeToAbsoluteHref
 		? resolvedTarget.hrefDetails.absoluteURL
@@ -141,10 +154,8 @@ function parseBrowserRedirect(
 		href: response.url,
 		latestBuildID,
 		normalizeToAbsoluteHref: true,
+		source: "redirected fetch response URL",
 	});
-	if (!shouldRedirectData) {
-		return null;
-	}
 	const isCurrent = isSameDocumentLocation({
 		targetHref: shouldRedirectData.href,
 		currentHref: window.location.href,
@@ -188,6 +199,7 @@ function parseHeaderRedirect(props: {
 		latestBuildID: props.latestBuildID,
 		shouldRedirectStrategy: props.shouldRedirectStrategy,
 		normalizeToAbsoluteHref: props.normalizeToAbsoluteHref,
+		source: props.headerName,
 	});
 }
 
@@ -225,6 +237,11 @@ function canIncludeBodyForMethod(method: string | undefined): boolean {
 	return normalizedMethod !== "GET" && normalizedMethod !== "HEAD";
 }
 
+/**
+ * Builds request init for redirect-aware fetches.
+ * It preserves caller options, injects client-redirect acceptance,
+ * and JSON-serializes plain object bodies.
+ */
 export function buildRedirectRequestInit(
 	requestInit: RequestInit | undefined,
 	signal: AbortSignal,
@@ -287,6 +304,8 @@ function toDidRedirectData(redirectData: ShouldRedirectData): RedirectData {
 	};
 }
 
+// cleanupRedirectRelatedNavigations aborts and removes redirect/revalidation lanes
+// before applying a new redirect decision.
 function cleanupRedirectRelatedNavigations(
 	navigationState: RedirectNavigationState,
 ): void {
@@ -299,6 +318,8 @@ function cleanupRedirectRelatedNavigations(
 	}
 }
 
+// For internal targets we force a hard reload query marker so the server can
+// correlate reload intent against the latest client-known build.
 function effectuateHardRedirect(
 	redirectData: ShouldRedirectData,
 ): RedirectData | null {
@@ -371,10 +392,12 @@ async function executeRedirectEffectuationCommands(props: {
 	);
 }
 
+// getBuildIDFromResponse extracts the build id header used for client/runtime sync.
 export function getBuildIDFromResponse(response: Response | undefined): string {
 	return response?.headers.get("X-Vorma-Build-Id") || "";
 }
 
+// syncBuildIDFromRedirectData updates the global build id when redirect metadata is newer.
 export function syncBuildIDFromRedirectData(redirectData: RedirectData): void {
 	if (redirectData.status !== "should") {
 		return;
@@ -388,6 +411,7 @@ export function syncBuildIDFromRedirectData(redirectData: RedirectData): void {
 	}
 }
 
+// effectuateRedirectDataResult applies redirect instructions and returns the final redirect status.
 export async function effectuateRedirectDataResult(
 	redirectData: RedirectData,
 	redirectCount: number,
@@ -415,6 +439,7 @@ export async function effectuateRedirectDataResult(
 	});
 }
 
+// handleRedirects executes fetch-with-redirect-detection and returns parsed redirect metadata.
 export async function handleRedirects(props: {
 	abortController: AbortController;
 	url: URL;

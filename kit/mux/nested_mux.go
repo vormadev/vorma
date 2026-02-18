@@ -35,6 +35,7 @@ type compiledRoute struct {
 	hasHandler  bool
 }
 
+// NestedRouter stores nested route patterns and optional task handlers.
 type NestedRouter struct {
 	mu             sync.RWMutex
 	matcher        *matcher.Matcher
@@ -44,6 +45,7 @@ type NestedRouter struct {
 	version        uint64       // Version counter for atomic updates
 }
 
+// AllRoutes returns a snapshot copy of registered nested routes.
 func (nr *NestedRouter) AllRoutes() map[string]AnyNestedRoute {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
@@ -52,6 +54,7 @@ func (nr *NestedRouter) AllRoutes() map[string]AnyNestedRoute {
 	return allRoutesCopy
 }
 
+// IsRegistered reports whether a pattern is registered.
 func (nr *NestedRouter) IsRegistered(originalPattern string) bool {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
@@ -59,6 +62,7 @@ func (nr *NestedRouter) IsRegistered(originalPattern string) bool {
 	return exists
 }
 
+// HasTaskHandler reports whether a pattern is registered with a handler.
 func (nr *NestedRouter) HasTaskHandler(originalPattern string) bool {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
@@ -69,24 +73,28 @@ func (nr *NestedRouter) HasTaskHandler(originalPattern string) bool {
 	return route.getTaskHandler() != nil
 }
 
+// ExplicitIndexSegmentIdentifier returns the explicit index marker string.
 func (nr *NestedRouter) ExplicitIndexSegmentIdentifier() string {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 	return nr.matcher.ExplicitIndexSegmentIdentifier()
 }
 
+// DynamicParamPrefix returns the dynamic param prefix rune.
 func (nr *NestedRouter) DynamicParamPrefix() rune {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 	return nr.matcher.DynamicParamPrefix()
 }
 
+// SplatSegmentIdentifier returns the splat segment identifier rune.
 func (nr *NestedRouter) SplatSegmentIdentifier() rune {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 	return nr.matcher.SplatSegmentIdentifier()
 }
 
+// Matcher returns a copy of the nested matcher state.
 func (nr *NestedRouter) Matcher() *matcher.Matcher {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
@@ -103,20 +111,31 @@ func (nr *NestedRouter) Matcher() *matcher.Matcher {
 	return matcherCopy
 }
 
+// NestedOptions configures pattern matching behavior for NestedRouter.
 type NestedOptions struct {
 	DynamicParamPrefix             rune
 	SplatSegmentIdentifier         rune
 	ExplicitIndexSegmentIdentifier string
 }
 
+// NewNestedRouter creates a nested router with the provided options.
 func NewNestedRouter(opts *NestedOptions) *NestedRouter {
 	matcherOpts := new(matcher.Options)
 	if opts == nil {
 		opts = new(NestedOptions)
 	}
-	matcherOpts.DynamicParamPrefix = genericsutil.OrDefault(opts.DynamicParamPrefix, ':')
-	matcherOpts.SplatSegmentIdentifier = genericsutil.OrDefault(opts.SplatSegmentIdentifier, '*')
-	matcherOpts.ExplicitIndexSegmentIdentifier = genericsutil.OrDefault(opts.ExplicitIndexSegmentIdentifier, "")
+	matcherOpts.DynamicParamPrefix = genericsutil.OrDefault(
+		opts.DynamicParamPrefix,
+		':',
+	)
+	matcherOpts.SplatSegmentIdentifier = genericsutil.OrDefault(
+		opts.SplatSegmentIdentifier,
+		'*',
+	)
+	matcherOpts.ExplicitIndexSegmentIdentifier = genericsutil.OrDefault(
+		opts.ExplicitIndexSegmentIdentifier,
+		"",
+	)
 	nr := &NestedRouter{
 		matcher: matcher.New(matcherOpts),
 		routes:  make(map[string]AnyNestedRoute),
@@ -127,6 +146,7 @@ func NewNestedRouter(opts *NestedOptions) *NestedRouter {
 	return nr
 }
 
+// NestedRoute stores metadata and optional task handler for one nested pattern.
 type NestedRoute[O any] struct {
 	genericsutil.ZeroHelper[None, O]
 	router          *NestedRouter
@@ -134,12 +154,14 @@ type NestedRoute[O any] struct {
 	taskHandler     tasks.AnyTask
 }
 
+// AnyNestedRoute is the internal polymorphic route contract for NestedRouter.
 type AnyNestedRoute interface {
 	OriginalPattern() string
 	genericsutil.AnyZeroHelper
 	getTaskHandler() tasks.AnyTask
 }
 
+// OriginalPattern returns the pattern as registered.
 func (route *NestedRoute[O]) OriginalPattern() string {
 	return route.originalPattern
 }
@@ -148,6 +170,7 @@ func (route *NestedRoute[O]) getTaskHandler() tasks.AnyTask {
 	return route.taskHandler
 }
 
+// AddNestedTaskHandler registers a nested pattern with a task handler.
 func AddNestedTaskHandler[O any](
 	router *NestedRouter, pattern string, taskHandler *TaskHandler[None, O],
 ) *NestedRoute[O] {
@@ -169,6 +192,7 @@ func AddNestedTaskHandler[O any](
 	return route
 }
 
+// AddNestedPatternWithoutHandler registers a nested pattern with no task handler.
 func AddNestedPatternWithoutHandler(router *NestedRouter, pattern string) {
 	route := &NestedRoute[None]{
 		router:          router,
@@ -220,6 +244,7 @@ func (nr *NestedRouter) AddNestedPatternWithoutHandlerIfMissing(
 	return true
 }
 
+// NestedTasksResult stores task execution output for one matched pattern.
 type NestedTasksResult struct {
 	pattern string
 	data    any
@@ -227,12 +252,22 @@ type NestedTasksResult struct {
 	ranTask bool
 }
 
+// Pattern returns the matched route pattern.
 func (ntr *NestedTasksResult) Pattern() string { return ntr.pattern }
-func (ntr *NestedTasksResult) OK() bool        { return ntr.err == nil }
-func (ntr *NestedTasksResult) Data() any       { return ntr.data }
-func (ntr *NestedTasksResult) Err() error      { return ntr.err }
-func (ntr *NestedTasksResult) RanTask() bool   { return ntr.ranTask }
 
+// OK reports whether task execution succeeded.
+func (ntr *NestedTasksResult) OK() bool { return ntr.err == nil }
+
+// Data returns task output data.
+func (ntr *NestedTasksResult) Data() any { return ntr.data }
+
+// Err returns task execution error.
+func (ntr *NestedTasksResult) Err() error { return ntr.err }
+
+// RanTask reports whether this match had a task handler.
+func (ntr *NestedTasksResult) RanTask() bool { return ntr.ranTask }
+
+// NestedTasksResults contains ordered and keyed task results for nested matches.
 type NestedTasksResults struct {
 	Params          Params
 	SplatValues     []string
@@ -241,6 +276,7 @@ type NestedTasksResults struct {
 	ResponseProxies []*response.Proxy
 }
 
+// HasTaskHandlerAt reports whether the result at i ran a task handler.
 func (ntr *NestedTasksResults) HasTaskHandlerAt(i int) bool {
 	if i < 0 || i >= len(ntr.Slice) {
 		return false
@@ -248,14 +284,22 @@ func (ntr *NestedTasksResults) HasTaskHandlerAt(i int) bool {
 	return ntr.Slice[i].ranTask
 }
 
-func FindNestedMatches(nestedRouter *NestedRouter, r *http.Request) (*matcher.FindNestedMatchesResults, bool) {
+// FindNestedMatches resolves nested route matches for the request path.
+func FindNestedMatches(
+	nestedRouter *NestedRouter,
+	r *http.Request,
+) (*matcher.FindNestedMatchesResults, bool) {
 	nestedRouter.mu.RLock()
 	m := nestedRouter.matcher
 	nestedRouter.mu.RUnlock()
 	return m.FindNestedMatches(r.URL.Path)
 }
 
-func FindNestedMatchesAndRunTasks(nestedRouter *NestedRouter, r *http.Request) (*NestedTasksResults, bool) {
+// FindNestedMatchesAndRunTasks finds nested matches and runs all matched task handlers.
+func FindNestedMatchesAndRunTasks(
+	nestedRouter *NestedRouter,
+	r *http.Request,
+) (*NestedTasksResults, bool) {
 	findResults, ok := FindNestedMatches(nestedRouter, r)
 	if !ok {
 		return nil, false
@@ -300,7 +344,11 @@ func RunNestedTasks(
 	routeIndexMap := nestedRouter.routeIndexMap.Load().(map[string]int)
 
 	// Pre-allocate boundTasks based on estimated task count
-	boundTasks := make([]*optimizedBoundTask, 0, numMatches/2) // Assume ~50% have handlers
+	boundTasks := make(
+		[]*optimizedBoundTask,
+		0,
+		numMatches/2,
+	) // Assume ~50% have handlers
 	taskCancels := make([]context.CancelFunc, 0, numMatches/2)
 
 	// Track pooled objects for cleanup
@@ -414,7 +462,12 @@ func mustRegisterNestedRoute[O any](route *NestedRoute[O]) {
 	defer route.router.mu.Unlock()
 
 	if _, exists := route.router.routes[route.originalPattern]; exists {
-		panic(fmt.Sprintf("Pattern '%s' is already registered in NestedRouter. Perhaps you're unintentionally registering it twice?", route.originalPattern))
+		panic(
+			fmt.Sprintf(
+				"Pattern '%s' is already registered in NestedRouter. Perhaps you're unintentionally registering it twice?",
+				route.originalPattern,
+			),
+		)
 	}
 	route.router.matcher.RegisterPattern(route.originalPattern)
 	route.router.routes[route.originalPattern] = route
@@ -520,7 +573,9 @@ func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
 }
 
 // replaceRoutesLocked is the internal implementation. Caller must hold nr.mu.Lock().
-func (nr *NestedRouter) replaceRoutesLocked(newRoutes map[string]AnyNestedRoute) {
+func (nr *NestedRouter) replaceRoutesLocked(
+	newRoutes map[string]AnyNestedRoute,
+) {
 	routesCopy := make(map[string]AnyNestedRoute, len(newRoutes))
 	maps.Copy(routesCopy, newRoutes)
 
