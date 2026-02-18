@@ -151,3 +151,8 @@ just to say that each convenience helper should ACTUALLY add true convenience
 over other options, not just more options. For example, we don't need a
 `Reset()` function that sets a value to `0` when you can easily just do `Set(0)`
 (calling `Set(0)` is not actually any harder than calling `Reset()`).
+
+## Follow the Semantic Rules in `repodocs/SEMANTIC_RULES.md`
+
+Follow the semantic rules in `repodocs/SEMANTIC_RULES.md`, and any time we agree
+on new semantic rules, add them to that rules doc in short, simple terms.
