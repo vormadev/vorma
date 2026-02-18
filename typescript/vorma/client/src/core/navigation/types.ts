@@ -3,7 +3,7 @@ import type { StatusEventDetail } from "../../platform/events.ts";
 import type { ScrollState } from "../../platform/scroll.ts";
 import type { RedirectData } from "../redirects.ts";
 import type { ClientLoadersResult } from "../render_runtime.ts";
-import type { ServerSuccessPreloadCommand } from "./fetch_route_data_preload_commands.ts";
+import type { ServerSuccessPreloadCommand } from "./fetch_route_data_server.ts";
 
 export type VormaNavigationType =
 	| "browserHistory"

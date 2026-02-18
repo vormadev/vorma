@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRedirectEffectuationCommands } from "../../core/redirect_effectuation_commands.ts";
+import { buildRedirectEffectuationCommands } from "../../core/redirects.ts";
 import type { RedirectData } from "../../core/redirects.ts";
 
 function createShouldRedirectData(props?: {

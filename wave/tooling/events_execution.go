@@ -169,3 +169,147 @@ func (s *server) processEventsWithDeterministicPipeline(
 		s.executeBrowserPhase(work)
 	}
 }
+
+func (s *server) executeAppStopStrategy(
+	appStopStrategyForExecution appStopStrategy,
+) {
+	switch appStopStrategyForExecution {
+	case appStopStrategySingleEventHardReload:
+		s.log.Info("Terminating running app")
+		if err := s.stopApp(); err != nil {
+			s.log.Error("Failed to terminate app", "error", err)
+		}
+
+	case appStopStrategyBatchHardReload:
+		s.log.Info("Stopping app for batch rebuild")
+		if err := s.stopApp(); err != nil {
+			s.log.Error("Failed to stop app", "error", err)
+		}
+
+	case appStopStrategyNone:
+	}
+}
+
+func (s *server) continuePipelineAfterHookStageOrTriggerRestart(
+	hookStageResultForContinuation hookStageResult,
+) bool {
+	configuredHookStageFailurePolicy := ""
+	if s != nil && s.cfg != nil && s.cfg.Watch != nil {
+		configuredHookStageFailurePolicy = s.cfg.Watch.HookStageFailurePolicy
+	}
+
+	return s.continuePipelineAfterHookStageOrTriggerRestartWithFailurePolicy(
+		hookStageResultForContinuation,
+		deriveHookStageFailurePolicy(
+			hookStageResultForContinuation.stageType,
+			configuredHookStageFailurePolicy,
+		),
+	)
+}
+
+func (s *server) continuePipelineAfterHookStageOrTriggerRestartWithFailurePolicy(
+	hookStageResultForContinuation hookStageResult,
+	hookStageFailurePolicyForContinuation hookStageFailurePolicy,
+) bool {
+	continuationDecision := deriveHookStageContinuationDecisionWithFailurePolicy(
+		hookStageResultForContinuation,
+		hookStageFailurePolicyForContinuation,
+	)
+	if continuationDecision.shouldContinue {
+		return true
+	}
+
+	if continuationDecision.stopReason == hookStageContinuationStopReasonRestartRequested {
+		s.triggerRestartFromRefreshActions(continuationDecision.restartActionResult)
+	}
+	if continuationDecision.stopReason == hookStageContinuationStopReasonStageFailure {
+		traceContextForContinuation := s.getCurrentWatcherExecutionTraceContext()
+		s.log.Warn(
+			"Stopping pipeline after hook stage errors",
+			"stage",
+			deriveHookStageLabel(hookStageResultForContinuation.stageType),
+			"error_count",
+			len(hookStageResultForContinuation.executionErrors),
+			"cycle_id",
+			traceContextForContinuation.cycleID,
+			"batch_id",
+			traceContextForContinuation.batchID,
+		)
+	}
+	return false
+}
+
+func (s *server) triggerRestartFromRefreshActions(
+	actionResult refreshActionApplicationResult,
+) {
+	if actionResult.recompileGo {
+		s.triggerRestart()
+		return
+	}
+	s.triggerRestartNoGo()
+}
+
+func applyHookStageActionsToWorkSet(
+	hookStageActions []wave.RefreshAction,
+	work *workSet,
+) hookStageResult {
+	hookStageResultForWork := hookStageResult{
+		actions: append([]wave.RefreshAction(nil), hookStageActions...),
+	}
+	if work == nil {
+		return hookStageResultForWork
+	}
+
+	hookStageResultForWork.refreshActionResult = work.applyRefreshActions(hookStageActions)
+	return hookStageResultForWork
+}
+
+func applyHookStageActionsAndErrorsToWorkSet(
+	stageType hookStageType,
+	hookStageActions []wave.RefreshAction,
+	hookStageExecutionErrors []error,
+	work *workSet,
+) hookStageResult {
+	hookStageResultForWork := applyHookStageActionsToWorkSet(
+		hookStageActions,
+		work,
+	)
+	hookStageResultForWork.stageType = stageType
+	hookStageResultForWork.executionErrors = append(
+		[]error(nil),
+		hookStageExecutionErrors...,
+	)
+	return hookStageResultForWork
+}
+
+func runAndApplyHookStageActionsToWorkSet(
+	runHookStageActions func() []wave.RefreshAction,
+	work *workSet,
+) hookStageResult {
+	if runHookStageActions == nil {
+		return applyHookStageActionsToWorkSet(nil, work)
+	}
+	return applyHookStageActionsToWorkSet(runHookStageActions(), work)
+}
+
+func runAndApplyHookStageActionsAndErrorsToWorkSet(
+	stageType hookStageType,
+	runHookStageActions func() ([]wave.RefreshAction, []error),
+	work *workSet,
+) hookStageResult {
+	if runHookStageActions == nil {
+		return applyHookStageActionsAndErrorsToWorkSet(
+			stageType,
+			nil,
+			nil,
+			work,
+		)
+	}
+	hookStageActions, hookStageExecutionErrors := runHookStageActions()
+	return applyHookStageActionsAndErrorsToWorkSet(
+		stageType,
+		hookStageActions,
+		hookStageExecutionErrors,
+		work,
+	)
+}

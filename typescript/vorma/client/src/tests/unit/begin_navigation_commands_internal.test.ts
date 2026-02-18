@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBeginNavigationExecutionCommands } from "../../core/navigation/begin_navigation_commands.ts";
+import { buildBeginNavigationExecutionCommands } from "../../core/navigation/begin_navigation.ts";
 import type { BeginNavigationExecutionPlan } from "../../core/navigation/begin_navigation_state_machine.ts";
 import type {
 	NavigationEntry,

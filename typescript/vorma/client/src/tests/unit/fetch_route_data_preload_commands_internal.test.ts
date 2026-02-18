@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildServerSuccessPreloadCommands } from "../../core/navigation/fetch_route_data_preload_commands.ts";
+import { buildServerSuccessPreloadCommands } from "../../core/navigation/fetch_route_data_server.ts";
 
 describe("server-success preload command builder", () => {
 	it("returns no commands for skipped preload plans", () => {

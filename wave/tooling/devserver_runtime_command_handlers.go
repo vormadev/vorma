@@ -88,4 +88,3 @@ func (s *server) executeRunLifecycleCommandCleanupForNextCycle(
 		runLifecycleEvent: runLifecycleEventCleanupCompleted,
 	}, nil
 }
-

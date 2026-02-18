@@ -14,12 +14,13 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/internal/pathnorm"
+	"github.com/vormadev/vorma/wave/tooling/internal/watchereventdedup"
 )
 
 func TestDeduplicateWatcherEventsByPath(
 	t *testing.T,
 ) {
-	deduplicatedEvents := deduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: "b.go", Op: fsnotify.Create},
 		{Name: "a.go", Op: fsnotify.Write},
 		{Name: "b.go", Op: fsnotify.Write},
@@ -45,7 +46,7 @@ func TestDeduplicateWatcherEventsByPath(
 func TestDeduplicateWatcherEventsByPathMergesAllOps(
 	t *testing.T,
 ) {
-	deduplicatedEvents := deduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: "a.go", Op: fsnotify.Create},
 		{Name: "a.go", Op: fsnotify.Write},
 		{Name: "a.go", Op: fsnotify.Remove},
@@ -72,7 +73,7 @@ func TestDeduplicateWatcherEventsByPath_NormalizesPathShapeVariants(
 	canonicalPath := filepath.Join(root, "backend", "main.go")
 	pathWithDotSegment := filepath.Join(root, "backend", ".", "main.go")
 
-	deduplicatedEvents := deduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: canonicalPath, Op: fsnotify.Create},
 		{Name: pathWithDotSegment, Op: fsnotify.Write},
 	})
@@ -107,7 +108,7 @@ func TestDeduplicateWatcherEventsByPath_MergesSymlinkAliasPaths(
 		t.Fatalf("failed creating directory symlink: %v", err)
 	}
 
-	deduplicatedEvents := deduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: aliasFilePath, Op: fsnotify.Create},
 		{Name: targetFilePath, Op: fsnotify.Write},
 	})
@@ -143,7 +144,7 @@ func TestDeduplicateWatcherEventsByPath_MergesMissingFileAliasPaths(
 		t.Fatalf("failed creating directory symlink: %v", err)
 	}
 
-	deduplicatedEvents := deduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: aliasMissingFilePath, Op: fsnotify.Remove},
 		{Name: targetMissingFilePath, Op: fsnotify.Remove},
 	})
@@ -154,8 +155,8 @@ func TestDeduplicateWatcherEventsByPath_MergesMissingFileAliasPaths(
 	if !deduplicatedEvents[0].Has(fsnotify.Remove) {
 		t.Fatalf("deduplicated op = %v, want remove", deduplicatedEvents[0].Op)
 	}
-	deduplicatedAliasKey := missingFileAliasKeyForWatcherEventDeduplication(deduplicatedEvents[0].Name)
-	targetAliasKey := missingFileAliasKeyForWatcherEventDeduplication(targetMissingFilePath)
+	deduplicatedAliasKey := watchereventdedup.MissingFileAliasKeyForWatcherEventDeduplication(deduplicatedEvents[0].Name)
+	targetAliasKey := watchereventdedup.MissingFileAliasKeyForWatcherEventDeduplication(targetMissingFilePath)
 	if deduplicatedAliasKey == "" || targetAliasKey == "" || deduplicatedAliasKey != targetAliasKey {
 		t.Fatalf(
 			"expected deduplicated path %q to resolve to same missing file alias key as %q",
@@ -212,7 +213,7 @@ func TestDeduplicateWatcherEventsByPath_PrefersFirstSeenAliasPathKey(
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			deduplicatedEvents := deduplicateWatcherEventsByPath(testCase.events)
+			deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath(testCase.events)
 			if len(deduplicatedEvents) != 1 {
 				t.Fatalf("deduplicated event count = %d, want 1", len(deduplicatedEvents))
 			}
@@ -254,12 +255,12 @@ func TestWatcherEventDeduplicationIndex_MemoizesCanonicalAndAliasResolution(
 		t.Fatalf("failed creating directory symlink: %v", err)
 	}
 
-	index := newWatcherEventDeduplicationIndex()
+	index := watchereventdedup.NewWatcherEventDeduplicationIndex()
 	absoluteAliasFilePath := pathnorm.Absolute(aliasFilePath)
 	absoluteAliasMissingFilePath := pathnorm.Absolute(aliasMissingFilePath)
 
-	canonicalPathFirst := index.resolveCanonicalPathForAbsolutePath(absoluteAliasFilePath)
-	canonicalPathSecond := index.resolveCanonicalPathForAbsolutePath(absoluteAliasFilePath)
+	canonicalPathFirst := index.ResolveCanonicalPathForAbsolutePath(absoluteAliasFilePath)
+	canonicalPathSecond := index.ResolveCanonicalPathForAbsolutePath(absoluteAliasFilePath)
 	if canonicalPathFirst == "" || canonicalPathSecond == "" || canonicalPathFirst != canonicalPathSecond {
 		t.Fatalf(
 			"expected stable canonical path memoization for %q, got first=%q second=%q",
@@ -268,15 +269,15 @@ func TestWatcherEventDeduplicationIndex_MemoizesCanonicalAndAliasResolution(
 			canonicalPathSecond,
 		)
 	}
-	if len(index.canonicalPathByAbsolutePath) != 1 {
+	if len(index.CanonicalPathByAbsolutePath) != 1 {
 		t.Fatalf(
 			"expected one canonical path cache entry, got %#v",
-			index.canonicalPathByAbsolutePath,
+			index.CanonicalPathByAbsolutePath,
 		)
 	}
 
-	aliasKeyFirst := index.resolveMissingAliasKeyForAbsolutePath(absoluteAliasMissingFilePath)
-	aliasKeySecond := index.resolveMissingAliasKeyForAbsolutePath(absoluteAliasMissingFilePath)
+	aliasKeyFirst := index.ResolveMissingAliasKeyForAbsolutePath(absoluteAliasMissingFilePath)
+	aliasKeySecond := index.ResolveMissingAliasKeyForAbsolutePath(absoluteAliasMissingFilePath)
 	if aliasKeyFirst == "" || aliasKeySecond == "" || aliasKeyFirst != aliasKeySecond {
 		t.Fatalf(
 			"expected stable missing-file alias key memoization for %q, got first=%q second=%q",
@@ -285,21 +286,21 @@ func TestWatcherEventDeduplicationIndex_MemoizesCanonicalAndAliasResolution(
 			aliasKeySecond,
 		)
 	}
-	if len(index.missingAliasKeyByAbsolutePath) != 1 {
+	if len(index.MissingAliasKeyByAbsolutePath) != 1 {
 		t.Fatalf(
 			"expected one missing alias key cache entry, got %#v",
-			index.missingAliasKeyByAbsolutePath,
+			index.MissingAliasKeyByAbsolutePath,
 		)
 	}
 
-	rootAliasKey := index.resolveMissingAliasKeyForAbsolutePath(string(filepath.Separator))
+	rootAliasKey := index.ResolveMissingAliasKeyForAbsolutePath(string(filepath.Separator))
 	if rootAliasKey != "" {
 		t.Fatalf("expected empty alias key for root path, got %q", rootAliasKey)
 	}
-	if cachedRootAliasKey := index.missingAliasKeyByAbsolutePath[string(filepath.Separator)]; cachedRootAliasKey != missingAliasKeyResolutionEmptySentinel {
+	if cachedRootAliasKey := index.MissingAliasKeyByAbsolutePath[string(filepath.Separator)]; cachedRootAliasKey != watchereventdedup.MissingAliasKeyResolutionEmptySentinel {
 		t.Fatalf(
 			"expected root path to cache empty alias sentinel %q, got %q",
-			missingAliasKeyResolutionEmptySentinel,
+			watchereventdedup.MissingAliasKeyResolutionEmptySentinel,
 			cachedRootAliasKey,
 		)
 	}
@@ -308,30 +309,30 @@ func TestWatcherEventDeduplicationIndex_MemoizesCanonicalAndAliasResolution(
 func TestWatcherEventDeduplicationIndex_ProbeResolutionMissesKeepCachesStable(
 	t *testing.T,
 ) {
-	index := newWatcherEventDeduplicationIndex()
+	index := watchereventdedup.NewWatcherEventDeduplicationIndex()
 	mergedEventOpsByPath := make(map[string]fsnotify.Op)
 
-	if existingPathKey := index.resolveExistingPathKey(mergedEventOpsByPath, "relative/file.css"); existingPathKey != "" {
+	if existingPathKey := index.ResolveExistingPathKey(mergedEventOpsByPath, "relative/file.css"); existingPathKey != "" {
 		t.Fatalf("expected no existing path key for relative probe path, got %q", existingPathKey)
 	}
-	if canonicalPath := index.resolveCanonicalPathForAbsolutePath("relative/file.css"); canonicalPath != "" {
+	if canonicalPath := index.ResolveCanonicalPathForAbsolutePath("relative/file.css"); canonicalPath != "" {
 		t.Fatalf("expected no canonical path for relative probe path, got %q", canonicalPath)
 	}
-	if missingAliasKey := index.resolveMissingAliasKeyForAbsolutePath("relative/missing.css"); missingAliasKey != "" {
+	if missingAliasKey := index.ResolveMissingAliasKeyForAbsolutePath("relative/missing.css"); missingAliasKey != "" {
 		t.Fatalf("expected no missing alias key for relative probe path, got %q", missingAliasKey)
 	}
 
-	if len(index.canonicalPathByAbsolutePath) != 0 {
-		t.Fatalf("expected canonical path cache to remain empty on misses, got %#v", index.canonicalPathByAbsolutePath)
+	if len(index.CanonicalPathByAbsolutePath) != 0 {
+		t.Fatalf("expected canonical path cache to remain empty on misses, got %#v", index.CanonicalPathByAbsolutePath)
 	}
-	if len(index.missingAliasKeyByAbsolutePath) != 0 {
-		t.Fatalf("expected missing alias cache to remain empty on misses, got %#v", index.missingAliasKeyByAbsolutePath)
+	if len(index.MissingAliasKeyByAbsolutePath) != 0 {
+		t.Fatalf("expected missing alias cache to remain empty on misses, got %#v", index.MissingAliasKeyByAbsolutePath)
 	}
-	if len(index.canonicalPathToPathKey) != 0 {
-		t.Fatalf("expected canonical path-key map to remain empty on misses, got %#v", index.canonicalPathToPathKey)
+	if len(index.CanonicalPathToPathKey) != 0 {
+		t.Fatalf("expected canonical path-key map to remain empty on misses, got %#v", index.CanonicalPathToPathKey)
 	}
-	if len(index.missingFileAliasKeyToPathKey) != 0 {
-		t.Fatalf("expected missing alias path-key map to remain empty on misses, got %#v", index.missingFileAliasKeyToPathKey)
+	if len(index.MissingFileAliasKeyToPathKey) != 0 {
+		t.Fatalf("expected missing alias path-key map to remain empty on misses, got %#v", index.MissingFileAliasKeyToPathKey)
 	}
 }
 
@@ -357,18 +358,18 @@ func TestWatcherEventDeduplicationIndex_RecordPathKeyPreservesFirstSeenProbePath
 		t.Fatalf("failed creating second alias symlink: %v", err)
 	}
 
-	index := newWatcherEventDeduplicationIndex()
+	index := watchereventdedup.NewWatcherEventDeduplicationIndex()
 
 	firstCanonicalAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathA, "styles.css"))
 	secondCanonicalAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathB, "styles.css"))
-	index.recordPathKey(firstCanonicalAliasPath)
-	index.recordPathKey(secondCanonicalAliasPath)
+	index.RecordPathKey(firstCanonicalAliasPath)
+	index.RecordPathKey(secondCanonicalAliasPath)
 
-	canonicalProbeKey := index.resolveCanonicalPathForAbsolutePath(secondCanonicalAliasPath)
+	canonicalProbeKey := index.ResolveCanonicalPathForAbsolutePath(secondCanonicalAliasPath)
 	if canonicalProbeKey == "" {
 		t.Fatal("expected canonical probe key for aliased canonical path")
 	}
-	if recordedCanonicalPathKey := index.canonicalPathToPathKey[canonicalProbeKey]; recordedCanonicalPathKey != firstCanonicalAliasPath {
+	if recordedCanonicalPathKey := index.CanonicalPathToPathKey[canonicalProbeKey]; recordedCanonicalPathKey != firstCanonicalAliasPath {
 		t.Fatalf(
 			"expected canonical probe key to retain first-seen path key %q, got %q",
 			firstCanonicalAliasPath,
@@ -378,14 +379,14 @@ func TestWatcherEventDeduplicationIndex_RecordPathKeyPreservesFirstSeenProbePath
 
 	firstMissingAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathA, "missing.css"))
 	secondMissingAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathB, "missing.css"))
-	index.recordPathKey(firstMissingAliasPath)
-	index.recordPathKey(secondMissingAliasPath)
+	index.RecordPathKey(firstMissingAliasPath)
+	index.RecordPathKey(secondMissingAliasPath)
 
-	missingAliasProbeKey := index.resolveMissingAliasKeyForAbsolutePath(secondMissingAliasPath)
+	missingAliasProbeKey := index.ResolveMissingAliasKeyForAbsolutePath(secondMissingAliasPath)
 	if missingAliasProbeKey == "" {
 		t.Fatal("expected missing alias probe key for aliased missing path")
 	}
-	if recordedMissingAliasPathKey := index.missingFileAliasKeyToPathKey[missingAliasProbeKey]; recordedMissingAliasPathKey != firstMissingAliasPath {
+	if recordedMissingAliasPathKey := index.MissingFileAliasKeyToPathKey[missingAliasProbeKey]; recordedMissingAliasPathKey != firstMissingAliasPath {
 		t.Fatalf(
 			"expected missing alias probe key to retain first-seen path key %q, got %q",
 			firstMissingAliasPath,
@@ -422,10 +423,10 @@ func TestNormalizeWatcherEventPathForDeduplication_PathShapes(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			normalizedPath := normalizeWatcherEventPathForDeduplication(testCase.rawPath)
+			normalizedPath := watchereventdedup.NormalizeWatcherEventPathForDeduplication(testCase.rawPath)
 			if normalizedPath != testCase.expectedPath {
 				t.Fatalf(
-					"normalizeWatcherEventPathForDeduplication(%q) = %q, want %q",
+					"watchereventdedup.NormalizeWatcherEventPathForDeduplication(%q) = %q, want %q",
 					testCase.rawPath,
 					normalizedPath,
 					testCase.expectedPath,
@@ -535,7 +536,7 @@ func TestDeduplicateWatcherEventsByPath_PropertyContracts(t *testing.T) {
 				})
 			}
 
-			deduplicatedEvents := deduplicateWatcherEventsByPath(events)
+			deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath(events)
 
 			if !sort.SliceIsSorted(deduplicatedEvents, func(i int, j int) bool {
 				return deduplicatedEvents[i].Name < deduplicatedEvents[j].Name
@@ -543,7 +544,7 @@ func TestDeduplicateWatcherEventsByPath_PropertyContracts(t *testing.T) {
 				t.Fatalf("expected deduplicated events to be sorted by path, got %#v", deduplicatedEvents)
 			}
 
-			idempotentDeduplicatedEvents := deduplicateWatcherEventsByPath(deduplicatedEvents)
+			idempotentDeduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath(deduplicatedEvents)
 			if !reflect.DeepEqual(idempotentDeduplicatedEvents, deduplicatedEvents) {
 				t.Fatalf(
 					"expected deduplication to be idempotent, first=%#v second=%#v",
@@ -577,8 +578,8 @@ func TestDeduplicateWatcherEventsByPath_PropertyContracts(t *testing.T) {
 }
 
 func pathsEquivalentForDedupContract(pathA string, pathB string) bool {
-	normalizedPathA := normalizeWatcherEventPathForDeduplication(pathA)
-	normalizedPathB := normalizeWatcherEventPathForDeduplication(pathB)
+	normalizedPathA := watchereventdedup.NormalizeWatcherEventPathForDeduplication(pathA)
+	normalizedPathB := watchereventdedup.NormalizeWatcherEventPathForDeduplication(pathB)
 	if normalizedPathA == normalizedPathB {
 		return true
 	}
@@ -590,8 +591,8 @@ func pathsEquivalentForDedupContract(pathA string, pathB string) bool {
 	}
 
 	if filepath.IsAbs(normalizedPathA) && filepath.IsAbs(normalizedPathB) {
-		aliasKeyA := missingFileAliasKeyForWatcherEventDeduplication(normalizedPathA)
-		aliasKeyB := missingFileAliasKeyForWatcherEventDeduplication(normalizedPathB)
+		aliasKeyA := watchereventdedup.MissingFileAliasKeyForWatcherEventDeduplication(normalizedPathA)
+		aliasKeyB := watchereventdedup.MissingFileAliasKeyForWatcherEventDeduplication(normalizedPathB)
 		if aliasKeyA != "" && aliasKeyA == aliasKeyB {
 			return true
 		}

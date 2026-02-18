@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideRenderCommitCheckpointExecutionPlan } from "../../core/render_runtime_commit_state_machine.ts";
+import { decideRenderCommitCheckpointExecutionPlan } from "../../core/render_commit_runtime.ts";
 
 describe("render runtime commit checkpoint state machine", () => {
 	it("allows pre-module-load checkpoint when commit is allowed", () => {

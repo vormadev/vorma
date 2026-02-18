@@ -191,3 +191,30 @@ them the way a human would. Make sure they are declarative and up-to-date, and
 never backward-looking, temporal, changelog style, or conversational. Humans
 can't read 10 documents instantly the way you can to quickly accumulate context.
 Help us out.
+
+## Small Packages With Clear Boundaries And Explicit Responsibilities Are Good
+
+Prefer small packages with very clear boundaries and high testability to large
+monolithic packages with lots of concerns.
+
+## GoDocs / Package Comments Should Be Explanatory, Not Just Descriptive
+
+Don't just state what a package does when writing package-level docs or
+comments. Explain why it is needed at all and what it's useful for, and what
+problems you would have if it didn't exist, and who the intended consumers are.
+Assume the reader is new to the codebase and doesn't have a deep understanding
+of neighboring code.
+
+## Do Not Create Tiny Files
+
+With some obvious exceptions, if you find any file with less than 200 lines, it
+does not deserve to be in its own file. Find a better place for it so it can be
+read in context with the bigger picture.
+
+## Every Package Should Have Three or Fewer Files -- Ideally One
+
+Every package should have three or fewer files. If they get too long or unruly,
+then that's a signal you need to break down into multiple packages. This applies
+to both Go and TypeScript. In a perfect world, each package should actually be
+one file, but use common sense as to whether that's better or worse than having
+having two or three files in the package.

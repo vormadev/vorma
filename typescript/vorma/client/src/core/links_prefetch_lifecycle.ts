@@ -7,13 +7,11 @@ import { hasSameNavigationTarget } from "../platform/url.ts";
 import { saveScrollState } from "../platform/scroll.ts";
 import { logError } from "../platform/safety.ts";
 import {
+	type ClickNavigationOptions,
+	type LinkOnClickCallbacks,
 	classifyEligibleAnchorTarget,
 	getEligibleInternalAnchorDetails,
-} from "./links_target_classification.ts";
-import type {
-	ClickNavigationOptions,
-	LinkOnClickCallbacks,
-} from "./links_lifecycle_types.ts";
+} from "./links_click_lifecycle.ts";
 
 function findIdlePrefetchNavigationByDataTarget(
 	targetHref: string,

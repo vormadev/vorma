@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideSubmitStalenessCheckpointExecutionPlan } from "../../core/navigation/runtime_submit_staleness_state_machine.ts";
+import { decideSubmitStalenessCheckpointExecutionPlan } from "../../core/navigation/runtime_submit.ts";
 
 describe("submission staleness checkpoint state machine", () => {
 	it("continues for current submissions across all checkpoints", () => {

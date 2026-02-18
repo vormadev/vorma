@@ -1,4 +1,4 @@
-export { AssetManager } from "./render_asset_runtime.ts";
+export { AssetManager } from "./render_commit_runtime.ts";
 export { ComponentLoader } from "./render_component_runtime.ts";
 export {
 	__registerClientLoaderPattern,

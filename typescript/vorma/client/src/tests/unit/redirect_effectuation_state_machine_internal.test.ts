@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideRedirectEffectuationExecutionPlan } from "../../core/redirect_effectuation_state_machine.ts";
+import { decideRedirectEffectuationExecutionPlan } from "../../core/redirects.ts";
 import type { RedirectData } from "../../core/redirects.ts";
 
 function createDidRedirectData(): RedirectData {

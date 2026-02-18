@@ -1,7 +1,9 @@
 package tooling
 
 import (
+	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -82,6 +84,15 @@ func newWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*watcher, error) {
 	return w, nil
 }
 
+func (w *watcher) setupPatterns() error {
+	watcherPlanForSetup, buildWatcherPlanError := w.buildWatcherPlan()
+	if buildWatcherPlanError != nil {
+		return buildWatcherPlanError
+	}
+	w.applyWatcherPlan(watcherPlanForSetup)
+	return nil
+}
+
 // norm converts a path to absolute with forward slashes for consistent matching
 func (w *watcher) norm(p string) string {
 	return pathnorm.AbsoluteSlash(p)
@@ -139,4 +150,42 @@ func (w *watcher) Errors() <-chan error {
 
 func (w *watcher) Close() error {
 	return w.fsWatch.Close()
+}
+
+// AddDir adds a directory and its subdirectories to the watcher
+func (w *watcher) AddDir(root string) error {
+	return filepath.WalkDir(root, func(path string, directoryEntry fs.DirEntry, err error) error {
+		if err != nil || !directoryEntry.IsDir() {
+			return err
+		}
+
+		if w.IsIgnoredDir(path) {
+			return filepath.SkipDir
+		}
+
+		// Use absolute path as key to avoid duplicates
+		absolutePath := w.norm(path)
+		if _, exists := w.watchedDirs.Load(absolutePath); exists {
+			return nil
+		}
+
+		if err := w.fsWatch.Add(path); err != nil {
+			return err
+		}
+
+		w.watchedDirs.Store(absolutePath, true)
+		return nil
+	})
+}
+
+// RemoveStale removes watches for directories that no longer exist
+func (w *watcher) RemoveStale() {
+	w.watchedDirs.Range(func(key, _ any) bool {
+		path := key.(string)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			w.fsWatch.Remove(path)
+			w.watchedDirs.Delete(path)
+		}
+		return true
+	})
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildSubmissionLifecycleBeginCommands,
 	buildSubmissionLifecycleFinishCommands,
-} from "../../core/navigation/runtime_submit_lifecycle_commands.ts";
+} from "../../core/navigation/runtime_submit.ts";
 import type { SubmissionEntry } from "../../core/navigation/types.ts";
 
 let nextSubmissionOperationID = 1;

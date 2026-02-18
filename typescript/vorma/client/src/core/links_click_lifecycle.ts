@@ -1,4 +1,4 @@
-import { resolveAbsoluteHref } from "vorma/kit/url";
+import { getAnchorDetailsFromEvent, resolveAbsoluteHref } from "vorma/kit/url";
 import { navigationStateManager } from "../client.ts";
 import {
 	hasNavigationOperationOwnership,
@@ -12,13 +12,90 @@ import {
 import { saveScrollState } from "../platform/scroll.ts";
 import { logError } from "../platform/safety.ts";
 import {
-	classifyEligibleAnchorTarget,
-	getEligibleInternalAnchorDetails,
-} from "./links_target_classification.ts";
-import type {
-	LinkLifecycleCallbacks,
-	LinkOnClickCallbacks,
-} from "./links_lifecycle_types.ts";
+	isSameDocumentHashChange,
+	isSameDocumentLocation,
+} from "../platform/url.ts";
+
+type LinkOnClickCallback<E extends Event> = (event: E) => void | Promise<void>;
+
+export type LinkOnClickCallbacks<E extends Event> = {
+	beforeBegin?: LinkOnClickCallback<E>;
+	beforeRender?: LinkOnClickCallback<E>;
+	afterRender?: LinkOnClickCallback<E>;
+};
+
+export type LinkLifecycleCallbacks<E extends Event> = {
+	beforeRender?: (event: E) => void | Promise<void>;
+	afterRender?: (event: E) => void | Promise<void>;
+};
+
+export type ClickNavigationOptions = {
+	scrollToTop?: boolean;
+	replace?: boolean;
+	search?: string;
+	hash?: string;
+	state?: unknown;
+};
+
+export type EligibleInternalAnchorDetails = Exclude<
+	ReturnType<typeof getAnchorDetailsFromEvent>,
+	null
+>;
+
+function isJustAHashChange(
+	anchorDetails: EligibleInternalAnchorDetails,
+): boolean {
+	return isSameDocumentHashChange({
+		targetHref: anchorDetails.anchor.href,
+		currentHref: window.location.href,
+	});
+}
+
+function isSameDocumentNoopNavigationTarget(
+	anchorDetails: EligibleInternalAnchorDetails,
+): boolean {
+	return isSameDocumentLocation({
+		targetHref: anchorDetails.anchor.href,
+		currentHref: window.location.href,
+	});
+}
+
+export type EligibleAnchorTargetClassification =
+	| "same-document-noop"
+	| "hash-change"
+	| "navigate";
+
+export function classifyEligibleAnchorTarget(
+	anchorDetails: EligibleInternalAnchorDetails,
+): EligibleAnchorTargetClassification {
+	if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
+		return "same-document-noop";
+	}
+	if (isJustAHashChange(anchorDetails)) {
+		return "hash-change";
+	}
+	return "navigate";
+}
+
+export function getEligibleInternalAnchorDetails(
+	event: Event,
+): EligibleInternalAnchorDetails | null {
+	if (event.defaultPrevented) return null;
+
+	const anchorDetails = getAnchorDetailsFromEvent(
+		event as unknown as MouseEvent,
+	);
+	if (!anchorDetails) return null;
+
+	if (
+		!anchorDetails.isEligibleForDefaultPrevention ||
+		!anchorDetails.isInternal
+	) {
+		return null;
+	}
+
+	return anchorDetails;
+}
 
 function doesNavigationEntryBelongToControl(props: {
 	entry: ReturnType<typeof navigationStateManager.getNavigation>;
@@ -182,5 +259,3 @@ export function createLinkOnClickFn<E extends Event>(
 		});
 	};
 }
-
-export type { LinkOnClickCallbacks } from "./links_lifecycle_types.ts";

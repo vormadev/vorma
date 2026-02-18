@@ -12,21 +12,228 @@ import {
 } from "../app/context.ts";
 import type { VormaNavigationType } from "./navigation/types.ts";
 import {
-	buildRenderCommitCommands,
-	type RenderCommitCommand,
-} from "./render_runtime_commit_commands.ts";
-import {
-	decideRenderCommitCheckpointExecutionPlan,
-	type RenderCommitCheckpoint,
-} from "./render_runtime_commit_state_machine.ts";
-import { AssetManager } from "./render_asset_runtime.ts";
-import {
 	ComponentLoader,
 	type ComponentModulesMap,
 	setActiveComponentsFromModules,
 	setActiveErrorBoundaryFromModules,
 } from "./render_component_runtime.ts";
 import { deriveAndSetErrorState } from "./render_client_loader_runtime.ts";
+import { resolvePublicHref } from "../platform/url.ts";
+
+function preloadModule(url: string): void {
+	const href = resolvePublicHref(url);
+	if (
+		document.querySelector(
+			`link[rel="modulepreload"][href="${CSS.escape(href)}"]`,
+		)
+	) {
+		return;
+	}
+
+	const link = document.createElement("link");
+	link.rel = "modulepreload";
+	link.href = href;
+	document.head.appendChild(link);
+}
+
+function preloadCSS(url: string): Promise<void> {
+	const href = resolvePublicHref(url);
+
+	if (
+		document.querySelector(
+			`link[rel="preload"][href="${CSS.escape(href)}"]`,
+		)
+	) {
+		return Promise.resolve();
+	}
+
+	const link = document.createElement("link");
+	link.rel = "preload";
+	link.setAttribute("as", "style");
+	link.href = href;
+
+	document.head.appendChild(link);
+
+	return new Promise((resolve, reject) => {
+		link.onload = () => resolve();
+		link.onerror = reject;
+	});
+}
+
+function applyCSS(bundles: string[]): void {
+	window.requestAnimationFrame(() => {
+		for (const bundle of bundles) {
+			if (
+				document.querySelector(
+					`link[data-vorma-css-bundle="${bundle}"]`,
+				)
+			) {
+				continue;
+			}
+
+			const link = document.createElement("link");
+			link.rel = "stylesheet";
+			link.href = resolvePublicHref(bundle);
+			link.setAttribute("data-vorma-css-bundle", bundle);
+			document.head.appendChild(link);
+		}
+	});
+}
+
+export const AssetManager = {
+	preloadModule,
+	preloadCSS,
+	applyCSS,
+};
+
+export type RenderCommitCheckpoint = "pre_module_load" | "post_module_load";
+
+export type RenderCommitCheckpointExecutionPlan =
+	| {
+			checkpoint: RenderCommitCheckpoint;
+			type: "continue";
+			reason:
+				| "render_commit_allowed_pre_module_load"
+				| "render_commit_allowed_post_module_load";
+	  }
+	| {
+			checkpoint: RenderCommitCheckpoint;
+			type: "stop";
+			reason:
+				| "render_commit_rejected_pre_module_load"
+				| "render_commit_rejected_post_module_load";
+	  };
+
+export function decideRenderCommitCheckpointExecutionPlan(props: {
+	checkpoint: RenderCommitCheckpoint;
+	shouldCommitRender: boolean;
+}): RenderCommitCheckpointExecutionPlan {
+	switch (props.checkpoint) {
+		case "pre_module_load":
+			return props.shouldCommitRender
+				? {
+						checkpoint: props.checkpoint,
+						type: "continue",
+						reason: "render_commit_allowed_pre_module_load",
+					}
+				: {
+						checkpoint: props.checkpoint,
+						type: "stop",
+						reason: "render_commit_rejected_pre_module_load",
+					};
+		case "post_module_load":
+			return props.shouldCommitRender
+				? {
+						checkpoint: props.checkpoint,
+						type: "continue",
+						reason: "render_commit_allowed_post_module_load",
+					}
+				: {
+						checkpoint: props.checkpoint,
+						type: "stop",
+						reason: "render_commit_rejected_post_module_load",
+					};
+	}
+}
+
+export type RenderCommitCommand =
+	| {
+			type: "apply_route_data_to_global_state";
+			reason: "render_commit_apply_route_data_to_global_state";
+	  }
+	| {
+			type: "derive_and_set_error_state";
+			reason: "render_commit_derive_and_set_error_state";
+	  }
+	| {
+			type: "set_active_components_from_modules";
+			reason: "render_commit_set_active_components_from_modules";
+	  }
+	| {
+			type: "set_active_error_boundary_from_modules";
+			reason: "render_commit_set_active_error_boundary_from_modules";
+	  }
+	| {
+			type: "run_history_and_capture_scroll_state";
+			reason: "render_commit_run_history_and_capture_scroll_state";
+	  }
+	| {
+			type: "apply_route_document_title";
+			reason: "render_commit_apply_route_document_title";
+	  }
+	| {
+			type: "apply_css_bundles";
+			cssBundles: string[];
+			reason: "render_commit_apply_css_bundles";
+	  }
+	| {
+			type: "dispatch_route_change_event";
+			reason: "render_commit_dispatch_route_change_event";
+	  }
+	| {
+			type: "apply_route_head_elements";
+			reason: "render_commit_apply_route_head_elements";
+	  }
+	| {
+			type: "finish";
+			reason: "render_commit_finish";
+	  };
+
+export function buildRenderCommitCommands(props: {
+	json: GetRouteDataOutput;
+}): RenderCommitCommand[] {
+	const commands: RenderCommitCommand[] = [
+		{
+			type: "apply_route_data_to_global_state",
+			reason: "render_commit_apply_route_data_to_global_state",
+		},
+		{
+			type: "derive_and_set_error_state",
+			reason: "render_commit_derive_and_set_error_state",
+		},
+		{
+			type: "set_active_components_from_modules",
+			reason: "render_commit_set_active_components_from_modules",
+		},
+		{
+			type: "set_active_error_boundary_from_modules",
+			reason: "render_commit_set_active_error_boundary_from_modules",
+		},
+		{
+			type: "run_history_and_capture_scroll_state",
+			reason: "render_commit_run_history_and_capture_scroll_state",
+		},
+		{
+			type: "apply_route_document_title",
+			reason: "render_commit_apply_route_document_title",
+		},
+	];
+
+	if (props.json.cssBundles) {
+		commands.push({
+			type: "apply_css_bundles",
+			cssBundles: props.json.cssBundles,
+			reason: "render_commit_apply_css_bundles",
+		});
+	}
+
+	commands.push(
+		{
+			type: "dispatch_route_change_event",
+			reason: "render_commit_dispatch_route_change_event",
+		},
+		{
+			type: "apply_route_head_elements",
+			reason: "render_commit_apply_route_head_elements",
+		},
+		{
+			type: "finish",
+			reason: "render_commit_finish",
+		},
+	);
+
+	return commands;
+}
 
 type RenderingHistoryOptions = {
 	href: string;

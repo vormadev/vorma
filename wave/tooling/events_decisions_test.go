@@ -14,39 +14,23 @@ import (
 
 func buildPreClassificationPlanFromEventsForTest(
 	events []fsnotify.Event,
-	eventClassificationProber *watcherEventClassificationProber,
+	eventClassificationProber *watchereventclassification.EventClassificationProber,
 ) watchereventclassification.PreClassificationPlan {
 	return watchereventclassification.BuildPreClassificationPlanFromEvents(
 		events,
-		func(path string) bool {
-			return eventClassificationProber.probeIsConfigFile(path)
-		},
-		func(path string) watchereventclassification.DirectoryProbeResult {
-			directoryProbeResult := eventClassificationProber.probeEventDirectoryStatus(path)
-			return watchereventclassification.DirectoryProbeResult{
-				StatProbeSucceeded: directoryProbeResult.statProbeSucceeded,
-				IsDirectory:        directoryProbeResult.isDirectory,
-			}
-		},
+		eventClassificationProber.ProbeIsConfigFile,
+		eventClassificationProber.ProbeEventDirectoryStatus,
 	)
 }
 
 func derivePreClassificationStepResultForTest(
 	event fsnotify.Event,
-	eventClassificationProber *watcherEventClassificationProber,
+	eventClassificationProber *watchereventclassification.EventClassificationProber,
 ) watchereventclassification.PreClassificationStepResult {
 	return watchereventclassification.DerivePreClassificationStepResult(
 		event,
-		func(path string) bool {
-			return eventClassificationProber.probeIsConfigFile(path)
-		},
-		func(path string) watchereventclassification.DirectoryProbeResult {
-			directoryProbeResult := eventClassificationProber.probeEventDirectoryStatus(path)
-			return watchereventclassification.DirectoryProbeResult{
-				StatProbeSucceeded: directoryProbeResult.statProbeSucceeded,
-				IsDirectory:        directoryProbeResult.isDirectory,
-			}
-		},
+		eventClassificationProber.ProbeIsConfigFile,
+		eventClassificationProber.ProbeEventDirectoryStatus,
 	)
 }
 
@@ -267,7 +251,7 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 	t.Run("empty events returns empty plan", func(t *testing.T) {
 		plan := buildPreClassificationPlanFromEventsForTest(
 			nil,
-			newWatcherEventClassificationProber(nil),
+			watchereventclassification.NewEventClassificationProber(nil),
 		)
 		if plan.ConfigChanged {
 			t.Fatalf("expected ConfigChanged=false for empty events, got %#v", plan)
@@ -283,11 +267,11 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 	t.Run("short-circuits after config mutation and skips trailing probes", func(t *testing.T) {
 		configProbeCount := 0
 		statProbeCount := 0
-		prober := newWatcherEventClassificationProber(func(path string) bool {
+		prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
 			configProbeCount++
 			return path == "wave.config.json"
 		})
-		prober.statPathFn = func(_ string) (os.FileInfo, error) {
+		prober.StatPathFn = func(_ string) (os.FileInfo, error) {
 			statProbeCount++
 			return nil, os.ErrNotExist
 		}
@@ -327,11 +311,11 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 	t.Run("collects all inputs when no config mutation is present", func(t *testing.T) {
 		configProbeCount := 0
 		statProbeCount := 0
-		prober := newWatcherEventClassificationProber(func(path string) bool {
+		prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
 			configProbeCount++
 			return path == "wave.config.json"
 		})
-		prober.statPathFn = func(path string) (os.FileInfo, error) {
+		prober.StatPathFn = func(path string) (os.FileInfo, error) {
 			statProbeCount++
 			return nil, os.ErrNotExist
 		}
@@ -373,10 +357,10 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 			t.Fatalf("failed writing regular file: %v", err)
 		}
 
-		prober := newWatcherEventClassificationProber(func(string) bool {
+		prober := watchereventclassification.NewEventClassificationProber(func(string) bool {
 			return false
 		})
-		prober.statPathFn = func(path string) (os.FileInfo, error) {
+		prober.StatPathFn = func(path string) (os.FileInfo, error) {
 			return os.Stat(path)
 		}
 
@@ -420,10 +404,10 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 		firstCreatedPath := filepath.Join(root, "first-missing-path")
 		secondCreatedPath := filepath.Join(root, "second-missing-path")
 
-		prober := newWatcherEventClassificationProber(func(string) bool {
+		prober := watchereventclassification.NewEventClassificationProber(func(string) bool {
 			return false
 		})
-		prober.statPathFn = func(string) (os.FileInfo, error) {
+		prober.StatPathFn = func(string) (os.FileInfo, error) {
 			return nil, os.ErrNotExist
 		}
 
@@ -473,10 +457,10 @@ func TestDeriveWatcherEventPreClassificationStepResult(t *testing.T) {
 		t.Fatalf("failed writing regular file: %v", err)
 	}
 
-	prober := newWatcherEventClassificationProber(func(path string) bool {
+	prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
 		return path == configPath
 	})
-	prober.statPathFn = os.Stat
+	prober.StatPathFn = os.Stat
 
 	testCases := []struct {
 		name               string
@@ -533,29 +517,29 @@ func TestDeriveWatcherEventPreClassificationStepResult(t *testing.T) {
 
 func TestWatcherEventClassificationProber_CachesConfigProbeByPath(t *testing.T) {
 	configProbeCount := 0
-	prober := newWatcherEventClassificationProber(func(path string) bool {
+	prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
 		configProbeCount++
 		return path == "wave.config.json"
 	})
 
-	if !prober.probeIsConfigFile("wave.config.json") {
+	if !prober.ProbeIsConfigFile("wave.config.json") {
 		t.Fatal("expected config probe to return true for config path")
 	}
-	if !prober.probeIsConfigFile("wave.config.json") {
+	if !prober.ProbeIsConfigFile("wave.config.json") {
 		t.Fatal("expected cached config probe to return true for config path")
 	}
 	if configProbeCount != 1 {
 		t.Fatalf("expected config probe function to be called once for repeated path, got %d", configProbeCount)
 	}
 
-	if prober.probeIsConfigFile("other.json") {
+	if prober.ProbeIsConfigFile("other.json") {
 		t.Fatal("expected non-config path probe to return false")
 	}
 	if configProbeCount != 2 {
 		t.Fatalf("expected config probe function to be called once per unique path, got %d", configProbeCount)
 	}
-	if len(prober.pathProbeSnapshotByPath) != 2 {
-		t.Fatalf("expected one path probe snapshot per unique path, got %d", len(prober.pathProbeSnapshotByPath))
+	if len(prober.PathProbeSnapshotByPath) != 2 {
+		t.Fatalf("expected one path probe snapshot per unique path, got %d", len(prober.PathProbeSnapshotByPath))
 	}
 }
 
@@ -567,18 +551,18 @@ func TestWatcherEventClassificationProber_CachesDirectoryProbeByPath(t *testing.
 	}
 
 	statProbeCount := 0
-	prober := newWatcherEventClassificationProber(nil)
-	prober.statPathFn = func(path string) (os.FileInfo, error) {
+	prober := watchereventclassification.NewEventClassificationProber(nil)
+	prober.StatPathFn = func(path string) (os.FileInfo, error) {
 		statProbeCount++
 		return os.Stat(path)
 	}
 
-	directoryProbe := prober.probeEventDirectoryStatus(directoryPath)
-	if !directoryProbe.statProbeSucceeded || !directoryProbe.isDirectory {
+	directoryProbe := prober.ProbeEventDirectoryStatus(directoryPath)
+	if !directoryProbe.StatProbeSucceeded || !directoryProbe.IsDirectory {
 		t.Fatal("expected directory probe to return true for directory path")
 	}
-	directoryProbe = prober.probeEventDirectoryStatus(directoryPath)
-	if !directoryProbe.statProbeSucceeded || !directoryProbe.isDirectory {
+	directoryProbe = prober.ProbeEventDirectoryStatus(directoryPath)
+	if !directoryProbe.StatProbeSucceeded || !directoryProbe.IsDirectory {
 		t.Fatal("expected cached directory probe to return true for directory path")
 	}
 	if statProbeCount != 1 {
@@ -586,19 +570,19 @@ func TestWatcherEventClassificationProber_CachesDirectoryProbeByPath(t *testing.
 	}
 
 	missingPath := filepath.Join(root, "missing")
-	missingPathProbe := prober.probeEventDirectoryStatus(missingPath)
-	if missingPathProbe.statProbeSucceeded || missingPathProbe.isDirectory {
+	missingPathProbe := prober.ProbeEventDirectoryStatus(missingPath)
+	if missingPathProbe.StatProbeSucceeded || missingPathProbe.IsDirectory {
 		t.Fatalf("expected missing path probe to report non-directory with failed stat, got %#v", missingPathProbe)
 	}
-	missingPathProbe = prober.probeEventDirectoryStatus(missingPath)
-	if missingPathProbe.statProbeSucceeded || missingPathProbe.isDirectory {
+	missingPathProbe = prober.ProbeEventDirectoryStatus(missingPath)
+	if missingPathProbe.StatProbeSucceeded || missingPathProbe.IsDirectory {
 		t.Fatalf("expected cached missing path probe to report non-directory with failed stat, got %#v", missingPathProbe)
 	}
 	if statProbeCount != 2 {
 		t.Fatalf("expected missing path stat probe to run once, total stat probes=%d", statProbeCount)
 	}
-	if len(prober.pathProbeSnapshotByPath) != 2 {
-		t.Fatalf("expected one path probe snapshot per unique path, got %d", len(prober.pathProbeSnapshotByPath))
+	if len(prober.PathProbeSnapshotByPath) != 2 {
+		t.Fatalf("expected one path probe snapshot per unique path, got %d", len(prober.PathProbeSnapshotByPath))
 	}
 }
 
@@ -613,20 +597,20 @@ func TestWatcherEventClassificationProber_SharesSingleSnapshotAcrossProbeTypes(
 
 	configProbeCount := 0
 	statProbeCount := 0
-	prober := newWatcherEventClassificationProber(func(path string) bool {
+	prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
 		configProbeCount++
 		return path == configPath
 	})
-	prober.statPathFn = func(path string) (os.FileInfo, error) {
+	prober.StatPathFn = func(path string) (os.FileInfo, error) {
 		statProbeCount++
 		return os.Stat(path)
 	}
 
-	if !prober.probeIsConfigFile(configPath) {
+	if !prober.ProbeIsConfigFile(configPath) {
 		t.Fatal("expected config probe to return true for config path")
 	}
-	directoryProbeResult := prober.probeEventDirectoryStatus(configPath)
-	if !directoryProbeResult.statProbeSucceeded || directoryProbeResult.isDirectory {
+	directoryProbeResult := prober.ProbeEventDirectoryStatus(configPath)
+	if !directoryProbeResult.StatProbeSucceeded || directoryProbeResult.IsDirectory {
 		t.Fatalf(
 			"expected config file directory probe to report existing non-directory path, got %#v",
 			directoryProbeResult,
@@ -639,37 +623,37 @@ func TestWatcherEventClassificationProber_SharesSingleSnapshotAcrossProbeTypes(
 		t.Fatalf("expected stat probe function called once, got %d", statProbeCount)
 	}
 
-	if len(prober.pathProbeSnapshotByPath) != 1 {
+	if len(prober.PathProbeSnapshotByPath) != 1 {
 		t.Fatalf(
 			"expected one shared path probe snapshot for config path, got %d",
-			len(prober.pathProbeSnapshotByPath),
+			len(prober.PathProbeSnapshotByPath),
 		)
 	}
 
-	pathProbeSnapshot := prober.pathProbeSnapshotByPath[configPath]
+	pathProbeSnapshot := prober.PathProbeSnapshotByPath[configPath]
 	if pathProbeSnapshot == nil {
 		t.Fatalf("expected path probe snapshot for config path %q", configPath)
 	}
-	if !pathProbeSnapshot.hasConfigFileProbe || !pathProbeSnapshot.isConfigFile {
+	if !pathProbeSnapshot.HasConfigFileProbe || !pathProbeSnapshot.IsConfigFile {
 		t.Fatalf(
 			"expected path probe snapshot to cache positive config probe result, got %#v",
 			pathProbeSnapshot,
 		)
 	}
-	if !pathProbeSnapshot.hasDirectoryProbe ||
-		!pathProbeSnapshot.directoryProbeState.statProbeSucceeded ||
-		pathProbeSnapshot.directoryProbeState.isDirectory {
+	if !pathProbeSnapshot.HasDirectoryProbe ||
+		!pathProbeSnapshot.DirectoryProbeState.StatProbeSucceeded ||
+		pathProbeSnapshot.DirectoryProbeState.IsDirectory {
 		t.Fatalf(
 			"expected path probe snapshot to cache directory probe result, got %#v",
 			pathProbeSnapshot,
 		)
 	}
 
-	if !prober.probeIsConfigFile(configPath) {
+	if !prober.ProbeIsConfigFile(configPath) {
 		t.Fatal("expected cached config probe to remain true for config path")
 	}
-	directoryProbeResult = prober.probeEventDirectoryStatus(configPath)
-	if !directoryProbeResult.statProbeSucceeded || directoryProbeResult.isDirectory {
+	directoryProbeResult = prober.ProbeEventDirectoryStatus(configPath)
+	if !directoryProbeResult.StatProbeSucceeded || directoryProbeResult.IsDirectory {
 		t.Fatalf(
 			"expected cached directory probe to remain existing non-directory path, got %#v",
 			directoryProbeResult,

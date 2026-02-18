@@ -99,3 +99,225 @@ func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
 
 	return s.run()
 }
+
+// getBuilder returns the current builder instance safely.
+func (s *server) getBuilder() *Builder {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.builder
+}
+
+// setBuilder sets the builder instance safely.
+func (s *server) setBuilder(b *Builder) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.builder = b
+}
+
+type goCompilationOrderingPolicy string
+
+const (
+	goCompilationOrderingPolicyConcurrentWithBuildHooks goCompilationOrderingPolicy = "compile_concurrently_with_build_hooks"
+	goCompilationOrderingPolicyAfterBuildHooks          goCompilationOrderingPolicy = "compile_after_build_hooks"
+	goCompilationOrderingPolicyNotRequested             goCompilationOrderingPolicy = "compile_not_requested"
+)
+
+type runBuildExecutionOrderingDecision struct {
+	goCompilationOrderingPolicy goCompilationOrderingPolicy
+	runCompileInParallel        bool
+	runCompileAfterBuildHooks   bool
+}
+
+func deriveRunBuildExecutionOrderingDecision(
+	shouldRecompileGo bool,
+	sequentialGoBuild bool,
+) runBuildExecutionOrderingDecision {
+	if !shouldRecompileGo {
+		return runBuildExecutionOrderingDecision{
+			goCompilationOrderingPolicy: goCompilationOrderingPolicyNotRequested,
+		}
+	}
+
+	if sequentialGoBuild {
+		return runBuildExecutionOrderingDecision{
+			goCompilationOrderingPolicy: goCompilationOrderingPolicyAfterBuildHooks,
+			runCompileAfterBuildHooks:   true,
+		}
+	}
+
+	return runBuildExecutionOrderingDecision{
+		goCompilationOrderingPolicy: goCompilationOrderingPolicyConcurrentWithBuildHooks,
+		runCompileInParallel:        true,
+	}
+}
+
+type runCycleScope struct {
+	cycleID uint64
+
+	executionContext       context.Context
+	cancelExecutionContext context.CancelFunc
+
+	asyncWorkGroup sync.WaitGroup
+}
+
+func newRunCycleScope(
+	cycleID uint64,
+) *runCycleScope {
+	executionContext, cancelExecutionContext := context.WithCancel(
+		context.Background(),
+	)
+	return &runCycleScope{
+		cycleID:                cycleID,
+		executionContext:       executionContext,
+		cancelExecutionContext: cancelExecutionContext,
+	}
+}
+
+func (scope *runCycleScope) launchAsyncWork(
+	runAsyncWork func(context.Context),
+) {
+	if scope == nil || runAsyncWork == nil {
+		return
+	}
+
+	scope.asyncWorkGroup.Add(1)
+	go func() {
+		defer scope.asyncWorkGroup.Done()
+		runAsyncWork(scope.executionContext)
+	}()
+}
+
+func (scope *runCycleScope) cancelAndJoin() {
+	if scope == nil {
+		return
+	}
+
+	if scope.cancelExecutionContext != nil {
+		scope.cancelExecutionContext()
+	}
+	scope.asyncWorkGroup.Wait()
+}
+
+func (s *server) startRunCycleScope() *runCycleScope {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	s.nextRunCycleID++
+	cycleScope := newRunCycleScope(s.nextRunCycleID)
+	s.currentRunCycleScope = cycleScope
+	s.mu.Unlock()
+
+	return cycleScope
+}
+
+func (s *server) getCurrentRunCycleScope() *runCycleScope {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	cycleScope := s.currentRunCycleScope
+	s.mu.Unlock()
+	return cycleScope
+}
+
+func (s *server) currentRunCycleContextOrBackground() context.Context {
+	currentRunCycleScope := s.getCurrentRunCycleScope()
+	if currentRunCycleScope == nil || currentRunCycleScope.executionContext == nil {
+		return context.Background()
+	}
+	return currentRunCycleScope.executionContext
+}
+
+func (s *server) cancelAndJoinCurrentRunCycleScope() {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	currentRunCycleScope := s.currentRunCycleScope
+	s.currentRunCycleScope = nil
+	s.mu.Unlock()
+
+	if currentRunCycleScope != nil {
+		currentRunCycleScope.cancelAndJoin()
+	}
+}
+
+func (s *server) launchRunCycleScopedAsyncWorkOrDetached(
+	runAsyncWork func(context.Context),
+) {
+	if runAsyncWork == nil {
+		return
+	}
+
+	currentRunCycleScope := s.getCurrentRunCycleScope()
+	if currentRunCycleScope != nil {
+		currentRunCycleScope.launchAsyncWork(runAsyncWork)
+		return
+	}
+
+	go runAsyncWork(context.Background())
+}
+
+type watcherExecutionTraceContext struct {
+	cycleID uint64
+	batchID uint64
+}
+
+func (s *server) deriveWatcherExecutionTraceContext() watcherExecutionTraceContext {
+	if s == nil {
+		return watcherExecutionTraceContext{}
+	}
+
+	s.mu.Lock()
+	s.nextWatcherBatchID++
+	nextBatchID := s.nextWatcherBatchID
+	currentRunCycleScope := s.currentRunCycleScope
+	s.mu.Unlock()
+
+	currentCycleID := uint64(0)
+	if currentRunCycleScope != nil {
+		currentCycleID = currentRunCycleScope.cycleID
+	}
+
+	return watcherExecutionTraceContext{
+		cycleID: currentCycleID,
+		batchID: nextBatchID,
+	}
+}
+
+func (s *server) setCurrentWatcherExecutionTraceContext(
+	traceContextForWatcherExecution watcherExecutionTraceContext,
+) {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	s.currentWatcherExecutionTraceContext = traceContextForWatcherExecution
+	s.mu.Unlock()
+}
+
+func (s *server) clearCurrentWatcherExecutionTraceContext() {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	s.currentWatcherExecutionTraceContext = watcherExecutionTraceContext{}
+	s.mu.Unlock()
+}
+
+func (s *server) getCurrentWatcherExecutionTraceContext() watcherExecutionTraceContext {
+	if s == nil {
+		return watcherExecutionTraceContext{}
+	}
+
+	s.mu.Lock()
+	traceContextForWatcherExecution := s.currentWatcherExecutionTraceContext
+	s.mu.Unlock()
+	return traceContextForWatcherExecution
+}

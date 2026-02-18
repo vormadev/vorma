@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRenderCommitCommands } from "../../core/render_runtime_commit_commands.ts";
+import { buildRenderCommitCommands } from "../../core/render_commit_runtime.ts";
 
 function createRouteDataJSON(
 	overrides: Record<string, unknown> = {},

@@ -21,8 +21,6 @@ import {
 	type SkipMatch,
 } from "./fetch_route_data_skip_match.ts";
 import type { NavigateProps, NavigationOutcome } from "./types.ts";
-import { buildServerSuccessPreloadCommands } from "./fetch_route_data_preload_commands.ts";
-import { decideServerSuccessPreloadExecutionPlan } from "./fetch_route_data_preload_state_machine.ts";
 
 type RouteDataRequestGlobalSnapshot = {
 	buildID: string;
@@ -32,6 +30,88 @@ type RouteDataRequestGlobalSnapshot = {
 type StartParallelClientLoadersGlobalSnapshot = {
 	patternToWaitFnMap: VormaClientGlobal["patternToWaitFnMap"];
 };
+
+export type ServerSuccessPreloadExecutionPlan =
+	| {
+			type: "skip";
+			reason: "server_success_preload_skipped_signal_aborted";
+	  }
+	| {
+			type: "preload";
+			moduleDependenciesToPreload: string[];
+			cssBundlesToPreload: string[];
+			reason: "server_success_preload_allowed";
+	  };
+
+export function decideServerSuccessPreloadExecutionPlan(props: {
+	signalAborted: boolean;
+	isDev: boolean;
+	importURLs: string[];
+	deps: string[];
+	cssBundles: string[];
+}): ServerSuccessPreloadExecutionPlan {
+	if (props.signalAborted) {
+		return {
+			type: "skip",
+			reason: "server_success_preload_skipped_signal_aborted",
+		};
+	}
+
+	const moduleDependenciesToPreload = props.isDev
+		? [...new Set(props.importURLs)]
+		: props.deps;
+
+	return {
+		type: "preload",
+		moduleDependenciesToPreload,
+		cssBundlesToPreload: props.cssBundles,
+		reason: "server_success_preload_allowed",
+	};
+}
+
+export type ServerSuccessPreloadCommand =
+	| {
+			type: "preload_module_dependency";
+			dependency: string;
+			reason: "server_success_preload_allowed";
+	  }
+	| {
+			type: "preload_css_bundle";
+			bundle: string;
+			reason: "server_success_preload_allowed";
+	  };
+
+export function buildServerSuccessPreloadCommands(props: {
+	executionPlan: ServerSuccessPreloadExecutionPlan;
+}): ServerSuccessPreloadCommand[] {
+	if (props.executionPlan.type === "skip") {
+		return [];
+	}
+
+	const commands: ServerSuccessPreloadCommand[] = [];
+	for (const dependency of props.executionPlan.moduleDependenciesToPreload) {
+		if (typeof dependency !== "string" || dependency.length === 0) {
+			continue;
+		}
+		commands.push({
+			type: "preload_module_dependency",
+			dependency,
+			reason: props.executionPlan.reason,
+		});
+	}
+	for (const bundle of props.executionPlan.cssBundlesToPreload) {
+		if (typeof bundle !== "string" || bundle.length === 0) {
+			continue;
+		}
+		commands.push({
+			type: "preload_css_bundle",
+			bundle,
+			reason: props.executionPlan.reason,
+		});
+	}
+
+	return commands;
+}
 
 function getRouteDataRequestGlobalSnapshot(): RouteDataRequestGlobalSnapshot {
 	return {

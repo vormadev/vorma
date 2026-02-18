@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideServerSuccessPreloadExecutionPlan } from "../../core/navigation/fetch_route_data_preload_state_machine.ts";
+import { decideServerSuccessPreloadExecutionPlan } from "../../core/navigation/fetch_route_data_server.ts";
 
 describe("server-success preload state machine", () => {
 	it("skips preload plan when signal is already aborted", () => {

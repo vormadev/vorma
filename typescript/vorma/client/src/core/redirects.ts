@@ -18,11 +18,6 @@ import {
 	VORMA_HARD_RELOAD_QUERY_PARAM,
 } from "../platform/url.ts";
 import type { NavigateProps, NavigationEntry } from "./navigation/types.ts";
-import {
-	buildRedirectEffectuationCommands,
-	type RedirectEffectuationCommand,
-} from "./redirect_effectuation_commands.ts";
-import { decideRedirectEffectuationExecutionPlan } from "./redirect_effectuation_state_machine.ts";
 
 export type RedirectData = { href: string; hrefDetails: HrefDetails } & (
 	| {
@@ -37,6 +32,145 @@ export type RedirectData = { href: string; hrefDetails: HrefDetails } & (
 
 type HTTPHrefDetails = Extract<HrefDetails, { isHTTP: true }>;
 type ShouldRedirectData = Extract<RedirectData, { status: "should" }>;
+
+export type RedirectEffectuationExecutionPlan =
+	| {
+			type: "stop";
+			reason: "redirect_effectuation_redirect_data_not_should";
+	  }
+	| {
+			type: "cleanup_and_effectuate_hard";
+			reason: "redirect_effectuation_strategy_hard";
+	  }
+	| {
+			type: "cleanup_and_effectuate_soft";
+			reason: "redirect_effectuation_strategy_soft";
+	  }
+	| {
+			type: "cleanup_and_stop";
+			reason: "redirect_effectuation_strategy_unknown";
+	  };
+
+function resolveRedirectStrategyValue(
+	redirectData: ShouldRedirectData,
+): string {
+	return (
+		redirectData as ShouldRedirectData & { shouldRedirectStrategy: string }
+	).shouldRedirectStrategy;
+}
+
+export function decideRedirectEffectuationExecutionPlan(props: {
+	redirectData: RedirectData;
+}): RedirectEffectuationExecutionPlan {
+	const { redirectData } = props;
+	if (redirectData.status !== "should") {
+		return {
+			type: "stop",
+			reason: "redirect_effectuation_redirect_data_not_should",
+		};
+	}
+
+	switch (resolveRedirectStrategyValue(redirectData)) {
+		case "hard":
+			return {
+				type: "cleanup_and_effectuate_hard",
+				reason: "redirect_effectuation_strategy_hard",
+			};
+		case "soft":
+			return {
+				type: "cleanup_and_effectuate_soft",
+				reason: "redirect_effectuation_strategy_soft",
+			};
+		default:
+			return {
+				type: "cleanup_and_stop",
+				reason: "redirect_effectuation_strategy_unknown",
+			};
+	}
+}
+
+export type RedirectEffectuationCommand =
+	| {
+			type: "cleanup_redirect_related_navigations";
+			reason:
+				| "redirect_effectuation_strategy_hard"
+				| "redirect_effectuation_strategy_soft"
+				| "redirect_effectuation_strategy_unknown";
+	  }
+	| {
+			type: "effectuate_hard_redirect";
+			redirectData: ShouldRedirectData;
+			reason: "redirect_effectuation_strategy_hard";
+	  }
+	| {
+			type: "effectuate_soft_redirect";
+			redirectData: ShouldRedirectData;
+			redirectCount: number;
+			originalProps?: NavigateProps;
+			reason: "redirect_effectuation_strategy_soft";
+	  }
+	| {
+			type: "return_null";
+			reason:
+				| "redirect_effectuation_redirect_data_not_should"
+				| "redirect_effectuation_strategy_unknown";
+	  };
+
+export function buildRedirectEffectuationCommands(props: {
+	executionPlan: RedirectEffectuationExecutionPlan;
+	redirectData: RedirectData;
+	redirectCount: number;
+	originalProps?: NavigateProps;
+}): RedirectEffectuationCommand[] {
+	const { executionPlan, redirectData, redirectCount, originalProps } = props;
+
+	switch (executionPlan.type) {
+		case "stop":
+			return [
+				{
+					type: "return_null",
+					reason: executionPlan.reason,
+				},
+			];
+		case "cleanup_and_effectuate_hard":
+			return [
+				{
+					type: "cleanup_redirect_related_navigations",
+					reason: executionPlan.reason,
+				},
+				{
+					type: "effectuate_hard_redirect",
+					redirectData: redirectData as ShouldRedirectData,
+					reason: executionPlan.reason,
+				},
+			];
+		case "cleanup_and_effectuate_soft":
+			return [
+				{
+					type: "cleanup_redirect_related_navigations",
+					reason: executionPlan.reason,
+				},
+				{
+					type: "effectuate_soft_redirect",
+					redirectData: redirectData as ShouldRedirectData,
+					redirectCount,
+					originalProps,
+					reason: executionPlan.reason,
+				},
+			];
+		case "cleanup_and_stop":
+			return [
+				{
+					type: "cleanup_redirect_related_navigations",
+					reason: executionPlan.reason,
+				},
+				{
+					type: "return_null",
+					reason: executionPlan.reason,
+				},
+			];
+	}
+}
 
 type RedirectNavigationState = {
 	getNavigations: () => Map<string, NavigationEntry>;

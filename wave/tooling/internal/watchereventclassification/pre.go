@@ -1,41 +1,65 @@
 // Package watchereventclassification contains watcher-event classification
 // decisions used by tooling event orchestration.
 //
+// Why this package exists:
+// watcher intake has to answer the same questions consistently on every cycle:
+// config restart vs normal processing, directory watch mutations, and event
+// inclusion. Without a dedicated decision boundary, this logic gets duplicated
+// across orchestration code, making behavior drift and regressions likely.
+//
 // Boundary:
 // - This package owns pure decision logic for pre/post classification.
 // - This package does not own watcher side effects, builder state, or logging.
 package watchereventclassification
 
-import "github.com/fsnotify/fsnotify"
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"syscall"
+
+	"github.com/fsnotify/fsnotify"
+)
 
 // DirectoryProbeResult reports whether probing path metadata succeeded and
 // whether the probed path is a directory.
 type DirectoryProbeResult struct {
+	// StatProbeSucceeded reports whether path metadata was read successfully.
 	StatProbeSucceeded bool
-	IsDirectory        bool
+	// IsDirectory reports whether the probed path is a directory.
+	IsDirectory bool
 }
 
 // PreClassificationDecision is the immediate classification decision for one
 // watcher event before event-type mapping.
 type PreClassificationDecision struct {
-	ConfigChanged     bool
+	// ConfigChanged requests config-reload flow.
+	ConfigChanged bool
+	// AddDirectoryWatch requests watcher AddDir side effects.
 	AddDirectoryWatch bool
-	ClassifyEvent     bool
+	// ClassifyEvent controls whether the event continues to type mapping.
+	ClassifyEvent bool
 }
 
 // PreClassificationPlan accumulates pre-classification actions across a batch
 // of watcher events.
 type PreClassificationPlan struct {
-	ConfigChanged          bool
+	// ConfigChanged short-circuits normal processing for config reload flow.
+	ConfigChanged bool
+	// AddDirectoryWatchPaths lists unique directory paths to pass to AddDir.
 	AddDirectoryWatchPaths []string
-	EventsToClassify       []fsnotify.Event
+	// EventsToClassify includes events that should continue into type mapping.
+	EventsToClassify []fsnotify.Event
 }
 
 // PreClassificationStepResult captures per-event side effects and inclusion.
 type PreClassificationStepResult struct {
-	ConfigChanged         bool
+	// ConfigChanged short-circuits normal processing for config reload flow.
+	ConfigChanged bool
+	// AddDirectoryWatchPath requests one AddDir side effect when non-empty.
 	AddDirectoryWatchPath string
-	ClassifyEvent         bool
+	// ClassifyEvent controls whether this event continues to type mapping.
+	ClassifyEvent bool
 }
 
 // ProbeIsConfigFileFunc resolves whether a path is the active config file.
@@ -204,4 +228,45 @@ func appendDirectoryWatchPathIfMissing(
 	addDirectoryWatchPaths = append(addDirectoryWatchPaths, addDirectoryWatchPath)
 	addDirectoryWatchPathSet[addDirectoryWatchPath] = struct{}{}
 	return addDirectoryWatchPaths, addDirectoryWatchPathSet
+}
+
+// PostClassificationDecision resolves whether a classified event should move
+// forward into pipeline planning.
+type PostClassificationDecision struct {
+	// IncludeClassifiedEvent controls whether one classified event proceeds.
+	IncludeClassifiedEvent bool
+}
+
+// DerivePostClassificationDecision resolves event inclusion after mapping.
+func DerivePostClassificationDecision(
+	classifiedEventIgnored bool,
+	classifiedEventIsChmodOnly bool,
+) PostClassificationDecision {
+	if classifiedEventIgnored || classifiedEventIsChmodOnly {
+		return PostClassificationDecision{}
+	}
+
+	return PostClassificationDecision{
+		IncludeClassifiedEvent: true,
+	}
+}
+
+// ShouldLogAddDirectoryWatchError suppresses expected watcher add-dir probe
+// failures and preserves logging for actionable errors.
+func ShouldLogAddDirectoryWatchError(
+	addDirectoryWatchError error,
+) bool {
+	if addDirectoryWatchError == nil {
+		return false
+	}
+
+	if os.IsNotExist(addDirectoryWatchError) || errors.Is(addDirectoryWatchError, fs.ErrNotExist) {
+		return false
+	}
+
+	if errors.Is(addDirectoryWatchError, syscall.ENOTDIR) {
+		return false
+	}
+
+	return true
 }

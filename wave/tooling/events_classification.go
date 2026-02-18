@@ -17,19 +17,13 @@ func (s *server) classifyWatcherEventsForProcessing(
 		return nil, false
 	}
 
-	eventClassificationProber := newWatcherEventClassificationProber(s.isConfigFile)
+	eventClassificationProber := watchereventclassification.NewEventClassificationProber(
+		s.isConfigFile,
+	)
 	preClassificationPlan := watchereventclassification.BuildPreClassificationPlanFromEvents(
 		events,
-		func(path string) bool {
-			return eventClassificationProber.probeIsConfigFile(path)
-		},
-		func(path string) watchereventclassification.DirectoryProbeResult {
-			directoryProbeResult := eventClassificationProber.probeEventDirectoryStatus(path)
-			return watchereventclassification.DirectoryProbeResult{
-				StatProbeSucceeded: directoryProbeResult.statProbeSucceeded,
-				IsDirectory:        directoryProbeResult.isDirectory,
-			}
-		},
+		eventClassificationProber.ProbeIsConfigFile,
+		eventClassificationProber.ProbeEventDirectoryStatus,
 	)
 	if preClassificationPlan.ConfigChanged {
 		return nil, true

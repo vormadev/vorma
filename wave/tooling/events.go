@@ -3,6 +3,7 @@ package tooling
 import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/tooling/internal/watchereventdedup"
 )
 
 type fileType int
@@ -23,6 +24,16 @@ type classifiedEvent struct {
 	watchedFile *wave.WatchedFile
 	ignored     bool
 	chmodOnly   bool
+}
+
+// eventWithHooks pairs a classified event with its sorted hooks.
+type eventWithHooks struct {
+	classified         classifiedEvent
+	hooks              *wave.SortedHooks
+	hookCtx            *wave.HookContext
+	runOnChangeOnly    bool
+	needsHardReload    bool
+	skipDuplicateHooks bool
 }
 
 type buildPhaseDecision struct {
@@ -149,7 +160,7 @@ func (s *server) buildEventExecutionPlan(
 	watcher *watcher,
 	builder *Builder,
 ) eventExecutionPlanningResult {
-	deduplicatedEvents := deduplicateWatcherEventsByPath(events)
+	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath(events)
 	classifiedEvents, configChanged := s.classifyWatcherEventsForProcessing(
 		deduplicatedEvents,
 		watcher,

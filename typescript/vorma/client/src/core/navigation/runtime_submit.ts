@@ -9,15 +9,6 @@ import {
 import type { NavigateProps, SubmitOptions, SubmissionEntry } from "./types.ts";
 import { hasSubmissionOperationOwnership } from "./types.ts";
 import { syncBuildIDFromResponse } from "./runtime_navigation_outcome.ts";
-import {
-	buildSubmissionLifecycleBeginCommands,
-	buildSubmissionLifecycleFinishCommands,
-	type SubmissionLifecycleCommand,
-} from "./runtime_submit_lifecycle_commands.ts";
-import {
-	decideSubmitStalenessCheckpointExecutionPlan,
-	type SubmitStalenessCheckpoint,
-} from "./runtime_submit_staleness_state_machine.ts";
 
 type SubmissionLifecycle = {
 	abortController: AbortController;
@@ -25,6 +16,168 @@ type SubmissionLifecycle = {
 	begin: () => void;
 	finish: () => void;
 };
+
+export type SubmitStalenessCheckpoint =
+	| "post_request"
+	| "pre_finalize"
+	| "post_response_classification"
+	| "post_redirect_effectuation"
+	| "pre_success_return"
+	| "post_auto_revalidate";
+
+type SubmitStalenessContinueReason =
+	`submit_staleness_${SubmitStalenessCheckpoint}_continue_current`;
+type SubmitStalenessStopReason =
+	`submit_staleness_${SubmitStalenessCheckpoint}_stop_not_current`;
+
+export type SubmitStalenessCheckpointExecutionPlan =
+	| {
+			checkpoint: SubmitStalenessCheckpoint;
+			type: "continue";
+			reason: SubmitStalenessContinueReason;
+	  }
+	| {
+			checkpoint: SubmitStalenessCheckpoint;
+			type: "stop";
+			reason: SubmitStalenessStopReason;
+	  };
+
+export function decideSubmitStalenessCheckpointExecutionPlan(props: {
+	checkpoint: SubmitStalenessCheckpoint;
+	isSubmissionCurrent: boolean;
+}): SubmitStalenessCheckpointExecutionPlan {
+	if (props.isSubmissionCurrent) {
+		return {
+			checkpoint: props.checkpoint,
+			type: "continue",
+			reason: `submit_staleness_${props.checkpoint}_continue_current`,
+		};
+	}
+
+	return {
+		checkpoint: props.checkpoint,
+		type: "stop",
+		reason: `submit_staleness_${props.checkpoint}_stop_not_current`,
+	};
+}
+
+export type SubmissionLifecycleCommand =
+	| {
+			type: "abort_submission_entry";
+			submissionEntry: SubmissionEntry;
+			reason: "submission_deduped_by_newer_submission";
+	  }
+	| {
+			type: "set_submission_entry";
+			submissionKey: string | symbol;
+			submissionEntry: SubmissionEntry;
+			reason: "submission_started";
+	  }
+	| {
+			type: "delete_submission_entry";
+			submissionKey: string | symbol;
+			submissionEntry: SubmissionEntry;
+			reason: "submission_finished";
+	  }
+	| {
+			type: "emit_submission_state_transition";
+			submissionEntry: SubmissionEntry;
+			fromState: string;
+			toState: string;
+			reason: string;
+			causedByOperationID?: number | null;
+	  }
+	| {
+			type: "schedule_status_update";
+			reason:
+				| "submission_started"
+				| "submission_finished"
+				| "submission_deduped_by_newer_submission";
+	  };
+
+export function buildSubmissionLifecycleBeginCommands(props: {
+	submissionKey: string | symbol;
+	submissionEntry: SubmissionEntry;
+	existingSubmissionEntry: SubmissionEntry | undefined;
+}): SubmissionLifecycleCommand[] {
+	const { submissionKey, submissionEntry, existingSubmissionEntry } = props;
+	const commands: SubmissionLifecycleCommand[] = [];
+
+	if (existingSubmissionEntry) {
+		commands.push(
+			{
+				type: "abort_submission_entry",
+				submissionEntry: existingSubmissionEntry,
+				reason: "submission_deduped_by_newer_submission",
+			},
+			{
+				type: "emit_submission_state_transition",
+				submissionEntry: existingSubmissionEntry,
+				fromState: "submitting",
+				toState: "aborted",
+				reason: "submission_deduped_by_newer_submission",
+				causedByOperationID: submissionEntry.operationID,
+			},
+		);
+	}
+
+	commands.push(
+		{
+			type: "set_submission_entry",
+			submissionKey,
+			submissionEntry,
+			reason: "submission_started",
+		},
+		{
+			type: "emit_submission_state_transition",
+			submissionEntry,
+			fromState: "none",
+			toState: "submitting",
+			reason: "submission_started",
+		},
+		{
+			type: "schedule_status_update",
+			reason: "submission_started",
+		},
+	);
+
+	return commands;
+}
+
+export function buildSubmissionLifecycleFinishCommands(props: {
+	submissionKey: string | symbol;
+	submissionEntry: SubmissionEntry;
+	shouldRemoveSubmissionEntry: boolean;
+}): SubmissionLifecycleCommand[] {
+	const { submissionKey, submissionEntry, shouldRemoveSubmissionEntry } =
+		props;
+	const commands: SubmissionLifecycleCommand[] = [];
+
+	if (shouldRemoveSubmissionEntry) {
+		commands.push(
+			{
+				type: "delete_submission_entry",
+				submissionKey,
+				submissionEntry,
+				reason: "submission_finished",
+			},
+			{
+				type: "emit_submission_state_transition",
+				submissionEntry,
+				fromState: "submitting",
+				toState: "removed",
+				reason: "submission_finished",
+			},
+		);
+	}
+
+	commands.push({
+		type: "schedule_status_update",
+		reason: "submission_finished",
+	});
+
+	return commands;
+}
 
 function createSubmissionEntry(
 	abortController: AbortController,
