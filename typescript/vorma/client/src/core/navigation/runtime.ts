@@ -10,16 +10,26 @@ import {
 	type BeginNavigationContext,
 } from "./begin_navigation.ts";
 import { resolveBeginNavigationTargetURL } from "./begin_navigation_state_machine.ts";
-import { fetchRouteData } from "./fetch_route_data.ts";
+import { fetchRouteData } from "./fetch_route_data_server.ts";
 import {
 	buildNavigationEntriesBeforeClearAll,
 	createNavigationLifecycleRuntime,
 } from "./runtime_lifecycle_runtime.ts";
 import {
-	handleNavigationOutcome,
 	processSuccessfulNavigationRuntime,
-} from "./runtime_navigation_outcome.ts";
-import { createDeterministicRevalidationLane } from "./runtime_revalidation_lane.ts";
+	syncBuildIDFromResponse,
+	type ProcessSuccessfulNavigationContext,
+} from "./runtime_navigation_successful_runtime.ts";
+import {
+	decideNavigationOutcomeExecutionPlan,
+	toPublicNavigateResult,
+	type InternalNavigateResult,
+	type NavigationOutcomeExecutionPlan,
+} from "./runtime_navigation_outcome_state_machine.ts";
+import {
+	effectuateRedirectDataResult,
+	syncBuildIDFromRedirectData,
+} from "../redirects.ts";
 import {
 	buildNavigationsMapFromNavigationLanes,
 	clearRuntimeLanes,
@@ -50,11 +60,286 @@ export {
 	transitionNavigationPhaseInNavigationLanes,
 };
 export type { NavigationLanes };
+export { processSuccessfulNavigationRuntime, syncBuildIDFromResponse };
+export type { ProcessSuccessfulNavigationContext };
 
 export type CreateNavigationRuntimeOptions = {
 	// Called after a navigate/revalidate intent commits successfully.
 	onNavigationIntentResolved?: () => void;
 };
+
+type RevalidationNavigateResult = Promise<{ didNavigate: boolean }>;
+
+type RevalidationLaneState = {
+	inFlightPromise: RevalidationNavigateResult | null;
+	inFlightTargetUrl: string | null;
+	isTrailingEligible: boolean;
+	shouldRunTrailingPass: boolean;
+	trailingPromise: RevalidationNavigateResult | null;
+	resolveTrailingPromise: ((result: { didNavigate: boolean }) => void) | null;
+};
+
+export type DeterministicRevalidationLane = {
+	runRevalidation: (props: {
+		navigateSinglePass: (
+			props: NavigateProps,
+		) => RevalidationNavigateResult;
+	}) => RevalidationNavigateResult;
+	clearQueuedTrailingRequest: () => void;
+	reset: () => void;
+};
+
+export function createDeterministicRevalidationLane(props: {
+	getCurrentHref: () => string;
+	onInFlightTargetMismatch: () => void;
+}): DeterministicRevalidationLane {
+	const state: RevalidationLaneState = {
+		inFlightPromise: null,
+		inFlightTargetUrl: null,
+		isTrailingEligible: false,
+		shouldRunTrailingPass: false,
+		trailingPromise: null,
+		resolveTrailingPromise: null,
+	};
+
+	function resolveAndClearTrailingPromise(props?: {
+		result?: { didNavigate: boolean };
+	}): void {
+		const result = props?.result || { didNavigate: false };
+		state.resolveTrailingPromise?.(result);
+		state.trailingPromise = null;
+		state.resolveTrailingPromise = null;
+	}
+
+	function clearQueuedTrailingRequest(): void {
+		state.shouldRunTrailingPass = false;
+		resolveAndClearTrailingPromise();
+	}
+
+	function startPass(startNavigateProps: {
+		navigateSinglePass: (
+			props: NavigateProps,
+		) => RevalidationNavigateResult;
+	}): RevalidationNavigateResult {
+		const { navigateSinglePass } = startNavigateProps;
+		const revalidationHref = props.getCurrentHref();
+		const revalidationProps: NavigateProps = {
+			href: revalidationHref,
+			navigationType: "revalidation",
+		};
+		const passPromise = navigateSinglePass(revalidationProps);
+		state.inFlightPromise = passPromise;
+		state.inFlightTargetUrl = resolveAbsoluteHref({
+			href: revalidationHref,
+		});
+		state.isTrailingEligible = false;
+
+		queueMicrotask(() => {
+			if (state.inFlightPromise === passPromise) {
+				state.isTrailingEligible = true;
+			}
+		});
+
+		void passPromise.finally(() => {
+			if (state.inFlightPromise !== passPromise) {
+				return;
+			}
+
+			state.inFlightPromise = null;
+			state.inFlightTargetUrl = null;
+			state.isTrailingEligible = false;
+
+			if (!state.shouldRunTrailingPass) {
+				clearQueuedTrailingRequest();
+				return;
+			}
+
+			state.shouldRunTrailingPass = false;
+			const resolveTrailingPromise = state.resolveTrailingPromise;
+			state.trailingPromise = null;
+			state.resolveTrailingPromise = null;
+
+			void startPass({ navigateSinglePass }).then(
+				(result) => resolveTrailingPromise?.(result),
+				() => resolveTrailingPromise?.({ didNavigate: false }),
+			);
+		});
+
+		return passPromise;
+	}
+
+	function scheduleTrailingPass(): RevalidationNavigateResult {
+		state.shouldRunTrailingPass = true;
+
+		if (state.trailingPromise) {
+			return state.trailingPromise;
+		}
+
+		state.trailingPromise = new Promise((resolve) => {
+			state.resolveTrailingPromise = resolve;
+		});
+		return state.trailingPromise;
+	}
+
+	function hasInFlightTargetMismatch(): boolean {
+		if (!state.inFlightTargetUrl) {
+			return false;
+		}
+
+		return !hasSameNavigationTarget({
+			firstHref: state.inFlightTargetUrl,
+			secondHref: props.getCurrentHref(),
+		});
+	}
+
+	function runRevalidation(runProps: {
+		navigateSinglePass: (
+			props: NavigateProps,
+		) => RevalidationNavigateResult;
+	}): RevalidationNavigateResult {
+		const { navigateSinglePass } = runProps;
+		if (!state.inFlightPromise) {
+			return startPass({ navigateSinglePass });
+		}
+
+		if (hasInFlightTargetMismatch()) {
+			props.onInFlightTargetMismatch();
+			clearQueuedTrailingRequest();
+			return startPass({ navigateSinglePass });
+		}
+
+		if (!state.isTrailingEligible) {
+			return state.inFlightPromise;
+		}
+
+		return scheduleTrailingPass();
+	}
+
+	function reset(): void {
+		state.inFlightPromise = null;
+		state.inFlightTargetUrl = null;
+		state.isTrailingEligible = false;
+		clearQueuedTrailingRequest();
+	}
+
+	return {
+		runRevalidation,
+		clearQueuedTrailingRequest: clearQueuedTrailingRequest,
+		reset,
+	};
+}
+
+type HandleNavigationOutcomeProps = {
+	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
+	deleteNavigation: (props: { targetUrl: string; reason: string }) => boolean;
+	processSuccessfulNavigation: (
+		outcome: Extract<NavigationOutcome, { type: "success" }>,
+		entry: NavigationEntry,
+	) => Promise<void>;
+	navigationProps: NavigateProps;
+	outcome: NavigationOutcome;
+	expectedOperationID: number | undefined;
+};
+
+/**
+ * Applies a completed navigation outcome and returns whether navigation committed.
+ */
+export async function handleNavigationOutcome(
+	props: HandleNavigationOutcomeProps,
+): Promise<{ didNavigate: boolean }> {
+	const internalResult =
+		await handleNavigationOutcomeWithInternalResult(props);
+
+	return toPublicNavigateResult({
+		internalResult,
+	});
+}
+
+/**
+ * Internal outcome handler that returns a richer result for runtime state machines.
+ */
+export async function handleNavigationOutcomeWithInternalResult(
+	props: HandleNavigationOutcomeProps,
+): Promise<InternalNavigateResult> {
+	const {
+		findNavigationEntry,
+		deleteNavigation,
+		processSuccessfulNavigation,
+		navigationProps,
+		outcome,
+		expectedOperationID,
+	} = props;
+	const targetUrl = resolveAbsoluteHref({ href: navigationProps.href });
+	const entry = findNavigationEntry(targetUrl);
+	const executionPlan = decideNavigationOutcomeExecutionPlan({
+		outcome,
+		targetUrl,
+		entry,
+		expectedOperationID,
+		currentHref: window.location.href,
+	});
+
+	const internalResult = await executeNavigationOutcomeExecutionPlan({
+		executionPlan,
+		targetUrl,
+		deleteNavigation,
+		processSuccessfulNavigation,
+		navigationProps,
+	});
+	return internalResult;
+}
+
+async function executeNavigationOutcomeExecutionPlan(props: {
+	executionPlan: NavigationOutcomeExecutionPlan;
+	targetUrl: string;
+	deleteNavigation: HandleNavigationOutcomeProps["deleteNavigation"];
+	processSuccessfulNavigation: HandleNavigationOutcomeProps["processSuccessfulNavigation"];
+	navigationProps: NavigateProps;
+}): Promise<InternalNavigateResult> {
+	switch (props.executionPlan.type) {
+		case "stop":
+			return {
+				type: "cancelled",
+				reason: props.executionPlan.reason,
+			};
+		case "deleteAndStop":
+			props.deleteNavigation({
+				targetUrl: props.executionPlan.targetUrl,
+				reason: props.executionPlan.reason,
+			});
+			return {
+				type: "cancelled",
+				reason: props.executionPlan.reason,
+			};
+		case "redirect": {
+			syncBuildIDFromRedirectData(
+				props.executionPlan.outcome.redirectData,
+			);
+			props.deleteNavigation({
+				targetUrl: props.targetUrl,
+				reason: props.executionPlan.reason,
+			});
+			const redirectResult = await effectuateRedirectDataResult(
+				props.executionPlan.outcome.redirectData,
+				props.navigationProps.redirectCount || 0,
+				props.navigationProps,
+			);
+			return {
+				type: "committed",
+				didNavigate: redirectResult?.status === "did",
+			};
+		}
+		case "success":
+			await props.processSuccessfulNavigation(
+				props.executionPlan.outcome,
+				props.executionPlan.entry,
+			);
+			return {
+				type: "committed",
+				didNavigate: props.executionPlan.didNavigate,
+			};
+	}
+}
 
 /**
  * Creates the client navigation runtime that coordinates active navigation,

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildClientModuleMapFromRouteModuleMetadata,
 	mergeClientModuleMapWithRouteModuleMetadata,
-} from "../../core/navigation/route_metadata.ts";
+} from "../../core/navigation/runtime_navigation_successful_runtime.ts";
 
 describe("route metadata module-map helpers", () => {
 	it("builds a fresh module map from route metadata arrays with default export fallbacks", () => {

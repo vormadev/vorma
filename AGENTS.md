@@ -183,13 +183,13 @@ has a way of sticking around forever and killing codebases little by little.
 Just put package-level docs into whatever the main entry file for that Go
 package is. I don't want this repo littered with `doc.go` files.
 
-## Write Clear Comments For All Internal and External Code
+## Write Clear Comments For All Internal and External Symbols
 
 Don't go overboard, but always include the amount of comments appropriate to
 help a human understand the context of what is going on in the code, and write
 them the way a human would. Make sure they are declarative and up-to-date, and
 never backward-looking, temporal, changelog style, or conversational. Humans
-can't read 10 documents instantly the way you can to quickly accumulate context.
+can't read 10 documents instantly to quickly accumulate context the way you can.
 Help us out.
 
 ## Small Packages With Clear Boundaries And Explicit Responsibilities Are Good
@@ -218,3 +218,20 @@ then that's a signal you need to break down into multiple packages. This applies
 to both Go and TypeScript. In a perfect world, each package should actually be
 one file, but use common sense as to whether that's better or worse than having
 having two or three files in the package.
+
+## Do Not Write Stuffy, Enterprise-Style Code
+
+Code should feel light, clear, and punchy, not stuffy and enterprise-y. If it
+starts feeling like Java, you're doing something wrong.
+
+## No Rube Goldberg Machines
+
+Every piece of code shall have a clear, articulable reason for existing. Never
+add extra layers of indirection unless absolutely required to make a module
+reasonably testable.
+
+## Prefer Pure Functions, State Machines, and Tight Engines/Orchestrators To Messy Imperative Styles
+
+Try to write highly testable pure functions and state machines, and
+well-designed engines/orchestrators, rather than overly messy spaghetti
+imperative code.

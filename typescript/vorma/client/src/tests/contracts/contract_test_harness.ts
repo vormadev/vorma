@@ -354,8 +354,8 @@ export function expectNoLoadingGapBeforeFinalEvent(
 
 type PublicClientAPI = typeof import("../../../index.ts");
 type ContractInternalAPI = {
-	__getPrefetchHandlers: typeof import("../../core/links.ts").__getPrefetchHandlers;
-	__makeLinkOnClickFn: typeof import("../../core/links.ts").__makeLinkOnClickFn;
+	__getPrefetchHandlers: typeof import("../../core/links_prefetch_lifecycle.ts").createPrefetchHandlers;
+	__makeLinkOnClickFn: typeof import("../../core/links_click_lifecycle.ts").createLinkOnClickFn;
 	__applyScrollState: typeof import("../../platform/scroll.ts").__applyScrollState;
 	__vormaClientGlobal: typeof import("../../app/context.ts").__vormaClientGlobal;
 	__getNavigationDebugJournal: typeof import("../../client.ts").getNavigationDebugJournal;
@@ -372,7 +372,8 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 	vi.resetModules();
 	const [
 		publicClientAPI,
-		linksInternal,
+		linksPrefetchInternal,
+		linksClickInternal,
 		scrollInternal,
 		contextInternal,
 		clientRuntimeInternal,
@@ -382,7 +383,8 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		appHelpersInternal,
 	] = await Promise.all([
 		import("../../../index.ts"),
-		import("../../core/links.ts"),
+		import("../../core/links_prefetch_lifecycle.ts"),
+		import("../../core/links_click_lifecycle.ts"),
 		import("../../platform/scroll.ts"),
 		import("../../app/context.ts"),
 		import("../../client.ts"),
@@ -396,8 +398,8 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 	// those directly from internal modules so tests do not force public exports.
 	const clientAPI: ContractClientAPI = {
 		...publicClientAPI,
-		__getPrefetchHandlers: linksInternal.__getPrefetchHandlers,
-		__makeLinkOnClickFn: linksInternal.__makeLinkOnClickFn,
+		__getPrefetchHandlers: linksPrefetchInternal.createPrefetchHandlers,
+		__makeLinkOnClickFn: linksClickInternal.createLinkOnClickFn,
 		__applyScrollState: scrollInternal.__applyScrollState,
 		__vormaClientGlobal: contextInternal.__vormaClientGlobal,
 		__getNavigationDebugJournal:

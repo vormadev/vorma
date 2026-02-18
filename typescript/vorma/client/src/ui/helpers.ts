@@ -11,7 +11,8 @@ import {
 } from "../app/helpers.ts";
 import { __vormaClientGlobal, type getRouterData } from "../app/context.ts";
 import type { RouteErrorComponent } from "../app/context.ts";
-import { __getPrefetchHandlers, __makeLinkOnClickFn } from "../core/links.ts";
+import { createPrefetchHandlers as __getPrefetchHandlers } from "../core/links_prefetch_lifecycle.ts";
+import { createLinkOnClickFn as __makeLinkOnClickFn } from "../core/links_click_lifecycle.ts";
 import {
 	getHrefDetails,
 	resolveAbsoluteHrefWithOptionalSearchAndHash,

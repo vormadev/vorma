@@ -8,7 +8,7 @@ import {
 } from "../redirects.ts";
 import type { NavigateProps, SubmitOptions, SubmissionEntry } from "./types.ts";
 import { hasSubmissionOperationOwnership } from "./types.ts";
-import { syncBuildIDFromResponse } from "./runtime_navigation_outcome.ts";
+import { syncBuildIDFromResponse } from "./runtime_navigation_successful_runtime.ts";
 
 type SubmissionLifecycle = {
 	abortController: AbortController;

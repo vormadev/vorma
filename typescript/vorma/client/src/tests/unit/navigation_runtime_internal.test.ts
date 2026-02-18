@@ -5,7 +5,7 @@ import {
 	registerPattern,
 } from "vorma/kit/matcher/register";
 import { VORMA_SYMBOL } from "../../app/context.ts";
-import { fetchRouteData } from "../../core/navigation/fetch_route_data.ts";
+import { fetchRouteData } from "../../core/navigation/fetch_route_data_server.ts";
 import { canSkipServerFetch } from "../../core/navigation/fetch_route_data_skip.ts";
 import {
 	isSkipEligibilityViolated,
@@ -15,13 +15,11 @@ import {
 	createNavigationRuntime,
 	deleteNavigationFromNavigationLanes,
 	findNavigationEntryInNavigationLanes,
+	handleNavigationOutcome,
+	processSuccessfulNavigationRuntime,
 	transitionNavigationPhaseInNavigationLanes,
 	type NavigationLanes,
 } from "../../core/navigation/runtime.ts";
-import {
-	handleNavigationOutcome,
-	processSuccessfulNavigationRuntime,
-} from "../../core/navigation/runtime_navigation_outcome.ts";
 import {
 	executeSubmitRuntime,
 	type SubmitExecutionContext,

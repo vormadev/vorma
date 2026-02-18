@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleNavigationOutcomeWithInternalResult } from "../../core/navigation/runtime_navigation_outcome.ts";
+import { handleNavigationOutcomeWithInternalResult } from "../../core/navigation/runtime.ts";
 import type {
 	NavigateProps,
 	NavigationEntry,

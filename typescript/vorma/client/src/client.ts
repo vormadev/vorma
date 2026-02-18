@@ -9,7 +9,6 @@ import type {
 	NavigationControl,
 	SubmitOptions,
 } from "./core/navigation/types.ts";
-import { createRevalidationTriggerTimestampRuntime } from "./core/revalidation_trigger_timestamp_state_machine.ts";
 import type { StatusEventDetail } from "./platform/events.ts";
 import type { historyInstance } from "./platform/history.ts";
 import { HistoryManager } from "./platform/history.ts";
@@ -21,6 +20,58 @@ export type {
 	SubmitOptions,
 	VormaNavigationType,
 } from "./core/navigation/types.ts";
+
+export type RevalidationTriggerTimestampState = {
+	lastTriggeredNavOrRevalidateTimestampMS: number;
+};
+
+export type RevalidationTriggerTimestampEvent = {
+	type: "navigation_or_revalidation_intent_committed";
+	committedTimestampMS: number;
+};
+
+export function reduceRevalidationTriggerTimestampState(props: {
+	state: RevalidationTriggerTimestampState;
+	event: RevalidationTriggerTimestampEvent;
+}): RevalidationTriggerTimestampState {
+	switch (props.event.type) {
+		case "navigation_or_revalidation_intent_committed":
+			return {
+				...props.state,
+				lastTriggeredNavOrRevalidateTimestampMS:
+					props.event.committedTimestampMS,
+			};
+	}
+}
+
+export type RevalidationTriggerTimestampRuntime = {
+	recordNavigationOrRevalidationIntentCommitted: () => void;
+	getLastTriggeredNavOrRevalidateTimestampMS: () => number;
+};
+
+export function createRevalidationTriggerTimestampRuntime(props?: {
+	getNowTimestampMS?: () => number;
+	initialState?: RevalidationTriggerTimestampState;
+}): RevalidationTriggerTimestampRuntime {
+	const getNowTimestampMS = props?.getNowTimestampMS ?? (() => Date.now());
+	let state: RevalidationTriggerTimestampState = props?.initialState ?? {
+		lastTriggeredNavOrRevalidateTimestampMS: getNowTimestampMS(),
+	};
+
+	return {
+		recordNavigationOrRevalidationIntentCommitted: () => {
+			state = reduceRevalidationTriggerTimestampState({
+				state,
+				event: {
+					type: "navigation_or_revalidation_intent_committed",
+					committedTimestampMS: getNowTimestampMS(),
+				},
+			});
+		},
+		getLastTriggeredNavOrRevalidateTimestampMS: () =>
+			state.lastTriggeredNavOrRevalidateTimestampMS,
+	};
+}
 
 const revalidationTriggerTimestampRuntime =
 	createRevalidationTriggerTimestampRuntime();

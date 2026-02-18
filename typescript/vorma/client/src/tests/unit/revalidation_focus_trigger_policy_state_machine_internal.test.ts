@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideFocusRevalidationTriggerExecutionPlan } from "../../core/revalidation_focus_trigger_policy_state_machine.ts";
+import { decideFocusRevalidationTriggerExecutionPlan } from "../../core/extras.ts";
 
 describe("focus revalidation trigger policy state machine", () => {
 	it("blocks focus revalidate while navigating", () => {

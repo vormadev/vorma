@@ -4,7 +4,7 @@ import {
 } from "vorma/kit/matcher/register";
 import { setupClientLoaders } from "../core/render_runtime.ts";
 import { ComponentLoader } from "../core/render_runtime.ts";
-import { buildClientModuleMapFromRouteModuleMetadata } from "../core/navigation/route_metadata.ts";
+import { buildClientModuleMapFromRouteModuleMetadata } from "../core/navigation/runtime_navigation_successful_runtime.ts";
 import { defaultErrorBoundary } from "../ui/helpers.ts";
 import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../platform/url.ts";
 import { HistoryManager } from "../platform/history.ts";

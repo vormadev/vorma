@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHrefDetails } from "vorma/kit/url";
-import {
-	__getPrefetchHandlers,
-	__makeLinkOnClickFn,
-} from "../../core/links.ts";
+import { createPrefetchHandlers as __getPrefetchHandlers } from "../../core/links_prefetch_lifecycle.ts";
+import { createLinkOnClickFn as __makeLinkOnClickFn } from "../../core/links_click_lifecycle.ts";
 import { navigationStateManager } from "../../client.ts";
 import type { NavigationEntry } from "../../core/navigation/types.ts";
 import * as redirectsModule from "../../core/redirects.ts";
