@@ -67,7 +67,11 @@ func (s *server) processEventsWithDeterministicPipeline(
 	preHookStageResult := runAndApplyHookStageActionsAndErrorsToWorkSet(
 		hookStageTypePre,
 		func() ([]wave.RefreshAction, []error) {
-			return s.runPreHooksForEventsWithErrors(eventsWithHooks, work, watcher)
+			return s.runPreHooksForEventsWithErrors(
+				eventsWithHooks,
+				work,
+				watcher,
+			)
 		},
 		work,
 	)

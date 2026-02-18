@@ -1,8 +1,18 @@
-// Package tooling provides build-time and dev-time functionality for Wave.
+// Package tooling contains Wave build-time and development-time orchestration.
 //
-// This package intentionally has heavy dependencies and should not be imported
-// by runtime request-serving code paths. Keep it out of production app binaries
-// to preserve a smaller dependency set and binary size.
+// It is intentionally separate from package wave runtime APIs so production
+// binaries can depend on runtime functionality without pulling in build/dev
+// tool dependencies.
+//
+// Major responsibilities include:
+// - static asset processing and file mapping
+// - CSS/Vite build integration
+// - devserver lifecycle, watch pipelines, and restart orchestration
+// - config validation and schema generation
+//
+// Internal subpackages define explicit boundaries for isolated concerns. For
+// example, watcher pre/post classification decisions live in
+// internal/watchereventclassification.
 package tooling
 
 import (

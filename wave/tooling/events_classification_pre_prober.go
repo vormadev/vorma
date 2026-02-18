@@ -2,11 +2,15 @@ package tooling
 
 import "os"
 
+// watcherEventDirectoryProbeResult captures directory probe outcomes for one
+// watcher event path.
 type watcherEventDirectoryProbeResult struct {
 	statProbeSucceeded bool
 	isDirectory        bool
 }
 
+// watcherEventPathProbeSnapshot memoizes all probes for a single path within
+// one event batch.
 type watcherEventPathProbeSnapshot struct {
 	hasConfigFileProbe  bool
 	isConfigFile        bool
@@ -14,12 +18,15 @@ type watcherEventPathProbeSnapshot struct {
 	directoryProbeState watcherEventDirectoryProbeResult
 }
 
+// watcherEventClassificationProber caches path probes so one watcher batch does
+// not repeatedly hit config matching or filesystem stats for the same path.
 type watcherEventClassificationProber struct {
 	pathProbeSnapshotByPath map[string]*watcherEventPathProbeSnapshot
 	isConfigFileFn          func(string) bool
 	statPathFn              func(string) (os.FileInfo, error)
 }
 
+// newWatcherEventClassificationProber builds a batch-scoped prober.
 func newWatcherEventClassificationProber(
 	isConfigFileFn func(string) bool,
 ) *watcherEventClassificationProber {
@@ -32,6 +39,8 @@ func newWatcherEventClassificationProber(
 	}
 }
 
+// resolvePathProbe returns the shared per-path snapshot used by both config and
+// directory probes.
 func (prober *watcherEventClassificationProber) resolvePathProbe(
 	path string,
 ) *watcherEventPathProbeSnapshot {
@@ -52,6 +61,7 @@ func (prober *watcherEventClassificationProber) resolvePathProbe(
 	return pathProbeSnapshot
 }
 
+// probeIsConfigFile memoizes config-path matching for one path.
 func (prober *watcherEventClassificationProber) probeIsConfigFile(
 	path string,
 ) bool {
@@ -76,6 +86,8 @@ func (prober *watcherEventClassificationProber) probeIsConfigFile(
 	return resolvedIsConfigFile
 }
 
+// probeEventDirectoryStatus memoizes os.Stat-derived directory status for one
+// path.
 func (prober *watcherEventClassificationProber) probeEventDirectoryStatus(
 	path string,
 ) watcherEventDirectoryProbeResult {

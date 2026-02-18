@@ -1,12 +1,13 @@
-/*
-NOTE:
-
-This package primarily exists for Wave's JSON schema generation.
-It does not -- and probably won't ever -- cover the entire JSON
-schema spec (or anywhere near it).
-
-Buyer beware.
-*/
+// Package jsonschema provides small helpers for building JSON schema payloads
+// from declarative Go definitions.
+//
+// The API is intentionally narrow and focused on repository needs (primarily
+// Wave/Vorma config schema generation) rather than full JSON Schema feature
+// coverage.
+//
+// NOTE:
+// This package primarily exists for Wave's JSON schema generation.
+// It does not, and probably will not, cover the entire JSON Schema spec.
 package jsonschema
 
 import (

@@ -7,6 +7,8 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
+// classifyEventWithWatcherAndBuilder maps a raw watcher event into file type,
+// watch metadata, ignore status, and chmod-only state used by later phases.
 func (s *server) classifyEventWithWatcherAndBuilder(
 	watcherEvent fsnotify.Event,
 	watcher *watcher,
@@ -40,6 +42,8 @@ func (s *server) classifyEventWithWatcherAndBuilder(
 	return classifiedEventForProcessing
 }
 
+// deriveInitialFileTypeForWatcherEvent resolves baseline file type before
+// watched-file overrides are applied.
 func deriveInitialFileTypeForWatcherEvent(
 	watcherEventPath string,
 	watcher *watcher,
@@ -69,6 +73,8 @@ func deriveInitialFileTypeForWatcherEvent(
 	return fileTypeOther
 }
 
+// deriveFileTypeWithWatchedFileOverrides applies per-watched-file overrides
+// after extension/pattern-based initial classification.
 func deriveFileTypeWithWatchedFileOverrides(
 	initialFileType fileType,
 	watchedFile *wave.WatchedFile,
@@ -81,6 +87,8 @@ func deriveFileTypeWithWatchedFileOverrides(
 	return initialFileType
 }
 
+// deriveWatcherEventIgnoredStatus resolves whether a classified event should be
+// ignored before post-classification filtering.
 func deriveWatcherEventIgnoredStatus(
 	initialIgnoredStatus bool,
 	resolvedFileType fileType,

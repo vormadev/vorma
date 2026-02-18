@@ -1,6 +1,9 @@
 package tooling
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 type hookStageFailurePolicy int
 
@@ -72,7 +75,9 @@ func deriveHookStageContinuationDecisionWithFailurePolicy(
 		}
 	}
 
-	hasHookStageExecutionErrors := len(hookStageResultForContinuation.executionErrors) > 0
+	hasHookStageExecutionErrors := len(
+		hookStageResultForContinuation.executionErrors,
+	) > 0
 	if hasHookStageExecutionErrors &&
 		hookStageFailurePolicyForStage == hookStageFailurePolicyFailClosed {
 		return hookStageContinuationDecision{
@@ -131,12 +136,10 @@ func shouldStartAppAfterImplicitBuild(
 func shouldExecuteBrowserPhaseAfterHookStageResults(
 	hookStageResults ...hookStageResult,
 ) bool {
-	for _, hookStageResultForCheck := range hookStageResults {
-		if shouldShortCircuitPipelineForHookStageResult(hookStageResultForCheck) {
-			return false
-		}
-	}
-	return true
+	return !slices.ContainsFunc(
+		hookStageResults,
+		shouldShortCircuitPipelineForHookStageResult,
+	)
 }
 
 func deriveEventsWithHooksForExecution(

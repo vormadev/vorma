@@ -30,9 +30,11 @@ func newServerAndWatcherForHookExecutionTest(t *testing.T) (*server, *watcher) {
 	}
 
 	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+		cfg: cfg,
+		log: newDiscardLogger(),
+		restartIntents: newRestartIntentAccumulator(
+			make(chan restartRequest, 1),
+		),
 	}
 
 	return s, watcher
@@ -102,20 +104,29 @@ func TestRunConcurrentHooks_RespectsExcludesAndCollectsActions(t *testing.T) {
 	}
 }
 
-func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHookRunner(t *testing.T) {
+func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHookRunner(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
 	root := t.TempDir()
 	changedPath := filepath.Join(root, "changed.go")
 	combinedExecutionLogPath := filepath.Join(root, "combined-execution.log")
-	frameworkCommandFallbackLogPath := filepath.Join(root, "framework-command-fallback.log")
+	frameworkCommandFallbackLogPath := filepath.Join(
+		root,
+		"framework-command-fallback.log",
+	)
 	if err := os.WriteFile(changedPath, []byte("package main"), 0644); err != nil {
 		t.Fatalf("failed writing changed file: %v", err)
 	}
 
-	s.cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(combinedExecutionLogPath)
-	s.cfg.FrameworkDevBuildHook = "printf 'framework-command\\n' >> " + strconv.Quote(frameworkCommandFallbackLogPath)
+	s.cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(
+		combinedExecutionLogPath,
+	)
+	s.cfg.FrameworkDevBuildHook = "printf 'framework-command\\n' >> " + strconv.Quote(
+		frameworkCommandFallbackLogPath,
+	)
 
 	var frameworkRunnerCallCount atomic.Int32
 	s.cfg.FrameworkRunBuildHook = func(
@@ -124,10 +135,14 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 	) error {
 		frameworkRunnerCallCount.Add(1)
 		if !runInDevelopmentMode {
-			return errors.New("expected framework build hook runner to execute in development mode")
+			return errors.New(
+				"expected framework build hook runner to execute in development mode",
+			)
 		}
 		if hookExecutionContext == nil {
-			return errors.New("expected non-nil framework build hook execution context")
+			return errors.New(
+				"expected non-nil framework build hook execution context",
+			)
 		}
 
 		frameworkRunnerOutputFile, err := os.OpenFile(
@@ -162,7 +177,10 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 		t.Fatalf("runConcurrentHooks returned error: %v", err)
 	}
 	if len(actions) != 0 {
-		t.Fatalf("expected no concurrent actions from combined dev hooks, got %#v", actions)
+		t.Fatalf(
+			"expected no concurrent actions from combined dev hooks, got %#v",
+			actions,
+		)
 	}
 
 	if got := frameworkRunnerCallCount.Load(); got != 1 {
@@ -174,7 +192,11 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 		t.Fatalf("failed reading combined execution log: %v", err)
 	}
 	if string(combinedExecutionLog) != "user\nframework-runner\n" {
-		t.Fatalf("combined execution log = %q, want %q", string(combinedExecutionLog), "user\nframework-runner\n")
+		t.Fatalf(
+			"combined execution log = %q, want %q",
+			string(combinedExecutionLog),
+			"user\nframework-runner\n",
+		)
 	}
 
 	if _, err := os.Stat(frameworkCommandFallbackLogPath); !os.IsNotExist(err) {
@@ -223,10 +245,16 @@ func TestRunConcurrentHooks_ReturnsActionsInHookOrder(t *testing.T) {
 		t.Fatalf("action count=%d, want 2", len(actions))
 	}
 	if !actions[0].ReloadBrowser {
-		t.Fatalf("expected first action to be ReloadBrowser=true, got %#v", actions[0])
+		t.Fatalf(
+			"expected first action to be ReloadBrowser=true, got %#v",
+			actions[0],
+		)
 	}
 	if !actions[1].WaitForApp {
-		t.Fatalf("expected second action to be WaitForApp=true, got %#v", actions[1])
+		t.Fatalf(
+			"expected second action to be WaitForApp=true, got %#v",
+			actions[1],
+		)
 	}
 }
 
@@ -264,17 +292,28 @@ func TestRunConcurrentHooks_AggregatesMultipleHookErrors(t *testing.T) {
 		t.Fatal("expected aggregated concurrent hook error")
 	}
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
-		t.Fatalf("expected successful concurrent actions to be preserved, got %#v", actions)
+		t.Fatalf(
+			"expected successful concurrent actions to be preserved, got %#v",
+			actions,
+		)
 	}
 	if !strings.Contains(err.Error(), os.ErrPermission.Error()) {
-		t.Fatalf("expected aggregated error to include permission failure, got %q", err.Error())
+		t.Fatalf(
+			"expected aggregated error to include permission failure, got %q",
+			err.Error(),
+		)
 	}
 	if !strings.Contains(err.Error(), os.ErrNotExist.Error()) {
-		t.Fatalf("expected aggregated error to include not-exist failure, got %q", err.Error())
+		t.Fatalf(
+			"expected aggregated error to include not-exist failure, got %q",
+			err.Error(),
+		)
 	}
 }
 
-func TestRunConcurrentHooksWithContext_CanceledContextSkipsHookExecution(t *testing.T) {
+func TestRunConcurrentHooksWithContext_CanceledContextSkipsHookExecution(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -314,14 +353,21 @@ func TestRunConcurrentHooksWithContext_CanceledContextSkipsHookExecution(t *test
 		t.Fatalf("runConcurrentHooksWithContext returned error: %v", err)
 	}
 	if len(actions) != 0 {
-		t.Fatalf("expected no actions when context is canceled, got %#v", actions)
+		t.Fatalf(
+			"expected no actions when context is canceled, got %#v",
+			actions,
+		)
 	}
 	if callbackCalled.Load() {
-		t.Fatal("did not expect concurrent hook callback to run when context is canceled")
+		t.Fatal(
+			"did not expect concurrent hook callback to run when context is canceled",
+		)
 	}
 }
 
-func TestRunConcurrentHooks_CallbackReceivesIndependentHookContexts(t *testing.T) {
+func TestRunConcurrentHooks_CallbackReceivesIndependentHookContexts(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -358,14 +404,19 @@ func TestRunConcurrentHooks_CallbackReceivesIndependentHookContexts(t *testing.T
 	firstHookContext := <-receivedHookContexts
 	secondHookContext := <-receivedHookContexts
 	if firstHookContext == secondHookContext {
-		t.Fatal("expected concurrent callbacks to receive independent hook context instances")
+		t.Fatal(
+			"expected concurrent callbacks to receive independent hook context instances",
+		)
 	}
-	if firstHookContext.ExecutionContext == nil || secondHookContext.ExecutionContext == nil {
+	if firstHookContext.ExecutionContext == nil ||
+		secondHookContext.ExecutionContext == nil {
 		t.Fatal("expected callback hook contexts to include execution context")
 	}
 }
 
-func TestRunConcurrentHooksWithContext_CallbackCanObserveCancellation(t *testing.T) {
+func TestRunConcurrentHooksWithContext_CallbackCanObserveCancellation(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -412,7 +463,10 @@ func TestRunConcurrentHooksWithContext_CallbackCanObserveCancellation(t *testing
 		)
 	}
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
-		t.Fatalf("expected callback action after cancellation observation, got %#v", actions)
+		t.Fatalf(
+			"expected callback action after cancellation observation, got %#v",
+			actions,
+		)
 	}
 }
 
@@ -452,7 +506,10 @@ func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 				Concurrent: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
-							return &wave.RefreshAction{TriggerRestart: true, RecompileGo: false}, nil
+							return &wave.RefreshAction{
+								TriggerRestart: true,
+								RecompileGo:    false,
+							}, nil
 						},
 					},
 				},
@@ -465,14 +522,22 @@ func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 		t.Fatalf("action count=%d, want 2", len(actions))
 	}
 	if !actions[0].ReloadBrowser {
-		t.Fatalf("expected first action to come from first event, got %#v", actions[0])
+		t.Fatalf(
+			"expected first action to come from first event, got %#v",
+			actions[0],
+		)
 	}
 	if !actions[1].TriggerRestart {
-		t.Fatalf("expected second action to come from second event, got %#v", actions[1])
+		t.Fatalf(
+			"expected second action to come from second event, got %#v",
+			actions[1],
+		)
 	}
 }
 
-func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(t *testing.T) {
+func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -529,14 +594,22 @@ func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(t 
 		watcher,
 	)
 	if len(actions) != 0 {
-		t.Fatalf("expected no actions when context is canceled, got %#v", actions)
+		t.Fatalf(
+			"expected no actions when context is canceled, got %#v",
+			actions,
+		)
 	}
 	if callbackCount.Load() != 0 {
-		t.Fatalf("expected callback count=0 when context is canceled, got %d", callbackCount.Load())
+		t.Fatalf(
+			"expected callback count=0 when context is canceled, got %d",
+			callbackCount.Load(),
+		)
 	}
 }
 
-func TestRunConcurrentHooksWithContext_CanceledContextStopsRunningCommand(t *testing.T) {
+func TestRunConcurrentHooksWithContext_CanceledContextStopsRunningCommand(
+	t *testing.T,
+) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command assertion is Unix-oriented")
 	}
@@ -613,13 +686,22 @@ func TestRunPreHooks_CallbackTimeoutUsesPreStageSetting(t *testing.T) {
 	actions, err := s.runPreHooks(ewh, watcher)
 	callbackElapsedTime := time.Since(callbackStartTime)
 	if err != nil {
-		t.Fatalf("expected pre callback timeout path to succeed cooperatively, got %v", err)
+		t.Fatalf(
+			"expected pre callback timeout path to succeed cooperatively, got %v",
+			err,
+		)
 	}
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
-		t.Fatalf("expected pre callback action after timeout cancellation, got %#v", actions)
+		t.Fatalf(
+			"expected pre callback action after timeout cancellation, got %#v",
+			actions,
+		)
 	}
 	if callbackElapsedTime > 1*time.Second {
-		t.Fatalf("expected pre callback timeout to return quickly, elapsed=%s", callbackElapsedTime)
+		t.Fatalf(
+			"expected pre callback timeout to return quickly, elapsed=%s",
+			callbackElapsedTime,
+		)
 	}
 }
 
@@ -656,14 +738,22 @@ func TestRunPreHooks_CommandTimeoutUsesPreStageSetting(t *testing.T) {
 		t.Fatalf("expected timed-out command classification, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "pre hook failed for "+changedPath) {
-		t.Fatalf("expected pre hook stage/path attribution, got %q", err.Error())
+		t.Fatalf(
+			"expected pre hook stage/path attribution, got %q",
+			err.Error(),
+		)
 	}
 	if commandElapsedTime > 1*time.Second {
-		t.Fatalf("expected pre hook timeout to stop quickly, elapsed=%s", commandElapsedTime)
+		t.Fatalf(
+			"expected pre hook timeout to stop quickly, elapsed=%s",
+			commandElapsedTime,
+		)
 	}
 }
 
-func TestRunConcurrentHooks_CommandTimeoutUsesConcurrentStageSetting(t *testing.T) {
+func TestRunConcurrentHooks_CommandTimeoutUsesConcurrentStageSetting(
+	t *testing.T,
+) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command assertion is Unix-oriented")
 	}
@@ -695,11 +785,20 @@ func TestRunConcurrentHooks_CommandTimeoutUsesConcurrentStageSetting(t *testing.
 	if !errors.Is(err, executil.ErrCommandExecutionTimedOut) {
 		t.Fatalf("expected timed-out command classification, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "concurrent hook failed for "+changedPath) {
-		t.Fatalf("expected concurrent hook stage/path attribution, got %q", err.Error())
+	if !strings.Contains(
+		err.Error(),
+		"concurrent hook failed for "+changedPath,
+	) {
+		t.Fatalf(
+			"expected concurrent hook stage/path attribution, got %q",
+			err.Error(),
+		)
 	}
 	if commandElapsedTime > 1*time.Second {
-		t.Fatalf("expected concurrent hook timeout to stop quickly, elapsed=%s", commandElapsedTime)
+		t.Fatalf(
+			"expected concurrent hook timeout to stop quickly, elapsed=%s",
+			commandElapsedTime,
+		)
 	}
 }
 
@@ -736,10 +835,16 @@ func TestRunPostHooks_CommandTimeoutUsesPostStageSetting(t *testing.T) {
 		t.Fatalf("expected timed-out command classification, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "post hook failed for "+changedPath) {
-		t.Fatalf("expected post hook stage/path attribution, got %q", err.Error())
+		t.Fatalf(
+			"expected post hook stage/path attribution, got %q",
+			err.Error(),
+		)
 	}
 	if commandElapsedTime > 1*time.Second {
-		t.Fatalf("expected post hook timeout to stop quickly, elapsed=%s", commandElapsedTime)
+		t.Fatalf(
+			"expected post hook timeout to stop quickly, elapsed=%s",
+			commandElapsedTime,
+		)
 	}
 }
 
@@ -779,14 +884,22 @@ func TestRunPreHooks_PerHookCommandTimeoutOverridesStageTimeout(t *testing.T) {
 		t.Fatalf("expected timed-out command classification, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "pre hook failed for "+changedPath) {
-		t.Fatalf("expected pre hook stage/path attribution, got %q", err.Error())
+		t.Fatalf(
+			"expected pre hook stage/path attribution, got %q",
+			err.Error(),
+		)
 	}
 	if commandElapsedTime > 1*time.Second {
-		t.Fatalf("expected per-hook timeout override to stop quickly, elapsed=%s", commandElapsedTime)
+		t.Fatalf(
+			"expected per-hook timeout override to stop quickly, elapsed=%s",
+			commandElapsedTime,
+		)
 	}
 }
 
-func TestRunPreHooks_DisableStageCommandTimeoutBypassesStageTimeout(t *testing.T) {
+func TestRunPreHooks_DisableStageCommandTimeoutBypassesStageTimeout(
+	t *testing.T,
+) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command assertion is Unix-oriented")
 	}
@@ -816,7 +929,10 @@ func TestRunPreHooks_DisableStageCommandTimeoutBypassesStageTimeout(t *testing.T
 	_, err := s.runPreHooks(ewh, watcher)
 	commandElapsedTime := time.Since(commandStartTime)
 	if err != nil {
-		t.Fatalf("expected stage-timeout-disabled pre hook to succeed, got %v", err)
+		t.Fatalf(
+			"expected stage-timeout-disabled pre hook to succeed, got %v",
+			err,
+		)
 	}
 	if commandElapsedTime < 800*time.Millisecond {
 		t.Fatalf(
@@ -834,7 +950,10 @@ func TestRunPreHooks_PerHookCallbackTimeoutOverridesStageTimeout(t *testing.T) {
 		PreCallbackTimeoutMilliseconds: 2000,
 	}
 
-	changedPath := filepath.Join(t.TempDir(), "pre-callback-timeout-override.txt")
+	changedPath := filepath.Join(
+		t.TempDir(),
+		"pre-callback-timeout-override.txt",
+	)
 	ewh := eventWithHooks{
 		classified: classifiedEvent{event: waveEvent(changedPath)},
 		hookCtx:    &wave.HookContext{FilePath: changedPath},
@@ -859,17 +978,28 @@ func TestRunPreHooks_PerHookCallbackTimeoutOverridesStageTimeout(t *testing.T) {
 	actions, err := s.runPreHooks(ewh, watcher)
 	callbackElapsedTime := time.Since(callbackStartTime)
 	if err != nil {
-		t.Fatalf("expected per-hook callback timeout override to succeed cooperatively, got %v", err)
+		t.Fatalf(
+			"expected per-hook callback timeout override to succeed cooperatively, got %v",
+			err,
+		)
 	}
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
-		t.Fatalf("expected callback action after per-hook timeout override, got %#v", actions)
+		t.Fatalf(
+			"expected callback action after per-hook timeout override, got %#v",
+			actions,
+		)
 	}
 	if callbackElapsedTime > 1*time.Second {
-		t.Fatalf("expected per-hook callback timeout override to return quickly, elapsed=%s", callbackElapsedTime)
+		t.Fatalf(
+			"expected per-hook callback timeout override to return quickly, elapsed=%s",
+			callbackElapsedTime,
+		)
 	}
 }
 
-func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(t *testing.T) {
+func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -877,7 +1007,10 @@ func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(t *testing.
 		PreCallbackTimeoutMilliseconds: 100,
 	}
 
-	changedPath := filepath.Join(t.TempDir(), "pre-callback-timeout-disable.txt")
+	changedPath := filepath.Join(
+		t.TempDir(),
+		"pre-callback-timeout-disable.txt",
+	)
 	ewh := eventWithHooks{
 		classified: classifiedEvent{event: waveEvent(changedPath)},
 		hookCtx:    &wave.HookContext{FilePath: changedPath},
@@ -902,10 +1035,16 @@ func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(t *testing.
 	actions, err := s.runPreHooks(ewh, watcher)
 	callbackElapsedTime := time.Since(callbackStartTime)
 	if err != nil {
-		t.Fatalf("expected disabled stage callback timeout to allow callback runtime, got %v", err)
+		t.Fatalf(
+			"expected disabled stage callback timeout to allow callback runtime, got %v",
+			err,
+		)
 	}
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
-		t.Fatalf("expected callback action when stage callback timeout is disabled, got %#v", actions)
+		t.Fatalf(
+			"expected callback action when stage callback timeout is disabled, got %#v",
+			actions,
+		)
 	}
 	if callbackElapsedTime < 250*time.Millisecond {
 		t.Fatalf(
@@ -921,8 +1060,10 @@ func TestRunPostHooks_StopsOnCommandError(t *testing.T) {
 
 	var lateCallbackCalled atomic.Bool
 	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(filepath.Join(t.TempDir(), "changed.txt"))},
-		hookCtx:    &wave.HookContext{},
+		classified: classifiedEvent{
+			event: waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+		},
+		hookCtx: &wave.HookContext{},
 		hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{Cmd: "false"},
@@ -948,7 +1089,9 @@ func TestRunPostHooks_StopsOnCommandError(t *testing.T) {
 	}
 }
 
-func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(t *testing.T) {
+func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -967,10 +1110,14 @@ func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(t *testing.T) 
 		hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{
-					Cmd: "printf 'should-not-run\\n' >> " + strconv.Quote(commandOut),
+					Cmd: "printf 'should-not-run\\n' >> " + strconv.Quote(
+						commandOut,
+					),
 				},
 				{
-					Cmd: "printf 'should-not-run\\n' >> " + strconv.Quote(commandOut),
+					Cmd: "printf 'should-not-run\\n' >> " + strconv.Quote(
+						commandOut,
+					),
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
 						callbackCalled.Store(true)
 						return &wave.RefreshAction{ReloadBrowser: true}, nil
@@ -985,13 +1132,18 @@ func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(t *testing.T) 
 		t.Fatalf("runPostHooks returned error: %v", err)
 	}
 	if !callbackCalled.Load() {
-		t.Fatal("expected callback hook to run for run-on-change-only post hooks")
+		t.Fatal(
+			"expected callback hook to run for run-on-change-only post hooks",
+		)
 	}
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
 		t.Fatalf("unexpected post hook actions: %#v", actions)
 	}
 	if _, statErr := os.Stat(commandOut); !os.IsNotExist(statErr) {
-		t.Fatalf("expected run-on-change-only post commands to be skipped, stat error: %v", statErr)
+		t.Fatalf(
+			"expected run-on-change-only post commands to be skipped, stat error: %v",
+			statErr,
+		)
 	}
 }
 
@@ -1019,7 +1171,10 @@ func TestRunPreHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 		t.Fatal("expected pre-hook error")
 	}
 	if !strings.Contains(err.Error(), "pre hook failed for "+changedPath) {
-		t.Fatalf("expected pre-hook error to include stage/path attribution, got %q", err.Error())
+		t.Fatalf(
+			"expected pre-hook error to include stage/path attribution, got %q",
+			err.Error(),
+		)
 	}
 }
 
@@ -1046,7 +1201,10 @@ func TestRunConcurrentHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected concurrent-hook error")
 	}
-	if !strings.Contains(err.Error(), "concurrent hook failed for "+changedPath) {
+	if !strings.Contains(
+		err.Error(),
+		"concurrent hook failed for "+changedPath,
+	) {
 		t.Fatalf(
 			"expected concurrent-hook error to include stage/path attribution, got %q",
 			err.Error(),
@@ -1078,7 +1236,10 @@ func TestRunPostHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 		t.Fatal("expected post-hook error")
 	}
 	if !strings.Contains(err.Error(), "post hook failed for "+changedPath) {
-		t.Fatalf("expected post-hook error to include stage/path attribution, got %q", err.Error())
+		t.Fatalf(
+			"expected post-hook error to include stage/path attribution, got %q",
+			err.Error(),
+		)
 	}
 }
 
@@ -1128,7 +1289,10 @@ func TestFireNoWaitHooks_RunsAsyncCallbackAndCommand(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for no-wait command output (last read err=%v)", err)
+			t.Fatalf(
+				"timed out waiting for no-wait command output (last read err=%v)",
+				err,
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -1187,14 +1351,21 @@ func TestFireNoWaitHooks_CallbacksReceiveIndependentHookContexts(t *testing.T) {
 	}
 
 	if firstHookContext == secondHookContext {
-		t.Fatal("expected no-wait callbacks to receive independent hook context instances")
+		t.Fatal(
+			"expected no-wait callbacks to receive independent hook context instances",
+		)
 	}
-	if firstHookContext.ExecutionContext == nil || secondHookContext.ExecutionContext == nil {
-		t.Fatal("expected no-wait callback hook contexts to include execution context")
+	if firstHookContext.ExecutionContext == nil ||
+		secondHookContext.ExecutionContext == nil {
+		t.Fatal(
+			"expected no-wait callback hook contexts to include execution context",
+		)
 	}
 }
 
-func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(t *testing.T) {
+func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(
+	t *testing.T,
+) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command assertion is Unix-oriented")
 	}
@@ -1202,7 +1373,10 @@ func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(t *testi
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	changedPath := filepath.Join(t.TempDir(), "no-wait-callback-cancellation.txt")
+	changedPath := filepath.Join(
+		t.TempDir(),
+		"no-wait-callback-cancellation.txt",
+	)
 	if err := os.WriteFile(changedPath, []byte("x"), 0644); err != nil {
 		t.Fatalf("failed writing changed file: %v", err)
 	}
@@ -1240,7 +1414,9 @@ func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(t *testi
 	select {
 	case <-callbackDone:
 	case <-time.After(1 * time.Second):
-		t.Fatal("timed out waiting for no-wait callback to observe execution context cancellation")
+		t.Fatal(
+			"timed out waiting for no-wait callback to observe execution context cancellation",
+		)
 	}
 }
 
@@ -1292,11 +1468,15 @@ func TestFireNoWaitHooks_CleanupForRebuildCancelsInFlightHooks(t *testing.T) {
 	select {
 	case <-hookCanceled:
 	case <-time.After(300 * time.Millisecond):
-		t.Fatal("expected cleanupForRebuild to cancel in-flight no-wait hook execution")
+		t.Fatal(
+			"expected cleanupForRebuild to cancel in-flight no-wait hook execution",
+		)
 	}
 }
 
-func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(t *testing.T) {
+func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -1345,7 +1525,9 @@ func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(t *testing.T)
 	}
 }
 
-func TestFireNoWaitHooks_CommandTimeoutUsesConcurrentNoWaitStageSetting(t *testing.T) {
+func TestFireNoWaitHooks_CommandTimeoutUsesConcurrentNoWaitStageSetting(
+	t *testing.T,
+) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command assertion is Unix-oriented")
 	}
@@ -1359,14 +1541,21 @@ func TestFireNoWaitHooks_CommandTimeoutUsesConcurrentNoWaitStageSetting(t *testi
 	}
 
 	changedPath := filepath.Join(t.TempDir(), "concurrent-no-wait-timeout.txt")
-	secondHookRanMarkerPath := filepath.Join(t.TempDir(), "concurrent-no-wait-second-hook-ran.txt")
+	secondHookRanMarkerPath := filepath.Join(
+		t.TempDir(),
+		"concurrent-no-wait-second-hook-ran.txt",
+	)
 	ewh := eventWithHooks{
 		classified: classifiedEvent{event: waveEvent(changedPath)},
 		hookCtx:    &wave.HookContext{FilePath: changedPath},
 		hooks: &wave.SortedHooks{
 			ConcurrentNoWait: []wave.OnChangeHook{
 				{Cmd: "sleep 2"},
-				{Cmd: "printf 'ran\\n' >> " + strconv.Quote(secondHookRanMarkerPath)},
+				{
+					Cmd: "printf 'ran\\n' >> " + strconv.Quote(
+						secondHookRanMarkerPath,
+					),
+				},
 			},
 		},
 	}
@@ -1469,7 +1658,9 @@ func TestFireNoWaitHooksForEvents_SkipsDuplicateHooks(t *testing.T) {
 						},
 					},
 					{
-						Cmd: "printf 'first\\n' >> " + strconv.Quote(commandOut),
+						Cmd: "printf 'first\\n' >> " + strconv.Quote(
+							commandOut,
+						),
 					},
 				},
 			},
@@ -1486,7 +1677,9 @@ func TestFireNoWaitHooksForEvents_SkipsDuplicateHooks(t *testing.T) {
 						},
 					},
 					{
-						Cmd: "printf 'duplicate\\n' >> " + strconv.Quote(commandOut),
+						Cmd: "printf 'duplicate\\n' >> " + strconv.Quote(
+							commandOut,
+						),
 					},
 				},
 			},
@@ -1545,7 +1738,9 @@ func TestFireNoWaitHooksForEvents_SkipsDuplicateHooks(t *testing.T) {
 	}
 }
 
-func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing.T) {
+func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -1608,13 +1803,22 @@ func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing.
 		t.Fatalf("pre action count=%d, want 2", len(actions))
 	}
 	if !actions[0].ReloadBrowser {
-		t.Fatalf("expected first pre action from first event, got %#v", actions[0])
+		t.Fatalf(
+			"expected first pre action from first event, got %#v",
+			actions[0],
+		)
 	}
 	if !actions[1].WaitForVite {
-		t.Fatalf("expected second pre action from third event, got %#v", actions[1])
+		t.Fatalf(
+			"expected second pre action from third event, got %#v",
+			actions[1],
+		)
 	}
 	if atomic.LoadInt32(&firstCallbackCount) != 1 {
-		t.Fatalf("expected first pre callback count=1, got %d", atomic.LoadInt32(&firstCallbackCount))
+		t.Fatalf(
+			"expected first pre callback count=1, got %d",
+			atomic.LoadInt32(&firstCallbackCount),
+		)
 	}
 	if atomic.LoadInt32(&duplicateCallbackCount) != 0 {
 		t.Fatalf(
@@ -1623,11 +1827,16 @@ func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing.
 		)
 	}
 	if atomic.LoadInt32(&thirdCallbackCount) != 1 {
-		t.Fatalf("expected third pre callback count=1, got %d", atomic.LoadInt32(&thirdCallbackCount))
+		t.Fatalf(
+			"expected third pre callback count=1, got %d",
+			atomic.LoadInt32(&thirdCallbackCount),
+		)
 	}
 }
 
-func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing.T) {
+func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -1691,13 +1900,22 @@ func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *t
 		t.Fatalf("concurrent action count=%d, want 2", len(actions))
 	}
 	if !actions[0].ReloadBrowser {
-		t.Fatalf("expected first concurrent action from first event, got %#v", actions[0])
+		t.Fatalf(
+			"expected first concurrent action from first event, got %#v",
+			actions[0],
+		)
 	}
 	if !actions[1].WaitForVite {
-		t.Fatalf("expected second concurrent action from third event, got %#v", actions[1])
+		t.Fatalf(
+			"expected second concurrent action from third event, got %#v",
+			actions[1],
+		)
 	}
 	if atomic.LoadInt32(&firstCallbackCount) != 1 {
-		t.Fatalf("expected first concurrent callback count=1, got %d", atomic.LoadInt32(&firstCallbackCount))
+		t.Fatalf(
+			"expected first concurrent callback count=1, got %d",
+			atomic.LoadInt32(&firstCallbackCount),
+		)
 	}
 	if atomic.LoadInt32(&duplicateCallbackCount) != 0 {
 		t.Fatalf(
@@ -1706,11 +1924,16 @@ func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *t
 		)
 	}
 	if atomic.LoadInt32(&thirdCallbackCount) != 1 {
-		t.Fatalf("expected third concurrent callback count=1, got %d", atomic.LoadInt32(&thirdCallbackCount))
+		t.Fatalf(
+			"expected third concurrent callback count=1, got %d",
+			atomic.LoadInt32(&thirdCallbackCount),
+		)
 	}
 }
 
-func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing.T) {
+func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -1773,13 +1996,22 @@ func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing
 		t.Fatalf("post action count=%d, want 2", len(actions))
 	}
 	if !actions[0].ReloadBrowser {
-		t.Fatalf("expected first post action from first event, got %#v", actions[0])
+		t.Fatalf(
+			"expected first post action from first event, got %#v",
+			actions[0],
+		)
 	}
 	if !actions[1].WaitForVite {
-		t.Fatalf("expected second post action from third event, got %#v", actions[1])
+		t.Fatalf(
+			"expected second post action from third event, got %#v",
+			actions[1],
+		)
 	}
 	if atomic.LoadInt32(&firstCallbackCount) != 1 {
-		t.Fatalf("expected first post callback count=1, got %d", atomic.LoadInt32(&firstCallbackCount))
+		t.Fatalf(
+			"expected first post callback count=1, got %d",
+			atomic.LoadInt32(&firstCallbackCount),
+		)
 	}
 	if atomic.LoadInt32(&duplicateCallbackCount) != 0 {
 		t.Fatalf(
@@ -1788,7 +2020,10 @@ func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(t *testing
 		)
 	}
 	if atomic.LoadInt32(&thirdCallbackCount) != 1 {
-		t.Fatalf("expected third post callback count=1, got %d", atomic.LoadInt32(&thirdCallbackCount))
+		t.Fatalf(
+			"expected third post callback count=1, got %d",
+			atomic.LoadInt32(&thirdCallbackCount),
+		)
 	}
 }
 
@@ -1804,14 +2039,26 @@ func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 			watchedFile: &wave.WatchedFile{},
 		},
 		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{Pre: []wave.OnChangeHook{{Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
-			return &wave.RefreshAction{TriggerRestart: true}, nil
-		}}}},
+		hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return &wave.RefreshAction{TriggerRestart: true}, nil
+					},
+				},
+			},
+		},
 		runOnChangeOnly: false,
 		needsHardReload: false,
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 
 	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
 		t,
@@ -1826,7 +2073,9 @@ func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 	}
 }
 
-func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(t *testing.T) {
+func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -1841,7 +2090,10 @@ func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(t *testing.T)
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
-						return &wave.RefreshAction{TriggerRestart: true, RecompileGo: true}, nil
+						return &wave.RefreshAction{
+							TriggerRestart: true,
+							RecompileGo:    true,
+						}, nil
 					},
 				},
 			},
@@ -1850,7 +2102,13 @@ func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(t *testing.T)
 		needsHardReload: false,
 	}
 
-	runEventsWithDerivedExecutionPlan(t, s, []eventWithHooks{ewh}, work, watcher)
+	runEventsWithDerivedExecutionPlan(
+		t,
+		s,
+		[]eventWithHooks{ewh},
+		work,
+		watcher,
+	)
 
 	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
 		t,
@@ -1865,15 +2123,25 @@ func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(t *testing.T)
 	}
 }
 
-func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesFrameworkFileMapTS(t *testing.T) {
+func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesFrameworkFileMapTS(
+	t *testing.T,
+) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
 	cfg.FrameworkPublicFileMapOutDir = filepath.Join(root, "framework")
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	publicFile := filepath.Join(cfg.Core.StaticAssetDirs.Public, "assets", "logo.png")
-	privateFile := filepath.Join(cfg.Core.StaticAssetDirs.Private, "templates", "home.html")
+	publicFile := filepath.Join(
+		cfg.Core.StaticAssetDirs.Public,
+		"assets",
+		"logo.png",
+	)
+	privateFile := filepath.Join(
+		cfg.Core.StaticAssetDirs.Private,
+		"templates",
+		"home.html",
+	)
 
 	if err := os.MkdirAll(filepath.Dir(publicFile), 0755); err != nil {
 		t.Fatalf("failed creating public file parent dir: %v", err)
@@ -1912,12 +2180,22 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesFrameworkFileMapTS(t *te
 	requiredOutputs := []string{
 		cfg.Dist.PublicFileMapGob(),
 		cfg.Dist.PrivateFileMapGob(),
-		filepath.Join(cfg.FrameworkPublicFileMapOutDir, wave.RelPaths.PublicFileMapTSName()),
-		filepath.Join(cfg.FrameworkPublicFileMapOutDir, wave.RelPaths.PublicFileMapJSONName()),
+		filepath.Join(
+			cfg.FrameworkPublicFileMapOutDir,
+			wave.RelPaths.PublicFileMapTSName(),
+		),
+		filepath.Join(
+			cfg.FrameworkPublicFileMapOutDir,
+			wave.RelPaths.PublicFileMapJSONName(),
+		),
 	}
 	for _, output := range requiredOutputs {
 		if _, err := os.Stat(output); err != nil {
-			t.Fatalf("expected build phase output to exist: %s (error: %v)", output, err)
+			t.Fatalf(
+				"expected build phase output to exist: %s (error: %v)",
+				output,
+				err,
+			)
 		}
 	}
 }
@@ -1969,7 +2247,9 @@ func TestExecuteBuildPhase_WithNilBuilderReturnsError(t *testing.T) {
 	}
 }
 
-func TestExecuteHookExecutionPlan_CallbackPanicReturnsErrorAndSkipsCommand(t *testing.T) {
+func TestExecuteHookExecutionPlan_CallbackPanicReturnsErrorAndSkipsCommand(
+	t *testing.T,
+) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
@@ -1978,7 +2258,9 @@ func TestExecuteHookExecutionPlan_CallbackPanicReturnsErrorAndSkipsCommand(t *te
 		callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
 			panic("expected panic from hook callback")
 		},
-		command: "printf 'command should not run\\n' >> " + strconv.Quote(commandOutputPath),
+		command: "printf 'command should not run\\n' >> " + strconv.Quote(
+			commandOutputPath,
+		),
 	}
 
 	action, err := s.executeHookExecutionPlan(
@@ -1994,11 +2276,16 @@ func TestExecuteHookExecutionPlan_CallbackPanicReturnsErrorAndSkipsCommand(t *te
 	}
 
 	if _, statErr := os.Stat(commandOutputPath); !os.IsNotExist(statErr) {
-		t.Fatalf("expected command to be skipped after callback panic, stat error: %v", statErr)
+		t.Fatalf(
+			"expected command to be skipped after callback panic, stat error: %v",
+			statErr,
+		)
 	}
 }
 
-func TestExecuteBuildPhase_WithNilBuilderAndNoBuildWorkReturnsNil(t *testing.T) {
+func TestExecuteBuildPhase_WithNilBuilderAndNoBuildWorkReturnsNil(
+	t *testing.T,
+) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
@@ -2031,14 +2318,21 @@ func TestExecuteBuildPhase_WritePublicFileMapTSErrorIsReturned(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
-	cfg.FrameworkPublicFileMapOutDir = filepath.Join(root, "framework-output-blocker")
+	cfg.FrameworkPublicFileMapOutDir = filepath.Join(
+		root,
+		"framework-output-blocker",
+	)
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
 	if err := os.WriteFile(cfg.FrameworkPublicFileMapOutDir, []byte("not-a-directory"), 0644); err != nil {
 		t.Fatalf("failed writing framework output blocker file: %v", err)
 	}
 
-	publicFile := filepath.Join(cfg.Core.StaticAssetDirs.Public, "assets", "logo.png")
+	publicFile := filepath.Join(
+		cfg.Core.StaticAssetDirs.Public,
+		"assets",
+		"logo.png",
+	)
 	if err := os.MkdirAll(filepath.Dir(publicFile), 0755); err != nil {
 		t.Fatalf("failed creating public static dir: %v", err)
 	}
@@ -2098,7 +2392,10 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		wave.OnChangeHook{Exclude: []string{changedPath}},
 	)
 	if excludedHookShouldRun {
-		t.Fatalf("expected excluded hook to be skipped, got hook %#v", excludedHook)
+		t.Fatalf(
+			"expected excluded hook to be skipped, got hook %#v",
+			excludedHook,
+		)
 	}
 
 	stageHookWithoutRunOnChangeRules, stageHookWithoutRunOnChangeRulesShouldRun := resolveHookForStageExecution(
@@ -2109,10 +2406,15 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		callbackHook,
 	)
 	if !stageHookWithoutRunOnChangeRulesShouldRun {
-		t.Fatal("expected hook to run when stage does not apply run-on-change-only rules")
+		t.Fatal(
+			"expected hook to run when stage does not apply run-on-change-only rules",
+		)
 	}
 	if stageHookWithoutRunOnChangeRules.Cmd == "" {
-		t.Fatalf("expected command to remain for stage without run-on-change-only rules, got %#v", stageHookWithoutRunOnChangeRules)
+		t.Fatalf(
+			"expected command to remain for stage without run-on-change-only rules, got %#v",
+			stageHookWithoutRunOnChangeRules,
+		)
 	}
 
 	commandOnlyHook, commandOnlyHookShouldRun := resolveHookForStageExecution(
@@ -2123,7 +2425,10 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		wave.OnChangeHook{Cmd: "echo skip-command-only"},
 	)
 	if commandOnlyHookShouldRun {
-		t.Fatalf("expected command-only hook to be skipped for run-on-change-only stage, got %#v", commandOnlyHook)
+		t.Fatalf(
+			"expected command-only hook to be skipped for run-on-change-only stage, got %#v",
+			commandOnlyHook,
+		)
 	}
 
 	callbackAndCommandHook, callbackAndCommandHookShouldRun := resolveHookForStageExecution(
@@ -2134,16 +2439,22 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		callbackHook,
 	)
 	if !callbackAndCommandHookShouldRun {
-		t.Fatal("expected callback hook to be retained for run-on-change-only stage")
+		t.Fatal(
+			"expected callback hook to be retained for run-on-change-only stage",
+		)
 	}
-	if callbackAndCommandHook.Cmd != "" || callbackAndCommandHook.RunCombinedDevBuildHookCommands {
+	if callbackAndCommandHook.Cmd != "" ||
+		callbackAndCommandHook.RunCombinedDevBuildHookCommands {
 		t.Fatalf(
 			"expected run-on-change-only rules to strip command execution fields, got %#v",
 			callbackAndCommandHook,
 		)
 	}
 	if callbackAndCommandHook.Callback == nil {
-		t.Fatalf("expected callback to remain after run-on-change-only filtering, got %#v", callbackAndCommandHook)
+		t.Fatalf(
+			"expected callback to remain after run-on-change-only filtering, got %#v",
+			callbackAndCommandHook,
+		)
 	}
 
 	normalStageHook, normalStageHookShouldRun := resolveHookForStageExecution(
@@ -2157,7 +2468,10 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		t.Fatal("expected hook to run when run-on-change-only mode is disabled")
 	}
 	if normalStageHook.Cmd == "" {
-		t.Fatalf("expected command to remain when run-on-change-only mode is disabled, got %#v", normalStageHook)
+		t.Fatalf(
+			"expected command to remain when run-on-change-only mode is disabled, got %#v",
+			normalStageHook,
+		)
 	}
 }
 
@@ -2190,65 +2504,105 @@ func TestDeriveExecutableHooksForStage(t *testing.T) {
 		callbackHook,
 	}
 
-	t.Run("stage without run-on-change-only rules keeps command hooks", func(t *testing.T) {
-		hooksForExecution := deriveExecutableHooksForStage(
-			watcher,
-			changedPath,
-			true,
-			false,
-			stageHooks,
-		)
-		if len(hooksForExecution) != 2 {
-			t.Fatalf("expected 2 hooks for execution, got %#v", hooksForExecution)
-		}
-		if hooksForExecution[0].Cmd == "" {
-			t.Fatalf("expected command-only hook command to be preserved, got %#v", hooksForExecution[0])
-		}
-		if hooksForExecution[1].Cmd == "" {
-			t.Fatalf("expected callback hook command to be preserved, got %#v", hooksForExecution[1])
-		}
-		if hooksForExecution[1].Callback == nil {
-			t.Fatalf("expected callback hook callback to be preserved, got %#v", hooksForExecution[1])
-		}
-	})
+	t.Run(
+		"stage without run-on-change-only rules keeps command hooks",
+		func(t *testing.T) {
+			hooksForExecution := deriveExecutableHooksForStage(
+				watcher,
+				changedPath,
+				true,
+				false,
+				stageHooks,
+			)
+			if len(hooksForExecution) != 2 {
+				t.Fatalf(
+					"expected 2 hooks for execution, got %#v",
+					hooksForExecution,
+				)
+			}
+			if hooksForExecution[0].Cmd == "" {
+				t.Fatalf(
+					"expected command-only hook command to be preserved, got %#v",
+					hooksForExecution[0],
+				)
+			}
+			if hooksForExecution[1].Cmd == "" {
+				t.Fatalf(
+					"expected callback hook command to be preserved, got %#v",
+					hooksForExecution[1],
+				)
+			}
+			if hooksForExecution[1].Callback == nil {
+				t.Fatalf(
+					"expected callback hook callback to be preserved, got %#v",
+					hooksForExecution[1],
+				)
+			}
+		},
+	)
 
-	t.Run("run-on-change-only stage strips command fields and drops command-only hooks", func(t *testing.T) {
-		hooksForExecution := deriveExecutableHooksForStage(
-			watcher,
-			changedPath,
-			true,
-			true,
-			stageHooks,
-		)
-		if len(hooksForExecution) != 1 {
-			t.Fatalf("expected 1 callback-only hook for execution, got %#v", hooksForExecution)
-		}
-		if hooksForExecution[0].Cmd != "" || hooksForExecution[0].RunCombinedDevBuildHookCommands {
-			t.Fatalf("expected run-on-change-only stage to strip command fields, got %#v", hooksForExecution[0])
-		}
-		if hooksForExecution[0].Callback == nil {
-			t.Fatalf("expected callback hook callback to remain, got %#v", hooksForExecution[0])
-		}
-	})
+	t.Run(
+		"run-on-change-only stage strips command fields and drops command-only hooks",
+		func(t *testing.T) {
+			hooksForExecution := deriveExecutableHooksForStage(
+				watcher,
+				changedPath,
+				true,
+				true,
+				stageHooks,
+			)
+			if len(hooksForExecution) != 1 {
+				t.Fatalf(
+					"expected 1 callback-only hook for execution, got %#v",
+					hooksForExecution,
+				)
+			}
+			if hooksForExecution[0].Cmd != "" ||
+				hooksForExecution[0].RunCombinedDevBuildHookCommands {
+				t.Fatalf(
+					"expected run-on-change-only stage to strip command fields, got %#v",
+					hooksForExecution[0],
+				)
+			}
+			if hooksForExecution[0].Callback == nil {
+				t.Fatalf(
+					"expected callback hook callback to remain, got %#v",
+					hooksForExecution[0],
+				)
+			}
+		},
+	)
 
-	t.Run("run-on-change-only disabled keeps command-only hooks even when stage applies rules", func(t *testing.T) {
-		hooksForExecution := deriveExecutableHooksForStage(
-			watcher,
-			changedPath,
-			false,
-			true,
-			stageHooks,
-		)
-		if len(hooksForExecution) != 2 {
-			t.Fatalf("expected 2 hooks for execution, got %#v", hooksForExecution)
-		}
-		if hooksForExecution[0].Cmd == "" {
-			t.Fatalf("expected command-only hook command to remain, got %#v", hooksForExecution[0])
-		}
-		if hooksForExecution[1].Cmd == "" {
-			t.Fatalf("expected callback hook command to remain, got %#v", hooksForExecution[1])
-		}
-	})
+	t.Run(
+		"run-on-change-only disabled keeps command-only hooks even when stage applies rules",
+		func(t *testing.T) {
+			hooksForExecution := deriveExecutableHooksForStage(
+				watcher,
+				changedPath,
+				false,
+				true,
+				stageHooks,
+			)
+			if len(hooksForExecution) != 2 {
+				t.Fatalf(
+					"expected 2 hooks for execution, got %#v",
+					hooksForExecution,
+				)
+			}
+			if hooksForExecution[0].Cmd == "" {
+				t.Fatalf(
+					"expected command-only hook command to remain, got %#v",
+					hooksForExecution[0],
+				)
+			}
+			if hooksForExecution[1].Cmd == "" {
+				t.Fatalf(
+					"expected callback hook command to remain, got %#v",
+					hooksForExecution[1],
+				)
+			}
+		},
+	)
 }
 
 func waveEvent(path string) fsnotify.Event {

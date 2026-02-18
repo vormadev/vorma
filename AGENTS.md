@@ -156,3 +156,38 @@ over other options, not just more options. For example, we don't need a
 
 Follow the semantic rules in `repodocs/SEMANTIC_RULES.md`, and any time we agree
 on new semantic rules, add them to that rules doc in short, simple terms.
+
+## Generally Speaking, Avoid "Graceful Degradation" -- Fail Loud And Fast Instead
+
+With some exceptions (like the `kit/grace` package, where graceful shutdown is
+the whole point), it's generally an anti-pattern to try to be too generous with
+input parsing, or to try to always fallback when errors happen, or to try to
+support users who are abusing your APIs "just in case". This, ironically, leads
+to more brittle code, and it's impossible to know where to "draw the line".
+Instead, the goal should simply be to be 100% robust for the intended,
+explicitly supported use case, and to fail loudly and quickly in all other
+cases. Use common sense here according to context. Don't follow this rule
+religiously if it in fact is wrong from first principles for the specific code
+you're working on--just use it as a general guiding light.
+
+## Never, Ever, Ever Keep Around "Compat Layers" or "Compat Wrappers"
+
+It's wrong every single time. Zero exceptions. Never, ever do this. Every time
+you find yourself tempted to do an incremental "compat layer" strategy, stop and
+just go directly to the desired end state instead. Just finish the job and do it
+right. Incrementalism is riskier than large refactors, because incrementalism
+has a way of sticking around forever and killing codebases little by little.
+
+## Do Not Add `doc.go` GoDoc Files.
+
+Just put package-level docs into whatever the main entry file for that Go
+package is. I don't want this repo littered with `doc.go` files.
+
+## Write Clear Comments For All Internal and External Code
+
+Don't go overboard, but always include the amount of comments appropriate to
+help a human understand the context of what is going on in the code, and write
+them the way a human would. Make sure they are declarative and up-to-date, and
+never backward-looking, temporal, changelog style, or conversational. Humans
+can't read 10 documents instantly the way you can to quickly accumulate context.
+Help us out.
