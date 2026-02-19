@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/builder"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,7 @@ import (
 func TestWritePublicFileMapTS_WritesSortedTSAndJSONOutputs(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	input := wave.FileMap{
@@ -25,7 +26,7 @@ func TestWritePublicFileMapTS_WritesSortedTSAndJSONOutputs(t *testing.T) {
 			ContentHash: "vorma_out_a_deadbeef.js",
 		},
 	}
-	if err := builder.saveFileMap(input, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(input, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 

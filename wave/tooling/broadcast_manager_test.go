@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/vormadev/vorma/wave/tooling/broadcast"
 )
 
 func newTCP4HTTPTestServer(t *testing.T, handler http.Handler) *httptest.Server {
@@ -30,7 +31,7 @@ func TestWebsocketHandler_ReturnsServiceUnavailableWhenShuttingDown(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	handler := websocketHandler(newClientManager(), ctx)
+	handler := broadcast.WebsocketHandler(broadcast.NewManager(), ctx)
 	request := httptest.NewRequest(http.MethodGet, "http://example.com/events", nil)
 	recorder := httptest.NewRecorder()
 
@@ -42,13 +43,13 @@ func TestWebsocketHandler_ReturnsServiceUnavailableWhenShuttingDown(t *testing.T
 }
 
 func TestClientManager_StartBroadcastAndWait(t *testing.T) {
-	manager := newClientManager()
+	manager := broadcast.NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go manager.start(ctx)
+	go manager.Start(ctx)
 
-	server := newTCP4HTTPTestServer(t, websocketHandler(manager, ctx))
+	server := newTCP4HTTPTestServer(t, broadcast.WebsocketHandler(manager, ctx))
 	defer server.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
@@ -58,15 +59,15 @@ func TestClientManager_StartBroadcastAndWait(t *testing.T) {
 	}
 	defer conn.Close()
 
-	want := refreshPayload{
-		ChangeType:   changeTypeOther,
+	want := broadcast.Payload{
+		ChangeType:   broadcast.ChangeTypeOther,
 		NormalCSSURL: "/styles.css",
 	}
 
-	var got refreshPayload
+	var got broadcast.Payload
 	delivered := false
 	for i := 0; i < 10; i++ {
-		manager.broadcast <- want
+		manager.Broadcast <- want
 
 		conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
 		readErr := conn.ReadJSON(&got)
@@ -88,7 +89,7 @@ func TestClientManager_StartBroadcastAndWait(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		manager.wait()
+		manager.Wait()
 		close(done)
 	}()
 
@@ -100,11 +101,11 @@ func TestClientManager_StartBroadcastAndWait(t *testing.T) {
 }
 
 func TestClientManager_DrainChannels(t *testing.T) {
-	manager := newClientManager()
-	manager.broadcast = make(chan refreshPayload, 1)
+	manager := broadcast.NewManager()
+	manager.Broadcast = make(chan broadcast.Payload, 1)
 
 	wsServer := newTCP4HTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := broadcast.Upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
 		}
@@ -131,18 +132,26 @@ func TestClientManager_DrainChannels(t *testing.T) {
 	}
 	defer connB.Close()
 
-	manager.register <- &client{id: "a", conn: connA, notify: make(chan refreshPayload, 1)}
-	manager.unregister <- &client{id: "b", conn: connB, notify: make(chan refreshPayload, 1)}
-	manager.broadcast <- refreshPayload{ChangeType: changeTypeRebuilding}
+	manager.Register <- &broadcast.Client{
+		ID:     "a",
+		Conn:   connA,
+		Notify: make(chan broadcast.Payload, 1),
+	}
+	manager.Unregister <- &broadcast.Client{
+		ID:     "b",
+		Conn:   connB,
+		Notify: make(chan broadcast.Payload, 1),
+	}
+	manager.Broadcast <- broadcast.Payload{ChangeType: broadcast.ChangeTypeRebuilding}
 
-	manager.drainChannels()
+	manager.DrainChannels()
 
-	if len(manager.register) != 0 || len(manager.unregister) != 0 || len(manager.broadcast) != 0 {
+	if len(manager.Register) != 0 || len(manager.Unregister) != 0 || len(manager.Broadcast) != 0 {
 		t.Fatalf(
 			"expected all manager channels to be drained, lengths: register=%d unregister=%d broadcast=%d",
-			len(manager.register),
-			len(manager.unregister),
-			len(manager.broadcast),
+			len(manager.Register),
+			len(manager.Unregister),
+			len(manager.Broadcast),
 		)
 	}
 }

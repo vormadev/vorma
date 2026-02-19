@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 )
 
 func TestMergeWatchedFiles_UnionSemantics(t *testing.T) {
@@ -33,7 +34,7 @@ func TestMergeWatchedFiles_UnionSemantics(t *testing.T) {
 		},
 	}
 
-	merged := mergeWatchedFiles([]*wave.WatchedFile{wfFramework, wfUser})
+	merged := watch.MergeWatchedFiles([]*wave.WatchedFile{wfFramework, wfUser})
 	if merged == nil {
 		t.Fatal("mergeWatchedFiles returned nil")
 	}
@@ -75,15 +76,15 @@ func TestMergeWatchedFiles_UnionSemantics(t *testing.T) {
 		t.Fatal("expected sorted hooks to be populated")
 	}
 	if len(merged.SortedHooks.Pre) != 1 || merged.SortedHooks.Pre[0].Cmd != "framework-pre" {
-		t.Fatalf("unexpected sorted pre hooks: %#v", merged.SortedHooks.Pre)
+		t.Fatalf("unexpected sorted pre Hooks: %#v", merged.SortedHooks.Pre)
 	}
 	if len(merged.SortedHooks.Post) != 1 || merged.SortedHooks.Post[0].Cmd != "user-post" {
-		t.Fatalf("unexpected sorted post hooks: %#v", merged.SortedHooks.Post)
+		t.Fatalf("unexpected sorted post Hooks: %#v", merged.SortedHooks.Post)
 	}
 }
 
 func TestMergeWatchedFiles_EmptyInput(t *testing.T) {
-	if got := mergeWatchedFiles(nil); got != nil {
-		t.Fatalf("mergeWatchedFiles(nil) = %#v, want nil", got)
+	if got := watch.MergeWatchedFiles(nil); got != nil {
+		t.Fatalf("watch.MergeWatchedFiles(nil) = %#v, want nil", got)
 	}
 }

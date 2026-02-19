@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/tooling/toolingshared"
 )
 
 func TestRunDev_ReturnsValidationErrorForInvalidConfig(t *testing.T) {
@@ -37,17 +39,17 @@ func TestRunDev_ReturnsLockHeldErrorWhenProjectIsAlreadyLocked(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	lock := newDevLock(cfg.Dist.Static())
-	if err := lock.acquire(); err != nil {
+	lock := toolingshared.NewDevLock(cfg.Dist.Static())
+	if err := lock.Acquire(); err != nil {
 		t.Fatalf("failed to acquire initial lock: %v", err)
 	}
-	defer lock.release()
+	defer lock.Release()
 
 	err := RunDev(cfg, newDiscardLogger())
 	if err == nil {
 		t.Fatal("expected RunDev to fail when lock is already held")
 	}
-	if !errors.Is(err, ErrLockHeld) {
+	if !errors.Is(err, toolingshared.ErrLockHeld) {
 		t.Fatalf("expected ErrLockHeld, got %v", err)
 	}
 }
@@ -68,12 +70,12 @@ func TestRunDev_WithNilLoggerReleasesLockWhenRunReturnsError(t *testing.T) {
 		t.Fatalf("expected init watcher error, got: %v", err)
 	}
 
-	lock := newDevLock(cfg.Dist.Static())
-	if lockErr := lock.acquire(); lockErr != nil {
+	lock := toolingshared.NewDevLock(cfg.Dist.Static())
+	if lockErr := lock.Acquire(); lockErr != nil {
 		t.Fatalf(
 			"expected lock to be released after RunDev error, acquire failed: %v",
 			lockErr,
 		)
 	}
-	defer lock.release()
+	defer lock.Release()
 }

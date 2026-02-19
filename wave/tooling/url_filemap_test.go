@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/builder"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,7 +13,7 @@ import (
 
 func TestPublicURLBuildtime_ReturnsErrorWhenMapIsMissing(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	url, err := builder.PublicURLBuildtime("images/logo.png")
@@ -26,7 +27,7 @@ func TestPublicURLBuildtime_ReturnsErrorWhenMapIsMissing(t *testing.T) {
 
 func TestPublicURLBuildtime_ReturnsErrorWhenLookupMisses(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -35,7 +36,7 @@ func TestPublicURLBuildtime_ReturnsErrorWhenLookupMisses(t *testing.T) {
 			ContentHash: "vorma_out_images_logo_deadbeef.png",
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -50,7 +51,7 @@ func TestPublicURLBuildtime_ReturnsErrorWhenLookupMisses(t *testing.T) {
 
 func TestPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -59,7 +60,7 @@ func TestPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 			ContentHash: "vorma_out_images_logo_deadbeef.png",
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -77,7 +78,7 @@ func TestPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 
 func TestMustPublicURLBuildtime_PanicsWhenMapIsMissing(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	defer func() {
@@ -93,7 +94,7 @@ func TestMustPublicURLBuildtime_PanicsWhenMapIsMissing(t *testing.T) {
 
 func TestMustPublicURLBuildtime_PanicsWhenLookupMisses(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -102,7 +103,7 @@ func TestMustPublicURLBuildtime_PanicsWhenLookupMisses(t *testing.T) {
 			ContentHash: "vorma_out_images_logo_deadbeef.png",
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -119,7 +120,7 @@ func TestMustPublicURLBuildtime_PanicsWhenLookupMisses(t *testing.T) {
 
 func TestMustPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -128,7 +129,7 @@ func TestMustPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 			ContentHash: "vorma_out_images_logo_deadbeef.png",
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -140,7 +141,7 @@ func TestMustPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 
 func TestPublicURLBuildtimeCached_PanicsWhenMapIsMissing(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	defer func() {
@@ -151,12 +152,12 @@ func TestPublicURLBuildtimeCached_PanicsWhenMapIsMissing(t *testing.T) {
 		}
 	}()
 
-	_ = builder.getPublicURLBuildtimeCached("images/logo.png")
+	_ = builder.GetPublicURLBuildtimeCached("images/logo.png")
 }
 
 func TestPublicURLBuildtimeCached_PanicsWhenLookupMisses(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -165,7 +166,7 @@ func TestPublicURLBuildtimeCached_PanicsWhenLookupMisses(t *testing.T) {
 			ContentHash: "vorma_out_images_logo_deadbeef.png",
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -177,12 +178,12 @@ func TestPublicURLBuildtimeCached_PanicsWhenLookupMisses(t *testing.T) {
 		}
 	}()
 
-	_ = builder.getPublicURLBuildtimeCached("images/missing.png")
+	_ = builder.GetPublicURLBuildtimeCached("images/missing.png")
 }
 
 func TestPublicFileMapViews_ExcludePrehashedEntries(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -200,7 +201,7 @@ func TestPublicFileMapViews_ExcludePrehashedEntries(t *testing.T) {
 			IsPrehashed: true,
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -229,7 +230,7 @@ func TestPublicFileMapViews_ExcludePrehashedEntries(t *testing.T) {
 func TestPublicFileMapKeys_BuildsFileMapWhenMissing(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -262,7 +263,7 @@ func TestPublicFileMapKeys_BuildsFileMapWhenMissing(t *testing.T) {
 
 func TestAddPublicAssetKeys_EmitsTypedAssetKeyDefinitions(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -275,7 +276,7 @@ func TestAddPublicAssetKeys_EmitsTypedAssetKeyDefinitions(t *testing.T) {
 			ContentHash: "vorma_out_scripts_app_deadbeef.js",
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -309,7 +310,7 @@ func TestAddPublicAssetKeys_EmitsTypedAssetKeyDefinitions(t *testing.T) {
 func TestAddPublicAssetKeys_ReturnsErrorWhenFileMapIsMissing(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	_, err := builder.AddPublicAssetKeys(nil)

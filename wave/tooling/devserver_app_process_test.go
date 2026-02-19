@@ -1,6 +1,8 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverruntime"
 	"os"
 	"os/exec"
 	"runtime"
@@ -9,14 +11,14 @@ import (
 )
 
 func TestStopApp_ReturnsProcessTerminationErrors(t *testing.T) {
-	s := &server{
-		log: newDiscardLogger(),
-		appCmd: &exec.Cmd{
+	s := &devserver.Server{
+		Log: newDiscardLogger(),
+		AppCmd: &exec.Cmd{
 			Process: &os.Process{Pid: 99999999},
 		},
 	}
 
-	if err := s.stopApp(); err == nil {
+	if err := s.StopApp(); err == nil {
 		t.Fatal("expected stopApp to return process termination error")
 	}
 }
@@ -31,10 +33,10 @@ func TestAppProcessManager_StopApp_GracefulTimeoutFallsBackToKill(t *testing.T) 
 		t.Fatalf("failed to start test process: %v", err)
 	}
 
-	manager := &appProcessManager{
-		gracefulStopTimeout: 20 * time.Millisecond,
+	manager := &devserverruntime.AppProcessManager{
+		GracefulStopTimeout: 20 * time.Millisecond,
 	}
-	if err := manager.stopApp(cmd); err != nil {
+	if err := manager.StopApp(cmd); err != nil {
 		t.Fatalf("expected kill fallback to terminate process without error, got %v", err)
 	}
 	if cmd.ProcessState == nil {

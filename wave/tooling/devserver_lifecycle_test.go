@@ -3,6 +3,10 @@ package tooling
 import (
 	"context"
 	"encoding/json"
+	"github.com/vormadev/vorma/wave/tooling/broadcast"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -23,23 +27,25 @@ func TestInitWatcher_SetsWatcherOnServer(t *testing.T) {
 	cfg.Core.ServerOnlyMode = true
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	if err := s.initWatcher(); err != nil {
+	if err := s.InitWatcher(); err != nil {
 		t.Fatalf("initWatcher returned error: %v", err)
 	}
-	defer s.watcher.Close()
+	defer s.Watcher.Close()
 
-	if s.watcher == nil {
+	if s.Watcher == nil {
 		t.Fatal("expected initWatcher to set s.watcher")
 	}
 
-	rootKey := s.watcher.norm(cfg.WatchRoot())
-	if _, ok := s.watcher.watchedDirs.Load(rootKey); !ok {
-		t.Fatalf("expected watch root to be in watched dirs: %s", rootKey)
+	if !s.Watcher.IsWatchingDir(cfg.WatchRoot()) {
+		t.Fatalf(
+			"expected watch root to be in watched dirs: %s",
+			s.Watcher.NormalizePath(cfg.WatchRoot()),
+		)
 	}
 }
 
@@ -57,18 +63,17 @@ func TestInitWatcher_AddsConfigFileDirectoryOutsideWatchRoot(t *testing.T) {
 
 	cfg.Core.ConfigLocation = outsideConfigFilePath
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	if err := s.initWatcher(); err != nil {
+	if err := s.InitWatcher(); err != nil {
 		t.Fatalf("initWatcher returned error: %v", err)
 	}
-	defer s.watcher.Close()
+	defer s.Watcher.Close()
 
-	outsideDirectoryKey := s.watcher.norm(outsideConfigDirectory)
-	if _, ok := s.watcher.watchedDirs.Load(outsideDirectoryKey); !ok {
+	if !s.Watcher.IsWatchingDir(outsideConfigDirectory) {
 		t.Fatalf("expected config file directory to be watched: %s", outsideConfigDirectory)
 	}
 }
@@ -76,17 +81,17 @@ func TestInitWatcher_AddsConfigFileDirectoryOutsideWatchRoot(t *testing.T) {
 func TestReloadConfig_NoConfigFilePathIsNoOp(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	original := s.cfg
-	err := s.reloadConfig()
+	original := s.Cfg
+	err := s.ReloadConfig()
 	if err != nil {
 		t.Fatalf("reloadConfig returned error with empty config location: %v", err)
 	}
-	if s.cfg != original {
+	if s.Cfg != original {
 		t.Fatal("expected reloadConfig with empty config location to keep previous config pointer")
 	}
 }
@@ -132,46 +137,46 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	}
 	cfg.Core.ConfigLocation = configPath
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	if err := s.reloadConfig(); err != nil {
+	if err := s.ReloadConfig(); err != nil {
 		t.Fatalf("reloadConfig returned error: %v", err)
 	}
 
-	if s.cfg.Core.MainAppEntry != "cmd/new" {
-		t.Fatalf("expected updated MainAppEntry, got %q", s.cfg.Core.MainAppEntry)
+	if s.Cfg.Core.MainAppEntry != "cmd/new" {
+		t.Fatalf("expected updated MainAppEntry, got %q", s.Cfg.Core.MainAppEntry)
 	}
-	if len(s.cfg.FrameworkWatchPatterns) != 1 || s.cfg.FrameworkWatchPatterns[0].Pattern != "**/*.route" {
-		t.Fatalf("framework watch patterns were not preserved: %#v", s.cfg.FrameworkWatchPatterns)
+	if len(s.Cfg.FrameworkWatchPatterns) != 1 || s.Cfg.FrameworkWatchPatterns[0].Pattern != "**/*.route" {
+		t.Fatalf("framework watch patterns were not preserved: %#v", s.Cfg.FrameworkWatchPatterns)
 	}
-	if len(s.cfg.FrameworkIgnoredPatterns) != 1 || s.cfg.FrameworkIgnoredPatterns[0] != "generated/**" {
-		t.Fatalf("framework ignored patterns were not preserved: %#v", s.cfg.FrameworkIgnoredPatterns)
+	if len(s.Cfg.FrameworkIgnoredPatterns) != 1 || s.Cfg.FrameworkIgnoredPatterns[0] != "generated/**" {
+		t.Fatalf("framework ignored patterns were not preserved: %#v", s.Cfg.FrameworkIgnoredPatterns)
 	}
-	if s.cfg.FrameworkPublicFileMapOutDir != filepath.Join(root, "generated") {
-		t.Fatalf("framework filemap out dir was not preserved: %q", s.cfg.FrameworkPublicFileMapOutDir)
+	if s.Cfg.FrameworkPublicFileMapOutDir != filepath.Join(root, "generated") {
+		t.Fatalf("framework filemap out dir was not preserved: %q", s.Cfg.FrameworkPublicFileMapOutDir)
 	}
-	if s.cfg.FrameworkDevBuildHook != "go run ./backend/cmd/build --dev --hook" {
-		t.Fatalf("framework dev build hook was not preserved: %q", s.cfg.FrameworkDevBuildHook)
+	if s.Cfg.FrameworkDevBuildHook != "go run ./backend/cmd/build --dev --hook" {
+		t.Fatalf("framework dev build hook was not preserved: %q", s.Cfg.FrameworkDevBuildHook)
 	}
-	if s.cfg.FrameworkProdBuildHook != "go run ./backend/cmd/build --hook" {
-		t.Fatalf("framework prod build hook was not preserved: %q", s.cfg.FrameworkProdBuildHook)
+	if s.Cfg.FrameworkProdBuildHook != "go run ./backend/cmd/build --hook" {
+		t.Fatalf("framework prod build hook was not preserved: %q", s.Cfg.FrameworkProdBuildHook)
 	}
-	if got := s.cfg.FrameworkSchemaExtensions["Vorma"].Type; got != jsonschema.TypeObject {
-		t.Fatalf("framework schema extension was not preserved: %#v", s.cfg.FrameworkSchemaExtensions["Vorma"])
+	if got := s.Cfg.FrameworkSchemaExtensions["Vorma"].Type; got != jsonschema.TypeObject {
+		t.Fatalf("framework schema extension was not preserved: %#v", s.Cfg.FrameworkSchemaExtensions["Vorma"])
 	}
-	if s.cfg.FrameworkRunBuildHook == nil {
+	if s.Cfg.FrameworkRunBuildHook == nil {
 		t.Fatal("framework run build hook was not preserved")
 	}
-	if err := s.cfg.FrameworkRunBuildHook(context.Background(), true); err != nil {
+	if err := s.Cfg.FrameworkRunBuildHook(context.Background(), true); err != nil {
 		t.Fatalf("framework run build hook returned error: %v", err)
 	}
-	if s.cfg.FrameworkPrepareGoBuildOverlay == nil {
+	if s.Cfg.FrameworkPrepareGoBuildOverlay == nil {
 		t.Fatal("framework go build overlay preparer was not preserved")
 	}
-	overlay, overlayErr := s.cfg.FrameworkPrepareGoBuildOverlay()
+	overlay, overlayErr := s.Cfg.FrameworkPrepareGoBuildOverlay()
 	if overlayErr != nil {
 		t.Fatalf("framework go build overlay preparer returned error: %v", overlayErr)
 	}
@@ -201,23 +206,23 @@ func TestReloadConfig_UsesConfigLocationWhenAvailable(t *testing.T) {
 	cfg.Core.ConfigLocation = configPath
 	cfg.FrameworkWatchPatterns = []wave.WatchedFile{{Pattern: "**/*.route"}}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	if err := s.reloadConfig(); err != nil {
+	if err := s.ReloadConfig(); err != nil {
 		t.Fatalf("reloadConfig returned error: %v", err)
 	}
 
-	if s.cfg.Core.MainAppEntry != "cmd/new" {
-		t.Fatalf("expected updated MainAppEntry, got %q", s.cfg.Core.MainAppEntry)
+	if s.Cfg.Core.MainAppEntry != "cmd/new" {
+		t.Fatalf("expected updated MainAppEntry, got %q", s.Cfg.Core.MainAppEntry)
 	}
-	if got := s.cfg.Core.ConfigLocation; got != configPath {
+	if got := s.Cfg.Core.ConfigLocation; got != configPath {
 		t.Fatalf("config location = %q, want %q", got, configPath)
 	}
-	if len(s.cfg.FrameworkWatchPatterns) != 1 {
-		t.Fatalf("framework watch patterns were not preserved: %#v", s.cfg.FrameworkWatchPatterns)
+	if len(s.Cfg.FrameworkWatchPatterns) != 1 {
+		t.Fatalf("framework watch patterns were not preserved: %#v", s.Cfg.FrameworkWatchPatterns)
 	}
 }
 
@@ -244,17 +249,17 @@ func TestReloadConfig_ValidationFailureKeepsPreviousConfig(t *testing.T) {
 	}
 	cfg.Core.ConfigLocation = configPath
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	original := s.cfg
-	err = s.reloadConfig()
+	original := s.Cfg
+	err = s.ReloadConfig()
 	if err == nil {
 		t.Fatal("expected reloadConfig to fail on invalid config")
 	}
-	if s.cfg != original {
+	if s.Cfg != original {
 		t.Fatal("expected reloadConfig failure to keep previous config pointer")
 	}
 }
@@ -265,17 +270,17 @@ func TestReloadConfig_ConfigReadFailureKeepsPreviousConfig(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ConfigLocation = filepath.Join(root, "backend", "missing-wave.config.json")
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	original := s.cfg
-	err := s.reloadConfig()
+	original := s.Cfg
+	err := s.ReloadConfig()
 	if err == nil {
 		t.Fatal("expected reloadConfig to fail when config read fails")
 	}
-	if s.cfg != original {
+	if s.Cfg != original {
 		t.Fatal("expected reloadConfig failure to keep previous config pointer")
 	}
 }
@@ -284,26 +289,26 @@ func TestCleanupForRebuild_ClearsWatcherAndBuilder(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:     cfg,
-		log:     newDiscardLogger(),
-		watcher: watcher,
-		builder: builder,
+	s := &devserver.Server{
+		Cfg:     cfg,
+		Log:     newDiscardLogger(),
+		Watcher: watcher,
+		Builder: builder,
 	}
 
-	s.cleanupForRebuild()
+	s.CleanupForRebuild()
 
-	if s.watcher != nil {
+	if s.Watcher != nil {
 		t.Fatal("expected watcher to be cleared by cleanupForRebuild")
 	}
-	if s.builder != nil {
+	if s.Builder != nil {
 		t.Fatal("expected builder to be cleared by cleanupForRebuild")
 	}
 }
@@ -311,26 +316,26 @@ func TestCleanupForRebuild_ClearsWatcherAndBuilder(t *testing.T) {
 func TestCleanupRefreshServer_CancelsManagerAndWaits(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
-	manager := newClientManager()
+	manager := broadcast.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
-	go manager.start(ctx)
+	go manager.Start(ctx)
 
-	s := &server{
-		cfg:              cfg,
-		log:              newDiscardLogger(),
-		refreshMgr:       manager,
-		refreshMgrCtx:    ctx,
-		refreshMgrCancel: cancel,
+	s := &devserver.Server{
+		Cfg:              cfg,
+		Log:              newDiscardLogger(),
+		RefreshMgr:       manager,
+		RefreshMgrCtx:    ctx,
+		RefreshMgrCancel: cancel,
 	}
 
-	s.cleanupRefreshServer()
+	s.CleanupRefreshServer()
 
-	if s.refreshMgrCancel != nil {
+	if s.RefreshMgrCancel != nil {
 		t.Fatal("expected refreshMgrCancel to be cleared after cleanupRefreshServer")
 	}
 
 	select {
-	case <-manager.done:
+	case <-manager.Done:
 	case <-time.After(1 * time.Second):
 		t.Fatal("timed out waiting for refresh manager shutdown")
 	}
@@ -340,34 +345,34 @@ func TestStartAndStopRefreshServer(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
 
-	manager := newClientManager()
+	manager := broadcast.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go manager.start(ctx)
+	go manager.Start(ctx)
 
-	s := &server{
-		cfg:           cfg,
-		log:           newDiscardLogger(),
-		refreshMgr:    manager,
-		refreshMgrCtx: ctx,
+	s := &devserver.Server{
+		Cfg:           cfg,
+		Log:           newDiscardLogger(),
+		RefreshMgr:    manager,
+		RefreshMgrCtx: ctx,
 	}
 
-	port, err := s.startRefreshServer(0)
+	port, err := s.StartRefreshServer(0)
 	if err != nil {
 		t.Fatalf("startRefreshServer returned error: %v", err)
 	}
-	defer s.stopRefreshServer()
+	defer s.StopRefreshServer()
 
 	url := "http://localhost:" + strconv.Itoa(port) + "/get-refresh-script-inner"
-	ready := s.waitForReady(url)
+	ready := s.WaitForReady(url)
 	if !ready {
 		t.Fatalf("refresh server endpoint did not become ready: %s", url)
 	}
 
-	if err := s.stopRefreshServer(); err != nil {
+	if err := s.StopRefreshServer(); err != nil {
 		t.Fatalf("stopRefreshServer returned error: %v", err)
 	}
-	if s.refreshServer != nil {
+	if s.RefreshServer != nil {
 		t.Fatal("expected refreshServer to be nil after stopRefreshServer")
 	}
 }
@@ -376,19 +381,19 @@ func TestStartRefreshServer_NoOpInServerOnlyMode(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	port, err := s.startRefreshServer(9999)
+	port, err := s.StartRefreshServer(9999)
 	if err != nil {
-		t.Fatalf("startRefreshServer returned error in server-only mode: %v", err)
+		t.Fatalf("startRefreshServer returned error in server-only Mode: %v", err)
 	}
 	if port != 0 {
 		t.Fatalf("expected no port in server-only mode, got %d", port)
 	}
-	if s.refreshServer != nil {
+	if s.RefreshServer != nil {
 		t.Fatal("expected no refresh server in server-only mode")
 	}
 }
@@ -412,12 +417,12 @@ func TestWaitForVite_UsesViteClientEndpoint(t *testing.T) {
 		t.Fatalf("failed parsing test server port: %v", err)
 	}
 
-	s := &server{
-		log:     newDiscardLogger(),
-		viteCtx: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: port}),
+	s := &devserver.Server{
+		Log:     newDiscardLogger(),
+		ViteCtx: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: port}),
 	}
 
-	if !s.waitForVite() {
+	if !s.WaitForVite() {
 		t.Fatal("expected waitForVite to return true when /@vite/client is ready")
 	}
 }
@@ -427,7 +432,7 @@ func TestStartAppAndStopApp_WithExecutableBinary(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
 
-	if err := SetupDistDir(cfg); err != nil {
+	if err := toolingbuilder.SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
 
@@ -437,17 +442,17 @@ func TestStartAppAndStopApp_WithExecutableBinary(t *testing.T) {
 		t.Fatalf("failed writing executable test binary: %v", err)
 	}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	s.startApp()
-	if s.appCmd == nil || s.appCmd.Process == nil {
+	s.StartApp()
+	if s.AppCmd == nil || s.AppCmd.Process == nil {
 		t.Fatal("expected startApp to launch process")
 	}
 
-	if err := s.stopApp(); err != nil {
+	if err := s.StopApp(); err != nil {
 		t.Fatalf("stopApp returned error: %v", err)
 	}
 }
@@ -456,13 +461,13 @@ func TestStartApp_FailureLeavesAppCmdNil(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	s.startApp()
-	if s.appCmd != nil {
+	s.StartApp()
+	if s.AppCmd != nil {
 		t.Fatal("expected startApp failure to leave appCmd nil")
 	}
 }
@@ -471,23 +476,23 @@ func TestStartViteAndStopVite_NoOpWhenViteDisabled(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Vite = nil
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:     cfg,
-		log:     newDiscardLogger(),
-		builder: builder,
+	s := &devserver.Server{
+		Cfg:     cfg,
+		Log:     newDiscardLogger(),
+		Builder: builder,
 	}
 
-	if err := s.startVite(); err != nil {
+	if err := s.StartVite(); err != nil {
 		t.Fatalf("startVite returned error with Vite disabled: %v", err)
 	}
-	if s.viteCtx != nil {
-		t.Fatalf("expected no vite context when Vite is disabled, got %#v", s.viteCtx)
+	if s.ViteCtx != nil {
+		t.Fatalf("expected no vite context when Vite is disabled, got %#v", s.ViteCtx)
 	}
 
-	if err := s.stopVite(); err != nil {
+	if err := s.StopVite(); err != nil {
 		t.Fatalf("stopVite returned error with Vite disabled: %v", err)
 	}
 }
@@ -499,26 +504,26 @@ func TestStartViteAndStopVite_WithViteEnabled(t *testing.T) {
 		DefaultPort:             5201,
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:     cfg,
-		log:     newDiscardLogger(),
-		builder: builder,
+	s := &devserver.Server{
+		Cfg:     cfg,
+		Log:     newDiscardLogger(),
+		Builder: builder,
 	}
 
-	if err := s.startVite(); err != nil {
+	if err := s.StartVite(); err != nil {
 		t.Fatalf("startVite returned error: %v", err)
 	}
-	if s.viteCtx == nil {
+	if s.ViteCtx == nil {
 		t.Fatal("expected startVite to set viteCtx when Vite is enabled")
 	}
 
-	if err := s.stopVite(); err != nil {
+	if err := s.StopVite(); err != nil {
 		t.Fatalf("stopVite returned error: %v", err)
 	}
-	if s.viteCtx != nil {
+	if s.ViteCtx != nil {
 		t.Fatal("expected stopVite to clear viteCtx")
 	}
 }
@@ -527,12 +532,12 @@ func TestCycleVite_NoOpWhenViteDisabled(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Vite = nil
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	s.cycleVite()
+	s.CycleVite()
 }
 
 func TestCycleVite_NoOpWhenViteEnabledButNotStarted(t *testing.T) {
@@ -542,12 +547,12 @@ func TestCycleVite_NoOpWhenViteEnabledButNotStarted(t *testing.T) {
 		DefaultPort:             5202,
 	}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	s.cycleVite()
+	s.CycleVite()
 }
 
 func TestCycleVite_StartFailureAfterStopLeavesViteContextCleared(t *testing.T) {
@@ -557,19 +562,19 @@ func TestCycleVite_StartFailureAfterStopLeavesViteContextCleared(t *testing.T) {
 		DefaultPort:             5203,
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:     cfg,
-		log:     newDiscardLogger(),
-		builder: builder,
-		viteCtx: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: cfg.Vite.DefaultPort}),
+	s := &devserver.Server{
+		Cfg:     cfg,
+		Log:     newDiscardLogger(),
+		Builder: builder,
+		ViteCtx: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{DefaultPort: cfg.Vite.DefaultPort}),
 	}
 
-	s.cycleVite()
+	s.CycleVite()
 
-	if s.viteCtx != nil {
+	if s.ViteCtx != nil {
 		t.Fatal("expected cycleVite start failure to leave vite context cleared")
 	}
 }
@@ -578,22 +583,22 @@ func TestStartRefreshServer_ReturnsErrorForInvalidPort(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
 
-	manager := newClientManager()
+	manager := broadcast.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
-	go manager.start(ctx)
+	go manager.Start(ctx)
 	defer func() {
 		cancel()
-		manager.wait()
+		manager.Wait()
 	}()
 
-	s := &server{
-		cfg:           cfg,
-		log:           newDiscardLogger(),
-		refreshMgr:    manager,
-		refreshMgrCtx: ctx,
+	s := &devserver.Server{
+		Cfg:           cfg,
+		Log:           newDiscardLogger(),
+		RefreshMgr:    manager,
+		RefreshMgrCtx: ctx,
 	}
 
-	if _, err := s.startRefreshServer(-1); err == nil {
+	if _, err := s.StartRefreshServer(-1); err == nil {
 		t.Fatal("expected startRefreshServer to return an error for invalid negative port")
 	}
 }
@@ -602,26 +607,26 @@ func TestStartRefreshServer_EventsEndpointSetsCORSAndRejectsNonWebSocket(t *test
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
 
-	manager := newClientManager()
+	manager := broadcast.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
-	go manager.start(ctx)
+	go manager.Start(ctx)
 	defer func() {
 		cancel()
-		manager.wait()
+		manager.Wait()
 	}()
 
-	s := &server{
-		cfg:           cfg,
-		log:           newDiscardLogger(),
-		refreshMgr:    manager,
-		refreshMgrCtx: ctx,
+	s := &devserver.Server{
+		Cfg:           cfg,
+		Log:           newDiscardLogger(),
+		RefreshMgr:    manager,
+		RefreshMgrCtx: ctx,
 	}
 
-	port, err := s.startRefreshServer(0)
+	port, err := s.StartRefreshServer(0)
 	if err != nil {
 		t.Fatalf("startRefreshServer returned error: %v", err)
 	}
-	defer s.stopRefreshServer()
+	defer s.StopRefreshServer()
 
 	resp, err := http.Get("http://localhost:" + strconv.Itoa(port) + "/events")
 	if err != nil {

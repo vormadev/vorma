@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/tooling/builder/static"
 )
 
 func TestPublishHashedArtifactWithRef_RefMissingCleansStaleArtifacts(
@@ -24,18 +26,18 @@ func TestPublishHashedArtifactWithRef_RefMissingCleansStaleArtifacts(
 
 	desiredHashedFileName := "styles-new.css"
 	desiredContent := []byte("new")
-	publishedFileName, publishError := publishHashedArtifactWithRef(
-		hashedArtifactPublishOptions{
-			outputDirectoryPath:   outputDirectoryPath,
-			refFilePath:           refFilePath,
-			desiredHashedFileName: desiredHashedFileName,
-			content:               desiredContent,
-			globPattern:           "styles-*.css",
+	publishedFileName, publishError := static.PublishHashedArtifactWithRef(
+		static.HashedArtifactPublishOptions{
+			OutputDirectoryPath:   outputDirectoryPath,
+			RefFilePath:           refFilePath,
+			DesiredHashedFileName: desiredHashedFileName,
+			Content:               desiredContent,
+			GlobPattern:           "styles-*.css",
 		},
 	)
 	if publishError != nil {
 		t.Fatalf(
-			"publishHashedArtifactWithRef returned error: %v",
+			"static.PublishHashedArtifactWithRef returned error: %v",
 			publishError,
 		)
 	}
@@ -64,7 +66,7 @@ func TestPublishHashedArtifactWithRef_RefMissingCleansStaleArtifacts(
 	}
 	if string(desiredArtifactBytes) != string(desiredContent) {
 		t.Fatalf(
-			"expected desired artifact content %q, got %q",
+			"expected desired artifact Content %q, got %q",
 			string(desiredContent),
 			string(desiredArtifactBytes),
 		)
@@ -104,18 +106,18 @@ func TestPublishHashedArtifactWithRef_RefUpdateRemovesPreviousArtifact(
 	}
 
 	desiredHashedFileName := "styles-next.css"
-	_, publishError := publishHashedArtifactWithRef(
-		hashedArtifactPublishOptions{
-			outputDirectoryPath:   outputDirectoryPath,
-			refFilePath:           refFilePath,
-			desiredHashedFileName: desiredHashedFileName,
-			content:               []byte("next"),
-			globPattern:           "styles-*.css",
+	_, publishError := static.PublishHashedArtifactWithRef(
+		static.HashedArtifactPublishOptions{
+			OutputDirectoryPath:   outputDirectoryPath,
+			RefFilePath:           refFilePath,
+			DesiredHashedFileName: desiredHashedFileName,
+			Content:               []byte("next"),
+			GlobPattern:           "styles-*.css",
 		},
 	)
 	if publishError != nil {
 		t.Fatalf(
-			"publishHashedArtifactWithRef returned error: %v",
+			"static.PublishHashedArtifactWithRef returned error: %v",
 			publishError,
 		)
 	}
@@ -139,7 +141,7 @@ func TestPublishHashedArtifactWithRef_RefUpdateRemovesPreviousArtifact(
 	}
 	if string(nextArtifactBytes) != "next" {
 		t.Fatalf(
-			"expected next artifact content %q, got %q",
+			"expected next artifact Content %q, got %q",
 			"next",
 			string(nextArtifactBytes),
 		)
@@ -178,18 +180,18 @@ func TestPublishHashedArtifactWithRef_EmptyRefFileCleansStaleArtifacts(
 	}
 
 	desiredHashedFileName := "styles-new.css"
-	_, publishError := publishHashedArtifactWithRef(
-		hashedArtifactPublishOptions{
-			outputDirectoryPath:   outputDirectoryPath,
-			refFilePath:           refFilePath,
-			desiredHashedFileName: desiredHashedFileName,
-			content:               []byte("new"),
-			globPattern:           "styles-*.css",
+	_, publishError := static.PublishHashedArtifactWithRef(
+		static.HashedArtifactPublishOptions{
+			OutputDirectoryPath:   outputDirectoryPath,
+			RefFilePath:           refFilePath,
+			DesiredHashedFileName: desiredHashedFileName,
+			Content:               []byte("new"),
+			GlobPattern:           "styles-*.css",
 		},
 	)
 	if publishError != nil {
 		t.Fatalf(
-			"publishHashedArtifactWithRef returned error: %v",
+			"static.PublishHashedArtifactWithRef returned error: %v",
 			publishError,
 		)
 	}

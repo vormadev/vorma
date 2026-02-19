@@ -9,14 +9,15 @@ import (
 	"testing"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/vormadev/vorma/wave/tooling/internal/watchereventclassification"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/watch/classification"
 )
 
 func buildPreClassificationPlanFromEventsForTest(
 	events []fsnotify.Event,
-	eventClassificationProber *watchereventclassification.EventClassificationProber,
-) watchereventclassification.PreClassificationPlan {
-	return watchereventclassification.BuildPreClassificationPlanFromEvents(
+	eventClassificationProber *classification.EventClassificationProber,
+) classification.PreClassificationPlan {
+	return classification.BuildPreClassificationPlanFromEvents(
 		events,
 		eventClassificationProber.ProbeIsConfigFile,
 		eventClassificationProber.ProbeEventDirectoryStatus,
@@ -25,9 +26,9 @@ func buildPreClassificationPlanFromEventsForTest(
 
 func derivePreClassificationStepResultForTest(
 	event fsnotify.Event,
-	eventClassificationProber *watchereventclassification.EventClassificationProber,
-) watchereventclassification.PreClassificationStepResult {
-	return watchereventclassification.DerivePreClassificationStepResult(
+	eventClassificationProber *classification.EventClassificationProber,
+) classification.PreClassificationStepResult {
+	return classification.DerivePreClassificationStepResult(
 		event,
 		eventClassificationProber.ProbeIsConfigFile,
 		eventClassificationProber.ProbeEventDirectoryStatus,
@@ -36,148 +37,148 @@ func derivePreClassificationStepResultForTest(
 
 func TestDeriveWatcherEventPreClassificationDecision(t *testing.T) {
 	testCases := []struct {
-		name                        string
-		event                       fsnotify.Event
-		isConfigFile                bool
-		eventIsDirectory            bool
-		eventPathStatProbeSucceeded bool
-		expectedDecision            watchereventclassification.PreClassificationDecision
+		Name                        string
+		Event                       fsnotify.Event
+		IsConfigFile                bool
+		EventIsDirectory            bool
+		EventPathStatProbeSucceeded bool
+		ExpectedDecision            classification.PreClassificationDecision
 	}{
 		{
-			name:                        "config write triggers config changed",
-			event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Write},
-			isConfigFile:                true,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "config write triggers config changed",
+			Event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Write},
+			IsConfigFile:                true,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision: classification.PreClassificationDecision{
 				ConfigChanged: true,
 			},
 		},
 		{
-			name:                        "config create triggers config changed",
-			event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Create},
-			isConfigFile:                true,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "config create triggers config changed",
+			Event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Create},
+			IsConfigFile:                true,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision: classification.PreClassificationDecision{
 				ConfigChanged: true,
 			},
 		},
 		{
-			name:                        "config remove triggers config changed",
-			event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Remove},
-			isConfigFile:                true,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: false,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "config remove triggers config changed",
+			Event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Remove},
+			IsConfigFile:                true,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: false,
+			ExpectedDecision: classification.PreClassificationDecision{
 				ConfigChanged: true,
 			},
 		},
 		{
-			name:                        "config rename triggers config changed",
-			event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Rename},
-			isConfigFile:                true,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: false,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "config rename triggers config changed",
+			Event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Rename},
+			IsConfigFile:                true,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: false,
+			ExpectedDecision: classification.PreClassificationDecision{
 				ConfigChanged: true,
 			},
 		},
 		{
-			name:                        "config chmod does not trigger config changed",
-			event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Chmod},
-			isConfigFile:                true,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "config chmod does not trigger config changed",
+			Event:                       fsnotify.Event{Name: "wave.config.json", Op: fsnotify.Chmod},
+			IsConfigFile:                true,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision: classification.PreClassificationDecision{
 				ClassifyEvent: true,
 			},
 		},
 		{
-			name:                        "directory create adds watch",
-			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Create},
-			isConfigFile:                false,
-			eventIsDirectory:            true,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "directory create adds watch",
+			Event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Create},
+			IsConfigFile:                false,
+			EventIsDirectory:            true,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision: classification.PreClassificationDecision{
 				AddDirectoryWatch: true,
 			},
 		},
 		{
-			name:                        "directory rename adds watch",
-			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Rename},
-			isConfigFile:                false,
-			eventIsDirectory:            true,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "directory rename adds watch",
+			Event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Rename},
+			IsConfigFile:                false,
+			EventIsDirectory:            true,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision: classification.PreClassificationDecision{
 				AddDirectoryWatch: true,
 			},
 		},
 		{
-			name:                        "directory write does not classify",
-			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Write},
-			isConfigFile:                false,
-			eventIsDirectory:            true,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision:            watchereventclassification.PreClassificationDecision{},
+			Name:                        "directory write does not classify",
+			Event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Write},
+			IsConfigFile:                false,
+			EventIsDirectory:            true,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision:            classification.PreClassificationDecision{},
 		},
 		{
-			name:                        "regular file write classifies",
-			event:                       fsnotify.Event{Name: "app.go", Op: fsnotify.Write},
-			isConfigFile:                false,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "regular file write classifies",
+			Event:                       fsnotify.Event{Name: "app.go", Op: fsnotify.Write},
+			IsConfigFile:                false,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision: classification.PreClassificationDecision{
 				ClassifyEvent: true,
 			},
 		},
 		{
-			name:                        "create with failed stat still adds watch and classifies",
-			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Create},
-			isConfigFile:                false,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: false,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "create with failed stat still adds watch and classifies",
+			Event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Create},
+			IsConfigFile:                false,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: false,
+			ExpectedDecision: classification.PreClassificationDecision{
 				AddDirectoryWatch: true,
 				ClassifyEvent:     true,
 			},
 		},
 		{
-			name:                        "rename with failed stat still adds watch and classifies",
-			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Rename},
-			isConfigFile:                false,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: false,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "rename with failed stat still adds watch and classifies",
+			Event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Rename},
+			IsConfigFile:                false,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: false,
+			ExpectedDecision: classification.PreClassificationDecision{
 				AddDirectoryWatch: true,
 				ClassifyEvent:     true,
 			},
 		},
 		{
-			name:                        "write with failed stat classifies without directory watch",
-			event:                       fsnotify.Event{Name: "file.txt", Op: fsnotify.Write},
-			isConfigFile:                false,
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: false,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "write with failed stat classifies without directory watch",
+			Event:                       fsnotify.Event{Name: "file.txt", Op: fsnotify.Write},
+			IsConfigFile:                false,
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: false,
+			ExpectedDecision: classification.PreClassificationDecision{
 				ClassifyEvent: true,
 			},
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			decision := watchereventclassification.DerivePreClassificationDecision(
-				testCase.event,
-				testCase.isConfigFile,
-				testCase.eventIsDirectory,
-				testCase.eventPathStatProbeSucceeded,
+		t.Run(testCase.Name, func(t *testing.T) {
+			decision := classification.DerivePreClassificationDecision(
+				testCase.Event,
+				testCase.IsConfigFile,
+				testCase.EventIsDirectory,
+				testCase.EventPathStatProbeSucceeded,
 			)
-			if !reflect.DeepEqual(decision, testCase.expectedDecision) {
+			if !reflect.DeepEqual(decision, testCase.ExpectedDecision) {
 				t.Fatalf(
-					"watchereventclassification.DerivePreClassificationDecision()=%#v, want %#v",
+					"classification.DerivePreClassificationDecision()=%#v, want %#v",
 					decision,
-					testCase.expectedDecision,
+					testCase.ExpectedDecision,
 				)
 			}
 		})
@@ -186,61 +187,61 @@ func TestDeriveWatcherEventPreClassificationDecision(t *testing.T) {
 
 func TestDeriveWatcherEventPreClassificationDecisionForNonConfigEvent(t *testing.T) {
 	testCases := []struct {
-		name                        string
-		event                       fsnotify.Event
-		eventIsDirectory            bool
-		eventPathStatProbeSucceeded bool
-		expectedDecision            watchereventclassification.PreClassificationDecision
+		Name                        string
+		Event                       fsnotify.Event
+		EventIsDirectory            bool
+		EventPathStatProbeSucceeded bool
+		ExpectedDecision            classification.PreClassificationDecision
 	}{
 		{
-			name:                        "directory create adds watch",
-			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Create},
-			eventIsDirectory:            true,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "directory create adds watch",
+			Event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Create},
+			EventIsDirectory:            true,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision: classification.PreClassificationDecision{
 				AddDirectoryWatch: true,
 			},
 		},
 		{
-			name:                        "directory write is skipped",
-			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Write},
-			eventIsDirectory:            true,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision:            watchereventclassification.PreClassificationDecision{},
+			Name:                        "directory write is skipped",
+			Event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Write},
+			EventIsDirectory:            true,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision:            classification.PreClassificationDecision{},
 		},
 		{
-			name:                        "missing-stat rename adds watch and classifies",
-			event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Rename},
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: false,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "missing-stat rename adds watch and classifies",
+			Event:                       fsnotify.Event{Name: "assets", Op: fsnotify.Rename},
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: false,
+			ExpectedDecision: classification.PreClassificationDecision{
 				AddDirectoryWatch: true,
 				ClassifyEvent:     true,
 			},
 		},
 		{
-			name:                        "regular file write classifies",
-			event:                       fsnotify.Event{Name: "app.go", Op: fsnotify.Write},
-			eventIsDirectory:            false,
-			eventPathStatProbeSucceeded: true,
-			expectedDecision: watchereventclassification.PreClassificationDecision{
+			Name:                        "regular file write classifies",
+			Event:                       fsnotify.Event{Name: "app.go", Op: fsnotify.Write},
+			EventIsDirectory:            false,
+			EventPathStatProbeSucceeded: true,
+			ExpectedDecision: classification.PreClassificationDecision{
 				ClassifyEvent: true,
 			},
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			decision := watchereventclassification.DerivePreClassificationDecisionForNonConfigEvent(
-				testCase.event,
-				testCase.eventIsDirectory,
-				testCase.eventPathStatProbeSucceeded,
+		t.Run(testCase.Name, func(t *testing.T) {
+			decision := classification.DerivePreClassificationDecisionForNonConfigEvent(
+				testCase.Event,
+				testCase.EventIsDirectory,
+				testCase.EventPathStatProbeSucceeded,
 			)
-			if !reflect.DeepEqual(decision, testCase.expectedDecision) {
+			if !reflect.DeepEqual(decision, testCase.ExpectedDecision) {
 				t.Fatalf(
-					"watchereventclassification.DerivePreClassificationDecisionForNonConfigEvent()=%#v, want %#v",
+					"classification.DerivePreClassificationDecisionForNonConfigEvent()=%#v, want %#v",
 					decision,
-					testCase.expectedDecision,
+					testCase.ExpectedDecision,
 				)
 			}
 		})
@@ -251,7 +252,7 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 	t.Run("empty events returns empty plan", func(t *testing.T) {
 		plan := buildPreClassificationPlanFromEventsForTest(
 			nil,
-			watchereventclassification.NewEventClassificationProber(nil),
+			classification.NewEventClassificationProber(nil),
 		)
 		if plan.ConfigChanged {
 			t.Fatalf("expected ConfigChanged=false for empty events, got %#v", plan)
@@ -267,7 +268,7 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 	t.Run("short-circuits after config mutation and skips trailing probes", func(t *testing.T) {
 		configProbeCount := 0
 		statProbeCount := 0
-		prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
+		prober := classification.NewEventClassificationProber(func(path string) bool {
 			configProbeCount++
 			return path == "wave.config.json"
 		})
@@ -311,7 +312,7 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 	t.Run("collects all inputs when no config mutation is present", func(t *testing.T) {
 		configProbeCount := 0
 		statProbeCount := 0
-		prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
+		prober := classification.NewEventClassificationProber(func(path string) bool {
 			configProbeCount++
 			return path == "wave.config.json"
 		})
@@ -357,7 +358,7 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 			t.Fatalf("failed writing regular file: %v", err)
 		}
 
-		prober := watchereventclassification.NewEventClassificationProber(func(string) bool {
+		prober := classification.NewEventClassificationProber(func(string) bool {
 			return false
 		})
 		prober.StatPathFn = func(path string) (os.FileInfo, error) {
@@ -404,7 +405,7 @@ func TestBuildWatcherEventPreClassificationPlanFromEvents(t *testing.T) {
 		firstCreatedPath := filepath.Join(root, "first-missing-path")
 		secondCreatedPath := filepath.Join(root, "second-missing-path")
 
-		prober := watchereventclassification.NewEventClassificationProber(func(string) bool {
+		prober := classification.NewEventClassificationProber(func(string) bool {
 			return false
 		})
 		prober.StatPathFn = func(string) (os.FileInfo, error) {
@@ -457,41 +458,41 @@ func TestDeriveWatcherEventPreClassificationStepResult(t *testing.T) {
 		t.Fatalf("failed writing regular file: %v", err)
 	}
 
-	prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
+	prober := classification.NewEventClassificationProber(func(path string) bool {
 		return path == configPath
 	})
 	prober.StatPathFn = os.Stat
 
 	testCases := []struct {
-		name               string
-		event              fsnotify.Event
-		expectedStepResult watchereventclassification.PreClassificationStepResult
+		Name               string
+		Event              fsnotify.Event
+		ExpectedStepResult classification.PreClassificationStepResult
 	}{
 		{
-			name:  "config mutation short-circuits step",
-			event: fsnotify.Event{Name: configPath, Op: fsnotify.Write},
-			expectedStepResult: watchereventclassification.PreClassificationStepResult{
+			Name:  "config mutation short-circuits step",
+			Event: fsnotify.Event{Name: configPath, Op: fsnotify.Write},
+			ExpectedStepResult: classification.PreClassificationStepResult{
 				ConfigChanged: true,
 			},
 		},
 		{
-			name:  "directory create adds watch path",
-			event: fsnotify.Event{Name: directoryPath, Op: fsnotify.Create},
-			expectedStepResult: watchereventclassification.PreClassificationStepResult{
+			Name:  "directory create adds watch path",
+			Event: fsnotify.Event{Name: directoryPath, Op: fsnotify.Create},
+			ExpectedStepResult: classification.PreClassificationStepResult{
 				AddDirectoryWatchPath: directoryPath,
 			},
 		},
 		{
-			name:  "regular file write classifies event",
-			event: fsnotify.Event{Name: regularFilePath, Op: fsnotify.Write},
-			expectedStepResult: watchereventclassification.PreClassificationStepResult{
+			Name:  "regular file write classifies event",
+			Event: fsnotify.Event{Name: regularFilePath, Op: fsnotify.Write},
+			ExpectedStepResult: classification.PreClassificationStepResult{
 				ClassifyEvent: true,
 			},
 		},
 		{
-			name:  "create with missing stat adds watch and classifies",
-			event: fsnotify.Event{Name: missingPath, Op: fsnotify.Create},
-			expectedStepResult: watchereventclassification.PreClassificationStepResult{
+			Name:  "create with missing stat adds watch and classifies",
+			Event: fsnotify.Event{Name: missingPath, Op: fsnotify.Create},
+			ExpectedStepResult: classification.PreClassificationStepResult{
 				AddDirectoryWatchPath: missingPath,
 				ClassifyEvent:         true,
 			},
@@ -499,16 +500,16 @@ func TestDeriveWatcherEventPreClassificationStepResult(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
+		t.Run(testCase.Name, func(t *testing.T) {
 			stepResult := derivePreClassificationStepResultForTest(
-				testCase.event,
+				testCase.Event,
 				prober,
 			)
-			if !reflect.DeepEqual(stepResult, testCase.expectedStepResult) {
+			if !reflect.DeepEqual(stepResult, testCase.ExpectedStepResult) {
 				t.Fatalf(
 					"derivePreClassificationStepResultForTest()=%#v, want %#v",
 					stepResult,
-					testCase.expectedStepResult,
+					testCase.ExpectedStepResult,
 				)
 			}
 		})
@@ -517,7 +518,7 @@ func TestDeriveWatcherEventPreClassificationStepResult(t *testing.T) {
 
 func TestWatcherEventClassificationProber_CachesConfigProbeByPath(t *testing.T) {
 	configProbeCount := 0
-	prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
+	prober := classification.NewEventClassificationProber(func(path string) bool {
 		configProbeCount++
 		return path == "wave.config.json"
 	})
@@ -551,7 +552,7 @@ func TestWatcherEventClassificationProber_CachesDirectoryProbeByPath(t *testing.
 	}
 
 	statProbeCount := 0
-	prober := watchereventclassification.NewEventClassificationProber(nil)
+	prober := classification.NewEventClassificationProber(nil)
 	prober.StatPathFn = func(path string) (os.FileInfo, error) {
 		statProbeCount++
 		return os.Stat(path)
@@ -597,7 +598,7 @@ func TestWatcherEventClassificationProber_SharesSingleSnapshotAcrossProbeTypes(
 
 	configProbeCount := 0
 	statProbeCount := 0
-	prober := watchereventclassification.NewEventClassificationProber(func(path string) bool {
+	prober := classification.NewEventClassificationProber(func(path string) bool {
 		configProbeCount++
 		return path == configPath
 	})
@@ -669,55 +670,55 @@ func TestWatcherEventClassificationProber_SharesSingleSnapshotAcrossProbeTypes(
 
 func TestDeriveWatcherEventPostClassificationDecision(t *testing.T) {
 	testCases := []struct {
-		name             string
-		classifiedEvent  classifiedEvent
-		expectedDecision watchereventclassification.PostClassificationDecision
+		Name             string
+		ClassifiedEvent  devserver.ClassifiedEvent
+		ExpectedDecision classification.PostClassificationDecision
 	}{
 		{
-			name: "ignored classified event is excluded",
-			classifiedEvent: classifiedEvent{
-				ignored: true,
+			Name: "ignored classified event is excluded",
+			ClassifiedEvent: devserver.ClassifiedEvent{
+				Ignored: true,
 			},
-			expectedDecision: watchereventclassification.PostClassificationDecision{},
+			ExpectedDecision: classification.PostClassificationDecision{},
 		},
 		{
-			name: "chmod-only classified event is excluded",
-			classifiedEvent: classifiedEvent{
-				chmodOnly: true,
+			Name: "chmod-only classified event is excluded",
+			ClassifiedEvent: devserver.ClassifiedEvent{
+				ChmodOnly: true,
 			},
-			expectedDecision: watchereventclassification.PostClassificationDecision{},
+			ExpectedDecision: classification.PostClassificationDecision{},
 		},
 		{
-			name: "included classified event is retained",
-			classifiedEvent: classifiedEvent{
-				ignored:   false,
-				chmodOnly: false,
+			Name: "included classified event is retained",
+			ClassifiedEvent: devserver.ClassifiedEvent{
+				Ignored:   false,
+				ChmodOnly: false,
 			},
-			expectedDecision: watchereventclassification.PostClassificationDecision{
+			ExpectedDecision: classification.PostClassificationDecision{
 				IncludeClassifiedEvent: true,
 			},
 		},
 		{
-			name: "ignored chmod-only classified event is excluded",
-			classifiedEvent: classifiedEvent{
-				ignored:   true,
-				chmodOnly: true,
+			Name: "ignored chmod-only classified event is excluded",
+			ClassifiedEvent: devserver.ClassifiedEvent{
+				Ignored:   true,
+				ChmodOnly: true,
 			},
-			expectedDecision: watchereventclassification.PostClassificationDecision{},
+			ExpectedDecision: classification.PostClassificationDecision{},
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			decision := watchereventclassification.DerivePostClassificationDecision(
-				testCase.classifiedEvent.ignored,
-				testCase.classifiedEvent.chmodOnly,
+		t.Run(testCase.Name, func(t *testing.T) {
+			decision := classification.DerivePostClassificationDecision(
+				testCase.ClassifiedEvent.Ignored,
+				testCase.ClassifiedEvent.ChmodOnly,
 			)
-			if !reflect.DeepEqual(decision, testCase.expectedDecision) {
+			if !reflect.DeepEqual(decision, testCase.ExpectedDecision) {
 				t.Fatalf(
-					"watchereventclassification.DerivePostClassificationDecision()=%#v, want %#v",
+					"classification.DerivePostClassificationDecision()=%#v, want %#v",
 					decision,
-					testCase.expectedDecision,
+					testCase.ExpectedDecision,
 				)
 			}
 		})
@@ -726,105 +727,105 @@ func TestDeriveWatcherEventPostClassificationDecision(t *testing.T) {
 
 func TestFilterClassifiedEventsForProcessingByPostClassificationDecision(t *testing.T) {
 	t.Run("returns nil for empty input", func(t *testing.T) {
-		filteredClassifiedEvents := filterClassifiedEventsForProcessingByPostClassificationDecision(nil)
+		filteredClassifiedEvents := devserver.FilterClassifiedEventsForProcessingByPostClassificationDecision(nil)
 		if filteredClassifiedEvents != nil {
 			t.Fatalf("expected nil filtered classified events, got %#v", filteredClassifiedEvents)
 		}
 	})
 
 	t.Run("filters ignored and chmod-only classified events", func(t *testing.T) {
-		inputClassifiedEvents := []classifiedEvent{
+		inputClassifiedEvents := []devserver.ClassifiedEvent{
 			{
-				event: fsnotify.Event{
+				Event: fsnotify.Event{
 					Name: "first.txt",
 					Op:   fsnotify.Write,
 				},
-				ignored: false,
+				Ignored: false,
 			},
 			{
-				event: fsnotify.Event{
+				Event: fsnotify.Event{
 					Name: "ignored.txt",
 					Op:   fsnotify.Write,
 				},
-				ignored: true,
+				Ignored: true,
 			},
 			{
-				event: fsnotify.Event{
+				Event: fsnotify.Event{
 					Name: "chmod.txt",
 					Op:   fsnotify.Chmod,
 				},
-				chmodOnly: true,
+				ChmodOnly: true,
 			},
 			{
-				event: fsnotify.Event{
+				Event: fsnotify.Event{
 					Name: "second.txt",
 					Op:   fsnotify.Write,
 				},
-				ignored:   false,
-				chmodOnly: false,
+				Ignored:   false,
+				ChmodOnly: false,
 			},
 		}
 
-		filteredClassifiedEvents := filterClassifiedEventsForProcessingByPostClassificationDecision(
+		filteredClassifiedEvents := devserver.FilterClassifiedEventsForProcessingByPostClassificationDecision(
 			inputClassifiedEvents,
 		)
 		if len(filteredClassifiedEvents) != 2 {
 			t.Fatalf("filtered classified event count=%d, want 2", len(filteredClassifiedEvents))
 		}
-		if filteredClassifiedEvents[0].event.Name != "first.txt" {
-			t.Fatalf("filtered event[0]=%q, want first.txt", filteredClassifiedEvents[0].event.Name)
+		if filteredClassifiedEvents[0].Event.Name != "first.txt" {
+			t.Fatalf("filtered event[0]=%q, want first.txt", filteredClassifiedEvents[0].Event.Name)
 		}
-		if filteredClassifiedEvents[1].event.Name != "second.txt" {
-			t.Fatalf("filtered event[1]=%q, want second.txt", filteredClassifiedEvents[1].event.Name)
+		if filteredClassifiedEvents[1].Event.Name != "second.txt" {
+			t.Fatalf("filtered event[1]=%q, want second.txt", filteredClassifiedEvents[1].Event.Name)
 		}
 	})
 }
 
 func TestShouldLogWatcherAddDirectoryError(t *testing.T) {
 	testCases := []struct {
-		name      string
-		err       error
-		shouldLog bool
+		Name      string
+		Err       error
+		ShouldLog bool
 	}{
 		{
-			name:      "nil error does not log",
-			err:       nil,
-			shouldLog: false,
+			Name:      "nil error does not log",
+			Err:       nil,
+			ShouldLog: false,
 		},
 		{
-			name:      "not-exist error does not log",
-			err:       fs.ErrNotExist,
-			shouldLog: false,
+			Name:      "not-exist error does not log",
+			Err:       fs.ErrNotExist,
+			ShouldLog: false,
 		},
 		{
-			name: "not-directory path error does not log",
-			err: &os.PathError{
+			Name: "not-directory path error does not log",
+			Err: &os.PathError{
 				Op:   "open",
 				Path: "file.txt",
 				Err:  syscall.ENOTDIR,
 			},
-			shouldLog: false,
+			ShouldLog: false,
 		},
 		{
-			name: "permission error logs",
-			err: &os.PathError{
+			Name: "permission error logs",
+			Err: &os.PathError{
 				Op:   "open",
 				Path: "secure-dir",
 				Err:  syscall.EACCES,
 			},
-			shouldLog: true,
+			ShouldLog: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			shouldLog := watchereventclassification.ShouldLogAddDirectoryWatchError(testCase.err)
-			if shouldLog != testCase.shouldLog {
+		t.Run(testCase.Name, func(t *testing.T) {
+			shouldLog := classification.ShouldLogAddDirectoryWatchError(testCase.Err)
+			if shouldLog != testCase.ShouldLog {
 				t.Fatalf(
-					"watchereventclassification.ShouldLogAddDirectoryWatchError(%v)=%v, want %v",
-					testCase.err,
+					"classification.ShouldLogAddDirectoryWatchError(%v)=%v, want %v",
+					testCase.Err,
 					shouldLog,
-					testCase.shouldLog,
+					testCase.ShouldLog,
 				)
 			}
 		})

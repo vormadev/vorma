@@ -1,6 +1,8 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
 	"testing"
 
 	"github.com/vormadev/vorma/wave"
@@ -8,19 +10,19 @@ import (
 
 func TestContinuePipelineAfterHookStageOrTriggerRestart_UsesConfiguredFailurePolicy(t *testing.T) {
 	t.Run("default fail-open continues on stage errors", func(t *testing.T) {
-		s := &server{
-			cfg: &wave.ParsedConfig{
+		s := &devserver.Server{
+			Cfg: &wave.ParsedConfig{
 				Core:  &wave.CoreConfig{},
 				Watch: &wave.WatchConfig{},
 			},
-			log:            newDiscardLogger(),
-			restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+			Log:            newDiscardLogger(),
+			RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 		}
 
-		shouldContinue := s.continuePipelineAfterHookStageOrTriggerRestart(
-			hookStageResult{
-				stageType:       hookStageTypePre,
-				executionErrors: []error{errSynthetic},
+		shouldContinue := s.ContinuePipelineAfterHookStageOrTriggerRestart(
+			devserver.HookStageResult{
+				StageType:       devserver.HookStageTypePre,
+				ExecutionErrors: []error{errSynthetic},
 			},
 		)
 		if !shouldContinue {
@@ -30,21 +32,21 @@ func TestContinuePipelineAfterHookStageOrTriggerRestart_UsesConfiguredFailurePol
 	})
 
 	t.Run("configured fail-closed stops on stage errors", func(t *testing.T) {
-		s := &server{
-			cfg: &wave.ParsedConfig{
+		s := &devserver.Server{
+			Cfg: &wave.ParsedConfig{
 				Core: &wave.CoreConfig{},
 				Watch: &wave.WatchConfig{
-					HookStageFailurePolicy: configuredHookStageFailurePolicyFailClosed,
+					HookStageFailurePolicy: devserver.ConfiguredHookStageFailurePolicyFailClosed,
 				},
 			},
-			log:            newDiscardLogger(),
-			restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+			Log:            newDiscardLogger(),
+			RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 		}
 
-		shouldContinue := s.continuePipelineAfterHookStageOrTriggerRestart(
-			hookStageResult{
-				stageType:       hookStageTypeConcurrent,
-				executionErrors: []error{errSynthetic},
+		shouldContinue := s.ContinuePipelineAfterHookStageOrTriggerRestart(
+			devserver.HookStageResult{
+				StageType:       devserver.HookStageTypeConcurrent,
+				ExecutionErrors: []error{errSynthetic},
 			},
 		)
 		if shouldContinue {

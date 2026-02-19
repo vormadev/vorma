@@ -3,6 +3,10 @@ package tooling
 import (
 	"context"
 	"errors"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,23 +21,23 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
-func newServerAndWatcherForHookExecutionTest(t *testing.T) (*server, *watcher) {
+func newServerAndWatcherForHookExecutionTest(t *testing.T) (*devserver.Server, *watch.Watcher) {
 	t.Helper()
 
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = true
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(
-			make(chan restartRequest, 1),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(
+			make(chan devserverengine.RestartRequest, 1),
 		),
 	}
 
@@ -54,10 +58,10 @@ func TestRunConcurrentHooks_RespectsExcludesAndCollectsActions(t *testing.T) {
 	var callbackCalled atomic.Bool
 	var excludedCalled atomic.Bool
 
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -79,7 +83,7 @@ func TestRunConcurrentHooks_RespectsExcludesAndCollectsActions(t *testing.T) {
 		},
 	}
 
-	actions, err := s.runConcurrentHooks(ewh, watcher)
+	actions, err := s.RunConcurrentHooks(ewh, watcher)
 	if err != nil {
 		t.Fatalf("runConcurrentHooks returned error: %v", err)
 	}
@@ -92,7 +96,7 @@ func TestRunConcurrentHooks_RespectsExcludesAndCollectsActions(t *testing.T) {
 	}
 
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
-		t.Fatalf("unexpected concurrent hook actions: %#v", actions)
+		t.Fatalf("unexpected concurrent hook Actions: %#v", actions)
 	}
 
 	data, readErr := os.ReadFile(commandOut)
@@ -121,15 +125,15 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 		t.Fatalf("failed writing changed file: %v", err)
 	}
 
-	s.cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(
+	s.Cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(
 		combinedExecutionLogPath,
 	)
-	s.cfg.FrameworkDevBuildHook = "printf 'framework-command\\n' >> " + strconv.Quote(
+	s.Cfg.FrameworkDevBuildHook = "printf 'framework-command\\n' >> " + strconv.Quote(
 		frameworkCommandFallbackLogPath,
 	)
 
 	var frameworkRunnerCallCount atomic.Int32
-	s.cfg.FrameworkRunBuildHook = func(
+	s.Cfg.FrameworkRunBuildHook = func(
 		hookExecutionContext context.Context,
 		runInDevelopmentMode bool,
 	) error {
@@ -160,10 +164,10 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 		return nil
 	}
 
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					RunCombinedDevBuildHookCommands: true,
@@ -172,7 +176,7 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 		},
 	}
 
-	actions, err := s.runConcurrentHooks(ewh, watcher)
+	actions, err := s.RunConcurrentHooks(ewh, watcher)
 	if err != nil {
 		t.Fatalf("runConcurrentHooks returned error: %v", err)
 	}
@@ -189,7 +193,7 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 
 	combinedExecutionLog, err := os.ReadFile(combinedExecutionLogPath)
 	if err != nil {
-		t.Fatalf("failed reading combined execution log: %v", err)
+		t.Fatalf("failed reading combined execution Log: %v", err)
 	}
 	if string(combinedExecutionLog) != "user\nframework-runner\n" {
 		t.Fatalf(
@@ -217,10 +221,10 @@ func TestRunConcurrentHooks_ReturnsActionsInHookOrder(t *testing.T) {
 		t.Fatalf("failed writing changed file: %v", err)
 	}
 
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -237,7 +241,7 @@ func TestRunConcurrentHooks_ReturnsActionsInHookOrder(t *testing.T) {
 		},
 	}
 
-	actions, err := s.runConcurrentHooks(ewh, watcher)
+	actions, err := s.RunConcurrentHooks(ewh, watcher)
 	if err != nil {
 		t.Fatalf("runConcurrentHooks returned error: %v", err)
 	}
@@ -263,10 +267,10 @@ func TestRunConcurrentHooks_AggregatesMultipleHookErrors(t *testing.T) {
 	defer watcher.Close()
 
 	changedPath := filepath.Join(t.TempDir(), "aggregate-errors.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -287,7 +291,7 @@ func TestRunConcurrentHooks_AggregatesMultipleHookErrors(t *testing.T) {
 		},
 	}
 
-	actions, err := s.runConcurrentHooks(ewh, watcher)
+	actions, err := s.RunConcurrentHooks(ewh, watcher)
 	if err == nil {
 		t.Fatal("expected aggregated concurrent hook error")
 	}
@@ -324,10 +328,10 @@ func TestRunConcurrentHooksWithContext_CanceledContextSkipsHookExecution(
 	}
 
 	var callbackCalled atomic.Bool
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -344,7 +348,7 @@ func TestRunConcurrentHooksWithContext_CanceledContextSkipsHookExecution(
 	)
 	cancelConcurrentHookExecutionContext()
 
-	actions, err := s.runConcurrentHooksWithContext(
+	actions, err := s.RunConcurrentHooksWithContext(
 		concurrentHookExecutionContext,
 		ewh,
 		watcher,
@@ -373,13 +377,13 @@ func TestRunConcurrentHooks_CallbackReceivesIndependentHookContexts(
 
 	changedPath := filepath.Join(t.TempDir(), "context-clone.txt")
 	receivedHookContexts := make(chan *wave.HookContext, 2)
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx: &wave.HookContext{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx: &wave.HookContext{
 			FilePath:         changedPath,
 			ChangedFilePaths: []string{changedPath},
 		},
-		hooks: &wave.SortedHooks{
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
@@ -397,7 +401,7 @@ func TestRunConcurrentHooks_CallbackReceivesIndependentHookContexts(
 		},
 	}
 
-	if _, err := s.runConcurrentHooks(ewh, watcher); err != nil {
+	if _, err := s.RunConcurrentHooks(ewh, watcher); err != nil {
 		t.Fatalf("runConcurrentHooks returned error: %v", err)
 	}
 
@@ -421,10 +425,10 @@ func TestRunConcurrentHooksWithContext_CallbackCanObserveCancellation(
 	defer watcher.Close()
 
 	changedPath := filepath.Join(t.TempDir(), "callback-cancellation.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
@@ -447,7 +451,7 @@ func TestRunConcurrentHooksWithContext_CallbackCanObserveCancellation(
 	defer cancelConcurrentHookExecutionContext()
 
 	callbackStartTime := time.Now()
-	actions, err := s.runConcurrentHooksWithContext(
+	actions, err := s.RunConcurrentHooksWithContext(
 		concurrentHookExecutionContext,
 		ewh,
 		watcher,
@@ -484,11 +488,11 @@ func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 		t.Fatalf("failed writing second changed file: %v", err)
 	}
 
-	eventsWithHooks := []eventWithHooks{
+	eventsWithHooks := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{event: waveEvent(firstChangedPath)},
-			hookCtx:    &wave.HookContext{FilePath: firstChangedPath},
-			hooks: &wave.SortedHooks{
+			Classified: devserver.ClassifiedEvent{Event: waveEvent(firstChangedPath)},
+			HookCtx:    &wave.HookContext{FilePath: firstChangedPath},
+			Hooks: &wave.SortedHooks{
 				Concurrent: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -500,9 +504,9 @@ func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 			},
 		},
 		{
-			classified: classifiedEvent{event: waveEvent(secondChangedPath)},
-			hookCtx:    &wave.HookContext{FilePath: secondChangedPath},
-			hooks: &wave.SortedHooks{
+			Classified: devserver.ClassifiedEvent{Event: waveEvent(secondChangedPath)},
+			HookCtx:    &wave.HookContext{FilePath: secondChangedPath},
+			Hooks: &wave.SortedHooks{
 				Concurrent: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -517,7 +521,7 @@ func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 		},
 	}
 
-	actions := s.runConcurrentHooksForEvents(eventsWithHooks, watcher)
+	actions := s.RunConcurrentHooksForEvents(eventsWithHooks, watcher)
 	if len(actions) != 2 {
 		t.Fatalf("action count=%d, want 2", len(actions))
 	}
@@ -552,11 +556,11 @@ func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(
 	}
 
 	var callbackCount atomic.Int32
-	eventsWithHooks := []eventWithHooks{
+	eventsWithHooks := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{event: waveEvent(firstChangedPath)},
-			hookCtx:    &wave.HookContext{FilePath: firstChangedPath},
-			hooks: &wave.SortedHooks{
+			Classified: devserver.ClassifiedEvent{Event: waveEvent(firstChangedPath)},
+			HookCtx:    &wave.HookContext{FilePath: firstChangedPath},
+			Hooks: &wave.SortedHooks{
 				Concurrent: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -568,9 +572,9 @@ func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(
 			},
 		},
 		{
-			classified: classifiedEvent{event: waveEvent(secondChangedPath)},
-			hookCtx:    &wave.HookContext{FilePath: secondChangedPath},
-			hooks: &wave.SortedHooks{
+			Classified: devserver.ClassifiedEvent{Event: waveEvent(secondChangedPath)},
+			HookCtx:    &wave.HookContext{FilePath: secondChangedPath},
+			Hooks: &wave.SortedHooks{
 				Concurrent: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -588,7 +592,7 @@ func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(
 	)
 	cancelConcurrentHookExecutionContext()
 
-	actions := s.runConcurrentHooksForEventsWithContext(
+	actions := s.RunConcurrentHooksForEventsWithContext(
 		concurrentHookExecutionContext,
 		eventsWithHooks,
 		watcher,
@@ -618,10 +622,10 @@ func TestRunConcurrentHooksWithContext_CanceledContextStopsRunningCommand(
 	defer watcher.Close()
 
 	changedPath := filepath.Join(t.TempDir(), "concurrent-command.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Cmd: "sleep 2",
@@ -637,7 +641,7 @@ func TestRunConcurrentHooksWithContext_CanceledContextStopsRunningCommand(
 	defer cancelConcurrentHookExecutionContext()
 
 	commandStartTime := time.Now()
-	_, err := s.runConcurrentHooksWithContext(
+	_, err := s.RunConcurrentHooksWithContext(
 		concurrentHookExecutionContext,
 		ewh,
 		watcher,
@@ -658,15 +662,15 @@ func TestRunPreHooks_CallbackTimeoutUsesPreStageSetting(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
+	s.Cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
 		PreCallbackTimeoutMilliseconds: 100,
 	}
 
 	changedPath := filepath.Join(t.TempDir(), "pre-callback-timeout.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
@@ -683,7 +687,7 @@ func TestRunPreHooks_CallbackTimeoutUsesPreStageSetting(t *testing.T) {
 	}
 
 	callbackStartTime := time.Now()
-	actions, err := s.runPreHooks(ewh, watcher)
+	actions, err := s.RunPreHooks(ewh, watcher)
 	callbackElapsedTime := time.Since(callbackStartTime)
 	if err != nil {
 		t.Fatalf(
@@ -713,15 +717,15 @@ func TestRunPreHooks_CommandTimeoutUsesPreStageSetting(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+	s.Cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
 		PreCommandTimeoutMilliseconds: 100,
 	}
 
 	changedPath := filepath.Join(t.TempDir(), "pre-timeout.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{Cmd: "sleep 2"},
 			},
@@ -729,7 +733,7 @@ func TestRunPreHooks_CommandTimeoutUsesPreStageSetting(t *testing.T) {
 	}
 
 	commandStartTime := time.Now()
-	_, err := s.runPreHooks(ewh, watcher)
+	_, err := s.RunPreHooks(ewh, watcher)
 	commandElapsedTime := time.Since(commandStartTime)
 	if err == nil {
 		t.Fatal("expected pre hook command to time out")
@@ -761,15 +765,15 @@ func TestRunConcurrentHooks_CommandTimeoutUsesConcurrentStageSetting(
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+	s.Cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
 		ConcurrentCommandTimeoutMilliseconds: 100,
 	}
 
 	changedPath := filepath.Join(t.TempDir(), "concurrent-timeout.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{Cmd: "sleep 2"},
 			},
@@ -777,7 +781,7 @@ func TestRunConcurrentHooks_CommandTimeoutUsesConcurrentStageSetting(
 	}
 
 	commandStartTime := time.Now()
-	_, err := s.runConcurrentHooks(ewh, watcher)
+	_, err := s.RunConcurrentHooks(ewh, watcher)
 	commandElapsedTime := time.Since(commandStartTime)
 	if err == nil {
 		t.Fatal("expected concurrent hook command to time out")
@@ -810,15 +814,15 @@ func TestRunPostHooks_CommandTimeoutUsesPostStageSetting(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+	s.Cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
 		PostCommandTimeoutMilliseconds: 100,
 	}
 
 	changedPath := filepath.Join(t.TempDir(), "post-timeout.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{Cmd: "sleep 2"},
 			},
@@ -826,7 +830,7 @@ func TestRunPostHooks_CommandTimeoutUsesPostStageSetting(t *testing.T) {
 	}
 
 	commandStartTime := time.Now()
-	_, err := s.runPostHooks(ewh, watcher)
+	_, err := s.RunPostHooks(ewh, watcher)
 	commandElapsedTime := time.Since(commandStartTime)
 	if err == nil {
 		t.Fatal("expected post hook command to time out")
@@ -856,15 +860,15 @@ func TestRunPreHooks_PerHookCommandTimeoutOverridesStageTimeout(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+	s.Cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
 		PreCommandTimeoutMilliseconds: 2000,
 	}
 
 	changedPath := filepath.Join(t.TempDir(), "pre-timeout-override.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Cmd:                        "sleep 2",
@@ -875,7 +879,7 @@ func TestRunPreHooks_PerHookCommandTimeoutOverridesStageTimeout(t *testing.T) {
 	}
 
 	commandStartTime := time.Now()
-	_, err := s.runPreHooks(ewh, watcher)
+	_, err := s.RunPreHooks(ewh, watcher)
 	commandElapsedTime := time.Since(commandStartTime)
 	if err == nil {
 		t.Fatal("expected pre hook command timeout override to trigger")
@@ -907,15 +911,15 @@ func TestRunPreHooks_DisableStageCommandTimeoutBypassesStageTimeout(
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+	s.Cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
 		PreCommandTimeoutMilliseconds: 100,
 	}
 
 	changedPath := filepath.Join(t.TempDir(), "pre-timeout-disable.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Cmd:                        "sleep 1",
@@ -926,7 +930,7 @@ func TestRunPreHooks_DisableStageCommandTimeoutBypassesStageTimeout(
 	}
 
 	commandStartTime := time.Now()
-	_, err := s.runPreHooks(ewh, watcher)
+	_, err := s.RunPreHooks(ewh, watcher)
 	commandElapsedTime := time.Since(commandStartTime)
 	if err != nil {
 		t.Fatalf(
@@ -946,7 +950,7 @@ func TestRunPreHooks_PerHookCallbackTimeoutOverridesStageTimeout(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
+	s.Cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
 		PreCallbackTimeoutMilliseconds: 2000,
 	}
 
@@ -954,10 +958,10 @@ func TestRunPreHooks_PerHookCallbackTimeoutOverridesStageTimeout(t *testing.T) {
 		t.TempDir(),
 		"pre-callback-timeout-override.txt",
 	)
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					CallbackTimeoutMilliseconds: 100,
@@ -975,7 +979,7 @@ func TestRunPreHooks_PerHookCallbackTimeoutOverridesStageTimeout(t *testing.T) {
 	}
 
 	callbackStartTime := time.Now()
-	actions, err := s.runPreHooks(ewh, watcher)
+	actions, err := s.RunPreHooks(ewh, watcher)
 	callbackElapsedTime := time.Since(callbackStartTime)
 	if err != nil {
 		t.Fatalf(
@@ -1003,7 +1007,7 @@ func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
+	s.Cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
 		PreCallbackTimeoutMilliseconds: 100,
 	}
 
@@ -1011,10 +1015,10 @@ func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(
 		t.TempDir(),
 		"pre-callback-timeout-disable.txt",
 	)
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					DisableStageCallbackTimeout: true,
@@ -1032,7 +1036,7 @@ func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(
 	}
 
 	callbackStartTime := time.Now()
-	actions, err := s.runPreHooks(ewh, watcher)
+	actions, err := s.RunPreHooks(ewh, watcher)
 	callbackElapsedTime := time.Since(callbackStartTime)
 	if err != nil {
 		t.Fatalf(
@@ -1059,12 +1063,12 @@ func TestRunPostHooks_StopsOnCommandError(t *testing.T) {
 	defer watcher.Close()
 
 	var lateCallbackCalled atomic.Bool
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event: waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event: waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{Cmd: "false"},
 				{
@@ -1077,7 +1081,7 @@ func TestRunPostHooks_StopsOnCommandError(t *testing.T) {
 		},
 	}
 
-	actions, err := s.runPostHooks(ewh, watcher)
+	actions, err := s.RunPostHooks(ewh, watcher)
 	if err == nil {
 		t.Fatal("expected runPostHooks to fail on command error")
 	}
@@ -1103,11 +1107,11 @@ func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(
 	}
 
 	var callbackCalled atomic.Bool
-	ewh := eventWithHooks{
-		classified:      classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:         &wave.HookContext{FilePath: changedPath},
-		runOnChangeOnly: true,
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified:      devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:         &wave.HookContext{FilePath: changedPath},
+		RunOnChangeOnly: true,
+		Hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{
 					Cmd: "printf 'should-not-run\\n' >> " + strconv.Quote(
@@ -1127,7 +1131,7 @@ func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(
 		},
 	}
 
-	actions, err := s.runPostHooks(ewh, watcher)
+	actions, err := s.RunPostHooks(ewh, watcher)
 	if err != nil {
 		t.Fatalf("runPostHooks returned error: %v", err)
 	}
@@ -1137,7 +1141,7 @@ func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(
 		)
 	}
 	if len(actions) != 1 || !actions[0].ReloadBrowser {
-		t.Fatalf("unexpected post hook actions: %#v", actions)
+		t.Fatalf("unexpected post hook Actions: %#v", actions)
 	}
 	if _, statErr := os.Stat(commandOut); !os.IsNotExist(statErr) {
 		t.Fatalf(
@@ -1152,10 +1156,10 @@ func TestRunPreHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 	defer watcher.Close()
 
 	changedPath := filepath.Join(t.TempDir(), "pre-error.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -1166,7 +1170,7 @@ func TestRunPreHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 		},
 	}
 
-	_, err := s.runPreHooks(ewh, watcher)
+	_, err := s.RunPreHooks(ewh, watcher)
 	if err == nil {
 		t.Fatal("expected pre-hook error")
 	}
@@ -1183,10 +1187,10 @@ func TestRunConcurrentHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 	defer watcher.Close()
 
 	changedPath := filepath.Join(t.TempDir(), "concurrent-error.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -1197,7 +1201,7 @@ func TestRunConcurrentHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 		},
 	}
 
-	_, err := s.runConcurrentHooks(ewh, watcher)
+	_, err := s.RunConcurrentHooks(ewh, watcher)
 	if err == nil {
 		t.Fatal("expected concurrent-hook error")
 	}
@@ -1217,10 +1221,10 @@ func TestRunPostHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 	defer watcher.Close()
 
 	changedPath := filepath.Join(t.TempDir(), "post-error.txt")
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -1231,7 +1235,7 @@ func TestRunPostHooks_ErrorIncludesStageAndChangedPath(t *testing.T) {
 		},
 	}
 
-	_, err := s.runPostHooks(ewh, watcher)
+	_, err := s.RunPostHooks(ewh, watcher)
 	if err == nil {
 		t.Fatal("expected post-hook error")
 	}
@@ -1256,10 +1260,10 @@ func TestFireNoWaitHooks_RunsAsyncCallbackAndCommand(t *testing.T) {
 
 	callbackDone := make(chan struct{}, 1)
 
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			ConcurrentNoWait: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -1274,7 +1278,7 @@ func TestFireNoWaitHooks_RunsAsyncCallbackAndCommand(t *testing.T) {
 		},
 	}
 
-	s.fireNoWaitHooks(ewh, watcher)
+	s.FireNoWaitHooks(ewh, watcher)
 
 	select {
 	case <-callbackDone:
@@ -1307,16 +1311,16 @@ func TestFireNoWaitHooks_CallbacksReceiveIndependentHookContexts(t *testing.T) {
 		t.Fatalf("failed writing changed file: %v", err)
 	}
 
-	s.concurrentNoWaitHookExecutionLimiter = make(chan struct{}, 2)
+	s.ConcurrentNoWaitHookExecutionLimiter = make(chan struct{}, 2)
 
 	receivedHookContexts := make(chan *wave.HookContext, 2)
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx: &wave.HookContext{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx: &wave.HookContext{
 			FilePath:         changedPath,
 			ChangedFilePaths: []string{changedPath},
 		},
-		hooks: &wave.SortedHooks{
+		Hooks: &wave.SortedHooks{
 			ConcurrentNoWait: []wave.OnChangeHook{
 				{
 					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
@@ -1334,7 +1338,7 @@ func TestFireNoWaitHooks_CallbacksReceiveIndependentHookContexts(t *testing.T) {
 		},
 	}
 
-	s.fireNoWaitHooks(ewh, watcher)
+	s.FireNoWaitHooks(ewh, watcher)
 
 	var firstHookContext *wave.HookContext
 	select {
@@ -1381,18 +1385,18 @@ func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(
 		t.Fatalf("failed writing changed file: %v", err)
 	}
 
-	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+	s.Cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
 		ConcurrentNoWaitCommandTimeoutMilliseconds: 100,
 	}
-	s.cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
+	s.Cfg.Watch.HookCallbackTimeouts = wave.HookCallbackTimeoutConfig{
 		ConcurrentNoWaitCallbackTimeoutMilliseconds: 100,
 	}
 
 	callbackDone := make(chan struct{}, 1)
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			ConcurrentNoWait: []wave.OnChangeHook{
 				{
 					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
@@ -1409,7 +1413,7 @@ func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(
 		},
 	}
 
-	s.fireNoWaitHooks(ewh, watcher)
+	s.FireNoWaitHooks(ewh, watcher)
 
 	select {
 	case <-callbackDone:
@@ -1424,9 +1428,9 @@ func TestFireNoWaitHooks_CleanupForRebuildCancelsInFlightHooks(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.watcher = watcher
-	s.builder = NewBuilder(s.cfg, newDiscardLogger())
-	defer s.builder.Close()
+	s.Watcher = watcher
+	s.Builder = toolingbuilder.NewBuilder(s.Cfg, newDiscardLogger())
+	defer s.Builder.Close()
 
 	changedPath := filepath.Join(t.TempDir(), "no-wait-cleanup-cancel.txt")
 	if err := os.WriteFile(changedPath, []byte("x"), 0o644); err != nil {
@@ -1435,10 +1439,10 @@ func TestFireNoWaitHooks_CleanupForRebuildCancelsInFlightHooks(t *testing.T) {
 
 	hookStarted := make(chan struct{}, 1)
 	hookCanceled := make(chan struct{}, 1)
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			ConcurrentNoWait: []wave.OnChangeHook{
 				{
 					Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
@@ -1455,7 +1459,7 @@ func TestFireNoWaitHooks_CleanupForRebuildCancelsInFlightHooks(t *testing.T) {
 		},
 	}
 
-	s.fireNoWaitHooks(ewh, watcher)
+	s.FireNoWaitHooks(ewh, watcher)
 
 	select {
 	case <-hookStarted:
@@ -1463,7 +1467,7 @@ func TestFireNoWaitHooks_CleanupForRebuildCancelsInFlightHooks(t *testing.T) {
 		t.Fatal("timed out waiting for no-wait hook to start")
 	}
 
-	s.cleanupForRebuild()
+	s.CleanupForRebuild()
 
 	select {
 	case <-hookCanceled:
@@ -1489,10 +1493,10 @@ func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(
 	var excludedHookRan atomic.Bool
 	failingHookCalled := make(chan struct{}, 1)
 
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			ConcurrentNoWait: []wave.OnChangeHook{
 				{
 					Exclude: []string{changedPath},
@@ -1512,7 +1516,7 @@ func TestFireNoWaitHooks_ExcludesMatchingHooksAndToleratesFailures(
 		},
 	}
 
-	s.fireNoWaitHooks(ewh, watcher)
+	s.FireNoWaitHooks(ewh, watcher)
 
 	select {
 	case <-failingHookCalled:
@@ -1535,8 +1539,8 @@ func TestFireNoWaitHooks_CommandTimeoutUsesConcurrentNoWaitStageSetting(
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	s.concurrentNoWaitHookExecutionLimiter = make(chan struct{}, 1)
-	s.cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
+	s.ConcurrentNoWaitHookExecutionLimiter = make(chan struct{}, 1)
+	s.Cfg.Watch.HookCommandTimeouts = wave.HookCommandTimeoutConfig{
 		ConcurrentNoWaitCommandTimeoutMilliseconds: 100,
 	}
 
@@ -1545,10 +1549,10 @@ func TestFireNoWaitHooks_CommandTimeoutUsesConcurrentNoWaitStageSetting(
 		t.TempDir(),
 		"concurrent-no-wait-second-hook-ran.txt",
 	)
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			ConcurrentNoWait: []wave.OnChangeHook{
 				{Cmd: "sleep 2"},
 				{
@@ -1561,7 +1565,7 @@ func TestFireNoWaitHooks_CommandTimeoutUsesConcurrentNoWaitStageSetting(
 	}
 
 	stageExecutionStartTime := time.Now()
-	s.fireNoWaitHooks(ewh, watcher)
+	s.FireNoWaitHooks(ewh, watcher)
 
 	for {
 		if _, statErr := os.Stat(secondHookRanMarkerPath); statErr == nil {
@@ -1592,10 +1596,10 @@ func TestFireNoWaitHooks_CallbackPanicDoesNotStopOtherHooks(t *testing.T) {
 	panicHookCalled := make(chan struct{}, 1)
 	followUpHookCalled := make(chan struct{}, 1)
 
-	ewh := eventWithHooks{
-		classified: classifiedEvent{event: waveEvent(changedPath)},
-		hookCtx:    &wave.HookContext{FilePath: changedPath},
-		hooks: &wave.SortedHooks{
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+		HookCtx:    &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
 			ConcurrentNoWait: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -1613,7 +1617,7 @@ func TestFireNoWaitHooks_CallbackPanicDoesNotStopOtherHooks(t *testing.T) {
 		},
 	}
 
-	s.fireNoWaitHooks(ewh, watcher)
+	s.FireNoWaitHooks(ewh, watcher)
 
 	select {
 	case <-panicHookCalled:
@@ -1646,7 +1650,7 @@ func TestFireNoWaitHooksForEvents_SkipsDuplicateHooks(t *testing.T) {
 	var firstCallbackCount int32
 	var duplicateCallbackCount int32
 
-	eventsWithHooks := []eventWithHooks{
+	eventsWithHooks := []devserver.EventWithHooks{
 		newEventWithHooksForStageExecutionTest(
 			firstPath,
 			&wave.SortedHooks{
@@ -1687,7 +1691,7 @@ func TestFireNoWaitHooksForEvents_SkipsDuplicateHooks(t *testing.T) {
 		),
 	}
 
-	s.fireNoWaitHooksForEvents(eventsWithHooks, watcher)
+	s.FireNoWaitHooksForEvents(eventsWithHooks, watcher)
 
 	waitDeadline := time.Now().Add(700 * time.Millisecond)
 	for atomic.LoadInt32(&firstCallbackCount) != 1 {
@@ -1753,7 +1757,7 @@ func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 	var duplicateCallbackCount int32
 	var thirdCallbackCount int32
 
-	eventsWithHooks := []eventWithHooks{
+	eventsWithHooks := []devserver.EventWithHooks{
 		newEventWithHooksForStageExecutionTest(
 			firstPath,
 			&wave.SortedHooks{
@@ -1798,7 +1802,7 @@ func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 		),
 	}
 
-	actions := s.runPreHooksForEvents(eventsWithHooks, &workSet{}, watcher)
+	actions := s.RunPreHooksForEvents(eventsWithHooks, &devserver.WorkSet{}, watcher)
 	if len(actions) != 2 {
 		t.Fatalf("pre action count=%d, want 2", len(actions))
 	}
@@ -1849,7 +1853,7 @@ func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 	var duplicateCallbackCount int32
 	var thirdCallbackCount int32
 
-	eventsWithHooks := []eventWithHooks{
+	eventsWithHooks := []devserver.EventWithHooks{
 		newEventWithHooksForStageExecutionTest(
 			firstPath,
 			&wave.SortedHooks{
@@ -1895,7 +1899,7 @@ func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 		),
 	}
 
-	actions := s.runConcurrentHooksForEvents(eventsWithHooks, watcher)
+	actions := s.RunConcurrentHooksForEvents(eventsWithHooks, watcher)
 	if len(actions) != 2 {
 		t.Fatalf("concurrent action count=%d, want 2", len(actions))
 	}
@@ -1946,7 +1950,7 @@ func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 	var duplicateCallbackCount int32
 	var thirdCallbackCount int32
 
-	eventsWithHooks := []eventWithHooks{
+	eventsWithHooks := []devserver.EventWithHooks{
 		newEventWithHooksForStageExecutionTest(
 			firstPath,
 			&wave.SortedHooks{
@@ -1991,7 +1995,7 @@ func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 		),
 	}
 
-	actions := s.runPostHooksForEvents(eventsWithHooks, watcher)
+	actions := s.RunPostHooksForEvents(eventsWithHooks, watcher)
 	if len(actions) != 2 {
 		t.Fatalf("post action count=%d, want 2", len(actions))
 	}
@@ -2031,15 +2035,15 @@ func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:       waveEvent(filepath.Join(t.TempDir(), "file.txt")),
-			fileType:    fileTypeOther,
-			watchedFile: &wave.WatchedFile{},
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:       waveEvent(filepath.Join(t.TempDir(), "file.txt")),
+			FileType:    devserver.FileTypeOther,
+			WatchedFile: &wave.WatchedFile{},
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -2048,14 +2052,14 @@ func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 				},
 			},
 		},
-		runOnChangeOnly: false,
-		needsHardReload: false,
+		RunOnChangeOnly: false,
+		NeedsHardReload: false,
 	}
 
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
@@ -2065,7 +2069,7 @@ func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 		s,
 		200*time.Millisecond,
 	)
-	if pendingRestartRequest.recompileGo {
+	if pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected no-go restart from prehook action, got %#v",
 			pendingRestartRequest,
@@ -2079,14 +2083,14 @@ func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:    waveEvent(filepath.Join(t.TempDir(), "file.txt")),
-			fileType: fileTypeOther,
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:    waveEvent(filepath.Join(t.TempDir(), "file.txt")),
+			FileType: devserver.FileTypeOther,
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -2098,14 +2102,14 @@ func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(
 				},
 			},
 		},
-		runOnChangeOnly: false,
-		needsHardReload: false,
+		RunOnChangeOnly: false,
+		NeedsHardReload: false,
 	}
 
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
@@ -2115,7 +2119,7 @@ func TestProcessSingleEvent_ConcurrentRestartCanRequestGoRecompile(
 		s,
 		200*time.Millisecond,
 	)
-	if !pendingRestartRequest.recompileGo {
+	if !pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected Go recompilation restart, got %#v",
 			pendingRestartRequest,
@@ -2156,24 +2160,24 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesFrameworkFileMapTS(
 		t.Fatalf("failed writing private file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:     cfg,
-		log:     newDiscardLogger(),
-		builder: builder,
+	s := &devserver.Server{
+		Cfg:     cfg,
+		Log:     newDiscardLogger(),
+		Builder: builder,
 	}
 
-	work := &workSet{
-		build: buildPhaseDecision{
-			processPublicFiles:  true,
-			processPrivateFiles: true,
-			buildCriticalCSS:    true,
-			buildNormalCSS:      true,
+	work := &devserver.WorkSet{
+		Build: devserver.BuildPhaseDecision{
+			ProcessPublicFiles:  true,
+			ProcessPrivateFiles: true,
+			BuildCriticalCSS:    true,
+			BuildNormalCSS:      true,
 		},
 	}
-	if err := s.executeBuildPhase(work); err != nil {
+	if err := s.ExecuteBuildPhase(work); err != nil {
 		t.Fatalf("executeBuildPhase returned error: %v", err)
 	}
 
@@ -2205,21 +2209,21 @@ func TestExecuteBuildPhase_CompileGoErrorIsReturned(t *testing.T) {
 	cfg.Core.ServerOnlyMode = true
 	cfg.Core.MainAppEntry = "missing/package/for/compile"
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:     cfg,
-		log:     newDiscardLogger(),
-		builder: builder,
+	s := &devserver.Server{
+		Cfg:     cfg,
+		Log:     newDiscardLogger(),
+		Builder: builder,
 	}
 
-	work := &workSet{
-		build: buildPhaseDecision{
-			compileGo: true,
+	work := &devserver.WorkSet{
+		Build: devserver.BuildPhaseDecision{
+			CompileGo: true,
 		},
 	}
-	if err := s.executeBuildPhase(work); err == nil {
+	if err := s.ExecuteBuildPhase(work); err == nil {
 		t.Fatal("expected compile-go build phase error")
 	}
 }
@@ -2228,21 +2232,21 @@ func TestExecuteBuildPhase_WithNilBuilderReturnsError(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	work := &workSet{
-		build: buildPhaseDecision{
-			compileGo:           true,
-			processPublicFiles:  true,
-			processPrivateFiles: true,
-			buildCriticalCSS:    true,
-			buildNormalCSS:      true,
+	work := &devserver.WorkSet{
+		Build: devserver.BuildPhaseDecision{
+			CompileGo:           true,
+			ProcessPublicFiles:  true,
+			ProcessPrivateFiles: true,
+			BuildCriticalCSS:    true,
+			BuildNormalCSS:      true,
 		},
 	}
-	if err := s.executeBuildPhase(work); err == nil {
+	if err := s.ExecuteBuildPhase(work); err == nil {
 		t.Fatal("expected nil-builder build phase error")
 	}
 }
@@ -2254,17 +2258,17 @@ func TestExecuteHookExecutionPlan_CallbackPanicReturnsErrorAndSkipsCommand(
 	defer watcher.Close()
 
 	commandOutputPath := filepath.Join(t.TempDir(), "hook-command-output.log")
-	hookPlan := hookExecutionPlan{
-		callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+	hookPlan := devserver.HookExecutionPlan{
+		Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
 			panic("expected panic from hook callback")
 		},
-		command: "printf 'command should not run\\n' >> " + strconv.Quote(
+		Command: "printf 'command should not run\\n' >> " + strconv.Quote(
 			commandOutputPath,
 		),
 	}
 
-	action, err := s.executeHookExecutionPlan(
-		hookStageTypePre,
+	action, err := s.ExecuteHookExecutionPlan(
+		devserver.HookStageTypePre,
 		hookPlan,
 		&wave.HookContext{},
 	)
@@ -2289,13 +2293,13 @@ func TestExecuteBuildPhase_WithNilBuilderAndNoBuildWorkReturnsNil(
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	work := &workSet{}
-	if err := s.executeBuildPhase(work); err != nil {
+	work := &devserver.WorkSet{}
+	if err := s.ExecuteBuildPhase(work); err != nil {
 		t.Fatalf("expected no-op build phase to return nil, got %v", err)
 	}
 }
@@ -2304,12 +2308,12 @@ func TestExecuteBuildPhase_WithNilWorkSetReturnsNil(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	if err := s.executeBuildPhase(nil); err != nil {
+	if err := s.ExecuteBuildPhase(nil); err != nil {
 		t.Fatalf("expected nil workset to return nil, got %v", err)
 	}
 }
@@ -2340,21 +2344,21 @@ func TestExecuteBuildPhase_WritePublicFileMapTSErrorIsReturned(t *testing.T) {
 		t.Fatalf("failed writing public static file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:     cfg,
-		log:     newDiscardLogger(),
-		builder: builder,
+	s := &devserver.Server{
+		Cfg:     cfg,
+		Log:     newDiscardLogger(),
+		Builder: builder,
 	}
 
-	work := &workSet{
-		build: buildPhaseDecision{
-			processPublicFiles: true,
+	work := &devserver.WorkSet{
+		Build: devserver.BuildPhaseDecision{
+			ProcessPublicFiles: true,
 		},
 	}
-	if err := s.executeBuildPhase(work); err == nil {
+	if err := s.ExecuteBuildPhase(work); err == nil {
 		t.Fatal("expected framework file map write error from build phase")
 	}
 
@@ -2384,7 +2388,7 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		},
 	}
 
-	excludedHook, excludedHookShouldRun := resolveHookForStageExecution(
+	excludedHook, excludedHookShouldRun := devserver.ResolveHookForStageExecution(
 		watcher,
 		changedPath,
 		false,
@@ -2398,7 +2402,7 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		)
 	}
 
-	stageHookWithoutRunOnChangeRules, stageHookWithoutRunOnChangeRulesShouldRun := resolveHookForStageExecution(
+	stageHookWithoutRunOnChangeRules, stageHookWithoutRunOnChangeRulesShouldRun := devserver.ResolveHookForStageExecution(
 		watcher,
 		changedPath,
 		true,
@@ -2417,7 +2421,7 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		)
 	}
 
-	commandOnlyHook, commandOnlyHookShouldRun := resolveHookForStageExecution(
+	commandOnlyHook, commandOnlyHookShouldRun := devserver.ResolveHookForStageExecution(
 		watcher,
 		changedPath,
 		true,
@@ -2431,7 +2435,7 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		)
 	}
 
-	callbackAndCommandHook, callbackAndCommandHookShouldRun := resolveHookForStageExecution(
+	callbackAndCommandHook, callbackAndCommandHookShouldRun := devserver.ResolveHookForStageExecution(
 		watcher,
 		changedPath,
 		true,
@@ -2457,7 +2461,7 @@ func TestResolveHookForStageExecution(t *testing.T) {
 		)
 	}
 
-	normalStageHook, normalStageHookShouldRun := resolveHookForStageExecution(
+	normalStageHook, normalStageHookShouldRun := devserver.ResolveHookForStageExecution(
 		watcher,
 		changedPath,
 		false,
@@ -2507,7 +2511,7 @@ func TestDeriveExecutableHooksForStage(t *testing.T) {
 	t.Run(
 		"stage without run-on-change-only rules keeps command hooks",
 		func(t *testing.T) {
-			hooksForExecution := deriveExecutableHooksForStage(
+			hooksForExecution := devserver.DeriveExecutableHooksForStage(
 				watcher,
 				changedPath,
 				true,
@@ -2544,7 +2548,7 @@ func TestDeriveExecutableHooksForStage(t *testing.T) {
 	t.Run(
 		"run-on-change-only stage strips command fields and drops command-only hooks",
 		func(t *testing.T) {
-			hooksForExecution := deriveExecutableHooksForStage(
+			hooksForExecution := devserver.DeriveExecutableHooksForStage(
 				watcher,
 				changedPath,
 				true,
@@ -2576,7 +2580,7 @@ func TestDeriveExecutableHooksForStage(t *testing.T) {
 	t.Run(
 		"run-on-change-only disabled keeps command-only hooks even when stage applies rules",
 		func(t *testing.T) {
-			hooksForExecution := deriveExecutableHooksForStage(
+			hooksForExecution := devserver.DeriveExecutableHooksForStage(
 				watcher,
 				changedPath,
 				false,
@@ -2613,16 +2617,16 @@ func newEventWithHooksForStageExecutionTest(
 	filePath string,
 	hooks *wave.SortedHooks,
 	skipDuplicateHooks bool,
-) eventWithHooks {
-	return eventWithHooks{
-		classified: classifiedEvent{
-			event:    waveEvent(filePath),
-			fileType: fileTypeOther,
+) devserver.EventWithHooks {
+	return devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:    waveEvent(filePath),
+			FileType: devserver.FileTypeOther,
 		},
-		hookCtx: &wave.HookContext{
+		HookCtx: &wave.HookContext{
 			FilePath: filePath,
 		},
-		hooks:              hooks,
-		skipDuplicateHooks: skipDuplicateHooks,
+		Hooks:              hooks,
+		SkipDuplicateHooks: skipDuplicateHooks,
 	}
 }

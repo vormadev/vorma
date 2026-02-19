@@ -2,6 +2,8 @@ package tooling
 
 import (
 	"fmt"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +50,7 @@ func TestFlexibilityContract_WatchExcludeDirsExcludesDirectoryTree(t *testing.T)
 		t.Fatalf("failed creating allowed test directory: %v", err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -65,17 +67,17 @@ func TestFlexibilityContract_WatchExcludeDirsExcludesDirectoryTree(t *testing.T)
 		t.Fatalf("expected nested directory %q to be ignored by Watch.Exclude.Dirs", generatedNestedDir)
 	}
 
-	if _, ok := watcher.watchedDirs.Load(watcher.norm(generatedDir)); ok {
+	if watcher.IsWatchingDir(generatedDir) {
 		t.Fatalf("did not expect excluded directory to be watched: %q", generatedDir)
 	}
-	if _, ok := watcher.watchedDirs.Load(watcher.norm(generatedNestedDir)); ok {
+	if watcher.IsWatchingDir(generatedNestedDir) {
 		t.Fatalf("did not expect nested excluded directory to be watched: %q", generatedNestedDir)
 	}
 
 	if watcher.IsIgnoredDir(allowedDir) {
-		t.Fatalf("did not expect non-excluded directory to be ignored: %q", allowedDir)
+		t.Fatalf("did not expect non-excluded directory to be Ignored: %q", allowedDir)
 	}
-	if _, ok := watcher.watchedDirs.Load(watcher.norm(allowedDir)); !ok {
+	if !watcher.IsWatchingDir(allowedDir) {
 		t.Fatalf("expected non-excluded directory to be watched: %q", allowedDir)
 	}
 }
@@ -92,7 +94,7 @@ func TestFlexibilityContract_AbsoluteWatchIncludePatternMatches(t *testing.T) {
 		},
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -124,16 +126,16 @@ func TestFlexibilityContract_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 			pathShapeCaseForRun configEventPathShapeCase,
 		) {
 			cfg, _, configFilePath := setupConfigEventTestConfig(t)
-			if configMutationCaseForRun.prepareEvent != nil {
-				configMutationCaseForRun.prepareEvent(t, configFilePath)
+			if configMutationCaseForRun.PrepareEvent != nil {
+				configMutationCaseForRun.PrepareEvent(t, configFilePath)
 			}
 
 			s := setupProcessEventsServerForToolingTests(t, cfg)
 
-			configEventPath := pathShapeCaseForRun.buildPath(t, configFilePath)
-			s.processEvents([]fsnotify.Event{{
+			configEventPath := pathShapeCaseForRun.BuildPath(t, configFilePath)
+			s.ProcessEvents([]fsnotify.Event{{
 				Name: configEventPath,
-				Op:   configMutationCaseForRun.op,
+				Op:   configMutationCaseForRun.Op,
 			}})
 
 			pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
@@ -141,11 +143,11 @@ func TestFlexibilityContract_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 				s,
 				200*time.Millisecond,
 			)
-			if !pendingRestartRequest.isConfigRestart || !pendingRestartRequest.recompileGo {
+			if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
 				t.Fatalf(
 					"expected config restart with Go recompile on config %s/%s, got %#v",
-					configMutationCaseForRun.name,
-					pathShapeCaseForRun.name,
+					configMutationCaseForRun.Name,
+					pathShapeCaseForRun.Name,
 					pendingRestartRequest,
 				)
 			}
@@ -175,7 +177,7 @@ func TestFlexibilityContract_ViteDevBuildHonorsCmdDirAndConfigFile(t *testing.T)
 		ViteConfigFile:          "./vite.custom.config.ts",
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	viteContext, err := builder.NewViteDevContext()

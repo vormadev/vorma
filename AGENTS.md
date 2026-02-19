@@ -1,21 +1,20 @@
-## Path Hygiene
+## Go Rules
 
-- Never, ever commit machine-specific absolute paths (for example, `/Users/...`)
-  into repository files.
-- Use repository-relative paths in docs and instructions.
+### One Source Code File Per Package, Between 200 and 2000 Lines
 
-## Formatting
+Every package must have precisely one source code file between 200 lines and
+2000 lines. If it's over 2000 lines, it needs to be split into subpackages, and
+if those are still over 2000 lines, they need to be split into sub-subpackages.
+If it's under 200 lines, it is too small to be its own package. The only
+exceptions to this are certain `kit` packages that do legitimately make sense as
+tiny standalone packages of fewer than 200 lines, such as `lazyget`.
 
-- After editing any files formattable by Prettier (including, without
-  limitation, `.ts`, `.tsx`, `.json` and `.md` files), always run
-  `pnpm prettier` on the files.
+### Never Alias Go Package Names
 
-## No Conversational or Changelog Comments
+If you find yourself needing to alias a Go package name at import, you picked
+the wrong name. Go back to the drawing board.
 
-It is prohibited to add conversational or changelog comments to source code
-files.
-
-## No Builder Patterns In Go
+### No Builder Patterns
 
 Builder-pattern APIs are prohibited in Go code.
 
@@ -25,7 +24,7 @@ Builder-pattern APIs are prohibited in Go code.
   construction.
 - Prefer explicit struct literals, plain functions, and explicit option structs.
 
-## Function Formatting
+### Function Formatting
 
 Functions with many parameters shall format such parameters vertically, like so:
 
@@ -38,7 +37,23 @@ func someFuncWithManyArgsFormattedVertically(
 )
 ```
 
-## TypeScript Faux Named Params
+### Do Not Add `doc.go` GoDoc Files.
+
+Just put package-level docs into whatever the main entry file for that Go
+package is. I don't want this repo littered with `doc.go` files.
+
+### Kitchen-Sink Utils or Shared Packages Are Fine
+
+If they legitimately help with package boundaries, organization, and
+import-cycle-avoidance, then having a shared kitchen-sick types and/or utils
+package is perfectly fine, as long as they stay out of the core public
+entrypoints for end users. I don't care that this is non-idioamatic Go. It's
+fine, and it's far better than creating awkwardly-named, hyper-focused Go
+packages just for purity's sake.
+
+## TypeScript Rules
+
+### Faux Named Params
 
 For internal/private TypeScript implementation code, function signatures that
 take multiple parameters of the same type are prohibited because they are
@@ -58,6 +73,23 @@ order-fragile and unclear at callsites.
   that are near-impossible to get wrong such as `setItem(key, value)`.
   Additionally, no need to follow this for compare functions where order doesn't
   actually matter.
+
+## Path Hygiene
+
+- Never, ever commit machine-specific absolute paths (for example, `/Users/...`)
+  into repository files.
+- Use repository-relative paths in docs and instructions.
+
+## Formatting
+
+- After editing any files formattable by Prettier (including, without
+  limitation, `.ts`, `.tsx`, `.json` and `.md` files), always run
+  `pnpm prettier` on the files.
+
+## No Conversational or Changelog Comments
+
+It is prohibited to add conversational or changelog comments to source code
+files.
 
 ## Report All Issues. No Severity Labels. Never Triage.
 
@@ -178,11 +210,6 @@ just go directly to the desired end state instead. Just finish the job and do it
 right. Incrementalism is riskier than large refactors, because incrementalism
 has a way of sticking around forever and killing codebases little by little.
 
-## Do Not Add `doc.go` GoDoc Files.
-
-Just put package-level docs into whatever the main entry file for that Go
-package is. I don't want this repo littered with `doc.go` files.
-
 ## Write Clear Comments For All Internal and External Symbols
 
 Don't go overboard, but always include the amount of comments appropriate to
@@ -192,11 +219,6 @@ never backward-looking, temporal, changelog style, or conversational. Humans
 can't read 10 documents instantly to quickly accumulate context the way you can.
 Help us out.
 
-## Small Packages With Clear Boundaries And Explicit Responsibilities Are Good
-
-Prefer small packages with very clear boundaries and high testability to large
-monolithic packages with lots of concerns.
-
 ## GoDocs / Package Comments Should Be Explanatory, Not Just Descriptive
 
 Don't just state what a package does when writing package-level docs or
@@ -204,20 +226,6 @@ comments. Explain why it is needed at all and what it's useful for, and what
 problems you would have if it didn't exist, and who the intended consumers are.
 Assume the reader is new to the codebase and doesn't have a deep understanding
 of neighboring code.
-
-## Do Not Create Tiny Files
-
-With some obvious exceptions, if you find any file with less than 200 lines, it
-does not deserve to be in its own file. Find a better place for it so it can be
-read in context with the bigger picture.
-
-## Every Package Should Have Three or Fewer Files -- Ideally One
-
-Every package should have three or fewer files. If they get too long or unruly,
-then that's a signal you need to break down into multiple packages. This applies
-to both Go and TypeScript. In a perfect world, each package should actually be
-one file, but use common sense as to whether that's better or worse than having
-having two or three files in the package.
 
 ## Do Not Write Stuffy, Enterprise-Style Code
 

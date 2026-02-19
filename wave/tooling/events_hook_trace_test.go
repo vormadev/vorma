@@ -3,6 +3,8 @@ package tooling
 import (
 	"bytes"
 	"errors"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"log/slog"
 	"strings"
 	"testing"
@@ -12,24 +14,24 @@ import (
 
 func TestRunSequentialHookStageForEligibleEventsWithErrors_LogsTraceFields(t *testing.T) {
 	var hookStageLogBuffer bytes.Buffer
-	s := &server{
-		log: slog.New(slog.NewTextHandler(&hookStageLogBuffer, nil)),
+	s := &devserver.Server{
+		Log: slog.New(slog.NewTextHandler(&hookStageLogBuffer, nil)),
 	}
-	s.setCurrentWatcherExecutionTraceContext(
-		watcherExecutionTraceContext{cycleID: 7, batchID: 3},
+	s.SetCurrentWatcherExecutionTraceContext(
+		devserver.WatcherExecutionTraceContext{CycleID: 7, BatchID: 3},
 	)
-	defer s.clearCurrentWatcherExecutionTraceContext()
+	defer s.ClearCurrentWatcherExecutionTraceContext()
 
-	_, stageExecutionErrors := s.runSequentialHookStageForEligibleEventsWithErrors(
-		[]eventWithHooks{
+	_, stageExecutionErrors := s.RunSequentialHookStageForEligibleEventsWithErrors(
+		[]devserver.EventWithHooks{
 			{
-				classified: classifiedEvent{
-					event: waveEvent("changed.txt"),
+				Classified: devserver.ClassifiedEvent{
+					Event: waveEvent("changed.txt"),
 				},
 			},
 		},
 		nil,
-		func(eventWithHooks, *watcher) ([]wave.RefreshAction, error) {
+		func(devserver.EventWithHooks, *watch.Watcher) ([]wave.RefreshAction, error) {
 			return nil, errors.New("synthetic stage failure")
 		},
 		"Pre-hook execution failed",

@@ -1,6 +1,10 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -13,14 +17,14 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
-	"github.com/vormadev/vorma/wave/internal/pathnorm"
-	"github.com/vormadev/vorma/wave/tooling/internal/watchereventdedup"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
+	"github.com/vormadev/vorma/wave/tooling/watch/dedup"
 )
 
 func TestDeduplicateWatcherEventsByPath(
 	t *testing.T,
 ) {
-	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := dedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: "b.go", Op: fsnotify.Create},
 		{Name: "a.go", Op: fsnotify.Write},
 		{Name: "b.go", Op: fsnotify.Write},
@@ -46,7 +50,7 @@ func TestDeduplicateWatcherEventsByPath(
 func TestDeduplicateWatcherEventsByPathMergesAllOps(
 	t *testing.T,
 ) {
-	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := dedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: "a.go", Op: fsnotify.Create},
 		{Name: "a.go", Op: fsnotify.Write},
 		{Name: "a.go", Op: fsnotify.Remove},
@@ -73,7 +77,7 @@ func TestDeduplicateWatcherEventsByPath_NormalizesPathShapeVariants(
 	canonicalPath := filepath.Join(root, "backend", "main.go")
 	pathWithDotSegment := filepath.Join(root, "backend", ".", "main.go")
 
-	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := dedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: canonicalPath, Op: fsnotify.Create},
 		{Name: pathWithDotSegment, Op: fsnotify.Write},
 	})
@@ -108,7 +112,7 @@ func TestDeduplicateWatcherEventsByPath_MergesSymlinkAliasPaths(
 		t.Fatalf("failed creating directory symlink: %v", err)
 	}
 
-	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := dedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: aliasFilePath, Op: fsnotify.Create},
 		{Name: targetFilePath, Op: fsnotify.Write},
 	})
@@ -116,7 +120,7 @@ func TestDeduplicateWatcherEventsByPath_MergesSymlinkAliasPaths(
 	if len(deduplicatedEvents) != 1 {
 		t.Fatalf("deduplicated event count = %d, want 1", len(deduplicatedEvents))
 	}
-	if !pathnorm.PathsReferToSameLocation(deduplicatedEvents[0].Name, targetFilePath) {
+	if !waveshared.PathsReferToSameLocation(deduplicatedEvents[0].Name, targetFilePath) {
 		t.Fatalf(
 			"expected deduplicated path %q to refer to same location as %q",
 			deduplicatedEvents[0].Name,
@@ -144,7 +148,7 @@ func TestDeduplicateWatcherEventsByPath_MergesMissingFileAliasPaths(
 		t.Fatalf("failed creating directory symlink: %v", err)
 	}
 
-	deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
+	deduplicatedEvents := dedup.DeduplicateWatcherEventsByPath([]fsnotify.Event{
 		{Name: aliasMissingFilePath, Op: fsnotify.Remove},
 		{Name: targetMissingFilePath, Op: fsnotify.Remove},
 	})
@@ -155,8 +159,8 @@ func TestDeduplicateWatcherEventsByPath_MergesMissingFileAliasPaths(
 	if !deduplicatedEvents[0].Has(fsnotify.Remove) {
 		t.Fatalf("deduplicated op = %v, want remove", deduplicatedEvents[0].Op)
 	}
-	deduplicatedAliasKey := watchereventdedup.MissingFileAliasKeyForWatcherEventDeduplication(deduplicatedEvents[0].Name)
-	targetAliasKey := watchereventdedup.MissingFileAliasKeyForWatcherEventDeduplication(targetMissingFilePath)
+	deduplicatedAliasKey := dedup.MissingFileAliasKeyForWatcherEventDeduplication(deduplicatedEvents[0].Name)
+	targetAliasKey := dedup.MissingFileAliasKeyForWatcherEventDeduplication(targetMissingFilePath)
 	if deduplicatedAliasKey == "" || targetAliasKey == "" || deduplicatedAliasKey != targetAliasKey {
 		t.Fatalf(
 			"expected deduplicated path %q to resolve to same missing file alias key as %q",
@@ -186,49 +190,49 @@ func TestDeduplicateWatcherEventsByPath_PrefersFirstSeenAliasPathKey(
 	}
 
 	testCases := []struct {
-		name             string
-		events           []fsnotify.Event
-		expectedPathKey  string
-		expectedEventOps fsnotify.Op
+		Name             string
+		Events           []fsnotify.Event
+		ExpectedPathKey  string
+		ExpectedEventOps fsnotify.Op
 	}{
 		{
-			name: "alias key wins when alias appears first",
-			events: []fsnotify.Event{
+			Name: "alias key wins when alias appears first",
+			Events: []fsnotify.Event{
 				{Name: aliasFilePath, Op: fsnotify.Create},
 				{Name: targetFilePath, Op: fsnotify.Write},
 			},
-			expectedPathKey:  pathnorm.Absolute(aliasFilePath),
-			expectedEventOps: fsnotify.Create | fsnotify.Write,
+			ExpectedPathKey:  waveshared.Absolute(aliasFilePath),
+			ExpectedEventOps: fsnotify.Create | fsnotify.Write,
 		},
 		{
-			name: "target key wins when target appears first",
-			events: []fsnotify.Event{
+			Name: "target key wins when target appears first",
+			Events: []fsnotify.Event{
 				{Name: targetFilePath, Op: fsnotify.Create},
 				{Name: aliasFilePath, Op: fsnotify.Write},
 			},
-			expectedPathKey:  pathnorm.Absolute(targetFilePath),
-			expectedEventOps: fsnotify.Create | fsnotify.Write,
+			ExpectedPathKey:  waveshared.Absolute(targetFilePath),
+			ExpectedEventOps: fsnotify.Create | fsnotify.Write,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath(testCase.events)
+		t.Run(testCase.Name, func(t *testing.T) {
+			deduplicatedEvents := dedup.DeduplicateWatcherEventsByPath(testCase.Events)
 			if len(deduplicatedEvents) != 1 {
 				t.Fatalf("deduplicated event count = %d, want 1", len(deduplicatedEvents))
 			}
-			if deduplicatedEvents[0].Name != testCase.expectedPathKey {
+			if deduplicatedEvents[0].Name != testCase.ExpectedPathKey {
 				t.Fatalf(
 					"deduplicated path key = %q, want %q",
 					deduplicatedEvents[0].Name,
-					testCase.expectedPathKey,
+					testCase.ExpectedPathKey,
 				)
 			}
-			if deduplicatedEvents[0].Op != testCase.expectedEventOps {
+			if deduplicatedEvents[0].Op != testCase.ExpectedEventOps {
 				t.Fatalf(
 					"deduplicated event ops = %v, want %v",
 					deduplicatedEvents[0].Op,
-					testCase.expectedEventOps,
+					testCase.ExpectedEventOps,
 				)
 			}
 		})
@@ -255,9 +259,9 @@ func TestWatcherEventDeduplicationIndex_MemoizesCanonicalAndAliasResolution(
 		t.Fatalf("failed creating directory symlink: %v", err)
 	}
 
-	index := watchereventdedup.NewWatcherEventDeduplicationIndex()
-	absoluteAliasFilePath := pathnorm.Absolute(aliasFilePath)
-	absoluteAliasMissingFilePath := pathnorm.Absolute(aliasMissingFilePath)
+	index := dedup.NewWatcherEventDeduplicationIndex()
+	absoluteAliasFilePath := waveshared.Absolute(aliasFilePath)
+	absoluteAliasMissingFilePath := waveshared.Absolute(aliasMissingFilePath)
 
 	canonicalPathFirst := index.ResolveCanonicalPathForAbsolutePath(absoluteAliasFilePath)
 	canonicalPathSecond := index.ResolveCanonicalPathForAbsolutePath(absoluteAliasFilePath)
@@ -297,10 +301,10 @@ func TestWatcherEventDeduplicationIndex_MemoizesCanonicalAndAliasResolution(
 	if rootAliasKey != "" {
 		t.Fatalf("expected empty alias key for root path, got %q", rootAliasKey)
 	}
-	if cachedRootAliasKey := index.MissingAliasKeyByAbsolutePath[string(filepath.Separator)]; cachedRootAliasKey != watchereventdedup.MissingAliasKeyResolutionEmptySentinel {
+	if cachedRootAliasKey := index.MissingAliasKeyByAbsolutePath[string(filepath.Separator)]; cachedRootAliasKey != dedup.MissingAliasKeyResolutionEmptySentinel {
 		t.Fatalf(
 			"expected root path to cache empty alias sentinel %q, got %q",
-			watchereventdedup.MissingAliasKeyResolutionEmptySentinel,
+			dedup.MissingAliasKeyResolutionEmptySentinel,
 			cachedRootAliasKey,
 		)
 	}
@@ -309,7 +313,7 @@ func TestWatcherEventDeduplicationIndex_MemoizesCanonicalAndAliasResolution(
 func TestWatcherEventDeduplicationIndex_ProbeResolutionMissesKeepCachesStable(
 	t *testing.T,
 ) {
-	index := watchereventdedup.NewWatcherEventDeduplicationIndex()
+	index := dedup.NewWatcherEventDeduplicationIndex()
 	mergedEventOpsByPath := make(map[string]fsnotify.Op)
 
 	if existingPathKey := index.ResolveExistingPathKey(mergedEventOpsByPath, "relative/file.css"); existingPathKey != "" {
@@ -358,10 +362,10 @@ func TestWatcherEventDeduplicationIndex_RecordPathKeyPreservesFirstSeenProbePath
 		t.Fatalf("failed creating second alias symlink: %v", err)
 	}
 
-	index := watchereventdedup.NewWatcherEventDeduplicationIndex()
+	index := dedup.NewWatcherEventDeduplicationIndex()
 
-	firstCanonicalAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathA, "styles.css"))
-	secondCanonicalAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathB, "styles.css"))
+	firstCanonicalAliasPath := waveshared.Absolute(filepath.Join(aliasDirectoryPathA, "styles.css"))
+	secondCanonicalAliasPath := waveshared.Absolute(filepath.Join(aliasDirectoryPathB, "styles.css"))
 	index.RecordPathKey(firstCanonicalAliasPath)
 	index.RecordPathKey(secondCanonicalAliasPath)
 
@@ -377,8 +381,8 @@ func TestWatcherEventDeduplicationIndex_RecordPathKeyPreservesFirstSeenProbePath
 		)
 	}
 
-	firstMissingAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathA, "missing.css"))
-	secondMissingAliasPath := pathnorm.Absolute(filepath.Join(aliasDirectoryPathB, "missing.css"))
+	firstMissingAliasPath := waveshared.Absolute(filepath.Join(aliasDirectoryPathA, "missing.css"))
+	secondMissingAliasPath := waveshared.Absolute(filepath.Join(aliasDirectoryPathB, "missing.css"))
 	index.RecordPathKey(firstMissingAliasPath)
 	index.RecordPathKey(secondMissingAliasPath)
 
@@ -400,36 +404,36 @@ func TestNormalizeWatcherEventPathForDeduplication_PathShapes(t *testing.T) {
 	absolutePathWithDotSegment := filepath.Join(root, "backend", ".", "main.go")
 
 	testCases := []struct {
-		name         string
-		rawPath      string
-		expectedPath string
+		Name         string
+		RawPath      string
+		ExpectedPath string
 	}{
 		{
-			name:         "empty path remains empty",
-			rawPath:      "   ",
-			expectedPath: "",
+			Name:         "empty path remains empty",
+			RawPath:      "   ",
+			ExpectedPath: "",
 		},
 		{
-			name:         "relative path is trimmed and cleaned without absolutizing",
-			rawPath:      "  ./backend/./main.go  ",
-			expectedPath: filepath.Clean("./backend/main.go"),
+			Name:         "relative path is trimmed and cleaned without absolutizing",
+			RawPath:      "  ./backend/./main.go  ",
+			ExpectedPath: filepath.Clean("./backend/main.go"),
 		},
 		{
-			name:         "absolute path is normalized to absolute cleaned path",
-			rawPath:      "  " + absolutePathWithDotSegment + "  ",
-			expectedPath: pathnorm.Absolute(filepath.Join(root, "backend", "main.go")),
+			Name:         "absolute path is normalized to absolute cleaned path",
+			RawPath:      "  " + absolutePathWithDotSegment + "  ",
+			ExpectedPath: waveshared.Absolute(filepath.Join(root, "backend", "main.go")),
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			normalizedPath := watchereventdedup.NormalizeWatcherEventPathForDeduplication(testCase.rawPath)
-			if normalizedPath != testCase.expectedPath {
+		t.Run(testCase.Name, func(t *testing.T) {
+			normalizedPath := dedup.NormalizeWatcherEventPathForDeduplication(testCase.RawPath)
+			if normalizedPath != testCase.ExpectedPath {
 				t.Fatalf(
-					"watchereventdedup.NormalizeWatcherEventPathForDeduplication(%q) = %q, want %q",
-					testCase.rawPath,
+					"dedup.NormalizeWatcherEventPathForDeduplication(%q) = %q, want %q",
+					testCase.RawPath,
 					normalizedPath,
-					testCase.expectedPath,
+					testCase.ExpectedPath,
 				)
 			}
 		})
@@ -441,36 +445,36 @@ func TestNormalizeHookContextPathShape_PathShapes(t *testing.T) {
 	absolutePathWithDotSegment := filepath.Join(root, "backend", ".", "main.go")
 
 	testCases := []struct {
-		name         string
-		rawPath      string
-		expectedPath string
+		Name         string
+		RawPath      string
+		ExpectedPath string
 	}{
 		{
-			name:         "empty path remains empty",
-			rawPath:      "   ",
-			expectedPath: "",
+			Name:         "empty path remains empty",
+			RawPath:      "   ",
+			ExpectedPath: "",
 		},
 		{
-			name:         "relative path is trimmed and cleaned",
-			rawPath:      "  ./backend/./main.go  ",
-			expectedPath: pathnorm.Absolute("./backend/main.go"),
+			Name:         "relative path is trimmed and cleaned",
+			RawPath:      "  ./backend/./main.go  ",
+			ExpectedPath: waveshared.Absolute("./backend/main.go"),
 		},
 		{
-			name:         "absolute path is trimmed and cleaned",
-			rawPath:      "  " + absolutePathWithDotSegment + "  ",
-			expectedPath: filepath.Join(root, "backend", "main.go"),
+			Name:         "absolute path is trimmed and cleaned",
+			RawPath:      "  " + absolutePathWithDotSegment + "  ",
+			ExpectedPath: filepath.Join(root, "backend", "main.go"),
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			normalizedPath := normalizeHookContextPathShape(testCase.rawPath)
-			if normalizedPath != testCase.expectedPath {
+		t.Run(testCase.Name, func(t *testing.T) {
+			normalizedPath := devserver.NormalizeHookContextPathShape(testCase.RawPath)
+			if normalizedPath != testCase.ExpectedPath {
 				t.Fatalf(
-					"normalizeHookContextPathShape(%q) = %q, want %q",
-					testCase.rawPath,
+					"devserver.NormalizeHookContextPathShape(%q) = %q, want %q",
+					testCase.RawPath,
 					normalizedPath,
-					testCase.expectedPath,
+					testCase.ExpectedPath,
 				)
 			}
 		})
@@ -536,7 +540,7 @@ func TestDeduplicateWatcherEventsByPath_PropertyContracts(t *testing.T) {
 				})
 			}
 
-			deduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath(events)
+			deduplicatedEvents := dedup.DeduplicateWatcherEventsByPath(events)
 
 			if !sort.SliceIsSorted(deduplicatedEvents, func(i int, j int) bool {
 				return deduplicatedEvents[i].Name < deduplicatedEvents[j].Name
@@ -544,7 +548,7 @@ func TestDeduplicateWatcherEventsByPath_PropertyContracts(t *testing.T) {
 				t.Fatalf("expected deduplicated events to be sorted by path, got %#v", deduplicatedEvents)
 			}
 
-			idempotentDeduplicatedEvents := watchereventdedup.DeduplicateWatcherEventsByPath(deduplicatedEvents)
+			idempotentDeduplicatedEvents := dedup.DeduplicateWatcherEventsByPath(deduplicatedEvents)
 			if !reflect.DeepEqual(idempotentDeduplicatedEvents, deduplicatedEvents) {
 				t.Fatalf(
 					"expected deduplication to be idempotent, first=%#v second=%#v",
@@ -578,21 +582,21 @@ func TestDeduplicateWatcherEventsByPath_PropertyContracts(t *testing.T) {
 }
 
 func pathsEquivalentForDedupContract(pathA string, pathB string) bool {
-	normalizedPathA := watchereventdedup.NormalizeWatcherEventPathForDeduplication(pathA)
-	normalizedPathB := watchereventdedup.NormalizeWatcherEventPathForDeduplication(pathB)
+	normalizedPathA := dedup.NormalizeWatcherEventPathForDeduplication(pathA)
+	normalizedPathB := dedup.NormalizeWatcherEventPathForDeduplication(pathB)
 	if normalizedPathA == normalizedPathB {
 		return true
 	}
 
 	if filepath.IsAbs(normalizedPathA) &&
 		filepath.IsAbs(normalizedPathB) &&
-		pathnorm.PathsReferToSameLocation(normalizedPathA, normalizedPathB) {
+		waveshared.PathsReferToSameLocation(normalizedPathA, normalizedPathB) {
 		return true
 	}
 
 	if filepath.IsAbs(normalizedPathA) && filepath.IsAbs(normalizedPathB) {
-		aliasKeyA := watchereventdedup.MissingFileAliasKeyForWatcherEventDeduplication(normalizedPathA)
-		aliasKeyB := watchereventdedup.MissingFileAliasKeyForWatcherEventDeduplication(normalizedPathB)
+		aliasKeyA := dedup.MissingFileAliasKeyForWatcherEventDeduplication(normalizedPathA)
+		aliasKeyB := dedup.MissingFileAliasKeyForWatcherEventDeduplication(normalizedPathB)
 		if aliasKeyA != "" && aliasKeyA == aliasKeyB {
 			return true
 		}
@@ -623,21 +627,21 @@ func TestClassifyWatcherEventsForProcessingDoesNotCollapseImplicitFileTypes(
 		t.Fatalf("failed writing go file: %v", err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	serverForTest := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	serverForTest := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	classifiedEvents, configChanged := serverForTest.classifyWatcherEventsForProcessing(
+	classifiedEvents, configChanged := serverForTest.ClassifyWatcherEventsForProcessing(
 		[]fsnotify.Event{
 			{Name: publicStaticFilePath, Op: fsnotify.Write},
 			{Name: goFilePath, Op: fsnotify.Write},
@@ -656,10 +660,10 @@ func TestClassifyWatcherEventsForProcessingDoesNotCollapseImplicitFileTypes(
 	foundGoEvent := false
 	foundPublicStaticEvent := false
 	for _, classifiedEventForProcessing := range classifiedEvents {
-		if classifiedEventForProcessing.fileType == fileTypeGo {
+		if classifiedEventForProcessing.FileType == devserver.FileTypeGo {
 			foundGoEvent = true
 		}
-		if classifiedEventForProcessing.fileType == fileTypePublicStatic {
+		if classifiedEventForProcessing.FileType == devserver.FileTypePublicStatic {
 			foundPublicStaticEvent = true
 		}
 	}
@@ -697,21 +701,21 @@ func TestClassifyWatcherEventsForProcessingPreservesSharedPatternEvents(
 		t.Fatalf("failed writing text file: %v", err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	serverForTest := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	serverForTest := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	classifiedEvents, configChanged := serverForTest.classifyWatcherEventsForProcessing(
+	classifiedEvents, configChanged := serverForTest.ClassifyWatcherEventsForProcessing(
 		[]fsnotify.Event{
 			{Name: goFilePath, Op: fsnotify.Write},
 			{Name: textFilePath, Op: fsnotify.Write},
@@ -731,45 +735,45 @@ func TestClassifyWatcherEventsForProcessingPreservesSharedPatternEvents(
 func TestBuildEventHooksForProcessingDeduplicatesHooksByPattern(
 	t *testing.T,
 ) {
-	classifiedEvents := []classifiedEvent{
+	classifiedEvents := []devserver.ClassifiedEvent{
 		{
-			event:    fsnotify.Event{Name: "a.go", Op: fsnotify.Write},
-			fileType: fileTypeGo,
-			watchedFile: &wave.WatchedFile{
+			Event:    fsnotify.Event{Name: "a.go", Op: fsnotify.Write},
+			FileType: devserver.FileTypeGo,
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*",
 			},
 		},
 		{
-			event:    fsnotify.Event{Name: "b.txt", Op: fsnotify.Write},
-			fileType: fileTypeOther,
-			watchedFile: &wave.WatchedFile{
+			Event:    fsnotify.Event{Name: "b.txt", Op: fsnotify.Write},
+			FileType: devserver.FileTypeOther,
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*",
 			},
 		},
 	}
 
-	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
+	eventsWithHooks := devserver.BuildEventHooksForProcessing(classifiedEvents)
 	if len(eventsWithHooks) != 2 {
 		t.Fatalf("eventsWithHooks count = %d, want 2", len(eventsWithHooks))
 	}
-	if eventsWithHooks[0].skipDuplicateHooks {
+	if eventsWithHooks[0].SkipDuplicateHooks {
 		t.Fatal("expected first event with shared pattern to run hooks")
 	}
-	if !eventsWithHooks[1].skipDuplicateHooks {
+	if !eventsWithHooks[1].SkipDuplicateHooks {
 		t.Fatal("expected second event with shared pattern to skip duplicate hooks")
 	}
-	if !anyEventNeedsHardReload(eventsWithHooks) {
+	if !devserver.AnyEventNeedsHardReload(eventsWithHooks) {
 		t.Fatal("expected batchNeedsAppStop=true when one event requires hard reload")
 	}
-	if got, want := eventsWithHooks[0].hookCtx.ChangedFilePaths, []string{
-		pathnorm.Absolute("a.go"),
-		pathnorm.Absolute("b.txt"),
+	if got, want := eventsWithHooks[0].HookCtx.ChangedFilePaths, []string{
+		waveshared.Absolute("a.go"),
+		waveshared.Absolute("b.txt"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("first hook context changed file paths = %v, want %v", got, want)
 	}
-	if got, want := eventsWithHooks[1].hookCtx.ChangedFilePaths, []string{
-		pathnorm.Absolute("a.go"),
-		pathnorm.Absolute("b.txt"),
+	if got, want := eventsWithHooks[1].HookCtx.ChangedFilePaths, []string{
+		waveshared.Absolute("a.go"),
+		waveshared.Absolute("b.txt"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("second hook context changed file paths = %v, want %v", got, want)
 	}
@@ -788,45 +792,45 @@ func TestBuildEventHooksForProcessing_NormalizesHookContextPathsByPathShape(
 		t.Fatalf("failed writing normalized path file: %v", err)
 	}
 
-	classifiedEvents := []classifiedEvent{
+	classifiedEvents := []devserver.ClassifiedEvent{
 		{
-			event:    fsnotify.Event{Name: pathWithDotSegment, Op: fsnotify.Write},
-			fileType: fileTypeOther,
-			watchedFile: &wave.WatchedFile{
+			Event:    fsnotify.Event{Name: pathWithDotSegment, Op: fsnotify.Write},
+			FileType: devserver.FileTypeOther,
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.txt",
 			},
 		},
 		{
-			event:    fsnotify.Event{Name: normalizedPath, Op: fsnotify.Write},
-			fileType: fileTypeOther,
-			watchedFile: &wave.WatchedFile{
+			Event:    fsnotify.Event{Name: normalizedPath, Op: fsnotify.Write},
+			FileType: devserver.FileTypeOther,
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.txt",
 			},
 		},
 	}
 
-	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
+	eventsWithHooks := devserver.BuildEventHooksForProcessing(classifiedEvents)
 	if len(eventsWithHooks) != 2 {
 		t.Fatalf("eventsWithHooks count = %d, want 2", len(eventsWithHooks))
 	}
 
-	if got := eventsWithHooks[0].hookCtx.FilePath; got != normalizedPath {
+	if got := eventsWithHooks[0].HookCtx.FilePath; got != normalizedPath {
 		t.Fatalf("first hook context file path = %q, want %q", got, normalizedPath)
 	}
-	if got := eventsWithHooks[1].hookCtx.FilePath; got != normalizedPath {
+	if got := eventsWithHooks[1].HookCtx.FilePath; got != normalizedPath {
 		t.Fatalf("second hook context file path = %q, want %q", got, normalizedPath)
 	}
 
 	expectedChangedPaths := []string{normalizedPath}
-	if got := eventsWithHooks[0].hookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
+	if got := eventsWithHooks[0].HookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
 		t.Fatalf("first hook context changed file paths = %v, want %v", got, expectedChangedPaths)
 	}
-	if got := eventsWithHooks[1].hookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
+	if got := eventsWithHooks[1].HookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
 		t.Fatalf("second hook context changed file paths = %v, want %v", got, expectedChangedPaths)
 	}
 
-	eventsWithHooks[0].hookCtx.ChangedFilePaths[0] = "mutated-path"
-	if got := eventsWithHooks[1].hookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
+	eventsWithHooks[0].HookCtx.ChangedFilePaths[0] = "mutated-path"
+	if got := eventsWithHooks[1].HookCtx.ChangedFilePaths; !reflect.DeepEqual(got, expectedChangedPaths) {
 		t.Fatalf(
 			"expected second hook context changed paths to remain isolated after first mutation, got %v",
 			got,
@@ -843,38 +847,38 @@ func TestBuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
 	patternASecondNormalizedPath := filepath.Join(root, "pattern-a", "two.txt")
 	patternBNormalizedPath := filepath.Join(root, "pattern-b", "three.txt")
 
-	classifiedEvents := []classifiedEvent{
+	classifiedEvents := []devserver.ClassifiedEvent{
 		{
-			event: fsnotify.Event{Name: patternAFirstPathWithDotSegment, Op: fsnotify.Write},
-			watchedFile: &wave.WatchedFile{
+			Event: fsnotify.Event{Name: patternAFirstPathWithDotSegment, Op: fsnotify.Write},
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.txt",
 			},
 		},
 		{
-			event: fsnotify.Event{Name: patternAFirstNormalizedPath, Op: fsnotify.Write},
-			watchedFile: &wave.WatchedFile{
+			Event: fsnotify.Event{Name: patternAFirstNormalizedPath, Op: fsnotify.Write},
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.txt",
 			},
 		},
 		{
-			event: fsnotify.Event{Name: patternASecondNormalizedPath, Op: fsnotify.Write},
-			watchedFile: &wave.WatchedFile{
+			Event: fsnotify.Event{Name: patternASecondNormalizedPath, Op: fsnotify.Write},
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.txt",
 			},
 		},
 		{
-			event: fsnotify.Event{Name: patternBNormalizedPath, Op: fsnotify.Write},
-			watchedFile: &wave.WatchedFile{
+			Event: fsnotify.Event{Name: patternBNormalizedPath, Op: fsnotify.Write},
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.md",
 			},
 		},
 		{
-			event:       fsnotify.Event{Name: filepath.Join(root, "no-pattern.txt"), Op: fsnotify.Write},
-			watchedFile: nil,
+			Event:       fsnotify.Event{Name: filepath.Join(root, "no-pattern.txt"), Op: fsnotify.Write},
+			WatchedFile: nil,
 		},
 	}
 
-	normalizedChangedFilePathsByWatchedPattern := buildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
+	normalizedChangedFilePathsByWatchedPattern := devserver.BuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
 		classifiedEvents,
 	)
 
@@ -902,37 +906,37 @@ func TestBuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
 }
 
 func TestBuildSkipDuplicateHooksByClassifiedEventIndex(t *testing.T) {
-	classifiedEvents := []classifiedEvent{
+	classifiedEvents := []devserver.ClassifiedEvent{
 		{
-			event: fsnotify.Event{Name: "first-a.txt", Op: fsnotify.Write},
-			watchedFile: &wave.WatchedFile{
+			Event: fsnotify.Event{Name: "first-a.txt", Op: fsnotify.Write},
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.txt",
 			},
 		},
 		{
-			event: fsnotify.Event{Name: "without-pattern.go", Op: fsnotify.Write},
+			Event: fsnotify.Event{Name: "without-pattern.go", Op: fsnotify.Write},
 		},
 		{
-			event: fsnotify.Event{Name: "second-a.txt", Op: fsnotify.Write},
-			watchedFile: &wave.WatchedFile{
+			Event: fsnotify.Event{Name: "second-a.txt", Op: fsnotify.Write},
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.txt",
 			},
 		},
 		{
-			event: fsnotify.Event{Name: "first-md.md", Op: fsnotify.Write},
-			watchedFile: &wave.WatchedFile{
+			Event: fsnotify.Event{Name: "first-md.md", Op: fsnotify.Write},
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.md",
 			},
 		},
 		{
-			event: fsnotify.Event{Name: "second-md.md", Op: fsnotify.Write},
-			watchedFile: &wave.WatchedFile{
+			Event: fsnotify.Event{Name: "second-md.md", Op: fsnotify.Write},
+			WatchedFile: &wave.WatchedFile{
 				Pattern: "**/*.md",
 			},
 		},
 	}
 
-	skipDuplicateHooksByClassifiedEventIndex := buildSkipDuplicateHooksByClassifiedEventIndex(
+	skipDuplicateHooksByClassifiedEventIndex := devserver.BuildSkipDuplicateHooksByClassifiedEventIndex(
 		classifiedEvents,
 	)
 	expectedSkipDuplicateHooks := []bool{
@@ -954,18 +958,18 @@ func TestBuildSkipDuplicateHooksByClassifiedEventIndex(t *testing.T) {
 func TestBuildEventHooksForProcessingNoPatternUsesSingleChangedFilePath(
 	t *testing.T,
 ) {
-	classifiedEvents := []classifiedEvent{
+	classifiedEvents := []devserver.ClassifiedEvent{
 		{
-			event:    fsnotify.Event{Name: "/tmp/standalone.go", Op: fsnotify.Write},
-			fileType: fileTypeGo,
+			Event:    fsnotify.Event{Name: "/tmp/standalone.go", Op: fsnotify.Write},
+			FileType: devserver.FileTypeGo,
 		},
 	}
 
-	eventsWithHooks := buildEventHooksForProcessing(classifiedEvents)
+	eventsWithHooks := devserver.BuildEventHooksForProcessing(classifiedEvents)
 	if len(eventsWithHooks) != 1 {
 		t.Fatalf("eventsWithHooks count = %d, want 1", len(eventsWithHooks))
 	}
-	if got, want := eventsWithHooks[0].hookCtx.ChangedFilePaths, []string{"/tmp/standalone.go"}; !reflect.DeepEqual(got, want) {
+	if got, want := eventsWithHooks[0].HookCtx.ChangedFilePaths, []string{"/tmp/standalone.go"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("hook context changed file paths = %v, want %v", got, want)
 	}
 }
@@ -1007,24 +1011,24 @@ func TestProcessEvents_DeduplicatesHooksByPatternForMixedFileTypes(
 		t.Fatalf("failed writing text file: %v", err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	serverForTest := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	serverForTest := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 
-	serverForTest.processEvents([]fsnotify.Event{
+	serverForTest.ProcessEvents([]fsnotify.Event{
 		{Name: goFilePath, Op: fsnotify.Write},
 		{Name: textFilePath, Op: fsnotify.Write},
 	})
@@ -1100,24 +1104,24 @@ func TestProcessEvents_DeduplicatesHooksByPatternAcrossAllHookStages(
 		t.Fatalf("failed writing second text file: %v", err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	serverForTest := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	serverForTest := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 
-	serverForTest.processEvents([]fsnotify.Event{
+	serverForTest.ProcessEvents([]fsnotify.Event{
 		{Name: firstTextFilePath, Op: fsnotify.Write},
 		{Name: secondTextFilePath, Op: fsnotify.Write},
 	})

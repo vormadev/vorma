@@ -4,7 +4,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/vormadev/vorma/internal/waveurl"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
 )
 
 func (w *Wave) readTrimmedInternalRefFile(relativePath string) (string, error) {
@@ -29,7 +29,7 @@ func (w *Wave) initPublicURLFromInternalRefFile(
 		return "", err
 	}
 
-	return waveurl.ResolveFromReferencedPath(
+	return waveshared.ResolveFromReferencedPath(
 		w.cfg.PublicPathPrefix(),
 		refPath,
 	), nil

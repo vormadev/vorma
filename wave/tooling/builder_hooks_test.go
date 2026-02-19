@@ -3,6 +3,7 @@ package tooling
 import (
 	"context"
 	"errors"
+	"github.com/vormadev/vorma/wave/tooling/builder"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,10 +23,10 @@ func TestRunHooks_DevRunsUserThenFramework(t *testing.T) {
 	cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(orderPath)
 	cfg.FrameworkDevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(orderPath)
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	if err := builder.runHooks(true); err != nil {
+	if err := builder.RunHooks(true); err != nil {
 		t.Fatalf("runHooks(true) returned error: %v", err)
 	}
 
@@ -47,10 +48,10 @@ func TestRunHooks_ProdUsesProdHooks(t *testing.T) {
 	cfg.Core.ProdBuildHook = "printf 'prod-user\\n' >> " + strconv.Quote(outPath)
 	cfg.FrameworkProdBuildHook = "printf 'prod-framework\\n' >> " + strconv.Quote(outPath)
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	if err := builder.runHooks(false); err != nil {
+	if err := builder.RunHooks(false); err != nil {
 		t.Fatalf("runHooks(false) returned error: %v", err)
 	}
 
@@ -72,10 +73,10 @@ func TestRunHooks_FailFastOnUserHookError(t *testing.T) {
 	cfg.Core.DevBuildHook = "false"
 	cfg.FrameworkDevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(outPath)
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	err := builder.runHooks(true)
+	err := builder.RunHooks(true)
 	if err == nil {
 		t.Fatal("expected runHooks to fail on user hook error, got nil")
 	}
@@ -96,10 +97,10 @@ func TestRunHooks_ReportsFrameworkHookErrorAfterUserHookRuns(t *testing.T) {
 	cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(outPath)
 	cfg.FrameworkDevBuildHook = "false"
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	err := builder.runHooks(true)
+	err := builder.RunHooks(true)
 	if err == nil {
 		t.Fatal("expected runHooks to fail on framework hook error, got nil")
 	}
@@ -144,10 +145,10 @@ func TestRunHooks_UsesFrameworkBuildHookRunnerWhenConfigured(t *testing.T) {
 		return nil
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	if err := builder.runHooks(true); err != nil {
+	if err := builder.RunHooks(true); err != nil {
 		t.Fatalf("runHooks(true) returned error: %v", err)
 	}
 	if !frameworkRunnerCalled {
@@ -176,11 +177,11 @@ func TestRunHooks_DevHookTimeoutStopsUserHookQuickly(t *testing.T) {
 	cfg.Core.DevBuildHook = "sleep 2"
 	cfg.FrameworkDevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(frameworkMarkerPath)
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	hookStartTime := time.Now()
-	err := builder.runHooks(true)
+	err := builder.RunHooks(true)
 	hookElapsedTime := time.Since(hookStartTime)
 	if err == nil {
 		t.Fatal("expected runHooks(true) to fail when dev hook times out")
@@ -212,11 +213,11 @@ func TestRunHooks_ProdHookTimeoutStopsFrameworkHookQuickly(t *testing.T) {
 	cfg.Core.ProdBuildHook = "printf 'prod-user\\n' >> " + strconv.Quote(userMarkerPath)
 	cfg.FrameworkProdBuildHook = "sleep 2"
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	hookStartTime := time.Now()
-	err := builder.runHooks(false)
+	err := builder.RunHooks(false)
 	hookElapsedTime := time.Since(hookStartTime)
 	if err == nil {
 		t.Fatal("expected runHooks(false) to fail when prod framework hook times out")

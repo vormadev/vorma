@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/devserver"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,8 +10,8 @@ import (
 )
 
 func TestDeriveStageHooksAndRunOnChangePolicyForEvent(t *testing.T) {
-	eventWithHooksForStage := eventWithHooks{
-		hooks: &wave.SortedHooks{
+	eventWithHooksForStage := devserver.EventWithHooks{
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{{Cmd: "pre"}},
 			Concurrent: []wave.OnChangeHook{{
 				Cmd: "concurrent",
@@ -23,71 +24,71 @@ func TestDeriveStageHooksAndRunOnChangePolicyForEvent(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name                             string
-		stageType                        hookStageType
-		expectedHookCount                int
-		expectedRunOnChangeOnlyRuleUsage bool
-		expectedFirstCommand             string
+		Name                             string
+		StageType                        devserver.HookStageType
+		ExpectedHookCount                int
+		ExpectedRunOnChangeOnlyRuleUsage bool
+		ExpectedFirstCommand             string
 	}{
 		{
-			name:                             "pre stage",
-			stageType:                        hookStageTypePre,
-			expectedHookCount:                1,
-			expectedRunOnChangeOnlyRuleUsage: false,
-			expectedFirstCommand:             "pre",
+			Name:                             "pre stage",
+			StageType:                        devserver.HookStageTypePre,
+			ExpectedHookCount:                1,
+			ExpectedRunOnChangeOnlyRuleUsage: false,
+			ExpectedFirstCommand:             "pre",
 		},
 		{
-			name:                             "concurrent stage",
-			stageType:                        hookStageTypeConcurrent,
-			expectedHookCount:                1,
-			expectedRunOnChangeOnlyRuleUsage: true,
-			expectedFirstCommand:             "concurrent",
+			Name:                             "concurrent stage",
+			StageType:                        devserver.HookStageTypeConcurrent,
+			ExpectedHookCount:                1,
+			ExpectedRunOnChangeOnlyRuleUsage: true,
+			ExpectedFirstCommand:             "concurrent",
 		},
 		{
-			name:                             "post stage",
-			stageType:                        hookStageTypePost,
-			expectedHookCount:                1,
-			expectedRunOnChangeOnlyRuleUsage: true,
-			expectedFirstCommand:             "post",
+			Name:                             "post stage",
+			StageType:                        devserver.HookStageTypePost,
+			ExpectedHookCount:                1,
+			ExpectedRunOnChangeOnlyRuleUsage: true,
+			ExpectedFirstCommand:             "post",
 		},
 		{
-			name:                             "concurrent-no-wait stage",
-			stageType:                        hookStageTypeConcurrentNoWait,
-			expectedHookCount:                1,
-			expectedRunOnChangeOnlyRuleUsage: false,
-			expectedFirstCommand:             "no-wait",
+			Name:                             "concurrent-no-wait stage",
+			StageType:                        devserver.HookStageTypeConcurrentNoWait,
+			ExpectedHookCount:                1,
+			ExpectedRunOnChangeOnlyRuleUsage: false,
+			ExpectedFirstCommand:             "no-wait",
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			stageHooks, shouldApplyRunOnChangeOnlyRules := deriveStageHooksAndRunOnChangePolicyForEvent(
+		t.Run(testCase.Name, func(t *testing.T) {
+			stageHooks, shouldApplyRunOnChangeOnlyRules := devserver.DeriveStageHooksAndRunOnChangePolicyForEvent(
 				eventWithHooksForStage,
-				testCase.stageType,
+				testCase.StageType,
 			)
-			if len(stageHooks) != testCase.expectedHookCount {
-				t.Fatalf("expected hook count %d, got %d", testCase.expectedHookCount, len(stageHooks))
+			if len(stageHooks) != testCase.ExpectedHookCount {
+				t.Fatalf("expected hook count %d, got %d", testCase.ExpectedHookCount, len(stageHooks))
 			}
-			if shouldApplyRunOnChangeOnlyRules != testCase.expectedRunOnChangeOnlyRuleUsage {
+			if shouldApplyRunOnChangeOnlyRules != testCase.ExpectedRunOnChangeOnlyRuleUsage {
 				t.Fatalf(
 					"expected run-on-change-only rule usage %v, got %v",
-					testCase.expectedRunOnChangeOnlyRuleUsage,
+					testCase.ExpectedRunOnChangeOnlyRuleUsage,
 					shouldApplyRunOnChangeOnlyRules,
 				)
 			}
-			if len(stageHooks) > 0 && stageHooks[0].Cmd != testCase.expectedFirstCommand {
+			if len(stageHooks) > 0 && stageHooks[0].Cmd != testCase.ExpectedFirstCommand {
 				t.Fatalf(
 					"expected first stage hook command %q, got %q",
-					testCase.expectedFirstCommand,
+					testCase.ExpectedFirstCommand,
 					stageHooks[0].Cmd,
 				)
 			}
 		})
 	}
 
-	nilStageHooks, shouldApplyRulesForNil := deriveStageHooksAndRunOnChangePolicyForEvent(
-		eventWithHooks{},
-		hookStageTypePre,
+	nilStageHooks, shouldApplyRulesForNil := devserver.DeriveStageHooksAndRunOnChangePolicyForEvent(
+		devserver.EventWithHooks{},
+		devserver.HookStageTypePre,
 	)
 	if nilStageHooks != nil {
 		t.Fatalf("expected nil stage hooks for event without sorted hooks, got %#v", nilStageHooks)
@@ -108,12 +109,12 @@ func TestDeriveHookExecutionPlansForEventStage_ConcurrentRunOnChangeOnlyFilterin
 	}
 
 	resolvedCommands := make([]string, 0)
-	plans := deriveHookExecutionPlansForEventStage(
+	plans := devserver.DeriveHookExecutionPlansForEventStage(
 		watcher,
-		eventWithHooks{
-			classified:      classifiedEvent{event: waveEvent(changedPath)},
-			runOnChangeOnly: true,
-			hooks: &wave.SortedHooks{
+		devserver.EventWithHooks{
+			Classified:      devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+			RunOnChangeOnly: true,
+			Hooks: &wave.SortedHooks{
 				Concurrent: []wave.OnChangeHook{
 					{Cmd: "echo command-only"},
 					{
@@ -131,10 +132,10 @@ func TestDeriveHookExecutionPlansForEventStage_ConcurrentRunOnChangeOnlyFilterin
 				},
 			},
 		},
-		hookStageTypeConcurrent,
-		func(hook wave.OnChangeHook) hookExecutionPlan {
+		devserver.HookStageTypeConcurrent,
+		func(hook wave.OnChangeHook) devserver.HookExecutionPlan {
 			resolvedCommands = append(resolvedCommands, hook.Cmd)
-			return deriveHookExecutionPlanFromHook(hook, func(innerHook wave.OnChangeHook) string {
+			return devserver.DeriveHookExecutionPlanFromHook(hook, func(innerHook wave.OnChangeHook) string {
 				return innerHook.Cmd
 			})
 		},
@@ -143,10 +144,10 @@ func TestDeriveHookExecutionPlansForEventStage_ConcurrentRunOnChangeOnlyFilterin
 	if len(plans) != 1 {
 		t.Fatalf("expected 1 planned hook for concurrent run-on-change-only stage, got %#v", plans)
 	}
-	if plans[0].callback == nil {
+	if plans[0].Callback == nil {
 		t.Fatalf("expected planned hook callback to be retained, got %#v", plans[0])
 	}
-	if plans[0].command != "" {
+	if plans[0].Command != "" {
 		t.Fatalf("expected planned hook command to be stripped, got %#v", plans[0])
 	}
 	if len(resolvedCommands) != 1 {
@@ -167,12 +168,12 @@ func TestDeriveHookExecutionPlansForEventStage_PreStagePreservesCommands(t *test
 		t.Fatalf("failed writing changed file: %v", err)
 	}
 
-	plans := deriveHookExecutionPlansForEventStage(
+	plans := devserver.DeriveHookExecutionPlansForEventStage(
 		watcher,
-		eventWithHooks{
-			classified:      classifiedEvent{event: waveEvent(changedPath)},
-			runOnChangeOnly: true,
-			hooks: &wave.SortedHooks{
+		devserver.EventWithHooks{
+			Classified:      devserver.ClassifiedEvent{Event: waveEvent(changedPath)},
+			RunOnChangeOnly: true,
+			Hooks: &wave.SortedHooks{
 				Pre: []wave.OnChangeHook{
 					{Cmd: "echo first"},
 					{
@@ -184,9 +185,9 @@ func TestDeriveHookExecutionPlansForEventStage_PreStagePreservesCommands(t *test
 				},
 			},
 		},
-		hookStageTypePre,
-		func(hook wave.OnChangeHook) hookExecutionPlan {
-			return deriveHookExecutionPlanFromHook(hook, func(innerHook wave.OnChangeHook) string {
+		devserver.HookStageTypePre,
+		func(hook wave.OnChangeHook) devserver.HookExecutionPlan {
+			return devserver.DeriveHookExecutionPlanFromHook(hook, func(innerHook wave.OnChangeHook) string {
 				return "resolved(" + innerHook.Cmd + ")"
 			})
 		},
@@ -195,13 +196,13 @@ func TestDeriveHookExecutionPlansForEventStage_PreStagePreservesCommands(t *test
 	if len(plans) != 2 {
 		t.Fatalf("expected 2 planned hooks for pre stage, got %#v", plans)
 	}
-	if plans[0].command != "resolved(echo first)" {
+	if plans[0].Command != "resolved(echo first)" {
 		t.Fatalf("expected first planned command to be resolved, got %#v", plans[0])
 	}
-	if plans[1].command != "resolved(echo second)" {
+	if plans[1].Command != "resolved(echo second)" {
 		t.Fatalf("expected second planned command to be resolved, got %#v", plans[1])
 	}
-	if plans[1].callback == nil {
+	if plans[1].Callback == nil {
 		t.Fatalf("expected second planned hook callback to be retained, got %#v", plans[1])
 	}
 }

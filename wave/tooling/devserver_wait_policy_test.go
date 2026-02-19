@@ -3,36 +3,38 @@ package tooling
 import (
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/wave/tooling/devserver"
 )
 
 func TestDeriveReadinessWaitDelay(t *testing.T) {
 	baseDelay := 20 * time.Millisecond
 	testCases := []struct {
-		name         string
-		attemptIndex int
-		expected     time.Duration
+		Name         string
+		AttemptIndex int
+		Expected     time.Duration
 	}{
 		{
-			name:         "first attempt uses base delay",
-			attemptIndex: 0,
-			expected:     20 * time.Millisecond,
+			Name:         "first attempt uses base delay",
+			AttemptIndex: 0,
+			Expected:     20 * time.Millisecond,
 		},
 		{
-			name:         "later attempt increases linearly",
-			attemptIndex: 3,
-			expected:     80 * time.Millisecond,
+			Name:         "later attempt increases linearly",
+			AttemptIndex: 3,
+			Expected:     80 * time.Millisecond,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			if got := deriveReadinessWaitDelay(testCase.attemptIndex, baseDelay); got != testCase.expected {
+		t.Run(testCase.Name, func(t *testing.T) {
+			if got := devserver.DeriveReadinessWaitDelay(testCase.AttemptIndex, baseDelay); got != testCase.Expected {
 				t.Fatalf(
 					"deriveReadinessWaitDelay(%d, %v)=%v, want %v",
-					testCase.attemptIndex,
+					testCase.AttemptIndex,
 					baseDelay,
 					got,
-					testCase.expected,
+					testCase.Expected,
 				)
 			}
 		})
@@ -41,40 +43,40 @@ func TestDeriveReadinessWaitDelay(t *testing.T) {
 
 func TestShouldContinueReadinessWait(t *testing.T) {
 	testCases := []struct {
-		name     string
-		total    time.Duration
-		maxTotal time.Duration
-		expected bool
+		Name     string
+		Total    time.Duration
+		MaxTotal time.Duration
+		Expected bool
 	}{
 		{
-			name:     "under max total continues",
-			total:    1 * time.Second,
-			maxTotal: 2 * time.Second,
-			expected: true,
+			Name:     "under max total continues",
+			Total:    1 * time.Second,
+			MaxTotal: 2 * time.Second,
+			Expected: true,
 		},
 		{
-			name:     "at max total continues",
-			total:    2 * time.Second,
-			maxTotal: 2 * time.Second,
-			expected: true,
+			Name:     "at max total continues",
+			Total:    2 * time.Second,
+			MaxTotal: 2 * time.Second,
+			Expected: true,
 		},
 		{
-			name:     "over max total stops",
-			total:    3 * time.Second,
-			maxTotal: 2 * time.Second,
-			expected: false,
+			Name:     "over max total stops",
+			Total:    3 * time.Second,
+			MaxTotal: 2 * time.Second,
+			Expected: false,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			if got := shouldContinueReadinessWait(testCase.total, testCase.maxTotal); got != testCase.expected {
+		t.Run(testCase.Name, func(t *testing.T) {
+			if got := devserver.ShouldContinueReadinessWait(testCase.Total, testCase.MaxTotal); got != testCase.Expected {
 				t.Fatalf(
 					"shouldContinueReadinessWait(%v, %v)=%t, want %t",
-					testCase.total,
-					testCase.maxTotal,
+					testCase.Total,
+					testCase.MaxTotal,
 					got,
-					testCase.expected,
+					testCase.Expected,
 				)
 			}
 		})

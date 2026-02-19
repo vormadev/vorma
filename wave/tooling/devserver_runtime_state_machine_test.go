@@ -5,135 +5,139 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
 )
 
 func TestDeriveRunLifecycleStateAfterEvent_ValidTransitions(t *testing.T) {
 	testCases := []struct {
-		name                     string
-		currentRunLifecycleState runLifecycleState
-		runLifecycleEvent        runLifecycleEvent
-		expectedNextState        runLifecycleState
+		Name                     string
+		CurrentRunLifecycleState devserverengine.RunLifecycleState
+		RunLifecycleEvent        devserverengine.RunLifecycleEvent
+		ExpectedNextState        devserverengine.RunLifecycleState
 	}{
 		{
-			name:                     "prepare to build",
-			currentRunLifecycleState: runLifecycleStatePreparingCycle,
-			runLifecycleEvent:        runLifecycleEventCyclePrepared,
-			expectedNextState:        runLifecycleStateBuildingCycle,
+			Name:                     "prepare to build",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStatePreparingCycle,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventCyclePrepared,
+			ExpectedNextState:        devserverengine.RunLifecycleStateBuildingCycle,
 		},
 		{
-			name:                     "build success to runtime start",
-			currentRunLifecycleState: runLifecycleStateBuildingCycle,
-			runLifecycleEvent:        runLifecycleEventBuildSucceeded,
-			expectedNextState:        runLifecycleStateStartingRuntime,
+			Name:                     "build success to runtime start",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateBuildingCycle,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventBuildSucceeded,
+			ExpectedNextState:        devserverengine.RunLifecycleStateStartingRuntime,
 		},
 		{
-			name:                     "build failure to retry wait",
-			currentRunLifecycleState: runLifecycleStateBuildingCycle,
-			runLifecycleEvent:        runLifecycleEventBuildFailed,
-			expectedNextState:        runLifecycleStateAwaitingBuildRetry,
+			Name:                     "build failure to retry wait",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateBuildingCycle,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventBuildFailed,
+			ExpectedNextState:        devserverengine.RunLifecycleStateAwaitingBuildRetry,
 		},
 		{
-			name:                     "retry restart to prepare",
-			currentRunLifecycleState: runLifecycleStateAwaitingBuildRetry,
-			runLifecycleEvent:        runLifecycleEventBuildRetryRestartReceived,
-			expectedNextState:        runLifecycleStatePreparingCycle,
+			Name:                     "retry restart to prepare",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateAwaitingBuildRetry,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventBuildRetryRestartReceived,
+			ExpectedNextState:        devserverengine.RunLifecycleStatePreparingCycle,
 		},
 		{
-			name:                     "runtime start to restart wait",
-			currentRunLifecycleState: runLifecycleStateStartingRuntime,
-			runLifecycleEvent:        runLifecycleEventRuntimeStarted,
-			expectedNextState:        runLifecycleStateAwaitingRestart,
+			Name:                     "runtime start to restart wait",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateStartingRuntime,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventRuntimeStarted,
+			ExpectedNextState:        devserverengine.RunLifecycleStateAwaitingRestart,
 		},
 		{
-			name:                     "restart request to cleanup",
-			currentRunLifecycleState: runLifecycleStateAwaitingRestart,
-			runLifecycleEvent:        runLifecycleEventRestartRequestReceived,
-			expectedNextState:        runLifecycleStateCleaningUpForNextCycle,
+			Name:                     "restart request to cleanup",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateAwaitingRestart,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventRestartRequestReceived,
+			ExpectedNextState:        devserverengine.RunLifecycleStateCleaningUpForNextCycle,
 		},
 		{
-			name:                     "cleanup to prepare",
-			currentRunLifecycleState: runLifecycleStateCleaningUpForNextCycle,
-			runLifecycleEvent:        runLifecycleEventCleanupCompleted,
-			expectedNextState:        runLifecycleStatePreparingCycle,
+			Name:                     "cleanup to prepare",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateCleaningUpForNextCycle,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventCleanupCompleted,
+			ExpectedNextState:        devserverengine.RunLifecycleStatePreparingCycle,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			nextRunLifecycleState, err := deriveRunLifecycleStateAfterEvent(
-				testCase.currentRunLifecycleState,
-				testCase.runLifecycleEvent,
+		t.Run(testCase.Name, func(t *testing.T) {
+			nextRunLifecycleState, err := devserverengine.DeriveRunLifecycleStateAfterEvent(
+				testCase.CurrentRunLifecycleState,
+				testCase.RunLifecycleEvent,
 			)
 			if err != nil {
 				t.Fatalf(
 					"deriveRunLifecycleStateAfterEvent(%q, %q) returned error: %v",
-					testCase.currentRunLifecycleState,
-					testCase.runLifecycleEvent,
+					testCase.CurrentRunLifecycleState,
+					testCase.RunLifecycleEvent,
 					err,
 				)
 			}
-			if nextRunLifecycleState != testCase.expectedNextState {
+			if nextRunLifecycleState != testCase.ExpectedNextState {
 				t.Fatalf(
 					"deriveRunLifecycleStateAfterEvent(%q, %q) = %q, want %q",
-					testCase.currentRunLifecycleState,
-					testCase.runLifecycleEvent,
+					testCase.CurrentRunLifecycleState,
+					testCase.RunLifecycleEvent,
 					nextRunLifecycleState,
-					testCase.expectedNextState,
+					testCase.ExpectedNextState,
 				)
 			}
 		})
 	}
 }
 
-func TestDeriveRunLifecycleStateAfterEvent_InvalidTransitionsReturnError(t *testing.T) {
+func TestDeriveRunLifecycleStateAfterEvent_InvalidTransitionsReturnError(
+	t *testing.T,
+) {
 	testCases := []struct {
-		name                     string
-		currentRunLifecycleState runLifecycleState
-		runLifecycleEvent        runLifecycleEvent
+		Name                     string
+		CurrentRunLifecycleState devserverengine.RunLifecycleState
+		RunLifecycleEvent        devserverengine.RunLifecycleEvent
 	}{
 		{
-			name:                     "prepare rejects build failed event",
-			currentRunLifecycleState: runLifecycleStatePreparingCycle,
-			runLifecycleEvent:        runLifecycleEventBuildFailed,
+			Name:                     "prepare rejects build failed event",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStatePreparingCycle,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventBuildFailed,
 		},
 		{
-			name:                     "build rejects cleanup event",
-			currentRunLifecycleState: runLifecycleStateBuildingCycle,
-			runLifecycleEvent:        runLifecycleEventCleanupCompleted,
+			Name:                     "build rejects cleanup event",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateBuildingCycle,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventCleanupCompleted,
 		},
 		{
-			name:                     "retry wait rejects runtime started event",
-			currentRunLifecycleState: runLifecycleStateAwaitingBuildRetry,
-			runLifecycleEvent:        runLifecycleEventRuntimeStarted,
+			Name:                     "retry wait rejects runtime started event",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateAwaitingBuildRetry,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventRuntimeStarted,
 		},
 		{
-			name:                     "runtime start rejects restart received event",
-			currentRunLifecycleState: runLifecycleStateStartingRuntime,
-			runLifecycleEvent:        runLifecycleEventRestartRequestReceived,
+			Name:                     "runtime start rejects restart received event",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateStartingRuntime,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventRestartRequestReceived,
 		},
 		{
-			name:                     "restart wait rejects cycle prepared event",
-			currentRunLifecycleState: runLifecycleStateAwaitingRestart,
-			runLifecycleEvent:        runLifecycleEventCyclePrepared,
+			Name:                     "restart wait rejects cycle prepared event",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateAwaitingRestart,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventCyclePrepared,
 		},
 		{
-			name:                     "cleanup rejects build success event",
-			currentRunLifecycleState: runLifecycleStateCleaningUpForNextCycle,
-			runLifecycleEvent:        runLifecycleEventBuildSucceeded,
+			Name:                     "cleanup rejects build success event",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateCleaningUpForNextCycle,
+			RunLifecycleEvent:        devserverengine.RunLifecycleEventBuildSucceeded,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			nextRunLifecycleState, err := deriveRunLifecycleStateAfterEvent(
-				testCase.currentRunLifecycleState,
-				testCase.runLifecycleEvent,
+		t.Run(testCase.Name, func(t *testing.T) {
+			nextRunLifecycleState, err := devserverengine.DeriveRunLifecycleStateAfterEvent(
+				testCase.CurrentRunLifecycleState,
+				testCase.RunLifecycleEvent,
 			)
 			if err == nil {
 				t.Fatalf(
 					"deriveRunLifecycleStateAfterEvent(%q, %q) expected error, got next state %q",
-					testCase.currentRunLifecycleState,
-					testCase.runLifecycleEvent,
+					testCase.CurrentRunLifecycleState,
+					testCase.RunLifecycleEvent,
 					nextRunLifecycleState,
 				)
 			}
@@ -143,73 +147,75 @@ func TestDeriveRunLifecycleStateAfterEvent_InvalidTransitionsReturnError(t *test
 
 func TestDeriveRunLifecycleCommandForState(t *testing.T) {
 	testCases := []struct {
-		name                     string
-		currentRunLifecycleState runLifecycleState
-		expectedCommand          runLifecycleCommand
+		Name                     string
+		CurrentRunLifecycleState devserverengine.RunLifecycleState
+		ExpectedCommand          devserverengine.RunLifecycleCommand
 	}{
 		{
-			name:                     "prepare state maps to prepare command",
-			currentRunLifecycleState: runLifecycleStatePreparingCycle,
-			expectedCommand:          runLifecycleCommandPrepareCycle,
+			Name:                     "prepare state maps to prepare command",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStatePreparingCycle,
+			ExpectedCommand:          devserverengine.RunLifecycleCommandPrepareCycle,
 		},
 		{
-			name:                     "build state maps to build command",
-			currentRunLifecycleState: runLifecycleStateBuildingCycle,
-			expectedCommand:          runLifecycleCommandBuildCycle,
+			Name:                     "build state maps to build command",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateBuildingCycle,
+			ExpectedCommand:          devserverengine.RunLifecycleCommandBuildCycle,
 		},
 		{
-			name:                     "retry state maps to retry command",
-			currentRunLifecycleState: runLifecycleStateAwaitingBuildRetry,
-			expectedCommand:          runLifecycleCommandAwaitBuildRetry,
+			Name:                     "retry state maps to retry command",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateAwaitingBuildRetry,
+			ExpectedCommand:          devserverengine.RunLifecycleCommandAwaitBuildRetry,
 		},
 		{
-			name:                     "runtime state maps to start-runtime command",
-			currentRunLifecycleState: runLifecycleStateStartingRuntime,
-			expectedCommand:          runLifecycleCommandStartRuntime,
+			Name:                     "runtime state maps to start-runtime command",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateStartingRuntime,
+			ExpectedCommand:          devserverengine.RunLifecycleCommandStartRuntime,
 		},
 		{
-			name:                     "await-restart state maps to await-restart command",
-			currentRunLifecycleState: runLifecycleStateAwaitingRestart,
-			expectedCommand:          runLifecycleCommandAwaitRestartRequest,
+			Name:                     "await-restart state maps to await-restart command",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateAwaitingRestart,
+			ExpectedCommand:          devserverengine.RunLifecycleCommandAwaitRestartRequest,
 		},
 		{
-			name:                     "cleanup state maps to cleanup command",
-			currentRunLifecycleState: runLifecycleStateCleaningUpForNextCycle,
-			expectedCommand:          runLifecycleCommandCleanupForNextCycle,
+			Name:                     "cleanup state maps to cleanup command",
+			CurrentRunLifecycleState: devserverengine.RunLifecycleStateCleaningUpForNextCycle,
+			ExpectedCommand:          devserverengine.RunLifecycleCommandCleanupForNextCycle,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			runLifecycleCommandForState, err := deriveRunLifecycleCommandForState(
-				testCase.currentRunLifecycleState,
+		t.Run(testCase.Name, func(t *testing.T) {
+			runLifecycleCommandForState, err := devserverengine.DeriveRunLifecycleCommandForState(
+				testCase.CurrentRunLifecycleState,
 			)
 			if err != nil {
 				t.Fatalf(
-					"deriveRunLifecycleCommandForState(%q) returned error: %v",
-					testCase.currentRunLifecycleState,
+					"devserverengine.DeriveRunLifecycleCommandForState(%q) returned error: %v",
+					testCase.CurrentRunLifecycleState,
 					err,
 				)
 			}
-			if runLifecycleCommandForState != testCase.expectedCommand {
+			if runLifecycleCommandForState != testCase.ExpectedCommand {
 				t.Fatalf(
-					"deriveRunLifecycleCommandForState(%q) = %q, want %q",
-					testCase.currentRunLifecycleState,
+					"devserverengine.DeriveRunLifecycleCommandForState(%q) = %q, want %q",
+					testCase.CurrentRunLifecycleState,
 					runLifecycleCommandForState,
-					testCase.expectedCommand,
+					testCase.ExpectedCommand,
 				)
 			}
 		})
 	}
 }
 
-func TestDeriveRunLifecycleCommandForState_UnknownStateReturnsError(t *testing.T) {
-	runLifecycleCommandForState, err := deriveRunLifecycleCommandForState(
-		runLifecycleState("unknown_state"),
+func TestDeriveRunLifecycleCommandForState_UnknownStateReturnsError(
+	t *testing.T,
+) {
+	runLifecycleCommandForState, err := devserverengine.DeriveRunLifecycleCommandForState(
+		devserverengine.RunLifecycleState("unknown_state"),
 	)
 	if err == nil {
 		t.Fatalf(
-			"deriveRunLifecycleCommandForState(unknown_state) expected error, got command %q",
+			"devserverengine.DeriveRunLifecycleCommandForState(unknown_state) expected error, got command %q",
 			runLifecycleCommandForState,
 		)
 	}
@@ -217,33 +223,48 @@ func TestDeriveRunLifecycleCommandForState_UnknownStateReturnsError(t *testing.T
 
 func TestTransitionRunLifecycleState_LogsCycleAndTransitionFields(t *testing.T) {
 	var transitionLogBuffer bytes.Buffer
-	s := &server{
-		log: slog.New(slog.NewTextHandler(&transitionLogBuffer, nil)),
-	}
+	logger := slog.New(slog.NewTextHandler(&transitionLogBuffer, nil))
 
-	nextRunLifecycleState, err := s.transitionRunLifecycleState(
-		runLifecycleStatePreparingCycle,
-		runLifecycleEventCyclePrepared,
+	nextRunLifecycleState, err := devserverengine.TransitionRunLifecycleState(
+		logger,
+		devserverengine.RunLifecycleStatePreparingCycle,
+		devserverengine.RunLifecycleEventCyclePrepared,
 		42,
 	)
 	if err != nil {
 		t.Fatalf("transitionRunLifecycleState returned error: %v", err)
 	}
-	if nextRunLifecycleState != runLifecycleStateBuildingCycle {
-		t.Fatalf("nextRunLifecycleState=%q, want %q", nextRunLifecycleState, runLifecycleStateBuildingCycle)
+	if nextRunLifecycleState != devserverengine.RunLifecycleStateBuildingCycle {
+		t.Fatalf(
+			"nextRunLifecycleState=%q, want %q",
+			nextRunLifecycleState,
+			devserverengine.RunLifecycleStateBuildingCycle,
+		)
 	}
 
 	transitionLogOutput := transitionLogBuffer.String()
 	if !strings.Contains(transitionLogOutput, "cycle_id=42") {
-		t.Fatalf("expected transition log to include cycle_id=42, got %q", transitionLogOutput)
+		t.Fatalf(
+			"expected transition log to include cycle_id=42, got %q",
+			transitionLogOutput,
+		)
 	}
 	if !strings.Contains(transitionLogOutput, "from=preparing_cycle") {
-		t.Fatalf("expected transition log to include from=preparing_cycle, got %q", transitionLogOutput)
+		t.Fatalf(
+			"expected transition log to include from=preparing_cycle, got %q",
+			transitionLogOutput,
+		)
 	}
 	if !strings.Contains(transitionLogOutput, "event=cycle_prepared") {
-		t.Fatalf("expected transition log to include event=cycle_prepared, got %q", transitionLogOutput)
+		t.Fatalf(
+			"expected transition log to include event=cycle_prepared, got %q",
+			transitionLogOutput,
+		)
 	}
 	if !strings.Contains(transitionLogOutput, "to=building_cycle") {
-		t.Fatalf("expected transition log to include to=building_cycle, got %q", transitionLogOutput)
+		t.Fatalf(
+			"expected transition log to include to=building_cycle, got %q",
+			transitionLogOutput,
+		)
 	}
 }

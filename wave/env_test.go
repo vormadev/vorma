@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/vormadev/vorma/internal/waveport"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
 )
 
 func stubGetFreePortForTest(
@@ -14,7 +14,7 @@ func stubGetFreePortForTest(
 ) {
 	t.Helper()
 
-	restore := waveport.SetGetFreePortForTest(getFreePortFunc)
+	restore := waveshared.SetGetFreePortForTest(getFreePortFunc)
 	t.Cleanup(restore)
 }
 

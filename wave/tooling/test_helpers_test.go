@@ -1,6 +1,8 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
 	"io"
 	"log/slog"
 	"net"
@@ -9,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vormadev/vorma/internal/waveport"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
 )
 
 func newDiscardLogger() *slog.Logger {
@@ -36,27 +38,27 @@ func newParsedConfigForToolingTestsAtRoot(root string) *wave.ParsedConfig {
 }
 
 func queueRestartRequestForToolingTests(
-	s *server,
-	restartRequestForQueue restartRequest,
+	s *devserver.Server,
+	restartRequestForQueue devserverengine.RestartRequest,
 ) {
 	if s == nil {
 		return
 	}
-	s.queueRestartRequest(restartRequestForQueue)
+	s.QueueRestartRequest(restartRequestForQueue)
 }
 
 func consumePendingRestartRequestForToolingTests(
-	s *server,
-) (restartRequest, bool) {
+	s *devserver.Server,
+) (devserverengine.RestartRequest, bool) {
 	if s == nil {
-		return restartRequest{}, false
+		return devserverengine.RestartRequest{}, false
 	}
-	return s.consumePendingRestartRequest()
+	return s.ConsumePendingRestartRequest()
 }
 
 func assertNoPendingRestartRequestForToolingTests(
 	t *testing.T,
-	s *server,
+	s *devserver.Server,
 ) {
 	t.Helper()
 
@@ -73,9 +75,9 @@ func assertNoPendingRestartRequestForToolingTests(
 
 func waitForPendingRestartRequestForToolingTests(
 	t *testing.T,
-	s *server,
+	s *devserver.Server,
 	timeout time.Duration,
-) restartRequest {
+) devserverengine.RestartRequest {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -90,14 +92,14 @@ func waitForPendingRestartRequestForToolingTests(
 	}
 
 	t.Fatalf("timed out waiting for pending restart request after %s", timeout)
-	return restartRequest{}
+	return devserverengine.RestartRequest{}
 }
 
 func mustConfigureAndGetWaveAppPortForToolingTests(t *testing.T) int {
 	t.Helper()
 
-	waveport.ResetDefaultResolverForTest()
-	t.Cleanup(waveport.ResetDefaultResolverForTest)
+	waveshared.ResetDefaultResolverForTest()
+	t.Cleanup(waveshared.ResetDefaultResolverForTest)
 
 	listener, listenError := net.Listen("tcp", "127.0.0.1:0")
 	if listenError != nil {

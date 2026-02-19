@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,7 @@ func TestNewWatcher_FrameworkIgnoredPatternsAreRelativeToWatchRoot(t *testing.T)
 		"generated_file.txt",
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -39,7 +40,7 @@ func TestNewWatcher_FrameworkIgnoredLiteralDirectoryPatternIgnoresDirectoryTree(
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.FrameworkIgnoredPatterns = []string{"generated"}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -86,7 +87,7 @@ func TestFindWatchedFile_MergesFrameworkAndUserMatches(t *testing.T) {
 		},
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -141,7 +142,7 @@ func TestNewWatcher_DoesNotMutateConfigWatchPatternsOrHookExcludes(t *testing.T)
 		},
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -183,7 +184,7 @@ func TestWatcherStaticClassificationUsesDirectoryBoundaries(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -214,7 +215,7 @@ func TestNewWatcher_RejectsInvalidFrameworkWatchPattern(t *testing.T) {
 		},
 	}
 
-	_, err := newWatcher(cfg, newDiscardLogger())
+	_, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err == nil {
 		t.Fatal("expected newWatcher to fail for invalid framework watch pattern")
 	}
@@ -232,7 +233,7 @@ func TestNewWatcher_RejectsEmptyFrameworkWatchPattern(t *testing.T) {
 		},
 	}
 
-	_, err := newWatcher(cfg, newDiscardLogger())
+	_, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err == nil {
 		t.Fatal("expected newWatcher to fail for empty framework watch pattern")
 	}
@@ -256,7 +257,7 @@ func TestNewWatcher_RejectsInvalidFrameworkHookExcludePattern(t *testing.T) {
 		},
 	}
 
-	_, err := newWatcher(cfg, newDiscardLogger())
+	_, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err == nil {
 		t.Fatal("expected newWatcher to fail for invalid framework hook exclude pattern")
 	}
@@ -270,7 +271,7 @@ func TestNewWatcher_RejectsInvalidIgnoredPattern(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.FrameworkIgnoredPatterns = []string{"["}
 
-	_, err := newWatcher(cfg, newDiscardLogger())
+	_, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err == nil {
 		t.Fatal("expected newWatcher to fail for invalid framework ignored pattern")
 	}
@@ -284,7 +285,7 @@ func TestNewWatcher_RejectsIgnoredPatternWithSurroundingWhitespace(t *testing.T)
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.FrameworkIgnoredPatterns = []string{" generated/** "}
 
-	_, err := newWatcher(cfg, newDiscardLogger())
+	_, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err == nil {
 		t.Fatal("expected newWatcher to fail for ignored pattern with surrounding whitespace")
 	}
@@ -298,7 +299,7 @@ func TestNewWatcher_RejectsInvalidWatchExcludePattern(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Watch.Exclude.Files = []string{"["}
 
-	_, err := newWatcher(cfg, newDiscardLogger())
+	_, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err == nil {
 		t.Fatal("expected newWatcher to fail for invalid watch exclude pattern")
 	}
@@ -323,7 +324,7 @@ func TestNewWatcher_RelativePatternsMatchWhenWatchRootContainsGlobMetacharacters
 	}
 	cfg.FrameworkIgnoredPatterns = []string{"generated/**"}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}

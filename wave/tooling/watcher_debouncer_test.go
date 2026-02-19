@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 )
 
 func TestDebouncer_BatchesRapidEventsIntoOneCallback(t *testing.T) {
@@ -13,7 +14,7 @@ func TestDebouncer_BatchesRapidEventsIntoOneCallback(t *testing.T) {
 	var batches [][]fsnotify.Event
 	done := make(chan struct{}, 1)
 
-	debouncer := newDebouncer(20*time.Millisecond, func(events []fsnotify.Event) {
+	debouncer := watch.NewDebouncer(20*time.Millisecond, func(events []fsnotify.Event) {
 		copyOfEvents := append([]fsnotify.Event(nil), events...)
 		mu.Lock()
 		batches = append(batches, copyOfEvents)
@@ -46,7 +47,7 @@ func TestDebouncer_QueuesPendingEventsWhileCallbackIsInFlight(t *testing.T) {
 	started := make(chan []fsnotify.Event, 2)
 	release := make(chan struct{}, 2)
 
-	debouncer := newDebouncer(10*time.Millisecond, func(events []fsnotify.Event) {
+	debouncer := watch.NewDebouncer(10*time.Millisecond, func(events []fsnotify.Event) {
 		started <- append([]fsnotify.Event(nil), events...)
 		<-release
 	})
@@ -96,7 +97,7 @@ func TestDebouncer_QueuesPendingEventsWhileCallbackIsInFlight(t *testing.T) {
 func TestDebouncer_StopPreventsPendingAndFutureCallbacks(t *testing.T) {
 	called := make(chan struct{}, 1)
 
-	debouncer := newDebouncer(20*time.Millisecond, func(_ []fsnotify.Event) {
+	debouncer := watch.NewDebouncer(20*time.Millisecond, func(_ []fsnotify.Event) {
 		called <- struct{}{}
 	})
 

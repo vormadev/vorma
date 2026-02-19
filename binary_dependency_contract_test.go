@@ -106,7 +106,7 @@ func listGoPackageDependencies(
 }
 
 func TestRuntimeDependencyContract_DependencySetSanity(t *testing.T) {
-	dependencies := listGoPackageDependencies(t, "github.com/vormadev/vorma/wave/tooling")
+	dependencies := listGoPackageDependencies(t, "github.com/vormadev/vorma/wave/tooling/devserver")
 
 	var hasAnyBuildtimeSentinel bool
 	for _, sentinelPrefix := range []string{
@@ -122,7 +122,7 @@ func TestRuntimeDependencyContract_DependencySetSanity(t *testing.T) {
 
 	if !hasAnyBuildtimeSentinel {
 		t.Fatalf(
-			"wave/tooling dependency graph unexpectedly lacks expected buildtime sentinels: %s",
+			"wave/tooling/devserver dependency graph unexpectedly lacks expected buildtime sentinels: %s",
 			fmt.Sprint([]string{
 				"github.com/vormadev/vorma/lab/vitecmd",
 				"github.com/evanw/esbuild/",

@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/vormadev/vorma/internal/waveurl"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
 )
 
 func TestRelPathsAreStable(t *testing.T) {
@@ -196,7 +196,7 @@ func TestResolvePublicURLFromReferencedPath(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			resolvedURL := waveurl.ResolveFromReferencedPath(
+			resolvedURL := waveshared.ResolveFromReferencedPath(
 				testCase.publicPathPrefix,
 				testCase.referencedPath,
 			)

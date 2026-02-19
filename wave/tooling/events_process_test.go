@@ -3,6 +3,11 @@ package tooling
 import (
 	"context"
 	"encoding/base64"
+	"github.com/vormadev/vorma/wave/tooling/broadcast"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,16 +28,16 @@ func TestProcessEvents_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 			pathShapeCaseForRun configEventPathShapeCase,
 		) {
 			cfg, _, configFilePath := setupConfigEventTestConfig(t)
-			if configMutationCaseForRun.prepareEvent != nil {
-				configMutationCaseForRun.prepareEvent(t, configFilePath)
+			if configMutationCaseForRun.PrepareEvent != nil {
+				configMutationCaseForRun.PrepareEvent(t, configFilePath)
 			}
 
 			s := setupProcessEventsServerForToolingTests(t, cfg)
 
-			configEventPath := pathShapeCaseForRun.buildPath(t, configFilePath)
-			s.processEvents([]fsnotify.Event{{
+			configEventPath := pathShapeCaseForRun.BuildPath(t, configFilePath)
+			s.ProcessEvents([]fsnotify.Event{{
 				Name: configEventPath,
-				Op:   configMutationCaseForRun.op,
+				Op:   configMutationCaseForRun.Op,
 			}})
 
 			pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
@@ -40,7 +45,7 @@ func TestProcessEvents_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 				s,
 				200*time.Millisecond,
 			)
-			if !pendingRestartRequest.isConfigRestart || !pendingRestartRequest.recompileGo {
+			if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
 				t.Fatalf(
 					"expected config restart with Go recompile, got %#v",
 					pendingRestartRequest,
@@ -88,17 +93,17 @@ func TestProcessEvents_ConfigChangeBatchSkipsNonConfigHookProcessing(t *testing.
 				t.Fatalf("failed writing non-config file: %v", err)
 			}
 
-			if configMutationCaseForRun.prepareEvent != nil {
-				configMutationCaseForRun.prepareEvent(t, configFilePath)
+			if configMutationCaseForRun.PrepareEvent != nil {
+				configMutationCaseForRun.PrepareEvent(t, configFilePath)
 			}
 
 			s := setupProcessEventsServerForToolingTests(t, cfg)
 
-			configEventPath := pathShapeCaseForRun.buildPath(t, configFilePath)
-			s.processEvents([]fsnotify.Event{
+			configEventPath := pathShapeCaseForRun.BuildPath(t, configFilePath)
+			s.ProcessEvents([]fsnotify.Event{
 				{
 					Name: configEventPath,
-					Op:   configMutationCaseForRun.op,
+					Op:   configMutationCaseForRun.Op,
 				},
 				{
 					Name: nonConfigFilePath,
@@ -111,7 +116,7 @@ func TestProcessEvents_ConfigChangeBatchSkipsNonConfigHookProcessing(t *testing.
 				s,
 				200*time.Millisecond,
 			)
-			if !pendingRestartRequest.isConfigRestart || !pendingRestartRequest.recompileGo {
+			if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
 				t.Fatalf(
 					"expected config restart with Go recompile, got %#v",
 					pendingRestartRequest,
@@ -153,7 +158,7 @@ func TestProcessEvents_CreateForMissingFileStillRunsMatchingHooks(t *testing.T) 
 	s := setupProcessEventsServerForToolingTests(t, cfg)
 
 	missingFilePath := filepath.Join(root, "new-file.txt")
-	s.processEvents([]fsnotify.Event{{
+	s.ProcessEvents([]fsnotify.Event{{
 		Name: missingFilePath,
 		Op:   fsnotify.Create,
 	}})
@@ -199,24 +204,24 @@ func TestProcessEvents_DeduplicatesEventsByMatchedPattern(t *testing.T) {
 		t.Fatalf("failed writing %s: %v", fileB, err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	s := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 
-	s.processEvents([]fsnotify.Event{
+	s.ProcessEvents([]fsnotify.Event{
 		{Name: fileA, Op: fsnotify.Write},
 		{Name: fileB, Op: fsnotify.Write},
 	})
@@ -271,24 +276,24 @@ func TestProcessEvents_BatchHardReloadSetsAppStoppedForBatchOnHookContext(t *tes
 		t.Fatalf("failed writing %s: %v", txtFile, err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	s := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 
-	s.processEvents([]fsnotify.Event{
+	s.ProcessEvents([]fsnotify.Event{
 		{Name: goFile, Op: fsnotify.Write},
 		{Name: txtFile, Op: fsnotify.Write},
 	})
@@ -328,24 +333,24 @@ func TestProcessEvents_IgnoresChmodOnNonEmptyFile(t *testing.T) {
 		t.Fatalf("failed writing %s: %v", filePath, err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	s := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 
-	s.processEvents([]fsnotify.Event{{Name: filePath, Op: fsnotify.Chmod}})
+	s.ProcessEvents([]fsnotify.Event{{Name: filePath, Op: fsnotify.Chmod}})
 
 	if got := atomic.LoadInt32(&callbackCount); got != 0 {
 		t.Fatalf("expected chmod-only non-empty event to be ignored, callback count=%d", got)
@@ -358,21 +363,21 @@ func TestProcessEvents_NewDirectoryCreateEventAddsWatchDir(t *testing.T) {
 	cfg.Core.ServerOnlyMode = true
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	s := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 
 	newDirectory := filepath.Join(root, "new-child-dir")
@@ -380,14 +385,16 @@ func TestProcessEvents_NewDirectoryCreateEventAddsWatchDir(t *testing.T) {
 		t.Fatalf("failed creating new directory: %v", err)
 	}
 
-	s.processEvents([]fsnotify.Event{{
+	s.ProcessEvents([]fsnotify.Event{{
 		Name: newDirectory,
 		Op:   fsnotify.Create,
 	}})
 
-	directoryKey := watcher.norm(newDirectory)
-	if _, ok := watcher.watchedDirs.Load(directoryKey); !ok {
-		t.Fatalf("expected new directory to be added to watcher dirs: %s", directoryKey)
+	if !watcher.IsWatchingDir(newDirectory) {
+		t.Fatalf(
+			"expected new directory to be added to watcher dirs: %s",
+			watcher.NormalizePath(newDirectory),
+		)
 	}
 }
 
@@ -399,13 +406,13 @@ func TestProcessEvents_PublicStaticMixedOpsBatchAppliesCreateDeleteAndRenameChan
 	cfg.Core.ServerOnlyMode = false
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -445,15 +452,15 @@ func TestProcessEvents_PublicStaticMixedOpsBatchAppliesCreateDeleteAndRenameChan
 		t.Fatalf("failed writing created file: %v", err)
 	}
 
-	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	s := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 
-	s.processEvents([]fsnotify.Event{
+	s.ProcessEvents([]fsnotify.Event{
 		{Name: renamedFromPath, Op: fsnotify.Remove},
 		{Name: renamedFromPath, Op: fsnotify.Rename},
 		{Name: renamedToPath, Op: fsnotify.Create},
@@ -507,43 +514,41 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 		t.Fatalf("failed writing initial critical css file: %v", err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 	if err := builder.BuildCriticalCSS(true); err != nil {
 		t.Fatalf("initial BuildCriticalCSS returned error: %v", err)
 	}
 
 	criticalEventPath := ""
-	builder.css.mu.RLock()
-	for trackedCriticalImportPath := range builder.css.criticalImports {
+	for _, trackedCriticalImportPath := range builder.ListTrackedCriticalCSSImportPaths() {
 		criticalEventPath = trackedCriticalImportPath
 		break
 	}
-	builder.css.mu.RUnlock()
 	if criticalEventPath == "" {
 		t.Fatal("expected initial critical css build to track at least one import path")
 	}
 
-	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
-		refreshMgr: &clientManager{
-			broadcast: make(chan refreshPayload, 2),
+	s := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
+		RefreshMgr: &broadcast.Manager{
+			Broadcast: make(chan broadcast.Payload, 2),
 		},
-		refreshMgrCtx: context.Background(),
+		RefreshMgrCtx: context.Background(),
 	}
 
 	cfg.Core.CSSEntryFiles.Critical = filepath.Join(root, "styles", "missing-critical.css")
-	s.processEvents([]fsnotify.Event{
+	s.ProcessEvents([]fsnotify.Event{
 		{
 			Name: criticalEventPath,
 			Op:   fsnotify.Write,
@@ -551,7 +556,7 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 	})
 
 	select {
-	case payload := <-s.refreshMgr.broadcast:
+	case payload := <-s.RefreshMgr.Broadcast:
 		t.Fatalf("expected no css payload after failed rebuild, got %#v", payload)
 	default:
 	}
@@ -561,7 +566,7 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 		t.Fatalf("failed writing updated critical css file: %v", err)
 	}
 
-	s.processEvents([]fsnotify.Event{
+	s.ProcessEvents([]fsnotify.Event{
 		{
 			Name: criticalEventPath,
 			Op:   fsnotify.Write,
@@ -569,13 +574,13 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 	})
 
 	select {
-	case payload := <-s.refreshMgr.broadcast:
-		if payload.ChangeType != changeTypeCriticalCSS {
+	case payload := <-s.RefreshMgr.Broadcast:
+		if payload.ChangeType != broadcast.ChangeTypeCriticalCSS {
 			t.Fatalf("expected critical css payload after successful rebuild, got %#v", payload)
 		}
 		decodedCriticalCSS, decodeError := base64.StdEncoding.DecodeString(payload.CriticalCSS)
 		if decodeError != nil {
-			t.Fatalf("failed decoding critical css payload: %v", decodeError)
+			t.Fatalf("failed decoding critical css Payload: %v", decodeError)
 		}
 		if !strings.Contains(string(decodedCriticalCSS), "blue") {
 			t.Fatalf("expected decoded critical css payload to contain updated content, got %q", string(decodedCriticalCSS))

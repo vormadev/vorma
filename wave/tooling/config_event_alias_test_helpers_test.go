@@ -1,6 +1,10 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,21 +14,21 @@ import (
 )
 
 type configEventPathShapeCase struct {
-	name      string
-	buildPath func(t *testing.T, configFilePath string) string
+	Name      string
+	BuildPath func(t *testing.T, configFilePath string) string
 }
 
 func configEventPathShapeCases() []configEventPathShapeCase {
 	return []configEventPathShapeCase{
 		{
-			name: "exact",
-			buildPath: func(_ *testing.T, configFilePath string) string {
+			Name: "exact",
+			BuildPath: func(_ *testing.T, configFilePath string) string {
 				return configFilePath
 			},
 		},
 		{
-			name: "dot_alias",
-			buildPath: func(_ *testing.T, configFilePath string) string {
+			Name: "dot_alias",
+			BuildPath: func(_ *testing.T, configFilePath string) string {
 				return filepath.Join(
 					filepath.Dir(configFilePath),
 					".",
@@ -33,8 +37,8 @@ func configEventPathShapeCases() []configEventPathShapeCase {
 			},
 		},
 		{
-			name: "sibling_relative_alias",
-			buildPath: func(_ *testing.T, configFilePath string) string {
+			Name: "sibling_relative_alias",
+			BuildPath: func(_ *testing.T, configFilePath string) string {
 				return filepath.Join(
 					filepath.Dir(configFilePath),
 					"nested",
@@ -44,8 +48,8 @@ func configEventPathShapeCases() []configEventPathShapeCase {
 			},
 		},
 		{
-			name: "symlink_alias",
-			buildPath: func(t *testing.T, configFilePath string) string {
+			Name: "symlink_alias",
+			BuildPath: func(t *testing.T, configFilePath string) string {
 				t.Helper()
 
 				configDirectoryPath := filepath.Dir(configFilePath)
@@ -61,38 +65,38 @@ func configEventPathShapeCases() []configEventPathShapeCase {
 }
 
 type configMutationCase struct {
-	name         string
-	op           fsnotify.Op
-	prepareEvent func(t *testing.T, configFilePath string)
+	Name         string
+	Op           fsnotify.Op
+	PrepareEvent func(t *testing.T, configFilePath string)
 }
 
 func configMutationCases() []configMutationCase {
 	return []configMutationCase{
 		{
-			name: "write",
-			op:   fsnotify.Write,
+			Name: "write",
+			Op:   fsnotify.Write,
 		},
 		{
-			name: "create",
-			op:   fsnotify.Create,
+			Name: "create",
+			Op:   fsnotify.Create,
 		},
 		{
-			name: "remove",
-			op:   fsnotify.Remove,
-			prepareEvent: func(t *testing.T, configFilePath string) {
+			Name: "remove",
+			Op:   fsnotify.Remove,
+			PrepareEvent: func(t *testing.T, configFilePath string) {
 				t.Helper()
 				if err := os.Remove(configFilePath); err != nil {
-					t.Fatalf("failed removing config file before remove event: %v", err)
+					t.Fatalf("failed removing config file before remove Event: %v", err)
 				}
 			},
 		},
 		{
-			name: "rename",
-			op:   fsnotify.Rename,
-			prepareEvent: func(t *testing.T, configFilePath string) {
+			Name: "rename",
+			Op:   fsnotify.Rename,
+			PrepareEvent: func(t *testing.T, configFilePath string) {
 				t.Helper()
 				if err := os.Rename(configFilePath, configFilePath+".renamed"); err != nil {
-					t.Fatalf("failed renaming config file before rename event: %v", err)
+					t.Fatalf("failed renaming config file before rename Event: %v", err)
 				}
 			},
 		},
@@ -114,7 +118,7 @@ func runConfigMutationAndPathShapeMatrix(
 			configMutationCaseForRun := configMutationCaseForRun
 			pathShapeCaseForRun := pathShapeCaseForRun
 
-			t.Run(configMutationCaseForRun.name+"_"+pathShapeCaseForRun.name, func(t *testing.T) {
+			t.Run(configMutationCaseForRun.Name+"_"+pathShapeCaseForRun.Name, func(t *testing.T) {
 				runCase(t, configMutationCaseForRun, pathShapeCaseForRun)
 			})
 		}
@@ -144,10 +148,10 @@ func setupConfigEventTestConfig(t *testing.T) (*wave.ParsedConfig, string, strin
 func setupWatcherAndBuilderForToolingTests(
 	t *testing.T,
 	cfg *wave.ParsedConfig,
-) (*watcher, *Builder) {
+) (*watch.Watcher, *toolingbuilder.Builder) {
 	t.Helper()
 
-	watcher, watcherError := newWatcher(cfg, newDiscardLogger())
+	watcher, watcherError := watch.NewWatcher(cfg, newDiscardLogger())
 	if watcherError != nil {
 		t.Fatalf("newWatcher returned error: %v", watcherError)
 	}
@@ -155,7 +159,7 @@ func setupWatcherAndBuilderForToolingTests(
 		_ = watcher.Close()
 	})
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	t.Cleanup(func() {
 		builder.Close()
 	})
@@ -166,15 +170,15 @@ func setupWatcherAndBuilderForToolingTests(
 func setupProcessEventsServerForToolingTests(
 	t *testing.T,
 	cfg *wave.ParsedConfig,
-) *server {
+) *devserver.Server {
 	t.Helper()
 
 	watcher, builder := setupWatcherAndBuilderForToolingTests(t, cfg)
-	return &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	return &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 }

@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/tooling/builder/static"
 )
 
 func TestHashBytes_DifferentOriginalNamesProduceDifferentHashedNames(t *testing.T) {
 	content := []byte("same content")
 
-	first := hashBytes(content, "a.css")
-	second := hashBytes(content, "b.css")
+	first := static.HashBytes(content, "a.css")
+	second := static.HashBytes(content, "b.css")
 
 	if first == second {
 		t.Fatalf("expected different hashed names for different original names, got %q", first)
@@ -35,11 +36,11 @@ func TestHashFile_MatchesHashBytesForSameInput(t *testing.T) {
 		t.Fatalf("failed to write temp file: %v", err)
 	}
 
-	fromFile, err := hashFile(filePath, "asset.js")
+	fromFile, err := static.HashFile(filePath, "asset.js")
 	if err != nil {
 		t.Fatalf("hashFile returned error: %v", err)
 	}
-	fromBytes := hashBytes(content, "asset.js")
+	fromBytes := static.HashBytes(content, "asset.js")
 
 	if fromFile != fromBytes {
 		t.Fatalf("hashFile=%q, hashBytes=%q; expected equal output", fromFile, fromBytes)

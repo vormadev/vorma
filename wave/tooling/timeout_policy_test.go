@@ -6,79 +6,80 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
 )
 
 func TestDeriveResolvedTimeoutDurationFromStageAndExecutionPolicy(t *testing.T) {
 	testCases := []struct {
-		name                            string
-		stageTimeoutMilliseconds        int
-		executionTimeoutMilliseconds    int
-		disableStageTimeout             bool
-		expectedResolvedTimeoutDuration time.Duration
+		Name                            string
+		StageTimeoutMilliseconds        int
+		ExecutionTimeoutMilliseconds    int
+		DisableStageTimeout             bool
+		ExpectedResolvedTimeoutDuration time.Duration
 	}{
 		{
-			name:                            "uses stage timeout when no per-execution override is configured",
-			stageTimeoutMilliseconds:        1200,
-			executionTimeoutMilliseconds:    0,
-			disableStageTimeout:             false,
-			expectedResolvedTimeoutDuration: 1200 * time.Millisecond,
+			Name:                            "uses stage timeout when no per-execution override is configured",
+			StageTimeoutMilliseconds:        1200,
+			ExecutionTimeoutMilliseconds:    0,
+			DisableStageTimeout:             false,
+			ExpectedResolvedTimeoutDuration: 1200 * time.Millisecond,
 		},
 		{
-			name:                            "uses per-execution timeout when provided",
-			stageTimeoutMilliseconds:        1200,
-			executionTimeoutMilliseconds:    180,
-			disableStageTimeout:             false,
-			expectedResolvedTimeoutDuration: 180 * time.Millisecond,
+			Name:                            "uses per-execution timeout when provided",
+			StageTimeoutMilliseconds:        1200,
+			ExecutionTimeoutMilliseconds:    180,
+			DisableStageTimeout:             false,
+			ExpectedResolvedTimeoutDuration: 180 * time.Millisecond,
 		},
 		{
-			name:                            "uses per-execution timeout when stage timeout is unset",
-			stageTimeoutMilliseconds:        0,
-			executionTimeoutMilliseconds:    180,
-			disableStageTimeout:             false,
-			expectedResolvedTimeoutDuration: 180 * time.Millisecond,
+			Name:                            "uses per-execution timeout when stage timeout is unset",
+			StageTimeoutMilliseconds:        0,
+			ExecutionTimeoutMilliseconds:    180,
+			DisableStageTimeout:             false,
+			ExpectedResolvedTimeoutDuration: 180 * time.Millisecond,
 		},
 		{
-			name:                            "disables timeout when stage timeout is explicitly disabled",
-			stageTimeoutMilliseconds:        1200,
-			executionTimeoutMilliseconds:    0,
-			disableStageTimeout:             true,
-			expectedResolvedTimeoutDuration: 0,
+			Name:                            "disables timeout when stage timeout is explicitly disabled",
+			StageTimeoutMilliseconds:        1200,
+			ExecutionTimeoutMilliseconds:    0,
+			DisableStageTimeout:             true,
+			ExpectedResolvedTimeoutDuration: 0,
 		},
 		{
-			name:                            "stage timeout disable wins even when per-execution override is present",
-			stageTimeoutMilliseconds:        1200,
-			executionTimeoutMilliseconds:    180,
-			disableStageTimeout:             true,
-			expectedResolvedTimeoutDuration: 0,
+			Name:                            "stage timeout disable wins even when per-execution override is present",
+			StageTimeoutMilliseconds:        1200,
+			ExecutionTimeoutMilliseconds:    180,
+			DisableStageTimeout:             true,
+			ExpectedResolvedTimeoutDuration: 0,
 		},
 		{
-			name:                            "treats negative stage timeout as disabled",
-			stageTimeoutMilliseconds:        -10,
-			executionTimeoutMilliseconds:    0,
-			disableStageTimeout:             false,
-			expectedResolvedTimeoutDuration: 0,
+			Name:                            "treats negative stage timeout as disabled",
+			StageTimeoutMilliseconds:        -10,
+			ExecutionTimeoutMilliseconds:    0,
+			DisableStageTimeout:             false,
+			ExpectedResolvedTimeoutDuration: 0,
 		},
 		{
-			name:                            "ignores non-positive per-execution timeout and falls back to stage timeout",
-			stageTimeoutMilliseconds:        1200,
-			executionTimeoutMilliseconds:    -10,
-			disableStageTimeout:             false,
-			expectedResolvedTimeoutDuration: 1200 * time.Millisecond,
+			Name:                            "ignores non-positive per-execution timeout and falls back to stage timeout",
+			StageTimeoutMilliseconds:        1200,
+			ExecutionTimeoutMilliseconds:    -10,
+			DisableStageTimeout:             false,
+			ExpectedResolvedTimeoutDuration: 1200 * time.Millisecond,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			resolvedTimeoutDuration := deriveResolvedTimeoutDurationFromStageAndExecutionPolicy(
-				testCase.stageTimeoutMilliseconds,
-				testCase.executionTimeoutMilliseconds,
-				testCase.disableStageTimeout,
+		t.Run(testCase.Name, func(t *testing.T) {
+			resolvedTimeoutDuration := devserver.DeriveResolvedTimeoutDurationFromStageAndExecutionPolicy(
+				testCase.StageTimeoutMilliseconds,
+				testCase.ExecutionTimeoutMilliseconds,
+				testCase.DisableStageTimeout,
 			)
-			if resolvedTimeoutDuration != testCase.expectedResolvedTimeoutDuration {
+			if resolvedTimeoutDuration != testCase.ExpectedResolvedTimeoutDuration {
 				t.Fatalf(
 					"resolved timeout=%s, expected=%s",
 					resolvedTimeoutDuration,
-					testCase.expectedResolvedTimeoutDuration,
+					testCase.ExpectedResolvedTimeoutDuration,
 				)
 			}
 		})
@@ -96,54 +97,54 @@ func TestDeriveHookCommandStageTimeoutMilliseconds(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name                                    string
-		stageType                               hookStageType
-		expectedStageCommandTimeoutMilliseconds int
+		Name                                    string
+		StageType                               devserver.HookStageType
+		ExpectedStageCommandTimeoutMilliseconds int
 	}{
 		{
-			name:                                    "pre stage timeout is mapped correctly",
-			stageType:                               hookStageTypePre,
-			expectedStageCommandTimeoutMilliseconds: 11,
+			Name:                                    "pre stage timeout is mapped correctly",
+			StageType:                               devserver.HookStageTypePre,
+			ExpectedStageCommandTimeoutMilliseconds: 11,
 		},
 		{
-			name:                                    "concurrent stage timeout is mapped correctly",
-			stageType:                               hookStageTypeConcurrent,
-			expectedStageCommandTimeoutMilliseconds: 22,
+			Name:                                    "concurrent stage timeout is mapped correctly",
+			StageType:                               devserver.HookStageTypeConcurrent,
+			ExpectedStageCommandTimeoutMilliseconds: 22,
 		},
 		{
-			name:                                    "concurrent-no-wait stage timeout is mapped correctly",
-			stageType:                               hookStageTypeConcurrentNoWait,
-			expectedStageCommandTimeoutMilliseconds: 27,
+			Name:                                    "concurrent-no-wait stage timeout is mapped correctly",
+			StageType:                               devserver.HookStageTypeConcurrentNoWait,
+			ExpectedStageCommandTimeoutMilliseconds: 27,
 		},
 		{
-			name:                                    "post stage timeout is mapped correctly",
-			stageType:                               hookStageTypePost,
-			expectedStageCommandTimeoutMilliseconds: 33,
+			Name:                                    "post stage timeout is mapped correctly",
+			StageType:                               devserver.HookStageTypePost,
+			ExpectedStageCommandTimeoutMilliseconds: 33,
 		},
 		{
-			name:                                    "unknown stage maps to no timeout",
-			stageType:                               hookStageType(-1),
-			expectedStageCommandTimeoutMilliseconds: 0,
+			Name:                                    "unknown stage maps to no timeout",
+			StageType:                               devserver.HookStageType(-1),
+			ExpectedStageCommandTimeoutMilliseconds: 0,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			stageTimeoutMilliseconds := deriveHookCommandStageTimeoutMilliseconds(
+		t.Run(testCase.Name, func(t *testing.T) {
+			stageTimeoutMilliseconds := devserver.DeriveHookCommandStageTimeoutMilliseconds(
 				watchConfig,
-				testCase.stageType,
+				testCase.StageType,
 			)
-			if stageTimeoutMilliseconds != testCase.expectedStageCommandTimeoutMilliseconds {
+			if stageTimeoutMilliseconds != testCase.ExpectedStageCommandTimeoutMilliseconds {
 				t.Fatalf(
 					"stage timeout milliseconds=%d, expected=%d",
 					stageTimeoutMilliseconds,
-					testCase.expectedStageCommandTimeoutMilliseconds,
+					testCase.ExpectedStageCommandTimeoutMilliseconds,
 				)
 			}
 		})
 	}
 
-	if got := deriveHookCommandStageTimeoutMilliseconds(nil, hookStageTypePre); got != 0 {
+	if got := devserver.DeriveHookCommandStageTimeoutMilliseconds(nil, devserver.HookStageTypePre); got != 0 {
 		t.Fatalf("nil watch config timeout milliseconds=%d, expected=0", got)
 	}
 }
@@ -159,54 +160,54 @@ func TestDeriveHookCallbackStageTimeoutMilliseconds(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name                                     string
-		stageType                                hookStageType
-		expectedStageCallbackTimeoutMilliseconds int
+		Name                                     string
+		StageType                                devserver.HookStageType
+		ExpectedStageCallbackTimeoutMilliseconds int
 	}{
 		{
-			name:                                     "pre stage timeout is mapped correctly",
-			stageType:                                hookStageTypePre,
-			expectedStageCallbackTimeoutMilliseconds: 11,
+			Name:                                     "pre stage timeout is mapped correctly",
+			StageType:                                devserver.HookStageTypePre,
+			ExpectedStageCallbackTimeoutMilliseconds: 11,
 		},
 		{
-			name:                                     "concurrent stage timeout is mapped correctly",
-			stageType:                                hookStageTypeConcurrent,
-			expectedStageCallbackTimeoutMilliseconds: 22,
+			Name:                                     "concurrent stage timeout is mapped correctly",
+			StageType:                                devserver.HookStageTypeConcurrent,
+			ExpectedStageCallbackTimeoutMilliseconds: 22,
 		},
 		{
-			name:                                     "concurrent-no-wait stage timeout is mapped correctly",
-			stageType:                                hookStageTypeConcurrentNoWait,
-			expectedStageCallbackTimeoutMilliseconds: 27,
+			Name:                                     "concurrent-no-wait stage timeout is mapped correctly",
+			StageType:                                devserver.HookStageTypeConcurrentNoWait,
+			ExpectedStageCallbackTimeoutMilliseconds: 27,
 		},
 		{
-			name:                                     "post stage timeout is mapped correctly",
-			stageType:                                hookStageTypePost,
-			expectedStageCallbackTimeoutMilliseconds: 33,
+			Name:                                     "post stage timeout is mapped correctly",
+			StageType:                                devserver.HookStageTypePost,
+			ExpectedStageCallbackTimeoutMilliseconds: 33,
 		},
 		{
-			name:                                     "unknown stage maps to no timeout",
-			stageType:                                hookStageType(-1),
-			expectedStageCallbackTimeoutMilliseconds: 0,
+			Name:                                     "unknown stage maps to no timeout",
+			StageType:                                devserver.HookStageType(-1),
+			ExpectedStageCallbackTimeoutMilliseconds: 0,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			stageTimeoutMilliseconds := deriveHookCallbackStageTimeoutMilliseconds(
+		t.Run(testCase.Name, func(t *testing.T) {
+			stageTimeoutMilliseconds := devserver.DeriveHookCallbackStageTimeoutMilliseconds(
 				watchConfig,
-				testCase.stageType,
+				testCase.StageType,
 			)
-			if stageTimeoutMilliseconds != testCase.expectedStageCallbackTimeoutMilliseconds {
+			if stageTimeoutMilliseconds != testCase.ExpectedStageCallbackTimeoutMilliseconds {
 				t.Fatalf(
 					"stage callback timeout milliseconds=%d, expected=%d",
 					stageTimeoutMilliseconds,
-					testCase.expectedStageCallbackTimeoutMilliseconds,
+					testCase.ExpectedStageCallbackTimeoutMilliseconds,
 				)
 			}
 		})
 	}
 
-	if got := deriveHookCallbackStageTimeoutMilliseconds(nil, hookStageTypePre); got != 0 {
+	if got := devserver.DeriveHookCallbackStageTimeoutMilliseconds(nil, devserver.HookStageTypePre); got != 0 {
 		t.Fatalf("nil watch config callback timeout milliseconds=%d, expected=0", got)
 	}
 }
@@ -220,64 +221,64 @@ func TestDeriveHookCommandTimeoutDurationForExecutionPlan(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name                           string
-		stageType                      hookStageType
-		executionPlan                  hookExecutionPlan
-		expectedCommandTimeoutDuration time.Duration
+		Name                           string
+		StageType                      devserver.HookStageType
+		ExecutionPlan                  devserver.HookExecutionPlan
+		ExpectedCommandTimeoutDuration time.Duration
 	}{
 		{
-			name:                           "uses stage command timeout by default",
-			stageType:                      hookStageTypePre,
-			executionPlan:                  hookExecutionPlan{},
-			expectedCommandTimeoutDuration: 1000 * time.Millisecond,
+			Name:                           "uses stage command timeout by default",
+			StageType:                      devserver.HookStageTypePre,
+			ExecutionPlan:                  devserver.HookExecutionPlan{},
+			ExpectedCommandTimeoutDuration: 1000 * time.Millisecond,
 		},
 		{
-			name:      "uses per-hook command timeout override",
-			stageType: hookStageTypePre,
-			executionPlan: hookExecutionPlan{
-				commandTimeoutMilliseconds: 250,
+			Name:      "uses per-hook command timeout override",
+			StageType: devserver.HookStageTypePre,
+			ExecutionPlan: devserver.HookExecutionPlan{
+				CommandTimeoutMilliseconds: 250,
 			},
-			expectedCommandTimeoutDuration: 250 * time.Millisecond,
+			ExpectedCommandTimeoutDuration: 250 * time.Millisecond,
 		},
 		{
-			name:      "disables command timeout when stage timeout is disabled",
-			stageType: hookStageTypePre,
-			executionPlan: hookExecutionPlan{
-				disableStageCommandTimeout: true,
+			Name:      "disables command timeout when stage timeout is disabled",
+			StageType: devserver.HookStageTypePre,
+			ExecutionPlan: devserver.HookExecutionPlan{
+				DisableStageCommandTimeout: true,
 			},
-			expectedCommandTimeoutDuration: 0,
+			ExpectedCommandTimeoutDuration: 0,
 		},
 		{
-			name:      "stage timeout disable wins over per-hook command timeout override",
-			stageType: hookStageTypePre,
-			executionPlan: hookExecutionPlan{
-				commandTimeoutMilliseconds: 250,
-				disableStageCommandTimeout: true,
+			Name:      "stage timeout disable wins over per-hook command timeout override",
+			StageType: devserver.HookStageTypePre,
+			ExecutionPlan: devserver.HookExecutionPlan{
+				CommandTimeoutMilliseconds: 250,
+				DisableStageCommandTimeout: true,
 			},
-			expectedCommandTimeoutDuration: 0,
+			ExpectedCommandTimeoutDuration: 0,
 		},
 		{
-			name:      "unknown stage falls back to per-hook command timeout override",
-			stageType: hookStageType(-1),
-			executionPlan: hookExecutionPlan{
-				commandTimeoutMilliseconds: 150,
+			Name:      "unknown stage falls back to per-hook command timeout override",
+			StageType: devserver.HookStageType(-1),
+			ExecutionPlan: devserver.HookExecutionPlan{
+				CommandTimeoutMilliseconds: 150,
 			},
-			expectedCommandTimeoutDuration: 150 * time.Millisecond,
+			ExpectedCommandTimeoutDuration: 150 * time.Millisecond,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			commandTimeoutDuration := deriveHookCommandTimeoutDurationForExecutionPlan(
+		t.Run(testCase.Name, func(t *testing.T) {
+			commandTimeoutDuration := devserver.DeriveHookCommandTimeoutDurationForExecutionPlan(
 				watchConfig,
-				testCase.stageType,
-				testCase.executionPlan,
+				testCase.StageType,
+				testCase.ExecutionPlan,
 			)
-			if commandTimeoutDuration != testCase.expectedCommandTimeoutDuration {
+			if commandTimeoutDuration != testCase.ExpectedCommandTimeoutDuration {
 				t.Fatalf(
 					"command timeout duration=%s, expected=%s",
 					commandTimeoutDuration,
-					testCase.expectedCommandTimeoutDuration,
+					testCase.ExpectedCommandTimeoutDuration,
 				)
 			}
 		})
@@ -293,64 +294,64 @@ func TestDeriveHookCallbackTimeoutDurationForExecutionPlan(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name                            string
-		stageType                       hookStageType
-		executionPlan                   hookExecutionPlan
-		expectedCallbackTimeoutDuration time.Duration
+		Name                            string
+		StageType                       devserver.HookStageType
+		ExecutionPlan                   devserver.HookExecutionPlan
+		ExpectedCallbackTimeoutDuration time.Duration
 	}{
 		{
-			name:                            "uses stage callback timeout by default",
-			stageType:                       hookStageTypePre,
-			executionPlan:                   hookExecutionPlan{},
-			expectedCallbackTimeoutDuration: 1000 * time.Millisecond,
+			Name:                            "uses stage callback timeout by default",
+			StageType:                       devserver.HookStageTypePre,
+			ExecutionPlan:                   devserver.HookExecutionPlan{},
+			ExpectedCallbackTimeoutDuration: 1000 * time.Millisecond,
 		},
 		{
-			name:      "uses per-hook callback timeout override",
-			stageType: hookStageTypePre,
-			executionPlan: hookExecutionPlan{
-				callbackTimeoutMilliseconds: 250,
+			Name:      "uses per-hook callback timeout override",
+			StageType: devserver.HookStageTypePre,
+			ExecutionPlan: devserver.HookExecutionPlan{
+				CallbackTimeoutMilliseconds: 250,
 			},
-			expectedCallbackTimeoutDuration: 250 * time.Millisecond,
+			ExpectedCallbackTimeoutDuration: 250 * time.Millisecond,
 		},
 		{
-			name:      "disables callback timeout when stage timeout is disabled",
-			stageType: hookStageTypePre,
-			executionPlan: hookExecutionPlan{
-				disableStageCallbackTimeout: true,
+			Name:      "disables callback timeout when stage timeout is disabled",
+			StageType: devserver.HookStageTypePre,
+			ExecutionPlan: devserver.HookExecutionPlan{
+				DisableStageCallbackTimeout: true,
 			},
-			expectedCallbackTimeoutDuration: 0,
+			ExpectedCallbackTimeoutDuration: 0,
 		},
 		{
-			name:      "stage timeout disable wins over per-hook callback timeout override",
-			stageType: hookStageTypePre,
-			executionPlan: hookExecutionPlan{
-				callbackTimeoutMilliseconds: 250,
-				disableStageCallbackTimeout: true,
+			Name:      "stage timeout disable wins over per-hook callback timeout override",
+			StageType: devserver.HookStageTypePre,
+			ExecutionPlan: devserver.HookExecutionPlan{
+				CallbackTimeoutMilliseconds: 250,
+				DisableStageCallbackTimeout: true,
 			},
-			expectedCallbackTimeoutDuration: 0,
+			ExpectedCallbackTimeoutDuration: 0,
 		},
 		{
-			name:      "unknown stage falls back to per-hook callback timeout override",
-			stageType: hookStageType(-1),
-			executionPlan: hookExecutionPlan{
-				callbackTimeoutMilliseconds: 150,
+			Name:      "unknown stage falls back to per-hook callback timeout override",
+			StageType: devserver.HookStageType(-1),
+			ExecutionPlan: devserver.HookExecutionPlan{
+				CallbackTimeoutMilliseconds: 150,
 			},
-			expectedCallbackTimeoutDuration: 150 * time.Millisecond,
+			ExpectedCallbackTimeoutDuration: 150 * time.Millisecond,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			callbackTimeoutDuration := deriveHookCallbackTimeoutDurationForExecutionPlan(
+		t.Run(testCase.Name, func(t *testing.T) {
+			callbackTimeoutDuration := devserver.DeriveHookCallbackTimeoutDurationForExecutionPlan(
 				watchConfig,
-				testCase.stageType,
-				testCase.executionPlan,
+				testCase.StageType,
+				testCase.ExecutionPlan,
 			)
-			if callbackTimeoutDuration != testCase.expectedCallbackTimeoutDuration {
+			if callbackTimeoutDuration != testCase.ExpectedCallbackTimeoutDuration {
 				t.Fatalf(
 					"callback timeout duration=%s, expected=%s",
 					callbackTimeoutDuration,
-					testCase.expectedCallbackTimeoutDuration,
+					testCase.ExpectedCallbackTimeoutDuration,
 				)
 			}
 		})
@@ -363,13 +364,13 @@ func TestDeriveBuildHookCommandTimeoutDuration(t *testing.T) {
 		ProdBuildHookTimeoutMilliseconds: 222,
 	}
 
-	if got := deriveBuildHookCommandTimeoutDuration(coreConfig, true); got != 111*time.Millisecond {
+	if got := devserver.DeriveBuildHookCommandTimeoutDuration(coreConfig, true); got != 111*time.Millisecond {
 		t.Fatalf("dev build hook timeout duration=%s, expected=%s", got, 111*time.Millisecond)
 	}
-	if got := deriveBuildHookCommandTimeoutDuration(coreConfig, false); got != 222*time.Millisecond {
+	if got := devserver.DeriveBuildHookCommandTimeoutDuration(coreConfig, false); got != 222*time.Millisecond {
 		t.Fatalf("prod build hook timeout duration=%s, expected=%s", got, 222*time.Millisecond)
 	}
-	if got := deriveBuildHookCommandTimeoutDuration(nil, true); got != 0 {
+	if got := devserver.DeriveBuildHookCommandTimeoutDuration(nil, true); got != 0 {
 		t.Fatalf("nil core config timeout duration=%s, expected=0", got)
 	}
 
@@ -377,10 +378,10 @@ func TestDeriveBuildHookCommandTimeoutDuration(t *testing.T) {
 		DevBuildHookTimeoutMilliseconds:  -1,
 		ProdBuildHookTimeoutMilliseconds: -2,
 	}
-	if got := deriveBuildHookCommandTimeoutDuration(coreConfigWithNegativeTimeouts, true); got != 0 {
+	if got := devserver.DeriveBuildHookCommandTimeoutDuration(coreConfigWithNegativeTimeouts, true); got != 0 {
 		t.Fatalf("negative dev timeout duration=%s, expected=0", got)
 	}
-	if got := deriveBuildHookCommandTimeoutDuration(coreConfigWithNegativeTimeouts, false); got != 0 {
+	if got := devserver.DeriveBuildHookCommandTimeoutDuration(coreConfigWithNegativeTimeouts, false); got != 0 {
 		t.Fatalf("negative prod timeout duration=%s, expected=0", got)
 	}
 }
@@ -391,7 +392,7 @@ func TestDeriveExecutionContextWithOptionalTimeout(t *testing.T) {
 	)
 	defer cancelParentExecutionContext()
 
-	unchangedExecutionContext, cancelUnchangedExecutionContext := deriveExecutionContextWithOptionalTimeout(
+	unchangedExecutionContext, cancelUnchangedExecutionContext := devserver.DeriveExecutionContextWithOptionalTimeout(
 		parentExecutionContext,
 		0,
 	)
@@ -402,7 +403,7 @@ func TestDeriveExecutionContextWithOptionalTimeout(t *testing.T) {
 		t.Fatal("expected unchanged context when timeout is disabled")
 	}
 
-	backgroundExecutionContext, cancelBackgroundExecutionContext := deriveExecutionContextWithOptionalTimeout(
+	backgroundExecutionContext, cancelBackgroundExecutionContext := devserver.DeriveExecutionContextWithOptionalTimeout(
 		context.TODO(),
 		0,
 	)
@@ -413,7 +414,7 @@ func TestDeriveExecutionContextWithOptionalTimeout(t *testing.T) {
 		t.Fatal("expected non-nil background context when timeout parent context is omitted")
 	}
 
-	timeoutExecutionContext, cancelTimeoutExecutionContext := deriveExecutionContextWithOptionalTimeout(
+	timeoutExecutionContext, cancelTimeoutExecutionContext := devserver.DeriveExecutionContextWithOptionalTimeout(
 		context.TODO(),
 		100*time.Millisecond,
 	)
@@ -432,7 +433,7 @@ func TestDeriveExecutionContextWithOptionalTimeout(t *testing.T) {
 	}
 	cancelTimeoutExecutionContext()
 
-	childExecutionContext, cancelChildExecutionContext := deriveExecutionContextWithOptionalTimeout(
+	childExecutionContext, cancelChildExecutionContext := devserver.DeriveExecutionContextWithOptionalTimeout(
 		parentExecutionContext,
 		1*time.Second,
 	)

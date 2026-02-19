@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,7 @@ func TestWatcherAddDir_AddsNonIgnoredDirectoriesAndSkipsIgnoredOnes(t *testing.T
 		t.Fatalf("failed creating .git dirs: %v", err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -34,10 +35,10 @@ func TestWatcherAddDir_AddsNonIgnoredDirectoriesAndSkipsIgnoredOnes(t *testing.T
 		t.Fatalf("AddDir returned error: %v", err)
 	}
 
-	if _, ok := watcher.watchedDirs.Load(watcher.norm(srcDir)); !ok {
+	if !watcher.IsWatchingDir(srcDir) {
 		t.Fatalf("expected src directory to be watched: %s", srcDir)
 	}
-	if _, ok := watcher.watchedDirs.Load(watcher.norm(gitDir)); ok {
+	if watcher.IsWatchingDir(gitDir) {
 		t.Fatalf("did not expect ignored .git directory to be watched: %s", gitDir)
 	}
 }
@@ -53,7 +54,7 @@ func TestWatcherRemoveStale_RemovesDeletedDirectoriesFromWatchSet(t *testing.T) 
 		t.Fatalf("failed creating watched dir: %v", err)
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -63,8 +64,7 @@ func TestWatcherRemoveStale_RemovesDeletedDirectoriesFromWatchSet(t *testing.T) 
 		t.Fatalf("AddDir returned error: %v", err)
 	}
 
-	normalized := watcher.norm(watchedDir)
-	if _, ok := watcher.watchedDirs.Load(normalized); !ok {
+	if !watcher.IsWatchingDir(watchedDir) {
 		t.Fatalf("expected watched dir to be tracked before deletion: %s", watchedDir)
 	}
 
@@ -74,7 +74,7 @@ func TestWatcherRemoveStale_RemovesDeletedDirectoriesFromWatchSet(t *testing.T) 
 
 	watcher.RemoveStale()
 
-	if _, ok := watcher.watchedDirs.Load(normalized); ok {
+	if watcher.IsWatchingDir(watchedDir) {
 		t.Fatalf("expected deleted watched dir to be removed from tracked set: %s", watchedDir)
 	}
 }

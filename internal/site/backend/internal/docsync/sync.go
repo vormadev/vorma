@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/vormadev/vorma/wave"
-	wavetooling "github.com/vormadev/vorma/wave/tooling"
+	"github.com/vormadev/vorma/wave/tooling/builder"
 )
 
 const generatedMarker = "<!-- GENERATED_BY: internal/site/backend/cmd/sync_docs -->"
@@ -205,7 +205,7 @@ func loadPublicAssetMap(cfg *wave.ParsedConfig, log *slog.Logger) (map[string]st
 		return nil, "", fmt.Errorf("wave config is required for URL resolution")
 	}
 
-	builder := wavetooling.NewBuilder(cfg, log)
+	builder := toolingbuilder.NewBuilder(cfg, log)
 	defer builder.Close()
 
 	if err := builder.ProcessPublicFilesOnly(); err != nil {

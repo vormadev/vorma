@@ -3,8 +3,8 @@ package wave
 import (
 	"context"
 
-	"github.com/vormadev/vorma/internal/waveport"
 	"github.com/vormadev/vorma/lab/jsonschema"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
 )
 
 // RawConfigJSON returns the raw bytes of the configuration file.
@@ -124,7 +124,7 @@ func (w *Wave) MustGetPort() int {
 
 func (w *Wave) setDevModeForInstance(isDevMode bool) {
 	w.isDevMode = isDevMode
-	w.portResolver = waveport.NewResolverForMode(isDevMode)
+	w.portResolver = waveshared.NewResolverForMode(isDevMode)
 	w.initRuntimeCaches()
 }
 

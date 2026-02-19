@@ -7,7 +7,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/id"
-	wavebuild "github.com/vormadev/vorma/wave/tooling"
+	"github.com/vormadev/vorma/wave/tooling/builder"
 )
 
 type buildInnerOptions struct {
@@ -190,7 +190,7 @@ func newBuildInnerBuildIDExecutor(
 func defaultBuildInnerPublicFileMapDependencies() buildInnerPublicFileMapDependencies {
 	return buildInnerPublicFileMapDependencies{
 		newPublicFileMapWriter: func(v *vormaruntime.Vorma) buildInnerPublicFileMapWriter {
-			return wavebuild.NewBuilder(
+			return toolingbuilder.NewBuilder(
 				configureBuildEnvironment(v),
 				v.Wave.Logger(),
 			)

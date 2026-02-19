@@ -1,0 +1,291 @@
+package classification
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/fsnotify/fsnotify"
+)
+
+// EventKind is a normalized watcher event class independent of fsnotify bitmasks.
+type EventKind int
+
+const (
+	// EventKindUnknown is used when no explicit fsnotify operation bit is set.
+	EventKindUnknown EventKind = iota
+	// EventKindCreate represents filesystem create events.
+	EventKindCreate
+	// EventKindWrite represents content writes.
+	EventKindWrite
+	// EventKindRemove represents file removal.
+	EventKindRemove
+	// EventKindRename represents path renames.
+	EventKindRename
+	// EventKindChmod represents chmod-only metadata updates.
+	EventKindChmod
+)
+
+// PreClassificationDecision controls whether an event enters semantic planning.
+type PreClassificationDecision struct {
+	IncludeEvent     bool
+	IgnoreReason     string
+	CanonicalPath    string
+	ShouldSkipStat   bool
+	LooksLikeTempIO  bool
+	LooksLikeLockIO  bool
+	UnderlyingKind   EventKind
+	FromUnknownEvent bool
+}
+
+// PostClassificationDecision controls final inclusion after semantic classification.
+type PostClassificationDecision struct {
+	IncludeClassifiedEvent bool
+	DroppedBecauseIgnored  bool
+	DroppedBecauseChmod    bool
+}
+
+// PathClassifierDependencies groups callback dependencies for pre-classification.
+type PathClassifierDependencies struct {
+	IsIgnoredPathFunc func(string) bool
+	LockFileName      string
+}
+
+// DeriveEventKind converts fsnotify operation flags into one deterministic kind.
+func DeriveEventKind(watcherEvent fsnotify.Event) EventKind {
+	if watcherEvent.Has(fsnotify.Create) {
+		return EventKindCreate
+	}
+	if watcherEvent.Has(fsnotify.Write) {
+		return EventKindWrite
+	}
+	if watcherEvent.Has(fsnotify.Remove) {
+		return EventKindRemove
+	}
+	if watcherEvent.Has(fsnotify.Rename) {
+		return EventKindRename
+	}
+	if watcherEvent.Has(fsnotify.Chmod) {
+		return EventKindChmod
+	}
+	return EventKindUnknown
+}
+
+// NormalizeWatcherEventPath normalizes path shape for consistent matching.
+func NormalizeWatcherEventPath(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	clean := filepath.Clean(path)
+	if clean == "." {
+		return ""
+	}
+	return clean
+}
+
+// DerivePreClassificationDecision performs cheap filtering before semantic work.
+func DerivePreClassificationDecision(
+	watcherEvent fsnotify.Event,
+	dependencies PathClassifierDependencies,
+) PreClassificationDecision {
+	normalizedPath := NormalizeWatcherEventPath(watcherEvent.Name)
+	kind := DeriveEventKind(watcherEvent)
+
+	decision := PreClassificationDecision{
+		IncludeEvent:   true,
+		CanonicalPath:  normalizedPath,
+		UnderlyingKind: kind,
+	}
+
+	if normalizedPath == "" {
+		decision.IncludeEvent = false
+		decision.IgnoreReason = "empty_path"
+		return decision
+	}
+
+	if strings.TrimSpace(dependencies.LockFileName) != "" &&
+		filepath.Base(normalizedPath) == dependencies.LockFileName {
+		decision.IncludeEvent = false
+		decision.IgnoreReason = "lock_file"
+		decision.LooksLikeLockIO = true
+		return decision
+	}
+
+	if IsLikelyEditorTemporaryPath(normalizedPath) {
+		decision.IncludeEvent = false
+		decision.IgnoreReason = "editor_temp_path"
+		decision.LooksLikeTempIO = true
+		return decision
+	}
+
+	if dependencies.IsIgnoredPathFunc != nil &&
+		dependencies.IsIgnoredPathFunc(normalizedPath) {
+		decision.IncludeEvent = false
+		decision.IgnoreReason = "ignored_path"
+		return decision
+	}
+
+	if kind == EventKindUnknown {
+		decision.FromUnknownEvent = true
+		decision.ShouldSkipStat = true
+	}
+
+	return decision
+}
+
+// DerivePostClassificationDecision removes ignored and chmod-only events.
+func DerivePostClassificationDecision(
+	ignored bool,
+	chmodOnly bool,
+) PostClassificationDecision {
+	if ignored {
+		return PostClassificationDecision{
+			IncludeClassifiedEvent: false,
+			DroppedBecauseIgnored:  true,
+		}
+	}
+	if chmodOnly {
+		return PostClassificationDecision{
+			IncludeClassifiedEvent: false,
+			DroppedBecauseChmod:    true,
+		}
+	}
+	return PostClassificationDecision{IncludeClassifiedEvent: true}
+}
+
+// IsLikelyEditorTemporaryPath catches common editor temp/backup artifacts.
+func IsLikelyEditorTemporaryPath(path string) bool {
+	base := filepath.Base(path)
+	if base == "" {
+		return false
+	}
+
+	lowerBase := strings.ToLower(base)
+	if strings.HasPrefix(lowerBase, ".#") {
+		return true
+	}
+	if strings.HasSuffix(lowerBase, "~") {
+		return true
+	}
+	if strings.HasSuffix(lowerBase, ".tmp") {
+		return true
+	}
+	if strings.HasSuffix(lowerBase, ".swp") ||
+		strings.HasSuffix(lowerBase, ".swo") {
+		return true
+	}
+	if strings.HasPrefix(lowerBase, "4913") {
+		return true
+	}
+	return false
+}
+
+// DeriveChmodOnlyDecision reports whether a chmod event is pure metadata noise.
+func DeriveChmodOnlyDecision(watcherEvent fsnotify.Event) bool {
+	if !watcherEvent.Has(fsnotify.Chmod) {
+		return false
+	}
+	if watcherEvent.Has(fsnotify.Write) || watcherEvent.Has(fsnotify.Create) {
+		return false
+	}
+	if watcherEvent.Has(fsnotify.Remove) || watcherEvent.Has(fsnotify.Rename) {
+		return false
+	}
+	return true
+}
+
+// ShouldSuppressEventForMissingPath returns true for remove/rename path misses.
+func ShouldSuppressEventForMissingPath(
+	watcherEvent fsnotify.Event,
+	statError error,
+) bool {
+	if statError == nil {
+		return false
+	}
+	if !errors.Is(statError, os.ErrNotExist) {
+		return false
+	}
+	if watcherEvent.Has(fsnotify.Remove) {
+		return true
+	}
+	if watcherEvent.Has(fsnotify.Rename) {
+		return true
+	}
+	return false
+}
+
+// IsLikelyDirectoryChange reports whether path currently resolves to a directory.
+func IsLikelyDirectoryChange(path string) bool {
+	fileInfo, statError := os.Stat(path)
+	if statError != nil {
+		return false
+	}
+	return fileInfo.IsDir()
+}
+
+// IsSymlinkPath reports whether a path is a symbolic link.
+func IsSymlinkPath(path string) bool {
+	fileInfo, lstatError := os.Lstat(path)
+	if lstatError != nil {
+		return false
+	}
+	return fileInfo.Mode()&os.ModeSymlink != 0
+}
+
+// ResolveSymlinkIfPresent resolves symlink targets and returns cleaned path.
+func ResolveSymlinkIfPresent(path string) string {
+	if !IsSymlinkPath(path) {
+		return NormalizeWatcherEventPath(path)
+	}
+	resolvedPath, evalError := filepath.EvalSymlinks(path)
+	if evalError != nil {
+		return NormalizeWatcherEventPath(path)
+	}
+	return NormalizeWatcherEventPath(resolvedPath)
+}
+
+// CanonicalizePathForEvent attempts best-effort absolute path canonicalization.
+func CanonicalizePathForEvent(path string) string {
+	normalizedPath := NormalizeWatcherEventPath(path)
+	if normalizedPath == "" {
+		return ""
+	}
+
+	absolutePath, absError := filepath.Abs(normalizedPath)
+	if absError != nil {
+		return ResolveSymlinkIfPresent(normalizedPath)
+	}
+	return ResolveSymlinkIfPresent(absolutePath)
+}
+
+// IsConfigurationPathChange reports whether watcher path targets config file.
+func IsConfigurationPathChange(
+	watcherPath string,
+	configurationPath string,
+) bool {
+	watcherCanonical := CanonicalizePathForEvent(watcherPath)
+	configCanonical := CanonicalizePathForEvent(configurationPath)
+	if watcherCanonical == "" || configCanonical == "" {
+		return false
+	}
+	return watcherCanonical == configCanonical
+}
+
+// EventKindString maps EventKind to stable log values.
+func EventKindString(kind EventKind) string {
+	switch kind {
+	case EventKindCreate:
+		return "create"
+	case EventKindWrite:
+		return "write"
+	case EventKindRemove:
+		return "remove"
+	case EventKindRename:
+		return "rename"
+	case EventKindChmod:
+		return "chmod"
+	default:
+		return "unknown"
+	}
+}

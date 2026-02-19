@@ -2,6 +2,7 @@ package tooling
 
 import (
 	"errors"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
 	"reflect"
 	"testing"
 
@@ -12,50 +13,50 @@ var errSynthetic = errors.New("synthetic error")
 
 func TestDeriveStaticFileProcessingExecutionDecision(t *testing.T) {
 	t.Run("processing disabled returns no-op decision", func(t *testing.T) {
-		decision := deriveStaticFileProcessingExecutionDecision(
+		decision := devserver.DeriveStaticFileProcessingExecutionDecision(
 			false,
 			[]string{"public/logo.png"},
 		)
-		if decision.mode != staticFileProcessingExecutionModeNone {
-			t.Fatalf("mode=%v, want %v", decision.mode, staticFileProcessingExecutionModeNone)
+		if decision.Mode != devserver.StaticFileProcessingExecutionModeNone {
+			t.Fatalf("mode=%v, want %v", decision.Mode, devserver.StaticFileProcessingExecutionModeNone)
 		}
-		if decision.shouldProcess() {
+		if decision.ShouldProcess() {
 			t.Fatalf("expected shouldProcess=false, got %#v", decision)
 		}
-		if decision.changedFilePaths != nil {
-			t.Fatalf("expected changedFilePaths=nil, got %#v", decision.changedFilePaths)
+		if decision.ChangedFilePaths != nil {
+			t.Fatalf("expected changedFilePaths=nil, got %#v", decision.ChangedFilePaths)
 		}
 	})
 
 	t.Run("processing enabled with empty changed paths selects full scan", func(t *testing.T) {
-		decision := deriveStaticFileProcessingExecutionDecision(true, nil)
-		if decision.mode != staticFileProcessingExecutionModeFullScan {
-			t.Fatalf("mode=%v, want %v", decision.mode, staticFileProcessingExecutionModeFullScan)
+		decision := devserver.DeriveStaticFileProcessingExecutionDecision(true, nil)
+		if decision.Mode != devserver.StaticFileProcessingExecutionModeFullScan {
+			t.Fatalf("mode=%v, want %v", decision.Mode, devserver.StaticFileProcessingExecutionModeFullScan)
 		}
-		if !decision.shouldProcess() {
+		if !decision.ShouldProcess() {
 			t.Fatalf("expected shouldProcess=true, got %#v", decision)
 		}
-		if decision.changedFilePaths != nil {
-			t.Fatalf("expected changedFilePaths=nil for full scan, got %#v", decision.changedFilePaths)
+		if decision.ChangedFilePaths != nil {
+			t.Fatalf("expected changedFilePaths=nil for full scan, got %#v", decision.ChangedFilePaths)
 		}
 	})
 
 	t.Run("processing enabled with changed paths selects changed-path mode and copies slice", func(t *testing.T) {
 		changedPaths := []string{"public/logo.png", "public/app.js"}
-		decision := deriveStaticFileProcessingExecutionDecision(true, changedPaths)
-		if decision.mode != staticFileProcessingExecutionModeChangedPaths {
-			t.Fatalf("mode=%v, want %v", decision.mode, staticFileProcessingExecutionModeChangedPaths)
+		decision := devserver.DeriveStaticFileProcessingExecutionDecision(true, changedPaths)
+		if decision.Mode != devserver.StaticFileProcessingExecutionModeChangedPaths {
+			t.Fatalf("mode=%v, want %v", decision.Mode, devserver.StaticFileProcessingExecutionModeChangedPaths)
 		}
 		expectedChangedPaths := []string{"public/logo.png", "public/app.js"}
-		if !reflect.DeepEqual(decision.changedFilePaths, expectedChangedPaths) {
-			t.Fatalf("changedFilePaths=%#v, want %#v", decision.changedFilePaths, expectedChangedPaths)
+		if !reflect.DeepEqual(decision.ChangedFilePaths, expectedChangedPaths) {
+			t.Fatalf("changedFilePaths=%#v, want %#v", decision.ChangedFilePaths, expectedChangedPaths)
 		}
 
 		changedPaths[0] = "mutated/path.css"
-		if decision.changedFilePaths[0] != "public/logo.png" {
+		if decision.ChangedFilePaths[0] != "public/logo.png" {
 			t.Fatalf(
 				"expected decision changedFilePaths to be isolated copy, got %#v",
-				decision.changedFilePaths,
+				decision.ChangedFilePaths,
 			)
 		}
 	})
@@ -63,39 +64,39 @@ func TestDeriveStaticFileProcessingExecutionDecision(t *testing.T) {
 
 func TestShouldWriteFrameworkPublicFileMapTSForBuildDecision(t *testing.T) {
 	testCases := []struct {
-		name                           string
-		shouldProcessPublicStaticFiles bool
-		frameworkPublicFileMapOutDir   string
-		expectedShouldWrite            bool
+		Name                           string
+		ShouldProcessPublicStaticFiles bool
+		FrameworkPublicFileMapOutDir   string
+		ExpectedShouldWrite            bool
 	}{
 		{
-			name:                           "public static disabled never writes framework map",
-			shouldProcessPublicStaticFiles: false,
-			frameworkPublicFileMapOutDir:   "framework",
-			expectedShouldWrite:            false,
+			Name:                           "public static disabled never writes framework map",
+			ShouldProcessPublicStaticFiles: false,
+			FrameworkPublicFileMapOutDir:   "framework",
+			ExpectedShouldWrite:            false,
 		},
 		{
-			name:                           "empty outdir disables framework map write",
-			shouldProcessPublicStaticFiles: true,
-			frameworkPublicFileMapOutDir:   "",
-			expectedShouldWrite:            false,
+			Name:                           "empty outdir disables framework map write",
+			ShouldProcessPublicStaticFiles: true,
+			FrameworkPublicFileMapOutDir:   "",
+			ExpectedShouldWrite:            false,
 		},
 		{
-			name:                           "public static enabled with outdir writes framework map",
-			shouldProcessPublicStaticFiles: true,
-			frameworkPublicFileMapOutDir:   "framework",
-			expectedShouldWrite:            true,
+			Name:                           "public static enabled with outdir writes framework map",
+			ShouldProcessPublicStaticFiles: true,
+			FrameworkPublicFileMapOutDir:   "framework",
+			ExpectedShouldWrite:            true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			shouldWrite := shouldWriteFrameworkPublicFileMapTSForBuildDecision(
-				testCase.shouldProcessPublicStaticFiles,
-				testCase.frameworkPublicFileMapOutDir,
+		t.Run(testCase.Name, func(t *testing.T) {
+			shouldWrite := devserver.ShouldWriteFrameworkPublicFileMapTSForBuildDecision(
+				testCase.ShouldProcessPublicStaticFiles,
+				testCase.FrameworkPublicFileMapOutDir,
 			)
-			if shouldWrite != testCase.expectedShouldWrite {
-				t.Fatalf("shouldWrite=%t, want %t", shouldWrite, testCase.expectedShouldWrite)
+			if shouldWrite != testCase.ExpectedShouldWrite {
+				t.Fatalf("shouldWrite=%t, want %t", shouldWrite, testCase.ExpectedShouldWrite)
 			}
 		})
 	}
@@ -104,114 +105,114 @@ func TestShouldWriteFrameworkPublicFileMapTSForBuildDecision(t *testing.T) {
 func TestDeriveBuildPhaseExecutionDecision(t *testing.T) {
 	publicChangedPaths := []string{"public/logo.png"}
 	privateChangedPaths := []string{"private/templates/home.html"}
-	decision := deriveBuildPhaseExecutionDecision(
-		buildPhaseDecision{
-			compileGo:                     true,
-			buildCriticalCSS:              true,
-			buildNormalCSS:                false,
-			processPublicFiles:            true,
-			processPrivateFiles:           true,
-			publicStaticChangedFilePaths:  publicChangedPaths,
-			privateStaticChangedFilePaths: privateChangedPaths,
+	decision := devserver.DeriveBuildPhaseExecutionDecision(
+		devserver.BuildPhaseDecision{
+			CompileGo:                     true,
+			BuildCriticalCSS:              true,
+			BuildNormalCSS:                false,
+			ProcessPublicFiles:            true,
+			ProcessPrivateFiles:           true,
+			PublicStaticChangedFilePaths:  publicChangedPaths,
+			PrivateStaticChangedFilePaths: privateChangedPaths,
 		},
 		"framework-out",
 	)
 
-	if !decision.compileGo {
+	if !decision.CompileGo {
 		t.Fatal("expected compileGo=true")
 	}
-	if !decision.buildCriticalCSS {
+	if !decision.BuildCriticalCSS {
 		t.Fatal("expected buildCriticalCSS=true")
 	}
-	if decision.buildNormalCSS {
+	if decision.BuildNormalCSS {
 		t.Fatal("expected buildNormalCSS=false")
 	}
-	if decision.publicStaticProcessing.mode != staticFileProcessingExecutionModeChangedPaths {
+	if decision.PublicStaticProcessing.Mode != devserver.StaticFileProcessingExecutionModeChangedPaths {
 		t.Fatalf(
 			"public mode=%v, want %v",
-			decision.publicStaticProcessing.mode,
-			staticFileProcessingExecutionModeChangedPaths,
+			decision.PublicStaticProcessing.Mode,
+			devserver.StaticFileProcessingExecutionModeChangedPaths,
 		)
 	}
-	if decision.privateStaticProcessing.mode != staticFileProcessingExecutionModeChangedPaths {
+	if decision.PrivateStaticProcessing.Mode != devserver.StaticFileProcessingExecutionModeChangedPaths {
 		t.Fatalf(
 			"private mode=%v, want %v",
-			decision.privateStaticProcessing.mode,
-			staticFileProcessingExecutionModeChangedPaths,
+			decision.PrivateStaticProcessing.Mode,
+			devserver.StaticFileProcessingExecutionModeChangedPaths,
 		)
 	}
-	if !decision.writeFrameworkPublicFileMap {
+	if !decision.WriteFrameworkPublicFileMap {
 		t.Fatal("expected writeFrameworkPublicFileMap=true")
 	}
 
 	publicChangedPaths[0] = "mutated-public-path"
 	privateChangedPaths[0] = "mutated-private-path"
-	if decision.publicStaticProcessing.changedFilePaths[0] != "public/logo.png" {
-		t.Fatalf("expected copied public changed paths, got %#v", decision.publicStaticProcessing.changedFilePaths)
+	if decision.PublicStaticProcessing.ChangedFilePaths[0] != "public/logo.png" {
+		t.Fatalf("expected copied public changed paths, got %#v", decision.PublicStaticProcessing.ChangedFilePaths)
 	}
-	if decision.privateStaticProcessing.changedFilePaths[0] != "private/templates/home.html" {
-		t.Fatalf("expected copied private changed paths, got %#v", decision.privateStaticProcessing.changedFilePaths)
+	if decision.PrivateStaticProcessing.ChangedFilePaths[0] != "private/templates/home.html" {
+		t.Fatalf("expected copied private changed paths, got %#v", decision.PrivateStaticProcessing.ChangedFilePaths)
 	}
 }
 
 func TestShouldExecuteAnyFileProcessingForBuildDecision(t *testing.T) {
 	testCases := []struct {
-		name                      string
-		executionDecision         buildPhaseExecutionDecision
-		expectedExecuteProcessing bool
+		Name                      string
+		ExecutionDecision         devserver.BuildPhaseExecutionDecision
+		ExpectedExecuteProcessing bool
 	}{
 		{
-			name: "no file processing work",
-			executionDecision: buildPhaseExecutionDecision{
-				publicStaticProcessing:  staticFileProcessingExecutionDecision{},
-				privateStaticProcessing: staticFileProcessingExecutionDecision{},
+			Name: "no file processing work",
+			ExecutionDecision: devserver.BuildPhaseExecutionDecision{
+				PublicStaticProcessing:  devserver.StaticFileProcessingExecutionDecision{},
+				PrivateStaticProcessing: devserver.StaticFileProcessingExecutionDecision{},
 			},
-			expectedExecuteProcessing: false,
+			ExpectedExecuteProcessing: false,
 		},
 		{
-			name: "public static processing triggers file-processing phase",
-			executionDecision: buildPhaseExecutionDecision{
-				publicStaticProcessing: staticFileProcessingExecutionDecision{
-					mode: staticFileProcessingExecutionModeFullScan,
+			Name: "public static processing triggers file-processing phase",
+			ExecutionDecision: devserver.BuildPhaseExecutionDecision{
+				PublicStaticProcessing: devserver.StaticFileProcessingExecutionDecision{
+					Mode: devserver.StaticFileProcessingExecutionModeFullScan,
 				},
 			},
-			expectedExecuteProcessing: true,
+			ExpectedExecuteProcessing: true,
 		},
 		{
-			name: "private static processing triggers file-processing phase",
-			executionDecision: buildPhaseExecutionDecision{
-				privateStaticProcessing: staticFileProcessingExecutionDecision{
-					mode: staticFileProcessingExecutionModeChangedPaths,
+			Name: "private static processing triggers file-processing phase",
+			ExecutionDecision: devserver.BuildPhaseExecutionDecision{
+				PrivateStaticProcessing: devserver.StaticFileProcessingExecutionDecision{
+					Mode: devserver.StaticFileProcessingExecutionModeChangedPaths,
 				},
 			},
-			expectedExecuteProcessing: true,
+			ExpectedExecuteProcessing: true,
 		},
 		{
-			name: "critical css build triggers file-processing phase",
-			executionDecision: buildPhaseExecutionDecision{
-				buildCriticalCSS: true,
+			Name: "critical css build triggers file-processing phase",
+			ExecutionDecision: devserver.BuildPhaseExecutionDecision{
+				BuildCriticalCSS: true,
 			},
-			expectedExecuteProcessing: true,
+			ExpectedExecuteProcessing: true,
 		},
 		{
-			name: "normal css build triggers file-processing phase",
-			executionDecision: buildPhaseExecutionDecision{
-				buildNormalCSS: true,
+			Name: "normal css build triggers file-processing phase",
+			ExecutionDecision: devserver.BuildPhaseExecutionDecision{
+				BuildNormalCSS: true,
 			},
-			expectedExecuteProcessing: true,
+			ExpectedExecuteProcessing: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			shouldExecuteProcessing := shouldExecuteAnyFileProcessingForBuildDecision(
-				testCase.executionDecision,
+		t.Run(testCase.Name, func(t *testing.T) {
+			shouldExecuteProcessing := devserver.ShouldExecuteAnyFileProcessingForBuildDecision(
+				testCase.ExecutionDecision,
 			)
-			if shouldExecuteProcessing != testCase.expectedExecuteProcessing {
+			if shouldExecuteProcessing != testCase.ExpectedExecuteProcessing {
 				t.Fatalf(
-					"shouldExecuteAnyFileProcessingForBuildDecision()=%t, want %t",
+					"devserver.ShouldExecuteAnyFileProcessingForBuildDecision()=%t, want %t",
 					shouldExecuteProcessing,
-					testCase.expectedExecuteProcessing,
+					testCase.ExpectedExecuteProcessing,
 				)
 			}
 		})
@@ -220,41 +221,41 @@ func TestShouldExecuteAnyFileProcessingForBuildDecision(t *testing.T) {
 
 func TestShouldExecuteBuildPhaseForExecutionDecision(t *testing.T) {
 	testCases := []struct {
-		name                  string
-		executionDecision     buildPhaseExecutionDecision
-		expectedShouldExecute bool
+		Name                  string
+		ExecutionDecision     devserver.BuildPhaseExecutionDecision
+		ExpectedShouldExecute bool
 	}{
 		{
-			name:                  "no compile or file processing work skips build phase",
-			executionDecision:     buildPhaseExecutionDecision{},
-			expectedShouldExecute: false,
+			Name:                  "no compile or file processing work skips build phase",
+			ExecutionDecision:     devserver.BuildPhaseExecutionDecision{},
+			ExpectedShouldExecute: false,
 		},
 		{
-			name: "compile-go work executes build phase",
-			executionDecision: buildPhaseExecutionDecision{
-				compileGo: true,
+			Name: "compile-go work executes build phase",
+			ExecutionDecision: devserver.BuildPhaseExecutionDecision{
+				CompileGo: true,
 			},
-			expectedShouldExecute: true,
+			ExpectedShouldExecute: true,
 		},
 		{
-			name: "file processing work executes build phase",
-			executionDecision: buildPhaseExecutionDecision{
-				buildNormalCSS: true,
+			Name: "file processing work executes build phase",
+			ExecutionDecision: devserver.BuildPhaseExecutionDecision{
+				BuildNormalCSS: true,
 			},
-			expectedShouldExecute: true,
+			ExpectedShouldExecute: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			shouldExecuteBuildPhase := shouldExecuteBuildPhaseForExecutionDecision(
-				testCase.executionDecision,
+		t.Run(testCase.Name, func(t *testing.T) {
+			shouldExecuteBuildPhase := devserver.ShouldExecuteBuildPhaseForExecutionDecision(
+				testCase.ExecutionDecision,
 			)
-			if shouldExecuteBuildPhase != testCase.expectedShouldExecute {
+			if shouldExecuteBuildPhase != testCase.ExpectedShouldExecute {
 				t.Fatalf(
-					"shouldExecuteBuildPhaseForExecutionDecision()=%t, want %t",
+					"devserver.ShouldExecuteBuildPhaseForExecutionDecision()=%t, want %t",
 					shouldExecuteBuildPhase,
-					testCase.expectedShouldExecute,
+					testCase.ExpectedShouldExecute,
 				)
 			}
 		})
@@ -265,7 +266,7 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 	t.Run("none mode executes no processors", func(t *testing.T) {
 		fullCallCount := 0
 		changedCallCount := 0
-		err := executeStaticFileProcessingForBuildPhase(
+		err := devserver.ExecuteStaticFileProcessingForBuildPhase(
 			func() error {
 				fullCallCount++
 				return nil
@@ -274,8 +275,8 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 				changedCallCount++
 				return nil
 			},
-			staticFileProcessingExecutionDecision{
-				mode: staticFileProcessingExecutionModeNone,
+			devserver.StaticFileProcessingExecutionDecision{
+				Mode: devserver.StaticFileProcessingExecutionModeNone,
 			},
 		)
 		if err != nil {
@@ -289,7 +290,7 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 	t.Run("full-scan mode executes full processor only", func(t *testing.T) {
 		fullCallCount := 0
 		changedCallCount := 0
-		err := executeStaticFileProcessingForBuildPhase(
+		err := devserver.ExecuteStaticFileProcessingForBuildPhase(
 			func() error {
 				fullCallCount++
 				return nil
@@ -298,8 +299,8 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 				changedCallCount++
 				return nil
 			},
-			staticFileProcessingExecutionDecision{
-				mode: staticFileProcessingExecutionModeFullScan,
+			devserver.StaticFileProcessingExecutionDecision{
+				Mode: devserver.StaticFileProcessingExecutionModeFullScan,
 			},
 		)
 		if err != nil {
@@ -318,7 +319,7 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 		changedCallCount := 0
 		var receivedChangedPaths []string
 		expectedChangedPaths := []string{"public/logo.png", "public/app.js"}
-		err := executeStaticFileProcessingForBuildPhase(
+		err := devserver.ExecuteStaticFileProcessingForBuildPhase(
 			func() error {
 				fullCallCount++
 				return nil
@@ -328,9 +329,9 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 				receivedChangedPaths = append([]string(nil), changedPaths...)
 				return nil
 			},
-			staticFileProcessingExecutionDecision{
-				mode:             staticFileProcessingExecutionModeChangedPaths,
-				changedFilePaths: expectedChangedPaths,
+			devserver.StaticFileProcessingExecutionDecision{
+				Mode:             devserver.StaticFileProcessingExecutionModeChangedPaths,
+				ChangedFilePaths: expectedChangedPaths,
 			},
 		)
 		if err != nil {
@@ -349,7 +350,7 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 
 	t.Run("full-scan processor error is propagated", func(t *testing.T) {
 		expectedError := errors.New("full-scan failed")
-		err := executeStaticFileProcessingForBuildPhase(
+		err := devserver.ExecuteStaticFileProcessingForBuildPhase(
 			func() error {
 				return expectedError
 			},
@@ -357,8 +358,8 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 				t.Fatal("changed processor should not run for full-scan mode")
 				return nil
 			},
-			staticFileProcessingExecutionDecision{
-				mode: staticFileProcessingExecutionModeFullScan,
+			devserver.StaticFileProcessingExecutionDecision{
+				Mode: devserver.StaticFileProcessingExecutionModeFullScan,
 			},
 		)
 		if err == nil {
@@ -371,7 +372,7 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 
 	t.Run("changed-path processor error is propagated", func(t *testing.T) {
 		expectedError := errors.New("changed-path processing failed")
-		err := executeStaticFileProcessingForBuildPhase(
+		err := devserver.ExecuteStaticFileProcessingForBuildPhase(
 			func() error {
 				t.Fatal("full processor should not run for changed-path mode")
 				return nil
@@ -379,9 +380,9 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 			func([]string) error {
 				return expectedError
 			},
-			staticFileProcessingExecutionDecision{
-				mode:             staticFileProcessingExecutionModeChangedPaths,
-				changedFilePaths: []string{"a.txt"},
+			devserver.StaticFileProcessingExecutionDecision{
+				Mode:             devserver.StaticFileProcessingExecutionModeChangedPaths,
+				ChangedFilePaths: []string{"a.txt"},
 			},
 		)
 		if err == nil {
@@ -395,59 +396,59 @@ func TestExecuteStaticFileProcessingForBuildPhase(t *testing.T) {
 
 func TestDeriveImplicitBuildExecutionDecision(t *testing.T) {
 	testCases := []struct {
-		name                     string
-		shouldRunImplicitBuild   bool
-		eventCount               int
-		expectedShouldRunBuild   bool
-		expectedSkipBuildLogLine string
+		Name                     string
+		ShouldRunImplicitBuild   bool
+		EventCount               int
+		ExpectedShouldRunBuild   bool
+		ExpectedSkipBuildLogLine string
 	}{
 		{
-			name:                   "implicit build enabled keeps build phase",
-			shouldRunImplicitBuild: true,
-			eventCount:             1,
-			expectedShouldRunBuild: true,
+			Name:                   "implicit build enabled keeps build phase",
+			ShouldRunImplicitBuild: true,
+			EventCount:             1,
+			ExpectedShouldRunBuild: true,
 		},
 		{
-			name:                     "single run-on-change-only event logs single-event skip message",
-			shouldRunImplicitBuild:   false,
-			eventCount:               1,
-			expectedShouldRunBuild:   false,
-			expectedSkipBuildLogLine: "RunOnChangeOnly: skipping implicit build phase",
+			Name:                     "single run-on-change-only event logs single-event skip message",
+			ShouldRunImplicitBuild:   false,
+			EventCount:               1,
+			ExpectedShouldRunBuild:   false,
+			ExpectedSkipBuildLogLine: "RunOnChangeOnly: skipping implicit build phase",
 		},
 		{
-			name:                     "batch run-on-change-only events log batch skip message",
-			shouldRunImplicitBuild:   false,
-			eventCount:               3,
-			expectedShouldRunBuild:   false,
-			expectedSkipBuildLogLine: "All events are RunOnChangeOnly, skipping implicit build phase",
+			Name:                     "batch run-on-change-only events log batch skip message",
+			ShouldRunImplicitBuild:   false,
+			EventCount:               3,
+			ExpectedShouldRunBuild:   false,
+			ExpectedSkipBuildLogLine: "All events are RunOnChangeOnly, skipping implicit build phase",
 		},
 		{
-			name:                     "empty event batch uses batch skip message",
-			shouldRunImplicitBuild:   false,
-			eventCount:               0,
-			expectedShouldRunBuild:   false,
-			expectedSkipBuildLogLine: "All events are RunOnChangeOnly, skipping implicit build phase",
+			Name:                     "empty event batch uses batch skip message",
+			ShouldRunImplicitBuild:   false,
+			EventCount:               0,
+			ExpectedShouldRunBuild:   false,
+			ExpectedSkipBuildLogLine: "All events are RunOnChangeOnly, skipping implicit build phase",
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			implicitBuildDecision := deriveImplicitBuildExecutionDecision(
-				testCase.shouldRunImplicitBuild,
-				testCase.eventCount,
+		t.Run(testCase.Name, func(t *testing.T) {
+			implicitBuildDecision := devserver.DeriveImplicitBuildExecutionDecision(
+				testCase.ShouldRunImplicitBuild,
+				testCase.EventCount,
 			)
-			if implicitBuildDecision.shouldRunImplicitBuild != testCase.expectedShouldRunBuild {
+			if implicitBuildDecision.ShouldRunImplicitBuild != testCase.ExpectedShouldRunBuild {
 				t.Fatalf(
-					"deriveImplicitBuildExecutionDecision().shouldRunImplicitBuild=%t, want %t",
-					implicitBuildDecision.shouldRunImplicitBuild,
-					testCase.expectedShouldRunBuild,
+					"devserver.DeriveImplicitBuildExecutionDecision().shouldRunImplicitBuild=%t, want %t",
+					implicitBuildDecision.ShouldRunImplicitBuild,
+					testCase.ExpectedShouldRunBuild,
 				)
 			}
-			if implicitBuildDecision.skipImplicitBuildLogEntry != testCase.expectedSkipBuildLogLine {
+			if implicitBuildDecision.SkipImplicitBuildLogEntry != testCase.ExpectedSkipBuildLogLine {
 				t.Fatalf(
-					"deriveImplicitBuildExecutionDecision().skipImplicitBuildLogEntry=%q, want %q",
-					implicitBuildDecision.skipImplicitBuildLogEntry,
-					testCase.expectedSkipBuildLogLine,
+					"devserver.DeriveImplicitBuildExecutionDecision().skipImplicitBuildLogEntry=%q, want %q",
+					implicitBuildDecision.SkipImplicitBuildLogEntry,
+					testCase.ExpectedSkipBuildLogLine,
 				)
 			}
 		})
@@ -456,35 +457,35 @@ func TestDeriveImplicitBuildExecutionDecision(t *testing.T) {
 
 func TestHookStageRestartGatingTracksRefreshActionRestartFlag(t *testing.T) {
 	testCases := []struct {
-		name                   string
-		actionResult           refreshActionApplicationResult
-		expectedShouldContinue bool
+		Name                   string
+		ActionResult           devserver.RefreshActionApplicationResult
+		ExpectedShouldContinue bool
 	}{
 		{
-			name:                   "restart requested short-circuits pipeline",
-			actionResult:           refreshActionApplicationResult{restartRequested: true},
-			expectedShouldContinue: false,
+			Name:                   "restart requested short-circuits pipeline",
+			ActionResult:           devserver.RefreshActionApplicationResult{RestartRequested: true},
+			ExpectedShouldContinue: false,
 		},
 		{
-			name:                   "no restart continues pipeline",
-			actionResult:           refreshActionApplicationResult{restartRequested: false},
-			expectedShouldContinue: true,
+			Name:                   "no restart continues pipeline",
+			ActionResult:           devserver.RefreshActionApplicationResult{RestartRequested: false},
+			ExpectedShouldContinue: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			shouldShortCircuit := shouldShortCircuitPipelineForHookStageResult(
-				hookStageResult{
-					refreshActionResult: testCase.actionResult,
+		t.Run(testCase.Name, func(t *testing.T) {
+			shouldShortCircuit := devserver.ShouldShortCircuitPipelineForHookStageResult(
+				devserver.HookStageResult{
+					RefreshActionResult: testCase.ActionResult,
 				},
 			)
 			shouldContinue := !shouldShortCircuit
-			if shouldContinue != testCase.expectedShouldContinue {
+			if shouldContinue != testCase.ExpectedShouldContinue {
 				t.Fatalf(
 					"hook-stage restart gating produced continue=%t, want %t",
 					shouldContinue,
-					testCase.expectedShouldContinue,
+					testCase.ExpectedShouldContinue,
 				)
 			}
 		})
@@ -493,37 +494,37 @@ func TestHookStageRestartGatingTracksRefreshActionRestartFlag(t *testing.T) {
 
 func TestShouldShortCircuitPipelineForHookStageResult(t *testing.T) {
 	testCases := []struct {
-		name                   string
-		hookStageResult        hookStageResult
-		expectedShouldContinue bool
+		Name                   string
+		HookStageResult        devserver.HookStageResult
+		ExpectedShouldContinue bool
 	}{
 		{
-			name: "hook-stage restart short-circuits pipeline",
-			hookStageResult: hookStageResult{
-				refreshActionResult: refreshActionApplicationResult{restartRequested: true},
+			Name: "hook-stage restart short-circuits pipeline",
+			HookStageResult: devserver.HookStageResult{
+				RefreshActionResult: devserver.RefreshActionApplicationResult{RestartRequested: true},
 			},
-			expectedShouldContinue: false,
+			ExpectedShouldContinue: false,
 		},
 		{
-			name: "hook-stage with no restart continues pipeline",
-			hookStageResult: hookStageResult{
-				refreshActionResult: refreshActionApplicationResult{restartRequested: false},
+			Name: "hook-stage with no restart continues pipeline",
+			HookStageResult: devserver.HookStageResult{
+				RefreshActionResult: devserver.RefreshActionApplicationResult{RestartRequested: false},
 			},
-			expectedShouldContinue: true,
+			ExpectedShouldContinue: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			shouldShortCircuit := shouldShortCircuitPipelineForHookStageResult(
-				testCase.hookStageResult,
+		t.Run(testCase.Name, func(t *testing.T) {
+			shouldShortCircuit := devserver.ShouldShortCircuitPipelineForHookStageResult(
+				testCase.HookStageResult,
 			)
 			shouldContinue := !shouldShortCircuit
-			if shouldContinue != testCase.expectedShouldContinue {
+			if shouldContinue != testCase.ExpectedShouldContinue {
 				t.Fatalf(
-					"shouldShortCircuitPipelineForHookStageResult() produced continue=%t, want %t",
+					"devserver.ShouldShortCircuitPipelineForHookStageResult() produced continue=%t, want %t",
 					shouldContinue,
-					testCase.expectedShouldContinue,
+					testCase.ExpectedShouldContinue,
 				)
 			}
 		})
@@ -532,57 +533,57 @@ func TestShouldShortCircuitPipelineForHookStageResult(t *testing.T) {
 
 func TestDeriveHookStageContinuationDecision(t *testing.T) {
 	testCases := []struct {
-		name                   string
-		hookStageResult        hookStageResult
-		expectedShouldContinue bool
-		expectedRestartResult  refreshActionApplicationResult
+		Name                   string
+		HookStageResult        devserver.HookStageResult
+		ExpectedShouldContinue bool
+		ExpectedRestartResult  devserver.RefreshActionApplicationResult
 	}{
 		{
-			name: "restart request halts pipeline and returns restart action result",
-			hookStageResult: hookStageResult{
-				refreshActionResult: refreshActionApplicationResult{
-					restartRequested: true,
-					recompileGo:      true,
+			Name: "restart request halts pipeline and returns restart action result",
+			HookStageResult: devserver.HookStageResult{
+				RefreshActionResult: devserver.RefreshActionApplicationResult{
+					RestartRequested: true,
+					RecompileGo:      true,
 				},
 			},
-			expectedShouldContinue: false,
-			expectedRestartResult: refreshActionApplicationResult{
-				restartRequested: true,
-				recompileGo:      true,
+			ExpectedShouldContinue: false,
+			ExpectedRestartResult: devserver.RefreshActionApplicationResult{
+				RestartRequested: true,
+				RecompileGo:      true,
 			},
 		},
 		{
-			name: "no restart request continues pipeline",
-			hookStageResult: hookStageResult{
-				refreshActionResult: refreshActionApplicationResult{
-					restartRequested: false,
-					recompileGo:      false,
+			Name: "no restart request continues pipeline",
+			HookStageResult: devserver.HookStageResult{
+				RefreshActionResult: devserver.RefreshActionApplicationResult{
+					RestartRequested: false,
+					RecompileGo:      false,
 				},
 			},
-			expectedShouldContinue: true,
+			ExpectedShouldContinue: true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			continuationDecision := deriveHookStageContinuationDecision(
-				testCase.hookStageResult,
+		t.Run(testCase.Name, func(t *testing.T) {
+			continuationDecision := devserver.DeriveHookStageContinuationDecision(
+				testCase.HookStageResult,
 			)
-			if continuationDecision.shouldContinue != testCase.expectedShouldContinue {
+			if continuationDecision.ShouldContinue != testCase.ExpectedShouldContinue {
 				t.Fatalf(
 					"shouldContinue=%t, want %t",
-					continuationDecision.shouldContinue,
-					testCase.expectedShouldContinue,
+					continuationDecision.ShouldContinue,
+					testCase.ExpectedShouldContinue,
 				)
 			}
 			if !reflect.DeepEqual(
-				continuationDecision.restartActionResult,
-				testCase.expectedRestartResult,
+				continuationDecision.RestartActionResult,
+				testCase.ExpectedRestartResult,
 			) {
 				t.Fatalf(
 					"restartActionResult=%#v, want %#v",
-					continuationDecision.restartActionResult,
-					testCase.expectedRestartResult,
+					continuationDecision.RestartActionResult,
+					testCase.ExpectedRestartResult,
 				)
 			}
 		})
@@ -591,69 +592,69 @@ func TestDeriveHookStageContinuationDecision(t *testing.T) {
 
 func TestDeriveHookStageContinuationDecisionWithFailurePolicy(t *testing.T) {
 	t.Run("fail-open policy continues despite stage errors when restart not requested", func(t *testing.T) {
-		continuationDecision := deriveHookStageContinuationDecisionWithFailurePolicy(
-			hookStageResult{
-				stageType:       hookStageTypePre,
-				executionErrors: []error{errSynthetic},
-				refreshActionResult: refreshActionApplicationResult{
-					restartRequested: false,
+		continuationDecision := devserver.DeriveHookStageContinuationDecisionWithFailurePolicy(
+			devserver.HookStageResult{
+				StageType:       devserver.HookStageTypePre,
+				ExecutionErrors: []error{errSynthetic},
+				RefreshActionResult: devserver.RefreshActionApplicationResult{
+					RestartRequested: false,
 				},
 			},
-			hookStageFailurePolicyFailOpen,
+			devserver.HookStageFailurePolicyFailOpen,
 		)
 
-		if !continuationDecision.shouldContinue {
+		if !continuationDecision.ShouldContinue {
 			t.Fatalf("expected fail-open hook-stage policy to continue, got %#v", continuationDecision)
 		}
-		if continuationDecision.stopReason != hookStageContinuationStopReasonNone {
+		if continuationDecision.StopReason != devserver.HookStageContinuationStopReasonNone {
 			t.Fatalf("expected no stop reason for fail-open continuation, got %#v", continuationDecision)
 		}
 	})
 
 	t.Run("fail-closed policy stops on stage errors when restart not requested", func(t *testing.T) {
-		continuationDecision := deriveHookStageContinuationDecisionWithFailurePolicy(
-			hookStageResult{
-				stageType:       hookStageTypePost,
-				executionErrors: []error{errSynthetic},
-				refreshActionResult: refreshActionApplicationResult{
-					restartRequested: false,
+		continuationDecision := devserver.DeriveHookStageContinuationDecisionWithFailurePolicy(
+			devserver.HookStageResult{
+				StageType:       devserver.HookStageTypePost,
+				ExecutionErrors: []error{errSynthetic},
+				RefreshActionResult: devserver.RefreshActionApplicationResult{
+					RestartRequested: false,
 				},
 			},
-			hookStageFailurePolicyFailClosed,
+			devserver.HookStageFailurePolicyFailClosed,
 		)
 
-		if continuationDecision.shouldContinue {
+		if continuationDecision.ShouldContinue {
 			t.Fatalf("expected fail-closed hook-stage policy to stop, got %#v", continuationDecision)
 		}
-		if continuationDecision.stopReason != hookStageContinuationStopReasonStageFailure {
+		if continuationDecision.StopReason != devserver.HookStageContinuationStopReasonStageFailure {
 			t.Fatalf("expected stage-failure stop reason, got %#v", continuationDecision)
 		}
 	})
 
 	t.Run("restart request takes precedence over stage failure policy", func(t *testing.T) {
-		expectedRestartActionResult := refreshActionApplicationResult{
-			restartRequested: true,
-			recompileGo:      true,
+		expectedRestartActionResult := devserver.RefreshActionApplicationResult{
+			RestartRequested: true,
+			RecompileGo:      true,
 		}
-		continuationDecision := deriveHookStageContinuationDecisionWithFailurePolicy(
-			hookStageResult{
-				stageType:           hookStageTypeConcurrent,
-				executionErrors:     []error{errSynthetic},
-				refreshActionResult: expectedRestartActionResult,
+		continuationDecision := devserver.DeriveHookStageContinuationDecisionWithFailurePolicy(
+			devserver.HookStageResult{
+				StageType:           devserver.HookStageTypeConcurrent,
+				ExecutionErrors:     []error{errSynthetic},
+				RefreshActionResult: expectedRestartActionResult,
 			},
-			hookStageFailurePolicyFailClosed,
+			devserver.HookStageFailurePolicyFailClosed,
 		)
 
-		if continuationDecision.shouldContinue {
+		if continuationDecision.ShouldContinue {
 			t.Fatalf("expected restart request to stop continuation, got %#v", continuationDecision)
 		}
-		if continuationDecision.stopReason != hookStageContinuationStopReasonRestartRequested {
+		if continuationDecision.StopReason != devserver.HookStageContinuationStopReasonRestartRequested {
 			t.Fatalf("expected restart-request stop reason, got %#v", continuationDecision)
 		}
-		if !reflect.DeepEqual(continuationDecision.restartActionResult, expectedRestartActionResult) {
+		if !reflect.DeepEqual(continuationDecision.RestartActionResult, expectedRestartActionResult) {
 			t.Fatalf(
 				"restartActionResult=%#v, want %#v",
-				continuationDecision.restartActionResult,
+				continuationDecision.RestartActionResult,
 				expectedRestartActionResult,
 			)
 		}
@@ -662,50 +663,50 @@ func TestDeriveHookStageContinuationDecisionWithFailurePolicy(t *testing.T) {
 
 func TestDeriveHookStageFailurePolicy_FromConfiguredValue(t *testing.T) {
 	testCases := []struct {
-		name                             string
-		stageType                        hookStageType
-		configuredHookStageFailurePolicy string
-		expectedHookStageFailurePolicy   hookStageFailurePolicy
+		Name                             string
+		StageType                        devserver.HookStageType
+		ConfiguredHookStageFailurePolicy string
+		ExpectedHookStageFailurePolicy   devserver.HookStageFailurePolicy
 	}{
 		{
-			name:                             "empty policy defaults fail-open",
-			stageType:                        hookStageTypePre,
-			configuredHookStageFailurePolicy: "",
-			expectedHookStageFailurePolicy:   hookStageFailurePolicyFailOpen,
+			Name:                             "empty policy defaults fail-open",
+			StageType:                        devserver.HookStageTypePre,
+			ConfiguredHookStageFailurePolicy: "",
+			ExpectedHookStageFailurePolicy:   devserver.HookStageFailurePolicyFailOpen,
 		},
 		{
-			name:                             "explicit fail-open remains fail-open",
-			stageType:                        hookStageTypeConcurrent,
-			configuredHookStageFailurePolicy: "fail-open",
-			expectedHookStageFailurePolicy:   hookStageFailurePolicyFailOpen,
+			Name:                             "explicit fail-open remains fail-open",
+			StageType:                        devserver.HookStageTypeConcurrent,
+			ConfiguredHookStageFailurePolicy: "fail-open",
+			ExpectedHookStageFailurePolicy:   devserver.HookStageFailurePolicyFailOpen,
 		},
 		{
-			name:                             "explicit fail-closed applies fail-closed",
-			stageType:                        hookStageTypePost,
-			configuredHookStageFailurePolicy: "fail-closed",
-			expectedHookStageFailurePolicy:   hookStageFailurePolicyFailClosed,
+			Name:                             "explicit fail-closed applies fail-closed",
+			StageType:                        devserver.HookStageTypePost,
+			ConfiguredHookStageFailurePolicy: "fail-closed",
+			ExpectedHookStageFailurePolicy:   devserver.HookStageFailurePolicyFailClosed,
 		},
 		{
-			name:                             "invalid configured policy falls back fail-open",
-			stageType:                        hookStageTypePre,
-			configuredHookStageFailurePolicy: "invalid-policy",
-			expectedHookStageFailurePolicy:   hookStageFailurePolicyFailOpen,
+			Name:                             "invalid configured policy falls back fail-open",
+			StageType:                        devserver.HookStageTypePre,
+			ConfiguredHookStageFailurePolicy: "invalid-policy",
+			ExpectedHookStageFailurePolicy:   devserver.HookStageFailurePolicyFailOpen,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			hookStageFailurePolicyForStage := deriveHookStageFailurePolicy(
-				testCase.stageType,
-				testCase.configuredHookStageFailurePolicy,
+		t.Run(testCase.Name, func(t *testing.T) {
+			hookStageFailurePolicyForStage := devserver.DeriveHookStageFailurePolicy(
+				testCase.StageType,
+				testCase.ConfiguredHookStageFailurePolicy,
 			)
-			if hookStageFailurePolicyForStage != testCase.expectedHookStageFailurePolicy {
+			if hookStageFailurePolicyForStage != testCase.ExpectedHookStageFailurePolicy {
 				t.Fatalf(
-					"deriveHookStageFailurePolicy(%q, %q)=%v, want %v",
-					testCase.stageType,
-					testCase.configuredHookStageFailurePolicy,
+					"devserver.DeriveHookStageFailurePolicy(%q, %q)=%v, want %v",
+					testCase.StageType,
+					testCase.ConfiguredHookStageFailurePolicy,
 					hookStageFailurePolicyForStage,
-					testCase.expectedHookStageFailurePolicy,
+					testCase.ExpectedHookStageFailurePolicy,
 				)
 			}
 		})
@@ -714,42 +715,42 @@ func TestDeriveHookStageFailurePolicy_FromConfiguredValue(t *testing.T) {
 
 func TestShouldStartAppAfterImplicitBuild(t *testing.T) {
 	testCases := []struct {
-		name                   string
-		shouldRunImplicitBuild bool
-		restart                restartPhaseDecision
-		expectedStartApp       bool
+		Name                   string
+		ShouldRunImplicitBuild bool
+		Restart                devserver.RestartPhaseDecision
+		ExpectedStartApp       bool
 	}{
 		{
-			name:                   "build-enabled and restart-app starts app",
-			shouldRunImplicitBuild: true,
-			restart:                restartPhaseDecision{restartApp: true},
-			expectedStartApp:       true,
+			Name:                   "build-enabled and restart-app starts app",
+			ShouldRunImplicitBuild: true,
+			Restart:                devserver.RestartPhaseDecision{RestartApp: true},
+			ExpectedStartApp:       true,
 		},
 		{
-			name:                   "build-disabled never starts app",
-			shouldRunImplicitBuild: false,
-			restart:                restartPhaseDecision{restartApp: true},
-			expectedStartApp:       false,
+			Name:                   "build-disabled never starts app",
+			ShouldRunImplicitBuild: false,
+			Restart:                devserver.RestartPhaseDecision{RestartApp: true},
+			ExpectedStartApp:       false,
 		},
 		{
-			name:                   "restart-app false does not start app",
-			shouldRunImplicitBuild: true,
-			restart:                restartPhaseDecision{restartApp: false},
-			expectedStartApp:       false,
+			Name:                   "restart-app false does not start app",
+			ShouldRunImplicitBuild: true,
+			Restart:                devserver.RestartPhaseDecision{RestartApp: false},
+			ExpectedStartApp:       false,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			shouldStartApp := shouldStartAppAfterImplicitBuild(
-				testCase.shouldRunImplicitBuild,
-				testCase.restart,
+		t.Run(testCase.Name, func(t *testing.T) {
+			shouldStartApp := devserver.ShouldStartAppAfterImplicitBuild(
+				testCase.ShouldRunImplicitBuild,
+				testCase.Restart,
 			)
-			if shouldStartApp != testCase.expectedStartApp {
+			if shouldStartApp != testCase.ExpectedStartApp {
 				t.Fatalf(
-					"shouldStartAppAfterImplicitBuild()=%t, want %t",
+					"devserver.ShouldStartAppAfterImplicitBuild()=%t, want %t",
 					shouldStartApp,
-					testCase.expectedStartApp,
+					testCase.ExpectedStartApp,
 				)
 			}
 		})
@@ -758,36 +759,36 @@ func TestShouldStartAppAfterImplicitBuild(t *testing.T) {
 
 func TestShouldExecuteBrowserPhaseAfterHookStageResults(t *testing.T) {
 	testCases := []struct {
-		name                     string
-		hookStageResults         []hookStageResult
-		expectedShouldRunBrowser bool
+		Name                     string
+		HookStageResults         []devserver.HookStageResult
+		ExpectedShouldRunBrowser bool
 	}{
 		{
-			name:                     "no restart requests executes browser phase",
-			hookStageResults:         []hookStageResult{{}, {}, {}},
-			expectedShouldRunBrowser: true,
+			Name:                     "no restart requests executes browser phase",
+			HookStageResults:         []devserver.HookStageResult{{}, {}, {}},
+			ExpectedShouldRunBrowser: true,
 		},
 		{
-			name: "any restart request skips browser phase",
-			hookStageResults: []hookStageResult{
+			Name: "any restart request skips browser phase",
+			HookStageResults: []devserver.HookStageResult{
 				{},
-				{refreshActionResult: refreshActionApplicationResult{restartRequested: true}},
+				{RefreshActionResult: devserver.RefreshActionApplicationResult{RestartRequested: true}},
 				{},
 			},
-			expectedShouldRunBrowser: false,
+			ExpectedShouldRunBrowser: false,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			shouldRunBrowserPhase := shouldExecuteBrowserPhaseAfterHookStageResults(
-				testCase.hookStageResults...,
+		t.Run(testCase.Name, func(t *testing.T) {
+			shouldRunBrowserPhase := devserver.ShouldExecuteBrowserPhaseAfterHookStageResults(
+				testCase.HookStageResults...,
 			)
-			if shouldRunBrowserPhase != testCase.expectedShouldRunBrowser {
+			if shouldRunBrowserPhase != testCase.ExpectedShouldRunBrowser {
 				t.Fatalf(
-					"shouldExecuteBrowserPhaseAfterHookStageResults()=%t, want %t",
+					"devserver.ShouldExecuteBrowserPhaseAfterHookStageResults()=%t, want %t",
 					shouldRunBrowserPhase,
-					testCase.expectedShouldRunBrowser,
+					testCase.ExpectedShouldRunBrowser,
 				)
 			}
 		})
@@ -800,40 +801,40 @@ func TestApplyHookStageActionsToWorkSet(t *testing.T) {
 			{ReloadBrowser: true},
 			{WaitForApp: true},
 		}
-		stageResult := applyHookStageActionsToWorkSet(stageActions, nil)
-		if len(stageResult.actions) != len(stageActions) {
-			t.Fatalf("stage action count=%d, want %d", len(stageResult.actions), len(stageActions))
+		stageResult := devserver.ApplyHookStageActionsToWorkSet(stageActions, nil)
+		if len(stageResult.Actions) != len(stageActions) {
+			t.Fatalf("stage action count=%d, want %d", len(stageResult.Actions), len(stageActions))
 		}
-		if stageResult.refreshActionResult.restartRequested || stageResult.refreshActionResult.recompileGo {
-			t.Fatalf("expected zero refresh result for nil workset, got %#v", stageResult.refreshActionResult)
+		if stageResult.RefreshActionResult.RestartRequested || stageResult.RefreshActionResult.RecompileGo {
+			t.Fatalf("expected zero refresh result for nil workset, got %#v", stageResult.RefreshActionResult)
 		}
 	})
 
 	t.Run("workset applies stage actions and returns refresh result", func(t *testing.T) {
-		work := &workSet{}
+		work := &devserver.WorkSet{}
 		stageActions := []wave.RefreshAction{
 			{ReloadBrowser: true, WaitForApp: true},
 			{TriggerRestart: true, RecompileGo: true},
 			{WaitForVite: true},
 		}
 
-		stageResult := applyHookStageActionsToWorkSet(stageActions, work)
-		if len(stageResult.actions) != len(stageActions) {
-			t.Fatalf("stage action count=%d, want %d", len(stageResult.actions), len(stageActions))
+		stageResult := devserver.ApplyHookStageActionsToWorkSet(stageActions, work)
+		if len(stageResult.Actions) != len(stageActions) {
+			t.Fatalf("stage action count=%d, want %d", len(stageResult.Actions), len(stageActions))
 		}
-		if !stageResult.refreshActionResult.restartRequested {
+		if !stageResult.RefreshActionResult.RestartRequested {
 			t.Fatal("expected restartRequested=true from stage result")
 		}
-		if !stageResult.refreshActionResult.recompileGo {
+		if !stageResult.RefreshActionResult.RecompileGo {
 			t.Fatal("expected recompileGo=true from first restart action")
 		}
-		if work.browser.action != browserPhaseActionHardReload {
-			t.Fatalf("expected pre-restart reload action applied, got %v", work.browser.action)
+		if work.Browser.Action != devserver.BrowserPhaseActionHardReload {
+			t.Fatalf("expected pre-restart reload action applied, got %v", work.Browser.Action)
 		}
-		if !work.browser.waitForApp {
+		if !work.Browser.WaitForApp {
 			t.Fatal("expected pre-restart wait-for-app applied")
 		}
-		if work.browser.waitForVite {
+		if work.Browser.WaitForVite {
 			t.Fatal("expected post-restart stage actions not to be applied")
 		}
 	})
@@ -841,20 +842,20 @@ func TestApplyHookStageActionsToWorkSet(t *testing.T) {
 
 func TestRunAndApplyHookStageActionsToWorkSet(t *testing.T) {
 	t.Run("nil stage runner is safe and yields empty stage actions", func(t *testing.T) {
-		work := &workSet{}
-		stageResult := runAndApplyHookStageActionsToWorkSet(nil, work)
-		if len(stageResult.actions) != 0 {
-			t.Fatalf("expected zero stage actions from nil runner, got %#v", stageResult.actions)
+		work := &devserver.WorkSet{}
+		stageResult := devserver.RunAndApplyHookStageActionsToWorkSet(nil, work)
+		if len(stageResult.Actions) != 0 {
+			t.Fatalf("expected zero stage actions from nil runner, got %#v", stageResult.Actions)
 		}
-		if stageResult.refreshActionResult.restartRequested || stageResult.refreshActionResult.recompileGo {
-			t.Fatalf("expected zero refresh result from nil runner, got %#v", stageResult.refreshActionResult)
+		if stageResult.RefreshActionResult.RestartRequested || stageResult.RefreshActionResult.RecompileGo {
+			t.Fatalf("expected zero refresh result from nil runner, got %#v", stageResult.RefreshActionResult)
 		}
 	})
 
 	t.Run("runs stage actions and applies them to workset", func(t *testing.T) {
-		work := &workSet{}
+		work := &devserver.WorkSet{}
 		stageRunCount := 0
-		stageResult := runAndApplyHookStageActionsToWorkSet(
+		stageResult := devserver.RunAndApplyHookStageActionsToWorkSet(
 			func() []wave.RefreshAction {
 				stageRunCount++
 				return []wave.RefreshAction{
@@ -867,13 +868,13 @@ func TestRunAndApplyHookStageActionsToWorkSet(t *testing.T) {
 		if stageRunCount != 1 {
 			t.Fatalf("expected stage runner count=1, got %d", stageRunCount)
 		}
-		if len(stageResult.actions) != 2 {
-			t.Fatalf("expected stage action count=2, got %#v", stageResult.actions)
+		if len(stageResult.Actions) != 2 {
+			t.Fatalf("expected stage action count=2, got %#v", stageResult.Actions)
 		}
-		if work.browser.action != browserPhaseActionHardReload {
-			t.Fatalf("expected hard reload action applied, got %v", work.browser.action)
+		if work.Browser.Action != devserver.BrowserPhaseActionHardReload {
+			t.Fatalf("expected hard reload action applied, got %v", work.Browser.Action)
 		}
-		if !work.browser.waitForVite {
+		if !work.Browser.WaitForVite {
 			t.Fatal("expected wait-for-vite applied")
 		}
 	})
@@ -881,27 +882,27 @@ func TestRunAndApplyHookStageActionsToWorkSet(t *testing.T) {
 
 func TestRunAndApplyHookStageActionsAndErrorsToWorkSet(t *testing.T) {
 	t.Run("nil stage runner yields empty stage result metadata", func(t *testing.T) {
-		work := &workSet{}
-		stageResult := runAndApplyHookStageActionsAndErrorsToWorkSet(
-			hookStageTypePre,
+		work := &devserver.WorkSet{}
+		stageResult := devserver.RunAndApplyHookStageActionsAndErrorsToWorkSet(
+			devserver.HookStageTypePre,
 			nil,
 			work,
 		)
-		if stageResult.stageType != hookStageTypePre {
-			t.Fatalf("expected stageType=pre, got %#v", stageResult.stageType)
+		if stageResult.StageType != devserver.HookStageTypePre {
+			t.Fatalf("expected stageType=pre, got %#v", stageResult.StageType)
 		}
-		if len(stageResult.actions) != 0 {
-			t.Fatalf("expected no stage actions, got %#v", stageResult.actions)
+		if len(stageResult.Actions) != 0 {
+			t.Fatalf("expected no stage actions, got %#v", stageResult.Actions)
 		}
-		if len(stageResult.executionErrors) != 0 {
-			t.Fatalf("expected no stage execution errors, got %#v", stageResult.executionErrors)
+		if len(stageResult.ExecutionErrors) != 0 {
+			t.Fatalf("expected no stage execution errors, got %#v", stageResult.ExecutionErrors)
 		}
 	})
 
 	t.Run("runner stage actions and errors are captured and isolated", func(t *testing.T) {
-		work := &workSet{}
-		stageResult := runAndApplyHookStageActionsAndErrorsToWorkSet(
-			hookStageTypeConcurrent,
+		work := &devserver.WorkSet{}
+		stageResult := devserver.RunAndApplyHookStageActionsAndErrorsToWorkSet(
+			devserver.HookStageTypeConcurrent,
 			func() ([]wave.RefreshAction, []error) {
 				return []wave.RefreshAction{
 						{ReloadBrowser: true},
@@ -912,20 +913,20 @@ func TestRunAndApplyHookStageActionsAndErrorsToWorkSet(t *testing.T) {
 			work,
 		)
 
-		if stageResult.stageType != hookStageTypeConcurrent {
-			t.Fatalf("expected stageType=concurrent, got %#v", stageResult.stageType)
+		if stageResult.StageType != devserver.HookStageTypeConcurrent {
+			t.Fatalf("expected stageType=concurrent, got %#v", stageResult.StageType)
 		}
-		if len(stageResult.actions) != 2 {
-			t.Fatalf("expected 2 actions, got %#v", stageResult.actions)
+		if len(stageResult.Actions) != 2 {
+			t.Fatalf("expected 2 actions, got %#v", stageResult.Actions)
 		}
-		if len(stageResult.executionErrors) != 1 {
-			t.Fatalf("expected 1 stage execution error, got %#v", stageResult.executionErrors)
+		if len(stageResult.ExecutionErrors) != 1 {
+			t.Fatalf("expected 1 stage execution error, got %#v", stageResult.ExecutionErrors)
 		}
-		if stageResult.executionErrors[0] != errSynthetic {
-			t.Fatalf("expected errSynthetic execution error, got %#v", stageResult.executionErrors[0])
+		if stageResult.ExecutionErrors[0] != errSynthetic {
+			t.Fatalf("expected errSynthetic execution error, got %#v", stageResult.ExecutionErrors[0])
 		}
-		if work.browser.action != browserPhaseActionHardReload {
-			t.Fatalf("expected hard reload to be applied, got %v", work.browser.action)
+		if work.Browser.Action != devserver.BrowserPhaseActionHardReload {
+			t.Fatalf("expected hard reload to be applied, got %v", work.Browser.Action)
 		}
 	})
 }
@@ -934,15 +935,15 @@ func TestDeriveEventsWithHooksForExecution(t *testing.T) {
 	t.Run("batch hard reload uses copied hook contexts", func(t *testing.T) {
 		firstHookContext := &wave.HookContext{FilePath: "first.txt"}
 		secondHookContext := &wave.HookContext{FilePath: "second.txt"}
-		eventsWithHooks := []eventWithHooks{
-			{hookCtx: firstHookContext},
-			{hookCtx: nil},
-			{hookCtx: secondHookContext},
+		eventsWithHooks := []devserver.EventWithHooks{
+			{HookCtx: firstHookContext},
+			{HookCtx: nil},
+			{HookCtx: secondHookContext},
 		}
 
-		executionEventsWithHooks := deriveEventsWithHooksForExecution(
+		executionEventsWithHooks := devserver.DeriveEventsWithHooksForExecution(
 			eventsWithHooks,
-			appStopStrategyBatchHardReload,
+			devserver.AppStopStrategyBatchHardReload,
 		)
 
 		if len(executionEventsWithHooks) != len(eventsWithHooks) {
@@ -952,30 +953,30 @@ func TestDeriveEventsWithHooksForExecution(t *testing.T) {
 			t.Fatal("expected batch hard-reload execution events to use a copied event slice")
 		}
 
-		if executionEventsWithHooks[0].hookCtx == nil {
+		if executionEventsWithHooks[0].HookCtx == nil {
 			t.Fatal("expected first execution hook context to be non-nil")
 		}
-		if executionEventsWithHooks[0].hookCtx == firstHookContext {
+		if executionEventsWithHooks[0].HookCtx == firstHookContext {
 			t.Fatal("expected first execution hook context to be copied")
 		}
-		if !executionEventsWithHooks[0].hookCtx.AppStoppedForBatch {
+		if !executionEventsWithHooks[0].HookCtx.AppStoppedForBatch {
 			t.Fatal("expected first execution hook context to set AppStoppedForBatch=true")
 		}
 		if firstHookContext.AppStoppedForBatch {
 			t.Fatal("expected original first hook context to remain unmodified")
 		}
 
-		if executionEventsWithHooks[1].hookCtx != nil {
-			t.Fatalf("expected nil hook context to remain nil, got %#v", executionEventsWithHooks[1].hookCtx)
+		if executionEventsWithHooks[1].HookCtx != nil {
+			t.Fatalf("expected nil hook context to remain nil, got %#v", executionEventsWithHooks[1].HookCtx)
 		}
 
-		if executionEventsWithHooks[2].hookCtx == nil {
+		if executionEventsWithHooks[2].HookCtx == nil {
 			t.Fatal("expected second execution hook context to be non-nil")
 		}
-		if executionEventsWithHooks[2].hookCtx == secondHookContext {
+		if executionEventsWithHooks[2].HookCtx == secondHookContext {
 			t.Fatal("expected second execution hook context to be copied")
 		}
-		if !executionEventsWithHooks[2].hookCtx.AppStoppedForBatch {
+		if !executionEventsWithHooks[2].HookCtx.AppStoppedForBatch {
 			t.Fatal("expected second execution hook context to set AppStoppedForBatch=true")
 		}
 		if secondHookContext.AppStoppedForBatch {
@@ -984,13 +985,13 @@ func TestDeriveEventsWithHooksForExecution(t *testing.T) {
 	})
 
 	t.Run("non-batch execution reuses original events slice", func(t *testing.T) {
-		eventsWithHooks := []eventWithHooks{
-			{hookCtx: &wave.HookContext{}},
+		eventsWithHooks := []devserver.EventWithHooks{
+			{HookCtx: &wave.HookContext{}},
 		}
 
-		executionEventsWithHooks := deriveEventsWithHooksForExecution(
+		executionEventsWithHooks := devserver.DeriveEventsWithHooksForExecution(
 			eventsWithHooks,
-			appStopStrategyNone,
+			devserver.AppStopStrategyNone,
 		)
 
 		if len(executionEventsWithHooks) != len(eventsWithHooks) {
@@ -1002,9 +1003,9 @@ func TestDeriveEventsWithHooksForExecution(t *testing.T) {
 	})
 
 	t.Run("empty execution events remain nil", func(t *testing.T) {
-		executionEventsWithHooks := deriveEventsWithHooksForExecution(
+		executionEventsWithHooks := devserver.DeriveEventsWithHooksForExecution(
 			nil,
-			appStopStrategyBatchHardReload,
+			devserver.AppStopStrategyBatchHardReload,
 		)
 		if executionEventsWithHooks != nil {
 			t.Fatalf("expected nil execution events for empty input, got %#v", executionEventsWithHooks)

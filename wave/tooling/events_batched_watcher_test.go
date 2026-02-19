@@ -1,6 +1,10 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -15,30 +19,30 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlySkipsBuildAndRestart(t *testing.
 	defer watcher.Close()
 
 	var preCount atomic.Int32
-	events := []eventWithHooks{
+	events := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{
-				event:       waveEvent(filepath.Join(t.TempDir(), "a.txt")),
-				fileType:    fileTypeOther,
-				watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
+			Classified: devserver.ClassifiedEvent{
+				Event:       waveEvent(filepath.Join(t.TempDir(), "a.txt")),
+				FileType:    devserver.FileTypeOther,
+				WatchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
 			},
-			hookCtx:         &wave.HookContext{},
-			hooks:           &wave.SortedHooks{Pre: []wave.OnChangeHook{{Callback: func(*wave.HookContext) (*wave.RefreshAction, error) { preCount.Add(1); return nil, nil }}}},
-			runOnChangeOnly: true,
+			HookCtx:         &wave.HookContext{},
+			Hooks:           &wave.SortedHooks{Pre: []wave.OnChangeHook{{Callback: func(*wave.HookContext) (*wave.RefreshAction, error) { preCount.Add(1); return nil, nil }}}},
+			RunOnChangeOnly: true,
 		},
 		{
-			classified: classifiedEvent{
-				event:       waveEvent(filepath.Join(t.TempDir(), "b.txt")),
-				fileType:    fileTypeOther,
-				watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
+			Classified: devserver.ClassifiedEvent{
+				Event:       waveEvent(filepath.Join(t.TempDir(), "b.txt")),
+				FileType:    devserver.FileTypeOther,
+				WatchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
 			},
-			hookCtx:         &wave.HookContext{},
-			hooks:           &wave.SortedHooks{Pre: []wave.OnChangeHook{{Callback: func(*wave.HookContext) (*wave.RefreshAction, error) { preCount.Add(1); return nil, nil }}}},
-			runOnChangeOnly: true,
+			HookCtx:         &wave.HookContext{},
+			Hooks:           &wave.SortedHooks{Pre: []wave.OnChangeHook{{Callback: func(*wave.HookContext) (*wave.RefreshAction, error) { preCount.Add(1); return nil, nil }}}},
+			RunOnChangeOnly: true,
 		},
 	}
 
-	work := &workSet{}
+	work := &devserver.WorkSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	if preCount.Load() != 2 {
@@ -53,14 +57,14 @@ func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
 	defer watcher.Close()
 
 	var postRan atomic.Bool
-	events := []eventWithHooks{
+	events := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{
-				event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
-				fileType: fileTypeOther,
+			Classified: devserver.ClassifiedEvent{
+				Event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+				FileType: devserver.FileTypeOther,
 			},
-			hookCtx: &wave.HookContext{},
-			hooks: &wave.SortedHooks{
+			HookCtx: &wave.HookContext{},
+			Hooks: &wave.SortedHooks{
 				Concurrent: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -77,11 +81,11 @@ func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
 					},
 				},
 			},
-			runOnChangeOnly: false,
+			RunOnChangeOnly: false,
 		},
 	}
 
-	work := &workSet{}
+	work := &devserver.WorkSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
@@ -89,7 +93,7 @@ func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
 		s,
 		200*time.Millisecond,
 	)
-	if !pendingRestartRequest.recompileGo {
+	if !pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected restart to request Go recompilation, got %#v",
 			pendingRestartRequest,
@@ -105,14 +109,14 @@ func TestProcessBatchedEvents_PostHookRestartNoGo(t *testing.T) {
 	s, watcher := newServerAndWatcherForHookExecutionTest(t)
 	defer watcher.Close()
 
-	events := []eventWithHooks{
+	events := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{
-				event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
-				fileType: fileTypeOther,
+			Classified: devserver.ClassifiedEvent{
+				Event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+				FileType: devserver.FileTypeOther,
 			},
-			hookCtx: &wave.HookContext{},
-			hooks: &wave.SortedHooks{
+			HookCtx: &wave.HookContext{},
+			Hooks: &wave.SortedHooks{
 				Post: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -121,11 +125,11 @@ func TestProcessBatchedEvents_PostHookRestartNoGo(t *testing.T) {
 					},
 				},
 			},
-			runOnChangeOnly: false,
+			RunOnChangeOnly: false,
 		},
 	}
 
-	work := &workSet{}
+	work := &devserver.WorkSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
@@ -133,7 +137,7 @@ func TestProcessBatchedEvents_PostHookRestartNoGo(t *testing.T) {
 		s,
 		200*time.Millisecond,
 	)
-	if pendingRestartRequest.recompileGo {
+	if pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected no-go restart request, got %#v",
 			pendingRestartRequest,
@@ -163,7 +167,7 @@ func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 	}
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
@@ -172,20 +176,20 @@ func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 		t.Fatalf("AddDir returned error: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	s := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 
 	done := make(chan struct{})
 	go func() {
-		s.runWatcher()
+		s.RunWatcher()
 		close(done)
 	}()
 
@@ -217,31 +221,31 @@ func TestWaitForBuildRetry_ConsumesRestartAndCleansUp(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{
-		cfg:            cfg,
-		log:            newDiscardLogger(),
-		watcher:        watcher,
-		builder:        builder,
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+	s := &devserver.Server{
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builder,
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 	queueRestartRequestForToolingTests(
 		s,
-		restartRequest{recompileGo: true},
+		devserverengine.RestartRequest{RecompileGo: true},
 	)
 
-	_ = s.waitForBuildRetry()
+	_ = s.WaitForBuildRetry()
 
-	if s.watcher != nil {
+	if s.Watcher != nil {
 		t.Fatal("expected waitForBuildRetry to clear watcher during cleanup")
 	}
-	if s.builder != nil {
+	if s.Builder != nil {
 		t.Fatal("expected waitForBuildRetry to clear builder during cleanup")
 	}
 }

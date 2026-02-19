@@ -1,6 +1,9 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"path/filepath"
 	"testing"
 
@@ -19,29 +22,29 @@ func TestClassifyEventWithWatcherAndBuilder_GoFileCanBeTreatedAsNonGo(t *testing
 		},
 	}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{cfg: cfg, log: newDiscardLogger()}
+	s := &devserver.Server{Cfg: cfg, Log: newDiscardLogger()}
 	event := fsnotify.Event{
 		Name: filepath.Join(root, "pkg", "handler.go"),
 		Op:   fsnotify.Write,
 	}
 
-	classified := s.classifyEventWithWatcherAndBuilder(event, watcher, builder)
-	if classified.fileType != fileTypeOther {
-		t.Fatalf("expected fileTypeOther, got %v", classified.fileType)
+	classified := s.ClassifyEventWithWatcherAndBuilder(event, watcher, builder)
+	if classified.FileType != devserver.FileTypeOther {
+		t.Fatalf("expected devserver.FileTypeOther, got %v", classified.FileType)
 	}
-	if classified.watchedFile == nil {
+	if classified.WatchedFile == nil {
 		t.Fatal("expected matched watched file, got nil")
 	}
-	if classified.ignored {
+	if classified.Ignored {
 		t.Fatal("expected event to be processed, got ignored=true")
 	}
 }
@@ -50,26 +53,26 @@ func TestClassifyEventWithWatcherAndBuilder_UnmatchedOtherFilesAreIgnored(t *tes
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{cfg: cfg, log: newDiscardLogger()}
+	s := &devserver.Server{Cfg: cfg, Log: newDiscardLogger()}
 	event := fsnotify.Event{
 		Name: filepath.Join(root, "README.md"),
 		Op:   fsnotify.Write,
 	}
 
-	classified := s.classifyEventWithWatcherAndBuilder(event, watcher, builder)
-	if classified.fileType != fileTypeOther {
-		t.Fatalf("expected fileTypeOther, got %v", classified.fileType)
+	classified := s.ClassifyEventWithWatcherAndBuilder(event, watcher, builder)
+	if classified.FileType != devserver.FileTypeOther {
+		t.Fatalf("expected devserver.FileTypeOther, got %v", classified.FileType)
 	}
-	if !classified.ignored {
+	if !classified.Ignored {
 		t.Fatal("expected unmatched non-special file to be ignored")
 	}
 }
@@ -80,35 +83,35 @@ func TestIsConfigFileMatchesNormalizedPath(t *testing.T) {
 
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ConfigLocation = configPath
-	s := &server{cfg: cfg}
+	s := &devserver.Server{Cfg: cfg}
 
 	equivalentPath := filepath.Join(root, "backend", ".", "wave.config.json")
-	if !s.isConfigFile(equivalentPath) {
+	if !s.IsConfigFile(equivalentPath) {
 		t.Fatalf("expected isConfigFile(%q) to match config path %q", equivalentPath, configPath)
 	}
 
 	otherPath := filepath.Join(root, "backend", "different.config.json")
-	if s.isConfigFile(otherPath) {
+	if s.IsConfigFile(otherPath) {
 		t.Fatalf("expected isConfigFile(%q) to be false", otherPath)
 	}
 
 	cfg.Core.ConfigLocation = ""
-	if s.isConfigFile(configPath) {
+	if s.IsConfigFile(configPath) {
 		t.Fatal("expected isConfigFile to be false when config file path is empty")
 	}
 }
 
 func TestNeedsHardReload(t *testing.T) {
-	if needsHardReload(nil) {
-		t.Fatal("needsHardReload(nil) should be false")
+	if devserver.NeedsHardReload(nil) {
+		t.Fatal("devserver.NeedsHardReload(nil) should be false")
 	}
-	if !needsHardReload(&wave.WatchedFile{RecompileGoBinary: true}) {
+	if !devserver.NeedsHardReload(&wave.WatchedFile{RecompileGoBinary: true}) {
 		t.Fatal("expected RecompileGoBinary=true to require hard reload")
 	}
-	if !needsHardReload(&wave.WatchedFile{RestartApp: true}) {
+	if !devserver.NeedsHardReload(&wave.WatchedFile{RestartApp: true}) {
 		t.Fatal("expected RestartApp=true to require hard reload")
 	}
-	if needsHardReload(&wave.WatchedFile{}) {
+	if devserver.NeedsHardReload(&wave.WatchedFile{}) {
 		t.Fatal("expected empty watched file to not require hard reload")
 	}
 }
@@ -116,19 +119,19 @@ func TestNeedsHardReload(t *testing.T) {
 func TestClassifyEventWithWatcherAndBuilder_EmptyPathIsIgnored(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{cfg: cfg, log: newDiscardLogger()}
-	classified := s.classifyEventWithWatcherAndBuilder(fsnotify.Event{Name: "", Op: fsnotify.Write}, watcher, builder)
+	s := &devserver.Server{Cfg: cfg, Log: newDiscardLogger()}
+	classified := s.ClassifyEventWithWatcherAndBuilder(fsnotify.Event{Name: "", Op: fsnotify.Write}, watcher, builder)
 
-	if !classified.ignored {
+	if !classified.Ignored {
 		t.Fatal("expected empty-path event to be ignored")
 	}
 }
@@ -137,36 +140,36 @@ func TestClassifyEventWithWatcherAndBuilder_PublicAndPrivateStaticFiles(t *testi
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{cfg: cfg, log: newDiscardLogger()}
+	s := &devserver.Server{Cfg: cfg, Log: newDiscardLogger()}
 
 	publicFile := filepath.Join(cfg.Core.StaticAssetDirs.Public, "img", "logo.png")
 	privateFile := filepath.Join(cfg.Core.StaticAssetDirs.Private, "tpl", "home.html")
 
-	publicClassified := s.classifyEventWithWatcherAndBuilder(
+	publicClassified := s.ClassifyEventWithWatcherAndBuilder(
 		fsnotify.Event{Name: publicFile, Op: fsnotify.Write},
 		watcher,
 		builder,
 	)
-	if publicClassified.fileType != fileTypePublicStatic {
-		t.Fatalf("expected public static file type, got %v", publicClassified.fileType)
+	if publicClassified.FileType != devserver.FileTypePublicStatic {
+		t.Fatalf("expected public static file type, got %v", publicClassified.FileType)
 	}
 
-	privateClassified := s.classifyEventWithWatcherAndBuilder(
+	privateClassified := s.ClassifyEventWithWatcherAndBuilder(
 		fsnotify.Event{Name: privateFile, Op: fsnotify.Write},
 		watcher,
 		builder,
 	)
-	if privateClassified.fileType != fileTypePrivateStatic {
-		t.Fatalf("expected private static file type, got %v", privateClassified.fileType)
+	if privateClassified.FileType != devserver.FileTypePrivateStatic {
+		t.Fatalf("expected private static file type, got %v", privateClassified.FileType)
 	}
 }
 
@@ -174,18 +177,18 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(t *testing
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	criticalCSSFile := filepath.Join(root, "styles", "critical.css")
 	normalCSSFile := filepath.Join(root, "styles", "normal.css")
-	sharedCSSFile := filepath.Join(root, "styles", "shared.css")
+	sharedCSSFile := filepath.Join(root, "styles", "waveshared.css")
 	criticalAbsPath, criticalErr := filepath.Abs(criticalCSSFile)
 	if criticalErr != nil {
 		t.Fatalf("filepath.Abs critical css failed: %v", criticalErr)
@@ -199,43 +202,45 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(t *testing
 		t.Fatalf("filepath.Abs shared css failed: %v", sharedErr)
 	}
 
-	builder.css.mu.Lock()
-	builder.css.criticalImports[criticalAbsPath] = struct{}{}
-	builder.css.normalImports[normalAbsPath] = struct{}{}
-	builder.css.criticalImports[sharedAbsPath] = struct{}{}
-	builder.css.normalImports[sharedAbsPath] = struct{}{}
-	builder.css.mu.Unlock()
+	builder.SetTrackedCriticalCSSImportPaths([]string{
+		criticalAbsPath,
+		sharedAbsPath,
+	})
+	builder.SetTrackedNormalCSSImportPaths([]string{
+		normalAbsPath,
+		sharedAbsPath,
+	})
 
-	s := &server{cfg: cfg, log: newDiscardLogger()}
+	s := &devserver.Server{Cfg: cfg, Log: newDiscardLogger()}
 
-	criticalClassified := s.classifyEventWithWatcherAndBuilder(
+	criticalClassified := s.ClassifyEventWithWatcherAndBuilder(
 		fsnotify.Event{Name: criticalCSSFile, Op: fsnotify.Write},
 		watcher,
 		builder,
 	)
-	if criticalClassified.fileType != fileTypeCriticalCSS {
-		t.Fatalf("expected critical css file type, got %v", criticalClassified.fileType)
+	if criticalClassified.FileType != devserver.FileTypeCriticalCSS {
+		t.Fatalf("expected critical css file type, got %v", criticalClassified.FileType)
 	}
 
-	normalClassified := s.classifyEventWithWatcherAndBuilder(
+	normalClassified := s.ClassifyEventWithWatcherAndBuilder(
 		fsnotify.Event{Name: normalCSSFile, Op: fsnotify.Write},
 		watcher,
 		builder,
 	)
-	if normalClassified.fileType != fileTypeNormalCSS {
-		t.Fatalf("expected normal css file type, got %v", normalClassified.fileType)
+	if normalClassified.FileType != devserver.FileTypeNormalCSS {
+		t.Fatalf("expected normal css file type, got %v", normalClassified.FileType)
 	}
 
-	sharedClassified := s.classifyEventWithWatcherAndBuilder(
+	sharedClassified := s.ClassifyEventWithWatcherAndBuilder(
 		fsnotify.Event{Name: sharedCSSFile, Op: fsnotify.Write},
 		watcher,
 		builder,
 	)
-	if sharedClassified.fileType != fileTypeCriticalAndNormalCSS {
+	if sharedClassified.FileType != devserver.FileTypeCriticalAndNormalCSS {
 		t.Fatalf(
 			"expected shared css file type %v, got %v",
-			fileTypeCriticalAndNormalCSS,
-			sharedClassified.fileType,
+			devserver.FileTypeCriticalAndNormalCSS,
+			sharedClassified.FileType,
 		)
 	}
 }
@@ -245,23 +250,23 @@ func TestClassifyEventWithWatcherAndBuilder_RespectsIgnoredFiles(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Watch.Exclude.Files = []string{"ignored.tmp"}
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 	defer watcher.Close()
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	s := &server{cfg: cfg, log: newDiscardLogger()}
-	classified := s.classifyEventWithWatcherAndBuilder(
+	s := &devserver.Server{Cfg: cfg, Log: newDiscardLogger()}
+	classified := s.ClassifyEventWithWatcherAndBuilder(
 		fsnotify.Event{Name: filepath.Join(root, "ignored.tmp"), Op: fsnotify.Write},
 		watcher,
 		builder,
 	)
 
-	if !classified.ignored {
+	if !classified.Ignored {
 		t.Fatal("expected ignored file to classify with ignored=true")
 	}
 }

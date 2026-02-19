@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/builder/static"
 )
 
 func TestWriteFileAtomicBytes_CreatesParentDirectoriesAndReplacesContent(
@@ -16,10 +18,10 @@ func TestWriteFileAtomicBytes_CreatesParentDirectoriesAndReplacesContent(
 ) {
 	target := filepath.Join(t.TempDir(), "nested", "dir", "file.txt")
 
-	if err := writeFileAtomicBytes(target, []byte("first")); err != nil {
+	if err := static.WriteFileAtomicBytes(target, []byte("first")); err != nil {
 		t.Fatalf("writeFileAtomicBytes first write returned error: %v", err)
 	}
-	if err := writeFileAtomicBytes(target, []byte("second")); err != nil {
+	if err := static.WriteFileAtomicBytes(target, []byte("second")); err != nil {
 		t.Fatalf("writeFileAtomicBytes second write returned error: %v", err)
 	}
 
@@ -41,7 +43,7 @@ func TestWriteFileAtomic_CleansUpTempFileOnWriteError(t *testing.T) {
 	}
 
 	injectedErr := errors.New("injected write failure")
-	err := writeFileAtomic(target, func(_ *os.File) error {
+	err := static.WriteFileAtomic(target, func(_ *os.File) error {
 		return injectedErr
 	})
 	if !errors.Is(err, injectedErr) {
@@ -81,25 +83,25 @@ func TestWriteFileAtomic_RetriesRenameByReplacingExistingTargetOnPermissionDenie
 
 	renameCallCount := 0
 	removeCallCount := 0
-	err := writeFileAtomicWithDependencies(
+	err := static.WriteFileAtomicWithDependencies(
 		target,
 		func(file *os.File) error {
 			_, writeError := file.Write([]byte("updated"))
 			return writeError
 		},
-		atomicFileWriteDependencies{
-			renameTempFile: func(oldPath string, newPath string) error {
+		static.AtomicFileWriteDependencies{
+			RenameTempFile: func(oldPath string, newPath string) error {
 				renameCallCount++
 				if renameCallCount == 1 {
 					return os.ErrPermission
 				}
 				return os.Rename(oldPath, newPath)
 			},
-			removeExistingTarget: func(path string) error {
+			RemoveExistingTarget: func(path string) error {
 				removeCallCount++
 				return os.Remove(path)
 			},
-			statTarget: os.Stat,
+			StatTarget: os.Stat,
 		},
 	)
 	if err != nil {
@@ -136,21 +138,21 @@ func TestWriteFileAtomic_DoesNotReplaceTargetWhenPermissionDeniedAndTargetMissin
 	target := filepath.Join(t.TempDir(), "target.txt")
 
 	removeCallCount := 0
-	err := writeFileAtomicWithDependencies(
+	err := static.WriteFileAtomicWithDependencies(
 		target,
 		func(file *os.File) error {
 			_, writeError := file.Write([]byte("updated"))
 			return writeError
 		},
-		atomicFileWriteDependencies{
-			renameTempFile: func(_, _ string) error {
+		static.AtomicFileWriteDependencies{
+			RenameTempFile: func(_, _ string) error {
 				return os.ErrPermission
 			},
-			removeExistingTarget: func(path string) error {
+			RemoveExistingTarget: func(path string) error {
 				removeCallCount++
 				return os.Remove(path)
 			},
-			statTarget: func(path string) (os.FileInfo, error) {
+			StatTarget: func(path string) (os.FileInfo, error) {
 				return nil, os.ErrNotExist
 			},
 		},
@@ -169,7 +171,7 @@ func TestWriteFileAtomic_DoesNotReplaceTargetWhenPermissionDeniedAndTargetMissin
 func TestFileMapSaveAndLoadRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMapPath := filepath.Join(root, "maps", "public.gob")
@@ -185,11 +187,11 @@ func TestFileMapSaveAndLoadRoundTrip(t *testing.T) {
 		},
 	}
 
-	if err := builder.saveFileMap(input, fileMapPath); err != nil {
+	if err := builder.SaveFileMap(input, fileMapPath); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
-	output, err := builder.loadFileMapFromPath(fileMapPath)
+	output, err := builder.LoadFileMapFromPath(fileMapPath)
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath returned error: %v", err)
 	}
@@ -207,7 +209,7 @@ func TestSetupDistDir_CreatesExpectedStructure(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 
-	if err := SetupDistDir(cfg); err != nil {
+	if err := toolingbuilder.SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
 

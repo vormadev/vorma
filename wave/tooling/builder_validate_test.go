@@ -1,6 +1,8 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
 	"strings"
 	"testing"
 
@@ -16,7 +18,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 				{Cmd: "echo hello", Timing: wave.OnChangeStrategyPost},
 			},
 		}
-		if err := validateWatchedFile(wf, 0); err != nil {
+		if err := toolingbuilder.ValidateWatchedFile(wf, 0); err != nil {
 			t.Fatalf("validateWatchedFile returned error: %v", err)
 		}
 	})
@@ -30,7 +32,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 				{Cmd: "echo world", Timing: wave.OnChangeStrategyPre},
 			},
 		}
-		if err := validateWatchedFile(wf, 1); err != nil {
+		if err := toolingbuilder.ValidateWatchedFile(wf, 1); err != nil {
 			t.Fatalf("validateWatchedFile returned error: %v", err)
 		}
 	})
@@ -46,7 +48,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 				},
 			},
 		}
-		if err := validateWatchedFile(wf, 2); err != nil {
+		if err := toolingbuilder.ValidateWatchedFile(wf, 2); err != nil {
 			t.Fatalf("validateWatchedFile returned error: %v", err)
 		}
 	})
@@ -60,7 +62,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 				{RunCombinedDevBuildHookCommands: true, Timing: wave.OnChangeStrategyPre},
 			},
 		}
-		if err := validateWatchedFile(wf, 3); err != nil {
+		if err := toolingbuilder.ValidateWatchedFile(wf, 3); err != nil {
 			t.Fatalf("validateWatchedFile returned error: %v", err)
 		}
 	})
@@ -73,7 +75,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 				{Cmd: "echo hello", Timing: wave.OnChangeStrategyConcurrent},
 			},
 		}
-		err := validateWatchedFile(wf, 4)
+		err := toolingbuilder.ValidateWatchedFile(wf, 4)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -93,7 +95,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 				},
 			},
 		}
-		err := validateWatchedFile(wf, 5)
+		err := toolingbuilder.ValidateWatchedFile(wf, 5)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -113,7 +115,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 			},
 		}
 
-		err := validateWatchedFile(wf, 6)
+		err := toolingbuilder.ValidateWatchedFile(wf, 6)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -134,7 +136,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 			},
 		}
 
-		err := validateWatchedFile(wf, 7)
+		err := toolingbuilder.ValidateWatchedFile(wf, 7)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -153,7 +155,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 			},
 		}
 
-		err := validateWatchedFile(wf, 8)
+		err := toolingbuilder.ValidateWatchedFile(wf, 8)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -173,7 +175,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 			},
 		}
 
-		err := validateWatchedFile(wf, 9)
+		err := toolingbuilder.ValidateWatchedFile(wf, 9)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -185,7 +187,7 @@ func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 
 func TestValidateConfig_StaticDirRules(t *testing.T) {
 	t.Run("rejects nil parsed config", func(t *testing.T) {
-		err := ValidateConfig(nil)
+		err := toolingbuilder.ValidateConfig(nil)
 		if err == nil {
 			t.Fatal("expected validation error for nil parsed config")
 		}
@@ -208,7 +210,7 @@ func TestValidateConfig_StaticDirRules(t *testing.T) {
 			DistDir:      "dist",
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -225,7 +227,7 @@ func TestValidateConfig_StaticDirRules(t *testing.T) {
 			ServerOnlyMode: true,
 		}
 
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -255,7 +257,7 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -268,7 +270,7 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative pre timeout")
 		}
@@ -285,7 +287,7 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative concurrent timeout")
 		}
@@ -302,7 +304,7 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative concurrent-no-wait timeout")
 		}
@@ -319,7 +321,7 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative post timeout")
 		}
@@ -352,7 +354,7 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -366,7 +368,7 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 		cfg.Watch = &wave.WatchConfig{}
 		cfg.Watch.Exclude.Dirs = []string{"["}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -380,7 +382,7 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 		cfg.Watch = &wave.WatchConfig{}
 		cfg.Watch.Exclude.Files = []string{"["}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -405,7 +407,7 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -440,7 +442,7 @@ func TestValidateConfig_BuildHookTimeoutValidation(t *testing.T) {
 			ProdBuildHookTimeoutMilliseconds: 500,
 		}
 
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -457,7 +459,7 @@ func TestValidateConfig_BuildHookTimeoutValidation(t *testing.T) {
 			DevBuildHookTimeoutMilliseconds: -1,
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative dev build hook timeout")
 		}
@@ -478,7 +480,7 @@ func TestValidateConfig_BuildHookTimeoutValidation(t *testing.T) {
 			ProdBuildHookTimeoutMilliseconds: -1,
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative prod build hook timeout")
 		}
@@ -512,7 +514,7 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -525,7 +527,7 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative pre callback timeout")
 		}
@@ -542,7 +544,7 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative concurrent callback timeout")
 		}
@@ -559,7 +561,7 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative concurrent-no-wait callback timeout")
 		}
@@ -576,7 +578,7 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 			},
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative post callback timeout")
 		}
@@ -602,7 +604,7 @@ func TestValidateConfig_HealthcheckEndpointValidation(t *testing.T) {
 	t.Run("accepts empty healthcheck endpoint", func(t *testing.T) {
 		cfg := *baseConfig
 		cfg.Watch = &wave.WatchConfig{HealthcheckEndpoint: ""}
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -610,58 +612,58 @@ func TestValidateConfig_HealthcheckEndpointValidation(t *testing.T) {
 	t.Run("accepts absolute path endpoint", func(t *testing.T) {
 		cfg := *baseConfig
 		cfg.Watch = &wave.WatchConfig{HealthcheckEndpoint: "/healthz"}
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
 
 	testCases := []struct {
-		name                string
-		healthcheckEndpoint string
-		expectedSubstring   string
+		Name                string
+		HealthcheckEndpoint string
+		ExpectedSubstring   string
 	}{
 		{
-			name:                "rejects missing leading slash",
-			healthcheckEndpoint: "healthz",
-			expectedSubstring:   "must start with '/'",
+			Name:                "rejects missing leading slash",
+			HealthcheckEndpoint: "healthz",
+			ExpectedSubstring:   "must start with '/'",
 		},
 		{
-			name:                "rejects full URL",
-			healthcheckEndpoint: "https://example.com/healthz",
-			expectedSubstring:   "must be a path, not a URL",
+			Name:                "rejects full URL",
+			HealthcheckEndpoint: "https://example.com/healthz",
+			ExpectedSubstring:   "must be a path, not a URL",
 		},
 		{
-			name:                "rejects query strings",
-			healthcheckEndpoint: "/healthz?full=1",
-			expectedSubstring:   "must not include query or fragment",
+			Name:                "rejects query strings",
+			HealthcheckEndpoint: "/healthz?full=1",
+			ExpectedSubstring:   "must not include query or fragment",
 		},
 		{
-			name:                "rejects fragments",
-			healthcheckEndpoint: "/healthz#ready",
-			expectedSubstring:   "must not include query or fragment",
+			Name:                "rejects fragments",
+			HealthcheckEndpoint: "/healthz#ready",
+			ExpectedSubstring:   "must not include query or fragment",
 		},
 		{
-			name:                "rejects surrounding whitespace",
-			healthcheckEndpoint: " /healthz",
-			expectedSubstring:   "must not include surrounding whitespace",
+			Name:                "rejects surrounding whitespace",
+			HealthcheckEndpoint: " /healthz",
+			ExpectedSubstring:   "must not include surrounding whitespace",
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
+		t.Run(testCase.Name, func(t *testing.T) {
 			cfg := *baseConfig
 			cfg.Watch = &wave.WatchConfig{
-				HealthcheckEndpoint: testCase.healthcheckEndpoint,
+				HealthcheckEndpoint: testCase.HealthcheckEndpoint,
 			}
 
-			err := ValidateConfig(&cfg)
+			err := toolingbuilder.ValidateConfig(&cfg)
 			if err == nil {
 				t.Fatal("expected validation error for healthcheck endpoint")
 			}
 			if !strings.Contains(err.Error(), "Watch.HealthcheckEndpoint") {
 				t.Fatalf("unexpected error message: %v", err)
 			}
-			if !strings.Contains(err.Error(), testCase.expectedSubstring) {
+			if !strings.Contains(err.Error(), testCase.ExpectedSubstring) {
 				t.Fatalf("unexpected error message: %v", err)
 			}
 		})
@@ -684,7 +686,7 @@ func TestValidateConfig_HookStageFailurePolicyValidation(t *testing.T) {
 	t.Run("accepts default empty value", func(t *testing.T) {
 		cfg := *baseConfig
 		cfg.Watch = &wave.WatchConfig{}
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -692,9 +694,9 @@ func TestValidateConfig_HookStageFailurePolicyValidation(t *testing.T) {
 	t.Run("accepts explicit fail-open", func(t *testing.T) {
 		cfg := *baseConfig
 		cfg.Watch = &wave.WatchConfig{
-			HookStageFailurePolicy: configuredHookStageFailurePolicyFailOpen,
+			HookStageFailurePolicy: devserver.ConfiguredHookStageFailurePolicyFailOpen,
 		}
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -702,9 +704,9 @@ func TestValidateConfig_HookStageFailurePolicyValidation(t *testing.T) {
 	t.Run("accepts explicit fail-closed", func(t *testing.T) {
 		cfg := *baseConfig
 		cfg.Watch = &wave.WatchConfig{
-			HookStageFailurePolicy: configuredHookStageFailurePolicyFailClosed,
+			HookStageFailurePolicy: devserver.ConfiguredHookStageFailurePolicyFailClosed,
 		}
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := toolingbuilder.ValidateConfig(&cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -715,7 +717,7 @@ func TestValidateConfig_HookStageFailurePolicyValidation(t *testing.T) {
 			HookStageFailurePolicy: "invalid-policy",
 		}
 
-		err := ValidateConfig(&cfg)
+		err := toolingbuilder.ValidateConfig(&cfg)
 		if err == nil {
 			t.Fatal("expected validation error for invalid hook-stage failure policy")
 		}

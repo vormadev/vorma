@@ -2,6 +2,7 @@ package tooling
 
 import (
 	"encoding/json"
+	"github.com/vormadev/vorma/wave/tooling/builder"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,10 +23,10 @@ func TestBuild_FileOnlyModeSkipsHooks(t *testing.T) {
 		markerPath,
 	)
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	err := builder.Build(BuildOpts{
+	err := builder.Build(toolingbuilder.BuildOpts{
 		IsDev:        true,
 		CompileGo:    false,
 		IsRebuild:    false,
@@ -48,10 +49,10 @@ func TestBuild_PropagatesHookFailure(t *testing.T) {
 	cfg.Core.ServerOnlyMode = true
 	cfg.Core.DevBuildHook = "false"
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	err := builder.Build(BuildOpts{
+	err := builder.Build(toolingbuilder.BuildOpts{
 		IsDev:     true,
 		CompileGo: false,
 		IsRebuild: false,
@@ -68,10 +69,10 @@ func TestBuild_Success(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	err := builder.Build(BuildOpts{
+	err := builder.Build(toolingbuilder.BuildOpts{
 		IsDev:     false,
 		CompileGo: false,
 		IsRebuild: false,
@@ -85,10 +86,10 @@ func TestBuild_WritesConfigSchema(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	if err := builder.Build(BuildOpts{IsDev: false, CompileGo: false, IsRebuild: false}); err != nil {
+	if err := builder.Build(toolingbuilder.BuildOpts{IsDev: false, CompileGo: false, IsRebuild: false}); err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
 
@@ -116,7 +117,7 @@ func TestBuild_IncludesRegisteredSchemaSection(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 	builder.RegisterSchemaSection(
 		"CustomFramework",
@@ -131,7 +132,7 @@ func TestBuild_IncludesRegisteredSchemaSection(t *testing.T) {
 		}),
 	)
 
-	if err := builder.Build(BuildOpts{IsDev: false, CompileGo: false, IsRebuild: false}); err != nil {
+	if err := builder.Build(toolingbuilder.BuildOpts{IsDev: false, CompileGo: false, IsRebuild: false}); err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
 
@@ -158,10 +159,10 @@ func TestBuild_CompileGoFailureIsReported(t *testing.T) {
 	cfg.Core.ServerOnlyMode = true
 	cfg.Core.MainAppEntry = "this/package/does/not/exist"
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	err := builder.Build(BuildOpts{
+	err := builder.Build(toolingbuilder.BuildOpts{
 		IsDev:     true,
 		CompileGo: true,
 		IsRebuild: false,
@@ -180,7 +181,7 @@ func TestProcessFiles_FullCleanupPreservesOnlyWaveDevLockFile(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	staticDir := cfg.Dist.Static()
@@ -188,7 +189,7 @@ func TestProcessFiles_FullCleanupPreservesOnlyWaveDevLockFile(t *testing.T) {
 		t.Fatalf("os.MkdirAll(%q) error = %v", staticDir, mkdirErr)
 	}
 
-	lockFilePath := filepath.Join(staticDir, lockFileName)
+	lockFilePath := filepath.Join(staticDir, ".wave-dev.lock")
 	if writeErr := os.WriteFile(lockFilePath, []byte("123"), 0o644); writeErr != nil {
 		t.Fatalf("os.WriteFile(lock) error = %v", writeErr)
 	}
@@ -206,7 +207,7 @@ func TestProcessFiles_FullCleanupPreservesOnlyWaveDevLockFile(t *testing.T) {
 		t.Fatalf("os.WriteFile(regular) error = %v", writeErr)
 	}
 
-	if processErr := builder.processFiles(false, true); processErr != nil {
+	if processErr := builder.ProcessFiles(false, true); processErr != nil {
 		t.Fatalf("processFiles(false, true) error = %v", processErr)
 	}
 

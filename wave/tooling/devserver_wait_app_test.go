@@ -2,6 +2,7 @@ package tooling
 
 import (
 	"fmt"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
 	"net"
 	"net/http"
 	"testing"
@@ -30,12 +31,12 @@ func TestWaitForApp_UsesConfiguredHealthcheckEndpoint(t *testing.T) {
 	defer httpServer.Close()
 	go httpServer.Serve(listener)
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
 	}
 
-	if !s.waitForApp() {
+	if !s.WaitForApp() {
 		t.Fatal(
 			"expected waitForApp to return true when healthcheck endpoint is ready",
 		)
@@ -43,7 +44,7 @@ func TestWaitForApp_UsesConfiguredHealthcheckEndpoint(t *testing.T) {
 }
 
 func TestResolveAppReadyURL_UsesIPv4LoopbackHost(t *testing.T) {
-	got := resolveAppReadyURL(4242, "/healthz")
+	got := devserver.ResolveAppReadyURL(4242, "/healthz")
 	const want = "http://127.0.0.1:4242/healthz"
 	if got != want {
 		t.Fatalf("resolveAppReadyURL()=%q, want %q", got, want)

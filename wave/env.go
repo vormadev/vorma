@@ -4,35 +4,35 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/vormadev/vorma/internal/waveport"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
 )
 
 const (
-	envMode              = waveport.EnvMode
-	envModeDev           = waveport.EnvModeDev
-	envPort              = waveport.EnvPort
-	envPortSet           = waveport.EnvPortSet
+	envMode              = waveshared.EnvMode
+	envModeDev           = waveshared.EnvModeDev
+	envPort              = waveshared.EnvPort
+	envPortSet           = waveshared.EnvPortSet
 	envRefreshServerPort = "__WAVE_REFRESH_SERVER_PORT"
 )
 
 // GetIsDev reports whether Wave is running in development mode.
 func GetIsDev() bool {
-	return waveport.GetIsDev()
+	return waveshared.GetIsDev()
 }
 
 // SetModeToDev marks the current process as development mode.
 func SetModeToDev() {
-	waveport.SetModeToDev()
+	waveshared.SetModeToDev()
 }
 
 func parseEnvPort() int {
-	return waveport.ParseEnvPort()
+	return waveshared.ParseEnvPort()
 }
 
-type portResolver = waveport.Resolver
+type portResolver = waveshared.Resolver
 
 func newPortResolver() *portResolver {
-	return waveport.NewResolverForMode(GetIsDev())
+	return waveshared.NewResolverForMode(GetIsDev())
 }
 
 // MustGetPort returns the application runtime port.
@@ -40,7 +40,7 @@ func newPortResolver() *portResolver {
 // It panics in dev mode if a free port cannot be resolved.
 // It panics in non-dev mode when PORT is missing or invalid.
 func MustGetPort() int {
-	return waveport.GetDefaultResolver().MustGetPort()
+	return waveshared.GetDefaultResolver().MustGetPort()
 }
 
 // GetRefreshServerPort returns the active refresh-server port from environment.

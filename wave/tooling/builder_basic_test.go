@@ -2,6 +2,7 @@ package tooling
 
 import (
 	"context"
+	"github.com/vormadev/vorma/wave/tooling/builder"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +31,7 @@ func TestBuilderConfigReturnsDefensiveCopy(t *testing.T) {
 			},
 		},
 	}
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	configSnapshot := builder.Config()
@@ -67,7 +68,7 @@ func TestBuilderConfigReturnsDefensiveCopy(t *testing.T) {
 }
 
 func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
-	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", true, "")
+	cmd := toolingbuilder.BuildGoBuildCommand("dist/main", "./cmd/serve", true, "")
 
 	for _, commandArgument := range cmd.Args {
 		if strings.HasPrefix(commandArgument, "-tags=") {
@@ -77,7 +78,7 @@ func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
 }
 
 func TestBuildGoBuildCommand_ProdBuildUsesEmbeddedDistStaticByDefault(t *testing.T) {
-	cmd := buildGoBuildCommand("dist/main", "./cmd/serve", false, "")
+	cmd := toolingbuilder.BuildGoBuildCommand("dist/main", "./cmd/serve", false, "")
 
 	if !containsCommandArgument(cmd.Args, "-tags=prod") {
 		t.Fatalf("expected prod build tags to be -tags=prod, got args %#v", cmd.Args)
@@ -85,7 +86,7 @@ func TestBuildGoBuildCommand_ProdBuildUsesEmbeddedDistStaticByDefault(t *testing
 }
 
 func TestBuildGoBuildCommand_IncludesOverlayArgumentWhenProvided(t *testing.T) {
-	cmd := buildGoBuildCommand(
+	cmd := toolingbuilder.BuildGoBuildCommand(
 		"dist/main",
 		"./cmd/serve",
 		true,
@@ -109,7 +110,7 @@ func containsCommandArgument(commandArguments []string, expectedArgument string)
 
 func TestBuilderViteMethods_NoViteConfigured(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.ViteProdBuild(); err != nil {
@@ -128,11 +129,11 @@ func TestBuilderViteMethods_NoViteConfigured(t *testing.T) {
 func TestBuilderProcessFilesOnly_ServerOnlyMode(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.ProcessFilesOnly(false, false); err != nil {
-		t.Fatalf("ProcessFilesOnly returned error in server-only mode: %v", err)
+		t.Fatalf("ProcessFilesOnly returned error in server-only Mode: %v", err)
 	}
 
 	requiredPaths := []string{
@@ -148,7 +149,7 @@ func TestBuilderProcessFilesOnly_ServerOnlyMode(t *testing.T) {
 
 func TestBuilderIsCSSFile_ReturnsTrueForTrackedCriticalAndNormalImports(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	criticalPath := filepath.Join(t.TempDir(), "critical.css")
@@ -163,8 +164,8 @@ func TestBuilderIsCSSFile_ReturnsTrueForTrackedCriticalAndNormalImports(t *testi
 		normalAbs = resolved
 	}
 
-	builder.css.criticalImports[criticalAbs] = struct{}{}
-	builder.css.normalImports[normalAbs] = struct{}{}
+	builder.SetTrackedCriticalCSSImportPaths([]string{criticalAbs})
+	builder.SetTrackedNormalCSSImportPaths([]string{normalAbs})
 
 	if !builder.IsCriticalCSSFile(criticalPath) || !builder.IsCSSFile(criticalPath) {
 		t.Fatalf("expected critical path to be recognized as CSS file: %s", criticalPath)
@@ -180,7 +181,7 @@ func TestBuilderCompileGoOnly_PropagatesCompilationError(t *testing.T) {
 	cfg.Core.MainAppEntry = "this/package/does/not/exist"
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	err := builder.CompileGoOnly(true)
@@ -216,7 +217,7 @@ func TestBuilderCompileGoOnly_UsesFrameworkOverlayPreparationAndCleanup(t *testi
 		}, nil
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	err := builder.CompileGoOnly(true)
@@ -238,7 +239,7 @@ func TestBuilderViteProdBuild_ErrorIsReturned(t *testing.T) {
 	}
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	err := builder.ViteProdBuild()
@@ -255,7 +256,7 @@ func TestBuilderNewViteDevContext_WithViteEnabledReturnsContext(t *testing.T) {
 	}
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	ctx, err := builder.NewViteDevContext()

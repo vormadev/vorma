@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 )
 
 func TestIsNonEmptyChmodOnly(t *testing.T) {
@@ -21,15 +22,24 @@ func TestIsNonEmptyChmodOnly(t *testing.T) {
 		t.Fatalf("failed writing %s: %v", empty, err)
 	}
 
-	if !isNonEmptyChmodOnly(fsnotify.Event{Name: nonEmpty, Op: fsnotify.Chmod}) {
+	if !watch.IsNonEmptyChmodOnly(fsnotify.Event{
+		Name: nonEmpty,
+		Op:   fsnotify.Chmod,
+	}) {
 		t.Fatal("expected non-empty chmod-only event to be treated as chmod-only")
 	}
 
-	if isNonEmptyChmodOnly(fsnotify.Event{Name: empty, Op: fsnotify.Chmod}) {
+	if watch.IsNonEmptyChmodOnly(fsnotify.Event{
+		Name: empty,
+		Op:   fsnotify.Chmod,
+	}) {
 		t.Fatal("expected empty-file chmod event to not be treated as chmod-only")
 	}
 
-	if isNonEmptyChmodOnly(fsnotify.Event{Name: nonEmpty, Op: fsnotify.Write}) {
+	if watch.IsNonEmptyChmodOnly(fsnotify.Event{
+		Name: nonEmpty,
+		Op:   fsnotify.Write,
+	}) {
 		t.Fatal("expected write event to not be treated as chmod-only")
 	}
 }

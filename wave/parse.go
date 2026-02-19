@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vormadev/vorma/wave/internal/pathnorm"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
 )
 
 // ParseConfig parses Wave config JSON bytes into a ParsedConfig.
@@ -46,7 +46,7 @@ func ParseConfigFile(path string) (*ParsedConfig, error) {
 		return nil, err
 	}
 
-	cfg.Core.ConfigLocation = pathnorm.Absolute(configFilePath)
+	cfg.Core.ConfigLocation = waveshared.Absolute(configFilePath)
 
 	return cfg, nil
 }

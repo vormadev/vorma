@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/builder"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -28,7 +29,7 @@ func TestBuildCriticalCSS_ResolvesPublicURLTokensUsingFileMap(t *testing.T) {
 		t.Fatalf("failed writing CSS entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -37,7 +38,7 @@ func TestBuildCriticalCSS_ResolvesPublicURLTokensUsingFileMap(t *testing.T) {
 			ContentHash: "vorma_out_images_logo_deadbeef.png",
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -63,7 +64,7 @@ func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 	t *testing.T,
 ) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	fileMap := wave.FileMap{
@@ -72,11 +73,11 @@ func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 			ContentHash: "vorma_out_images_logo_deadbeef.png",
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
-	first := builder.getPublicURLBuildtimeCached("images/logo.png")
+	first := builder.GetPublicURLBuildtimeCached("images/logo.png")
 	if first != "/vorma_out_images_logo_deadbeef.png" {
 		t.Fatalf("unexpected first cached lookup result: %q", first)
 	}
@@ -85,7 +86,7 @@ func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 		t.Fatalf("failed removing gob after initial cache load: %v", err)
 	}
 
-	second := builder.getPublicURLBuildtimeCached("images/logo.png")
+	second := builder.GetPublicURLBuildtimeCached("images/logo.png")
 	if second != first {
 		t.Fatalf(
 			"expected cached lookup to remain stable after gob removal: first=%q second=%q",
@@ -97,7 +98,7 @@ func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 
 func TestPublicURLBuildtimeCached_MissingFileMapPanics(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	defer func() {
@@ -108,7 +109,7 @@ func TestPublicURLBuildtimeCached_MissingFileMapPanics(t *testing.T) {
 		}
 	}()
 
-	_ = builder.getPublicURLBuildtimeCached("images/logo.png")
+	_ = builder.GetPublicURLBuildtimeCached("images/logo.png")
 }
 
 func TestCSSBuildAll_ReturnsCriticalErrorWithContext(t *testing.T) {
@@ -116,10 +117,10 @@ func TestCSSBuildAll_ReturnsCriticalErrorWithContext(t *testing.T) {
 	cfg.Core.CSSEntryFiles = wave.CSSEntryFiles{
 		Critical: filepath.Join(t.TempDir(), "missing-critical.css"),
 	}
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	err := builder.css.buildAll(true)
+	err := builder.BuildAllCSS(true)
 	if err == nil {
 		t.Fatal("expected buildAll to fail for missing critical CSS entry")
 	}
@@ -133,10 +134,10 @@ func TestCSSBuildAll_ReturnsNormalErrorWithContext(t *testing.T) {
 	cfg.Core.CSSEntryFiles = wave.CSSEntryFiles{
 		NonCritical: filepath.Join(t.TempDir(), "missing-normal.css"),
 	}
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
-	err := builder.css.buildAll(true)
+	err := builder.BuildAllCSS(true)
 	if err == nil {
 		t.Fatal("expected buildAll to fail for missing normal CSS entry")
 	}
@@ -165,7 +166,7 @@ func TestBuildCriticalCSS_UnchangedInputDoesNotRewriteOutput(t *testing.T) {
 		t.Fatalf("failed writing critical CSS entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildCriticalCSS(true); err != nil {
@@ -175,7 +176,7 @@ func TestBuildCriticalCSS_UnchangedInputDoesNotRewriteOutput(t *testing.T) {
 	criticalOutputPath := cfg.Dist.CriticalCSS()
 	initialInfo, err := os.Stat(criticalOutputPath)
 	if err != nil {
-		t.Fatalf("stat critical output after initial build: %v", err)
+		t.Fatalf("stat critical output after initial Build: %v", err)
 	}
 
 	time.Sleep(20 * time.Millisecond)
@@ -186,7 +187,7 @@ func TestBuildCriticalCSS_UnchangedInputDoesNotRewriteOutput(t *testing.T) {
 
 	updatedInfo, err := os.Stat(criticalOutputPath)
 	if err != nil {
-		t.Fatalf("stat critical output after second build: %v", err)
+		t.Fatalf("stat critical output after second Build: %v", err)
 	}
 	if !updatedInfo.ModTime().Equal(initialInfo.ModTime()) {
 		t.Fatalf(
@@ -219,7 +220,7 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 		t.Fatalf("failed writing normal CSS entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildNormalCSS(true); err != nil {
@@ -229,7 +230,7 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 	normalCSSRefPath := cfg.Dist.NormalCSSRef()
 	initialRefData, err := os.ReadFile(normalCSSRefPath)
 	if err != nil {
-		t.Fatalf("read normal css ref after initial build: %v", err)
+		t.Fatalf("read normal css ref after initial Build: %v", err)
 	}
 	initialHashedOutputPath := filepath.Join(
 		cfg.Dist.StaticPublic(),
@@ -238,11 +239,11 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 
 	initialRefInfo, err := os.Stat(normalCSSRefPath)
 	if err != nil {
-		t.Fatalf("stat normal css ref after initial build: %v", err)
+		t.Fatalf("stat normal css ref after initial Build: %v", err)
 	}
 	initialOutputInfo, err := os.Stat(initialHashedOutputPath)
 	if err != nil {
-		t.Fatalf("stat normal css output after initial build: %v", err)
+		t.Fatalf("stat normal css output after initial Build: %v", err)
 	}
 
 	time.Sleep(20 * time.Millisecond)
@@ -253,11 +254,11 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 
 	updatedRefInfo, err := os.Stat(normalCSSRefPath)
 	if err != nil {
-		t.Fatalf("stat normal css ref after second build: %v", err)
+		t.Fatalf("stat normal css ref after second Build: %v", err)
 	}
 	updatedOutputInfo, err := os.Stat(initialHashedOutputPath)
 	if err != nil {
-		t.Fatalf("stat normal css output after second build: %v", err)
+		t.Fatalf("stat normal css output after second Build: %v", err)
 	}
 
 	if !updatedRefInfo.ModTime().Equal(initialRefInfo.ModTime()) {
@@ -296,7 +297,7 @@ func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 		t.Fatalf("failed writing initial normal css entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildNormalCSS(true); err != nil {
@@ -305,7 +306,7 @@ func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 
 	initialRefData, err := os.ReadFile(cfg.Dist.NormalCSSRef())
 	if err != nil {
-		t.Fatalf("read normal css ref after initial build: %v", err)
+		t.Fatalf("read normal css ref after initial Build: %v", err)
 	}
 	initialHashedOutputName := strings.TrimSpace(string(initialRefData))
 	initialHashedOutputPath := filepath.Join(
@@ -327,7 +328,7 @@ func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 
 	updatedRefData, err := os.ReadFile(cfg.Dist.NormalCSSRef())
 	if err != nil {
-		t.Fatalf("read normal css ref after second build: %v", err)
+		t.Fatalf("read normal css ref after second Build: %v", err)
 	}
 	updatedHashedOutputName := strings.TrimSpace(string(updatedRefData))
 	updatedHashedOutputPath := filepath.Join(
@@ -377,16 +378,14 @@ func TestBuildCriticalCSS_EmptyEntryClearsTrackedImports(t *testing.T) {
 		t.Fatalf("failed writing critical css entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildCriticalCSS(true); err != nil {
 		t.Fatalf("initial BuildCriticalCSS returned error: %v", err)
 	}
 
-	builder.css.mu.RLock()
-	initialTrackedImportCount := len(builder.css.criticalImports)
-	builder.css.mu.RUnlock()
+	initialTrackedImportCount := builder.CountTrackedCriticalCSSImportPaths()
 	if initialTrackedImportCount == 0 {
 		t.Fatal("expected critical css imports to be tracked after build")
 	}
@@ -396,9 +395,7 @@ func TestBuildCriticalCSS_EmptyEntryClearsTrackedImports(t *testing.T) {
 		t.Fatalf("BuildCriticalCSS with empty entry returned error: %v", err)
 	}
 
-	builder.css.mu.RLock()
-	updatedTrackedImportCount := len(builder.css.criticalImports)
-	builder.css.mu.RUnlock()
+	updatedTrackedImportCount := builder.CountTrackedCriticalCSSImportPaths()
 	if updatedTrackedImportCount != 0 {
 		t.Fatalf(
 			"expected critical css imports to be cleared when entry is unset, got %d",
@@ -427,13 +424,13 @@ func TestBuildCriticalCSS_ReusesContextForSameModeAndEntry(t *testing.T) {
 		t.Fatalf("failed writing critical css entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildCriticalCSS(true); err != nil {
 		t.Fatalf("initial BuildCriticalCSS returned error: %v", err)
 	}
-	firstContextIdentity := contextPointerIdentity(builder.css.criticalCtx)
+	firstContextIdentity := contextPointerIdentity(builder.CriticalCSSBuildContext())
 	if firstContextIdentity == 0 {
 		t.Fatal(
 			"expected critical css context identity to be set after first build",
@@ -443,7 +440,7 @@ func TestBuildCriticalCSS_ReusesContextForSameModeAndEntry(t *testing.T) {
 	if err := builder.BuildCriticalCSS(true); err != nil {
 		t.Fatalf("second BuildCriticalCSS returned error: %v", err)
 	}
-	secondContextIdentity := contextPointerIdentity(builder.css.criticalCtx)
+	secondContextIdentity := contextPointerIdentity(builder.CriticalCSSBuildContext())
 	if secondContextIdentity == 0 {
 		t.Fatal(
 			"expected critical css context identity to be set after second build",
@@ -479,13 +476,13 @@ func TestBuildCriticalCSS_ModeChangeReplacesContext(t *testing.T) {
 		t.Fatalf("failed writing critical css entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildCriticalCSS(true); err != nil {
 		t.Fatalf("initial BuildCriticalCSS (dev) returned error: %v", err)
 	}
-	devContextIdentity := contextPointerIdentity(builder.css.criticalCtx)
+	devContextIdentity := contextPointerIdentity(builder.CriticalCSSBuildContext())
 	if devContextIdentity == 0 {
 		t.Fatal("expected critical css dev context identity to be set")
 	}
@@ -493,7 +490,7 @@ func TestBuildCriticalCSS_ModeChangeReplacesContext(t *testing.T) {
 	if err := builder.BuildCriticalCSS(false); err != nil {
 		t.Fatalf("second BuildCriticalCSS (prod) returned error: %v", err)
 	}
-	prodContextIdentity := contextPointerIdentity(builder.css.criticalCtx)
+	prodContextIdentity := contextPointerIdentity(builder.CriticalCSSBuildContext())
 	if prodContextIdentity == 0 {
 		t.Fatal("expected critical css prod context identity to be set")
 	}
@@ -527,13 +524,13 @@ func TestBuildNormalCSS_EntryChangeReplacesContext(t *testing.T) {
 		t.Fatalf("failed writing second normal css entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildNormalCSS(true); err != nil {
 		t.Fatalf("initial BuildNormalCSS returned error: %v", err)
 	}
-	firstContextIdentity := contextPointerIdentity(builder.css.normalCtx)
+	firstContextIdentity := contextPointerIdentity(builder.NormalCSSBuildContext())
 	if firstContextIdentity == 0 {
 		t.Fatal("expected first normal css context identity to be set")
 	}
@@ -542,7 +539,7 @@ func TestBuildNormalCSS_EntryChangeReplacesContext(t *testing.T) {
 	if err := builder.BuildNormalCSS(true); err != nil {
 		t.Fatalf("second BuildNormalCSS returned error: %v", err)
 	}
-	secondContextIdentity := contextPointerIdentity(builder.css.normalCtx)
+	secondContextIdentity := contextPointerIdentity(builder.NormalCSSBuildContext())
 	if secondContextIdentity == 0 {
 		t.Fatal("expected second normal css context identity to be set")
 	}
@@ -577,7 +574,7 @@ func TestReadCriticalCSSForHotReload_RequiresFreshOutputAfterFailedRebuild(
 		t.Fatalf("failed writing critical css entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildCriticalCSS(true); err != nil {
@@ -649,7 +646,7 @@ func TestReadNormalCSSURLForHotReload_RequiresFreshOutputAfterFailedRebuild(
 		t.Fatalf("failed writing normal css entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildNormalCSS(true); err != nil {
@@ -705,14 +702,14 @@ func TestReadNormalCSSURLForHotReload_NormalizesRefFilePath(t *testing.T) {
 	cfg.Core.PublicPathPrefix = "/assets/"
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	if err := SetupDistDir(cfg); err != nil {
+	if err := toolingbuilder.SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
 	if err := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte(" ../outside.css \n"), 0o644); err != nil {
 		t.Fatalf("failed writing normal css ref file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	normalCSSURL, readError := builder.ReadNormalCSSURLForHotReload(false)
@@ -748,14 +745,14 @@ func TestReadNormalCSSURLForHotReload_WhitespaceOnlyRefReturnsEmptyURL(
 	cfg.Core.PublicPathPrefix = "/assets/"
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	if err := SetupDistDir(cfg); err != nil {
+	if err := toolingbuilder.SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
 	if err := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte(" \n\t "), 0o644); err != nil {
 		t.Fatalf("failed writing whitespace-only normal css ref file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	normalCSSURL, readError := builder.ReadNormalCSSURLForHotReload(false)
@@ -775,14 +772,14 @@ func TestReadCriticalCSS_ReadsFromDist(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Dist = wave.DistLayout{Root: cfg.Core.DistDir}
 
-	if err := SetupDistDir(cfg); err != nil {
+	if err := toolingbuilder.SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
 	if err := os.WriteFile(cfg.Dist.CriticalCSS(), []byte("body { color: navy; }"), 0o644); err != nil {
 		t.Fatalf("failed writing critical css file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	criticalCSS, readError := builder.ReadCriticalCSS()
@@ -814,7 +811,7 @@ func TestCSSHotReloadCaches_DoNotLeakAcrossBuilderReplacement(t *testing.T) {
 		t.Fatalf("failed writing normal css entry file: %v", err)
 	}
 
-	firstBuilder := NewBuilder(cfg, newDiscardLogger())
+	firstBuilder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer firstBuilder.Close()
 
 	if err := firstBuilder.BuildCriticalCSS(true); err != nil {
@@ -884,7 +881,7 @@ func TestCSSHotReloadCaches_DoNotLeakAcrossBuilderReplacement(t *testing.T) {
 		)
 	}
 
-	secondBuilder := NewBuilder(cfg, newDiscardLogger())
+	secondBuilder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer secondBuilder.Close()
 
 	secondBuilderCriticalCSS, secondCriticalReadError := secondBuilder.ReadCriticalCSSForHotReload(
@@ -938,7 +935,7 @@ func TestIsCriticalCSSFile_RecognizesSymlinkAliasPath(t *testing.T) {
 		t.Fatalf("failed writing critical css entry file: %v", err)
 	}
 
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	if err := builder.BuildCriticalCSS(true); err != nil {

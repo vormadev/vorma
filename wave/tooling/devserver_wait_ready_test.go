@@ -1,6 +1,7 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/devserver"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -20,8 +21,8 @@ func TestWaitForReady_RetriesUntilServerIsHealthy(t *testing.T) {
 	}))
 	defer testServer.Close()
 
-	s := &server{log: newDiscardLogger()}
-	if !s.waitForReady(testServer.URL) {
+	s := &devserver.Server{Log: newDiscardLogger()}
+	if !s.WaitForReady(testServer.URL) {
 		t.Fatal("expected waitForReady to return true after retries")
 	}
 

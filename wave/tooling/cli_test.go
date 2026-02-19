@@ -3,9 +3,14 @@ package tooling
 import (
 	"errors"
 	"flag"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/tooling/cli"
 )
 
 func withTemporaryCommandLineState(
@@ -30,8 +35,23 @@ func withTemporaryCommandLineState(
 	fn()
 }
 
+func buildCLIExecutionDependenciesForTests(
+	cfg *wave.ParsedConfig,
+) cli.ExecutionDependencies {
+	return cli.ExecutionDependencies{
+		RunDev: func(log *slog.Logger) error {
+			return RunDev(cfg, log)
+		},
+		RunBuild: func(log *slog.Logger, compileGo bool) error {
+			builder := toolingbuilder.NewBuilder(cfg, log)
+			defer builder.Close()
+			return builder.Build(toolingbuilder.BuildOpts{CompileGo: compileGo})
+		},
+	}
+}
+
 func TestParseCLIOptions(t *testing.T) {
-	parsedCLIOptions, err := ParseCLIOptions(
+	parsedCLIOptions, err := cli.ParseCLIOptions(
 		[]string{"-dev", "-hook", "-no-binary"},
 	)
 	if err != nil {
@@ -50,7 +70,7 @@ func TestParseCLIOptions(t *testing.T) {
 }
 
 func TestParseCLIOptions_UnknownFlagReturnsError(t *testing.T) {
-	_, err := ParseCLIOptions([]string{"-not-a-real-flag"})
+	_, err := cli.ParseCLIOptions([]string{"-not-a-real-flag"})
 	if err == nil {
 		t.Fatal("expected ParseCLIOptions to fail for unknown flag")
 	}
@@ -63,10 +83,9 @@ func TestBuildWaveWithHookOptions_HookModeInvokesHookWithDevFlag(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
 	called := false
-	err := BuildWaveWithHookOptions(
-		cfg,
+	err := cli.BuildWaveWithHookOptions(
 		newDiscardLogger(),
-		CLIOptions{HookOnly: true, IsDev: true},
+		cli.CLIOptions{HookOnly: true, IsDev: true},
 		func(isDev bool) error {
 			called = true
 			if !isDev {
@@ -74,6 +93,7 @@ func TestBuildWaveWithHookOptions_HookModeInvokesHookWithDevFlag(t *testing.T) {
 			}
 			return nil
 		},
+		buildCLIExecutionDependenciesForTests(cfg),
 	)
 	if err != nil {
 		t.Fatalf("BuildWaveWithHookOptions returned error: %v", err)
@@ -86,13 +106,13 @@ func TestBuildWaveWithHookOptions_HookModeInvokesHookWithDevFlag(t *testing.T) {
 func TestBuildWaveWithHookFromArgs_HookErrorIsReturned(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
-	err := BuildWaveWithHookFromArgs(
-		cfg,
+	err := cli.BuildWaveWithHookFromArgs(
 		newDiscardLogger(),
 		[]string{"-hook"},
 		func(bool) error {
 			return errors.New("hook failure")
 		},
+		buildCLIExecutionDependenciesForTests(cfg),
 	)
 	if err == nil {
 		t.Fatal("expected hook error to be returned")
@@ -106,11 +126,11 @@ func TestBuildWaveWithHookFromArgs_NoBinaryFlagRunsBuildWithoutCompile(t *testin
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true
 
-	err := BuildWaveWithHookFromArgs(
-		cfg,
+	err := cli.BuildWaveWithHookFromArgs(
 		newDiscardLogger(),
 		[]string{"-no-binary"},
 		nil,
+		buildCLIExecutionDependenciesForTests(cfg),
 	)
 	if err != nil {
 		t.Fatalf("BuildWaveWithHookFromArgs returned error: %v", err)
@@ -129,7 +149,12 @@ func TestBuildWave_DoesNotUseGlobalFlagCommandLineParser(t *testing.T) {
 		[]string{"wave-tooling-test", "-no-binary"},
 		customGlobalFlagSet,
 		func() {
-			if err := BuildWave(cfg, newDiscardLogger()); err != nil {
+			if err := cli.BuildWaveWithHookFromArgs(
+				newDiscardLogger(),
+				os.Args[1:],
+				nil,
+				buildCLIExecutionDependenciesForTests(cfg),
+			); err != nil {
 				t.Fatalf("did not expect BuildWave to return error: %v", err)
 			}
 

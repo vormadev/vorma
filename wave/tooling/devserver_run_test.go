@@ -3,6 +3,9 @@ package tooling
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"net"
 	"net/http"
 	"os"
@@ -23,15 +26,15 @@ func TestServerRun_ReturnsInitWatcherErrorWhenWatchRootMissing(t *testing.T) {
 	cfg.Core.ServerOnlyMode = true
 	cfg.Watch.WatchRoot = filepath.Join(root, "does-not-exist")
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(
-			make(chan restartRequest, 1),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(
+			make(chan devserverengine.RestartRequest, 1),
 		),
 	}
 
-	err := s.run()
+	err := s.Run()
 	if err == nil {
 		t.Fatal("expected run to fail when watch root does not exist")
 	}
@@ -53,11 +56,11 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 		t.Fatalf("failed writing initial tooling config: %v", err)
 	}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(
-			make(chan restartRequest, 1),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(
+			make(chan devserverengine.RestartRequest, 1),
 		),
 	}
 
@@ -67,9 +70,9 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 
 		deadline := time.Now().Add(2 * time.Second)
 		for time.Now().Before(deadline) {
-			s.mu.Lock()
-			watcherReady := s.watcher != nil
-			s.mu.Unlock()
+			s.Mu.Lock()
+			watcherReady := s.Watcher != nil
+			s.Mu.Unlock()
 			if watcherReady {
 				break
 			}
@@ -86,11 +89,11 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 		}
 		queueRestartRequestForToolingTests(
 			s,
-			restartRequest{recompileGo: false},
+			devserverengine.RestartRequest{RecompileGo: false},
 		)
 	}()
 
-	err := s.run()
+	err := s.Run()
 	if err == nil {
 		t.Fatal(
 			"expected run to exit with watcher init error after retry cycle",
@@ -123,11 +126,11 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
 		t.Fatalf("failed writing initial tooling config: %v", err)
 	}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(
-			make(chan restartRequest, 1),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(
+			make(chan devserverengine.RestartRequest, 1),
 		),
 	}
 
@@ -137,9 +140,9 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
 
 		deadline := time.Now().Add(2 * time.Second)
 		for time.Now().Before(deadline) {
-			s.mu.Lock()
-			watcherReady := s.watcher != nil
-			s.mu.Unlock()
+			s.Mu.Lock()
+			watcherReady := s.Watcher != nil
+			s.Mu.Unlock()
 			if watcherReady {
 				break
 			}
@@ -156,11 +159,11 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
 		}
 		queueRestartRequestForToolingTests(
 			s,
-			restartRequest{recompileGo: false},
+			devserverengine.RestartRequest{RecompileGo: false},
 		)
 	}()
 
-	err := s.run()
+	err := s.Run()
 	if err == nil {
 		t.Fatal(
 			"expected run to exit with watcher init error after sequential compile retry",
@@ -194,11 +197,11 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 		t.Fatalf("failed writing initial tooling config: %v", err)
 	}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(
-			make(chan restartRequest, 1),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(
+			make(chan devserverengine.RestartRequest, 1),
 		),
 	}
 
@@ -208,9 +211,9 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 
 		deadline := time.Now().Add(3 * time.Second)
 		for time.Now().Before(deadline) {
-			s.mu.Lock()
-			watcherReady := s.watcher != nil
-			s.mu.Unlock()
+			s.Mu.Lock()
+			watcherReady := s.Watcher != nil
+			s.Mu.Unlock()
 			if watcherReady {
 				break
 			}
@@ -227,11 +230,11 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 		}
 		queueRestartRequestForToolingTests(
 			s,
-			restartRequest{recompileGo: false},
+			devserverengine.RestartRequest{RecompileGo: false},
 		)
 	}()
 
-	err := s.run()
+	err := s.Run()
 	if err == nil {
 		t.Fatal("expected run to exit with watcher init error after restart")
 	}
@@ -291,11 +294,11 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
 	defer appServer.Close()
 	go appServer.Serve(appListener)
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(
-			make(chan restartRequest, 1),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(
+			make(chan devserverengine.RestartRequest, 1),
 		),
 	}
 
@@ -315,7 +318,7 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
 			}
 			sendRestartRequestWithTimeout(
 				s,
-				restartRequest{recompileGo: false},
+				devserverengine.RestartRequest{RecompileGo: false},
 				250*time.Millisecond,
 			)
 			return
@@ -323,7 +326,7 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
 
 		if !sendRestartRequestWithTimeout(
 			s,
-			restartRequest{recompileGo: false, isConfigRestart: true},
+			devserverengine.RestartRequest{RecompileGo: false, IsConfigRestart: true},
 			2*time.Second,
 		) {
 			if err := writeToolingConfigForWatchRoot(
@@ -336,7 +339,7 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
 			}
 			sendRestartRequestWithTimeout(
 				s,
-				restartRequest{recompileGo: false},
+				devserverengine.RestartRequest{RecompileGo: false},
 				250*time.Millisecond,
 			)
 			return
@@ -354,7 +357,7 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
 			}
 			sendRestartRequestWithTimeout(
 				s,
-				restartRequest{recompileGo: false},
+				devserverengine.RestartRequest{RecompileGo: false},
 				250*time.Millisecond,
 			)
 			return
@@ -373,12 +376,12 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
 		}
 		sendRestartRequestWithTimeout(
 			s,
-			restartRequest{recompileGo: false},
+			devserverengine.RestartRequest{RecompileGo: false},
 			2*time.Second,
 		)
 	}()
 
-	err = s.run()
+	err = s.Run()
 	if err == nil {
 		t.Fatal(
 			"expected run to exit with watcher init error after orchestration path",
@@ -403,32 +406,32 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
 func TestWaitForBuildRetry_QueuedNoGoRestartIntentIsPreservedForNextPass(
 	t *testing.T,
 ) {
-	s := &server{
-		log: newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(
-			make(chan restartRequest, 1),
+	s := &devserver.Server{
+		Log: newDiscardLogger(),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(
+			make(chan devserverengine.RestartRequest, 1),
 		),
 	}
-	queueRestartRequestForToolingTests(s, restartRequest{recompileGo: false})
+	queueRestartRequestForToolingTests(s, devserverengine.RestartRequest{RecompileGo: false})
 
-	restartRequestForRetry := s.waitForBuildRetry()
-	nextRunIntent := deriveRunIntentFromRestartRequest(restartRequestForRetry)
+	restartRequestForRetry := s.WaitForBuildRetry()
+	nextRunIntent := devserverengine.DeriveRunIntentFromRestartRequest(restartRequestForRetry)
 
-	if nextRunIntent.recompileGo {
+	if nextRunIntent.RecompileGo {
 		t.Fatalf(
 			"expected queued retry restart to preserve recompileGo=false, got %#v",
 			nextRunIntent,
 		)
 	}
-	if nextRunIntent.isConfigRestart {
+	if nextRunIntent.IsConfigRestart {
 		t.Fatalf(
 			"expected queued retry restart to preserve isConfigRestart=false, got %#v",
 			nextRunIntent,
 		)
 	}
-	s.restartIntents.mu.Lock()
-	waitingForBuildRetry := s.restartIntents.waitingForBuildRetry
-	s.restartIntents.mu.Unlock()
+	s.RestartIntents.Mu.Lock()
+	waitingForBuildRetry := s.RestartIntents.WaitingForBuildRetry
+	s.RestartIntents.Mu.Unlock()
 	if waitingForBuildRetry {
 		t.Fatal("expected waitForBuildRetry to clear waiting-for-retry guard")
 	}
@@ -468,15 +471,15 @@ func TestWriteToolingConfigForWatchRoot_UpdatesConfigFileOnly(t *testing.T) {
 }
 
 func waitForWatcherPointer(
-	s *server,
-	previousWatcher *watcher,
+	s *devserver.Server,
+	previousWatcher *watch.Watcher,
 	timeout time.Duration,
-) *watcher {
+) *watch.Watcher {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		s.mu.Lock()
-		currentWatcher := s.watcher
-		s.mu.Unlock()
+		s.Mu.Lock()
+		currentWatcher := s.Watcher
+		s.Mu.Unlock()
 
 		if currentWatcher != nil && currentWatcher != previousWatcher {
 			return currentWatcher
@@ -487,8 +490,8 @@ func waitForWatcherPointer(
 }
 
 func sendRestartRequestWithTimeout(
-	s *server,
-	request restartRequest,
+	s *devserver.Server,
+	request devserverengine.RestartRequest,
 	timeout time.Duration,
 ) bool {
 	if s == nil {
@@ -497,7 +500,7 @@ func sendRestartRequestWithTimeout(
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		s.queueRestartRequest(request)
+		s.QueueRestartRequest(request)
 		return true
 	}
 	return false

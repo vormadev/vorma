@@ -2,6 +2,11 @@ package tooling
 
 import (
 	"context"
+	"github.com/vormadev/vorma/wave/tooling/broadcast"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
+	"github.com/vormadev/vorma/wave/tooling/watch"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,30 +17,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vormadev/vorma/internal/waveport"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
 )
 
 func newServerAndWatcherForEventPipelineTest(
 	t *testing.T,
 	serverOnly bool,
-) (*server, *watcher) {
+) (*devserver.Server, *watch.Watcher) {
 	t.Helper()
 
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = serverOnly
 
-	watcher, err := newWatcher(cfg, newDiscardLogger())
+	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
 	}
 
-	s := &server{
-		cfg: cfg,
-		log: newDiscardLogger(),
-		restartIntents: newRestartIntentAccumulator(
-			make(chan restartRequest, 2),
+	s := &devserver.Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(
+			make(chan devserverengine.RestartRequest, 2),
 		),
 	}
 	return s, watcher
@@ -47,7 +52,7 @@ func makeExecutableSleepScriptForToolingTest(
 ) {
 	t.Helper()
 
-	if err := SetupDistDir(cfg); err != nil {
+	if err := toolingbuilder.SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
 
@@ -61,14 +66,14 @@ func TestProcessSingleEvent_PreHookRestartCanRequestGoRecompile(t *testing.T) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
-			fileType: fileTypeOther,
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+			FileType: devserver.FileTypeOther,
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -80,13 +85,13 @@ func TestProcessSingleEvent_PreHookRestartCanRequestGoRecompile(t *testing.T) {
 				},
 			},
 		},
-		runOnChangeOnly: false,
+		RunOnChangeOnly: false,
 	}
 
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
@@ -96,7 +101,7 @@ func TestProcessSingleEvent_PreHookRestartCanRequestGoRecompile(t *testing.T) {
 		s,
 		200*time.Millisecond,
 	)
-	if !pendingRestartRequest.recompileGo {
+	if !pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected restart to request Go recompilation, got %#v",
 			pendingRestartRequest,
@@ -110,41 +115,41 @@ func TestProcessSingleEvent_RunOnChangeOnlyWithHardReloadStopsRunningApp(
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
-	makeExecutableSleepScriptForToolingTest(t, s.cfg)
-	s.startApp()
-	if s.appCmd == nil || s.appCmd.Process == nil {
+	makeExecutableSleepScriptForToolingTest(t, s.Cfg)
+	s.StartApp()
+	if s.AppCmd == nil || s.AppCmd.Process == nil {
 		t.Fatal("expected test app process to start")
 	}
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:    waveEvent(filepath.Join(t.TempDir(), "changed.go")),
-			fileType: fileTypeGo,
-			watchedFile: &wave.WatchedFile{
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:    waveEvent(filepath.Join(t.TempDir(), "changed.go")),
+			FileType: devserver.FileTypeGo,
+			WatchedFile: &wave.WatchedFile{
 				RunOnChangeOnly: true,
 			},
 		},
-		hookCtx:         &wave.HookContext{},
-		hooks:           &wave.SortedHooks{},
-		runOnChangeOnly: true,
-		needsHardReload: true,
+		HookCtx:         &wave.HookContext{},
+		Hooks:           &wave.SortedHooks{},
+		RunOnChangeOnly: true,
+		NeedsHardReload: true,
 	}
 
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
 
-	if s.appCmd != nil {
+	if s.AppCmd != nil {
 		t.Fatal(
 			"expected hard-reload run-on-change-only event to stop running app",
 		)
 	}
-	if work.build.compileGo || work.restart.restartApp {
+	if work.Build.CompileGo || work.Restart.RestartApp {
 		t.Fatalf(
 			"expected run-on-change-only event to skip implicit build/restart work, got %#v",
 			work,
@@ -160,19 +165,19 @@ func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
-	s.refreshMgrCtx = context.Background()
-	s.refreshMgr = &clientManager{
-		broadcast: make(chan refreshPayload, 1),
+	s.RefreshMgrCtx = context.Background()
+	s.RefreshMgr = &broadcast.Manager{
+		Broadcast: make(chan broadcast.Payload, 1),
 	}
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
-			fileType: fileTypeOther,
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+			FileType: devserver.FileTypeOther,
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -196,7 +201,7 @@ func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
@@ -206,7 +211,7 @@ func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(
 		s,
 		200*time.Millisecond,
 	)
-	if pendingRestartRequest.recompileGo {
+	if pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected no-go restart from post hook, got %#v",
 			pendingRestartRequest,
@@ -214,7 +219,7 @@ func TestProcessSingleEvent_PostHookRestartShortCircuitsBrowserReload(
 	}
 
 	select {
-	case msg := <-s.refreshMgr.broadcast:
+	case msg := <-s.RefreshMgr.Broadcast:
 		t.Fatalf(
 			"did not expect browser broadcast after post-hook restart, got %#v",
 			msg,
@@ -229,19 +234,19 @@ func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
-	s.refreshMgrCtx = context.Background()
-	s.refreshMgr = &clientManager{
-		broadcast: make(chan refreshPayload, 1),
+	s.RefreshMgrCtx = context.Background()
+	s.RefreshMgr = &broadcast.Manager{
+		Broadcast: make(chan broadcast.Payload, 1),
 	}
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
-			fileType: fileTypeOther,
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+			FileType: devserver.FileTypeOther,
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -255,14 +260,14 @@ func TestProcessSingleEvent_ConcurrentActionCanTriggerBrowserReload(
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
 
 	select {
-	case msg := <-s.refreshMgr.broadcast:
-		if msg.ChangeType != changeTypeOther {
+	case msg := <-s.RefreshMgr.Broadcast:
+		if msg.ChangeType != broadcast.ChangeTypeOther {
 			t.Fatalf("expected hard reload payload, got %#v", msg)
 		}
 	case <-time.After(1 * time.Second):
@@ -278,20 +283,20 @@ func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
-	s.refreshMgrCtx = context.Background()
-	s.refreshMgr = &clientManager{
-		broadcast: make(chan refreshPayload, 1),
+	s.RefreshMgrCtx = context.Background()
+	s.RefreshMgr = &broadcast.Manager{
+		Broadcast: make(chan broadcast.Payload, 1),
 	}
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:       waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
-			fileType:    fileTypeOther,
-			watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:       waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+			FileType:    devserver.FileTypeOther,
+			WatchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -300,20 +305,20 @@ func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(
 				},
 			},
 		},
-		runOnChangeOnly: true,
+		RunOnChangeOnly: true,
 	}
 
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
 
 	select {
-	case msg := <-s.refreshMgr.broadcast:
-		if msg.ChangeType != changeTypeOther {
+	case msg := <-s.RefreshMgr.Broadcast:
+		if msg.ChangeType != broadcast.ChangeTypeOther {
 			t.Fatalf("expected hard reload payload, got %#v", msg)
 		}
 	case <-time.After(1 * time.Second):
@@ -329,33 +334,33 @@ func TestProcessSingleEvent_ImplicitRestartStartsApp(t *testing.T) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
-	makeExecutableSleepScriptForToolingTest(t, s.cfg)
+	makeExecutableSleepScriptForToolingTest(t, s.Cfg)
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
-			fileType: fileTypeOther,
-			watchedFile: &wave.WatchedFile{
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+			FileType: devserver.FileTypeOther,
+			WatchedFile: &wave.WatchedFile{
 				RestartApp: true,
 			},
 		},
-		hookCtx: &wave.HookContext{},
-		hooks:   &wave.SortedHooks{},
+		HookCtx: &wave.HookContext{},
+		Hooks:   &wave.SortedHooks{},
 	}
 
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
-	if s.appCmd == nil || s.appCmd.Process == nil {
+	if s.AppCmd == nil || s.AppCmd.Process == nil {
 		t.Fatal("expected implicit restart work to start app")
 	}
 
-	if err := s.stopApp(); err != nil {
+	if err := s.StopApp(); err != nil {
 		t.Fatalf("failed stopping test app: %v", err)
 	}
 }
@@ -366,12 +371,12 @@ func TestProcessSingleEvent_BuildFailureShortCircuitsRestartAndBrowserReload(
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
-	s.cfg.Core.MainAppEntry = "missing/package/for/compile"
-	s.refreshMgrCtx = context.Background()
-	s.refreshMgr = &clientManager{
-		broadcast: make(chan refreshPayload, 1),
+	s.Cfg.Core.MainAppEntry = "missing/package/for/compile"
+	s.RefreshMgrCtx = context.Background()
+	s.RefreshMgr = &broadcast.Manager{
+		Broadcast: make(chan broadcast.Payload, 1),
 	}
-	s.portResolver = waveport.NewResolver()
+	s.PortResolver = waveshared.NewResolver()
 
 	appHealthServer := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -391,37 +396,37 @@ func TestProcessSingleEvent_BuildFailureShortCircuitsRestartAndBrowserReload(
 	t.Setenv("PORT", strconv.Itoa(appHealthPort))
 	t.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
 
-	builder := NewBuilder(s.cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(s.Cfg, newDiscardLogger())
 	defer builder.Close()
-	s.builder = builder
+	s.Builder = builder
 
-	work := &workSet{}
-	ewh := eventWithHooks{
-		classified: classifiedEvent{
-			event:    waveEvent(filepath.Join(t.TempDir(), "changed.go")),
-			fileType: fileTypeGo,
+	work := &devserver.WorkSet{}
+	ewh := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event:    waveEvent(filepath.Join(t.TempDir(), "changed.go")),
+			FileType: devserver.FileTypeGo,
 		},
-		hookCtx: &wave.HookContext{},
-		hooks:   &wave.SortedHooks{},
+		HookCtx: &wave.HookContext{},
+		Hooks:   &wave.SortedHooks{},
 	}
 
 	runEventsWithDerivedExecutionPlan(
 		t,
 		s,
-		[]eventWithHooks{ewh},
+		[]devserver.EventWithHooks{ewh},
 		work,
 		watcher,
 	)
 
-	if s.appCmd != nil {
+	if s.AppCmd != nil {
 		t.Fatalf(
 			"did not expect app to start after build failure, got %#v",
-			s.appCmd,
+			s.AppCmd,
 		)
 	}
 
 	select {
-	case msg := <-s.refreshMgr.broadcast:
+	case msg := <-s.RefreshMgr.Broadcast:
 		t.Fatalf(
 			"did not expect browser payload after build failure, got %#v",
 			msg,
@@ -436,20 +441,20 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
-	s.refreshMgrCtx = context.Background()
-	s.refreshMgr = &clientManager{
-		broadcast: make(chan refreshPayload, 1),
+	s.RefreshMgrCtx = context.Background()
+	s.RefreshMgr = &broadcast.Manager{
+		Broadcast: make(chan broadcast.Payload, 1),
 	}
 
 	var postHookRan atomic.Bool
-	events := []eventWithHooks{
+	events := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{
-				event:    waveEvent(filepath.Join(t.TempDir(), "a.txt")),
-				fileType: fileTypeOther,
+			Classified: devserver.ClassifiedEvent{
+				Event:    waveEvent(filepath.Join(t.TempDir(), "a.txt")),
+				FileType: devserver.FileTypeOther,
 			},
-			hookCtx: &wave.HookContext{},
-			hooks: &wave.SortedHooks{
+			HookCtx: &wave.HookContext{},
+			Hooks: &wave.SortedHooks{
 				Pre: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -463,12 +468,12 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(
 			},
 		},
 		{
-			classified: classifiedEvent{
-				event:    waveEvent(filepath.Join(t.TempDir(), "b.txt")),
-				fileType: fileTypeOther,
+			Classified: devserver.ClassifiedEvent{
+				Event:    waveEvent(filepath.Join(t.TempDir(), "b.txt")),
+				FileType: devserver.FileTypeOther,
 			},
-			hookCtx: &wave.HookContext{},
-			hooks: &wave.SortedHooks{
+			HookCtx: &wave.HookContext{},
+			Hooks: &wave.SortedHooks{
 				Post: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -481,7 +486,7 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(
 		},
 	}
 
-	work := &workSet{}
+	work := &devserver.WorkSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
@@ -489,7 +494,7 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(
 		s,
 		200*time.Millisecond,
 	)
-	if pendingRestartRequest.recompileGo {
+	if pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected no-go restart from batched pre hook, got %#v",
 			pendingRestartRequest,
@@ -502,7 +507,7 @@ func TestProcessBatchedEvents_PrehookRestartShortCircuitsPostAndBrowser(
 		)
 	}
 	select {
-	case msg := <-s.refreshMgr.broadcast:
+	case msg := <-s.RefreshMgr.Broadcast:
 		t.Fatalf(
 			"did not expect browser broadcast after pre-hook restart, got %#v",
 			msg,
@@ -517,19 +522,19 @@ func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
-	s.refreshMgrCtx = context.Background()
-	s.refreshMgr = &clientManager{
-		broadcast: make(chan refreshPayload, 2),
+	s.RefreshMgrCtx = context.Background()
+	s.RefreshMgr = &broadcast.Manager{
+		Broadcast: make(chan broadcast.Payload, 2),
 	}
 
-	events := []eventWithHooks{
+	events := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{
-				event:    waveEvent(filepath.Join(t.TempDir(), "a.txt")),
-				fileType: fileTypeOther,
+			Classified: devserver.ClassifiedEvent{
+				Event:    waveEvent(filepath.Join(t.TempDir(), "a.txt")),
+				FileType: devserver.FileTypeOther,
 			},
-			hookCtx: &wave.HookContext{},
-			hooks: &wave.SortedHooks{
+			HookCtx: &wave.HookContext{},
+			Hooks: &wave.SortedHooks{
 				Concurrent: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -540,12 +545,12 @@ func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(
 			},
 		},
 		{
-			classified: classifiedEvent{
-				event:    waveEvent(filepath.Join(t.TempDir(), "b.txt")),
-				fileType: fileTypeOther,
+			Classified: devserver.ClassifiedEvent{
+				Event:    waveEvent(filepath.Join(t.TempDir(), "b.txt")),
+				FileType: devserver.FileTypeOther,
 			},
-			hookCtx: &wave.HookContext{},
-			hooks: &wave.SortedHooks{
+			HookCtx: &wave.HookContext{},
+			Hooks: &wave.SortedHooks{
 				Post: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -557,12 +562,12 @@ func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(
 		},
 	}
 
-	work := &workSet{}
+	work := &devserver.WorkSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	select {
-	case msg := <-s.refreshMgr.broadcast:
-		if msg.ChangeType != changeTypeOther {
+	case msg := <-s.RefreshMgr.Broadcast:
+		if msg.ChangeType != broadcast.ChangeTypeOther {
 			t.Fatalf("expected hard reload payload, got %#v", msg)
 		}
 	case <-time.After(1 * time.Second):
@@ -570,7 +575,7 @@ func TestProcessBatchedEvents_AggregatesActionsAndBroadcastsSingleReload(
 	}
 
 	select {
-	case extra := <-s.refreshMgr.broadcast:
+	case extra := <-s.RefreshMgr.Broadcast:
 		t.Fatalf("expected single batched reload payload, got extra %#v", extra)
 	default:
 	}
@@ -584,20 +589,20 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserRe
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, false)
 	defer watcher.Close()
 
-	s.refreshMgrCtx = context.Background()
-	s.refreshMgr = &clientManager{
-		broadcast: make(chan refreshPayload, 1),
+	s.RefreshMgrCtx = context.Background()
+	s.RefreshMgr = &broadcast.Manager{
+		Broadcast: make(chan broadcast.Payload, 1),
 	}
 
-	events := []eventWithHooks{
+	events := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{
-				event:       waveEvent(filepath.Join(t.TempDir(), "a.txt")),
-				fileType:    fileTypeOther,
-				watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
+			Classified: devserver.ClassifiedEvent{
+				Event:       waveEvent(filepath.Join(t.TempDir(), "a.txt")),
+				FileType:    devserver.FileTypeOther,
+				WatchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
 			},
-			hookCtx: &wave.HookContext{},
-			hooks: &wave.SortedHooks{
+			HookCtx: &wave.HookContext{},
+			Hooks: &wave.SortedHooks{
 				Post: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -606,16 +611,16 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlyPostCallbacksCanTriggerBrowserRe
 					},
 				},
 			},
-			runOnChangeOnly: true,
+			RunOnChangeOnly: true,
 		},
 	}
 
-	work := &workSet{}
+	work := &devserver.WorkSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	select {
-	case msg := <-s.refreshMgr.broadcast:
-		if msg.ChangeType != changeTypeOther {
+	case msg := <-s.RefreshMgr.Broadcast:
+		if msg.ChangeType != broadcast.ChangeTypeOther {
 			t.Fatalf("expected hard reload payload, got %#v", msg)
 		}
 	case <-time.After(1 * time.Second):
@@ -634,15 +639,15 @@ func TestProcessBatchedEvents_MixedBatchRunsRunOnChangeOnlyPostCallbacks(
 	defer watcher.Close()
 
 	var runOnChangeOnlyPostCallbackRan atomic.Bool
-	events := []eventWithHooks{
+	events := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{
-				event:       waveEvent(filepath.Join(t.TempDir(), "a.txt")),
-				fileType:    fileTypeOther,
-				watchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
+			Classified: devserver.ClassifiedEvent{
+				Event:       waveEvent(filepath.Join(t.TempDir(), "a.txt")),
+				FileType:    devserver.FileTypeOther,
+				WatchedFile: &wave.WatchedFile{RunOnChangeOnly: true},
 			},
-			hookCtx: &wave.HookContext{},
-			hooks: &wave.SortedHooks{
+			HookCtx: &wave.HookContext{},
+			Hooks: &wave.SortedHooks{
 				Post: []wave.OnChangeHook{
 					{
 						Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -652,20 +657,20 @@ func TestProcessBatchedEvents_MixedBatchRunsRunOnChangeOnlyPostCallbacks(
 					},
 				},
 			},
-			runOnChangeOnly: true,
+			RunOnChangeOnly: true,
 		},
 		{
-			classified: classifiedEvent{
-				event:    waveEvent(filepath.Join(t.TempDir(), "b.txt")),
-				fileType: fileTypeOther,
+			Classified: devserver.ClassifiedEvent{
+				Event:    waveEvent(filepath.Join(t.TempDir(), "b.txt")),
+				FileType: devserver.FileTypeOther,
 			},
-			hookCtx:         &wave.HookContext{},
-			hooks:           &wave.SortedHooks{},
-			runOnChangeOnly: false,
+			HookCtx:         &wave.HookContext{},
+			Hooks:           &wave.SortedHooks{},
+			RunOnChangeOnly: false,
 		},
 	}
 
-	work := &workSet{}
+	work := &devserver.WorkSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
 
 	if !runOnChangeOnlyPostCallbackRan.Load() {
@@ -679,29 +684,29 @@ func TestProcessBatchedEvents_ImplicitRestartStartsApp(t *testing.T) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
-	makeExecutableSleepScriptForToolingTest(t, s.cfg)
+	makeExecutableSleepScriptForToolingTest(t, s.Cfg)
 
-	events := []eventWithHooks{
+	events := []devserver.EventWithHooks{
 		{
-			classified: classifiedEvent{
-				event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
-				fileType: fileTypeOther,
-				watchedFile: &wave.WatchedFile{
+			Classified: devserver.ClassifiedEvent{
+				Event:    waveEvent(filepath.Join(t.TempDir(), "changed.txt")),
+				FileType: devserver.FileTypeOther,
+				WatchedFile: &wave.WatchedFile{
 					RestartApp: true,
 				},
 			},
-			hookCtx: &wave.HookContext{},
-			hooks:   &wave.SortedHooks{},
+			HookCtx: &wave.HookContext{},
+			Hooks:   &wave.SortedHooks{},
 		},
 	}
 
-	work := &workSet{}
+	work := &devserver.WorkSet{}
 	runEventsWithDerivedExecutionPlan(t, s, events, work, watcher)
-	if s.appCmd == nil || s.appCmd.Process == nil {
+	if s.AppCmd == nil || s.AppCmd.Process == nil {
 		t.Fatal("expected batched implicit restart work to start app")
 	}
 
-	if err := s.stopApp(); err != nil {
+	if err := s.StopApp(); err != nil {
 		t.Fatalf("failed stopping test app: %v", err)
 	}
 }
@@ -710,14 +715,14 @@ func TestRunPreHooks_CallbackAndCommandErrorsAreReturned(t *testing.T) {
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
-	callbackFailureEvent := eventWithHooks{
-		classified: classifiedEvent{
-			event: waveEvent(
+	callbackFailureEvent := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event: waveEvent(
 				filepath.Join(t.TempDir(), "callback-failure.txt"),
 			),
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -728,16 +733,16 @@ func TestRunPreHooks_CallbackAndCommandErrorsAreReturned(t *testing.T) {
 		},
 	}
 
-	if _, err := s.runPreHooks(callbackFailureEvent, watcher); err == nil {
+	if _, err := s.RunPreHooks(callbackFailureEvent, watcher); err == nil {
 		t.Fatal("expected callback failure to be returned by runPreHooks")
 	}
 
-	commandFailureEvent := eventWithHooks{
-		classified: classifiedEvent{
-			event: waveEvent(filepath.Join(t.TempDir(), "command-failure.txt")),
+	commandFailureEvent := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event: waveEvent(filepath.Join(t.TempDir(), "command-failure.txt")),
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Pre: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -749,7 +754,7 @@ func TestRunPreHooks_CallbackAndCommandErrorsAreReturned(t *testing.T) {
 		},
 	}
 
-	actions, err := s.runPreHooks(commandFailureEvent, watcher)
+	actions, err := s.RunPreHooks(commandFailureEvent, watcher)
 	if err == nil {
 		t.Fatal("expected command failure to be returned by runPreHooks")
 	}
@@ -767,14 +772,14 @@ func TestRunConcurrentHooks_AndRunPostHooks_PropagateCallbackErrors(
 	s, watcher := newServerAndWatcherForEventPipelineTest(t, true)
 	defer watcher.Close()
 
-	concurrentErrorEvent := eventWithHooks{
-		classified: classifiedEvent{
-			event: waveEvent(
+	concurrentErrorEvent := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event: waveEvent(
 				filepath.Join(t.TempDir(), "concurrent-callback-error.txt"),
 			),
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Concurrent: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -784,18 +789,18 @@ func TestRunConcurrentHooks_AndRunPostHooks_PropagateCallbackErrors(
 			},
 		},
 	}
-	if _, err := s.runConcurrentHooks(concurrentErrorEvent, watcher); err == nil {
+	if _, err := s.RunConcurrentHooks(concurrentErrorEvent, watcher); err == nil {
 		t.Fatal("expected concurrent callback error to be propagated")
 	}
 
-	postErrorEvent := eventWithHooks{
-		classified: classifiedEvent{
-			event: waveEvent(
+	postErrorEvent := devserver.EventWithHooks{
+		Classified: devserver.ClassifiedEvent{
+			Event: waveEvent(
 				filepath.Join(t.TempDir(), "post-callback-error.txt"),
 			),
 		},
-		hookCtx: &wave.HookContext{},
-		hooks: &wave.SortedHooks{
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
 			Post: []wave.OnChangeHook{
 				{
 					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
@@ -805,7 +810,7 @@ func TestRunConcurrentHooks_AndRunPostHooks_PropagateCallbackErrors(
 			},
 		},
 	}
-	if _, err := s.runPostHooks(postErrorEvent, watcher); err == nil {
+	if _, err := s.RunPostHooks(postErrorEvent, watcher); err == nil {
 		t.Fatal("expected post callback error to be propagated")
 	}
 }

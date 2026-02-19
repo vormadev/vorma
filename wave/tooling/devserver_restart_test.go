@@ -2,22 +2,24 @@ package tooling
 
 import (
 	"fmt"
+	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
 	"io"
 	"log/slog"
 	"testing"
 )
 
-func newServerForRestartChannelTest() *server {
-	return &server{
-		log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
-		restartIntents: newRestartIntentAccumulator(make(chan restartRequest, 1)),
+func newServerForRestartChannelTest() *devserver.Server {
+	return &devserver.Server{
+		Log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+		RestartIntents: devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1)),
 	}
 }
 
 func mustConsumePendingRestartRequestForRestartTests(
 	t *testing.T,
-	s *server,
-) restartRequest {
+	s *devserver.Server,
+) devserverengine.RestartRequest {
 	t.Helper()
 
 	pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(s)
@@ -30,13 +32,13 @@ func mustConsumePendingRestartRequestForRestartTests(
 func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 	t.Run("waiting for build retry keeps first pending restart request", func(t *testing.T) {
 		s := newServerForRestartChannelTest()
-		s.setWaitingForBuildRetry(true)
+		s.SetWaitingForBuildRetry(true)
 
-		s.triggerRestartNoGo()
-		s.triggerRestart()
+		s.TriggerRestartNoGo()
+		s.TriggerRestart()
 
 		req := mustConsumePendingRestartRequestForRestartTests(t, s)
-		if req.recompileGo || req.isConfigRestart {
+		if req.RecompileGo || req.IsConfigRestart {
 			t.Fatalf("expected first pending no-go restart to be preserved, got %#v", req)
 		}
 	})
@@ -44,14 +46,14 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 	t.Run("upgrades pending no-go restart to go-recompile restart", func(t *testing.T) {
 		s := newServerForRestartChannelTest()
 
-		s.triggerRestartNoGo()
-		s.triggerRestart()
+		s.TriggerRestartNoGo()
+		s.TriggerRestart()
 
 		req := mustConsumePendingRestartRequestForRestartTests(t, s)
-		if !req.recompileGo {
+		if !req.RecompileGo {
 			t.Fatalf("expected recompileGo=true, got %#v", req)
 		}
-		if req.isConfigRestart {
+		if req.IsConfigRestart {
 			t.Fatalf("expected isConfigRestart=false, got %#v", req)
 		}
 	})
@@ -59,11 +61,11 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 	t.Run("config restart supersedes non-config restart", func(t *testing.T) {
 		s := newServerForRestartChannelTest()
 
-		s.triggerRestartNoGo()
-		s.triggerConfigRestart()
+		s.TriggerRestartNoGo()
+		s.TriggerConfigRestart()
 
 		req := mustConsumePendingRestartRequestForRestartTests(t, s)
-		if !req.isConfigRestart || !req.recompileGo {
+		if !req.IsConfigRestart || !req.RecompileGo {
 			t.Fatalf("expected config restart with recompile, got %#v", req)
 		}
 	})
@@ -71,11 +73,11 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 	t.Run("pending config restart is never downgraded", func(t *testing.T) {
 		s := newServerForRestartChannelTest()
 
-		s.triggerConfigRestart()
-		s.triggerRestartNoGo()
+		s.TriggerConfigRestart()
+		s.TriggerRestartNoGo()
 
 		req := mustConsumePendingRestartRequestForRestartTests(t, s)
-		if !req.isConfigRestart || !req.recompileGo {
+		if !req.IsConfigRestart || !req.RecompileGo {
 			t.Fatalf("expected config restart to remain pending, got %#v", req)
 		}
 	})
@@ -83,11 +85,11 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 	t.Run("weaker request does not downgrade stronger pending request", func(t *testing.T) {
 		s := newServerForRestartChannelTest()
 
-		s.triggerRestart()
-		s.triggerRestartNoGo()
+		s.TriggerRestart()
+		s.TriggerRestartNoGo()
 
 		req := mustConsumePendingRestartRequestForRestartTests(t, s)
-		if !req.recompileGo {
+		if !req.RecompileGo {
 			t.Fatalf("expected pending request to keep recompileGo=true, got %#v", req)
 		}
 	})
@@ -95,54 +97,54 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 
 func TestNormalizeRestartRequest(t *testing.T) {
 	tests := []struct {
-		name           string
-		inputRequest   restartRequest
-		expectedResult restartRequest
+		Name           string
+		InputRequest   devserverengine.RestartRequest
+		ExpectedResult devserverengine.RestartRequest
 	}{
 		{
-			name: "non-config request unchanged",
-			inputRequest: restartRequest{
-				recompileGo:     false,
-				isConfigRestart: false,
+			Name: "non-config request unchanged",
+			InputRequest: devserverengine.RestartRequest{
+				RecompileGo:     false,
+				IsConfigRestart: false,
 			},
-			expectedResult: restartRequest{
-				recompileGo:     false,
-				isConfigRestart: false,
-			},
-		},
-		{
-			name: "config request always recompiles go",
-			inputRequest: restartRequest{
-				recompileGo:     false,
-				isConfigRestart: true,
-			},
-			expectedResult: restartRequest{
-				recompileGo:     true,
-				isConfigRestart: true,
+			ExpectedResult: devserverengine.RestartRequest{
+				RecompileGo:     false,
+				IsConfigRestart: false,
 			},
 		},
 		{
-			name: "already-strong config request preserved",
-			inputRequest: restartRequest{
-				recompileGo:     true,
-				isConfigRestart: true,
+			Name: "config request always recompiles go",
+			InputRequest: devserverengine.RestartRequest{
+				RecompileGo:     false,
+				IsConfigRestart: true,
 			},
-			expectedResult: restartRequest{
-				recompileGo:     true,
-				isConfigRestart: true,
+			ExpectedResult: devserverengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: true,
+			},
+		},
+		{
+			Name: "already-strong config request preserved",
+			InputRequest: devserverengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: true,
+			},
+			ExpectedResult: devserverengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: true,
 			},
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			normalizedRequest := normalizeRestartRequest(tt.inputRequest)
-			if normalizedRequest != tt.expectedResult {
+		t.Run(tt.Name, func(t *testing.T) {
+			normalizedRequest := devserverengine.NormalizeRestartRequest(tt.InputRequest)
+			if normalizedRequest != tt.ExpectedResult {
 				t.Fatalf(
-					"normalizeRestartRequest(%#v) = %#v, want %#v",
-					tt.inputRequest,
+					"devserverengine.NormalizeRestartRequest(%#v) = %#v, want %#v",
+					tt.InputRequest,
 					normalizedRequest,
-					tt.expectedResult,
+					tt.ExpectedResult,
 				)
 			}
 		})
@@ -151,56 +153,56 @@ func TestNormalizeRestartRequest(t *testing.T) {
 
 func TestResolveQueuedRestartRequest(t *testing.T) {
 	t.Run("no pending request uses normalized incoming request", func(t *testing.T) {
-		incomingRequest := restartRequest{
-			recompileGo:     false,
-			isConfigRestart: true,
+		incomingRequest := devserverengine.RestartRequest{
+			RecompileGo:     false,
+			IsConfigRestart: true,
 		}
 
-		resolvedRequest := resolveQueuedRestartRequest(nil, incomingRequest)
-		if !resolvedRequest.recompileGo || !resolvedRequest.isConfigRestart {
+		resolvedRequest := devserverengine.ResolveQueuedRestartRequest(nil, incomingRequest)
+		if !resolvedRequest.RecompileGo || !resolvedRequest.IsConfigRestart {
 			t.Fatalf("expected normalized config restart, got %#v", resolvedRequest)
 		}
 	})
 
 	t.Run("pending request merges with incoming request", func(t *testing.T) {
-		pendingRequest := restartRequest{
-			recompileGo:     false,
-			isConfigRestart: false,
+		pendingRequest := devserverengine.RestartRequest{
+			RecompileGo:     false,
+			IsConfigRestart: false,
 		}
-		incomingRequest := restartRequest{
-			recompileGo:     true,
-			isConfigRestart: false,
+		incomingRequest := devserverengine.RestartRequest{
+			RecompileGo:     true,
+			IsConfigRestart: false,
 		}
 
-		resolvedRequest := resolveQueuedRestartRequest(&pendingRequest, incomingRequest)
-		if !resolvedRequest.recompileGo || resolvedRequest.isConfigRestart {
+		resolvedRequest := devserverengine.ResolveQueuedRestartRequest(&pendingRequest, incomingRequest)
+		if !resolvedRequest.RecompileGo || resolvedRequest.IsConfigRestart {
 			t.Fatalf("expected go-recompile non-config restart, got %#v", resolvedRequest)
 		}
 	})
 }
 
 func TestMergeRestartRequests(t *testing.T) {
-	allPossibleRequests := []restartRequest{
-		{recompileGo: false, isConfigRestart: false},
-		{recompileGo: true, isConfigRestart: false},
-		{recompileGo: false, isConfigRestart: true},
-		{recompileGo: true, isConfigRestart: true},
+	allPossibleRequests := []devserverengine.RestartRequest{
+		{RecompileGo: false, IsConfigRestart: false},
+		{RecompileGo: true, IsConfigRestart: false},
+		{RecompileGo: false, IsConfigRestart: true},
+		{RecompileGo: true, IsConfigRestart: true},
 	}
 
 	for _, pendingRequestForTest := range allPossibleRequests {
 		for _, incomingRequestForTest := range allPossibleRequests {
 			testName := fmt.Sprintf(
 				"pending_go_%t_config_%t__incoming_go_%t_config_%t",
-				pendingRequestForTest.recompileGo,
-				pendingRequestForTest.isConfigRestart,
-				incomingRequestForTest.recompileGo,
-				incomingRequestForTest.isConfigRestart,
+				pendingRequestForTest.RecompileGo,
+				pendingRequestForTest.IsConfigRestart,
+				incomingRequestForTest.RecompileGo,
+				incomingRequestForTest.IsConfigRestart,
 			)
 
 			t.Run(testName, func(t *testing.T) {
-				normalizedPendingRequest := normalizeRestartRequest(pendingRequestForTest)
-				normalizedIncomingRequest := normalizeRestartRequest(incomingRequestForTest)
-				combined := mergeRestartRequests(normalizedPendingRequest, normalizedIncomingRequest)
+				normalizedPendingRequest := devserverengine.NormalizeRestartRequest(pendingRequestForTest)
+				normalizedIncomingRequest := devserverengine.NormalizeRestartRequest(incomingRequestForTest)
+				combined := devserverengine.MergeRestartRequests(normalizedPendingRequest, normalizedIncomingRequest)
 				expectedCombined := expectedMergedRestartRequest(
 					normalizedPendingRequest,
 					normalizedIncomingRequest,
@@ -208,7 +210,7 @@ func TestMergeRestartRequests(t *testing.T) {
 
 				if combined != expectedCombined {
 					t.Fatalf(
-						"mergeRestartRequests(%#v, %#v) = %#v, want %#v",
+						"devserverengine.MergeRestartRequests(%#v, %#v) = %#v, want %#v",
 						normalizedPendingRequest,
 						normalizedIncomingRequest,
 						combined,
@@ -221,19 +223,19 @@ func TestMergeRestartRequests(t *testing.T) {
 }
 
 func expectedMergedRestartRequest(
-	pendingRequest restartRequest,
-	incomingRequest restartRequest,
-) restartRequest {
-	if pendingRequest.isConfigRestart || incomingRequest.isConfigRestart {
-		return restartRequest{
-			recompileGo:     true,
-			isConfigRestart: true,
+	pendingRequest devserverengine.RestartRequest,
+	incomingRequest devserverengine.RestartRequest,
+) devserverengine.RestartRequest {
+	if pendingRequest.IsConfigRestart || incomingRequest.IsConfigRestart {
+		return devserverengine.RestartRequest{
+			RecompileGo:     true,
+			IsConfigRestart: true,
 		}
 	}
 
-	return restartRequest{
-		recompileGo:     pendingRequest.recompileGo || incomingRequest.recompileGo,
-		isConfigRestart: false,
+	return devserverengine.RestartRequest{
+		RecompileGo:     pendingRequest.RecompileGo || incomingRequest.RecompileGo,
+		IsConfigRestart: false,
 	}
 }
 
@@ -241,18 +243,18 @@ func TestTriggerRestartFromRefreshActions(t *testing.T) {
 	t.Run("trigger restart without go compile", func(t *testing.T) {
 		s := newServerForRestartChannelTest()
 
-		s.triggerRestartFromRefreshActions(
-			refreshActionApplicationResult{
-				restartRequested: true,
-				recompileGo:      false,
+		s.TriggerRestartFromRefreshActions(
+			devserver.RefreshActionApplicationResult{
+				RestartRequested: true,
+				RecompileGo:      false,
 			},
 		)
 
 		req := mustConsumePendingRestartRequestForRestartTests(t, s)
-		if req.recompileGo {
+		if req.RecompileGo {
 			t.Fatalf("expected recompileGo=false, got %#v", req)
 		}
-		if req.isConfigRestart {
+		if req.IsConfigRestart {
 			t.Fatalf("expected isConfigRestart=false, got %#v", req)
 		}
 	})
@@ -260,38 +262,38 @@ func TestTriggerRestartFromRefreshActions(t *testing.T) {
 	t.Run("trigger restart with go compile", func(t *testing.T) {
 		s := newServerForRestartChannelTest()
 
-		s.triggerRestartFromRefreshActions(
-			refreshActionApplicationResult{
-				restartRequested: true,
-				recompileGo:      true,
+		s.TriggerRestartFromRefreshActions(
+			devserver.RefreshActionApplicationResult{
+				RestartRequested: true,
+				RecompileGo:      true,
 			},
 		)
 
 		req := mustConsumePendingRestartRequestForRestartTests(t, s)
-		if !req.recompileGo {
+		if !req.RecompileGo {
 			t.Fatalf("expected recompileGo=true, got %#v", req)
 		}
-		if req.isConfigRestart {
+		if req.IsConfigRestart {
 			t.Fatalf("expected isConfigRestart=false, got %#v", req)
 		}
 	})
 }
 
 func TestRestartIntentAccumulator_ConsumePendingRestartRequestClearsPendingState(t *testing.T) {
-	accumulator := newRestartIntentAccumulator(make(chan restartRequest, 1))
-	accumulator.queueRestartRequest(restartRequest{
-		recompileGo: true,
+	accumulator := devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1))
+	accumulator.QueueRestartRequest(devserverengine.RestartRequest{
+		RecompileGo: true,
 	})
 
-	consumedRequest, hasConsumedRequest := accumulator.consumePendingRestartRequest()
+	consumedRequest, hasConsumedRequest := accumulator.ConsumePendingRestartRequest()
 	if !hasConsumedRequest {
 		t.Fatal("expected pending restart request to be consumed")
 	}
-	if !consumedRequest.recompileGo || consumedRequest.isConfigRestart {
+	if !consumedRequest.RecompileGo || consumedRequest.IsConfigRestart {
 		t.Fatalf("unexpected consumed restart request: %#v", consumedRequest)
 	}
 
-	_, hasSecondPendingRequest := accumulator.consumePendingRestartRequest()
+	_, hasSecondPendingRequest := accumulator.ConsumePendingRestartRequest()
 	if hasSecondPendingRequest {
 		t.Fatal("expected consumed restart request to be atomically cleared")
 	}

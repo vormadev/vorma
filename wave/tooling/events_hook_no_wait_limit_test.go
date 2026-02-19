@@ -1,14 +1,15 @@
 package tooling
 
 import (
+	"github.com/vormadev/vorma/wave/tooling/devserver"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func TestRunNoWaitHookWithConcurrencyLimit_EnforcesExecutionCap(t *testing.T) {
-	s := &server{
-		concurrentNoWaitHookExecutionLimiter: make(chan struct{}, 2),
+	s := &devserver.Server{
+		ConcurrentNoWaitHookExecutionLimiter: make(chan struct{}, 2),
 	}
 
 	started := make(chan struct{}, 3)
@@ -16,7 +17,7 @@ func TestRunNoWaitHookWithConcurrencyLimit_EnforcesExecutionCap(t *testing.T) {
 	thirdSchedulingDone := make(chan struct{})
 
 	for range 2 {
-		s.runNoWaitHookWithConcurrencyLimit(func() {
+		s.RunNoWaitHookWithConcurrencyLimit(func() {
 			started <- struct{}{}
 			<-release
 		})
@@ -34,7 +35,7 @@ func TestRunNoWaitHookWithConcurrencyLimit_EnforcesExecutionCap(t *testing.T) {
 		t.Fatal("timed out waiting for second no-wait hook to start")
 	}
 
-	s.runNoWaitHookWithConcurrencyLimit(func() {
+	s.RunNoWaitHookWithConcurrencyLimit(func() {
 		started <- struct{}{}
 		<-release
 	})
@@ -62,15 +63,15 @@ func TestRunNoWaitHookWithConcurrencyLimit_EnforcesExecutionCap(t *testing.T) {
 }
 
 func TestRunNoWaitHookWithConcurrencyLimit_DoesNotBlockSchedulingWhenLimiterIsSaturated(t *testing.T) {
-	s := &server{
-		concurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
+	s := &devserver.Server{
+		ConcurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
 	}
 
 	firstHookStarted := make(chan struct{}, 1)
 	releaseFirstHook := make(chan struct{})
 	defer close(releaseFirstHook)
 
-	s.runNoWaitHookWithConcurrencyLimit(func() {
+	s.RunNoWaitHookWithConcurrencyLimit(func() {
 		firstHookStarted <- struct{}{}
 		<-releaseFirstHook
 	})
@@ -83,7 +84,7 @@ func TestRunNoWaitHookWithConcurrencyLimit_DoesNotBlockSchedulingWhenLimiterIsSa
 
 	secondSchedulingDone := make(chan struct{})
 	go func() {
-		s.runNoWaitHookWithConcurrencyLimit(func() {})
+		s.RunNoWaitHookWithConcurrencyLimit(func() {})
 		close(secondSchedulingDone)
 	}()
 
@@ -95,14 +96,14 @@ func TestRunNoWaitHookWithConcurrencyLimit_DoesNotBlockSchedulingWhenLimiterIsSa
 }
 
 func TestRunNoWaitHookWithConcurrencyLimit_RunsHookAsynchronously(t *testing.T) {
-	s := &server{
-		concurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
+	s := &devserver.Server{
+		ConcurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
 	}
 
 	var ran atomic.Bool
 	finished := make(chan struct{})
 
-	s.runNoWaitHookWithConcurrencyLimit(func() {
+	s.RunNoWaitHookWithConcurrencyLimit(func() {
 		ran.Store(true)
 		close(finished)
 	})
@@ -119,16 +120,16 @@ func TestRunNoWaitHookWithConcurrencyLimit_RunsHookAsynchronously(t *testing.T) 
 }
 
 func TestRunNoWaitHookWithConcurrencyLimit_IsServerScoped(t *testing.T) {
-	firstServer := &server{
-		concurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
+	firstServer := &devserver.Server{
+		ConcurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
 	}
-	secondServer := &server{
-		concurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
+	secondServer := &devserver.Server{
+		ConcurrentNoWaitHookExecutionLimiter: make(chan struct{}, 1),
 	}
 
 	firstServerStarted := make(chan struct{}, 1)
 	firstServerRelease := make(chan struct{})
-	firstServer.runNoWaitHookWithConcurrencyLimit(func() {
+	firstServer.RunNoWaitHookWithConcurrencyLimit(func() {
 		firstServerStarted <- struct{}{}
 		<-firstServerRelease
 	})
@@ -140,7 +141,7 @@ func TestRunNoWaitHookWithConcurrencyLimit_IsServerScoped(t *testing.T) {
 	}
 
 	secondServerHookFinished := make(chan struct{}, 1)
-	secondServer.runNoWaitHookWithConcurrencyLimit(func() {
+	secondServer.RunNoWaitHookWithConcurrencyLimit(func() {
 		secondServerHookFinished <- struct{}{}
 	})
 

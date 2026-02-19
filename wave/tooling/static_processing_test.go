@@ -8,46 +8,48 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/wave"
-	"github.com/vormadev/vorma/wave/internal/pathnorm"
+	"github.com/vormadev/vorma/wave/internal/waveshared"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/builder/static"
 )
 
 func TestDetermineStaticProcessingWorkerCount(t *testing.T) {
 	tests := []struct {
-		name            string
-		gomaxprocs      int
-		expectedWorkers int
+		Name            string
+		Gomaxprocs      int
+		ExpectedWorkers int
 	}{
 		{
-			name:            "non-positive gomaxprocs falls back to one worker",
-			gomaxprocs:      0,
-			expectedWorkers: 1,
+			Name:            "non-positive gomaxprocs falls back to one worker",
+			Gomaxprocs:      0,
+			ExpectedWorkers: 1,
 		},
 		{
-			name:            "single gomaxprocs uses two workers",
-			gomaxprocs:      1,
-			expectedWorkers: 2,
+			Name:            "single gomaxprocs uses two workers",
+			Gomaxprocs:      1,
+			ExpectedWorkers: 2,
 		},
 		{
-			name:            "scales with gomaxprocs",
-			gomaxprocs:      4,
-			expectedWorkers: 8,
+			Name:            "scales with gomaxprocs",
+			Gomaxprocs:      4,
+			ExpectedWorkers: 8,
 		},
 		{
-			name:            "caps at thirty-two workers",
-			gomaxprocs:      64,
-			expectedWorkers: 32,
+			Name:            "caps at thirty-two workers",
+			Gomaxprocs:      64,
+			ExpectedWorkers: 32,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			workerCount := determineStaticProcessingWorkerCount(tt.gomaxprocs)
-			if workerCount != tt.expectedWorkers {
+		t.Run(tt.Name, func(t *testing.T) {
+			workerCount := static.DetermineStaticProcessingWorkerCount(tt.Gomaxprocs)
+			if workerCount != tt.ExpectedWorkers {
 				t.Fatalf(
-					"determineStaticProcessingWorkerCount(%d)=%d, want %d",
-					tt.gomaxprocs,
+					"static.DetermineStaticProcessingWorkerCount(%d)=%d, want %d",
+					tt.Gomaxprocs,
 					workerCount,
-					tt.expectedWorkers,
+					tt.ExpectedWorkers,
 				)
 			}
 		})
@@ -70,8 +72,8 @@ func TestCanonicalizePathForLocationComparison_FollowsParentSymlinkForMissingLea
 		t.Fatalf("failed creating source alias directory symlink: %v", err)
 	}
 
-	canonicalizedPath := pathnorm.CanonicalizePathForLocationComparison(missingLeafUnderAlias)
-	if !pathnorm.PathsReferToSameLocation(canonicalizedPath, missingLeafUnderTarget) {
+	canonicalizedPath := waveshared.CanonicalizePathForLocationComparison(missingLeafUnderAlias)
+	if !waveshared.PathsReferToSameLocation(canonicalizedPath, missingLeafUnderTarget) {
 		t.Fatalf(
 			"expected canonicalized alias path %q to resolve to %q, got %q",
 			missingLeafUnderAlias,
@@ -94,7 +96,7 @@ func TestResolveStaticChangedPathResolutions_UsesSymlinkAliasPathsForMissingLeaf
 		t.Fatalf("failed creating source alias directory symlink: %v", err)
 	}
 
-	changedResolutions, fullBuildRequired, resolutionError := resolveStaticChangedPathResolutions(
+	changedResolutions, fullBuildRequired, resolutionError := static.ResolveStaticChangedPathResolutions(
 		sourceDirectoryPath,
 		[]string{missingAliasPath},
 	)
@@ -112,16 +114,16 @@ func TestResolveStaticChangedPathResolutions_UsesSymlinkAliasPathsForMissingLeaf
 	if !hasResolution {
 		t.Fatalf("expected changed resolution for styles/site.css, got %#v", changedResolutions)
 	}
-	if resolution.sourceExists {
+	if resolution.SourceExists {
 		t.Fatalf("expected sourceExists=false for missing leaf path, got %#v", resolution)
 	}
 
-	changedResolutions, fullBuildRequired, resolutionError = resolveStaticChangedPathResolutions(
+	changedResolutions, fullBuildRequired, resolutionError = static.ResolveStaticChangedPathResolutions(
 		sourceDirectoryPath,
 		[]string{aliasDirectoryPath},
 	)
 	if resolutionError != nil {
-		t.Fatalf("resolveStaticChangedPathResolutions(root alias) returned error: %v", resolutionError)
+		t.Fatalf("static.ResolveStaticChangedPathResolutions(root alias) returned error: %v", resolutionError)
 	}
 	if !fullBuildRequired {
 		t.Fatalf(
@@ -145,11 +147,11 @@ func TestResolveStaticChangedPathResolutionsWithProbeFunctions_MemoizesDuplicate
 	sourceExistsProbeCallCount := 0
 	collisionProbeCallCount := 0
 
-	changedResolutions, fullBuildRequired, resolutionError := resolveStaticChangedPathResolutionsWithProbeFunctions(
+	changedResolutions, fullBuildRequired, resolutionError := static.ResolveStaticChangedPathResolutionsWithProbeFunctions(
 		sourceDirectoryPath,
 		[]string{"logo", "logo_alias", "logo_dup"},
-		staticChangedPathResolutionProbeFunctions{
-			normalizeChangedSourcePath: func(changedSourcePath string) string {
+		static.StaticChangedPathResolutionProbeFunctions{
+			NormalizeChangedSourcePath: func(changedSourcePath string) string {
 				switch changedSourcePath {
 				case "logo", "logo_alias", "logo_dup":
 					return logicalSourcePath
@@ -157,21 +159,21 @@ func TestResolveStaticChangedPathResolutionsWithProbeFunctions_MemoizesDuplicate
 					return ""
 				}
 			},
-			resolveStaticFileInfoFromSourcePath: func(
+			ResolveStaticFileInfoFromSourcePath: func(
 				_ string,
 				sourcePath string,
-			) (fileInfo, bool, error) {
+			) (static.StaticFileInfo, bool, error) {
 				resolveProbeCallCount++
-				return fileInfo{
-					srcPath: sourcePath,
-					relPath: "images/logo.png",
+				return static.StaticFileInfo{
+					SourcePath:   sourcePath,
+					RelativePath: "images/logo.png",
 				}, true, nil
 			},
-			sourceFileExists: func(_ string) (bool, error) {
+			SourceFileExists: func(_ string) (bool, error) {
 				sourceExistsProbeCallCount++
 				return true, nil
 			},
-			ensureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelPath: func(
+			EnsureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelativePath: func(
 				_ string,
 				_ string,
 			) error {
@@ -191,14 +193,14 @@ func TestResolveStaticChangedPathResolutionsWithProbeFunctions_MemoizesDuplicate
 	}
 
 	resolvedFileInfo := changedResolutions["images/logo.png"]
-	if resolvedFileInfo.fileInfo.srcPath != logicalSourcePath {
+	if resolvedFileInfo.FileInfo.SourcePath != logicalSourcePath {
 		t.Fatalf(
-			"expected resolved srcPath %q, got %#v",
+			"expected resolved sourcePath %q, got %#v",
 			logicalSourcePath,
-			resolvedFileInfo.fileInfo,
+			resolvedFileInfo.FileInfo,
 		)
 	}
-	if !resolvedFileInfo.sourceExists {
+	if !resolvedFileInfo.SourceExists {
 		t.Fatalf("expected sourceExists=true, got %#v", resolvedFileInfo)
 	}
 
@@ -222,11 +224,11 @@ func TestResolveStaticChangedPathResolutionsWithProbeFunctions_ProbesCollisionOn
 	sourceExistsProbeCallCount := 0
 	collisionProbeCallCount := 0
 
-	_, fullBuildRequired, resolutionError := resolveStaticChangedPathResolutionsWithProbeFunctions(
+	_, fullBuildRequired, resolutionError := static.ResolveStaticChangedPathResolutionsWithProbeFunctions(
 		sourceDirectoryPath,
 		[]string{"prehashed_path", "nohash_path"},
-		staticChangedPathResolutionProbeFunctions{
-			normalizeChangedSourcePath: func(changedSourcePath string) string {
+		static.StaticChangedPathResolutionProbeFunctions{
+			NormalizeChangedSourcePath: func(changedSourcePath string) string {
 				switch changedSourcePath {
 				case "prehashed_path":
 					return filepath.Join(sourceDirectoryPath, wave.PrehashedDirname, "logo.png")
@@ -236,26 +238,26 @@ func TestResolveStaticChangedPathResolutionsWithProbeFunctions_ProbesCollisionOn
 					return ""
 				}
 			},
-			resolveStaticFileInfoFromSourcePath: func(
+			ResolveStaticFileInfoFromSourcePath: func(
 				_ string,
 				sourcePath string,
-			) (fileInfo, bool, error) {
+			) (static.StaticFileInfo, bool, error) {
 				resolveProbeCallCount++
 				if strings.Contains(sourcePath, wave.PrehashedDirname+"/") ||
 					strings.Contains(sourcePath, wave.NohashDirname+"/") {
-					return fileInfo{
-						srcPath: sourcePath,
-						relPath: "logo.png",
-						prehash: true,
+					return static.StaticFileInfo{
+						SourcePath:   sourcePath,
+						RelativePath: "logo.png",
+						IsPrehashed:  true,
 					}, true, nil
 				}
-				return fileInfo{}, false, nil
+				return static.StaticFileInfo{}, false, nil
 			},
-			sourceFileExists: func(_ string) (bool, error) {
+			SourceFileExists: func(_ string) (bool, error) {
 				sourceExistsProbeCallCount++
 				return true, nil
 			},
-			ensureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelPath: func(
+			EnsureNoStaticLogicalPathCollisionWithinSourceDirectoryForRelativePath: func(
 				_ string,
 				_ string,
 			) error {
@@ -308,7 +310,7 @@ func TestRemoveStaticMapEntriesForChangedRelativePaths_MixedExactAndSubtreeRemov
 		}
 	}
 
-	mapWasChanged := removeStaticMapEntriesForChangedRelativePaths(
+	mapWasChanged := static.RemoveStaticMapEntriesForChangedRelativePaths(
 		staticMap,
 		distDirectoryPath,
 		[]string{"templates/removed", "images/logo.svg"},
@@ -366,7 +368,7 @@ func TestRemoveStaticMapEntriesForChangedRelativePaths_NoMatchesNoChanges(t *tes
 		t.Fatalf("failed writing dist artifact: %v", err)
 	}
 
-	mapWasChanged := removeStaticMapEntriesForChangedRelativePaths(
+	mapWasChanged := static.RemoveStaticMapEntriesForChangedRelativePaths(
 		staticMap,
 		distDirectoryPath,
 		[]string{"images"},
@@ -389,7 +391,7 @@ func TestRemoveStaticMapEntriesForChangedRelativePaths_NoMatchesNoChanges(t *tes
 func TestProcessPublicFilesOnly_HandlesHashedPrehashedAndNohashFiles(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -471,7 +473,7 @@ func TestProcessPublicFilesOnly_HandlesHashedPrehashedAndNohashFiles(t *testing.
 func TestProcessPublicFilesOnly_GranularModeRemovesStaleOutputFiles(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -524,7 +526,7 @@ func TestProcessPublicFilesOnly_GranularModeRemovesStaleOutputFiles(t *testing.T
 func TestProcessPublicFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -574,7 +576,7 @@ func TestProcessPublicFilesOnly_ReturnsErrorWhenLogicalPathCollidesAcrossSourceL
 ) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -604,7 +606,7 @@ func TestProcessPublicFilesOnly_ReturnsErrorWhenLogicalPathCollidesAcrossSourceL
 func TestProcessPublicFilesOnlyForChangedPaths_UpdatesOnlyChangedEntries(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -636,7 +638,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_UpdatesOnlyChangedEntries(t *test
 		t.Fatalf("failed rewriting changed file: %v", err)
 	}
 
-	if err := builder.processPublicFilesOnlyForChangedPaths([]string{changedFilePath}); err != nil {
+	if err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{changedFilePath}); err != nil {
 		t.Fatalf("processPublicFilesOnlyForChangedPaths returned error: %v", err)
 	}
 
@@ -670,7 +672,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_UpdatesOnlyChangedEntries(t *test
 func TestProcessPublicFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -698,7 +700,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T)
 		t.Fatalf("failed removing source file: %v", err)
 	}
 
-	if err := builder.processPublicFilesOnlyForChangedPaths([]string{removedFilePath}); err != nil {
+	if err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{removedFilePath}); err != nil {
 		t.Fatalf("processPublicFilesOnlyForChangedPaths returned error: %v", err)
 	}
 
@@ -720,7 +722,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_ReturnsErrorWhenCollisionExists(
 ) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -743,7 +745,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_ReturnsErrorWhenCollisionExists(
 		t.Fatalf("failed writing prehashed static file: %v", err)
 	}
 
-	err := builder.processPublicFilesOnlyForChangedPaths([]string{prehashedPath})
+	err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{prehashedPath})
 	if err == nil {
 		t.Fatal("expected collision error, got nil")
 	}
@@ -757,7 +759,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBat
 ) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -800,7 +802,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBat
 		t.Fatalf("failed writing created source file: %v", err)
 	}
 
-	if err := builder.processPublicFilesOnlyForChangedPaths([]string{
+	if err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{
 		renamedFromPath,
 		renamedToPath,
 		deletedPath,
@@ -838,7 +840,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBat
 func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	privateDir := cfg.Core.StaticAssetDirs.Private
@@ -854,7 +856,7 @@ func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 		t.Fatalf("ProcessPrivateFilesOnly returned error: %v", err)
 	}
 
-	privateMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	privateMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath(private gob) returned error: %v", err)
 	}
@@ -876,7 +878,7 @@ func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	privateDir := cfg.Core.StaticAssetDirs.Private
@@ -892,7 +894,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T
 		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", err)
 	}
 
-	initialMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	initialMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath returned error: %v", err)
 	}
@@ -903,11 +905,11 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T
 		t.Fatalf("failed removing private source file: %v", err)
 	}
 
-	if err := builder.processPrivateFilesOnlyForChangedPaths([]string{privateFilePath}); err != nil {
+	if err := builder.ProcessPrivateFilesOnlyForChangedPaths([]string{privateFilePath}); err != nil {
 		t.Fatalf("processPrivateFilesOnlyForChangedPaths returned error: %v", err)
 	}
 
-	updatedMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	updatedMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath after changed-path delete returned error: %v", err)
 	}
@@ -923,7 +925,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(t *testing.T
 func TestProcessPrivateFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	privateDir := cfg.Core.StaticAssetDirs.Private
@@ -939,7 +941,7 @@ func TestProcessPrivateFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(t *te
 		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", err)
 	}
 
-	initialMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	initialMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath after initial build returned error: %v", err)
 	}
@@ -954,7 +956,7 @@ func TestProcessPrivateFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(t *te
 		t.Fatalf("ProcessPrivateFilesOnly after source dir removal returned error: %v", err)
 	}
 
-	updatedMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	updatedMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath after source dir removal returned error: %v", err)
 	}
@@ -972,7 +974,7 @@ func TestProcessPrivateFilesOnly_ReturnsErrorWhenLogicalPathCollidesAcrossSource
 ) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	privateDir := cfg.Core.StaticAssetDirs.Private
@@ -1010,7 +1012,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_ReturnsErrorWhenCollisionExists(
 ) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	privateDir := cfg.Core.StaticAssetDirs.Private
@@ -1039,7 +1041,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_ReturnsErrorWhenCollisionExists(
 		t.Fatalf("failed writing prehashed private file: %v", err)
 	}
 
-	err := builder.processPrivateFilesOnlyForChangedPaths([]string{prehashedPath})
+	err := builder.ProcessPrivateFilesOnlyForChangedPaths([]string{prehashedPath})
 	if err == nil {
 		t.Fatal("expected collision error, got nil")
 	}
@@ -1053,7 +1055,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 ) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	privateDir := cfg.Core.StaticAssetDirs.Private
@@ -1080,7 +1082,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", err)
 	}
 
-	initialMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	initialMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath after initial run returned error: %v", err)
 	}
@@ -1099,7 +1101,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 		t.Fatalf("failed writing created source file: %v", err)
 	}
 
-	if err := builder.processPrivateFilesOnlyForChangedPaths([]string{
+	if err := builder.ProcessPrivateFilesOnlyForChangedPaths([]string{
 		renamedFromPath,
 		renamedToPath,
 		deletedPath,
@@ -1108,7 +1110,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 		t.Fatalf("processPrivateFilesOnlyForChangedPaths returned error: %v", err)
 	}
 
-	updatedMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	updatedMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath after changed-path batch returned error: %v", err)
 	}
@@ -1137,7 +1139,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootIsNoOp(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -1186,7 +1188,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootIsNoOp(t *testin
 		t.Fatalf("failed writing outside path file: %v", err)
 	}
 
-	if err := builder.processPublicFilesOnlyForChangedPaths([]string{outsidePath}); err != nil {
+	if err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{outsidePath}); err != nil {
 		t.Fatalf("processPublicFilesOnlyForChangedPaths returned error: %v", err)
 	}
 
@@ -1238,7 +1240,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootIsNoOp(t *testin
 func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootDoesNotBuildWhenMapMissing(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -1259,7 +1261,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootDoesNotBuildWhen
 		t.Fatalf("failed writing outside path file: %v", err)
 	}
 
-	if err := builder.processPublicFilesOnlyForChangedPaths([]string{outsidePath}); err != nil {
+	if err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{outsidePath}); err != nil {
 		t.Fatalf("processPublicFilesOnlyForChangedPaths returned error: %v", err)
 	}
 
@@ -1282,7 +1284,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootDoesNotBuildWhen
 func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	privateDir := cfg.Core.StaticAssetDirs.Private
@@ -1311,7 +1313,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(t
 		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", err)
 	}
 
-	initialMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	initialMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath after initial run returned error: %v", err)
 	}
@@ -1324,11 +1326,11 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(t
 		t.Fatalf("failed removing private subtree directory: %v", err)
 	}
 
-	if err := builder.processPrivateFilesOnlyForChangedPaths([]string{removedSubtreeDirectory}); err != nil {
+	if err := builder.ProcessPrivateFilesOnlyForChangedPaths([]string{removedSubtreeDirectory}); err != nil {
 		t.Fatalf("processPrivateFilesOnlyForChangedPaths for subtree delete returned error: %v", err)
 	}
 
-	updatedMap, err := builder.loadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
+	updatedMap, err := builder.LoadFileMapFromPath(cfg.Dist.PrivateFileMapGob())
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath after subtree delete returned error: %v", err)
 	}
@@ -1356,7 +1358,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(t
 func TestProcessPublicFilesOnly_RecopiesUnchangedFileWhenDistOutputIsMissing(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public
@@ -1399,7 +1401,7 @@ func TestProcessPublicFilesOnly_RecopiesUnchangedFileWhenDistOutputIsMissing(t *
 func TestProcessPublicFilesOnly_UnchangedInputsDoNotRewriteMapArtifacts(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	builder := NewBuilder(cfg, newDiscardLogger())
+	builder := toolingbuilder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
 
 	publicDir := cfg.Core.StaticAssetDirs.Public

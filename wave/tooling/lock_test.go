@@ -7,66 +7,68 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/wave/tooling/toolingshared"
 )
 
 func TestDevLock_AcquireBlocksSecondAcquireUntilRelease(t *testing.T) {
 	staticDir := t.TempDir()
 
-	first := newDevLock(staticDir)
-	if err := first.acquire(); err != nil {
+	first := toolingshared.NewDevLock(staticDir)
+	if err := first.Acquire(); err != nil {
 		t.Fatalf("first acquire returned error: %v", err)
 	}
-	defer first.release()
+	defer first.Release()
 
-	second := newDevLock(staticDir)
-	err := second.acquire()
+	second := toolingshared.NewDevLock(staticDir)
+	err := second.Acquire()
 	if err == nil {
 		t.Fatal("expected second acquire to fail while first lock is held")
 	}
-	if !errors.Is(err, ErrLockHeld) {
+	if !errors.Is(err, toolingshared.ErrLockHeld) {
 		t.Fatalf("expected ErrLockHeld, got %v", err)
 	}
 
-	if err := first.release(); err != nil {
+	if err := first.Release(); err != nil {
 		t.Fatalf("release returned error: %v", err)
 	}
 
-	if err := second.acquire(); err != nil {
+	if err := second.Acquire(); err != nil {
 		t.Fatalf("expected acquire to succeed after release, got: %v", err)
 	}
-	if err := second.release(); err != nil {
+	if err := second.Release(); err != nil {
 		t.Fatalf("second release returned error: %v", err)
 	}
 }
 
 func TestIsLockFile(t *testing.T) {
-	if !isLockFile(".wave-dev.lock") {
+	if !toolingshared.IsLockFile(".wave-dev.lock") {
 		t.Fatal("expected .wave-dev.lock to be recognized as lock file")
 	}
-	if isLockFile(".wave-custom") {
+	if toolingshared.IsLockFile(".wave-custom") {
 		t.Fatal(
 			"expected non-lock .wave-* file to not be recognized as lock file",
 		)
 	}
-	if isLockFile("wave-dev.lock") {
+	if toolingshared.IsLockFile("wave-dev.lock") {
 		t.Fatal("expected wave-dev.lock to not be recognized as lock file")
 	}
 }
 
 func TestDevLock_AcquireRecoversStaleLockFile(t *testing.T) {
 	staticDir := t.TempDir()
-	lock := newDevLock(staticDir)
+	lock := toolingshared.NewDevLock(staticDir)
 
-	if err := os.WriteFile(lock.path, []byte("99999999"), 0644); err != nil {
+	if err := os.WriteFile(lock.Path(), []byte("99999999"), 0o644); err != nil {
 		t.Fatalf("failed writing stale lock file: %v", err)
 	}
 
-	if err := lock.acquire(); err != nil {
+	if err := lock.Acquire(); err != nil {
 		t.Fatalf("expected stale lock recovery to acquire lock, got: %v", err)
 	}
-	defer lock.release()
+	defer lock.Release()
 
-	lockData, err := os.ReadFile(lock.path)
+	lockData, err := os.ReadFile(lock.Path())
 	if err != nil {
 		t.Fatalf("failed reading lock file after acquire: %v", err)
 	}
@@ -77,38 +79,38 @@ func TestDevLock_AcquireRecoversStaleLockFile(t *testing.T) {
 
 func TestDevLock_AcquireRecoversInvalidLockFileContents(t *testing.T) {
 	staticDir := t.TempDir()
-	lock := newDevLock(staticDir)
+	lock := toolingshared.NewDevLock(staticDir)
 
-	if err := os.WriteFile(lock.path, []byte("not-a-pid"), 0644); err != nil {
+	if err := os.WriteFile(lock.Path(), []byte("not-a-pid"), 0o644); err != nil {
 		t.Fatalf("failed writing invalid lock file contents: %v", err)
 	}
 	staleTimestamp := time.Now().Add(-2 * time.Second)
-	if err := os.Chtimes(lock.path, staleTimestamp, staleTimestamp); err != nil {
+	if err := os.Chtimes(lock.Path(), staleTimestamp, staleTimestamp); err != nil {
 		t.Fatalf("failed to age invalid lock file contents: %v", err)
 	}
 
-	if err := lock.acquire(); err != nil {
+	if err := lock.Acquire(); err != nil {
 		t.Fatalf(
 			"expected invalid lock contents to be recoverable, got: %v",
 			err,
 		)
 	}
-	defer lock.release()
+	defer lock.Release()
 }
 
 func TestDevLock_AcquireTreatsFreshInvalidLockContentsAsHeld(t *testing.T) {
 	staticDir := t.TempDir()
-	lock := newDevLock(staticDir)
+	lock := toolingshared.NewDevLock(staticDir)
 
-	if err := os.WriteFile(lock.path, []byte("not-a-pid"), 0644); err != nil {
+	if err := os.WriteFile(lock.Path(), []byte("not-a-pid"), 0o644); err != nil {
 		t.Fatalf("failed writing invalid lock file contents: %v", err)
 	}
 
-	err := lock.acquire()
+	err := lock.Acquire()
 	if err == nil {
 		t.Fatal("expected fresh invalid lock contents to be treated as held")
 	}
-	if !errors.Is(err, ErrLockHeld) {
+	if !errors.Is(err, toolingshared.ErrLockHeld) {
 		t.Fatalf(
 			"expected ErrLockHeld for fresh invalid lock contents, got: %v",
 			err,
@@ -128,8 +130,8 @@ func TestDevLock_AtomicCreateAllowsOnlyOneConcurrentAcquire(t *testing.T) {
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			lock := newDevLock(staticDir)
-			err := lock.acquire()
+			lock := toolingshared.NewDevLock(staticDir)
+			err := lock.Acquire()
 			if err != nil {
 				resultChannel <- err
 				return
@@ -137,7 +139,7 @@ func TestDevLock_AtomicCreateAllowsOnlyOneConcurrentAcquire(t *testing.T) {
 
 			resultChannel <- nil
 			<-releaseChannel
-			_ = lock.release()
+			_ = lock.Release()
 		}()
 	}
 
@@ -151,7 +153,7 @@ func TestDevLock_AtomicCreateAllowsOnlyOneConcurrentAcquire(t *testing.T) {
 				successCount++
 				continue
 			}
-			if !errors.Is(err, ErrLockHeld) {
+			if !errors.Is(err, toolingshared.ErrLockHeld) {
 				t.Fatalf(
 					"expected ErrLockHeld for contended acquire, got: %v",
 					err,

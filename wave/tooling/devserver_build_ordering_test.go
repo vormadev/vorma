@@ -1,64 +1,68 @@
 package tooling
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
+)
 
 func TestDeriveRunBuildExecutionOrderingDecision(t *testing.T) {
 	testCases := []struct {
-		name                                string
-		shouldRecompileGo                   bool
-		sequentialGoBuild                   bool
-		expectedGoCompilationOrderingPolicy goCompilationOrderingPolicy
-		expectedRunCompileInParallel        bool
-		expectedRunCompileAfterBuildHooks   bool
+		Name                                string
+		ShouldRecompileGo                   bool
+		SequentialGoBuild                   bool
+		ExpectedGoCompilationOrderingPolicy devserverengine.GoCompilationOrderingPolicy
+		ExpectedRunCompileInParallel        bool
+		ExpectedRunCompileAfterBuildHooks   bool
 	}{
 		{
-			name:                                "recompile disabled does not schedule compile",
-			shouldRecompileGo:                   false,
-			sequentialGoBuild:                   false,
-			expectedGoCompilationOrderingPolicy: goCompilationOrderingPolicyNotRequested,
+			Name:                                "recompile disabled does not schedule compile",
+			ShouldRecompileGo:                   false,
+			SequentialGoBuild:                   false,
+			ExpectedGoCompilationOrderingPolicy: devserverengine.GoCompilationOrderingPolicyNotRequested,
 		},
 		{
-			name:                                "non-sequential mode compiles concurrently with build hooks",
-			shouldRecompileGo:                   true,
-			sequentialGoBuild:                   false,
-			expectedGoCompilationOrderingPolicy: goCompilationOrderingPolicyConcurrentWithBuildHooks,
-			expectedRunCompileInParallel:        true,
+			Name:                                "non-sequential mode compiles concurrently with build hooks",
+			ShouldRecompileGo:                   true,
+			SequentialGoBuild:                   false,
+			ExpectedGoCompilationOrderingPolicy: devserverengine.GoCompilationOrderingPolicyConcurrentWithBuildHooks,
+			ExpectedRunCompileInParallel:        true,
 		},
 		{
-			name:                                "sequential mode compiles after build hooks",
-			shouldRecompileGo:                   true,
-			sequentialGoBuild:                   true,
-			expectedGoCompilationOrderingPolicy: goCompilationOrderingPolicyAfterBuildHooks,
-			expectedRunCompileAfterBuildHooks:   true,
+			Name:                                "sequential mode compiles after build hooks",
+			ShouldRecompileGo:                   true,
+			SequentialGoBuild:                   true,
+			ExpectedGoCompilationOrderingPolicy: devserverengine.GoCompilationOrderingPolicyAfterBuildHooks,
+			ExpectedRunCompileAfterBuildHooks:   true,
 		},
 	}
 
 	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			orderingDecision := deriveRunBuildExecutionOrderingDecision(
-				testCase.shouldRecompileGo,
-				testCase.sequentialGoBuild,
+		t.Run(testCase.Name, func(t *testing.T) {
+			orderingDecision := devserverengine.DeriveRunBuildExecutionOrderingDecision(
+				testCase.ShouldRecompileGo,
+				testCase.SequentialGoBuild,
 			)
 
-			if orderingDecision.goCompilationOrderingPolicy != testCase.expectedGoCompilationOrderingPolicy {
+			if orderingDecision.GoCompilationOrderingPolicy != testCase.ExpectedGoCompilationOrderingPolicy {
 				t.Fatalf(
-					"goCompilationOrderingPolicy=%q, want %q",
-					orderingDecision.goCompilationOrderingPolicy,
-					testCase.expectedGoCompilationOrderingPolicy,
+					"devserverengine.GoCompilationOrderingPolicy=%q, want %q",
+					orderingDecision.GoCompilationOrderingPolicy,
+					testCase.ExpectedGoCompilationOrderingPolicy,
 				)
 			}
-			if orderingDecision.runCompileInParallel != testCase.expectedRunCompileInParallel {
+			if orderingDecision.RunCompileInParallel != testCase.ExpectedRunCompileInParallel {
 				t.Fatalf(
 					"runCompileInParallel=%t, want %t",
-					orderingDecision.runCompileInParallel,
-					testCase.expectedRunCompileInParallel,
+					orderingDecision.RunCompileInParallel,
+					testCase.ExpectedRunCompileInParallel,
 				)
 			}
-			if orderingDecision.runCompileAfterBuildHooks != testCase.expectedRunCompileAfterBuildHooks {
+			if orderingDecision.RunCompileAfterBuildHooks != testCase.ExpectedRunCompileAfterBuildHooks {
 				t.Fatalf(
 					"runCompileAfterBuildHooks=%t, want %t",
-					orderingDecision.runCompileAfterBuildHooks,
-					testCase.expectedRunCompileAfterBuildHooks,
+					orderingDecision.RunCompileAfterBuildHooks,
+					testCase.ExpectedRunCompileAfterBuildHooks,
 				)
 			}
 		})
