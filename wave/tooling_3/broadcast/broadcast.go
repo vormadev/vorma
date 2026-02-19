@@ -167,6 +167,14 @@ func (manager *Manager) ServeHTTP(
 		)
 		return
 	}
+	if manager.isClosed() {
+		http.Error(
+			responseWriter,
+			"broadcast manager unavailable",
+			http.StatusServiceUnavailable,
+		)
+		return
+	}
 
 	if request.Method != http.MethodGet {
 		http.Error(
@@ -213,6 +221,19 @@ func (manager *Manager) Broadcast(payload Payload) {
 	}
 }
 
+// isClosed reports whether the manager shutdown signal has been fired.
+func (manager *Manager) isClosed() bool {
+	if manager == nil {
+		return true
+	}
+	select {
+	case <-manager.closed:
+		return true
+	default:
+		return false
+	}
+}
+
 // BroadcastRebuilding sends the canonical rebuilding overlay message.
 func (manager *Manager) BroadcastRebuilding() {
 	manager.Broadcast(Payload{ChangeType: ChangeTypeRebuilding})
@@ -236,13 +257,49 @@ func (manager *Manager) Close() {
 	manager.closeOnce.Do(func() {
 		close(manager.closed)
 		manager.mu.Lock()
-		defer manager.mu.Unlock()
 		for client := range manager.clients {
 			delete(manager.clients, client)
 			_ = client.conn.Close()
 			close(client.sendQueue)
 		}
+		manager.mu.Unlock()
+		manager.drainPendingQueuesOnClose()
 	})
+}
+
+// drainPendingQueuesOnClose discards queued work once shutdown begins.
+func (manager *Manager) drainPendingQueuesOnClose() {
+	for {
+		drainedAny := false
+
+		select {
+		case queuedClient := <-manager.registerQueue:
+			drainedAny = true
+			if queuedClient != nil {
+				_ = queuedClient.conn.Close()
+			}
+		default:
+		}
+
+		select {
+		case queuedClient := <-manager.unregisterQueue:
+			drainedAny = true
+			if queuedClient != nil {
+				_ = queuedClient.conn.Close()
+			}
+		default:
+		}
+
+		select {
+		case <-manager.broadcastQueue:
+			drainedAny = true
+		default:
+		}
+
+		if !drainedAny {
+			return
+		}
+	}
 }
 
 // enqueueClientRegister pushes client registration onto the manager queue.

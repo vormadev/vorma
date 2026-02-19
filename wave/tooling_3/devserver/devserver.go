@@ -1020,6 +1020,9 @@ func ResolveViteReadyURLs(vitePort int) []string {
 
 // BroadcastRebuilding broadcasts rebuilding overlay payload to clients.
 func (server *Server) BroadcastRebuilding() {
+	if !server.ShouldBroadcastToBrowserClients() {
+		return
+	}
 	refreshManager := server.currentRefreshManager()
 	if refreshManager == nil {
 		return
@@ -1051,7 +1054,9 @@ func (server *Server) BroadcastReload(reloadOptions eventpipeline.ReloadOpts) {
 
 // ShouldBroadcastToBrowserClients reports whether browser broadcast should run.
 func (server *Server) ShouldBroadcastToBrowserClients() bool {
-	return server.Cfg != nil && server.Cfg.UsingBrowser()
+	return server.Cfg != nil &&
+		server.Cfg.UsingBrowser() &&
+		server.currentRefreshManager() != nil
 }
 
 // WaitForReloadReadiness applies readiness policy for reload.
@@ -1059,8 +1064,18 @@ func (server *Server) WaitForReloadReadiness(
 	reloadOptions eventpipeline.ReloadOpts,
 ) bool {
 	if reloadOptions.CycleVite {
-		if !server.CycleViteAndWaitForReadiness() {
-			return false
+		cycleViteRequestedAndApplicable := false
+		if server.Cfg != nil && server.Cfg.UsingVite() {
+			server.Mu.Lock()
+			cycleViteRequestedAndApplicable = server.ViteContext != nil
+			server.Mu.Unlock()
+		}
+		if cycleViteRequestedAndApplicable {
+			if !server.CycleViteAndWaitForReadiness() {
+				server.Log.Warn(
+					"cycle vite readiness failed; falling back to payload broadcast",
+				)
+			}
 		}
 	}
 

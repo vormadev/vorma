@@ -25,6 +25,9 @@ type Processor struct {
 
 	cachedCriticalCSS string
 	cachedNormalURL   string
+
+	criticalImports map[string]struct{}
+	normalImports   map[string]struct{}
 }
 
 // BuildOptions selects which CSS pipelines to execute.
@@ -38,7 +41,12 @@ func NewProcessor(cfg *wave.ParsedConfig, log *slog.Logger) *Processor {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Processor{cfg: cfg, log: log}
+	return &Processor{
+		cfg:             cfg,
+		log:             log,
+		criticalImports: make(map[string]struct{}),
+		normalImports:   make(map[string]struct{}),
+	}
 }
 
 // Build executes requested CSS pipelines and updates in-memory cache.
@@ -62,26 +70,93 @@ func (processor *Processor) Build(options BuildOptions) error {
 
 // IsCriticalCSSFile reports whether path is configured critical CSS entry.
 func (processor *Processor) IsCriticalCSSFile(path string) bool {
-	if processor == nil || processor.cfg == nil {
+	if processor == nil {
 		return false
 	}
-	entryPath := processor.cfg.CriticalCSSEntry()
-	if entryPath == "" {
+	normalizedPath := normalizeCSSFilePathForImportTracking(path)
+	if normalizedPath == "" {
 		return false
 	}
-	return samePath(path, entryPath)
+
+	processor.mu.RLock()
+	_, trackedCriticalImport := processor.criticalImports[normalizedPath]
+	processor.mu.RUnlock()
+	if trackedCriticalImport {
+		return true
+	}
+
+	if processor.cfg == nil {
+		return false
+	}
+	configuredCriticalCSSEntryPath := processor.cfg.CriticalCSSEntry()
+	if configuredCriticalCSSEntryPath == "" {
+		return false
+	}
+	return samePath(path, configuredCriticalCSSEntryPath)
 }
 
 // IsNormalCSSFile reports whether path is configured non-critical CSS entry.
 func (processor *Processor) IsNormalCSSFile(path string) bool {
-	if processor == nil || processor.cfg == nil {
+	if processor == nil {
 		return false
 	}
-	entryPath := processor.cfg.NonCriticalCSSEntry()
-	if entryPath == "" {
+	normalizedPath := normalizeCSSFilePathForImportTracking(path)
+	if normalizedPath == "" {
 		return false
 	}
-	return samePath(path, entryPath)
+
+	processor.mu.RLock()
+	_, trackedNormalImport := processor.normalImports[normalizedPath]
+	processor.mu.RUnlock()
+	if trackedNormalImport {
+		return true
+	}
+
+	if processor.cfg == nil {
+		return false
+	}
+	configuredNormalCSSEntryPath := processor.cfg.NonCriticalCSSEntry()
+	if configuredNormalCSSEntryPath == "" {
+		return false
+	}
+	return samePath(path, configuredNormalCSSEntryPath)
+}
+
+// IsCSSFile reports whether path is critical or non-critical CSS input.
+func (processor *Processor) IsCSSFile(path string) bool {
+	return processor.IsCriticalCSSFile(path) || processor.IsNormalCSSFile(path)
+}
+
+// SetTrackedCriticalCSSImportPaths replaces tracked critical CSS import paths.
+func (processor *Processor) SetTrackedCriticalCSSImportPaths(importPaths []string) {
+	normalizedImportPaths := make(map[string]struct{}, len(importPaths))
+	for _, importPath := range importPaths {
+		normalizedImportPath := normalizeCSSFilePathForImportTracking(importPath)
+		if normalizedImportPath == "" {
+			continue
+		}
+		normalizedImportPaths[normalizedImportPath] = struct{}{}
+	}
+
+	processor.mu.Lock()
+	processor.criticalImports = normalizedImportPaths
+	processor.mu.Unlock()
+}
+
+// SetTrackedNormalCSSImportPaths replaces tracked normal CSS import paths.
+func (processor *Processor) SetTrackedNormalCSSImportPaths(importPaths []string) {
+	normalizedImportPaths := make(map[string]struct{}, len(importPaths))
+	for _, importPath := range importPaths {
+		normalizedImportPath := normalizeCSSFilePathForImportTracking(importPath)
+		if normalizedImportPath == "" {
+			continue
+		}
+		normalizedImportPaths[normalizedImportPath] = struct{}{}
+	}
+
+	processor.mu.Lock()
+	processor.normalImports = normalizedImportPaths
+	processor.mu.Unlock()
 }
 
 // CriticalCSS returns cached critical CSS text when available.
@@ -145,6 +220,11 @@ func (processor *Processor) buildCriticalCSS() error {
 		return nil
 	}
 
+	// Clear cached output before rebuild so failed rebuilds cannot broadcast stale CSS.
+	processor.mu.Lock()
+	processor.cachedCriticalCSS = ""
+	processor.mu.Unlock()
+
 	buildOutput, buildError := buildSingleCSSEntry(entryPath)
 	if buildError != nil {
 		return fmt.Errorf("build critical css %q: %w", entryPath, buildError)
@@ -179,6 +259,11 @@ func (processor *Processor) buildNormalCSS() error {
 		_ = os.Remove(refPath)
 		return nil
 	}
+
+	// Clear cached output before rebuild so failed rebuilds cannot broadcast stale URLs.
+	processor.mu.Lock()
+	processor.cachedNormalURL = ""
+	processor.mu.Unlock()
 
 	buildOutput, buildError := buildSingleCSSEntry(entryPath)
 	if buildError != nil {
@@ -277,6 +362,20 @@ func samePath(leftPath string, rightPath string) bool {
 		return filepath.Clean(leftPath) == filepath.Clean(rightPath)
 	}
 	return filepath.Clean(leftAbsolutePath) == filepath.Clean(rightAbsolutePath)
+}
+
+func normalizeCSSFilePathForImportTracking(filePath string) string {
+	absoluteFilePath, absolutePathError := filepath.Abs(filePath)
+	if absolutePathError != nil {
+		absoluteFilePath = filepath.Clean(filePath)
+	}
+
+	resolvedFilePath, resolveError := filepath.EvalSymlinks(absoluteFilePath)
+	if resolveError == nil && resolvedFilePath != "" {
+		return filepath.Clean(resolvedFilePath)
+	}
+
+	return filepath.Clean(absoluteFilePath)
 }
 
 // ValidateCSSConfig validates CSS entry path configuration semantics.

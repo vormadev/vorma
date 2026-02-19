@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/tooling_3/builder/css"
 	"github.com/vormadev/vorma/wave/tooling_3/builder/schema"
@@ -63,6 +64,159 @@ func (builder *Builder) Close() {
 	if builder == nil {
 		return
 	}
+}
+
+func buildGoBuildCommand(
+	destinationPath string,
+	entryPath string,
+	isDev bool,
+	goBuildOverlayPath string,
+) *exec.Cmd {
+	commandArguments := []string{"build"}
+
+	if strings.TrimSpace(goBuildOverlayPath) != "" {
+		commandArguments = append(
+			commandArguments,
+			"-overlay="+goBuildOverlayPath,
+		)
+	}
+
+	if !isDev {
+		commandArguments = append(commandArguments, "-tags=prod")
+	}
+
+	commandArguments = append(
+		commandArguments,
+		"-o",
+		destinationPath,
+		entryPath,
+	)
+
+	return exec.Command("go", commandArguments...)
+}
+
+// BuildGoBuildCommand prepares a go build command for dev or prod compilation.
+func BuildGoBuildCommand(
+	destinationPath string,
+	entryPath string,
+	isDev bool,
+	goBuildOverlayPath string,
+) *exec.Cmd {
+	return buildGoBuildCommand(
+		destinationPath,
+		entryPath,
+		isDev,
+		goBuildOverlayPath,
+	)
+}
+
+func (builder *Builder) viteBuildContext() *vitecmd.BuildCtx {
+	if builder == nil || builder.cfg == nil || builder.cfg.Vite == nil {
+		return nil
+	}
+	return vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
+		JSPackageManagerBaseCmd: builder.cfg.Vite.JSPackageManagerBaseCmd,
+		JSPackageManagerCmdDir:  builder.cfg.Vite.JSPackageManagerCmdDir,
+		OutDir:                  builder.cfg.Dist.StaticPublic(),
+		ManifestOut:             builder.cfg.ViteManifestPath(),
+		DefaultPort:             builder.cfg.Vite.DefaultPort,
+		ViteConfigFile:          builder.cfg.Vite.ViteConfigFile,
+	})
+}
+
+// ViteProdBuild runs a Vite production build.
+func (builder *Builder) ViteProdBuild() error {
+	if builder == nil || builder.cfg == nil || !builder.cfg.UsingVite() {
+		return nil
+	}
+	viteBuildContext := builder.viteBuildContext()
+	if viteBuildContext == nil {
+		return nil
+	}
+	return viteBuildContext.ProdBuild()
+}
+
+// NewViteDevContext creates and starts a new Vite development build context.
+func (builder *Builder) NewViteDevContext() (*vitecmd.BuildCtx, error) {
+	if builder == nil || builder.cfg == nil || !builder.cfg.UsingVite() {
+		return nil, nil
+	}
+	viteBuildContext := builder.viteBuildContext()
+	if viteBuildContext == nil {
+		return nil, nil
+	}
+	if viteBuildError := viteBuildContext.DevBuild(); viteBuildError != nil {
+		return nil, viteBuildError
+	}
+	return viteBuildContext, nil
+}
+
+// Config returns a defensive read-only config snapshot.
+// Internal framework-only mutable fields are intentionally omitted.
+func (builder *Builder) Config() *wave.ParsedConfig {
+	if builder == nil || builder.cfg == nil {
+		return nil
+	}
+	return builder.cfg.Clone()
+}
+
+// ProcessFiles runs static and CSS processing in full or granular mode.
+func (builder *Builder) ProcessFiles(granular bool, isDev bool) error {
+	return builder.processFiles(granular, isDev)
+}
+
+// ProcessFilesOnly runs static and CSS processing without hooks or go compilation.
+func (builder *Builder) ProcessFilesOnly(isRebuild bool, isDev bool) error {
+	return builder.processFiles(isRebuild, isDev)
+}
+
+func (builder *Builder) processFiles(granular bool, isDev bool) error {
+	_ = isDev
+	if builder == nil || builder.cfg == nil {
+		return errors.New("builder config is nil")
+	}
+
+	if !granular {
+		staticDirectoryPath := builder.cfg.Dist.Static()
+		directoryEntries, readDirectoryError := os.ReadDir(staticDirectoryPath)
+		if readDirectoryError != nil && !errors.Is(readDirectoryError, os.ErrNotExist) {
+			return fmt.Errorf("read dist static directory: %w", readDirectoryError)
+		}
+		for _, directoryEntry := range directoryEntries {
+			if toolingshared.IsLockFileName(directoryEntry.Name()) {
+				continue
+			}
+			entryPath := filepath.Join(staticDirectoryPath, directoryEntry.Name())
+			if removeEntryError := os.RemoveAll(entryPath); removeEntryError != nil {
+				return fmt.Errorf("remove dist static entry %q: %w", entryPath, removeEntryError)
+			}
+		}
+	}
+
+	if ensureDirectoriesError := builder.ensureOutputDirectories(); ensureDirectoriesError != nil {
+		return ensureDirectoriesError
+	}
+
+	if !builder.cfg.UsingBrowser() {
+		return nil
+	}
+
+	var processGroup errgroup.Group
+	processGroup.Go(func() error {
+		return builder.ProcessPublicFilesOnly()
+	})
+	processGroup.Go(func() error {
+		return builder.ProcessPrivateFilesOnly()
+	})
+	processGroup.Go(func() error {
+		return builder.BuildCSS(
+			CSSBuildOptions{
+				BuildCriticalCSS: true,
+				BuildNormalCSS:   true,
+			},
+		)
+	})
+	return processGroup.Wait()
 }
 
 // Build executes one full build with selected options.
@@ -285,6 +439,30 @@ func (builder *Builder) IsNormalCSSFile(path string) bool {
 		return false
 	}
 	return builder.cssProcessor.IsNormalCSSFile(path)
+}
+
+// IsCSSFile reports whether path is any configured/tracked CSS input.
+func (builder *Builder) IsCSSFile(path string) bool {
+	if builder == nil || builder.cssProcessor == nil {
+		return false
+	}
+	return builder.cssProcessor.IsCSSFile(path)
+}
+
+// SetTrackedCriticalCSSImportPaths replaces tracked critical CSS import paths.
+func (builder *Builder) SetTrackedCriticalCSSImportPaths(importPaths []string) {
+	if builder == nil || builder.cssProcessor == nil {
+		return
+	}
+	builder.cssProcessor.SetTrackedCriticalCSSImportPaths(importPaths)
+}
+
+// SetTrackedNormalCSSImportPaths replaces tracked non-critical CSS import paths.
+func (builder *Builder) SetTrackedNormalCSSImportPaths(importPaths []string) {
+	if builder == nil || builder.cssProcessor == nil {
+		return
+	}
+	builder.cssProcessor.SetTrackedNormalCSSImportPaths(importPaths)
 }
 
 // GetCriticalCSS returns cached critical CSS content.
