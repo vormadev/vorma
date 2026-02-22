@@ -347,3 +347,148 @@ func TestNewWatcher_RelativePatternsMatchWhenWatchRootContainsGlobMetacharacters
 		)
 	}
 }
+
+func TestWatcher_RelativeWatchRootMatchesAbsoluteEventPaths(t *testing.T) {
+	root := t.TempDir()
+	if makeDirectoryError := os.MkdirAll(
+		filepath.Join(root, "static", "public"),
+		0o755,
+	); makeDirectoryError != nil {
+		t.Fatalf("failed creating public static directory: %v", makeDirectoryError)
+	}
+	if makeDirectoryError := os.MkdirAll(
+		filepath.Join(root, "static", "private"),
+		0o755,
+	); makeDirectoryError != nil {
+		t.Fatalf("failed creating private static directory: %v", makeDirectoryError)
+	}
+
+	workingDirectoryBeforeTest, getWorkingDirectoryError := os.Getwd()
+	if getWorkingDirectoryError != nil {
+		t.Fatalf("failed to read working directory: %v", getWorkingDirectoryError)
+	}
+	if changeDirectoryError := os.Chdir(root); changeDirectoryError != nil {
+		t.Fatalf("failed changing working directory: %v", changeDirectoryError)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(workingDirectoryBeforeTest)
+	})
+
+	cfg := &wave.ParsedConfig{
+		Core: &wave.CoreConfig{
+			MainAppEntry: "cmd/app",
+			DistDir:      "dist",
+			StaticAssetDirs: staticAssetDirsForTests{
+				Public:  filepath.Join("static", "public"),
+				Private: filepath.Join("static", "private"),
+			},
+		},
+		Watch: &wave.WatchConfig{
+			WatchRoot: ".",
+			Include: []wave.WatchedFile{
+				{Pattern: "**/*.txt"},
+			},
+		},
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	watcher, watcherCreateError := watch.NewWatcher(
+		cfg,
+		newDiscardLoggerForWatchTests(),
+	)
+	if watcherCreateError != nil {
+		t.Fatalf("NewWatcher returned error: %v", watcherCreateError)
+	}
+	defer watcher.Close()
+
+	absoluteChangedFilePath, absoluteChangedPathError := filepath.Abs(
+		filepath.Join("content", "notes.txt"),
+	)
+	if absoluteChangedPathError != nil {
+		t.Fatalf("failed resolving absolute changed file path: %v", absoluteChangedPathError)
+	}
+	matchedWatchedFile := watcher.FindWatchedFile(absoluteChangedFilePath)
+	if matchedWatchedFile == nil {
+		t.Fatalf(
+			"expected relative watch pattern to match absolute changed path %q",
+			absoluteChangedFilePath,
+		)
+	}
+
+	absolutePublicStaticPath, absolutePublicStaticPathError := filepath.Abs(
+		filepath.Join("static", "public", "app.js"),
+	)
+	if absolutePublicStaticPathError != nil {
+		t.Fatalf("failed resolving absolute public static path: %v", absolutePublicStaticPathError)
+	}
+	if !watcher.IsPublicStaticFile(absolutePublicStaticPath) {
+		t.Fatalf(
+			"expected absolute path %q to classify as public static",
+			absolutePublicStaticPath,
+		)
+	}
+
+	absoluteDistOutputPath, absoluteDistOutputPathError := filepath.Abs(
+		filepath.Join("dist", "static", "assets", "public", "generated.js"),
+	)
+	if absoluteDistOutputPathError != nil {
+		t.Fatalf("failed resolving absolute dist output path: %v", absoluteDistOutputPathError)
+	}
+	if !watcher.IsIgnoredFile(absoluteDistOutputPath) {
+		t.Fatalf(
+			"expected dist output path %q to be ignored",
+			absoluteDistOutputPath,
+		)
+	}
+}
+
+func TestWatcher_AbsoluteGlobPatternsMatchAbsoluteEventPaths(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg.Watch.Include = []wave.WatchedFile{
+		{
+			Pattern: filepath.ToSlash(
+				filepath.Join(root, "content", "**", "*.txt"),
+			),
+		},
+	}
+	cfg.FrameworkIgnoredPatterns = []string{
+		filepath.ToSlash(filepath.Join(root, "generated", "**")),
+	}
+
+	watcher, watcherCreateError := watch.NewWatcher(
+		cfg,
+		newDiscardLoggerForWatchTests(),
+	)
+	if watcherCreateError != nil {
+		t.Fatalf("NewWatcher returned error: %v", watcherCreateError)
+	}
+	defer watcher.Close()
+
+	absoluteChangedFilePath, absoluteChangedPathError := filepath.Abs(
+		filepath.Join(root, "content", "docs", "notes.txt"),
+	)
+	if absoluteChangedPathError != nil {
+		t.Fatalf("failed resolving absolute changed file path: %v", absoluteChangedPathError)
+	}
+	matchedWatchedFile := watcher.FindWatchedFile(absoluteChangedFilePath)
+	if matchedWatchedFile == nil {
+		t.Fatalf(
+			"expected absolute include glob to match absolute changed path %q",
+			absoluteChangedFilePath,
+		)
+	}
+
+	absoluteIgnoredFilePath, absoluteIgnoredPathError := filepath.Abs(
+		filepath.Join(root, "generated", "assets", "file.txt"),
+	)
+	if absoluteIgnoredPathError != nil {
+		t.Fatalf("failed resolving absolute ignored file path: %v", absoluteIgnoredPathError)
+	}
+	if !watcher.IsIgnoredFile(absoluteIgnoredFilePath) {
+		t.Fatalf(
+			"expected absolute framework ignored glob to match %q",
+			absoluteIgnoredFilePath,
+		)
+	}
+}

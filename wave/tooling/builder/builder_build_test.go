@@ -201,6 +201,155 @@ func TestBuild_CompileGoFailureIsReported(t *testing.T) {
 	}
 }
 
+func TestBuild_BrowserModeProcessesPublicFilesBeforeCSSBuild(t *testing.T) {
+	root := t.TempDir()
+	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	config.Core.ServerOnlyMode = false
+	config.Core.CSSEntryFiles = cssEntryFilesForTests{
+		NonCritical: filepath.Join(root, "styles", "main.css"),
+	}
+	config.Dist.Root = config.Core.DistDir
+
+	if makeStylesDirectoryError := os.MkdirAll(
+		filepath.Join(root, "styles"),
+		0o755,
+	); makeStylesDirectoryError != nil {
+		t.Fatalf("failed creating styles directory: %v", makeStylesDirectoryError)
+	}
+	if writeMainCSSError := os.WriteFile(
+		config.Core.CSSEntryFiles.NonCritical,
+		[]byte(`.hero { background: url("images/logo.png"); }`),
+		0o644,
+	); writeMainCSSError != nil {
+		t.Fatalf("failed writing main css: %v", writeMainCSSError)
+	}
+
+	publicAssetPath := filepath.Join(
+		config.Core.StaticAssetDirs.Public,
+		"images",
+		"logo.png",
+	)
+	if makePublicAssetDirectoryError := os.MkdirAll(
+		filepath.Dir(publicAssetPath),
+		0o755,
+	); makePublicAssetDirectoryError != nil {
+		t.Fatalf(
+			"failed creating public asset parent directory: %v",
+			makePublicAssetDirectoryError,
+		)
+	}
+	if writePublicAssetError := os.WriteFile(
+		publicAssetPath,
+		[]byte("logo"),
+		0o644,
+	); writePublicAssetError != nil {
+		t.Fatalf("failed writing public asset file: %v", writePublicAssetError)
+	}
+
+	builderForTest := NewBuilder(
+		config,
+		newDiscardLoggerForBuilderBasicTests(),
+	)
+	defer builderForTest.Close()
+
+	if buildError := builderForTest.Build(BuildOpts{
+		IsDev:     false,
+		CompileGo: false,
+		IsRebuild: false,
+	}); buildError != nil {
+		t.Fatalf("Build returned error: %v", buildError)
+	}
+
+	normalRefBytes, readNormalRefError := os.ReadFile(config.Dist.NormalCSSRef())
+	if readNormalRefError != nil {
+		t.Fatalf("failed reading normal css ref: %v", readNormalRefError)
+	}
+	normalOutputPath := filepath.Join(
+		config.Dist.StaticPublic(),
+		strings.TrimSpace(string(normalRefBytes)),
+	)
+	normalOutputBytes, readNormalOutputError := os.ReadFile(normalOutputPath)
+	if readNormalOutputError != nil {
+		t.Fatalf("failed reading generated normal css output: %v", readNormalOutputError)
+	}
+	if !strings.Contains(string(normalOutputBytes), "vorma_out_images_logo_") {
+		t.Fatalf(
+			"expected generated css to reference hashed public asset, got:\n%s",
+			string(normalOutputBytes),
+		)
+	}
+}
+
+func TestBuild_BrowserModeFailsOnPublicStaticCollisionBeforeCompileGo(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	config.Core.ServerOnlyMode = false
+	config.Core.MainAppEntry = "this/package/does/not/exist"
+	config.Dist.Root = config.Core.DistDir
+
+	collidingPublicFilePathA := filepath.Join(
+		config.Core.StaticAssetDirs.Public,
+		"logo.txt",
+	)
+	collidingPublicFilePathB := filepath.Join(
+		config.Core.StaticAssetDirs.Public,
+		wave.PrehashedDirname,
+		"logo.txt",
+	)
+	if makePublicRootError := os.MkdirAll(
+		filepath.Dir(collidingPublicFilePathB),
+		0o755,
+	); makePublicRootError != nil {
+		t.Fatalf(
+			"failed creating colliding public asset directories: %v",
+			makePublicRootError,
+		)
+	}
+	if writeCollisionAError := os.WriteFile(
+		collidingPublicFilePathA,
+		[]byte("a"),
+		0o644,
+	); writeCollisionAError != nil {
+		t.Fatalf("failed writing first colliding public asset: %v", writeCollisionAError)
+	}
+	if writeCollisionBError := os.WriteFile(
+		collidingPublicFilePathB,
+		[]byte("b"),
+		0o644,
+	); writeCollisionBError != nil {
+		t.Fatalf("failed writing second colliding public asset: %v", writeCollisionBError)
+	}
+
+	builderForTest := NewBuilder(
+		config,
+		newDiscardLoggerForBuilderBasicTests(),
+	)
+	defer builderForTest.Close()
+
+	buildError := builderForTest.Build(BuildOpts{
+		IsDev:     false,
+		CompileGo: true,
+		IsRebuild: false,
+	})
+	if buildError == nil {
+		t.Fatal("expected Build to fail for colliding public static paths")
+	}
+	if !strings.Contains(buildError.Error(), "static source path collision") {
+		t.Fatalf(
+			"expected collision error before go compilation, got: %v",
+			buildError,
+		)
+	}
+	if strings.Contains(buildError.Error(), "go compilation failed") {
+		t.Fatalf(
+			"expected static processing failure to win before go compilation, got: %v",
+			buildError,
+		)
+	}
+}
+
 func TestProcessFiles_FullCleanupPreservesOnlyWaveDevLockFile(t *testing.T) {
 	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
 	config.Core.ServerOnlyMode = true

@@ -87,6 +87,27 @@ func TestDeriveWatcherEventPreClassificationDecision(t *testing.T) {
 			regularFileDecision,
 		)
 	}
+
+	directoryPath := filepath.Join(t.TempDir(), "assets")
+	if makeDirectoryError := os.MkdirAll(directoryPath, 0o755); makeDirectoryError != nil {
+		t.Fatalf("failed creating directory for classification test: %v", makeDirectoryError)
+	}
+	directoryEventDecision := classification.DerivePreClassificationDecision(
+		fsnotify.Event{Name: directoryPath, Op: fsnotify.Write},
+		dependencies,
+	)
+	if directoryEventDecision.IncludeEvent {
+		t.Fatalf(
+			"expected existing directory event to be excluded, got %#v",
+			directoryEventDecision,
+		)
+	}
+	if directoryEventDecision.IgnoreReason != "directory_event" {
+		t.Fatalf(
+			"expected ignore_reason=directory_event, got %#v",
+			directoryEventDecision,
+		)
+	}
 }
 
 func TestDeriveWatcherEventPreClassificationDecisionForNonConfigEvent(
@@ -119,6 +140,24 @@ func TestDeriveWatcherEventPreClassificationDecisionForNonConfigEvent(
 		t.Fatalf(
 			"expected create event to be included with create kind and no unknown flags, got %#v",
 			createEventDecision,
+		)
+	}
+
+	missingRenamePath := filepath.Join(t.TempDir(), "missing", "renamed.txt")
+	missingRenameDecision := classification.DerivePreClassificationDecision(
+		fsnotify.Event{Name: missingRenamePath, Op: fsnotify.Rename},
+		dependencies,
+	)
+	if !missingRenameDecision.IncludeEvent {
+		t.Fatalf(
+			"expected missing-path rename event to remain classifiable, got %#v",
+			missingRenameDecision,
+		)
+	}
+	if missingRenameDecision.IgnoreReason != "" {
+		t.Fatalf(
+			"expected missing-path rename to have empty ignore reason, got %#v",
+			missingRenameDecision,
 		)
 	}
 }

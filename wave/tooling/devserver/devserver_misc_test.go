@@ -93,6 +93,179 @@ func TestCallViteFilemapInvalidate_ReturnsErrorOnNon200(t *testing.T) {
 	}
 }
 
+func TestCallViteFilemapInvalidate_Primary404FallsBackToLegacyEndpoint(
+	t *testing.T,
+) {
+	requestedPaths := make([]string, 0, 2)
+	testServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestedPaths = append(requestedPaths, r.URL.Path)
+			if r.URL.Path == "/__vorma_invalidate_filemap" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if r.URL.Path == "/__wave/vite-filemap-invalidate" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+		}),
+	)
+	defer testServer.Close()
+
+	parsedURL, err := url.Parse(testServer.URL)
+	if err != nil {
+		t.Fatalf("failed parsing test server URL: %v", err)
+	}
+	port, err := strconv.Atoi(parsedURL.Port())
+	if err != nil {
+		t.Fatalf("failed parsing test server port: %v", err)
+	}
+
+	s := &Server{
+		Log: newDiscardLogger(),
+		ViteContext: vitecmd.NewBuildCtx(
+			&vitecmd.BuildCtxOptions{DefaultPort: port},
+		),
+	}
+
+	if err := s.CallViteFilemapInvalidate(); err != nil {
+		t.Fatalf(
+			"expected fallback invalidate call to succeed after primary 404, got error: %v",
+			err,
+		)
+	}
+
+	expectedPaths := []string{
+		"/__vorma_invalidate_filemap",
+		"/__wave/vite-filemap-invalidate",
+	}
+	if len(requestedPaths) != len(expectedPaths) {
+		t.Fatalf("requested path count = %d, want %d", len(requestedPaths), len(expectedPaths))
+	}
+	for pathIndex := range expectedPaths {
+		if requestedPaths[pathIndex] != expectedPaths[pathIndex] {
+			t.Fatalf(
+				"requestedPaths[%d] = %q, want %q",
+				pathIndex,
+				requestedPaths[pathIndex],
+				expectedPaths[pathIndex],
+			)
+		}
+	}
+}
+
+func TestCallViteFilemapInvalidate_Primary404Fallback500ReturnsError(
+	t *testing.T,
+) {
+	requestedPaths := make([]string, 0, 2)
+	testServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestedPaths = append(requestedPaths, r.URL.Path)
+			if r.URL.Path == "/__vorma_invalidate_filemap" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if r.URL.Path == "/__wave/vite-filemap-invalidate" {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+		}),
+	)
+	defer testServer.Close()
+
+	parsedURL, err := url.Parse(testServer.URL)
+	if err != nil {
+		t.Fatalf("failed parsing test server URL: %v", err)
+	}
+	port, err := strconv.Atoi(parsedURL.Port())
+	if err != nil {
+		t.Fatalf("failed parsing test server port: %v", err)
+	}
+
+	s := &Server{
+		Log: newDiscardLogger(),
+		ViteContext: vitecmd.NewBuildCtx(
+			&vitecmd.BuildCtxOptions{DefaultPort: port},
+		),
+	}
+
+	callError := s.CallViteFilemapInvalidate()
+	if callError == nil {
+		t.Fatal(
+			"expected fallback invalidate failure to return error after primary 404",
+		)
+	}
+	if !strings.Contains(callError.Error(), "endpoint returned 500") {
+		t.Fatalf("unexpected error: %v", callError)
+	}
+
+	expectedPaths := []string{
+		"/__vorma_invalidate_filemap",
+		"/__wave/vite-filemap-invalidate",
+	}
+	if len(requestedPaths) != len(expectedPaths) {
+		t.Fatalf("requested path count = %d, want %d", len(requestedPaths), len(expectedPaths))
+	}
+	for pathIndex := range expectedPaths {
+		if requestedPaths[pathIndex] != expectedPaths[pathIndex] {
+			t.Fatalf(
+				"requestedPaths[%d] = %q, want %q",
+				pathIndex,
+				requestedPaths[pathIndex],
+				expectedPaths[pathIndex],
+			)
+		}
+	}
+}
+
+func TestCallViteFilemapInvalidate_Primary500DoesNotCallFallback(t *testing.T) {
+	requestedPaths := make([]string, 0, 2)
+	testServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestedPaths = append(requestedPaths, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+		}),
+	)
+	defer testServer.Close()
+
+	parsedURL, err := url.Parse(testServer.URL)
+	if err != nil {
+		t.Fatalf("failed parsing test server URL: %v", err)
+	}
+	port, err := strconv.Atoi(parsedURL.Port())
+	if err != nil {
+		t.Fatalf("failed parsing test server port: %v", err)
+	}
+
+	s := &Server{
+		Log: newDiscardLogger(),
+		ViteContext: vitecmd.NewBuildCtx(
+			&vitecmd.BuildCtxOptions{DefaultPort: port},
+		),
+	}
+
+	callError := s.CallViteFilemapInvalidate()
+	if callError == nil {
+		t.Fatal("expected non-404 primary invalidate failure to return error")
+	}
+	if !strings.Contains(callError.Error(), "endpoint returned 500") {
+		t.Fatalf("unexpected error: %v", callError)
+	}
+
+	if len(requestedPaths) != 1 {
+		t.Fatalf("requested path count = %d, want 1", len(requestedPaths))
+	}
+	if requestedPaths[0] != "/__vorma_invalidate_filemap" {
+		t.Fatalf(
+			"requestedPaths[0] = %q, want %q",
+			requestedPaths[0],
+			"/__vorma_invalidate_filemap",
+		)
+	}
+}
+
 func TestWaitForVite_ReturnsTrueWhenViteContextIsNil(t *testing.T) {
 	s := &Server{Log: newDiscardLogger()}
 	if !s.WaitForVite() {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/wavecore"
 	"github.com/vormadev/vorma/wave/tooling/internal/shared"
 	"github.com/vormadev/vorma/wave/tooling/internal/watch/dedup"
 )
@@ -645,7 +646,7 @@ func resolvePathOrPatternFromWatchRoot(
 		return ""
 	}
 	if filepath.IsAbs(pathOrPattern) {
-		return normalizeGlob(pathOrPattern)
+		return normalizePath(pathOrPattern)
 	}
 
 	watchRoot := "."
@@ -678,11 +679,7 @@ func resolvePathOrPatternFromWatchRoot(
 
 // normalizePath returns cleaned slash-normalized path.
 func normalizePath(path string) string {
-	if strings.TrimSpace(path) == "" {
-		return ""
-	}
-	cleanedPath := filepath.Clean(path)
-	return strings.ReplaceAll(cleanedPath, "\\", "/")
+	return wavecore.AbsoluteSlash(path)
 }
 
 // normalizeGlob returns slash-normalized glob with trimmed whitespace.
@@ -690,7 +687,7 @@ func normalizeGlob(globPattern string) string {
 	if strings.TrimSpace(globPattern) == "" {
 		return ""
 	}
-	return strings.ReplaceAll(strings.TrimSpace(globPattern), "\\", "/")
+	return wavecore.AbsoluteSlash(globPattern)
 }
 
 func escapePatternMetaCharactersForDoublestarPattern(path string) string {

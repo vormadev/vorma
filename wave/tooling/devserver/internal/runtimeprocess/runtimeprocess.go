@@ -318,10 +318,7 @@ func ShouldIgnoreProcessTerminationError(processTerminationError error) bool {
 		return true
 	}
 	errorString := strings.ToLower(processTerminationError.Error())
-	if strings.Contains(errorString, "process already finished") {
-		return true
-	}
-	return false
+	return strings.Contains(errorString, "process already finished")
 }
 
 // ShouldIgnoreProcessWaitError reports expected wait outcomes from termination.

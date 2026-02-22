@@ -3,12 +3,12 @@ package css
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -345,7 +345,6 @@ func (processor *Processor) buildCriticalCSS() error {
 		_ = os.Remove(outputPath)
 		return nil
 	}
-	normalizedEntryPath := normalizeCSSFilePathForImportTracking(entryPath)
 
 	processor.mu.Lock()
 	processor.criticalFreshOutputAvailable = false
@@ -354,27 +353,26 @@ func (processor *Processor) buildCriticalCSS() error {
 	if readEntrySourceError != nil {
 		return fmt.Errorf("read critical css %q: %w", entryPath, readEntrySourceError)
 	}
-	preparedEntrySource := processor.resolvePublicURLTokensInCSS(
-		string(entrySourceBytes),
-	)
-
 	buildOutput, buildError := buildSingleCSSEntry(
 		entryPath,
-		preparedEntrySource,
+		string(entrySourceBytes),
+		processor.resolvePublicURL,
 	)
 	if buildError != nil {
 		return fmt.Errorf("build critical css %q: %w", entryPath, buildError)
 	}
+	trackedCriticalImports := resolveTrackedCSSImportPaths(
+		entryPath,
+		buildOutput.InputPaths,
+	)
 
 	currentOutputBytes, readCurrentOutputError := os.ReadFile(outputPath)
 	if readCurrentOutputError == nil &&
-		string(currentOutputBytes) == buildOutput {
+		string(currentOutputBytes) == buildOutput.CSS {
 		processor.mu.Lock()
-		processor.cachedCriticalCSS = buildOutput
+		processor.cachedCriticalCSS = buildOutput.CSS
 		processor.criticalFreshOutputAvailable = true
-		processor.criticalImports = map[string]struct{}{
-			normalizedEntryPath: {},
-		}
+		processor.criticalImports = trackedCriticalImports
 		processor.mu.Unlock()
 		return nil
 	}
@@ -382,16 +380,18 @@ func (processor *Processor) buildCriticalCSS() error {
 		return readCurrentOutputError
 	}
 
-	if writeError := shared.WriteFileAtomically(outputPath, []byte(buildOutput), 0o644); writeError != nil {
+	if writeError := shared.WriteFileAtomically(
+		outputPath,
+		[]byte(buildOutput.CSS),
+		0o644,
+	); writeError != nil {
 		return writeError
 	}
 
 	processor.mu.Lock()
-	processor.cachedCriticalCSS = buildOutput
+	processor.cachedCriticalCSS = buildOutput.CSS
 	processor.criticalFreshOutputAvailable = true
-	processor.criticalImports = map[string]struct{}{
-		normalizedEntryPath: {},
-	}
+	processor.criticalImports = trackedCriticalImports
 	processor.mu.Unlock()
 	processor.log.Info(
 		"built critical css",
@@ -417,7 +417,6 @@ func (processor *Processor) buildNormalCSS() error {
 		_ = os.Remove(refPath)
 		return nil
 	}
-	normalizedEntryPath := normalizeCSSFilePathForImportTracking(entryPath)
 
 	processor.mu.Lock()
 	processor.normalFreshOutputAvailable = false
@@ -426,19 +425,20 @@ func (processor *Processor) buildNormalCSS() error {
 	if readEntrySourceError != nil {
 		return fmt.Errorf("read normal css %q: %w", entryPath, readEntrySourceError)
 	}
-	preparedEntrySource := processor.resolvePublicURLTokensInCSS(
-		string(entrySourceBytes),
-	)
-
 	buildOutput, buildError := buildSingleCSSEntry(
 		entryPath,
-		preparedEntrySource,
+		string(entrySourceBytes),
+		processor.resolvePublicURL,
 	)
 	if buildError != nil {
 		return fmt.Errorf("build normal css %q: %w", entryPath, buildError)
 	}
+	trackedNormalImports := resolveTrackedCSSImportPaths(
+		entryPath,
+		buildOutput.InputPaths,
+	)
 
-	hashSum := sha256.Sum256([]byte(buildOutput))
+	hashSum := sha256.Sum256([]byte(buildOutput.CSS))
 	hashPrefix := hex.EncodeToString(hashSum[:])[:16]
 	fileName := fmt.Sprintf("vorma_internal_normal_%s.css", hashPrefix)
 	outputFilePath := filepath.Join(outputDirectoryPath, fileName)
@@ -452,14 +452,12 @@ func (processor *Processor) buildNormalCSS() error {
 	if existingRefPath == fileName {
 		existingOutputBytes, readExistingOutputError := os.ReadFile(outputFilePath)
 		if readExistingOutputError == nil &&
-			string(existingOutputBytes) == buildOutput {
+			string(existingOutputBytes) == buildOutput.CSS {
 			normalURL := joinPublicURL(processor.cfg.PublicPathPrefix(), fileName)
 			processor.mu.Lock()
 			processor.cachedNormalURL = normalURL
 			processor.normalFreshOutputAvailable = true
-			processor.normalImports = map[string]struct{}{
-				normalizedEntryPath: {},
-			}
+			processor.normalImports = trackedNormalImports
 			processor.mu.Unlock()
 			return nil
 		}
@@ -469,7 +467,11 @@ func (processor *Processor) buildNormalCSS() error {
 		_ = os.Remove(filepath.Join(outputDirectoryPath, existingRefPath))
 	}
 
-	if writeError := shared.WriteFileAtomically(outputFilePath, []byte(buildOutput), 0o644); writeError != nil {
+	if writeError := shared.WriteFileAtomically(
+		outputFilePath,
+		[]byte(buildOutput.CSS),
+		0o644,
+	); writeError != nil {
 		return writeError
 	}
 	if writeRefError := shared.WriteFileAtomically(refPath, []byte(fileName), 0o644); writeRefError != nil {
@@ -480,9 +482,7 @@ func (processor *Processor) buildNormalCSS() error {
 	processor.mu.Lock()
 	processor.cachedNormalURL = normalURL
 	processor.normalFreshOutputAvailable = true
-	processor.normalImports = map[string]struct{}{
-		normalizedEntryPath: {},
-	}
+	processor.normalImports = trackedNormalImports
 	processor.mu.Unlock()
 	processor.log.Info(
 		"built normal css",
@@ -510,14 +510,38 @@ func (processor *Processor) BuildNormalCSSOnly() error {
 func buildSingleCSSEntry(
 	entryPath string,
 	entrySource string,
-) (string, error) {
+	resolvePublicURL func(originalPath string) (string, bool, error),
+) (
+	singleCSSEntryBuildOutput,
+	error,
+) {
+	buildPlugins := []api.Plugin{
+		buildPublicCSSURLResolverPlugin(resolvePublicURL),
+	}
 	buildResult := api.Build(api.BuildOptions{
-		Bundle:            false,
+		Bundle:            true,
 		Write:             false,
 		MinifyWhitespace:  true,
 		MinifyIdentifiers: true,
 		MinifySyntax:      true,
+		Metafile:          true,
 		LogLevel:          api.LogLevelSilent,
+		Plugins:           buildPlugins,
+		External: []string{
+			"*.avif",
+			"*.eot",
+			"*.gif",
+			"*.ico",
+			"*.jpeg",
+			"*.jpg",
+			"*.otf",
+			"*.png",
+			"*.svg",
+			"*.ttf",
+			"*.webp",
+			"*.woff",
+			"*.woff2",
+		},
 		Stdin: &api.StdinOptions{
 			Contents:   entrySource,
 			ResolveDir: filepath.Dir(entryPath),
@@ -526,12 +550,186 @@ func buildSingleCSSEntry(
 		},
 	})
 	if len(buildResult.Errors) > 0 {
-		return "", errors.New(buildResult.Errors[0].Text)
+		return singleCSSEntryBuildOutput{}, errors.New(buildResult.Errors[0].Text)
 	}
 	if len(buildResult.OutputFiles) == 0 {
-		return "", errors.New("esbuild produced no CSS output files")
+		return singleCSSEntryBuildOutput{}, errors.New(
+			"esbuild produced no CSS output files",
+		)
 	}
-	return string(buildResult.OutputFiles[0].Contents), nil
+
+	inputPaths, inputPathParseError := parseCSSInputPathsFromBuildResultMetafile(
+		buildResult.Metafile,
+	)
+	if inputPathParseError != nil {
+		return singleCSSEntryBuildOutput{}, inputPathParseError
+	}
+
+	return singleCSSEntryBuildOutput{
+		CSS:        string(buildResult.OutputFiles[0].Contents),
+		InputPaths: inputPaths,
+	}, nil
+}
+
+func buildPublicCSSURLResolverPlugin(
+	resolvePublicURL func(originalPath string) (string, bool, error),
+) api.Plugin {
+	return api.Plugin{
+		Name: "wave_css_public_url_resolver",
+		Setup: func(build api.PluginBuild) {
+			build.OnResolve(
+				api.OnResolveOptions{
+					Filter:    ".*",
+					Namespace: "file",
+				},
+				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+					if args.Kind != api.ResolveCSSURLToken {
+						return api.OnResolveResult{}, nil
+					}
+					if resolvePublicURL == nil {
+						return api.OnResolveResult{}, nil
+					}
+
+					cssPath := strings.TrimSpace(args.Path)
+					if shouldSkipPublicURLResolution(cssPath) {
+						return api.OnResolveResult{
+							Path:     cssPath,
+							External: true,
+						}, nil
+					}
+
+					cssLookupPath, cssPathSuffix := splitCSSPathTokenForLookup(cssPath)
+					if strings.TrimSpace(cssLookupPath) == "" {
+						cssLookupPath = cssPath
+					}
+					resolvedPublicURL, found, resolveError := resolvePublicURL(
+						cssLookupPath,
+					)
+					if resolveError != nil {
+						return api.OnResolveResult{}, fmt.Errorf(
+							"resolve css url token %q: %w",
+							cssPath,
+							resolveError,
+						)
+					}
+					if !found {
+						return api.OnResolveResult{}, fmt.Errorf(
+							"resolve css url token %q: no hashed public asset found",
+							cssPath,
+						)
+					}
+
+					return api.OnResolveResult{
+						Path:     resolvedPublicURL + cssPathSuffix,
+						External: true,
+					}, nil
+				},
+			)
+		},
+	}
+}
+
+type singleCSSEntryBuildOutput struct {
+	CSS        string
+	InputPaths []string
+}
+
+type cssBuildResultMetafile struct {
+	Inputs map[string]struct{} `json:"inputs"`
+}
+
+func parseCSSInputPathsFromBuildResultMetafile(
+	metafileJSON string,
+) ([]string, error) {
+	var metafile cssBuildResultMetafile
+	if unmarshalError := json.Unmarshal(
+		[]byte(metafileJSON),
+		&metafile,
+	); unmarshalError != nil {
+		return nil, fmt.Errorf("parse css build metafile: %w", unmarshalError)
+	}
+
+	inputPaths := make([]string, 0, len(metafile.Inputs))
+	for inputPath := range metafile.Inputs {
+		inputPaths = append(inputPaths, inputPath)
+	}
+	sort.Strings(inputPaths)
+	return inputPaths, nil
+}
+
+func resolveTrackedCSSImportPaths(
+	entryPath string,
+	buildInputPaths []string,
+) map[string]struct{} {
+	trackedImportPaths := make(map[string]struct{}, len(buildInputPaths)+1)
+	entryDirectoryPath := filepath.Dir(entryPath)
+	normalizedEntryPath := normalizeCSSFilePathForImportTracking(entryPath)
+	if normalizedEntryPath != "" {
+		trackedImportPaths[normalizedEntryPath] = struct{}{}
+	}
+
+	for _, buildInputPath := range buildInputPaths {
+		trimmedBuildInputPath := strings.TrimSpace(buildInputPath)
+		if trimmedBuildInputPath == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmedBuildInputPath, "<") &&
+			strings.HasSuffix(trimmedBuildInputPath, ">") {
+			continue
+		}
+
+		normalizedImportPath := resolveBuildInputPathForTracking(
+			entryDirectoryPath,
+			trimmedBuildInputPath,
+		)
+		if normalizedImportPath == "" {
+			continue
+		}
+		trackedImportPaths[normalizedImportPath] = struct{}{}
+	}
+
+	return trackedImportPaths
+}
+
+func resolveBuildInputPathForTracking(
+	entryDirectoryPath string,
+	buildInputPath string,
+) string {
+	trimmedBuildInputPath := strings.TrimSpace(buildInputPath)
+	if trimmedBuildInputPath == "" {
+		return ""
+	}
+
+	candidatePaths := make([]string, 0, 3)
+	if filepath.IsAbs(trimmedBuildInputPath) {
+		candidatePaths = append(candidatePaths, trimmedBuildInputPath)
+	} else {
+		candidatePaths = append(
+			candidatePaths,
+			filepath.Join(entryDirectoryPath, trimmedBuildInputPath),
+		)
+		candidatePaths = append(
+			candidatePaths,
+			string(filepath.Separator)+trimmedBuildInputPath,
+		)
+	}
+
+	for _, candidatePath := range candidatePaths {
+		if _, statError := os.Stat(candidatePath); statError != nil {
+			continue
+		}
+		normalizedCandidatePath := normalizeCSSFilePathForImportTracking(
+			candidatePath,
+		)
+		if normalizedCandidatePath != "" {
+			return normalizedCandidatePath
+		}
+	}
+
+	if len(candidatePaths) == 0 {
+		return normalizeCSSFilePathForImportTracking(trimmedBuildInputPath)
+	}
+	return normalizeCSSFilePathForImportTracking(candidatePaths[0])
 }
 
 // joinPublicURL joins public path prefix and relative asset path.
@@ -586,47 +784,6 @@ func normalizeCSSFilePathForImportTracking(filePath string) string {
 	return filepath.Clean(absoluteFilePath)
 }
 
-var cssURLTokenPattern = regexp.MustCompile(
-	`url\(\s*(['"]?)([^'")]+)['"]?\s*\)`,
-)
-
-func (processor *Processor) resolvePublicURLTokensInCSS(cssContent string) string {
-	if processor == nil || processor.resolvePublicURL == nil {
-		return cssContent
-	}
-
-	return cssURLTokenPattern.ReplaceAllStringFunc(
-		cssContent,
-		func(matchedURLToken string) string {
-			matchedFields := cssURLTokenPattern.FindStringSubmatch(
-				matchedURLToken,
-			)
-			if len(matchedFields) != 3 {
-				return matchedURLToken
-			}
-
-			quote := matchedFields[1]
-			originalPath := strings.TrimSpace(matchedFields[2])
-			if shouldSkipPublicURLResolution(originalPath) {
-				return matchedURLToken
-			}
-
-			resolvedPublicURL, found, resolveError := processor.resolvePublicURL(
-				originalPath,
-			)
-			if resolveError != nil || !found {
-				return matchedURLToken
-			}
-			return fmt.Sprintf(
-				"url(%s%s%s)",
-				quote,
-				resolvedPublicURL,
-				quote,
-			)
-		},
-	)
-}
-
 func shouldSkipPublicURLResolution(cssPath string) bool {
 	trimmedPath := strings.TrimSpace(cssPath)
 	if trimmedPath == "" {
@@ -638,19 +795,72 @@ func shouldSkipPublicURLResolution(cssPath string) bool {
 	if strings.HasPrefix(trimmedPath, "/") {
 		return true
 	}
-	if strings.HasPrefix(trimmedPath, "http://") {
-		return true
-	}
-	if strings.HasPrefix(trimmedPath, "https://") {
-		return true
-	}
-	if strings.HasPrefix(trimmedPath, "data:") {
+	if strings.HasPrefix(trimmedPath, "?") {
 		return true
 	}
 	if strings.HasPrefix(trimmedPath, "#") {
 		return true
 	}
+
+	schemeSeparatorIndex := strings.Index(trimmedPath, ":")
+	if schemeSeparatorIndex > 0 &&
+		isValidURIPathScheme(trimmedPath[:schemeSeparatorIndex]) {
+		return true
+	}
+
 	return false
+}
+
+func splitCSSPathTokenForLookup(cssPath string) (lookupPath string, suffix string) {
+	trimmedPath := strings.TrimSpace(cssPath)
+	if trimmedPath == "" {
+		return "", ""
+	}
+
+	queryIndex := strings.Index(trimmedPath, "?")
+	fragmentIndex := strings.Index(trimmedPath, "#")
+	suffixStartIndex := -1
+	if queryIndex >= 0 && fragmentIndex >= 0 {
+		if queryIndex < fragmentIndex {
+			suffixStartIndex = queryIndex
+		} else {
+			suffixStartIndex = fragmentIndex
+		}
+	} else if queryIndex >= 0 {
+		suffixStartIndex = queryIndex
+	} else if fragmentIndex >= 0 {
+		suffixStartIndex = fragmentIndex
+	}
+
+	if suffixStartIndex <= 0 {
+		return trimmedPath, ""
+	}
+	return trimmedPath[:suffixStartIndex], trimmedPath[suffixStartIndex:]
+}
+
+func isValidURIPathScheme(scheme string) bool {
+	if scheme == "" {
+		return false
+	}
+	for index, character := range scheme {
+		if index == 0 {
+			if (character < 'a' || character > 'z') &&
+				(character < 'A' || character > 'Z') {
+				return false
+			}
+			continue
+		}
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			character == '+' ||
+			character == '-' ||
+			character == '.' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func normalizeNormalCSSRefPath(normalCSSRef string) string {

@@ -28,6 +28,15 @@ func isConfigFileForRunloopTests(cfg *wave.ParsedConfig, path string) bool {
 	return classification.IsConfigurationPathChange(path, cfg.Core.ConfigLocation)
 }
 
+func isConfigMutationWatcherEventForRunloopTests(
+	watcherEvent fsnotify.Event,
+) bool {
+	return watcherEvent.Has(fsnotify.Write) ||
+		watcherEvent.Has(fsnotify.Create) ||
+		watcherEvent.Has(fsnotify.Remove) ||
+		watcherEvent.Has(fsnotify.Rename)
+}
+
 func classifyEventWithWatcherAndBuilderForRunloopTests(
 	watcherEvent fsnotify.Event,
 	watcherForClassification *watch.Watcher,
@@ -113,7 +122,8 @@ func classifyWatcherEventsFromPreClassificationPlanForRunloopTests(
 		len(deduplicatedEvents),
 	)
 	for _, watcherEvent := range deduplicatedEvents {
-		if isConfigFileForRunloopTests(cfg, watcherEvent.Name) {
+		if isConfigFileForRunloopTests(cfg, watcherEvent.Name) &&
+			isConfigMutationWatcherEventForRunloopTests(watcherEvent) {
 			return nil, true
 		}
 		classifiedEvents = append(

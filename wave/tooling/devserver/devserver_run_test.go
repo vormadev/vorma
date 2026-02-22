@@ -2,6 +2,7 @@ package devserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,8 +15,80 @@ import (
 
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/tooling/devserver/internal/restartengine"
+	"github.com/vormadev/vorma/wave/tooling/internal/shared"
 	"github.com/vormadev/vorma/wave/tooling/internal/watch"
 )
+
+func TestRunDev_ReturnsValidationErrorForInvalidConfig(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.MainAppEntry = ""
+
+	runError := RunDev(cfg, newDiscardLogger())
+	if runError == nil {
+		t.Fatal("expected RunDev to fail validation for missing MainAppEntry")
+	}
+	if !strings.Contains(runError.Error(), "config validation failed") {
+		t.Fatalf("unexpected RunDev error: %v", runError)
+	}
+}
+
+func TestRunDev_ReturnsErrorForNilConfig(t *testing.T) {
+	runError := RunDev(nil, newDiscardLogger())
+	if runError == nil {
+		t.Fatal("expected RunDev to fail for nil config")
+	}
+	if !strings.Contains(runError.Error(), "config is nil") {
+		t.Fatalf("unexpected RunDev error: %v", runError)
+	}
+}
+
+func TestRunDev_ReturnsLockHeldErrorWhenProjectIsAlreadyLocked(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+
+	lock := shared.NewDevLock(cfg.Dist.Static())
+	if lockAcquireError := lock.Acquire(); lockAcquireError != nil {
+		t.Fatalf("failed to acquire initial lock: %v", lockAcquireError)
+	}
+	defer func() {
+		_ = lock.Release()
+	}()
+
+	runError := RunDev(cfg, newDiscardLogger())
+	if runError == nil {
+		t.Fatal("expected RunDev to fail when lock is already held")
+	}
+	if !errors.Is(runError, shared.ErrLockHeld) {
+		t.Fatalf("expected ErrLockHeld, got: %v", runError)
+	}
+}
+
+func TestRunDev_WithNilLoggerReleasesLockWhenRunReturnsError(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root")
+
+	runError := RunDev(cfg, nil)
+	if runError == nil {
+		t.Fatal("expected RunDev to fail when watch root does not exist")
+	}
+	if !strings.Contains(runError.Error(), "init watcher") {
+		t.Fatalf("unexpected RunDev error: %v", runError)
+	}
+
+	lock := shared.NewDevLock(cfg.Dist.Static())
+	if lockAcquireError := lock.Acquire(); lockAcquireError != nil {
+		t.Fatalf(
+			"expected lock to be released after RunDev error, acquire failed: %v",
+			lockAcquireError,
+		)
+	}
+	defer func() {
+		_ = lock.Release()
+	}()
+}
 
 func TestServerRun_ReturnsInitWatcherErrorWhenWatchRootMissing(t *testing.T) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
@@ -262,7 +335,7 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 	}
 }
 
-func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
+func TestServerRun_ConfigRestartReloadsConfigWithoutWaitingForStaleAppReadiness(
 	t *testing.T,
 ) {
 	root := t.TempDir()
@@ -423,9 +496,10 @@ func TestServerRun_ConfigRestartWaitsForAppBeforeReloadAndContinues(
 	if !strings.Contains(runError.Error(), "init watcher") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
-	if appHealthHits.Load() == 0 {
-		t.Fatal(
-			"expected config restart path to wait for app health before reload",
+	if appHealthHits.Load() != 0 {
+		t.Fatalf(
+			"expected config restart path to reload config without waiting on stale app health probes, got %d probe(s)",
+			appHealthHits.Load(),
 		)
 	}
 

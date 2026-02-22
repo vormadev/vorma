@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -291,6 +292,22 @@ func TestProcessEvents_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 	)
 }
 
+func TestProcessEvents_ConfigChmodDoesNotTriggerConfigRestart(t *testing.T) {
+	cfg, _, configFilePath := setupConfigEventTestConfigForRunloopProcessTests(t)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+
+	processEventsForRunloopTests(
+		t,
+		serverForTest,
+		[]fsnotify.Event{{
+			Name: configFilePath,
+			Op:   fsnotify.Chmod,
+		}},
+	)
+
+	assertNoPendingRestartRequestForRunloopTests(t, serverForTest.RestartIntents)
+}
+
 func TestProcessEvents_ConfigChangeBatchSkipsNonConfigHookProcessing(t *testing.T) {
 	runConfigMutationAndPathShapeMatrixForRunloopProcessTests(
 		t,
@@ -402,6 +419,50 @@ func TestProcessEvents_CreateForMissingFileStillRunsMatchingHooks(t *testing.T) 
 
 	if atomic.LoadInt32(&hookCallCount) != 1 {
 		t.Fatalf("expected matching hook to run exactly once for missing-file create, got %d", atomic.LoadInt32(&hookCallCount))
+	}
+
+	assertNoPendingRestartRequestForRunloopTests(t, serverForTest.RestartIntents)
+}
+
+func TestProcessEvents_RenameForMissingFileStillRunsMatchingHooks(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	var hookCallCount int32
+	cfg.Watch.Include = []wave.WatchedFile{
+		{
+			Pattern:         "**/*.txt",
+			RunOnChangeOnly: true,
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						atomic.AddInt32(&hookCallCount, 1)
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+
+	missingRenamePath := filepath.Join(root, "renamed-file.txt")
+	processEventsForRunloopTests(
+		t,
+		serverForTest,
+		[]fsnotify.Event{{
+			Name: missingRenamePath,
+			Op:   fsnotify.Rename,
+		}},
+	)
+
+	if atomic.LoadInt32(&hookCallCount) != 1 {
+		t.Fatalf(
+			"expected matching hook to run exactly once for missing-file rename, got %d",
+			atomic.LoadInt32(&hookCallCount),
+		)
 	}
 
 	assertNoPendingRestartRequestForRunloopTests(t, serverForTest.RestartIntents)
@@ -589,6 +650,7 @@ func TestProcessEvents_NewDirectoryCreateEventAddsWatchDir(t *testing.T) {
 			serverForTest.Watcher.NormalizePath(newDirectory),
 		)
 	}
+	assertNoPendingRestartRequestForRunloopTests(t, serverForTest.RestartIntents)
 }
 
 func TestProcessEvents_PublicStaticMixedOpsBatchAppliesCreateDeleteAndRenameChanges(
@@ -818,5 +880,1499 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("timed out waiting for css payload after successful rebuild")
+	}
+}
+
+type runloopWorkCaptureForProcessTests struct {
+	mutex               sync.Mutex
+	buildWorkSnapshots  []eventpipeline.WorkSet
+	browserWorkSnapshot []eventpipeline.WorkSet
+}
+
+func (capture *runloopWorkCaptureForProcessTests) Reset() {
+	if capture == nil {
+		return
+	}
+	capture.mutex.Lock()
+	defer capture.mutex.Unlock()
+	capture.buildWorkSnapshots = nil
+	capture.browserWorkSnapshot = nil
+}
+
+func (capture *runloopWorkCaptureForProcessTests) RecordBuildWork(
+	work *eventpipeline.WorkSet,
+) {
+	if capture == nil {
+		return
+	}
+	workSnapshot := cloneWorkSetForProcessTests(work)
+	capture.mutex.Lock()
+	capture.buildWorkSnapshots = append(capture.buildWorkSnapshots, workSnapshot)
+	capture.mutex.Unlock()
+}
+
+func (capture *runloopWorkCaptureForProcessTests) RecordBrowserWork(
+	work *eventpipeline.WorkSet,
+) {
+	if capture == nil {
+		return
+	}
+	workSnapshot := cloneWorkSetForProcessTests(work)
+	capture.mutex.Lock()
+	capture.browserWorkSnapshot = append(capture.browserWorkSnapshot, workSnapshot)
+	capture.mutex.Unlock()
+}
+
+func (capture *runloopWorkCaptureForProcessTests) BuildWorkSnapshots() []eventpipeline.WorkSet {
+	if capture == nil {
+		return nil
+	}
+	capture.mutex.Lock()
+	defer capture.mutex.Unlock()
+	snapshots := make(
+		[]eventpipeline.WorkSet,
+		0,
+		len(capture.buildWorkSnapshots),
+	)
+	for index := range capture.buildWorkSnapshots {
+		snapshot := cloneWorkSetForProcessTests(&capture.buildWorkSnapshots[index])
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots
+}
+
+func (capture *runloopWorkCaptureForProcessTests) BrowserWorkSnapshots() []eventpipeline.WorkSet {
+	if capture == nil {
+		return nil
+	}
+	capture.mutex.Lock()
+	defer capture.mutex.Unlock()
+	snapshots := make(
+		[]eventpipeline.WorkSet,
+		0,
+		len(capture.browserWorkSnapshot),
+	)
+	for index := range capture.browserWorkSnapshot {
+		snapshot := cloneWorkSetForProcessTests(
+			&capture.browserWorkSnapshot[index],
+		)
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots
+}
+
+func cloneWorkSetForProcessTests(
+	work *eventpipeline.WorkSet,
+) eventpipeline.WorkSet {
+	if work == nil {
+		return eventpipeline.WorkSet{}
+	}
+
+	clone := *work
+	clone.Build.PublicStaticChangedFilePaths = append(
+		[]string(nil),
+		work.Build.PublicStaticChangedFilePaths...,
+	)
+	clone.Build.PrivateStaticChangedFilePaths = append(
+		[]string(nil),
+		work.Build.PrivateStaticChangedFilePaths...,
+	)
+	clone.Build.PublicStaticChangedFilePathSet = cloneStringSetForProcessTests(
+		work.Build.PublicStaticChangedFilePathSet,
+	)
+	clone.Build.PrivateStaticChangedFilePathSet = cloneStringSetForProcessTests(
+		work.Build.PrivateStaticChangedFilePathSet,
+	)
+
+	return clone
+}
+
+func cloneStringSetForProcessTests(
+	input map[string]struct{},
+) map[string]struct{} {
+	if len(input) == 0 {
+		return nil
+	}
+	clone := make(map[string]struct{}, len(input))
+	for key := range input {
+		clone[key] = struct{}{}
+	}
+	return clone
+}
+
+func buildRunloopEngineWithWorkCaptureForProcessTests(
+	serverForTest *runloopTestServer,
+	capture *runloopWorkCaptureForProcessTests,
+) *runloop.Engine {
+	if serverForTest == nil {
+		return runloop.New(runloop.Dependencies{})
+	}
+
+	return runloop.New(runloop.Dependencies{
+		Log:                                serverForTest.Log,
+		Config:                             serverForTest.Cfg,
+		GetCurrentWatcher:                  serverForTest.WatcherInstance,
+		GetCurrentBuilder:                  serverForTest.BuilderInstance,
+		CurrentRunCycleContextOrBackground: serverForTest.CurrentRunCycleContextOrBackground,
+		ExecuteBuildPhase: func(work *eventpipeline.WorkSet) error {
+			if capture != nil {
+				capture.RecordBuildWork(work)
+			}
+			return nil
+		},
+		ExecuteBrowserPhase: func(work *eventpipeline.WorkSet) {
+			if capture != nil {
+				capture.RecordBrowserWork(work)
+			}
+		},
+		StartApp:             serverForTest.StartApp,
+		StopApp:              serverForTest.StopApp,
+		TriggerRestart:       serverForTest.TriggerRestart,
+		TriggerRestartNoGo:   serverForTest.TriggerRestartNoGo,
+		TriggerConfigRestart: serverForTest.TriggerConfigRestart,
+		BroadcastRebuilding:  serverForTest.BroadcastRebuilding,
+		BuildEventExecutionPlan: func(
+			events []fsnotify.Event,
+			watcherForPlan *watch.Watcher,
+			builderForPlan *builder.Builder,
+		) eventpipeline.EventExecutionPlanningResult {
+			return serverForTest.BuildEventExecutionPlan(
+				events,
+				watcherForPlan,
+				builderForPlan,
+			)
+		},
+		DeriveWatcherExecutionTraceContext: func() runloop.WatcherExecutionTraceContext {
+			traceContext := serverForTest.DeriveWatcherExecutionTraceContext()
+			return runloop.WatcherExecutionTraceContext{
+				CycleID: traceContext.CycleID,
+				BatchID: traceContext.BatchID,
+			}
+		},
+		SetCurrentWatcherExecutionTraceContext: func(
+			traceContext runloop.WatcherExecutionTraceContext,
+		) {
+			serverForTest.SetCurrentWatcherExecutionTraceContext(traceContext)
+		},
+		ClearCurrentWatcherExecutionTraceContext: serverForTest.ClearCurrentWatcherExecutionTraceContext,
+		GetCurrentWatcherExecutionTraceContext: func() runloop.WatcherExecutionTraceContext {
+			traceContext := serverForTest.CurrentWatcherExecutionTraceContextSnapshot()
+			return runloop.WatcherExecutionTraceContext{
+				CycleID: traceContext.CycleID,
+				BatchID: traceContext.BatchID,
+			}
+		},
+		RunNoWaitHookWithConcurrencyLimit:               serverForTest.RunNoWaitHookWithConcurrencyLimit,
+		GetOrCreateConcurrentNoWaitHookLifecycleContext: serverForTest.GetOrCreateConcurrentNoWaitHookLifecycleContext,
+		ResolveHookExecutionPlan:                        serverForTest.ResolveHookExecutionPlan,
+	})
+}
+
+type siteStylePathMatrixForRunloopProcessTests struct {
+	CriticalCSSEntryPath      string
+	NormalCSSEntryPath        string
+	CriticalCSSImportPath     string
+	NormalCSSImportPath       string
+	TemplatePath              string
+	MarkdownPath              string
+	RouteRegistryPath         string
+	PublicStaticPath          string
+	TailwindCSSPath           string
+	RandomFrontendTSPath      string
+	VormaFrontendEntryTSXPath string
+	GoSourcePath              string
+}
+
+func configureSiteStyleFixtureForRunloopProcessTests(
+	t *testing.T,
+	cfg *wave.ParsedConfig,
+	root string,
+) siteStylePathMatrixForRunloopProcessTests {
+	t.Helper()
+
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.StaticAssetDirs.Public = filepath.Join(root, "frontend", "assets")
+	cfg.Core.StaticAssetDirs.Private = filepath.Join(root, "backend", "assets")
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical: filepath.Join(
+			root,
+			"frontend",
+			"src",
+			"styles",
+			"main.critical.css",
+		),
+		NonCritical: filepath.Join(
+			root,
+			"frontend",
+			"src",
+			"styles",
+			"main.css",
+		),
+	}
+
+	paths := siteStylePathMatrixForRunloopProcessTests{
+		CriticalCSSEntryPath: cfg.Core.CSSEntryFiles.Critical,
+		NormalCSSEntryPath:   cfg.Core.CSSEntryFiles.NonCritical,
+		CriticalCSSImportPath: filepath.Join(
+			root,
+			"frontend",
+			"src",
+			"styles",
+			"critical_import.css",
+		),
+		NormalCSSImportPath: filepath.Join(
+			root,
+			"frontend",
+			"src",
+			"styles",
+			"fonts.css",
+		),
+		TemplatePath: filepath.Join(
+			root,
+			"backend",
+			"assets",
+			"entry.go.html",
+		),
+		MarkdownPath: filepath.Join(
+			root,
+			"backend",
+			"assets",
+			"markdown",
+			"blog",
+			"post.md",
+		),
+		RouteRegistryPath: filepath.Join(
+			root,
+			"frontend",
+			"src",
+			"routes",
+			"core.vorma.routes.ts",
+		),
+		PublicStaticPath: filepath.Join(
+			cfg.Core.StaticAssetDirs.Public,
+			"logo.svg",
+		),
+		TailwindCSSPath: filepath.Join(
+			root,
+			"frontend",
+			"src",
+			"styles",
+			"tailwind.css",
+		),
+		RandomFrontendTSPath: filepath.Join(
+			root,
+			"frontend",
+			"src",
+			"lib",
+			"client_util.ts",
+		),
+		VormaFrontendEntryTSXPath: filepath.Join(
+			root,
+			"frontend",
+			"src",
+			"vorma.entry.tsx",
+		),
+		GoSourcePath: filepath.Join(
+			root,
+			"backend",
+			"handlers",
+			"health.go",
+		),
+	}
+
+	cfg.Watch.Include = []wave.WatchedFile{
+		{
+			Pattern:                            "backend/assets/markdown/**/*.md",
+			OnlyRunClientDefinedRevalidateFunc: true,
+			SkipRebuildingNotification:         true,
+		},
+		{
+			Pattern:                    "frontend/src/**/*vorma.routes.ts",
+			RunOnChangeOnly:            true,
+			SkipRebuildingNotification: true,
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Timing: wave.OnChangeStrategyPost,
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return &wave.RefreshAction{
+							ReloadBrowser: true,
+							WaitForApp:    true,
+							WaitForVite:   true,
+						}, nil
+					},
+				},
+			},
+		},
+		{
+			Pattern:                    "backend/assets/entry.go.html",
+			SkipRebuildingNotification: true,
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Timing: wave.OnChangeStrategyPost,
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return &wave.RefreshAction{
+							ReloadBrowser: true,
+							WaitForApp:    true,
+							WaitForVite:   true,
+						}, nil
+					},
+				},
+			},
+		},
+	}
+
+	directoriesToCreate := []string{
+		filepath.Dir(paths.CriticalCSSEntryPath),
+		filepath.Dir(paths.NormalCSSEntryPath),
+		filepath.Dir(paths.TemplatePath),
+		filepath.Dir(paths.MarkdownPath),
+		filepath.Dir(paths.RouteRegistryPath),
+		filepath.Dir(paths.PublicStaticPath),
+		filepath.Dir(paths.RandomFrontendTSPath),
+		filepath.Dir(paths.VormaFrontendEntryTSXPath),
+		filepath.Dir(paths.GoSourcePath),
+	}
+	for _, directoryPath := range directoriesToCreate {
+		if mkdirError := os.MkdirAll(directoryPath, 0o755); mkdirError != nil {
+			t.Fatalf("create directory %q: %v", directoryPath, mkdirError)
+		}
+	}
+
+	filesToWrite := map[string]string{
+		paths.CriticalCSSEntryPath:      `@import "./critical_import.css"; body { color: red; }`,
+		paths.NormalCSSEntryPath:        `@import "./fonts.css"; body { color: blue; }`,
+		paths.CriticalCSSImportPath:     `.critical-import { display: block; }`,
+		paths.NormalCSSImportPath:       `.normal-import { font-size: 16px; }`,
+		paths.TemplatePath:              `<!doctype html><html><body>{{.VormaBodyScripts}}</body></html>`,
+		paths.MarkdownPath:              "# Post\n\nhello",
+		paths.RouteRegistryPath:         "export const routes = []",
+		paths.PublicStaticPath:          "<svg></svg>",
+		paths.TailwindCSSPath:           "@tailwind utilities;",
+		paths.RandomFrontendTSPath:      "export const clientUtil = () => 'ok'",
+		paths.VormaFrontendEntryTSXPath: "export const App = () => null",
+		paths.GoSourcePath:              "package handlers\n\nfunc Health() string { return \"ok\" }\n",
+	}
+	for filePath, fileContents := range filesToWrite {
+		if writeError := os.WriteFile(filePath, []byte(fileContents), 0o644); writeError != nil {
+			t.Fatalf("write file %q: %v", filePath, writeError)
+		}
+	}
+
+	return paths
+}
+
+func TestProcessEvents_SiteStyleMatrixUsesMinimumWorkByFileType(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Dist.Root = cfg.Core.DistDir
+	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	if buildCSSError := serverForTest.Builder.BuildCSS(
+		builder.CSSBuildOptions{
+			BuildCriticalCSS: true,
+			BuildNormalCSS:   true,
+		},
+	); buildCSSError != nil {
+		t.Fatalf("initial BuildCSS returned error: %v", buildCSSError)
+	}
+
+	capture := &runloopWorkCaptureForProcessTests{}
+	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+		serverForTest,
+		capture,
+	)
+
+	resetStateForCase := func() {
+		capture.Reset()
+		serverForTest.RestartIntents = restartengine.NewRestartIntentAccumulator(
+			make(chan restartengine.RestartRequest, 1),
+		)
+	}
+
+	assertNoBuildOrBrowserWork := func(t *testing.T) {
+		t.Helper()
+		buildWorkSnapshots := capture.BuildWorkSnapshots()
+		browserWorkSnapshots := capture.BrowserWorkSnapshots()
+		if len(buildWorkSnapshots) != 0 || len(browserWorkSnapshots) != 0 {
+			t.Fatalf(
+				"expected no build/browser work, build=%#v browser=%#v",
+				buildWorkSnapshots,
+				browserWorkSnapshots,
+			)
+		}
+	}
+
+	assertSingleBuildWorkSnapshot := func(t *testing.T) eventpipeline.WorkSet {
+		t.Helper()
+		buildWorkSnapshots := capture.BuildWorkSnapshots()
+		if len(buildWorkSnapshots) != 1 {
+			t.Fatalf(
+				"expected one build work snapshot, got %#v",
+				buildWorkSnapshots,
+			)
+		}
+		return buildWorkSnapshots[0]
+	}
+
+	assertSingleBrowserWorkSnapshot := func(t *testing.T) eventpipeline.WorkSet {
+		t.Helper()
+		browserWorkSnapshots := capture.BrowserWorkSnapshots()
+		if len(browserWorkSnapshots) != 1 {
+			t.Fatalf(
+				"expected one browser work snapshot, got %#v",
+				browserWorkSnapshots,
+			)
+		}
+		return browserWorkSnapshots[0]
+	}
+
+	testCases := []struct {
+		Name     string
+		FilePath string
+		Op       fsnotify.Op
+		Assert   func(*testing.T)
+	}{
+		{
+			Name:     "critical_css_entry_builds_critical_css_only",
+			FilePath: paths.CriticalCSSEntryPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWork := assertSingleBuildWorkSnapshot(t)
+				if !buildWork.Build.BuildCriticalCSS ||
+					buildWork.Build.BuildNormalCSS ||
+					buildWork.Build.ProcessPublicFiles ||
+					buildWork.Build.ProcessPrivateFiles ||
+					buildWork.Build.CompileGo {
+					t.Fatalf(
+						"critical css entry expected critical-css-only work, got %#v",
+						buildWork.Build,
+					)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHotReloadCSS {
+					t.Fatalf(
+						"critical css entry browser action = %v, want %v",
+						browserWork.Browser.Action,
+						eventpipeline.BrowserPhaseActionHotReloadCSS,
+					)
+				}
+			},
+		},
+		{
+			Name:     "normal_css_import_builds_normal_css_only",
+			FilePath: paths.NormalCSSImportPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWork := assertSingleBuildWorkSnapshot(t)
+				if buildWork.Build.BuildCriticalCSS ||
+					!buildWork.Build.BuildNormalCSS ||
+					buildWork.Build.ProcessPublicFiles ||
+					buildWork.Build.ProcessPrivateFiles ||
+					buildWork.Build.CompileGo {
+					t.Fatalf(
+						"normal css import expected normal-css-only work, got %#v",
+						buildWork.Build,
+					)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHotReloadCSS {
+					t.Fatalf(
+						"normal css import browser action = %v, want %v",
+						browserWork.Browser.Action,
+						eventpipeline.BrowserPhaseActionHotReloadCSS,
+					)
+				}
+			},
+		},
+		{
+			Name:     "normal_css_entry_builds_normal_css_only",
+			FilePath: paths.NormalCSSEntryPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWork := assertSingleBuildWorkSnapshot(t)
+				if buildWork.Build.BuildCriticalCSS ||
+					!buildWork.Build.BuildNormalCSS ||
+					buildWork.Build.ProcessPublicFiles ||
+					buildWork.Build.ProcessPrivateFiles ||
+					buildWork.Build.CompileGo {
+					t.Fatalf(
+						"normal css entry expected normal-css-only work, got %#v",
+						buildWork.Build,
+					)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHotReloadCSS {
+					t.Fatalf(
+						"normal css entry browser action = %v, want %v",
+						browserWork.Browser.Action,
+						eventpipeline.BrowserPhaseActionHotReloadCSS,
+					)
+				}
+			},
+		},
+		{
+			Name:     "critical_css_import_builds_critical_css_only",
+			FilePath: paths.CriticalCSSImportPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWork := assertSingleBuildWorkSnapshot(t)
+				if !buildWork.Build.BuildCriticalCSS ||
+					buildWork.Build.BuildNormalCSS ||
+					buildWork.Build.ProcessPublicFiles ||
+					buildWork.Build.ProcessPrivateFiles ||
+					buildWork.Build.CompileGo {
+					t.Fatalf(
+						"critical css import expected critical-css-only work, got %#v",
+						buildWork.Build,
+					)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHotReloadCSS {
+					t.Fatalf(
+						"critical css import browser action = %v, want %v",
+						browserWork.Browser.Action,
+						eventpipeline.BrowserPhaseActionHotReloadCSS,
+					)
+				}
+			},
+		},
+		{
+			Name:     "template_write_processes_private_changed_path_and_fast_reload",
+			FilePath: paths.TemplatePath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWork := assertSingleBuildWorkSnapshot(t)
+				if !buildWork.Build.ProcessPrivateFiles ||
+					len(buildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+					buildWork.Build.PrivateStaticChangedFilePaths[0] != paths.TemplatePath {
+					t.Fatalf(
+						"template write expected one private changed path %q, got %#v",
+						paths.TemplatePath,
+						buildWork.Build,
+					)
+				}
+				if buildWork.Build.ProcessPublicFiles ||
+					buildWork.Build.BuildCriticalCSS ||
+					buildWork.Build.BuildNormalCSS ||
+					buildWork.Build.CompileGo {
+					t.Fatalf(
+						"template write expected no unrelated build work, got %#v",
+						buildWork.Build,
+					)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+					!browserWork.Browser.WaitForApp ||
+					!browserWork.Browser.WaitForVite {
+					t.Fatalf(
+						"template write browser decision = %#v, want hard reload waiting for app+vite",
+						browserWork.Browser,
+					)
+				}
+			},
+		},
+		{
+			Name:     "markdown_write_revalidates_and_processes_private_changed_path",
+			FilePath: paths.MarkdownPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWork := assertSingleBuildWorkSnapshot(t)
+				if !buildWork.Build.ProcessPrivateFiles ||
+					len(buildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+					buildWork.Build.PrivateStaticChangedFilePaths[0] != paths.MarkdownPath {
+					t.Fatalf(
+						"markdown write expected one private changed path %q, got %#v",
+						paths.MarkdownPath,
+						buildWork.Build,
+					)
+				}
+				if !buildWork.PreferRevalidate {
+					t.Fatalf(
+						"markdown write expected PreferRevalidate=true, got %#v",
+						buildWork,
+					)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionRevalidate ||
+					!browserWork.Browser.WaitForApp ||
+					browserWork.Browser.WaitForVite {
+					t.Fatalf(
+						"markdown write browser decision = %#v, want revalidate waiting for app only",
+						browserWork.Browser,
+					)
+				}
+			},
+		},
+		{
+			Name:     "route_registry_write_runs_fast_reload_without_implicit_build",
+			FilePath: paths.RouteRegistryPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWorkSnapshots := capture.BuildWorkSnapshots()
+				if len(buildWorkSnapshots) != 0 {
+					t.Fatalf(
+						"route registry write expected no build work, got %#v",
+						buildWorkSnapshots,
+					)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+					!browserWork.Browser.WaitForApp ||
+					!browserWork.Browser.WaitForVite {
+					t.Fatalf(
+						"route registry browser decision = %#v, want hard reload waiting for app+vite",
+						browserWork.Browser,
+					)
+				}
+			},
+		},
+		{
+			Name:     "public_static_write_processes_changed_path_without_restart",
+			FilePath: paths.PublicStaticPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWork := assertSingleBuildWorkSnapshot(t)
+				if !buildWork.Build.ProcessPublicFiles ||
+					len(buildWork.Build.PublicStaticChangedFilePaths) != 1 ||
+					buildWork.Build.PublicStaticChangedFilePaths[0] != paths.PublicStaticPath {
+					t.Fatalf(
+						"public static write expected one public changed path %q, got %#v",
+						paths.PublicStaticPath,
+						buildWork.Build,
+					)
+				}
+				if buildWork.Build.ProcessPrivateFiles ||
+					buildWork.Build.BuildCriticalCSS ||
+					buildWork.Build.BuildNormalCSS ||
+					buildWork.Build.CompileGo {
+					t.Fatalf(
+						"public static write expected no unrelated build work, got %#v",
+						buildWork.Build,
+					)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionInvalidateVite {
+					t.Fatalf(
+						"public static write browser action = %v, want %v",
+						browserWork.Browser.Action,
+						eventpipeline.BrowserPhaseActionInvalidateVite,
+					)
+				}
+			},
+		},
+		{
+			Name:     "public_static_root_directory_event_is_noop",
+			FilePath: cfg.Core.StaticAssetDirs.Public,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				assertNoBuildOrBrowserWork(t)
+			},
+		},
+		{
+			Name:     "private_static_root_directory_event_is_noop",
+			FilePath: cfg.Core.StaticAssetDirs.Private,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				assertNoBuildOrBrowserWork(t)
+			},
+		},
+		{
+			Name:     "go_source_write_requests_compile_and_hard_reload",
+			FilePath: paths.GoSourcePath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				buildWork := assertSingleBuildWorkSnapshot(t)
+				if !buildWork.Build.CompileGo {
+					t.Fatalf("go source write expected CompileGo=true, got %#v", buildWork.Build)
+				}
+				if !buildWork.Restart.RestartApp {
+					t.Fatalf("go source write expected RestartApp=true, got %#v", buildWork.Restart)
+				}
+				browserWork := assertSingleBrowserWorkSnapshot(t)
+				if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+					!browserWork.Browser.WaitForApp ||
+					browserWork.Browser.WaitForVite {
+					t.Fatalf(
+						"go source write browser decision = %#v, want hard reload waiting for app only",
+						browserWork.Browser,
+					)
+				}
+			},
+		},
+		{
+			Name:     "tailwind_css_write_is_noop",
+			FilePath: paths.TailwindCSSPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				assertNoBuildOrBrowserWork(t)
+			},
+		},
+		{
+			Name:     "frontend_ts_write_is_noop",
+			FilePath: paths.RandomFrontendTSPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				assertNoBuildOrBrowserWork(t)
+			},
+		},
+		{
+			Name:     "vorma_entry_write_is_noop",
+			FilePath: paths.VormaFrontendEntryTSXPath,
+			Op:       fsnotify.Write,
+			Assert: func(t *testing.T) {
+				t.Helper()
+				assertNoBuildOrBrowserWork(t)
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.Name, func(t *testing.T) {
+			resetStateForCase()
+			engine.ProcessEvents([]fsnotify.Event{
+				{
+					Name: testCase.FilePath,
+					Op:   testCase.Op,
+				},
+			})
+			testCase.Assert(t)
+			assertNoPendingRestartRequestForRunloopTests(
+				t,
+				serverForTest.RestartIntents,
+			)
+		})
+	}
+}
+
+func TestProcessEvents_SiteStyleTemplateMutationOpsUseFastReloadWithoutRestart(
+	t *testing.T,
+) {
+	testCases := []struct {
+		Name    string
+		Op      fsnotify.Op
+		Prepare func(
+			t *testing.T,
+			paths siteStylePathMatrixForRunloopProcessTests,
+		)
+	}{
+		{
+			Name: "create",
+			Op:   fsnotify.Create,
+		},
+		{
+			Name: "remove",
+			Op:   fsnotify.Remove,
+			Prepare: func(
+				t *testing.T,
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) {
+				t.Helper()
+				if removeError := os.Remove(paths.TemplatePath); removeError != nil {
+					t.Fatalf("failed removing template before event: %v", removeError)
+				}
+			},
+		},
+		{
+			Name: "rename",
+			Op:   fsnotify.Rename,
+			Prepare: func(
+				t *testing.T,
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) {
+				t.Helper()
+				renamedTemplatePath := paths.TemplatePath + ".renamed"
+				if renameError := os.Rename(
+					paths.TemplatePath,
+					renamedTemplatePath,
+				); renameError != nil {
+					t.Fatalf("failed renaming template before event: %v", renameError)
+				}
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.Name, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+			cfg.Dist.Root = cfg.Core.DistDir
+			paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+
+			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			capture := &runloopWorkCaptureForProcessTests{}
+			engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+				serverForTest,
+				capture,
+			)
+
+			if testCase.Prepare != nil {
+				testCase.Prepare(t, paths)
+			}
+
+			engine.ProcessEvents(
+				[]fsnotify.Event{
+					{
+						Name: paths.TemplatePath,
+						Op:   testCase.Op,
+					},
+				},
+			)
+
+			buildWorkSnapshots := capture.BuildWorkSnapshots()
+			if len(buildWorkSnapshots) != 1 {
+				t.Fatalf("expected one build work snapshot, got %#v", buildWorkSnapshots)
+			}
+			buildWork := buildWorkSnapshots[0]
+			if !buildWork.Build.ProcessPrivateFiles ||
+				len(buildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+				buildWork.Build.PrivateStaticChangedFilePaths[0] != paths.TemplatePath {
+				t.Fatalf(
+					"template %s expected one private changed path %q, got %#v",
+					testCase.Name,
+					paths.TemplatePath,
+					buildWork.Build,
+				)
+			}
+			if buildWork.Build.ProcessPublicFiles ||
+				buildWork.Build.BuildCriticalCSS ||
+				buildWork.Build.BuildNormalCSS ||
+				buildWork.Build.CompileGo {
+				t.Fatalf(
+					"template %s expected no unrelated build work, got %#v",
+					testCase.Name,
+					buildWork.Build,
+				)
+			}
+
+			browserWorkSnapshots := capture.BrowserWorkSnapshots()
+			if len(browserWorkSnapshots) != 1 {
+				t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+			}
+			browserWork := browserWorkSnapshots[0]
+			if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+				!browserWork.Browser.WaitForApp ||
+				!browserWork.Browser.WaitForVite {
+				t.Fatalf(
+					"template %s browser decision = %#v, want hard reload waiting for app+vite",
+					testCase.Name,
+					browserWork.Browser,
+				)
+			}
+
+			assertNoPendingRestartRequestForRunloopTests(
+				t,
+				serverForTest.RestartIntents,
+			)
+		})
+	}
+}
+
+func TestProcessEvents_SiteStyleRouteRegistryMutationOpsUseFastReloadWithoutRestart(
+	t *testing.T,
+) {
+	testCases := []struct {
+		Name    string
+		Op      fsnotify.Op
+		Prepare func(
+			t *testing.T,
+			paths siteStylePathMatrixForRunloopProcessTests,
+		)
+	}{
+		{
+			Name: "create",
+			Op:   fsnotify.Create,
+		},
+		{
+			Name: "remove",
+			Op:   fsnotify.Remove,
+			Prepare: func(
+				t *testing.T,
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) {
+				t.Helper()
+				if removeError := os.Remove(paths.RouteRegistryPath); removeError != nil {
+					t.Fatalf("failed removing route registry before event: %v", removeError)
+				}
+			},
+		},
+		{
+			Name: "rename",
+			Op:   fsnotify.Rename,
+			Prepare: func(
+				t *testing.T,
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) {
+				t.Helper()
+				renamedRouteRegistryPath := paths.RouteRegistryPath + ".renamed"
+				if renameError := os.Rename(
+					paths.RouteRegistryPath,
+					renamedRouteRegistryPath,
+				); renameError != nil {
+					t.Fatalf("failed renaming route registry before event: %v", renameError)
+				}
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.Name, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+			cfg.Dist.Root = cfg.Core.DistDir
+			paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+
+			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			capture := &runloopWorkCaptureForProcessTests{}
+			engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+				serverForTest,
+				capture,
+			)
+
+			if testCase.Prepare != nil {
+				testCase.Prepare(t, paths)
+			}
+
+			engine.ProcessEvents(
+				[]fsnotify.Event{
+					{
+						Name: paths.RouteRegistryPath,
+						Op:   testCase.Op,
+					},
+				},
+			)
+
+			buildWorkSnapshots := capture.BuildWorkSnapshots()
+			if len(buildWorkSnapshots) != 0 {
+				t.Fatalf(
+					"route registry %s expected no build work, got %#v",
+					testCase.Name,
+					buildWorkSnapshots,
+				)
+			}
+
+			browserWorkSnapshots := capture.BrowserWorkSnapshots()
+			if len(browserWorkSnapshots) != 1 {
+				t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+			}
+			browserWork := browserWorkSnapshots[0]
+			if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+				!browserWork.Browser.WaitForApp ||
+				!browserWork.Browser.WaitForVite {
+				t.Fatalf(
+					"route registry %s browser decision = %#v, want hard reload waiting for app+vite",
+					testCase.Name,
+					browserWork.Browser,
+				)
+			}
+
+			assertNoPendingRestartRequestForRunloopTests(
+				t,
+				serverForTest.RestartIntents,
+			)
+		})
+	}
+}
+
+func TestProcessEvents_SiteStyleMarkdownMutationOpsUseRevalidateWithoutRestart(
+	t *testing.T,
+) {
+	testCases := []struct {
+		Name    string
+		Op      fsnotify.Op
+		Prepare func(
+			t *testing.T,
+			paths siteStylePathMatrixForRunloopProcessTests,
+		)
+	}{
+		{
+			Name: "create",
+			Op:   fsnotify.Create,
+		},
+		{
+			Name: "remove",
+			Op:   fsnotify.Remove,
+			Prepare: func(
+				t *testing.T,
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) {
+				t.Helper()
+				if removeError := os.Remove(paths.MarkdownPath); removeError != nil {
+					t.Fatalf("failed removing markdown file before event: %v", removeError)
+				}
+			},
+		},
+		{
+			Name: "rename",
+			Op:   fsnotify.Rename,
+			Prepare: func(
+				t *testing.T,
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) {
+				t.Helper()
+				renamedMarkdownPath := paths.MarkdownPath + ".renamed"
+				if renameError := os.Rename(
+					paths.MarkdownPath,
+					renamedMarkdownPath,
+				); renameError != nil {
+					t.Fatalf("failed renaming markdown file before event: %v", renameError)
+				}
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.Name, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+			cfg.Dist.Root = cfg.Core.DistDir
+			paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+
+			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			capture := &runloopWorkCaptureForProcessTests{}
+			engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+				serverForTest,
+				capture,
+			)
+
+			if testCase.Prepare != nil {
+				testCase.Prepare(t, paths)
+			}
+
+			engine.ProcessEvents(
+				[]fsnotify.Event{
+					{
+						Name: paths.MarkdownPath,
+						Op:   testCase.Op,
+					},
+				},
+			)
+
+			buildWorkSnapshots := capture.BuildWorkSnapshots()
+			if len(buildWorkSnapshots) != 1 {
+				t.Fatalf("expected one build work snapshot, got %#v", buildWorkSnapshots)
+			}
+			buildWork := buildWorkSnapshots[0]
+			if !buildWork.Build.ProcessPrivateFiles ||
+				len(buildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+				buildWork.Build.PrivateStaticChangedFilePaths[0] != paths.MarkdownPath {
+				t.Fatalf(
+					"markdown %s expected one private changed path %q, got %#v",
+					testCase.Name,
+					paths.MarkdownPath,
+					buildWork.Build,
+				)
+			}
+			if !buildWork.PreferRevalidate {
+				t.Fatalf(
+					"markdown %s expected PreferRevalidate=true, got %#v",
+					testCase.Name,
+					buildWork,
+				)
+			}
+			if buildWork.Build.ProcessPublicFiles ||
+				buildWork.Build.BuildCriticalCSS ||
+				buildWork.Build.BuildNormalCSS ||
+				buildWork.Build.CompileGo {
+				t.Fatalf(
+					"markdown %s expected no unrelated build work, got %#v",
+					testCase.Name,
+					buildWork.Build,
+				)
+			}
+
+			browserWorkSnapshots := capture.BrowserWorkSnapshots()
+			if len(browserWorkSnapshots) != 1 {
+				t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+			}
+			browserWork := browserWorkSnapshots[0]
+			if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionRevalidate ||
+				!browserWork.Browser.WaitForApp ||
+				browserWork.Browser.WaitForVite {
+				t.Fatalf(
+					"markdown %s browser decision = %#v, want revalidate waiting for app only",
+					testCase.Name,
+					browserWork.Browser,
+				)
+			}
+
+			assertNoPendingRestartRequestForRunloopTests(
+				t,
+				serverForTest.RestartIntents,
+			)
+		})
+	}
+}
+
+func TestProcessEvents_MarkdownWithoutWatchRuleUsesPrivateStaticReload(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Dist.Root = cfg.Core.DistDir
+	cfg.Core.ServerOnlyMode = false
+
+	markdownPath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Private,
+		"markdown",
+		"blog",
+		"post.md",
+	)
+	if mkdirError := os.MkdirAll(filepath.Dir(markdownPath), 0o755); mkdirError != nil {
+		t.Fatalf("create markdown directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(
+		markdownPath,
+		[]byte("# Post\n\ncontent"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write markdown file: %v", writeError)
+	}
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	capture := &runloopWorkCaptureForProcessTests{}
+	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+		serverForTest,
+		capture,
+	)
+
+	engine.ProcessEvents(
+		[]fsnotify.Event{
+			{
+				Name: markdownPath,
+				Op:   fsnotify.Write,
+			},
+		},
+	)
+
+	buildWorkSnapshots := capture.BuildWorkSnapshots()
+	if len(buildWorkSnapshots) != 1 {
+		t.Fatalf("expected one build work snapshot, got %#v", buildWorkSnapshots)
+	}
+	buildWork := buildWorkSnapshots[0]
+	if !buildWork.Build.ProcessPrivateFiles ||
+		len(buildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+		buildWork.Build.PrivateStaticChangedFilePaths[0] != markdownPath {
+		t.Fatalf(
+			"expected one private changed path %q, got %#v",
+			markdownPath,
+			buildWork.Build,
+		)
+	}
+	if buildWork.PreferRevalidate {
+		t.Fatalf(
+			"expected markdown without watched-file override to avoid revalidate, got %#v",
+			buildWork,
+		)
+	}
+	if buildWork.Build.ProcessPublicFiles ||
+		buildWork.Build.BuildCriticalCSS ||
+		buildWork.Build.BuildNormalCSS ||
+		buildWork.Build.CompileGo {
+		t.Fatalf(
+			"expected no unrelated build work, got %#v",
+			buildWork.Build,
+		)
+	}
+
+	browserWorkSnapshots := capture.BrowserWorkSnapshots()
+	if len(browserWorkSnapshots) != 1 {
+		t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+	}
+	browserWork := browserWorkSnapshots[0]
+	if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+		!browserWork.Browser.WaitForApp ||
+		browserWork.Browser.WaitForVite {
+		t.Fatalf(
+			"markdown without watched-file override browser decision = %#v, want hard reload waiting for app only",
+			browserWork.Browser,
+		)
+	}
+
+	assertNoPendingRestartRequestForRunloopTests(
+		t,
+		serverForTest.RestartIntents,
+	)
+}
+
+func TestProcessEvents_SiteStyleNoopFilesMutationOpsRemainNoop(t *testing.T) {
+	targetCases := []struct {
+		Name        string
+		ResolvePath func(paths siteStylePathMatrixForRunloopProcessTests) string
+	}{
+		{
+			Name: "tailwind_css",
+			ResolvePath: func(paths siteStylePathMatrixForRunloopProcessTests) string {
+				return paths.TailwindCSSPath
+			},
+		},
+		{
+			Name: "frontend_ts",
+			ResolvePath: func(paths siteStylePathMatrixForRunloopProcessTests) string {
+				return paths.RandomFrontendTSPath
+			},
+		},
+		{
+			Name: "vorma_entry_tsx",
+			ResolvePath: func(paths siteStylePathMatrixForRunloopProcessTests) string {
+				return paths.VormaFrontendEntryTSXPath
+			},
+		},
+	}
+	opCases := []struct {
+		Name    string
+		Op      fsnotify.Op
+		Prepare func(t *testing.T, targetPath string)
+	}{
+		{
+			Name: "create",
+			Op:   fsnotify.Create,
+		},
+		{
+			Name: "remove",
+			Op:   fsnotify.Remove,
+			Prepare: func(t *testing.T, targetPath string) {
+				t.Helper()
+				if removeError := os.Remove(targetPath); removeError != nil {
+					t.Fatalf("failed removing target path before event: %v", removeError)
+				}
+			},
+		},
+		{
+			Name: "rename",
+			Op:   fsnotify.Rename,
+			Prepare: func(t *testing.T, targetPath string) {
+				t.Helper()
+				renamedTargetPath := targetPath + ".renamed"
+				if renameError := os.Rename(
+					targetPath,
+					renamedTargetPath,
+				); renameError != nil {
+					t.Fatalf("failed renaming target path before event: %v", renameError)
+				}
+			},
+		},
+	}
+
+	for _, targetCase := range targetCases {
+		targetCase := targetCase
+		for _, opCase := range opCases {
+			opCase := opCase
+			t.Run(targetCase.Name+"_"+opCase.Name, func(t *testing.T) {
+				root := t.TempDir()
+				cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+				cfg.Dist.Root = cfg.Core.DistDir
+				paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+				targetPath := targetCase.ResolvePath(paths)
+
+				serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+				capture := &runloopWorkCaptureForProcessTests{}
+				engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+					serverForTest,
+					capture,
+				)
+
+				if opCase.Prepare != nil {
+					opCase.Prepare(t, targetPath)
+				}
+
+				engine.ProcessEvents(
+					[]fsnotify.Event{
+						{
+							Name: targetPath,
+							Op:   opCase.Op,
+						},
+					},
+				)
+
+				if buildWorkSnapshots := capture.BuildWorkSnapshots(); len(buildWorkSnapshots) != 0 {
+					t.Fatalf(
+						"%s %s expected no build work, got %#v",
+						targetCase.Name,
+						opCase.Name,
+						buildWorkSnapshots,
+					)
+				}
+				if browserWorkSnapshots := capture.BrowserWorkSnapshots(); len(browserWorkSnapshots) != 0 {
+					t.Fatalf(
+						"%s %s expected no browser work, got %#v",
+						targetCase.Name,
+						opCase.Name,
+						browserWorkSnapshots,
+					)
+				}
+
+				assertNoPendingRestartRequestForRunloopTests(
+					t,
+					serverForTest.RestartIntents,
+				)
+			})
+		}
+	}
+}
+
+func TestProcessEvents_SiteStyleRouteRegistryFallbackRequestsNoGoRestart(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Dist.Root = cfg.Core.DistDir
+	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+	cfg.Watch.Include[1].OnChangeHooks = []wave.OnChangeHook{
+		{
+			Timing: wave.OnChangeStrategyPost,
+			Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+				return &wave.RefreshAction{
+					TriggerRestart: true,
+					RecompileGo:    false,
+				}, nil
+			},
+		},
+	}
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	capture := &runloopWorkCaptureForProcessTests{}
+	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+		serverForTest,
+		capture,
+	)
+
+	engine.ProcessEvents(
+		[]fsnotify.Event{
+			{
+				Name: paths.RouteRegistryPath,
+				Op:   fsnotify.Write,
+			},
+		},
+	)
+
+	buildWorkSnapshots := capture.BuildWorkSnapshots()
+	if len(buildWorkSnapshots) != 0 {
+		t.Fatalf(
+			"expected route-registry restart fallback to skip implicit build work, got %#v",
+			buildWorkSnapshots,
+		)
+	}
+
+	browserWorkSnapshots := capture.BrowserWorkSnapshots()
+	if len(browserWorkSnapshots) != 0 {
+		t.Fatalf(
+			"expected no browser execution after route-registry restart fallback, got %#v",
+			browserWorkSnapshots,
+		)
+	}
+
+	pendingRestartRequest := waitForPendingRestartRequestForRunloopTests(
+		t,
+		serverForTest.RestartIntents,
+		200*time.Millisecond,
+	)
+	if pendingRestartRequest.RecompileGo || pendingRestartRequest.IsConfigRestart {
+		t.Fatalf(
+			"expected non-config no-go restart request, got %#v",
+			pendingRestartRequest,
+		)
+	}
+}
+
+func TestProcessEvents_SiteStyleTemplateFallbackRequestsNoGoRestart(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Dist.Root = cfg.Core.DistDir
+	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+	cfg.Watch.Include[2].OnChangeHooks = []wave.OnChangeHook{
+		{
+			Timing: wave.OnChangeStrategyPost,
+			Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+				return &wave.RefreshAction{
+					TriggerRestart: true,
+					RecompileGo:    false,
+				}, nil
+			},
+		},
+	}
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	capture := &runloopWorkCaptureForProcessTests{}
+	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+		serverForTest,
+		capture,
+	)
+
+	engine.ProcessEvents(
+		[]fsnotify.Event{
+			{
+				Name: paths.TemplatePath,
+				Op:   fsnotify.Write,
+			},
+		},
+	)
+
+	buildWorkSnapshots := capture.BuildWorkSnapshots()
+	if len(buildWorkSnapshots) != 1 {
+		t.Fatalf(
+			"expected one build work snapshot before template restart fallback, got %#v",
+			buildWorkSnapshots,
+		)
+	}
+	templateBuildWork := buildWorkSnapshots[0]
+	if !templateBuildWork.Build.ProcessPrivateFiles ||
+		len(templateBuildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+		templateBuildWork.Build.PrivateStaticChangedFilePaths[0] != paths.TemplatePath {
+		t.Fatalf(
+			"expected template fallback build work to include private changed path %q, got %#v",
+			paths.TemplatePath,
+			templateBuildWork.Build,
+		)
+	}
+	if templateBuildWork.Build.ProcessPublicFiles ||
+		templateBuildWork.Build.BuildCriticalCSS ||
+		templateBuildWork.Build.BuildNormalCSS ||
+		templateBuildWork.Build.CompileGo {
+		t.Fatalf(
+			"expected template fallback build work to avoid unrelated work, got %#v",
+			templateBuildWork.Build,
+		)
+	}
+
+	browserWorkSnapshots := capture.BrowserWorkSnapshots()
+	if len(browserWorkSnapshots) != 0 {
+		t.Fatalf(
+			"expected no browser execution after template restart fallback, got %#v",
+			browserWorkSnapshots,
+		)
+	}
+
+	pendingRestartRequest := waitForPendingRestartRequestForRunloopTests(
+		t,
+		serverForTest.RestartIntents,
+		200*time.Millisecond,
+	)
+	if pendingRestartRequest.RecompileGo || pendingRestartRequest.IsConfigRestart {
+		t.Fatalf(
+			"expected non-config no-go restart request, got %#v",
+			pendingRestartRequest,
+		)
 	}
 }

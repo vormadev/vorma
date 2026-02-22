@@ -58,6 +58,709 @@ func TestBuildCriticalCSS_ResolvesPublicURLTokensUsingFileMap(t *testing.T) {
 	}
 }
 
+func TestBuildNormalCSS_BundlesImportsAndRewritesImportedAssetURLs(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		NonCritical: filepath.Join(root, "styles", "main.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "styles", "main.css"),
+		[]byte(`@import url("./fonts.css"); .app { color: black; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing main.css: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "styles", "fonts.css"),
+		[]byte(`@font-face { src: url("fonts/jetbrains_mono.woff2") format("woff2"); }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing fonts.css: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+
+	fileMap := wave.FileMap{
+		"fonts/jetbrains_mono.woff2": {
+			DistName:    "vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+			ContentHash: "vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+		},
+	}
+	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
+		t.Fatalf("BuildCSS(BuildNormalCSS) returned error: %v", err)
+	}
+
+	normalRefBytes, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	if err != nil {
+		t.Fatalf("failed reading normal css ref: %v", err)
+	}
+	normalOutputPath := filepath.Join(
+		cfg.Dist.StaticPublic(),
+		strings.TrimSpace(string(normalRefBytes)),
+	)
+	normalOutputBytes, err := os.ReadFile(normalOutputPath)
+	if err != nil {
+		t.Fatalf("failed reading generated normal css output: %v", err)
+	}
+	normalOutputCSS := string(normalOutputBytes)
+
+	if strings.Contains(normalOutputCSS, "@import") {
+		t.Fatalf(
+			"expected bundled normal css output to inline imports, got:\n%s",
+			normalOutputCSS,
+		)
+	}
+	if strings.Contains(normalOutputCSS, "fonts.css") {
+		t.Fatalf(
+			"expected bundled normal css output to avoid runtime fonts.css requests, got:\n%s",
+			normalOutputCSS,
+		)
+	}
+	if !strings.Contains(
+		normalOutputCSS,
+		"/vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+	) {
+		t.Fatalf(
+			"expected imported font URL to be rewritten via file map, got:\n%s",
+			normalOutputCSS,
+		)
+	}
+}
+
+func TestBuildNormalCSS_BundlesMultipleTopLevelImportsWithComments(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		NonCritical: filepath.Join(root, "styles", "main.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles", "fonts"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "styles", "main.css"),
+		[]byte(`/* imports */
+@import url("./fonts.css");
+@import url("./hljs.css");
+@import url("./nprogress.css");
+
+.app { color: black; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing main.css: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "styles", "fonts.css"),
+		[]byte(`@font-face { src: url("fonts/jetbrains_mono.woff2") format("woff2"); }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing fonts.css: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "styles", "hljs.css"),
+		[]byte(`.hljs { color: #fff; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing hljs.css: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "styles", "nprogress.css"),
+		[]byte(`#nprogress { pointer-events: none; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing nprogress.css: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+
+	fileMap := wave.FileMap{
+		"fonts/jetbrains_mono.woff2": {
+			DistName:    "vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+			ContentHash: "vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+		},
+	}
+	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
+		t.Fatalf("BuildCSS(BuildNormalCSS) returned error: %v", err)
+	}
+
+	normalRefBytes, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	if err != nil {
+		t.Fatalf("failed reading normal css ref: %v", err)
+	}
+	normalOutputPath := filepath.Join(
+		cfg.Dist.StaticPublic(),
+		strings.TrimSpace(string(normalRefBytes)),
+	)
+	normalOutputBytes, err := os.ReadFile(normalOutputPath)
+	if err != nil {
+		t.Fatalf("failed reading generated normal css output: %v", err)
+	}
+	normalOutputCSS := string(normalOutputBytes)
+
+	if strings.Contains(normalOutputCSS, "@import") {
+		t.Fatalf(
+			"expected bundled normal css output to inline imports, got:\n%s",
+			normalOutputCSS,
+		)
+	}
+	if strings.Contains(normalOutputCSS, "fonts.css") ||
+		strings.Contains(normalOutputCSS, "hljs.css") ||
+		strings.Contains(normalOutputCSS, "nprogress.css") {
+		t.Fatalf(
+			"expected bundled normal css output to avoid runtime css requests, got:\n%s",
+			normalOutputCSS,
+		)
+	}
+	if !strings.Contains(
+		normalOutputCSS,
+		"/vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+	) {
+		t.Fatalf(
+			"expected imported font URL to be rewritten via file map, got:\n%s",
+			normalOutputCSS,
+		)
+	}
+	if !strings.Contains(normalOutputCSS, ".hljs") {
+		t.Fatalf(
+			"expected imported hljs styles to be inlined, got:\n%s",
+			normalOutputCSS,
+		)
+	}
+	if !strings.Contains(normalOutputCSS, "#nprogress") {
+		t.Fatalf(
+			"expected imported nprogress styles to be inlined, got:\n%s",
+			normalOutputCSS,
+		)
+	}
+}
+
+func TestBuildCriticalCSS_BundlesImportsAndRewritesImportedAssetURLs(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical: filepath.Join(root, "styles", "critical.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles", "fonts"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.Critical,
+		[]byte(`@import url("./fonts.css"); .hero { color: black; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing critical.css: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "styles", "fonts.css"),
+		[]byte(`@font-face { src: url("fonts/jetbrains_mono.woff2") format("woff2"); }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing fonts.css: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+
+	fileMap := wave.FileMap{
+		"fonts/jetbrains_mono.woff2": {
+			DistName:    "vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+			ContentHash: "vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+		},
+	}
+	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
+		t.Fatalf("BuildCSS(BuildCriticalCSS) returned error: %v", err)
+	}
+
+	criticalOutputBytes, err := os.ReadFile(cfg.Dist.CriticalCSS())
+	if err != nil {
+		t.Fatalf("failed reading generated critical css output: %v", err)
+	}
+	criticalOutputCSS := string(criticalOutputBytes)
+
+	if strings.Contains(criticalOutputCSS, "@import") {
+		t.Fatalf(
+			"expected bundled critical css output to inline imports, got:\n%s",
+			criticalOutputCSS,
+		)
+	}
+	if strings.Contains(criticalOutputCSS, "fonts.css") {
+		t.Fatalf(
+			"expected bundled critical css output to avoid runtime fonts.css requests, got:\n%s",
+			criticalOutputCSS,
+		)
+	}
+	if !strings.Contains(
+		criticalOutputCSS,
+		"/vorma_out_fonts_jetbrains_mono_deadbeef.woff2",
+	) {
+		t.Fatalf(
+			"expected critical css font URL to be rewritten via file map, got:\n%s",
+			criticalOutputCSS,
+		)
+	}
+}
+
+func TestBuildNormalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		NonCritical: filepath.Join(root, "styles", "main.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.NonCritical,
+		[]byte(`.app{background-image:url("images/logo.png?v=1#hash");}`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing normal css entry file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+	if err := builder.saveFileMap(
+		wave.FileMap{
+			"images/logo.png": {
+				DistName:    "vorma_out_images_logo_deadbeef.png",
+				ContentHash: "vorma_out_images_logo_deadbeef.png",
+			},
+		},
+		cfg.Dist.PublicFileMapGob(),
+	); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
+		t.Fatalf("BuildCSS(BuildNormalCSS) returned error: %v", err)
+	}
+
+	normalRefBytes, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	if err != nil {
+		t.Fatalf("failed reading normal css ref: %v", err)
+	}
+	normalOutputPath := filepath.Join(
+		cfg.Dist.StaticPublic(),
+		strings.TrimSpace(string(normalRefBytes)),
+	)
+	normalOutputBytes, err := os.ReadFile(normalOutputPath)
+	if err != nil {
+		t.Fatalf("failed reading generated normal css output: %v", err)
+	}
+	if !strings.Contains(
+		string(normalOutputBytes),
+		"/vorma_out_images_logo_deadbeef.png?v=1#hash",
+	) {
+		t.Fatalf(
+			"expected rewritten URL to preserve query+fragment suffix, got:\n%s",
+			string(normalOutputBytes),
+		)
+	}
+}
+
+func TestBuildCriticalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical: filepath.Join(root, "styles", "critical.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.Critical,
+		[]byte(`.hero{background-image:url("images/logo.png?v=1#hash");}`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing critical css entry file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+	if err := builder.saveFileMap(
+		wave.FileMap{
+			"images/logo.png": {
+				DistName:    "vorma_out_images_logo_deadbeef.png",
+				ContentHash: "vorma_out_images_logo_deadbeef.png",
+			},
+		},
+		cfg.Dist.PublicFileMapGob(),
+	); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
+		t.Fatalf("BuildCSS(BuildCriticalCSS) returned error: %v", err)
+	}
+
+	criticalOutputBytes, err := os.ReadFile(cfg.Dist.CriticalCSS())
+	if err != nil {
+		t.Fatalf("failed reading generated critical css output: %v", err)
+	}
+	if !strings.Contains(
+		string(criticalOutputBytes),
+		"/vorma_out_images_logo_deadbeef.png?v=1#hash",
+	) {
+		t.Fatalf(
+			"expected rewritten URL to preserve query+fragment suffix, got:\n%s",
+			string(criticalOutputBytes),
+		)
+	}
+}
+
+func TestBuildNormalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		NonCritical: filepath.Join(root, "styles", "main.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.NonCritical,
+		[]byte(`.external {
+	background-image: url("https://cdn.example.com/fonts.woff2");
+	background-image: url("HTTP://cdn.example.com/upper.woff2");
+	background-image: url("mailto:dev@example.com");
+	background-image: url("//cdn.example.com/image.png");
+	background-image: url("/fonts.css");
+	background-image: url("?cache=1");
+	background-image: url("data:image/svg+xml;base64,PHN2Zz4=");
+	background-image: url("#sprite");
+}`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing normal css entry file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+	if err := builder.saveFileMap(wave.FileMap{}, cfg.Dist.PublicFileMapGob()); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
+		t.Fatalf("BuildCSS(BuildNormalCSS) returned error: %v", err)
+	}
+
+	normalRefBytes, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	if err != nil {
+		t.Fatalf("failed reading normal css ref: %v", err)
+	}
+	normalOutputPath := filepath.Join(
+		cfg.Dist.StaticPublic(),
+		strings.TrimSpace(string(normalRefBytes)),
+	)
+	normalOutputBytes, err := os.ReadFile(normalOutputPath)
+	if err != nil {
+		t.Fatalf("failed reading generated normal css output: %v", err)
+	}
+	normalOutputCSS := string(normalOutputBytes)
+
+	expectedTokens := []string{
+		"https://cdn.example.com/fonts.woff2",
+		"HTTP://cdn.example.com/upper.woff2",
+		"mailto:dev@example.com",
+		"//cdn.example.com/image.png",
+		"/fonts.css",
+		"?cache=1",
+		"data:image/svg+xml;base64,PHN2Zz4=",
+		"#sprite",
+	}
+	for _, expectedToken := range expectedTokens {
+		if !strings.Contains(normalOutputCSS, expectedToken) {
+			t.Fatalf("expected normal css output to retain token %q, got:\n%s", expectedToken, normalOutputCSS)
+		}
+	}
+}
+
+func TestBuildCriticalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical: filepath.Join(root, "styles", "critical.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.Critical,
+		[]byte(`.external {
+	background-image: url("https://cdn.example.com/fonts.woff2");
+	background-image: url("HTTP://cdn.example.com/upper.woff2");
+	background-image: url("mailto:dev@example.com");
+	background-image: url("//cdn.example.com/image.png");
+	background-image: url("/fonts.css");
+	background-image: url("?cache=1");
+	background-image: url("data:image/svg+xml;base64,PHN2Zz4=");
+	background-image: url("#sprite");
+}`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing critical css entry file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+	if err := builder.saveFileMap(wave.FileMap{}, cfg.Dist.PublicFileMapGob()); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
+		t.Fatalf("BuildCSS(BuildCriticalCSS) returned error: %v", err)
+	}
+
+	criticalOutputBytes, err := os.ReadFile(cfg.Dist.CriticalCSS())
+	if err != nil {
+		t.Fatalf("failed reading generated critical css output: %v", err)
+	}
+	criticalOutputCSS := string(criticalOutputBytes)
+
+	expectedTokens := []string{
+		"https://cdn.example.com/fonts.woff2",
+		"HTTP://cdn.example.com/upper.woff2",
+		"mailto:dev@example.com",
+		"//cdn.example.com/image.png",
+		"/fonts.css",
+		"?cache=1",
+		"data:image/svg+xml;base64,PHN2Zz4=",
+		"#sprite",
+	}
+	for _, expectedToken := range expectedTokens {
+		if !strings.Contains(criticalOutputCSS, expectedToken) {
+			t.Fatalf("expected critical css output to retain token %q, got:\n%s", expectedToken, criticalOutputCSS)
+		}
+	}
+}
+
+func TestBuildCriticalCSS_FailsWhenRelativeURLTokenMissingFromFileMap(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical: filepath.Join(root, "styles", "critical.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.Critical,
+		[]byte(`.hero{background-image:url("images/missing.png");}`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing critical css entry: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+
+	if err := builder.saveFileMap(
+		wave.FileMap{},
+		cfg.Dist.PublicFileMapGob(),
+	); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	buildError := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true})
+	if buildError == nil {
+		t.Fatal("expected BuildCSS(BuildCriticalCSS) to fail on unresolved relative CSS url token")
+	}
+	if !strings.Contains(buildError.Error(), "no hashed public asset found") {
+		t.Fatalf(
+			"expected unresolved-token error, got: %v",
+			buildError,
+		)
+	}
+}
+
+func TestBuildNormalCSS_FailsWhenImportedRelativeURLTokenMissingFromFileMap(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		NonCritical: filepath.Join(root, "styles", "main.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.NonCritical,
+		[]byte(`@import "./fonts.css"; .app { color: black; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing normal css entry: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "styles", "fonts.css"),
+		[]byte(`@font-face { src: url("fonts/missing.woff2") format("woff2"); }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing imported fonts.css: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+
+	if err := builder.saveFileMap(
+		wave.FileMap{},
+		cfg.Dist.PublicFileMapGob(),
+	); err != nil {
+		t.Fatalf("saveFileMap returned error: %v", err)
+	}
+
+	buildError := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true})
+	if buildError == nil {
+		t.Fatal("expected BuildCSS(BuildNormalCSS) to fail on unresolved imported CSS url token")
+	}
+	if !strings.Contains(buildError.Error(), "no hashed public asset found") {
+		t.Fatalf(
+			"expected unresolved-token error, got: %v",
+			buildError,
+		)
+	}
+}
+
+func TestBuildCSS_TracksImportedCSSFilesForWatcherClassification(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical:    filepath.Join(root, "styles", "critical.css"),
+		NonCritical: filepath.Join(root, "styles", "normal.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	stylesDirectoryPath := filepath.Join(root, "styles")
+	if err := os.MkdirAll(stylesDirectoryPath, 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+
+	criticalImportPath := filepath.Join(stylesDirectoryPath, "critical_import.css")
+	normalImportPath := filepath.Join(stylesDirectoryPath, "normal_import.css")
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.Critical,
+		[]byte(`@import "./critical_import.css"; body { color: red; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing critical css entry file: %v", err)
+	}
+	if err := os.WriteFile(
+		cfg.Core.CSSEntryFiles.NonCritical,
+		[]byte(`@import "./normal_import.css"; body { color: blue; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing normal css entry file: %v", err)
+	}
+	if err := os.WriteFile(criticalImportPath, []byte(".critical-import { }"), 0o644); err != nil {
+		t.Fatalf("failed writing critical import css file: %v", err)
+	}
+	if err := os.WriteFile(normalImportPath, []byte(".normal-import { }"), 0o644); err != nil {
+		t.Fatalf("failed writing normal import css file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+
+	if err := builder.BuildCSS(
+		CSSBuildOptions{
+			BuildCriticalCSS: true,
+			BuildNormalCSS:   true,
+		},
+	); err != nil {
+		t.Fatalf("BuildCSS returned error: %v", err)
+	}
+
+	if !builder.IsCriticalCSSFile(criticalImportPath) {
+		trackedCriticalImportPaths := builder.cssProcessor.ListTrackedCriticalCSSImportPaths()
+		t.Fatalf(
+			"expected imported critical css path %q to be tracked (tracked=%#v)",
+			criticalImportPath,
+			trackedCriticalImportPaths,
+		)
+	}
+	if !builder.IsNormalCSSFile(normalImportPath) {
+		t.Fatalf(
+			"expected imported normal css path %q to be tracked",
+			normalImportPath,
+		)
+	}
+	if !builder.isCSSFile(criticalImportPath) {
+		t.Fatalf(
+			"expected imported critical css path %q to match generic css check",
+			criticalImportPath,
+		)
+	}
+	if !builder.isCSSFile(normalImportPath) {
+		t.Fatalf(
+			"expected imported normal css path %q to match generic css check",
+			normalImportPath,
+		)
+	}
+}
+
 func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 	t *testing.T,
 ) {

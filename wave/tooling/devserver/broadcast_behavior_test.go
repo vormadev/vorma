@@ -24,6 +24,8 @@ import (
 	"github.com/vormadev/vorma/wave/tooling/internal/broadcast"
 )
 
+const positiveBroadcastReadTimeoutForBehaviorTests = time.Second
+
 func newDiscardLoggerForBroadcastBehaviorTests() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
@@ -145,6 +147,11 @@ func setupRefreshWebsocketForBroadcastBehaviorTests(
 		refreshHTTPServer.Close()
 		t.Fatalf("dial websocket handler: %v", dialError)
 	}
+	waitForRefreshManagerConnectionCountForBroadcastBehaviorTests(
+		t,
+		refreshManager,
+		1,
+	)
 
 	cleanup := func() {
 		_ = connection.Close()
@@ -152,6 +159,27 @@ func setupRefreshWebsocketForBroadcastBehaviorTests(
 		cancelRefreshManager()
 	}
 	return refreshManager, connection, cancelRefreshManager, cleanup
+}
+
+func waitForRefreshManagerConnectionCountForBroadcastBehaviorTests(
+	t *testing.T,
+	refreshManager *broadcast.Manager,
+	expectedCount int,
+) {
+	t.Helper()
+
+	waitDeadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(waitDeadline) {
+		if refreshManager.ConnectionCount() >= expectedCount {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf(
+		"timed out waiting for refresh manager connection count >= %d (got %d)",
+		expectedCount,
+		refreshManager.ConnectionCount(),
+	)
 }
 
 func TestBroadcastRebuilding_NoOpInServerOnlyMode(t *testing.T) {
@@ -301,7 +329,9 @@ func TestBroadcastReload_CycleViteWithoutActiveContextFallsBackToPayloadBroadcas
 		CycleVite: true,
 	})
 
-	connection.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
 	var receivedPayload broadcast.Payload
 	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
 		t.Fatalf(
@@ -353,7 +383,9 @@ func TestBroadcastReload_CycleViteFailureFallsBackToPayloadBroadcast(
 		CycleVite: true,
 	})
 
-	connection.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
 	var receivedPayload broadcast.Payload
 	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
 		t.Fatalf(
@@ -538,7 +570,9 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 	}
 	serverForTest.ExecuteBrowserPhase(work)
 
-	connection.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
 	var firstPayload broadcast.Payload
 	if readFirstPayloadError := connection.ReadJSON(&firstPayload); readFirstPayloadError != nil {
 		t.Fatalf(
@@ -735,7 +769,9 @@ func TestExecuteBrowserPhase_RevalidateBroadcastsRevalidatePayload(
 	}
 	serverForTest.ExecuteBrowserPhase(work)
 
-	connection.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
 	var receivedPayload broadcast.Payload
 	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
 		t.Fatalf(
@@ -812,7 +848,9 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalOnlyPayload(
 	}
 	serverForTest.ExecuteBrowserPhase(work)
 
-	connection.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
 	var receivedPayload broadcast.Payload
 	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
 		t.Fatalf(
@@ -889,7 +927,9 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsNormalOnlyPayload(
 	}
 	serverForTest.ExecuteBrowserPhase(work)
 
-	connection.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
 	var receivedPayload broadcast.Payload
 	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
 		t.Fatalf(

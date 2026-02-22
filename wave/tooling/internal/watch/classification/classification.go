@@ -130,6 +130,14 @@ func DerivePreClassificationDecision(
 		return decision
 	}
 
+	// Existing directory events are watcher-maintenance noise. Keep only
+	// file-path semantics in the classification pipeline.
+	if IsLikelyDirectoryChange(normalizedPath) {
+		decision.IncludeEvent = false
+		decision.IgnoreReason = "directory_event"
+		return decision
+	}
+
 	if kind == EventKindUnknown {
 		decision.FromUnknownEvent = true
 		decision.ShouldSkipStat = true

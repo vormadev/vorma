@@ -1517,37 +1517,6 @@ func ResolveStaticChangedPathResolutionsWithProbeFunctions(
 	return convertStaticChangedPathResolutionMapFromInternal(changedResolutions), fullBuildRequired, nil
 }
 
-// normalizeSourcePathForStore returns normalized relative path when path is inside source root.
-func normalizeSourcePathForStore(
-	sourceRootPath string,
-	absoluteCandidatePath string,
-) (string, bool) {
-	if strings.TrimSpace(sourceRootPath) == "" ||
-		strings.TrimSpace(absoluteCandidatePath) == "" {
-		return "", false
-	}
-
-	absoluteRoot, rootError := filepath.Abs(sourceRootPath)
-	absoluteCandidate, candidateError := filepath.Abs(absoluteCandidatePath)
-	if rootError != nil || candidateError != nil {
-		return "", false
-	}
-
-	relativePath, relativeError := filepath.Rel(absoluteRoot, absoluteCandidate)
-	if relativeError != nil {
-		return "", false
-	}
-	normalizedRelativePath := normalizeMapKeyPath(relativePath)
-	if normalizedRelativePath == "" {
-		return "", false
-	}
-	if strings.HasPrefix(normalizedRelativePath, "../") ||
-		normalizedRelativePath == ".." {
-		return "", false
-	}
-	return normalizedRelativePath, true
-}
-
 // normalizeChangedPaths normalizes and deduplicates changed path list.
 func normalizeChangedPaths(changedPaths []string) []string {
 	seen := make(map[string]struct{}, len(changedPaths))

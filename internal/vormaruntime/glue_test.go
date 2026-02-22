@@ -1080,6 +1080,122 @@ func TestInitWithDefaultRouter_Integration(t *testing.T) {
 	}
 }
 
+func TestInitWithDefaultRouter_DevReloadEndpointsAreMountedAsActions(
+	t *testing.T,
+) {
+	stageOld := defaultPathsFile("build-old", map[string]*Path{
+		"/hello": {
+			OriginalPattern: "/hello",
+			SrcPath:         "frontend/src/routes/hello.tsx",
+			OutPath:         "vorma_out/routes/hello.js",
+			ExportKey:       "default",
+		},
+	})
+	stageNew := defaultPathsFile("build-new", map[string]*Path{
+		"/hello": {
+			OriginalPattern: "/hello",
+			SrcPath:         "frontend/src/routes/hello.tsx",
+			OutPath:         "vorma_out/routes/hello.js",
+			ExportKey:       "default",
+		},
+		"/new": {
+			OriginalPattern: "/new",
+			SrcPath:         "frontend/src/routes/new.tsx",
+			OutPath:         "vorma_out/routes/new.js",
+			ExportKey:       "default",
+		},
+	})
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stageOld,
+		stageTwo: stageOld,
+	})
+	app := fixture.app
+
+	t.Setenv("__WAVE_MODE", "development")
+	router := app.MustInitWithDefaultRouter()
+
+	t.Run("reload_template_endpoint", func(t *testing.T) {
+		mustWriteFile(
+			t,
+			filepath.Join(fixture.privateDir, "entry.go.html"),
+			[]byte(
+				"<!doctype html><html><body>NEW TEMPLATE {{.VormaBodyScripts}}</body></html>",
+			),
+		)
+
+		req := httptest.NewRequest(
+			http.MethodPost,
+			app.DevReloadTemplateEndpointPath(),
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if body := strings.TrimSpace(rec.Body.String()); body != "ok" {
+			t.Fatalf("body = %q, want %q", body, "ok")
+		}
+	})
+
+	t.Run("reload_routes_endpoint", func(t *testing.T) {
+		mustWriteJSONFile(
+			t,
+			filepath.Join(
+				fixture.privateDir,
+				VormaOutDirname,
+				VormaPathsStageOneJSONFileName,
+			),
+			stageNew,
+		)
+
+		req := httptest.NewRequest(
+			http.MethodPost,
+			app.DevReloadRoutesEndpointPath(),
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if body := strings.TrimSpace(rec.Body.String()); body != "ok" {
+			t.Fatalf("body = %q, want %q", body, "ok")
+		}
+		if got := app.BuildID(); got != "build-new" {
+			t.Fatalf("BuildID() = %q, want %q", got, "build-new")
+		}
+	})
+}
+
+func TestInitWithDefaultRouter_DevReloadEndpointsAreNotMountedInProd(
+	t *testing.T,
+) {
+	fixture := newTestFixture(t, testFixtureOptions{})
+	app := fixture.app
+	app.SetIsDev(false)
+	router := app.MustInitWithDefaultRouter()
+
+	for _, path := range []string{
+		app.DevReloadRoutesEndpointPath(),
+		app.DevReloadTemplateEndpointPath(),
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf(
+				"path %q status = %d, want %d",
+				path,
+				rec.Code,
+				http.StatusNotFound,
+			)
+		}
+	}
+}
+
 func TestInitWithDefaultRouter_RespectsSupportedMethods(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{
 		actionsRouterOpts: ActionsRouterOptions{

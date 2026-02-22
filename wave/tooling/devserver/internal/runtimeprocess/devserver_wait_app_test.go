@@ -2,8 +2,6 @@ package runtimeprocess_test
 
 import (
 	"fmt"
-	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -17,11 +15,6 @@ import (
 type staticAssetDirsForTests = struct {
 	Private string `json:"Private"`
 	Public  string `json:"Public"`
-}
-
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
 }
 
 func TestWaitForApp_UsesConfiguredHealthcheckEndpoint(t *testing.T) {
@@ -73,10 +66,6 @@ func TestResolveAppReadyURL_UsesIPv4LoopbackHost(t *testing.T) {
 	if resolvedURL != expectedURL {
 		t.Fatalf("ResolveAppReadyURL()=%q, want %q", resolvedURL, expectedURL)
 	}
-}
-
-func newDiscardLoggerForRuntimeprocessWaitTests() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 func newParsedConfigForRuntimeprocessWaitTestsAtRoot(

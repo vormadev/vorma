@@ -20,11 +20,6 @@ type staticAssetDirsForTests = struct {
 	Public  string `json:"Public"`
 }
 
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 func TestBuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(t *testing.T) {
 	root := t.TempDir()
 	pattern := filepath.ToSlash(filepath.Join(root, "assets", "**", "*.css"))

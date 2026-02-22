@@ -17,11 +17,6 @@ type staticAssetDirsForTests = struct {
 	Public  string `json:"Public"`
 }
 
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 func TestWritePublicFileMapTS_WritesSortedTSAndJSONOutputs(t *testing.T) {
 	root := t.TempDir()
 	outDir := filepath.Join(root, "generated")

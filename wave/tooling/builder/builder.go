@@ -13,7 +13,6 @@ import (
 
 	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/lab/jsonschema"
-	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/tooling/builder/internal/css"
@@ -45,17 +44,6 @@ type Builder struct {
 	cssProcessor    *css.Processor
 	staticProcessor *static.Processor
 	schemaProcessor *schema.Processor
-
-	criticalCSSBuildContextIdentity  *cssBuildContextIdentity
-	criticalCSSBuildContextModeIsDev bool
-	criticalCSSBuildContextEntryPath string
-
-	normalCSSBuildContextIdentity  *cssBuildContextIdentity
-	normalCSSBuildContextModeIsDev bool
-	normalCSSBuildContextEntryPath string
-
-	cssBuildContextIdentityHistory []*cssBuildContextIdentity
-	nextCSSBuildContextSerial      uint64
 }
 
 // NewBuilder creates a build orchestrator for one parsed config.
@@ -170,7 +158,9 @@ func (builder *Builder) registerSchemaSection(
 		return
 	}
 	if builder.cfg.FrameworkSchemaExtensions == nil {
-		builder.cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
+		builder.cfg.FrameworkSchemaExtensions = make(
+			map[string]jsonschema.Entry,
+		)
 	}
 	builder.cfg.FrameworkSchemaExtensions[name] = schemaSection
 }
@@ -222,10 +212,11 @@ func (builder *Builder) processFiles(granular bool, isDev bool) error {
 		return nil
 	}
 
+	if processPublicError := builder.ProcessPublicFilesOnly(); processPublicError != nil {
+		return processPublicError
+	}
+
 	var processGroup errgroup.Group
-	processGroup.Go(func() error {
-		return builder.ProcessPublicFilesOnly()
-	})
 	processGroup.Go(func() error {
 		return builder.ProcessPrivateFilesOnly()
 	})
@@ -259,40 +250,33 @@ func (builder *Builder) Build(options BuildOpts) error {
 		return hookError
 	}
 
-	var buildGroup errgroup.Group
-	if options.CompileGo {
-		buildGroup.Go(func() error {
-			if compileError := builder.CompileGo(); compileError != nil {
-				return fmt.Errorf("go compilation failed: %w", compileError)
-			}
-			return nil
-		})
-	}
-
 	if builder.cfg.UsingBrowser() {
-		buildGroup.Go(func() error {
-			if processPublicError := builder.ProcessPublicFilesOnly(); processPublicError != nil {
-				return processPublicError
-			}
-			if processPrivateError := builder.ProcessPrivateFilesOnly(); processPrivateError != nil {
-				return processPrivateError
-			}
-			return nil
-		})
+		if processPublicError := builder.ProcessPublicFilesOnly(); processPublicError != nil {
+			return processPublicError
+		}
 
-		buildGroup.Go(func() error {
+		var browserBuildGroup errgroup.Group
+		browserBuildGroup.Go(func() error {
+			return builder.ProcessPrivateFilesOnly()
+		})
+		browserBuildGroup.Go(func() error {
 			return builder.BuildCSS(
 				CSSBuildOptions{BuildCriticalCSS: true, BuildNormalCSS: true},
 			)
 		})
+		if browserBuildError := browserBuildGroup.Wait(); browserBuildError != nil {
+			return browserBuildError
+		}
 	}
 
-	buildGroup.Go(func() error {
-		return builder.schemaProcessor.WriteSchema()
-	})
+	if schemaWriteError := builder.schemaProcessor.WriteSchema(); schemaWriteError != nil {
+		return schemaWriteError
+	}
 
-	if buildError := buildGroup.Wait(); buildError != nil {
-		return buildError
+	if options.CompileGo {
+		if compileError := builder.compileGoForMode(options.IsDev); compileError != nil {
+			return fmt.Errorf("go compilation failed: %w", compileError)
+		}
 	}
 
 	if builder.cfg.FrameworkPublicFileMapOutDir != "" {
@@ -313,65 +297,98 @@ func (builder *Builder) Build(options BuildOpts) error {
 
 // CompileGo compiles the configured go binary output.
 func (builder *Builder) CompileGo() error {
+	return builder.compileGoForMode(true)
+}
+
+func buildGoBuildArguments(
+	binaryOutputPath string,
+	mainEntryPath string,
+	isDev bool,
+	overlayConfigPath string,
+) []string {
+	goBuildArguments := []string{"build"}
+
+	trimmedOverlayConfigPath := strings.TrimSpace(overlayConfigPath)
+	if trimmedOverlayConfigPath != "" {
+		goBuildArguments = append(
+			goBuildArguments,
+			"-overlay="+trimmedOverlayConfigPath,
+		)
+	}
+
+	if !isDev {
+		goBuildArguments = append(goBuildArguments, "-tags=prod")
+	}
+
+	goBuildArguments = append(
+		goBuildArguments,
+		"-o",
+		binaryOutputPath,
+		resolveGoBuildEntryPath(mainEntryPath),
+	)
+	return goBuildArguments
+}
+
+func (builder *Builder) compileGoForMode(isDev bool) error {
 	if builder == nil || builder.cfg == nil {
 		return errors.New("builder config is nil")
 	}
 
-	commandExecutionContext := context.Background()
 	overlayCleanup := func() error { return nil }
+	overlayConfigPath := ""
 	if builder.cfg.FrameworkPrepareGoBuildOverlay != nil {
 		overlay, overlayError := builder.cfg.FrameworkPrepareGoBuildOverlay()
 		if overlayError != nil {
 			return overlayError
 		}
 		if overlay != nil {
-			if strings.TrimSpace(overlay.OverlayConfigPath) != "" {
-				commandExecutionContext = context.WithValue(
-					commandExecutionContext,
-					overlayContextKey{},
-					overlay.OverlayConfigPath,
-				)
-			}
+			overlayConfigPath = strings.TrimSpace(overlay.OverlayConfigPath)
 			if overlay.Cleanup != nil {
 				overlayCleanup = overlay.Cleanup
 			}
 		}
 	}
-	defer func() {
-		_ = overlayCleanup()
-	}()
 
 	binaryOutputPath := builder.cfg.Dist.Binary()
 	if ensureDirectoryError := shared.EnsureDirectoryForFile(binaryOutputPath); ensureDirectoryError != nil {
+		if cleanupError := overlayCleanup(); cleanupError != nil {
+			return fmt.Errorf(
+				"ensure output directory for go binary: %w (cleanup framework go build overlay failed: %v)",
+				ensureDirectoryError,
+				cleanupError,
+			)
+		}
 		return ensureDirectoryError
 	}
 
-	goBuildArguments := []string{
-		"build",
-		"-o",
+	goBuildArguments := buildGoBuildArguments(
 		binaryOutputPath,
-		resolveGoBuildEntryPath(builder.cfg.Core.MainAppEntry),
-	}
-	if overlayConfigPath, found := commandExecutionContext.Value(overlayContextKey{}).(string); found &&
-		strings.TrimSpace(overlayConfigPath) != "" {
-		goBuildArguments = append(
-			[]string{
-				"build",
-				"-overlay",
-				overlayConfigPath,
-				"-o",
-				binaryOutputPath,
-				resolveGoBuildEntryPath(builder.cfg.Core.MainAppEntry),
-			},
-			[]string{}...)
-	}
+		builder.cfg.Core.MainAppEntry,
+		isDev,
+		overlayConfigPath,
+	)
 
 	goBuildCommand := exec.Command("go", goBuildArguments...)
 	goBuildCommand.Stdout = os.Stdout
 	goBuildCommand.Stderr = os.Stderr
 	goBuildCommand.Env = os.Environ()
-	if runError := goBuildCommand.Run(); runError != nil {
+	runError := goBuildCommand.Run()
+	cleanupError := overlayCleanup()
+	if runError != nil {
+		if cleanupError != nil {
+			return fmt.Errorf(
+				"compile go binary: %w (cleanup framework go build overlay failed: %v)",
+				runError,
+				cleanupError,
+			)
+		}
 		return fmt.Errorf("compile go binary: %w", runError)
+	}
+	if cleanupError != nil {
+		return fmt.Errorf(
+			"cleanup framework go build overlay: %w",
+			cleanupError,
+		)
 	}
 
 	builder.log.Info("compiled go binary", "out", binaryOutputPath)
@@ -414,16 +431,10 @@ func (builder *Builder) ReadNormalCSSURLForHotReload(
 }
 
 // getPublicURLBuildtimeCached resolves one public path and panics on miss/error.
-func (builder *Builder) getPublicURLBuildtimeCached(originalPath string) string {
+func (builder *Builder) getPublicURLBuildtimeCached(
+	originalPath string,
+) string {
 	return builder.staticProcessor.MustPublicURLBuildtime(originalPath)
-}
-
-// loadFileMapFromPath loads one gob-encoded file map from disk.
-func (builder *Builder) loadFileMapFromPath(path string) (wave.FileMap, error) {
-	if builder == nil || builder.staticProcessor == nil {
-		return nil, errors.New("static processor is unavailable")
-	}
-	return builder.staticProcessor.LoadFileMapFromPath(path)
 }
 
 // saveFileMap saves one gob-encoded file map to disk.
@@ -453,42 +464,6 @@ func (builder *Builder) LoadPublicFileMap() (wave.FileMap, error) {
 	return builder.staticProcessor.LoadFileMapFromPath(
 		builder.cfg.Dist.PublicFileMapGob(),
 	)
-}
-
-// loadPrivateFileMap loads the current private static file map.
-func (builder *Builder) loadPrivateFileMap() (wave.FileMap, error) {
-	if builder == nil || builder.staticProcessor == nil {
-		return nil, errors.New("static processor is unavailable")
-	}
-	return builder.staticProcessor.LoadFileMapFromPath(
-		builder.cfg.Dist.PrivateFileMapGob(),
-	)
-}
-
-// publicFileMapKeys returns sorted public file-map keys excluding prehashed entries.
-func (builder *Builder) publicFileMapKeys() ([]string, error) {
-	if builder == nil || builder.staticProcessor == nil {
-		return nil, errors.New("static processor is unavailable")
-	}
-	return builder.staticProcessor.PublicFileMapKeys()
-}
-
-// simplePublicFileMap returns path->distName map excluding prehashed entries.
-func (builder *Builder) simplePublicFileMap() (map[string]string, error) {
-	if builder == nil || builder.staticProcessor == nil {
-		return nil, errors.New("static processor is unavailable")
-	}
-	return builder.staticProcessor.SimplePublicFileMap()
-}
-
-// addPublicAssetKeys appends typed public asset key declarations.
-func (builder *Builder) addPublicAssetKeys(
-	statements *tsgen.Statements,
-) (*tsgen.Statements, error) {
-	if builder == nil || builder.staticProcessor == nil {
-		return nil, errors.New("static processor is unavailable")
-	}
-	return builder.staticProcessor.AddPublicAssetKeys(statements)
 }
 
 // ProcessPublicFilesOnly performs full-scan public static processing.
@@ -545,30 +520,6 @@ func (builder *Builder) WritePublicFileMapTS(outDir string) error {
 		return errors.New("static processor is unavailable")
 	}
 	return builder.staticProcessor.WritePublicFileMapTS(outDir)
-}
-
-// publicURLBuildtime resolves one original public path at build time.
-func (builder *Builder) publicURLBuildtime(
-	originalPath string,
-) (string, error) {
-	if builder == nil || builder.staticProcessor == nil {
-		return "", errors.New("static processor is unavailable")
-	}
-	resolvedURL, found, resolutionError := builder.staticProcessor.PublicURLBuildtime(
-		originalPath,
-	)
-	if resolutionError != nil {
-		return "", resolutionError
-	}
-	if !found {
-		return "", fmt.Errorf("no hashed URL found for %q", originalPath)
-	}
-	return resolvedURL, nil
-}
-
-// mustPublicURLBuildtime resolves one original path and panics on miss/error.
-func (builder *Builder) mustPublicURLBuildtime(originalPath string) string {
-	return builder.staticProcessor.MustPublicURLBuildtime(originalPath)
 }
 
 // IsCriticalCSSFile reports whether path is configured critical CSS entry.
@@ -687,22 +638,6 @@ func deriveBuildHookCommandTimeoutDuration(
 	) * time.Millisecond
 }
 
-// resolveSequentialShellCommands joins non-empty commands into one shell command.
-func resolveSequentialShellCommands(commands ...string) string {
-	resolvedCommands := make([]string, 0, len(commands))
-	for _, command := range commands {
-		trimmedCommand := strings.TrimSpace(command)
-		if trimmedCommand == "" {
-			continue
-		}
-		resolvedCommands = append(resolvedCommands, trimmedCommand)
-	}
-	if len(resolvedCommands) == 0 {
-		return ""
-	}
-	return strings.Join(resolvedCommands, " && ")
-}
-
 // deriveExecutionContextWithOptionalTimeout applies timeout only when set.
 func deriveExecutionContextWithOptionalTimeout(
 	parentContext context.Context,
@@ -715,34 +650,6 @@ func deriveExecutionContextWithOptionalTimeout(
 		return parentContext, nil
 	}
 	return context.WithTimeout(parentContext, timeoutDuration)
-}
-
-// executeShellCommandWithContext executes one shell command with inherited stdio.
-func executeShellCommandWithContext(
-	commandExecutionContext context.Context,
-	command string,
-) error {
-	trimmedCommand := strings.TrimSpace(command)
-	if trimmedCommand == "" {
-		return nil
-	}
-	if commandExecutionContext == nil {
-		commandExecutionContext = context.Background()
-	}
-
-	executionCommand := exec.CommandContext(
-		commandExecutionContext,
-		"sh",
-		"-c",
-		trimmedCommand,
-	)
-	executionCommand.Stdout = os.Stdout
-	executionCommand.Stderr = os.Stderr
-	executionCommand.Env = os.Environ()
-	if runError := executionCommand.Run(); runError != nil {
-		return runError
-	}
-	return nil
 }
 
 // SetupDistDir creates required dist directory structure and keep-file.
@@ -786,71 +693,6 @@ func (builder *Builder) ensureOutputDirectories() error {
 	return SetupDistDir(builder.cfg)
 }
 
-// overlayContextKey is context key for go build overlay configuration path.
-type overlayContextKey struct{}
-
-// cssBuildContextIdentity is a pointer-identity token for CSS build context state.
-type cssBuildContextIdentity struct {
-	serial uint64
-}
-
-func (builder *Builder) newCSSBuildContextIdentity() *cssBuildContextIdentity {
-	if builder == nil {
-		return nil
-	}
-	builder.nextCSSBuildContextSerial++
-	return &cssBuildContextIdentity{
-		serial: builder.nextCSSBuildContextSerial,
-	}
-}
-
-func (builder *Builder) refreshCriticalCSSBuildContextIdentity(isDev bool) {
-	if builder == nil || builder.cfg == nil {
-		return
-	}
-	entryPath := normalizeCSSContextEntryPath(builder.cfg.CriticalCSSEntry())
-	if builder.criticalCSSBuildContextIdentity == nil ||
-		builder.criticalCSSBuildContextModeIsDev != isDev ||
-		builder.criticalCSSBuildContextEntryPath != entryPath {
-		builder.criticalCSSBuildContextIdentity = builder.newCSSBuildContextIdentity()
-		builder.cssBuildContextIdentityHistory = append(
-			builder.cssBuildContextIdentityHistory,
-			builder.criticalCSSBuildContextIdentity,
-		)
-		builder.criticalCSSBuildContextModeIsDev = isDev
-		builder.criticalCSSBuildContextEntryPath = entryPath
-	}
-}
-
-func (builder *Builder) refreshNormalCSSBuildContextIdentity(isDev bool) {
-	if builder == nil || builder.cfg == nil {
-		return
-	}
-	entryPath := normalizeCSSContextEntryPath(builder.cfg.NonCriticalCSSEntry())
-	if builder.normalCSSBuildContextIdentity == nil ||
-		builder.normalCSSBuildContextModeIsDev != isDev ||
-		builder.normalCSSBuildContextEntryPath != entryPath {
-		builder.normalCSSBuildContextIdentity = builder.newCSSBuildContextIdentity()
-		builder.cssBuildContextIdentityHistory = append(
-			builder.cssBuildContextIdentityHistory,
-			builder.normalCSSBuildContextIdentity,
-		)
-		builder.normalCSSBuildContextModeIsDev = isDev
-		builder.normalCSSBuildContextEntryPath = entryPath
-	}
-}
-
-func normalizeCSSContextEntryPath(entryPath string) string {
-	if strings.TrimSpace(entryPath) == "" {
-		return ""
-	}
-	absoluteEntryPath, absoluteEntryPathError := filepath.Abs(entryPath)
-	if absoluteEntryPathError == nil {
-		return filepath.Clean(absoluteEntryPath)
-	}
-	return filepath.Clean(entryPath)
-}
-
 // ValidateConfig validates configuration semantics needed by tooling build workflows.
 func ValidateConfig(cfg *wave.ParsedConfig) error {
 	if cfg == nil {
@@ -883,7 +725,9 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 
 	if !cfg.Core.ServerOnlyMode {
 		if strings.TrimSpace(cfg.Core.StaticAssetDirs.Private) == "" {
-			return errors.New("config: Core.StaticAssetDirs.Private is required")
+			return errors.New(
+				"config: Core.StaticAssetDirs.Private is required",
+			)
 		}
 		if strings.TrimSpace(cfg.Core.StaticAssetDirs.Public) == "" {
 			return errors.New("config: Core.StaticAssetDirs.Public is required")
@@ -1194,7 +1038,11 @@ func validateWatchGlobPattern(
 	fieldPath string,
 	globPattern string,
 ) error {
-	return shared.ValidateNamedGlobPatternInput("config", fieldPath, globPattern)
+	return shared.ValidateNamedGlobPatternInput(
+		"config",
+		fieldPath,
+		globPattern,
+	)
 }
 
 const (

@@ -17,11 +17,6 @@ type staticAssetDirsForTests = struct {
 	Public  string `json:"Public"`
 }
 
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 func newParsedConfigForSchemaPackageTestsAtRoot(root string) *wave.ParsedConfig {
 	cfg := &wave.ParsedConfig{
 		Core: &wave.CoreConfig{

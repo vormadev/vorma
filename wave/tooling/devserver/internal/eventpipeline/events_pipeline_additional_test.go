@@ -451,6 +451,343 @@ func TestProcessSingleEvent_RunOnChangeOnlyPostCallbackCanTriggerBrowserReload(
 	)
 }
 
+func TestProcessSingleEvent_SiteStyleRouteRegistryChangeUsesFastReloadOnly(
+	t *testing.T,
+) {
+	harness := newEventPipelineHarness(t, false)
+	defer harness.watcher.Close()
+
+	routeRegistryPath := filepath.Join(
+		t.TempDir(),
+		"frontend",
+		"src",
+		"routes",
+		"core.vorma.routes.ts",
+	)
+
+	work := &eventpipeline.WorkSet{}
+	eventWithHooks := eventpipeline.EventWithHooks{
+		Classified: eventpipeline.ClassifiedEvent{
+			Event:    waveEventForEventPipelineTests(routeRegistryPath),
+			FileType: eventpipeline.FileTypeOther,
+			WatchedFile: &wave.WatchedFile{
+				RunOnChangeOnly:            true,
+				SkipRebuildingNotification: true,
+			},
+		},
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
+			Post: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return &wave.RefreshAction{
+							ReloadBrowser: true,
+							WaitForApp:    true,
+							WaitForVite:   true,
+						}, nil
+					},
+				},
+			},
+		},
+		RunOnChangeOnly: true,
+	}
+
+	runEventsWithDerivedExecutionPlanForEventPipelineTests(
+		harness,
+		[]eventpipeline.EventWithHooks{eventWithHooks},
+		work,
+	)
+
+	if work.Build.CompileGo ||
+		work.Build.BuildCriticalCSS ||
+		work.Build.BuildNormalCSS ||
+		work.Build.ProcessPublicFiles ||
+		work.Build.ProcessPrivateFiles {
+		t.Fatalf(
+			"expected no implicit build work for route registry fast reload, got %#v",
+			work.Build,
+		)
+	}
+	if work.Restart.RestartApp {
+		t.Fatalf(
+			"expected no app restart for route registry fast reload, got %#v",
+			work.Restart,
+		)
+	}
+
+	select {
+	case msg := <-harness.browserReloads:
+		if msg.Payload.ChangeType != broadcast.ChangeTypeOther {
+			t.Fatalf("expected hard reload payload, got %#v", msg)
+		}
+		if !msg.WaitApp || !msg.WaitVite {
+			t.Fatalf(
+				"expected fast reload to wait for app+vite, got waitApp=%v waitVite=%v",
+				msg.WaitApp,
+				msg.WaitVite,
+			)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for route-registry fast reload payload")
+	}
+
+	assertNoPendingRestartRequestForEventPipelineTests(
+		t,
+		harness.restartAccumulator,
+	)
+}
+
+func TestProcessSingleEvent_SiteStyleTemplateChangeProcessesChangedPathWithoutRestart(
+	t *testing.T,
+) {
+	harness := newEventPipelineHarness(t, false)
+	defer harness.watcher.Close()
+
+	templatePath := filepath.Join(
+		t.TempDir(),
+		"backend",
+		"assets",
+		"entry.go.html",
+	)
+
+	work := &eventpipeline.WorkSet{}
+	eventWithHooks := eventpipeline.EventWithHooks{
+		Classified: eventpipeline.ClassifiedEvent{
+			Event:    waveEventForEventPipelineTests(templatePath),
+			FileType: eventpipeline.FileTypePrivateStatic,
+		},
+		HookCtx: &wave.HookContext{},
+		Hooks: &wave.SortedHooks{
+			Post: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return &wave.RefreshAction{
+							ReloadBrowser: true,
+							WaitForApp:    true,
+							WaitForVite:   true,
+						}, nil
+					},
+				},
+			},
+		},
+		RunOnChangeOnly: false,
+	}
+
+	runEventsWithDerivedExecutionPlanForEventPipelineTests(
+		harness,
+		[]eventpipeline.EventWithHooks{eventWithHooks},
+		work,
+	)
+
+	if !work.Build.ProcessPrivateFiles {
+		t.Fatalf(
+			"expected template change to process private static changed path, got %#v",
+			work.Build,
+		)
+	}
+	if len(work.Build.PrivateStaticChangedFilePaths) != 1 ||
+		work.Build.PrivateStaticChangedFilePaths[0] != templatePath {
+		t.Fatalf(
+			"expected one template changed path %q, got %#v",
+			templatePath,
+			work.Build.PrivateStaticChangedFilePaths,
+		)
+	}
+	if work.Build.CompileGo ||
+		work.Build.BuildCriticalCSS ||
+		work.Build.BuildNormalCSS ||
+		work.Build.ProcessPublicFiles {
+		t.Fatalf(
+			"expected no unrelated build work for template change, got %#v",
+			work.Build,
+		)
+	}
+	if work.Restart.RestartApp {
+		t.Fatalf(
+			"expected no app restart for template callback success, got %#v",
+			work.Restart,
+		)
+	}
+
+	select {
+	case msg := <-harness.browserReloads:
+		if msg.Payload.ChangeType != broadcast.ChangeTypeOther {
+			t.Fatalf("expected hard reload payload, got %#v", msg)
+		}
+		if !msg.WaitApp || !msg.WaitVite {
+			t.Fatalf(
+				"expected template fast reload to wait for app+vite, got waitApp=%v waitVite=%v",
+				msg.WaitApp,
+				msg.WaitVite,
+			)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for template fast reload payload")
+	}
+
+	assertNoPendingRestartRequestForEventPipelineTests(
+		t,
+		harness.restartAccumulator,
+	)
+}
+
+func TestProcessSingleEvent_SiteStyleMarkdownChangeRevalidatesWithoutRestart(
+	t *testing.T,
+) {
+	harness := newEventPipelineHarness(t, false)
+	defer harness.watcher.Close()
+
+	markdownPath := filepath.Join(
+		t.TempDir(),
+		"backend",
+		"assets",
+		"markdown",
+		"blog",
+		"post.md",
+	)
+
+	work := &eventpipeline.WorkSet{}
+	eventWithHooks := eventpipeline.EventWithHooks{
+		Classified: eventpipeline.ClassifiedEvent{
+			Event:    waveEventForEventPipelineTests(markdownPath),
+			FileType: eventpipeline.FileTypePrivateStatic,
+			WatchedFile: &wave.WatchedFile{
+				OnlyRunClientDefinedRevalidateFunc: true,
+				SkipRebuildingNotification:         true,
+			},
+		},
+		HookCtx: &wave.HookContext{},
+		Hooks:   &wave.SortedHooks{},
+	}
+
+	runEventsWithDerivedExecutionPlanForEventPipelineTests(
+		harness,
+		[]eventpipeline.EventWithHooks{eventWithHooks},
+		work,
+	)
+
+	if !work.Build.ProcessPrivateFiles {
+		t.Fatalf(
+			"expected markdown change to process private static changed path, got %#v",
+			work.Build,
+		)
+	}
+	if len(work.Build.PrivateStaticChangedFilePaths) != 1 ||
+		work.Build.PrivateStaticChangedFilePaths[0] != markdownPath {
+		t.Fatalf(
+			"expected one markdown changed path %q, got %#v",
+			markdownPath,
+			work.Build.PrivateStaticChangedFilePaths,
+		)
+	}
+	if !work.PreferRevalidate {
+		t.Fatalf(
+			"expected markdown change to prefer revalidate, got work=%#v",
+			work,
+		)
+	}
+	if work.Restart.RestartApp {
+		t.Fatalf(
+			"expected markdown revalidate flow not to restart app, got %#v",
+			work.Restart,
+		)
+	}
+
+	select {
+	case msg := <-harness.browserReloads:
+		if msg.Payload.ChangeType != broadcast.ChangeTypeRevalidate {
+			t.Fatalf("expected revalidate payload, got %#v", msg)
+		}
+		if !msg.WaitApp {
+			t.Fatalf("expected markdown revalidate payload to wait for app, got %#v", msg)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for markdown revalidate payload")
+	}
+
+	assertNoPendingRestartRequestForEventPipelineTests(
+		t,
+		harness.restartAccumulator,
+	)
+}
+
+func TestProcessSingleEvent_SiteStylePublicStaticChangeUsesChangedPathProcessingOnly(
+	t *testing.T,
+) {
+	harness := newEventPipelineHarness(t, false)
+	defer harness.watcher.Close()
+
+	publicStaticPath := filepath.Join(
+		t.TempDir(),
+		"frontend",
+		"assets",
+		"logo.svg",
+	)
+
+	work := &eventpipeline.WorkSet{}
+	eventWithHooks := eventpipeline.EventWithHooks{
+		Classified: eventpipeline.ClassifiedEvent{
+			Event:    waveEventForEventPipelineTests(publicStaticPath),
+			FileType: eventpipeline.FileTypePublicStatic,
+			WatchedFile: &wave.WatchedFile{
+				SkipRebuildingNotification: true,
+			},
+		},
+		HookCtx: &wave.HookContext{},
+		Hooks:   &wave.SortedHooks{},
+	}
+
+	runEventsWithDerivedExecutionPlanForEventPipelineTests(
+		harness,
+		[]eventpipeline.EventWithHooks{eventWithHooks},
+		work,
+	)
+
+	if !work.Build.ProcessPublicFiles {
+		t.Fatalf(
+			"expected public static change to process changed public path, got %#v",
+			work.Build,
+		)
+	}
+	if len(work.Build.PublicStaticChangedFilePaths) != 1 ||
+		work.Build.PublicStaticChangedFilePaths[0] != publicStaticPath {
+		t.Fatalf(
+			"expected one public changed path %q, got %#v",
+			publicStaticPath,
+			work.Build.PublicStaticChangedFilePaths,
+		)
+	}
+	if work.Build.CompileGo ||
+		work.Build.BuildCriticalCSS ||
+		work.Build.BuildNormalCSS ||
+		work.Build.ProcessPrivateFiles {
+		t.Fatalf(
+			"expected no unrelated build work for public static change, got %#v",
+			work.Build,
+		)
+	}
+	if work.Restart.RestartApp {
+		t.Fatalf(
+			"expected no restart for public static changed-path processing, got %#v",
+			work.Restart,
+		)
+	}
+
+	select {
+	case msg := <-harness.browserReloads:
+		t.Fatalf(
+			"did not expect browser reload payload in non-vite harness, got %#v",
+			msg,
+		)
+	default:
+	}
+
+	assertNoPendingRestartRequestForEventPipelineTests(
+		t,
+		harness.restartAccumulator,
+	)
+}
+
 func TestProcessSingleEvent_ImplicitRestartStartsApp(t *testing.T) {
 	harness := newEventPipelineHarness(t, true)
 	defer harness.watcher.Close()

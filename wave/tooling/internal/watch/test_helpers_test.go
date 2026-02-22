@@ -13,11 +13,6 @@ type staticAssetDirsForTests = struct {
 	Public  string `json:"Public"`
 }
 
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 func newDiscardLoggerForWatchTests() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

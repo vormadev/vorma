@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -182,6 +183,61 @@ func TestResolveGoBuildEntryPath_PrefixesRelativeExistingDirectoryWithDotSlash(
 	resolvedEntryPath := resolveGoBuildEntryPath("backend/cmd/check")
 	if resolvedEntryPath != "./backend/cmd/check" {
 		t.Fatalf("resolved go build entry path = %q, expected %q", resolvedEntryPath, "./backend/cmd/check")
+	}
+}
+
+func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
+	goBuildArguments := buildGoBuildArguments(
+		"/tmp/wave-binary",
+		"backend/cmd/serve",
+		true,
+		"",
+	)
+
+	for _, goBuildArgument := range goBuildArguments {
+		if goBuildArgument == "-tags=prod" {
+			t.Fatalf("did not expect -tags=prod in dev build args: %#v", goBuildArguments)
+		}
+	}
+}
+
+func TestBuildGoBuildCommand_ProdBuildUsesEmbeddedDistStaticByDefault(t *testing.T) {
+	goBuildArguments := buildGoBuildArguments(
+		"/tmp/wave-binary",
+		"backend/cmd/serve",
+		false,
+		"",
+	)
+
+	containsProdTag := false
+	for _, goBuildArgument := range goBuildArguments {
+		if goBuildArgument == "-tags=prod" {
+			containsProdTag = true
+			break
+		}
+	}
+	if !containsProdTag {
+		t.Fatalf("expected -tags=prod in prod build args: %#v", goBuildArguments)
+	}
+}
+
+func TestBuildGoBuildCommand_IncludesOverlayArgumentWhenProvided(t *testing.T) {
+	goBuildArguments := buildGoBuildArguments(
+		"/tmp/wave-binary",
+		"backend/cmd/serve",
+		true,
+		"/tmp/go-build-overlay.json",
+	)
+
+	containsOverlayArgument := false
+	for _, goBuildArgument := range goBuildArguments {
+		if goBuildArgument == "-overlay=/tmp/go-build-overlay.json" {
+			containsOverlayArgument = true
+			break
+		}
+	}
+	if !containsOverlayArgument {
+		t.Fatalf("expected overlay argument in go build args: %#v", goBuildArguments)
 	}
 }
 
@@ -381,6 +437,111 @@ func TestBuilderCompileGo_UsesFrameworkOverlayPreparationAndCleanup(
 	}
 	if !cleanupOverlayCalled {
 		t.Fatal("expected framework go-build overlay cleanup to run")
+	}
+}
+
+func TestBuilderCompileGo_PropagatesOverlayPreparationError(t *testing.T) {
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config.Core.ServerOnlyMode = true
+	config.Dist.Root = config.Core.DistDir
+
+	expectedOverlayPreparationError := errors.New("prepare overlay boom")
+	config.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
+		return nil, expectedOverlayPreparationError
+	}
+
+	builderForTest := NewBuilder(
+		config,
+		newDiscardLoggerForBuilderBasicTests(),
+	)
+	defer builderForTest.Close()
+
+	compileError := builderForTest.CompileGo()
+	if compileError == nil {
+		t.Fatal("expected CompileGo to fail when framework overlay preparation fails")
+	}
+	if !strings.Contains(
+		compileError.Error(),
+		expectedOverlayPreparationError.Error(),
+	) {
+		t.Fatalf("expected overlay preparation error to propagate, got: %v", compileError)
+	}
+}
+
+func TestBuilderCompileGo_CompileFailureIncludesOverlayCleanupFailure(
+	t *testing.T,
+) {
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config.Core.ServerOnlyMode = true
+	config.Core.MainAppEntry = "this/package/does/not/exist"
+	config.Dist.Root = config.Core.DistDir
+
+	config.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
+		return &wave.GoBuildOverlay{
+			Cleanup: func() error {
+				return errors.New("cleanup overlay boom")
+			},
+		}, nil
+	}
+
+	builderForTest := NewBuilder(
+		config,
+		newDiscardLoggerForBuilderBasicTests(),
+	)
+	defer builderForTest.Close()
+
+	compileError := builderForTest.CompileGo()
+	if compileError == nil {
+		t.Fatal("expected CompileGo to fail for missing package")
+	}
+	if !strings.Contains(compileError.Error(), "compile go binary") {
+		t.Fatalf("expected compile failure text in error, got: %v", compileError)
+	}
+	if !strings.Contains(
+		compileError.Error(),
+		"cleanup framework go build overlay failed",
+	) {
+		t.Fatalf("expected cleanup failure text in compile error, got: %v", compileError)
+	}
+}
+
+func TestBuilderCompileGo_SuccessfulCompileStillReturnsOverlayCleanupFailure(
+	t *testing.T,
+) {
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config.Core.ServerOnlyMode = true
+	config.Core.MainAppEntry = "github.com/vormadev/vorma/internal/cmd/sum"
+	config.Dist.Root = config.Core.DistDir
+
+	config.FrameworkPrepareGoBuildOverlay = func() (*wave.GoBuildOverlay, error) {
+		return &wave.GoBuildOverlay{
+			Cleanup: func() error {
+				return errors.New("cleanup overlay boom")
+			},
+		}, nil
+	}
+
+	builderForTest := NewBuilder(
+		config,
+		newDiscardLoggerForBuilderBasicTests(),
+	)
+	defer builderForTest.Close()
+
+	compileError := builderForTest.CompileGo()
+	if compileError == nil {
+		t.Fatal("expected CompileGo to fail when overlay cleanup fails")
+	}
+	if !strings.Contains(
+		compileError.Error(),
+		"cleanup framework go build overlay",
+	) {
+		t.Fatalf("expected cleanup failure error, got: %v", compileError)
+	}
+	if _, statError := os.Stat(config.Dist.Binary()); statError != nil {
+		t.Fatalf(
+			"expected go binary to exist when compilation succeeds before cleanup failure, stat error: %v",
+			statError,
+		)
 	}
 }
 

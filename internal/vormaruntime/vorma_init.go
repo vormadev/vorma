@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"net/http"
 	"path"
 	"strings"
 
@@ -30,6 +31,18 @@ func (v *Vorma) MustInitWithDefaultRouter() *mux.Router {
 	r.AddHTTPHandler("GET", loaders.HandlerMountPattern(), loaders.Handler())
 	for m := range actions.SupportedMethods() {
 		r.AddHTTPHandler(m, actions.HandlerMountPattern(), actions.Handler())
+	}
+	if v.IsDevMode() {
+		r.AddHTTPHandler(
+			http.MethodPost,
+			v.DevReloadRoutesEndpointPath(),
+			actions.Handler(),
+		)
+		r.AddHTTPHandler(
+			http.MethodPost,
+			v.DevReloadTemplateEndpointPath(),
+			actions.Handler(),
+		)
 	}
 	return r
 }

@@ -567,6 +567,30 @@ func TestLoadersHandler_NotFoundAndHTMLResponseHeaders(t *testing.T) {
 		}
 	})
 
+	t.Run("unknown_asset_like_path_is_not_found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/fonts.css", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+		if got := rec.Header().Get(VormaBuildIDHeaderKey); got != "build-known" {
+			t.Fatalf(
+				"%s = %q, want %q",
+				VormaBuildIDHeaderKey,
+				got,
+				"build-known",
+			)
+		}
+		if strings.Contains(rec.Body.String(), "<!doctype html>") {
+			t.Fatalf(
+				"asset-like not found path should not render document html, body=%q",
+				rec.Body.String(),
+			)
+		}
+	})
+
 	t.Run("html_route_sets_default_cache_control", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/known", nil)
 		rec := httptest.NewRecorder()
@@ -2358,7 +2382,7 @@ func TestLoadersHandler_RespectsExistingCacheControlHeader(t *testing.T) {
 	}
 }
 
-func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
+func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 	stageOld := defaultPathsFile("build-old", map[string]*Path{
 		"/hello": {
 			OriginalPattern: "/hello",
@@ -2390,7 +2414,8 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 	})
 	app := fixture.app
 	app.SetIsDev(true)
-	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+	loadersHandler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+	actionsHandler := mux.InjectTasksCtxMiddleware(app.Actions().Handler())
 
 	t.Run("reload_routes_success", func(t *testing.T) {
 		mustWriteJSONFile(
@@ -2409,7 +2434,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			nil,
 		)
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
+		actionsHandler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -2427,7 +2452,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			nil,
 		)
 		routeRec := httptest.NewRecorder()
-		handler.ServeHTTP(routeRec, routeReq)
+		loadersHandler.ServeHTTP(routeRec, routeReq)
 		if routeRec.Code != http.StatusOK {
 			t.Fatalf(
 				"new route status = %d, want %d",
@@ -2450,7 +2475,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 	t.Run("reload_template_success", func(t *testing.T) {
 		beforeReq := httptest.NewRequest(http.MethodGet, "/hello", nil)
 		beforeRec := httptest.NewRecorder()
-		handler.ServeHTTP(beforeRec, beforeReq)
+		loadersHandler.ServeHTTP(beforeRec, beforeReq)
 		if beforeRec.Code != http.StatusOK {
 			t.Fatalf(
 				"status before template reload = %d, want %d",
@@ -2478,7 +2503,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			nil,
 		)
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
+		actionsHandler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
@@ -2488,7 +2513,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 
 		afterReq := httptest.NewRequest(http.MethodGet, "/hello", nil)
 		afterRec := httptest.NewRecorder()
-		handler.ServeHTTP(afterRec, afterReq)
+		loadersHandler.ServeHTTP(afterRec, afterReq)
 		if afterRec.Code != http.StatusOK {
 			t.Fatalf(
 				"status after template reload = %d, want %d",
@@ -2511,7 +2536,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 		} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
-			handler.ServeHTTP(rec, req)
+			actionsHandler.ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusMethodNotAllowed {
 				t.Fatalf(
@@ -2527,6 +2552,32 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 					path,
 					got,
 					http.MethodPost,
+				)
+			}
+		}
+	})
+
+	t.Run("reload_endpoints_are_not_served_by_loaders_handler", func(t *testing.T) {
+		for _, path := range []string{
+			app.DevReloadRoutesEndpointPath(),
+			app.DevReloadTemplateEndpointPath(),
+		} {
+			req := httptest.NewRequest(http.MethodPost, path, nil)
+			rec := httptest.NewRecorder()
+			loadersHandler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf(
+					"path %q status = %d, want %d",
+					path,
+					rec.Code,
+					http.StatusNotFound,
+				)
+			}
+			if strings.TrimSpace(rec.Body.String()) == "ok" {
+				t.Fatalf(
+					"path %q unexpectedly executed dev reload through loaders",
+					path,
 				)
 			}
 		}
@@ -2548,7 +2599,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			nil,
 		)
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
+		actionsHandler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf(
@@ -2568,7 +2619,7 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 			nil,
 		)
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
+		actionsHandler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf(
@@ -2580,11 +2631,11 @@ func TestLoadersHandler_DevReloadEndpoints(t *testing.T) {
 	})
 }
 
-func TestLoadersHandler_DevReloadEndpointsNotExposedInProd(t *testing.T) {
+func TestActionsHandler_DevReloadEndpointsNotExposedInProd(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 	app.SetIsDev(false)
-	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+	handler := mux.InjectTasksCtxMiddleware(app.Actions().Handler())
 
 	for _, path := range []string{
 		app.DevReloadRoutesEndpointPath(),

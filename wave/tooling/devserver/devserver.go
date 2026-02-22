@@ -799,9 +799,6 @@ func (server *runtimeServer) prepareRunCycle(
 
 	if !firstRun && server.Cfg != nil && server.Cfg.Core != nil &&
 		strings.TrimSpace(server.Cfg.Core.ConfigLocation) != "" {
-		if currentRunIntent.IsConfigRestart {
-			_ = server.WaitForApp()
-		}
 		if _, reloadConfigError := server.ReloadConfig(); reloadConfigError != nil {
 			return fmt.Errorf("reload config: %w", reloadConfigError)
 		}
@@ -1259,10 +1256,7 @@ func (server *runtimeServer) shouldBroadcastReloadPayloadAfterReadiness(
 
 	server.Mu.Lock()
 	defer server.Mu.Unlock()
-	if server.ViteContext != nil {
-		return false
-	}
-	return true
+	return server.ViteContext == nil
 }
 
 // BuildEventExecutionPlan classifies events and builds hook-ready execution plan.
@@ -1499,6 +1493,9 @@ func (server *runtimeServer) ClassifyWatcherEventsForProcessing(
 func (server *runtimeServer) applyWatcherEventPreClassificationSideEffects(
 	watcherEvent fsnotify.Event,
 ) (bool, error) {
+	if !isConfigMutationWatcherEvent(watcherEvent) {
+		return false, nil
+	}
 	if server.IsConfigFile(watcherEvent.Name) {
 		_, reloadError := server.ReloadConfig()
 		if reloadError != nil {
@@ -1507,6 +1504,13 @@ func (server *runtimeServer) applyWatcherEventPreClassificationSideEffects(
 		return true, nil
 	}
 	return false, nil
+}
+
+func isConfigMutationWatcherEvent(watcherEvent fsnotify.Event) bool {
+	return watcherEvent.Has(fsnotify.Write) ||
+		watcherEvent.Has(fsnotify.Create) ||
+		watcherEvent.Has(fsnotify.Remove) ||
+		watcherEvent.Has(fsnotify.Rename)
 }
 
 // classifyWatcherEventsFromPreClassificationPlan classifies events after pre side effects.

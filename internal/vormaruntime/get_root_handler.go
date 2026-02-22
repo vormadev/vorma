@@ -61,10 +61,6 @@ func (v *Vorma) LoadersHandler() mux.TasksCtxRequirerFunc {
 		nestedRouter := v.LoadersRouter().NestedRouter
 		v.loadersHandler = mux.TasksCtxRequirerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
-				if v.handleDevReloadEndpoints(w, r, v.IsDevMode()) {
-					return
-				}
-
 				res := response.New(w)
 				requestedBuildID := r.URL.Query().Get(VormaJSONQueryKey)
 				isJSON := requestedBuildID != ""
@@ -119,7 +115,7 @@ func (v *Vorma) LoadersHandler() mux.TasksCtxRequirerFunc {
 	return v.loadersHandler
 }
 
-func (v *Vorma) handleDevReloadEndpoints(
+func (v *Vorma) handleDevReloadActionEndpoints(
 	w http.ResponseWriter,
 	r *http.Request,
 	isDevMode bool,
@@ -509,6 +505,9 @@ func (v *Vorma) ActionsHandler() mux.TasksCtxRequirerFunc {
 			func(w http.ResponseWriter, r *http.Request) {
 				res := response.New(w)
 				res.SetHeader(VormaBuildIDHeaderKey, v.BuildID())
+				if v.handleDevReloadActionEndpoints(w, r, v.IsDevMode()) {
+					return
+				}
 				router.ServeHTTP(w, r)
 			},
 		)
