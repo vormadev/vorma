@@ -31,12 +31,14 @@ import (
 	"github.com/vormadev/vorma/wave/tooling/devserver"
 )
 
+type toolingBuildOptions = builder.BuildOpts
+
 type runtimeBuildDependencies struct {
 	runWaveViteProductionBuild func(*vormaruntime.Vorma) error
 	runPostViteProductionBuild func(*vormaruntime.Vorma) error
 	setWaveModeToDev           func()
 	runWaveDevelopmentServer   func(*vormaruntime.Vorma) error
-	runWaveProductionBuild     func(*vormaruntime.Vorma, toolingbuilder.BuildOpts) error
+	runWaveProductionBuild     func(*vormaruntime.Vorma, toolingBuildOptions) error
 }
 
 type runtimeBuildToolingDependencies struct {
@@ -46,7 +48,7 @@ type runtimeBuildToolingDependencies struct {
 
 type runtimeWaveBuilder interface {
 	ViteProdBuild() error
-	Build(toolingbuilder.BuildOpts) error
+	Build(toolingBuildOptions) error
 	Close() error
 }
 
@@ -75,7 +77,7 @@ type runtimeBuildExecutor struct {
 func defaultRuntimeBuildToolingDependencies() runtimeBuildToolingDependencies {
 	return runtimeBuildToolingDependencies{
 		newWaveBuilder: func(v *vormaruntime.Vorma) runtimeWaveBuilder {
-			return toolingbuilder.NewBuilder(
+			return builder.NewBuilder(
 				configureBuildEnvironment(v),
 				v.Wave.Logger(),
 			)
@@ -126,7 +128,7 @@ func defaultRuntimeBuildDependencies() runtimeBuildDependencies {
 		},
 		runWaveProductionBuild: func(
 			v *vormaruntime.Vorma,
-			options toolingbuilder.BuildOpts,
+			options toolingBuildOptions,
 		) error {
 			return defaultRuntimeBuildToolingExecutor.runWaveProductionBuild(
 				v,
@@ -273,7 +275,7 @@ func runWaveDevelopmentServerWithToolingDependencies(
 
 func runWaveProductionBuildWithToolingDependencies(
 	v *vormaruntime.Vorma,
-	options toolingbuilder.BuildOpts,
+	options toolingBuildOptions,
 	dependencies runtimeBuildToolingDependencies,
 ) error {
 	return newRuntimeBuildToolingExecutor(
@@ -300,7 +302,7 @@ func (toolingExecutor runtimeBuildToolingExecutor) runWaveDevelopmentServer(
 
 func (toolingExecutor runtimeBuildToolingExecutor) runWaveProductionBuild(
 	v *vormaruntime.Vorma,
-	options toolingbuilder.BuildOpts,
+	options toolingBuildOptions,
 ) error {
 	return toolingExecutor.runWithRuntimeWaveBuilder(
 		v,
@@ -364,8 +366,8 @@ func (runtimeBuildOperations runtimeBuildOperationExecutor) prepareDevBuildRunti
 	)
 }
 
-func productionBuildOptions(noBinary bool) toolingbuilder.BuildOpts {
-	return toolingbuilder.BuildOpts{
+func productionBuildOptions(noBinary bool) toolingBuildOptions {
+	return toolingBuildOptions{
 		CompileGo: !noBinary,
 		IsDev:     false,
 		IsRebuild: false,

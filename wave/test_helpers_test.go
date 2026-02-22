@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/vormadev/vorma/wave/internal/waveshared"
+	"github.com/vormadev/vorma/wave/internal/wavecore"
 )
 
 type waveTestFixture struct {
@@ -25,23 +25,23 @@ func newWaveTestFixture(t *testing.T) *waveTestFixture {
 		Core: &CoreConfig{
 			MainAppEntry: "cmd/app",
 			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: StaticAssetDirs{
+			StaticAssetDirs: staticAssetDirs{
 				Public:  filepath.Join(root, "public-src"),
 				Private: filepath.Join(root, "private-src"),
 			},
-			CSSEntryFiles: CSSEntryFiles{
+			CSSEntryFiles: cssEntryFiles{
 				Critical:    "./src/critical.css",
 				NonCritical: "./src/non_critical.css",
 			},
 			PublicPathPrefix: "/assets/",
 		},
-		Vite: &ViteConfig{DefaultPort: 5173},
+		Vite: &viteConfig{DefaultPort: 5173},
 		Watch: &WatchConfig{
 			WatchRoot:           "./watch/root",
 			HealthcheckEndpoint: "/healthz",
 		},
 	}
-	cfg.Dist = DistLayout{Root: cfg.Core.DistDir}
+	cfg.Dist = distLayout{Root: cfg.Core.DistDir}
 
 	mustEnsureDir(t, cfg.Dist.StaticPublic())
 	mustEnsureDir(t, cfg.Dist.StaticPrivate())
@@ -122,7 +122,7 @@ func setWaveDevModeForTest(t *testing.T, isDev bool) {
 }
 
 func resetPortCacheForTest() {
-	waveshared.ResetDefaultResolverForTest()
+	wavecore.ResetDefaultResolverForTest()
 }
 
 func mustReadFileFromFS(t *testing.T, filesystem fs.FS, filePath string) string {

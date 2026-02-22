@@ -1,22 +1,8 @@
-// Package tooling contains Wave build-time and development-time orchestration.
-//
-// It is intentionally separate from package wave runtime APIs so production
-// binaries can depend on runtime functionality without pulling in build/dev
-// tool dependencies.
-//
-// Major responsibilities include:
-// - static asset processing and file mapping
-// - CSS/Vite build integration
-// - devserver lifecycle, watch pipelines, and restart orchestration
-// - config validation and schema generation
-//
-// Internal subpackages define explicit boundaries for isolated concerns. For
-// example, watcher pre/post classification decisions live in
-// internal/classification.
-package toolingbuilder
+package builder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -25,585 +11,1002 @@ import (
 	"strings"
 	"time"
 
-	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
-	"github.com/vormadev/vorma/wave/tooling/builder/css"
-	"github.com/vormadev/vorma/wave/tooling/builder/schema"
-	"github.com/vormadev/vorma/wave/tooling/builder/static"
-	"github.com/vormadev/vorma/wave/tooling/toolingshared"
+	"github.com/vormadev/vorma/wave/tooling/builder/internal/css"
+	"github.com/vormadev/vorma/wave/tooling/builder/internal/schema"
+	"github.com/vormadev/vorma/wave/tooling/builder/internal/static"
+	"github.com/vormadev/vorma/wave/tooling/internal/shared"
 	"golang.org/x/sync/errgroup"
 )
 
-// Builder handles build operations. It is safe to reuse across multiple builds.
-type Builder struct {
-	cfg    *wave.ParsedConfig
-	log    *slog.Logger
-	css    *css.Processor
-	static *static.Processor
-}
-
-// BuildOpts configures a build
+// BuildOpts controls top-level build execution behavior.
 type BuildOpts struct {
 	CompileGo    bool
 	IsDev        bool
 	IsRebuild    bool
-	FileOnlyMode bool // Skip hooks and binary
+	FileOnlyMode bool
 }
 
-// NewBuilder creates a new Builder
+// CSSBuildOptions controls CSS pipeline build behavior.
+type CSSBuildOptions struct {
+	BuildCriticalCSS bool
+	BuildNormalCSS   bool
+}
+
+// Builder owns build pipelines for go, CSS, static files, and schema output.
+type Builder struct {
+	cfg *wave.ParsedConfig
+	log *slog.Logger
+
+	cssProcessor    *css.Processor
+	staticProcessor *static.Processor
+	schemaProcessor *schema.Processor
+
+	criticalCSSBuildContextIdentity  *cssBuildContextIdentity
+	criticalCSSBuildContextModeIsDev bool
+	criticalCSSBuildContextEntryPath string
+
+	normalCSSBuildContextIdentity  *cssBuildContextIdentity
+	normalCSSBuildContextModeIsDev bool
+	normalCSSBuildContextEntryPath string
+
+	cssBuildContextIdentityHistory []*cssBuildContextIdentity
+	nextCSSBuildContextSerial      uint64
+}
+
+// NewBuilder creates a build orchestrator for one parsed config.
 func NewBuilder(cfg *wave.ParsedConfig, log *slog.Logger) *Builder {
 	if log == nil {
-		log = colorlog.New("wave")
+		log = slog.Default()
 	}
 
-	b := &Builder{
-		cfg: cfg,
-		log: log,
+	staticProcessor := static.NewProcessor(cfg, log)
+	return &Builder{
+		cfg:             cfg,
+		log:             log,
+		staticProcessor: staticProcessor,
+		cssProcessor: css.NewProcessor(
+			cfg,
+			log,
+			func(originalPath string) (string, bool, error) {
+				return staticProcessor.PublicURLBuildtime(originalPath)
+			},
+		),
+		schemaProcessor: schema.NewProcessor(cfg, log),
 	}
-	b.static = static.NewProcessor(cfg, log)
-	b.css = css.NewProcessor(cfg, log, b.static.GetPublicURLBuildtimeCached)
-	return b
 }
 
-// Close releases resources held by the builder (e.g., esbuild contexts).
-// Should be called when the builder is no longer needed.
-func (b *Builder) Close() error {
-	if b.css != nil {
-		return b.css.Close()
+// Close closes builder resources.
+func (builder *Builder) Close() error {
+	if builder == nil {
+		return nil
 	}
 	return nil
-}
-
-// Config returns a defensive read-only config snapshot.
-// Unstable internal callback/schema fields are omitted.
-func (b *Builder) Config() *wave.ParsedConfig {
-	return b.cfg.Clone()
-}
-
-// RegisterSchemaSection adds a custom section to the generated JSON schema.
-// This allows frameworks to extend wave.config.json with their own configuration
-// while maintaining IDE autocomplete support.
-func (b *Builder) RegisterSchemaSection(
-	name string,
-	schema jsonschema.Entry,
-) {
-	if b.cfg.FrameworkSchemaExtensions == nil {
-		b.cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
-	}
-	b.cfg.FrameworkSchemaExtensions[name] = schema
-}
-
-// ViteProdBuild runs a Vite production build
-func (b *Builder) ViteProdBuild() error {
-	if !b.cfg.UsingVite() {
-		return nil
-	}
-	return b.viteCtx().ProdBuild()
-}
-
-func (b *Builder) viteCtx() *vitecmd.BuildCtx {
-	return vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
-		JSPackageManagerBaseCmd: b.cfg.Vite.JSPackageManagerBaseCmd,
-		JSPackageManagerCmdDir:  b.cfg.Vite.JSPackageManagerCmdDir,
-		OutDir:                  b.cfg.Dist.StaticPublic(),
-		ManifestOut:             b.cfg.ViteManifestPath(),
-		ViteConfigFile:          b.cfg.Vite.ViteConfigFile,
-		DefaultPort:             b.cfg.Vite.DefaultPort,
-	})
-}
-
-// NewViteDevContext creates a new Vite dev context
-func (b *Builder) NewViteDevContext() (*vitecmd.BuildCtx, error) {
-	if !b.cfg.UsingVite() {
-		return nil, nil
-	}
-	ctx := b.viteCtx()
-	if err := ctx.DevBuild(); err != nil {
-		return nil, err
-	}
-	return ctx, nil
-}
-
-// SetupDistDir creates the required dist directory structure
-func SetupDistDir(cfg *wave.ParsedConfig) error {
-	dirs := []string{
-		cfg.Dist.Internal(),
-		cfg.Dist.StaticPublic(),
-		cfg.Dist.StaticPrivate(),
-	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-	}
-
-	// Create .keep file for go:embed
-	keepPath := cfg.Dist.KeepFile()
-	return os.WriteFile(
-		keepPath,
-		[]byte("//go:embed directives require at least one file to compile\n"),
-		0o644,
-	)
-}
-
-// ReadCriticalCSS reads the critical CSS content from dist
-func (b *Builder) ReadCriticalCSS() (string, error) {
-	return b.ReadCriticalCSSForHotReload(false)
-}
-
-// ReadNormalCSSURL reads the normal CSS URL from the ref file
-func (b *Builder) ReadNormalCSSURL() (string, error) {
-	return b.ReadNormalCSSURLForHotReload(false)
-}
-
-// ReadCriticalCSSForHotReload reads critical CSS for browser hot reload.
-// When requireFreshBuildOutput is true, stale fallback reads from dist are disabled.
-func (b *Builder) ReadCriticalCSSForHotReload(
-	requireFreshBuildOutput bool,
-) (string, error) {
-	return b.css.ReadCriticalCSSHotReloadOutput(requireFreshBuildOutput)
-}
-
-// ReadNormalCSSURLForHotReload reads the normal CSS URL for browser hot reload.
-// When requireFreshBuildOutput is true, stale fallback reads from dist are disabled.
-func (b *Builder) ReadNormalCSSURLForHotReload(
-	requireFreshBuildOutput bool,
-) (string, error) {
-	return b.css.ReadNormalCSSHotReloadURL(requireFreshBuildOutput)
-}
-
-// GetPublicURLBuildtimeCached resolves a public URL using cached file map (for CSS builds).
-// Panics if the file map cannot be loaded or if the lookup misses.
-func (b *Builder) GetPublicURLBuildtimeCached(original string) string {
-	return b.static.GetPublicURLBuildtimeCached(original)
-}
-
-func (b *Builder) LoadFileMapFromPath(gobPath string) (wave.FileMap, error) {
-	return b.static.LoadFileMapFromPath(gobPath)
-}
-
-func (b *Builder) SaveFileMap(fm wave.FileMap, gobPath string) error {
-	return b.static.SaveFileMap(fm, gobPath)
-}
-
-func (b *Builder) SavePublicFileMapJS(fm wave.FileMap) error {
-	return b.static.SavePublicFileMapJS(fm)
-}
-
-func (b *Builder) WritePublicFileMapTS(outDir string) error {
-	return b.static.WritePublicFileMapTS(outDir)
-}
-
-func (b *Builder) MustPublicURLBuildtime(original string) string {
-	return b.static.MustPublicURLBuildtime(original)
-}
-
-func (b *Builder) PublicURLBuildtime(original string) (string, error) {
-	return b.static.PublicURLBuildtime(original)
-}
-
-func (b *Builder) PublicFileMapKeys() ([]string, error) {
-	return b.static.PublicFileMapKeys()
-}
-
-func (b *Builder) SimplePublicFileMap() (map[string]string, error) {
-	return b.static.SimplePublicFileMap()
-}
-
-func (b *Builder) LoadPublicFileMap() (wave.FileMap, error) {
-	return b.static.LoadPublicFileMap()
-}
-
-func (b *Builder) AddPublicAssetKeys(
-	statements *tsgen.Statements,
-) (*tsgen.Statements, error) {
-	return b.static.AddPublicAssetKeys(statements)
-}
-
-func (b *Builder) IsCriticalCSSFile(path string) bool {
-	return b.css.IsCriticalFile(path)
-}
-
-func (b *Builder) IsNormalCSSFile(path string) bool {
-	return b.css.IsNormalFile(path)
-}
-
-func (b *Builder) IsCSSFile(path string) bool {
-	return b.css.IsCSSFile(path)
-}
-
-func (b *Builder) SetTrackedCriticalCSSImportPaths(importPaths []string) {
-	b.css.SetTrackedCriticalCSSImportPaths(importPaths)
-}
-
-func (b *Builder) SetTrackedNormalCSSImportPaths(importPaths []string) {
-	b.css.SetTrackedNormalCSSImportPaths(importPaths)
-}
-
-func (b *Builder) ListTrackedCriticalCSSImportPaths() []string {
-	return b.css.ListTrackedCriticalCSSImportPaths()
-}
-
-func (b *Builder) CountTrackedCriticalCSSImportPaths() int {
-	return b.css.CountTrackedCriticalCSSImportPaths()
-}
-
-func (b *Builder) CriticalCSSBuildContext() esbuild.BuildContext {
-	return b.css.CriticalCSSBuildContext()
-}
-
-func (b *Builder) NormalCSSBuildContext() esbuild.BuildContext {
-	return b.css.NormalCSSBuildContext()
-}
-
-// Build performs a full build
-func (b *Builder) Build(opts BuildOpts) error {
-	start := time.Now()
-
-	// Validate config before building
-	if err := ValidateConfig(b.cfg); err != nil {
-		return fmt.Errorf("config validation failed: %w", err)
-	}
-
-	if !opts.FileOnlyMode {
-		b.log.Info("START build", "compile_go", opts.CompileGo, "is_dev", opts.IsDev)
-	}
-
-	// Process static files (before hooks)
-	if err := b.processFiles(opts.IsRebuild, opts.IsDev); err != nil {
-		return fmt.Errorf("file processing failed: %w", err)
-	}
-
-	if opts.FileOnlyMode {
-		return nil
-	}
-
-	// Run build hooks
-	hookStart := time.Now()
-	if err := b.runHooks(opts.IsDev); err != nil {
-		return fmt.Errorf("build hook failed: %w", err)
-	}
-	hookDur := time.Since(hookStart)
-
-	// Process files again (hooks may have generated files)
-	if err := b.processFiles(true, opts.IsDev); err != nil {
-		return fmt.Errorf("post-hook file processing failed: %w", err)
-	}
-
-	// Write config schema
-	if err := schema.WriteConfigSchema(b.cfg); err != nil {
-		b.log.Warn("failed to write config schema (non-fatal)", "error", err)
-	}
-
-	// Compile Go binary
-	var goDur time.Duration
-	if opts.CompileGo {
-		goStart := time.Now()
-		if err := b.compileGo(opts.IsDev); err != nil {
-			return fmt.Errorf("go compilation failed: %w", err)
-		}
-		goDur = time.Since(goStart)
-	}
-
-	total := time.Since(start)
-	b.log.Info("DONE build",
-		"total", total,
-		"hooks", hookDur,
-		"go", goDur,
-		"wave", total-hookDur-goDur,
-	)
-
-	return nil
-}
-
-func (b *Builder) processFiles(granular bool, isDev bool) error {
-	if !granular {
-		// Selective cleanup: remove contents except lock files
-		staticDir := b.cfg.Dist.Static()
-		entries, err := os.ReadDir(staticDir)
-		if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("read dist/static: %w", err)
-		}
-		for _, entry := range entries {
-			// Preserve Wave dev lock files
-			if toolingshared.IsLockFile(entry.Name()) {
-				continue
-			}
-			if err := os.RemoveAll(filepath.Join(staticDir, entry.Name())); err != nil {
-				return fmt.Errorf("remove %s: %w", entry.Name(), err)
-			}
-		}
-		if err := SetupDistDir(b.cfg); err != nil {
-			return fmt.Errorf("setup dist dir: %w", err)
-		}
-	}
-
-	if !b.cfg.UsingBrowser() {
-		return nil
-	}
-
-	// Public files first (CSS may reference them)
-	if err := b.static.ProcessPublicFiles(granular); err != nil {
-		return fmt.Errorf("public files: %w", err)
-	}
-
-	// Private files and CSS in parallel
-	var group errgroup.Group
-	group.Go(func() error {
-		return b.static.ProcessPrivateFiles(granular)
-	})
-	group.Go(func() error {
-		return b.css.BuildAll(isDev)
-	})
-	return group.Wait()
-}
-
-func (b *Builder) runHooks(isDev bool) error {
-	var userHook, frameworkHook string
-	frameworkRunBuildHook := b.cfg.FrameworkRunBuildHook
-	if isDev {
-		userHook = b.cfg.Core.DevBuildHook
-		frameworkHook = b.cfg.FrameworkDevBuildHook
-	} else {
-		userHook = b.cfg.Core.ProdBuildHook
-		frameworkHook = b.cfg.FrameworkProdBuildHook
-	}
-
-	// User hooks first -- they may generate Go types used in loaders/actions
-	buildHookCommandTimeout := b.deriveBuildHookCommandTimeout(isDev)
-	if userHook != "" {
-		if err := runBuildHookCommandWithTimeout(
-			userHook,
-			buildHookCommandTimeout,
-		); err != nil {
-			return fmt.Errorf("user build hook failed: %w", err)
-		}
-	}
-
-	// Framework hooks second -- Vorma reflects on the final Go types
-	if frameworkRunBuildHook != nil {
-		frameworkHookExecutionContext, cancelFrameworkHookExecutionContext := deriveExecutionContextWithOptionalTimeout(
-			context.Background(),
-			buildHookCommandTimeout,
-		)
-		if cancelFrameworkHookExecutionContext != nil {
-			defer cancelFrameworkHookExecutionContext()
-		}
-		if err := frameworkRunBuildHook(frameworkHookExecutionContext, isDev); err != nil {
-			return fmt.Errorf("framework build hook failed: %w", err)
-		}
-		return nil
-	}
-	if frameworkHook != "" {
-		if err := runBuildHookCommandWithTimeout(
-			frameworkHook,
-			buildHookCommandTimeout,
-		); err != nil {
-			return fmt.Errorf("framework build hook failed: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (b *Builder) deriveBuildHookCommandTimeout(
-	isDev bool,
-) time.Duration {
-	if b == nil || b.cfg == nil {
-		return 0
-	}
-	return deriveBuildHookCommandTimeoutDuration(
-		b.cfg.Core,
-		isDev,
-	)
-}
-
-func runBuildHookCommandWithTimeout(
-	buildHookCommand string,
-	buildHookCommandTimeout time.Duration,
-) error {
-	buildHookCommandExecutionContext, cancelBuildHookCommandExecutionContext := deriveExecutionContextWithOptionalTimeout(
-		context.Background(),
-		buildHookCommandTimeout,
-	)
-	if cancelBuildHookCommandExecutionContext != nil {
-		defer cancelBuildHookCommandExecutionContext()
-	}
-
-	return executil.RunShellWithContext(
-		buildHookCommandExecutionContext,
-		buildHookCommand,
-	)
-}
-
-func (b *Builder) compileGo(isDev bool) error {
-	start := time.Now()
-	b.log.Info("Compiling Go binary...")
-
-	frameworkGoBuildOverlay, err := prepareFrameworkGoBuildOverlay(b.cfg)
-	if err != nil {
-		return fmt.Errorf("prepare framework go build overlay: %w", err)
-	}
-
-	dest := b.cfg.Dist.Binary()
-	entry := fmt.Sprintf(".%c%s", filepath.Separator, filepath.Clean(b.cfg.Core.MainAppEntry))
-	goBuildOverlayPath := ""
-	if frameworkGoBuildOverlay != nil {
-		goBuildOverlayPath = strings.TrimSpace(frameworkGoBuildOverlay.OverlayConfigPath)
-	}
-	cmd := buildGoBuildCommand(dest, entry, isDev, goBuildOverlayPath)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	goBuildErr := cmd.Run()
-	cleanupOverlayErr := cleanupFrameworkGoBuildOverlay(frameworkGoBuildOverlay)
-	if goBuildErr != nil {
-		if cleanupOverlayErr != nil {
-			return fmt.Errorf(
-				"go build: %w (cleanup framework go build overlay failed: %v)",
-				goBuildErr,
-				cleanupOverlayErr,
-			)
-		}
-		return fmt.Errorf("go build: %w", goBuildErr)
-	}
-	if cleanupOverlayErr != nil {
-		return fmt.Errorf("cleanup framework go build overlay: %w", cleanupOverlayErr)
-	}
-
-	b.log.Info("DONE compiling Go", "duration", time.Since(start))
-	return nil
-}
-
-func prepareFrameworkGoBuildOverlay(
-	parsedCfg *wave.ParsedConfig,
-) (*wave.GoBuildOverlay, error) {
-	if parsedCfg == nil || parsedCfg.FrameworkPrepareGoBuildOverlay == nil {
-		return nil, nil
-	}
-
-	frameworkGoBuildOverlay, err := parsedCfg.FrameworkPrepareGoBuildOverlay()
-	if err != nil {
-		return nil, err
-	}
-	return frameworkGoBuildOverlay, nil
-}
-
-func cleanupFrameworkGoBuildOverlay(
-	frameworkGoBuildOverlay *wave.GoBuildOverlay,
-) error {
-	if frameworkGoBuildOverlay == nil || frameworkGoBuildOverlay.Cleanup == nil {
-		return nil
-	}
-	return frameworkGoBuildOverlay.Cleanup()
 }
 
 func buildGoBuildCommand(
-	dest string,
-	entry string,
+	destinationPath string,
+	entryPath string,
 	isDev bool,
 	goBuildOverlayPath string,
 ) *exec.Cmd {
+	resolvedEntryPath := resolveGoBuildEntryPath(entryPath)
 	commandArguments := []string{"build"}
+
 	if strings.TrimSpace(goBuildOverlayPath) != "" {
-		commandArguments = append(commandArguments, "-overlay="+goBuildOverlayPath)
+		commandArguments = append(
+			commandArguments,
+			"-overlay="+goBuildOverlayPath,
+		)
 	}
 
 	if !isDev {
 		commandArguments = append(commandArguments, "-tags=prod")
 	}
 
-	commandArguments = append(commandArguments, "-o", dest, entry)
+	commandArguments = append(
+		commandArguments,
+		"-o",
+		destinationPath,
+		resolvedEntryPath,
+	)
 
 	return exec.Command("go", commandArguments...)
 }
 
-// BuildGoBuildCommand prepares a go build command for dev or prod compilation.
-func BuildGoBuildCommand(
-	dest string,
-	entry string,
+func resolveGoBuildEntryPath(entryPath string) string {
+	resolvedEntryPath := strings.TrimSpace(entryPath)
+	if resolvedEntryPath == "" {
+		return entryPath
+	}
+
+	if strings.HasPrefix(resolvedEntryPath, "./") ||
+		strings.HasPrefix(resolvedEntryPath, "../") ||
+		filepath.IsAbs(resolvedEntryPath) {
+		return resolvedEntryPath
+	}
+
+	if directoryInfo, statError := os.Stat(resolvedEntryPath); statError == nil &&
+		directoryInfo.IsDir() {
+		return "./" + resolvedEntryPath
+	}
+
+	return resolvedEntryPath
+}
+
+func (builder *Builder) viteBuildContext() *vitecmd.BuildCtx {
+	if builder == nil || builder.cfg == nil || builder.cfg.Vite == nil {
+		return nil
+	}
+	return vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
+		JSPackageManagerBaseCmd: builder.cfg.Vite.JSPackageManagerBaseCmd,
+		JSPackageManagerCmdDir:  builder.cfg.Vite.JSPackageManagerCmdDir,
+		OutDir:                  builder.cfg.Dist.StaticPublic(),
+		ManifestOut:             builder.cfg.ViteManifestPath(),
+		DefaultPort:             builder.cfg.Vite.DefaultPort,
+		ViteConfigFile:          builder.cfg.Vite.ViteConfigFile,
+	})
+}
+
+// ViteProdBuild runs a Vite production build.
+func (builder *Builder) ViteProdBuild() error {
+	if builder == nil || builder.cfg == nil || !builder.cfg.UsingVite() {
+		return nil
+	}
+	viteBuildContext := builder.viteBuildContext()
+	if viteBuildContext == nil {
+		return nil
+	}
+	return viteBuildContext.ProdBuild()
+}
+
+// NewViteDevContext creates and starts a new Vite development build context.
+func (builder *Builder) NewViteDevContext() (*vitecmd.BuildCtx, error) {
+	if builder == nil || builder.cfg == nil || !builder.cfg.UsingVite() {
+		return nil, nil
+	}
+	viteBuildContext := builder.viteBuildContext()
+	if viteBuildContext == nil {
+		return nil, nil
+	}
+	if viteBuildError := viteBuildContext.DevBuild(); viteBuildError != nil {
+		return nil, viteBuildError
+	}
+	return viteBuildContext, nil
+}
+
+// config returns a defensive read-only config snapshot.
+// Internal framework-only mutable fields are intentionally omitted.
+func (builder *Builder) config() *wave.ParsedConfig {
+	if builder == nil || builder.cfg == nil {
+		return nil
+	}
+	return builder.cfg.Clone()
+}
+
+// registerSchemaSection adds one framework-defined root section to schema output.
+func (builder *Builder) registerSchemaSection(
+	name string,
+	schemaSection jsonschema.Entry,
+) {
+	if builder == nil || builder.cfg == nil {
+		return
+	}
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	if builder.cfg.FrameworkSchemaExtensions == nil {
+		builder.cfg.FrameworkSchemaExtensions = make(map[string]jsonschema.Entry)
+	}
+	builder.cfg.FrameworkSchemaExtensions[name] = schemaSection
+}
+
+// processFilesOnly runs static and CSS processing without hooks or go compilation.
+func (builder *Builder) processFilesOnly(isRebuild bool, isDev bool) error {
+	return builder.processFiles(isRebuild, isDev)
+}
+
+func (builder *Builder) processFiles(granular bool, isDev bool) error {
+	_ = isDev
+	if builder == nil || builder.cfg == nil {
+		return errors.New("builder config is nil")
+	}
+
+	if !granular {
+		staticDirectoryPath := builder.cfg.Dist.Static()
+		directoryEntries, readDirectoryError := os.ReadDir(staticDirectoryPath)
+		if readDirectoryError != nil &&
+			!errors.Is(readDirectoryError, os.ErrNotExist) {
+			return fmt.Errorf(
+				"read dist static directory: %w",
+				readDirectoryError,
+			)
+		}
+		for _, directoryEntry := range directoryEntries {
+			if shared.IsLockFileName(directoryEntry.Name()) {
+				continue
+			}
+			entryPath := filepath.Join(
+				staticDirectoryPath,
+				directoryEntry.Name(),
+			)
+			if removeEntryError := os.RemoveAll(entryPath); removeEntryError != nil {
+				return fmt.Errorf(
+					"remove dist static entry %q: %w",
+					entryPath,
+					removeEntryError,
+				)
+			}
+		}
+	}
+
+	if ensureDirectoriesError := builder.ensureOutputDirectories(); ensureDirectoriesError != nil {
+		return ensureDirectoriesError
+	}
+
+	if !builder.cfg.UsingBrowser() {
+		return nil
+	}
+
+	var processGroup errgroup.Group
+	processGroup.Go(func() error {
+		return builder.ProcessPublicFilesOnly()
+	})
+	processGroup.Go(func() error {
+		return builder.ProcessPrivateFilesOnly()
+	})
+	processGroup.Go(func() error {
+		return builder.BuildCSS(
+			CSSBuildOptions{
+				BuildCriticalCSS: true,
+				BuildNormalCSS:   true,
+			},
+		)
+	})
+	return processGroup.Wait()
+}
+
+// Build executes one full build with selected options.
+func (builder *Builder) Build(options BuildOpts) error {
+	if builder == nil || builder.cfg == nil {
+		return errors.New("builder config is nil")
+	}
+	if validationError := ValidateConfig(builder.cfg); validationError != nil {
+		return validationError
+	}
+	if ensureError := builder.ensureOutputDirectories(); ensureError != nil {
+		return ensureError
+	}
+	if options.FileOnlyMode {
+		return builder.processFilesOnly(options.IsRebuild, options.IsDev)
+	}
+
+	if hookError := builder.runBuildHooks(options.IsDev); hookError != nil {
+		return hookError
+	}
+
+	var buildGroup errgroup.Group
+	if options.CompileGo {
+		buildGroup.Go(func() error {
+			if compileError := builder.CompileGo(); compileError != nil {
+				return fmt.Errorf("go compilation failed: %w", compileError)
+			}
+			return nil
+		})
+	}
+
+	if builder.cfg.UsingBrowser() {
+		buildGroup.Go(func() error {
+			if processPublicError := builder.ProcessPublicFilesOnly(); processPublicError != nil {
+				return processPublicError
+			}
+			if processPrivateError := builder.ProcessPrivateFilesOnly(); processPrivateError != nil {
+				return processPrivateError
+			}
+			return nil
+		})
+
+		buildGroup.Go(func() error {
+			return builder.BuildCSS(
+				CSSBuildOptions{BuildCriticalCSS: true, BuildNormalCSS: true},
+			)
+		})
+	}
+
+	buildGroup.Go(func() error {
+		return builder.schemaProcessor.WriteSchema()
+	})
+
+	if buildError := buildGroup.Wait(); buildError != nil {
+		return buildError
+	}
+
+	if builder.cfg.FrameworkPublicFileMapOutDir != "" {
+		if writeMapError := builder.writeFrameworkPublicFileMapTS(); writeMapError != nil {
+			return writeMapError
+		}
+	}
+
+	builder.log.Info(
+		"build completed",
+		"is_dev",
+		options.IsDev,
+		"is_rebuild",
+		options.IsRebuild,
+	)
+	return nil
+}
+
+// CompileGo compiles the configured go binary output.
+func (builder *Builder) CompileGo() error {
+	if builder == nil || builder.cfg == nil {
+		return errors.New("builder config is nil")
+	}
+
+	commandExecutionContext := context.Background()
+	overlayCleanup := func() error { return nil }
+	if builder.cfg.FrameworkPrepareGoBuildOverlay != nil {
+		overlay, overlayError := builder.cfg.FrameworkPrepareGoBuildOverlay()
+		if overlayError != nil {
+			return overlayError
+		}
+		if overlay != nil {
+			if strings.TrimSpace(overlay.OverlayConfigPath) != "" {
+				commandExecutionContext = context.WithValue(
+					commandExecutionContext,
+					overlayContextKey{},
+					overlay.OverlayConfigPath,
+				)
+			}
+			if overlay.Cleanup != nil {
+				overlayCleanup = overlay.Cleanup
+			}
+		}
+	}
+	defer func() {
+		_ = overlayCleanup()
+	}()
+
+	binaryOutputPath := builder.cfg.Dist.Binary()
+	if ensureDirectoryError := shared.EnsureDirectoryForFile(binaryOutputPath); ensureDirectoryError != nil {
+		return ensureDirectoryError
+	}
+
+	goBuildArguments := []string{
+		"build",
+		"-o",
+		binaryOutputPath,
+		resolveGoBuildEntryPath(builder.cfg.Core.MainAppEntry),
+	}
+	if overlayConfigPath, found := commandExecutionContext.Value(overlayContextKey{}).(string); found &&
+		strings.TrimSpace(overlayConfigPath) != "" {
+		goBuildArguments = append(
+			[]string{
+				"build",
+				"-overlay",
+				overlayConfigPath,
+				"-o",
+				binaryOutputPath,
+				resolveGoBuildEntryPath(builder.cfg.Core.MainAppEntry),
+			},
+			[]string{}...)
+	}
+
+	goBuildCommand := exec.Command("go", goBuildArguments...)
+	goBuildCommand.Stdout = os.Stdout
+	goBuildCommand.Stderr = os.Stderr
+	goBuildCommand.Env = os.Environ()
+	if runError := goBuildCommand.Run(); runError != nil {
+		return fmt.Errorf("compile go binary: %w", runError)
+	}
+
+	builder.log.Info("compiled go binary", "out", binaryOutputPath)
+	return nil
+}
+
+// compileGoOnly compiles the Go binary without running full build orchestration.
+func (builder *Builder) compileGoOnly(isDev bool) error {
+	_ = isDev
+	if compileError := builder.CompileGo(); compileError != nil {
+		return fmt.Errorf("go build failed: %w", compileError)
+	}
+	return nil
+}
+
+// BuildCSS executes CSS build pipelines.
+func (builder *Builder) BuildCSS(options CSSBuildOptions) error {
+	if builder == nil || builder.cssProcessor == nil {
+		return errors.New("css processor is unavailable")
+	}
+	return builder.cssProcessor.Build(css.BuildOptions{
+		BuildCriticalCSS: options.BuildCriticalCSS,
+		BuildNormalCSS:   options.BuildNormalCSS,
+	})
+}
+
+// buildAllCSS builds critical and non-critical CSS outputs.
+func (builder *Builder) buildAllCSS(isDev bool) error {
+	if buildCriticalCSSError := builder.buildCriticalCSS(isDev); buildCriticalCSSError != nil {
+		return buildCriticalCSSError
+	}
+	if buildNormalCSSError := builder.buildNormalCSS(isDev); buildNormalCSSError != nil {
+		return buildNormalCSSError
+	}
+	return nil
+}
+
+// buildCriticalCSS builds only the critical CSS pipeline.
+func (builder *Builder) buildCriticalCSS(isDev bool) error {
+	if builder == nil || builder.cssProcessor == nil {
+		return errors.New("css processor is unavailable")
+	}
+	builder.refreshCriticalCSSBuildContextIdentity(isDev)
+	if buildCriticalCSSError := builder.cssProcessor.BuildCriticalCSSOnly(); buildCriticalCSSError != nil {
+		return fmt.Errorf("build critical CSS: %w", buildCriticalCSSError)
+	}
+	return nil
+}
+
+// buildNormalCSS builds only the non-critical CSS pipeline.
+func (builder *Builder) buildNormalCSS(isDev bool) error {
+	if builder == nil || builder.cssProcessor == nil {
+		return errors.New("css processor is unavailable")
+	}
+	builder.refreshNormalCSSBuildContextIdentity(isDev)
+	if buildNormalCSSError := builder.cssProcessor.BuildNormalCSSOnly(); buildNormalCSSError != nil {
+		return fmt.Errorf("build normal CSS: %w", buildNormalCSSError)
+	}
+	return nil
+}
+
+// readCriticalCSS reads critical CSS output with stale-cache fallback.
+func (builder *Builder) readCriticalCSS() (string, error) {
+	return builder.ReadCriticalCSSForHotReload(false)
+}
+
+// readNormalCSSURL reads normal CSS URL with stale-cache fallback.
+func (builder *Builder) readNormalCSSURL() (string, error) {
+	return builder.ReadNormalCSSURLForHotReload(false)
+}
+
+// ReadCriticalCSSForHotReload reads critical CSS for browser hot reload.
+func (builder *Builder) ReadCriticalCSSForHotReload(
+	requireFreshBuildOutput bool,
+) (string, error) {
+	if builder == nil || builder.cssProcessor == nil {
+		return "", errors.New("css processor is unavailable")
+	}
+	return builder.cssProcessor.ReadCriticalCSSHotReloadOutput(
+		requireFreshBuildOutput,
+	)
+}
+
+// ReadNormalCSSURLForHotReload reads normal CSS URL for browser hot reload.
+func (builder *Builder) ReadNormalCSSURLForHotReload(
+	requireFreshBuildOutput bool,
+) (string, error) {
+	if builder == nil || builder.cssProcessor == nil {
+		return "", errors.New("css processor is unavailable")
+	}
+	return builder.cssProcessor.ReadNormalCSSHotReloadURL(
+		requireFreshBuildOutput,
+	)
+}
+
+// getPublicURLBuildtimeCached resolves one public path and panics on miss/error.
+func (builder *Builder) getPublicURLBuildtimeCached(originalPath string) string {
+	return builder.staticProcessor.MustPublicURLBuildtime(originalPath)
+}
+
+// loadFileMapFromPath loads one gob-encoded file map from disk.
+func (builder *Builder) loadFileMapFromPath(path string) (wave.FileMap, error) {
+	if builder == nil || builder.staticProcessor == nil {
+		return nil, errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.LoadFileMapFromPath(path)
+}
+
+// saveFileMap saves one gob-encoded file map to disk.
+func (builder *Builder) saveFileMap(
+	fileMap wave.FileMap,
+	path string,
+) error {
+	if builder == nil || builder.staticProcessor == nil {
+		return errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.SaveFileMap(fileMap, path)
+}
+
+// savePublicFileMapJS writes hashed JS + ref artifacts for the given public map.
+func (builder *Builder) savePublicFileMapJS(fileMap wave.FileMap) error {
+	if builder == nil || builder.staticProcessor == nil {
+		return errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.SavePublicFileMapJS(fileMap)
+}
+
+// LoadPublicFileMap loads the current public static file map.
+func (builder *Builder) LoadPublicFileMap() (wave.FileMap, error) {
+	if builder == nil || builder.staticProcessor == nil {
+		return nil, errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.LoadFileMapFromPath(
+		builder.cfg.Dist.PublicFileMapGob(),
+	)
+}
+
+// loadPrivateFileMap loads the current private static file map.
+func (builder *Builder) loadPrivateFileMap() (wave.FileMap, error) {
+	if builder == nil || builder.staticProcessor == nil {
+		return nil, errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.LoadFileMapFromPath(
+		builder.cfg.Dist.PrivateFileMapGob(),
+	)
+}
+
+// publicFileMapKeys returns sorted public file-map keys excluding prehashed entries.
+func (builder *Builder) publicFileMapKeys() ([]string, error) {
+	if builder == nil || builder.staticProcessor == nil {
+		return nil, errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.PublicFileMapKeys()
+}
+
+// simplePublicFileMap returns path->distName map excluding prehashed entries.
+func (builder *Builder) simplePublicFileMap() (map[string]string, error) {
+	if builder == nil || builder.staticProcessor == nil {
+		return nil, errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.SimplePublicFileMap()
+}
+
+// addPublicAssetKeys appends typed public asset key declarations.
+func (builder *Builder) addPublicAssetKeys(
+	statements *tsgen.Statements,
+) (*tsgen.Statements, error) {
+	if builder == nil || builder.staticProcessor == nil {
+		return nil, errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.AddPublicAssetKeys(statements)
+}
+
+// ProcessPublicFilesOnly performs full-scan public static processing.
+func (builder *Builder) ProcessPublicFilesOnly() error {
+	if builder == nil || builder.staticProcessor == nil {
+		return errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.ProcessPublicFilesOnly()
+}
+
+// ProcessPrivateFilesOnly performs full-scan private static processing.
+func (builder *Builder) ProcessPrivateFilesOnly() error {
+	if builder == nil || builder.staticProcessor == nil {
+		return errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.ProcessPrivateFilesOnly()
+}
+
+// ProcessPublicFilesOnlyForChangedPaths performs incremental public static processing.
+func (builder *Builder) ProcessPublicFilesOnlyForChangedPaths(
+	changedPaths []string,
+) error {
+	if builder == nil || builder.staticProcessor == nil {
+		return errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.ProcessPublicFilesOnlyForChangedPaths(
+		changedPaths,
+	)
+}
+
+// ProcessPrivateFilesOnlyForChangedPaths performs incremental private static processing.
+func (builder *Builder) ProcessPrivateFilesOnlyForChangedPaths(
+	changedPaths []string,
+) error {
+	if builder == nil || builder.staticProcessor == nil {
+		return errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.ProcessPrivateFilesOnlyForChangedPaths(
+		changedPaths,
+	)
+}
+
+// writeFrameworkPublicFileMapTS writes framework-facing public file map module.
+func (builder *Builder) writeFrameworkPublicFileMapTS() error {
+	if builder == nil || builder.staticProcessor == nil {
+		return errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.WriteFrameworkPublicFileMapTS()
+}
+
+// WritePublicFileMapTS writes framework TypeScript and JSON file map outputs.
+func (builder *Builder) WritePublicFileMapTS(outDir string) error {
+	if builder == nil || builder.staticProcessor == nil {
+		return errors.New("static processor is unavailable")
+	}
+	return builder.staticProcessor.WritePublicFileMapTS(outDir)
+}
+
+// publicURLBuildtime resolves one original public path at build time.
+func (builder *Builder) publicURLBuildtime(
+	originalPath string,
+) (string, error) {
+	if builder == nil || builder.staticProcessor == nil {
+		return "", errors.New("static processor is unavailable")
+	}
+	resolvedURL, found, resolutionError := builder.staticProcessor.PublicURLBuildtime(
+		originalPath,
+	)
+	if resolutionError != nil {
+		return "", resolutionError
+	}
+	if !found {
+		return "", fmt.Errorf("no hashed URL found for %q", originalPath)
+	}
+	return resolvedURL, nil
+}
+
+// mustPublicURLBuildtime resolves one original path and panics on miss/error.
+func (builder *Builder) mustPublicURLBuildtime(originalPath string) string {
+	return builder.staticProcessor.MustPublicURLBuildtime(originalPath)
+}
+
+// IsCriticalCSSFile reports whether path is configured critical CSS entry.
+func (builder *Builder) IsCriticalCSSFile(path string) bool {
+	if builder == nil || builder.cssProcessor == nil {
+		return false
+	}
+	return builder.cssProcessor.IsCriticalCSSFile(path)
+}
+
+// IsNormalCSSFile reports whether path is configured non-critical CSS entry.
+func (builder *Builder) IsNormalCSSFile(path string) bool {
+	if builder == nil || builder.cssProcessor == nil {
+		return false
+	}
+	return builder.cssProcessor.IsNormalCSSFile(path)
+}
+
+// isCSSFile reports whether path is any configured/tracked CSS input.
+func (builder *Builder) isCSSFile(path string) bool {
+	if builder == nil || builder.cssProcessor == nil {
+		return false
+	}
+	return builder.cssProcessor.IsCSSFile(path)
+}
+
+// setTrackedCriticalCSSImportPaths replaces tracked critical CSS import paths.
+func (builder *Builder) setTrackedCriticalCSSImportPaths(importPaths []string) {
+	if builder == nil || builder.cssProcessor == nil {
+		return
+	}
+	builder.cssProcessor.SetTrackedCriticalCSSImportPaths(importPaths)
+}
+
+// setTrackedNormalCSSImportPaths replaces tracked non-critical CSS import paths.
+func (builder *Builder) setTrackedNormalCSSImportPaths(importPaths []string) {
+	if builder == nil || builder.cssProcessor == nil {
+		return
+	}
+	builder.cssProcessor.SetTrackedNormalCSSImportPaths(importPaths)
+}
+
+// countTrackedCriticalCSSImportPaths returns tracked critical import path count.
+func (builder *Builder) countTrackedCriticalCSSImportPaths() int {
+	if builder == nil || builder.cssProcessor == nil {
+		return 0
+	}
+	return builder.cssProcessor.CountTrackedCriticalCSSImportPaths()
+}
+
+// listTrackedCriticalCSSImportPaths returns tracked critical import paths.
+func (builder *Builder) listTrackedCriticalCSSImportPaths() []string {
+	if builder == nil || builder.cssProcessor == nil {
+		return nil
+	}
+	return builder.cssProcessor.ListTrackedCriticalCSSImportPaths()
+}
+
+// getCriticalCSS returns cached critical CSS content.
+func (builder *Builder) getCriticalCSS() (string, bool) {
+	if builder == nil || builder.cssProcessor == nil {
+		return "", false
+	}
+	return builder.cssProcessor.CriticalCSS()
+}
+
+// getNormalCSSURL returns cached normal CSS URL.
+func (builder *Builder) getNormalCSSURL() (string, bool) {
+	if builder == nil || builder.cssProcessor == nil {
+		return "", false
+	}
+	return builder.cssProcessor.NormalCSSURL()
+}
+
+// runHooks executes configured user/framework build hooks for one mode.
+func (builder *Builder) runHooks(isDev bool) error {
+	if hookError := builder.runBuildHooks(isDev); hookError != nil {
+		return hookError
+	}
+	return nil
+}
+
+// runBuildHooks executes configured user/framework build hooks.
+func (builder *Builder) runBuildHooks(isDev bool) error {
+	if builder == nil || builder.cfg == nil || builder.cfg.Core == nil {
+		return nil
+	}
+
+	userCommand := ""
+	frameworkCommand := ""
+	timeout := deriveBuildHookCommandTimeoutDuration(
+		builder.cfg.Core,
+		isDev,
+	)
+
+	if isDev {
+		userCommand = builder.cfg.Core.DevBuildHook
+		frameworkCommand = builder.cfg.FrameworkDevBuildHook
+	} else {
+		userCommand = builder.cfg.Core.ProdBuildHook
+		frameworkCommand = builder.cfg.FrameworkProdBuildHook
+	}
+
+	if runError := runBuildHookCommandWithTimeout(userCommand, timeout); runError != nil {
+		return fmt.Errorf("user build hook failed: %w", runError)
+	}
+
+	if builder.cfg.FrameworkRunBuildHook != nil {
+		runnerContext, cancelRunnerContext := deriveExecutionContextWithOptionalTimeout(
+			context.Background(),
+			timeout,
+		)
+		if cancelRunnerContext != nil {
+			defer cancelRunnerContext()
+		}
+		if runError := builder.cfg.FrameworkRunBuildHook(runnerContext, isDev); runError != nil {
+			return fmt.Errorf("framework build hook failed: %w", runError)
+		}
+		return nil
+	}
+
+	if runError := runBuildHookCommandWithTimeout(frameworkCommand, timeout); runError != nil {
+		return fmt.Errorf("framework build hook failed: %w", runError)
+	}
+
+	return nil
+}
+
+func runBuildHookCommandWithTimeout(
+	command string,
+	timeout time.Duration,
+) error {
+	if strings.TrimSpace(command) == "" {
+		return nil
+	}
+
+	commandExecutionContext, cancelCommandExecutionContext := deriveExecutionContextWithOptionalTimeout(
+		context.Background(),
+		timeout,
+	)
+	if cancelCommandExecutionContext != nil {
+		defer cancelCommandExecutionContext()
+	}
+
+	return executil.RunShellWithContext(
+		commandExecutionContext,
+		command,
+	)
+}
+
+// deriveBuildHookCommandTimeoutDuration resolves build-hook timeout for mode.
+func deriveBuildHookCommandTimeoutDuration(
+	coreConfig *wave.CoreConfig,
 	isDev bool,
-	goBuildOverlayPath string,
-) *exec.Cmd {
-	return buildGoBuildCommand(dest, entry, isDev, goBuildOverlayPath)
+) time.Duration {
+	if coreConfig == nil {
+		return 0
+	}
+	if isDev {
+		if coreConfig.DevBuildHookTimeoutMilliseconds <= 0 {
+			return 0
+		}
+		return time.Duration(
+			coreConfig.DevBuildHookTimeoutMilliseconds,
+		) * time.Millisecond
+	}
+	if coreConfig.ProdBuildHookTimeoutMilliseconds <= 0 {
+		return 0
+	}
+	return time.Duration(
+		coreConfig.ProdBuildHookTimeoutMilliseconds,
+	) * time.Millisecond
 }
 
-// CompileGoOnly compiles the Go binary without running the full build
-func (b *Builder) CompileGoOnly(isDev bool) error {
-	return b.compileGo(isDev)
+// resolveSequentialShellCommands joins non-empty commands into one shell command.
+func resolveSequentialShellCommands(commands ...string) string {
+	resolvedCommands := make([]string, 0, len(commands))
+	for _, command := range commands {
+		trimmedCommand := strings.TrimSpace(command)
+		if trimmedCommand == "" {
+			continue
+		}
+		resolvedCommands = append(resolvedCommands, trimmedCommand)
+	}
+	if len(resolvedCommands) == 0 {
+		return ""
+	}
+	return strings.Join(resolvedCommands, " && ")
 }
 
-// ProcessFiles runs static file processing with full or granular mode.
-func (b *Builder) ProcessFiles(granular bool, isDev bool) error {
-	return b.processFiles(granular, isDev)
+// deriveExecutionContextWithOptionalTimeout applies timeout only when set.
+func deriveExecutionContextWithOptionalTimeout(
+	parentContext context.Context,
+	timeoutDuration time.Duration,
+) (context.Context, context.CancelFunc) {
+	if parentContext == nil {
+		parentContext = context.Background()
+	}
+	if timeoutDuration <= 0 {
+		return parentContext, nil
+	}
+	return context.WithTimeout(parentContext, timeoutDuration)
 }
 
-// ProcessFilesOnly runs file processing without hooks or binary compilation
-func (b *Builder) ProcessFilesOnly(isRebuild bool, isDev bool) error {
-	return b.processFiles(isRebuild, isDev)
+// executeShellCommandWithContext executes one shell command with inherited stdio.
+func executeShellCommandWithContext(
+	commandExecutionContext context.Context,
+	command string,
+) error {
+	trimmedCommand := strings.TrimSpace(command)
+	if trimmedCommand == "" {
+		return nil
+	}
+	if commandExecutionContext == nil {
+		commandExecutionContext = context.Background()
+	}
+
+	executionCommand := exec.CommandContext(
+		commandExecutionContext,
+		"sh",
+		"-c",
+		trimmedCommand,
+	)
+	executionCommand.Stdout = os.Stdout
+	executionCommand.Stderr = os.Stderr
+	executionCommand.Env = os.Environ()
+	if runError := executionCommand.Run(); runError != nil {
+		return runError
+	}
+	return nil
 }
 
-// ProcessPublicFilesOnly reprocesses just the public static files (for dev hot reload)
-func (b *Builder) ProcessPublicFilesOnly() error {
-	return b.static.ProcessPublicFiles(true)
+// SetupDistDir creates required dist directory structure and keep-file.
+func SetupDistDir(cfg *wave.ParsedConfig) error {
+	if cfg == nil {
+		return errors.New("config is nil")
+	}
+
+	directories := []string{
+		cfg.Dist.Internal(),
+		cfg.Dist.StaticPublic(),
+		cfg.Dist.StaticPrivate(),
+	}
+	for _, directoryPath := range directories {
+		if mkdirError := os.MkdirAll(directoryPath, 0o755); mkdirError != nil {
+			return fmt.Errorf(
+				"create output directory %q: %w",
+				directoryPath,
+				mkdirError,
+			)
+		}
+	}
+
+	keepPath := cfg.Dist.KeepFile()
+	if _, statError := os.Stat(keepPath); statError != nil {
+		if !errors.Is(statError, os.ErrNotExist) {
+			return statError
+		}
+		if writeKeepError := os.WriteFile(keepPath, []byte("keep\n"), 0o644); writeKeepError != nil {
+			return writeKeepError
+		}
+	}
+	return nil
 }
 
-func (b *Builder) ProcessPublicFilesOnlyForChangedPaths(changedSourcePaths []string) error {
-	return b.static.ProcessPublicFilesForChangedPaths(changedSourcePaths)
+// ensureOutputDirectories creates output directories required by build pipelines.
+func (builder *Builder) ensureOutputDirectories() error {
+	if builder == nil || builder.cfg == nil {
+		return errors.New("builder config is nil")
+	}
+	return SetupDistDir(builder.cfg)
 }
 
-// ProcessPrivateFilesOnly reprocesses just the private static files (for dev hot reload)
-func (b *Builder) ProcessPrivateFilesOnly() error {
-	return b.static.ProcessPrivateFiles(true)
+// overlayContextKey is context key for go build overlay configuration path.
+type overlayContextKey struct{}
+
+// cssBuildContextIdentity is a pointer-identity token for CSS build context state.
+type cssBuildContextIdentity struct {
+	serial uint64
 }
 
-func (b *Builder) ProcessPrivateFilesOnlyForChangedPaths(changedSourcePaths []string) error {
-	return b.static.ProcessPrivateFilesForChangedPaths(changedSourcePaths)
+func (builder *Builder) newCSSBuildContextIdentity() *cssBuildContextIdentity {
+	if builder == nil {
+		return nil
+	}
+	builder.nextCSSBuildContextSerial++
+	return &cssBuildContextIdentity{
+		serial: builder.nextCSSBuildContextSerial,
+	}
 }
 
-// RunHooks executes user and framework build hooks for dev or prod mode.
-func (b *Builder) RunHooks(isDev bool) error {
-	return b.runHooks(isDev)
+func (builder *Builder) refreshCriticalCSSBuildContextIdentity(isDev bool) {
+	if builder == nil || builder.cfg == nil {
+		return
+	}
+	entryPath := normalizeCSSContextEntryPath(builder.cfg.CriticalCSSEntry())
+	if builder.criticalCSSBuildContextIdentity == nil ||
+		builder.criticalCSSBuildContextModeIsDev != isDev ||
+		builder.criticalCSSBuildContextEntryPath != entryPath {
+		builder.criticalCSSBuildContextIdentity = builder.newCSSBuildContextIdentity()
+		builder.cssBuildContextIdentityHistory = append(
+			builder.cssBuildContextIdentityHistory,
+			builder.criticalCSSBuildContextIdentity,
+		)
+		builder.criticalCSSBuildContextModeIsDev = isDev
+		builder.criticalCSSBuildContextEntryPath = entryPath
+	}
 }
 
-// BuildAllCSS builds critical and non-critical CSS outputs.
-func (b *Builder) BuildAllCSS(isDev bool) error {
-	return b.css.BuildAll(isDev)
+func (builder *Builder) refreshNormalCSSBuildContextIdentity(isDev bool) {
+	if builder == nil || builder.cfg == nil {
+		return
+	}
+	entryPath := normalizeCSSContextEntryPath(builder.cfg.NonCriticalCSSEntry())
+	if builder.normalCSSBuildContextIdentity == nil ||
+		builder.normalCSSBuildContextModeIsDev != isDev ||
+		builder.normalCSSBuildContextEntryPath != entryPath {
+		builder.normalCSSBuildContextIdentity = builder.newCSSBuildContextIdentity()
+		builder.cssBuildContextIdentityHistory = append(
+			builder.cssBuildContextIdentityHistory,
+			builder.normalCSSBuildContextIdentity,
+		)
+		builder.normalCSSBuildContextModeIsDev = isDev
+		builder.normalCSSBuildContextEntryPath = entryPath
+	}
 }
 
-// BuildCriticalCSS builds only critical CSS
-func (b *Builder) BuildCriticalCSS(isDev bool) error {
-	return b.css.BuildCritical(isDev)
+func normalizeCSSContextEntryPath(entryPath string) string {
+	if strings.TrimSpace(entryPath) == "" {
+		return ""
+	}
+	absoluteEntryPath, absoluteEntryPathError := filepath.Abs(entryPath)
+	if absoluteEntryPathError == nil {
+		return filepath.Clean(absoluteEntryPath)
+	}
+	return filepath.Clean(entryPath)
 }
 
-// BuildNormalCSS builds only normal CSS
-func (b *Builder) BuildNormalCSS(isDev bool) error {
-	return b.css.BuildNormal(isDev)
-}
-
-// ValidateConfig performs full validation of the Wave configuration.
-// This should be called at build time before any build operations.
+// ValidateConfig validates configuration semantics needed by tooling build workflows.
 func ValidateConfig(cfg *wave.ParsedConfig) error {
 	if cfg == nil {
-		return fmt.Errorf("config: parsed config is required")
+		return errors.New("config: parsed config is required")
 	}
 	if cfg.Core == nil {
-		return fmt.Errorf("config: Core section is required")
+		return errors.New("config: Core section is required")
 	}
-	if cfg.Core.MainAppEntry == "" {
-		return fmt.Errorf("config: Core.MainAppEntry is required")
+	if strings.TrimSpace(cfg.Core.MainAppEntry) == "" {
+		return errors.New("config: Core.MainAppEntry is required")
 	}
-	if cfg.Core.DistDir == "" {
-		return fmt.Errorf("config: Core.DistDir is required")
+	if strings.TrimSpace(cfg.Core.DistDir) == "" {
+		return errors.New("config: Core.DistDir is required")
 	}
-	if err := validateNonNegativeTimeoutFields(
+
+	if validateError := validateNonNegativeTimeoutFields(
 		[]timeoutFieldValidation{
 			{
 				fieldPath:           "Core.DevBuildHookTimeoutMilliseconds",
@@ -614,63 +1017,90 @@ func ValidateConfig(cfg *wave.ParsedConfig) error {
 				timeoutMilliseconds: cfg.Core.ProdBuildHookTimeoutMilliseconds,
 			},
 		},
-	); err != nil {
-		return err
+	); validateError != nil {
+		return validateError
 	}
 
 	if !cfg.Core.ServerOnlyMode {
-		if cfg.Core.StaticAssetDirs.Private == "" {
-			return fmt.Errorf("config: Core.StaticAssetDirs.Private is required")
+		if strings.TrimSpace(cfg.Core.StaticAssetDirs.Private) == "" {
+			return errors.New("config: Core.StaticAssetDirs.Private is required")
 		}
-		if cfg.Core.StaticAssetDirs.Public == "" {
-			return fmt.Errorf("config: Core.StaticAssetDirs.Public is required")
-		}
-	}
-
-	if cfg.Vite != nil {
-		if cfg.Vite.JSPackageManagerBaseCmd == "" {
-			return fmt.Errorf("config: Vite.JSPackageManagerBaseCmd is required")
+		if strings.TrimSpace(cfg.Core.StaticAssetDirs.Public) == "" {
+			return errors.New("config: Core.StaticAssetDirs.Public is required")
 		}
 	}
 
-	if cfg.Watch != nil {
-		if err := validateHealthcheckEndpoint(cfg.Watch.HealthcheckEndpoint); err != nil {
-			return err
-		}
-		if err := validateHookStageFailurePolicy(cfg.Watch.HookStageFailurePolicy); err != nil {
-			return err
-		}
-		if err := validateHookCommandTimeoutConfig(cfg.Watch.HookCommandTimeouts); err != nil {
-			return err
-		}
-		if err := validateHookCallbackTimeoutConfig(cfg.Watch.HookCallbackTimeouts); err != nil {
-			return err
-		}
+	if cfg.Vite != nil &&
+		strings.TrimSpace(cfg.Vite.JSPackageManagerBaseCmd) == "" {
+		return errors.New("config: Vite.JSPackageManagerBaseCmd is required")
+	}
 
-		for excludedDirectoryPatternIndex, excludedDirectoryPattern := range cfg.Watch.Exclude.Dirs {
-			if err := validateWatchGlobPattern(
-				fmt.Sprintf("Watch.Exclude.Dirs[%d]", excludedDirectoryPatternIndex),
-				excludedDirectoryPattern,
-			); err != nil {
-				return err
-			}
-		}
-		for excludedFilePatternIndex, excludedFilePattern := range cfg.Watch.Exclude.Files {
-			if err := validateWatchGlobPattern(
-				fmt.Sprintf("Watch.Exclude.Files[%d]", excludedFilePatternIndex),
-				excludedFilePattern,
-			); err != nil {
-				return err
-			}
-		}
+	if validateError := validatePublicPathPrefix(cfg.Core.PublicPathPrefix); validateError != nil {
+		return validateError
+	}
+	if validateError := css.ValidateCSSConfig(cfg); validateError != nil {
+		return validateError
+	}
 
-		for i, watchedFile := range cfg.Watch.Include {
-			if err := validateWatchedFile(&watchedFile, i); err != nil {
-				return err
-			}
+	if cfg.Watch == nil {
+		return nil
+	}
+
+	if validateError := validateHealthcheckEndpoint(cfg.Watch.HealthcheckEndpoint); validateError != nil {
+		return validateError
+	}
+	if validateError := validateHookStageFailurePolicy(cfg.Watch.HookStageFailurePolicy); validateError != nil {
+		return validateError
+	}
+	if validateError := validateHookCommandTimeoutConfig(cfg.Watch.HookCommandTimeouts); validateError != nil {
+		return validateError
+	}
+	if validateError := validateHookCallbackTimeoutConfig(cfg.Watch.HookCallbackTimeouts); validateError != nil {
+		return validateError
+	}
+
+	for excludeDirectoryPatternIndex, excludeDirectoryPattern := range cfg.Watch.Exclude.Dirs {
+		if validateError := validateWatchGlobPattern(
+			fmt.Sprintf("Watch.Exclude.Dirs[%d]", excludeDirectoryPatternIndex),
+			excludeDirectoryPattern,
+		); validateError != nil {
+			return validateError
+		}
+	}
+	for excludeFilePatternIndex, excludeFilePattern := range cfg.Watch.Exclude.Files {
+		if validateError := validateWatchGlobPattern(
+			fmt.Sprintf("Watch.Exclude.Files[%d]", excludeFilePatternIndex),
+			excludeFilePattern,
+		); validateError != nil {
+			return validateError
 		}
 	}
 
+	for includeWatchPatternIndex, watchedFile := range cfg.Watch.Include {
+		if validateError := validateWatchedFile(
+			&watchedFile,
+			includeWatchPatternIndex,
+		); validateError != nil {
+			return validateError
+		}
+	}
+
+	return nil
+}
+
+// validatePublicPathPrefix validates configured public path prefix.
+func validatePublicPathPrefix(publicPathPrefix string) error {
+	if strings.TrimSpace(publicPathPrefix) == "" {
+		return nil
+	}
+	if strings.TrimSpace(publicPathPrefix) != publicPathPrefix {
+		return errors.New(
+			"config: Core.PublicPathPrefix must not include surrounding whitespace",
+		)
+	}
+	if !strings.HasPrefix(publicPathPrefix, "/") {
+		return errors.New("config: Core.PublicPathPrefix must start with '/'")
+	}
 	return nil
 }
 
@@ -694,51 +1124,51 @@ func validateHookStageFailurePolicy(
 	}
 }
 
-func validateHookCallbackTimeoutConfig(
-	hookCallbackTimeoutConfig wave.HookCallbackTimeoutConfig,
-) error {
-	return validateNonNegativeTimeoutFields(
-		[]timeoutFieldValidation{
-			{
-				fieldPath:           "Watch.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds",
-				timeoutMilliseconds: hookCallbackTimeoutConfig.PreCallbackTimeoutMilliseconds,
-			},
-			{
-				fieldPath:           "Watch.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds",
-				timeoutMilliseconds: hookCallbackTimeoutConfig.ConcurrentCallbackTimeoutMilliseconds,
-			},
-			{
-				fieldPath:           "Watch.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds",
-				timeoutMilliseconds: hookCallbackTimeoutConfig.ConcurrentNoWaitCallbackTimeoutMilliseconds,
-			},
-			{
-				fieldPath:           "Watch.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds",
-				timeoutMilliseconds: hookCallbackTimeoutConfig.PostCallbackTimeoutMilliseconds,
-			},
-		},
-	)
-}
-
 func validateHookCommandTimeoutConfig(
-	hookCommandTimeoutConfig wave.HookCommandTimeoutConfig,
+	hookCommandTimeouts wave.HookCommandTimeoutConfig,
 ) error {
 	return validateNonNegativeTimeoutFields(
 		[]timeoutFieldValidation{
 			{
 				fieldPath:           "Watch.HookCommandTimeouts.PreCommandTimeoutMilliseconds",
-				timeoutMilliseconds: hookCommandTimeoutConfig.PreCommandTimeoutMilliseconds,
+				timeoutMilliseconds: hookCommandTimeouts.PreCommandTimeoutMilliseconds,
 			},
 			{
 				fieldPath:           "Watch.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds",
-				timeoutMilliseconds: hookCommandTimeoutConfig.ConcurrentCommandTimeoutMilliseconds,
+				timeoutMilliseconds: hookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds,
 			},
 			{
 				fieldPath:           "Watch.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds",
-				timeoutMilliseconds: hookCommandTimeoutConfig.ConcurrentNoWaitCommandTimeoutMilliseconds,
+				timeoutMilliseconds: hookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds,
 			},
 			{
 				fieldPath:           "Watch.HookCommandTimeouts.PostCommandTimeoutMilliseconds",
-				timeoutMilliseconds: hookCommandTimeoutConfig.PostCommandTimeoutMilliseconds,
+				timeoutMilliseconds: hookCommandTimeouts.PostCommandTimeoutMilliseconds,
+			},
+		},
+	)
+}
+
+func validateHookCallbackTimeoutConfig(
+	hookCallbackTimeouts wave.HookCallbackTimeoutConfig,
+) error {
+	return validateNonNegativeTimeoutFields(
+		[]timeoutFieldValidation{
+			{
+				fieldPath:           "Watch.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds",
+				timeoutMilliseconds: hookCallbackTimeouts.PreCallbackTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds",
+				timeoutMilliseconds: hookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds",
+				timeoutMilliseconds: hookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds,
+			},
+			{
+				fieldPath:           "Watch.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds",
+				timeoutMilliseconds: hookCallbackTimeouts.PostCallbackTimeoutMilliseconds,
 			},
 		},
 	)
@@ -760,86 +1190,94 @@ func validateNonNegativeTimeoutFields(
 			)
 		}
 	}
-
 	return nil
 }
 
-func validateWatchedFile(wf *wave.WatchedFile, index int) error {
-	if err := validateWatchGlobPattern(
-		fmt.Sprintf("Watch.Include[%d].Pattern", index),
-		wf.Pattern,
-	); err != nil {
-		return err
+func validateWatchedFile(
+	watchedFile *wave.WatchedFile,
+	watchedFileIndex int,
+) error {
+	if watchedFile == nil {
+		return nil
 	}
 
-	for hookIndex, hook := range wf.OnChangeHooks {
-		for excludedPatternIndex, excludedPattern := range hook.Exclude {
-			if err := validateWatchGlobPattern(
+	if validateError := validateWatchGlobPattern(
+		fmt.Sprintf("Watch.Include[%d].Pattern", watchedFileIndex),
+		watchedFile.Pattern,
+	); validateError != nil {
+		return validateError
+	}
+
+	for hookIndex, onChangeHook := range watchedFile.OnChangeHooks {
+		for excludedPatternIndex, excludedPattern := range onChangeHook.Exclude {
+			if validateError := validateWatchGlobPattern(
 				fmt.Sprintf(
 					"Watch.Include[%d].OnChangeHooks[%d].Exclude[%d]",
-					index,
+					watchedFileIndex,
 					hookIndex,
 					excludedPatternIndex,
 				),
 				excludedPattern,
-			); err != nil {
-				return err
+			); validateError != nil {
+				return validateError
 			}
 		}
 
-		if hook.CommandTimeoutMilliseconds < 0 {
+		if onChangeHook.CommandTimeoutMilliseconds < 0 {
 			return fmt.Errorf(
 				"config: Watch.Include[%d].OnChangeHooks[%d].CommandTimeoutMilliseconds must be >= 0",
-				index,
+				watchedFileIndex,
 				hookIndex,
 			)
 		}
-		if hook.DisableStageCommandTimeout && hook.CommandTimeoutMilliseconds > 0 {
+		if onChangeHook.DisableStageCommandTimeout &&
+			onChangeHook.CommandTimeoutMilliseconds > 0 {
 			return fmt.Errorf(
 				"config: Watch.Include[%d].OnChangeHooks[%d] cannot set both DisableStageCommandTimeout and CommandTimeoutMilliseconds",
-				index,
+				watchedFileIndex,
 				hookIndex,
 			)
 		}
-		if hook.CallbackTimeoutMilliseconds < 0 {
+
+		if onChangeHook.CallbackTimeoutMilliseconds < 0 {
 			return fmt.Errorf(
 				"config: Watch.Include[%d].OnChangeHooks[%d].CallbackTimeoutMilliseconds must be >= 0",
-				index,
+				watchedFileIndex,
 				hookIndex,
 			)
 		}
-		if hook.DisableStageCallbackTimeout && hook.CallbackTimeoutMilliseconds > 0 {
+		if onChangeHook.DisableStageCallbackTimeout &&
+			onChangeHook.CallbackTimeoutMilliseconds > 0 {
 			return fmt.Errorf(
 				"config: Watch.Include[%d].OnChangeHooks[%d] cannot set both DisableStageCallbackTimeout and CallbackTimeoutMilliseconds",
-				index,
+				watchedFileIndex,
 				hookIndex,
 			)
 		}
 
-		if strings.TrimSpace(hook.Cmd) != "" && hook.RunCombinedDevBuildHookCommands {
+		if strings.TrimSpace(onChangeHook.Cmd) != "" &&
+			onChangeHook.RunCombinedDevBuildHookCommands {
 			return fmt.Errorf(
 				"config: Watch.Include[%d].OnChangeHooks[%d] cannot set both Cmd and RunCombinedDevBuildHookCommands",
-				index,
+				watchedFileIndex,
 				hookIndex,
 			)
 		}
 
-		if !wf.RunOnChangeOnly {
+		if !watchedFile.RunOnChangeOnly {
 			continue
 		}
-
-		// Callbacks can use any timing - they return RefreshAction to control behavior.
-		// This validation only applies to command-like hooks.
-		if strings.TrimSpace(hook.Cmd) == "" && !hook.RunCombinedDevBuildHookCommands {
+		if strings.TrimSpace(onChangeHook.Cmd) == "" &&
+			!onChangeHook.RunCombinedDevBuildHookCommands {
 			continue
 		}
-
-		if hook.Timing != "" && hook.Timing != wave.OnChangeStrategyPre {
+		if onChangeHook.Timing != "" &&
+			onChangeHook.Timing != wave.OnChangeStrategyPre {
 			return fmt.Errorf(
 				"config: Watch.Include[%d].OnChangeHooks[%d] has Timing %q but RunOnChangeOnly requires all command hooks to use \"pre\" timing (the default)",
-				index,
+				watchedFileIndex,
 				hookIndex,
-				hook.Timing,
+				onChangeHook.Timing,
 			)
 		}
 	}
@@ -847,38 +1285,46 @@ func validateWatchedFile(wf *wave.WatchedFile, index int) error {
 	return nil
 }
 
-// ValidateWatchedFile validates one Watch.Include entry with field index context.
-func ValidateWatchedFile(wf *wave.WatchedFile, index int) error {
-	return validateWatchedFile(wf, index)
-}
-
 func validateHealthcheckEndpoint(healthcheckEndpoint string) error {
-	if healthcheckEndpoint == "" {
+	if strings.TrimSpace(healthcheckEndpoint) == "" {
 		return nil
 	}
 
 	if strings.TrimSpace(healthcheckEndpoint) != healthcheckEndpoint {
-		return fmt.Errorf("config: Watch.HealthcheckEndpoint must not include surrounding whitespace")
+		return fmt.Errorf(
+			"config: Watch.HealthcheckEndpoint must not include surrounding whitespace",
+		)
 	}
 
 	if strings.ContainsAny(healthcheckEndpoint, "\t\r\n ") {
-		return fmt.Errorf("config: Watch.HealthcheckEndpoint must not contain whitespace")
+		return fmt.Errorf(
+			"config: Watch.HealthcheckEndpoint must not contain whitespace",
+		)
 	}
 
 	if strings.Contains(healthcheckEndpoint, "://") {
-		return fmt.Errorf("config: Watch.HealthcheckEndpoint must be a path, not a URL")
+		return fmt.Errorf(
+			"config: Watch.HealthcheckEndpoint must be a path, not a URL",
+		)
 	}
 
 	if !strings.HasPrefix(healthcheckEndpoint, "/") {
-		return fmt.Errorf("config: Watch.HealthcheckEndpoint must start with '/'")
+		return fmt.Errorf(
+			"config: Watch.HealthcheckEndpoint must start with '/'",
+		)
 	}
 
 	if strings.HasPrefix(healthcheckEndpoint, "//") {
-		return fmt.Errorf("config: Watch.HealthcheckEndpoint must be a single absolute path")
+		return fmt.Errorf(
+			"config: Watch.HealthcheckEndpoint must be a single absolute path",
+		)
 	}
 
-	if strings.Contains(healthcheckEndpoint, "?") || strings.Contains(healthcheckEndpoint, "#") {
-		return fmt.Errorf("config: Watch.HealthcheckEndpoint must not include query or fragment segments")
+	if strings.Contains(healthcheckEndpoint, "?") ||
+		strings.Contains(healthcheckEndpoint, "#") {
+		return fmt.Errorf(
+			"config: Watch.HealthcheckEndpoint must not include query or fragment segments",
+		)
 	}
 
 	return nil
@@ -888,7 +1334,7 @@ func validateWatchGlobPattern(
 	fieldPath string,
 	globPattern string,
 ) error {
-	return toolingshared.ValidateNamedGlobPatternInput("config", fieldPath, globPattern)
+	return shared.ValidateNamedGlobPatternInput("config", fieldPath, globPattern)
 }
 
 const (
@@ -900,56 +1346,4 @@ func normalizeConfiguredHookStageFailurePolicy(
 	configuredHookStageFailurePolicy string,
 ) string {
 	return strings.TrimSpace(strings.ToLower(configuredHookStageFailurePolicy))
-}
-
-func deriveBuildHookCommandTimeoutMilliseconds(
-	coreConfig *wave.CoreConfig,
-	isDev bool,
-) int {
-	if coreConfig == nil {
-		return 0
-	}
-
-	if isDev {
-		return coreConfig.DevBuildHookTimeoutMilliseconds
-	}
-	return coreConfig.ProdBuildHookTimeoutMilliseconds
-}
-
-func deriveTimeoutDurationFromMilliseconds(
-	timeoutMilliseconds int,
-) time.Duration {
-	if timeoutMilliseconds <= 0 {
-		return 0
-	}
-	return time.Duration(timeoutMilliseconds) * time.Millisecond
-}
-
-func deriveBuildHookCommandTimeoutDuration(
-	coreConfig *wave.CoreConfig,
-	isDev bool,
-) time.Duration {
-	return deriveTimeoutDurationFromMilliseconds(
-		deriveBuildHookCommandTimeoutMilliseconds(coreConfig, isDev),
-	)
-}
-
-func deriveExecutionContextWithOptionalTimeout(
-	parentExecutionContext context.Context,
-	executionTimeoutDuration time.Duration,
-) (
-	executionContext context.Context,
-	cancelExecutionContext context.CancelFunc,
-) {
-	if executionTimeoutDuration <= 0 {
-		if parentExecutionContext == nil {
-			return context.Background(), nil
-		}
-		return parentExecutionContext, nil
-	}
-
-	if parentExecutionContext == nil {
-		return context.WithTimeout(context.Background(), executionTimeoutDuration)
-	}
-	return context.WithTimeout(parentExecutionContext, executionTimeoutDuration)
 }

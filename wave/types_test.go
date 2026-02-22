@@ -5,23 +5,23 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/vormadev/vorma/wave/internal/waveshared"
+	"github.com/vormadev/vorma/wave/internal/wavecore"
 )
 
 func TestRelPathsAreStable(t *testing.T) {
 	if RelPaths.Internal() != "internal" {
 		t.Fatalf("unexpected internal rel path: %q", RelPaths.Internal())
 	}
-	if RelPaths.AssetsPublic() != "assets/public" {
+	if RelPaths.assetsPublic() != "assets/public" {
 		t.Fatalf(
 			"unexpected public assets rel path: %q",
-			RelPaths.AssetsPublic(),
+			RelPaths.assetsPublic(),
 		)
 	}
-	if RelPaths.AssetsPrivate() != "assets/private" {
+	if RelPaths.assetsPrivate() != "assets/private" {
 		t.Fatalf(
 			"unexpected private assets rel path: %q",
-			RelPaths.AssetsPrivate(),
+			RelPaths.assetsPrivate(),
 		)
 	}
 	if RelPaths.CriticalCSS() != "internal/critical.css" {
@@ -45,16 +45,16 @@ func TestRelPathsAreStable(t *testing.T) {
 			RelPaths.PublicFileMapGob(),
 		)
 	}
-	if RelPaths.PublicFileMapGobName() != "public_filemap.gob" {
+	if RelPaths.publicFileMapGobName() != "public_filemap.gob" {
 		t.Fatalf(
 			"unexpected public file map gob name: %q",
-			RelPaths.PublicFileMapGobName(),
+			RelPaths.publicFileMapGobName(),
 		)
 	}
-	if RelPaths.PrivateFileMapGobName() != "private_filemap.gob" {
+	if RelPaths.privateFileMapGobName() != "private_filemap.gob" {
 		t.Fatalf(
 			"unexpected private file map gob name: %q",
-			RelPaths.PrivateFileMapGobName(),
+			RelPaths.privateFileMapGobName(),
 		)
 	}
 	if RelPaths.PublicFileMapJSName() != "vorma_internal_public_filemap.js" {
@@ -78,7 +78,7 @@ func TestRelPathsAreStable(t *testing.T) {
 }
 
 func TestDistLayoutBuildsExpectedPaths(t *testing.T) {
-	d := DistLayout{Root: filepath.Join("tmp", "dist")}
+	d := distLayout{Root: filepath.Join("tmp", "dist")}
 
 	expectedBinaryName := "main"
 	if runtime.GOOS == "windows" {
@@ -196,7 +196,7 @@ func TestResolvePublicURLFromReferencedPath(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			resolvedURL := waveshared.ResolveFromReferencedPath(
+			resolvedURL := wavecore.ResolveFromReferencedPath(
 				testCase.publicPathPrefix,
 				testCase.referencedPath,
 			)
@@ -315,12 +315,12 @@ func TestParsedConfigPublicPathPrefixNormalization(t *testing.T) {
 func TestParsedConfigAccessors(t *testing.T) {
 	cfg := &ParsedConfig{
 		Core: &CoreConfig{ServerOnlyMode: true},
-		Vite: &ViteConfig{},
+		Vite: &viteConfig{},
 		Watch: &WatchConfig{
 			WatchRoot:           "./tmp/../tmp/watch",
 			HealthcheckEndpoint: "/ok",
 		},
-		Dist: DistLayout{Root: filepath.Join("tmp", "dist")},
+		Dist: distLayout{Root: filepath.Join("tmp", "dist")},
 	}
 
 	if cfg.WatchRoot() != filepath.Clean("./tmp/../tmp/watch") {
@@ -397,55 +397,55 @@ func TestParsedConfigCSSEntryCleaning(t *testing.T) {
 
 func TestParsedConfigBrowserRuntimeDefaultsAndOverrides(t *testing.T) {
 	var nilCfg *ParsedConfig
-	if got := nilCfg.BrowserRuntimeNamespace(); got != DefaultBrowserRuntimeNamespace {
+	if got := nilCfg.browserRuntimeNamespace(); got != defaultBrowserRuntimeNamespace {
 		t.Fatalf(
 			"nil config browser runtime namespace = %q, want %q",
 			got,
-			DefaultBrowserRuntimeNamespace,
+			defaultBrowserRuntimeNamespace,
 		)
 	}
 
 	cfg := &ParsedConfig{Core: &CoreConfig{}}
-	if got := cfg.BrowserRuntimeNamespace(); got != DefaultBrowserRuntimeNamespace {
+	if got := cfg.browserRuntimeNamespace(); got != defaultBrowserRuntimeNamespace {
 		t.Fatalf(
 			"default browser runtime namespace = %q, want %q",
 			got,
-			DefaultBrowserRuntimeNamespace,
+			defaultBrowserRuntimeNamespace,
 		)
 	}
-	if got := cfg.BrowserPublicURLResolverFunctionName(); got != DefaultBrowserPublicURLResolverFunctionName {
+	if got := cfg.browserPublicURLResolverFunctionName(); got != defaultBrowserPublicURLResolverFunctionName {
 		t.Fatalf(
 			"default public URL resolver function name = %q, want %q",
 			got,
-			DefaultBrowserPublicURLResolverFunctionName,
+			defaultBrowserPublicURLResolverFunctionName,
 		)
 	}
-	if got := cfg.BrowserRevalidateFunctionName(); got != DefaultBrowserRevalidateFunctionName {
+	if got := cfg.browserRevalidateFunctionName(); got != defaultBrowserRevalidateFunctionName {
 		t.Fatalf(
 			"default browser revalidate function name = %q, want %q",
 			got,
-			DefaultBrowserRevalidateFunctionName,
+			defaultBrowserRevalidateFunctionName,
 		)
 	}
-	if got := cfg.RefreshRebuildingOverlayElementID(); got != DefaultRefreshRebuildingOverlayElementID {
+	if got := cfg.refreshRebuildingOverlayElementID(); got != defaultRefreshRebuildingOverlayElementID {
 		t.Fatalf(
 			"default refresh rebuilding overlay element ID = %q, want %q",
 			got,
-			DefaultRefreshRebuildingOverlayElementID,
+			defaultRefreshRebuildingOverlayElementID,
 		)
 	}
-	if got := cfg.CriticalCSSStyleElementID(); got != DefaultCriticalCSSStyleElementID {
+	if got := cfg.criticalCSSStyleElementID(); got != defaultCriticalCSSStyleElementID {
 		t.Fatalf(
 			"default critical CSS style element ID = %q, want %q",
 			got,
-			DefaultCriticalCSSStyleElementID,
+			defaultCriticalCSSStyleElementID,
 		)
 	}
-	if got := cfg.NonCriticalCSSLinkElementID(); got != DefaultNonCriticalCSSLinkElementID {
+	if got := cfg.nonCriticalCSSLinkElementID(); got != defaultNonCriticalCSSLinkElementID {
 		t.Fatalf(
 			"default non-critical CSS link element ID = %q, want %q",
 			got,
-			DefaultNonCriticalCSSLinkElementID,
+			defaultNonCriticalCSSLinkElementID,
 		)
 	}
 
@@ -456,37 +456,37 @@ func TestParsedConfigBrowserRuntimeDefaultsAndOverrides(t *testing.T) {
 	cfg.FrameworkCriticalCSSStyleElementID = "vorma-critical-css"
 	cfg.FrameworkNonCriticalCSSLinkElementID = "vorma-noncritical-css"
 
-	if got := cfg.BrowserRuntimeNamespace(); got != "__vorma_runtime" {
+	if got := cfg.browserRuntimeNamespace(); got != "__vorma_runtime" {
 		t.Fatalf(
 			"configured browser runtime namespace = %q, want __vorma_runtime",
 			got,
 		)
 	}
-	if got := cfg.BrowserPublicURLResolverFunctionName(); got != "resolvePublicURL" {
+	if got := cfg.browserPublicURLResolverFunctionName(); got != "resolvePublicURL" {
 		t.Fatalf(
 			"configured public URL resolver function name = %q, want resolvePublicURL",
 			got,
 		)
 	}
-	if got := cfg.BrowserRevalidateFunctionName(); got != "__vorma_revalidate" {
+	if got := cfg.browserRevalidateFunctionName(); got != "__vorma_revalidate" {
 		t.Fatalf(
 			"configured browser revalidate function name = %q, want __vorma_revalidate",
 			got,
 		)
 	}
-	if got := cfg.RefreshRebuildingOverlayElementID(); got != "vorma-refresh-overlay" {
+	if got := cfg.refreshRebuildingOverlayElementID(); got != "vorma-refresh-overlay" {
 		t.Fatalf(
 			"configured refresh rebuilding overlay element ID = %q, want vorma-refresh-overlay",
 			got,
 		)
 	}
-	if got := cfg.CriticalCSSStyleElementID(); got != "vorma-critical-css" {
+	if got := cfg.criticalCSSStyleElementID(); got != "vorma-critical-css" {
 		t.Fatalf(
 			"configured critical CSS style element ID = %q, want vorma-critical-css",
 			got,
 		)
 	}
-	if got := cfg.NonCriticalCSSLinkElementID(); got != "vorma-noncritical-css" {
+	if got := cfg.nonCriticalCSSLinkElementID(); got != "vorma-noncritical-css" {
 		t.Fatalf(
 			"configured non-critical CSS link element ID = %q, want vorma-noncritical-css",
 			got,
@@ -500,7 +500,7 @@ func TestWatchedFileSortGroupsHooksAndIsIdempotent(t *testing.T) {
 			{Cmd: "default"},
 			{Cmd: "post", Timing: OnChangeStrategyPost},
 			{Cmd: "concurrent", Timing: OnChangeStrategyConcurrent},
-			{Cmd: "fire-and-forget", Timing: OnChangeStrategyConcurrentNoWait},
+			{Cmd: "fire-and-forget", Timing: onChangeStrategyConcurrentNoWait},
 		},
 	}
 
@@ -546,7 +546,7 @@ func TestRefreshActionMergeAndIsZero(t *testing.T) {
 		TriggerRestart: true,
 		RecompileGo:    true,
 	}
-	merged := a.Merge(b)
+	merged := a.merge(b)
 
 	if !merged.ReloadBrowser || !merged.WaitForVite || !merged.WaitForApp ||
 		!merged.TriggerRestart ||

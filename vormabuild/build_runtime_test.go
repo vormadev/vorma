@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
-	"github.com/vormadev/vorma/wave/tooling/builder"
 )
 
 type fakeRuntimeWaveBuilder struct {
@@ -16,7 +15,7 @@ type fakeRuntimeWaveBuilder struct {
 	viteCalled     bool
 	buildCalled    bool
 	closeCalled    bool
-	receivedOption toolingbuilder.BuildOpts
+	receivedOption toolingBuildOptions
 }
 
 func (builder *fakeRuntimeWaveBuilder) ViteProdBuild() error {
@@ -24,7 +23,7 @@ func (builder *fakeRuntimeWaveBuilder) ViteProdBuild() error {
 	return builder.viteErr
 }
 
-func (builder *fakeRuntimeWaveBuilder) Build(options toolingbuilder.BuildOpts) error {
+func (builder *fakeRuntimeWaveBuilder) Build(options toolingBuildOptions) error {
 	builder.buildCalled = true
 	builder.receivedOption = options
 	return builder.buildErr
@@ -186,7 +185,7 @@ func TestRunWaveProductionBuild(t *testing.T) {
 			},
 		}
 
-		buildOptions := toolingbuilder.BuildOpts{
+		buildOptions := toolingBuildOptions{
 			CompileGo: true,
 			IsDev:     false,
 			IsRebuild: false,
@@ -428,11 +427,11 @@ func TestRuntimeBuildExecutorRunProductionMode(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
 		app := fixture.app
 
-		var capturedOptions toolingbuilder.BuildOpts
+		var capturedOptions toolingBuildOptions
 		dependencies := runtimeBuildDependencies{
 			runWaveProductionBuild: func(
 				_ *vormaruntime.Vorma,
-				options toolingbuilder.BuildOpts,
+				options toolingBuildOptions,
 			) error {
 				capturedOptions = options
 				return nil
@@ -461,7 +460,7 @@ func TestRuntimeBuildExecutorRunProductionMode(t *testing.T) {
 		dependencies := runtimeBuildDependencies{
 			runWaveProductionBuild: func(
 				_ *vormaruntime.Vorma,
-				_ toolingbuilder.BuildOpts,
+				_ toolingBuildOptions,
 			) error {
 				return expectedErr
 			},
@@ -532,7 +531,7 @@ func TestBuild(t *testing.T) {
 
 		expectedErr := errors.New("production build failed")
 		dependencies := runtimeBuildDependencies{
-			runWaveProductionBuild: func(_ *vormaruntime.Vorma, _ toolingbuilder.BuildOpts) error {
+			runWaveProductionBuild: func(_ *vormaruntime.Vorma, _ toolingBuildOptions) error {
 				return expectedErr
 			},
 		}

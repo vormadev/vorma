@@ -32,7 +32,7 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 		Core: wave.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
 			DistDir:      filepath.Join(rootDir, "dist"),
-			StaticAssetDirs: wave.StaticAssetDirs{
+			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
 			},
@@ -207,7 +207,7 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 		Core: wave.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
 			DistDir:      filepath.Join(rootDir, "dist"),
-			StaticAssetDirs: wave.StaticAssetDirs{
+			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
 			},
@@ -350,7 +350,7 @@ func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(
 		Core: wave.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
 			DistDir:      filepath.Join(rootDir, "dist"),
-			StaticAssetDirs: wave.StaticAssetDirs{
+			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
 			},

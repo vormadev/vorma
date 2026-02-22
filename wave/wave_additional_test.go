@@ -60,9 +60,9 @@ func TestMustGetHelpersSucceedWithValidSetup(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	publicFS := w.MustPublicFS()
+	publicFS := w.mustPublicFS()
 	if got := mustReadFileFromFS(t, publicFS, "logo.txt"); got != "logo" {
-		t.Fatalf("unexpected public FS content from MustPublicFS: %q", got)
+		t.Fatalf("unexpected public FS content from mustPublicFS: %q", got)
 	}
 
 	privateFS := w.MustPrivateFS()
@@ -70,13 +70,13 @@ func TestMustGetHelpersSucceedWithValidSetup(t *testing.T) {
 		t.Fatalf("unexpected private FS content from MustPrivateFS: %q", got)
 	}
 
-	handler := w.MustStaticHandler(false)
+	handler := w.mustStaticHandler(false)
 	req := httptest.NewRequest(http.MethodGet, "/assets/logo.txt", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf(
-			"expected MustStaticHandler result to serve file, got status %d",
+			"expected mustStaticHandler result to serve file, got status %d",
 			rec.Code,
 		)
 	}
@@ -92,9 +92,9 @@ func TestPublicFileMapMissingOrInvalidReturnsEmptyPublicURLWithoutPanic(
 		}
 
 		w := newWaveForTest(t, fixture, true, nil)
-		_, err := w.PublicFileMap()
+		_, err := w.publicFileMap()
 		if err == nil {
-			t.Fatal("expected PublicFileMap to fail when gob file is missing")
+			t.Fatal("expected publicFileMap to fail when gob file is missing")
 		}
 		if got := w.PublicURL("logo.txt"); got != "" {
 			t.Fatalf(
@@ -109,9 +109,9 @@ func TestPublicFileMapMissingOrInvalidReturnsEmptyPublicURLWithoutPanic(
 		mustWriteFile(t, fixture.cfg.Dist.PublicFileMapGob(), "not-a-gob")
 
 		w := newWaveForTest(t, fixture, true, nil)
-		_, err := w.PublicFileMap()
+		_, err := w.publicFileMap()
 		if err == nil {
-			t.Fatal("expected PublicFileMap to fail for invalid gob")
+			t.Fatal("expected publicFileMap to fail for invalid gob")
 		}
 		if got := w.PublicURL("logo.txt"); got != "" {
 			t.Fatalf(
@@ -126,25 +126,25 @@ func TestGettersHandleUnavailableBaseFSGracefully(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, nil)
 
-	if got := w.PublicFileMapURL(); got != "" {
+	if got := w.publicFileMapURL(); got != "" {
 		t.Fatalf(
 			"expected empty file map URL when base FS is unavailable, got %q",
 			got,
 		)
 	}
-	if got := w.PublicFileMapElements(); got != "" {
+	if got := w.publicFileMapElements(); got != "" {
 		t.Fatalf(
 			"expected empty file map elements when base FS is unavailable, got %q",
 			got,
 		)
 	}
-	if got := w.PublicFileMapScriptSha256Hash(); got != "" {
+	if got := w.publicFileMapScriptSha256Hash(); got != "" {
 		t.Fatalf(
 			"expected empty file map script hash when base FS is unavailable, got %q",
 			got,
 		)
 	}
-	if got := w.StyleSheetURL(); got != "" {
+	if got := w.styleSheetURL(); got != "" {
 		t.Fatalf(
 			"expected empty stylesheet URL when base FS is unavailable, got %q",
 			got,
@@ -168,7 +168,7 @@ func TestGettersHandleUnavailableBaseFSGracefully(t *testing.T) {
 			got,
 		)
 	}
-	if got := w.CriticalCSSStyleElementSha256Hash(); got != "" {
+	if got := w.criticalCSSStyleElementSha256Hash(); got != "" {
 		t.Fatalf(
 			"expected empty critical CSS hash when base FS is unavailable, got %q",
 			got,
@@ -190,7 +190,7 @@ func TestStylesheetReferenceMissingReturnsEmpty(t *testing.T) {
 	}
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.StyleSheetURL(); got != "" {
+	if got := w.styleSheetURL(); got != "" {
 		t.Fatalf(
 			"expected empty stylesheet URL when ref file is missing, got %q",
 			got,
@@ -213,7 +213,7 @@ func TestStylesheetReferenceTrimsWhitespace(t *testing.T) {
 	)
 
 	w := newWaveForTest(t, fixture, true, nil)
-	if got := w.StyleSheetURL(); got != "/assets/vorma_out/vorma_internal_normal_hash.css" {
+	if got := w.styleSheetURL(); got != "/assets/vorma_out/vorma_internal_normal_hash.css" {
 		t.Fatalf("expected trimmed stylesheet URL, got %q", got)
 	}
 }
@@ -223,7 +223,7 @@ func TestStylesheetReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 	mustWriteFile(t, fixture.cfg.Dist.NormalCSSRef(), " \n\t ")
 
 	w := newWaveForTest(t, fixture, true, nil)
-	if got := w.StyleSheetURL(); got != "" {
+	if got := w.styleSheetURL(); got != "" {
 		t.Fatalf(
 			"expected empty stylesheet URL for whitespace-only ref, got %q",
 			got,
@@ -242,7 +242,7 @@ func TestStylesheetReferenceTraversalStaysUnderPublicPrefix(t *testing.T) {
 	mustWriteFile(t, fixture.cfg.Dist.NormalCSSRef(), "../outside.css")
 
 	w := newWaveForTest(t, fixture, true, nil)
-	if got := w.StyleSheetURL(); got != "/assets/outside.css" {
+	if got := w.styleSheetURL(); got != "/assets/outside.css" {
 		t.Fatalf(
 			"expected stylesheet URL to stay under public prefix, got %q",
 			got,
@@ -255,9 +255,9 @@ func TestServeStaticWithRootPrefix(t *testing.T) {
 	fixture.cfg.Core.PublicPathPrefix = "/"
 	w := newWaveForTest(t, fixture, true, nil)
 
-	handler, err := w.StaticHandler(false)
+	handler, err := w.staticHandler(false)
 	if err != nil {
-		t.Fatalf("StaticHandler returned error: %v", err)
+		t.Fatalf("staticHandler returned error: %v", err)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/logo.txt", nil)
@@ -349,9 +349,9 @@ func TestIsPublicAssetReturnsFalseWhenRootPrefixPublicFSUnavailable(
 	fixture.cfg.Core.PublicPathPrefix = "/"
 	w := newWaveForTest(t, fixture, false, nil)
 
-	if w.IsPublicAsset("/logo.txt") {
+	if w.isPublicAsset("/logo.txt") {
 		t.Fatal(
-			"expected IsPublicAsset to return false when public FS is unavailable",
+			"expected isPublicAsset to return false when public FS is unavailable",
 		)
 	}
 }
@@ -363,13 +363,13 @@ func TestPublicFileMapGettersFailClosedWhenCacheReturnsNilData(t *testing.T) {
 		return nil, fmt.Errorf("forced failure")
 	})
 
-	if got := w.PublicFileMapElements(); got != "" {
+	if got := w.publicFileMapElements(); got != "" {
 		t.Fatalf(
 			"expected empty file map elements on cache failure, got %q",
 			got,
 		)
 	}
-	if got := w.PublicFileMapScriptSha256Hash(); got != "" {
+	if got := w.publicFileMapScriptSha256Hash(); got != "" {
 		t.Fatalf(
 			"expected empty file map script hash on cache failure, got %q",
 			got,
@@ -386,7 +386,7 @@ func TestPublicFileMapReferenceTrimsWhitespace(t *testing.T) {
 	)
 
 	w := newWaveForTest(t, fixture, true, nil)
-	if got := w.PublicFileMapURL(); got != "/assets/vorma_out/vorma_internal_public_filemap_hash.js" {
+	if got := w.publicFileMapURL(); got != "/assets/vorma_out/vorma_internal_public_filemap_hash.js" {
 		t.Fatalf("expected trimmed public file map URL, got %q", got)
 	}
 }
@@ -396,19 +396,19 @@ func TestPublicFileMapReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 	mustWriteFile(t, fixture.cfg.Dist.PublicFileMapRef(), " \n\t ")
 
 	w := newWaveForTest(t, fixture, true, nil)
-	if got := w.PublicFileMapURL(); got != "" {
+	if got := w.publicFileMapURL(); got != "" {
 		t.Fatalf(
 			"expected empty public file map URL for whitespace-only ref, got %q",
 			got,
 		)
 	}
-	if got := w.PublicFileMapElements(); got != "" {
+	if got := w.publicFileMapElements(); got != "" {
 		t.Fatalf(
 			"expected empty public file map elements for whitespace-only ref, got %q",
 			got,
 		)
 	}
-	if got := w.PublicFileMapScriptSha256Hash(); got != "" {
+	if got := w.publicFileMapScriptSha256Hash(); got != "" {
 		t.Fatalf(
 			"expected empty public file map hash for whitespace-only ref, got %q",
 			got,
@@ -421,7 +421,7 @@ func TestPublicFileMapReferenceTraversalStaysUnderPublicPrefix(t *testing.T) {
 	mustWriteFile(t, fixture.cfg.Dist.PublicFileMapRef(), "../outside.js")
 
 	w := newWaveForTest(t, fixture, true, nil)
-	if got := w.PublicFileMapURL(); got != "/assets/outside.js" {
+	if got := w.publicFileMapURL(); got != "/assets/outside.js" {
 		t.Fatalf(
 			"expected public file map URL to stay under public prefix, got %q",
 			got,
@@ -451,7 +451,7 @@ func TestCriticalCSSReadErrorsFailClosed(t *testing.T) {
 			got,
 		)
 	}
-	if got := w.CriticalCSSStyleElementSha256Hash(); got != "" {
+	if got := w.criticalCSSStyleElementSha256Hash(); got != "" {
 		t.Fatalf(
 			"expected empty critical CSS hash when read fails, got %q",
 			got,
@@ -468,7 +468,7 @@ func TestFaviconRedirectMiddlewareGuardsMethodAndPath(t *testing.T) {
 		nextCalled = true
 		rw.WriteHeader(http.StatusTeapot)
 	})
-	h := w.FaviconRedirect()(next)
+	h := w.faviconRedirect()(next)
 
 	postReq := httptest.NewRequest(http.MethodPost, "/favicon.ico", nil)
 	postRec := httptest.NewRecorder()
@@ -522,7 +522,7 @@ func TestFaviconRedirectMiddlewareSupportsIdentityMappedFavicon(t *testing.T) {
 	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusTeapot)
 	})
-	h := w.FaviconRedirect()(next)
+	h := w.faviconRedirect()(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
 	rec := httptest.NewRecorder()

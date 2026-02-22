@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/vormadev/vorma/wave/internal/waveshared"
+	"github.com/vormadev/vorma/wave/internal/wavecore"
 )
 
 func stubGetFreePortForTest(
@@ -14,7 +14,7 @@ func stubGetFreePortForTest(
 ) {
 	t.Helper()
 
-	restore := waveshared.SetGetFreePortForTest(getFreePortFunc)
+	restore := wavecore.SetGetFreePortForTest(getFreePortFunc)
 	t.Cleanup(restore)
 }
 
@@ -261,27 +261,27 @@ func TestMustGetPortDevAlreadySetPanicsForInvalidPort(t *testing.T) {
 
 func TestGetAndSetRefreshServerPort(t *testing.T) {
 	t.Setenv(envRefreshServerPort, "")
-	if got := GetRefreshServerPort(); got != 0 {
+	if got := getRefreshServerPort(); got != 0 {
 		t.Fatalf("expected empty refresh port to return 0, got %d", got)
 	}
 
-	SetRefreshServerPort(10999)
-	if got := GetRefreshServerPort(); got != 10999 {
+	setRefreshServerPort(10999)
+	if got := getRefreshServerPort(); got != 10999 {
 		t.Fatalf("expected refresh port 10999, got %d", got)
 	}
 
 	t.Setenv(envRefreshServerPort, "invalid")
-	if got := GetRefreshServerPort(); got != 0 {
+	if got := getRefreshServerPort(); got != 0 {
 		t.Fatalf("expected invalid refresh port to return 0, got %d", got)
 	}
 
 	t.Setenv(envRefreshServerPort, "-10")
-	if got := GetRefreshServerPort(); got != 0 {
+	if got := getRefreshServerPort(); got != 0 {
 		t.Fatalf("expected negative refresh port to return 0, got %d", got)
 	}
 
 	t.Setenv(envRefreshServerPort, "70000")
-	if got := GetRefreshServerPort(); got != 0 {
+	if got := getRefreshServerPort(); got != 0 {
 		t.Fatalf("expected out-of-range refresh port to return 0, got %d", got)
 	}
 }

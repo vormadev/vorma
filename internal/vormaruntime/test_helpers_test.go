@@ -12,6 +12,16 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
+type staticAssetDirsForTests = struct {
+	Private string `json:"Private"`
+	Public  string `json:"Public"`
+}
+
+type cssEntryFilesForTests = struct {
+	Critical    string `json:"Critical,omitempty"`
+	NonCritical string `json:"NonCritical,omitempty"`
+}
+
 type testFixture struct {
 	app        *Vorma
 	rootDir    string
@@ -89,14 +99,14 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	coreCfg := wave.CoreConfig{
 		MainAppEntry: "backend/cmd/serve",
 		DistDir:      filepath.Join(rootDir, "dist"),
-		StaticAssetDirs: wave.StaticAssetDirs{
+		StaticAssetDirs: staticAssetDirsForTests{
 			Private: privateDir,
 			Public:  publicDir,
 		},
 		PublicPathPrefix: o.publicPathPrefix,
 	}
 	if o.enableCriticalCSS || o.enableNonCriticalCSS {
-		coreCfg.CSSEntryFiles = wave.CSSEntryFiles{
+		coreCfg.CSSEntryFiles = cssEntryFilesForTests{
 			Critical:    "frontend/src/styles/main.critical.css",
 			NonCritical: "frontend/src/styles/main.css",
 		}

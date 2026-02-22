@@ -59,7 +59,7 @@ func TestCopyFrameworkRuntimeFieldsFrom(
 	}
 
 	parsedConfig := &ParsedConfig{}
-	parsedConfig.CopyFrameworkRuntimeFieldsFrom(previousParsedConfig)
+	parsedConfig.copyFrameworkRuntimeFieldsFrom(previousParsedConfig)
 
 	previousParsedConfig.FrameworkWatchPatterns[0].Pattern = "**/*.changed"
 	previousParsedConfig.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] = "changed-hook/**"
@@ -148,7 +148,7 @@ func TestCopyFrameworkRuntimeFieldsFromNilSourceIsNoOp(
 		FrameworkDevBuildHook: "keep",
 	}
 
-	parsedConfig.CopyFrameworkRuntimeFieldsFrom(nil)
+	parsedConfig.copyFrameworkRuntimeFieldsFrom(nil)
 
 	if parsedConfig.FrameworkDevBuildHook != "keep" {
 		t.Fatalf(

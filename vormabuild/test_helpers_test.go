@@ -13,6 +13,16 @@ import (
 	"github.com/vormadev/vorma/wave"
 )
 
+type staticAssetDirsForTests = struct {
+	Private string `json:"Private"`
+	Public  string `json:"Public"`
+}
+
+type cssEntryFilesForTests = struct {
+	Critical    string `json:"Critical,omitempty"`
+	NonCritical string `json:"NonCritical,omitempty"`
+}
+
 type buildTestFixture struct {
 	app        *vormaruntime.Vorma
 	rootDir    string
@@ -70,7 +80,7 @@ func newBuildTestFixture(t *testing.T, options *buildTestFixtureOptions) *buildT
 		Core: wave.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
 			DistDir:      distDir,
-			StaticAssetDirs: wave.StaticAssetDirs{
+			StaticAssetDirs: staticAssetDirsForTests{
 				Private: privateDir,
 				Public:  publicDir,
 			},

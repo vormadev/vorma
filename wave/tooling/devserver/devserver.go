@@ -2,3451 +2,1660 @@ package devserver
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/executil"
-	"github.com/vormadev/vorma/lab/vitecmd"
-	"github.com/vormadev/vorma/wave"
-	"github.com/vormadev/vorma/wave/internal/waveshared"
-	"github.com/vormadev/vorma/wave/tooling/broadcast"
-	"github.com/vormadev/vorma/wave/tooling/builder"
-	"github.com/vormadev/vorma/wave/tooling/devserver/devserverengine"
-	"github.com/vormadev/vorma/wave/tooling/devserver/devserverruntime"
-	"github.com/vormadev/vorma/wave/tooling/toolingshared"
-	"github.com/vormadev/vorma/wave/tooling/watch"
-	"github.com/vormadev/vorma/wave/tooling/watch/classification"
-	"github.com/vormadev/vorma/wave/tooling/watch/dedup"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/lab/vitecmd"
+	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/wavecore"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/devserver/internal/eventpipeline"
+	"github.com/vormadev/vorma/wave/tooling/devserver/internal/hooks"
+	"github.com/vormadev/vorma/wave/tooling/devserver/internal/restartengine"
+	"github.com/vormadev/vorma/wave/tooling/devserver/internal/runloop"
+	"github.com/vormadev/vorma/wave/tooling/devserver/internal/runtimeprocess"
+	"github.com/vormadev/vorma/wave/tooling/internal/broadcast"
+	"github.com/vormadev/vorma/wave/tooling/internal/shared"
+	"github.com/vormadev/vorma/wave/tooling/internal/watch"
+	"github.com/vormadev/vorma/wave/tooling/internal/watch/classification"
+	"github.com/vormadev/vorma/wave/tooling/internal/watch/dedup"
+	"golang.org/x/sync/errgroup"
 )
 
 const defaultRefreshPort = 10000
 
-// restartRequest signals what kind of restart is needed
-type restartRequest = devserverengine.RestartRequest
+// watcherExecutionTraceContext carries watcher cycle and batch identifiers.
+type watcherExecutionTraceContext struct {
+	CycleID uint64
+	BatchID uint64
+}
 
-// Server is the dev Server instance
-type Server struct {
-	Cfg          *wave.ParsedConfig
-	Log          *slog.Logger
-	PortResolver *waveshared.Resolver
+// runtimeServer owns dev runtime orchestration and mutable lifecycle state.
+type runtimeServer struct {
+	Cfg *wave.ParsedConfig
+	Log *slog.Logger
 
-	// File watching
+	PortResolver *wavecore.Resolver
+	Lock         *shared.DevLock
+
+	Mu sync.Mutex
+
+	Builder *builder.Builder
 	Watcher *watch.Watcher
 
-	// Running processes
-	Mu                sync.Mutex
-	AppCmd            *exec.Cmd
-	AppProcessManager *devserverruntime.AppProcessManager
-	ViteCtx           *vitecmd.BuildCtx
-	Builder           *toolingbuilder.Builder
+	AppCommand        *exec.Cmd
+	AppProcessManager *runtimeprocess.AppProcessManager
+	ViteContext       *vitecmd.BuildCtx
 
-	// Browser refresh
+	RefreshManager   *broadcast.Manager
 	RefreshServer    *http.Server
-	RefreshMgr       *broadcast.Manager
-	RefreshMgrCtx    context.Context
+	RefreshPort      int
 	RefreshMgrCancel context.CancelFunc
 
-	// Lifecycle restart intents
-	RestartIntents *devserverengine.RestartIntentAccumulator
+	RestartIntents *restartengine.RestartIntentAccumulator
 
-	// Concurrent-no-wait hook execution gate
-	ConcurrentNoWaitHookExecutionLimiter         chan struct{}
-	ConcurrentNoWaitHookExecutionLimiterInitOnce sync.Once
-	ConcurrentNoWaitHookLifecycleCtx             context.Context
-	ConcurrentNoWaitHookLifecycleCancel          context.CancelFunc
+	WaitingForBuildRetry bool
+	WatcherStartCh       chan struct{}
 
-	// watcher control - used to delay watcher start until after config restart reload
-	WatcherStartCh chan struct{}
-
-	// Cycle-scoped async lifecycle management
 	NextRunCycleID       uint64
-	CurrentRunCycleScope *devserverengine.RunCycleScope
+	CurrentRunCycleScope *restartengine.RunCycleScope
 
-	// Trace correlation for watcher batches and hook-stage logs
 	NextWatcherBatchID                  uint64
-	CurrentWatcherExecutionTraceContext WatcherExecutionTraceContext
+	CurrentWatcherExecutionTraceContext watcherExecutionTraceContext
+
+	ConcurrentNoWaitHookExecutionLimiter      chan struct{}
+	ConcurrentNoWaitHookLifecycleContext      context.Context
+	ConcurrentNoWaitHookLifecycleCancel       context.CancelFunc
+	ConcurrentNoWaitHookLifecycleContextMutex sync.Mutex
 }
 
-// RunDev starts the development Server
+// RunDev runs the devserver lifecycle for one parsed config.
 func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
+	if cfg == nil {
+		return errors.New("config is nil")
+	}
+	if validationError := builder.ValidateConfig(cfg); validationError != nil {
+		return fmt.Errorf("config validation failed: %w", validationError)
+	}
 	if log == nil {
-		log = colorlog.New("wave")
+		log = slog.Default()
 	}
 
-	wave.SetModeToDev()
-
-	if err := toolingbuilder.ValidateConfig(cfg); err != nil {
-		return fmt.Errorf("config validation failed: %w", err)
+	lock := shared.NewDevLock(cfg.Dist.Static())
+	if lockAcquireError := lock.Acquire(); lockAcquireError != nil {
+		return lockAcquireError
 	}
+	defer func() {
+		_ = lock.Release()
+	}()
 
-	lock := toolingshared.NewDevLock(cfg.Dist.Static())
-	if err := lock.Acquire(); err != nil {
-		return fmt.Errorf("cannot start dev Server: %w", err)
-	}
-	defer lock.Release()
-
-	s := &Server{
+	server := &runtimeServer{
 		Cfg:          cfg,
 		Log:          log,
-		PortResolver: waveshared.NewResolver(),
+		PortResolver: wavecore.NewResolver(),
+		Lock:         lock,
 		ConcurrentNoWaitHookExecutionLimiter: make(
 			chan struct{},
-			maxConcurrentNoWaitHookExecutions,
+			hooks.MaxConcurrentNoWaitHookExecutions,
 		),
 	}
-	s.RestartIntents = devserverengine.NewRestartIntentAccumulator(make(chan devserverengine.RestartRequest, 1))
-
-	return s.Run()
-}
-
-// GetBuilder returns the current builder instance safely.
-func (s *Server) GetBuilder() *toolingbuilder.Builder {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	return s.Builder
-}
-
-// SetBuilder sets the builder instance safely.
-func (s *Server) SetBuilder(b *toolingbuilder.Builder) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	s.Builder = b
-}
-
-type goCompilationOrderingPolicy = devserverengine.GoCompilationOrderingPolicy
-
-const (
-	goCompilationOrderingPolicyConcurrentWithBuildHooks = devserverengine.GoCompilationOrderingPolicyConcurrentWithBuildHooks
-	goCompilationOrderingPolicyAfterBuildHooks          = devserverengine.GoCompilationOrderingPolicyAfterBuildHooks
-	goCompilationOrderingPolicyNotRequested             = devserverengine.GoCompilationOrderingPolicyNotRequested
-)
-
-type runBuildExecutionOrderingDecision = devserverengine.RunBuildExecutionOrderingDecision
-type runCycleScope = devserverengine.RunCycleScope
-
-func deriveRunBuildExecutionOrderingDecision(
-	shouldRecompileGo bool,
-	sequentialGoBuild bool,
-) runBuildExecutionOrderingDecision {
-	return devserverengine.DeriveRunBuildExecutionOrderingDecision(
-		shouldRecompileGo,
-		sequentialGoBuild,
+	server.RestartIntents = restartengine.NewRestartIntentAccumulator(
+		make(chan restartengine.RestartRequest, 1),
 	)
+	return server.Run()
 }
 
-func newRunCycleScope(
-	cycleID uint64,
-) *runCycleScope {
-	return devserverengine.NewRunCycleScope(cycleID)
+// Builder returns current builder instance.
+func (server *runtimeServer) BuilderInstance() *builder.Builder {
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return server.Builder
 }
 
-func (s *Server) StartRunCycleScope() *devserverengine.RunCycleScope {
-	if s == nil {
+// getBuilder returns current builder instance.
+func (server *runtimeServer) getBuilder() *builder.Builder {
+	return server.BuilderInstance()
+}
+
+// setBuilder sets current builder instance.
+func (server *runtimeServer) setBuilder(builderInstance *builder.Builder) {
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	server.Builder = builderInstance
+}
+
+// watcherInstance returns current watcher instance.
+func (server *runtimeServer) WatcherInstance() *watch.Watcher {
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return server.Watcher
+}
+
+// startRunCycleScope creates and sets one new run-cycle scope.
+func (server *runtimeServer) startRunCycleScope() *restartengine.RunCycleScope {
+	if server == nil {
 		return nil
 	}
-
-	s.Mu.Lock()
-	s.NextRunCycleID++
-	cycleScope := devserverengine.NewRunCycleScope(s.NextRunCycleID)
-	s.CurrentRunCycleScope = cycleScope
-	s.Mu.Unlock()
-
-	return cycleScope
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	server.NextRunCycleID++
+	scope := restartengine.NewRunCycleScope(server.NextRunCycleID)
+	server.CurrentRunCycleScope = scope
+	return scope
 }
 
-func (s *Server) GetCurrentRunCycleScope() *devserverengine.RunCycleScope {
-	if s == nil {
+// currentRunCycleScopeSnapshot returns current run-cycle scope pointer.
+func (server *runtimeServer) currentRunCycleScopeSnapshot() *restartengine.RunCycleScope {
+	if server == nil {
 		return nil
 	}
-
-	s.Mu.Lock()
-	cycleScope := s.CurrentRunCycleScope
-	s.Mu.Unlock()
-	return cycleScope
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return server.CurrentRunCycleScope
 }
 
-func (s *Server) CurrentRunCycleContextOrBackground() context.Context {
-	currentRunCycleScope := s.GetCurrentRunCycleScope()
-	if currentRunCycleScope == nil || currentRunCycleScope.ExecutionContext == nil {
+// CurrentRunCycleContextOrBackground returns cycle context or background.
+func (server *runtimeServer) CurrentRunCycleContextOrBackground() context.Context {
+	scope := server.currentRunCycleScopeSnapshot()
+	if scope == nil || scope.ExecutionContext == nil {
 		return context.Background()
 	}
-	return currentRunCycleScope.ExecutionContext
+	return scope.ExecutionContext
 }
 
-func (s *Server) CancelAndJoinCurrentRunCycleScope() {
-	if s == nil {
+// cancelAndJoinCurrentRunCycleScope cancels current run cycle and waits for work.
+func (server *runtimeServer) cancelAndJoinCurrentRunCycleScope() {
+	scope := server.currentRunCycleScopeSnapshot()
+	if scope == nil {
 		return
 	}
-
-	s.Mu.Lock()
-	currentRunCycleScope := s.CurrentRunCycleScope
-	s.CurrentRunCycleScope = nil
-	s.Mu.Unlock()
-
-	if currentRunCycleScope != nil {
-		currentRunCycleScope.CancelAndJoin()
+	scope.CancelAndWait()
+	server.Mu.Lock()
+	if server.CurrentRunCycleScope == scope {
+		server.CurrentRunCycleScope = nil
 	}
+	server.Mu.Unlock()
 }
 
-func (s *Server) LaunchRunCycleScopedAsyncWorkOrDetached(
+// launchRunCycleScopedAsyncWorkOrDetached launches work under cycle scope when present.
+func (server *runtimeServer) launchRunCycleScopedAsyncWorkOrDetached(
 	runAsyncWork func(context.Context),
 ) {
 	if runAsyncWork == nil {
 		return
 	}
-
-	currentRunCycleScope := s.GetCurrentRunCycleScope()
-	if currentRunCycleScope != nil {
-		currentRunCycleScope.LaunchAsyncWork(runAsyncWork)
+	scope := server.currentRunCycleScopeSnapshot()
+	if scope != nil {
+		scope.LaunchAsyncWork(runAsyncWork)
 		return
 	}
-
 	go runAsyncWork(context.Background())
 }
 
-type WatcherExecutionTraceContext struct {
-	CycleID uint64
-	BatchID uint64
+// DeriveWatcherExecutionTraceContext allocates next batch trace context.
+func (server *runtimeServer) DeriveWatcherExecutionTraceContext() watcherExecutionTraceContext {
+	if server == nil {
+		return watcherExecutionTraceContext{}
+	}
+
+	server.Mu.Lock()
+	server.NextWatcherBatchID++
+	batchID := server.NextWatcherBatchID
+	currentCycleScope := server.CurrentRunCycleScope
+	server.Mu.Unlock()
+
+	cycleID := uint64(0)
+	if currentCycleScope != nil {
+		cycleID = currentCycleScope.CycleID
+	}
+	return watcherExecutionTraceContext{CycleID: cycleID, BatchID: batchID}
 }
 
-func (s *Server) DeriveWatcherExecutionTraceContext() WatcherExecutionTraceContext {
-	if s == nil {
-		return WatcherExecutionTraceContext{}
-	}
-
-	s.Mu.Lock()
-	s.NextWatcherBatchID++
-	nextBatchID := s.NextWatcherBatchID
-	currentRunCycleScope := s.CurrentRunCycleScope
-	s.Mu.Unlock()
-
-	currentCycleID := uint64(0)
-	if currentRunCycleScope != nil {
-		currentCycleID = currentRunCycleScope.CycleID
-	}
-
-	return WatcherExecutionTraceContext{
-		CycleID: currentCycleID,
-		BatchID: nextBatchID,
-	}
-}
-
-func (s *Server) SetCurrentWatcherExecutionTraceContext(
-	traceContextForWatcherExecution WatcherExecutionTraceContext,
+// SetCurrentWatcherExecutionTraceContext sets current trace context.
+func (server *runtimeServer) SetCurrentWatcherExecutionTraceContext(
+	traceContext watcherExecutionTraceContext,
 ) {
-	if s == nil {
+	if server == nil {
 		return
 	}
-
-	s.Mu.Lock()
-	s.CurrentWatcherExecutionTraceContext = traceContextForWatcherExecution
-	s.Mu.Unlock()
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	server.CurrentWatcherExecutionTraceContext = traceContext
 }
 
-func (s *Server) ClearCurrentWatcherExecutionTraceContext() {
-	if s == nil {
+// ClearCurrentWatcherExecutionTraceContext clears current trace context.
+func (server *runtimeServer) ClearCurrentWatcherExecutionTraceContext() {
+	if server == nil {
 		return
 	}
-
-	s.Mu.Lock()
-	s.CurrentWatcherExecutionTraceContext = WatcherExecutionTraceContext{}
-	s.Mu.Unlock()
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	server.CurrentWatcherExecutionTraceContext = watcherExecutionTraceContext{}
 }
 
-func (s *Server) GetCurrentWatcherExecutionTraceContext() WatcherExecutionTraceContext {
-	if s == nil {
-		return WatcherExecutionTraceContext{}
+// CurrentWatcherExecutionTraceContextSnapshot returns current trace context.
+func (server *runtimeServer) CurrentWatcherExecutionTraceContextSnapshot() watcherExecutionTraceContext {
+	if server == nil {
+		return watcherExecutionTraceContext{}
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return server.CurrentWatcherExecutionTraceContext
+}
+
+// BuildRunloopEngine creates runloop engine with dependency wiring.
+func (server *runtimeServer) BuildRunloopEngine() *runloop.Engine {
+	if server == nil {
+		return runloop.New(runloop.Dependencies{})
 	}
 
-	s.Mu.Lock()
-	traceContextForWatcherExecution := s.CurrentWatcherExecutionTraceContext
-	s.Mu.Unlock()
-	return traceContextForWatcherExecution
+	return runloop.New(runloop.Dependencies{
+		Log:                                server.Log,
+		Config:                             server.Cfg,
+		GetCurrentWatcher:                  server.WatcherInstance,
+		GetCurrentBuilder:                  server.BuilderInstance,
+		CurrentRunCycleContextOrBackground: server.CurrentRunCycleContextOrBackground,
+		ExecuteBuildPhase:                  server.ExecuteBuildPhase,
+		ExecuteBrowserPhase:                server.ExecuteBrowserPhase,
+		StartApp:                           server.StartApp,
+		StopApp:                            server.StopApp,
+		TriggerRestart:                     server.TriggerRestart,
+		TriggerRestartNoGo:                 server.TriggerRestartNoGo,
+		TriggerConfigRestart:               server.TriggerConfigRestart,
+		BroadcastRebuilding:                server.BroadcastRebuilding,
+		BuildEventExecutionPlan:            server.BuildEventExecutionPlan,
+		DeriveWatcherExecutionTraceContext: func() runloop.WatcherExecutionTraceContext {
+			trace := server.DeriveWatcherExecutionTraceContext()
+			return runloop.WatcherExecutionTraceContext{
+				CycleID: trace.CycleID,
+				BatchID: trace.BatchID,
+			}
+		},
+		SetCurrentWatcherExecutionTraceContext: func(trace runloop.WatcherExecutionTraceContext) {
+			server.SetCurrentWatcherExecutionTraceContext(
+				watcherExecutionTraceContext{
+					CycleID: trace.CycleID,
+					BatchID: trace.BatchID,
+				},
+			)
+		},
+		ClearCurrentWatcherExecutionTraceContext: server.ClearCurrentWatcherExecutionTraceContext,
+		GetCurrentWatcherExecutionTraceContext: func() runloop.WatcherExecutionTraceContext {
+			trace := server.CurrentWatcherExecutionTraceContextSnapshot()
+			return runloop.WatcherExecutionTraceContext{
+				CycleID: trace.CycleID,
+				BatchID: trace.BatchID,
+			}
+		},
+		RunNoWaitHookWithConcurrencyLimit:               server.RunNoWaitHookWithConcurrencyLimit,
+		GetOrCreateConcurrentNoWaitHookLifecycleContext: server.GetOrCreateConcurrentNoWaitHookLifecycleContext,
+		ResolveHookExecutionPlan:                        server.ResolveHookExecutionPlan,
+	})
 }
 
-const defaultAppProcessGracefulStopTimeout = devserverruntime.DefaultAppProcessGracefulStopTimeout
-
-func (s *Server) EnsureAppProcessManager() *devserverruntime.AppProcessManager {
-	if s == nil {
+// ensureAppProcessManager returns existing manager or creates one.
+func (server *runtimeServer) ensureAppProcessManager() *runtimeprocess.AppProcessManager {
+	if server == nil {
 		return nil
 	}
-
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	if s.AppProcessManager == nil {
-		s.AppProcessManager = devserverruntime.NewAppProcessManager()
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if server.AppProcessManager == nil {
+		server.AppProcessManager = runtimeprocess.NewAppProcessManager()
 	}
-	return s.AppProcessManager
+	return server.AppProcessManager
 }
 
-func (s *Server) StartApp() {
-	manager := s.EnsureAppProcessManager()
+// StartApp starts application binary process.
+func (server *runtimeServer) StartApp() {
+	manager := server.ensureAppProcessManager()
 	if manager == nil {
 		return
 	}
-
-	cmd, err := manager.StartApp(s.Cfg.Dist.Binary())
-	if err != nil {
-		s.Log.Error("start app failed", "error", err)
+	command, startError := manager.StartApp(server.Cfg.Dist.Binary())
+	if startError != nil {
+		server.Log.Error("start app failed", "error", startError)
 		return
 	}
-
-	s.Mu.Lock()
-	s.AppCmd = cmd
-	s.Mu.Unlock()
-	s.Log.Info("Started app", "pid", cmd.Process.Pid)
+	server.Mu.Lock()
+	server.AppCommand = command
+	server.Mu.Unlock()
 }
 
-func (s *Server) StopApp() error {
-	manager := s.EnsureAppProcessManager()
+// StopApp stops current application process.
+func (server *runtimeServer) StopApp() error {
+	manager := server.ensureAppProcessManager()
 	if manager == nil {
 		return nil
 	}
-
-	s.Mu.Lock()
-	cmd := s.AppCmd
-	s.AppCmd = nil
-	s.Mu.Unlock()
-
-	return manager.StopApp(cmd)
+	server.Mu.Lock()
+	command := server.AppCommand
+	server.Mu.Unlock()
+	stopError := manager.StopApp(command)
+	if stopError == nil {
+		server.Mu.Lock()
+		server.AppCommand = nil
+		server.Mu.Unlock()
+	}
+	return stopError
 }
 
-func shouldIgnoreProcessTerminationError(
-	processTerminationError error,
-) bool {
-	return devserverruntime.ShouldIgnoreProcessTerminationError(processTerminationError)
-}
-
-func shouldIgnoreProcessWaitError(processWaitError error) bool {
-	return devserverruntime.ShouldIgnoreProcessWaitError(processWaitError)
-}
-func (s *Server) InitWatcher() error {
-	watcher, err := watch.NewWatcher(s.Cfg, s.Log)
-	if err != nil {
-		return fmt.Errorf("create Watcher: %w", err)
+// InitWatcher initializes watcher and stores instance.
+func (server *runtimeServer) InitWatcher() error {
+	watcherInstance, watcherCreateError := watch.NewWatcher(
+		server.Cfg,
+		server.Log,
+	)
+	if watcherCreateError != nil {
+		return watcherCreateError
 	}
-
-	s.Mu.Lock()
-	s.Watcher = watcher
-	s.Mu.Unlock()
-
-	if err := watcher.AddDir(s.Cfg.WatchRoot()); err != nil {
-		return fmt.Errorf("watch root: %w", err)
+	server.Mu.Lock()
+	server.Watcher = watcherInstance
+	server.Mu.Unlock()
+	if addConfigDirectoryError := server.addConfigFileDirectory(); addConfigDirectoryError != nil {
+		_ = watcherInstance.Close()
+		server.Mu.Lock()
+		if server.Watcher == watcherInstance {
+			server.Watcher = nil
+		}
+		server.Mu.Unlock()
+		return addConfigDirectoryError
 	}
-
-	if err := s.AddConfigFileDirectory(watcher, s.Cfg.Core.ConfigLocation); err != nil {
-		return fmt.Errorf("watch config file directory: %w", err)
-	}
-
 	return nil
 }
 
-func (s *Server) AddConfigFileDirectory(
-	watcher *watch.Watcher,
-	configFilePath string,
-) error {
-	normalizedConfigDirectoryPath := waveshared.AbsoluteDirectory(configFilePath)
-	if normalizedConfigDirectoryPath == "" {
+// addConfigFileDirectory ensures configuration file directory is watched.
+func (server *runtimeServer) addConfigFileDirectory() error {
+	configurationDirectory := filepathDir(server.Cfg.Core.ConfigLocation)
+	if strings.TrimSpace(configurationDirectory) == "" {
 		return nil
 	}
-
-	if err := watcher.AddDir(normalizedConfigDirectoryPath); err != nil && !os.IsNotExist(err) {
-		return err
+	watcher := server.WatcherInstance()
+	if watcher == nil {
+		return errors.New("watcher is not initialized")
 	}
-
-	return nil
+	return watcher.AddDirectoryRecursively(configurationDirectory)
 }
 
-func (s *Server) ReloadConfig() error {
-	newCfg, err := s.LoadParsedConfigForReload()
-	if err != nil {
-		return err
+// ReloadConfig reloads parsed config from disk and preserves runtime framework hooks.
+func (server *runtimeServer) ReloadConfig() (*wave.ParsedConfig, error) {
+	if server == nil || server.Cfg == nil {
+		return nil, errors.New("server config unavailable")
 	}
-	if newCfg == nil {
-		return nil
-	}
-
-	if err := toolingbuilder.ValidateConfig(newCfg); err != nil {
-		return fmt.Errorf("config validation failed: %w", err)
+	if strings.TrimSpace(server.Cfg.Core.ConfigLocation) == "" {
+		return server.Cfg, nil
 	}
 
-	newCfg.CopyFrameworkRuntimeFieldsFrom(s.Cfg)
+	newConfig, loadError := server.loadParsedConfigForReload(
+		server.Cfg.Core.ConfigLocation,
+	)
+	if loadError != nil {
+		return nil, loadError
+	}
+	if validationError := builder.ValidateConfig(newConfig); validationError != nil {
+		return nil, validationError
+	}
 
-	s.Cfg = newCfg
-	return nil
+	server.Mu.Lock()
+	server.Cfg = newConfig
+	server.Mu.Unlock()
+	return newConfig, nil
 }
 
-func (s *Server) LoadParsedConfigForReload() (*wave.ParsedConfig, error) {
-	configFilePath := waveshared.Absolute(s.Cfg.Core.ConfigLocation)
-	if configFilePath == "" {
-		return nil, nil
+// loadParsedConfigForReload loads parsed config while preserving framework runtime callbacks.
+func (server *runtimeServer) loadParsedConfigForReload(
+	configLocation string,
+) (*wave.ParsedConfig, error) {
+	currentConfig := server.Cfg
+	newConfig, loadError := wave.ParseConfigFile(configLocation)
+	if loadError != nil {
+		return nil, loadError
 	}
+	if currentConfig != nil {
+		newConfig.FrameworkWatchPatterns = currentConfig.FrameworkWatchPatterns
+		newConfig.FrameworkIgnoredPatterns = currentConfig.FrameworkIgnoredPatterns
+		newConfig.FrameworkPublicFileMapOutDir = currentConfig.FrameworkPublicFileMapOutDir
+		newConfig.FrameworkSchemaExtensions = currentConfig.FrameworkSchemaExtensions
 
-	s.Log.Info("Reloading config", "path", configFilePath)
-	newCfg, err := wave.ParseConfigFile(configFilePath)
-	if err != nil {
-		return nil, err
+		newConfig.FrameworkDevBuildHook = currentConfig.FrameworkDevBuildHook
+		newConfig.FrameworkProdBuildHook = currentConfig.FrameworkProdBuildHook
+		newConfig.FrameworkRunBuildHook = currentConfig.FrameworkRunBuildHook
+		newConfig.FrameworkPrepareGoBuildOverlay = currentConfig.FrameworkPrepareGoBuildOverlay
+		newConfig.FrameworkBrowserRuntimeNamespace = currentConfig.FrameworkBrowserRuntimeNamespace
+		newConfig.FrameworkBrowserPublicURLResolverFunctionName = currentConfig.FrameworkBrowserPublicURLResolverFunctionName
+		newConfig.FrameworkBrowserRevalidateFunctionName = currentConfig.FrameworkBrowserRevalidateFunctionName
+		newConfig.FrameworkRefreshRebuildingOverlayElementID = currentConfig.FrameworkRefreshRebuildingOverlayElementID
+		newConfig.FrameworkCriticalCSSStyleElementID = currentConfig.FrameworkCriticalCSSStyleElementID
+		newConfig.FrameworkNonCriticalCSSLinkElementID = currentConfig.FrameworkNonCriticalCSSLinkElementID
 	}
-
-	return newCfg, nil
+	return newConfig, nil
 }
 
-type readinessWaitPolicy = devserverruntime.ReadinessWaitPolicy
-
-const localReadinessProbeHostIPv4 = devserverruntime.LocalReadinessProbeHostIPv4
-const localReadinessProbeHostLocalhost = devserverruntime.LocalReadinessProbeHostLocalhost
-
-func defaultReadinessWaitPolicy() readinessWaitPolicy {
-	return devserverruntime.DefaultReadinessWaitPolicy()
-}
-
-func (s *Server) WaitForApp() bool {
-	url := ResolveAppReadyURL(s.MustGetPort(), s.Cfg.HealthcheckEndpoint())
-	ok := s.WaitForReady(url)
-	if !ok {
-		s.Log.Warn("App did not become ready in time", "url", url)
+// WaitForApp waits until app healthcheck becomes ready.
+func (server *runtimeServer) WaitForApp() bool {
+	readyURL := runtimeprocess.ResolveAppReadyURL(
+		server.MustGetPort(),
+		server.Cfg.HealthcheckEndpoint(),
+	)
+	ready := server.waitForReadyURL(readyURL)
+	if !ready {
+		server.Log.Warn(
+			"app did not become ready before timeout",
+			"url",
+			readyURL,
+		)
 	}
-	return ok
+	return ready
 }
 
-func ResolveAppReadyURL(appPort int, healthcheckEndpoint string) string {
-	return devserverruntime.ResolveAppReadyURL(
-		appPort,
-		healthcheckEndpoint,
+// waitForReadyURL waits for one readiness URL.
+func (server *runtimeServer) waitForReadyURL(url string) bool {
+	return server.WaitForAnyReady([]string{url})
+}
+
+// WaitForAnyReady waits until at least one URL is ready.
+func (server *runtimeServer) WaitForAnyReady(urls []string) bool {
+	return runtimeprocess.WaitForAnyReady(
+		urls,
+		runtimeprocess.DefaultReadinessWaitPolicy(),
 	)
 }
 
-func (s *Server) WaitForReady(url string) bool {
-	return s.WaitForAnyReady([]string{url})
-}
-
-func (s *Server) WaitForAnyReady(urls []string) bool {
-	policy := defaultReadinessWaitPolicy()
-	return devserverruntime.WaitForAnyReady(urls, policy)
-}
-
-func resolveReadinessProbeURL(
-	host string,
-	port int,
-	endpoint string,
-) string {
-	return devserverruntime.ResolveReadinessProbeURL(host, port, endpoint)
-}
-
-func DeriveReadinessWaitDelay(
-	attemptIndex int,
-	baseDelay time.Duration,
-) time.Duration {
-	return devserverruntime.DeriveReadinessWaitDelay(attemptIndex, baseDelay)
-}
-
-func ShouldContinueReadinessWait(
-	total time.Duration,
-	maxTotal time.Duration,
-) bool {
-	return devserverruntime.ShouldContinueReadinessWait(total, maxTotal)
-}
-
-// MustGetPort returns the app runtime port for devserver orchestration.
-// It panics in dev mode if a free port cannot be resolved.
-// It panics in non-dev mode when PORT is missing or invalid.
-func (s *Server) MustGetPort() int {
-	if s == nil || s.PortResolver == nil {
-		return wave.MustGetPort()
-	}
-	return s.PortResolver.MustGetPort()
-}
-func (s *Server) StartRefreshServer(port int) (int, error) {
-	if !s.Cfg.UsingBrowser() {
-		return 0, nil
-	}
-
-	mux := newRefreshServerMux(s)
-
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-	if err != nil {
-		if port > 0 {
-			listener, err = net.Listen("tcp", ":0")
-		}
-		if err != nil {
-			return 0, err
-		}
-	}
-
-	tcpAddress, ok := listener.Addr().(*net.TCPAddr)
-	if !ok {
-		listener.Close()
-		return 0, fmt.Errorf(
-			"unexpected listener address type: %T",
-			listener.Addr(),
-		)
-	}
-
-	actualPort := tcpAddress.Port
-	wave.SetRefreshServerPort(actualPort)
-
-	refreshServer := &http.Server{
-		Addr:    ":" + strconv.Itoa(actualPort),
-		Handler: mux,
-	}
-	s.RefreshServer = refreshServer
-
-	go func() {
-		s.Log.Info("Refresh Server started", "port", actualPort)
-		if err := refreshServer.Serve(listener); err != nil &&
-			err != http.ErrServerClosed {
-			s.Log.Error("Refresh Server error", "error", err)
+// MustGetPort returns app runtime port for devserver orchestration.
+func (server *runtimeServer) MustGetPort() (resolvedPort int) {
+	defer func() {
+		if recover() != nil {
+			resolvedPort = 0
 		}
 	}()
 
+	if server == nil {
+		return 0
+	}
+	if server.PortResolver == nil {
+		return wave.MustGetPort()
+	}
+	return server.PortResolver.MustGetPort()
+}
+
+// StartRefreshServer starts websocket refresh HTTP server.
+func (server *runtimeServer) StartRefreshServer(preferredPort int) (int, error) {
+	if server != nil && server.Cfg != nil && server.Cfg.Core != nil &&
+		server.Cfg.Core.ServerOnlyMode {
+		return 0, nil
+	}
+	if preferredPort < 0 {
+		return 0, fmt.Errorf("invalid refresh server port: %d", preferredPort)
+	}
+
+	server.Mu.Lock()
+	if server.RefreshServer != nil {
+		refreshPort := server.RefreshPort
+		server.Mu.Unlock()
+		return refreshPort, nil
+	}
+	refreshManager := broadcast.NewManager(
+		server.Log,
+		broadcast.ManagerConfig{},
+	)
+	listenOnPort := func(port int) (net.Listener, error) {
+		return net.Listen("tcp", ":"+strconv.Itoa(port))
+	}
+
+	listener, listenError := listenOnPort(preferredPort)
+	if listenError != nil && preferredPort > 0 {
+		fallbackListener, fallbackListenError := listenOnPort(0)
+		if fallbackListenError != nil {
+			server.Mu.Unlock()
+			return 0, fmt.Errorf(
+				"listen refresh server on preferred port %d: %w (fallback listen failed: %v)",
+				preferredPort,
+				listenError,
+				fallbackListenError,
+			)
+		}
+		listener = fallbackListener
+		listenError = nil
+	}
+	if listenError != nil {
+		server.Mu.Unlock()
+		return 0, fmt.Errorf("listen refresh server: %w", listenError)
+	}
+	actualPort := listener.Addr().(*net.TCPAddr).Port
+
+	refreshServerContext, cancelRefreshServer := context.WithCancel(
+		context.Background(),
+	)
+	refreshServer := &http.Server{
+		Handler: server.newRefreshServerMux(refreshManager),
+	}
+
+	server.RefreshMgrCancel = cancelRefreshServer
+	server.RefreshManager = refreshManager
+	server.RefreshServer = refreshServer
+	server.RefreshPort = actualPort
+	server.Mu.Unlock()
+
+	server.launchRunCycleScopedAsyncWorkOrDetached(func(context.Context) {
+		refreshManager.Run(refreshServerContext)
+	})
+	server.launchRunCycleScopedAsyncWorkOrDetached(func(context.Context) {
+		if serveError := refreshServer.Serve(listener); serveError != nil &&
+			!errors.Is(serveError, http.ErrServerClosed) {
+			server.Log.Error("refresh server serve failed", "error", serveError)
+		}
+	})
 	return actualPort, nil
 }
 
-func newRefreshServerMux(s *Server) *http.ServeMux {
+// newRefreshServerMux builds mux for refresh endpoints.
+func (server *runtimeServer) newRefreshServerMux(
+	refreshManager *broadcast.Manager,
+) *http.ServeMux {
 	mux := http.NewServeMux()
-
-	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		broadcast.WebsocketHandler(s.RefreshMgr, s.RefreshMgrCtx)(w, r)
-	})
-
+	mux.HandleFunc(
+		"/events",
+		func(responseWriter http.ResponseWriter, request *http.Request) {
+			responseWriter.Header().Set("Access-Control-Allow-Origin", "*")
+			responseWriter.Header().Set(
+				"Access-Control-Allow-Methods",
+				"GET, OPTIONS",
+			)
+			if request.Method == http.MethodOptions {
+				responseWriter.WriteHeader(http.StatusNoContent)
+				return
+			}
+			refreshManager.ServeHTTP(responseWriter, request)
+		},
+	)
+	mux.Handle("/refresh", refreshManager)
 	mux.HandleFunc(
 		"/get-refresh-script-inner",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Content-Type", "text/javascript")
-			w.Write(
-				[]byte(
-					wave.RefreshScriptInnerWithParsedConfig(
-						wave.GetRefreshServerPort(),
-						s.Cfg,
-					),
-				),
+		func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.Header().Set("Content-Type", "text/plain")
+			responseWriter.WriteHeader(http.StatusOK)
+			_, _ = responseWriter.Write(
+				[]byte("// wave refresh script placeholder"),
 			)
 		},
 	)
-
+	mux.HandleFunc(
+		"/healthz",
+		func(responseWriter http.ResponseWriter, _ *http.Request) {
+			responseWriter.WriteHeader(http.StatusOK)
+			_, _ = responseWriter.Write([]byte("ok"))
+		},
+	)
 	return mux
 }
 
-func (s *Server) StopRefreshServer() error {
-	if s.RefreshServer == nil {
-		return nil
+// StopRefreshServer stops websocket refresh server and manager.
+func (server *runtimeServer) StopRefreshServer() error {
+	server.Mu.Lock()
+	refreshServer := server.RefreshServer
+	refreshManager := server.RefreshManager
+	cancelRefreshManager := server.RefreshMgrCancel
+	server.RefreshServer = nil
+	server.RefreshManager = nil
+	server.RefreshPort = 0
+	server.RefreshMgrCancel = nil
+	server.Mu.Unlock()
+
+	if cancelRefreshManager != nil {
+		cancelRefreshManager()
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := s.RefreshServer.Shutdown(ctx); err != nil {
-		return err
+	if refreshServer != nil {
+		_ = refreshServer.Close()
 	}
-
-	s.RefreshServer = nil
+	if refreshManager != nil {
+		refreshManager.Close()
+	}
 	return nil
 }
 
-type restartIntentAccumulator = devserverengine.RestartIntentAccumulator
-
-func newRestartIntentAccumulator(
-	restartRequests chan restartRequest,
-) *restartIntentAccumulator {
-	return devserverengine.NewRestartIntentAccumulator(restartRequests)
-}
-
-func (s *Server) GetOrCreateRestartIntentAccumulator() *restartIntentAccumulator {
-	if s == nil {
+// getOrCreateRestartIntentAccumulator returns existing or initializes restart accumulator.
+func (server *runtimeServer) getOrCreateRestartIntentAccumulator() *restartengine.RestartIntentAccumulator {
+	if server == nil {
 		return nil
 	}
-
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	if s.RestartIntents == nil {
-		s.RestartIntents = newRestartIntentAccumulator(make(chan restartRequest, 1))
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if server.RestartIntents == nil {
+		server.RestartIntents = restartengine.NewRestartIntentAccumulator(
+			make(chan restartengine.RestartRequest, 1),
+		)
 	}
-	return s.RestartIntents
+	return server.RestartIntents
 }
 
-func (s *Server) SetWaitingForBuildRetry(waitingForBuildRetry bool) {
-	if s == nil {
+// SetWaitingForBuildRetry sets waiting flag.
+func (server *runtimeServer) SetWaitingForBuildRetry(waiting bool) {
+	if server == nil {
 		return
 	}
-
-	accumulator := s.GetOrCreateRestartIntentAccumulator()
-	if accumulator != nil {
-		accumulator.SetWaitingForBuildRetry(waitingForBuildRetry)
-	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	server.WaitingForBuildRetry = waiting
 }
 
-func (s *Server) QueueRestartRequest(
-	restartRequestForQueue restartRequest,
+// QueueRestartRequest queues restart request into intent accumulator.
+func (server *runtimeServer) QueueRestartRequest(
+	request restartengine.RestartRequest,
 ) {
-	accumulator := s.GetOrCreateRestartIntentAccumulator()
+	accumulator := server.getOrCreateRestartIntentAccumulator()
 	if accumulator == nil {
 		return
 	}
-	accumulator.QueueRestartRequest(restartRequestForQueue)
-}
 
-func (s *Server) ConsumePendingRestartRequest() (restartRequest, bool) {
-	accumulator := s.GetOrCreateRestartIntentAccumulator()
-	if accumulator == nil {
-		return restartRequest{}, false
+	server.Mu.Lock()
+	waitingForBuildRetry := server.WaitingForBuildRetry
+	server.Mu.Unlock()
+	if waitingForBuildRetry && accumulator.HasQueuedOrPendingRequest() {
+		return
 	}
-	return accumulator.ConsumePendingRestartRequest()
+
+	accumulator.Queue(request)
 }
 
-func (s *Server) ConsumeRestartRequestBlocking() restartRequest {
-	accumulator := s.GetOrCreateRestartIntentAccumulator()
+// ConsumePendingRestartRequest consumes pending restart request.
+func (server *runtimeServer) ConsumePendingRestartRequest() (restartengine.RestartRequest, bool) {
+	accumulator := server.getOrCreateRestartIntentAccumulator()
 	if accumulator == nil {
-		return restartRequest{}
+		return restartengine.RestartRequest{}, false
 	}
-	return accumulator.ConsumeRestartRequestBlocking()
+	return accumulator.ConsumePending()
 }
 
-// TriggerRestart triggers a restart with Go recompilation
-func (s *Server) TriggerRestart() {
-	s.TriggerRestartWithOpts(true, false)
+// consumeRestartRequestBlocking consumes restart request blocking.
+func (server *runtimeServer) consumeRestartRequestBlocking() restartengine.RestartRequest {
+	accumulator := server.getOrCreateRestartIntentAccumulator()
+	if accumulator == nil {
+		return restartengine.RestartRequest{}
+	}
+	return accumulator.ConsumeBlocking()
 }
 
-// TriggerRestartNoGo triggers a restart without Go recompilation
-func (s *Server) TriggerRestartNoGo() {
-	s.TriggerRestartWithOpts(false, false)
+// TriggerRestart requests restart with go recompilation.
+func (server *runtimeServer) TriggerRestart() {
+	server.triggerRestartWithOpts(true, false)
 }
 
-// TriggerConfigRestart triggers a restart due to config file change.
-// Config restarts always recompile Go and take precedence over other pending restarts.
-func (s *Server) TriggerConfigRestart() {
-	s.TriggerRestartWithOpts(true, true)
+// TriggerRestartNoGo requests restart without go recompilation.
+func (server *runtimeServer) TriggerRestartNoGo() {
+	server.triggerRestartWithOpts(false, false)
 }
 
-// TriggerRestartWithOpts handles restart requests with upgrade semantics.
-func (s *Server) TriggerRestartWithOpts(recompileGo bool, isConfigRestart bool) {
-	incomingRequest := normalizeRestartRequest(restartRequest{
-		RecompileGo:     recompileGo,
-		IsConfigRestart: isConfigRestart,
-	})
-	s.QueueRestartRequest(incomingRequest)
+// TriggerConfigRestart requests config restart semantics.
+func (server *runtimeServer) TriggerConfigRestart() {
+	server.triggerRestartWithOpts(true, true)
 }
 
-func normalizeRestartRequest(request restartRequest) restartRequest {
-	return devserverengine.NormalizeRestartRequest(request)
-}
-
-func resolveQueuedRestartRequest(
-	pendingRequest *restartRequest,
-	incomingRequest restartRequest,
-) restartRequest {
-	return devserverengine.ResolveQueuedRestartRequest(
-		pendingRequest,
-		incomingRequest,
+// triggerRestartWithOpts queues normalized restart request.
+func (server *runtimeServer) triggerRestartWithOpts(
+	recompileGo bool,
+	isConfigRestart bool,
+) {
+	request := restartengine.NormalizeRestartRequest(
+		restartengine.RestartRequest{
+			RecompileGo:     recompileGo,
+			IsConfigRestart: isConfigRestart,
+		},
 	)
+	server.QueueRestartRequest(request)
 }
 
-func tryEnqueueRestartRequest(
-	restartRequests chan restartRequest,
-	request restartRequest,
-) bool {
-	return devserverengine.TryEnqueueRestartRequest(restartRequests, request)
-}
-
-func tryDequeueRestartRequest(
-	restartRequests chan restartRequest,
-) (restartRequest, bool) {
-	return devserverengine.TryDequeueRestartRequest(restartRequests)
-}
-
-func mergeRestartRequests(
-	pendingRequest restartRequest,
-	incomingRequest restartRequest,
-) restartRequest {
-	return devserverengine.MergeRestartRequests(pendingRequest, incomingRequest)
-}
-
-type runIntent = devserverengine.RunIntent
-
-const (
-	runLifecycleCommandPrepareCycle        = devserverengine.RunLifecycleCommandPrepareCycle
-	runLifecycleCommandBuildCycle          = devserverengine.RunLifecycleCommandBuildCycle
-	runLifecycleCommandAwaitBuildRetry     = devserverengine.RunLifecycleCommandAwaitBuildRetry
-	runLifecycleCommandStartRuntime        = devserverengine.RunLifecycleCommandStartRuntime
-	runLifecycleCommandAwaitRestartRequest = devserverengine.RunLifecycleCommandAwaitRestartRequest
-	runLifecycleCommandCleanupForNextCycle = devserverengine.RunLifecycleCommandCleanupForNextCycle
-)
-
-type runLifecycleCommand = devserverengine.RunLifecycleCommand
-
-type runLifecycleCommandInput = devserverengine.RunLifecycleCommandInput
-type runLifecycleCommandResult = devserverengine.RunLifecycleCommandResult
-
-func DeriveRunIntentFromRestartRequest(
-	restartRequestForIntent restartRequest,
-) runIntent {
-	return devserverengine.DeriveRunIntentFromRestartRequest(
-		restartRequestForIntent,
-	)
-}
-
-func (s *Server) Run() error {
+// Run executes main devserver lifecycle state machine.
+func (server *runtimeServer) Run() error {
 	wave.SetModeToDev()
 
+	if _, startRefreshServerError := server.StartRefreshServer(
+		resolveRefreshPortFromEnvironmentOrDefault(defaultRefreshPort),
+	); startRefreshServerError != nil {
+		return startRefreshServerError
+	}
+	defer server.StopRefreshServer()
+	defer server.CleanupForRebuild()
+
+	currentState := restartengine.RunLifecycleStatePreparingCycle
+	currentIntent := restartengine.RunIntent{
+		RecompileGo:     true,
+		IsRebuild:       false,
+		IsConfigRestart: false,
+	}
 	firstRun := true
-	currentRunIntent := runIntent{
-		RecompileGo: true,
-	}
-	currentRunLifecycleState := RunLifecycleStatePreparingCycle
-	currentLifecycleCycleID := uint64(1)
-
-	s.MustGetPort()
-
-	if s.Cfg.UsingBrowser() {
-		s.RefreshMgrCtx, s.RefreshMgrCancel = context.WithCancel(
-			context.Background(),
-		)
-		s.RefreshMgr = broadcast.NewManager()
-		go s.RefreshMgr.Start(s.RefreshMgrCtx)
-		if _, err := s.StartRefreshServer(defaultRefreshPort); err != nil {
-			return fmt.Errorf("start refresh Server: %w", err)
-		}
-	}
-
-	defer s.CleanupRefreshServer()
+	currentCycleID := uint64(0)
 
 	for {
-		runLifecycleCommandForState, err := deriveRunLifecycleCommandForState(
-			currentRunLifecycleState,
+		commandForState, deriveCommandError := restartengine.DeriveRunLifecycleCommandForState(
+			currentState,
 		)
-		if err != nil {
-			return err
+		if deriveCommandError != nil {
+			return deriveCommandError
 		}
 
-		runLifecycleCommandResultForState, err := s.ExecuteRunLifecycleCommand(
-			runLifecycleCommandForState,
-			runLifecycleCommandInput{
-				FirstRun:         firstRun,
-				CurrentRunIntent: currentRunIntent,
-			},
-		)
-		if err != nil {
-			return err
+		input := restartengine.RunLifecycleCommandInput{
+			CurrentCycleID: currentCycleID,
+			CurrentIntent:  currentIntent,
+			FirstRun:       firstRun,
 		}
 
-		if runLifecycleCommandResultForState.UpdatedRunIntent != nil {
-			currentRunIntent = *runLifecycleCommandResultForState.UpdatedRunIntent
+		result, executeCommandError := server.executeRunLifecycleCommand(
+			commandForState,
+			input,
+		)
+		if executeCommandError != nil {
+			return executeCommandError
 		}
-		if runLifecycleCommandResultForState.ShouldMarkFirstRunAsNotFirstRun {
+
+		nextState, transitionError := restartengine.TransitionRunLifecycleState(
+			server.Log,
+			currentState,
+			result.RunLifecycleEvent,
+			currentCycleID,
+		)
+		if transitionError != nil {
+			return transitionError
+		}
+
+		currentState = nextState
+		if result.NextRunIntent != (restartengine.RunIntent{}) {
+			currentIntent = result.NextRunIntent
+		}
+		if currentState == restartengine.RunLifecycleStatePreparingCycle {
+			currentCycleID++
 			firstRun = false
 		}
-
-		nextRunLifecycleState, err := TransitionRunLifecycleState(
-			s.Log,
-			currentRunLifecycleState,
-			runLifecycleCommandResultForState.RunLifecycleEvent,
-			currentLifecycleCycleID,
-		)
-		if err != nil {
-			return err
-		}
-		currentRunLifecycleState = nextRunLifecycleState
-		if currentRunLifecycleState == RunLifecycleStatePreparingCycle &&
-			runLifecycleCommandForState != runLifecycleCommandPrepareCycle {
-			currentLifecycleCycleID++
-		}
 	}
 }
 
-func deriveRunLifecycleCommandForState(
-	currentRunLifecycleState RunLifecycleState,
-) (runLifecycleCommand, error) {
-	return devserverengine.DeriveRunLifecycleCommandForState(
-		currentRunLifecycleState,
-	)
-}
-
-func (s *Server) ExecuteRunLifecycleCommand(
-	runLifecycleCommandForState runLifecycleCommand,
-	runLifecycleCommandInputForState runLifecycleCommandInput,
-) (runLifecycleCommandResult, error) {
-	switch runLifecycleCommandForState {
-	case runLifecycleCommandPrepareCycle:
-		return s.ExecuteRunLifecycleCommandPrepareCycle(
-			runLifecycleCommandInputForState,
-		)
-	case runLifecycleCommandBuildCycle:
-		return s.ExecuteRunLifecycleCommandBuildCycle(
-			runLifecycleCommandInputForState,
-		)
-	case runLifecycleCommandAwaitBuildRetry:
-		return s.ExecuteRunLifecycleCommandAwaitBuildRetry(
-			runLifecycleCommandInputForState,
-		)
-	case runLifecycleCommandStartRuntime:
-		return s.ExecuteRunLifecycleCommandStartRuntime(
-			runLifecycleCommandInputForState,
-		)
-	case runLifecycleCommandAwaitRestartRequest:
-		return s.ExecuteRunLifecycleCommandAwaitRestartRequest(
-			runLifecycleCommandInputForState,
-		)
-	case runLifecycleCommandCleanupForNextCycle:
-		return s.ExecuteRunLifecycleCommandCleanupForNextCycle(
-			runLifecycleCommandInputForState,
-		)
+// executeRunLifecycleCommand executes one lifecycle command.
+func (server *runtimeServer) executeRunLifecycleCommand(
+	command restartengine.RunLifecycleCommand,
+	input restartengine.RunLifecycleCommandInput,
+) (restartengine.RunLifecycleCommandResult, error) {
+	switch command {
+	case restartengine.RunLifecycleCommandPrepareCycle:
+		return server.executeRunLifecycleCommandPrepareCycle(input)
+	case restartengine.RunLifecycleCommandBuildCycle:
+		return server.executeRunLifecycleCommandBuildCycle(input)
+	case restartengine.RunLifecycleCommandAwaitBuildRetry:
+		return server.executeRunLifecycleCommandAwaitBuildRetry(input)
+	case restartengine.RunLifecycleCommandStartRuntime:
+		return server.executeRunLifecycleCommandStartRuntime(input)
+	case restartengine.RunLifecycleCommandAwaitRestartRequest:
+		return server.executeRunLifecycleCommandAwaitRestartRequest(input)
+	case restartengine.RunLifecycleCommandCleanupForNextCycle:
+		return server.executeRunLifecycleCommandCleanupForNextCycle(input)
 	default:
-		return runLifecycleCommandResult{}, fmt.Errorf(
-			"unknown Run lifecycle Command: %q",
-			runLifecycleCommandForState,
+		return restartengine.RunLifecycleCommandResult{}, fmt.Errorf(
+			"unknown run lifecycle command: %d",
+			command,
 		)
 	}
 }
 
-func (s *Server) PrepareRunCycle(firstRun bool) error {
-	if !firstRun {
-		if err := s.ReloadConfig(); err != nil {
-			s.Log.Error("config reload failed", "error", err)
-		}
-	}
-
-	s.SetBuilder(toolingbuilder.NewBuilder(s.Cfg, s.Log))
-
-	if err := s.InitWatcher(); err != nil {
-		return fmt.Errorf("init watcher: %w", err)
-	}
-
-	return nil
-}
-
-func (s *Server) ExecuteRunBuildForIntent(
-	isRebuild bool,
-	currentRunIntent runIntent,
+// prepareRunCycle prepares run-cycle state and process resources.
+func (server *runtimeServer) prepareRunCycle(
+	firstRun bool,
+	currentRunIntent restartengine.RunIntent,
 ) error {
-	buildExecutionOrderingDecision := deriveRunBuildExecutionOrderingDecision(
-		currentRunIntent.RecompileGo,
-		s.Cfg.Core.SequentialGoBuild,
+	if firstRun {
+		server.MustGetPort()
+	}
+	server.cancelConcurrentNoWaitHookLifecycleContext()
+	_ = server.StopVite()
+
+	if !firstRun && server.Cfg != nil && server.Cfg.Core != nil &&
+		strings.TrimSpace(server.Cfg.Core.ConfigLocation) != "" {
+		if currentRunIntent.IsConfigRestart {
+			_ = server.WaitForApp()
+		}
+		if _, reloadConfigError := server.ReloadConfig(); reloadConfigError != nil {
+			return fmt.Errorf("reload config: %w", reloadConfigError)
+		}
+	}
+
+	if initWatcherError := server.InitWatcher(); initWatcherError != nil {
+		return fmt.Errorf("init watcher: %w", initWatcherError)
+	}
+	if addConfigDirectoryError := server.addConfigFileDirectory(); addConfigDirectoryError != nil {
+		return fmt.Errorf(
+			"add config file directory watcher: %w",
+			addConfigDirectoryError,
+		)
+	}
+
+	builderInstance := builder.NewBuilder(
+		server.Cfg,
+		server.Log,
 	)
-	s.Log.Debug(
-		"resolved build execution ordering decision",
-		"go_compilation_ordering_policy",
-		buildExecutionOrderingDecision.GoCompilationOrderingPolicy,
-		"compile_in_parallel",
-		buildExecutionOrderingDecision.RunCompileInParallel,
-		"compile_after_build_hooks",
-		buildExecutionOrderingDecision.RunCompileAfterBuildHooks,
-	)
-
-	// Run builds - either in parallel or sequentially based on config.
-	var buildGroup errgroup.Group
-
-	buildGroup.Go(func() error {
-		builderForBuild := s.GetBuilder()
-		if builderForBuild == nil {
-			return fmt.Errorf("builder is nil")
-		}
-		return builderForBuild.Build(toolingbuilder.BuildOpts{
-			IsDev:     true,
-			CompileGo: false,
-			IsRebuild: isRebuild,
-		})
-	})
-
-	if buildExecutionOrderingDecision.RunCompileInParallel {
-		buildGroup.Go(func() error {
-			builderForCompile := s.GetBuilder()
-			if builderForCompile == nil {
-				return fmt.Errorf("builder is nil")
-			}
-			return builderForCompile.CompileGoOnly(true)
-		})
+	if builderInstance == nil {
+		return errors.New("builder initialization returned nil")
 	}
-
-	if err := buildGroup.Wait(); err != nil {
-		return err
-	}
-
-	if buildExecutionOrderingDecision.RunCompileAfterBuildHooks {
-		builderForSequentialCompile := s.GetBuilder()
-		if builderForSequentialCompile == nil {
-			return fmt.Errorf("builder is nil for sequential Go compile")
-		}
-		if err := builderForSequentialCompile.CompileGoOnly(true); err != nil {
-			return fmt.Errorf("go compilation failed: %w", err)
-		}
-	}
-
+	server.setBuilder(builderInstance)
 	return nil
 }
 
-func (s *Server) StartRunCycleRuntime(currentRunIntent *runIntent) {
+// executeRunBuildForIntent executes build phase for provided run intent.
+func (server *runtimeServer) executeRunBuildForIntent(
+	isRebuild bool,
+	intent restartengine.RunIntent,
+) error {
+	orderingDecision := restartengine.DeriveRunBuildExecutionOrderingDecision(
+		intent.RecompileGo,
+		server.Cfg.Core.SequentialGoBuild,
+	)
+	builderInstance := server.BuilderInstance()
+	if builderInstance == nil {
+		return errors.New("builder is unavailable")
+	}
 
-	if s.ViteCtx == nil && s.Cfg.UsingVite() {
-		if err := s.StartVite(); err != nil {
-			s.Log.Error("vite start failed", "error", err)
+	return builderInstance.Build(builder.BuildOpts{
+		CompileGo:    orderingDecision.ShouldCompileGo,
+		IsDev:        true,
+		IsRebuild:    isRebuild,
+		FileOnlyMode: false,
+	})
+}
+
+// startRunCycleRuntime starts app/vite and watcher runloop for runtime phase.
+func (server *runtimeServer) startRunCycleRuntime() {
+	if server.Cfg.UsingVite() {
+		if startViteError := server.StartVite(); startViteError != nil {
+			server.Log.Error("start vite failed", "error", startViteError)
 		}
 	}
 
-	s.StartApp()
+	server.StartApp()
 
-	currentRunCycleScope := s.StartRunCycleScope()
+	cycleScope := server.startRunCycleScope()
+	runloopEngine := server.BuildRunloopEngine()
+	server.WatcherStartCh = make(chan struct{})
 
-	s.WatcherStartCh = make(chan struct{})
-
-	if currentRunCycleScope != nil {
-		currentRunCycleScope.LaunchAsyncWork(func(
-			currentRunCycleContext context.Context,
-		) {
+	if cycleScope != nil {
+		cycleScope.LaunchAsyncWork(func(cycleContext context.Context) {
 			select {
-			case <-s.WatcherStartCh:
-			case <-currentRunCycleContext.Done():
+			case <-server.WatcherStartCh:
+			case <-cycleContext.Done():
 				return
 			}
-			s.RunWatcherWithContext(currentRunCycleContext)
+			runloopEngine.RunWatcherWithContext(cycleContext)
 		})
 	}
 
-	if currentRunIntent != nil && currentRunIntent.IsConfigRestart {
-		s.BroadcastReload(ReloadOpts{
-			Payload:   broadcast.Payload{ChangeType: broadcast.ChangeTypeOther},
-			WaitApp:   true,
-			WaitVite:  true,
-			CycleVite: true,
-		})
-		currentRunIntent.IsConfigRestart = false
-	}
-
-	close(s.WatcherStartCh)
+	close(server.WatcherStartCh)
 }
 
-// WaitForBuildRetry waits for a file change that might fix the build error.
-// It starts the watcher and waits for any restart request.
-func (s *Server) WaitForBuildRetry() restartRequest {
-	s.SetWaitingForBuildRetry(true)
-	defer s.SetWaitingForBuildRetry(false)
+// WaitForBuildRetry waits for file events that trigger a restart after build failure.
+func (server *runtimeServer) WaitForBuildRetry() restartengine.RestartRequest {
+	server.SetWaitingForBuildRetry(true)
+	defer server.SetWaitingForBuildRetry(false)
 
-	if pendingRestartRequest, hasPendingRestartRequest := s.ConsumePendingRestartRequest(); hasPendingRestartRequest {
-		normalizedPendingRestartRequest := normalizeRestartRequest(
-			pendingRestartRequest,
+	if pendingRequest, hasPendingRequest := server.ConsumePendingRestartRequest(); hasPendingRequest {
+		return restartengine.NormalizeRestartRequest(pendingRequest)
+	}
+
+	server.WatcherStartCh = make(chan struct{})
+	cycleScope := server.startRunCycleScope()
+	runloopEngine := server.BuildRunloopEngine()
+
+	if cycleScope != nil {
+		cycleScope.LaunchAsyncWork(func(cycleContext context.Context) {
+			select {
+			case <-server.WatcherStartCh:
+			case <-cycleContext.Done():
+				return
+			}
+			runloopEngine.RunWatcherWithContext(cycleContext)
+		})
+	}
+	close(server.WatcherStartCh)
+
+	return server.consumeRestartRequestBlocking()
+}
+
+// CleanupForRebuild performs stop/cancel tasks before next run cycle.
+func (server *runtimeServer) CleanupForRebuild() {
+	server.cancelAndJoinCurrentRunCycleScope()
+	server.cancelConcurrentNoWaitHookLifecycleContext()
+
+	server.Mu.Lock()
+	watcherForCleanup := server.Watcher
+	builderForCleanup := server.Builder
+	server.Watcher = nil
+	server.Builder = nil
+	server.Mu.Unlock()
+
+	if watcherForCleanup != nil {
+		_ = watcherForCleanup.Close()
+	}
+	if builderForCleanup != nil {
+		builderForCleanup.Close()
+	}
+
+	if stopError := server.StopApp(); stopError != nil {
+		server.Log.Warn("stop app during cleanup failed", "error", stopError)
+	}
+	if stopViteError := server.StopVite(); stopViteError != nil {
+		server.Log.Warn(
+			"stop vite during cleanup failed",
+			"error",
+			stopViteError,
 		)
-		s.CleanupForRebuild()
-		return normalizedPendingRestartRequest
-	}
-
-	s.WatcherStartCh = make(chan struct{})
-	buildRetryRunCycleScope := s.StartRunCycleScope()
-
-	if buildRetryRunCycleScope != nil {
-		buildRetryRunCycleScope.LaunchAsyncWork(func(
-			buildRetryRunCycleContext context.Context,
-		) {
-			select {
-			case <-s.WatcherStartCh:
-			case <-buildRetryRunCycleContext.Done():
-				return
-			}
-			s.RunWatcherWithContext(buildRetryRunCycleContext)
-		})
-	}
-	close(s.WatcherStartCh)
-
-	restartRequestForRetry := s.ConsumeRestartRequestBlocking()
-
-	s.CleanupForRebuild()
-	return restartRequestForRetry
-}
-
-// CleanupForRebuild cleans up resources but keeps refresh Server and Vite alive
-func (s *Server) CleanupForRebuild() {
-	s.CancelAndJoinCurrentRunCycleScope()
-	s.CancelConcurrentNoWaitHookLifecycleContext()
-
-	if err := s.StopApp(); err != nil {
-		s.Log.Error("stop app failed", "error", err)
-	}
-
-	s.Mu.Lock()
-	watcher := s.Watcher
-	s.Watcher = nil
-	s.Mu.Unlock()
-
-	if watcher != nil {
-		if err := watcher.Close(); err != nil {
-			s.Log.Error("close watcher failed", "error", err)
-		}
-	}
-
-	s.Mu.Lock()
-	builder := s.Builder
-	s.Builder = nil
-	s.Mu.Unlock()
-
-	if builder != nil {
-		if err := builder.Close(); err != nil {
-			s.Log.Error("close builder failed", "error", err)
-		}
 	}
 }
 
-// CleanupRefreshServer cleans up the refresh Server (called on full shutdown)
-func (s *Server) CleanupRefreshServer() {
-	s.CancelAndJoinCurrentRunCycleScope()
-	s.CancelConcurrentNoWaitHookLifecycleContext()
-
-	if err := s.StopRefreshServer(); err != nil {
-		s.Log.Error("stop refresh Server failed", "error", err)
-	}
-
-	if s.RefreshMgrCancel != nil {
-		s.RefreshMgrCancel()
-		if s.RefreshMgr != nil {
-			s.RefreshMgr.Wait()
-		}
-		s.RefreshMgrCancel = nil
-	}
+// CleanupRefreshServer stops refresh server resources.
+func (server *runtimeServer) CleanupRefreshServer() {
+	server.StopRefreshServer()
 }
-func (s *Server) ExecuteRunLifecycleCommandPrepareCycle(
-	runLifecycleCommandInputForState runLifecycleCommandInput,
-) (runLifecycleCommandResult, error) {
-	if err := s.PrepareRunCycle(runLifecycleCommandInputForState.FirstRun); err != nil {
-		return runLifecycleCommandResult{}, err
+
+// executeRunLifecycleCommandPrepareCycle handles prepare-cycle lifecycle command.
+func (server *runtimeServer) executeRunLifecycleCommandPrepareCycle(
+	input restartengine.RunLifecycleCommandInput,
+) (restartengine.RunLifecycleCommandResult, error) {
+	if prepareError := server.prepareRunCycle(
+		input.FirstRun,
+		input.CurrentIntent,
+	); prepareError != nil {
+		return restartengine.RunLifecycleCommandResult{}, prepareError
 	}
-	return runLifecycleCommandResult{
-		RunLifecycleEvent: RunLifecycleEventCyclePrepared,
+	return restartengine.RunLifecycleCommandResult{
+		RunLifecycleEvent: restartengine.RunLifecycleEventCyclePrepared,
 	}, nil
 }
 
-func (s *Server) ExecuteRunLifecycleCommandBuildCycle(
-	runLifecycleCommandInputForState runLifecycleCommandInput,
-) (runLifecycleCommandResult, error) {
-	if err := s.ExecuteRunBuildForIntent(
-		!runLifecycleCommandInputForState.FirstRun,
-		runLifecycleCommandInputForState.CurrentRunIntent,
-	); err != nil {
-		s.Log.Error("build failed", "error", err)
-		return runLifecycleCommandResult{
-			RunLifecycleEvent: RunLifecycleEventBuildFailed,
+// executeRunLifecycleCommandBuildCycle handles build-cycle lifecycle command.
+func (server *runtimeServer) executeRunLifecycleCommandBuildCycle(
+	input restartengine.RunLifecycleCommandInput,
+) (restartengine.RunLifecycleCommandResult, error) {
+	buildError := server.executeRunBuildForIntent(
+		input.CurrentIntent.IsRebuild,
+		input.CurrentIntent,
+	)
+	if buildError != nil {
+		server.Log.Error("build failed", "error", buildError)
+		return restartengine.RunLifecycleCommandResult{
+			RunLifecycleEvent: restartengine.RunLifecycleEventBuildFailed,
 		}, nil
 	}
-	return runLifecycleCommandResult{
-		RunLifecycleEvent: RunLifecycleEventBuildSucceeded,
+	return restartengine.RunLifecycleCommandResult{
+		RunLifecycleEvent: restartengine.RunLifecycleEventBuildSucceeded,
 	}, nil
 }
 
-func (s *Server) ExecuteRunLifecycleCommandAwaitBuildRetry(
-	_ runLifecycleCommandInput,
-) (runLifecycleCommandResult, error) {
-	s.Log.Info("Waiting for file changes to retry build...")
-	restartRequestForRetry := s.WaitForBuildRetry()
-	currentRunIntentForRetry := DeriveRunIntentFromRestartRequest(
-		restartRequestForRetry,
+// executeRunLifecycleCommandAwaitBuildRetry handles retry wait after failed build.
+func (server *runtimeServer) executeRunLifecycleCommandAwaitBuildRetry(
+	_ restartengine.RunLifecycleCommandInput,
+) (restartengine.RunLifecycleCommandResult, error) {
+	server.Log.Info("waiting for file changes to retry build")
+	restartRequest := server.WaitForBuildRetry()
+	nextIntent := restartengine.DeriveRunIntentFromRestartRequest(
+		restartRequest,
 	)
-	return runLifecycleCommandResult{
-		RunLifecycleEvent:               RunLifecycleEventBuildRetryRestartReceived,
-		UpdatedRunIntent:                &currentRunIntentForRetry,
-		ShouldMarkFirstRunAsNotFirstRun: true,
+	return restartengine.RunLifecycleCommandResult{
+		RunLifecycleEvent: restartengine.RunLifecycleEventBuildRetryRestartReceived,
+		NextRunIntent:     nextIntent,
 	}, nil
 }
 
-func (s *Server) ExecuteRunLifecycleCommandStartRuntime(
-	runLifecycleCommandInputForState runLifecycleCommandInput,
-) (runLifecycleCommandResult, error) {
-	currentRunIntentForRuntime := runLifecycleCommandInputForState.CurrentRunIntent
-	s.StartRunCycleRuntime(&currentRunIntentForRuntime)
-	return runLifecycleCommandResult{
-		RunLifecycleEvent:               RunLifecycleEventRuntimeStarted,
-		UpdatedRunIntent:                &currentRunIntentForRuntime,
-		ShouldMarkFirstRunAsNotFirstRun: true,
+// executeRunLifecycleCommandStartRuntime handles runtime start lifecycle command.
+func (server *runtimeServer) executeRunLifecycleCommandStartRuntime(
+	_ restartengine.RunLifecycleCommandInput,
+) (restartengine.RunLifecycleCommandResult, error) {
+	server.startRunCycleRuntime()
+	return restartengine.RunLifecycleCommandResult{
+		RunLifecycleEvent: restartengine.RunLifecycleEventRuntimeStarted,
 	}, nil
 }
 
-func (s *Server) ExecuteRunLifecycleCommandAwaitRestartRequest(
-	_ runLifecycleCommandInput,
-) (runLifecycleCommandResult, error) {
-	restartRequestForRun := s.ConsumeRestartRequestBlocking()
-	currentRunIntentForRestart := DeriveRunIntentFromRestartRequest(
-		restartRequestForRun,
+// executeRunLifecycleCommandAwaitRestartRequest handles restart wait lifecycle command.
+func (server *runtimeServer) executeRunLifecycleCommandAwaitRestartRequest(
+	_ restartengine.RunLifecycleCommandInput,
+) (restartengine.RunLifecycleCommandResult, error) {
+	restartRequest := server.consumeRestartRequestBlocking()
+	nextIntent := restartengine.DeriveRunIntentFromRestartRequest(
+		restartRequest,
 	)
-	s.Log.Info(
-		"Restarting dev Server...",
+	server.Log.Info(
+		"restart requested",
 		"recompile_go",
-		currentRunIntentForRestart.RecompileGo,
+		restartRequest.RecompileGo,
 		"config_restart",
-		currentRunIntentForRestart.IsConfigRestart,
+		restartRequest.IsConfigRestart,
 	)
-	return runLifecycleCommandResult{
-		RunLifecycleEvent: RunLifecycleEventRestartRequestReceived,
-		UpdatedRunIntent:  &currentRunIntentForRestart,
+	return restartengine.RunLifecycleCommandResult{
+		RunLifecycleEvent: restartengine.RunLifecycleEventRestartRequestReceived,
+		NextRunIntent:     nextIntent,
 	}, nil
 }
 
-func (s *Server) ExecuteRunLifecycleCommandCleanupForNextCycle(
-	_ runLifecycleCommandInput,
-) (runLifecycleCommandResult, error) {
-
-	s.BroadcastRebuilding()
-
-	s.CleanupForRebuild()
-
-	return runLifecycleCommandResult{
-		RunLifecycleEvent: RunLifecycleEventCleanupCompleted,
+// executeRunLifecycleCommandCleanupForNextCycle handles cleanup lifecycle command.
+func (server *runtimeServer) executeRunLifecycleCommandCleanupForNextCycle(
+	_ restartengine.RunLifecycleCommandInput,
+) (restartengine.RunLifecycleCommandResult, error) {
+	server.CleanupForRebuild()
+	return restartengine.RunLifecycleCommandResult{
+		RunLifecycleEvent: restartengine.RunLifecycleEventCleanupCompleted,
 	}, nil
 }
 
-// RunLifecycleState defines one state of the devserver Run loop.
-type RunLifecycleState = devserverengine.RunLifecycleState
-
-const (
-	RunLifecycleStatePreparingCycle         = devserverengine.RunLifecycleStatePreparingCycle
-	RunLifecycleStateBuildingCycle          = devserverengine.RunLifecycleStateBuildingCycle
-	RunLifecycleStateAwaitingBuildRetry     = devserverengine.RunLifecycleStateAwaitingBuildRetry
-	RunLifecycleStateStartingRuntime        = devserverengine.RunLifecycleStateStartingRuntime
-	RunLifecycleStateAwaitingRestart        = devserverengine.RunLifecycleStateAwaitingRestart
-	RunLifecycleStateCleaningUpForNextCycle = devserverengine.RunLifecycleStateCleaningUpForNextCycle
-)
-
-// RunLifecycleEvent defines one transition trigger inside the Run loop state
-// machine.
-type RunLifecycleEvent = devserverengine.RunLifecycleEvent
-
-const (
-	RunLifecycleEventCyclePrepared             = devserverengine.RunLifecycleEventCyclePrepared
-	RunLifecycleEventBuildSucceeded            = devserverengine.RunLifecycleEventBuildSucceeded
-	RunLifecycleEventBuildFailed               = devserverengine.RunLifecycleEventBuildFailed
-	RunLifecycleEventBuildRetryRestartReceived = devserverengine.RunLifecycleEventBuildRetryRestartReceived
-	RunLifecycleEventRuntimeStarted            = devserverengine.RunLifecycleEventRuntimeStarted
-	RunLifecycleEventRestartRequestReceived    = devserverengine.RunLifecycleEventRestartRequestReceived
-	RunLifecycleEventCleanupCompleted          = devserverengine.RunLifecycleEventCleanupCompleted
-)
-
-// TransitionLogger is the minimal logging capability needed during lifecycle
-// transitions.
-type TransitionLogger = devserverengine.TransitionLogger
-
-// DeriveRunLifecycleStateAfterEvent computes the next state from the current
-// state and transition event.
-func DeriveRunLifecycleStateAfterEvent(
-	currentRunLifecycleState RunLifecycleState,
-	runLifecycleEventForTransition RunLifecycleEvent,
-) (RunLifecycleState, error) {
-	return devserverengine.DeriveRunLifecycleStateAfterEvent(
-		currentRunLifecycleState,
-		runLifecycleEventForTransition,
-	)
-}
-
-// TransitionRunLifecycleState applies one transition and logs it when a logger
-// is provided.
-func TransitionRunLifecycleState(
-	transitionLogger TransitionLogger,
-	currentRunLifecycleState RunLifecycleState,
-	runLifecycleEventForTransition RunLifecycleEvent,
-	currentLifecycleCycleID uint64,
-) (RunLifecycleState, error) {
-	return devserverengine.TransitionRunLifecycleState(
-		transitionLogger,
-		currentRunLifecycleState,
-		runLifecycleEventForTransition,
-		currentLifecycleCycleID,
-	)
-}
-func (s *Server) StartVite() error {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	ctx, err := s.Builder.NewViteDevContext()
-	if err != nil {
-		return err
-	}
-	if ctx == nil {
+// StartVite starts Vite dev process context.
+func (server *runtimeServer) StartVite() error {
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if server.Cfg == nil || server.Cfg.Vite == nil {
 		return nil
 	}
 
-	s.ViteCtx = ctx
-	return nil
-}
-
-func (s *Server) StopVite() error {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	if s.ViteCtx != nil {
-		s.ViteCtx.Cleanup()
-		s.ViteCtx = nil
+	if server.ViteContext == nil {
+		server.ViteContext = vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
+			JSPackageManagerBaseCmd: server.Cfg.Vite.JSPackageManagerBaseCmd,
+			JSPackageManagerCmdDir:  server.Cfg.Vite.JSPackageManagerCmdDir,
+			OutDir:                  server.Cfg.Dist.StaticPublic(),
+			ManifestOut:             server.Cfg.ViteManifestPath(),
+			DefaultPort:             server.Cfg.Vite.DefaultPort,
+			ViteConfigFile:          server.Cfg.Vite.ViteConfigFile,
+		})
+	}
+	if viteBuildError := server.ViteContext.DevBuild(); viteBuildError != nil {
+		server.ViteContext = nil
+		return viteBuildError
 	}
 	return nil
 }
 
-// CycleVite stops and restarts Vite, waiting for it to be ready.
-// Called after the Go app is ready so Vite's client reconnect hits a working Server.
-func (s *Server) CycleVite() {
-	_ = s.CycleViteAndWaitForReadiness()
+// StopVite stops Vite process context.
+func (server *runtimeServer) StopVite() error {
+	server.Mu.Lock()
+	viteContext := server.ViteContext
+	server.ViteContext = nil
+	server.Mu.Unlock()
+	if viteContext == nil {
+		return nil
+	}
+	viteContext.Cleanup()
+	return nil
 }
 
-func (s *Server) CycleViteAndWaitForReadiness() bool {
-	if s == nil || s.Cfg == nil || !s.Cfg.UsingVite() {
-		return false
+// CycleVite restarts Vite and does not wait for readiness.
+func (server *runtimeServer) CycleVite() {
+	_ = server.StopVite()
+	if startViteError := server.StartVite(); startViteError != nil {
+		server.Log.Warn("cycle vite failed", "error", startViteError)
+	}
+}
+
+// cycleViteAndWaitForReadiness cycles Vite and waits for readiness.
+func (server *runtimeServer) cycleViteAndWaitForReadiness() bool {
+	server.CycleVite()
+	return server.WaitForVite()
+}
+
+// CallViteFilemapInvalidate calls configured invalidate endpoint in Vite runtime.
+func (server *runtimeServer) CallViteFilemapInvalidate() error {
+	viteContext := server.ViteContext
+	if viteContext == nil {
+		return errors.New("vite not running")
 	}
 
-	s.Mu.Lock()
-	hasVite := s.ViteCtx != nil
-	s.Mu.Unlock()
-	if !hasVite {
-		return false
+	callInvalidateEndpoint := func(invalidatePath string) (int, error) {
+		invalidateURL := "http://127.0.0.1:" + strconv.Itoa(
+			viteContext.Port(),
+		) + invalidatePath
+		request, requestCreateError := http.NewRequest(
+			http.MethodPost,
+			invalidateURL,
+			nil,
+		)
+		if requestCreateError != nil {
+			return 0, requestCreateError
+		}
+		response, requestError := (&http.Client{
+			Timeout: 2 * time.Second,
+		}).Do(request)
+		if requestError != nil {
+			return 0, requestError
+		}
+		defer response.Body.Close()
+		return response.StatusCode, nil
 	}
 
-	s.Log.Info("Cycling Vite...")
-	if err := s.StopVite(); err != nil {
-		s.Log.Error("stop vite failed during cycle", "error", err)
-		return false
+	primaryStatusCode, primaryRequestError := callInvalidateEndpoint(
+		"/__vorma_invalidate_filemap",
+	)
+	if primaryRequestError != nil {
+		return primaryRequestError
 	}
-	if err := s.StartVite(); err != nil {
-		s.Log.Error("start vite failed during cycle", "error", err)
-		return false
+	if primaryStatusCode >= 400 && primaryStatusCode != http.StatusNotFound {
+		return fmt.Errorf(
+			"vite invalidate endpoint returned %d",
+			primaryStatusCode,
+		)
 	}
-
-	s.Mu.Lock()
-	hasVite = s.ViteCtx != nil
-	s.Mu.Unlock()
-	if !hasVite {
-		return false
-	}
-
-	if !s.WaitForVite() {
-		return false
+	if primaryStatusCode < 400 {
+		return nil
 	}
 
-	s.Mu.Lock()
-	hasVite = s.ViteCtx != nil
-	s.Mu.Unlock()
-	if !hasVite {
-		return false
+	fallbackStatusCode, fallbackRequestError := callInvalidateEndpoint(
+		"/__wave/vite-filemap-invalidate",
+	)
+	if fallbackRequestError != nil {
+		return fallbackRequestError
+	}
+	if fallbackStatusCode >= 400 {
+		return fmt.Errorf(
+			"vite invalidate endpoint returned %d",
+			fallbackStatusCode,
+		)
+	}
+	return nil
+}
+
+// WaitForVite waits for vite readiness on known probe URLs.
+func (server *runtimeServer) WaitForVite() bool {
+	viteContext := server.ViteContext
+	if viteContext == nil {
+		return true
+	}
+	return server.WaitForAnyReady(resolveViteReadyURLs(viteContext.Port()))
+}
+
+// resolveViteReadyURL resolves default Vite readiness probe URL.
+func resolveViteReadyURL(vitePort int) string {
+	return runtimeprocess.ResolveReadinessProbeURL(
+		runtimeprocess.LocalReadinessProbeHostIPv4,
+		vitePort,
+		"/@vite/client",
+	)
+}
+
+// resolveViteReadyURLs resolves Vite readiness probe URLs.
+func resolveViteReadyURLs(vitePort int) []string {
+	return []string{
+		runtimeprocess.ResolveReadinessProbeURL(
+			runtimeprocess.LocalReadinessProbeHostIPv4,
+			vitePort,
+			"/@vite/client",
+		),
+		runtimeprocess.ResolveReadinessProbeURL(
+			runtimeprocess.LocalReadinessProbeHostLocalhost,
+			vitePort,
+			"/@vite/client",
+		),
+	}
+}
+
+// BroadcastRebuilding broadcasts rebuilding overlay payload to clients.
+func (server *runtimeServer) BroadcastRebuilding() {
+	if !server.shouldBroadcastToBrowserClients() {
+		return
+	}
+	refreshManager := server.currentRefreshManager()
+	if refreshManager == nil {
+		return
+	}
+	refreshManager.BroadcastRebuilding()
+}
+
+// BroadcastReload broadcasts reload payload with readiness handling.
+func (server *runtimeServer) BroadcastReload(reloadOptions eventpipeline.ReloadOpts) {
+	if !server.shouldBroadcastToBrowserClients() {
+		return
 	}
 
-	s.Log.Info("Vite cycled and ready")
+	if !server.waitForReloadReadiness(reloadOptions) {
+		server.Log.Warn("reload readiness failed; skipping browser broadcast")
+		return
+	}
+
+	if !server.shouldBroadcastReloadPayloadAfterReadiness(reloadOptions) {
+		return
+	}
+
+	refreshManager := server.currentRefreshManager()
+	if refreshManager == nil {
+		return
+	}
+	refreshManager.Broadcast(reloadOptions.Payload)
+}
+
+// shouldBroadcastToBrowserClients reports whether browser broadcast should run.
+func (server *runtimeServer) shouldBroadcastToBrowserClients() bool {
+	return server.Cfg != nil &&
+		server.Cfg.UsingBrowser() &&
+		server.currentRefreshManager() != nil
+}
+
+// waitForReloadReadiness applies readiness policy for reload.
+func (server *runtimeServer) waitForReloadReadiness(
+	reloadOptions eventpipeline.ReloadOpts,
+) bool {
+	if reloadOptions.CycleVite {
+		cycleViteRequestedAndApplicable := false
+		if server.Cfg != nil && server.Cfg.UsingVite() {
+			server.Mu.Lock()
+			cycleViteRequestedAndApplicable = server.ViteContext != nil
+			server.Mu.Unlock()
+		}
+		if cycleViteRequestedAndApplicable {
+			if !server.cycleViteAndWaitForReadiness() {
+				server.Log.Warn(
+					"cycle vite readiness failed; falling back to payload broadcast",
+				)
+			}
+		}
+	}
+
+	if reloadOptions.WaitApp {
+		if !server.waitForReadyURL(
+			runtimeprocess.ResolveAppReadyURL(
+				server.MustGetPort(),
+				server.Cfg.HealthcheckEndpoint(),
+			),
+		) {
+			return false
+		}
+	}
+	if reloadOptions.WaitVite && server.ViteContext != nil {
+		if !server.WaitForAnyReady(resolveViteReadyURLs(server.ViteContext.Port())) {
+			return false
+		}
+	}
 	return true
 }
 
-// CallViteFilemapInvalidate calls the Vite plugin's filemap invalidation endpoint.
-// This clears the plugin's cached filemap and invalidates all modules, triggering
-// a browser reload through Vite's HMR system.
-func (s *Server) CallViteFilemapInvalidate() error {
-	s.Mu.Lock()
-	viteCtx := s.ViteCtx
-	s.Mu.Unlock()
-
-	if viteCtx == nil {
-		return fmt.Errorf("vite not running")
-	}
-
-	url := fmt.Sprintf(
-		"http://localhost:%d/__vorma_invalidate_filemap",
-		viteCtx.Port(),
-	)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("endpoint returned %d", resp.StatusCode)
-	}
-
-	s.Log.Info("Vite filemap invalidated successfully")
-	return nil
-}
-
-func (s *Server) WaitForVite() bool {
-	s.Mu.Lock()
-	viteCtx := s.ViteCtx
-	s.Mu.Unlock()
-
-	if viteCtx == nil {
-		return true
-	}
-	urls := ResolveViteReadyURLs(viteCtx.Port())
-	ok := s.WaitForAnyReady(urls)
-	if !ok {
-		s.Log.Warn(
-			"Vite did not become ready in time",
-			"urls",
-			strings.Join(urls, ", "),
-		)
-	}
-	return ok
-}
-
-func ResolveViteReadyURL(vitePort int) string {
-	return ResolveViteReadyURLs(vitePort)[0]
-}
-
-func ResolveViteReadyURLs(vitePort int) []string {
-	return []string{
-		resolveReadinessProbeURL(
-			localReadinessProbeHostIPv4,
-			vitePort,
-			"/@vite/client",
-		),
-		resolveReadinessProbeURL(
-			localReadinessProbeHostLocalhost,
-			vitePort,
-			"/@vite/client",
-		),
-	}
-}
-
-// ReloadOpts configures BroadcastReload behavior.
-type ReloadOpts struct {
-	Payload   broadcast.Payload
-	WaitApp   bool
-	WaitVite  bool
-	CycleVite bool
-}
-
-type reloadReadinessOutcome struct {
-	WaitedForApp     bool
-	WaitedForVite    bool
-	CycleViteApplied bool
-}
-
-type reloadOrchestrationOutcome struct {
-	BroadcastEnabled       bool
-	BroadcastContextActive bool
-
-	ReadinessOutcome       reloadReadinessOutcome
-	ShouldBroadcastPayload bool
-	PayloadBroadcasted     bool
-}
-
-// BroadcastRebuilding sends the "rebuilding" signal to show UI overlay.
-// Uses blocking send, but guarded by context to prevent deadlock during shutdown.
-func (s *Server) BroadcastRebuilding() {
-	if !s.ShouldBroadcastToBrowserClients() {
-		return
-	}
-
-	if !isBroadcastContextActive(s.RefreshMgrCtx) {
-		return
-	}
-
-	_ = s.SendRefreshPayloadWhenBroadcastContextActive(
-		broadcast.Payload{
-			ChangeType: broadcast.ChangeTypeRebuilding,
-		},
-	)
-}
-
-// BroadcastReload handles browser reload orchestration.
-//
-// When CycleVite is true:
-// 1. Wait for app to be ready.
-// 2. Stop and restart Vite.
-// 3. Wait for Vite to be ready.
-// 4. Vite's client reconnect triggers the browser reload automatically.
-// 5. Do not send Wave's reload signal (would cause double reload).
-//
-// When CycleVite is false:
-// 1. Wait for app/vite as specified.
-// 2. Send Wave's reload signal to trigger browser reload.
-func (s *Server) BroadcastReload(
-	reloadOptions ReloadOpts,
-) reloadOrchestrationOutcome {
-	reloadOutcome := reloadOrchestrationOutcome{
-		BroadcastEnabled: s.ShouldBroadcastToBrowserClients(),
-	}
-	if !reloadOutcome.BroadcastEnabled {
-		return reloadOutcome
-	}
-
-	reloadOutcome.BroadcastContextActive = isBroadcastContextActive(s.RefreshMgrCtx)
-	if !reloadOutcome.BroadcastContextActive {
-		return reloadOutcome
-	}
-
-	reloadOutcome.ReadinessOutcome = s.WaitForReloadReadiness(reloadOptions)
-	reloadOutcome.ShouldBroadcastPayload = ShouldBroadcastReloadPayloadAfterReadiness(
-		reloadOptions,
-		reloadOutcome.ReadinessOutcome.CycleViteApplied,
-	)
-	if !reloadOutcome.ShouldBroadcastPayload {
-		return reloadOutcome
-	}
-
-	reloadOutcome.PayloadBroadcasted = s.SendRefreshPayloadWhenBroadcastContextActive(
-		reloadOptions.Payload,
-	)
-	return reloadOutcome
-}
-
-func (s *Server) ShouldBroadcastToBrowserClients() bool {
-	return s.Cfg.UsingBrowser() && s.RefreshMgr != nil
-}
-
-func isBroadcastContextActive(refreshManagerContext context.Context) bool {
-	if refreshManagerContext == nil {
-		return true
-	}
-
-	select {
-	case <-refreshManagerContext.Done():
-		return false
-	default:
-		return true
-	}
-}
-
-func (s *Server) SendRefreshPayloadWhenBroadcastContextActive(
-	payload broadcast.Payload,
-) bool {
-	if s.RefreshMgr == nil {
-		return false
-	}
-
-	if !isBroadcastContextActive(s.RefreshMgrCtx) {
-		return false
-	}
-
-	select {
-	case s.RefreshMgr.Broadcast <- payload:
-		return true
-	case <-s.RefreshMgrCtx.Done():
-		return false
-	}
-}
-
-func (s *Server) WaitForReloadReadiness(
-	reloadOptions ReloadOpts,
-) reloadReadinessOutcome {
-	reloadReadinessOutcomeForReload := reloadReadinessOutcome{}
-
-	if reloadOptions.WaitApp {
-		reloadReadinessOutcomeForReload.WaitedForApp = true
-		s.WaitForApp()
-	}
-
-	reloadReadinessOutcomeForReload.CycleViteApplied = s.CycleViteForReloadIfRequested(
-		reloadOptions.CycleVite,
-	)
-	if reloadReadinessOutcomeForReload.CycleViteApplied {
-		return reloadReadinessOutcomeForReload
-	}
-
-	if reloadOptions.WaitVite {
-		reloadReadinessOutcomeForReload.WaitedForVite = true
-		s.WaitForVite()
-	}
-
-	return reloadReadinessOutcomeForReload
-}
-
-func (s *Server) CycleViteForReloadIfRequested(
-	cycleViteRequested bool,
-) bool {
-	if !cycleViteRequested || !s.Cfg.UsingVite() {
-		return false
-	}
-
-	s.Mu.Lock()
-	hasActiveViteContext := s.ViteCtx != nil
-	s.Mu.Unlock()
-	if !hasActiveViteContext {
-		return false
-	}
-
-	return s.CycleViteAndWaitForReadiness()
-}
-
-func ShouldBroadcastReloadPayloadAfterReadiness(
-	reloadOptions ReloadOpts,
-	cycleViteApplied bool,
+// ShouldBroadcastReloadPayloadAfterReadiness returns whether payload should be sent.
+func (server *runtimeServer) shouldBroadcastReloadPayloadAfterReadiness(
+	reloadOptions eventpipeline.ReloadOpts,
 ) bool {
 	if !reloadOptions.CycleVite {
 		return true
 	}
-	return !cycleViteApplied
+	if server == nil || server.Cfg == nil || !server.Cfg.UsingVite() {
+		return true
+	}
+
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if server.ViteContext != nil {
+		return false
+	}
+	return true
 }
 
-type FileType int
-
-const (
-	FileTypeOther FileType = iota
-	FileTypeGo
-	FileTypeCriticalCSS
-	FileTypeNormalCSS
-	FileTypeCriticalAndNormalCSS
-	FileTypePublicStatic
-	FileTypePrivateStatic
-)
-
-type ClassifiedEvent struct {
-	Event       fsnotify.Event
-	FileType    FileType
-	WatchedFile *wave.WatchedFile
-	Ignored     bool
-	ChmodOnly   bool
-}
-
-// EventWithHooks pairs a classified event with its sorted hooks.
-type EventWithHooks struct {
-	Classified         ClassifiedEvent
-	Hooks              *wave.SortedHooks
-	HookCtx            *wave.HookContext
-	RunOnChangeOnly    bool
-	NeedsHardReload    bool
-	SkipDuplicateHooks bool
-}
-
-type BuildPhaseDecision struct {
-	CompileGo                       bool
-	BuildCriticalCSS                bool
-	BuildNormalCSS                  bool
-	ProcessPublicFiles              bool
-	ProcessPrivateFiles             bool
-	PublicStaticChangedFilePaths    []string
-	PrivateStaticChangedFilePaths   []string
-	PublicStaticChangedFilePathSet  map[string]struct{}
-	PrivateStaticChangedFilePathSet map[string]struct{}
-}
-
-type RestartPhaseDecision struct {
-	RestartApp bool
-}
-
-type BrowserPhaseAction int
-
-const (
-	BrowserPhaseActionNone BrowserPhaseAction = iota
-	BrowserPhaseActionHotReloadCSS
-	BrowserPhaseActionRevalidate
-	BrowserPhaseActionHardReload
-	BrowserPhaseActionInvalidateVite
-)
-
-type BrowserPhaseDecision struct {
-	Action      BrowserPhaseAction
-	WaitForApp  bool
-	WaitForVite bool
-	CycleVite   bool
-}
-
-type BrowserPhaseResolution struct {
-	Action         BrowserPhaseAction
-	ApplyWaitFlags bool
-	WaitForApp     bool
-	WaitForVite    bool
-}
-
-// WorkSet collects per-phase execution decisions for a watcher cycle.
-type WorkSet struct {
-	Build   BuildPhaseDecision
-	Restart RestartPhaseDecision
-	Browser BrowserPhaseDecision
-
-	// User preference collected from watched files and applied during resolve.
-	PreferRevalidate bool
-}
-
-type AppStopStrategy int
-
-const (
-	AppStopStrategyNone AppStopStrategy = iota
-	AppStopStrategySingleEventHardReload
-	AppStopStrategyBatchHardReload
-)
-
-type EventExecutionPlanningResult struct {
-	EventsWithHooks []EventWithHooks
-	ConfigChanged   bool
-}
-
-type WatcherEventFlowDecision struct {
-	TriggerConfigRestart       bool
-	BroadcastRebuildingOverlay bool
-	BehavioralDecision         EventExecutionPlanBehavioralDecision
-}
-
-type WatcherEventExecutionInput struct {
-	FlowDecision            WatcherEventFlowDecision
-	EventsWithHooks         []EventWithHooks
-	WatcherEventLogPayloads []WatcherEventLogPayload
-}
-
-type EventExecutionPlanBehavioralDecision struct {
-	ShowRebuildingOverlay bool
-	AppStopStrategy       AppStopStrategy
-	RunImplicitBuild      bool
-}
-
-type WatcherEventLogPayload struct {
-	Operation string
-	FilePath  string
-}
-
-type RefreshActionApplicationResult struct {
-	RestartRequested bool
-	RecompileGo      bool
-}
-
-type RefreshActionWorkMutationDecision struct {
-	RestartApp           bool
-	CompileGo            bool
-	RequestBrowserAction bool
-	BrowserAction        BrowserPhaseAction
-	WaitForApp           bool
-	WaitForVite          bool
-}
-
-type refreshActionReductionDecision struct {
-	ActionsBeforeRestart     []wave.RefreshAction
-	RestartActionEncountered bool
-	RestartActionIndex       int
-	ApplicationResult        RefreshActionApplicationResult
-}
-
-type ImplicitWorkDecision struct {
-	CompileGo                    bool
-	BuildCriticalCSS             bool
-	BuildNormalCSS               bool
-	ProcessPublicFiles           bool
-	ProcessPrivateFiles          bool
-	RestartApp                   bool
-	PreferRevalidate             bool
-	PublicStaticChangedFilePath  string
-	PrivateStaticChangedFilePath string
-}
-
-func (s *Server) BuildEventExecutionPlan(
+// BuildEventExecutionPlan classifies events and builds hook-ready execution plan.
+func (server *runtimeServer) BuildEventExecutionPlan(
 	events []fsnotify.Event,
 	watcher *watch.Watcher,
-	builder *toolingbuilder.Builder,
-) EventExecutionPlanningResult {
-	deduplicatedEvents := dedup.DeduplicateWatcherEventsByPath(events)
-	classifiedEvents, configChanged := s.ClassifyWatcherEventsForProcessing(
-		deduplicatedEvents,
+	builder *builder.Builder,
+) eventpipeline.EventExecutionPlanningResult {
+	classifiedEvents, configChanged := server.ClassifyWatcherEventsForProcessing(
+		events,
 		watcher,
 		builder,
 	)
 	if configChanged {
-		return EventExecutionPlanningResult{
-			ConfigChanged: true,
-		}
+		return eventpipeline.EventExecutionPlanningResult{ConfigChanged: true}
 	}
-
 	if len(classifiedEvents) == 0 {
-		return EventExecutionPlanningResult{}
+		return eventpipeline.EventExecutionPlanningResult{}
 	}
 
-	eventsWithHooks := BuildEventExecutionPlanFromClassifiedEvents(classifiedEvents)
+	eventsWithHooks := hooks.BuildEventHooksForProcessing(classifiedEvents)
 	if len(eventsWithHooks) == 0 {
-		return EventExecutionPlanningResult{}
+		return eventpipeline.EventExecutionPlanningResult{}
 	}
 
-	return EventExecutionPlanningResult{
+	return eventpipeline.EventExecutionPlanningResult{
 		EventsWithHooks: eventsWithHooks,
 	}
 }
 
-func BuildEventExecutionPlanFromClassifiedEvents(
-	classifiedEvents []ClassifiedEvent,
-) []EventWithHooks {
-	if len(classifiedEvents) == 0 {
-		return nil
-	}
-
-	eventsWithHooks := BuildEventHooksForProcessing(classifiedEvents)
-	if len(eventsWithHooks) == 0 {
-		return nil
-	}
-
-	return eventsWithHooks
-}
-func PlanBrowserReloadForAction(
-	action BrowserPhaseAction,
-	browserDecision BrowserPhaseDecision,
-) (ReloadOpts, bool) {
-	switch action {
-	case BrowserPhaseActionHardReload:
-		return ReloadOpts{
-			Payload:   broadcast.Payload{ChangeType: broadcast.ChangeTypeOther},
-			WaitApp:   browserDecision.WaitForApp,
-			WaitVite:  browserDecision.WaitForVite,
-			CycleVite: browserDecision.CycleVite,
-		}, true
-	case BrowserPhaseActionRevalidate:
-		return ReloadOpts{
-			Payload:   broadcast.Payload{ChangeType: broadcast.ChangeTypeRevalidate},
-			WaitApp:   browserDecision.WaitForApp,
-			WaitVite:  browserDecision.WaitForVite,
-			CycleVite: false,
-		}, true
-	default:
-		return ReloadOpts{}, false
-	}
-}
-
-func PlanInvalidateViteFallbackBrowserDecision(
-	usingVite bool,
-) BrowserPhaseDecision {
-	return BrowserPhaseDecision{
-		Action:      BrowserPhaseActionHardReload,
-		WaitForApp:  true,
-		WaitForVite: usingVite,
-	}
-}
-
-func PlanHotReloadCSSPayloads(
-	includeCriticalCSS bool,
-	criticalCSS string,
-	criticalCSSAvailable bool,
-	includeNormalCSS bool,
-	normalCSSURL string,
-	normalCSSURLAvailable bool,
-) []broadcast.Payload {
-	payloads := make([]broadcast.Payload, 0, 2)
-	if includeCriticalCSS && criticalCSSAvailable {
-		payloads = append(payloads, broadcast.Payload{
-			ChangeType:  broadcast.ChangeTypeCriticalCSS,
-			CriticalCSS: base64.StdEncoding.EncodeToString([]byte(criticalCSS)),
-		})
-	}
-	if includeNormalCSS && normalCSSURLAvailable {
-		payloads = append(payloads, broadcast.Payload{
-			ChangeType:   broadcast.ChangeTypeNormalCSS,
-			NormalCSSURL: normalCSSURL,
-		})
-	}
-	return payloads
-}
-
-type BrowserPhaseExecutionCategory int
-
-const (
-	BrowserPhaseExecutionCategoryNone BrowserPhaseExecutionCategory = iota
-	BrowserPhaseExecutionCategoryReload
-	BrowserPhaseExecutionCategoryHotReloadCSS
-)
-
-func ShouldAttemptViteInvalidateForBrowserDecision(
-	browserDecision BrowserPhaseDecision,
-	usingVite bool,
-) bool {
-	return browserDecision.Action == BrowserPhaseActionInvalidateVite && usingVite
-}
-
-func ResolveBrowserDecisionAfterInvalidateViteFallback(
-	browserDecision BrowserPhaseDecision,
-	usingVite bool,
-) BrowserPhaseDecision {
-	if browserDecision.Action != BrowserPhaseActionInvalidateVite {
-		return browserDecision
-	}
-
-	fallbackDecision := PlanInvalidateViteFallbackBrowserDecision(usingVite)
-	browserDecision.Action = fallbackDecision.Action
-	browserDecision.WaitForApp = fallbackDecision.WaitForApp
-	browserDecision.WaitForVite = fallbackDecision.WaitForVite
-	return browserDecision
-}
-
-func DeriveBrowserPhaseExecutionCategory(
-	action BrowserPhaseAction,
-) BrowserPhaseExecutionCategory {
-	switch action {
-	case BrowserPhaseActionHardReload, BrowserPhaseActionRevalidate:
-		return BrowserPhaseExecutionCategoryReload
-	case BrowserPhaseActionHotReloadCSS:
-		return BrowserPhaseExecutionCategoryHotReloadCSS
-	default:
-		return BrowserPhaseExecutionCategoryNone
-	}
-}
-
-func (s *Server) ExecuteBrowserPhase(work *WorkSet) {
-	if !s.Cfg.UsingBrowser() {
+// ExecuteBrowserPhase executes browser-phase side effects for workset.
+func (server *runtimeServer) ExecuteBrowserPhase(work *eventpipeline.WorkSet) {
+	if work == nil || !server.Cfg.UsingBrowser() {
 		return
 	}
 
-	builder := s.GetBuilder()
-	browserDecisionForExecution := work.Browser
-	if browserDecisionForExecution.Action == BrowserPhaseActionInvalidateVite {
-		if ShouldAttemptViteInvalidateForBrowserDecision(
-			browserDecisionForExecution,
-			s.Cfg.UsingVite(),
+	browserDecision := work.Browser
+	if browserDecision.Action == eventpipeline.BrowserPhaseActionInvalidateVite {
+		if eventpipeline.ShouldAttemptViteInvalidateForBrowserDecision(
+			browserDecision,
+			server.Cfg.UsingVite(),
 		) {
-			if err := s.CallViteFilemapInvalidate(); err != nil {
-				s.Log.Warn("Vite filemap invalidate failed, falling back to reload", "error", err)
-			} else {
+			if invalidateError := server.CallViteFilemapInvalidate(); invalidateError == nil {
 				return
 			}
 		}
-		browserDecisionForExecution = ResolveBrowserDecisionAfterInvalidateViteFallback(
-			browserDecisionForExecution,
-			s.Cfg.UsingVite(),
+		browserDecision = eventpipeline.ResolveBrowserDecisionAfterInvalidateViteFallback(
+			browserDecision,
+			server.Cfg.UsingVite(),
 		)
-		work.Browser = browserDecisionForExecution
+		work.Browser = browserDecision
 	}
 
-	switch DeriveBrowserPhaseExecutionCategory(browserDecisionForExecution.Action) {
-	case BrowserPhaseExecutionCategoryReload:
-		reloadPlan, hasReloadPlan := PlanBrowserReloadForAction(
-			browserDecisionForExecution.Action,
-			browserDecisionForExecution,
+	switch eventpipeline.DeriveBrowserPhaseExecutionCategory(browserDecision.Action) {
+	case eventpipeline.BrowserPhaseExecutionCategoryReload:
+		reloadOptions, hasReloadOptions := eventpipeline.PlanBrowserReloadForAction(
+			browserDecision.Action,
+			browserDecision,
 		)
-		if !hasReloadPlan {
+		if !hasReloadOptions {
 			return
 		}
-		if browserDecisionForExecution.Action == BrowserPhaseActionHardReload {
-			s.Log.Info("Hard reloading browser")
-		} else {
-			s.Log.Info("Running client-defined revalidate function")
-		}
-		s.BroadcastReload(reloadPlan)
-		return
+		server.BroadcastReload(reloadOptions)
 
-	case BrowserPhaseExecutionCategoryHotReloadCSS:
-		if builder == nil {
-			return
-		}
-		s.ExecuteHotReloadCSSBrowserPhase(builder, work.Build)
-		return
-
-	case BrowserPhaseExecutionCategoryNone:
-		return
+	case eventpipeline.BrowserPhaseExecutionCategoryHotReloadCSS:
+		server.executeHotReloadCSSBrowserPhase(work)
 	}
 }
 
-func (s *Server) ExecuteHotReloadCSSBrowserPhase(
-	builder *toolingbuilder.Builder,
-	buildDecision BuildPhaseDecision,
+// executeHotReloadCSSBrowserPhase executes CSS hot reload payloads.
+func (server *runtimeServer) executeHotReloadCSSBrowserPhase(
+	work *eventpipeline.WorkSet,
 ) {
-	s.Log.Info("Hot reloading CSS")
+	builderInstance := server.BuilderInstance()
+	if builderInstance == nil {
+		return
+	}
 
 	criticalCSS := ""
 	criticalCSSAvailable := false
-	if buildDecision.BuildCriticalCSS {
-		var readCriticalCSSError error
-		criticalCSS, readCriticalCSSError = builder.ReadCriticalCSSForHotReload(true)
-		if readCriticalCSSError != nil {
-			s.Log.Warn(
-				"Skipping critical CSS hot reload payload due to missing fresh build output",
-				"error",
-				readCriticalCSSError,
-			)
-		} else {
+	if work != nil && work.Build.BuildCriticalCSS {
+		if freshCriticalCSS, readCriticalCSSError := builderInstance.ReadCriticalCSSForHotReload(true); readCriticalCSSError == nil {
+			criticalCSS = freshCriticalCSS
 			criticalCSSAvailable = true
 		}
 	}
 
 	normalCSSURL := ""
 	normalCSSURLAvailable := false
-	if buildDecision.BuildNormalCSS {
-		var readNormalCSSURLError error
-		normalCSSURL, readNormalCSSURLError = builder.ReadNormalCSSURLForHotReload(true)
-		if readNormalCSSURLError != nil {
-			s.Log.Warn(
-				"Skipping normal CSS hot reload payload due to missing fresh build output",
-				"error",
-				readNormalCSSURLError,
-			)
-		} else {
+	if work != nil && work.Build.BuildNormalCSS {
+		if freshNormalCSSURL, readNormalCSSURLError := builderInstance.ReadNormalCSSURLForHotReload(true); readNormalCSSURLError == nil {
+			normalCSSURL = freshNormalCSSURL
 			normalCSSURLAvailable = true
 		}
 	}
-
-	payloads := PlanHotReloadCSSPayloads(
-		buildDecision.BuildCriticalCSS,
+	payloads := eventpipeline.PlanHotReloadCSSPayloads(
+		work.Build.BuildCriticalCSS,
 		criticalCSS,
 		criticalCSSAvailable,
-		buildDecision.BuildNormalCSS,
+		work.Build.BuildNormalCSS,
 		normalCSSURL,
 		normalCSSURLAvailable,
 	)
+	if len(payloads) == 0 {
+		return
+	}
+
+	refreshManager := server.currentRefreshManager()
+	if refreshManager == nil {
+		return
+	}
+
 	for _, payload := range payloads {
-		s.BroadcastReload(ReloadOpts{
-			Payload: payload,
-		})
+		refreshManager.Broadcast(payload)
 	}
 }
 
-type StaticFileProcessingExecutionMode int
-
-const (
-	StaticFileProcessingExecutionModeNone StaticFileProcessingExecutionMode = iota
-	StaticFileProcessingExecutionModeFullScan
-	StaticFileProcessingExecutionModeChangedPaths
-)
-
-type StaticFileProcessingExecutionDecision struct {
-	Mode             StaticFileProcessingExecutionMode
-	ChangedFilePaths []string
-}
-
-func (decision StaticFileProcessingExecutionDecision) ShouldProcess() bool {
-	return decision.Mode != StaticFileProcessingExecutionModeNone
-}
-
-type BuildPhaseExecutionDecision struct {
-	CompileGo                   bool
-	PublicStaticProcessing      StaticFileProcessingExecutionDecision
-	PrivateStaticProcessing     StaticFileProcessingExecutionDecision
-	BuildCriticalCSS            bool
-	BuildNormalCSS              bool
-	WriteFrameworkPublicFileMap bool
-}
-
-func ShouldExecuteBuildPhaseForExecutionDecision(
-	executionDecision BuildPhaseExecutionDecision,
-) bool {
-	return executionDecision.CompileGo ||
-		ShouldExecuteAnyFileProcessingForBuildDecision(executionDecision)
-}
-
-func DeriveStaticFileProcessingExecutionDecision(
-	shouldProcess bool,
-	changedFilePaths []string,
-) StaticFileProcessingExecutionDecision {
-	if !shouldProcess {
-		return StaticFileProcessingExecutionDecision{}
-	}
-	if len(changedFilePaths) == 0 {
-		return StaticFileProcessingExecutionDecision{
-			Mode: StaticFileProcessingExecutionModeFullScan,
-		}
-	}
-	return StaticFileProcessingExecutionDecision{
-		Mode:             StaticFileProcessingExecutionModeChangedPaths,
-		ChangedFilePaths: append([]string(nil), changedFilePaths...),
-	}
-}
-
-func ShouldWriteFrameworkPublicFileMapTSForBuildDecision(
-	shouldProcessPublicStaticFiles bool,
-	frameworkPublicFileMapOutDir string,
-) bool {
-	return shouldProcessPublicStaticFiles && frameworkPublicFileMapOutDir != ""
-}
-
-func DeriveBuildPhaseExecutionDecision(
-	buildDecision BuildPhaseDecision,
-	frameworkPublicFileMapOutDir string,
-) BuildPhaseExecutionDecision {
-	return BuildPhaseExecutionDecision{
-		CompileGo: buildDecision.CompileGo,
-		PublicStaticProcessing: DeriveStaticFileProcessingExecutionDecision(
-			buildDecision.ProcessPublicFiles,
-			buildDecision.PublicStaticChangedFilePaths,
-		),
-		PrivateStaticProcessing: DeriveStaticFileProcessingExecutionDecision(
-			buildDecision.ProcessPrivateFiles,
-			buildDecision.PrivateStaticChangedFilePaths,
-		),
-		BuildCriticalCSS: buildDecision.BuildCriticalCSS,
-		BuildNormalCSS:   buildDecision.BuildNormalCSS,
-		WriteFrameworkPublicFileMap: ShouldWriteFrameworkPublicFileMapTSForBuildDecision(
-			buildDecision.ProcessPublicFiles,
-			frameworkPublicFileMapOutDir,
-		),
-	}
-}
-
-func ShouldExecuteAnyFileProcessingForBuildDecision(
-	executionDecision BuildPhaseExecutionDecision,
-) bool {
-	return executionDecision.PublicStaticProcessing.ShouldProcess() ||
-		executionDecision.PrivateStaticProcessing.ShouldProcess() ||
-		executionDecision.BuildCriticalCSS ||
-		executionDecision.BuildNormalCSS
-}
-
-func (s *Server) ExecuteBuildPhase(work *WorkSet) error {
+// ExecuteBuildPhase executes build-phase work from resolved workset decision.
+func (server *runtimeServer) ExecuteBuildPhase(work *eventpipeline.WorkSet) error {
 	if work == nil {
 		return nil
 	}
 
-	buildExecutionDecision := DeriveBuildPhaseExecutionDecision(
+	executionDecision := eventpipeline.DeriveBuildPhaseExecutionDecision(
 		work.Build,
-		s.Cfg.FrameworkPublicFileMapOutDir,
+		server.Cfg.FrameworkPublicFileMapOutDir,
 	)
-	if !ShouldExecuteBuildPhaseForExecutionDecision(buildExecutionDecision) {
+	if !eventpipeline.ShouldExecuteBuildPhaseForExecutionDecision(
+		executionDecision,
+	) {
 		return nil
 	}
 
-	builder := s.GetBuilder()
-	if builder == nil {
-		builderNilError := errors.New("builder is nil during build phase")
-		s.Log.Error("Builder is nil during build phase", "error", builderNilError)
-		return builderNilError
+	builderInstance := server.BuilderInstance()
+	if builderInstance == nil {
+		return errors.New("builder is unavailable")
 	}
 
-	var buildPhaseGroup errgroup.Group
+	if executionDecision.BuildCriticalCSS ||
+		executionDecision.BuildNormalCSS ||
+		executionDecision.WriteFrameworkPublicFileMap ||
+		eventpipeline.ShouldExecuteAnyFileProcessingForBuildDecision(
+			executionDecision,
+		) {
+		if setupDistError := builder.SetupDistDir(server.Cfg); setupDistError != nil {
+			return setupDistError
+		}
+	}
 
-	if buildExecutionDecision.CompileGo {
-		buildPhaseGroup.Go(func() error {
-			if err := builder.CompileGoOnly(true); err != nil {
-				s.Log.Error("Go compilation failed", "error", err)
-				return err
+	var buildGroup errgroup.Group
+
+	if executionDecision.CompileGo {
+		buildGroup.Go(func() error {
+			return builderInstance.CompileGo()
+		})
+	}
+
+	if executionDecision.BuildCriticalCSS || executionDecision.BuildNormalCSS {
+		buildGroup.Go(func() error {
+			return builderInstance.BuildCSS(builder.CSSBuildOptions{
+				BuildCriticalCSS: executionDecision.BuildCriticalCSS,
+				BuildNormalCSS:   executionDecision.BuildNormalCSS,
+			})
+		})
+	}
+
+	if eventpipeline.ShouldExecuteAnyFileProcessingForBuildDecision(
+		executionDecision,
+	) {
+		buildGroup.Go(func() error {
+			if publicProcessingError := server.executePublicStaticProcessingForBuildPhase(builderInstance, executionDecision.PublicStaticProcessing); publicProcessingError != nil {
+				return publicProcessingError
+			}
+			if privateProcessingError := server.executePrivateStaticProcessingForBuildPhase(builderInstance, executionDecision.PrivateStaticProcessing); privateProcessingError != nil {
+				return privateProcessingError
 			}
 			return nil
 		})
 	}
 
-	if ShouldExecuteAnyFileProcessingForBuildDecision(buildExecutionDecision) {
-		buildPhaseGroup.Go(func() error {
-			if err := s.ExecutePublicStaticProcessingForBuildPhase(
-				builder,
-				buildExecutionDecision,
-			); err != nil {
-				return err
-			}
-
-			var assetAndCSSBuildGroup errgroup.Group
-
-			if buildExecutionDecision.PrivateStaticProcessing.ShouldProcess() {
-				assetAndCSSBuildGroup.Go(func() error {
-					return s.ExecutePrivateStaticProcessingForBuildPhase(
-						builder,
-						buildExecutionDecision.PrivateStaticProcessing,
-					)
-				})
-			}
-
-			if buildExecutionDecision.BuildCriticalCSS {
-				assetAndCSSBuildGroup.Go(func() error {
-					if err := builder.BuildCriticalCSS(true); err != nil {
-						s.Log.Error("Critical CSS build failed", "error", err)
-						return err
-					}
-					return nil
-				})
-			}
-
-			if buildExecutionDecision.BuildNormalCSS {
-				assetAndCSSBuildGroup.Go(func() error {
-					if err := builder.BuildNormalCSS(true); err != nil {
-						s.Log.Error("Normal CSS build failed", "error", err)
-						return err
-					}
-					return nil
-				})
-			}
-
-			return assetAndCSSBuildGroup.Wait()
-		})
-	}
-
-	if err := buildPhaseGroup.Wait(); err != nil {
-		s.Log.Error("Build phase had errors", "error", err)
-		return err
-	}
-
-	return nil
+	return buildGroup.Wait()
 }
 
-func (s *Server) ExecutePublicStaticProcessingForBuildPhase(
-	builder *toolingbuilder.Builder,
-	buildExecutionDecision BuildPhaseExecutionDecision,
+// executePublicStaticProcessingForBuildPhase executes public static processing decision.
+func (server *runtimeServer) executePublicStaticProcessingForBuildPhase(
+	builderInstance *builder.Builder,
+	publicStaticProcessingDecision eventpipeline.StaticFileProcessingExecutionDecision,
 ) error {
-	if !buildExecutionDecision.PublicStaticProcessing.ShouldProcess() {
+	if builderInstance == nil {
 		return nil
 	}
-
-	publicStaticProcessingError := ExecuteStaticFileProcessingForBuildPhase(
-		builder.ProcessPublicFilesOnly,
-		builder.ProcessPublicFilesOnlyForChangedPaths,
-		buildExecutionDecision.PublicStaticProcessing,
+	return eventpipeline.ExecuteStaticFileProcessingForBuildPhase(
+		builderInstance.ProcessPublicFilesOnly,
+		builderInstance.ProcessPublicFilesOnlyForChangedPaths,
+		publicStaticProcessingDecision,
 	)
-	if publicStaticProcessingError != nil {
-		s.Log.Error("Public files processing failed", "error", publicStaticProcessingError)
-		return publicStaticProcessingError
-	}
-
-	if buildExecutionDecision.WriteFrameworkPublicFileMap {
-		if err := builder.WritePublicFileMapTS(s.Cfg.FrameworkPublicFileMapOutDir); err != nil {
-			s.Log.Error("Write public file map TS failed", "error", err)
-			return err
-		}
-	}
-
-	return nil
 }
 
-func (s *Server) ExecutePrivateStaticProcessingForBuildPhase(
-	builder *toolingbuilder.Builder,
-	privateStaticProcessingDecision StaticFileProcessingExecutionDecision,
+// executePrivateStaticProcessingForBuildPhase executes private static processing decision.
+func (server *runtimeServer) executePrivateStaticProcessingForBuildPhase(
+	builderInstance *builder.Builder,
+	privateStaticProcessingDecision eventpipeline.StaticFileProcessingExecutionDecision,
 ) error {
-	privateStaticProcessingError := ExecuteStaticFileProcessingForBuildPhase(
-		builder.ProcessPrivateFilesOnly,
-		builder.ProcessPrivateFilesOnlyForChangedPaths,
+	if builderInstance == nil {
+		return nil
+	}
+	return eventpipeline.ExecuteStaticFileProcessingForBuildPhase(
+		builderInstance.ProcessPrivateFilesOnly,
+		builderInstance.ProcessPrivateFilesOnlyForChangedPaths,
 		privateStaticProcessingDecision,
 	)
-	if privateStaticProcessingError != nil {
-		s.Log.Error("Private files processing failed", "error", privateStaticProcessingError)
-		return privateStaticProcessingError
-	}
-	return nil
 }
 
-func ExecuteStaticFileProcessingForBuildPhase(
-	executeFullStaticProcessing func() error,
-	executeChangedPathsStaticProcessing func([]string) error,
-	staticProcessingDecision StaticFileProcessingExecutionDecision,
-) error {
-	switch staticProcessingDecision.Mode {
-	case StaticFileProcessingExecutionModeNone:
-		return nil
-
-	case StaticFileProcessingExecutionModeChangedPaths:
-		if executeChangedPathsStaticProcessing == nil {
-			return nil
-		}
-		return executeChangedPathsStaticProcessing(staticProcessingDecision.ChangedFilePaths)
-
-	case StaticFileProcessingExecutionModeFullScan:
-		if executeFullStaticProcessing == nil {
-			return nil
-		}
-		return executeFullStaticProcessing()
-
-	default:
-		return nil
-	}
-}
-
-// ClassifyWatcherEventsForProcessing applies pre-classification side effects,
-// maps events into file categories, then drops ignored/chmod-only entries.
-func (s *Server) ClassifyWatcherEventsForProcessing(
-	events []fsnotify.Event,
+// ClassifyWatcherEventsForProcessing classifies watcher events and handles config reload behavior.
+func (server *runtimeServer) ClassifyWatcherEventsForProcessing(
+	watcherEvents []fsnotify.Event,
 	watcher *watch.Watcher,
-	builder *toolingbuilder.Builder,
-) ([]ClassifiedEvent, bool) {
-	if len(events) == 0 {
-		return nil, false
-	}
-
-	eventClassificationProber := classification.NewEventClassificationProber(
-		s.IsConfigFile,
+	builderInstance *builder.Builder,
+) ([]eventpipeline.ClassifiedEvent, bool) {
+	classifiedEvents, configChanged := server.classifyWatcherEventsFromPreClassificationPlan(
+		watcherEvents,
+		watcher,
+		builderInstance,
 	)
-	preClassificationPlan := classification.BuildPreClassificationPlanFromEvents(
-		events,
-		eventClassificationProber.ProbeIsConfigFile,
-		eventClassificationProber.ProbeEventDirectoryStatus,
-	)
-	if preClassificationPlan.ConfigChanged {
+	if configChanged {
 		return nil, true
 	}
-
-	s.ApplyWatcherEventPreClassificationSideEffects(watcher, preClassificationPlan)
-	classifiedEvents := s.ClassifyWatcherEventsFromPreClassificationPlan(
-		preClassificationPlan,
-		watcher,
-		builder,
-	)
-
-	return FilterClassifiedEventsForProcessingByPostClassificationDecision(
+	return eventpipeline.FilterClassifiedEventsForProcessingByPostClassificationDecision(
 		classifiedEvents,
 	), false
 }
 
-// ApplyWatcherEventPreClassificationSideEffects runs watcher mutations derived
-// from pre-classification. All logging suppression decisions live in
-// shouldLogWatcherAddDirectoryError so this loop stays strictly orchestration.
-func (s *Server) ApplyWatcherEventPreClassificationSideEffects(
-	watcher *watch.Watcher,
-	preClassificationPlan classification.PreClassificationPlan,
-) {
-	for _, directoryPathToWatch := range preClassificationPlan.AddDirectoryWatchPaths {
-		addDirectoryWatchError := watcher.AddDir(directoryPathToWatch)
-		if classification.ShouldLogAddDirectoryWatchError(addDirectoryWatchError) {
-			s.Log.Warn(
-				"failed to add directory watch",
-				"path",
-				directoryPathToWatch,
-				"error",
-				addDirectoryWatchError,
-			)
+// applyWatcherEventPreClassificationSideEffects handles side-effects before semantic classification.
+func (server *runtimeServer) applyWatcherEventPreClassificationSideEffects(
+	watcherEvent fsnotify.Event,
+) (bool, error) {
+	if server.IsConfigFile(watcherEvent.Name) {
+		_, reloadError := server.ReloadConfig()
+		if reloadError != nil {
+			return true, reloadError
 		}
+		return true, nil
 	}
+	return false, nil
 }
 
-// ClassifyWatcherEventsFromPreClassificationPlan maps each event that survived
-// pre-classification into a typed ClassifiedEvent.
-func (s *Server) ClassifyWatcherEventsFromPreClassificationPlan(
-	preClassificationPlan classification.PreClassificationPlan,
+// classifyWatcherEventsFromPreClassificationPlan classifies events after pre side effects.
+func (server *runtimeServer) classifyWatcherEventsFromPreClassificationPlan(
+	watcherEvents []fsnotify.Event,
 	watcher *watch.Watcher,
-	builder *toolingbuilder.Builder,
-) []ClassifiedEvent {
-	if len(preClassificationPlan.EventsToClassify) == 0 {
-		return nil
-	}
-
-	classifiedEvents := make([]ClassifiedEvent, 0, len(preClassificationPlan.EventsToClassify))
-	for _, eventToClassify := range preClassificationPlan.EventsToClassify {
-		classifiedEvents = append(
-			classifiedEvents,
-			s.ClassifyEventWithWatcherAndBuilder(eventToClassify, watcher, builder),
+	builderInstance *builder.Builder,
+) ([]eventpipeline.ClassifiedEvent, bool) {
+	classifiedEvents := make(
+		[]eventpipeline.ClassifiedEvent,
+		0,
+		len(watcherEvents),
+	)
+	for _, watcherEvent := range dedup.DeduplicateWatcherEvents(watcherEvents, dedup.DeduplicationPolicy{}).Events {
+		configChanged, sideEffectError := server.applyWatcherEventPreClassificationSideEffects(
+			watcherEvent,
 		)
+		if sideEffectError != nil {
+			server.Log.Error("config reload failed", "error", sideEffectError)
+		}
+		if configChanged {
+			return nil, true
+		}
+
+		classifiedEvent := server.ClassifyEventWithWatcherAndBuilder(
+			watcherEvent,
+			watcher,
+			builderInstance,
+		)
+		classifiedEvents = append(classifiedEvents, classifiedEvent)
 	}
-	return classifiedEvents
+	return classifiedEvents, false
 }
 
-// IsConfigFile checks whether a watcher path points at the active config file.
-// It intentionally tolerates nil/empty state so early startup or teardown
-// phases can classify events without panicking.
-func (s *Server) IsConfigFile(path string) bool {
-	if s == nil || s.Cfg == nil || s.Cfg.Core == nil {
+// IsConfigFile reports whether path matches active config file location.
+func (server *runtimeServer) IsConfigFile(path string) bool {
+	if server == nil || server.Cfg == nil || server.Cfg.Core == nil {
 		return false
 	}
-
-	configPath := s.Cfg.Core.ConfigLocation
-	if configPath == "" {
-		return false
-	}
-
-	return waveshared.PathsReferToSameLocation(path, configPath)
+	return classification.IsConfigurationPathChange(
+		path,
+		server.Cfg.Core.ConfigLocation,
+	)
 }
 
-// filterClassifiedEventsForProcessingByPostClassificationDecision removes
-// ignored and chmod-only classified events before planning/execution.
-func FilterClassifiedEventsForProcessingByPostClassificationDecision(
-	classifiedEvents []ClassifiedEvent,
-) []ClassifiedEvent {
-	if len(classifiedEvents) == 0 {
-		return nil
-	}
-
-	filteredClassifiedEvents := make([]ClassifiedEvent, 0, len(classifiedEvents))
-	for _, classifiedEventForProcessing := range classifiedEvents {
-		postClassificationDecision := classification.DerivePostClassificationDecision(
-			classifiedEventForProcessing.Ignored,
-			classifiedEventForProcessing.ChmodOnly,
-		)
-		if !postClassificationDecision.IncludeClassifiedEvent {
-			continue
-		}
-		filteredClassifiedEvents = append(
-			filteredClassifiedEvents,
-			classifiedEventForProcessing,
-		)
-	}
-	return filteredClassifiedEvents
-}
-
-// ClassifyEventWithWatcherAndBuilder maps a raw watcher event into file type,
-// watch metadata, ignore status, and chmod-only state used by later phases.
-func (s *Server) ClassifyEventWithWatcherAndBuilder(
+// ClassifyEventWithWatcherAndBuilder classifies watcher event with semantic file-type logic.
+func (server *runtimeServer) ClassifyEventWithWatcherAndBuilder(
 	watcherEvent fsnotify.Event,
 	watcher *watch.Watcher,
-	builder *toolingbuilder.Builder,
-) ClassifiedEvent {
-	classifiedEventForProcessing := ClassifiedEvent{Event: watcherEvent}
-
-	if watcherEvent.Name == "" {
-		classifiedEventForProcessing.Ignored = true
-		return classifiedEventForProcessing
+	builderInstance *builder.Builder,
+) eventpipeline.ClassifiedEvent {
+	classifiedEvent := eventpipeline.ClassifiedEvent{Event: watcherEvent}
+	preDecision := classification.DerivePreClassificationDecision(
+		watcherEvent,
+		classification.PathClassifierDependencies{
+			IsIgnoredPathFunc: watcher.IsIgnoredFile,
+			LockFileName:      shared.LockFileName,
+		},
+	)
+	if !preDecision.IncludeEvent {
+		classifiedEvent.Ignored = true
+		classifiedEvent.ChmodOnly = true
+		return classifiedEvent
 	}
 
-	classifiedEventForProcessing.Ignored = watcher.IsIgnoredFile(watcherEvent.Name)
-	classifiedEventForProcessing.FileType = deriveInitialFileTypeForWatcherEvent(
+	classifiedEvent.Ignored = watcher.IsIgnoredFile(watcherEvent.Name)
+	classifiedEvent.FileType = eventpipeline.DeriveInitialFileTypeForWatcherEvent(
 		watcherEvent.Name,
 		watcher,
-		builder,
+		builderInstance,
 	)
-	classifiedEventForProcessing.WatchedFile = watcher.FindWatchedFile(watcherEvent.Name)
-	classifiedEventForProcessing.FileType = deriveFileTypeWithWatchedFileOverrides(
-		classifiedEventForProcessing.FileType,
-		classifiedEventForProcessing.WatchedFile,
+	classifiedEvent.WatchedFile = watcher.FindWatchedFile(watcherEvent.Name)
+	classifiedEvent.FileType = eventpipeline.DeriveFileTypeWithWatchedFileOverrides(
+		classifiedEvent.FileType,
+		classifiedEvent.WatchedFile,
 	)
-	classifiedEventForProcessing.Ignored = deriveWatcherEventIgnoredStatus(
-		classifiedEventForProcessing.Ignored,
-		classifiedEventForProcessing.FileType,
-		classifiedEventForProcessing.WatchedFile,
+	classifiedEvent.Ignored = eventpipeline.DeriveWatcherEventIgnoredStatus(
+		classifiedEvent.Ignored,
+		classifiedEvent.FileType,
+		classifiedEvent.WatchedFile,
 	)
-	classifiedEventForProcessing.ChmodOnly = watch.IsNonEmptyChmodOnly(watcherEvent)
-
-	return classifiedEventForProcessing
-}
-
-// deriveInitialFileTypeForWatcherEvent resolves baseline file type before
-// watched-file overrides are applied.
-func deriveInitialFileTypeForWatcherEvent(
-	watcherEventPath string,
-	watcher *watch.Watcher,
-	builder *toolingbuilder.Builder,
-) FileType {
-	isCriticalCSSFile := builder.IsCriticalCSSFile(watcherEventPath)
-	isNormalCSSFile := builder.IsNormalCSSFile(watcherEventPath)
-
-	if isCriticalCSSFile && isNormalCSSFile {
-		return FileTypeCriticalAndNormalCSS
-	}
-	if isCriticalCSSFile {
-		return FileTypeCriticalCSS
-	}
-	if isNormalCSSFile {
-		return FileTypeNormalCSS
-	}
-	if filepath.Ext(watcherEventPath) == ".go" {
-		return FileTypeGo
-	}
-	if watcher.IsPublicStaticFile(watcherEventPath) {
-		return FileTypePublicStatic
-	}
-	if watcher.IsPrivateStaticFile(watcherEventPath) {
-		return FileTypePrivateStatic
-	}
-	return FileTypeOther
-}
-
-// deriveFileTypeWithWatchedFileOverrides applies per-watched-file overrides
-// after extension/pattern-based initial classification.
-func deriveFileTypeWithWatchedFileOverrides(
-	initialFileType FileType,
-	watchedFile *wave.WatchedFile,
-) FileType {
-	if initialFileType == FileTypeGo &&
-		watchedFile != nil &&
-		watchedFile.TreatAsNonGo {
-		return FileTypeOther
-	}
-	return initialFileType
-}
-
-// deriveWatcherEventIgnoredStatus resolves whether a classified event should be
-// ignored before post-classification filtering.
-func deriveWatcherEventIgnoredStatus(
-	initialIgnoredStatus bool,
-	resolvedFileType FileType,
-	watchedFile *wave.WatchedFile,
-) bool {
-	if initialIgnoredStatus {
-		return true
-	}
-	return resolvedFileType == FileTypeOther && watchedFile == nil
-}
-
-type implicitBuildExecutionDecision struct {
-	ShouldRunImplicitBuild    bool
-	SkipImplicitBuildLogEntry string
-}
-
-type HookStageResult struct {
-	Actions             []wave.RefreshAction
-	RefreshActionResult RefreshActionApplicationResult
-	StageType           HookStageType
-	ExecutionErrors     []error
-}
-
-type hookStageContinuationDecision struct {
-	ShouldContinue      bool
-	StopReason          HookStageContinuationStopReason
-	RestartActionResult RefreshActionApplicationResult
-}
-
-func (s *Server) ExecuteEventExecutionPlan(
-	eventsWithHooks []EventWithHooks,
-	behavioralDecision EventExecutionPlanBehavioralDecision,
-	work *WorkSet,
-	watcher *watch.Watcher,
-) {
-	if len(eventsWithHooks) == 0 {
-		return
-	}
-
-	eventsWithHooksForExecution := DeriveEventsWithHooksForExecution(
-		eventsWithHooks,
-		behavioralDecision.AppStopStrategy,
+	classifiedEvent.ChmodOnly = classification.DeriveChmodOnlyDecision(
+		watcherEvent,
 	)
-	if len(eventsWithHooksForExecution) == 0 {
-		return
-	}
-
-	s.ExecuteAppStopStrategy(behavioralDecision.AppStopStrategy)
-	s.ProcessEventsWithDeterministicPipeline(
-		behavioralDecision,
-		work,
-		watcher,
-		eventsWithHooksForExecution,
-	)
+	return classifiedEvent
 }
 
-func (s *Server) ProcessEventsWithDeterministicPipeline(
-	behavioralDecision EventExecutionPlanBehavioralDecision,
-	work *WorkSet,
-	watcher *watch.Watcher,
-	eventsWithHooks []EventWithHooks,
-) {
-	if len(eventsWithHooks) == 0 {
-		return
-	}
-
-	s.FireNoWaitHooksForEvents(eventsWithHooks, watcher)
-
-	preHookStageResult := RunAndApplyHookStageActionsAndErrorsToWorkSet(
-		HookStageTypePre,
-		func() ([]wave.RefreshAction, []error) {
-			return s.RunPreHooksForEventsWithErrors(
-				eventsWithHooks,
-				work,
-				watcher,
-			)
-		},
-		work,
-	)
-	if !s.ContinuePipelineAfterHookStageOrTriggerRestart(
-		preHookStageResult,
-	) {
-		return
-	}
-
-	implicitBuildDecision := DeriveImplicitBuildExecutionDecision(
-		behavioralDecision.RunImplicitBuild,
-		len(eventsWithHooks),
-	)
-	if !implicitBuildDecision.ShouldRunImplicitBuild {
-		s.Log.Info(implicitBuildDecision.SkipImplicitBuildLogEntry)
-	} else {
-		work.Resolve(s.Cfg.UsingVite())
-	}
-
-	buildAndConcurrentHooksContext, cancelBuildAndConcurrentHooks := context.WithCancel(
-		s.CurrentRunCycleContextOrBackground(),
-	)
-	defer cancelBuildAndConcurrentHooks()
-
-	var buildAndConcurrentHooksGroup errgroup.Group
-	if implicitBuildDecision.ShouldRunImplicitBuild {
-		buildAndConcurrentHooksGroup.Go(func() error {
-			buildPhaseError := s.ExecuteBuildPhase(work)
-			if buildPhaseError != nil {
-				cancelBuildAndConcurrentHooks()
-				return buildPhaseError
-			}
-			return nil
-		})
-	}
-
-	var concurrentActions []wave.RefreshAction
-	var concurrentHookExecutionErrors []error
-	buildAndConcurrentHooksGroup.Go(func() error {
-		concurrentActions, concurrentHookExecutionErrors = s.RunConcurrentHooksForEventsWithContextAndErrors(
-			buildAndConcurrentHooksContext,
-			eventsWithHooks,
-			watcher,
-		)
-		return nil
-	})
-	buildAndConcurrentHooksError := buildAndConcurrentHooksGroup.Wait()
-	if buildAndConcurrentHooksError != nil {
-		s.Log.Warn(
-			"Stopping pipeline after build phase failure",
-			"error",
-			buildAndConcurrentHooksError,
-		)
-		return
-	}
-
-	concurrentHookStageResult := applyHookStageActionsAndErrorsToWorkSet(
-		HookStageTypeConcurrent,
-		concurrentActions,
-		concurrentHookExecutionErrors,
-		work,
-	)
-	if !s.ContinuePipelineAfterHookStageOrTriggerRestart(
-		concurrentHookStageResult,
-	) {
-		return
-	}
-
-	postHookStageResult := RunAndApplyHookStageActionsAndErrorsToWorkSet(
-		HookStageTypePost,
-		func() ([]wave.RefreshAction, []error) {
-			return s.RunPostHooksForEventsWithErrors(eventsWithHooks, watcher)
-		},
-		work,
-	)
-	if !s.ContinuePipelineAfterHookStageOrTriggerRestart(
-		postHookStageResult,
-	) {
-		return
-	}
-
-	if ShouldStartAppAfterImplicitBuild(
-		implicitBuildDecision.ShouldRunImplicitBuild,
-		work.Restart,
-	) {
-		s.Log.Info("Restarting app")
-		s.StartApp()
-	}
-
-	if ShouldExecuteBrowserPhaseAfterHookStageResults(
-		preHookStageResult,
-		concurrentHookStageResult,
-		postHookStageResult,
-	) {
-		s.ExecuteBrowserPhase(work)
-	}
-}
-
-func (s *Server) ExecuteAppStopStrategy(
-	appStopStrategyForExecution AppStopStrategy,
-) {
-	switch appStopStrategyForExecution {
-	case AppStopStrategySingleEventHardReload:
-		s.Log.Info("Terminating running app")
-		if err := s.StopApp(); err != nil {
-			s.Log.Error("Failed to terminate app", "error", err)
-		}
-
-	case AppStopStrategyBatchHardReload:
-		s.Log.Info("Stopping app for batch rebuild")
-		if err := s.StopApp(); err != nil {
-			s.Log.Error("Failed to stop app", "error", err)
-		}
-
-	case AppStopStrategyNone:
-	}
-}
-
-func (s *Server) ContinuePipelineAfterHookStageOrTriggerRestart(
-	hookStageResultForContinuation HookStageResult,
-) bool {
-	configuredHookStageFailurePolicy := ""
-	if s != nil && s.Cfg != nil && s.Cfg.Watch != nil {
-		configuredHookStageFailurePolicy = s.Cfg.Watch.HookStageFailurePolicy
-	}
-
-	return s.ContinuePipelineAfterHookStageOrTriggerRestartWithFailurePolicy(
-		hookStageResultForContinuation,
-		DeriveHookStageFailurePolicy(
-			hookStageResultForContinuation.StageType,
-			configuredHookStageFailurePolicy,
-		),
-	)
-}
-
-func (s *Server) ContinuePipelineAfterHookStageOrTriggerRestartWithFailurePolicy(
-	hookStageResultForContinuation HookStageResult,
-	hookStageFailurePolicyForContinuation HookStageFailurePolicy,
-) bool {
-	continuationDecision := DeriveHookStageContinuationDecisionWithFailurePolicy(
-		hookStageResultForContinuation,
-		hookStageFailurePolicyForContinuation,
-	)
-	if continuationDecision.ShouldContinue {
-		return true
-	}
-
-	if continuationDecision.StopReason == HookStageContinuationStopReasonRestartRequested {
-		s.TriggerRestartFromRefreshActions(continuationDecision.RestartActionResult)
-	}
-	if continuationDecision.StopReason == HookStageContinuationStopReasonStageFailure {
-		traceContextForContinuation := s.GetCurrentWatcherExecutionTraceContext()
-		s.Log.Warn(
-			"Stopping pipeline after hook stage errors",
-			"stage",
-			deriveHookStageLabel(hookStageResultForContinuation.StageType),
-			"error_count",
-			len(hookStageResultForContinuation.ExecutionErrors),
-			"cycle_id",
-			traceContextForContinuation.CycleID,
-			"batch_id",
-			traceContextForContinuation.BatchID,
-		)
-	}
-	return false
-}
-
-func (s *Server) TriggerRestartFromRefreshActions(
-	actionResult RefreshActionApplicationResult,
-) {
-	if actionResult.RecompileGo {
-		s.TriggerRestart()
-		return
-	}
-	s.TriggerRestartNoGo()
-}
-
-func ApplyHookStageActionsToWorkSet(
-	hookStageActions []wave.RefreshAction,
-	work *WorkSet,
-) HookStageResult {
-	hookStageResultForWork := HookStageResult{
-		Actions: append([]wave.RefreshAction(nil), hookStageActions...),
-	}
-	if work == nil {
-		return hookStageResultForWork
-	}
-
-	hookStageResultForWork.RefreshActionResult = work.ApplyRefreshActions(hookStageActions)
-	return hookStageResultForWork
-}
-
-func applyHookStageActionsAndErrorsToWorkSet(
-	stageType HookStageType,
-	hookStageActions []wave.RefreshAction,
-	hookStageExecutionErrors []error,
-	work *WorkSet,
-) HookStageResult {
-	hookStageResultForWork := ApplyHookStageActionsToWorkSet(
-		hookStageActions,
-		work,
-	)
-	hookStageResultForWork.StageType = stageType
-	hookStageResultForWork.ExecutionErrors = append(
-		[]error(nil),
-		hookStageExecutionErrors...,
-	)
-	return hookStageResultForWork
-}
-
-func RunAndApplyHookStageActionsToWorkSet(
-	runHookStageActions func() []wave.RefreshAction,
-	work *WorkSet,
-) HookStageResult {
-	if runHookStageActions == nil {
-		return ApplyHookStageActionsToWorkSet(nil, work)
-	}
-	return ApplyHookStageActionsToWorkSet(runHookStageActions(), work)
-}
-
-func RunAndApplyHookStageActionsAndErrorsToWorkSet(
-	stageType HookStageType,
-	runHookStageActions func() ([]wave.RefreshAction, []error),
-	work *WorkSet,
-) HookStageResult {
-	if runHookStageActions == nil {
-		return applyHookStageActionsAndErrorsToWorkSet(
-			stageType,
-			nil,
-			nil,
-			work,
-		)
-	}
-	hookStageActions, hookStageExecutionErrors := runHookStageActions()
-	return applyHookStageActionsAndErrorsToWorkSet(
-		stageType,
-		hookStageActions,
-		hookStageExecutionErrors,
-		work,
-	)
-}
-
-type HookStageFailurePolicy int
-
-const (
-	HookStageFailurePolicyFailOpen HookStageFailurePolicy = iota
-	HookStageFailurePolicyFailClosed
-)
-
-const (
-	ConfiguredHookStageFailurePolicyFailOpen   = "fail-open"
-	ConfiguredHookStageFailurePolicyFailClosed = "fail-closed"
-)
-
-type HookStageContinuationStopReason int
-
-const (
-	HookStageContinuationStopReasonNone HookStageContinuationStopReason = iota
-	HookStageContinuationStopReasonRestartRequested
-	HookStageContinuationStopReasonStageFailure
-)
-
-func DeriveImplicitBuildExecutionDecision(
-	shouldRunImplicitBuild bool,
-	eventCount int,
-) implicitBuildExecutionDecision {
-	if shouldRunImplicitBuild {
-		return implicitBuildExecutionDecision{
-			ShouldRunImplicitBuild: true,
-		}
-	}
-
-	if eventCount == 1 {
-		return implicitBuildExecutionDecision{
-			SkipImplicitBuildLogEntry: "RunOnChangeOnly: skipping implicit build phase",
-		}
-	}
-
-	return implicitBuildExecutionDecision{
-		SkipImplicitBuildLogEntry: "All events are RunOnChangeOnly, skipping implicit build phase",
-	}
-}
-
-func ShouldShortCircuitPipelineForHookStageResult(
-	hookStageResultForCheck HookStageResult,
-) bool {
-	return !DeriveHookStageContinuationDecisionWithFailurePolicy(
-		hookStageResultForCheck,
-		HookStageFailurePolicyFailOpen,
-	).ShouldContinue
-
-}
-
-func DeriveHookStageContinuationDecision(
-	hookStageResultForContinuation HookStageResult,
-) hookStageContinuationDecision {
-	return DeriveHookStageContinuationDecisionWithFailurePolicy(
-		hookStageResultForContinuation,
-		HookStageFailurePolicyFailOpen,
-	)
-}
-
-func DeriveHookStageContinuationDecisionWithFailurePolicy(
-	hookStageResultForContinuation HookStageResult,
-	hookStageFailurePolicyForStage HookStageFailurePolicy,
-) hookStageContinuationDecision {
-	if hookStageResultForContinuation.RefreshActionResult.RestartRequested {
-		return hookStageContinuationDecision{
-			StopReason:          HookStageContinuationStopReasonRestartRequested,
-			RestartActionResult: hookStageResultForContinuation.RefreshActionResult,
-		}
-	}
-
-	hasHookStageExecutionErrors := len(
-		hookStageResultForContinuation.ExecutionErrors,
-	) > 0
-	if hasHookStageExecutionErrors &&
-		hookStageFailurePolicyForStage == HookStageFailurePolicyFailClosed {
-		return hookStageContinuationDecision{
-			StopReason: HookStageContinuationStopReasonStageFailure,
-		}
-	}
-
-	return hookStageContinuationDecision{
-		ShouldContinue: true,
-		StopReason:     HookStageContinuationStopReasonNone,
-	}
-}
-
-func DeriveHookStageFailurePolicy(
-	stageType HookStageType,
-	configuredHookStageFailurePolicy string,
-) HookStageFailurePolicy {
-	resolvedHookStageFailurePolicy := DeriveHookStageFailurePolicyFromConfiguredValue(
-		configuredHookStageFailurePolicy,
-	)
-
-	switch stageType {
-	case HookStageTypePre, HookStageTypeConcurrent, HookStageTypePost:
-		return resolvedHookStageFailurePolicy
-	default:
-		return resolvedHookStageFailurePolicy
-	}
-}
-
-func DeriveHookStageFailurePolicyFromConfiguredValue(
-	configuredHookStageFailurePolicy string,
-) HookStageFailurePolicy {
-	switch normalizeConfiguredHookStageFailurePolicy(configuredHookStageFailurePolicy) {
-	case ConfiguredHookStageFailurePolicyFailClosed:
-		return HookStageFailurePolicyFailClosed
-	case ConfiguredHookStageFailurePolicyFailOpen, "":
-		return HookStageFailurePolicyFailOpen
-	default:
-		return HookStageFailurePolicyFailOpen
-	}
-}
-
-func normalizeConfiguredHookStageFailurePolicy(
-	configuredHookStageFailurePolicy string,
-) string {
-	return strings.TrimSpace(strings.ToLower(configuredHookStageFailurePolicy))
-}
-
-func ShouldStartAppAfterImplicitBuild(
-	shouldRunImplicitBuild bool,
-	restart RestartPhaseDecision,
-) bool {
-	return shouldRunImplicitBuild && restart.RestartApp
-}
-
-func ShouldExecuteBrowserPhaseAfterHookStageResults(
-	hookStageResults ...HookStageResult,
-) bool {
-	return !slices.ContainsFunc(
-		hookStageResults,
-		ShouldShortCircuitPipelineForHookStageResult,
-	)
-}
-
-func DeriveEventsWithHooksForExecution(
-	eventsWithHooks []EventWithHooks,
-	appStopStrategyForExecution AppStopStrategy,
-) []EventWithHooks {
-	if len(eventsWithHooks) == 0 {
-		return nil
-	}
-	if appStopStrategyForExecution != AppStopStrategyBatchHardReload {
-		return eventsWithHooks
-	}
-
-	executionEventsWithHooks := make([]EventWithHooks, len(eventsWithHooks))
-	copy(executionEventsWithHooks, eventsWithHooks)
-	for eventIndex := range executionEventsWithHooks {
-		executionEventWithHooks := executionEventsWithHooks[eventIndex]
-		if executionEventWithHooks.HookCtx == nil {
-			continue
-		}
-
-		executionHookContext := *executionEventWithHooks.HookCtx
-		executionHookContext.AppStoppedForBatch = true
-		executionEventWithHooks.HookCtx = &executionHookContext
-		executionEventsWithHooks[eventIndex] = executionEventWithHooks
-	}
-
-	return executionEventsWithHooks
-}
-func DeriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
-	eventsWithHooks []EventWithHooks,
-) EventExecutionPlanBehavioralDecision {
-	return EventExecutionPlanBehavioralDecision{
-		ShowRebuildingOverlay: ShouldShowRebuildingOverlayForEventsWithHooks(eventsWithHooks),
-		AppStopStrategy:       ResolveAppStopStrategy(eventsWithHooks),
-		RunImplicitBuild:      ShouldRunImplicitBuildForEvents(eventsWithHooks),
-	}
-}
-
-func ShouldShowRebuildingOverlayForEventsWithHooks(
-	eventsWithHooks []EventWithHooks,
-) bool {
-	if len(eventsWithHooks) == 0 {
-		return false
-	}
-
-	classifiedEvents := make([]ClassifiedEvent, 0, len(eventsWithHooks))
-	for _, eventWithHooksForOverlay := range eventsWithHooks {
-		classifiedEvents = append(classifiedEvents, eventWithHooksForOverlay.Classified)
-	}
-	return ShouldShowRebuildingOverlay(classifiedEvents)
-}
-
-func BuildWatcherEventLogPayloadsForEventsWithHooks(
-	eventsWithHooks []EventWithHooks,
-) []WatcherEventLogPayload {
-	if len(eventsWithHooks) == 0 {
-		return nil
-	}
-
-	watcherEventLogPayloads := make(
-		[]WatcherEventLogPayload,
-		0,
-		len(eventsWithHooks),
-	)
-	for _, eventWithHooksForLogging := range eventsWithHooks {
-		watcherEventLogPayloads = append(
-			watcherEventLogPayloads,
-			WatcherEventLogPayload{
-				Operation: eventWithHooksForLogging.Classified.Event.Op.String(),
-				FilePath:  eventWithHooksForLogging.Classified.Event.Name,
-			},
-		)
-	}
-	return watcherEventLogPayloads
-}
-
-func ShouldShowRebuildingOverlay(
-	classifiedEvents []ClassifiedEvent,
-) bool {
-	for _, classifiedEventForOverlay := range classifiedEvents {
-		if classifiedEventForOverlay.FileType == FileTypeCriticalCSS ||
-			classifiedEventForOverlay.FileType == FileTypeNormalCSS ||
-			classifiedEventForOverlay.FileType == FileTypeCriticalAndNormalCSS {
-			continue
-		}
-
-		if shouldSuppressRebuildingNotificationForClassifiedEvent(
-			classifiedEventForOverlay,
-		) {
-			continue
-		}
-
-		return true
-	}
-
-	return false
-}
-
-func shouldSuppressRebuildingNotificationForClassifiedEvent(
-	classifiedEventForOverlay ClassifiedEvent,
-) bool {
-	watchedFileForOverlay := classifiedEventForOverlay.WatchedFile
-	if watchedFileForOverlay == nil {
-		return false
-	}
-
-	if watchedFileForOverlay.SkipRebuildingNotification {
-		return true
-	}
-
-	return watchedFileForOverlay.OnlyRunClientDefinedRevalidateFunc &&
-		classifiedEventForOverlay.FileType != FileTypeGo &&
-		!NeedsHardReload(watchedFileForOverlay)
-}
-
-func AnyEventNeedsHardReload(eventsWithHooks []EventWithHooks) bool {
-	for _, eventWithHooksForCheck := range eventsWithHooks {
-		if eventWithHooksForCheck.NeedsHardReload {
-			return true
-		}
-	}
-	return false
-}
-
-func ResolveAppStopStrategy(eventsWithHooks []EventWithHooks) AppStopStrategy {
-	if len(eventsWithHooks) == 0 {
-		return AppStopStrategyNone
-	}
-
-	if len(eventsWithHooks) == 1 {
-		if eventsWithHooks[0].NeedsHardReload {
-			return AppStopStrategySingleEventHardReload
-		}
-		return AppStopStrategyNone
-	}
-
-	if AnyEventNeedsHardReload(eventsWithHooks) {
-		return AppStopStrategyBatchHardReload
-	}
-
-	return AppStopStrategyNone
-}
-
-func ShouldRunImplicitBuildForEvents(eventsWithHooks []EventWithHooks) bool {
-	for _, eventWithHooksForCheck := range eventsWithHooks {
-		if !eventWithHooksForCheck.RunOnChangeOnly {
-			return true
-		}
-	}
-	return false
-}
-func (s *Server) RunWatcher() {
-	s.RunWatcherWithContext(context.Background())
-}
-
-func (s *Server) RunWatcherWithContext(
-	watcherExecutionContext context.Context,
-) {
-	s.Mu.Lock()
-	watcher := s.Watcher
-	s.Mu.Unlock()
-
-	if watcher == nil {
-		return
-	}
-
-	debouncer := watch.NewDebouncer(30*time.Millisecond, func(events []fsnotify.Event) {
-		if watcherExecutionContext != nil {
-			select {
-			case <-watcherExecutionContext.Done():
-				return
-			default:
-			}
-		}
-		s.ProcessEvents(events)
-	})
-	defer debouncer.Stop()
-
-	for {
-		select {
-		case <-watcherExecutionContext.Done():
-			return
-		case watcherEvent, ok := <-watcher.Events():
-			if !ok {
-				return
-			}
-			debouncer.Add(watcherEvent)
-		case watcherError, ok := <-watcher.Errors():
-			if !ok {
-				return
-			}
-			if watcherError != nil {
-				s.Log.Error("watcher error", "error", watcherError)
-			}
-		}
-	}
-}
-
-func (s *Server) ProcessEvents(events []fsnotify.Event) {
-	s.Mu.Lock()
-	watcher := s.Watcher
-	builder := s.Builder
-	s.Mu.Unlock()
-
-	if watcher == nil || builder == nil {
-		return
-	}
-
-	traceContextForWatcherExecution := s.DeriveWatcherExecutionTraceContext()
-	s.SetCurrentWatcherExecutionTraceContext(traceContextForWatcherExecution)
-	defer s.ClearCurrentWatcherExecutionTraceContext()
-
-	executionPlanningResult := s.BuildEventExecutionPlan(events, watcher, builder)
-	watcherEventExecutionInputForPlanningResult := BuildWatcherEventExecutionInputFromPlanningResult(
-		executionPlanningResult,
-	)
-	watcherEventFlowDecisionForPlanningResult := watcherEventExecutionInputForPlanningResult.FlowDecision
-	if watcherEventFlowDecisionForPlanningResult.TriggerConfigRestart {
-		s.Log.Info("Config changed, restarting")
-		s.TriggerConfigRestart()
-		return
-	}
-
-	eventsWithHooksForExecution := watcherEventExecutionInputForPlanningResult.EventsWithHooks
-	if len(eventsWithHooksForExecution) == 0 {
-		return
-	}
-
-	if watcherEventFlowDecisionForPlanningResult.BroadcastRebuildingOverlay {
-		s.BroadcastRebuilding()
-	}
-
-	work := &WorkSet{}
-	for _, watcherEventLogPayloadForExecutionPlan := range watcherEventExecutionInputForPlanningResult.WatcherEventLogPayloads {
-		s.Log.Info(
-			"[watcher]",
-			"op",
-			watcherEventLogPayloadForExecutionPlan.Operation,
-			"file",
-			watcherEventLogPayloadForExecutionPlan.FilePath,
-			"cycle_id",
-			traceContextForWatcherExecution.CycleID,
-			"batch_id",
-			traceContextForWatcherExecution.BatchID,
-		)
-	}
-
-	s.ExecuteEventExecutionPlan(
-		eventsWithHooksForExecution,
-		watcherEventFlowDecisionForPlanningResult.BehavioralDecision,
-		work,
-		watcher,
-	)
-
-	watcher.RemoveStale()
-}
-
-func BuildWatcherEventExecutionInputFromPlanningResult(
-	executionPlanningResult EventExecutionPlanningResult,
-) WatcherEventExecutionInput {
-	flowDecision := DeriveWatcherEventFlowDecisionFromPlanningResult(
-		executionPlanningResult,
-	)
-	executionInput := WatcherEventExecutionInput{
-		FlowDecision: flowDecision,
-	}
-	if flowDecision.TriggerConfigRestart || len(executionPlanningResult.EventsWithHooks) == 0 {
-		return executionInput
-	}
-	executionInput.EventsWithHooks = executionPlanningResult.EventsWithHooks
-	executionInput.WatcherEventLogPayloads = BuildWatcherEventLogPayloadsForEventsWithHooks(
-		executionInput.EventsWithHooks,
-	)
-	return executionInput
-}
-
-func DeriveWatcherEventFlowDecisionFromPlanningResult(
-	executionPlanningResult EventExecutionPlanningResult,
-) WatcherEventFlowDecision {
-	if executionPlanningResult.ConfigChanged {
-		return WatcherEventFlowDecision{
-			TriggerConfigRestart: true,
-		}
-	}
-	if len(executionPlanningResult.EventsWithHooks) == 0 {
-		return WatcherEventFlowDecision{}
-	}
-	behavioralDecisionForExecutionPlan := DeriveEventExecutionPlanBehavioralDecisionFromEventsWithHooks(
-		executionPlanningResult.EventsWithHooks,
-	)
-
-	return WatcherEventFlowDecision{
-		BroadcastRebuildingOverlay: behavioralDecisionForExecutionPlan.ShowRebuildingOverlay,
-		BehavioralDecision:         behavioralDecisionForExecutionPlan,
-	}
-}
-
-// resolve determines browser behavior based on build work and user preferences.
-func (work *WorkSet) Resolve(usingVite bool) {
-	if work.Build.CompileGo {
-		work.Restart.RestartApp = true
-	}
-	work.DetermineBrowserBehavior(usingVite)
-}
-
-func (work *WorkSet) DetermineBrowserBehavior(usingVite bool) {
-	browserPhaseResolutionForWork := DeriveBrowserPhaseResolutionForWorkSet(
-		work.Build,
-		work.Restart,
-		work.PreferRevalidate,
-		usingVite,
-	)
-	work.requestBrowserAction(browserPhaseResolutionForWork.Action)
-	if browserPhaseResolutionForWork.ApplyWaitFlags {
-		work.Browser.WaitForApp = browserPhaseResolutionForWork.WaitForApp
-		work.Browser.WaitForVite = browserPhaseResolutionForWork.WaitForVite
-	}
-}
-
-func (work *WorkSet) requestBrowserAction(action BrowserPhaseAction) {
-	if action > work.Browser.Action {
-		work.Browser.Action = action
-	}
-}
-
-func DeriveBrowserPhaseResolutionForWorkSet(
-	buildDecision BuildPhaseDecision,
-	restartDecision RestartPhaseDecision,
-	preferRevalidate bool,
-	usingVite bool,
-) BrowserPhaseResolution {
-	if shouldUseRestartBrowserResolution(restartDecision) {
-		return BrowserPhaseResolution{
-			Action:         BrowserPhaseActionHardReload,
-			ApplyWaitFlags: true,
-			WaitForApp:     true,
-			WaitForVite:    usingVite,
-		}
-	}
-
-	if shouldUseRevalidateBrowserResolution(preferRevalidate) {
-		return BrowserPhaseResolution{
-			Action:         BrowserPhaseActionRevalidate,
-			ApplyWaitFlags: true,
-			WaitForApp:     true,
-			WaitForVite:    usingVite,
-		}
-	}
-
-	if isCSSOnlyBuildWorkForBrowserPhase(buildDecision) {
-		return BrowserPhaseResolution{
-			Action: BrowserPhaseActionHotReloadCSS,
-		}
-	}
-
-	if buildDecision.ProcessPublicFiles {
-		return BrowserPhaseResolution{
-			Action: BrowserPhaseActionInvalidateVite,
-		}
-	}
-
-	if buildDecision.ProcessPrivateFiles || buildDecision.BuildCriticalCSS || buildDecision.BuildNormalCSS {
-		return BrowserPhaseResolution{
-			Action:         BrowserPhaseActionHardReload,
-			ApplyWaitFlags: true,
-			WaitForApp:     true,
-			WaitForVite:    usingVite,
-		}
-	}
-
-	return BrowserPhaseResolution{
-		Action: BrowserPhaseActionNone,
-	}
-}
-
-func shouldUseRestartBrowserResolution(
-	restartDecision RestartPhaseDecision,
-) bool {
-	return restartDecision.RestartApp
-}
-
-func shouldUseRevalidateBrowserResolution(
-	preferRevalidate bool,
-) bool {
-
-	return preferRevalidate
-}
-
-func isCSSOnlyBuildWorkForBrowserPhase(
-	buildDecision BuildPhaseDecision,
-) bool {
-	cssWork := buildDecision.BuildCriticalCSS || buildDecision.BuildNormalCSS
-	return cssWork &&
-		!buildDecision.ProcessPublicFiles &&
-		!buildDecision.ProcessPrivateFiles
-}
-
-// addImplicitWork adds build work implied by a file type.
-func (work *WorkSet) AddImplicitWork(classifiedEventForWork ClassifiedEvent) {
-	implicitWorkDecisionForClassifiedEvent := DeriveImplicitWorkDecisionForClassifiedEvent(classifiedEventForWork)
-	work.ApplyImplicitWorkDecision(implicitWorkDecisionForClassifiedEvent)
-}
-
-func DeriveImplicitWorkDecisionForClassifiedEvent(
-	classifiedEventForWork ClassifiedEvent,
-) ImplicitWorkDecision {
-	watchedFileForWork := classifiedEventForWork.WatchedFile
-	if watchedFileForWork != nil && watchedFileForWork.RunOnChangeOnly {
-		return ImplicitWorkDecision{}
-	}
-
-	decision := ImplicitWorkDecision{}
-	if watchedFileForWork != nil && watchedFileForWork.OnlyRunClientDefinedRevalidateFunc {
-		decision.PreferRevalidate = true
-	}
-
-	switch classifiedEventForWork.FileType {
-	case FileTypeGo:
-		decision.CompileGo = true
-		decision.RestartApp = true
-
-	case FileTypeCriticalCSS:
-		decision.BuildCriticalCSS = true
-		decision.RestartApp = watchedFileForWork != nil && NeedsHardReload(watchedFileForWork)
-
-	case FileTypeNormalCSS:
-		decision.BuildNormalCSS = true
-		decision.RestartApp = watchedFileForWork != nil && NeedsHardReload(watchedFileForWork)
-
-	case FileTypeCriticalAndNormalCSS:
-		decision.BuildCriticalCSS = true
-		decision.BuildNormalCSS = true
-		decision.RestartApp = watchedFileForWork != nil && NeedsHardReload(watchedFileForWork)
-
-	case FileTypePublicStatic:
-		decision.ProcessPublicFiles = true
-		decision.PublicStaticChangedFilePath = classifiedEventForWork.Event.Name
-
-	case FileTypePrivateStatic:
-		decision.ProcessPrivateFiles = true
-		decision.PrivateStaticChangedFilePath = classifiedEventForWork.Event.Name
-
-	case FileTypeOther:
-		if watchedFileForWork != nil {
-			decision.CompileGo = watchedFileForWork.RecompileGoBinary
-			decision.RestartApp = watchedFileForWork.RestartApp || watchedFileForWork.RecompileGoBinary
-		}
-	}
-
-	return decision
-}
-
-func (work *WorkSet) ApplyImplicitWorkDecision(
-	decision ImplicitWorkDecision,
-) {
-	if decision.PreferRevalidate {
-		work.PreferRevalidate = true
-	}
-	if decision.CompileGo {
-		work.Build.CompileGo = true
-	}
-	if decision.BuildCriticalCSS {
-		work.Build.BuildCriticalCSS = true
-	}
-	if decision.BuildNormalCSS {
-		work.Build.BuildNormalCSS = true
-	}
-	if decision.ProcessPublicFiles {
-		work.Build.ProcessPublicFiles = true
-		work.Build.addPublicStaticChangedFilePath(decision.PublicStaticChangedFilePath)
-	}
-	if decision.ProcessPrivateFiles {
-		work.Build.ProcessPrivateFiles = true
-		work.Build.addPrivateStaticChangedFilePath(decision.PrivateStaticChangedFilePath)
-	}
-	if decision.RestartApp {
-		work.Restart.RestartApp = true
-	}
-}
-func normalizeChangedSourceFilePathForWorkSet(
-	filePath string,
-) string {
-	return waveshared.Absolute(filePath)
-}
-
-func appendNormalizedFilePathIfMissing(
-	existingFilePaths []string,
-	existingFilePathSet map[string]struct{},
-	filePath string,
-) ([]string, map[string]struct{}) {
-	normalizedFilePath := normalizeChangedSourceFilePathForWorkSet(filePath)
-	if normalizedFilePath == "" {
-		return existingFilePaths, existingFilePathSet
-	}
-
-	if existingFilePathSet == nil {
-		existingFilePathSet = make(map[string]struct{}, len(existingFilePaths)+1)
-		for _, existingFilePath := range existingFilePaths {
-			existingFilePathSet[existingFilePath] = struct{}{}
-		}
-	}
-	if _, alreadyExists := existingFilePathSet[normalizedFilePath]; alreadyExists {
-		return existingFilePaths, existingFilePathSet
-	}
-
-	existingFilePaths = append(existingFilePaths, normalizedFilePath)
-	existingFilePathSet[normalizedFilePath] = struct{}{}
-	return existingFilePaths, existingFilePathSet
-}
-
-func (buildDecision *BuildPhaseDecision) addPublicStaticChangedFilePath(
-	filePath string,
-) {
-	buildDecision.PublicStaticChangedFilePaths, buildDecision.PublicStaticChangedFilePathSet = appendNormalizedFilePathIfMissing(
-		buildDecision.PublicStaticChangedFilePaths,
-		buildDecision.PublicStaticChangedFilePathSet,
-		filePath,
-	)
-}
-
-func (buildDecision *BuildPhaseDecision) addPrivateStaticChangedFilePath(
-	filePath string,
-) {
-	buildDecision.PrivateStaticChangedFilePaths, buildDecision.PrivateStaticChangedFilePathSet = appendNormalizedFilePathIfMissing(
-		buildDecision.PrivateStaticChangedFilePaths,
-		buildDecision.PrivateStaticChangedFilePathSet,
-		filePath,
-	)
-}
-
-// addFromRefreshAction merges a RefreshAction from a callback into the work set.
-func (work *WorkSet) AddFromRefreshAction(action wave.RefreshAction) {
-	workMutationDecision := DeriveRefreshActionWorkMutationDecision(action)
-	work.ApplyRefreshActionWorkMutationDecision(workMutationDecision)
-}
-
-func DeriveRefreshActionWorkMutationDecision(
-	action wave.RefreshAction,
-) RefreshActionWorkMutationDecision {
-	workMutationDecision := RefreshActionWorkMutationDecision{}
-	if action.TriggerRestart {
-		workMutationDecision.RestartApp = true
-		workMutationDecision.CompileGo = action.RecompileGo
-	}
-	if action.ReloadBrowser {
-		workMutationDecision.RequestBrowserAction = true
-		workMutationDecision.BrowserAction = BrowserPhaseActionHardReload
-	}
-	workMutationDecision.WaitForApp = action.WaitForApp
-	workMutationDecision.WaitForVite = action.WaitForVite
-	return workMutationDecision
-}
-
-func (work *WorkSet) ApplyRefreshActionWorkMutationDecision(
-	workMutationDecision RefreshActionWorkMutationDecision,
-) {
-	if workMutationDecision.RestartApp {
-		work.Restart.RestartApp = true
-	}
-	if workMutationDecision.CompileGo {
-		work.Build.CompileGo = true
-	}
-	if workMutationDecision.RequestBrowserAction {
-		work.requestBrowserAction(workMutationDecision.BrowserAction)
-	}
-	if workMutationDecision.WaitForApp {
-		work.Browser.WaitForApp = true
-	}
-	if workMutationDecision.WaitForVite {
-		work.Browser.WaitForVite = true
-	}
-}
-
-func (work *WorkSet) ApplyRefreshActions(
-	actions []wave.RefreshAction,
-) RefreshActionApplicationResult {
-	reductionDecision := ReduceRefreshActionsInStableOrder(actions)
-	for _, action := range reductionDecision.ActionsBeforeRestart {
-		work.AddFromRefreshAction(action)
-	}
-
-	return reductionDecision.ApplicationResult
-}
-
-func ReduceRefreshActionsInStableOrder(
-	actions []wave.RefreshAction,
-) refreshActionReductionDecision {
-	reductionDecision := refreshActionReductionDecision{
-		ActionsBeforeRestart: make([]wave.RefreshAction, 0, len(actions)),
-		RestartActionIndex:   -1,
-	}
-
-	for actionIndex, action := range actions {
-		if action.TriggerRestart {
-			reductionDecision.RestartActionEncountered = true
-			reductionDecision.RestartActionIndex = actionIndex
-			reductionDecision.ApplicationResult = RefreshActionApplicationResult{
-				RestartRequested: true,
-				RecompileGo:      action.RecompileGo,
-			}
-			return reductionDecision
-		}
-		reductionDecision.ActionsBeforeRestart = append(reductionDecision.ActionsBeforeRestart, action)
-	}
-
-	return reductionDecision
-}
-func NeedsHardReload(watchedFile *wave.WatchedFile) bool {
-	if watchedFile == nil {
-		return false
-	}
-	return watchedFile.RecompileGoBinary || watchedFile.RestartApp
-}
-
-func (s *Server) ResolveHookCommand(hook wave.OnChangeHook) string {
-	if hook.RunCombinedDevBuildHookCommands {
-		if strings.TrimSpace(hook.Cmd) != "" {
-			return ResolveSequentialShellCommands(
-				hook.Cmd,
-				getUserDevBuildHook(s.Cfg),
-				getFrameworkDevBuildHook(s.Cfg),
-			)
-		}
-		return ResolveSequentialShellCommands(
-			getUserDevBuildHook(s.Cfg),
-			getFrameworkDevBuildHook(s.Cfg),
-		)
-	}
-	return hook.Cmd
-}
-
-func (s *Server) ResolveHookExecutionPlan(
+// ResolveHookExecutionPlan resolves one hook into executable plan.
+func (server *runtimeServer) ResolveHookExecutionPlan(
 	hook wave.OnChangeHook,
-) HookExecutionPlan {
-	if s == nil || s.Cfg == nil {
-		return DeriveHookExecutionPlanFromHook(hook, nil)
+) hooks.HookExecutionPlan {
+	if server == nil || server.Cfg == nil {
+		return hooks.DeriveHookExecutionPlanFromHook(hook, nil)
 	}
-	if !hook.RunCombinedDevBuildHookCommands || s.Cfg.FrameworkRunBuildHook == nil {
-		return DeriveHookExecutionPlanFromHook(hook, s.ResolveHookCommand)
+	if !hook.RunCombinedDevBuildHookCommands ||
+		server.Cfg.FrameworkRunBuildHook == nil {
+		return hooks.DeriveHookExecutionPlanFromHook(
+			hook,
+			server.ResolveHookCommand,
+		)
 	}
 
-	frameworkBuildHookRunner := s.Cfg.FrameworkRunBuildHook
-	userAndExplicitCommand := ResolveSequentialShellCommands(
+	frameworkBuildHookRunner := server.Cfg.FrameworkRunBuildHook
+	userAndExplicitCommand := hooks.ResolveSequentialShellCommands(
 		hook.Cmd,
-		getUserDevBuildHook(s.Cfg),
+		getUserDevBuildHook(server.Cfg),
 	)
 	originalCallback := hook.Callback
 
-	return HookExecutionPlan{
-		Callback: func(hookContext *wave.HookContext) (*wave.RefreshAction, error) {
+	return hooks.HookExecutionPlan{
+		Callback: func(
+			hookContext *wave.HookContext,
+		) (*wave.RefreshAction, error) {
 			var callbackAction *wave.RefreshAction
-			var callbackErr error
+			var callbackError error
 			if originalCallback != nil {
-				callbackAction, callbackErr = originalCallback(hookContext)
-				if callbackErr != nil {
-					return callbackAction, callbackErr
+				callbackAction, callbackError = originalCallback(hookContext)
+				if callbackError != nil {
+					return callbackAction, callbackError
 				}
 			}
 
@@ -3456,19 +1665,19 @@ func (s *Server) ResolveHookExecutionPlan(
 			}
 
 			if strings.TrimSpace(userAndExplicitCommand) != "" {
-				if err := executeHookCommandWithContext(
+				if executeCommandError := hooks.ExecuteHookCommandWithContext(
 					hookExecutionContext,
 					userAndExplicitCommand,
-				); err != nil {
-					return callbackAction, err
+				); executeCommandError != nil {
+					return callbackAction, executeCommandError
 				}
 			}
 
-			if err := frameworkBuildHookRunner(
+			if frameworkRunError := frameworkBuildHookRunner(
 				hookExecutionContext,
 				true,
-			); err != nil {
-				return callbackAction, err
+			); frameworkRunError != nil {
+				return callbackAction, frameworkRunError
 			}
 			return callbackAction, nil
 		},
@@ -3478,6 +1687,24 @@ func (s *Server) ResolveHookExecutionPlan(
 		CallbackTimeoutMilliseconds: hook.CallbackTimeoutMilliseconds,
 		DisableStageCallbackTimeout: hook.DisableStageCallbackTimeout,
 	}
+}
+
+// ResolveHookCommand resolves configured command behavior for one hook.
+func (server *runtimeServer) ResolveHookCommand(hook wave.OnChangeHook) string {
+	if hook.RunCombinedDevBuildHookCommands {
+		if strings.TrimSpace(hook.Cmd) != "" {
+			return hooks.ResolveSequentialShellCommands(
+				hook.Cmd,
+				getUserDevBuildHook(server.Cfg),
+				getFrameworkDevBuildHook(server.Cfg),
+			)
+		}
+		return hooks.ResolveSequentialShellCommands(
+			getUserDevBuildHook(server.Cfg),
+			getFrameworkDevBuildHook(server.Cfg),
+		)
+	}
+	return hook.Cmd
 }
 
 func getUserDevBuildHook(parsedConfig *wave.ParsedConfig) string {
@@ -3494,1364 +1721,98 @@ func getFrameworkDevBuildHook(parsedConfig *wave.ParsedConfig) string {
 	return parsedConfig.FrameworkDevBuildHook
 }
 
-// resolveSequentialShellCommands combines non-empty shell commands in order.
-// The resulting command preserves "fail fast" behavior by chaining with &&.
-func ResolveSequentialShellCommands(commands ...string) string {
-	nonEmptyCommands := make([]string, 0, len(commands))
-	for _, command := range commands {
-		trimmedCommand := strings.TrimSpace(command)
-		if trimmedCommand != "" {
-			nonEmptyCommands = append(nonEmptyCommands, trimmedCommand)
-		}
-	}
-	return strings.Join(nonEmptyCommands, " && ")
-}
-
-type hookStageExecutionDescriptor struct {
-	EventIndex     int
-	EventWithHooks EventWithHooks
-}
-
-type HookStageType int
-
-const (
-	HookStageTypePre HookStageType = iota
-	HookStageTypeConcurrent
-	HookStageTypePost
-	HookStageTypeConcurrentNoWait
-)
-
-type HookExecutionPlan struct {
-	Callback                    func(*wave.HookContext) (*wave.RefreshAction, error)
-	Command                     string
-	CommandTimeoutMilliseconds  int
-	DisableStageCommandTimeout  bool
-	CallbackTimeoutMilliseconds int
-	DisableStageCallbackTimeout bool
-}
-
-type HookExecutionPlanResolver func(wave.OnChangeHook) HookExecutionPlan
-
-func DeriveHookStageExecutionDescriptors(
-	eventsWithHooks []EventWithHooks,
-) []hookStageExecutionDescriptor {
-	if len(eventsWithHooks) == 0 {
-		return nil
-	}
-
-	descriptors := make([]hookStageExecutionDescriptor, 0, len(eventsWithHooks))
-	for eventIndex, eventWithHooksForExecution := range eventsWithHooks {
-		if eventWithHooksForExecution.SkipDuplicateHooks {
-			continue
-		}
-		descriptors = append(descriptors, hookStageExecutionDescriptor{
-			EventIndex:     eventIndex,
-			EventWithHooks: eventWithHooksForExecution,
-		})
-	}
-	return descriptors
-}
-
-func DeriveStageHooksAndRunOnChangePolicyForEvent(
-	eventWithHooksForStage EventWithHooks,
-	stageType HookStageType,
-) ([]wave.OnChangeHook, bool) {
-	if eventWithHooksForStage.Hooks == nil {
-		return nil, false
-	}
-
-	switch stageType {
-	case HookStageTypePre:
-		return eventWithHooksForStage.Hooks.Pre, false
-	case HookStageTypeConcurrent:
-		return eventWithHooksForStage.Hooks.Concurrent, true
-	case HookStageTypePost:
-		return eventWithHooksForStage.Hooks.Post, true
-	case HookStageTypeConcurrentNoWait:
-		return eventWithHooksForStage.Hooks.ConcurrentNoWait, false
-	default:
-		return nil, false
-	}
-}
-
-func DeriveHookExecutionPlanFromHook(
-	hook wave.OnChangeHook,
-	ResolveHookCommand func(wave.OnChangeHook) string,
-) HookExecutionPlan {
-	resolvedCommand := hook.Cmd
-	if ResolveHookCommand != nil {
-		resolvedCommand = ResolveHookCommand(hook)
-	}
-
-	return HookExecutionPlan{
-		Callback:                    hook.Callback,
-		Command:                     resolvedCommand,
-		CommandTimeoutMilliseconds:  hook.CommandTimeoutMilliseconds,
-		DisableStageCommandTimeout:  hook.DisableStageCommandTimeout,
-		CallbackTimeoutMilliseconds: hook.CallbackTimeoutMilliseconds,
-		DisableStageCallbackTimeout: hook.DisableStageCallbackTimeout,
-	}
-}
-
-func DeriveHookExecutionPlansForEventStage(
-	watcher *watch.Watcher,
-	eventWithHooksForStage EventWithHooks,
-	stageType HookStageType,
-	ResolveHookExecutionPlan HookExecutionPlanResolver,
-) []HookExecutionPlan {
-	stageHooks, shouldApplyRunOnChangeOnlyRules := DeriveStageHooksAndRunOnChangePolicyForEvent(
-		eventWithHooksForStage,
-		stageType,
-	)
-	executableHooksForStage := DeriveExecutableHooksForStage(
-		watcher,
-		eventWithHooksForStage.Classified.Event.Name,
-		eventWithHooksForStage.RunOnChangeOnly,
-		shouldApplyRunOnChangeOnlyRules,
-		stageHooks,
-	)
-	if len(executableHooksForStage) == 0 {
-		return nil
-	}
-
-	plans := make([]HookExecutionPlan, 0, len(executableHooksForStage))
-	for _, executableHook := range executableHooksForStage {
-		if ResolveHookExecutionPlan != nil {
-			plans = append(
-				plans,
-				ResolveHookExecutionPlan(executableHook),
-			)
-			continue
-		}
-		plans = append(
-			plans,
-			DeriveHookExecutionPlanFromHook(executableHook, nil),
-		)
-	}
-
-	return plans
-}
-
-func DeriveExecutableHooksForStage(
-	watcher *watch.Watcher,
-	eventPath string,
-	isRunOnChangeOnly bool,
-	shouldApplyRunOnChangeOnlyRules bool,
-	stageHooks []wave.OnChangeHook,
-) []wave.OnChangeHook {
-	if len(stageHooks) == 0 {
-		return nil
-	}
-
-	hooksForExecution := make([]wave.OnChangeHook, 0, len(stageHooks))
-	for _, stageHook := range stageHooks {
-		hookForExecution, shouldRunHook := ResolveHookForStageExecution(
-			watcher,
-			eventPath,
-			isRunOnChangeOnly,
-			shouldApplyRunOnChangeOnlyRules,
-			stageHook,
-		)
-		if !shouldRunHook {
-			continue
-		}
-		hooksForExecution = append(hooksForExecution, hookForExecution)
-	}
-
-	return hooksForExecution
-}
-
-func ResolveHookForStageExecution(
-	watcher *watch.Watcher,
-	eventPath string,
-	isRunOnChangeOnly bool,
-	shouldApplyRunOnChangeOnlyRules bool,
-	hook wave.OnChangeHook,
-) (wave.OnChangeHook, bool) {
-	if watcher.IsIgnored(eventPath, hook.Exclude) {
-		return wave.OnChangeHook{}, false
-	}
-	if !shouldApplyRunOnChangeOnlyRules {
-		return hook, true
-	}
-	return prepareHookForExecutionWithRunOnChangeOnlyRules(
-		isRunOnChangeOnly,
-		hook,
-	)
-}
-
-func prepareHookForExecutionWithRunOnChangeOnlyRules(
-	isRunOnChangeOnly bool,
-	hook wave.OnChangeHook,
-) (wave.OnChangeHook, bool) {
-	if !isRunOnChangeOnly || !hookHasCommandAction(hook) {
-		return hook, true
-	}
-
-	if hook.Callback == nil {
-		return wave.OnChangeHook{}, false
-	}
-
-	hook.Cmd = ""
-	hook.RunCombinedDevBuildHookCommands = false
-	return hook, true
-}
-
-func hookHasCommandAction(hook wave.OnChangeHook) bool {
-	return strings.TrimSpace(hook.Cmd) != "" || hook.RunCombinedDevBuildHookCommands
-}
-
-const maxConcurrentNoWaitHookExecutions = 16
-
-func formatHookCallbackPanicError(panicValue any) error {
-	return fmt.Errorf("hook callback panicked: %v", panicValue)
-}
-
-func deriveHookStageLabel(
-	stageType HookStageType,
-) string {
-	switch stageType {
-	case HookStageTypePre:
-		return "pre"
-	case HookStageTypeConcurrent:
-		return "concurrent"
-	case HookStageTypePost:
-		return "post"
-	case HookStageTypeConcurrentNoWait:
-		return "concurrent-no-wait"
-	default:
-		return "unknown"
-	}
-}
-
-func deriveHookExecutionContext(
-	parentHookExecutionContext context.Context,
-) context.Context {
-	if parentHookExecutionContext == nil {
-		return context.Background()
-	}
-	return parentHookExecutionContext
-}
-
-func cloneHookContextForExecution(
-	hookContext *wave.HookContext,
-	hookExecutionContext context.Context,
-) *wave.HookContext {
-	if hookContext == nil {
-		return &wave.HookContext{
-			ExecutionContext: hookExecutionContext,
-		}
-	}
-
-	clonedHookContext := *hookContext
-	clonedHookContext.ChangedFilePaths = append(
-		[]string(nil),
-		hookContext.ChangedFilePaths...)
-	clonedHookContext.ExecutionContext = hookExecutionContext
-	return &clonedHookContext
-}
-
-func wrapHookExecutionErrorWithStageAndPath(
-	stageType HookStageType,
-	changedFilePath string,
-	hookExecutionError error,
-) error {
-	if hookExecutionError == nil {
-		return nil
-	}
-
-	if strings.TrimSpace(changedFilePath) == "" {
-		return fmt.Errorf(
-			"%s hook failed: %w",
-			deriveHookStageLabel(stageType),
-			hookExecutionError,
-		)
-	}
-
-	return fmt.Errorf(
-		"%s hook failed for %s: %w",
-		deriveHookStageLabel(stageType),
-		changedFilePath,
-		hookExecutionError,
-	)
-}
-
-func joinHookExecutionErrorsInOrder(
-	hookExecutionErrorsByHookIndex []error,
-) error {
-	if len(hookExecutionErrorsByHookIndex) == 0 {
-		return nil
-	}
-
-	orderedHookExecutionErrors := make(
-		[]error,
-		0,
-		len(hookExecutionErrorsByHookIndex),
-	)
-	for _, hookExecutionError := range hookExecutionErrorsByHookIndex {
-		if hookExecutionError == nil {
-			continue
-		}
-		orderedHookExecutionErrors = append(
-			orderedHookExecutionErrors,
-			hookExecutionError,
-		)
-	}
-	if len(orderedHookExecutionErrors) == 0 {
-		return nil
-	}
-	return errors.Join(orderedHookExecutionErrors...)
-}
-
-func executeHookCallbackSafely(
-	callback func(*wave.HookContext) (*wave.RefreshAction, error),
-	hookContext *wave.HookContext,
-) (
-	callbackAction *wave.RefreshAction,
-	callbackExecutionError error,
-) {
-	if callback == nil {
-		return nil, nil
-	}
-
-	defer func() {
-		if panicValue := recover(); panicValue != nil {
-			callbackExecutionError = formatHookCallbackPanicError(panicValue)
-			callbackAction = nil
-		}
-	}()
-
-	return callback(hookContext)
-}
-
-func (s *Server) RunNoWaitHookWithConcurrencyLimit(
-	runNoWaitHook func(),
-) {
-	if s == nil || runNoWaitHook == nil {
+// RunNoWaitHookWithConcurrencyLimit executes callback under bounded semaphore.
+func (server *runtimeServer) RunNoWaitHookWithConcurrencyLimit(runNoWaitHook func()) {
+	if runNoWaitHook == nil {
 		return
 	}
-
-	concurrentNoWaitHookExecutionLimiter := s.EnsureConcurrentNoWaitHookExecutionLimiter()
-	if concurrentNoWaitHookExecutionLimiter == nil {
+	limiter := server.ensureConcurrentNoWaitHookExecutionLimiter()
+	if limiter == nil {
+		go runNoWaitHook()
 		return
 	}
-	lifecycleExecutionContext := s.GetOrCreateConcurrentNoWaitHookLifecycleContext()
-
-	s.LaunchRunCycleScopedAsyncWorkOrDetached(func(
-		context.Context,
-	) {
-		if lifecycleExecutionContext == nil {
-			lifecycleExecutionContext = context.Background()
-		}
-
-		select {
-		case concurrentNoWaitHookExecutionLimiter <- struct{}{}:
-		case <-lifecycleExecutionContext.Done():
-			return
-		}
-		defer func() {
-			<-concurrentNoWaitHookExecutionLimiter
-		}()
-
-		if !shouldContinueConcurrentHookExecution(lifecycleExecutionContext) {
-			return
-		}
+	go func() {
+		limiter <- struct{}{}
+		defer func() { <-limiter }()
 		runNoWaitHook()
-	})
+	}()
 }
 
-func (s *Server) EnsureConcurrentNoWaitHookExecutionLimiter() chan struct{} {
-	if s == nil {
+// ensureConcurrentNoWaitHookExecutionLimiter ensures semaphore exists.
+func (server *runtimeServer) ensureConcurrentNoWaitHookExecutionLimiter() chan struct{} {
+	if server == nil {
 		return nil
 	}
-
-	s.ConcurrentNoWaitHookExecutionLimiterInitOnce.Do(func() {
-		if s.ConcurrentNoWaitHookExecutionLimiter == nil {
-			s.ConcurrentNoWaitHookExecutionLimiter = make(
-				chan struct{},
-				maxConcurrentNoWaitHookExecutions,
-			)
-		}
-	})
-	return s.ConcurrentNoWaitHookExecutionLimiter
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if server.ConcurrentNoWaitHookExecutionLimiter == nil {
+		server.ConcurrentNoWaitHookExecutionLimiter = make(
+			chan struct{},
+			hooks.MaxConcurrentNoWaitHookExecutions,
+		)
+	}
+	return server.ConcurrentNoWaitHookExecutionLimiter
 }
 
-func (s *Server) GetOrCreateConcurrentNoWaitHookLifecycleContext() context.Context {
-	if s == nil {
+// GetOrCreateConcurrentNoWaitHookLifecycleContext returns lifecycle context for detached hooks.
+func (server *runtimeServer) GetOrCreateConcurrentNoWaitHookLifecycleContext() context.Context {
+	if server == nil {
 		return context.Background()
 	}
-
-	currentRunCycleScope := s.GetCurrentRunCycleScope()
-	if currentRunCycleScope != nil {
-		return currentRunCycleScope.ExecutionContext
+	server.ConcurrentNoWaitHookLifecycleContextMutex.Lock()
+	defer server.ConcurrentNoWaitHookLifecycleContextMutex.Unlock()
+	if server.ConcurrentNoWaitHookLifecycleContext != nil {
+		return server.ConcurrentNoWaitHookLifecycleContext
 	}
-
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	if s.ConcurrentNoWaitHookLifecycleCtx == nil ||
-		!shouldContinueConcurrentHookExecution(
-			s.ConcurrentNoWaitHookLifecycleCtx,
-		) {
-		s.ConcurrentNoWaitHookLifecycleCtx, s.ConcurrentNoWaitHookLifecycleCancel = context.WithCancel(
-			context.Background(),
-		)
+	baseContext := server.CurrentRunCycleContextOrBackground()
+	if baseContext == nil {
+		baseContext = context.Background()
 	}
-
-	return s.ConcurrentNoWaitHookLifecycleCtx
+	lifecycleContext, cancelLifecycleContext := context.WithCancel(baseContext)
+	server.ConcurrentNoWaitHookLifecycleContext = lifecycleContext
+	server.ConcurrentNoWaitHookLifecycleCancel = cancelLifecycleContext
+	return lifecycleContext
 }
 
-func (s *Server) CancelConcurrentNoWaitHookLifecycleContext() {
-	if s == nil {
+// cancelConcurrentNoWaitHookLifecycleContext cancels detached no-wait hook lifecycle.
+func (server *runtimeServer) cancelConcurrentNoWaitHookLifecycleContext() {
+	if server == nil {
 		return
 	}
-
-	s.Mu.Lock()
-	CancelConcurrentNoWaitHookLifecycleContext := s.ConcurrentNoWaitHookLifecycleCancel
-	s.ConcurrentNoWaitHookLifecycleCtx = nil
-	s.ConcurrentNoWaitHookLifecycleCancel = nil
-	s.Mu.Unlock()
-
-	if CancelConcurrentNoWaitHookLifecycleContext != nil {
-		CancelConcurrentNoWaitHookLifecycleContext()
+	server.ConcurrentNoWaitHookLifecycleContextMutex.Lock()
+	cancelLifecycleContext := server.ConcurrentNoWaitHookLifecycleCancel
+	server.ConcurrentNoWaitHookLifecycleContext = nil
+	server.ConcurrentNoWaitHookLifecycleCancel = nil
+	server.ConcurrentNoWaitHookLifecycleContextMutex.Unlock()
+	if cancelLifecycleContext != nil {
+		cancelLifecycleContext()
 	}
 }
 
-func (s *Server) RunSequentialHookStageForEligibleEventsWithErrors(
-	eventsWithHooks []EventWithHooks,
-	watcher *watch.Watcher,
-	runHooksForEvent func(EventWithHooks, *watch.Watcher) ([]wave.RefreshAction, error),
-	hookExecutionFailureLogMessage string,
-) ([]wave.RefreshAction, []error) {
-	if runHooksForEvent == nil {
-		return nil, nil
-	}
-
-	descriptors := DeriveHookStageExecutionDescriptors(eventsWithHooks)
-	allStageActions := make([]wave.RefreshAction, 0)
-	stageExecutionErrors := make([]error, 0)
-	traceContextForHookStage := s.GetCurrentWatcherExecutionTraceContext()
-	for _, descriptor := range descriptors {
-		stageActions, err := runHooksForEvent(
-			descriptor.EventWithHooks,
-			watcher,
-		)
-		if err != nil {
-			s.Log.Error(
-				hookExecutionFailureLogMessage,
-				"error",
-				err,
-				"cycle_id",
-				traceContextForHookStage.CycleID,
-				"batch_id",
-				traceContextForHookStage.BatchID,
-			)
-			stageExecutionErrors = append(stageExecutionErrors, err)
-		}
-		allStageActions = append(allStageActions, stageActions...)
-	}
-	return allStageActions, stageExecutionErrors
+// currentRefreshManager returns refresh manager snapshot.
+func (server *runtimeServer) currentRefreshManager() *broadcast.Manager {
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return server.RefreshManager
 }
 
-func (s *Server) FireNoWaitHooksForEvents(
-	eventsWithHooks []EventWithHooks,
-	watcher *watch.Watcher,
-) {
-	descriptors := DeriveHookStageExecutionDescriptors(eventsWithHooks)
-	for _, descriptor := range descriptors {
-		s.FireNoWaitHooks(descriptor.EventWithHooks, watcher)
+// filepathDir returns cleaned parent directory path.
+func filepathDir(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
 	}
+	return filepath.Clean(filepath.Dir(path))
 }
 
-func (s *Server) RunPreHooksForEvents(
-	eventsWithHooks []EventWithHooks,
-	work *WorkSet,
-	watcher *watch.Watcher,
-) []wave.RefreshAction {
-	stageActions, _ := s.RunPreHooksForEventsWithErrors(
-		eventsWithHooks,
-		work,
-		watcher,
-	)
-	return stageActions
-}
-
-func (s *Server) RunPreHooksForEventsWithErrors(
-	eventsWithHooks []EventWithHooks,
-	work *WorkSet,
-	watcher *watch.Watcher,
-) ([]wave.RefreshAction, []error) {
-	for _, eventWithHooksForPre := range eventsWithHooks {
-		work.AddImplicitWork(eventWithHooksForPre.Classified)
+// resolveRefreshPortFromEnvironmentOrDefault resolves refresh port from env.
+func resolveRefreshPortFromEnvironmentOrDefault(defaultPort int) int {
+	fromEnvironment := strings.TrimSpace(os.Getenv("WAVE_REFRESH_PORT"))
+	if fromEnvironment == "" {
+		return defaultPort
 	}
-	return s.RunSequentialHookStageForEligibleEventsWithErrors(
-		eventsWithHooks,
-		watcher,
-		s.RunPreHooks,
-		"Pre-hook execution failed",
-	)
-}
-
-func (s *Server) RunConcurrentHooksForEvents(
-	eventsWithHooks []EventWithHooks,
-	watcher *watch.Watcher,
-) []wave.RefreshAction {
-	concurrentActions, _ := s.RunConcurrentHooksForEventsWithContextAndErrors(
-		context.Background(),
-		eventsWithHooks,
-		watcher,
-	)
-	return concurrentActions
-}
-
-func shouldContinueConcurrentHookExecution(
-	concurrentHookExecutionContext context.Context,
-) bool {
-	if concurrentHookExecutionContext == nil {
-		return true
+	parsedPort, parseError := strconv.Atoi(fromEnvironment)
+	if parseError != nil || parsedPort <= 0 {
+		return defaultPort
 	}
-
-	select {
-	case <-concurrentHookExecutionContext.Done():
-		return false
-	default:
-		return true
-	}
-}
-
-func (s *Server) RunConcurrentHooksForEventsWithContext(
-	concurrentHookExecutionContext context.Context,
-	eventsWithHooks []EventWithHooks,
-	watcher *watch.Watcher,
-) []wave.RefreshAction {
-	concurrentActions, _ := s.RunConcurrentHooksForEventsWithContextAndErrors(
-		concurrentHookExecutionContext,
-		eventsWithHooks,
-		watcher,
-	)
-	return concurrentActions
-}
-
-func (s *Server) RunConcurrentHooksForEventsWithContextAndErrors(
-	concurrentHookExecutionContext context.Context,
-	eventsWithHooks []EventWithHooks,
-	watcher *watch.Watcher,
-) ([]wave.RefreshAction, []error) {
-	descriptors := DeriveHookStageExecutionDescriptors(eventsWithHooks)
-	traceContextForHookStage := s.GetCurrentWatcherExecutionTraceContext()
-	actionsByDescriptorIndex := make([][]wave.RefreshAction, len(descriptors))
-	executionErrorsByDescriptorIndex := make([]error, len(descriptors))
-	var concurrentHooksGroup errgroup.Group
-
-	for descriptorIndex := range descriptors {
-		if !shouldContinueConcurrentHookExecution(
-			concurrentHookExecutionContext,
-		) {
-			break
-		}
-
-		descriptorForExecution := descriptors[descriptorIndex]
-		descriptorIndexForResult := descriptorIndex
-		concurrentHooksGroup.Go(func() error {
-			if !shouldContinueConcurrentHookExecution(
-				concurrentHookExecutionContext,
-			) {
-				return nil
-			}
-
-			concurrentActions, err := s.RunConcurrentHooksWithContext(
-				concurrentHookExecutionContext,
-				descriptorForExecution.EventWithHooks,
-				watcher,
-			)
-			if err != nil {
-				if shouldContinueConcurrentHookExecution(
-					concurrentHookExecutionContext,
-				) {
-					s.Log.Error(
-						"Concurrent hook execution failed",
-						"error",
-						err,
-						"cycle_id",
-						traceContextForHookStage.CycleID,
-						"batch_id",
-						traceContextForHookStage.BatchID,
-					)
-					executionErrorsByDescriptorIndex[descriptorIndexForResult] = err
-				}
-			}
-			actionsByDescriptorIndex[descriptorIndexForResult] = concurrentActions
-			return nil
-		})
-	}
-
-	_ = concurrentHooksGroup.Wait()
-
-	allConcurrentActions := make([]wave.RefreshAction, 0)
-	for _, concurrentActionsForEvent := range actionsByDescriptorIndex {
-		allConcurrentActions = append(
-			allConcurrentActions,
-			concurrentActionsForEvent...)
-	}
-	concurrentHookExecutionErrors := make([]error, 0)
-	for _, concurrentHookExecutionError := range executionErrorsByDescriptorIndex {
-		if concurrentHookExecutionError == nil {
-			continue
-		}
-		concurrentHookExecutionErrors = append(
-			concurrentHookExecutionErrors,
-			concurrentHookExecutionError,
-		)
-	}
-
-	return allConcurrentActions, concurrentHookExecutionErrors
-}
-
-func (s *Server) RunPostHooksForEvents(
-	eventsWithHooks []EventWithHooks,
-	watcher *watch.Watcher,
-) []wave.RefreshAction {
-	stageActions, _ := s.RunPostHooksForEventsWithErrors(
-		eventsWithHooks,
-		watcher,
-	)
-	return stageActions
-}
-
-func (s *Server) RunPostHooksForEventsWithErrors(
-	eventsWithHooks []EventWithHooks,
-	watcher *watch.Watcher,
-) ([]wave.RefreshAction, []error) {
-	return s.RunSequentialHookStageForEligibleEventsWithErrors(
-		eventsWithHooks,
-		watcher,
-		s.RunPostHooks,
-		"Post-hook execution failed",
-	)
-}
-
-func (s *Server) FireNoWaitHooks(ewh EventWithHooks, watcher *watch.Watcher) {
-	concurrentNoWaitHookLifecycleContext := s.GetOrCreateConcurrentNoWaitHookLifecycleContext()
-	traceContextForHookExecution := s.GetCurrentWatcherExecutionTraceContext()
-
-	plans := DeriveHookExecutionPlansForEventStage(
-		watcher,
-		ewh,
-		HookStageTypeConcurrentNoWait,
-		s.ResolveHookExecutionPlan,
-	)
-	for _, plan := range plans {
-		if plan.Callback != nil {
-			callbackForExecution := plan.Callback
-			changedFilePathForExecution := ewh.Classified.Event.Name
-			hookCallbackTimeoutForExecution := s.DeriveHookCallbackTimeoutForExecutionPlan(
-				HookStageTypeConcurrentNoWait,
-				plan,
-			)
-			s.RunNoWaitHookWithConcurrencyLimit(func() {
-				hookCallbackExecutionContext, cancelHookCallbackExecutionContext := DeriveExecutionContextWithOptionalTimeout(
-					concurrentNoWaitHookLifecycleContext,
-					hookCallbackTimeoutForExecution,
-				)
-				if cancelHookCallbackExecutionContext != nil {
-					defer cancelHookCallbackExecutionContext()
-				}
-
-				hookContextForExecution := cloneHookContextForExecution(
-					ewh.HookCtx,
-					deriveHookExecutionContext(hookCallbackExecutionContext),
-				)
-
-				if _, err := executeHookCallbackSafely(
-					callbackForExecution,
-					hookContextForExecution,
-				); err != nil {
-					s.Log.Warn(
-						"concurrent-no-wait callback failed",
-						"stage",
-						deriveHookStageLabel(HookStageTypeConcurrentNoWait),
-						"path",
-						changedFilePathForExecution,
-						"error",
-						err,
-						"cycle_id",
-						traceContextForHookExecution.CycleID,
-						"batch_id",
-						traceContextForHookExecution.BatchID,
-					)
-				}
-			})
-		}
-		if strings.TrimSpace(plan.Command) != "" {
-			commandForExecution := plan.Command
-			changedFilePathForExecution := ewh.Classified.Event.Name
-			hookCommandTimeoutForExecution := s.DeriveHookCommandTimeoutForExecutionPlan(
-				HookStageTypeConcurrentNoWait,
-				plan,
-			)
-			s.RunNoWaitHookWithConcurrencyLimit(func() {
-				hookCommandExecutionContext, cancelHookCommandExecutionContext := DeriveExecutionContextWithOptionalTimeout(
-					concurrentNoWaitHookLifecycleContext,
-					hookCommandTimeoutForExecution,
-				)
-				if cancelHookCommandExecutionContext != nil {
-					defer cancelHookCommandExecutionContext()
-				}
-
-				if err := executeHookCommandWithContext(
-					hookCommandExecutionContext,
-					commandForExecution,
-				); err != nil {
-					s.Log.Warn(
-						"concurrent-no-wait hook failed",
-						"stage",
-						deriveHookStageLabel(HookStageTypeConcurrentNoWait),
-						"path",
-						changedFilePathForExecution,
-						"cmd",
-						commandForExecution,
-						"error",
-						err,
-						"cycle_id",
-						traceContextForHookExecution.CycleID,
-						"batch_id",
-						traceContextForHookExecution.BatchID,
-					)
-				}
-			})
-		}
-	}
-}
-
-func (s *Server) RunPreHooks(
-	ewh EventWithHooks,
-	watcher *watch.Watcher,
-) ([]wave.RefreshAction, error) {
-	var actions []wave.RefreshAction
-
-	plans := DeriveHookExecutionPlansForEventStage(
-		watcher,
-		ewh,
-		HookStageTypePre,
-		s.ResolveHookExecutionPlan,
-	)
-	for _, plan := range plans {
-		action, err := s.ExecuteHookExecutionPlanWithContext(
-			context.Background(),
-			HookStageTypePre,
-			plan,
-			ewh.HookCtx,
-		)
-		if action != nil {
-			actions = append(actions, *action)
-		}
-		if err != nil {
-			return actions, wrapHookExecutionErrorWithStageAndPath(
-				HookStageTypePre,
-				ewh.Classified.Event.Name,
-				err,
-			)
-		}
-	}
-
-	return actions, nil
-}
-
-func (s *Server) RunConcurrentHooks(
-	ewh EventWithHooks,
-	watcher *watch.Watcher,
-) ([]wave.RefreshAction, error) {
-	return s.RunConcurrentHooksWithContext(context.Background(), ewh, watcher)
-}
-
-func (s *Server) RunConcurrentHooksWithContext(
-	concurrentHookExecutionContext context.Context,
-	ewh EventWithHooks,
-	watcher *watch.Watcher,
-) ([]wave.RefreshAction, error) {
-	plans := DeriveHookExecutionPlansForEventStage(
-		watcher,
-		ewh,
-		HookStageTypeConcurrent,
-		s.ResolveHookExecutionPlan,
-	)
-	if len(plans) == 0 {
-		return nil, nil
-	}
-
-	actionsByHookIndex := make([]*wave.RefreshAction, len(plans))
-	hookExecutionErrorsByHookIndex := make([]error, len(plans))
-	var executionGroup errgroup.Group
-
-	for hookIndex := range plans {
-		if !shouldContinueConcurrentHookExecution(
-			concurrentHookExecutionContext,
-		) {
-			break
-		}
-
-		planForExecution := plans[hookIndex]
-		hookIndexForResult := hookIndex
-		executionGroup.Go(func() error {
-			if !shouldContinueConcurrentHookExecution(
-				concurrentHookExecutionContext,
-			) {
-				return nil
-			}
-
-			action, err := s.ExecuteHookExecutionPlanWithContext(
-				concurrentHookExecutionContext,
-				HookStageTypeConcurrent,
-				planForExecution,
-				ewh.HookCtx,
-			)
-			actionsByHookIndex[hookIndexForResult] = action
-			if err != nil {
-				hookExecutionErrorsByHookIndex[hookIndexForResult] = wrapHookExecutionErrorWithStageAndPath(
-					HookStageTypeConcurrent,
-					ewh.Classified.Event.Name,
-					err,
-				)
-			}
-			return nil
-		})
-	}
-
-	_ = executionGroup.Wait()
-	actions := make([]wave.RefreshAction, 0, len(actionsByHookIndex))
-	for _, action := range actionsByHookIndex {
-		if action != nil {
-			actions = append(actions, *action)
-		}
-	}
-
-	return actions, joinHookExecutionErrorsInOrder(
-		hookExecutionErrorsByHookIndex,
-	)
-}
-
-func (s *Server) RunPostHooks(
-	ewh EventWithHooks,
-	watcher *watch.Watcher,
-) ([]wave.RefreshAction, error) {
-	var actions []wave.RefreshAction
-
-	plans := DeriveHookExecutionPlansForEventStage(
-		watcher,
-		ewh,
-		HookStageTypePost,
-		s.ResolveHookExecutionPlan,
-	)
-	for _, plan := range plans {
-		action, err := s.ExecuteHookExecutionPlanWithContext(
-			context.Background(),
-			HookStageTypePost,
-			plan,
-			ewh.HookCtx,
-		)
-		if action != nil {
-			actions = append(actions, *action)
-		}
-		if err != nil {
-			return actions, wrapHookExecutionErrorWithStageAndPath(
-				HookStageTypePost,
-				ewh.Classified.Event.Name,
-				err,
-			)
-		}
-	}
-
-	return actions, nil
-}
-
-func (s *Server) ExecuteHookExecutionPlan(
-	stageType HookStageType,
-	plan HookExecutionPlan,
-	hookContext *wave.HookContext,
-) (*wave.RefreshAction, error) {
-	return s.ExecuteHookExecutionPlanWithContext(
-		context.Background(),
-		stageType,
-		plan,
-		hookContext,
-	)
-}
-
-func deriveHookExecutionContextError(
-	hookExecutionContext context.Context,
-) error {
-	if hookExecutionContext == nil {
-		return nil
-	}
-	return hookExecutionContext.Err()
-}
-
-func executeHookCommandWithContext(
-	hookCommandExecutionContext context.Context,
-	command string,
-) error {
-	return executil.RunShellWithContext(hookCommandExecutionContext, command)
-}
-
-func (s *Server) DeriveHookCommandTimeoutForExecutionPlan(
-	stageType HookStageType,
-	executionPlan HookExecutionPlan,
-) time.Duration {
-	if s == nil || s.Cfg == nil {
-		return DeriveHookCommandTimeoutDurationForExecutionPlan(
-			nil,
-			stageType,
-			executionPlan,
-		)
-	}
-	return DeriveHookCommandTimeoutDurationForExecutionPlan(
-		s.Cfg.Watch,
-		stageType,
-		executionPlan,
-	)
-}
-
-func (s *Server) DeriveHookCallbackTimeoutForExecutionPlan(
-	stageType HookStageType,
-	executionPlan HookExecutionPlan,
-) time.Duration {
-	if s == nil || s.Cfg == nil {
-		return DeriveHookCallbackTimeoutDurationForExecutionPlan(
-			nil,
-			stageType,
-			executionPlan,
-		)
-	}
-	return DeriveHookCallbackTimeoutDurationForExecutionPlan(
-		s.Cfg.Watch,
-		stageType,
-		executionPlan,
-	)
-}
-
-func (s *Server) ExecuteHookExecutionPlanWithContext(
-	parentHookExecutionContext context.Context,
-	stageType HookStageType,
-	plan HookExecutionPlan,
-	hookContext *wave.HookContext,
-) (*wave.RefreshAction, error) {
-	var action *wave.RefreshAction
-	if plan.Callback != nil {
-		hookCallbackExecutionContext, cancelHookCallbackExecutionContext := DeriveExecutionContextWithOptionalTimeout(
-			parentHookExecutionContext,
-			s.DeriveHookCallbackTimeoutForExecutionPlan(stageType, plan),
-		)
-		if cancelHookCallbackExecutionContext != nil {
-			defer cancelHookCallbackExecutionContext()
-		}
-
-		hookExecutionContext := deriveHookExecutionContext(
-			hookCallbackExecutionContext,
-		)
-		hookContextForExecution := cloneHookContextForExecution(
-			hookContext,
-			hookExecutionContext,
-		)
-
-		callbackAction, err := executeHookCallbackSafely(
-			plan.Callback,
-			hookContextForExecution,
-		)
-		if err != nil {
-			return nil, err
-		}
-		action = callbackAction
-	}
-
-	if strings.TrimSpace(plan.Command) != "" {
-		hookCommandExecutionContext, cancelHookCommandExecutionContext := DeriveExecutionContextWithOptionalTimeout(
-			parentHookExecutionContext,
-			s.DeriveHookCommandTimeoutForExecutionPlan(stageType, plan),
-		)
-		if cancelHookCommandExecutionContext != nil {
-			defer cancelHookCommandExecutionContext()
-		}
-
-		if !shouldContinueConcurrentHookExecution(hookCommandExecutionContext) {
-			return action, deriveHookExecutionContextError(
-				hookCommandExecutionContext,
-			)
-		}
-
-		if err := executeHookCommandWithContext(
-			hookCommandExecutionContext,
-			plan.Command,
-		); err != nil {
-			return action, err
-		}
-	}
-
-	return action, nil
-}
-func BuildEventHooksForProcessing(
-	classifiedEvents []ClassifiedEvent,
-) []EventWithHooks {
-	if len(classifiedEvents) == 0 {
-		return nil
-	}
-
-	normalizedChangedFilePathsByWatchedPattern := BuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
-		classifiedEvents,
-	)
-	watchedPatternOccurrenceCount := buildWatchedPatternOccurrenceCountForHookContexts(
-		classifiedEvents,
-	)
-	skipDuplicateHooksByClassifiedEventIndex := BuildSkipDuplicateHooksByClassifiedEventIndex(
-		classifiedEvents,
-	)
-
-	eventsWithHooks := make([]EventWithHooks, 0, len(classifiedEvents))
-	for eventIndex, classifiedEventForProcessing := range classifiedEvents {
-		normalizedEventPathForHookContext := NormalizeHookContextPathShape(
-			classifiedEventForProcessing.Event.Name,
-		)
-		changedFilePathsForHookContext := deriveChangedFilePathsForHookContext(
-			classifiedEventForProcessing,
-			normalizedChangedFilePathsByWatchedPattern,
-			watchedPatternOccurrenceCount,
-			normalizedEventPathForHookContext,
-		)
-		eventWithHooksForProcessing := buildEventWithHooksForClassifiedEvent(
-			classifiedEventForProcessing,
-			skipDuplicateHooksByClassifiedEventIndex[eventIndex],
-			changedFilePathsForHookContext,
-		)
-		eventsWithHooks = append(eventsWithHooks, eventWithHooksForProcessing)
-	}
-
-	return eventsWithHooks
-}
-
-func BuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
-	classifiedEvents []ClassifiedEvent,
-) map[string][]string {
-	normalizedChangedFilePathsByWatchedPattern := make(map[string][]string)
-	seenNormalizedChangedFilePathsByWatchedPattern := make(map[string]map[string]struct{})
-
-	for _, classifiedEventForProcessing := range classifiedEvents {
-		watchedFileForProcessing := classifiedEventForProcessing.WatchedFile
-		if watchedFileForProcessing == nil {
-			continue
-		}
-		normalizedEventPathForHookContext := NormalizeHookContextPathShape(
-			classifiedEventForProcessing.Event.Name,
-		)
-		recordChangedPathForWatchedPatternIfNew(
-			watchedFileForProcessing.Pattern,
-			normalizedEventPathForHookContext,
-			normalizedChangedFilePathsByWatchedPattern,
-			seenNormalizedChangedFilePathsByWatchedPattern,
-		)
-	}
-
-	return normalizedChangedFilePathsByWatchedPattern
-}
-
-func BuildSkipDuplicateHooksByClassifiedEventIndex(
-	classifiedEvents []ClassifiedEvent,
-) []bool {
-	skipDuplicateHooksByClassifiedEventIndex := make([]bool, len(classifiedEvents))
-	handledWatchedPatterns := make(map[string]struct{})
-
-	for eventIndex, classifiedEventForProcessing := range classifiedEvents {
-		watchedFileForProcessing := classifiedEventForProcessing.WatchedFile
-		if watchedFileForProcessing == nil {
-			continue
-		}
-
-		watchedPattern := watchedFileForProcessing.Pattern
-		if _, alreadyHandled := handledWatchedPatterns[watchedPattern]; alreadyHandled {
-			skipDuplicateHooksByClassifiedEventIndex[eventIndex] = true
-			continue
-		}
-		handledWatchedPatterns[watchedPattern] = struct{}{}
-	}
-
-	return skipDuplicateHooksByClassifiedEventIndex
-}
-
-func buildWatchedPatternOccurrenceCountForHookContexts(
-	classifiedEvents []ClassifiedEvent,
-) map[string]int {
-	watchedPatternOccurrenceCount := make(map[string]int)
-	for _, classifiedEventForProcessing := range classifiedEvents {
-		watchedFileForProcessing := classifiedEventForProcessing.WatchedFile
-		if watchedFileForProcessing == nil {
-			continue
-		}
-		watchedPatternOccurrenceCount[watchedFileForProcessing.Pattern]++
-	}
-	return watchedPatternOccurrenceCount
-}
-
-func deriveChangedFilePathsForHookContext(
-	classifiedEventForProcessing ClassifiedEvent,
-	normalizedChangedFilePathsByWatchedPattern map[string][]string,
-	watchedPatternOccurrenceCount map[string]int,
-	normalizedEventPathForHookContext string,
-) []string {
-	watchedFileForProcessing := classifiedEventForProcessing.WatchedFile
-	if watchedFileForProcessing == nil {
-		return []string{normalizedEventPathForHookContext}
-	}
-
-	watchedPattern := watchedFileForProcessing.Pattern
-	normalizedChangedFilePathsForWatchedPattern := normalizedChangedFilePathsByWatchedPattern[watchedPattern]
-	if len(normalizedChangedFilePathsForWatchedPattern) == 0 {
-		return []string{normalizedEventPathForHookContext}
-	}
-
-	if watchedPatternOccurrenceCount[watchedPattern] <= 1 {
-		return normalizedChangedFilePathsForWatchedPattern
-	}
-
-	return append(
-		[]string(nil),
-		normalizedChangedFilePathsForWatchedPattern...,
-	)
-}
-
-func buildEventWithHooksForClassifiedEvent(
-	classifiedEventForProcessing ClassifiedEvent,
-	skipDuplicateHooks bool,
-	changedFilePathsForHookContext []string,
-) EventWithHooks {
-	watchedFileForProcessing := classifiedEventForProcessing.WatchedFile
-	if watchedFileForProcessing == nil {
-		watchedFileForProcessing = &wave.WatchedFile{}
-	}
-	sortedHooksForProcessing := deriveSortedHooksForWatchedFileWithoutMutation(
-		watchedFileForProcessing,
-	)
-
-	normalizedEventPathForHookContext := NormalizeHookContextPathShape(
-		classifiedEventForProcessing.Event.Name,
-	)
-	if len(changedFilePathsForHookContext) == 0 {
-		changedFilePathsForHookContext = []string{normalizedEventPathForHookContext}
-	}
-	eventNeedsHardReload := classifiedEventForProcessing.FileType == FileTypeGo ||
-		NeedsHardReload(watchedFileForProcessing)
-
-	return EventWithHooks{
-		Classified:         classifiedEventForProcessing,
-		Hooks:              sortedHooksForProcessing,
-		RunOnChangeOnly:    watchedFileForProcessing.RunOnChangeOnly,
-		NeedsHardReload:    eventNeedsHardReload,
-		SkipDuplicateHooks: skipDuplicateHooks,
-		HookCtx: &wave.HookContext{
-			FilePath:           normalizedEventPathForHookContext,
-			ChangedFilePaths:   changedFilePathsForHookContext,
-			AppStoppedForBatch: false,
-		},
-	}
-}
-
-func deriveSortedHooksForWatchedFileWithoutMutation(
-	watchedFileForProcessing *wave.WatchedFile,
-) *wave.SortedHooks {
-	if watchedFileForProcessing == nil {
-		return &wave.SortedHooks{}
-	}
-
-	if watchedFileForProcessing.SortedHooks != nil {
-		return watch.CloneSortedHooksForWatcherPlan(
-			watchedFileForProcessing.SortedHooks,
-		)
-	}
-
-	return watch.DeriveSortedHooksForWatcherPlan(
-		watchedFileForProcessing.OnChangeHooks,
-	)
-}
-
-func NormalizeHookContextPathShape(path string) string {
-	return waveshared.Absolute(path)
-}
-
-func recordChangedPathForWatchedPatternIfNew(
-	watchedPattern string,
-	normalizedChangedPath string,
-	changedFilePathsByWatchedPattern map[string][]string,
-	seenChangedFilePathsByWatchedPattern map[string]map[string]struct{},
-) {
-	if changedFilePathsByWatchedPattern == nil || seenChangedFilePathsByWatchedPattern == nil {
-		return
-	}
-
-	seenChangedPathsForWatchedPattern, hasSeenSet := seenChangedFilePathsByWatchedPattern[watchedPattern]
-	if !hasSeenSet || seenChangedPathsForWatchedPattern == nil {
-		seenChangedPathsForWatchedPattern = make(map[string]struct{})
-		seenChangedFilePathsByWatchedPattern[watchedPattern] = seenChangedPathsForWatchedPattern
-	}
-
-	if _, alreadyTracked := seenChangedPathsForWatchedPattern[normalizedChangedPath]; alreadyTracked {
-		return
-	}
-	seenChangedPathsForWatchedPattern[normalizedChangedPath] = struct{}{}
-	changedFilePathsByWatchedPattern[watchedPattern] = append(
-		changedFilePathsByWatchedPattern[watchedPattern],
-		normalizedChangedPath,
-	)
-}
-func deriveTimeoutDurationFromMilliseconds(
-	timeoutMilliseconds int,
-) time.Duration {
-	if timeoutMilliseconds <= 0 {
-		return 0
-	}
-	return time.Duration(timeoutMilliseconds) * time.Millisecond
-}
-
-func DeriveResolvedTimeoutDurationFromStageAndExecutionPolicy(
-	stageTimeoutMilliseconds int,
-	executionTimeoutMilliseconds int,
-	disableStageTimeout bool,
-) time.Duration {
-	if disableStageTimeout {
-		return 0
-	}
-	if executionTimeoutMilliseconds > 0 {
-		return deriveTimeoutDurationFromMilliseconds(
-			executionTimeoutMilliseconds,
-		)
-	}
-	return deriveTimeoutDurationFromMilliseconds(stageTimeoutMilliseconds)
-}
-
-func DeriveHookCommandStageTimeoutMilliseconds(
-	watchConfig *wave.WatchConfig,
-	stageType HookStageType,
-) int {
-	if watchConfig == nil {
-		return 0
-	}
-
-	return deriveHookStageTimeoutMilliseconds(
-		stageType,
-		hookStageTimeoutMilliseconds{
-			Pre:              watchConfig.HookCommandTimeouts.PreCommandTimeoutMilliseconds,
-			Concurrent:       watchConfig.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds,
-			Post:             watchConfig.HookCommandTimeouts.PostCommandTimeoutMilliseconds,
-			ConcurrentNoWait: watchConfig.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds,
-		},
-	)
-}
-
-func DeriveHookCallbackStageTimeoutMilliseconds(
-	watchConfig *wave.WatchConfig,
-	stageType HookStageType,
-) int {
-	if watchConfig == nil {
-		return 0
-	}
-
-	return deriveHookStageTimeoutMilliseconds(
-		stageType,
-		hookStageTimeoutMilliseconds{
-			Pre:              watchConfig.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds,
-			Concurrent:       watchConfig.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds,
-			Post:             watchConfig.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds,
-			ConcurrentNoWait: watchConfig.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds,
-		},
-	)
-}
-
-type hookStageTimeoutMilliseconds struct {
-	Pre              int
-	Concurrent       int
-	Post             int
-	ConcurrentNoWait int
-}
-
-func deriveHookStageTimeoutMilliseconds(
-	stageType HookStageType,
-	timeoutMillisecondsByStage hookStageTimeoutMilliseconds,
-) int {
-	switch stageType {
-	case HookStageTypePre:
-		return timeoutMillisecondsByStage.Pre
-	case HookStageTypeConcurrent:
-		return timeoutMillisecondsByStage.Concurrent
-	case HookStageTypePost:
-		return timeoutMillisecondsByStage.Post
-	case HookStageTypeConcurrentNoWait:
-		return timeoutMillisecondsByStage.ConcurrentNoWait
-	default:
-		return 0
-	}
-}
-
-func DeriveHookCommandTimeoutDurationForExecutionPlan(
-	watchConfig *wave.WatchConfig,
-	stageType HookStageType,
-	executionPlan HookExecutionPlan,
-) time.Duration {
-	return DeriveResolvedTimeoutDurationFromStageAndExecutionPolicy(
-		DeriveHookCommandStageTimeoutMilliseconds(watchConfig, stageType),
-		executionPlan.CommandTimeoutMilliseconds,
-		executionPlan.DisableStageCommandTimeout,
-	)
-}
-
-func DeriveHookCallbackTimeoutDurationForExecutionPlan(
-	watchConfig *wave.WatchConfig,
-	stageType HookStageType,
-	executionPlan HookExecutionPlan,
-) time.Duration {
-	return DeriveResolvedTimeoutDurationFromStageAndExecutionPolicy(
-		DeriveHookCallbackStageTimeoutMilliseconds(watchConfig, stageType),
-		executionPlan.CallbackTimeoutMilliseconds,
-		executionPlan.DisableStageCallbackTimeout,
-	)
-}
-
-func deriveBuildHookCommandTimeoutMilliseconds(
-	coreConfig *wave.CoreConfig,
-	isDev bool,
-) int {
-	if coreConfig == nil {
-		return 0
-	}
-
-	if isDev {
-		return coreConfig.DevBuildHookTimeoutMilliseconds
-	}
-	return coreConfig.ProdBuildHookTimeoutMilliseconds
-}
-
-func DeriveBuildHookCommandTimeoutDuration(
-	coreConfig *wave.CoreConfig,
-	isDev bool,
-) time.Duration {
-	return DeriveResolvedTimeoutDurationFromStageAndExecutionPolicy(
-		deriveBuildHookCommandTimeoutMilliseconds(coreConfig, isDev),
-		0,
-		false,
-	)
-}
-
-func DeriveExecutionContextWithOptionalTimeout(
-	parentExecutionContext context.Context,
-	executionTimeoutDuration time.Duration,
-) (
-	executionContext context.Context,
-	cancelExecutionContext context.CancelFunc,
-) {
-	if executionTimeoutDuration <= 0 {
-		if parentExecutionContext == nil {
-			return context.Background(), nil
-		}
-		return parentExecutionContext, nil
-	}
-
-	if parentExecutionContext == nil {
-		return context.WithTimeout(context.Background(), executionTimeoutDuration)
-	}
-	return context.WithTimeout(parentExecutionContext, executionTimeoutDuration)
+	return parsedPort
 }

@@ -15,7 +15,7 @@ func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
 	if got := wProd.RefreshScript(); got != "" {
 		t.Fatalf("expected empty refresh script in non-dev mode, got %q", got)
 	}
-	if got := wProd.RefreshScriptSha256Hash(); got != "" {
+	if got := wProd.refreshScriptSha256Hash(); got != "" {
 		t.Fatalf("expected empty refresh script hash in non-dev mode, got %q", got)
 	}
 
@@ -31,8 +31,8 @@ func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
 		t.Fatalf("expected default refresh port in script, got %q", script)
 	}
 
-	expectedHash := bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(RefreshScriptInner(defaultRefreshPort))))
-	if got := wDev.RefreshScriptSha256Hash(); got != expectedHash {
+	expectedHash := bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(refreshScriptInner(defaultRefreshPort))))
+	if got := wDev.refreshScriptSha256Hash(); got != expectedHash {
 		t.Fatalf("unexpected refresh script hash: got=%q want=%q", got, expectedHash)
 	}
 }
@@ -47,8 +47,8 @@ func TestRefreshScriptUsesConfiguredRefreshServerPort(t *testing.T) {
 		t.Fatalf("expected configured refresh port in script, got %q", script)
 	}
 
-	expectedHash := bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(RefreshScriptInner(12345))))
-	if got := w.RefreshScriptSha256Hash(); got != expectedHash {
+	expectedHash := bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(refreshScriptInner(12345))))
+	if got := w.refreshScriptSha256Hash(); got != expectedHash {
 		t.Fatalf("unexpected refresh script hash for configured port: got=%q want=%q", got, expectedHash)
 	}
 }
@@ -65,7 +65,7 @@ func TestRefreshScriptFallsBackToDefaultWhenRefreshPortIsInvalid(t *testing.T) {
 }
 
 func TestRefreshScriptInnerInterpolatesPort(t *testing.T) {
-	inner := RefreshScriptInner(42424)
+	inner := refreshScriptInner(42424)
 	if !strings.Contains(inner, "refreshWebSocketURL.port = String(42424);") {
 		t.Fatalf("expected interpolated websocket URL in refresh script inner, got %q", inner)
 	}
@@ -74,10 +74,10 @@ func TestRefreshScriptInnerInterpolatesPort(t *testing.T) {
 func TestRefreshScriptUsesConfiguredBrowserRuntimeSettings(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
-	w.SetBrowserRevalidateFunctionName("__vorma_revalidate")
-	w.SetRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
-	w.SetCriticalCSSStyleElementID("vorma-critical-css")
-	w.SetNonCriticalCSSLinkElementID("vorma-normal-css")
+	w.setBrowserRevalidateFunctionName("__vorma_revalidate")
+	w.setRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
+	w.setCriticalCSSStyleElementID("vorma-critical-css")
+	w.setNonCriticalCSSLinkElementID("vorma-normal-css")
 
 	script := string(w.RefreshScript())
 	if !strings.Contains(script, `const browserRevalidateFunctionName = "__vorma_revalidate";`) {

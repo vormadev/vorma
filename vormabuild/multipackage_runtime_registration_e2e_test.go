@@ -217,9 +217,8 @@ var _ = registerAccountsRoute()
 package main
 
 import (
-	"context"
+	"os"
 
-	"e2eapp/backend"
 	"e2eapp/backend/src/app"
 	_ "e2eapp/backend/src/routes"
 
@@ -227,9 +226,12 @@ import (
 )
 
 func main() {
-	backend.Wave.SetFrameworkRunBuildHookRunner(func(context.Context, bool) error {
-		return nil
-	})
+	for _, arg := range os.Args[1:] {
+		if arg == "--hook" {
+			return
+		}
+	}
+
 	vormabuild.Build(app.App)
 }
 `),

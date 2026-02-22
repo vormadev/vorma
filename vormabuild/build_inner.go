@@ -190,7 +190,7 @@ func newBuildInnerBuildIDExecutor(
 func defaultBuildInnerPublicFileMapDependencies() buildInnerPublicFileMapDependencies {
 	return buildInnerPublicFileMapDependencies{
 		newPublicFileMapWriter: func(v *vormaruntime.Vorma) buildInnerPublicFileMapWriter {
-			return toolingbuilder.NewBuilder(
+			return builder.NewBuilder(
 				configureBuildEnvironment(v),
 				v.Wave.Logger(),
 			)

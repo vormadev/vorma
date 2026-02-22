@@ -571,7 +571,7 @@ func TestInit_PanicsWhenPrivateFSUnavailable(t *testing.T) {
 		Core: wave.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
 			DistDir:      filepath.Join(rootDir, "dist"),
-			StaticAssetDirs: wave.StaticAssetDirs{
+			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "assets/private",
 				Public:  "assets/public",
 			},

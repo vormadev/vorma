@@ -205,14 +205,14 @@ func loadPublicAssetMap(cfg *wave.ParsedConfig, log *slog.Logger) (map[string]st
 		return nil, "", fmt.Errorf("wave config is required for URL resolution")
 	}
 
-	builder := toolingbuilder.NewBuilder(cfg, log)
-	defer builder.Close()
+	waveBuilder := builder.NewBuilder(cfg, log)
+	defer waveBuilder.Close()
 
-	if err := builder.ProcessPublicFilesOnly(); err != nil {
+	if err := waveBuilder.ProcessPublicFilesOnly(); err != nil {
 		return nil, "", fmt.Errorf("process public files: %w", err)
 	}
 
-	fileMap, err := builder.LoadPublicFileMap()
+	fileMap, err := waveBuilder.LoadPublicFileMap()
 	if err != nil {
 		return nil, "", fmt.Errorf("load public file map: %w", err)
 	}

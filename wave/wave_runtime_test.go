@@ -94,7 +94,7 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 		t.Fatal("expected RawConfigJSON to return original configuration bytes")
 	}
 
-	w.AddFrameworkWatchPatterns([]WatchedFile{{Pattern: "**/*.txt"}})
+	w.addFrameworkWatchPatterns([]WatchedFile{{Pattern: "**/*.txt"}})
 	if len(w.cfg.FrameworkWatchPatterns) != 1 {
 		t.Fatalf(
 			"expected FrameworkWatchPatterns to append, got %+v",
@@ -102,7 +102,7 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 		)
 	}
 
-	w.AddIgnoredPatterns([]string{"**/*.tmp"})
+	w.addIgnoredPatterns([]string{"**/*.tmp"})
 	if len(w.cfg.FrameworkIgnoredPatterns) != 1 {
 		t.Fatalf(
 			"expected FrameworkIgnoredPatterns to append, got %+v",
@@ -110,7 +110,7 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 		)
 	}
 
-	w.SetPublicFileMapOutDir("generated/public")
+	w.setPublicFileMapOutDir("generated/public")
 	if w.cfg.FrameworkPublicFileMapOutDir != "generated/public" {
 		t.Fatalf(
 			"unexpected public filemap out dir: %q",
@@ -118,32 +118,32 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 		)
 	}
 
-	w.SetBrowserRuntimeNamespace("__vorma_runtime")
+	w.setBrowserRuntimeNamespace("__vorma_runtime")
 	if got := w.cfg.FrameworkBrowserRuntimeNamespace; got != "__vorma_runtime" {
 		t.Fatalf("unexpected browser runtime namespace: %q", got)
 	}
 
-	w.SetBrowserPublicURLResolverFunctionName("resolvePublicURL")
+	w.setBrowserPublicURLResolverFunctionName("resolvePublicURL")
 	if got := w.cfg.FrameworkBrowserPublicURLResolverFunctionName; got != "resolvePublicURL" {
 		t.Fatalf("unexpected public URL resolver function name: %q", got)
 	}
 
-	w.SetBrowserRevalidateFunctionName("__vorma_revalidate")
+	w.setBrowserRevalidateFunctionName("__vorma_revalidate")
 	if got := w.cfg.FrameworkBrowserRevalidateFunctionName; got != "__vorma_revalidate" {
 		t.Fatalf("unexpected browser revalidate function name: %q", got)
 	}
 
-	w.SetRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
+	w.setRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
 	if got := w.cfg.FrameworkRefreshRebuildingOverlayElementID; got != "vorma-refresh-overlay" {
 		t.Fatalf("unexpected refresh rebuilding overlay element ID: %q", got)
 	}
 
-	w.SetCriticalCSSStyleElementID("vorma-critical-css")
+	w.setCriticalCSSStyleElementID("vorma-critical-css")
 	if got := w.cfg.FrameworkCriticalCSSStyleElementID; got != "vorma-critical-css" {
 		t.Fatalf("unexpected critical CSS style element ID: %q", got)
 	}
 
-	w.SetNonCriticalCSSLinkElementID("vorma-noncritical-css")
+	w.setNonCriticalCSSLinkElementID("vorma-noncritical-css")
 	if got := w.cfg.FrameworkNonCriticalCSSLinkElementID; got != "vorma-noncritical-css" {
 		t.Fatalf("unexpected non-critical CSS link element ID: %q", got)
 	}
@@ -195,29 +195,29 @@ func TestFrameworkSettersDoNotMutateCoreConfigFields(t *testing.T) {
 
 	originalCoreConfig := *w.cfg.Core
 
-	w.AddFrameworkWatchPatterns([]WatchedFile{{Pattern: "**/*.route"}})
-	w.AddIgnoredPatterns([]string{"generated/**"})
-	w.SetPublicFileMapOutDir("generated/public")
-	w.SetFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
-	w.SetFrameworkProdBuildHookCommand("go run ./backend/cmd/build --prod")
-	w.RegisterFrameworkSchemaSection(
+	w.addFrameworkWatchPatterns([]WatchedFile{{Pattern: "**/*.route"}})
+	w.addIgnoredPatterns([]string{"generated/**"})
+	w.setPublicFileMapOutDir("generated/public")
+	w.setFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
+	w.setFrameworkProdBuildHookCommand("go run ./backend/cmd/build --prod")
+	w.registerFrameworkSchemaSection(
 		"Vorma",
 		jsonschema.Entry{Type: jsonschema.TypeObject},
 	)
-	w.SetFrameworkRunBuildHookRunner(func(context.Context, bool) error {
+	w.setFrameworkRunBuildHookRunner(func(context.Context, bool) error {
 		return nil
 	})
-	w.SetFrameworkPrepareGoBuildOverlay(func() (*GoBuildOverlay, error) {
+	w.setFrameworkPrepareGoBuildOverlay(func() (*GoBuildOverlay, error) {
 		return &GoBuildOverlay{
 			OverlayConfigPath: "/tmp/vorma-overlay.json",
 		}, nil
 	})
-	w.SetBrowserRuntimeNamespace("__vorma_runtime")
-	w.SetBrowserPublicURLResolverFunctionName("resolvePublicURL")
-	w.SetBrowserRevalidateFunctionName("__vorma_revalidate")
-	w.SetRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
-	w.SetCriticalCSSStyleElementID("vorma-critical-css")
-	w.SetNonCriticalCSSLinkElementID("vorma-normal-css")
+	w.setBrowserRuntimeNamespace("__vorma_runtime")
+	w.setBrowserPublicURLResolverFunctionName("resolvePublicURL")
+	w.setBrowserRevalidateFunctionName("__vorma_revalidate")
+	w.setRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
+	w.setCriticalCSSStyleElementID("vorma-critical-css")
+	w.setNonCriticalCSSLinkElementID("vorma-normal-css")
 
 	if got := *w.cfg.Core; got != originalCoreConfig {
 		t.Fatalf(
@@ -243,7 +243,7 @@ func TestAddFrameworkWatchPatternsClonesInput(t *testing.T) {
 		},
 	}
 
-	w.AddFrameworkWatchPatterns(frameworkWatchPatterns)
+	w.addFrameworkWatchPatterns(frameworkWatchPatterns)
 
 	frameworkWatchPatterns[0].Pattern = "**/*.changed"
 	frameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] = "changed/**"
@@ -260,9 +260,9 @@ func TestBaseFSUsesDiskInDevMode(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, fstest.MapFS{})
 
-	baseFS, err := w.BaseFS()
+	baseFS, err := w.getBaseFS()
 	if err != nil {
-		t.Fatalf("BaseFS returned error: %v", err)
+		t.Fatalf("baseFS returned error: %v", err)
 	}
 
 	criticalCSS := mustReadFileFromFS(t, baseFS, RelPaths.CriticalCSS())
@@ -278,7 +278,7 @@ func TestBaseFSProductionRequiresDistStaticFS(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, nil)
 
-	_, err := w.BaseFS()
+	_, err := w.getBaseFS()
 	if err == nil {
 		t.Fatal(
 			"expected production mode base FS initialization to fail without DistStaticFS",
@@ -296,9 +296,9 @@ func TestBaseFSProductionUsesProvidedFS(t *testing.T) {
 	}
 	w := newWaveForTest(t, fixture, false, mapFS)
 
-	baseFS, err := w.BaseFS()
+	baseFS, err := w.getBaseFS()
 	if err != nil {
-		t.Fatalf("BaseFS returned error: %v", err)
+		t.Fatalf("baseFS returned error: %v", err)
 	}
 
 	if got := mustReadFileFromFS(t, baseFS, "internal/probe.txt"); got != "ok" {
@@ -310,9 +310,9 @@ func TestGetPublicAndPrivateFS(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	publicFS, err := w.PublicFS()
+	publicFS, err := w.getPublicFS()
 	if err != nil {
-		t.Fatalf("PublicFS returned error: %v", err)
+		t.Fatalf("publicFS returned error: %v", err)
 	}
 	if got := mustReadFileFromFS(t, publicFS, "logo.txt"); got != "logo" {
 		t.Fatalf("unexpected public file content: %q", got)
@@ -331,9 +331,9 @@ func TestPublicFileMapAndURLResolution(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	fm, err := w.PublicFileMap()
+	fm, err := w.publicFileMap()
 	if err != nil {
-		t.Fatalf("PublicFileMap returned error: %v", err)
+		t.Fatalf("publicFileMap returned error: %v", err)
 	}
 	if _, ok := fm["logo.txt"]; !ok {
 		t.Fatalf("expected logo.txt in public file map, got %+v", fm)
@@ -412,18 +412,18 @@ func TestPublicFileMapReturnsDefensiveCopy(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
 
-	firstMap, err := w.PublicFileMap()
+	firstMap, err := w.publicFileMap()
 	if err != nil {
-		t.Fatalf("PublicFileMap returned error: %v", err)
+		t.Fatalf("publicFileMap returned error: %v", err)
 	}
 
 	firstMap["logo.txt"] = FileVal{
 		DistName: "changed/logo.txt",
 	}
 
-	secondMap, err := w.PublicFileMap()
+	secondMap, err := w.publicFileMap()
 	if err != nil {
-		t.Fatalf("PublicFileMap returned error: %v", err)
+		t.Fatalf("publicFileMap returned error: %v", err)
 	}
 
 	if got := secondMap["logo.txt"].DistName; got != "vorma_out/logo.hash.txt" {
@@ -435,11 +435,11 @@ func TestPublicFileMapElementsAndHash(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.PublicFileMapURL(); got != "/assets/vorma_out/vorma_internal_public_filemap_hash.js" {
+	if got := w.publicFileMapURL(); got != "/assets/vorma_out/vorma_internal_public_filemap_hash.js" {
 		t.Fatalf("unexpected public file map URL: %q", got)
 	}
 
-	elements := string(w.PublicFileMapElements())
+	elements := string(w.publicFileMapElements())
 	if !strings.Contains(elements, `rel="modulepreload"`) {
 		t.Fatalf(
 			"expected modulepreload link in filemap elements, got %q",
@@ -465,7 +465,7 @@ func TestPublicFileMapElementsAndHash(t *testing.T) {
 		)
 	}
 
-	hash := w.PublicFileMapScriptSha256Hash()
+	hash := w.publicFileMapScriptSha256Hash()
 	if hash == "" {
 		t.Fatal("expected non-empty public filemap script hash")
 	}
@@ -476,10 +476,10 @@ func TestPublicFileMapElementsUseConfiguredBrowserRuntimeSettings(
 ) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
-	w.SetBrowserRuntimeNamespace("__vorma_runtime")
-	w.SetBrowserPublicURLResolverFunctionName("resolvePublicURL")
+	w.setBrowserRuntimeNamespace("__vorma_runtime")
+	w.setBrowserPublicURLResolverFunctionName("resolvePublicURL")
 
-	elements := string(w.PublicFileMapElements())
+	elements := string(w.publicFileMapElements())
 	if !strings.Contains(
 		elements,
 		`const browserRuntimeNamespace = "__vorma_runtime";`,
@@ -498,19 +498,19 @@ func TestPublicFileMapElementsEmptyWhenRefMissing(t *testing.T) {
 	}
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.PublicFileMapURL(); got != "" {
+	if got := w.publicFileMapURL(); got != "" {
 		t.Fatalf(
 			"expected empty file map URL when ref file is missing, got %q",
 			got,
 		)
 	}
-	if got := w.PublicFileMapElements(); got != "" {
+	if got := w.publicFileMapElements(); got != "" {
 		t.Fatalf(
 			"expected empty file map elements when ref file is missing, got %q",
 			got,
 		)
 	}
-	if got := w.PublicFileMapScriptSha256Hash(); got != "" {
+	if got := w.publicFileMapScriptSha256Hash(); got != "" {
 		t.Fatalf(
 			"expected empty file map script hash when ref file is missing, got %q",
 			got,
@@ -532,13 +532,13 @@ func TestCriticalCSSMethods(t *testing.T) {
 	if !strings.Contains(el, "body{color:red;}") {
 		t.Fatalf("expected critical css content in style element, got %q", el)
 	}
-	if w.CriticalCSSStyleElementSha256Hash() == "" {
+	if w.criticalCSSStyleElementSha256Hash() == "" {
 		t.Fatal("expected critical css SHA-256 hash to be non-empty")
 	}
-	if w.CriticalCSSElementID() != CriticalCSSElementID {
+	if w.criticalCSSElementID() != criticalCSSElementID {
 		t.Fatalf(
 			"unexpected critical css element id: %q",
-			w.CriticalCSSElementID(),
+			w.criticalCSSElementID(),
 		)
 	}
 }
@@ -546,7 +546,7 @@ func TestCriticalCSSMethods(t *testing.T) {
 func TestCriticalCSSUsesConfiguredElementID(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
-	w.SetCriticalCSSStyleElementID("vorma-critical-css")
+	w.setCriticalCSSStyleElementID("vorma-critical-css")
 
 	el := string(w.CriticalCSSStyleElement())
 	if !strings.Contains(el, `id="vorma-critical-css"`) {
@@ -555,10 +555,10 @@ func TestCriticalCSSUsesConfiguredElementID(t *testing.T) {
 			el,
 		)
 	}
-	if w.CriticalCSSElementID() != "vorma-critical-css" {
+	if w.criticalCSSElementID() != "vorma-critical-css" {
 		t.Fatalf(
 			"unexpected configured critical css element id getter value: %q",
-			w.CriticalCSSElementID(),
+			w.criticalCSSElementID(),
 		)
 	}
 }
@@ -576,7 +576,7 @@ func TestCriticalCSSReturnsEmptyWhenEntryUnsetOrMissingFile(t *testing.T) {
 			got,
 		)
 	}
-	if got := wNoEntry.CriticalCSSStyleElementSha256Hash(); got != "" {
+	if got := wNoEntry.criticalCSSStyleElementSha256Hash(); got != "" {
 		t.Fatalf(
 			"expected empty critical css hash when entry is unset, got %q",
 			got,
@@ -600,7 +600,7 @@ func TestCriticalCSSReturnsEmptyWhenEntryUnsetOrMissingFile(t *testing.T) {
 			got,
 		)
 	}
-	if got := wMissingFile.CriticalCSSStyleElementSha256Hash(); got != "" {
+	if got := wMissingFile.criticalCSSStyleElementSha256Hash(); got != "" {
 		t.Fatalf(
 			"expected empty critical css hash when file is missing, got %q",
 			got,
@@ -612,7 +612,7 @@ func TestStylesheetURLAndLink(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.StyleSheetURL(); got != "/assets/vorma_out/vorma_internal_normal_hash.css" {
+	if got := w.styleSheetURL(); got != "/assets/vorma_out/vorma_internal_normal_hash.css" {
 		t.Fatalf("unexpected stylesheet URL: %q", got)
 	}
 	link := string(w.StyleSheetLinkElement())
@@ -625,10 +625,10 @@ func TestStylesheetURLAndLink(t *testing.T) {
 	if !strings.Contains(link, `id="wave-normal-css"`) {
 		t.Fatalf("expected stylesheet element id in link element, got %q", link)
 	}
-	if w.StyleSheetElementID() != StyleSheetElementID {
+	if w.styleSheetElementID() != styleSheetElementID {
 		t.Fatalf(
 			"unexpected stylesheet element id: %q",
-			w.StyleSheetElementID(),
+			w.styleSheetElementID(),
 		)
 	}
 }
@@ -636,7 +636,7 @@ func TestStylesheetURLAndLink(t *testing.T) {
 func TestStylesheetLinkUsesConfiguredElementID(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
-	w.SetNonCriticalCSSLinkElementID("vorma-normal-css")
+	w.setNonCriticalCSSLinkElementID("vorma-normal-css")
 
 	link := string(w.StyleSheetLinkElement())
 	if !strings.Contains(link, `id="vorma-normal-css"`) {
@@ -645,10 +645,10 @@ func TestStylesheetLinkUsesConfiguredElementID(t *testing.T) {
 			link,
 		)
 	}
-	if w.StyleSheetElementID() != "vorma-normal-css" {
+	if w.styleSheetElementID() != "vorma-normal-css" {
 		t.Fatalf(
 			"unexpected configured stylesheet element id getter value: %q",
-			w.StyleSheetElementID(),
+			w.styleSheetElementID(),
 		)
 	}
 }
@@ -658,7 +658,7 @@ func TestStylesheetReturnsEmptyWhenEntryUnset(t *testing.T) {
 	fixture.cfg.Core.CSSEntryFiles.NonCritical = ""
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.StyleSheetURL(); got != "" {
+	if got := w.styleSheetURL(); got != "" {
 		t.Fatalf(
 			"expected empty stylesheet URL when non-critical entry is unset, got %q",
 			got,
@@ -676,22 +676,22 @@ func TestIsPublicAssetWithConfiguredPrefixUsesFileExistence(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if !w.IsPublicAsset("/assets/logo.txt") {
+	if !w.isPublicAsset("/assets/logo.txt") {
 		t.Fatal(
 			"expected existing prefixed file path to be treated as a public asset",
 		)
 	}
-	if w.IsPublicAsset("/assets/anything.txt") {
+	if w.isPublicAsset("/assets/anything.txt") {
 		t.Fatal(
 			"expected missing prefixed file path to not be treated as a public asset",
 		)
 	}
-	if w.IsPublicAsset("/other/path") {
+	if w.isPublicAsset("/other/path") {
 		t.Fatal(
 			"expected non-prefixed path to not be treated as a public asset",
 		)
 	}
-	if w.IsPublicAsset("/assets/vorma_out") {
+	if w.isPublicAsset("/assets/vorma_out") {
 		t.Fatal(
 			"expected prefixed directory path to not be treated as a public asset",
 		)
@@ -703,18 +703,18 @@ func TestIsPublicAssetRootPrefixUsesFileExistence(t *testing.T) {
 	fixture.cfg.Core.PublicPathPrefix = "/"
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if !w.IsPublicAsset("/logo.txt") {
+	if !w.isPublicAsset("/logo.txt") {
 		t.Fatal("expected existing file under root prefix to be a public asset")
 	}
-	if w.IsPublicAsset("/missing.txt") {
+	if w.isPublicAsset("/missing.txt") {
 		t.Fatal(
 			"expected missing file under root prefix to not be a public asset",
 		)
 	}
-	if w.IsPublicAsset("/") {
+	if w.isPublicAsset("/") {
 		t.Fatal("expected root path to not be treated as an asset")
 	}
-	if w.IsPublicAsset("/vorma_out") {
+	if w.isPublicAsset("/vorma_out") {
 		t.Fatal("expected directory path to not be treated as an asset")
 	}
 }
@@ -723,9 +723,9 @@ func TestStaticHandlerAndMustStaticMiddleware(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	immutableHandler, err := w.StaticHandler(true)
+	immutableHandler, err := w.staticHandler(true)
 	if err != nil {
-		t.Fatalf("StaticHandler returned error: %v", err)
+		t.Fatalf("staticHandler returned error: %v", err)
 	}
 
 	immutableReq := httptest.NewRequest(http.MethodGet, "/assets/logo.txt", nil)
@@ -745,9 +745,9 @@ func TestStaticHandlerAndMustStaticMiddleware(t *testing.T) {
 		t.Fatalf("unexpected immutable handler body: %q", body)
 	}
 
-	mutableHandler, err := w.StaticHandler(false)
+	mutableHandler, err := w.staticHandler(false)
 	if err != nil {
-		t.Fatalf("StaticHandler returned error: %v", err)
+		t.Fatalf("staticHandler returned error: %v", err)
 	}
 
 	mutableReq := httptest.NewRequest(http.MethodGet, "/assets/logo.txt", nil)
@@ -840,7 +840,7 @@ func TestFaviconRedirectMiddleware(t *testing.T) {
 	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusNoContent)
 	})
-	h := w.FaviconRedirect()(next)
+	h := w.faviconRedirect()(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
 	rec := httptest.NewRecorder()
@@ -869,7 +869,7 @@ func TestFaviconRedirectReturns404WhenUnmapped(t *testing.T) {
 	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusNoContent)
 	})
-	h := w.FaviconRedirect()(next)
+	h := w.faviconRedirect()(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
 	rec := httptest.NewRecorder()
@@ -890,8 +890,8 @@ func TestConfigAccessorMethods(t *testing.T) {
 	if w.DistDir() != fixture.cfg.Core.DistDir {
 		t.Fatalf("unexpected dist dir: %q", w.DistDir())
 	}
-	if w.PublicStaticDir() != fixture.cfg.Core.StaticAssetDirs.Public {
-		t.Fatalf("unexpected public static dir: %q", w.PublicStaticDir())
+	if w.publicStaticDir() != fixture.cfg.Core.StaticAssetDirs.Public {
+		t.Fatalf("unexpected public static dir: %q", w.publicStaticDir())
 	}
 	if w.PrivateStaticDir() != fixture.cfg.Core.StaticAssetDirs.Private {
 		t.Fatalf("unexpected private static dir: %q", w.PrivateStaticDir())
@@ -902,8 +902,8 @@ func TestConfigAccessorMethods(t *testing.T) {
 			w.ViteManifestLocation(),
 		)
 	}
-	if w.ViteOutDir() != fixture.cfg.Dist.StaticPublic() {
-		t.Fatalf("unexpected Vite out dir: %q", w.ViteOutDir())
+	if w.viteOutDir() != fixture.cfg.Dist.StaticPublic() {
+		t.Fatalf("unexpected Vite out dir: %q", w.viteOutDir())
 	}
 	if w.StaticPrivateOutDir() != fixture.cfg.Dist.StaticPrivate() {
 		t.Fatalf(
@@ -915,7 +915,7 @@ func TestConfigAccessorMethods(t *testing.T) {
 		t.Fatalf("unexpected static public out dir: %q", w.StaticPublicOutDir())
 	}
 
-	w.AddFrameworkWatchPatterns([]WatchedFile{
+	w.addFrameworkWatchPatterns([]WatchedFile{
 		{
 			Pattern: "**/*.txt",
 			OnChangeHooks: []OnChangeHook{
@@ -925,9 +925,9 @@ func TestConfigAccessorMethods(t *testing.T) {
 			},
 		},
 	})
-	w.AddIgnoredPatterns([]string{"ignored/**"})
-	w.SetFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
-	w.SetFrameworkRunBuildHookRunner(func(context.Context, bool) error {
+	w.addIgnoredPatterns([]string{"ignored/**"})
+	w.setFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
+	w.setFrameworkRunBuildHookRunner(func(context.Context, bool) error {
 		return nil
 	})
 
@@ -988,12 +988,12 @@ func TestBuildtimeParsedConfigIncludesFrameworkBuildCallbacks(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	w.SetFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
-	w.RegisterFrameworkSchemaSection(
+	w.setFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
+	w.registerFrameworkSchemaSection(
 		"Custom",
 		jsonschema.Entry{Type: jsonschema.TypeObject},
 	)
-	w.SetFrameworkRunBuildHookRunner(func(context.Context, bool) error {
+	w.setFrameworkRunBuildHookRunner(func(context.Context, bool) error {
 		return nil
 	})
 
@@ -1026,13 +1026,13 @@ func TestMustGetFSAndStaticHandlerPanicsOnFailure(t *testing.T) {
 	w := newWaveForTest(t, fixture, false, nil)
 
 	assertPanicContains(t, "distStaticFS is nil", func() {
-		_ = w.MustPublicFS()
+		_ = w.mustPublicFS()
 	})
 	assertPanicContains(t, "distStaticFS is nil", func() {
 		_ = w.MustPrivateFS()
 	})
 	assertPanicContains(t, "distStaticFS is nil", func() {
-		_ = w.MustStaticHandler(true)
+		_ = w.mustStaticHandler(true)
 	})
 	assertPanicContains(t, "distStaticFS is nil", func() {
 		_ = w.MustStaticMiddleware(true)

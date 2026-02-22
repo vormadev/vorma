@@ -1,3 +1,30 @@
+## Git Command Policy
+
+The agent may use Git only for read-only inspection.
+
+Allowed Git commands (and only these):
+
+- `git status`
+- `git diff`
+- `git show`
+- `git log`
+- `git blame`
+- `git ls-files`
+- `git rev-parse --abbrev-ref HEAD`
+
+Forbidden:
+
+- Any Git command not listed above.
+- Any Git command that can modify index, worktree, refs, history, stash,
+  remotes, submodules, or config.
+- Examples: `git add`, `git restore`, `git checkout`, `git switch`,
+  `git commit`, `git merge`, `git rebase`, `git cherry-pick`, `git revert`,
+  `git reset`, `git clean`, `git stash`, `git branch -d/-m/-c`, `git tag`,
+  `git fetch`, `git pull`, `git push`, `git submodule update`, `git config`.
+
+If an operation requires forbidden Git usage, the agent must stop and ask the
+user to run it manually.
+
 ## Go Rules
 
 ### One Source Code File Per Package, Between 200 and 2000 Lines
