@@ -1,7 +1,9 @@
 package runloop_test
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/gob"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -740,6 +742,176 @@ func TestProcessEvents_PublicStaticMixedOpsBatchAppliesCreateDeleteAndRenameChan
 	}
 }
 
+func TestProcessEvents_PublicStaticDirectoryRenameWithoutChildFileEvents(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	builderForTest := serverForTest.Builder
+
+	publicDirectoryPath := cfg.Core.StaticAssetDirs.Public
+	oldDirectoryPath := filepath.Join(publicDirectoryPath, "icons", "old")
+	newDirectoryPath := filepath.Join(publicDirectoryPath, "icons", "new")
+	oldFilePath := filepath.Join(oldDirectoryPath, "logo.svg")
+	if mkdirError := os.MkdirAll(oldDirectoryPath, 0o755); mkdirError != nil {
+		t.Fatalf("failed creating old subtree directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(oldFilePath, []byte("<svg>old</svg>"), 0o644); writeError != nil {
+		t.Fatalf("failed writing old subtree file: %v", writeError)
+	}
+
+	if processError := builderForTest.ProcessPublicFilesOnly(); processError != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", processError)
+	}
+
+	initialMap, loadMapError := builderForTest.LoadPublicFileMap()
+	if loadMapError != nil {
+		t.Fatalf("LoadPublicFileMap after initial run returned error: %v", loadMapError)
+	}
+	oldEntry := initialMap["icons/old/logo.svg"]
+	oldDistPath := filepath.Join(cfg.Dist.StaticPublic(), oldEntry.DistName)
+
+	if renameError := os.Rename(oldDirectoryPath, newDirectoryPath); renameError != nil {
+		t.Fatalf("failed renaming public subtree directory: %v", renameError)
+	}
+
+	// Some watcher backends can emit directory-level rename/create events without
+	// child file events. The processor must still converge to the renamed subtree.
+	processEventsForRunloopTests(
+		t,
+		serverForTest,
+		[]fsnotify.Event{
+			{Name: oldDirectoryPath, Op: fsnotify.Rename},
+			{Name: oldDirectoryPath, Op: fsnotify.Remove},
+			{Name: newDirectoryPath, Op: fsnotify.Create},
+		},
+	)
+
+	updatedMap, updatedLoadMapError := builderForTest.LoadPublicFileMap()
+	if updatedLoadMapError != nil {
+		t.Fatalf("LoadPublicFileMap after processEvents returned error: %v", updatedLoadMapError)
+	}
+	if _, exists := updatedMap["icons/old/logo.svg"]; exists {
+		t.Fatalf(
+			"expected old path removed from map after directory rename, got %#v",
+			updatedMap["icons/old/logo.svg"],
+		)
+	}
+	if _, exists := updatedMap["icons/new/logo.svg"]; !exists {
+		t.Fatalf("expected renamed path present in map, got %#v", updatedMap)
+	}
+	if _, statError := os.Stat(oldDistPath); !os.IsNotExist(statError) {
+		t.Fatalf("expected old renamed dist artifact deleted, stat error: %v", statError)
+	}
+}
+
+func TestProcessEvents_PrivateStaticDirectoryRenameWithoutChildFileEvents(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	builderForTest := serverForTest.Builder
+
+	privateDirectoryPath := cfg.Core.StaticAssetDirs.Private
+	oldDirectoryPath := filepath.Join(privateDirectoryPath, "templates", "old")
+	newDirectoryPath := filepath.Join(privateDirectoryPath, "templates", "new")
+	oldFilePathA := filepath.Join(oldDirectoryPath, "a.html")
+	oldFilePathB := filepath.Join(oldDirectoryPath, "nested", "b.html")
+	if mkdirError := os.MkdirAll(filepath.Dir(oldFilePathB), 0o755); mkdirError != nil {
+		t.Fatalf("failed creating old private subtree directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(oldFilePathA, []byte("<h1>a</h1>"), 0o644); writeError != nil {
+		t.Fatalf("failed writing old private subtree file a: %v", writeError)
+	}
+	if writeError := os.WriteFile(oldFilePathB, []byte("<h1>b</h1>"), 0o644); writeError != nil {
+		t.Fatalf("failed writing old private subtree file b: %v", writeError)
+	}
+
+	if processError := builderForTest.ProcessPrivateFilesOnly(); processError != nil {
+		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", processError)
+	}
+
+	initialMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
+		t,
+		cfg.Dist.PrivateFileMapGob(),
+	)
+	oldEntryA, hasOldEntryA := initialMap["templates/old/a.html"]
+	if !hasOldEntryA {
+		t.Fatalf(
+			"expected templates/old/a.html in initial private map, got %#v",
+			initialMap,
+		)
+	}
+	oldEntryB, hasOldEntryB := initialMap["templates/old/nested/b.html"]
+	if !hasOldEntryB {
+		t.Fatalf(
+			"expected templates/old/nested/b.html in initial private map, got %#v",
+			initialMap,
+		)
+	}
+	oldDistPathA := filepath.Join(cfg.Dist.StaticPrivate(), oldEntryA.DistName)
+	oldDistPathB := filepath.Join(cfg.Dist.StaticPrivate(), oldEntryB.DistName)
+
+	if renameError := os.Rename(oldDirectoryPath, newDirectoryPath); renameError != nil {
+		t.Fatalf("failed renaming private subtree directory: %v", renameError)
+	}
+
+	// Some watcher backends can emit directory-level rename/create events without
+	// child file events. The processor must still converge to the renamed subtree.
+	processEventsForRunloopTests(
+		t,
+		serverForTest,
+		[]fsnotify.Event{
+			{Name: oldDirectoryPath, Op: fsnotify.Rename},
+			{Name: oldDirectoryPath, Op: fsnotify.Remove},
+			{Name: newDirectoryPath, Op: fsnotify.Create},
+		},
+	)
+
+	updatedMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
+		t,
+		cfg.Dist.PrivateFileMapGob(),
+	)
+	if _, exists := updatedMap["templates/old/a.html"]; exists {
+		t.Fatalf(
+			"expected old private path removed from map after directory rename, got %#v",
+			updatedMap["templates/old/a.html"],
+		)
+	}
+	if _, exists := updatedMap["templates/old/nested/b.html"]; exists {
+		t.Fatalf(
+			"expected old private nested path removed from map after directory rename, got %#v",
+			updatedMap["templates/old/nested/b.html"],
+		)
+	}
+	if _, exists := updatedMap["templates/new/a.html"]; !exists {
+		t.Fatalf("expected renamed private path present in map, got %#v", updatedMap)
+	}
+	if _, exists := updatedMap["templates/new/nested/b.html"]; !exists {
+		t.Fatalf("expected renamed private nested path present in map, got %#v", updatedMap)
+	}
+
+	if _, statError := os.Stat(oldDistPathA); !os.IsNotExist(statError) {
+		t.Fatalf("expected old renamed private dist artifact a deleted, stat error: %v", statError)
+	}
+	if _, statError := os.Stat(oldDistPathB); !os.IsNotExist(statError) {
+		t.Fatalf("expected old renamed private dist artifact b deleted, stat error: %v", statError)
+	}
+
+	assertNoPendingRestartRequestForRunloopTests(
+		t,
+		serverForTest.RestartIntents,
+	)
+}
+
 func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRebuild(
 	t *testing.T,
 ) {
@@ -1259,6 +1431,27 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 	}
 
 	return paths
+}
+
+func loadStaticFileMapFromGobPathForRunloopProcessTests(
+	t *testing.T,
+	gobPath string,
+) wave.FileMap {
+	t.Helper()
+
+	gobBytes, readError := os.ReadFile(gobPath)
+	if readError != nil {
+		t.Fatalf("failed reading file map gob %q: %v", gobPath, readError)
+	}
+
+	var decodedFileMap wave.FileMap
+	if decodeError := gob.NewDecoder(bytes.NewReader(gobBytes)).Decode(&decodedFileMap); decodeError != nil {
+		t.Fatalf("failed decoding file map gob %q: %v", gobPath, decodeError)
+	}
+	if decodedFileMap == nil {
+		return make(wave.FileMap)
+	}
+	return decodedFileMap
 }
 
 func TestProcessEvents_SiteStyleMatrixUsesMinimumWorkByFileType(

@@ -108,6 +108,61 @@ func TestDeriveWatcherEventPreClassificationDecision(t *testing.T) {
 			directoryEventDecision,
 		)
 	}
+
+	emptyCreatedDirectoryPath := filepath.Join(t.TempDir(), "empty-created")
+	if makeDirectoryError := os.MkdirAll(emptyCreatedDirectoryPath, 0o755); makeDirectoryError != nil {
+		t.Fatalf("failed creating empty directory for create classification test: %v", makeDirectoryError)
+	}
+	emptyCreateDirectoryEventDecision := classification.DerivePreClassificationDecision(
+		fsnotify.Event{Name: emptyCreatedDirectoryPath, Op: fsnotify.Create},
+		dependencies,
+	)
+	if emptyCreateDirectoryEventDecision.IncludeEvent {
+		t.Fatalf(
+			"expected empty created directory event to be excluded, got %#v",
+			emptyCreateDirectoryEventDecision,
+		)
+	}
+	if emptyCreateDirectoryEventDecision.IgnoreReason != "directory_event" {
+		t.Fatalf(
+			"expected ignore_reason=directory_event for empty created directory, got %#v",
+			emptyCreateDirectoryEventDecision,
+		)
+	}
+
+	nonEmptyCreatedDirectoryPath := filepath.Join(
+		t.TempDir(),
+		"non-empty-created",
+	)
+	if makeDirectoryError := os.MkdirAll(
+		filepath.Join(nonEmptyCreatedDirectoryPath, "nested"),
+		0o755,
+	); makeDirectoryError != nil {
+		t.Fatalf("failed creating non-empty directory for create classification test: %v", makeDirectoryError)
+	}
+	if writeError := os.WriteFile(
+		filepath.Join(nonEmptyCreatedDirectoryPath, "nested", "file.txt"),
+		[]byte("data"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("failed writing non-empty directory fixture file: %v", writeError)
+	}
+	nonEmptyCreateDirectoryEventDecision := classification.DerivePreClassificationDecision(
+		fsnotify.Event{Name: nonEmptyCreatedDirectoryPath, Op: fsnotify.Create},
+		dependencies,
+	)
+	if !nonEmptyCreateDirectoryEventDecision.IncludeEvent {
+		t.Fatalf(
+			"expected non-empty created directory event to be included, got %#v",
+			nonEmptyCreateDirectoryEventDecision,
+		)
+	}
+	if nonEmptyCreateDirectoryEventDecision.IgnoreReason != "" {
+		t.Fatalf(
+			"expected empty ignore reason for non-empty created directory, got %#v",
+			nonEmptyCreateDirectoryEventDecision,
+		)
+	}
 }
 
 func TestDeriveWatcherEventPreClassificationDecisionForNonConfigEvent(

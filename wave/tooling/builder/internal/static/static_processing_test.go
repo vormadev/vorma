@@ -139,6 +139,122 @@ func TestResolveStaticChangedPathResolutions_UsesSymlinkAliasPathsForMissingLeaf
 	}
 }
 
+func TestResolveStaticChangedPathResolutions_DirectoryChangedPathFullBuildBehavior(
+	t *testing.T,
+) {
+	sourceDirectoryPath := filepath.Join(t.TempDir(), "source")
+	if err := os.MkdirAll(sourceDirectoryPath, 0o755); err != nil {
+		t.Fatalf("failed creating source directory: %v", err)
+	}
+
+	emptyDirectoryChangedPath := filepath.Join(sourceDirectoryPath, "empty-dir")
+	if err := os.MkdirAll(emptyDirectoryChangedPath, 0o755); err != nil {
+		t.Fatalf("failed creating empty changed directory: %v", err)
+	}
+
+	changedResolutions, fullBuildRequired, resolutionError := static.ResolveStaticChangedPathResolutions(
+		sourceDirectoryPath,
+		[]string{emptyDirectoryChangedPath},
+	)
+	if resolutionError != nil {
+		t.Fatalf("ResolveStaticChangedPathResolutions returned error: %v", resolutionError)
+	}
+	if fullBuildRequired {
+		t.Fatalf(
+			"expected empty directory changed path %q not to require full build",
+			emptyDirectoryChangedPath,
+		)
+	}
+	if len(changedResolutions) != 1 {
+		t.Fatalf(
+			"expected one resolution for empty directory changed path, got %#v",
+			changedResolutions,
+		)
+	}
+	if resolution := changedResolutions["empty-dir"]; resolution.SourceExists {
+		t.Fatalf(
+			"expected empty directory resolution to have SourceExists=false, got %#v",
+			resolution,
+		)
+	}
+
+	ignoredOnlyDirectoryChangedPath := filepath.Join(
+		sourceDirectoryPath,
+		"ignored-only-dir",
+	)
+	if err := os.MkdirAll(ignoredOnlyDirectoryChangedPath, 0o755); err != nil {
+		t.Fatalf("failed creating ignored-only changed directory: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(ignoredOnlyDirectoryChangedPath, ".DS_Store"),
+		[]byte("ignored"),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing ignored-only changed directory fixture file: %v", err)
+	}
+
+	changedResolutions, fullBuildRequired, resolutionError = static.ResolveStaticChangedPathResolutions(
+		sourceDirectoryPath,
+		[]string{ignoredOnlyDirectoryChangedPath},
+	)
+	if resolutionError != nil {
+		t.Fatalf("ResolveStaticChangedPathResolutions returned error: %v", resolutionError)
+	}
+	if fullBuildRequired {
+		t.Fatalf(
+			"expected ignored-only directory changed path %q not to require full build",
+			ignoredOnlyDirectoryChangedPath,
+		)
+	}
+	if len(changedResolutions) != 1 {
+		t.Fatalf(
+			"expected one resolution for ignored-only directory changed path, got %#v",
+			changedResolutions,
+		)
+	}
+	if resolution := changedResolutions["ignored-only-dir"]; resolution.SourceExists {
+		t.Fatalf(
+			"expected ignored-only directory resolution to have SourceExists=false, got %#v",
+			resolution,
+		)
+	}
+
+	nonEmptyDirectoryChangedPath := filepath.Join(
+		sourceDirectoryPath,
+		"non-empty-dir",
+	)
+	if err := os.MkdirAll(nonEmptyDirectoryChangedPath, 0o755); err != nil {
+		t.Fatalf("failed creating non-empty changed directory: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(nonEmptyDirectoryChangedPath, "asset.txt"),
+		[]byte("asset"),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing non-empty changed directory fixture file: %v", err)
+	}
+
+	changedResolutions, fullBuildRequired, resolutionError = static.ResolveStaticChangedPathResolutions(
+		sourceDirectoryPath,
+		[]string{nonEmptyDirectoryChangedPath},
+	)
+	if resolutionError != nil {
+		t.Fatalf("ResolveStaticChangedPathResolutions returned error: %v", resolutionError)
+	}
+	if !fullBuildRequired {
+		t.Fatalf(
+			"expected non-empty directory changed path %q to require full build",
+			nonEmptyDirectoryChangedPath,
+		)
+	}
+	if len(changedResolutions) != 0 {
+		t.Fatalf(
+			"expected no per-file resolutions when fullBuildRequired=true, got %#v",
+			changedResolutions,
+		)
+	}
+}
+
 func TestResolveStaticChangedPathResolutionsWithProbeFunctions_MemoizesDuplicateAndAliasChangedPaths(
 	t *testing.T,
 ) {
@@ -1354,6 +1470,98 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(t
 	}
 	if _, statErr := os.Stat(removedDistPathB); !os.IsNotExist(statErr) {
 		t.Fatalf("expected removed dist file b to be deleted, stat error: %v", statErr)
+	}
+}
+
+func TestProcessPrivateFilesOnlyForChangedPaths_DirectoryRenameWithoutChildFileEvents(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	builder := builder.NewBuilder(cfg, newDiscardLoggerForStaticProcessingTests())
+	defer builder.Close()
+
+	privateDir := cfg.Core.StaticAssetDirs.Private
+	oldDirectoryPath := filepath.Join(privateDir, "templates", "old")
+	newDirectoryPath := filepath.Join(privateDir, "templates", "new")
+	oldFilePathA := filepath.Join(oldDirectoryPath, "a.html")
+	oldFilePathB := filepath.Join(oldDirectoryPath, "nested", "b.html")
+
+	if err := os.MkdirAll(filepath.Dir(oldFilePathB), 0o755); err != nil {
+		t.Fatalf("failed creating old subtree parent dir: %v", err)
+	}
+	if err := os.WriteFile(oldFilePathA, []byte("<h1>a</h1>"), 0o644); err != nil {
+		t.Fatalf("failed writing old file a: %v", err)
+	}
+	if err := os.WriteFile(oldFilePathB, []byte("<h1>b</h1>"), 0o644); err != nil {
+		t.Fatalf("failed writing old file b: %v", err)
+	}
+
+	if err := builder.ProcessPrivateFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPrivateFilesOnly returned error: %v", err)
+	}
+
+	initialMap, err := loadFileMapFromPathForStaticProcessingTests(
+		cfg,
+		cfg.Dist.PrivateFileMapGob(),
+	)
+	if err != nil {
+		t.Fatalf("loadFileMapFromPath after initial run returned error: %v", err)
+	}
+	oldEntryA := initialMap["templates/old/a.html"]
+	oldEntryB := initialMap["templates/old/nested/b.html"]
+	oldDistPathA := filepath.Join(cfg.Dist.StaticPrivate(), oldEntryA.DistName)
+	oldDistPathB := filepath.Join(cfg.Dist.StaticPrivate(), oldEntryB.DistName)
+
+	if err := os.Rename(oldDirectoryPath, newDirectoryPath); err != nil {
+		t.Fatalf("failed renaming private subtree directory: %v", err)
+	}
+
+	// Some platforms can emit only directory-level rename/create events for subtree moves.
+	// The changed-path processor must still converge to the new subtree mapping.
+	if err := builder.ProcessPrivateFilesOnlyForChangedPaths(
+		[]string{oldDirectoryPath, newDirectoryPath},
+	); err != nil {
+		t.Fatalf(
+			"processPrivateFilesOnlyForChangedPaths for subtree rename returned error: %v",
+			err,
+		)
+	}
+
+	updatedMap, err := loadFileMapFromPathForStaticProcessingTests(
+		cfg,
+		cfg.Dist.PrivateFileMapGob(),
+	)
+	if err != nil {
+		t.Fatalf("loadFileMapFromPath after subtree rename returned error: %v", err)
+	}
+	if _, exists := updatedMap["templates/old/a.html"]; exists {
+		t.Fatalf(
+			"expected templates/old/a.html to be removed from map, got %#v",
+			updatedMap["templates/old/a.html"],
+		)
+	}
+	if _, exists := updatedMap["templates/old/nested/b.html"]; exists {
+		t.Fatalf(
+			"expected templates/old/nested/b.html to be removed from map, got %#v",
+			updatedMap["templates/old/nested/b.html"],
+		)
+	}
+	if _, exists := updatedMap["templates/new/a.html"]; !exists {
+		t.Fatalf("expected templates/new/a.html to exist in map, got %#v", updatedMap)
+	}
+	if _, exists := updatedMap["templates/new/nested/b.html"]; !exists {
+		t.Fatalf(
+			"expected templates/new/nested/b.html to exist in map, got %#v",
+			updatedMap,
+		)
+	}
+
+	if _, statErr := os.Stat(oldDistPathA); !os.IsNotExist(statErr) {
+		t.Fatalf("expected old dist file a to be deleted, stat error: %v", statErr)
+	}
+	if _, statErr := os.Stat(oldDistPathB); !os.IsNotExist(statErr) {
+		t.Fatalf("expected old dist file b to be deleted, stat error: %v", statErr)
 	}
 }
 

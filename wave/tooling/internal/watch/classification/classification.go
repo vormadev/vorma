@@ -132,7 +132,7 @@ func DerivePreClassificationDecision(
 
 	// Existing directory events are watcher-maintenance noise. Keep only
 	// file-path semantics in the classification pipeline.
-	if IsLikelyDirectoryChange(normalizedPath) {
+	if shouldIgnoreDirectoryEvent(normalizedPath, kind) {
 		decision.IncludeEvent = false
 		decision.IgnoreReason = "directory_event"
 		return decision
@@ -250,6 +250,23 @@ func IsLikelyDirectoryChange(path string) bool {
 		return false
 	}
 	return fileInfo.IsDir()
+}
+
+func shouldIgnoreDirectoryEvent(path string, eventKind EventKind) bool {
+	if !IsLikelyDirectoryChange(path) {
+		return false
+	}
+	if eventKind != EventKindCreate {
+		return true
+	}
+
+	// Keep create events for non-empty directories so subtree moves/renames can
+	// be reconciled even when the watcher emits only directory-level events.
+	directoryEntries, readDirectoryError := os.ReadDir(path)
+	if readDirectoryError != nil {
+		return false
+	}
+	return len(directoryEntries) == 0
 }
 
 // IsSymlinkPath reports whether a path is a symbolic link.

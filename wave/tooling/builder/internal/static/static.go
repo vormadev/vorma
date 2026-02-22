@@ -1156,6 +1156,70 @@ func staticSourceFileExists(sourcePath string) (bool, error) {
 	return !sourceInfo.IsDir(), nil
 }
 
+func staticDirectoryContainsProcessableStaticFile(
+	sourceDirectoryPath string,
+	directoryPath string,
+) (bool, error) {
+	directoryInfo, directoryStatError := os.Stat(directoryPath)
+	if directoryStatError != nil {
+		if os.IsNotExist(directoryStatError) {
+			return false, nil
+		}
+		return false, fmt.Errorf(
+			"stat changed directory %s: %w",
+			directoryPath,
+			directoryStatError,
+		)
+	}
+	if !directoryInfo.IsDir() {
+		return false, nil
+	}
+
+	stopWalkAfterFirstProcessableFile := errors.New(
+		"stop_walk_after_first_processable_static_file",
+	)
+	hasProcessableStaticFile := false
+
+	walkError := filepath.WalkDir(
+		directoryPath,
+		func(
+			candidatePath string,
+			directoryEntry fs.DirEntry,
+			directoryWalkError error,
+		) error {
+			if directoryWalkError != nil {
+				return directoryWalkError
+			}
+			if directoryEntry.IsDir() {
+				return nil
+			}
+
+			_, shouldProcessFile, resolveError := resolveStaticFileInfoFromSourcePath(
+				sourceDirectoryPath,
+				candidatePath,
+			)
+			if resolveError != nil {
+				return resolveError
+			}
+			if !shouldProcessFile {
+				return nil
+			}
+
+			hasProcessableStaticFile = true
+			return stopWalkAfterFirstProcessableFile
+		},
+	)
+	if walkError != nil &&
+		!errors.Is(walkError, stopWalkAfterFirstProcessableFile) {
+		return false, fmt.Errorf(
+			"walk changed directory %s: %w",
+			directoryPath,
+			walkError,
+		)
+	}
+	return hasProcessableStaticFile, nil
+}
+
 func ensureNoStaticLogicalPathCollision(
 	existingFileInfo fileInfo,
 	candidateFileInfo fileInfo,
@@ -1474,6 +1538,18 @@ func resolveStaticChangedPathResolutionsWithProbeFunctions(
 			}
 			sourceExists = sourceExistsForPath
 			sourceExistsByNormalizedChangedSourcePath[normalizedChangedSourcePath] = sourceExists
+		}
+		if !sourceExists {
+			directoryContainsProcessableStaticFile, directoryScanError := staticDirectoryContainsProcessableStaticFile(
+				sourceDirectoryPath,
+				normalizedChangedSourcePath,
+			)
+			if directoryScanError != nil {
+				return nil, false, directoryScanError
+			}
+			if directoryContainsProcessableStaticFile {
+				return nil, true, nil
+			}
 		}
 
 		if sourceExists {
