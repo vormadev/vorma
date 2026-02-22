@@ -175,10 +175,8 @@ type RefreshActionWorkMutationDecision struct {
 
 // RefreshActionReductionDecision captures staged reduction metadata.
 type RefreshActionReductionDecision struct {
-	ActionsBeforeRestart     []wave.RefreshAction
-	RestartActionEncountered bool
-	RestartActionIndex       int
-	ApplicationResult        RefreshActionApplicationResult
+	ActionsBeforeRestart []wave.RefreshAction
+	ApplicationResult    RefreshActionApplicationResult
 }
 
 // ImplicitWorkDecision captures workset mutation derived from classified file type.
@@ -1036,13 +1034,10 @@ func ReduceRefreshActionsInStableOrder(
 			0,
 			len(refreshActions),
 		),
-		RestartActionIndex: -1,
 	}
 
-	for actionIndex, refreshAction := range refreshActions {
+	for _, refreshAction := range refreshActions {
 		if refreshAction.TriggerRestart {
-			reductionDecision.RestartActionEncountered = true
-			reductionDecision.RestartActionIndex = actionIndex
 			reductionDecision.ApplicationResult = RefreshActionApplicationResult{
 				RestartRequested: true,
 				RecompileGo:      refreshAction.RecompileGo,

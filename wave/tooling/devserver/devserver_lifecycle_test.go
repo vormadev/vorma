@@ -3,9 +3,7 @@ package devserver
 import (
 	"context"
 	"encoding/json"
-	"github.com/vormadev/vorma/wave/tooling/builder"
-	"github.com/vormadev/vorma/wave/tooling/internal/broadcast"
-	"github.com/vormadev/vorma/wave/tooling/internal/watch"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +16,9 @@ import (
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/internal/broadcast"
+	"github.com/vormadev/vorma/wave/tooling/internal/watch"
 )
 
 func TestInitWatcher_SetsWatcherOnServer(t *testing.T) {
@@ -74,6 +75,62 @@ func TestInitWatcher_AddsConfigFileDirectoryOutsideWatchRoot(t *testing.T) {
 
 	if !s.Watcher.IsWatchingDir(outsideConfigDirectory) {
 		t.Fatalf("expected config file directory to be watched: %s", outsideConfigDirectory)
+	}
+}
+
+func TestAddConfigFileDirectory_IsIdempotent(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	outsideConfigDirectory := t.TempDir()
+	cfg.Core.ConfigLocation = filepath.Join(
+		outsideConfigDirectory,
+		"wave.config.json",
+	)
+
+	s := &Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+	}
+
+	if err := s.InitWatcher(); err != nil {
+		t.Fatalf("initWatcher returned error: %v", err)
+	}
+	defer s.Watcher.Close()
+
+	normalizedOutsideConfigDirectory := s.Watcher.NormalizePath(outsideConfigDirectory)
+	watchedDirectoryPaths := s.Watcher.WatchedDirectoryPaths()
+	occurrenceCountBefore := 0
+	for _, watchedDirectoryPath := range watchedDirectoryPaths {
+		if watchedDirectoryPath == normalizedOutsideConfigDirectory {
+			occurrenceCountBefore++
+		}
+	}
+	if occurrenceCountBefore != 1 {
+		t.Fatalf(
+			"expected one watched entry for config directory before explicit re-add, got %d",
+			occurrenceCountBefore,
+		)
+	}
+
+	if err := s.addConfigFileDirectory(); err != nil {
+		t.Fatalf("addConfigFileDirectory returned error: %v", err)
+	}
+
+	watchedDirectoryPaths = s.Watcher.WatchedDirectoryPaths()
+	occurrenceCountAfter := 0
+	for _, watchedDirectoryPath := range watchedDirectoryPaths {
+		if watchedDirectoryPath == normalizedOutsideConfigDirectory {
+			occurrenceCountAfter++
+		}
+	}
+	if occurrenceCountAfter != 1 {
+		t.Fatalf(
+			"expected idempotent config directory watch registration, got %d entries",
+			occurrenceCountAfter,
+		)
 	}
 }
 
@@ -312,7 +369,7 @@ func TestCleanupForRebuild_ClearsWatcherAndBuilder(t *testing.T) {
 	}
 }
 
-func TestCleanupRefreshServer_CancelsManagerAndWaits(t *testing.T) {
+func TestStopRefreshServer_CancelsManagerAndWaits(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 
 	manager := broadcast.NewManager(
@@ -333,10 +390,12 @@ func TestCleanupRefreshServer_CancelsManagerAndWaits(t *testing.T) {
 		RefreshMgrCancel: cancel,
 	}
 
-	s.CleanupRefreshServer()
+	if stopError := s.StopRefreshServer(); stopError != nil {
+		t.Fatalf("StopRefreshServer returned error: %v", stopError)
+	}
 
 	if s.RefreshMgrCancel != nil {
-		t.Fatal("expected refreshMgrCancel to be cleared after cleanupRefreshServer")
+		t.Fatal("expected refreshMgrCancel to be cleared after StopRefreshServer")
 	}
 
 	select {
@@ -372,6 +431,44 @@ func TestStartAndStopRefreshServer(t *testing.T) {
 	}
 	if s.RefreshServer != nil {
 		t.Fatal("expected refreshServer to be nil after stopRefreshServer")
+	}
+}
+
+func TestStartRefreshServer_BindsToLoopbackHost(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	s := &Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+	}
+
+	port, err := s.StartRefreshServer(0)
+	if err != nil {
+		t.Fatalf("startRefreshServer returned error: %v", err)
+	}
+	defer s.StopRefreshServer()
+
+	if port <= 0 {
+		t.Fatalf("expected refresh server port > 0, got %d", port)
+	}
+	if s.RefreshServer == nil {
+		t.Fatal("expected refresh server to be initialized")
+	}
+
+	resolvedHost, _, splitHostPortError := net.SplitHostPort(s.RefreshServer.Addr)
+	if splitHostPortError != nil {
+		t.Fatalf(
+			"failed parsing refresh server address %q: %v",
+			s.RefreshServer.Addr,
+			splitHostPortError,
+		)
+	}
+	if resolvedHost != "127.0.0.1" {
+		t.Fatalf(
+			"expected refresh server to bind to 127.0.0.1, got %q",
+			resolvedHost,
+		)
 	}
 }
 

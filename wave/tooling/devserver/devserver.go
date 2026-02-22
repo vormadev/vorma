@@ -423,21 +423,7 @@ func (server *runtimeServer) loadParsedConfigForReload(
 		return nil, loadError
 	}
 	if currentConfig != nil {
-		newConfig.FrameworkWatchPatterns = currentConfig.FrameworkWatchPatterns
-		newConfig.FrameworkIgnoredPatterns = currentConfig.FrameworkIgnoredPatterns
-		newConfig.FrameworkPublicFileMapOutDir = currentConfig.FrameworkPublicFileMapOutDir
-		newConfig.FrameworkSchemaExtensions = currentConfig.FrameworkSchemaExtensions
-
-		newConfig.FrameworkDevBuildHook = currentConfig.FrameworkDevBuildHook
-		newConfig.FrameworkProdBuildHook = currentConfig.FrameworkProdBuildHook
-		newConfig.FrameworkRunBuildHook = currentConfig.FrameworkRunBuildHook
-		newConfig.FrameworkPrepareGoBuildOverlay = currentConfig.FrameworkPrepareGoBuildOverlay
-		newConfig.FrameworkBrowserRuntimeNamespace = currentConfig.FrameworkBrowserRuntimeNamespace
-		newConfig.FrameworkBrowserPublicURLResolverFunctionName = currentConfig.FrameworkBrowserPublicURLResolverFunctionName
-		newConfig.FrameworkBrowserRevalidateFunctionName = currentConfig.FrameworkBrowserRevalidateFunctionName
-		newConfig.FrameworkRefreshRebuildingOverlayElementID = currentConfig.FrameworkRefreshRebuildingOverlayElementID
-		newConfig.FrameworkCriticalCSSStyleElementID = currentConfig.FrameworkCriticalCSSStyleElementID
-		newConfig.FrameworkNonCriticalCSSLinkElementID = currentConfig.FrameworkNonCriticalCSSLinkElementID
+		wave.CopyFrameworkRuntimeFieldsForToolingReload(newConfig, currentConfig)
 	}
 	return newConfig, nil
 }
@@ -473,18 +459,12 @@ func (server *runtimeServer) WaitForAnyReady(urls []string) bool {
 }
 
 // MustGetPort returns app runtime port for devserver orchestration.
-func (server *runtimeServer) MustGetPort() (resolvedPort int) {
-	defer func() {
-		if recover() != nil {
-			resolvedPort = 0
-		}
-	}()
-
+func (server *runtimeServer) MustGetPort() int {
 	if server == nil {
 		return 0
 	}
 	if server.PortResolver == nil {
-		return wave.MustGetPort()
+		server.PortResolver = wavecore.NewResolver()
 	}
 	return server.PortResolver.MustGetPort()
 }
@@ -510,7 +490,7 @@ func (server *runtimeServer) StartRefreshServer(preferredPort int) (int, error) 
 		broadcast.ManagerConfig{},
 	)
 	listenOnPort := func(port int) (net.Listener, error) {
-		return net.Listen("tcp", ":"+strconv.Itoa(port))
+		return net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	}
 
 	listener, listenError := listenOnPort(preferredPort)
@@ -538,6 +518,7 @@ func (server *runtimeServer) StartRefreshServer(preferredPort int) (int, error) 
 		context.Background(),
 	)
 	refreshServer := &http.Server{
+		Addr:    listener.Addr().String(),
 		Handler: server.newRefreshServerMux(refreshManager),
 	}
 
@@ -829,12 +810,6 @@ func (server *runtimeServer) prepareRunCycle(
 	if initWatcherError := server.InitWatcher(); initWatcherError != nil {
 		return fmt.Errorf("init watcher: %w", initWatcherError)
 	}
-	if addConfigDirectoryError := server.addConfigFileDirectory(); addConfigDirectoryError != nil {
-		return fmt.Errorf(
-			"add config file directory watcher: %w",
-			addConfigDirectoryError,
-		)
-	}
 
 	builderInstance := builder.NewBuilder(
 		server.Cfg,
@@ -954,11 +929,6 @@ func (server *runtimeServer) CleanupForRebuild() {
 			stopViteError,
 		)
 	}
-}
-
-// CleanupRefreshServer stops refresh server resources.
-func (server *runtimeServer) CleanupRefreshServer() {
-	server.StopRefreshServer()
 }
 
 // executeRunLifecycleCommandPrepareCycle handles prepare-cycle lifecycle command.

@@ -7,29 +7,29 @@ func TestDeriveRunBuildExecutionOrderingDecision(t *testing.T) {
 		Name                                string
 		ShouldRecompileGo                   bool
 		SequentialGoBuild                   bool
+		ExpectedShouldCompileGo             bool
 		ExpectedGoCompilationOrderingPolicy GoCompilationOrderingPolicy
-		ExpectedRunCompileInParallel        bool
-		ExpectedRunCompileAfterBuildHooks   bool
 	}{
 		{
 			Name:                                "recompile disabled does not schedule compile",
 			ShouldRecompileGo:                   false,
 			SequentialGoBuild:                   false,
+			ExpectedShouldCompileGo:             false,
 			ExpectedGoCompilationOrderingPolicy: GoCompilationOrderingPolicyNotRequested,
 		},
 		{
 			Name:                                "non-sequential mode compiles concurrently with build hooks",
 			ShouldRecompileGo:                   true,
 			SequentialGoBuild:                   false,
+			ExpectedShouldCompileGo:             true,
 			ExpectedGoCompilationOrderingPolicy: GoCompilationOrderingPolicyConcurrentWithBuildHooks,
-			ExpectedRunCompileInParallel:        true,
 		},
 		{
 			Name:                                "sequential mode compiles after build hooks",
 			ShouldRecompileGo:                   true,
 			SequentialGoBuild:                   true,
+			ExpectedShouldCompileGo:             true,
 			ExpectedGoCompilationOrderingPolicy: GoCompilationOrderingPolicyAfterBuildHooks,
-			ExpectedRunCompileAfterBuildHooks:   true,
 		},
 	}
 
@@ -40,25 +40,18 @@ func TestDeriveRunBuildExecutionOrderingDecision(t *testing.T) {
 				testCase.SequentialGoBuild,
 			)
 
-			if orderingDecision.GoCompilationOrderingPolicy != testCase.ExpectedGoCompilationOrderingPolicy {
+			if orderingDecision.OrderingPolicy != testCase.ExpectedGoCompilationOrderingPolicy {
 				t.Fatalf(
-					"GoCompilationOrderingPolicy=%q, want %q",
-					orderingDecision.GoCompilationOrderingPolicy,
+					"OrderingPolicy=%q, want %q",
+					orderingDecision.OrderingPolicy,
 					testCase.ExpectedGoCompilationOrderingPolicy,
 				)
 			}
-			if orderingDecision.RunCompileInParallel != testCase.ExpectedRunCompileInParallel {
+			if orderingDecision.ShouldCompileGo != testCase.ExpectedShouldCompileGo {
 				t.Fatalf(
-					"runCompileInParallel=%t, want %t",
-					orderingDecision.RunCompileInParallel,
-					testCase.ExpectedRunCompileInParallel,
-				)
-			}
-			if orderingDecision.RunCompileAfterBuildHooks != testCase.ExpectedRunCompileAfterBuildHooks {
-				t.Fatalf(
-					"runCompileAfterBuildHooks=%t, want %t",
-					orderingDecision.RunCompileAfterBuildHooks,
-					testCase.ExpectedRunCompileAfterBuildHooks,
+					"ShouldCompileGo=%t, want %t",
+					orderingDecision.ShouldCompileGo,
+					testCase.ExpectedShouldCompileGo,
 				)
 			}
 		})

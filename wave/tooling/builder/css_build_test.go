@@ -40,7 +40,7 @@ func TestBuildCriticalCSS_ResolvesPublicURLTokensUsingFileMap(t *testing.T) {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
-	if err := builder.buildCriticalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("buildCriticalCSS returned error: %v", err)
 	}
 
@@ -118,11 +118,11 @@ func TestCSSBuildAll_ReturnsCriticalErrorWithContext(t *testing.T) {
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	err := builder.buildAllCSS(true)
+	err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true, BuildNormalCSS: true})
 	if err == nil {
 		t.Fatal("expected buildAll to fail for missing critical CSS entry")
 	}
-	if !strings.Contains(err.Error(), "critical CSS") {
+	if !strings.Contains(strings.ToLower(err.Error()), "critical css") {
 		t.Fatalf("unexpected critical buildAll error: %v", err)
 	}
 }
@@ -135,11 +135,11 @@ func TestCSSBuildAll_ReturnsNormalErrorWithContext(t *testing.T) {
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	err := builder.buildAllCSS(true)
+	err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true, BuildNormalCSS: true})
 	if err == nil {
 		t.Fatal("expected buildAll to fail for missing normal CSS entry")
 	}
-	if !strings.Contains(err.Error(), "normal CSS") {
+	if !strings.Contains(strings.ToLower(err.Error()), "normal css") {
 		t.Fatalf("unexpected normal buildAll error: %v", err)
 	}
 }
@@ -167,7 +167,7 @@ func TestBuildCriticalCSS_UnchangedInputDoesNotRewriteOutput(t *testing.T) {
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	if err := builder.buildCriticalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("initial buildCriticalCSS returned error: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func TestBuildCriticalCSS_UnchangedInputDoesNotRewriteOutput(t *testing.T) {
 
 	time.Sleep(20 * time.Millisecond)
 
-	if err := builder.buildCriticalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("second buildCriticalCSS returned error: %v", err)
 	}
 
@@ -221,7 +221,7 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	if err := builder.buildNormalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
 		t.Fatalf("initial buildNormalCSS returned error: %v", err)
 	}
 
@@ -246,7 +246,7 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 
 	time.Sleep(20 * time.Millisecond)
 
-	if err := builder.buildNormalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
 		t.Fatalf("second buildNormalCSS returned error: %v", err)
 	}
 
@@ -298,7 +298,7 @@ func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	if err := builder.buildNormalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
 		t.Fatalf("initial buildNormalCSS returned error: %v", err)
 	}
 
@@ -320,7 +320,7 @@ func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 		t.Fatalf("failed writing updated normal css entry file: %v", err)
 	}
 
-	if err := builder.buildNormalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
 		t.Fatalf("second buildNormalCSS returned error: %v", err)
 	}
 
@@ -379,21 +379,21 @@ func TestBuildCriticalCSS_EmptyEntryClearsTrackedImports(t *testing.T) {
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	if err := builder.buildCriticalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("initial buildCriticalCSS returned error: %v", err)
 	}
 
-	initialTrackedImportCount := builder.countTrackedCriticalCSSImportPaths()
+	initialTrackedImportCount := builder.cssProcessor.CountTrackedCriticalCSSImportPaths()
 	if initialTrackedImportCount == 0 {
 		t.Fatal("expected critical css imports to be tracked after build")
 	}
 
 	cfg.Core.CSSEntryFiles.Critical = ""
-	if err := builder.buildCriticalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("buildCriticalCSS with empty entry returned error: %v", err)
 	}
 
-	updatedTrackedImportCount := builder.countTrackedCriticalCSSImportPaths()
+	updatedTrackedImportCount := builder.cssProcessor.CountTrackedCriticalCSSImportPaths()
 	if updatedTrackedImportCount != 0 {
 		t.Fatalf(
 			"expected critical css imports to be cleared when entry is unset, got %d",
@@ -427,7 +427,7 @@ func TestReadCriticalCSSForHotReload_RequiresFreshOutputAfterFailedRebuild(
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	if err := builder.buildCriticalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("initial buildCriticalCSS returned error: %v", err)
 	}
 
@@ -446,7 +446,7 @@ func TestReadCriticalCSSForHotReload_RequiresFreshOutputAfterFailedRebuild(
 		"styles",
 		"missing-critical.css",
 	)
-	if err := builder.buildCriticalCSS(true); err == nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err == nil {
 		t.Fatal("expected buildCriticalCSS to fail when entry file is missing")
 	}
 
@@ -499,7 +499,7 @@ func TestReadNormalCSSURLForHotReload_RequiresFreshOutputAfterFailedRebuild(
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	if err := builder.buildNormalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
 		t.Fatalf("initial buildNormalCSS returned error: %v", err)
 	}
 
@@ -518,7 +518,7 @@ func TestReadNormalCSSURLForHotReload_RequiresFreshOutputAfterFailedRebuild(
 		"styles",
 		"missing-normal.css",
 	)
-	if err := builder.buildNormalCSS(true); err == nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err == nil {
 		t.Fatal("expected buildNormalCSS to fail when entry file is missing")
 	}
 
@@ -574,7 +574,7 @@ func TestReadNormalCSSURLForHotReload_NormalizesRefFilePath(t *testing.T) {
 		)
 	}
 
-	normalCSSURLViaWrapper, wrapperReadError := builder.readNormalCSSURL()
+	normalCSSURLViaWrapper, wrapperReadError := builder.ReadNormalCSSURLForHotReload(false)
 	if wrapperReadError != nil {
 		t.Fatalf("readNormalCSSURL returned error: %v", wrapperReadError)
 	}
@@ -632,7 +632,7 @@ func TestReadCriticalCSS_ReadsFromDist(t *testing.T) {
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	criticalCSS, readError := builder.readCriticalCSS()
+	criticalCSS, readError := builder.ReadCriticalCSSForHotReload(false)
 	if readError != nil {
 		t.Fatalf("readCriticalCSS returned error: %v", readError)
 	}
@@ -664,10 +664,10 @@ func TestCSSHotReloadCaches_DoNotLeakAcrossBuilderReplacement(t *testing.T) {
 	firstBuilder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer firstBuilder.Close()
 
-	if err := firstBuilder.buildCriticalCSS(true); err != nil {
+	if err := firstBuilder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("first builder buildCriticalCSS returned error: %v", err)
 	}
-	if err := firstBuilder.buildNormalCSS(true); err != nil {
+	if err := firstBuilder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err != nil {
 		t.Fatalf("first builder buildNormalCSS returned error: %v", err)
 	}
 
@@ -788,7 +788,7 @@ func TestIsCriticalCSSFile_RecognizesSymlinkAliasPath(t *testing.T) {
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	if err := builder.buildCriticalCSS(true); err != nil {
+	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("buildCriticalCSS returned error: %v", err)
 	}
 

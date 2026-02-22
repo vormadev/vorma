@@ -14,7 +14,6 @@ func TestContinuePipelineAfterHookStageOrTriggerRestart_UsesConfiguredFailurePol
 
 	t.Run("default fail-open continues on stage errors", func(t *testing.T) {
 		configuredFailurePolicy := hooks.DeriveHookStageFailurePolicy(
-			hooks.HookStageTypePre,
 			"",
 		)
 		continuationDecision := hooks.DeriveHookStageContinuationDecisionWithFailurePolicy(
@@ -34,7 +33,6 @@ func TestContinuePipelineAfterHookStageOrTriggerRestart_UsesConfiguredFailurePol
 
 	t.Run("configured fail-closed stops on stage errors", func(t *testing.T) {
 		configuredFailurePolicy := hooks.DeriveHookStageFailurePolicy(
-			hooks.HookStageTypeConcurrent,
 			"stop",
 		)
 		continuationDecision := hooks.DeriveHookStageContinuationDecisionWithFailurePolicy(

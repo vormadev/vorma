@@ -3,9 +3,6 @@ package wave
 import (
 	"strings"
 	"testing"
-
-	"github.com/vormadev/vorma/kit/bytesutil"
-	"github.com/vormadev/vorma/kit/cryptoutil"
 )
 
 func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
@@ -14,9 +11,6 @@ func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
 	wProd := newWaveForTest(t, fixture, false, nil)
 	if got := wProd.RefreshScript(); got != "" {
 		t.Fatalf("expected empty refresh script in non-dev mode, got %q", got)
-	}
-	if got := wProd.refreshScriptSha256Hash(); got != "" {
-		t.Fatalf("expected empty refresh script hash in non-dev mode, got %q", got)
 	}
 
 	wDev := newWaveForTest(t, fixture, true, nil)
@@ -30,11 +24,6 @@ func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
 	if !strings.Contains(script, "refreshWebSocketURL.port = String(10000);") {
 		t.Fatalf("expected default refresh port in script, got %q", script)
 	}
-
-	expectedHash := bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(refreshScriptInner(defaultRefreshPort))))
-	if got := wDev.refreshScriptSha256Hash(); got != expectedHash {
-		t.Fatalf("unexpected refresh script hash: got=%q want=%q", got, expectedHash)
-	}
 }
 
 func TestRefreshScriptUsesConfiguredRefreshServerPort(t *testing.T) {
@@ -46,11 +35,6 @@ func TestRefreshScriptUsesConfiguredRefreshServerPort(t *testing.T) {
 	if !strings.Contains(script, "refreshWebSocketURL.port = String(12345);") {
 		t.Fatalf("expected configured refresh port in script, got %q", script)
 	}
-
-	expectedHash := bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(refreshScriptInner(12345))))
-	if got := w.refreshScriptSha256Hash(); got != expectedHash {
-		t.Fatalf("unexpected refresh script hash for configured port: got=%q want=%q", got, expectedHash)
-	}
 }
 
 func TestRefreshScriptFallsBackToDefaultWhenRefreshPortIsInvalid(t *testing.T) {
@@ -61,13 +45,6 @@ func TestRefreshScriptFallsBackToDefaultWhenRefreshPortIsInvalid(t *testing.T) {
 	script := string(w.RefreshScript())
 	if !strings.Contains(script, "refreshWebSocketURL.port = String(10000);") {
 		t.Fatalf("expected default refresh port for invalid configured value, got %q", script)
-	}
-}
-
-func TestRefreshScriptInnerInterpolatesPort(t *testing.T) {
-	inner := refreshScriptInner(42424)
-	if !strings.Contains(inner, "refreshWebSocketURL.port = String(42424);") {
-		t.Fatalf("expected interpolated websocket URL in refresh script inner, got %q", inner)
 	}
 }
 

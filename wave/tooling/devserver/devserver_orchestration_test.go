@@ -24,7 +24,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
-	"github.com/vormadev/vorma/wave/internal/wavecore"
 	"github.com/vormadev/vorma/wave/tooling/builder"
 	"github.com/vormadev/vorma/wave/tooling/devserver/internal/eventpipeline"
 	"github.com/vormadev/vorma/wave/tooling/devserver/internal/restartengine"
@@ -257,7 +256,7 @@ func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(
 	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
 
-	occupiedListener, listenError := net.Listen("tcp", ":0")
+	occupiedListener, listenError := net.Listen("tcp", "127.0.0.1:0")
 	if listenError != nil {
 		t.Skipf(
 			"unable to reserve preferred port for fallback test: %v",
@@ -600,9 +599,6 @@ func newParsedConfigForRunloopOrchestrationTestsAtRoot(
 func mustConfigureAndGetWaveAppPortForRunloopTests(t *testing.T) int {
 	t.Helper()
 
-	wavecore.ResetDefaultResolverForTest()
-	t.Cleanup(wavecore.ResetDefaultResolverForTest)
-
 	listener, listenError := net.Listen("tcp", "127.0.0.1:0")
 	if listenError != nil {
 		t.Fatalf("failed to reserve app port for test: %v", listenError)
@@ -620,5 +616,5 @@ func mustConfigureAndGetWaveAppPortForRunloopTests(t *testing.T) int {
 	t.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
 	t.Setenv("PORT", strconv.Itoa(port))
 
-	return wave.MustGetPort()
+	return port
 }

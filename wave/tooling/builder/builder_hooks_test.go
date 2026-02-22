@@ -14,7 +14,7 @@ import (
 	"github.com/vormadev/vorma/kit/executil"
 )
 
-func TestRunHooks_DevRunsUserThenFramework(t *testing.T) {
+func TestRunBuildHooks_DevRunsUserThenFramework(t *testing.T) {
 	root := t.TempDir()
 	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
 
@@ -25,8 +25,8 @@ func TestRunHooks_DevRunsUserThenFramework(t *testing.T) {
 	builderForTest := NewBuilder(config, newDiscardLoggerForBuilderBasicTests())
 	defer builderForTest.Close()
 
-	if runHooksError := builderForTest.runHooks(true); runHooksError != nil {
-		t.Fatalf("runHooks(true) returned error: %v", runHooksError)
+	if runHooksError := builderForTest.runBuildHooks(true); runHooksError != nil {
+		t.Fatalf("runBuildHooks(true) returned error: %v", runHooksError)
 	}
 
 	content, readError := os.ReadFile(orderPath)
@@ -39,7 +39,7 @@ func TestRunHooks_DevRunsUserThenFramework(t *testing.T) {
 	}
 }
 
-func TestRunHooks_ProdUsesProdHooks(t *testing.T) {
+func TestRunBuildHooks_ProdUsesProdHooks(t *testing.T) {
 	root := t.TempDir()
 	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
 
@@ -50,8 +50,8 @@ func TestRunHooks_ProdUsesProdHooks(t *testing.T) {
 	builderForTest := NewBuilder(config, newDiscardLoggerForBuilderBasicTests())
 	defer builderForTest.Close()
 
-	if runHooksError := builderForTest.runHooks(false); runHooksError != nil {
-		t.Fatalf("runHooks(false) returned error: %v", runHooksError)
+	if runHooksError := builderForTest.runBuildHooks(false); runHooksError != nil {
+		t.Fatalf("runBuildHooks(false) returned error: %v", runHooksError)
 	}
 
 	content, readError := os.ReadFile(outPath)
@@ -64,7 +64,7 @@ func TestRunHooks_ProdUsesProdHooks(t *testing.T) {
 	}
 }
 
-func TestRunHooks_FailFastOnUserHookError(t *testing.T) {
+func TestRunBuildHooks_FailFastOnUserHookError(t *testing.T) {
 	root := t.TempDir()
 	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
 
@@ -75,7 +75,7 @@ func TestRunHooks_FailFastOnUserHookError(t *testing.T) {
 	builderForTest := NewBuilder(config, newDiscardLoggerForBuilderBasicTests())
 	defer builderForTest.Close()
 
-	runHooksError := builderForTest.runHooks(true)
+	runHooksError := builderForTest.runBuildHooks(true)
 	if runHooksError == nil {
 		t.Fatal("expected runHooks to fail on user hook error, got nil")
 	}
@@ -88,7 +88,7 @@ func TestRunHooks_FailFastOnUserHookError(t *testing.T) {
 	}
 }
 
-func TestRunHooks_ReportsFrameworkHookErrorAfterUserHookRuns(t *testing.T) {
+func TestRunBuildHooks_ReportsFrameworkHookErrorAfterUserHookRuns(t *testing.T) {
 	root := t.TempDir()
 	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
 
@@ -99,7 +99,7 @@ func TestRunHooks_ReportsFrameworkHookErrorAfterUserHookRuns(t *testing.T) {
 	builderForTest := NewBuilder(config, newDiscardLoggerForBuilderBasicTests())
 	defer builderForTest.Close()
 
-	runHooksError := builderForTest.runHooks(true)
+	runHooksError := builderForTest.runBuildHooks(true)
 	if runHooksError == nil {
 		t.Fatal("expected runHooks to fail on framework hook error, got nil")
 	}
@@ -116,7 +116,7 @@ func TestRunHooks_ReportsFrameworkHookErrorAfterUserHookRuns(t *testing.T) {
 	}
 }
 
-func TestRunHooks_UsesFrameworkBuildHookRunnerWhenConfigured(t *testing.T) {
+func TestRunBuildHooks_UsesFrameworkBuildHookRunnerWhenConfigured(t *testing.T) {
 	root := t.TempDir()
 	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
 
@@ -151,8 +151,8 @@ func TestRunHooks_UsesFrameworkBuildHookRunnerWhenConfigured(t *testing.T) {
 	builderForTest := NewBuilder(config, newDiscardLoggerForBuilderBasicTests())
 	defer builderForTest.Close()
 
-	if runHooksError := builderForTest.runHooks(true); runHooksError != nil {
-		t.Fatalf("runHooks(true) returned error: %v", runHooksError)
+	if runHooksError := builderForTest.runBuildHooks(true); runHooksError != nil {
+		t.Fatalf("runBuildHooks(true) returned error: %v", runHooksError)
 	}
 	if !frameworkRunnerCalled {
 		t.Fatal("expected configured framework build hook runner to be called")
@@ -167,7 +167,7 @@ func TestRunHooks_UsesFrameworkBuildHookRunnerWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestRunHooks_DevHookTimeoutStopsUserHookQuickly(t *testing.T) {
+func TestRunBuildHooks_DevHookTimeoutStopsUserHookQuickly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command assertion is Unix-oriented")
 	}
@@ -184,10 +184,10 @@ func TestRunHooks_DevHookTimeoutStopsUserHookQuickly(t *testing.T) {
 	defer builderForTest.Close()
 
 	hookStartTime := time.Now()
-	runHooksError := builderForTest.runHooks(true)
+	runHooksError := builderForTest.runBuildHooks(true)
 	hookElapsedTime := time.Since(hookStartTime)
 	if runHooksError == nil {
-		t.Fatal("expected runHooks(true) to fail when dev hook times out")
+		t.Fatal("expected runBuildHooks(true) to fail when dev hook times out")
 	}
 	if !errors.Is(runHooksError, executil.ErrCommandExecutionTimedOut) {
 		t.Fatalf("expected timed-out command classification, got %v", runHooksError)
@@ -203,7 +203,7 @@ func TestRunHooks_DevHookTimeoutStopsUserHookQuickly(t *testing.T) {
 	}
 }
 
-func TestRunHooks_ProdHookTimeoutStopsFrameworkHookQuickly(t *testing.T) {
+func TestRunBuildHooks_ProdHookTimeoutStopsFrameworkHookQuickly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command assertion is Unix-oriented")
 	}
@@ -220,10 +220,10 @@ func TestRunHooks_ProdHookTimeoutStopsFrameworkHookQuickly(t *testing.T) {
 	defer builderForTest.Close()
 
 	hookStartTime := time.Now()
-	runHooksError := builderForTest.runHooks(false)
+	runHooksError := builderForTest.runBuildHooks(false)
 	hookElapsedTime := time.Since(hookStartTime)
 	if runHooksError == nil {
-		t.Fatal("expected runHooks(false) to fail when prod framework hook times out")
+		t.Fatal("expected runBuildHooks(false) to fail when prod framework hook times out")
 	}
 	if !errors.Is(runHooksError, executil.ErrCommandExecutionTimedOut) {
 		t.Fatalf("expected timed-out command classification, got %v", runHooksError)

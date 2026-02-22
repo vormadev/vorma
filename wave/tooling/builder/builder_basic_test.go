@@ -156,59 +156,9 @@ func TestBuilderClose_ReturnsNil(t *testing.T) {
 	}
 }
 
-func TestBuildGoBuildCommand_DevBuildOmitsProdTags(t *testing.T) {
-	command := buildGoBuildCommand(
-		"dist/main",
-		"./cmd/serve",
-		true,
-		"",
-	)
-
-	for _, commandArgument := range command.Args {
-		if strings.HasPrefix(commandArgument, "-tags=") {
-			t.Fatalf(
-				"expected dev build command to omit tags, got args %#v",
-				command.Args,
-			)
-		}
-	}
-}
-
-func TestBuildGoBuildCommand_ProdBuildUsesEmbeddedDistStaticByDefault(
+func TestResolveGoBuildEntryPath_PrefixesRelativeExistingDirectoryWithDotSlash(
 	t *testing.T,
 ) {
-	command := buildGoBuildCommand(
-		"dist/main",
-		"./cmd/serve",
-		false,
-		"",
-	)
-
-	if !containsCommandArgument(command.Args, "-tags=prod") {
-		t.Fatalf(
-			"expected prod build tags to be -tags=prod, got args %#v",
-			command.Args,
-		)
-	}
-}
-
-func TestBuildGoBuildCommand_IncludesOverlayArgumentWhenProvided(t *testing.T) {
-	command := buildGoBuildCommand(
-		"dist/main",
-		"./cmd/serve",
-		true,
-		"/tmp/vorma-overlay.json",
-	)
-
-	if !containsCommandArgument(
-		command.Args,
-		"-overlay=/tmp/vorma-overlay.json",
-	) {
-		t.Fatalf("expected overlay argument, got args %#v", command.Args)
-	}
-}
-
-func TestBuildGoBuildCommand_PrefixesRelativeExistingDirectoryWithDotSlash(t *testing.T) {
 	originalWorkingDirectory, getWorkingDirectoryError := os.Getwd()
 	if getWorkingDirectoryError != nil {
 		t.Fatalf("resolve working directory: %v", getWorkingDirectoryError)
@@ -229,14 +179,7 @@ func TestBuildGoBuildCommand_PrefixesRelativeExistingDirectoryWithDotSlash(t *te
 		_ = os.Chdir(originalWorkingDirectory)
 	})
 
-	command := buildGoBuildCommand(
-		"dist/main",
-		"backend/cmd/check",
-		true,
-		"",
-	)
-
-	resolvedEntryPath := command.Args[len(command.Args)-1]
+	resolvedEntryPath := resolveGoBuildEntryPath("backend/cmd/check")
 	if resolvedEntryPath != "./backend/cmd/check" {
 		t.Fatalf("resolved go build entry path = %q, expected %q", resolvedEntryPath, "./backend/cmd/check")
 	}
@@ -326,10 +269,12 @@ func TestBuilderIsCSSFile_ReturnsTrueForTrackedCriticalAndNormalImports(
 		normalAbsolutePath = resolvedNormalPath
 	}
 
-	builderForTest.setTrackedCriticalCSSImportPaths(
+	builderForTest.cssProcessor.SetTrackedCriticalCSSImportPaths(
 		[]string{criticalAbsolutePath},
 	)
-	builderForTest.setTrackedNormalCSSImportPaths([]string{normalAbsolutePath})
+	builderForTest.cssProcessor.SetTrackedNormalCSSImportPaths(
+		[]string{normalAbsolutePath},
+	)
 
 	if !builderForTest.IsCriticalCSSFile(criticalPath) ||
 		!builderForTest.isCSSFile(criticalPath) {
@@ -357,11 +302,11 @@ func TestBuilderListTrackedCriticalCSSImportPaths_ReturnsSortedPaths(t *testing.
 
 	firstPath := filepath.Join(t.TempDir(), "b.css")
 	secondPath := filepath.Join(t.TempDir(), "a.css")
-	builderForTest.setTrackedCriticalCSSImportPaths(
+	builderForTest.cssProcessor.SetTrackedCriticalCSSImportPaths(
 		[]string{firstPath, secondPath},
 	)
 
-	importPaths := builderForTest.listTrackedCriticalCSSImportPaths()
+	importPaths := builderForTest.cssProcessor.ListTrackedCriticalCSSImportPaths()
 	if len(importPaths) != 2 {
 		t.Fatalf("expected 2 tracked imports, got %d", len(importPaths))
 	}
@@ -370,7 +315,7 @@ func TestBuilderListTrackedCriticalCSSImportPaths_ReturnsSortedPaths(t *testing.
 	}
 }
 
-func TestBuilderCompileGoOnly_PropagatesCompilationError(t *testing.T) {
+func TestBuilderCompileGo_PropagatesCompilationError(t *testing.T) {
 	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
 	config.Core.ServerOnlyMode = true
 	config.Core.MainAppEntry = "this/package/does/not/exist"
@@ -382,16 +327,16 @@ func TestBuilderCompileGoOnly_PropagatesCompilationError(t *testing.T) {
 	)
 	defer builderForTest.Close()
 
-	compileError := builderForTest.compileGoOnly(true)
+	compileError := builderForTest.CompileGo()
 	if compileError == nil {
-		t.Fatal("expected compileGoOnly to fail for missing package")
+		t.Fatal("expected CompileGo to fail for missing package")
 	}
-	if !strings.Contains(compileError.Error(), "go build") {
+	if !strings.Contains(compileError.Error(), "compile go binary") {
 		t.Fatalf("unexpected compile error: %v", compileError)
 	}
 }
 
-func TestBuilderCompileGoOnly_UsesFrameworkOverlayPreparationAndCleanup(
+func TestBuilderCompileGo_UsesFrameworkOverlayPreparationAndCleanup(
 	t *testing.T,
 ) {
 	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
@@ -427,9 +372,9 @@ func TestBuilderCompileGoOnly_UsesFrameworkOverlayPreparationAndCleanup(
 	)
 	defer builderForTest.Close()
 
-	compileError := builderForTest.compileGoOnly(true)
+	compileError := builderForTest.CompileGo()
 	if compileError == nil {
-		t.Fatal("expected compileGoOnly to fail for missing package")
+		t.Fatal("expected CompileGo to fail for missing package")
 	}
 	if !prepareOverlayCalled {
 		t.Fatal("expected framework go-build overlay preparation to run")
@@ -481,17 +426,4 @@ func TestBuilderNewViteDevContext_WithViteEnabledReturnsContext(t *testing.T) {
 	}
 
 	viteContext.Cleanup()
-}
-
-func containsCommandArgument(
-	commandArguments []string,
-	expectedArgument string,
-) bool {
-	for _, commandArgument := range commandArguments {
-		if commandArgument == expectedArgument {
-			return true
-		}
-	}
-
-	return false
 }

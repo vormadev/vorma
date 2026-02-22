@@ -3,7 +3,9 @@ package shared_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/vormadev/vorma/wave/tooling/internal/shared"
@@ -109,5 +111,57 @@ func TestWriteAndCopyFileAtomically(t *testing.T) {
 	}
 	if string(copyBytes) != string(content) {
 		t.Fatalf("copied file content = %q, want %q", string(copyBytes), string(content))
+	}
+}
+
+func TestWriteFileAtomically_ConcurrentWritersLeaveNoTemporaryArtifacts(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	destinationPath := filepath.Join(root, "out", "payload.txt")
+
+	var waitGroup sync.WaitGroup
+	writeErrors := make(chan error, 64)
+	for writerIndex := 0; writerIndex < 32; writerIndex++ {
+		waitGroup.Add(1)
+		go func(index int) {
+			defer waitGroup.Done()
+			content := []byte("writer-" + strconv.Itoa(index))
+			if writeError := shared.WriteFileAtomically(
+				destinationPath,
+				content,
+				0o644,
+			); writeError != nil {
+				writeErrors <- writeError
+			}
+		}(writerIndex)
+	}
+	waitGroup.Wait()
+	close(writeErrors)
+
+	for writeError := range writeErrors {
+		t.Fatalf("WriteFileAtomically returned error under concurrency: %v", writeError)
+	}
+
+	destinationBytes, readError := os.ReadFile(destinationPath)
+	if readError != nil {
+		t.Fatalf("read destination file: %v", readError)
+	}
+	if !strings.HasPrefix(string(destinationBytes), "writer-") {
+		t.Fatalf(
+			"expected last-writer-wins content format, got %q",
+			string(destinationBytes),
+		)
+	}
+
+	temporaryArtifacts, globError := filepath.Glob(destinationPath + ".tmp-*")
+	if globError != nil {
+		t.Fatalf("glob temporary artifacts: %v", globError)
+	}
+	if len(temporaryArtifacts) != 0 {
+		t.Fatalf(
+			"expected no temporary artifacts after concurrent writes, found %#v",
+			temporaryArtifacts,
+		)
 	}
 }

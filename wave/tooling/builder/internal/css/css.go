@@ -632,10 +632,10 @@ func shouldSkipPublicURLResolution(cssPath string) bool {
 	if trimmedPath == "" {
 		return true
 	}
-	if strings.HasPrefix(trimmedPath, "/") {
+	if strings.HasPrefix(trimmedPath, "//") {
 		return true
 	}
-	if strings.HasPrefix(trimmedPath, "//") {
+	if strings.HasPrefix(trimmedPath, "/") {
 		return true
 	}
 	if strings.HasPrefix(trimmedPath, "http://") {

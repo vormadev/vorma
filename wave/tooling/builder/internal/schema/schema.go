@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -171,7 +170,7 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 				"Shell command to execute for this hook.",
 			),
 			"Timing": stringSchema(
-				"Hook stage name: pre, concurrent, concurrent_no_wait, or post.",
+				"Hook stage name: pre, concurrent, concurrent-no-wait, or post.",
 			),
 			"RunCombinedDevBuildHookCommands": boolSchema(
 				"When true, explicit command is combined with configured dev build hooks.",
@@ -240,6 +239,42 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 			"HookStageFailurePolicy": stringSchema(
 				"Pipeline policy when hook stages report execution errors.",
 			),
+			"HookCommandTimeouts": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"PreCommandTimeoutMilliseconds": numberSchema(
+						"Default timeout for pre-stage hook commands in milliseconds.",
+					),
+					"ConcurrentCommandTimeoutMilliseconds": numberSchema(
+						"Default timeout for concurrent-stage hook commands in milliseconds.",
+					),
+					"ConcurrentNoWaitCommandTimeoutMilliseconds": numberSchema(
+						"Default timeout for concurrent-no-wait-stage hook commands in milliseconds.",
+					),
+					"PostCommandTimeoutMilliseconds": numberSchema(
+						"Default timeout for post-stage hook commands in milliseconds.",
+					),
+				},
+			},
+			"HookCallbackTimeouts": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"PreCallbackTimeoutMilliseconds": numberSchema(
+						"Default timeout for pre-stage hook callbacks in milliseconds.",
+					),
+					"ConcurrentCallbackTimeoutMilliseconds": numberSchema(
+						"Default timeout for concurrent-stage hook callbacks in milliseconds.",
+					),
+					"ConcurrentNoWaitCallbackTimeoutMilliseconds": numberSchema(
+						"Default timeout for concurrent-no-wait-stage hook callbacks in milliseconds.",
+					),
+					"PostCallbackTimeoutMilliseconds": numberSchema(
+						"Default timeout for post-stage hook callbacks in milliseconds.",
+					),
+				},
+			},
 			"Include": map[string]any{
 				"type":  "array",
 				"items": watchedFileSchema,
@@ -337,20 +372,4 @@ func arrayOfStringsSchema(description string) map[string]any {
 		"items":       map[string]any{"type": "string"},
 		"description": strings.TrimSpace(description),
 	}
-}
-
-// EnsureSchemaDirectoryExists ensures schema output directory exists.
-func EnsureSchemaDirectoryExists(cfg *wave.ParsedConfig) error {
-	if cfg == nil {
-		return errors.New("config is nil")
-	}
-	targetDirectory := cfg.Dist.Internal()
-	if mkdirError := os.MkdirAll(targetDirectory, 0o755); mkdirError != nil {
-		return fmt.Errorf(
-			"create schema output directory %q: %w",
-			targetDirectory,
-			mkdirError,
-		)
-	}
-	return nil
 }

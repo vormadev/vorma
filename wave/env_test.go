@@ -14,8 +14,8 @@ func stubGetFreePortForTest(
 ) {
 	t.Helper()
 
-	restore := wavecore.SetGetFreePortForTest(getFreePortFunc)
-	t.Cleanup(restore)
+	defaultPortResolver = wavecore.NewResolverWithFreePortResolver(getFreePortFunc)
+	t.Cleanup(resetPortCacheForTest)
 }
 
 func TestGetIsDevAndSetModeToDev(t *testing.T) {
@@ -32,27 +32,27 @@ func TestGetIsDevAndSetModeToDev(t *testing.T) {
 
 func TestEnvPort(t *testing.T) {
 	t.Setenv(envPort, "")
-	if got := parseEnvPort(); got != 0 {
+	if got := wavecore.ParseEnvPort(); got != 0 {
 		t.Fatalf("expected empty PORT to return 0, got %d", got)
 	}
 
 	t.Setenv(envPort, "4242")
-	if got := parseEnvPort(); got != 4242 {
+	if got := wavecore.ParseEnvPort(); got != 4242 {
 		t.Fatalf("expected PORT=4242 to parse to 4242, got %d", got)
 	}
 
 	t.Setenv(envPort, "not-a-number")
-	if got := parseEnvPort(); got != 0 {
+	if got := wavecore.ParseEnvPort(); got != 0 {
 		t.Fatalf("expected invalid PORT to return 0, got %d", got)
 	}
 
 	t.Setenv(envPort, "-1")
-	if got := parseEnvPort(); got != 0 {
+	if got := wavecore.ParseEnvPort(); got != 0 {
 		t.Fatalf("expected negative PORT to return 0, got %d", got)
 	}
 
 	t.Setenv(envPort, "70000")
-	if got := parseEnvPort(); got != 0 {
+	if got := wavecore.ParseEnvPort(); got != 0 {
 		t.Fatalf("expected out-of-range PORT to return 0, got %d", got)
 	}
 }
@@ -116,7 +116,7 @@ func TestMustGetPortDevChoosesPortAndMarksSet(t *testing.T) {
 	if got != 32124 {
 		t.Fatalf("expected deterministic free-port result 32124, got %d", got)
 	}
-	if env := parseEnvPort(); env != got {
+	if env := wavecore.ParseEnvPort(); env != got {
 		t.Fatalf(
 			"expected PORT env to match returned port (%d), got %d",
 			got,
@@ -148,7 +148,7 @@ func TestMustGetPortDevUsesFallbackBasePortWhenPortMissing(t *testing.T) {
 	if got != 38080 {
 		t.Fatalf("expected fallback free-port result 38080, got %d", got)
 	}
-	if env := parseEnvPort(); env != got {
+	if env := wavecore.ParseEnvPort(); env != got {
 		t.Fatalf(
 			"expected PORT env to match returned port (%d), got %d",
 			got,

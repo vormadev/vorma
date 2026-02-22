@@ -183,6 +183,57 @@ func TestProcessor_BuildCriticalAndNormalCSS(t *testing.T) {
 	}
 }
 
+func TestProcessor_BuildCriticalCSSOnly_LeavesProtocolRelativeURLsUntouched(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
+	cfg.Core.PublicPathPrefix = "/assets"
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical: filepath.Join(root, "src", "critical.css"),
+	}
+
+	if mkdirError := os.MkdirAll(filepath.Join(root, "src"), 0o755); mkdirError != nil {
+		t.Fatalf("mkdir src dir: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(
+		cfg.Core.CSSEntryFiles.Critical,
+		[]byte(`body { background-image: url("//cdn.example.com/logo.png"); }`),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write critical entry: %v", writeError)
+	}
+
+	processor := css.NewProcessor(
+		cfg,
+		nil,
+		func(originalPath string) (string, bool, error) {
+			return "/assets/should-not-be-used.png", true, nil
+		},
+	)
+
+	if buildError := processor.BuildCriticalCSSOnly(); buildError != nil {
+		t.Fatalf("BuildCriticalCSSOnly returned error: %v", buildError)
+	}
+
+	criticalCSS, hasCriticalCSS := processor.CriticalCSS()
+	if !hasCriticalCSS {
+		t.Fatal("expected critical CSS cache to be populated")
+	}
+	if !strings.Contains(criticalCSS, `url(//cdn.example.com/logo.png)`) {
+		t.Fatalf(
+			"expected protocol-relative URL to remain unchanged, got %q",
+			criticalCSS,
+		)
+	}
+	if strings.Contains(criticalCSS, "/assets/should-not-be-used.png") {
+		t.Fatalf(
+			"expected protocol-relative URL to skip resolver callback, got %q",
+			criticalCSS,
+		)
+	}
+}
+
 func TestProcessor_IsCSSFileAndImportTracking(t *testing.T) {
 	root := t.TempDir()
 	criticalPath := filepath.Join(root, "src", "critical.css")

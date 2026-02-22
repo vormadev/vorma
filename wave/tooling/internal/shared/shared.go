@@ -454,12 +454,33 @@ func WriteFileAtomically(path string, content []byte, mode fs.FileMode) error {
 		return ensureDirectoryError
 	}
 
-	tempPath := path + ".tmp"
-	if writeError := os.WriteFile(tempPath, content, mode); writeError != nil {
+	tempFile, createTempError := os.CreateTemp(
+		filepath.Dir(path),
+		filepath.Base(path)+".tmp-*",
+	)
+	if createTempError != nil {
+		return fmt.Errorf("create temporary file for %q: %w", path, createTempError)
+	}
+	tempPath := tempFile.Name()
+	cleanupTempFilePath := true
+	defer func() {
+		if cleanupTempFilePath {
+			_ = os.Remove(tempPath)
+		}
+	}()
+
+	if _, writeError := tempFile.Write(content); writeError != nil {
+		_ = tempFile.Close()
 		return fmt.Errorf("write temporary file %q: %w", tempPath, writeError)
 	}
+	if chmodError := tempFile.Chmod(mode); chmodError != nil {
+		_ = tempFile.Close()
+		return fmt.Errorf("chmod temporary file %q: %w", tempPath, chmodError)
+	}
+	if closeError := tempFile.Close(); closeError != nil {
+		return fmt.Errorf("close temporary file %q: %w", tempPath, closeError)
+	}
 	if renameError := os.Rename(tempPath, path); renameError != nil {
-		_ = os.Remove(tempPath)
 		return fmt.Errorf(
 			"rename temporary file %q to %q: %w",
 			tempPath,
@@ -467,6 +488,7 @@ func WriteFileAtomically(path string, content []byte, mode fs.FileMode) error {
 			renameError,
 		)
 	}
+	cleanupTempFilePath = false
 	return nil
 }
 

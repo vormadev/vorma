@@ -777,10 +777,8 @@ func DeriveHookStageContinuationDecisionWithFailurePolicy(
 
 // DeriveHookStageFailurePolicy resolves stage failure policy from config value.
 func DeriveHookStageFailurePolicy(
-	stageType HookStageType,
 	configuredValue string,
 ) HookStageFailurePolicy {
-	_ = stageType
 	return DeriveHookStageFailurePolicyFromConfiguredValue(configuredValue)
 }
 

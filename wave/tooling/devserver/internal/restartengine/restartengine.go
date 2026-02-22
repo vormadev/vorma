@@ -226,10 +226,6 @@ const (
 type RunBuildExecutionOrderingDecision struct {
 	ShouldCompileGo bool
 	OrderingPolicy  GoCompilationOrderingPolicy
-
-	GoCompilationOrderingPolicy GoCompilationOrderingPolicy
-	RunCompileInParallel        bool
-	RunCompileAfterBuildHooks   bool
 }
 
 // DeriveRunBuildExecutionOrderingDecision derives build ordering from intent/config.
@@ -239,29 +235,20 @@ func DeriveRunBuildExecutionOrderingDecision(
 ) RunBuildExecutionOrderingDecision {
 	if !shouldRecompileGo {
 		return RunBuildExecutionOrderingDecision{
-			ShouldCompileGo:             false,
-			OrderingPolicy:              GoCompilationOrderingPolicyNotRequested,
-			GoCompilationOrderingPolicy: GoCompilationOrderingPolicyNotRequested,
-			RunCompileInParallel:        false,
-			RunCompileAfterBuildHooks:   false,
+			ShouldCompileGo: false,
+			OrderingPolicy:  GoCompilationOrderingPolicyNotRequested,
 		}
 	}
 
 	if sequentialGoBuild {
 		return RunBuildExecutionOrderingDecision{
-			ShouldCompileGo:             true,
-			OrderingPolicy:              GoCompilationOrderingPolicyAfterBuildHooks,
-			GoCompilationOrderingPolicy: GoCompilationOrderingPolicyAfterBuildHooks,
-			RunCompileInParallel:        false,
-			RunCompileAfterBuildHooks:   true,
+			ShouldCompileGo: true,
+			OrderingPolicy:  GoCompilationOrderingPolicyAfterBuildHooks,
 		}
 	}
 	return RunBuildExecutionOrderingDecision{
-		ShouldCompileGo:             true,
-		OrderingPolicy:              GoCompilationOrderingPolicyConcurrentWithBuildHooks,
-		GoCompilationOrderingPolicy: GoCompilationOrderingPolicyConcurrentWithBuildHooks,
-		RunCompileInParallel:        true,
-		RunCompileAfterBuildHooks:   false,
+		ShouldCompileGo: true,
+		OrderingPolicy:  GoCompilationOrderingPolicyConcurrentWithBuildHooks,
 	}
 }
 

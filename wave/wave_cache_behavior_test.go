@@ -213,26 +213,21 @@ func TestCriticalCSSCachingDiffersByMode(t *testing.T) {
 		)
 
 		firstCSS := string(w.CriticalCSS())
-		firstHash := w.criticalCSSStyleElementSha256Hash()
-		if firstCSS != "body{color:red;}" || firstHash == "" {
+		if firstCSS != "body{color:red;}" {
 			t.Fatalf(
-				"unexpected initial critical CSS state: css=%q hash=%q",
+				"unexpected initial critical CSS state: css=%q",
 				firstCSS,
-				firstHash,
 			)
 		}
 
 		mustWriteFile(t, fixture.cfg.Dist.CriticalCSS(), "body{color:green;}")
 
 		secondCSS := string(w.CriticalCSS())
-		secondHash := w.criticalCSSStyleElementSha256Hash()
-		if secondCSS != firstCSS || secondHash != firstHash {
+		if secondCSS != firstCSS {
 			t.Fatalf(
-				"expected production mode to keep cached critical CSS, got css %q -> %q and hash %q -> %q",
+				"expected production mode to keep cached critical CSS, got css %q -> %q",
 				firstCSS,
 				secondCSS,
-				firstHash,
-				secondHash,
 			)
 		}
 	})
@@ -242,29 +237,20 @@ func TestCriticalCSSCachingDiffersByMode(t *testing.T) {
 		w := newWaveForTest(t, fixture, true, nil)
 
 		firstCSS := string(w.CriticalCSS())
-		firstHash := w.criticalCSSStyleElementSha256Hash()
-		if firstCSS != "body{color:red;}" || firstHash == "" {
+		if firstCSS != "body{color:red;}" {
 			t.Fatalf(
-				"unexpected initial critical CSS state: css=%q hash=%q",
+				"unexpected initial critical CSS state: css=%q",
 				firstCSS,
-				firstHash,
 			)
 		}
 
 		mustWriteFile(t, fixture.cfg.Dist.CriticalCSS(), "body{color:green;}")
 
 		secondCSS := string(w.CriticalCSS())
-		secondHash := w.criticalCSSStyleElementSha256Hash()
 		if secondCSS != "body{color:green;}" {
 			t.Fatalf(
 				"expected development mode to recompute critical CSS, got %q",
 				secondCSS,
-			)
-		}
-		if secondHash == firstHash {
-			t.Fatalf(
-				"expected development mode to recompute critical CSS hash, hash remained %q",
-				secondHash,
 			)
 		}
 	})

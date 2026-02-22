@@ -40,28 +40,36 @@ type Resolver struct {
 	resolvedPort    int
 	isDevMode       bool
 	hasModeSnapshot bool
+	getFreePort     func(int) (int, error)
 }
 
 // NewResolver constructs a resolver that reads mode dynamically from env.
-func NewResolver() *Resolver { return &Resolver{} }
+func NewResolver() *Resolver {
+	return &Resolver{
+		getFreePort: netutil.GetFreePort,
+	}
+}
 
 // NewResolverForMode constructs a resolver pinned to an explicit mode snapshot.
 func NewResolverForMode(isDev bool) *Resolver {
 	return &Resolver{
 		isDevMode:       isDev,
 		hasModeSnapshot: true,
+		getFreePort:     netutil.GetFreePort,
 	}
 }
 
-var defaultResolver = NewResolver()
-var getFreePort = netutil.GetFreePort
-
-// GetDefaultResolver returns the process-wide shared port resolver.
-func GetDefaultResolver() *Resolver {
-	if defaultResolver == nil {
-		defaultResolver = NewResolver()
+// NewResolverWithFreePortResolver constructs a resolver with one injected free-port
+// lookup function. This is primarily used when callers need deterministic behavior.
+func NewResolverWithFreePortResolver(
+	getFreePort func(int) (int, error),
+) *Resolver {
+	if getFreePort == nil {
+		getFreePort = netutil.GetFreePort
 	}
-	return defaultResolver
+	return &Resolver{
+		getFreePort: getFreePort,
+	}
 }
 
 // MustGetPort returns the runtime port.
@@ -70,12 +78,13 @@ func GetDefaultResolver() *Resolver {
 // It panics in non-dev mode when PORT is missing or invalid.
 func (resolver *Resolver) MustGetPort() int {
 	if resolver == nil {
-		return GetDefaultResolver().MustGetPort()
+		return NewResolver().MustGetPort()
 	}
 
 	resolver.resolvePortOnce.Do(func() {
 		resolver.resolvedPort = resolvePortFromEnvironment(
 			resolver.isDevModeForResolution(),
+			resolver.getFreePort,
 		)
 	})
 
@@ -114,21 +123,6 @@ func GetIsDev() bool {
 // SetModeToDev marks EnvMode as development.
 func SetModeToDev() {
 	os.Setenv(EnvMode, EnvModeDev)
-}
-
-// ResetDefaultResolverForTest resets the shared resolver to a fresh instance.
-func ResetDefaultResolverForTest() {
-	defaultResolver = NewResolver()
-}
-
-// SetGetFreePortForTest replaces the free-port resolver hook and returns a
-// restore function.
-func SetGetFreePortForTest(getFreePortFunc func(int) (int, error)) func() {
-	previousGetFreePort := getFreePort
-	getFreePort = getFreePortFunc
-	return func() {
-		getFreePort = previousGetFreePort
-	}
 }
 
 // TrimAndCleanPath trims surrounding whitespace and applies filepath.Clean.
@@ -241,7 +235,14 @@ func ResolveFromReferencedPath(
 // In dev mode, empty PORT uses framework default base-port selection.
 // It panics in dev mode when PORT is invalid or a free port cannot be resolved.
 // It panics in non-dev mode when PORT is missing or invalid.
-func resolvePortFromEnvironment(isDevMode bool) int {
+func resolvePortFromEnvironment(
+	isDevMode bool,
+	getFreePort func(int) (int, error),
+) int {
+	if getFreePort == nil {
+		getFreePort = netutil.GetFreePort
+	}
+
 	if !isDevMode || os.Getenv(EnvPortSet) == "true" {
 		port := ParseEnvPort()
 		if port <= 0 {

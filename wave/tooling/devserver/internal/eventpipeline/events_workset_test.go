@@ -222,12 +222,6 @@ func TestReduceRefreshActionsInStableOrder(t *testing.T) {
 		if reductionDecision.ApplicationResult.RestartRequested {
 			t.Fatal("expected restartRequested=false")
 		}
-		if reductionDecision.RestartActionEncountered {
-			t.Fatal("expected restartActionEncountered=false")
-		}
-		if reductionDecision.RestartActionIndex != -1 {
-			t.Fatalf("expected restartActionIndex=-1, got %d", reductionDecision.RestartActionIndex)
-		}
 		applied := reductionDecision.ActionsBeforeRestart
 		if len(applied) != len(input) {
 			t.Fatalf("actionsBeforeRestart count=%d, want %d", len(applied), len(input))
@@ -254,12 +248,6 @@ func TestReduceRefreshActionsInStableOrder(t *testing.T) {
 		if reductionDecision.ApplicationResult.RecompileGo {
 			t.Fatal("expected first restart action to determine recompileGo=false")
 		}
-		if !reductionDecision.RestartActionEncountered {
-			t.Fatal("expected restartActionEncountered=true")
-		}
-		if reductionDecision.RestartActionIndex != 1 {
-			t.Fatalf("expected restartActionIndex=1, got %d", reductionDecision.RestartActionIndex)
-		}
 		applied := reductionDecision.ActionsBeforeRestart
 		if len(applied) != 1 {
 			t.Fatalf("actionsBeforeRestart count=%d, want 1", len(applied))
@@ -274,12 +262,6 @@ func TestReduceRefreshActionsInStableOrder(t *testing.T) {
 			{TriggerRestart: true, RecompileGo: true},
 			{ReloadBrowser: true},
 		})
-		if !reductionDecision.RestartActionEncountered {
-			t.Fatal("expected restartActionEncountered=true")
-		}
-		if reductionDecision.RestartActionIndex != 0 {
-			t.Fatalf("expected restartActionIndex=0, got %d", reductionDecision.RestartActionIndex)
-		}
 		if !reductionDecision.ApplicationResult.RestartRequested {
 			t.Fatal("expected restartRequested=true")
 		}

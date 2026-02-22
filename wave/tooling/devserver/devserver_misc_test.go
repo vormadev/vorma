@@ -174,3 +174,22 @@ func TestServerPortUsesOwnedResolverState(t *testing.T) {
 		)
 	}
 }
+
+func TestServerMustGetPort_PropagatesResolutionPanics(t *testing.T) {
+	t.Setenv("__WAVE_MODE", "production")
+	t.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
+	t.Setenv("PORT", "not-a-number")
+
+	s := &Server{
+		Log:          newDiscardLogger(),
+		PortResolver: wavecore.NewResolver(),
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected MustGetPort to panic for invalid PORT")
+		}
+	}()
+
+	_ = s.MustGetPort()
+}

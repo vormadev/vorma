@@ -122,7 +122,15 @@ func setWaveDevModeForTest(t *testing.T, isDev bool) {
 }
 
 func resetPortCacheForTest() {
-	wavecore.ResetDefaultResolverForTest()
+	defaultPortResolver = wavecore.NewResolver()
+}
+
+func readFileMapDetailsFromCacheForTest(w *Wave) *fileMapDetails {
+	if w == nil || w.fileMapDetails == nil {
+		return nil
+	}
+	fileMapDetails, _ := w.fileMapDetails.get()
+	return fileMapDetails
 }
 
 func mustReadFileFromFS(t *testing.T, filesystem fs.FS, filePath string) string {

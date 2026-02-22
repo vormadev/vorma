@@ -798,13 +798,11 @@ func TestDeriveHookStageFailurePolicy_FromConfiguredValue(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			hookStageFailurePolicyForStage := hooks.DeriveHookStageFailurePolicy(
-				testCase.StageType,
 				testCase.ConfiguredHookStageFailurePolicy,
 			)
 			if hookStageFailurePolicyForStage != testCase.ExpectedHookStageFailurePolicy {
 				t.Fatalf(
-					"hooks.DeriveHookStageFailurePolicy(%v, %q)=%v, want %v",
-					testCase.StageType,
+					"hooks.DeriveHookStageFailurePolicy(%q)=%v, want %v",
 					testCase.ConfiguredHookStageFailurePolicy,
 					hookStageFailurePolicyForStage,
 					testCase.ExpectedHookStageFailurePolicy,

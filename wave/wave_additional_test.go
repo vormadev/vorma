@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -60,9 +59,12 @@ func TestMustGetHelpersSucceedWithValidSetup(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	publicFS := w.mustPublicFS()
+	publicFS, publicFSError := w.getPublicFS()
+	if publicFSError != nil {
+		t.Fatalf("unexpected getPublicFS error: %v", publicFSError)
+	}
 	if got := mustReadFileFromFS(t, publicFS, "logo.txt"); got != "logo" {
-		t.Fatalf("unexpected public FS content from mustPublicFS: %q", got)
+		t.Fatalf("unexpected public FS content from getPublicFS: %q", got)
 	}
 
 	privateFS := w.MustPrivateFS()
@@ -70,13 +72,16 @@ func TestMustGetHelpersSucceedWithValidSetup(t *testing.T) {
 		t.Fatalf("unexpected private FS content from MustPrivateFS: %q", got)
 	}
 
-	handler := w.mustStaticHandler(false)
+	handler, handlerError := w.staticHandler(false)
+	if handlerError != nil {
+		t.Fatalf("unexpected staticHandler error: %v", handlerError)
+	}
 	req := httptest.NewRequest(http.MethodGet, "/assets/logo.txt", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf(
-			"expected mustStaticHandler result to serve file, got status %d",
+			"expected staticHandler result to serve file, got status %d",
 			rec.Code,
 		)
 	}
@@ -132,15 +137,13 @@ func TestGettersHandleUnavailableBaseFSGracefully(t *testing.T) {
 			got,
 		)
 	}
-	if got := w.publicFileMapElements(); got != "" {
+	fileMapDetails := readFileMapDetailsFromCacheForTest(w)
+	if fileMapDetails == nil {
+		t.Fatal("expected public file map details cache value")
+	}
+	if got := fileMapDetails.elements; got != "" {
 		t.Fatalf(
 			"expected empty file map elements when base FS is unavailable, got %q",
-			got,
-		)
-	}
-	if got := w.publicFileMapScriptSha256Hash(); got != "" {
-		t.Fatalf(
-			"expected empty file map script hash when base FS is unavailable, got %q",
 			got,
 		)
 	}
@@ -168,10 +171,10 @@ func TestGettersHandleUnavailableBaseFSGracefully(t *testing.T) {
 			got,
 		)
 	}
-	if got := w.criticalCSSStyleElementSha256Hash(); got != "" {
+	if data := w.getCriticalCSSData(); data != nil {
 		t.Fatalf(
-			"expected empty critical CSS hash when base FS is unavailable, got %q",
-			got,
+			"expected nil critical CSS data when base FS is unavailable, got %#v",
+			data,
 		)
 	}
 
@@ -363,16 +366,11 @@ func TestPublicFileMapGettersFailClosedWhenCacheReturnsNilData(t *testing.T) {
 		return nil, fmt.Errorf("forced failure")
 	})
 
-	if got := w.publicFileMapElements(); got != "" {
+	fileMapDetails := readFileMapDetailsFromCacheForTest(w)
+	if fileMapDetails != nil {
 		t.Fatalf(
-			"expected empty file map elements on cache failure, got %q",
-			got,
-		)
-	}
-	if got := w.publicFileMapScriptSha256Hash(); got != "" {
-		t.Fatalf(
-			"expected empty file map script hash on cache failure, got %q",
-			got,
+			"expected nil file map details on cache failure, got %#v",
+			fileMapDetails,
 		)
 	}
 }
@@ -402,15 +400,13 @@ func TestPublicFileMapReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 			got,
 		)
 	}
-	if got := w.publicFileMapElements(); got != "" {
+	fileMapDetails := readFileMapDetailsFromCacheForTest(w)
+	if fileMapDetails == nil {
+		t.Fatal("expected public file map details cache value")
+	}
+	if got := fileMapDetails.elements; got != "" {
 		t.Fatalf(
 			"expected empty public file map elements for whitespace-only ref, got %q",
-			got,
-		)
-	}
-	if got := w.publicFileMapScriptSha256Hash(); got != "" {
-		t.Fatalf(
-			"expected empty public file map hash for whitespace-only ref, got %q",
 			got,
 		)
 	}
@@ -449,95 +445,6 @@ func TestCriticalCSSReadErrorsFailClosed(t *testing.T) {
 		t.Fatalf(
 			"expected empty critical CSS style element when read fails, got %q",
 			got,
-		)
-	}
-	if got := w.criticalCSSStyleElementSha256Hash(); got != "" {
-		t.Fatalf(
-			"expected empty critical CSS hash when read fails, got %q",
-			got,
-		)
-	}
-}
-
-func TestFaviconRedirectMiddlewareGuardsMethodAndPath(t *testing.T) {
-	fixture := newWaveTestFixture(t)
-	w := newWaveForTest(t, fixture, true, nil)
-
-	nextCalled := false
-	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		nextCalled = true
-		rw.WriteHeader(http.StatusTeapot)
-	})
-	h := w.faviconRedirect()(next)
-
-	postReq := httptest.NewRequest(http.MethodPost, "/favicon.ico", nil)
-	postRec := httptest.NewRecorder()
-	h.ServeHTTP(postRec, postReq)
-	if postRec.Code != http.StatusTeapot || !nextCalled {
-		t.Fatalf(
-			"expected POST /favicon.ico to fall through to next, status=%d nextCalled=%v",
-			postRec.Code,
-			nextCalled,
-		)
-	}
-
-	nextCalled = false
-	otherReq := httptest.NewRequest(http.MethodGet, "/not-favicon.ico", nil)
-	otherRec := httptest.NewRecorder()
-	h.ServeHTTP(otherRec, otherReq)
-	if otherRec.Code != http.StatusTeapot || !nextCalled {
-		t.Fatalf(
-			"expected GET non-favicon path to fall through to next, status=%d nextCalled=%v",
-			otherRec.Code,
-			nextCalled,
-		)
-	}
-
-	headReq := httptest.NewRequest(http.MethodHead, "/favicon.ico", nil)
-	headRec := httptest.NewRecorder()
-	h.ServeHTTP(headRec, headReq)
-	if headRec.Code != http.StatusFound {
-		t.Fatalf(
-			"expected HEAD /favicon.ico to redirect, got status %d",
-			headRec.Code,
-		)
-	}
-	if !strings.Contains(headRec.Header().Get("Location"), "favicon") {
-		t.Fatalf(
-			"expected favicon location header on HEAD redirect, got %q",
-			headRec.Header().Get("Location"),
-		)
-	}
-}
-
-func TestFaviconRedirectMiddlewareSupportsIdentityMappedFavicon(t *testing.T) {
-	fixture := newWaveTestFixture(t)
-	mustWriteGob(t, fixture.cfg.Dist.PublicFileMapGob(), FileMap{
-		"favicon.ico": {
-			DistName: "favicon.ico",
-		},
-	})
-
-	w := newWaveForTest(t, fixture, true, nil)
-	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.WriteHeader(http.StatusTeapot)
-	})
-	h := w.faviconRedirect()(next)
-
-	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusFound {
-		t.Fatalf(
-			"expected redirect status 302 for identity-mapped favicon, got %d",
-			rec.Code,
-		)
-	}
-	if location := rec.Header().Get("Location"); location != "/assets/favicon.ico" {
-		t.Fatalf(
-			"unexpected redirect location for identity-mapped favicon: %q",
-			location,
 		)
 	}
 }

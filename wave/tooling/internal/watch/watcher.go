@@ -196,7 +196,7 @@ func (watcher *Watcher) addDirectoryRecursively(path string) error {
 		rootPath,
 		func(currentPath string, directoryEntry fs.DirEntry, err error) error {
 			if err != nil {
-				return nil
+				return err
 			}
 			normalizedCurrentPath := normalizePath(currentPath)
 			if normalizedCurrentPath == "" {
@@ -738,9 +738,6 @@ func isKnownNonWatchablePathError(err error) bool {
 		return false
 	}
 	if strings.Contains(errString, "not a directory") {
-		return true
-	}
-	if strings.Contains(errString, "permission denied") {
 		return true
 	}
 	return false

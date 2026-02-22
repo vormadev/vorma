@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/vormadev/vorma/lab/jsonschema"
@@ -100,5 +101,70 @@ func TestWriteSchema_NilConfigReturnsError(t *testing.T) {
 	var nilProcessor *schema.Processor
 	if writeError := nilProcessor.WriteSchema(); writeError == nil {
 		t.Fatal("expected nil processor WriteSchema to fail")
+	}
+}
+
+func TestBuildSchemaDocument_WatchSchemaIncludesHookTimeoutSections(t *testing.T) {
+	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t.TempDir())
+	processor := schema.NewProcessor(cfg, nil)
+
+	schemaDocument, buildError := processor.BuildSchemaDocument()
+	if buildError != nil {
+		t.Fatalf("BuildSchemaDocument returned error: %v", buildError)
+	}
+
+	properties, ok := schemaDocument["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties has unexpected type: %#v", schemaDocument["properties"])
+	}
+	watchSchema, ok := properties["Watch"].(map[string]any)
+	if !ok {
+		t.Fatalf("Watch schema has unexpected type: %#v", properties["Watch"])
+	}
+	watchProperties, ok := watchSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("Watch.properties has unexpected type: %#v", watchSchema["properties"])
+	}
+
+	if _, exists := watchProperties["HookCommandTimeouts"]; !exists {
+		t.Fatal("expected Watch.HookCommandTimeouts schema section")
+	}
+	if _, exists := watchProperties["HookCallbackTimeouts"]; !exists {
+		t.Fatal("expected Watch.HookCallbackTimeouts schema section")
+	}
+}
+
+func TestBuildSchemaDocument_HookTimingDescriptionUsesConcurrentDashNoWait(t *testing.T) {
+	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t.TempDir())
+	processor := schema.NewProcessor(cfg, nil)
+
+	schemaDocument, buildError := processor.BuildSchemaDocument()
+	if buildError != nil {
+		t.Fatalf("BuildSchemaDocument returned error: %v", buildError)
+	}
+
+	properties := schemaDocument["properties"].(map[string]any)
+	watchSchema := properties["Watch"].(map[string]any)
+	watchProperties := watchSchema["properties"].(map[string]any)
+	includeSchema := watchProperties["Include"].(map[string]any)
+	watchedFileSchema := includeSchema["items"].(map[string]any)
+	watchedFileProperties := watchedFileSchema["properties"].(map[string]any)
+	hooksSchema := watchedFileProperties["OnChangeHooks"].(map[string]any)
+	hookSchema := hooksSchema["items"].(map[string]any)
+	hookProperties := hookSchema["properties"].(map[string]any)
+	timingSchema := hookProperties["Timing"].(map[string]any)
+	timingDescription := timingSchema["description"].(string)
+
+	if !strings.Contains(timingDescription, "concurrent-no-wait") {
+		t.Fatalf(
+			"expected timing description to mention concurrent-no-wait, got %q",
+			timingDescription,
+		)
+	}
+	if strings.Contains(timingDescription, "concurrent_no_wait") {
+		t.Fatalf(
+			"expected timing description to avoid underscore variant, got %q",
+			timingDescription,
+		)
 	}
 }

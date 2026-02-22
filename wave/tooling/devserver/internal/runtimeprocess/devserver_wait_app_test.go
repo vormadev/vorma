@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/wave"
-	"github.com/vormadev/vorma/wave/internal/wavecore"
 	"github.com/vormadev/vorma/wave/tooling/devserver/internal/runtimeprocess"
 )
 
@@ -103,9 +102,6 @@ func newParsedConfigForRuntimeprocessWaitTestsAtRoot(
 func mustConfigureAndGetWaveAppPortForRuntimeprocessWaitTests(t *testing.T) int {
 	t.Helper()
 
-	wavecore.ResetDefaultResolverForTest()
-	t.Cleanup(wavecore.ResetDefaultResolverForTest)
-
 	listener, listenError := net.Listen("tcp", "127.0.0.1:0")
 	if listenError != nil {
 		t.Fatalf("failed to reserve app port for test: %v", listenError)
@@ -123,5 +119,5 @@ func mustConfigureAndGetWaveAppPortForRuntimeprocessWaitTests(t *testing.T) int 
 	t.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
 	t.Setenv("PORT", strconv.Itoa(port))
 
-	return wave.MustGetPort()
+	return port
 }

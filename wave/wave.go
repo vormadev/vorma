@@ -17,12 +17,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/vormadev/vorma/kit/bytesutil"
 	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/middleware"
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/wave/internal/wavecore"
 	"github.com/vormadev/vorma/wave/internal/waveruntime"
@@ -148,11 +145,9 @@ func SetModeToDev() {
 	wavecore.SetModeToDev()
 }
 
-func parseEnvPort() int {
-	return wavecore.ParseEnvPort()
-}
-
 type portResolver = wavecore.Resolver
+
+var defaultPortResolver = wavecore.NewResolver()
 
 func newPortResolver() *portResolver {
 	return wavecore.NewResolverForMode(GetIsDev())
@@ -163,7 +158,10 @@ func newPortResolver() *portResolver {
 // It panics in dev mode if a free port cannot be resolved.
 // It panics in non-dev mode when PORT is missing or invalid.
 func MustGetPort() int {
-	return wavecore.GetDefaultResolver().MustGetPort()
+	if defaultPortResolver == nil {
+		defaultPortResolver = wavecore.NewResolver()
+	}
+	return defaultPortResolver.MustGetPort()
 }
 
 // getRefreshServerPort returns the active refresh-server port from environment.
@@ -871,37 +869,61 @@ func (parsedConfig *ParsedConfig) cloneParsedConfig(
 		Watch: cloneWatchConfig(parsedConfig.Watch),
 
 		Dist: parsedConfig.Dist,
-
-		FrameworkWatchPatterns: cloneFrameworkWatchPatterns(
-			parsedConfig.FrameworkWatchPatterns,
-		),
-		FrameworkIgnoredPatterns: append(
-			[]string(nil),
-			parsedConfig.FrameworkIgnoredPatterns...,
-		),
-		FrameworkPublicFileMapOutDir:                  parsedConfig.FrameworkPublicFileMapOutDir,
-		FrameworkSchemaExtensions:                     nil,
-		FrameworkDevBuildHook:                         parsedConfig.FrameworkDevBuildHook,
-		FrameworkProdBuildHook:                        parsedConfig.FrameworkProdBuildHook,
-		FrameworkRunBuildHook:                         nil,
-		FrameworkPrepareGoBuildOverlay:                nil,
-		FrameworkBrowserRuntimeNamespace:              parsedConfig.FrameworkBrowserRuntimeNamespace,
-		FrameworkBrowserPublicURLResolverFunctionName: parsedConfig.FrameworkBrowserPublicURLResolverFunctionName,
-		FrameworkBrowserRevalidateFunctionName:        parsedConfig.FrameworkBrowserRevalidateFunctionName,
-		FrameworkRefreshRebuildingOverlayElementID:    parsedConfig.FrameworkRefreshRebuildingOverlayElementID,
-		FrameworkCriticalCSSStyleElementID:            parsedConfig.FrameworkCriticalCSSStyleElementID,
-		FrameworkNonCriticalCSSLinkElementID:          parsedConfig.FrameworkNonCriticalCSSLinkElementID,
 	}
-
-	if includeBuildtimeFrameworkInternals {
-		clonedParsedConfig.FrameworkSchemaExtensions = cloneFrameworkSchemaExtensions(
-			parsedConfig.FrameworkSchemaExtensions,
-		)
-		clonedParsedConfig.FrameworkRunBuildHook = parsedConfig.FrameworkRunBuildHook
-		clonedParsedConfig.FrameworkPrepareGoBuildOverlay = parsedConfig.FrameworkPrepareGoBuildOverlay
-	}
+	copyFrameworkRuntimeFields(
+		clonedParsedConfig,
+		parsedConfig,
+		includeBuildtimeFrameworkInternals,
+	)
 
 	return clonedParsedConfig
+}
+
+// CopyFrameworkRuntimeFieldsForToolingReload copies framework-owned runtime
+// fields from one parsed config into another for config-reload flows.
+func CopyFrameworkRuntimeFieldsForToolingReload(
+	target *ParsedConfig,
+	source *ParsedConfig,
+) {
+	copyFrameworkRuntimeFields(target, source, true)
+}
+
+func copyFrameworkRuntimeFields(
+	target *ParsedConfig,
+	source *ParsedConfig,
+	includeBuildtimeFrameworkInternals bool,
+) {
+	if target == nil || source == nil {
+		return
+	}
+
+	target.FrameworkWatchPatterns = cloneFrameworkWatchPatterns(
+		source.FrameworkWatchPatterns,
+	)
+	target.FrameworkIgnoredPatterns = append(
+		[]string(nil),
+		source.FrameworkIgnoredPatterns...,
+	)
+	target.FrameworkPublicFileMapOutDir = source.FrameworkPublicFileMapOutDir
+	target.FrameworkSchemaExtensions = nil
+	target.FrameworkDevBuildHook = source.FrameworkDevBuildHook
+	target.FrameworkProdBuildHook = source.FrameworkProdBuildHook
+	target.FrameworkRunBuildHook = nil
+	target.FrameworkPrepareGoBuildOverlay = nil
+	target.FrameworkBrowserRuntimeNamespace = source.FrameworkBrowserRuntimeNamespace
+	target.FrameworkBrowserPublicURLResolverFunctionName = source.FrameworkBrowserPublicURLResolverFunctionName
+	target.FrameworkBrowserRevalidateFunctionName = source.FrameworkBrowserRevalidateFunctionName
+	target.FrameworkRefreshRebuildingOverlayElementID = source.FrameworkRefreshRebuildingOverlayElementID
+	target.FrameworkCriticalCSSStyleElementID = source.FrameworkCriticalCSSStyleElementID
+	target.FrameworkNonCriticalCSSLinkElementID = source.FrameworkNonCriticalCSSLinkElementID
+
+	if includeBuildtimeFrameworkInternals {
+		target.FrameworkSchemaExtensions = cloneFrameworkSchemaExtensions(
+			source.FrameworkSchemaExtensions,
+		)
+		target.FrameworkRunBuildHook = source.FrameworkRunBuildHook
+		target.FrameworkPrepareGoBuildOverlay = source.FrameworkPrepareGoBuildOverlay
+	}
 }
 
 func cloneCoreConfig(
@@ -939,38 +961,6 @@ func cloneWatchConfig(
 	clonedWatchConfig.Exclude.Files = append([]string(nil), watchConfig.Exclude.Files...)
 
 	return &clonedWatchConfig
-}
-
-// Framework Runtime State Cloning
-
-func (cfg *ParsedConfig) copyFrameworkRuntimeFieldsFrom(
-	previousParsedConfig *ParsedConfig,
-) {
-	if cfg == nil || previousParsedConfig == nil {
-		return
-	}
-
-	cfg.FrameworkSchemaExtensions = cloneFrameworkSchemaExtensions(
-		previousParsedConfig.FrameworkSchemaExtensions,
-	)
-	cfg.FrameworkWatchPatterns = cloneFrameworkWatchPatterns(
-		previousParsedConfig.FrameworkWatchPatterns,
-	)
-	cfg.FrameworkIgnoredPatterns = append(
-		[]string(nil),
-		previousParsedConfig.FrameworkIgnoredPatterns...,
-	)
-	cfg.FrameworkPublicFileMapOutDir = previousParsedConfig.FrameworkPublicFileMapOutDir
-	cfg.FrameworkDevBuildHook = previousParsedConfig.FrameworkDevBuildHook
-	cfg.FrameworkProdBuildHook = previousParsedConfig.FrameworkProdBuildHook
-	cfg.FrameworkRunBuildHook = previousParsedConfig.FrameworkRunBuildHook
-	cfg.FrameworkPrepareGoBuildOverlay = previousParsedConfig.FrameworkPrepareGoBuildOverlay
-	cfg.FrameworkBrowserRuntimeNamespace = previousParsedConfig.FrameworkBrowserRuntimeNamespace
-	cfg.FrameworkBrowserPublicURLResolverFunctionName = previousParsedConfig.FrameworkBrowserPublicURLResolverFunctionName
-	cfg.FrameworkBrowserRevalidateFunctionName = previousParsedConfig.FrameworkBrowserRevalidateFunctionName
-	cfg.FrameworkRefreshRebuildingOverlayElementID = previousParsedConfig.FrameworkRefreshRebuildingOverlayElementID
-	cfg.FrameworkCriticalCSSStyleElementID = previousParsedConfig.FrameworkCriticalCSSStyleElementID
-	cfg.FrameworkNonCriticalCSSLinkElementID = previousParsedConfig.FrameworkNonCriticalCSSLinkElementID
 }
 
 func cloneFrameworkSchemaExtensions(
@@ -1059,15 +1049,6 @@ func cloneOnChangeHooksForFrameworkRuntimeState(
 }
 
 // Wave Construction and Runtime Cache Wiring
-
-const (
-	// criticalCSSElementID is the default DOM id used for the injected critical
-	// CSS style element.
-	criticalCSSElementID = defaultCriticalCSSStyleElementID
-	// styleSheetElementID is the default DOM id used for the injected
-	// non-critical stylesheet link element.
-	styleSheetElementID = defaultNonCriticalCSSLinkElementID
-)
 
 // Wave provides runtime services for Wave applications.
 type Wave struct {
@@ -1427,10 +1408,6 @@ func (w *Wave) PrivateFS() (fs.FS, error) {
 	return w.privateFS.get()
 }
 
-func (w *Wave) mustPublicFS() fs.FS {
-	return mustGetCachedFileSystem(w.publicFS)
-}
-
 func (w *Wave) MustPrivateFS() fs.FS {
 	return mustGetCachedFileSystem(w.privateFS)
 }
@@ -1664,18 +1641,6 @@ func (w *Wave) CriticalCSSStyleElement() template.HTML {
 	return data.styleEl
 }
 
-func (w *Wave) criticalCSSStyleElementSha256Hash() string {
-	data := w.getCriticalCSSData()
-	if data == nil {
-		return ""
-	}
-	return data.sha256Hash
-}
-
-func (w *Wave) criticalCSSElementID() string {
-	return w.cfg.criticalCSSStyleElementID()
-}
-
 func (w *Wave) initStylesheetURL() (string, error) {
 	if w.cfg.NonCriticalCSSEntry() == "" {
 		return "", nil
@@ -1706,10 +1671,6 @@ func (w *Wave) StyleSheetLinkElement() template.HTML {
 	return template.HTML(link)
 }
 
-func (w *Wave) styleSheetElementID() string {
-	return w.cfg.nonCriticalCSSLinkElementID()
-}
-
 // Runtime Public File-Map Markup
 
 func (w *Wave) initFileMapURL() (string, error) {
@@ -1727,7 +1688,7 @@ func (w *Wave) initFileMapDetails() (*fileMapDetails, error) {
 		return &fileMapDetails{}, nil
 	}
 
-	elements, sha256Hash, err := buildPublicFileMapElements(
+	elements, sha256Hash, err := waveruntime.BuildPublicFileMapElements(
 		fileMapURL,
 		w.cfg.browserRuntimeNamespace(),
 	)
@@ -1739,40 +1700,6 @@ func (w *Wave) initFileMapDetails() (*fileMapDetails, error) {
 		elements:   elements,
 		sha256Hash: sha256Hash,
 	}, nil
-}
-
-func buildPublicFileMapElements(
-	fileMapURL string,
-	browserRuntimeNamespace string,
-) (string, string, error) {
-	return waveruntime.BuildPublicFileMapElements(
-		fileMapURL,
-		browserRuntimeNamespace,
-	)
-}
-
-func (w *Wave) getFileMapDetails() *fileMapDetails {
-	details, _ := w.fileMapDetails.get()
-	if details == nil {
-		return nil
-	}
-	return details
-}
-
-func (w *Wave) publicFileMapElements() template.HTML {
-	details := w.getFileMapDetails()
-	if details == nil {
-		return ""
-	}
-	return template.HTML(details.elements)
-}
-
-func (w *Wave) publicFileMapScriptSha256Hash() string {
-	details := w.getFileMapDetails()
-	if details == nil {
-		return ""
-	}
-	return details.sha256Hash
 }
 
 // Runtime Refresh Script APIs
@@ -1792,51 +1719,16 @@ func (w *Wave) RefreshScript() template.HTML {
 	return template.HTML(
 		fmt.Sprintf(
 			"<script>%s</script>",
-			refreshScriptInnerWithParsedConfig(port, w.cfg),
+			waveruntime.BuildRefreshScript(
+				port,
+				waveruntime.RefreshScriptConfig{
+					BrowserRevalidateFunctionName:     w.cfg.browserRevalidateFunctionName(),
+					RefreshRebuildingOverlayElementID: w.cfg.refreshRebuildingOverlayElementID(),
+					NonCriticalCSSLinkElementID:       w.cfg.nonCriticalCSSLinkElementID(),
+					CriticalCSSStyleElementID:         w.cfg.criticalCSSStyleElementID(),
+				},
+			),
 		),
-	)
-}
-
-func (w *Wave) refreshScriptSha256Hash() string {
-	if !w.IsDev() {
-		return ""
-	}
-
-	port := getRefreshServerPort()
-	if port == 0 {
-		port = defaultRefreshPort
-	}
-
-	hash := cryptoutil.Sha256Hash(
-		[]byte(refreshScriptInnerWithParsedConfig(port, w.cfg)),
-	)
-	return bytesutil.ToBase64(hash)
-}
-
-func refreshScriptInner(port int) string {
-	return waveruntime.BuildRefreshScript(
-		port,
-		waveruntime.RefreshScriptConfig{
-			BrowserRevalidateFunctionName:     defaultBrowserRevalidateFunctionName,
-			RefreshRebuildingOverlayElementID: defaultRefreshRebuildingOverlayElementID,
-			NonCriticalCSSLinkElementID:       defaultNonCriticalCSSLinkElementID,
-			CriticalCSSStyleElementID:         defaultCriticalCSSStyleElementID,
-		},
-	)
-}
-
-func refreshScriptInnerWithParsedConfig(
-	port int,
-	parsedConfig *ParsedConfig,
-) string {
-	return waveruntime.BuildRefreshScript(
-		port,
-		waveruntime.RefreshScriptConfig{
-			BrowserRevalidateFunctionName:     parsedConfig.browserRevalidateFunctionName(),
-			RefreshRebuildingOverlayElementID: parsedConfig.refreshRebuildingOverlayElementID(),
-			NonCriticalCSSLinkElementID:       parsedConfig.nonCriticalCSSLinkElementID(),
-			CriticalCSSStyleElementID:         parsedConfig.criticalCSSStyleElementID(),
-		},
 	)
 }
 
@@ -1863,14 +1755,6 @@ func (w *Wave) staticHandler(immutable bool) (http.Handler, error) {
 	}), nil
 }
 
-func (w *Wave) mustStaticHandler(immutable bool) http.Handler {
-	h, err := w.staticHandler(immutable)
-	if err != nil {
-		panic(err)
-	}
-	return h
-}
-
 func (w *Wave) MustStaticMiddleware(immutable bool) func(http.Handler) http.Handler {
 	handler, err := w.staticHandler(immutable)
 	if err != nil {
@@ -1887,26 +1771,4 @@ func (w *Wave) MustStaticMiddleware(immutable bool) func(http.Handler) http.Hand
 			next.ServeHTTP(rw, req)
 		})
 	}
-}
-
-func (w *Wave) faviconRedirect() middleware.Middleware {
-	return middleware.ToHandlerMiddleware(
-		"/favicon.ico",
-		[]string{http.MethodGet, http.MethodHead},
-		func(rw http.ResponseWriter, req *http.Request) {
-			publicFileMap, err := w.fileMap.get()
-			if err != nil {
-				rw.WriteHeader(http.StatusNotFound)
-				return
-			}
-
-			url, found := publicFileMap.Lookup("favicon.ico", w.cfg.PublicPathPrefix())
-			if !found {
-				rw.WriteHeader(http.StatusNotFound)
-				return
-			}
-
-			http.Redirect(rw, req, url, http.StatusFound)
-		},
-	)
 }

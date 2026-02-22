@@ -88,36 +88,6 @@ func (builder *Builder) Close() error {
 	return nil
 }
 
-func buildGoBuildCommand(
-	destinationPath string,
-	entryPath string,
-	isDev bool,
-	goBuildOverlayPath string,
-) *exec.Cmd {
-	resolvedEntryPath := resolveGoBuildEntryPath(entryPath)
-	commandArguments := []string{"build"}
-
-	if strings.TrimSpace(goBuildOverlayPath) != "" {
-		commandArguments = append(
-			commandArguments,
-			"-overlay="+goBuildOverlayPath,
-		)
-	}
-
-	if !isDev {
-		commandArguments = append(commandArguments, "-tags=prod")
-	}
-
-	commandArguments = append(
-		commandArguments,
-		"-o",
-		destinationPath,
-		resolvedEntryPath,
-	)
-
-	return exec.Command("go", commandArguments...)
-}
-
 func resolveGoBuildEntryPath(entryPath string) string {
 	resolvedEntryPath := strings.TrimSpace(entryPath)
 	if resolvedEntryPath == "" {
@@ -408,15 +378,6 @@ func (builder *Builder) CompileGo() error {
 	return nil
 }
 
-// compileGoOnly compiles the Go binary without running full build orchestration.
-func (builder *Builder) compileGoOnly(isDev bool) error {
-	_ = isDev
-	if compileError := builder.CompileGo(); compileError != nil {
-		return fmt.Errorf("go build failed: %w", compileError)
-	}
-	return nil
-}
-
 // BuildCSS executes CSS build pipelines.
 func (builder *Builder) BuildCSS(options CSSBuildOptions) error {
 	if builder == nil || builder.cssProcessor == nil {
@@ -426,51 +387,6 @@ func (builder *Builder) BuildCSS(options CSSBuildOptions) error {
 		BuildCriticalCSS: options.BuildCriticalCSS,
 		BuildNormalCSS:   options.BuildNormalCSS,
 	})
-}
-
-// buildAllCSS builds critical and non-critical CSS outputs.
-func (builder *Builder) buildAllCSS(isDev bool) error {
-	if buildCriticalCSSError := builder.buildCriticalCSS(isDev); buildCriticalCSSError != nil {
-		return buildCriticalCSSError
-	}
-	if buildNormalCSSError := builder.buildNormalCSS(isDev); buildNormalCSSError != nil {
-		return buildNormalCSSError
-	}
-	return nil
-}
-
-// buildCriticalCSS builds only the critical CSS pipeline.
-func (builder *Builder) buildCriticalCSS(isDev bool) error {
-	if builder == nil || builder.cssProcessor == nil {
-		return errors.New("css processor is unavailable")
-	}
-	builder.refreshCriticalCSSBuildContextIdentity(isDev)
-	if buildCriticalCSSError := builder.cssProcessor.BuildCriticalCSSOnly(); buildCriticalCSSError != nil {
-		return fmt.Errorf("build critical CSS: %w", buildCriticalCSSError)
-	}
-	return nil
-}
-
-// buildNormalCSS builds only the non-critical CSS pipeline.
-func (builder *Builder) buildNormalCSS(isDev bool) error {
-	if builder == nil || builder.cssProcessor == nil {
-		return errors.New("css processor is unavailable")
-	}
-	builder.refreshNormalCSSBuildContextIdentity(isDev)
-	if buildNormalCSSError := builder.cssProcessor.BuildNormalCSSOnly(); buildNormalCSSError != nil {
-		return fmt.Errorf("build normal CSS: %w", buildNormalCSSError)
-	}
-	return nil
-}
-
-// readCriticalCSS reads critical CSS output with stale-cache fallback.
-func (builder *Builder) readCriticalCSS() (string, error) {
-	return builder.ReadCriticalCSSForHotReload(false)
-}
-
-// readNormalCSSURL reads normal CSS URL with stale-cache fallback.
-func (builder *Builder) readNormalCSSURL() (string, error) {
-	return builder.ReadNormalCSSURLForHotReload(false)
 }
 
 // ReadCriticalCSSForHotReload reads critical CSS for browser hot reload.
@@ -677,62 +593,6 @@ func (builder *Builder) isCSSFile(path string) bool {
 		return false
 	}
 	return builder.cssProcessor.IsCSSFile(path)
-}
-
-// setTrackedCriticalCSSImportPaths replaces tracked critical CSS import paths.
-func (builder *Builder) setTrackedCriticalCSSImportPaths(importPaths []string) {
-	if builder == nil || builder.cssProcessor == nil {
-		return
-	}
-	builder.cssProcessor.SetTrackedCriticalCSSImportPaths(importPaths)
-}
-
-// setTrackedNormalCSSImportPaths replaces tracked non-critical CSS import paths.
-func (builder *Builder) setTrackedNormalCSSImportPaths(importPaths []string) {
-	if builder == nil || builder.cssProcessor == nil {
-		return
-	}
-	builder.cssProcessor.SetTrackedNormalCSSImportPaths(importPaths)
-}
-
-// countTrackedCriticalCSSImportPaths returns tracked critical import path count.
-func (builder *Builder) countTrackedCriticalCSSImportPaths() int {
-	if builder == nil || builder.cssProcessor == nil {
-		return 0
-	}
-	return builder.cssProcessor.CountTrackedCriticalCSSImportPaths()
-}
-
-// listTrackedCriticalCSSImportPaths returns tracked critical import paths.
-func (builder *Builder) listTrackedCriticalCSSImportPaths() []string {
-	if builder == nil || builder.cssProcessor == nil {
-		return nil
-	}
-	return builder.cssProcessor.ListTrackedCriticalCSSImportPaths()
-}
-
-// getCriticalCSS returns cached critical CSS content.
-func (builder *Builder) getCriticalCSS() (string, bool) {
-	if builder == nil || builder.cssProcessor == nil {
-		return "", false
-	}
-	return builder.cssProcessor.CriticalCSS()
-}
-
-// getNormalCSSURL returns cached normal CSS URL.
-func (builder *Builder) getNormalCSSURL() (string, bool) {
-	if builder == nil || builder.cssProcessor == nil {
-		return "", false
-	}
-	return builder.cssProcessor.NormalCSSURL()
-}
-
-// runHooks executes configured user/framework build hooks for one mode.
-func (builder *Builder) runHooks(isDev bool) error {
-	if hookError := builder.runBuildHooks(isDev); hookError != nil {
-		return hookError
-	}
-	return nil
 }
 
 // runBuildHooks executes configured user/framework build hooks.

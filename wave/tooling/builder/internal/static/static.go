@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -321,12 +320,12 @@ func (processor *Processor) SavePublicFileMapJS(fileMap wave.FileMap) error {
 		"export const wavePublicFileMap = %s;",
 		string(serializedFileMap),
 	)
-	hashedName := HashBytes(
+	hashedName := fileops.HashBytes(
 		[]byte(content),
 		wave.RelPaths.PublicFileMapJSName(),
 	)
-	_, publishError := PublishHashedArtifactWithRef(
-		HashedArtifactPublishOptions{
+	_, publishError := fileops.PublishHashedArtifactWithRef(
+		fileops.HashedArtifactPublishOptions{
 			Log:                   processor.log,
 			OutputDirectoryPath:   processor.cfg.Dist.StaticPublic(),
 			RefFilePath:           processor.cfg.Dist.PublicFileMapRef(),
@@ -365,7 +364,7 @@ func (processor *Processor) WritePublicFileMapTS(outDir string) error {
 		return fmt.Errorf("create output dir: %w", mkdirError)
 	}
 	typeScriptPath := filepath.Join(outDir, wave.RelPaths.PublicFileMapTSName())
-	if _, writeError := WriteFileAtomicBytesIfChanged(
+	if _, writeError := fileops.WriteFileAtomicBytesIfChanged(
 		typeScriptPath,
 		[]byte(typeScriptBuilder.String()),
 	); writeError != nil {
@@ -381,7 +380,7 @@ func (processor *Processor) WritePublicFileMapTS(outDir string) error {
 		return fmt.Errorf("marshal JSON: %w", marshalError)
 	}
 	jsonPath := filepath.Join(outDir, wave.RelPaths.PublicFileMapJSONName())
-	if _, writeError := WriteFileAtomicBytesIfChanged(jsonPath, serializedJSON); writeError != nil {
+	if _, writeError := fileops.WriteFileAtomicBytesIfChanged(jsonPath, serializedJSON); writeError != nil {
 		return fmt.Errorf("write JSON file: %w", writeError)
 	}
 
@@ -508,10 +507,6 @@ func determineStaticProcessingWorkerCount(gomaxprocs int) int {
 // DetermineStaticProcessingWorkerCount derives worker count from GOMAXPROCS.
 func DetermineStaticProcessingWorkerCount(gomaxprocs int) int {
 	return determineStaticProcessingWorkerCount(gomaxprocs)
-}
-
-func determineStaticProcessingWorkerCountFromRuntime() int {
-	return determineStaticProcessingWorkerCount(runtime.GOMAXPROCS(0))
 }
 
 func removeStaticDistArtifactIfPresent(
@@ -929,7 +924,7 @@ func computeFileMapValue(
 	hashOutput bool,
 ) (wave.FileVal, error) {
 	underscorePath := strings.ReplaceAll(staticFileInfo.relPath, "/", "_")
-	contentHash, hashError := HashFile(
+	contentHash, hashError := fileops.HashFile(
 		staticFileInfo.srcPath,
 		underscorePath,
 	)
@@ -957,29 +952,6 @@ func deriveStaticDistName(
 		return staticFileInfo.relPath
 	}
 	return contentHash
-}
-
-// HashFile computes a content-addressed filename for one source file.
-func HashFile(
-	filePath string,
-	originalName string,
-) (string, error) {
-	return fileops.HashFile(filePath, originalName)
-}
-
-// HashBytes computes a content-addressed filename for in-memory bytes.
-func HashBytes(content []byte, originalName string) string {
-	return fileops.HashBytes(content, originalName)
-}
-
-// HashedArtifactPublishOptions controls publish + ref-file update for hashed assets.
-type HashedArtifactPublishOptions = fileops.HashedArtifactPublishOptions
-
-// PublishHashedArtifactWithRef writes hashed artifact, updates ref file, and cleans stale artifacts.
-func PublishHashedArtifactWithRef(
-	options HashedArtifactPublishOptions,
-) (string, error) {
-	return fileops.PublishHashedArtifactWithRef(options)
 }
 
 // removeStaleDistArtifacts removes old dist files no longer referenced by next file map.
@@ -1088,36 +1060,6 @@ func buildPublicFileMapJSImport(serializedFileMap []byte) string {
 	return strings.TrimSpace(fmt.Sprintf(`export const %s = %s;
 export default %s;
 `, publicFileMapSymbolName, string(serializedFileMap), publicFileMapSymbolName)) + "\n"
-}
-
-// AtomicFileWriteDependencies customizes filesystem operations for atomic writes.
-type AtomicFileWriteDependencies = fileops.AtomicFileWriteDependencies
-
-// WriteFileAtomic writes a file atomically with temp write + rename.
-func WriteFileAtomic(
-	path string,
-	write func(*os.File) error,
-) error {
-	return fileops.WriteFileAtomic(path, write)
-}
-
-// WriteFileAtomicWithDependencies writes atomically using injected fs operations.
-func WriteFileAtomicWithDependencies(
-	path string,
-	write func(*os.File) error,
-	dependencies AtomicFileWriteDependencies,
-) error {
-	return fileops.WriteFileAtomicWithDependencies(path, write, dependencies)
-}
-
-// WriteFileAtomicBytes writes bytes atomically to path.
-func WriteFileAtomicBytes(path string, data []byte) error {
-	return fileops.WriteFileAtomicBytes(path, data)
-}
-
-// WriteFileAtomicBytesIfChanged writes bytes atomically only when content differs.
-func WriteFileAtomicBytesIfChanged(path string, data []byte) (bool, error) {
-	return fileops.WriteFileAtomicBytesIfChanged(path, data)
 }
 
 func resolveStaticRelativePathFromSourcePath(

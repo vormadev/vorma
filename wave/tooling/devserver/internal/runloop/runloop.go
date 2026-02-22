@@ -354,7 +354,6 @@ func (engine *Engine) ContinuePipelineAfterHookStageOrTriggerRestart(
 	return engine.ContinuePipelineAfterHookStageOrTriggerRestartWithFailurePolicy(
 		hookStageResult,
 		hooks.DeriveHookStageFailurePolicy(
-			hookStageResult.StageType,
 			engine.configuredHookStageFailurePolicy(),
 		),
 	)
