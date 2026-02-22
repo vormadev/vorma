@@ -113,10 +113,13 @@ func routeDefinitionWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 		len(normalizedRouteDefinitionPatterns),
 	)
 	for _, routeDefinitionPattern := range normalizedRouteDefinitionPatterns {
+		normalizedWatchPattern := normalizeFrameworkWatchPatternPath(
+			routeDefinitionPattern,
+		)
 		watchPatterns = append(
 			watchPatterns,
 			runOnChangeOnlyWatchPattern(
-				routeDefinitionPattern,
+				normalizedWatchPattern,
 				onChangeCallback,
 				true,
 			),

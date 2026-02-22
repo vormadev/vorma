@@ -148,8 +148,16 @@ func BuildPublicFileMapModuleScript(
 
 const refreshScriptTemplate = `
 function base64ToUTF8(base64) {
-	const bytes = Uint8Array.from(atob(base64), (m) => m.codePointAt(0) || 0);
-	return new TextDecoder().decode(bytes);
+	if (typeof base64 !== "string" || base64.length === 0) {
+		return "";
+	}
+	try {
+		const bytes = Uint8Array.from(atob(base64), (m) => m.codePointAt(0) || 0);
+		return new TextDecoder().decode(bytes);
+	} catch (error) {
+		console.error("Wave: Failed to decode critical CSS payload", error);
+		return "";
+	}
 }
 const refreshRebuildingOverlayElementID = %q;
 function getCurrentEl() {

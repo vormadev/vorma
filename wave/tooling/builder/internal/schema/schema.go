@@ -61,6 +61,9 @@ func (processor *Processor) BuildSchemaDocument() (map[string]any, error) {
 	viteSchema := processor.buildViteSchema()
 
 	properties := map[string]any{
+		"$schema": stringSchema(
+			"Optional JSON schema URI used by editors for Wave config validation.",
+		),
 		"Core":  coreSchema,
 		"Watch": watchSchema,
 		"Vite":  viteSchema,
@@ -93,6 +96,7 @@ func (processor *Processor) BuildSchemaDocument() (map[string]any, error) {
 func (processor *Processor) buildCoreSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
+		"description":          "Core build graph and runtime wiring used by Wave tooling and startup.",
 		"additionalProperties": false,
 		"required": []string{
 			"MainAppEntry",
@@ -133,6 +137,7 @@ func (processor *Processor) buildCoreSchema() map[string]any {
 			),
 			"StaticAssetDirs": map[string]any{
 				"type":                 "object",
+				"description":          "Source directories for static assets that are copied and hashed during builds.",
 				"required":             []string{"Public", "Private"},
 				"additionalProperties": false,
 				"properties": map[string]any{
@@ -146,6 +151,7 @@ func (processor *Processor) buildCoreSchema() map[string]any {
 			},
 			"CSSEntryFiles": map[string]any{
 				"type":                 "object",
+				"description":          "Optional CSS entrypoints used for critical and non-critical style outputs.",
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"Critical": stringSchema(
@@ -164,6 +170,7 @@ func (processor *Processor) buildCoreSchema() map[string]any {
 func (processor *Processor) buildWatchSchema() map[string]any {
 	hookSchema := map[string]any{
 		"type":                 "object",
+		"description":          "One on-change hook definition for watched-file events.",
 		"additionalProperties": false,
 		"properties": map[string]any{
 			"Cmd": stringSchema(
@@ -195,6 +202,7 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 
 	watchedFileSchema := map[string]any{
 		"type":                 "object",
+		"description":          "One watched-file pattern and its behavior overrides.",
 		"required":             []string{"Pattern"},
 		"additionalProperties": false,
 		"properties": map[string]any{
@@ -202,8 +210,9 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 				"Glob pattern for watched file selection.",
 			),
 			"OnChangeHooks": map[string]any{
-				"type":  "array",
-				"items": hookSchema,
+				"type":        "array",
+				"description": "Hook definitions that execute when this watched pattern changes.",
+				"items":       hookSchema,
 			},
 			"RecompileGoBinary": boolSchema(
 				"When true, go binary recompilation is requested.",
@@ -228,6 +237,7 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 
 	return map[string]any{
 		"type":                 "object",
+		"description":          "Dev watch behavior, hook execution policies, and restart/revalidate triggers.",
 		"additionalProperties": false,
 		"properties": map[string]any{
 			"WatchRoot": stringSchema(
@@ -241,6 +251,7 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 			),
 			"HookCommandTimeouts": map[string]any{
 				"type":                 "object",
+				"description":          "Default per-stage command timeouts used by on-change hooks.",
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"PreCommandTimeoutMilliseconds": numberSchema(
@@ -259,6 +270,7 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 			},
 			"HookCallbackTimeouts": map[string]any{
 				"type":                 "object",
+				"description":          "Default per-stage callback timeouts used by on-change hooks.",
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"PreCallbackTimeoutMilliseconds": numberSchema(
@@ -276,11 +288,13 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 				},
 			},
 			"Include": map[string]any{
-				"type":  "array",
-				"items": watchedFileSchema,
+				"type":        "array",
+				"description": "Custom watched-file patterns that extend or override default watch behavior.",
+				"items":       watchedFileSchema,
 			},
 			"Exclude": map[string]any{
 				"type":                 "object",
+				"description":          "Path patterns excluded from watch registration and event processing.",
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"Dirs": arrayOfStringsSchema(
@@ -299,6 +313,7 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 func (processor *Processor) buildViteSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
+		"description":          "Vite process invocation settings used by Wave devserver workflows.",
 		"additionalProperties": false,
 		"properties": map[string]any{
 			"JSPackageManagerBaseCmd": stringSchema(

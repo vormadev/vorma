@@ -15,6 +15,7 @@ import (
 
 	"github.com/evanw/esbuild/pkg/api"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/wavecore"
 	"github.com/vormadev/vorma/wave/tooling/internal/shared"
 )
 
@@ -704,6 +705,7 @@ func resolveBuildInputPathForTracking(
 	if filepath.IsAbs(trimmedBuildInputPath) {
 		candidatePaths = append(candidatePaths, trimmedBuildInputPath)
 	} else {
+		candidatePaths = append(candidatePaths, trimmedBuildInputPath)
 		candidatePaths = append(
 			candidatePaths,
 			filepath.Join(entryDirectoryPath, trimmedBuildInputPath),
@@ -713,6 +715,7 @@ func resolveBuildInputPathForTracking(
 			string(filepath.Separator)+trimmedBuildInputPath,
 		)
 	}
+	candidatePaths = deduplicateCSSCandidatePathsForTracking(candidatePaths)
 
 	for _, candidatePath := range candidatePaths {
 		if _, statError := os.Stat(candidatePath); statError != nil {
@@ -729,7 +732,41 @@ func resolveBuildInputPathForTracking(
 	if len(candidatePaths) == 0 {
 		return normalizeCSSFilePathForImportTracking(trimmedBuildInputPath)
 	}
-	return normalizeCSSFilePathForImportTracking(candidatePaths[0])
+	for _, candidatePath := range candidatePaths {
+		normalizedCandidatePath := normalizeCSSFilePathForImportTracking(
+			candidatePath,
+		)
+		if normalizedCandidatePath != "" {
+			return normalizedCandidatePath
+		}
+	}
+	return normalizeCSSFilePathForImportTracking(trimmedBuildInputPath)
+}
+
+func deduplicateCSSCandidatePathsForTracking(
+	candidatePaths []string,
+) []string {
+	if len(candidatePaths) == 0 {
+		return nil
+	}
+
+	seenCandidatePaths := make(map[string]struct{}, len(candidatePaths))
+	deduplicatedCandidatePaths := make([]string, 0, len(candidatePaths))
+	for _, candidatePath := range candidatePaths {
+		normalizedCandidatePath := strings.TrimSpace(candidatePath)
+		if normalizedCandidatePath == "" {
+			continue
+		}
+		if _, alreadySeen := seenCandidatePaths[normalizedCandidatePath]; alreadySeen {
+			continue
+		}
+		seenCandidatePaths[normalizedCandidatePath] = struct{}{}
+		deduplicatedCandidatePaths = append(
+			deduplicatedCandidatePaths,
+			normalizedCandidatePath,
+		)
+	}
+	return deduplicatedCandidatePaths
 }
 
 // joinPublicURL joins public path prefix and relative asset path.
@@ -757,18 +794,20 @@ func joinPublicURL(publicPathPrefix string, relativePath string) string {
 
 // samePath reports whether two paths resolve to same cleaned absolute path.
 func samePath(leftPath string, rightPath string) bool {
-	leftAbsolutePath, leftError := filepath.Abs(leftPath)
-	rightAbsolutePath, rightError := filepath.Abs(rightPath)
-	if leftError != nil || rightError != nil {
-		return filepath.Clean(leftPath) == filepath.Clean(rightPath)
-	}
-	return filepath.Clean(leftAbsolutePath) == filepath.Clean(rightAbsolutePath)
+	return wavecore.PathsReferToSameLocation(leftPath, rightPath)
 }
 
 func normalizeCSSFilePathForImportTracking(filePath string) string {
 	trimmedFilePath := strings.TrimSpace(filePath)
 	if trimmedFilePath == "" {
 		return ""
+	}
+
+	canonicalPath := wavecore.CanonicalizePathForLocationComparison(
+		trimmedFilePath,
+	)
+	if canonicalPath != "" {
+		return filepath.Clean(canonicalPath)
 	}
 
 	absoluteFilePath, absolutePathError := filepath.Abs(trimmedFilePath)

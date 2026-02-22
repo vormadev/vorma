@@ -139,6 +139,7 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 	flowDecision := executionInput.FlowDecision
 
 	if flowDecision.TriggerConfigRestart {
+		engine.broadcastRebuilding()
 		engine.logInfo("configuration changed; scheduling config restart")
 		engine.triggerConfigRestart()
 		return

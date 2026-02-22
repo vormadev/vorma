@@ -32,8 +32,10 @@ type Watcher struct {
 	excludeDirPatterns  []string
 	excludeFilePatterns []string
 
-	publicStaticRoot  string
-	privateStaticRoot string
+	publicStaticRoot           string
+	privateStaticRoot          string
+	publicStaticCanonicalRoot  string
+	privateStaticCanonicalRoot string
 
 	lastEventByPath map[string]time.Time
 }
@@ -67,6 +69,12 @@ func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 	resolvedIncludeRules := buildIncludeRules(cfg)
 	resolvedExcludeDirectoryPatterns := buildExcludeDirectoryPatterns(cfg)
 	resolvedExcludeFilePatterns := buildExcludeFilePatterns(cfg)
+	resolvedPublicStaticRoot := normalizePath(
+		filepath.Clean(cfg.Core.StaticAssetDirs.Public),
+	)
+	resolvedPrivateStaticRoot := normalizePath(
+		filepath.Clean(cfg.Core.StaticAssetDirs.Private),
+	)
 
 	watcher := &Watcher{
 		cfg:                 cfg,
@@ -76,11 +84,13 @@ func NewWatcher(cfg *wave.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 		includeRules:        resolvedIncludeRules,
 		excludeDirPatterns:  resolvedExcludeDirectoryPatterns,
 		excludeFilePatterns: resolvedExcludeFilePatterns,
-		publicStaticRoot: normalizePath(
-			filepath.Clean(cfg.Core.StaticAssetDirs.Public),
+		publicStaticRoot:    resolvedPublicStaticRoot,
+		privateStaticRoot:   resolvedPrivateStaticRoot,
+		publicStaticCanonicalRoot: canonicalizePathForLocationPrefixMatching(
+			resolvedPublicStaticRoot,
 		),
-		privateStaticRoot: normalizePath(
-			filepath.Clean(cfg.Core.StaticAssetDirs.Private),
+		privateStaticCanonicalRoot: canonicalizePathForLocationPrefixMatching(
+			resolvedPrivateStaticRoot,
 		),
 		lastEventByPath: make(map[string]time.Time),
 	}
@@ -373,7 +383,14 @@ func (watcher *Watcher) IsPublicStaticFile(path string) bool {
 	if normalizedPath == watcher.publicStaticRoot {
 		return true
 	}
-	return strings.HasPrefix(normalizedPath, watcher.publicStaticRoot+"/")
+	if strings.HasPrefix(normalizedPath, watcher.publicStaticRoot+"/") {
+		return true
+	}
+
+	return pathIsUnderCanonicalRoot(
+		normalizedPath,
+		watcher.publicStaticCanonicalRoot,
+	)
 }
 
 // IsPrivateStaticFile reports whether path targets configured private static sources.
@@ -388,7 +405,14 @@ func (watcher *Watcher) IsPrivateStaticFile(path string) bool {
 	if normalizedPath == watcher.privateStaticRoot {
 		return true
 	}
-	return strings.HasPrefix(normalizedPath, watcher.privateStaticRoot+"/")
+	if strings.HasPrefix(normalizedPath, watcher.privateStaticRoot+"/") {
+		return true
+	}
+
+	return pathIsUnderCanonicalRoot(
+		normalizedPath,
+		watcher.privateStaticCanonicalRoot,
+	)
 }
 
 // EnsureDirectoryWatchForEventPath adds a new directory watch for created directories.
@@ -680,6 +704,32 @@ func resolvePathOrPatternFromWatchRoot(
 // normalizePath returns cleaned slash-normalized path.
 func normalizePath(path string) string {
 	return wavecore.AbsoluteSlash(path)
+}
+
+func canonicalizePathForLocationPrefixMatching(path string) string {
+	normalizedPath := normalizePath(path)
+	if normalizedPath == "" {
+		return ""
+	}
+	canonicalPath := wavecore.CanonicalizePathForLocationComparison(
+		normalizedPath,
+	)
+	if canonicalPath == "" {
+		return normalizedPath
+	}
+	return filepath.ToSlash(filepath.Clean(canonicalPath))
+}
+
+func pathIsUnderCanonicalRoot(path string, canonicalRoot string) bool {
+	if strings.TrimSpace(canonicalRoot) == "" {
+		return false
+	}
+	canonicalPath := canonicalizePathForLocationPrefixMatching(path)
+	if canonicalPath == "" {
+		return false
+	}
+	return canonicalPath == canonicalRoot ||
+		strings.HasPrefix(canonicalPath, canonicalRoot+"/")
 }
 
 // normalizeGlob returns slash-normalized glob with trimmed whitespace.

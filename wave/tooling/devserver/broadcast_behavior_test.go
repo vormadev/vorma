@@ -1,6 +1,7 @@
 package devserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"io"
@@ -91,6 +92,11 @@ func TestBroadcastRebuilding_SendsPayloadWhenEnabled(t *testing.T) {
 		t.Fatalf("dial websocket handler: %v", dialError)
 	}
 	defer connection.Close()
+	waitForRefreshManagerConnectionCountForBroadcastBehaviorTests(
+		t,
+		refreshManager,
+		1,
+	)
 
 	serverForTest := &Server{
 		Cfg:            cfg,
@@ -461,6 +467,38 @@ func TestExecuteBrowserPhase_InvalidateViteFailureFallsBackToHardReload(
 			work.Browser.Action,
 			work.Browser.WaitForApp,
 			work.Browser.WaitForVite,
+		)
+	}
+}
+
+func TestExecuteBrowserPhase_InvalidateViteFailureLogsFallbackMessage(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+	ensureViteConfigForToolingTests(t, cfg)
+	cfg.Vite.JSPackageManagerBaseCmd = "pnpm"
+
+	var logBuffer bytes.Buffer
+	serverForTest := &Server{
+		Cfg: cfg,
+		Log: slog.New(slog.NewTextHandler(&logBuffer, nil)),
+	}
+
+	work := &eventpipeline.WorkSet{
+		Browser: eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionInvalidateVite,
+		},
+	}
+	serverForTest.ExecuteBrowserPhase(work)
+
+	if !strings.Contains(
+		logBuffer.String(),
+		"vite invalidate endpoint failed; falling back to hard reload",
+	) {
+		t.Fatalf(
+			"expected invalidate fallback log message, got logs: %s",
+			logBuffer.String(),
 		)
 	}
 }
@@ -860,6 +898,89 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalOnlyPayload(
 	}
 	if receivedPayload.ChangeType != broadcast.ChangeTypeCriticalCSS {
 		t.Fatalf("expected critical css payload, got %#v", receivedPayload)
+	}
+}
+
+func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalPayloadWithEmptyCSSField(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical: filepath.Join(root, "styles", "critical.css"),
+	}
+
+	if mkdirCriticalError := os.MkdirAll(
+		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
+		0o755,
+	); mkdirCriticalError != nil {
+		t.Fatalf(
+			"failed creating critical css entry parent dir: %v",
+			mkdirCriticalError,
+		)
+	}
+	if writeCriticalEntryError := os.WriteFile(
+		cfg.Core.CSSEntryFiles.Critical,
+		[]byte(""),
+		0o644,
+	); writeCriticalEntryError != nil {
+		t.Fatalf(
+			"failed writing empty critical css entry file: %v",
+			writeCriticalEntryError,
+		)
+	}
+
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForBroadcastBehaviorTests(),
+	)
+	defer builderForTest.Close()
+
+	if buildCSSError := builderForTest.BuildCSS(builder.CSSBuildOptions{
+		BuildCriticalCSS: true,
+	}); buildCSSError != nil {
+		t.Fatalf("BuildCSS critical-only returned error: %v", buildCSSError)
+	}
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		Builder:        builderForTest,
+		RefreshManager: refreshManager,
+	}
+
+	work := &eventpipeline.WorkSet{
+		Browser: eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionHotReloadCSS,
+		},
+		Build: eventpipeline.BuildPhaseDecision{
+			BuildCriticalCSS: true,
+		},
+	}
+	serverForTest.ExecuteBrowserPhase(work)
+
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
+	_, payloadBytes, readError := connection.ReadMessage()
+	if readError != nil {
+		t.Fatalf("expected critical css payload broadcast, got read error: %v", readError)
+	}
+	payloadString := string(payloadBytes)
+	if !strings.Contains(payloadString, `"changeType":"critical"`) {
+		t.Fatalf("expected critical changeType payload, got %s", payloadString)
+	}
+	if !strings.Contains(payloadString, `"criticalCSS":""`) {
+		t.Fatalf(
+			"expected criticalCSS field with empty payload to be serialized, got %s",
+			payloadString,
+		)
 	}
 }
 

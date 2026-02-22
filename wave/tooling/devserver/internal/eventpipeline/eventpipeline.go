@@ -711,7 +711,10 @@ func DeriveBrowserPhaseResolutionForWorkSet(
 		}
 	}
 
-	if shouldUseRevalidateBrowserResolution(preferRevalidate) {
+	if shouldUseRevalidateBrowserResolution(
+		preferRevalidate,
+		buildDecision,
+	) {
 		return BrowserPhaseResolution{
 			Action:         BrowserPhaseActionRevalidate,
 			ApplyWaitFlags: true,
@@ -726,12 +729,6 @@ func DeriveBrowserPhaseResolutionForWorkSet(
 		}
 	}
 
-	if buildDecision.ProcessPublicFiles {
-		return BrowserPhaseResolution{
-			Action: BrowserPhaseActionInvalidateVite,
-		}
-	}
-
 	if buildDecision.ProcessPrivateFiles ||
 		buildDecision.BuildCriticalCSS ||
 		buildDecision.BuildNormalCSS {
@@ -740,6 +737,12 @@ func DeriveBrowserPhaseResolutionForWorkSet(
 			ApplyWaitFlags: true,
 			WaitForApp:     true,
 			WaitForVite:    usingVite,
+		}
+	}
+
+	if buildDecision.ProcessPublicFiles {
+		return BrowserPhaseResolution{
+			Action: BrowserPhaseActionInvalidateVite,
 		}
 	}
 
@@ -756,8 +759,9 @@ func shouldUseRestartBrowserResolution(
 
 func shouldUseRevalidateBrowserResolution(
 	preferRevalidate bool,
+	buildDecision BuildPhaseDecision,
 ) bool {
-	return preferRevalidate
+	return preferRevalidate && !buildDecision.ProcessPublicFiles
 }
 
 func isCSSOnlyBuildWorkForBrowserPhase(

@@ -30,7 +30,7 @@ const (
 // Payload is the websocket message contract sent to browser runtime clients.
 type Payload struct {
 	ChangeType   ChangeType `json:"changeType"`
-	CriticalCSS  string     `json:"criticalCSS,omitempty"`
+	CriticalCSS  string     `json:"criticalCSS"`
 	NormalCSSURL string     `json:"normalCSSURL,omitempty"`
 }
 

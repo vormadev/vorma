@@ -1,6 +1,7 @@
 package devserver
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
@@ -142,10 +143,30 @@ func configMutationCases() []configMutationCase {
 		{
 			Name: "write",
 			Op:   fsnotify.Write,
+			PrepareEvent: func(t *testing.T, configFilePath string) {
+				t.Helper()
+				writeSemanticallyChangedConfigForToolingTests(
+					t,
+					configFilePath,
+				)
+			},
 		},
 		{
 			Name: "create",
 			Op:   fsnotify.Create,
+			PrepareEvent: func(t *testing.T, configFilePath string) {
+				t.Helper()
+				if removeError := os.Remove(configFilePath); removeError != nil {
+					t.Fatalf(
+						"failed removing config file before create Event: %v",
+						removeError,
+					)
+				}
+				writeSemanticallyChangedConfigForToolingTests(
+					t,
+					configFilePath,
+				)
+			},
 		},
 		{
 			Name: "remove",
@@ -176,6 +197,83 @@ func configMutationCases() []configMutationCase {
 				}
 			},
 		},
+	}
+}
+
+func writeSemanticallyChangedConfigForToolingTests(
+	t *testing.T,
+	configFilePath string,
+) {
+	t.Helper()
+
+	configBytes, readError := os.ReadFile(configFilePath)
+	if os.IsNotExist(readError) {
+		configPayload := map[string]any{
+			"Core": map[string]any{
+				"MainAppEntry": "cmd/app_changed",
+				"DistDir": filepath.Join(
+					filepath.Dir(filepath.Dir(configFilePath)),
+					"dist",
+				),
+				"StaticAssetDirs": map[string]any{
+					"Public": filepath.Join(
+						filepath.Dir(filepath.Dir(configFilePath)),
+						"static",
+						"public",
+					),
+					"Private": filepath.Join(
+						filepath.Dir(filepath.Dir(configFilePath)),
+						"static",
+						"private",
+					),
+				},
+			},
+			"Watch": map[string]any{
+				"WatchRoot": filepath.Dir(filepath.Dir(configFilePath)),
+			},
+		}
+		updatedConfigBytes, marshalError := json.Marshal(configPayload)
+		if marshalError != nil {
+			t.Fatalf("failed marshaling semantically changed config: %v", marshalError)
+		}
+		if writeError := os.WriteFile(
+			configFilePath,
+			updatedConfigBytes,
+			0o644,
+		); writeError != nil {
+			t.Fatalf("failed writing semantically changed config: %v", writeError)
+		}
+		return
+	}
+	if readError != nil {
+		t.Fatalf("failed reading config file for semantic mutation: %v", readError)
+	}
+
+	var configPayload map[string]any
+	if unmarshalError := json.Unmarshal(configBytes, &configPayload); unmarshalError != nil {
+		t.Fatalf(
+			"failed unmarshaling config file for semantic mutation: %v",
+			unmarshalError,
+		)
+	}
+
+	corePayload, hasCorePayload := configPayload["Core"].(map[string]any)
+	if !hasCorePayload {
+		corePayload = map[string]any{}
+		configPayload["Core"] = corePayload
+	}
+	corePayload["MainAppEntry"] = "cmd/app_changed"
+
+	updatedConfigBytes, marshalError := json.Marshal(configPayload)
+	if marshalError != nil {
+		t.Fatalf("failed marshaling semantically changed config: %v", marshalError)
+	}
+	if writeError := os.WriteFile(
+		configFilePath,
+		updatedConfigBytes,
+		0o644,
+	); writeError != nil {
+		t.Fatalf("failed writing semantically changed config: %v", writeError)
 	}
 }
 
@@ -213,7 +311,7 @@ func setupConfigEventTestConfig(t *testing.T) (*wave.ParsedConfig, string, strin
 
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg.Core.ServerOnlyMode = false
 	configFilePath := filepath.Join(root, "backend", "wave.config.json")
 	cfg.Core.ConfigLocation = configFilePath
 	cfg.Dist.Root = cfg.Core.DistDir
@@ -221,15 +319,37 @@ func setupConfigEventTestConfig(t *testing.T) (*wave.ParsedConfig, string, strin
 	if mkdirError := os.MkdirAll(filepath.Dir(configFilePath), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating config file directory: %v", mkdirError)
 	}
+	configPayload := map[string]any{
+		"Core": map[string]any{
+			"MainAppEntry":   cfg.Core.MainAppEntry,
+			"DistDir":        cfg.Core.DistDir,
+			"ServerOnlyMode": false,
+			"StaticAssetDirs": map[string]any{
+				"Public":  cfg.Core.StaticAssetDirs.Public,
+				"Private": cfg.Core.StaticAssetDirs.Private,
+			},
+		},
+		"Watch": map[string]any{
+			"WatchRoot": root,
+		},
+	}
+	configPayloadBytes, marshalError := json.Marshal(configPayload)
+	if marshalError != nil {
+		t.Fatalf("failed marshaling config file payload: %v", marshalError)
+	}
 	if writeError := os.WriteFile(
 		configFilePath,
-		[]byte(`{"Core":{"MainAppEntry":"cmd/app","DistDir":"dist"}}`),
+		configPayloadBytes,
 		0o644,
 	); writeError != nil {
 		t.Fatalf("failed writing config file: %v", writeError)
 	}
 
-	return cfg, root, configFilePath
+	parsedConfig, parseError := wave.ParseConfigFile(configFilePath)
+	if parseError != nil {
+		t.Fatalf("failed parsing config file payload: %v", parseError)
+	}
+	return parsedConfig, root, configFilePath
 }
 
 func setupWatcherAndBuilderForToolingTests(

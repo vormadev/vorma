@@ -761,6 +761,74 @@ func TestBuildCSS_TracksImportedCSSFilesForWatcherClassification(
 	}
 }
 
+func TestBuildCSS_TracksImportedCSSFilesForWatcherClassificationWithRelativeEntries(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+		Critical:    filepath.Join("styles", "critical.css"),
+		NonCritical: filepath.Join("styles", "normal.css"),
+	}
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	stylesDirectoryPath := filepath.Join(root, "styles")
+	if err := os.MkdirAll(stylesDirectoryPath, 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+
+	criticalImportPath := filepath.Join(stylesDirectoryPath, "critical_import.css")
+	normalImportPath := filepath.Join(stylesDirectoryPath, "normal_import.css")
+	if err := os.WriteFile(
+		filepath.Join(stylesDirectoryPath, "critical.css"),
+		[]byte(`@import "./critical_import.css"; body { color: red; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing relative critical css entry file: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(stylesDirectoryPath, "normal.css"),
+		[]byte(`@import "./normal_import.css"; body { color: blue; }`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing relative normal css entry file: %v", err)
+	}
+	if err := os.WriteFile(criticalImportPath, []byte(".critical-import { }"), 0o644); err != nil {
+		t.Fatalf("failed writing critical import css file: %v", err)
+	}
+	if err := os.WriteFile(normalImportPath, []byte(".normal-import { }"), 0o644); err != nil {
+		t.Fatalf("failed writing normal import css file: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+
+	if err := builder.BuildCSS(
+		CSSBuildOptions{
+			BuildCriticalCSS: true,
+			BuildNormalCSS:   true,
+		},
+	); err != nil {
+		t.Fatalf("BuildCSS returned error: %v", err)
+	}
+
+	if !builder.IsCriticalCSSFile(criticalImportPath) {
+		t.Fatalf(
+			"expected imported critical css path %q to be tracked for relative entries",
+			criticalImportPath,
+		)
+	}
+	if !builder.IsNormalCSSFile(normalImportPath) {
+		t.Fatalf(
+			"expected imported normal css path %q to be tracked for relative entries",
+			normalImportPath,
+		)
+	}
+}
+
 func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 	t *testing.T,
 ) {

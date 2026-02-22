@@ -1,9 +1,9 @@
 package devserver
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/vormadev/vorma/wave/tooling/builder"
-	"github.com/vormadev/vorma/wave/tooling/internal/watch"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +12,9 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/tooling/internal/broadcast"
+	"github.com/vormadev/vorma/wave/tooling/internal/watch"
 )
 
 const (
@@ -153,6 +156,532 @@ func TestFlexibilityContract_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 			}
 		},
 	)
+}
+
+func TestFlexibilityContract_NoOpConfigWriteDoesNotRestartOrBroadcast(
+	t *testing.T,
+) {
+	cfg, _, configFilePath := setupConfigEventTestConfig(t)
+	cfg.Core.ServerOnlyMode = false
+	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+	serverForTest.RefreshManager = refreshManager
+
+	configBytes, readError := os.ReadFile(configFilePath)
+	if readError != nil {
+		t.Fatalf("failed reading config file for no-op write: %v", readError)
+	}
+	if writeError := os.WriteFile(
+		configFilePath,
+		configBytes,
+		0o644,
+	); writeError != nil {
+		t.Fatalf("failed writing no-op config bytes: %v", writeError)
+	}
+
+	serverForTest.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
+		Name: configFilePath,
+		Op:   fsnotify.Write,
+	}})
+
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(
+			serverForTest,
+		)
+		if hasPendingRestartRequest {
+			t.Fatalf(
+				"expected no restart request for no-op config write, got %#v",
+				pendingRestartRequest,
+			)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
+		t.Fatalf(
+			"expected no broadcast payload for no-op config write, got %#v",
+			receivedPayload,
+		)
+	}
+}
+
+func TestFlexibilityContract_NoOpConfigWriteLogsNoChangesMessage(
+	t *testing.T,
+) {
+	cfg, _, configFilePath := setupConfigEventTestConfig(t)
+	cfg.Core.ServerOnlyMode = false
+
+	var logOutputBuffer bytes.Buffer
+	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+	serverForTest.Log = slog.New(
+		slog.NewTextHandler(&logOutputBuffer, nil),
+	)
+
+	configBytes, readError := os.ReadFile(configFilePath)
+	if readError != nil {
+		t.Fatalf("failed reading config file for no-op write: %v", readError)
+	}
+	if writeError := os.WriteFile(
+		configFilePath,
+		configBytes,
+		0o644,
+	); writeError != nil {
+		t.Fatalf("failed writing no-op config bytes: %v", writeError)
+	}
+
+	serverForTest.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
+		Name: configFilePath,
+		Op:   fsnotify.Write,
+	}})
+
+	if pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(
+		serverForTest,
+	); hasPendingRestartRequest {
+		t.Fatalf(
+			"expected no restart request for no-op config write, got %#v",
+			pendingRestartRequest,
+		)
+	}
+
+	logOutput := logOutputBuffer.String()
+	if !strings.Contains(
+		logOutput,
+		"no changes to wave.config.json; skipping restart",
+	) {
+		t.Fatalf(
+			"expected no-op config write log message, got logs: %s",
+			logOutput,
+		)
+	}
+}
+
+func TestFlexibilityContract_NoOpConfigWriteAcrossPathAliasesIsNoOpAndLogs(
+	t *testing.T,
+) {
+	for _, pathShapeCaseForRun := range configEventPathShapeCases() {
+		pathShapeCaseForRun := pathShapeCaseForRun
+		t.Run(pathShapeCaseForRun.Name, func(t *testing.T) {
+			cfg, _, configFilePath := setupConfigEventTestConfig(t)
+			cfg.Core.ServerOnlyMode = false
+
+			var logOutputBuffer bytes.Buffer
+			serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+			serverForTest.Log = slog.New(
+				slog.NewTextHandler(&logOutputBuffer, nil),
+			)
+
+			configBytes, readError := os.ReadFile(configFilePath)
+			if readError != nil {
+				t.Fatalf("failed reading config file for no-op write: %v", readError)
+			}
+			if writeError := os.WriteFile(
+				configFilePath,
+				configBytes,
+				0o644,
+			); writeError != nil {
+				t.Fatalf("failed writing no-op config bytes: %v", writeError)
+			}
+
+			configEventPath := pathShapeCaseForRun.BuildPath(t, configFilePath)
+			serverForTest.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
+				Name: configEventPath,
+				Op:   fsnotify.Write,
+			}})
+
+			if pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(
+				serverForTest,
+			); hasPendingRestartRequest {
+				t.Fatalf(
+					"expected no restart request for no-op config write via %s alias, got %#v",
+					pathShapeCaseForRun.Name,
+					pendingRestartRequest,
+				)
+			}
+
+			logOutput := logOutputBuffer.String()
+			if !strings.Contains(
+				logOutput,
+				"no changes to wave.config.json; skipping restart",
+			) {
+				t.Fatalf(
+					"expected no-op config write log message via %s alias, got logs: %s",
+					pathShapeCaseForRun.Name,
+					logOutput,
+				)
+			}
+		})
+	}
+}
+
+func TestFlexibilityContract_NoOpConfigMutationEventsDoNotRestartOrBroadcast(
+	t *testing.T,
+) {
+	configMutationEventCases := []struct {
+		Name string
+		Op   fsnotify.Op
+	}{
+		{Name: "write", Op: fsnotify.Write},
+		{Name: "create", Op: fsnotify.Create},
+		{Name: "rename", Op: fsnotify.Rename},
+	}
+
+	for _, configMutationEventCaseForRun := range configMutationEventCases {
+		configMutationEventCaseForRun := configMutationEventCaseForRun
+		t.Run(configMutationEventCaseForRun.Name, func(t *testing.T) {
+			cfg, _, configFilePath := setupConfigEventTestConfig(t)
+			cfg.Core.ServerOnlyMode = false
+
+			var logOutputBuffer bytes.Buffer
+			serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+			serverForTest.Log = slog.New(
+				slog.NewTextHandler(&logOutputBuffer, nil),
+			)
+
+			refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+				t,
+			)
+			defer cleanup()
+			serverForTest.RefreshManager = refreshManager
+
+			configBytes, readError := os.ReadFile(configFilePath)
+			if readError != nil {
+				t.Fatalf("failed reading config file for no-op mutation event: %v", readError)
+			}
+			if writeError := os.WriteFile(
+				configFilePath,
+				configBytes,
+				0o644,
+			); writeError != nil {
+				t.Fatalf("failed writing config file for no-op mutation event: %v", writeError)
+			}
+
+			serverForTest.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
+				Name: configFilePath,
+				Op:   configMutationEventCaseForRun.Op,
+			}})
+
+			if pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(
+				serverForTest,
+			); hasPendingRestartRequest {
+				t.Fatalf(
+					"expected no restart request for no-op config %s event, got %#v",
+					configMutationEventCaseForRun.Name,
+					pendingRestartRequest,
+				)
+			}
+
+			connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+			var receivedPayload broadcast.Payload
+			if readError := connection.ReadJSON(&receivedPayload); readError == nil {
+				t.Fatalf(
+					"expected no broadcast payload for no-op config %s event, got %#v",
+					configMutationEventCaseForRun.Name,
+					receivedPayload,
+				)
+			}
+
+			logOutput := logOutputBuffer.String()
+			if !strings.Contains(
+				logOutput,
+				"no changes to wave.config.json; skipping restart",
+			) {
+				t.Fatalf(
+					"expected no-op config %s log message, got logs: %s",
+					configMutationEventCaseForRun.Name,
+					logOutput,
+				)
+			}
+		})
+	}
+}
+
+func TestFlexibilityContract_NoOpConfigAtomicSaveEventSequenceDoesNotRestartOrBroadcast(
+	t *testing.T,
+) {
+	cfg, _, configFilePath := setupConfigEventTestConfig(t)
+	cfg.Core.ServerOnlyMode = false
+
+	var logOutputBuffer bytes.Buffer
+	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+	serverForTest.Log = slog.New(
+		slog.NewTextHandler(&logOutputBuffer, nil),
+	)
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+	serverForTest.RefreshManager = refreshManager
+
+	configBytes, readError := os.ReadFile(configFilePath)
+	if readError != nil {
+		t.Fatalf("failed reading config file for no-op atomic save sequence: %v", readError)
+	}
+	if writeError := os.WriteFile(
+		configFilePath,
+		configBytes,
+		0o644,
+	); writeError != nil {
+		t.Fatalf("failed writing config file for no-op atomic save sequence: %v", writeError)
+	}
+
+	serverForTest.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
+		{
+			Name: configFilePath,
+			Op:   fsnotify.Rename,
+		},
+		{
+			Name: configFilePath,
+			Op:   fsnotify.Create,
+		},
+		{
+			Name: configFilePath,
+			Op:   fsnotify.Write,
+		},
+	})
+
+	if pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(
+		serverForTest,
+	); hasPendingRestartRequest {
+		t.Fatalf(
+			"expected no restart request for no-op config atomic-save sequence, got %#v",
+			pendingRestartRequest,
+		)
+	}
+
+	connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
+		t.Fatalf(
+			"expected no broadcast payload for no-op config atomic-save sequence, got %#v",
+			receivedPayload,
+		)
+	}
+
+	logOutput := logOutputBuffer.String()
+	if !strings.Contains(
+		logOutput,
+		"no changes to wave.config.json; skipping restart",
+	) {
+		t.Fatalf(
+			"expected no-op config atomic-save log message, got logs: %s",
+			logOutput,
+		)
+	}
+}
+
+func TestFlexibilityContract_NoOpConfigMutationsAcrossPathAliasesAndEventTypes(
+	t *testing.T,
+) {
+	configMutationEventCases := []struct {
+		Name string
+		Op   fsnotify.Op
+	}{
+		{Name: "write", Op: fsnotify.Write},
+		{Name: "create", Op: fsnotify.Create},
+		{Name: "rename", Op: fsnotify.Rename},
+	}
+
+	for _, pathShapeCaseForRun := range configEventPathShapeCases() {
+		pathShapeCaseForRun := pathShapeCaseForRun
+		for _, configMutationEventCaseForRun := range configMutationEventCases {
+			configMutationEventCaseForRun := configMutationEventCaseForRun
+			t.Run(
+				pathShapeCaseForRun.Name+"_"+configMutationEventCaseForRun.Name,
+				func(t *testing.T) {
+					cfg, _, configFilePath := setupConfigEventTestConfig(t)
+					cfg.Core.ServerOnlyMode = false
+
+					var logOutputBuffer bytes.Buffer
+					serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+					serverForTest.Log = slog.New(
+						slog.NewTextHandler(&logOutputBuffer, nil),
+					)
+
+					refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+						t,
+					)
+					defer cleanup()
+					serverForTest.RefreshManager = refreshManager
+
+					configBytes, readError := os.ReadFile(configFilePath)
+					if readError != nil {
+						t.Fatalf("failed reading config file for no-op mutation matrix: %v", readError)
+					}
+					if writeError := os.WriteFile(
+						configFilePath,
+						configBytes,
+						0o644,
+					); writeError != nil {
+						t.Fatalf("failed writing no-op config bytes for mutation matrix: %v", writeError)
+					}
+
+					serverForTest.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
+						Name: pathShapeCaseForRun.BuildPath(t, configFilePath),
+						Op:   configMutationEventCaseForRun.Op,
+					}})
+
+					if pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(
+						serverForTest,
+					); hasPendingRestartRequest {
+						t.Fatalf(
+							"expected no restart request for no-op config %s via %s alias, got %#v",
+							configMutationEventCaseForRun.Name,
+							pathShapeCaseForRun.Name,
+							pendingRestartRequest,
+						)
+					}
+
+					connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+					var receivedPayload broadcast.Payload
+					if readError := connection.ReadJSON(&receivedPayload); readError == nil {
+						t.Fatalf(
+							"expected no broadcast payload for no-op config %s via %s alias, got %#v",
+							configMutationEventCaseForRun.Name,
+							pathShapeCaseForRun.Name,
+							receivedPayload,
+						)
+					}
+
+					if !strings.Contains(
+						logOutputBuffer.String(),
+						"no changes to wave.config.json; skipping restart",
+					) {
+						t.Fatalf(
+							"expected no-op config log for %s via %s alias, got logs: %s",
+							configMutationEventCaseForRun.Name,
+							pathShapeCaseForRun.Name,
+							logOutputBuffer.String(),
+						)
+					}
+				},
+			)
+		}
+	}
+}
+
+func TestFlexibilityContract_ConfigSemanticMutationsAcrossPathAliasesAndEventTypes(
+	t *testing.T,
+) {
+	configMutationEventCases := []struct {
+		Name string
+		Op   fsnotify.Op
+	}{
+		{Name: "write", Op: fsnotify.Write},
+		{Name: "create", Op: fsnotify.Create},
+		{Name: "rename", Op: fsnotify.Rename},
+	}
+
+	for _, pathShapeCaseForRun := range configEventPathShapeCases() {
+		pathShapeCaseForRun := pathShapeCaseForRun
+		for _, configMutationEventCaseForRun := range configMutationEventCases {
+			configMutationEventCaseForRun := configMutationEventCaseForRun
+			t.Run(
+				pathShapeCaseForRun.Name+"_"+configMutationEventCaseForRun.Name,
+				func(t *testing.T) {
+					cfg, _, configFilePath := setupConfigEventTestConfig(t)
+					cfg.Core.ServerOnlyMode = false
+
+					serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+
+					refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+						t,
+					)
+					defer cleanup()
+					serverForTest.RefreshManager = refreshManager
+
+					writeSemanticallyChangedConfigForToolingTests(t, configFilePath)
+
+					serverForTest.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
+						Name: pathShapeCaseForRun.BuildPath(t, configFilePath),
+						Op:   configMutationEventCaseForRun.Op,
+					}})
+
+					pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+						t,
+						serverForTest,
+						200*time.Millisecond,
+					)
+					if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
+						t.Fatalf(
+							"expected config restart with Go recompile for semantic config %s via %s alias, got %#v",
+							configMutationEventCaseForRun.Name,
+							pathShapeCaseForRun.Name,
+							pendingRestartRequest,
+						)
+					}
+
+					connection.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+					var receivedPayload broadcast.Payload
+					if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+						t.Fatalf(
+							"expected rebuilding broadcast for semantic config %s via %s alias: %v",
+							configMutationEventCaseForRun.Name,
+							pathShapeCaseForRun.Name,
+							readError,
+						)
+					}
+					if receivedPayload.ChangeType != broadcast.ChangeTypeRebuilding {
+						t.Fatalf(
+							"expected rebuilding payload for semantic config %s via %s alias, got %#v",
+							configMutationEventCaseForRun.Name,
+							pathShapeCaseForRun.Name,
+							receivedPayload,
+						)
+					}
+				},
+			)
+		}
+	}
+}
+
+func TestFlexibilityContract_ConfigWriteChangeBroadcastsAndRestarts(
+	t *testing.T,
+) {
+	cfg, _, configFilePath := setupConfigEventTestConfig(t)
+	cfg.Core.ServerOnlyMode = false
+	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+	serverForTest.RefreshManager = refreshManager
+
+	writeSemanticallyChangedConfigForToolingTests(t, configFilePath)
+
+	serverForTest.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
+		Name: configFilePath,
+		Op:   fsnotify.Write,
+	}})
+
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		serverForTest,
+		200*time.Millisecond,
+	)
+	if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
+		t.Fatalf(
+			"expected config restart with Go recompile after semantic config write, got %#v",
+			pendingRestartRequest,
+		)
+	}
+
+	connection.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+		t.Fatalf("expected rebuilding broadcast for semantic config write: %v", readError)
+	}
+	if receivedPayload.ChangeType != broadcast.ChangeTypeRebuilding {
+		t.Fatalf("expected rebuilding payload, got %#v", receivedPayload)
+	}
 }
 
 func TestFlexibilityContract_ViteDevBuildHonorsCmdDirAndConfigFile(t *testing.T) {

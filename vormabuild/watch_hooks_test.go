@@ -25,7 +25,13 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		t.Fatalf("expected 3 default watch patterns, got %d", len(patterns))
 	}
 
-	routePatternHook := findWatchHookByPattern(t, patterns, app.Config.ClientRouteDefinitionPatterns[0])
+	routePatternHook := findWatchHookByPattern(
+		t,
+		patterns,
+		normalizeFrameworkWatchPatternPath(
+			app.Config.ClientRouteDefinitionPatterns[0],
+		),
+	)
 	templatePatternHook := findWatchHookByPattern(
 		t,
 		patterns,

@@ -2,6 +2,7 @@ package broadcast
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -192,6 +193,28 @@ func TestClientManager_DrainChannels(t *testing.T) {
 			len(manager.registerQueue),
 			len(manager.unregisterQueue),
 			len(manager.broadcastQueue),
+		)
+	}
+}
+
+func TestPayloadJSON_CriticalChangeIncludesCriticalCSSFieldWhenEmpty(
+	t *testing.T,
+) {
+	payloadJSON, marshalError := json.Marshal(
+		Payload{
+			ChangeType:  ChangeTypeCriticalCSS,
+			CriticalCSS: "",
+		},
+	)
+	if marshalError != nil {
+		t.Fatalf("marshal payload: %v", marshalError)
+	}
+
+	payloadJSONString := string(payloadJSON)
+	if !strings.Contains(payloadJSONString, `"criticalCSS":""`) {
+		t.Fatalf(
+			"expected critical css field to be serialized for critical payloads, got %s",
+			payloadJSONString,
 		)
 	}
 }

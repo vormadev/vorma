@@ -784,6 +784,31 @@ func TestDeriveBrowserPhaseResolutionForWorkSet(t *testing.T) {
 			},
 		},
 		{
+			Name: "revalidate preference does not override public static invalidation",
+			BuildDecision: eventpipeline.BuildPhaseDecision{
+				ProcessPublicFiles: true,
+			},
+			PreferRevalidate: true,
+			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
+				Action: eventpipeline.BrowserPhaseActionInvalidateVite,
+			},
+		},
+		{
+			Name: "revalidate preference does not override mixed public and private static reload",
+			BuildDecision: eventpipeline.BuildPhaseDecision{
+				ProcessPublicFiles:  true,
+				ProcessPrivateFiles: true,
+			},
+			PreferRevalidate: true,
+			UsingVite:        true,
+			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
+				Action:         eventpipeline.BrowserPhaseActionHardReload,
+				ApplyWaitFlags: true,
+				WaitForApp:     true,
+				WaitForVite:    true,
+			},
+		},
+		{
 			Name:          "css-only work uses hot reload css",
 			BuildDecision: eventpipeline.BuildPhaseDecision{BuildCriticalCSS: true},
 			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
@@ -798,13 +823,30 @@ func TestDeriveBrowserPhaseResolutionForWorkSet(t *testing.T) {
 			},
 		},
 		{
-			Name: "public static invalidation takes precedence over private static full reload",
+			Name: "private static full reload takes precedence over public static invalidation",
 			BuildDecision: eventpipeline.BuildPhaseDecision{
 				ProcessPublicFiles:  true,
 				ProcessPrivateFiles: true,
 			},
 			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
-				Action: eventpipeline.BrowserPhaseActionInvalidateVite,
+				Action:         eventpipeline.BrowserPhaseActionHardReload,
+				ApplyWaitFlags: true,
+				WaitForApp:     true,
+				WaitForVite:    false,
+			},
+		},
+		{
+			Name: "non-css-only css work takes precedence over public static invalidation",
+			BuildDecision: eventpipeline.BuildPhaseDecision{
+				ProcessPublicFiles: true,
+				BuildNormalCSS:     true,
+			},
+			UsingVite: true,
+			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
+				Action:         eventpipeline.BrowserPhaseActionHardReload,
+				ApplyWaitFlags: true,
+				WaitForApp:     true,
+				WaitForVite:    true,
 			},
 		},
 		{

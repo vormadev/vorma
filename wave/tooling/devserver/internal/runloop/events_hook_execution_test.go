@@ -2498,6 +2498,287 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesFrameworkFileMapTS(
 	}
 }
 
+func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	publicTrackedFilePath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Public,
+		"assets",
+		"tracked-logo.png",
+	)
+	privateTrackedFilePath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Private,
+		"templates",
+		"tracked-home.html",
+	)
+	publicUnrelatedFilePath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Public,
+		"assets",
+		"unrelated-logo.png",
+	)
+	privateUnrelatedFilePath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Private,
+		"templates",
+		"unrelated-home.html",
+	)
+
+	for _, directoryPath := range []string{
+		filepath.Dir(publicTrackedFilePath),
+		filepath.Dir(privateTrackedFilePath),
+	} {
+		if mkdirError := os.MkdirAll(directoryPath, 0o755); mkdirError != nil {
+			t.Fatalf("create static parent directory %q: %v", directoryPath, mkdirError)
+		}
+	}
+
+	if writeError := os.WriteFile(publicTrackedFilePath, []byte("tracked"), 0o644); writeError != nil {
+		t.Fatalf("write tracked public static file: %v", writeError)
+	}
+	if writeError := os.WriteFile(privateTrackedFilePath, []byte("<h1>tracked</h1>"), 0o644); writeError != nil {
+		t.Fatalf("write tracked private static file: %v", writeError)
+	}
+
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	defer builderForTest.Close()
+
+	// Seed file maps so changed-path processing can mutate incrementally.
+	if processError := builderForTest.ProcessPublicFilesOnly(); processError != nil {
+		t.Fatalf("seed public file map: %v", processError)
+	}
+	if processError := builderForTest.ProcessPrivateFilesOnly(); processError != nil {
+		t.Fatalf("seed private file map: %v", processError)
+	}
+
+	if writeError := os.WriteFile(publicUnrelatedFilePath, []byte("unrelated"), 0o644); writeError != nil {
+		t.Fatalf("write unrelated public static file: %v", writeError)
+	}
+	if writeError := os.WriteFile(privateUnrelatedFilePath, []byte("<h1>unrelated</h1>"), 0o644); writeError != nil {
+		t.Fatalf("write unrelated private static file: %v", writeError)
+	}
+
+	serverForTest := newRunloopTestServer(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	serverForTest.Builder = builderForTest
+
+	work := &eventpipeline.WorkSet{
+		Build: eventpipeline.BuildPhaseDecision{
+			ProcessPublicFiles:            true,
+			ProcessPrivateFiles:           true,
+			PublicStaticChangedFilePaths:  []string{publicTrackedFilePath},
+			PrivateStaticChangedFilePaths: []string{privateTrackedFilePath},
+		},
+	}
+	if executeBuildPhaseError := serverForTest.ExecuteBuildPhase(work); executeBuildPhaseError != nil {
+		t.Fatalf("ExecuteBuildPhase with changed-path static processing returned error: %v", executeBuildPhaseError)
+	}
+
+	publicMap, loadPublicMapError := builderForTest.LoadPublicFileMap()
+	if loadPublicMapError != nil {
+		t.Fatalf("load public file map after changed-path processing: %v", loadPublicMapError)
+	}
+	privateMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
+		t,
+		cfg.Dist.PrivateFileMapGob(),
+	)
+
+	publicTrackedMapKey, publicTrackedRelError := filepath.Rel(
+		cfg.Core.StaticAssetDirs.Public,
+		publicTrackedFilePath,
+	)
+	if publicTrackedRelError != nil {
+		t.Fatalf("derive tracked public static map key: %v", publicTrackedRelError)
+	}
+	publicUnrelatedMapKey, publicUnrelatedRelError := filepath.Rel(
+		cfg.Core.StaticAssetDirs.Public,
+		publicUnrelatedFilePath,
+	)
+	if publicUnrelatedRelError != nil {
+		t.Fatalf("derive unrelated public static map key: %v", publicUnrelatedRelError)
+	}
+	privateTrackedMapKey, privateTrackedRelError := filepath.Rel(
+		cfg.Core.StaticAssetDirs.Private,
+		privateTrackedFilePath,
+	)
+	if privateTrackedRelError != nil {
+		t.Fatalf("derive tracked private static map key: %v", privateTrackedRelError)
+	}
+	privateUnrelatedMapKey, privateUnrelatedRelError := filepath.Rel(
+		cfg.Core.StaticAssetDirs.Private,
+		privateUnrelatedFilePath,
+	)
+	if privateUnrelatedRelError != nil {
+		t.Fatalf("derive unrelated private static map key: %v", privateUnrelatedRelError)
+	}
+
+	publicTrackedMapKey = filepath.ToSlash(publicTrackedMapKey)
+	publicUnrelatedMapKey = filepath.ToSlash(publicUnrelatedMapKey)
+	privateTrackedMapKey = filepath.ToSlash(privateTrackedMapKey)
+	privateUnrelatedMapKey = filepath.ToSlash(privateUnrelatedMapKey)
+
+	if _, exists := publicMap[publicTrackedMapKey]; !exists {
+		t.Fatalf(
+			"expected tracked public static file map key %q after changed-path processing, got %#v",
+			publicTrackedMapKey,
+			publicMap,
+		)
+	}
+	if _, exists := privateMap[privateTrackedMapKey]; !exists {
+		t.Fatalf(
+			"expected tracked private static file map key %q after changed-path processing, got %#v",
+			privateTrackedMapKey,
+			privateMap,
+		)
+	}
+	if _, exists := publicMap[publicUnrelatedMapKey]; exists {
+		t.Fatalf(
+			"did not expect unrelated public static file map key %q in changed-path processing result, got %#v",
+			publicUnrelatedMapKey,
+			publicMap,
+		)
+	}
+	if _, exists := privateMap[privateUnrelatedMapKey]; exists {
+		t.Fatalf(
+			"did not expect unrelated private static file map key %q in changed-path processing result, got %#v",
+			privateUnrelatedMapKey,
+			privateMap,
+		)
+	}
+}
+
+func TestExecuteBuildPhase_UsesFullScanStaticProcessingWhenChangedPathsAbsent(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	publicTrackedFilePath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Public,
+		"assets",
+		"tracked-logo.png",
+	)
+	privateTrackedFilePath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Private,
+		"templates",
+		"tracked-home.html",
+	)
+	publicNewFilePath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Public,
+		"assets",
+		"new-logo.png",
+	)
+	privateNewFilePath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Private,
+		"templates",
+		"new-home.html",
+	)
+
+	for _, directoryPath := range []string{
+		filepath.Dir(publicTrackedFilePath),
+		filepath.Dir(privateTrackedFilePath),
+	} {
+		if mkdirError := os.MkdirAll(directoryPath, 0o755); mkdirError != nil {
+			t.Fatalf("create static parent directory %q: %v", directoryPath, mkdirError)
+		}
+	}
+
+	if writeError := os.WriteFile(publicTrackedFilePath, []byte("tracked"), 0o644); writeError != nil {
+		t.Fatalf("write tracked public static file: %v", writeError)
+	}
+	if writeError := os.WriteFile(privateTrackedFilePath, []byte("<h1>tracked</h1>"), 0o644); writeError != nil {
+		t.Fatalf("write tracked private static file: %v", writeError)
+	}
+
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	defer builderForTest.Close()
+
+	if processError := builderForTest.ProcessPublicFilesOnly(); processError != nil {
+		t.Fatalf("seed public file map: %v", processError)
+	}
+	if processError := builderForTest.ProcessPrivateFilesOnly(); processError != nil {
+		t.Fatalf("seed private file map: %v", processError)
+	}
+
+	if writeError := os.WriteFile(publicNewFilePath, []byte("new"), 0o644); writeError != nil {
+		t.Fatalf("write new public static file: %v", writeError)
+	}
+	if writeError := os.WriteFile(privateNewFilePath, []byte("<h1>new</h1>"), 0o644); writeError != nil {
+		t.Fatalf("write new private static file: %v", writeError)
+	}
+
+	serverForTest := newRunloopTestServer(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	serverForTest.Builder = builderForTest
+
+	work := &eventpipeline.WorkSet{
+		Build: eventpipeline.BuildPhaseDecision{
+			ProcessPublicFiles:  true,
+			ProcessPrivateFiles: true,
+		},
+	}
+	if executeBuildPhaseError := serverForTest.ExecuteBuildPhase(work); executeBuildPhaseError != nil {
+		t.Fatalf("ExecuteBuildPhase with full-scan static processing returned error: %v", executeBuildPhaseError)
+	}
+
+	publicMap, loadPublicMapError := builderForTest.LoadPublicFileMap()
+	if loadPublicMapError != nil {
+		t.Fatalf("load public file map after full scan: %v", loadPublicMapError)
+	}
+	privateMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
+		t,
+		cfg.Dist.PrivateFileMapGob(),
+	)
+
+	publicNewMapKey, publicNewRelError := filepath.Rel(
+		cfg.Core.StaticAssetDirs.Public,
+		publicNewFilePath,
+	)
+	if publicNewRelError != nil {
+		t.Fatalf("derive new public static map key: %v", publicNewRelError)
+	}
+	privateNewMapKey, privateNewRelError := filepath.Rel(
+		cfg.Core.StaticAssetDirs.Private,
+		privateNewFilePath,
+	)
+	if privateNewRelError != nil {
+		t.Fatalf("derive new private static map key: %v", privateNewRelError)
+	}
+
+	publicNewMapKey = filepath.ToSlash(publicNewMapKey)
+	privateNewMapKey = filepath.ToSlash(privateNewMapKey)
+
+	if _, exists := publicMap[publicNewMapKey]; !exists {
+		t.Fatalf(
+			"expected full-scan public static processing to include new key %q, got %#v",
+			publicNewMapKey,
+			publicMap,
+		)
+	}
+	if _, exists := privateMap[privateNewMapKey]; !exists {
+		t.Fatalf(
+			"expected full-scan private static processing to include new key %q, got %#v",
+			privateNewMapKey,
+			privateMap,
+		)
+	}
+}
+
 func TestExecuteBuildPhase_CompileGoErrorIsReturned(t *testing.T) {
 	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = true

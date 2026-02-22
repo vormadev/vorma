@@ -206,6 +206,77 @@ func TestWatcherStaticClassificationUsesDirectoryBoundaries(t *testing.T) {
 	}
 }
 
+func TestWatcherStaticClassificationRecognizesSymlinkAliasPaths(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForWatchTestsAtRoot(root)
+
+	publicStaticDirectoryPath := filepath.Join(root, "static", "public")
+	privateStaticDirectoryPath := filepath.Join(root, "static", "private")
+	if makeDirectoryError := os.MkdirAll(publicStaticDirectoryPath, 0o755); makeDirectoryError != nil {
+		t.Fatalf("failed creating public static directory: %v", makeDirectoryError)
+	}
+	if makeDirectoryError := os.MkdirAll(privateStaticDirectoryPath, 0o755); makeDirectoryError != nil {
+		t.Fatalf("failed creating private static directory: %v", makeDirectoryError)
+	}
+	if writeError := os.WriteFile(
+		filepath.Join(publicStaticDirectoryPath, "app.js"),
+		[]byte("console.log('public');"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("failed writing public static file: %v", writeError)
+	}
+	if writeError := os.WriteFile(
+		filepath.Join(privateStaticDirectoryPath, "template.html"),
+		[]byte("<html></html>"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("failed writing private static file: %v", writeError)
+	}
+
+	watcher, watcherCreateError := watch.NewWatcher(
+		cfg,
+		newDiscardLoggerForWatchTests(),
+	)
+	if watcherCreateError != nil {
+		t.Fatalf("newWatcher returned error: %v", watcherCreateError)
+	}
+	defer watcher.Close()
+
+	aliasStaticDirectoryPath := filepath.Join(root, "static-alias")
+	if symlinkError := os.Symlink(
+		filepath.Join(root, "static"),
+		aliasStaticDirectoryPath,
+	); symlinkError != nil {
+		t.Skipf("symlink creation is unavailable on this platform: %v", symlinkError)
+	}
+
+	aliasPublicStaticFilePath := filepath.Join(
+		aliasStaticDirectoryPath,
+		"public",
+		"app.js",
+	)
+	if !watcher.IsPublicStaticFile(aliasPublicStaticFilePath) {
+		t.Fatalf(
+			"expected symlink alias path %q to classify as public static",
+			aliasPublicStaticFilePath,
+		)
+	}
+
+	aliasPrivateStaticFilePath := filepath.Join(
+		aliasStaticDirectoryPath,
+		"private",
+		"template.html",
+	)
+	if !watcher.IsPrivateStaticFile(aliasPrivateStaticFilePath) {
+		t.Fatalf(
+			"expected symlink alias path %q to classify as private static",
+			aliasPrivateStaticFilePath,
+		)
+	}
+}
+
 func TestNewWatcher_RejectsInvalidFrameworkWatchPattern(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForWatchTestsAtRoot(root)

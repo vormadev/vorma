@@ -56,7 +56,7 @@ func TestWriteSchema_WritesSchemaJSON(t *testing.T) {
 		t.Fatalf("unmarshal schema: %v", unmarshalError)
 	}
 
-	for _, requiredKey := range []string{"Core", "Watch", "Vite"} {
+	for _, requiredKey := range []string{"$schema", "Core", "Watch", "Vite"} {
 		if _, exists := schemaDocument.Properties[requiredKey]; !exists {
 			t.Fatalf("schema missing required top-level section %q", requiredKey)
 		}
@@ -160,6 +160,86 @@ func TestBuildSchemaDocument_HookTimingDescriptionUsesConcurrentDashNoWait(t *te
 		t.Fatalf(
 			"expected timing description to avoid underscore variant, got %q",
 			timingDescription,
+		)
+	}
+}
+
+func TestBuildSchemaDocument_AllWaveOwnedFieldsHaveDescriptions(t *testing.T) {
+	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t.TempDir())
+	processor := schema.NewProcessor(cfg, nil)
+
+	schemaDocument, buildError := processor.BuildSchemaDocument()
+	if buildError != nil {
+		t.Fatalf("BuildSchemaDocument returned error: %v", buildError)
+	}
+
+	properties, ok := schemaDocument["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties has unexpected type: %#v", schemaDocument["properties"])
+	}
+
+	for _, rootFieldName := range []string{"$schema", "Core", "Watch", "Vite"} {
+		rootFieldSchema, fieldExists := properties[rootFieldName].(map[string]any)
+		if !fieldExists {
+			t.Fatalf("schema missing root field %q", rootFieldName)
+		}
+		rootFieldDescription, _ := rootFieldSchema["description"].(string)
+		if strings.TrimSpace(rootFieldDescription) == "" {
+			t.Fatalf("schema field %q is missing description", rootFieldName)
+		}
+		assertSchemaPropertyDescriptionsForSchemaPackageTests(
+			t,
+			rootFieldSchema,
+			rootFieldName,
+		)
+	}
+}
+
+func assertSchemaPropertyDescriptionsForSchemaPackageTests(
+	t *testing.T,
+	schemaNode map[string]any,
+	path string,
+) {
+	t.Helper()
+
+	propertiesValue, hasProperties := schemaNode["properties"]
+	if hasProperties {
+		propertiesMap, ok := propertiesValue.(map[string]any)
+		if !ok {
+			t.Fatalf("schema properties at %q have unexpected type: %#v", path, propertiesValue)
+		}
+		for propertyName, propertyValue := range propertiesMap {
+			propertySchema, ok := propertyValue.(map[string]any)
+			if !ok {
+				t.Fatalf(
+					"schema property at %q.%s has unexpected type: %#v",
+					path,
+					propertyName,
+					propertyValue,
+				)
+			}
+			description, _ := propertySchema["description"].(string)
+			if strings.TrimSpace(description) == "" {
+				t.Fatalf("schema property %q.%s is missing description", path, propertyName)
+			}
+			assertSchemaPropertyDescriptionsForSchemaPackageTests(
+				t,
+				propertySchema,
+				path+"."+propertyName,
+			)
+		}
+	}
+
+	itemsValue, hasItems := schemaNode["items"]
+	if hasItems {
+		itemsSchema, ok := itemsValue.(map[string]any)
+		if !ok {
+			t.Fatalf("schema items at %q have unexpected type: %#v", path, itemsValue)
+		}
+		assertSchemaPropertyDescriptionsForSchemaPackageTests(
+			t,
+			itemsSchema,
+			path+"[]",
 		)
 	}
 }

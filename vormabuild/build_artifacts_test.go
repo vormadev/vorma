@@ -252,10 +252,17 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 	var foundRoutesPattern bool
 	var foundTemplatePattern bool
 	var foundGoPattern bool
+	normalizedRoutePatterns := make(
+		map[string]struct{},
+		len(app.Config.ClientRouteDefinitionPatterns),
+	)
+	for _, configuredRoutePattern := range app.Config.ClientRouteDefinitionPatterns {
+		normalizedRoutePatterns[normalizeFrameworkWatchPatternPath(configuredRoutePattern)] = struct{}{}
+	}
 
 	for _, pattern := range patterns {
-		for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
-			if pattern.Pattern != routeDefinitionPattern {
+		for normalizedRoutePattern := range normalizedRoutePatterns {
+			if pattern.Pattern != normalizedRoutePattern {
 				continue
 			}
 			foundRoutesPattern = true

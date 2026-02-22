@@ -1,7 +1,9 @@
 package devserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -390,27 +392,41 @@ func (server *runtimeServer) addConfigFileDirectory() error {
 
 // ReloadConfig reloads parsed config from disk and preserves runtime framework hooks.
 func (server *runtimeServer) ReloadConfig() (*wave.ParsedConfig, error) {
+	_, reloadError := server.ReloadConfigIfChanged()
+	if reloadError != nil {
+		return nil, reloadError
+	}
+	return server.Cfg, nil
+}
+
+// ReloadConfigIfChanged reloads parsed config and reports whether semantic
+// config content changed.
+func (server *runtimeServer) ReloadConfigIfChanged() (bool, error) {
 	if server == nil || server.Cfg == nil {
-		return nil, errors.New("server config unavailable")
+		return false, errors.New("server config unavailable")
 	}
 	if strings.TrimSpace(server.Cfg.Core.ConfigLocation) == "" {
-		return server.Cfg, nil
+		return false, nil
 	}
 
 	newConfig, loadError := server.loadParsedConfigForReload(
 		server.Cfg.Core.ConfigLocation,
 	)
 	if loadError != nil {
-		return nil, loadError
+		return false, loadError
 	}
 	if validationError := builder.ValidateConfig(newConfig); validationError != nil {
-		return nil, validationError
+		return false, validationError
+	}
+
+	if !didConfigReloadChange(server.Cfg, newConfig) {
+		return false, nil
 	}
 
 	server.Mu.Lock()
 	server.Cfg = newConfig
 	server.Mu.Unlock()
-	return newConfig, nil
+	return true, nil
 }
 
 // loadParsedConfigForReload loads parsed config while preserving framework runtime callbacks.
@@ -426,6 +442,53 @@ func (server *runtimeServer) loadParsedConfigForReload(
 		wave.CopyFrameworkRuntimeFieldsForToolingReload(newConfig, currentConfig)
 	}
 	return newConfig, nil
+}
+
+func didConfigReloadChange(
+	currentConfig *wave.ParsedConfig,
+	nextConfig *wave.ParsedConfig,
+) bool {
+	normalizedCurrentConfig := normalizeConfigForReloadComparison(
+		currentConfig,
+	)
+	normalizedNextConfig := normalizeConfigForReloadComparison(
+		nextConfig,
+	)
+
+	currentJSON, currentMarshalError := json.Marshal(normalizedCurrentConfig)
+	nextJSON, nextMarshalError := json.Marshal(normalizedNextConfig)
+	if currentMarshalError != nil || nextMarshalError != nil {
+		return true
+	}
+	return !bytes.Equal(currentJSON, nextJSON)
+}
+
+func normalizeConfigForReloadComparison(
+	config *wave.ParsedConfig,
+) *wave.ParsedConfig {
+	if config == nil {
+		return nil
+	}
+
+	normalizedConfig := *config
+	if config.Core != nil {
+		normalizedCore := *config.Core
+		normalizedCore.ConfigLocation = normalizeConfigLocationForReloadComparison(
+			normalizedCore.ConfigLocation,
+		)
+		normalizedConfig.Core = &normalizedCore
+	}
+	return &normalizedConfig
+}
+
+func normalizeConfigLocationForReloadComparison(
+	configLocation string,
+) string {
+	trimmedLocation := strings.TrimSpace(configLocation)
+	if trimmedLocation == "" {
+		return ""
+	}
+	return wavecore.Absolute(trimmedLocation)
 }
 
 // WaitForApp waits until app healthcheck becomes ready.
@@ -1301,6 +1364,12 @@ func (server *runtimeServer) ExecuteBrowserPhase(work *eventpipeline.WorkSet) {
 		) {
 			if invalidateError := server.CallViteFilemapInvalidate(); invalidateError == nil {
 				return
+			} else if server.Log != nil {
+				server.Log.Warn(
+					"vite invalidate endpoint failed; falling back to hard reload",
+					"error",
+					invalidateError,
+				)
 			}
 		}
 		browserDecision = eventpipeline.ResolveBrowserDecisionAfterInvalidateViteFallback(
@@ -1497,13 +1566,41 @@ func (server *runtimeServer) applyWatcherEventPreClassificationSideEffects(
 		return false, nil
 	}
 	if server.IsConfigFile(watcherEvent.Name) {
-		_, reloadError := server.ReloadConfig()
+		configChanged, reloadError := server.ReloadConfigIfChanged()
 		if reloadError != nil {
 			return true, reloadError
 		}
-		return true, nil
+		if !configChanged {
+			logNoopConfigReloadForWatcherEvent(server, watcherEvent)
+		}
+		return configChanged, nil
 	}
 	return false, nil
+}
+
+func logNoopConfigReloadForWatcherEvent(
+	server *runtimeServer,
+	watcherEvent fsnotify.Event,
+) {
+	if server == nil || server.Log == nil {
+		return
+	}
+
+	configDisplayPath := watcherEvent.Name
+	if server.Cfg != nil && server.Cfg.Core != nil &&
+		strings.TrimSpace(server.Cfg.Core.ConfigLocation) != "" {
+		configDisplayPath = server.Cfg.Core.ConfigLocation
+	}
+	configFileName := filepath.Base(configDisplayPath)
+	if strings.TrimSpace(configFileName) == "" {
+		configFileName = "configuration file"
+	}
+
+	server.Log.Info(
+		"no changes to "+configFileName+"; skipping restart",
+		"file",
+		watcherEvent.Name,
+	)
 }
 
 func isConfigMutationWatcherEvent(watcherEvent fsnotify.Event) bool {

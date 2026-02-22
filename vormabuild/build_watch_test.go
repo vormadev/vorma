@@ -2,6 +2,7 @@ package vormabuild
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,16 +46,24 @@ func TestRouteDefinitionWatchPatterns_PreservesInputOrderForValidPatterns(
 			patterns,
 		)
 	}
-	if patterns[0].Pattern != "frontend/src/routes/alpha.vorma.routes.ts" {
+	expectedAlphaPattern := normalizeFrameworkWatchPatternPath(
+		"frontend/src/routes/alpha.vorma.routes.ts",
+	)
+	if patterns[0].Pattern != expectedAlphaPattern {
 		t.Fatalf(
-			"patterns[0].Pattern = %q, want alpha pattern",
+			"patterns[0].Pattern = %q, want %q",
 			patterns[0].Pattern,
+			expectedAlphaPattern,
 		)
 	}
-	if patterns[1].Pattern != "frontend/src/routes/beta.vorma.routes.ts" {
+	expectedBetaPattern := normalizeFrameworkWatchPatternPath(
+		"frontend/src/routes/beta.vorma.routes.ts",
+	)
+	if patterns[1].Pattern != expectedBetaPattern {
 		t.Fatalf(
-			"patterns[1].Pattern = %q, want beta pattern",
+			"patterns[1].Pattern = %q, want %q",
 			patterns[1].Pattern,
+			expectedBetaPattern,
 		)
 	}
 }
@@ -174,7 +183,7 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 		"**/*.go": 1,
 	}
 	for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
-		expectedPatternCounts[routeDefinitionPattern] = 1
+		expectedPatternCounts[normalizeFrameworkWatchPatternPath(routeDefinitionPattern)] = 1
 	}
 	assertFrameworkWatchPatternCounts(
 		t,
@@ -284,6 +293,77 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(
 		expectedIgnoredPaths,
 		1,
 	)
+}
+
+func TestInjectDefaultWatchPatterns_MatchesRouteAndTemplateWhenWatchRootIsAncestor(
+	t *testing.T,
+) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+
+	originalWorkingDirectory, workingDirectoryError := os.Getwd()
+	if workingDirectoryError != nil {
+		t.Fatalf("read current working directory: %v", workingDirectoryError)
+	}
+	if chdirError := os.Chdir(fixture.rootDir); chdirError != nil {
+		t.Fatalf("chdir into fixture root %q: %v", fixture.rootDir, chdirError)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWorkingDirectory)
+	})
+
+	parsedCfg := app.Wave.BuildtimeParsedConfig()
+	if parsedCfg.Watch == nil {
+		parsedCfg.Watch = &wave.WatchConfig{}
+	}
+	parsedCfg.Watch.WatchRoot = filepath.Dir(fixture.rootDir)
+	injectDefaultWatchPatternsInConfig(parsedCfg, app)
+
+	templatePattern := normalizeFrameworkWatchPatternPath(
+		filepath.Join(app.Wave.PrivateStaticDir(), app.Config.HTMLTemplateLocation),
+	)
+	routePattern := normalizeFrameworkWatchPatternPath(
+		app.Config.ClientRouteDefinitionPatterns[0],
+	)
+	assertFrameworkWatchPatternCounts(
+		t,
+		parsedCfg.FrameworkWatchPatterns,
+		map[string]int{
+			routePattern:    1,
+			templatePattern: 1,
+			"**/*.go":       1,
+		},
+	)
+
+	var routeWatchPattern *wave.WatchedFile
+	var templateWatchPattern *wave.WatchedFile
+	for index := range parsedCfg.FrameworkWatchPatterns {
+		pattern := &parsedCfg.FrameworkWatchPatterns[index]
+		if pattern.Pattern == routePattern {
+			routeWatchPattern = pattern
+		}
+		if pattern.Pattern == templatePattern {
+			templateWatchPattern = pattern
+		}
+	}
+	if routeWatchPattern == nil {
+		t.Fatalf("expected route watch pattern %q", routePattern)
+	}
+	if !routeWatchPattern.RunOnChangeOnly {
+		t.Fatalf(
+			"expected route watch pattern RunOnChangeOnly=true, got %#v",
+			routeWatchPattern,
+		)
+	}
+	if templateWatchPattern == nil {
+		t.Fatalf("expected template watch pattern %q", templatePattern)
+	}
+	if templateWatchPattern.RunOnChangeOnly {
+		t.Fatalf(
+			"expected template watch pattern RunOnChangeOnly=false, got %#v",
+			templateWatchPattern,
+		)
+	}
 }
 
 func assertFrameworkWatchPatternCounts(
@@ -471,11 +551,14 @@ func TestRouteDefinitionWatchPatterns_UseConfiguredRoutePattern(t *testing.T) {
 	}
 
 	pattern := patterns[0]
-	if pattern.Pattern != "frontend/src/custom.routes.ts" {
+	expectedPattern := normalizeFrameworkWatchPatternPath(
+		"frontend/src/custom.routes.ts",
+	)
+	if pattern.Pattern != expectedPattern {
 		t.Fatalf(
 			"Pattern = %q, want %q",
 			pattern.Pattern,
-			"frontend/src/custom.routes.ts",
+			expectedPattern,
 		)
 	}
 	if !pattern.RunOnChangeOnly {

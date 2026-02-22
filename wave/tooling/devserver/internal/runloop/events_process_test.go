@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -621,6 +622,58 @@ func TestProcessEvents_IgnoresChmodOnNonEmptyFile(t *testing.T) {
 
 	if got := atomic.LoadInt32(&callbackCount); got != 0 {
 		t.Fatalf("expected chmod-only non-empty event to be ignored, callback count=%d", got)
+	}
+}
+
+func TestProcessEvents_LogsWatcherEventsWithCycleAndBatchTraceFields(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	watchedTextFilePath := filepath.Join(root, "notes.txt")
+	if writeError := os.WriteFile(watchedTextFilePath, []byte("notes"), 0o644); writeError != nil {
+		t.Fatalf("write watched text file: %v", writeError)
+	}
+
+	cfg.Watch.Include = []wave.WatchedFile{
+		{
+			Pattern:         "**/*.txt",
+			RunOnChangeOnly: true,
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	var logBuffer bytes.Buffer
+	serverForTest.Log = slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+	processEventsForRunloopTests(
+		t,
+		serverForTest,
+		[]fsnotify.Event{
+			{
+				Name: watchedTextFilePath,
+				Op:   fsnotify.Write,
+			},
+		},
+	)
+
+	logOutput := logBuffer.String()
+	if !strings.Contains(logOutput, "watch event") {
+		t.Fatalf("expected watcher event log entry, got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, "cycle_id=") {
+		t.Fatalf("expected watcher event log to include cycle_id, got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, "batch_id=") {
+		t.Fatalf("expected watcher event log to include batch_id, got %q", logOutput)
 	}
 }
 
@@ -1249,6 +1302,7 @@ type siteStylePathMatrixForRunloopProcessTests struct {
 	MarkdownPath              string
 	RouteRegistryPath         string
 	PublicStaticPath          string
+	PrivateStaticPath         string
 	TailwindCSSPath           string
 	RandomFrontendTSPath      string
 	VormaFrontendEntryTSXPath string
@@ -1323,6 +1377,10 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 		PublicStaticPath: filepath.Join(
 			cfg.Core.StaticAssetDirs.Public,
 			"logo.svg",
+		),
+		PrivateStaticPath: filepath.Join(
+			cfg.Core.StaticAssetDirs.Private,
+			"notes.txt",
 		),
 		TailwindCSSPath: filepath.Join(
 			root,
@@ -1400,6 +1458,7 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 		filepath.Dir(paths.MarkdownPath),
 		filepath.Dir(paths.RouteRegistryPath),
 		filepath.Dir(paths.PublicStaticPath),
+		filepath.Dir(paths.PrivateStaticPath),
 		filepath.Dir(paths.RandomFrontendTSPath),
 		filepath.Dir(paths.VormaFrontendEntryTSXPath),
 		filepath.Dir(paths.GoSourcePath),
@@ -1419,6 +1478,7 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 		paths.MarkdownPath:              "# Post\n\nhello",
 		paths.RouteRegistryPath:         "export const routes = []",
 		paths.PublicStaticPath:          "<svg></svg>",
+		paths.PrivateStaticPath:         "private note",
 		paths.TailwindCSSPath:           "@tailwind utilities;",
 		paths.RandomFrontendTSPath:      "export const clientUtil = () => 'ok'",
 		paths.VormaFrontendEntryTSXPath: "export const App = () => null",
@@ -1852,6 +1912,351 @@ func TestProcessEvents_SiteStyleMatrixUsesMinimumWorkByFileType(
 			)
 		})
 	}
+}
+
+func TestProcessEvents_SiteStyleMixedBatchPublicAndPrivateStaticUsesHardReloadPrecedence(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Dist.Root = cfg.Core.DistDir
+	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+
+	privateStaticPath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Private,
+		"notes.txt",
+	)
+	if writeError := os.WriteFile(
+		privateStaticPath,
+		[]byte("private note"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write private static file: %v", writeError)
+	}
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	capture := &runloopWorkCaptureForProcessTests{}
+	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+		serverForTest,
+		capture,
+	)
+
+	engine.ProcessEvents(
+		[]fsnotify.Event{
+			{
+				Name: paths.PublicStaticPath,
+				Op:   fsnotify.Write,
+			},
+			{
+				Name: privateStaticPath,
+				Op:   fsnotify.Write,
+			},
+		},
+	)
+
+	buildWorkSnapshots := capture.BuildWorkSnapshots()
+	if len(buildWorkSnapshots) != 1 {
+		t.Fatalf("expected one build work snapshot, got %#v", buildWorkSnapshots)
+	}
+	buildWork := buildWorkSnapshots[0]
+	if !buildWork.Build.ProcessPublicFiles ||
+		len(buildWork.Build.PublicStaticChangedFilePaths) != 1 ||
+		buildWork.Build.PublicStaticChangedFilePaths[0] != paths.PublicStaticPath {
+		t.Fatalf(
+			"expected one public changed path %q, got %#v",
+			paths.PublicStaticPath,
+			buildWork.Build,
+		)
+	}
+	if !buildWork.Build.ProcessPrivateFiles ||
+		len(buildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+		buildWork.Build.PrivateStaticChangedFilePaths[0] != privateStaticPath {
+		t.Fatalf(
+			"expected one private changed path %q, got %#v",
+			privateStaticPath,
+			buildWork.Build,
+		)
+	}
+	if buildWork.Build.BuildCriticalCSS ||
+		buildWork.Build.BuildNormalCSS ||
+		buildWork.Build.CompileGo {
+		t.Fatalf(
+			"expected no unrelated mixed static build work, got %#v",
+			buildWork.Build,
+		)
+	}
+
+	browserWorkSnapshots := capture.BrowserWorkSnapshots()
+	if len(browserWorkSnapshots) != 1 {
+		t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+	}
+	browserWork := browserWorkSnapshots[0]
+	if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+		!browserWork.Browser.WaitForApp ||
+		browserWork.Browser.WaitForVite {
+		t.Fatalf(
+			"expected mixed public+private static browser hard reload waiting for app only, got %#v",
+			browserWork.Browser,
+		)
+	}
+
+	assertNoPendingRestartRequestForRunloopTests(
+		t,
+		serverForTest.RestartIntents,
+	)
+}
+
+func TestProcessEvents_SiteStyleMixedBatchRouteRegistryAndMarkdownUsesHardReload(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Dist.Root = cfg.Core.DistDir
+	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	capture := &runloopWorkCaptureForProcessTests{}
+	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+		serverForTest,
+		capture,
+	)
+
+	engine.ProcessEvents(
+		[]fsnotify.Event{
+			{
+				Name: paths.MarkdownPath,
+				Op:   fsnotify.Write,
+			},
+			{
+				Name: paths.RouteRegistryPath,
+				Op:   fsnotify.Write,
+			},
+		},
+	)
+
+	buildWorkSnapshots := capture.BuildWorkSnapshots()
+	if len(buildWorkSnapshots) != 1 {
+		t.Fatalf("expected one build work snapshot, got %#v", buildWorkSnapshots)
+	}
+	buildWork := buildWorkSnapshots[0]
+	if !buildWork.Build.ProcessPrivateFiles ||
+		len(buildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+		buildWork.Build.PrivateStaticChangedFilePaths[0] != paths.MarkdownPath {
+		t.Fatalf(
+			"expected one private changed path %q, got %#v",
+			paths.MarkdownPath,
+			buildWork.Build,
+		)
+	}
+	if !buildWork.PreferRevalidate {
+		t.Fatalf("expected markdown event to request revalidate preference, got %#v", buildWork)
+	}
+
+	browserWorkSnapshots := capture.BrowserWorkSnapshots()
+	if len(browserWorkSnapshots) != 1 {
+		t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+	}
+	browserWork := browserWorkSnapshots[0]
+	if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
+		t.Fatalf(
+			"expected mixed markdown+route-registry batch to choose hard reload, got %#v",
+			browserWork.Browser,
+		)
+	}
+	if !browserWork.Browser.WaitForApp {
+		t.Fatalf(
+			"expected mixed markdown+route-registry hard reload to wait for app, got %#v",
+			browserWork.Browser,
+		)
+	}
+
+	assertNoPendingRestartRequestForRunloopTests(
+		t,
+		serverForTest.RestartIntents,
+	)
+}
+
+func TestProcessEvents_SiteStyleMixedBatchGoAndNormalCSSUsesHardReload(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Dist.Root = cfg.Core.DistDir
+	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	capture := &runloopWorkCaptureForProcessTests{}
+	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+		serverForTest,
+		capture,
+	)
+
+	engine.ProcessEvents(
+		[]fsnotify.Event{
+			{
+				Name: paths.NormalCSSEntryPath,
+				Op:   fsnotify.Write,
+			},
+			{
+				Name: paths.GoSourcePath,
+				Op:   fsnotify.Write,
+			},
+		},
+	)
+
+	buildWorkSnapshots := capture.BuildWorkSnapshots()
+	if len(buildWorkSnapshots) != 1 {
+		t.Fatalf("expected one build work snapshot, got %#v", buildWorkSnapshots)
+	}
+	buildWork := buildWorkSnapshots[0]
+	if !buildWork.Build.CompileGo ||
+		!buildWork.Restart.RestartApp {
+		t.Fatalf(
+			"expected mixed go+css batch to compile and restart app, got %#v",
+			buildWork,
+		)
+	}
+	if buildWork.Build.BuildCriticalCSS ||
+		!buildWork.Build.BuildNormalCSS {
+		t.Fatalf(
+			"expected mixed go+css batch to build normal css only, got %#v",
+			buildWork.Build,
+		)
+	}
+	if buildWork.Build.ProcessPublicFiles ||
+		buildWork.Build.ProcessPrivateFiles {
+		t.Fatalf(
+			"expected mixed go+css batch to avoid static processing, got %#v",
+			buildWork.Build,
+		)
+	}
+
+	browserWorkSnapshots := capture.BrowserWorkSnapshots()
+	if len(browserWorkSnapshots) != 1 {
+		t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+	}
+	browserWork := browserWorkSnapshots[0]
+	if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+		!browserWork.Browser.WaitForApp ||
+		browserWork.Browser.WaitForVite {
+		t.Fatalf(
+			"expected mixed go+css batch to hard reload waiting for app only, got %#v",
+			browserWork.Browser,
+		)
+	}
+
+	assertNoPendingRestartRequestForRunloopTests(
+		t,
+		serverForTest.RestartIntents,
+	)
+}
+
+func TestProcessEvents_MixedBatchRunOnChangeOnlyAndImplicitBuildEvent(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	var callbackCount int32
+	cfg.Watch.Include = []wave.WatchedFile{
+		{
+			Pattern:         "**/*.txt",
+			RunOnChangeOnly: true,
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						atomic.AddInt32(&callbackCount, 1)
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+
+	watchedRunOnChangePath := filepath.Join(root, "notes.txt")
+	goSourcePath := filepath.Join(root, "backend", "handlers", "health.go")
+	if mkdirError := os.MkdirAll(filepath.Dir(goSourcePath), 0o755); mkdirError != nil {
+		t.Fatalf("create go source directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(watchedRunOnChangePath, []byte("notes"), 0o644); writeError != nil {
+		t.Fatalf("write run-on-change file: %v", writeError)
+	}
+	if writeError := os.WriteFile(
+		goSourcePath,
+		[]byte("package handlers\n\nfunc Health() string { return \"ok\" }\n"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write go source file: %v", writeError)
+	}
+
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	capture := &runloopWorkCaptureForProcessTests{}
+	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+		serverForTest,
+		capture,
+	)
+
+	engine.ProcessEvents(
+		[]fsnotify.Event{
+			{
+				Name: watchedRunOnChangePath,
+				Op:   fsnotify.Write,
+			},
+			{
+				Name: goSourcePath,
+				Op:   fsnotify.Write,
+			},
+		},
+	)
+
+	if atomic.LoadInt32(&callbackCount) != 1 {
+		t.Fatalf(
+			"expected run-on-change callback to execute once in mixed batch, got %d",
+			atomic.LoadInt32(&callbackCount),
+		)
+	}
+
+	buildWorkSnapshots := capture.BuildWorkSnapshots()
+	if len(buildWorkSnapshots) != 1 {
+		t.Fatalf("expected one build work snapshot, got %#v", buildWorkSnapshots)
+	}
+	buildWork := buildWorkSnapshots[0]
+	if !buildWork.Build.CompileGo || !buildWork.Restart.RestartApp {
+		t.Fatalf(
+			"expected mixed batch to preserve implicit go build+restart, got %#v",
+			buildWork,
+		)
+	}
+	if buildWork.Build.ProcessPublicFiles ||
+		buildWork.Build.ProcessPrivateFiles ||
+		buildWork.Build.BuildCriticalCSS ||
+		buildWork.Build.BuildNormalCSS {
+		t.Fatalf(
+			"expected mixed batch to avoid unrelated build work, got %#v",
+			buildWork.Build,
+		)
+	}
+
+	browserWorkSnapshots := capture.BrowserWorkSnapshots()
+	if len(browserWorkSnapshots) != 1 {
+		t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+	}
+	browserWork := browserWorkSnapshots[0]
+	if browserWork.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
+		!browserWork.Browser.WaitForApp ||
+		browserWork.Browser.WaitForVite {
+		t.Fatalf(
+			"expected mixed batch browser hard reload waiting for app only, got %#v",
+			browserWork.Browser,
+		)
+	}
+
+	assertNoPendingRestartRequestForRunloopTests(
+		t,
+		serverForTest.RestartIntents,
+	)
 }
 
 func TestProcessEvents_SiteStyleTemplateMutationOpsUseFastReloadWithoutRestart(
@@ -2305,6 +2710,267 @@ func TestProcessEvents_MarkdownWithoutWatchRuleUsesPrivateStaticReload(
 		t,
 		serverForTest.RestartIntents,
 	)
+}
+
+func TestProcessEvents_SiteStylePlainStaticAssetMutationOpsUseExpectedWorkWithoutRestart(
+	t *testing.T,
+) {
+	testCases := []struct {
+		Name                     string
+		ResolvePath              func(siteStylePathMatrixForRunloopProcessTests) string
+		Op                       fsnotify.Op
+		Prepare                  func(*testing.T, string)
+		ExpectProcessPublicFiles bool
+		ExpectProcessPrivate     bool
+		ExpectBrowserAction      eventpipeline.BrowserPhaseAction
+		ExpectWaitForApp         bool
+		ExpectWaitForVite        bool
+	}{
+		{
+			Name: "public_static_create",
+			ResolvePath: func(
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) string {
+				return paths.PublicStaticPath
+			},
+			Op: fsnotify.Create,
+			Prepare: func(t *testing.T, targetPath string) {
+				t.Helper()
+				if removeError := os.Remove(targetPath); removeError != nil {
+					t.Fatalf("remove public static file before create event: %v", removeError)
+				}
+				if writeError := os.WriteFile(
+					targetPath,
+					[]byte("<svg><!--public-create--></svg>"),
+					0o644,
+				); writeError != nil {
+					t.Fatalf("rewrite public static file before create event: %v", writeError)
+				}
+			},
+			ExpectProcessPublicFiles: true,
+			ExpectProcessPrivate:     false,
+			ExpectBrowserAction:      eventpipeline.BrowserPhaseActionInvalidateVite,
+			ExpectWaitForApp:         false,
+			ExpectWaitForVite:        false,
+		},
+		{
+			Name: "public_static_remove",
+			ResolvePath: func(
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) string {
+				return paths.PublicStaticPath
+			},
+			Op: fsnotify.Remove,
+			Prepare: func(t *testing.T, targetPath string) {
+				t.Helper()
+				if removeError := os.Remove(targetPath); removeError != nil {
+					t.Fatalf("remove public static file before remove event: %v", removeError)
+				}
+			},
+			ExpectProcessPublicFiles: true,
+			ExpectProcessPrivate:     false,
+			ExpectBrowserAction:      eventpipeline.BrowserPhaseActionInvalidateVite,
+			ExpectWaitForApp:         false,
+			ExpectWaitForVite:        false,
+		},
+		{
+			Name: "public_static_rename",
+			ResolvePath: func(
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) string {
+				return paths.PublicStaticPath
+			},
+			Op: fsnotify.Rename,
+			Prepare: func(t *testing.T, targetPath string) {
+				t.Helper()
+				renamedPath := targetPath + ".renamed"
+				if renameError := os.Rename(targetPath, renamedPath); renameError != nil {
+					t.Fatalf("rename public static file before rename event: %v", renameError)
+				}
+			},
+			ExpectProcessPublicFiles: true,
+			ExpectProcessPrivate:     false,
+			ExpectBrowserAction:      eventpipeline.BrowserPhaseActionInvalidateVite,
+			ExpectWaitForApp:         false,
+			ExpectWaitForVite:        false,
+		},
+		{
+			Name: "private_static_create",
+			ResolvePath: func(
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) string {
+				return paths.PrivateStaticPath
+			},
+			Op: fsnotify.Create,
+			Prepare: func(t *testing.T, targetPath string) {
+				t.Helper()
+				if removeError := os.Remove(targetPath); removeError != nil {
+					t.Fatalf("remove private static file before create event: %v", removeError)
+				}
+				if writeError := os.WriteFile(
+					targetPath,
+					[]byte("private-create"),
+					0o644,
+				); writeError != nil {
+					t.Fatalf("rewrite private static file before create event: %v", writeError)
+				}
+			},
+			ExpectProcessPublicFiles: false,
+			ExpectProcessPrivate:     true,
+			ExpectBrowserAction:      eventpipeline.BrowserPhaseActionHardReload,
+			ExpectWaitForApp:         true,
+			ExpectWaitForVite:        false,
+		},
+		{
+			Name: "private_static_remove",
+			ResolvePath: func(
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) string {
+				return paths.PrivateStaticPath
+			},
+			Op: fsnotify.Remove,
+			Prepare: func(t *testing.T, targetPath string) {
+				t.Helper()
+				if removeError := os.Remove(targetPath); removeError != nil {
+					t.Fatalf("remove private static file before remove event: %v", removeError)
+				}
+			},
+			ExpectProcessPublicFiles: false,
+			ExpectProcessPrivate:     true,
+			ExpectBrowserAction:      eventpipeline.BrowserPhaseActionHardReload,
+			ExpectWaitForApp:         true,
+			ExpectWaitForVite:        false,
+		},
+		{
+			Name: "private_static_rename",
+			ResolvePath: func(
+				paths siteStylePathMatrixForRunloopProcessTests,
+			) string {
+				return paths.PrivateStaticPath
+			},
+			Op: fsnotify.Rename,
+			Prepare: func(t *testing.T, targetPath string) {
+				t.Helper()
+				renamedPath := targetPath + ".renamed"
+				if renameError := os.Rename(targetPath, renamedPath); renameError != nil {
+					t.Fatalf("rename private static file before rename event: %v", renameError)
+				}
+			},
+			ExpectProcessPublicFiles: false,
+			ExpectProcessPrivate:     true,
+			ExpectBrowserAction:      eventpipeline.BrowserPhaseActionHardReload,
+			ExpectWaitForApp:         true,
+			ExpectWaitForVite:        false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.Name, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+			cfg.Dist.Root = cfg.Core.DistDir
+			paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
+
+			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			capture := &runloopWorkCaptureForProcessTests{}
+			engine := buildRunloopEngineWithWorkCaptureForProcessTests(
+				serverForTest,
+				capture,
+			)
+
+			targetPath := testCase.ResolvePath(paths)
+			if testCase.Prepare != nil {
+				testCase.Prepare(t, targetPath)
+			}
+
+			engine.ProcessEvents(
+				[]fsnotify.Event{
+					{
+						Name: targetPath,
+						Op:   testCase.Op,
+					},
+				},
+			)
+
+			buildWorkSnapshots := capture.BuildWorkSnapshots()
+			if len(buildWorkSnapshots) != 1 {
+				t.Fatalf("expected one build work snapshot, got %#v", buildWorkSnapshots)
+			}
+			buildWork := buildWorkSnapshots[0]
+			if buildWork.Build.ProcessPublicFiles != testCase.ExpectProcessPublicFiles ||
+				buildWork.Build.ProcessPrivateFiles != testCase.ExpectProcessPrivate {
+				t.Fatalf(
+					"static mutation expected public=%v private=%v processing, got %#v",
+					testCase.ExpectProcessPublicFiles,
+					testCase.ExpectProcessPrivate,
+					buildWork.Build,
+				)
+			}
+			if buildWork.Build.BuildCriticalCSS ||
+				buildWork.Build.BuildNormalCSS ||
+				buildWork.Build.CompileGo {
+				t.Fatalf(
+					"static mutation expected no css/go build work, got %#v",
+					buildWork.Build,
+				)
+			}
+			if testCase.ExpectProcessPublicFiles {
+				if len(buildWork.Build.PublicStaticChangedFilePaths) != 1 ||
+					buildWork.Build.PublicStaticChangedFilePaths[0] != targetPath {
+					t.Fatalf(
+						"expected one public changed path %q, got %#v",
+						targetPath,
+						buildWork.Build.PublicStaticChangedFilePaths,
+					)
+				}
+				if len(buildWork.Build.PrivateStaticChangedFilePaths) != 0 {
+					t.Fatalf(
+						"expected no private changed paths for public static mutation, got %#v",
+						buildWork.Build.PrivateStaticChangedFilePaths,
+					)
+				}
+			}
+			if testCase.ExpectProcessPrivate {
+				if len(buildWork.Build.PrivateStaticChangedFilePaths) != 1 ||
+					buildWork.Build.PrivateStaticChangedFilePaths[0] != targetPath {
+					t.Fatalf(
+						"expected one private changed path %q, got %#v",
+						targetPath,
+						buildWork.Build.PrivateStaticChangedFilePaths,
+					)
+				}
+				if len(buildWork.Build.PublicStaticChangedFilePaths) != 0 {
+					t.Fatalf(
+						"expected no public changed paths for private static mutation, got %#v",
+						buildWork.Build.PublicStaticChangedFilePaths,
+					)
+				}
+			}
+
+			browserWorkSnapshots := capture.BrowserWorkSnapshots()
+			if len(browserWorkSnapshots) != 1 {
+				t.Fatalf("expected one browser work snapshot, got %#v", browserWorkSnapshots)
+			}
+			browserWork := browserWorkSnapshots[0]
+			if browserWork.Browser.Action != testCase.ExpectBrowserAction ||
+				browserWork.Browser.WaitForApp != testCase.ExpectWaitForApp ||
+				browserWork.Browser.WaitForVite != testCase.ExpectWaitForVite {
+				t.Fatalf(
+					"static mutation browser decision=%#v, want action=%v waitApp=%v waitVite=%v",
+					browserWork.Browser,
+					testCase.ExpectBrowserAction,
+					testCase.ExpectWaitForApp,
+					testCase.ExpectWaitForVite,
+				)
+			}
+
+			assertNoPendingRestartRequestForRunloopTests(
+				t,
+				serverForTest.RestartIntents,
+			)
+		})
+	}
 }
 
 func TestProcessEvents_SiteStyleNoopFilesMutationOpsRemainNoop(t *testing.T) {

@@ -282,6 +282,91 @@ func TestReloadConfig_UsesConfigLocationWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestDidConfigReloadChange_IgnoresEquivalentConfigLocationPathShapes(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	relativeConfigPath := filepath.Join("backend", "wave.config.json")
+	absoluteConfigPath := filepath.Join(root, "backend", "wave.config.json")
+
+	currentConfig := newParsedConfigForToolingTestsAtRoot(root)
+	currentConfig.Core.ConfigLocation = relativeConfigPath
+	nextConfig := currentConfig.Clone()
+	nextConfig.Core.ConfigLocation = absoluteConfigPath
+
+	if didConfigReloadChange(currentConfig, nextConfig) {
+		t.Fatalf(
+			"expected equivalent relative/absolute config paths to be treated as unchanged: current=%q next=%q",
+			currentConfig.Core.ConfigLocation,
+			nextConfig.Core.ConfigLocation,
+		)
+	}
+}
+
+func TestReloadConfigIfChanged_FirstNoOpWriteWithRelativeConfigPathIsNoOp(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	configRelativePath := filepath.Join("backend", "wave.config.json")
+	configAbsolutePath := filepath.Join(root, "backend", "wave.config.json")
+
+	configPayload := map[string]any{
+		"Core": map[string]any{
+			"MainAppEntry":   "cmd/app",
+			"DistDir":        filepath.Join(root, "dist"),
+			"ConfigLocation": configRelativePath,
+			"StaticAssetDirs": map[string]any{
+				"Public":  filepath.Join(root, "static", "public"),
+				"Private": filepath.Join(root, "static", "private"),
+			},
+		},
+		"Watch": map[string]any{
+			"WatchRoot": root,
+		},
+	}
+	configPayloadBytes, marshalError := json.Marshal(configPayload)
+	if marshalError != nil {
+		t.Fatalf("marshal config payload: %v", marshalError)
+	}
+	if mkdirError := os.MkdirAll(filepath.Dir(configAbsolutePath), 0o755); mkdirError != nil {
+		t.Fatalf("create config directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(
+		configAbsolutePath,
+		configPayloadBytes,
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write config payload: %v", writeError)
+	}
+
+	currentConfig := newParsedConfigForToolingTestsAtRoot(root)
+	currentConfig.Core.ConfigLocation = configRelativePath
+
+	serverForTest := &Server{
+		Cfg: currentConfig,
+		Log: newDiscardLogger(),
+	}
+
+	configChanged, reloadError := serverForTest.ReloadConfigIfChanged()
+	if reloadError != nil {
+		t.Fatalf("ReloadConfigIfChanged returned error: %v", reloadError)
+	}
+	if configChanged {
+		t.Fatal("expected first no-op config write path-shape mismatch to report unchanged")
+	}
+	if serverForTest.Cfg.Core.ConfigLocation != configRelativePath {
+		t.Fatalf(
+			"expected unchanged config pointer to preserve relative config location %q, got %q",
+			configRelativePath,
+			serverForTest.Cfg.Core.ConfigLocation,
+		)
+	}
+}
+
 func TestReloadConfig_ValidationFailureKeepsPreviousConfig(t *testing.T) {
 	root := t.TempDir()
 
