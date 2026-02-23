@@ -58,7 +58,9 @@ func (harness *buildRetryRuntimeHarness) WaitForBuildRetry() restartengine.Resta
 	return harness.restartQueue.WaitForBuildRetry()
 }
 
-func TestProcessBatchedEvents_AllRunOnChangeOnlySkipsBuildAndRestart(t *testing.T) {
+func TestProcessBatchedEvents_AllRunOnChangeOnlySkipsBuildAndRestart(
+	t *testing.T,
+) {
 	harness := newBatchedWatcherHarness(
 		t,
 		newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir()),
@@ -185,7 +187,9 @@ func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
 		)
 	}
 	if postRan.Load() {
-		t.Fatal("did not expect post hooks to run after concurrent-triggered restart")
+		t.Fatal(
+			"did not expect post hooks to run after concurrent-triggered restart",
+		)
 	}
 }
 
@@ -302,7 +306,9 @@ func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if callbackCount.Load() == 0 {
-		t.Fatal("expected RunWatcherWithContext to process at least one fsnotify event")
+		t.Fatal(
+			"expected RunWatcherWithContext to process at least one fsnotify event",
+		)
 	}
 
 	if closeError := watcherForTest.Close(); closeError != nil {
@@ -313,6 +319,83 @@ func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 	case <-done:
 	case <-time.After(1 * time.Second):
 		t.Fatal("RunWatcherWithContext did not exit after watcher close")
+	}
+}
+
+func TestRunWatcher_NilContextDefaultsToBackground(t *testing.T) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+
+	var callbackCount atomic.Int32
+	cfg.Watch.Include = []wave.WatchedFile{
+		{
+			Pattern:         "**/*.txt",
+			RunOnChangeOnly: true,
+			OnChangeHooks: []wave.OnChangeHook{
+				{
+					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+						callbackCount.Add(1)
+						return nil, nil
+					},
+				},
+			},
+		},
+	}
+	cfg.Watch.Include[0].Sort()
+	cfg.Dist.Root = cfg.Core.DistDir
+
+	watcherForTest, watcherCreateError := watch.NewWatcher(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	if watcherCreateError != nil {
+		t.Fatalf("NewWatcher returned error: %v", watcherCreateError)
+	}
+	defer watcherForTest.Close()
+
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	defer builderForTest.Close()
+
+	harness := newBatchedWatcherHarness(
+		t,
+		cfg,
+		watcherForTest,
+		builderForTest,
+	)
+
+	done := make(chan struct{})
+	go func() {
+		harness.engine.RunWatcherWithContext(nil)
+		close(done)
+	}()
+
+	targetPath := filepath.Join(root, "watcher_nil_ctx.txt")
+	if writeError := os.WriteFile(targetPath, []byte("hello"), 0o644); writeError != nil {
+		t.Fatalf("failed writing watched file: %v", writeError)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for callbackCount.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if callbackCount.Load() == 0 {
+		t.Fatal(
+			"expected RunWatcherWithContext(nil) to process at least one fsnotify event",
+		)
+	}
+
+	if closeError := watcherForTest.Close(); closeError != nil {
+		t.Fatalf("watcher.Close returned error: %v", closeError)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("RunWatcherWithContext(nil) did not exit after watcher close")
 	}
 }
 
@@ -352,10 +435,14 @@ func TestWaitForBuildRetry_ConsumesRestartAndCleansUp(t *testing.T) {
 	}
 
 	if serverForTest.watcher == nil {
-		t.Fatal("expected WaitForBuildRetry to preserve watcher for cleanup stage")
+		t.Fatal(
+			"expected WaitForBuildRetry to preserve watcher for cleanup stage",
+		)
 	}
 	if serverForTest.builder == nil {
-		t.Fatal("expected WaitForBuildRetry to preserve builder for cleanup stage")
+		t.Fatal(
+			"expected WaitForBuildRetry to preserve builder for cleanup stage",
+		)
 	}
 }
 

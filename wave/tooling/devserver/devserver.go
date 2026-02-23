@@ -854,10 +854,7 @@ func (server *runtimeServer) executeRunLifecycleCommand(
 }
 
 // prepareRunCycle prepares run-cycle state and process resources.
-func (server *runtimeServer) prepareRunCycle(
-	firstRun bool,
-	currentRunIntent restartengine.RunIntent,
-) error {
+func (server *runtimeServer) prepareRunCycle(firstRun bool) error {
 	if firstRun {
 		server.MustGetPort()
 	}
@@ -999,10 +996,7 @@ func (server *runtimeServer) CleanupForRebuild() {
 func (server *runtimeServer) executeRunLifecycleCommandPrepareCycle(
 	input restartengine.RunLifecycleCommandInput,
 ) (restartengine.RunLifecycleCommandResult, error) {
-	if prepareError := server.prepareRunCycle(
-		input.FirstRun,
-		input.CurrentIntent,
-	); prepareError != nil {
+	if prepareError := server.prepareRunCycle(input.FirstRun); prepareError != nil {
 		return restartengine.RunLifecycleCommandResult{}, prepareError
 	}
 	return restartengine.RunLifecycleCommandResult{

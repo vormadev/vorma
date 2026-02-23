@@ -70,6 +70,10 @@ func New(dependencies Dependencies) *Engine {
 func (engine *Engine) RunWatcherWithContext(
 	watcherExecutionContext context.Context,
 ) {
+	if watcherExecutionContext == nil {
+		watcherExecutionContext = context.Background()
+	}
+
 	watcher := engine.currentWatcher()
 	if watcher == nil {
 		return
@@ -78,12 +82,10 @@ func (engine *Engine) RunWatcherWithContext(
 	debouncer := watch.NewDebouncer(
 		30*time.Millisecond,
 		func(events []fsnotify.Event) {
-			if watcherExecutionContext != nil {
-				select {
-				case <-watcherExecutionContext.Done():
-					return
-				default:
-				}
+			select {
+			case <-watcherExecutionContext.Done():
+				return
+			default:
 			}
 			engine.ProcessEvents(events)
 		},

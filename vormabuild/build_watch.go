@@ -70,8 +70,13 @@ func hasFrameworkWatchPattern(
 	existingPatterns []wave.WatchedFile,
 	pattern string,
 ) bool {
+	normalizedExpectedPattern := normalizeFrameworkWatchPatternPath(pattern)
 	for _, existingPattern := range existingPatterns {
 		if existingPattern.Pattern == pattern {
+			return true
+		}
+		if normalizeFrameworkWatchPatternPath(existingPattern.Pattern) ==
+			normalizedExpectedPattern {
 			return true
 		}
 	}

@@ -20,11 +20,24 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
 - [x] Fix check-then-register race in `internal/vormaruntime/vorma_init.go`
       (`validateAndDecorateNestedRouter` now uses atomic idempotent
       registration).
+- [x] Fix nil-context watcher panic path in
+      `wave/tooling/devserver/internal/runloop/runloop.go`
+      (`RunWatcherWithContext` now normalizes nil to `context.Background()`).
+- [x] Fix semantic duplicate default watch-pattern injection in
+      `vormabuild/build_watch.go` (route definition watch patterns now dedupe by
+      normalized absolute path, not just raw string equality).
+- [x] Fix mixed snapshot risk in `kit/mux/nested_mux.go` (compiled routes and
+      pattern index map now load/store atomically as one snapshot).
+- [x] Fix discovered registration call-site collapse in
+      `vormabuild/backend_route_registration_generation.go` (discovered call ID
+      now includes source position, preventing distinct same-expression call
+      sites from deduping together).
 
 ## Coverage / Verification
 
 - [ ] Raise test coverage for requested scope to 100%.
 - [x] Re-run `go test` and `go test -race` on modified packages after fixes.
+- [x] Re-run full repository unit test suite (`go test ./...`) after changes.
 - [x] Recompute current scope coverage baseline.
 - [ ] Eliminate remaining coverage gaps.
 
@@ -43,17 +56,17 @@ Current coverage snapshot
 - `wave/tooling/devserver/internal/eventpipeline`: 90.3%
 - `wave/tooling/devserver/internal/hooks`: 91.1%
 - `wave/tooling/devserver/internal/restartengine`: 64.7%
-- `wave/tooling/devserver/internal/runloop`: 85.7%
+- `wave/tooling/devserver/internal/runloop`: 85.8%
 - `wave/tooling/devserver/internal/runtimeprocess`: 77.1%
 - `wave/tooling/internal/broadcast`: 66.5%
 - `wave/tooling/internal/shared`: 67.0%
 - `wave/tooling/internal/watch`: 70.0%
 - `wave/tooling/internal/watch/classification`: 75.4%
 - `wave/tooling/internal/watch/dedup`: 76.9%
-- `internal/vormaruntime`: 92.0%
-- `kit/mux`: 89.4%
+- `internal/vormaruntime`: 91.9%
+- `kit/mux`: 89.2%
 - `vormabuild`: 90.9%
-- `vormagogen`: 60.0%
+- `vormagogen`: 100.0%
 
 ## AGENTS.md Compliance Items
 

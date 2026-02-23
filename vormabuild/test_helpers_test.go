@@ -18,11 +18,6 @@ type staticAssetDirsForTests = struct {
 	Public  string `json:"Public"`
 }
 
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 type buildTestFixture struct {
 	app        *vormaruntime.Vorma
 	rootDir    string
@@ -39,7 +34,10 @@ type buildTestFixtureOptions struct {
 	waveMainAppEntry    *string
 }
 
-func newBuildTestFixture(t *testing.T, options *buildTestFixtureOptions) *buildTestFixture {
+func newBuildTestFixture(
+	t *testing.T,
+	options *buildTestFixtureOptions,
+) *buildTestFixture {
 	t.Helper()
 
 	rootDir := t.TempDir()

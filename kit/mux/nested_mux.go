@@ -35,14 +35,25 @@ type compiledRoute struct {
 	hasHandler  bool
 }
 
+type compiledRoutesSnapshot struct {
+	compiledRoutes []compiledRoute
+	routeIndexMap  map[string]int
+}
+
 // NestedRouter stores nested route patterns and optional task handlers.
 type NestedRouter struct {
-	mu             sync.RWMutex
-	matcher        *matcher.Matcher
-	routes         map[string]AnyNestedRoute
-	compiledRoutes atomic.Value // []compiledRoute
-	routeIndexMap  atomic.Value // map[string]int
-	version        uint64       // Version counter for atomic updates
+	mu                  sync.RWMutex
+	matcher             *matcher.Matcher
+	routes              map[string]AnyNestedRoute
+	compiledRoutesState atomic.Value // compiledRoutesSnapshot
+}
+
+func (nr *NestedRouter) currentCompiledRoutesSnapshot() compiledRoutesSnapshot {
+	snapshot, loaded := nr.compiledRoutesState.Load().(compiledRoutesSnapshot)
+	if !loaded {
+		return compiledRoutesSnapshot{}
+	}
+	return snapshot
 }
 
 // AllRoutes returns a snapshot copy of registered nested routes.
@@ -140,9 +151,10 @@ func NewNestedRouter(opts *NestedOptions) *NestedRouter {
 		matcher: matcher.New(matcherOpts),
 		routes:  make(map[string]AnyNestedRoute),
 	}
-	// Initialize atomic values
-	nr.compiledRoutes.Store(make([]compiledRoute, 0))
-	nr.routeIndexMap.Store(make(map[string]int))
+	nr.compiledRoutesState.Store(compiledRoutesSnapshot{
+		compiledRoutes: make([]compiledRoute, 0),
+		routeIndexMap:  make(map[string]int),
+	})
 	return nr
 }
 
@@ -320,9 +332,9 @@ func RunNestedTasks(
 		ResponseProxies: make([]*response.Proxy, numMatches),
 	}
 
-	// Get compiled routes atomically
-	compiledRoutes := nestedRouter.compiledRoutes.Load().([]compiledRoute)
-	routeIndexMap := nestedRouter.routeIndexMap.Load().(map[string]int)
+	compiledRoutesSnapshotForRun := nestedRouter.currentCompiledRoutesSnapshot()
+	compiledRoutes := compiledRoutesSnapshotForRun.compiledRoutes
+	routeIndexMap := compiledRoutesSnapshotForRun.routeIndexMap
 
 	// Pre-allocate boundTasks based on estimated task count
 	boundTasks := make(
@@ -462,9 +474,9 @@ func mustRegisterNestedRoute[O any](route *NestedRoute[O]) {
 // addCompiledRoute adds a compiled route with atomic update
 // Must be called with mu.Lock held
 func (nr *NestedRouter) addCompiledRoute(compiled compiledRoute) {
-	// Get current state
-	currentRoutes := nr.compiledRoutes.Load().([]compiledRoute)
-	currentIndexMap := nr.routeIndexMap.Load().(map[string]int)
+	currentSnapshot := nr.currentCompiledRoutesSnapshot()
+	currentRoutes := currentSnapshot.compiledRoutes
+	currentIndexMap := currentSnapshot.routeIndexMap
 
 	// Create new slices/maps
 	newRoutes := make([]compiledRoute, len(currentRoutes)+1)
@@ -475,10 +487,10 @@ func (nr *NestedRouter) addCompiledRoute(compiled compiledRoute) {
 	maps.Copy(newIndexMap, currentIndexMap)
 	newIndexMap[compiled.pattern] = len(currentRoutes)
 
-	// Atomic update
-	nr.compiledRoutes.Store(newRoutes)
-	nr.routeIndexMap.Store(newIndexMap)
-	atomic.AddUint64(&nr.version, 1)
+	nr.compiledRoutesState.Store(compiledRoutesSnapshot{
+		compiledRoutes: newRoutes,
+		routeIndexMap:  newIndexMap,
+	})
 }
 
 type optimizedBoundTask struct {
@@ -594,7 +606,8 @@ func (nr *NestedRouter) replaceRoutesLocked(
 
 	nr.matcher = newMatcher
 	nr.routes = routesCopy
-	nr.compiledRoutes.Store(newCompiled)
-	nr.routeIndexMap.Store(newIndexMap)
-	atomic.AddUint64(&nr.version, 1)
+	nr.compiledRoutesState.Store(compiledRoutesSnapshot{
+		compiledRoutes: newCompiled,
+		routeIndexMap:  newIndexMap,
+	})
 }

@@ -209,6 +209,53 @@ func TestDiscoveredRouteRegistrarArtifactCache(t *testing.T) {
 	)
 }
 
+func TestDiscoveredVormaRegistrationCallID_UsesSourcePosition(
+	t *testing.T,
+) {
+	analysis := &backendRoutePackageAnalysis{
+		goFileSet: token.NewFileSet(),
+	}
+
+	callOne := &discoveredVormaRegistrationCall{
+		isLoader:              true,
+		appExpression:         &ast.Ident{Name: "App"},
+		patternExpression:     quotedStringExpression("/same"),
+		handlerExpression:     &ast.Ident{Name: "usersLoader"},
+		decorateCtxExpression: &ast.Ident{Name: "decorateLoaderCtx"},
+		sourcePosition:        token.Pos(11),
+	}
+	callTwo := &discoveredVormaRegistrationCall{
+		isLoader:              true,
+		appExpression:         &ast.Ident{Name: "App"},
+		patternExpression:     quotedStringExpression("/same"),
+		handlerExpression:     &ast.Ident{Name: "usersLoader"},
+		decorateCtxExpression: &ast.Ident{Name: "decorateLoaderCtx"},
+		sourcePosition:        token.Pos(22),
+	}
+
+	callIDOne, err := analysis.discoveredVormaRegistrationCallID(callOne)
+	if err != nil {
+		t.Fatalf(
+			"discoveredVormaRegistrationCallID callOne returned error: %v",
+			err,
+		)
+	}
+	callIDTwo, err := analysis.discoveredVormaRegistrationCallID(callTwo)
+	if err != nil {
+		t.Fatalf(
+			"discoveredVormaRegistrationCallID callTwo returned error: %v",
+			err,
+		)
+	}
+
+	if callIDOne == callIDTwo {
+		t.Fatalf(
+			"call IDs should differ for distinct source positions, got %q",
+			callIDOne,
+		)
+	}
+}
+
 func TestPrepareDiscoveredRouteRegistrarOverlay(t *testing.T) {
 	t.Run(
 		"returns nil when no discovered registrations exist",

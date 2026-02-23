@@ -765,13 +765,37 @@ func (analysis *backendRoutePackageAnalysis) formatDiscoveredCallExpression(
 func (analysis *backendRoutePackageAnalysis) discoveredVormaRegistrationCallID(
 	discoveredCall *discoveredVormaRegistrationCall,
 ) (string, error) {
+	if discoveredCall == nil {
+		return "", fmt.Errorf("discovered registration call is nil")
+	}
+
 	renderedExpression, err := analysis.renderDiscoveredCallExpression(
 		discoveredCall,
 	)
 	if err != nil {
 		return "", err
 	}
-	return renderedExpression, nil
+
+	positionKey := fmt.Sprintf("pos:%d", discoveredCall.sourcePosition)
+	if analysis != nil && analysis.goFileSet != nil &&
+		discoveredCall.sourcePosition != token.NoPos {
+		sourceFilePosition := analysis.goFileSet.Position(
+			discoveredCall.sourcePosition,
+		)
+		if sourceFilePosition.Filename != "" {
+			lineNumber := sourceFilePosition.Line
+			if lineNumber <= 0 {
+				lineNumber = 1
+			}
+			positionKey = fmt.Sprintf(
+				"%s:%d",
+				filepath.ToSlash(sourceFilePosition.Filename),
+				lineNumber,
+			)
+		}
+	}
+
+	return positionKey + "|" + renderedExpression, nil
 }
 
 func (analysis *backendRoutePackageAnalysis) collectRequiredImportsForDiscoveredCall(

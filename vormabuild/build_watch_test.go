@@ -295,6 +295,76 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(
 	)
 }
 
+func TestInjectDefaultWatchPatterns_DoesNotDuplicateSemanticallyEquivalentRoutePattern(
+	t *testing.T,
+) {
+	fixture := newBuildTestFixture(t, nil)
+	app := fixture.app
+	parsedCfg := app.Wave.BuildtimeParsedConfig()
+
+	existingRoutePattern := app.Config.ClientRouteDefinitionPatterns[0]
+	parsedCfg.FrameworkWatchPatterns = append(
+		parsedCfg.FrameworkWatchPatterns,
+		wave.WatchedFile{
+			Pattern: existingRoutePattern,
+			OnChangeHooks: []wave.OnChangeHook{{
+				Cmd:    "ExistingRouteHook",
+				Timing: wave.OnChangeStrategyConcurrent,
+			}},
+		},
+	)
+
+	injectDefaultWatchPatternsInConfig(parsedCfg, app)
+
+	if len(parsedCfg.FrameworkWatchPatterns) != 3 {
+		t.Fatalf(
+			"len(FrameworkWatchPatterns) = %d, want %d",
+			len(parsedCfg.FrameworkWatchPatterns),
+			3,
+		)
+	}
+
+	normalizedRoutePattern := normalizeFrameworkWatchPatternPath(
+		existingRoutePattern,
+	)
+	normalizedRoutePatternCount := 0
+	for _, currentPattern := range parsedCfg.FrameworkWatchPatterns {
+		if normalizeFrameworkWatchPatternPath(
+			currentPattern.Pattern,
+		) == normalizedRoutePattern {
+			normalizedRoutePatternCount++
+		}
+	}
+	if normalizedRoutePatternCount != 1 {
+		t.Fatalf(
+			"normalized route pattern count = %d, want %d",
+			normalizedRoutePatternCount,
+			1,
+		)
+	}
+
+	var observedRoutePattern *wave.WatchedFile
+	for idx := range parsedCfg.FrameworkWatchPatterns {
+		if parsedCfg.FrameworkWatchPatterns[idx].Pattern == existingRoutePattern {
+			observedRoutePattern = &parsedCfg.FrameworkWatchPatterns[idx]
+			break
+		}
+	}
+	if observedRoutePattern == nil {
+		t.Fatalf(
+			"expected existing route pattern %q to be preserved",
+			existingRoutePattern,
+		)
+	}
+	if len(observedRoutePattern.OnChangeHooks) != 1 ||
+		observedRoutePattern.OnChangeHooks[0].Cmd != "ExistingRouteHook" {
+		t.Fatalf(
+			"existing route pattern hooks = %#v, expected existing hooks to be preserved",
+			observedRoutePattern.OnChangeHooks,
+		)
+	}
+}
+
 func TestInjectDefaultWatchPatterns_MatchesRouteAndTemplateWhenWatchRootIsAncestor(
 	t *testing.T,
 ) {
@@ -320,7 +390,10 @@ func TestInjectDefaultWatchPatterns_MatchesRouteAndTemplateWhenWatchRootIsAncest
 	injectDefaultWatchPatternsInConfig(parsedCfg, app)
 
 	templatePattern := normalizeFrameworkWatchPatternPath(
-		filepath.Join(app.Wave.PrivateStaticDir(), app.Config.HTMLTemplateLocation),
+		filepath.Join(
+			app.Wave.PrivateStaticDir(),
+			app.Config.HTMLTemplateLocation,
+		),
 	)
 	routePattern := normalizeFrameworkWatchPatternPath(
 		app.Config.ClientRouteDefinitionPatterns[0],

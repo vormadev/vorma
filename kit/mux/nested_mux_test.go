@@ -1033,6 +1033,104 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 			}
 		},
 	)
+
+	t.Run(
+		"RunNestedTasks_RemainsPatternConsistentDuringConcurrentReplaceRoutes",
+		func(t *testing.T) {
+			nr := NewNestedRouter(&NestedOptions{})
+
+			buildRouteMap := func() map[string]AnyNestedRoute {
+				buildHandler := func(pattern string) *TaskHandler[None, string] {
+					return TaskHandlerFromFunc(
+						func(*ReqData[None]) (string, error) {
+							return pattern, nil
+						},
+					)
+				}
+				return map[string]AnyNestedRoute{
+					"": &NestedRoute[string]{
+						router:          nr,
+						originalPattern: "",
+						taskHandler:     buildHandler(""),
+					},
+					"/items": &NestedRoute[string]{
+						router:          nr,
+						originalPattern: "/items",
+						taskHandler:     buildHandler("/items"),
+					},
+					"/items/:id": &NestedRoute[string]{
+						router:          nr,
+						originalPattern: "/items/:id",
+						taskHandler:     buildHandler("/items/:id"),
+					},
+				}
+			}
+
+			nr.ReplaceRoutes(buildRouteMap())
+
+			stop := make(chan struct{})
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+						nr.ReplaceRoutes(buildRouteMap())
+					}
+				}
+			}()
+
+			expectedPatterns := []string{"", "/items", "/items/:id"}
+			for iteration := 0; iteration < 500; iteration++ {
+				request := createRequestWithGetTasksCtx(
+					http.MethodGet,
+					"/items/123",
+				)
+				results, found := FindNestedMatchesAndRunTasks(nr, request)
+				if !found {
+					t.Fatal(
+						"expected /items/123 to match during route replacement",
+					)
+				}
+				for _, expectedPattern := range expectedPatterns {
+					currentResult := results.Map[expectedPattern]
+					if currentResult == nil {
+						t.Fatalf(
+							"missing result for pattern %q",
+							expectedPattern,
+						)
+					}
+					if err := currentResult.Err(); err != nil {
+						t.Fatalf(
+							"pattern %q returned error: %v",
+							expectedPattern,
+							err,
+						)
+					}
+					currentData, dataOk := currentResult.Data().(string)
+					if !dataOk {
+						t.Fatalf(
+							"pattern %q data type = %T, want string",
+							expectedPattern,
+							currentResult.Data(),
+						)
+					}
+					if currentData != expectedPattern {
+						t.Fatalf(
+							"pattern %q returned data %q",
+							expectedPattern,
+							currentData,
+						)
+					}
+				}
+			}
+
+			close(stop)
+			<-done
+		},
+	)
 }
 
 func TestResponseProxies(t *testing.T) {
