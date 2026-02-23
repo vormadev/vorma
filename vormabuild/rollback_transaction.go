@@ -25,11 +25,14 @@ func runWithRollbackOnFailureAndPanic(
 			return
 		}
 
-		rollbackErr, rollbackPanicValue := runRollbackIfConfigured(options.rollbackOnFailure)
+		rollbackPanicValue, rollbackErr := runRollbackIfConfigured(
+			options.rollbackOnFailure,
+		)
 		if rollbackErr != nil && options.logRollbackFailureAfterPanic != nil {
 			options.logRollbackFailureAfterPanic(rollbackErr)
 		}
-		if rollbackPanicValue != nil && options.logRollbackFailureAfterPanic != nil {
+		if rollbackPanicValue != nil &&
+			options.logRollbackFailureAfterPanic != nil {
 			options.logRollbackFailureAfterPanic(
 				fmt.Errorf("rollback panic: %v", rollbackPanicValue),
 			)
@@ -43,7 +46,9 @@ func runWithRollbackOnFailureAndPanic(
 		return nil
 	}
 
-	rollbackErr, rollbackPanicValue := runRollbackIfConfigured(options.rollbackOnFailure)
+	rollbackPanicValue, rollbackErr := runRollbackIfConfigured(
+		options.rollbackOnFailure,
+	)
 	if rollbackPanicValue != nil {
 		panic(rollbackPanicValue)
 	}
@@ -52,7 +57,11 @@ func runWithRollbackOnFailureAndPanic(
 	}
 
 	if options.rollbackErrorContext != "" {
-		rollbackErr = fmt.Errorf("%s: %w", options.rollbackErrorContext, rollbackErr)
+		rollbackErr = fmt.Errorf(
+			"%s: %w",
+			options.rollbackErrorContext,
+			rollbackErr,
+		)
 	}
 
 	return errors.Join(operationErr, rollbackErr)
@@ -60,7 +69,7 @@ func runWithRollbackOnFailureAndPanic(
 
 func runRollbackIfConfigured(
 	rollbackStep func() error,
-) (rollbackErr error, rollbackPanicValue any) {
+) (rollbackPanicValue any, rollbackErr error) {
 	if rollbackStep == nil {
 		return nil, nil
 	}
@@ -73,5 +82,5 @@ func runRollbackIfConfigured(
 	}()
 
 	rollbackErr = rollbackStep()
-	return rollbackErr, nil
+	return nil, rollbackErr
 }

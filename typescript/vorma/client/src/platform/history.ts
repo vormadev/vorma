@@ -62,13 +62,6 @@ function setLastKnownHistoryLocation(location: Location): void {
 
 type HistoryLocationPrelude = Pick<Location, "key" | "pathname" | "search">;
 
-function toAbsoluteHref(location: HistoryLocationPrelude): string {
-	return resolveAbsoluteHref({
-		href: `${location.pathname}${location.search}`,
-		baseHref: window.location.origin,
-	});
-}
-
 export function analyzeHistoryListenerPrelude(props: {
 	action: Action;
 	location: HistoryLocationPrelude;
@@ -83,8 +76,14 @@ export function analyzeHistoryListenerPrelude(props: {
 	const popWithinSameDoc =
 		action === "POP" &&
 		hasSameDataTarget({
-			firstHref: toAbsoluteHref(location),
-			secondHref: toAbsoluteHref(lastKnownLocation),
+			firstHref: resolveAbsoluteHref({
+				href: `${location.pathname}${location.search}`,
+				baseHref: window.location.origin,
+			}),
+			secondHref: resolveAbsoluteHref({
+				href: `${lastKnownLocation.pathname}${lastKnownLocation.search}`,
+				baseHref: window.location.origin,
+			}),
 		});
 
 	return {
@@ -126,19 +125,8 @@ function applyHashDrivenPopScrollState(props: {
 	}
 }
 
-function buildListenerLocationHref(location: Location): string {
-	return resolveAbsoluteHref({
-		href: `${location.pathname}${location.search}${location.hash}`,
-		baseHref: window.location.origin,
-	});
-}
-
-function isJSDOMEnvironment(): boolean {
-	return /jsdom/i.test(navigator.userAgent);
-}
-
 function attemptHardReloadAfterFailedPopNavigation(): void {
-	if (isJSDOMEnvironment()) {
+	if (/jsdom/i.test(navigator.userAgent)) {
 		return;
 	}
 
@@ -154,7 +142,10 @@ function attemptHardReloadAfterFailedPopNavigation(): void {
 
 async function navigateCrossDocumentPop(location: Location): Promise<boolean> {
 	const result = await getNavigationStateAccess().navigate({
-		href: buildListenerLocationHref(location),
+		href: resolveAbsoluteHref({
+			href: `${location.pathname}${location.search}${location.hash}`,
+			baseHref: window.location.origin,
+		}),
 		navigationType: "browserHistory",
 		scrollStateToRestore: scrollStateManager.getState(location.key),
 	});

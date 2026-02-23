@@ -147,10 +147,10 @@ func (executor buildDiagnosticsExecutor) collectBuildDiagnostics(
 	v *vormaruntime.Vorma,
 ) (*buildDiagnosticsSnapshot, error) {
 	if v == nil {
-		return nil, errors.New("Vorma runtime is required")
+		return nil, errors.New("vorma runtime is required")
 	}
 	if v.Config == nil {
-		return nil, errors.New("Vorma config is required")
+		return nil, errors.New("vorma config is required")
 	}
 
 	resolvedClientRouteFiles, err := executor.dependencies.resolveClientRouteDefinitionFiles(

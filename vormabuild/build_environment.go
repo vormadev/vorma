@@ -40,7 +40,10 @@ func defaultFrameworkBuildHookExecutionDependencies() frameworkBuildHookExecutio
 				commandExecutionContext = context.Background()
 			}
 
-			goCommand := exec.CommandContext(commandExecutionContext, "go", goArguments...)
+			goCommand := exec.CommandContext(
+				commandExecutionContext,
+				"go",
+				goArguments...)
 			goCommand.Stdout = os.Stdout
 			goCommand.Stderr = os.Stderr
 			return goCommand.Run()
@@ -65,7 +68,9 @@ func newFrameworkBuildHookExecutor(
 	dependencies frameworkBuildHookExecutionDependencies,
 ) frameworkBuildHookExecutor {
 	return frameworkBuildHookExecutor{
-		dependencies: normalizeFrameworkBuildHookExecutionDependencies(dependencies),
+		dependencies: normalizeFrameworkBuildHookExecutionDependencies(
+			dependencies,
+		),
 	}
 }
 
@@ -87,10 +92,16 @@ func injectFrameworkBuildHooksInConfig(
 		return
 	}
 	if cfg.FrameworkDevBuildHook == "" {
-		cfg.FrameworkDevBuildHook = fmt.Sprintf("go run ./%s --dev --hook", v.Config.MainBuildEntry)
+		cfg.FrameworkDevBuildHook = fmt.Sprintf(
+			"go run ./%s --dev --hook",
+			v.Config.MainBuildEntry,
+		)
 	}
 	if cfg.FrameworkProdBuildHook == "" {
-		cfg.FrameworkProdBuildHook = fmt.Sprintf("go run ./%s --hook", v.Config.MainBuildEntry)
+		cfg.FrameworkProdBuildHook = fmt.Sprintf(
+			"go run ./%s --hook",
+			v.Config.MainBuildEntry,
+		)
 	}
 }
 
@@ -158,14 +169,14 @@ func injectFrameworkBuildHookRunnerInConfig(
 		runInDevelopmentMode bool,
 	) error {
 		if v == nil {
-			return errors.New("Vorma runtime is required")
+			return errors.New("vorma runtime is required")
 		}
 		if v.Config == nil {
-			return errors.New("Vorma config is required")
+			return errors.New("vorma config is required")
 		}
 		mainBuildEntry := strings.TrimSpace(v.Config.MainBuildEntry)
 		if mainBuildEntry == "" {
-			return errors.New("Vorma config MainBuildEntry is required")
+			return errors.New("vorma config MainBuildEntry is required")
 		}
 		if commandExecutionContext == nil {
 			commandExecutionContext = context.Background()
@@ -182,8 +193,14 @@ func injectFrameworkBuildHookRunnerInConfig(
 				err,
 			)
 		}
-		if discoveredRouteRegistrarOverlay != nil && strings.TrimSpace(discoveredRouteRegistrarOverlay.goOverlayConfigPath) != "" {
-			goRunArgs = append(goRunArgs, "-overlay="+discoveredRouteRegistrarOverlay.goOverlayConfigPath)
+		if discoveredRouteRegistrarOverlay != nil &&
+			strings.TrimSpace(
+				discoveredRouteRegistrarOverlay.goOverlayConfigPath,
+			) != "" {
+			goRunArgs = append(
+				goRunArgs,
+				"-overlay="+discoveredRouteRegistrarOverlay.goOverlayConfigPath,
+			)
 		}
 
 		trimmedMainBuildEntry := strings.TrimPrefix(mainBuildEntry, "./")
@@ -209,7 +226,10 @@ func injectFrameworkBuildHookRunnerInConfig(
 					cleanupOverlayErr,
 				)
 			}
-			return fmt.Errorf("run framework build hook command: %w", runHookCommandErr)
+			return fmt.Errorf(
+				"run framework build hook command: %w",
+				runHookCommandErr,
+			)
 		}
 		if cleanupOverlayErr != nil {
 			return fmt.Errorf(

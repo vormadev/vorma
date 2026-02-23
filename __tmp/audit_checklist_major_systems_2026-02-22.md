@@ -273,9 +273,9 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
       outside build-retry mode.
 
 Current coverage snapshot
-(`go test ./wave/... ./internal/vormaruntime ./kit/mux ./vormabuild ./vormagogen -cover`):
+(`go test ./wave/... ./internal/vormaruntime ./kit/mux ./kit/nestedmux ./kit/matcher ./kit/nestedmatcher ./vormabuild ./vormagogen -cover`):
 
-- `wave`: 94.9%
+- `wave`: 95.0%
 - `wave/internal/wavecore`: 40.0%
 - `wave/internal/waveruntime`: 3.1%
 - `wave/tooling/builder`: 76.0%
@@ -283,20 +283,23 @@ Current coverage snapshot
 - `wave/tooling/builder/internal/fileops`: 63.6%
 - `wave/tooling/builder/internal/schema`: 85.7%
 - `wave/tooling/builder/internal/static`: 77.8%
-- `wave/tooling/devserver`: 80.4%
-- `wave/tooling/devserver/internal/eventpipeline`: 90.5%
+- `wave/tooling/devserver`: 80.5%
+- `wave/tooling/devserver/internal/eventpipeline`: 90.7%
 - `wave/tooling/devserver/internal/hooks`: 91.1%
 - `wave/tooling/devserver/internal/restartengine`: 61.9%
 - `wave/tooling/devserver/internal/runloop`: 86.0%
-- `wave/tooling/devserver/internal/runtimeprocess`: 79.4%
+- `wave/tooling/devserver/internal/runtimeprocess`: 80.1%
 - `wave/tooling/internal/broadcast`: 66.5%
 - `wave/tooling/internal/shared`: 67.0%
 - `wave/tooling/internal/watch`: 70.0%
 - `wave/tooling/internal/watch/classification`: 75.4%
 - `wave/tooling/internal/watch/dedup`: 76.9%
-- `internal/vormaruntime`: 91.9%
-- `kit/mux`: 89.3%
-- `vormabuild`: 90.9%
+- `internal/vormaruntime`: 91.8%
+- `kit/mux`: 82.6%
+- `kit/nestedmux`: 91.5%
+- `kit/matcher`: 29.4%
+- `kit/nestedmatcher`: 85.7%
+- `vormabuild`: 91.0%
 - `vormagogen`: 100.0%
 
 ## AGENTS.md Compliance Items
@@ -308,26 +311,28 @@ Current coverage snapshot
 - [x] Revert external import naming regression in
       `vormabuild/route_parsing_pipeline.go` (`esbuild` alias restored; removed
       generic `api` naming).
-- [x] Validate scoped package compliance matrix for one-file/200-2000 rule.
-- [ ] Bring non-exempt noncompliant packages into one-file/200-2000 compliance:
-      `internal/vormaruntime` (18 non-test files, 3044 lines total).
-- [x] Bring non-exempt noncompliant packages into one-file/200-2000 compliance:
+- [x] Validate scoped package compliance matrix for one-file/<2000 rule.
+- [ ] Bring non-exempt noncompliant packages into one-file/<2000 compliance:
+      `internal/vormaruntime` (18 non-test files, 3095 lines total).
+- [x] Bring non-exempt noncompliant packages into one-file/<2000 compliance:
       `kit/mux` (moved nested routing/task orchestration into
       `kit/nestedmux/nestedmux.go`; `kit/mux` now has one non-test source file,
       with nested routing in sibling package `kit/nestedmux`).
-- [ ] Bring non-exempt noncompliant packages into one-file/200-2000 compliance:
-      `vormabuild` (35 non-test files, 10424 lines total).
+- [ ] Bring non-exempt noncompliant packages into one-file/<2000 compliance:
+      `vormabuild` (35 non-test files, 10320 lines total).
 - [x] Extract shared matcher engine into `kit/internal/matchercore` and wire
       both `kit/matcher` and `kit/nestedmatcher` to that core so nested and
       non-nested matching no longer duplicate state machine logic.
 - [x] Remove nested matching API leakage from `kit/matcher` (plain matcher now
       exposes only best-match semantics) and move nested semantics test suite to
       `kit/nestedmatcher/find_matches_test.go`.
+- [x] Extract shared matcher/nestedmatcher test pattern rewrite helpers into
+      `kit/internal/matchercore/testutil/testutil.go` and remove duplicated
+      helper logic from package test files.
+- [x] Add/align public package README coverage for split matcher/mux packages:
+      `kit/nestedmatcher/README.md`, `kit/nestedmux/README.md`, and
+      stale-section cleanup in `kit/mux/README.md`.
 - [x] Audit committed Go files created today under 500 lines for artificial
       line-count padding: only
       `wave/tooling/devserver/internal/runtimeprocess/readiness_policy_internal_test.go`
       matched scope, and it contains no padding cruft.
-
-## Decision
-
-- [x] `vormagogen` is approved as an exception to the 200-line minimum.

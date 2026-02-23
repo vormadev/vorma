@@ -1,0 +1,42 @@
+Top 10 Bang-for-Buck Improvements (non-/typescript)
+Date: 2026-02-23
+
+[x] 1) Replace deprecated AST object identity usage in vormabuild route discovery
+- File: vormabuild/backend_route_discovery.go
+- Why: avoids Go 1.22+ deprecated API reliance and keeps local function resolution stable.
+
+[x] 2) Make repoconcat fail loudly on write, flush, and close failures
+- File: lab/repoconcat/repoconcat.go
+- Why: prevents silent truncation/corruption of generated concat output.
+
+[x] 3) Prevent repoconcat panic from invalid standalone .gitignore patterns
+- File: lab/repoconcat/repoconcat.go
+- Why: bare "!" or "/" lines currently can panic due empty-index access.
+
+[x] 4) Add regression tests for repoconcat writer failures and invalid .gitignore inputs
+- File: lab/repoconcat/repoconcat_test.go
+- Why: locks in non-panic + explicit error behavior for failure paths.
+
+[x] 5) Reject symlink entries in fsutil.CopyDir and add regression coverage
+- Files: kit/fsutil/fsutil.go, kit/fsutil/fsutil_test.go
+- Why: avoids implicit symlink traversal / unsafe copy behavior.
+
+[ ] 6) Split wave/tooling/devserver/devserver.go into focused lifecycle modules
+- File: wave/tooling/devserver/devserver.go (2408 LOC)
+- Why: lower cognitive load, isolate locking/state-machine boundaries, reduce defect risk.
+
+[ ] 7) Split wave/wave.go into config/env/cache/runtime files with tighter APIs
+- File: wave/wave.go (1825 LOC)
+- Why: reduce cross-concern coupling and simplify change/testing blast radius.
+
+[ ] 8) Split internal/site/backend/internal/docsync/sync.go into parser/rewriter/asset-sync units
+- File: internal/site/backend/internal/docsync/sync.go (1315 LOC)
+- Why: isolate path resolution and URL rewrite logic for better auditability/testability.
+
+[x] 9) Normalize unidiomatic capitalized error strings in vormabuild
+- Files: vormabuild/*.go (+ expectations in *_test.go)
+- Why: cleaner wrapped errors and easier machine/human error chaining.
+
+[x] 10) Add staticcheck to default quality gate
+- Files: Makefile, internal/cmd/full_gate/main.go
+- Why: prevents reintroduction of deprecated API usage and nil-context anti-patterns.

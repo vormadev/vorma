@@ -20,7 +20,7 @@ func TestCollectBuildDiagnostics(t *testing.T) {
 		if snapshot != nil {
 			t.Fatalf("snapshot = %#v, expected nil snapshot on error", snapshot)
 		}
-		if err.Error() != "Vorma runtime is required" {
+		if err.Error() != "vorma runtime is required" {
 			t.Fatalf("error = %q, expected nil-runtime message", err)
 		}
 	})
@@ -33,7 +33,7 @@ func TestCollectBuildDiagnostics(t *testing.T) {
 		if snapshot != nil {
 			t.Fatalf("snapshot = %#v, expected nil snapshot on error", snapshot)
 		}
-		if err.Error() != "Vorma config is required" {
+		if err.Error() != "vorma config is required" {
 			t.Fatalf("error = %q, expected nil-config message", err)
 		}
 	})

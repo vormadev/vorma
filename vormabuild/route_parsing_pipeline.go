@@ -188,10 +188,10 @@ func (executor routeParsingExecutor) resolveClientRouteDefinitionFiles(
 	v *vormaruntime.Vorma,
 ) ([]string, error) {
 	if v == nil {
-		return nil, errors.New("Vorma runtime is required")
+		return nil, errors.New("vorma runtime is required")
 	}
 	if v.Config == nil {
-		return nil, errors.New("Vorma config is required")
+		return nil, errors.New("vorma config is required")
 	}
 	if len(v.Config.ClientRouteDefinitionPatterns) == 0 {
 		return nil, errors.New(
@@ -411,12 +411,12 @@ func handleUnresolvedRouteCalls(
 func resolveUnresolvedRoutePolicy(v *vormaruntime.Vorma) (string, error) {
 	if v == nil {
 		return "", errors.New(
-			"Vorma runtime is required to resolve unresolved route policy",
+			"vorma runtime is required to resolve unresolved route policy",
 		)
 	}
 	if v.Config == nil {
 		return "", errors.New(
-			"Vorma config is required to resolve unresolved route policy",
+			"vorma config is required to resolve unresolved route policy",
 		)
 	}
 

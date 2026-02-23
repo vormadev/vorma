@@ -345,7 +345,7 @@ func (runtimeBuildOperations runtimeBuildOperationExecutor) runProdHookPostProce
 	v *vormaruntime.Vorma,
 ) error {
 	if err := runtimeBuildOperations.dependencies.runWaveViteProductionBuild(v); err != nil {
-		return fmt.Errorf("Vite production build failed: %w", err)
+		return fmt.Errorf("vite production build failed: %w", err)
 	}
 
 	if err := runtimeBuildOperations.dependencies.runPostViteProductionBuild(v); err != nil {

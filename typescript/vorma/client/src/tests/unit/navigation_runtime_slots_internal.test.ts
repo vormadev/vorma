@@ -130,20 +130,20 @@ describe("navigation runtime slots internals", () => {
 				isRevalidating: false,
 			};
 			const dispatchStatusEvent = vi.fn();
-			const signaler = createStatusSignaler({
+			const scheduleStatusUpdate = createStatusSignaler({
 				getStatus: () => status,
 				dispatchStatusEvent,
 				debounceMS: 4,
 			});
 
-			signaler.scheduleStatusUpdate();
-			signaler.scheduleStatusUpdate();
+			scheduleStatusUpdate();
+			scheduleStatusUpdate();
 			await vi.advanceTimersByTimeAsync(5);
 
 			expect(dispatchStatusEvent).toHaveBeenCalledTimes(1);
 			expect(dispatchStatusEvent).toHaveBeenLastCalledWith(status);
 
-			signaler.scheduleStatusUpdate();
+			scheduleStatusUpdate();
 			await vi.advanceTimersByTimeAsync(5);
 			expect(dispatchStatusEvent).toHaveBeenCalledTimes(1);
 		});
@@ -155,13 +155,13 @@ describe("navigation runtime slots internals", () => {
 				isRevalidating: false,
 			};
 			const dispatchStatusEvent = vi.fn();
-			const signaler = createStatusSignaler({
+			const scheduleStatusUpdate = createStatusSignaler({
 				getStatus: () => status,
 				dispatchStatusEvent,
 				debounceMS: 4,
 			});
 
-			signaler.scheduleStatusUpdate();
+			scheduleStatusUpdate();
 			await vi.advanceTimersByTimeAsync(5);
 			expect(dispatchStatusEvent).toHaveBeenCalledTimes(1);
 
@@ -170,7 +170,7 @@ describe("navigation runtime slots internals", () => {
 				isSubmitting: true,
 				isRevalidating: false,
 			};
-			signaler.scheduleStatusUpdate();
+			scheduleStatusUpdate();
 			await vi.advanceTimersByTimeAsync(5);
 
 			expect(dispatchStatusEvent).toHaveBeenCalledTimes(2);

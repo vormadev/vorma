@@ -94,26 +94,25 @@ type localFunctionDeclaration struct {
 	name string
 	decl *ast.FuncDecl
 	file *parsedServerRouteFile
-	obj  *ast.Object
 }
 
 type backendRoutePackageAnalysis struct {
-	goFileSet                          *token.FileSet
-	files                              []*parsedServerRouteFile
-	rootFilePathSet                    map[string]struct{}
-	stringConstResolver                *goStringConstResolver
-	localFunctionsByName               map[string][]*localFunctionDeclaration
-	localFunctionsByObject             map[*ast.Object]*localFunctionDeclaration
-	packageLevelIdentifierNames        map[string]struct{}
-	packageDir                         string
-	packageName                        string
-	filesByPath                        map[string]*parsedServerRouteFile
-	goTypesInfo                        *types.Info
-	goTypesPackagePath                 string
-	goTypesInfoInitializationAttempted bool
-	goTypesInitializationCount         int
-	functionScopeRanges                []tokenPosRange
-	dependencies                       backendRouteDiscoveryDependencies
+	goFileSet                           *token.FileSet
+	files                               []*parsedServerRouteFile
+	rootFilePathSet                     map[string]struct{}
+	stringConstResolver                 *goStringConstResolver
+	localFunctionsByName                map[string][]*localFunctionDeclaration
+	localFunctionsByDeclarationPosition map[token.Pos]*localFunctionDeclaration
+	packageLevelIdentifierNames         map[string]struct{}
+	packageDir                          string
+	packageName                         string
+	filesByPath                         map[string]*parsedServerRouteFile
+	goTypesInfo                         *types.Info
+	goTypesPackagePath                  string
+	goTypesInfoInitializationAttempted  bool
+	goTypesInitializationCount          int
+	functionScopeRanges                 []tokenPosRange
+	dependencies                        backendRouteDiscoveryDependencies
 }
 
 type tokenPosRange struct {
@@ -234,11 +233,11 @@ func (executor backendRouteDiscoveryExecutor) parseServerRouteFilesIntoPackageAn
 		packageAnalysis, hasPackageAnalysis := analysesByPackageKey[packageKey]
 		if !hasPackageAnalysis {
 			packageAnalysis = &backendRoutePackageAnalysis{
-				goFileSet:                   goFileSet,
-				rootFilePathSet:             map[string]struct{}{},
-				localFunctionsByName:        map[string][]*localFunctionDeclaration{},
-				localFunctionsByObject:      map[*ast.Object]*localFunctionDeclaration{},
-				packageLevelIdentifierNames: map[string]struct{}{},
+				goFileSet:                           goFileSet,
+				rootFilePathSet:                     map[string]struct{}{},
+				localFunctionsByName:                map[string][]*localFunctionDeclaration{},
+				localFunctionsByDeclarationPosition: map[token.Pos]*localFunctionDeclaration{},
+				packageLevelIdentifierNames:         map[string]struct{}{},
 				packageDir: filepath.ToSlash(
 					filepath.Dir(parsedServerFile.path),
 				),
@@ -357,14 +356,17 @@ func (analysis *backendRoutePackageAnalysis) initialize() error {
 				name: functionDeclaration.Name.Name,
 				decl: functionDeclaration,
 				file: parsedServerFile,
-				obj:  functionDeclaration.Name.Obj,
 			}
 			analysis.localFunctionsByName[localFunction.name] = append(
 				analysis.localFunctionsByName[localFunction.name],
 				localFunction,
 			)
-			if localFunction.obj != nil {
-				analysis.localFunctionsByObject[localFunction.obj] = localFunction
+			functionDeclarationPosition := token.NoPos
+			if functionDeclaration.Name != nil {
+				functionDeclarationPosition = functionDeclaration.Name.Pos()
+			}
+			if functionDeclarationPosition != token.NoPos {
+				analysis.localFunctionsByDeclarationPosition[functionDeclarationPosition] = localFunction
 			}
 		}
 	}
@@ -706,7 +708,6 @@ func (analysis *backendRoutePackageAnalysis) discoverRouteRegistrationsInRootFil
 						name: "init",
 						decl: typedDeclaration,
 						file: parsedServerFile,
-						obj:  typedDeclaration.Name.Obj,
 					},
 					nil,
 					state,
@@ -1283,7 +1284,15 @@ func (analysis *backendRoutePackageAnalysis) resolveLocalFunctionDeclarationForC
 		if calleeIdentifier.Obj.Kind != ast.Fun {
 			return nil, false, nil
 		}
-		localFunctionDeclaration, hasLocalFunction := analysis.localFunctionsByObject[calleeIdentifier.Obj]
+		functionDeclaration, isFunctionDeclaration := calleeIdentifier.Obj.Decl.(*ast.FuncDecl)
+		if !isFunctionDeclaration || functionDeclaration.Name == nil {
+			return nil, false, nil
+		}
+		functionDeclarationPosition := functionDeclaration.Name.Pos()
+		if functionDeclarationPosition == token.NoPos {
+			return nil, false, nil
+		}
+		localFunctionDeclaration, hasLocalFunction := analysis.localFunctionsByDeclarationPosition[functionDeclarationPosition]
 		if !hasLocalFunction {
 			return nil, false, nil
 		}
@@ -1626,10 +1635,10 @@ func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionFiles(
 	v *vormaruntime.Vorma,
 ) ([]string, error) {
 	if v == nil {
-		return nil, fmt.Errorf("Vorma runtime is required")
+		return nil, fmt.Errorf("vorma runtime is required")
 	}
 	if v.Config == nil {
-		return nil, fmt.Errorf("Vorma config is required")
+		return nil, fmt.Errorf("vorma config is required")
 	}
 
 	normalizedPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(

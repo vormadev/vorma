@@ -44,20 +44,37 @@ func defaultBuildCommandHooks() buildCommandHooks {
 	}
 }
 
-func parseBuildCommandOptions(commandLineArgs []string) (buildCommandOptions, error) {
+func parseBuildCommandOptions(
+	commandLineArgs []string,
+) (buildCommandOptions, error) {
 	var options buildCommandOptions
 
 	flagSet := flag.NewFlagSet("vormabuild", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
-	flagSet.BoolVar(&options.runInDevelopmentMode, "dev", false, "run in development mode")
-	flagSet.BoolVar(&options.runHookOnly, "hook", false, "run build hook only (internal use)")
+	flagSet.BoolVar(
+		&options.runInDevelopmentMode,
+		"dev",
+		false,
+		"run in development mode",
+	)
+	flagSet.BoolVar(
+		&options.runHookOnly,
+		"hook",
+		false,
+		"run build hook only (internal use)",
+	)
 	flagSet.BoolVar(
 		&options.printDiagnosticsOnly,
 		"diagnostics",
 		false,
 		"print build discovery and overlay diagnostics",
 	)
-	flagSet.BoolVar(&options.skipGoBinaryBuildStep, "no-binary", false, "skip go binary compilation")
+	flagSet.BoolVar(
+		&options.skipGoBinaryBuildStep,
+		"no-binary",
+		false,
+		"skip go binary compilation",
+	)
 	if err := flagSet.Parse(commandLineArgs); err != nil {
 		return buildCommandOptions{}, err
 	}
@@ -77,7 +94,7 @@ func runBuildCommand(
 	hooks buildCommandHooks,
 ) error {
 	if v == nil {
-		return errors.New("Vorma runtime is required")
+		return errors.New("vorma runtime is required")
 	}
 	if err := validateBuildCommandHooks(hooks); err != nil {
 		return err
@@ -94,13 +111,17 @@ func runBuildCommand(
 
 func validateBuildCommandHooks(hooks buildCommandHooks) error {
 	if hooks.configureBuildEnvironment == nil {
-		return errors.New("build command hook configureBuildEnvironment is required")
+		return errors.New(
+			"build command hook configureBuildEnvironment is required",
+		)
 	}
 	if hooks.runBuildHook == nil {
 		return errors.New("build command hook runBuildHook is required")
 	}
 	if hooks.runProdHookPostProcessing == nil {
-		return errors.New("build command hook runProdHookPostProcessing is required")
+		return errors.New(
+			"build command hook runProdHookPostProcessing is required",
+		)
 	}
 	if hooks.runFullBuild == nil {
 		return errors.New("build command hook runFullBuild is required")
@@ -118,7 +139,9 @@ func newBuildCommandExecutor(
 	}
 }
 
-func (commandExecutor buildCommandExecutor) run(options buildCommandOptions) error {
+func (commandExecutor buildCommandExecutor) run(
+	options buildCommandOptions,
+) error {
 	if options.printDiagnosticsOnly {
 		return commandExecutor.runDiagnosticsOnly()
 	}
@@ -127,12 +150,17 @@ func (commandExecutor buildCommandExecutor) run(options buildCommandOptions) err
 		return commandExecutor.runHookOnly(options.runInDevelopmentMode)
 	}
 
-	return commandExecutor.runFullBuild(options.runInDevelopmentMode, options.skipGoBinaryBuildStep)
+	return commandExecutor.runFullBuild(
+		options.runInDevelopmentMode,
+		options.skipGoBinaryBuildStep,
+	)
 }
 
 func (commandExecutor buildCommandExecutor) runDiagnosticsOnly() error {
 	if commandExecutor.hooks.printDiagnostics == nil {
-		return errors.New("build command hook printDiagnostics is required in diagnostics mode")
+		return errors.New(
+			"build command hook printDiagnostics is required in diagnostics mode",
+		)
 	}
 	if err := commandExecutor.hooks.printDiagnostics(commandExecutor.vorma); err != nil {
 		return fmt.Errorf("print diagnostics failed: %w", err)
@@ -151,7 +179,9 @@ func (commandExecutor buildCommandExecutor) runHookOnly(
 	if runInDevelopmentMode {
 		return nil
 	}
-	return commandExecutor.hooks.runProdHookPostProcessing(commandExecutor.vorma)
+	return commandExecutor.hooks.runProdHookPostProcessing(
+		commandExecutor.vorma,
+	)
 }
 
 func (commandExecutor buildCommandExecutor) runFullBuild(

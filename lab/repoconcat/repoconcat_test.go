@@ -1,11 +1,35 @@
 package repoconcat
 
 import (
+	"bufio"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+var errInjectedWriteFailure = errors.New("injected write failure")
+
+type failingWriter struct {
+	maxBytes int
+	written  int
+}
+
+func (w *failingWriter) Write(data []byte) (int, error) {
+	if w.maxBytes <= w.written {
+		return 0, errInjectedWriteFailure
+	}
+
+	remainingBytes := w.maxBytes - w.written
+	if len(data) > remainingBytes {
+		w.written += remainingBytes
+		return remainingBytes, errInjectedWriteFailure
+	}
+
+	w.written += len(data)
+	return len(data), nil
+}
 
 func setupTestDir(t *testing.T, files map[string]string) string {
 	t.Helper()
@@ -329,7 +353,9 @@ func TestNegationWithoutTrailingSlashExcludesDirectory(t *testing.T) {
 	assertExcluded(t, output, "lib/util.go")
 }
 
-func TestNegationWithoutTrailingSlashExcludesBothFileAndDirectory(t *testing.T) {
+func TestNegationWithoutTrailingSlashExcludesBothFileAndDirectory(
+	t *testing.T,
+) {
 	dir := setupTestDir(t, map[string]string{
 		"src/main.go":  "package main",
 		"build/out.go": "package build",
@@ -791,7 +817,9 @@ func TestUserCanOverrideDefaultExcludesDirectory(t *testing.T) {
 	assertIncluded(t, output, "node_modules/dep/util.js")
 }
 
-func TestUserCanOverrideDefaultExcludesDirectoryWithTrailingSlash(t *testing.T) {
+func TestUserCanOverrideDefaultExcludesDirectoryWithTrailingSlash(
+	t *testing.T,
+) {
 	dir := setupTestDir(t, map[string]string{
 		"src/main.js":               "console.log()",
 		"node_modules/dep/index.js": "module.exports = {}",
@@ -826,7 +854,11 @@ func TestBinaryFilesSkipped(t *testing.T) {
 		"src/main.go": "package main",
 	})
 	binaryPath := filepath.Join(dir, "src/image.png")
-	os.WriteFile(binaryPath, []byte{0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x00}, 0644)
+	os.WriteFile(
+		binaryPath,
+		[]byte{0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x00},
+		0644,
+	)
 
 	output := runConcat(t, dir, []string{"src/**"})
 
@@ -838,11 +870,31 @@ func TestBinaryFilesWithVariousMagicBytes(t *testing.T) {
 	dir := setupTestDir(t, map[string]string{
 		"src/main.go": "package main",
 	})
-	os.WriteFile(filepath.Join(dir, "image.png"), []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, 0644)
-	os.WriteFile(filepath.Join(dir, "image.jpg"), []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46}, 0644)
-	os.WriteFile(filepath.Join(dir, "image.gif"), []byte{0x47, 0x49, 0x46, 0x38, 0x39, 0x61}, 0644)
-	os.WriteFile(filepath.Join(dir, "doc.pdf"), []byte{0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34}, 0644)
-	os.WriteFile(filepath.Join(dir, "binary"), []byte{0x7F, 0x45, 0x4C, 0x46, 0x00, 0x00, 0x00, 0x00}, 0644)
+	os.WriteFile(
+		filepath.Join(dir, "image.png"),
+		[]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
+		0644,
+	)
+	os.WriteFile(
+		filepath.Join(dir, "image.jpg"),
+		[]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46},
+		0644,
+	)
+	os.WriteFile(
+		filepath.Join(dir, "image.gif"),
+		[]byte{0x47, 0x49, 0x46, 0x38, 0x39, 0x61},
+		0644,
+	)
+	os.WriteFile(
+		filepath.Join(dir, "doc.pdf"),
+		[]byte{0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34},
+		0644,
+	)
+	os.WriteFile(
+		filepath.Join(dir, "binary"),
+		[]byte{0x7F, 0x45, 0x4C, 0x46, 0x00, 0x00, 0x00, 0x00},
+		0644,
+	)
 
 	output := runConcat(t, dir, []string{"."})
 
@@ -1102,7 +1154,11 @@ func TestMustConcatPanicsOnError(t *testing.T) {
 		}
 	}()
 
-	MustConcat("/nonexistent/path/output.txt", []string{"src/**"}, Options{Quiet: true})
+	MustConcat(
+		"/nonexistent/path/output.txt",
+		[]string{"src/**"},
+		Options{Quiet: true},
+	)
 }
 
 func TestMustConcatSucceeds(t *testing.T) {
@@ -1120,7 +1176,11 @@ func TestMustConcatSucceeds(t *testing.T) {
 		}
 	}()
 
-	MustConcat(filepath.Join(dir, "output.txt"), []string{"src/**"}, Options{Quiet: true})
+	MustConcat(
+		filepath.Join(dir, "output.txt"),
+		[]string{"src/**"},
+		Options{Quiet: true},
+	)
 }
 
 // =============================================================================
@@ -1375,4 +1435,36 @@ func TestMultipleDotSlashPatterns(t *testing.T) {
 	assertIncluded(t, output, "lib/lib.go")
 	assertExcluded(t, output, "test/test.go")
 	assertExcluded(t, output, "docs/doc.md")
+}
+
+func TestConcatIgnoresInvalidStandaloneGitignorePatterns(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		".gitignore":  "!\n/\n",
+		"src/main.go": "package main",
+	})
+
+	output := runConcat(t, dir, []string{"."})
+	assertIncluded(t, output, "src/main.go")
+}
+
+func TestWriteFileReturnsErrorWhenWriterFails(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"src/main.go": "package main",
+	})
+
+	writer := bufio.NewWriterSize(&failingWriter{maxBytes: 0}, 1)
+	writeErr := writeFile(
+		writer,
+		filepath.Join(dir, "src/main.go"),
+		"src/main.go",
+	)
+	if writeErr == nil {
+		t.Fatal("expected writeFile to return an error when writer fails")
+	}
+	if !errors.Is(writeErr, errInjectedWriteFailure) {
+		t.Fatalf(
+			"writeFile error=%v, expected injected write failure",
+			writeErr,
+		)
+	}
 }

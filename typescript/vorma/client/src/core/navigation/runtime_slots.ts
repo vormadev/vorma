@@ -58,7 +58,7 @@ export function createStatusSignaler(props: {
 	getStatus: () => StatusEventDetail;
 	dispatchStatusEvent: (status: StatusEventDetail) => void;
 	debounceMS?: number;
-}): { scheduleStatusUpdate: () => void } {
+}): () => void {
 	const { getStatus, dispatchStatusEvent, debounceMS = 8 } = props;
 	let lastDispatchedStatus: StatusEventDetail | null = null;
 
@@ -71,9 +71,7 @@ export function createStatusSignaler(props: {
 		dispatchStatusEvent(newStatus);
 	}, debounceMS);
 
-	return {
-		scheduleStatusUpdate,
-	};
+	return scheduleStatusUpdate;
 }
 
 type NavigationLaneMatch =
@@ -126,16 +124,6 @@ export function buildNavigationsMapFromNavigationLanes(props: {
 	return map;
 }
 
-function findMatchingPrefetchLaneKey(props: {
-	lanes: NavigationLanes;
-	key: string;
-}): string | undefined {
-	return findMapEntryByNavigationTarget({
-		map: props.lanes.prefetch,
-		targetHref: props.key,
-	})?.[0];
-}
-
 function matchNavigationLaneByTargetURL(props: {
 	lanes: NavigationLanes;
 	targetUrl: string;
@@ -154,10 +142,10 @@ function matchNavigationLaneByTargetURL(props: {
 		};
 	}
 
-	const prefetchLaneKey = findMatchingPrefetchLaneKey({
-		lanes,
-		key: targetUrl,
-	});
+	const prefetchLaneKey = findMapEntryByNavigationTarget({
+		map: lanes.prefetch,
+		targetHref: targetUrl,
+	})?.[0];
 	if (prefetchLaneKey) {
 		return {
 			lane: "prefetch",

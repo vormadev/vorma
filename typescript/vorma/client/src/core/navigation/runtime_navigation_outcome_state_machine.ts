@@ -450,7 +450,8 @@ export function decideSuccessfulNavigationPostAssetSideEffectPlan(props: {
 	const shouldStop = postAssetExecutionPlan.type === "stop";
 
 	return {
-		shouldCommitClientLoadersState: !shouldStop,
+		shouldCommitClientLoadersState:
+			postAssetExecutionPlan.type === "render",
 		shouldSyncBuildIDAfterAssetWait:
 			buildIDSyncTiming === "after_asset_wait_if_not_stopped" &&
 			!shouldStop,

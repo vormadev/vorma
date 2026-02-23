@@ -147,13 +147,10 @@ export function syncBuildIDFromResponse(response: Response): void {
 
 async function waitForSuccessfulNavigationAssets(
 	outcome: Extract<NavigationOutcome, { type: "success" }>,
-): Promise<{
-	clientLoadersResult:
-		| Awaited<
-				Extract<NavigationOutcome, { type: "success" }>["waitFnPromise"]
-		  >
-		| undefined;
-}> {
+): Promise<
+	| Awaited<Extract<NavigationOutcome, { type: "success" }>["waitFnPromise"]>
+	| undefined
+> {
 	const { waitFnPromise, preloadPlan } = outcome;
 	const cssBundlePromises: Array<Promise<unknown>> = [];
 	for (const dependency of preloadPlan.moduleDependencies) {
@@ -175,9 +172,7 @@ async function waitForSuccessfulNavigationAssets(
 		}
 	}
 
-	return {
-		clientLoadersResult,
-	};
+	return clientLoadersResult;
 }
 
 function buildRunHistoryOptions(
@@ -279,7 +274,7 @@ type SuccessfulNavigationLifecycleCheckpointExecutionInput =
 
 async function executeSuccessfulNavigationLifecycleCheckpoint(
 	props: SuccessfulNavigationLifecycleCheckpointExecutionInput,
-): Promise<{ shouldStop: boolean }> {
+): Promise<boolean> {
 	const { context, outcome, entry } = props;
 	const isCurrentEntry = isCurrentNavigationEntry({ context, entry });
 	const currentHref = window.location.href;
@@ -294,13 +289,13 @@ async function executeSuccessfulNavigationLifecycleCheckpoint(
 				});
 			switch (preWaitingExecutionPlan.type) {
 				case "stop":
-					return { shouldStop: true };
+					return true;
 				case "deleteAndStop":
 					context.deleteNavigation({
 						targetUrl: preWaitingExecutionPlan.targetUrl,
 						reason: preWaitingExecutionPlan.reason,
 					});
-					return { shouldStop: true };
+					return true;
 				case "continue":
 					transitionPhaseForCurrentEntry({
 						context,
@@ -308,7 +303,7 @@ async function executeSuccessfulNavigationLifecycleCheckpoint(
 						phase: "waiting",
 						reason: successfulNavigationPhaseReason.waiting,
 					});
-					return { shouldStop: false };
+					return false;
 			}
 		}
 		case "post_waiting": {
@@ -316,9 +311,7 @@ async function executeSuccessfulNavigationLifecycleCheckpoint(
 				decideSuccessfulNavigationPostWaitingExecutionPlan({
 					isCurrentEntry,
 				});
-			return {
-				shouldStop: postWaitingExecutionPlan.type === "stop",
-			};
+			return postWaitingExecutionPlan.type === "stop";
 		}
 		case "pre_asset_wait": {
 			const preAssetWaitExecutionPlan =
@@ -328,7 +321,7 @@ async function executeSuccessfulNavigationLifecycleCheckpoint(
 			if (preAssetWaitExecutionPlan.shouldSyncBuildIDBeforeAssetWait) {
 				syncBuildIDFromResponse(outcome.response);
 			}
-			return { shouldStop: false };
+			return false;
 		}
 		case "post_asset": {
 			const postAssetExecutionPlan =
@@ -359,7 +352,7 @@ async function executeSuccessfulNavigationLifecycleCheckpoint(
 
 			switch (postAssetExecutionPlan.type) {
 				case "stop":
-					return { shouldStop: true };
+					return true;
 				case "completeWithoutRender":
 					transitionPhaseForCurrentEntry({
 						context,
@@ -367,10 +360,10 @@ async function executeSuccessfulNavigationLifecycleCheckpoint(
 						phase: "complete",
 						reason: successfulNavigationPhaseReason.complete,
 					});
-					return { shouldStop: false };
+					return false;
 				case "render":
 					await renderSuccessfulNavigation(context, outcome, entry);
-					return { shouldStop: false };
+					return false;
 			}
 		}
 		case "cleanup": {
@@ -380,13 +373,13 @@ async function executeSuccessfulNavigationLifecycleCheckpoint(
 					isCurrentEntry,
 				});
 			if (cleanupExecutionPlan.type === "skip") {
-				return { shouldStop: false };
+				return false;
 			}
 			context.deleteNavigation({
 				targetUrl: cleanupExecutionPlan.targetUrl,
 				reason: cleanupExecutionPlan.reason,
 			});
-			return { shouldStop: false };
+			return false;
 		}
 	}
 }
@@ -403,14 +396,14 @@ export async function processSuccessfulNavigationRuntime(
 			__vormaClientGlobal.get("buildID");
 
 		for (const checkpoint of ["pre_waiting", "post_waiting"] as const) {
-			const checkpointResult =
+			const shouldStop =
 				await executeSuccessfulNavigationLifecycleCheckpoint({
 					checkpoint,
 					context,
 					outcome,
 					entry,
 				});
-			if (checkpointResult.shouldStop) {
+			if (shouldStop) {
 				return;
 			}
 		}
@@ -418,7 +411,7 @@ export async function processSuccessfulNavigationRuntime(
 		const buildIDSyncTiming = decideBuildIDSyncTimingForSuccessfulEntry({
 			entry,
 		});
-		const preAssetWaitCheckpointResult =
+		const shouldStopAfterPreAssetWait =
 			await executeSuccessfulNavigationLifecycleCheckpoint({
 				checkpoint: "pre_asset_wait",
 				context,
@@ -426,26 +419,24 @@ export async function processSuccessfulNavigationRuntime(
 				entry,
 				buildIDSyncTiming,
 			});
-		if (preAssetWaitCheckpointResult.shouldStop) {
+		if (shouldStopAfterPreAssetWait) {
 			return;
 		}
 
-		const assetWaitResult =
+		const clientLoadersResult =
 			await waitForSuccessfulNavigationAssets(outcome);
 
-		if (
-			(
-				await executeSuccessfulNavigationLifecycleCheckpoint({
-					checkpoint: "post_asset",
-					context,
-					outcome,
-					entry,
-					buildIDSyncTiming,
-					expectedBuildID: expectedBuildIDForResponseArtifacts,
-					clientLoadersResult: assetWaitResult.clientLoadersResult,
-				})
-			).shouldStop
-		) {
+		const shouldStopAfterPostAsset =
+			await executeSuccessfulNavigationLifecycleCheckpoint({
+				checkpoint: "post_asset",
+				context,
+				outcome,
+				entry,
+				buildIDSyncTiming,
+				expectedBuildID: expectedBuildIDForResponseArtifacts,
+				clientLoadersResult,
+			});
+		if (shouldStopAfterPostAsset) {
 			return;
 		}
 

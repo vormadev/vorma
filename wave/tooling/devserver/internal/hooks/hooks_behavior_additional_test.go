@@ -20,7 +20,9 @@ type staticAssetDirsForTests = struct {
 	Public  string `json:"Public"`
 }
 
-func TestBuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(t *testing.T) {
+func TestBuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
+	t *testing.T,
+) {
 	root := t.TempDir()
 	pattern := filepath.ToSlash(filepath.Join(root, "assets", "**", "*.css"))
 	firstPath := filepath.Join(root, "assets", "first.css")
@@ -76,8 +78,12 @@ func TestBuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(t *testi
 
 func TestBuildSkipDuplicateHooksByClassifiedEventIndex(t *testing.T) {
 	root := t.TempDir()
-	firstPattern := filepath.ToSlash(filepath.Join(root, "assets", "**", "*.css"))
-	secondPattern := filepath.ToSlash(filepath.Join(root, "scripts", "**", "*.go"))
+	firstPattern := filepath.ToSlash(
+		filepath.Join(root, "assets", "**", "*.css"),
+	)
+	secondPattern := filepath.ToSlash(
+		filepath.Join(root, "scripts", "**", "*.go"),
+	)
 
 	classifiedEvents := []eventpipeline.ClassifiedEvent{
 		{
@@ -173,7 +179,9 @@ func TestBuildEventHooksForProcessing(t *testing.T) {
 		t.Fatal("go event should require hard reload")
 	}
 	if second.NeedsHardReload {
-		t.Fatal("public-static event should not require hard reload when watcher file has no hard-reload flags")
+		t.Fatal(
+			"public-static event should not require hard reload when watcher file has no hard-reload flags",
+		)
 	}
 	if third.Hooks == nil {
 		t.Fatal("third event should include non-nil hooks container")
@@ -244,7 +252,10 @@ func TestDeriveEventsWithHooksForExecution(t *testing.T) {
 		t.Fatalf("single-event strategy len=%d, expected=1", len(singleEvent))
 	}
 	if singleEvent[0].HookCtx.FilePath != "/tmp/a.go" {
-		t.Fatalf("single-event hook path=%q, expected=/tmp/a.go", singleEvent[0].HookCtx.FilePath)
+		t.Fatalf(
+			"single-event hook path=%q, expected=/tmp/a.go",
+			singleEvent[0].HookCtx.FilePath,
+		)
 	}
 
 	batchEvents := hooks.DeriveEventsWithHooksForExecution(
@@ -256,7 +267,9 @@ func TestDeriveEventsWithHooksForExecution(t *testing.T) {
 	}
 	if !batchEvents[0].HookCtx.AppStoppedForBatch ||
 		!batchEvents[1].HookCtx.AppStoppedForBatch {
-		t.Fatal("batch strategy should set AppStoppedForBatch on all hook contexts")
+		t.Fatal(
+			"batch strategy should set AppStoppedForBatch on all hook contexts",
+		)
 	}
 	batchEvents[0].HookCtx.ChangedFilePaths[0] = "mutated"
 	if originalEventsWithHooks[0].HookCtx.ChangedFilePaths[0] != "/tmp/a.go" {
@@ -271,30 +284,47 @@ func TestDeriveEventsWithHooksForExecution(t *testing.T) {
 		eventpipeline.AppStopStrategyNone,
 	)
 	if !reflect.DeepEqual(defaultEvents, originalEventsWithHooks) {
-		t.Fatalf("default strategy=%v, expected=%v", defaultEvents, originalEventsWithHooks)
+		t.Fatalf(
+			"default strategy=%v, expected=%v",
+			defaultEvents,
+			originalEventsWithHooks,
+		)
 	}
 }
 
 func TestDeriveImplicitBuildExecutionDecision(t *testing.T) {
 	noImplicitSingle := hooks.DeriveImplicitBuildExecutionDecision(false, 1)
 	if noImplicitSingle.ShouldRunImplicitBuild {
-		t.Fatal("expected implicit build disabled for single run-on-change-only event")
+		t.Fatal(
+			"expected implicit build disabled for single run-on-change-only event",
+		)
 	}
 	if noImplicitSingle.SkipImplicitBuildLogEntry !=
 		"RunOnChangeOnly: skipping implicit build phase" {
-		t.Fatalf("skip log=%q, expected single-event skip log", noImplicitSingle.SkipImplicitBuildLogEntry)
+		t.Fatalf(
+			"skip log=%q, expected single-event skip log",
+			noImplicitSingle.SkipImplicitBuildLogEntry,
+		)
 	}
 
 	noImplicitBatch := hooks.DeriveImplicitBuildExecutionDecision(false, 2)
 	if noImplicitBatch.ShouldRunImplicitBuild {
-		t.Fatal("expected implicit build disabled for all run-on-change-only events")
+		t.Fatal(
+			"expected implicit build disabled for all run-on-change-only events",
+		)
 	}
 	if noImplicitBatch.SkipImplicitBuildLogEntry !=
 		"All events are RunOnChangeOnly, skipping implicit build phase" {
-		t.Fatalf("skip log=%q, expected batch skip log", noImplicitBatch.SkipImplicitBuildLogEntry)
+		t.Fatalf(
+			"skip log=%q, expected batch skip log",
+			noImplicitBatch.SkipImplicitBuildLogEntry,
+		)
 	}
 
-	implicitWithZeroEvents := hooks.DeriveImplicitBuildExecutionDecision(true, 0)
+	implicitWithZeroEvents := hooks.DeriveImplicitBuildExecutionDecision(
+		true,
+		0,
+	)
 	if implicitWithZeroEvents.ShouldRunImplicitBuild {
 		t.Fatal("expected implicit build disabled for zero events")
 	}
@@ -326,7 +356,9 @@ func TestHookStageContinuationAndShortCircuitPolicies(t *testing.T) {
 		stageFailureResult,
 		hooks.HookStageFailurePolicyStop,
 	) {
-		t.Fatal("expected short-circuit when stage failure policy is stop and errors exist")
+		t.Fatal(
+			"expected short-circuit when stage failure policy is stop and errors exist",
+		)
 	}
 	if hooks.ShouldShortCircuitPipelineForHookStageResult(
 		stageFailureResult,
@@ -343,7 +375,10 @@ func TestHookStageContinuationAndShortCircuitPolicies(t *testing.T) {
 		t.Fatal("expected restart continuation decision to stop pipeline")
 	}
 	if restartDecision.StopReason != hooks.HookStageContinuationStopReasonRestartRequested {
-		t.Fatalf("stop reason=%v, expected restart requested", restartDecision.StopReason)
+		t.Fatalf(
+			"stop reason=%v, expected restart requested",
+			restartDecision.StopReason,
+		)
 	}
 
 	failureDecision := hooks.DeriveHookStageContinuationDecisionWithFailurePolicy(
@@ -354,12 +389,19 @@ func TestHookStageContinuationAndShortCircuitPolicies(t *testing.T) {
 		t.Fatal("expected stop decision for stage failure under stop policy")
 	}
 	if failureDecision.StopReason != hooks.HookStageContinuationStopReasonStageFailure {
-		t.Fatalf("stop reason=%v, expected stage failure", failureDecision.StopReason)
+		t.Fatalf(
+			"stop reason=%v, expected stage failure",
+			failureDecision.StopReason,
+		)
 	}
 
-	continueDecision := hooks.DeriveHookStageContinuationDecision(stageFailureResult)
+	continueDecision := hooks.DeriveHookStageContinuationDecision(
+		stageFailureResult,
+	)
 	if !continueDecision.ShouldContinue {
-		t.Fatal("expected default continuation policy to continue after hook errors")
+		t.Fatal(
+			"expected default continuation policy to continue after hook errors",
+		)
 	}
 	if continueDecision.StopReason != hooks.HookStageContinuationStopReasonNone {
 		t.Fatalf("stop reason=%v, expected none", continueDecision.StopReason)
@@ -371,11 +413,26 @@ func TestHookStageFailurePolicyParsing(t *testing.T) {
 		configuredValue string
 		expectedPolicy  hooks.HookStageFailurePolicy
 	}{
-		{configuredValue: "continue", expectedPolicy: hooks.HookStageFailurePolicyContinue},
-		{configuredValue: "fail-open", expectedPolicy: hooks.HookStageFailurePolicyContinue},
-		{configuredValue: "failclosed", expectedPolicy: hooks.HookStageFailurePolicyStop},
-		{configuredValue: "strict", expectedPolicy: hooks.HookStageFailurePolicyStop},
-		{configuredValue: "unknown", expectedPolicy: hooks.HookStageFailurePolicyContinue},
+		{
+			configuredValue: "continue",
+			expectedPolicy:  hooks.HookStageFailurePolicyContinue,
+		},
+		{
+			configuredValue: "fail-open",
+			expectedPolicy:  hooks.HookStageFailurePolicyContinue,
+		},
+		{
+			configuredValue: "failclosed",
+			expectedPolicy:  hooks.HookStageFailurePolicyStop,
+		},
+		{
+			configuredValue: "strict",
+			expectedPolicy:  hooks.HookStageFailurePolicyStop,
+		},
+		{
+			configuredValue: "unknown",
+			expectedPolicy:  hooks.HookStageFailurePolicyContinue,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -404,7 +461,9 @@ func TestHookExecutionGateHelpers(t *testing.T) {
 		true,
 		eventpipeline.RestartPhaseDecision{RestartApp: true},
 	) {
-		t.Fatal("expected app start when implicit build runs and restart decision is true")
+		t.Fatal(
+			"expected app start when implicit build runs and restart decision is true",
+		)
 	}
 
 	noRestartResult := hooks.HookStageResult{}
@@ -418,14 +477,18 @@ func TestHookExecutionGateHelpers(t *testing.T) {
 		noRestartResult,
 		noRestartResult,
 	) {
-		t.Fatal("expected browser phase execution when no hook stage requested restart")
+		t.Fatal(
+			"expected browser phase execution when no hook stage requested restart",
+		)
 	}
 	if hooks.ShouldExecuteBrowserPhaseAfterHookStageResults(
 		noRestartResult,
 		restartResult,
 		noRestartResult,
 	) {
-		t.Fatal("did not expect browser phase execution when any stage requested restart")
+		t.Fatal(
+			"did not expect browser phase execution when any stage requested restart",
+		)
 	}
 }
 
@@ -437,7 +500,10 @@ func TestHookContextAndErrorUtilities(t *testing.T) {
 		t.Fatal("expected unknown stage label for unsupported stage")
 	}
 
-	backgroundExecutionContext := hooks.DeriveHookExecutionContext(nil)
+	var nilExecutionContext context.Context
+	backgroundExecutionContext := hooks.DeriveHookExecutionContext(
+		nilExecutionContext,
+	)
 	if backgroundExecutionContext == nil {
 		t.Fatal("expected non-nil background context fallback")
 	}
@@ -469,7 +535,8 @@ func TestHookContextAndErrorUtilities(t *testing.T) {
 	}
 
 	clonedNilHookContext := hooks.CloneHookContextForExecution(nil, nil)
-	if clonedNilHookContext == nil || clonedNilHookContext.ExecutionContext == nil {
+	if clonedNilHookContext == nil ||
+		clonedNilHookContext.ExecutionContext == nil {
 		t.Fatal("expected non-nil cloned hook context for nil input")
 	}
 
@@ -522,8 +589,13 @@ func TestHookContextAndErrorUtilities(t *testing.T) {
 }
 
 func TestHookCallbackAndContextExecutionUtilities(t *testing.T) {
-	if action, callbackError := hooks.ExecuteHookCallbackSafely(nil, nil); action != nil || callbackError != nil {
-		t.Fatalf("nil callback action=%v error=%v, expected nil,nil", action, callbackError)
+	if action, callbackError := hooks.ExecuteHookCallbackSafely(nil, nil); action != nil ||
+		callbackError != nil {
+		t.Fatalf(
+			"nil callback action=%v error=%v, expected nil,nil",
+			action,
+			callbackError,
+		)
 	}
 
 	okAction, okError := hooks.ExecuteHookCallbackSafely(
@@ -549,10 +621,16 @@ func TestHookCallbackAndContextExecutionUtilities(t *testing.T) {
 		t.Fatalf("panic callback action=%v, expected nil", panicAction)
 	}
 	if panicError == nil || !strings.Contains(panicError.Error(), "panicked") {
-		t.Fatalf("panic callback error=%v, expected panic conversion error", panicError)
+		t.Fatalf(
+			"panic callback error=%v, expected panic conversion error",
+			panicError,
+		)
 	}
 
-	if !hooks.ShouldContinueConcurrentHookExecution(nil) {
+	var nilConcurrentExecutionContext context.Context
+	if !hooks.ShouldContinueConcurrentHookExecution(
+		nilConcurrentExecutionContext,
+	) {
 		t.Fatal("expected nil concurrent context to allow continuation")
 	}
 
@@ -569,7 +647,10 @@ func TestHookCallbackAndContextExecutionUtilities(t *testing.T) {
 		t.Fatal("did not expect continuation for canceled concurrent context")
 	}
 
-	if hooks.DeriveHookExecutionContextError(nil) != nil {
+	var nilExecutionContextForError context.Context
+	if hooks.DeriveHookExecutionContextError(
+		nilExecutionContextForError,
+	) != nil {
 		t.Fatal("expected nil context error for nil context")
 	}
 	if hooks.DeriveHookExecutionContextError(context.Background()) != nil {
@@ -600,7 +681,10 @@ func TestHookCallbackAndContextExecutionUtilities(t *testing.T) {
 		t.Fatal("expected command execution error for canceled context")
 	}
 	if !strings.Contains(commandError.Error(), "execute hook command") {
-		t.Fatalf("command error=%v, expected wrapped execution error", commandError)
+		t.Fatalf(
+			"command error=%v, expected wrapped execution error",
+			commandError,
+		)
 	}
 }
 
@@ -619,7 +703,10 @@ func TestActionOrderingAndStageActionApplication(t *testing.T) {
 		t.Fatalf("restart actions should be in tail positions, got=%v", actions)
 	}
 	if !actions[0].ReloadBrowser || !actions[1].WaitForApp {
-		t.Fatalf("non-restart action relative order should be preserved, got=%v", actions)
+		t.Fatalf(
+			"non-restart action relative order should be preserved, got=%v",
+			actions,
+		)
 	}
 
 	if applied := hooks.ApplyHookStageActionsToWorkSet(nil, nil); applied != (eventpipeline.RefreshActionApplicationResult{}) {
@@ -632,17 +719,25 @@ func TestActionOrderingAndStageActionApplication(t *testing.T) {
 		[]wave.RefreshAction{{ReloadBrowser: true, WaitForApp: true}},
 	)
 	if applied.RestartRequested {
-		t.Fatalf("restart requested=%v, expected false", applied.RestartRequested)
+		t.Fatalf(
+			"restart requested=%v, expected false",
+			applied.RestartRequested,
+		)
 	}
 	if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
 		!work.Browser.WaitForApp {
-		t.Fatalf("work browser decision=%+v, expected hard reload with wait-for-app", work.Browser)
+		t.Fatalf(
+			"work browser decision=%+v, expected hard reload with wait-for-app",
+			work.Browser,
+		)
 	}
 
 	stageResult := hooks.RunAndApplyHookStageActionsToWorkSet(
 		hooks.HookStageTypeConcurrent,
 		func() []wave.RefreshAction {
-			return []wave.RefreshAction{{TriggerRestart: true, RecompileGo: true}}
+			return []wave.RefreshAction{
+				{TriggerRestart: true, RecompileGo: true},
+			}
 		},
 		&eventpipeline.WorkSet{},
 	)
@@ -651,7 +746,10 @@ func TestActionOrderingAndStageActionApplication(t *testing.T) {
 	}
 	if !stageResult.RefreshActionResult.RestartRequested ||
 		!stageResult.RefreshActionResult.RecompileGo {
-		t.Fatalf("stage refresh result=%+v, expected restart+recompile", stageResult.RefreshActionResult)
+		t.Fatalf(
+			"stage refresh result=%+v, expected restart+recompile",
+			stageResult.RefreshActionResult,
+		)
 	}
 
 	nilStageResult := hooks.RunAndApplyHookStageActionsToWorkSet(
@@ -662,22 +760,34 @@ func TestActionOrderingAndStageActionApplication(t *testing.T) {
 	if nilStageResult.StageType != hooks.HookStageTypePost {
 		t.Fatalf("nil stage type=%v, expected post", nilStageResult.StageType)
 	}
-	if len(nilStageResult.Actions) != 0 || len(nilStageResult.ExecutionErrors) != 0 {
-		t.Fatalf("expected empty stage result for nil runner, got=%+v", nilStageResult)
+	if len(nilStageResult.Actions) != 0 ||
+		len(nilStageResult.ExecutionErrors) != 0 {
+		t.Fatalf(
+			"expected empty stage result for nil runner, got=%+v",
+			nilStageResult,
+		)
 	}
 
 	actionAndErrorResult := hooks.RunAndApplyHookStageActionsAndErrorsToWorkSet(
 		hooks.HookStageTypePre,
 		func() ([]wave.RefreshAction, []error) {
-			return []wave.RefreshAction{{ReloadBrowser: true}}, []error{errors.New("hook error")}
+			return []wave.RefreshAction{
+					{ReloadBrowser: true},
+				}, []error{
+					errors.New("hook error"),
+				}
 		},
 		&eventpipeline.WorkSet{},
 	)
 	if actionAndErrorResult.StageType != hooks.HookStageTypePre {
 		t.Fatalf("stage type=%v, expected pre", actionAndErrorResult.StageType)
 	}
-	if len(actionAndErrorResult.Actions) != 1 || len(actionAndErrorResult.ExecutionErrors) != 1 {
-		t.Fatalf("stage result=%+v, expected one action and one error", actionAndErrorResult)
+	if len(actionAndErrorResult.Actions) != 1 ||
+		len(actionAndErrorResult.ExecutionErrors) != 1 {
+		t.Fatalf(
+			"stage result=%+v, expected one action and one error",
+			actionAndErrorResult,
+		)
 	}
 }
 
@@ -801,7 +911,10 @@ func TestHookTimeoutResolutionPolicies_HooksPackage(t *testing.T) {
 		hooks.HookExecutionPlan{},
 	)
 	if commandTimeoutDuration != 111*time.Millisecond {
-		t.Fatalf("command timeout duration=%s, expected=111ms", commandTimeoutDuration)
+		t.Fatalf(
+			"command timeout duration=%s, expected=111ms",
+			commandTimeoutDuration,
+		)
 	}
 
 	commandOverrideTimeoutDuration := hooks.DeriveHookCommandTimeoutDurationForExecutionPlan(
@@ -825,7 +938,10 @@ func TestHookTimeoutResolutionPolicies_HooksPackage(t *testing.T) {
 		hooks.HookExecutionPlan{},
 	)
 	if callbackTimeoutDuration != 888*time.Millisecond {
-		t.Fatalf("callback timeout duration=%s, expected=888ms", callbackTimeoutDuration)
+		t.Fatalf(
+			"callback timeout duration=%s, expected=888ms",
+			callbackTimeoutDuration,
+		)
 	}
 
 	callbackOverrideTimeoutDuration := hooks.DeriveHookCallbackTimeoutDurationForExecutionPlan(
@@ -877,7 +993,9 @@ func TestDeriveExecutionContextWithOptionalTimeout_HooksPackage(t *testing.T) {
 		10*time.Millisecond,
 	)
 	if timeoutExecutionContext == nil || cancelTimeoutExecutionContext == nil {
-		t.Fatal("expected timeout context and cancel function when timeout is enabled")
+		t.Fatal(
+			"expected timeout context and cancel function when timeout is enabled",
+		)
 	}
 	cancelTimeoutExecutionContext()
 }

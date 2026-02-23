@@ -9,7 +9,6 @@ import {
 import type { NavigationLanes } from "./runtime_slots.ts";
 import { findNavigationEntryInNavigationLanes } from "./runtime_slots.ts";
 import {
-	buildNavigationEntriesByOperationIDFromNavigationLanes,
 	createNavigationRuntimeStateMachine,
 	type RuntimeTransitionEvent,
 } from "./runtime_state_machine.ts";
@@ -24,7 +23,7 @@ import type {
 export type NavigationLifecycleRuntime = {
 	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;
 	deleteNavigation: (props: {
-		key: string;
+		targetUrl: string;
 		reason: string;
 		causedByOperationID?: number | null;
 	}) => boolean;
@@ -84,14 +83,14 @@ export function createNavigationLifecycleRuntime(props: {
 	};
 
 	const deleteNavigation = (deleteProps: {
-		key: string;
+		targetUrl: string;
 		reason: string;
 		causedByOperationID?: number | null;
 	}): boolean => {
 		const removalTransitionResult =
 			applyNavigationRemovalLifecycleTransition({
 				lanes: props.lanes,
-				targetUrl: deleteProps.key,
+				targetUrl: deleteProps.targetUrl,
 				scheduleStatusUpdate: props.scheduleStatusUpdate,
 				reason: deleteProps.reason,
 				causedByOperationID: deleteProps.causedByOperationID,
@@ -192,14 +191,4 @@ export function createNavigationLifecycleRuntime(props: {
 		getDebugJournal: runtimeStateMachine.getDebugJournal,
 		clearDebugJournal: runtimeStateMachine.clearDebugJournal,
 	};
-}
-
-export function buildNavigationEntriesBeforeClearAll(props: {
-	lanes: NavigationLanes;
-}): NavigationEntry[] {
-	return [
-		...buildNavigationEntriesByOperationIDFromNavigationLanes({
-			lanes: props.lanes,
-		}).values(),
-	];
 }

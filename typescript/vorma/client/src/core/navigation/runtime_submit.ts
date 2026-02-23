@@ -23,22 +23,6 @@ const submissionLifecycleReason = {
 	finished: "submission_finished",
 } as const;
 
-function createSubmissionEntry(
-	abortController: AbortController,
-	operationID: number,
-	options?: SubmitOptions,
-): SubmissionEntry {
-	return {
-		operationID,
-		control: {
-			abortController,
-			promise: Promise.resolve() as Promise<unknown>,
-		},
-		startTime: Date.now(),
-		skipGlobalLoadingIndicator: options?.skipGlobalLoadingIndicator,
-	};
-}
-
 export type SubmitExecutionContext = {
 	submissions: Map<string | symbol, SubmissionEntry>;
 	scheduleStatusUpdate: () => void;
@@ -134,11 +118,15 @@ function createSubmissionLifecycle(
 	options?: SubmitOptions,
 ): SubmissionLifecycle {
 	const abortController = new AbortController();
-	const submissionEntry = createSubmissionEntry(
-		abortController,
-		context.allocateSubmissionOperationID(),
-		options,
-	);
+	const submissionEntry: SubmissionEntry = {
+		operationID: context.allocateSubmissionOperationID(),
+		control: {
+			abortController,
+			promise: Promise.resolve() as Promise<unknown>,
+		},
+		startTime: Date.now(),
+		skipGlobalLoadingIndicator: options?.skipGlobalLoadingIndicator,
+	};
 	const submissionKey = options?.dedupeKey
 		? `submission:${options.dedupeKey}`
 		: Symbol("submission");
@@ -179,66 +167,6 @@ function createSubmissionLifecycle(
 	};
 }
 
-function buildSubmitRequestInit(props: {
-	requestInit?: RequestInit;
-	signal: AbortSignal;
-}): RequestInit {
-	const { requestInit, signal } = props;
-	const headers = new Headers(requestInit?.headers);
-	const deploymentID = __vormaClientGlobal.get("deploymentID");
-	if (deploymentID) {
-		headers.set("x-deployment-id", deploymentID);
-	}
-
-	return {
-		...requestInit,
-		headers,
-		signal,
-	};
-}
-
-async function executeSubmitRequest(props: {
-	abortController: AbortController;
-	url: URL;
-	requestInit: RequestInit;
-}): Promise<{ redirectData: RedirectData | null; response: Response }> {
-	const result = await handleRedirects({
-		abortController: props.abortController,
-		url: props.url,
-		redirectCount: 0,
-		requestInit: props.requestInit,
-	});
-
-	if (!result.response) {
-		throw new Error("Submit request completed without a response.");
-	}
-
-	return {
-		redirectData: result.redirectData,
-		response: result.response,
-	};
-}
-
-type PreparedSubmitRequest = {
-	url: URL;
-	requestInit: RequestInit;
-};
-
-function prepareSubmitRequest(props: {
-	url: string | URL;
-	requestInit?: RequestInit;
-	signal: AbortSignal;
-}): PreparedSubmitRequest {
-	const { url, requestInit, signal } = props;
-	return {
-		url: new URL(resolveAbsoluteHref({ href: url })),
-		requestInit: buildSubmitRequestInit({
-			requestInit,
-			signal,
-		}),
-	};
-}
-
 type SubmitResult<T> =
 	| { success: true; data: T }
 	| { success: false; error: string };
@@ -247,16 +175,8 @@ function getAbortedSubmitResult<T>(): SubmitResult<T> {
 	return { success: false, error: "Aborted" };
 }
 
-function getUnknownSubmitErrorResult<T>(): SubmitResult<T> {
-	return { success: false, error: "Unknown error" };
-}
-
 function getSubmitErrorResult<T>(error: string): SubmitResult<T> {
 	return { success: false, error };
-}
-
-function getSubmitRedirectFailureResult<T>(): SubmitResult<T> {
-	return getSubmitErrorResult<T>("Redirect failed");
 }
 
 function getStaleSubmitResultIfNotCurrent<T>(props: {
@@ -364,7 +284,7 @@ function getSubmitRuntimeErrorResult<T>(props: {
 	}
 
 	logError(error);
-	return getUnknownSubmitErrorResult<T>();
+	return getSubmitErrorResult<T>("Unknown error");
 }
 
 export async function executeSubmitRuntime<T = unknown>(
@@ -372,34 +292,46 @@ export async function executeSubmitRuntime<T = unknown>(
 	url: string | URL,
 	requestInit?: RequestInit,
 	options?: SubmitOptions,
-): Promise<{ success: true; data: T } | { success: false; error: string }> {
+): Promise<SubmitResult<T>> {
 	const submissionLifecycle = createSubmissionLifecycle(context, options);
 	submissionLifecycle.begin();
-
-	try {
-		const preparedSubmitRequest = prepareSubmitRequest({
-			url,
-			requestInit,
-			signal: submissionLifecycle.abortController.signal,
-		});
-
-		const { redirectData, response } = await executeSubmitRequest({
-			abortController: submissionLifecycle.abortController,
-			url: preparedSubmitRequest.url,
-			requestInit: preparedSubmitRequest.requestInit,
-		});
-		const staleAfterRequest = getStaleSubmitResultIfNotCurrent<T>({
+	const getStaleSubmitResult = (): SubmitResult<T> | null =>
+		getStaleSubmitResultIfNotCurrent<T>({
 			isSubmissionCurrent: submissionLifecycle.isCurrent,
 		});
+
+	try {
+		const submitRequestURL = new URL(resolveAbsoluteHref({ href: url }));
+		const submitRequestHeaders = new Headers(requestInit?.headers);
+		const deploymentID = __vormaClientGlobal.get("deploymentID");
+		if (deploymentID) {
+			submitRequestHeaders.set("x-deployment-id", deploymentID);
+		}
+		const submitRequestInit: RequestInit = {
+			...requestInit,
+			headers: submitRequestHeaders,
+			signal: submissionLifecycle.abortController.signal,
+		};
+
+		const submitRequestResult = await handleRedirects({
+			abortController: submissionLifecycle.abortController,
+			url: submitRequestURL,
+			redirectCount: 0,
+			requestInit: submitRequestInit,
+		});
+		if (!submitRequestResult.response) {
+			throw new Error("Submit request completed without a response.");
+		}
+		const { redirectData, response } = submitRequestResult;
+
+		const staleAfterRequest = getStaleSubmitResult();
 		if (staleAfterRequest) {
 			return staleAfterRequest;
 		}
 
 		syncBuildIDFromResponse(response);
 
-		const staleBeforeFinalize = getStaleSubmitResultIfNotCurrent<T>({
-			isSubmissionCurrent: submissionLifecycle.isCurrent,
-		});
+		const staleBeforeFinalize = getStaleSubmitResult();
 		if (staleBeforeFinalize) {
 			return staleBeforeFinalize;
 		}
@@ -414,10 +346,7 @@ export async function executeSubmitRuntime<T = unknown>(
 				redirectData,
 				options,
 			});
-		const staleAfterResponseClassification =
-			getStaleSubmitResultIfNotCurrent<T>({
-				isSubmissionCurrent: submissionLifecycle.isCurrent,
-			});
+		const staleAfterResponseClassification = getStaleSubmitResult();
 		if (staleAfterResponseClassification) {
 			return staleAfterResponseClassification;
 		}
@@ -431,23 +360,18 @@ export async function executeSubmitRuntime<T = unknown>(
 				redirectData,
 				0,
 			);
-			const staleAfterRedirectEffectuation =
-				getStaleSubmitResultIfNotCurrent<T>({
-					isSubmissionCurrent: submissionLifecycle.isCurrent,
-				});
+			const staleAfterRedirectEffectuation = getStaleSubmitResult();
 			if (staleAfterRedirectEffectuation) {
 				return staleAfterRedirectEffectuation;
 			}
 			if (!redirectResult || redirectResult.status !== "did") {
-				return getSubmitRedirectFailureResult<T>();
+				return getSubmitErrorResult<T>("Redirect failed");
 			}
 			return { success: true, data: undefined as T };
 		}
 
 		const data = await readSubmitSuccessResponseData(response);
-		const staleBeforeReturn = getStaleSubmitResultIfNotCurrent<T>({
-			isSubmissionCurrent: submissionLifecycle.isCurrent,
-		});
+		const staleBeforeReturn = getStaleSubmitResult();
 		if (staleBeforeReturn) {
 			return staleBeforeReturn;
 		}
@@ -457,10 +381,7 @@ export async function executeSubmitRuntime<T = unknown>(
 				href: window.location.href,
 				navigationType: "revalidation",
 			});
-			const staleAfterAutoRevalidate =
-				getStaleSubmitResultIfNotCurrent<T>({
-					isSubmissionCurrent: submissionLifecycle.isCurrent,
-				});
+			const staleAfterAutoRevalidate = getStaleSubmitResult();
 			if (staleAfterAutoRevalidate) {
 				return staleAfterAutoRevalidate;
 			}

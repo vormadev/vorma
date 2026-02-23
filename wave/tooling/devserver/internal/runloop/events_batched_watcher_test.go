@@ -370,7 +370,8 @@ func TestRunWatcher_NilContextDefaultsToBackground(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		harness.engine.RunWatcherWithContext(nil)
+		var nilWatcherContext context.Context
+		harness.engine.RunWatcherWithContext(nilWatcherContext)
 		close(done)
 	}()
 

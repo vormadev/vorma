@@ -107,9 +107,9 @@ export type NavigationStateManager = {
 	) => Promise<
 		{ success: true; data: T } | { success: false; error: string }
 	>;
-	removeNavigation: (key: string) => void;
-	getNavigation: (key: string) => NavigationEntry | undefined;
-	hasNavigation: (key: string) => boolean;
+	removeNavigation: (targetUrl: string) => void;
+	getNavigation: (targetUrl: string) => NavigationEntry | undefined;
+	hasNavigation: (targetUrl: string) => boolean;
 	getNavigationsSize: () => number;
 	getNavigations: () => Map<string, NavigationEntry>;
 	getStatus: () => StatusEventDetail;

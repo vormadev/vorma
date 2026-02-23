@@ -67,7 +67,7 @@ describe("navigation lifecycle runtime seam", () => {
 		expect(activeEntry.phase).toBe("waiting");
 
 		const deleted = lifecycleRuntime.deleteNavigation({
-			key: activeEntry.targetUrl,
+			targetUrl: activeEntry.targetUrl,
 			reason: "runtime_seam_deleted",
 		});
 		expect(deleted).toBe(true);
@@ -180,7 +180,7 @@ describe("navigation lifecycle runtime seam", () => {
 			expect(activeEntry.phase).toBe("waiting");
 
 			const deleted = lifecycleRuntime.deleteNavigation({
-				key: activeEntry.targetUrl,
+				targetUrl: activeEntry.targetUrl,
 				reason: "runtime_seam_disabled_deleted",
 			});
 			expect(deleted).toBe(true);

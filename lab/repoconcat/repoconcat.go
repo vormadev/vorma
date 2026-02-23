@@ -2,8 +2,10 @@ package repoconcat
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -109,7 +111,11 @@ func MustConcat(output string, patterns []string, opts ...Options) {
 //   - Trailing `/` means directory (for inclusion: match contents; for exclusion: don't match files of same name).
 //   - Prefix `!` for negation (e.g., `!*.log` excludes log files).
 //   - Last match wins.
-func Concat(output string, patterns []string, opts ...Options) error {
+func Concat(
+	output string,
+	patterns []string,
+	opts ...Options,
+) (returnErr error) {
 	var opt Options
 	if len(opts) > 0 {
 		opt = opts[0]
@@ -119,7 +125,12 @@ func Concat(output string, patterns []string, opts ...Options) error {
 	if err != nil {
 		return fmt.Errorf("creating output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() {
+		closeErr := outFile.Close()
+		if closeErr != nil && returnErr == nil {
+			returnErr = fmt.Errorf("closing output file: %w", closeErr)
+		}
+	}()
 
 	for i := range patterns {
 		patterns[i] = strings.TrimSpace(patterns[i])
@@ -166,76 +177,96 @@ func Concat(output string, patterns []string, opts ...Options) error {
 	var lastPatterns []compiledPattern
 
 	for _, root := range roots {
-		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil || d.Type()&os.ModeSymlink != 0 {
-				return nil
-			}
-
-			// Early prune excluded directories (unless user overrode)
-			if d.IsDir() {
-				name := d.Name()
-				if (name == ".git" || name == "node_modules" || name == ".vscode") && !overriddenDirs[name] {
-					return filepath.SkipDir
+		walkErr := filepath.WalkDir(
+			root,
+			func(path string, d os.DirEntry, err error) error {
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						return nil
+					}
+					return err
 				}
-				return nil
-			}
 
-			if seen[path] {
-				return nil
-			}
-			seen[path] = true
-
-			info, err := d.Info()
-			if err != nil {
-				return nil
-			}
-
-			if outStat != nil && os.SameFile(info, outStat) {
-				return nil
-			}
-
-			relPath := filepath.ToSlash(path)
-			dir := filepath.Dir(path)
-
-			// Fast path: same directory as last file
-			var pats []compiledPattern
-			if dir == lastDir {
-				pats = lastPatterns
-			} else {
-				var ok bool
-				pats, ok = patternCache[dir]
-				if !ok {
-					gitignore := getGitignorePatterns(dir, gitignoreCache)
-					pats = combinePatterns(userPatterns, defaultPatterns, gitignore)
-					patternCache[dir] = pats
+				if d.Type()&os.ModeSymlink != 0 {
+					return nil
 				}
-				lastDir = dir
-				lastPatterns = pats
-			}
 
-			if !matchPatterns(pats, relPath) {
-				return nil
-			}
+				// Early prune excluded directories (unless user overrode)
+				if d.IsDir() {
+					name := d.Name()
+					if (name == ".git" || name == "node_modules" || name == ".vscode") &&
+						!overriddenDirs[name] {
+						return filepath.SkipDir
+					}
+					return nil
+				}
 
-			if !isTextFile(path) {
-				skippedBinary++
-				return nil
-			}
+				if seen[path] {
+					return nil
+				}
+				seen[path] = true
 
-			if !opt.Quiet {
-				log.WriteString(relPath)
-				log.WriteString(" (")
-				log.WriteString(formatSize(info.Size()))
-				log.WriteString(")\n")
-			}
-			if writeFile(writer, path, relPath) == nil {
+				info, err := d.Info()
+				if err != nil {
+					return nil
+				}
+
+				if outStat != nil && os.SameFile(info, outStat) {
+					return nil
+				}
+
+				relPath := filepath.ToSlash(path)
+				dir := filepath.Dir(path)
+
+				// Fast path: same directory as last file
+				var pats []compiledPattern
+				if dir == lastDir {
+					pats = lastPatterns
+				} else {
+					var ok bool
+					pats, ok = patternCache[dir]
+					if !ok {
+						gitignore := getGitignorePatterns(dir, gitignoreCache)
+						pats = combinePatterns(userPatterns, defaultPatterns, gitignore)
+						patternCache[dir] = pats
+					}
+					lastDir = dir
+					lastPatterns = pats
+				}
+
+				if !matchPatterns(pats, relPath) {
+					return nil
+				}
+
+				if !isTextFile(path) {
+					skippedBinary++
+					return nil
+				}
+
+				if !opt.Quiet {
+					log.WriteString(relPath)
+					log.WriteString(" (")
+					log.WriteString(formatSize(info.Size()))
+					log.WriteString(")\n")
+				}
+				if writeErr := writeFile(writer, path, relPath); writeErr != nil {
+					return writeErr
+				}
 				included++
+				return nil
+			},
+		)
+		if walkErr != nil {
+			if errors.Is(walkErr, fs.ErrNotExist) {
+				continue
 			}
-			return nil
-		})
+			return fmt.Errorf("walk root %q: %w", root, walkErr)
+		}
 	}
 
-	writer.Flush()
+	if flushErr := writer.Flush(); flushErr != nil {
+		return fmt.Errorf("flushing output writer: %w", flushErr)
+	}
 
 	if !opt.Quiet {
 		outInfo, _ := os.Stat(output)
@@ -249,7 +280,12 @@ func Concat(output string, patterns []string, opts ...Options) error {
 		fmt.Println(dashSeparator)
 		fmt.Print(log.String())
 		fmt.Println(dashSeparator)
-		fmt.Printf("%d files (%s), %d binary skipped\n", included, sizeStr, skippedBinary)
+		fmt.Printf(
+			"%d files (%s), %d binary skipped\n",
+			included,
+			sizeStr,
+			skippedBinary,
+		)
 		fmt.Println()
 	}
 	return nil
@@ -296,7 +332,8 @@ func compileUserPatterns(patterns []string) patternSet {
 		}
 
 		pat := strings.TrimPrefix(norm, "!")
-		if !strings.ContainsAny(pat, "*") && !strings.HasSuffix(p, "/") && pat != "." {
+		if !strings.ContainsAny(pat, "*") && !strings.HasSuffix(p, "/") &&
+			pat != "." {
 			ps.specific = append(ps.specific, cp)
 			continue
 		}
@@ -353,8 +390,19 @@ func isOverridePattern(pattern string) bool {
 	return defaultExcludedFiles[filename]
 }
 
-func combinePatterns(user patternSet, defaults, gitignore []compiledPattern) []compiledPattern {
-	total := len(user.broad) + len(defaults) + len(gitignore) + len(user.specific)
+func combinePatterns(
+	user patternSet,
+	defaults, gitignore []compiledPattern,
+) []compiledPattern {
+	total := len(
+		user.broad,
+	) + len(
+		defaults,
+	) + len(
+		gitignore,
+	) + len(
+		user.specific,
+	)
 	out := make([]compiledPattern, 0, total)
 	out = append(out, user.broad...)
 	out = append(out, defaults...)
@@ -451,7 +499,10 @@ func extractRoots(patterns []string) []string {
 	return roots
 }
 
-func getGitignorePatterns(dir string, cache map[string][]compiledPattern) []compiledPattern {
+func getGitignorePatterns(
+	dir string,
+	cache map[string][]compiledPattern,
+) []compiledPattern {
 	absDir, _ := filepath.Abs(dir)
 	if patterns, ok := cache[absDir]; ok {
 		return patterns
@@ -489,7 +540,11 @@ func getGitignorePatterns(dir string, cache map[string][]compiledPattern) []comp
 			}
 			dirPatterns = append(dirPatterns, parseGitignore(path, relBase)...)
 		}
-		combined := make([]compiledPattern, 0, len(parentPatterns)+len(dirPatterns))
+		combined := make(
+			[]compiledPattern,
+			0,
+			len(parentPatterns)+len(dirPatterns),
+		)
 		combined = append(combined, parentPatterns...)
 		combined = append(combined, dirPatterns...)
 		cache[curr] = combined
@@ -516,9 +571,15 @@ func parseGitignore(path, base string) []compiledPattern {
 
 		neg := line[0] == '!'
 		pattern := strings.TrimPrefix(line, "!")
+		if pattern == "" {
+			continue
+		}
 
-		anchored := pattern[0] == '/'
+		anchored := strings.HasPrefix(pattern, "/")
 		pattern = strings.TrimPrefix(pattern, "/")
+		if pattern == "" {
+			continue
+		}
 
 		trimmed := strings.TrimSuffix(pattern, "/")
 		if strings.Contains(trimmed, "/") {
@@ -592,18 +653,39 @@ func isTextFile(path string) bool {
 }
 
 func writeFile(w *bufio.Writer, path, display string) error {
-	w.WriteString(separator)
-	w.WriteByte('\n')
-	w.WriteString("FILE: ")
-	w.WriteString(display)
-	w.WriteByte('\n')
-	w.WriteString(separator)
-	w.WriteByte('\n')
+	if _, err := w.WriteString(separator); err != nil {
+		return fmt.Errorf("write leading separator for %s: %w", display, err)
+	}
+	if err := w.WriteByte('\n'); err != nil {
+		return fmt.Errorf(
+			"write leading separator newline for %s: %w",
+			display,
+			err,
+		)
+	}
+	if _, err := w.WriteString("FILE: "); err != nil {
+		return fmt.Errorf("write file label for %s: %w", display, err)
+	}
+	if _, err := w.WriteString(display); err != nil {
+		return fmt.Errorf("write file path label for %s: %w", display, err)
+	}
+	if err := w.WriteByte('\n'); err != nil {
+		return fmt.Errorf("write file label newline for %s: %w", display, err)
+	}
+	if _, err := w.WriteString(separator); err != nil {
+		return fmt.Errorf("write trailing separator for %s: %w", display, err)
+	}
+	if err := w.WriteByte('\n'); err != nil {
+		return fmt.Errorf(
+			"write trailing separator newline for %s: %w",
+			display,
+			err,
+		)
+	}
 
 	file, err := os.Open(path)
 	if err != nil {
-		fmt.Fprintf(w, "[ERROR READING FILE: %v]\n", err)
-		return err
+		return fmt.Errorf("open %s: %w", display, err)
 	}
 	defer file.Close()
 
@@ -612,11 +694,17 @@ func writeFile(w *bufio.Writer, path, display string) error {
 	copyBufPool.Put(bufPtr)
 
 	if err != nil {
-		fmt.Fprintf(w, "[ERROR COPYING FILE: %v]\n", err)
+		return fmt.Errorf("copy %s: %w", display, err)
 	}
 
-	w.WriteByte('\n')
-	return err
+	if err := w.WriteByte('\n'); err != nil {
+		return fmt.Errorf(
+			"write file trailing newline for %s: %w",
+			display,
+			err,
+		)
+	}
+	return nil
 }
 
 func formatSize(bytes int64) string {

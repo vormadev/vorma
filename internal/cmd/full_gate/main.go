@@ -9,6 +9,7 @@ import (
 
 var releaseGateTargetNames = []string{
 	"gotest",
+	"staticcheck",
 	"tsreset",
 	"tstest-source",
 	"tslint",

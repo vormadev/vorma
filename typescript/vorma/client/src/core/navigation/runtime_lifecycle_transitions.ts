@@ -72,27 +72,17 @@ export function applyNavigationPhaseLifecycleTransition(props: {
 		lanes,
 		targetUrl,
 	});
-	const previousPhase = entry?.phase;
+	if (!entry || entry.phase === phase) {
+		return null;
+	}
 
+	const previousPhase = entry.phase;
 	transitionNavigationPhaseInNavigationLanes({
 		lanes,
 		targetUrl,
 		phase,
 		onStatusRelevantChange: scheduleStatusUpdate,
 	});
-
-	const currentEntry = findNavigationEntryInNavigationLanes({
-		lanes,
-		targetUrl,
-	});
-	if (
-		!entry ||
-		currentEntry !== entry ||
-		!previousPhase ||
-		previousPhase === phase
-	) {
-		return null;
-	}
 
 	return {
 		type: "navigation_phase_transitioned",

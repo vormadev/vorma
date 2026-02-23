@@ -420,6 +420,26 @@ describe("successful outcome stage plans", () => {
 			shouldSyncBuildIDAfterAssetWait: true,
 			shouldApplyResponseArtifacts: true,
 		});
+
+		const idlePrefetchPostAssetExecutionPlan =
+			decideSuccessfulNavigationPostAssetExecutionPlan({
+				entry: createEntry({
+					type: "prefetch",
+					intent: "none",
+				}),
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
+			});
+		expect(
+			decideSuccessfulNavigationPostAssetSideEffectPlan({
+				postAssetExecutionPlan: idlePrefetchPostAssetExecutionPlan,
+				buildIDSyncTiming: "before_asset_wait",
+			}),
+		).toEqual({
+			shouldCommitClientLoadersState: false,
+			shouldSyncBuildIDAfterAssetWait: false,
+			shouldApplyResponseArtifacts: true,
+		});
 	});
 
 	it("decides pre-asset wait execution through one reducer seam", () => {

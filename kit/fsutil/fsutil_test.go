@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -101,7 +102,11 @@ func TestCopyFile(t *testing.T) {
 		t.Fatalf("expected no error statting destination file, got %v", err)
 	}
 	if srcInfo.Mode().Perm() != dstInfo.Mode().Perm() {
-		t.Fatalf("expected destination mode %v, got %v", srcInfo.Mode().Perm(), dstInfo.Mode().Perm())
+		t.Fatalf(
+			"expected destination mode %v, got %v",
+			srcInfo.Mode().Perm(),
+			dstInfo.Mode().Perm(),
+		)
 	}
 }
 
@@ -199,6 +204,36 @@ func TestCopyDir(t *testing.T) {
 	checkFileContent(t, filepath.Join(dstDir, "file1.txt"), "File 1")
 	checkFileContent(t, filepath.Join(dstDir, "file2.txt"), "File 2")
 	checkFileContent(t, filepath.Join(dstDir, "subdir", "file3.txt"), "File 3")
+}
+
+func TestCopyDirRejectsSymlinkEntries(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is environment-dependent on Windows")
+	}
+
+	srcDir := t.TempDir()
+	dstDir := filepath.Join(t.TempDir(), "dst")
+
+	targetPath := filepath.Join(srcDir, "target.txt")
+	if err := os.WriteFile(targetPath, []byte("target"), 0o644); err != nil {
+		t.Fatalf("expected no error writing target file, got %v", err)
+	}
+
+	linkPath := filepath.Join(srcDir, "target-link.txt")
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		t.Skipf("symlink is unavailable in this environment: %v", err)
+	}
+
+	copyError := CopyDir(srcDir, dstDir)
+	if copyError == nil {
+		t.Fatal("expected CopyDir to fail when source contains symlink entries")
+	}
+	if !strings.Contains(
+		copyError.Error(),
+		"symlink entries are not supported",
+	) {
+		t.Fatalf("copy error=%v, expected symlink rejection message", copyError)
+	}
 }
 
 // Helper function to check file content
@@ -317,7 +352,11 @@ func TestMustSub_ReturnsSubFS(t *testing.T) {
 		t.Fatalf("failed to read file from MustSub result: %v", err)
 	}
 	if string(readBytes) != "hello" {
-		t.Fatalf("MustSub file content = %q, want %q", string(readBytes), "hello")
+		t.Fatalf(
+			"MustSub file content = %q, want %q",
+			string(readBytes),
+			"hello",
+		)
 	}
 }
 

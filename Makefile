@@ -18,6 +18,9 @@ gotest:
 gotestloud:
 	@go test -race -v ./...
 
+staticcheck:
+	@staticcheck ./...
+
 # call with `make gobench pkg=./kit/mux` (or whatever)
 gobench:
 	@go test -bench=. $(pkg)

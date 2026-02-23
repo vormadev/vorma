@@ -15,10 +15,7 @@ import {
 } from "./begin_navigation.ts";
 import { resolveBeginNavigationTargetURL } from "./begin_navigation_state_machine.ts";
 import { fetchRouteData } from "./fetch_route_data_server.ts";
-import {
-	buildNavigationEntriesBeforeClearAll,
-	createNavigationLifecycleRuntime,
-} from "./runtime_lifecycle_runtime.ts";
+import { createNavigationLifecycleRuntime } from "./runtime_lifecycle_runtime.ts";
 import {
 	decideNavigationOutcomeExecutionPlan,
 	toPublicNavigateResult,
@@ -346,11 +343,10 @@ export function createNavigationRuntime(
 			lanes,
 		});
 	}
-	const statusSignaler = createStatusSignaler({
+	const scheduleStatusUpdate = createStatusSignaler({
 		getStatus,
 		dispatchStatusEvent,
 	});
-	const scheduleStatusUpdate = statusSignaler.scheduleStatusUpdate;
 
 	const getActiveNavigation = (): NavigationEntry | null => lanes.active;
 	const setActiveNavigation = (entry: NavigationEntry | null): void => {
@@ -368,16 +364,7 @@ export function createNavigationRuntime(
 		scheduleStatusUpdate,
 	});
 	const findNavigationEntry = navigationLifecycleRuntime.findNavigationEntry;
-	const deleteNavigation = (props: {
-		targetUrl: string;
-		reason: string;
-		causedByOperationID?: number | null;
-	}): boolean =>
-		navigationLifecycleRuntime.deleteNavigation({
-			key: props.targetUrl,
-			reason: props.reason,
-			causedByOperationID: props.causedByOperationID ?? null,
-		});
+	const deleteNavigation = navigationLifecycleRuntime.deleteNavigation;
 
 	const deterministicRevalidationLane = createDeterministicRevalidationLane({
 		getCurrentHref: () => window.location.href,
@@ -401,22 +388,21 @@ export function createNavigationRuntime(
 		},
 	});
 
-	const removeNavigation = (key: string): void => {
-		const entry = findNavigationEntry(key);
+	const removeNavigation = (targetUrl: string): void => {
+		const entry = findNavigationEntry(targetUrl);
 		if (!entry) {
 			return;
 		}
 		entry.control.abortController?.abort();
 		deleteNavigation({
-			targetUrl: key,
+			targetUrl,
 			reason: "remove_navigation",
 		});
 	};
 
-	const getNavigation = (key: string): NavigationEntry | undefined =>
-		findNavigationEntry(key);
-	const hasNavigation = (key: string): boolean =>
-		getNavigation(key) !== undefined;
+	const getNavigation = findNavigationEntry;
+	const hasNavigation = (targetUrl: string): boolean =>
+		findNavigationEntry(targetUrl) !== undefined;
 	const getNavigationsSize = (): number =>
 		getNavigationsSizeFromNavigationLanes({
 			lanes,
@@ -425,16 +411,7 @@ export function createNavigationRuntime(
 		buildNavigationsMapFromNavigationLanes({
 			lanes,
 		});
-	const transitionPhase = (props: {
-		targetUrl: string;
-		phase: NavigationPhase;
-		reason: string;
-	}): void => navigationLifecycleRuntime.transitionPhase(props);
-	const clearNavigationsAndSubmissions = (): void =>
-		clearRuntimeLanes({
-			lanes,
-			onStatusRelevantChange: scheduleStatusUpdate,
-		});
+	const transitionPhase = navigationLifecycleRuntime.transitionPhase;
 
 	const prefetchNavigationsByTargetUrl = lanes.prefetch;
 
@@ -604,13 +581,18 @@ export function createNavigationRuntime(
 		);
 
 	function clearAll(): void {
-		const entriesBeforeClearAll = buildNavigationEntriesBeforeClearAll({
-			lanes,
-		});
+		const entriesBeforeClearAll = [
+			...buildNavigationEntriesByOperationIDFromNavigationLanes({
+				lanes,
+			}).values(),
+		];
 		const submissionsBeforeClearAll = [...lanes.submissions.values()];
 
 		deterministicRevalidationLane.reset();
-		clearNavigationsAndSubmissions();
+		clearRuntimeLanes({
+			lanes,
+			onStatusRelevantChange: scheduleStatusUpdate,
+		});
 
 		navigationLifecycleRuntime.dispatchClearAll({
 			navigationEntries: entriesBeforeClearAll,

@@ -27,7 +27,7 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error when runtime is nil")
 		}
-		if !strings.Contains(err.Error(), "Vorma runtime is required") {
+		if !strings.Contains(err.Error(), "vorma runtime is required") {
 			t.Fatalf("error = %q, expected nil-runtime message", err)
 		}
 	})
@@ -43,7 +43,7 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error when runtime config is nil")
 			}
-			if !strings.Contains(err.Error(), "Vorma config is required") {
+			if !strings.Contains(err.Error(), "vorma config is required") {
 				t.Fatalf("error = %q, expected nil-config message", err)
 			}
 		},
@@ -788,7 +788,7 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error when runtime is nil")
 		}
-		if !strings.Contains(err.Error(), "Vorma runtime is required") {
+		if !strings.Contains(err.Error(), "vorma runtime is required") {
 			t.Fatalf("error = %q, expected nil-runtime message", err)
 		}
 	})
@@ -800,7 +800,7 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error when config is nil")
 		}
-		if !strings.Contains(err.Error(), "Vorma config is required") {
+		if !strings.Contains(err.Error(), "vorma config is required") {
 			t.Fatalf("error = %q, expected nil-config message", err)
 		}
 	})

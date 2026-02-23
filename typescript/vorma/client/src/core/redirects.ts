@@ -32,7 +32,7 @@ type ShouldRedirectData = Extract<RedirectData, { status: "should" }>;
 
 type RedirectNavigationState = {
 	getNavigations: () => Map<string, NavigationEntry>;
-	removeNavigation: (key: string) => void;
+	removeNavigation: (targetUrl: string) => void;
 	navigate: (props: NavigateProps) => Promise<{ didNavigate: boolean }>;
 };
 
@@ -294,10 +294,10 @@ function cleanupRedirectRelatedNavigations(
 	navigationState: RedirectNavigationState,
 ): void {
 	const navEntries = navigationState.getNavigations().entries();
-	for (const [key, nav] of navEntries) {
+	for (const [targetUrl, nav] of navEntries) {
 		if (nav.type === "redirect" || nav.type === "revalidation") {
 			nav.control.abortController?.abort();
-			navigationState.removeNavigation(key);
+			navigationState.removeNavigation(targetUrl);
 		}
 	}
 }
@@ -378,23 +378,16 @@ export async function effectuateRedirectDataResult(
 	const navigationState = getNavigationStateAccess();
 	cleanupRedirectRelatedNavigations(navigationState);
 
-	const redirectStrategy = (
-		redirectData as ShouldRedirectData & { shouldRedirectStrategy: string }
-	).shouldRedirectStrategy;
-
-	switch (redirectStrategy) {
-		case "hard":
-			return effectuateHardRedirect(redirectData);
-		case "soft":
-			return effectuateSoftRedirect(
-				navigationState,
-				redirectData,
-				redirectCount,
-				originalProps,
-			);
-		default:
-			return null;
+	if (redirectData.shouldRedirectStrategy === "hard") {
+		return effectuateHardRedirect(redirectData);
 	}
+
+	return effectuateSoftRedirect(
+		navigationState,
+		redirectData,
+		redirectCount,
+		originalProps,
+	);
 }
 
 // handleRedirects executes fetch-with-redirect-detection and returns parsed redirect metadata.

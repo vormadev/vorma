@@ -16,7 +16,11 @@ import (
 func EnsureDir(path string) error {
 	err := os.MkdirAll(path, 0o755)
 	if err != nil {
-		return fmt.Errorf("fsutil.EnsureDir: failed to create directory %s: %w", path, err)
+		return fmt.Errorf(
+			"fsutil.EnsureDir: failed to create directory %s: %w",
+			path,
+			err,
+		)
 	}
 	return nil
 }
@@ -24,7 +28,11 @@ func EnsureDir(path string) error {
 func EnsureDirs(paths ...string) error {
 	for _, path := range paths {
 		if err := EnsureDir(path); err != nil {
-			return fmt.Errorf("fsutil.EnsureDirs: failed to ensure directory %s: %w", path, err)
+			return fmt.Errorf(
+				"fsutil.EnsureDirs: failed to ensure directory %s: %w",
+				path,
+				err,
+			)
 		}
 	}
 	return nil
@@ -62,6 +70,12 @@ func CopyDir(src, dst string) error {
 		fileInfo, err := entry.Info()
 		if err != nil {
 			return err
+		}
+		if fileInfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf(
+				"fsutil.CopyDir: symlink entries are not supported: %s",
+				srcPath,
+			)
 		}
 
 		// If the entry is a directory, recurse
@@ -172,7 +186,13 @@ func MustSub(f fs.FS, dirElems ...string) fs.FS {
 	dir := filepath.Join(dirElems...)
 	sub, err := fs.Sub(f, dir)
 	if err != nil {
-		panic(fmt.Sprintf("fsutil.MustSub: failed to get sub FS for dir %s: %v", dir, err))
+		panic(
+			fmt.Sprintf(
+				"fsutil.MustSub: failed to get sub FS for dir %s: %v",
+				dir,
+				err,
+			),
+		)
 	}
 	return sub
 }
@@ -180,7 +200,13 @@ func MustSub(f fs.FS, dirElems ...string) fs.FS {
 func MustReadFile(f fs.FS, name string) []byte {
 	data, err := fs.ReadFile(f, name)
 	if err != nil {
-		panic(fmt.Sprintf("fsutil.MustReadFile: failed to read file %s: %v", name, err))
+		panic(
+			fmt.Sprintf(
+				"fsutil.MustReadFile: failed to read file %s: %v",
+				name,
+				err,
+			),
+		)
 	}
 	return data
 }

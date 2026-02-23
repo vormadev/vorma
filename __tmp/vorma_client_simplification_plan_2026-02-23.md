@@ -478,6 +478,190 @@ for `typescript/vorma/client/src` without changing framework behavior.
 - [x] Keep begin-navigation + navigation state machine contract suites green.
 - [x] Validate with full TS gate.
 
+### 43) Align lifecycle delete API with runtime target-url semantics
+
+- [x] Rename `NavigationLifecycleRuntime.deleteNavigation` input field from
+      `key` to `targetUrl` in `core/navigation/runtime_lifecycle_runtime.ts` for
+      consistency with the rest of runtime/navigation APIs.
+- [x] Remove the now-redundant targetUrl->key mapping wrapper in
+      `core/navigation/runtime.ts` and use
+      `navigationLifecycleRuntime.deleteNavigation` directly.
+- [x] Update lifecycle runtime unit tests to call `deleteNavigation` with
+      `targetUrl`.
+- [x] Keep lifecycle + runtime + navigation-lifecycle contract suites green.
+- [x] Validate with full TS gate.
+
+### 44) Remove one-shot clear-all navigation-entry snapshot wrapper
+
+- [x] Remove `buildNavigationEntriesBeforeClearAll` from
+      `core/navigation/runtime_lifecycle_runtime.ts`.
+- [x] Inline the existing `operationID map -> values array` expression directly
+      in `clearAll()` within `core/navigation/runtime.ts`.
+- [x] Remove now-unused lifecycle-runtime import wiring for the deleted helper.
+- [x] Keep lifecycle + runtime + navigation-lifecycle contract suites green.
+- [x] Validate with full TS gate.
+
+### 45) Inline one-shot runtime helper lookups in slots/history
+
+- [x] Remove one-shot `findMatchingPrefetchLaneKey` helper from
+      `core/navigation/runtime_slots.ts` and inline the existing
+      `findMapEntryByNavigationTarget(...)?[0]` lookup in
+      `matchNavigationLaneByTargetURL`.
+- [x] Remove one-shot `buildListenerLocationHref` helper from
+      `platform/history.ts` and inline the same absolute-href construction at
+      the single cross-document POP navigation callsite.
+- [x] Keep runtime-slots + history listener + history/init contract suites
+      green.
+- [x] Validate with full TS gate.
+
+### 46) Remove redundant second lookup in lifecycle phase transition reducer
+
+- [x] Simplify `applyNavigationPhaseLifecycleTransition` in
+      `core/navigation/runtime_lifecycle_transitions.ts` by: early-returning
+      when no entry exists or phase is unchanged, and removing the second
+      post-transition lane lookup.
+- [x] Preserve lifecycle transition-event emission semantics for real phase
+      changes.
+- [x] Keep lifecycle transitions + lifecycle runtime + navigation lifecycle
+      contract suites green.
+- [x] Validate with full TS gate.
+
+### 47) Trim residual pass-through runtime closures
+
+- [x] Replace `getNavigation` pass-through lambda with direct
+      `findNavigationEntry` alias in `core/navigation/runtime.ts`.
+- [x] Replace `transitionPhase` pass-through lambda with direct
+      `navigationLifecycleRuntime.transitionPhase` alias.
+- [x] Remove one-shot `clearNavigationsAndSubmissions` wrapper and inline
+      `clearRuntimeLanes` call in `clearAll()`.
+- [x] Keep runtime + navigation-state-machine + navigation-lifecycle contract
+      suites green.
+- [x] Validate with full TS gate.
+
+### 48) Remove one-shot submit-request preparation wrapper
+
+- [x] Remove `prepareSubmitRequest` and its transient `PreparedSubmitRequest`
+      payload shape from `core/navigation/runtime_submit.ts`.
+- [x] Construct submit request URL and request init directly in
+      `executeSubmitRuntime` at the single callsite where they are used.
+- [x] Keep submit lifecycle + submit/redirect contract + runtime suites green.
+- [x] Validate with full TS gate.
+
+### 49) Inline single-use submit result helpers
+
+- [x] Remove single-use `getUnknownSubmitErrorResult` and
+      `getSubmitRedirectFailureResult` helpers from
+      `core/navigation/runtime_submit.ts`.
+- [x] Inline their behavior at callsites while keeping the existing
+      `SubmitResult<T>` contract and error strings unchanged.
+- [x] Keep submit lifecycle + submit/redirect contract + runtime suites green.
+- [x] Validate with full TS gate.
+
+### 50) Inline one-shot submit request-init builder
+
+- [x] Remove single-use `buildSubmitRequestInit` helper from
+      `core/navigation/runtime_submit.ts`.
+- [x] Build submit request headers + deployment-id injection + signal wiring
+      directly in `executeSubmitRuntime`.
+- [x] Keep submit lifecycle + submit/redirect contract + runtime suites green.
+- [x] Validate with full TS gate.
+
+### 51) Inline one-shot submission-entry constructor
+
+- [x] Remove single-use `createSubmissionEntry` helper from
+      `core/navigation/runtime_submit.ts`.
+- [x] Build the `SubmissionEntry` object directly in `createSubmissionLifecycle`
+      where allocation context already exists.
+- [x] Keep submit lifecycle + submit/redirect contract + runtime suites green.
+- [x] Validate with full TS gate.
+
+### 52) Inline one-shot history prelude/reload helpers
+
+- [x] Remove one-shot `toAbsoluteHref` helper from `platform/history.ts` and
+      inline absolute-href construction in `analyzeHistoryListenerPrelude`.
+- [x] Remove one-shot `isJSDOMEnvironment` helper and inline the same
+      environment check in `attemptHardReloadAfterFailedPopNavigation`.
+- [x] Keep history listener + history/init contract + runtime suites green.
+- [x] Validate with full TS gate.
+
+### 53) Return direct status-signal callback from runtime slots helper
+
+- [x] Change `createStatusSignaler` in `core/navigation/runtime_slots.ts` to
+      return the debounced `scheduleStatusUpdate` callback directly instead of
+      wrapping it in a one-field object.
+- [x] Update runtime wiring in `core/navigation/runtime.ts` and slot-focused
+      unit tests to consume the direct callback shape.
+- [x] Keep runtime slots + navigation runtime + navigation state machine
+      contract suites green.
+- [x] Validate with full TS gate.
+
+### 54) Keep idle prefetch non-mutative for client-loader runtime state
+
+- [x] Update `decideSuccessfulNavigationPostAssetSideEffectPlan` in
+      `core/navigation/runtime_navigation_outcome_state_machine.ts` so
+      `completeWithoutRender` entries (idle prefetch) do not commit
+      `clientLoadersData` / client-loader error state.
+- [x] Keep eager internal warmup semantics for idle prefetch (build-id and
+      response-artifact sync) unchanged.
+- [x] Add focused tests proving idle prefetch does not mutate current-page
+      client-loader runtime state before navigation commit.
+- [x] Keep navigation-outcome state-machine + prefetch contract suites green.
+- [x] Validate with full TS gate.
+
+### 55) Remove `{ shouldStop }` wrapper shape in successful-navigation checkpoint flow
+
+- [x] Refactor `executeSuccessfulNavigationLifecycleCheckpoint` in
+      `core/navigation/runtime_navigation_successful_runtime.ts` to return a
+      direct boolean stop signal instead of allocating `{ shouldStop: boolean }`
+      objects at each checkpoint boundary.
+- [x] Update `processSuccessfulNavigationRuntime` checkpoint wiring to consume
+      the direct boolean return shape with no behavior changes.
+- [x] Keep navigation runtime + navigation lifecycle + prefetch contract suites
+      green.
+- [x] Validate with full TS gate.
+
+### 56) Align target-url naming and simplify redirect strategy execution path
+
+- [x] Align internal navigation method parameter names from generic `key` to
+      `targetUrl` in core navigation runtime/type surfaces for clearer callsite
+      semantics.
+- [x] Remove unnecessary redirect strategy cast/default branch in
+      `core/redirects.ts` and rely on narrowed `status: "should"` redirect union
+      members directly.
+- [x] Keep redirects + navigation runtime + submit/redirect contract suites
+      green.
+- [x] Validate with full TS gate.
+
+### 57) Dedupe repeated stale-ownership checks in submit runtime orchestrator
+
+- [x] Introduce one local `getStaleSubmitResult` helper in
+      `core/navigation/runtime_submit.ts` so stale-ownership checks reuse a
+      single closure instead of repeating `isCurrent` wiring at each stage.
+- [x] Keep submission lifecycle + submit/redirect contract + navigation runtime
+      suites green.
+- [x] Validate with full TS gate.
+
+### 58) Remove single-field asset wait wrapper from successful-navigation flow
+
+- [x] Update `waitForSuccessfulNavigationAssets` in
+      `core/navigation/runtime_navigation_successful_runtime.ts` to return
+      `clientLoadersResult` directly instead of wrapping it in a one-field
+      object.
+- [x] Update post-asset checkpoint wiring in
+      `processSuccessfulNavigationRuntime` to consume the direct return value.
+- [x] Keep navigation runtime + navigation lifecycle + prefetch contract suites
+      green.
+- [x] Validate with full TS gate.
+
+### 59) Reuse `SubmitResult<T>` alias in submit runtime return typing
+
+- [x] Update `executeSubmitRuntime` in `core/navigation/runtime_submit.ts` to
+      return `Promise<SubmitResult<T>>` directly instead of restating the same
+      union inline.
+- [x] Keep submission lifecycle + submit/redirect contract + navigation runtime
+      suites green.
+- [x] Validate with full TS gate.
+
 ## Execution Order
 
 1. Dead redirect plumbing + request-body dedupe.
@@ -519,6 +703,23 @@ for `typescript/vorma/client/src` without changing framework behavior.
 37. Begin-navigation create-instruction wrapper inlining.
 38. Begin-navigation execution-plan discriminated-union hardening.
 39. Begin-navigation active-create constant intent payload removal.
+40. Lifecycle delete API target-url alignment.
+41. Clear-all navigation-entry snapshot wrapper removal.
+42. Runtime slots/history one-shot helper lookup inlining.
+43. Lifecycle phase-transition reducer redundant lookup removal.
+44. Residual runtime pass-through closure trimming.
+45. Submit-request preparation wrapper removal.
+46. Single-use submit result-helper inlining.
+47. Submit request-init builder inlining.
+48. Submission-entry constructor inlining.
+49. History prelude/reload helper inlining.
+50. Direct status-signal callback return shape.
+51. Idle-prefetch non-mutative client-loader side-effect gating.
+52. Successful-navigation checkpoint boolean stop-signal return simplification.
+53. Target-url naming alignment and redirect-strategy cast removal.
+54. Submit-runtime stale-ownership check dedupe.
+55. Successful-navigation asset-wait wrapper removal.
+56. Submit-runtime return-type alias reuse.
 
 ## Validation Gate (each step)
 
@@ -572,3 +773,20 @@ for `typescript/vorma/client/src` without changing framework behavior.
 - [x] Step 40 complete.
 - [x] Step 41 complete.
 - [x] Step 42 complete.
+- [x] Step 43 complete.
+- [x] Step 44 complete.
+- [x] Step 45 complete.
+- [x] Step 46 complete.
+- [x] Step 47 complete.
+- [x] Step 48 complete.
+- [x] Step 49 complete.
+- [x] Step 50 complete.
+- [x] Step 51 complete.
+- [x] Step 52 complete.
+- [x] Step 53 complete.
+- [x] Step 54 complete.
+- [x] Step 55 complete.
+- [x] Step 56 complete.
+- [x] Step 57 complete.
+- [x] Step 58 complete.
+- [x] Step 59 complete.

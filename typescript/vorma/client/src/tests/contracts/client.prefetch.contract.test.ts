@@ -436,6 +436,15 @@ describe("client prefetch contracts", () => {
 
 	it("warms internal prefetch artifacts without committing page mutations", async () => {
 		const api = await loadClientAPI();
+		api.__vormaClientGlobal.set("clientLoadersData", [
+			{ keep: "current-page-client-loader-data" },
+		]);
+		api.__vormaClientGlobal.set(
+			"outermostClientError",
+			"keep-current-page-client-error",
+		);
+		api.__vormaClientGlobal.set("outermostClientErrorIdx", 0);
+
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse(
 				{
@@ -483,6 +492,13 @@ describe("client prefetch contracts", () => {
 			document.head.querySelector('meta[name="prefetch-head-marker"]'),
 		).toBeNull();
 		expect(window.location.pathname).toBe("/");
+		expect(api.__vormaClientGlobal.get("clientLoadersData")).toEqual([
+			{ keep: "current-page-client-loader-data" },
+		]);
+		expect(api.__vormaClientGlobal.get("outermostClientError")).toBe(
+			"keep-current-page-client-error",
+		);
+		expect(api.__vormaClientGlobal.get("outermostClientErrorIdx")).toBe(0);
 		handlers?.stop();
 	});
 
