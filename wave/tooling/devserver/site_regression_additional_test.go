@@ -10,6 +10,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/gorilla/websocket"
+	"github.com/vormadev/vorma/wave/tooling/devserver/internal/restartengine"
 	"github.com/vormadev/vorma/wave/tooling/internal/broadcast"
 )
 
@@ -113,11 +114,17 @@ func TestSiteRegression_WaitingForBuildRetry_GoSyntaxErrorThenFixDoesNotBlock(
 		connection,
 		"go syntax error write while waiting for build retry",
 	)
-	assertNoRestartRequestForSiteRegressionHarness(
+	firstRestartRequest := waitForPendingRestartRequestForToolingTests(
 		t,
 		serverForTest,
-		"go syntax error write while waiting for build retry",
+		500*time.Millisecond,
 	)
+	if !firstRestartRequest.RecompileGo || firstRestartRequest.IsConfigRestart {
+		t.Fatalf(
+			"go syntax error write while waiting for build retry: expected go-recompile restart request, got %#v",
+			firstRestartRequest,
+		)
+	}
 
 	if writeError := os.WriteFile(
 		goMainPath,
@@ -142,18 +149,19 @@ func TestSiteRegression_WaitingForBuildRetry_GoSyntaxErrorThenFixDoesNotBlock(
 		connection,
 		"go syntax fix write while waiting for build retry",
 	)
-	assertNoRestartRequestForSiteRegressionHarness(
+	secondRestartRequest := waitForPendingRestartRequestForToolingTests(
 		t,
 		serverForTest,
-		"go syntax fix write while waiting for build retry",
+		500*time.Millisecond,
 	)
-
-	if _, statError := os.Stat(cfg.Dist.Binary()); statError != nil {
+	if !secondRestartRequest.RecompileGo ||
+		secondRestartRequest.IsConfigRestart {
 		t.Fatalf(
-			"expected fixed go syntax event to compile binary while waiting for build retry, stat error: %v",
-			statError,
+			"go syntax fix write while waiting for build retry: expected go-recompile restart request, got %#v",
+			secondRestartRequest,
 		)
 	}
+
 }
 
 func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
@@ -166,7 +174,7 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 			harness siteRegressionHarnessForToolingTests,
 		) []fsnotify.Event
 		expectRebuildingPayload bool
-		expectConfigRestart     bool
+		expectedRestartRequest  restartengine.RestartRequest
 	}{
 		{
 			name: "public static typo write",
@@ -188,7 +196,10 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 				}}
 			},
 			expectRebuildingPayload: true,
-			expectConfigRestart:     false,
+			expectedRestartRequest: restartengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: false,
+			},
 		},
 		{
 			name: "framework route registry typo write",
@@ -210,7 +221,10 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 				}}
 			},
 			expectRebuildingPayload: false,
-			expectConfigRestart:     false,
+			expectedRestartRequest: restartengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: false,
+			},
 		},
 		{
 			name: "framework template typo write",
@@ -232,7 +246,10 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 				}}
 			},
 			expectRebuildingPayload: false,
-			expectConfigRestart:     false,
+			expectedRestartRequest: restartengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: false,
+			},
 		},
 		{
 			name: "markdown typo write",
@@ -254,7 +271,10 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 				}}
 			},
 			expectRebuildingPayload: false,
-			expectConfigRestart:     false,
+			expectedRestartRequest: restartengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: false,
+			},
 		},
 		{
 			name: "config semantic error fix write",
@@ -273,7 +293,10 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 				}}
 			},
 			expectRebuildingPayload: true,
-			expectConfigRestart:     true,
+			expectedRestartRequest: restartengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: true,
+			},
 		},
 		{
 			name: "config syntax error write",
@@ -295,7 +318,10 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 				}}
 			},
 			expectRebuildingPayload: true,
-			expectConfigRestart:     true,
+			expectedRestartRequest: restartengine.RestartRequest{
+				RecompileGo:     true,
+				IsConfigRestart: true,
+			},
 		},
 	}
 
@@ -337,24 +363,18 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 				)
 			}
 
-			if testCase.expectConfigRestart {
-				restartRequest := waitForPendingRestartRequestForToolingTests(
-					t,
-					harness.Server,
-					500*time.Millisecond,
-				)
-				if !restartRequest.IsConfigRestart || !restartRequest.RecompileGo {
-					t.Fatalf(
-						"%s: expected config restart request while waiting for build retry, got %#v",
-						testCase.name,
-						restartRequest,
-					)
-				}
-			} else {
-				assertNoRestartRequestForSiteRegressionHarness(
-					t,
-					harness.Server,
+			restartRequest := waitForPendingRestartRequestForToolingTests(
+				t,
+				harness.Server,
+				500*time.Millisecond,
+			)
+			if restartRequest.RecompileGo != testCase.expectedRestartRequest.RecompileGo ||
+				restartRequest.IsConfigRestart != testCase.expectedRestartRequest.IsConfigRestart {
+				t.Fatalf(
+					"%s: expected restart request %#v while waiting for build retry, got %#v",
 					testCase.name,
+					testCase.expectedRestartRequest,
+					restartRequest,
 				)
 			}
 		})
@@ -448,7 +468,10 @@ func TestSiteRegression_MixedBatchSemanticConfigAndRouteRegistryUsesConfigRestar
 		[]byte("export const routes = [{ path: '/updated' }];"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write route registry file before mixed config batch: %v", writeError)
+		t.Fatalf(
+			"write route registry file before mixed config batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -467,7 +490,8 @@ func TestSiteRegression_MixedBatchSemanticConfigAndRouteRegistryUsesConfigRestar
 		harness.Server,
 		500*time.Millisecond,
 	)
-	if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
+	if !pendingRestartRequest.IsConfigRestart ||
+		!pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected mixed semantic config batch to queue config restart, got %#v",
 			pendingRestartRequest,
@@ -570,14 +594,20 @@ func TestSiteRegression_MixedBatchNoOpConfigAndPublicStaticProcessesStaticOnly(
 		configFileBytes,
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write unchanged config for no-op mixed static batch: %v", writeError)
+		t.Fatalf(
+			"write unchanged config for no-op mixed static batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.PublicStaticPath,
 		[]byte("<svg><!--updated--></svg>"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write public static file for no-op mixed static batch: %v", writeError)
+		t.Fatalf(
+			"write public static file for no-op mixed static batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -637,14 +667,20 @@ func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndRouteRegistryProcessesR
 		configFileBytes,
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write unchanged config for no-op mixed atomic-save batch: %v", writeError)
+		t.Fatalf(
+			"write unchanged config for no-op mixed atomic-save batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.RouteRegistryPath,
 		[]byte("export const routes = [{ path: '/atomic-noop' }];"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write route registry for no-op mixed atomic-save batch: %v", writeError)
+		t.Fatalf(
+			"write route registry for no-op mixed atomic-save batch: %v",
+			writeError,
+		)
 	}
 
 	configAliasPath := filepath.Join(
@@ -710,7 +746,10 @@ func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndRouteRegistryUsesCo
 		[]byte("export const routes = [{ path: '/atomic-semantic' }];"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write route registry for semantic mixed atomic-save batch: %v", writeError)
+		t.Fatalf(
+			"write route registry for semantic mixed atomic-save batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -733,7 +772,8 @@ func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndRouteRegistryUsesCo
 		harness.Server,
 		500*time.Millisecond,
 	)
-	if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
+	if !pendingRestartRequest.IsConfigRestart ||
+		!pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected mixed semantic config atomic-save batch to queue config restart, got %#v",
 			pendingRestartRequest,
@@ -761,21 +801,30 @@ func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndPublicStaticProcessesSt
 
 	configFileBytes, readError := os.ReadFile(harness.Paths.ConfigFilePath)
 	if readError != nil {
-		t.Fatalf("read config for no-op mixed atomic-save static batch: %v", readError)
+		t.Fatalf(
+			"read config for no-op mixed atomic-save static batch: %v",
+			readError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.ConfigFilePath,
 		configFileBytes,
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write unchanged config for no-op mixed atomic-save static batch: %v", writeError)
+		t.Fatalf(
+			"write unchanged config for no-op mixed atomic-save static batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.PublicStaticPath,
 		[]byte("<svg><!--atomic-static-noop--></svg>"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write public static file for no-op mixed atomic-save static batch: %v", writeError)
+		t.Fatalf(
+			"write public static file for no-op mixed atomic-save static batch: %v",
+			writeError,
+		)
 	}
 
 	configAliasPath := filepath.Join(
@@ -840,7 +889,10 @@ func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndPublicStaticUsesCon
 		[]byte("<svg><!--atomic-static-semantic--></svg>"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write public static file for semantic mixed atomic-save static batch: %v", writeError)
+		t.Fatalf(
+			"write public static file for semantic mixed atomic-save static batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -863,7 +915,8 @@ func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndPublicStaticUsesCon
 		harness.Server,
 		500*time.Millisecond,
 	)
-	if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
+	if !pendingRestartRequest.IsConfigRestart ||
+		!pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected mixed semantic config atomic-save static batch to queue config restart, got %#v",
 			pendingRestartRequest,
@@ -891,21 +944,30 @@ func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndMarkdownWithOverridePro
 
 	configFileBytes, readError := os.ReadFile(harness.Paths.ConfigFilePath)
 	if readError != nil {
-		t.Fatalf("read config for no-op mixed atomic-save markdown batch: %v", readError)
+		t.Fatalf(
+			"read config for no-op mixed atomic-save markdown batch: %v",
+			readError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.ConfigFilePath,
 		configFileBytes,
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write unchanged config for no-op mixed atomic-save markdown batch: %v", writeError)
+		t.Fatalf(
+			"write unchanged config for no-op mixed atomic-save markdown batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.MarkdownPath,
 		[]byte("# Post\n\nAtomic Save No-Op"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write markdown file for no-op mixed atomic-save markdown batch: %v", writeError)
+		t.Fatalf(
+			"write markdown file for no-op mixed atomic-save markdown batch: %v",
+			writeError,
+		)
 	}
 
 	configAliasPath := filepath.Join(
@@ -967,21 +1029,30 @@ func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndMarkdownWithoutOverride
 
 	configFileBytes, readError := os.ReadFile(harness.Paths.ConfigFilePath)
 	if readError != nil {
-		t.Fatalf("read config for no-op mixed atomic-save markdown-no-override batch: %v", readError)
+		t.Fatalf(
+			"read config for no-op mixed atomic-save markdown-no-override batch: %v",
+			readError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.ConfigFilePath,
 		configFileBytes,
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write unchanged config for no-op mixed atomic-save markdown-no-override batch: %v", writeError)
+		t.Fatalf(
+			"write unchanged config for no-op mixed atomic-save markdown-no-override batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.MarkdownPath,
 		[]byte("# Post\n\nAtomic Save No-Override"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write markdown file for no-op mixed atomic-save markdown-no-override batch: %v", writeError)
+		t.Fatalf(
+			"write markdown file for no-op mixed atomic-save markdown-no-override batch: %v",
+			writeError,
+		)
 	}
 
 	configAliasPath := filepath.Join(
@@ -1046,7 +1117,10 @@ func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndMarkdownWithOverrid
 		[]byte("# Post\n\nAtomic Save Semantic"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write markdown file for semantic mixed atomic-save markdown batch: %v", writeError)
+		t.Fatalf(
+			"write markdown file for semantic mixed atomic-save markdown batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -1069,7 +1143,8 @@ func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndMarkdownWithOverrid
 		harness.Server,
 		500*time.Millisecond,
 	)
-	if !pendingRestartRequest.IsConfigRestart || !pendingRestartRequest.RecompileGo {
+	if !pendingRestartRequest.IsConfigRestart ||
+		!pendingRestartRequest.RecompileGo {
 		t.Fatalf(
 			"expected mixed semantic config atomic-save markdown batch to queue config restart, got %#v",
 			pendingRestartRequest,
@@ -1100,7 +1175,10 @@ func TestSiteRegression_MixedBatchConfigChmodAndRouteRegistryProcessesRouteOnly(
 		[]byte("export const routes = [{ path: '/chmod-route' }];"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write route registry for mixed config-chmod batch: %v", writeError)
+		t.Fatalf(
+			"write route registry for mixed config-chmod batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -1143,14 +1221,20 @@ func TestSiteRegression_MixedBatchPublicAndPrivateStaticTriggersHardReload(
 		[]byte("<svg><!--public-updated--></svg>"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write public static file for mixed static batch: %v", writeError)
+		t.Fatalf(
+			"write public static file for mixed static batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.PrivateStaticPath,
 		[]byte("private note updated"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write private static file for mixed static batch: %v", writeError)
+		t.Fatalf(
+			"write private static file for mixed static batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -1192,14 +1276,20 @@ func TestSiteRegression_MixedBatchPublicStaticAndRouteRegistryTriggersHardReload
 		[]byte("<svg><!--updated--></svg>"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write public static file for mixed public+route batch: %v", writeError)
+		t.Fatalf(
+			"write public static file for mixed public+route batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.RouteRegistryPath,
 		[]byte("export const routes = [{ path: '/docs' }];"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write route registry file for mixed public+route batch: %v", writeError)
+		t.Fatalf(
+			"write route registry file for mixed public+route batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -1241,14 +1331,20 @@ func TestSiteRegression_MixedBatchPublicStaticAndMarkdownTriggersHardReload(
 		[]byte("<svg><!--updated--></svg>"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write public static file for mixed public+markdown batch: %v", writeError)
+		t.Fatalf(
+			"write public static file for mixed public+markdown batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.MarkdownPath,
 		[]byte("# Post\n\nUpdated"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write markdown file for mixed public+markdown batch: %v", writeError)
+		t.Fatalf(
+			"write markdown file for mixed public+markdown batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -1290,14 +1386,20 @@ func TestSiteRegression_MixedBatchPublicStaticAndNormalCSSUsesHardReload(
 		[]byte("<svg><!--updated--></svg>"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write public static file for mixed public+normal-css batch: %v", writeError)
+		t.Fatalf(
+			"write public static file for mixed public+normal-css batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.NormalCSSEntryPath,
 		[]byte("@import \"./fonts.css\";\nbody { color: black; }"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write normal css file for mixed public+normal-css batch: %v", writeError)
+		t.Fatalf(
+			"write normal css file for mixed public+normal-css batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -1339,14 +1441,20 @@ func TestSiteRegression_MixedBatchMarkdownAndRouteRegistryTriggersHardReload(
 		[]byte("# Post\n\nUpdated"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write markdown file for mixed markdown+route batch: %v", writeError)
+		t.Fatalf(
+			"write markdown file for mixed markdown+route batch: %v",
+			writeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.RouteRegistryPath,
 		[]byte("export const routes = [{ path: '/blog' }];"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write route registry file for mixed markdown+route batch: %v", writeError)
+		t.Fatalf(
+			"write route registry file for mixed markdown+route batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -1385,14 +1493,20 @@ func TestSiteRegression_CriticalCSSAtomicSaveSequenceHotReloadsWithoutRestart(
 	defer harness.Cleanup()
 
 	if removeError := os.Remove(harness.Paths.CriticalCSSEntryPath); removeError != nil {
-		t.Fatalf("remove critical css entry before atomic-save event batch: %v", removeError)
+		t.Fatalf(
+			"remove critical css entry before atomic-save event batch: %v",
+			removeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.CriticalCSSEntryPath,
 		[]byte("@import \"./critical_import.css\";\n.critical_atomic_save { color: purple; }"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("rewrite critical css entry before atomic-save event batch: %v", writeError)
+		t.Fatalf(
+			"rewrite critical css entry before atomic-save event batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
@@ -1419,13 +1533,19 @@ func TestSiteRegression_CriticalCSSAtomicSaveSequenceHotReloadsWithoutRestart(
 		"critical css atomic-save batch",
 	)
 	if strings.TrimSpace(payload.CriticalCSS) == "" {
-		t.Fatalf("expected non-empty critical css base64 payload, got %#v", payload)
+		t.Fatalf(
+			"expected non-empty critical css base64 payload, got %#v",
+			payload,
+		)
 	}
 	decodedCriticalCSSBytes, decodeError := base64.StdEncoding.DecodeString(
 		payload.CriticalCSS,
 	)
 	if decodeError != nil {
-		t.Fatalf("expected valid critical css base64 payload, got decode error: %v", decodeError)
+		t.Fatalf(
+			"expected valid critical css base64 payload, got decode error: %v",
+			decodeError,
+		)
 	}
 	decodedCriticalCSSString := string(decodedCriticalCSSBytes)
 	if !strings.Contains(decodedCriticalCSSString, "critical_atomic_save") {
@@ -1449,14 +1569,20 @@ func TestSiteRegression_NormalCSSAtomicSaveSequenceHotReloadsWithoutRestart(
 	defer harness.Cleanup()
 
 	if removeError := os.Remove(harness.Paths.NormalCSSEntryPath); removeError != nil {
-		t.Fatalf("remove normal css entry before atomic-save event batch: %v", removeError)
+		t.Fatalf(
+			"remove normal css entry before atomic-save event batch: %v",
+			removeError,
+		)
 	}
 	if writeError := os.WriteFile(
 		harness.Paths.NormalCSSEntryPath,
 		[]byte("@import \"./fonts.css\";\n.normal_atomic_save { color: teal; }"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("rewrite normal css entry before atomic-save event batch: %v", writeError)
+		t.Fatalf(
+			"rewrite normal css entry before atomic-save event batch: %v",
+			writeError,
+		)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{

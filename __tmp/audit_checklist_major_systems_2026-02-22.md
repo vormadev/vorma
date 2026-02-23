@@ -44,6 +44,10 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
 - [x] Fix HEAD fallback error-path body handling in `kit/mux/mux.go` (HEAD
       fallback to GET now preserves no-body semantics when request
       parsing/validation fails before route handler execution).
+- [x] Fix HEAD fallback inferred-header parity in `kit/mux/mux.go`
+      (`treatGetAsHead` now captures GET execution with a recorder and preserves
+      inferred headers like `Content-Type`, while explicitly setting
+      `Content-Length` from the would-be GET body length).
 - [x] Fix readiness-policy partial-defaulting in
       `wave/tooling/devserver/internal/runtimeprocess/runtimeprocess.go`
       (`WaitForAnyReady` now normalizes each policy field independently so
@@ -58,14 +62,39 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
       short-circuits when `WaitingForBuildRetry=true`, preventing non-runloop
       call paths from emitting payloads or entering readiness waits during retry
       wait state).
-- [x] Add build-retry responsiveness regressions for syntax and config/source
-      error classes in
+- [x] Add build-retry responsiveness regression tests for syntax and
+      config/source error classes in
       `wave/tooling/devserver/site_regression_additional_test.go`
       (`TestSiteRegression_WaitingForBuildRetry_GoSyntaxErrorThenFixDoesNotBlock`
       and `TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock`)
       to ensure watcher batches return promptly while waiting for build retry
       and do not emit reload/revalidate payloads that would trigger readiness
       timeout waits.
+- [x] Fix retry-wait lifecycle unblock semantics in
+      `wave/tooling/devserver/internal/runloop/runloop.go` (when lifecycle is
+      waiting for build retry, watcher batches now queue a restart intent and
+      skip in-place hook/build/browser pipeline execution).
+- [x] Add end-to-end and runloop-level retry-wait unblock regression tests:
+      `wave/tooling/devserver/devserver_run_test.go`:
+      `TestServerRun_GoSyntaxErrorThenQuickFixRecoversWithoutReadinessStall` and
+      `wave/tooling/devserver/internal/runloop/events_batched_watcher_test.go`:
+      `TestProcessEvents_WaitingForBuildRetryQueuesRestartAndSkipsPipeline`.
+- [x] Add browser-mode `MainAppEntry` typo/fix retry-wait recovery regression
+      tests in `wave/tooling/devserver/devserver_run_test.go`:
+      `TestServerRun_MainAppEntryTypoThenQuickFixRecoversWithoutReadinessStall`
+      and
+      `TestServerRun_MainAppEntryTypo_NonConfigEventThenQuickFixRecoversWithoutReadinessStall`
+      to cover both direct config-fix recovery and the interleaved non-config
+      watcher-event path that previously led to apparent devserver
+      unresponsiveness.
+- [x] Expand runloop retry-wait watcher-op coverage in
+      `wave/tooling/devserver/internal/runloop/events_batched_watcher_test.go`
+      so `TestProcessEvents_WaitingForBuildRetryQueuesRestartAndSkipsPipeline`
+      now validates `WRITE`, `CREATE`, `RENAME`, and `REMOVE` file-operation
+      variants.
+- [x] Add `kit/mux` HEAD fallback inferred-header regression coverage in
+      `kit/mux/mux_test.go`:
+      `TestHTTPHandlers/HEAD_Fallback_To_GET_PreservesInferredHeaders`.
 
 ## Coverage / Verification
 
@@ -77,7 +106,7 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
 
 ## Proactive Robustness Follow-Ups
 
-- [ ] Add an end-to-end devserver regression that reproduces: build-failure ->
+- [x] Add an end-to-end devserver regression that reproduces: build-failure ->
       non-config watch event -> immediate config fix, and asserts the
       retry-restart is processed without waiting for readiness timeout budgets.
 - [ ] Add watcher-batch phase duration guards/logging in runloop to flag when a

@@ -302,6 +302,7 @@ func (server *runtimeServer) BuildRunloopEngine() *runloop.Engine {
 		RunNoWaitHookWithConcurrencyLimit:               server.RunNoWaitHookWithConcurrencyLimit,
 		GetOrCreateConcurrentNoWaitHookLifecycleContext: server.GetOrCreateConcurrentNoWaitHookLifecycleContext,
 		ResolveHookExecutionPlan:                        server.ResolveHookExecutionPlan,
+		IsWaitingForBuildRetry:                          server.IsWaitingForBuildRetry,
 	})
 }
 

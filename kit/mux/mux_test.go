@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -157,6 +158,56 @@ func TestHTTPHandlers(t *testing.T) {
 		}
 		if w.Body.Len() > 0 {
 			t.Fatalf("expected empty body for HEAD fallback validation error, got %q", w.Body.String())
+		}
+	})
+
+	t.Run("HEAD_Fallback_To_GET_PreservesInferredHeaders", func(t *testing.T) {
+		r := NewRouter(nil)
+		AddHTTPHandlerFunc(
+			r,
+			http.MethodGet,
+			"/inferred-headers",
+			func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("<html><body>head parity</body></html>"))
+			},
+		)
+
+		getReq := httptest.NewRequest(http.MethodGet, "/inferred-headers", nil)
+		getResp := httptest.NewRecorder()
+		r.ServeHTTP(getResp, getReq)
+
+		headReq := httptest.NewRequest(http.MethodHead, "/inferred-headers", nil)
+		headResp := httptest.NewRecorder()
+		r.ServeHTTP(headResp, headReq)
+
+		if headResp.Code != getResp.Code {
+			t.Fatalf(
+				"expected HEAD fallback status %d to match GET status, got %d",
+				getResp.Code,
+				headResp.Code,
+			)
+		}
+		if headResp.Header().Get("Content-Type") !=
+			getResp.Header().Get("Content-Type") {
+			t.Fatalf(
+				"expected HEAD fallback content type %q to match GET content type %q",
+				headResp.Header().Get("Content-Type"),
+				getResp.Header().Get("Content-Type"),
+			)
+		}
+		expectedContentLength := strconv.Itoa(getResp.Body.Len())
+		if headResp.Header().Get("Content-Length") != expectedContentLength {
+			t.Fatalf(
+				"expected HEAD fallback content length %q, got %q",
+				expectedContentLength,
+				headResp.Header().Get("Content-Length"),
+			)
+		}
+		if headResp.Body.Len() > 0 {
+			t.Fatalf(
+				"expected empty body for HEAD fallback inferred-header response, got %q",
+				headResp.Body.String(),
+			)
 		}
 	})
 }

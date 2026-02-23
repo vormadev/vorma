@@ -404,7 +404,10 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 
 	runLogOutput := runLogBuffer.String()
 	if !strings.Contains(runLogOutput, "build failed") {
-		t.Fatalf("expected initial build failure log, got logs: %s", runLogOutput)
+		t.Fatalf(
+			"expected initial build failure log, got logs: %s",
+			runLogOutput,
+		)
 	}
 	if !strings.Contains(runLogOutput, "build completed") {
 		t.Fatalf(
@@ -412,9 +415,748 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 			runLogOutput,
 		)
 	}
-	if strings.Contains(runLogOutput, "app did not become ready before timeout") {
+	if strings.Contains(
+		runLogOutput,
+		"app did not become ready before timeout",
+	) {
 		t.Fatalf(
 			"expected config-fix recovery path not to log app readiness timeout, got logs: %s",
+			runLogOutput,
+		)
+	}
+}
+
+func TestServerRun_GoSyntaxErrorThenQuickFixRecoversWithoutReadinessStall(
+	t *testing.T,
+) {
+	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
+
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
+	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
+		t.Fatalf("failed creating go main parent dir: %v", mkdirError)
+	}
+	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
+		t.Fatalf("failed creating public static dir: %v", mkdirError)
+	}
+	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
+		t.Fatalf("failed creating private static dir: %v", mkdirError)
+	}
+	if writeError := writeGoMainFileForDevserverRunTests(
+		goMainPath,
+		`package main
+
+import "time"
+
+func main() {
+	for {
+		time.Sleep(10 * time.Second)
+	}
+}
+`,
+	); writeError != nil {
+		t.Fatalf("failed writing initial go main file: %v", writeError)
+	}
+	cfg.Core.MainAppEntry = goMainPath
+
+	if writeError := writeToolingConfigForMainEntryAndWatchRoot(
+		cfg.Core.ConfigLocation,
+		cfg,
+		cfg.Core.MainAppEntry,
+		cfg.Watch.WatchRoot,
+	); writeError != nil {
+		t.Fatalf("failed writing initial tooling config: %v", writeError)
+	}
+
+	var runLogBuffer bytes.Buffer
+	serverForTest := &Server{
+		Cfg: cfg,
+		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		RestartIntents: restartengine.NewRestartIntentAccumulator(
+			make(chan restartengine.RestartRequest, 1),
+		),
+	}
+
+	recoveryDurationCh := make(chan time.Duration, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		failAndStopRun := func(failureError error) {
+			if failureError != nil {
+				t.Error(failureError)
+			}
+			if writeError := writeToolingConfigForWatchRoot(
+				cfg.Core.ConfigLocation,
+				cfg,
+				filepath.Join(root, "missing-watch-root-go-syntax-recovery-timeout"),
+			); writeError != nil {
+				t.Error(writeError)
+			}
+			sendRestartRequestWithTimeout(
+				serverForTest,
+				restartengine.RestartRequest{RecompileGo: false},
+				250*time.Millisecond,
+			)
+		}
+
+		firstWatcher := waitForWatcherPointer(
+			serverForTest,
+			nil,
+			5*time.Second,
+		)
+		if firstWatcher == nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for initial watcher before go syntax recovery sequence",
+				),
+			)
+			return
+		}
+
+		if writeError := writeGoMainFileForDevserverRunTests(
+			goMainPath,
+			`package main
+
+func main() {
+	this is not valid go syntax
+}
+`,
+		); writeError != nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"failed writing broken go source file: %w",
+					writeError,
+				),
+			)
+			return
+		}
+
+		if !waitForWaitingForBuildRetryFlag(
+			serverForTest,
+			true,
+			5*time.Second,
+		) {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for build-retry state after go syntax error",
+				),
+			)
+			return
+		}
+
+		fixWriteStart := time.Now()
+		if writeError := writeGoMainFileForDevserverRunTests(
+			goMainPath,
+			`package main
+
+import "time"
+
+func main() {
+	for {
+		time.Sleep(10 * time.Second)
+	}
+}
+`,
+		); writeError != nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"failed writing fixed go source file: %w",
+					writeError,
+				),
+			)
+			return
+		}
+
+		if !waitForWaitingForBuildRetryFlag(
+			serverForTest,
+			false,
+			8*time.Second,
+		) {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for retry recovery after go syntax fix",
+				),
+			)
+			return
+		}
+		recoveryDuration := time.Since(fixWriteStart)
+		if recoveryDuration > 8*time.Second {
+			failAndStopRun(
+				fmt.Errorf(
+					"go syntax fix recovery exceeded responsiveness budget: %s",
+					recoveryDuration,
+				),
+			)
+			return
+		}
+		recoveryDurationCh <- recoveryDuration
+
+		time.Sleep(200 * time.Millisecond)
+
+		if writeError := writeToolingConfigForWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			filepath.Join(root, "missing-watch-root-after-go-syntax-recovery"),
+		); writeError != nil {
+			t.Error(writeError)
+			return
+		}
+		sendRestartRequestWithTimeout(
+			serverForTest,
+			restartengine.RestartRequest{RecompileGo: false},
+			2*time.Second,
+		)
+	}()
+
+	runError := serverForTest.Run()
+	if runError == nil {
+		t.Fatal(
+			"expected Run to exit with watcher init error after go syntax recovery validation path",
+		)
+	}
+	if !strings.Contains(runError.Error(), "init watcher") {
+		t.Fatalf("unexpected Run error: %v", runError)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for go syntax recovery helper goroutine")
+	}
+
+	select {
+	case recoveryDuration := <-recoveryDurationCh:
+		if recoveryDuration > 8*time.Second {
+			t.Fatalf(
+				"expected go syntax fix recovery under 8s, got %s",
+				recoveryDuration,
+			)
+		}
+	default:
+		t.Fatal(
+			"expected go syntax recovery helper to report measured recovery duration",
+		)
+	}
+
+	runLogOutput := runLogBuffer.String()
+	if !strings.Contains(runLogOutput, "build failed") {
+		t.Fatalf(
+			"expected go syntax build failure log, got logs: %s",
+			runLogOutput,
+		)
+	}
+	if !strings.Contains(runLogOutput, "build completed") {
+		t.Fatalf(
+			"expected go syntax fix to produce build success log, got logs: %s",
+			runLogOutput,
+		)
+	}
+	if strings.Contains(
+		runLogOutput,
+		"reload readiness failed; skipping browser broadcast",
+	) {
+		t.Fatalf(
+			"expected go syntax recovery path not to block on reload readiness timeout, got logs: %s",
+			runLogOutput,
+		)
+	}
+}
+
+func TestServerRun_MainAppEntryTypoThenQuickFixRecoversWithoutReadinessStall(
+	t *testing.T,
+) {
+	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
+
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
+	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
+		t.Fatalf("failed creating go main parent dir: %v", mkdirError)
+	}
+	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
+		t.Fatalf("failed creating public static dir: %v", mkdirError)
+	}
+	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
+		t.Fatalf("failed creating private static dir: %v", mkdirError)
+	}
+	if writeError := writeGoMainFileForDevserverRunTests(
+		goMainPath,
+		`package main
+
+import "time"
+
+func main() {
+	for {
+		time.Sleep(10 * time.Second)
+	}
+}
+`,
+	); writeError != nil {
+		t.Fatalf("failed writing initial go main file: %v", writeError)
+	}
+	cfg.Core.MainAppEntry = goMainPath
+
+	if writeError := writeToolingConfigForMainEntryAndWatchRoot(
+		cfg.Core.ConfigLocation,
+		cfg,
+		cfg.Core.MainAppEntry,
+		cfg.Watch.WatchRoot,
+	); writeError != nil {
+		t.Fatalf("failed writing initial tooling config: %v", writeError)
+	}
+
+	var runLogBuffer bytes.Buffer
+	serverForTest := &Server{
+		Cfg: cfg,
+		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		RestartIntents: restartengine.NewRestartIntentAccumulator(
+			make(chan restartengine.RestartRequest, 1),
+		),
+	}
+
+	recoveryDurationCh := make(chan time.Duration, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		failAndStopRun := func(testError error) {
+			if testError != nil {
+				t.Error(testError)
+			}
+			_ = writeToolingConfigForWatchRoot(
+				cfg.Core.ConfigLocation,
+				cfg,
+				filepath.Join(
+					root,
+					"missing-watch-root-main-entry-recovery-timeout",
+				),
+			)
+			sendRestartRequestWithTimeout(
+				serverForTest,
+				restartengine.RestartRequest{RecompileGo: false},
+				2*time.Second,
+			)
+		}
+
+		firstWatcher := waitForWatcherPointer(
+			serverForTest,
+			nil,
+			5*time.Second,
+		)
+		if firstWatcher == nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for initial watcher before main entry recovery sequence",
+				),
+			)
+			return
+		}
+
+		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			goMainPath+"2",
+			cfg.Watch.WatchRoot,
+		); writeError != nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"failed writing broken main entry config: %w",
+					writeError,
+				),
+			)
+			return
+		}
+
+		if !waitForWaitingForBuildRetryFlag(
+			serverForTest,
+			true,
+			5*time.Second,
+		) {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for build-retry state after main entry typo",
+				),
+			)
+			return
+		}
+
+		fixWriteStart := time.Now()
+		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			goMainPath,
+			cfg.Watch.WatchRoot,
+		); writeError != nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"failed writing fixed main entry config: %w",
+					writeError,
+				),
+			)
+			return
+		}
+
+		if !waitForWaitingForBuildRetryFlag(
+			serverForTest,
+			false,
+			8*time.Second,
+		) {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for retry recovery after main entry fix",
+				),
+			)
+			return
+		}
+		recoveryDuration := time.Since(fixWriteStart)
+		if recoveryDuration > 8*time.Second {
+			failAndStopRun(
+				fmt.Errorf(
+					"main entry fix recovery exceeded responsiveness budget: %s",
+					recoveryDuration,
+				),
+			)
+			return
+		}
+		recoveryDurationCh <- recoveryDuration
+
+		time.Sleep(200 * time.Millisecond)
+
+		if writeError := writeToolingConfigForWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			filepath.Join(root, "missing-watch-root-after-main-entry-recovery"),
+		); writeError != nil {
+			t.Error(writeError)
+			return
+		}
+		sendRestartRequestWithTimeout(
+			serverForTest,
+			restartengine.RestartRequest{RecompileGo: false},
+			2*time.Second,
+		)
+	}()
+
+	runError := serverForTest.Run()
+	if runError == nil {
+		t.Fatal(
+			"expected Run to exit with watcher init error after main entry recovery validation path",
+		)
+	}
+	if !strings.Contains(runError.Error(), "init watcher") {
+		t.Fatalf("unexpected Run error: %v", runError)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for main entry recovery helper goroutine")
+	}
+
+	select {
+	case recoveryDuration := <-recoveryDurationCh:
+		if recoveryDuration > 8*time.Second {
+			t.Fatalf(
+				"expected main entry fix recovery under 8s, got %s",
+				recoveryDuration,
+			)
+		}
+	default:
+		t.Fatal(
+			"expected main entry recovery helper to report measured recovery duration",
+		)
+	}
+
+	runLogOutput := runLogBuffer.String()
+	if !strings.Contains(runLogOutput, "build failed") {
+		t.Fatalf(
+			"expected main entry typo build failure log, got logs: %s",
+			runLogOutput,
+		)
+	}
+	if !strings.Contains(runLogOutput, "build completed") {
+		t.Fatalf(
+			"expected main entry fix to produce build success log, got logs: %s",
+			runLogOutput,
+		)
+	}
+	if strings.Contains(
+		runLogOutput,
+		"reload readiness failed; skipping browser broadcast",
+	) {
+		t.Fatalf(
+			"expected main entry recovery path not to block on reload readiness timeout, got logs: %s",
+			runLogOutput,
+		)
+	}
+}
+
+func TestServerRun_MainAppEntryTypo_NonConfigEventThenQuickFixRecoversWithoutReadinessStall(
+	t *testing.T,
+) {
+	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
+
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
+	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
+		t.Fatalf("failed creating go main parent dir: %v", mkdirError)
+	}
+	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
+		t.Fatalf("failed creating public static dir: %v", mkdirError)
+	}
+	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
+		t.Fatalf("failed creating private static dir: %v", mkdirError)
+	}
+	privateStaticPath := filepath.Join(
+		cfg.Core.StaticAssetDirs.Private,
+		"retry_wait_delete.txt",
+	)
+	if writeError := os.WriteFile(
+		privateStaticPath,
+		[]byte("static file to delete during retry wait"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("failed writing private static file: %v", writeError)
+	}
+	if writeError := writeGoMainFileForDevserverRunTests(
+		goMainPath,
+		`package main
+
+import "time"
+
+func main() {
+	for {
+		time.Sleep(10 * time.Second)
+	}
+}
+`,
+	); writeError != nil {
+		t.Fatalf("failed writing initial go main file: %v", writeError)
+	}
+	cfg.Core.MainAppEntry = goMainPath
+
+	if writeError := writeToolingConfigForMainEntryAndWatchRoot(
+		cfg.Core.ConfigLocation,
+		cfg,
+		cfg.Core.MainAppEntry,
+		cfg.Watch.WatchRoot,
+	); writeError != nil {
+		t.Fatalf("failed writing initial tooling config: %v", writeError)
+	}
+
+	var runLogBuffer bytes.Buffer
+	serverForTest := &Server{
+		Cfg: cfg,
+		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		RestartIntents: restartengine.NewRestartIntentAccumulator(
+			make(chan restartengine.RestartRequest, 1),
+		),
+	}
+
+	recoveryDurationCh := make(chan time.Duration, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		failAndStopRun := func(testError error) {
+			if testError != nil {
+				t.Error(testError)
+			}
+			_ = writeToolingConfigForWatchRoot(
+				cfg.Core.ConfigLocation,
+				cfg,
+				filepath.Join(
+					root,
+					"missing-watch-root-main-entry-non-config-recovery-timeout",
+				),
+			)
+			sendRestartRequestWithTimeout(
+				serverForTest,
+				restartengine.RestartRequest{RecompileGo: false},
+				2*time.Second,
+			)
+		}
+
+		firstWatcher := waitForWatcherPointer(
+			serverForTest,
+			nil,
+			5*time.Second,
+		)
+		if firstWatcher == nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for initial watcher before non-config recovery sequence",
+				),
+			)
+			return
+		}
+
+		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			goMainPath+"2",
+			cfg.Watch.WatchRoot,
+		); writeError != nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"failed writing broken main entry config: %w",
+					writeError,
+				),
+			)
+			return
+		}
+
+		if !waitForWaitingForBuildRetryFlag(
+			serverForTest,
+			true,
+			5*time.Second,
+		) {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for build-retry state after main entry typo",
+				),
+			)
+			return
+		}
+
+		if removeError := os.Remove(privateStaticPath); removeError != nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"failed removing private static file during retry wait: %w",
+					removeError,
+				),
+			)
+			return
+		}
+		time.Sleep(150 * time.Millisecond)
+
+		fixWriteStart := time.Now()
+		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			goMainPath,
+			cfg.Watch.WatchRoot,
+		); writeError != nil {
+			failAndStopRun(
+				fmt.Errorf(
+					"failed writing fixed main entry config: %w",
+					writeError,
+				),
+			)
+			return
+		}
+
+		if !waitForWaitingForBuildRetryFlag(
+			serverForTest,
+			false,
+			8*time.Second,
+		) {
+			failAndStopRun(
+				fmt.Errorf(
+					"timed out waiting for retry recovery after main entry fix",
+				),
+			)
+			return
+		}
+		recoveryDuration := time.Since(fixWriteStart)
+		if recoveryDuration > 8*time.Second {
+			failAndStopRun(
+				fmt.Errorf(
+					"main entry fix recovery after non-config event exceeded responsiveness budget: %s",
+					recoveryDuration,
+				),
+			)
+			return
+		}
+		recoveryDurationCh <- recoveryDuration
+
+		time.Sleep(200 * time.Millisecond)
+
+		if writeError := writeToolingConfigForWatchRoot(
+			cfg.Core.ConfigLocation,
+			cfg,
+			filepath.Join(root, "missing-watch-root-after-main-entry-non-config-recovery"),
+		); writeError != nil {
+			t.Error(writeError)
+			return
+		}
+		sendRestartRequestWithTimeout(
+			serverForTest,
+			restartengine.RestartRequest{RecompileGo: false},
+			2*time.Second,
+		)
+	}()
+
+	runError := serverForTest.Run()
+	if runError == nil {
+		t.Fatal(
+			"expected Run to exit with watcher init error after non-config recovery validation path",
+		)
+	}
+	if !strings.Contains(runError.Error(), "init watcher") {
+		t.Fatalf("unexpected Run error: %v", runError)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for non-config recovery helper goroutine")
+	}
+
+	select {
+	case recoveryDuration := <-recoveryDurationCh:
+		if recoveryDuration > 8*time.Second {
+			t.Fatalf(
+				"expected main entry fix recovery after non-config event under 8s, got %s",
+				recoveryDuration,
+			)
+		}
+	default:
+		t.Fatal(
+			"expected non-config recovery helper to report measured recovery duration",
+		)
+	}
+
+	runLogOutput := runLogBuffer.String()
+	if !strings.Contains(runLogOutput, "build failed") {
+		t.Fatalf(
+			"expected main entry typo build failure log, got logs: %s",
+			runLogOutput,
+		)
+	}
+	if !strings.Contains(runLogOutput, "build completed") {
+		t.Fatalf(
+			"expected main entry fix to produce build success log, got logs: %s",
+			runLogOutput,
+		)
+	}
+	if !strings.Contains(
+		runLogOutput,
+		"waiting for build retry; queuing restart from watcher batch",
+	) {
+		t.Fatalf(
+			"expected non-config watcher batch to queue retry restart, got logs: %s",
+			runLogOutput,
+		)
+	}
+	if strings.Contains(
+		runLogOutput,
+		"reload readiness failed; skipping browser broadcast",
+	) {
+		t.Fatalf(
+			"expected non-config recovery path not to block on reload readiness timeout, got logs: %s",
 			runLogOutput,
 		)
 	}
@@ -538,7 +1280,10 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 	}
 
 	runLogOutput := runLogBuffer.String()
-	if !strings.Contains(runLogOutput, "no changes to wave.config.json; skipping restart") {
+	if !strings.Contains(
+		runLogOutput,
+		"no changes to wave.config.json; skipping restart",
+	) {
 		t.Fatalf(
 			"expected no-op config save to log explicit no-op message, got logs: %s",
 			runLogOutput,
@@ -862,7 +1607,8 @@ func TestQueueRestartRequest_WaitingForBuildRetryStillMergesToStrongestIntent(
 	if !hasRestartRequest {
 		t.Fatal("expected queued restart request while waiting for build retry")
 	}
-	if !restartRequestForRetry.RecompileGo || !restartRequestForRetry.IsConfigRestart {
+	if !restartRequestForRetry.RecompileGo ||
+		!restartRequestForRetry.IsConfigRestart {
 		t.Fatalf(
 			"expected strongest merged restart intent while waiting for build retry, got %#v",
 			restartRequestForRetry,
@@ -964,6 +1710,23 @@ func waitForWaitingForBuildRetryFlag(
 		time.Sleep(10 * time.Millisecond)
 	}
 	return false
+}
+
+func writeGoMainFileForDevserverRunTests(
+	goMainPath string,
+	fileContents string,
+) error {
+	if strings.TrimSpace(goMainPath) == "" {
+		return errors.New("go main path is empty")
+	}
+	if writeError := os.WriteFile(
+		goMainPath,
+		[]byte(fileContents),
+		0o644,
+	); writeError != nil {
+		return fmt.Errorf("write go main file: %w", writeError)
+	}
+	return nil
 }
 
 func writeToolingConfigForWatchRoot(

@@ -54,6 +54,7 @@ type Dependencies struct {
 	GetOrCreateConcurrentNoWaitHookLifecycleContext func() context.Context
 
 	ResolveHookExecutionPlan func(wave.OnChangeHook) hooks.HookExecutionPlan
+	IsWaitingForBuildRetry   func() bool
 }
 
 // Engine owns deterministic watcher batch processing and hook/build orchestration.
@@ -167,6 +168,17 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 			"batch_id",
 			traceContext.BatchID,
 		)
+	}
+	if engine.isWaitingForBuildRetry() {
+		engine.logInfo(
+			"waiting for build retry; queuing restart from watcher batch",
+			"cycle_id",
+			traceContext.CycleID,
+			"batch_id",
+			traceContext.BatchID,
+		)
+		engine.triggerRestart()
+		return
 	}
 
 	work := &eventpipeline.WorkSet{}
@@ -1014,6 +1026,14 @@ func (engine *Engine) deriveWatcherExecutionTraceContext() WatcherExecutionTrace
 		return WatcherExecutionTraceContext{}
 	}
 	return engine.dependencies.DeriveWatcherExecutionTraceContext()
+}
+
+// isWaitingForBuildRetry reports whether lifecycle is currently in retry-wait state.
+func (engine *Engine) isWaitingForBuildRetry() bool {
+	if engine == nil || engine.dependencies.IsWaitingForBuildRetry == nil {
+		return false
+	}
+	return engine.dependencies.IsWaitingForBuildRetry()
 }
 
 // setCurrentWatcherExecutionTraceContext delegates trace context set callback.

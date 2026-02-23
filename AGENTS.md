@@ -276,3 +276,9 @@ reasonably testable.
 Try to write highly testable pure functions and state machines, and
 well-designed engines/orchestrators, rather than overly messy spaghetti
 imperative code.
+
+## Never Call A "Regression Test" A "Regression"
+
+It's not a "regression"; it's a "regression test". A "regression" is a newly
+introduced bug, not a test preventing such bugs. Please avoid this extremely
+annoying and counterproductive communication failure mode at all costs.

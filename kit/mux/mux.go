@@ -14,8 +14,10 @@ package mux
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"path"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -1014,43 +1016,24 @@ func (f reqDataGetterImpl[I]) getReqData(
 	return f(r, tasksCtx, m)
 }
 
-type headResponseWriter struct {
-	http.ResponseWriter
-	header     http.Header
-	statusCode int
-}
-
-func (hw *headResponseWriter) Header() http.Header { return hw.header }
-
-func (hw *headResponseWriter) WriteHeader(
-	statusCode int,
-) {
-	hw.statusCode = statusCode
-}
-
-func (hw *headResponseWriter) Write(
-	data []byte,
-) (int, error) {
-	return len(data), nil
-}
-
 func treatGetAsHead(
 	handler http.Handler,
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	headRW := &headResponseWriter{
-		ResponseWriter: w,
-		header:         make(http.Header),
-		statusCode:     http.StatusOK,
-	}
-	handler.ServeHTTP(headRW, r)
-	for k, values := range headRW.header {
+	headRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(headRecorder, r)
+
+	for k, values := range headRecorder.Header() {
 		for _, v := range values {
 			w.Header().Add(k, v)
 		}
 	}
-	w.WriteHeader(headRW.statusCode)
+
+	if w.Header().Get("Content-Length") == "" {
+		w.Header().Set("Content-Length", strconv.Itoa(headRecorder.Body.Len()))
+	}
+	w.WriteHeader(headRecorder.Code)
 }
 
 func writeErrorResponseWithHeadFallbackSupport(
@@ -1060,9 +1043,11 @@ func writeErrorResponseWithHeadFallbackSupport(
 	statusCode int,
 	errorText string,
 ) {
-	errorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, errorText, statusCode)
-	})
+	errorHandler := http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, errorText, statusCode)
+		},
+	)
 	if headFellBackToGet {
 		treatGetAsHead(errorHandler, w, r)
 		return

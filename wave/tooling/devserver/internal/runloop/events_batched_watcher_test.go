@@ -21,8 +21,9 @@ import (
 )
 
 type batchedWatcherHarness struct {
-	engine             *runloop.Engine
-	restartAccumulator *restartengine.RestartIntentAccumulator
+	engine               *runloop.Engine
+	restartAccumulator   *restartengine.RestartIntentAccumulator
+	waitingForBuildRetry *atomic.Bool
 }
 
 type buildRetryRuntimeHarness struct {
@@ -446,6 +447,102 @@ func TestWaitForBuildRetry_ConsumesRestartAndCleansUp(t *testing.T) {
 	}
 }
 
+func TestProcessEvents_WaitingForBuildRetryQueuesRestartAndSkipsPipeline(
+	t *testing.T,
+) {
+	testCases := []struct {
+		name      string
+		operation fsnotify.Op
+	}{
+		{name: "write", operation: fsnotify.Write},
+		{name: "create", operation: fsnotify.Create},
+		{name: "rename", operation: fsnotify.Rename},
+		{name: "remove", operation: fsnotify.Remove},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
+			cfg.Core.ServerOnlyMode = true
+
+			var preHookCallbackCount atomic.Int32
+			cfg.Watch.Include = []wave.WatchedFile{
+				{
+					Pattern: "**/*.go",
+					OnChangeHooks: []wave.OnChangeHook{
+						{
+							Timing: wave.OnChangeStrategyPre,
+							Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
+								preHookCallbackCount.Add(1)
+								return nil, nil
+							},
+						},
+					},
+				},
+			}
+			cfg.Watch.Include[0].Sort()
+			cfg.Dist.Root = cfg.Core.DistDir
+
+			watcherForTest, watcherCreateError := watch.NewWatcher(
+				cfg,
+				newDiscardLoggerForRunloopBatchedWatcherTests(),
+			)
+			if watcherCreateError != nil {
+				t.Fatalf("NewWatcher returned error: %v", watcherCreateError)
+			}
+			defer watcherForTest.Close()
+
+			builderForTest := builder.NewBuilder(
+				cfg,
+				newDiscardLoggerForRunloopBatchedWatcherTests(),
+			)
+			defer builderForTest.Close()
+
+			harness := newBatchedWatcherHarness(
+				t,
+				cfg,
+				watcherForTest,
+				builderForTest,
+			)
+			harness.waitingForBuildRetry.Store(true)
+
+			changedPath := filepath.Join(root, "retry_wait_test.go")
+			if writeError := os.WriteFile(
+				changedPath,
+				[]byte("package retrywait\n"),
+				0o644,
+			); writeError != nil {
+				t.Fatalf("write changed file: %v", writeError)
+			}
+
+			harness.engine.ProcessEvents([]fsnotify.Event{{
+				Name: changedPath,
+				Op:   testCase.operation,
+			}})
+
+			if preHookCallbackCount.Load() != 0 {
+				t.Fatalf(
+					"expected waiting-for-build-retry path to skip hook pipeline, pre hook count=%d",
+					preHookCallbackCount.Load(),
+				)
+			}
+
+			restartRequest := waitForPendingRestartRequestForRunloopTests(
+				t,
+				harness.restartAccumulator,
+				500*time.Millisecond,
+			)
+			if !restartRequest.RecompileGo || restartRequest.IsConfigRestart {
+				t.Fatalf(
+					"expected waiting-for-build-retry event to queue go-recompile restart, got %#v",
+					restartRequest,
+				)
+			}
+		})
+	}
+}
+
 func newBatchedWatcherHarness(
 	t *testing.T,
 	cfg *wave.ParsedConfig,
@@ -459,6 +556,7 @@ func newBatchedWatcherHarness(
 	restartAccumulator := restartengine.NewRestartIntentAccumulator(
 		make(chan restartengine.RestartRequest, 1),
 	)
+	waitingForBuildRetry := &atomic.Bool{}
 
 	engine := runloop.New(
 		runloop.Dependencies{
@@ -549,12 +647,16 @@ func newBatchedWatcherHarness(
 			GetOrCreateConcurrentNoWaitHookLifecycleContext: func() context.Context {
 				return context.Background()
 			},
+			IsWaitingForBuildRetry: func() bool {
+				return waitingForBuildRetry.Load()
+			},
 		},
 	)
 
 	return batchedWatcherHarness{
-		engine:             engine,
-		restartAccumulator: restartAccumulator,
+		engine:               engine,
+		restartAccumulator:   restartAccumulator,
+		waitingForBuildRetry: waitingForBuildRetry,
 	}
 }
 
