@@ -45,11 +45,7 @@ func TestRegisterLoaderDiscoveredByBuildPanicsWhenLoaderFunctionIsNil(
 		t,
 		"vormagogen.RegisterLoaderDiscoveredByBuild: loader function cannot be nil",
 		func() {
-			_ = RegisterLoaderDiscoveredByBuild[
-				string,
-				*vorma.LoaderReqData,
-				vorma.LoaderReqData,
-			](
+			_ = RegisterLoaderDiscoveredByBuild[string](
 				&vorma.Vorma{},
 				"/loader",
 				nil,
@@ -83,12 +79,7 @@ func TestRegisterActionDiscoveredByBuildPanicsWhenActionFunctionIsNil(
 		t,
 		"vormagogen.RegisterActionDiscoveredByBuild: action function cannot be nil",
 		func() {
-			_ = RegisterActionDiscoveredByBuild[
-				vorma.None,
-				string,
-				*vorma.ActionReqData[vorma.None],
-				vorma.ActionReqData[vorma.None],
-			](
+			_ = RegisterActionDiscoveredByBuild[vorma.None, string](
 				&vorma.Vorma{},
 				"POST",
 				"/action",
@@ -108,12 +99,7 @@ func TestRegisterActionDiscoveredByBuildPanicsWhenDecorateContextIsNil(
 		t,
 		"vormagogen.RegisterActionDiscoveredByBuild: decorateCtx cannot be nil",
 		func() {
-			_ = RegisterActionDiscoveredByBuild[
-				vorma.None,
-				string,
-				*vorma.ActionReqData[vorma.None],
-				vorma.ActionReqData[vorma.None],
-			](
+			_ = RegisterActionDiscoveredByBuild[vorma.None](
 				&vorma.Vorma{},
 				"POST",
 				"/action",
