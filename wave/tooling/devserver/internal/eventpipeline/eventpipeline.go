@@ -109,6 +109,8 @@ type WorkSet struct {
 	Restart RestartPhaseDecision
 	Browser BrowserPhaseDecision
 
+	FrameworkRuntimeReloadRequests []wave.FrameworkRuntimeReloadRequest
+
 	PreferRevalidate bool
 }
 
@@ -165,12 +167,13 @@ type RefreshActionApplicationResult struct {
 
 // RefreshActionWorkMutationDecision resolves workset mutations for one refresh action.
 type RefreshActionWorkMutationDecision struct {
-	RestartApp           bool
-	CompileGo            bool
-	RequestBrowserAction bool
-	BrowserAction        BrowserPhaseAction
-	WaitForApp           bool
-	WaitForVite          bool
+	RestartApp                    bool
+	CompileGo                     bool
+	RequestBrowserAction          bool
+	BrowserAction                 BrowserPhaseAction
+	WaitForApp                    bool
+	WaitForVite                   bool
+	FrameworkRuntimeReloadRequest *wave.FrameworkRuntimeReloadRequest
 }
 
 // RefreshActionReductionDecision captures staged reduction metadata.
@@ -194,10 +197,11 @@ type ImplicitWorkDecision struct {
 
 // ReloadOpts carries payload and readiness flags for browser reload broadcast.
 type ReloadOpts struct {
-	Payload   broadcast.Payload
-	WaitApp   bool
-	WaitVite  bool
-	CycleVite bool
+	Payload                        broadcast.Payload
+	WaitApp                        bool
+	WaitVite                       bool
+	CycleVite                      bool
+	FrameworkRuntimeReloadRequests []wave.FrameworkRuntimeReloadRequest
 }
 
 // BrowserPhaseExecutionCategory groups browser action kinds for execution branching.
@@ -878,7 +882,10 @@ func appendNormalizedFilePathIfMissing(
 	}
 
 	if existingFilePathSet == nil {
-		existingFilePathSet = make(map[string]struct{}, len(existingFilePaths)+1)
+		existingFilePathSet = make(
+			map[string]struct{},
+			len(existingFilePaths)+1,
+		)
 		for _, existingFilePath := range existingFilePaths {
 			existingFilePathSet[existingFilePath] = struct{}{}
 		}
@@ -977,6 +984,7 @@ func DeriveRefreshActionWorkMutationDecision(
 	}
 	decision.WaitForApp = refreshAction.WaitForApp
 	decision.WaitForVite = refreshAction.WaitForVite
+	decision.FrameworkRuntimeReloadRequest = refreshAction.FrameworkRuntimeReloadRequest
 
 	return decision
 }
@@ -1008,8 +1016,51 @@ func (work *WorkSet) ApplyRefreshActionWorkMutationDecision(
 	if mutationDecision.WaitForVite {
 		work.Browser.WaitForVite = true
 	}
+	if mutationDecision.FrameworkRuntimeReloadRequest != nil {
+		work.FrameworkRuntimeReloadRequests = appendFrameworkRuntimeReloadRequestIfMissing(
+			work.FrameworkRuntimeReloadRequests,
+			*mutationDecision.FrameworkRuntimeReloadRequest,
+		)
+	}
 
 	return applicationResult
+}
+
+func appendFrameworkRuntimeReloadRequestIfMissing(
+	existingRequests []wave.FrameworkRuntimeReloadRequest,
+	request wave.FrameworkRuntimeReloadRequest,
+) []wave.FrameworkRuntimeReloadRequest {
+	normalizedRequest, ok := normalizeFrameworkRuntimeReloadRequest(request)
+	if !ok {
+		return existingRequests
+	}
+
+	for _, existingRequest := range existingRequests {
+		if existingRequest == normalizedRequest {
+			return existingRequests
+		}
+	}
+
+	return append(existingRequests, normalizedRequest)
+}
+
+func normalizeFrameworkRuntimeReloadRequest(
+	request wave.FrameworkRuntimeReloadRequest,
+) (wave.FrameworkRuntimeReloadRequest, bool) {
+	normalizedEndpointPath := strings.TrimSpace(request.EndpointPath)
+	if normalizedEndpointPath == "" {
+		return wave.FrameworkRuntimeReloadRequest{}, false
+	}
+	if !strings.HasPrefix(normalizedEndpointPath, "/") {
+		normalizedEndpointPath = "/" + normalizedEndpointPath
+	}
+
+	return wave.FrameworkRuntimeReloadRequest{
+		EndpointPath:    normalizedEndpointPath,
+		ReloadAttemptID: strings.TrimSpace(request.ReloadAttemptID),
+		ExpectedBuildID: strings.TrimSpace(request.ExpectedBuildID),
+		ReloadTrigger:   strings.TrimSpace(request.ReloadTrigger),
+	}, true
 }
 
 // ApplyRefreshActions applies refresh actions in order until restart short-circuit.

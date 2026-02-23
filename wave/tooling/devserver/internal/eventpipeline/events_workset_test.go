@@ -1,10 +1,11 @@
 package eventpipeline_test
 
 import (
-	"github.com/vormadev/vorma/wave/tooling/devserver/internal/eventpipeline"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/tooling/devserver/internal/eventpipeline"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
@@ -19,6 +20,14 @@ func TestWorkSetAddFromRefreshAction(t *testing.T) {
 		ReloadBrowser:  true,
 		WaitForApp:     true,
 		WaitForVite:    true,
+	})
+	work.AddFromRefreshAction(wave.RefreshAction{
+		FrameworkRuntimeReloadRequest: &wave.FrameworkRuntimeReloadRequest{
+			EndpointPath:    "reload-routes",
+			ReloadAttemptID: "attempt-1",
+			ExpectedBuildID: "build-1",
+			ReloadTrigger:   "routes-watch",
+		},
 	})
 
 	if !work.Restart.RestartApp {
@@ -35,6 +44,18 @@ func TestWorkSetAddFromRefreshAction(t *testing.T) {
 			work.Browser.Action,
 			work.Browser.WaitForApp,
 			work.Browser.WaitForVite,
+		)
+	}
+	if len(work.FrameworkRuntimeReloadRequests) != 1 {
+		t.Fatalf(
+			"expected one framework runtime reload request, got %d",
+			len(work.FrameworkRuntimeReloadRequests),
+		)
+	}
+	if work.FrameworkRuntimeReloadRequests[0].EndpointPath != "/reload-routes" {
+		t.Fatalf(
+			"expected normalized endpoint path, got %q",
+			work.FrameworkRuntimeReloadRequests[0].EndpointPath,
 		)
 	}
 }
@@ -78,6 +99,25 @@ func TestDeriveRefreshActionWorkMutationDecision(t *testing.T) {
 			},
 		},
 		{
+			Name: "framework runtime reload request is carried",
+			Action: wave.RefreshAction{
+				FrameworkRuntimeReloadRequest: &wave.FrameworkRuntimeReloadRequest{
+					EndpointPath:    "/reload-template",
+					ReloadAttemptID: "attempt-7",
+					ExpectedBuildID: "build-7",
+					ReloadTrigger:   "template-watch",
+				},
+			},
+			ExpectedWorkMutation: eventpipeline.RefreshActionWorkMutationDecision{
+				FrameworkRuntimeReloadRequest: &wave.FrameworkRuntimeReloadRequest{
+					EndpointPath:    "/reload-template",
+					ReloadAttemptID: "attempt-7",
+					ExpectedBuildID: "build-7",
+					ReloadTrigger:   "template-watch",
+				},
+			},
+		},
+		{
 			Name:                 "zero action maps to zero mutation",
 			Action:               wave.RefreshAction{},
 			ExpectedWorkMutation: eventpipeline.RefreshActionWorkMutationDecision{},
@@ -86,8 +126,13 @@ func TestDeriveRefreshActionWorkMutationDecision(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			workMutationDecision := eventpipeline.DeriveRefreshActionWorkMutationDecision(testCase.Action)
-			if !reflect.DeepEqual(workMutationDecision, testCase.ExpectedWorkMutation) {
+			workMutationDecision := eventpipeline.DeriveRefreshActionWorkMutationDecision(
+				testCase.Action,
+			)
+			if !reflect.DeepEqual(
+				workMutationDecision,
+				testCase.ExpectedWorkMutation,
+			) {
 				t.Fatalf(
 					"eventpipeline.DeriveRefreshActionWorkMutationDecision()=%#v, want %#v",
 					workMutationDecision,
@@ -107,15 +152,35 @@ func TestWorkSetApplyRefreshActionWorkMutationDecision(t *testing.T) {
 		},
 	}
 
-	work.ApplyRefreshActionWorkMutationDecision(eventpipeline.RefreshActionWorkMutationDecision{
-		RestartApp:           true,
-		CompileGo:            true,
-		RequestBrowserAction: true,
-		BrowserAction:        eventpipeline.BrowserPhaseActionHardReload,
-		WaitForApp:           true,
-		WaitForVite:          true,
-	})
-	work.ApplyRefreshActionWorkMutationDecision(eventpipeline.RefreshActionWorkMutationDecision{})
+	work.ApplyRefreshActionWorkMutationDecision(
+		eventpipeline.RefreshActionWorkMutationDecision{
+			RestartApp:           true,
+			CompileGo:            true,
+			RequestBrowserAction: true,
+			BrowserAction:        eventpipeline.BrowserPhaseActionHardReload,
+			WaitForApp:           true,
+			WaitForVite:          true,
+			FrameworkRuntimeReloadRequest: &wave.FrameworkRuntimeReloadRequest{
+				EndpointPath:    "reload-routes",
+				ReloadAttemptID: "attempt-1",
+				ExpectedBuildID: "build-1",
+				ReloadTrigger:   "route-watch",
+			},
+		},
+	)
+	work.ApplyRefreshActionWorkMutationDecision(
+		eventpipeline.RefreshActionWorkMutationDecision{
+			FrameworkRuntimeReloadRequest: &wave.FrameworkRuntimeReloadRequest{
+				EndpointPath:    "/reload-routes",
+				ReloadAttemptID: "attempt-1",
+				ExpectedBuildID: "build-1",
+				ReloadTrigger:   "route-watch",
+			},
+		},
+	)
+	work.ApplyRefreshActionWorkMutationDecision(
+		eventpipeline.RefreshActionWorkMutationDecision{},
+	)
 
 	if !work.Restart.RestartApp {
 		t.Fatal("expected restart.restartApp=true")
@@ -124,7 +189,10 @@ func TestWorkSetApplyRefreshActionWorkMutationDecision(t *testing.T) {
 		t.Fatal("expected build.compileGo=true")
 	}
 	if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
-		t.Fatalf("expected browser hard reload action, got %v", work.Browser.Action)
+		t.Fatalf(
+			"expected browser hard reload action, got %v",
+			work.Browser.Action,
+		)
 	}
 	if !work.Browser.WaitForApp || !work.Browser.WaitForVite {
 		t.Fatalf(
@@ -133,82 +201,110 @@ func TestWorkSetApplyRefreshActionWorkMutationDecision(t *testing.T) {
 			work.Browser.WaitForVite,
 		)
 	}
+	if len(work.FrameworkRuntimeReloadRequests) != 1 {
+		t.Fatalf(
+			"expected one deduplicated framework runtime reload request, got %d",
+			len(work.FrameworkRuntimeReloadRequests),
+		)
+	}
+	if got, want := work.FrameworkRuntimeReloadRequests[0].EndpointPath, "/reload-routes"; got != want {
+		t.Fatalf("endpoint path=%q, want %q", got, want)
+	}
 }
 
 func TestWorkSetApplyRefreshActions(t *testing.T) {
-	t.Run("returns restart request and stops processing remaining actions", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
+	t.Run(
+		"returns restart request and stops processing remaining actions",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
 
-		result := work.ApplyRefreshActions([]wave.RefreshAction{
-			{ReloadBrowser: true},
-			{TriggerRestart: true},
-			{WaitForApp: true},
-		})
+			result := work.ApplyRefreshActions([]wave.RefreshAction{
+				{ReloadBrowser: true},
+				{TriggerRestart: true},
+				{WaitForApp: true},
+			})
 
-		if !result.RestartRequested {
-			t.Fatal("expected restartRequested=true")
-		}
-		if result.RecompileGo {
-			t.Fatal("expected recompileGo=false")
-		}
-		if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
-			t.Fatal("expected first non-restart action to be applied")
-		}
-		if work.Browser.WaitForApp {
-			t.Fatal("expected actions after restart request not to be applied")
-		}
-	})
+			if !result.RestartRequested {
+				t.Fatal("expected restartRequested=true")
+			}
+			if result.RecompileGo {
+				t.Fatal("expected recompileGo=false")
+			}
+			if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
+				t.Fatal("expected first non-restart action to be applied")
+			}
+			if work.Browser.WaitForApp {
+				t.Fatal(
+					"expected actions after restart request not to be applied",
+				)
+			}
+		},
+	)
 
-	t.Run("keeps actions before restart and surfaces restart recompile signal", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
+	t.Run(
+		"keeps actions before restart and surfaces restart recompile signal",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
 
-		result := work.ApplyRefreshActions([]wave.RefreshAction{
-			{WaitForApp: true},
-			{ReloadBrowser: true},
-			{TriggerRestart: true, RecompileGo: true},
-			{WaitForVite: true},
-		})
+			result := work.ApplyRefreshActions([]wave.RefreshAction{
+				{WaitForApp: true},
+				{ReloadBrowser: true},
+				{TriggerRestart: true, RecompileGo: true},
+				{WaitForVite: true},
+			})
 
-		if !result.RestartRequested {
-			t.Fatal("expected restartRequested=true")
-		}
-		if !result.RecompileGo {
-			t.Fatal("expected recompileGo=true from first restart action")
-		}
-		if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
-			t.Fatalf("expected pre-restart reload action to be applied, got %v", work.Browser.Action)
-		}
-		if !work.Browser.WaitForApp {
-			t.Fatal("expected pre-restart wait-for-app to be applied")
-		}
-		if work.Browser.WaitForVite {
-			t.Fatal("expected post-restart actions not to be applied")
-		}
-	})
+			if !result.RestartRequested {
+				t.Fatal("expected restartRequested=true")
+			}
+			if !result.RecompileGo {
+				t.Fatal("expected recompileGo=true from first restart action")
+			}
+			if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
+				t.Fatalf(
+					"expected pre-restart reload action to be applied, got %v",
+					work.Browser.Action,
+				)
+			}
+			if !work.Browser.WaitForApp {
+				t.Fatal("expected pre-restart wait-for-app to be applied")
+			}
+			if work.Browser.WaitForVite {
+				t.Fatal("expected post-restart actions not to be applied")
+			}
+		},
+	)
 
-	t.Run("merges stronger restart request from later action", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
+	t.Run(
+		"merges stronger restart request from later action",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
 
-		result := work.ApplyRefreshActions([]wave.RefreshAction{
-			{ReloadBrowser: true},
-			{TriggerRestart: true, RecompileGo: false},
-			{TriggerRestart: true, RecompileGo: true},
-			{WaitForVite: true},
-		})
+			result := work.ApplyRefreshActions([]wave.RefreshAction{
+				{ReloadBrowser: true},
+				{TriggerRestart: true, RecompileGo: false},
+				{TriggerRestart: true, RecompileGo: true},
+				{WaitForVite: true},
+			})
 
-		if !result.RestartRequested {
-			t.Fatal("expected restartRequested=true")
-		}
-		if !result.RecompileGo {
-			t.Fatal("expected recompileGo=true from strongest restart action")
-		}
-		if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
-			t.Fatalf("expected pre-restart reload action to be applied, got %v", work.Browser.Action)
-		}
-		if work.Browser.WaitForVite {
-			t.Fatal("expected post-restart actions not to be applied")
-		}
-	})
+			if !result.RestartRequested {
+				t.Fatal("expected restartRequested=true")
+			}
+			if !result.RecompileGo {
+				t.Fatal(
+					"expected recompileGo=true from strongest restart action",
+				)
+			}
+			if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
+				t.Fatalf(
+					"expected pre-restart reload action to be applied, got %v",
+					work.Browser.Action,
+				)
+			}
+			if work.Browser.WaitForVite {
+				t.Fatal("expected post-restart actions not to be applied")
+			}
+		},
+	)
 
 	t.Run("merges non-restart actions into workset", func(t *testing.T) {
 		work := &eventpipeline.WorkSet{}
@@ -242,13 +338,19 @@ func TestReduceRefreshActionsInStableOrder(t *testing.T) {
 			{WaitForVite: true},
 		}
 
-		reductionDecision := eventpipeline.ReduceRefreshActionsInStableOrder(input)
+		reductionDecision := eventpipeline.ReduceRefreshActionsInStableOrder(
+			input,
+		)
 		if reductionDecision.ApplicationResult.RestartRequested {
 			t.Fatal("expected restartRequested=false")
 		}
 		applied := reductionDecision.ActionsBeforeRestart
 		if len(applied) != len(input) {
-			t.Fatalf("actionsBeforeRestart count=%d, want %d", len(applied), len(input))
+			t.Fatalf(
+				"actionsBeforeRestart count=%d, want %d",
+				len(applied),
+				len(input),
+			)
 		}
 		for i := range input {
 			if applied[i] != input[i] {
@@ -257,45 +359,60 @@ func TestReduceRefreshActionsInStableOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("merges restart actions and excludes later non-restart actions", func(t *testing.T) {
-		input := []wave.RefreshAction{
-			{ReloadBrowser: true},
-			{TriggerRestart: true, RecompileGo: false},
-			{TriggerRestart: true, RecompileGo: true},
-			{WaitForApp: true},
-		}
+	t.Run(
+		"merges restart actions and excludes later non-restart actions",
+		func(t *testing.T) {
+			input := []wave.RefreshAction{
+				{ReloadBrowser: true},
+				{TriggerRestart: true, RecompileGo: false},
+				{TriggerRestart: true, RecompileGo: true},
+				{WaitForApp: true},
+			}
 
-		reductionDecision := eventpipeline.ReduceRefreshActionsInStableOrder(input)
-		if !reductionDecision.ApplicationResult.RestartRequested {
-			t.Fatal("expected restartRequested=true")
-		}
-		if !reductionDecision.ApplicationResult.RecompileGo {
-			t.Fatal("expected merged restart actions to preserve recompileGo=true")
-		}
-		applied := reductionDecision.ActionsBeforeRestart
-		if len(applied) != 1 {
-			t.Fatalf("actionsBeforeRestart count=%d, want 1", len(applied))
-		}
-		if !applied[0].ReloadBrowser {
-			t.Fatalf("unexpected applied Actions: %#v", applied)
-		}
-	})
+			reductionDecision := eventpipeline.ReduceRefreshActionsInStableOrder(
+				input,
+			)
+			if !reductionDecision.ApplicationResult.RestartRequested {
+				t.Fatal("expected restartRequested=true")
+			}
+			if !reductionDecision.ApplicationResult.RecompileGo {
+				t.Fatal(
+					"expected merged restart actions to preserve recompileGo=true",
+				)
+			}
+			applied := reductionDecision.ActionsBeforeRestart
+			if len(applied) != 1 {
+				t.Fatalf("actionsBeforeRestart count=%d, want 1", len(applied))
+			}
+			if !applied[0].ReloadBrowser {
+				t.Fatalf("unexpected applied Actions: %#v", applied)
+			}
+		},
+	)
 
-	t.Run("restart at first action yields no pre-restart actions", func(t *testing.T) {
-		reductionDecision := eventpipeline.ReduceRefreshActionsInStableOrder([]wave.RefreshAction{
-			{TriggerRestart: true, RecompileGo: true},
-			{ReloadBrowser: true},
-		})
-		if !reductionDecision.ApplicationResult.RestartRequested {
-			t.Fatal("expected restartRequested=true")
-		}
-		if !reductionDecision.ApplicationResult.RecompileGo {
-			t.Fatal("expected recompileGo=true from first restart action")
-		}
-		if len(reductionDecision.ActionsBeforeRestart) != 0 {
-			t.Fatalf("expected zero pre-restart actions, got %#v", reductionDecision.ActionsBeforeRestart)
-		}
-	})
+	t.Run(
+		"restart at first action yields no pre-restart actions",
+		func(t *testing.T) {
+			reductionDecision := eventpipeline.ReduceRefreshActionsInStableOrder(
+				[]wave.RefreshAction{
+					{TriggerRestart: true, RecompileGo: true},
+					{ReloadBrowser: true},
+				},
+			)
+			if !reductionDecision.ApplicationResult.RestartRequested {
+				t.Fatal("expected restartRequested=true")
+			}
+			if !reductionDecision.ApplicationResult.RecompileGo {
+				t.Fatal("expected recompileGo=true from first restart action")
+			}
+			if len(reductionDecision.ActionsBeforeRestart) != 0 {
+				t.Fatalf(
+					"expected zero pre-restart actions, got %#v",
+					reductionDecision.ActionsBeforeRestart,
+				)
+			}
+		},
+	)
 }
 
 func TestDeriveImplicitWorkDecisionForClassifiedEvent(t *testing.T) {
@@ -305,8 +422,10 @@ func TestDeriveImplicitWorkDecisionForClassifiedEvent(t *testing.T) {
 		ExpectedDecision eventpipeline.ImplicitWorkDecision
 	}{
 		{
-			Name:            "go file compiles and restarts",
-			ClassifiedEvent: eventpipeline.ClassifiedEvent{FileType: eventpipeline.FileTypeGo},
+			Name: "go file compiles and restarts",
+			ClassifiedEvent: eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypeGo,
+			},
 			ExpectedDecision: eventpipeline.ImplicitWorkDecision{
 				CompileGo:  true,
 				RestartApp: true,
@@ -416,7 +535,9 @@ func TestDeriveImplicitWorkDecisionForClassifiedEvent(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			decision := eventpipeline.DeriveImplicitWorkDecisionForClassifiedEvent(testCase.ClassifiedEvent)
+			decision := eventpipeline.DeriveImplicitWorkDecisionForClassifiedEvent(
+				testCase.ClassifiedEvent,
+			)
 			if !reflect.DeepEqual(decision, testCase.ExpectedDecision) {
 				t.Fatalf(
 					"eventpipeline.DeriveImplicitWorkDecisionForClassifiedEvent()=%#v, want %#v",
@@ -428,7 +549,9 @@ func TestDeriveImplicitWorkDecisionForClassifiedEvent(t *testing.T) {
 	}
 }
 
-func TestWorkSetApplyImplicitWorkDecision_MergesBuildRestartAndPathWork(t *testing.T) {
+func TestWorkSetApplyImplicitWorkDecision_MergesBuildRestartAndPathWork(
+	t *testing.T,
+) {
 	work := &eventpipeline.WorkSet{}
 
 	firstDecision := eventpipeline.ImplicitWorkDecision{
@@ -450,39 +573,69 @@ func TestWorkSetApplyImplicitWorkDecision_MergesBuildRestartAndPathWork(t *testi
 	work.ApplyImplicitWorkDecision(secondDecision)
 
 	if !work.Build.CompileGo {
-		t.Fatal("expected build.compileGo=true after merged implicit work decisions")
+		t.Fatal(
+			"expected build.compileGo=true after merged implicit work decisions",
+		)
 	}
 	if !work.Build.BuildCriticalCSS {
-		t.Fatal("expected build.buildCriticalCSS=true after merged implicit work decisions")
+		t.Fatal(
+			"expected build.buildCriticalCSS=true after merged implicit work decisions",
+		)
 	}
 	if !work.Build.ProcessPublicFiles {
-		t.Fatal("expected build.processPublicFiles=true after merged implicit work decisions")
+		t.Fatal(
+			"expected build.processPublicFiles=true after merged implicit work decisions",
+		)
 	}
 	if !work.Build.ProcessPrivateFiles {
-		t.Fatal("expected build.processPrivateFiles=true after merged implicit work decisions")
+		t.Fatal(
+			"expected build.processPrivateFiles=true after merged implicit work decisions",
+		)
 	}
 	if !work.Restart.RestartApp {
-		t.Fatal("expected restart.restartApp=true after merged implicit work decisions")
+		t.Fatal(
+			"expected restart.restartApp=true after merged implicit work decisions",
+		)
 	}
 	if !work.PreferRevalidate {
-		t.Fatal("expected preferRevalidate=true after merged implicit work decisions")
+		t.Fatal(
+			"expected preferRevalidate=true after merged implicit work decisions",
+		)
 	}
 
 	expectedPublicPaths := []string{wavecore.Absolute("/tmp/public/logo.svg")}
-	if !reflect.DeepEqual(work.Build.PublicStaticChangedFilePaths, expectedPublicPaths) {
-		t.Fatalf("public static changed paths=%v, want %v", work.Build.PublicStaticChangedFilePaths, expectedPublicPaths)
+	if !reflect.DeepEqual(
+		work.Build.PublicStaticChangedFilePaths,
+		expectedPublicPaths,
+	) {
+		t.Fatalf(
+			"public static changed paths=%v, want %v",
+			work.Build.PublicStaticChangedFilePaths,
+			expectedPublicPaths,
+		)
 	}
 
-	expectedPrivatePaths := []string{wavecore.Absolute("/tmp/private/home.html")}
-	if !reflect.DeepEqual(work.Build.PrivateStaticChangedFilePaths, expectedPrivatePaths) {
-		t.Fatalf("private static changed paths=%v, want %v", work.Build.PrivateStaticChangedFilePaths, expectedPrivatePaths)
+	expectedPrivatePaths := []string{
+		wavecore.Absolute("/tmp/private/home.html"),
+	}
+	if !reflect.DeepEqual(
+		work.Build.PrivateStaticChangedFilePaths,
+		expectedPrivatePaths,
+	) {
+		t.Fatalf(
+			"private static changed paths=%v, want %v",
+			work.Build.PrivateStaticChangedFilePaths,
+			expectedPrivatePaths,
+		)
 	}
 }
 
 func TestWorkSetAddImplicitWork(t *testing.T) {
 	t.Run("go files imply compile and restart", func(t *testing.T) {
 		work := &eventpipeline.WorkSet{}
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{FileType: eventpipeline.FileTypeGo})
+		work.AddImplicitWork(
+			eventpipeline.ClassifiedEvent{FileType: eventpipeline.FileTypeGo},
+		)
 		if !work.Build.CompileGo || !work.Restart.RestartApp {
 			t.Fatalf(
 				"expected compile+restart, got compile=%v restart=%v",
@@ -537,162 +690,206 @@ func TestWorkSetAddImplicitWork(t *testing.T) {
 		}
 	})
 
-	t.Run("critical css file requests css rebuild and can request hard reload", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypeCriticalCSS,
-			WatchedFile: &wave.WatchedFile{
-				RestartApp: true,
-			},
-		})
-		if !work.Build.BuildCriticalCSS {
-			t.Fatal("expected build.buildCriticalCSS=true")
-		}
-		if !work.Restart.RestartApp {
-			t.Fatal("expected restart.restartApp=true when critical css watched file requests hard reload")
-		}
-	})
+	t.Run(
+		"critical css file requests css rebuild and can request hard reload",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypeCriticalCSS,
+				WatchedFile: &wave.WatchedFile{
+					RestartApp: true,
+				},
+			})
+			if !work.Build.BuildCriticalCSS {
+				t.Fatal("expected build.buildCriticalCSS=true")
+			}
+			if !work.Restart.RestartApp {
+				t.Fatal(
+					"expected restart.restartApp=true when critical css watched file requests hard reload",
+				)
+			}
+		},
+	)
 
-	t.Run("normal css file requests css rebuild and can request hard reload", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypeNormalCSS,
-			WatchedFile: &wave.WatchedFile{
-				RecompileGoBinary: true,
-			},
-		})
-		if !work.Build.BuildNormalCSS {
-			t.Fatal("expected build.buildNormalCSS=true")
-		}
-		if !work.Restart.RestartApp {
-			t.Fatal("expected restart.restartApp=true when normal css watched file requests hard reload")
-		}
-	})
+	t.Run(
+		"normal css file requests css rebuild and can request hard reload",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypeNormalCSS,
+				WatchedFile: &wave.WatchedFile{
+					RecompileGoBinary: true,
+				},
+			})
+			if !work.Build.BuildNormalCSS {
+				t.Fatal("expected build.buildNormalCSS=true")
+			}
+			if !work.Restart.RestartApp {
+				t.Fatal(
+					"expected restart.restartApp=true when normal css watched file requests hard reload",
+				)
+			}
+		},
+	)
 
-	t.Run("shared critical+normal css file requests both rebuilds and can request hard reload", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypeCriticalAndNormalCSS,
-			WatchedFile: &wave.WatchedFile{
-				RestartApp: true,
-			},
-		})
-		if !work.Build.BuildCriticalCSS {
-			t.Fatal("expected build.buildCriticalCSS=true")
-		}
-		if !work.Build.BuildNormalCSS {
-			t.Fatal("expected build.buildNormalCSS=true")
-		}
-		if !work.Restart.RestartApp {
-			t.Fatal("expected restart.restartApp=true when shared css watched file requests hard reload")
-		}
-	})
+	t.Run(
+		"shared critical+normal css file requests both rebuilds and can request hard reload",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypeCriticalAndNormalCSS,
+				WatchedFile: &wave.WatchedFile{
+					RestartApp: true,
+				},
+			})
+			if !work.Build.BuildCriticalCSS {
+				t.Fatal("expected build.buildCriticalCSS=true")
+			}
+			if !work.Build.BuildNormalCSS {
+				t.Fatal("expected build.buildNormalCSS=true")
+			}
+			if !work.Restart.RestartApp {
+				t.Fatal(
+					"expected restart.restartApp=true when shared css watched file requests hard reload",
+				)
+			}
+		},
+	)
 
-	t.Run("public static file requests public file processing", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
-		changedPublicFilePath := "/tmp/public/logo.svg"
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypePublicStatic,
-			Event: fsnotify.Event{
-				Name: changedPublicFilePath,
-			},
-		})
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypePublicStatic,
-			Event: fsnotify.Event{
-				Name: changedPublicFilePath,
-			},
-		})
-		if !work.Build.ProcessPublicFiles {
-			t.Fatal("expected build.processPublicFiles=true")
-		}
-		if len(work.Build.PublicStaticChangedFilePaths) != 1 {
-			t.Fatalf("expected one deduplicated public static path, got %#v", work.Build.PublicStaticChangedFilePaths)
-		}
-		if work.Build.PublicStaticChangedFilePaths[0] != changedPublicFilePath {
-			t.Fatalf(
-				"expected tracked public static path %q, got %#v",
-				changedPublicFilePath,
-				work.Build.PublicStaticChangedFilePaths,
+	t.Run(
+		"public static file requests public file processing",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
+			changedPublicFilePath := "/tmp/public/logo.svg"
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypePublicStatic,
+				Event: fsnotify.Event{
+					Name: changedPublicFilePath,
+				},
+			})
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypePublicStatic,
+				Event: fsnotify.Event{
+					Name: changedPublicFilePath,
+				},
+			})
+			if !work.Build.ProcessPublicFiles {
+				t.Fatal("expected build.processPublicFiles=true")
+			}
+			if len(work.Build.PublicStaticChangedFilePaths) != 1 {
+				t.Fatalf(
+					"expected one deduplicated public static path, got %#v",
+					work.Build.PublicStaticChangedFilePaths,
+				)
+			}
+			if work.Build.PublicStaticChangedFilePaths[0] != changedPublicFilePath {
+				t.Fatalf(
+					"expected tracked public static path %q, got %#v",
+					changedPublicFilePath,
+					work.Build.PublicStaticChangedFilePaths,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"public static changed paths are normalized and deduplicated by location",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
+
+			root := t.TempDir()
+			canonicalFilePath := filepath.Join(
+				root,
+				"static",
+				"public",
+				"logo.svg",
 			)
-		}
-	})
-
-	t.Run("public static changed paths are normalized and deduplicated by location", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
-
-		root := t.TempDir()
-		canonicalFilePath := filepath.Join(root, "static", "public", "logo.svg")
-		equivalentFilePath := filepath.Join(root, "static", "public", ".", "logo.svg")
-		expectedNormalizedPath := wavecore.Absolute(canonicalFilePath)
-
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypePublicStatic,
-			Event: fsnotify.Event{
-				Name: canonicalFilePath,
-			},
-		})
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypePublicStatic,
-			Event: fsnotify.Event{
-				Name: equivalentFilePath,
-			},
-		})
-
-		if len(work.Build.PublicStaticChangedFilePaths) != 1 {
-			t.Fatalf(
-				"expected one normalized public static path, got %#v",
-				work.Build.PublicStaticChangedFilePaths,
+			equivalentFilePath := filepath.Join(
+				root,
+				"static",
+				"public",
+				".",
+				"logo.svg",
 			)
-		}
-		if work.Build.PublicStaticChangedFilePaths[0] != expectedNormalizedPath {
-			t.Fatalf(
-				"expected normalized public static path %q, got %#v",
-				expectedNormalizedPath,
-				work.Build.PublicStaticChangedFilePaths,
-			)
-		}
-	})
+			expectedNormalizedPath := wavecore.Absolute(canonicalFilePath)
 
-	t.Run("private static file requests private file processing", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
-		firstPrivatePath := "/tmp/private/a.txt"
-		secondPrivatePath := "/tmp/private/b.txt"
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypePrivateStatic,
-			Event: fsnotify.Event{
-				Name: firstPrivatePath,
-			},
-		})
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypePrivateStatic,
-			Event: fsnotify.Event{
-				Name: secondPrivatePath,
-			},
-		})
-		if !work.Build.ProcessPrivateFiles {
-			t.Fatal("expected build.processPrivateFiles=true")
-		}
-		if len(work.Build.PrivateStaticChangedFilePaths) != 2 {
-			t.Fatalf("expected two tracked private static paths, got %#v", work.Build.PrivateStaticChangedFilePaths)
-		}
-	})
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypePublicStatic,
+				Event: fsnotify.Event{
+					Name: canonicalFilePath,
+				},
+			})
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypePublicStatic,
+				Event: fsnotify.Event{
+					Name: equivalentFilePath,
+				},
+			})
 
-	t.Run("other watched file can request restart without go compile", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{}
-		work.AddImplicitWork(eventpipeline.ClassifiedEvent{
-			FileType: eventpipeline.FileTypeOther,
-			WatchedFile: &wave.WatchedFile{
-				RestartApp: true,
-			},
-		})
-		if work.Build.CompileGo {
-			t.Fatal("did not expect build.compileGo=true")
-		}
-		if !work.Restart.RestartApp {
-			t.Fatal("expected restart.restartApp=true")
-		}
-	})
+			if len(work.Build.PublicStaticChangedFilePaths) != 1 {
+				t.Fatalf(
+					"expected one normalized public static path, got %#v",
+					work.Build.PublicStaticChangedFilePaths,
+				)
+			}
+			if work.Build.PublicStaticChangedFilePaths[0] != expectedNormalizedPath {
+				t.Fatalf(
+					"expected normalized public static path %q, got %#v",
+					expectedNormalizedPath,
+					work.Build.PublicStaticChangedFilePaths,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"private static file requests private file processing",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
+			firstPrivatePath := "/tmp/private/a.txt"
+			secondPrivatePath := "/tmp/private/b.txt"
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypePrivateStatic,
+				Event: fsnotify.Event{
+					Name: firstPrivatePath,
+				},
+			})
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypePrivateStatic,
+				Event: fsnotify.Event{
+					Name: secondPrivatePath,
+				},
+			})
+			if !work.Build.ProcessPrivateFiles {
+				t.Fatal("expected build.processPrivateFiles=true")
+			}
+			if len(work.Build.PrivateStaticChangedFilePaths) != 2 {
+				t.Fatalf(
+					"expected two tracked private static paths, got %#v",
+					work.Build.PrivateStaticChangedFilePaths,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"other watched file can request restart without go compile",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{}
+			work.AddImplicitWork(eventpipeline.ClassifiedEvent{
+				FileType: eventpipeline.FileTypeOther,
+				WatchedFile: &wave.WatchedFile{
+					RestartApp: true,
+				},
+			})
+			if work.Build.CompileGo {
+				t.Fatal("did not expect build.compileGo=true")
+			}
+			if !work.Restart.RestartApp {
+				t.Fatal("expected restart.restartApp=true")
+			}
+		},
+	)
 }
 
 func TestWorkSetDetermineBrowserBehavior(t *testing.T) {
@@ -714,19 +911,25 @@ func TestWorkSetDetermineBrowserBehavior(t *testing.T) {
 		}
 	})
 
-	t.Run("revalidate preference overrides hot reload optimizations", func(t *testing.T) {
-		work := &eventpipeline.WorkSet{
-			PreferRevalidate: true,
-			Build: eventpipeline.BuildPhaseDecision{
-				BuildNormalCSS: true,
-			},
-		}
-		work.DetermineBrowserBehavior(true)
+	t.Run(
+		"revalidate preference overrides hot reload optimizations",
+		func(t *testing.T) {
+			work := &eventpipeline.WorkSet{
+				PreferRevalidate: true,
+				Build: eventpipeline.BuildPhaseDecision{
+					BuildNormalCSS: true,
+				},
+			}
+			work.DetermineBrowserBehavior(true)
 
-		if work.Browser.Action != eventpipeline.BrowserPhaseActionRevalidate {
-			t.Fatalf("expected revalidate action, got %v", work.Browser.Action)
-		}
-	})
+			if work.Browser.Action != eventpipeline.BrowserPhaseActionRevalidate {
+				t.Fatalf(
+					"expected revalidate action, got %v",
+					work.Browser.Action,
+				)
+			}
+		},
+	)
 
 	t.Run("css-only work uses css hot reload", func(t *testing.T) {
 		work := &eventpipeline.WorkSet{
@@ -736,7 +939,10 @@ func TestWorkSetDetermineBrowserBehavior(t *testing.T) {
 		}
 		work.DetermineBrowserBehavior(true)
 		if work.Browser.Action != eventpipeline.BrowserPhaseActionHotReloadCSS {
-			t.Fatalf("expected hot reload css action, got %v", work.Browser.Action)
+			t.Fatalf(
+				"expected hot reload css action, got %v",
+				work.Browser.Action,
+			)
 		}
 	})
 
@@ -748,7 +954,10 @@ func TestWorkSetDetermineBrowserBehavior(t *testing.T) {
 		}
 		work.DetermineBrowserBehavior(true)
 		if work.Browser.Action != eventpipeline.BrowserPhaseActionInvalidateVite {
-			t.Fatalf("expected invalidate vite action, got %v", work.Browser.Action)
+			t.Fatalf(
+				"expected invalidate vite action, got %v",
+				work.Browser.Action,
+			)
 		}
 	})
 
@@ -784,8 +993,10 @@ func TestDeriveBrowserPhaseResolutionForWorkSet(t *testing.T) {
 		ExpectedResolution eventpipeline.BrowserPhaseResolution
 	}{
 		{
-			Name:             "restart takes precedence over revalidate preference",
-			RestartDecision:  eventpipeline.RestartPhaseDecision{RestartApp: true},
+			Name: "restart takes precedence over revalidate preference",
+			RestartDecision: eventpipeline.RestartPhaseDecision{
+				RestartApp: true,
+			},
 			PreferRevalidate: true,
 			UsingVite:        true,
 			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
@@ -796,8 +1007,10 @@ func TestDeriveBrowserPhaseResolutionForWorkSet(t *testing.T) {
 			},
 		},
 		{
-			Name:             "revalidate takes precedence over css-only optimization",
-			BuildDecision:    eventpipeline.BuildPhaseDecision{BuildNormalCSS: true},
+			Name: "revalidate takes precedence over css-only optimization",
+			BuildDecision: eventpipeline.BuildPhaseDecision{
+				BuildNormalCSS: true,
+			},
 			PreferRevalidate: true,
 			UsingVite:        false,
 			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
@@ -833,15 +1046,19 @@ func TestDeriveBrowserPhaseResolutionForWorkSet(t *testing.T) {
 			},
 		},
 		{
-			Name:          "css-only work uses hot reload css",
-			BuildDecision: eventpipeline.BuildPhaseDecision{BuildCriticalCSS: true},
+			Name: "css-only work uses hot reload css",
+			BuildDecision: eventpipeline.BuildPhaseDecision{
+				BuildCriticalCSS: true,
+			},
 			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
 				Action: eventpipeline.BrowserPhaseActionHotReloadCSS,
 			},
 		},
 		{
-			Name:          "public static work invalidates vite",
-			BuildDecision: eventpipeline.BuildPhaseDecision{ProcessPublicFiles: true},
+			Name: "public static work invalidates vite",
+			BuildDecision: eventpipeline.BuildPhaseDecision{
+				ProcessPublicFiles: true,
+			},
 			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
 				Action: eventpipeline.BrowserPhaseActionInvalidateVite,
 			},
@@ -874,9 +1091,11 @@ func TestDeriveBrowserPhaseResolutionForWorkSet(t *testing.T) {
 			},
 		},
 		{
-			Name:          "private static work uses hard reload",
-			BuildDecision: eventpipeline.BuildPhaseDecision{ProcessPrivateFiles: true},
-			UsingVite:     true,
+			Name: "private static work uses hard reload",
+			BuildDecision: eventpipeline.BuildPhaseDecision{
+				ProcessPrivateFiles: true,
+			},
+			UsingVite: true,
 			ExpectedResolution: eventpipeline.BrowserPhaseResolution{
 				Action:         eventpipeline.BrowserPhaseActionHardReload,
 				ApplyWaitFlags: true,

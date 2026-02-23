@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/lab/vitecmd"
@@ -70,6 +69,8 @@ type runtimeServer struct {
 	WaitingForBuildRetry          bool
 	ReloadReadinessWaitCancel     context.CancelFunc
 	ReloadReadinessWaitGeneration uint64
+	ViteInvalidateCancel          context.CancelFunc
+	ViteInvalidateGeneration      uint64
 
 	NextRunCycleID       uint64
 	CurrentRunCycleScope *restartengine.RunCycleScope
@@ -1016,6 +1017,7 @@ func (server *runtimeServer) WaitForBuildRetry() restartengine.RestartRequest {
 // CleanupForRebuild performs stop/cancel tasks before next run cycle.
 func (server *runtimeServer) CleanupForRebuild() {
 	server.cancelReloadReadinessWait()
+	server.cancelViteInvalidate()
 	server.cancelAndJoinCurrentRunCycleScope()
 	server.cancelConcurrentNoWaitHookLifecycleContext()
 
@@ -1185,8 +1187,15 @@ func (server *runtimeServer) cycleViteAndWaitForReadinessWithContext(
 	return server.WaitForViteWithContext(readinessContext)
 }
 
-// CallViteFilemapInvalidate calls configured invalidate endpoint in Vite runtime.
-func (server *runtimeServer) CallViteFilemapInvalidate() error {
+// CallViteFilemapInvalidateWithContext calls configured invalidate endpoint in
+// Vite runtime with explicit cancellation context.
+func (server *runtimeServer) CallViteFilemapInvalidateWithContext(
+	invalidateContext context.Context,
+) error {
+	if invalidateContext == nil {
+		invalidateContext = context.Background()
+	}
+
 	viteContext := server.currentViteContext()
 	if viteContext == nil {
 		return errors.New("vite not running")
@@ -1204,9 +1213,8 @@ func (server *runtimeServer) CallViteFilemapInvalidate() error {
 		if requestCreateError != nil {
 			return 0, requestCreateError
 		}
-		response, requestError := (&http.Client{
-			Timeout: 2 * time.Second,
-		}).Do(request)
+		request = request.WithContext(invalidateContext)
+		response, requestError := (&http.Client{}).Do(request)
 		if requestError != nil {
 			return 0, requestError
 		}
@@ -1220,29 +1228,128 @@ func (server *runtimeServer) CallViteFilemapInvalidate() error {
 	if primaryRequestError != nil {
 		return primaryRequestError
 	}
-	if primaryStatusCode >= 400 && primaryStatusCode != http.StatusNotFound {
+	if primaryStatusCode >= 400 {
 		return fmt.Errorf(
 			"vite invalidate endpoint returned %d",
 			primaryStatusCode,
 		)
 	}
-	if primaryStatusCode < 400 {
-		return nil
+	return nil
+}
+
+// CallFrameworkRuntimeReloadEndpointWithContext calls one framework runtime
+// reload endpoint on the running app process.
+func (server *runtimeServer) CallFrameworkRuntimeReloadEndpointWithContext(
+	reloadContext context.Context,
+	reloadRequest wave.FrameworkRuntimeReloadRequest,
+) error {
+	normalizedEndpointPath := strings.TrimSpace(reloadRequest.EndpointPath)
+	if normalizedEndpointPath == "" {
+		return errors.New("framework runtime reload endpoint path is required")
+	}
+	if !strings.HasPrefix(normalizedEndpointPath, "/") {
+		normalizedEndpointPath = "/" + normalizedEndpointPath
 	}
 
-	fallbackStatusCode, fallbackRequestError := callInvalidateEndpoint(
-		"/__wave/vite-filemap-invalidate",
-	)
-	if fallbackRequestError != nil {
-		return fallbackRequestError
+	if reloadContext == nil {
+		reloadContext = context.Background()
 	}
-	if fallbackStatusCode >= 400 {
+	reloadURL := runtimeprocess.ResolveReadinessProbeURL(
+		runtimeprocess.LocalReadinessProbeHostIPv4,
+		server.MustGetPort(),
+		normalizedEndpointPath,
+	)
+	reloadEndpointRequest, requestCreateError := http.NewRequestWithContext(
+		reloadContext,
+		http.MethodPost,
+		reloadURL,
+		nil,
+	)
+	if requestCreateError != nil {
+		return fmt.Errorf("create request: %w", requestCreateError)
+	}
+	applyFrameworkRuntimeReloadRequestHeaders(
+		reloadEndpointRequest,
+		reloadRequest,
+	)
+
+	reloadEndpointResponse, requestError := (&http.Client{}).Do(
+		reloadEndpointRequest,
+	)
+	if requestError != nil {
+		return fmt.Errorf("request failed: %w", requestError)
+	}
+	defer reloadEndpointResponse.Body.Close()
+	if reloadEndpointResponse.StatusCode != http.StatusOK {
 		return fmt.Errorf(
-			"vite invalidate endpoint returned %d",
-			fallbackStatusCode,
+			"endpoint returned %d",
+			reloadEndpointResponse.StatusCode,
+		)
+	}
+
+	return nil
+}
+
+func applyFrameworkRuntimeReloadRequestHeaders(
+	request *http.Request,
+	reloadRequest wave.FrameworkRuntimeReloadRequest,
+) {
+	if request == nil {
+		return
+	}
+
+	trimmedReloadAttemptID := strings.TrimSpace(reloadRequest.ReloadAttemptID)
+	if trimmedReloadAttemptID != "" {
+		request.Header.Set(
+			wave.FrameworkRuntimeReloadAttemptIDHeaderName,
+			trimmedReloadAttemptID,
+		)
+	}
+
+	trimmedExpectedBuildID := strings.TrimSpace(reloadRequest.ExpectedBuildID)
+	if trimmedExpectedBuildID != "" {
+		request.Header.Set(
+			wave.FrameworkRuntimeReloadExpectedBuildIDHeaderName,
+			trimmedExpectedBuildID,
+		)
+	}
+
+	trimmedReloadTrigger := strings.TrimSpace(reloadRequest.ReloadTrigger)
+	if trimmedReloadTrigger != "" {
+		request.Header.Set(
+			wave.FrameworkRuntimeReloadTriggerHeaderName,
+			trimmedReloadTrigger,
+		)
+	}
+}
+
+func (server *runtimeServer) executeFrameworkRuntimeReloadRequestsWithContext(
+	reloadContext context.Context,
+	reloadRequests []wave.FrameworkRuntimeReloadRequest,
+) error {
+	for _, reloadRequest := range reloadRequests {
+		reloadError := server.CallFrameworkRuntimeReloadEndpointWithContext(
+			reloadContext,
+			reloadRequest,
+		)
+		if reloadError == nil {
+			continue
+		}
+		return fmt.Errorf(
+			"framework runtime reload request failed (endpoint=%q attempt=%q expected_build_id=%q trigger=%q): %w",
+			strings.TrimSpace(reloadRequest.EndpointPath),
+			strings.TrimSpace(reloadRequest.ReloadAttemptID),
+			strings.TrimSpace(reloadRequest.ExpectedBuildID),
+			strings.TrimSpace(reloadRequest.ReloadTrigger),
+			reloadError,
 		)
 	}
 	return nil
+}
+
+// CallViteFilemapInvalidate calls configured invalidate endpoint in Vite runtime.
+func (server *runtimeServer) CallViteFilemapInvalidate() error {
+	return server.CallViteFilemapInvalidateWithContext(context.Background())
 }
 
 // WaitForVite waits for vite readiness on known probe URLs.
@@ -1317,10 +1424,13 @@ func (server *runtimeServer) BroadcastReload(
 		previousWaitCancel()
 	}
 
-	requiresReadinessWait := reloadOptions.WaitApp ||
+	requiresAsynchronousReloadExecution := len(
+		reloadOptions.FrameworkRuntimeReloadRequests,
+	) > 0 ||
+		reloadOptions.WaitApp ||
 		reloadOptions.WaitVite ||
 		reloadOptions.CycleVite
-	if !requiresReadinessWait {
+	if !requiresAsynchronousReloadExecution {
 		server.broadcastReloadPayloadIfGenerationCurrent(
 			reloadBroadcastGeneration,
 			reloadOptions.Payload,
@@ -1465,13 +1575,15 @@ func (server *runtimeServer) ExecuteBrowserPhase(work *eventpipeline.WorkSet) {
 			browserDecision,
 			server.Cfg.UsingVite(),
 		) {
-			if invalidateError := server.CallViteFilemapInvalidate(); invalidateError == nil {
+			if server.currentViteContext() != nil {
+				server.executeInvalidateViteBrowserPhaseAsync(browserDecision)
 				return
-			} else if server.Log != nil {
+			}
+			if server.Log != nil {
 				server.Log.Warn(
 					"vite invalidate endpoint failed; falling back to hard reload",
 					"error",
-					invalidateError,
+					errors.New("vite not running"),
 				)
 			}
 		}
@@ -1491,6 +1603,10 @@ func (server *runtimeServer) ExecuteBrowserPhase(work *eventpipeline.WorkSet) {
 		if !hasReloadOptions {
 			return
 		}
+		reloadOptions.FrameworkRuntimeReloadRequests = append(
+			[]wave.FrameworkRuntimeReloadRequest(nil),
+			work.FrameworkRuntimeReloadRequests...,
+		)
 		server.BroadcastReload(reloadOptions)
 
 	case eventpipeline.BrowserPhaseExecutionCategoryHotReloadCSS:
@@ -2030,6 +2146,145 @@ func (server *runtimeServer) cancelReloadReadinessWait() {
 	}
 }
 
+// beginViteInvalidateGeneration advances invalidate generation and returns any
+// previous invalidate cancellation handle.
+func (server *runtimeServer) beginViteInvalidateGeneration() (
+	uint64,
+	context.CancelFunc,
+) {
+	if server == nil {
+		return 0, nil
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	server.ViteInvalidateGeneration++
+	invalidateGeneration := server.ViteInvalidateGeneration
+	previousInvalidateCancel := server.ViteInvalidateCancel
+	server.ViteInvalidateCancel = nil
+	return invalidateGeneration, previousInvalidateCancel
+}
+
+// setViteInvalidateCancelForGeneration records cancel function only when
+// generation is current.
+func (server *runtimeServer) setViteInvalidateCancelForGeneration(
+	invalidateGeneration uint64,
+	invalidateCancel context.CancelFunc,
+) bool {
+	if server == nil {
+		return false
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if invalidateGeneration != server.ViteInvalidateGeneration {
+		return false
+	}
+	server.ViteInvalidateCancel = invalidateCancel
+	return true
+}
+
+// clearViteInvalidateCancelForGeneration clears cancel function when
+// generation matches current invalidate generation.
+func (server *runtimeServer) clearViteInvalidateCancelForGeneration(
+	invalidateGeneration uint64,
+) {
+	if server == nil {
+		return
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if invalidateGeneration == server.ViteInvalidateGeneration {
+		server.ViteInvalidateCancel = nil
+	}
+}
+
+// isViteInvalidateGenerationCurrent reports whether generation is still
+// current.
+func (server *runtimeServer) isViteInvalidateGenerationCurrent(
+	invalidateGeneration uint64,
+) bool {
+	if server == nil {
+		return false
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return invalidateGeneration == server.ViteInvalidateGeneration
+}
+
+// cancelViteInvalidate cancels the currently active invalidate generation.
+func (server *runtimeServer) cancelViteInvalidate() {
+	_, invalidateCancel := server.beginViteInvalidateGeneration()
+	if invalidateCancel != nil {
+		invalidateCancel()
+	}
+}
+
+// executeInvalidateViteBrowserPhaseAsync runs invalidate request out of the
+// watcher batch critical path and schedules hard-reload fallback when needed.
+func (server *runtimeServer) executeInvalidateViteBrowserPhaseAsync(
+	browserDecision eventpipeline.BrowserPhaseDecision,
+) {
+	invalidateGeneration, previousInvalidateCancel := server.beginViteInvalidateGeneration()
+	if previousInvalidateCancel != nil {
+		previousInvalidateCancel()
+	}
+
+	server.launchRunCycleScopedAsyncWorkOrDetached(
+		func(cycleContext context.Context) {
+			if cycleContext == nil {
+				cycleContext = context.Background()
+			}
+
+			invalidateContext, cancelInvalidateContext := context.WithCancel(
+				cycleContext,
+			)
+			if !server.setViteInvalidateCancelForGeneration(
+				invalidateGeneration,
+				cancelInvalidateContext,
+			) {
+				cancelInvalidateContext()
+				return
+			}
+			defer cancelInvalidateContext()
+			defer server.clearViteInvalidateCancelForGeneration(
+				invalidateGeneration,
+			)
+
+			invalidateError := server.CallViteFilemapInvalidateWithContext(
+				invalidateContext,
+			)
+			if invalidateError == nil {
+				return
+			}
+			if invalidateContext.Err() != nil {
+				return
+			}
+			if !server.isViteInvalidateGenerationCurrent(invalidateGeneration) {
+				return
+			}
+			if server.Log != nil {
+				server.Log.Warn(
+					"vite invalidate endpoint failed; falling back to hard reload",
+					"error",
+					invalidateError,
+				)
+			}
+
+			fallbackDecision := eventpipeline.ResolveBrowserDecisionAfterInvalidateViteFallback(
+				browserDecision,
+				server.Cfg.UsingVite(),
+			)
+			reloadOptions, hasReloadOptions := eventpipeline.PlanBrowserReloadForAction(
+				fallbackDecision.Action,
+				fallbackDecision,
+			)
+			if !hasReloadOptions {
+				return
+			}
+			server.BroadcastReload(reloadOptions)
+		},
+	)
+}
+
 func (server *runtimeServer) broadcastReloadPayloadIfGenerationCurrent(
 	reloadBroadcastGeneration uint64,
 	payload broadcast.Payload,
@@ -2061,6 +2316,26 @@ func (server *runtimeServer) broadcastReloadAfterReadinessWithGeneration(
 	defer server.clearReloadReadinessWaitCancelForGeneration(
 		reloadBroadcastGeneration,
 	)
+
+	frameworkRuntimeReloadError := server.executeFrameworkRuntimeReloadRequestsWithContext(
+		readinessContext,
+		reloadOptions.FrameworkRuntimeReloadRequests,
+	)
+	if frameworkRuntimeReloadError != nil {
+		if readinessContext == nil || readinessContext.Err() == nil {
+			if server.isReloadReadinessWaitGenerationCurrent(
+				reloadBroadcastGeneration,
+			) {
+				server.Log.Warn(
+					"framework runtime reload request failed; scheduling restart without go recompilation",
+					"error",
+					frameworkRuntimeReloadError,
+				)
+				server.TriggerRestartNoGo()
+			}
+		}
+		return
+	}
 
 	if !server.waitForReloadReadiness(readinessContext, reloadOptions) {
 		if readinessContext == nil || readinessContext.Err() == nil {

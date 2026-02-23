@@ -6,9 +6,9 @@ import {
 	handleRedirects,
 	type RedirectData,
 } from "../redirects.ts";
-import type { NavigateProps, SubmitOptions, SubmissionEntry } from "./types.ts";
-import { hasSubmissionOperationOwnership } from "./types.ts";
 import { syncBuildIDFromResponse } from "./runtime_navigation_successful_runtime.ts";
+import type { NavigateProps, SubmissionEntry, SubmitOptions } from "./types.ts";
+import { hasSubmissionOperationOwnership } from "./types.ts";
 
 type SubmissionLifecycle = {
 	abortController: AbortController;
@@ -25,10 +25,40 @@ export type SubmitStalenessCheckpoint =
 	| "pre_success_return"
 	| "post_auto_revalidate";
 
+const submitStalenessContinueReasonByCheckpoint = {
+	post_request: "submit_staleness_post_request_continue_current",
+	pre_finalize: "submit_staleness_pre_finalize_continue_current",
+	post_response_classification:
+		"submit_staleness_post_response_classification_continue_current",
+	post_redirect_effectuation:
+		"submit_staleness_post_redirect_effectuation_continue_current",
+	pre_success_return: "submit_staleness_pre_success_return_continue_current",
+	post_auto_revalidate:
+		"submit_staleness_post_auto_revalidate_continue_current",
+} as const satisfies Record<SubmitStalenessCheckpoint, string>;
+
+const submitStalenessStopReasonByCheckpoint = {
+	post_request: "submit_staleness_post_request_stop_not_current",
+	pre_finalize: "submit_staleness_pre_finalize_stop_not_current",
+	post_response_classification:
+		"submit_staleness_post_response_classification_stop_not_current",
+	post_redirect_effectuation:
+		"submit_staleness_post_redirect_effectuation_stop_not_current",
+	pre_success_return: "submit_staleness_pre_success_return_stop_not_current",
+	post_auto_revalidate:
+		"submit_staleness_post_auto_revalidate_stop_not_current",
+} as const satisfies Record<SubmitStalenessCheckpoint, string>;
+
 type SubmitStalenessContinueReason =
-	`submit_staleness_${SubmitStalenessCheckpoint}_continue_current`;
+	(typeof submitStalenessContinueReasonByCheckpoint)[SubmitStalenessCheckpoint];
 type SubmitStalenessStopReason =
-	`submit_staleness_${SubmitStalenessCheckpoint}_stop_not_current`;
+	(typeof submitStalenessStopReasonByCheckpoint)[SubmitStalenessCheckpoint];
+
+const submissionLifecycleReason = {
+	dedupedByNewerSubmission: "submission_deduped_by_newer_submission",
+	started: "submission_started",
+	finished: "submission_finished",
+} as const;
 
 export type SubmitStalenessCheckpointExecutionPlan =
 	| {
@@ -50,14 +80,14 @@ export function decideSubmitStalenessCheckpointExecutionPlan(props: {
 		return {
 			checkpoint: props.checkpoint,
 			type: "continue",
-			reason: `submit_staleness_${props.checkpoint}_continue_current`,
+			reason: submitStalenessContinueReasonByCheckpoint[props.checkpoint],
 		};
 	}
 
 	return {
 		checkpoint: props.checkpoint,
 		type: "stop",
-		reason: `submit_staleness_${props.checkpoint}_stop_not_current`,
+		reason: submitStalenessStopReasonByCheckpoint[props.checkpoint],
 	};
 }
 
@@ -65,19 +95,19 @@ export type SubmissionLifecycleCommand =
 	| {
 			type: "abort_submission_entry";
 			submissionEntry: SubmissionEntry;
-			reason: "submission_deduped_by_newer_submission";
+			reason: typeof submissionLifecycleReason.dedupedByNewerSubmission;
 	  }
 	| {
 			type: "set_submission_entry";
 			submissionKey: string | symbol;
 			submissionEntry: SubmissionEntry;
-			reason: "submission_started";
+			reason: typeof submissionLifecycleReason.started;
 	  }
 	| {
 			type: "delete_submission_entry";
 			submissionKey: string | symbol;
 			submissionEntry: SubmissionEntry;
-			reason: "submission_finished";
+			reason: typeof submissionLifecycleReason.finished;
 	  }
 	| {
 			type: "emit_submission_state_transition";
@@ -90,9 +120,9 @@ export type SubmissionLifecycleCommand =
 	| {
 			type: "schedule_status_update";
 			reason:
-				| "submission_started"
-				| "submission_finished"
-				| "submission_deduped_by_newer_submission";
+				| typeof submissionLifecycleReason.started
+				| typeof submissionLifecycleReason.finished
+				| typeof submissionLifecycleReason.dedupedByNewerSubmission;
 	  };
 
 export function buildSubmissionLifecycleBeginCommands(props: {
@@ -108,14 +138,14 @@ export function buildSubmissionLifecycleBeginCommands(props: {
 			{
 				type: "abort_submission_entry",
 				submissionEntry: existingSubmissionEntry,
-				reason: "submission_deduped_by_newer_submission",
+				reason: submissionLifecycleReason.dedupedByNewerSubmission,
 			},
 			{
 				type: "emit_submission_state_transition",
 				submissionEntry: existingSubmissionEntry,
 				fromState: "submitting",
 				toState: "aborted",
-				reason: "submission_deduped_by_newer_submission",
+				reason: submissionLifecycleReason.dedupedByNewerSubmission,
 				causedByOperationID: submissionEntry.operationID,
 			},
 		);
@@ -126,18 +156,18 @@ export function buildSubmissionLifecycleBeginCommands(props: {
 			type: "set_submission_entry",
 			submissionKey,
 			submissionEntry,
-			reason: "submission_started",
+			reason: submissionLifecycleReason.started,
 		},
 		{
 			type: "emit_submission_state_transition",
 			submissionEntry,
 			fromState: "none",
 			toState: "submitting",
-			reason: "submission_started",
+			reason: submissionLifecycleReason.started,
 		},
 		{
 			type: "schedule_status_update",
-			reason: "submission_started",
+			reason: submissionLifecycleReason.started,
 		},
 	);
 
@@ -159,21 +189,21 @@ export function buildSubmissionLifecycleFinishCommands(props: {
 				type: "delete_submission_entry",
 				submissionKey,
 				submissionEntry,
-				reason: "submission_finished",
+				reason: submissionLifecycleReason.finished,
 			},
 			{
 				type: "emit_submission_state_transition",
 				submissionEntry,
 				fromState: "submitting",
 				toState: "removed",
-				reason: "submission_finished",
+				reason: submissionLifecycleReason.finished,
 			},
 		);
 	}
 
 	commands.push({
 		type: "schedule_status_update",
-		reason: "submission_finished",
+		reason: submissionLifecycleReason.finished,
 	});
 
 	return commands;
@@ -479,112 +509,6 @@ async function readSubmitSuccessResponseData(
 	return undefined;
 }
 
-type SubmitResponseAction =
-	| {
-			type: "error";
-			error: string;
-	  }
-	| {
-			type: "redirectShould";
-			redirectData: RedirectData;
-	  }
-	| {
-			type: "parseJSON";
-			shouldAutoRevalidate: boolean;
-	  };
-
-function decideSubmitResponseAction(props: {
-	response: Response;
-	redirectData: RedirectData | null;
-	requestInit?: RequestInit;
-	options?: SubmitOptions;
-}): SubmitResponseAction {
-	const { response, redirectData, requestInit, options } = props;
-
-	if (!response.ok) {
-		return {
-			type: "error",
-			error: String(response.status),
-		};
-	}
-
-	if (redirectData?.status === "should") {
-		return {
-			type: "redirectShould",
-			redirectData,
-		};
-	}
-
-	return {
-		type: "parseJSON",
-		shouldAutoRevalidate: shouldAutoRevalidateSubmitResult({
-			requestInit,
-			redirectData,
-			options,
-		}),
-	};
-}
-
-async function executeSubmitResponseAction<T>(props: {
-	action: SubmitResponseAction;
-	response: Response;
-	navigate: (props: NavigateProps) => Promise<{ didNavigate: boolean }>;
-	isSubmissionCurrent: () => boolean;
-}): Promise<SubmitResult<T>> {
-	const { action, response, navigate, isSubmissionCurrent } = props;
-
-	switch (action.type) {
-		case "error":
-			return getSubmitErrorResult<T>(action.error);
-		case "redirectShould": {
-			const redirectResult = await effectuateRedirectDataResult(
-				action.redirectData,
-				0,
-			);
-			const staleAfterRedirectEffectuation =
-				getStaleSubmitResultFromCheckpointIfAny<T>({
-					checkpoint: "post_redirect_effectuation",
-					isSubmissionCurrent,
-				});
-			if (staleAfterRedirectEffectuation) {
-				return staleAfterRedirectEffectuation;
-			}
-			if (!redirectResult || redirectResult.status !== "did") {
-				return getSubmitRedirectFailureResult<T>();
-			}
-			return { success: true, data: undefined as T };
-		}
-		case "parseJSON": {
-			const data = await readSubmitSuccessResponseData(response);
-			const staleBeforeReturn =
-				getStaleSubmitResultFromCheckpointIfAny<T>({
-					checkpoint: "pre_success_return",
-					isSubmissionCurrent,
-				});
-			if (staleBeforeReturn) {
-				return staleBeforeReturn;
-			}
-
-			if (action.shouldAutoRevalidate) {
-				await navigate({
-					href: window.location.href,
-					navigationType: "revalidation",
-				});
-				const staleAfterAutoRevalidate =
-					getStaleSubmitResultFromCheckpointIfAny<T>({
-						checkpoint: "post_auto_revalidate",
-						isSubmissionCurrent,
-					});
-				if (staleAfterAutoRevalidate) {
-					return staleAfterAutoRevalidate;
-				}
-			}
-
-			return { success: true, data: data as T };
-		}
-	}
-}
-
 function getSubmitRuntimeErrorResult<T>(props: {
 	error: unknown;
 	abortSignal: AbortSignal;
@@ -642,12 +566,16 @@ export async function executeSubmitRuntime<T = unknown>(
 			return staleBeforeFinalize;
 		}
 
-		const responseAction = decideSubmitResponseAction({
-			response,
-			redirectData,
-			requestInit,
-			options,
-		});
+		const shouldReturnSubmitError = !response.ok;
+		const shouldEffectuateRedirect = redirectData?.status === "should";
+		const shouldAutoRevalidate =
+			!shouldReturnSubmitError &&
+			!shouldEffectuateRedirect &&
+			shouldAutoRevalidateSubmitResult({
+				requestInit,
+				redirectData,
+				options,
+			});
 		const staleAfterResponseClassification =
 			getStaleSubmitResultFromCheckpointIfAny<T>({
 				checkpoint: "post_response_classification",
@@ -657,12 +585,54 @@ export async function executeSubmitRuntime<T = unknown>(
 			return staleAfterResponseClassification;
 		}
 
-		return await executeSubmitResponseAction({
-			action: responseAction,
-			response,
-			navigate: context.navigate,
+		if (shouldReturnSubmitError) {
+			return getSubmitErrorResult<T>(String(response.status));
+		}
+
+		if (shouldEffectuateRedirect) {
+			const redirectResult = await effectuateRedirectDataResult(
+				redirectData,
+				0,
+			);
+			const staleAfterRedirectEffectuation =
+				getStaleSubmitResultFromCheckpointIfAny<T>({
+					checkpoint: "post_redirect_effectuation",
+					isSubmissionCurrent: submissionLifecycle.isCurrent,
+				});
+			if (staleAfterRedirectEffectuation) {
+				return staleAfterRedirectEffectuation;
+			}
+			if (!redirectResult || redirectResult.status !== "did") {
+				return getSubmitRedirectFailureResult<T>();
+			}
+			return { success: true, data: undefined as T };
+		}
+
+		const data = await readSubmitSuccessResponseData(response);
+		const staleBeforeReturn = getStaleSubmitResultFromCheckpointIfAny<T>({
+			checkpoint: "pre_success_return",
 			isSubmissionCurrent: submissionLifecycle.isCurrent,
 		});
+		if (staleBeforeReturn) {
+			return staleBeforeReturn;
+		}
+
+		if (shouldAutoRevalidate) {
+			await context.navigate({
+				href: window.location.href,
+				navigationType: "revalidation",
+			});
+			const staleAfterAutoRevalidate =
+				getStaleSubmitResultFromCheckpointIfAny<T>({
+					checkpoint: "post_auto_revalidate",
+					isSubmissionCurrent: submissionLifecycle.isCurrent,
+				});
+			if (staleAfterAutoRevalidate) {
+				return staleAfterAutoRevalidate;
+			}
+		}
+
+		return { success: true, data: data as T };
 	} catch (error) {
 		return getSubmitRuntimeErrorResult<T>({
 			error,

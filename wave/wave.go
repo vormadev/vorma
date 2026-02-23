@@ -231,6 +231,15 @@ const (
 	PublicFileMapJSONName = "filemap.json"
 	// FileMapJSGlobPattern matches hashed public filemap runtime script files.
 	FileMapJSGlobPattern = HashedOutputPrefix + "vorma_internal_public_filemap_*.js"
+	// FrameworkRuntimeReloadAttemptIDHeaderName is the request header carrying
+	// framework runtime reload attempt identifier.
+	FrameworkRuntimeReloadAttemptIDHeaderName = "X-Vorma-Reload-Attempt-Id"
+	// FrameworkRuntimeReloadExpectedBuildIDHeaderName is the request header
+	// carrying expected framework runtime build identifier.
+	FrameworkRuntimeReloadExpectedBuildIDHeaderName = "X-Vorma-Reload-Expected-Build-Id"
+	// FrameworkRuntimeReloadTriggerHeaderName is the request header carrying
+	// framework runtime reload trigger identifier.
+	FrameworkRuntimeReloadTriggerHeaderName = "X-Vorma-Reload-Trigger"
 )
 
 // Runtime browser integration defaults.
@@ -497,6 +506,21 @@ type HookContext struct {
 	AppStoppedForBatch bool
 }
 
+// FrameworkRuntimeReloadRequest describes one framework runtime reload request
+// that must be executed before browser reload payload broadcast.
+type FrameworkRuntimeReloadRequest struct {
+	// EndpointPath is the framework runtime endpoint path to call.
+	EndpointPath string
+	// ReloadAttemptID is the attempt identifier propagated as request header.
+	ReloadAttemptID string
+	// ExpectedBuildID is the expected framework build identifier propagated as
+	// request header.
+	ExpectedBuildID string
+	// ReloadTrigger is the reload trigger identifier propagated as request
+	// header.
+	ReloadTrigger string
+}
+
 // RefreshAction specifies what Wave should do after a callback completes.
 // Multiple RefreshActions from different hooks are merged with OR semantics.
 type RefreshAction struct {
@@ -515,6 +539,9 @@ type RefreshAction struct {
 	// RecompileGo recompiles the Go binary before restart.
 	// Only relevant when TriggerRestart is true.
 	RecompileGo bool
+	// FrameworkRuntimeReloadRequest requests one framework runtime reload
+	// endpoint call before browser reload payload broadcast.
+	FrameworkRuntimeReloadRequest *FrameworkRuntimeReloadRequest
 }
 
 // OnChangeHook defines an action to run when a watched file changes.
@@ -585,12 +612,22 @@ func (wf *WatchedFile) Sort() {
 // Merge combines two RefreshActions with OR semantics.
 // TriggerRestart takes precedence over browser reload.
 func (refreshAction RefreshAction) merge(other RefreshAction) RefreshAction {
+	mergedFrameworkRuntimeReloadRequest := refreshAction.FrameworkRuntimeReloadRequest
+	if mergedFrameworkRuntimeReloadRequest == nil {
+		mergedFrameworkRuntimeReloadRequest = other.FrameworkRuntimeReloadRequest
+	}
 	return RefreshAction{
-		ReloadBrowser:  refreshAction.ReloadBrowser || other.ReloadBrowser,
-		WaitForApp:     refreshAction.WaitForApp || other.WaitForApp,
-		WaitForVite:    refreshAction.WaitForVite || other.WaitForVite,
-		TriggerRestart: refreshAction.TriggerRestart || other.TriggerRestart,
-		RecompileGo:    refreshAction.RecompileGo || other.RecompileGo,
+		ReloadBrowser: refreshAction.ReloadBrowser ||
+			other.ReloadBrowser,
+		WaitForApp: refreshAction.WaitForApp ||
+			other.WaitForApp,
+		WaitForVite: refreshAction.WaitForVite ||
+			other.WaitForVite,
+		TriggerRestart: refreshAction.TriggerRestart ||
+			other.TriggerRestart,
+		RecompileGo: refreshAction.RecompileGo ||
+			other.RecompileGo,
+		FrameworkRuntimeReloadRequest: mergedFrameworkRuntimeReloadRequest,
 	}
 }
 
@@ -600,7 +637,8 @@ func (refreshAction RefreshAction) IsZero() bool {
 		!refreshAction.WaitForApp &&
 		!refreshAction.WaitForVite &&
 		!refreshAction.TriggerRestart &&
-		!refreshAction.RecompileGo
+		!refreshAction.RecompileGo &&
+		refreshAction.FrameworkRuntimeReloadRequest == nil
 }
 
 // Lookup resolves a source public asset path to its built public URL.
@@ -957,8 +995,12 @@ func cloneWatchConfig(
 
 	clonedWatchConfig := *watchConfig
 	clonedWatchConfig.Include = cloneFrameworkWatchPatterns(watchConfig.Include)
-	clonedWatchConfig.Exclude.Dirs = append([]string(nil), watchConfig.Exclude.Dirs...)
-	clonedWatchConfig.Exclude.Files = append([]string(nil), watchConfig.Exclude.Files...)
+	clonedWatchConfig.Exclude.Dirs = append(
+		[]string(nil),
+		watchConfig.Exclude.Dirs...)
+	clonedWatchConfig.Exclude.Files = append(
+		[]string(nil),
+		watchConfig.Exclude.Files...)
 
 	return &clonedWatchConfig
 }
@@ -970,7 +1012,10 @@ func cloneFrameworkSchemaExtensions(
 		return nil
 	}
 
-	clonedSchemaExtensions := make(map[string]jsonschema.Entry, len(schemaExtensions))
+	clonedSchemaExtensions := make(
+		map[string]jsonschema.Entry,
+		len(schemaExtensions),
+	)
 	for key, value := range schemaExtensions {
 		clonedSchemaExtensions[key] = value
 	}
@@ -1606,7 +1651,9 @@ func (w *Wave) buildCriticalCSSData(content string) (*criticalCSSData, error) {
 		w.cfg.criticalCSSStyleElementID(),
 	)
 	if err != nil {
-		w.log.Error(fmt.Sprintf("error building critical css style element: %v", err))
+		w.log.Error(
+			fmt.Sprintf("error building critical css style element: %v", err),
+		)
 		return nil, err
 	}
 
@@ -1755,7 +1802,9 @@ func (w *Wave) staticHandler(immutable bool) (http.Handler, error) {
 	}), nil
 }
 
-func (w *Wave) MustStaticMiddleware(immutable bool) func(http.Handler) http.Handler {
+func (w *Wave) MustStaticMiddleware(
+	immutable bool,
+) func(http.Handler) http.Handler {
 	handler, err := w.staticHandler(immutable)
 	if err != nil {
 		w.log.Error("failed to create static handler", "error", err)
@@ -1763,12 +1812,14 @@ func (w *Wave) MustStaticMiddleware(immutable bool) func(http.Handler) http.Hand
 	}
 
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			if w.isPublicAsset(req.URL.Path) {
-				handler.ServeHTTP(rw, req)
-				return
-			}
-			next.ServeHTTP(rw, req)
-		})
+		return http.HandlerFunc(
+			func(rw http.ResponseWriter, req *http.Request) {
+				if w.isPublicAsset(req.URL.Path) {
+					handler.ServeHTTP(rw, req)
+					return
+				}
+				next.ServeHTTP(rw, req)
+			},
+		)
 	}
 }

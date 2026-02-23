@@ -43,9 +43,13 @@ export function computeNavigationStatus(props: {
 	const isRevalidating =
 		lanes.revalidation !== null && lanes.revalidation.phase !== "complete";
 
-	const isSubmitting = Array.from(lanes.submissions.values()).some(
-		(x) => !x.skipGlobalLoadingIndicator,
-	);
+	let isSubmitting = false;
+	for (const submission of lanes.submissions.values()) {
+		if (!submission.skipGlobalLoadingIndicator) {
+			isSubmitting = true;
+			break;
+		}
+	}
 
 	return { isNavigating, isSubmitting, isRevalidating };
 }
@@ -58,17 +62,13 @@ export function createStatusSignaler(props: {
 	const { getStatus, dispatchStatusEvent, debounceMS = 8 } = props;
 	let lastDispatchedStatus: StatusEventDetail | null = null;
 
-	function dispatchStatusEventInternal(): void {
+	const scheduleStatusUpdate = debounce(() => {
 		const newStatus = getStatus();
 		if (jsonDeepEquals(lastDispatchedStatus, newStatus)) {
 			return;
 		}
 		lastDispatchedStatus = newStatus;
 		dispatchStatusEvent(newStatus);
-	}
-
-	const scheduleStatusUpdate = debounce(() => {
-		dispatchStatusEventInternal();
 	}, debounceMS);
 
 	return {
@@ -188,71 +188,23 @@ export function deleteNavigationFromNavigationLanes(props: {
 	onStatusRelevantChange: () => void;
 }): boolean {
 	const { lanes, targetUrl, onStatusRelevantChange } = props;
-	const action = decideDeleteNavigationLaneAction({
+	const matchedLane = matchNavigationLaneByTargetURL({
 		lanes,
 		targetUrl,
 	});
-	return executeDeleteNavigationLaneAction({
-		lanes,
-		action,
-		onStatusRelevantChange,
-	});
-}
-
-type DeleteNavigationLaneAction =
-	| {
-			type: "stop";
-	  }
-	| {
-			type: "clearActive";
-	  }
-	| {
-			type: "deletePrefetch";
-			key: string;
-	  }
-	| {
-			type: "clearRevalidation";
-	  };
-
-function decideDeleteNavigationLaneAction(props: {
-	lanes: NavigationLanes;
-	targetUrl: string;
-}): DeleteNavigationLaneAction {
-	const matchedLane = matchNavigationLaneByTargetURL(props);
 	if (!matchedLane) {
-		return { type: "stop" };
+		return false;
 	}
 
 	switch (matchedLane.lane) {
 		case "active":
-			return { type: "clearActive" };
-		case "prefetch":
-			return {
-				type: "deletePrefetch",
-				key: matchedLane.key,
-			};
-		case "revalidation":
-			return { type: "clearRevalidation" };
-	}
-}
-
-function executeDeleteNavigationLaneAction(props: {
-	lanes: NavigationLanes;
-	action: DeleteNavigationLaneAction;
-	onStatusRelevantChange: () => void;
-}): boolean {
-	const { lanes, action, onStatusRelevantChange } = props;
-	switch (action.type) {
-		case "stop":
-			return false;
-		case "clearActive":
 			lanes.active = null;
 			onStatusRelevantChange();
 			return true;
-		case "deletePrefetch":
-			lanes.prefetch.delete(action.key);
+		case "prefetch":
+			lanes.prefetch.delete(matchedLane.key);
 			return true;
-		case "clearRevalidation":
+		case "revalidation":
 			lanes.revalidation = null;
 			onStatusRelevantChange();
 			return true;
@@ -265,59 +217,15 @@ export function transitionNavigationPhaseInNavigationLanes(props: {
 	phase: NavigationPhase;
 	onStatusRelevantChange: () => void;
 }): void {
-	const action = decideTransitionNavigationPhaseAction(props);
-	executeTransitionNavigationPhaseAction({
-		action,
-		onStatusRelevantChange: props.onStatusRelevantChange,
-	});
-}
-
-type TransitionNavigationPhaseAction =
-	| {
-			type: "stop";
-	  }
-	| {
-			type: "setPhase";
-			entry: NavigationEntry;
-			phase: NavigationPhase;
-			shouldSignalStatusChange: boolean;
-	  };
-
-function decideTransitionNavigationPhaseAction(props: {
-	lanes: NavigationLanes;
-	targetUrl: string;
-	phase: NavigationPhase;
-}): TransitionNavigationPhaseAction {
-	const matchedLane = matchNavigationLaneByTargetURL({
-		lanes: props.lanes,
-		targetUrl: props.targetUrl,
-	});
+	const { lanes, targetUrl, phase, onStatusRelevantChange } = props;
+	const matchedLane = matchNavigationLaneByTargetURL({ lanes, targetUrl });
 	if (!matchedLane) {
-		return { type: "stop" };
+		return;
 	}
 
-	return {
-		type: "setPhase",
-		entry: matchedLane.entry,
-		phase: props.phase,
-		shouldSignalStatusChange: matchedLane.lane !== "prefetch",
-	};
-}
-
-function executeTransitionNavigationPhaseAction(props: {
-	action: TransitionNavigationPhaseAction;
-	onStatusRelevantChange: () => void;
-}): void {
-	const { action, onStatusRelevantChange } = props;
-	switch (action.type) {
-		case "stop":
-			return;
-		case "setPhase":
-			action.entry.phase = action.phase;
-			if (action.shouldSignalStatusChange) {
-				onStatusRelevantChange();
-			}
-			return;
+	matchedLane.entry.phase = phase;
+	if (matchedLane.lane !== "prefetch") {
+		onStatusRelevantChange();
 	}
 }
 

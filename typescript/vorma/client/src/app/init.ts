@@ -2,21 +2,20 @@ import {
 	createPatternRegistry,
 	registerPattern,
 } from "vorma/kit/matcher/register";
-import { setupClientLoaders } from "../core/render_runtime.ts";
-import { ComponentLoader } from "../core/render_runtime.ts";
-import { buildClientModuleMapFromRouteModuleMetadata } from "../core/navigation/runtime_navigation_successful_runtime.ts";
-import { defaultErrorBoundary } from "../ui/helpers.ts";
-import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../platform/url.ts";
-import { HistoryManager } from "../platform/history.ts";
-import { initHMR } from "../core/extras.ts";
-import { scrollStateManager } from "../platform/scroll.ts";
 import { ensureNavigationRuntimeInitialized } from "../client.ts";
-import type { VormaAppConfig } from "./helpers.ts";
+import { initHMR } from "../core/extras.ts";
+import { buildClientModuleMapFromRouteModuleMetadata } from "../core/navigation/runtime_navigation_successful_runtime.ts";
+import { ComponentLoader, setupClientLoaders } from "../core/render_runtime.ts";
+import { HistoryManager } from "../platform/history.ts";
+import { scrollStateManager } from "../platform/scroll.ts";
+import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../platform/url.ts";
+import { defaultErrorBoundary } from "../ui/helpers.ts";
 import {
 	__vormaClientGlobal,
 	type RouteErrorComponent,
 	type VormaClientGlobal,
 } from "./context.ts";
+import type { VormaAppConfig } from "./helpers.ts";
 
 type InitClientOptions = {
 	defaultErrorBoundary?: RouteErrorComponent;
@@ -33,6 +32,9 @@ let touchDetectionRegistered = false;
 let latestRouteManifestProgressiveLoadID = 0;
 
 type RouteManifestRecord = NonNullable<VormaClientGlobal["routeManifest"]>;
+type PrecompiledRouteMatcherPayload = {
+	routeManifest: RouteManifestRecord;
+};
 
 function onBeforeUnload(): void {
 	scrollStateManager.savePageRefreshState();
@@ -118,6 +120,44 @@ function parseRouteManifestPayloadOrThrow(
 	return parsedManifest;
 }
 
+function registerManifestPatterns(props: {
+	manifest: RouteManifestRecord;
+	patternRegistry: VormaClientGlobal["patternRegistry"];
+}): void {
+	const { manifest, patternRegistry } = props;
+	for (const pattern of Object.keys(manifest)) {
+		registerPattern(patternRegistry, pattern);
+	}
+}
+
+function readPrecompiledRouteMatcherPayloadOrNull(): PrecompiledRouteMatcherPayload | null {
+	const precompiledRouteManifest = __vormaClientGlobal.get("routeManifest");
+	if (!precompiledRouteManifest) {
+		return null;
+	}
+
+	return {
+		routeManifest: parseRouteManifestPayloadOrThrow(
+			precompiledRouteManifest,
+		),
+	};
+}
+
+function initializePatternRegistryFromPrecompiledRouteMatcherPayload(): boolean {
+	const payload = readPrecompiledRouteMatcherPayloadOrNull();
+	if (!payload) {
+		return false;
+	}
+
+	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
+	__vormaClientGlobal.set("routeManifest", payload.routeManifest);
+	registerManifestPatterns({
+		manifest: payload.routeManifest,
+		patternRegistry,
+	});
+	return true;
+}
+
 function loadRouteManifestProgressively(): void {
 	const manifestURL = __vormaClientGlobal.get("routeManifestURL");
 	if (!manifestURL) {
@@ -155,10 +195,7 @@ function loadRouteManifestProgressively(): void {
 
 			__vormaClientGlobal.set("routeManifest", manifest);
 
-			// Register all patterns from manifest into the existing registry
-			for (const pattern of Object.keys(manifest)) {
-				registerPattern(patternRegistry, pattern);
-			}
+			registerManifestPatterns({ manifest, patternRegistry });
 		})
 		.catch((error) => {
 			// This is no biggie -- it's a progressive enhancement
@@ -193,7 +230,11 @@ export async function initClient(options: InitClientInput): Promise<void> {
 	initializeClientModuleMapFromInitialRouteState();
 	initializeClientPatternRegistry(options.vormaAppConfig);
 
-	loadRouteManifestProgressively();
+	const didInitializePatternRegistryFromPrecompiledPayload =
+		initializePatternRegistryFromPrecompiledRouteMatcherPayload();
+	if (!didInitializePatternRegistryFromPrecompiledPayload) {
+		loadRouteManifestProgressively();
+	}
 	applyInitClientOptions(options);
 
 	ensureNavigationRuntimeInitialized();

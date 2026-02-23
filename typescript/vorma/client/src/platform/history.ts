@@ -6,26 +6,26 @@ import {
 	type Update,
 } from "history";
 import { resolveAbsoluteHref } from "vorma/kit/url";
-import { dispatchLocationEvent } from "./events.ts";
-import {
-	hasSameDataTarget,
-	hashFragmentFromHash,
-	normalizedHashFragmentFromHash,
-} from "./url.ts";
 import { getNavigationStateAccess } from "../app/context.ts";
+import { dispatchLocationEvent } from "./events.ts";
+import { logError } from "./safety.ts";
 import {
 	__applyScrollState,
 	saveScrollState,
 	scrollStateManager,
 } from "./scroll.ts";
-import { logError } from "./safety.ts";
+import {
+	hasSameDataTarget,
+	hashFragmentFromHash,
+	normalizedHashFragmentFromHash,
+} from "./url.ts";
 
 export type historyInstance = BrowserHistory;
 export type historyListener = (update: Update) => void;
 
 const historyState: {
 	instance: historyInstance | undefined;
-	lastKnownLocation: historyInstance["location"] | undefined;
+	lastKnownLocation: Location | undefined;
 } = {
 	instance: undefined,
 	lastKnownLocation: undefined,
@@ -52,16 +52,14 @@ function getHistoryInstance(): historyInstance {
 	return historyState.instance;
 }
 
-function getLastKnownHistoryLocation(): historyInstance["location"] {
+function getLastKnownHistoryLocation(): Location {
 	if (!historyState.lastKnownLocation) {
 		historyState.lastKnownLocation = getHistoryInstance().location;
 	}
 	return historyState.lastKnownLocation;
 }
 
-function setLastKnownHistoryLocation(
-	location: historyInstance["location"],
-): void {
+function setLastKnownHistoryLocation(location: Location): void {
 	historyState.lastKnownLocation = location;
 }
 
@@ -100,8 +98,8 @@ export function analyzeHistoryListenerPrelude(props: {
 }
 
 function applyHashDrivenPopScrollState(props: {
-	location: historyInstance["location"];
-	lastKnownLocation: historyInstance["location"];
+	location: Location;
+	lastKnownLocation: Location;
 	popWithinSameDoc: boolean;
 }): void {
 	const { location, lastKnownLocation, popWithinSameDoc } = props;
@@ -131,9 +129,7 @@ function applyHashDrivenPopScrollState(props: {
 	}
 }
 
-function buildListenerLocationHref(
-	location: historyInstance["location"],
-): string {
+function buildListenerLocationHref(location: Location): string {
 	return resolveAbsoluteHref({
 		href: `${location.pathname}${location.search}${location.hash}`,
 		baseHref: window.location.origin,
@@ -159,9 +155,7 @@ function attemptHardReloadAfterFailedPopNavigation(): void {
 	}
 }
 
-async function navigateCrossDocumentPop(
-	location: historyInstance["location"],
-): Promise<boolean> {
+async function navigateCrossDocumentPop(location: Location): Promise<boolean> {
 	const result = await getNavigationStateAccess().navigate({
 		href: buildListenerLocationHref(location),
 		navigationType: "browserHistory",
@@ -181,8 +175,8 @@ async function navigateCrossDocumentPop(
 }
 
 async function handlePopNavigationForHistoryUpdate(props: {
-	location: historyInstance["location"];
-	lastKnownLocation: historyInstance["location"];
+	location: Location;
+	lastKnownLocation: Location;
 	popWithinSameDoc: boolean;
 }): Promise<boolean> {
 	const { location, lastKnownLocation, popWithinSameDoc } = props;

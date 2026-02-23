@@ -11,6 +11,7 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/lab/viteutil"
+	"github.com/vormadev/vorma/wave"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -131,6 +132,9 @@ func (v *Vorma) handleDevReloadActionEndpoints(
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return true
 		}
+		if !v.validateDevReloadExpectedBuildIDOrWriteConflict(w, r) {
+			return true
+		}
 		if err := v.devReloadRoutesFromDisk(); err != nil {
 			v.Log.Error(fmt.Sprintf("route reload failed: %s", err))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -144,6 +148,9 @@ func (v *Vorma) handleDevReloadActionEndpoints(
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return true
 		}
+		if !v.validateDevReloadExpectedBuildIDOrWriteConflict(w, r) {
+			return true
+		}
 		if err := v.devReloadTemplateFromDisk(); err != nil {
 			v.Log.Error(fmt.Sprintf("template reload failed: %s", err))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -154,6 +161,43 @@ func (v *Vorma) handleDevReloadActionEndpoints(
 	default:
 		return false
 	}
+}
+
+func (v *Vorma) validateDevReloadExpectedBuildIDOrWriteConflict(
+	w http.ResponseWriter,
+	r *http.Request,
+) bool {
+	if v == nil || r == nil {
+		return true
+	}
+
+	requestExpectedBuildID := strings.TrimSpace(
+		r.Header.Get(wave.FrameworkRuntimeReloadExpectedBuildIDHeaderName),
+	)
+	if requestExpectedBuildID == "" {
+		return true
+	}
+
+	currentBuildID := strings.TrimSpace(v.BuildID())
+	if requestExpectedBuildID == currentBuildID {
+		return true
+	}
+
+	if v.Log != nil {
+		v.Log.Warn(
+			"dev reload endpoint rejected request due to expected build id mismatch",
+			"request_expected_build_id",
+			requestExpectedBuildID,
+			"current_build_id",
+			currentBuildID,
+		)
+	}
+	http.Error(
+		w,
+		"expected build id does not match current build id",
+		http.StatusConflict,
+	)
+	return false
 }
 
 // DevReloadRoutesEndpointPath returns the configured (or default) dev routes

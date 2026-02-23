@@ -224,10 +224,8 @@ export function createNavigationControls(
 	}
 
 	return {
-		createActiveNavigation: (props, intent) =>
-			createActiveNavigationControl(props, intent),
-		createPrefetch: (props, targetUrl) =>
-			createPrefetchControl(props, targetUrl),
-		createRevalidation: (props) => createRevalidationControl(props),
+		createActiveNavigation: createActiveNavigationControl,
+		createPrefetch: createPrefetchControl,
+		createRevalidation: createRevalidationControl,
 	};
 }

@@ -224,7 +224,7 @@ export function createDeterministicRevalidationLane(props: {
 
 	return {
 		runRevalidation,
-		clearQueuedTrailingRequest: clearQueuedTrailingRequest,
+		clearQueuedTrailingRequest,
 		reset,
 	};
 }
@@ -477,11 +477,7 @@ export function createNavigationRuntime(
 			getRevalidationNavigation,
 			setRevalidationNavigation,
 			scheduleStatusUpdate,
-			deleteNavigation: ({ targetUrl, reason }) =>
-				deleteNavigation({
-					targetUrl,
-					reason,
-				}),
+			deleteNavigation,
 			allocateNavigationOperationID: () => {
 				const operationID = nextNavigationOperationID;
 				nextNavigationOperationID += 1;
@@ -507,18 +503,9 @@ export function createNavigationRuntime(
 	): Promise<void> =>
 		processSuccessfulNavigationRuntime(
 			{
-				transitionPhase: ({ targetUrl, phase, reason }): void =>
-					transitionPhase({
-						targetUrl,
-						phase,
-						reason,
-					}),
+				transitionPhase,
 				findNavigationEntry,
-				deleteNavigation: ({ targetUrl, reason }) =>
-					deleteNavigation({
-						targetUrl,
-						reason,
-					}),
+				deleteNavigation,
 				onSuccessfulNavigationCommitted: ({
 					entry: committedEntry,
 				}): void => {
@@ -561,11 +548,7 @@ export function createNavigationRuntime(
 			const outcome = await control.promise;
 			return handleNavigationOutcome({
 				findNavigationEntry,
-				deleteNavigation: ({ targetUrl, reason }) =>
-					deleteNavigation({
-						targetUrl,
-						reason,
-					}),
+				deleteNavigation,
 				processSuccessfulNavigation,
 				navigationProps: props,
 				outcome,

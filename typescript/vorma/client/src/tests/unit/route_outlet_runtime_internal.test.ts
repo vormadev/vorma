@@ -311,6 +311,46 @@ describe("route outlet runtime internals", () => {
 		expect(nextStoreState.location).toBe(previousStoreState.location);
 	});
 
+	it("reuses previous branch snapshot when navigation changes only in non-branch fields", () => {
+		const previousStoreState = buildInitialRouteOutletStoreState();
+		const nextLocationState = previousStoreState.location.state;
+
+		getClientRuntimeRenderStateMock.mockReturnValue({
+			loadersData: [{ root: true }],
+			clientLoadersData: [{ client: true }],
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			activeComponents: ["RootComponent"],
+			activeErrorBoundary: undefined,
+			importURLs: ["/routes/root.tsx"],
+			exportKeys: ["Route"],
+		});
+		getRouterDataMock.mockReturnValue({
+			buildID: "2",
+			matchedPatterns: ["/"],
+			splatValues: [],
+			params: {},
+			rootData: { root: true },
+		});
+		getLocationMock.mockReturnValue({
+			pathname: "/",
+			search: "",
+			hash: "",
+			state: nextLocationState,
+		});
+
+		const nextStoreState =
+			buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+
+		expect(nextStoreState.navigation).not.toBe(
+			previousStoreState.navigation,
+		);
+		expect(nextStoreState.routeOutletBranchInputState).toBe(
+			previousStoreState.routeOutletBranchInputState,
+		);
+		expect(nextStoreState.location).toBe(previousStoreState.location);
+	});
+
 	it("updates location snapshot when pathname/search/hash/state changes", () => {
 		const previousStoreState = buildInitialRouteOutletStoreState();
 		const nextLocationState = { from: "changed" };

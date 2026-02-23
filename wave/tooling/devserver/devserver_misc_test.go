@@ -1,6 +1,7 @@
 package devserver
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/lab/vitecmd"
+	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/internal/wavecore"
 	"github.com/vormadev/vorma/wave/tooling/builder"
 )
@@ -93,84 +95,14 @@ func TestCallViteFilemapInvalidate_ReturnsErrorOnNon200(t *testing.T) {
 	}
 }
 
-func TestCallViteFilemapInvalidate_Primary404FallsBackToLegacyEndpoint(
+func TestCallViteFilemapInvalidate_Primary404ReturnsErrorWithoutRetry(
 	t *testing.T,
 ) {
-	requestedPaths := make([]string, 0, 2)
+	requestedPaths := make([]string, 0, 1)
 	testServer := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requestedPaths = append(requestedPaths, r.URL.Path)
-			if r.URL.Path == "/__vorma_invalidate_filemap" {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			if r.URL.Path == "/__wave/vite-filemap-invalidate" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-		}),
-	)
-	defer testServer.Close()
-
-	parsedURL, err := url.Parse(testServer.URL)
-	if err != nil {
-		t.Fatalf("failed parsing test server URL: %v", err)
-	}
-	port, err := strconv.Atoi(parsedURL.Port())
-	if err != nil {
-		t.Fatalf("failed parsing test server port: %v", err)
-	}
-
-	s := &Server{
-		Log: newDiscardLogger(),
-		ViteContext: vitecmd.NewBuildCtx(
-			&vitecmd.BuildCtxOptions{DefaultPort: port},
-		),
-	}
-
-	if err := s.CallViteFilemapInvalidate(); err != nil {
-		t.Fatalf(
-			"expected fallback invalidate call to succeed after primary 404, got error: %v",
-			err,
-		)
-	}
-
-	expectedPaths := []string{
-		"/__vorma_invalidate_filemap",
-		"/__wave/vite-filemap-invalidate",
-	}
-	if len(requestedPaths) != len(expectedPaths) {
-		t.Fatalf("requested path count = %d, want %d", len(requestedPaths), len(expectedPaths))
-	}
-	for pathIndex := range expectedPaths {
-		if requestedPaths[pathIndex] != expectedPaths[pathIndex] {
-			t.Fatalf(
-				"requestedPaths[%d] = %q, want %q",
-				pathIndex,
-				requestedPaths[pathIndex],
-				expectedPaths[pathIndex],
-			)
-		}
-	}
-}
-
-func TestCallViteFilemapInvalidate_Primary404Fallback500ReturnsError(
-	t *testing.T,
-) {
-	requestedPaths := make([]string, 0, 2)
-	testServer := httptest.NewServer(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			requestedPaths = append(requestedPaths, r.URL.Path)
-			if r.URL.Path == "/__vorma_invalidate_filemap" {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			if r.URL.Path == "/__wave/vite-filemap-invalidate" {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusNotFound)
 		}),
 	)
 	defer testServer.Close()
@@ -193,30 +125,21 @@ func TestCallViteFilemapInvalidate_Primary404Fallback500ReturnsError(
 
 	callError := s.CallViteFilemapInvalidate()
 	if callError == nil {
-		t.Fatal(
-			"expected fallback invalidate failure to return error after primary 404",
-		)
+		t.Fatal("expected primary 404 invalidate response to return error")
 	}
-	if !strings.Contains(callError.Error(), "endpoint returned 500") {
+	if !strings.Contains(callError.Error(), "endpoint returned 404") {
 		t.Fatalf("unexpected error: %v", callError)
 	}
 
-	expectedPaths := []string{
-		"/__vorma_invalidate_filemap",
-		"/__wave/vite-filemap-invalidate",
+	if len(requestedPaths) != 1 {
+		t.Fatalf("requested path count = %d, want 1", len(requestedPaths))
 	}
-	if len(requestedPaths) != len(expectedPaths) {
-		t.Fatalf("requested path count = %d, want %d", len(requestedPaths), len(expectedPaths))
-	}
-	for pathIndex := range expectedPaths {
-		if requestedPaths[pathIndex] != expectedPaths[pathIndex] {
-			t.Fatalf(
-				"requestedPaths[%d] = %q, want %q",
-				pathIndex,
-				requestedPaths[pathIndex],
-				expectedPaths[pathIndex],
-			)
-		}
+	if requestedPaths[0] != "/__vorma_invalidate_filemap" {
+		t.Fatalf(
+			"requestedPaths[0] = %q, want %q",
+			requestedPaths[0],
+			"/__vorma_invalidate_filemap",
+		)
 	}
 }
 
@@ -263,6 +186,135 @@ func TestCallViteFilemapInvalidate_Primary500DoesNotCallFallback(t *testing.T) {
 			requestedPaths[0],
 			"/__vorma_invalidate_filemap",
 		)
+	}
+}
+
+func TestCallFrameworkRuntimeReloadEndpointWithContext_RequiresEndpointPath(
+	t *testing.T,
+) {
+	s := &Server{
+		Log:          newDiscardLogger(),
+		PortResolver: wavecore.NewResolver(),
+	}
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, "8080")
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	callError := s.CallFrameworkRuntimeReloadEndpointWithContext(
+		context.Background(),
+		wave.FrameworkRuntimeReloadRequest{},
+	)
+	if callError == nil {
+		t.Fatal("expected missing endpoint path to return error")
+	}
+	if !strings.Contains(callError.Error(), "endpoint path is required") {
+		t.Fatalf("unexpected error: %v", callError)
+	}
+}
+
+func TestCallFrameworkRuntimeReloadEndpointWithContext_SetsHeadersAndReturnsSuccess(
+	t *testing.T,
+) {
+	var requestedPath string
+	var requestMethod string
+	var requestHeaders http.Header
+	testServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestedPath = r.URL.Path
+			requestMethod = r.Method
+			requestHeaders = r.Header.Clone()
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer testServer.Close()
+
+	parsedURL, parseURLError := url.Parse(testServer.URL)
+	if parseURLError != nil {
+		t.Fatalf("failed parsing test server URL: %v", parseURLError)
+	}
+	port, parsePortError := strconv.Atoi(parsedURL.Port())
+	if parsePortError != nil {
+		t.Fatalf("failed parsing test server port: %v", parsePortError)
+	}
+
+	s := &Server{
+		Log:          newDiscardLogger(),
+		PortResolver: wavecore.NewResolver(),
+	}
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(port))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	callError := s.CallFrameworkRuntimeReloadEndpointWithContext(
+		context.Background(),
+		wave.FrameworkRuntimeReloadRequest{
+			EndpointPath:    "/__vorma_internal/reload-routes",
+			ReloadAttemptID: "attempt-77",
+			ExpectedBuildID: "build-77",
+			ReloadTrigger:   "routes-watch",
+		},
+	)
+	if callError != nil {
+		t.Fatalf(
+			"expected successful framework reload call, got error: %v",
+			callError,
+		)
+	}
+	if requestedPath != "/__vorma_internal/reload-routes" {
+		t.Fatalf("unexpected framework reload path: %s", requestedPath)
+	}
+	if requestMethod != http.MethodPost {
+		t.Fatalf("unexpected framework reload method: %s", requestMethod)
+	}
+	if got, want := requestHeaders.Get(wave.FrameworkRuntimeReloadAttemptIDHeaderName), "attempt-77"; got != want {
+		t.Fatalf("reload attempt header=%q, want %q", got, want)
+	}
+	if got, want := requestHeaders.Get(wave.FrameworkRuntimeReloadExpectedBuildIDHeaderName), "build-77"; got != want {
+		t.Fatalf("expected build ID header=%q, want %q", got, want)
+	}
+	if got, want := requestHeaders.Get(wave.FrameworkRuntimeReloadTriggerHeaderName), "routes-watch"; got != want {
+		t.Fatalf("reload trigger header=%q, want %q", got, want)
+	}
+}
+
+func TestCallFrameworkRuntimeReloadEndpointWithContext_ReturnsErrorOnNon200(
+	t *testing.T,
+) {
+	testServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}),
+	)
+	defer testServer.Close()
+
+	parsedURL, parseURLError := url.Parse(testServer.URL)
+	if parseURLError != nil {
+		t.Fatalf("failed parsing test server URL: %v", parseURLError)
+	}
+	port, parsePortError := strconv.Atoi(parsedURL.Port())
+	if parsePortError != nil {
+		t.Fatalf("failed parsing test server port: %v", parsePortError)
+	}
+
+	s := &Server{
+		Log:          newDiscardLogger(),
+		PortResolver: wavecore.NewResolver(),
+	}
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(port))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	callError := s.CallFrameworkRuntimeReloadEndpointWithContext(
+		context.Background(),
+		wave.FrameworkRuntimeReloadRequest{
+			EndpointPath: "/__vorma_internal/reload-template",
+		},
+	)
+	if callError == nil {
+		t.Fatal("expected non-200 framework reload response to return error")
+	}
+	if !strings.Contains(callError.Error(), "endpoint returned 500") {
+		t.Fatalf("unexpected error: %v", callError)
 	}
 }
 

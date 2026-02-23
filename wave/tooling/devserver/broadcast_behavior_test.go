@@ -121,6 +121,123 @@ func startBlockingHealthServerForBroadcastBehaviorTests(
 	return healthServerPort, requestStarted, requestCanceled, cleanup
 }
 
+func startBlockingViteInvalidateServerForBroadcastBehaviorTests(
+	t *testing.T,
+) (
+	int,
+	chan struct{},
+	chan struct{},
+	func(),
+) {
+	t.Helper()
+
+	requestStarted := make(chan struct{}, 1)
+	requestCanceled := make(chan struct{}, 1)
+
+	listener, listenError := net.Listen("tcp4", "127.0.0.1:0")
+	if listenError != nil {
+		t.Fatalf("create invalidate server listener: %v", listenError)
+	}
+
+	invalidateServer := &http.Server{
+		Handler: http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/__vorma_invalidate_filemap" {
+					responseWriter.WriteHeader(http.StatusNotFound)
+					return
+				}
+				if request.Method != http.MethodPost {
+					responseWriter.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				select {
+				case requestStarted <- struct{}{}:
+				default:
+				}
+				<-request.Context().Done()
+				select {
+				case requestCanceled <- struct{}{}:
+				default:
+				}
+			},
+		),
+	}
+
+	go func() {
+		_ = invalidateServer.Serve(listener)
+	}()
+
+	invalidateServerPort := listener.Addr().(*net.TCPAddr).Port
+	cleanup := func() {
+		shutdownContext, shutdownCancel := context.WithTimeout(
+			context.Background(),
+			time.Second,
+		)
+		defer shutdownCancel()
+		_ = invalidateServer.Shutdown(shutdownContext)
+	}
+	return invalidateServerPort, requestStarted, requestCanceled, cleanup
+}
+
+func startBlockingFrameworkRuntimeReloadServerForBroadcastBehaviorTests(
+	t *testing.T,
+	endpointPath string,
+) (
+	int,
+	chan struct{},
+	chan struct{},
+	func(),
+) {
+	t.Helper()
+
+	requestStarted := make(chan struct{}, 1)
+	requestCanceled := make(chan struct{}, 1)
+
+	listener, listenError := net.Listen("tcp4", "127.0.0.1:0")
+	if listenError != nil {
+		t.Fatalf("create framework reload server listener: %v", listenError)
+	}
+
+	frameworkReloadServer := &http.Server{
+		Handler: http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != endpointPath {
+					responseWriter.WriteHeader(http.StatusNotFound)
+					return
+				}
+				if request.Method != http.MethodPost {
+					responseWriter.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				select {
+				case requestStarted <- struct{}{}:
+				default:
+				}
+				<-request.Context().Done()
+				select {
+				case requestCanceled <- struct{}{}:
+				default:
+				}
+			},
+		),
+	}
+
+	go func() {
+		_ = frameworkReloadServer.Serve(listener)
+	}()
+
+	frameworkReloadServerPort := listener.Addr().(*net.TCPAddr).Port
+	cleanup := func() {
+		shutdownContext, shutdownCancel := context.WithTimeout(
+			context.Background(),
+			time.Second,
+		)
+		defer shutdownCancel()
+		_ = frameworkReloadServer.Shutdown(shutdownContext)
+	}
+	return frameworkReloadServerPort, requestStarted, requestCanceled, cleanup
+}
+
 func TestBroadcastRebuilding_SendsPayloadWhenEnabled(t *testing.T) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
@@ -634,6 +751,253 @@ func TestBroadcastReload_CycleViteWithoutActiveContextFallsBackToPayloadBroadcas
 	}
 }
 
+func TestBroadcastReload_FrameworkRuntimeReloadRequestsAreAsyncAndCleanupCancelable(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	reloadEndpointPath := "/__vorma_internal/reload-routes"
+	reloadServerPort, requestStarted, requestCanceled, cleanupReloadServer := startBlockingFrameworkRuntimeReloadServerForBroadcastBehaviorTests(
+		t,
+		reloadEndpointPath,
+	)
+	defer cleanupReloadServer()
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(reloadServerPort))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+
+	broadcastReturn := make(chan struct{})
+	go func() {
+		serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+			Payload: broadcast.Payload{ChangeType: broadcast.ChangeTypeOther},
+			FrameworkRuntimeReloadRequests: []wave.FrameworkRuntimeReloadRequest{
+				{
+					EndpointPath:    reloadEndpointPath,
+					ReloadAttemptID: "attempt-1",
+					ExpectedBuildID: "build-1",
+					ReloadTrigger:   "routes-watch",
+				},
+			},
+		})
+		close(broadcastReturn)
+	}()
+
+	select {
+	case <-broadcastReturn:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal(
+			"expected framework reload scheduling to return without waiting for endpoint response",
+		)
+	}
+
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for framework reload request start")
+	}
+
+	serverForTest.CleanupForRebuild()
+
+	select {
+	case <-requestCanceled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal(
+			"timed out waiting for framework reload request cancellation during cleanup",
+		)
+	}
+
+	connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
+		t.Fatalf(
+			"did not expect browser payload while framework reload request is blocked, got %#v",
+			receivedPayload,
+		)
+	}
+}
+
+func TestBroadcastReload_FrameworkRuntimeReloadFailureQueuesRestartAndSkipsPayload(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
+		t,
+		http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/__vorma_internal/reload-routes" {
+					responseWriter.WriteHeader(http.StatusNotFound)
+					return
+				}
+				responseWriter.WriteHeader(http.StatusInternalServerError)
+			},
+		),
+	)
+	defer reloadServer.Close()
+
+	reloadServerURL, parseURLError := url.Parse(reloadServer.URL)
+	if parseURLError != nil {
+		t.Fatalf("parse reload test server URL: %v", parseURLError)
+	}
+	reloadServerPort, parsePortError := strconv.Atoi(reloadServerURL.Port())
+	if parsePortError != nil {
+		t.Fatalf("parse reload test server port: %v", parsePortError)
+	}
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(reloadServerPort))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+
+	serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+		Payload: broadcast.Payload{ChangeType: broadcast.ChangeTypeOther},
+		FrameworkRuntimeReloadRequests: []wave.FrameworkRuntimeReloadRequest{
+			{
+				EndpointPath:    "/__vorma_internal/reload-routes",
+				ReloadAttemptID: "attempt-failing",
+				ExpectedBuildID: "build-failing",
+				ReloadTrigger:   "routes-watch",
+			},
+		},
+	})
+
+	restartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		serverForTest,
+		time.Second,
+	)
+	if restartRequest.IsConfigRestart || restartRequest.RecompileGo {
+		t.Fatalf(
+			"expected restart without go recompilation after framework reload failure, got %#v",
+			restartRequest,
+		)
+	}
+
+	connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
+		t.Fatalf(
+			"did not expect browser payload after framework reload failure, got %#v",
+			receivedPayload,
+		)
+	}
+}
+
+func TestBroadcastReload_FrameworkRuntimeReloadSuccessBroadcastsPayloadAndHeaders(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	requestHeaders := make(chan http.Header, 1)
+	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
+		t,
+		http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/__vorma_internal/reload-template" {
+					responseWriter.WriteHeader(http.StatusNotFound)
+					return
+				}
+				select {
+				case requestHeaders <- request.Header.Clone():
+				default:
+				}
+				responseWriter.WriteHeader(http.StatusOK)
+			},
+		),
+	)
+	defer reloadServer.Close()
+
+	reloadServerURL, parseURLError := url.Parse(reloadServer.URL)
+	if parseURLError != nil {
+		t.Fatalf("parse reload test server URL: %v", parseURLError)
+	}
+	reloadServerPort, parsePortError := strconv.Atoi(reloadServerURL.Port())
+	if parsePortError != nil {
+		t.Fatalf("parse reload test server port: %v", parsePortError)
+	}
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(reloadServerPort))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+
+	serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+		Payload: broadcast.Payload{ChangeType: broadcast.ChangeTypeOther},
+		FrameworkRuntimeReloadRequests: []wave.FrameworkRuntimeReloadRequest{
+			{
+				EndpointPath:    "/__vorma_internal/reload-template",
+				ReloadAttemptID: "attempt-42",
+				ExpectedBuildID: "build-42",
+				ReloadTrigger:   "template-watch",
+			},
+		},
+	})
+
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+		t.Fatalf(
+			"expected browser payload after successful framework reload request, got read error: %v",
+			readError,
+		)
+	}
+	if receivedPayload.ChangeType != broadcast.ChangeTypeOther {
+		t.Fatalf(
+			"expected hard-reload payload after framework reload success, got %#v",
+			receivedPayload,
+		)
+	}
+
+	select {
+	case capturedHeaders := <-requestHeaders:
+		if got, want := capturedHeaders.Get(wave.FrameworkRuntimeReloadAttemptIDHeaderName), "attempt-42"; got != want {
+			t.Fatalf("reload attempt header=%q, want %q", got, want)
+		}
+		if got, want := capturedHeaders.Get(wave.FrameworkRuntimeReloadExpectedBuildIDHeaderName), "build-42"; got != want {
+			t.Fatalf("expected build ID header=%q, want %q", got, want)
+		}
+		if got, want := capturedHeaders.Get(wave.FrameworkRuntimeReloadTriggerHeaderName), "template-watch"; got != want {
+			t.Fatalf("reload trigger header=%q, want %q", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for framework reload request headers")
+	}
+}
+
 func TestBroadcastReload_CycleViteFailureFallsBackToPayloadBroadcast(
 	t *testing.T,
 ) {
@@ -815,6 +1179,64 @@ func TestExecuteBrowserPhase_InvalidateViteFailureLogsFallbackMessage(
 		t.Fatalf(
 			"expected invalidate fallback log message, got logs: %s",
 			logBuffer.String(),
+		)
+	}
+}
+
+func TestExecuteBrowserPhase_InvalidateViteIsAsyncAndCleanupCancelable(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+	ensureViteConfigForToolingTests(t, cfg)
+	cfg.Vite.JSPackageManagerBaseCmd = "pnpm"
+
+	invalidateServerPort, requestStarted, requestCanceled, cleanupInvalidateServer := startBlockingViteInvalidateServerForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanupInvalidateServer()
+
+	serverForTest := &Server{
+		Cfg: cfg,
+		Log: newDiscardLoggerForBroadcastBehaviorTests(),
+		ViteContext: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
+			DefaultPort: invalidateServerPort,
+		}),
+	}
+
+	work := &eventpipeline.WorkSet{
+		Browser: eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionInvalidateVite,
+		},
+	}
+
+	executeDone := make(chan struct{})
+	go func() {
+		serverForTest.ExecuteBrowserPhase(work)
+		close(executeDone)
+	}()
+
+	select {
+	case <-executeDone:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal(
+			"expected invalidate browser phase to schedule async work and return quickly",
+		)
+	}
+
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for async invalidate request start")
+	}
+
+	serverForTest.CleanupForRebuild()
+
+	select {
+	case <-requestCanceled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal(
+			"timed out waiting for async invalidate request cancellation during cleanup",
 		)
 	}
 }
@@ -1138,6 +1560,90 @@ func TestExecuteBrowserPhase_RevalidateBroadcastsRevalidatePayload(
 	}
 }
 
+func TestExecuteBrowserPhase_RevalidateExecutesDeferredFrameworkReloadRequests(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	requestPaths := make(chan string, 1)
+	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
+		t,
+		http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				select {
+				case requestPaths <- request.URL.Path:
+				default:
+				}
+				responseWriter.WriteHeader(http.StatusOK)
+			},
+		),
+	)
+	defer reloadServer.Close()
+
+	reloadServerURL, parseURLError := url.Parse(reloadServer.URL)
+	if parseURLError != nil {
+		t.Fatalf("parse reload test server URL: %v", parseURLError)
+	}
+	reloadServerPort, parsePortError := strconv.Atoi(reloadServerURL.Port())
+	if parsePortError != nil {
+		t.Fatalf("parse reload test server port: %v", parsePortError)
+	}
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(reloadServerPort))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+
+	work := &eventpipeline.WorkSet{
+		Browser: eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionRevalidate,
+		},
+		FrameworkRuntimeReloadRequests: []wave.FrameworkRuntimeReloadRequest{
+			{
+				EndpointPath: "/__vorma_internal/reload-routes",
+			},
+		},
+	}
+	serverForTest.ExecuteBrowserPhase(work)
+
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+		t.Fatalf(
+			"expected revalidate payload after deferred framework reload request, got read error: %v",
+			readError,
+		)
+	}
+	if receivedPayload.ChangeType != broadcast.ChangeTypeRevalidate {
+		t.Fatalf("expected revalidate payload, got %#v", receivedPayload)
+	}
+
+	select {
+	case requestPath := <-requestPaths:
+		if requestPath != "/__vorma_internal/reload-routes" {
+			t.Fatalf(
+				"framework reload request path=%q, want %q",
+				requestPath,
+				"/__vorma_internal/reload-routes",
+			)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for deferred framework reload request")
+	}
+}
+
 func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalOnlyPayload(
 	t *testing.T,
 ) {
@@ -1426,7 +1932,7 @@ func TestExecuteBrowserPhase_InvalidateViteSuccessReturnsWithoutReloadFallback(
 		responseWriter http.ResponseWriter,
 		request *http.Request,
 	) {
-		if request.URL.Path != "/__wave/vite-filemap-invalidate" {
+		if request.URL.Path != "/__vorma_invalidate_filemap" {
 			responseWriter.WriteHeader(http.StatusNotFound)
 			return
 		}

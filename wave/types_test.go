@@ -556,4 +556,22 @@ func TestRefreshActionMergeAndIsZero(t *testing.T) {
 	if merged.IsZero() {
 		t.Fatal("expected merged RefreshAction to be non-zero")
 	}
+
+	firstRequest := &FrameworkRuntimeReloadRequest{
+		EndpointPath: "/reload-routes",
+	}
+	secondRequest := &FrameworkRuntimeReloadRequest{
+		EndpointPath: "/reload-template",
+	}
+	mergedWithFrameworkRequest := RefreshAction{
+		FrameworkRuntimeReloadRequest: firstRequest,
+	}.merge(RefreshAction{
+		FrameworkRuntimeReloadRequest: secondRequest,
+	})
+	if mergedWithFrameworkRequest.FrameworkRuntimeReloadRequest != firstRequest {
+		t.Fatalf(
+			"expected first non-nil framework runtime reload request to win merge, got %#v",
+			mergedWithFrameworkRequest.FrameworkRuntimeReloadRequest,
+		)
+	}
 }

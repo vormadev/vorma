@@ -1112,7 +1112,40 @@ describe("client history/init contracts", () => {
 		removeRouteChangeListener();
 	});
 
-	it("progressively loads route manifests and registers their patterns", async () => {
+	it("initializes route matcher state from precompiled manifest payload without progressive fetch", async () => {
+		const api = await loadClientAPI();
+		const manifest = {
+			"/precompiled/:id": 1,
+		};
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(new Response("unused"));
+		const patternRegistry = api.__vormaClientGlobal.get("patternRegistry");
+		expect(findBestMatch(patternRegistry, "/precompiled/123")).toBeNull();
+
+		api.__vormaClientGlobal.set("routeManifest", manifest);
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest.json",
+		);
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+		await flushProgressiveManifestMicrotasks();
+
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(api.__vormaClientGlobal.get("routeManifest")).toEqual(manifest);
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/precompiled/123",
+			)?.registeredPattern.originalPattern,
+		).toBe("/precompiled/:id");
+	});
+
+	it("falls back to progressive route-manifest loading when precompiled manifest is absent", async () => {
 		const api = await loadClientAPI();
 		const manifest = {
 			"/progressive/:id": 1,

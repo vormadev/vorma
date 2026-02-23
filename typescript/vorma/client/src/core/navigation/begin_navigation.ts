@@ -1,9 +1,3 @@
-import type {
-	NavigateProps,
-	NavigationControl,
-	NavigationEntry,
-	NavigationIntent,
-} from "./types.ts";
 import {
 	decideBeginNavigationExecutionPlan,
 	type BeginNavigationAbortInstruction,
@@ -12,6 +6,12 @@ import {
 	type BeginNavigationPromotion,
 	type BeginNavigationReuseInstruction,
 } from "./begin_navigation_state_machine.ts";
+import type {
+	NavigateProps,
+	NavigationControl,
+	NavigationEntry,
+	NavigationIntent,
+} from "./types.ts";
 export { createNavigationControls } from "./navigation_controls.ts";
 export type {
 	CreateNavigationControlsContext,
@@ -35,97 +35,6 @@ export type BeginNavigationContext = {
 	) => NavigationControl;
 	createRevalidation: (props: NavigateProps) => NavigationControl;
 };
-
-export type BeginNavigationExecutionCommand =
-	| {
-			type: "abort_instruction";
-			abortInstruction: BeginNavigationAbortInstruction;
-	  }
-	| {
-			type: "reuse_instruction";
-			reuseInstruction: BeginNavigationReuseInstruction;
-	  }
-	| {
-			type: "return_immediately_aborted_control";
-	  }
-	| {
-			type: "create_active_control";
-			intent: NavigationIntent;
-	  }
-	| {
-			type: "create_prefetch_control";
-			targetUrl: string;
-	  }
-	| {
-			type: "create_revalidation_control";
-			revalidationHref: string;
-	  };
-
-function buildCreateCommandFromCreateInstruction(props: {
-	createInstruction: BeginNavigationCreateInstruction;
-}): BeginNavigationExecutionCommand {
-	const { createInstruction } = props;
-	switch (createInstruction.slot) {
-		case "active":
-			return {
-				type: "create_active_control",
-				intent: createInstruction.intent,
-			};
-		case "prefetch":
-			return {
-				type: "create_prefetch_control",
-				targetUrl: createInstruction.targetUrl,
-			};
-		case "revalidation":
-			return {
-				type: "create_revalidation_control",
-				revalidationHref: createInstruction.revalidationHref,
-			};
-	}
-}
-
-export function buildBeginNavigationExecutionCommands(props: {
-	executionPlan: BeginNavigationExecutionPlan;
-}): BeginNavigationExecutionCommand[] {
-	const { executionPlan } = props;
-	const commands: BeginNavigationExecutionCommand[] = [];
-
-	for (const abortInstruction of executionPlan.abortInstructions) {
-		commands.push({
-			type: "abort_instruction",
-			abortInstruction,
-		});
-	}
-
-	if (executionPlan.reuseInstruction) {
-		commands.push({
-			type: "reuse_instruction",
-			reuseInstruction: executionPlan.reuseInstruction,
-		});
-		return commands;
-	}
-
-	if (executionPlan.shouldReturnImmediatelyAbortedControl) {
-		commands.push({
-			type: "return_immediately_aborted_control",
-		});
-		return commands;
-	}
-
-	const createInstruction = executionPlan.createInstruction;
-	if (!createInstruction) {
-		throw new Error(
-			"Begin navigation execution plan was missing reuse, immediate-abort, and create instructions.",
-		);
-	}
-
-	commands.push(
-		buildCreateCommandFromCreateInstruction({
-			createInstruction,
-		}),
-	);
-	return commands;
-}
 
 function promoteEntryToActiveLane(props: {
 	entry: NavigationEntry;
@@ -242,68 +151,92 @@ function executeBeginNavigationReuseInstruction(props: {
 	}
 }
 
-function executeBeginNavigationExecutionCommands(props: {
+function executeBeginNavigationCreateInstruction(props: {
 	context: BeginNavigationContext;
 	navigationProps: NavigateProps;
-	commands: BeginNavigationExecutionCommand[];
+	createInstruction: BeginNavigationCreateInstruction;
+	shouldScheduleStatusUpdate: boolean;
 }): NavigationControl {
-	const { context, navigationProps, commands } = props;
+	const {
+		context,
+		navigationProps,
+		createInstruction,
+		shouldScheduleStatusUpdate,
+	} = props;
+	switch (createInstruction.slot) {
+		case "active":
+			return context.createActiveNavigation(
+				navigationProps,
+				createInstruction.intent,
+			);
+		case "prefetch":
+			if (shouldScheduleStatusUpdate) {
+				context.scheduleStatusUpdate();
+			}
+			return context.createPrefetch(
+				navigationProps,
+				createInstruction.targetUrl,
+			);
+		case "revalidation":
+			return context.createRevalidation({
+				...navigationProps,
+				href: createInstruction.revalidationHref,
+			});
+	}
+}
+
+function executeBeginNavigationExecutionPlan(props: {
+	context: BeginNavigationContext;
+	navigationProps: NavigateProps;
+	executionPlan: BeginNavigationExecutionPlan;
+}): NavigationControl {
+	const { context, navigationProps, executionPlan } = props;
 	let shouldScheduleStatusUpdate = false;
 
-	for (const command of commands) {
-		switch (command.type) {
-			case "abort_instruction": {
-				const abortResult = executeAbortInstruction({
-					context,
-					abortInstruction: command.abortInstruction,
-				});
-				if (abortResult.changedStatusRelevantLane) {
-					shouldScheduleStatusUpdate = true;
-				}
-				break;
-			}
-			case "reuse_instruction": {
-				const reuseResult = executeBeginNavigationReuseInstruction({
-					context,
-					reuseInstruction: command.reuseInstruction,
-				});
-				if (reuseResult.changedStatusRelevantLane) {
-					shouldScheduleStatusUpdate = true;
-				}
-				if (shouldScheduleStatusUpdate) {
-					context.scheduleStatusUpdate();
-				}
-				return reuseResult.control;
-			}
-			case "return_immediately_aborted_control":
-				if (shouldScheduleStatusUpdate) {
-					context.scheduleStatusUpdate();
-				}
-				return createImmediatelyAbortedNavigationControl();
-			case "create_active_control":
-				return context.createActiveNavigation(
-					navigationProps,
-					command.intent,
-				);
-			case "create_prefetch_control":
-				if (shouldScheduleStatusUpdate) {
-					context.scheduleStatusUpdate();
-				}
-				return context.createPrefetch(
-					navigationProps,
-					command.targetUrl,
-				);
-			case "create_revalidation_control":
-				return context.createRevalidation({
-					...navigationProps,
-					href: command.revalidationHref,
-				});
+	for (const abortInstruction of executionPlan.abortInstructions) {
+		const abortResult = executeAbortInstruction({
+			context,
+			abortInstruction,
+		});
+		if (abortResult.changedStatusRelevantLane) {
+			shouldScheduleStatusUpdate = true;
 		}
 	}
 
-	throw new Error(
-		"Begin navigation command plan ended without a terminal control command.",
-	);
+	if (executionPlan.reuseInstruction) {
+		const reuseResult = executeBeginNavigationReuseInstruction({
+			context,
+			reuseInstruction: executionPlan.reuseInstruction,
+		});
+		if (reuseResult.changedStatusRelevantLane) {
+			shouldScheduleStatusUpdate = true;
+		}
+		if (shouldScheduleStatusUpdate) {
+			context.scheduleStatusUpdate();
+		}
+		return reuseResult.control;
+	}
+
+	if (executionPlan.shouldReturnImmediatelyAbortedControl) {
+		if (shouldScheduleStatusUpdate) {
+			context.scheduleStatusUpdate();
+		}
+		return createImmediatelyAbortedNavigationControl();
+	}
+
+	const createInstruction = executionPlan.createInstruction;
+	if (!createInstruction) {
+		throw new Error(
+			"Begin navigation execution plan was missing reuse, immediate-abort, and create instructions.",
+		);
+	}
+
+	return executeBeginNavigationCreateInstruction({
+		context,
+		navigationProps,
+		createInstruction,
+		shouldScheduleStatusUpdate,
+	});
 }
 
 export function beginNavigation(
@@ -319,13 +252,10 @@ export function beginNavigation(
 			prefetch: context.prefetchNavigationsByTargetUrl,
 		},
 	});
-	const commands = buildBeginNavigationExecutionCommands({
-		executionPlan,
-	});
 
-	return executeBeginNavigationExecutionCommands({
+	return executeBeginNavigationExecutionPlan({
 		context,
 		navigationProps: props,
-		commands,
+		executionPlan,
 	});
 }

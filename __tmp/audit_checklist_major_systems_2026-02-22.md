@@ -195,6 +195,41 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
 - [x] Add build-retry engine short-circuit coverage in
       `wave/tooling/devserver/site_regression_additional_test.go`
       (`TestSiteRegression_BuildRetryRunloopEngineShortCircuitsWhenWaitingFlagIsFalse`).
+- [x] Fix Vite invalidate browser-phase stall path in
+      `wave/tooling/devserver/devserver.go` (`BrowserPhaseActionInvalidateVite`
+      now executes endpoint invalidation asynchronously with generation-based
+      cancellation/coalescing, so watcher batch execution is not blocked on
+      invalidate endpoint I/O).
+- [x] Add async/cancelable invalidate-path coverage in
+      `wave/tooling/devserver/broadcast_behavior_test.go`
+      (`TestExecuteBrowserPhase_InvalidateViteIsAsyncAndCleanupCancelable`).
+- [x] Remove legacy Vite invalidate endpoint compat path in
+      `wave/tooling/devserver/devserver.go` (dropped
+      `"/__wave/vite-filemap-invalidate"` fallback; invalidate now targets only
+      `"/__vorma_invalidate_filemap"` and fails loud on non-200).
+- [x] Fix framework watch-callback synchronous endpoint choke path in
+      `vormabuild/reload_endpoint.go` and `wave/tooling/devserver/devserver.go`
+      (framework watch callbacks now return deferred framework runtime reload
+      requests; endpoint I/O moved to devserver asynchronous browser reload
+      orchestration with cancellation and generation guards).
+- [x] Add asynchronous framework runtime reload execution and fallback-restart
+      coverage in `wave/tooling/devserver/broadcast_behavior_test.go`,
+      `wave/tooling/devserver/devserver_misc_test.go`, and
+      `wave/tooling/devserver/internal/eventpipeline/events_workset_test.go`
+      (covers async scheduling, cleanup cancellation, success header
+      propagation, failure-triggered restart-without-recompile, and workset
+      request dedupe/normalization).
+- [x] Add deferred framework runtime reload action coverage in
+      `vormabuild/reload_endpoint_test.go` (ensures generated refresh actions
+      carry endpoint/attempt/build/trigger metadata instead of performing
+      callback-stage endpoint I/O).
+- [x] Add expected-build-id stale request guard on framework runtime dev reload
+      endpoints in `internal/vormaruntime/get_root_handler.go` (when
+      `X-Vorma-Reload-Expected-Build-Id` is present and mismatched, endpoint
+      rejects with `409` instead of applying a stale reload request).
+- [x] Add stale expected-build-id dev reload endpoint rejection coverage in
+      `internal/vormaruntime/get_root_handler_test.go`
+      (`reload_endpoints_reject_expected_build_id_mismatch`).
 
 ## Coverage / Verification
 

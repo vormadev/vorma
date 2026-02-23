@@ -1476,6 +1476,10 @@ func cloneWorkSetForProcessTests(
 	clone.Build.PrivateStaticChangedFilePathSet = cloneStringSetForProcessTests(
 		work.Build.PrivateStaticChangedFilePathSet,
 	)
+	clone.FrameworkRuntimeReloadRequests = append(
+		[]wave.FrameworkRuntimeReloadRequest(nil),
+		work.FrameworkRuntimeReloadRequests...,
+	)
 
 	return clone
 }

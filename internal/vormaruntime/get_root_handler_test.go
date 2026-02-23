@@ -18,6 +18,7 @@ import (
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/response"
+	"github.com/vormadev/vorma/wave"
 )
 
 type testCustomJSONMarshaler struct {
@@ -2557,31 +2558,71 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("reload_endpoints_are_not_served_by_loaders_handler", func(t *testing.T) {
-		for _, path := range []string{
-			app.DevReloadRoutesEndpointPath(),
-			app.DevReloadTemplateEndpointPath(),
-		} {
-			req := httptest.NewRequest(http.MethodPost, path, nil)
-			rec := httptest.NewRecorder()
-			loadersHandler.ServeHTTP(rec, req)
+	t.Run(
+		"reload_endpoints_reject_expected_build_id_mismatch",
+		func(t *testing.T) {
+			for _, path := range []string{
+				app.DevReloadRoutesEndpointPath(),
+				app.DevReloadTemplateEndpointPath(),
+			} {
+				req := httptest.NewRequest(http.MethodPost, path, nil)
+				req.Header.Set(
+					wave.FrameworkRuntimeReloadExpectedBuildIDHeaderName,
+					"build-mismatch",
+				)
+				rec := httptest.NewRecorder()
+				actionsHandler.ServeHTTP(rec, req)
 
-			if rec.Code != http.StatusNotFound {
-				t.Fatalf(
-					"path %q status = %d, want %d",
-					path,
-					rec.Code,
-					http.StatusNotFound,
-				)
+				if rec.Code != http.StatusConflict {
+					t.Fatalf(
+						"path %q status = %d, want %d",
+						path,
+						rec.Code,
+						http.StatusConflict,
+					)
+				}
+				if body := strings.TrimSpace(rec.Body.String()); !strings.Contains(
+					body,
+					"expected build id does not match current build id",
+				) {
+					t.Fatalf(
+						"path %q body = %q, expected mismatch message",
+						path,
+						body,
+					)
+				}
 			}
-			if strings.TrimSpace(rec.Body.String()) == "ok" {
-				t.Fatalf(
-					"path %q unexpectedly executed dev reload through loaders",
-					path,
-				)
+		},
+	)
+
+	t.Run(
+		"reload_endpoints_are_not_served_by_loaders_handler",
+		func(t *testing.T) {
+			for _, path := range []string{
+				app.DevReloadRoutesEndpointPath(),
+				app.DevReloadTemplateEndpointPath(),
+			} {
+				req := httptest.NewRequest(http.MethodPost, path, nil)
+				rec := httptest.NewRecorder()
+				loadersHandler.ServeHTTP(rec, req)
+
+				if rec.Code != http.StatusNotFound {
+					t.Fatalf(
+						"path %q status = %d, want %d",
+						path,
+						rec.Code,
+						http.StatusNotFound,
+					)
+				}
+				if strings.TrimSpace(rec.Body.String()) == "ok" {
+					t.Fatalf(
+						"path %q unexpectedly executed dev reload through loaders",
+						path,
+					)
+				}
 			}
-		}
-	})
+		},
+	)
 
 	t.Run("reload_routes_error", func(t *testing.T) {
 		stageOnePath := filepath.Join(

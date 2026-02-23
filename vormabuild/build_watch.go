@@ -13,7 +13,7 @@ const (
 	reloadTriggerHTMLTemplateWatch     = "html-template-watch"
 )
 
-type reloadActionResolver func(
+type frameworkReloadActionResolver func(
 	v *vormaruntime.Vorma,
 	reloadEndpoint string,
 	warnMessage string,
@@ -189,18 +189,18 @@ func routeDefinitionsOnChangeCallback(
 ) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return routeDefinitionsOnChangeCallbackWithReloadActionResolver(
 		v,
-		getReloadActionForEndpointWithFallback,
+		getDeferredFrameworkRuntimeReloadAction,
 	)
 }
 
 func routeDefinitionsOnChangeCallbackWithReloadActionResolver(
 	v *vormaruntime.Vorma,
-	resolveReloadAction reloadActionResolver,
+	resolveReloadAction frameworkReloadActionResolver,
 ) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return watchReloadCallback(
 		v,
 		v.DevReloadRoutesEndpointPath(),
-		"route reload endpoint failed, falling back to restart",
+		"route reload endpoint path is invalid, falling back to restart",
 		reloadTriggerRouteDefinitionsWatch,
 		rebuildRoutesOnly,
 		resolveReloadAction,
@@ -212,18 +212,18 @@ func htmlTemplateOnChangeCallback(
 ) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return htmlTemplateOnChangeCallbackWithReloadActionResolver(
 		v,
-		getReloadActionForEndpointWithFallback,
+		getDeferredFrameworkRuntimeReloadAction,
 	)
 }
 
 func htmlTemplateOnChangeCallbackWithReloadActionResolver(
 	v *vormaruntime.Vorma,
-	resolveReloadAction reloadActionResolver,
+	resolveReloadAction frameworkReloadActionResolver,
 ) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	return watchReloadCallback(
 		v,
 		v.DevReloadTemplateEndpointPath(),
-		"template reload endpoint failed, falling back to restart",
+		"template reload endpoint path is invalid, falling back to restart",
 		reloadTriggerHTMLTemplateWatch,
 		nil,
 		resolveReloadAction,
@@ -236,10 +236,10 @@ func watchReloadCallback(
 	reloadEndpointFailureWarnMessage string,
 	reloadTrigger string,
 	preReloadAction func(*vormaruntime.Vorma) error,
-	resolveReloadAction reloadActionResolver,
+	resolveReloadAction frameworkReloadActionResolver,
 ) func(*wave.HookContext) (*wave.RefreshAction, error) {
 	if resolveReloadAction == nil {
-		resolveReloadAction = getReloadActionForEndpointWithFallback
+		resolveReloadAction = getDeferredFrameworkRuntimeReloadAction
 	}
 
 	return func(ctx *wave.HookContext) (*wave.RefreshAction, error) {
