@@ -17,197 +17,11 @@ type SubmissionLifecycle = {
 	finish: () => void;
 };
 
-export type SubmitStalenessCheckpoint =
-	| "post_request"
-	| "pre_finalize"
-	| "post_response_classification"
-	| "post_redirect_effectuation"
-	| "pre_success_return"
-	| "post_auto_revalidate";
-
-const submitStalenessContinueReasonByCheckpoint = {
-	post_request: "submit_staleness_post_request_continue_current",
-	pre_finalize: "submit_staleness_pre_finalize_continue_current",
-	post_response_classification:
-		"submit_staleness_post_response_classification_continue_current",
-	post_redirect_effectuation:
-		"submit_staleness_post_redirect_effectuation_continue_current",
-	pre_success_return: "submit_staleness_pre_success_return_continue_current",
-	post_auto_revalidate:
-		"submit_staleness_post_auto_revalidate_continue_current",
-} as const satisfies Record<SubmitStalenessCheckpoint, string>;
-
-const submitStalenessStopReasonByCheckpoint = {
-	post_request: "submit_staleness_post_request_stop_not_current",
-	pre_finalize: "submit_staleness_pre_finalize_stop_not_current",
-	post_response_classification:
-		"submit_staleness_post_response_classification_stop_not_current",
-	post_redirect_effectuation:
-		"submit_staleness_post_redirect_effectuation_stop_not_current",
-	pre_success_return: "submit_staleness_pre_success_return_stop_not_current",
-	post_auto_revalidate:
-		"submit_staleness_post_auto_revalidate_stop_not_current",
-} as const satisfies Record<SubmitStalenessCheckpoint, string>;
-
-type SubmitStalenessContinueReason =
-	(typeof submitStalenessContinueReasonByCheckpoint)[SubmitStalenessCheckpoint];
-type SubmitStalenessStopReason =
-	(typeof submitStalenessStopReasonByCheckpoint)[SubmitStalenessCheckpoint];
-
 const submissionLifecycleReason = {
 	dedupedByNewerSubmission: "submission_deduped_by_newer_submission",
 	started: "submission_started",
 	finished: "submission_finished",
 } as const;
-
-export type SubmitStalenessCheckpointExecutionPlan =
-	| {
-			checkpoint: SubmitStalenessCheckpoint;
-			type: "continue";
-			reason: SubmitStalenessContinueReason;
-	  }
-	| {
-			checkpoint: SubmitStalenessCheckpoint;
-			type: "stop";
-			reason: SubmitStalenessStopReason;
-	  };
-
-export function decideSubmitStalenessCheckpointExecutionPlan(props: {
-	checkpoint: SubmitStalenessCheckpoint;
-	isSubmissionCurrent: boolean;
-}): SubmitStalenessCheckpointExecutionPlan {
-	if (props.isSubmissionCurrent) {
-		return {
-			checkpoint: props.checkpoint,
-			type: "continue",
-			reason: submitStalenessContinueReasonByCheckpoint[props.checkpoint],
-		};
-	}
-
-	return {
-		checkpoint: props.checkpoint,
-		type: "stop",
-		reason: submitStalenessStopReasonByCheckpoint[props.checkpoint],
-	};
-}
-
-export type SubmissionLifecycleCommand =
-	| {
-			type: "abort_submission_entry";
-			submissionEntry: SubmissionEntry;
-			reason: typeof submissionLifecycleReason.dedupedByNewerSubmission;
-	  }
-	| {
-			type: "set_submission_entry";
-			submissionKey: string | symbol;
-			submissionEntry: SubmissionEntry;
-			reason: typeof submissionLifecycleReason.started;
-	  }
-	| {
-			type: "delete_submission_entry";
-			submissionKey: string | symbol;
-			submissionEntry: SubmissionEntry;
-			reason: typeof submissionLifecycleReason.finished;
-	  }
-	| {
-			type: "emit_submission_state_transition";
-			submissionEntry: SubmissionEntry;
-			fromState: string;
-			toState: string;
-			reason: string;
-			causedByOperationID?: number | null;
-	  }
-	| {
-			type: "schedule_status_update";
-			reason:
-				| typeof submissionLifecycleReason.started
-				| typeof submissionLifecycleReason.finished
-				| typeof submissionLifecycleReason.dedupedByNewerSubmission;
-	  };
-
-export function buildSubmissionLifecycleBeginCommands(props: {
-	submissionKey: string | symbol;
-	submissionEntry: SubmissionEntry;
-	existingSubmissionEntry: SubmissionEntry | undefined;
-}): SubmissionLifecycleCommand[] {
-	const { submissionKey, submissionEntry, existingSubmissionEntry } = props;
-	const commands: SubmissionLifecycleCommand[] = [];
-
-	if (existingSubmissionEntry) {
-		commands.push(
-			{
-				type: "abort_submission_entry",
-				submissionEntry: existingSubmissionEntry,
-				reason: submissionLifecycleReason.dedupedByNewerSubmission,
-			},
-			{
-				type: "emit_submission_state_transition",
-				submissionEntry: existingSubmissionEntry,
-				fromState: "submitting",
-				toState: "aborted",
-				reason: submissionLifecycleReason.dedupedByNewerSubmission,
-				causedByOperationID: submissionEntry.operationID,
-			},
-		);
-	}
-
-	commands.push(
-		{
-			type: "set_submission_entry",
-			submissionKey,
-			submissionEntry,
-			reason: submissionLifecycleReason.started,
-		},
-		{
-			type: "emit_submission_state_transition",
-			submissionEntry,
-			fromState: "none",
-			toState: "submitting",
-			reason: submissionLifecycleReason.started,
-		},
-		{
-			type: "schedule_status_update",
-			reason: submissionLifecycleReason.started,
-		},
-	);
-
-	return commands;
-}
-
-export function buildSubmissionLifecycleFinishCommands(props: {
-	submissionKey: string | symbol;
-	submissionEntry: SubmissionEntry;
-	shouldRemoveSubmissionEntry: boolean;
-}): SubmissionLifecycleCommand[] {
-	const { submissionKey, submissionEntry, shouldRemoveSubmissionEntry } =
-		props;
-	const commands: SubmissionLifecycleCommand[] = [];
-
-	if (shouldRemoveSubmissionEntry) {
-		commands.push(
-			{
-				type: "delete_submission_entry",
-				submissionKey,
-				submissionEntry,
-				reason: submissionLifecycleReason.finished,
-			},
-			{
-				type: "emit_submission_state_transition",
-				submissionEntry,
-				fromState: "submitting",
-				toState: "removed",
-				reason: submissionLifecycleReason.finished,
-			},
-		);
-	}
-
-	commands.push({
-		type: "schedule_status_update",
-		reason: submissionLifecycleReason.finished,
-	});
-
-	return commands;
-}
 
 function createSubmissionEntry(
 	abortController: AbortController,
@@ -225,44 +39,6 @@ function createSubmissionEntry(
 	};
 }
 
-function executeSubmissionLifecycleCommands(props: {
-	context: SubmitExecutionContext;
-	commands: SubmissionLifecycleCommand[];
-}): void {
-	const { context, commands } = props;
-
-	for (const command of commands) {
-		switch (command.type) {
-			case "abort_submission_entry":
-				command.submissionEntry.control.abortController?.abort(
-					"deduped",
-				);
-				break;
-			case "set_submission_entry":
-				context.submissions.set(
-					command.submissionKey,
-					command.submissionEntry,
-				);
-				break;
-			case "delete_submission_entry":
-				context.submissions.delete(command.submissionKey);
-				break;
-			case "emit_submission_state_transition":
-				context.onSubmissionStateTransition?.({
-					submissionEntry: command.submissionEntry,
-					fromState: command.fromState,
-					toState: command.toState,
-					reason: command.reason,
-					causedByOperationID: command.causedByOperationID ?? null,
-				});
-				break;
-			case "schedule_status_update":
-				context.scheduleStatusUpdate();
-				break;
-		}
-	}
-}
-
 export type SubmitExecutionContext = {
 	submissions: Map<string | symbol, SubmissionEntry>;
 	scheduleStatusUpdate: () => void;
@@ -278,6 +54,80 @@ export type SubmitExecutionContext = {
 		didNavigate: boolean;
 	}>;
 };
+
+function emitSubmissionStateTransition(props: {
+	context: SubmitExecutionContext;
+	submissionEntry: SubmissionEntry;
+	fromState: string;
+	toState: string;
+	reason: string;
+	causedByOperationID?: number | null;
+}): void {
+	props.context.onSubmissionStateTransition?.({
+		submissionEntry: props.submissionEntry,
+		fromState: props.fromState,
+		toState: props.toState,
+		reason: props.reason,
+		causedByOperationID: props.causedByOperationID ?? null,
+	});
+}
+
+export function beginSubmissionLifecycle(props: {
+	context: SubmitExecutionContext;
+	submissionKey: string | symbol;
+	submissionEntry: SubmissionEntry;
+	existingSubmissionEntry: SubmissionEntry | undefined;
+}): void {
+	const { context, submissionKey, submissionEntry, existingSubmissionEntry } =
+		props;
+	if (existingSubmissionEntry) {
+		existingSubmissionEntry.control.abortController?.abort("deduped");
+		emitSubmissionStateTransition({
+			context,
+			submissionEntry: existingSubmissionEntry,
+			fromState: "submitting",
+			toState: "aborted",
+			reason: submissionLifecycleReason.dedupedByNewerSubmission,
+			causedByOperationID: submissionEntry.operationID,
+		});
+	}
+
+	context.submissions.set(submissionKey, submissionEntry);
+	emitSubmissionStateTransition({
+		context,
+		submissionEntry,
+		fromState: "none",
+		toState: "submitting",
+		reason: submissionLifecycleReason.started,
+	});
+	context.scheduleStatusUpdate();
+}
+
+export function finishSubmissionLifecycle(props: {
+	context: SubmitExecutionContext;
+	submissionKey: string | symbol;
+	submissionEntry: SubmissionEntry;
+	shouldRemoveSubmissionEntry: boolean;
+}): void {
+	const {
+		context,
+		submissionKey,
+		submissionEntry,
+		shouldRemoveSubmissionEntry,
+	} = props;
+	if (shouldRemoveSubmissionEntry) {
+		context.submissions.delete(submissionKey);
+		emitSubmissionStateTransition({
+			context,
+			submissionEntry,
+			fromState: "submitting",
+			toState: "removed",
+			reason: submissionLifecycleReason.finished,
+		});
+	}
+
+	context.scheduleStatusUpdate();
+}
 
 function createSubmissionLifecycle(
 	context: SubmitExecutionContext,
@@ -304,24 +154,20 @@ function createSubmissionLifecycle(
 			typeof submissionKey === "string"
 				? context.submissions.get(submissionKey)
 				: undefined;
-		executeSubmissionLifecycleCommands({
+		beginSubmissionLifecycle({
 			context,
-			commands: buildSubmissionLifecycleBeginCommands({
-				submissionKey,
-				submissionEntry,
-				existingSubmissionEntry,
-			}),
+			submissionKey,
+			submissionEntry,
+			existingSubmissionEntry,
 		});
 	};
 
 	const finish = (): void => {
-		executeSubmissionLifecycleCommands({
+		finishSubmissionLifecycle({
 			context,
-			commands: buildSubmissionLifecycleFinishCommands({
-				submissionKey,
-				submissionEntry,
-				shouldRemoveSubmissionEntry: isCurrent(),
-			}),
+			submissionKey,
+			submissionEntry,
+			shouldRemoveSubmissionEntry: isCurrent(),
 		});
 	};
 
@@ -413,16 +259,10 @@ function getSubmitRedirectFailureResult<T>(): SubmitResult<T> {
 	return getSubmitErrorResult<T>("Redirect failed");
 }
 
-function getStaleSubmitResultFromCheckpointIfAny<T>(props: {
-	checkpoint: SubmitStalenessCheckpoint;
+function getStaleSubmitResultIfNotCurrent<T>(props: {
 	isSubmissionCurrent: () => boolean;
 }): SubmitResult<T> | null {
-	const stalenessCheckpointExecutionPlan =
-		decideSubmitStalenessCheckpointExecutionPlan({
-			checkpoint: props.checkpoint,
-			isSubmissionCurrent: props.isSubmissionCurrent(),
-		});
-	if (stalenessCheckpointExecutionPlan.type === "continue") {
+	if (props.isSubmissionCurrent()) {
 		return null;
 	}
 
@@ -548,8 +388,7 @@ export async function executeSubmitRuntime<T = unknown>(
 			url: preparedSubmitRequest.url,
 			requestInit: preparedSubmitRequest.requestInit,
 		});
-		const staleAfterRequest = getStaleSubmitResultFromCheckpointIfAny<T>({
-			checkpoint: "post_request",
+		const staleAfterRequest = getStaleSubmitResultIfNotCurrent<T>({
 			isSubmissionCurrent: submissionLifecycle.isCurrent,
 		});
 		if (staleAfterRequest) {
@@ -558,8 +397,7 @@ export async function executeSubmitRuntime<T = unknown>(
 
 		syncBuildIDFromResponse(response);
 
-		const staleBeforeFinalize = getStaleSubmitResultFromCheckpointIfAny<T>({
-			checkpoint: "pre_finalize",
+		const staleBeforeFinalize = getStaleSubmitResultIfNotCurrent<T>({
 			isSubmissionCurrent: submissionLifecycle.isCurrent,
 		});
 		if (staleBeforeFinalize) {
@@ -577,8 +415,7 @@ export async function executeSubmitRuntime<T = unknown>(
 				options,
 			});
 		const staleAfterResponseClassification =
-			getStaleSubmitResultFromCheckpointIfAny<T>({
-				checkpoint: "post_response_classification",
+			getStaleSubmitResultIfNotCurrent<T>({
 				isSubmissionCurrent: submissionLifecycle.isCurrent,
 			});
 		if (staleAfterResponseClassification) {
@@ -595,8 +432,7 @@ export async function executeSubmitRuntime<T = unknown>(
 				0,
 			);
 			const staleAfterRedirectEffectuation =
-				getStaleSubmitResultFromCheckpointIfAny<T>({
-					checkpoint: "post_redirect_effectuation",
+				getStaleSubmitResultIfNotCurrent<T>({
 					isSubmissionCurrent: submissionLifecycle.isCurrent,
 				});
 			if (staleAfterRedirectEffectuation) {
@@ -609,8 +445,7 @@ export async function executeSubmitRuntime<T = unknown>(
 		}
 
 		const data = await readSubmitSuccessResponseData(response);
-		const staleBeforeReturn = getStaleSubmitResultFromCheckpointIfAny<T>({
-			checkpoint: "pre_success_return",
+		const staleBeforeReturn = getStaleSubmitResultIfNotCurrent<T>({
 			isSubmissionCurrent: submissionLifecycle.isCurrent,
 		});
 		if (staleBeforeReturn) {
@@ -623,8 +458,7 @@ export async function executeSubmitRuntime<T = unknown>(
 				navigationType: "revalidation",
 			});
 			const staleAfterAutoRevalidate =
-				getStaleSubmitResultFromCheckpointIfAny<T>({
-					checkpoint: "post_auto_revalidate",
+				getStaleSubmitResultIfNotCurrent<T>({
 					isSubmissionCurrent: submissionLifecycle.isCurrent,
 				});
 			if (staleAfterAutoRevalidate) {

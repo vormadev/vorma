@@ -5,6 +5,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/lab/tsgen"
 )
 
@@ -27,7 +28,7 @@ var mutationMethods = map[string]struct{}{
 // tsGenInput contains all data needed for TypeScript generation.
 // This makes the function pure - it takes inputs and returns output.
 type tsGenInput struct {
-	LoadersRouter *mux.NestedRouter
+	LoadersRouter *nestedmux.Router
 	ActionsRouter *mux.Router
 	Paths         map[string]*vormaruntime.Path
 	Config        *vormaruntime.VormaConfig
@@ -108,7 +109,7 @@ func generateTypeScript(input tsGenInput) (string, error) {
 
 func appendLoaderCollectionItems(
 	input tsGenInput,
-	allLoaders map[string]mux.AnyNestedRoute,
+	allLoaders map[string]nestedmux.AnyRoute,
 	collection *[]tsgen.CollectionItem,
 	seen map[string]struct{},
 	metadataConfig routePatternMetadataConfig,

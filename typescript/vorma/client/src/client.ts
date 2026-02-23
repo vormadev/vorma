@@ -1,3 +1,4 @@
+import type { BrowserHistory } from "history";
 import { resolveAbsoluteHrefWithOptionalSearchAndHash } from "vorma/kit/url";
 import {
 	__vormaClientGlobal,
@@ -6,14 +7,13 @@ import {
 import { createNavigationRuntime } from "./core/navigation/runtime.ts";
 import type {
 	NavigateProps,
-	NavigationEntry,
 	NavigationControl,
+	NavigationEntry,
 	NavigationOutcome,
 	NavigationStateManager,
 	SubmitOptions,
 } from "./core/navigation/types.ts";
 import type { StatusEventDetail } from "./platform/events.ts";
-import type { historyInstance } from "./platform/history.ts";
 import { HistoryManager } from "./platform/history.ts";
 
 export type {
@@ -102,12 +102,6 @@ export function ensureNavigationRuntimeInitialized(): void {
 	getNavigationStateManager();
 }
 
-function withNavigationStateManager<T>(props: {
-	run: (navigationRuntime: NavigationStateManager) => T;
-}): T {
-	return props.run(getNavigationStateManager());
-}
-
 // Global singleton runtime proxy that defers concrete runtime construction
 // until the first method/property access.
 export const navigationStateManager: NavigationStateManager = {
@@ -115,79 +109,53 @@ export const navigationStateManager: NavigationStateManager = {
 		return getNavigationStateManager()._submissions;
 	},
 	navigate(props: NavigateProps): Promise<{ didNavigate: boolean }> {
-		return withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.navigate(props),
-		});
+		return getNavigationStateManager().navigate(props);
 	},
 	beginNavigation(props: NavigateProps): NavigationControl {
-		return withNavigationStateManager({
-			run: (navigationRuntime) =>
-				navigationRuntime.beginNavigation(props),
-		});
+		return getNavigationStateManager().beginNavigation(props);
 	},
 	processSuccessfulNavigation(
 		outcome: Extract<NavigationOutcome, { type: "success" }>,
 		entry: NavigationEntry,
 	): Promise<void> {
-		return withNavigationStateManager({
-			run: (navigationRuntime) =>
-				navigationRuntime.processSuccessfulNavigation(outcome, entry),
-		});
+		return getNavigationStateManager().processSuccessfulNavigation(
+			outcome,
+			entry,
+		);
 	},
 	submit<T = unknown>(
 		url: string | URL,
 		requestInit?: RequestInit,
 		options?: SubmitOptions,
 	): Promise<{ success: true; data: T } | { success: false; error: string }> {
-		return withNavigationStateManager({
-			run: (navigationRuntime) =>
-				navigationRuntime.submit<T>(url, requestInit, options),
-		});
+		return getNavigationStateManager().submit<T>(url, requestInit, options);
 	},
 	removeNavigation(key: string): void {
-		withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.removeNavigation(key),
-		});
+		getNavigationStateManager().removeNavigation(key);
 	},
 	getNavigation(key: string): NavigationEntry | undefined {
-		return withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.getNavigation(key),
-		});
+		return getNavigationStateManager().getNavigation(key);
 	},
 	hasNavigation(key: string): boolean {
-		return withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.hasNavigation(key),
-		});
+		return getNavigationStateManager().hasNavigation(key);
 	},
 	getNavigationsSize(): number {
-		return withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.getNavigationsSize(),
-		});
+		return getNavigationStateManager().getNavigationsSize();
 	},
 	getNavigations(): Map<string, NavigationEntry> {
-		return withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.getNavigations(),
-		});
+		return getNavigationStateManager().getNavigations();
 	},
 	getStatus(): StatusEventDetail {
-		return withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.getStatus(),
-		});
+		return getNavigationStateManager().getStatus();
 	},
 	getDebugJournal() {
-		return withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.getDebugJournal(),
-		});
+		return getNavigationStateManager().getDebugJournal();
 	},
 	clearDebugJournal(): void {
-		withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.clearDebugJournal(),
-		});
+		getNavigationStateManager().clearDebugJournal();
 	},
 	clearAll(): void {
-		withNavigationStateManager({
-			run: (navigationRuntime) => navigationRuntime.clearAll(),
-		});
+		getNavigationStateManager().clearAll();
 	},
 };
 
@@ -314,7 +282,7 @@ export function getRootEl(): HTMLDivElement {
 /**
  * Returns the singleton history integration instance.
  */
-export function getHistoryInstance(): historyInstance {
+export function getHistoryInstance(): BrowserHistory {
 	ensureNavigationRuntimeInitialized();
 	return HistoryManager.getInstance();
 }

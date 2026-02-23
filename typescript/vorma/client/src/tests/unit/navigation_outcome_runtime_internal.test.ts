@@ -86,7 +86,10 @@ function createSuccessOutcome(
 			metaHeadEls: undefined,
 			restHeadEls: undefined,
 		},
-		preloadCommands: [],
+		preloadPlan: {
+			moduleDependencies: [],
+			cssBundles: [],
+		},
 		waitFnPromise: Promise.resolve({ data: [] }),
 		props: {
 			href: "http://localhost:3000/target",

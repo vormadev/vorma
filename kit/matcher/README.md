@@ -9,8 +9,7 @@ It supports:
 - static segments (`/users`)
 - dynamic params (`/users/:id`)
 - splats (`/files/*`)
-- index routes (trailing slash style, or explicit index segment style)
-- single best-match lookup and nested-layout match stacks
+- single best-match lookup
 
 ## Import
 
@@ -23,7 +22,9 @@ import "github.com/vormadev/vorma/kit/matcher"
 - `Matcher`: registers patterns and resolves paths.
 - `RegisteredPattern`: normalized form of a registered pattern.
 - `BestMatch`: result of `FindBestMatch`.
-- `FindNestedMatchesResults`: result of `FindNestedMatches`.
+
+For nested/layout match stacks, use
+`github.com/vormadev/vorma/kit/nestedmatcher`.
 
 ## Quick Start
 
@@ -47,16 +48,7 @@ Defaults:
 
 - `DynamicParamPrefix`: `':'`
 - `SplatSegmentIdentifier`: `'*'`
-- `ExplicitIndexSegmentIdentifier`: `""` (trailing-slash style indexes)
 - `Quiet`: `false` (duplicate-registration warnings enabled)
-
-### Explicit index segment mode
-
-If you set `ExplicitIndexSegmentIdentifier` (for example `"_index"`):
-
-- trailing slashes are not allowed for non-root patterns
-- `/about/_index` behaves like the index route for `/about/`
-- root index remains representable
 
 ## Match APIs
 
@@ -68,19 +60,6 @@ Returns exactly one route using internal precedence/score rules.
 - dynamic segments capture params by segment name
 - splats capture the remaining segments
 - returns `(*BestMatch, false)` when nothing matches
-
-### `FindNestedMatches`
-
-Returns an ordered stack of matches for layout-style routing.
-
-Use this when parent routes and a leaf route should all participate in
-rendering.
-
-Result fields:
-
-- `Matches`: ordered list of matched registered patterns
-- `Params`: params from the selected deepest/terminal match
-- `SplatValues`: splat values from the selected deepest/terminal match
 
 ## Pattern Normalization Helpers
 
@@ -96,21 +75,15 @@ Result fields:
   concurrent registration/mutation structure.
 - Duplicate registrations overwrite map entries and may log warnings when
   `Quiet` is false.
-- `NormalizePattern` panics if `ExplicitIndexSegmentIdentifier` contains `/` or
-  if invalid trailing-slash usage is provided in explicit-index mode.
 - Dynamic params match non-empty segments.
 - `RegisteredPattern.NormalizedSegments()` returns a copy of normalized segment
   metadata, so mutating that returned slice does not mutate matcher internals.
-- Root catch-all `/*` is treated specially in nested matching to avoid
-  overwhelming more specific matches.
 
 ## API Reference
 
 ### Types
 
 - `type BestMatch`
-- `type FindNestedMatchesResults`
-- `type Match`
 - `type Matcher`
 - `type Options`
 - `type Params`
@@ -136,8 +109,6 @@ Result fields:
 - `func (m *Matcher) RegisterPattern(originalPattern string) *RegisteredPattern`
 - `func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern`
 - `func (m *Matcher) FindBestMatch(realPath string) (*BestMatch, bool)`
-- `func (m *Matcher) FindNestedMatches(realPath string) (*FindNestedMatchesResults, bool)`
-- `func (m *Matcher) ExplicitIndexSegmentIdentifier() string`
 - `func (m *Matcher) DynamicParamPrefix() rune`
 - `func (m *Matcher) SplatSegmentIdentifier() rune`
 

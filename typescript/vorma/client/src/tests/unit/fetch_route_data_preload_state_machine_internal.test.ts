@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { decideServerSuccessPreloadExecutionPlan } from "../../core/navigation/fetch_route_data_server.ts";
+import { buildServerSuccessPreloadPlan } from "../../core/navigation/fetch_route_data_server.ts";
 
 describe("server-success preload state machine", () => {
-	it("skips preload plan when signal is already aborted", () => {
-		const plan = decideServerSuccessPreloadExecutionPlan({
+	it("returns empty preload plan when signal is already aborted", () => {
+		const preloadPlan = buildServerSuccessPreloadPlan({
 			signalAborted: true,
 			isDev: false,
 			importURLs: ["/a.js"],
@@ -11,14 +11,14 @@ describe("server-success preload state machine", () => {
 			cssBundles: ["/a.css"],
 		});
 
-		expect(plan).toEqual({
-			type: "skip",
-			reason: "server_success_preload_skipped_signal_aborted",
+		expect(preloadPlan).toEqual({
+			moduleDependencies: [],
+			cssBundles: [],
 		});
 	});
 
 	it("uses deduped import URLs for dev preload module dependencies", () => {
-		const plan = decideServerSuccessPreloadExecutionPlan({
+		const preloadPlan = buildServerSuccessPreloadPlan({
 			signalAborted: false,
 			isDev: true,
 			importURLs: ["/a.js", "/a.js", "/b.js"],
@@ -26,16 +26,14 @@ describe("server-success preload state machine", () => {
 			cssBundles: ["/a.css"],
 		});
 
-		expect(plan).toEqual({
-			type: "preload",
-			moduleDependenciesToPreload: ["/a.js", "/b.js"],
-			cssBundlesToPreload: ["/a.css"],
-			reason: "server_success_preload_allowed",
+		expect(preloadPlan).toEqual({
+			moduleDependencies: ["/a.js", "/b.js"],
+			cssBundles: ["/a.css"],
 		});
 	});
 
 	it("uses production deps for non-dev preload module dependencies", () => {
-		const plan = decideServerSuccessPreloadExecutionPlan({
+		const preloadPlan = buildServerSuccessPreloadPlan({
 			signalAborted: false,
 			isDev: false,
 			importURLs: ["/dev-only.js"],
@@ -43,11 +41,9 @@ describe("server-success preload state machine", () => {
 			cssBundles: ["/a.css", "/b.css"],
 		});
 
-		expect(plan).toEqual({
-			type: "preload",
-			moduleDependenciesToPreload: ["/prod-a.js", "/prod-b.js"],
-			cssBundlesToPreload: ["/a.css", "/b.css"],
-			reason: "server_success_preload_allowed",
+		expect(preloadPlan).toEqual({
+			moduleDependencies: ["/prod-a.js", "/prod-b.js"],
+			cssBundles: ["/a.css", "/b.css"],
 		});
 	});
 });

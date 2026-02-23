@@ -14,6 +14,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 func TestExtractDynamicParamsFromPattern(t *testing.T) {
@@ -136,7 +137,7 @@ func TestGenerateRollupOptions_ContainsExpectedConfig(t *testing.T) {
 func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(
 	t *testing.T,
 ) {
-	loadersRouter := mux.NewNestedRouter(&mux.NestedOptions{
+	loadersRouter := nestedmux.NewRouter(&nestedmux.Options{
 		ExplicitIndexSegmentIdentifier: "_index",
 	})
 	actionsRouter := mux.NewRouter(&mux.Options{MountRoot: "/api/"})
@@ -160,7 +161,7 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(
 		OK bool `json:"ok"`
 	}
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		loadersRouter,
 		"/",
 		mux.TaskHandlerFromFunc(
@@ -169,7 +170,7 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		loadersRouter,
 		"/users/:id",
 		mux.TaskHandlerFromFunc(
@@ -275,7 +276,7 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(
 func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(
 	t *testing.T,
 ) {
-	loadersRouter := mux.NewNestedRouter(&mux.NestedOptions{
+	loadersRouter := nestedmux.NewRouter(&nestedmux.Options{
 		DynamicParamPrefix:     '@',
 		SplatSegmentIdentifier: '#',
 	})

@@ -1,4 +1,4 @@
-package mux
+package nestedmux
 
 import (
 	"context"
@@ -8,17 +8,21 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/genericsutil"
-	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/kit/internal/muxcore"
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmatcher"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/tasks"
 )
 
 var (
-	noneInstance = None{}
+	nestedMuxLog = colorlog.New("nestedmux")
+	noneInstance = mux.None{}
 	reqDataPool  = sync.Pool{
 		New: func() any {
-			return &ReqData[None]{input: noneInstance}
+			return &mux.ReqData[mux.None]{}
 		},
 	}
 )
@@ -27,7 +31,7 @@ var (
 /////// PUBLIC API
 /////////////////////////////////////////////////////////////////////
 
-type NestedReqData = ReqData[None]
+type ReqData = mux.ReqData[mux.None]
 
 type compiledRoute struct {
 	pattern     string
@@ -40,15 +44,15 @@ type compiledRoutesSnapshot struct {
 	routeIndexMap  map[string]int
 }
 
-// NestedRouter stores nested route patterns and optional task handlers.
-type NestedRouter struct {
+// Router stores nested route patterns and optional task handlers.
+type Router struct {
 	mu                  sync.RWMutex
-	matcher             *matcher.Matcher
-	routes              map[string]AnyNestedRoute
+	matcher             *nestedmatcher.Matcher
+	routes              map[string]AnyRoute
 	compiledRoutesState atomic.Value // compiledRoutesSnapshot
 }
 
-func (nr *NestedRouter) currentCompiledRoutesSnapshot() compiledRoutesSnapshot {
+func (nr *Router) currentCompiledRoutesSnapshot() compiledRoutesSnapshot {
 	snapshot, loaded := nr.compiledRoutesState.Load().(compiledRoutesSnapshot)
 	if !loaded {
 		return compiledRoutesSnapshot{}
@@ -57,16 +61,16 @@ func (nr *NestedRouter) currentCompiledRoutesSnapshot() compiledRoutesSnapshot {
 }
 
 // AllRoutes returns a snapshot copy of registered nested routes.
-func (nr *NestedRouter) AllRoutes() map[string]AnyNestedRoute {
+func (nr *Router) AllRoutes() map[string]AnyRoute {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
-	allRoutesCopy := make(map[string]AnyNestedRoute, len(nr.routes))
+	allRoutesCopy := make(map[string]AnyRoute, len(nr.routes))
 	maps.Copy(allRoutesCopy, nr.routes)
 	return allRoutesCopy
 }
 
 // IsRegistered reports whether a pattern is registered.
-func (nr *NestedRouter) IsRegistered(originalPattern string) bool {
+func (nr *Router) IsRegistered(originalPattern string) bool {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 	_, exists := nr.routes[originalPattern]
@@ -74,7 +78,7 @@ func (nr *NestedRouter) IsRegistered(originalPattern string) bool {
 }
 
 // HasTaskHandler reports whether a pattern is registered with a handler.
-func (nr *NestedRouter) HasTaskHandler(originalPattern string) bool {
+func (nr *Router) HasTaskHandler(originalPattern string) bool {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 	route, exists := nr.routes[originalPattern]
@@ -85,71 +89,61 @@ func (nr *NestedRouter) HasTaskHandler(originalPattern string) bool {
 }
 
 // ExplicitIndexSegmentIdentifier returns the explicit index marker string.
-func (nr *NestedRouter) ExplicitIndexSegmentIdentifier() string {
+func (nr *Router) ExplicitIndexSegmentIdentifier() string {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 	return nr.matcher.ExplicitIndexSegmentIdentifier()
 }
 
 // DynamicParamPrefix returns the dynamic param prefix rune.
-func (nr *NestedRouter) DynamicParamPrefix() rune {
+func (nr *Router) DynamicParamPrefix() rune {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 	return nr.matcher.DynamicParamPrefix()
 }
 
 // SplatSegmentIdentifier returns the splat segment identifier rune.
-func (nr *NestedRouter) SplatSegmentIdentifier() rune {
+func (nr *Router) SplatSegmentIdentifier() rune {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 	return nr.matcher.SplatSegmentIdentifier()
 }
 
 // Matcher returns a copy of the nested matcher state.
-func (nr *NestedRouter) Matcher() *matcher.Matcher {
+func (nr *Router) Matcher() *nestedmatcher.Matcher {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
 
-	matcherCopy := matcher.New(&matcher.Options{
-		DynamicParamPrefix:             nr.matcher.DynamicParamPrefix(),
-		SplatSegmentIdentifier:         nr.matcher.SplatSegmentIdentifier(),
-		ExplicitIndexSegmentIdentifier: nr.matcher.ExplicitIndexSegmentIdentifier(),
-		Quiet:                          true,
-	})
+	matcherCopy := nestedmatcher.New(nr.currentMatcherOptions(true))
 	for pattern := range nr.routes {
 		matcherCopy.RegisterPattern(pattern)
 	}
 	return matcherCopy
 }
 
-// NestedOptions configures pattern matching behavior for NestedRouter.
-type NestedOptions struct {
+// Options configures pattern matching behavior for Router.
+type Options struct {
 	DynamicParamPrefix             rune
 	SplatSegmentIdentifier         rune
 	ExplicitIndexSegmentIdentifier string
 }
 
-// NewNestedRouter creates a nested router with the provided options.
-func NewNestedRouter(opts *NestedOptions) *NestedRouter {
-	matcherOpts := new(matcher.Options)
+// NewRouter creates a nested router with the provided options.
+func NewRouter(opts *Options) *Router {
 	if opts == nil {
-		opts = new(NestedOptions)
+		opts = new(Options)
 	}
-	matcherOpts.DynamicParamPrefix = genericsutil.OrDefault(
-		opts.DynamicParamPrefix,
-		':',
+	matcherOpts := muxcore.BuildNestedMatcherOptions(
+		muxcore.NestedMatcherOptionsInput{
+			DynamicParamPrefix:             opts.DynamicParamPrefix,
+			SplatSegmentIdentifier:         opts.SplatSegmentIdentifier,
+			ExplicitIndexSegmentIdentifier: opts.ExplicitIndexSegmentIdentifier,
+			Quiet:                          false,
+		},
 	)
-	matcherOpts.SplatSegmentIdentifier = genericsutil.OrDefault(
-		opts.SplatSegmentIdentifier,
-		'*',
-	)
-	matcherOpts.ExplicitIndexSegmentIdentifier = genericsutil.OrDefault(
-		opts.ExplicitIndexSegmentIdentifier,
-		"",
-	)
-	nr := &NestedRouter{
-		matcher: matcher.New(matcherOpts),
-		routes:  make(map[string]AnyNestedRoute),
+	nr := &Router{
+		matcher: nestedmatcher.New(matcherOpts),
+		routes:  make(map[string]AnyRoute),
 	}
 	nr.compiledRoutesState.Store(compiledRoutesSnapshot{
 		compiledRoutes: make([]compiledRoute, 0),
@@ -158,57 +152,59 @@ func NewNestedRouter(opts *NestedOptions) *NestedRouter {
 	return nr
 }
 
-// NestedRoute stores metadata and optional task handler for one nested pattern.
-type NestedRoute[O any] struct {
-	genericsutil.ZeroHelper[None, O]
-	router          *NestedRouter
+// Route stores metadata and optional task handler for one nested pattern.
+type Route[O any] struct {
+	genericsutil.ZeroHelper[mux.None, O]
+	router          *Router
 	originalPattern string
 	taskHandler     tasks.AnyTask
 }
 
-// AnyNestedRoute is the internal polymorphic route contract for NestedRouter.
-type AnyNestedRoute interface {
+// AnyRoute is the internal polymorphic route contract for Router.
+type AnyRoute interface {
 	OriginalPattern() string
 	genericsutil.AnyZeroHelper
 	getTaskHandler() tasks.AnyTask
 }
 
 // OriginalPattern returns the pattern as registered.
-func (route *NestedRoute[O]) OriginalPattern() string {
+func (route *Route[O]) OriginalPattern() string {
 	return route.originalPattern
 }
 
-func (route *NestedRoute[O]) getTaskHandler() tasks.AnyTask {
+func (route *Route[O]) getTaskHandler() tasks.AnyTask {
 	return route.taskHandler
 }
 
-// AddNestedTaskHandler registers a nested pattern with a task handler.
-func AddNestedTaskHandler[O any](
-	router *NestedRouter, pattern string, taskHandler *TaskHandler[None, O],
-) *NestedRoute[O] {
-	route := &NestedRoute[O]{
+// AddTaskHandler registers a nested pattern with a task handler.
+func AddTaskHandler[O any](
+	router *Router,
+	pattern string,
+	taskHandler *mux.TaskHandler[mux.None, O],
+) *Route[O] {
+	route := &Route[O]{
 		router:          router,
 		originalPattern: pattern,
 		taskHandler:     taskHandler,
 	}
-	mustRegisterNestedRoute(route)
+	mustRegisterRoute(route)
 	return route
 }
 
-// AddNestedPatternWithoutHandler registers a nested pattern with no task handler.
-func AddNestedPatternWithoutHandler(router *NestedRouter, pattern string) {
-	route := &NestedRoute[None]{
+// AddPatternWithoutHandler registers a nested pattern with no task handler.
+func AddPatternWithoutHandler(router *Router, pattern string) {
+	route := &Route[mux.None]{
 		router:          router,
 		originalPattern: pattern,
 		taskHandler:     nil,
 	}
-	mustRegisterNestedRoute(route)
+	mustRegisterRoute(route)
 }
 
-// AddNestedPatternWithoutHandlerIfMissing registers a pattern without a task
+// AddPatternWithoutHandlerIfMissing registers a pattern without a task
 // handler only when it is not already present. It returns true if a new route
 // was registered.
-func (nr *NestedRouter) AddNestedPatternWithoutHandlerIfMissing(
+func (nr *Router) AddPatternWithoutHandlerIfMissing(
 	pattern string,
 ) bool {
 	if nr == nil {
@@ -222,7 +218,7 @@ func (nr *NestedRouter) AddNestedPatternWithoutHandlerIfMissing(
 		return false
 	}
 
-	route := &NestedRoute[None]{
+	route := &Route[mux.None]{
 		router:          nr,
 		originalPattern: pattern,
 		taskHandler:     nil,
@@ -238,8 +234,8 @@ func (nr *NestedRouter) AddNestedPatternWithoutHandlerIfMissing(
 	return true
 }
 
-// NestedTasksResult stores task execution output for one matched pattern.
-type NestedTasksResult struct {
+// TasksResult stores task execution output for one matched pattern.
+type TasksResult struct {
 	pattern string
 	data    any
 	err     error
@@ -247,73 +243,73 @@ type NestedTasksResult struct {
 }
 
 // Pattern returns the matched route pattern.
-func (ntr *NestedTasksResult) Pattern() string { return ntr.pattern }
+func (ntr *TasksResult) Pattern() string { return ntr.pattern }
 
 // OK reports whether task execution succeeded.
-func (ntr *NestedTasksResult) OK() bool { return ntr.err == nil }
+func (ntr *TasksResult) OK() bool { return ntr.err == nil }
 
 // Data returns task output data.
-func (ntr *NestedTasksResult) Data() any { return ntr.data }
+func (ntr *TasksResult) Data() any { return ntr.data }
 
 // Err returns task execution error.
-func (ntr *NestedTasksResult) Err() error { return ntr.err }
+func (ntr *TasksResult) Err() error { return ntr.err }
 
 // RanTask reports whether this match had a task handler.
-func (ntr *NestedTasksResult) RanTask() bool { return ntr.ranTask }
+func (ntr *TasksResult) RanTask() bool { return ntr.ranTask }
 
-// NestedTasksResults contains ordered and keyed task results for nested matches.
-type NestedTasksResults struct {
-	Params          Params
+// TasksResults contains ordered and keyed task results for nested matches.
+type TasksResults struct {
+	Params          mux.Params
 	SplatValues     []string
-	Map             map[string]*NestedTasksResult
-	Slice           []*NestedTasksResult
+	Map             map[string]*TasksResult
+	Slice           []*TasksResult
 	ResponseProxies []*response.Proxy
 }
 
 // HasTaskHandlerAt reports whether the result at i ran a task handler.
-func (ntr *NestedTasksResults) HasTaskHandlerAt(i int) bool {
+func (ntr *TasksResults) HasTaskHandlerAt(i int) bool {
 	if i < 0 || i >= len(ntr.Slice) {
 		return false
 	}
 	return ntr.Slice[i].ranTask
 }
 
-// FindNestedMatches resolves nested route matches for the request path.
-func FindNestedMatches(
-	nestedRouter *NestedRouter,
+// FindMatches resolves nested route matches for the request path.
+func FindMatches(
+	nestedRouter *Router,
 	r *http.Request,
-) (*matcher.FindNestedMatchesResults, bool) {
+) (*nestedmatcher.Results, bool) {
 	nestedRouter.mu.RLock()
 	defer nestedRouter.mu.RUnlock()
-	return nestedRouter.matcher.FindNestedMatches(r.URL.Path)
+	return nestedRouter.matcher.FindMatches(r.URL.Path)
 }
 
-// FindNestedMatchesAndRunTasks finds nested matches and runs all matched task handlers.
-func FindNestedMatchesAndRunTasks(
-	nestedRouter *NestedRouter,
+// FindMatchesAndRunTasks finds nested matches and runs all matched task handlers.
+func FindMatchesAndRunTasks(
+	nestedRouter *Router,
 	r *http.Request,
-) (*NestedTasksResults, bool) {
-	findResults, ok := FindNestedMatches(nestedRouter, r)
+) (*TasksResults, bool) {
+	findResults, ok := FindMatches(nestedRouter, r)
 	if !ok {
 		return nil, false
 	}
-	return RunNestedTasks(nestedRouter, r, findResults), true
+	return RunTasks(nestedRouter, r, findResults), true
 }
 
-// RunNestedTasks executes all task handlers for the matched routes in parallel.
+// RunTasks executes all task handlers for the matched routes in parallel.
 //
-// IMPORTANT: This function uses object pooling for ReqData objects. The safety of this
+// IMPORTANT: This function uses object pooling for mux.ReqData objects. The safety of this
 // depends on tasksCtx.RunParallel blocking until all tasks complete. If RunParallel
 // were to return before tasks finish (async dispatch), this would cause use-after-free bugs.
 // The current tasks.Ctx implementation blocks until completion, making this safe.
-func RunNestedTasks(
-	nestedRouter *NestedRouter,
+func RunTasks(
+	nestedRouter *Router,
 	r *http.Request,
-	findNestedMatchesResults *matcher.FindNestedMatchesResults,
-) *NestedTasksResults {
-	tasksCtx := GetTasksCtx(r)
+	findNestedMatchesResults *nestedmatcher.Results,
+) *TasksResults {
+	tasksCtx := mux.GetTasksCtx(r)
 	if tasksCtx == nil {
-		muxLog.Error("No TasksCtx found in request for RunNestedTasks")
+		nestedMuxLog.Error("No TasksCtx found in request for RunTasks")
 		return nil
 	}
 
@@ -324,11 +320,11 @@ func RunNestedTasks(
 	}
 
 	// Create results structure with pre-allocated capacity
-	results := &NestedTasksResults{
+	results := &TasksResults{
 		Params:          findNestedMatchesResults.Params,
 		SplatValues:     findNestedMatchesResults.SplatValues,
-		Map:             make(map[string]*NestedTasksResult, numMatches),
-		Slice:           make([]*NestedTasksResult, numMatches),
+		Map:             make(map[string]*TasksResult, numMatches),
+		Slice:           make([]*TasksResult, numMatches),
 		ResponseProxies: make([]*response.Proxy, numMatches),
 	}
 
@@ -345,18 +341,13 @@ func RunNestedTasks(
 	taskCancels := make([]context.CancelFunc, 0, numMatches/2)
 
 	// Track pooled objects for cleanup
-	pooledReqData := make([]*ReqData[None], 0, numMatches/2)
+	pooledReqData := make([]*mux.ReqData[mux.None], 0, numMatches/2)
 
 	// Ensure cleanup happens after RunParallel completes (which blocks until all tasks finish)
 	defer func() {
-		// Return ReqData objects to pool after clearing
+		// Return mux.ReqData objects to pool after clearing
 		for _, rd := range pooledReqData {
-			rd.params = nil
-			rd.splatVals = nil
-			rd.tasksCtx = nil
-			rd.req = nil
-			rd.responseProxy = nil
-			rd.input = noneInstance
+			rd.ClearForPool()
 			reqDataPool.Put(rd)
 		}
 	}()
@@ -366,7 +357,7 @@ func RunNestedTasks(
 		pattern := match.OriginalPattern()
 
 		// Get pooled result
-		result := &NestedTasksResult{}
+		result := &TasksResult{}
 		result.pattern = pattern
 		result.data = nil
 		result.err = nil
@@ -394,15 +385,16 @@ func RunNestedTasks(
 		proxy := response.NewProxy()
 		results.ResponseProxies[i] = proxy
 
-		// Get pooled ReqData and fully initialize it
-		reqData := reqDataPool.Get().(*ReqData[None])
-		reqData.params = results.Params
-		reqData.splatVals = results.SplatValues
-		reqData.input = noneInstance
-		reqData.req = r
-		reqData.responseProxy = proxy
+		// Get pooled mux.ReqData and fully initialize it.
+		reqData := reqDataPool.Get().(*mux.ReqData[mux.None])
+		reqData.ResetForReuse(
+			results.Params,
+			results.SplatValues,
+			noneInstance,
+			r,
+			proxy,
+		)
 		pooledReqData = append(pooledReqData, reqData)
-		reqData.tasksCtx = nil
 
 		boundTask := &optimizedBoundTask{
 			taskHandler:       compiled.taskHandler,
@@ -419,7 +411,7 @@ func RunNestedTasks(
 	// errors in nested routing.
 	if len(boundTasks) > 0 {
 		if len(boundTasks) == 1 {
-			boundTasks[0].reqData.tasksCtx = tasksCtx
+			boundTasks[0].reqData.SetTasksCtx(tasksCtx)
 		} else {
 			currentCtx := tasksCtx
 			for i, bt := range boundTasks {
@@ -427,16 +419,16 @@ func RunNestedTasks(
 					childNativeCtx, cancel := context.WithCancel(currentCtx.NativeContext())
 					taskCancels = append(taskCancels, cancel)
 					childCtx := currentCtx.WithNativeContext(childNativeCtx)
-					bt.reqData.tasksCtx = childCtx
+					bt.reqData.SetTasksCtx(childCtx)
 					bt.cancelDescendants = cancel
 					currentCtx = childCtx
 					continue
 				}
 				// Leaf task reuses the current ancestor-cancelable context.
-				bt.reqData.tasksCtx = currentCtx
+				bt.reqData.SetTasksCtx(currentCtx)
 			}
 		}
-		runNestedBoundTasks(boundTasks)
+		runBoundTasks(boundTasks)
 	}
 
 	for _, cancel := range taskCancels {
@@ -450,14 +442,14 @@ func RunNestedTasks(
 /////// PRIVATE API
 /////////////////////////////////////////////////////////////////////
 
-func mustRegisterNestedRoute[O any](route *NestedRoute[O]) {
+func mustRegisterRoute[O any](route *Route[O]) {
 	route.router.mu.Lock()
 	defer route.router.mu.Unlock()
 
 	if _, exists := route.router.routes[route.originalPattern]; exists {
 		panic(
 			fmt.Sprintf(
-				"Pattern '%s' is already registered in NestedRouter. Perhaps you're unintentionally registering it twice?",
+				"Pattern '%s' is already registered in Router. Perhaps you're unintentionally registering it twice?",
 				route.originalPattern,
 			),
 		)
@@ -473,7 +465,7 @@ func mustRegisterNestedRoute[O any](route *NestedRoute[O]) {
 
 // addCompiledRoute adds a compiled route with atomic update
 // Must be called with mu.Lock held
-func (nr *NestedRouter) addCompiledRoute(compiled compiledRoute) {
+func (nr *Router) addCompiledRoute(compiled compiledRoute) {
 	currentSnapshot := nr.currentCompiledRoutesSnapshot()
 	currentRoutes := currentSnapshot.compiledRoutes
 	currentIndexMap := currentSnapshot.routeIndexMap
@@ -495,14 +487,17 @@ func (nr *NestedRouter) addCompiledRoute(compiled compiledRoute) {
 
 type optimizedBoundTask struct {
 	taskHandler tasks.AnyTask
-	reqData     *ReqData[None]
-	result      *NestedTasksResult
+	reqData     *mux.ReqData[mux.None]
+	result      *TasksResult
 	// Called when this task fails; should cancel deeper matched routes only.
 	cancelDescendants context.CancelFunc
 }
 
 func (oc *optimizedBoundTask) Run() error {
-	data, err := oc.taskHandler.RunWithAnyInput(oc.reqData.tasksCtx, oc.reqData)
+	data, err := oc.taskHandler.RunWithAnyInput(
+		oc.reqData.TasksCtx(),
+		oc.reqData,
+	)
 	oc.result.data = data
 	oc.result.err = err
 	if err != nil && oc.cancelDescendants != nil {
@@ -511,7 +506,7 @@ func (oc *optimizedBoundTask) Run() error {
 	return err
 }
 
-func runNestedBoundTasks(boundTasks []*optimizedBoundTask) {
+func runBoundTasks(boundTasks []*optimizedBoundTask) {
 	switch len(boundTasks) {
 	case 0:
 		return
@@ -534,7 +529,7 @@ func runNestedBoundTasks(boundTasks []*optimizedBoundTask) {
 
 // ReplaceRoutes atomically replaces all routes with a new set.
 // This rebuilds the matcher from scratch, which is safe and fast for dev mode.
-func (nr *NestedRouter) ReplaceRoutes(newRoutes map[string]AnyNestedRoute) {
+func (nr *Router) ReplaceRoutes(newRoutes map[string]AnyRoute) {
 	nr.mu.Lock()
 	defer nr.mu.Unlock()
 	nr.replaceRoutesLocked(newRoutes)
@@ -543,11 +538,11 @@ func (nr *NestedRouter) ReplaceRoutes(newRoutes map[string]AnyNestedRoute) {
 // RebuildPreservingHandlers atomically rebuilds the router, preserving routes
 // that have task handlers and replacing handler-less routes with the provided patterns.
 // This is intended for dev-time fast rebuilds when only pattern definitions change.
-func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
+func (nr *Router) RebuildPreservingHandlers(patterns []string) {
 	nr.mu.Lock()
 	defer nr.mu.Unlock()
 
-	newRoutes := make(map[string]AnyNestedRoute)
+	newRoutes := make(map[string]AnyRoute)
 
 	// Preserve existing routes with handlers
 	for pattern, route := range nr.routes {
@@ -559,7 +554,7 @@ func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
 	// Add patterns without handlers
 	for _, pattern := range patterns {
 		if _, exists := newRoutes[pattern]; !exists {
-			newRoutes[pattern] = &NestedRoute[None]{
+			newRoutes[pattern] = &Route[mux.None]{
 				router:          nr,
 				originalPattern: pattern,
 				taskHandler:     nil,
@@ -571,20 +566,13 @@ func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
 }
 
 // replaceRoutesLocked is the internal implementation. Caller must hold nr.mu.Lock().
-func (nr *NestedRouter) replaceRoutesLocked(
-	newRoutes map[string]AnyNestedRoute,
+func (nr *Router) replaceRoutesLocked(
+	newRoutes map[string]AnyRoute,
 ) {
-	routesCopy := make(map[string]AnyNestedRoute, len(newRoutes))
+	routesCopy := make(map[string]AnyRoute, len(newRoutes))
 	maps.Copy(routesCopy, newRoutes)
 
-	opts := &matcher.Options{
-		DynamicParamPrefix:             nr.matcher.DynamicParamPrefix(),
-		SplatSegmentIdentifier:         nr.matcher.SplatSegmentIdentifier(),
-		ExplicitIndexSegmentIdentifier: nr.matcher.ExplicitIndexSegmentIdentifier(),
-		Quiet:                          true,
-	}
-
-	newMatcher := matcher.New(opts)
+	newMatcher := nestedmatcher.New(nr.currentMatcherOptions(true))
 
 	for pattern := range routesCopy {
 		newMatcher.RegisterPattern(pattern)
@@ -610,4 +598,13 @@ func (nr *NestedRouter) replaceRoutesLocked(
 		compiledRoutes: newCompiled,
 		routeIndexMap:  newIndexMap,
 	})
+}
+
+func (nr *Router) currentMatcherOptions(quiet bool) *nestedmatcher.Options {
+	return &nestedmatcher.Options{
+		DynamicParamPrefix:             nr.matcher.DynamicParamPrefix(),
+		SplatSegmentIdentifier:         nr.matcher.SplatSegmentIdentifier(),
+		ExplicitIndexSegmentIdentifier: nr.matcher.ExplicitIndexSegmentIdentifier(),
+		Quiet:                          quiet,
+	}
 }

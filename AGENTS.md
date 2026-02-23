@@ -27,16 +27,12 @@ user to run it manually.
 
 ## Go Rules
 
-### One Source Code File Per Package, Between 200 and 2000 Lines
+### One Source Code File Per Package, Fewer Than 2000 Lines
 
-Every package must have precisely one source code file between 200 lines and
-2000 lines. If it's over 2000 lines, it needs to be split into subpackages, and
-if those are still over 2000 lines, they need to be split into sub-subpackages.
-If it's under 200 lines, it is too small to be its own package. The only
-exceptions to this are certain `kit` packages that do legitimately make sense as
-tiny standalone packages of fewer than 200 lines, such as `lazyget`. The
-`vormagogen` package is also an explicit exception and may remain below 200
-lines as a thin discovered-registration adapter layer.
+Every package must have precisely one source code file with fewer than 2,000
+lines of code. If it's over 2,000 lines, it needs to be split into subpackages,
+and if those are still over 2,000 lines, they need to be split into
+sub-subpackages.
 
 ### Never Alias Internal Go Package Names
 

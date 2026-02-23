@@ -132,34 +132,16 @@ export function restoreRecentPageRefreshScrollState(
 	}
 }
 
-function createScrollStateManager() {
-	function saveState(key: string, state: ScrollState): void {
-		saveStoredScrollState(key, state);
-	}
-
-	function getState(key: string): ScrollState | undefined {
-		return getStoredScrollState(key);
-	}
-
-	function savePageRefreshState(): void {
-		savePageRefreshScrollStateSnapshot();
-	}
-
-	function restorePageRefreshState(): void {
+export const scrollStateManager = {
+	saveState: saveStoredScrollState,
+	getState: getStoredScrollState,
+	savePageRefreshState: savePageRefreshScrollStateSnapshot,
+	restorePageRefreshState: () => {
 		restoreRecentPageRefreshScrollState(({ x, y }) => {
 			applyScrollState({ x, y });
 		});
-	}
-
-	return {
-		saveState,
-		getState,
-		savePageRefreshState,
-		restorePageRefreshState,
-	};
-}
-
-export const scrollStateManager = createScrollStateManager();
+	},
+};
 
 export function applyScrollState(state?: ScrollState): void {
 	if (!state) {

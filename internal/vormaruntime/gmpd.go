@@ -9,8 +9,9 @@ import (
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
-	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmatcher"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 )
@@ -84,8 +85,8 @@ type RouteDataFinal struct {
 }
 
 type routeDataExecutionInputs struct {
-	matchResults    *matcher.FindNestedMatchesResults
-	matches         []*matcher.Match
+	matchResults    *nestedmatcher.Results
+	matches         []*nestedmatcher.Match
 	matchedPatterns []string
 	cached          *cachedItemSubset
 	runtimeSnapshot RuntimeSnapshot
@@ -99,8 +100,8 @@ type routeErrorCutPlan struct {
 }
 
 type routeStageOnePlannerInput struct {
-	matchResults              *matcher.FindNestedMatchesResults
-	matches                   []*matcher.Match
+	matchResults              *nestedmatcher.Results
+	matches                   []*nestedmatcher.Match
 	matchedPatterns           []string
 	cached                    *cachedItemSubset
 	runtimeSnapshot           RuntimeSnapshot
@@ -115,7 +116,7 @@ type routeStageOnePlannerInput struct {
 func (v *Vorma) getRouteDataStage1(
 	w http.ResponseWriter,
 	r *http.Request,
-	nestedRouter *mux.NestedRouter,
+	nestedRouter *nestedmux.Router,
 	requestedBuildID string,
 ) *RouteResult {
 	inputs, found := v.prepareRouteDataExecutionInputs(r, nestedRouter)
@@ -156,7 +157,11 @@ func (v *Vorma) getRouteDataStage1(
 		}
 	}
 
-	tasksResults := mux.RunNestedTasks(nestedRouter, r, inputs.matchResults)
+	tasksResults := nestedmux.RunTasks(
+		nestedRouter,
+		r,
+		inputs.matchResults,
+	)
 	if tasksResults == nil {
 		v.Log.Error(
 			"Missing TasksCtx for loaders request. Use a mux.Router stack or wrap with mux.InjectTasksCtxMiddleware.",
@@ -174,7 +179,7 @@ func (v *Vorma) getRouteDataStage1(
 
 func (v *Vorma) planRouteResultFromTaskResults(
 	inputs routeDataExecutionInputs,
-	tasksResults *mux.NestedTasksResults,
+	tasksResults *nestedmux.TasksResults,
 ) *RouteResult {
 	mergedResponseProxy := response.MergeProxyResponses(
 		tasksResults.ResponseProxies...)
@@ -229,7 +234,7 @@ func planRouteResultFromResolvedTaskOutcomes(
 	}
 	matchResults := input.matchResults
 	if matchResults == nil {
-		matchResults = &matcher.FindNestedMatchesResults{}
+		matchResults = &nestedmatcher.Results{}
 	}
 
 	normalizedInput := input
@@ -305,12 +310,12 @@ func buildRouteErrorCutPlan(input routeStageOnePlannerInput) routeErrorCutPlan {
 
 func (v *Vorma) prepareRouteDataExecutionInputs(
 	r *http.Request,
-	nestedRouter *mux.NestedRouter,
+	nestedRouter *nestedmux.Router,
 ) (routeDataExecutionInputs, bool) {
 	v.mu.RLock()
 	runtimeSnapshot := v.captureRuntimeSnapshotLocked()
 
-	matchResults, found := mux.FindNestedMatches(nestedRouter, r)
+	matchResults, found := nestedmux.FindMatches(nestedRouter, r)
 	if !found {
 		v.mu.RUnlock()
 		return routeDataExecutionInputs{
@@ -348,7 +353,7 @@ func (v *Vorma) prepareRouteDataExecutionInputs(
 	}, true
 }
 
-func collectMatchedPatterns(matches []*matcher.Match) []string {
+func collectMatchedPatterns(matches []*nestedmatcher.Match) []string {
 	matchedPatterns := make([]string, len(matches))
 	for i, match := range matches {
 		matchedPatterns[i] = match.OriginalPattern()
@@ -359,7 +364,7 @@ func collectMatchedPatterns(matches []*matcher.Match) []string {
 func loadOrBuildCachedItemSubset(
 	v *Vorma,
 	cacheKey string,
-	matches []*matcher.Match,
+	matches []*nestedmatcher.Match,
 	pathsSnapshot map[string]*Path,
 	clientEntryDepsSnapshot []string,
 	isDev bool,
@@ -400,8 +405,8 @@ func (v *Vorma) isRouteDataSnapshotVersionCurrent(
 }
 
 func computeHasRootData(
-	matchResults *matcher.FindNestedMatchesResults,
-	tasksResults *mux.NestedTasksResults,
+	matchResults *nestedmatcher.Results,
+	tasksResults *nestedmux.TasksResults,
 ) bool {
 	return len(matchResults.Matches) > 0 &&
 		matchResults.Matches[0].NormalizedPattern() == "" &&
@@ -426,7 +431,7 @@ func detectTerminalStateFromMergedResponseProxy(
 }
 
 func buildCachedItemSubset(
-	matches []*matcher.Match,
+	matches []*nestedmatcher.Match,
 	pathsSnapshot map[string]*Path,
 	clientEntryDepsSnapshot []string,
 	isDev bool,
@@ -466,7 +471,7 @@ func buildCachedItemSubset(
 }
 
 func (v *Vorma) collectLoadersDataAndErrors(
-	tasksResults *mux.NestedTasksResults,
+	tasksResults *nestedmux.TasksResults,
 	matchedPatterns []string,
 ) ([]any, []error) {
 	numberOfLoaders := len(matchedPatterns)
@@ -537,7 +542,7 @@ func (v *Vorma) resolveClientLoaderErrorMessage(
 }
 
 func buildRouteDataCore(
-	matchResults *matcher.FindNestedMatchesResults,
+	matchResults *nestedmatcher.Results,
 	matchedPatterns []string,
 	loadersData []any,
 	cached *cachedItemSubset,
@@ -589,7 +594,7 @@ func collectFlattenedHeadElementsForPrefix(
 }
 
 func (v *Vorma) buildRouteDataCacheKey(
-	matches []*matcher.Match,
+	matches []*nestedmatcher.Match,
 	isDev bool,
 	buildID string,
 	routeDataSnapshotVersion uint64,
@@ -617,7 +622,7 @@ func (v *Vorma) buildRouteDataCacheKey(
 func (v *Vorma) getUIRouteData(
 	w http.ResponseWriter,
 	r *http.Request,
-	nestedRouter *mux.NestedRouter,
+	nestedRouter *nestedmux.Router,
 	isJSON bool,
 	requestedBuildID string,
 ) *RouteResult {

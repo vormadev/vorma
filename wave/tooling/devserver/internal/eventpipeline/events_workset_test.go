@@ -172,9 +172,26 @@ func TestWorkSetApplyRefreshActionWorkMutationDecision(t *testing.T) {
 		eventpipeline.RefreshActionWorkMutationDecision{
 			FrameworkRuntimeReloadRequest: &wave.FrameworkRuntimeReloadRequest{
 				EndpointPath:    "/reload-routes",
-				ReloadAttemptID: "attempt-1",
-				ExpectedBuildID: "build-1",
-				ReloadTrigger:   "route-watch",
+				ReloadAttemptID: "attempt-2",
+				ExpectedBuildID: "build-2",
+				ReloadTrigger:   "route-watch-2",
+			},
+		},
+	)
+	work.ApplyRefreshActionWorkMutationDecision(
+		eventpipeline.RefreshActionWorkMutationDecision{
+			FrameworkRuntimeReloadRequest: &wave.FrameworkRuntimeReloadRequest{
+				EndpointPath: "/reload-routes",
+			},
+		},
+	)
+	work.ApplyRefreshActionWorkMutationDecision(
+		eventpipeline.RefreshActionWorkMutationDecision{
+			FrameworkRuntimeReloadRequest: &wave.FrameworkRuntimeReloadRequest{
+				EndpointPath:    "/reload-template",
+				ReloadAttemptID: "attempt-3",
+				ExpectedBuildID: "build-3",
+				ReloadTrigger:   "template-watch",
 			},
 		},
 	)
@@ -201,13 +218,25 @@ func TestWorkSetApplyRefreshActionWorkMutationDecision(t *testing.T) {
 			work.Browser.WaitForVite,
 		)
 	}
-	if len(work.FrameworkRuntimeReloadRequests) != 1 {
+	if len(work.FrameworkRuntimeReloadRequests) != 2 {
 		t.Fatalf(
-			"expected one deduplicated framework runtime reload request, got %d",
+			"expected two deduplicated framework runtime reload requests, got %d",
 			len(work.FrameworkRuntimeReloadRequests),
 		)
 	}
 	if got, want := work.FrameworkRuntimeReloadRequests[0].EndpointPath, "/reload-routes"; got != want {
+		t.Fatalf("endpoint path=%q, want %q", got, want)
+	}
+	if got, want := work.FrameworkRuntimeReloadRequests[0].ReloadAttemptID, "attempt-2"; got != want {
+		t.Fatalf("reload attempt id=%q, want %q", got, want)
+	}
+	if got, want := work.FrameworkRuntimeReloadRequests[0].ExpectedBuildID, "build-2"; got != want {
+		t.Fatalf("expected build id=%q, want %q", got, want)
+	}
+	if got, want := work.FrameworkRuntimeReloadRequests[0].ReloadTrigger, "route-watch-2"; got != want {
+		t.Fatalf("reload trigger=%q, want %q", got, want)
+	}
+	if got, want := work.FrameworkRuntimeReloadRequests[1].EndpointPath, "/reload-template"; got != want {
 		t.Fatalf("endpoint path=%q, want %q", got, want)
 	}
 }

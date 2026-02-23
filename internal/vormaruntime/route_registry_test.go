@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(
@@ -24,7 +25,7 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server-only",
 		mux.TaskHandlerFromFunc(
@@ -165,7 +166,7 @@ func TestRouteRegistrySyncFromDevReload_NilPathsStillPreservesServerHandlers(
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/internal/status",
 		mux.TaskHandlerFromFunc(
@@ -196,11 +197,11 @@ func TestRouteRegistrySyncFromDevReload_MergeServerRoutesSkipsNoHandlerRoutes(
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
-	mux.AddNestedPatternWithoutHandler(
+	nestedmux.AddPatternWithoutHandler(
 		app.LoadersRouter().NestedRouter,
 		"/no-handler-only",
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/has-handler",
 		mux.TaskHandlerFromFunc(

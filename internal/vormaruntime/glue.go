@@ -13,14 +13,15 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/validate"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
 
-// LoadersRouter wraps mux.NestedRouter for loader route registration.
+// LoadersRouter wraps nestedmux.Router for loader route registration.
 type LoadersRouter struct {
-	*mux.NestedRouter
+	NestedRouter *nestedmux.Router
 }
 
 // ActionsRouter wraps mux.Router for action route registration.
@@ -30,7 +31,7 @@ type ActionsRouter struct {
 }
 
 // LoaderReqData is loader task request data.
-type LoaderReqData = mux.NestedReqData
+type LoaderReqData = nestedmux.ReqData
 
 // ActionReqData is action task request data.
 type ActionReqData[I any] = mux.ReqData[I]
@@ -60,7 +61,7 @@ func newLoadersRouter(options ...LoadersRouterOptions) *LoadersRouter {
 		explicitIndexSegment = "_index"
 	}
 	return &LoadersRouter{
-		NestedRouter: mux.NewNestedRouter(&mux.NestedOptions{
+		NestedRouter: nestedmux.NewRouter(&nestedmux.Options{
 			DynamicParamPrefix:             o.DynamicParamPrefix,
 			SplatSegmentIdentifier:         o.SplatSegmentIdentifier,
 			ExplicitIndexSegmentIdentifier: explicitIndexSegment,

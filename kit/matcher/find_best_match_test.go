@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"runtime"
 	"testing"
+
+	"github.com/vormadev/vorma/kit/internal/matchercore/testutil"
 )
 
 const NOT_FOUND = "NOT FOUND"
@@ -111,16 +113,28 @@ func getTestCases() []testCase {
 
 		// SAME AS ABOVE, BUT WITH A TRAILING SLASH AS AN ACTUAL REGISTERED PATTERN
 		{
-			name:              "with registered trailing slash -- exact match without trailing should win over catch-all and should win over registered pattern with trailing slash",
-			patterns:          []string{"/", "/users/", "/users", "/users/*", "/posts"},
+			name: "with registered trailing slash -- exact match without trailing should win over catch-all and should win over registered pattern with trailing slash",
+			patterns: []string{
+				"/",
+				"/users/",
+				"/users",
+				"/users/*",
+				"/posts",
+			},
 			path:              "/users",
 			wantPattern:       "/users",
 			wantParams:        nil,
 			wantSplatSegments: nil,
 		},
 		{
-			name:              "with registered trailing slash -- exact match, with trailing slash, should win over catch-all and should match pattern with trailing slash, not pattern without trailing slash",
-			patterns:          []string{"/", "/users/", "/users", "/users/*", "/posts"},
+			name: "with registered trailing slash -- exact match, with trailing slash, should win over catch-all and should match pattern with trailing slash, not pattern without trailing slash",
+			patterns: []string{
+				"/",
+				"/users/",
+				"/users",
+				"/users/*",
+				"/posts",
+			},
 			path:              "/users/",
 			wantPattern:       "/users/",
 			wantParams:        nil,
@@ -179,16 +193,28 @@ func getTestCases() []testCase {
 
 		// SAME AS ABOVE, BUT WITH A TRAILING SLASH AS AN ACTUAL REGISTERED PATTERN
 		{
-			name:              "with registered trailing slash -- dynamic match without trailing should win over catch-all and should win over registered pattern with trailing slash",
-			patterns:          []string{"/", "/:user/", "/:user", "/:user/*", "/posts"},
+			name: "with registered trailing slash -- dynamic match without trailing should win over catch-all and should win over registered pattern with trailing slash",
+			patterns: []string{
+				"/",
+				"/:user/",
+				"/:user",
+				"/:user/*",
+				"/posts",
+			},
 			path:              "/bob",
 			wantPattern:       "/:user",
 			wantParams:        Params{"user": "bob"},
 			wantSplatSegments: nil,
 		},
 		{
-			name:              "with registered trailing slash -- dynamic match, with trailing slash, should win over catch-all and should match pattern with trailing slash, not pattern without trailing slash",
-			patterns:          []string{"/", "/:user/", "/:user", "/:user/*", "/posts"},
+			name: "with registered trailing slash -- dynamic match, with trailing slash, should win over catch-all and should match pattern with trailing slash, not pattern without trailing slash",
+			patterns: []string{
+				"/",
+				"/:user/",
+				"/:user",
+				"/:user/*",
+				"/posts",
+			},
 			path:              "/bob/",
 			wantPattern:       "/:user/",
 			wantParams:        Params{"user": "bob"},
@@ -213,16 +239,25 @@ func getTestCases() []testCase {
 
 		// MORE TESTS
 		{
-			name:              "parameter match",
-			patterns:          []string{"/users", "/users/:id", "/users/profile"},
+			name: "parameter match",
+			patterns: []string{
+				"/users",
+				"/users/:id",
+				"/users/profile",
+			},
 			path:              "/users/123",
 			wantPattern:       "/users/:id",
 			wantParams:        Params{"id": "123"},
 			wantSplatSegments: nil,
 		},
 		{
-			name:              "multiple matches",
-			patterns:          []string{"/", "/api", "/api/:version", "/api/v1"},
+			name: "multiple matches",
+			patterns: []string{
+				"/",
+				"/api",
+				"/api/:version",
+				"/api/v1",
+			},
 			path:              "/api/v1",
 			wantPattern:       "/api/v1",
 			wantParams:        nil,
@@ -268,11 +303,17 @@ func getTestCases() []testCase {
 			wantSplatSegments: nil,
 		},
 		{
-			name:              "many params",
-			patterns:          []string{"/api/:p1/:p2/:p3/:p4/:p5"},
-			path:              "/api/a/b/c/d/e",
-			wantPattern:       "/api/:p1/:p2/:p3/:p4/:p5",
-			wantParams:        Params{"p1": "a", "p2": "b", "p3": "c", "p4": "d", "p5": "e"},
+			name:        "many params",
+			patterns:    []string{"/api/:p1/:p2/:p3/:p4/:p5"},
+			path:        "/api/a/b/c/d/e",
+			wantPattern: "/api/:p1/:p2/:p3/:p4/:p5",
+			wantParams: Params{
+				"p1": "a",
+				"p2": "b",
+				"p3": "c",
+				"p4": "d",
+				"p5": "e",
+			},
 			wantSplatSegments: nil,
 		},
 		{
@@ -286,13 +327,25 @@ func getTestCases() []testCase {
 	}
 }
 
+func optionShapeForPatternRewrites(opts *Options) testutil.PatternOptionShape {
+	if opts == nil {
+		return testutil.PatternOptionShape{}
+	}
+	return testutil.PatternOptionShape{
+		DynamicParamPrefix:             opts.DynamicParamPrefix,
+		SplatSegmentIdentifier:         opts.SplatSegmentIdentifier,
+		ExplicitIndexSegmentIdentifier: "",
+	}
+}
+
 var differentOptsToTest = []*Options{
 	{},
-	{ExplicitIndexSegmentIdentifier: "_index"},
 	{DynamicParamPrefix: '$'},
 	{SplatSegmentIdentifier: '#'},
-	{ExplicitIndexSegmentIdentifier: "_______", DynamicParamPrefix: '<', SplatSegmentIdentifier: '>'},
-	{ExplicitIndexSegmentIdentifier: "", DynamicParamPrefix: '<', SplatSegmentIdentifier: '>'},
+	{
+		DynamicParamPrefix:     '<',
+		SplatSegmentIdentifier: '>',
+	},
 }
 
 func TestFindBestMatch(t *testing.T) {
@@ -300,7 +353,11 @@ func TestFindBestMatch(t *testing.T) {
 		for _, tt := range getTestCases() {
 			t.Run(tt.name, func(t *testing.T) {
 				m := New(opts)
-				for _, pattern := range modifyPatternsToOpts(tt.patterns, "", opts) {
+				for _, pattern := range testutil.RewritePatternsForOptionShape(
+					tt.patterns,
+					"",
+					optionShapeForPatternRewrites(opts),
+				) {
 					m.RegisterPattern(pattern)
 				}
 
@@ -309,32 +366,51 @@ func TestFindBestMatch(t *testing.T) {
 				wantMatch := tt.wantPattern != NOT_FOUND
 
 				if wantMatch && match == nil {
-					t.Errorf("FindBestMatch() match for %s = nil -- want %s", tt.path, tt.wantPattern)
+					t.Errorf(
+						"FindBestMatch() match for %s = nil -- want %s",
+						tt.path,
+						tt.wantPattern,
+					)
 					return
 				}
 
 				if !wantMatch {
 					if match != nil {
-						t.Errorf("FindBestMatch() match for %s = %v -- want nil", tt.path, match.RegisteredPattern.normalizedPattern)
+						t.Errorf(
+							"FindBestMatch() match for %s = %v -- want nil",
+							tt.path,
+							match.RegisteredPattern.NormalizedPattern(),
+						)
 					}
 					return
 				}
 
-				if match.normalizedPattern != tt.wantPattern {
-					t.Errorf("FindBestMatch() pattern = %q, want %q", match.normalizedPattern, tt.wantPattern)
+				if match.NormalizedPattern() != tt.wantPattern {
+					t.Errorf(
+						"FindBestMatch() pattern = %q, want %q",
+						match.NormalizedPattern(),
+						tt.wantPattern,
+					)
 				}
 
 				// Compare params, allowing nil == empty map
 				if tt.wantParams == nil && len(match.Params) > 0 {
-					t.Errorf("FindBestMatch() params = %v, want nil", match.Params)
+					t.Errorf(
+						"FindBestMatch() params = %v, want nil",
+						match.Params,
+					)
 				} else if tt.wantParams != nil && !reflect.DeepEqual(match.Params, tt.wantParams) {
 					t.Errorf("FindBestMatch() params = %v, want %v", match.Params, tt.wantParams)
 				}
 
 				// Compare splat segments
 				if !reflect.DeepEqual(match.SplatValues, tt.wantSplatSegments) {
-					t.Errorf("FindBestMatch() splat segments = %v (%d), want %v (%d)",
-						match.SplatValues, len(match.SplatValues), tt.wantSplatSegments, len(tt.wantSplatSegments),
+					t.Errorf(
+						"FindBestMatch() splat segments = %v (%d), want %v (%d)",
+						match.SplatValues,
+						len(match.SplatValues),
+						tt.wantSplatSegments,
+						len(tt.wantSplatSegments),
 					)
 				}
 			})
@@ -343,12 +419,12 @@ func TestFindBestMatch(t *testing.T) {
 }
 
 func TestFindBestMatchAdditionalScenarios(t *testing.T) {
-	// register /, /:slug, /_index, and /app, and make sure that /settings/account does not match
-	m := New(&Options{ExplicitIndexSegmentIdentifier: "_index", Quiet: true})
+	// register /, /:slug, and /app, and make sure that /settings/account does
+	// not match
+	m := New(&Options{Quiet: true})
 
 	m.RegisterPattern("/")
 	m.RegisterPattern("/:slug")
-	m.RegisterPattern("/_index")
 	m.RegisterPattern("/app")
 
 	path := "/settings/account"
@@ -383,7 +459,9 @@ func setupNonNestedMatcherForBenchmark(scale string) *Matcher {
 		for i := range 1_000 {
 			m.RegisterPattern(fmt.Sprintf("/api/v%d/users", i%5))
 			m.RegisterPattern(fmt.Sprintf("/api/v%d/users/:id", i%5))
-			m.RegisterPattern(fmt.Sprintf("/api/v%d/users/:id/posts/:post_id", i%5))
+			m.RegisterPattern(
+				fmt.Sprintf("/api/v%d/users/:id/posts/:post_id", i%5),
+			)
 			m.RegisterPattern(fmt.Sprintf("/files/bucket%d/*", i%10))
 		}
 
@@ -396,8 +474,12 @@ func setupNonNestedMatcherForBenchmark(scale string) *Matcher {
 			m.RegisterPattern(fmt.Sprintf("/docs/section%d", i%100))
 
 			// Dynamic patterns
-			m.RegisterPattern(fmt.Sprintf("/api/v%d/users/:id/posts/:post_id", i%10))
-			m.RegisterPattern(fmt.Sprintf("/api/v%d/products/:category/:id", i%10))
+			m.RegisterPattern(
+				fmt.Sprintf("/api/v%d/users/:id/posts/:post_id", i%10),
+			)
+			m.RegisterPattern(
+				fmt.Sprintf("/api/v%d/products/:category/:id", i%10),
+			)
 
 			// Splat patterns
 			m.RegisterPattern(fmt.Sprintf("/files/bucket%d/*", i%20))
@@ -430,12 +512,18 @@ func generateNonNestedPathsForBenchmark(scale string) []string {
 
 		// Dynamic paths (40%)
 		for i := range 400 {
-			paths = append(paths, fmt.Sprintf("/api/v%d/users/%d/posts/%d", i%5, i, i%100))
+			paths = append(
+				paths,
+				fmt.Sprintf("/api/v%d/users/%d/posts/%d", i%5, i, i%100),
+			)
 		}
 
 		// Splat paths (20%)
 		for i := range 200 {
-			paths = append(paths, fmt.Sprintf("/files/bucket%d/path/to/file%d.txt", i%10, i))
+			paths = append(
+				paths,
+				fmt.Sprintf("/files/bucket%d/path/to/file%d.txt", i%10, i),
+			)
 		}
 
 		return paths

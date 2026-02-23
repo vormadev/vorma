@@ -20,11 +20,8 @@ import {
 	normalizedHashFragmentFromHash,
 } from "./url.ts";
 
-export type historyInstance = BrowserHistory;
-export type historyListener = (update: Update) => void;
-
 const historyState: {
-	instance: historyInstance | undefined;
+	instance: BrowserHistory | undefined;
 	lastKnownLocation: Location | undefined;
 } = {
 	instance: undefined,
@@ -44,7 +41,7 @@ function isLatestHistoryListenerSequence(sequence: number): boolean {
 	return sequence === latestHistoryListenerSequenceIssued;
 }
 
-function getHistoryInstance(): historyInstance {
+function getHistoryInstance(): BrowserHistory {
 	if (!historyState.instance) {
 		historyState.instance = createBrowserHistory();
 		historyState.lastKnownLocation = historyState.instance.location;

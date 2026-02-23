@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-	buildSubmissionLifecycleBeginCommands,
-	buildSubmissionLifecycleFinishCommands,
+	beginSubmissionLifecycle,
+	finishSubmissionLifecycle,
+	type SubmitExecutionContext,
 } from "../../core/navigation/runtime_submit.ts";
 import type { SubmissionEntry } from "../../core/navigation/types.ts";
 
@@ -18,24 +19,66 @@ function createSubmissionEntry(): SubmissionEntry {
 	};
 }
 
-describe("submission lifecycle command builders", () => {
-	it("builds begin commands with dedupe abort when an existing dedupe-key submission exists", () => {
+function createSubmitExecutionContext(): {
+	context: SubmitExecutionContext;
+	transitionEvents: Array<{
+		submissionEntry: SubmissionEntry;
+		fromState: string;
+		toState: string;
+		reason: string;
+		causedByOperationID?: number | null;
+	}>;
+	scheduleStatusUpdate: ReturnType<typeof vi.fn>;
+} {
+	const transitionEvents: Array<{
+		submissionEntry: SubmissionEntry;
+		fromState: string;
+		toState: string;
+		reason: string;
+		causedByOperationID?: number | null;
+	}> = [];
+	const scheduleStatusUpdate = vi.fn();
+	const context: SubmitExecutionContext = {
+		submissions: new Map(),
+		scheduleStatusUpdate,
+		allocateSubmissionOperationID: () => 1,
+		onSubmissionStateTransition: (props) => {
+			transitionEvents.push(props);
+		},
+		navigate: async () => ({ didNavigate: false }),
+	};
+
+	return {
+		context,
+		transitionEvents,
+		scheduleStatusUpdate,
+	};
+}
+
+describe("submission lifecycle execution", () => {
+	it("begins with dedupe abort transition when a keyed submission already exists", () => {
+		const { context, transitionEvents, scheduleStatusUpdate } =
+			createSubmitExecutionContext();
 		const existingSubmissionEntry = createSubmissionEntry();
 		const submissionEntry = createSubmissionEntry();
-		const commands = buildSubmissionLifecycleBeginCommands({
-			submissionKey: "submission:users:save",
+		const submissionKey = "submission:users:save";
+		context.submissions.set(submissionKey, existingSubmissionEntry);
+		const existingAbortSpy = vi.spyOn(
+			existingSubmissionEntry.control.abortController!,
+			"abort",
+		);
+
+		beginSubmissionLifecycle({
+			context,
+			submissionKey,
 			submissionEntry,
 			existingSubmissionEntry,
 		});
 
-		expect(commands).toEqual([
+		expect(existingAbortSpy).toHaveBeenCalledWith("deduped");
+		expect(context.submissions.get(submissionKey)).toBe(submissionEntry);
+		expect(transitionEvents).toEqual([
 			{
-				type: "abort_submission_entry",
-				submissionEntry: existingSubmissionEntry,
-				reason: "submission_deduped_by_newer_submission",
-			},
-			{
-				type: "emit_submission_state_transition",
 				submissionEntry: existingSubmissionEntry,
 				fromState: "submitting",
 				toState: "aborted",
@@ -43,98 +86,85 @@ describe("submission lifecycle command builders", () => {
 				causedByOperationID: submissionEntry.operationID,
 			},
 			{
-				type: "set_submission_entry",
-				submissionKey: "submission:users:save",
-				submissionEntry,
-				reason: "submission_started",
-			},
-			{
-				type: "emit_submission_state_transition",
 				submissionEntry,
 				fromState: "none",
 				toState: "submitting",
 				reason: "submission_started",
-			},
-			{
-				type: "schedule_status_update",
-				reason: "submission_started",
+				causedByOperationID: null,
 			},
 		]);
+		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
 	});
 
-	it("builds begin commands without dedupe abort for unique submissions", () => {
+	it("begins unique submissions without a dedupe abort transition", () => {
+		const { context, transitionEvents, scheduleStatusUpdate } =
+			createSubmitExecutionContext();
 		const submissionEntry = createSubmissionEntry();
 		const submissionKey = Symbol("submission");
-		const commands = buildSubmissionLifecycleBeginCommands({
+
+		beginSubmissionLifecycle({
+			context,
 			submissionKey,
 			submissionEntry,
 			existingSubmissionEntry: undefined,
 		});
 
-		expect(commands).toEqual([
+		expect(context.submissions.get(submissionKey)).toBe(submissionEntry);
+		expect(transitionEvents).toEqual([
 			{
-				type: "set_submission_entry",
-				submissionKey,
-				submissionEntry,
-				reason: "submission_started",
-			},
-			{
-				type: "emit_submission_state_transition",
 				submissionEntry,
 				fromState: "none",
 				toState: "submitting",
 				reason: "submission_started",
-			},
-			{
-				type: "schedule_status_update",
-				reason: "submission_started",
+				causedByOperationID: null,
 			},
 		]);
+		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
 	});
 
-	it("builds finish commands with removal transitions when submission is current", () => {
+	it("finishes by removing current submissions and emitting removal transition", () => {
+		const { context, transitionEvents, scheduleStatusUpdate } =
+			createSubmitExecutionContext();
 		const submissionEntry = createSubmissionEntry();
 		const submissionKey = "submission:users:save";
-		const commands = buildSubmissionLifecycleFinishCommands({
+		context.submissions.set(submissionKey, submissionEntry);
+
+		finishSubmissionLifecycle({
+			context,
 			submissionKey,
 			submissionEntry,
 			shouldRemoveSubmissionEntry: true,
 		});
 
-		expect(commands).toEqual([
+		expect(context.submissions.has(submissionKey)).toBe(false);
+		expect(transitionEvents).toEqual([
 			{
-				type: "delete_submission_entry",
-				submissionKey,
-				submissionEntry,
-				reason: "submission_finished",
-			},
-			{
-				type: "emit_submission_state_transition",
 				submissionEntry,
 				fromState: "submitting",
 				toState: "removed",
 				reason: "submission_finished",
-			},
-			{
-				type: "schedule_status_update",
-				reason: "submission_finished",
+				causedByOperationID: null,
 			},
 		]);
+		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
 	});
 
-	it("builds finish commands without removal transitions when submission is stale", () => {
+	it("finishes stale submissions without removing or emitting removal transition", () => {
+		const { context, transitionEvents, scheduleStatusUpdate } =
+			createSubmitExecutionContext();
 		const submissionEntry = createSubmissionEntry();
-		const commands = buildSubmissionLifecycleFinishCommands({
-			submissionKey: "submission:users:save",
+		const submissionKey = "submission:users:save";
+		context.submissions.set(submissionKey, submissionEntry);
+
+		finishSubmissionLifecycle({
+			context,
+			submissionKey,
 			submissionEntry,
 			shouldRemoveSubmissionEntry: false,
 		});
 
-		expect(commands).toEqual([
-			{
-				type: "schedule_status_update",
-				reason: "submission_finished",
-			},
-		]);
+		expect(context.submissions.get(submissionKey)).toBe(submissionEntry);
+		expect(transitionEvents).toEqual([]);
+		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
 	});
 });

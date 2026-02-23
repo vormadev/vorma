@@ -13,10 +13,13 @@ import {
 } from "../render_runtime.ts";
 import {
 	decideBuildIDSyncTimingForSuccessfulEntry,
-	decideSuccessfulNavigationLifecycleCheckpointExecutionPlan,
+	decideSuccessfulNavigationCleanupExecutionPlan,
+	decideSuccessfulNavigationPostAssetExecutionPlan,
+	decideSuccessfulNavigationPostAssetSideEffectPlan,
+	decideSuccessfulNavigationPostWaitingExecutionPlan,
+	decideSuccessfulNavigationPreAssetWaitExecutionPlan,
+	decideSuccessfulNavigationPreWaitingExecutionPlan,
 	type BuildIDSyncTiming,
-	type SuccessfulNavigationLifecycleCheckpoint,
-	type SuccessfulNavigationLifecycleCheckpointExecutionPlan,
 } from "./runtime_navigation_outcome_state_machine.ts";
 import type {
 	NavigationEntry,
@@ -38,20 +41,6 @@ export type RouteModuleMetadataInput = {
 	errorExportKeys?: Array<string>;
 };
 
-function toRouteModuleMetadataArrays(props: RouteModuleMetadataInput): {
-	matchedPatterns: Array<string>;
-	importURLs: Array<string>;
-	exportKeys: Array<string>;
-	errorExportKeys: Array<string>;
-} {
-	return {
-		matchedPatterns: props.matchedPatterns || [],
-		importURLs: props.importURLs || [],
-		exportKeys: props.exportKeys || [],
-		errorExportKeys: props.errorExportKeys || [],
-	};
-}
-
 export function mergeClientModuleMapWithRouteModuleMetadata(props: {
 	currentClientModuleMap: VormaClientGlobal["clientModuleMap"] | undefined;
 	routeModuleMetadata: RouteModuleMetadataInput;
@@ -60,8 +49,10 @@ export function mergeClientModuleMapWithRouteModuleMetadata(props: {
 	const nextClientModuleMap: VormaClientGlobal["clientModuleMap"] = {
 		...currentClientModuleMap,
 	};
-	const { matchedPatterns, importURLs, exportKeys, errorExportKeys } =
-		toRouteModuleMetadataArrays(routeModuleMetadata);
+	const matchedPatterns = routeModuleMetadata.matchedPatterns ?? [];
+	const importURLs = routeModuleMetadata.importURLs ?? [];
+	const exportKeys = routeModuleMetadata.exportKeys ?? [];
+	const errorExportKeys = routeModuleMetadata.errorExportKeys ?? [];
 
 	for (let index = 0; index < matchedPatterns.length; index += 1) {
 		const pattern = matchedPatterns[index];
@@ -78,15 +69,6 @@ export function mergeClientModuleMapWithRouteModuleMetadata(props: {
 	}
 
 	return nextClientModuleMap;
-}
-
-export function buildClientModuleMapFromRouteModuleMetadata(props: {
-	routeModuleMetadata: RouteModuleMetadataInput;
-}): VormaClientGlobal["clientModuleMap"] {
-	return mergeClientModuleMapWithRouteModuleMetadata({
-		currentClientModuleMap: undefined,
-		routeModuleMetadata: props.routeModuleMetadata,
-	});
 }
 
 export type ProcessSuccessfulNavigationContext = {
@@ -172,21 +154,15 @@ async function waitForSuccessfulNavigationAssets(
 		  >
 		| undefined;
 }> {
-	const { waitFnPromise, preloadCommands } = outcome;
+	const { waitFnPromise, preloadPlan } = outcome;
 	const cssBundlePromises: Array<Promise<unknown>> = [];
-	for (const preloadCommand of preloadCommands) {
-		switch (preloadCommand.type) {
-			case "preload_module_dependency":
-				if (preloadCommand.dependency) {
-					AssetManager.preloadModule(preloadCommand.dependency);
-				}
-				break;
-			case "preload_css_bundle":
-				cssBundlePromises.push(
-					AssetManager.preloadCSS(preloadCommand.bundle),
-				);
-				break;
+	for (const dependency of preloadPlan.moduleDependencies) {
+		if (dependency) {
+			AssetManager.preloadModule(dependency);
 		}
+	}
+	for (const cssBundle of preloadPlan.cssBundles) {
+		cssBundlePromises.push(AssetManager.preloadCSS(cssBundle));
 	}
 
 	const clientLoadersResult = await waitFnPromise;
@@ -274,51 +250,55 @@ type SuccessfulNavigationClientLoadersResult =
 	| Awaited<SuccessfulNavigationOutcome["waitFnPromise"]>
 	| undefined;
 
-type DecideAndExecuteSuccessfulNavigationLifecycleCheckpointProps = {
-	checkpoint: SuccessfulNavigationLifecycleCheckpoint;
+type SuccessfulNavigationLifecycleCheckpointExecutionInputBase = {
 	context: ProcessSuccessfulNavigationContext;
 	outcome: SuccessfulNavigationOutcome;
 	entry: NavigationEntry;
-	buildIDSyncTiming?: BuildIDSyncTiming;
-	expectedBuildID?: string;
-	clientLoadersResult?: SuccessfulNavigationClientLoadersResult;
 };
 
-function requireSuccessfulNavigationRuntimeCheckpointInputValue<T>(props: {
-	value: T | undefined;
-	checkpoint: SuccessfulNavigationLifecycleCheckpoint;
-	field: string;
-}): T {
-	if (props.value === undefined) {
-		throw new Error(
-			`Missing '${props.field}' for successful navigation runtime checkpoint '${props.checkpoint}'.`,
-		);
-	}
+type SuccessfulNavigationLifecycleCheckpointExecutionInput =
+	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
+			checkpoint: "pre_waiting";
+	  })
+	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
+			checkpoint: "post_waiting";
+	  })
+	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
+			checkpoint: "pre_asset_wait";
+			buildIDSyncTiming: BuildIDSyncTiming;
+	  })
+	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
+			checkpoint: "post_asset";
+			buildIDSyncTiming: BuildIDSyncTiming;
+			expectedBuildID: string;
+			clientLoadersResult: SuccessfulNavigationClientLoadersResult;
+	  })
+	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
+			checkpoint: "cleanup";
+	  });
 
-	return props.value;
-}
+async function executeSuccessfulNavigationLifecycleCheckpoint(
+	props: SuccessfulNavigationLifecycleCheckpointExecutionInput,
+): Promise<{ shouldStop: boolean }> {
+	const { context, outcome, entry } = props;
+	const isCurrentEntry = isCurrentNavigationEntry({ context, entry });
+	const currentHref = window.location.href;
 
-async function executeSuccessfulNavigationLifecycleCheckpointExecutionPlan(props: {
-	checkpointExecutionPlan: SuccessfulNavigationLifecycleCheckpointExecutionPlan;
-	context: ProcessSuccessfulNavigationContext;
-	outcome: SuccessfulNavigationOutcome;
-	entry: NavigationEntry;
-	expectedBuildID?: string;
-	clientLoadersResult?: SuccessfulNavigationClientLoadersResult;
-}): Promise<{ shouldStop: boolean }> {
-	const { checkpointExecutionPlan, context, outcome, entry } = props;
-	switch (checkpointExecutionPlan.checkpoint) {
-		case "pre_waiting":
-			switch (checkpointExecutionPlan.preWaitingExecutionPlan.type) {
+	switch (props.checkpoint) {
+		case "pre_waiting": {
+			const preWaitingExecutionPlan =
+				decideSuccessfulNavigationPreWaitingExecutionPlan({
+					entry,
+					isCurrentEntry,
+					currentHref,
+				});
+			switch (preWaitingExecutionPlan.type) {
 				case "stop":
 					return { shouldStop: true };
 				case "deleteAndStop":
 					context.deleteNavigation({
-						targetUrl:
-							checkpointExecutionPlan.preWaitingExecutionPlan
-								.targetUrl,
-						reason: checkpointExecutionPlan.preWaitingExecutionPlan
-							.reason,
+						targetUrl: preWaitingExecutionPlan.targetUrl,
+						reason: preWaitingExecutionPlan.reason,
 					});
 					return { shouldStop: true };
 				case "continue":
@@ -330,23 +310,38 @@ async function executeSuccessfulNavigationLifecycleCheckpointExecutionPlan(props
 					});
 					return { shouldStop: false };
 			}
-		case "post_waiting":
+		}
+		case "post_waiting": {
+			const postWaitingExecutionPlan =
+				decideSuccessfulNavigationPostWaitingExecutionPlan({
+					isCurrentEntry,
+				});
 			return {
-				shouldStop:
-					checkpointExecutionPlan.postWaitingExecutionPlan.type ===
-					"stop",
+				shouldStop: postWaitingExecutionPlan.type === "stop",
 			};
-		case "pre_asset_wait":
-			if (
-				checkpointExecutionPlan.preAssetWaitExecutionPlan
-					.shouldSyncBuildIDBeforeAssetWait
-			) {
+		}
+		case "pre_asset_wait": {
+			const preAssetWaitExecutionPlan =
+				decideSuccessfulNavigationPreAssetWaitExecutionPlan({
+					buildIDSyncTiming: props.buildIDSyncTiming,
+				});
+			if (preAssetWaitExecutionPlan.shouldSyncBuildIDBeforeAssetWait) {
 				syncBuildIDFromResponse(outcome.response);
 			}
 			return { shouldStop: false };
+		}
 		case "post_asset": {
-			const { postAssetExecutionPlan, postAssetSideEffectPlan } =
-				checkpointExecutionPlan.postAssetLifecycleExecutionPlan;
+			const postAssetExecutionPlan =
+				decideSuccessfulNavigationPostAssetExecutionPlan({
+					entry,
+					isCurrentEntry,
+					currentHref,
+				});
+			const postAssetSideEffectPlan =
+				decideSuccessfulNavigationPostAssetSideEffectPlan({
+					postAssetExecutionPlan,
+					buildIDSyncTiming: props.buildIDSyncTiming,
+				});
 
 			if (postAssetSideEffectPlan.shouldCommitClientLoadersState) {
 				setClientLoadersState(props.clientLoadersResult);
@@ -358,12 +353,7 @@ async function executeSuccessfulNavigationLifecycleCheckpointExecutionPlan(props
 				applyResponseArtifactsWhenBuildMatches({
 					response: outcome.response,
 					json: outcome.json,
-					expectedBuildID:
-						requireSuccessfulNavigationRuntimeCheckpointInputValue({
-							value: props.expectedBuildID,
-							checkpoint: checkpointExecutionPlan.checkpoint,
-							field: "expectedBuildID",
-						}),
+					expectedBuildID: props.expectedBuildID,
 				});
 			}
 
@@ -383,44 +373,22 @@ async function executeSuccessfulNavigationLifecycleCheckpointExecutionPlan(props
 					return { shouldStop: false };
 			}
 		}
-		case "cleanup":
-			if (checkpointExecutionPlan.cleanupExecutionPlan.type === "skip") {
+		case "cleanup": {
+			const cleanupExecutionPlan =
+				decideSuccessfulNavigationCleanupExecutionPlan({
+					entry,
+					isCurrentEntry,
+				});
+			if (cleanupExecutionPlan.type === "skip") {
 				return { shouldStop: false };
 			}
 			context.deleteNavigation({
-				targetUrl:
-					checkpointExecutionPlan.cleanupExecutionPlan.targetUrl,
-				reason: checkpointExecutionPlan.cleanupExecutionPlan.reason,
+				targetUrl: cleanupExecutionPlan.targetUrl,
+				reason: cleanupExecutionPlan.reason,
 			});
 			return { shouldStop: false };
+		}
 	}
-}
-
-async function decideAndExecuteSuccessfulNavigationLifecycleCheckpoint(
-	props: DecideAndExecuteSuccessfulNavigationLifecycleCheckpointProps,
-): Promise<{
-	shouldStop: boolean;
-}> {
-	const { context, outcome, entry } = props;
-	const checkpointExecutionPlan =
-		decideSuccessfulNavigationLifecycleCheckpointExecutionPlan({
-			checkpoint: props.checkpoint,
-			entry,
-			isCurrentEntry: isCurrentNavigationEntry({
-				context,
-				entry,
-			}),
-			currentHref: window.location.href,
-			buildIDSyncTiming: props.buildIDSyncTiming,
-		});
-	return executeSuccessfulNavigationLifecycleCheckpointExecutionPlan({
-		checkpointExecutionPlan,
-		context,
-		outcome,
-		entry,
-		expectedBuildID: props.expectedBuildID,
-		clientLoadersResult: props.clientLoadersResult,
-	});
 }
 
 export async function processSuccessfulNavigationRuntime(
@@ -436,7 +404,7 @@ export async function processSuccessfulNavigationRuntime(
 
 		for (const checkpoint of ["pre_waiting", "post_waiting"] as const) {
 			const checkpointResult =
-				await decideAndExecuteSuccessfulNavigationLifecycleCheckpoint({
+				await executeSuccessfulNavigationLifecycleCheckpoint({
 					checkpoint,
 					context,
 					outcome,
@@ -450,15 +418,15 @@ export async function processSuccessfulNavigationRuntime(
 		const buildIDSyncTiming = decideBuildIDSyncTimingForSuccessfulEntry({
 			entry,
 		});
-		const preAssetWaitCommandExecutionResult =
-			await decideAndExecuteSuccessfulNavigationLifecycleCheckpoint({
+		const preAssetWaitCheckpointResult =
+			await executeSuccessfulNavigationLifecycleCheckpoint({
 				checkpoint: "pre_asset_wait",
 				context,
 				outcome,
 				entry,
 				buildIDSyncTiming,
 			});
-		if (preAssetWaitCommandExecutionResult.shouldStop) {
+		if (preAssetWaitCheckpointResult.shouldStop) {
 			return;
 		}
 
@@ -467,7 +435,7 @@ export async function processSuccessfulNavigationRuntime(
 
 		if (
 			(
-				await decideAndExecuteSuccessfulNavigationLifecycleCheckpoint({
+				await executeSuccessfulNavigationLifecycleCheckpoint({
 					checkpoint: "post_asset",
 					context,
 					outcome,
@@ -483,7 +451,7 @@ export async function processSuccessfulNavigationRuntime(
 
 		didCommitSuccessfulNavigation = true;
 	} finally {
-		await decideAndExecuteSuccessfulNavigationLifecycleCheckpoint({
+		await executeSuccessfulNavigationLifecycleCheckpoint({
 			checkpoint: "cleanup",
 			context,
 			outcome,

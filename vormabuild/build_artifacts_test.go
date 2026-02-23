@@ -11,6 +11,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -18,10 +19,19 @@ func TestCleanRouteManifestsOnly_RemovesOnlyManifestFiles(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	manifestFile := filepath.Join(fixture.publicDir, vormaruntime.VormaRouteManifestPrefix+"a.json")
-	manifestFile2 := filepath.Join(fixture.publicDir, vormaruntime.VormaRouteManifestPrefix+"b.json")
+	manifestFile := filepath.Join(
+		fixture.publicDir,
+		vormaruntime.VormaRouteManifestPrefix+"a.json",
+	)
+	manifestFile2 := filepath.Join(
+		fixture.publicDir,
+		vormaruntime.VormaRouteManifestPrefix+"b.json",
+	)
 	keepFile := filepath.Join(fixture.publicDir, "keep.txt")
-	manifestDir := filepath.Join(fixture.publicDir, vormaruntime.VormaRouteManifestPrefix+"dir")
+	manifestDir := filepath.Join(
+		fixture.publicDir,
+		vormaruntime.VormaRouteManifestPrefix+"dir",
+	)
 	mustWriteFile(t, manifestFile, []byte("a"))
 	mustWriteFile(t, manifestFile2, []byte("b"))
 	mustWriteFile(t, keepFile, []byte("keep"))
@@ -35,13 +45,19 @@ func TestCleanRouteManifestsOnly_RemovesOnlyManifestFiles(t *testing.T) {
 		t.Fatalf("expected manifest file to be removed, stat error: %v", err)
 	}
 	if _, err := os.Stat(manifestFile2); !os.IsNotExist(err) {
-		t.Fatalf("expected second manifest file to be removed, stat error: %v", err)
+		t.Fatalf(
+			"expected second manifest file to be removed, stat error: %v",
+			err,
+		)
 	}
 	if _, err := os.Stat(keepFile); err != nil {
 		t.Fatalf("expected non-manifest file to remain, stat error: %v", err)
 	}
 	if _, err := os.Stat(manifestDir); err != nil {
-		t.Fatalf("expected directory with prefix to remain, stat error: %v", err)
+		t.Fatalf(
+			"expected directory with prefix to remain, stat error: %v",
+			err,
+		)
 	}
 }
 
@@ -49,8 +65,14 @@ func TestCleanStaticPublicOutDir_RemovesGeneratedPrefixedFiles(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	routeManifest := filepath.Join(fixture.publicDir, vormaruntime.VormaRouteManifestPrefix+"x.json")
-	viteOutput := filepath.Join(fixture.publicDir, vormaruntime.VormaVitePrehashedFilePrefix+"bundle.js")
+	routeManifest := filepath.Join(
+		fixture.publicDir,
+		vormaruntime.VormaRouteManifestPrefix+"x.json",
+	)
+	viteOutput := filepath.Join(
+		fixture.publicDir,
+		vormaruntime.VormaVitePrehashedFilePrefix+"bundle.js",
+	)
 	keepRoot := filepath.Join(fixture.publicDir, "logo.svg")
 	keepNested := filepath.Join(fixture.publicDir, "nested", "keep.txt")
 	mustWriteFile(t, routeManifest, []byte("{}"))
@@ -66,13 +88,22 @@ func TestCleanStaticPublicOutDir_RemovesGeneratedPrefixedFiles(t *testing.T) {
 		t.Fatalf("expected route manifest to be removed, stat error: %v", err)
 	}
 	if _, err := os.Stat(viteOutput); !os.IsNotExist(err) {
-		t.Fatalf("expected vite prefixed file to be removed, stat error: %v", err)
+		t.Fatalf(
+			"expected vite prefixed file to be removed, stat error: %v",
+			err,
+		)
 	}
 	if _, err := os.Stat(keepRoot); err != nil {
-		t.Fatalf("expected non-prefixed root file to remain, stat error: %v", err)
+		t.Fatalf(
+			"expected non-prefixed root file to remain, stat error: %v",
+			err,
+		)
 	}
 	if _, err := os.Stat(keepNested); err != nil {
-		t.Fatalf("expected nested non-prefixed file to remain, stat error: %v", err)
+		t.Fatalf(
+			"expected nested non-prefixed file to remain, stat error: %v",
+			err,
+		)
 	}
 }
 
@@ -80,14 +111,17 @@ func TestGenerateAndWriteRouteManifest(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/has-loader",
 		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
 			return "ok", nil
 		}),
 	)
-	mux.AddNestedPatternWithoutHandler(app.LoadersRouter().NestedRouter, "/client-only")
+	nestedmux.AddPatternWithoutHandler(
+		app.LoadersRouter().NestedRouter,
+		"/client-only",
+	)
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetPaths(map[string]*vormaruntime.Path{
@@ -121,7 +155,11 @@ func TestGenerateAndWriteRouteManifest(t *testing.T) {
 		t.Fatalf("writeRouteManifestToDisk returned error: %v", err)
 	}
 	if !strings.HasPrefix(filename, vormaruntime.VormaRouteManifestPrefix) {
-		t.Fatalf("filename = %q, expected prefix %q", filename, vormaruntime.VormaRouteManifestPrefix)
+		t.Fatalf(
+			"filename = %q, expected prefix %q",
+			filename,
+			vormaruntime.VormaRouteManifestPrefix,
+		)
 	}
 	if filepath.Ext(filename) != ".json" {
 		t.Fatalf("filename = %q, expected .json extension", filename)
@@ -138,7 +176,10 @@ func TestGenerateAndWriteRouteManifest(t *testing.T) {
 		t.Fatalf("unmarshal manifest JSON: %v", err)
 	}
 	if decoded["/has-loader"] != 1 || decoded["/client-only"] != 0 {
-		t.Fatalf("decoded manifest = %#v, expected loader/client flags", decoded)
+		t.Fatalf(
+			"decoded manifest = %#v, expected loader/client flags",
+			decoded,
+		)
 	}
 }
 
@@ -183,7 +224,11 @@ func TestWritePathsToDiskStageOne_WritesExpectedFields(t *testing.T) {
 		t.Fatalf("build ID = %q, want %q", parsed.BuildID, "build-123")
 	}
 	if parsed.RouteManifestFile != "vorma_out_manifest_file.json" {
-		t.Fatalf("route manifest file = %q, want %q", parsed.RouteManifestFile, "vorma_out_manifest_file.json")
+		t.Fatalf(
+			"route manifest file = %q, want %q",
+			parsed.RouteManifestFile,
+			"vorma_out_manifest_file.json",
+		)
 	}
 	if parsed.Paths["/items/:id"] == nil {
 		t.Fatalf("expected /items/:id path in stage one output")
@@ -233,14 +278,20 @@ func TestStageOnePathsFile(t *testing.T) {
 		t.Fatalf("build ID = %q, want %q", pathsFile.BuildID, "build-stage-one")
 	}
 	if pathsFile.RouteManifestFile != "manifest-stage-one.json" {
-		t.Fatalf("route manifest file = %q, want %q", pathsFile.RouteManifestFile, "manifest-stage-one.json")
+		t.Fatalf(
+			"route manifest file = %q, want %q",
+			pathsFile.RouteManifestFile,
+			"manifest-stage-one.json",
+		)
 	}
 	if pathsFile.Paths["/a"] == nil {
 		t.Fatal("expected /a path in stage one paths file")
 	}
 }
 
-func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T) {
+func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -269,7 +320,8 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 			if !pattern.RunOnChangeOnly {
 				t.Fatalf("routes pattern should use RunOnChangeOnly")
 			}
-			if len(pattern.OnChangeHooks) != 1 || pattern.OnChangeHooks[0].Callback == nil {
+			if len(pattern.OnChangeHooks) != 1 ||
+				pattern.OnChangeHooks[0].Callback == nil {
 				t.Fatalf("routes pattern should include one callback hook")
 			}
 			if !pattern.SkipRebuildingNotification {
@@ -277,14 +329,18 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 			}
 		}
 		templatePath := normalizeFrameworkWatchPatternPath(
-			filepath.Join(app.Wave.PrivateStaticDir(), app.Config.HTMLTemplateLocation),
+			filepath.Join(
+				app.Wave.PrivateStaticDir(),
+				app.Config.HTMLTemplateLocation,
+			),
 		)
 		if pattern.Pattern == templatePath {
 			foundTemplatePattern = true
 			if pattern.RunOnChangeOnly {
 				t.Fatalf("template pattern should not use RunOnChangeOnly")
 			}
-			if len(pattern.OnChangeHooks) != 1 || pattern.OnChangeHooks[0].Callback == nil {
+			if len(pattern.OnChangeHooks) != 1 ||
+				pattern.OnChangeHooks[0].Callback == nil {
 				t.Fatalf("template pattern should include one callback hook")
 			}
 			if pattern.OnChangeHooks[0].Timing != wave.OnChangeStrategyPost {
@@ -305,16 +361,25 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 				t.Fatalf("go hook cmd = %q, want empty", hook.Cmd)
 			}
 			if !hook.RunCombinedDevBuildHookCommands {
-				t.Fatalf("go hook should set RunCombinedDevBuildHookCommands=true")
+				t.Fatalf(
+					"go hook should set RunCombinedDevBuildHookCommands=true",
+				)
 			}
 			if hook.Timing != "concurrent" {
-				t.Fatalf("go hook timing = %q, want %q", hook.Timing, "concurrent")
+				t.Fatalf(
+					"go hook timing = %q, want %q",
+					hook.Timing,
+					"concurrent",
+				)
 			}
 		}
 	}
 
 	if !foundRoutesPattern {
-		t.Fatalf("did not find configured routes watch patterns %#v", app.Config.ClientRouteDefinitionPatterns)
+		t.Fatalf(
+			"did not find configured routes watch patterns %#v",
+			app.Config.ClientRouteDefinitionPatterns,
+		)
 	}
 	if !foundTemplatePattern {
 		t.Fatalf("did not find template watch pattern")
@@ -324,7 +389,9 @@ func TestGetDefaultWatchPatterns_IncludesRouteTemplateAndGoPatterns(t *testing.T
 	}
 }
 
-func TestInjectDefaultWatchPatterns_SkipsWhenIncludeDefaultsDisabled(t *testing.T) {
+func TestInjectDefaultWatchPatterns_SkipsWhenIncludeDefaultsDisabled(
+	t *testing.T,
+) {
 	includeDefaults := false
 	cfg := vormaruntime.VormaConfig{
 		IncludeDefaults:      &includeDefaults,
@@ -344,10 +411,16 @@ func TestInjectDefaultWatchPatterns_SkipsWhenIncludeDefaultsDisabled(t *testing.
 
 	parsedCfg := injectDefaultWatchPatterns(fixture.app)
 	if len(parsedCfg.FrameworkWatchPatterns) != 0 {
-		t.Fatalf("expected no framework watch patterns, got %d", len(parsedCfg.FrameworkWatchPatterns))
+		t.Fatalf(
+			"expected no framework watch patterns, got %d",
+			len(parsedCfg.FrameworkWatchPatterns),
+		)
 	}
 	if parsedCfg.FrameworkPublicFileMapOutDir != "" {
-		t.Fatalf("expected FrameworkPublicFileMapOutDir to stay empty, got %q", parsedCfg.FrameworkPublicFileMapOutDir)
+		t.Fatalf(
+			"expected FrameworkPublicFileMapOutDir to stay empty, got %q",
+			parsedCfg.FrameworkPublicFileMapOutDir,
+		)
 	}
 }
 
@@ -389,7 +462,12 @@ func TestShouldRemoveGeneratedStaticPublicFile(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			got := shouldRemoveGeneratedStaticPublicFile(testCase.fileName)
 			if got != testCase.want {
-				t.Fatalf("shouldRemoveGeneratedStaticPublicFile(%q) = %v, want %v", testCase.fileName, got, testCase.want)
+				t.Fatalf(
+					"shouldRemoveGeneratedStaticPublicFile(%q) = %v, want %v",
+					testCase.fileName,
+					got,
+					testCase.want,
+				)
 			}
 		})
 	}
@@ -422,7 +500,12 @@ func TestIsGeneratedRouteManifestFilename(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			got := isGeneratedRouteManifestFilename(testCase.fileName)
 			if got != testCase.want {
-				t.Fatalf("isGeneratedRouteManifestFilename(%q) = %v, want %v", testCase.fileName, got, testCase.want)
+				t.Fatalf(
+					"isGeneratedRouteManifestFilename(%q) = %v, want %v",
+					testCase.fileName,
+					got,
+					testCase.want,
+				)
 			}
 		})
 	}
@@ -430,9 +513,15 @@ func TestIsGeneratedRouteManifestFilename(t *testing.T) {
 
 func TestRemoveMatchingTopLevelFiles_RemovesOnlyMatchingFiles(t *testing.T) {
 	rootDir := t.TempDir()
-	manifestFile := filepath.Join(rootDir, vormaruntime.VormaRouteManifestPrefix+"one.json")
+	manifestFile := filepath.Join(
+		rootDir,
+		vormaruntime.VormaRouteManifestPrefix+"one.json",
+	)
 	keepFile := filepath.Join(rootDir, "keep.txt")
-	matchingDir := filepath.Join(rootDir, vormaruntime.VormaRouteManifestPrefix+"dir")
+	matchingDir := filepath.Join(
+		rootDir,
+		vormaruntime.VormaRouteManifestPrefix+"dir",
+	)
 
 	mustWriteFile(t, manifestFile, []byte("{}"))
 	mustWriteFile(t, keepFile, []byte("keep"))
@@ -443,20 +532,31 @@ func TestRemoveMatchingTopLevelFiles_RemovesOnlyMatchingFiles(t *testing.T) {
 	}
 
 	if _, err := os.Stat(manifestFile); !os.IsNotExist(err) {
-		t.Fatalf("expected matching top-level file removed, stat error: %v", err)
+		t.Fatalf(
+			"expected matching top-level file removed, stat error: %v",
+			err,
+		)
 	}
 	if _, err := os.Stat(keepFile); err != nil {
 		t.Fatalf("expected non-matching file to remain, stat error: %v", err)
 	}
 	if _, err := os.Stat(matchingDir); err != nil {
-		t.Fatalf("expected matching directory to remain untouched, stat error: %v", err)
+		t.Fatalf(
+			"expected matching directory to remain untouched, stat error: %v",
+			err,
+		)
 	}
 }
 
-func TestRemoveMatchingEntriesRecursively_RemovesNestedMatchingFiles(t *testing.T) {
+func TestRemoveMatchingEntriesRecursively_RemovesNestedMatchingFiles(
+	t *testing.T,
+) {
 	rootDir := t.TempDir()
 	nestedDir := filepath.Join(rootDir, "nested", "deeper")
-	removeFile := filepath.Join(nestedDir, vormaruntime.VormaVitePrehashedFilePrefix+"bundle.js")
+	removeFile := filepath.Join(
+		nestedDir,
+		vormaruntime.VormaVitePrehashedFilePrefix+"bundle.js",
+	)
 	keepFile := filepath.Join(nestedDir, "keep.txt")
 
 	mustWriteFile(t, removeFile, []byte("remove"))
@@ -470,7 +570,10 @@ func TestRemoveMatchingEntriesRecursively_RemovesNestedMatchingFiles(t *testing.
 		t.Fatalf("expected matching nested file removed, stat error: %v", err)
 	}
 	if _, err := os.Stat(keepFile); err != nil {
-		t.Fatalf("expected non-matching nested file to remain, stat error: %v", err)
+		t.Fatalf(
+			"expected non-matching nested file to remain, stat error: %v",
+			err,
+		)
 	}
 }
 
@@ -518,13 +621,17 @@ func TestParseAndSyncClientRoutes_MergesClientAndServerRoutes(t *testing.T) {
 
 	t.Chdir(fixture.rootDir)
 
-	mustWriteFile(t, "frontend/src/components/client.tsx", []byte("export const Client = () => null;"))
+	mustWriteFile(
+		t,
+		"frontend/src/components/client.tsx",
+		[]byte("export const Client = () => null;"),
+	)
 	mustWriteFile(t, "frontend/src/vorma.routes.ts", []byte(`
 import { route } from "vorma/buildtime";
 route("/client", import("./components/client.tsx"), "Client");
 `))
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server-only",
 		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
@@ -542,10 +649,18 @@ route("/client", import("./components/client.tsx"), "Client");
 		t.Fatal("missing parsed client route /client")
 	}
 	if clientPath.SrcPath != "frontend/src/components/client.tsx" {
-		t.Fatalf("client src path = %q, want %q", clientPath.SrcPath, "frontend/src/components/client.tsx")
+		t.Fatalf(
+			"client src path = %q, want %q",
+			clientPath.SrcPath,
+			"frontend/src/components/client.tsx",
+		)
 	}
 	if clientPath.ExportKey != "Client" {
-		t.Fatalf("client export key = %q, want %q", clientPath.ExportKey, "Client")
+		t.Fatalf(
+			"client export key = %q, want %q",
+			clientPath.ExportKey,
+			"Client",
+		)
 	}
 
 	serverOnlyPath := paths["/server-only"]
@@ -553,10 +668,17 @@ route("/client", import("./components/client.tsx"), "Client");
 		t.Fatal("missing merged server-only route")
 	}
 	if serverOnlyPath.SrcPath != "" {
-		t.Fatalf("server-only src path = %q, want empty", serverOnlyPath.SrcPath)
+		t.Fatalf(
+			"server-only src path = %q, want empty",
+			serverOnlyPath.SrcPath,
+		)
 	}
 	if serverOnlyPath.ExportKey != "default" {
-		t.Fatalf("server-only export key = %q, want %q", serverOnlyPath.ExportKey, "default")
+		t.Fatalf(
+			"server-only export key = %q, want %q",
+			serverOnlyPath.ExportKey,
+			"default",
+		)
 	}
 }
 
@@ -565,7 +687,11 @@ func TestWritePublicFileMapTypeScript_WritesTSAndJSON(t *testing.T) {
 	app := fixture.app
 
 	t.Chdir(fixture.rootDir)
-	mustWriteFile(t, filepath.Join(fixture.publicDir, "logo.svg"), []byte("<svg/>"))
+	mustWriteFile(
+		t,
+		filepath.Join(fixture.publicDir, "logo.svg"),
+		[]byte("<svg/>"),
+	)
 
 	if err := writePublicFileMapTypeScript(app); err != nil {
 		t.Fatalf("writePublicFileMapTypeScript returned error: %v", err)
@@ -598,37 +724,66 @@ func TestConfigureBuildEnvironment_WiresHooksAndDefaults(t *testing.T) {
 	parsedCfg := configureBuildEnvironment(app)
 
 	if _, hasVormaSchema := parsedCfg.FrameworkSchemaExtensions["Vorma"]; !hasVormaSchema {
-		t.Fatal("expected configureBuildEnvironment to register Vorma schema extension")
+		t.Fatal(
+			"expected configureBuildEnvironment to register Vorma schema extension",
+		)
 	}
 
-	expectedDevHook := fmt.Sprintf("go run ./%s --dev --hook", app.Config.MainBuildEntry)
+	expectedDevHook := fmt.Sprintf(
+		"go run ./%s --dev --hook",
+		app.Config.MainBuildEntry,
+	)
 	if parsedCfg.FrameworkDevBuildHook != expectedDevHook {
-		t.Fatalf("FrameworkDevBuildHook = %q, want %q", parsedCfg.FrameworkDevBuildHook, expectedDevHook)
+		t.Fatalf(
+			"FrameworkDevBuildHook = %q, want %q",
+			parsedCfg.FrameworkDevBuildHook,
+			expectedDevHook,
+		)
 	}
 
-	expectedProdHook := fmt.Sprintf("go run ./%s --hook", app.Config.MainBuildEntry)
+	expectedProdHook := fmt.Sprintf(
+		"go run ./%s --hook",
+		app.Config.MainBuildEntry,
+	)
 	if parsedCfg.FrameworkProdBuildHook != expectedProdHook {
-		t.Fatalf("FrameworkProdBuildHook = %q, want %q", parsedCfg.FrameworkProdBuildHook, expectedProdHook)
+		t.Fatalf(
+			"FrameworkProdBuildHook = %q, want %q",
+			parsedCfg.FrameworkProdBuildHook,
+			expectedProdHook,
+		)
 	}
 
 	if len(parsedCfg.FrameworkWatchPatterns) != 3 {
-		t.Fatalf("expected 3 default framework watch patterns, got %d", len(parsedCfg.FrameworkWatchPatterns))
+		t.Fatalf(
+			"expected 3 default framework watch patterns, got %d",
+			len(parsedCfg.FrameworkWatchPatterns),
+		)
 	}
 
 	if parsedCfg.FrameworkPublicFileMapOutDir != app.Config.TSGenOutDir {
-		t.Fatalf("FrameworkPublicFileMapOutDir = %q, want %q", parsedCfg.FrameworkPublicFileMapOutDir, app.Config.TSGenOutDir)
+		t.Fatalf(
+			"FrameworkPublicFileMapOutDir = %q, want %q",
+			parsedCfg.FrameworkPublicFileMapOutDir,
+			app.Config.TSGenOutDir,
+		)
 	}
 
 	if parsedCfg.FrameworkRunBuildHook == nil {
-		t.Fatal("expected configureBuildEnvironment to wire framework build hook runner")
+		t.Fatal(
+			"expected configureBuildEnvironment to wire framework build hook runner",
+		)
 	}
 
 	if parsedCfg.FrameworkPrepareGoBuildOverlay == nil {
-		t.Fatal("expected configureBuildEnvironment to wire framework go-build overlay preparation")
+		t.Fatal(
+			"expected configureBuildEnvironment to wire framework go-build overlay preparation",
+		)
 	}
 }
 
-func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testing.T) {
+func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	parsedCfg := app.Wave.BuildtimeParsedConfig()
@@ -639,14 +794,22 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHooks(t *testi
 	configureBuildEnvironmentInConfig(app, parsedCfg)
 
 	if parsedCfg.FrameworkDevBuildHook != "go run ./custom/devhook" {
-		t.Fatalf("FrameworkDevBuildHook = %q, want preserved custom hook", parsedCfg.FrameworkDevBuildHook)
+		t.Fatalf(
+			"FrameworkDevBuildHook = %q, want preserved custom hook",
+			parsedCfg.FrameworkDevBuildHook,
+		)
 	}
 	if parsedCfg.FrameworkProdBuildHook != "go run ./custom/prodhook" {
-		t.Fatalf("FrameworkProdBuildHook = %q, want preserved custom hook", parsedCfg.FrameworkProdBuildHook)
+		t.Fatalf(
+			"FrameworkProdBuildHook = %q, want preserved custom hook",
+			parsedCfg.FrameworkProdBuildHook,
+		)
 	}
 }
 
-func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHookRunner(t *testing.T) {
+func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHookRunner(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	parsedCfg := app.Wave.BuildtimeParsedConfig()
@@ -660,17 +823,23 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkBuildHookRunner(t *
 	configureBuildEnvironmentInConfig(app, parsedCfg)
 
 	if parsedCfg.FrameworkRunBuildHook == nil {
-		t.Fatal("expected existing framework build hook runner to remain configured")
+		t.Fatal(
+			"expected existing framework build hook runner to remain configured",
+		)
 	}
 	if err := parsedCfg.FrameworkRunBuildHook(context.Background(), true); err != nil {
 		t.Fatalf("existing framework build hook runner returned error: %v", err)
 	}
 	if !frameworkBuildHookRunnerCalled {
-		t.Fatal("expected configureBuildEnvironment to preserve existing framework build hook runner")
+		t.Fatal(
+			"expected configureBuildEnvironment to preserve existing framework build hook runner",
+		)
 	}
 }
 
-func TestConfigureBuildEnvironment_PreservesExistingFrameworkGoBuildOverlayPreparation(t *testing.T) {
+func TestConfigureBuildEnvironment_PreservesExistingFrameworkGoBuildOverlayPreparation(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	parsedCfg := app.Wave.BuildtimeParsedConfig()
@@ -684,17 +853,26 @@ func TestConfigureBuildEnvironment_PreservesExistingFrameworkGoBuildOverlayPrepa
 	configureBuildEnvironmentInConfig(app, parsedCfg)
 
 	if parsedCfg.FrameworkPrepareGoBuildOverlay == nil {
-		t.Fatal("expected existing framework go-build overlay preparation to remain configured")
+		t.Fatal(
+			"expected existing framework go-build overlay preparation to remain configured",
+		)
 	}
 	if _, err := parsedCfg.FrameworkPrepareGoBuildOverlay(); err != nil {
-		t.Fatalf("existing framework go-build overlay preparation returned error: %v", err)
+		t.Fatalf(
+			"existing framework go-build overlay preparation returned error: %v",
+			err,
+		)
 	}
 	if !overlayPreparationCalled {
-		t.Fatal("expected configureBuildEnvironment to preserve existing framework overlay callback")
+		t.Fatal(
+			"expected configureBuildEnvironment to preserve existing framework overlay callback",
+		)
 	}
 }
 
-func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(t *testing.T) {
+func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	parsedCfg := app.Wave.BuildtimeParsedConfig()
@@ -749,7 +927,12 @@ func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(
 		"--hook",
 	}
 	if len(capturedGoRunArgs) != len(expectedGoRunArgs) {
-		t.Fatalf("go run args len = %d, want %d; got %#v", len(capturedGoRunArgs), len(expectedGoRunArgs), capturedGoRunArgs)
+		t.Fatalf(
+			"go run args len = %d, want %d; got %#v",
+			len(capturedGoRunArgs),
+			len(expectedGoRunArgs),
+			capturedGoRunArgs,
+		)
 	}
 	for argumentIndex, expectedArgument := range expectedGoRunArgs {
 		if capturedGoRunArgs[argumentIndex] != expectedArgument {
@@ -767,7 +950,9 @@ func TestConfigureBuildEnvironment_FrameworkBuildHookRunner_ExecutesHookCommand(
 	}
 }
 
-func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(t *testing.T) {
+func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(
+	t *testing.T,
+) {
 	var capturedCaches []*discoveredRouteRegistrarArtifactCache
 	frameworkBuildHookExecutor := newFrameworkBuildHookExecutor(
 		frameworkBuildHookExecutionDependencies{
@@ -776,9 +961,14 @@ func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(t 
 				discoveredRegistrarArtifactsCache *discoveredRouteRegistrarArtifactCache,
 			) (*discoveredRouteRegistrarOverlay, error) {
 				if discoveredRegistrarArtifactsCache == nil {
-					t.Fatal("expected non-nil discovered registrar artifacts cache")
+					t.Fatal(
+						"expected non-nil discovered registrar artifacts cache",
+					)
 				}
-				capturedCaches = append(capturedCaches, discoveredRegistrarArtifactsCache)
+				capturedCaches = append(
+					capturedCaches,
+					discoveredRegistrarArtifactsCache,
+				)
 				return nil, nil
 			},
 			runGoCommandWithContext: func(
@@ -805,7 +995,10 @@ func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(t 
 		t.Fatalf("first framework build hook run returned error: %v", err)
 	}
 	if _, err := parsedCfgOne.FrameworkPrepareGoBuildOverlay(); err != nil {
-		t.Fatalf("first framework go build overlay preparation returned error: %v", err)
+		t.Fatalf(
+			"first framework go build overlay preparation returned error: %v",
+			err,
+		)
 	}
 	if err := parsedCfgOne.FrameworkRunBuildHook(context.Background(), false); err != nil {
 		t.Fatalf("second framework build hook run returned error: %v", err)
@@ -815,8 +1008,12 @@ func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(t 
 		t.Fatalf("captured cache count = %d, want 3", len(capturedCaches))
 	}
 	firstLifecycleCache := capturedCaches[0]
-	if capturedCaches[1] != firstLifecycleCache || capturedCaches[2] != firstLifecycleCache {
-		t.Fatalf("expected same cache instance within lifecycle, got %#v", capturedCaches)
+	if capturedCaches[1] != firstLifecycleCache ||
+		capturedCaches[2] != firstLifecycleCache {
+		t.Fatalf(
+			"expected same cache instance within lifecycle, got %#v",
+			capturedCaches,
+		)
 	}
 
 	fixtureTwo := newBuildTestFixture(t, nil)
@@ -835,7 +1032,9 @@ func TestConfigureBuildEnvironment_UsesLifecycleOwnedDiscoveredRegistrarCache(t 
 	}
 	secondLifecycleCache := capturedCaches[3]
 	if secondLifecycleCache == firstLifecycleCache {
-		t.Fatal("expected distinct lifecycle cache for second configured runtime")
+		t.Fatal(
+			"expected distinct lifecycle cache for second configured runtime",
+		)
 	}
 }
 
@@ -873,7 +1072,10 @@ func TestBuildInner_DevBuildInnerFlow(t *testing.T) {
 
 	paths := app.Paths()
 	if len(paths) != 3 {
-		t.Fatalf("expected 3 routes from bootstrap-style defs, got %d", len(paths))
+		t.Fatalf(
+			"expected 3 routes from bootstrap-style defs, got %d",
+			len(paths),
+		)
 	}
 }
 
@@ -894,7 +1096,7 @@ func TestWriteAndSetRouteManifest(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server",
 		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
@@ -921,7 +1123,11 @@ func TestWriteAndSetRouteManifest(t *testing.T) {
 		t.Fatal("expected route manifest filename to be set")
 	}
 	if !strings.HasPrefix(manifestFile, vormaruntime.VormaRouteManifestPrefix) {
-		t.Fatalf("route manifest file = %q, expected prefix %q", manifestFile, vormaruntime.VormaRouteManifestPrefix)
+		t.Fatalf(
+			"route manifest file = %q, expected prefix %q",
+			manifestFile,
+			vormaruntime.VormaRouteManifestPrefix,
+		)
 	}
 	if _, err := os.Stat(filepath.Join(fixture.publicDir, manifestFile)); err != nil {
 		t.Fatalf("expected manifest file to exist on disk: %v", err)
@@ -932,7 +1138,11 @@ func TestRouteManifestFilename(t *testing.T) {
 	manifestJSON := []byte(`{"a":1}`)
 	filename := routeManifestFilename(manifestJSON)
 	if !strings.HasPrefix(filename, vormaruntime.VormaRouteManifestPrefix) {
-		t.Fatalf("filename = %q, expected prefix %q", filename, vormaruntime.VormaRouteManifestPrefix)
+		t.Fatalf(
+			"filename = %q, expected prefix %q",
+			filename,
+			vormaruntime.VormaRouteManifestPrefix,
+		)
 	}
 	if filepath.Ext(filename) != ".json" {
 		t.Fatalf("filename = %q, expected .json extension", filename)
@@ -940,14 +1150,18 @@ func TestRouteManifestFilename(t *testing.T) {
 
 	filenameAgain := routeManifestFilename(manifestJSON)
 	if filenameAgain != filename {
-		t.Fatalf("routeManifestFilename should be deterministic: %q vs %q", filename, filenameAgain)
+		t.Fatalf(
+			"routeManifestFilename should be deterministic: %q vs %q",
+			filename,
+			filenameAgain,
+		)
 	}
 }
 
 func TestRouteManifestServerLoaderFlag(t *testing.T) {
-	nestedRouter := mux.NewNestedRouter(nil)
-	mux.AddNestedPatternWithoutHandler(nestedRouter, "/client-only")
-	mux.AddNestedTaskHandler(
+	nestedRouter := nestedmux.NewRouter(nil)
+	nestedmux.AddPatternWithoutHandler(nestedRouter, "/client-only")
+	nestedmux.AddTaskHandler(
 		nestedRouter,
 		"/with-loader",
 		mux.TaskHandlerFromFunc(func(_ *mux.ReqData[mux.None]) (string, error) {
@@ -956,9 +1170,15 @@ func TestRouteManifestServerLoaderFlag(t *testing.T) {
 	)
 
 	if got := routeManifestServerLoaderFlag(nestedRouter, "/client-only"); got != 0 {
-		t.Fatalf("routeManifestServerLoaderFlag(/client-only) = %d, want 0", got)
+		t.Fatalf(
+			"routeManifestServerLoaderFlag(/client-only) = %d, want 0",
+			got,
+		)
 	}
 	if got := routeManifestServerLoaderFlag(nestedRouter, "/with-loader"); got != 1 {
-		t.Fatalf("routeManifestServerLoaderFlag(/with-loader) = %d, want 1", got)
+		t.Fatalf(
+			"routeManifestServerLoaderFlag(/with-loader) = %d, want 1",
+			got,
+		)
 	}
 }

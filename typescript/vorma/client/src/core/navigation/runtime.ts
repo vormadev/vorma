@@ -23,7 +23,6 @@ import {
 	decideNavigationOutcomeExecutionPlan,
 	toPublicNavigateResult,
 	type InternalNavigateResult,
-	type NavigationOutcomeExecutionPlan,
 } from "./runtime_navigation_outcome_state_machine.ts";
 import {
 	processSuccessfulNavigationRuntime,
@@ -279,65 +278,38 @@ export async function handleNavigationOutcomeWithInternalResult(
 		currentHref: window.location.href,
 	});
 
-	const internalResult = await executeNavigationOutcomeExecutionPlan({
-		executionPlan,
-		targetUrl,
-		deleteNavigation,
-		processSuccessfulNavigation,
-		navigationProps,
-	});
-	return internalResult;
-}
-
-async function executeNavigationOutcomeExecutionPlan(props: {
-	executionPlan: NavigationOutcomeExecutionPlan;
-	targetUrl: string;
-	deleteNavigation: HandleNavigationOutcomeProps["deleteNavigation"];
-	processSuccessfulNavigation: HandleNavigationOutcomeProps["processSuccessfulNavigation"];
-	navigationProps: NavigateProps;
-}): Promise<InternalNavigateResult> {
-	function buildRedirectSourceNavigationPropsFromCurrentEntry(): NavigateProps {
-		if (props.executionPlan.type !== "redirect") {
-			return props.navigationProps;
-		}
-
-		return {
-			...props.navigationProps,
-			href: props.executionPlan.entry.targetUrl,
-			navigationType: props.executionPlan.entry.type,
-			scrollToTop: props.executionPlan.entry.scrollToTop,
-			replace: props.executionPlan.entry.replace,
-			state: props.executionPlan.entry.state,
-		};
-	}
-
-	switch (props.executionPlan.type) {
+	switch (executionPlan.type) {
 		case "stop":
 			return {
 				type: "cancelled",
-				reason: props.executionPlan.reason,
+				reason: executionPlan.reason,
 			};
 		case "deleteAndStop":
-			props.deleteNavigation({
-				targetUrl: props.executionPlan.targetUrl,
-				reason: props.executionPlan.reason,
+			deleteNavigation({
+				targetUrl: executionPlan.targetUrl,
+				reason: executionPlan.reason,
 			});
 			return {
 				type: "cancelled",
-				reason: props.executionPlan.reason,
+				reason: executionPlan.reason,
 			};
 		case "redirect": {
-			syncBuildIDFromRedirectData(
-				props.executionPlan.outcome.redirectData,
-			);
-			props.deleteNavigation({
-				targetUrl: props.targetUrl,
-				reason: props.executionPlan.reason,
+			syncBuildIDFromRedirectData(executionPlan.outcome.redirectData);
+			deleteNavigation({
+				targetUrl,
+				reason: executionPlan.reason,
 			});
 			const redirectResult = await effectuateRedirectDataResult(
-				props.executionPlan.outcome.redirectData,
-				props.navigationProps.redirectCount || 0,
-				buildRedirectSourceNavigationPropsFromCurrentEntry(),
+				executionPlan.outcome.redirectData,
+				navigationProps.redirectCount || 0,
+				{
+					...navigationProps,
+					href: executionPlan.entry.targetUrl,
+					navigationType: executionPlan.entry.type,
+					scrollToTop: executionPlan.entry.scrollToTop,
+					replace: executionPlan.entry.replace,
+					state: executionPlan.entry.state,
+				},
 			);
 			return {
 				type: "committed",
@@ -345,13 +317,13 @@ async function executeNavigationOutcomeExecutionPlan(props: {
 			};
 		}
 		case "success":
-			await props.processSuccessfulNavigation(
-				props.executionPlan.outcome,
-				props.executionPlan.entry,
+			await processSuccessfulNavigation(
+				executionPlan.outcome,
+				executionPlan.entry,
 			);
 			return {
 				type: "committed",
-				didNavigate: props.executionPlan.didNavigate,
+				didNavigate: executionPlan.didNavigate,
 			};
 	}
 }
@@ -368,7 +340,17 @@ export function createNavigationRuntime(
 	const lanes = createRuntimeLanes();
 	let nextNavigationOperationID = 1;
 	let nextSubmissionOperationID = 1;
-	let scheduleStatusUpdate: () => void = () => {};
+
+	function getStatus(): StatusEventDetail {
+		return computeNavigationStatus({
+			lanes,
+		});
+	}
+	const statusSignaler = createStatusSignaler({
+		getStatus,
+		dispatchStatusEvent,
+	});
+	const scheduleStatusUpdate = statusSignaler.scheduleStatusUpdate;
 
 	const getActiveNavigation = (): NavigationEntry | null => lanes.active;
 	const setActiveNavigation = (entry: NavigationEntry | null): void => {
@@ -383,7 +365,7 @@ export function createNavigationRuntime(
 
 	const navigationLifecycleRuntime = createNavigationLifecycleRuntime({
 		lanes,
-		getScheduleStatusUpdate: () => scheduleStatusUpdate,
+		scheduleStatusUpdate,
 	});
 	const findNavigationEntry = navigationLifecycleRuntime.findNavigationEntry;
 	const deleteNavigation = (props: {
@@ -453,18 +435,6 @@ export function createNavigationRuntime(
 			lanes,
 			onStatusRelevantChange: scheduleStatusUpdate,
 		});
-
-	function getStatus(): StatusEventDetail {
-		return computeNavigationStatus({
-			lanes,
-		});
-	}
-
-	const statusSignaler = createStatusSignaler({
-		getStatus,
-		dispatchStatusEvent,
-	});
-	scheduleStatusUpdate = statusSignaler.scheduleStatusUpdate;
 
 	const prefetchNavigationsByTargetUrl = lanes.prefetch;
 

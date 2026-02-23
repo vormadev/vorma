@@ -1,81 +1,48 @@
 import { debounce } from "vorma/kit/debounce";
 import { addOnWindowFocusListener } from "vorma/kit/listeners";
 import {
+	__vormaClientGlobal,
+	type PatternWaitFn,
+	setClientLoaderWaitFn,
+} from "../app/context.ts";
+import {
 	getLastTriggeredNavOrRevalidateTimestampMS,
 	getStatus,
 	revalidate,
 } from "../client.ts";
 import {
 	addStatusListener,
+	dispatchRouteChangeEvent,
 	type StatusEvent,
 	type StatusEventDetail,
 } from "../platform/events.ts";
-import { dispatchRouteChangeEvent } from "../platform/events.ts";
 import { logInfo } from "../platform/safety.ts";
-import {
-	type PatternWaitFn,
-	setClientLoaderWaitFn,
-	__vormaClientGlobal,
-} from "../app/context.ts";
 import {
 	registerClientLoaderPatternOrThrow,
 	setupClientLoaders,
 } from "./render_runtime.ts";
-export type FocusRevalidationTriggerExecutionPlan =
-	| {
-			type: "trigger_revalidate";
-			reason: "focus_revalidate_allowed";
-	  }
-	| {
-			type: "skip";
-			reason:
-				| "focus_revalidate_blocked_navigating"
-				| "focus_revalidate_blocked_submitting"
-				| "focus_revalidate_blocked_revalidating"
-				| "focus_revalidate_blocked_stale_window_not_elapsed";
-	  };
-
-export function decideFocusRevalidationTriggerExecutionPlan(props: {
+export function shouldTriggerFocusRevalidation(props: {
 	status: StatusEventDetail;
 	nowTimestampMS: number;
 	lastTriggeredNavOrRevalidateTimestampMS: number;
 	staleTimeMS: number;
-}): FocusRevalidationTriggerExecutionPlan {
-	if (props.status.isNavigating) {
-		return {
-			type: "skip",
-			reason: "focus_revalidate_blocked_navigating",
-		};
-	}
-
-	if (props.status.isSubmitting) {
-		return {
-			type: "skip",
-			reason: "focus_revalidate_blocked_submitting",
-		};
-	}
-
-	if (props.status.isRevalidating) {
-		return {
-			type: "skip",
-			reason: "focus_revalidate_blocked_revalidating",
-		};
+}): boolean {
+	if (
+		props.status.isNavigating ||
+		props.status.isSubmitting ||
+		props.status.isRevalidating
+	) {
+		return false;
 	}
 
 	if (
 		props.nowTimestampMS - props.lastTriggeredNavOrRevalidateTimestampMS <
 		props.staleTimeMS
 	) {
-		return {
-			type: "skip",
-			reason: "focus_revalidate_blocked_stale_window_not_elapsed",
-		};
+		return false;
 	}
 
-	return {
-		type: "trigger_revalidate",
-		reason: "focus_revalidate_allowed",
-	};
+	return true;
 }
 
 let devTimeSetupClientLoadersDebounced: () => Promise<void> = () =>
@@ -392,14 +359,14 @@ function getIsWorking(
 export function revalidateOnWindowFocus(options?: { staleTimeMS?: number }) {
 	const staleTimeMS = options?.staleTimeMS ?? 5_000;
 	return addOnWindowFocusListener(() => {
-		const executionPlan = decideFocusRevalidationTriggerExecutionPlan({
+		const shouldRevalidate = shouldTriggerFocusRevalidation({
 			status: getStatus(),
 			nowTimestampMS: Date.now(),
 			lastTriggeredNavOrRevalidateTimestampMS:
 				getLastTriggeredNavOrRevalidateTimestampMS(),
 			staleTimeMS,
 		});
-		if (executionPlan.type === "trigger_revalidate") {
+		if (shouldRevalidate) {
 			revalidate();
 		}
 	});

@@ -1,4 +1,4 @@
-package matcher
+package nestedmatcher
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/kit/internal/matchercore/testutil"
 )
 
 var NestedPatterns = []string{
@@ -334,23 +336,52 @@ var NestedScenarios = []TestNestedScenario{
 	},
 }
 
+var differentOptsToTest = []*Options{
+	{},
+	{ExplicitIndexSegmentIdentifier: "_index"},
+	{DynamicParamPrefix: '$'},
+	{SplatSegmentIdentifier: '#'},
+	{
+		ExplicitIndexSegmentIdentifier: "_______",
+		DynamicParamPrefix:             '<',
+		SplatSegmentIdentifier:         '>',
+	},
+	{
+		ExplicitIndexSegmentIdentifier: "",
+		DynamicParamPrefix:             '<',
+		SplatSegmentIdentifier:         '>',
+	},
+}
+
 func TestFindAllMatches(t *testing.T) {
 	for _, opts := range differentOptsToTest {
 		m := New(opts)
 
-		for _, p := range modifyPatternsToOpts(NestedPatterns, "_index", opts) {
+		for _, p := range testutil.RewritePatternsForOptionShape(
+			NestedPatterns,
+			"_index",
+			optionShapeForPatternRewrites(opts),
+		) {
 			m.RegisterPattern(p)
 		}
 
 		for _, tc := range NestedScenarios {
 			t.Run(tc.Path, func(t *testing.T) {
-				results, ok := m.FindNestedMatches(tc.Path)
+				results, ok := m.FindMatches(tc.Path)
 
 				if !equalParams(tc.Params, results.Params) {
-					t.Errorf("Expected params %v, got %v", tc.Params, results.Params)
+					t.Errorf(
+						"Expected params %v, got %v",
+						tc.Params,
+						results.Params,
+					)
 				}
 				if !equalSplat(tc.SplatValues, results.SplatValues) {
-					t.Errorf("Expected splat values %v, got %v", tc.SplatValues, results.SplatValues)
+					t.Errorf(
+						"Expected splat values %v, got %v",
+						tc.SplatValues,
+						results.SplatValues,
+					)
 				}
 
 				actualMatches := results.Matches
@@ -361,7 +392,8 @@ func TestFindAllMatches(t *testing.T) {
 				expectedCount := len(tc.ExpectedMatches)
 				actualCount := len(actualMatches)
 
-				fail := (!ok && expectedCount > 0) || (expectedCount != actualCount)
+				fail := (!ok && expectedCount > 0) ||
+					(expectedCount != actualCount)
 
 				// Compare each matched pattern
 				for i := range max(expectedCount, actualCount) {
@@ -370,7 +402,7 @@ func TestFindAllMatches(t *testing.T) {
 						actual := actualMatches[i]
 
 						// ---- Use helper functions to compare maps/slices ----
-						if expected != actual.normalizedPattern {
+						if expected != actual.NormalizedPattern() {
 							fail = true
 							break
 						}
@@ -382,16 +414,29 @@ func TestFindAllMatches(t *testing.T) {
 
 				// Only output errors if a failure occurred
 				if fail {
-					errors = append(errors, fmt.Sprintf("\n===== Path: %q =====", tc.Path))
+					errors = append(
+						errors,
+						fmt.Sprintf("\n===== Path: %q =====", tc.Path),
+					)
 
 					// Expected matches exist but got none
 					if !ok && expectedCount > 0 {
-						errors = append(errors, "Expected matches but got none.")
+						errors = append(
+							errors,
+							"Expected matches but got none.",
+						)
 					}
 
 					// Length mismatch
 					if expectedCount != actualCount {
-						errors = append(errors, fmt.Sprintf("Expected %d matches, got %d", expectedCount, actualCount))
+						errors = append(
+							errors,
+							fmt.Sprintf(
+								"Expected %d matches, got %d",
+								expectedCount,
+								actualCount,
+							),
+						)
 					}
 
 					// Always output all expected and actual matches for debugging
@@ -407,7 +452,7 @@ func TestFindAllMatches(t *testing.T) {
 					for i, actual := range actualMatches {
 						errors = append(errors, fmt.Sprintf(
 							"  [%d] {Pattern: %q}",
-							i, actual.normalizedPattern,
+							i, actual.NormalizedPattern(),
 						))
 					}
 
@@ -564,23 +609,34 @@ func TestFindAllMatchesAdditionalScenarios(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			m := New(&Options{ExplicitIndexSegmentIdentifier: "_index", Quiet: true})
+			m := New(
+				&Options{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
+			)
 			for _, p := range tc.patterns {
 				m.RegisterPattern(p)
 			}
 
-			results, ok := m.FindNestedMatches(tc.path)
+			results, ok := m.FindMatches(tc.path)
 
 			if ok != tc.expectMatch {
-				t.Errorf("Expected match result %v for path %q, but got %v", tc.expectMatch, tc.path, ok)
+				t.Errorf(
+					"Expected match result %v for path %q, but got %v",
+					tc.expectMatch,
+					tc.path,
+					ok,
+				)
 			}
 
 			// If no match was expected, ensure the results are truly empty.
 			if !tc.expectMatch {
 				if results != nil && len(results.Matches) != 0 {
-					t.Errorf("Expected no matches for path %q, but got %d matches", tc.path, len(results.Matches))
+					t.Errorf(
+						"Expected no matches for path %q, but got %d matches",
+						tc.path,
+						len(results.Matches),
+					)
 					for i, match := range results.Matches {
-						t.Logf("  [%d] %q", i, match.originalPattern)
+						t.Logf("  [%d] %q", i, match.OriginalPattern())
 					}
 				}
 			}
@@ -588,12 +644,15 @@ func TestFindAllMatchesAdditionalScenarios(t *testing.T) {
 			// If a match was expected, check the specific patterns that matched
 			if tc.expectMatch {
 				if results == nil || len(results.Matches) == 0 {
-					t.Errorf("Expected matches for path %q, but got none", tc.path)
+					t.Errorf(
+						"Expected matches for path %q, but got none",
+						tc.path,
+					)
 				} else if tc.expectedMatches != nil {
 					// Check that we got the expected patterns
 					actualPatterns := make([]string, len(results.Matches))
 					for i, match := range results.Matches {
-						actualPatterns[i] = match.originalPattern
+						actualPatterns[i] = match.OriginalPattern()
 					}
 
 					if len(actualPatterns) != len(tc.expectedMatches) {
@@ -641,40 +700,15 @@ func max(a, b int) int {
 	return b
 }
 
-func modifyPatternsToOpts(incomingPatterns []string, incomingIndexSegment string, opts_ *Options) []string {
-	opts := mungeOptsToDefaults(opts_)
-
-	m := New(&Options{ExplicitIndexSegmentIdentifier: incomingIndexSegment, Quiet: true})
-
-	rps := make([]*RegisteredPattern, len(incomingPatterns))
-	for i, p := range incomingPatterns {
-		rps[i] = m.NormalizePattern(p)
+func optionShapeForPatternRewrites(opts *Options) testutil.PatternOptionShape {
+	if opts == nil {
+		return testutil.PatternOptionShape{}
 	}
-
-	newPatterns := make([]string, 0, len(rps))
-
-	for _, rp := range rps {
-		var sb strings.Builder
-
-		for _, seg := range rp.normalizedSegments {
-			sb.WriteString("/")
-			switch seg.SegType {
-			case segTypes.static:
-				sb.WriteString(seg.NormalizedVal)
-			case segTypes.dynamic:
-				sb.WriteString(string(opts.DynamicParamPrefix))
-				sb.WriteString(seg.NormalizedVal[1:])
-			case segTypes.splat:
-				sb.WriteString(string(opts.SplatSegmentIdentifier))
-			case segTypes.index:
-				sb.WriteString(string(opts.ExplicitIndexSegmentIdentifier))
-			}
-		}
-
-		newPatterns = append(newPatterns, sb.String())
+	return testutil.PatternOptionShape{
+		DynamicParamPrefix:             opts.DynamicParamPrefix,
+		SplatSegmentIdentifier:         opts.SplatSegmentIdentifier,
+		ExplicitIndexSegmentIdentifier: opts.ExplicitIndexSegmentIdentifier,
 	}
-
-	return newPatterns
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -709,7 +743,7 @@ func generateNestedPathsForBenchmark() []string {
 	}
 }
 
-func BenchmarkFindNestedMatches(b *testing.B) {
+func BenchmarkFindMatches(b *testing.B) {
 	cases := []struct {
 		name     string
 		pathType string
@@ -718,7 +752,13 @@ func BenchmarkFindNestedMatches(b *testing.B) {
 		{
 			name:     "StaticPatterns",
 			pathType: "static",
-			paths:    []string{"/", "/dashboard", "/dashboard/customers", "/tiger", "/lion"},
+			paths: []string{
+				"/",
+				"/dashboard",
+				"/dashboard/customers",
+				"/tiger",
+				"/lion",
+			},
 		},
 		{
 			name:     "DynamicPatterns",
@@ -763,7 +803,7 @@ func BenchmarkFindNestedMatches(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				path := tc.paths[i%len(tc.paths)]
-				matches, _ := m.FindNestedMatches(path)
+				matches, _ := m.FindMatches(path)
 				runtime.KeepAlive(matches)
 			}
 		})
@@ -857,10 +897,13 @@ func TestTrailingSlashBehavior(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			results, ok := m.FindNestedMatches(tc.path)
+			results, ok := m.FindMatches(tc.path)
 
 			if !ok {
-				t.Errorf("Path %q: expected to find matches, but got none", tc.path)
+				t.Errorf(
+					"Path %q: expected to find matches, but got none",
+					tc.path,
+				)
 			}
 
 			// Extract the patterns from results
@@ -871,23 +914,30 @@ func TestTrailingSlashBehavior(t *testing.T) {
 			for _, expected := range tc.expectedMatches {
 				found := false
 				for _, actual := range actualPatterns {
-					if actual.originalPattern == expected {
+					if actual.OriginalPattern() == expected {
 						found = true
 						break
 					}
 				}
-				if !found && expected != "" { // ignore empty string check for now
-					t.Errorf("Path %q: expected pattern %q to match, but it didn't",
-						tc.path, expected)
+				if !found &&
+					expected != "" { // ignore empty string check for now
+					t.Errorf(
+						"Path %q: expected pattern %q to match, but it didn't",
+						tc.path,
+						expected,
+					)
 				}
 			}
 
 			// Check for unexpected patterns
 			for _, unexpected := range tc.unexpectedMatches {
 				for _, actual := range actualPatterns {
-					if actual.originalPattern == unexpected {
-						t.Errorf("Path %q: pattern %q should NOT match, but it did",
-							tc.path, unexpected)
+					if actual.OriginalPattern() == unexpected {
+						t.Errorf(
+							"Path %q: pattern %q should NOT match, but it did",
+							tc.path,
+							unexpected,
+						)
 					}
 				}
 			}
@@ -896,11 +946,12 @@ func TestTrailingSlashBehavior(t *testing.T) {
 			if t.Failed() {
 				t.Logf("Actual matches for %q:", tc.path)
 				for i, pattern := range actualPatterns {
-					t.Logf("  [%d] %q", i, pattern.originalPattern)
+					t.Logf("  [%d] %q", i, pattern.OriginalPattern())
 				}
 
 				// Also log params if this is the trailing slash case
-				if tc.path == "/about/" && results.Params != nil && len(results.Params) > 0 {
+				if tc.path == "/about/" && results.Params != nil &&
+					len(results.Params) > 0 {
 					t.Logf("Params captured: %+v", results.Params)
 				}
 			}
@@ -909,66 +960,78 @@ func TestTrailingSlashBehavior(t *testing.T) {
 }
 
 func TestPartialMatchingWithGaps(t *testing.T) {
-	t.Run("should match parent and deeply nested route without intermediate routes", func(t *testing.T) {
-		m := New(&Options{ExplicitIndexSegmentIdentifier: "_index"})
+	t.Run(
+		"should match parent and deeply nested route without intermediate routes",
+		func(t *testing.T) {
+			m := New(&Options{ExplicitIndexSegmentIdentifier: "_index"})
 
-		// Register only the parent and the deeply nested route
-		// NOT registering /bob/larry or /bob/larry/susan
-		m.RegisterPattern("/bob")
-		m.RegisterPattern("/bob/larry/susan/jeff")
+			// Register only the parent and the deeply nested route
+			// NOT registering /bob/larry or /bob/larry/susan
+			m.RegisterPattern("/bob")
+			m.RegisterPattern("/bob/larry/susan/jeff")
 
-		// Try to match the full path
-		results, ok := m.FindNestedMatches("/bob/larry/susan/jeff")
+			// Try to match the full path
+			results, ok := m.FindMatches("/bob/larry/susan/jeff")
 
-		if !ok {
-			t.Fatal("Expected to find matches for /bob/larry/susan/jeff")
-		}
-
-		if len(results.Matches) != 2 {
-			t.Errorf("Expected 2 matches, got %d", len(results.Matches))
-			for i, match := range results.Matches {
-				t.Logf("  [%d] %q", i, match.originalPattern)
+			if !ok {
+				t.Fatal("Expected to find matches for /bob/larry/susan/jeff")
 			}
-		}
 
-		// Check that we got the right patterns
-		foundBob := false
-		foundJeff := false
-		for _, match := range results.Matches {
-			if match.originalPattern == "/bob" {
-				foundBob = true
+			if len(results.Matches) != 2 {
+				t.Errorf("Expected 2 matches, got %d", len(results.Matches))
+				for i, match := range results.Matches {
+					t.Logf("  [%d] %q", i, match.OriginalPattern())
+				}
 			}
-			if match.originalPattern == "/bob/larry/susan/jeff" {
-				foundJeff = true
+
+			// Check that we got the right patterns
+			foundBob := false
+			foundJeff := false
+			for _, match := range results.Matches {
+				if match.OriginalPattern() == "/bob" {
+					foundBob = true
+				}
+				if match.OriginalPattern() == "/bob/larry/susan/jeff" {
+					foundJeff = true
+				}
 			}
-		}
 
-		if !foundBob {
-			t.Error("Expected /bob to match")
-		}
-		if !foundJeff {
-			t.Error("Expected /bob/larry/susan/jeff to match")
-		}
-	})
-
-	t.Run("should not match intermediate paths that aren't registered", func(t *testing.T) {
-		m := New(&Options{ExplicitIndexSegmentIdentifier: "_index"})
-
-		m.RegisterPattern("/bob")
-		m.RegisterPattern("/bob/larry/susan/jeff")
-
-		// Try to match an intermediate path
-		results, ok := m.FindNestedMatches("/bob/larry")
-
-		// This should NOT find a match because /bob/larry isn't registered
-		// and /bob/larry/susan/jeff doesn't match
-		if ok {
-			t.Error("Should not find matches for /bob/larry when only /bob and /bob/larry/susan/jeff are registered")
-			for i, match := range results.Matches {
-				t.Logf("  Found unexpected match [%d] %q", i, match.originalPattern)
+			if !foundBob {
+				t.Error("Expected /bob to match")
 			}
-		}
-	})
+			if !foundJeff {
+				t.Error("Expected /bob/larry/susan/jeff to match")
+			}
+		},
+	)
+
+	t.Run(
+		"should not match intermediate paths that aren't registered",
+		func(t *testing.T) {
+			m := New(&Options{ExplicitIndexSegmentIdentifier: "_index"})
+
+			m.RegisterPattern("/bob")
+			m.RegisterPattern("/bob/larry/susan/jeff")
+
+			// Try to match an intermediate path
+			results, ok := m.FindMatches("/bob/larry")
+
+			// This should NOT find a match because /bob/larry isn't registered
+			// and /bob/larry/susan/jeff doesn't match
+			if ok {
+				t.Error(
+					"Should not find matches for /bob/larry when only /bob and /bob/larry/susan/jeff are registered",
+				)
+				for i, match := range results.Matches {
+					t.Logf(
+						"  Found unexpected match [%d] %q",
+						i,
+						match.OriginalPattern(),
+					)
+				}
+			}
+		},
+	)
 }
 
 // TestMatchOrderingDeterminism checks that match ordering and params
@@ -984,14 +1047,14 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 			m.RegisterPattern("/api/v1")
 			m.RegisterPattern("/api/:version")
 
-			results, ok := m.FindNestedMatches("/api/v1")
+			results, ok := m.FindMatches("/api/v1")
 			if !ok {
 				t.Fatal("Expected matches")
 			}
 
 			currentOrder := make([]string, len(results.Matches))
 			for j, match := range results.Matches {
-				currentOrder[j] = match.normalizedPattern
+				currentOrder[j] = match.NormalizedPattern()
 			}
 
 			if i == 0 {
@@ -1001,13 +1064,21 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(results.Params, firstParams) {
-				t.Fatalf("Iteration %d: params inconsistent. First: %v, Now: %v",
-					i, firstParams, results.Params)
+				t.Fatalf(
+					"Iteration %d: params inconsistent. First: %v, Now: %v",
+					i,
+					firstParams,
+					results.Params,
+				)
 			}
 
 			if !reflect.DeepEqual(currentOrder, firstOrder) {
-				t.Fatalf("Iteration %d: match order inconsistent. First: %v, Now: %v",
-					i, firstOrder, currentOrder)
+				t.Fatalf(
+					"Iteration %d: match order inconsistent. First: %v, Now: %v",
+					i,
+					firstOrder,
+					currentOrder,
+				)
 			}
 		}
 	})
@@ -1020,7 +1091,7 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 			m.RegisterPattern("/users/:id")
 			m.RegisterPattern("/users/:user_id")
 
-			results, ok := m.FindNestedMatches("/users/123")
+			results, ok := m.FindMatches("/users/123")
 			if !ok {
 				t.Fatal("Expected matches")
 			}
@@ -1034,8 +1105,12 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(results.Params, firstParams) {
-				t.Fatalf("Iteration %d: params inconsistent. First: %v, Now: %v",
-					i, firstParams, results.Params)
+				t.Fatalf(
+					"Iteration %d: params inconsistent. First: %v, Now: %v",
+					i,
+					firstParams,
+					results.Params,
+				)
 			}
 		}
 	})
@@ -1050,14 +1125,14 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 			m.RegisterPattern("/a/:p")
 			m.RegisterPattern("/:x/b")
 
-			results, ok := m.FindNestedMatches("/a/b")
+			results, ok := m.FindMatches("/a/b")
 			if !ok {
 				t.Fatal("Expected matches")
 			}
 
 			currentOrder := make([]string, len(results.Matches))
 			for j, match := range results.Matches {
-				currentOrder[j] = match.normalizedPattern
+				currentOrder[j] = match.NormalizedPattern()
 			}
 
 			if i == 0 {
@@ -1067,13 +1142,21 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(results.Params, firstParams) {
-				t.Fatalf("Iteration %d: params inconsistent. First: %v, Now: %v",
-					i, firstParams, results.Params)
+				t.Fatalf(
+					"Iteration %d: params inconsistent. First: %v, Now: %v",
+					i,
+					firstParams,
+					results.Params,
+				)
 			}
 
 			if !reflect.DeepEqual(currentOrder, firstOrder) {
-				t.Fatalf("Iteration %d: match order inconsistent. First: %v, Now: %v",
-					i, firstOrder, currentOrder)
+				t.Fatalf(
+					"Iteration %d: match order inconsistent. First: %v, Now: %v",
+					i,
+					firstOrder,
+					currentOrder,
+				)
 			}
 		}
 	})

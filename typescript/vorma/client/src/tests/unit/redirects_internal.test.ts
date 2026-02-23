@@ -188,6 +188,71 @@ describe("redirects internal defensive branches", () => {
 		});
 	});
 
+	it("cleans redirect and revalidation lanes before soft redirect navigation", async () => {
+		const { contextModule, redirectsModule } = await loadRedirectModules();
+		const redirectEntry = createRedirectEntryForCleanup("redirect");
+		const revalidationEntry = createRedirectEntryForCleanup("revalidation");
+		const userNavigationEntry =
+			createRedirectEntryForCleanup("userNavigation");
+		const navigationMap = new Map<string, NavigationEntry>([
+			[redirectEntry.key, redirectEntry.entry],
+			[revalidationEntry.key, revalidationEntry.entry],
+			[userNavigationEntry.key, userNavigationEntry.entry],
+		]);
+		const removeNavigation = vi.fn((key: string) => {
+			navigationMap.delete(key);
+		});
+		const navigate = vi.fn().mockResolvedValue({ didNavigate: true });
+		contextModule.setNavigationStateAccess({
+			navigate,
+			removeNavigation,
+			getNavigations: vi.fn(() => navigationMap),
+		});
+
+		const result = await redirectsModule.effectuateRedirectDataResult(
+			createShouldRedirectDataWithOverrides({
+				shouldRedirectStrategy: "soft",
+			}),
+			4,
+		);
+
+		expect(
+			redirectEntry.entry.control.abortController?.signal.aborted,
+		).toBe(true);
+		expect(
+			revalidationEntry.entry.control.abortController?.signal.aborted,
+		).toBe(true);
+		expect(
+			userNavigationEntry.entry.control.abortController?.signal.aborted,
+		).toBe(false);
+		expect(removeNavigation).toHaveBeenCalledWith(redirectEntry.key);
+		expect(removeNavigation).toHaveBeenCalledWith(revalidationEntry.key);
+		expect(removeNavigation).not.toHaveBeenCalledWith(
+			userNavigationEntry.key,
+		);
+		const firstCleanupInvocationOrder =
+			removeNavigation.mock.invocationCallOrder[0];
+		const firstNavigateInvocationOrder =
+			navigate.mock.invocationCallOrder[0];
+		expect(firstCleanupInvocationOrder).toBeDefined();
+		expect(firstNavigateInvocationOrder).toBeDefined();
+		expect(firstCleanupInvocationOrder!).toBeLessThan(
+			firstNavigateInvocationOrder!,
+		);
+		expect(navigate).toHaveBeenCalledWith({
+			href: "/target",
+			navigationType: "redirect",
+			redirectCount: 5,
+			replace: undefined,
+			scrollToTop: undefined,
+			state: undefined,
+		});
+		expect(result).toMatchObject({
+			status: "did",
+			href: "/target",
+		});
+	});
+
 	it("returns did redirect data for soft redirect when navigation completes", async () => {
 		const { contextModule, redirectsModule } = await loadRedirectModules();
 		const navigate = vi.fn().mockResolvedValue({ didNavigate: true });

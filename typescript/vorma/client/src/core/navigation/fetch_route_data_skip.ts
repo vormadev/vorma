@@ -214,7 +214,10 @@ function buildClientOnlyOutcome(
 		response,
 		props,
 		json,
-		preloadCommands: [],
+		preloadPlan: {
+			moduleDependencies: [],
+			cssBundles: [],
+		},
 		waitFnPromise,
 	};
 }

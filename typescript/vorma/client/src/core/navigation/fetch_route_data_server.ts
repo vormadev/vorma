@@ -1,133 +1,73 @@
-import {
-	buildClientLoaderServerData,
-	completeClientLoaders,
-	createUnavailableServerDataError,
-	findPartialMatchesOnClient,
-} from "../render_runtime.ts";
-import {
-	getBuildIDFromResponse,
-	handleRedirects,
-	type RedirectData,
-} from "../redirects.ts";
-import { __vormaClientGlobal } from "../../app/context.ts";
 import type {
 	ClientLoaderAwaitedServerData,
 	GetRouteDataOutput,
 	VormaClientGlobal,
 } from "../../app/context.ts";
+import { __vormaClientGlobal } from "../../app/context.ts";
 import {
 	isAbortError,
 	logError,
 	observePromiseRejection,
 } from "../../platform/safety.ts";
 import {
+	getBuildIDFromResponse,
+	handleRedirects,
+	type RedirectData,
+} from "../redirects.ts";
+import {
+	buildClientLoaderServerData,
+	completeClientLoaders,
+	createUnavailableServerDataError,
+	findPartialMatchesOnClient,
+} from "../render_runtime.ts";
+import { getClientOnlyOutcomeIfSkippable } from "./fetch_route_data_skip.ts";
+import {
 	getMatchedPatternsOrThrow,
 	type SkipMatch,
 } from "./fetch_route_data_skip_match.ts";
-import { getClientOnlyOutcomeIfSkippable } from "./fetch_route_data_skip.ts";
 import type { NavigateProps, NavigationOutcome } from "./types.ts";
 
-type RouteDataRequestGlobalSnapshot = {
-	buildID: string;
-	deploymentID: string;
+export type ServerSuccessPreloadPlan = {
+	moduleDependencies: string[];
+	cssBundles: string[];
 };
 
-type StartParallelClientLoadersGlobalSnapshot = {
-	patternToWaitFnMap: VormaClientGlobal["patternToWaitFnMap"];
-};
-
-export type ServerSuccessPreloadExecutionPlan =
-	| {
-			type: "skip";
-			reason: "server_success_preload_skipped_signal_aborted";
-	  }
-	| {
-			type: "preload";
-			moduleDependenciesToPreload: string[];
-			cssBundlesToPreload: string[];
-			reason: "server_success_preload_allowed";
-	  };
-
-export function decideServerSuccessPreloadExecutionPlan(props: {
+export function buildServerSuccessPreloadPlan(props: {
 	signalAborted: boolean;
 	isDev: boolean;
 	importURLs: string[];
 	deps: string[];
 	cssBundles: string[];
-}): ServerSuccessPreloadExecutionPlan {
+}): ServerSuccessPreloadPlan {
 	if (props.signalAborted) {
 		return {
-			type: "skip",
-			reason: "server_success_preload_skipped_signal_aborted",
+			moduleDependencies: [],
+			cssBundles: [],
 		};
 	}
 
 	const moduleDependenciesToPreload = props.isDev
 		? [...new Set(props.importURLs)]
 		: props.deps;
-
-	return {
-		type: "preload",
-		moduleDependenciesToPreload,
-		cssBundlesToPreload: props.cssBundles,
-		reason: "server_success_preload_allowed",
-	};
-}
-
-export type ServerSuccessPreloadCommand =
-	| {
-			type: "preload_module_dependency";
-			dependency: string;
-			reason: "server_success_preload_allowed";
-	  }
-	| {
-			type: "preload_css_bundle";
-			bundle: string;
-			reason: "server_success_preload_allowed";
-	  };
-
-export function buildServerSuccessPreloadCommands(props: {
-	executionPlan: ServerSuccessPreloadExecutionPlan;
-}): ServerSuccessPreloadCommand[] {
-	if (props.executionPlan.type === "skip") {
-		return [];
-	}
-
-	const commands: ServerSuccessPreloadCommand[] = [];
-	for (const dependency of props.executionPlan.moduleDependenciesToPreload) {
+	const moduleDependencies: string[] = [];
+	for (const dependency of moduleDependenciesToPreload) {
 		if (typeof dependency !== "string" || dependency.length === 0) {
 			continue;
 		}
-		commands.push({
-			type: "preload_module_dependency",
-			dependency,
-			reason: props.executionPlan.reason,
-		});
+		moduleDependencies.push(dependency);
 	}
-	for (const bundle of props.executionPlan.cssBundlesToPreload) {
+
+	const cssBundles: string[] = [];
+	for (const bundle of props.cssBundles) {
 		if (typeof bundle !== "string" || bundle.length === 0) {
 			continue;
 		}
-		commands.push({
-			type: "preload_css_bundle",
-			bundle,
-			reason: props.executionPlan.reason,
-		});
+		cssBundles.push(bundle);
 	}
 
-	return commands;
-}
-
-function getRouteDataRequestGlobalSnapshot(): RouteDataRequestGlobalSnapshot {
 	return {
-		buildID: __vormaClientGlobal.get("buildID") || "1",
-		deploymentID: __vormaClientGlobal.get("deploymentID"),
-	};
-}
-
-function getStartParallelClientLoadersGlobalSnapshot(): StartParallelClientLoadersGlobalSnapshot {
-	return {
-		patternToWaitFnMap: __vormaClientGlobal.get("patternToWaitFnMap") || {},
+		moduleDependencies,
+		cssBundles,
 	};
 }
 
@@ -135,7 +75,8 @@ export function buildRouteDataRequestURL(props: {
 	targetHref: string;
 	navigationType: NavigateProps["navigationType"];
 }): URL {
-	const { buildID, deploymentID } = getRouteDataRequestGlobalSnapshot();
+	const buildID = __vormaClientGlobal.get("buildID") || "1";
+	const deploymentID = __vormaClientGlobal.get("deploymentID");
 	const url = new URL(props.targetHref);
 	url.searchParams.set("vorma_json", buildID);
 
@@ -250,14 +191,36 @@ function buildServerDataForPattern(
 	});
 }
 
+function buildServerDataByMatchedPattern(props: {
+	matchedPatterns: string[];
+	serverResult: ServerRouteDataResult;
+}): Map<string, ClientLoaderAwaitedServerData<unknown, unknown>> {
+	const serverDataByPattern = new Map<
+		string,
+		ClientLoaderAwaitedServerData<unknown, unknown>
+	>();
+
+	for (const pattern of props.matchedPatterns) {
+		const serverData = buildServerDataForPattern(
+			pattern,
+			props.serverResult,
+		);
+		if (serverData) {
+			serverDataByPattern.set(pattern, serverData);
+		}
+	}
+
+	return serverDataByPattern;
+}
+
 export async function startParallelClientLoaders(props: {
 	pathname: string;
 	serverPromise: Promise<ServerRouteDataResult>;
 	signal: AbortSignal;
 }): Promise<Map<string, Promise<unknown>>> {
 	const matchResult = await findPartialMatchesOnClient(props.pathname);
-	const { patternToWaitFnMap } =
-		getStartParallelClientLoadersGlobalSnapshot();
+	const patternToWaitFnMap: VormaClientGlobal["patternToWaitFnMap"] =
+		__vormaClientGlobal.get("patternToWaitFnMap") || {};
 	const runningLoaders = new Map<string, Promise<unknown>>();
 
 	if (!matchResult) {
@@ -269,6 +232,16 @@ export async function startParallelClientLoaders(props: {
 		matches: matches as Array<SkipMatch | undefined>,
 		context: "Partial route matcher",
 	});
+	const serverDataByPatternPromise = props.serverPromise.then(
+		(serverResult) =>
+			buildServerDataByMatchedPattern({
+				matchedPatterns,
+				serverResult,
+			}),
+		() => {
+			throw createUnavailableServerDataError();
+		},
+	);
 
 	for (const pattern of matchedPatterns) {
 		const loaderFn = patternToWaitFnMap[pattern];
@@ -277,18 +250,12 @@ export async function startParallelClientLoaders(props: {
 			continue;
 		}
 
-		const serverDataPromise = props.serverPromise.then(
-			(serverResult) => {
-				const serverData = buildServerDataForPattern(
-					pattern,
-					serverResult,
-				);
-				if (!serverData) {
-					throw createUnavailableServerDataError();
+		const serverDataPromise = serverDataByPatternPromise.then(
+			(serverDataByPattern) => {
+				const serverData = serverDataByPattern.get(pattern);
+				if (serverData) {
+					return serverData;
 				}
-				return serverData;
-			},
-			() => {
 				throw createUnavailableServerDataError();
 			},
 		);
@@ -315,15 +282,12 @@ export function buildServerSuccessOutcome(props: {
 	signal: AbortSignal;
 }): Extract<NavigationOutcome, { type: "success" }> {
 	const { response, json, navigationProps, runningLoaders, signal } = props;
-	const preloadExecutionPlan = decideServerSuccessPreloadExecutionPlan({
+	const preloadPlan = buildServerSuccessPreloadPlan({
 		signalAborted: signal.aborted,
 		isDev: import.meta.env.DEV,
 		importURLs: json.importURLs ?? [],
 		deps: json.deps ?? [],
 		cssBundles: json.cssBundles ?? [],
-	});
-	const preloadCommands = buildServerSuccessPreloadCommands({
-		executionPlan: preloadExecutionPlan,
 	});
 	const buildID = getBuildIDFromResponse(response);
 
@@ -340,7 +304,7 @@ export function buildServerSuccessOutcome(props: {
 		response,
 		json,
 		props: navigationProps,
-		preloadCommands,
+		preloadPlan,
 		waitFnPromise,
 	};
 }

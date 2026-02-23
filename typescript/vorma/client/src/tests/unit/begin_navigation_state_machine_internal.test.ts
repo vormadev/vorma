@@ -80,7 +80,7 @@ describe("begin navigation state machine", () => {
 		});
 
 		expect(executionPlan).toEqual({
-			targetUrl: "http://localhost:3000/active#next",
+			type: "reuse",
 			abortInstructions: [
 				{
 					slot: "prefetch",
@@ -105,8 +105,6 @@ describe("begin navigation state machine", () => {
 					state: { source: "test" },
 				},
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		});
 	});
 
@@ -152,7 +150,7 @@ describe("begin navigation state machine", () => {
 		});
 
 		expect(executionPlan).toEqual({
-			targetUrl: "http://localhost:3000/destination#next",
+			type: "reuse",
 			abortInstructions: [
 				{
 					slot: "active",
@@ -181,8 +179,6 @@ describe("begin navigation state machine", () => {
 					state: { from: "history" },
 				},
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		});
 	});
 
@@ -201,11 +197,8 @@ describe("begin navigation state machine", () => {
 		});
 
 		expect(executionPlan).toEqual({
-			targetUrl: "http://localhost:3000/dashboard#next",
+			type: "immediateAbort",
 			abortInstructions: [],
-			reuseInstruction: null,
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: true,
 		});
 	});
 
@@ -232,7 +225,7 @@ describe("begin navigation state machine", () => {
 		});
 
 		expect(executionPlan).toEqual({
-			targetUrl: "http://localhost:3000/dashboard#next",
+			type: "reuse",
 			abortInstructions: [],
 			reuseInstruction: {
 				sourceSlot: "prefetch",
@@ -240,8 +233,6 @@ describe("begin navigation state machine", () => {
 				entry: matchedPrefetch,
 				promotion: null,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		});
 	});
 
@@ -266,7 +257,7 @@ describe("begin navigation state machine", () => {
 		});
 
 		expect(executionPlan).toEqual({
-			targetUrl: "http://localhost:3000/account#live",
+			type: "reuse",
 			abortInstructions: [],
 			reuseInstruction: {
 				sourceSlot: "revalidation",
@@ -274,8 +265,6 @@ describe("begin navigation state machine", () => {
 				entry: revalidationEntry,
 				promotion: null,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		});
 	});
 
@@ -300,19 +289,17 @@ describe("begin navigation state machine", () => {
 		});
 
 		expect(executionPlan).toEqual({
-			targetUrl: "http://localhost:3000/settings",
+			type: "create",
 			abortInstructions: [
 				{
 					slot: "revalidation",
 					entry: staleRevalidation,
 				},
 			],
-			reuseInstruction: null,
 			createInstruction: {
 				slot: "revalidation",
 				revalidationHref: "http://localhost:3000/settings",
 			},
-			shouldReturnImmediatelyAbortedControl: false,
 		});
 	});
 });

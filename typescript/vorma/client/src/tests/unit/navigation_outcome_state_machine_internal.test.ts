@@ -1,21 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type {
-	NavigationEntry,
-	NavigationOutcome,
-} from "../../core/navigation/types.ts";
 import {
 	decideBuildIDSyncTimingForSuccessfulEntry,
 	decideNavigationOutcomeExecutionPlan,
 	decideSuccessfulNavigationCleanupExecutionPlan,
-	decideSuccessfulNavigationLifecycleCheckpointExecutionPlan,
-	decideSuccessfulNavigationPostAssetLifecycleExecutionPlan,
-	decideSuccessfulNavigationPostAssetSideEffectPlan,
 	decideSuccessfulNavigationPostAssetExecutionPlan,
+	decideSuccessfulNavigationPostAssetSideEffectPlan,
 	decideSuccessfulNavigationPostWaitingExecutionPlan,
 	decideSuccessfulNavigationPreAssetWaitExecutionPlan,
 	decideSuccessfulNavigationPreWaitingExecutionPlan,
 	toPublicNavigateResult,
 } from "../../core/navigation/runtime_navigation_outcome_state_machine.ts";
+import type {
+	NavigationEntry,
+	NavigationOutcome,
+} from "../../core/navigation/types.ts";
 
 function createEntry(props: {
 	type: NavigationEntry["type"];
@@ -68,7 +66,10 @@ function createSuccessOutcome(): Extract<
 			metaHeadEls: undefined,
 			restHeadEls: undefined,
 		},
-		preloadCommands: [],
+		preloadPlan: {
+			moduleDependencies: [],
+			cssBundles: [],
+		},
 		waitFnPromise: Promise.resolve({ data: [] }),
 		props: {
 			href: "http://localhost:3000/target",
@@ -438,101 +439,6 @@ describe("successful outcome stage plans", () => {
 		).toEqual({
 			shouldSyncBuildIDBeforeAssetWait: false,
 			reason: "pre_asset_wait_skip_sync_build_id_before_asset_wait",
-		});
-	});
-
-	it("decides post-asset stage plus side effects through one combined reducer seam", () => {
-		const entry = createEntry({
-			type: "userNavigation",
-			intent: "navigate",
-		});
-
-		expect(
-			decideSuccessfulNavigationPostAssetLifecycleExecutionPlan({
-				entry,
-				isCurrentEntry: true,
-				currentHref: "http://localhost:3000/current",
-				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
-			}),
-		).toEqual({
-			postAssetExecutionPlan: {
-				type: "render",
-				reason: "post_asset_render",
-			},
-			postAssetSideEffectPlan: {
-				shouldCommitClientLoadersState: true,
-				shouldSyncBuildIDAfterAssetWait: true,
-				shouldApplyResponseArtifacts: true,
-			},
-		});
-
-		expect(
-			decideSuccessfulNavigationPostAssetLifecycleExecutionPlan({
-				entry,
-				isCurrentEntry: false,
-				currentHref: "http://localhost:3000/current",
-				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
-			}),
-		).toEqual({
-			postAssetExecutionPlan: {
-				type: "stop",
-				reason: "post_asset_entry_lost",
-			},
-			postAssetSideEffectPlan: {
-				shouldCommitClientLoadersState: false,
-				shouldSyncBuildIDAfterAssetWait: false,
-				shouldApplyResponseArtifacts: false,
-			},
-		});
-	});
-
-	it("decides lifecycle checkpoint execution plans through one checkpoint seam", () => {
-		const entry = createEntry({
-			type: "userNavigation",
-			intent: "navigate",
-			targetUrl: "http://localhost:3000/checkpoint-target",
-		});
-
-		expect(
-			decideSuccessfulNavigationLifecycleCheckpointExecutionPlan({
-				checkpoint: "pre_waiting",
-				entry,
-				isCurrentEntry: true,
-				currentHref: "http://localhost:3000/current",
-			}),
-		).toEqual({
-			checkpoint: "pre_waiting",
-			preWaitingExecutionPlan: {
-				type: "continue",
-				reason: "entry_current_and_fresh",
-			},
-		});
-
-		expect(
-			decideSuccessfulNavigationLifecycleCheckpointExecutionPlan({
-				checkpoint: "pre_asset_wait",
-				buildIDSyncTiming: "before_asset_wait",
-			}),
-		).toEqual({
-			checkpoint: "pre_asset_wait",
-			preAssetWaitExecutionPlan: {
-				shouldSyncBuildIDBeforeAssetWait: true,
-				reason: "pre_asset_wait_sync_build_id_before_asset_wait",
-			},
-		});
-
-		expect(
-			decideSuccessfulNavigationLifecycleCheckpointExecutionPlan({
-				checkpoint: "cleanup",
-				entry,
-				isCurrentEntry: false,
-			}),
-		).toEqual({
-			checkpoint: "cleanup",
-			cleanupExecutionPlan: {
-				type: "skip",
-				reason: "cleanup_skipped_idle_prefetch_or_non_current_entry",
-			},
 		});
 	});
 });

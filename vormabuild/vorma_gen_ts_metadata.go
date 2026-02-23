@@ -8,6 +8,7 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 func setPatternMetadata(
@@ -25,7 +26,9 @@ func setPatternMetadata(
 	}
 }
 
-func sortedLoaderPatterns(allLoaders map[string]mux.AnyNestedRoute) []string {
+func sortedLoaderPatterns(
+	allLoaders map[string]nestedmux.AnyRoute,
+) []string {
 	loaderPatterns := make([]string, 0, len(allLoaders))
 	for pattern := range allLoaders {
 		loaderPatterns = append(loaderPatterns, pattern)

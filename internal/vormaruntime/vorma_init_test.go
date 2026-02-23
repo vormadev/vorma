@@ -14,6 +14,7 @@ import (
 	"testing/fstest"
 
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -388,8 +389,8 @@ func TestValidateAndDecorateNestedRouter(t *testing.T) {
 	app := fixture.app
 
 	t.Run("RegistersMissingPatterns", func(t *testing.T) {
-		nr := mux.NewNestedRouter(nil)
-		mux.AddNestedPatternWithoutHandler(nr, "/")
+		nr := nestedmux.NewRouter(nil)
+		nestedmux.AddPatternWithoutHandler(nr, "/")
 		if nr.IsRegistered("/items/:id") {
 			t.Fatal("setup failure: /items/:id should not be registered yet")
 		}
@@ -839,7 +840,7 @@ func TestInit_ReinitPreservesServerOnlyHandlerRoutes(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server-only",
 		mux.TaskHandlerFromFunc(

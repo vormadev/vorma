@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -201,6 +202,10 @@ func startBlockingFrameworkRuntimeReloadServerForBroadcastBehaviorTests(
 	frameworkReloadServer := &http.Server{
 		Handler: http.HandlerFunc(
 			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path == "/healthz" {
+					responseWriter.WriteHeader(http.StatusOK)
+					return
+				}
 				if request.URL.Path != endpointPath {
 					responseWriter.WriteHeader(http.StatusNotFound)
 					return
@@ -756,6 +761,7 @@ func TestBroadcastReload_FrameworkRuntimeReloadRequestsAreAsyncAndCleanupCancela
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
 
 	reloadEndpointPath := "/__vorma_internal/reload-routes"
 	reloadServerPort, requestStarted, requestCanceled, cleanupReloadServer := startBlockingFrameworkRuntimeReloadServerForBroadcastBehaviorTests(
@@ -828,16 +834,145 @@ func TestBroadcastReload_FrameworkRuntimeReloadRequestsAreAsyncAndCleanupCancela
 	}
 }
 
+func TestBroadcastReload_FrameworkRuntimeReloadRequestsWaitForAppReadiness(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
+
+	var appReady atomic.Bool
+	requestObservedBeforeReady := make(chan struct{}, 1)
+	requestObservedWhenReady := make(chan struct{}, 1)
+	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
+		t,
+		http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/healthz":
+					if appReady.Load() {
+						responseWriter.WriteHeader(http.StatusOK)
+						return
+					}
+					responseWriter.WriteHeader(http.StatusServiceUnavailable)
+					return
+				case "/__vorma_internal/reload-routes":
+					if !appReady.Load() {
+						select {
+						case requestObservedBeforeReady <- struct{}{}:
+						default:
+						}
+						responseWriter.WriteHeader(
+							http.StatusInternalServerError,
+						)
+						return
+					}
+					select {
+					case requestObservedWhenReady <- struct{}{}:
+					default:
+					}
+					responseWriter.WriteHeader(http.StatusOK)
+					return
+				default:
+					responseWriter.WriteHeader(http.StatusNotFound)
+					return
+				}
+			},
+		),
+	)
+	defer reloadServer.Close()
+
+	reloadServerURL, parseURLError := url.Parse(reloadServer.URL)
+	if parseURLError != nil {
+		t.Fatalf("parse reload test server URL: %v", parseURLError)
+	}
+	reloadServerPort, parsePortError := strconv.Atoi(reloadServerURL.Port())
+	if parsePortError != nil {
+		t.Fatalf("parse reload test server port: %v", parsePortError)
+	}
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(reloadServerPort))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		appReady.Store(true)
+	}()
+
+	serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+		Payload: broadcast.Payload{ChangeType: broadcast.ChangeTypeOther},
+		WaitApp: false,
+		FrameworkRuntimeReloadRequests: []wave.FrameworkRuntimeReloadRequest{
+			{
+				EndpointPath: "/__vorma_internal/reload-routes",
+			},
+		},
+	})
+
+	connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+		t.Fatalf(
+			"expected browser payload after app readiness and framework reload, got read error: %v",
+			readError,
+		)
+	}
+	if receivedPayload.ChangeType != broadcast.ChangeTypeOther {
+		t.Fatalf(
+			"expected hard-reload payload after readiness-gated framework reload, got %#v",
+			receivedPayload,
+		)
+	}
+
+	select {
+	case <-requestObservedBeforeReady:
+		t.Fatal(
+			"framework reload request was sent before app readiness was satisfied",
+		)
+	default:
+	}
+	select {
+	case <-requestObservedWhenReady:
+	case <-time.After(time.Second):
+		t.Fatal(
+			"timed out waiting for framework reload request after app became ready",
+		)
+	}
+
+	if pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(serverForTest); hasPendingRestartRequest {
+		t.Fatalf(
+			"did not expect restart request on readiness-gated framework reload success, got %#v",
+			pendingRestartRequest,
+		)
+	}
+}
+
 func TestBroadcastReload_FrameworkRuntimeReloadFailureQueuesRestartAndSkipsPayload(
 	t *testing.T,
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
 
 	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
 		t,
 		http.HandlerFunc(
 			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path == "/healthz" {
+					responseWriter.WriteHeader(http.StatusOK)
+					return
+				}
 				if request.URL.Path != "/__vorma_internal/reload-routes" {
 					responseWriter.WriteHeader(http.StatusNotFound)
 					return
@@ -910,12 +1045,17 @@ func TestBroadcastReload_FrameworkRuntimeReloadSuccessBroadcastsPayloadAndHeader
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
 
 	requestHeaders := make(chan http.Header, 1)
 	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
 		t,
 		http.HandlerFunc(
 			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path == "/healthz" {
+					responseWriter.WriteHeader(http.StatusOK)
+					return
+				}
 				if request.URL.Path != "/__vorma_internal/reload-template" {
 					responseWriter.WriteHeader(http.StatusNotFound)
 					return
@@ -1565,15 +1705,22 @@ func TestExecuteBrowserPhase_RevalidateExecutesDeferredFrameworkReloadRequests(
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
 
 	requestPaths := make(chan string, 1)
 	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
 		t,
 		http.HandlerFunc(
 			func(responseWriter http.ResponseWriter, request *http.Request) {
-				select {
-				case requestPaths <- request.URL.Path:
-				default:
+				if request.URL.Path == "/healthz" {
+					responseWriter.WriteHeader(http.StatusOK)
+					return
+				}
+				if request.URL.Path == "/__vorma_internal/reload-routes" {
+					select {
+					case requestPaths <- request.URL.Path:
+					default:
+					}
 				}
 				responseWriter.WriteHeader(http.StatusOK)
 			},

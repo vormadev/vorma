@@ -1,20 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	__registerClientLoaderPattern,
-	__reRenderApp,
-	buildClientLoaderServerData,
+	createPatternRegistry,
+	registerPattern,
+} from "vorma/kit/matcher/register";
+import { VORMA_SYMBOL, __vormaClientGlobal } from "../../app/context.ts";
+import {
+	AssetManager,
 	ComponentLoader,
+	__reRenderApp,
+	__registerClientLoaderPattern,
+	buildClientLoaderServerData,
 	completeClientLoaders,
 	deriveAndSetErrorState,
 	findPartialMatchesOnClient,
 	setClientLoadersState,
 	setupClientLoaders,
 } from "../../core/render_runtime.ts";
-import { VORMA_SYMBOL, __vormaClientGlobal } from "../../app/context.ts";
-import {
-	createPatternRegistry,
-	registerPattern,
-} from "vorma/kit/matcher/register";
 import { VORMA_ROUTE_CHANGE_EVENT_KEY } from "../../platform/events.ts";
 import * as headModule from "../../ui/head.ts";
 
@@ -541,6 +542,7 @@ describe("render runtime internals", () => {
 
 	it("re-renders while applying head updates even when importURLs/cssBundles are omitted", async () => {
 		const updateHeadElsSpy = vi.spyOn(headModule, "updateHeadEls");
+		const applyCSSSpy = vi.spyOn(AssetManager, "applyCSS");
 		const onFinish = vi.fn();
 
 		await __reRenderApp({
@@ -555,8 +557,71 @@ describe("render runtime internals", () => {
 		});
 
 		expect(onFinish).toHaveBeenCalledTimes(1);
+		expect(applyCSSSpy).not.toHaveBeenCalled();
 		expect(updateHeadElsSpy).toHaveBeenCalledWith("meta", []);
 		expect(updateHeadElsSpy).toHaveBeenCalledWith("rest", []);
+	});
+
+	it("applies CSS bundles during rerender when cssBundles are provided", async () => {
+		const applyCSSSpy = vi.spyOn(AssetManager, "applyCSS");
+
+		await __reRenderApp({
+			navigationType: "userNavigation",
+			onFinish: vi.fn(),
+			json: createRouteDataJSON({
+				cssBundles: ["/a.css", "/b.css"],
+			}) as any,
+		});
+
+		expect(applyCSSSpy).toHaveBeenCalledTimes(1);
+		expect(applyCSSSpy).toHaveBeenCalledWith(["/a.css", "/b.css"]);
+	});
+
+	it("skips module loading and commit side effects when shouldCommit is false before module load", async () => {
+		const loadComponentsSpy = vi.spyOn(ComponentLoader, "loadComponents");
+		const updateHeadElsSpy = vi.spyOn(headModule, "updateHeadEls");
+		const onFinish = vi.fn();
+
+		await __reRenderApp({
+			navigationType: "userNavigation",
+			onFinish,
+			shouldCommit: () => false,
+			json: createRouteDataJSON({
+				metaHeadEls: [],
+				restHeadEls: [],
+			}) as any,
+		});
+
+		expect(loadComponentsSpy).not.toHaveBeenCalled();
+		expect(updateHeadElsSpy).not.toHaveBeenCalled();
+		expect(onFinish).not.toHaveBeenCalled();
+	});
+
+	it("stops commit side effects when shouldCommit turns false after module load", async () => {
+		const loadComponentsSpy = vi
+			.spyOn(ComponentLoader, "loadComponents")
+			.mockResolvedValue(new Map());
+		const updateHeadElsSpy = vi.spyOn(headModule, "updateHeadEls");
+		const onFinish = vi.fn();
+		let shouldCommitCallCount = 0;
+
+		await __reRenderApp({
+			navigationType: "userNavigation",
+			onFinish,
+			shouldCommit: () => {
+				shouldCommitCallCount += 1;
+				return shouldCommitCallCount === 1;
+			},
+			json: createRouteDataJSON({
+				metaHeadEls: [],
+				restHeadEls: [],
+			}) as any,
+		});
+
+		expect(shouldCommitCallCount).toBe(2);
+		expect(loadComponentsSpy).toHaveBeenCalledTimes(1);
+		expect(updateHeadElsSpy).not.toHaveBeenCalled();
+		expect(onFinish).not.toHaveBeenCalled();
 	});
 
 	it("does not dispatch default top-scroll state when explicit user-navigation scrollToTop is false", async () => {

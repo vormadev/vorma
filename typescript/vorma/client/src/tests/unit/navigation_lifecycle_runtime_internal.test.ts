@@ -56,7 +56,7 @@ describe("navigation lifecycle runtime seam", () => {
 		const scheduleStatusUpdate = vi.fn();
 		const lifecycleRuntime = createNavigationLifecycleRuntime({
 			lanes: slots,
-			getScheduleStatusUpdate: () => scheduleStatusUpdate,
+			scheduleStatusUpdate,
 		});
 
 		lifecycleRuntime.transitionPhase({
@@ -105,7 +105,7 @@ describe("navigation lifecycle runtime seam", () => {
 		};
 		const lifecycleRuntime = createNavigationLifecycleRuntime({
 			lanes: slots,
-			getScheduleStatusUpdate: () => () => {},
+			scheduleStatusUpdate: () => {},
 		});
 
 		lifecycleRuntime.dispatchBeginNavigationArbitrated({
@@ -169,7 +169,7 @@ describe("navigation lifecycle runtime seam", () => {
 			const lifecycleRuntime =
 				lifecycleRuntimeModule.createNavigationLifecycleRuntime({
 					lanes: slots,
-					getScheduleStatusUpdate: () => scheduleStatusUpdate,
+					scheduleStatusUpdate,
 				});
 
 			lifecycleRuntime.transitionPhase({

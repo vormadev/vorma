@@ -3,7 +3,7 @@ import type { StatusEventDetail } from "../../platform/events.ts";
 import type { ScrollState } from "../../platform/scroll.ts";
 import type { RedirectData } from "../redirects.ts";
 import type { ClientLoadersResult } from "../render_runtime.ts";
-import type { ServerSuccessPreloadCommand } from "./fetch_route_data_server.ts";
+import type { ServerSuccessPreloadPlan } from "./fetch_route_data_server.ts";
 
 export type VormaNavigationType =
 	| "browserHistory"
@@ -30,7 +30,7 @@ export type NavigationOutcome =
 			type: "success";
 			response: Response;
 			json: GetRouteDataOutput;
-			preloadCommands: ServerSuccessPreloadCommand[];
+			preloadPlan: ServerSuccessPreloadPlan;
 			waitFnPromise: Promise<ClientLoadersResult> | undefined;
 			props: NavigateProps;
 	  };

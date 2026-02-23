@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 func TestLoadOrBuildCachedItemSubset_DoesNotStoreWhenSnapshotVersionIsStale(
@@ -32,7 +32,7 @@ func TestLoadOrBuildCachedItemSubset_DoesNotStoreWhenSnapshotVersionIsStale(
 	app.validateAndDecorateNestedRouter(app.LoadersRouter().NestedRouter)
 
 	req := httptest.NewRequest(http.MethodGet, "/products/1", nil)
-	matchResults, found := mux.FindNestedMatches(
+	matchResults, found := nestedmux.FindMatches(
 		app.LoadersRouter().NestedRouter,
 		req,
 	)

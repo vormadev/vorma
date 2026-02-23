@@ -17,6 +17,7 @@ import (
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/wave"
 )
@@ -135,7 +136,7 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 	app := fixture.app
 	var loaderRunCount atomic.Int64
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -343,7 +344,7 @@ func TestLoadersHandler_MissingTasksCtxDoesNotPanicAndReturns500(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -413,7 +414,7 @@ func TestLoadersHandler_HasRootDataAndSplatValuesContracts(t *testing.T) {
 		app := fixture.app
 
 		if rootHasHandler {
-			mux.AddNestedTaskHandler(
+			nestedmux.AddTaskHandler(
 				app.LoadersRouter().NestedRouter,
 				"/",
 				mux.TaskHandlerFromFunc(
@@ -423,10 +424,10 @@ func TestLoadersHandler_HasRootDataAndSplatValuesContracts(t *testing.T) {
 				),
 			)
 		} else {
-			mux.AddNestedPatternWithoutHandler(app.LoadersRouter().NestedRouter, "/")
+			nestedmux.AddPatternWithoutHandler(app.LoadersRouter().NestedRouter, "/")
 		}
 
-		mux.AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			app.LoadersRouter().NestedRouter,
 			"/files/*",
 			mux.TaskHandlerFromFunc(
@@ -538,7 +539,7 @@ func TestLoadersHandler_NotFoundAndHTMLResponseHeaders(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/known",
 		mux.TaskHandlerFromFunc(
@@ -640,7 +641,7 @@ func TestLoadersHandler_ProxyRedirectAndErrorShortCircuit(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/redirect",
 		mux.TaskHandlerFromFunc(
@@ -652,7 +653,7 @@ func TestLoadersHandler_ProxyRedirectAndErrorShortCircuit(t *testing.T) {
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/blocked",
 		mux.TaskHandlerFromFunc(
@@ -840,7 +841,7 @@ func TestLoadersHandler_DefaultHeadErrorsDoNotOverrideShortCircuitResponses(
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/redirect",
 		mux.TaskHandlerFromFunc(
@@ -852,7 +853,7 @@ func TestLoadersHandler_DefaultHeadErrorsDoNotOverrideShortCircuitResponses(
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/blocked",
 		mux.TaskHandlerFromFunc(
@@ -945,7 +946,7 @@ func TestLoadersHandler_LoaderErrorContract(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items",
 		mux.TaskHandlerFromFunc(
@@ -954,7 +955,7 @@ func TestLoadersHandler_LoaderErrorContract(t *testing.T) {
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -1050,7 +1051,7 @@ func TestLoadersHandler_LoaderErrorDepsAreTrimmedToOutermostBoundary(
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items",
 		mux.TaskHandlerFromFunc(
@@ -1062,7 +1063,7 @@ func TestLoadersHandler_LoaderErrorDepsAreTrimmedToOutermostBoundary(
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -1126,7 +1127,7 @@ func TestLoadersHandler_WrappedLoaderErrorPreservesClientMessage(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -1194,7 +1195,7 @@ func TestLoadersHandler_EmptyLoaderErrorClientMessageFallsBackToGeneric(
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -1263,7 +1264,7 @@ func TestLoadersHandler_GenericLoaderErrorDoesNotLeakInternalMessage(
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items",
 		mux.TaskHandlerFromFunc(
@@ -1272,7 +1273,7 @@ func TestLoadersHandler_GenericLoaderErrorDoesNotLeakInternalMessage(
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -1373,7 +1374,7 @@ func TestLoadersHandler_HTMLExcludesFailingRouteHeadElementsOnLoaderError(
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items",
 		mux.TaskHandlerFromFunc(
@@ -1384,7 +1385,7 @@ func TestLoadersHandler_HTMLExcludesFailingRouteHeadElementsOnLoaderError(
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -1443,7 +1444,7 @@ func TestLoadersHandler_DefaultHeadAndRootTemplateDataErrorsReturn500(
 			},
 		})
 		app := fixture.app
-		mux.AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			app.LoadersRouter().NestedRouter,
 			"/hooks",
 			mux.TaskHandlerFromFunc(
@@ -1480,7 +1481,7 @@ func TestLoadersHandler_DefaultHeadAndRootTemplateDataErrorsReturn500(
 			},
 		})
 		app := fixture.app
-		mux.AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			app.LoadersRouter().NestedRouter,
 			"/hooks",
 			mux.TaskHandlerFromFunc(
@@ -1529,7 +1530,7 @@ func TestLoadersHandler_HeadRenderingAndTemplateExecutionFailuresReturn500(
 			},
 		})
 		app := fixture.app
-		mux.AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			app.LoadersRouter().NestedRouter,
 			"/hooks",
 			mux.TaskHandlerFromFunc(
@@ -1560,7 +1561,7 @@ func TestLoadersHandler_HeadRenderingAndTemplateExecutionFailuresReturn500(
 			template: "<!doctype html><html><body>{{call .VormaHeadEls}}</body></html>",
 		})
 		app := fixture.app
-		mux.AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			app.LoadersRouter().NestedRouter,
 			"/hooks",
 			mux.TaskHandlerFromFunc(
@@ -1603,7 +1604,7 @@ func TestLoadersHandler_NilRootTemplateDataMapDoesNotPanic(t *testing.T) {
 		},
 	})
 	app := fixture.app
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/hooks",
 		mux.TaskHandlerFromFunc(
@@ -1650,7 +1651,7 @@ func TestLoadersHandler_RuntimeDoesNotMutateAppTemplateDataMap(t *testing.T) {
 		},
 	})
 	app := fixture.app
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/hooks",
 		mux.TaskHandlerFromFunc(
@@ -1727,7 +1728,7 @@ func TestLoadersHandler_UsesConfiguredTemplateDataKeysAndRootElementID(
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/keys",
 		mux.TaskHandlerFromFunc(
@@ -1772,7 +1773,7 @@ func TestLoadersHandler_NonSerializableLoaderDataReturns500(t *testing.T) {
 	)
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/bad",
 		mux.TaskHandlerFromFunc(
@@ -1832,7 +1833,7 @@ func TestLoadersHandler_CustomJSONMarshalerLoaderDataIsAccepted(t *testing.T) {
 	)
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/custom",
 		mux.TaskHandlerFromFunc(
@@ -1930,7 +1931,7 @@ func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 	appB := fixtureB.app
 
 	registerLoader := func(app *Vorma) {
-		mux.AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			app.LoadersRouter().NestedRouter,
 			"/shared/:id",
 			mux.TaskHandlerFromFunc(
@@ -2060,7 +2061,7 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 	appB.SetIsDev(false)
 
 	registerLoader := func(app *Vorma) {
-		mux.AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			app.LoadersRouter().NestedRouter,
 			"/items/:id",
 			mux.TaskHandlerFromFunc(
@@ -2178,7 +2179,7 @@ func TestLoadersHandler_HeadDedupeRulesAreScopedPerApp(t *testing.T) {
 		}
 		fixture := newTestFixture(t, opts)
 		app := fixture.app
-		mux.AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			app.LoadersRouter().NestedRouter,
 			"/page",
 			mux.TaskHandlerFromFunc(
@@ -2266,7 +2267,7 @@ func TestLoadersHandler_HTMLHeadDedupeAndAssetLinks(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -2359,7 +2360,7 @@ func TestLoadersHandler_RespectsExistingCacheControlHeader(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/cache",
 		mux.TaskHandlerFromFunc(

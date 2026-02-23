@@ -1017,7 +1017,7 @@ func (work *WorkSet) ApplyRefreshActionWorkMutationDecision(
 		work.Browser.WaitForVite = true
 	}
 	if mutationDecision.FrameworkRuntimeReloadRequest != nil {
-		work.FrameworkRuntimeReloadRequests = appendFrameworkRuntimeReloadRequestIfMissing(
+		work.FrameworkRuntimeReloadRequests = appendOrMergeFrameworkRuntimeReloadRequestByEndpoint(
 			work.FrameworkRuntimeReloadRequests,
 			*mutationDecision.FrameworkRuntimeReloadRequest,
 		)
@@ -1026,7 +1026,9 @@ func (work *WorkSet) ApplyRefreshActionWorkMutationDecision(
 	return applicationResult
 }
 
-func appendFrameworkRuntimeReloadRequestIfMissing(
+// appendOrMergeFrameworkRuntimeReloadRequestByEndpoint appends a normalized
+// framework reload request or merges metadata when endpoint already exists.
+func appendOrMergeFrameworkRuntimeReloadRequestByEndpoint(
 	existingRequests []wave.FrameworkRuntimeReloadRequest,
 	request wave.FrameworkRuntimeReloadRequest,
 ) []wave.FrameworkRuntimeReloadRequest {
@@ -1035,13 +1037,47 @@ func appendFrameworkRuntimeReloadRequestIfMissing(
 		return existingRequests
 	}
 
-	for _, existingRequest := range existingRequests {
-		if existingRequest == normalizedRequest {
+	for existingRequestIndex, existingRequest := range existingRequests {
+		if existingRequest.EndpointPath == normalizedRequest.EndpointPath {
+			existingRequests[existingRequestIndex] = mergeFrameworkRuntimeReloadRequestMetadata(
+				existingRequest,
+				normalizedRequest,
+			)
 			return existingRequests
 		}
 	}
 
 	return append(existingRequests, normalizedRequest)
+}
+
+// mergeFrameworkRuntimeReloadRequestMetadata applies non-empty incoming
+// metadata fields over an existing request for the same endpoint.
+func mergeFrameworkRuntimeReloadRequestMetadata(
+	existingRequest wave.FrameworkRuntimeReloadRequest,
+	incomingRequest wave.FrameworkRuntimeReloadRequest,
+) wave.FrameworkRuntimeReloadRequest {
+	mergedRequest := existingRequest
+
+	incomingReloadAttemptID := strings.TrimSpace(
+		incomingRequest.ReloadAttemptID,
+	)
+	if incomingReloadAttemptID != "" {
+		mergedRequest.ReloadAttemptID = incomingReloadAttemptID
+	}
+
+	incomingExpectedBuildID := strings.TrimSpace(
+		incomingRequest.ExpectedBuildID,
+	)
+	if incomingExpectedBuildID != "" {
+		mergedRequest.ExpectedBuildID = incomingExpectedBuildID
+	}
+
+	incomingReloadTrigger := strings.TrimSpace(incomingRequest.ReloadTrigger)
+	if incomingReloadTrigger != "" {
+		mergedRequest.ReloadTrigger = incomingReloadTrigger
+	}
+
+	return mergedRequest
 }
 
 func normalizeFrameworkRuntimeReloadRequest(

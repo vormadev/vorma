@@ -11,6 +11,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -48,7 +49,7 @@ func (v *Vorma) MustInitWithDefaultRouter() *mux.Router {
 }
 
 func (v *Vorma) validateAndDecorateNestedRouter(
-	nestedRouter *mux.NestedRouter,
+	nestedRouter *nestedmux.Router,
 ) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
@@ -64,7 +65,7 @@ func (v *Vorma) validateAndDecorateNestedRouter(
 				),
 			)
 		}
-		nestedRouter.AddNestedPatternWithoutHandlerIfMissing(
+		nestedRouter.AddPatternWithoutHandlerIfMissing(
 			pathEntry.OriginalPattern,
 		)
 	}

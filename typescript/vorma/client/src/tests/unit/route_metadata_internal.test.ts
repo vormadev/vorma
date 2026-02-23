@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-	buildClientModuleMapFromRouteModuleMetadata,
-	mergeClientModuleMapWithRouteModuleMetadata,
-} from "../../core/navigation/runtime_navigation_successful_runtime.ts";
+import { mergeClientModuleMapWithRouteModuleMetadata } from "../../core/navigation/runtime_navigation_successful_runtime.ts";
 
 describe("route metadata module-map helpers", () => {
 	it("builds a fresh module map from route metadata arrays with default export fallbacks", () => {
-		const clientModuleMap = buildClientModuleMapFromRouteModuleMetadata({
+		const clientModuleMap = mergeClientModuleMapWithRouteModuleMetadata({
+			currentClientModuleMap: undefined,
 			routeModuleMetadata: {
 				matchedPatterns: ["/route-a", "/route-b"],
 				importURLs: ["/route-a.js", "/route-b.js"],

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 var (
@@ -55,7 +56,7 @@ func BenchmarkLoadersHandler_JSONCurrentBuild(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -127,12 +128,12 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.AddNestedPatternWithoutHandler(
+	nestedmux.AddPatternWithoutHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 	)
 	req := httptest.NewRequest(http.MethodGet, "/products/123", nil)
-	findResults, found := mux.FindNestedMatches(
+	findResults, found := nestedmux.FindMatches(
 		app.LoadersRouter().NestedRouter,
 		req,
 	)
@@ -186,7 +187,7 @@ func BenchmarkLoadersHandler_HTMLCurrentBuild(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -253,7 +254,7 @@ func BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(

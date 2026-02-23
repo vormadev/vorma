@@ -4,14 +4,14 @@ import {
 	applyNavigationRemovalLifecycleTransition,
 	buildClearAllLifecycleTransitionEvent,
 	buildNavigationBeginArbitratedLifecycleTransitionEvent,
+	buildNavigationFailureLifecycleTransitionEvent,
 	buildSubmissionStateLifecycleTransitionEvent,
-	reduceNavigationLifecycleTransition,
 } from "../../core/navigation/runtime_lifecycle_transitions.ts";
+import type { NavigationLanes } from "../../core/navigation/runtime_slots.ts";
 import type {
 	NavigationEntry,
 	SubmissionEntry,
 } from "../../core/navigation/types.ts";
-import type { NavigationLanes } from "../../core/navigation/runtime_slots.ts";
 
 function createNavigationEntry(props: {
 	operationID: number;
@@ -75,6 +75,38 @@ describe("runtime lifecycle transitions", () => {
 			entry,
 			reason: "test_remove",
 			causedByOperationID: 99,
+		});
+		expect(slots.active).toBeNull();
+		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
+	});
+
+	it("sets causedByOperationID to null when not provided for removal transitions", () => {
+		const entry = createNavigationEntry({
+			operationID: 4,
+			targetUrl: "http://localhost:3000/remove-me-no-cause",
+			type: "browserHistory",
+			intent: "navigate",
+		});
+		const slots: NavigationLanes = {
+			active: entry,
+			prefetch: new Map(),
+			revalidation: null,
+		};
+		const scheduleStatusUpdate = vi.fn();
+
+		const result = applyNavigationRemovalLifecycleTransition({
+			lanes: slots,
+			targetUrl: "http://localhost:3000/remove-me-no-cause",
+			scheduleStatusUpdate,
+			reason: "test_remove_no_cause",
+		});
+
+		expect(result.deleted).toBe(true);
+		expect(result.transitionEvent).toEqual({
+			type: "navigation_removed",
+			entry,
+			reason: "test_remove_no_cause",
+			causedByOperationID: null,
 		});
 		expect(slots.active).toBeNull();
 		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
@@ -239,42 +271,7 @@ describe("runtime lifecycle transitions", () => {
 		});
 	});
 
-	it("reduces remove-navigation actions through one transition reducer seam", () => {
-		const entry = createNavigationEntry({
-			operationID: 30,
-			targetUrl: "http://localhost:3000/reducer-remove",
-			type: "browserHistory",
-			intent: "navigate",
-		});
-		const slots: NavigationLanes = {
-			active: entry,
-			prefetch: new Map(),
-			revalidation: null,
-		};
-		const scheduleStatusUpdate = vi.fn();
-
-		const reductionResult = reduceNavigationLifecycleTransition({
-			lanes: slots,
-			scheduleStatusUpdate,
-			action: {
-				type: "remove_navigation",
-				targetUrl: entry.targetUrl,
-				reason: "reducer_remove",
-				causedByOperationID: 31,
-			},
-		});
-
-		expect(reductionResult.deleted).toBe(true);
-		expect(reductionResult.transitionEvent).toEqual({
-			type: "navigation_removed",
-			entry,
-			reason: "reducer_remove",
-			causedByOperationID: 31,
-		});
-		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
-	});
-
-	it("reduces navigation-failed actions through one transition reducer seam", () => {
+	it("builds navigation-failed transition events", () => {
 		const entry = createNavigationEntry({
 			operationID: 40,
 			targetUrl: "http://localhost:3000/reducer-failed",
@@ -282,25 +279,14 @@ describe("runtime lifecycle transitions", () => {
 			intent: "navigate",
 			phase: "waiting",
 		});
-		const slots: NavigationLanes = {
-			active: entry,
-			prefetch: new Map(),
-			revalidation: null,
-		};
 
-		const reductionResult = reduceNavigationLifecycleTransition({
-			lanes: slots,
-			scheduleStatusUpdate: vi.fn(),
-			action: {
-				type: "navigation_failed",
-				targetUrl: entry.targetUrl,
-				entry,
-				reason: "reducer_failed",
-			},
+		const transitionEvent = buildNavigationFailureLifecycleTransitionEvent({
+			targetUrl: entry.targetUrl,
+			entry,
+			reason: "reducer_failed",
 		});
 
-		expect(reductionResult.deleted).toBeNull();
-		expect(reductionResult.transitionEvent).toEqual({
+		expect(transitionEvent).toEqual({
 			type: "navigation_failed",
 			targetUrl: entry.targetUrl,
 			entry,

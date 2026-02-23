@@ -135,10 +135,10 @@ function createMatch(
 
 function createSuccessNavigationOutcome(
 	overrides: {
-		preloadCommands?: Extract<
+		preloadPlan?: Extract<
 			NavigationOutcome,
 			{ type: "success" }
-		>["preloadCommands"];
+		>["preloadPlan"];
 		waitFnPromise?: Promise<{
 			data: Array<unknown>;
 			errorMessage?: string;
@@ -183,7 +183,10 @@ function createSuccessNavigationOutcome(
 			metaHeadEls: undefined,
 			restHeadEls: undefined,
 		},
-		preloadCommands: overrides.preloadCommands ?? [],
+		preloadPlan: overrides.preloadPlan ?? {
+			moduleDependencies: [],
+			cssBundles: [],
+		},
 		waitFnPromise: overrides.waitFnPromise ?? Promise.resolve({ data: [] }),
 		props: {
 			...defaultProps,
@@ -1602,13 +1605,10 @@ describe("navigation runtime success-processing defensive branches", () => {
 			if (!entry) return;
 
 			const outcome = createSuccessNavigationOutcome({
-				preloadCommands: [
-					{
-						type: "preload_css_bundle",
-						bundle: "/failure.css",
-						reason: "server_success_preload_allowed",
-					},
-				],
+				preloadPlan: {
+					moduleDependencies: [],
+					cssBundles: ["/failure.css"],
+				},
 				props: {
 					href: targetUrl,
 					navigationType: "browserHistory",
@@ -4167,7 +4167,10 @@ describe("fetchRouteData client-only skip path", () => {
 			if (outcome.type !== "success") {
 				throw new Error("Expected success outcome");
 			}
-			expect(outcome.preloadCommands).toEqual([]);
+			expect(outcome.preloadPlan).toEqual({
+				moduleDependencies: [],
+				cssBundles: [],
+			});
 		} finally {
 			(import.meta.env as any).DEV = originalDev;
 		}
@@ -4212,13 +4215,10 @@ describe("fetchRouteData client-only skip path", () => {
 			if (outcome.type !== "success") {
 				throw new Error("Expected success outcome");
 			}
-			expect(outcome.preloadCommands).toEqual([
-				{
-					type: "preload_module_dependency",
-					dependency: "/prod-dep.js",
-					reason: "server_success_preload_allowed",
-				},
-			]);
+			expect(outcome.preloadPlan).toEqual({
+				moduleDependencies: ["/prod-dep.js"],
+				cssBundles: [],
+			});
 		} finally {
 			(import.meta.env as any).DEV = originalDev;
 		}

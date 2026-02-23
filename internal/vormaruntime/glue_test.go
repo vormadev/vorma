@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/wave"
 )
@@ -1020,7 +1021,7 @@ func TestInitWithDefaultRouter_Integration(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/hello",
 		mux.TaskHandlerFromFunc(
@@ -1467,7 +1468,7 @@ func TestInitWithDefaultRouter_LoadersHeadContracts(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/hello",
 		mux.TaskHandlerFromFunc(

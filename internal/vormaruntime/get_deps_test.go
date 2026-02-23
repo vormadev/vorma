@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 func TestGetDepsFromSnapshot_ClientEntryFirstAndDeduped(t *testing.T) {
@@ -36,12 +36,12 @@ func TestGetDepsFromSnapshot_ClientEntryFirstAndDeduped(t *testing.T) {
 	})
 	app := fixture.app
 
-	nr := mux.NewNestedRouter(nil)
-	mux.AddNestedPatternWithoutHandler(nr, "")
-	mux.AddNestedPatternWithoutHandler(nr, "/items/:id")
+	nr := nestedmux.NewRouter(nil)
+	nestedmux.AddPatternWithoutHandler(nr, "")
+	nestedmux.AddPatternWithoutHandler(nr, "/items/:id")
 
 	req := httptest.NewRequest(http.MethodGet, "/items/42", nil)
-	findResults, found := mux.FindNestedMatches(nr, req)
+	findResults, found := nestedmux.FindMatches(nr, req)
 	if !found {
 		t.Fatal("expected nested matches for /items/42")
 	}

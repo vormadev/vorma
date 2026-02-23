@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { decideFocusRevalidationTriggerExecutionPlan } from "../../core/extras.ts";
+import { shouldTriggerFocusRevalidation } from "../../core/extras.ts";
 
 describe("focus revalidation trigger policy state machine", () => {
 	it("blocks focus revalidate while navigating", () => {
-		const plan = decideFocusRevalidationTriggerExecutionPlan({
+		const shouldRevalidate = shouldTriggerFocusRevalidation({
 			status: {
 				isNavigating: true,
 				isSubmitting: false,
@@ -14,14 +14,11 @@ describe("focus revalidation trigger policy state machine", () => {
 			staleTimeMS: 0,
 		});
 
-		expect(plan).toEqual({
-			type: "skip",
-			reason: "focus_revalidate_blocked_navigating",
-		});
+		expect(shouldRevalidate).toBe(false);
 	});
 
 	it("blocks focus revalidate while submitting", () => {
-		const plan = decideFocusRevalidationTriggerExecutionPlan({
+		const shouldRevalidate = shouldTriggerFocusRevalidation({
 			status: {
 				isNavigating: false,
 				isSubmitting: true,
@@ -32,14 +29,11 @@ describe("focus revalidation trigger policy state machine", () => {
 			staleTimeMS: 0,
 		});
 
-		expect(plan).toEqual({
-			type: "skip",
-			reason: "focus_revalidate_blocked_submitting",
-		});
+		expect(shouldRevalidate).toBe(false);
 	});
 
 	it("blocks focus revalidate while a revalidation is in flight", () => {
-		const plan = decideFocusRevalidationTriggerExecutionPlan({
+		const shouldRevalidate = shouldTriggerFocusRevalidation({
 			status: {
 				isNavigating: false,
 				isSubmitting: false,
@@ -50,14 +44,11 @@ describe("focus revalidation trigger policy state machine", () => {
 			staleTimeMS: 0,
 		});
 
-		expect(plan).toEqual({
-			type: "skip",
-			reason: "focus_revalidate_blocked_revalidating",
-		});
+		expect(shouldRevalidate).toBe(false);
 	});
 
 	it("blocks focus revalidate when stale window has not elapsed", () => {
-		const plan = decideFocusRevalidationTriggerExecutionPlan({
+		const shouldRevalidate = shouldTriggerFocusRevalidation({
 			status: {
 				isNavigating: false,
 				isSubmitting: false,
@@ -68,14 +59,11 @@ describe("focus revalidation trigger policy state machine", () => {
 			staleTimeMS: 50,
 		});
 
-		expect(plan).toEqual({
-			type: "skip",
-			reason: "focus_revalidate_blocked_stale_window_not_elapsed",
-		});
+		expect(shouldRevalidate).toBe(false);
 	});
 
 	it("allows focus revalidate exactly at stale window boundary", () => {
-		const plan = decideFocusRevalidationTriggerExecutionPlan({
+		const shouldRevalidate = shouldTriggerFocusRevalidation({
 			status: {
 				isNavigating: false,
 				isSubmitting: false,
@@ -86,9 +74,6 @@ describe("focus revalidation trigger policy state machine", () => {
 			staleTimeMS: 50,
 		});
 
-		expect(plan).toEqual({
-			type: "trigger_revalidate",
-			reason: "focus_revalidate_allowed",
-		});
+		expect(shouldRevalidate).toBe(true);
 	});
 });

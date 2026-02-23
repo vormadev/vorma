@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/response"
 )
 
@@ -65,7 +66,7 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/items/:id",
 		mux.TaskHandlerFromFunc(
@@ -74,7 +75,7 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/error",
 		mux.TaskHandlerFromFunc(
@@ -83,7 +84,7 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			},
 		),
 	)
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/cache",
 		mux.TaskHandlerFromFunc(

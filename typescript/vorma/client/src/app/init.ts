@@ -4,7 +4,7 @@ import {
 } from "vorma/kit/matcher/register";
 import { ensureNavigationRuntimeInitialized } from "../client.ts";
 import { initHMR } from "../core/extras.ts";
-import { buildClientModuleMapFromRouteModuleMetadata } from "../core/navigation/runtime_navigation_successful_runtime.ts";
+import { mergeClientModuleMapWithRouteModuleMetadata } from "../core/navigation/runtime_navigation_successful_runtime.ts";
 import { ComponentLoader, setupClientLoaders } from "../core/render_runtime.ts";
 import { HistoryManager } from "../platform/history.ts";
 import { scrollStateManager } from "../platform/scroll.ts";
@@ -32,9 +32,6 @@ let touchDetectionRegistered = false;
 let latestRouteManifestProgressiveLoadID = 0;
 
 type RouteManifestRecord = NonNullable<VormaClientGlobal["routeManifest"]>;
-type PrecompiledRouteMatcherPayload = {
-	routeManifest: RouteManifestRecord;
-};
 
 function onBeforeUnload(): void {
 	scrollStateManager.savePageRefreshState();
@@ -73,7 +70,8 @@ function applyInitClientOptions(options: InitClientOptions): void {
 }
 
 function initializeClientModuleMapFromInitialRouteState(): void {
-	const clientModuleMap = buildClientModuleMapFromRouteModuleMetadata({
+	const clientModuleMap = mergeClientModuleMapWithRouteModuleMetadata({
+		currentClientModuleMap: undefined,
 		routeModuleMetadata: {
 			matchedPatterns: __vormaClientGlobal.get("matchedPatterns"),
 			importURLs: __vormaClientGlobal.get("importURLs"),
@@ -130,29 +128,25 @@ function registerManifestPatterns(props: {
 	}
 }
 
-function readPrecompiledRouteMatcherPayloadOrNull(): PrecompiledRouteMatcherPayload | null {
+function readPrecompiledRouteManifestOrNull(): RouteManifestRecord | null {
 	const precompiledRouteManifest = __vormaClientGlobal.get("routeManifest");
 	if (!precompiledRouteManifest) {
 		return null;
 	}
 
-	return {
-		routeManifest: parseRouteManifestPayloadOrThrow(
-			precompiledRouteManifest,
-		),
-	};
+	return parseRouteManifestPayloadOrThrow(precompiledRouteManifest);
 }
 
-function initializePatternRegistryFromPrecompiledRouteMatcherPayload(): boolean {
-	const payload = readPrecompiledRouteMatcherPayloadOrNull();
-	if (!payload) {
+function initializePatternRegistryFromPrecompiledRouteManifest(): boolean {
+	const manifest = readPrecompiledRouteManifestOrNull();
+	if (!manifest) {
 		return false;
 	}
 
 	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
-	__vormaClientGlobal.set("routeManifest", payload.routeManifest);
+	__vormaClientGlobal.set("routeManifest", manifest);
 	registerManifestPatterns({
-		manifest: payload.routeManifest,
+		manifest,
 		patternRegistry,
 	});
 	return true;
@@ -230,9 +224,9 @@ export async function initClient(options: InitClientInput): Promise<void> {
 	initializeClientModuleMapFromInitialRouteState();
 	initializeClientPatternRegistry(options.vormaAppConfig);
 
-	const didInitializePatternRegistryFromPrecompiledPayload =
-		initializePatternRegistryFromPrecompiledRouteMatcherPayload();
-	if (!didInitializePatternRegistryFromPrecompiledPayload) {
+	const didInitializePatternRegistryFromPrecompiledManifest =
+		initializePatternRegistryFromPrecompiledRouteManifest();
+	if (!didInitializePatternRegistryFromPrecompiledManifest) {
 		loadRouteManifestProgressively();
 	}
 	applyInitClientOptions(options);

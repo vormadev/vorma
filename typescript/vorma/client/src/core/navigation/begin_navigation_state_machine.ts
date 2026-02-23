@@ -43,7 +43,6 @@ export type BeginNavigationReuseInstruction = {
 export type BeginNavigationCreateInstruction =
 	| {
 			slot: "active";
-			intent: NavigationIntent;
 	  }
 	| {
 			slot: "prefetch";
@@ -54,13 +53,22 @@ export type BeginNavigationCreateInstruction =
 			revalidationHref: string;
 	  };
 
-export type BeginNavigationExecutionPlan = {
-	targetUrl: string;
+type BeginNavigationExecutionPlanBase = {
 	abortInstructions: BeginNavigationAbortInstruction[];
-	reuseInstruction: BeginNavigationReuseInstruction | null;
-	createInstruction: BeginNavigationCreateInstruction | null;
-	shouldReturnImmediatelyAbortedControl: boolean;
 };
+
+export type BeginNavigationExecutionPlan =
+	| (BeginNavigationExecutionPlanBase & {
+			type: "reuse";
+			reuseInstruction: BeginNavigationReuseInstruction;
+	  })
+	| (BeginNavigationExecutionPlanBase & {
+			type: "create";
+			createInstruction: BeginNavigationCreateInstruction;
+	  })
+	| (BeginNavigationExecutionPlanBase & {
+			type: "immediateAbort";
+	  });
 
 type BeginNavigationLaneSnapshot = {
 	active: NavigationEntry | null;
@@ -173,7 +181,7 @@ function decideActiveLaneBeginExecutionPlan(props: {
 
 	if (active && activeHasSameNavigationTarget) {
 		return {
-			targetUrl,
+			type: "reuse",
 			abortInstructions,
 			reuseInstruction: {
 				sourceSlot: "active",
@@ -181,14 +189,12 @@ function decideActiveLaneBeginExecutionPlan(props: {
 				entry: active,
 				promotion,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		};
 	}
 
 	if (prefetchMatch) {
 		return {
-			targetUrl,
+			type: "reuse",
 			abortInstructions,
 			reuseInstruction: {
 				sourceSlot: "prefetch",
@@ -196,14 +202,12 @@ function decideActiveLaneBeginExecutionPlan(props: {
 				entry: prefetchMatch.entry,
 				promotion,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		};
 	}
 
 	if (revalidation && revalidationHasSameNavigationTarget) {
 		return {
-			targetUrl,
+			type: "reuse",
 			abortInstructions,
 			reuseInstruction: {
 				sourceSlot: "revalidation",
@@ -211,20 +215,15 @@ function decideActiveLaneBeginExecutionPlan(props: {
 				entry: revalidation,
 				promotion,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		};
 	}
 
 	return {
-		targetUrl,
+		type: "create",
 		abortInstructions,
-		reuseInstruction: null,
 		createInstruction: {
 			slot: "active",
-			intent: "navigate",
 		},
-		shouldReturnImmediatelyAbortedControl: false,
 	};
 }
 
@@ -249,7 +248,7 @@ function decidePrefetchBeginExecutionPlan(props: {
 		})
 	) {
 		return {
-			targetUrl,
+			type: "reuse",
 			abortInstructions: [],
 			reuseInstruction: {
 				sourceSlot: "active",
@@ -257,14 +256,12 @@ function decidePrefetchBeginExecutionPlan(props: {
 				entry: active,
 				promotion: null,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		};
 	}
 
 	if (prefetchMatch) {
 		return {
-			targetUrl,
+			type: "reuse",
 			abortInstructions: [],
 			reuseInstruction: {
 				sourceSlot: "prefetch",
@@ -272,8 +269,6 @@ function decidePrefetchBeginExecutionPlan(props: {
 				entry: prefetchMatch.entry,
 				promotion: null,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		};
 	}
 
@@ -285,7 +280,7 @@ function decidePrefetchBeginExecutionPlan(props: {
 		})
 	) {
 		return {
-			targetUrl,
+			type: "reuse",
 			abortInstructions: [],
 			reuseInstruction: {
 				sourceSlot: "revalidation",
@@ -293,8 +288,6 @@ function decidePrefetchBeginExecutionPlan(props: {
 				entry: revalidation,
 				promotion: null,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		};
 	}
 
@@ -305,23 +298,18 @@ function decidePrefetchBeginExecutionPlan(props: {
 		})
 	) {
 		return {
-			targetUrl,
+			type: "immediateAbort",
 			abortInstructions: [],
-			reuseInstruction: null,
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: true,
 		};
 	}
 
 	return {
-		targetUrl,
+		type: "create",
 		abortInstructions: [],
-		reuseInstruction: null,
 		createInstruction: {
 			slot: "prefetch",
 			targetUrl,
 		},
-		shouldReturnImmediatelyAbortedControl: false,
 	};
 }
 
@@ -339,7 +327,7 @@ function decideRevalidationBeginExecutionPlan(props: {
 		})
 	) {
 		return {
-			targetUrl,
+			type: "reuse",
 			abortInstructions: [],
 			reuseInstruction: {
 				sourceSlot: "revalidation",
@@ -347,13 +335,11 @@ function decideRevalidationBeginExecutionPlan(props: {
 				entry: revalidation,
 				promotion: null,
 			},
-			createInstruction: null,
-			shouldReturnImmediatelyAbortedControl: false,
 		};
 	}
 
 	return {
-		targetUrl,
+		type: "create",
 		abortInstructions: revalidation
 			? [
 					{
@@ -362,12 +348,10 @@ function decideRevalidationBeginExecutionPlan(props: {
 					},
 				]
 			: [],
-		reuseInstruction: null,
 		createInstruction: {
 			slot: "revalidation",
 			revalidationHref: props.currentHref,
 		},
-		shouldReturnImmediatelyAbortedControl: false,
 	};
 }
 

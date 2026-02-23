@@ -8,8 +8,8 @@ import {
 	getNavigationStateAccess,
 } from "../app/context.ts";
 import { dispatchBuildIDEvent } from "../platform/events.ts";
-import { logError } from "../platform/safety.ts";
 import { resolveRequestBodyForTransport } from "../platform/request_body.ts";
+import { logError } from "../platform/safety.ts";
 import {
 	isSameDocumentLocation,
 	VORMA_HARD_RELOAD_QUERY_PARAM,
@@ -29,145 +29,6 @@ export type RedirectData = { href: string; hrefDetails: HrefDetails } & (
 
 type HTTPHrefDetails = Extract<HrefDetails, { isHTTP: true }>;
 type ShouldRedirectData = Extract<RedirectData, { status: "should" }>;
-
-export type RedirectEffectuationExecutionPlan =
-	| {
-			type: "stop";
-			reason: "redirect_effectuation_redirect_data_not_should";
-	  }
-	| {
-			type: "cleanup_and_effectuate_hard";
-			reason: "redirect_effectuation_strategy_hard";
-	  }
-	| {
-			type: "cleanup_and_effectuate_soft";
-			reason: "redirect_effectuation_strategy_soft";
-	  }
-	| {
-			type: "cleanup_and_stop";
-			reason: "redirect_effectuation_strategy_unknown";
-	  };
-
-function resolveRedirectStrategyValue(
-	redirectData: ShouldRedirectData,
-): string {
-	return (
-		redirectData as ShouldRedirectData & { shouldRedirectStrategy: string }
-	).shouldRedirectStrategy;
-}
-
-export function decideRedirectEffectuationExecutionPlan(props: {
-	redirectData: RedirectData;
-}): RedirectEffectuationExecutionPlan {
-	const { redirectData } = props;
-	if (redirectData.status !== "should") {
-		return {
-			type: "stop",
-			reason: "redirect_effectuation_redirect_data_not_should",
-		};
-	}
-
-	switch (resolveRedirectStrategyValue(redirectData)) {
-		case "hard":
-			return {
-				type: "cleanup_and_effectuate_hard",
-				reason: "redirect_effectuation_strategy_hard",
-			};
-		case "soft":
-			return {
-				type: "cleanup_and_effectuate_soft",
-				reason: "redirect_effectuation_strategy_soft",
-			};
-		default:
-			return {
-				type: "cleanup_and_stop",
-				reason: "redirect_effectuation_strategy_unknown",
-			};
-	}
-}
-
-export type RedirectEffectuationCommand =
-	| {
-			type: "cleanup_redirect_related_navigations";
-			reason:
-				| "redirect_effectuation_strategy_hard"
-				| "redirect_effectuation_strategy_soft"
-				| "redirect_effectuation_strategy_unknown";
-	  }
-	| {
-			type: "effectuate_hard_redirect";
-			redirectData: ShouldRedirectData;
-			reason: "redirect_effectuation_strategy_hard";
-	  }
-	| {
-			type: "effectuate_soft_redirect";
-			redirectData: ShouldRedirectData;
-			redirectCount: number;
-			originalProps?: NavigateProps;
-			reason: "redirect_effectuation_strategy_soft";
-	  }
-	| {
-			type: "return_null";
-			reason:
-				| "redirect_effectuation_redirect_data_not_should"
-				| "redirect_effectuation_strategy_unknown";
-	  };
-
-export function buildRedirectEffectuationCommands(props: {
-	executionPlan: RedirectEffectuationExecutionPlan;
-	redirectData: RedirectData;
-	redirectCount: number;
-	originalProps?: NavigateProps;
-}): RedirectEffectuationCommand[] {
-	const { executionPlan, redirectData, redirectCount, originalProps } = props;
-
-	switch (executionPlan.type) {
-		case "stop":
-			return [
-				{
-					type: "return_null",
-					reason: executionPlan.reason,
-				},
-			];
-		case "cleanup_and_effectuate_hard":
-			return [
-				{
-					type: "cleanup_redirect_related_navigations",
-					reason: executionPlan.reason,
-				},
-				{
-					type: "effectuate_hard_redirect",
-					redirectData: redirectData as ShouldRedirectData,
-					reason: executionPlan.reason,
-				},
-			];
-		case "cleanup_and_effectuate_soft":
-			return [
-				{
-					type: "cleanup_redirect_related_navigations",
-					reason: executionPlan.reason,
-				},
-				{
-					type: "effectuate_soft_redirect",
-					redirectData: redirectData as ShouldRedirectData,
-					redirectCount,
-					originalProps,
-					reason: executionPlan.reason,
-				},
-			];
-		case "cleanup_and_stop":
-			return [
-				{
-					type: "cleanup_redirect_related_navigations",
-					reason: executionPlan.reason,
-				},
-				{
-					type: "return_null",
-					reason: executionPlan.reason,
-				},
-			];
-	}
-}
 
 type RedirectNavigationState = {
 	getNavigations: () => Map<string, NavigationEntry>;
@@ -485,36 +346,6 @@ async function effectuateSoftRedirect(
 	return toDidRedirectData(redirectData);
 }
 
-async function executeRedirectEffectuationCommands(props: {
-	commands: RedirectEffectuationCommand[];
-	navigationState: RedirectNavigationState;
-}): Promise<RedirectData | null> {
-	const { commands, navigationState } = props;
-
-	for (const command of commands) {
-		switch (command.type) {
-			case "cleanup_redirect_related_navigations":
-				cleanupRedirectRelatedNavigations(navigationState);
-				break;
-			case "effectuate_hard_redirect":
-				return effectuateHardRedirect(command.redirectData);
-			case "effectuate_soft_redirect":
-				return effectuateSoftRedirect(
-					navigationState,
-					command.redirectData,
-					command.redirectCount,
-					command.originalProps,
-				);
-			case "return_null":
-				return null;
-		}
-	}
-
-	throw new Error(
-		"Redirect effectuation command plan ended without a terminal command.",
-	);
-}
-
 // getBuildIDFromResponse extracts the build id header used for client/runtime sync.
 export function getBuildIDFromResponse(response: Response | undefined): string {
 	return response?.headers.get("X-Vorma-Build-Id") || "";
@@ -540,26 +371,30 @@ export async function effectuateRedirectDataResult(
 	redirectCount: number,
 	originalProps?: NavigateProps,
 ): Promise<RedirectData | null> {
-	const executionPlan = decideRedirectEffectuationExecutionPlan({
-		redirectData,
-	});
-
-	if (executionPlan.type === "stop") {
+	if (redirectData.status !== "should") {
 		return null;
 	}
 
-	const commands = buildRedirectEffectuationCommands({
-		executionPlan,
-		redirectData,
-		redirectCount,
-		originalProps,
-	});
 	const navigationState = getNavigationStateAccess();
+	cleanupRedirectRelatedNavigations(navigationState);
 
-	return executeRedirectEffectuationCommands({
-		commands,
-		navigationState,
-	});
+	const redirectStrategy = (
+		redirectData as ShouldRedirectData & { shouldRedirectStrategy: string }
+	).shouldRedirectStrategy;
+
+	switch (redirectStrategy) {
+		case "hard":
+			return effectuateHardRedirect(redirectData);
+		case "soft":
+			return effectuateSoftRedirect(
+				navigationState,
+				redirectData,
+				redirectCount,
+				originalProps,
+			);
+		default:
+			return null;
+	}
 }
 
 // handleRedirects executes fetch-with-redirect-detection and returns parsed redirect metadata.

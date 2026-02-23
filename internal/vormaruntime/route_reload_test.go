@@ -14,6 +14,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
@@ -37,7 +38,7 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server-only",
 		mux.TaskHandlerFromFunc(
@@ -189,7 +190,7 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/page",
 		mux.TaskHandlerFromFunc(
@@ -330,7 +331,7 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/page",
 		mux.TaskHandlerFromFunc(
@@ -664,7 +665,7 @@ func TestDevReloadRoutesFromDisk_NilPathsClearsClientRoutesAndPreservesServerHan
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/server-only",
 		mux.TaskHandlerFromFunc(
@@ -913,7 +914,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(
@@ -1024,7 +1025,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(
@@ -1143,7 +1144,7 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_OnlyServeCoherentArtifactSet
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(
@@ -1345,7 +1346,7 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(
@@ -1478,7 +1479,7 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(
@@ -1608,7 +1609,7 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 	app := fixture.app
 	app.SetIsDev(false)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(
@@ -1707,7 +1708,7 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_DoNotSilentlyServeN
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(
@@ -1882,7 +1883,7 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_WithRedirectingLoad
 	app := fixture.app
 	app.SetIsDev(true)
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(

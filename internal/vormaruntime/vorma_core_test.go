@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/lab/tsgen"
 )
 
@@ -285,7 +286,7 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 	})
 	app := fixture.app
 
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		app.LoadersRouter().NestedRouter,
 		"/products/:id",
 		mux.TaskHandlerFromFunc(

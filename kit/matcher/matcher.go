@@ -1,110 +1,119 @@
+// Package matcher provides route pattern matching with best-match semantics.
+//
+// It is intended for routers that need exactly one resolved route per request
+// path, including support for dynamic params and splats.
 package matcher
 
-import (
-	"strings"
-
-	"github.com/vormadev/vorma/kit/genericsutil"
-)
+import "github.com/vormadev/vorma/kit/internal/matchercore"
 
 type (
-	Params = map[string]string
-
-	pattern     = string
-	patternsMap = map[pattern]*RegisteredPattern
-	matchesMap  = map[pattern]*Match
+	// Params stores dynamic path parameter values extracted from a match.
+	Params = matchercore.Params
+	// SegmentType identifies the kind of one route segment.
+	SegmentType = matchercore.SegmentType
+	// Segment is a normalized pattern segment and its classification.
+	Segment = matchercore.Segment
+	// RegisteredPattern is normalized metadata for one registered pattern.
+	RegisteredPattern = matchercore.RegisteredPattern
+	// BestMatch is the highest-scoring single match for a path.
+	BestMatch = matchercore.BestMatch
 )
 
-type SegmentType string
-
-type Segment struct {
-	NormalizedVal string
-	SegType       SegmentType
-}
-
-type Matcher struct {
-	staticPatterns  patternsMap
-	dynamicPatterns patternsMap
-	rootNode        *segmentNode
-
-	explicitIndexSegment   string
-	dynamicParamPrefixRune rune
-	splatSegmentRune       rune
-
-	slashIndexSegment                   string
-	usingExplicitIndexSegmentIdentifier bool
-
-	quiet bool
-}
-
-func (m *Matcher) ExplicitIndexSegmentIdentifier() string {
-	return m.explicitIndexSegment
-}
-func (m *Matcher) DynamicParamPrefix() rune {
-	return m.dynamicParamPrefixRune
-}
-func (m *Matcher) SplatSegmentIdentifier() rune {
-	return m.splatSegmentRune
-}
-
-type Match struct {
-	*RegisteredPattern
-	params      Params
-	splatValues []string
-}
-
-type BestMatch struct {
-	*RegisteredPattern
-	Params      Params
-	SplatValues []string
-
-	score uint16
-}
-
+// Options configures matcher behavior.
 type Options struct {
-	DynamicParamPrefix     rune // Optional. Defaults to ':'.
-	SplatSegmentIdentifier rune // Optional. Defaults to '*'.
-
-	// Optional. Defaults to empty string (effectively a trailing slash in the pattern).
-	// Could also be something like "_index" if preferred by the user.
-	ExplicitIndexSegmentIdentifier string
-
-	Quiet bool // Optional. Defaults to false. Set to true if you want to quash warnings.
+	// Optional. Defaults to ':'.
+	DynamicParamPrefix rune
+	// Optional. Defaults to '*'.
+	SplatSegmentIdentifier rune
+	// Optional. Defaults to false.
+	Quiet bool
 }
 
+// Matcher resolves route patterns for one option configuration.
+type Matcher struct {
+	engine *matchercore.Matcher
+}
+
+// New constructs a matcher with defaulted options.
 func New(opts *Options) *Matcher {
-	var instance = new(Matcher)
-
-	instance.staticPatterns = make(patternsMap)
-	instance.dynamicPatterns = make(patternsMap)
-	instance.rootNode = new(segmentNode)
-
-	mungedOpts := mungeOptsToDefaults(opts)
-
-	instance.explicitIndexSegment = mungedOpts.ExplicitIndexSegmentIdentifier
-	instance.dynamicParamPrefixRune = mungedOpts.DynamicParamPrefix
-	instance.splatSegmentRune = mungedOpts.SplatSegmentIdentifier
-	instance.quiet = mungedOpts.Quiet
-
-	instance.slashIndexSegment = "/" + instance.explicitIndexSegment
-	instance.usingExplicitIndexSegmentIdentifier = instance.explicitIndexSegment != ""
-
-	return instance
+	if opts == nil {
+		return &Matcher{engine: matchercore.New(nil)}
+	}
+	return &Matcher{
+		engine: matchercore.New(&matchercore.Options{
+			DynamicParamPrefix:     opts.DynamicParamPrefix,
+			SplatSegmentIdentifier: opts.SplatSegmentIdentifier,
+			Quiet:                  opts.Quiet,
+		}),
+	}
 }
 
-func mungeOptsToDefaults(opts *Options) Options {
-	if opts == nil {
-		opts = new(Options)
-	}
+// DynamicParamPrefix returns the dynamic parameter prefix rune.
+func (m *Matcher) DynamicParamPrefix() rune {
+	return m.engine.DynamicParamPrefix()
+}
 
-	copy := *opts
+// SplatSegmentIdentifier returns the splat segment identifier rune.
+func (m *Matcher) SplatSegmentIdentifier() rune {
+	return m.engine.SplatSegmentIdentifier()
+}
 
-	if strings.Contains(copy.ExplicitIndexSegmentIdentifier, "/") {
-		panic("explicit index segment cannot contain a slash")
-	}
+// NormalizePattern validates and normalizes one input pattern.
+func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern {
+	return m.engine.NormalizePattern(originalPattern)
+}
 
-	copy.DynamicParamPrefix = genericsutil.OrDefault(copy.DynamicParamPrefix, ':')
-	copy.SplatSegmentIdentifier = genericsutil.OrDefault(copy.SplatSegmentIdentifier, '*')
-	copy.ExplicitIndexSegmentIdentifier = genericsutil.OrDefault(copy.ExplicitIndexSegmentIdentifier, "")
+// RegisterPattern registers one pattern into matcher indices.
+func (m *Matcher) RegisterPattern(originalPattern string) *RegisteredPattern {
+	return m.engine.RegisterPattern(originalPattern)
+}
 
-	return copy
+// FindBestMatch resolves the highest-scoring single match for realPath.
+func (m *Matcher) FindBestMatch(realPath string) (*BestMatch, bool) {
+	return m.engine.FindBestMatch(realPath)
+}
+
+// ParseSegments splits a path into matcher segments.
+func ParseSegments(path string) []string {
+	return matchercore.ParseSegments(path)
+}
+
+// HasLeadingSlash reports whether pattern starts with '/'.
+func HasLeadingSlash(pattern string) bool {
+	return matchercore.HasLeadingSlash(pattern)
+}
+
+// HasTrailingSlash reports whether pattern ends with '/'.
+func HasTrailingSlash(pattern string) bool {
+	return matchercore.HasTrailingSlash(pattern)
+}
+
+// EnsureLeadingSlash ensures a leading slash exists.
+func EnsureLeadingSlash(pattern string) string {
+	return matchercore.EnsureLeadingSlash(pattern)
+}
+
+// EnsureTrailingSlash ensures a trailing slash exists.
+func EnsureTrailingSlash(pattern string) string {
+	return matchercore.EnsureTrailingSlash(pattern)
+}
+
+// EnsureLeadingAndTrailingSlash ensures both leading and trailing slashes.
+func EnsureLeadingAndTrailingSlash(pattern string) string {
+	return matchercore.EnsureLeadingAndTrailingSlash(pattern)
+}
+
+// StripLeadingSlash removes a leading slash when present.
+func StripLeadingSlash(pattern string) string {
+	return matchercore.StripLeadingSlash(pattern)
+}
+
+// StripTrailingSlash removes a trailing slash when present.
+func StripTrailingSlash(pattern string) string {
+	return matchercore.StripTrailingSlash(pattern)
+}
+
+// JoinPatterns joins a registered pattern with a pattern suffix.
+func JoinPatterns(rp *RegisteredPattern, pattern string) string {
+	return matchercore.JoinPatterns(rp, pattern)
 }

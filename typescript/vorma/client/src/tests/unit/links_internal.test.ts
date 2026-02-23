@@ -430,7 +430,10 @@ describe("links internal branches", () => {
 				deps: [],
 				cssBundles: [],
 			},
-			preloadCommands: [],
+			preloadPlan: {
+				moduleDependencies: [],
+				cssBundles: [],
+			},
 			waitFnPromise: Promise.resolve({ data: [] }),
 			props: {
 				href: targetHref,

@@ -74,7 +74,7 @@ func (r *RouteRegistry) rebuildNestedRouterFromCurrentPaths() {
 // This method is safe to call without holding the lock as the router handles
 // its own synchronization.
 func (v *Vorma) RegisterPatternIfNeeded(pattern string) {
-	v.LoadersRouter().NestedRouter.AddNestedPatternWithoutHandlerIfMissing(
+	v.LoadersRouter().NestedRouter.AddPatternWithoutHandlerIfMissing(
 		pattern,
 	)
 }

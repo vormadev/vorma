@@ -1,10 +1,10 @@
 package vormaruntime
 
-import "github.com/vormadev/vorma/kit/mux"
+import "github.com/vormadev/vorma/kit/nestedmux"
 
 // Path represents a route path with its associated metadata.
 type Path struct {
-	NestedRoute mux.AnyNestedRoute `json:"-"`
+	NestedRoute nestedmux.AnyRoute `json:"-"`
 
 	// Both stages one and two
 	OriginalPattern string `json:"originalPattern"`

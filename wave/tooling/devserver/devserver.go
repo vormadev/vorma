@@ -2317,9 +2317,25 @@ func (server *runtimeServer) broadcastReloadAfterReadinessWithGeneration(
 		reloadBroadcastGeneration,
 	)
 
+	reloadOptionsForReadiness := reloadOptions
+	if len(reloadOptionsForReadiness.FrameworkRuntimeReloadRequests) > 0 {
+		reloadOptionsForReadiness.WaitApp = true
+	}
+
+	if !server.waitForReloadReadiness(
+		readinessContext,
+		reloadOptionsForReadiness,
+	) {
+		if readinessContext == nil || readinessContext.Err() == nil {
+			server.Log.Warn(
+				"reload readiness failed; skipping browser broadcast",
+			)
+		}
+		return
+	}
 	frameworkRuntimeReloadError := server.executeFrameworkRuntimeReloadRequestsWithContext(
 		readinessContext,
-		reloadOptions.FrameworkRuntimeReloadRequests,
+		reloadOptionsForReadiness.FrameworkRuntimeReloadRequests,
 	)
 	if frameworkRuntimeReloadError != nil {
 		if readinessContext == nil || readinessContext.Err() == nil {
@@ -2337,20 +2353,14 @@ func (server *runtimeServer) broadcastReloadAfterReadinessWithGeneration(
 		return
 	}
 
-	if !server.waitForReloadReadiness(readinessContext, reloadOptions) {
-		if readinessContext == nil || readinessContext.Err() == nil {
-			server.Log.Warn(
-				"reload readiness failed; skipping browser broadcast",
-			)
-		}
-		return
-	}
 	if !server.isReloadReadinessWaitGenerationCurrent(
 		reloadBroadcastGeneration,
 	) {
 		return
 	}
-	if !server.shouldBroadcastReloadPayloadAfterReadiness(reloadOptions) {
+	if !server.shouldBroadcastReloadPayloadAfterReadiness(
+		reloadOptionsForReadiness,
+	) {
 		return
 	}
 	server.broadcastReloadPayloadIfGenerationCurrent(

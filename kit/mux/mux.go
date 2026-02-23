@@ -22,9 +22,9 @@ import (
 	"sync/atomic"
 
 	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/contextutil"
 	"github.com/vormadev/vorma/kit/genericsutil"
 	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/internal/muxcore"
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
@@ -34,12 +34,8 @@ import (
 
 var (
 	muxLog       = colorlog.New("mux")
-	requestStore = contextutil.NewStore[*rdTransport](
-		"__vorma_kit_mux_request_data",
-	)
-	emptyHTTPMws     = []httpMiddlewareWithOptions{}
-	emptyTaskMws     = []taskMiddlewareWithOptions{}
-	emptySplatValues []string
+	emptyHTTPMws = []httpMiddlewareWithOptions{}
+	emptyTaskMws = []taskMiddlewareWithOptions{}
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -177,31 +173,14 @@ func NewRouter(options ...*Options) *Router {
 		opts = options[0]
 	}
 
-	matcherOpts := new(matcher.Options)
 	if opts == nil {
 		opts = new(Options)
 	}
-	matcherOpts.DynamicParamPrefix = genericsutil.OrDefault(
-		opts.DynamicParamPrefix,
-		':',
-	)
-	matcherOpts.SplatSegmentIdentifier = genericsutil.OrDefault(
-		opts.SplatSegmentIdentifier,
-		'*',
-	)
-	mountRootToUse := opts.MountRoot
-	if mountRootToUse != "" {
-		if len(mountRootToUse) == 1 && mountRootToUse[0] == '/' {
-			mountRootToUse = ""
-		}
-		if len(mountRootToUse) > 1 && mountRootToUse[0] != '/' {
-			mountRootToUse = "/" + mountRootToUse
-		}
-		if len(mountRootToUse) > 0 &&
-			mountRootToUse[len(mountRootToUse)-1] != '/' {
-			mountRootToUse = mountRootToUse + "/"
-		}
-	}
+	matcherOpts := muxcore.BuildMatcherOptions(muxcore.MatcherOptionsInput{
+		DynamicParamPrefix:     opts.DynamicParamPrefix,
+		SplatSegmentIdentifier: opts.SplatSegmentIdentifier,
+	})
+	mountRootToUse := muxcore.NormalizeMountRoot(opts.MountRoot)
 	return &Router{
 		parseInput:         opts.ParseInput,
 		methodToMatcherMap: make(map[string]*methodMatcher),
@@ -461,37 +440,64 @@ func (rd *ReqData[I]) ResponseProxy() *response.Proxy { return rd.responseProxy 
 // Input returns parsed input for the route handler.
 func (rd *ReqData[I]) Input() I { return rd.input }
 
+// SetTasksCtx sets the task context used by the handler execution.
+func (rd *ReqData[I]) SetTasksCtx(tasksCtx *tasks.Ctx) {
+	rd.tasksCtx = tasksCtx
+}
+
+// ResetForReuse resets request data fields for pooled reuse.
+func (rd *ReqData[I]) ResetForReuse(
+	params Params,
+	splatValues []string,
+	input I,
+	req *http.Request,
+	responseProxy *response.Proxy,
+) {
+	rd.params = params
+	rd.splatVals = splatValues
+	rd.input = input
+	rd.req = req
+	rd.responseProxy = responseProxy
+	rd.tasksCtx = nil
+}
+
+// ClearForPool clears request data fields before returning to a pool.
+func (rd *ReqData[I]) ClearForPool() {
+	var zeroInput I
+	rd.params = nil
+	rd.splatVals = nil
+	rd.tasksCtx = nil
+	rd.input = zeroInput
+	rd.req = nil
+	rd.responseProxy = nil
+}
+
 // GetTasksCtx returns the request's tasks context when present.
 func GetTasksCtx(r *http.Request) *tasks.Ctx {
-	if rd := requestStore.Value(r.Context()); rd != nil {
-		return rd.tasksCtx
-	}
-	return nil
+	return muxcore.GetTasksCtx(r)
+}
+
+// RequestWithTasksCtx returns a request carrying the provided tasks context.
+func RequestWithTasksCtx(
+	request *http.Request,
+	tasksCtx *tasks.Ctx,
+) *http.Request {
+	return muxcore.RequestWithTasksCtx(request, tasksCtx)
 }
 
 // GetParam returns one route param by key.
 func GetParam(r *http.Request, key string) string {
-	return GetParams(r)[key]
+	return muxcore.GetParam(r, key)
 }
 
 // GetParams returns all route params for the request.
 func GetParams(r *http.Request) Params {
-	if rd := requestStore.Value(r.Context()); rd != nil {
-		if rd.params != nil {
-			return rd.params
-		}
-	}
-	return nil
+	return muxcore.GetParams(r)
 }
 
 // GetSplatValues returns all matched splat values for the request.
 func GetSplatValues(r *http.Request) []string {
-	if rd := requestStore.Value(r.Context()); rd != nil {
-		if rd.splatVals != nil {
-			return rd.splatVals
-		}
-	}
-	return emptySplatValues
+	return muxcore.GetSplatValues(r)
 }
 
 // ServeHTTP matches the request and executes the resolved route pipeline.
@@ -517,12 +523,16 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		!rt.hasAnyTaskMiddleware(mm, route) &&
 		!route.getNeedsTasksCtx() {
 		if len(match.Params) > 0 || len(match.SplatValues) > 0 {
-			rd := &rdTransport{
-				params:    match.Params,
-				splatVals: match.SplatValues,
-				req:       r,
-			}
-			r = requestStore.RequestWithContextValue(r, rd)
+			r = muxcore.RequestWithData(
+				r,
+				muxcore.NewRequestData(
+					match.Params,
+					match.SplatValues,
+					nil,
+					r,
+					nil,
+				),
+			)
 		}
 		handler := route.httpChain(rt, mm)
 		if best.headFellBackToGet {
@@ -534,14 +544,16 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Slow path: create TasksCtx and full request data
 	tasksCtx := tasks.NewCtx(r.Context())
-	rd := &rdTransport{
-		params:        match.Params,
-		splatVals:     match.SplatValues,
-		tasksCtx:      tasksCtx,
-		req:           r,
-		responseProxy: response.NewProxy(),
-	}
-	r = requestStore.RequestWithContextValue(r, rd)
+	r = muxcore.RequestWithData(
+		r,
+		muxcore.NewRequestData(
+			match.Params,
+			match.SplatValues,
+			tasksCtx,
+			r,
+			response.NewProxy(),
+		),
+	)
 	reqGetter := mm.reqDataGetters[match.OriginalPattern()]
 	reqData, err := reqGetter.getReqData(r, tasksCtx, match)
 	if err != nil {
@@ -595,14 +607,6 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 /////////////////////////////////////////////////////////////////////
 /////// PRIVATE API
 /////////////////////////////////////////////////////////////////////
-
-type rdTransport struct {
-	params        Params
-	splatVals     []string
-	tasksCtx      *tasks.Ctx
-	req           *http.Request
-	responseProxy *response.Proxy
-}
 
 func applyHTTPMiddlewareWithOptions(
 	mwWithOpts httpMiddlewareWithOptions,
@@ -1065,15 +1069,13 @@ func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
 		}
 
 		tasksCtx := tasks.NewCtx(r.Context())
-		rd := &rdTransport{
-			tasksCtx:      tasksCtx,
-			req:           r,
-			responseProxy: response.NewProxy(),
-			params:        nil,
-			splatVals:     emptySplatValues,
-		}
-
-		next.ServeHTTP(w, requestStore.RequestWithContextValue(r, rd))
+		next.ServeHTTP(
+			w,
+			muxcore.RequestWithData(
+				r,
+				muxcore.NewRequestDataWithTasksCtxOnly(r, tasksCtx),
+			),
+		)
 	})
 }
 

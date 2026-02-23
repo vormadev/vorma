@@ -10,6 +10,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
@@ -23,21 +24,33 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 				return "", expectedErr
 			},
 			generateRollupInput: func(*vormaruntime.LockedVorma, []string) (string, error) {
-				t.Fatal("did not expect rollup options generation after TypeScript generation error")
+				t.Fatal(
+					"did not expect rollup options generation after TypeScript generation error",
+				)
 				return "", nil
 			},
 		}
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			_, err := generateAndAssembleTSContentWithDependencies(app, l, dependencies)
+			_, err := generateAndAssembleTSContentWithDependencies(
+				app,
+				l,
+				dependencies,
+			)
 			if err == nil {
 				t.Fatal("expected generateAndAssembleTSContent to return error")
 			}
 			if !strings.Contains(err.Error(), "generate TypeScript") {
-				t.Fatalf("error = %q, expected generate-TypeScript context", err)
+				t.Fatalf(
+					"error = %q, expected generate-TypeScript context",
+					err,
+				)
 			}
 			if !errors.Is(err, expectedErr) {
-				t.Fatalf("error = %v, expected wrapped TypeScript generation error", err)
+				t.Fatalf(
+					"error = %v, expected wrapped TypeScript generation error",
+					err,
+				)
 			}
 		})
 	})
@@ -60,48 +73,76 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 		}
 
 		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			_, err := generateAndAssembleTSContentWithDependencies(app, l, dependencies)
+			_, err := generateAndAssembleTSContentWithDependencies(
+				app,
+				l,
+				dependencies,
+			)
 			if err == nil {
-				t.Fatal("expected generateAndAssembleTSContent to return rollup error")
+				t.Fatal(
+					"expected generateAndAssembleTSContent to return rollup error",
+				)
 			}
 			if !strings.Contains(err.Error(), "generate rollup options") {
-				t.Fatalf("error = %q, expected generate-rollup-options context", err)
+				t.Fatalf(
+					"error = %q, expected generate-rollup-options context",
+					err,
+				)
 			}
 			if !errors.Is(err, expectedErr) {
-				t.Fatalf("error = %v, expected wrapped rollup generation error", err)
+				t.Fatalf(
+					"error = %v, expected wrapped rollup generation error",
+					err,
+				)
 			}
 		})
 	})
 
-	t.Run("concatenates TypeScript output and rollup options output", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+	t.Run(
+		"concatenates TypeScript output and rollup options output",
+		func(t *testing.T) {
+			fixture := newBuildTestFixture(t, nil)
+			app := fixture.app
 
-		dependencies := generatedTSAssemblyDependencies{
-			generateTypeScript: func(tsGenInput) (string, error) {
-				return "TS_OUTPUT", nil
-			},
-			getEntrypoints: func(*vormaruntime.LockedVorma) []string {
-				return []string{"frontend/src/vorma.entry.tsx"}
-			},
-			generateRollupInput: func(*vormaruntime.LockedVorma, []string) (string, error) {
-				return "ROLLUP_OUTPUT", nil
-			},
-		}
+			dependencies := generatedTSAssemblyDependencies{
+				generateTypeScript: func(tsGenInput) (string, error) {
+					return "TS_OUTPUT", nil
+				},
+				getEntrypoints: func(*vormaruntime.LockedVorma) []string {
+					return []string{"frontend/src/vorma.entry.tsx"}
+				},
+				generateRollupInput: func(*vormaruntime.LockedVorma, []string) (string, error) {
+					return "ROLLUP_OUTPUT", nil
+				},
+			}
 
-		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			contentBytes, err := generateAndAssembleTSContentWithDependencies(app, l, dependencies)
-			if err != nil {
-				t.Fatalf("generateAndAssembleTSContent returned error: %v", err)
-			}
-			if string(contentBytes) != "TS_OUTPUTROLLUP_OUTPUT" {
-				t.Fatalf("assembled output = %q, want %q", string(contentBytes), "TS_OUTPUTROLLUP_OUTPUT")
-			}
-		})
-	})
+			app.WithLock(func(l *vormaruntime.LockedVorma) {
+				contentBytes, err := generateAndAssembleTSContentWithDependencies(
+					app,
+					l,
+					dependencies,
+				)
+				if err != nil {
+					t.Fatalf(
+						"generateAndAssembleTSContent returned error: %v",
+						err,
+					)
+				}
+				if string(contentBytes) != "TS_OUTPUTROLLUP_OUTPUT" {
+					t.Fatalf(
+						"assembled output = %q, want %q",
+						string(contentBytes),
+						"TS_OUTPUTROLLUP_OUTPUT",
+					)
+				}
+			})
+		},
+	)
 }
 
-func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrappingAndAssembly(t *testing.T) {
+func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrappingAndAssembly(
+	t *testing.T,
+) {
 	runtimeStateSnapshot := routeBuildRuntimeStateSnapshot{
 		paths: map[string]*vormaruntime.Path{
 			"/": {
@@ -123,7 +164,9 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 				return "", expectedErr
 			},
 			generateRollupInputForEntrypoints: func(*vormaruntime.Vorma, []string) (string, error) {
-				t.Fatal("did not expect rollup options generation after TypeScript generation error")
+				t.Fatal(
+					"did not expect rollup options generation after TypeScript generation error",
+				)
 				return "", nil
 			},
 		}
@@ -134,13 +177,18 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 			dependencies,
 		)
 		if err == nil {
-			t.Fatal("expected generateAndAssembleTSContentForRouteBuildRuntimeState to return error")
+			t.Fatal(
+				"expected generateAndAssembleTSContentForRouteBuildRuntimeState to return error",
+			)
 		}
 		if !strings.Contains(err.Error(), "generate TypeScript") {
 			t.Fatalf("error = %q, expected generate-TypeScript context", err)
 		}
 		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected wrapped TypeScript generation error", err)
+			t.Fatalf(
+				"error = %v, expected wrapped TypeScript generation error",
+				err,
+			)
 		}
 	})
 
@@ -167,82 +215,117 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 			dependencies,
 		)
 		if err == nil {
-			t.Fatal("expected generateAndAssembleTSContentForRouteBuildRuntimeState to return rollup error")
+			t.Fatal(
+				"expected generateAndAssembleTSContentForRouteBuildRuntimeState to return rollup error",
+			)
 		}
 		if !strings.Contains(err.Error(), "generate rollup options") {
-			t.Fatalf("error = %q, expected generate-rollup-options context", err)
+			t.Fatalf(
+				"error = %q, expected generate-rollup-options context",
+				err,
+			)
 		}
 		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected wrapped rollup generation error", err)
+			t.Fatalf(
+				"error = %v, expected wrapped rollup generation error",
+				err,
+			)
 		}
 	})
 
-	t.Run("concatenates TypeScript output and rollup options output", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+	t.Run(
+		"concatenates TypeScript output and rollup options output",
+		func(t *testing.T) {
+			fixture := newBuildTestFixture(t, nil)
+			app := fixture.app
 
-		dependencies := generatedTSAssemblyDependencies{
-			generateTypeScript: func(tsGenInput) (string, error) {
-				return "TS_OUTPUT", nil
-			},
-			getEntrypointsForPaths: func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) []string {
-				return []string{"frontend/src/vorma.entry.tsx"}
-			},
-			generateRollupInputForEntrypoints: func(*vormaruntime.Vorma, []string) (string, error) {
-				return "ROLLUP_OUTPUT", nil
-			},
-		}
+			dependencies := generatedTSAssemblyDependencies{
+				generateTypeScript: func(tsGenInput) (string, error) {
+					return "TS_OUTPUT", nil
+				},
+				getEntrypointsForPaths: func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) []string {
+					return []string{"frontend/src/vorma.entry.tsx"}
+				},
+				generateRollupInputForEntrypoints: func(*vormaruntime.Vorma, []string) (string, error) {
+					return "ROLLUP_OUTPUT", nil
+				},
+			}
 
-		contentBytes, err := generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshotWithDependencies(
-			app,
-			runtimeStateSnapshot,
-			dependencies,
-		)
-		if err != nil {
-			t.Fatalf("generateAndAssembleTSContentForRouteBuildRuntimeState returned error: %v", err)
-		}
-		if string(contentBytes) != "TS_OUTPUTROLLUP_OUTPUT" {
-			t.Fatalf("assembled output = %q, want %q", string(contentBytes), "TS_OUTPUTROLLUP_OUTPUT")
-		}
-	})
+			contentBytes, err := generateAndAssembleTSContentForRouteBuildRuntimeStateSnapshotWithDependencies(
+				app,
+				runtimeStateSnapshot,
+				dependencies,
+			)
+			if err != nil {
+				t.Fatalf(
+					"generateAndAssembleTSContentForRouteBuildRuntimeState returned error: %v",
+					err,
+				)
+			}
+			if string(contentBytes) != "TS_OUTPUTROLLUP_OUTPUT" {
+				t.Fatalf(
+					"assembled output = %q, want %q",
+					string(contentBytes),
+					"TS_OUTPUTROLLUP_OUTPUT",
+				)
+			}
+		},
+	)
 }
 
 func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
-	t.Run("passes generated content to write step with expected target path", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+	t.Run(
+		"passes generated content to write step with expected target path",
+		func(t *testing.T) {
+			fixture := newBuildTestFixture(t, nil)
+			app := fixture.app
 
-		var writeCalled bool
-		dependencies := generatedTSWriteDependencies{
-			generateAndAssembleTSContent: func(*vormaruntime.Vorma, *vormaruntime.LockedVorma) ([]byte, error) {
-				return []byte("GENERATED_CONTENT"), nil
-			},
-			writeGeneratedTSContentIfChanged: func(
-				_ *vormaruntime.Vorma,
-				targetPath string,
-				contentBytes []byte,
-			) error {
-				writeCalled = true
-				expectedTargetPath := filepath.Join(".", app.Config.TSGenOutDir, "index.ts")
-				if targetPath != expectedTargetPath {
-					t.Fatalf("target path = %q, want %q", targetPath, expectedTargetPath)
-				}
-				if string(contentBytes) != "GENERATED_CONTENT" {
-					t.Fatalf("content bytes = %q, want %q", string(contentBytes), "GENERATED_CONTENT")
-				}
-				return nil
-			},
-		}
-
-		app.WithLock(func(l *vormaruntime.LockedVorma) {
-			if err := writeGeneratedTSWithDependencies(l, dependencies); err != nil {
-				t.Fatalf("writeGeneratedTS returned error: %v", err)
+			var writeCalled bool
+			dependencies := generatedTSWriteDependencies{
+				generateAndAssembleTSContent: func(*vormaruntime.Vorma, *vormaruntime.LockedVorma) ([]byte, error) {
+					return []byte("GENERATED_CONTENT"), nil
+				},
+				writeGeneratedTSContentIfChanged: func(
+					_ *vormaruntime.Vorma,
+					targetPath string,
+					contentBytes []byte,
+				) error {
+					writeCalled = true
+					expectedTargetPath := filepath.Join(
+						".",
+						app.Config.TSGenOutDir,
+						"index.ts",
+					)
+					if targetPath != expectedTargetPath {
+						t.Fatalf(
+							"target path = %q, want %q",
+							targetPath,
+							expectedTargetPath,
+						)
+					}
+					if string(contentBytes) != "GENERATED_CONTENT" {
+						t.Fatalf(
+							"content bytes = %q, want %q",
+							string(contentBytes),
+							"GENERATED_CONTENT",
+						)
+					}
+					return nil
+				},
 			}
-		})
-		if !writeCalled {
-			t.Fatal("expected writeGeneratedTSContentIfChanged to be called")
-		}
-	})
+
+			app.WithLock(func(l *vormaruntime.LockedVorma) {
+				if err := writeGeneratedTSWithDependencies(l, dependencies); err != nil {
+					t.Fatalf("writeGeneratedTS returned error: %v", err)
+				}
+			})
+			if !writeCalled {
+				t.Fatal(
+					"expected writeGeneratedTSContentIfChanged to be called",
+				)
+			}
+		},
+	)
 
 	t.Run("returns assembly error", func(t *testing.T) {
 		fixture := newBuildTestFixture(t, nil)
@@ -296,7 +379,9 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 	})
 }
 
-func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(t *testing.T) {
+func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 	runtimeStateSnapshot := routeBuildRuntimeStateSnapshot{
@@ -304,47 +389,67 @@ func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(t
 		buildID: "snapshot-build-id",
 	}
 
-	t.Run("passes generated content to write step with expected target path", func(t *testing.T) {
-		var writeCalled bool
-		dependencies := generatedTSWriteDependencies{
-			generateAndAssembleTSContentForRuntimeStateSnapshot: func(
-				_ *vormaruntime.Vorma,
-				inputSnapshot routeBuildRuntimeStateSnapshot,
-			) ([]byte, error) {
-				if inputSnapshot.buildID != runtimeStateSnapshot.buildID {
-					t.Fatalf(
-						"runtime snapshot build ID = %q, want %q",
-						inputSnapshot.buildID,
-						runtimeStateSnapshot.buildID,
+	t.Run(
+		"passes generated content to write step with expected target path",
+		func(t *testing.T) {
+			var writeCalled bool
+			dependencies := generatedTSWriteDependencies{
+				generateAndAssembleTSContentForRuntimeStateSnapshot: func(
+					_ *vormaruntime.Vorma,
+					inputSnapshot routeBuildRuntimeStateSnapshot,
+				) ([]byte, error) {
+					if inputSnapshot.buildID != runtimeStateSnapshot.buildID {
+						t.Fatalf(
+							"runtime snapshot build ID = %q, want %q",
+							inputSnapshot.buildID,
+							runtimeStateSnapshot.buildID,
+						)
+					}
+					return []byte("GENERATED_CONTENT"), nil
+				},
+				writeGeneratedTSContentIfChanged: func(
+					_ *vormaruntime.Vorma,
+					targetPath string,
+					contentBytes []byte,
+				) error {
+					writeCalled = true
+					expectedTargetPath := filepath.Join(
+						".",
+						app.Config.TSGenOutDir,
+						"index.ts",
 					)
-				}
-				return []byte("GENERATED_CONTENT"), nil
-			},
-			writeGeneratedTSContentIfChanged: func(
-				_ *vormaruntime.Vorma,
-				targetPath string,
-				contentBytes []byte,
-			) error {
-				writeCalled = true
-				expectedTargetPath := filepath.Join(".", app.Config.TSGenOutDir, "index.ts")
-				if targetPath != expectedTargetPath {
-					t.Fatalf("target path = %q, want %q", targetPath, expectedTargetPath)
-				}
-				if string(contentBytes) != "GENERATED_CONTENT" {
-					t.Fatalf("content bytes = %q, want %q", string(contentBytes), "GENERATED_CONTENT")
-				}
-				return nil
-			},
-		}
+					if targetPath != expectedTargetPath {
+						t.Fatalf(
+							"target path = %q, want %q",
+							targetPath,
+							expectedTargetPath,
+						)
+					}
+					if string(contentBytes) != "GENERATED_CONTENT" {
+						t.Fatalf(
+							"content bytes = %q, want %q",
+							string(contentBytes),
+							"GENERATED_CONTENT",
+						)
+					}
+					return nil
+				},
+			}
 
-		executor := newGeneratedTSWriteExecutor(dependencies)
-		if err := executor.writeGeneratedTSForRouteBuildRuntimeState(app, runtimeStateSnapshot); err != nil {
-			t.Fatalf("writeGeneratedTSForRouteBuildRuntimeState returned error: %v", err)
-		}
-		if !writeCalled {
-			t.Fatal("expected writeGeneratedTSContentIfChanged to be called")
-		}
-	})
+			executor := newGeneratedTSWriteExecutor(dependencies)
+			if err := executor.writeGeneratedTSForRouteBuildRuntimeState(app, runtimeStateSnapshot); err != nil {
+				t.Fatalf(
+					"writeGeneratedTSForRouteBuildRuntimeState returned error: %v",
+					err,
+				)
+			}
+			if !writeCalled {
+				t.Fatal(
+					"expected writeGeneratedTSContentIfChanged to be called",
+				)
+			}
+		},
+	)
 
 	t.Run("returns assembly error", func(t *testing.T) {
 		expectedErr := errors.New("assembly failed")
@@ -362,9 +467,14 @@ func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(t
 		}
 
 		executor := newGeneratedTSWriteExecutor(dependencies)
-		err := executor.writeGeneratedTSForRouteBuildRuntimeState(app, runtimeStateSnapshot)
+		err := executor.writeGeneratedTSForRouteBuildRuntimeState(
+			app,
+			runtimeStateSnapshot,
+		)
 		if err == nil {
-			t.Fatal("expected writeGeneratedTSForRouteBuildRuntimeState to return assembly error")
+			t.Fatal(
+				"expected writeGeneratedTSForRouteBuildRuntimeState to return assembly error",
+			)
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped assembly error", err)
@@ -386,9 +496,14 @@ func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(t
 		}
 
 		executor := newGeneratedTSWriteExecutor(dependencies)
-		err := executor.writeGeneratedTSForRouteBuildRuntimeState(app, runtimeStateSnapshot)
+		err := executor.writeGeneratedTSForRouteBuildRuntimeState(
+			app,
+			runtimeStateSnapshot,
+		)
 		if err == nil {
-			t.Fatal("expected writeGeneratedTSForRouteBuildRuntimeState to return write step error")
+			t.Fatal(
+				"expected writeGeneratedTSForRouteBuildRuntimeState to return write step error",
+			)
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped write step error", err)
@@ -409,14 +524,23 @@ func TestWriteGeneratedTSContentIfChanged_ErrorBranches(t *testing.T) {
 				return false, expectedErr
 			},
 			makeGeneratedTSDirectory: func(string, fs.FileMode) error {
-				t.Fatal("did not expect directory creation after unchanged-check error")
+				t.Fatal(
+					"did not expect directory creation after unchanged-check error",
+				)
 				return nil
 			},
 		}
 
-		err := writeGeneratedTSContentIfChangedWithDependencies(app, targetPath, contentBytes, dependencies)
+		err := writeGeneratedTSContentIfChangedWithDependencies(
+			app,
+			targetPath,
+			contentBytes,
+			dependencies,
+		)
 		if err == nil {
-			t.Fatal("expected writeGeneratedTSContentIfChanged to return unchanged-check error")
+			t.Fatal(
+				"expected writeGeneratedTSContentIfChanged to return unchanged-check error",
+			)
 		}
 		if !strings.Contains(err.Error(), "check existing generated file") {
 			t.Fatalf("error = %q, expected unchanged-check context", err)
@@ -432,7 +556,9 @@ func TestWriteGeneratedTSContentIfChanged_ErrorBranches(t *testing.T) {
 				return true, nil
 			},
 			makeGeneratedTSDirectory: func(string, fs.FileMode) error {
-				t.Fatal("did not expect directory creation when content is unchanged")
+				t.Fatal(
+					"did not expect directory creation when content is unchanged",
+				)
 				return nil
 			},
 			writeGeneratedTSFile: func(string, []byte, fs.FileMode) error {
@@ -461,14 +587,23 @@ func TestWriteGeneratedTSContentIfChanged_ErrorBranches(t *testing.T) {
 				return expectedErr
 			},
 			writeGeneratedTSFile: func(string, []byte, fs.FileMode) error {
-				t.Fatal("did not expect file write after create-directory error")
+				t.Fatal(
+					"did not expect file write after create-directory error",
+				)
 				return nil
 			},
 		}
 
-		err := writeGeneratedTSContentIfChangedWithDependencies(app, targetPath, contentBytes, dependencies)
+		err := writeGeneratedTSContentIfChangedWithDependencies(
+			app,
+			targetPath,
+			contentBytes,
+			dependencies,
+		)
 		if err == nil {
-			t.Fatal("expected writeGeneratedTSContentIfChanged to return create-directory error")
+			t.Fatal(
+				"expected writeGeneratedTSContentIfChanged to return create-directory error",
+			)
 		}
 		if !strings.Contains(err.Error(), "create directory") {
 			t.Fatalf("error = %q, expected create-directory context", err)
@@ -492,9 +627,16 @@ func TestWriteGeneratedTSContentIfChanged_ErrorBranches(t *testing.T) {
 			},
 		}
 
-		err := writeGeneratedTSContentIfChangedWithDependencies(app, targetPath, contentBytes, dependencies)
+		err := writeGeneratedTSContentIfChangedWithDependencies(
+			app,
+			targetPath,
+			contentBytes,
+			dependencies,
+		)
 		if err == nil {
-			t.Fatal("expected writeGeneratedTSContentIfChanged to return write-file error")
+			t.Fatal(
+				"expected writeGeneratedTSContentIfChanged to return write-file error",
+			)
 		}
 		if !strings.Contains(err.Error(), "write file") {
 			t.Fatalf("error = %q, expected write-file context", err)
@@ -504,46 +646,68 @@ func TestWriteGeneratedTSContentIfChanged_ErrorBranches(t *testing.T) {
 		}
 	})
 
-	t.Run("writes generated TS file with build artifact file mode", func(t *testing.T) {
-		var capturedMode fs.FileMode
-		dependencies := generatedTSWriteFileDependencies{
-			generatedTSUnchanged: func(string, []byte) (bool, error) {
-				return false, nil
-			},
-			makeGeneratedTSDirectory: func(string, fs.FileMode) error {
-				return nil
-			},
-			writeGeneratedTSFile: func(_ string, _ []byte, fileMode fs.FileMode) error {
-				capturedMode = fileMode
-				return nil
-			},
-		}
+	t.Run(
+		"writes generated TS file with build artifact file mode",
+		func(t *testing.T) {
+			var capturedMode fs.FileMode
+			dependencies := generatedTSWriteFileDependencies{
+				generatedTSUnchanged: func(string, []byte) (bool, error) {
+					return false, nil
+				},
+				makeGeneratedTSDirectory: func(string, fs.FileMode) error {
+					return nil
+				},
+				writeGeneratedTSFile: func(_ string, _ []byte, fileMode fs.FileMode) error {
+					capturedMode = fileMode
+					return nil
+				},
+			}
 
-		if err := writeGeneratedTSContentIfChangedWithDependencies(
-			app,
-			targetPath,
-			contentBytes,
-			dependencies,
-		); err != nil {
-			t.Fatalf("writeGeneratedTSContentIfChanged returned error: %v", err)
-		}
-		if capturedMode != buildArtifactFileMode {
-			t.Fatalf("file mode = %v, want %v", capturedMode, buildArtifactFileMode)
-		}
-	})
+			if err := writeGeneratedTSContentIfChangedWithDependencies(
+				app,
+				targetPath,
+				contentBytes,
+				dependencies,
+			); err != nil {
+				t.Fatalf(
+					"writeGeneratedTSContentIfChanged returned error: %v",
+					err,
+				)
+			}
+			if capturedMode != buildArtifactFileMode {
+				t.Fatalf(
+					"file mode = %v, want %v",
+					capturedMode,
+					buildArtifactFileMode,
+				)
+			}
+		},
+	)
 }
 
 func TestRootDataTypeAlias(t *testing.T) {
-	if got := rootDataTypeAlias(true); !strings.Contains(got, `type VormaRootData = Extract`) {
-		t.Fatalf("rootDataTypeAlias(true) = %q, expected Extract type alias", got)
+	if got := rootDataTypeAlias(true); !strings.Contains(
+		got,
+		`type VormaRootData = Extract`,
+	) {
+		t.Fatalf(
+			"rootDataTypeAlias(true) = %q, expected Extract type alias",
+			got,
+		)
 	}
 	if got := rootDataTypeAlias(false); got != "type VormaRootData = null;" {
-		t.Fatalf("rootDataTypeAlias(false) = %q, want %q", got, "type VormaRootData = null;")
+		t.Fatalf(
+			"rootDataTypeAlias(false) = %q, want %q",
+			got,
+			"type VormaRootData = null;",
+		)
 	}
 }
 
-func TestBuildGeneratedTypeScriptBlock_AppendsExtraTSCodeAndNullRootData(t *testing.T) {
-	loadersRouter := mux.NewNestedRouter(nil)
+func TestBuildGeneratedTypeScriptBlock_AppendsExtraTSCodeAndNullRootData(
+	t *testing.T,
+) {
+	loadersRouter := nestedmux.NewRouter(nil)
 	actionsRouter := mux.NewRouter(&mux.Options{MountRoot: "/api/"})
 
 	generatedCode := buildGeneratedTypeScriptBlock(
@@ -565,13 +729,22 @@ func TestBuildGeneratedTypeScriptBlock_AppendsExtraTSCodeAndNullRootData(t *test
 	)
 
 	if !strings.Contains(generatedCode, "type VormaRootData = null;") {
-		t.Fatalf("generated block missing null root data type alias:\n%s", generatedCode)
+		t.Fatalf(
+			"generated block missing null root data type alias:\n%s",
+			generatedCode,
+		)
 	}
 	if !strings.Contains(generatedCode, `actionsRouterMountRoot: "/api/"`) {
-		t.Fatalf("generated block missing actions mount root:\n%s", generatedCode)
+		t.Fatalf(
+			"generated block missing actions mount root:\n%s",
+			generatedCode,
+		)
 	}
 	if !strings.Contains(generatedCode, "export const extraCode = true;") {
-		t.Fatalf("generated block missing appended extra TS code:\n%s", generatedCode)
+		t.Fatalf(
+			"generated block missing appended extra TS code:\n%s",
+			generatedCode,
+		)
 	}
 }
 
@@ -581,12 +754,16 @@ func TestRenderVitePluginConfig_ReturnsTemplateExecutionError(t *testing.T) {
 		vitePluginTemplate = originalVitePluginTemplate
 	})
 
-	vitePluginTemplate = template.Must(template.New("broken").Parse(`{{index .Entrypoints 99}}`))
+	vitePluginTemplate = template.Must(
+		template.New("broken").Parse(`{{index .Entrypoints 99}}`),
+	)
 	_, err := renderVitePluginConfig(vitePluginTemplateData{
 		Entrypoints: []string{"frontend/src/vorma.entry.tsx"},
 	})
 	if err == nil {
-		t.Fatal("expected renderVitePluginConfig to return template execution error")
+		t.Fatal(
+			"expected renderVitePluginConfig to return template execution error",
+		)
 	}
 	if !strings.Contains(err.Error(), "error executing template") {
 		t.Fatalf("error = %q, expected template execution context", err)
@@ -599,18 +776,26 @@ func TestGenerateRollupOptions_WrapsRenderError(t *testing.T) {
 		vitePluginTemplate = originalVitePluginTemplate
 	})
 
-	vitePluginTemplate = template.Must(template.New("broken").Parse(`{{index .Entrypoints 99}}`))
+	vitePluginTemplate = template.Must(
+		template.New("broken").Parse(`{{index .Entrypoints 99}}`),
+	)
 
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
-		_, err := generateRollupOptions(l, []string{"frontend/src/vorma.entry.tsx"})
+		_, err := generateRollupOptions(
+			l,
+			[]string{"frontend/src/vorma.entry.tsx"},
+		)
 		if err == nil {
 			t.Fatal("expected generateRollupOptions to return render error")
 		}
 		if !strings.Contains(err.Error(), "render vite plugin config") {
-			t.Fatalf("error = %q, expected render-vite-plugin-config context", err)
+			t.Fatalf(
+				"error = %q, expected render-vite-plugin-config context",
+				err,
+			)
 		}
 		if !strings.Contains(err.Error(), "error executing template") {
 			t.Fatalf("error = %q, expected template execution context", err)

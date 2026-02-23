@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VORMA_SYMBOL } from "../../app/context.ts";
 import {
 	buildRouteDataRequestURL,
 	resolveServerRouteDataResult,
+	startParallelClientLoaders,
 } from "../../core/navigation/fetch_route_data_server.ts";
 import type { NavigateProps } from "../../core/navigation/types.ts";
+import * as renderRuntimeModule from "../../core/render_runtime.ts";
 
 const TEST_VORMA_APP_CONFIG = {
 	actionsRouterMountRoot: "/api/",
@@ -61,9 +63,25 @@ function buildNavigationProps(
 	};
 }
 
+function createMatch(pattern: string) {
+	return {
+		registeredPattern: {
+			originalPattern: pattern,
+			normalizedSegments: [],
+			lastSegType: "static",
+		},
+		params: {},
+		splatValues: [],
+	};
+}
+
 describe("fetch route data server internals", () => {
 	beforeEach(() => {
 		installVormaGlobal();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
 	describe("buildRouteDataRequestURL", () => {
@@ -215,6 +233,117 @@ describe("fetch route data server internals", () => {
 				json,
 			});
 			expect(controller.signal.aborted).toBe(false);
+		});
+	});
+
+	describe("startParallelClientLoaders", () => {
+		it("starts matched loader wait functions and forwards resolved server data", async () => {
+			vi.spyOn(
+				renderRuntimeModule,
+				"findPartialMatchesOnClient",
+			).mockResolvedValue({
+				params: { id: "123" },
+				splatValues: [],
+				matches: [createMatch("/a"), createMatch("/b")],
+			} as any);
+
+			installVormaGlobal({
+				patternToWaitFnMap: {
+					"/a": async (props: any) => {
+						const serverData = await props.serverDataPromise;
+						return {
+							pattern: "/a",
+							loaderData: serverData.loaderData,
+							buildID: serverData.buildID,
+						};
+					},
+					"/b": async (props: any) => {
+						const serverData = await props.serverDataPromise;
+						return {
+							pattern: "/b",
+							loaderData: serverData.loaderData,
+							buildID: serverData.buildID,
+						};
+					},
+				},
+			});
+
+			const serverPromise = Promise.resolve({
+				redirectData: null,
+				response: new Response("{}", {
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "build-77",
+					},
+				}),
+				json: {
+					matchedPatterns: ["/a", "/b"],
+					loadersData: ["A", "B"],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+					title: undefined,
+					metaHeadEls: undefined,
+					restHeadEls: undefined,
+				},
+			});
+
+			const runningLoaders = await startParallelClientLoaders({
+				pathname: "/next",
+				serverPromise,
+				signal: new AbortController().signal,
+			});
+
+			expect(Array.from(runningLoaders.keys())).toEqual(["/a", "/b"]);
+			await expect(runningLoaders.get("/a")).resolves.toEqual({
+				pattern: "/a",
+				loaderData: "A",
+				buildID: "build-77",
+			});
+			await expect(runningLoaders.get("/b")).resolves.toEqual({
+				pattern: "/b",
+				loaderData: "B",
+				buildID: "build-77",
+			});
+		});
+
+		it("converts server promise rejection into unavailable-server-data abort errors", async () => {
+			vi.spyOn(
+				renderRuntimeModule,
+				"findPartialMatchesOnClient",
+			).mockResolvedValue({
+				params: {},
+				splatValues: [],
+				matches: [createMatch("/a"), createMatch("/b")],
+			} as any);
+
+			installVormaGlobal({
+				patternToWaitFnMap: {
+					"/a": async (props: any) => props.serverDataPromise,
+					"/b": async (props: any) => props.serverDataPromise,
+				},
+			});
+
+			const runningLoaders = await startParallelClientLoaders({
+				pathname: "/next",
+				serverPromise: Promise.reject(
+					new Error("server route fetch failed"),
+				),
+				signal: new AbortController().signal,
+			});
+
+			await expect(runningLoaders.get("/a")).rejects.toMatchObject({
+				name: "AbortError",
+			});
+			await expect(runningLoaders.get("/b")).rejects.toMatchObject({
+				name: "AbortError",
+			});
 		});
 	});
 });

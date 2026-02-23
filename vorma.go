@@ -17,6 +17,7 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
@@ -58,7 +59,7 @@ type (
 	DiscoveredRegisteredAction = struct{ Method, Pattern string }
 	// DiscoveredLoaderTaskExecutor executes discovered loader tasks for a
 	// request.
-	DiscoveredLoaderTaskExecutor = func(r *http.Request) (*mux.NestedTasksResults, bool)
+	DiscoveredLoaderTaskExecutor = func(r *http.Request) (*nestedmux.TasksResults, bool)
 )
 
 // Vorma is the public app facade over internal runtime state.
@@ -194,7 +195,7 @@ func RegisterDiscoveredLoaderTask[O any](
 	task *Loader[O],
 ) {
 	runtimeApp := app.requireRuntime("vorma.RegisterDiscoveredLoaderTask")
-	mux.AddNestedTaskHandler(
+	nestedmux.AddTaskHandler(
 		runtimeApp.LoadersRouter().NestedRouter,
 		pattern,
 		task,
@@ -244,11 +245,11 @@ func (v *Vorma) RegisteredActionRoutes() []DiscoveredRegisteredAction {
 // their task graph for the request.
 func (v *Vorma) FindNestedMatchesAndRunLoaderTasks(
 	r *http.Request,
-) (*mux.NestedTasksResults, bool) {
+) (*nestedmux.TasksResults, bool) {
 	runtimeApp := v.requireRuntime(
 		"vorma.Vorma.FindNestedMatchesAndRunLoaderTasks",
 	)
-	return mux.FindNestedMatchesAndRunTasks(
+	return nestedmux.FindMatchesAndRunTasks(
 		runtimeApp.LoadersRouter().NestedRouter,
 		r,
 	)

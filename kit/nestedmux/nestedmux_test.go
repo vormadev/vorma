@@ -1,4 +1,4 @@
-package mux
+package nestedmux_test
 
 import (
 	"context"
@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/tasks"
 )
 
 func TestNestedRouterBasics(t *testing.T) {
 	t.Run("NewNestedRouter_WithDefaults", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 		if nr.DynamicParamPrefix() != ':' {
 			t.Error("Default dynamic param prefix should be ':'")
@@ -29,7 +31,7 @@ func TestNestedRouterBasics(t *testing.T) {
 	})
 
 	t.Run("NewNestedRouter_WithOptions", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{
+		nr := nestedmux.NewRouter(&nestedmux.Options{
 			DynamicParamPrefix:             '@',
 			SplatSegmentIdentifier:         '#',
 			ExplicitIndexSegmentIdentifier: "_index",
@@ -48,14 +50,16 @@ func TestNestedRouterBasics(t *testing.T) {
 }
 
 func TestNestedRouteRegistration(t *testing.T) {
-	t.Run("AddNestedTaskHandler", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+	t.Run("AddTaskHandler", func(t *testing.T) {
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		handler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "test result", nil
-		})
+		handler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
+				return "test result", nil
+			},
+		)
 
-		route := AddNestedTaskHandler(nr, "/test", handler)
+		route := nestedmux.AddTaskHandler(nr, "/test", handler)
 
 		if route.OriginalPattern() != "/test" {
 			t.Errorf(
@@ -74,9 +78,9 @@ func TestNestedRouteRegistration(t *testing.T) {
 	})
 
 	t.Run("AddNestedPatternWithoutHandler", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		AddNestedPatternWithoutHandler(nr, "/static")
+		nestedmux.AddPatternWithoutHandler(nr, "/static")
 
 		if !nr.IsRegistered("/static") {
 			t.Error("Pattern should be registered")
@@ -96,22 +100,19 @@ func TestNestedRouteRegistration(t *testing.T) {
 			}
 		}()
 
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		AddNestedPatternWithoutHandler(nr, "/test")
-		AddNestedPatternWithoutHandler(nr, "/test") // Should panic
+		nestedmux.AddPatternWithoutHandler(nr, "/test")
+		nestedmux.AddPatternWithoutHandler(nr, "/test") // Should panic
 	})
 
 	t.Run("AllRoutes_ReturnsDefensiveCopy", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
-		AddNestedPatternWithoutHandler(nr, "/immutable")
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
+		nestedmux.AddPatternWithoutHandler(nr, "/immutable")
 
 		allRoutes := nr.AllRoutes()
 		delete(allRoutes, "/immutable")
-		allRoutes["/injected"] = &NestedRoute[None]{
-			router:          nr,
-			originalPattern: "/injected",
-		}
+		allRoutes["/injected"] = nil
 
 		if !nr.IsRegistered("/immutable") {
 			t.Fatal(
@@ -126,8 +127,8 @@ func TestNestedRouteRegistration(t *testing.T) {
 	})
 
 	t.Run("GetMatcher_ReturnsDefensiveCopy", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
-		AddNestedPatternWithoutHandler(nr, "/registered")
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
+		nestedmux.AddPatternWithoutHandler(nr, "/registered")
 
 		matcherCopy := nr.Matcher()
 		matcherCopy.RegisterPattern("/injected")
@@ -136,7 +137,7 @@ func TestNestedRouteRegistration(t *testing.T) {
 			http.MethodGet,
 			"/injected",
 		)
-		_, injectedFound := FindNestedMatches(nr, injectedRequest)
+		_, injectedFound := nestedmux.FindMatches(nr, injectedRequest)
 		if injectedFound {
 			t.Fatal(
 				"mutating Matcher() result should not affect router matching state",
@@ -147,7 +148,7 @@ func TestNestedRouteRegistration(t *testing.T) {
 			http.MethodGet,
 			"/registered",
 		)
-		_, registeredFound := FindNestedMatches(nr, registeredRequest)
+		_, registeredFound := nestedmux.FindMatches(nr, registeredRequest)
 		if !registeredFound {
 			t.Fatal(
 				"registered route should still match after mutating matcher copy",
@@ -156,14 +157,14 @@ func TestNestedRouteRegistration(t *testing.T) {
 	})
 
 	t.Run(
-		"AddNestedPatternWithoutHandlerIfMissing_IsIdempotent",
+		"AddPatternWithoutHandlerIfMissing_IsIdempotent",
 		func(t *testing.T) {
-			nr := NewNestedRouter(&NestedOptions{})
+			nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-			if registered := nr.AddNestedPatternWithoutHandlerIfMissing("/safe"); !registered {
+			if registered := nr.AddPatternWithoutHandlerIfMissing("/safe"); !registered {
 				t.Fatal("expected first registration to report registered=true")
 			}
-			if registered := nr.AddNestedPatternWithoutHandlerIfMissing("/safe"); registered {
+			if registered := nr.AddPatternWithoutHandlerIfMissing("/safe"); registered {
 				t.Fatal(
 					"expected duplicate registration to report registered=false",
 				)
@@ -175,9 +176,9 @@ func TestNestedRouteRegistration(t *testing.T) {
 	)
 
 	t.Run(
-		"AddNestedPatternWithoutHandlerIfMissing_IsConcurrentSafe",
+		"AddPatternWithoutHandlerIfMissing_IsConcurrentSafe",
 		func(t *testing.T) {
-			nr := NewNestedRouter(&NestedOptions{})
+			nr := nestedmux.NewRouter(&nestedmux.Options{})
 			startGate := make(chan struct{})
 			const goroutineCount = 16
 			var completedCount atomic.Int32
@@ -187,7 +188,7 @@ func TestNestedRouteRegistration(t *testing.T) {
 			for i := 0; i < goroutineCount; i++ {
 				go func() {
 					<-startGate
-					if nr.AddNestedPatternWithoutHandlerIfMissing(
+					if nr.AddPatternWithoutHandlerIfMissing(
 						"/concurrent-safe",
 					) {
 						successfulRegistrationCount.Add(1)
@@ -216,12 +217,12 @@ func TestNestedRouteRegistration(t *testing.T) {
 
 func TestFindNestedMatches(t *testing.T) {
 	t.Run("Single_Match", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		AddNestedPatternWithoutHandler(nr, "/users")
+		nestedmux.AddPatternWithoutHandler(nr, "/users")
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/users")
-		results, found := FindNestedMatches(nr, req)
+		results, found := nestedmux.FindMatches(nr, req)
 
 		if !found {
 			t.Error("Should find matches")
@@ -238,18 +239,18 @@ func TestFindNestedMatches(t *testing.T) {
 	})
 
 	t.Run("Nested_Matches", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 		// Register nested patterns like a UI router would have
-		AddNestedPatternWithoutHandler(
+		nestedmux.AddPatternWithoutHandler(
 			nr,
 			"",
 		) // empty because we have no explicit index
-		AddNestedPatternWithoutHandler(nr, "/users")
-		AddNestedPatternWithoutHandler(nr, "/users/:id")
+		nestedmux.AddPatternWithoutHandler(nr, "/users")
+		nestedmux.AddPatternWithoutHandler(nr, "/users/:id")
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/users/123")
-		results, found := FindNestedMatches(nr, req)
+		results, found := nestedmux.FindMatches(nr, req)
 
 		if !found {
 			t.Error("Should find matches")
@@ -278,12 +279,12 @@ func TestFindNestedMatches(t *testing.T) {
 	})
 
 	t.Run("No_Match", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		AddNestedPatternWithoutHandler(nr, "/users")
+		nestedmux.AddPatternWithoutHandler(nr, "/users")
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/posts")
-		_, found := FindNestedMatches(nr, req)
+		_, found := nestedmux.FindMatches(nr, req)
 
 		if found {
 			t.Error("Should not find matches for unregistered path")
@@ -291,15 +292,15 @@ func TestFindNestedMatches(t *testing.T) {
 	})
 
 	t.Run("Splat_Pattern", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		AddNestedPatternWithoutHandler(nr, "/files/*")
+		nestedmux.AddPatternWithoutHandler(nr, "/files/*")
 
 		req := createRequestWithGetTasksCtx(
 			http.MethodGet,
 			"/files/docs/readme.txt",
 		)
-		results, found := FindNestedMatches(nr, req)
+		results, found := nestedmux.FindMatches(nr, req)
 
 		if !found {
 			t.Error("Should find matches")
@@ -321,8 +322,8 @@ func TestFindNestedMatches(t *testing.T) {
 	})
 
 	t.Run("IsSafeDuringConcurrentRouteRegistration", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
-		AddNestedPatternWithoutHandler(nr, "/seed")
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
+		nestedmux.AddPatternWithoutHandler(nr, "/seed")
 
 		const totalRoutes = 512
 		start := make(chan struct{})
@@ -331,7 +332,7 @@ func TestFindNestedMatches(t *testing.T) {
 		go func() {
 			<-start
 			for i := range totalRoutes {
-				nr.AddNestedPatternWithoutHandlerIfMissing(
+				nr.AddPatternWithoutHandlerIfMissing(
 					fmt.Sprintf("/concurrent/%d", i),
 				)
 			}
@@ -344,7 +345,7 @@ func TestFindNestedMatches(t *testing.T) {
 				http.MethodGet,
 				fmt.Sprintf("/concurrent/%d", i),
 			)
-			FindNestedMatches(nr, req)
+			nestedmux.FindMatches(nr, req)
 		}
 		<-done
 
@@ -352,7 +353,7 @@ func TestFindNestedMatches(t *testing.T) {
 			http.MethodGet,
 			fmt.Sprintf("/concurrent/%d", totalRoutes-1),
 		)
-		_, found := FindNestedMatches(nr, finalRequest)
+		_, found := nestedmux.FindMatches(nr, finalRequest)
 		if !found {
 			t.Fatal("expected concurrently registered route to be matchable")
 		}
@@ -361,36 +362,36 @@ func TestFindNestedMatches(t *testing.T) {
 
 func TestRunNestedTasks(t *testing.T) {
 	t.Run("Run_Multiple_Tasks", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 		// Register handlers that return different data
-		layoutHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (map[string]string, error) {
+		layoutHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
 				return map[string]string{"layout": "main"}, nil
 			},
 		)
-		pageHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (map[string]string, error) {
+		pageHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
 				return map[string]string{"page": "users"}, nil
 			},
 		)
-		userHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (map[string]string, error) {
+		userHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
 				return map[string]string{"user": rd.Params()["id"]}, nil
 			},
 		)
 
-		AddNestedTaskHandler(
+		nestedmux.AddTaskHandler(
 			nr,
 			"",
 			layoutHandler,
 		) // empty because we have no explicit index
-		AddNestedTaskHandler(nr, "/users", pageHandler)
-		AddNestedTaskHandler(nr, "/users/:id", userHandler)
+		nestedmux.AddTaskHandler(nr, "/users", pageHandler)
+		nestedmux.AddTaskHandler(nr, "/users/:id", userHandler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/users/456")
 
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 
 		if !found {
 			t.Error("Should find matches")
@@ -432,29 +433,31 @@ func TestRunNestedTasks(t *testing.T) {
 	})
 
 	t.Run("Mixed_Handlers_And_No_Handlers", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		handler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "with handler", nil
-		})
+		handler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
+				return "with handler", nil
+			},
+		)
 
-		AddNestedPatternWithoutHandler(nr, "/static")
-		AddNestedTaskHandler(nr, "/dynamic", handler)
+		nestedmux.AddPatternWithoutHandler(nr, "/static")
+		nestedmux.AddTaskHandler(nr, "/dynamic", handler)
 
 		// Should match both patterns since /dynamic matches both /static and /dynamic patterns
 		// Wait, actually looking at the matcher, it would only match /dynamic
 		// Let me adjust the test to have patterns that would both match
 
 		// Reset and use patterns that would both match a single request
-		nr = NewNestedRouter(&NestedOptions{})
-		AddNestedPatternWithoutHandler(
+		nr = nestedmux.NewRouter(&nestedmux.Options{})
+		nestedmux.AddPatternWithoutHandler(
 			nr,
 			"",
 		) // empty because we have no explicit index
-		AddNestedTaskHandler(nr, "/page", handler)
+		nestedmux.AddTaskHandler(nr, "/page", handler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/page")
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 
 		if !found {
 			t.Error("Should find matches")
@@ -486,19 +489,19 @@ func TestRunNestedTasks(t *testing.T) {
 	})
 
 	t.Run("Task_Error_Handling", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		errorHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		errorHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				return "", &testError{msg: "task failed"}
 			},
 		)
 
-		AddNestedTaskHandler(nr, "/error", errorHandler)
+		nestedmux.AddTaskHandler(nr, "/error", errorHandler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/error")
 
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 
 		if !found {
 			t.Error("Should find matches")
@@ -520,28 +523,28 @@ func TestRunNestedTasks(t *testing.T) {
 	})
 
 	t.Run("Task_Error_Does_Not_Cancel_Siblings", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 		var outerRan atomic.Bool
-		outerHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		outerHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				outerRan.Store(true)
 				// Give the sibling error path time to complete first.
 				time.Sleep(25 * time.Millisecond)
 				return "outer-ok", nil
 			},
 		)
-		innerHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		innerHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				return "", errors.New("inner failed")
 			},
 		)
 
-		AddNestedTaskHandler(nr, "/items", outerHandler)
-		AddNestedTaskHandler(nr, "/items/:id", innerHandler)
+		nestedmux.AddTaskHandler(nr, "/items", outerHandler)
+		nestedmux.AddTaskHandler(nr, "/items/:id", innerHandler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/items/123")
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 
 		if !found {
 			t.Fatal("should find matches")
@@ -571,16 +574,16 @@ func TestRunNestedTasks(t *testing.T) {
 	})
 
 	t.Run("Parent_Error_Cancels_Descendants", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 		var childStarted atomic.Bool
-		parentHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		parentHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				return "", errors.New("parent failed")
 			},
 		)
-		childHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		childHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				childStarted.Store(true)
 				select {
 				case <-rd.TasksCtx().NativeContext().Done():
@@ -591,11 +594,11 @@ func TestRunNestedTasks(t *testing.T) {
 			},
 		)
 
-		AddNestedTaskHandler(nr, "/items", parentHandler)
-		AddNestedTaskHandler(nr, "/items/:id", childHandler)
+		nestedmux.AddTaskHandler(nr, "/items", parentHandler)
+		nestedmux.AddTaskHandler(nr, "/items/:id", childHandler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/items/123")
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 		if !found {
 			t.Fatal("should find matches")
 		}
@@ -624,28 +627,28 @@ func TestRunNestedTasks(t *testing.T) {
 	})
 
 	t.Run("Matched_Tasks_Still_Run_In_Parallel", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 		sleep := 60 * time.Millisecond
-		parentHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		parentHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				time.Sleep(sleep)
 				return "parent-ok", nil
 			},
 		)
-		childHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		childHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				time.Sleep(sleep)
 				return "child-ok", nil
 			},
 		)
 
-		AddNestedTaskHandler(nr, "/parallel", parentHandler)
-		AddNestedTaskHandler(nr, "/parallel/:id", childHandler)
+		nestedmux.AddTaskHandler(nr, "/parallel", parentHandler)
+		nestedmux.AddTaskHandler(nr, "/parallel/:id", childHandler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/parallel/123")
 		start := time.Now()
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 		elapsed := time.Since(start)
 		if !found {
 			t.Fatal("should find matches")
@@ -670,21 +673,21 @@ func TestRunNestedTasks(t *testing.T) {
 	})
 
 	t.Run("Middle_Error_Cancels_Only_Descendants", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		parentHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		parentHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				time.Sleep(25 * time.Millisecond)
 				return "parent-ok", nil
 			},
 		)
-		middleHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		middleHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				return "", errors.New("middle failed")
 			},
 		)
-		leafHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		leafHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				select {
 				case <-rd.TasksCtx().NativeContext().Done():
 					return "", rd.TasksCtx().NativeContext().Err()
@@ -694,15 +697,15 @@ func TestRunNestedTasks(t *testing.T) {
 			},
 		)
 
-		AddNestedTaskHandler(nr, "/items", parentHandler)
-		AddNestedTaskHandler(nr, "/items/:id", middleHandler)
-		AddNestedTaskHandler(nr, "/items/:id/details", leafHandler)
+		nestedmux.AddTaskHandler(nr, "/items", parentHandler)
+		nestedmux.AddTaskHandler(nr, "/items/:id", middleHandler)
+		nestedmux.AddTaskHandler(nr, "/items/:id/details", leafHandler)
 
 		req := createRequestWithGetTasksCtx(
 			http.MethodGet,
 			"/items/123/details",
 		)
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 		if !found {
 			t.Fatal("should find matches")
 		}
@@ -738,33 +741,33 @@ func TestRunNestedTasks(t *testing.T) {
 	t.Run(
 		"SharedTaskDependencyRunsOnceAcrossNestedHandlers",
 		func(t *testing.T) {
-			nr := NewNestedRouter(&NestedOptions{})
+			nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 			var sharedRuns atomic.Int32
 			sharedTask := tasks.NewTask(
-				func(c *tasks.Ctx, _ None) (string, error) {
+				func(c *tasks.Ctx, _ mux.None) (string, error) {
 					sharedRuns.Add(1)
 					time.Sleep(20 * time.Millisecond)
 					return "shared-result", nil
 				},
 			)
 
-			parentHandler := TaskHandlerFromFunc(
-				func(rd *ReqData[None]) (string, error) {
-					return sharedTask.Run(rd.TasksCtx(), None{})
+			parentHandler := mux.TaskHandlerFromFunc(
+				func(rd *mux.ReqData[mux.None]) (string, error) {
+					return sharedTask.Run(rd.TasksCtx(), mux.None{})
 				},
 			)
-			childHandler := TaskHandlerFromFunc(
-				func(rd *ReqData[None]) (string, error) {
-					return sharedTask.Run(rd.TasksCtx(), None{})
+			childHandler := mux.TaskHandlerFromFunc(
+				func(rd *mux.ReqData[mux.None]) (string, error) {
+					return sharedTask.Run(rd.TasksCtx(), mux.None{})
 				},
 			)
 
-			AddNestedTaskHandler(nr, "/items", parentHandler)
-			AddNestedTaskHandler(nr, "/items/:id", childHandler)
+			nestedmux.AddTaskHandler(nr, "/items", parentHandler)
+			nestedmux.AddTaskHandler(nr, "/items/:id", childHandler)
 
 			req := createRequestWithGetTasksCtx(http.MethodGet, "/items/123")
-			results, found := FindNestedMatchesAndRunTasks(nr, req)
+			results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 			if !found {
 				t.Fatal("should find matches")
 			}
@@ -799,19 +802,21 @@ func TestRunNestedTasks(t *testing.T) {
 	)
 
 	t.Run("HasTaskHandlerAt", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		handler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "test", nil
-		})
+		handler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
+				return "test", nil
+			},
+		)
 
-		AddNestedPatternWithoutHandler(nr, "/no-handler")
-		AddNestedTaskHandler(nr, "/with-handler", handler)
+		nestedmux.AddPatternWithoutHandler(nr, "/no-handler")
+		nestedmux.AddTaskHandler(nr, "/with-handler", handler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/with-handler")
-		matches, _ := FindNestedMatches(nr, req)
+		matches, _ := nestedmux.FindMatches(nr, req)
 
-		results := RunNestedTasks(nr, req, matches)
+		results := nestedmux.RunTasks(nr, req, matches)
 
 		// The results should track which indices had task handlers
 		// Based on the order of matches, we need to check the right indices
@@ -835,20 +840,22 @@ func TestRunNestedTasks(t *testing.T) {
 
 func TestNestedRouterWithExplicitIndex(t *testing.T) {
 	t.Run("Explicit_Index_Segment", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{
+		nr := nestedmux.NewRouter(&nestedmux.Options{
 			ExplicitIndexSegmentIdentifier: "_index",
 		})
 
-		handler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "index page", nil
-		})
+		handler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
+				return "index page", nil
+			},
+		)
 
 		// With explicit index, you'd register like this instead of trailing slash
-		AddNestedTaskHandler(nr, "/users/_index", handler)
+		nestedmux.AddTaskHandler(nr, "/users/_index", handler)
 
 		// This would match /users/ or /users
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/users/")
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
 
 		if !found {
 			t.Error("Should find matches with explicit index")
@@ -866,34 +873,28 @@ func TestNestedRouterWithExplicitIndex(t *testing.T) {
 
 func TestNestedRouterRouteReplacement(t *testing.T) {
 	t.Run("ReplaceRoutes_ReplacesMatcherAndCompiledRoutes", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		oldHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		oldHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				return "old", nil
 			},
 		)
-		newHandler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		newHandler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				return "new", nil
 			},
 		)
 
-		AddNestedTaskHandler(nr, "/old", oldHandler)
-		AddNestedPatternWithoutHandler(nr, "/legacy")
+		nestedmux.AddTaskHandler(nr, "/old", oldHandler)
+		nestedmux.AddPatternWithoutHandler(nr, "/legacy")
 
-		nr.ReplaceRoutes(map[string]AnyNestedRoute{
-			"/fresh": &NestedRoute[string]{
-				router:          nr,
-				originalPattern: "/fresh",
-				taskHandler:     newHandler,
-			},
-			"/static": &NestedRoute[None]{
-				router:          nr,
-				originalPattern: "/static",
-				taskHandler:     nil,
-			},
-		})
+		replacementRouter := nestedmux.NewRouter(
+			&nestedmux.Options{},
+		)
+		nestedmux.AddTaskHandler(replacementRouter, "/fresh", newHandler)
+		nestedmux.AddPatternWithoutHandler(replacementRouter, "/static")
+		nr.ReplaceRoutes(replacementRouter.AllRoutes())
 
 		if nr.IsRegistered("/old") {
 			t.Fatal("expected /old to be removed after ReplaceRoutes")
@@ -906,12 +907,12 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 		}
 
 		reqOld := createRequestWithGetTasksCtx(http.MethodGet, "/old")
-		if _, found := FindNestedMatchesAndRunTasks(nr, reqOld); found {
+		if _, found := nestedmux.FindMatchesAndRunTasks(nr, reqOld); found {
 			t.Fatal("expected /old not to match after ReplaceRoutes")
 		}
 
 		reqFresh := createRequestWithGetTasksCtx(http.MethodGet, "/fresh")
-		results, found := FindNestedMatchesAndRunTasks(nr, reqFresh)
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, reqFresh)
 		if !found {
 			t.Fatal("expected /fresh to match after ReplaceRoutes")
 		}
@@ -928,21 +929,17 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 	})
 
 	t.Run("ReplaceRoutes_DefensivelyCopiesInputMap", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		replacementRoutes := map[string]AnyNestedRoute{
-			"/initial": &NestedRoute[None]{
-				router:          nr,
-				originalPattern: "/initial",
-			},
-		}
+		replacementRouter := nestedmux.NewRouter(
+			&nestedmux.Options{},
+		)
+		nestedmux.AddPatternWithoutHandler(replacementRouter, "/initial")
+		replacementRoutes := replacementRouter.AllRoutes()
 		nr.ReplaceRoutes(replacementRoutes)
 
 		delete(replacementRoutes, "/initial")
-		replacementRoutes["/injected"] = &NestedRoute[None]{
-			router:          nr,
-			originalPattern: "/injected",
-		}
+		replacementRoutes["/injected"] = nil
 
 		if !nr.IsRegistered("/initial") {
 			t.Fatal(
@@ -957,7 +954,10 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 			http.MethodGet,
 			"/initial",
 		)
-		_, initialFound := FindNestedMatchesAndRunTasks(nr, initialRequest)
+		_, initialFound := nestedmux.FindMatchesAndRunTasks(
+			nr,
+			initialRequest,
+		)
 		if !initialFound {
 			t.Fatal(
 				"expected /initial to remain matchable after caller map mutation",
@@ -968,7 +968,10 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 			http.MethodGet,
 			"/injected",
 		)
-		_, injectedFound := FindNestedMatchesAndRunTasks(nr, injectedRequest)
+		_, injectedFound := nestedmux.FindMatchesAndRunTasks(
+			nr,
+			injectedRequest,
+		)
 		if injectedFound {
 			t.Fatal("expected /injected not to match after caller map mutation")
 		}
@@ -977,17 +980,17 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 	t.Run(
 		"RebuildPreservingHandlers_PreservesOnlyHandlerRoutes",
 		func(t *testing.T) {
-			nr := NewNestedRouter(&NestedOptions{})
+			nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-			keepHandler := TaskHandlerFromFunc(
-				func(rd *ReqData[None]) (string, error) {
+			keepHandler := mux.TaskHandlerFromFunc(
+				func(rd *mux.ReqData[mux.None]) (string, error) {
 					return "keep", nil
 				},
 			)
 
-			AddNestedTaskHandler(nr, "/keep", keepHandler)
-			AddNestedPatternWithoutHandler(nr, "/drop-no-handler")
-			AddNestedPatternWithoutHandler(nr, "/will-be-replaced")
+			nestedmux.AddTaskHandler(nr, "/keep", keepHandler)
+			nestedmux.AddPatternWithoutHandler(nr, "/drop-no-handler")
+			nestedmux.AddPatternWithoutHandler(nr, "/will-be-replaced")
 
 			nr.RebuildPreservingHandlers([]string{"/keep", "/new-no-handler"})
 
@@ -1003,7 +1006,10 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 			}
 
 			reqKeep := createRequestWithGetTasksCtx(http.MethodGet, "/keep")
-			keepResults, found := FindNestedMatchesAndRunTasks(nr, reqKeep)
+			keepResults, found := nestedmux.FindMatchesAndRunTasks(
+				nr,
+				reqKeep,
+			)
 			if !found {
 				t.Fatal("expected /keep to match after rebuild")
 			}
@@ -1020,7 +1026,10 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 				http.MethodGet,
 				"/new-no-handler",
 			)
-			newResults, found := FindNestedMatchesAndRunTasks(nr, reqNew)
+			newResults, found := nestedmux.FindMatchesAndRunTasks(
+				nr,
+				reqNew,
+			)
 			if !found {
 				t.Fatal("expected /new-no-handler to match after rebuild")
 			}
@@ -1037,33 +1046,35 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 	t.Run(
 		"RunNestedTasks_RemainsPatternConsistentDuringConcurrentReplaceRoutes",
 		func(t *testing.T) {
-			nr := NewNestedRouter(&NestedOptions{})
+			nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-			buildRouteMap := func() map[string]AnyNestedRoute {
-				buildHandler := func(pattern string) *TaskHandler[None, string] {
-					return TaskHandlerFromFunc(
-						func(*ReqData[None]) (string, error) {
+			buildRouteMap := func() map[string]nestedmux.AnyRoute {
+				buildHandler := func(pattern string) *mux.TaskHandler[mux.None, string] {
+					return mux.TaskHandlerFromFunc(
+						func(*mux.ReqData[mux.None]) (string, error) {
 							return pattern, nil
 						},
 					)
 				}
-				return map[string]AnyNestedRoute{
-					"": &NestedRoute[string]{
-						router:          nr,
-						originalPattern: "",
-						taskHandler:     buildHandler(""),
-					},
-					"/items": &NestedRoute[string]{
-						router:          nr,
-						originalPattern: "/items",
-						taskHandler:     buildHandler("/items"),
-					},
-					"/items/:id": &NestedRoute[string]{
-						router:          nr,
-						originalPattern: "/items/:id",
-						taskHandler:     buildHandler("/items/:id"),
-					},
-				}
+				replacementRouter := nestedmux.NewRouter(
+					&nestedmux.Options{},
+				)
+				nestedmux.AddTaskHandler(
+					replacementRouter,
+					"",
+					buildHandler(""),
+				)
+				nestedmux.AddTaskHandler(
+					replacementRouter,
+					"/items",
+					buildHandler("/items"),
+				)
+				nestedmux.AddTaskHandler(
+					replacementRouter,
+					"/items/:id",
+					buildHandler("/items/:id"),
+				)
+				return replacementRouter.AllRoutes()
 			}
 
 			nr.ReplaceRoutes(buildRouteMap())
@@ -1088,7 +1099,10 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 					http.MethodGet,
 					"/items/123",
 				)
-				results, found := FindNestedMatchesAndRunTasks(nr, request)
+				results, found := nestedmux.FindMatchesAndRunTasks(
+					nr,
+					request,
+				)
 				if !found {
 					t.Fatal(
 						"expected /items/123 to match during route replacement",
@@ -1135,27 +1149,27 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 
 func TestResponseProxies(t *testing.T) {
 	t.Run("Response_Proxies_Created", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		handler1 := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		handler1 := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				rd.ResponseProxy().SetHeader("X-Handler-1", "value1")
 				return "handler1", nil
 			},
 		)
-		handler2 := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (string, error) {
+		handler2 := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (string, error) {
 				rd.ResponseProxy().SetHeader("X-Handler-2", "value2")
 				return "handler2", nil
 			},
 		)
 
-		AddNestedTaskHandler(nr, "/", handler1)
-		AddNestedTaskHandler(nr, "/page", handler2)
+		nestedmux.AddTaskHandler(nr, "/", handler1)
+		nestedmux.AddTaskHandler(nr, "/page", handler2)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/page")
 
-		results, _ := FindNestedMatchesAndRunTasks(nr, req)
+		results, _ := nestedmux.FindMatchesAndRunTasks(nr, req)
 
 		// Verify we have response proxies for each match
 		if len(results.ResponseProxies) != len(results.Slice) {
@@ -1185,45 +1199,45 @@ func (e *testError) Error() string {
 // Benchmarks
 func BenchmarkNestedRouter(b *testing.B) {
 	b.Run("Simple_Nested_Match", func(b *testing.B) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		AddNestedPatternWithoutHandler(nr, "/")
-		AddNestedPatternWithoutHandler(nr, "/users")
-		AddNestedPatternWithoutHandler(nr, "/users/:id")
+		nestedmux.AddPatternWithoutHandler(nr, "/")
+		nestedmux.AddPatternWithoutHandler(nr, "/users")
+		nestedmux.AddPatternWithoutHandler(nr, "/users/:id")
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/users/123")
 
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			FindNestedMatches(nr, req)
+			nestedmux.FindMatches(nr, req)
 		}
 	})
 
 	b.Run("Nested_Tasks_Execution", func(b *testing.B) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
-		handler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (map[string]string, error) {
+		handler := mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
 				return map[string]string{"id": rd.Params()["id"]}, nil
 			},
 		)
 
-		AddNestedTaskHandler(nr, "/", handler)
-		AddNestedTaskHandler(nr, "/users", handler)
-		AddNestedTaskHandler(nr, "/users/:id", handler)
+		nestedmux.AddTaskHandler(nr, "/", handler)
+		nestedmux.AddTaskHandler(nr, "/users", handler)
+		nestedmux.AddTaskHandler(nr, "/users/:id", handler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/users/123")
 
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			FindNestedMatchesAndRunTasks(nr, req)
+			nestedmux.FindMatchesAndRunTasks(nr, req)
 		}
 	})
 
 	b.Run("Deep_Nesting", func(b *testing.B) {
-		nr := NewNestedRouter(&NestedOptions{})
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 		// Create a deeply nested route structure
 		patterns := []string{
@@ -1237,7 +1251,7 @@ func BenchmarkNestedRouter(b *testing.B) {
 		}
 
 		for _, pattern := range patterns {
-			AddNestedPatternWithoutHandler(nr, pattern)
+			nestedmux.AddPatternWithoutHandler(nr, pattern)
 		}
 
 		req := createRequestWithGetTasksCtx(
@@ -1248,7 +1262,7 @@ func BenchmarkNestedRouter(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			FindNestedMatches(nr, req)
+			nestedmux.FindMatches(nr, req)
 		}
 	})
 }
@@ -1256,6 +1270,17 @@ func BenchmarkNestedRouter(b *testing.B) {
 func createRequestWithGetTasksCtx(method, url string) *http.Request {
 	req := httptest.NewRequest(method, url, nil)
 	tasksCtx := tasks.NewCtx(req.Context())
-	rd := &rdTransport{tasksCtx: tasksCtx, req: req}
-	return requestStore.RequestWithContextValue(req, rd)
+	return mux.RequestWithTasksCtx(req, tasksCtx)
+}
+
+func sliceEqual(actual []string, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for i := range actual {
+		if actual[i] != expected[i] {
+			return false
+		}
+	}
+	return true
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/cryptoutil"
-	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
 type routeRegistryBuildDependencies struct {
@@ -25,7 +25,7 @@ type routeRegistryBuildDependencies struct {
 	writeGeneratedTypeScriptForRuntimeState   func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot) error
 	captureRouteBuildRuntimeStateWithReadLock func(*vormaruntime.Vorma) routeBuildRuntimeStateSnapshot
 	readRouteManifestFileWithRuntimeLock      func(*vormaruntime.Vorma) string
-	generateRouteManifestFromPaths            func(map[string]*vormaruntime.Path, *mux.NestedRouter) map[string]int
+	generateRouteManifestFromPaths            func(map[string]*vormaruntime.Path, *nestedmux.Router) map[string]int
 	isRouteBuildRuntimeStateSnapshotCurrent   func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot) bool
 	commitRouteManifestFileWithRuntimeLock    func(*vormaruntime.Vorma, routeManifestCommitInput) bool
 }
@@ -166,7 +166,9 @@ func writeRouteArtifacts(l *vormaruntime.LockedVorma) error {
 	return defaultRouteRegistryBuildExecutor.writeRouteArtifacts(l)
 }
 
-func (executor routeRegistryBuildExecutor) writeRouteArtifacts(l *vormaruntime.LockedVorma) error {
+func (executor routeRegistryBuildExecutor) writeRouteArtifacts(
+	l *vormaruntime.LockedVorma,
+) error {
 	v := l.Vorma()
 	previousRouteManifestFile := l.RouteManifestFile()
 	stageOnePathsArtifactPath := stageOnePathsArtifactOutputPath(v)
@@ -206,7 +208,11 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifacts(l *vormaruntime.L
 			},
 			logRollbackFailureAfterPanic: func(rollbackErr error) {
 				if v.Log != nil {
-					v.Log.Error("cleanup route artifacts after panic failed", "error", rollbackErr)
+					v.Log.Error(
+						"cleanup route artifacts after panic failed",
+						"error",
+						rollbackErr,
+					)
 				}
 			},
 		},
@@ -259,15 +265,23 @@ func (executor routeRegistryBuildExecutor) writeRouteManifestArtifact(
 	return manifestFile, nil
 }
 
-func writeRouteManifestToDisk(v *vormaruntime.Vorma, manifest map[string]int) (string, error) {
-	return defaultRouteRegistryBuildExecutor.writeRouteManifestToDisk(v, manifest)
+func writeRouteManifestToDisk(
+	v *vormaruntime.Vorma,
+	manifest map[string]int,
+) (string, error) {
+	return defaultRouteRegistryBuildExecutor.writeRouteManifestToDisk(
+		v,
+		manifest,
+	)
 }
 
 func (executor routeRegistryBuildExecutor) writeRouteManifestToDisk(
 	v *vormaruntime.Vorma,
 	manifest map[string]int,
 ) (string, error) {
-	manifestJSON, err := executor.dependencies.marshalRouteManifestJSON(manifest)
+	manifestJSON, err := executor.dependencies.marshalRouteManifestJSON(
+		manifest,
+	)
 	if err != nil {
 		return "", fmt.Errorf("marshal route manifest: %w", err)
 	}
@@ -315,7 +329,9 @@ var errRouteBuildRuntimeStateSuperseded = errors.New(
 )
 
 func writeRouteArtifactsWithoutHoldingRuntimeLock(v *vormaruntime.Vorma) error {
-	return defaultRouteRegistryBuildExecutor.writeRouteArtifactsWithoutHoldingRuntimeLock(v)
+	return defaultRouteRegistryBuildExecutor.writeRouteArtifactsWithoutHoldingRuntimeLock(
+		v,
+	)
 }
 
 func (executor routeRegistryBuildExecutor) writeRouteArtifactsWithoutHoldingRuntimeLock(
@@ -344,9 +360,13 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifactsWithoutHoldingRunt
 func (executor routeRegistryBuildExecutor) planRouteArtifactWrite(
 	v *vormaruntime.Vorma,
 ) (routeArtifactWritePlan, error) {
-	runtimeStateSnapshot := executor.dependencies.captureRouteBuildRuntimeStateWithReadLock(v)
+	runtimeStateSnapshot := executor.dependencies.captureRouteBuildRuntimeStateWithReadLock(
+		v,
+	)
 	manifestStateSnapshot := routeManifestStateSnapshot{
-		previousRouteManifestFile: executor.dependencies.readRouteManifestFileWithRuntimeLock(v),
+		previousRouteManifestFile: executor.dependencies.readRouteManifestFileWithRuntimeLock(
+			v,
+		),
 		routeManifest: executor.dependencies.generateRouteManifestFromPaths(
 			runtimeStateSnapshot.paths,
 			v.LoadersRouter().NestedRouter,
@@ -358,7 +378,10 @@ func (executor routeRegistryBuildExecutor) planRouteArtifactWrite(
 		stageOnePathsArtifactPath,
 	)
 	if err != nil {
-		return routeArtifactWritePlan{}, fmt.Errorf("snapshot stage-one paths artifact: %w", err)
+		return routeArtifactWritePlan{}, fmt.Errorf(
+			"snapshot stage-one paths artifact: %w",
+			err,
+		)
 	}
 
 	return routeArtifactWritePlan{
@@ -437,7 +460,11 @@ func (executor routeRegistryBuildExecutor) stageRouteArtifactWrite(
 			},
 			logRollbackFailureAfterPanic: func(rollbackErr error) {
 				if v.Log != nil {
-					v.Log.Error("cleanup route artifacts after panic failed", "error", rollbackErr)
+					v.Log.Error(
+						"cleanup route artifacts after panic failed",
+						"error",
+						rollbackErr,
+					)
 				}
 			},
 		},
@@ -505,7 +532,10 @@ func (executor routeRegistryBuildExecutor) cleanupRouteArtifactsAfterWriteFailur
 	stageOnePathsSnapshot stageOnePathsArtifactSnapshot,
 ) error {
 	artifactCleanupErrors := make([]error, 0, 2)
-	if shouldRemoveRouteManifestArtifactAfterWriteFailure(manifestFile, previousRouteManifestFile) {
+	if shouldRemoveRouteManifestArtifactAfterWriteFailure(
+		manifestFile,
+		previousRouteManifestFile,
+	) {
 		if err := executor.removeRouteManifestArtifactFile(v, manifestFile); err != nil {
 			artifactCleanupErrors = append(
 				artifactCleanupErrors,
@@ -557,17 +587,23 @@ func (executor routeRegistryBuildExecutor) restoreStageOnePathsArtifactFromState
 	)
 }
 
-func generateRouteManifest(l routeManifestStateReader, nestedRouter *mux.NestedRouter) map[string]int {
+func generateRouteManifest(
+	l routeManifestStateReader,
+	nestedRouter *nestedmux.Router,
+) map[string]int {
 	return generateRouteManifestFromPaths(l.Paths(), nestedRouter)
 }
 
 func generateRouteManifestFromPaths(
 	paths map[string]*vormaruntime.Path,
-	nestedRouter *mux.NestedRouter,
+	nestedRouter *nestedmux.Router,
 ) map[string]int {
 	manifest := make(map[string]int)
 	for _, currentPath := range paths {
-		manifest[currentPath.OriginalPattern] = routeManifestServerLoaderFlag(nestedRouter, currentPath.OriginalPattern)
+		manifest[currentPath.OriginalPattern] = routeManifestServerLoaderFlag(
+			nestedRouter,
+			currentPath.OriginalPattern,
+		)
 	}
 
 	return manifest
@@ -576,10 +612,17 @@ func generateRouteManifestFromPaths(
 func routeManifestFilename(manifestJSON []byte) string {
 	hash := cryptoutil.Sha256Hash(manifestJSON)
 	hashStr := base64.RawURLEncoding.EncodeToString(hash[:8])
-	return fmt.Sprintf("%s%s.json", vormaruntime.VormaRouteManifestPrefix, hashStr)
+	return fmt.Sprintf(
+		"%s%s.json",
+		vormaruntime.VormaRouteManifestPrefix,
+		hashStr,
+	)
 }
 
-func routeManifestServerLoaderFlag(nestedRouter *mux.NestedRouter, pattern string) int {
+func routeManifestServerLoaderFlag(
+	nestedRouter *nestedmux.Router,
+	pattern string,
+) int {
 	if nestedRouter.HasTaskHandler(pattern) {
 		return 1
 	}

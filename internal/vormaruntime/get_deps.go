@@ -1,11 +1,11 @@
 package vormaruntime
 
 import (
-	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/kit/nestedmatcher"
 )
 
 func (v *Vorma) getDeps(
-	_matches []*matcher.Match,
+	_matches []*nestedmatcher.Match,
 	paths map[string]*Path,
 ) []string {
 	v.mu.RLock()
@@ -16,7 +16,7 @@ func (v *Vorma) getDeps(
 }
 
 func getDepsFromData(
-	_matches []*matcher.Match,
+	_matches []*nestedmatcher.Match,
 	paths map[string]*Path,
 	clientEntryDeps []string,
 ) []string {

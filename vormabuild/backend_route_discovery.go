@@ -379,7 +379,6 @@ func (analysis *backendRoutePackageAnalysis) initialize() error {
 var routeRegistrationHintNeedles = [][]byte{
 	[]byte("DefineLoaderForRegistration"),
 	[]byte("DefineActionForRegistration"),
-	[]byte("AddNestedTaskHandler"),
 	[]byte("AddTaskHandler"),
 }
 
@@ -887,7 +886,6 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalRouteRegistrationCall
 var canonicalRouteRegistrationFunctionNames = map[string]struct{}{
 	"DefineLoaderForRegistration": {},
 	"DefineActionForRegistration": {},
-	"AddNestedTaskHandler":        {},
 	"AddTaskHandler":              {},
 }
 
@@ -998,11 +996,12 @@ func (analysis *backendRoutePackageAnalysis) parseCanonicalRouteRegistrationCall
 			parsedServerFile,
 			bindings,
 		)
-	case importPath == "github.com/vormadev/vorma/kit/mux" && functionName == "AddNestedTaskHandler":
+	case importPath == "github.com/vormadev/vorma/kit/nestedmux" &&
+		functionName == "AddTaskHandler":
 		return analysis.parseCanonicalLoaderRegistrationCall(
 			call,
 			bindings,
-			"github.com/vormadev/vorma/kit/mux.AddNestedTaskHandler",
+			"github.com/vormadev/vorma/kit/nestedmux.AddTaskHandler",
 			1,
 		)
 	case importPath == "github.com/vormadev/vorma/kit/mux" && functionName == "AddTaskHandler":
