@@ -273,6 +273,38 @@ func TestBroadcastReload_StopsWhenContextCanceled(t *testing.T) {
 	}
 }
 
+func TestBroadcastReload_WaitingForBuildRetrySkipsPayloadBroadcast(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+	serverForTest.SetWaitingForBuildRetry(true)
+
+	serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+		Payload: broadcast.Payload{ChangeType: broadcast.ChangeTypeOther},
+	})
+
+	connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
+		t.Fatalf(
+			"did not expect payload while waiting for build retry, got %#v",
+			receivedPayload,
+		)
+	}
+}
+
 func TestShouldBroadcastReloadPayloadAfterReadiness(t *testing.T) {
 	serverForTest := &Server{
 		Cfg: newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir()),
@@ -436,6 +468,41 @@ func TestExecuteBrowserPhase_InvalidateViteFallbackWithoutViteSetsHardReload(
 	}
 	if work.Browser.WaitForVite {
 		t.Fatal("did not expect wait-for-vite when Vite is disabled")
+	}
+}
+
+func TestExecuteBrowserPhase_WaitingForBuildRetrySkipsBrowserBroadcast(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+	serverForTest.SetWaitingForBuildRetry(true)
+
+	work := &eventpipeline.WorkSet{
+		Browser: eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionRevalidate,
+		},
+	}
+	serverForTest.ExecuteBrowserPhase(work)
+
+	connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
+		t.Fatalf(
+			"did not expect browser payload while waiting for build retry, got %#v",
+			receivedPayload,
+		)
 	}
 }
 

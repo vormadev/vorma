@@ -9,8 +9,357 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/gorilla/websocket"
 	"github.com/vormadev/vorma/wave/tooling/internal/broadcast"
 )
+
+func processEventsWithTimeoutForSiteRegressionAdditionalTests(
+	t *testing.T,
+	serverForTest *Server,
+	events []fsnotify.Event,
+	timeout time.Duration,
+	contextMessage string,
+) {
+	t.Helper()
+
+	done := make(chan struct{})
+	go func() {
+		serverForTest.BuildRunloopEngine().ProcessEvents(events)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		t.Fatalf(
+			"%s: ProcessEvents did not return within %s",
+			contextMessage,
+			timeout,
+		)
+	}
+}
+
+func assertNoReloadPayloadsForSiteRegressionAdditionalTests(
+	t *testing.T,
+	connection *websocket.Conn,
+	contextMessage string,
+) {
+	t.Helper()
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		connection.SetReadDeadline(time.Now().Add(75 * time.Millisecond))
+		var receivedPayload broadcast.Payload
+		if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+			return
+		}
+		if receivedPayload.ChangeType == broadcast.ChangeTypeRebuilding {
+			continue
+		}
+		t.Fatalf(
+			"%s: expected no reload payload while waiting for build retry, got %#v",
+			contextMessage,
+			receivedPayload,
+		)
+	}
+}
+
+func TestSiteRegression_WaitingForBuildRetry_GoSyntaxErrorThenFixDoesNotBlock(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.WatchRoot = root
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
+
+	goMainPath := filepath.Join(root, "cmd", "app", "main.go")
+	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
+		t.Fatalf("create go main directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(
+		goMainPath,
+		[]byte("package main\n\nfunc main() {\n\tthis is not valid go syntax\n}\n"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write broken go main file: %v", writeError)
+	}
+	cfg.Core.MainAppEntry = goMainPath
+
+	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+	t.Cleanup(func() {
+		serverForTest.CleanupForRebuild()
+	})
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+	serverForTest.RefreshManager = refreshManager
+	serverForTest.SetWaitingForBuildRetry(true)
+
+	processEventsWithTimeoutForSiteRegressionAdditionalTests(
+		t,
+		serverForTest,
+		[]fsnotify.Event{{
+			Name: goMainPath,
+			Op:   fsnotify.Write,
+		}},
+		4*time.Second,
+		"go syntax error write while waiting for build retry",
+	)
+	assertNoReloadPayloadsForSiteRegressionAdditionalTests(
+		t,
+		connection,
+		"go syntax error write while waiting for build retry",
+	)
+	assertNoRestartRequestForSiteRegressionHarness(
+		t,
+		serverForTest,
+		"go syntax error write while waiting for build retry",
+	)
+
+	if writeError := os.WriteFile(
+		goMainPath,
+		[]byte("package main\n\nfunc main() {\n\tselect {}\n}\n"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write fixed go main file: %v", writeError)
+	}
+
+	processEventsWithTimeoutForSiteRegressionAdditionalTests(
+		t,
+		serverForTest,
+		[]fsnotify.Event{{
+			Name: goMainPath,
+			Op:   fsnotify.Write,
+		}},
+		4*time.Second,
+		"go syntax fix write while waiting for build retry",
+	)
+	assertNoReloadPayloadsForSiteRegressionAdditionalTests(
+		t,
+		connection,
+		"go syntax fix write while waiting for build retry",
+	)
+	assertNoRestartRequestForSiteRegressionHarness(
+		t,
+		serverForTest,
+		"go syntax fix write while waiting for build retry",
+	)
+
+	if _, statError := os.Stat(cfg.Dist.Binary()); statError != nil {
+		t.Fatalf(
+			"expected fixed go syntax event to compile binary while waiting for build retry, stat error: %v",
+			statError,
+		)
+	}
+}
+
+func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
+	t *testing.T,
+) {
+	testCases := []struct {
+		name                  string
+		prepareAndBuildEvents func(
+			t *testing.T,
+			harness siteRegressionHarnessForToolingTests,
+		) []fsnotify.Event
+		expectRebuildingPayload bool
+		expectConfigRestart     bool
+	}{
+		{
+			name: "public static typo write",
+			prepareAndBuildEvents: func(
+				t *testing.T,
+				harness siteRegressionHarnessForToolingTests,
+			) []fsnotify.Event {
+				t.Helper()
+				if writeError := os.WriteFile(
+					harness.Paths.PublicStaticPath,
+					[]byte("<svg><!--updated while waiting--></svg>"),
+					0o644,
+				); writeError != nil {
+					t.Fatalf("write public static file: %v", writeError)
+				}
+				return []fsnotify.Event{{
+					Name: harness.Paths.PublicStaticPath,
+					Op:   fsnotify.Write,
+				}}
+			},
+			expectRebuildingPayload: true,
+			expectConfigRestart:     false,
+		},
+		{
+			name: "framework route registry typo write",
+			prepareAndBuildEvents: func(
+				t *testing.T,
+				harness siteRegressionHarnessForToolingTests,
+			) []fsnotify.Event {
+				t.Helper()
+				if writeError := os.WriteFile(
+					harness.Paths.RouteRegistryPath,
+					[]byte("export const routes = [{ path: '/typo' }];"),
+					0o644,
+				); writeError != nil {
+					t.Fatalf("write route registry file: %v", writeError)
+				}
+				return []fsnotify.Event{{
+					Name: harness.Paths.RouteRegistryPath,
+					Op:   fsnotify.Write,
+				}}
+			},
+			expectRebuildingPayload: false,
+			expectConfigRestart:     false,
+		},
+		{
+			name: "framework template typo write",
+			prepareAndBuildEvents: func(
+				t *testing.T,
+				harness siteRegressionHarnessForToolingTests,
+			) []fsnotify.Event {
+				t.Helper()
+				if writeError := os.WriteFile(
+					harness.Paths.TemplatePath,
+					[]byte("<!doctype html><html><body><main>updated</main>{{.VormaBodyScripts}}</body></html>"),
+					0o644,
+				); writeError != nil {
+					t.Fatalf("write template file: %v", writeError)
+				}
+				return []fsnotify.Event{{
+					Name: harness.Paths.TemplatePath,
+					Op:   fsnotify.Write,
+				}}
+			},
+			expectRebuildingPayload: false,
+			expectConfigRestart:     false,
+		},
+		{
+			name: "markdown typo write",
+			prepareAndBuildEvents: func(
+				t *testing.T,
+				harness siteRegressionHarnessForToolingTests,
+			) []fsnotify.Event {
+				t.Helper()
+				if writeError := os.WriteFile(
+					harness.Paths.MarkdownPath,
+					[]byte("# Post\n\nUpdated while waiting"),
+					0o644,
+				); writeError != nil {
+					t.Fatalf("write markdown file: %v", writeError)
+				}
+				return []fsnotify.Event{{
+					Name: harness.Paths.MarkdownPath,
+					Op:   fsnotify.Write,
+				}}
+			},
+			expectRebuildingPayload: false,
+			expectConfigRestart:     false,
+		},
+		{
+			name: "config semantic error fix write",
+			prepareAndBuildEvents: func(
+				t *testing.T,
+				harness siteRegressionHarnessForToolingTests,
+			) []fsnotify.Event {
+				t.Helper()
+				writeSemanticallyChangedConfigForToolingTests(
+					t,
+					harness.Paths.ConfigFilePath,
+				)
+				return []fsnotify.Event{{
+					Name: harness.Paths.ConfigFilePath,
+					Op:   fsnotify.Write,
+				}}
+			},
+			expectRebuildingPayload: true,
+			expectConfigRestart:     true,
+		},
+		{
+			name: "config syntax error write",
+			prepareAndBuildEvents: func(
+				t *testing.T,
+				harness siteRegressionHarnessForToolingTests,
+			) []fsnotify.Event {
+				t.Helper()
+				if writeError := os.WriteFile(
+					harness.Paths.ConfigFilePath,
+					[]byte("{ invalid json payload"),
+					0o644,
+				); writeError != nil {
+					t.Fatalf("write invalid config payload: %v", writeError)
+				}
+				return []fsnotify.Event{{
+					Name: harness.Paths.ConfigFilePath,
+					Op:   fsnotify.Write,
+				}}
+			},
+			expectRebuildingPayload: true,
+			expectConfigRestart:     true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := setupSiteRegressionHarnessWithoutAppHealthForToolingTests(
+				t,
+				false,
+			)
+			defer harness.Cleanup()
+			harness.Server.SetWaitingForBuildRetry(true)
+
+			events := testCase.prepareAndBuildEvents(t, harness)
+			processEventsWithTimeoutForSiteRegressionAdditionalTests(
+				t,
+				harness.Server,
+				events,
+				1500*time.Millisecond,
+				testCase.name,
+			)
+
+			if testCase.expectRebuildingPayload {
+				assertExpectedBroadcastPayloadForSiteRegressionHarness(
+					t,
+					harness.Connection,
+					broadcast.ChangeTypeRebuilding,
+					testCase.name,
+				)
+				assertNoBroadcastPayloadForSiteRegressionHarness(
+					t,
+					harness.Connection,
+					testCase.name,
+				)
+			} else {
+				assertNoBroadcastPayloadForSiteRegressionHarness(
+					t,
+					harness.Connection,
+					testCase.name,
+				)
+			}
+
+			if testCase.expectConfigRestart {
+				restartRequest := waitForPendingRestartRequestForToolingTests(
+					t,
+					harness.Server,
+					500*time.Millisecond,
+				)
+				if !restartRequest.IsConfigRestart || !restartRequest.RecompileGo {
+					t.Fatalf(
+						"%s: expected config restart request while waiting for build retry, got %#v",
+						testCase.name,
+						restartRequest,
+					)
+				}
+			} else {
+				assertNoRestartRequestForSiteRegressionHarness(
+					t,
+					harness.Server,
+					testCase.name,
+				)
+			}
+		})
+	}
+}
 
 func TestSiteRegression_FrameworkTemplateCreateTriggersHardReload(
 	t *testing.T,

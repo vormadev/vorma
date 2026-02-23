@@ -74,36 +74,64 @@ func setupSiteRegressionHarnessForToolingTestsWithOptions(
 	captureLogs bool,
 	includeMarkdownRevalidateWatchOverride bool,
 ) siteRegressionHarnessForToolingTests {
+	return setupSiteRegressionHarnessForToolingTestsWithRuntimeOptions(
+		t,
+		captureLogs,
+		includeMarkdownRevalidateWatchOverride,
+		true,
+	)
+}
+
+func setupSiteRegressionHarnessWithoutAppHealthForToolingTests(
+	t *testing.T,
+	captureLogs bool,
+) siteRegressionHarnessForToolingTests {
+	return setupSiteRegressionHarnessForToolingTestsWithRuntimeOptions(
+		t,
+		captureLogs,
+		true,
+		false,
+	)
+}
+
+func setupSiteRegressionHarnessForToolingTestsWithRuntimeOptions(
+	t *testing.T,
+	captureLogs bool,
+	includeMarkdownRevalidateWatchOverride bool,
+	startAppHealthServer bool,
+) siteRegressionHarnessForToolingTests {
 	t.Helper()
 
 	appPort := mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
-	appListener, listenError := net.Listen(
-		"tcp",
-		fmt.Sprintf("127.0.0.1:%d", appPort),
-	)
-	if listenError != nil {
-		t.Fatalf("bind app health listener: %v", listenError)
+	if startAppHealthServer {
+		appListener, listenError := net.Listen(
+			"tcp",
+			fmt.Sprintf("127.0.0.1:%d", appPort),
+		)
+		if listenError != nil {
+			t.Fatalf("bind app health listener: %v", listenError)
+		}
+		appServer := &http.Server{
+			Handler: http.HandlerFunc(func(
+				responseWriter http.ResponseWriter,
+				request *http.Request,
+			) {
+				if request.URL.Path == "/healthz" {
+					responseWriter.WriteHeader(http.StatusOK)
+					_, _ = responseWriter.Write([]byte("ok"))
+					return
+				}
+				responseWriter.WriteHeader(http.StatusNotFound)
+			}),
+		}
+		go func() {
+			_ = appServer.Serve(appListener)
+		}()
+		t.Cleanup(func() {
+			_ = appServer.Close()
+			_ = appListener.Close()
+		})
 	}
-	appServer := &http.Server{
-		Handler: http.HandlerFunc(func(
-			responseWriter http.ResponseWriter,
-			request *http.Request,
-		) {
-			if request.URL.Path == "/healthz" {
-				responseWriter.WriteHeader(http.StatusOK)
-				_, _ = responseWriter.Write([]byte("ok"))
-				return
-			}
-			responseWriter.WriteHeader(http.StatusNotFound)
-		}),
-	}
-	go func() {
-		_ = appServer.Serve(appListener)
-	}()
-	t.Cleanup(func() {
-		_ = appServer.Close()
-		_ = appListener.Close()
-	})
 
 	workspaceRoot := t.TempDir()
 	appRoot := filepath.Join(workspaceRoot, "internal", "site")

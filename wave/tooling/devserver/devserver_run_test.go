@@ -837,6 +837,39 @@ func TestWaitForBuildRetry_QueuedNoGoRestartIntentIsPreservedForNextPass(
 	}
 }
 
+func TestQueueRestartRequest_WaitingForBuildRetryStillMergesToStrongestIntent(
+	t *testing.T,
+) {
+	serverForTest := &Server{
+		Log: newDiscardLogger(),
+		RestartIntents: restartengine.NewRestartIntentAccumulator(
+			make(chan restartengine.RestartRequest, 1),
+		),
+	}
+	serverForTest.SetWaitingForBuildRetry(true)
+
+	serverForTest.QueueRestartRequest(
+		restartengine.RestartRequest{RecompileGo: false},
+	)
+	serverForTest.QueueRestartRequest(
+		restartengine.RestartRequest{
+			RecompileGo:     true,
+			IsConfigRestart: true,
+		},
+	)
+
+	restartRequestForRetry, hasRestartRequest := serverForTest.ConsumePendingRestartRequest()
+	if !hasRestartRequest {
+		t.Fatal("expected queued restart request while waiting for build retry")
+	}
+	if !restartRequestForRetry.RecompileGo || !restartRequestForRetry.IsConfigRestart {
+		t.Fatalf(
+			"expected strongest merged restart intent while waiting for build retry, got %#v",
+			restartRequestForRetry,
+		)
+	}
+}
+
 func TestWriteToolingConfigForWatchRoot_UpdatesConfigFileOnly(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForToolingTestsAtRoot(root)

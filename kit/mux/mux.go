@@ -551,10 +551,22 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"pattern",
 				match.OriginalPattern(),
 			)
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeErrorResponseWithHeadFallbackSupport(
+				best.headFellBackToGet,
+				w,
+				r,
+				http.StatusBadRequest,
+				err.Error(),
+			)
 		} else {
 			muxLog.Error("Internal server error", "error", err, "pattern", match.OriginalPattern())
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeErrorResponseWithHeadFallbackSupport(
+				best.headFellBackToGet,
+				w,
+				r,
+				http.StatusInternalServerError,
+				"Internal Server Error",
+			)
 		}
 		return
 	}
@@ -1039,6 +1051,23 @@ func treatGetAsHead(
 		}
 	}
 	w.WriteHeader(headRW.statusCode)
+}
+
+func writeErrorResponseWithHeadFallbackSupport(
+	headFellBackToGet bool,
+	w http.ResponseWriter,
+	r *http.Request,
+	statusCode int,
+	errorText string,
+) {
+	errorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, errorText, statusCode)
+	})
+	if headFellBackToGet {
+		treatGetAsHead(errorHandler, w, r)
+		return
+	}
+	errorHandler.ServeHTTP(w, r)
 }
 
 // InjectTasksCtxMiddleware ensures requests have a tasks context in request store.

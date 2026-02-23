@@ -186,6 +186,30 @@ func TestWorkSetApplyRefreshActions(t *testing.T) {
 		}
 	})
 
+	t.Run("merges stronger restart request from later action", func(t *testing.T) {
+		work := &eventpipeline.WorkSet{}
+
+		result := work.ApplyRefreshActions([]wave.RefreshAction{
+			{ReloadBrowser: true},
+			{TriggerRestart: true, RecompileGo: false},
+			{TriggerRestart: true, RecompileGo: true},
+			{WaitForVite: true},
+		})
+
+		if !result.RestartRequested {
+			t.Fatal("expected restartRequested=true")
+		}
+		if !result.RecompileGo {
+			t.Fatal("expected recompileGo=true from strongest restart action")
+		}
+		if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
+			t.Fatalf("expected pre-restart reload action to be applied, got %v", work.Browser.Action)
+		}
+		if work.Browser.WaitForVite {
+			t.Fatal("expected post-restart actions not to be applied")
+		}
+	})
+
 	t.Run("merges non-restart actions into workset", func(t *testing.T) {
 		work := &eventpipeline.WorkSet{}
 
@@ -233,7 +257,7 @@ func TestReduceRefreshActionsInStableOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("returns first restart action and excludes later actions", func(t *testing.T) {
+	t.Run("merges restart actions and excludes later non-restart actions", func(t *testing.T) {
 		input := []wave.RefreshAction{
 			{ReloadBrowser: true},
 			{TriggerRestart: true, RecompileGo: false},
@@ -245,8 +269,8 @@ func TestReduceRefreshActionsInStableOrder(t *testing.T) {
 		if !reductionDecision.ApplicationResult.RestartRequested {
 			t.Fatal("expected restartRequested=true")
 		}
-		if reductionDecision.ApplicationResult.RecompileGo {
-			t.Fatal("expected first restart action to determine recompileGo=false")
+		if !reductionDecision.ApplicationResult.RecompileGo {
+			t.Fatal("expected merged restart actions to preserve recompileGo=true")
 		}
 		applied := reductionDecision.ActionsBeforeRestart
 		if len(applied) != 1 {

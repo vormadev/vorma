@@ -32,6 +32,40 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
       `vormabuild/backend_route_registration_generation.go` (discovered call ID
       now includes source position, preventing distinct same-expression call
       sites from deduping together).
+- [x] Fix build-retry restart intent downgrade in
+      `wave/tooling/devserver/devserver.go` (`QueueRestartRequest` no longer
+      drops stronger intents while waiting for build retry; intents now always
+      merge to strongest semantics).
+- [x] Fix refresh-action restart reduction downgrade in
+      `wave/tooling/devserver/internal/eventpipeline/eventpipeline.go`
+      (`ReduceRefreshActionsInStableOrder` now merges restart actions so later
+      `RecompileGo=true` requests cannot be downgraded by earlier weaker restart
+      actions).
+- [x] Fix HEAD fallback error-path body handling in `kit/mux/mux.go` (HEAD
+      fallback to GET now preserves no-body semantics when request
+      parsing/validation fails before route handler execution).
+- [x] Fix readiness-policy partial-defaulting in
+      `wave/tooling/devserver/internal/runtimeprocess/runtimeprocess.go`
+      (`WaitForAnyReady` now normalizes each policy field independently so
+      caller-provided delay/timeout overrides are not discarded when only
+      `HTTPClientTimeout` is unset).
+- [x] Fix build-retry watcher freeze in `wave/tooling/devserver/devserver.go`
+      (while lifecycle is `awaiting_build_retry`, browser-phase execution is now
+      skipped so watcher/debouncer callbacks cannot block on reload readiness
+      timeouts before processing follow-up fix events).
+- [x] Add direct reload-broadcast guard for build-retry wait in
+      `wave/tooling/devserver/devserver.go` (`BroadcastReload` now
+      short-circuits when `WaitingForBuildRetry=true`, preventing non-runloop
+      call paths from emitting payloads or entering readiness waits during retry
+      wait state).
+- [x] Add build-retry responsiveness regressions for syntax and config/source
+      error classes in
+      `wave/tooling/devserver/site_regression_additional_test.go`
+      (`TestSiteRegression_WaitingForBuildRetry_GoSyntaxErrorThenFixDoesNotBlock`
+      and `TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock`)
+      to ensure watcher batches return promptly while waiting for build retry
+      and do not emit reload/revalidate payloads that would trigger readiness
+      timeout waits.
 
 ## Coverage / Verification
 
@@ -40,6 +74,18 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
 - [x] Re-run full repository unit test suite (`go test ./...`) after changes.
 - [x] Recompute current scope coverage baseline.
 - [ ] Eliminate remaining coverage gaps.
+
+## Proactive Robustness Follow-Ups
+
+- [ ] Add an end-to-end devserver regression that reproduces: build-failure ->
+      non-config watch event -> immediate config fix, and asserts the
+      retry-restart is processed without waiting for readiness timeout budgets.
+- [ ] Add watcher-batch phase duration guards/logging in runloop to flag when a
+      single batch callback monopolizes the debouncer for unexpectedly long
+      intervals.
+- [ ] Evaluate a bounded/asynchronous browser readiness wait strategy so browser
+      payload gating cannot monopolize watcher callback execution in edge cases
+      outside build-retry mode.
 
 Current coverage snapshot
 (`go test ./wave/... ./internal/vormaruntime ./kit/mux ./vormabuild ./vormagogen -cover`):
@@ -81,7 +127,9 @@ Current coverage snapshot
 - [ ] Bring non-exempt noncompliant packages into one-file/200-2000 compliance:
       `internal/vormaruntime` (18 non-test files, 3044 lines total).
 - [ ] Bring non-exempt noncompliant packages into one-file/200-2000 compliance:
-      `kit/mux` (2 non-test files, 1741 lines total).
+      `kit/mux` (2 non-test files, 1741 lines total). For this one, we should
+      move the "nested" code to `kit/mux/nested` instead of concat'ing it into
+      `kit/mux`, even though it could fit in under 2k lines.
 - [ ] Bring non-exempt noncompliant packages into one-file/200-2000 compliance:
       `vormabuild` (35 non-test files, 10424 lines total).
 

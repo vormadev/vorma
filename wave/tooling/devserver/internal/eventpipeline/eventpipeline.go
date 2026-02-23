@@ -1040,13 +1040,16 @@ func ReduceRefreshActionsInStableOrder(
 		),
 	}
 
+	restartRequested := false
+	recompileGo := false
 	for _, refreshAction := range refreshActions {
 		if refreshAction.TriggerRestart {
-			reductionDecision.ApplicationResult = RefreshActionApplicationResult{
-				RestartRequested: true,
-				RecompileGo:      refreshAction.RecompileGo,
-			}
-			return reductionDecision
+			restartRequested = true
+			recompileGo = recompileGo || refreshAction.RecompileGo
+			continue
+		}
+		if restartRequested {
+			continue
 		}
 
 		reductionDecision.ActionsBeforeRestart = append(
@@ -1055,6 +1058,10 @@ func ReduceRefreshActionsInStableOrder(
 		)
 	}
 
+	reductionDecision.ApplicationResult = RefreshActionApplicationResult{
+		RestartRequested: restartRequested,
+		RecompileGo:      recompileGo,
+	}
 	return reductionDecision
 }
 

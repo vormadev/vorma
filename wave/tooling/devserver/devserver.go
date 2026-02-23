@@ -697,6 +697,16 @@ func (server *runtimeServer) SetWaitingForBuildRetry(waiting bool) {
 	server.WaitingForBuildRetry = waiting
 }
 
+// IsWaitingForBuildRetry reports whether server is currently awaiting retry.
+func (server *runtimeServer) IsWaitingForBuildRetry() bool {
+	if server == nil {
+		return false
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return server.WaitingForBuildRetry
+}
+
 // QueueRestartRequest queues restart request into intent accumulator.
 func (server *runtimeServer) QueueRestartRequest(
 	request restartengine.RestartRequest,
@@ -705,14 +715,6 @@ func (server *runtimeServer) QueueRestartRequest(
 	if accumulator == nil {
 		return
 	}
-
-	server.Mu.Lock()
-	waitingForBuildRetry := server.WaitingForBuildRetry
-	server.Mu.Unlock()
-	if waitingForBuildRetry && accumulator.HasQueuedOrPendingRequest() {
-		return
-	}
-
 	accumulator.Queue(request)
 }
 
@@ -1244,6 +1246,9 @@ func (server *runtimeServer) BroadcastReload(
 	if !server.shouldBroadcastToBrowserClients() {
 		return
 	}
+	if server.IsWaitingForBuildRetry() {
+		return
+	}
 
 	if !server.waitForReloadReadiness(reloadOptions) {
 		server.Log.Warn("reload readiness failed; skipping browser broadcast")
@@ -1356,6 +1361,9 @@ func (server *runtimeServer) BuildEventExecutionPlan(
 // ExecuteBrowserPhase executes browser-phase side effects for workset.
 func (server *runtimeServer) ExecuteBrowserPhase(work *eventpipeline.WorkSet) {
 	if work == nil || !server.Cfg.UsingBrowser() {
+		return
+	}
+	if server.IsWaitingForBuildRetry() {
 		return
 	}
 

@@ -404,15 +404,7 @@ func WaitForAnyReady(urls []string, policy ReadinessWaitPolicy) bool {
 		return false
 	}
 
-	resolvedPolicy := policy
-	if resolvedPolicy.HTTPClientTimeout <= 0 {
-		resolvedPolicy = DefaultReadinessWaitPolicy()
-	}
-	if resolvedPolicy.TreatHTTPStatusCodeAsReady == nil {
-		resolvedPolicy.TreatHTTPStatusCodeAsReady = func(statusCode int) bool {
-			return statusCode >= 200 && statusCode < 400
-		}
-	}
+	resolvedPolicy := normalizeReadinessWaitPolicy(policy)
 
 	httpClient := &http.Client{Timeout: resolvedPolicy.HTTPClientTimeout}
 	startTime := time.Now()
@@ -445,6 +437,26 @@ func WaitForAnyReady(urls []string, policy ReadinessWaitPolicy) bool {
 		attemptIndex++
 		time.Sleep(delay)
 	}
+}
+
+func normalizeReadinessWaitPolicy(policy ReadinessWaitPolicy) ReadinessWaitPolicy {
+	defaultPolicy := DefaultReadinessWaitPolicy()
+	if policy.HTTPClientTimeout <= 0 {
+		policy.HTTPClientTimeout = defaultPolicy.HTTPClientTimeout
+	}
+	if policy.InitialDelay <= 0 {
+		policy.InitialDelay = defaultPolicy.InitialDelay
+	}
+	if policy.MaximumDelay <= 0 {
+		policy.MaximumDelay = defaultPolicy.MaximumDelay
+	}
+	if policy.MaximumTotalWait <= 0 {
+		policy.MaximumTotalWait = defaultPolicy.MaximumTotalWait
+	}
+	if policy.TreatHTTPStatusCodeAsReady == nil {
+		policy.TreatHTTPStatusCodeAsReady = defaultPolicy.TreatHTTPStatusCodeAsReady
+	}
+	return policy
 }
 
 // probeURLWithClient performs one readiness probe request.

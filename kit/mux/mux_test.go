@@ -126,6 +126,39 @@ func TestHTTPHandlers(t *testing.T) {
 			t.Error("HEAD request should not have body")
 		}
 	})
+
+	t.Run("HEAD_Fallback_To_GET_PreservesNoBodyOnValidationError", func(t *testing.T) {
+		type parseInput struct {
+			Name string `json:"name"`
+		}
+
+		r := NewRouter(&Options{
+			ParseInput: func(req *http.Request, inputPtr any) error {
+				return &validate.ValidationError{
+					Err: errors.New("invalid input"),
+				}
+			},
+		})
+		AddTaskHandler(
+			r,
+			http.MethodGet,
+			"/validate",
+			TaskHandlerFromFunc(func(rd *ReqData[parseInput]) (map[string]string, error) {
+				return map[string]string{"ok": "true"}, nil
+			}),
+		)
+
+		req := httptest.NewRequest(http.MethodHead, "/validate", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", w.Code)
+		}
+		if w.Body.Len() > 0 {
+			t.Fatalf("expected empty body for HEAD fallback validation error, got %q", w.Body.String())
+		}
+	})
 }
 
 func TestTaskHandlers(t *testing.T) {

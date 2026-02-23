@@ -32,9 +32,6 @@ func (harness *restartChannelHarness) queueRestartRequest(
 	if harness == nil || harness.restartIntents == nil {
 		return
 	}
-	if harness.waitingForBuildRetry && harness.restartIntents.HasQueuedOrPendingRequest() {
-		return
-	}
 	harness.restartIntents.Queue(request)
 }
 
@@ -85,7 +82,7 @@ func mustConsumePendingRestartRequestForRestartTests(
 }
 
 func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
-	t.Run("waiting for build retry keeps first pending restart request", func(t *testing.T) {
+	t.Run("waiting for build retry still upgrades pending restart request", func(t *testing.T) {
 		harness := newRestartChannelHarnessForRestartTests()
 		harness.setWaitingForBuildRetry(true)
 
@@ -96,9 +93,9 @@ func TestTriggerRestartWithOpts_UpgradeSemantics(t *testing.T) {
 			t,
 			harness,
 		)
-		if request.RecompileGo || request.IsConfigRestart {
+		if !request.RecompileGo || request.IsConfigRestart {
 			t.Fatalf(
-				"expected first pending no-go restart to be preserved, got %#v",
+				"expected pending restart to upgrade to recompile-go while waiting, got %#v",
 				request,
 			)
 		}
