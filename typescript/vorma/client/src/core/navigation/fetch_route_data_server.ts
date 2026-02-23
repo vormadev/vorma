@@ -157,7 +157,6 @@ export type ServerRouteDataResult = {
 export async function createServerRouteDataPromise(props: {
 	abortController: AbortController;
 	url: URL;
-	isPrefetch: boolean;
 	redirectCount?: number;
 }): Promise<ServerRouteDataResult> {
 	const result = await handleRedirects(props);
@@ -369,7 +368,6 @@ export async function fetchRouteData(
 		const serverPromise = createServerRouteDataPromise({
 			abortController: controller,
 			url: requestURL,
-			isPrefetch: props.navigationType === "prefetch",
 			redirectCount: props.redirectCount,
 		});
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
@@ -25,7 +26,10 @@ func isConfigFileForRunloopTests(cfg *wave.ParsedConfig, path string) bool {
 	if cfg == nil || cfg.Core == nil {
 		return false
 	}
-	return classification.IsConfigurationPathChange(path, cfg.Core.ConfigLocation)
+	return classification.IsConfigurationPathChange(
+		path,
+		cfg.Core.ConfigLocation,
+	)
 }
 
 func isConfigMutationWatcherEventForRunloopTests(
@@ -255,7 +259,9 @@ func resolveHookExecutionPlanForRunloopTests(
 	}
 }
 
-func getUserDevBuildHookForRunloopTests(parsedConfig *wave.ParsedConfig) string {
+func getUserDevBuildHookForRunloopTests(
+	parsedConfig *wave.ParsedConfig,
+) string {
 	if parsedConfig == nil || parsedConfig.Core == nil {
 		return ""
 	}
@@ -295,7 +301,8 @@ func (harness *restartIntentQueueHarness) QueueRestartRequest(
 	harness.waitingMutex.Lock()
 	waitingForBuildRetry := harness.waitingForBuildRetry
 	harness.waitingMutex.Unlock()
-	if waitingForBuildRetry && harness.restartIntents.HasQueuedOrPendingRequest() {
+	if waitingForBuildRetry &&
+		harness.restartIntents.HasQueuedOrPendingRequest() {
 		return
 	}
 
@@ -359,10 +366,13 @@ type runloopTestServer struct {
 
 	RestartIntents *restartengine.RestartIntentAccumulator
 
+	currentRunCycleContext context.Context
+
 	ConcurrentNoWaitHookExecutionLimiter chan struct{}
 	concurrentNoWaitHookLifecycleContext context.Context
 	concurrentNoWaitHookLifecycleCancel  context.CancelFunc
 	concurrentNoWaitHookContextMutex     sync.Mutex
+	watcherBatchDurationWarningThreshold time.Duration
 
 	nextWatcherBatchID                  uint64
 	currentWatcherExecutionTraceContext runloop.WatcherExecutionTraceContext
@@ -407,7 +417,27 @@ func (server *runloopTestServer) WatcherInstance() *watch.Watcher {
 }
 
 func (server *runloopTestServer) CurrentRunCycleContextOrBackground() context.Context {
-	return context.Background()
+	if server == nil {
+		return context.Background()
+	}
+	server.Mu.Lock()
+	runCycleContext := server.currentRunCycleContext
+	server.Mu.Unlock()
+	if runCycleContext == nil {
+		return context.Background()
+	}
+	return runCycleContext
+}
+
+func (server *runloopTestServer) SetCurrentRunCycleContext(
+	runCycleContext context.Context,
+) {
+	if server == nil {
+		return
+	}
+	server.Mu.Lock()
+	server.currentRunCycleContext = runCycleContext
+	server.Mu.Unlock()
 }
 
 func (server *runloopTestServer) QueueRestartRequest(
@@ -563,7 +593,9 @@ func (server *runloopTestServer) cancelConcurrentNoWaitHookLifecycleContext() {
 	}
 }
 
-func (server *runloopTestServer) ResolveHookCommand(hook wave.OnChangeHook) string {
+func (server *runloopTestServer) ResolveHookCommand(
+	hook wave.OnChangeHook,
+) string {
 	if server == nil {
 		return hook.Cmd
 	}
@@ -579,7 +611,9 @@ func (server *runloopTestServer) ResolveHookExecutionPlan(
 	return resolveHookExecutionPlanForRunloopTests(server.Cfg, hook)
 }
 
-func (server *runloopTestServer) ExecuteBuildPhase(work *eventpipeline.WorkSet) error {
+func (server *runloopTestServer) ExecuteBuildPhase(
+	work *eventpipeline.WorkSet,
+) error {
 	if work == nil {
 		return nil
 	}
@@ -684,6 +718,7 @@ func (server *runloopTestServer) BuildRunloopEngine() *runloop.Engine {
 		RunNoWaitHookWithConcurrencyLimit:               server.RunNoWaitHookWithConcurrencyLimit,
 		GetOrCreateConcurrentNoWaitHookLifecycleContext: server.GetOrCreateConcurrentNoWaitHookLifecycleContext,
 		ResolveHookExecutionPlan:                        server.ResolveHookExecutionPlan,
+		WatcherBatchDurationWarningThreshold:            server.watcherBatchDurationWarningThreshold,
 	})
 }
 

@@ -1255,7 +1255,10 @@ describe("navigation runtime outcome redirect signaling", () => {
 			"/current-control-redirect",
 			window.location.href,
 		).href;
-		const redirectOutcome = {
+		const redirectOutcome: Extract<
+			NavigationOutcome,
+			{ type: "redirect" }
+		> = {
 			type: "redirect" as const,
 			redirectData: {
 				status: "should" as const,
@@ -1275,7 +1278,7 @@ describe("navigation runtime outcome redirect signaling", () => {
 				href: targetUrl,
 				navigationType: "browserHistory" as const,
 			},
-		} as NavigationOutcome;
+		};
 		const controlPromise = Promise.resolve(redirectOutcome);
 		const currentEntry = createEntry({
 			targetUrl,
@@ -1323,6 +1326,97 @@ describe("navigation runtime outcome redirect signaling", () => {
 				reason: "redirect_effectuate",
 			});
 			expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
+		} finally {
+			effectuateRedirectSpy.mockRestore();
+		}
+	});
+
+	it("uses current entry navigation options for redirect effectuation when a prefetch is promoted", async () => {
+		const targetUrl = new URL(
+			"/promoted-prefetch-redirect",
+			window.location.href,
+		).href;
+		const redirectOutcome: Extract<
+			NavigationOutcome,
+			{ type: "redirect" }
+		> = {
+			type: "redirect" as const,
+			redirectData: {
+				status: "should" as const,
+				shouldRedirectStrategy: "soft" as const,
+				latestBuildID: "2",
+				href: "/redirected-destination",
+				hrefDetails: {
+					url: new URL(
+						"http://localhost:3000/redirected-destination",
+					),
+					isHTTP: true,
+					isInternal: true,
+					isExternal: false,
+					absoluteURL: "http://localhost:3000/redirected-destination",
+					relativeURL: "/redirected-destination",
+				},
+			},
+			props: {
+				href: targetUrl,
+				navigationType: "prefetch" as const,
+				scrollToTop: true,
+				replace: false,
+				state: { source: "prefetch" },
+			},
+		};
+		const promotedEntry = createEntry({
+			targetUrl,
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		promotedEntry.scrollToTop = false;
+		promotedEntry.replace = true;
+		promotedEntry.state = { source: "click" };
+		promotedEntry.control.promise = Promise.resolve(redirectOutcome);
+
+		const deleteNavigation = vi.fn(() => true);
+		const processSuccessfulNavigation = vi
+			.fn()
+			.mockResolvedValue(undefined);
+		const effectuateRedirectSpy = vi
+			.spyOn(redirectsModule, "effectuateRedirectDataResult")
+			.mockResolvedValue({
+				status: "did",
+				href: "/redirected-destination",
+				hrefDetails: {
+					url: new URL(
+						"http://localhost:3000/redirected-destination",
+					),
+					isHTTP: true,
+					isInternal: true,
+					isExternal: false,
+					absoluteURL: "http://localhost:3000/redirected-destination",
+					relativeURL: "/redirected-destination",
+				},
+			});
+
+		try {
+			await handleNavigationOutcome({
+				findNavigationEntry: () => promotedEntry,
+				deleteNavigation,
+				processSuccessfulNavigation,
+				navigationProps: redirectOutcome.props,
+				outcome: redirectOutcome,
+				expectedOperationID: promotedEntry.operationID,
+			});
+
+			expect(effectuateRedirectSpy).toHaveBeenCalledWith(
+				redirectOutcome.redirectData,
+				0,
+				{
+					href: promotedEntry.targetUrl,
+					navigationType: promotedEntry.type,
+					scrollToTop: promotedEntry.scrollToTop,
+					replace: promotedEntry.replace,
+					state: promotedEntry.state,
+				},
+			);
 		} finally {
 			effectuateRedirectSpy.mockRestore();
 		}
@@ -2576,6 +2670,36 @@ describe("navigation runtime submit stale checkpoints", () => {
 			expect(result).toEqual({
 				success: true,
 				data: "ok-text",
+			});
+		} finally {
+			handleRedirectsSpy.mockRestore();
+		}
+	});
+
+	it("returns text data for successful submit responses without content-type", async () => {
+		const handleRedirectsSpy = vi
+			.spyOn(redirectsModule, "handleRedirects")
+			.mockResolvedValue({
+				redirectData: null,
+				response: new Response("ok-text-no-content-type", {
+					status: 200,
+					headers: {
+						"X-Vorma-Build-Id": "1",
+					},
+				}),
+			} as any);
+
+		try {
+			const runtime = createNavigationRuntime();
+			const result = await runtime.submit(
+				"/api/no-content-type-submit",
+				{ method: "POST" },
+				{ revalidate: false },
+			);
+
+			expect(result).toEqual({
+				success: true,
+				data: "ok-text-no-content-type",
 			});
 		} finally {
 			handleRedirectsSpy.mockRestore();

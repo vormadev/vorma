@@ -203,7 +203,13 @@ describe("navigation outcome runtime", () => {
 		expect(effectuateRedirectSpy).toHaveBeenCalledWith(
 			redirectOutcome.redirectData,
 			0,
-			navigationProps,
+			{
+				href: entry.targetUrl,
+				navigationType: entry.type,
+				scrollToTop: entry.scrollToTop,
+				replace: entry.replace,
+				state: entry.state,
+			},
 		);
 		expect(processSuccessfulNavigation).not.toHaveBeenCalled();
 	});

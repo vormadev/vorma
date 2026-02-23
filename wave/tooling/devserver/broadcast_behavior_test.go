@@ -20,6 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/internal/wavecore"
 	"github.com/vormadev/vorma/wave/tooling/builder"
 	"github.com/vormadev/vorma/wave/tooling/devserver/internal/eventpipeline"
 	"github.com/vormadev/vorma/wave/tooling/internal/broadcast"
@@ -64,6 +65,60 @@ func newTCP4HTTPTestServerForBroadcastBehaviorTests(
 	server.Listener = listener
 	server.Start()
 	return server
+}
+
+func startBlockingHealthServerForBroadcastBehaviorTests(
+	t *testing.T,
+) (
+	int,
+	chan struct{},
+	chan struct{},
+	func(),
+) {
+	t.Helper()
+
+	requestStarted := make(chan struct{}, 1)
+	requestCanceled := make(chan struct{}, 1)
+
+	listener, listenError := net.Listen("tcp4", "127.0.0.1:0")
+	if listenError != nil {
+		t.Fatalf("create health server listener: %v", listenError)
+	}
+
+	healthServer := &http.Server{
+		Handler: http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/healthz" {
+					responseWriter.WriteHeader(http.StatusNotFound)
+					return
+				}
+				select {
+				case requestStarted <- struct{}{}:
+				default:
+				}
+				<-request.Context().Done()
+				select {
+				case requestCanceled <- struct{}{}:
+				default:
+				}
+			},
+		),
+	}
+
+	go func() {
+		_ = healthServer.Serve(listener)
+	}()
+
+	healthServerPort := listener.Addr().(*net.TCPAddr).Port
+	cleanup := func() {
+		shutdownContext, shutdownCancel := context.WithTimeout(
+			context.Background(),
+			time.Second,
+		)
+		defer shutdownCancel()
+		_ = healthServer.Shutdown(shutdownContext)
+	}
+	return healthServerPort, requestStarted, requestCanceled, cleanup
 }
 
 func TestBroadcastRebuilding_SendsPayloadWhenEnabled(t *testing.T) {
@@ -301,6 +356,137 @@ func TestBroadcastReload_WaitingForBuildRetrySkipsPayloadBroadcast(
 		t.Fatalf(
 			"did not expect payload while waiting for build retry, got %#v",
 			receivedPayload,
+		)
+	}
+}
+
+func TestBroadcastReload_WaitAppDoesNotBlockSubsequentReloads(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
+
+	healthServerPort, requestStarted, requestCanceled, cleanupHealthServer := startBlockingHealthServerForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanupHealthServer()
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(healthServerPort))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+	defer serverForTest.cancelReloadReadinessWait()
+
+	firstCallStartedAt := time.Now()
+	serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+		Payload: broadcast.Payload{
+			ChangeType: broadcast.ChangeTypeOther,
+		},
+		WaitApp: true,
+	})
+	if firstCallDuration := time.Since(firstCallStartedAt); firstCallDuration > 250*time.Millisecond {
+		t.Fatalf(
+			"expected first wait-app reload call to return promptly, took %s",
+			firstCallDuration,
+		)
+	}
+
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for blocking healthcheck probe request")
+	}
+
+	secondCallStartedAt := time.Now()
+	serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+		Payload: broadcast.Payload{
+			ChangeType: broadcast.ChangeTypeRevalidate,
+		},
+	})
+	if secondCallDuration := time.Since(secondCallStartedAt); secondCallDuration > 250*time.Millisecond {
+		t.Fatalf(
+			"expected second reload call to return promptly, took %s",
+			secondCallDuration,
+		)
+	}
+
+	select {
+	case <-requestCanceled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for first wait-app probe cancellation")
+	}
+
+	connection.SetReadDeadline(
+		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	)
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+		t.Fatalf(
+			"expected immediate second reload payload broadcast, got read error: %v",
+			readError,
+		)
+	}
+	if receivedPayload.ChangeType != broadcast.ChangeTypeRevalidate {
+		t.Fatalf("expected second reload payload, got %#v", receivedPayload)
+	}
+}
+
+func TestBroadcastReload_CleanupCancelsOutstandingReadinessWait(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
+
+	healthServerPort, requestStarted, requestCanceled, cleanupHealthServer := startBlockingHealthServerForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanupHealthServer()
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(healthServerPort))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	refreshManager, _, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+
+	serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+		Payload: broadcast.Payload{
+			ChangeType: broadcast.ChangeTypeOther,
+		},
+		WaitApp: true,
+	})
+
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for outstanding readiness wait request")
+	}
+
+	serverForTest.CleanupForRebuild()
+
+	select {
+	case <-requestCanceled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal(
+			"timed out waiting for readiness wait cancellation during cleanup",
 		)
 	}
 }
@@ -1037,7 +1223,10 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalPayloadWithEmptyCSSFi
 	)
 	_, payloadBytes, readError := connection.ReadMessage()
 	if readError != nil {
-		t.Fatalf("expected critical css payload broadcast, got read error: %v", readError)
+		t.Fatalf(
+			"expected critical css payload broadcast, got read error: %v",
+			readError,
+		)
 	}
 	payloadString := string(payloadBytes)
 	if !strings.Contains(payloadString, `"changeType":"critical"`) {

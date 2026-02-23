@@ -787,10 +787,15 @@ func (analysis *backendRoutePackageAnalysis) discoveredVormaRegistrationCallID(
 			if lineNumber <= 0 {
 				lineNumber = 1
 			}
+			columnNumber := sourceFilePosition.Column
+			if columnNumber <= 0 {
+				columnNumber = 1
+			}
 			positionKey = fmt.Sprintf(
-				"%s:%d",
+				"%s:%d:%d",
 				filepath.ToSlash(sourceFilePosition.Filename),
 				lineNumber,
+				columnNumber,
 			)
 		}
 	}

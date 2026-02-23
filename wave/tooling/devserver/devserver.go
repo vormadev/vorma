@@ -67,7 +67,9 @@ type runtimeServer struct {
 
 	RestartIntents *restartengine.RestartIntentAccumulator
 
-	WaitingForBuildRetry bool
+	WaitingForBuildRetry          bool
+	ReloadReadinessWaitCancel     context.CancelFunc
+	ReloadReadinessWaitGeneration uint64
 
 	NextRunCycleID       uint64
 	CurrentRunCycleScope *restartengine.RunCycleScope
@@ -104,7 +106,7 @@ func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
 	server := &runtimeServer{
 		Cfg:          cfg,
 		Log:          log,
-		PortResolver: wavecore.NewResolver(),
+		PortResolver: wavecore.NewResolverForMode(true),
 		Lock:         lock,
 		ConcurrentNoWaitHookExecutionLimiter: make(
 			chan struct{},
@@ -513,12 +515,31 @@ func (server *runtimeServer) WaitForApp() bool {
 
 // waitForReadyURL waits for one readiness URL.
 func (server *runtimeServer) waitForReadyURL(url string) bool {
-	return server.WaitForAnyReady([]string{url})
+	return server.waitForReadyURLWithContext(context.Background(), url)
+}
+
+func (server *runtimeServer) waitForReadyURLWithContext(
+	readinessContext context.Context,
+	url string,
+) bool {
+	return server.WaitForAnyReadyWithContext(
+		readinessContext,
+		[]string{url},
+	)
 }
 
 // WaitForAnyReady waits until at least one URL is ready.
 func (server *runtimeServer) WaitForAnyReady(urls []string) bool {
-	return runtimeprocess.WaitForAnyReady(
+	return server.WaitForAnyReadyWithContext(context.Background(), urls)
+}
+
+// WaitForAnyReadyWithContext waits until at least one URL is ready or context cancellation occurs.
+func (server *runtimeServer) WaitForAnyReadyWithContext(
+	readinessContext context.Context,
+	urls []string,
+) bool {
+	return runtimeprocess.WaitForAnyReadyWithContext(
+		readinessContext,
 		urls,
 		runtimeprocess.DefaultReadinessWaitPolicy(),
 	)
@@ -530,7 +551,7 @@ func (server *runtimeServer) MustGetPort() int {
 		return 0
 	}
 	if server.PortResolver == nil {
-		server.PortResolver = wavecore.NewResolver()
+		server.PortResolver = wavecore.NewResolverForMode(true)
 	}
 	return server.PortResolver.MustGetPort()
 }
@@ -651,6 +672,8 @@ func (server *runtimeServer) newRefreshServerMux(
 
 // StopRefreshServer stops websocket refresh server and manager.
 func (server *runtimeServer) StopRefreshServer() error {
+	server.cancelReloadReadinessWait()
+
 	server.Mu.Lock()
 	refreshServer := server.RefreshServer
 	refreshManager := server.RefreshManager
@@ -867,7 +890,13 @@ func (server *runtimeServer) prepareRunCycle(firstRun bool) error {
 	if !firstRun && server.Cfg != nil && server.Cfg.Core != nil &&
 		strings.TrimSpace(server.Cfg.Core.ConfigLocation) != "" {
 		if _, reloadConfigError := server.ReloadConfig(); reloadConfigError != nil {
-			return fmt.Errorf("reload config: %w", reloadConfigError)
+			if server.Log != nil {
+				server.Log.Error(
+					"reload config failed; continuing with previous config",
+					"error",
+					reloadConfigError,
+				)
+			}
 		}
 	}
 
@@ -940,6 +969,7 @@ func (server *runtimeServer) startRunCycleRuntime() {
 func (server *runtimeServer) WaitForBuildRetry() restartengine.RestartRequest {
 	server.SetWaitingForBuildRetry(true)
 	defer server.SetWaitingForBuildRetry(false)
+	server.cancelReloadReadinessWait()
 
 	if pendingRequest, hasPendingRequest := server.ConsumePendingRestartRequest(); hasPendingRequest {
 		return restartengine.NormalizeRestartRequest(pendingRequest)
@@ -966,6 +996,7 @@ func (server *runtimeServer) WaitForBuildRetry() restartengine.RestartRequest {
 
 // CleanupForRebuild performs stop/cancel tasks before next run cycle.
 func (server *runtimeServer) CleanupForRebuild() {
+	server.cancelReloadReadinessWait()
 	server.cancelAndJoinCurrentRunCycleScope()
 	server.cancelConcurrentNoWaitHookLifecycleContext()
 
@@ -1128,10 +1159,11 @@ func (server *runtimeServer) CycleVite() {
 	}
 }
 
-// cycleViteAndWaitForReadiness cycles Vite and waits for readiness.
-func (server *runtimeServer) cycleViteAndWaitForReadiness() bool {
+func (server *runtimeServer) cycleViteAndWaitForReadinessWithContext(
+	readinessContext context.Context,
+) bool {
 	server.CycleVite()
-	return server.WaitForVite()
+	return server.WaitForViteWithContext(readinessContext)
 }
 
 // CallViteFilemapInvalidate calls configured invalidate endpoint in Vite runtime.
@@ -1196,11 +1228,21 @@ func (server *runtimeServer) CallViteFilemapInvalidate() error {
 
 // WaitForVite waits for vite readiness on known probe URLs.
 func (server *runtimeServer) WaitForVite() bool {
+	return server.WaitForViteWithContext(context.Background())
+}
+
+// WaitForViteWithContext waits for vite readiness on known probe URLs with cancellation.
+func (server *runtimeServer) WaitForViteWithContext(
+	readinessContext context.Context,
+) bool {
 	viteContext := server.currentViteContext()
 	if viteContext == nil {
 		return true
 	}
-	return server.WaitForAnyReady(resolveViteReadyURLs(viteContext.Port()))
+	return server.WaitForAnyReadyWithContext(
+		readinessContext,
+		resolveViteReadyURLs(viteContext.Port()),
+	)
 }
 
 // resolveViteReadyURL resolves default Vite readiness probe URL.
@@ -1251,20 +1293,59 @@ func (server *runtimeServer) BroadcastReload(
 		return
 	}
 
-	if !server.waitForReloadReadiness(reloadOptions) {
-		server.Log.Warn("reload readiness failed; skipping browser broadcast")
+	reloadBroadcastGeneration, previousWaitCancel := server.beginReloadReadinessWaitGeneration()
+	if previousWaitCancel != nil {
+		previousWaitCancel()
+	}
+
+	requiresReadinessWait := reloadOptions.WaitApp ||
+		reloadOptions.WaitVite ||
+		reloadOptions.CycleVite
+	if !requiresReadinessWait {
+		server.broadcastReloadPayloadIfGenerationCurrent(
+			reloadBroadcastGeneration,
+			reloadOptions.Payload,
+		)
+		return
+	}
+	if reloadOptions.CycleVite {
+		if !server.waitForReloadReadiness(context.Background(), reloadOptions) {
+			server.Log.Warn(
+				"reload readiness failed; skipping browser broadcast",
+			)
+			return
+		}
+		if !server.shouldBroadcastReloadPayloadAfterReadiness(reloadOptions) {
+			return
+		}
+		server.broadcastReloadPayloadIfGenerationCurrent(
+			reloadBroadcastGeneration,
+			reloadOptions.Payload,
+		)
 		return
 	}
 
-	if !server.shouldBroadcastReloadPayloadAfterReadiness(reloadOptions) {
+	reloadWaitBaseContext := server.CurrentRunCycleContextOrBackground()
+	if reloadWaitBaseContext == nil {
+		reloadWaitBaseContext = context.Background()
+	}
+	readinessContext, readinessCancel := context.WithCancel(
+		reloadWaitBaseContext,
+	)
+	if !server.setReloadReadinessWaitCancelForGeneration(
+		reloadBroadcastGeneration,
+		readinessCancel,
+	) {
+		readinessCancel()
 		return
 	}
 
-	refreshManager := server.currentRefreshManager()
-	if refreshManager == nil {
-		return
-	}
-	refreshManager.Broadcast(reloadOptions.Payload)
+	go server.broadcastReloadAfterReadinessWithGeneration(
+		readinessContext,
+		readinessCancel,
+		reloadBroadcastGeneration,
+		reloadOptions,
+	)
 }
 
 // shouldBroadcastToBrowserClients reports whether browser broadcast should run.
@@ -1276,6 +1357,7 @@ func (server *runtimeServer) shouldBroadcastToBrowserClients() bool {
 
 // waitForReloadReadiness applies readiness policy for reload.
 func (server *runtimeServer) waitForReloadReadiness(
+	readinessContext context.Context,
 	reloadOptions eventpipeline.ReloadOpts,
 ) bool {
 	if reloadOptions.CycleVite {
@@ -1286,7 +1368,12 @@ func (server *runtimeServer) waitForReloadReadiness(
 			server.Mu.Unlock()
 		}
 		if cycleViteRequestedAndApplicable {
-			if !server.cycleViteAndWaitForReadiness() {
+			if !server.cycleViteAndWaitForReadinessWithContext(
+				readinessContext,
+			) {
+				if readinessContext != nil && readinessContext.Err() != nil {
+					return false
+				}
 				server.Log.Warn(
 					"cycle vite readiness failed; falling back to payload broadcast",
 				)
@@ -1295,7 +1382,8 @@ func (server *runtimeServer) waitForReloadReadiness(
 	}
 
 	if reloadOptions.WaitApp {
-		if !server.waitForReadyURL(
+		if !server.waitForReadyURLWithContext(
+			readinessContext,
 			runtimeprocess.ResolveAppReadyURL(
 				server.MustGetPort(),
 				server.Cfg.HealthcheckEndpoint(),
@@ -1306,7 +1394,8 @@ func (server *runtimeServer) waitForReloadReadiness(
 	}
 	viteContextForReadinessWait := server.currentViteContext()
 	if reloadOptions.WaitVite && viteContextForReadinessWait != nil {
-		if !server.WaitForAnyReady(
+		if !server.WaitForAnyReadyWithContext(
+			readinessContext,
 			resolveViteReadyURLs(viteContextForReadinessWait.Port()),
 		) {
 			return false
@@ -1874,6 +1963,123 @@ func (server *runtimeServer) cancelConcurrentNoWaitHookLifecycleContext() {
 	if cancelLifecycleContext != nil {
 		cancelLifecycleContext()
 	}
+}
+
+func (server *runtimeServer) beginReloadReadinessWaitGeneration() (
+	uint64,
+	context.CancelFunc,
+) {
+	if server == nil {
+		return 0, nil
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	server.ReloadReadinessWaitGeneration++
+	reloadBroadcastGeneration := server.ReloadReadinessWaitGeneration
+	previousWaitCancel := server.ReloadReadinessWaitCancel
+	server.ReloadReadinessWaitCancel = nil
+	return reloadBroadcastGeneration, previousWaitCancel
+}
+
+func (server *runtimeServer) setReloadReadinessWaitCancelForGeneration(
+	reloadBroadcastGeneration uint64,
+	waitCancel context.CancelFunc,
+) bool {
+	if server == nil {
+		return false
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if reloadBroadcastGeneration != server.ReloadReadinessWaitGeneration {
+		return false
+	}
+	server.ReloadReadinessWaitCancel = waitCancel
+	return true
+}
+
+func (server *runtimeServer) clearReloadReadinessWaitCancelForGeneration(
+	reloadBroadcastGeneration uint64,
+) {
+	if server == nil {
+		return
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	if reloadBroadcastGeneration == server.ReloadReadinessWaitGeneration {
+		server.ReloadReadinessWaitCancel = nil
+	}
+}
+
+func (server *runtimeServer) isReloadReadinessWaitGenerationCurrent(
+	reloadBroadcastGeneration uint64,
+) bool {
+	if server == nil {
+		return false
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return reloadBroadcastGeneration == server.ReloadReadinessWaitGeneration
+}
+
+func (server *runtimeServer) cancelReloadReadinessWait() {
+	_, waitCancel := server.beginReloadReadinessWaitGeneration()
+	if waitCancel != nil {
+		waitCancel()
+	}
+}
+
+func (server *runtimeServer) broadcastReloadPayloadIfGenerationCurrent(
+	reloadBroadcastGeneration uint64,
+	payload broadcast.Payload,
+) {
+	if !server.isReloadReadinessWaitGenerationCurrent(
+		reloadBroadcastGeneration,
+	) {
+		return
+	}
+	refreshManager := server.currentRefreshManager()
+	if refreshManager == nil {
+		return
+	}
+	if !server.isReloadReadinessWaitGenerationCurrent(
+		reloadBroadcastGeneration,
+	) {
+		return
+	}
+	refreshManager.Broadcast(payload)
+}
+
+func (server *runtimeServer) broadcastReloadAfterReadinessWithGeneration(
+	readinessContext context.Context,
+	readinessCancel context.CancelFunc,
+	reloadBroadcastGeneration uint64,
+	reloadOptions eventpipeline.ReloadOpts,
+) {
+	defer readinessCancel()
+	defer server.clearReloadReadinessWaitCancelForGeneration(
+		reloadBroadcastGeneration,
+	)
+
+	if !server.waitForReloadReadiness(readinessContext, reloadOptions) {
+		if readinessContext == nil || readinessContext.Err() == nil {
+			server.Log.Warn(
+				"reload readiness failed; skipping browser broadcast",
+			)
+		}
+		return
+	}
+	if !server.isReloadReadinessWaitGenerationCurrent(
+		reloadBroadcastGeneration,
+	) {
+		return
+	}
+	if !server.shouldBroadcastReloadPayloadAfterReadiness(reloadOptions) {
+		return
+	}
+	server.broadcastReloadPayloadIfGenerationCurrent(
+		reloadBroadcastGeneration,
+		reloadOptions.Payload,
+	)
 }
 
 // currentRefreshManager returns refresh manager snapshot.

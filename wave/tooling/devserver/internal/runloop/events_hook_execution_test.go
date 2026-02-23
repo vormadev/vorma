@@ -65,9 +65,7 @@ func newEngineAndWatcherForHookExecutionTest(
 			GetCurrentBuilder: func() *builder.Builder {
 				return nil
 			},
-			CurrentRunCycleContextOrBackground: func() context.Context {
-				return context.Background()
-			},
+			CurrentRunCycleContextOrBackground: serverForTest.CurrentRunCycleContextOrBackground,
 			ExecuteBuildPhase: func(*eventpipeline.WorkSet) error {
 				return nil
 			},
@@ -303,7 +301,9 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 		)
 	}
 
-	if _, statError := os.Stat(frameworkCommandFallbackLogPath); !os.IsNotExist(statError) {
+	if _, statError := os.Stat(frameworkCommandFallbackLogPath); !os.IsNotExist(
+		statError,
+	) {
 		t.Fatalf(
 			"expected framework command fallback log not to exist when framework runner is configured, stat err: %v",
 			statError,
@@ -416,13 +416,19 @@ func TestRunConcurrentHooks_AggregatesMultipleHookErrors(t *testing.T) {
 			actions,
 		)
 	}
-	if !strings.Contains(runConcurrentHookError.Error(), os.ErrPermission.Error()) {
+	if !strings.Contains(
+		runConcurrentHookError.Error(),
+		os.ErrPermission.Error(),
+	) {
 		t.Fatalf(
 			"expected aggregated error to include permission failure, got %q",
 			runConcurrentHookError.Error(),
 		)
 	}
-	if !strings.Contains(runConcurrentHookError.Error(), os.ErrNotExist.Error()) {
+	if !strings.Contains(
+		runConcurrentHookError.Error(),
+		os.ErrNotExist.Error(),
+	) {
 		t.Fatalf(
 			"expected aggregated error to include not-exist failure, got %q",
 			runConcurrentHookError.Error(),
@@ -874,6 +880,72 @@ func TestRunPreHooks_CallbackTimeoutUsesPreStageSetting(t *testing.T) {
 	}
 }
 
+func TestRunPreHooks_UsesRunCycleContextForCallbackExecution(t *testing.T) {
+	harness := newEngineAndWatcherForHookExecutionTest(t)
+	defer harness.watcher.Close()
+
+	canceledRunCycleContext, cancelRunCycleContext := context.WithCancel(
+		context.Background(),
+	)
+	cancelRunCycleContext()
+	harness.server.SetCurrentRunCycleContext(canceledRunCycleContext)
+
+	changedPath := filepath.Join(t.TempDir(), "pre-run-cycle-context.txt")
+	eventWithHooks := eventpipeline.EventWithHooks{
+		Classified: eventpipeline.ClassifiedEvent{
+			Event: waveEvent(changedPath),
+		},
+		HookCtx: &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
+			Pre: []wave.OnChangeHook{
+				{
+					Callback: func(
+						hookContext *wave.HookContext,
+					) (*wave.RefreshAction, error) {
+						if hookContext == nil ||
+							hookContext.ExecutionContext == nil {
+							return nil, errors.New(
+								"expected callback execution context",
+							)
+						}
+						if hookContext.ExecutionContext.Err() == nil {
+							return nil, errors.New(
+								"expected canceled callback execution context from run cycle context",
+							)
+						}
+						return nil, hookContext.ExecutionContext.Err()
+					},
+				},
+			},
+		},
+	}
+
+	_, runPreHooksError := harness.engine.RunPreHooks(
+		eventWithHooks,
+		harness.watcher,
+	)
+	if runPreHooksError == nil {
+		t.Fatal(
+			"expected pre hook callback to observe canceled run cycle context",
+		)
+	}
+	if !errors.Is(runPreHooksError, context.Canceled) {
+		t.Fatalf(
+			"expected canceled run cycle context error, got %v",
+			runPreHooksError,
+		)
+	}
+	if !strings.Contains(
+		runPreHooksError.Error(),
+		"pre hook failed for "+changedPath,
+	) {
+		t.Fatalf(
+			"expected pre hook stage/path attribution, got %q",
+			runPreHooksError.Error(),
+		)
+	}
+}
+
 func TestRunPreHooks_CommandTimeoutUsesPreStageSetting(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command assertion is Unix-oriented")
@@ -968,7 +1040,10 @@ func TestRunConcurrentHooks_CommandTimeoutUsesConcurrentStageSetting(
 	if runConcurrentHooksError == nil {
 		t.Fatal("expected concurrent hook command to time out")
 	}
-	if !errors.Is(runConcurrentHooksError, executil.ErrCommandExecutionTimedOut) {
+	if !errors.Is(
+		runConcurrentHooksError,
+		executil.ErrCommandExecutionTimedOut,
+	) {
 		t.Fatalf(
 			"expected timed-out command classification, got %v",
 			runConcurrentHooksError,
@@ -1031,7 +1106,10 @@ func TestRunPostHooks_CommandTimeoutUsesPostStageSetting(t *testing.T) {
 			runPostHooksError,
 		)
 	}
-	if !strings.Contains(runPostHooksError.Error(), "post hook failed for "+changedPath) {
+	if !strings.Contains(
+		runPostHooksError.Error(),
+		"post hook failed for "+changedPath,
+	) {
 		t.Fatalf(
 			"expected post hook stage/path attribution, got %q",
 			runPostHooksError.Error(),
@@ -1041,6 +1119,72 @@ func TestRunPostHooks_CommandTimeoutUsesPostStageSetting(t *testing.T) {
 		t.Fatalf(
 			"expected post hook timeout to stop quickly, elapsed=%s",
 			commandElapsedTime,
+		)
+	}
+}
+
+func TestRunPostHooks_UsesRunCycleContextForCallbackExecution(t *testing.T) {
+	harness := newEngineAndWatcherForHookExecutionTest(t)
+	defer harness.watcher.Close()
+
+	canceledRunCycleContext, cancelRunCycleContext := context.WithCancel(
+		context.Background(),
+	)
+	cancelRunCycleContext()
+	harness.server.SetCurrentRunCycleContext(canceledRunCycleContext)
+
+	changedPath := filepath.Join(t.TempDir(), "post-run-cycle-context.txt")
+	eventWithHooks := eventpipeline.EventWithHooks{
+		Classified: eventpipeline.ClassifiedEvent{
+			Event: waveEvent(changedPath),
+		},
+		HookCtx: &wave.HookContext{FilePath: changedPath},
+		Hooks: &wave.SortedHooks{
+			Post: []wave.OnChangeHook{
+				{
+					Callback: func(
+						hookContext *wave.HookContext,
+					) (*wave.RefreshAction, error) {
+						if hookContext == nil ||
+							hookContext.ExecutionContext == nil {
+							return nil, errors.New(
+								"expected callback execution context",
+							)
+						}
+						if hookContext.ExecutionContext.Err() == nil {
+							return nil, errors.New(
+								"expected canceled callback execution context from run cycle context",
+							)
+						}
+						return nil, hookContext.ExecutionContext.Err()
+					},
+				},
+			},
+		},
+	}
+
+	_, runPostHooksError := harness.engine.RunPostHooks(
+		eventWithHooks,
+		harness.watcher,
+	)
+	if runPostHooksError == nil {
+		t.Fatal(
+			"expected post hook callback to observe canceled run cycle context",
+		)
+	}
+	if !errors.Is(runPostHooksError, context.Canceled) {
+		t.Fatalf(
+			"expected canceled run cycle context error, got %v",
+			runPostHooksError,
+		)
+	}
+	if !strings.Contains(
+		runPostHooksError.Error(),
+		"post hook failed for "+changedPath,
+	) {
+		t.Fatalf(
+			"expected post hook stage/path attribution, got %q",
+			runPostHooksError.Error(),
 		)
 	}
 }
@@ -1919,7 +2063,9 @@ func TestFireNoWaitHooksForEvents_SkipsDuplicateHooks(t *testing.T) {
 						},
 					},
 					{
-						Cmd: "printf 'first\\n' >> " + strconv.Quote(commandOut),
+						Cmd: "printf 'first\\n' >> " + strconv.Quote(
+							commandOut,
+						),
 					},
 				},
 			},
@@ -1936,7 +2082,9 @@ func TestFireNoWaitHooksForEvents_SkipsDuplicateHooks(t *testing.T) {
 						},
 					},
 					{
-						Cmd: "printf 'duplicate\\n' >> " + strconv.Quote(commandOut),
+						Cmd: "printf 'duplicate\\n' >> " + strconv.Quote(
+							commandOut,
+						),
 					},
 				},
 			},
@@ -2532,7 +2680,11 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 		filepath.Dir(privateTrackedFilePath),
 	} {
 		if mkdirError := os.MkdirAll(directoryPath, 0o755); mkdirError != nil {
-			t.Fatalf("create static parent directory %q: %v", directoryPath, mkdirError)
+			t.Fatalf(
+				"create static parent directory %q: %v",
+				directoryPath,
+				mkdirError,
+			)
 		}
 	}
 
@@ -2579,12 +2731,18 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 		},
 	}
 	if executeBuildPhaseError := serverForTest.ExecuteBuildPhase(work); executeBuildPhaseError != nil {
-		t.Fatalf("ExecuteBuildPhase with changed-path static processing returned error: %v", executeBuildPhaseError)
+		t.Fatalf(
+			"ExecuteBuildPhase with changed-path static processing returned error: %v",
+			executeBuildPhaseError,
+		)
 	}
 
 	publicMap, loadPublicMapError := builderForTest.LoadPublicFileMap()
 	if loadPublicMapError != nil {
-		t.Fatalf("load public file map after changed-path processing: %v", loadPublicMapError)
+		t.Fatalf(
+			"load public file map after changed-path processing: %v",
+			loadPublicMapError,
+		)
 	}
 	privateMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
 		t,
@@ -2596,28 +2754,40 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 		publicTrackedFilePath,
 	)
 	if publicTrackedRelError != nil {
-		t.Fatalf("derive tracked public static map key: %v", publicTrackedRelError)
+		t.Fatalf(
+			"derive tracked public static map key: %v",
+			publicTrackedRelError,
+		)
 	}
 	publicUnrelatedMapKey, publicUnrelatedRelError := filepath.Rel(
 		cfg.Core.StaticAssetDirs.Public,
 		publicUnrelatedFilePath,
 	)
 	if publicUnrelatedRelError != nil {
-		t.Fatalf("derive unrelated public static map key: %v", publicUnrelatedRelError)
+		t.Fatalf(
+			"derive unrelated public static map key: %v",
+			publicUnrelatedRelError,
+		)
 	}
 	privateTrackedMapKey, privateTrackedRelError := filepath.Rel(
 		cfg.Core.StaticAssetDirs.Private,
 		privateTrackedFilePath,
 	)
 	if privateTrackedRelError != nil {
-		t.Fatalf("derive tracked private static map key: %v", privateTrackedRelError)
+		t.Fatalf(
+			"derive tracked private static map key: %v",
+			privateTrackedRelError,
+		)
 	}
 	privateUnrelatedMapKey, privateUnrelatedRelError := filepath.Rel(
 		cfg.Core.StaticAssetDirs.Private,
 		privateUnrelatedFilePath,
 	)
 	if privateUnrelatedRelError != nil {
-		t.Fatalf("derive unrelated private static map key: %v", privateUnrelatedRelError)
+		t.Fatalf(
+			"derive unrelated private static map key: %v",
+			privateUnrelatedRelError,
+		)
 	}
 
 	publicTrackedMapKey = filepath.ToSlash(publicTrackedMapKey)
@@ -2689,7 +2859,11 @@ func TestExecuteBuildPhase_UsesFullScanStaticProcessingWhenChangedPathsAbsent(
 		filepath.Dir(privateTrackedFilePath),
 	} {
 		if mkdirError := os.MkdirAll(directoryPath, 0o755); mkdirError != nil {
-			t.Fatalf("create static parent directory %q: %v", directoryPath, mkdirError)
+			t.Fatalf(
+				"create static parent directory %q: %v",
+				directoryPath,
+				mkdirError,
+			)
 		}
 	}
 
@@ -2733,7 +2907,10 @@ func TestExecuteBuildPhase_UsesFullScanStaticProcessingWhenChangedPathsAbsent(
 		},
 	}
 	if executeBuildPhaseError := serverForTest.ExecuteBuildPhase(work); executeBuildPhaseError != nil {
-		t.Fatalf("ExecuteBuildPhase with full-scan static processing returned error: %v", executeBuildPhaseError)
+		t.Fatalf(
+			"ExecuteBuildPhase with full-scan static processing returned error: %v",
+			executeBuildPhaseError,
+		)
 	}
 
 	publicMap, loadPublicMapError := builderForTest.LoadPublicFileMap()

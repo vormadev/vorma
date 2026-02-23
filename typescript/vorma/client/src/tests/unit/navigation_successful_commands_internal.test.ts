@@ -306,6 +306,7 @@ describe("successful navigation command builder", () => {
 				response,
 				json,
 				expectedBuildID: "1",
+				shouldApplyCSSBundles: false,
 			},
 			{
 				type: "render",
@@ -335,6 +336,38 @@ describe("successful navigation command builder", () => {
 			{
 				type: "stop",
 				reason: "post_asset_entry_lost",
+			},
+		]);
+
+		expect(
+			buildSuccessfulNavigationPostAssetLifecycleCommands({
+				postAssetLifecycleExecutionPlan: {
+					postAssetExecutionPlan: {
+						type: "completeWithoutRender",
+						reason: "post_asset_idle_prefetch",
+					},
+					postAssetSideEffectPlan: {
+						shouldCommitClientLoadersState: false,
+						shouldSyncBuildIDAfterAssetWait: false,
+						shouldApplyResponseArtifacts: true,
+					},
+				},
+				response,
+				json,
+				expectedBuildID: "1",
+				clientLoadersResult: undefined,
+			}),
+		).toEqual([
+			{
+				type: "apply_response_artifacts_when_build_matches",
+				response,
+				json,
+				expectedBuildID: "1",
+				shouldApplyCSSBundles: true,
+			},
+			{
+				type: "complete_without_render",
+				reason: "post_asset_idle_prefetch",
 			},
 		]);
 	});

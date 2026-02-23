@@ -44,6 +44,7 @@ export type NavigationOutcomeExecutionPlan =
 	  }
 	| {
 			type: "redirect";
+			entry: NavigationEntry;
 			outcome: Extract<NavigationOutcome, { type: "redirect" }>;
 			reason: "redirect_effectuate";
 	  }
@@ -109,6 +110,7 @@ export function decideNavigationOutcomeExecutionPlan(props: {
 
 		return {
 			type: "redirect",
+			entry,
 			outcome,
 			reason: "redirect_effectuate",
 		};

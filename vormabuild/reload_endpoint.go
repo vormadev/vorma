@@ -33,10 +33,11 @@ type reloadActionExecutor struct {
 }
 
 type callReloadEndpointOptions struct {
-	endpoint        string
-	reloadAttemptID string
-	expectedBuildID string
-	reloadTrigger   string
+	endpoint             string
+	reloadAttemptID      string
+	expectedBuildID      string
+	reloadTrigger        string
+	hookExecutionContext context.Context
 }
 
 var reloadAttemptSequence atomic.Uint64
@@ -141,12 +142,14 @@ func getReloadActionForEndpointWithFallback(
 	endpoint string,
 	warnMessage string,
 	reloadTrigger string,
+	hookContext *wave.HookContext,
 ) *wave.RefreshAction {
 	return defaultReloadActionExecutor.getReloadActionForEndpointWithFallback(
 		v,
 		endpoint,
 		warnMessage,
 		reloadTrigger,
+		hookContext,
 	)
 }
 
@@ -155,12 +158,14 @@ func (executor reloadActionExecutor) getReloadActionForEndpointWithFallback(
 	endpoint string,
 	warnMessage string,
 	reloadTrigger string,
+	hookContext *wave.HookContext,
 ) *wave.RefreshAction {
 	reloadOptions := callReloadEndpointOptions{
-		endpoint:        endpoint,
-		reloadAttemptID: executor.dependencies.nextReloadAttemptID(),
-		expectedBuildID: strings.TrimSpace(v.BuildID()),
-		reloadTrigger:   reloadTrigger,
+		endpoint:             endpoint,
+		reloadAttemptID:      executor.dependencies.nextReloadAttemptID(),
+		expectedBuildID:      strings.TrimSpace(v.BuildID()),
+		reloadTrigger:        reloadTrigger,
+		hookExecutionContext: normalizeHookExecutionContext(hookContext),
 	}
 
 	if err := executor.dependencies.callReloadEndpoint(v, reloadOptions); err != nil {
@@ -228,7 +233,10 @@ func (executor reloadEndpointRequestExecutor) callReloadEndpoint(
 
 	url := executor.dependencies.reloadEndpointURLForApp(v, trimmedEndpoint)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(
+		normalizeHookExecutionContextFromOptions(options),
+		10*time.Second,
+	)
 	defer cancel()
 
 	req, err := executor.dependencies.newReloadEndpointRequest(ctx, url)
@@ -258,6 +266,27 @@ func (executor reloadEndpointRequestExecutor) callReloadEndpoint(
 	}
 
 	return nil
+}
+
+func normalizeHookExecutionContext(
+	hookContext *wave.HookContext,
+) context.Context {
+	if hookContext == nil {
+		return context.Background()
+	}
+	if hookContext.ExecutionContext == nil {
+		return context.Background()
+	}
+	return hookContext.ExecutionContext
+}
+
+func normalizeHookExecutionContextFromOptions(
+	options callReloadEndpointOptions,
+) context.Context {
+	if options.hookExecutionContext == nil {
+		return context.Background()
+	}
+	return options.hookExecutionContext
 }
 
 func applyReloadEndpointRequestHeaders(

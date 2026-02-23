@@ -296,6 +296,21 @@ async function executeNavigationOutcomeExecutionPlan(props: {
 	processSuccessfulNavigation: HandleNavigationOutcomeProps["processSuccessfulNavigation"];
 	navigationProps: NavigateProps;
 }): Promise<InternalNavigateResult> {
+	function buildRedirectSourceNavigationPropsFromCurrentEntry(): NavigateProps {
+		if (props.executionPlan.type !== "redirect") {
+			return props.navigationProps;
+		}
+
+		return {
+			...props.navigationProps,
+			href: props.executionPlan.entry.targetUrl,
+			navigationType: props.executionPlan.entry.type,
+			scrollToTop: props.executionPlan.entry.scrollToTop,
+			replace: props.executionPlan.entry.replace,
+			state: props.executionPlan.entry.state,
+		};
+	}
+
 	switch (props.executionPlan.type) {
 		case "stop":
 			return {
@@ -322,7 +337,7 @@ async function executeNavigationOutcomeExecutionPlan(props: {
 			const redirectResult = await effectuateRedirectDataResult(
 				props.executionPlan.outcome.redirectData,
 				props.navigationProps.redirectCount || 0,
-				props.navigationProps,
+				buildRedirectSourceNavigationPropsFromCurrentEntry(),
 			);
 			return {
 				type: "committed",

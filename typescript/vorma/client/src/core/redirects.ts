@@ -8,11 +8,8 @@ import {
 	getNavigationStateAccess,
 } from "../app/context.ts";
 import { dispatchBuildIDEvent } from "../platform/events.ts";
-import {
-	isArrayBufferView,
-	isInstanceOfGlobal,
-	logError,
-} from "../platform/safety.ts";
+import { logError } from "../platform/safety.ts";
+import { resolveRequestBodyForTransport } from "../platform/request_body.ts";
 import {
 	isSameDocumentLocation,
 	VORMA_HARD_RELOAD_QUERY_PARAM,
@@ -195,26 +192,25 @@ type RedirectRequestFlowResult =
 	  };
 
 function resolveHTTPRedirectTarget(props: { href: string; source: string }): {
-	newURL: URL;
 	hrefDetails: Extract<HrefDetails, { isHTTP: true }>;
 } {
 	const { href, source } = props;
-	let newURL: URL;
+	let absoluteHref: string;
 	try {
-		newURL = new URL(resolveAbsoluteHref({ href: href }));
+		absoluteHref = resolveAbsoluteHref({ href: href });
 	} catch {
 		throw new Error(
 			`${source} has invalid redirect target ${JSON.stringify(href)}`,
 		);
 	}
 
-	const hrefDetails = getHrefDetails(newURL.href);
+	const hrefDetails = getHrefDetails(absoluteHref);
 	if (!hrefDetails.isHTTP) {
 		throw new Error(
 			`${source} redirect target ${JSON.stringify(href)} must be an HTTP(S) URL`,
 		);
 	}
-	return { newURL, hrefDetails };
+	return { hrefDetails };
 }
 
 function getRedirectStrategy(
@@ -348,21 +344,6 @@ function parseResponseForRedirectData(
 	);
 }
 
-function shouldSerializeBody(body: unknown): boolean {
-	if (body === null || body === undefined) return false;
-	if (typeof body === "string") return false;
-	if (isInstanceOfGlobal(body, "FormData")) return false;
-	if (isInstanceOfGlobal(body, "URLSearchParams")) return false;
-	if (isInstanceOfGlobal(body, "Blob")) return false;
-	if (isInstanceOfGlobal(body, "ArrayBuffer")) return false;
-	if (isArrayBufferView(body)) {
-		return false;
-	}
-	if (isInstanceOfGlobal(body, "ReadableStream")) return false;
-
-	return true;
-}
-
 function canIncludeBodyForMethod(method: string | undefined): boolean {
 	const normalizedMethod = method?.toUpperCase();
 	if (!normalizedMethod) {
@@ -387,14 +368,22 @@ export function buildRedirectRequestInit(
 		...rest
 	} = requestInit ?? {};
 
+	const shouldAttachBody =
+		rawBody !== undefined && canIncludeBodyForMethod(requestInit?.method);
+	let shouldSetJSONContentType = false;
 	const bodyParentObj: Pick<RequestInit, "body"> = {};
-	if (rawBody !== undefined && canIncludeBodyForMethod(requestInit?.method)) {
-		bodyParentObj.body = shouldSerializeBody(rawBody)
-			? JSON.stringify(rawBody)
-			: rawBody;
+	if (shouldAttachBody) {
+		const requestBodyResolution = resolveRequestBodyForTransport({
+			input: rawBody,
+		});
+		bodyParentObj.body = requestBodyResolution.body;
+		shouldSetJSONContentType = requestBodyResolution.didSerializeJSON;
 	}
 
 	const headers = new Headers(rawHeaders);
+	if (shouldSetJSONContentType && !headers.has("content-type")) {
+		headers.set("Content-Type", "application/json");
+	}
 	// To temporarily test traditional server redirect behavior,
 	// you can set this to "0" instead of "1"
 	headers.set("X-Accepts-Client-Redirect", "1");
@@ -578,7 +567,6 @@ export async function handleRedirects(props: {
 	abortController: AbortController;
 	url: URL;
 	requestInit?: RequestInit;
-	isPrefetch?: boolean;
 	redirectCount?: number;
 }): Promise<{ redirectData: RedirectData | null; response?: Response }> {
 	const requestFlow = await executeRedirectRequestFlow(props);

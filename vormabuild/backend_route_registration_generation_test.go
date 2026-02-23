@@ -256,6 +256,72 @@ func TestDiscoveredVormaRegistrationCallID_UsesSourcePosition(
 	}
 }
 
+func TestDiscoveredVormaRegistrationCallID_UsesSourceColumnWhenAvailable(
+	t *testing.T,
+) {
+	goFileSet := token.NewFileSet()
+	goFile := goFileSet.AddFile(
+		"/tmp/backend/src/router/routes.go",
+		-1,
+		256,
+	)
+
+	analysis := &backendRoutePackageAnalysis{
+		goFileSet: goFileSet,
+	}
+
+	callOne := &discoveredVormaRegistrationCall{
+		isLoader:              true,
+		appExpression:         &ast.Ident{Name: "App"},
+		patternExpression:     quotedStringExpression("/same"),
+		handlerExpression:     &ast.Ident{Name: "usersLoader"},
+		decorateCtxExpression: &ast.Ident{Name: "decorateLoaderCtx"},
+		sourcePosition:        goFile.Pos(10),
+	}
+	callTwo := &discoveredVormaRegistrationCall{
+		isLoader:              true,
+		appExpression:         &ast.Ident{Name: "App"},
+		patternExpression:     quotedStringExpression("/same"),
+		handlerExpression:     &ast.Ident{Name: "usersLoader"},
+		decorateCtxExpression: &ast.Ident{Name: "decorateLoaderCtx"},
+		sourcePosition:        goFile.Pos(20),
+	}
+
+	callIDOne, err := analysis.discoveredVormaRegistrationCallID(callOne)
+	if err != nil {
+		t.Fatalf(
+			"discoveredVormaRegistrationCallID callOne returned error: %v",
+			err,
+		)
+	}
+	callIDTwo, err := analysis.discoveredVormaRegistrationCallID(callTwo)
+	if err != nil {
+		t.Fatalf(
+			"discoveredVormaRegistrationCallID callTwo returned error: %v",
+			err,
+		)
+	}
+
+	if callIDOne == callIDTwo {
+		t.Fatalf(
+			"call IDs should differ for same-line source positions with different columns, got %q",
+			callIDOne,
+		)
+	}
+	if !strings.Contains(callIDOne, ":1:11|") {
+		t.Fatalf(
+			"call ID one = %q, expected column-aware source key",
+			callIDOne,
+		)
+	}
+	if !strings.Contains(callIDTwo, ":1:21|") {
+		t.Fatalf(
+			"call ID two = %q, expected column-aware source key",
+			callIDTwo,
+		)
+	}
+}
+
 func TestPrepareDiscoveredRouteRegistrarOverlay(t *testing.T) {
 	t.Run(
 		"returns nil when no discovered registrations exist",

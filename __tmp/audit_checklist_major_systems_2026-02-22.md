@@ -32,6 +32,10 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
       `vormabuild/backend_route_registration_generation.go` (discovered call ID
       now includes source position, preventing distinct same-expression call
       sites from deduping together).
+- [x] Fix same-line discovered registration call-site identity in
+      `vormabuild/backend_route_registration_generation.go` (discovered call ID
+      now includes source column in addition to file and line, preventing
+      distinct same-expression call sites on the same line from collapsing).
 - [x] Fix build-retry restart intent downgrade in
       `wave/tooling/devserver/devserver.go` (`QueueRestartRequest` no longer
       drops stronger intents while waiting for build retry; intents now always
@@ -95,6 +99,72 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
 - [x] Add `kit/mux` HEAD fallback inferred-header regression coverage in
       `kit/mux/mux_test.go`:
       `TestHTTPHandlers/HEAD_Fallback_To_GET_PreservesInferredHeaders`.
+- [x] Fix watcher-batch responsiveness for non-cycle browser readiness waits in
+      `wave/tooling/devserver/devserver.go` (reload paths that require
+      `WaitApp`/`WaitVite` now run readiness waits asynchronously with
+      cancellation and generation guards, so new watcher batches are not blocked
+      behind readiness timeout budgets).
+- [x] Fix devserver port resolver mode snapshot in
+      `wave/tooling/devserver/devserver.go` (`RunDev` and `MustGetPort` now use
+      `wavecore.NewResolverForMode(true)` to enforce dev-mode port semantics for
+      devserver lifecycle operations).
+- [x] Add cancellation-aware readiness wait API in
+      `wave/tooling/devserver/internal/runtimeprocess/runtimeprocess.go`
+      (`WaitForAnyReadyWithContext`) so in-flight probe loops can terminate
+      immediately when superseded by newer reload work.
+- [x] Add browser reload responsiveness and cancellation regression coverage in
+      `wave/tooling/devserver/broadcast_behavior_test.go`:
+      `TestBroadcastReload_WaitAppDoesNotBlockSubsequentReloads` and
+      `TestBroadcastReload_CleanupCancelsOutstandingReadinessWait`.
+- [x] Add readiness cancellation regression coverage in
+      `wave/tooling/devserver/internal/runtimeprocess/devserver_wait_ready_test.go`:
+      `TestWaitForAnyReadyWithContext_CancellationStopsWaitEarly`.
+- [x] Add watcher-batch long-duration warning guard in
+      `wave/tooling/devserver/internal/runloop/runloop.go` (batches that exceed
+      the configured/default threshold now emit a warning with cycle/batch trace
+      fields and retry-wait state context).
+- [x] Add watcher-batch duration warning regression coverage in
+      `wave/tooling/devserver/internal/runloop/events_process_test.go`:
+      `TestProcessEvents_LogsWarningWhenBatchDurationExceedsThreshold` and
+      `TestProcessEvents_DoesNotLogBatchDurationWarningWhenBelowThreshold`.
+- [x] Fix config-reload failure run termination in
+      `wave/tooling/devserver/devserver.go` (`prepareRunCycle` now logs config
+      reload failures and continues with the previous valid in-memory config
+      instead of aborting the devserver lifecycle).
+- [x] Add config syntax/validation reload-failure resilience regression coverage
+      in `wave/tooling/devserver/devserver_run_test.go`:
+      `TestServerRun_ConfigReloadFailureDoesNotTerminateRun`.
+- [x] Add browser-mode Go type-error recovery regression coverage in
+      `wave/tooling/devserver/devserver_run_test.go`:
+      `TestServerRun_GoTypeErrorThenQuickFixRecoversWithoutReadinessStall`.
+- [x] Add browser-mode config syntax/validation quick-fix responsiveness
+      coverage in `wave/tooling/devserver/devserver_run_test.go`:
+      `TestServerRun_ConfigReloadErrorThenQuickFixRecoversWithoutReadinessStall`.
+- [x] Add layered build-retry + config-error recovery coverage in
+      `wave/tooling/devserver/devserver_run_test.go`:
+      `TestServerRun_MainAppEntryTypo_ConfigErrorEventThenQuickFixRecoversWithoutReadinessStall`
+      (covers syntax and validation config errors injected during
+      `awaiting_build_retry` before a quick fix).
+- [x] Fix `vormabuild` watch-hook execution-context propagation in
+      `vormabuild/build_watch.go` and `vormabuild/reload_endpoint.go` (reload
+      endpoint requests now inherit hook callback execution context so callback
+      timeout/cancellation can interrupt stuck endpoint calls instead of always
+      waiting on the internal 10s request budget).
+- [x] Add execution-context propagation coverage for `vormabuild` watch reload
+      callbacks and reload endpoint execution in
+      `vormabuild/watch_hooks_test.go` and `vormabuild/reload_endpoint_test.go`
+      (covers non-nil/nil hook-context passthrough and canceled-context request
+      failure behavior).
+- [x] Fix runloop pre/post hook callback context source in
+      `wave/tooling/devserver/internal/runloop/runloop.go` (`RunPreHooks` and
+      `RunPostHooks` now derive callback execution context from
+      `CurrentRunCycleContextOrBackground` instead of `context.Background()`, so
+      run-cycle cancellation can interrupt callback work consistently across
+      pre/concurrent/post stages).
+- [x] Add run-cycle cancellation coverage for pre/post callback stages in
+      `wave/tooling/devserver/internal/runloop/events_hook_execution_test.go`
+      (`TestRunPreHooks_UsesRunCycleContextForCallbackExecution` and
+      `TestRunPostHooks_UsesRunCycleContextForCallbackExecution`).
 
 ## Coverage / Verification
 
@@ -109,10 +179,10 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
 - [x] Add an end-to-end devserver regression that reproduces: build-failure ->
       non-config watch event -> immediate config fix, and asserts the
       retry-restart is processed without waiting for readiness timeout budgets.
-- [ ] Add watcher-batch phase duration guards/logging in runloop to flag when a
+- [x] Add watcher-batch phase duration guards/logging in runloop to flag when a
       single batch callback monopolizes the debouncer for unexpectedly long
       intervals.
-- [ ] Evaluate a bounded/asynchronous browser readiness wait strategy so browser
+- [x] Evaluate a bounded/asynchronous browser readiness wait strategy so browser
       payload gating cannot monopolize watcher callback execution in edge cases
       outside build-retry mode.
 
@@ -127,19 +197,19 @@ Current coverage snapshot
 - `wave/tooling/builder/internal/fileops`: 63.6%
 - `wave/tooling/builder/internal/schema`: 85.7%
 - `wave/tooling/builder/internal/static`: 77.8%
-- `wave/tooling/devserver`: 80.2%
-- `wave/tooling/devserver/internal/eventpipeline`: 90.3%
+- `wave/tooling/devserver`: 80.4%
+- `wave/tooling/devserver/internal/eventpipeline`: 90.5%
 - `wave/tooling/devserver/internal/hooks`: 91.1%
-- `wave/tooling/devserver/internal/restartengine`: 64.7%
-- `wave/tooling/devserver/internal/runloop`: 85.8%
-- `wave/tooling/devserver/internal/runtimeprocess`: 77.1%
+- `wave/tooling/devserver/internal/restartengine`: 61.9%
+- `wave/tooling/devserver/internal/runloop`: 86.0%
+- `wave/tooling/devserver/internal/runtimeprocess`: 79.4%
 - `wave/tooling/internal/broadcast`: 66.5%
 - `wave/tooling/internal/shared`: 67.0%
 - `wave/tooling/internal/watch`: 70.0%
 - `wave/tooling/internal/watch/classification`: 75.4%
 - `wave/tooling/internal/watch/dedup`: 76.9%
 - `internal/vormaruntime`: 91.9%
-- `kit/mux`: 89.2%
+- `kit/mux`: 89.3%
 - `vormabuild`: 90.9%
 - `vormagogen`: 100.0%
 

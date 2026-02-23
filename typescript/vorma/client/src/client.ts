@@ -6,7 +6,10 @@ import {
 import { createNavigationRuntime } from "./core/navigation/runtime.ts";
 import type {
 	NavigateProps,
+	NavigationEntry,
 	NavigationControl,
+	NavigationOutcome,
+	NavigationStateManager,
 	SubmitOptions,
 } from "./core/navigation/types.ts";
 import type { StatusEventDetail } from "./platform/events.ts";
@@ -76,13 +79,117 @@ export function createRevalidationTriggerTimestampRuntime(props?: {
 const revalidationTriggerTimestampRuntime =
 	createRevalidationTriggerTimestampRuntime();
 
-// Global singleton instance
-export const navigationStateManager = createNavigationRuntime({
-	onNavigationIntentResolved: () => {
-		revalidationTriggerTimestampRuntime.recordNavigationOrRevalidationIntentCommitted();
+let navigationStateManagerSingleton: NavigationStateManager | null = null;
+
+function getNavigationStateManager(): NavigationStateManager {
+	if (navigationStateManagerSingleton) {
+		return navigationStateManagerSingleton;
+	}
+
+	navigationStateManagerSingleton = createNavigationRuntime({
+		onNavigationIntentResolved: () => {
+			revalidationTriggerTimestampRuntime.recordNavigationOrRevalidationIntentCommitted();
+		},
+	});
+	setNavigationStateAccess(navigationStateManagerSingleton);
+	return navigationStateManagerSingleton;
+}
+
+/**
+ * Ensures the singleton navigation runtime is initialized.
+ */
+export function ensureNavigationRuntimeInitialized(): void {
+	getNavigationStateManager();
+}
+
+function withNavigationStateManager<T>(props: {
+	run: (navigationRuntime: NavigationStateManager) => T;
+}): T {
+	return props.run(getNavigationStateManager());
+}
+
+// Global singleton runtime proxy that defers concrete runtime construction
+// until the first method/property access.
+export const navigationStateManager: NavigationStateManager = {
+	get _submissions() {
+		return getNavigationStateManager()._submissions;
 	},
-});
-setNavigationStateAccess(navigationStateManager);
+	navigate(props: NavigateProps): Promise<{ didNavigate: boolean }> {
+		return withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.navigate(props),
+		});
+	},
+	beginNavigation(props: NavigateProps): NavigationControl {
+		return withNavigationStateManager({
+			run: (navigationRuntime) =>
+				navigationRuntime.beginNavigation(props),
+		});
+	},
+	processSuccessfulNavigation(
+		outcome: Extract<NavigationOutcome, { type: "success" }>,
+		entry: NavigationEntry,
+	): Promise<void> {
+		return withNavigationStateManager({
+			run: (navigationRuntime) =>
+				navigationRuntime.processSuccessfulNavigation(outcome, entry),
+		});
+	},
+	submit<T = unknown>(
+		url: string | URL,
+		requestInit?: RequestInit,
+		options?: SubmitOptions,
+	): Promise<{ success: true; data: T } | { success: false; error: string }> {
+		return withNavigationStateManager({
+			run: (navigationRuntime) =>
+				navigationRuntime.submit<T>(url, requestInit, options),
+		});
+	},
+	removeNavigation(key: string): void {
+		withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.removeNavigation(key),
+		});
+	},
+	getNavigation(key: string): NavigationEntry | undefined {
+		return withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.getNavigation(key),
+		});
+	},
+	hasNavigation(key: string): boolean {
+		return withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.hasNavigation(key),
+		});
+	},
+	getNavigationsSize(): number {
+		return withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.getNavigationsSize(),
+		});
+	},
+	getNavigations(): Map<string, NavigationEntry> {
+		return withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.getNavigations(),
+		});
+	},
+	getStatus(): StatusEventDetail {
+		return withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.getStatus(),
+		});
+	},
+	getDebugJournal() {
+		return withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.getDebugJournal(),
+		});
+	},
+	clearDebugJournal(): void {
+		withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.clearDebugJournal(),
+		});
+	},
+	clearAll(): void {
+		withNavigationStateManager({
+			run: (navigationRuntime) => navigationRuntime.clearAll(),
+		});
+	},
+};
 
 /////////////////////////////////////////////////////////////////////
 // PUBLIC API
@@ -208,6 +315,7 @@ export function getRootEl(): HTMLDivElement {
  * Returns the singleton history integration instance.
  */
 export function getHistoryInstance(): historyInstance {
+	ensureNavigationRuntimeInitialized();
 	return HistoryManager.getInstance();
 }
 

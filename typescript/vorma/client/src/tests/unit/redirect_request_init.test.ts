@@ -27,6 +27,9 @@ describe("buildRedirectRequestInit", () => {
 		expect(new Headers(init.headers).get("X-Accepts-Client-Redirect")).toBe(
 			"1",
 		);
+		expect(new Headers(init.headers).get("Content-Type")).toBe(
+			"application/json",
+		);
 	});
 
 	it("omits body for implicit GET requests even when constructors are unavailable", () => {
@@ -119,5 +122,23 @@ describe("buildRedirectRequestInit", () => {
 		);
 
 		expect(init.body).toBe(readableStreamBody);
+	});
+
+	it("keeps caller-provided content type when serializing object bodies", () => {
+		const init = buildRedirectRequestInit(
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/vnd.custom+json",
+				},
+				body: { key: "value" } as any,
+			},
+			new AbortController().signal,
+		);
+
+		expect(init.body).toBe(JSON.stringify({ key: "value" }));
+		expect(new Headers(init.headers).get("Content-Type")).toBe(
+			"application/vnd.custom+json",
+		);
 	});
 });

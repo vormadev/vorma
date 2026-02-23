@@ -1,10 +1,71 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { getClientRuntimeRenderStateMock, getRouterDataMock, getLocationMock } =
+	vi.hoisted(() => {
+		return {
+			getClientRuntimeRenderStateMock: vi.fn(),
+			getRouterDataMock: vi.fn(),
+			getLocationMock: vi.fn(),
+		};
+	});
+
+vi.mock("../../app/context.ts", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../app/context.ts")>();
+	return {
+		...actual,
+		getClientRuntimeRenderState: getClientRuntimeRenderStateMock,
+		getRouterData: getRouterDataMock,
+	};
+});
+
+vi.mock("../../client.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../client.ts")>();
+	return {
+		...actual,
+		getLocation: getLocationMock,
+	};
+});
+
 import {
 	areRouteOutletBranchInputsEqualByIdentity,
 	areRouteOutletLocationsEqual,
+	buildInitialRouteOutletStoreState,
+	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
 	buildRouteOutletRouteKey,
 } from "../../ui/route_outlet_runtime.ts";
+
+beforeEach(() => {
+	getClientRuntimeRenderStateMock.mockReset();
+	getRouterDataMock.mockReset();
+	getLocationMock.mockReset();
+
+	const sharedLocationState = { from: "default" };
+	getClientRuntimeRenderStateMock.mockReturnValue({
+		loadersData: [{ root: true }],
+		clientLoadersData: [{ client: true }],
+		outermostError: undefined,
+		outermostErrorIdx: undefined,
+		activeComponents: ["RootComponent"],
+		activeErrorBoundary: undefined,
+		importURLs: ["/routes/root.tsx"],
+		exportKeys: ["Route"],
+	});
+	getRouterDataMock.mockReturnValue({
+		buildID: "1",
+		matchedPatterns: ["/"],
+		splatValues: [],
+		params: {},
+		rootData: { root: true },
+	});
+	getLocationMock.mockReturnValue({
+		pathname: "/",
+		search: "",
+		hash: "",
+		state: sharedLocationState,
+	});
+});
 
 describe("route outlet runtime internals", () => {
 	it("builds distinct route keys when import and export parts contain delimiters", () => {
@@ -137,5 +198,160 @@ describe("route outlet runtime internals", () => {
 				},
 			}),
 		).toBe(false);
+	});
+
+	it("builds initial store state from current runtime snapshots", () => {
+		const initialState = buildInitialRouteOutletStoreState();
+
+		expect(initialState.navigation).toEqual({
+			loadersData: [{ root: true }],
+			clientLoadersData: [{ client: true }],
+			routerData: {
+				buildID: "1",
+				matchedPatterns: ["/"],
+				splatValues: [],
+				params: {},
+				rootData: { root: true },
+			},
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			activeComponents: ["RootComponent"],
+			activeErrorBoundary: undefined,
+			importURLs: ["/routes/root.tsx"],
+			exportKeys: ["Route"],
+		});
+		expect(initialState.routeOutletBranchInputState).toEqual({
+			loaderCount: 1,
+			outermostErrorIdx: undefined,
+			activeComponents: ["RootComponent"],
+			activeErrorBoundary: undefined,
+			importURLs: ["/routes/root.tsx"],
+			exportKeys: ["Route"],
+		});
+		expect(initialState.location).toEqual({
+			pathname: "/",
+			search: "",
+			hash: "",
+			state: { from: "default" },
+		});
+	});
+
+	it("reuses previous store state when runtime snapshots are equivalent", () => {
+		const previousStoreState = buildInitialRouteOutletStoreState();
+
+		getClientRuntimeRenderStateMock.mockReturnValue({
+			loadersData: [{ root: true }],
+			clientLoadersData: [{ client: true }],
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			activeComponents: ["RootComponent"],
+			activeErrorBoundary: undefined,
+			importURLs: ["/routes/root.tsx"],
+			exportKeys: ["Route"],
+		});
+		getRouterDataMock.mockReturnValue({
+			buildID: "1",
+			matchedPatterns: ["/"],
+			splatValues: [],
+			params: {},
+			rootData: { root: true },
+		});
+		getLocationMock.mockReturnValue({
+			pathname: "/",
+			search: "",
+			hash: "",
+			state: previousStoreState.location.state,
+		});
+
+		const nextStoreState =
+			buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+
+		expect(nextStoreState).toBe(previousStoreState);
+	});
+
+	it("updates navigation and branch snapshots when runtime navigation changes", () => {
+		const previousStoreState = buildInitialRouteOutletStoreState();
+		const nextLocationState = previousStoreState.location.state;
+
+		getClientRuntimeRenderStateMock.mockReturnValue({
+			loadersData: [{ root: true }, { child: true }],
+			clientLoadersData: [{ client: true }],
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			activeComponents: ["RootComponent", "ChildComponent"],
+			activeErrorBoundary: undefined,
+			importURLs: ["/routes/root.tsx", "/routes/child.tsx"],
+			exportKeys: ["Route", "Route"],
+		});
+		getRouterDataMock.mockReturnValue({
+			buildID: "1",
+			matchedPatterns: ["/", "/child"],
+			splatValues: [],
+			params: {},
+			rootData: { root: true },
+		});
+		getLocationMock.mockReturnValue({
+			pathname: "/",
+			search: "",
+			hash: "",
+			state: nextLocationState,
+		});
+
+		const nextStoreState =
+			buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+
+		expect(nextStoreState).not.toBe(previousStoreState);
+		expect(nextStoreState.navigation).not.toBe(
+			previousStoreState.navigation,
+		);
+		expect(nextStoreState.routeOutletBranchInputState).not.toBe(
+			previousStoreState.routeOutletBranchInputState,
+		);
+		expect(nextStoreState.routeOutletBranchInputState.loaderCount).toBe(2);
+		expect(nextStoreState.location).toBe(previousStoreState.location);
+	});
+
+	it("updates location snapshot when pathname/search/hash/state changes", () => {
+		const previousStoreState = buildInitialRouteOutletStoreState();
+		const nextLocationState = { from: "changed" };
+
+		getClientRuntimeRenderStateMock.mockReturnValue({
+			loadersData: [{ root: true }],
+			clientLoadersData: [{ client: true }],
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			activeComponents: ["RootComponent"],
+			activeErrorBoundary: undefined,
+			importURLs: ["/routes/root.tsx"],
+			exportKeys: ["Route"],
+		});
+		getRouterDataMock.mockReturnValue({
+			buildID: "1",
+			matchedPatterns: ["/"],
+			splatValues: [],
+			params: {},
+			rootData: { root: true },
+		});
+		getLocationMock.mockReturnValue({
+			pathname: "/docs",
+			search: "?tab=usage",
+			hash: "#section",
+			state: nextLocationState,
+		});
+
+		const nextStoreState =
+			buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+
+		expect(nextStoreState.location).not.toBe(previousStoreState.location);
+		expect(nextStoreState.location).toEqual({
+			pathname: "/docs",
+			search: "?tab=usage",
+			hash: "#section",
+			state: nextLocationState,
+		});
+		expect(nextStoreState.navigation).toBe(previousStoreState.navigation);
+		expect(nextStoreState.routeOutletBranchInputState).toBe(
+			previousStoreState.routeOutletBranchInputState,
+		);
 	});
 });

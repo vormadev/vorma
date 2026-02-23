@@ -164,6 +164,94 @@ func TestCallReloadEndpoint(t *testing.T) {
 		}
 	})
 
+	t.Run(
+		"uses hook execution context for request context",
+		func(t *testing.T) {
+			type executionContextKey string
+
+			markerContext := context.WithValue(
+				context.Background(),
+				executionContextKey("reload-marker"),
+				"marker-value",
+			)
+			var observedContextValue any
+			executor := newReloadEndpointRequestExecutor(
+				reloadEndpointDependencies{
+					reloadEndpointURLForApp: func(*vormaruntime.Vorma, string) string {
+						return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
+					},
+					newReloadEndpointRequest: func(
+						ctx context.Context,
+						url string,
+					) (*http.Request, error) {
+						observedContextValue = ctx.Value(
+							executionContextKey("reload-marker"),
+						)
+						return newReloadEndpointRequest(ctx, url)
+					},
+					doReloadEndpointRequest: func(*http.Request) (*http.Response, error) {
+						return &http.Response{
+							StatusCode: http.StatusOK,
+							Body:       io.NopCloser(strings.NewReader("ok")),
+						}, nil
+					},
+				},
+			)
+			reloadOptionsWithContext := reloadOptions
+			reloadOptionsWithContext.hookExecutionContext = markerContext
+
+			err := executor.callReloadEndpoint(v, reloadOptionsWithContext)
+			if err != nil {
+				t.Fatalf("callReloadEndpoint returned error: %v", err)
+			}
+			if observedContextValue != "marker-value" {
+				t.Fatalf(
+					"request context value = %v, want marker-value",
+					observedContextValue,
+				)
+			}
+		},
+	)
+
+	t.Run("respects canceled hook execution context", func(t *testing.T) {
+		canceledExecutionContext, cancelCanceledExecutionContext := context.WithCancel(
+			context.Background(),
+		)
+		cancelCanceledExecutionContext()
+		executor := newReloadEndpointRequestExecutor(reloadEndpointDependencies{
+			reloadEndpointURLForApp: func(*vormaruntime.Vorma, string) string {
+				return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
+			},
+			newReloadEndpointRequest: func(
+				ctx context.Context,
+				url string,
+			) (*http.Request, error) {
+				return newReloadEndpointRequest(ctx, url)
+			},
+			doReloadEndpointRequest: func(request *http.Request) (*http.Response, error) {
+				if request.Context().Err() == nil {
+					t.Fatal("expected canceled request context")
+				}
+				return nil, request.Context().Err()
+			},
+		})
+		reloadOptionsWithCanceledContext := reloadOptions
+		reloadOptionsWithCanceledContext.hookExecutionContext = canceledExecutionContext
+
+		err := executor.callReloadEndpoint(v, reloadOptionsWithCanceledContext)
+		if err == nil {
+			t.Fatal(
+				"expected canceled hook execution context to fail reload endpoint call",
+			)
+		}
+		if !strings.Contains(err.Error(), "request failed") {
+			t.Fatalf("error = %q, expected request-failed context", err)
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, expected wrapped context cancellation", err)
+		}
+	})
+
 	t.Run("wraps request creation error", func(t *testing.T) {
 		expectedErr := errors.New("request construction failed")
 		executor := newReloadEndpointRequestExecutor(reloadEndpointDependencies{
@@ -308,7 +396,14 @@ func TestGetReloadActionForEndpointWithFallback(t *testing.T) {
 	t.Run(
 		"passes structured reload options and returns browser reload action on success",
 		func(t *testing.T) {
+			type hookContextKey string
+
 			var capturedOptions callReloadEndpointOptions
+			markerExecutionContext := context.WithValue(
+				context.Background(),
+				hookContextKey("reload-hook-context"),
+				"hook-marker",
+			)
 			executor := newReloadActionExecutor(reloadActionDependencies{
 				nextReloadAttemptID: func() string {
 					return "reload-test-attempt"
@@ -324,6 +419,9 @@ func TestGetReloadActionForEndpointWithFallback(t *testing.T) {
 				vormaruntime.DefaultDevReloadRoutesEndpointPath,
 				"reload warning",
 				reloadTriggerRouteDefinitionsWatch,
+				&wave.HookContext{
+					ExecutionContext: markerExecutionContext,
+				},
 			)
 			if action == nil {
 				t.Fatal("expected non-nil reload action on success")
@@ -369,6 +467,12 @@ func TestGetReloadActionForEndpointWithFallback(t *testing.T) {
 					reloadTriggerRouteDefinitionsWatch,
 				)
 			}
+			if capturedOptions.hookExecutionContext == nil {
+				t.Fatal("expected hook execution context in reload options")
+			}
+			if got, want := capturedOptions.hookExecutionContext.Value(hookContextKey("reload-hook-context")), "hook-marker"; got != want {
+				t.Fatalf("hookExecutionContext marker = %v, want %q", got, want)
+			}
 		},
 	)
 
@@ -396,6 +500,7 @@ func TestGetReloadActionForEndpointWithFallback(t *testing.T) {
 					vormaruntime.DefaultDevReloadRoutesEndpointPath,
 					"reload warning",
 					reloadTriggerRouteDefinitionsWatch,
+					nil,
 				)
 				if action == nil {
 					t.Fatal(

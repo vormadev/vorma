@@ -10,6 +10,7 @@ import { VORMA_HARD_RELOAD_QUERY_PARAM } from "../platform/url.ts";
 import { HistoryManager } from "../platform/history.ts";
 import { initHMR } from "../core/extras.ts";
 import { scrollStateManager } from "../platform/scroll.ts";
+import { ensureNavigationRuntimeInitialized } from "../client.ts";
 import type { VormaAppConfig } from "./helpers.ts";
 import {
 	__vormaClientGlobal,
@@ -195,6 +196,7 @@ export async function initClient(options: InitClientInput): Promise<void> {
 	loadRouteManifestProgressively();
 	applyInitClientOptions(options);
 
+	ensureNavigationRuntimeInitialized();
 	HistoryManager.init();
 	cleanupHardReloadQueryParam();
 

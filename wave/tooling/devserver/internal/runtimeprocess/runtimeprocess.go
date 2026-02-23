@@ -1,6 +1,7 @@
 package runtimeprocess
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -400,6 +401,23 @@ func ShouldContinueReadinessWait(
 
 // WaitForAnyReady polls URLs until one is healthy or timeout budget expires.
 func WaitForAnyReady(urls []string, policy ReadinessWaitPolicy) bool {
+	return WaitForAnyReadyWithContext(
+		context.Background(),
+		urls,
+		policy,
+	)
+}
+
+// WaitForAnyReadyWithContext polls URLs until one is healthy, timeout budget
+// expires, or context cancellation is observed.
+func WaitForAnyReadyWithContext(
+	readinessContext context.Context,
+	urls []string,
+	policy ReadinessWaitPolicy,
+) bool {
+	if readinessContext == nil {
+		readinessContext = context.Background()
+	}
 	if len(urls) == 0 {
 		return false
 	}
@@ -411,8 +429,15 @@ func WaitForAnyReady(urls []string, policy ReadinessWaitPolicy) bool {
 
 	attemptIndex := 0
 	for {
+		select {
+		case <-readinessContext.Done():
+			return false
+		default:
+		}
+
 		for _, targetURL := range urls {
 			if probeURLWithClient(
+				readinessContext,
 				httpClient,
 				targetURL,
 				resolvedPolicy.TreatHTTPStatusCodeAsReady,
@@ -435,11 +460,22 @@ func WaitForAnyReady(urls []string, policy ReadinessWaitPolicy) bool {
 			resolvedPolicy.MaximumDelay,
 		)
 		attemptIndex++
-		time.Sleep(delay)
+
+		delayTimer := time.NewTimer(delay)
+		select {
+		case <-readinessContext.Done():
+			if !delayTimer.Stop() {
+				<-delayTimer.C
+			}
+			return false
+		case <-delayTimer.C:
+		}
 	}
 }
 
-func normalizeReadinessWaitPolicy(policy ReadinessWaitPolicy) ReadinessWaitPolicy {
+func normalizeReadinessWaitPolicy(
+	policy ReadinessWaitPolicy,
+) ReadinessWaitPolicy {
 	defaultPolicy := DefaultReadinessWaitPolicy()
 	if policy.HTTPClientTimeout <= 0 {
 		policy.HTTPClientTimeout = defaultPolicy.HTTPClientTimeout
@@ -461,11 +497,22 @@ func normalizeReadinessWaitPolicy(policy ReadinessWaitPolicy) ReadinessWaitPolic
 
 // probeURLWithClient performs one readiness probe request.
 func probeURLWithClient(
+	readinessContext context.Context,
 	httpClient *http.Client,
 	targetURL string,
 	statusCodePredicate func(int) bool,
 ) bool {
-	response, requestError := httpClient.Get(targetURL)
+	request, requestCreateError := http.NewRequestWithContext(
+		readinessContext,
+		http.MethodGet,
+		targetURL,
+		nil,
+	)
+	if requestCreateError != nil {
+		return false
+	}
+
+	response, requestError := httpClient.Do(request)
 	if requestError != nil {
 		return false
 	}

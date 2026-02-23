@@ -18,6 +18,7 @@ type reloadActionResolver func(
 	reloadEndpoint string,
 	warnMessage string,
 	reloadTrigger string,
+	hookContext *wave.HookContext,
 ) *wave.RefreshAction
 
 func injectDefaultWatchPatterns(v *vormaruntime.Vorma) *wave.ParsedConfig {
@@ -272,6 +273,7 @@ func watchReloadCallback(
 			reloadEndpoint,
 			reloadEndpointFailureWarnMessage,
 			reloadTrigger,
+			ctx,
 		), nil
 	}
 }

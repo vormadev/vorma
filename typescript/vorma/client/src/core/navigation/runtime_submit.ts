@@ -329,7 +329,6 @@ async function executeSubmitRequest(props: {
 	const result = await handleRedirects({
 		abortController: props.abortController,
 		url: props.url,
-		isPrefetch: false,
 		redirectCount: 0,
 		requestInit: props.requestInit,
 	});
@@ -422,7 +421,7 @@ function hasNoContentResponseBody(response: Response): boolean {
 function responseDeclaresJSON(response: Response): boolean {
 	const contentType = response.headers.get("content-type");
 	if (!contentType) {
-		return true;
+		return false;
 	}
 
 	const normalizedContentType = contentType.toLowerCase();
@@ -430,6 +429,10 @@ function responseDeclaresJSON(response: Response): boolean {
 		normalizedContentType.includes("application/json") ||
 		normalizedContentType.includes("+json")
 	);
+}
+
+function responseDeclaresContentType(response: Response): boolean {
+	return response.headers.has("content-type");
 }
 
 async function readSubmitSuccessResponseData(
@@ -452,16 +455,25 @@ async function readSubmitSuccessResponseData(
 		if (responseDeclaresJSON(response)) {
 			return JSON.parse(text);
 		}
+		if (!responseDeclaresContentType(response)) {
+			try {
+				return JSON.parse(text);
+			} catch {
+				return text;
+			}
+		}
 		return text;
 	}
 
-	if (responseDeclaresJSON(response)) {
-		const maybeJSONFn = (
-			response as Response & { json?: () => Promise<unknown> }
-		).json;
-		if (typeof maybeJSONFn === "function") {
-			return maybeJSONFn.call(response);
-		}
+	const maybeJSONFn = (
+		response as Response & { json?: () => Promise<unknown> }
+	).json;
+	if (
+		typeof maybeJSONFn === "function" &&
+		(responseDeclaresJSON(response) ||
+			!responseDeclaresContentType(response))
+	) {
+		return maybeJSONFn.call(response);
 	}
 
 	return undefined;
