@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
-	gobuild "go/build"
-	goimporter "go/importer"
+	"go/build"
+	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
 	"io/fs"
 	"os"
-	importpath "path"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -26,7 +26,7 @@ type backendRouteDiscoveryDependencies struct {
 	statPath           func(string) (fs.FileInfo, error)
 	readFile           func(string) ([]byte, error)
 	parseGoSourceAST   func(*token.FileSet, string, any, parser.Mode) (*ast.File, error)
-	importGoPackageDir func(string) (*gobuild.Package, error)
+	importGoPackageDir func(string) (*build.Package, error)
 }
 
 type backendRouteDiscoveryExecutor struct {
@@ -45,8 +45,8 @@ func defaultBackendRouteDiscoveryDependencies() backendRouteDiscoveryDependencie
 		statPath:         os.Stat,
 		readFile:         os.ReadFile,
 		parseGoSourceAST: parser.ParseFile,
-		importGoPackageDir: func(packageDir string) (*gobuild.Package, error) {
-			return gobuild.Default.ImportDir(packageDir, 0)
+		importGoPackageDir: func(packageDir string) (*build.Package, error) {
+			return build.Default.ImportDir(packageDir, 0)
 		},
 	}
 }
@@ -289,7 +289,7 @@ func parseServerRouteFileMetadata(
 			continue
 		}
 		if importSpec.Name == nil {
-			defaultAlias := importpath.Base(importPath)
+			defaultAlias := path.Base(importPath)
 			if defaultAlias != "" {
 				parsedServerFile.importAliases[defaultAlias] = importPath
 			}
@@ -481,7 +481,7 @@ func (analysis *backendRoutePackageAnalysis) resolveCompiledFilePathSetForPackag
 		analysis.packageDir,
 	)
 	if err != nil {
-		if _, isNoGoError := err.(*gobuild.NoGoError); isNoGoError {
+		if _, isNoGoError := err.(*build.NoGoError); isNoGoError {
 			return map[string]struct{}{}, nil
 		}
 		return nil, fmt.Errorf(
@@ -523,7 +523,7 @@ func (analysis *backendRoutePackageAnalysis) initializeGoTypesInfo() error {
 	goTypesConfig := &types.Config{
 		// Use export-data importer for speed. We only need best-effort symbol
 		// identity and fall back when type info is incomplete.
-		Importer: goimporter.Default(),
+		Importer: importer.Default(),
 	}
 	checkedPackage, _ := goTypesConfig.Check(
 		analysis.packageDir,

@@ -92,14 +92,15 @@ type (
 
 // Router matches routes by method and path and executes HTTP/task middleware layers.
 type Router struct {
-	parseInput         func(r *http.Request, iPtr any) error
-	httpMws            []httpMiddlewareWithOptions
-	taskMws            []taskMiddlewareWithOptions
-	methodToMatcherMap map[string]*methodMatcher
-	matcherOpts        *matcher.Options
-	notFoundHandler    http.Handler
-	mountRoot          string
-	allRoutes          []AnyRoute
+	parseInput            func(r *http.Request, iPtr any) error
+	httpMws               []httpMiddlewareWithOptions
+	taskMws               []taskMiddlewareWithOptions
+	httpMiddlewareVersion atomic.Uint64
+	methodToMatcherMap    map[string]*methodMatcher
+	matcherOpts           *matcher.Options
+	notFoundHandler       http.Handler
+	mountRoot             string
+	allRoutes             []AnyRoute
 }
 
 // AllRoutes returns a snapshot copy of every registered route.
@@ -251,6 +252,7 @@ func AddGlobalHTTPMiddleware(
 		mw:   httpMw,
 		opts: getFirstOpt(opts),
 	})
+	router.incrementHTTPMiddlewareVersion()
 }
 
 // AddGlobalHTTPMiddleware registers HTTP middleware on the receiver router.
@@ -287,6 +289,7 @@ func AddMethodLevelHTTPMiddleware(
 		mw:   httpMw,
 		opts: getFirstOpt(opts),
 	})
+	mm.incrementHTTPMiddlewareVersion()
 }
 
 // AddMethodLevelHTTPMiddleware registers HTTP middleware for one method on the receiver router.
@@ -320,6 +323,7 @@ func AddPatternLevelHTTPMiddleware[I any, O any](
 		mw:   httpMw,
 		opts: getFirstOpt(opts),
 	})
+	route.incrementHTTPMiddlewareVersion()
 }
 
 // AddPatternLevelHTTPMiddleware registers HTTP middleware on the receiver route.
@@ -343,16 +347,17 @@ func (rt *Router) SetGlobalNotFoundHTTPHandler(httpHandler http.Handler) {
 // Route stores registration metadata and handlers for a method+pattern pair.
 type Route[I, O any] struct {
 	genericsutil.ZeroHelper[I, O]
-	router          *Router
-	method          string
-	originalPattern string
-	httpMws         []httpMiddlewareWithOptions
-	taskMws         []taskMiddlewareWithOptions
-	handlerType     string
-	userHTTPHandler http.Handler
-	taskHandler     tasks.AnyTask
-	needsTasksCtx   bool
-	compiledHTTP    atomic.Value
+	router                *Router
+	method                string
+	originalPattern       string
+	httpMws               []httpMiddlewareWithOptions
+	taskMws               []taskMiddlewareWithOptions
+	httpMiddlewareVersion atomic.Uint64
+	handlerType           string
+	userHTTPHandler       http.Handler
+	taskHandler           tasks.AnyTask
+	needsTasksCtx         bool
+	compiledHTTP          atomic.Value
 }
 
 // AnyRoute is the internal polymorphic route contract used by Router.
@@ -864,11 +869,12 @@ type taskMiddlewareWithOptions struct {
 }
 
 type methodMatcher struct {
-	matcher        *matcher.Matcher
-	httpMws        []httpMiddlewareWithOptions
-	taskMws        []taskMiddlewareWithOptions
-	routes         map[string]AnyRoute
-	reqDataGetters map[string]reqDataGetter
+	matcher               *matcher.Matcher
+	httpMws               []httpMiddlewareWithOptions
+	taskMws               []taskMiddlewareWithOptions
+	httpMiddlewareVersion atomic.Uint64
+	routes                map[string]AnyRoute
+	reqDataGetters        map[string]reqDataGetter
 }
 
 func getFirstOpt(opts []*MiddlewareOptions) *MiddlewareOptions {
@@ -876,6 +882,48 @@ func getFirstOpt(opts []*MiddlewareOptions) *MiddlewareOptions {
 		return opts[0]
 	}
 	return nil
+}
+
+func (rt *Router) incrementHTTPMiddlewareVersion() {
+	if rt == nil {
+		return
+	}
+	rt.httpMiddlewareVersion.Add(1)
+}
+
+func (rt *Router) currentHTTPMiddlewareVersion() uint64 {
+	if rt == nil {
+		return 0
+	}
+	return rt.httpMiddlewareVersion.Load()
+}
+
+func (mm *methodMatcher) incrementHTTPMiddlewareVersion() {
+	if mm == nil {
+		return
+	}
+	mm.httpMiddlewareVersion.Add(1)
+}
+
+func (mm *methodMatcher) currentHTTPMiddlewareVersion() uint64 {
+	if mm == nil {
+		return 0
+	}
+	return mm.httpMiddlewareVersion.Load()
+}
+
+func (route *Route[I, O]) incrementHTTPMiddlewareVersion() {
+	if route == nil {
+		return
+	}
+	route.httpMiddlewareVersion.Add(1)
+}
+
+func (route *Route[I, O]) currentHTTPMiddlewareVersion() uint64 {
+	if route == nil {
+		return 0
+	}
+	return route.httpMiddlewareVersion.Load()
 }
 
 func (route *Route[I, O]) getHandlerType() string { return route.handlerType }
@@ -889,18 +937,40 @@ func (route *Route[I, O]) getHTTPMws() []httpMiddlewareWithOptions { return rout
 func (route *Route[I, O]) getTaskMws() []taskMiddlewareWithOptions { return route.taskMws }
 
 func (route *Route[I, O]) getNeedsTasksCtx() bool { return route.needsTasksCtx }
+
+type compiledHTTPCacheEntry struct {
+	handler                      http.Handler
+	globalHTTPMiddlewareVersion  uint64
+	methodHTTPMiddlewareVersion  uint64
+	patternHTTPMiddlewareVersion uint64
+}
+
 func (r *Route[I, O]) httpChain(rt *Router, mm *methodMatcher) http.Handler {
-	if h, ok := r.compiledHTTP.Load().(http.Handler); ok {
-		return h
+	globalHTTPMiddlewareVersion := rt.currentHTTPMiddlewareVersion()
+	methodHTTPMiddlewareVersion := mm.currentHTTPMiddlewareVersion()
+	patternHTTPMiddlewareVersion := r.currentHTTPMiddlewareVersion()
+
+	cachedValue, hasCachedValue := r.compiledHTTP.Load().(*compiledHTTPCacheEntry)
+	if hasCachedValue &&
+		cachedValue != nil &&
+		cachedValue.globalHTTPMiddlewareVersion == globalHTTPMiddlewareVersion &&
+		cachedValue.methodHTTPMiddlewareVersion == methodHTTPMiddlewareVersion &&
+		cachedValue.patternHTTPMiddlewareVersion == patternHTTPMiddlewareVersion {
+		return cachedValue.handler
 	}
-	h := applyHTTPMiddlewares(
+	compiledHandler := applyHTTPMiddlewares(
 		r.getHTTPHandler(),
 		r.httpMws,
 		mm.httpMws,
 		rt.httpMws,
 	)
-	r.compiledHTTP.Store(h)
-	return h
+	r.compiledHTTP.Store(&compiledHTTPCacheEntry{
+		handler:                      compiledHandler,
+		globalHTTPMiddlewareVersion:  globalHTTPMiddlewareVersion,
+		methodHTTPMiddlewareVersion:  methodHTTPMiddlewareVersion,
+		patternHTTPMiddlewareVersion: patternHTTPMiddlewareVersion,
+	})
+	return compiledHandler
 }
 
 type reqDataMarker interface {

@@ -34,12 +34,18 @@ Every package must have precisely one source code file between 200 lines and
 if those are still over 2000 lines, they need to be split into sub-subpackages.
 If it's under 200 lines, it is too small to be its own package. The only
 exceptions to this are certain `kit` packages that do legitimately make sense as
-tiny standalone packages of fewer than 200 lines, such as `lazyget`.
+tiny standalone packages of fewer than 200 lines, such as `lazyget`. The
+`vormagogen` package is also an explicit exception and may remain below 200
+lines as a thin discovered-registration adapter layer.
 
-### Never Alias Go Package Names
+### Never Alias Internal Go Package Names
 
-If you find yourself needing to alias a Go package name at import, you picked
-the wrong name. Go back to the drawing board.
+This rule applies to internal packages in this repository. If you find yourself
+needing to alias one of our first-party package names at import, the package
+naming is wrong and should be redesigned.
+
+For external packages (stdlib or third-party), aliases are allowed when they
+improve clarity or avoid collisions.
 
 ### No Builder Patterns
 

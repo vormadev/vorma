@@ -40,7 +40,7 @@ func defaultBuildCommandHooks() buildCommandHooks {
 		},
 		runProdHookPostProcessing: runProdHookPostProcessing,
 		printDiagnostics:          printBuildDiagnostics,
-		runFullBuild:              build,
+		runFullBuild:              runFullRuntimeBuild,
 	}
 }
 

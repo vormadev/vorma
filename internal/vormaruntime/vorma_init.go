@@ -55,10 +55,18 @@ func (v *Vorma) validateAndDecorateNestedRouter(
 	if nestedRouter == nil {
 		panic("nestedRouter is nil")
 	}
-	for _, p := range v._paths {
-		if !nestedRouter.IsRegistered(p.OriginalPattern) {
-			mux.AddNestedPatternWithoutHandler(nestedRouter, p.OriginalPattern)
+	for mapKeyPattern, pathEntry := range v._paths {
+		if pathEntry == nil {
+			panic(
+				fmt.Sprintf(
+					"paths entry for pattern %q is nil",
+					mapKeyPattern,
+				),
+			)
 		}
+		nestedRouter.AddNestedPatternWithoutHandlerIfMissing(
+			pathEntry.OriginalPattern,
+		)
 	}
 }
 

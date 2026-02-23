@@ -228,8 +228,12 @@ func runBuildEntrypointWithDependencies(
 	).runBuildCommand(v, commandLineArgs, hooks)
 }
 
-// build performs a full Vorma build.
-func build(v *vormaruntime.Vorma, isDev bool, noBinary bool) error {
+// runFullRuntimeBuild performs a full Vorma build.
+func runFullRuntimeBuild(
+	v *vormaruntime.Vorma,
+	isDev bool,
+	noBinary bool,
+) error {
 	return newRuntimeBuildExecutor(v).run(isDev, noBinary)
 }
 

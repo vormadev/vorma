@@ -3,6 +3,7 @@ package mux
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -57,7 +58,10 @@ func TestNestedRouteRegistration(t *testing.T) {
 		route := AddNestedTaskHandler(nr, "/test", handler)
 
 		if route.OriginalPattern() != "/test" {
-			t.Errorf("Expected pattern '/test', got %q", route.OriginalPattern())
+			t.Errorf(
+				"Expected pattern '/test', got %q",
+				route.OriginalPattern(),
+			)
 		}
 		if !nr.IsRegistered("/test") {
 			t.Error("Route should be registered")
@@ -110,10 +114,14 @@ func TestNestedRouteRegistration(t *testing.T) {
 		}
 
 		if !nr.IsRegistered("/immutable") {
-			t.Fatal("mutating AllRoutes() result should not remove registered routes")
+			t.Fatal(
+				"mutating AllRoutes() result should not remove registered routes",
+			)
 		}
 		if nr.IsRegistered("/injected") {
-			t.Fatal("mutating AllRoutes() result should not inject routes into router state")
+			t.Fatal(
+				"mutating AllRoutes() result should not inject routes into router state",
+			)
 		}
 	})
 
@@ -124,66 +132,86 @@ func TestNestedRouteRegistration(t *testing.T) {
 		matcherCopy := nr.Matcher()
 		matcherCopy.RegisterPattern("/injected")
 
-		injectedRequest := createRequestWithGetTasksCtx(http.MethodGet, "/injected")
+		injectedRequest := createRequestWithGetTasksCtx(
+			http.MethodGet,
+			"/injected",
+		)
 		_, injectedFound := FindNestedMatches(nr, injectedRequest)
 		if injectedFound {
-			t.Fatal("mutating Matcher() result should not affect router matching state")
-		}
-
-		registeredRequest := createRequestWithGetTasksCtx(http.MethodGet, "/registered")
-		_, registeredFound := FindNestedMatches(nr, registeredRequest)
-		if !registeredFound {
-			t.Fatal("registered route should still match after mutating matcher copy")
-		}
-	})
-
-	t.Run("AddNestedPatternWithoutHandlerIfMissing_IsIdempotent", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
-
-		if registered := nr.AddNestedPatternWithoutHandlerIfMissing("/safe"); !registered {
-			t.Fatal("expected first registration to report registered=true")
-		}
-		if registered := nr.AddNestedPatternWithoutHandlerIfMissing("/safe"); registered {
-			t.Fatal("expected duplicate registration to report registered=false")
-		}
-		if !nr.IsRegistered("/safe") {
-			t.Fatal("expected pattern to remain registered")
-		}
-	})
-
-	t.Run("AddNestedPatternWithoutHandlerIfMissing_IsConcurrentSafe", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
-		startGate := make(chan struct{})
-		const goroutineCount = 16
-		var completedCount atomic.Int32
-		var successfulRegistrationCount atomic.Int32
-
-		done := make(chan struct{})
-		for i := 0; i < goroutineCount; i++ {
-			go func() {
-				<-startGate
-				if nr.AddNestedPatternWithoutHandlerIfMissing("/concurrent-safe") {
-					successfulRegistrationCount.Add(1)
-				}
-				if completedCount.Add(1) == goroutineCount {
-					close(done)
-				}
-			}()
-		}
-
-		close(startGate)
-		<-done
-
-		if successfulRegistrationCount.Load() != 1 {
-			t.Fatalf(
-				"expected exactly one successful concurrent registration, got %d",
-				successfulRegistrationCount.Load(),
+			t.Fatal(
+				"mutating Matcher() result should not affect router matching state",
 			)
 		}
-		if !nr.IsRegistered("/concurrent-safe") {
-			t.Fatal("expected concurrently registered pattern to exist")
+
+		registeredRequest := createRequestWithGetTasksCtx(
+			http.MethodGet,
+			"/registered",
+		)
+		_, registeredFound := FindNestedMatches(nr, registeredRequest)
+		if !registeredFound {
+			t.Fatal(
+				"registered route should still match after mutating matcher copy",
+			)
 		}
 	})
+
+	t.Run(
+		"AddNestedPatternWithoutHandlerIfMissing_IsIdempotent",
+		func(t *testing.T) {
+			nr := NewNestedRouter(&NestedOptions{})
+
+			if registered := nr.AddNestedPatternWithoutHandlerIfMissing("/safe"); !registered {
+				t.Fatal("expected first registration to report registered=true")
+			}
+			if registered := nr.AddNestedPatternWithoutHandlerIfMissing("/safe"); registered {
+				t.Fatal(
+					"expected duplicate registration to report registered=false",
+				)
+			}
+			if !nr.IsRegistered("/safe") {
+				t.Fatal("expected pattern to remain registered")
+			}
+		},
+	)
+
+	t.Run(
+		"AddNestedPatternWithoutHandlerIfMissing_IsConcurrentSafe",
+		func(t *testing.T) {
+			nr := NewNestedRouter(&NestedOptions{})
+			startGate := make(chan struct{})
+			const goroutineCount = 16
+			var completedCount atomic.Int32
+			var successfulRegistrationCount atomic.Int32
+
+			done := make(chan struct{})
+			for i := 0; i < goroutineCount; i++ {
+				go func() {
+					<-startGate
+					if nr.AddNestedPatternWithoutHandlerIfMissing(
+						"/concurrent-safe",
+					) {
+						successfulRegistrationCount.Add(1)
+					}
+					if completedCount.Add(1) == goroutineCount {
+						close(done)
+					}
+				}()
+			}
+
+			close(startGate)
+			<-done
+
+			if successfulRegistrationCount.Load() != 1 {
+				t.Fatalf(
+					"expected exactly one successful concurrent registration, got %d",
+					successfulRegistrationCount.Load(),
+				)
+			}
+			if !nr.IsRegistered("/concurrent-safe") {
+				t.Fatal("expected concurrently registered pattern to exist")
+			}
+		},
+	)
 }
 
 func TestFindNestedMatches(t *testing.T) {
@@ -202,7 +230,10 @@ func TestFindNestedMatches(t *testing.T) {
 			t.Errorf("Expected 1 match, got %d", len(results.Matches))
 		}
 		if results.Matches[0].OriginalPattern() != "/users" {
-			t.Errorf("Expected pattern '/users', got %q", results.Matches[0].OriginalPattern())
+			t.Errorf(
+				"Expected pattern '/users', got %q",
+				results.Matches[0].OriginalPattern(),
+			)
 		}
 	})
 
@@ -210,7 +241,10 @@ func TestFindNestedMatches(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
 		// Register nested patterns like a UI router would have
-		AddNestedPatternWithoutHandler(nr, "") // empty because we have no explicit index
+		AddNestedPatternWithoutHandler(
+			nr,
+			"",
+		) // empty because we have no explicit index
 		AddNestedPatternWithoutHandler(nr, "/users")
 		AddNestedPatternWithoutHandler(nr, "/users/:id")
 
@@ -261,18 +295,66 @@ func TestFindNestedMatches(t *testing.T) {
 
 		AddNestedPatternWithoutHandler(nr, "/files/*")
 
-		req := createRequestWithGetTasksCtx(http.MethodGet, "/files/docs/readme.txt")
+		req := createRequestWithGetTasksCtx(
+			http.MethodGet,
+			"/files/docs/readme.txt",
+		)
 		results, found := FindNestedMatches(nr, req)
 
 		if !found {
 			t.Error("Should find matches")
 		}
 		if len(results.SplatValues) != 2 {
-			t.Errorf("Expected 2 splat values, got %d", len(results.SplatValues))
+			t.Errorf(
+				"Expected 2 splat values, got %d",
+				len(results.SplatValues),
+			)
 		}
 		expectedSplat := []string{"docs", "readme.txt"}
 		if !sliceEqual(results.SplatValues, expectedSplat) {
-			t.Errorf("Expected splat values %v, got %v", expectedSplat, results.SplatValues)
+			t.Errorf(
+				"Expected splat values %v, got %v",
+				expectedSplat,
+				results.SplatValues,
+			)
+		}
+	})
+
+	t.Run("IsSafeDuringConcurrentRouteRegistration", func(t *testing.T) {
+		nr := NewNestedRouter(&NestedOptions{})
+		AddNestedPatternWithoutHandler(nr, "/seed")
+
+		const totalRoutes = 512
+		start := make(chan struct{})
+		done := make(chan struct{})
+
+		go func() {
+			<-start
+			for i := range totalRoutes {
+				nr.AddNestedPatternWithoutHandlerIfMissing(
+					fmt.Sprintf("/concurrent/%d", i),
+				)
+			}
+			close(done)
+		}()
+
+		close(start)
+		for i := 0; i < totalRoutes; i++ {
+			req := createRequestWithGetTasksCtx(
+				http.MethodGet,
+				fmt.Sprintf("/concurrent/%d", i),
+			)
+			FindNestedMatches(nr, req)
+		}
+		<-done
+
+		finalRequest := createRequestWithGetTasksCtx(
+			http.MethodGet,
+			fmt.Sprintf("/concurrent/%d", totalRoutes-1),
+		)
+		_, found := FindNestedMatches(nr, finalRequest)
+		if !found {
+			t.Fatal("expected concurrently registered route to be matchable")
 		}
 	})
 }
@@ -282,17 +364,27 @@ func TestRunNestedTasks(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
 		// Register handlers that return different data
-		layoutHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (map[string]string, error) {
-			return map[string]string{"layout": "main"}, nil
-		})
-		pageHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (map[string]string, error) {
-			return map[string]string{"page": "users"}, nil
-		})
-		userHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (map[string]string, error) {
-			return map[string]string{"user": rd.Params()["id"]}, nil
-		})
+		layoutHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (map[string]string, error) {
+				return map[string]string{"layout": "main"}, nil
+			},
+		)
+		pageHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (map[string]string, error) {
+				return map[string]string{"page": "users"}, nil
+			},
+		)
+		userHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (map[string]string, error) {
+				return map[string]string{"user": rd.Params()["id"]}, nil
+			},
+		)
 
-		AddNestedTaskHandler(nr, "", layoutHandler) // empty because we have no explicit index
+		AddNestedTaskHandler(
+			nr,
+			"",
+			layoutHandler,
+		) // empty because we have no explicit index
 		AddNestedTaskHandler(nr, "/users", pageHandler)
 		AddNestedTaskHandler(nr, "/users/:id", userHandler)
 
@@ -355,7 +447,10 @@ func TestRunNestedTasks(t *testing.T) {
 
 		// Reset and use patterns that would both match a single request
 		nr = NewNestedRouter(&NestedOptions{})
-		AddNestedPatternWithoutHandler(nr, "") // empty because we have no explicit index
+		AddNestedPatternWithoutHandler(
+			nr,
+			"",
+		) // empty because we have no explicit index
 		AddNestedTaskHandler(nr, "/page", handler)
 
 		req := createRequestWithGetTasksCtx(http.MethodGet, "/page")
@@ -393,9 +488,11 @@ func TestRunNestedTasks(t *testing.T) {
 	t.Run("Task_Error_Handling", func(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
-		errorHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "", &testError{msg: "task failed"}
-		})
+		errorHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				return "", &testError{msg: "task failed"}
+			},
+		)
 
 		AddNestedTaskHandler(nr, "/error", errorHandler)
 
@@ -415,7 +512,10 @@ func TestRunNestedTasks(t *testing.T) {
 			t.Error("Should have error")
 		}
 		if errorResult.Err().Error() != "task failed" {
-			t.Errorf("Expected 'task failed', got %q", errorResult.Err().Error())
+			t.Errorf(
+				"Expected 'task failed', got %q",
+				errorResult.Err().Error(),
+			)
 		}
 	})
 
@@ -423,15 +523,19 @@ func TestRunNestedTasks(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
 		var outerRan atomic.Bool
-		outerHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			outerRan.Store(true)
-			// Give the sibling error path time to complete first.
-			time.Sleep(25 * time.Millisecond)
-			return "outer-ok", nil
-		})
-		innerHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "", errors.New("inner failed")
-		})
+		outerHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				outerRan.Store(true)
+				// Give the sibling error path time to complete first.
+				time.Sleep(25 * time.Millisecond)
+				return "outer-ok", nil
+			},
+		)
+		innerHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				return "", errors.New("inner failed")
+			},
+		)
 
 		AddNestedTaskHandler(nr, "/items", outerHandler)
 		AddNestedTaskHandler(nr, "/items/:id", innerHandler)
@@ -470,18 +574,22 @@ func TestRunNestedTasks(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
 		var childStarted atomic.Bool
-		parentHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "", errors.New("parent failed")
-		})
-		childHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			childStarted.Store(true)
-			select {
-			case <-rd.TasksCtx().NativeContext().Done():
-				return "", rd.TasksCtx().NativeContext().Err()
-			case <-time.After(150 * time.Millisecond):
-				return "child-finished", nil
-			}
-		})
+		parentHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				return "", errors.New("parent failed")
+			},
+		)
+		childHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				childStarted.Store(true)
+				select {
+				case <-rd.TasksCtx().NativeContext().Done():
+					return "", rd.TasksCtx().NativeContext().Err()
+				case <-time.After(150 * time.Millisecond):
+					return "child-finished", nil
+				}
+			},
+		)
 
 		AddNestedTaskHandler(nr, "/items", parentHandler)
 		AddNestedTaskHandler(nr, "/items/:id", childHandler)
@@ -519,14 +627,18 @@ func TestRunNestedTasks(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
 		sleep := 60 * time.Millisecond
-		parentHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			time.Sleep(sleep)
-			return "parent-ok", nil
-		})
-		childHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			time.Sleep(sleep)
-			return "child-ok", nil
-		})
+		parentHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				time.Sleep(sleep)
+				return "parent-ok", nil
+			},
+		)
+		childHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				time.Sleep(sleep)
+				return "child-ok", nil
+			},
+		)
 
 		AddNestedTaskHandler(nr, "/parallel", parentHandler)
 		AddNestedTaskHandler(nr, "/parallel/:id", childHandler)
@@ -538,41 +650,58 @@ func TestRunNestedTasks(t *testing.T) {
 		if !found {
 			t.Fatal("should find matches")
 		}
-		if results.Map["/parallel"].Err() != nil || results.Map["/parallel/:id"].Err() != nil {
-			t.Fatalf("expected both tasks to succeed, got parent=%v child=%v",
-				results.Map["/parallel"].Err(), results.Map["/parallel/:id"].Err())
+		if results.Map["/parallel"].Err() != nil ||
+			results.Map["/parallel/:id"].Err() != nil {
+			t.Fatalf(
+				"expected both tasks to succeed, got parent=%v child=%v",
+				results.Map["/parallel"].Err(),
+				results.Map["/parallel/:id"].Err(),
+			)
 		}
 
 		// Sequential would be around 2*sleep; parallel should be close to sleep.
 		if elapsed >= (sleep + 40*time.Millisecond) {
-			t.Fatalf("expected parallel execution, elapsed=%v (sleep=%v)", elapsed, sleep)
+			t.Fatalf(
+				"expected parallel execution, elapsed=%v (sleep=%v)",
+				elapsed,
+				sleep,
+			)
 		}
 	})
 
 	t.Run("Middle_Error_Cancels_Only_Descendants", func(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
-		parentHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			time.Sleep(25 * time.Millisecond)
-			return "parent-ok", nil
-		})
-		middleHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "", errors.New("middle failed")
-		})
-		leafHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			select {
-			case <-rd.TasksCtx().NativeContext().Done():
-				return "", rd.TasksCtx().NativeContext().Err()
-			case <-time.After(150 * time.Millisecond):
-				return "leaf-ok", nil
-			}
-		})
+		parentHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				time.Sleep(25 * time.Millisecond)
+				return "parent-ok", nil
+			},
+		)
+		middleHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				return "", errors.New("middle failed")
+			},
+		)
+		leafHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				select {
+				case <-rd.TasksCtx().NativeContext().Done():
+					return "", rd.TasksCtx().NativeContext().Err()
+				case <-time.After(150 * time.Millisecond):
+					return "leaf-ok", nil
+				}
+			},
+		)
 
 		AddNestedTaskHandler(nr, "/items", parentHandler)
 		AddNestedTaskHandler(nr, "/items/:id", middleHandler)
 		AddNestedTaskHandler(nr, "/items/:id/details", leafHandler)
 
-		req := createRequestWithGetTasksCtx(http.MethodGet, "/items/123/details")
+		req := createRequestWithGetTasksCtx(
+			http.MethodGet,
+			"/items/123/details",
+		)
 		results, found := FindNestedMatchesAndRunTasks(nr, req)
 		if !found {
 			t.Fatal("should find matches")
@@ -606,47 +735,68 @@ func TestRunNestedTasks(t *testing.T) {
 		}
 	})
 
-	t.Run("SharedTaskDependencyRunsOnceAcrossNestedHandlers", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+	t.Run(
+		"SharedTaskDependencyRunsOnceAcrossNestedHandlers",
+		func(t *testing.T) {
+			nr := NewNestedRouter(&NestedOptions{})
 
-		var sharedRuns atomic.Int32
-		sharedTask := tasks.NewTask(func(c *tasks.Ctx, _ None) (string, error) {
-			sharedRuns.Add(1)
-			time.Sleep(20 * time.Millisecond)
-			return "shared-result", nil
-		})
+			var sharedRuns atomic.Int32
+			sharedTask := tasks.NewTask(
+				func(c *tasks.Ctx, _ None) (string, error) {
+					sharedRuns.Add(1)
+					time.Sleep(20 * time.Millisecond)
+					return "shared-result", nil
+				},
+			)
 
-		parentHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return sharedTask.Run(rd.TasksCtx(), None{})
-		})
-		childHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return sharedTask.Run(rd.TasksCtx(), None{})
-		})
+			parentHandler := TaskHandlerFromFunc(
+				func(rd *ReqData[None]) (string, error) {
+					return sharedTask.Run(rd.TasksCtx(), None{})
+				},
+			)
+			childHandler := TaskHandlerFromFunc(
+				func(rd *ReqData[None]) (string, error) {
+					return sharedTask.Run(rd.TasksCtx(), None{})
+				},
+			)
 
-		AddNestedTaskHandler(nr, "/items", parentHandler)
-		AddNestedTaskHandler(nr, "/items/:id", childHandler)
+			AddNestedTaskHandler(nr, "/items", parentHandler)
+			AddNestedTaskHandler(nr, "/items/:id", childHandler)
 
-		req := createRequestWithGetTasksCtx(http.MethodGet, "/items/123")
-		results, found := FindNestedMatchesAndRunTasks(nr, req)
-		if !found {
-			t.Fatal("should find matches")
-		}
+			req := createRequestWithGetTasksCtx(http.MethodGet, "/items/123")
+			results, found := FindNestedMatchesAndRunTasks(nr, req)
+			if !found {
+				t.Fatal("should find matches")
+			}
 
-		parent := results.Map["/items"]
-		child := results.Map["/items/:id"]
-		if parent == nil || child == nil {
-			t.Fatal("missing nested results")
-		}
-		if parent.Err() != nil || child.Err() != nil {
-			t.Fatalf("expected both handlers to succeed, got parent=%v child=%v", parent.Err(), child.Err())
-		}
-		if parent.Data() != "shared-result" || child.Data() != "shared-result" {
-			t.Fatalf("unexpected shared data: parent=%#v child=%#v", parent.Data(), child.Data())
-		}
-		if sharedRuns.Load() != 1 {
-			t.Fatalf("shared dependency runs = %d, want 1", sharedRuns.Load())
-		}
-	})
+			parent := results.Map["/items"]
+			child := results.Map["/items/:id"]
+			if parent == nil || child == nil {
+				t.Fatal("missing nested results")
+			}
+			if parent.Err() != nil || child.Err() != nil {
+				t.Fatalf(
+					"expected both handlers to succeed, got parent=%v child=%v",
+					parent.Err(),
+					child.Err(),
+				)
+			}
+			if parent.Data() != "shared-result" ||
+				child.Data() != "shared-result" {
+				t.Fatalf(
+					"unexpected shared data: parent=%#v child=%#v",
+					parent.Data(),
+					child.Data(),
+				)
+			}
+			if sharedRuns.Load() != 1 {
+				t.Fatalf(
+					"shared dependency runs = %d, want 1",
+					sharedRuns.Load(),
+				)
+			}
+		},
+	)
 
 	t.Run("HasTaskHandlerAt", func(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
@@ -668,10 +818,16 @@ func TestRunNestedTasks(t *testing.T) {
 		for i, result := range results.Slice {
 			hasHandler := results.HasTaskHandlerAt(i)
 			if result.RanTask() && !hasHandler {
-				t.Errorf("Index %d ran task but HasTaskHandlerAt returned false", i)
+				t.Errorf(
+					"Index %d ran task but HasTaskHandlerAt returned false",
+					i,
+				)
 			}
 			if !result.RanTask() && hasHandler {
-				t.Errorf("Index %d didn't run task but HasTaskHandlerAt returned true", i)
+				t.Errorf(
+					"Index %d didn't run task but HasTaskHandlerAt returned true",
+					i,
+				)
 			}
 		}
 	})
@@ -712,12 +868,16 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 	t.Run("ReplaceRoutes_ReplacesMatcherAndCompiledRoutes", func(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
-		oldHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "old", nil
-		})
-		newHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "new", nil
-		})
+		oldHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				return "old", nil
+			},
+		)
+		newHandler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				return "new", nil
+			},
+		)
 
 		AddNestedTaskHandler(nr, "/old", oldHandler)
 		AddNestedPatternWithoutHandler(nr, "/legacy")
@@ -785,85 +945,112 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 		}
 
 		if !nr.IsRegistered("/initial") {
-			t.Fatal("mutating ReplaceRoutes input map should not remove installed route")
+			t.Fatal(
+				"mutating ReplaceRoutes input map should not remove installed route",
+			)
 		}
 		if nr.IsRegistered("/injected") {
 			t.Fatal("mutating ReplaceRoutes input map should not inject route")
 		}
 
-		initialRequest := createRequestWithGetTasksCtx(http.MethodGet, "/initial")
+		initialRequest := createRequestWithGetTasksCtx(
+			http.MethodGet,
+			"/initial",
+		)
 		_, initialFound := FindNestedMatchesAndRunTasks(nr, initialRequest)
 		if !initialFound {
-			t.Fatal("expected /initial to remain matchable after caller map mutation")
+			t.Fatal(
+				"expected /initial to remain matchable after caller map mutation",
+			)
 		}
 
-		injectedRequest := createRequestWithGetTasksCtx(http.MethodGet, "/injected")
+		injectedRequest := createRequestWithGetTasksCtx(
+			http.MethodGet,
+			"/injected",
+		)
 		_, injectedFound := FindNestedMatchesAndRunTasks(nr, injectedRequest)
 		if injectedFound {
 			t.Fatal("expected /injected not to match after caller map mutation")
 		}
 	})
 
-	t.Run("RebuildPreservingHandlers_PreservesOnlyHandlerRoutes", func(t *testing.T) {
-		nr := NewNestedRouter(&NestedOptions{})
+	t.Run(
+		"RebuildPreservingHandlers_PreservesOnlyHandlerRoutes",
+		func(t *testing.T) {
+			nr := NewNestedRouter(&NestedOptions{})
 
-		keepHandler := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			return "keep", nil
-		})
+			keepHandler := TaskHandlerFromFunc(
+				func(rd *ReqData[None]) (string, error) {
+					return "keep", nil
+				},
+			)
 
-		AddNestedTaskHandler(nr, "/keep", keepHandler)
-		AddNestedPatternWithoutHandler(nr, "/drop-no-handler")
-		AddNestedPatternWithoutHandler(nr, "/will-be-replaced")
+			AddNestedTaskHandler(nr, "/keep", keepHandler)
+			AddNestedPatternWithoutHandler(nr, "/drop-no-handler")
+			AddNestedPatternWithoutHandler(nr, "/will-be-replaced")
 
-		nr.RebuildPreservingHandlers([]string{"/keep", "/new-no-handler"})
+			nr.RebuildPreservingHandlers([]string{"/keep", "/new-no-handler"})
 
-		if !nr.IsRegistered("/keep") {
-			t.Fatal("expected /keep to remain registered")
-		}
-		if !nr.IsRegistered("/new-no-handler") {
-			t.Fatal("expected /new-no-handler to be registered")
-		}
-		if nr.IsRegistered("/drop-no-handler") || nr.IsRegistered("/will-be-replaced") {
-			t.Fatal("expected old no-handler routes to be removed")
-		}
+			if !nr.IsRegistered("/keep") {
+				t.Fatal("expected /keep to remain registered")
+			}
+			if !nr.IsRegistered("/new-no-handler") {
+				t.Fatal("expected /new-no-handler to be registered")
+			}
+			if nr.IsRegistered("/drop-no-handler") ||
+				nr.IsRegistered("/will-be-replaced") {
+				t.Fatal("expected old no-handler routes to be removed")
+			}
 
-		reqKeep := createRequestWithGetTasksCtx(http.MethodGet, "/keep")
-		keepResults, found := FindNestedMatchesAndRunTasks(nr, reqKeep)
-		if !found {
-			t.Fatal("expected /keep to match after rebuild")
-		}
-		keep := keepResults.Map["/keep"]
-		if keep == nil || keep.Err() != nil || keep.Data() != "keep" {
-			t.Fatalf("/keep result unexpected: data=%#v err=%v", keep.Data(), keep.Err())
-		}
+			reqKeep := createRequestWithGetTasksCtx(http.MethodGet, "/keep")
+			keepResults, found := FindNestedMatchesAndRunTasks(nr, reqKeep)
+			if !found {
+				t.Fatal("expected /keep to match after rebuild")
+			}
+			keep := keepResults.Map["/keep"]
+			if keep == nil || keep.Err() != nil || keep.Data() != "keep" {
+				t.Fatalf(
+					"/keep result unexpected: data=%#v err=%v",
+					keep.Data(),
+					keep.Err(),
+				)
+			}
 
-		reqNew := createRequestWithGetTasksCtx(http.MethodGet, "/new-no-handler")
-		newResults, found := FindNestedMatchesAndRunTasks(nr, reqNew)
-		if !found {
-			t.Fatal("expected /new-no-handler to match after rebuild")
-		}
-		newRouteResult := newResults.Map["/new-no-handler"]
-		if newRouteResult == nil {
-			t.Fatal("missing /new-no-handler result")
-		}
-		if newRouteResult.RanTask() {
-			t.Fatal("/new-no-handler should not run a task")
-		}
-	})
+			reqNew := createRequestWithGetTasksCtx(
+				http.MethodGet,
+				"/new-no-handler",
+			)
+			newResults, found := FindNestedMatchesAndRunTasks(nr, reqNew)
+			if !found {
+				t.Fatal("expected /new-no-handler to match after rebuild")
+			}
+			newRouteResult := newResults.Map["/new-no-handler"]
+			if newRouteResult == nil {
+				t.Fatal("missing /new-no-handler result")
+			}
+			if newRouteResult.RanTask() {
+				t.Fatal("/new-no-handler should not run a task")
+			}
+		},
+	)
 }
 
 func TestResponseProxies(t *testing.T) {
 	t.Run("Response_Proxies_Created", func(t *testing.T) {
 		nr := NewNestedRouter(&NestedOptions{})
 
-		handler1 := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			rd.ResponseProxy().SetHeader("X-Handler-1", "value1")
-			return "handler1", nil
-		})
-		handler2 := TaskHandlerFromFunc(func(rd *ReqData[None]) (string, error) {
-			rd.ResponseProxy().SetHeader("X-Handler-2", "value2")
-			return "handler2", nil
-		})
+		handler1 := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				rd.ResponseProxy().SetHeader("X-Handler-1", "value1")
+				return "handler1", nil
+			},
+		)
+		handler2 := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (string, error) {
+				rd.ResponseProxy().SetHeader("X-Handler-2", "value2")
+				return "handler2", nil
+			},
+		)
 
 		AddNestedTaskHandler(nr, "/", handler1)
 		AddNestedTaskHandler(nr, "/page", handler2)
@@ -918,9 +1105,11 @@ func BenchmarkNestedRouter(b *testing.B) {
 	b.Run("Nested_Tasks_Execution", func(b *testing.B) {
 		nr := NewNestedRouter(&NestedOptions{})
 
-		handler := TaskHandlerFromFunc(func(rd *ReqData[None]) (map[string]string, error) {
-			return map[string]string{"id": rd.Params()["id"]}, nil
-		})
+		handler := TaskHandlerFromFunc(
+			func(rd *ReqData[None]) (map[string]string, error) {
+				return map[string]string{"id": rd.Params()["id"]}, nil
+			},
+		)
 
 		AddNestedTaskHandler(nr, "/", handler)
 		AddNestedTaskHandler(nr, "/users", handler)
@@ -953,7 +1142,10 @@ func BenchmarkNestedRouter(b *testing.B) {
 			AddNestedPatternWithoutHandler(nr, pattern)
 		}
 
-		req := createRequestWithGetTasksCtx(http.MethodGet, "/app/dashboard/users/123/profile/settings")
+		req := createRequestWithGetTasksCtx(
+			http.MethodGet,
+			"/app/dashboard/users/123/profile/settings",
+		)
 
 		b.ResetTimer()
 		b.ReportAllocs()

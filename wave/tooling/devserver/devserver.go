@@ -68,7 +68,6 @@ type runtimeServer struct {
 	RestartIntents *restartengine.RestartIntentAccumulator
 
 	WaitingForBuildRetry bool
-	WatcherStartCh       chan struct{}
 
 	NextRunCycleID       uint64
 	CurrentRunCycleScope *restartengine.RunCycleScope
@@ -439,7 +438,10 @@ func (server *runtimeServer) loadParsedConfigForReload(
 		return nil, loadError
 	}
 	if currentConfig != nil {
-		wave.CopyFrameworkRuntimeFieldsForToolingReload(newConfig, currentConfig)
+		wave.CopyFrameworkRuntimeFieldsForToolingReload(
+			newConfig,
+			currentConfig,
+		)
 	}
 	return newConfig, nil
 }
@@ -533,7 +535,9 @@ func (server *runtimeServer) MustGetPort() int {
 }
 
 // StartRefreshServer starts websocket refresh HTTP server.
-func (server *runtimeServer) StartRefreshServer(preferredPort int) (int, error) {
+func (server *runtimeServer) StartRefreshServer(
+	preferredPort int,
+) (int, error) {
 	if server != nil && server.Cfg != nil && server.Cfg.Core != nil &&
 		server.Cfg.Core.ServerOnlyMode {
 		return 0, nil
@@ -916,12 +920,12 @@ func (server *runtimeServer) startRunCycleRuntime() {
 
 	cycleScope := server.startRunCycleScope()
 	runloopEngine := server.BuildRunloopEngine()
-	server.WatcherStartCh = make(chan struct{})
+	watcherStartCh := make(chan struct{})
 
 	if cycleScope != nil {
 		cycleScope.LaunchAsyncWork(func(cycleContext context.Context) {
 			select {
-			case <-server.WatcherStartCh:
+			case <-watcherStartCh:
 			case <-cycleContext.Done():
 				return
 			}
@@ -929,7 +933,7 @@ func (server *runtimeServer) startRunCycleRuntime() {
 		})
 	}
 
-	close(server.WatcherStartCh)
+	close(watcherStartCh)
 }
 
 // WaitForBuildRetry waits for file events that trigger a restart after build failure.
@@ -941,21 +945,21 @@ func (server *runtimeServer) WaitForBuildRetry() restartengine.RestartRequest {
 		return restartengine.NormalizeRestartRequest(pendingRequest)
 	}
 
-	server.WatcherStartCh = make(chan struct{})
+	watcherStartCh := make(chan struct{})
 	cycleScope := server.startRunCycleScope()
 	runloopEngine := server.BuildRunloopEngine()
 
 	if cycleScope != nil {
 		cycleScope.LaunchAsyncWork(func(cycleContext context.Context) {
 			select {
-			case <-server.WatcherStartCh:
+			case <-watcherStartCh:
 			case <-cycleContext.Done():
 				return
 			}
 			runloopEngine.RunWatcherWithContext(cycleContext)
 		})
 	}
-	close(server.WatcherStartCh)
+	close(watcherStartCh)
 
 	return server.consumeRestartRequestBlocking()
 }
@@ -1135,7 +1139,7 @@ func (server *runtimeServer) cycleViteAndWaitForReadiness() bool {
 
 // CallViteFilemapInvalidate calls configured invalidate endpoint in Vite runtime.
 func (server *runtimeServer) CallViteFilemapInvalidate() error {
-	viteContext := server.ViteContext
+	viteContext := server.currentViteContext()
 	if viteContext == nil {
 		return errors.New("vite not running")
 	}
@@ -1195,7 +1199,7 @@ func (server *runtimeServer) CallViteFilemapInvalidate() error {
 
 // WaitForVite waits for vite readiness on known probe URLs.
 func (server *runtimeServer) WaitForVite() bool {
-	viteContext := server.ViteContext
+	viteContext := server.currentViteContext()
 	if viteContext == nil {
 		return true
 	}
@@ -1240,7 +1244,9 @@ func (server *runtimeServer) BroadcastRebuilding() {
 }
 
 // BroadcastReload broadcasts reload payload with readiness handling.
-func (server *runtimeServer) BroadcastReload(reloadOptions eventpipeline.ReloadOpts) {
+func (server *runtimeServer) BroadcastReload(
+	reloadOptions eventpipeline.ReloadOpts,
+) {
 	if !server.shouldBroadcastToBrowserClients() {
 		return
 	}
@@ -1298,8 +1304,11 @@ func (server *runtimeServer) waitForReloadReadiness(
 			return false
 		}
 	}
-	if reloadOptions.WaitVite && server.ViteContext != nil {
-		if !server.WaitForAnyReady(resolveViteReadyURLs(server.ViteContext.Port())) {
+	viteContextForReadinessWait := server.currentViteContext()
+	if reloadOptions.WaitVite && viteContextForReadinessWait != nil {
+		if !server.WaitForAnyReady(
+			resolveViteReadyURLs(viteContextForReadinessWait.Port()),
+		) {
 			return false
 		}
 	}
@@ -1444,7 +1453,9 @@ func (server *runtimeServer) executeHotReloadCSSBrowserPhase(
 }
 
 // ExecuteBuildPhase executes build-phase work from resolved workset decision.
-func (server *runtimeServer) ExecuteBuildPhase(work *eventpipeline.WorkSet) error {
+func (server *runtimeServer) ExecuteBuildPhase(
+	work *eventpipeline.WorkSet,
+) error {
 	if work == nil {
 		return nil
 	}
@@ -1793,7 +1804,9 @@ func getFrameworkDevBuildHook(parsedConfig *wave.ParsedConfig) string {
 }
 
 // RunNoWaitHookWithConcurrencyLimit executes callback under bounded semaphore.
-func (server *runtimeServer) RunNoWaitHookWithConcurrencyLimit(runNoWaitHook func()) {
+func (server *runtimeServer) RunNoWaitHookWithConcurrencyLimit(
+	runNoWaitHook func(),
+) {
 	if runNoWaitHook == nil {
 		return
 	}
@@ -1865,6 +1878,16 @@ func (server *runtimeServer) currentRefreshManager() *broadcast.Manager {
 	server.Mu.Lock()
 	defer server.Mu.Unlock()
 	return server.RefreshManager
+}
+
+// currentViteContext returns current vite build context snapshot.
+func (server *runtimeServer) currentViteContext() *vitecmd.BuildCtx {
+	if server == nil {
+		return nil
+	}
+	server.Mu.Lock()
+	defer server.Mu.Unlock()
+	return server.ViteContext
 }
 
 // filepathDir returns cleaned parent directory path.

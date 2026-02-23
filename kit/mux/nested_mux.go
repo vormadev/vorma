@@ -180,15 +180,6 @@ func AddNestedTaskHandler[O any](
 		taskHandler:     taskHandler,
 	}
 	mustRegisterNestedRoute(route)
-	// Pre-compile
-	router.mu.Lock()
-	compiled := compiledRoute{
-		pattern:     pattern,
-		taskHandler: taskHandler,
-		hasHandler:  true,
-	}
-	router.addCompiledRoute(compiled)
-	router.mu.Unlock()
 	return route
 }
 
@@ -200,15 +191,6 @@ func AddNestedPatternWithoutHandler(router *NestedRouter, pattern string) {
 		taskHandler:     nil,
 	}
 	mustRegisterNestedRoute(route)
-	// Pre-compile
-	router.mu.Lock()
-	compiled := compiledRoute{
-		pattern:     pattern,
-		taskHandler: nil,
-		hasHandler:  false,
-	}
-	router.addCompiledRoute(compiled)
-	router.mu.Unlock()
 }
 
 // AddNestedPatternWithoutHandlerIfMissing registers a pattern without a task
@@ -290,9 +272,8 @@ func FindNestedMatches(
 	r *http.Request,
 ) (*matcher.FindNestedMatchesResults, bool) {
 	nestedRouter.mu.RLock()
-	m := nestedRouter.matcher
-	nestedRouter.mu.RUnlock()
-	return m.FindNestedMatches(r.URL.Path)
+	defer nestedRouter.mu.RUnlock()
+	return nestedRouter.matcher.FindNestedMatches(r.URL.Path)
 }
 
 // FindNestedMatchesAndRunTasks finds nested matches and runs all matched task handlers.
@@ -471,6 +452,11 @@ func mustRegisterNestedRoute[O any](route *NestedRoute[O]) {
 	}
 	route.router.matcher.RegisterPattern(route.originalPattern)
 	route.router.routes[route.originalPattern] = route
+	route.router.addCompiledRoute(compiledRoute{
+		pattern:     route.originalPattern,
+		taskHandler: route.taskHandler,
+		hasHandler:  route.taskHandler != nil,
+	})
 }
 
 // addCompiledRoute adds a compiled route with atomic update
