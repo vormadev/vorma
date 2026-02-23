@@ -306,7 +306,6 @@ describe("successful navigation command builder", () => {
 				response,
 				json,
 				expectedBuildID: "1",
-				shouldApplyCSSBundles: false,
 			},
 			{
 				type: "render",
@@ -363,7 +362,6 @@ describe("successful navigation command builder", () => {
 				response,
 				json,
 				expectedBuildID: "1",
-				shouldApplyCSSBundles: true,
 			},
 			{
 				type: "complete_without_render",

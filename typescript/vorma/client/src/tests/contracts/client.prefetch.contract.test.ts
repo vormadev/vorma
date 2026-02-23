@@ -434,6 +434,99 @@ describe("client prefetch contracts", () => {
 		document.body.removeChild(anchor);
 	});
 
+	it("warms internal prefetch artifacts without committing page mutations", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse(
+				{
+					cssBundles: ["/prefetch-internal-warm.css"],
+					title: {
+						dangerousInnerHTML:
+							"Prefetch should not commit this title",
+					},
+					metaHeadEls: [
+						{
+							tag: "meta",
+							attributesKnownSafe: {
+								name: "prefetch-head-marker",
+								content: "prefetch-only",
+							},
+						},
+					],
+				},
+				{ headers: { "X-Vorma-Build-Id": "2" } },
+			),
+		);
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/prefetch-internal-warm",
+			delayMs: 0,
+		});
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(api.getBuildID()).toBe("2");
+		expect(
+			document.head.querySelector(
+				'link[rel="preload"][as="style"][href="/prefetch-internal-warm.css"]',
+			),
+		).toBeTruthy();
+		expect(
+			document.head.querySelector(
+				'link[rel="stylesheet"][data-vorma-css-bundle="/prefetch-internal-warm.css"]',
+			),
+		).toBeNull();
+		expect(document.title).toBe("Initial Title");
+		expect(
+			document.head.querySelector('meta[name="prefetch-head-marker"]'),
+		).toBeNull();
+		expect(window.location.pathname).toBe("/");
+		handlers?.stop();
+	});
+
+	it("applies prefetched css only after navigation commit", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse({
+				cssBundles: ["/prefetch-commit.css"],
+				title: { dangerousInnerHTML: "Prefetch Commit Boundary" },
+			}),
+		);
+
+		const handlers = api.__getPrefetchHandlers({
+			href: "/prefetch-commit",
+			delayMs: 0,
+		});
+		handlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		await vi.runAllTimersAsync();
+
+		expect(
+			document.head.querySelector(
+				'link[rel="stylesheet"][data-vorma-css-bundle="/prefetch-commit.css"]',
+			),
+		).toBeNull();
+
+		fetchSpy.mockClear();
+		const { anchor, event } = buildAnchorClick("/prefetch-commit");
+		await handlers?.onClick(event);
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(
+			document.querySelectorAll(
+				'link[rel="stylesheet"][data-vorma-css-bundle="/prefetch-commit.css"]',
+			),
+		).toHaveLength(1);
+		expect(document.title).toBe("Prefetch Commit Boundary");
+		expect(window.location.pathname).toBe("/prefetch-commit");
+
+		document.body.removeChild(anchor);
+		handlers?.stop();
+	});
+
 	it("cancels pending prefetch timeout when stop is called", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi

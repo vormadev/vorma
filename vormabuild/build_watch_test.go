@@ -544,7 +544,6 @@ func TestRunOnChangeOnlyWatchPattern_UsesCallbackOnly(t *testing.T) {
 			pattern.OnChangeHooks[0].Cmd,
 		)
 	}
-
 	_, err := pattern.OnChangeHooks[0].Callback(
 		&wave.HookContext{AppStoppedForBatch: false},
 	)

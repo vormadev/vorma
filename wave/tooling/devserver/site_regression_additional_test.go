@@ -381,6 +381,64 @@ func TestSiteRegression_WaitingForBuildRetry_ErrorClassEventsDoNotBlock(
 	}
 }
 
+func TestSiteRegression_BuildRetryRunloopEngineShortCircuitsWhenWaitingFlagIsFalse(
+	t *testing.T,
+) {
+	harness := setupSiteRegressionHarnessWithoutAppHealthForToolingTests(
+		t,
+		false,
+	)
+	defer harness.Cleanup()
+
+	harness.Server.SetWaitingForBuildRetry(false)
+
+	if writeError := os.WriteFile(
+		harness.Paths.RouteRegistryPath,
+		[]byte("export const routes = [{ path: '/build-retry-short-circuit' }];"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write route registry file: %v", writeError)
+	}
+
+	processCompleted := make(chan struct{})
+	go func() {
+		harness.Server.buildRunloopEngineForBuildRetry().ProcessEvents(
+			[]fsnotify.Event{{
+				Name: harness.Paths.RouteRegistryPath,
+				Op:   fsnotify.Write,
+			}},
+		)
+		close(processCompleted)
+	}()
+
+	select {
+	case <-processCompleted:
+	case <-time.After(1500 * time.Millisecond):
+		t.Fatal(
+			"expected build-retry runloop engine to short-circuit watcher batch without blocking",
+		)
+	}
+
+	assertNoBroadcastPayloadForSiteRegressionHarness(
+		t,
+		harness.Connection,
+		"build-retry runloop short-circuit",
+	)
+
+	pendingRestartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		harness.Server,
+		500*time.Millisecond,
+	)
+	if !pendingRestartRequest.RecompileGo ||
+		pendingRestartRequest.IsConfigRestart {
+		t.Fatalf(
+			"expected build-retry runloop engine to queue go-recompile restart, got %#v",
+			pendingRestartRequest,
+		)
+	}
+}
+
 func TestSiteRegression_FrameworkTemplateCreateTriggersHardReload(
 	t *testing.T,
 ) {

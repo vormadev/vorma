@@ -52,4 +52,31 @@ describe("client runtime initialization", () => {
 
 		expect(() => contextModule.getNavigationStateAccess()).not.toThrow();
 	});
+
+	it("keeps debug journal APIs stable and no-op when dev mode is disabled", async () => {
+		vi.resetModules();
+		const originalDev = import.meta.env.DEV;
+		(import.meta.env as any).DEV = false;
+
+		try {
+			const clientModule = await import("../../client.ts");
+			expect(clientModule.getNavigationDebugJournal()).toEqual([]);
+
+			const control = clientModule.navigationStateManager.beginNavigation(
+				{
+					href: window.location.href,
+					navigationType: "prefetch",
+				},
+			);
+			await control.promise;
+
+			expect(clientModule.getNavigationDebugJournal()).toEqual([]);
+			expect(() =>
+				clientModule.clearNavigationDebugJournal(),
+			).not.toThrow();
+			expect(clientModule.getNavigationDebugJournal()).toEqual([]);
+		} finally {
+			(import.meta.env as any).DEV = originalDev;
+		}
+	});
 });

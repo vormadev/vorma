@@ -1,12 +1,12 @@
-import type { NavigateProps } from "./types.ts";
+import type { NavigationLanes } from "./runtime_slots.ts";
 import type {
+	NavigateProps,
 	NavigationDebugJournalEntry,
 	NavigationEntry,
 	NavigationLane,
 	NavigationPhase,
 	SubmissionEntry,
 } from "./types.ts";
-import type { NavigationLanes } from "./runtime_slots.ts";
 
 const DEBUG_JOURNAL_CAPACITY = 200;
 
@@ -301,7 +301,15 @@ export type NavigationRuntimeStateMachine = {
 	clearDebugJournal: () => void;
 };
 
-export function createNavigationRuntimeStateMachine(): NavigationRuntimeStateMachine {
+function createNavigationRuntimeStateMachineWithoutDebugJournal(): NavigationRuntimeStateMachine {
+	return {
+		dispatchTransitionEvent: () => {},
+		getDebugJournal: () => [],
+		clearDebugJournal: () => {},
+	};
+}
+
+function createNavigationRuntimeStateMachineWithDebugJournal(): NavigationRuntimeStateMachine {
 	const debugJournal: NavigationDebugJournalEntry[] = [];
 
 	return {
@@ -317,3 +325,8 @@ export function createNavigationRuntimeStateMachine(): NavigationRuntimeStateMac
 		},
 	};
 }
+
+export const createNavigationRuntimeStateMachine: () => NavigationRuntimeStateMachine =
+	import.meta.env.DEV
+		? createNavigationRuntimeStateMachineWithDebugJournal
+		: createNavigationRuntimeStateMachineWithoutDebugJournal;

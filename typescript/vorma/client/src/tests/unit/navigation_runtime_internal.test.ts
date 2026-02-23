@@ -1094,6 +1094,56 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 		expect(dedupeEntry?.causedByOperationID).toEqual(expect.any(Number));
 	});
 
+	it("keeps debug journal APIs as no-ops when journaling is disabled", async () => {
+		const originalDev = import.meta.env.DEV;
+		(import.meta.env as any).DEV = false;
+		vi.resetModules();
+
+		const runtimeModule = await import("../../core/navigation/runtime.ts");
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: [],
+					loadersData: [],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+					outermostServerError: undefined,
+					outermostServerErrorIdx: undefined,
+					title: { dangerousInnerHTML: "Debug Journal Disabled" },
+					metaHeadEls: undefined,
+					restHeadEls: undefined,
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				},
+			),
+		);
+		try {
+			const runtime = runtimeModule.createNavigationRuntime();
+			await expect(
+				runtime.navigate({
+					href: "/debug-journal-disabled",
+					navigationType: "userNavigation",
+				}),
+			).resolves.toEqual({ didNavigate: true });
+			expect(runtime.getDebugJournal()).toEqual([]);
+			expect(() => runtime.clearDebugJournal()).not.toThrow();
+			expect(runtime.getDebugJournal()).toEqual([]);
+		} finally {
+			(import.meta.env as any).DEV = originalDev;
+		}
+	});
+
 	it("records explicit fetch-rejection reasons across active, prefetch, and revalidation lanes", async () => {
 		const fetchSpy = vi
 			.spyOn(window, "fetch")

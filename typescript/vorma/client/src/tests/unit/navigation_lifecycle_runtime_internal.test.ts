@@ -144,4 +144,54 @@ describe("navigation lifecycle runtime seam", () => {
 			true,
 		);
 	});
+
+	it("keeps lifecycle behavior intact while debug journaling is disabled", async () => {
+		const originalDev = import.meta.env.DEV;
+		(import.meta.env as any).DEV = false;
+		vi.resetModules();
+
+		const lifecycleRuntimeModule =
+			await import("../../core/navigation/runtime_lifecycle_runtime.ts");
+		const activeEntry = createNavigationEntry({
+			operationID: 21,
+			targetUrl: "http://localhost:3000/runtime-seam-disabled",
+			type: "browserHistory",
+			intent: "navigate",
+			phase: "fetching",
+		});
+		const slots: NavigationLanes = {
+			active: activeEntry,
+			prefetch: new Map(),
+			revalidation: null,
+		};
+		const scheduleStatusUpdate = vi.fn();
+		try {
+			const lifecycleRuntime =
+				lifecycleRuntimeModule.createNavigationLifecycleRuntime({
+					lanes: slots,
+					getScheduleStatusUpdate: () => scheduleStatusUpdate,
+				});
+
+			lifecycleRuntime.transitionPhase({
+				targetUrl: activeEntry.targetUrl,
+				phase: "waiting",
+				reason: "runtime_seam_disabled_waiting",
+			});
+			expect(activeEntry.phase).toBe("waiting");
+
+			const deleted = lifecycleRuntime.deleteNavigation({
+				key: activeEntry.targetUrl,
+				reason: "runtime_seam_disabled_deleted",
+			});
+			expect(deleted).toBe(true);
+			expect(slots.active).toBeNull();
+			expect(scheduleStatusUpdate).toHaveBeenCalledTimes(2);
+			expect(lifecycleRuntime.getDebugJournal()).toEqual([]);
+
+			expect(() => lifecycleRuntime.clearDebugJournal()).not.toThrow();
+			expect(lifecycleRuntime.getDebugJournal()).toEqual([]);
+		} finally {
+			(import.meta.env as any).DEV = originalDev;
+		}
+	});
 });

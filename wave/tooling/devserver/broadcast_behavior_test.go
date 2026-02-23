@@ -491,6 +491,69 @@ func TestBroadcastReload_CleanupCancelsOutstandingReadinessWait(
 	}
 }
 
+func TestBroadcastReload_CycleViteReadinessWaitIsAsyncAndCleanupCancelable(
+	t *testing.T,
+) {
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+	cfg.Watch.HealthcheckEndpoint = "/healthz"
+
+	healthServerPort, requestStarted, requestCanceled, cleanupHealthServer := startBlockingHealthServerForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanupHealthServer()
+	t.Setenv(wavecore.EnvMode, wavecore.EnvModeDev)
+	t.Setenv(wavecore.EnvPort, strconv.Itoa(healthServerPort))
+	t.Setenv(wavecore.EnvPortSet, "true")
+
+	refreshManager, _, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
+		t,
+	)
+	defer cleanup()
+
+	serverForTest := &Server{
+		Cfg:            cfg,
+		Log:            newDiscardLoggerForBroadcastBehaviorTests(),
+		RefreshManager: refreshManager,
+	}
+
+	broadcastReturn := make(chan struct{})
+	go func() {
+		serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
+			Payload: broadcast.Payload{
+				ChangeType: broadcast.ChangeTypeOther,
+			},
+			CycleVite: true,
+			WaitApp:   true,
+		})
+		close(broadcastReturn)
+	}()
+
+	select {
+	case <-broadcastReturn:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal(
+			"expected cycle-vite reload scheduling to return without waiting for readiness probes",
+		)
+	}
+
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for cycle-vite readiness wait request")
+	}
+
+	serverForTest.CleanupForRebuild()
+
+	select {
+	case <-requestCanceled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal(
+			"timed out waiting for cycle-vite readiness wait cancellation during cleanup",
+		)
+	}
+}
+
 func TestShouldBroadcastReloadPayloadAfterReadiness(t *testing.T) {
 	serverForTest := &Server{
 		Cfg: newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir()),

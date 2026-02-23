@@ -1,3 +1,10 @@
+import { reduceNavigationLifecycleTransition } from "./runtime_lifecycle_transitions.ts";
+import type { NavigationLanes } from "./runtime_slots.ts";
+import { findNavigationEntryInNavigationLanes } from "./runtime_slots.ts";
+import {
+	buildNavigationEntriesByOperationIDFromNavigationLanes,
+	createNavigationRuntimeStateMachine,
+} from "./runtime_state_machine.ts";
 import type {
 	NavigationDebugJournalEntry,
 	NavigationEntry,
@@ -5,13 +12,6 @@ import type {
 	SubmissionEntry,
 	VormaNavigationType,
 } from "./types.ts";
-import type { NavigationLanes } from "./runtime_slots.ts";
-import {
-	buildNavigationEntriesByOperationIDFromNavigationLanes,
-	createNavigationRuntimeStateMachine,
-} from "./runtime_state_machine.ts";
-import { reduceNavigationLifecycleTransition } from "./runtime_lifecycle_transitions.ts";
-import { findNavigationEntryInNavigationLanes } from "./runtime_slots.ts";
 
 export type NavigationLifecycleRuntime = {
 	findNavigationEntry: (targetUrl: string) => NavigationEntry | undefined;

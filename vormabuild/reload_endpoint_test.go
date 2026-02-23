@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/wave"
@@ -249,6 +250,53 @@ func TestCallReloadEndpoint(t *testing.T) {
 		}
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("error = %v, expected wrapped context cancellation", err)
+		}
+	})
+
+	t.Run("respects hook execution context deadline timeout", func(t *testing.T) {
+		deadlineExecutionContext, cancelDeadlineExecutionContext := context.WithTimeout(
+			context.Background(),
+			40*time.Millisecond,
+		)
+		defer cancelDeadlineExecutionContext()
+		executor := newReloadEndpointRequestExecutor(reloadEndpointDependencies{
+			reloadEndpointURLForApp: func(*vormaruntime.Vorma, string) string {
+				return "http://localhost:1234" + vormaruntime.DefaultDevReloadRoutesEndpointPath
+			},
+			newReloadEndpointRequest: func(
+				ctx context.Context,
+				url string,
+			) (*http.Request, error) {
+				return newReloadEndpointRequest(ctx, url)
+			},
+			doReloadEndpointRequest: func(request *http.Request) (*http.Response, error) {
+				<-request.Context().Done()
+				return nil, request.Context().Err()
+			},
+		})
+		reloadOptionsWithDeadlineContext := reloadOptions
+		reloadOptionsWithDeadlineContext.hookExecutionContext = deadlineExecutionContext
+
+		start := time.Now()
+		err := executor.callReloadEndpoint(
+			v,
+			reloadOptionsWithDeadlineContext,
+		)
+		elapsed := time.Since(start)
+		if err == nil {
+			t.Fatal("expected hook execution context deadline to fail reload endpoint call")
+		}
+		if !strings.Contains(err.Error(), "request failed") {
+			t.Fatalf("error = %q, expected request-failed context", err)
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("error = %v, expected wrapped deadline exceeded", err)
+		}
+		if elapsed > 400*time.Millisecond {
+			t.Fatalf(
+				"expected deadline-bounded call duration, elapsed=%s",
+				elapsed,
+			)
 		}
 	})
 

@@ -119,3 +119,63 @@ func TestWaitForAnyReadyWithContext_CancellationStopsWaitEarly(t *testing.T) {
 		)
 	}
 }
+
+func TestWaitForAnyReadyWithContext_MaximumTotalWaitCancelsInFlightProbe(
+	t *testing.T,
+) {
+	requestStarted := make(chan struct{}, 1)
+	requestCanceled := make(chan struct{}, 1)
+
+	testServer := httptest.NewServer(
+		http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+			select {
+			case requestStarted <- struct{}{}:
+			default:
+			}
+			<-request.Context().Done()
+			select {
+			case requestCanceled <- struct{}{}:
+			default:
+			}
+		}),
+	)
+	defer testServer.Close()
+
+	waitStartedAt := time.Now()
+	waitResult := runtimeprocess.WaitForAnyReadyWithContext(
+		context.Background(),
+		[]string{testServer.URL},
+		runtimeprocess.ReadinessWaitPolicy{
+			HTTPClientTimeout: 5 * time.Second,
+			InitialDelay:      100 * time.Millisecond,
+			MaximumDelay:      100 * time.Millisecond,
+			MaximumTotalWait:  200 * time.Millisecond,
+			TreatHTTPStatusCodeAsReady: func(statusCode int) bool {
+				return statusCode >= 200 && statusCode < 400
+			},
+		},
+	)
+	waitElapsed := time.Since(waitStartedAt)
+
+	if waitResult {
+		t.Fatal("expected readiness wait to return false when total wait budget expires")
+	}
+	if waitElapsed > 750*time.Millisecond {
+		t.Fatalf(
+			"expected readiness wait to respect maximum total wait budget, elapsed=%s",
+			waitElapsed,
+		)
+	}
+
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for readiness probe request to start")
+	}
+
+	select {
+	case <-requestCanceled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for in-flight readiness probe cancellation")
+	}
+}

@@ -28,14 +28,21 @@ for `typescript/vorma/client/src` without changing framework behavior.
 - [x] Keep prefetch behavior intentional (decide whether prefetch should apply
       CSS or only preload).
 - [x] Remove duplicate `AssetManager.applyCSS` invocation path.
-- [ ] Add contract tests for navigation + prefetch CSS behavior after refactor.
+- [x] Codify prefetch commit boundary: pure prefetch may warm internal framework
+      state (for example build ID and internal cache state), but must not mutate
+      committed page state (stylesheet/title/head/history/route-change commit).
+- [x] Add contract tests for navigation + prefetch CSS behavior after refactor.
+- [x] Add contract tests that assert internal warm-up is allowed while
+      page-committed mutations are blocked during pure prefetch.
 
 ### 4) Make debug journal production-optional
 
-- [ ] Gate debug journal runtime machinery behind a compile-time/dev guard.
-- [ ] Keep public debug APIs stable but no-op in production builds.
-- [ ] Ensure navigation lifecycle still works identically when disabled.
-- [ ] Add tests for dev-enabled and prod-disabled behavior.
+- [x] Gate debug journal runtime machinery behind a compile-time/dev guard.
+- [x] Keep public debug APIs stable but no-op in production builds.
+- [x] Ensure navigation lifecycle still works identically when disabled.
+- [x] Add tests for dev-enabled and prod-disabled behavior.
+- [x] Add artifact-level production-bundle test that asserts debug transition
+      machinery is excluded when `import.meta.env.DEV` is `false`.
 
 ### 5) Flatten navigation/render orchestration layers
 
@@ -80,13 +87,14 @@ for `typescript/vorma/client/src` without changing framework behavior.
 
 ## Validation Gate (each step)
 
-- [ ] `pnpm prettier --write <edited files>`
-- [ ] `pnpm tsc -p typescript/vorma/client/tsconfig.json --noEmit`
-- [ ] Targeted vitest suites for changed modules.
-- [ ] `make tstest-source`
+- [x] `pnpm prettier --write <edited files>`
+- [x] `pnpm tsc -p typescript/vorma/client/tsconfig.json --noEmit`
+- [x] Targeted vitest suites for changed modules.
+- [x] `make tstest-source`
 
 ## Progress Log
 
 - [x] Plan created.
 - [x] Step 1 complete.
-- [ ] Step 2 in progress.
+- [x] Step 2 complete.
+- [x] Step 3 complete.

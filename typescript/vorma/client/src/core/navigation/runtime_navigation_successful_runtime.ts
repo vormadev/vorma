@@ -133,9 +133,8 @@ function applyResponseArtifactsWhenBuildMatches(props: {
 	response: Response;
 	json: GetRouteDataOutput;
 	expectedBuildID: string;
-	shouldApplyCSSBundles: boolean;
 }): void {
-	const { response, json, expectedBuildID, shouldApplyCSSBundles } = props;
+	const { response, json, expectedBuildID } = props;
 	const responseBuildID = getBuildIDFromResponse(response);
 
 	if (responseBuildID !== expectedBuildID) {
@@ -148,14 +147,6 @@ function applyResponseArtifactsWhenBuildMatches(props: {
 	});
 
 	__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
-
-	if (
-		shouldApplyCSSBundles &&
-		json.cssBundles &&
-		json.cssBundles.length > 0
-	) {
-		AssetManager.applyCSS(json.cssBundles);
-	}
 }
 
 export function syncBuildIDFromResponse(response: Response): void {
@@ -319,7 +310,6 @@ async function executeSuccessfulNavigationLifecycleCommands(props: {
 					response: command.response,
 					json: command.json,
 					expectedBuildID: command.expectedBuildID,
-					shouldApplyCSSBundles: command.shouldApplyCSSBundles,
 				});
 				break;
 		}

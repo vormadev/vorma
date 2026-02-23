@@ -54,7 +54,10 @@ func TestCycleVite_RestartsRunningViteProcess(t *testing.T) {
 	cfg.Vite.JSPackageManagerBaseCmd = helperViteBaseCommand(t)
 	cfg.Vite.DefaultPort = 5199
 
-	builderForTest := builder.NewBuilder(cfg, newDiscardLoggerForRunloopOrchestrationTests())
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForRunloopOrchestrationTests(),
+	)
 	defer builderForTest.Close()
 
 	serverForTest := &Server{
@@ -73,7 +76,8 @@ func TestCycleVite_RestartsRunningViteProcess(t *testing.T) {
 	if !serverForTest.WaitForVite() {
 		t.Fatal("expected first vite process to become ready")
 	}
-	firstProcessID := fetchViteProcessID(t, serverForTest.ViteContext.Port())
+	vitePort := serverForTest.ViteContext.Port()
+	firstProcessID := fetchViteProcessID(t, vitePort)
 
 	serverForTest.CycleVite()
 
@@ -93,7 +97,9 @@ func TestCycleVite_RestartsRunningViteProcess(t *testing.T) {
 	}
 }
 
-func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) {
+func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(
+	t *testing.T,
+) {
 	t.Setenv(testViteHelperProcessEnv, "1")
 
 	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
@@ -102,7 +108,10 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) 
 	cfg.Vite.JSPackageManagerBaseCmd = helperViteBaseCommand(t)
 	cfg.Vite.DefaultPort = 5199
 
-	builderForTest := builder.NewBuilder(cfg, newDiscardLoggerForRunloopOrchestrationTests())
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForRunloopOrchestrationTests(),
+	)
 	defer builderForTest.Close()
 
 	serverForTest := &Server{
@@ -126,7 +135,8 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) 
 	if !serverForTest.WaitForVite() {
 		t.Fatal("expected first vite process to become ready")
 	}
-	firstProcessID := fetchViteProcessID(t, serverForTest.ViteContext.Port())
+	vitePort := serverForTest.ViteContext.Port()
+	firstProcessID := fetchViteProcessID(t, vitePort)
 
 	serverForTest.BroadcastReload(eventpipeline.ReloadOpts{
 		Payload:   broadcast.Payload{ChangeType: broadcast.ChangeTypeOther},
@@ -142,7 +152,11 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(t *testing.T) 
 		)
 	}
 
-	secondProcessID := fetchViteProcessID(t, serverForTest.ViteContext.Port())
+	secondProcessID := waitForChangedViteProcessID(
+		t,
+		vitePort,
+		firstProcessID,
+	)
 	if firstProcessID == secondProcessID {
 		t.Fatalf(
 			"expected cycleVite reload to restart vite process, got same pid %q",
@@ -181,14 +195,16 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 
 	var appHits atomic.Int32
 	appServer := &http.Server{
-		Handler: http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-			if request.URL.Path == "/healthz" {
-				appHits.Add(1)
-				responseWriter.WriteHeader(http.StatusOK)
-				return
-			}
-			responseWriter.WriteHeader(http.StatusNotFound)
-		}),
+		Handler: http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path == "/healthz" {
+					appHits.Add(1)
+					responseWriter.WriteHeader(http.StatusOK)
+					return
+				}
+				responseWriter.WriteHeader(http.StatusNotFound)
+			},
+		),
 	}
 	defer appServer.Close()
 	go func() {
@@ -197,14 +213,16 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 
 	var viteHits atomic.Int32
 	viteServer := httptest.NewServer(
-		http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
-			if request.URL.Path == "/@vite/client" {
-				viteHits.Add(1)
-				responseWriter.WriteHeader(http.StatusOK)
-				return
-			}
-			responseWriter.WriteHeader(http.StatusNotFound)
-		}),
+		http.HandlerFunc(
+			func(responseWriter http.ResponseWriter, request *http.Request) {
+				if request.URL.Path == "/@vite/client" {
+					viteHits.Add(1)
+					responseWriter.WriteHeader(http.StatusOK)
+					return
+				}
+				responseWriter.WriteHeader(http.StatusNotFound)
+			},
+		),
 	)
 	defer viteServer.Close()
 
@@ -275,7 +293,10 @@ func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(
 		occupiedPort,
 	)
 	if startRefreshServerError != nil {
-		t.Fatalf("StartRefreshServer returned error: %v", startRefreshServerError)
+		t.Fatalf(
+			"StartRefreshServer returned error: %v",
+			startRefreshServerError,
+		)
 	}
 	defer func() {
 		_ = serverForTest.StopRefreshServer()
@@ -314,7 +335,9 @@ func TestStartRefreshServer_NoOpWhenServerOnlyMode(t *testing.T) {
 		Log: newDiscardLoggerForRunloopOrchestrationTests(),
 	}
 
-	actualPort, startRefreshServerError := serverForTest.StartRefreshServer(5173)
+	actualPort, startRefreshServerError := serverForTest.StartRefreshServer(
+		5173,
+	)
 	if startRefreshServerError != nil {
 		t.Fatalf(
 			"StartRefreshServer returned error in server-only mode: %v",
@@ -499,6 +522,30 @@ func fetchViteProcessID(t *testing.T, port int) string {
 	}
 
 	t.Fatalf("timed out reading vite helper pid from %s", viteClientURL)
+	return ""
+}
+
+func waitForChangedViteProcessID(
+	t *testing.T,
+	port int,
+	previousProcessID string,
+) string {
+	t.Helper()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		currentProcessID := fetchViteProcessID(t, port)
+		if currentProcessID != previousProcessID {
+			return currentProcessID
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	t.Fatalf(
+		"timed out waiting for vite helper pid change from %q on port %d",
+		previousProcessID,
+		port,
+	)
 	return ""
 }
 

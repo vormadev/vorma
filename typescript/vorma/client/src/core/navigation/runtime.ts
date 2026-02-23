@@ -5,6 +5,10 @@ import {
 } from "../../platform/events.ts";
 import { hasSameNavigationTarget } from "../../platform/url.ts";
 import {
+	effectuateRedirectDataResult,
+	syncBuildIDFromRedirectData,
+} from "../redirects.ts";
+import {
 	createNavigationControls,
 	beginNavigation as executeBeginNavigation,
 	type BeginNavigationContext,
@@ -16,20 +20,16 @@ import {
 	createNavigationLifecycleRuntime,
 } from "./runtime_lifecycle_runtime.ts";
 import {
-	processSuccessfulNavigationRuntime,
-	syncBuildIDFromResponse,
-	type ProcessSuccessfulNavigationContext,
-} from "./runtime_navigation_successful_runtime.ts";
-import {
 	decideNavigationOutcomeExecutionPlan,
 	toPublicNavigateResult,
 	type InternalNavigateResult,
 	type NavigationOutcomeExecutionPlan,
 } from "./runtime_navigation_outcome_state_machine.ts";
 import {
-	effectuateRedirectDataResult,
-	syncBuildIDFromRedirectData,
-} from "../redirects.ts";
+	processSuccessfulNavigationRuntime,
+	syncBuildIDFromResponse,
+	type ProcessSuccessfulNavigationContext,
+} from "./runtime_navigation_successful_runtime.ts";
 import {
 	buildNavigationsMapFromNavigationLanes,
 	clearRuntimeLanes,
@@ -57,11 +57,11 @@ import {
 export {
 	deleteNavigationFromNavigationLanes,
 	findNavigationEntryInNavigationLanes,
+	processSuccessfulNavigationRuntime,
+	syncBuildIDFromResponse,
 	transitionNavigationPhaseInNavigationLanes,
 };
-export type { NavigationLanes };
-export { processSuccessfulNavigationRuntime, syncBuildIDFromResponse };
-export type { ProcessSuccessfulNavigationContext };
+export type { NavigationLanes, ProcessSuccessfulNavigationContext };
 
 export type CreateNavigationRuntimeOptions = {
 	// Called after a navigate/revalidate intent commits successfully.

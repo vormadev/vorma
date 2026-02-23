@@ -257,10 +257,16 @@ func (server *runtimeServer) CurrentWatcherExecutionTraceContextSnapshot() watch
 	return server.CurrentWatcherExecutionTraceContext
 }
 
-// BuildRunloopEngine creates runloop engine with dependency wiring.
-func (server *runtimeServer) BuildRunloopEngine() *runloop.Engine {
+// buildRunloopEngineWithWaitingForBuildRetryResolver wires runloop dependencies
+// with explicit waiting-for-retry resolver semantics.
+func (server *runtimeServer) buildRunloopEngineWithWaitingForBuildRetryResolver(
+	isWaitingForBuildRetry func() bool,
+) *runloop.Engine {
 	if server == nil {
 		return runloop.New(runloop.Dependencies{})
+	}
+	if isWaitingForBuildRetry == nil {
+		isWaitingForBuildRetry = server.IsWaitingForBuildRetry
 	}
 
 	return runloop.New(runloop.Dependencies{
@@ -304,8 +310,21 @@ func (server *runtimeServer) BuildRunloopEngine() *runloop.Engine {
 		RunNoWaitHookWithConcurrencyLimit:               server.RunNoWaitHookWithConcurrencyLimit,
 		GetOrCreateConcurrentNoWaitHookLifecycleContext: server.GetOrCreateConcurrentNoWaitHookLifecycleContext,
 		ResolveHookExecutionPlan:                        server.ResolveHookExecutionPlan,
-		IsWaitingForBuildRetry:                          server.IsWaitingForBuildRetry,
+		IsWaitingForBuildRetry:                          isWaitingForBuildRetry,
 	})
+}
+
+// BuildRunloopEngine creates runloop engine with dependency wiring.
+func (server *runtimeServer) BuildRunloopEngine() *runloop.Engine {
+	return server.buildRunloopEngineWithWaitingForBuildRetryResolver(nil)
+}
+
+// buildRunloopEngineForBuildRetry creates a retry-wait runloop engine that
+// always short-circuits watcher batches to restart queuing semantics.
+func (server *runtimeServer) buildRunloopEngineForBuildRetry() *runloop.Engine {
+	return server.buildRunloopEngineWithWaitingForBuildRetryResolver(
+		func() bool { return true },
+	)
 }
 
 // ensureAppProcessManager returns existing manager or creates one.
@@ -977,7 +996,7 @@ func (server *runtimeServer) WaitForBuildRetry() restartengine.RestartRequest {
 
 	watcherStartCh := make(chan struct{})
 	cycleScope := server.startRunCycleScope()
-	runloopEngine := server.BuildRunloopEngine()
+	runloopEngine := server.buildRunloopEngineForBuildRetry()
 
 	if cycleScope != nil {
 		cycleScope.LaunchAsyncWork(func(cycleContext context.Context) {
@@ -1308,23 +1327,6 @@ func (server *runtimeServer) BroadcastReload(
 		)
 		return
 	}
-	if reloadOptions.CycleVite {
-		if !server.waitForReloadReadiness(context.Background(), reloadOptions) {
-			server.Log.Warn(
-				"reload readiness failed; skipping browser broadcast",
-			)
-			return
-		}
-		if !server.shouldBroadcastReloadPayloadAfterReadiness(reloadOptions) {
-			return
-		}
-		server.broadcastReloadPayloadIfGenerationCurrent(
-			reloadBroadcastGeneration,
-			reloadOptions.Payload,
-		)
-		return
-	}
-
 	reloadWaitBaseContext := server.CurrentRunCycleContextOrBackground()
 	if reloadWaitBaseContext == nil {
 		reloadWaitBaseContext = context.Background()

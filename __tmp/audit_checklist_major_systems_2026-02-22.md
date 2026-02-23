@@ -165,6 +165,36 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
       `wave/tooling/devserver/internal/runloop/events_hook_execution_test.go`
       (`TestRunPreHooks_UsesRunCycleContextForCallbackExecution` and
       `TestRunPostHooks_UsesRunCycleContextForCallbackExecution`).
+- [x] Revert unsubstantiated hardcoded framework callback timeout in
+      `vormabuild/build_watch.go` (removed fixed `3000ms` timeout so timeout
+      behavior remains fully config-driven).
+- [x] Add hook-context deadline propagation coverage in
+      `vormabuild/reload_endpoint_test.go` (`TestCallReloadEndpoint` subcase:
+      `respects hook execution context deadline timeout`).
+- [x] Fix readiness wait budget enforcement for in-flight probe requests in
+      `wave/tooling/devserver/internal/runtimeprocess/runtimeprocess.go`
+      (`WaitForAnyReadyWithContext` now derives a bounded readiness context from
+      `MaximumTotalWait`, so slow/stuck HTTP probe calls cannot overrun the
+      total wait budget).
+- [x] Add in-flight readiness-probe budget cancellation coverage in
+      `wave/tooling/devserver/internal/runtimeprocess/devserver_wait_ready_test.go`
+      (`TestWaitForAnyReadyWithContext_MaximumTotalWaitCancelsInFlightProbe`).
+- [x] Fix cycle-vite reload readiness orchestration in
+      `wave/tooling/devserver/devserver.go` (removed synchronous
+      `BroadcastReload(CycleVite=true)` branch and moved it onto the same
+      generation-tracked asynchronous readiness path so lifecycle cleanup and
+      superseding reload work can cancel it immediately).
+- [x] Add cycle-vite readiness cancellation coverage in
+      `wave/tooling/devserver/broadcast_behavior_test.go`
+      (`TestBroadcastReload_CycleViteReadinessWaitIsAsyncAndCleanupCancelable`).
+- [x] Fix build-retry watcher runloop guard design in
+      `wave/tooling/devserver/devserver.go` (`WaitForBuildRetry` now uses a
+      dedicated runloop engine with an immutable `isWaitingForBuildRetry=true`
+      resolver, so retry-mode short-circuiting cannot be bypassed by mutable
+      state races).
+- [x] Add build-retry engine short-circuit coverage in
+      `wave/tooling/devserver/site_regression_additional_test.go`
+      (`TestSiteRegression_BuildRetryRunloopEngineShortCircuitsWhenWaitingFlagIsFalse`).
 
 ## Coverage / Verification
 

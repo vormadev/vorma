@@ -59,7 +59,6 @@ export type SuccessfulNavigationLifecycleCommand =
 			response: SuccessfulNavigationSuccessOutcome["response"];
 			json: SuccessfulNavigationSuccessOutcome["json"];
 			expectedBuildID: string;
-			shouldApplyCSSBundles: boolean;
 	  };
 
 export function buildSuccessfulNavigationPreWaitingCommands(props: {
@@ -167,8 +166,6 @@ export function buildSuccessfulNavigationPostAssetLifecycleCommands(props: {
 	const { postAssetSideEffectPlan, postAssetExecutionPlan } =
 		props.postAssetLifecycleExecutionPlan;
 	const sideEffectCommands: SuccessfulNavigationLifecycleCommand[] = [];
-	const shouldApplyCSSBundles =
-		postAssetExecutionPlan.type === "completeWithoutRender";
 
 	if (postAssetSideEffectPlan.shouldCommitClientLoadersState) {
 		sideEffectCommands.push({
@@ -190,7 +187,6 @@ export function buildSuccessfulNavigationPostAssetLifecycleCommands(props: {
 			response: props.response,
 			json: props.json,
 			expectedBuildID: props.expectedBuildID,
-			shouldApplyCSSBundles,
 		});
 	}
 

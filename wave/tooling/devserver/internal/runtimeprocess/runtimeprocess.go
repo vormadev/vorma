@@ -423,6 +423,11 @@ func WaitForAnyReadyWithContext(
 	}
 
 	resolvedPolicy := normalizeReadinessWaitPolicy(policy)
+	readinessBudgetContext, cancelReadinessBudgetContext := context.WithTimeout(
+		readinessContext,
+		resolvedPolicy.MaximumTotalWait,
+	)
+	defer cancelReadinessBudgetContext()
 
 	httpClient := &http.Client{Timeout: resolvedPolicy.HTTPClientTimeout}
 	startTime := time.Now()
@@ -430,14 +435,14 @@ func WaitForAnyReadyWithContext(
 	attemptIndex := 0
 	for {
 		select {
-		case <-readinessContext.Done():
+		case <-readinessBudgetContext.Done():
 			return false
 		default:
 		}
 
 		for _, targetURL := range urls {
 			if probeURLWithClient(
-				readinessContext,
+				readinessBudgetContext,
 				httpClient,
 				targetURL,
 				resolvedPolicy.TreatHTTPStatusCodeAsReady,
@@ -463,7 +468,7 @@ func WaitForAnyReadyWithContext(
 
 		delayTimer := time.NewTimer(delay)
 		select {
-		case <-readinessContext.Done():
+		case <-readinessBudgetContext.Done():
 			if !delayTimer.Stop() {
 				<-delayTimer.C
 			}
