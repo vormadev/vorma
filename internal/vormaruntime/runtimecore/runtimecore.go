@@ -132,6 +132,83 @@ func InvalidateRouteDataCache(state *RouteCacheState) {
 	state.RouteDataCache = &sync.Map{}
 }
 
+// RouteMutableState contains the mutable route-state fields affected by
+// route-state transitions.
+type RouteMutableState struct {
+	Paths                    map[string]*RoutePath
+	RouteDataSnapshotVersion uint64
+	RouteDataCache           *sync.Map
+}
+
+// SyncRouteStateFromDevReloadInput defines inputs for dev-reload route-state
+// sync.
+type SyncRouteStateFromDevReloadInput struct {
+	State                               *RouteMutableState
+	ParsedClientPaths                   map[string]*RoutePath
+	ServerRoutePatternsWithTaskHandlers []string
+	RebuildNestedRouterFromCurrentPaths func(
+		paths map[string]*RoutePath,
+	)
+}
+
+// ReplaceRouteStateForInitInput defines inputs for init/re-init route-state
+// replacement.
+type ReplaceRouteStateForInitInput struct {
+	State                               *RouteMutableState
+	ParsedClientPaths                   map[string]*RoutePath
+	RebuildNestedRouter                 bool
+	RebuildNestedRouterFromCurrentPaths func(
+		paths map[string]*RoutePath,
+	)
+}
+
+// SyncRouteStateFromDevReload updates mutable route state for dev-reload
+// flows.
+func SyncRouteStateFromDevReload(input SyncRouteStateFromDevReloadInput) {
+	if input.State == nil {
+		panic("route state cannot be nil")
+	}
+
+	input.State.Paths = SyncPathsFromDevReload(
+		input.ParsedClientPaths,
+		input.ServerRoutePatternsWithTaskHandlers,
+	)
+	cacheState := RouteCacheState{
+		RouteDataSnapshotVersion: input.State.RouteDataSnapshotVersion,
+		RouteDataCache:           input.State.RouteDataCache,
+	}
+	InvalidateRouteDataCache(&cacheState)
+	input.State.RouteDataSnapshotVersion = cacheState.RouteDataSnapshotVersion
+	input.State.RouteDataCache = cacheState.RouteDataCache
+
+	if input.RebuildNestedRouterFromCurrentPaths != nil {
+		input.RebuildNestedRouterFromCurrentPaths(input.State.Paths)
+	}
+}
+
+// ReplaceRouteStateForInit updates mutable route state for init/re-init flows.
+func ReplaceRouteStateForInit(input ReplaceRouteStateForInitInput) {
+	if input.State == nil {
+		panic("route state cannot be nil")
+	}
+
+	input.State.Paths = ReplaceParsedPathsForInit(
+		input.ParsedClientPaths,
+	)
+	cacheState := RouteCacheState{
+		RouteDataSnapshotVersion: input.State.RouteDataSnapshotVersion,
+		RouteDataCache:           input.State.RouteDataCache,
+	}
+	InvalidateRouteDataCache(&cacheState)
+	input.State.RouteDataSnapshotVersion = cacheState.RouteDataSnapshotVersion
+	input.State.RouteDataCache = cacheState.RouteDataCache
+
+	if input.RebuildNestedRouter &&
+		input.RebuildNestedRouterFromCurrentPaths != nil {
+		input.RebuildNestedRouterFromCurrentPaths(input.State.Paths)
+	}
+}
+
 // CloneRoutePath returns a deep copy of one route path metadata object.
 func CloneRoutePath(path *RoutePath) *RoutePath {
 	if path == nil {

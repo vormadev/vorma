@@ -143,6 +143,11 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 	}
 
 	pathsSnapshot := app.Paths()
+	routePipelineSnapshot := captureRuntimeServingSnapshot(
+		runtimeServingSnapshotInput{
+			Paths: toRuntimeCoreRoutePaths(pathsSnapshot),
+		},
+	).ToRoutePipelineSnapshot()
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -150,7 +155,7 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		deps := routepipeline.GetDepsFromData(
 			findResults.Matches,
-			convertPathsMapToRoutePipelinePaths(pathsSnapshot),
+			routePipelineSnapshot.Paths,
 			app.ClientEntryDeps(),
 		)
 		css := routepipeline.GetCSSBundles(

@@ -1,10 +1,11 @@
-package routeexecution
+package runtimehttp
 
 import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
@@ -12,7 +13,169 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/tasks"
+	"github.com/vormadev/vorma/kit/validate"
 )
+
+func TestBuildLoadersNestedRouter_DefaultsAndOverrides(t *testing.T) {
+	defaultRouter := BuildLoadersNestedRouter(LoadersRouterSpec{})
+	if got, want := defaultRouter.ExplicitIndexSegmentIdentifier(), "_index"; got != want {
+		t.Fatalf("default explicit index segment = %q, want %q", got, want)
+	}
+
+	customRouter := BuildLoadersNestedRouter(LoadersRouterSpec{
+		DynamicParamPrefix:             '$',
+		SplatSegmentIdentifier:         '~',
+		ExplicitIndexSegmentIdentifier: "index",
+	})
+	if got, want := customRouter.DynamicParamPrefix(), '$'; got != want {
+		t.Fatalf("dynamic param prefix = %q, want %q", got, want)
+	}
+	if got, want := customRouter.SplatSegmentIdentifier(), '~'; got != want {
+		t.Fatalf("splat segment identifier = %q, want %q", got, want)
+	}
+	if got, want := customRouter.ExplicitIndexSegmentIdentifier(), "index"; got != want {
+		t.Fatalf("explicit index segment = %q, want %q", got, want)
+	}
+}
+
+func TestBuildSupportedMethodsMap(t *testing.T) {
+	defaultMethods := BuildSupportedMethodsMap(nil)
+	for _, method := range []string{"GET", "POST", "PUT", "DELETE", "PATCH"} {
+		if !defaultMethods[method] {
+			t.Fatalf("default supported methods should include %q", method)
+		}
+	}
+
+	customMethods := BuildSupportedMethodsMap([]string{
+		"get",
+		"  post ",
+		"",
+		"PATCH",
+	})
+	if len(customMethods) != 3 {
+		t.Fatalf("len(custom methods) = %d, want 3", len(customMethods))
+	}
+	for _, method := range []string{"GET", "POST", "PATCH"} {
+		if !customMethods[method] {
+			t.Fatalf("custom supported methods should include %q", method)
+		}
+	}
+}
+
+func TestParseActionInput(t *testing.T) {
+	type queryInput struct {
+		Name string `json:"name"`
+	}
+	type jsonInput struct {
+		Count int `json:"count"`
+	}
+
+	supportedMethods := BuildSupportedMethodsMap([]string{"POST"})
+
+	t.Run("GET_uses_url_search_params_parser", func(t *testing.T) {
+		request := httptest.NewRequest(
+			http.MethodGet,
+			"/api/items?name=chris",
+			nil,
+		)
+		var input queryInput
+		err := ParseActionInput(request, &input, supportedMethods, nil)
+		if err != nil {
+			t.Fatalf("ParseActionInput(GET): %v", err)
+		}
+		if got, want := input.Name, "chris"; got != want {
+			t.Fatalf("parsed query name = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("unsupported_method_returns_validation_error", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPut, "/api/items", nil)
+		var input queryInput
+		err := ParseActionInput(request, &input, supportedMethods, nil)
+		if err == nil {
+			t.Fatal("expected unsupported method error")
+		}
+		if !validate.IsValidationError(err) {
+			t.Fatalf("expected validate.ValidationError, got %T", err)
+		}
+		if !strings.Contains(err.Error(), "unsupported method") {
+			t.Fatalf("error = %q, want unsupported method", err)
+		}
+	})
+
+	t.Run("form_content_type_requires_form_data_input", func(t *testing.T) {
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/api/items",
+			strings.NewReader("name=ok"),
+		)
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		var input queryInput
+		err := ParseActionInput(request, &input, supportedMethods, nil)
+		if err == nil {
+			t.Fatal("expected form-data input type validation error")
+		}
+		if !strings.Contains(err.Error(), "form content type requires") {
+			t.Fatalf("error = %q, want form data input error", err)
+		}
+	})
+
+	t.Run("form_content_type_allows_form_data_input", func(t *testing.T) {
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/api/items",
+			strings.NewReader("name=ok"),
+		)
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		var input any
+		err := ParseActionInput(
+			request,
+			&input,
+			supportedMethods,
+			func(any) bool { return true },
+		)
+		if err != nil {
+			t.Fatalf("ParseActionInput(form data): %v", err)
+		}
+	})
+
+	t.Run("json_body_is_parsed_for_supported_methods", func(t *testing.T) {
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/api/items",
+			strings.NewReader(`{"count":42}`),
+		)
+		request.Header.Set("Content-Type", "application/json")
+		var input jsonInput
+		err := ParseActionInput(request, &input, supportedMethods, nil)
+		if err != nil {
+			t.Fatalf("ParseActionInput(JSON): %v", err)
+		}
+		if got, want := input.Count, 42; got != want {
+			t.Fatalf("parsed count = %d, want %d", got, want)
+		}
+	})
+}
+
+func TestBuildActionsRouter(t *testing.T) {
+	router, supportedMethods := BuildActionsRouter(ActionsRouterSpec{
+		MountRoot:        "/actions/",
+		SupportedMethods: []string{"post"},
+		IsFormDataInput: func(input any) bool {
+			_, ok := input.(*struct{})
+			return ok
+		},
+	})
+	if router == nil {
+		t.Fatal("expected non-nil actions router")
+	}
+	if got, want := router.MountRoot(), "/actions/"; got != want {
+		t.Fatalf("MountRoot = %q, want %q", got, want)
+	}
+	if !supportedMethods["POST"] || len(supportedMethods) != 1 {
+		t.Fatalf("supported methods = %#v, want POST only", supportedMethods)
+	}
+}
 
 func TestPrepareExecutionInputs(t *testing.T) {
 	router := nestedmux.NewRouter(nil)
@@ -28,7 +191,7 @@ func TestPrepareExecutionInputs(t *testing.T) {
 					nil,
 				),
 				NestedRouter:    router,
-				RuntimeSnapshot: runtimeSnapshotForRouteExecutionTests(),
+				RuntimeSnapshot: runtimeSnapshotForRuntimeHTTPTests(),
 				IsSnapshotVersionCurrent: func(
 					expectedSnapshotVersion uint64,
 				) bool {
@@ -75,7 +238,7 @@ func TestPrepareExecutionInputs(t *testing.T) {
 					nil,
 				),
 				NestedRouter:             router,
-				RuntimeSnapshot:          runtimeSnapshotForRouteExecutionTests(),
+				RuntimeSnapshot:          runtimeSnapshotForRuntimeHTTPTests(),
 				IsSnapshotVersionCurrent: nil,
 			},
 		)
@@ -112,7 +275,7 @@ func TestPlanRouteResultFromTaskResults(t *testing.T) {
 		),
 	)
 
-	request := createRequestWithTasksCtxForRouteExecutionTests(
+	request := createRequestWithTasksCtxForRuntimeHTTPTests(
 		http.MethodGet,
 		"/items/42",
 	)
@@ -120,7 +283,7 @@ func TestPlanRouteResultFromTaskResults(t *testing.T) {
 		PrepareExecutionInputsInput{
 			Request:         request,
 			NestedRouter:    router,
-			RuntimeSnapshot: runtimeSnapshotForRouteExecutionTests(),
+			RuntimeSnapshot: runtimeSnapshotForRuntimeHTTPTests(),
 			IsSnapshotVersionCurrent: func(
 				expectedSnapshotVersion uint64,
 			) bool {
@@ -189,7 +352,7 @@ func TestPlanRouteResultFromTaskResults(t *testing.T) {
 	}
 }
 
-func runtimeSnapshotForRouteExecutionTests() routepipeline.RuntimeSnapshot {
+func runtimeSnapshotForRuntimeHTTPTests() routepipeline.RuntimeSnapshot {
 	return routepipeline.RuntimeSnapshot{
 		BuildID: "build-route-execution",
 		IsDev:   true,
@@ -228,7 +391,7 @@ func runtimeSnapshotForRouteExecutionTests() routepipeline.RuntimeSnapshot {
 	}
 }
 
-func createRequestWithTasksCtxForRouteExecutionTests(
+func createRequestWithTasksCtxForRuntimeHTTPTests(
 	method string,
 	url string,
 ) *http.Request {

@@ -1,21 +1,135 @@
-// Package routeexecution orchestrates stage-one loaders route-data execution
-// for vormaruntime.
+// Package runtimehttp owns HTTP router construction, action-input parsing, and
+// stage-one route execution orchestration for vormaruntime.
 //
-// The routepipeline package owns pure route-data planning primitives, while
-// this package coordinates match discovery, cache-key/cached-subset loading,
-// loader-task output normalization, and callback hooks for runtime-specific
-// concerns such as warning logs and client-safe error messages.
-package routeexecution
+// Keeping these concerns isolated makes runtime HTTP behavior testable without
+// the full mutable runtime state machine.
+package runtimehttp
 
 import (
+	"errors"
+	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
+	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmatcher"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
+	"github.com/vormadev/vorma/kit/validate"
 )
+
+// LoadersRouterSpec configures nested loader-router pattern semantics.
+type LoadersRouterSpec struct {
+	DynamicParamPrefix             rune
+	SplatSegmentIdentifier         rune
+	ExplicitIndexSegmentIdentifier string
+}
+
+// ActionsRouterSpec configures actions-router matching and method policy.
+type ActionsRouterSpec struct {
+	DynamicParamPrefix     rune
+	SplatSegmentIdentifier rune
+	MountRoot              string
+	SupportedMethods       []string
+	IsFormDataInput        func(any) bool
+}
+
+// BuildLoadersNestedRouter constructs the nested loaders router.
+func BuildLoadersNestedRouter(spec LoadersRouterSpec) *nestedmux.Router {
+	explicitIndexSegment := spec.ExplicitIndexSegmentIdentifier
+	if explicitIndexSegment == "" {
+		explicitIndexSegment = "_index"
+	}
+	return nestedmux.NewRouter(&nestedmux.Options{
+		DynamicParamPrefix:             spec.DynamicParamPrefix,
+		SplatSegmentIdentifier:         spec.SplatSegmentIdentifier,
+		ExplicitIndexSegmentIdentifier: explicitIndexSegment,
+	})
+}
+
+// BuildSupportedMethodsMap normalizes supported method names.
+func BuildSupportedMethodsMap(supportedMethods []string) map[string]bool {
+	out := make(map[string]bool, len(supportedMethods))
+	if len(supportedMethods) == 0 {
+		out["GET"] = true
+		out["POST"] = true
+		out["PUT"] = true
+		out["DELETE"] = true
+		out["PATCH"] = true
+		return out
+	}
+	for _, method := range supportedMethods {
+		upperMethod := strings.ToUpper(strings.TrimSpace(method))
+		if upperMethod == "" {
+			continue
+		}
+		out[upperMethod] = true
+	}
+	return out
+}
+
+// ParseActionInput applies the runtime action-input parse policy for one
+// request/input pair.
+func ParseActionInput(
+	request *http.Request,
+	inputPtr any,
+	supportedMethods map[string]bool,
+	isFormDataInput func(any) bool,
+) error {
+	if request.Method == http.MethodGet || request.Method == http.MethodHead {
+		return validate.URLSearchParamsInto(request, inputPtr)
+	}
+
+	if !supportedMethods[request.Method] {
+		return &validate.ValidationError{
+			Err: errors.New("unsupported method"),
+		}
+	}
+
+	contentType, _, _ := mime.ParseMediaType(
+		request.Header.Get("Content-Type"),
+	)
+	if contentType == "application/x-www-form-urlencoded" ||
+		contentType == "multipart/form-data" {
+		if isFormDataInput != nil && isFormDataInput(inputPtr) {
+			return nil
+		}
+		return &validate.ValidationError{
+			Err: errors.New(
+				"form content type requires vormaruntime.FormData input",
+			),
+		}
+	}
+
+	return validate.JSONBodyInto(request, inputPtr)
+}
+
+// BuildActionsRouter constructs the actions mux router and its supported-method
+// lookup map.
+func BuildActionsRouter(spec ActionsRouterSpec) (*mux.Router, map[string]bool) {
+	mountRoot := spec.MountRoot
+	if mountRoot == "" {
+		mountRoot = "/api/"
+	}
+	supportedMethods := BuildSupportedMethodsMap(spec.SupportedMethods)
+
+	actionsRouter := mux.NewRouter(&mux.Options{
+		DynamicParamPrefix:     spec.DynamicParamPrefix,
+		SplatSegmentIdentifier: spec.SplatSegmentIdentifier,
+		MountRoot:              mountRoot,
+		ParseInput: func(request *http.Request, inputPtr any) error {
+			return ParseActionInput(
+				request,
+				inputPtr,
+				supportedMethods,
+				spec.IsFormDataInput,
+			)
+		},
+	})
+	return actionsRouter, supportedMethods
+}
 
 // PrepareExecutionInputsInput is the input contract for PrepareExecutionInputs.
 type PrepareExecutionInputsInput struct {

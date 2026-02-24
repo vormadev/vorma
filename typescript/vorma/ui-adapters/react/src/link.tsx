@@ -6,9 +6,9 @@ import type {
 } from "vorma/client";
 import {
 	buildTypedLinkDisplayName,
-	buildTypedLinkResolvedProps,
 	makeFinalLinkProps,
-	mergeTypedAdapterLinkPropsWithDefaults,
+	resolveTypedAdapterLinkWithDefaults,
+	stripNavigationInternalLinkPropsForAnchor,
 	type TypedAdapterLinkDefaultProps,
 	type TypedAdapterLinkProps,
 	type VormaAppConfig,
@@ -20,13 +20,14 @@ export function VormaLink(
 		VormaLinkPropsBase<React.MouseEvent<HTMLAnchorElement, MouseEvent>>,
 ) {
 	const finalLinkProps = makeFinalLinkProps(props);
-	// oxlint-disable-next-line no-unused-vars
-	const { prefetch, scrollToTop, replace, state, ...rest } = props;
+	const safeAnchorProps = stripNavigationInternalLinkPropsForAnchor(
+		props as Record<string, unknown>,
+	);
 
 	return (
 		<a
 			data-external={finalLinkProps.dataExternal}
-			{...(rest as any)}
+			{...(safeAnchorProps as any)}
 			onPointerEnter={finalLinkProps.onPointerEnter}
 			onFocus={finalLinkProps.onFocus}
 			onPointerLeave={finalLinkProps.onPointerLeave}
@@ -62,18 +63,15 @@ export function makeTypedLink<C extends VormaAppConfig>(
 	const TypedLink = <Pattern extends VormaLoaderPattern<App>>(
 		props: TypedVormaLinkProps<App, Pattern>,
 	) => {
-		const mergedProps = mergeTypedAdapterLinkPropsWithDefaults<
+		const resolvedProps = resolveTypedAdapterLinkWithDefaults<
 			App,
 			Pattern,
 			ComponentProps<"a">,
 			React.MouseEvent<HTMLAnchorElement, MouseEvent>
 		>({
+			vormaAppConfig,
 			defaultProps,
 			linkProps: props,
-		});
-		const resolvedProps = buildTypedLinkResolvedProps({
-			vormaAppConfig,
-			mergedProps,
 		});
 
 		return (

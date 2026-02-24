@@ -3179,6 +3179,63 @@ describe("fetchRouteData behavior", () => {
 		expect(waitFn).toHaveBeenCalledTimes(1);
 	});
 
+	it("uses the current route-data payload server error index for fetch-time client-loader skipping", async () => {
+		const waitFnA = vi.fn(async () => "loader-a");
+		const waitFnB = vi.fn(async () => "loader-b");
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: ["/a", "/b"],
+					loadersData: [{ fromServer: "a" }, { fromServer: "b" }],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+					outermostServerErrorIdx: 1,
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				},
+			),
+		);
+		installVormaGlobal({
+			outermostServerErrorIdx: 0,
+			routeManifest: {
+				"/a": 0,
+				"/b": 0,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/a", "/b"]),
+			patternToWaitFnMap: {
+				"/a": waitFnA,
+				"/b": waitFnB,
+			},
+		});
+
+		const outcome = await fetchRouteData(new AbortController(), {
+			href: "/a",
+			navigationType: "userNavigation",
+		});
+		expect(outcome.type).toBe("success");
+		if (outcome.type !== "success") {
+			throw new Error("Expected success outcome");
+		}
+
+		await expect(outcome.waitFnPromise).resolves.toEqual({
+			data: ["loader-a", undefined],
+			errorMessage: undefined,
+		});
+		expect(waitFnA).toHaveBeenCalledTimes(1);
+		expect(waitFnB).not.toHaveBeenCalled();
+	});
+
 	it("handles server fetch outcomes when client-loader map is undefined", async () => {
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			new Response(

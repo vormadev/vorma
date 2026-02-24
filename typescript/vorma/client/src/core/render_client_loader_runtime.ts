@@ -1,12 +1,12 @@
 import { findNestedMatches } from "vorma/kit/matcher/find-nested";
 import { registerPattern } from "vorma/kit/matcher/register";
-import { isAbortError, logError } from "../platform/safety.ts";
 import {
 	__vormaClientGlobal,
 	type ClientLoaderAwaitedServerData,
 	type GetRouteDataOutput,
 	type VormaClientGlobal,
 } from "../app/context.ts";
+import { isAbortError, logError } from "../platform/safety.ts";
 import {
 	ComponentLoader,
 	getEffectiveErrorData,
@@ -19,6 +19,7 @@ export type PartialWaitFnJSON = Pick<
 	| "params"
 	| "hasRootData"
 	| "loadersData"
+	| "outermostServerErrorIdx"
 	| "importURLs"
 >;
 
@@ -228,9 +229,7 @@ async function executeClientLoaders(
 	const hasRootData = !!json.hasRootData;
 	const patternToWaitFnMap =
 		__vormaClientGlobal.get("patternToWaitFnMap") || {};
-	const outermostServerErrorIdx = __vormaClientGlobal.get(
-		"outermostServerErrorIdx",
-	);
+	const outermostServerErrorIdx = json.outermostServerErrorIdx;
 
 	const { loaderPromises, abortControllers } = buildClientLoaderWorkItems({
 		matchedPatterns,
@@ -265,6 +264,9 @@ function buildClientLoaderSnapshotFromGlobal(): PartialWaitFnJSON {
 		importURLs: __vormaClientGlobal.get("importURLs"),
 		loadersData: __vormaClientGlobal.get("loadersData"),
 		matchedPatterns: __vormaClientGlobal.get("matchedPatterns"),
+		outermostServerErrorIdx: __vormaClientGlobal.get(
+			"outermostServerErrorIdx",
+		),
 		params: __vormaClientGlobal.get("params"),
 		splatValues: __vormaClientGlobal.get("splatValues"),
 	};

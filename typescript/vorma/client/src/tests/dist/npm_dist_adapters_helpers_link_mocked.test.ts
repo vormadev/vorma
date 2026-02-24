@@ -6,13 +6,13 @@ import { installDistTestVormaGlobal } from "./dist_test_harness.ts";
 
 const {
 	makeFinalLinkPropsSpy,
-	buildTypedLinkResolvedPropsSpy,
-	registerClientLoaderForAdapterSpy,
+	resolveTypedAdapterLinkWithDefaultsSpy,
+	registerTypedAdapterClientLoaderSpy,
 } = vi.hoisted(() => {
 	return {
 		makeFinalLinkPropsSpy: vi.fn(),
-		buildTypedLinkResolvedPropsSpy: vi.fn(),
-		registerClientLoaderForAdapterSpy: vi.fn(),
+		resolveTypedAdapterLinkWithDefaultsSpy: vi.fn(),
+		registerTypedAdapterClientLoaderSpy: vi.fn(),
 	};
 });
 
@@ -22,8 +22,9 @@ vi.mock("vorma/client/__internal", async (importOriginal) => {
 	return {
 		...actual,
 		makeFinalLinkProps: makeFinalLinkPropsSpy,
-		buildTypedLinkResolvedProps: buildTypedLinkResolvedPropsSpy,
-		registerClientLoaderForAdapter: registerClientLoaderForAdapterSpy,
+		resolveTypedAdapterLinkWithDefaults:
+			resolveTypedAdapterLinkWithDefaultsSpy,
+		registerTypedAdapterClientLoader: registerTypedAdapterClientLoaderSpy,
 	};
 });
 
@@ -46,9 +47,25 @@ function invokeReactMemoComponent(props: {
 	throw new Error("React component is not invokable");
 }
 
+const navigationOnlyLinkPropKeys = [
+	"prefetch",
+	"prefetchDelayMs",
+	"beforeBegin",
+	"beforeRender",
+	"afterRender",
+	"scrollToTop",
+	"replace",
+	"state",
+] as const;
+
 function buildMockTypedLinkResolvedProps(input: {
-	mergedProps: Record<string, unknown>;
+	defaultProps?: Record<string, unknown>;
+	linkProps: Record<string, unknown>;
 }) {
+	const mergedProps = {
+		...(input.defaultProps || {}),
+		...input.linkProps,
+	};
 	const {
 		pattern: _pattern,
 		params: _params,
@@ -57,7 +74,7 @@ function buildMockTypedLinkResolvedProps(input: {
 		hash,
 		state,
 		...linkProps
-	} = input.mergedProps;
+	} = mergedProps;
 	const searchPart = typeof search === "string" ? search : "";
 	const hashPart = typeof hash === "string" ? hash : "";
 	return {
@@ -67,6 +84,24 @@ function buildMockTypedLinkResolvedProps(input: {
 	};
 }
 
+function expectNavigationOnlyPropsAreStrippedFromPropsBag(props: {
+	propsBag: Record<string, unknown>;
+}) {
+	for (const navigationOnlyLinkPropKey of navigationOnlyLinkPropKeys) {
+		expect(props.propsBag[navigationOnlyLinkPropKey]).toBeUndefined();
+	}
+}
+
+function expectNavigationOnlyPropsAreStrippedFromAnchor(props: {
+	anchor: HTMLAnchorElement;
+}) {
+	for (const navigationOnlyLinkPropKey of navigationOnlyLinkPropKeys) {
+		expect(
+			props.anchor.getAttribute(navigationOnlyLinkPropKey.toLowerCase()),
+		).toBeNull();
+	}
+}
+
 describe("npm_dist adapter mocked helper/link contracts", () => {
 	let container: HTMLDivElement;
 
@@ -74,9 +109,15 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		vi.resetModules();
 		vi.clearAllMocks();
 		installDistTestVormaGlobal();
-		buildTypedLinkResolvedPropsSpy.mockImplementation(
+		resolveTypedAdapterLinkWithDefaultsSpy.mockImplementation(
 			buildMockTypedLinkResolvedProps,
 		);
+		registerTypedAdapterClientLoaderSpy.mockImplementation((props) => {
+			return {
+				pattern: props.pattern,
+				clientLoader: props.clientLoader,
+			};
+		});
 		container = document.createElement("div");
 		document.body.appendChild(container);
 	});
@@ -86,7 +127,7 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		container.remove();
 	});
 
-	it("react makeTypedAddClientLoader delegates registration through registerClientLoaderForAdapter", async () => {
+	it("react makeTypedAddClientLoader delegates registration through registerTypedAdapterClientLoader", async () => {
 		const reactAdapter = await import("vorma/react");
 		const addClientLoader = reactAdapter.makeTypedAddClientLoader();
 		const clientLoader = vi.fn(async () => "ok");
@@ -98,15 +139,15 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			reRunOnModuleChange,
 		});
 
-		expect(registerClientLoaderForAdapterSpy).toHaveBeenCalledTimes(1);
-		expect(registerClientLoaderForAdapterSpy).toHaveBeenCalledWith({
+		expect(registerTypedAdapterClientLoaderSpy).toHaveBeenCalledTimes(1);
+		expect(registerTypedAdapterClientLoaderSpy).toHaveBeenCalledWith({
 			pattern: "/dashboard",
-			waitFn: clientLoader,
+			clientLoader,
 			reRunOnModuleChange,
 		});
 	});
 
-	it("preact makeTypedAddClientLoader delegates registration through registerClientLoaderForAdapter", async () => {
+	it("preact makeTypedAddClientLoader delegates registration through registerTypedAdapterClientLoader", async () => {
 		const preactAdapter = await import("vorma/preact");
 		const addClientLoader = preactAdapter.makeTypedAddClientLoader();
 		const clientLoader = vi.fn(async () => "ok");
@@ -118,15 +159,15 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			reRunOnModuleChange,
 		});
 
-		expect(registerClientLoaderForAdapterSpy).toHaveBeenCalledTimes(1);
-		expect(registerClientLoaderForAdapterSpy).toHaveBeenCalledWith({
+		expect(registerTypedAdapterClientLoaderSpy).toHaveBeenCalledTimes(1);
+		expect(registerTypedAdapterClientLoaderSpy).toHaveBeenCalledWith({
 			pattern: "/dashboard",
-			waitFn: clientLoader,
+			clientLoader,
 			reRunOnModuleChange,
 		});
 	});
 
-	it("solid makeTypedAddClientLoader delegates registration through registerClientLoaderForAdapter", async () => {
+	it("solid makeTypedAddClientLoader delegates registration through registerTypedAdapterClientLoader", async () => {
 		const solidAdapter = await import("vorma/solid");
 		const addClientLoader = solidAdapter.makeTypedAddClientLoader();
 		const clientLoader = vi.fn(async () => "ok");
@@ -138,16 +179,62 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			reRunOnModuleChange,
 		});
 
-		expect(registerClientLoaderForAdapterSpy).toHaveBeenCalledTimes(1);
-		expect(registerClientLoaderForAdapterSpy).toHaveBeenCalledWith({
+		expect(registerTypedAdapterClientLoaderSpy).toHaveBeenCalledTimes(1);
+		expect(registerTypedAdapterClientLoaderSpy).toHaveBeenCalledWith({
 			pattern: "/dashboard",
-			waitFn: clientLoader,
+			clientLoader,
 			reRunOnModuleChange,
 		});
 	});
 
+	it("makeTypedAddClientLoader re-registers duplicate pattern calls without implicit dedupe", async () => {
+		const adapterImportPaths = [
+			"vorma/react",
+			"vorma/preact",
+			"vorma/solid",
+		] as const;
+
+		for (const adapterImportPath of adapterImportPaths) {
+			vi.clearAllMocks();
+			const adapter = await import(adapterImportPath);
+			const addClientLoader = adapter.makeTypedAddClientLoader();
+			const firstClientLoader = vi.fn(async () => "first");
+			const secondClientLoader = vi.fn(async () => "second");
+
+			addClientLoader({
+				pattern: "/dashboard" as any,
+				clientLoader: firstClientLoader as any,
+			});
+			addClientLoader({
+				pattern: "/dashboard" as any,
+				clientLoader: secondClientLoader as any,
+			});
+
+			expect(registerTypedAdapterClientLoaderSpy).toHaveBeenCalledTimes(
+				2,
+			);
+			expect(registerTypedAdapterClientLoaderSpy).toHaveBeenNthCalledWith(
+				1,
+				{
+					pattern: "/dashboard",
+					clientLoader: firstClientLoader,
+				},
+			);
+			expect(registerTypedAdapterClientLoaderSpy).toHaveBeenNthCalledWith(
+				2,
+				{
+					pattern: "/dashboard",
+					clientLoader: secondClientLoader,
+				},
+			);
+		}
+	});
+
 	it("react VormaLink forwards final link handlers and strips navigation-only props", async () => {
 		const reactAdapter = await import("vorma/react");
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
 		const finalProps = {
 			dataExternal: "external-link",
 			onPointerEnter: vi.fn(),
@@ -166,6 +253,10 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 				id: "docs-link",
 				children: "Docs",
 				prefetch: "intent",
+				prefetchDelayMs: 75,
+				beforeBegin,
+				beforeRender,
+				afterRender,
 				scrollToTop: false,
 				replace: true,
 				state: { from: "test" },
@@ -184,10 +275,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		expect(element.props.onBlur).toBe(finalProps.onBlur);
 		expect(element.props.onTouchCancel).toBe(finalProps.onTouchCancel);
 		expect(element.props.onClick).toBe(finalProps.onClick);
-		expect(element.props.prefetch).toBeUndefined();
-		expect(element.props.replace).toBeUndefined();
-		expect(element.props.scrollToTop).toBeUndefined();
-		expect(element.props.state).toBeUndefined();
+		expectNavigationOnlyPropsAreStrippedFromPropsBag({
+			propsBag: element.props,
+		});
 	});
 
 	it("react makeTypedLink builds href with search/hash and forwards state", async () => {
@@ -220,11 +310,14 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			props: Record<string, unknown>;
 		};
 
-		expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledTimes(1);
-		expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledWith(
+		expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledTimes(1);
+		expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				vormaAppConfig: {},
-				mergedProps: expect.objectContaining({
+				defaultProps: expect.objectContaining({
+					className: "default-class",
+				}),
+				linkProps: expect.objectContaining({
 					pattern: "/typed/:id",
 					params: { id: "42" },
 					search: "?q=abc",
@@ -269,10 +362,14 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		expect((TypedLink as any).displayName).toBe(
 			"TypedLink(className, target)",
 		);
-		expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledWith(
+		expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				vormaAppConfig: {},
-				mergedProps: expect.objectContaining({
+				defaultProps: expect.objectContaining({
+					className: "default-class",
+					target: "_blank",
+				}),
+				linkProps: expect.objectContaining({
 					pattern: "/typed/*",
 					splatValues: ["docs/path"],
 				}),
@@ -314,14 +411,17 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			`${window.location.origin}/typed/path?default=true#default`,
 		);
 		expect(element.props.state).toEqual({ from: "default-state" });
-		expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledWith(
+		expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				vormaAppConfig: {},
-				mergedProps: expect.objectContaining({
-					pattern: "/typed/:id",
-					params: { id: "42" },
+				defaultProps: expect.objectContaining({
+					state: { from: "default-state" },
 					search: "?default=true",
 					hash: "#default",
+				}),
+				linkProps: expect.objectContaining({
+					pattern: "/typed/:id",
+					params: { id: "42" },
 				}),
 			}),
 		);
@@ -329,6 +429,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("preact VormaLink forwards final link handlers onto rendered anchors", async () => {
 		const preactAdapter = await import("vorma/preact");
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
 		const finalProps = {
 			dataExternal: "external-link",
 			onPointerEnter: vi.fn(),
@@ -347,6 +450,10 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 					id: "docs-link",
 					children: "Docs",
 					prefetch: "intent",
+					prefetchDelayMs: 75,
+					beforeBegin,
+					beforeRender,
+					afterRender,
 					scrollToTop: false,
 					replace: true,
 					state: { from: "test" },
@@ -362,6 +469,7 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		expect(makeFinalLinkPropsSpy).toHaveBeenCalledTimes(1);
 		expect(anchor.getAttribute("data-external")).toBe("external-link");
 		expect(anchor.id).toBe("docs-link");
+		expectNavigationOnlyPropsAreStrippedFromAnchor({ anchor });
 
 		anchor.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		expect(finalProps.onClick).toHaveBeenCalledTimes(1);
@@ -400,11 +508,14 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		if (!anchor) {
 			throw new Error("Expected typed link to render an anchor");
 		}
-		expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledTimes(1);
-		expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledWith(
+		expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledTimes(1);
+		expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				vormaAppConfig: {},
-				mergedProps: expect.objectContaining({
+				defaultProps: expect.objectContaining({
+					className: "default-class",
+				}),
+				linkProps: expect.objectContaining({
 					pattern: "/typed/:id",
 					params: { id: "42" },
 					search: "?q=abc",
@@ -451,10 +562,14 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		expect((TypedLink as any).displayName).toBe(
 			"TypedLink(className, target)",
 		);
-		expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledWith(
+		expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				vormaAppConfig: {},
-				mergedProps: expect.objectContaining({
+				defaultProps: expect.objectContaining({
+					className: "default-class",
+					target: "_blank",
+				}),
+				linkProps: expect.objectContaining({
 					pattern: "/typed/*",
 					splatValues: ["docs/path"],
 				}),
@@ -498,14 +613,17 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		expect(anchor.getAttribute("href")).toBe(
 			`${window.location.origin}/typed/path?default=true#default`,
 		);
-		expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledWith(
+		expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				vormaAppConfig: {},
-				mergedProps: expect.objectContaining({
-					pattern: "/typed/:id",
-					params: { id: "42" },
+				defaultProps: expect.objectContaining({
+					state: { from: "default-state" },
 					search: "?default=true",
 					hash: "#default",
+				}),
+				linkProps: expect.objectContaining({
+					pattern: "/typed/:id",
+					params: { id: "42" },
 				}),
 			}),
 		);
@@ -517,6 +635,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("solid VormaLink forwards final link handlers onto rendered anchors", async () => {
 		const solidAdapter = await import("vorma/solid");
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
 		const finalProps = {
 			dataExternal: "external-link",
 			onPointerEnter: vi.fn(),
@@ -534,6 +655,10 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 				id: "docs-link",
 				children: "Docs",
 				prefetch: "intent",
+				prefetchDelayMs: 75,
+				beforeBegin,
+				beforeRender,
+				afterRender,
 				scrollToTop: false,
 				replace: true,
 				state: { from: "test" },
@@ -548,6 +673,7 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			expect(makeFinalLinkPropsSpy).toHaveBeenCalledTimes(1);
 			expect(anchor.getAttribute("data-external")).toBe("external-link");
 			expect(anchor.id).toBe("docs-link");
+			expectNavigationOnlyPropsAreStrippedFromAnchor({ anchor });
 
 			anchor.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 			expect(finalProps.onClick).toHaveBeenCalledTimes(1);
@@ -588,11 +714,16 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			if (!anchor) {
 				throw new Error("Expected typed link to render an anchor");
 			}
-			expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledTimes(1);
-			expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledWith(
+			expect(
+				resolveTypedAdapterLinkWithDefaultsSpy,
+			).toHaveBeenCalledTimes(1);
+			expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledWith(
 				expect.objectContaining({
 					vormaAppConfig: {},
-					mergedProps: expect.objectContaining({
+					defaultProps: expect.objectContaining({
+						class: "default-class",
+					}),
+					linkProps: expect.objectContaining({
 						pattern: "/typed/:id",
 						params: { id: "42" },
 						search: "?q=abc",
@@ -638,10 +769,14 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 			if (!anchor) {
 				throw new Error("Expected typed link to render an anchor");
 			}
-			expect(buildTypedLinkResolvedPropsSpy).toHaveBeenCalledWith(
+			expect(resolveTypedAdapterLinkWithDefaultsSpy).toHaveBeenCalledWith(
 				expect.objectContaining({
 					vormaAppConfig: {},
-					mergedProps: expect.objectContaining({
+					defaultProps: expect.objectContaining({
+						class: "default-class",
+						target: "_blank",
+					}),
+					linkProps: expect.objectContaining({
 						pattern: "/typed/*",
 						splatValues: ["docs/path"],
 					}),

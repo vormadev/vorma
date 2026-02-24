@@ -7,16 +7,15 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
-	"mime"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
-	"github.com/vormadev/vorma/internal/vormaruntime/routeexecution"
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimecore"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimehttp"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
@@ -24,7 +23,6 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/response"
-	"github.com/vormadev/vorma/kit/validate"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
@@ -430,16 +428,14 @@ func newLoadersRouter(options ...LoadersRouterOptions) *LoadersRouter {
 	if len(options) > 0 {
 		o = options[0]
 	}
-	explicitIndexSegment := o.ExplicitIndexSegmentIdentifier
-	if explicitIndexSegment == "" {
-		explicitIndexSegment = "_index"
-	}
 	return &LoadersRouter{
-		NestedRouter: nestedmux.NewRouter(&nestedmux.Options{
-			DynamicParamPrefix:             o.DynamicParamPrefix,
-			SplatSegmentIdentifier:         o.SplatSegmentIdentifier,
-			ExplicitIndexSegmentIdentifier: explicitIndexSegment,
-		}),
+		NestedRouter: runtimehttp.BuildLoadersNestedRouter(
+			runtimehttp.LoadersRouterSpec{
+				DynamicParamPrefix:             o.DynamicParamPrefix,
+				SplatSegmentIdentifier:         o.SplatSegmentIdentifier,
+				ExplicitIndexSegmentIdentifier: o.ExplicitIndexSegmentIdentifier,
+			},
+		),
 	}
 }
 
@@ -448,57 +444,20 @@ func newActionsRouter(options ...ActionsRouterOptions) *ActionsRouter {
 	if len(options) > 0 {
 		o = options[0]
 	}
-	mountRoot := o.MountRoot
-	if mountRoot == "" {
-		mountRoot = "/api/"
-	}
-	supportedMethods := make(map[string]bool, len(o.SupportedMethods))
-	if len(o.SupportedMethods) == 0 {
-		supportedMethods["GET"] = true
-		supportedMethods["POST"] = true
-		supportedMethods["PUT"] = true
-		supportedMethods["DELETE"] = true
-		supportedMethods["PATCH"] = true
-	} else {
-		for _, m := range o.SupportedMethods {
-			upperMethod := strings.ToUpper(strings.TrimSpace(m))
-			if upperMethod == "" {
-				continue
-			}
-			supportedMethods[upperMethod] = true
-		}
-	}
-	return &ActionsRouter{
-		Router: mux.NewRouter(&mux.Options{
+	router, supportedMethods := runtimehttp.BuildActionsRouter(
+		runtimehttp.ActionsRouterSpec{
 			DynamicParamPrefix:     o.DynamicParamPrefix,
 			SplatSegmentIdentifier: o.SplatSegmentIdentifier,
-			MountRoot:              mountRoot,
-			ParseInput: func(r *http.Request, iPtr any) error {
-				if r.Method == http.MethodGet || r.Method == http.MethodHead {
-					return validate.URLSearchParamsInto(r, iPtr)
-				}
-				if supportedMethods[r.Method] {
-					contentType, _, _ := mime.ParseMediaType(
-						r.Header.Get("Content-Type"),
-					)
-					if contentType == "application/x-www-form-urlencoded" ||
-						contentType == "multipart/form-data" {
-						if _, isFormData := iPtr.(*FormData); isFormData {
-							return nil
-						}
-						return &validate.ValidationError{
-							Err: errors.New(
-								"form content type requires vormaruntime.FormData input",
-							),
-						}
-					}
-					return validate.JSONBodyInto(r, iPtr)
-				}
-				return &validate.ValidationError{
-					Err: errors.New("unsupported method"),
-				}
+			MountRoot:              o.MountRoot,
+			SupportedMethods:       o.SupportedMethods,
+			IsFormDataInput: func(inputPtr any) bool {
+				_, isFormData := inputPtr.(*FormData)
+				return isFormData
 			},
-		}),
+		},
+	)
+	return &ActionsRouter{
+		Router:           router,
 		supportedMethods: supportedMethods,
 	}
 }
@@ -727,8 +686,8 @@ func (v *Vorma) planRouteResultFromTaskResults(
 	inputs routepipeline.RouteDataExecutionInputs,
 	tasksResults *nestedmux.TasksResults,
 ) *routepipeline.RouteResult {
-	return routeexecution.PlanRouteResultFromTaskResults(
-		routeexecution.PlanRouteResultFromTaskResultsInput{
+	return runtimehttp.PlanRouteResultFromTaskResults(
+		runtimehttp.PlanRouteResultFromTaskResultsInput{
 			ExecutionInputs: inputs,
 			TasksResults:    tasksResults,
 			WarnNilLoaderData: func(pattern string) {
@@ -749,7 +708,7 @@ func (v *Vorma) prepareRouteDataExecutionInputs(
 ) (routepipeline.RouteDataExecutionInputs, bool) {
 	v.mu.RLock()
 	runtimeSnapshot := v.captureRuntimeSnapshotLocked().
-		toRoutePipelineSnapshot()
+		ToRoutePipelineSnapshot()
 	matchResults, found := nestedmux.FindMatches(nestedRouter, r)
 	v.mu.RUnlock()
 
@@ -759,8 +718,8 @@ func (v *Vorma) prepareRouteDataExecutionInputs(
 		}, false
 	}
 
-	return routeexecution.BuildExecutionInputsFromMatchResults(
-		routeexecution.BuildExecutionInputsFromMatchResultsInput{
+	return runtimehttp.BuildExecutionInputsFromMatchResults(
+		runtimehttp.BuildExecutionInputsFromMatchResultsInput{
 			MatchResults:             matchResults,
 			RuntimeSnapshot:          runtimeSnapshot,
 			IsSnapshotVersionCurrent: v.isRouteDataSnapshotVersionCurrent,
@@ -959,7 +918,7 @@ type Vorma struct {
 	// mu protects mutable state that can be modified during dev rebuilds.
 	mu                 sync.RWMutex
 	_isDev             bool
-	_paths             map[string]*Path
+	_paths             map[string]*runtimecore.RoutePath
 	_clientEntrySrc    string
 	_clientEntryOut    string
 	_clientEntryDeps   []string
@@ -1003,7 +962,7 @@ func (v *Vorma) ActionsRouter() *ActionsRouter { return v.actionsRouter }
 func (v *Vorma) Paths() map[string]*Path {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return clonePathsMapOrNil(v._paths)
+	return cloneRuntimeCorePathsMapAsPublicOrNil(v._paths)
 }
 
 // IsDevMode reports whether runtime is currently in development mode.
@@ -1104,7 +1063,7 @@ func (l *ReadLockedVorma) Vorma() *Vorma { return l.v }
 
 // Paths returns a defensive copy of route path metadata.
 func (l *ReadLockedVorma) Paths() map[string]*Path {
-	return clonePathsMapOrNil(l.v._paths)
+	return cloneRuntimeCorePathsMapAsPublicOrNil(l.v._paths)
 }
 
 // BuildID returns the current build identifier.
@@ -1124,7 +1083,7 @@ func (l *LockedVorma) Vorma() *Vorma { return l.v }
 
 // Paths returns a defensive copy of route path metadata.
 func (l *LockedVorma) Paths() map[string]*Path {
-	return clonePathsMapOrNil(l.v._paths)
+	return cloneRuntimeCorePathsMapAsPublicOrNil(l.v._paths)
 }
 
 // BuildID returns the current build identifier.
@@ -1344,33 +1303,7 @@ func (v *Vorma) transitionLifecycleStateLocked(
 }
 
 func (v *Vorma) lifecycleStateForRouteCommitLocked() runtimecore.LifecycleState {
-	return runtimecore.LifecycleStateForRouteCommit(
-		toRuntimeCoreRoutePaths(v._paths),
-	)
-}
-
-func buildRuntimePathsFileSnapshot(
-	pathsFile *runtimepaths.PathsFile,
-) *runtimecore.RuntimePathsFileSnapshot {
-	if pathsFile == nil {
-		return nil
-	}
-
-	return &runtimecore.RuntimePathsFileSnapshot{
-		BuildID:        pathsFile.BuildID,
-		ClientEntrySrc: pathsFile.ClientEntrySrc,
-		ClientEntryOut: pathsFile.ClientEntryOut,
-		ClientEntryDeps: runtimecore.CloneStringSliceOrNil(
-			pathsFile.ClientEntryDeps,
-		),
-		DepToCSSBundleMap: runtimecore.CloneDepToCSSBundleMapOrNil(
-			pathsFile.DepToCSSBundleMap,
-		),
-		RouteManifestFile: pathsFile.RouteManifestFile,
-		Paths: toRuntimeCoreRoutePathsFromRuntimePaths(
-			pathsFile.Paths,
-		),
-	}
+	return runtimecore.LifecycleStateForRouteCommit(v._paths)
 }
 
 func (v *Vorma) commitRouteArtifactsLocked(
@@ -1386,12 +1319,16 @@ func (v *Vorma) commitRouteArtifactsLocked(
 
 	switch commitMode {
 	case runtimecore.RouteArtifactCommitModeDevReload:
-		v.routes().SyncFromDevReload(
-			fromRuntimeCoreRoutePaths(artifacts.ParsedClientPaths),
+		v.routes().syncFromDevReloadCore(
+			runtimecore.CloneRoutePathsOrNil(
+				artifacts.ParsedClientPaths,
+			),
 		)
 	default:
-		v.routes().ReplaceParsedPathsForInit(
-			fromRuntimeCoreRoutePaths(artifacts.ParsedClientPaths),
+		v.routes().replaceParsedPathsForInitCore(
+			runtimecore.CloneRoutePathsOrNil(
+				artifacts.ParsedClientPaths,
+			),
 			rebuildNestedRouter,
 		)
 	}
@@ -1401,85 +1338,101 @@ func (v *Vorma) commitRootTemplateLocked(rootTemplate *template.Template) {
 	v._rootTemplate = rootTemplate
 }
 
-// RuntimeSnapshot captures request-serving runtime state for one coherent
-// generation.
-type RuntimeSnapshot struct {
-	buildID                  string
-	isDev                    bool
-	paths                    map[string]*Path
-	clientEntryDeps          []string
-	clientEntryOut           string
-	depToCSSBundleMap        map[string][]string
-	rootTemplate             *template.Template
-	routeManifestFile        string
-	routeDataSnapshotVersion uint64
-	routeDataCache           *sync.Map
+type runtimeServingSnapshotInput struct {
+	BuildID                  string
+	IsDev                    bool
+	Paths                    map[string]*runtimecore.RoutePath
+	ClientEntryDeps          []string
+	ClientEntryOut           string
+	DepToCSSBundleMap        map[string][]string
+	RootTemplate             *template.Template
+	RouteManifestFile        string
+	RouteDataSnapshotVersion uint64
+	RouteDataCache           *sync.Map
 }
 
-func (v *Vorma) captureRuntimeSnapshotLocked() RuntimeSnapshot {
-	return RuntimeSnapshot{
-		buildID:                  v._buildID,
-		isDev:                    v._isDev,
-		paths:                    v._paths,
-		clientEntryDeps:          v._clientEntryDeps,
-		clientEntryOut:           v._clientEntryOut,
-		depToCSSBundleMap:        v._depToCSSBundleMap,
-		rootTemplate:             v._rootTemplate,
-		routeManifestFile:        v._routeManifestFile,
-		routeDataSnapshotVersion: v._routeDataSnapshotVersion,
-		routeDataCache:           v._routeDataCache,
-	}
+type runtimeServingSnapshot struct {
+	BuildID                  string
+	IsDev                    bool
+	Paths                    map[string]*runtimecore.RoutePath
+	ClientEntryDeps          []string
+	ClientEntryOut           string
+	DepToCSSBundleMap        map[string][]string
+	RootTemplate             *template.Template
+	RouteManifestFile        string
+	RouteDataSnapshotVersion uint64
+	RouteDataCache           *sync.Map
 }
 
-func (snapshot RuntimeSnapshot) toLoadersHTMLRender() rendering.LoadersHTMLRenderSnapshot {
+func captureRuntimeServingSnapshot(
+	input runtimeServingSnapshotInput,
+) runtimeServingSnapshot {
+	return runtimeServingSnapshot(input)
+}
+
+func (snapshot runtimeServingSnapshot) ToLoadersHTMLRenderSnapshot() rendering.LoadersHTMLRenderSnapshot {
 	return rendering.LoadersHTMLRenderSnapshot{
-		IsDevMode:      snapshot.isDev,
-		ClientEntryOut: snapshot.clientEntryOut,
-		RootTemplate:   snapshot.rootTemplate,
+		IsDevMode:      snapshot.IsDev,
+		ClientEntryOut: snapshot.ClientEntryOut,
+		RootTemplate:   snapshot.RootTemplate,
 	}
 }
 
-func convertPathsMapToRoutePipelinePaths(
-	paths map[string]*Path,
+func (snapshot runtimeServingSnapshot) ToRoutePipelineSnapshot() routepipeline.RuntimeSnapshot {
+	return routepipeline.RuntimeSnapshot{
+		BuildID: snapshot.BuildID,
+		IsDev:   snapshot.IsDev,
+		Paths: convertRuntimeCorePathsToRoutePipelinePaths(
+			snapshot.Paths,
+		),
+		ClientEntryDeps:          snapshot.ClientEntryDeps,
+		ClientEntryOut:           snapshot.ClientEntryOut,
+		DepToCSSBundleMap:        snapshot.DepToCSSBundleMap,
+		HTMLRenderSnapshot:       snapshot.ToLoadersHTMLRenderSnapshot(),
+		RouteManifestFile:        snapshot.RouteManifestFile,
+		RouteDataSnapshotVersion: snapshot.RouteDataSnapshotVersion,
+		RouteDataCache:           snapshot.RouteDataCache,
+	}
+}
+
+func convertRuntimeCorePathsToRoutePipelinePaths(
+	paths map[string]*runtimecore.RoutePath,
 ) map[string]*routepipeline.PathData {
 	if paths == nil {
 		return nil
 	}
 
 	out := make(map[string]*routepipeline.PathData, len(paths))
-	for pattern, p := range paths {
-		if p == nil {
+	for pattern, pathValue := range paths {
+		if pathValue == nil {
 			out[pattern] = nil
 			continue
 		}
 		out[pattern] = &routepipeline.PathData{
-			OriginalPattern: p.OriginalPattern,
-			SrcPath:         p.SrcPath,
-			OutPath:         p.OutPath,
-			ExportKey:       p.ExportKey,
-			ErrorExportKey:  p.ErrorExportKey,
-			Deps:            p.Deps,
+			OriginalPattern: pathValue.OriginalPattern,
+			SrcPath:         pathValue.SrcPath,
+			OutPath:         pathValue.OutPath,
+			ExportKey:       pathValue.ExportKey,
+			ErrorExportKey:  pathValue.ErrorExportKey,
+			Deps:            pathValue.Deps,
 		}
 	}
-
 	return out
 }
 
-func (snapshot RuntimeSnapshot) toRoutePipelineSnapshot() routepipeline.RuntimeSnapshot {
-	return routepipeline.RuntimeSnapshot{
-		BuildID: snapshot.buildID,
-		IsDev:   snapshot.isDev,
-		Paths: convertPathsMapToRoutePipelinePaths(
-			snapshot.paths,
-		),
-		ClientEntryDeps:          snapshot.clientEntryDeps,
-		ClientEntryOut:           snapshot.clientEntryOut,
-		DepToCSSBundleMap:        snapshot.depToCSSBundleMap,
-		HTMLRenderSnapshot:       snapshot.toLoadersHTMLRender(),
-		RouteManifestFile:        snapshot.routeManifestFile,
-		RouteDataSnapshotVersion: snapshot.routeDataSnapshotVersion,
-		RouteDataCache:           snapshot.routeDataCache,
-	}
+func (v *Vorma) captureRuntimeSnapshotLocked() runtimeServingSnapshot {
+	return captureRuntimeServingSnapshot(runtimeServingSnapshotInput{
+		BuildID:                  v._buildID,
+		IsDev:                    v._isDev,
+		Paths:                    v._paths,
+		ClientEntryDeps:          v._clientEntryDeps,
+		ClientEntryOut:           v._clientEntryOut,
+		DepToCSSBundleMap:        v._depToCSSBundleMap,
+		RootTemplate:             v._rootTemplate,
+		RouteManifestFile:        v._routeManifestFile,
+		RouteDataSnapshotVersion: v._routeDataSnapshotVersion,
+		RouteDataCache:           v._routeDataCache,
+	})
 }
 
 // invalidateRouteDataCacheLocked invalidates route-data cache entries for
@@ -1538,31 +1491,6 @@ func toRuntimeCoreRoutePaths(
 	return cloned
 }
 
-func toRuntimeCoreRoutePathsFromRuntimePaths(
-	paths map[string]*runtimepaths.RoutePath,
-) map[string]*runtimecore.RoutePath {
-	if paths == nil {
-		return nil
-	}
-
-	cloned := make(map[string]*runtimecore.RoutePath, len(paths))
-	for pattern, pathValue := range paths {
-		if pathValue == nil {
-			cloned[pattern] = nil
-			continue
-		}
-		cloned[pattern] = &runtimecore.RoutePath{
-			OriginalPattern: pathValue.OriginalPattern,
-			SrcPath:         pathValue.SrcPath,
-			OutPath:         pathValue.OutPath,
-			ExportKey:       pathValue.ExportKey,
-			ErrorExportKey:  pathValue.ErrorExportKey,
-			Deps:            runtimecore.CloneStringSliceOrNil(pathValue.Deps),
-		}
-	}
-	return cloned
-}
-
 func fromRuntimeCoreRoutePaths(
 	paths map[string]*runtimecore.RoutePath,
 ) map[string]*Path {
@@ -1588,6 +1516,17 @@ func clonePathsMapOrNil(paths map[string]*Path) map[string]*Path {
 		return nil
 	}
 	return clonePathsMap(paths)
+}
+
+func cloneRuntimeCorePathsMapAsPublicOrNil(
+	paths map[string]*runtimecore.RoutePath,
+) map[string]*Path {
+	if paths == nil {
+		return nil
+	}
+	return fromRuntimeCoreRoutePaths(
+		runtimecore.CloneRoutePaths(paths),
+	)
 }
 
 func (v *Vorma) applyRuntimeRouteArtifactsMetadataLocked(
@@ -1629,15 +1568,31 @@ func (v *Vorma) routes() *RouteRegistry {
 // rebuilding nested-router registrations.
 // Caller must hold v.mu.Lock().
 func (r *RouteRegistry) SyncFromDevReload(paths map[string]*Path) {
-	v := r.vorma
-	v._paths = fromRuntimeCoreRoutePaths(
-		runtimecore.SyncPathsFromDevReload(
-			toRuntimeCoreRoutePaths(paths),
-			r.serverRoutePatternsWithTaskHandlers(),
-		),
+	r.syncFromDevReloadCore(
+		toRuntimeCoreRoutePaths(paths),
 	)
-	v.invalidateRouteDataCacheLocked()
-	r.rebuildNestedRouterFromCurrentPaths()
+}
+
+func (r *RouteRegistry) syncFromDevReloadCore(
+	paths map[string]*runtimecore.RoutePath,
+) {
+	v := r.vorma
+	mutableState := runtimecore.RouteMutableState{
+		Paths:                    v._paths,
+		RouteDataSnapshotVersion: v._routeDataSnapshotVersion,
+		RouteDataCache:           v._routeDataCache,
+	}
+	runtimecore.SyncRouteStateFromDevReload(
+		runtimecore.SyncRouteStateFromDevReloadInput{
+			State:                               &mutableState,
+			ParsedClientPaths:                   paths,
+			ServerRoutePatternsWithTaskHandlers: r.serverRoutePatternsWithTaskHandlers(),
+			RebuildNestedRouterFromCurrentPaths: r.rebuildNestedRouterFromPaths,
+		},
+	)
+	v._paths = mutableState.Paths
+	v._routeDataSnapshotVersion = mutableState.RouteDataSnapshotVersion
+	v._routeDataCache = mutableState.RouteDataCache
 }
 
 // ReplaceParsedPathsForInit updates route state from parsed client routes for
@@ -1648,16 +1603,33 @@ func (r *RouteRegistry) ReplaceParsedPathsForInit(
 	paths map[string]*Path,
 	rebuildNestedRouter bool,
 ) {
-	v := r.vorma
-	v._paths = fromRuntimeCoreRoutePaths(
-		runtimecore.ReplaceParsedPathsForInit(
-			toRuntimeCoreRoutePaths(paths),
-		),
+	r.replaceParsedPathsForInitCore(
+		toRuntimeCoreRoutePaths(paths),
+		rebuildNestedRouter,
 	)
-	v.invalidateRouteDataCacheLocked()
-	if rebuildNestedRouter {
-		r.rebuildNestedRouterFromCurrentPaths()
+}
+
+func (r *RouteRegistry) replaceParsedPathsForInitCore(
+	paths map[string]*runtimecore.RoutePath,
+	rebuildNestedRouter bool,
+) {
+	v := r.vorma
+	mutableState := runtimecore.RouteMutableState{
+		Paths:                    v._paths,
+		RouteDataSnapshotVersion: v._routeDataSnapshotVersion,
+		RouteDataCache:           v._routeDataCache,
 	}
+	runtimecore.ReplaceRouteStateForInit(
+		runtimecore.ReplaceRouteStateForInitInput{
+			State:                               &mutableState,
+			ParsedClientPaths:                   paths,
+			RebuildNestedRouter:                 rebuildNestedRouter,
+			RebuildNestedRouterFromCurrentPaths: r.rebuildNestedRouterFromPaths,
+		},
+	)
+	v._paths = mutableState.Paths
+	v._routeDataSnapshotVersion = mutableState.RouteDataSnapshotVersion
+	v._routeDataCache = mutableState.RouteDataCache
 }
 
 func (r *RouteRegistry) serverRoutePatternsWithTaskHandlers() []string {
@@ -1673,11 +1645,11 @@ func (r *RouteRegistry) serverRoutePatternsWithTaskHandlers() []string {
 	return patterns
 }
 
-func (r *RouteRegistry) rebuildNestedRouterFromCurrentPaths() {
+func (r *RouteRegistry) rebuildNestedRouterFromPaths(
+	paths map[string]*runtimecore.RoutePath,
+) {
 	v := r.vorma
-	patterns := runtimecore.BuildNestedRouterPatternList(
-		toRuntimeCoreRoutePaths(v._paths),
-	)
+	patterns := runtimecore.BuildNestedRouterPatternList(paths)
 	v.LoadersRouter().NestedRouter.RebuildPreservingHandlers(patterns)
 }
 
@@ -1718,15 +1690,12 @@ func (v *Vorma) devReloadRoutesFromDisk() error {
 	privateFS := v._privateFS
 	v.mu.RUnlock()
 
-	pathsFile, err := v.getBasePathsFromFS(privateFS, true)
-	if err != nil {
-		return fmt.Errorf("load paths from disk: %w", err)
-	}
-	runtimeArtifacts, err := runtimecore.BuildRuntimeRouteArtifacts(
-		buildRuntimePathsFileSnapshot(pathsFile),
+	routeArtifacts, err := runtimepaths.LoadRouteArtifactsFromFS(
+		privateFS,
+		true,
 	)
 	if err != nil {
-		return fmt.Errorf("build runtime route artifacts: %w", err)
+		return fmt.Errorf("load paths from disk: %w", err)
 	}
 
 	v.mu.Lock()
@@ -1742,7 +1711,7 @@ func (v *Vorma) devReloadRoutesFromDisk() error {
 		"",
 	)
 	v.commitRouteArtifactsLocked(
-		runtimeArtifacts,
+		routeArtifacts.RuntimeArtifacts,
 		true,
 		runtimecore.RouteArtifactCommitModeDevReload,
 	)
@@ -1766,13 +1735,12 @@ func (v *Vorma) devReloadTemplateFromDisk() error {
 	privateFS := v._privateFS
 	rootTemplateLocation := v.Config.HTMLTemplateLocation
 	v.mu.RUnlock()
-	if privateFS == nil {
-		return fmt.Errorf("private fs is nil")
-	}
-
-	tmpl, err := template.ParseFS(privateFS, rootTemplateLocation)
+	tmpl, err := runtimepaths.ParseRootTemplateFromFS(
+		privateFS,
+		rootTemplateLocation,
+	)
 	if err != nil {
-		return fmt.Errorf("parse template: %w", err)
+		return err
 	}
 
 	v.mu.Lock()
@@ -1862,18 +1830,17 @@ func (v *Vorma) initInner(isDev bool) error {
 		return fmt.Errorf("could not get private fs: %w", err)
 	}
 
-	pathsFile, err := v.getBasePathsFromFS(privateFS, isDev)
+	routeArtifacts, err := runtimepaths.LoadRouteArtifactsFromFS(
+		privateFS,
+		isDev,
+	)
 	if err != nil {
 		return fmt.Errorf("could not get base paths: %w", err)
 	}
-	runtimeArtifacts, err := runtimecore.BuildRuntimeRouteArtifacts(
-		buildRuntimePathsFileSnapshot(pathsFile),
+	tmpl, err := runtimepaths.ParseRootTemplateFromFS(
+		privateFS,
+		v.Config.HTMLTemplateLocation,
 	)
-	if err != nil {
-		return fmt.Errorf("could not build runtime route artifacts: %w", err)
-	}
-
-	tmpl, err := template.ParseFS(privateFS, v.Config.HTMLTemplateLocation)
 	if err != nil {
 		return fmt.Errorf("error parsing root template: %w", err)
 	}
@@ -1897,7 +1864,7 @@ func (v *Vorma) initInner(isDev bool) error {
 		"",
 	)
 	v.commitRouteArtifactsLocked(
-		runtimeArtifacts,
+		routeArtifacts.RuntimeArtifacts,
 		wasInitialized,
 		runtimecore.RouteArtifactCommitModeInit,
 	)
@@ -1920,17 +1887,4 @@ func (v *Vorma) initInner(isDev bool) error {
 		"",
 	)
 	return nil
-}
-
-func (v *Vorma) getBasePaths_StageOneOrTwo(
-	isDev bool,
-) (*runtimepaths.PathsFile, error) {
-	return v.getBasePathsFromFS(v._privateFS, isDev)
-}
-
-func (v *Vorma) getBasePathsFromFS(
-	privateFS fs.FS,
-	isDev bool,
-) (*runtimepaths.PathsFile, error) {
-	return runtimepaths.LoadPathsFileFromFS(privateFS, isDev)
 }

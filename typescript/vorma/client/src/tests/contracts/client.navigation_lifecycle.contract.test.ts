@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { PatternWaitFn } from "../../app/context.ts";
 import {
 	createAbortAwareFetchRecorder,
 	createDeferred,
@@ -43,6 +44,60 @@ describe("client navigation lifecycle contracts", () => {
 		await vi.runAllTimersAsync();
 
 		prefetchHandlers?.stop();
+	});
+
+	it("runs speculative client-loader code for superseded navigations but discards stale commits", async () => {
+		const speculativeSideEffects: string[] = [];
+		const abortStatesAtFailure: boolean[] = [];
+		const speculativeClientLoaderWaitFn: PatternWaitFn = async ({
+			serverDataPromise,
+			signal,
+		}) => {
+			speculativeSideEffects.push("executed");
+			try {
+				await serverDataPromise;
+			} catch {
+				abortStatesAtFailure.push(signal.aborted);
+			}
+			return { stale: true };
+		};
+		installContractVormaGlobal({
+			routeManifest: {
+				"/stale-client-loader": 1,
+			},
+			patternToWaitFnMap: {
+				"/stale-client-loader": speculativeClientLoaderWaitFn,
+			},
+		});
+
+		const api = await loadClientAPI();
+		await api.__registerClientLoaderPattern("/stale-client-loader");
+		const { requests } = createAbortAwareFetchRecorder();
+
+		const staleNavigationPromise = api.vormaNavigate(
+			"/stale-client-loader",
+		);
+		await waitForRequestCount({ requests, count: 1 });
+
+		const freshNavigationPromise = api.vormaNavigate("/fresh-target");
+		await waitForRequestCount({ requests, count: 2 });
+
+		requests[1]?.resolve(
+			createRouteDataResponse({
+				title: { dangerousInnerHTML: "Fresh Target" },
+			}),
+		);
+
+		await freshNavigationPromise;
+		await staleNavigationPromise;
+		await vi.runAllTimersAsync();
+
+		expect(speculativeSideEffects).toEqual(["executed"]);
+		expect(abortStatesAtFailure).toEqual([true]);
+		expect(requests[0]?.signal?.aborted).toBe(true);
+		expect(api.__vormaClientGlobal.get("clientLoadersData")).toEqual([]);
+		expect(window.location.pathname).toBe("/fresh-target");
+		expect(document.title).toBe("Fresh Target");
 	});
 
 	it("clearAll aborts in-flight navigation and submit work, then returns idle", async () => {

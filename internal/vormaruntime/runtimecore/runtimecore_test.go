@@ -285,3 +285,163 @@ func TestLifecycleStateFunctions(t *testing.T) {
 		)
 	}
 }
+
+func TestSyncRouteStateFromDevReload(t *testing.T) {
+	state := &RouteMutableState{
+		Paths: map[string]*RoutePath{
+			"/old-client": {
+				OriginalPattern: "/old-client",
+				SrcPath:         "frontend/src/routes/old-client.tsx",
+				OutPath:         "vorma_out/routes/old-client.js",
+				ExportKey:       "default",
+				Deps:            []string{"vorma_out/chunk-old.js"},
+			},
+		},
+		RouteDataSnapshotVersion: 10,
+		RouteDataCache:           &sync.Map{},
+	}
+	state.RouteDataCache.Store("stale", "value")
+
+	parsedClientPaths := map[string]*RoutePath{
+		"/fresh-client": {
+			OriginalPattern: "/fresh-client",
+			SrcPath:         "frontend/src/routes/fresh-client.tsx",
+			OutPath:         "vorma_out/routes/fresh-client.js",
+			ExportKey:       "default",
+			Deps:            []string{"vorma_out/chunk-fresh.js"},
+		},
+	}
+
+	var rebuiltPaths map[string]*RoutePath
+	SyncRouteStateFromDevReload(
+		SyncRouteStateFromDevReloadInput{
+			State:             state,
+			ParsedClientPaths: parsedClientPaths,
+			ServerRoutePatternsWithTaskHandlers: []string{
+				"/server-only",
+			},
+			RebuildNestedRouterFromCurrentPaths: func(
+				paths map[string]*RoutePath,
+			) {
+				rebuiltPaths = paths
+			},
+		},
+	)
+
+	if state.Paths == nil {
+		t.Fatal("expected non-nil route paths after sync")
+	}
+	if _, ok := state.Paths["/fresh-client"]; !ok {
+		t.Fatal("expected client route after dev sync")
+	}
+	serverOnly := state.Paths["/server-only"]
+	if serverOnly == nil {
+		t.Fatal("expected server-only handler route to be merged")
+	}
+	if got, want := serverOnly.ExportKey, "default"; got != want {
+		t.Fatalf("server-only ExportKey = %q, want %q", got, want)
+	}
+	if _, ok := state.Paths["/old-client"]; ok {
+		t.Fatal("expected old client route to be replaced")
+	}
+	if got, want := state.RouteDataSnapshotVersion, uint64(11); got != want {
+		t.Fatalf("RouteDataSnapshotVersion = %d, want %d", got, want)
+	}
+	hasCacheEntries := false
+	state.RouteDataCache.Range(func(_, _ any) bool {
+		hasCacheEntries = true
+		return false
+	})
+	if hasCacheEntries {
+		t.Fatal("expected route-data cache to be reset during sync")
+	}
+	if rebuiltPaths == nil {
+		t.Fatal("expected nested-router rebuild callback to run")
+	}
+
+	parsedClientPaths["/fresh-client"].Deps[0] = "MUTATED_DEP"
+	if got, want := state.Paths["/fresh-client"].Deps[0], "vorma_out/chunk-fresh.js"; got != want {
+		t.Fatalf("state deps = %q, want %q", got, want)
+	}
+}
+
+func TestReplaceRouteStateForInit(t *testing.T) {
+	t.Run("replace_without_rebuild", func(t *testing.T) {
+		state := &RouteMutableState{
+			Paths: map[string]*RoutePath{
+				"/old": {OriginalPattern: "/old"},
+			},
+			RouteDataSnapshotVersion: 1,
+			RouteDataCache:           &sync.Map{},
+		}
+
+		didRebuild := false
+		parsedPaths := map[string]*RoutePath{
+			"/docs": {
+				OriginalPattern: "/docs",
+				SrcPath:         "frontend/src/routes/docs.tsx",
+				OutPath:         "vorma_out/routes/docs.js",
+				ExportKey:       "default",
+				Deps:            []string{"vorma_out/chunk-docs.js"},
+			},
+		}
+		ReplaceRouteStateForInit(
+			ReplaceRouteStateForInitInput{
+				State:                               state,
+				ParsedClientPaths:                   parsedPaths,
+				RebuildNestedRouter:                 false,
+				RebuildNestedRouterFromCurrentPaths: func(map[string]*RoutePath) { didRebuild = true },
+			},
+		)
+
+		if didRebuild {
+			t.Fatal("did not expect nested-router rebuild callback")
+		}
+		if got, want := state.RouteDataSnapshotVersion, uint64(2); got != want {
+			t.Fatalf("RouteDataSnapshotVersion = %d, want %d", got, want)
+		}
+		if _, ok := state.Paths["/docs"]; !ok {
+			t.Fatal("expected /docs path after replace")
+		}
+		parsedPaths["/docs"].OutPath = "MUTATED_OUT"
+		if got, want := state.Paths["/docs"].OutPath, "vorma_out/routes/docs.js"; got != want {
+			t.Fatalf("state OutPath = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("replace_with_rebuild", func(t *testing.T) {
+		state := &RouteMutableState{
+			Paths:                    map[string]*RoutePath{},
+			RouteDataSnapshotVersion: 4,
+			RouteDataCache:           &sync.Map{},
+		}
+
+		var rebuiltPaths map[string]*RoutePath
+		parsedPaths := map[string]*RoutePath{
+			"/a": {OriginalPattern: "/a"},
+			"/b": {OriginalPattern: "/b"},
+		}
+		ReplaceRouteStateForInit(
+			ReplaceRouteStateForInitInput{
+				State:               state,
+				ParsedClientPaths:   parsedPaths,
+				RebuildNestedRouter: true,
+				RebuildNestedRouterFromCurrentPaths: func(
+					paths map[string]*RoutePath,
+				) {
+					rebuiltPaths = paths
+				},
+			},
+		)
+
+		if got, want := state.RouteDataSnapshotVersion, uint64(5); got != want {
+			t.Fatalf("RouteDataSnapshotVersion = %d, want %d", got, want)
+		}
+		if rebuiltPaths == nil {
+			t.Fatal("expected nested-router rebuild callback to run")
+		}
+		if !reflect.DeepEqual(rebuiltPaths, state.Paths) {
+			t.Fatalf("rebuilt paths = %#v, want %#v", rebuiltPaths, state.Paths)
+		}
+	})
+}

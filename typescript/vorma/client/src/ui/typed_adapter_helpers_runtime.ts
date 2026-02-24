@@ -4,6 +4,7 @@ import type {
 	VormaLoaderOutput,
 	VormaLoaderPattern,
 } from "../app/helpers.ts";
+import { __registerClientLoaderForAdapter as registerClientLoaderForAdapter } from "../core/extras.ts";
 import type { ParamsForPattern } from "./helpers.ts";
 
 type VormaTypedAdapterRoutePropsWithIndex = {
@@ -16,6 +17,9 @@ type VormaTypedAdapterClientLoaderFunction<
 	LoaderData extends VormaLoaderOutput<App, Pattern>,
 	T,
 > = (props: {
+	// Client loaders run speculatively during prefetch/navigation and can be
+	// discarded when ownership changes; end users should keep side effects
+	// idempotent and honor signal-based cancellation.
 	params: Record<ParamsForPattern<App, Pattern>, string>;
 	splatValues: string[];
 	serverDataPromise: Promise<
@@ -39,6 +43,41 @@ export type VormaTypedAdapterAddClientLoaderProps<
 	>;
 	reRunOnModuleChange?: ImportMeta;
 };
+
+/**
+ * Registers a typed adapter client loader immediately when invoked.
+ *
+ * Re-registering the same pattern is intentional and overwrites the previous
+ * wait function for that pattern. This enables adapter-level HMR/module
+ * replacement without requiring explicit teardown hooks from applications.
+ */
+export function registerTypedAdapterClientLoader<
+	App extends VormaAppBase,
+	Pattern extends VormaLoaderPattern<App>,
+	LoaderData extends VormaLoaderOutput<App, Pattern>,
+	T,
+>(
+	props: VormaTypedAdapterAddClientLoaderProps<App, Pattern, LoaderData, T>,
+): {
+	pattern: Pattern;
+	clientLoader: VormaTypedAdapterClientLoaderFunction<
+		App,
+		Pattern,
+		LoaderData,
+		T
+	>;
+} {
+	registerClientLoaderForAdapter({
+		pattern: props.pattern as string,
+		waitFn: props.clientLoader as any,
+		reRunOnModuleChange: props.reRunOnModuleChange,
+	});
+
+	return {
+		pattern: props.pattern,
+		clientLoader: props.clientLoader,
+	};
+}
 
 function resolveTypedAdapterMatchedPatternIndex(props: {
 	matchedPatterns: readonly string[];

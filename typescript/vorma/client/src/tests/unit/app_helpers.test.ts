@@ -131,6 +131,58 @@ describe("resolveVormaPath", () => {
 		expect(rootPath).toBe("/");
 		expect(nestedPath).toBe("/users");
 	});
+
+	it("throws when dynamic params required by the pattern are missing", () => {
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/users/:id",
+				},
+			}),
+		).toThrow('Missing required route params for pattern "/users/:id": id');
+
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "query",
+				props: {
+					pattern: "/search/:section/:slug",
+					params: {
+						section: "guides",
+					},
+				},
+			}),
+		).toThrow(
+			'Missing required route params for pattern "/search/:section/:slug": slug',
+		);
+	});
+
+	it("throws when splat values required by the pattern are missing", () => {
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/files/*",
+				},
+			}),
+		).toThrow('Missing required splat values for pattern "/files/*"');
+
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: CUSTOM_RUNE_CONFIG,
+				type: "query",
+				props: {
+					pattern: "/users/$id/**",
+					params: {
+						id: "42",
+					},
+				},
+			}),
+		).toThrow('Missing required splat values for pattern "/users/$id/**"');
+	});
 });
 
 describe("URL and wrapper helper exports", () => {

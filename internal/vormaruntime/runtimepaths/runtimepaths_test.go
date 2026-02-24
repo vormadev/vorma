@@ -2,6 +2,7 @@ package runtimepaths
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -268,4 +269,197 @@ func TestPrettyPrintFS_NoErrorOnBasicFS(t *testing.T) {
 	if err := PrettyPrintFS(fsys); err != nil {
 		t.Fatalf("PrettyPrintFS returned error: %v", err)
 	}
+}
+
+func TestBuildRuntimePathsFileSnapshot(t *testing.T) {
+	t.Run("nil_paths_file_returns_nil_snapshot", func(t *testing.T) {
+		if BuildRuntimePathsFileSnapshot(nil) != nil {
+			t.Fatal("expected nil snapshot for nil paths file input")
+		}
+	})
+
+	t.Run("maps_paths_file_fields_to_runtimecore_snapshot", func(t *testing.T) {
+		pathsFile := &PathsFile{
+			BuildID:        "build-artifacts",
+			ClientEntrySrc: "frontend/src/vorma.entry.tsx",
+			ClientEntryOut: "vorma_out/client-entry.js",
+			ClientEntryDeps: []string{
+				"vorma_out/chunk-client.js",
+			},
+			DepToCSSBundleMap: map[string][]string{
+				"vorma_out/chunk-client.js": {"vorma_out/chunk-client.css"},
+			},
+			RouteManifestFile: "vorma_out/route-manifest.js",
+			Paths: map[string]*RoutePath{
+				"/products/:id": {
+					OriginalPattern: "/products/:id",
+					SrcPath:         "frontend/src/routes/products.$id.tsx",
+					OutPath:         "vorma_out/routes/products.$id.js",
+					ExportKey:       "default",
+					Deps:            []string{"vorma_out/products.js"},
+				},
+			},
+		}
+
+		snapshot := BuildRuntimePathsFileSnapshot(pathsFile)
+		if snapshot == nil {
+			t.Fatal("expected non-nil runtime paths snapshot")
+		}
+		if got, want := snapshot.BuildID, pathsFile.BuildID; got != want {
+			t.Fatalf("BuildID = %q, want %q", got, want)
+		}
+		if got, want := snapshot.ClientEntrySrc, pathsFile.ClientEntrySrc; got != want {
+			t.Fatalf("ClientEntrySrc = %q, want %q", got, want)
+		}
+		if got, want := snapshot.ClientEntryOut, pathsFile.ClientEntryOut; got != want {
+			t.Fatalf("ClientEntryOut = %q, want %q", got, want)
+		}
+		if got, want := snapshot.RouteManifestFile, pathsFile.RouteManifestFile; got != want {
+			t.Fatalf("RouteManifestFile = %q, want %q", got, want)
+		}
+		if got, want := snapshot.ClientEntryDeps, pathsFile.ClientEntryDeps; !reflect.DeepEqual(
+			got,
+			want,
+		) {
+			t.Fatalf("ClientEntryDeps = %#v, want %#v", got, want)
+		}
+		if got, want := snapshot.DepToCSSBundleMap, pathsFile.DepToCSSBundleMap; !reflect.DeepEqual(
+			got,
+			want,
+		) {
+			t.Fatalf("DepToCSSBundleMap = %#v, want %#v", got, want)
+		}
+		if got := snapshot.Paths["/products/:id"].Deps[0]; got != "vorma_out/products.js" {
+			t.Fatalf(
+				"snapshot route deps[0] = %q, want vorma_out/products.js",
+				got,
+			)
+		}
+		pathsFile.Paths["/products/:id"].Deps[0] = "mutated"
+		if got := snapshot.Paths["/products/:id"].Deps[0]; got != "vorma_out/products.js" {
+			t.Fatalf(
+				"snapshot route deps[0] after source mutation = %q, want vorma_out/products.js",
+				got,
+			)
+		}
+	})
+}
+
+func TestParseRootTemplateFromFS(t *testing.T) {
+	t.Run("returns_error_for_nil_fs", func(t *testing.T) {
+		_, err := ParseRootTemplateFromFS(nil, "index.html")
+		if err == nil {
+			t.Fatal("expected error for nil private fs")
+		}
+		if !strings.Contains(err.Error(), "private fs is nil") {
+			t.Fatalf("error = %q, want private fs is nil", err)
+		}
+	})
+
+	t.Run("parses_template", func(t *testing.T) {
+		fsys := fstest.MapFS{
+			"index.html": &fstest.MapFile{
+				Data: []byte("<!doctype html><html><body>{{.}}</body></html>"),
+			},
+		}
+		rootTemplate, err := ParseRootTemplateFromFS(fsys, "index.html")
+		if err != nil {
+			t.Fatalf("ParseRootTemplateFromFS: %v", err)
+		}
+		if rootTemplate == nil {
+			t.Fatal("expected parsed template")
+		}
+	})
+}
+
+func TestLoadRouteArtifactsFromFS(t *testing.T) {
+	makeStageFileBytes := func(
+		buildID string,
+		stage string,
+		includeOutPath bool,
+	) []byte {
+		pathsFile := &PathsFile{
+			Stage:             stage,
+			BuildID:           buildID,
+			ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
+			ClientEntryOut:    "vorma_out/client-entry.js",
+			ClientEntryDeps:   []string{"vorma_out/chunk-client.js"},
+			RouteManifestFile: "vorma_out/route-manifest.js",
+			Paths: map[string]*RoutePath{
+				"/products/:id": {
+					OriginalPattern: "/products/:id",
+					SrcPath:         "frontend/src/routes/products.$id.tsx",
+					ExportKey:       "default",
+					Deps:            []string{"vorma_out/chunk-products.js"},
+				},
+			},
+		}
+		if includeOutPath {
+			pathsFile.Paths["/products/:id"].OutPath = "vorma_out/routes/products.$id.js"
+		}
+		b, err := json.Marshal(pathsFile)
+		if err != nil {
+			t.Fatalf("marshal paths file: %v", err)
+		}
+		return b
+	}
+
+	t.Run("loads_stage_one_in_dev_mode", func(t *testing.T) {
+		fsys := fstest.MapFS{
+			"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+				Data: makeStageFileBytes("build-dev", "stage-one", false),
+			},
+			"vorma_out/" + VormaPathsStageTwoJSONFileName: &fstest.MapFile{
+				Data: makeStageFileBytes("build-prod", "stage-two", true),
+			},
+		}
+
+		output, err := LoadRouteArtifactsFromFS(fsys, true)
+		if err != nil {
+			t.Fatalf("LoadRouteArtifactsFromFS(dev): %v", err)
+		}
+		if got, want := output.PathsFile.BuildID, "build-dev"; got != want {
+			t.Fatalf("dev BuildID = %q, want %q", got, want)
+		}
+		if got, want := output.RuntimeArtifacts.BuildID, "build-dev"; got != want {
+			t.Fatalf("dev RuntimeArtifacts.BuildID = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("loads_stage_two_in_production_mode", func(t *testing.T) {
+		fsys := fstest.MapFS{
+			"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+				Data: makeStageFileBytes("build-dev", "stage-one", false),
+			},
+			"vorma_out/" + VormaPathsStageTwoJSONFileName: &fstest.MapFile{
+				Data: makeStageFileBytes("build-prod", "stage-two", true),
+			},
+		}
+
+		output, err := LoadRouteArtifactsFromFS(fsys, false)
+		if err != nil {
+			t.Fatalf("LoadRouteArtifactsFromFS(prod): %v", err)
+		}
+		if got, want := output.PathsFile.BuildID, "build-prod"; got != want {
+			t.Fatalf("prod BuildID = %q, want %q", got, want)
+		}
+		if got, want := output.RuntimeArtifacts.BuildID, "build-prod"; got != want {
+			t.Fatalf("prod RuntimeArtifacts.BuildID = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("returns_decode_error_for_malformed_file", func(t *testing.T) {
+		fsys := fstest.MapFS{
+			"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+				Data: []byte("{"),
+			},
+		}
+		_, err := LoadRouteArtifactsFromFS(fsys, true)
+		if err == nil {
+			t.Fatal("expected decode error for malformed stage file")
+		}
+		if !strings.Contains(err.Error(), "could not decode") {
+			t.Fatalf("error = %q, expected decode failure", err)
+		}
+	})
 }

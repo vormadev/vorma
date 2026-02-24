@@ -11,7 +11,7 @@ import {
 	type VormaRoutePropsGeneric,
 } from "vorma/client";
 import {
-	registerClientLoaderForAdapter,
+	registerTypedAdapterClientLoader,
 	resolveTypedAdapterIndexedDataForPattern,
 	resolveTypedAdapterIndexedDataForPatternOrRouteProps,
 	type VormaTypedAdapterAddClientLoaderProps,
@@ -74,13 +74,8 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 			T
 		>,
 	) {
-		const pattern = props.pattern;
-		const clientLoader = props.clientLoader;
-		registerClientLoaderForAdapter({
-			pattern: pattern as string,
-			waitFn: clientLoader as any,
-			reRunOnModuleChange: props.reRunOnModuleChange,
-		});
+		const { pattern, clientLoader } =
+			registerTypedAdapterClientLoader(props);
 		type Res = Awaited<ReturnType<typeof clientLoader>>;
 
 		const useClientLoaderData = (

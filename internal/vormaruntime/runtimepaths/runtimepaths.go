@@ -1,17 +1,20 @@
-// Package runtimepaths defines the on-disk route artifact schema consumed by
-// vormaruntime.
+// Package runtimepaths defines and loads disk-backed route artifacts consumed
+// by vormaruntime.
 //
 // The package owns file naming, decoding, and validation for stage-one/stage-two
-// paths files so that runtime path artifact rules are enforced consistently from
-// one place.
+// paths files, plus bootstrap conversion into runtimecore artifacts, so runtime
+// path artifact rules are enforced consistently from one place.
 package runtimepaths
 
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"path"
 	"strings"
+
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimecore"
 )
 
 // RoutePath is one serialized route entry from stage-one/stage-two paths files.
@@ -177,4 +180,99 @@ func PrettyPrintFS(fsys fs.FS) error {
 			return nil
 		},
 	)
+}
+
+// RouteArtifactsLoadOutput contains loaded path artifacts and normalized route
+// artifacts.
+type RouteArtifactsLoadOutput struct {
+	PathsFile        *PathsFile
+	RuntimeArtifacts *runtimecore.RuntimeRouteArtifacts
+}
+
+// LoadRouteArtifactsFromFS reads route artifacts from disk and normalizes them
+// into runtimecore artifacts for one runtime mode.
+func LoadRouteArtifactsFromFS(
+	privateFS fs.FS,
+	isDev bool,
+) (*RouteArtifactsLoadOutput, error) {
+	pathsFile, err := LoadPathsFileFromFS(privateFS, isDev)
+	if err != nil {
+		return nil, err
+	}
+	runtimeArtifacts, err := runtimecore.BuildRuntimeRouteArtifacts(
+		BuildRuntimePathsFileSnapshot(pathsFile),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build runtime route artifacts: %w", err)
+	}
+	return &RouteArtifactsLoadOutput{
+		PathsFile:        pathsFile,
+		RuntimeArtifacts: runtimeArtifacts,
+	}, nil
+}
+
+// ParseRootTemplateFromFS parses the configured root template from disk.
+func ParseRootTemplateFromFS(
+	privateFS fs.FS,
+	rootTemplateLocation string,
+) (*template.Template, error) {
+	if privateFS == nil {
+		return nil, fmt.Errorf("private fs is nil")
+	}
+	rootTemplate, err := template.ParseFS(privateFS, rootTemplateLocation)
+	if err != nil {
+		return nil, fmt.Errorf("parse template: %w", err)
+	}
+	return rootTemplate, nil
+}
+
+// BuildRuntimePathsFileSnapshot maps one runtimepaths file payload to the
+// runtimecore snapshot shape.
+func BuildRuntimePathsFileSnapshot(
+	pathsFile *PathsFile,
+) *runtimecore.RuntimePathsFileSnapshot {
+	if pathsFile == nil {
+		return nil
+	}
+
+	return &runtimecore.RuntimePathsFileSnapshot{
+		BuildID:        pathsFile.BuildID,
+		ClientEntrySrc: pathsFile.ClientEntrySrc,
+		ClientEntryOut: pathsFile.ClientEntryOut,
+		ClientEntryDeps: runtimecore.CloneStringSliceOrNil(
+			pathsFile.ClientEntryDeps,
+		),
+		DepToCSSBundleMap: runtimecore.CloneDepToCSSBundleMapOrNil(
+			pathsFile.DepToCSSBundleMap,
+		),
+		RouteManifestFile: pathsFile.RouteManifestFile,
+		Paths: convertRuntimePathsToRuntimeCorePaths(
+			pathsFile.Paths,
+		),
+	}
+}
+
+func convertRuntimePathsToRuntimeCorePaths(
+	paths map[string]*RoutePath,
+) map[string]*runtimecore.RoutePath {
+	if paths == nil {
+		return nil
+	}
+
+	cloned := make(map[string]*runtimecore.RoutePath, len(paths))
+	for pattern, pathValue := range paths {
+		if pathValue == nil {
+			cloned[pattern] = nil
+			continue
+		}
+		cloned[pattern] = &runtimecore.RoutePath{
+			OriginalPattern: pathValue.OriginalPattern,
+			SrcPath:         pathValue.SrcPath,
+			OutPath:         pathValue.OutPath,
+			ExportKey:       pathValue.ExportKey,
+			ErrorExportKey:  pathValue.ErrorExportKey,
+			Deps:            runtimecore.CloneStringSliceOrNil(pathValue.Deps),
+		}
+	}
+	return cloned
 }

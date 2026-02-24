@@ -1,4 +1,4 @@
-import { createMemo, mergeProps, splitProps, type JSX } from "solid-js";
+import { createMemo, splitProps, type JSX } from "solid-js";
 import type {
 	ExtractApp,
 	VormaAppBase,
@@ -6,8 +6,9 @@ import type {
 } from "vorma/client";
 import {
 	buildTypedLinkDisplayName,
-	buildTypedLinkResolvedProps,
 	makeFinalLinkProps,
+	navigationInternalLinkPropKeysForAnchors,
+	resolveTypedAdapterLinkWithDefaults,
 	type TypedAdapterLinkDefaultProps,
 	type TypedAdapterLinkProps,
 	type VormaAppConfig,
@@ -24,11 +25,8 @@ export function VormaLink(
 		makeFinalLinkProps<VormaLinkEvent>(props),
 	);
 	const [, rest] = splitProps(props, [
-		"prefetch",
-		"scrollToTop",
-		"replace",
-		"state",
-	]);
+		...navigationInternalLinkPropKeysForAnchors,
+	] as Array<keyof typeof props>);
 
 	return (
 		<a
@@ -56,14 +54,6 @@ type TypedVormaLinkProps<
 	VormaLinkEvent
 >;
 
-type SplittableTypedVormaLinkProps<
-	App extends VormaAppBase,
-	Pattern extends VormaLoaderPattern<App>,
-> = TypedVormaLinkProps<App, Pattern> & {
-	params?: Record<string, string>;
-	splatValues?: string[];
-};
-
 export function makeTypedLink<C extends VormaAppConfig>(
 	vormaAppConfig: C,
 	defaultProps?: TypedAdapterLinkDefaultProps<
@@ -77,15 +67,11 @@ export function makeTypedLink<C extends VormaAppConfig>(
 	const TypedLink = <Pattern extends VormaLoaderPattern<App>>(
 		props: TypedVormaLinkProps<App, Pattern>,
 	) => {
-		const mergedProps = mergeProps(
-			defaultProps || {},
-			props,
-		) as SplittableTypedVormaLinkProps<App, Pattern>;
-
 		const resolvedProps = createMemo(() => {
-			return buildTypedLinkResolvedProps({
+			return resolveTypedAdapterLinkWithDefaults({
 				vormaAppConfig,
-				mergedProps,
+				defaultProps,
+				linkProps: props,
 			});
 		});
 

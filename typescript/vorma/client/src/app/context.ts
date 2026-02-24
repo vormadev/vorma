@@ -80,6 +80,10 @@ export type ClientLoaderAwaitedServerData<RD, LD> = {
 
 /**
  * Client loader wait function contract, keyed by route pattern.
+ * Wait functions are speculative: the runtime may invoke them before final
+ * navigation ownership checks complete, and their result may be discarded if
+ * that navigation is superseded. Implementations should treat side effects as
+ * idempotent and honor `signal` for cancellation-aware cleanup.
  */
 export type PatternWaitFn = (props: {
 	params: Record<string, string>;

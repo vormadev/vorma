@@ -318,6 +318,41 @@ describe("render runtime internals", () => {
 		});
 	});
 
+	it("uses the current payload server error index for client-loader skip decisions", async () => {
+		const waitFnA = vi.fn(async () => "loader-a");
+		const waitFnB = vi.fn(async () => "loader-b");
+		installVormaGlobal({
+			outermostServerErrorIdx: 0,
+			patternToWaitFnMap: {
+				"/a": waitFnA,
+				"/b": waitFnB,
+			},
+			routeManifest: { "/a": 0, "/b": 0 },
+		});
+
+		const result = await completeClientLoaders(
+			{
+				matchedPatterns: ["/a", "/b"],
+				loadersData: [{ id: "a" }, { id: "b" }],
+				hasRootData: false,
+				importURLs: [],
+				params: {},
+				splatValues: [],
+				outermostServerErrorIdx: 1,
+			},
+			"1",
+			new Map(),
+			new AbortController().signal,
+		);
+
+		expect(waitFnA).toHaveBeenCalledTimes(1);
+		expect(waitFnB).not.toHaveBeenCalled();
+		expect(result).toEqual({
+			data: ["loader-a", undefined],
+			errorMessage: undefined,
+		});
+	});
+
 	it("reports non-Error client loader failures using string conversion", async () => {
 		const consoleErrorSpy = vi
 			.spyOn(console, "error")

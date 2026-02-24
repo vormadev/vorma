@@ -38,6 +38,7 @@ export {
 	type RouteOutletStoreState,
 } from "./src/ui/route_outlet_runtime.ts";
 export {
+	registerTypedAdapterClientLoader,
 	resolveTypedAdapterIndexedDataForPattern,
 	resolveTypedAdapterIndexedDataForPatternOrRouteProps,
 	type VormaTypedAdapterAddClientLoaderProps,
@@ -49,4 +50,9 @@ export {
 	type TypedAdapterLinkDefaultProps,
 	type TypedAdapterLinkProps,
 } from "./src/ui/typed_adapter_link_props.ts";
-export { mergeTypedAdapterLinkPropsWithDefaults } from "./src/ui/typed_adapter_link_runtime.ts";
+export {
+	mergeTypedAdapterLinkPropsWithDefaults,
+	navigationInternalLinkPropKeysForAnchors,
+	resolveTypedAdapterLinkWithDefaults,
+	stripNavigationInternalLinkPropsForAnchor,
+} from "./src/ui/typed_adapter_link_runtime.ts";

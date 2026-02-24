@@ -1,6 +1,6 @@
 import { serializeToSearchParams } from "vorma/kit/json";
-import { resolveRequestBodyForTransport } from "../platform/request_body.ts";
 import type { SubmitOptions } from "../client.ts";
+import { resolveRequestBodyForTransport } from "../platform/request_body.ts";
 
 export type VormaAppConfig = {
 	actionsRouterMountRoot: string;
@@ -264,6 +264,78 @@ function encodeSplatValues(splatValues: Array<string>): string {
 	return splatValues.map((segment) => encodeURIComponent(segment)).join("/");
 }
 
+function resolveRequiredDynamicParamKeysForPattern(props: {
+	pattern: string;
+	dynamicParamPrefixRune: string;
+}): Array<string> {
+	const requiredDynamicParamKeys: Array<string> = [];
+	const dynamicParamRegex = new RegExp(
+		`(?:^|/)${escapeRegex(props.dynamicParamPrefixRune)}([^/]+)(?=/|$)`,
+		"g",
+	);
+	let dynamicParamMatch: RegExpExecArray | null = dynamicParamRegex.exec(
+		props.pattern,
+	);
+	while (dynamicParamMatch) {
+		const dynamicParamKey = dynamicParamMatch[1];
+		if (
+			typeof dynamicParamKey === "string" &&
+			!requiredDynamicParamKeys.includes(dynamicParamKey)
+		) {
+			requiredDynamicParamKeys.push(dynamicParamKey);
+		}
+		dynamicParamMatch = dynamicParamRegex.exec(props.pattern);
+	}
+	return requiredDynamicParamKeys;
+}
+
+function hasRequiredSplatSegmentToken(props: {
+	pattern: string;
+	splatSegmentRune: string;
+}): boolean {
+	const splatTokenRegex = new RegExp(
+		`(?:^|/)${escapeRegex(props.splatSegmentRune)}(?=/|$)`,
+	);
+	return splatTokenRegex.test(props.pattern);
+}
+
+function assertPathResolutionInputsMatchPatternOrThrow(props: {
+	pattern: string;
+	params: Record<string, unknown> | undefined;
+	splatValues: Array<string> | undefined;
+	dynamicParamPrefixRune: string;
+	splatSegmentRune: string;
+}): void {
+	const requiredDynamicParamKeys = resolveRequiredDynamicParamKeysForPattern({
+		pattern: props.pattern,
+		dynamicParamPrefixRune: props.dynamicParamPrefixRune,
+	});
+	if (requiredDynamicParamKeys.length > 0) {
+		const providedParams = props.params ?? {};
+		const unresolvedDynamicParamKeys = requiredDynamicParamKeys.filter(
+			(requiredDynamicParamKey) =>
+				!(requiredDynamicParamKey in providedParams),
+		);
+		if (unresolvedDynamicParamKeys.length > 0) {
+			throw new Error(
+				`Missing required route params for pattern "${props.pattern}": ${unresolvedDynamicParamKeys.join(", ")}`,
+			);
+		}
+	}
+
+	if (
+		hasRequiredSplatSegmentToken({
+			pattern: props.pattern,
+			splatSegmentRune: props.splatSegmentRune,
+		}) &&
+		!props.splatValues
+	) {
+		throw new Error(
+			`Missing required splat values for pattern "${props.pattern}"`,
+		);
+	}
+}
+
 export function resolveVormaPath(input: ResolvePathInput): string {
 	const { props, vormaAppConfig } = input;
 	let path = props.pattern;
@@ -275,6 +347,14 @@ export function resolveVormaPath(input: ResolvePathInput): string {
 		dynamicParamPrefixRune = vormaAppConfig.loadersDynamicRune;
 		splatSegmentRune = vormaAppConfig.loadersSplatRune;
 	}
+
+	assertPathResolutionInputsMatchPatternOrThrow({
+		pattern: props.pattern,
+		params: props.params,
+		splatValues: props.splatValues,
+		dynamicParamPrefixRune,
+		splatSegmentRune,
+	});
 
 	if ("params" in props && props.params) {
 		for (const [key, value] of Object.entries(props.params)) {
