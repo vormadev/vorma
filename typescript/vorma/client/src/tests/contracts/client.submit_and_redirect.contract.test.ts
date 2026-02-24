@@ -1006,7 +1006,7 @@ describe("client submit/redirect contracts", () => {
 		expect(window.location.hash).toBe("#details");
 	});
 
-	it("re-fetches server data for submit redirects to the current path", async () => {
+	it("does not re-follow submit redirects to the current path", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/after-submit");
 		document.title = "Before Submit";
@@ -1022,22 +1022,14 @@ describe("client submit/redirect contracts", () => {
 					{},
 					{ headers: { "X-Client-Redirect": "/after-submit" } },
 				),
-			)
-			.mockResolvedValueOnce(
-				createRouteDataResponse({
-					title: { dangerousInnerHTML: "After Submit Fresh" },
-				}),
 			);
 
 		const result = await api.submit("/api/action", { method: "POST" });
 		await vi.runAllTimersAsync();
 
-		expect(result).toEqual({ success: true, data: undefined });
-		expect(fetchSpy).toHaveBeenCalledTimes(2);
-		const secondFetchURL = fetchSpy.mock.calls[1]?.[0] as URL;
-		expect(secondFetchURL.pathname).toBe("/after-submit");
-		expect(secondFetchURL.searchParams.get("vorma_json")).toBeTruthy();
-		expect(document.title).toBe("After Submit Fresh");
+		expect(result.success).toBe(true);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(document.title).toBe("Before Submit");
 	});
 
 	it("returns explicit error when submit soft redirect navigation fails", async () => {

@@ -2,15 +2,14 @@ import {
 	getHrefDetails,
 	resolveAbsoluteHrefWithOptionalSearchAndHash,
 } from "vorma/kit/url";
-import { navigationStateManager, vormaNavigate } from "../client.ts";
-import { hasSameNavigationTarget } from "../platform/url.ts";
-import { saveScrollState } from "../platform/scroll.ts";
+import { navigationStateManager } from "../client.ts";
 import { logError } from "../platform/safety.ts";
+import { hasSameNavigationTarget } from "../platform/url.ts";
 import {
 	type ClickNavigationOptions,
 	type LinkOnClickCallbacks,
-	classifyEligibleAnchorTarget,
 	getEligibleInternalAnchorDetails,
+	navigateEligibleInternalAnchorClick,
 } from "./links_click_lifecycle.ts";
 
 function findIdlePrefetchNavigationByDataTarget(
@@ -74,7 +73,6 @@ function buildPrefetchTargetHref(props: {
 
 async function handlePrefetchClick<E extends Event>(props: {
 	event: E;
-	relativeURL: string;
 	prefetchStarted: boolean;
 	clearPendingTimer: () => void;
 	callbacks: LinkOnClickCallbacks<E>;
@@ -82,7 +80,6 @@ async function handlePrefetchClick<E extends Event>(props: {
 }): Promise<void> {
 	const {
 		event,
-		relativeURL,
 		prefetchStarted,
 		clearPendingTimer,
 		callbacks,
@@ -91,33 +88,18 @@ async function handlePrefetchClick<E extends Event>(props: {
 	const anchorDetails = getEligibleInternalAnchorDetails(event);
 	if (!anchorDetails) return;
 
-	const targetType = classifyEligibleAnchorTarget(anchorDetails);
-	if (targetType === "same-document-noop") {
-		event.preventDefault();
-		clearPendingTimer();
-		return;
-	}
-
-	if (targetType === "hash-change") {
-		clearPendingTimer();
-		saveScrollState();
-		return;
-	}
-
-	event.preventDefault();
 	clearPendingTimer();
-
-	if (callbacks.beforeBegin && !prefetchStarted) {
-		await callbacks.beforeBegin(event);
-	}
-
-	if (callbacks.beforeRender) {
-		await callbacks.beforeRender(event);
-	}
-	await vormaNavigate(relativeURL, navigationOptions);
-	if (callbacks.afterRender) {
-		await callbacks.afterRender(event);
-	}
+	await navigateEligibleInternalAnchorClick({
+		event,
+		anchorDetails,
+		beforeBegin: callbacks.beforeBegin,
+		beforeRender: callbacks.beforeRender,
+		afterRender: callbacks.afterRender,
+		scrollToTop: navigationOptions.scrollToTop,
+		replace: navigationOptions.replace,
+		state: navigationOptions.state,
+		shouldRunBeforeBegin: !prefetchStarted,
+	});
 }
 
 export type CreatePrefetchHandlersInput<E extends Event> =
@@ -203,7 +185,6 @@ export function createPrefetchHandlers<E extends Event>(
 	async function onClick(event: E): Promise<void> {
 		await handlePrefetchClick({
 			event,
-			relativeURL,
 			prefetchStarted,
 			clearPendingTimer,
 			callbacks: {

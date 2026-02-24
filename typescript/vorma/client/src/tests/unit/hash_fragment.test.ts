@@ -3,7 +3,9 @@ import {
 	resolveAbsoluteHref,
 	resolveAbsoluteHrefWithOptionalSearchAndHash,
 } from "vorma/kit/url";
+import { VORMA_SYMBOL } from "../../app/context.ts";
 import {
+	classifyNavigationTargetAgainstCurrentLocation,
 	findMapEntryByNavigationTarget,
 	hasSameDataTarget,
 	hasSameNavigationTarget,
@@ -16,7 +18,6 @@ import {
 	normalizedHashFragmentFromHref,
 	resolvePublicHref,
 } from "../../platform/url.ts";
-import { VORMA_SYMBOL } from "../../app/context.ts";
 
 function setPublicHrefResolutionBase(props: {
 	viteDevURL: string;
@@ -217,6 +218,26 @@ describe("hash fragment helpers", () => {
 		expect(
 			isSameDocumentLocation({ targetHref: "/same-doc?mode=2#~" }),
 		).toBe(false);
+	});
+
+	it("classifies same-document targets as noop, hash-change, or navigate", () => {
+		window.history.replaceState({}, "", "/same-doc?mode=1#~");
+
+		expect(
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=1#%7E",
+			}),
+		).toBe("same-document-noop");
+		expect(
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=1#details",
+			}),
+		).toBe("hash-change");
+		expect(
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=2#details",
+			}),
+		).toBe("navigate");
 	});
 
 	it("preserves absolute module URLs when resolving public hrefs", () => {

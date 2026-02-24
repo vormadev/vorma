@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
+	"github.com/vormadev/vorma/internal/vormaruntime/routeexecution"
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimecore"
@@ -22,7 +23,6 @@ import (
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
-	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/validate"
 	"github.com/vormadev/vorma/lab/tsgen"
@@ -727,40 +727,18 @@ func (v *Vorma) planRouteResultFromTaskResults(
 	inputs routepipeline.RouteDataExecutionInputs,
 	tasksResults *nestedmux.TasksResults,
 ) *routepipeline.RouteResult {
-	mergedResponseProxy := response.MergeProxyResponses(
-		tasksResults.ResponseProxies...)
-	hasRootData := routepipeline.ComputeHasRootData(
-		inputs.MatchResults,
-		tasksResults,
-	)
-
-	loadersData, loadersErrs := v.collectLoadersDataAndErrors(
-		tasksResults,
-		inputs.MatchedPatterns,
-	)
-	outermostErrorIdx := routepipeline.FindFirstErrorIndex(loadersErrs)
-	clientLoaderErrorMessage := ""
-	if outermostErrorIdx != nil {
-		derefErrorIdx := *outermostErrorIdx
-		clientLoaderErrorMessage = v.resolveClientLoaderErrorMessage(
-			loadersErrs[derefErrorIdx],
-			inputs.MatchedPatterns[derefErrorIdx],
-		)
-	}
-
-	return routepipeline.PlanRouteResultFromResolvedTaskOutcomes(
-		routepipeline.RouteStageOnePlannerInput{
-			MatchResults:              inputs.MatchResults,
-			Matches:                   inputs.Matches,
-			MatchedPatterns:           inputs.MatchedPatterns,
-			Cached:                    inputs.Cached,
-			RuntimeSnapshot:           inputs.RuntimeSnapshot,
-			HasRootData:               hasRootData,
-			LoadersData:               loadersData,
-			OutermostLoaderErrorIndex: outermostErrorIdx,
-			ClientLoaderErrorMessage:  clientLoaderErrorMessage,
-			ResponseProxies:           tasksResults.ResponseProxies,
-			MergedResponseProxy:       mergedResponseProxy,
+	return routeexecution.PlanRouteResultFromTaskResults(
+		routeexecution.PlanRouteResultFromTaskResultsInput{
+			ExecutionInputs: inputs,
+			TasksResults:    tasksResults,
+			WarnNilLoaderData: func(pattern string) {
+				v.Log.Warn(
+					"Do not return nil values from loaders unless the underlying type is an empty struct or you are returning an error.",
+					"pattern",
+					pattern,
+				)
+			},
+			ResolveClientLoaderErrorMessage: v.resolveClientLoaderErrorMessage,
 		},
 	)
 }
@@ -770,45 +748,24 @@ func (v *Vorma) prepareRouteDataExecutionInputs(
 	nestedRouter *nestedmux.Router,
 ) (routepipeline.RouteDataExecutionInputs, bool) {
 	v.mu.RLock()
-	runtimeSnapshot := v.captureRuntimeSnapshotLocked()
-
+	runtimeSnapshot := v.captureRuntimeSnapshotLocked().
+		toRoutePipelineSnapshot()
 	matchResults, found := nestedmux.FindMatches(nestedRouter, r)
+	v.mu.RUnlock()
+
 	if !found {
-		v.mu.RUnlock()
 		return routepipeline.RouteDataExecutionInputs{
-			RuntimeSnapshot: runtimeSnapshot.toRoutePipelineSnapshot(),
+			RuntimeSnapshot: runtimeSnapshot,
 		}, false
 	}
 
-	matches := matchResults.Matches
-	v.mu.RUnlock()
-
-	runtimePipelineSnapshot := runtimeSnapshot.toRoutePipelineSnapshot()
-	matchedPatterns := routepipeline.CollectMatchedPatterns(matches)
-	cacheKey := routepipeline.BuildRouteDataCacheKey(
-		matches,
-		runtimePipelineSnapshot.IsDev,
-		runtimePipelineSnapshot.BuildID,
-		runtimePipelineSnapshot.RouteDataSnapshotVersion,
-	)
-	cached := routepipeline.LoadOrBuildCachedItemSubset(
-		cacheKey,
-		matches,
-		runtimePipelineSnapshot.Paths,
-		runtimePipelineSnapshot.ClientEntryDeps,
-		runtimePipelineSnapshot.IsDev,
-		runtimePipelineSnapshot.RouteDataSnapshotVersion,
-		runtimePipelineSnapshot.RouteDataCache,
-		v.isRouteDataSnapshotVersionCurrent,
-	)
-
-	return routepipeline.RouteDataExecutionInputs{
-		MatchResults:    matchResults,
-		Matches:         matches,
-		MatchedPatterns: matchedPatterns,
-		Cached:          cached,
-		RuntimeSnapshot: runtimePipelineSnapshot,
-	}, true
+	return routeexecution.BuildExecutionInputsFromMatchResults(
+		routeexecution.BuildExecutionInputsFromMatchResultsInput{
+			MatchResults:             matchResults,
+			RuntimeSnapshot:          runtimeSnapshot,
+			IsSnapshotVersionCurrent: v.isRouteDataSnapshotVersionCurrent,
+		},
+	), true
 }
 
 func (v *Vorma) isRouteDataSnapshotVersionCurrent(
@@ -817,31 +774,6 @@ func (v *Vorma) isRouteDataSnapshotVersionCurrent(
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	return v._routeDataSnapshotVersion == expectedSnapshotVersion
-}
-
-func (v *Vorma) collectLoadersDataAndErrors(
-	tasksResults *nestedmux.TasksResults,
-	matchedPatterns []string,
-) ([]any, []error) {
-	loadersData, loadersErrs := routepipeline.CollectLoadersDataAndErrors(
-		tasksResults,
-	)
-	for i := range loadersData {
-		result := tasksResults.Slice[i]
-		if result.RanTask() && loadersErrs[i] == nil {
-			shouldWarn := reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(
-				loadersData[i],
-			)
-			if shouldWarn {
-				v.Log.Warn(
-					"Do not return nil values from loaders unless the underlying type is an empty struct or you are returning an error.",
-					"pattern",
-					matchedPatterns[i],
-				)
-			}
-		}
-	}
-	return loadersData, loadersErrs
 }
 
 func (v *Vorma) resolveClientLoaderErrorMessage(

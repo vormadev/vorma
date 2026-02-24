@@ -337,6 +337,62 @@ describe("redirects internal defensive branches", () => {
 			"redirected fetch response URL has invalid redirect target",
 		);
 	});
+
+	it("short-circuits same-target X-Client-Redirect headers to did redirect data", async () => {
+		window.history.replaceState({}, "", "/header-same-target#~");
+		const { redirectsModule } = await loadRedirectModules();
+		const response = new Response(
+			JSON.stringify({
+				ok: true,
+			}),
+			{
+				status: 200,
+				headers: {
+					"X-Client-Redirect": "/header-same-target#%7E",
+				},
+			},
+		);
+		vi.spyOn(window, "fetch").mockResolvedValue(response);
+
+		const result = await redirectsModule.handleRedirects({
+			abortController: new AbortController(),
+			url: new URL("http://localhost:3000/start"),
+		});
+
+		expect(result.redirectData).toMatchObject({
+			status: "did",
+		});
+		expect(result.response).toBe(response);
+	});
+
+	it("does not short-circuit same-target X-Vorma-Reload headers", async () => {
+		window.history.replaceState({}, "", "/header-same-target-reload#~");
+		const { redirectsModule } = await loadRedirectModules();
+		const response = new Response(
+			JSON.stringify({
+				ok: true,
+			}),
+			{
+				status: 200,
+				headers: {
+					"X-Vorma-Reload": "/header-same-target-reload#%7E",
+				},
+			},
+		);
+		vi.spyOn(window, "fetch").mockResolvedValue(response);
+
+		const result = await redirectsModule.handleRedirects({
+			abortController: new AbortController(),
+			url: new URL("http://localhost:3000/start"),
+		});
+
+		expect(result.redirectData).toMatchObject({
+			status: "should",
+			shouldRedirectStrategy: "hard",
+			href: "/header-same-target-reload#%7E",
+		});
+		expect(result.response).toBe(response);
+	});
 });
 
 function createResponseMarkedAsRedirected(props: { url: string }): Response {

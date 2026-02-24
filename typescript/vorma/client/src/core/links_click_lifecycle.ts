@@ -1,19 +1,9 @@
-import { getAnchorDetailsFromEvent, resolveAbsoluteHref } from "vorma/kit/url";
+import { getAnchorDetailsFromEvent } from "vorma/kit/url";
 import { navigationStateManager } from "../client.ts";
-import {
-	hasNavigationOperationOwnership,
-	type NavigationControl,
-	type NavigationOutcome,
-} from "./navigation/types.ts";
-import {
-	effectuateRedirectDataResult,
-	syncBuildIDFromRedirectData,
-} from "./redirects.ts";
-import { saveScrollState } from "../platform/scroll.ts";
 import { logError } from "../platform/safety.ts";
 import {
-	isSameDocumentHashChange,
-	isSameDocumentLocation,
+	classifyNavigationTargetAgainstCurrentLocation,
+	type NavigationTargetClassificationAgainstCurrentLocation,
 } from "../platform/url.ts";
 
 type LinkOnClickCallback<E extends Event> = (event: E) => void | Promise<void>;
@@ -42,39 +32,16 @@ export type EligibleInternalAnchorDetails = Exclude<
 	null
 >;
 
-function isJustAHashChange(
-	anchorDetails: EligibleInternalAnchorDetails,
-): boolean {
-	return isSameDocumentHashChange({
-		targetHref: anchorDetails.anchor.href,
-		currentHref: window.location.href,
-	});
-}
-
-function isSameDocumentNoopNavigationTarget(
-	anchorDetails: EligibleInternalAnchorDetails,
-): boolean {
-	return isSameDocumentLocation({
-		targetHref: anchorDetails.anchor.href,
-		currentHref: window.location.href,
-	});
-}
-
 export type EligibleAnchorTargetClassification =
-	| "same-document-noop"
-	| "hash-change"
-	| "navigate";
+	NavigationTargetClassificationAgainstCurrentLocation;
 
 export function classifyEligibleAnchorTarget(
 	anchorDetails: EligibleInternalAnchorDetails,
 ): EligibleAnchorTargetClassification {
-	if (isSameDocumentNoopNavigationTarget(anchorDetails)) {
-		return "same-document-noop";
-	}
-	if (isJustAHashChange(anchorDetails)) {
-		return "hash-change";
-	}
-	return "navigate";
+	return classifyNavigationTargetAgainstCurrentLocation({
+		targetHref: anchorDetails.anchor.href,
+		currentHref: window.location.href,
+	});
 }
 
 export function getEligibleInternalAnchorDetails(
@@ -97,102 +64,53 @@ export function getEligibleInternalAnchorDetails(
 	return anchorDetails;
 }
 
-function doesNavigationEntryBelongToControl(props: {
-	entry: ReturnType<typeof navigationStateManager.getNavigation>;
-	control: NavigationControl;
-}): boolean {
-	const { entry, control } = props;
-	if (!entry) {
-		return false;
+export async function navigateEligibleInternalAnchorClick<E extends Event>(
+	props: LinkOnClickCallbacks<E> & {
+		event: E;
+		anchorDetails: EligibleInternalAnchorDetails;
+		scrollToTop?: boolean;
+		replace?: boolean;
+		state?: unknown;
+		shouldRunBeforeBegin?: boolean;
+	},
+): Promise<void> {
+	const {
+		event,
+		anchorDetails,
+		beforeBegin,
+		beforeRender,
+		afterRender,
+		scrollToTop,
+		replace,
+		state,
+		shouldRunBeforeBegin = true,
+	} = props;
+	const targetType = classifyEligibleAnchorTarget(anchorDetails);
+	const isCrossDocumentNavigation = targetType === "navigate";
+
+	event.preventDefault();
+
+	if (isCrossDocumentNavigation && shouldRunBeforeBegin) {
+		await beforeBegin?.(event);
+	}
+	if (isCrossDocumentNavigation) {
+		await beforeRender?.(event);
 	}
 
-	return hasNavigationOperationOwnership({
-		entry,
-		expectedOperationID: control.operationID,
-	});
-}
-
-function getCurrentNavigationEntryForControl(props: {
-	targetUrl: string;
-	control: NavigationControl;
-}): ReturnType<typeof navigationStateManager.getNavigation> {
-	const { targetUrl, control } = props;
-	const currentEntry = navigationStateManager.getNavigation(targetUrl);
-	if (
-		!doesNavigationEntryBelongToControl({
-			entry: currentEntry,
-			control,
-		})
-	) {
-		return undefined;
-	}
-
-	return currentEntry;
-}
-
-async function handleLinkNavigationOutcome<E extends Event>(props: {
-	event: E;
-	outcome: NavigationOutcome;
-	targetUrl: string;
-	control: NavigationControl;
-	callbacks: LinkLifecycleCallbacks<E>;
-}): Promise<void> {
-	const { event, outcome, targetUrl, control, callbacks } = props;
-	const currentEntry = getCurrentNavigationEntryForControl({
-		targetUrl,
-		control,
-	});
-	if (!currentEntry) {
-		return;
-	}
-
-	if (outcome.type === "aborted") {
-		navigationStateManager.removeNavigation(targetUrl);
-		return;
-	}
-
-	if (outcome.type === "redirect") {
-		await callbacks.beforeRender?.(event);
-		if (
-			!getCurrentNavigationEntryForControl({
-				targetUrl,
-				control,
-			})
-		) {
-			return;
+	try {
+		const navigationResult = await navigationStateManager.navigate({
+			href: anchorDetails.anchor.href,
+			navigationType: "userNavigation",
+			scrollToTop,
+			replace,
+			state,
+		});
+		if (isCrossDocumentNavigation && navigationResult.didNavigate) {
+			await afterRender?.(event);
 		}
-
-		syncBuildIDFromRedirectData(outcome.redirectData);
-		navigationStateManager.removeNavigation(targetUrl);
-		const redirectResult = await effectuateRedirectDataResult(
-			outcome.redirectData,
-			outcome.props.redirectCount || 0,
-			outcome.props,
-		);
-		if (redirectResult?.status !== "did") {
-			return;
-		}
-		await callbacks.afterRender?.(event);
-		return;
+	} catch (error) {
+		logError("Link navigation failed", error);
 	}
-
-	await callbacks.beforeRender?.(event);
-	const currentEntryAfterBeforeRender = getCurrentNavigationEntryForControl({
-		targetUrl,
-		control,
-	});
-	if (!currentEntryAfterBeforeRender) {
-		return;
-	}
-
-	await navigationStateManager.processSuccessfulNavigation(
-		outcome,
-		currentEntryAfterBeforeRender,
-	);
-	if (currentEntryAfterBeforeRender.phase !== "complete") {
-		return;
-	}
-	await callbacks.afterRender?.(event);
 }
 
 export function createLinkOnClickFn<E extends Event>(
@@ -206,56 +124,15 @@ export function createLinkOnClickFn<E extends Event>(
 		const anchorDetails = getEligibleInternalAnchorDetails(event);
 		if (!anchorDetails) return;
 
-		const targetType = classifyEligibleAnchorTarget(anchorDetails);
-		if (targetType === "same-document-noop") {
-			event.preventDefault();
-			return;
-		}
-		if (targetType === "hash-change") {
-			saveScrollState();
-			return;
-		}
-
-		const { anchor } = anchorDetails;
-		event.preventDefault();
-		await callbacks.beforeBegin?.(event);
-
-		const control = navigationStateManager.beginNavigation({
-			href: anchor.href,
-			navigationType: "userNavigation",
+		await navigateEligibleInternalAnchorClick({
+			event,
+			anchorDetails,
+			beforeBegin: callbacks.beforeBegin,
+			beforeRender: callbacks.beforeRender,
+			afterRender: callbacks.afterRender,
 			scrollToTop: callbacks.scrollToTop,
 			replace: callbacks.replace,
 			state: callbacks.state,
-		});
-		let outcome: NavigationOutcome;
-		try {
-			outcome = await control.promise;
-		} catch (error) {
-			const targetUrl = resolveAbsoluteHref({ href: anchor.href });
-			const currentEntry =
-				navigationStateManager.getNavigation(targetUrl);
-			if (
-				doesNavigationEntryBelongToControl({
-					entry: currentEntry,
-					control,
-				})
-			) {
-				navigationStateManager.removeNavigation(targetUrl);
-			}
-			logError("Link navigation failed", error);
-			return;
-		}
-
-		const targetUrl = resolveAbsoluteHref({ href: anchor.href });
-		await handleLinkNavigationOutcome({
-			event,
-			outcome,
-			targetUrl,
-			control,
-			callbacks: {
-				beforeRender: callbacks.beforeRender,
-				afterRender: callbacks.afterRender,
-			},
 		});
 	};
 }

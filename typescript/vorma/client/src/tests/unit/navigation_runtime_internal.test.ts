@@ -2020,7 +2020,7 @@ describe("navigation runtime success-processing defensive branches", () => {
 		}
 	});
 
-	it("commits same-document hash-only navigations without fetch and resolves intent", async () => {
+	it("commits same-document hash-only navigations without fetch and without resolving freshness intent", async () => {
 		window.history.replaceState({}, "", "/intent-resolution-hash");
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
@@ -2039,7 +2039,29 @@ describe("navigation runtime success-processing defensive branches", () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 		expect(window.location.pathname).toBe("/intent-resolution-hash");
 		expect(window.location.hash).toBe("#details");
-		expect(onNavigationIntentResolved).toHaveBeenCalledTimes(1);
+		expect(onNavigationIntentResolved).not.toHaveBeenCalled();
+	});
+
+	it("treats programmatic same-document no-op targets as no-op without fetch", async () => {
+		window.history.replaceState({}, "", "/same-doc-noop#~");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(new Response("unused"));
+		const onNavigationIntentResolved = vi.fn();
+		const runtime = createNavigationRuntime({
+			onNavigationIntentResolved,
+		});
+
+		const result = await runtime.navigate({
+			href: "/same-doc-noop#%7E",
+			navigationType: "userNavigation",
+		});
+
+		expect(result).toEqual({ didNavigate: false });
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(window.location.pathname).toBe("/same-doc-noop");
+		expect(window.location.hash).toBe("#~");
+		expect(onNavigationIntentResolved).not.toHaveBeenCalled();
 	});
 
 	it("does not resolve navigation intent for stale successful completions", async () => {

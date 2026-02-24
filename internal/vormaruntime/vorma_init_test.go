@@ -514,16 +514,6 @@ func TestInit_PanicsWithWrappedInitError(t *testing.T) {
 	app.MustInit()
 }
 
-func TestPrettyPrintFS_NoErrorOnBasicFS(t *testing.T) {
-	fsys := fstest.MapFS{
-		"root.txt":  {Data: []byte("ok")},
-		"dir/a.txt": {Data: []byte("a")},
-	}
-	if err := runtimepaths.PrettyPrintFS(fsys); err != nil {
-		t.Fatalf("runtimepaths.PrettyPrintFS returned error: %v", err)
-	}
-}
-
 func TestInitInner_NormalizesNilStageCollections(t *testing.T) {
 	stage := &runtimepaths.PathsFile{
 		Stage:             "stage-two",

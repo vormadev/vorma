@@ -1154,6 +1154,40 @@ describe("client loading/focus contracts", () => {
 		}
 	});
 
+	it("does not reset focus stale-time window for hash-only programmatic navigations", async () => {
+		const api = await loadClientAPI();
+		const {
+			getLastTriggeredNavOrRevalidateTimestampMS:
+				getLastTriggeredTimestamp,
+		} = await import("../../client.ts");
+		window.history.replaceState({}, "", "/focus-stale-hash-only");
+		const timestampBeforeHashNavigation = getLastTriggeredTimestamp();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		await vi.advanceTimersByTimeAsync(10);
+		await api.vormaNavigate("/focus-stale-hash-only#details");
+		await vi.runAllTimersAsync();
+
+		const timestampAfterHashNavigation = getLastTriggeredTimestamp();
+		expect(timestampAfterHashNavigation).toBe(
+			timestampBeforeHashNavigation,
+		);
+		expect(fetchSpy).toHaveBeenCalledTimes(0);
+
+		const cleanup = api.revalidateOnWindowFocus({ staleTimeMS: 20 });
+		try {
+			await vi.advanceTimersByTimeAsync(25);
+			window.dispatchEvent(new Event("focus"));
+			await vi.advanceTimersByTimeAsync(30);
+			await vi.runAllTimersAsync();
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("does not advance focus stale-time timestamp for aborted navigations", async () => {
 		const api = await loadClientAPI();
 		const {

@@ -34,7 +34,7 @@ describe("client navigation mode contracts", () => {
 			.spyOn(window, "fetch")
 			.mockResolvedValue(createRouteDataResponse());
 
-		window.history.replaceState({}, "", "/back-target");
+		window.history.replaceState({}, "", "/back-origin");
 
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
@@ -96,6 +96,28 @@ describe("client navigation mode contracts", () => {
 		expect(secondFetchURL.href).toContain("/redirected?vorma_json=1");
 		expect(window.location.pathname).toBe("/redirected");
 		expect(document.title).toBe("Redirected Page");
+	});
+
+	it("does not re-follow X-Client-Redirect targets that are same-document current locations", async () => {
+		window.history.replaceState({}, "", "/redirect-current#~");
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse(
+				{},
+				{
+					headers: {
+						"X-Client-Redirect": "/redirect-current#%7E",
+					},
+				},
+			),
+		);
+
+		await api.vormaNavigate("/redirect-start");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(window.location.pathname).toBe("/redirect-current");
+		expect(window.location.hash).toBe("#~");
 	});
 
 	it("performs hard redirect for external navigation redirect targets", async () => {
@@ -350,6 +372,35 @@ describe("client navigation mode contracts", () => {
 				__scrollState: { hash: "section-a" },
 			}),
 		);
+
+		removeRouteChangeListener();
+	});
+
+	it("treats programmatic same-document no-op targets as no-op without fetch", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/hash-noop#~");
+		const history = api.getHistoryInstance();
+		const pushSpy = vi.spyOn(history, "push");
+		const replaceSpy = vi.spyOn(history, "replace");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const routeChangeDetails: Array<unknown> = [];
+		const removeRouteChangeListener = api.addRouteChangeListener(
+			(event) => {
+				routeChangeDetails.push(event.detail);
+			},
+		);
+
+		await api.vormaNavigate("/hash-noop#%7E");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(pushSpy).not.toHaveBeenCalled();
+		expect(replaceSpy).not.toHaveBeenCalled();
+		expect(window.location.pathname).toBe("/hash-noop");
+		expect(window.location.hash).toBe("#~");
+		expect(routeChangeDetails).toEqual([]);
 
 		removeRouteChangeListener();
 	});

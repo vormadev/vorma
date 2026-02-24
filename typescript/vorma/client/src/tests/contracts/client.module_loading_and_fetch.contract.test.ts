@@ -490,7 +490,7 @@ describe("client module-loading and fetch contracts", () => {
 		prefetchHandlers?.stop();
 	});
 
-	it("cleans up completed navigation entries so same-url navigation refetches", async () => {
+	it("cleans up completed navigation entries so later distinct navigations still fetch", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
@@ -504,7 +504,7 @@ describe("client module-loading and fetch contracts", () => {
 			isRevalidating: false,
 		});
 
-		await api.vormaNavigate("/cleanup-target");
+		await api.vormaNavigate("/cleanup-target?view=next");
 		await vi.runAllTimersAsync();
 		expect(fetchSpy).toHaveBeenCalledTimes(2);
 	});

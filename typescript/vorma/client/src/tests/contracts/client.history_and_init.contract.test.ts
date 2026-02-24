@@ -243,7 +243,7 @@ describe("client history/init contracts", () => {
 			},
 		} as any);
 
-		window.history.replaceState({}, "", "/to-page");
+		window.history.replaceState({}, "", "/from-page");
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
 			.mockResolvedValue(createRouteDataResponse());

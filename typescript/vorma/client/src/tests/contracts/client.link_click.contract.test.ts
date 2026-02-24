@@ -174,9 +174,11 @@ describe("client link click contracts", () => {
 			.mockResolvedValue(createRouteDataResponse());
 
 		const { event } = createClickEvent("/current-page#section");
+		const preventDefault = vi.spyOn(event, "preventDefault");
 		const onClick = api.__makeLinkOnClickFn({});
 		await onClick(event);
 
+		expect(preventDefault).toHaveBeenCalledTimes(1);
 		expect(fetchSpy).not.toHaveBeenCalled();
 
 		const scrollStateMapRaw = sessionStorage.getItem(
@@ -201,7 +203,7 @@ describe("client link click contracts", () => {
 		const onClick = api.__makeLinkOnClickFn({});
 		await onClick(event);
 
-		expect(preventDefault).not.toHaveBeenCalled();
+		expect(preventDefault).toHaveBeenCalledTimes(1);
 		expect(fetchSpy).not.toHaveBeenCalled();
 
 		const scrollStateMapRaw = sessionStorage.getItem(

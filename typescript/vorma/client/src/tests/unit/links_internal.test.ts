@@ -1,556 +1,213 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getHrefDetails } from "vorma/kit/url";
-import { createPrefetchHandlers as __getPrefetchHandlers } from "../../core/links_prefetch_lifecycle.ts";
-import { createLinkOnClickFn as __makeLinkOnClickFn } from "../../core/links_click_lifecycle.ts";
 import { navigationStateManager } from "../../client.ts";
-import type { NavigationEntry } from "../../core/navigation/types.ts";
-import * as redirectsModule from "../../core/redirects.ts";
+import {
+	createLinkOnClickFn as __makeLinkOnClickFn,
+	getEligibleInternalAnchorDetails,
+	navigateEligibleInternalAnchorClick,
+} from "../../core/links_click_lifecycle.ts";
 
-function createClickEvent(href: string): MouseEvent {
-	const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+function createClickEvent(props: {
+	href: string;
+	target?: string;
+	ctrlKey?: boolean;
+}): { event: MouseEvent; anchor: HTMLAnchorElement } {
+	const event = new MouseEvent("click", {
+		bubbles: true,
+		cancelable: true,
+		ctrlKey: props.ctrlKey,
+	});
 	const anchor = document.createElement("a");
-	anchor.href = href;
+	anchor.href = props.href;
+	if (props.target) {
+		anchor.target = props.target;
+	}
+	document.body.appendChild(anchor);
 	Object.defineProperty(event, "target", { value: anchor });
-	return event;
-}
-
-function createIdlePrefetchEntry(targetHref: string): NavigationEntry {
-	return {
-		operationID: 1,
-		control: {
-			abortController: new AbortController(),
-			promise: Promise.resolve({ type: "aborted" }),
-		},
-		type: "prefetch",
-		intent: "none",
-		phase: "fetching",
-		startTime: 0,
-		targetUrl: new URL(targetHref, window.location.href).href,
-		originUrl: window.location.href,
-	};
+	return { event, anchor };
 }
 
 describe("links internal branches", () => {
 	beforeEach(() => {
-		vi.useFakeTimers();
+		window.history.replaceState({}, "", "/");
 		vi.spyOn(console, "error").mockImplementation(() => {});
 	});
 
 	afterEach(() => {
-		vi.useRealTimers();
 		vi.restoreAllMocks();
 		document.body.innerHTML = "";
 	});
 
-	it("removes the navigation entry when a link click resolves to aborted outcome", async () => {
-		const targetHref = "/aborted-outcome";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-		const controlPromise = Promise.resolve({ type: "aborted" as const });
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: controlPromise,
-			operationID: 1,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
-			operationID: 1,
-			control: {
-				abortController: new AbortController(),
-				promise: controlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl,
-			originUrl: window.location.href,
-		});
-		const removeNavigationSpy = vi
-			.spyOn(navigationStateManager, "removeNavigation")
-			.mockImplementation(() => {});
-
-		const onClick = __makeLinkOnClickFn({});
-		await onClick(createClickEvent(targetHref));
-
-		expect(removeNavigationSpy).toHaveBeenCalledWith(targetUrl);
-	});
-
-	it("does not mutate navigation state for stale aborted link outcomes", async () => {
-		const targetHref = "/aborted-stale-outcome";
-		const staleControlPromise = Promise.resolve({
-			type: "aborted" as const,
-		});
-		const currentControlPromise = Promise.resolve({
-			type: "aborted" as const,
-		});
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: staleControlPromise,
-			operationID: 2,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
-			operationID: 1,
-			control: {
-				abortController: new AbortController(),
-				promise: currentControlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl: new URL(targetHref, window.location.href).href,
-			originUrl: window.location.href,
-		});
-		const removeNavigationSpy = vi.spyOn(
-			navigationStateManager,
-			"removeNavigation",
-		);
-		const processSuccessfulNavigationSpy = vi.spyOn(
-			navigationStateManager,
-			"processSuccessfulNavigation",
-		);
-
-		const onClick = __makeLinkOnClickFn({});
-		await onClick(createClickEvent(targetHref));
-
-		expect(removeNavigationSpy).not.toHaveBeenCalled();
-		expect(processSuccessfulNavigationSpy).not.toHaveBeenCalled();
-	});
-
-	it("uses operation-id ownership for aborted outcomes when promise ownership is stale", async () => {
-		const targetHref = "/aborted-operation-id-owned";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-		const staleControlPromise = Promise.resolve({
-			type: "aborted" as const,
-		});
-		const currentControlPromise = Promise.resolve({
-			type: "aborted" as const,
-		});
-
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: staleControlPromise,
-			operationID: 77,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
-			operationID: 77,
-			control: {
-				abortController: new AbortController(),
-				promise: currentControlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl,
-			originUrl: window.location.href,
-		});
-		const removeNavigationSpy = vi
-			.spyOn(navigationStateManager, "removeNavigation")
-			.mockImplementation(() => {});
-
-		const onClick = __makeLinkOnClickFn({});
-		await onClick(createClickEvent(targetHref));
-
-		expect(removeNavigationSpy).toHaveBeenCalledWith(targetUrl);
-	});
-
-	it("treats mismatched operation-id ownership as stale even when promise matches", async () => {
-		const targetHref = "/aborted-operation-id-stale";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-		const controlPromise = Promise.resolve({
-			type: "aborted" as const,
-		});
-
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: controlPromise,
-			operationID: 99,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
-			operationID: 1,
-			control: {
-				abortController: new AbortController(),
-				promise: controlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl,
-			originUrl: window.location.href,
-		});
-		const removeNavigationSpy = vi.spyOn(
-			navigationStateManager,
-			"removeNavigation",
-		);
-
-		const onClick = __makeLinkOnClickFn({});
-		await onClick(createClickEvent(targetHref));
-
-		expect(removeNavigationSpy).not.toHaveBeenCalled();
-	});
-
-	it("cleans up current failed link navigations without throwing", async () => {
-		const targetHref = "/failed-link-navigation";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-		const controlPromise = Promise.reject(new Error("network failed"));
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: controlPromise,
-			operationID: 1,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
-			operationID: 1,
-			control: {
-				abortController: new AbortController(),
-				promise: controlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl,
-			originUrl: window.location.href,
-		});
-		const removeNavigationSpy = vi
-			.spyOn(navigationStateManager, "removeNavigation")
-			.mockImplementation(() => {});
-
-		const onClick = __makeLinkOnClickFn({});
-		await expect(
-			onClick(createClickEvent(targetHref)),
-		).resolves.toBeUndefined();
-		expect(removeNavigationSpy).toHaveBeenCalledWith(targetUrl);
-	});
-
-	it("does not apply stale redirect side effects when ownership changes during beforeRender callback", async () => {
-		const targetHref = "/redirect-stale-before-render";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-		const redirectHrefDetails = getHrefDetails("/redirect-target");
-		if (!redirectHrefDetails.isHTTP) {
-			throw new Error("Expected HTTP href details for redirect target.");
-		}
-		const redirectOutcome = {
-			type: "redirect" as const,
-			redirectData: {
-				status: "should" as const,
-				shouldRedirectStrategy: "soft" as const,
-				latestBuildID: "1",
-				href: "/redirect-target",
-				hrefDetails: redirectHrefDetails,
-			},
-			props: {
-				href: targetHref,
-				navigationType: "userNavigation" as const,
-			},
-		};
-		const controlPromise = Promise.resolve(redirectOutcome);
-		const staleEntry: NavigationEntry = {
-			operationID: 1,
-			control: {
-				abortController: new AbortController(),
-				promise: controlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl,
-			originUrl: window.location.href,
-		};
-		const replacementEntry: NavigationEntry = {
-			operationID: 2,
-			control: {
-				abortController: new AbortController(),
-				promise: Promise.resolve({ type: "aborted" as const }),
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl,
-			originUrl: window.location.href,
-		};
-		let currentEntry = staleEntry;
-
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: controlPromise,
-			operationID: 1,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
-			() => currentEntry,
-		);
-		const removeNavigationSpy = vi.spyOn(
-			navigationStateManager,
-			"removeNavigation",
-		);
-		const syncBuildIDSpy = vi.spyOn(
-			redirectsModule,
-			"syncBuildIDFromRedirectData",
-		);
-		const effectuateRedirectSpy = vi
-			.spyOn(redirectsModule, "effectuateRedirectDataResult")
-			.mockResolvedValue(null);
-
-		const onClick = __makeLinkOnClickFn({
-			beforeRender: async () => {
-				currentEntry = replacementEntry;
-				await Promise.resolve();
-			},
-		});
-		await onClick(createClickEvent(targetHref));
-
-		expect(removeNavigationSpy).not.toHaveBeenCalled();
-		expect(syncBuildIDSpy).not.toHaveBeenCalled();
-		expect(effectuateRedirectSpy).not.toHaveBeenCalled();
-	});
-
-	it("does not call afterRender when redirect effectuation does not complete", async () => {
-		const targetHref = "/redirect-no-complete-after-render";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-		const redirectHrefDetails = getHrefDetails("/redirect-target");
-		if (!redirectHrefDetails.isHTTP) {
-			throw new Error("Expected HTTP href details for redirect target.");
-		}
-		const redirectOutcome = {
-			type: "redirect" as const,
-			redirectData: {
-				status: "should" as const,
-				shouldRedirectStrategy: "soft" as const,
-				latestBuildID: "1",
-				href: "/redirect-target",
-				hrefDetails: redirectHrefDetails,
-			},
-			props: {
-				href: targetHref,
-				navigationType: "userNavigation" as const,
-			},
-		};
-		const controlPromise = Promise.resolve(redirectOutcome);
-		const entry: NavigationEntry = {
-			operationID: 1,
-			control: {
-				abortController: new AbortController(),
-				promise: controlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl,
-			originUrl: window.location.href,
-		};
-
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: controlPromise,
-			operationID: 1,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
-			() => entry,
-		);
-		vi.spyOn(
-			redirectsModule,
-			"syncBuildIDFromRedirectData",
-		).mockImplementation(() => {});
-		vi.spyOn(
-			redirectsModule,
-			"effectuateRedirectDataResult",
-		).mockResolvedValue(null);
-		const afterRender = vi.fn();
-
-		const onClick = __makeLinkOnClickFn({
-			afterRender,
-		});
-		await onClick(createClickEvent(targetHref));
-
-		expect(afterRender).not.toHaveBeenCalled();
-	});
-
-	it("does not remove navigation when failed link promise is stale", async () => {
-		const targetHref = "/failed-link-navigation-stale";
-		const staleControlPromise = Promise.reject(new Error("network failed"));
-		const currentControlPromise = Promise.resolve({
-			type: "aborted" as const,
-		});
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: staleControlPromise,
-			operationID: 2,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockReturnValue({
-			operationID: 1,
-			control: {
-				abortController: new AbortController(),
-				promise: currentControlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl: new URL(targetHref, window.location.href).href,
-			originUrl: window.location.href,
-		});
-		const removeNavigationSpy = vi.spyOn(
-			navigationStateManager,
-			"removeNavigation",
-		);
-
-		const onClick = __makeLinkOnClickFn({});
-		await expect(
-			onClick(createClickEvent(targetHref)),
-		).resolves.toBeUndefined();
-		expect(removeNavigationSpy).not.toHaveBeenCalled();
-	});
-
-	it("does not call afterRender when successful link processing does not complete", async () => {
-		const targetHref = "/success-not-complete-after-render";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-		const successOutcome = {
-			type: "success" as const,
-			response: new Response("{}", {
-				status: 200,
-				headers: {
-					"X-Vorma-Build-Id": "build-id-1",
-				},
-			}),
-			json: {
-				matchedPatterns: ["/example"],
-				loadersData: [{}],
-				importURLs: ["/entry.js"],
-				exportKeys: ["default"],
-				errorExportKeys: [""],
-				hasRootData: true,
-				params: {},
-				splatValues: [],
-				title: null,
-				metaHeadEls: null,
-				restHeadEls: null,
-				deps: [],
-				cssBundles: [],
-			},
-			preloadPlan: {
-				moduleDependencies: [],
-				cssBundles: [],
-			},
-			waitFnPromise: Promise.resolve({ data: [] }),
-			props: {
-				href: targetHref,
-				navigationType: "userNavigation" as const,
-			},
-		};
-		const controlPromise = Promise.resolve(successOutcome);
-		const entry: NavigationEntry = {
-			operationID: 1,
-			control: {
-				abortController: new AbortController(),
-				promise: controlPromise,
-			},
-			type: "userNavigation",
-			intent: "navigate",
-			phase: "fetching",
-			startTime: Date.now(),
-			targetUrl,
-			originUrl: window.location.href,
-		};
-
-		vi.spyOn(navigationStateManager, "beginNavigation").mockReturnValue({
-			abortController: undefined,
-			promise: controlPromise,
-			operationID: 1,
-		});
-		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
-			() => entry,
-		);
-		vi.spyOn(
-			navigationStateManager,
-			"processSuccessfulNavigation",
-		).mockImplementation(async (_outcome, currentEntry) => {
-			currentEntry.phase = "waiting";
-		});
-		const afterRender = vi.fn();
-
-		const onClick = __makeLinkOnClickFn({
-			afterRender,
-		});
-		await onClick(createClickEvent(targetHref));
-
-		expect(afterRender).not.toHaveBeenCalled();
-	});
-
-	it("finds and aborts idle prefetch entries by same-data-target alias", () => {
-		const aliasEntry = createIdlePrefetchEntry("/prefetch-alias#first");
-		const targetHref = "/prefetch-alias#second";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-
-		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
-			(key) => (key === targetUrl ? undefined : aliasEntry),
-		);
-		vi.spyOn(navigationStateManager, "getNavigations").mockReturnValue(
-			new Map([[aliasEntry.targetUrl, aliasEntry]]),
-		);
-		const removeNavigationSpy = vi
-			.spyOn(navigationStateManager, "removeNavigation")
-			.mockImplementation(() => {});
-
-		const handlers = __getPrefetchHandlers({
-			href: targetHref,
-			delayMs: 0,
-		});
-		handlers?.stop();
-
-		expect(aliasEntry.control.abortController?.signal.aborted).toBe(true);
-		expect(removeNavigationSpy).toHaveBeenCalledWith(aliasEntry.targetUrl);
-	});
-
-	it("does not begin navigation when click event has no eligible anchor details", async () => {
-		const beginNavigationSpy = vi.spyOn(
-			navigationStateManager,
-			"beginNavigation",
-		);
-		const onClick = __makeLinkOnClickFn({});
-		const event = new MouseEvent("click", {
-			bubbles: true,
-			cancelable: true,
-		});
-		Object.defineProperty(event, "target", {
-			value: document.createElement("div"),
-		});
-
-		await onClick(event);
-
-		expect(beginNavigationSpy).not.toHaveBeenCalled();
-	});
-
-	it("does not schedule duplicate prefetch when idle prefetch is already active", async () => {
-		const targetHref = "/prefetch-already-active";
-		const targetUrl = new URL(targetHref, window.location.href).href;
-		const idlePrefetchEntry = createIdlePrefetchEntry(targetHref);
-
+	it("delegates eligible navigate clicks to navigationStateManager.navigate", async () => {
 		const navigateSpy = vi
 			.spyOn(navigationStateManager, "navigate")
 			.mockResolvedValue({ didNavigate: true });
-		vi.spyOn(navigationStateManager, "getNavigation").mockImplementation(
-			(key) => (key === targetUrl ? idlePrefetchEntry : undefined),
-		);
-		vi.spyOn(navigationStateManager, "getNavigations").mockReturnValue(
-			new Map([[targetUrl, idlePrefetchEntry]]),
-		);
-
-		const handlers = __getPrefetchHandlers({
-			href: targetHref,
-			delayMs: 0,
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
+		const onClick = __makeLinkOnClickFn({
+			beforeBegin,
+			beforeRender,
+			afterRender,
+			scrollToTop: false,
+			replace: true,
+			state: { source: "unit" },
 		});
-		expect(handlers).toBeDefined();
-		if (!handlers) return;
+		const { event } = createClickEvent({ href: "/target" });
+		const preventDefault = vi.spyOn(event, "preventDefault");
 
-		handlers.start(new Event("mouseenter"));
-		await vi.advanceTimersByTimeAsync(1);
-		expect(navigateSpy).toHaveBeenCalledTimes(1);
+		await onClick(event);
 
-		handlers.start(new Event("mouseenter"));
-		await vi.advanceTimersByTimeAsync(1);
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(beforeBegin).toHaveBeenCalledTimes(1);
+		expect(beforeRender).toHaveBeenCalledTimes(1);
+		expect(afterRender).toHaveBeenCalledTimes(1);
+		expect(navigateSpy).toHaveBeenCalledWith({
+			href: "http://localhost:3000/target",
+			navigationType: "userNavigation",
+			scrollToTop: false,
+			replace: true,
+			state: { source: "unit" },
+		});
+		const beforeBeginCallOrder = beforeBegin.mock.invocationCallOrder[0];
+		const beforeRenderCallOrder = beforeRender.mock.invocationCallOrder[0];
+		const afterRenderCallOrder = afterRender.mock.invocationCallOrder[0];
+		if (
+			beforeBeginCallOrder === undefined ||
+			beforeRenderCallOrder === undefined ||
+			afterRenderCallOrder === undefined
+		) {
+			throw new Error(
+				"Expected callback call order values to be defined.",
+			);
+		}
+		expect(beforeBeginCallOrder).toBeLessThan(beforeRenderCallOrder);
+		expect(beforeRenderCallOrder).toBeLessThan(afterRenderCallOrder);
+	});
+
+	it("treats same-document hash changes as runtime-only navigations without link callbacks", async () => {
+		window.history.replaceState({}, "", "/current");
+		const navigateSpy = vi
+			.spyOn(navigationStateManager, "navigate")
+			.mockResolvedValue({ didNavigate: true });
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
+		const onClick = __makeLinkOnClickFn({
+			beforeBegin,
+			beforeRender,
+			afterRender,
+		});
+		const { event } = createClickEvent({ href: "/current#section-a" });
+		const preventDefault = vi.spyOn(event, "preventDefault");
+
+		await onClick(event);
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
 		expect(navigateSpy).toHaveBeenCalledTimes(1);
+		expect(beforeBegin).not.toHaveBeenCalled();
+		expect(beforeRender).not.toHaveBeenCalled();
+		expect(afterRender).not.toHaveBeenCalled();
+	});
+
+	it("treats same-document no-op targets as runtime-only no-op navigations without link callbacks", async () => {
+		window.history.replaceState({}, "", "/current#~");
+		const navigateSpy = vi
+			.spyOn(navigationStateManager, "navigate")
+			.mockResolvedValue({ didNavigate: false });
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
+		const onClick = __makeLinkOnClickFn({
+			beforeBegin,
+			beforeRender,
+			afterRender,
+		});
+		const { event } = createClickEvent({ href: "/current#%7E" });
+		const preventDefault = vi.spyOn(event, "preventDefault");
+
+		await onClick(event);
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(navigateSpy).toHaveBeenCalledTimes(1);
+		expect(beforeBegin).not.toHaveBeenCalled();
+		expect(beforeRender).not.toHaveBeenCalled();
+		expect(afterRender).not.toHaveBeenCalled();
+	});
+
+	it("does not handle ineligible anchor clicks", async () => {
+		const navigateSpy = vi.spyOn(navigationStateManager, "navigate");
+		const onClick = __makeLinkOnClickFn({});
+		const { event } = createClickEvent({
+			href: "/target",
+			target: "_top",
+		});
+		const preventDefault = vi.spyOn(event, "preventDefault");
+
+		await onClick(event);
+
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(navigateSpy).not.toHaveBeenCalled();
+	});
+
+	it("does not call afterRender when runtime navigate reports no commit", async () => {
+		const navigateSpy = vi
+			.spyOn(navigationStateManager, "navigate")
+			.mockResolvedValue({ didNavigate: false });
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
+		const onClick = __makeLinkOnClickFn({
+			beforeBegin,
+			beforeRender,
+			afterRender,
+		});
+		const { event } = createClickEvent({ href: "/target" });
+
+		await onClick(event);
+
+		expect(navigateSpy).toHaveBeenCalledTimes(1);
+		expect(beforeBegin).toHaveBeenCalledTimes(1);
+		expect(beforeRender).toHaveBeenCalledTimes(1);
+		expect(afterRender).not.toHaveBeenCalled();
+	});
+
+	it("swallows runtime navigate rejections and logs errors", async () => {
+		vi.spyOn(navigationStateManager, "navigate").mockRejectedValue(
+			new Error("network failed"),
+		);
+		const consoleErrorSpy = vi.spyOn(console, "error");
+		const onClick = __makeLinkOnClickFn({});
+		const { event } = createClickEvent({ href: "/target" });
+
+		await expect(onClick(event)).resolves.toBeUndefined();
+		expect(consoleErrorSpy).toHaveBeenCalled();
+	});
+
+	it("can skip beforeBegin execution while still navigating for prefetch-started clicks", async () => {
+		const navigateSpy = vi
+			.spyOn(navigationStateManager, "navigate")
+			.mockResolvedValue({ didNavigate: true });
+		const beforeBegin = vi.fn();
+		const beforeRender = vi.fn();
+		const afterRender = vi.fn();
+		const { event } = createClickEvent({ href: "/target" });
+		const anchorDetails = getEligibleInternalAnchorDetails(event);
+		if (!anchorDetails) {
+			throw new Error("Expected eligible internal anchor details.");
+		}
+
+		await navigateEligibleInternalAnchorClick({
+			event,
+			anchorDetails,
+			beforeBegin,
+			beforeRender,
+			afterRender,
+			shouldRunBeforeBegin: false,
+		});
+
+		expect(navigateSpy).toHaveBeenCalledTimes(1);
+		expect(beforeBegin).not.toHaveBeenCalled();
+		expect(beforeRender).toHaveBeenCalledTimes(1);
+		expect(afterRender).toHaveBeenCalledTimes(1);
 	});
 });

@@ -41,3 +41,24 @@
 - [x] Update client-navigation comments/docs for the resolved contract and run
       formatting + Makefile-aligned tests (including dist-focused UI adapter
       tests).
+
+## Second Audit Findings (Current Pass)
+
+- [x] Fix: hash-only programmatic navigations must not advance
+      navigation/revalidation freshness timestamps.
+- [x] Fix: same-target `X-Client-Redirect` handling must short-circuit instead
+      of redirect-looping until max redirects.
+- [x] Refactor: centralize same-document target classification and consume the
+      same logic in link click and non-link programmatic navigation paths.
+- [x] Fix: same-document no-op programmatic navigations should not fetch server
+      route data.
+- [x] Tests: add/adjust coverage for freshness timestamp behavior across
+      hash-only programmatic navigations and focus revalidation.
+- [x] Tests: add coverage for same-target header redirect short-circuit
+      behavior.
+- [x] Tests: add/adjust coverage for programmatic same-document no-op navigation
+      behavior to prevent drift from link semantics.
+- [x] Refactor: remove link-side outcome processing branches and route both
+      direct link clicks and prefetch click navigations through a single shared
+      eligible-anchor navigation executor backed by
+      `navigationStateManager.navigate`.

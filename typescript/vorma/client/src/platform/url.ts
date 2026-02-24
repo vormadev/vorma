@@ -90,19 +90,40 @@ export function hashFragmentFromHref(href: string): string {
 	return hashFragmentFromHash(url.hash);
 }
 
+export type NavigationTargetClassificationAgainstCurrentLocation =
+	| "same-document-noop"
+	| "hash-change"
+	| "navigate";
+
+export function classifyNavigationTargetAgainstCurrentLocation(props: {
+	targetHref: string;
+	currentHref?: string;
+}): NavigationTargetClassificationAgainstCurrentLocation {
+	const { targetHref, currentHref = window.location.href } = props;
+	const sharesDataTarget = hasSameDataTarget({
+		firstHref: targetHref,
+		secondHref: currentHref,
+		baseHref: currentHref,
+	});
+	if (!sharesDataTarget) {
+		return "navigate";
+	}
+
+	const targetHash = normalizedHashFragmentFromHref(targetHref);
+	const currentHash = normalizedHashFragmentFromHref(currentHref);
+	if (targetHash === currentHash) {
+		return "same-document-noop";
+	}
+
+	return "hash-change";
+}
+
 export function isSameDocumentHashChange(props: {
 	targetHref: string;
 	currentHref?: string;
 }): boolean {
-	const { targetHref, currentHref = window.location.href } = props;
 	return (
-		hasSameDataTarget({
-			firstHref: targetHref,
-			secondHref: currentHref,
-			baseHref: currentHref,
-		}) &&
-		normalizedHashFragmentFromHref(targetHref) !==
-			normalizedHashFragmentFromHref(currentHref)
+		classifyNavigationTargetAgainstCurrentLocation(props) === "hash-change"
 	);
 }
 
@@ -110,15 +131,9 @@ export function isSameDocumentLocation(props: {
 	targetHref: string;
 	currentHref?: string;
 }): boolean {
-	const { targetHref, currentHref = window.location.href } = props;
 	return (
-		hasSameDataTarget({
-			firstHref: targetHref,
-			secondHref: currentHref,
-			baseHref: currentHref,
-		}) &&
-		normalizedHashFragmentFromHref(targetHref) ===
-			normalizedHashFragmentFromHref(currentHref)
+		classifyNavigationTargetAgainstCurrentLocation(props) ===
+		"same-document-noop"
 	);
 }
 

@@ -4,10 +4,11 @@ import {
 	type StatusEventDetail,
 } from "../../platform/events.ts";
 import { HistoryManager } from "../../platform/history.ts";
+import { saveScrollState } from "../../platform/scroll.ts";
 import {
+	classifyNavigationTargetAgainstCurrentLocation,
 	hasSameNavigationTarget,
 	hashFragmentFromHref,
-	isSameDocumentHashChange,
 	isSameDocumentLocation,
 } from "../../platform/url.ts";
 import {
@@ -67,25 +68,40 @@ export type CreateNavigationRuntimeOptions = {
 	onNavigationIntentResolved?: () => void;
 };
 
-// Hash-only same-document navigations are a client-side history/scroll commit
-// and must not trigger server route-data fetches.
-function shouldCommitWithoutServerFetchForSameDocumentHashChange(props: {
+type SameDocumentNoFetchNavigationDecision =
+	| "none"
+	| "same-document-noop"
+	| "hash-change";
+
+// Same-document navigation classification is shared with link handling to keep
+// no-fetch behavior consistent across link and programmatic entry points.
+function resolveSameDocumentNoFetchNavigationDecision(props: {
 	navigationProps: NavigateProps;
 	targetUrl: string;
 	currentHref: string;
-}): boolean {
+}): SameDocumentNoFetchNavigationDecision {
 	const { navigationProps, targetUrl, currentHref } = props;
 	if (
 		navigationProps.navigationType === "prefetch" ||
 		navigationProps.navigationType === "revalidation"
 	) {
-		return false;
+		return "none";
 	}
 
-	return isSameDocumentHashChange({
-		targetHref: targetUrl,
-		currentHref,
-	});
+	const targetClassification = classifyNavigationTargetAgainstCurrentLocation(
+		{
+			targetHref: targetUrl,
+			currentHref,
+		},
+	);
+	if (targetClassification === "hash-change") {
+		return "hash-change";
+	}
+	if (targetClassification === "same-document-noop") {
+		return "same-document-noop";
+	}
+
+	return "none";
 }
 
 function commitSameDocumentHashNavigationWithoutServerFetch(props: {
@@ -94,6 +110,7 @@ function commitSameDocumentHashNavigationWithoutServerFetch(props: {
 }): { didNavigate: boolean } {
 	const { navigationProps, targetUrl } = props;
 	const history = HistoryManager.getInstance();
+	saveScrollState();
 	const isSameLocation = isSameDocumentLocation({
 		targetHref: targetUrl,
 		currentHref: window.location.href,
@@ -306,20 +323,22 @@ export function createNavigationRuntime(
 				navigationProps: props,
 				currentHref: window.location.href,
 			});
-			if (
-				shouldCommitWithoutServerFetchForSameDocumentHashChange({
+			const sameDocumentDecision =
+				resolveSameDocumentNoFetchNavigationDecision({
 					navigationProps: props,
 					targetUrl,
 					currentHref: window.location.href,
-				})
-			) {
+				});
+			if (sameDocumentDecision === "hash-change") {
 				const noFetchNavigationResult =
 					commitSameDocumentHashNavigationWithoutServerFetch({
 						navigationProps: props,
 						targetUrl,
 					});
-				onNavigationIntentResolved?.();
 				return noFetchNavigationResult;
+			}
+			if (sameDocumentDecision === "same-document-noop") {
+				return { didNavigate: false };
 			}
 
 			return navigateSinglePass(props);

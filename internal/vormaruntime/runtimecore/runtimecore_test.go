@@ -179,6 +179,70 @@ func TestReplaceParsedPathsForInit_Clones(t *testing.T) {
 	}
 }
 
+func TestCloneRoutePathAndRouteMaps_NilAndDeepCopySemantics(t *testing.T) {
+	if got := CloneRoutePath(nil); got != nil {
+		t.Fatalf("CloneRoutePath(nil) = %#v, want nil", got)
+	}
+
+	originalPaths := map[string]*RoutePath{
+		"/pricing": {
+			OriginalPattern: "/pricing",
+			SrcPath:         "frontend/src/routes/pricing.tsx",
+			OutPath:         "vorma_out/routes/pricing.js",
+			ExportKey:       "Pricing",
+			ErrorExportKey:  "PricingError",
+			Deps:            []string{"vorma_out/chunk-pricing.js"},
+		},
+	}
+
+	clonedPaths := CloneRoutePaths(originalPaths)
+	if got := CloneRoutePaths(nil); got == nil {
+		t.Fatal("CloneRoutePaths(nil) should return a non-nil empty map")
+	}
+
+	originalPaths["/pricing"].SrcPath = "MUTATED_SRC"
+	originalPaths["/pricing"].Deps[0] = "MUTATED_DEP"
+	if got, want := clonedPaths["/pricing"].SrcPath, "frontend/src/routes/pricing.tsx"; got != want {
+		t.Fatalf("cloned SrcPath = %q, want %q", got, want)
+	}
+	if got, want := clonedPaths["/pricing"].Deps[0], "vorma_out/chunk-pricing.js"; got != want {
+		t.Fatalf("cloned Deps[0] = %q, want %q", got, want)
+	}
+
+	if got := CloneRoutePathsOrNil(nil); got != nil {
+		t.Fatalf("CloneRoutePathsOrNil(nil) = %#v, want nil", got)
+	}
+}
+
+func TestCloneStringAndBundleMaps_NilAndDeepCopySemantics(t *testing.T) {
+	if got := CloneStringSliceOrNil(nil); got != nil {
+		t.Fatalf("CloneStringSliceOrNil(nil) = %#v, want nil", got)
+	}
+
+	originalStrings := []string{"one", "two"}
+	clonedStrings := CloneStringSliceOrNil(originalStrings)
+	originalStrings[0] = "MUTATED"
+	if got, want := clonedStrings[0], "one"; got != want {
+		t.Fatalf("cloned string slice first value = %q, want %q", got, want)
+	}
+
+	if got := CloneDepToCSSBundleMapOrEmpty(nil); got == nil {
+		t.Fatal("CloneDepToCSSBundleMapOrEmpty(nil) should return empty map")
+	}
+	if got := CloneDepToCSSBundleMapOrNil(nil); got != nil {
+		t.Fatalf("CloneDepToCSSBundleMapOrNil(nil) = %#v, want nil", got)
+	}
+
+	originalBundleMap := map[string][]string{
+		"vorma_out/main.js": {"vorma_out/main.css"},
+	}
+	clonedBundleMap := CloneDepToCSSBundleMapOrNil(originalBundleMap)
+	originalBundleMap["vorma_out/main.js"][0] = "MUTATED"
+	if got, want := clonedBundleMap["vorma_out/main.js"][0], "vorma_out/main.css"; got != want {
+		t.Fatalf("cloned bundle map first value = %q, want %q", got, want)
+	}
+}
+
 func TestBuildNestedRouterPatternList_Sorted(t *testing.T) {
 	paths := map[string]*RoutePath{
 		"/z": nil,

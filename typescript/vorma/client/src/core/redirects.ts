@@ -155,19 +155,33 @@ function parseHeaderRedirect(props: {
 	latestBuildID: string;
 	shouldRedirectStrategy?: ShouldRedirectData["shouldRedirectStrategy"];
 	normalizeToAbsoluteHref?: boolean;
+	shortCircuitCurrentLocation?: boolean;
 }): RedirectData | null {
 	const headerValue = props.response.headers.get(props.headerName);
 	if (!headerValue) {
 		return null;
 	}
 
-	return buildShouldRedirectFromHref({
+	const shouldRedirectData = buildShouldRedirectFromHref({
 		href: headerValue,
 		latestBuildID: props.latestBuildID,
 		shouldRedirectStrategy: props.shouldRedirectStrategy,
 		normalizeToAbsoluteHref: props.normalizeToAbsoluteHref,
 		source: props.headerName,
 	});
+	if (!props.shortCircuitCurrentLocation) {
+		return shouldRedirectData;
+	}
+
+	const isCurrent = isSameDocumentLocation({
+		targetHref: shouldRedirectData.href,
+		currentHref: window.location.href,
+	});
+	if (isCurrent) {
+		return toDidRedirectData(shouldRedirectData);
+	}
+
+	return shouldRedirectData;
 }
 
 function canIncludeBodyForMethod(method: string | undefined): boolean {
@@ -381,6 +395,7 @@ export async function handleRedirects(props: {
 			headerName: "X-Client-Redirect",
 			latestBuildID,
 			normalizeToAbsoluteHref: true,
+			shortCircuitCurrentLocation: true,
 		});
 	return { redirectData, response: requestFlow.response };
 }

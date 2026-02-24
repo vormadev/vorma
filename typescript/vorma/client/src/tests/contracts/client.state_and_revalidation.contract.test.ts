@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createDeferred,
 	createDeferredFetchCall,
-	createSequencedFetchSpy,
 	createRouteDataResponse,
+	createSequencedFetchSpy,
 	createSignalCapturingNeverFetchSpy,
 	loadClientAPI,
 	setupContractTestSuite,
@@ -211,7 +211,7 @@ describe("client state/revalidation contracts", () => {
 		expect(secondFetchURL.searchParams.get("vorma_json")).toBe("1");
 	});
 
-	it("upgrades a same-target revalidation into navigating status when user navigation starts", async () => {
+	it("keeps same-target revalidation status when user navigation is a same-document no-op", async () => {
 		const api = await loadClientAPI();
 		let resolveFetch: ((value: Response) => void) | undefined;
 		const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(
@@ -234,9 +234,9 @@ describe("client state/revalidation contracts", () => {
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		expect(api.getStatus()).toEqual({
-			isNavigating: true,
+			isNavigating: false,
 			isSubmitting: false,
-			isRevalidating: false,
+			isRevalidating: true,
 		});
 
 		resolveFetch?.(createRouteDataResponse());

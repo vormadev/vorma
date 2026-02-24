@@ -453,10 +453,12 @@ describe("client navigation lifecycle contracts", () => {
 		expect(replaceSpy).not.toHaveBeenCalled();
 	});
 
-	it("replaces history when navigating to the current URL", async () => {
+	it("does not mutate history when navigating to the current URL", async () => {
 		window.history.replaceState({}, "", "/history-same");
 		const api = await loadClientAPI();
-		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
 
 		const history = api.getHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
@@ -465,14 +467,12 @@ describe("client navigation lifecycle contracts", () => {
 		await api.vormaNavigate("/history-same");
 		await vi.runAllTimersAsync();
 
-		expect(replaceSpy).toHaveBeenCalledWith(
-			expect.stringContaining("/history-same"),
-			undefined,
-		);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(replaceSpy).not.toHaveBeenCalled();
 		expect(pushSpy).not.toHaveBeenCalled();
 	});
 
-	it("replaces history when hash target is encoding-equivalent", async () => {
+	it("does not mutate history when hash target is encoding-equivalent", async () => {
 		window.history.replaceState({}, "", "/history-same-hash#~");
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
@@ -484,10 +484,8 @@ describe("client navigation lifecycle contracts", () => {
 		await api.vormaNavigate("/history-same-hash#%7E");
 		await vi.runAllTimersAsync();
 
-		expect(replaceSpy).toHaveBeenCalledWith(
-			expect.stringContaining("/history-same-hash#%7E"),
-			undefined,
-		);
+		expect(window.location.hash).toBe("#~");
+		expect(replaceSpy).not.toHaveBeenCalled();
 		expect(pushSpy).not.toHaveBeenCalled();
 	});
 
@@ -540,7 +538,7 @@ describe("client navigation lifecycle contracts", () => {
 			"__vorma__scrollStateMap",
 			JSON.stringify([["history-to-key", { x: 120, y: 240 }]]),
 		);
-		window.history.replaceState({}, "", "/history-to");
+		window.history.replaceState({}, "", "/history-from");
 
 		await customHistoryListener({
 			action: "POP",
