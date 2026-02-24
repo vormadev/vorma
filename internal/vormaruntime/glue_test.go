@@ -15,6 +15,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/response"
@@ -248,59 +251,59 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 			app.Config.UnresolvedRoutePolicy,
 		)
 	}
-	if app.Config.DevReloadRoutesEndpointPath != DefaultDevReloadRoutesEndpointPath {
+	if app.Config.DevReloadRoutesEndpointPath != runtimeconfig.DefaultDevReloadRoutesEndpointPath {
 		t.Fatalf(
 			"expected default routes reload endpoint path %q, got %q",
-			DefaultDevReloadRoutesEndpointPath,
+			runtimeconfig.DefaultDevReloadRoutesEndpointPath,
 			app.Config.DevReloadRoutesEndpointPath,
 		)
 	}
-	if app.Config.DevReloadTemplateEndpointPath != DefaultDevReloadTemplateEndpointPath {
+	if app.Config.DevReloadTemplateEndpointPath != runtimeconfig.DefaultDevReloadTemplateEndpointPath {
 		t.Fatalf(
 			"expected default template reload endpoint path %q, got %q",
-			DefaultDevReloadTemplateEndpointPath,
+			runtimeconfig.DefaultDevReloadTemplateEndpointPath,
 			app.Config.DevReloadTemplateEndpointPath,
 		)
 	}
-	if app.Config.TemplateDataKeyHeadElements != DefaultTemplateDataKeyHeadElements {
+	if app.Config.TemplateDataKeyHeadElements != runtimeconfig.DefaultTemplateDataKeyHeadElements {
 		t.Fatalf(
 			"expected default head-elements template key %q, got %q",
-			DefaultTemplateDataKeyHeadElements,
+			runtimeconfig.DefaultTemplateDataKeyHeadElements,
 			app.Config.TemplateDataKeyHeadElements,
 		)
 	}
-	if app.Config.TemplateDataKeyBodyScripts != DefaultTemplateDataKeyBodyScripts {
+	if app.Config.TemplateDataKeyBodyScripts != runtimeconfig.DefaultTemplateDataKeyBodyScripts {
 		t.Fatalf(
 			"expected default body-scripts template key %q, got %q",
-			DefaultTemplateDataKeyBodyScripts,
+			runtimeconfig.DefaultTemplateDataKeyBodyScripts,
 			app.Config.TemplateDataKeyBodyScripts,
 		)
 	}
-	if app.Config.TemplateDataKeySSRScript != DefaultTemplateDataKeySSRScript {
+	if app.Config.TemplateDataKeySSRScript != runtimeconfig.DefaultTemplateDataKeySSRScript {
 		t.Fatalf(
 			"expected default SSR-script template key %q, got %q",
-			DefaultTemplateDataKeySSRScript,
+			runtimeconfig.DefaultTemplateDataKeySSRScript,
 			app.Config.TemplateDataKeySSRScript,
 		)
 	}
-	if app.Config.TemplateDataKeySSRScriptHash != DefaultTemplateDataKeySSRScriptHash {
+	if app.Config.TemplateDataKeySSRScriptHash != runtimeconfig.DefaultTemplateDataKeySSRScriptHash {
 		t.Fatalf(
 			"expected default SSR-script-hash template key %q, got %q",
-			DefaultTemplateDataKeySSRScriptHash,
+			runtimeconfig.DefaultTemplateDataKeySSRScriptHash,
 			app.Config.TemplateDataKeySSRScriptHash,
 		)
 	}
-	if app.Config.TemplateDataKeyRootElementID != DefaultTemplateDataKeyRootElementID {
+	if app.Config.TemplateDataKeyRootElementID != runtimeconfig.DefaultTemplateDataKeyRootElementID {
 		t.Fatalf(
 			"expected default root-element-id template key %q, got %q",
-			DefaultTemplateDataKeyRootElementID,
+			runtimeconfig.DefaultTemplateDataKeyRootElementID,
 			app.Config.TemplateDataKeyRootElementID,
 		)
 	}
-	if app.Config.ClientRootElementID != DefaultClientRootElementID {
+	if app.Config.ClientRootElementID != runtimeconfig.DefaultClientRootElementID {
 		t.Fatalf(
 			"expected default client root element id %q, got %q",
-			DefaultClientRootElementID,
+			runtimeconfig.DefaultClientRootElementID,
 			app.Config.ClientRootElementID,
 		)
 	}
@@ -1053,7 +1056,7 @@ func TestInitWithDefaultRouter_Integration(t *testing.T) {
 	if recLoader.Code != http.StatusOK {
 		t.Fatalf("loader status = %d, want %d", recLoader.Code, http.StatusOK)
 	}
-	var loaderData RouteDataFinal
+	var loaderData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recLoader.Body.Bytes(), &loaderData); err != nil {
 		t.Fatalf("decode loader response: %v", err)
 	}
@@ -1145,8 +1148,8 @@ func TestInitWithDefaultRouter_DevReloadEndpointsAreMountedAsActions(
 			t,
 			filepath.Join(
 				fixture.privateDir,
-				VormaOutDirname,
-				VormaPathsStageOneJSONFileName,
+				runtimepaths.VormaOutDirname,
+				runtimepaths.VormaPathsStageOneJSONFileName,
 			),
 			stageNew,
 		)

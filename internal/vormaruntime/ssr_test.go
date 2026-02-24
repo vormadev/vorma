@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/kit/mux"
 )
 
@@ -28,8 +29,8 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 	app := fixture.app
 	app.SetIsDev(true)
 
-	routeData := &RouteDataFinal{
-		RouteDataCore: &RouteDataCore{
+	routeData := &routepipeline.RouteDataFinal{
+		RouteDataCore: &routepipeline.RouteDataCore{
 			OutermostServerError: "",
 			ErrorExportKeys:      []string{"ItemErrorBoundary"},
 			MatchedPatterns:      []string{"/items/:id"},
@@ -38,7 +39,7 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 			ExportKeys:           []string{"default"},
 			HasRootData:          false,
 			Params:               mux.Params{"id": "42"},
-			SplatValues:          SplatValues{"detail"},
+			SplatValues:          []string{"detail"},
 			Deps:                 []string{"vorma_out/chunk-items.js"},
 		},
 		CSSBundles: []string{"vorma_out/chunk-items.css"},
@@ -97,8 +98,8 @@ func TestGetSSRInnerHTML_HashChangesWhenPayloadChanges(t *testing.T) {
 	)
 	app := fixture.app
 
-	base := &RouteDataFinal{
-		RouteDataCore: &RouteDataCore{
+	base := &routepipeline.RouteDataFinal{
+		RouteDataCore: &routepipeline.RouteDataCore{
 			MatchedPatterns: []string{"/"},
 			LoadersData:     []any{map[string]any{"ok": true}},
 			ImportURLs:      []string{"/vorma_out/root.js"},
@@ -106,8 +107,8 @@ func TestGetSSRInnerHTML_HashChangesWhenPayloadChanges(t *testing.T) {
 		},
 		CSSBundles: []string{"vorma_out/root.css"},
 	}
-	mutated := &RouteDataFinal{
-		RouteDataCore: &RouteDataCore{
+	mutated := &routepipeline.RouteDataFinal{
+		RouteDataCore: &routepipeline.RouteDataCore{
 			MatchedPatterns: []string{"/"},
 			LoadersData:     []any{map[string]any{"ok": false}},
 			ImportURLs:      []string{"/vorma_out/root.js"},
@@ -147,7 +148,9 @@ func TestGetSSRInnerHTML_VercelDeploymentIDGate(t *testing.T) {
 	)
 	app := fixture.app
 
-	routeData := &RouteDataFinal{RouteDataCore: &RouteDataCore{}}
+	routeData := &routepipeline.RouteDataFinal{
+		RouteDataCore: &routepipeline.RouteDataCore{},
+	}
 
 	t.Setenv("VERCEL_SKEW_PROTECTION_ENABLED", "true")
 	t.Setenv("VERCEL_DEPLOYMENT_ID", "dep-123")
@@ -204,7 +207,7 @@ func TestGetSSRInnerHTML_NilRouteDataCoreReturnsError(t *testing.T) {
 	)
 	app := fixture.app
 
-	out, err := app.getSSRInnerHTML(&RouteDataFinal{})
+	out, err := app.getSSRInnerHTML(&routepipeline.RouteDataFinal{})
 	if err == nil {
 		t.Fatal("expected error for nil RouteDataCore, got nil")
 	}

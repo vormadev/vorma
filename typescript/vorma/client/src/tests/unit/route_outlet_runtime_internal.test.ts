@@ -40,6 +40,7 @@ import {
 	buildRouteOutletRouteKey,
 	resolveRouteOutletBranchRenderState,
 	shouldRemountRouteOutletComponentMount,
+	syncRouteOutletStoreStateFromRuntime,
 } from "../../ui/route_outlet_runtime.ts";
 
 beforeEach(() => {
@@ -501,5 +502,56 @@ describe("route outlet runtime internals", () => {
 		expect(nextStoreState.routeOutletBranchInputState).toBe(
 			previousStoreState.routeOutletBranchInputState,
 		);
+	});
+
+	it("sync helper skips apply callback when runtime store snapshot is unchanged", () => {
+		const previousStoreState = buildInitialRouteOutletStoreState();
+		const applyNextStoreState = vi.fn();
+
+		const syncedStoreState = syncRouteOutletStoreStateFromRuntime({
+			getCurrentStoreState: () => previousStoreState,
+			applyNextStoreState,
+		});
+
+		expect(syncedStoreState).toBe(previousStoreState);
+		expect(applyNextStoreState).not.toHaveBeenCalled();
+	});
+
+	it("sync helper applies next snapshot when runtime store snapshot changes", () => {
+		const previousStoreState = buildInitialRouteOutletStoreState();
+		const applyNextStoreState = vi.fn();
+
+		getClientRuntimeRenderStateMock.mockReturnValue({
+			loadersData: [{ root: true }, { child: true }],
+			clientLoadersData: [{ client: true }],
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			activeComponents: ["RootComponent", "ChildComponent"],
+			activeErrorBoundary: undefined,
+			importURLs: ["/routes/root.tsx", "/routes/child.tsx"],
+			exportKeys: ["Route", "Route"],
+		});
+		getRouterDataMock.mockReturnValue({
+			buildID: "1",
+			matchedPatterns: ["/", "/child"],
+			splatValues: [],
+			params: {},
+			rootData: { root: true },
+		});
+		getRuntimeLocationStateMock.mockReturnValue({
+			pathname: "/",
+			search: "",
+			hash: "",
+			state: previousStoreState.location.state,
+		});
+
+		const syncedStoreState = syncRouteOutletStoreStateFromRuntime({
+			getCurrentStoreState: () => previousStoreState,
+			applyNextStoreState,
+		});
+
+		expect(syncedStoreState).not.toBe(previousStoreState);
+		expect(applyNextStoreState).toHaveBeenCalledTimes(1);
+		expect(applyNextStoreState).toHaveBeenCalledWith(syncedStoreState);
 	});
 });

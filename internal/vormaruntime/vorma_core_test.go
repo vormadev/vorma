@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/lab/tsgen"
@@ -187,7 +188,7 @@ func TestSetIsDev_InvalidatesRouteDataCacheWhenModeChanges(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
 
-	cacheKey := app.buildRouteDataCacheKey(
+	cacheKey := routepipeline.BuildRouteDataCacheKey(
 		nil,
 		app.IsDevMode(),
 		app.BuildID(),
@@ -196,7 +197,7 @@ func TestSetIsDev_InvalidatesRouteDataCacheWhenModeChanges(t *testing.T) {
 	putRouteDataCacheEntryForTest(
 		app,
 		cacheKey,
-		&cachedItemSubset{ImportURLs: []string{"/cached.js"}},
+		&routepipeline.CachedItemSubset{ImportURLs: []string{"/cached.js"}},
 	)
 
 	snapshotVersionBefore := routeDataSnapshotVersionForTest(app)
@@ -313,7 +314,7 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 		)
 	}
 
-	var oldData RouteDataFinal
+	var oldData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
@@ -360,7 +361,7 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 		)
 	}
 
-	var newData RouteDataFinal
+	var newData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}

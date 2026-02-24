@@ -11,11 +11,11 @@ import {
 import { Dynamic, render as renderSolid } from "solid-js/web";
 import {
 	buildInitialRouteOutletStoreState,
-	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
 	createRouteOutletRuntimeListenerInitializer,
 	resolveRouteOutletBranchRenderState,
 	shouldRemountRouteOutletComponentMount,
+	syncRouteOutletStoreStateFromRuntime,
 	type RouteOutletBranchInputState,
 	type RouteOutletStoreState,
 } from "vorma/client/__internal";
@@ -48,14 +48,16 @@ const location = () => locationState();
 
 export { location };
 
-function syncStoreState(): void {
-	const previousStoreState: StoreState = {
+function getCurrentStoreState(): StoreState {
+	return {
 		navigation: navigationState(),
 		routeOutletBranchInputState: routeOutletBranchInputStateSignal(),
 		location: locationState(),
 	};
-	const nextStoreState =
-		buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+}
+
+function applyNextStoreState(nextStoreState: StoreState): void {
+	const previousStoreState = getCurrentStoreState();
 	if (nextStoreState !== previousStoreState) {
 		if (nextStoreState.navigation !== previousStoreState.navigation) {
 			setNavigationState(nextStoreState.navigation);
@@ -72,6 +74,13 @@ function syncStoreState(): void {
 			setLocationState(nextStoreState.location);
 		}
 	}
+}
+
+function syncStoreState(): void {
+	syncRouteOutletStoreStateFromRuntime({
+		getCurrentStoreState,
+		applyNextStoreState,
+	});
 }
 
 const initUIListeners = createRouteOutletRuntimeListenerInitializer({

@@ -876,6 +876,223 @@ describe("client loading/focus contracts", () => {
 		expect(stop).toHaveBeenCalledTimes(1);
 	});
 
+	it("cancels a pending stop timer when new work begins before stop delay elapses", async () => {
+		const api = await loadClientAPI();
+		let running = false;
+		const start = vi.fn(() => {
+			running = true;
+		});
+		const stop = vi.fn(() => {
+			running = false;
+		});
+		const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+		const firstNavigationDeferred = createDeferred<Response>();
+		const secondNavigationDeferred = createDeferred<Response>();
+		createSequencedFetchSpy([
+			() => firstNavigationDeferred.promise,
+			() => secondNavigationDeferred.promise,
+		]);
+
+		const cleanupIndicator = api.setupGlobalLoadingIndicator({
+			start,
+			stop,
+			isRunning: () => running,
+			startDelayMS: 0,
+			stopDelayMS: 100,
+		});
+
+		const firstNavigationPromise = api.vormaNavigate(
+			"/indicator-stop-cancel-first",
+		);
+		await vi.advanceTimersByTimeAsync(8);
+		await vi.runAllTimersAsync();
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(running).toBe(true);
+
+		firstNavigationDeferred.resolve(createRouteDataResponse());
+		await firstNavigationPromise;
+		await vi.advanceTimersByTimeAsync(8);
+
+		const secondNavigationPromise = api.vormaNavigate(
+			"/indicator-stop-cancel-second",
+		);
+		await vi.advanceTimersByTimeAsync(8);
+		await vi.advanceTimersByTimeAsync(100);
+
+		expect(stop).not.toHaveBeenCalled();
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(running).toBe(true);
+		expect(clearTimeoutSpy).toHaveBeenCalled();
+
+		secondNavigationDeferred.resolve(createRouteDataResponse());
+		await secondNavigationPromise;
+		await vi.runAllTimersAsync();
+
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(running).toBe(false);
+
+		cleanupIndicator();
+	});
+
+	it("avoids start-stop thrash during overlapping work with non-zero delays", async () => {
+		const api = await loadClientAPI();
+		let running = false;
+		const start = vi.fn(() => {
+			running = true;
+		});
+		const stop = vi.fn(() => {
+			running = false;
+		});
+		const firstNavigationDeferred = createDeferred<Response>();
+		const secondNavigationDeferred = createDeferred<Response>();
+		createSequencedFetchSpy([
+			() => firstNavigationDeferred.promise,
+			() => secondNavigationDeferred.promise,
+		]);
+
+		const cleanupIndicator = api.setupGlobalLoadingIndicator({
+			start,
+			stop,
+			isRunning: () => running,
+			startDelayMS: 5,
+			stopDelayMS: 5,
+		});
+
+		const firstNavigationPromise = api.vormaNavigate(
+			"/indicator-overlap-first",
+		);
+		await vi.advanceTimersByTimeAsync(13);
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(running).toBe(true);
+
+		const secondNavigationPromise = api.vormaNavigate(
+			"/indicator-overlap-second",
+		);
+
+		firstNavigationDeferred.resolve(createRouteDataResponse());
+		await firstNavigationPromise;
+		await vi.advanceTimersByTimeAsync(20);
+
+		expect(stop).not.toHaveBeenCalled();
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(running).toBe(true);
+
+		secondNavigationDeferred.resolve(createRouteDataResponse());
+		await secondNavigationPromise;
+		await vi.runAllTimersAsync();
+
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(running).toBe(false);
+
+		cleanupIndicator();
+	});
+
+	it("does not start the global loading indicator for prefetch-only activity", async () => {
+		const api = await loadClientAPI();
+		let running = false;
+		const start = vi.fn(() => {
+			running = true;
+		});
+		const stop = vi.fn(() => {
+			running = false;
+		});
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+
+		const cleanupIndicator = api.setupGlobalLoadingIndicator({
+			start,
+			stop,
+			isRunning: () => running,
+			startDelayMS: 0,
+			stopDelayMS: 0,
+		});
+
+		const prefetchHandlers = api.__getPrefetchHandlers({
+			href: "/prefetch-only-indicator",
+			delayMs: 0,
+		});
+		prefetchHandlers?.start(new Event("mouseenter"));
+		await vi.advanceTimersByTimeAsync(8);
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(start).not.toHaveBeenCalled();
+		expect(stop).not.toHaveBeenCalled();
+		expect(running).toBe(false);
+
+		cleanupIndicator();
+	});
+
+	it("keeps simultaneous indicator registrations isolated across cleanup and timers", async () => {
+		const api = await loadClientAPI();
+		let firstRunning = false;
+		let secondRunning = false;
+		const firstStart = vi.fn(() => {
+			firstRunning = true;
+		});
+		const firstStop = vi.fn(() => {
+			firstRunning = false;
+		});
+		const secondStart = vi.fn(() => {
+			secondRunning = true;
+		});
+		const secondStop = vi.fn(() => {
+			secondRunning = false;
+		});
+		const navigationDeferred = createDeferred<Response>();
+		vi.spyOn(window, "fetch").mockReturnValue(
+			navigationDeferred.promise as any,
+		);
+
+		const cleanupFirstIndicator = api.setupGlobalLoadingIndicator({
+			start: firstStart,
+			stop: firstStop,
+			isRunning: () => firstRunning,
+			startDelayMS: 0,
+			stopDelayMS: 0,
+		});
+		const cleanupSecondIndicator = api.setupGlobalLoadingIndicator({
+			start: secondStart,
+			stop: secondStop,
+			isRunning: () => secondRunning,
+			startDelayMS: 50,
+			stopDelayMS: 0,
+		});
+
+		const navigationPromise = api.vormaNavigate("/indicator-two-instances");
+		await vi.advanceTimersByTimeAsync(8);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(firstStart).toHaveBeenCalledTimes(1);
+		expect(secondStart).not.toHaveBeenCalled();
+		expect(firstRunning).toBe(true);
+		expect(secondRunning).toBe(false);
+
+		cleanupFirstIndicator();
+
+		expect(firstStop).toHaveBeenCalledTimes(1);
+		expect(firstRunning).toBe(false);
+
+		await vi.advanceTimersByTimeAsync(50);
+
+		expect(secondStart).toHaveBeenCalledTimes(1);
+		expect(secondRunning).toBe(true);
+
+		navigationDeferred.resolve(createRouteDataResponse());
+		await navigationPromise;
+		await vi.runAllTimersAsync();
+
+		expect(firstStart).toHaveBeenCalledTimes(1);
+		expect(firstStop).toHaveBeenCalledTimes(1);
+		expect(secondStart).toHaveBeenCalledTimes(1);
+		expect(secondStop).toHaveBeenCalledTimes(1);
+		expect(secondRunning).toBe(false);
+
+		cleanupSecondIndicator();
+	});
+
 	it("revalidates on focus after staleTime has elapsed", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi

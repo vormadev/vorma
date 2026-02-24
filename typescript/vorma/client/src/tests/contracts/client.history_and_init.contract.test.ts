@@ -953,6 +953,60 @@ describe("client history/init contracts", () => {
 		removeRouteChangeListener();
 	});
 
+	it("does not refresh matched route loaders for css-only HMR updates", async () => {
+		const api = await loadClientAPI();
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		api.__vormaClientGlobal.set("matchedPatterns", ["/hmr-css-only"]);
+
+		const routeChangeListener = vi.fn();
+		const removeRouteChangeListener =
+			api.addRouteChangeListener(routeChangeListener);
+		let afterUpdateHandler:
+			| ((props: {
+					updates: Array<{ type: string; path: string }>;
+			  }) => void)
+			| undefined;
+		const fakeHot = {
+			on: vi.fn((event: string, handler: unknown) => {
+				if (
+					event === "vite:afterUpdate" &&
+					typeof handler === "function"
+				) {
+					afterUpdateHandler = handler as typeof afterUpdateHandler;
+				}
+			}),
+		};
+
+		api.__runClientLoadersAfterHMRUpdate(
+			{
+				url: "http://localhost:3000/src/routes/hmr-css-only.tsx?t=1",
+				hot: fakeHot,
+			} as any,
+			"/hmr-css-only",
+		);
+
+		expect(afterUpdateHandler).toBeDefined();
+
+		afterUpdateHandler?.({
+			updates: [
+				{
+					type: "css-update",
+					path: "/src/routes/hmr-css-only.tsx?t=2",
+				},
+			],
+		});
+
+		await vi.advanceTimersByTimeAsync(11);
+		await vi.runAllTimersAsync();
+		expect(routeChangeListener).not.toHaveBeenCalled();
+
+		removeRouteChangeListener();
+	});
+
 	it("refreshes when any matched pattern is tracked for the same HMR module path", async () => {
 		const api = await loadClientAPI();
 		await api.initClient({

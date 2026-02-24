@@ -4,6 +4,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 )
@@ -37,7 +38,7 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(
 	app.RegisterPatternIfNeeded("/stale-no-handler")
 
 	clearRouteDataCacheForTest(app)
-	staleCacheKey := app.buildRouteDataCacheKey(
+	staleCacheKey := routepipeline.BuildRouteDataCacheKey(
 		nil,
 		app.IsDevMode(),
 		app.BuildID(),
@@ -46,7 +47,7 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(
 	putRouteDataCacheEntryForTest(
 		app,
 		staleCacheKey,
-		&cachedItemSubset{ImportURLs: []string{"/stale.js"}},
+		&routepipeline.CachedItemSubset{ImportURLs: []string{"/stale.js"}},
 	)
 
 	newPaths := map[string]*Path{
@@ -118,13 +119,13 @@ func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(
 
 	clearRouteDataCacheForTest(appOne, appTwo)
 
-	appOneCacheKey := appOne.buildRouteDataCacheKey(
+	appOneCacheKey := routepipeline.BuildRouteDataCacheKey(
 		nil,
 		appOne.IsDevMode(),
 		appOne.BuildID(),
 		routeDataSnapshotVersionForTest(appOne),
 	)
-	appTwoCacheKey := appTwo.buildRouteDataCacheKey(
+	appTwoCacheKey := routepipeline.BuildRouteDataCacheKey(
 		nil,
 		appTwo.IsDevMode(),
 		appTwo.BuildID(),
@@ -133,12 +134,12 @@ func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(
 	putRouteDataCacheEntryForTest(
 		appOne,
 		appOneCacheKey,
-		&cachedItemSubset{ImportURLs: []string{"/one.js"}},
+		&routepipeline.CachedItemSubset{ImportURLs: []string{"/one.js"}},
 	)
 	putRouteDataCacheEntryForTest(
 		appTwo,
 		appTwoCacheKey,
-		&cachedItemSubset{ImportURLs: []string{"/two.js"}},
+		&routepipeline.CachedItemSubset{ImportURLs: []string{"/two.js"}},
 	)
 
 	appOne.WithLock(func(lv *LockedVorma) {
@@ -339,7 +340,7 @@ func routeDataCacheLenForTest(apps ...*Vorma) int {
 func putRouteDataCacheEntryForTest(
 	app *Vorma,
 	cacheKey string,
-	value *cachedItemSubset,
+	value *routepipeline.CachedItemSubset,
 ) {
 	if app == nil {
 		return

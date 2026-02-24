@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
@@ -79,8 +81,8 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		reloaded,
 	)
@@ -103,7 +105,7 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 		t.Fatalf("new route status = %d, want %d", recNew.Code, http.StatusOK)
 	}
 
-	var routeData RouteDataFinal
+	var routeData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recNew.Body.Bytes(), &routeData); err != nil {
 		t.Fatalf("decode route data: %v", err)
 	}
@@ -131,7 +133,7 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 		)
 	}
 
-	var serverRouteData RouteDataFinal
+	var serverRouteData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recServer.Body.Bytes(), &serverRouteData); err != nil {
 		t.Fatalf("decode server route data: %v", err)
 	}
@@ -213,7 +215,7 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		t.Fatalf("old build status = %d, want %d", recOld.Code, http.StatusOK)
 	}
 
-	var oldData RouteDataFinal
+	var oldData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
@@ -231,8 +233,8 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
 	)
@@ -264,7 +266,7 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		t.Fatalf("new build status = %d, want %d", recNew.Code, http.StatusOK)
 	}
 
-	var newData RouteDataFinal
+	var newData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}
@@ -354,7 +356,7 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 		t.Fatalf("old build status = %d, want %d", recOld.Code, http.StatusOK)
 	}
 
-	var oldData RouteDataFinal
+	var oldData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
@@ -372,8 +374,8 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
 	)
@@ -406,7 +408,7 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 		t.Fatalf("new build status = %d, want %d", recNew.Code, http.StatusOK)
 	}
 
-	var newData RouteDataFinal
+	var newData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}
@@ -466,8 +468,8 @@ func TestDevReloadRoutesFromDisk_InvalidPathsFileDoesNotMutateRuntimeState(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		[]byte(
 			`{"stage":"stage-one","buildID":"build-new-invalid","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/bad":null},"routeManifestFile":"vorma_out/route-manifest.js"}`,
@@ -509,17 +511,17 @@ func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeSta
 ) {
 	testCases := []struct {
 		name                string
-		mutateInvalidStage1 func(*PathsFile)
+		mutateInvalidStage1 func(*runtimepaths.PathsFile)
 	}{
 		{
 			name: "missing_route_manifest_file",
-			mutateInvalidStage1: func(pathsFile *PathsFile) {
+			mutateInvalidStage1: func(pathsFile *runtimepaths.PathsFile) {
 				pathsFile.RouteManifestFile = ""
 			},
 		},
 		{
 			name: "missing_export_key_on_client_route",
-			mutateInvalidStage1: func(pathsFile *PathsFile) {
+			mutateInvalidStage1: func(pathsFile *runtimepaths.PathsFile) {
 				pathsFile.Paths["/products/:id"].ExportKey = ""
 			},
 		},
@@ -588,8 +590,8 @@ func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeSta
 				t,
 				filepath.Join(
 					fixture.privateDir,
-					VormaOutDirname,
-					VormaPathsStageOneJSONFileName,
+					runtimepaths.VormaOutDirname,
+					runtimepaths.VormaPathsStageOneJSONFileName,
 				),
 				invalidStage,
 			)
@@ -692,7 +694,7 @@ func TestDevReloadRoutesFromDisk_NilPathsClearsClientRoutesAndPreservesServerHan
 		)
 	}
 
-	nilPathsStage := &PathsFile{
+	nilPathsStage := &runtimepaths.PathsFile{
 		Stage:             "stage-one",
 		BuildID:           "build-new",
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
@@ -706,8 +708,8 @@ func TestDevReloadRoutesFromDisk_NilPathsClearsClientRoutesAndPreservesServerHan
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		nilPathsStage,
 	)
@@ -937,7 +939,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 		t.Fatalf("old build status = %d, want %d", recOld.Code, http.StatusOK)
 	}
 
-	var oldData RouteDataFinal
+	var oldData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
@@ -955,8 +957,8 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
 	)
@@ -975,7 +977,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 		t.Fatalf("new build status = %d, want %d", recNew.Code, http.StatusOK)
 	}
 
-	var newData RouteDataFinal
+	var newData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}
@@ -1052,7 +1054,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 		)
 	}
 
-	var oldData RouteDataFinal
+	var oldData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
@@ -1070,8 +1072,8 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
 	)
@@ -1097,7 +1099,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 		)
 	}
 
-	var newData RouteDataFinal
+	var newData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}
@@ -1157,8 +1159,8 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_OnlyServeCoherentArtifactSet
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
 	const reloadIterations = 80
@@ -1358,8 +1360,8 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	var didReload atomic.Bool
 	app.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
@@ -1391,7 +1393,7 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 		)
 	}
 
-	var routeData RouteDataFinal
+	var routeData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 		t.Fatalf("decode route data: %v", err)
 	}
@@ -1491,8 +1493,8 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	var didReload atomic.Bool
 	app.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
@@ -1621,8 +1623,8 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	var didReload atomic.Bool
 	app.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
@@ -1721,8 +1723,8 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_DoNotSilentlyServeN
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
 	const reloadIterations = 80
@@ -1899,8 +1901,8 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_WithRedirectingLoad
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
 	const reloadIterations = 80
@@ -2053,8 +2055,8 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithRouteShapeChanges(
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
 	const reloadIterations = 80
@@ -2229,8 +2231,8 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithNestedParamShapeChanges(
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
 	const reloadIterations = 80
@@ -2464,8 +2466,8 @@ func TestDevReloadMethods_SucceedInDevMode(t *testing.T) {
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
 	)

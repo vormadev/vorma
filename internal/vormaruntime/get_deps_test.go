@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/kit/nestedmux"
 )
 
@@ -46,7 +47,11 @@ func TestGetDepsFromSnapshot_ClientEntryFirstAndDeduped(t *testing.T) {
 		t.Fatal("expected nested matches for /items/42")
 	}
 
-	deps := app.getDeps(findResults.Matches, app.Paths())
+	deps := routepipeline.GetDepsFromData(
+		findResults.Matches,
+		convertPathsMapToRoutePipelinePaths(app.Paths()),
+		app.ClientEntryDeps(),
+	)
 	want := []string{
 		"vorma_out/client.js",
 		"vorma_out/shared.js",
@@ -86,8 +91,10 @@ func TestGetCSSBundles_DedupedAndClientEntryFirst(t *testing.T) {
 	})
 	app := fixture.app
 
-	css := app.getCSSBundles(
+	css := routepipeline.GetCSSBundles(
 		[]string{"vorma_out/shared.js", "vorma_out/item.js"},
+		app.ClientEntryOut(),
+		app.DepToCSSBundleMap(),
 	)
 	want := []string{
 		"vorma_out/client.css",

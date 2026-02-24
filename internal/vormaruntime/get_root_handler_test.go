@@ -14,6 +14,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/mux"
@@ -74,10 +77,10 @@ func TestBuildIDHelpers(t *testing.T) {
 func TestDevReloadEndpointPaths_DefaultAndCustom(t *testing.T) {
 	defaultFixture := newTestFixture(t, testFixtureOptions{})
 	defaultApp := defaultFixture.app
-	if got, want := defaultApp.DevReloadRoutesEndpointPath(), DefaultDevReloadRoutesEndpointPath; got != want {
+	if got, want := defaultApp.DevReloadRoutesEndpointPath(), runtimeconfig.DefaultDevReloadRoutesEndpointPath; got != want {
 		t.Fatalf("default routes endpoint path = %q, want %q", got, want)
 	}
-	if got, want := defaultApp.DevReloadTemplateEndpointPath(), DefaultDevReloadTemplateEndpointPath; got != want {
+	if got, want := defaultApp.DevReloadTemplateEndpointPath(), runtimeconfig.DefaultDevReloadTemplateEndpointPath; got != want {
 		t.Fatalf("default template endpoint path = %q, want %q", got, want)
 	}
 
@@ -109,13 +112,13 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		},
 	}
 
-	stage2 := &PathsFile{
+	stage2 := &runtimepaths.PathsFile{
 		Stage:             "stage-two",
 		BuildID:           "build-new",
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
 		ClientEntryOut:    "vorma_out/client-entry.js",
 		ClientEntryDeps:   []string{"vorma_out/chunk-shared.js"},
-		Paths:             paths,
+		Paths:             toRuntimePathsRouteMap(paths),
 		RouteManifestFile: "vorma_out/route-manifest.js",
 		DepToCSSBundleMap: map[string][]string{
 			"vorma_out/client-entry.js": {"vorma_out/client-entry.css"},
@@ -258,7 +261,7 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 			)
 		}
 
-		var routeData RouteDataFinal
+		var routeData routepipeline.RouteDataFinal
 		if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 			t.Fatalf("decode route data: %v", err)
 		}
@@ -452,7 +455,7 @@ func TestLoadersHandler_HasRootDataAndSplatValuesContracts(t *testing.T) {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
 
-		var routeData RouteDataFinal
+		var routeData routepipeline.RouteDataFinal
 		if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 			t.Fatalf("decode route data: %v", err)
 		}
@@ -981,7 +984,7 @@ func TestLoadersHandler_LoaderErrorContract(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var routeData RouteDataFinal
+	var routeData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 		t.Fatalf("decode route data: %v", err)
 	}
@@ -1085,7 +1088,7 @@ func TestLoadersHandler_LoaderErrorDepsAreTrimmedToOutermostBoundary(
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var routeData RouteDataFinal
+	var routeData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 		t.Fatalf("decode route data: %v", err)
 	}
@@ -1156,7 +1159,7 @@ func TestLoadersHandler_WrappedLoaderErrorPreservesClientMessage(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var routeData RouteDataFinal
+	var routeData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 		t.Fatalf("decode route data: %v", err)
 	}
@@ -1221,7 +1224,7 @@ func TestLoadersHandler_EmptyLoaderErrorClientMessageFallsBackToGeneric(
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var routeData RouteDataFinal
+	var routeData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 		t.Fatalf("decode route data: %v", err)
 	}
@@ -1296,7 +1299,7 @@ func TestLoadersHandler_GenericLoaderErrorDoesNotLeakInternalMessage(
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var routeData RouteDataFinal
+	var routeData routepipeline.RouteDataFinal
 	if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 		t.Fatalf("decode route data: %v", err)
 	}
@@ -1860,7 +1863,7 @@ func TestLoadersHandler_CustomJSONMarshalerLoaderDataIsAccepted(t *testing.T) {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
 
-		var routeData RouteDataFinal
+		var routeData routepipeline.RouteDataFinal
 		if err := json.Unmarshal(rec.Body.Bytes(), &routeData); err != nil {
 			t.Fatalf("decode route data: %v", err)
 		}
@@ -1894,7 +1897,7 @@ func TestLoadersHandler_CustomJSONMarshalerLoaderDataIsAccepted(t *testing.T) {
 }
 
 func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
-	makeStage := func(buildID, outPath, srcPath, dep string) *PathsFile {
+	makeStage := func(buildID, outPath, srcPath, dep string) *runtimepaths.PathsFile {
 		return defaultPathsFile(buildID, map[string]*Path{
 			"/shared/:id": {
 				OriginalPattern: "/shared/:id",
@@ -1947,7 +1950,7 @@ func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 	handlerA := mux.InjectTasksCtxMiddleware(appA.Loaders().Handler())
 	handlerB := mux.InjectTasksCtxMiddleware(appB.Loaders().Handler())
 
-	getJSON := func(t *testing.T, handler http.Handler, path string) RouteDataFinal {
+	getJSON := func(t *testing.T, handler http.Handler, path string) routepipeline.RouteDataFinal {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
@@ -1955,7 +1958,7 @@ func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
-		var out RouteDataFinal
+		var out routepipeline.RouteDataFinal
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 			t.Fatalf("decode route data: %v", err)
 		}
@@ -2004,13 +2007,13 @@ func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 }
 
 func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
-	stageOld := &PathsFile{
+	stageOld := &runtimepaths.PathsFile{
 		Stage:           "stage-two",
 		BuildID:         "shared-old-build",
 		ClientEntrySrc:  "frontend/src/vorma.entry.tsx",
 		ClientEntryOut:  "vorma_out/client-entry.js",
 		ClientEntryDeps: []string{"vorma_out/shared.js"},
-		Paths: map[string]*Path{
+		Paths: toRuntimePathsRouteMap(map[string]*Path{
 			"/items/:id": {
 				OriginalPattern: "/items/:id",
 				SrcPath:         "frontend/src/routes/items_old.$id.tsx",
@@ -2018,20 +2021,20 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 				ExportKey:       "default",
 				Deps:            []string{"vorma_out/shared.js"},
 			},
-		},
+		}),
 		RouteManifestFile: "vorma_out/route-manifest.js",
 		DepToCSSBundleMap: map[string][]string{
 			"vorma_out/client-entry.js": {"vorma_out/client.css"},
 			"vorma_out/shared.js":       {"vorma_out/shared.css"},
 		},
 	}
-	stageNewA := &PathsFile{
+	stageNewA := &runtimepaths.PathsFile{
 		Stage:           "stage-one",
 		BuildID:         "app-a-new-build",
 		ClientEntrySrc:  "frontend/src/vorma.entry.tsx",
 		ClientEntryOut:  "vorma_out/client-entry.js",
 		ClientEntryDeps: []string{"vorma_out/shared.js"},
-		Paths: map[string]*Path{
+		Paths: toRuntimePathsRouteMap(map[string]*Path{
 			"/items/:id": {
 				OriginalPattern: "/items/:id",
 				SrcPath:         "frontend/src/routes/items_new.$id.tsx",
@@ -2039,7 +2042,7 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 				ExportKey:       "default",
 				Deps:            []string{"vorma_out/shared.js"},
 			},
-		},
+		}),
 		RouteManifestFile: "vorma_out/route-manifest.js",
 		DepToCSSBundleMap: map[string][]string{
 			"vorma_out/client-entry.js": {"vorma_out/client.css"},
@@ -2077,7 +2080,7 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 	handlerA := mux.InjectTasksCtxMiddleware(appA.Loaders().Handler())
 	handlerB := mux.InjectTasksCtxMiddleware(appB.Loaders().Handler())
 
-	getJSON := func(t *testing.T, handler http.Handler, path string) RouteDataFinal {
+	getJSON := func(t *testing.T, handler http.Handler, path string) routepipeline.RouteDataFinal {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
@@ -2085,7 +2088,7 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
-		var out RouteDataFinal
+		var out routepipeline.RouteDataFinal
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 			t.Fatalf("decode route data: %v", err)
 		}
@@ -2113,8 +2116,8 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 		t,
 		filepath.Join(
 			fixtureA.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		stageNewA,
 	)
@@ -2424,8 +2427,8 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 			t,
 			filepath.Join(
 				fixture.privateDir,
-				VormaOutDirname,
-				VormaPathsStageOneJSONFileName,
+				runtimepaths.VormaOutDirname,
+				runtimepaths.VormaPathsStageOneJSONFileName,
 			),
 			stageNew,
 		)
@@ -2462,7 +2465,7 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 				http.StatusOK,
 			)
 		}
-		var routeData RouteDataFinal
+		var routeData routepipeline.RouteDataFinal
 		if err := json.Unmarshal(routeRec.Body.Bytes(), &routeData); err != nil {
 			t.Fatalf("decode route data: %v", err)
 		}
@@ -2628,8 +2631,8 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 	t.Run("reload_routes_error", func(t *testing.T) {
 		stageOnePath := filepath.Join(
 			fixture.privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		)
 		if err := os.Remove(stageOnePath); err != nil {
 			t.Fatalf("remove stage one file: %v", err)

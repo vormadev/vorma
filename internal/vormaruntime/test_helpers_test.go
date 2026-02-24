@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
@@ -30,8 +31,8 @@ type testFixture struct {
 }
 
 type testFixtureOptions struct {
-	stageOne             *PathsFile
-	stageTwo             *PathsFile
+	stageOne             *runtimepaths.PathsFile
+	stageTwo             *runtimepaths.PathsFile
 	template             string
 	publicPathPrefix     string
 	enableCriticalCSS    bool
@@ -59,7 +60,7 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	publicDir := filepath.Join(staticDir, "assets", "public")
 	internalDir := filepath.Join(staticDir, "internal")
 
-	mustMkdirAll(tb, filepath.Join(privateDir, VormaOutDirname))
+	mustMkdirAll(tb, filepath.Join(privateDir, runtimepaths.VormaOutDirname))
 	mustMkdirAll(tb, publicDir)
 	mustMkdirAll(tb, internalDir)
 
@@ -81,8 +82,8 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		tb,
 		filepath.Join(
 			privateDir,
-			VormaOutDirname,
-			VormaPathsStageOneJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		stageOne,
 	)
@@ -90,8 +91,8 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		tb,
 		filepath.Join(
 			privateDir,
-			VormaOutDirname,
-			VormaPathsStageTwoJSONFileName,
+			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaPathsStageTwoJSONFileName,
 		),
 		stageTwo,
 	)
@@ -180,7 +181,10 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	}
 }
 
-func defaultPathsFile(buildID string, paths map[string]*Path) *PathsFile {
+func defaultPathsFile(
+	buildID string,
+	paths map[string]*Path,
+) *runtimepaths.PathsFile {
 	if paths == nil {
 		paths = map[string]*Path{
 			"/": {
@@ -191,19 +195,44 @@ func defaultPathsFile(buildID string, paths map[string]*Path) *PathsFile {
 			},
 		}
 	}
-	return &PathsFile{
+	return &runtimepaths.PathsFile{
 		Stage:             "stage-two",
 		BuildID:           buildID,
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
 		ClientEntryOut:    "vorma_out/client-entry.js",
 		ClientEntryDeps:   []string{"vorma_out/client-shared.js"},
-		Paths:             paths,
+		Paths:             toRuntimePathsRouteMap(paths),
 		RouteManifestFile: "vorma_out/route-manifest.js",
 		DepToCSSBundleMap: map[string][]string{
 			"vorma_out/client-entry.js":  {"vorma_out/client-entry.css"},
 			"vorma_out/client-shared.js": {"vorma_out/client-shared.css"},
 		},
 	}
+}
+
+func toRuntimePathsRouteMap(
+	paths map[string]*Path,
+) map[string]*runtimepaths.RoutePath {
+	if paths == nil {
+		return nil
+	}
+
+	runtimePaths := make(map[string]*runtimepaths.RoutePath, len(paths))
+	for pattern, routePath := range paths {
+		if routePath == nil {
+			runtimePaths[pattern] = nil
+			continue
+		}
+		runtimePaths[pattern] = &runtimepaths.RoutePath{
+			OriginalPattern: routePath.OriginalPattern,
+			SrcPath:         routePath.SrcPath,
+			ExportKey:       routePath.ExportKey,
+			ErrorExportKey:  routePath.ErrorExportKey,
+			OutPath:         routePath.OutPath,
+			Deps:            append([]string(nil), routePath.Deps...),
+		}
+	}
+	return runtimePaths
 }
 
 func mustWriteJSONFile(tb testing.TB, file string, v any) {

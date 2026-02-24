@@ -1,4 +1,4 @@
-package vormabuild
+package tsgenruntime
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
@@ -144,35 +143,5 @@ func mustWriteFile(t *testing.T, path string, content []byte) {
 	}
 	if err := os.WriteFile(path, content, 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
-	}
-}
-
-func mustWriteJSONFile(t *testing.T, path string, value any) {
-	t.Helper()
-	bytes, err := json.Marshal(value)
-	if err != nil {
-		t.Fatalf("marshal %s: %v", path, err)
-	}
-	mustWriteFile(t, path, bytes)
-}
-
-func assertRuntimeWriteLockCanBeAcquiredPromptly(
-	t *testing.T,
-	v *vormaruntime.Vorma,
-	stepName string,
-) {
-	t.Helper()
-
-	lockAcquired := make(chan struct{})
-	go func() {
-		v.WithLock(func(*vormaruntime.LockedVorma) {})
-		close(lockAcquired)
-	}()
-
-	select {
-	case <-lockAcquired:
-		return
-	case <-time.After(time.Second):
-		t.Fatalf("%s appears to run while runtime write lock is held", stepName)
 	}
 }

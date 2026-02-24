@@ -247,6 +247,85 @@ describe("client submit/redirect contracts", () => {
 		}
 	});
 
+	it("ignores stale submit-redirect side effects when a newer user navigation commits first", async () => {
+		const api = await loadClientAPI();
+		const { requests } = createAbortAwareFetchRecorder();
+		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
+		const removeBuildIDListener = api.addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+
+		try {
+			const submitPromise = api.submit("/api/submit-redirect", {
+				method: "POST",
+			});
+
+			await waitForRequestCount({ requests, count: 1 });
+			requests[0]!.resolve(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Client-Redirect": "/submit-redirect-target",
+						},
+					},
+				),
+			);
+			await waitForRequestCount({ requests, count: 2 });
+
+			const userNavigationPromise = api.vormaNavigate(
+				"/user-navigation-winner",
+			);
+			await waitForRequestCount({ requests, count: 3 });
+
+			requests[2]!.resolve(
+				createRouteDataResponse(
+					{
+						title: { dangerousInnerHTML: "User Navigation Winner" },
+					},
+					{
+						headers: {
+							"X-Vorma-Build-Id": "user-navigation-winner-build",
+						},
+					},
+				),
+			);
+			await userNavigationPromise;
+
+			requests[1]!.resolve(
+				createRouteDataResponse(
+					{
+						title: { dangerousInnerHTML: "Submit Redirect Stale" },
+					},
+					{
+						headers: {
+							"X-Vorma-Build-Id": "submit-redirect-stale-build",
+						},
+					},
+				),
+			);
+
+			await submitPromise;
+			await vi.runAllTimersAsync();
+
+			expect(window.location.pathname).toBe("/user-navigation-winner");
+			expect(document.title).toBe("User Navigation Winner");
+			expect(api.getBuildID()).toBe("user-navigation-winner-build");
+			expect(
+				buildIDEvents.some(
+					(event) => event.newID === "submit-redirect-stale-build",
+				),
+			).toBe(false);
+			expect(api.getStatus()).toEqual({
+				isNavigating: false,
+				isSubmitting: false,
+				isRevalidating: false,
+			});
+		} finally {
+			removeBuildIDListener();
+		}
+	});
+
 	it("does not deduplicate submissions when no dedupe key is provided", async () => {
 		const api = await loadClientAPI();
 		const firstDeferred = createDeferred<Response>();

@@ -3,10 +3,10 @@ import { h, type ComponentType } from "preact";
 import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import {
 	buildInitialRouteOutletStoreState,
-	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
 	createRouteOutletRuntimeListenerInitializer,
 	resolveRouteOutletBranchRenderState,
+	syncRouteOutletStoreStateFromRuntime,
 	type RouteOutletBranchInputState,
 	type RouteOutletStoreState,
 } from "vorma/client/__internal";
@@ -38,12 +38,12 @@ export { clientLoadersData, loadersData, routerData };
 export const location = computed(() => storeState.value.location);
 
 function syncStoreState(): void {
-	const previousStoreState = storeState.value;
-	const nextStoreState =
-		buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
-	if (nextStoreState !== previousStoreState) {
-		storeState.value = nextStoreState;
-	}
+	syncRouteOutletStoreStateFromRuntime({
+		getCurrentStoreState: () => storeState.value,
+		applyNextStoreState: (nextStoreState) => {
+			storeState.value = nextStoreState;
+		},
+	});
 }
 
 const initUIListeners = createRouteOutletRuntimeListenerInitializer({

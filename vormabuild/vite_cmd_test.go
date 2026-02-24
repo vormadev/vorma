@@ -9,10 +9,13 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/lab/viteutil"
 )
 
-func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(t *testing.T) {
+func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -28,7 +31,11 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(t *testing
 		})
 	})
 
-	mustWriteFile(t, filepath.Join(fixture.publicDir, "public-asset.txt"), []byte("public asset"))
+	mustWriteFile(
+		t,
+		filepath.Join(fixture.publicDir, "public-asset.txt"),
+		[]byte("public asset"),
+	)
 
 	manifest := viteutil.Manifest{
 		"frontend/src/vorma.entry.tsx": {
@@ -60,13 +67,23 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(t *testing
 		t.Fatalf("stage = %q, want %q", pathsFile.Stage, "two")
 	}
 	if pathsFile.ClientEntryOut != "entry-abc.js" {
-		t.Fatalf("client entry out = %q, want %q", pathsFile.ClientEntryOut, "entry-abc.js")
+		t.Fatalf(
+			"client entry out = %q, want %q",
+			pathsFile.ClientEntryOut,
+			"entry-abc.js",
+		)
 	}
 	if slices.Contains(pathsFile.ClientEntryDeps, "entry-abc.js") {
-		t.Fatalf("client entry deps should exclude client entry output itself, deps = %#v", pathsFile.ClientEntryDeps)
+		t.Fatalf(
+			"client entry deps should exclude client entry output itself, deps = %#v",
+			pathsFile.ClientEntryDeps,
+		)
 	}
 	if !slices.Contains(pathsFile.ClientEntryDeps, "shared.js") {
-		t.Fatalf("client entry deps = %#v, expected shared dependency", pathsFile.ClientEntryDeps)
+		t.Fatalf(
+			"client entry deps = %#v, expected shared dependency",
+			pathsFile.ClientEntryDeps,
+		)
 	}
 
 	routePath := pathsFile.Paths["/users/:id"]
@@ -76,8 +93,12 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(t *testing
 	if routePath.OutPath != "users.js" {
 		t.Fatalf("route out path = %q, want %q", routePath.OutPath, "users.js")
 	}
-	if !slices.Contains(routePath.Deps, "users.js") || !slices.Contains(routePath.Deps, "shared.js") {
-		t.Fatalf("route deps = %#v, expected users.js and shared.js", routePath.Deps)
+	if !slices.Contains(routePath.Deps, "users.js") ||
+		!slices.Contains(routePath.Deps, "shared.js") {
+		t.Fatalf(
+			"route deps = %#v, expected users.js and shared.js",
+			routePath.Deps,
+		)
 	}
 
 	entryCSS := pathsFile.DepToCSSBundleMap["entry-abc.js"]
@@ -90,13 +111,21 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(t *testing
 	}
 
 	if pathsFile.RouteManifestFile != "vorma_out_route_manifest.json" {
-		t.Fatalf("route manifest file = %q, want %q", pathsFile.RouteManifestFile, "vorma_out_route_manifest.json")
+		t.Fatalf(
+			"route manifest file = %q, want %q",
+			pathsFile.RouteManifestFile,
+			"vorma_out_route_manifest.json",
+		)
 	}
 	if pathsFile.BuildID == "" {
 		t.Fatal("expected non-empty build ID")
 	}
 	if app.BuildID() != "build-before-stage-two" {
-		t.Fatalf("app build ID = %q, want %q", app.BuildID(), "build-before-stage-two")
+		t.Fatalf(
+			"app build ID = %q, want %q",
+			app.BuildID(),
+			"build-before-stage-two",
+		)
 	}
 }
 
@@ -135,14 +164,14 @@ func TestPostViteProdBuild_WritesStageTwoPathsFile(t *testing.T) {
 	stageTwoPath := filepath.Join(
 		fixture.privateDir,
 		"vorma_out",
-		vormaruntime.VormaPathsStageTwoJSONFileName,
+		runtimepaths.VormaPathsStageTwoJSONFileName,
 	)
 	bytes, err := os.ReadFile(stageTwoPath)
 	if err != nil {
 		t.Fatalf("read stage two file: %v", err)
 	}
 
-	var parsed vormaruntime.PathsFile
+	var parsed runtimepaths.PathsFile
 	if err := json.Unmarshal(bytes, &parsed); err != nil {
 		t.Fatalf("unmarshal stage two file: %v", err)
 	}
@@ -150,10 +179,17 @@ func TestPostViteProdBuild_WritesStageTwoPathsFile(t *testing.T) {
 		t.Fatalf("stage = %q, want %q", parsed.Stage, "two")
 	}
 	if parsed.ClientEntryOut != "entry.js" {
-		t.Fatalf("client entry out = %q, want %q", parsed.ClientEntryOut, "entry.js")
+		t.Fatalf(
+			"client entry out = %q, want %q",
+			parsed.ClientEntryOut,
+			"entry.js",
+		)
 	}
 	if parsed.Paths["/"] == nil || parsed.Paths["/"].OutPath != "root.js" {
-		t.Fatalf("root route output = %#v, expected out path root.js", parsed.Paths["/"])
+		t.Fatalf(
+			"root route output = %#v, expected out path root.js",
+			parsed.Paths["/"],
+		)
 	}
 	if parsed.BuildID == "" {
 		t.Fatal("expected non-empty stage-two build ID")
@@ -168,11 +204,19 @@ func TestRemoveDependency_RetainsOrderAndExcludesMatches(t *testing.T) {
 	got := removeDependency(dependencies, "entry.js")
 	want := []string{"shared.js", "feature.js"}
 	if !slices.Equal(got, want) {
-		t.Fatalf("removeDependency(%#v, %q) = %#v, want %#v", dependencies, "entry.js", got, want)
+		t.Fatalf(
+			"removeDependency(%#v, %q) = %#v, want %#v",
+			dependencies,
+			"entry.js",
+			got,
+			want,
+		)
 	}
 }
 
-func TestApplyViteManifestToPaths_UpdatesClientEntryAndRoutePaths(t *testing.T) {
+func TestApplyViteManifestToPaths_UpdatesClientEntryAndRoutePaths(
+	t *testing.T,
+) {
 	manifest := viteutil.Manifest{
 		"frontend/src/vorma.entry.tsx": {
 			Src:     "frontend/src/vorma.entry.tsx",
@@ -206,16 +250,38 @@ func TestApplyViteManifestToPaths_UpdatesClientEntryAndRoutePaths(t *testing.T) 
 	)
 
 	if result.clientEntryOut != "entry.js" {
-		t.Fatalf("client entry out = %q, want %q", result.clientEntryOut, "entry.js")
+		t.Fatalf(
+			"client entry out = %q, want %q",
+			result.clientEntryOut,
+			"entry.js",
+		)
 	}
 	if !slices.Equal(result.clientEntryDeps, []string{"shared.js"}) {
-		t.Fatalf("client entry deps = %#v, want %#v", result.clientEntryDeps, []string{"shared.js"})
+		t.Fatalf(
+			"client entry deps = %#v, want %#v",
+			result.clientEntryDeps,
+			[]string{"shared.js"},
+		)
 	}
-	if !slices.Equal(result.depToCSSBundleMap["entry.js"], []string{"entry.css"}) {
-		t.Fatalf("entry css bundles = %#v, want %#v", result.depToCSSBundleMap["entry.js"], []string{"entry.css"})
+	if !slices.Equal(
+		result.depToCSSBundleMap["entry.js"],
+		[]string{"entry.css"},
+	) {
+		t.Fatalf(
+			"entry css bundles = %#v, want %#v",
+			result.depToCSSBundleMap["entry.js"],
+			[]string{"entry.css"},
+		)
 	}
-	if !slices.Equal(result.depToCSSBundleMap["home.js"], []string{"home.css"}) {
-		t.Fatalf("home css bundles = %#v, want %#v", result.depToCSSBundleMap["home.js"], []string{"home.css"})
+	if !slices.Equal(
+		result.depToCSSBundleMap["home.js"],
+		[]string{"home.css"},
+	) {
+		t.Fatalf(
+			"home css bundles = %#v, want %#v",
+			result.depToCSSBundleMap["home.js"],
+			[]string{"home.css"},
+		)
 	}
 
 	home := paths["/home"]
@@ -226,11 +292,17 @@ func TestApplyViteManifestToPaths_UpdatesClientEntryAndRoutePaths(t *testing.T) 
 		t.Fatalf("home out path = %q, want %q", home.OutPath, "home.js")
 	}
 	if !slices.Equal(home.Deps, []string{"home.js", "shared.js"}) {
-		t.Fatalf("home deps = %#v, want %#v", home.Deps, []string{"home.js", "shared.js"})
+		t.Fatalf(
+			"home deps = %#v, want %#v",
+			home.Deps,
+			[]string{"home.js", "shared.js"},
+		)
 	}
 }
 
-func TestApplyViteManifestToPaths_UpdatesAllRoutesSharingSameSourcePath(t *testing.T) {
+func TestApplyViteManifestToPaths_UpdatesAllRoutesSharingSameSourcePath(
+	t *testing.T,
+) {
 	manifest := viteutil.Manifest{
 		"frontend/src/routes/shared.tsx": {
 			Src:  "frontend/src/routes/shared.tsx",
@@ -250,15 +322,29 @@ func TestApplyViteManifestToPaths_UpdatesAllRoutesSharingSameSourcePath(t *testi
 		},
 	}
 
-	_ = applyViteManifestToPaths(manifest, paths, "frontend/src/vorma.entry.tsx")
+	_ = applyViteManifestToPaths(
+		manifest,
+		paths,
+		"frontend/src/vorma.entry.tsx",
+	)
 
 	pathA := paths["/a"]
 	pathB := paths["/b"]
-	if pathA.OutPath != "shared-route.js" || pathB.OutPath != "shared-route.js" {
-		t.Fatalf("expected both routes to receive same out path, got /a=%q /b=%q", pathA.OutPath, pathB.OutPath)
+	if pathA.OutPath != "shared-route.js" ||
+		pathB.OutPath != "shared-route.js" {
+		t.Fatalf(
+			"expected both routes to receive same out path, got /a=%q /b=%q",
+			pathA.OutPath,
+			pathB.OutPath,
+		)
 	}
-	if !slices.Equal(pathA.Deps, []string{"shared-route.js"}) || !slices.Equal(pathB.Deps, []string{"shared-route.js"}) {
-		t.Fatalf("expected both routes to receive same deps, got /a=%#v /b=%#v", pathA.Deps, pathB.Deps)
+	if !slices.Equal(pathA.Deps, []string{"shared-route.js"}) ||
+		!slices.Equal(pathB.Deps, []string{"shared-route.js"}) {
+		t.Fatalf(
+			"expected both routes to receive same deps, got /a=%#v /b=%#v",
+			pathA.Deps,
+			pathB.Deps,
+		)
 	}
 }
 
@@ -282,11 +368,11 @@ func TestPathsOutputPath_StageTwoFile(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	got := pathsOutputPath(app, vormaruntime.VormaPathsStageTwoJSONFileName)
+	got := pathsOutputPath(app, runtimepaths.VormaPathsStageTwoJSONFileName)
 	want := filepath.Join(
 		app.Wave.StaticPrivateOutDir(),
-		vormaruntime.VormaOutDirname,
-		vormaruntime.VormaPathsStageTwoJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageTwoJSONFileName,
 	)
 	if got != want {
 		t.Fatalf("pathsOutputPath(stage-two) = %q, want %q", got, want)
@@ -298,55 +384,78 @@ func TestPathsOutputPath(t *testing.T) {
 	app := fixture.app
 
 	got := pathsOutputPath(app, "custom.json")
-	want := filepath.Join(app.Wave.StaticPrivateOutDir(), vormaruntime.VormaOutDirname, "custom.json")
+	want := filepath.Join(
+		app.Wave.StaticPrivateOutDir(),
+		runtimepaths.VormaOutDirname,
+		"custom.json",
+	)
 	if got != want {
 		t.Fatalf("pathsOutputPath() = %q, want %q", got, want)
 	}
 }
 
-func TestWritePathsToDiskStageTwo_ReturnsErrorWhenParentIsNotDirectory(t *testing.T) {
+func TestWritePathsToDiskStageTwo_ReturnsErrorWhenParentIsNotDirectory(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	stageTwoDir := filepath.Join(app.Wave.StaticPrivateOutDir(), vormaruntime.VormaOutDirname)
+	stageTwoDir := filepath.Join(
+		app.Wave.StaticPrivateOutDir(),
+		runtimepaths.VormaOutDirname,
+	)
 	if err := os.RemoveAll(stageTwoDir); err != nil {
 		t.Fatalf("remove stage two dir: %v", err)
 	}
 	mustWriteFile(t, stageTwoDir, []byte("not-a-directory"))
 
-	err := writePathsToDiskStageTwo(app, &vormaruntime.PathsFile{Stage: "two"})
+	err := writePathsToDiskStageTwo(app, &runtimepaths.PathsFile{Stage: "two"})
 	if err == nil {
-		t.Fatal("expected writePathsToDiskStageTwo to fail when parent path is not a directory")
+		t.Fatal(
+			"expected writePathsToDiskStageTwo to fail when parent path is not a directory",
+		)
 	}
 	if !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("error = %q, expected not-a-directory message", err)
 	}
 }
 
-func TestWritePathsToDiskStageTwo_CreatesOutputDirectoryWhenMissing(t *testing.T) {
+func TestWritePathsToDiskStageTwo_CreatesOutputDirectoryWhenMissing(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	stageTwoDir := filepath.Join(app.Wave.StaticPrivateOutDir(), vormaruntime.VormaOutDirname)
+	stageTwoDir := filepath.Join(
+		app.Wave.StaticPrivateOutDir(),
+		runtimepaths.VormaOutDirname,
+	)
 	if err := os.RemoveAll(stageTwoDir); err != nil {
 		t.Fatalf("remove stage two dir: %v", err)
 	}
 
-	if err := writePathsToDiskStageTwo(app, &vormaruntime.PathsFile{Stage: "two"}); err != nil {
+	if err := writePathsToDiskStageTwo(app, &runtimepaths.PathsFile{Stage: "two"}); err != nil {
 		t.Fatalf("writePathsToDiskStageTwo returned error: %v", err)
 	}
 
-	outputPath := pathsOutputPath(app, vormaruntime.VormaPathsStageTwoJSONFileName)
+	outputPath := pathsOutputPath(
+		app,
+		runtimepaths.VormaPathsStageTwoJSONFileName,
+	)
 	outputBytes, err := os.ReadFile(outputPath)
 	if err != nil {
 		t.Fatalf("read stage-two output failed: %v", err)
 	}
-	var parsedPathsFile vormaruntime.PathsFile
+	var parsedPathsFile runtimepaths.PathsFile
 	if err := json.Unmarshal(outputBytes, &parsedPathsFile); err != nil {
 		t.Fatalf("unmarshal stage-two output failed: %v", err)
 	}
 	if parsedPathsFile.Stage != "two" {
-		t.Fatalf("stage-two output stage = %q, want %q", parsedPathsFile.Stage, "two")
+		t.Fatalf(
+			"stage-two output stage = %q, want %q",
+			parsedPathsFile.Stage,
+			"two",
+		)
 	}
 }
 

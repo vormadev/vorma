@@ -352,6 +352,19 @@ export function buildNextRouteOutletStoreStateFromRuntime(
 	};
 }
 
+export function syncRouteOutletStoreStateFromRuntime(props: {
+	getCurrentStoreState: () => RouteOutletStoreState;
+	applyNextStoreState: (nextStoreState: RouteOutletStoreState) => void;
+}): RouteOutletStoreState {
+	const previousStoreState = props.getCurrentStoreState();
+	const nextStoreState =
+		buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+	if (nextStoreState !== previousStoreState) {
+		props.applyNextStoreState(nextStoreState);
+	}
+	return nextStoreState;
+}
+
 export function buildRouteOutletBranchState(props: {
 	navigationState: RouteOutletBranchInputState;
 	idx: number;

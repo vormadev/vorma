@@ -1,35 +1,32 @@
 package vormaruntime
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
-	"io"
 	"io/fs"
 	"log/slog"
 	"mime"
 	"net/http"
-	"path"
-	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimecore"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/envutil"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/nestedmatcher"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/validate"
 	"github.com/vormadev/vorma/lab/tsgen"
-	"github.com/vormadev/vorma/lab/viteutil"
 	"github.com/vormadev/vorma/wave"
-	"golang.org/x/sync/errgroup"
 )
 
 // VormaBuildIDHeaderKey carries the runtime build id in responses.
@@ -37,39 +34,6 @@ const VormaBuildIDHeaderKey = "X-Vorma-Build-Id"
 
 // VormaJSONQueryKey toggles JSON route-data response mode for loaders.
 const VormaJSONQueryKey = "vorma_json"
-
-const (
-	// DefaultDevReloadRoutesEndpointPath is the default dev endpoint for route
-	// reloading.
-	DefaultDevReloadRoutesEndpointPath = "/__vorma_internal/reload-routes"
-	// DefaultDevReloadTemplateEndpointPath is the default dev endpoint for root
-	// template reloading.
-	DefaultDevReloadTemplateEndpointPath = "/__vorma_internal/reload-template"
-	// DefaultTemplateDataKeyHeadElements is the default key for rendered head
-	// elements in template data.
-	DefaultTemplateDataKeyHeadElements = "VormaHeadEls"
-	// DefaultTemplateDataKeyBodyScripts is the default key for body script tags
-	// in template data.
-	DefaultTemplateDataKeyBodyScripts = "VormaBodyScripts"
-	// DefaultTemplateDataKeySSRScript is the default key for SSR inner HTML in
-	// template data.
-	DefaultTemplateDataKeySSRScript = "VormaSSRScript"
-	// DefaultTemplateDataKeySSRScriptHash is the default key for the SSR script
-	// SHA-256 hash in template data.
-	DefaultTemplateDataKeySSRScriptHash = "VormaSSRScriptSha256Hash"
-	// DefaultTemplateDataKeyRootElementID is the default key for the client root
-	// element id in template data.
-	DefaultTemplateDataKeyRootElementID = "VormaRootID"
-	// DefaultClientRootElementID is the default DOM id expected by client mount
-	// logic.
-	DefaultClientRootElementID = "vorma-root"
-)
-
-type loadersHTMLRenderSnapshot struct {
-	isDevMode      bool
-	clientEntryOut string
-	rootTemplate   *template.Template
-}
 
 // LoadersHandler returns the main GET handler for loader and document
 // rendering requests.
@@ -90,23 +54,30 @@ func (v *Vorma) LoadersHandler() mux.TasksCtxRequirerFunc {
 					isJSON,
 					requestedBuildID,
 				)
-				if routeResult.terminalState == routeTerminalStateStaleBuild {
-					ensureLoadersCacheControlHeader(w, res)
-					res.SetHeader(VormaBuildIDHeaderKey, routeResult.buildID)
-					res.SetHeader("X-Vorma-Reload", buildLoadersReloadURL(r))
+				if routeResult.TerminalState ==
+					routepipeline.RouteTerminalStateStaleBuild {
+					routepipeline.EnsureLoadersCacheControlHeader(w, res)
+					res.SetHeader(VormaBuildIDHeaderKey, routeResult.BuildID)
+					res.SetHeader(
+						"X-Vorma-Reload",
+						routepipeline.BuildLoadersReloadURL(r),
+					)
 					res.OK()
 					return
 				}
-				if writeTerminalLoadersResponse(res, routeResult) {
+				if routepipeline.WriteTerminalLoadersResponse(
+					res,
+					routeResult,
+				) {
 					return
 				}
 
-				routeData := buildRouteDataFinal(routeResult)
+				routeData := routepipeline.BuildRouteDataFinal(routeResult)
 
-				ensureLoadersCacheControlHeader(w, res)
+				routepipeline.EnsureLoadersCacheControlHeader(w, res)
 
 				if isJSON {
-					if err := writeLoadersJSONResponse(res, routeData); err != nil {
+					if err := routepipeline.WriteLoadersJSONResponse(res, routeData); err != nil {
 						v.Log.Error(
 							fmt.Sprintf("Error marshalling JSON: %v", err),
 						)
@@ -221,250 +192,155 @@ func (v *Vorma) validateDevReloadExpectedBuildIDOrWriteConflict(
 // reload endpoint path.
 func (v *Vorma) DevReloadRoutesEndpointPath() string {
 	if v == nil || v.Config == nil {
-		return DefaultDevReloadRoutesEndpointPath
+		return runtimeconfig.DefaultDevReloadRoutesEndpointPath
 	}
-
-	configuredPath := strings.TrimSpace(v.Config.DevReloadRoutesEndpointPath)
-	if configuredPath == "" {
-		return DefaultDevReloadRoutesEndpointPath
-	}
-
-	return configuredPath
+	return runtimeconfig.ResolveDevReloadRoutesEndpointPath(
+		v.Config.DevReloadRoutesEndpointPath,
+	)
 }
 
 // DevReloadTemplateEndpointPath returns the configured (or default) dev
 // template reload endpoint path.
 func (v *Vorma) DevReloadTemplateEndpointPath() string {
 	if v == nil || v.Config == nil {
-		return DefaultDevReloadTemplateEndpointPath
+		return runtimeconfig.DefaultDevReloadTemplateEndpointPath
 	}
-
-	configuredPath := strings.TrimSpace(v.Config.DevReloadTemplateEndpointPath)
-	if configuredPath == "" {
-		return DefaultDevReloadTemplateEndpointPath
-	}
-
-	return configuredPath
+	return runtimeconfig.ResolveDevReloadTemplateEndpointPath(
+		v.Config.DevReloadTemplateEndpointPath,
+	)
 }
 
 // TemplateDataKeyHeadElements returns the template data key used for rendered
 // head elements.
 func (v *Vorma) TemplateDataKeyHeadElements() string {
 	if v == nil || v.Config == nil {
-		return DefaultTemplateDataKeyHeadElements
+		return runtimeconfig.DefaultTemplateDataKeyHeadElements
 	}
-	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeyHeadElements)
-	if configuredKey == "" {
-		return DefaultTemplateDataKeyHeadElements
-	}
-	return configuredKey
+	return runtimeconfig.ResolveTemplateDataKeyHeadElements(
+		v.Config.TemplateDataKeyHeadElements,
+	)
 }
 
 // TemplateDataKeyBodyScripts returns the template data key used for rendered
 // body scripts.
 func (v *Vorma) TemplateDataKeyBodyScripts() string {
 	if v == nil || v.Config == nil {
-		return DefaultTemplateDataKeyBodyScripts
+		return runtimeconfig.DefaultTemplateDataKeyBodyScripts
 	}
-	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeyBodyScripts)
-	if configuredKey == "" {
-		return DefaultTemplateDataKeyBodyScripts
-	}
-	return configuredKey
+	return runtimeconfig.ResolveTemplateDataKeyBodyScripts(
+		v.Config.TemplateDataKeyBodyScripts,
+	)
 }
 
 // TemplateDataKeySSRScript returns the template data key used for SSR inner
 // HTML.
 func (v *Vorma) TemplateDataKeySSRScript() string {
 	if v == nil || v.Config == nil {
-		return DefaultTemplateDataKeySSRScript
+		return runtimeconfig.DefaultTemplateDataKeySSRScript
 	}
-	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeySSRScript)
-	if configuredKey == "" {
-		return DefaultTemplateDataKeySSRScript
-	}
-	return configuredKey
+	return runtimeconfig.ResolveTemplateDataKeySSRScript(
+		v.Config.TemplateDataKeySSRScript,
+	)
 }
 
 // TemplateDataKeySSRScriptHash returns the template data key used for the SSR
 // script hash.
 func (v *Vorma) TemplateDataKeySSRScriptHash() string {
 	if v == nil || v.Config == nil {
-		return DefaultTemplateDataKeySSRScriptHash
+		return runtimeconfig.DefaultTemplateDataKeySSRScriptHash
 	}
-	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeySSRScriptHash)
-	if configuredKey == "" {
-		return DefaultTemplateDataKeySSRScriptHash
-	}
-	return configuredKey
+	return runtimeconfig.ResolveTemplateDataKeySSRScriptHash(
+		v.Config.TemplateDataKeySSRScriptHash,
+	)
 }
 
 // TemplateDataKeyRootElementID returns the template data key used for the
 // client root element id.
 func (v *Vorma) TemplateDataKeyRootElementID() string {
 	if v == nil || v.Config == nil {
-		return DefaultTemplateDataKeyRootElementID
+		return runtimeconfig.DefaultTemplateDataKeyRootElementID
 	}
-	configuredKey := strings.TrimSpace(v.Config.TemplateDataKeyRootElementID)
-	if configuredKey == "" {
-		return DefaultTemplateDataKeyRootElementID
-	}
-	return configuredKey
+	return runtimeconfig.ResolveTemplateDataKeyRootElementID(
+		v.Config.TemplateDataKeyRootElementID,
+	)
 }
 
 // ClientRootElementID returns the configured (or default) client mount root id.
 func (v *Vorma) ClientRootElementID() string {
 	if v == nil || v.Config == nil {
-		return DefaultClientRootElementID
+		return runtimeconfig.DefaultClientRootElementID
 	}
-	rootElementID := strings.TrimSpace(v.Config.ClientRootElementID)
-	if rootElementID == "" {
-		return DefaultClientRootElementID
-	}
-	return rootElementID
-}
-
-func buildLoadersReloadURL(r *http.Request) string {
-	newURL := *r.URL
-	q := r.URL.Query()
-	q.Del(VormaJSONQueryKey)
-	newURL.RawQuery = q.Encode()
-	return newURL.String()
-}
-
-func writeTerminalLoadersResponse(
-	res response.Response,
-	routeResult *RouteResult,
-) bool {
-	switch routeResult.terminalState {
-	case routeTerminalStateNotFound:
-		res.NotFound()
-		return true
-	case routeTerminalStateRedirect, routeTerminalStateError:
-		return true
-	default:
-		return false
-	}
-}
-
-func buildRouteDataFinal(routeResult *RouteResult) *RouteDataFinal {
-	return &RouteDataFinal{
-		RouteDataCore: routeResult.core,
-		Title:         routeResult.assets.SortedAndPreEscapedHeadEls.Title,
-		Meta:          routeResult.assets.SortedAndPreEscapedHeadEls.Meta,
-		Rest:          routeResult.assets.SortedAndPreEscapedHeadEls.Rest,
-		CSSBundles:    routeResult.assets.CSSBundles,
-		ViteDevURL:    routeResult.assets.ViteDevURL,
-	}
-}
-
-func ensureLoadersCacheControlHeader(
-	w http.ResponseWriter,
-	res response.Response,
-) {
-	if w.Header().Get("Cache-Control") == "" {
-		res.SetHeader(
-			"Cache-Control",
-			"private, max-age=0, must-revalidate, no-cache",
-		)
-	}
-}
-
-func writeLoadersJSONResponse(
-	res response.Response,
-	routeData *RouteDataFinal,
-) error {
-	jsonBytes, err := json.Marshal(routeData)
-	if err != nil {
-		return err
-	}
-	res.JSONBytes(jsonBytes)
-	return nil
-}
-
-func (v *Vorma) renderHeadAndSSRForTemplate(
-	routeResult *RouteResult,
-	routeData *RouteDataFinal,
-) (template.HTML, *template.HTML, string, error) {
-	var eg errgroup.Group
-	var ssrScript *template.HTML
-	var ssrScriptSha256Hash string
-	var headElements template.HTML
-
-	eg.Go(func() error {
-		he, err := v.headElsInst.Render(
-			routeResult.assets.SortedAndPreEscapedHeadEls,
-		)
-		if err != nil {
-			return fmt.Errorf("error getting head elements: %w", err)
-		}
-		headElements = he
-		headElements += "\n" + v.Wave.CriticalCSSStyleElement()
-		headElements += "\n" + v.Wave.StyleSheetLinkElement()
-		return nil
-	})
-
-	eg.Go(func() error {
-		sih, err := v.getSSRInnerHTMLWithRuntimeState(
-			routeData,
-			ssrRuntimeSnapshot{
-				isDev:             routeResult.htmlRenderSnapshot.isDevMode,
-				buildID:           routeResult.buildID,
-				routeManifestFile: routeResult.routeManifestFileSnapshot,
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("error getting SSR inner HTML: %w", err)
-		}
-		ssrScript = sih.Script
-		ssrScriptSha256Hash = sih.Sha256Hash
-		return nil
-	})
-
-	if err := eg.Wait(); err != nil {
-		return "", nil, "", err
-	}
-
-	return headElements, ssrScript, ssrScriptSha256Hash, nil
+	return runtimeconfig.ResolveClientRootElementID(
+		v.Config.ClientRootElementID,
+	)
 }
 
 func (v *Vorma) buildLoadersHTMLResponseBytes(
 	r *http.Request,
-	routeResult *RouteResult,
-	routeData *RouteDataFinal,
+	routeResult *routepipeline.RouteResult,
+	routeData *routepipeline.RouteDataFinal,
 ) ([]byte, string, error) {
-	headElements, ssrScript, ssrScriptSha256Hash, err := v.renderHeadAndSSRForTemplate(
-		routeResult,
-		routeData,
-	)
-	if err != nil {
-		return nil, "Error getting route data", err
+	rootTemplateData, rootTemplateDataError := v.getRootTemplateDataOrEmpty(r)
+	if rootTemplateDataError != nil {
+		return nil, "Error getting root template data", rootTemplateDataError
 	}
 
-	rootTemplateData, err := v.getRootTemplateDataOrEmpty(r)
-	if err != nil {
-		return nil, "Error getting root template data", err
-	}
-	v.injectVormaTemplateFields(
-		rootTemplateData,
-		headElements,
-		ssrScript,
-		ssrScriptSha256Hash,
-	)
+	htmlRenderSnapshot := routeResult.HTMLRenderSnapshot
+	htmlBytes, htmlRenderError := rendering.BuildLoadersHTMLResponseBytes(
+		rendering.BuildLoadersHTMLResponseInput{
+			RenderHeadElements: func() (template.HTML, error) {
+				return v.headElsInst.Render(
+					routeResult.Assets.SortedAndPreEscapedHeadEls,
+				)
+			},
+			CriticalCSSStyleElement: v.Wave.CriticalCSSStyleElement(),
+			StyleSheetLinkElement:   v.Wave.StyleSheetLinkElement(),
+			SSRRuntimeState: rendering.SSRRuntimeState{
+				VormaSymbolStr:    VormaSymbolStr,
+				IsDev:             routeResult.HTMLRenderSnapshot.IsDevMode,
+				BuildID:           routeResult.BuildID,
+				RootElementID:     v.ClientRootElementID(),
+				PublicPathPrefix:  v.Wave.PublicPathPrefix(),
+				RouteManifestFile: routeResult.RouteManifestFileSnapshot,
+			},
+			SSRRouteData: rendering.SSRRouteData{
+				ViteDevURL: routeData.ViteDevURL,
+				CSSBundles: routeData.CSSBundles,
 
-	htmlRenderSnapshot := routeResult.htmlRenderSnapshot
-	bodyScripts, err := v.getBodyScriptsForTemplate(htmlRenderSnapshot)
-	if err != nil {
-		return nil, "Error getting dev scripts", err
-	}
-	rootTemplateData[v.TemplateDataKeyBodyScripts()] = bodyScripts
+				OutermostServerError:    routeData.RouteDataCore.OutermostServerError,
+				OutermostServerErrorIdx: routeData.RouteDataCore.OutermostServerErrorIdx,
+				ErrorExportKeys:         routeData.RouteDataCore.ErrorExportKeys,
+				MatchedPatterns:         routeData.RouteDataCore.MatchedPatterns,
+				LoadersData:             routeData.RouteDataCore.LoadersData,
+				ImportURLs:              routeData.RouteDataCore.ImportURLs,
+				ExportKeys:              routeData.RouteDataCore.ExportKeys,
+				HasRootData:             routeData.RouteDataCore.HasRootData,
+				Params:                  routeData.RouteDataCore.Params,
+				SplatValues:             routeData.RouteDataCore.SplatValues,
+				Deps:                    routeData.RouteDataCore.Deps,
+			},
+			RootTemplateData: rootTemplateData,
 
-	htmlBytes, err := executeRootTemplate(
-		htmlRenderSnapshot.rootTemplate,
-		rootTemplateData,
+			TemplateDataKeyHeadElements:  v.TemplateDataKeyHeadElements(),
+			TemplateDataKeyBodyScripts:   v.TemplateDataKeyBodyScripts(),
+			TemplateDataKeySSRScript:     v.TemplateDataKeySSRScript(),
+			TemplateDataKeySSRScriptHash: v.TemplateDataKeySSRScriptHash(),
+			TemplateDataKeyRootElementID: v.TemplateDataKeyRootElementID(),
+			ClientRootElementID:          v.ClientRootElementID(),
+
+			BodyScriptsInput: rendering.BodyScriptsInput{
+				RenderSnapshot:   htmlRenderSnapshot,
+				PublicPathPrefix: v.Wave.PublicPathPrefix(),
+				RefreshScript:    v.Wave.RefreshScript(),
+				ClientEntry:      v.Config.ClientEntry,
+				UseReactVariant: UIVariant(
+					v.Config.UIVariant,
+				) == UIVariantReact,
+			},
+		},
 	)
-	if err != nil {
-		return nil, "Error executing template", err
+	if htmlRenderError != nil {
+		return nil, "Error rendering template", htmlRenderError
 	}
 
 	return htmlBytes, "", nil
@@ -485,66 +361,7 @@ func (v *Vorma) getRootTemplateDataOrEmpty(
 		return make(map[string]any), nil
 	}
 
-	return cloneTemplateDataMap(rootTemplateData), nil
-}
-
-func cloneTemplateDataMap(input map[string]any) map[string]any {
-	cloned := make(map[string]any, len(input))
-	for k, v := range input {
-		cloned[k] = v
-	}
-	return cloned
-}
-
-func (v *Vorma) injectVormaTemplateFields(
-	rootTemplateData map[string]any,
-	headElements template.HTML,
-	ssrScript *template.HTML,
-	ssrScriptSha256Hash string,
-) {
-	rootTemplateData[v.TemplateDataKeyHeadElements()] = headElements
-	rootTemplateData[v.TemplateDataKeySSRScript()] = ssrScript
-	rootTemplateData[v.TemplateDataKeySSRScriptHash()] = ssrScriptSha256Hash
-	rootTemplateData[v.TemplateDataKeyRootElementID()] = v.ClientRootElementID()
-}
-
-func (v *Vorma) getBodyScriptsForTemplate(
-	htmlRenderSnapshot loadersHTMLRenderSnapshot,
-) (template.HTML, error) {
-	if !htmlRenderSnapshot.isDevMode {
-		return template.HTML(
-			fmt.Sprintf(
-				`<script type="module" src="%s%s"></script>`,
-				v.Wave.PublicPathPrefix(),
-				htmlRenderSnapshot.clientEntryOut,
-			),
-		), nil
-	}
-
-	opts := viteutil.ToDevScriptsOptions{ClientEntry: v.Config.ClientEntry}
-	if UIVariant(v.Config.UIVariant) == UIVariantReact {
-		opts.Variant = viteutil.VariantReact
-	} else {
-		opts.Variant = viteutil.VariantOther
-	}
-
-	devScripts, err := viteutil.ToDevScripts(opts)
-	if err != nil {
-		return "", err
-	}
-
-	return devScripts + "\n" + v.Wave.RefreshScript(), nil
-}
-
-func executeRootTemplate(
-	rootTemplate *template.Template,
-	rootTemplateData map[string]any,
-) ([]byte, error) {
-	var buf bytes.Buffer
-	if err := rootTemplate.Execute(&buf, rootTemplateData); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return rendering.CloneTemplateDataMap(rootTemplateData), nil
 }
 
 // IsJSONRequest reports whether a request asks for JSON loader data response.
@@ -757,154 +574,35 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v.actionsRouter = newActionsRouter(o.ActionsRouterOptions)
 	v.headElsInst = headels.NewInstance("vorma")
 	v._routeDataCache = &sync.Map{}
-	v._lifecycleState = runtimeLifecycleStateUninitialized
+	v._lifecycleState = runtimecore.LifecycleStateUninitialized
 
 	return &v
 }
 
 func (v *Vorma) validateConfig() {
-	if v.Config.MainBuildEntry == "" {
-		panic("config: Vorma.MainBuildEntry is required")
-	}
-	if v.Config.UIVariant == "" {
-		panic("config: Vorma.UIVariant is required")
-	}
-	if v.Config.HTMLTemplateLocation == "" {
-		panic("config: Vorma.HTMLTemplateLocation is required")
-	}
-	if v.Config.ClientEntry == "" {
-		panic("config: Vorma.ClientEntry is required")
-	}
-	if len(v.Config.ClientRouteDefinitionPatterns) == 0 {
-		panic("config: Vorma.ClientRouteDefinitionPatterns is required")
-	}
-	for _, pattern := range v.Config.ClientRouteDefinitionPatterns {
-		if strings.TrimSpace(pattern) == "" {
-			panic(
-				"config: Vorma.ClientRouteDefinitionPatterns cannot contain empty entries",
-			)
-		}
-	}
-	if v.Config.TSGenOutDir == "" {
-		panic("config: Vorma.TSGenOutDir is required")
-	}
-	applyDefaultConfigStringValue(
-		&v.Config.BuildtimePublicURLFuncName,
-		"waveBuildtimeURL",
+	err := runtimeconfig.NormalizeAndValidateMutableConfig(
+		runtimeconfig.MutableValidationConfig{
+			MainBuildEntry:                &v.Config.MainBuildEntry,
+			UIVariant:                     &v.Config.UIVariant,
+			HTMLTemplateLocation:          &v.Config.HTMLTemplateLocation,
+			ClientEntry:                   &v.Config.ClientEntry,
+			ClientRouteDefinitionPatterns: &v.Config.ClientRouteDefinitionPatterns,
+			TSGenOutDir:                   &v.Config.TSGenOutDir,
+			BuildtimePublicURLFuncName:    &v.Config.BuildtimePublicURLFuncName,
+			UnresolvedRoutePolicy:         &v.Config.UnresolvedRoutePolicy,
+			DevReloadRoutesEndpointPath:   &v.Config.DevReloadRoutesEndpointPath,
+			DevReloadTemplateEndpointPath: &v.Config.DevReloadTemplateEndpointPath,
+			TemplateDataKeyHeadElements:   &v.Config.TemplateDataKeyHeadElements,
+			TemplateDataKeyBodyScripts:    &v.Config.TemplateDataKeyBodyScripts,
+			TemplateDataKeySSRScript:      &v.Config.TemplateDataKeySSRScript,
+			TemplateDataKeySSRScriptHash:  &v.Config.TemplateDataKeySSRScriptHash,
+			TemplateDataKeyRootElementID:  &v.Config.TemplateDataKeyRootElementID,
+			ClientRootElementID:           &v.Config.ClientRootElementID,
+		},
 	)
-	trimConfigStringValue(&v.Config.UnresolvedRoutePolicy)
-	v.Config.UnresolvedRoutePolicy = strings.ToLower(
-		v.Config.UnresolvedRoutePolicy,
-	)
-	if !isValidUnresolvedRoutePolicy(v.Config.UnresolvedRoutePolicy) {
-		panic(
-			`config: Vorma.UnresolvedRoutePolicy must be "warn" or "error" when set`,
-		)
+	if err != nil {
+		panic(err)
 	}
-
-	applyDefaultConfigStringValue(
-		&v.Config.DevReloadRoutesEndpointPath,
-		DefaultDevReloadRoutesEndpointPath,
-	)
-	applyDefaultConfigStringValue(
-		&v.Config.DevReloadTemplateEndpointPath,
-		DefaultDevReloadTemplateEndpointPath,
-	)
-
-	trimConfigStringValue(&v.Config.DevReloadRoutesEndpointPath)
-	trimConfigStringValue(&v.Config.DevReloadTemplateEndpointPath)
-	if !strings.HasPrefix(v.Config.DevReloadRoutesEndpointPath, "/") {
-		panic("config: Vorma.DevReloadRoutesEndpointPath must start with '/'")
-	}
-	if !strings.HasPrefix(v.Config.DevReloadTemplateEndpointPath, "/") {
-		panic("config: Vorma.DevReloadTemplateEndpointPath must start with '/'")
-	}
-	if v.Config.DevReloadRoutesEndpointPath == v.Config.DevReloadTemplateEndpointPath {
-		panic(
-			"config: Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadTemplateEndpointPath must differ",
-		)
-	}
-
-	applyDefaultAndTrimConfigStringValue(
-		&v.Config.TemplateDataKeyHeadElements,
-		DefaultTemplateDataKeyHeadElements,
-	)
-	applyDefaultAndTrimConfigStringValue(
-		&v.Config.TemplateDataKeyBodyScripts,
-		DefaultTemplateDataKeyBodyScripts,
-	)
-	applyDefaultAndTrimConfigStringValue(
-		&v.Config.TemplateDataKeySSRScript,
-		DefaultTemplateDataKeySSRScript,
-	)
-	applyDefaultAndTrimConfigStringValue(
-		&v.Config.TemplateDataKeySSRScriptHash,
-		DefaultTemplateDataKeySSRScriptHash,
-	)
-	applyDefaultAndTrimConfigStringValue(
-		&v.Config.TemplateDataKeyRootElementID,
-		DefaultTemplateDataKeyRootElementID,
-	)
-	applyDefaultAndTrimConfigStringValue(
-		&v.Config.ClientRootElementID,
-		DefaultClientRootElementID,
-	)
-
-	templateDataKeys := []string{
-		v.Config.TemplateDataKeyHeadElements,
-		v.Config.TemplateDataKeyBodyScripts,
-		v.Config.TemplateDataKeySSRScript,
-		v.Config.TemplateDataKeySSRScriptHash,
-		v.Config.TemplateDataKeyRootElementID,
-	}
-	for _, templateDataKey := range templateDataKeys {
-		if templateDataKey == "" {
-			panic("config: Vorma template data keys must be non-empty")
-		}
-	}
-	seenTemplateDataKeys := make(map[string]struct{}, len(templateDataKeys))
-	for _, templateDataKey := range templateDataKeys {
-		if _, found := seenTemplateDataKeys[templateDataKey]; found {
-			panic("config: Vorma template data keys must be unique")
-		}
-		seenTemplateDataKeys[templateDataKey] = struct{}{}
-	}
-	if v.Config.ClientRootElementID == "" {
-		panic("config: Vorma.ClientRootElementID is required")
-	}
-}
-
-func applyDefaultConfigStringValue(configField *string, defaultValue string) {
-	if configField == nil {
-		return
-	}
-	if *configField == "" {
-		*configField = defaultValue
-	}
-}
-
-func trimConfigStringValue(configField *string) {
-	if configField == nil {
-		return
-	}
-	*configField = strings.TrimSpace(*configField)
-}
-
-func applyDefaultAndTrimConfigStringValue(
-	configField *string,
-	defaultValue string,
-) {
-	applyDefaultConfigStringValue(configField, defaultValue)
-	trimConfigStringValue(configField)
-}
-
-func isValidUnresolvedRoutePolicy(policy string) bool {
-	if policy == "" {
-		return true
-	}
-
-	return policy == UnresolvedRoutePolicyWarn ||
-		policy == UnresolvedRoutePolicyError
 }
 
 // Loaders exposes convenience helpers for mounting loader handlers.
@@ -961,115 +659,18 @@ type Route[I any, O any] = mux.Route[I, O]
 // TaskHandler aliases mux.TaskHandler for public runtime surface continuity.
 type TaskHandler[I any, O any] = mux.TaskHandler[I, O]
 
-type cachedItemSubset struct {
-	ImportURLs      []string
-	ExportKeys      []string
-	ErrorExportKeys []string
-	Deps            []string
-}
-
-type SplatValues []string
-
-// RouteDataCore contains the core route data that is serialized to JSON for the client.
-type RouteDataCore struct {
-	OutermostServerError    string   `json:"outermostServerError,omitempty"`
-	OutermostServerErrorIdx *int     `json:"outermostServerErrorIdx,omitempty"`
-	ErrorExportKeys         []string `json:"errorExportKeys,omitempty"`
-
-	MatchedPatterns []string `json:"matchedPatterns,omitempty"`
-	LoadersData     []any    `json:"loadersData,omitempty"`
-	ImportURLs      []string `json:"importURLs,omitempty"`
-	ExportKeys      []string `json:"exportKeys,omitempty"`
-	HasRootData     bool     `json:"hasRootData,omitempty"`
-
-	Params      mux.Params  `json:"params,omitempty"`
-	SplatValues SplatValues `json:"splatValues,omitempty"`
-	Deps        []string    `json:"deps,omitempty"`
-}
-
-// RouteAssets contains resolved CSS bundles and head elements.
-type RouteAssets struct {
-	SortedAndPreEscapedHeadEls *headels.SortedAndPreEscapedHeadEls
-	CSSBundles                 []string
-	ViteDevURL                 string
-}
-
-// RouteResult is the full result of route resolution, including early-return signals.
-type RouteResult struct {
-	terminalState routeTerminalState
-	buildID       string
-
-	core                      *RouteDataCore
-	headElements              []*htmlutil.Element
-	cssBundles                []string
-	assets                    *RouteAssets
-	isDev                     bool
-	htmlRenderSnapshot        loadersHTMLRenderSnapshot
-	routeManifestFileSnapshot string
-	mergedResponseProxy       *response.Proxy
-}
-
-type routeTerminalState uint8
-
-const (
-	routeTerminalStateNone routeTerminalState = iota
-	routeTerminalStateNotFound
-	routeTerminalStateRedirect
-	routeTerminalStateError
-	routeTerminalStateStaleBuild
-)
-
-// RouteDataFinal is the final structure serialized to JSON for the client.
-type RouteDataFinal struct {
-	*RouteDataCore
-	Title      *htmlutil.Element   `json:"title,omitempty"`
-	Meta       []*htmlutil.Element `json:"metaHeadEls,omitempty"`
-	Rest       []*htmlutil.Element `json:"restHeadEls,omitempty"`
-	CSSBundles []string            `json:"cssBundles,omitempty"`
-	ViteDevURL string              `json:"viteDevURL,omitempty"`
-}
-
-type routeDataExecutionInputs struct {
-	matchResults    *nestedmatcher.Results
-	matches         []*nestedmatcher.Match
-	matchedPatterns []string
-	cached          *cachedItemSubset
-	runtimeSnapshot RuntimeSnapshot
-}
-
-type routeErrorCutPlan struct {
-	cutIdx           int
-	headRouteCount   int
-	clientMessage    string
-	depsForRouteData []string
-}
-
-type routeStageOnePlannerInput struct {
-	matchResults              *nestedmatcher.Results
-	matches                   []*nestedmatcher.Match
-	matchedPatterns           []string
-	cached                    *cachedItemSubset
-	runtimeSnapshot           RuntimeSnapshot
-	hasRootData               bool
-	loadersData               []any
-	outermostLoaderErrorIndex *int
-	clientLoaderErrorMessage  string
-	responseProxies           []*response.Proxy
-	mergedResponseProxy       *response.Proxy
-}
-
 func (v *Vorma) getRouteDataStage1(
 	w http.ResponseWriter,
 	r *http.Request,
 	nestedRouter *nestedmux.Router,
 	requestedBuildID string,
-) *RouteResult {
+) *routepipeline.RouteResult {
 	inputs, found := v.prepareRouteDataExecutionInputs(r, nestedRouter)
-	if inputs.runtimeSnapshot.buildID != "" {
-		w.Header().Set(VormaBuildIDHeaderKey, inputs.runtimeSnapshot.buildID)
+	if inputs.RuntimeSnapshot.BuildID != "" {
+		w.Header().Set(VormaBuildIDHeaderKey, inputs.RuntimeSnapshot.BuildID)
 	}
 	if requestedBuildID != "" &&
-		requestedBuildID != inputs.runtimeSnapshot.buildID {
+		requestedBuildID != inputs.RuntimeSnapshot.BuildID {
 		v.Log.Debug(
 			"Stale build loaders request",
 			"path",
@@ -1077,13 +678,13 @@ func (v *Vorma) getRouteDataStage1(
 			"requested_build_id",
 			requestedBuildID,
 			"current_build_id",
-			inputs.runtimeSnapshot.buildID,
+			inputs.RuntimeSnapshot.BuildID,
 			"route_data_snapshot_version",
-			inputs.runtimeSnapshot.routeDataSnapshotVersion,
+			inputs.RuntimeSnapshot.RouteDataSnapshotVersion,
 		)
-		return &RouteResult{
-			terminalState: routeTerminalStateStaleBuild,
-			buildID:       inputs.runtimeSnapshot.buildID,
+		return &routepipeline.RouteResult{
+			TerminalState: routepipeline.RouteTerminalStateStaleBuild,
+			BuildID:       inputs.RuntimeSnapshot.BuildID,
 		}
 	}
 	if !found {
@@ -1092,20 +693,20 @@ func (v *Vorma) getRouteDataStage1(
 			"path",
 			r.URL.Path,
 			"build_id",
-			inputs.runtimeSnapshot.buildID,
+			inputs.RuntimeSnapshot.BuildID,
 			"route_data_snapshot_version",
-			inputs.runtimeSnapshot.routeDataSnapshotVersion,
+			inputs.RuntimeSnapshot.RouteDataSnapshotVersion,
 		)
-		return &RouteResult{
-			terminalState: routeTerminalStateNotFound,
-			buildID:       inputs.runtimeSnapshot.buildID,
+		return &routepipeline.RouteResult{
+			TerminalState: routepipeline.RouteTerminalStateNotFound,
+			BuildID:       inputs.RuntimeSnapshot.BuildID,
 		}
 	}
 
 	tasksResults := nestedmux.RunTasks(
 		nestedRouter,
 		r,
-		inputs.matchResults,
+		inputs.MatchResults,
 	)
 	if tasksResults == nil {
 		v.Log.Error(
@@ -1113,9 +714,9 @@ func (v *Vorma) getRouteDataStage1(
 		)
 		res := response.New(w)
 		res.InternalServerError()
-		return &RouteResult{
-			terminalState: routeTerminalStateError,
-			buildID:       inputs.runtimeSnapshot.buildID,
+		return &routepipeline.RouteResult{
+			TerminalState: routepipeline.RouteTerminalStateError,
+			BuildID:       inputs.RuntimeSnapshot.BuildID,
 		}
 	}
 
@@ -1123,222 +724,91 @@ func (v *Vorma) getRouteDataStage1(
 }
 
 func (v *Vorma) planRouteResultFromTaskResults(
-	inputs routeDataExecutionInputs,
+	inputs routepipeline.RouteDataExecutionInputs,
 	tasksResults *nestedmux.TasksResults,
-) *RouteResult {
+) *routepipeline.RouteResult {
 	mergedResponseProxy := response.MergeProxyResponses(
 		tasksResults.ResponseProxies...)
-	hasRootData := computeHasRootData(inputs.matchResults, tasksResults)
+	hasRootData := routepipeline.ComputeHasRootData(
+		inputs.MatchResults,
+		tasksResults,
+	)
 
 	loadersData, loadersErrs := v.collectLoadersDataAndErrors(
 		tasksResults,
-		inputs.matchedPatterns,
+		inputs.MatchedPatterns,
 	)
-	outermostErrorIdx := findFirstErrorIndex(loadersErrs)
+	outermostErrorIdx := routepipeline.FindFirstErrorIndex(loadersErrs)
 	clientLoaderErrorMessage := ""
 	if outermostErrorIdx != nil {
 		derefErrorIdx := *outermostErrorIdx
 		clientLoaderErrorMessage = v.resolveClientLoaderErrorMessage(
 			loadersErrs[derefErrorIdx],
-			inputs.matchedPatterns[derefErrorIdx],
+			inputs.MatchedPatterns[derefErrorIdx],
 		)
 	}
 
-	return planRouteResultFromResolvedTaskOutcomes(routeStageOnePlannerInput{
-		matchResults:              inputs.matchResults,
-		matches:                   inputs.matches,
-		matchedPatterns:           inputs.matchedPatterns,
-		cached:                    inputs.cached,
-		runtimeSnapshot:           inputs.runtimeSnapshot,
-		hasRootData:               hasRootData,
-		loadersData:               loadersData,
-		outermostLoaderErrorIndex: outermostErrorIdx,
-		clientLoaderErrorMessage:  clientLoaderErrorMessage,
-		responseProxies:           tasksResults.ResponseProxies,
-		mergedResponseProxy:       mergedResponseProxy,
-	})
-}
-
-func planRouteResultFromResolvedTaskOutcomes(
-	input routeStageOnePlannerInput,
-) *RouteResult {
-	terminalState := detectTerminalStateFromMergedResponseProxy(
-		input.mergedResponseProxy,
+	return routepipeline.PlanRouteResultFromResolvedTaskOutcomes(
+		routepipeline.RouteStageOnePlannerInput{
+			MatchResults:              inputs.MatchResults,
+			Matches:                   inputs.Matches,
+			MatchedPatterns:           inputs.MatchedPatterns,
+			Cached:                    inputs.Cached,
+			RuntimeSnapshot:           inputs.RuntimeSnapshot,
+			HasRootData:               hasRootData,
+			LoadersData:               loadersData,
+			OutermostLoaderErrorIndex: outermostErrorIdx,
+			ClientLoaderErrorMessage:  clientLoaderErrorMessage,
+			ResponseProxies:           tasksResults.ResponseProxies,
+			MergedResponseProxy:       mergedResponseProxy,
+		},
 	)
-	if terminalState != routeTerminalStateNone {
-		return &RouteResult{
-			terminalState:       terminalState,
-			buildID:             input.runtimeSnapshot.buildID,
-			mergedResponseProxy: input.mergedResponseProxy,
-		}
-	}
-
-	cached := input.cached
-	if cached == nil {
-		cached = buildEmptyCachedItemSubset(len(input.matches))
-	}
-	matchResults := input.matchResults
-	if matchResults == nil {
-		matchResults = &nestedmatcher.Results{}
-	}
-
-	normalizedInput := input
-	normalizedInput.cached = cached
-	normalizedInput.matchResults = matchResults
-
-	cutPlan := buildRouteErrorCutPlan(normalizedInput)
-	core := buildRouteDataCore(
-		normalizedInput.matchResults,
-		normalizedInput.matchedPatterns,
-		normalizedInput.loadersData,
-		normalizedInput.cached,
-		normalizedInput.hasRootData,
-		normalizedInput.outermostLoaderErrorIndex,
-		cutPlan.clientMessage,
-		cutPlan.cutIdx,
-		cutPlan.depsForRouteData,
-	)
-	cssBundles := getCSSBundles(
-		core.Deps,
-		normalizedInput.runtimeSnapshot.clientEntryOut,
-		normalizedInput.runtimeSnapshot.depToCSSBundleMap,
-	)
-
-	return &RouteResult{
-		buildID: normalizedInput.runtimeSnapshot.buildID,
-		core:    core,
-		headElements: collectFlattenedHeadElementsForPrefix(
-			normalizedInput.responseProxies,
-			cutPlan.headRouteCount,
-		),
-		cssBundles:                cssBundles,
-		isDev:                     normalizedInput.runtimeSnapshot.isDev,
-		htmlRenderSnapshot:        normalizedInput.runtimeSnapshot.toLoadersHTMLRender(),
-		routeManifestFileSnapshot: normalizedInput.runtimeSnapshot.routeManifestFile,
-		mergedResponseProxy:       normalizedInput.mergedResponseProxy,
-	}
-}
-
-func buildEmptyCachedItemSubset(routeCount int) *cachedItemSubset {
-	return &cachedItemSubset{
-		ImportURLs:      make([]string, routeCount),
-		ExportKeys:      make([]string, routeCount),
-		ErrorExportKeys: make([]string, routeCount),
-	}
-}
-
-func buildRouteErrorCutPlan(input routeStageOnePlannerInput) routeErrorCutPlan {
-	plan := routeErrorCutPlan{
-		cutIdx:         len(input.matches),
-		headRouteCount: len(input.matches),
-	}
-	if input.cached != nil {
-		plan.depsForRouteData = input.cached.Deps
-	}
-	if input.outermostLoaderErrorIndex == nil {
-		return plan
-	}
-
-	derefErrorIdx := *input.outermostLoaderErrorIndex
-	plan.clientMessage = input.clientLoaderErrorMessage
-	plan.cutIdx = derefErrorIdx + 1
-	plan.headRouteCount = derefErrorIdx
-	if plan.cutIdx < len(input.matches) {
-		plan.depsForRouteData = getDepsFromData(
-			input.matches[:plan.cutIdx],
-			input.runtimeSnapshot.paths,
-			input.runtimeSnapshot.clientEntryDeps,
-		)
-	}
-	return plan
 }
 
 func (v *Vorma) prepareRouteDataExecutionInputs(
 	r *http.Request,
 	nestedRouter *nestedmux.Router,
-) (routeDataExecutionInputs, bool) {
+) (routepipeline.RouteDataExecutionInputs, bool) {
 	v.mu.RLock()
 	runtimeSnapshot := v.captureRuntimeSnapshotLocked()
 
 	matchResults, found := nestedmux.FindMatches(nestedRouter, r)
 	if !found {
 		v.mu.RUnlock()
-		return routeDataExecutionInputs{
-			runtimeSnapshot: runtimeSnapshot,
+		return routepipeline.RouteDataExecutionInputs{
+			RuntimeSnapshot: runtimeSnapshot.toRoutePipelineSnapshot(),
 		}, false
 	}
 
 	matches := matchResults.Matches
 	v.mu.RUnlock()
 
-	matchedPatterns := collectMatchedPatterns(matches)
-	cacheKey := v.buildRouteDataCacheKey(
+	runtimePipelineSnapshot := runtimeSnapshot.toRoutePipelineSnapshot()
+	matchedPatterns := routepipeline.CollectMatchedPatterns(matches)
+	cacheKey := routepipeline.BuildRouteDataCacheKey(
 		matches,
-		runtimeSnapshot.isDev,
-		runtimeSnapshot.buildID,
-		runtimeSnapshot.routeDataSnapshotVersion,
+		runtimePipelineSnapshot.IsDev,
+		runtimePipelineSnapshot.BuildID,
+		runtimePipelineSnapshot.RouteDataSnapshotVersion,
 	)
-	cached := loadOrBuildCachedItemSubset(
-		v,
+	cached := routepipeline.LoadOrBuildCachedItemSubset(
 		cacheKey,
 		matches,
-		runtimeSnapshot.paths,
-		runtimeSnapshot.clientEntryDeps,
-		runtimeSnapshot.isDev,
-		runtimeSnapshot.routeDataSnapshotVersion,
-		runtimeSnapshot.routeDataCache,
+		runtimePipelineSnapshot.Paths,
+		runtimePipelineSnapshot.ClientEntryDeps,
+		runtimePipelineSnapshot.IsDev,
+		runtimePipelineSnapshot.RouteDataSnapshotVersion,
+		runtimePipelineSnapshot.RouteDataCache,
+		v.isRouteDataSnapshotVersionCurrent,
 	)
 
-	return routeDataExecutionInputs{
-		matchResults:    matchResults,
-		matches:         matches,
-		matchedPatterns: matchedPatterns,
-		cached:          cached,
-		runtimeSnapshot: runtimeSnapshot,
+	return routepipeline.RouteDataExecutionInputs{
+		MatchResults:    matchResults,
+		Matches:         matches,
+		MatchedPatterns: matchedPatterns,
+		Cached:          cached,
+		RuntimeSnapshot: runtimePipelineSnapshot,
 	}, true
-}
-
-func collectMatchedPatterns(matches []*nestedmatcher.Match) []string {
-	matchedPatterns := make([]string, len(matches))
-	for i, match := range matches {
-		matchedPatterns[i] = match.OriginalPattern()
-	}
-	return matchedPatterns
-}
-
-func loadOrBuildCachedItemSubset(
-	v *Vorma,
-	cacheKey string,
-	matches []*nestedmatcher.Match,
-	pathsSnapshot map[string]*Path,
-	clientEntryDepsSnapshot []string,
-	isDev bool,
-	expectedSnapshotVersion uint64,
-	routeDataCacheSnapshot *sync.Map,
-) *cachedItemSubset {
-	if routeDataCacheSnapshot == nil {
-		return buildCachedItemSubset(
-			matches,
-			pathsSnapshot,
-			clientEntryDepsSnapshot,
-			isDev,
-		)
-	}
-
-	if cachedValue, isCached := routeDataCacheSnapshot.Load(cacheKey); isCached {
-		return cachedValue.(*cachedItemSubset)
-	}
-
-	cached := buildCachedItemSubset(
-		matches,
-		pathsSnapshot,
-		clientEntryDepsSnapshot,
-		isDev,
-	)
-	if v.isRouteDataSnapshotVersionCurrent(expectedSnapshotVersion) {
-		routeDataCacheSnapshot.Store(cacheKey, cached)
-	}
-	return cached
 }
 
 func (v *Vorma) isRouteDataSnapshotVersionCurrent(
@@ -1349,88 +819,15 @@ func (v *Vorma) isRouteDataSnapshotVersionCurrent(
 	return v._routeDataSnapshotVersion == expectedSnapshotVersion
 }
 
-func computeHasRootData(
-	matchResults *nestedmatcher.Results,
-	tasksResults *nestedmux.TasksResults,
-) bool {
-	return len(matchResults.Matches) > 0 &&
-		matchResults.Matches[0].NormalizedPattern() == "" &&
-		tasksResults.HasTaskHandlerAt(0)
-}
-
-func detectTerminalStateFromMergedResponseProxy(
-	mergedResponseProxy *response.Proxy,
-) routeTerminalState {
-	if mergedResponseProxy == nil {
-		return routeTerminalStateNone
-	}
-
-	if mergedResponseProxy.IsError() {
-		return routeTerminalStateError
-	}
-	if mergedResponseProxy.IsRedirect() {
-		return routeTerminalStateRedirect
-	}
-
-	return routeTerminalStateNone
-}
-
-func buildCachedItemSubset(
-	matches []*nestedmatcher.Match,
-	pathsSnapshot map[string]*Path,
-	clientEntryDepsSnapshot []string,
-	isDev bool,
-) *cachedItemSubset {
-	cached := &cachedItemSubset{
-		ImportURLs:      make([]string, 0, len(matches)),
-		ExportKeys:      make([]string, 0, len(matches)),
-		ErrorExportKeys: make([]string, 0, len(matches)),
-	}
-
-	for _, match := range matches {
-		foundPath := pathsSnapshot[match.OriginalPattern()]
-		if foundPath == nil || foundPath.SrcPath == "" {
-			cached.ImportURLs = append(cached.ImportURLs, "")
-			cached.ExportKeys = append(cached.ExportKeys, "")
-			cached.ErrorExportKeys = append(cached.ErrorExportKeys, "")
-			continue
-		}
-		pathToUse := foundPath.OutPath
-		if isDev {
-			pathToUse = foundPath.SrcPath
-		}
-		cached.ImportURLs = append(cached.ImportURLs, "/"+pathToUse)
-		cached.ExportKeys = append(cached.ExportKeys, foundPath.ExportKey)
-		cached.ErrorExportKeys = append(
-			cached.ErrorExportKeys,
-			foundPath.ErrorExportKey,
-		)
-	}
-
-	cached.Deps = getDepsFromData(
-		matches,
-		pathsSnapshot,
-		clientEntryDepsSnapshot,
-	)
-	return cached
-}
-
 func (v *Vorma) collectLoadersDataAndErrors(
 	tasksResults *nestedmux.TasksResults,
 	matchedPatterns []string,
 ) ([]any, []error) {
-	numberOfLoaders := len(matchedPatterns)
-	loadersData := make([]any, numberOfLoaders)
-	loadersErrs := make([]error, numberOfLoaders)
-	if numberOfLoaders == 0 {
-		return loadersData, loadersErrs
-	}
-
-	for i := 0; i < numberOfLoaders; i++ {
+	loadersData, loadersErrs := routepipeline.CollectLoadersDataAndErrors(
+		tasksResults,
+	)
+	for i := range loadersData {
 		result := tasksResults.Slice[i]
-		loadersData[i] = result.Data()
-		loadersErrs[i] = result.Err()
-
 		if result.RanTask() && loadersErrs[i] == nil {
 			shouldWarn := reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(
 				loadersData[i],
@@ -1445,16 +842,6 @@ func (v *Vorma) collectLoadersDataAndErrors(
 		}
 	}
 	return loadersData, loadersErrs
-}
-
-func findFirstErrorIndex(errs []error) *int {
-	for i, err := range errs {
-		if err != nil {
-			out := i
-			return &out
-		}
-	}
-	return nil
 }
 
 func (v *Vorma) resolveClientLoaderErrorMessage(
@@ -1486,97 +873,19 @@ func (v *Vorma) resolveClientLoaderErrorMessage(
 	return clientMsg
 }
 
-func buildRouteDataCore(
-	matchResults *nestedmatcher.Results,
-	matchedPatterns []string,
-	loadersData []any,
-	cached *cachedItemSubset,
-	hasRootData bool,
-	outermostErrorIdx *int,
-	clientMsg string,
-	cutIdx int,
-	deps []string,
-) *RouteDataCore {
-	return &RouteDataCore{
-		OutermostServerError:    clientMsg,
-		OutermostServerErrorIdx: outermostErrorIdx,
-		ErrorExportKeys:         cached.ErrorExportKeys[:cutIdx],
-		MatchedPatterns:         matchedPatterns[:cutIdx],
-		LoadersData:             loadersData[:cutIdx],
-		ImportURLs:              cached.ImportURLs[:cutIdx],
-		ExportKeys:              cached.ExportKeys[:cutIdx],
-		HasRootData:             hasRootData,
-		Params:                  matchResults.Params,
-		SplatValues:             matchResults.SplatValues,
-		Deps:                    deps,
-	}
-}
-
-func collectFlattenedHeadElementsForPrefix(
-	responseProxies []*response.Proxy,
-	routeCount int,
-) []*htmlutil.Element {
-	if routeCount <= 0 || len(responseProxies) == 0 {
-		return nil
-	}
-	if routeCount > len(responseProxies) {
-		routeCount = len(responseProxies)
-	}
-
-	headElsByRoute := make([][]*htmlutil.Element, 0, routeCount)
-	total := 0
-	for routeIdx := 0; routeIdx < routeCount; routeIdx++ {
-		routeElements := responseProxies[routeIdx].HeadEls().Collect()
-		headElsByRoute = append(headElsByRoute, routeElements)
-		total += len(routeElements)
-	}
-
-	flattenedHeadEls := make([]*htmlutil.Element, 0, total)
-	for _, routeElements := range headElsByRoute {
-		flattenedHeadEls = append(flattenedHeadEls, routeElements...)
-	}
-	return flattenedHeadEls
-}
-
-func (v *Vorma) buildRouteDataCacheKey(
-	matches []*nestedmatcher.Match,
-	isDev bool,
-	buildID string,
-	routeDataSnapshotVersion uint64,
-) string {
-	snapshotVersionString := strconv.FormatUint(routeDataSnapshotVersion, 10)
-	var sb strings.Builder
-	sb.Grow(len(buildID) + len(snapshotVersionString) + (len(matches) * 16) + 3)
-	if isDev {
-		sb.WriteByte('1')
-	} else {
-		sb.WriteByte('0')
-	}
-	sb.WriteByte('|')
-	sb.WriteString(snapshotVersionString)
-	sb.WriteByte('|')
-	sb.WriteString(buildID)
-	sb.WriteByte('|')
-	for _, match := range matches {
-		sb.WriteString(match.NormalizedPattern())
-		sb.WriteByte(';')
-	}
-	return sb.String()
-}
-
 func (v *Vorma) getUIRouteData(
 	w http.ResponseWriter,
 	r *http.Request,
 	nestedRouter *nestedmux.Router,
 	isJSON bool,
 	requestedBuildID string,
-) *RouteResult {
+) *routepipeline.RouteResult {
 	res := response.New(w)
 	routeResult := v.getRouteDataStage1(w, r, nestedRouter, requestedBuildID)
-	if routeResult.mergedResponseProxy != nil {
-		routeResult.mergedResponseProxy.ApplyToResponseWriter(w, r)
+	if routeResult.MergedResponseProxy != nil {
+		routeResult.MergedResponseProxy.ApplyToResponseWriter(w, r)
 	}
-	if routeResult.terminalState != routeTerminalStateNone {
+	if routeResult.TerminalState != routepipeline.RouteTerminalStateNone {
 		return routeResult
 	}
 
@@ -1584,19 +893,41 @@ func (v *Vorma) getUIRouteData(
 	if err != nil {
 		v.Log.Error("Error in getUIRouteData", "error", err.Error())
 		res.InternalServerError()
-		return &RouteResult{
-			terminalState: routeTerminalStateError,
-			buildID:       routeResult.buildID,
+		return &routepipeline.RouteResult{
+			TerminalState: routepipeline.RouteTerminalStateError,
+			BuildID:       routeResult.BuildID,
 		}
 	}
 
-	assets := v.buildRouteAssets(routeResult, defaultHeadElsRaw, isJSON)
-	return &RouteResult{
-		buildID:                   routeResult.buildID,
-		core:                      routeResult.core,
-		assets:                    assets,
-		htmlRenderSnapshot:        routeResult.htmlRenderSnapshot,
-		routeManifestFileSnapshot: routeResult.routeManifestFileSnapshot,
+	assets, err := routepipeline.BuildRouteAssets(
+		routepipeline.BuildRouteAssetsInput{
+			RouteResult:         routeResult,
+			DefaultHeadElements: defaultHeadElsRaw,
+			IsJSON:              isJSON,
+			PublicPathPrefix:    v.Wave.PublicPathPrefix(),
+			ToSortedAndPreEscapedHeadElsFn: v.headElsInst.
+				ToSortedAndPreEscapedHeadEls,
+		},
+	)
+	if err != nil {
+		v.Log.Error(
+			"Error in getUIRouteData asset resolution",
+			"error",
+			err.Error(),
+		)
+		res.InternalServerError()
+		return &routepipeline.RouteResult{
+			TerminalState: routepipeline.RouteTerminalStateError,
+			BuildID:       routeResult.BuildID,
+		}
+	}
+
+	return &routepipeline.RouteResult{
+		BuildID:                   routeResult.BuildID,
+		Core:                      routeResult.Core,
+		Assets:                    assets,
+		HTMLRenderSnapshot:        routeResult.HTMLRenderSnapshot,
+		RouteManifestFileSnapshot: routeResult.RouteManifestFileSnapshot,
 	}
 }
 
@@ -1613,229 +944,48 @@ func (v *Vorma) getDefaultHeadElsRaw(
 	return defaultHeadEls.Collect(), nil
 }
 
-func (v *Vorma) buildRouteAssets(
-	routeResult *RouteResult,
-	defaultHeadElsRaw []*htmlutil.Element,
-	isJSON bool,
-) *RouteAssets {
-	cssBundles := routeResult.cssBundles
-	combinedHeadEls := combineDefaultAndRouteHeadElements(
-		defaultHeadElsRaw,
-		routeResult.headElements,
-	)
-
-	if shouldAppendProductionAssetLinks(routeResult.isDev, isJSON) {
-		combinedHeadEls = appendProductionAssetLinks(
-			combinedHeadEls,
-			v.Wave.PublicPathPrefix(),
-			routeResult.core.Deps,
-			cssBundles,
-		)
-	}
-
-	headEls := v.headElsInst.ToSortedAndPreEscapedHeadEls(combinedHeadEls)
-	return &RouteAssets{
-		SortedAndPreEscapedHeadEls: headEls,
-		CSSBundles:                 cssBundles,
-		ViteDevURL:                 getViteDevURLForMode(routeResult.isDev),
-	}
-}
-
-func combineDefaultAndRouteHeadElements(
-	defaultHeadElsRaw []*htmlutil.Element,
-	routeHeadEls []*htmlutil.Element,
-) []*htmlutil.Element {
-	out := make(
-		[]*htmlutil.Element,
-		0,
-		len(defaultHeadElsRaw)+len(routeHeadEls),
-	)
-	out = append(out, defaultHeadElsRaw...)
-	out = append(out, routeHeadEls...)
-	return out
-}
-
-func shouldAppendProductionAssetLinks(isDev bool, isJSON bool) bool {
-	return !isDev && !isJSON
-}
-
-func appendProductionAssetLinks(
-	headElements []*htmlutil.Element,
-	publicPathPrefix string,
-	deps []string,
-	cssBundles []string,
-) []*htmlutil.Element {
-	capacityToGrow := len(deps) + len(cssBundles)
-	out := make([]*htmlutil.Element, 0, len(headElements)+capacityToGrow)
-	out = append(out, headElements...)
-
-	for _, dep := range deps {
-		out = append(out, &htmlutil.Element{
-			Tag: "link",
-			AttributesKnownSafe: map[string]string{
-				"rel":  "modulepreload",
-				"href": publicPathPrefix + dep,
-			},
-			SelfClosing: true,
-		})
-	}
-
-	for _, cssBundle := range cssBundles {
-		out = append(out, &htmlutil.Element{
-			Tag: "link",
-			AttributesKnownSafe: map[string]string{
-				"rel":  "stylesheet",
-				"href": publicPathPrefix + cssBundle,
-			},
-			Attributes: map[string]string{
-				"data-vorma-css-bundle": cssBundle,
-			},
-			SelfClosing: true,
-		})
-	}
-
-	return out
-}
-
-type SSRInnerHTMLInput struct {
-	VormaSymbolStr   string
-	IsDev            bool
-	ViteDevURL       string
-	BuildID          string
-	RootElementID    string
-	PublicPathPrefix string
-	DeploymentID     string
-	RouteManifestURL string
-	*RouteDataCore
-	CSSBundles []string
-}
-
-const ssrInnerHTMLTmplStr = `<script>
-globalThis[Symbol.for("{{.VormaSymbolStr}}")] = {};
-const x = globalThis[Symbol.for("{{.VormaSymbolStr}}")];
-x.patternToWaitFnMap = {};
-x.clientLoadersData = [];
-x.isDev = {{.IsDev}};
-x.viteDevURL = {{.ViteDevURL}};
-x.buildID = {{.BuildID}};
-x.rootElementID = "{{.RootElementID}}";
-x.publicPathPrefix = "{{.PublicPathPrefix}}";
-x.outermostServerError = {{.OutermostServerError}};
-x.outermostServerErrorIdx = {{.OutermostServerErrorIdx}};
-x.errorExportKeys = {{.ErrorExportKeys}};
-x.matchedPatterns = {{.MatchedPatterns}};
-x.loadersData = {{.LoadersData}};
-x.importURLs = {{.ImportURLs}};
-x.exportKeys = {{.ExportKeys}};
-x.hasRootData = {{.HasRootData}};
-x.params = {{.Params}};
-x.splatValues = {{.SplatValues}};
-x.deps = {{.Deps}};
-x.cssBundles = {{.CSSBundles}};
-x.deploymentID = {{.DeploymentID}};
-x.routeManifestURL = {{.RouteManifestURL}};
-</script>`
-
-var ssrInnerTmpl = template.Must(template.New("ssr").Parse(ssrInnerHTMLTmplStr))
-
-type GetSSRInnerHTMLOutput struct {
-	Script     *template.HTML
-	Sha256Hash string
-}
-
-type ssrRuntimeSnapshot struct {
-	isDev             bool
-	buildID           string
-	routeManifestFile string
-}
-
 func (v *Vorma) getSSRInnerHTML(
-	routeData *RouteDataFinal,
-) (*GetSSRInnerHTMLOutput, error) {
-	v.mu.RLock()
-	snapshot := ssrRuntimeSnapshot{
-		isDev:             v._isDev,
-		buildID:           v._buildID,
-		routeManifestFile: v._routeManifestFile,
-	}
-	v.mu.RUnlock()
-
-	return v.getSSRInnerHTMLWithRuntimeState(routeData, snapshot)
-}
-
-func (v *Vorma) getSSRInnerHTMLWithRuntimeState(
-	routeData *RouteDataFinal,
-	snapshot ssrRuntimeSnapshot,
-) (*GetSSRInnerHTMLOutput, error) {
+	routeData *routepipeline.RouteDataFinal,
+) (*rendering.BuildSSRInnerHTMLOutput, error) {
 	if routeData == nil {
 		return nil, fmt.Errorf("routeData cannot be nil")
 	}
 	if routeData.RouteDataCore == nil {
 		return nil, fmt.Errorf("routeData.RouteDataCore cannot be nil")
 	}
-	for i, loaderData := range routeData.RouteDataCore.LoadersData {
-		if err := json.NewEncoder(io.Discard).Encode(loaderData); err != nil {
-			return nil, fmt.Errorf(
-				"routeData.LoadersData[%d] must be JSON-serializable: %w",
-				i,
-				err,
-			)
-		}
-	}
 
-	var htmlBuilder strings.Builder
-	publicPathPrefix := v.Wave.PublicPathPrefix()
+	v.mu.RLock()
+	isDev := v._isDev
+	buildID := v._buildID
+	routeManifestFile := v._routeManifestFile
+	v.mu.RUnlock()
 
-	dto := SSRInnerHTMLInput{
-		VormaSymbolStr:   VormaSymbolStr,
-		IsDev:            snapshot.isDev,
-		ViteDevURL:       routeData.ViteDevURL,
-		BuildID:          snapshot.buildID,
-		RootElementID:    v.ClientRootElementID(),
-		PublicPathPrefix: publicPathPrefix,
-		RouteManifestURL: path.Join(
-			publicPathPrefix,
-			snapshot.routeManifestFile,
-		),
-		RouteDataCore: routeData.RouteDataCore,
-		CSSBundles:    routeData.CSSBundles,
-	}
+	return rendering.BuildSSRInnerHTMLFromRuntimeState(
+		rendering.SSRRuntimeState{
+			VormaSymbolStr:    VormaSymbolStr,
+			IsDev:             isDev,
+			BuildID:           buildID,
+			RootElementID:     v.ClientRootElementID(),
+			PublicPathPrefix:  v.Wave.PublicPathPrefix(),
+			RouteManifestFile: routeManifestFile,
+		},
+		rendering.SSRRouteData{
+			ViteDevURL: routeData.ViteDevURL,
+			CSSBundles: routeData.CSSBundles,
 
-	if envutil.GetBool("VERCEL_SKEW_PROTECTION_ENABLED", false) {
-		dto.DeploymentID = envutil.GetStr("VERCEL_DEPLOYMENT_ID", "")
-	}
-
-	if err := ssrInnerTmpl.Execute(&htmlBuilder, dto); err != nil {
-		return nil, fmt.Errorf(
-			"could not execute SSR inner HTML template: %w",
-			err,
-		)
-	}
-
-	innerHTML := htmlBuilder.String()
-	innerHTML = strings.TrimPrefix(innerHTML, "<script>")
-	innerHTML = strings.TrimSuffix(innerHTML, "</script>")
-
-	el := htmlutil.Element{
-		Tag:                 "script",
-		AttributesKnownSafe: map[string]string{"type": "module"},
-		DangerousInnerHTML:  innerHTML,
-	}
-
-	sha256Hash, err := htmlutil.ComputeContentSha256(&el)
-	if err != nil {
-		return nil, fmt.Errorf("could not compute CSP hash: %w", err)
-	}
-
-	renderedEl, err := htmlutil.RenderElement(&el)
-	if err != nil {
-		return nil, fmt.Errorf("could not render SSR inner HTML: %w", err)
-	}
-
-	return &GetSSRInnerHTMLOutput{
-		Script:     &renderedEl,
-		Sha256Hash: sha256Hash,
-	}, nil
+			OutermostServerError:    routeData.RouteDataCore.OutermostServerError,
+			OutermostServerErrorIdx: routeData.RouteDataCore.OutermostServerErrorIdx,
+			ErrorExportKeys:         routeData.RouteDataCore.ErrorExportKeys,
+			MatchedPatterns:         routeData.RouteDataCore.MatchedPatterns,
+			LoadersData:             routeData.RouteDataCore.LoadersData,
+			ImportURLs:              routeData.RouteDataCore.ImportURLs,
+			ExportKeys:              routeData.RouteDataCore.ExportKeys,
+			HasRootData:             routeData.RouteDataCore.HasRootData,
+			Params:                  routeData.RouteDataCore.Params,
+			SplatValues:             routeData.RouteDataCore.SplatValues,
+			Deps:                    routeData.RouteDataCore.Deps,
+		},
+	)
 }
 
 // VormaSymbolStr is the global runtime symbol namespace used by browser
@@ -1892,7 +1042,7 @@ type Vorma struct {
 	_routeDataSnapshotVersion uint64
 	_routeDataCache           *sync.Map
 
-	_lifecycleState         runtimeLifecycleState
+	_lifecycleState         runtimecore.LifecycleState
 	_lifecycleTransitionSeq uint64
 	_lifecycleLastError     string
 
@@ -1949,14 +1099,14 @@ func (v *Vorma) ClientEntryOut() string {
 func (v *Vorma) ClientEntryDeps() []string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return cloneStringSliceOrNil(v._clientEntryDeps)
+	return runtimecore.CloneStringSliceOrNil(v._clientEntryDeps)
 }
 
 // DepToCSSBundleMap returns a defensive copy of dep-to-css-bundle mappings.
 func (v *Vorma) DepToCSSBundleMap() map[string][]string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
-	return cloneDepToCSSBundleMapOrNil(v._depToCSSBundleMap)
+	return runtimecore.CloneDepToCSSBundleMapOrNil(v._depToCSSBundleMap)
 }
 
 // RootTemplate returns the current compiled root template.
@@ -2108,17 +1258,6 @@ func (v *Vorma) setIsDevModeLocked(isDev bool) {
 	v.invalidateRouteDataCacheLocked()
 }
 
-func clonePath(path *Path) *Path {
-	if path == nil {
-		return nil
-	}
-	out := *path
-	if path.Deps != nil {
-		out.Deps = append([]string(nil), path.Deps...)
-	}
-	return &out
-}
-
 func cloneAdHocTypesOrNil(adHocTypes []*tsgen.AdHocType) []*tsgen.AdHocType {
 	if adHocTypes == nil {
 		return nil
@@ -2219,31 +1358,6 @@ type VormaConfig struct {
 	ClientRootElementID           string   `json:"ClientRootElementID,omitempty"`
 }
 
-// PathsFile represents the serialized paths data written to disk.
-type PathsFile struct {
-	Stage             string           `json:"stage"`
-	BuildID           string           `json:"buildID,omitempty"`
-	ClientEntrySrc    string           `json:"clientEntrySrc"`
-	Paths             map[string]*Path `json:"paths"`
-	RouteManifestFile string           `json:"routeManifestFile"`
-
-	// Stage two only
-	ClientEntryOut    string              `json:"clientEntryOut,omitempty"`
-	ClientEntryDeps   []string            `json:"clientEntryDeps,omitempty"`
-	DepToCSSBundleMap map[string][]string `json:"depToCSSBundleMap,omitempty"`
-}
-
-// Directory name constants.
-const (
-	VormaOutDirname = "vorma_out"
-)
-
-// File name constants.
-const (
-	VormaPathsStageOneJSONFileName = "vorma_paths_stage_1.json"
-	VormaPathsStageTwoJSONFileName = "vorma_paths_stage_2.json"
-)
-
 // Output prefix constants.
 const (
 	VormaOutPrefix               = "vorma_out_"
@@ -2251,46 +1365,39 @@ const (
 	VormaRouteManifestPrefix     = VormaOutPrefix + "vorma_internal_route_manifest_"
 )
 
-func GetVormaPathsStageOneJSONPath() string {
-	return path.Join(VormaOutDirname, VormaPathsStageOneJSONFileName)
-}
-
-func GetVormaPathsStageTwoJSONPath() string {
-	return path.Join(VormaOutDirname, VormaPathsStageTwoJSONFileName)
-}
-
-type runtimeLifecycleState string
-
-const (
-	runtimeLifecycleStateUninitialized   runtimeLifecycleState = "uninitialized"
-	runtimeLifecycleStateInitializing    runtimeLifecycleState = "initializing"
-	runtimeLifecycleStateReady           runtimeLifecycleState = "ready"
-	runtimeLifecycleStateReloadingRoutes runtimeLifecycleState = "reloading-routes"
-	runtimeLifecycleStateReloadingHTML   runtimeLifecycleState = "reloading-html-template"
-)
-
 func (v *Vorma) transitionLifecycleStateLocked(
-	nextState runtimeLifecycleState,
+	nextState runtimecore.LifecycleState,
 	reason string,
 	lastError string,
 ) {
-	previousState := v._lifecycleState
-	v._lifecycleTransitionSeq++
-	v._lifecycleState = nextState
-	v._lifecycleLastError = lastError
+	stateTracker := runtimecore.LifecycleStateTracker{
+		CurrentState:      v._lifecycleState,
+		TransitionSeq:     v._lifecycleTransitionSeq,
+		LastError:         v._lifecycleLastError,
+		RoutePathsPresent: v._paths != nil,
+	}
+	transitionResult := runtimecore.TransitionLifecycleState(
+		&stateTracker,
+		nextState,
+		reason,
+		lastError,
+	)
+	v._lifecycleState = stateTracker.CurrentState
+	v._lifecycleTransitionSeq = stateTracker.TransitionSeq
+	v._lifecycleLastError = stateTracker.LastError
 
 	v.Log.Debug(
 		"Vorma lifecycle transition",
 		"seq",
-		v._lifecycleTransitionSeq,
+		transitionResult.TransitionSeq,
 		"from",
-		previousState,
+		transitionResult.PreviousState,
 		"to",
-		nextState,
+		transitionResult.CurrentState,
 		"reason",
 		reason,
 		"error",
-		lastError,
+		transitionResult.CurrentError,
 		"build_id",
 		v._buildID,
 		"route_data_snapshot_version",
@@ -2304,65 +1411,57 @@ func (v *Vorma) transitionLifecycleStateLocked(
 	)
 }
 
-func (v *Vorma) lifecycleStateForRouteCommitLocked() runtimeLifecycleState {
-	if v._paths == nil {
-		return runtimeLifecycleStateInitializing
-	}
-	return runtimeLifecycleStateReloadingRoutes
+func (v *Vorma) lifecycleStateForRouteCommitLocked() runtimecore.LifecycleState {
+	return runtimecore.LifecycleStateForRouteCommit(
+		toRuntimeCoreRoutePaths(v._paths),
+	)
 }
 
-type runtimeRouteArtifacts struct {
-	buildID           string
-	clientEntrySrc    string
-	clientEntryOut    string
-	clientEntryDeps   []string
-	depToCSSBundleMap map[string][]string
-	routeManifestFile string
-	parsedClientPaths map[string]*Path
-}
-
-func buildRuntimeRouteArtifacts(
-	pathsFile *PathsFile,
-) (*runtimeRouteArtifacts, error) {
+func buildRuntimePathsFileSnapshot(
+	pathsFile *runtimepaths.PathsFile,
+) *runtimecore.RuntimePathsFileSnapshot {
 	if pathsFile == nil {
-		return nil, fmt.Errorf("paths file is nil")
+		return nil
 	}
 
-	return &runtimeRouteArtifacts{
-		buildID:           pathsFile.BuildID,
-		clientEntrySrc:    pathsFile.ClientEntrySrc,
-		clientEntryOut:    pathsFile.ClientEntryOut,
-		clientEntryDeps:   pathsFile.ClientEntryDeps,
-		depToCSSBundleMap: pathsFile.DepToCSSBundleMap,
-		routeManifestFile: pathsFile.RouteManifestFile,
-		parsedClientPaths: pathsFile.Paths,
-	}, nil
+	return &runtimecore.RuntimePathsFileSnapshot{
+		BuildID:        pathsFile.BuildID,
+		ClientEntrySrc: pathsFile.ClientEntrySrc,
+		ClientEntryOut: pathsFile.ClientEntryOut,
+		ClientEntryDeps: runtimecore.CloneStringSliceOrNil(
+			pathsFile.ClientEntryDeps,
+		),
+		DepToCSSBundleMap: runtimecore.CloneDepToCSSBundleMapOrNil(
+			pathsFile.DepToCSSBundleMap,
+		),
+		RouteManifestFile: pathsFile.RouteManifestFile,
+		Paths: toRuntimeCoreRoutePathsFromRuntimePaths(
+			pathsFile.Paths,
+		),
+	}
 }
-
-type routeArtifactCommitMode uint8
-
-const (
-	routeArtifactCommitModeInit routeArtifactCommitMode = iota
-	routeArtifactCommitModeDevReload
-)
 
 func (v *Vorma) commitRouteArtifactsLocked(
-	artifacts *runtimeRouteArtifacts,
+	artifacts *runtimecore.RuntimeRouteArtifacts,
 	rebuildNestedRouter bool,
-	commitMode routeArtifactCommitMode,
+	commitMode runtimecore.RouteArtifactCommitMode,
 ) {
 	if artifacts == nil {
-		panic("runtimeRouteArtifacts cannot be nil")
+		panic("runtime route artifacts cannot be nil")
 	}
 
 	v.applyRuntimeRouteArtifactsMetadataLocked(artifacts)
 
 	switch commitMode {
-	case routeArtifactCommitModeDevReload:
-		v.routes().SyncFromDevReload(artifacts.parsedClientPaths)
+	case runtimecore.RouteArtifactCommitModeDevReload:
+		v.routes().SyncFromDevReload(
+			fromRuntimeCoreRoutePaths(artifacts.ParsedClientPaths),
+		)
 	default:
-		v.routes().
-			ReplaceParsedPathsForInit(artifacts.parsedClientPaths, rebuildNestedRouter)
+		v.routes().ReplaceParsedPathsForInit(
+			fromRuntimeCoreRoutePaths(artifacts.ParsedClientPaths),
+			rebuildNestedRouter,
+		)
 	}
 }
 
@@ -2400,11 +1499,54 @@ func (v *Vorma) captureRuntimeSnapshotLocked() RuntimeSnapshot {
 	}
 }
 
-func (snapshot RuntimeSnapshot) toLoadersHTMLRender() loadersHTMLRenderSnapshot {
-	return loadersHTMLRenderSnapshot{
-		isDevMode:      snapshot.isDev,
-		clientEntryOut: snapshot.clientEntryOut,
-		rootTemplate:   snapshot.rootTemplate,
+func (snapshot RuntimeSnapshot) toLoadersHTMLRender() rendering.LoadersHTMLRenderSnapshot {
+	return rendering.LoadersHTMLRenderSnapshot{
+		IsDevMode:      snapshot.isDev,
+		ClientEntryOut: snapshot.clientEntryOut,
+		RootTemplate:   snapshot.rootTemplate,
+	}
+}
+
+func convertPathsMapToRoutePipelinePaths(
+	paths map[string]*Path,
+) map[string]*routepipeline.PathData {
+	if paths == nil {
+		return nil
+	}
+
+	out := make(map[string]*routepipeline.PathData, len(paths))
+	for pattern, p := range paths {
+		if p == nil {
+			out[pattern] = nil
+			continue
+		}
+		out[pattern] = &routepipeline.PathData{
+			OriginalPattern: p.OriginalPattern,
+			SrcPath:         p.SrcPath,
+			OutPath:         p.OutPath,
+			ExportKey:       p.ExportKey,
+			ErrorExportKey:  p.ErrorExportKey,
+			Deps:            p.Deps,
+		}
+	}
+
+	return out
+}
+
+func (snapshot RuntimeSnapshot) toRoutePipelineSnapshot() routepipeline.RuntimeSnapshot {
+	return routepipeline.RuntimeSnapshot{
+		BuildID: snapshot.buildID,
+		IsDev:   snapshot.isDev,
+		Paths: convertPathsMapToRoutePipelinePaths(
+			snapshot.paths,
+		),
+		ClientEntryDeps:          snapshot.clientEntryDeps,
+		ClientEntryOut:           snapshot.clientEntryOut,
+		DepToCSSBundleMap:        snapshot.depToCSSBundleMap,
+		HTMLRenderSnapshot:       snapshot.toLoadersHTMLRender(),
+		RouteManifestFile:        snapshot.routeManifestFile,
+		RouteDataSnapshotVersion: snapshot.routeDataSnapshotVersion,
+		RouteDataCache:           snapshot.routeDataCache,
 	}
 }
 
@@ -2413,20 +1555,100 @@ func (snapshot RuntimeSnapshot) toLoadersHTMLRender() loadersHTMLRenderSnapshot 
 //
 // Caller must hold v.mu.Lock().
 func (v *Vorma) invalidateRouteDataCacheLocked() {
-	v._routeDataSnapshotVersion++
-	v._routeDataCache = &sync.Map{}
+	cacheState := runtimecore.RouteCacheState{
+		RouteDataSnapshotVersion: v._routeDataSnapshotVersion,
+		RouteDataCache:           v._routeDataCache,
+	}
+	runtimecore.InvalidateRouteDataCache(&cacheState)
+	v._routeDataSnapshotVersion = cacheState.RouteDataSnapshotVersion
+	v._routeDataCache = cacheState.RouteDataCache
 }
 
-func clonePathsMap(paths map[string]*Path) map[string]*Path {
+func toRuntimeCoreRoutePath(pathValue *Path) *runtimecore.RoutePath {
+	if pathValue == nil {
+		return nil
+	}
+	return &runtimecore.RoutePath{
+		OriginalPattern: pathValue.OriginalPattern,
+		SrcPath:         pathValue.SrcPath,
+		OutPath:         pathValue.OutPath,
+		ExportKey:       pathValue.ExportKey,
+		ErrorExportKey:  pathValue.ErrorExportKey,
+		Deps:            runtimecore.CloneStringSliceOrNil(pathValue.Deps),
+	}
+}
+
+func fromRuntimeCoreRoutePath(pathValue *runtimecore.RoutePath) *Path {
+	if pathValue == nil {
+		return nil
+	}
+	return &Path{
+		OriginalPattern: pathValue.OriginalPattern,
+		SrcPath:         pathValue.SrcPath,
+		OutPath:         pathValue.OutPath,
+		ExportKey:       pathValue.ExportKey,
+		ErrorExportKey:  pathValue.ErrorExportKey,
+		Deps:            runtimecore.CloneStringSliceOrNil(pathValue.Deps),
+	}
+}
+
+func toRuntimeCoreRoutePaths(
+	paths map[string]*Path,
+) map[string]*runtimecore.RoutePath {
+	if paths == nil {
+		return nil
+	}
+
+	cloned := make(map[string]*runtimecore.RoutePath, len(paths))
+	for pattern, pathValue := range paths {
+		cloned[pattern] = toRuntimeCoreRoutePath(pathValue)
+	}
+	return cloned
+}
+
+func toRuntimeCoreRoutePathsFromRuntimePaths(
+	paths map[string]*runtimepaths.RoutePath,
+) map[string]*runtimecore.RoutePath {
+	if paths == nil {
+		return nil
+	}
+
+	cloned := make(map[string]*runtimecore.RoutePath, len(paths))
+	for pattern, pathValue := range paths {
+		if pathValue == nil {
+			cloned[pattern] = nil
+			continue
+		}
+		cloned[pattern] = &runtimecore.RoutePath{
+			OriginalPattern: pathValue.OriginalPattern,
+			SrcPath:         pathValue.SrcPath,
+			OutPath:         pathValue.OutPath,
+			ExportKey:       pathValue.ExportKey,
+			ErrorExportKey:  pathValue.ErrorExportKey,
+			Deps:            runtimecore.CloneStringSliceOrNil(pathValue.Deps),
+		}
+	}
+	return cloned
+}
+
+func fromRuntimeCoreRoutePaths(
+	paths map[string]*runtimecore.RoutePath,
+) map[string]*Path {
 	if paths == nil {
 		return make(map[string]*Path)
 	}
 
 	cloned := make(map[string]*Path, len(paths))
-	for pattern, p := range paths {
-		cloned[pattern] = clonePath(p)
+	for pattern, pathValue := range paths {
+		cloned[pattern] = fromRuntimeCoreRoutePath(pathValue)
 	}
 	return cloned
+}
+
+func clonePathsMap(paths map[string]*Path) map[string]*Path {
+	return fromRuntimeCoreRoutePaths(
+		runtimecore.CloneRoutePaths(toRuntimeCoreRoutePaths(paths)),
+	)
 }
 
 func clonePathsMapOrNil(paths map[string]*Path) map[string]*Path {
@@ -2436,57 +1658,25 @@ func clonePathsMapOrNil(paths map[string]*Path) map[string]*Path {
 	return clonePathsMap(paths)
 }
 
-func cloneStringSliceOrNil(values []string) []string {
-	if values == nil {
-		return nil
-	}
-	return append([]string(nil), values...)
-}
-
-func cloneDepToCSSBundleMapOrEmpty(
-	depToBundles map[string][]string,
-) map[string][]string {
-	if depToBundles == nil {
-		return make(map[string][]string)
-	}
-
-	cloned := make(map[string][]string, len(depToBundles))
-	for dep, bundles := range depToBundles {
-		cloned[dep] = append([]string(nil), bundles...)
-	}
-	return cloned
-}
-
-func cloneDepToCSSBundleMapOrNil(
-	depToBundles map[string][]string,
-) map[string][]string {
-	if depToBundles == nil {
-		return nil
-	}
-	return cloneDepToCSSBundleMapOrEmpty(depToBundles)
-}
-
 func (v *Vorma) applyRuntimeRouteArtifactsMetadataLocked(
-	artifacts *runtimeRouteArtifacts,
+	artifacts *runtimecore.RuntimeRouteArtifacts,
 ) {
-	if artifacts == nil {
-		v._buildID = ""
-		v._clientEntrySrc = ""
-		v._clientEntryOut = ""
-		v._clientEntryDeps = nil
-		v._depToCSSBundleMap = make(map[string][]string)
-		v._routeManifestFile = ""
-		return
+	state := runtimecore.RuntimeRouteMetadataState{
+		BuildID:           v._buildID,
+		ClientEntrySrc:    v._clientEntrySrc,
+		ClientEntryOut:    v._clientEntryOut,
+		ClientEntryDeps:   v._clientEntryDeps,
+		DepToCSSBundleMap: v._depToCSSBundleMap,
+		RouteManifestFile: v._routeManifestFile,
 	}
+	runtimecore.ApplyRuntimeRouteArtifactsMetadata(&state, artifacts)
 
-	v._buildID = artifacts.buildID
-	v._clientEntrySrc = artifacts.clientEntrySrc
-	v._clientEntryOut = artifacts.clientEntryOut
-	v._clientEntryDeps = cloneStringSliceOrNil(artifacts.clientEntryDeps)
-	v._depToCSSBundleMap = cloneDepToCSSBundleMapOrEmpty(
-		artifacts.depToCSSBundleMap,
-	)
-	v._routeManifestFile = artifacts.routeManifestFile
+	v._buildID = state.BuildID
+	v._clientEntrySrc = state.ClientEntrySrc
+	v._clientEntryOut = state.ClientEntryOut
+	v._clientEntryDeps = state.ClientEntryDeps
+	v._depToCSSBundleMap = state.DepToCSSBundleMap
+	v._routeManifestFile = state.RouteManifestFile
 }
 
 // RouteRegistry consolidates route state management.
@@ -2508,8 +1698,12 @@ func (v *Vorma) routes() *RouteRegistry {
 // Caller must hold v.mu.Lock().
 func (r *RouteRegistry) SyncFromDevReload(paths map[string]*Path) {
 	v := r.vorma
-	v._paths = clonePathsMap(paths)
-	r.mergeServerRoutes()
+	v._paths = fromRuntimeCoreRoutePaths(
+		runtimecore.SyncPathsFromDevReload(
+			toRuntimeCoreRoutePaths(paths),
+			r.serverRoutePatternsWithTaskHandlers(),
+		),
+	)
 	v.invalidateRouteDataCacheLocked()
 	r.rebuildNestedRouterFromCurrentPaths()
 }
@@ -2523,39 +1717,35 @@ func (r *RouteRegistry) ReplaceParsedPathsForInit(
 	rebuildNestedRouter bool,
 ) {
 	v := r.vorma
-	v._paths = clonePathsMap(paths)
+	v._paths = fromRuntimeCoreRoutePaths(
+		runtimecore.ReplaceParsedPathsForInit(
+			toRuntimeCoreRoutePaths(paths),
+		),
+	)
 	v.invalidateRouteDataCacheLocked()
 	if rebuildNestedRouter {
 		r.rebuildNestedRouterFromCurrentPaths()
 	}
 }
 
-// mergeServerRoutes adds server-only routes to paths.
-// Caller must hold v.mu.Lock().
-func (r *RouteRegistry) mergeServerRoutes() {
+func (r *RouteRegistry) serverRoutePatternsWithTaskHandlers() []string {
 	v := r.vorma
 	allServerRoutes := v.LoadersRouter().NestedRouter.AllRoutes()
+	patterns := make([]string, 0, len(allServerRoutes))
 	for pattern := range allServerRoutes {
 		if !v.LoadersRouter().NestedRouter.HasTaskHandler(pattern) {
 			continue
 		}
-		if _, hasClientRoute := v._paths[pattern]; !hasClientRoute {
-			v._paths[pattern] = &Path{
-				OriginalPattern: pattern,
-				SrcPath:         "",
-				ExportKey:       "default",
-				ErrorExportKey:  "",
-			}
-		}
+		patterns = append(patterns, pattern)
 	}
+	return patterns
 }
 
 func (r *RouteRegistry) rebuildNestedRouterFromCurrentPaths() {
 	v := r.vorma
-	patterns := make([]string, 0, len(v._paths))
-	for pattern := range v._paths {
-		patterns = append(patterns, pattern)
-	}
+	patterns := runtimecore.BuildNestedRouterPatternList(
+		toRuntimeCoreRoutePaths(v._paths),
+	)
 	v.LoadersRouter().NestedRouter.RebuildPreservingHandlers(patterns)
 }
 
@@ -2600,7 +1790,9 @@ func (v *Vorma) devReloadRoutesFromDisk() error {
 	if err != nil {
 		return fmt.Errorf("load paths from disk: %w", err)
 	}
-	runtimeArtifacts, err := buildRuntimeRouteArtifacts(pathsFile)
+	runtimeArtifacts, err := runtimecore.BuildRuntimeRouteArtifacts(
+		buildRuntimePathsFileSnapshot(pathsFile),
+	)
 	if err != nil {
 		return fmt.Errorf("build runtime route artifacts: %w", err)
 	}
@@ -2613,17 +1805,17 @@ func (v *Vorma) devReloadRoutesFromDisk() error {
 	}
 
 	v.transitionLifecycleStateLocked(
-		runtimeLifecycleStateReloadingRoutes,
+		runtimecore.LifecycleStateReloadingRoutes,
 		"dev route artifacts commit start",
 		"",
 	)
 	v.commitRouteArtifactsLocked(
 		runtimeArtifacts,
 		true,
-		routeArtifactCommitModeDevReload,
+		runtimecore.RouteArtifactCommitModeDevReload,
 	)
 	v.transitionLifecycleStateLocked(
-		runtimeLifecycleStateReady,
+		runtimecore.LifecycleStateReady,
 		"dev route artifacts commit complete",
 		"",
 	)
@@ -2657,105 +1849,19 @@ func (v *Vorma) devReloadTemplateFromDisk() error {
 		return err
 	}
 	v.transitionLifecycleStateLocked(
-		runtimeLifecycleStateReloadingHTML,
+		runtimecore.LifecycleStateReloadingHTML,
 		"dev html template commit start",
 		"",
 	)
 	v.commitRootTemplateLocked(tmpl)
 	v.transitionLifecycleStateLocked(
-		runtimeLifecycleStateReady,
+		runtimecore.LifecycleStateReady,
 		"dev html template commit complete",
 		"",
 	)
 
 	v.Log.Info("HTML template reloaded")
 	return nil
-}
-
-func getViteDevURLForMode(isDevMode bool) string {
-	if !isDevMode {
-		return ""
-	}
-	return fmt.Sprintf("http://localhost:%s", viteutil.GetVitePortStr())
-}
-
-func (v *Vorma) getDeps(
-	matches []*nestedmatcher.Match,
-	paths map[string]*Path,
-) []string {
-	v.mu.RLock()
-	clientEntryDeps := v._clientEntryDeps
-	v.mu.RUnlock()
-
-	return getDepsFromData(matches, paths, clientEntryDeps)
-}
-
-func getDepsFromData(
-	matches []*nestedmatcher.Match,
-	paths map[string]*Path,
-	clientEntryDeps []string,
-) []string {
-	var deps []string
-	seen := make(map[string]struct{}, len(matches))
-	handleDeps := func(src []string) {
-		for _, d := range src {
-			if _, ok := seen[d]; !ok {
-				deps = append(deps, d)
-				seen[d] = struct{}{}
-			}
-		}
-	}
-	if clientEntryDeps != nil {
-		handleDeps(clientEntryDeps)
-	}
-	for _, match := range matches {
-		path := paths[match.OriginalPattern()]
-		if path == nil {
-			continue
-		}
-		handleDeps(path.Deps)
-	}
-	return deps
-}
-
-func (v *Vorma) getCSSBundles(deps []string) []string {
-	v.mu.RLock()
-	clientEntryOut := v._clientEntryOut
-	depToCSSBundleMap := v._depToCSSBundleMap
-	v.mu.RUnlock()
-
-	return getCSSBundles(deps, clientEntryOut, depToCSSBundleMap)
-}
-
-func getCSSBundles(
-	deps []string,
-	clientEntryOut string,
-	depToCSSBundleMap map[string][]string,
-) []string {
-	clientEntryBundles := depToCSSBundleMap[clientEntryOut]
-	seen := make(map[string]struct{})
-	cssBundles := make([]string, 0, len(deps))
-
-	addBundles := func(bundles []string) {
-		for _, bundle := range bundles {
-			if _, exists := seen[bundle]; !exists {
-				seen[bundle] = struct{}{}
-				cssBundles = append(cssBundles, bundle)
-			}
-		}
-	}
-
-	if len(clientEntryBundles) > 0 {
-		addBundles(clientEntryBundles)
-	}
-
-	for _, dep := range deps {
-		if bundles, exists := depToCSSBundleMap[dep]; exists {
-			addBundles(bundles)
-		}
-	}
-
-	return cssBundles
 }
 
 // MustInit initializes Vorma. Panics on error.
@@ -2828,7 +1934,9 @@ func (v *Vorma) initInner(isDev bool) error {
 	if err != nil {
 		return fmt.Errorf("could not get base paths: %w", err)
 	}
-	runtimeArtifacts, err := buildRuntimeRouteArtifacts(pathsFile)
+	runtimeArtifacts, err := runtimecore.BuildRuntimeRouteArtifacts(
+		buildRuntimePathsFileSnapshot(pathsFile),
+	)
 	if err != nil {
 		return fmt.Errorf("could not build runtime route artifacts: %w", err)
 	}
@@ -2859,7 +1967,7 @@ func (v *Vorma) initInner(isDev bool) error {
 	v.commitRouteArtifactsLocked(
 		runtimeArtifacts,
 		wasInitialized,
-		routeArtifactCommitModeInit,
+		runtimecore.RouteArtifactCommitModeInit,
 	)
 
 	v.commitRootTemplateLocked(tmpl)
@@ -2875,129 +1983,22 @@ func (v *Vorma) initInner(isDev bool) error {
 
 	v._serverAddr = fmt.Sprintf(":%d", v.MustGetPort())
 	v.transitionLifecycleStateLocked(
-		runtimeLifecycleStateReady,
+		runtimecore.LifecycleStateReady,
 		"init commit complete",
 		"",
 	)
 	return nil
 }
 
-func (v *Vorma) getBasePaths_StageOneOrTwo(isDev bool) (*PathsFile, error) {
+func (v *Vorma) getBasePaths_StageOneOrTwo(
+	isDev bool,
+) (*runtimepaths.PathsFile, error) {
 	return v.getBasePathsFromFS(v._privateFS, isDev)
 }
 
 func (v *Vorma) getBasePathsFromFS(
 	privateFS fs.FS,
 	isDev bool,
-) (*PathsFile, error) {
-	if privateFS == nil {
-		return nil, fmt.Errorf("private fs is nil")
-	}
-
-	fileToUse := VormaPathsStageOneJSONFileName
-	if !isDev {
-		fileToUse = VormaPathsStageTwoJSONFileName
-	}
-
-	file, err := privateFS.Open(path.Join("vorma_out", fileToUse))
-	if err != nil {
-		return nil, fmt.Errorf("could not open %s: %w", fileToUse, err)
-	}
-	defer file.Close()
-
-	var pathsFile PathsFile
-	if err := json.NewDecoder(file).Decode(&pathsFile); err != nil {
-		return nil, fmt.Errorf("could not decode %s: %w", fileToUse, err)
-	}
-	if err := validatePathsFileStructuralIntegrity(&pathsFile); err != nil {
-		return nil, fmt.Errorf("invalid %s: %w", fileToUse, err)
-	}
-	if err := validatePathsFileSemanticIntegrity(&pathsFile, isDev); err != nil {
-		return nil, fmt.Errorf("invalid %s: %w", fileToUse, err)
-	}
-	return &pathsFile, nil
-}
-
-func validatePathsFileStructuralIntegrity(pathsFile *PathsFile) error {
-	if pathsFile == nil {
-		return fmt.Errorf("paths file is nil")
-	}
-	if pathsFile.Paths == nil {
-		return nil
-	}
-	for mapKeyPattern, pathEntry := range pathsFile.Paths {
-		if pathEntry == nil {
-			return fmt.Errorf("paths[%q] cannot be null", mapKeyPattern)
-		}
-		if mapKeyPattern != "" && pathEntry.OriginalPattern == "" {
-			return fmt.Errorf(
-				"paths[%q].originalPattern is required",
-				mapKeyPattern,
-			)
-		}
-		if pathEntry.OriginalPattern != mapKeyPattern {
-			return fmt.Errorf(
-				"paths[%q].originalPattern=%q does not match key",
-				mapKeyPattern,
-				pathEntry.OriginalPattern,
-			)
-		}
-	}
-	return nil
-}
-
-func validatePathsFileSemanticIntegrity(
-	pathsFile *PathsFile,
-	isDev bool,
-) error {
-	if pathsFile == nil {
-		return fmt.Errorf("paths file is nil")
-	}
-	if strings.TrimSpace(pathsFile.RouteManifestFile) == "" {
-		return fmt.Errorf("routeManifestFile is required")
-	}
-	if !isDev && strings.TrimSpace(pathsFile.ClientEntryOut) == "" {
-		return fmt.Errorf("clientEntryOut is required")
-	}
-
-	for mapKeyPattern, pathEntry := range pathsFile.Paths {
-		if pathEntry == nil {
-			continue
-		}
-		if pathEntry.SrcPath != "" &&
-			strings.TrimSpace(pathEntry.ExportKey) == "" {
-			return fmt.Errorf(
-				"paths[%q].exportKey is required when srcPath is set",
-				mapKeyPattern,
-			)
-		}
-		if !isDev && pathEntry.SrcPath != "" &&
-			strings.TrimSpace(pathEntry.OutPath) == "" {
-			return fmt.Errorf(
-				"paths[%q].outPath is required in production mode",
-				mapKeyPattern,
-			)
-		}
-	}
-
-	return nil
-}
-
-// PrettyPrintFS is a debug utility for fs.FS instances.
-func PrettyPrintFS(fsys fs.FS) error {
-	return fs.WalkDir(
-		fsys,
-		".",
-		func(p string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				fmt.Println(p)
-			} else {
-				fmt.Printf("%s (%s)\n", p, d.Type())
-			}
-			return nil
-		},
-	)
+) (*runtimepaths.PathsFile, error) {
+	return runtimepaths.LoadPathsFileFromFS(privateFS, isDev)
 }

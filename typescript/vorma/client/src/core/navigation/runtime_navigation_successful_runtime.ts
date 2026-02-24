@@ -1,6 +1,5 @@
 import {
 	__vormaClientGlobal,
-	type GetRouteDataOutput,
 	type VormaClientGlobal,
 } from "../../app/context.ts";
 import { dispatchBuildIDEvent } from "../../platform/events.ts";
@@ -13,10 +12,7 @@ import {
 } from "../render_runtime.ts";
 import {
 	decideBuildIDSyncTimingForSuccessfulEntry,
-	decideSuccessfulNavigationCleanupExecutionPlan,
-	decideSuccessfulNavigationPostAssetExecutionPlan,
-	decideSuccessfulNavigationPostAssetSideEffectPlan,
-	decideSuccessfulNavigationPreWaitingExecutionPlan,
+	decideSuccessfulNavigationCheckpointExecutionPlan,
 	type BuildIDSyncTiming,
 } from "./runtime_navigation_outcome_state_machine.ts";
 import type {
@@ -83,6 +79,14 @@ export type ProcessSuccessfulNavigationContext = {
 	}) => void;
 };
 
+type SuccessfulNavigationOutcome = Extract<
+	NavigationOutcome,
+	{ type: "success" }
+>;
+type SuccessfulNavigationClientLoadersResult =
+	| Awaited<SuccessfulNavigationOutcome["waitFnPromise"]>
+	| undefined;
+
 function isCurrentNavigationEntry(props: {
 	context: ProcessSuccessfulNavigationContext;
 	entry: NavigationEntry;
@@ -112,43 +116,74 @@ function transitionPhaseForCurrentEntry(props: {
 	});
 }
 
-function applyResponseArtifactsWhenBuildMatches(props: {
-	response: Response;
-	json: GetRouteDataOutput;
-	expectedBuildID: string;
+export type SuccessfulNavigationGlobalCommit =
+	| {
+			type: "set_client_loaders_state";
+			clientLoadersResult: SuccessfulNavigationClientLoadersResult;
+	  }
+	| {
+			type: "sync_build_id_from_response";
+			response: Response;
+	  }
+	| {
+			type: "merge_route_module_metadata_when_build_matches";
+			response: Response;
+			expectedBuildID: string;
+			routeModuleMetadata: RouteModuleMetadataInput;
+	  };
+
+export function commitSuccessfulNavigationGlobalState(props: {
+	commit: SuccessfulNavigationGlobalCommit;
 }): void {
-	const { response, json, expectedBuildID } = props;
-	const responseBuildID = getBuildIDFromResponse(response);
+	switch (props.commit.type) {
+		case "set_client_loaders_state":
+			setClientLoadersState(props.commit.clientLoadersResult);
+			return;
+		case "sync_build_id_from_response": {
+			const oldID = __vormaClientGlobal.get("buildID");
+			const newID = getBuildIDFromResponse(props.commit.response);
+			if (!newID || newID === oldID) {
+				return;
+			}
 
-	if (responseBuildID !== expectedBuildID) {
-		return;
+			__vormaClientGlobal.set("buildID", newID);
+			dispatchBuildIDEvent({ newID, oldID });
+			return;
+		}
+		case "merge_route_module_metadata_when_build_matches": {
+			const responseBuildID = getBuildIDFromResponse(
+				props.commit.response,
+			);
+			if (responseBuildID !== props.commit.expectedBuildID) {
+				return;
+			}
+
+			const clientModuleMap = mergeClientModuleMapWithRouteModuleMetadata(
+				{
+					currentClientModuleMap:
+						__vormaClientGlobal.get("clientModuleMap"),
+					routeModuleMetadata: props.commit.routeModuleMetadata,
+				},
+			);
+
+			__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
+			return;
+		}
 	}
-
-	const clientModuleMap = mergeClientModuleMapWithRouteModuleMetadata({
-		currentClientModuleMap: __vormaClientGlobal.get("clientModuleMap"),
-		routeModuleMetadata: json,
-	});
-
-	__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
 }
 
 export function syncBuildIDFromResponse(response: Response): void {
-	const oldID = __vormaClientGlobal.get("buildID");
-	const newID = getBuildIDFromResponse(response);
-	if (!newID || newID === oldID) {
-		return;
-	}
-
-	__vormaClientGlobal.set("buildID", newID);
-	dispatchBuildIDEvent({ newID, oldID });
+	commitSuccessfulNavigationGlobalState({
+		commit: {
+			type: "sync_build_id_from_response",
+			response,
+		},
+	});
 }
 
 async function waitForSuccessfulNavigationAssets(
-	outcome: Extract<NavigationOutcome, { type: "success" }>,
-): Promise<
-	| Awaited<Extract<NavigationOutcome, { type: "success" }>["waitFnPromise"]>
-	| undefined
-> {
+	outcome: SuccessfulNavigationOutcome,
+): Promise<SuccessfulNavigationClientLoadersResult> {
 	const { waitFnPromise, preloadPlan } = outcome;
 	const cssBundlePromises: Array<Promise<unknown>> = [];
 	for (const dependency of preloadPlan.moduleDependencies) {
@@ -175,7 +210,7 @@ async function waitForSuccessfulNavigationAssets(
 
 function buildRunHistoryOptions(
 	entry: NavigationEntry,
-	props: Extract<NavigationOutcome, { type: "success" }>["props"],
+	props: SuccessfulNavigationOutcome["props"],
 ) {
 	if (entry.intent !== "navigate") {
 		return undefined;
@@ -192,7 +227,7 @@ function buildRunHistoryOptions(
 
 async function renderSuccessfulNavigation(
 	context: ProcessSuccessfulNavigationContext,
-	outcome: Extract<NavigationOutcome, { type: "success" }>,
+	outcome: SuccessfulNavigationOutcome,
 	entry: NavigationEntry,
 ): Promise<void> {
 	transitionPhaseForCurrentEntry({
@@ -235,14 +270,6 @@ async function renderSuccessfulNavigation(
 	}
 }
 
-type SuccessfulNavigationOutcome = Extract<
-	NavigationOutcome,
-	{ type: "success" }
->;
-type SuccessfulNavigationClientLoadersResult =
-	| Awaited<SuccessfulNavigationOutcome["waitFnPromise"]>
-	| undefined;
-
 type SuccessfulNavigationCheckpointStateEnvelope = {
 	context: ProcessSuccessfulNavigationContext;
 	outcome: SuccessfulNavigationOutcome;
@@ -272,11 +299,12 @@ function runSuccessfulNavigationPreWaitingCheckpoint(
 		entry,
 	});
 	const preWaitingExecutionPlan =
-		decideSuccessfulNavigationPreWaitingExecutionPlan({
+		decideSuccessfulNavigationCheckpointExecutionPlan({
+			checkpoint: "pre_waiting",
 			entry,
 			isCurrentEntry: checkpointEnvelope.isCurrentEntry,
 			currentHref: checkpointEnvelope.currentHref,
-		});
+		}).plan;
 
 	switch (preWaitingExecutionPlan.type) {
 		case "stop":
@@ -305,7 +333,14 @@ function runSuccessfulNavigationPostWaitingCheckpoint(
 		context: envelope.context,
 		entry: envelope.entry,
 	});
-	return !checkpointEnvelope.isCurrentEntry;
+	const postWaitingExecutionPlan =
+		decideSuccessfulNavigationCheckpointExecutionPlan({
+			checkpoint: "post_waiting",
+			entry: envelope.entry,
+			isCurrentEntry: checkpointEnvelope.isCurrentEntry,
+			currentHref: checkpointEnvelope.currentHref,
+		}).plan;
+	return postWaitingExecutionPlan.type === "stop";
 }
 
 function runSuccessfulNavigationPreAssetWaitCheckpoint(props: {
@@ -335,29 +370,42 @@ async function runSuccessfulNavigationPostAssetCheckpoint(props: {
 		context,
 		entry,
 	});
-	const postAssetExecutionPlan =
-		decideSuccessfulNavigationPostAssetExecutionPlan({
+	const postAssetExecutionPlanEnvelope =
+		decideSuccessfulNavigationCheckpointExecutionPlan({
+			checkpoint: "post_asset",
 			entry,
 			isCurrentEntry: checkpointEnvelope.isCurrentEntry,
 			currentHref: checkpointEnvelope.currentHref,
-		});
-	const postAssetSideEffectPlan =
-		decideSuccessfulNavigationPostAssetSideEffectPlan({
-			postAssetExecutionPlan,
 			buildIDSyncTiming,
 		});
+	const postAssetExecutionPlan = postAssetExecutionPlanEnvelope.plan;
+	const postAssetSideEffectPlan =
+		postAssetExecutionPlanEnvelope.sideEffectPlan;
 
 	if (postAssetSideEffectPlan.shouldCommitClientLoadersState) {
-		setClientLoadersState(clientLoadersResult);
+		commitSuccessfulNavigationGlobalState({
+			commit: {
+				type: "set_client_loaders_state",
+				clientLoadersResult,
+			},
+		});
 	}
 	if (postAssetSideEffectPlan.shouldSyncBuildIDAfterAssetWait) {
-		syncBuildIDFromResponse(outcome.response);
+		commitSuccessfulNavigationGlobalState({
+			commit: {
+				type: "sync_build_id_from_response",
+				response: outcome.response,
+			},
+		});
 	}
 	if (postAssetSideEffectPlan.shouldApplyResponseArtifacts) {
-		applyResponseArtifactsWhenBuildMatches({
-			response: outcome.response,
-			json: outcome.json,
-			expectedBuildID,
+		commitSuccessfulNavigationGlobalState({
+			commit: {
+				type: "merge_route_module_metadata_when_build_matches",
+				response: outcome.response,
+				expectedBuildID,
+				routeModuleMetadata: outcome.json,
+			},
 		});
 	}
 
@@ -386,12 +434,12 @@ function runSuccessfulNavigationCleanupCheckpoint(
 		context,
 		entry,
 	});
-	const cleanupExecutionPlan = decideSuccessfulNavigationCleanupExecutionPlan(
-		{
+	const cleanupExecutionPlan =
+		decideSuccessfulNavigationCheckpointExecutionPlan({
+			checkpoint: "cleanup",
 			entry,
 			isCurrentEntry: checkpointEnvelope.isCurrentEntry,
-		},
-	);
+		}).plan;
 
 	if (cleanupExecutionPlan.type === "skip") {
 		return;

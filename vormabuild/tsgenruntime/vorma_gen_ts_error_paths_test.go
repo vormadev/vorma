@@ -1,4 +1,4 @@
-package vormabuild
+package tsgenruntime
 
 import (
 	"errors"

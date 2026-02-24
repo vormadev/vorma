@@ -35,6 +35,10 @@ const successfulNavigationLifecycleReason = {
 				.staleRevalidationPreWaiting,
 		entryCurrentAndFresh: "entry_current_and_fresh",
 	},
+	postWaiting: {
+		nonCurrentEntry: "post_waiting_non_current_entry",
+		entryCurrentAndFresh: "post_waiting_entry_current_and_fresh",
+	},
 	postAsset: {
 		entryLost: navigationOutcomeExecutionReason.stop.postAssetEntryLost,
 		staleRevalidation:
@@ -66,6 +70,10 @@ type SuccessfulNavigationPreWaitingDeleteAndStopReason =
 	typeof successfulNavigationLifecycleReason.preWaiting.staleRevalidationPreWaiting;
 type SuccessfulNavigationPreWaitingContinueReason =
 	typeof successfulNavigationLifecycleReason.preWaiting.entryCurrentAndFresh;
+type SuccessfulNavigationPostWaitingStopReason =
+	typeof successfulNavigationLifecycleReason.postWaiting.nonCurrentEntry;
+type SuccessfulNavigationPostWaitingContinueReason =
+	typeof successfulNavigationLifecycleReason.postWaiting.entryCurrentAndFresh;
 type SuccessfulNavigationPostAssetStopReason =
 	| typeof successfulNavigationLifecycleReason.postAsset.entryLost
 	| typeof successfulNavigationLifecycleReason.postAsset.staleRevalidation;
@@ -278,6 +286,34 @@ export function decideSuccessfulNavigationPreWaitingExecutionPlan(props: {
 	}
 }
 
+export type SuccessfulNavigationPostWaitingExecutionPlan =
+	| {
+			type: "stop";
+			reason: SuccessfulNavigationPostWaitingStopReason;
+	  }
+	| {
+			type: "continue";
+			reason: SuccessfulNavigationPostWaitingContinueReason;
+	  };
+
+function decideSuccessfulNavigationPostWaitingExecutionPlan(props: {
+	isCurrentEntry: boolean;
+}): SuccessfulNavigationPostWaitingExecutionPlan {
+	if (!props.isCurrentEntry) {
+		return {
+			type: "stop",
+			reason: successfulNavigationLifecycleReason.postWaiting
+				.nonCurrentEntry,
+		};
+	}
+
+	return {
+		type: "continue",
+		reason: successfulNavigationLifecycleReason.postWaiting
+			.entryCurrentAndFresh,
+	};
+}
+
 export type SuccessfulNavigationPostAssetExecutionPlan =
 	| {
 			type: "stop";
@@ -360,6 +396,136 @@ export function decideSuccessfulNavigationCleanupExecutionPlan(props: {
 		reason: successfulNavigationLifecycleReason.cleanup
 			.successfulNavigation,
 	};
+}
+
+export type SuccessfulNavigationCheckpointExecutionPlan =
+	| {
+			checkpoint: "pre_waiting";
+			plan: SuccessfulNavigationPreWaitingExecutionPlan;
+	  }
+	| {
+			checkpoint: "post_waiting";
+			plan: SuccessfulNavigationPostWaitingExecutionPlan;
+	  }
+	| {
+			checkpoint: "post_asset";
+			plan: SuccessfulNavigationPostAssetExecutionPlan;
+			sideEffectPlan: SuccessfulNavigationPostAssetSideEffectPlan;
+	  }
+	| {
+			checkpoint: "cleanup";
+			plan: SuccessfulNavigationCleanupExecutionPlan;
+	  };
+
+export type SuccessfulNavigationCheckpointExecutionPlanProps =
+	| {
+			checkpoint: "pre_waiting";
+			entry: NavigationEntry;
+			isCurrentEntry: boolean;
+			currentHref: string;
+	  }
+	| {
+			checkpoint: "post_waiting";
+			entry: NavigationEntry;
+			isCurrentEntry: boolean;
+			currentHref: string;
+	  }
+	| {
+			checkpoint: "post_asset";
+			entry: NavigationEntry;
+			isCurrentEntry: boolean;
+			currentHref: string;
+			buildIDSyncTiming: BuildIDSyncTiming;
+	  }
+	| {
+			checkpoint: "cleanup";
+			entry: NavigationEntry;
+			isCurrentEntry: boolean;
+	  };
+
+export function decideSuccessfulNavigationCheckpointExecutionPlan(props: {
+	checkpoint: "pre_waiting";
+	entry: NavigationEntry;
+	isCurrentEntry: boolean;
+	currentHref: string;
+}): {
+	checkpoint: "pre_waiting";
+	plan: SuccessfulNavigationPreWaitingExecutionPlan;
+};
+export function decideSuccessfulNavigationCheckpointExecutionPlan(props: {
+	checkpoint: "post_waiting";
+	entry: NavigationEntry;
+	isCurrentEntry: boolean;
+	currentHref: string;
+}): {
+	checkpoint: "post_waiting";
+	plan: SuccessfulNavigationPostWaitingExecutionPlan;
+};
+export function decideSuccessfulNavigationCheckpointExecutionPlan(props: {
+	checkpoint: "post_asset";
+	entry: NavigationEntry;
+	isCurrentEntry: boolean;
+	currentHref: string;
+	buildIDSyncTiming: BuildIDSyncTiming;
+}): {
+	checkpoint: "post_asset";
+	plan: SuccessfulNavigationPostAssetExecutionPlan;
+	sideEffectPlan: SuccessfulNavigationPostAssetSideEffectPlan;
+};
+export function decideSuccessfulNavigationCheckpointExecutionPlan(props: {
+	checkpoint: "cleanup";
+	entry: NavigationEntry;
+	isCurrentEntry: boolean;
+}): {
+	checkpoint: "cleanup";
+	plan: SuccessfulNavigationCleanupExecutionPlan;
+};
+export function decideSuccessfulNavigationCheckpointExecutionPlan(
+	props: SuccessfulNavigationCheckpointExecutionPlanProps,
+): SuccessfulNavigationCheckpointExecutionPlan {
+	switch (props.checkpoint) {
+		case "pre_waiting":
+			return {
+				checkpoint: "pre_waiting",
+				plan: decideSuccessfulNavigationPreWaitingExecutionPlan({
+					entry: props.entry,
+					isCurrentEntry: props.isCurrentEntry,
+					currentHref: props.currentHref,
+				}),
+			};
+		case "post_waiting":
+			return {
+				checkpoint: "post_waiting",
+				plan: decideSuccessfulNavigationPostWaitingExecutionPlan({
+					isCurrentEntry: props.isCurrentEntry,
+				}),
+			};
+		case "post_asset": {
+			const postAssetExecutionPlan =
+				decideSuccessfulNavigationPostAssetExecutionPlan({
+					entry: props.entry,
+					isCurrentEntry: props.isCurrentEntry,
+					currentHref: props.currentHref,
+				});
+			return {
+				checkpoint: "post_asset",
+				plan: postAssetExecutionPlan,
+				sideEffectPlan:
+					decideSuccessfulNavigationPostAssetSideEffectPlan({
+						postAssetExecutionPlan,
+						buildIDSyncTiming: props.buildIDSyncTiming,
+					}),
+			};
+		}
+		case "cleanup":
+			return {
+				checkpoint: "cleanup",
+				plan: decideSuccessfulNavigationCleanupExecutionPlan({
+					entry: props.entry,
+					isCurrentEntry: props.isCurrentEntry,
+				}),
+			};
+	}
 }
 
 export type InternalNavigateResult =

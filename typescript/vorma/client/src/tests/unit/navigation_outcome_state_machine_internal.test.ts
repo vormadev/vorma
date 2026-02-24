@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	decideBuildIDSyncTimingForSuccessfulEntry,
 	decideNavigationOutcomeExecutionPlan,
+	decideSuccessfulNavigationCheckpointExecutionPlan,
 	decideSuccessfulNavigationCleanupExecutionPlan,
 	decideSuccessfulNavigationPostAssetExecutionPlan,
 	decideSuccessfulNavigationPostAssetSideEffectPlan,
@@ -526,6 +527,80 @@ describe("successful outcome stage plans", () => {
 			shouldCommitClientLoadersState: false,
 			shouldSyncBuildIDAfterAssetWait: false,
 			shouldApplyResponseArtifacts: true,
+		});
+	});
+
+	it("emits checkpoint-specific plans through a single planner seam", () => {
+		const currentEntry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+			targetUrl: "http://localhost:3000/current",
+		});
+
+		const preWaitingPlan =
+			decideSuccessfulNavigationCheckpointExecutionPlan({
+				checkpoint: "pre_waiting",
+				entry: currentEntry,
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
+			});
+		expect(preWaitingPlan).toEqual({
+			checkpoint: "pre_waiting",
+			plan: {
+				type: "continue",
+				reason: "entry_current_and_fresh",
+			},
+		});
+
+		const postWaitingPlan =
+			decideSuccessfulNavigationCheckpointExecutionPlan({
+				checkpoint: "post_waiting",
+				entry: currentEntry,
+				isCurrentEntry: false,
+				currentHref: "http://localhost:3000/current",
+			});
+		expect(postWaitingPlan).toEqual({
+			checkpoint: "post_waiting",
+			plan: {
+				type: "stop",
+				reason: "post_waiting_non_current_entry",
+			},
+		});
+
+		const postAssetPlan = decideSuccessfulNavigationCheckpointExecutionPlan(
+			{
+				checkpoint: "post_asset",
+				entry: currentEntry,
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
+				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
+			},
+		);
+		expect(postAssetPlan).toEqual({
+			checkpoint: "post_asset",
+			plan: {
+				type: "render",
+				reason: "post_asset_render",
+			},
+			sideEffectPlan: {
+				shouldCommitClientLoadersState: true,
+				shouldSyncBuildIDAfterAssetWait: true,
+				shouldApplyResponseArtifacts: true,
+			},
+		});
+
+		const cleanupPlan = decideSuccessfulNavigationCheckpointExecutionPlan({
+			checkpoint: "cleanup",
+			entry: currentEntry,
+			isCurrentEntry: true,
+		});
+		expect(cleanupPlan).toEqual({
+			checkpoint: "cleanup",
+			plan: {
+				type: "deleteNavigation",
+				targetUrl: currentEntry.targetUrl,
+				reason: "successful_navigation_cleanup",
+			},
 		});
 	});
 });

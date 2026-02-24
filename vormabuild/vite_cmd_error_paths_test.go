@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/lab/viteutil"
 )
 
@@ -76,7 +77,7 @@ func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 		expectedErr := errors.New("write stage-two failed")
 		stageTwoWriteExecutor := newStageTwoPathsWriteExecutorForTest(
 			func(dependencies *stageTwoPathsWriteDependencies) {
-				dependencies.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+				dependencies.marshalStageTwoPathsFile = func(*runtimepaths.PathsFile) ([]byte, error) {
 					return []byte(`{"stage":"two"}`), nil
 				}
 				dependencies.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
@@ -92,7 +93,9 @@ func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 			},
 		)
 		if err == nil {
-			t.Fatal("expected postViteProdBuild to return stage-two write error")
+			t.Fatal(
+				"expected postViteProdBuild to return stage-two write error",
+			)
 		}
 		if !strings.Contains(err.Error(), "write stage-two paths") {
 			t.Fatalf("error = %q, expected stage-two write context", err)
@@ -115,7 +118,7 @@ func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
 		expectedErr := errors.New("marshal failed")
 		executor := newStageTwoPathsWriteExecutorForTest(
 			func(dependencies *stageTwoPathsWriteDependencies) {
-				dependencies.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+				dependencies.marshalStageTwoPathsFile = func(*runtimepaths.PathsFile) ([]byte, error) {
 					return nil, expectedErr
 				}
 				dependencies.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
@@ -127,7 +130,7 @@ func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
 
 		err := executor.writePathsToDiskStageTwo(
 			&vormaruntime.Vorma{},
-			&vormaruntime.PathsFile{Stage: "two"},
+			&runtimepaths.PathsFile{Stage: "two"},
 		)
 		if err == nil {
 			t.Fatal("expected writePathsToDiskStageTwo to return marshal error")
@@ -144,7 +147,7 @@ func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
 		expectedErr := errors.New("write failed")
 		executor := newStageTwoPathsWriteExecutorForTest(
 			func(dependencies *stageTwoPathsWriteDependencies) {
-				dependencies.marshalStageTwoPathsFile = func(*vormaruntime.PathsFile) ([]byte, error) {
+				dependencies.marshalStageTwoPathsFile = func(*runtimepaths.PathsFile) ([]byte, error) {
 					return []byte(`{"stage":"two"}`), nil
 				}
 				dependencies.writeStageTwoPathsJSON = func(*vormaruntime.Vorma, []byte) error {
@@ -155,7 +158,7 @@ func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
 
 		err := executor.writePathsToDiskStageTwo(
 			&vormaruntime.Vorma{},
-			&vormaruntime.PathsFile{Stage: "two"},
+			&runtimepaths.PathsFile{Stage: "two"},
 		)
 		if err == nil {
 			t.Fatal("expected writePathsToDiskStageTwo to return write error")
@@ -170,20 +173,27 @@ func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
 
 	t.Run("runs marshal and write in order", func(t *testing.T) {
 		var observedSteps []string
-		pathsFile := &vormaruntime.PathsFile{Stage: "two"}
+		pathsFile := &runtimepaths.PathsFile{Stage: "two"}
 		executor := newStageTwoPathsWriteExecutorForTest(
 			func(dependencies *stageTwoPathsWriteDependencies) {
-				dependencies.marshalStageTwoPathsFile = func(gotPathsFile *vormaruntime.PathsFile) ([]byte, error) {
+				dependencies.marshalStageTwoPathsFile = func(gotPathsFile *runtimepaths.PathsFile) ([]byte, error) {
 					observedSteps = append(observedSteps, "marshal")
 					if gotPathsFile != pathsFile {
-						t.Fatalf("marshal received unexpected paths file pointer: %p vs %p", gotPathsFile, pathsFile)
+						t.Fatalf(
+							"marshal received unexpected paths file pointer: %p vs %p",
+							gotPathsFile,
+							pathsFile,
+						)
 					}
 					return []byte(`{"stage":"two"}`), nil
 				}
 				dependencies.writeStageTwoPathsJSON = func(_ *vormaruntime.Vorma, pathsJSON []byte) error {
 					observedSteps = append(observedSteps, "write")
 					if string(pathsJSON) != `{"stage":"two"}` {
-						t.Fatalf("write received unexpected marshaled JSON: %q", string(pathsJSON))
+						t.Fatalf(
+							"write received unexpected marshaled JSON: %q",
+							string(pathsJSON),
+						)
 					}
 					return nil
 				}
@@ -194,7 +204,10 @@ func TestWritePathsToDiskStageTwo_ErrorWrappingAndStepFlow(t *testing.T) {
 			t.Fatalf("writePathsToDiskStageTwo returned error: %v", err)
 		}
 		if strings.Join(observedSteps, ",") != "marshal,write" {
-			t.Fatalf("observed step order = %#v, want [marshal write]", observedSteps)
+			t.Fatalf(
+				"observed step order = %#v, want [marshal write]",
+				observedSteps,
+			)
 		}
 	})
 }
@@ -232,7 +245,9 @@ func TestToPathsFileStageTwo_ReturnsErrorWhenPublicOutDirMissing(t *testing.T) {
 
 	_, err := toPathsFileStageTwo(app)
 	if err == nil {
-		t.Fatal("expected toPathsFileStageTwo to fail when static public out dir is missing")
+		t.Fatal(
+			"expected toPathsFileStageTwo to fail when static public out dir is missing",
+		)
 	}
 	if !strings.Contains(err.Error(), "get FS summary hash") {
 		t.Fatalf("error = %q, expected FS summary hash context", err)
@@ -245,14 +260,18 @@ func TestToPathsFileStageTwo_ReturnsManifestReadError(t *testing.T) {
 
 	_, err := toPathsFileStageTwo(app)
 	if err == nil {
-		t.Fatal("expected toPathsFileStageTwo to fail when Vite manifest is missing")
+		t.Fatal(
+			"expected toPathsFileStageTwo to fail when Vite manifest is missing",
+		)
 	}
 	if !strings.Contains(err.Error(), "read vite manifest") {
 		t.Fatalf("error = %q, expected read-vite-manifest context", err)
 	}
 }
 
-func TestToPathsFileStageTwo_ReturnsErrorWhenClientEntryChunkIsMissing(t *testing.T) {
+func TestToPathsFileStageTwo_ReturnsErrorWhenClientEntryChunkIsMissing(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -275,7 +294,9 @@ func TestToPathsFileStageTwo_ReturnsErrorWhenClientEntryChunkIsMissing(t *testin
 
 	_, err := toPathsFileStageTwo(app)
 	if err == nil {
-		t.Fatal("expected toPathsFileStageTwo to fail when client entry chunk is missing")
+		t.Fatal(
+			"expected toPathsFileStageTwo to fail when client entry chunk is missing",
+		)
 	}
 	if !strings.Contains(err.Error(), "client entry") {
 		t.Fatalf("error = %q, expected missing-client-entry context", err)
@@ -306,7 +327,9 @@ func TestToPathsFileStageTwo_ReturnsErrorWhenRouteChunkIsMissing(t *testing.T) {
 
 	_, err := toPathsFileStageTwo(app)
 	if err == nil {
-		t.Fatal("expected toPathsFileStageTwo to fail when a route chunk is missing from manifest")
+		t.Fatal(
+			"expected toPathsFileStageTwo to fail when a route chunk is missing from manifest",
+		)
 	}
 	if !strings.Contains(err.Error(), "route chunk") {
 		t.Fatalf("error = %q, expected missing-route-chunk context", err)
@@ -328,13 +351,18 @@ func TestComputeStageTwoBuildID_ErrorWrapping(t *testing.T) {
 					return nil, expectedErr
 				}
 				dependencies.summarizePublicFS = func(fs.FS) ([]byte, error) {
-					t.Fatal("did not expect FS summary step after marshal error")
+					t.Fatal(
+						"did not expect FS summary step after marshal error",
+					)
 					return nil, nil
 				}
 			},
 		)
 
-		_, err := stageTwoBuildIDExecutor.computeStageTwoBuildID(app, &vormaruntime.PathsFile{})
+		_, err := stageTwoBuildIDExecutor.computeStageTwoBuildID(
+			app,
+			&runtimepaths.PathsFile{},
+		)
 		if err == nil {
 			t.Fatal("expected computeStageTwoBuildID to return marshal error")
 		}
@@ -365,9 +393,14 @@ func TestComputeStageTwoBuildID_ErrorWrapping(t *testing.T) {
 			},
 		)
 
-		_, err := stageTwoBuildIDExecutor.computeStageTwoBuildID(app, &vormaruntime.PathsFile{})
+		_, err := stageTwoBuildIDExecutor.computeStageTwoBuildID(
+			app,
+			&runtimepaths.PathsFile{},
+		)
 		if err == nil {
-			t.Fatal("expected computeStageTwoBuildID to return FS summary error")
+			t.Fatal(
+				"expected computeStageTwoBuildID to return FS summary error",
+			)
 		}
 		if !strings.Contains(err.Error(), "get FS summary hash") {
 			t.Fatalf("error = %q, expected FS-summary context", err)

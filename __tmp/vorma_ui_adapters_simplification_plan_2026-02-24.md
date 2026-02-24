@@ -33,10 +33,21 @@ adapter contracts.
 - [x] Consolidate duplicated typed-link composition in `react/src/link.tsx`,
       `preact/src/link.tsx`, and `solid/src/link.tsx` while preserving
       framework-native event/types surfaces.
-- [ ] Evaluate whether adapter store bootstrapping can share a common internal
-      engine contract (framework-specific subscription glue only) without
-      hurting debuggability. Status: pending (not yet decided/scoped for this
-      pass).
+- [x] Share adapter store bootstrapping through a common internal store-sync
+      engine contract (`syncRouteOutletStoreStateFromRuntime`) while keeping
+      framework-specific subscription/reactivity glue local to each adapter.
+- [x] Keep adapter root-outlet behavior/debuggability unchanged while reducing
+      repeated sync/update logic across React/Preact/Solid bootstrapping code.
+
+### 4) Client larger refactors (approved)
+
+- [x] Unify successful-navigation outcome/commit orchestration through a single
+      checkpoint planning engine in
+      `runtime_navigation_outcome_state_machine.ts` consumed by
+      `runtime_navigation_successful_runtime.ts`.
+- [x] Consolidate navigation successful-runtime global writes
+      (`buildID`/`clientModuleMap` and related commit side effects) behind one
+      typed internal commit surface instead of scattered direct writes.
 
 ## Validation
 
@@ -54,3 +65,6 @@ adapter contracts.
 - [x] Step 2 complete.
 - [x] Step 3.1 complete.
 - [x] Step 3.2 complete.
+- [x] Step 3.3 complete.
+- [x] Step 4.1 complete.
+- [x] Step 4.2 complete.

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/wave"
@@ -205,15 +206,15 @@ func TestWritePathsToDiskStageOne_WritesExpectedFields(t *testing.T) {
 
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		vormaruntime.VormaOutDirname,
-		vormaruntime.VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	bytes, err := os.ReadFile(stageOnePath)
 	if err != nil {
 		t.Fatalf("read stage one file: %v", err)
 	}
 
-	var parsed vormaruntime.PathsFile
+	var parsed runtimepaths.PathsFile
 	if err := json.Unmarshal(bytes, &parsed); err != nil {
 		t.Fatalf("unmarshal stage one file: %v", err)
 	}
@@ -239,11 +240,11 @@ func TestPathsOutputPath_StageOneFile(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	got := pathsOutputPath(app, vormaruntime.VormaPathsStageOneJSONFileName)
+	got := pathsOutputPath(app, runtimepaths.VormaPathsStageOneJSONFileName)
 	want := filepath.Join(
 		app.Wave.StaticPrivateOutDir(),
-		vormaruntime.VormaOutDirname,
-		vormaruntime.VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	if got != want {
 		t.Fatalf("pathsOutputPath(stage-one) = %q, want %q", got, want)
@@ -254,7 +255,7 @@ func TestStageOnePathsFile(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	var pathsFile *vormaruntime.PathsFile
+	var pathsFile *runtimepaths.PathsFile
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetBuildID("build-stage-one")
 		l.SetRouteManifestFile("manifest-stage-one.json")
@@ -1058,8 +1059,8 @@ func TestBuildInner_DevBuildInnerFlow(t *testing.T) {
 
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		vormaruntime.VormaOutDirname,
-		vormaruntime.VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	if _, err := os.Stat(stageOnePath); err != nil {
 		t.Fatalf("expected stage one paths file to exist: %v", err)

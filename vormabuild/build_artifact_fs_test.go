@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 )
 
 func newBuildArtifactFileSystemExecutorForTest(
@@ -31,11 +32,16 @@ func TestCleanStaticPublicOutDir_IgnoresMissingDirectory(t *testing.T) {
 	}
 
 	if err := cleanStaticPublicOutDir(app); err != nil {
-		t.Fatalf("cleanStaticPublicOutDir should ignore missing directory, got: %v", err)
+		t.Fatalf(
+			"cleanStaticPublicOutDir should ignore missing directory, got: %v",
+			err,
+		)
 	}
 }
 
-func TestCleanStaticPublicOutDir_ReturnsErrorWhenPathIsNotDirectory(t *testing.T) {
+func TestCleanStaticPublicOutDir_ReturnsErrorWhenPathIsNotDirectory(
+	t *testing.T,
+) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
@@ -77,11 +83,20 @@ func TestCleanStaticPublicOutDir_ReturnsUnexpectedStatError(t *testing.T) {
 	}
 }
 
-func TestRemoveMatchingEntriesRecursively_RemovesOnlyMatchingEntries(t *testing.T) {
+func TestRemoveMatchingEntriesRecursively_RemovesOnlyMatchingEntries(
+	t *testing.T,
+) {
 	rootDir := t.TempDir()
-	matchingTopLevel := filepath.Join(rootDir, vormaruntime.VormaVitePrehashedFilePrefix+"top.js")
+	matchingTopLevel := filepath.Join(
+		rootDir,
+		vormaruntime.VormaVitePrehashedFilePrefix+"top.js",
+	)
 	nonMatchingTopLevel := filepath.Join(rootDir, "keep-top.js")
-	matchingNested := filepath.Join(rootDir, "nested", vormaruntime.VormaRouteManifestPrefix+"nested.json")
+	matchingNested := filepath.Join(
+		rootDir,
+		"nested",
+		vormaruntime.VormaRouteManifestPrefix+"nested.json",
+	)
 	nonMatchingNested := filepath.Join(rootDir, "nested", "keep-nested.js")
 
 	mustWriteFile(t, matchingTopLevel, []byte("remove top-level match"))
@@ -94,29 +109,50 @@ func TestRemoveMatchingEntriesRecursively_RemovesOnlyMatchingEntries(t *testing.
 	}
 
 	if _, err := os.Stat(matchingTopLevel); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("expected matching top-level file to be removed, stat err=%v", err)
+		t.Fatalf(
+			"expected matching top-level file to be removed, stat err=%v",
+			err,
+		)
 	}
 	if _, err := os.Stat(matchingNested); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("expected matching nested file to be removed, stat err=%v", err)
+		t.Fatalf(
+			"expected matching nested file to be removed, stat err=%v",
+			err,
+		)
 	}
 	if _, err := os.Stat(nonMatchingTopLevel); err != nil {
-		t.Fatalf("expected non-matching top-level file to remain, stat err=%v", err)
+		t.Fatalf(
+			"expected non-matching top-level file to remain, stat err=%v",
+			err,
+		)
 	}
 	if _, err := os.Stat(nonMatchingNested); err != nil {
-		t.Fatalf("expected non-matching nested file to remain, stat err=%v", err)
+		t.Fatalf(
+			"expected non-matching nested file to remain, stat err=%v",
+			err,
+		)
 	}
 }
 
-func TestRemoveMatchingEntriesRecursively_DoesNotRemoveMatchingDirectories(t *testing.T) {
+func TestRemoveMatchingEntriesRecursively_DoesNotRemoveMatchingDirectories(
+	t *testing.T,
+) {
 	rootDir := t.TempDir()
-	matchingDirectory := filepath.Join(rootDir, vormaruntime.VormaRouteManifestPrefix+"dir")
+	matchingDirectory := filepath.Join(
+		rootDir,
+		vormaruntime.VormaRouteManifestPrefix+"dir",
+	)
 	matchingDirectoryFile := filepath.Join(
 		matchingDirectory,
 		vormaruntime.VormaRouteManifestPrefix+"nested.json",
 	)
 	nonMatchingFile := filepath.Join(matchingDirectory, "keep.txt")
 
-	mustWriteFile(t, matchingDirectoryFile, []byte("remove nested matching file"))
+	mustWriteFile(
+		t,
+		matchingDirectoryFile,
+		[]byte("remove nested matching file"),
+	)
 	mustWriteFile(t, nonMatchingFile, []byte("keep nested non-matching file"))
 
 	if err := removeMatchingEntriesRecursively(rootDir, shouldRemoveGeneratedStaticPublicFile); err != nil {
@@ -126,15 +162,26 @@ func TestRemoveMatchingEntriesRecursively_DoesNotRemoveMatchingDirectories(t *te
 	if _, err := os.Stat(matchingDirectory); err != nil {
 		t.Fatalf("expected matching directory to remain, stat err=%v", err)
 	}
-	if _, err := os.Stat(matchingDirectoryFile); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("expected matching nested file to be removed, stat err=%v", err)
+	if _, err := os.Stat(matchingDirectoryFile); !errors.Is(
+		err,
+		fs.ErrNotExist,
+	) {
+		t.Fatalf(
+			"expected matching nested file to be removed, stat err=%v",
+			err,
+		)
 	}
 	if _, err := os.Stat(nonMatchingFile); err != nil {
-		t.Fatalf("expected non-matching nested file to remain, stat err=%v", err)
+		t.Fatalf(
+			"expected non-matching nested file to remain, stat err=%v",
+			err,
+		)
 	}
 }
 
-func TestRemoveMatchingEntriesRecursively_PropagatesWalkAndRemoveErrors(t *testing.T) {
+func TestRemoveMatchingEntriesRecursively_PropagatesWalkAndRemoveErrors(
+	t *testing.T,
+) {
 	t.Run("returns walk error", func(t *testing.T) {
 		expectedErr := errors.New("walk failed")
 		executor := newBuildArtifactFileSystemExecutorForTest(
@@ -148,9 +195,14 @@ func TestRemoveMatchingEntriesRecursively_PropagatesWalkAndRemoveErrors(t *testi
 			},
 		)
 
-		err := executor.removeMatchingEntriesRecursively(t.TempDir(), func(string) bool { return true })
+		err := executor.removeMatchingEntriesRecursively(
+			t.TempDir(),
+			func(string) bool { return true },
+		)
 		if err == nil {
-			t.Fatal("expected removeMatchingEntriesRecursively to return walk error")
+			t.Fatal(
+				"expected removeMatchingEntriesRecursively to return walk error",
+			)
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped walk error", err)
@@ -160,7 +212,10 @@ func TestRemoveMatchingEntriesRecursively_PropagatesWalkAndRemoveErrors(t *testi
 	t.Run("returns remove error", func(t *testing.T) {
 		expectedErr := errors.New("remove failed")
 		rootDir := t.TempDir()
-		targetPath := filepath.Join(rootDir, vormaruntime.VormaVitePrehashedFilePrefix+"target.js")
+		targetPath := filepath.Join(
+			rootDir,
+			vormaruntime.VormaVitePrehashedFilePrefix+"target.js",
+		)
 		mustWriteFile(t, targetPath, []byte("remove me"))
 
 		executor := newBuildArtifactFileSystemExecutorForTest(
@@ -174,9 +229,14 @@ func TestRemoveMatchingEntriesRecursively_PropagatesWalkAndRemoveErrors(t *testi
 			},
 		)
 
-		err := executor.removeMatchingEntriesRecursively(rootDir, shouldRemoveGeneratedStaticPublicFile)
+		err := executor.removeMatchingEntriesRecursively(
+			rootDir,
+			shouldRemoveGeneratedStaticPublicFile,
+		)
 		if err == nil {
-			t.Fatal("expected removeMatchingEntriesRecursively to return remove error")
+			t.Fatal(
+				"expected removeMatchingEntriesRecursively to return remove error",
+			)
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped remove error", err)
@@ -186,30 +246,49 @@ func TestRemoveMatchingEntriesRecursively_PropagatesWalkAndRemoveErrors(t *testi
 
 func TestRemoveMatchingTopLevelFiles_OnlyRemovesTopLevelMatches(t *testing.T) {
 	rootDir := t.TempDir()
-	matchingTopLevel := filepath.Join(rootDir, vormaruntime.VormaRouteManifestPrefix+"top.json")
+	matchingTopLevel := filepath.Join(
+		rootDir,
+		vormaruntime.VormaRouteManifestPrefix+"top.json",
+	)
 	nonMatchingTopLevel := filepath.Join(rootDir, "keep-top.js")
-	nestedMatching := filepath.Join(rootDir, "nested", vormaruntime.VormaRouteManifestPrefix+"nested.json")
+	nestedMatching := filepath.Join(
+		rootDir,
+		"nested",
+		vormaruntime.VormaRouteManifestPrefix+"nested.json",
+	)
 
 	mustWriteFile(t, matchingTopLevel, []byte("remove top-level match"))
 	mustWriteFile(t, nonMatchingTopLevel, []byte("keep top-level non-match"))
-	mustWriteFile(t, nestedMatching, []byte("keep nested match because only top level is scanned"))
+	mustWriteFile(
+		t,
+		nestedMatching,
+		[]byte("keep nested match because only top level is scanned"),
+	)
 
 	if err := removeMatchingTopLevelFiles(rootDir, shouldRemoveGeneratedStaticPublicFile); err != nil {
 		t.Fatalf("removeMatchingTopLevelFiles returned error: %v", err)
 	}
 
 	if _, err := os.Stat(matchingTopLevel); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("expected matching top-level file to be removed, stat err=%v", err)
+		t.Fatalf(
+			"expected matching top-level file to be removed, stat err=%v",
+			err,
+		)
 	}
 	if _, err := os.Stat(nonMatchingTopLevel); err != nil {
-		t.Fatalf("expected non-matching top-level file to remain, stat err=%v", err)
+		t.Fatalf(
+			"expected non-matching top-level file to remain, stat err=%v",
+			err,
+		)
 	}
 	if _, err := os.Stat(nestedMatching); err != nil {
 		t.Fatalf("expected nested file to remain, stat err=%v", err)
 	}
 }
 
-func TestRemoveMatchingTopLevelFiles_PropagatesReadAndRemoveErrors(t *testing.T) {
+func TestRemoveMatchingTopLevelFiles_PropagatesReadAndRemoveErrors(
+	t *testing.T,
+) {
 	t.Run("returns read-dir error", func(t *testing.T) {
 		expectedErr := errors.New("read dir failed")
 		executor := newBuildArtifactFileSystemExecutorForTest(
@@ -222,9 +301,14 @@ func TestRemoveMatchingTopLevelFiles_PropagatesReadAndRemoveErrors(t *testing.T)
 			},
 		)
 
-		err := executor.removeMatchingTopLevelFiles(t.TempDir(), shouldRemoveGeneratedStaticPublicFile)
+		err := executor.removeMatchingTopLevelFiles(
+			t.TempDir(),
+			shouldRemoveGeneratedStaticPublicFile,
+		)
 		if err == nil {
-			t.Fatal("expected removeMatchingTopLevelFiles to return read-dir error")
+			t.Fatal(
+				"expected removeMatchingTopLevelFiles to return read-dir error",
+			)
 		}
 		if !errors.Is(err, expectedErr) {
 			t.Fatalf("error = %v, expected wrapped read-dir error", err)
@@ -247,9 +331,14 @@ func TestRemoveMatchingTopLevelFiles_PropagatesReadAndRemoveErrors(t *testing.T)
 			},
 		)
 
-		err := executor.removeMatchingTopLevelFiles(rootDir, shouldRemoveGeneratedStaticPublicFile)
+		err := executor.removeMatchingTopLevelFiles(
+			rootDir,
+			shouldRemoveGeneratedStaticPublicFile,
+		)
 		if err == nil {
-			t.Fatal("expected removeMatchingTopLevelFiles to return remove error")
+			t.Fatal(
+				"expected removeMatchingTopLevelFiles to return remove error",
+			)
 		}
 		if !strings.Contains(err.Error(), "remove "+fileName) {
 			t.Fatalf("error = %q, expected file-name context", err)
@@ -280,47 +369,60 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 		app.WithLock(fn)
 	}
 
-	t.Run("writes stage-one paths file with expected metadata", func(t *testing.T) {
-		withLockedVorma(t, func(l *vormaruntime.LockedVorma) {
-			if err := writePathsToDiskStageOne(l); err != nil {
-				t.Fatalf("writePathsToDiskStageOne returned error: %v", err)
-			}
-		})
+	t.Run(
+		"writes stage-one paths file with expected metadata",
+		func(t *testing.T) {
+			withLockedVorma(t, func(l *vormaruntime.LockedVorma) {
+				if err := writePathsToDiskStageOne(l); err != nil {
+					t.Fatalf("writePathsToDiskStageOne returned error: %v", err)
+				}
+			})
 
-		outputPath := pathsOutputPath(app, vormaruntime.VormaPathsStageOneJSONFileName)
-		rawJSON, err := os.ReadFile(outputPath)
-		if err != nil {
-			t.Fatalf("read stage-one output failed: %v", err)
-		}
-
-		var parsed vormaruntime.PathsFile
-		if err := json.Unmarshal(rawJSON, &parsed); err != nil {
-			t.Fatalf("unmarshal stage-one output failed: %v", err)
-		}
-		if parsed.Stage != "one" {
-			t.Fatalf("stage = %q, want %q", parsed.Stage, "one")
-		}
-		if parsed.BuildID != "stage-one-build-id" {
-			t.Fatalf("buildID = %q, want %q", parsed.BuildID, "stage-one-build-id")
-		}
-		if parsed.RouteManifestFile != "vorma_route_manifest_test.json" {
-			t.Fatalf(
-				"routeManifestFile = %q, want %q",
-				parsed.RouteManifestFile,
-				"vorma_route_manifest_test.json",
+			outputPath := pathsOutputPath(
+				app,
+				runtimepaths.VormaPathsStageOneJSONFileName,
 			)
-		}
-		if _, ok := parsed.Paths["/"]; !ok {
-			t.Fatalf("expected root path in stage-one output, got %#v", parsed.Paths)
-		}
-	})
+			rawJSON, err := os.ReadFile(outputPath)
+			if err != nil {
+				t.Fatalf("read stage-one output failed: %v", err)
+			}
+
+			var parsed runtimepaths.PathsFile
+			if err := json.Unmarshal(rawJSON, &parsed); err != nil {
+				t.Fatalf("unmarshal stage-one output failed: %v", err)
+			}
+			if parsed.Stage != "one" {
+				t.Fatalf("stage = %q, want %q", parsed.Stage, "one")
+			}
+			if parsed.BuildID != "stage-one-build-id" {
+				t.Fatalf(
+					"buildID = %q, want %q",
+					parsed.BuildID,
+					"stage-one-build-id",
+				)
+			}
+			if parsed.RouteManifestFile != "vorma_route_manifest_test.json" {
+				t.Fatalf(
+					"routeManifestFile = %q, want %q",
+					parsed.RouteManifestFile,
+					"vorma_route_manifest_test.json",
+				)
+			}
+			if _, ok := parsed.Paths["/"]; !ok {
+				t.Fatalf(
+					"expected root path in stage-one output, got %#v",
+					parsed.Paths,
+				)
+			}
+		},
+	)
 
 	t.Run("wraps marshal error", func(t *testing.T) {
 		expectedErr := errors.New("marshal failed")
 		executor := newBuildArtifactFileSystemExecutorForTest(
 			func(dependencies *buildArtifactFileSystemExecutorDependencies) {
 				dependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile = func(
-					*vormaruntime.PathsFile,
+					*runtimepaths.PathsFile,
 				) ([]byte, error) {
 					return nil, expectedErr
 				}
@@ -328,7 +430,9 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 					string,
 					fs.FileMode,
 				) error {
-					t.Fatal("did not expect directory creation after marshal failure")
+					t.Fatal(
+						"did not expect directory creation after marshal failure",
+					)
 					return nil
 				}
 				dependencies.stageOnePathsWriteDependencies.writeStageOnePathsJSON = func(
@@ -362,7 +466,7 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 		executor := newBuildArtifactFileSystemExecutorForTest(
 			func(dependencies *buildArtifactFileSystemExecutorDependencies) {
 				dependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile = func(
-					*vormaruntime.PathsFile,
+					*runtimepaths.PathsFile,
 				) ([]byte, error) {
 					return []byte(`{}`), nil
 				}
@@ -377,7 +481,9 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 					[]byte,
 					fs.FileMode,
 				) error {
-					t.Fatal("did not expect file write after directory creation failure")
+					t.Fatal(
+						"did not expect file write after directory creation failure",
+					)
 					return nil
 				}
 			},
@@ -388,13 +494,21 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 			err = executor.writePathsToDiskStageOne(l)
 		})
 		if err == nil {
-			t.Fatal("expected writePathsToDiskStageOne to return directory-creation error")
+			t.Fatal(
+				"expected writePathsToDiskStageOne to return directory-creation error",
+			)
 		}
-		if !strings.Contains(err.Error(), "create stage-one paths output directory") {
+		if !strings.Contains(
+			err.Error(),
+			"create stage-one paths output directory",
+		) {
 			t.Fatalf("error = %q, expected directory-creation context", err)
 		}
 		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected wrapped directory-creation error", err)
+			t.Fatalf(
+				"error = %v, expected wrapped directory-creation error",
+				err,
+			)
 		}
 	})
 
@@ -403,7 +517,7 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 		executor := newBuildArtifactFileSystemExecutorForTest(
 			func(dependencies *buildArtifactFileSystemExecutorDependencies) {
 				dependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile = func(
-					*vormaruntime.PathsFile,
+					*runtimepaths.PathsFile,
 				) ([]byte, error) {
 					return []byte(`{}`), nil
 				}
@@ -428,7 +542,9 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 			err = executor.writePathsToDiskStageOne(l)
 		})
 		if err == nil {
-			t.Fatal("expected writePathsToDiskStageOne to return write-file error")
+			t.Fatal(
+				"expected writePathsToDiskStageOne to return write-file error",
+			)
 		}
 		if !strings.Contains(err.Error(), "write stage-one paths JSON") {
 			t.Fatalf("error = %q, expected write-file context", err)
@@ -438,42 +554,49 @@ func TestWritePathsToDiskStageOne(t *testing.T) {
 		}
 	})
 
-	t.Run("writes stage-one paths JSON with build artifact file mode", func(t *testing.T) {
-		var capturedMode fs.FileMode
-		executor := newBuildArtifactFileSystemExecutorForTest(
-			func(dependencies *buildArtifactFileSystemExecutorDependencies) {
-				dependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile = func(
-					*vormaruntime.PathsFile,
-				) ([]byte, error) {
-					return []byte(`{}`), nil
-				}
-				dependencies.stageOnePathsWriteDependencies.makeStageOnePathsOutputDirectory = func(
-					string,
-					fs.FileMode,
-				) error {
-					return nil
-				}
-				dependencies.stageOnePathsWriteDependencies.writeStageOnePathsJSON = func(
-					_ string,
-					_ []byte,
-					fileMode fs.FileMode,
-				) error {
-					capturedMode = fileMode
-					return nil
-				}
-			},
-		)
+	t.Run(
+		"writes stage-one paths JSON with build artifact file mode",
+		func(t *testing.T) {
+			var capturedMode fs.FileMode
+			executor := newBuildArtifactFileSystemExecutorForTest(
+				func(dependencies *buildArtifactFileSystemExecutorDependencies) {
+					dependencies.stageOnePathsWriteDependencies.marshalStageOnePathsFile = func(
+						*runtimepaths.PathsFile,
+					) ([]byte, error) {
+						return []byte(`{}`), nil
+					}
+					dependencies.stageOnePathsWriteDependencies.makeStageOnePathsOutputDirectory = func(
+						string,
+						fs.FileMode,
+					) error {
+						return nil
+					}
+					dependencies.stageOnePathsWriteDependencies.writeStageOnePathsJSON = func(
+						_ string,
+						_ []byte,
+						fileMode fs.FileMode,
+					) error {
+						capturedMode = fileMode
+						return nil
+					}
+				},
+			)
 
-		withLockedVorma(t, func(l *vormaruntime.LockedVorma) {
-			if err := executor.writePathsToDiskStageOne(l); err != nil {
-				t.Fatalf("writePathsToDiskStageOne returned error: %v", err)
+			withLockedVorma(t, func(l *vormaruntime.LockedVorma) {
+				if err := executor.writePathsToDiskStageOne(l); err != nil {
+					t.Fatalf("writePathsToDiskStageOne returned error: %v", err)
+				}
+			})
+
+			if capturedMode != buildArtifactFileMode {
+				t.Fatalf(
+					"file mode = %v, want %v",
+					capturedMode,
+					buildArtifactFileMode,
+				)
 			}
-		})
-
-		if capturedMode != buildArtifactFileMode {
-			t.Fatalf("file mode = %v, want %v", capturedMode, buildArtifactFileMode)
-		}
-	})
+		},
+	)
 }
 
 func TestWritePathsToDiskStageOneFromRuntimeState(t *testing.T) {
@@ -497,16 +620,22 @@ func TestWritePathsToDiskStageOneFromRuntimeState(t *testing.T) {
 		runtimeStateSnapshot,
 		"manifest-written-this-build.json",
 	); err != nil {
-		t.Fatalf("writePathsToDiskStageOneFromRuntimeState returned error: %v", err)
+		t.Fatalf(
+			"writePathsToDiskStageOneFromRuntimeState returned error: %v",
+			err,
+		)
 	}
 
-	outputPath := pathsOutputPath(app, vormaruntime.VormaPathsStageOneJSONFileName)
+	outputPath := pathsOutputPath(
+		app,
+		runtimepaths.VormaPathsStageOneJSONFileName,
+	)
 	rawJSON, err := os.ReadFile(outputPath)
 	if err != nil {
 		t.Fatalf("read stage-one output failed: %v", err)
 	}
 
-	var parsed vormaruntime.PathsFile
+	var parsed runtimepaths.PathsFile
 	if err := json.Unmarshal(rawJSON, &parsed); err != nil {
 		t.Fatalf("unmarshal stage-one output failed: %v", err)
 	}
@@ -515,7 +644,11 @@ func TestWritePathsToDiskStageOneFromRuntimeState(t *testing.T) {
 		t.Fatalf("stage = %q, want %q", parsed.Stage, "one")
 	}
 	if parsed.BuildID != "runtime-snapshot-build-id" {
-		t.Fatalf("buildID = %q, want %q", parsed.BuildID, "runtime-snapshot-build-id")
+		t.Fatalf(
+			"buildID = %q, want %q",
+			parsed.BuildID,
+			"runtime-snapshot-build-id",
+		)
 	}
 	if parsed.RouteManifestFile != "manifest-written-this-build.json" {
 		t.Fatalf(
@@ -525,6 +658,9 @@ func TestWritePathsToDiskStageOneFromRuntimeState(t *testing.T) {
 		)
 	}
 	if _, ok := parsed.Paths["/"]; !ok {
-		t.Fatalf("expected root path in stage-one output, got %#v", parsed.Paths)
+		t.Fatalf(
+			"expected root path in stage-one output, got %#v",
+			parsed.Paths,
+		)
 	}
 }

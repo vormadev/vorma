@@ -13,6 +13,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/wave"
@@ -78,7 +79,7 @@ func TestGetBasePathsStageOneOrTwo_ErrorPaths(t *testing.T) {
 	t.Run("MalformedJSON", func(t *testing.T) {
 		app.WithLock(func(lv *LockedVorma) {
 			lv.v._privateFS = fstest.MapFS{
-				"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+				"vorma_out/" + runtimepaths.VormaPathsStageOneJSONFileName: &fstest.MapFile{
 					Data: []byte("{"),
 				},
 			}
@@ -96,7 +97,7 @@ func TestGetBasePathsStageOneOrTwo_ErrorPaths(t *testing.T) {
 	t.Run("DevStageOneAllowsMissingClientEntryOut", func(t *testing.T) {
 		app.WithLock(func(lv *LockedVorma) {
 			lv.v._privateFS = fstest.MapFS{
-				"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+				"vorma_out/" + runtimepaths.VormaPathsStageOneJSONFileName: &fstest.MapFile{
 					Data: []byte(
 						`{"stage":"stage-one","buildID":"b","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/":{"originalPattern":"/","srcPath":"frontend/src/routes/root.tsx","exportKey":"default"}},"routeManifestFile":"vorma_out/route-manifest.js"}`,
 					),
@@ -125,7 +126,7 @@ func TestGetBasePathsStageOneOrTwo_ErrorPaths(t *testing.T) {
 	t.Run("ProdStageTwoRequiresClientEntryOut", func(t *testing.T) {
 		app.WithLock(func(lv *LockedVorma) {
 			lv.v._privateFS = fstest.MapFS{
-				"vorma_out/" + VormaPathsStageTwoJSONFileName: &fstest.MapFile{
+				"vorma_out/" + runtimepaths.VormaPathsStageTwoJSONFileName: &fstest.MapFile{
 					Data: []byte(
 						`{"stage":"stage-two","buildID":"b","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/":{"originalPattern":"/","srcPath":"frontend/src/routes/root.tsx","outPath":"vorma_out/root.js","exportKey":"default"}},"routeManifestFile":"vorma_out/route-manifest.js"}`,
 					),
@@ -150,7 +151,7 @@ func TestGetBasePathsStageOneOrTwo_ErrorPaths(t *testing.T) {
 	t.Run("NullPathEntry", func(t *testing.T) {
 		app.WithLock(func(lv *LockedVorma) {
 			lv.v._privateFS = fstest.MapFS{
-				"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+				"vorma_out/" + runtimepaths.VormaPathsStageOneJSONFileName: &fstest.MapFile{
 					Data: []byte(
 						`{"stage":"stage-one","buildID":"b","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/bad":null},"routeManifestFile":"vorma_out/route-manifest.js"}`,
 					),
@@ -170,7 +171,7 @@ func TestGetBasePathsStageOneOrTwo_ErrorPaths(t *testing.T) {
 	t.Run("PathEntryPatternMismatch", func(t *testing.T) {
 		app.WithLock(func(lv *LockedVorma) {
 			lv.v._privateFS = fstest.MapFS{
-				"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+				"vorma_out/" + runtimepaths.VormaPathsStageOneJSONFileName: &fstest.MapFile{
 					Data: []byte(
 						`{"stage":"stage-one","buildID":"b","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/a":{"originalPattern":"/b","srcPath":"frontend/src/routes/a.tsx","exportKey":"default"}},"routeManifestFile":"vorma_out/route-manifest.js"}`,
 					),
@@ -190,7 +191,7 @@ func TestGetBasePathsStageOneOrTwo_ErrorPaths(t *testing.T) {
 	t.Run("PathEntryMissingOriginalPattern", func(t *testing.T) {
 		app.WithLock(func(lv *LockedVorma) {
 			lv.v._privateFS = fstest.MapFS{
-				"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+				"vorma_out/" + runtimepaths.VormaPathsStageOneJSONFileName: &fstest.MapFile{
 					Data: []byte(
 						`{"stage":"stage-one","buildID":"b","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/a":{"srcPath":"frontend/src/routes/a.tsx","exportKey":"default"}},"routeManifestFile":"vorma_out/route-manifest.js"}`,
 					),
@@ -216,23 +217,23 @@ func TestInit_ReinitSemanticArtifactValidationFailuresDoNotMutateRuntimeState(
 ) {
 	testCases := []struct {
 		name                string
-		mutateInvalidStage2 func(*PathsFile)
+		mutateInvalidStage2 func(*runtimepaths.PathsFile)
 	}{
 		{
 			name: "missing_route_manifest_file",
-			mutateInvalidStage2: func(pathsFile *PathsFile) {
+			mutateInvalidStage2: func(pathsFile *runtimepaths.PathsFile) {
 				pathsFile.RouteManifestFile = ""
 			},
 		},
 		{
 			name: "missing_stage_two_client_entry_out",
-			mutateInvalidStage2: func(pathsFile *PathsFile) {
+			mutateInvalidStage2: func(pathsFile *runtimepaths.PathsFile) {
 				pathsFile.ClientEntryOut = ""
 			},
 		},
 		{
 			name: "missing_stage_two_route_out_path",
-			mutateInvalidStage2: func(pathsFile *PathsFile) {
+			mutateInvalidStage2: func(pathsFile *runtimepaths.PathsFile) {
 				pathsFile.Paths["/products/:id"].OutPath = ""
 			},
 		},
@@ -301,8 +302,8 @@ func TestInit_ReinitSemanticArtifactValidationFailuresDoNotMutateRuntimeState(
 				t,
 				filepath.Join(
 					fixture.privateDir,
-					VormaOutDirname,
-					VormaPathsStageTwoJSONFileName,
+					runtimepaths.VormaOutDirname,
+					runtimepaths.VormaPathsStageTwoJSONFileName,
 				),
 				invalidStage,
 			)
@@ -518,13 +519,13 @@ func TestPrettyPrintFS_NoErrorOnBasicFS(t *testing.T) {
 		"root.txt":  {Data: []byte("ok")},
 		"dir/a.txt": {Data: []byte("a")},
 	}
-	if err := PrettyPrintFS(fsys); err != nil {
-		t.Fatalf("PrettyPrintFS returned error: %v", err)
+	if err := runtimepaths.PrettyPrintFS(fsys); err != nil {
+		t.Fatalf("runtimepaths.PrettyPrintFS returned error: %v", err)
 	}
 }
 
 func TestInitInner_NormalizesNilStageCollections(t *testing.T) {
-	stage := &PathsFile{
+	stage := &runtimepaths.PathsFile{
 		Stage:             "stage-two",
 		BuildID:           "nil-collections-build",
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
@@ -660,13 +661,13 @@ func TestInit_ReinitReplacesRemovedClientRoutes(t *testing.T) {
 	})
 	stageOneFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	stageTwoFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageTwoJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageTwoJSONFileName,
 	)
 	mustWriteJSONFile(t, stageOneFile, updatedStage)
 	mustWriteJSONFile(t, stageTwoFile, updatedStage)
@@ -771,13 +772,13 @@ func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(
 	})
 	stageOneFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	stageTwoFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageTwoJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageTwoJSONFileName,
 	)
 	mustWriteJSONFile(t, stageOneFile, stageV2)
 	mustWriteJSONFile(t, stageTwoFile, stageV2)
@@ -877,13 +878,13 @@ func TestInit_ReinitPreservesServerOnlyHandlerRoutes(t *testing.T) {
 	})
 	stageOneFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	stageTwoFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageTwoJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageTwoJSONFileName,
 	)
 	mustWriteJSONFile(t, stageOneFile, updatedStage)
 	mustWriteJSONFile(t, stageTwoFile, updatedStage)
@@ -986,13 +987,13 @@ func TestInit_ReinitFailureDoesNotPartiallyMutateRuntimeState(t *testing.T) {
 	})
 	stageOneFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageOneJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	stageTwoFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageTwoJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageTwoJSONFileName,
 	)
 	mustWriteJSONFile(t, stageOneFile, updatedStage)
 	mustWriteJSONFile(t, stageTwoFile, updatedStage)
@@ -1080,8 +1081,8 @@ func TestInit_ReinitMalformedStageFileDoesNotPartiallyMutateRuntimeState(
 
 	stageTwoFile := filepath.Join(
 		fixture.privateDir,
-		VormaOutDirname,
-		VormaPathsStageTwoJSONFileName,
+		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaPathsStageTwoJSONFileName,
 	)
 	mustWriteFile(t, stageTwoFile, []byte("{"))
 

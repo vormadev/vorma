@@ -1,17 +1,17 @@
 import {
-	type ComponentType,
-	type JSX,
 	useLayoutEffect,
 	useMemo,
 	useRef,
 	useSyncExternalStore,
+	type ComponentType,
+	type JSX,
 } from "react";
 import {
 	buildInitialRouteOutletStoreState,
-	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
 	createRouteOutletRuntimeListenerInitializer,
 	resolveRouteOutletBranchRenderState,
+	syncRouteOutletStoreStateFromRuntime,
 	type RouteOutletStoreState,
 } from "vorma/client/__internal";
 
@@ -44,8 +44,11 @@ const store = {
 };
 
 function syncStoreState(): void {
-	store.setState((previousStoreState) => {
-		return buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+	syncRouteOutletStoreStateFromRuntime({
+		getCurrentStoreState: store.getSnapshot,
+		applyNextStoreState: (nextStoreState) => {
+			store.setState(() => nextStoreState);
+		},
 	});
 }
 

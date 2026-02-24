@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 )
@@ -147,8 +148,16 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		deps := app.getDeps(findResults.Matches, pathsSnapshot)
-		css := app.getCSSBundles(deps)
+		deps := routepipeline.GetDepsFromData(
+			findResults.Matches,
+			convertPathsMapToRoutePipelinePaths(pathsSnapshot),
+			app.ClientEntryDeps(),
+		)
+		css := routepipeline.GetCSSBundles(
+			deps,
+			app.ClientEntryOut(),
+			app.DepToCSSBundleMap(),
+		)
 		benchDepsSink = deps
 		benchCSSSink = css
 	}
@@ -313,8 +322,8 @@ func BenchmarkSSRInnerHTMLGeneration(b *testing.B) {
 	app := fixture.app
 	app.SetIsDev(false)
 
-	routeData := &RouteDataFinal{
-		RouteDataCore: &RouteDataCore{
+	routeData := &routepipeline.RouteDataFinal{
+		RouteDataCore: &routepipeline.RouteDataCore{
 			OutermostServerError: "",
 			ErrorExportKeys:      []string{"ItemErrorBoundary"},
 			MatchedPatterns:      []string{"/items/:id"},
@@ -323,7 +332,7 @@ func BenchmarkSSRInnerHTMLGeneration(b *testing.B) {
 			ExportKeys:           []string{"default"},
 			HasRootData:          false,
 			Params:               mux.Params{"id": "42"},
-			SplatValues:          SplatValues{"detail"},
+			SplatValues:          []string{"detail"},
 			Deps:                 []string{"vorma_out/chunk-items.js"},
 		},
 		CSSBundles: []string{"vorma_out/chunk-items.css"},
