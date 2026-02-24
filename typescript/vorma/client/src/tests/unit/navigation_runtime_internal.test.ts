@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as matcherFindNestedModule from "vorma/kit/matcher/find-nested";
 import {
 	createPatternRegistry,
 	registerPattern,
