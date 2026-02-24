@@ -63,7 +63,7 @@ function buildMockTypedLinkResolvedProps(input: {
 	linkProps: Record<string, unknown>;
 }) {
 	const mergedProps = {
-		...(input.defaultProps || {}),
+		...input.defaultProps,
 		...input.linkProps,
 	};
 	const {
