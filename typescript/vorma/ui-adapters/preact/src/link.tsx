@@ -9,6 +9,7 @@ import {
 	buildTypedLinkDisplayName,
 	buildTypedLinkResolvedProps,
 	makeFinalLinkProps,
+	mergeTypedAdapterLinkPropsWithDefaults,
 	type TypedAdapterLinkDefaultProps,
 	type TypedAdapterLinkProps,
 	type VormaAppConfig,
@@ -62,10 +63,15 @@ export function makeTypedLink<C extends VormaAppConfig>(
 	const TypedLink = memo(function TypedLink<
 		Pattern extends VormaLoaderPattern<App>,
 	>(props: TypedVormaLinkProps<App, Pattern>) {
-		const mergedProps: TypedVormaLinkProps<App, Pattern> = {
-			...defaultProps,
-			...props,
-		};
+		const mergedProps = mergeTypedAdapterLinkPropsWithDefaults<
+			App,
+			Pattern,
+			HTMLAttributes<HTMLAnchorElement>,
+			TargetedMouseEvent<HTMLAnchorElement>
+		>({
+			defaultProps,
+			linkProps: props,
+		});
 		const resolvedProps = buildTypedLinkResolvedProps({
 			vormaAppConfig,
 			mergedProps,

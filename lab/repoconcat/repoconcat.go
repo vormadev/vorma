@@ -132,15 +132,16 @@ func Concat(
 		}
 	}()
 
+	normalizedPatterns := make([]string, len(patterns))
 	for i := range patterns {
-		patterns[i] = strings.TrimSpace(patterns[i])
+		normalizedPatterns[i] = strings.TrimSpace(patterns[i])
 	}
 
 	outStat, _ := outFile.Stat()
 	writer := bufio.NewWriter(outFile)
 
-	roots := extractRoots(patterns)
-	userPatterns := compileUserPatterns(patterns)
+	roots := extractRoots(normalizedPatterns)
+	userPatterns := compileUserPatterns(normalizedPatterns)
 	defaultPatterns := compileDefaults()
 
 	cwd, _ := os.Getwd()
@@ -159,7 +160,7 @@ func Concat(
 
 	// Check which default-excluded dirs user explicitly included
 	overriddenDirs := make(map[string]bool)
-	for _, p := range patterns {
+	for _, p := range normalizedPatterns {
 		if strings.HasPrefix(p, "!") {
 			continue
 		}

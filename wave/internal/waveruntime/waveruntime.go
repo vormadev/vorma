@@ -52,12 +52,22 @@ func BuildCriticalCSSStyleElement(
 
 	sha256Hash, err = htmlutil.ComputeContentSha256(&element)
 	if err != nil {
-		return template.HTML(""), "", fmt.Errorf("compute csp hash for critical css: %w", err)
+		return template.HTML(
+				"",
+			), "", fmt.Errorf(
+				"compute csp hash for critical css: %w",
+				err,
+			)
 	}
 
 	renderedElement, err = htmlutil.RenderElement(&element)
 	if err != nil {
-		return template.HTML(""), "", fmt.Errorf("render critical css style element: %w", err)
+		return template.HTML(
+				"",
+			), "", fmt.Errorf(
+				"render critical css style element: %w",
+				err,
+			)
 	}
 
 	return renderedElement, sha256Hash, nil
@@ -72,13 +82,27 @@ func BuildStylesheetLink(
 		return ""
 	}
 
-	var builder strings.Builder
-	builder.WriteString(`<link rel="stylesheet" href="`)
-	builder.WriteString(stylesheetURL)
-	builder.WriteString(`" id="`)
-	builder.WriteString(nonCriticalCSSLinkElementID)
-	builder.WriteString(`" />`)
-	return builder.String()
+	renderedStylesheetLinkElement, renderStylesheetLinkError := htmlutil.RenderElement(
+		&htmlutil.Element{
+			Tag: "link",
+			Attributes: map[string]string{
+				"rel":  "stylesheet",
+				"href": stylesheetURL,
+				"id":   nonCriticalCSSLinkElementID,
+			},
+			SelfClosing: true,
+		},
+	)
+	if renderStylesheetLinkError != nil {
+		panic(
+			fmt.Sprintf(
+				"render stylesheet link element: %v",
+				renderStylesheetLinkError,
+			),
+		)
+	}
+
+	return string(renderedStylesheetLinkElement)
 }
 
 // BuildPublicFileMapElements renders the preload and module script elements
@@ -92,8 +116,11 @@ func BuildPublicFileMapElements(
 	err error,
 ) {
 	linkElement := htmlutil.Element{
-		Tag:         "link",
-		Attributes:  map[string]string{"rel": "modulepreload", "href": fileMapURL},
+		Tag: "link",
+		Attributes: map[string]string{
+			"rel":  "modulepreload",
+			"href": fileMapURL,
+		},
 		SelfClosing: true,
 	}
 
@@ -108,7 +135,10 @@ func BuildPublicFileMapElements(
 
 	scriptSHA256Hash, err := htmlutil.ComputeContentSha256(&scriptElement)
 	if err != nil {
-		return "", "", fmt.Errorf("compute csp hash for file map module script: %w", err)
+		return "", "", fmt.Errorf(
+			"compute csp hash for file map module script: %w",
+			err,
+		)
 	}
 
 	var elementsBuilder strings.Builder
@@ -120,7 +150,10 @@ func BuildPublicFileMapElements(
 
 	err = htmlutil.RenderElementToBuilder(&scriptElement, &elementsBuilder)
 	if err != nil {
-		return "", "", fmt.Errorf("render file map module script element: %w", err)
+		return "", "", fmt.Errorf(
+			"render file map module script element: %w",
+			err,
+		)
 	}
 
 	return elementsBuilder.String(), scriptSHA256Hash, nil

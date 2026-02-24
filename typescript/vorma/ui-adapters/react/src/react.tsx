@@ -6,12 +6,12 @@ import {
 	useRef,
 	useSyncExternalStore,
 } from "react";
-import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
-	applyScrollState,
 	buildInitialRouteOutletStoreState,
 	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
+	createRouteOutletRuntimeListenerInitializer,
+	resolveRouteOutletBranchRenderState,
 	type RouteOutletStoreState,
 } from "vorma/client/__internal";
 
@@ -75,25 +75,9 @@ export function useLocation() {
 	return useStoreSelector((storeState) => storeState.location);
 }
 
-let isInited = false;
-
-function initUIListeners(): void {
-	if (isInited) {
-		return;
-	}
-	isInited = true;
-
-	addRouteChangeListener((event) => {
-		syncStoreState();
-		window.requestAnimationFrame(() => {
-			applyScrollState(event.detail.__scrollState);
-		});
-	});
-
-	addLocationListener(() => {
-		syncStoreState();
-	});
-}
+const initUIListeners = createRouteOutletRuntimeListenerInitializer({
+	syncStoreState,
+});
 
 /////////////////////////////////////////////////////////////////////
 /////// COMPONENT
@@ -133,6 +117,9 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 		navigationState: routeOutletBranchInputState,
 		idx,
 	});
+	const routeOutletBranchRenderState = resolveRouteOutletBranchRenderState({
+		branchState: routeOutletBranchState,
+	});
 
 	const Outlet = useMemo(() => {
 		return (localProps: Record<string, any> | undefined) => {
@@ -144,34 +131,37 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 				/>
 			);
 		};
-	}, [idx, routeOutletBranchState.nextRouteKey]);
+	}, [idx, routeOutletBranchRenderState.nextRouteKey]);
 
-	const CurrentComp = routeOutletBranchState.currentComponent as
-		| ComponentType<VormaOutletProps>
-		| undefined;
-	const ErrorComp = routeOutletBranchState.errorComponent as
-		| ComponentType<VormaErrorBoundaryProps>
-		| undefined;
-
-	if (routeOutletBranchState.isErrorIdx) {
-		if (ErrorComp) {
-			return <ErrorComp error={outermostError} />;
+	switch (routeOutletBranchRenderState.renderKind) {
+		case "error": {
+			const ErrorComp = routeOutletBranchRenderState.errorComponent as
+				| ComponentType<VormaErrorBoundaryProps>
+				| undefined;
+			if (ErrorComp) {
+				return <ErrorComp error={outermostError} />;
+			}
+			return <>{`Error: ${outermostError || "unknown"}`}</>;
 		}
-		return <>{`Error: ${outermostError || "unknown"}`}</>;
-	}
-
-	if (!CurrentComp) {
-		if (routeOutletBranchState.shouldFallbackOutlet) {
-			return <Outlet key={routeOutletBranchState.nextRouteKey} />;
+		case "fallback":
+			return <Outlet key={routeOutletBranchRenderState.nextRouteKey} />;
+		case "empty":
+			return <></>;
+		case "component": {
+			const CurrentComp =
+				routeOutletBranchRenderState.currentComponent as
+					| ComponentType<VormaOutletProps>
+					| undefined;
+			if (!CurrentComp) {
+				return <></>;
+			}
+			return (
+				<CurrentComp
+					key={routeOutletBranchRenderState.currentRouteKey}
+					idx={idx}
+					Outlet={Outlet}
+				/>
+			);
 		}
-		return <></>;
 	}
-
-	return (
-		<CurrentComp
-			key={routeOutletBranchState.currentRouteKey}
-			idx={idx}
-			Outlet={Outlet}
-		/>
-	);
 }

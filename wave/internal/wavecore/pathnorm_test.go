@@ -271,3 +271,95 @@ func TestCanonicalizePathForLocationComparison(t *testing.T) {
 		},
 	)
 }
+
+func TestResolveFromReferencedPath_NormalizesWindowsSeparators(t *testing.T) {
+	testCases := []struct {
+		name             string
+		publicPathPrefix string
+		referencedPath   string
+		expectedURL      string
+	}{
+		{
+			name:             "windows separators normalize to URL slashes",
+			publicPathPrefix: "/assets/",
+			referencedPath:   `\vorma_out\styles.hash.css`,
+			expectedURL:      "/assets/vorma_out/styles.hash.css",
+		},
+		{
+			name:             "traversal with windows separators remains rooted under prefix",
+			publicPathPrefix: "/assets/",
+			referencedPath:   ` ..\outside.css `,
+			expectedURL:      "/assets/outside.css",
+		},
+		{
+			name:             "effectively-empty windows style dot path returns empty",
+			publicPathPrefix: "/assets/",
+			referencedPath:   `.\`,
+			expectedURL:      "",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := ResolveFromReferencedPath(
+				testCase.publicPathPrefix,
+				testCase.referencedPath,
+			)
+			if got != testCase.expectedURL {
+				t.Fatalf(
+					"ResolveFromReferencedPath(%q, %q) = %q, want %q",
+					testCase.publicPathPrefix,
+					testCase.referencedPath,
+					got,
+					testCase.expectedURL,
+				)
+			}
+		})
+	}
+}
+
+func TestResolverForMode_UsesModeSnapshotAndCachesResolution(t *testing.T) {
+	t.Setenv(EnvMode, "production")
+	t.Setenv(EnvPortSet, "")
+	t.Setenv(EnvPort, "3010")
+
+	resolver := NewResolverForMode(true)
+	freePortLookupCallCount := 0
+	resolver.getFreePort = func(basePort int) (int, error) {
+		freePortLookupCallCount++
+		if basePort != 3010 {
+			t.Fatalf("free-port base = %d, want 3010", basePort)
+		}
+		return 3011, nil
+	}
+
+	if got := resolver.MustGetPort(); got != 3011 {
+		t.Fatalf("first MustGetPort() = %d, want 3011", got)
+	}
+	if got := resolver.MustGetPort(); got != 3011 {
+		t.Fatalf("second MustGetPort() = %d, want cached 3011", got)
+	}
+	if freePortLookupCallCount != 1 {
+		t.Fatalf(
+			"free-port lookup call count = %d, want 1",
+			freePortLookupCallCount,
+		)
+	}
+	if got := ParseEnvPort(); got != 3011 {
+		t.Fatalf("ParseEnvPort() after dev resolution = %d, want 3011", got)
+	}
+	if flag := os.Getenv(EnvPortSet); flag != "true" {
+		t.Fatalf("%s = %q, want true", EnvPortSet, flag)
+	}
+}
+
+func TestNilResolverMustGetPort_DelegatesToDefaultResolver(t *testing.T) {
+	t.Setenv(EnvMode, "production")
+	t.Setenv(EnvPortSet, "")
+	t.Setenv(EnvPort, "4999")
+
+	var resolver *Resolver
+	if got := resolver.MustGetPort(); got != 4999 {
+		t.Fatalf("nil-resolver MustGetPort() = %d, want 4999", got)
+	}
+}

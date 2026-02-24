@@ -189,7 +189,9 @@ func CanonicalizePathForLocationComparison(path string) string {
 	return canonicalizeNormalizedPathForLocationComparison(normalizedPath)
 }
 
-func canonicalizeNormalizedPathForLocationComparison(normalizedPath string) string {
+func canonicalizeNormalizedPathForLocationComparison(
+	normalizedPath string,
+) string {
 	resolvedPath, resolveError := filepath.EvalSymlinks(normalizedPath)
 	if resolveError == nil && resolvedPath != "" {
 		return filepath.Clean(resolvedPath)
@@ -197,10 +199,15 @@ func canonicalizeNormalizedPathForLocationComparison(normalizedPath string) stri
 
 	parentPath := filepath.Dir(normalizedPath)
 	if parentPath != "" && parentPath != normalizedPath {
-		resolvedParentPath, parentResolveError := filepath.EvalSymlinks(parentPath)
+		resolvedParentPath, parentResolveError := filepath.EvalSymlinks(
+			parentPath,
+		)
 		if parentResolveError == nil && resolvedParentPath != "" {
 			return filepath.Clean(
-				filepath.Join(resolvedParentPath, filepath.Base(normalizedPath)),
+				filepath.Join(
+					resolvedParentPath,
+					filepath.Base(normalizedPath),
+				),
 			)
 		}
 	}
@@ -218,8 +225,14 @@ func ResolveFromReferencedPath(
 		return ""
 	}
 
+	slashNormalizedReferencedPath := strings.ReplaceAll(
+		trimmedReferencedPath,
+		"\\",
+		"/",
+	)
+
 	normalizedReferencedPath := strings.TrimPrefix(
-		path.Clean("/"+trimmedReferencedPath),
+		path.Clean("/"+slashNormalizedReferencedPath),
 		"/",
 	)
 	if normalizedReferencedPath == "" || normalizedReferencedPath == "." {

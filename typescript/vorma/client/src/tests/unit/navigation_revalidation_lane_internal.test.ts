@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDeterministicRevalidationLane } from "../../core/navigation/runtime.ts";
+import { createDeterministicRevalidationLane } from "../../core/navigation/runtime_revalidation_lane.ts";
 import type { NavigateProps } from "../../core/navigation/types.ts";
 
 type Deferred<T> = {

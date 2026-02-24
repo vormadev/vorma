@@ -17,6 +17,9 @@ export {
 	type VormaLinkPropsBase,
 } from "./src/ui/helpers.ts";
 export {
+	createRouteOutletRuntimeListenerInitializer,
+} from "./src/ui/route_outlet_listener_runtime.ts";
+export {
 	areRouteOutletBranchInputsEqualByIdentity,
 	areRouteOutletLocationsEqual,
 	buildCurrentRouteOutletLocationState,
@@ -26,12 +29,20 @@ export {
 	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchInputState,
 	buildRouteOutletBranchState,
+	resolveRouteOutletBranchRenderState,
+	shouldRemountRouteOutletComponentMount,
 	type RouteOutletBranchInputState,
+	type RouteOutletBranchRenderState,
 	type RouteOutletBranchState,
 	type RouteOutletLocationState,
 	type RouteOutletNavigationState,
 	type RouteOutletStoreState,
 } from "./src/ui/route_outlet_runtime.ts";
+export {
+	resolveTypedAdapterIndexedDataForPattern,
+	resolveTypedAdapterIndexedDataForPatternOrRouteProps,
+	type VormaTypedAdapterAddClientLoaderProps,
+} from "./src/ui/typed_adapter_helpers_runtime.ts";
 export {
 	buildTypedLinkDisplayName,
 	buildTypedLinkHrefForRouteResolution,
@@ -39,3 +50,6 @@ export {
 	type TypedAdapterLinkDefaultProps,
 	type TypedAdapterLinkProps,
 } from "./src/ui/typed_adapter_link_props.ts";
+export {
+	mergeTypedAdapterLinkPropsWithDefaults,
+} from "./src/ui/typed_adapter_link_runtime.ts";

@@ -16,8 +16,6 @@ import {
 	decideSuccessfulNavigationCleanupExecutionPlan,
 	decideSuccessfulNavigationPostAssetExecutionPlan,
 	decideSuccessfulNavigationPostAssetSideEffectPlan,
-	decideSuccessfulNavigationPostWaitingExecutionPlan,
-	decideSuccessfulNavigationPreAssetWaitExecutionPlan,
 	decideSuccessfulNavigationPreWaitingExecutionPlan,
 	type BuildIDSyncTiming,
 } from "./runtime_navigation_outcome_state_machine.ts";
@@ -245,143 +243,163 @@ type SuccessfulNavigationClientLoadersResult =
 	| Awaited<SuccessfulNavigationOutcome["waitFnPromise"]>
 	| undefined;
 
-type SuccessfulNavigationLifecycleCheckpointExecutionInputBase = {
+type SuccessfulNavigationCheckpointStateEnvelope = {
 	context: ProcessSuccessfulNavigationContext;
 	outcome: SuccessfulNavigationOutcome;
 	entry: NavigationEntry;
 };
 
-type SuccessfulNavigationLifecycleCheckpointExecutionInput =
-	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
-			checkpoint: "pre_waiting";
-	  })
-	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
-			checkpoint: "post_waiting";
-	  })
-	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
-			checkpoint: "pre_asset_wait";
-			buildIDSyncTiming: BuildIDSyncTiming;
-	  })
-	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
-			checkpoint: "post_asset";
-			buildIDSyncTiming: BuildIDSyncTiming;
-			expectedBuildID: string;
-			clientLoadersResult: SuccessfulNavigationClientLoadersResult;
-	  })
-	| (SuccessfulNavigationLifecycleCheckpointExecutionInputBase & {
-			checkpoint: "cleanup";
-	  });
+function readSuccessfulNavigationCheckpointEnvelope(props: {
+	context: ProcessSuccessfulNavigationContext;
+	entry: NavigationEntry;
+}): {
+	isCurrentEntry: boolean;
+	currentHref: string;
+} {
+	const { context, entry } = props;
+	return {
+		isCurrentEntry: isCurrentNavigationEntry({ context, entry }),
+		currentHref: window.location.href,
+	};
+}
 
-async function executeSuccessfulNavigationLifecycleCheckpoint(
-	props: SuccessfulNavigationLifecycleCheckpointExecutionInput,
-): Promise<boolean> {
-	const { context, outcome, entry } = props;
-	const isCurrentEntry = isCurrentNavigationEntry({ context, entry });
-	const currentHref = window.location.href;
+function runSuccessfulNavigationPreWaitingCheckpoint(
+	envelope: SuccessfulNavigationCheckpointStateEnvelope,
+): boolean {
+	const { context, entry } = envelope;
+	const checkpointEnvelope = readSuccessfulNavigationCheckpointEnvelope({
+		context,
+		entry,
+	});
+	const preWaitingExecutionPlan =
+		decideSuccessfulNavigationPreWaitingExecutionPlan({
+			entry,
+			isCurrentEntry: checkpointEnvelope.isCurrentEntry,
+			currentHref: checkpointEnvelope.currentHref,
+		});
 
-	switch (props.checkpoint) {
-		case "pre_waiting": {
-			const preWaitingExecutionPlan =
-				decideSuccessfulNavigationPreWaitingExecutionPlan({
-					entry,
-					isCurrentEntry,
-					currentHref,
-				});
-			switch (preWaitingExecutionPlan.type) {
-				case "stop":
-					return true;
-				case "deleteAndStop":
-					context.deleteNavigation({
-						targetUrl: preWaitingExecutionPlan.targetUrl,
-						reason: preWaitingExecutionPlan.reason,
-					});
-					return true;
-				case "continue":
-					transitionPhaseForCurrentEntry({
-						context,
-						entry,
-						phase: "waiting",
-						reason: successfulNavigationPhaseReason.waiting,
-					});
-					return false;
-			}
-		}
-		case "post_waiting": {
-			const postWaitingExecutionPlan =
-				decideSuccessfulNavigationPostWaitingExecutionPlan({
-					isCurrentEntry,
-				});
-			return postWaitingExecutionPlan.type === "stop";
-		}
-		case "pre_asset_wait": {
-			const preAssetWaitExecutionPlan =
-				decideSuccessfulNavigationPreAssetWaitExecutionPlan({
-					buildIDSyncTiming: props.buildIDSyncTiming,
-				});
-			if (preAssetWaitExecutionPlan.shouldSyncBuildIDBeforeAssetWait) {
-				syncBuildIDFromResponse(outcome.response);
-			}
-			return false;
-		}
-		case "post_asset": {
-			const postAssetExecutionPlan =
-				decideSuccessfulNavigationPostAssetExecutionPlan({
-					entry,
-					isCurrentEntry,
-					currentHref,
-				});
-			const postAssetSideEffectPlan =
-				decideSuccessfulNavigationPostAssetSideEffectPlan({
-					postAssetExecutionPlan,
-					buildIDSyncTiming: props.buildIDSyncTiming,
-				});
-
-			if (postAssetSideEffectPlan.shouldCommitClientLoadersState) {
-				setClientLoadersState(props.clientLoadersResult);
-			}
-			if (postAssetSideEffectPlan.shouldSyncBuildIDAfterAssetWait) {
-				syncBuildIDFromResponse(outcome.response);
-			}
-			if (postAssetSideEffectPlan.shouldApplyResponseArtifacts) {
-				applyResponseArtifactsWhenBuildMatches({
-					response: outcome.response,
-					json: outcome.json,
-					expectedBuildID: props.expectedBuildID,
-				});
-			}
-
-			switch (postAssetExecutionPlan.type) {
-				case "stop":
-					return true;
-				case "completeWithoutRender":
-					transitionPhaseForCurrentEntry({
-						context,
-						entry,
-						phase: "complete",
-						reason: successfulNavigationPhaseReason.complete,
-					});
-					return false;
-				case "render":
-					await renderSuccessfulNavigation(context, outcome, entry);
-					return false;
-			}
-		}
-		case "cleanup": {
-			const cleanupExecutionPlan =
-				decideSuccessfulNavigationCleanupExecutionPlan({
-					entry,
-					isCurrentEntry,
-				});
-			if (cleanupExecutionPlan.type === "skip") {
-				return false;
-			}
+	switch (preWaitingExecutionPlan.type) {
+		case "stop":
+			return true;
+		case "deleteAndStop":
 			context.deleteNavigation({
-				targetUrl: cleanupExecutionPlan.targetUrl,
-				reason: cleanupExecutionPlan.reason,
+				targetUrl: preWaitingExecutionPlan.targetUrl,
+				reason: preWaitingExecutionPlan.reason,
+			});
+			return true;
+		case "continue":
+			transitionPhaseForCurrentEntry({
+				context,
+				entry,
+				phase: "waiting",
+				reason: successfulNavigationPhaseReason.waiting,
 			});
 			return false;
-		}
 	}
+}
+
+function runSuccessfulNavigationPostWaitingCheckpoint(
+	envelope: SuccessfulNavigationCheckpointStateEnvelope,
+): boolean {
+	const checkpointEnvelope = readSuccessfulNavigationCheckpointEnvelope({
+		context: envelope.context,
+		entry: envelope.entry,
+	});
+	return !checkpointEnvelope.isCurrentEntry;
+}
+
+function runSuccessfulNavigationPreAssetWaitCheckpoint(props: {
+	outcome: SuccessfulNavigationOutcome;
+	buildIDSyncTiming: BuildIDSyncTiming;
+}): void {
+	const { outcome, buildIDSyncTiming } = props;
+	if (buildIDSyncTiming === "before_asset_wait") {
+		syncBuildIDFromResponse(outcome.response);
+	}
+}
+
+async function runSuccessfulNavigationPostAssetCheckpoint(props: {
+	envelope: SuccessfulNavigationCheckpointStateEnvelope;
+	buildIDSyncTiming: BuildIDSyncTiming;
+	expectedBuildID: string;
+	clientLoadersResult: SuccessfulNavigationClientLoadersResult;
+}): Promise<boolean> {
+	const {
+		envelope,
+		buildIDSyncTiming,
+		expectedBuildID,
+		clientLoadersResult,
+	} = props;
+	const { context, outcome, entry } = envelope;
+	const checkpointEnvelope = readSuccessfulNavigationCheckpointEnvelope({
+		context,
+		entry,
+	});
+	const postAssetExecutionPlan =
+		decideSuccessfulNavigationPostAssetExecutionPlan({
+			entry,
+			isCurrentEntry: checkpointEnvelope.isCurrentEntry,
+			currentHref: checkpointEnvelope.currentHref,
+		});
+	const postAssetSideEffectPlan =
+		decideSuccessfulNavigationPostAssetSideEffectPlan({
+			postAssetExecutionPlan,
+			buildIDSyncTiming,
+		});
+
+	if (postAssetSideEffectPlan.shouldCommitClientLoadersState) {
+		setClientLoadersState(clientLoadersResult);
+	}
+	if (postAssetSideEffectPlan.shouldSyncBuildIDAfterAssetWait) {
+		syncBuildIDFromResponse(outcome.response);
+	}
+	if (postAssetSideEffectPlan.shouldApplyResponseArtifacts) {
+		applyResponseArtifactsWhenBuildMatches({
+			response: outcome.response,
+			json: outcome.json,
+			expectedBuildID,
+		});
+	}
+
+	switch (postAssetExecutionPlan.type) {
+		case "stop":
+			return true;
+		case "completeWithoutRender":
+			transitionPhaseForCurrentEntry({
+				context,
+				entry,
+				phase: "complete",
+				reason: successfulNavigationPhaseReason.complete,
+			});
+			return false;
+		case "render":
+			await renderSuccessfulNavigation(context, outcome, entry);
+			return false;
+	}
+}
+
+function runSuccessfulNavigationCleanupCheckpoint(
+	envelope: SuccessfulNavigationCheckpointStateEnvelope,
+): void {
+	const { context, entry } = envelope;
+	const checkpointEnvelope = readSuccessfulNavigationCheckpointEnvelope({
+		context,
+		entry,
+	});
+	const cleanupExecutionPlan = decideSuccessfulNavigationCleanupExecutionPlan(
+		{
+			entry,
+			isCurrentEntry: checkpointEnvelope.isCurrentEntry,
+		},
+	);
+
+	if (cleanupExecutionPlan.type === "skip") {
+		return;
+	}
+	context.deleteNavigation({
+		targetUrl: cleanupExecutionPlan.targetUrl,
+		reason: cleanupExecutionPlan.reason,
+	});
 }
 
 export async function processSuccessfulNavigationRuntime(
@@ -390,48 +408,37 @@ export async function processSuccessfulNavigationRuntime(
 	entry: NavigationEntry,
 ): Promise<void> {
 	let didCommitSuccessfulNavigation = false;
+	const envelope: SuccessfulNavigationCheckpointStateEnvelope = {
+		context,
+		outcome,
+		entry,
+	};
 
 	try {
 		const expectedBuildIDForResponseArtifacts =
 			__vormaClientGlobal.get("buildID");
 
-		for (const checkpoint of ["pre_waiting", "post_waiting"] as const) {
-			const shouldStop =
-				await executeSuccessfulNavigationLifecycleCheckpoint({
-					checkpoint,
-					context,
-					outcome,
-					entry,
-				});
-			if (shouldStop) {
-				return;
-			}
+		if (runSuccessfulNavigationPreWaitingCheckpoint(envelope)) {
+			return;
+		}
+		if (runSuccessfulNavigationPostWaitingCheckpoint(envelope)) {
+			return;
 		}
 
 		const buildIDSyncTiming = decideBuildIDSyncTimingForSuccessfulEntry({
 			entry,
 		});
-		const shouldStopAfterPreAssetWait =
-			await executeSuccessfulNavigationLifecycleCheckpoint({
-				checkpoint: "pre_asset_wait",
-				context,
-				outcome,
-				entry,
-				buildIDSyncTiming,
-			});
-		if (shouldStopAfterPreAssetWait) {
-			return;
-		}
+		runSuccessfulNavigationPreAssetWaitCheckpoint({
+			outcome,
+			buildIDSyncTiming,
+		});
 
 		const clientLoadersResult =
 			await waitForSuccessfulNavigationAssets(outcome);
 
 		const shouldStopAfterPostAsset =
-			await executeSuccessfulNavigationLifecycleCheckpoint({
-				checkpoint: "post_asset",
-				context,
-				outcome,
-				entry,
+			await runSuccessfulNavigationPostAssetCheckpoint({
+				envelope,
 				buildIDSyncTiming,
 				expectedBuildID: expectedBuildIDForResponseArtifacts,
 				clientLoadersResult,
@@ -442,12 +449,7 @@ export async function processSuccessfulNavigationRuntime(
 
 		didCommitSuccessfulNavigation = true;
 	} finally {
-		await executeSuccessfulNavigationLifecycleCheckpoint({
-			checkpoint: "cleanup",
-			context,
-			outcome,
-			entry,
-		});
+		runSuccessfulNavigationCleanupCheckpoint(envelope);
 	}
 
 	if (didCommitSuccessfulNavigation) {

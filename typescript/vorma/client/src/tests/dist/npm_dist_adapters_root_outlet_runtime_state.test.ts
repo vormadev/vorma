@@ -1,7 +1,7 @@
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
 import { h, render as renderPreact } from "preact";
 import { act as actPreact } from "preact/test-utils";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 import { createComponent, createEffect } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -2107,6 +2107,251 @@ describe("npm_dist root outlet runtime state coverage", () => {
 					container.querySelector("[data-pattern-client-probe]")
 						?.textContent,
 				).toBe("probe-c");
+			});
+		} finally {
+			dispose();
+			container.remove();
+			restore();
+		}
+	});
+
+	it("react pattern client-loader selector honors explicit route-props idx override", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/react");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const originalActEnvironment = (globalThis as any)
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		const PatternClientProbe = () => {
+			const clientData = usePatternClientLoaderData({ idx: 1 } as any) as
+				| string
+				| undefined;
+			return React.createElement(
+				"div",
+				{ "data-pattern-client-props-override-probe": true },
+				clientData ?? "none",
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [
+				makeReactOutlet("root"),
+				makeReactOutlet("child"),
+			],
+			importURLs: ["/root.js", "/child.js"],
+			exportKeys: ["default", "default"],
+			loadersData: [{}, {}],
+			clientLoadersData: ["probe-a", "other-a"],
+			matchedPatterns: ["/probe", "/other"],
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					React.createElement(
+						React.Fragment,
+						{},
+						React.createElement(adapter.VormaRootOutlet as any, {
+							idx: 0,
+						}),
+						React.createElement(PatternClientProbe),
+					),
+				);
+			});
+			expect(
+				container.querySelector(
+					"[data-pattern-client-props-override-probe]",
+				)?.textContent,
+			).toBe("other-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [
+					makeReactOutlet("root"),
+					makeReactOutlet("child"),
+				],
+				importURLs: ["/root.js", "/child.js"],
+				exportKeys: ["default", "default"],
+				loadersData: [{}, {}],
+				clientLoadersData: ["probe-b", "other-b"],
+				matchedPatterns: ["/probe", "/other"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector(
+					"[data-pattern-client-props-override-probe]",
+				)?.textContent,
+			).toBe("other-b");
+		} finally {
+			await act(async () => {
+				root.unmount();
+			});
+			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
+				originalActEnvironment;
+			container.remove();
+			restore();
+		}
+	});
+
+	it("preact pattern client-loader selector honors explicit route-props idx override", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/preact");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		const PatternClientProbe = () => {
+			const clientData = usePatternClientLoaderData({ idx: 1 } as any) as
+				| string
+				| undefined;
+			return h(
+				"div",
+				{ "data-pattern-client-props-override-probe": true },
+				clientData ?? "none",
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [
+				makePreactOutlet("root"),
+				makePreactOutlet("child"),
+			],
+			importURLs: ["/root.js", "/child.js"],
+			exportKeys: ["default", "default"],
+			loadersData: [{}, {}],
+			clientLoadersData: ["probe-a", "other-a"],
+			matchedPatterns: ["/probe", "/other"],
+		});
+
+		try {
+			await actPreact(async () => {
+				renderPreact(
+					h(
+						"div",
+						{},
+						h(adapter.VormaRootOutlet as any, { idx: 0 }),
+						h(PatternClientProbe, {}),
+					),
+					container,
+				);
+			});
+			expect(
+				container.querySelector(
+					"[data-pattern-client-props-override-probe]",
+				)?.textContent,
+			).toBe("other-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [
+					makePreactOutlet("root"),
+					makePreactOutlet("child"),
+				],
+				importURLs: ["/root.js", "/child.js"],
+				exportKeys: ["default", "default"],
+				loadersData: [{}, {}],
+				clientLoadersData: ["probe-b", "other-b"],
+				matchedPatterns: ["/probe", "/other"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector(
+					"[data-pattern-client-props-override-probe]",
+				)?.textContent,
+			).toBe("other-b");
+		} finally {
+			renderPreact(null, container);
+			container.remove();
+			restore();
+		}
+	});
+
+	it("solid pattern client-loader selector honors explicit route-props idx override", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/solid");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		const PatternClientProbe = () => {
+			const clientData = usePatternClientLoaderData({ idx: 1 } as any);
+			const node = document.createElement("div");
+			node.setAttribute(
+				"data-pattern-client-props-override-probe",
+				"true",
+			);
+			createEffect(() => {
+				const nextClientData = clientData() as string | undefined;
+				node.textContent = nextClientData ?? "none";
+			});
+			return node;
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [
+				makeSolidOutlet("root"),
+				makeSolidOutlet("child"),
+			],
+			importURLs: ["/root.js", "/child.js"],
+			exportKeys: ["default", "default"],
+			loadersData: [{}, {}],
+			clientLoadersData: ["probe-a", "other-a"],
+			matchedPatterns: ["/probe", "/other"],
+		});
+
+		const dispose = renderSolid(() => {
+			return [
+				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
+				PatternClientProbe(),
+			];
+		}, container);
+
+		try {
+			expect(
+				container.querySelector(
+					"[data-pattern-client-props-override-probe]",
+				)?.textContent,
+			).toBe("other-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [
+					makeSolidOutlet("root"),
+					makeSolidOutlet("child"),
+				],
+				importURLs: ["/root.js", "/child.js"],
+				exportKeys: ["default", "default"],
+				loadersData: [{}, {}],
+				clientLoadersData: ["probe-b", "other-b"],
+				matchedPatterns: ["/probe", "/other"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector(
+						"[data-pattern-client-props-override-probe]",
+					)?.textContent,
+				).toBe("other-b");
 			});
 		} finally {
 			dispose();

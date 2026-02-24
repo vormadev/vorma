@@ -1,12 +1,12 @@
 import { computed, signal } from "@preact/signals";
 import { h, type ComponentType } from "preact";
 import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
-import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
-	applyScrollState,
 	buildInitialRouteOutletStoreState,
 	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
+	createRouteOutletRuntimeListenerInitializer,
+	resolveRouteOutletBranchRenderState,
 	type RouteOutletBranchInputState,
 	type RouteOutletStoreState,
 } from "vorma/client/__internal";
@@ -46,25 +46,9 @@ function syncStoreState(): void {
 	}
 }
 
-let isInited = false;
-
-function initUIListeners(): void {
-	if (isInited) {
-		return;
-	}
-	isInited = true;
-
-	addRouteChangeListener((event) => {
-		syncStoreState();
-		window.requestAnimationFrame(() => {
-			applyScrollState(event.detail.__scrollState);
-		});
-	});
-
-	addLocationListener(() => {
-		syncStoreState();
-	});
-}
+const initUIListeners = createRouteOutletRuntimeListenerInitializer({
+	syncStoreState,
+});
 
 /////////////////////////////////////////////////////////////////////
 /////// COMPONENT
@@ -100,6 +84,9 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element | null {
 		navigationState: routeOutletBranchInputState.value,
 		idx,
 	});
+	const routeOutletBranchRenderState = resolveRouteOutletBranchRenderState({
+		branchState: routeOutletBranchState,
+	});
 
 	const Outlet = useMemo(() => {
 		return (localProps: Record<string, any> | undefined) => {
@@ -109,32 +96,37 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element | null {
 				idx: idx + 1,
 			});
 		};
-	}, [idx, routeOutletBranchState.nextRouteKey]);
+	}, [idx, routeOutletBranchRenderState.nextRouteKey]);
 
-	const CurrentComp = routeOutletBranchState.currentComponent as
-		| ComponentType<VormaOutletProps>
-		| undefined;
-	const ErrorComp = routeOutletBranchState.errorComponent as
-		| ComponentType<VormaErrorBoundaryProps>
-		| undefined;
-
-	if (routeOutletBranchState.isErrorIdx) {
-		if (ErrorComp) {
-			return h(ErrorComp, { error: outermostError.value });
+	switch (routeOutletBranchRenderState.renderKind) {
+		case "error": {
+			const ErrorComp = routeOutletBranchRenderState.errorComponent as
+				| ComponentType<VormaErrorBoundaryProps>
+				| undefined;
+			if (ErrorComp) {
+				return h(ErrorComp, { error: outermostError.value });
+			}
+			return h("div", {}, `Error: ${outermostError.value || "unknown"}`);
 		}
-		return h("div", {}, `Error: ${outermostError.value || "unknown"}`);
-	}
-
-	if (!CurrentComp) {
-		if (routeOutletBranchState.shouldFallbackOutlet) {
-			return h(Outlet, { key: routeOutletBranchState.nextRouteKey });
+		case "fallback":
+			return h(Outlet, {
+				key: routeOutletBranchRenderState.nextRouteKey,
+			});
+		case "empty":
+			return null;
+		case "component": {
+			const CurrentComp =
+				routeOutletBranchRenderState.currentComponent as
+					| ComponentType<VormaOutletProps>
+					| undefined;
+			if (!CurrentComp) {
+				return null;
+			}
+			return h(CurrentComp, {
+				key: routeOutletBranchRenderState.currentRouteKey,
+				idx,
+				Outlet,
+			});
 		}
-		return null;
 	}
-
-	return h(CurrentComp, {
-		key: routeOutletBranchState.currentRouteKey,
-		idx,
-		Outlet,
-	});
 }

@@ -3,8 +3,6 @@
 import { createMemo, type Accessor } from "solid-js";
 import type { JSX } from "solid-js/jsx-runtime";
 import {
-	type ClientLoaderAwaitedServerData,
-	type ParamsForPattern,
 	type UseRouterDataFunction,
 	type VormaAppBase,
 	type VormaLoaderOutput,
@@ -12,7 +10,12 @@ import {
 	type VormaRouteGeneric,
 	type VormaRoutePropsGeneric,
 } from "vorma/client";
-import { registerClientLoaderForAdapter } from "vorma/client/__internal";
+import {
+	registerClientLoaderForAdapter,
+	resolveTypedAdapterIndexedDataForPattern,
+	resolveTypedAdapterIndexedDataForPatternOrRouteProps,
+	type VormaTypedAdapterAddClientLoaderProps,
+} from "vorma/client/__internal";
 import { clientLoadersData, loadersData, routerData } from "./solid.tsx";
 
 export type VormaRouteProps<
@@ -24,15 +27,6 @@ export type VormaRoute<
 	App extends VormaAppBase = any,
 	Pattern extends VormaLoaderPattern<App> = string,
 > = VormaRouteGeneric<JSX.Element, App, Pattern>;
-
-function createMatchedPatternIndexAccessor(pattern: string): Accessor<number> {
-	return createMemo(() => {
-		const matchedPatterns = routerData().matchedPatterns;
-		return matchedPatterns.findIndex(
-			(matchedPattern) => matchedPattern === pattern,
-		);
-	});
-}
 
 export function makeTypedUseRouterData<App extends VormaAppBase>() {
 	return (() => routerData) as UseRouterDataFunction<App, true>;
@@ -52,15 +46,16 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 	return function usePatternLoaderData<
 		Pattern extends VormaLoaderPattern<App>,
 	>(pattern: Pattern): Accessor<VormaLoaderOutput<App, Pattern> | undefined> {
-		const matchedPatternIndex = createMatchedPatternIndexAccessor(pattern);
 		const loaderData = createMemo<
 			VormaLoaderOutput<App, Pattern> | undefined
 		>(() => {
-			const index = matchedPatternIndex();
-			if (index === -1) {
-				return undefined;
-			}
-			return loadersData()[index] as VormaLoaderOutput<App, Pattern>;
+			return resolveTypedAdapterIndexedDataForPattern<
+				VormaLoaderOutput<App, Pattern>
+			>({
+				pattern,
+				matchedPatterns: routerData().matchedPatterns,
+				indexedData: loadersData(),
+			});
 		});
 		return loaderData;
 	};
@@ -71,40 +66,35 @@ export function makeTypedAddClientLoader<App extends VormaAppBase>() {
 		Pattern extends VormaLoaderPattern<App>,
 		LoaderData extends VormaLoaderOutput<App, Pattern>,
 		T = any,
-	>(props: {
-		pattern: Pattern;
-		clientLoader: (props: {
-			params: Record<ParamsForPattern<App, Pattern>, string>;
-			splatValues: string[];
-			serverDataPromise: Promise<
-				ClientLoaderAwaitedServerData<App["rootData"], LoaderData>
-			>;
-			signal: AbortSignal;
-		}) => Promise<T>;
-		reRunOnModuleChange?: ImportMeta;
-	}) {
-		const p = props.pattern;
-		const fn = props.clientLoader;
-
+	>(
+		props: VormaTypedAdapterAddClientLoaderProps<
+			App,
+			Pattern,
+			LoaderData,
+			T
+		>,
+	) {
+		const pattern = props.pattern;
+		const clientLoader = props.clientLoader;
 		registerClientLoaderForAdapter({
-			pattern: p as string,
-			waitFn: fn as any,
+			pattern: pattern as string,
+			waitFn: clientLoader as any,
 			reRunOnModuleChange: props.reRunOnModuleChange,
 		});
-
-		type Res = Awaited<ReturnType<typeof fn>>;
+		type Res = Awaited<ReturnType<typeof clientLoader>>;
 
 		const useClientLoaderData = (
-			props?: VormaRouteProps<App, Pattern>,
+			routeProps?: VormaRouteProps<App, Pattern>,
 		): Accessor<Res | undefined> => {
-			const matchedPatternIndex = createMatchedPatternIndexAccessor(p);
 			return createMemo<Res | undefined>(() => {
-				if (props) {
-					return clientLoadersData()[props.idx] as Res | undefined;
-				}
-				const idx = matchedPatternIndex();
-				if (idx === -1) return undefined;
-				return clientLoadersData()[idx] as Res | undefined;
+				return resolveTypedAdapterIndexedDataForPatternOrRouteProps<Res>(
+					{
+						pattern,
+						matchedPatterns: routerData().matchedPatterns,
+						indexedData: clientLoadersData(),
+						routeProps,
+					},
+				);
 			});
 		};
 

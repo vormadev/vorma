@@ -3,6 +3,7 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -161,13 +162,19 @@ func TestClientManager_DrainChannels(t *testing.T) {
 	defer websocketServer.Close()
 
 	websocketURL := "ws" + strings.TrimPrefix(websocketServer.URL, "http")
-	connectionA, _, dialErrorA := websocket.DefaultDialer.Dial(websocketURL, nil)
+	connectionA, _, dialErrorA := websocket.DefaultDialer.Dial(
+		websocketURL,
+		nil,
+	)
 	if dialErrorA != nil {
 		t.Fatalf("failed dialing ws server (A): %v", dialErrorA)
 	}
 	defer connectionA.Close()
 
-	connectionB, _, dialErrorB := websocket.DefaultDialer.Dial(websocketURL, nil)
+	connectionB, _, dialErrorB := websocket.DefaultDialer.Dial(
+		websocketURL,
+		nil,
+	)
 	if dialErrorB != nil {
 		t.Fatalf("failed dialing ws server (B): %v", dialErrorB)
 	}
@@ -216,5 +223,82 @@ func TestPayloadJSON_CriticalChangeIncludesCriticalCSSFieldWhenEmpty(
 			"expected critical css field to be serialized for critical payloads, got %s",
 			payloadJSONString,
 		)
+	}
+}
+
+func TestBroadcast_DoesNotQueuePayloadAfterClose(t *testing.T) {
+	manager := NewManager(
+		newDiscardLoggerForBroadcastManagerTests(),
+		ManagerConfig{},
+	)
+	manager.Close()
+
+	manager.Broadcast(Payload{ChangeType: ChangeTypeOther})
+
+	if got := len(manager.broadcastQueue); got != 0 {
+		t.Fatalf("broadcast queue length after close = %d, want 0", got)
+	}
+}
+
+func TestServeHTTP_RejectsNonGETMethods(t *testing.T) {
+	manager := NewManager(
+		newDiscardLoggerForBroadcastManagerTests(),
+		ManagerConfig{},
+	)
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"http://example.com/events",
+		nil,
+	)
+	recorder := httptest.NewRecorder()
+
+	manager.ServeHTTP(recorder, request)
+
+	if got, want := recorder.Code, http.StatusMethodNotAllowed; got != want {
+		t.Fatalf("status code = %d, want %d", got, want)
+	}
+}
+
+func TestManagerConfigWithDefaults_AppliesZeroValueDefaults(t *testing.T) {
+	defaultedConfig := managerConfigWithDefaults(ManagerConfig{})
+
+	if got, want := defaultedConfig.ReadBufferSize, 1024; got != want {
+		t.Fatalf("ReadBufferSize = %d, want %d", got, want)
+	}
+	if got, want := defaultedConfig.WriteBufferSize, 1024; got != want {
+		t.Fatalf("WriteBufferSize = %d, want %d", got, want)
+	}
+	if got, want := defaultedConfig.WriteTimeout, 3*time.Second; got != want {
+		t.Fatalf("WriteTimeout = %s, want %s", got, want)
+	}
+	if got, want := defaultedConfig.PongWait, 60*time.Second; got != want {
+		t.Fatalf("PongWait = %s, want %s", got, want)
+	}
+	if got, want := defaultedConfig.PingPeriod, 54*time.Second; got != want {
+		t.Fatalf("PingPeriod = %s, want %s", got, want)
+	}
+	if got, want := defaultedConfig.SendQueueDepth, 32; got != want {
+		t.Fatalf("SendQueueDepth = %d, want %d", got, want)
+	}
+}
+
+func TestIsExpectedSocketClose(t *testing.T) {
+	if isExpectedSocketClose(nil) {
+		t.Fatal("isExpectedSocketClose(nil) = true, want false")
+	}
+
+	if !isExpectedSocketClose(
+		&websocket.CloseError{Code: websocket.CloseNormalClosure},
+	) {
+		t.Fatal(
+			"expected normal websocket close error to be treated as expected",
+		)
+	}
+	if !isExpectedSocketClose(context.Canceled) {
+		t.Fatal("expected context.Canceled to be treated as expected close")
+	}
+	if isExpectedSocketClose(errors.New("boom")) {
+		t.Fatal("unexpectedly treated generic error as expected close")
 	}
 }

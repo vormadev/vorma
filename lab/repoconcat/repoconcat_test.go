@@ -1468,3 +1468,32 @@ func TestWriteFileReturnsErrorWhenWriterFails(t *testing.T) {
 		)
 	}
 }
+
+func TestConcatDoesNotMutateInputPatterns(t *testing.T) {
+	dir := setupTestDir(t, map[string]string{
+		"src/main.go": "package main",
+	})
+
+	inputPatterns := []string{" src/** ", " !src/generated/** "}
+	originalPatterns := append([]string{}, inputPatterns...)
+
+	_ = runConcat(t, dir, inputPatterns)
+
+	if len(inputPatterns) != len(originalPatterns) {
+		t.Fatalf(
+			"pattern count changed from %d to %d",
+			len(originalPatterns),
+			len(inputPatterns),
+		)
+	}
+	for patternIndex := range inputPatterns {
+		if inputPatterns[patternIndex] != originalPatterns[patternIndex] {
+			t.Fatalf(
+				"pattern[%d] mutated from %q to %q",
+				patternIndex,
+				originalPatterns[patternIndex],
+				inputPatterns[patternIndex],
+			)
+		}
+	}
+}

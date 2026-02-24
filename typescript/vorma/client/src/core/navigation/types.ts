@@ -92,6 +92,10 @@ export type SubmitOptions = {
 	skipGlobalLoadingIndicator?: boolean;
 };
 
+export type SubmitResult<T> =
+	| { success: true; data: T }
+	| { success: false; error: string };
+
 export type NavigationStateManager = {
 	_submissions: Map<string | symbol, SubmissionEntry>;
 	navigate: (props: NavigateProps) => Promise<{ didNavigate: boolean }>;
@@ -104,9 +108,7 @@ export type NavigationStateManager = {
 		url: string | URL,
 		requestInit?: RequestInit,
 		options?: SubmitOptions,
-	) => Promise<
-		{ success: true; data: T } | { success: false; error: string }
-	>;
+	) => Promise<SubmitResult<T>>;
 	removeNavigation: (targetUrl: string) => void;
 	getNavigation: (targetUrl: string) => NavigationEntry | undefined;
 	hasNavigation: (targetUrl: string) => boolean;

@@ -12,15 +12,18 @@ import type {
 	NavigationOutcome,
 	NavigationStateManager,
 	SubmitOptions,
+	SubmitResult,
 } from "./core/navigation/types.ts";
 import type { StatusEventDetail } from "./platform/events.ts";
 import { HistoryManager } from "./platform/history.ts";
+import { getRuntimeLocationState } from "./platform/location.ts";
 
 export type {
 	NavigateProps,
 	NavigationControl,
 	NavigationOutcome,
 	SubmitOptions,
+	SubmitResult,
 	VormaNavigationType,
 } from "./core/navigation/types.ts";
 
@@ -127,17 +130,17 @@ export const navigationStateManager: NavigationStateManager = {
 		url: string | URL,
 		requestInit?: RequestInit,
 		options?: SubmitOptions,
-	): Promise<{ success: true; data: T } | { success: false; error: string }> {
+	): Promise<SubmitResult<T>> {
 		return getNavigationStateManager().submit<T>(url, requestInit, options);
 	},
-	removeNavigation(key: string): void {
-		getNavigationStateManager().removeNavigation(key);
+	removeNavigation(targetUrl: string): void {
+		getNavigationStateManager().removeNavigation(targetUrl);
 	},
-	getNavigation(key: string): NavigationEntry | undefined {
-		return getNavigationStateManager().getNavigation(key);
+	getNavigation(targetUrl: string): NavigationEntry | undefined {
+		return getNavigationStateManager().getNavigation(targetUrl);
 	},
-	hasNavigation(key: string): boolean {
-		return getNavigationStateManager().hasNavigation(key);
+	hasNavigation(targetUrl: string): boolean {
+		return getNavigationStateManager().hasNavigation(targetUrl);
 	},
 	getNavigationsSize(): number {
 		return getNavigationStateManager().getNavigationsSize();
@@ -216,7 +219,7 @@ export async function submit<T = unknown>(
 	url: string | URL,
 	requestInit?: RequestInit,
 	options?: SubmitOptions,
-): Promise<{ success: true; data: T } | { success: false; error: string }> {
+): Promise<SubmitResult<T>> {
 	return navigationStateManager.submit(url, requestInit, options);
 }
 
@@ -238,12 +241,7 @@ export function getStatus(): StatusEventDetail {
  * Returns a normalized browser location snapshot used by adapters.
  */
 export function getLocation() {
-	return {
-		pathname: window.location.pathname,
-		search: window.location.search,
-		hash: window.location.hash,
-		state: HistoryManager.getInstance().location.state,
-	};
+	return getRuntimeLocationState();
 }
 
 /**

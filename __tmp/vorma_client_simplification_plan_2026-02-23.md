@@ -662,6 +662,121 @@ for `typescript/vorma/client/src` without changing framework behavior.
       suites green.
 - [x] Validate with full TS gate.
 
+### 60) Decouple route-outlet location snapshots from client entrypoint
+
+- [x] Add a platform-level `getRuntimeLocationState` helper in
+      `platform/location.ts` that returns normalized pathname/search/hash/state
+      snapshots.
+- [x] Refactor `ui/route_outlet_runtime.ts` to consume `getRuntimeLocationState`
+      directly instead of importing `getLocation` from `client.ts`.
+- [x] Keep public `client.getLocation()` behavior unchanged by delegating to the
+      new platform helper in `client.ts`.
+- [x] Update route-outlet runtime unit mocks/tests to target
+      `platform/location.ts`.
+- [x] Keep route-outlet + utilities + history/init contract suites green.
+- [x] Validate with full TS gate.
+
+### 61) Align client runtime-proxy parameter names to `targetUrl`
+
+- [x] Update `navigationStateManager` proxy method signatures in `client.ts`
+      from generic `key` parameters to `targetUrl` for `removeNavigation`,
+      `getNavigation`, and `hasNavigation`.
+- [x] Keep client utilities + navigation runtime suites green.
+- [x] Validate with full TS gate.
+
+### 62) Centralize submit result typing across runtime/client surfaces
+
+- [x] Introduce exported `SubmitResult<T>` in `core/navigation/types.ts` and use
+      it in `NavigationStateManager.submit`.
+- [x] Update `runtime.ts` and `runtime_submit.ts` to use shared
+      `SubmitResult<T>` instead of restating the union.
+- [x] Update `client.ts` and public `index.ts` type exports to reuse and expose
+      shared `SubmitResult<T>`.
+- [x] Keep submit/redirect + utilities + navigation runtime suites green.
+- [x] Validate with full TS gate.
+
+### 63) Low-hanging: simplify `core/extras.ts` HMR + loading-indicator flow
+
+- [x] Flatten nested HMR update handling with early-return guards in `initHMR`
+      and `runClientLoadersAfterHMRUpdate` while preserving exact DEV-only
+      behavior.
+- [x] Remove one-shot include-parsing indirection in global loading indicator
+      setup and keep one explicit parsed config path.
+- [x] Keep extras unit + client history/init/loading/focus contract suites
+      green.
+- [x] Validate with full TS gate.
+
+### 64) Low-hanging: reduce parser-layer indirection in `core/redirects.ts`
+
+- [x] Collapse thin header-parser wrappers into one explicit prioritized
+      redirect parsing path (`X-Vorma-Reload`, browser redirect URL,
+      `X-Client-Redirect`) with unchanged precedence/validation behavior.
+- [x] Keep request-init/body handling semantics unchanged.
+- [x] Keep redirects unit + submit/redirect contract + navigation runtime suites
+      green.
+- [x] Validate with full TS gate.
+
+### 65) Structural decomposition of `core/navigation/runtime.ts`
+
+- [x] Split `runtime.ts` into explicit sub-engines (revalidation lane
+      sequencing, navigation pass execution/outcome apply, lifecycle wiring
+      composition) while preserving the same public runtime API.
+- [x] Keep orchestrator as a thin composition root and remove any duplicated
+      ownership/error cleanup branches that become centralized in sub-engines.
+- [x] Add/adjust focused internal tests around extracted engine boundaries.
+- [x] Keep runtime unit + lifecycle/prefetch/submit contracts green.
+- [x] Validate with full TS gate.
+
+### 66) Simplify cross-file lifecycle/outcome orchestration
+
+- [x] Reduce duplicated stop/ownership/staleness guard branching across
+      `runtime_navigation_outcome_state_machine.ts` and
+      `runtime_navigation_successful_runtime.ts`.
+- [x] Collapse remaining single-purpose execution-plan wrappers where they do
+      not add distinct semantics, keeping explicit transition/event reasons.
+- [x] Expand focused tests for pre-waiting/post-waiting/post-asset/cleanup
+      branches to prove unchanged behavior for navigate/revalidate/prefetch.
+- [x] Keep runtime unit + navigation lifecycle + prefetch contracts green.
+- [x] Validate with full TS gate.
+
+### 67) Route-outlet reconciliation model cleanup with stable internal contracts
+
+- [x] Simplify `ui/route_outlet_runtime.ts` reconciliation/canonicalization
+      paths to reduce repeated comparisons while preserving identity-sensitive
+      behavior.
+- [x] Keep existing internal exports required by adapters/dist tests (via
+      `typescript/vorma/client/internal.ts`) stable during refactor.
+- [x] Keep route-outlet internal + dist adapter root-outlet runtime-state suites
+      green across React/Preact/Solid.
+- [x] Validate with full TS gate.
+
+### 68) Client completion sweep and residual-risk pass
+
+- [x] Run targeted dist adapter suites plus full TS gate after all client-side
+      refactors complete.
+- [x] Document remaining client-side non-low-hanging opportunities (if any) and
+      confirm whether further changes are net-positive versus complexity cost.
+
+Residual non-low-hanging client opportunities still open:
+
+- [x] Further decompose
+      `core/navigation/runtime_navigation_successful_runtime.ts` checkpoint
+      orchestration into smaller pure reducers/checkpoint runners with one
+      explicit state transition envelope.
+- [x] Collapse route-outlet branch-state derivation into one shared adapter-
+      facing helper surface so root/child outlet identity policy is implemented
+      exactly once end-to-end.
+
+### 69) Phase 2 scope: `typescript/vorma/ui-adapters/*` audit + simplification
+
+- [x] After client scope is complete, run a dedicated audit pass across all
+      adapter packages under `typescript/vorma/ui-adapters/*` for unnecessary
+      complexity, duplication, latent bugs, and avoidable runtime overhead.
+- [x] Create an adapter-specific checklist in `__tmp`, implement low-hanging
+      simplifications first, then larger structural refactors.
+- [x] Add/expand adapter-focused tests proving behavior parity and no framework-
+      specific regressions.
+
 ## Execution Order
 
 1. Dead redirect plumbing + request-body dedupe.
@@ -720,6 +835,16 @@ for `typescript/vorma/client/src` without changing framework behavior.
 54. Submit-runtime stale-ownership check dedupe.
 55. Successful-navigation asset-wait wrapper removal.
 56. Submit-runtime return-type alias reuse.
+57. Route-outlet location snapshot decoupling from client entrypoint.
+58. Client runtime-proxy target-url naming alignment.
+59. Shared submit-result type centralization.
+60. Low-hanging extras.ts HMR/loading-indicator simplification.
+61. Low-hanging redirects.ts parser-layer simplification.
+62. Structural decomposition of navigation runtime orchestrator.
+63. Cross-file lifecycle/outcome orchestration simplification.
+64. Route-outlet reconciliation model cleanup with stable internal exports.
+65. Client completion sweep and residual-risk pass.
+66. Phase 2 `ui-adapters/*` audit + simplification.
 
 ## Validation Gate (each step)
 
@@ -790,3 +915,13 @@ for `typescript/vorma/client/src` without changing framework behavior.
 - [x] Step 57 complete.
 - [x] Step 58 complete.
 - [x] Step 59 complete.
+- [x] Step 60 complete.
+- [x] Step 61 complete.
+- [x] Step 62 complete.
+- [x] Step 63 complete.
+- [x] Step 64 complete.
+- [x] Step 65 complete.
+- [x] Step 66 complete.
+- [x] Step 67 complete.
+- [x] Step 68 complete.
+- [x] Step 69 complete.

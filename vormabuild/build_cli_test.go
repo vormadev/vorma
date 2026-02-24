@@ -21,9 +21,6 @@ func TestParseBuildCommandOptions(t *testing.T) {
 		if options.runHookOnly {
 			t.Fatal("expected runHookOnly to default to false")
 		}
-		if options.printDiagnosticsOnly {
-			t.Fatal("expected printDiagnosticsOnly to default to false")
-		}
 		if options.skipGoBinaryBuildStep {
 			t.Fatal("expected skipGoBinaryBuildStep to default to false")
 		}
@@ -33,7 +30,6 @@ func TestParseBuildCommandOptions(t *testing.T) {
 		options, err := parseBuildCommandOptions([]string{
 			"--dev",
 			"--hook",
-			"--diagnostics",
 			"--no-binary",
 		})
 		if err != nil {
@@ -44,9 +40,6 @@ func TestParseBuildCommandOptions(t *testing.T) {
 		}
 		if !options.runHookOnly {
 			t.Fatal("expected runHookOnly to be true")
-		}
-		if !options.printDiagnosticsOnly {
-			t.Fatal("expected printDiagnosticsOnly to be true")
 		}
 		if !options.skipGoBinaryBuildStep {
 			t.Fatal("expected skipGoBinaryBuildStep to be true")
@@ -232,86 +225,6 @@ func TestRunBuildCommand(t *testing.T) {
 		},
 	)
 
-	t.Run(
-		"parses diagnostics flag and executes diagnostics hook only",
-		func(t *testing.T) {
-			var diagnosticsHookCalled bool
-			err := runBuildCommand(
-				&vormaruntime.Vorma{},
-				[]string{"--diagnostics"},
-				buildCommandHooks{
-					configureBuildEnvironment: func(*vormaruntime.Vorma) {
-						t.Fatal(
-							"did not expect configureBuildEnvironment in diagnostics mode",
-						)
-					},
-					runBuildHook: func(*vormaruntime.Vorma, bool) error {
-						t.Fatal(
-							"did not expect runBuildHook in diagnostics mode",
-						)
-						return nil
-					},
-					runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
-						t.Fatal(
-							"did not expect runProdHookPostProcessing in diagnostics mode",
-						)
-						return nil
-					},
-					printDiagnostics: func(*vormaruntime.Vorma) error {
-						diagnosticsHookCalled = true
-						return nil
-					},
-					runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
-						t.Fatal(
-							"did not expect runFullBuild in diagnostics mode",
-						)
-						return nil
-					},
-				},
-			)
-			if err != nil {
-				t.Fatalf("runBuildCommand returned error: %v", err)
-			}
-			if !diagnosticsHookCalled {
-				t.Fatal("expected printDiagnostics hook to be called")
-			}
-		},
-	)
-
-	t.Run(
-		"diagnostics mode returns error when diagnostics hook is missing",
-		func(t *testing.T) {
-			err := runBuildCommand(
-				&vormaruntime.Vorma{},
-				[]string{"--diagnostics"},
-				buildCommandHooks{
-					configureBuildEnvironment: func(*vormaruntime.Vorma) {},
-					runBuildHook: func(*vormaruntime.Vorma, bool) error {
-						return nil
-					},
-					runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
-						return nil
-					},
-					runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
-						return nil
-					},
-				},
-			)
-			if err == nil {
-				t.Fatal("expected diagnostics-mode hook validation error")
-			}
-			if !strings.Contains(
-				err.Error(),
-				"printDiagnostics is required in diagnostics mode",
-			) {
-				t.Fatalf(
-					"error = %q, expected missing diagnostics-hook context",
-					err,
-				)
-			}
-		},
-	)
-
 	t.Run("returns parse error with context", func(t *testing.T) {
 		err := runBuildCommand(
 			&vormaruntime.Vorma{},
@@ -353,7 +266,6 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 		runBuildHookCalled            bool
 		runBuildHookDevelopmentMode   bool
 		runProdHookPostProcessingCall bool
-		printDiagnosticsCalled        bool
 		runFullBuildCalled            bool
 		runFullBuildDevelopmentMode   bool
 		runFullBuildSkipGoBinaryBuild bool
@@ -371,10 +283,6 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 			},
 			runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
 				calls.runProdHookPostProcessingCall = true
-				return nil
-			},
-			printDiagnostics: func(*vormaruntime.Vorma) error {
-				calls.printDiagnosticsCalled = true
 				return nil
 			},
 			runFullBuild: func(_ *vormaruntime.Vorma, isDev bool, skipBinary bool) error {
@@ -421,9 +329,6 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 					"did not expect runProdHookPostProcessing in dev hook mode",
 				)
 			}
-			if calls.printDiagnosticsCalled {
-				t.Fatal("did not expect printDiagnostics in hook mode")
-			}
 			if calls.runFullBuildCalled {
 				t.Fatal("did not expect runFullBuild in hook mode")
 			}
@@ -453,128 +358,11 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 					"expected runBuildHook to receive development mode = false",
 				)
 			}
-			if calls.printDiagnosticsCalled {
-				t.Fatal("did not expect printDiagnostics in hook mode")
-			}
 			if calls.runFullBuildCalled {
 				t.Fatal("did not expect runFullBuild in hook mode")
 			}
 		},
 	)
-
-	t.Run("diagnostics mode runs diagnostics hook only", func(t *testing.T) {
-		var calls observedCalls
-		err := runWithOptions(
-			buildCommandOptions{
-				printDiagnosticsOnly: true,
-			},
-			newHooks(&calls),
-		)
-		if err != nil {
-			t.Fatalf("runBuildCommandWithOptions returned error: %v", err)
-		}
-		if !calls.printDiagnosticsCalled {
-			t.Fatal("expected printDiagnostics to be called")
-		}
-		if calls.configureCalled || calls.runBuildHookCalled ||
-			calls.runProdHookPostProcessingCall {
-			t.Fatalf(
-				"did not expect hook/build callbacks in diagnostics mode: %#v",
-				calls,
-			)
-		}
-		if calls.runFullBuildCalled {
-			t.Fatal("did not expect runFullBuild in diagnostics mode")
-		}
-	})
-
-	t.Run(
-		"diagnostics mode takes precedence over hook and full-build options",
-		func(t *testing.T) {
-			var calls observedCalls
-			err := runWithOptions(
-				buildCommandOptions{
-					runInDevelopmentMode:  true,
-					runHookOnly:           true,
-					printDiagnosticsOnly:  true,
-					skipGoBinaryBuildStep: true,
-				},
-				newHooks(&calls),
-			)
-			if err != nil {
-				t.Fatalf("runBuildCommandWithOptions returned error: %v", err)
-			}
-			if !calls.printDiagnosticsCalled {
-				t.Fatal("expected printDiagnostics to be called")
-			}
-			if calls.configureCalled || calls.runBuildHookCalled ||
-				calls.runProdHookPostProcessingCall {
-				t.Fatalf(
-					"did not expect hook-mode callbacks in diagnostics precedence mode: %#v",
-					calls,
-				)
-			}
-			if calls.runFullBuildCalled {
-				t.Fatal(
-					"did not expect runFullBuild when diagnostics is requested",
-				)
-			}
-		},
-	)
-
-	t.Run(
-		"diagnostics mode returns error when diagnostics hook is missing",
-		func(t *testing.T) {
-			var calls observedCalls
-			hooks := newHooks(&calls)
-			hooks.printDiagnostics = nil
-
-			err := runWithOptions(
-				buildCommandOptions{
-					printDiagnosticsOnly: true,
-				},
-				hooks,
-			)
-			if err == nil {
-				t.Fatal("expected missing diagnostics hook error")
-			}
-			if !strings.Contains(
-				err.Error(),
-				"printDiagnostics is required in diagnostics mode",
-			) {
-				t.Fatalf(
-					"error = %q, expected missing diagnostics hook context",
-					err,
-				)
-			}
-		},
-	)
-
-	t.Run("diagnostics mode wraps diagnostics hook errors", func(t *testing.T) {
-		expectedErr := errors.New("diagnostics failed")
-		var calls observedCalls
-		hooks := newHooks(&calls)
-		hooks.printDiagnostics = func(*vormaruntime.Vorma) error {
-			calls.printDiagnosticsCalled = true
-			return expectedErr
-		}
-
-		err := runWithOptions(
-			buildCommandOptions{
-				printDiagnosticsOnly: true,
-			},
-			hooks,
-		)
-		if err == nil {
-			t.Fatal("expected diagnostics hook error")
-		}
-		if !strings.Contains(err.Error(), "print diagnostics failed") {
-			t.Fatalf("error = %q, expected diagnostics error context", err)
-		}
-		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected wrapped diagnostics hook error", err)
-		}
-	})
 
 	t.Run("hook prod mode returns post-processing error", func(t *testing.T) {
 		expectedErr := errors.New("post-processing failed")
@@ -657,9 +445,6 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 		}
 		if calls.runBuildHookCalled || calls.runProdHookPostProcessingCall {
 			t.Fatal("did not expect hook callbacks in full build mode")
-		}
-		if calls.printDiagnosticsCalled {
-			t.Fatal("did not expect printDiagnostics in full build mode")
 		}
 		if !calls.runFullBuildCalled {
 			t.Fatal("expected runFullBuild to be called")

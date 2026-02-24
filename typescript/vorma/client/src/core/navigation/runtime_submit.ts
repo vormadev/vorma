@@ -7,7 +7,12 @@ import {
 	type RedirectData,
 } from "../redirects.ts";
 import { syncBuildIDFromResponse } from "./runtime_navigation_successful_runtime.ts";
-import type { NavigateProps, SubmissionEntry, SubmitOptions } from "./types.ts";
+import type {
+	NavigateProps,
+	SubmissionEntry,
+	SubmitOptions,
+	SubmitResult,
+} from "./types.ts";
 import { hasSubmissionOperationOwnership } from "./types.ts";
 
 type SubmissionLifecycle = {
@@ -166,10 +171,6 @@ function createSubmissionLifecycle(
 		finish,
 	};
 }
-
-type SubmitResult<T> =
-	| { success: true; data: T }
-	| { success: false; error: string };
 
 function getAbortedSubmitResult<T>(): SubmitResult<T> {
 	return { success: false, error: "Aborted" };

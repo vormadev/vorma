@@ -5,9 +5,8 @@ import {
 	decideSuccessfulNavigationCleanupExecutionPlan,
 	decideSuccessfulNavigationPostAssetExecutionPlan,
 	decideSuccessfulNavigationPostAssetSideEffectPlan,
-	decideSuccessfulNavigationPostWaitingExecutionPlan,
-	decideSuccessfulNavigationPreAssetWaitExecutionPlan,
 	decideSuccessfulNavigationPreWaitingExecutionPlan,
+	resolveNavigationEntryLifecycleState,
 	toPublicNavigateResult,
 } from "../../core/navigation/runtime_navigation_outcome_state_machine.ts";
 import type {
@@ -206,6 +205,30 @@ describe("navigation outcome state machine", () => {
 		expect(plan.reason).toBe("redirect_effectuate");
 	});
 
+	it("ignores redirect outcomes for stale revalidation entries", () => {
+		const redirectOutcome = createRedirectOutcome();
+		const staleRevalidationEntry = createEntry({
+			type: "revalidation",
+			intent: "revalidate",
+			originUrl: "http://localhost:3000/origin",
+			targetUrl: "http://localhost:3000/current",
+		});
+
+		const plan = decideNavigationOutcomeExecutionPlan({
+			outcome: redirectOutcome,
+			targetUrl: staleRevalidationEntry.targetUrl,
+			entry: staleRevalidationEntry,
+			expectedOperationID: staleRevalidationEntry.operationID,
+			currentHref: "http://localhost:3000/other",
+		});
+
+		expect(plan).toEqual({
+			type: "deleteAndStop",
+			targetUrl: staleRevalidationEntry.targetUrl,
+			reason: "redirect_ignored_for_prefetch_or_stale_revalidation",
+		});
+	});
+
 	it("emits success execution metadata for current non-prefetch entries", () => {
 		const successOutcome = createSuccessOutcome();
 		const entry = createEntry({
@@ -251,6 +274,53 @@ describe("navigation outcome state machine", () => {
 });
 
 describe("successful outcome stage plans", () => {
+	it("classifies lifecycle state from ownership/prefetch/staleness in one seam", () => {
+		const currentEntry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		expect(
+			resolveNavigationEntryLifecycleState({
+				entry: currentEntry,
+				isCurrentEntry: false,
+				currentHref: "http://localhost:3000/current",
+			}),
+		).toBe("non_current");
+
+		const idlePrefetchEntry = createEntry({
+			type: "prefetch",
+			intent: "none",
+		});
+		expect(
+			resolveNavigationEntryLifecycleState({
+				entry: idlePrefetchEntry,
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
+			}),
+		).toBe("idle_prefetch");
+
+		const staleRevalidationEntry = createEntry({
+			type: "revalidation",
+			intent: "revalidate",
+			originUrl: "http://localhost:3000/origin",
+		});
+		expect(
+			resolveNavigationEntryLifecycleState({
+				entry: staleRevalidationEntry,
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/other",
+			}),
+		).toBe("stale_revalidation");
+
+		expect(
+			resolveNavigationEntryLifecycleState({
+				entry: currentEntry,
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
+			}),
+		).toBe("current_fresh");
+	});
+
 	it("pre-waiting stops when entry is no longer current", () => {
 		const entry = createEntry({
 			type: "userNavigation",
@@ -286,22 +356,20 @@ describe("successful outcome stage plans", () => {
 		});
 	});
 
-	it("post-waiting continues only when current entry remains current", () => {
+	it("pre-waiting continues for idle prefetch entries that remain current", () => {
+		const entry = createEntry({
+			type: "prefetch",
+			intent: "none",
+		});
 		expect(
-			decideSuccessfulNavigationPostWaitingExecutionPlan({
+			decideSuccessfulNavigationPreWaitingExecutionPlan({
+				entry,
 				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
 			}),
 		).toEqual({
 			type: "continue",
-			reason: "post_waiting_entry_current",
-		});
-		expect(
-			decideSuccessfulNavigationPostWaitingExecutionPlan({
-				isCurrentEntry: false,
-			}),
-		).toEqual({
-			type: "stop",
-			reason: "post_waiting_entry_lost",
+			reason: "entry_current_and_fresh",
 		});
 	});
 
@@ -334,6 +402,25 @@ describe("successful outcome stage plans", () => {
 		).toEqual({
 			type: "completeWithoutRender",
 			reason: "post_asset_idle_prefetch",
+		});
+	});
+
+	it("post-asset stops stale revalidation entries after waiting", () => {
+		const staleRevalidationEntry = createEntry({
+			type: "revalidation",
+			intent: "revalidate",
+			originUrl: "http://localhost:3000/origin",
+		});
+
+		expect(
+			decideSuccessfulNavigationPostAssetExecutionPlan({
+				entry: staleRevalidationEntry,
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/other",
+			}),
+		).toEqual({
+			type: "stop",
+			reason: "post_asset_stale_revalidation",
 		});
 	});
 
@@ -439,26 +526,6 @@ describe("successful outcome stage plans", () => {
 			shouldCommitClientLoadersState: false,
 			shouldSyncBuildIDAfterAssetWait: false,
 			shouldApplyResponseArtifacts: true,
-		});
-	});
-
-	it("decides pre-asset wait execution through one reducer seam", () => {
-		expect(
-			decideSuccessfulNavigationPreAssetWaitExecutionPlan({
-				buildIDSyncTiming: "before_asset_wait",
-			}),
-		).toEqual({
-			shouldSyncBuildIDBeforeAssetWait: true,
-			reason: "pre_asset_wait_sync_build_id_before_asset_wait",
-		});
-
-		expect(
-			decideSuccessfulNavigationPreAssetWaitExecutionPlan({
-				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
-			}),
-		).toEqual({
-			shouldSyncBuildIDBeforeAssetWait: false,
-			reason: "pre_asset_wait_skip_sync_build_id_before_asset_wait",
 		});
 	});
 });

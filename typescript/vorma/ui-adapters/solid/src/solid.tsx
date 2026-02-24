@@ -3,17 +3,19 @@ import {
 	createMemo,
 	createSignal,
 	onCleanup,
+	onMount,
 	Show,
 	type JSX,
 	type ValidComponent,
 } from "solid-js";
 import { Dynamic, render as renderSolid } from "solid-js/web";
-import { addLocationListener, addRouteChangeListener } from "vorma/client";
 import {
-	applyScrollState,
 	buildInitialRouteOutletStoreState,
 	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
+	createRouteOutletRuntimeListenerInitializer,
+	resolveRouteOutletBranchRenderState,
+	shouldRemountRouteOutletComponentMount,
 	type RouteOutletBranchInputState,
 	type RouteOutletStoreState,
 } from "vorma/client/__internal";
@@ -46,10 +48,6 @@ const location = () => locationState();
 
 export { location };
 
-function readRouteOutletBranchInputSignals(): RouteOutletBranchInputStateValue {
-	return routeOutletBranchInputStateSignal();
-}
-
 function syncStoreState(): void {
 	const previousStoreState: StoreState = {
 		navigation: navigationState(),
@@ -76,25 +74,9 @@ function syncStoreState(): void {
 	}
 }
 
-let isInited = false;
-
-function initUIListeners(): void {
-	if (isInited) {
-		return;
-	}
-	isInited = true;
-
-	addRouteChangeListener((event) => {
-		syncStoreState();
-		window.requestAnimationFrame(() => {
-			applyScrollState(event.detail.__scrollState);
-		});
-	});
-
-	addLocationListener(() => {
-		syncStoreState();
-	});
-}
+const initUIListeners = createRouteOutletRuntimeListenerInitializer({
+	syncStoreState,
+});
 
 /////////////////////////////////////////////////////////////////////
 /////// COMPONENT
@@ -191,16 +173,14 @@ function VormaRouteComponentMount(
 		const nextRouteKey = props.getCurrentRouteKey();
 		const nextRouteComponent = props.getCurrentRouteComponent();
 		const mountContainer = mountContainerEl();
-		const didComponentIdentityChange =
-			previousObservedRouteComponent !== undefined &&
-			previousObservedRouteComponent !== nextRouteComponent;
-		const shouldRemountForComponentIdentityChange =
-			didComponentIdentityChange;
-		const didRouteKeyChange =
-			typeof previousRouteKey === "string" &&
-			previousRouteKey !== nextRouteKey;
-		const shouldRemountForRouteKeyChange =
-			props.idx === 0 && didRouteKeyChange;
+		const shouldRemountMountedRouteComponent =
+			shouldRemountRouteOutletComponentMount({
+				idx: props.idx,
+				previousRouteKey,
+				nextRouteKey,
+				previousRouteComponent: previousObservedRouteComponent,
+				nextRouteComponent,
+			});
 		previousObservedRouteComponent = nextRouteComponent;
 		if (!mountContainer) {
 			return nextRouteKey;
@@ -214,10 +194,7 @@ function VormaRouteComponentMount(
 			return nextRouteKey;
 		}
 
-		if (
-			shouldRemountForRouteKeyChange ||
-			shouldRemountForComponentIdentityChange
-		) {
+		if (shouldRemountMountedRouteComponent) {
 			disposeMountedRouteComponent();
 			disposeMountedRouteComponent = undefined;
 			setMountedRouteComponent(() => {
@@ -291,14 +268,17 @@ export function VormaRootOutlet(
 ): JSX.Element {
 	const idx = props.idx ?? 0;
 
-	if (idx === 0) {
+	onMount(() => {
+		if (idx !== 0) {
+			return;
+		}
 		initUIListeners();
 		syncStoreState();
-	}
+	});
 
 	const routeOutletBranchInputState =
 		createMemo<RouteOutletBranchInputStateValue>(() => {
-			return readRouteOutletBranchInputSignals();
+			return routeOutletBranchInputStateSignal();
 		});
 	const routeOutletBranchState = createMemo(() => {
 		return buildRouteOutletBranchState({
@@ -306,33 +286,36 @@ export function VormaRootOutlet(
 			idx,
 		});
 	});
+	const routeOutletBranchRenderState = createMemo(() => {
+		return resolveRouteOutletBranchRenderState({
+			branchState: routeOutletBranchState(),
+		});
+	});
 	const isErrorIdx = createMemo(() => {
-		return routeOutletBranchState().isErrorIdx;
+		return routeOutletBranchRenderState().renderKind === "error";
 	});
 	const currentRouteComponent = createMemo<ValidComponent | undefined>(() => {
-		if (isErrorIdx()) {
+		const branchRenderState = routeOutletBranchRenderState();
+		if (branchRenderState.renderKind !== "component") {
 			return undefined;
 		}
-		return routeOutletBranchState().currentComponent as
-			| ValidComponent
-			| undefined;
+		return branchRenderState.currentComponent as ValidComponent | undefined;
 	});
 	const currentRouteKey = createMemo(() => {
-		return routeOutletBranchState().currentRouteKey;
+		return routeOutletBranchRenderState().currentRouteKey;
 	});
 	const nextOutletRouteKey = createMemo(() => {
-		return routeOutletBranchState().nextRouteKey;
+		return routeOutletBranchRenderState().nextRouteKey;
 	});
 	const shouldFallbackOutlet = createMemo(() => {
-		return routeOutletBranchState().shouldFallbackOutlet;
+		return routeOutletBranchRenderState().renderKind === "fallback";
 	});
 	const errorComponent = createMemo<ValidComponent | undefined>(() => {
-		if (!isErrorIdx()) {
+		const branchRenderState = routeOutletBranchRenderState();
+		if (branchRenderState.renderKind !== "error") {
 			return undefined;
 		}
-		return routeOutletBranchState().errorComponent as
-			| ValidComponent
-			| undefined;
+		return branchRenderState.errorComponent as ValidComponent | undefined;
 	});
 
 	const Outlet = (localProps?: Record<string, any>): JSX.Element => {

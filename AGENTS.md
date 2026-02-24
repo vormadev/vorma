@@ -32,7 +32,17 @@ user to run it manually.
 Every package must have precisely one source code file with fewer than 2,000
 lines of code. If it's over 2,000 lines, it needs to be split into subpackages,
 and if those are still over 2,000 lines, they need to be split into
-sub-subpackages.
+sub-subpackages. Packages using different build tags to accomplish legitimate
+goals are exempted solely to the extent necessary to apply such build tags.
+
+When appropriate to split up a large file into organized chunks (while keeping
+it a single file), you should add comments using the following shape:
+
+```
+/////////////////////////////////////////////////////////////////////
+/////// Applicable Topic Or Description
+/////////////////////////////////////////////////////////////////////
+```
 
 ### Never Alias Internal Go Package Names
 

@@ -210,8 +210,16 @@ func (manager *Manager) Broadcast(payload Payload) {
 	if manager == nil {
 		return
 	}
+
+	select {
+	case <-manager.closed:
+		return
+	default:
+	}
+
 	select {
 	case manager.broadcastQueue <- payload:
+	case <-manager.closed:
 	default:
 		manager.log.Warn(
 			"dropping broadcast payload because queue is full",

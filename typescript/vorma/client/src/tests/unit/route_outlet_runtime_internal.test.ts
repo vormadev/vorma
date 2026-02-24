@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getClientRuntimeRenderStateMock, getRouterDataMock, getLocationMock } =
-	vi.hoisted(() => {
-		return {
-			getClientRuntimeRenderStateMock: vi.fn(),
-			getRouterDataMock: vi.fn(),
-			getLocationMock: vi.fn(),
-		};
-	});
+const {
+	getClientRuntimeRenderStateMock,
+	getRouterDataMock,
+	getRuntimeLocationStateMock,
+} = vi.hoisted(() => {
+	return {
+		getClientRuntimeRenderStateMock: vi.fn(),
+		getRouterDataMock: vi.fn(),
+		getRuntimeLocationStateMock: vi.fn(),
+	};
+});
 
 vi.mock("../../app/context.ts", async (importOriginal) => {
 	const actual =
@@ -19,11 +22,12 @@ vi.mock("../../app/context.ts", async (importOriginal) => {
 	};
 });
 
-vi.mock("../../client.ts", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../../client.ts")>();
+vi.mock("../../platform/location.ts", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../platform/location.ts")>();
 	return {
 		...actual,
-		getLocation: getLocationMock,
+		getRuntimeLocationState: getRuntimeLocationStateMock,
 	};
 });
 
@@ -34,12 +38,14 @@ import {
 	buildNextRouteOutletStoreStateFromRuntime,
 	buildRouteOutletBranchState,
 	buildRouteOutletRouteKey,
+	resolveRouteOutletBranchRenderState,
+	shouldRemountRouteOutletComponentMount,
 } from "../../ui/route_outlet_runtime.ts";
 
 beforeEach(() => {
 	getClientRuntimeRenderStateMock.mockReset();
 	getRouterDataMock.mockReset();
-	getLocationMock.mockReset();
+	getRuntimeLocationStateMock.mockReset();
 
 	const sharedLocationState = { from: "default" };
 	getClientRuntimeRenderStateMock.mockReturnValue({
@@ -59,7 +65,7 @@ beforeEach(() => {
 		params: {},
 		rootData: { root: true },
 	});
-	getLocationMock.mockReturnValue({
+	getRuntimeLocationStateMock.mockReturnValue({
 		pathname: "/",
 		search: "",
 		hash: "",
@@ -119,6 +125,108 @@ describe("route outlet runtime internals", () => {
 		});
 
 		expect(branchState.currentRouteKey).not.toBe(branchState.nextRouteKey);
+	});
+
+	it("resolves branch render state for component, fallback, and error branches", () => {
+		const componentBranchState = buildRouteOutletBranchState({
+			navigationState: {
+				loaderCount: 2,
+				outermostErrorIdx: undefined,
+				activeComponents: [() => "A", () => "B"],
+				activeErrorBoundary: undefined,
+				importURLs: ["/routes/a.tsx", "/routes/b.tsx"],
+				exportKeys: ["Route", "Route"],
+			},
+			idx: 0,
+		});
+		expect(
+			resolveRouteOutletBranchRenderState({
+				branchState: componentBranchState,
+			}),
+		).toMatchObject({
+			renderKind: "component",
+			currentRouteKey: componentBranchState.currentRouteKey,
+			nextRouteKey: componentBranchState.nextRouteKey,
+		});
+
+		const fallbackBranchState = buildRouteOutletBranchState({
+			navigationState: {
+				loaderCount: 2,
+				outermostErrorIdx: undefined,
+				activeComponents: [undefined, () => "Child"],
+				activeErrorBoundary: undefined,
+				importURLs: ["/routes/a.tsx", "/routes/b.tsx"],
+				exportKeys: ["Route", "Route"],
+			},
+			idx: 0,
+		});
+		expect(
+			resolveRouteOutletBranchRenderState({
+				branchState: fallbackBranchState,
+			}),
+		).toEqual({
+			renderKind: "fallback",
+			currentRouteKey: fallbackBranchState.currentRouteKey,
+			nextRouteKey: fallbackBranchState.nextRouteKey,
+		});
+
+		const errorBoundary = () => "ErrorBoundary";
+		const errorBranchState = buildRouteOutletBranchState({
+			navigationState: {
+				loaderCount: 1,
+				outermostErrorIdx: 0,
+				activeComponents: [() => "Root"],
+				activeErrorBoundary: errorBoundary,
+				importURLs: ["/routes/root.tsx"],
+				exportKeys: ["Route"],
+			},
+			idx: 0,
+		});
+		expect(
+			resolveRouteOutletBranchRenderState({
+				branchState: errorBranchState,
+			}),
+		).toEqual({
+			renderKind: "error",
+			errorComponent: errorBoundary,
+			currentRouteKey: errorBranchState.currentRouteKey,
+			nextRouteKey: errorBranchState.nextRouteKey,
+		});
+	});
+
+	it("remount policy remounts on component identity change and root key changes only", () => {
+		const previousComponent = () => "A";
+		const nextComponent = () => "B";
+
+		expect(
+			shouldRemountRouteOutletComponentMount({
+				idx: 1,
+				previousRouteKey: "key-a",
+				nextRouteKey: "key-a",
+				previousRouteComponent: previousComponent,
+				nextRouteComponent: nextComponent,
+			}),
+		).toBe(true);
+
+		expect(
+			shouldRemountRouteOutletComponentMount({
+				idx: 0,
+				previousRouteKey: "key-a",
+				nextRouteKey: "key-b",
+				previousRouteComponent: previousComponent,
+				nextRouteComponent: previousComponent,
+			}),
+		).toBe(true);
+
+		expect(
+			shouldRemountRouteOutletComponentMount({
+				idx: 1,
+				previousRouteKey: "key-a",
+				nextRouteKey: "key-b",
+				previousRouteComponent: previousComponent,
+				nextRouteComponent: previousComponent,
+			}),
+		).toBe(false);
 	});
 
 	it("compares location state by pathname/search/hash and state identity", () => {
@@ -256,7 +364,7 @@ describe("route outlet runtime internals", () => {
 			params: {},
 			rootData: { root: true },
 		});
-		getLocationMock.mockReturnValue({
+		getRuntimeLocationStateMock.mockReturnValue({
 			pathname: "/",
 			search: "",
 			hash: "",
@@ -290,7 +398,7 @@ describe("route outlet runtime internals", () => {
 			params: {},
 			rootData: { root: true },
 		});
-		getLocationMock.mockReturnValue({
+		getRuntimeLocationStateMock.mockReturnValue({
 			pathname: "/",
 			search: "",
 			hash: "",
@@ -332,7 +440,7 @@ describe("route outlet runtime internals", () => {
 			params: {},
 			rootData: { root: true },
 		});
-		getLocationMock.mockReturnValue({
+		getRuntimeLocationStateMock.mockReturnValue({
 			pathname: "/",
 			search: "",
 			hash: "",
@@ -372,7 +480,7 @@ describe("route outlet runtime internals", () => {
 			params: {},
 			rootData: { root: true },
 		});
-		getLocationMock.mockReturnValue({
+		getRuntimeLocationStateMock.mockReturnValue({
 			pathname: "/docs",
 			search: "?tab=usage",
 			hash: "#section",

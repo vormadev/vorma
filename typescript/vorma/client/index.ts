@@ -38,6 +38,7 @@ export {
 	submit,
 	vormaNavigate,
 	type SubmitOptions,
+	type SubmitResult,
 } from "./src/client.ts";
 export {
 	revalidateOnWindowFocus,

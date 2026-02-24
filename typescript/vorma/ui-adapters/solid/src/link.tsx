@@ -7,11 +7,11 @@ import type {
 import {
 	buildTypedLinkDisplayName,
 	buildTypedLinkResolvedProps,
+	makeFinalLinkProps,
 	type TypedAdapterLinkDefaultProps,
 	type TypedAdapterLinkProps,
 	type VormaAppConfig,
 	type VormaLinkPropsBase,
-	makeFinalLinkProps,
 } from "vorma/client/__internal";
 
 type VormaLinkEvent = Event;

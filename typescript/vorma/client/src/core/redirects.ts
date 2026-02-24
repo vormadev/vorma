@@ -121,18 +121,6 @@ function buildShouldRedirectFromHref(props: {
 	});
 }
 
-function parseVormaReloadRedirect(
-	response: Response,
-	latestBuildID: string,
-): RedirectData | null {
-	return parseHeaderRedirect({
-		response,
-		headerName: "X-Vorma-Reload",
-		latestBuildID,
-		shouldRedirectStrategy: "hard",
-	});
-}
-
 function parseBrowserRedirect(
 	response: Response,
 	latestBuildID: string,
@@ -161,18 +149,6 @@ function parseBrowserRedirect(
 	return shouldRedirectData;
 }
 
-function parseClientRedirectHeader(
-	response: Response,
-	latestBuildID: string,
-): RedirectData | null {
-	return parseHeaderRedirect({
-		response,
-		headerName: "X-Client-Redirect",
-		latestBuildID,
-		normalizeToAbsoluteHref: true,
-	});
-}
-
 function parseHeaderRedirect(props: {
 	response: Response;
 	headerName: "X-Vorma-Reload" | "X-Client-Redirect";
@@ -192,17 +168,6 @@ function parseHeaderRedirect(props: {
 		normalizeToAbsoluteHref: props.normalizeToAbsoluteHref,
 		source: props.headerName,
 	});
-}
-
-function parseResponseForRedirectData(
-	response: Response,
-	latestBuildID: string,
-): RedirectData | null {
-	return (
-		parseVormaReloadRedirect(response, latestBuildID) ??
-		parseBrowserRedirect(response, latestBuildID) ??
-		parseClientRedirectHeader(response, latestBuildID)
-	);
 }
 
 function canIncludeBodyForMethod(method: string | undefined): boolean {
@@ -403,9 +368,19 @@ export async function handleRedirects(props: {
 	}
 
 	const latestBuildID = getBuildIDFromResponse(requestFlow.response);
-	const redirectData = parseResponseForRedirectData(
-		requestFlow.response,
-		latestBuildID,
-	);
+	const redirectData =
+		parseHeaderRedirect({
+			response: requestFlow.response,
+			headerName: "X-Vorma-Reload",
+			latestBuildID,
+			shouldRedirectStrategy: "hard",
+		}) ??
+		parseBrowserRedirect(requestFlow.response, latestBuildID) ??
+		parseHeaderRedirect({
+			response: requestFlow.response,
+			headerName: "X-Client-Redirect",
+			latestBuildID,
+			normalizeToAbsoluteHref: true,
+		});
 	return { redirectData, response: requestFlow.response };
 }

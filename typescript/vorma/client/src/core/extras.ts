@@ -125,6 +125,38 @@ function resolveHotModuleRuntime(
 	return isHotModuleRuntime(fallbackHot) ? fallbackHot : undefined;
 }
 
+function normalizeModulePathnameForHMR(rawURL: string): string {
+	const normalizedURL = new URL(rawURL, location.href);
+	normalizedURL.search = "";
+	return normalizedURL.pathname;
+}
+
+function shouldRefreshClientLoadersForTrackedHMRUpdate(props: {
+	updates: Array<{ type: string; path: string }>;
+	trackedPathname: string;
+	trackedPatterns: Set<string>;
+}): boolean {
+	const { updates, trackedPathname, trackedPatterns } = props;
+	const hasMatchingModuleUpdate = updates.some((update) => {
+		if (update.type !== "js-update") {
+			return false;
+		}
+
+		return normalizeModulePathnameForHMR(update.path) === trackedPathname;
+	});
+	if (!hasMatchingModuleUpdate) {
+		return false;
+	}
+
+	const matchedPatterns = __vormaClientGlobal.get("matchedPatterns");
+	const matchedPatternList = Array.isArray(matchedPatterns)
+		? matchedPatterns
+		: [];
+	return Array.from(trackedPatterns).some((trackedPattern) =>
+		matchedPatternList.includes(trackedPattern),
+	);
+}
+
 function getRegisteredPathnamesForRuntime(
 	hotRuntime: HotModuleRuntime,
 ): Set<string> {
@@ -171,58 +203,43 @@ export function initHMR() {
 
 		runClientLoadersAfterHMRUpdate = (importMeta, pattern) => {
 			const hot = resolveHotModuleRuntime(importMeta);
-			if (import.meta.env.DEV && hot) {
-				const registeredPathnames =
-					getRegisteredPathnamesForRuntime(hot);
-				const thisURL = new URL(importMeta.url, location.href);
-				thisURL.search = "";
-				const thisPathname = thisURL.pathname;
-				const trackedPatterns = getTrackedPatternsForRuntimePathname(
-					hot,
-					thisPathname,
-				);
-				trackedPatterns.add(pattern);
+			if (!hot) {
+				return;
+			}
 
-				const alreadyRegistered = registeredPathnames.has(thisPathname);
-				if (alreadyRegistered) {
+			const registeredPathnames = getRegisteredPathnamesForRuntime(hot);
+			const trackedPathname = normalizeModulePathnameForHMR(
+				importMeta.url,
+			);
+			const trackedPatterns = getTrackedPatternsForRuntimePathname(
+				hot,
+				trackedPathname,
+			);
+			trackedPatterns.add(pattern);
+
+			if (registeredPathnames.has(trackedPathname)) {
+				return;
+			}
+
+			registeredPathnames.add(trackedPathname);
+
+			hot.on("vite:afterUpdate", ({ updates }) => {
+				if (
+					!shouldRefreshClientLoadersForTrackedHMRUpdate({
+						updates,
+						trackedPathname,
+						trackedPatterns,
+					})
+				) {
 					return;
 				}
 
-				registeredPathnames.add(thisPathname);
-
-				hot.on("vite:afterUpdate", (props) => {
-					for (const update of props.updates) {
-						if (update.type === "js-update") {
-							const updateURL = new URL(
-								update.path,
-								location.href,
-							);
-							updateURL.search = "";
-							if (updateURL.pathname === thisURL.pathname) {
-								const matchedPatterns =
-									__vormaClientGlobal.get("matchedPatterns");
-								const matchedPatternList = Array.isArray(
-									matchedPatterns,
-								)
-									? matchedPatterns
-									: [];
-								const shouldRefreshClientLoaders = Array.from(
-									trackedPatterns,
-								).some((trackedPattern) =>
-									matchedPatternList.includes(trackedPattern),
-								);
-								if (shouldRefreshClientLoaders) {
-									logInfo(
-										"Refreshing client loaders due to change in pattern:",
-										Array.from(trackedPatterns).join(", "),
-									);
-									devTimeSetupClientLoadersDebounced();
-								}
-							}
-						}
-					}
-				});
-			}
+				logInfo(
+					"Refreshing client loaders due to change in pattern:",
+					Array.from(trackedPatterns).join(", "),
+				);
+				devTimeSetupClientLoadersDebounced();
+			});
 		};
 	}
 }
@@ -252,12 +269,22 @@ type ParsedGlobalLoadingIndicatorConfig = {
 	stopDelayMS: number;
 };
 
-function resolveIncludes(
+function parseGlobalLoadingIndicatorConfig(
 	config: GlobalLoadingIndicatorConfig,
-	includesOption: GlobalLoadingIndicatorIncludesOption,
-) {
-	const isArray = Array.isArray(config.include);
-	return isArray && config.include?.includes(includesOption);
+): ParsedGlobalLoadingIndicatorConfig {
+	const includesAll = !config.include || config.include === "all";
+	const includeList =
+		!includesAll && Array.isArray(config.include) ? config.include : [];
+
+	return {
+		includesAll,
+		includesNavigations: includesAll || includeList.includes("navigations"),
+		includesSubmissions: includesAll || includeList.includes("submissions"),
+		includesRevalidations:
+			includesAll || includeList.includes("revalidations"),
+		startDelayMS: config.startDelayMS ?? DEFAULT_DELAY,
+		stopDelayMS: config.stopDelayMS ?? DEFAULT_DELAY,
+	};
 }
 
 export function setupGlobalLoadingIndicator(
@@ -265,18 +292,7 @@ export function setupGlobalLoadingIndicator(
 ) {
 	let gliDebounceStartTimer: number | null = null;
 	let gliDebounceStopTimer: number | null = null;
-	const includesAll = !config.include || config.include === "all";
-	const pc: ParsedGlobalLoadingIndicatorConfig = {
-		includesAll,
-		includesNavigations:
-			resolveIncludes(config, "navigations") || includesAll,
-		includesSubmissions:
-			resolveIncludes(config, "submissions") || includesAll,
-		includesRevalidations:
-			resolveIncludes(config, "revalidations") || includesAll,
-		startDelayMS: config.startDelayMS ?? DEFAULT_DELAY,
-		stopDelayMS: config.stopDelayMS ?? DEFAULT_DELAY,
-	};
+	const pc = parseGlobalLoadingIndicatorConfig(config);
 	function clearStartTimer() {
 		if (gliDebounceStartTimer !== null) {
 			window.clearTimeout(gliDebounceStartTimer);

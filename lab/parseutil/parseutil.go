@@ -35,7 +35,10 @@ func MustPackageJSONFromString(content string) ([]string, int, string) {
 	if err = json.Unmarshal([]byte(content), &versionMap); err != nil {
 		panic(err)
 	}
-	currentVersion := versionMap["version"].(string)
+	currentVersion, ok := versionMap["version"].(string)
+	if !ok {
+		panic("version must be a string")
+	}
 	if currentVersion == "" {
 		panic("version not found")
 	}

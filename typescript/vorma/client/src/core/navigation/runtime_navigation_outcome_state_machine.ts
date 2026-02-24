@@ -10,7 +10,6 @@ const navigationOutcomeExecutionReason = {
 		entryNotFound: "entry_not_found",
 		staleControlOwnership: "stale_control_ownership",
 		nonCurrentEntry: "non_current_entry",
-		postWaitingEntryLost: "post_waiting_entry_lost",
 		postAssetEntryLost: "post_asset_entry_lost",
 		postAssetStaleRevalidation: "post_asset_stale_revalidation",
 	},
@@ -36,10 +35,6 @@ const successfulNavigationLifecycleReason = {
 				.staleRevalidationPreWaiting,
 		entryCurrentAndFresh: "entry_current_and_fresh",
 	},
-	postWaiting: {
-		entryLost: navigationOutcomeExecutionReason.stop.postWaitingEntryLost,
-		entryCurrent: "post_waiting_entry_current",
-	},
 	postAsset: {
 		entryLost: navigationOutcomeExecutionReason.stop.postAssetEntryLost,
 		staleRevalidation:
@@ -51,12 +46,6 @@ const successfulNavigationLifecycleReason = {
 		successfulNavigation: "successful_navigation_cleanup",
 		skippedIdlePrefetchOrNonCurrentEntry:
 			"cleanup_skipped_idle_prefetch_or_non_current_entry",
-	},
-	preAssetWait: {
-		syncBuildIDBeforeAssetWait:
-			"pre_asset_wait_sync_build_id_before_asset_wait",
-		skipSyncBuildIDBeforeAssetWait:
-			"pre_asset_wait_skip_sync_build_id_before_asset_wait",
 	},
 	internalNavigateResult: {
 		navigatePromiseRejected: "navigate_promise_rejected",
@@ -77,10 +66,6 @@ type SuccessfulNavigationPreWaitingDeleteAndStopReason =
 	typeof successfulNavigationLifecycleReason.preWaiting.staleRevalidationPreWaiting;
 type SuccessfulNavigationPreWaitingContinueReason =
 	typeof successfulNavigationLifecycleReason.preWaiting.entryCurrentAndFresh;
-type SuccessfulNavigationPostWaitingStopReason =
-	typeof successfulNavigationLifecycleReason.postWaiting.entryLost;
-type SuccessfulNavigationPostWaitingContinueReason =
-	typeof successfulNavigationLifecycleReason.postWaiting.entryCurrent;
 type SuccessfulNavigationPostAssetStopReason =
 	| typeof successfulNavigationLifecycleReason.postAsset.entryLost
 	| typeof successfulNavigationLifecycleReason.postAsset.staleRevalidation;
@@ -92,10 +77,6 @@ type SuccessfulNavigationCleanupDeleteReason =
 	typeof successfulNavigationLifecycleReason.cleanup.successfulNavigation;
 type SuccessfulNavigationCleanupSkipReason =
 	typeof successfulNavigationLifecycleReason.cleanup.skippedIdlePrefetchOrNonCurrentEntry;
-type SuccessfulNavigationPreAssetWaitSyncReason =
-	typeof successfulNavigationLifecycleReason.preAssetWait.syncBuildIDBeforeAssetWait;
-type SuccessfulNavigationPreAssetWaitSkipSyncReason =
-	typeof successfulNavigationLifecycleReason.preAssetWait.skipSyncBuildIDBeforeAssetWait;
 
 export function isIdlePrefetchNavigationEntry(entry: NavigationEntry): boolean {
 	return entry.type === "prefetch" && entry.intent === "none";
@@ -113,6 +94,38 @@ export function isStaleRevalidationNavigationEntry(props: {
 			secondHref: entry.originUrl,
 		})
 	);
+}
+
+export type NavigationEntryLifecycleState =
+	| "non_current"
+	| "idle_prefetch"
+	| "stale_revalidation"
+	| "current_fresh";
+
+export function resolveNavigationEntryLifecycleState(props: {
+	entry: NavigationEntry;
+	isCurrentEntry: boolean;
+	currentHref: string;
+}): NavigationEntryLifecycleState {
+	const { entry, isCurrentEntry, currentHref } = props;
+	if (!isCurrentEntry) {
+		return "non_current";
+	}
+
+	if (isIdlePrefetchNavigationEntry(entry)) {
+		return "idle_prefetch";
+	}
+
+	if (
+		isStaleRevalidationNavigationEntry({
+			entry,
+			currentHref,
+		})
+	) {
+		return "stale_revalidation";
+	}
+
+	return "current_fresh";
 }
 
 export type NavigationOutcomeExecutionPlan =
@@ -177,13 +190,17 @@ export function decideNavigationOutcomeExecutionPlan(props: {
 		};
 	}
 
+	const currentOwnedEntryLifecycleState =
+		resolveNavigationEntryLifecycleState({
+			entry,
+			isCurrentEntry: true,
+			currentHref,
+		});
+
 	if (outcome.type === "redirect") {
 		const shouldIgnoreRedirect =
-			isIdlePrefetchNavigationEntry(entry) ||
-			isStaleRevalidationNavigationEntry({
-				entry,
-				currentHref,
-			});
+			currentOwnedEntryLifecycleState === "idle_prefetch" ||
+			currentOwnedEntryLifecycleState === "stale_revalidation";
 		if (shouldIgnoreRedirect) {
 			return {
 				type: "deleteAndStop",
@@ -205,7 +222,7 @@ export function decideNavigationOutcomeExecutionPlan(props: {
 		type: "success",
 		entry,
 		outcome,
-		didNavigate: !isIdlePrefetchNavigationEntry(entry),
+		didNavigate: currentOwnedEntryLifecycleState !== "idle_prefetch",
 		reason: navigationOutcomeExecutionReason.success.process,
 	};
 }
@@ -231,59 +248,34 @@ export function decideSuccessfulNavigationPreWaitingExecutionPlan(props: {
 	currentHref: string;
 }): SuccessfulNavigationPreWaitingExecutionPlan {
 	const { entry, isCurrentEntry, currentHref } = props;
-	if (!isCurrentEntry) {
-		return {
-			type: "stop",
-			reason: successfulNavigationLifecycleReason.preWaiting
-				.nonCurrentEntry,
-		};
+	const entryLifecycleState = resolveNavigationEntryLifecycleState({
+		entry,
+		isCurrentEntry,
+		currentHref,
+	});
+
+	switch (entryLifecycleState) {
+		case "non_current":
+			return {
+				type: "stop",
+				reason: successfulNavigationLifecycleReason.preWaiting
+					.nonCurrentEntry,
+			};
+		case "stale_revalidation":
+			return {
+				type: "deleteAndStop",
+				targetUrl: entry.targetUrl,
+				reason: successfulNavigationLifecycleReason.preWaiting
+					.staleRevalidationPreWaiting,
+			};
+		case "idle_prefetch":
+		case "current_fresh":
+			return {
+				type: "continue",
+				reason: successfulNavigationLifecycleReason.preWaiting
+					.entryCurrentAndFresh,
+			};
 	}
-
-	if (
-		isStaleRevalidationNavigationEntry({
-			entry,
-			currentHref,
-		})
-	) {
-		return {
-			type: "deleteAndStop",
-			targetUrl: entry.targetUrl,
-			reason: successfulNavigationLifecycleReason.preWaiting
-				.staleRevalidationPreWaiting,
-		};
-	}
-
-	return {
-		type: "continue",
-		reason: successfulNavigationLifecycleReason.preWaiting
-			.entryCurrentAndFresh,
-	};
-}
-
-export type SuccessfulNavigationPostWaitingExecutionPlan =
-	| {
-			type: "stop";
-			reason: SuccessfulNavigationPostWaitingStopReason;
-	  }
-	| {
-			type: "continue";
-			reason: SuccessfulNavigationPostWaitingContinueReason;
-	  };
-
-export function decideSuccessfulNavigationPostWaitingExecutionPlan(props: {
-	isCurrentEntry: boolean;
-}): SuccessfulNavigationPostWaitingExecutionPlan {
-	if (!props.isCurrentEntry) {
-		return {
-			type: "stop",
-			reason: successfulNavigationLifecycleReason.postWaiting.entryLost,
-		};
-	}
-
-	return {
-		type: "continue",
-		reason: successfulNavigationLifecycleReason.postWaiting.entryCurrent,
-	};
 }
 
 export type SuccessfulNavigationPostAssetExecutionPlan =
@@ -306,37 +298,36 @@ export function decideSuccessfulNavigationPostAssetExecutionPlan(props: {
 	currentHref: string;
 }): SuccessfulNavigationPostAssetExecutionPlan {
 	const { entry, isCurrentEntry, currentHref } = props;
-	if (!isCurrentEntry) {
-		return {
-			type: "stop",
-			reason: successfulNavigationLifecycleReason.postAsset.entryLost,
-		};
-	}
+	const entryLifecycleState = resolveNavigationEntryLifecycleState({
+		entry,
+		isCurrentEntry,
+		currentHref,
+	});
 
-	if (isIdlePrefetchNavigationEntry(entry)) {
-		return {
-			type: "completeWithoutRender",
-			reason: successfulNavigationLifecycleReason.postAsset.idlePrefetch,
-		};
+	switch (entryLifecycleState) {
+		case "non_current":
+			return {
+				type: "stop",
+				reason: successfulNavigationLifecycleReason.postAsset.entryLost,
+			};
+		case "idle_prefetch":
+			return {
+				type: "completeWithoutRender",
+				reason: successfulNavigationLifecycleReason.postAsset
+					.idlePrefetch,
+			};
+		case "stale_revalidation":
+			return {
+				type: "stop",
+				reason: successfulNavigationLifecycleReason.postAsset
+					.staleRevalidation,
+			};
+		case "current_fresh":
+			return {
+				type: "render",
+				reason: successfulNavigationLifecycleReason.postAsset.render,
+			};
 	}
-
-	if (
-		isStaleRevalidationNavigationEntry({
-			entry,
-			currentHref,
-		})
-	) {
-		return {
-			type: "stop",
-			reason: successfulNavigationLifecycleReason.postAsset
-				.staleRevalidation,
-		};
-	}
-
-	return {
-		type: "render",
-		reason: successfulNavigationLifecycleReason.postAsset.render,
-	};
 }
 
 export type SuccessfulNavigationCleanupExecutionPlan =
@@ -378,11 +369,7 @@ export type InternalNavigateResult =
 	  }
 	| {
 			type: "cancelled";
-			reason:
-				| NavigationOutcomeExecutionPlan["reason"]
-				| SuccessfulNavigationPreWaitingExecutionPlan["reason"]
-				| SuccessfulNavigationPostWaitingExecutionPlan["reason"]
-				| SuccessfulNavigationPostAssetExecutionPlan["reason"];
+			reason: NavigationOutcomeExecutionPlan["reason"];
 	  }
 	| {
 			type: "failed";
@@ -409,31 +396,6 @@ export function decideBuildIDSyncTimingForSuccessfulEntry(props: {
 	return isIdlePrefetchNavigationEntry(props.entry)
 		? "before_asset_wait"
 		: "after_asset_wait_if_not_stopped";
-}
-
-export type SuccessfulNavigationPreAssetWaitExecutionPlan = {
-	shouldSyncBuildIDBeforeAssetWait: boolean;
-	reason:
-		| SuccessfulNavigationPreAssetWaitSyncReason
-		| SuccessfulNavigationPreAssetWaitSkipSyncReason;
-};
-
-export function decideSuccessfulNavigationPreAssetWaitExecutionPlan(props: {
-	buildIDSyncTiming: BuildIDSyncTiming;
-}): SuccessfulNavigationPreAssetWaitExecutionPlan {
-	if (props.buildIDSyncTiming === "before_asset_wait") {
-		return {
-			shouldSyncBuildIDBeforeAssetWait: true,
-			reason: successfulNavigationLifecycleReason.preAssetWait
-				.syncBuildIDBeforeAssetWait,
-		};
-	}
-
-	return {
-		shouldSyncBuildIDBeforeAssetWait: false,
-		reason: successfulNavigationLifecycleReason.preAssetWait
-			.skipSyncBuildIDBeforeAssetWait,
-	};
 }
 
 export type SuccessfulNavigationPostAssetSideEffectPlan = {
