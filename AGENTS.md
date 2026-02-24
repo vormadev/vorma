@@ -96,6 +96,30 @@ packages just for purity's sake.
 
 ## TypeScript Rules
 
+### TypeScript Test Split Is Mandatory
+
+For all TypeScript test execution, keep source and dist test modes separate.
+
+- Source tests: run `make tstest-source` (or the equivalent
+  `pnpm vitest run --exclude "typescript/vorma/client/src/tests/dist/**"`).
+- Dist tests: run `make tstest-dist` (or the equivalent
+  `pnpm vitest --run --config typescript/vorma/client/vitest.dist.config.ts`).
+- If running targeted subsets, still keep the same split and use the dist config
+  for all tests under `typescript/vorma/client/src/tests/dist/**`.
+
+### Special Rule: UI Adapter Tests and Imports Are Dist-Only
+
+For `typescript/vorma/ui-adapters/**`, always operate on and validate behavior
+through compiled outputs.
+
+- All `ui-adapters` tests must run in dist mode with
+  `typescript/vorma/client/vitest.dist.config.ts`.
+- All `ui-adapters` imports in those tests must resolve through `npm_dist`
+  exports (for example `vorma/react`, `vorma/preact`, `vorma/solid` via the dist
+  config), not source-path aliases.
+- When auditing or fixing adapter behavior, treat compiled dist behavior as the
+  source of truth for test validation.
+
 ### Faux Named Params
 
 For internal/private TypeScript implementation code, function signatures that

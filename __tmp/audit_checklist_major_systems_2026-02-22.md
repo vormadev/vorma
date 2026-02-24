@@ -5,13 +5,11 @@ Scope: `wave/*`, `internal/vormaruntime/*`, `kit/mux/*`, `vormabuild/*`,
 
 ## Active TODOs
 
-- [ ] Raise test coverage for requested scope to 100%.
-- [ ] Eliminate remaining coverage gaps.
+- [ ] Add any conspicuously missing test coverage.
 - [ ] Track remaining burdensome one-file packages in scope while splitting:
       `vormabuild`.
 - [ ] Bring `vormabuild` into a meaningful one-file-per-package architecture
       through well-scoped subpackages.
-- [ ] `vormabuild` split points for remaining subpackages: `routeparse` (route
-      discovery/parsing/registration generation), `buildruntime` (build
-      lifecycle + watch + runtime state commit/snapshot), `output`
+- [ ] `vormabuild` split points for remaining subpackages: `buildlifecycle`
+      (watch injection + framework reload action planning), `output`
       (atomic/artifact/fs/hash/vite manifest staging).

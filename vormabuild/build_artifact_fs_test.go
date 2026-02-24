@@ -11,6 +11,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
+	"github.com/vormadev/vorma/vormabuild/buildlifecycle"
 )
 
 func newBuildArtifactFileSystemExecutorForTest(
@@ -603,16 +604,16 @@ func TestWritePathsToDiskStageOneFromRuntimeState(t *testing.T) {
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	runtimeStateSnapshot := routeBuildRuntimeStateSnapshot{
-		paths: map[string]*vormaruntime.Path{
+	runtimeStateSnapshot := buildlifecycle.RouteBuildRuntimeStateSnapshot{
+		Paths: map[string]*vormaruntime.Path{
 			"/": {
 				OriginalPattern: "/",
 				SrcPath:         "frontend/src/routes/home.tsx",
 				ExportKey:       "default",
 			},
 		},
-		buildID:           "runtime-snapshot-build-id",
-		routeManifestFile: "manifest-from-snapshot-state.json",
+		BuildID:           "runtime-snapshot-build-id",
+		RouteManifestFile: "manifest-from-snapshot-state.json",
 	}
 
 	if err := writePathsToDiskStageOneFromRuntimeState(

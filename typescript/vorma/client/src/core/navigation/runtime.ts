@@ -1,8 +1,15 @@
 import {
+	dispatchRouteChangeEvent,
 	dispatchStatusEvent,
 	type StatusEventDetail,
 } from "../../platform/events.ts";
-import { hasSameNavigationTarget } from "../../platform/url.ts";
+import { HistoryManager } from "../../platform/history.ts";
+import {
+	hasSameNavigationTarget,
+	hashFragmentFromHref,
+	isSameDocumentHashChange,
+	isSameDocumentLocation,
+} from "../../platform/url.ts";
 import {
 	createNavigationControls,
 	beginNavigation as executeBeginNavigation,
@@ -59,6 +66,55 @@ export type CreateNavigationRuntimeOptions = {
 	// Called after a navigate/revalidate intent commits successfully.
 	onNavigationIntentResolved?: () => void;
 };
+
+// Hash-only same-document navigations are a client-side history/scroll commit
+// and must not trigger server route-data fetches.
+function shouldCommitWithoutServerFetchForSameDocumentHashChange(props: {
+	navigationProps: NavigateProps;
+	targetUrl: string;
+	currentHref: string;
+}): boolean {
+	const { navigationProps, targetUrl, currentHref } = props;
+	if (
+		navigationProps.navigationType === "prefetch" ||
+		navigationProps.navigationType === "revalidation"
+	) {
+		return false;
+	}
+
+	return isSameDocumentHashChange({
+		targetHref: targetUrl,
+		currentHref,
+	});
+}
+
+function commitSameDocumentHashNavigationWithoutServerFetch(props: {
+	navigationProps: NavigateProps;
+	targetUrl: string;
+}): { didNavigate: boolean } {
+	const { navigationProps, targetUrl } = props;
+	const history = HistoryManager.getInstance();
+	const isSameLocation = isSameDocumentLocation({
+		targetHref: targetUrl,
+		currentHref: window.location.href,
+	});
+	if (!isSameLocation && !navigationProps.replace) {
+		history.push(targetUrl, navigationProps.state);
+	} else {
+		history.replace(targetUrl, navigationProps.state);
+	}
+
+	const hash = hashFragmentFromHref(targetUrl);
+	dispatchRouteChangeEvent({
+		__scrollState: hash
+			? { hash }
+			: navigationProps.scrollToTop !== false
+				? { x: 0, y: 0 }
+				: undefined,
+	});
+
+	return { didNavigate: true };
+}
 
 /**
  * Creates the client navigation runtime that coordinates active navigation,
@@ -245,6 +301,27 @@ export function createNavigationRuntime(
 		// Revalidation lane sequencing only applies to revalidation requests.
 		if (props.navigationType !== "revalidation") {
 			deterministicRevalidationLane.clearQueuedTrailingRequest();
+
+			const targetUrl = resolveBeginNavigationTargetURL({
+				navigationProps: props,
+				currentHref: window.location.href,
+			});
+			if (
+				shouldCommitWithoutServerFetchForSameDocumentHashChange({
+					navigationProps: props,
+					targetUrl,
+					currentHref: window.location.href,
+				})
+			) {
+				const noFetchNavigationResult =
+					commitSameDocumentHashNavigationWithoutServerFetch({
+						navigationProps: props,
+						targetUrl,
+					});
+				onNavigationIntentResolved?.();
+				return noFetchNavigationResult;
+			}
+
 			return navigateSinglePass(props);
 		}
 

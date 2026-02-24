@@ -183,7 +183,8 @@ func setRefreshServerPort(port int) {
 
 // Package wave provides runtime services that may be linked into production binaries.
 //
-// Build-time and dev-time functionality is in the wave/tooling subpackage.
+// Build-time functionality is in wave/wavebuild, and dev-time orchestration is
+// in wave/wavedev.
 // Keeping this split explicit lets applications use runtime-only code in
 // production while avoiding build-tool dependencies in shipped binaries.
 
@@ -843,7 +844,7 @@ func (parsedConfig *ParsedConfig) nonCriticalCSSLinkElementID() string {
 // parseConfig parses Wave config JSON bytes into a ParsedConfig.
 // This performs minimal validation to prevent nil pointer panics during parsing.
 // Full validation of required fields should be done at build time via
-// wave/tooling/builder.ValidateConfig.
+// wave/wavebuild/builder.ValidateConfig.
 func parseConfig(data []byte) (*ParsedConfig, error) {
 	var cfg ParsedConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {

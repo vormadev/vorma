@@ -12,6 +12,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
+	"github.com/vormadev/vorma/vormabuild/buildlifecycle"
 )
 
 func newFastRouteRebuildIDExecutorForTest(
@@ -53,16 +54,16 @@ func TestRunRouteSyncExecution_ForFastRebuildSuccess(t *testing.T) {
 		},
 	}
 
-	if err := runRouteSyncExecution(
+	if err := buildlifecycle.RunRouteSyncExecution(
 		app,
-		routeSyncExecutionOptions{
-			parseClientRoutes: func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+		buildlifecycle.RouteSyncExecutionOptions{
+			ParseClientRoutes: func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
 				return clientPaths, nil
 			},
-			generateBuildID: func() (string, error) {
+			GenerateBuildID: func() (string, error) {
 				return "dev_fast_test", nil
 			},
-			postSyncHook: func(*vormaruntime.Vorma) error {
+			PostSyncHook: func(*vormaruntime.Vorma) error {
 				return writeFastRebuildArtifactsAfterRouteSyncWithDependencies(
 					app,
 					fastRouteRebuildArtifactDependencies{},
@@ -70,7 +71,7 @@ func TestRunRouteSyncExecution_ForFastRebuildSuccess(t *testing.T) {
 			},
 		},
 	); err != nil {
-		t.Fatalf("runRouteSyncExecution returned error: %v", err)
+		t.Fatalf("buildlifecycle.RunRouteSyncExecution returned error: %v", err)
 	}
 
 	if got := app.BuildID(); got != "dev_fast_test" {
@@ -124,10 +125,10 @@ func TestRunRouteSyncExecution_ForFastRebuildReturnsCleanError(t *testing.T) {
 	}
 	mustWriteFile(t, fixture.publicDir, []byte("not a directory"))
 
-	err := runRouteSyncExecution(
+	err := buildlifecycle.RunRouteSyncExecution(
 		app,
-		routeSyncExecutionOptions{
-			parseClientRoutes: func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
+		buildlifecycle.RouteSyncExecutionOptions{
+			ParseClientRoutes: func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error) {
 				return map[string]*vormaruntime.Path{
 					"/products/:id": {
 						OriginalPattern: "/products/:id",
@@ -136,10 +137,10 @@ func TestRunRouteSyncExecution_ForFastRebuildReturnsCleanError(t *testing.T) {
 					},
 				}, nil
 			},
-			generateBuildID: func() (string, error) {
+			GenerateBuildID: func() (string, error) {
 				return "dev_fast_test", nil
 			},
-			postSyncHook: func(*vormaruntime.Vorma) error {
+			PostSyncHook: func(*vormaruntime.Vorma) error {
 				return writeFastRebuildArtifactsAfterRouteSyncWithDependencies(
 					app,
 					fastRouteRebuildArtifactDependencies{},
@@ -148,7 +149,7 @@ func TestRunRouteSyncExecution_ForFastRebuildReturnsCleanError(t *testing.T) {
 		},
 	)
 	if err == nil {
-		t.Fatal("expected runRouteSyncExecution to return error")
+		t.Fatal("expected buildlifecycle.RunRouteSyncExecution to return error")
 	}
 	if !strings.Contains(err.Error(), "clean route manifests") {
 		t.Fatalf("error = %q, expected clean-route-manifests context", err)
@@ -963,7 +964,7 @@ func TestRebuildRoutesOnly(t *testing.T) {
 			return "dev_fast_stub", nil
 		}
 		expectedErr := os.ErrInvalid
-		dependencies.runRouteSyncExecution = func(*vormaruntime.Vorma, routeSyncExecutionOptions) error {
+		dependencies.runRouteSyncExecution = func(*vormaruntime.Vorma, buildlifecycle.RouteSyncExecutionOptions) error {
 			return expectedErr
 		}
 
@@ -1002,19 +1003,19 @@ func TestRebuildRoutesOnly(t *testing.T) {
 
 		var observedBuildID string
 		var observedPathsCount int
-		dependencies.runRouteSyncExecution = func(v *vormaruntime.Vorma, options routeSyncExecutionOptions) error {
-			parsedPaths, parseErr := options.parseClientRoutes(v)
+		dependencies.runRouteSyncExecution = func(v *vormaruntime.Vorma, options buildlifecycle.RouteSyncExecutionOptions) error {
+			parsedPaths, parseErr := options.ParseClientRoutes(v)
 			if parseErr != nil {
 				return parseErr
 			}
-			buildID, buildIDErr := options.generateBuildID()
+			buildID, buildIDErr := options.GenerateBuildID()
 			if buildIDErr != nil {
 				return buildIDErr
 			}
 			observedBuildID = buildID
 			observedPathsCount = len(parsedPaths)
-			if options.postSyncHook != nil {
-				if postSyncHookErr := options.postSyncHook(v); postSyncHookErr != nil {
+			if options.PostSyncHook != nil {
+				if postSyncHookErr := options.PostSyncHook(v); postSyncHookErr != nil {
 					return postSyncHookErr
 				}
 			}

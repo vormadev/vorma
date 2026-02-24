@@ -389,14 +389,12 @@ describe("client navigation lifecycle contracts", () => {
 		});
 	});
 
-	it("preserves server-equivalent metadata when a same-route client-only skip navigation runs", async () => {
+	it("preserves metadata across programmatic hash-only navigations", async () => {
 		vi.doMock("/metadata-parity.js", () => ({
 			default: () => null,
 			RouteError: () => null,
 		}));
-		installContractVormaGlobal({
-			routeManifest: undefined,
-		});
+		installContractVormaGlobal();
 		const api = await loadClientAPI();
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValueOnce(
 			createRouteDataResponse({
@@ -421,23 +419,18 @@ describe("client navigation lifecycle contracts", () => {
 		await api.vormaNavigate("/metadata-parity");
 		await vi.runAllTimersAsync();
 
-		const moduleMapBeforeSkip = JSON.parse(
+		const moduleMapBeforeHashNavigation = JSON.parse(
 			JSON.stringify(api.__vormaClientGlobal.get("clientModuleMap")),
 		);
 		expect(document.title).toBe("Metadata Parity Title");
 
-		api.__vormaClientGlobal.set("routeManifest", {
-			"/metadata-parity": 0,
-		});
-		await api.__registerClientLoaderPattern("/metadata-parity");
-
-		await api.vormaNavigate("/metadata-parity#skip");
+		await api.vormaNavigate("/metadata-parity#details");
 		await vi.runAllTimersAsync();
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		expect(document.title).toBe("Metadata Parity Title");
 		expect(api.__vormaClientGlobal.get("clientModuleMap")).toEqual(
-			moduleMapBeforeSkip,
+			moduleMapBeforeHashNavigation,
 		);
 	});
 

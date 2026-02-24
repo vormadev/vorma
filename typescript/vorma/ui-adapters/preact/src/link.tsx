@@ -1,5 +1,4 @@
 import { h, type HTMLAttributes, type TargetedMouseEvent } from "preact";
-import { memo } from "preact/compat";
 import type {
 	ExtractApp,
 	VormaAppBase,
@@ -16,7 +15,7 @@ import {
 	type VormaLinkPropsBase,
 } from "vorma/client/__internal";
 
-export const VormaLink = memo(function VormaLink(
+export function VormaLink(
 	props: HTMLAttributes<HTMLAnchorElement> &
 		VormaLinkPropsBase<TargetedMouseEvent<HTMLAnchorElement>>,
 ) {
@@ -38,7 +37,7 @@ export const VormaLink = memo(function VormaLink(
 		},
 		props.children,
 	);
-});
+}
 
 type TypedVormaLinkProps<
 	App extends VormaAppBase,
@@ -60,9 +59,9 @@ export function makeTypedLink<C extends VormaAppConfig>(
 ) {
 	type App = ExtractApp<C>;
 
-	const TypedLink = memo(function TypedLink<
-		Pattern extends VormaLoaderPattern<App>,
-	>(props: TypedVormaLinkProps<App, Pattern>) {
+	const TypedLink = <Pattern extends VormaLoaderPattern<App>>(
+		props: TypedVormaLinkProps<App, Pattern>,
+	) => {
 		const mergedProps = mergeTypedAdapterLinkPropsWithDefaults<
 			App,
 			Pattern,
@@ -82,7 +81,7 @@ export function makeTypedLink<C extends VormaAppConfig>(
 			href: resolvedProps.href,
 			state: resolvedProps.state,
 		});
-	});
+	};
 
 	(TypedLink as any).displayName = buildTypedLinkDisplayName({
 		defaultProps: defaultProps as Record<string, unknown> | undefined,

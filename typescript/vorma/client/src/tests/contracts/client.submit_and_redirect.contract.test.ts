@@ -981,6 +981,65 @@ describe("client submit/redirect contracts", () => {
 		expect(document.title).toBe("After Submit");
 	});
 
+	it("does not fetch route data for submit redirects that only change hash", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/after-submit");
+		api.getHistoryInstance();
+
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValueOnce(
+			createRouteDataResponse(
+				{},
+				{
+					headers: {
+						"X-Client-Redirect": "/after-submit#details",
+					},
+				},
+			),
+		);
+
+		const result = await api.submit("/api/action", { method: "POST" });
+		await vi.runAllTimersAsync();
+
+		expect(result).toEqual({ success: true, data: undefined });
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(window.location.pathname).toBe("/after-submit");
+		expect(window.location.hash).toBe("#details");
+	});
+
+	it("re-fetches server data for submit redirects to the current path", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/after-submit");
+		document.title = "Before Submit";
+
+		api.__vormaClientGlobal.set("matchedPatterns", ["/after-submit"]);
+		api.__vormaClientGlobal.set("loadersData", [{ stale: true }]);
+		api.__vormaClientGlobal.set("params", {});
+		api.__vormaClientGlobal.set("splatValues", []);
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{ headers: { "X-Client-Redirect": "/after-submit" } },
+				),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					title: { dangerousInnerHTML: "After Submit Fresh" },
+				}),
+			);
+
+		const result = await api.submit("/api/action", { method: "POST" });
+		await vi.runAllTimersAsync();
+
+		expect(result).toEqual({ success: true, data: undefined });
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		const secondFetchURL = fetchSpy.mock.calls[1]?.[0] as URL;
+		expect(secondFetchURL.pathname).toBe("/after-submit");
+		expect(secondFetchURL.searchParams.get("vorma_json")).toBeTruthy();
+		expect(document.title).toBe("After Submit Fresh");
+	});
+
 	it("returns explicit error when submit soft redirect navigation fails", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi

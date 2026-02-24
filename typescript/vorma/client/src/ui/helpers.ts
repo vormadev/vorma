@@ -1,22 +1,22 @@
-import { vormaNavigate } from "../client.ts";
+import {
+	getHrefDetails,
+	resolveAbsoluteHrefWithOptionalSearchAndHash,
+} from "vorma/kit/url";
+import type { RouteErrorComponent } from "../app/context.ts";
+import { __vormaClientGlobal, type getRouterData } from "../app/context.ts";
 import {
 	resolvePath,
+	type VormaRoutePropsGeneric as AppVormaRoutePropsGeneric,
 	type ExtractApp,
 	type PermissivePatternBasedProps,
 	type VormaAppBase,
 	type VormaAppConfig,
 	type VormaLoaderPattern,
-	type VormaRoutePropsGeneric as AppVormaRoutePropsGeneric,
 	type VormaRouteParams,
 } from "../app/helpers.ts";
-import { __vormaClientGlobal, type getRouterData } from "../app/context.ts";
-import type { RouteErrorComponent } from "../app/context.ts";
-import { createPrefetchHandlers as __getPrefetchHandlers } from "../core/links_prefetch_lifecycle.ts";
+import { vormaNavigate } from "../client.ts";
 import { createLinkOnClickFn as __makeLinkOnClickFn } from "../core/links_click_lifecycle.ts";
-import {
-	getHrefDetails,
-	resolveAbsoluteHrefWithOptionalSearchAndHash,
-} from "vorma/kit/url";
+import { createPrefetchHandlers as __getPrefetchHandlers } from "../core/links_prefetch_lifecycle.ts";
 
 export const defaultErrorBoundary: RouteErrorComponent = (props: {
 	error: string;
@@ -101,6 +101,14 @@ function isFn(fn: unknown): fn is UnknownFn {
 	return typeof fn === "function";
 }
 
+function isDefaultPreventedEventLike(event: unknown): boolean {
+	if (typeof event !== "object" || event === null) {
+		return false;
+	}
+
+	return (event as { defaultPrevented?: unknown }).defaultPrevented === true;
+}
+
 export function makeFinalLinkProps<LinkEvent>(
 	props: VormaLinkPropsBase<LinkEvent>,
 	keys: HandlerKeys = standardCamelHandlerKeys,
@@ -146,6 +154,9 @@ export function makeFinalLinkProps<LinkEvent>(
 		},
 		onClick: async (event: LinkEvent) => {
 			callOriginalHandlerIfPresent(keys.onClick, event);
+			if (isDefaultPreventedEventLike(event)) {
+				return;
+			}
 			if (prefetchObj) {
 				await prefetchObj.onClick(event as Event);
 			} else {

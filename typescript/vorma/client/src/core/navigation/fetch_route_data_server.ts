@@ -20,17 +20,59 @@ import {
 	createUnavailableServerDataError,
 	findPartialMatchesOnClient,
 } from "../render_runtime.ts";
-import { getClientOnlyOutcomeIfSkippable } from "./fetch_route_data_skip.ts";
-import {
-	getMatchedPatternsOrThrow,
-	type SkipMatch,
-} from "./fetch_route_data_skip_match.ts";
 import type { NavigateProps, NavigationOutcome } from "./types.ts";
 
 export type ServerSuccessPreloadPlan = {
 	moduleDependencies: string[];
 	cssBundles: string[];
 };
+
+type RouteMatch = {
+	registeredPattern: {
+		originalPattern: string;
+	};
+};
+
+function getMatchedPatternOrThrow(props: {
+	match: RouteMatch | undefined;
+	index: number;
+	context: string;
+}): string {
+	const { match, index, context } = props;
+	if (!match) {
+		throw new Error(
+			`${context} returned a sparse matches array at index ${index}.`,
+		);
+	}
+
+	const pattern = match.registeredPattern.originalPattern;
+	if (!pattern) {
+		throw new Error(
+			`${context} returned an empty route pattern at index ${index}.`,
+		);
+	}
+
+	return pattern;
+}
+
+function getMatchedPatternsOrThrow(props: {
+	matches: Array<RouteMatch | undefined>;
+	context: string;
+}): string[] {
+	const { matches, context } = props;
+	const matchedPatterns: string[] = [];
+	for (let i = 0; i < matches.length; i++) {
+		matchedPatterns.push(
+			getMatchedPatternOrThrow({
+				match: matches[i],
+				index: i,
+				context,
+			}),
+		);
+	}
+
+	return matchedPatterns;
+}
 
 export function buildServerSuccessPreloadPlan(props: {
 	signalAborted: boolean;
@@ -229,7 +271,7 @@ export async function startParallelClientLoaders(props: {
 
 	const { params, splatValues, matches } = matchResult;
 	const matchedPatterns = getMatchedPatternsOrThrow({
-		matches: matches as Array<SkipMatch | undefined>,
+		matches: matches as Array<RouteMatch | undefined>,
 		context: "Partial route matcher",
 	});
 	const serverDataByPatternPromise = props.serverPromise.then(
@@ -315,15 +357,6 @@ export async function fetchRouteData(
 ): Promise<NavigationOutcome> {
 	try {
 		const targetURL = new URL(props.href, window.location.href);
-		const clientOnlyOutcome = getClientOnlyOutcomeIfSkippable({
-			navigationProps: props,
-			controller,
-			targetHref: targetURL.href,
-		});
-		if (clientOnlyOutcome) {
-			return clientOnlyOutcome;
-		}
-
 		const requestURL = buildRouteDataRequestURL({
 			targetHref: targetURL.href,
 			navigationType: props.navigationType,

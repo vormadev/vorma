@@ -193,7 +193,7 @@ describe("client module-loading and fetch contracts", () => {
 		});
 	});
 
-	it("falls back to server fetch when skip-cache is missing required server loader data", async () => {
+	it("uses server fetch when current client snapshot lacks required loader data", async () => {
 		vi.doMock("/noop.js", () => ({
 			default: () => null,
 		}));
@@ -230,7 +230,7 @@ describe("client module-loading and fetch contracts", () => {
 		]);
 	});
 
-	it("preserves server-established module error exports when equivalent client-only skip navigation runs", async () => {
+	it("preserves module error export metadata across hash-only navigations", async () => {
 		vi.doMock("/parity-module.js", () => ({
 			default: () => null,
 			RouteError: () => null,
@@ -261,12 +261,7 @@ describe("client module-loading and fetch contracts", () => {
 			errorExportKey: "RouteError",
 		});
 
-		api.__vormaClientGlobal.set("routeManifest", {
-			"/parity-module": 0,
-		});
-		await api.__registerClientLoaderPattern("/parity-module");
-
-		await api.vormaNavigate("/parity-module#skip");
+		await api.vormaNavigate("/parity-module#details");
 		await vi.runAllTimersAsync();
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);

@@ -15,14 +15,17 @@ import (
 
 var forbiddenBuildtimeDependencyPrefixes = []string{
 	"github.com/vormadev/vorma/vormabuild",
-	"github.com/vormadev/vorma/wave/tooling",
+	"github.com/vormadev/vorma/wave/wavebuild",
+	"github.com/vormadev/vorma/wave/wavedev",
 	"github.com/vormadev/vorma/lab/vitecmd",
 	"github.com/evanw/esbuild/",
 	"github.com/fsnotify/fsnotify",
 	"github.com/gorilla/websocket",
 }
 
-func TestRuntimeDependencyContract_WaveExcludesBuildtimeToolingDeps(t *testing.T) {
+func TestRuntimeDependencyContract_WaveExcludesBuildtimeToolingDeps(
+	t *testing.T,
+) {
 	assertPackageDependencyPrefixesAbsent(
 		t,
 		"github.com/vormadev/vorma/wave",
@@ -30,7 +33,9 @@ func TestRuntimeDependencyContract_WaveExcludesBuildtimeToolingDeps(t *testing.T
 	)
 }
 
-func TestRuntimeDependencyContract_VormaExcludesBuildtimeToolingDeps(t *testing.T) {
+func TestRuntimeDependencyContract_VormaExcludesBuildtimeToolingDeps(
+	t *testing.T,
+) {
 	assertPackageDependencyPrefixesAbsent(
 		t,
 		"github.com/vormadev/vorma",
@@ -49,7 +54,8 @@ func assertPackageDependencyPrefixesAbsent(
 	var found []string
 	for dep := range deps {
 		for _, forbiddenPrefix := range forbiddenPrefixes {
-			if dep == forbiddenPrefix || strings.HasPrefix(dep, forbiddenPrefix) {
+			if dep == forbiddenPrefix ||
+				strings.HasPrefix(dep, forbiddenPrefix) {
 				found = append(found, dep)
 				break
 			}
@@ -71,7 +77,14 @@ func listGoPackageDependencies(
 ) map[string]struct{} {
 	t.Helper()
 
-	cmd := exec.Command("go", "list", "-deps", "-f", "{{.ImportPath}}", importPath)
+	cmd := exec.Command(
+		"go",
+		"list",
+		"-deps",
+		"-f",
+		"{{.ImportPath}}",
+		importPath,
+	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf(
@@ -106,7 +119,10 @@ func listGoPackageDependencies(
 }
 
 func TestRuntimeDependencyContract_DependencySetSanity(t *testing.T) {
-	dependencies := listGoPackageDependencies(t, "github.com/vormadev/vorma/wave/tooling/devserver")
+	dependencies := listGoPackageDependencies(
+		t,
+		"github.com/vormadev/vorma/wave/wavedev/devserver",
+	)
 
 	var hasAnyBuildtimeSentinel bool
 	for _, sentinelPrefix := range []string{
@@ -122,7 +138,7 @@ func TestRuntimeDependencyContract_DependencySetSanity(t *testing.T) {
 
 	if !hasAnyBuildtimeSentinel {
 		t.Fatalf(
-			"wave/tooling/devserver dependency graph unexpectedly lacks expected buildtime sentinels: %s",
+			"wave/wavedev/devserver dependency graph unexpectedly lacks expected buildtime sentinels: %s",
 			fmt.Sprint([]string{
 				"github.com/vormadev/vorma/lab/vitecmd",
 				"github.com/evanw/esbuild/",
@@ -137,7 +153,8 @@ func hasDependencyWithPrefix(
 	prefix string,
 ) bool {
 	for dependencyImportPath := range dependencies {
-		if dependencyImportPath == prefix || strings.HasPrefix(dependencyImportPath, prefix) {
+		if dependencyImportPath == prefix ||
+			strings.HasPrefix(dependencyImportPath, prefix) {
 			return true
 		}
 	}

@@ -15,7 +15,7 @@ import {
 	type VormaLinkPropsBase,
 } from "vorma/client/__internal";
 
-export const VormaLink = memo(function VormaLink(
+export function VormaLink(
 	props: ComponentProps<"a"> &
 		VormaLinkPropsBase<React.MouseEvent<HTMLAnchorElement, MouseEvent>>,
 ) {
@@ -37,7 +37,7 @@ export const VormaLink = memo(function VormaLink(
 			{props.children}
 		</a>
 	);
-});
+}
 
 type TypedVormaLinkProps<
 	App extends VormaAppBase,

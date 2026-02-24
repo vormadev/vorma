@@ -6,11 +6,6 @@ import {
 } from "vorma/kit/matcher/register";
 import { VORMA_SYMBOL } from "../../app/context.ts";
 import { fetchRouteData } from "../../core/navigation/fetch_route_data_server.ts";
-import { canSkipServerFetch } from "../../core/navigation/fetch_route_data_skip.ts";
-import {
-	isSkipEligibilityViolated,
-	type SkipCheckContext,
-} from "../../core/navigation/fetch_route_data_skip_match.ts";
 import {
 	createNavigationRuntime,
 	deleteNavigationFromNavigationLanes,
@@ -2026,6 +2021,28 @@ describe("navigation runtime success-processing defensive branches", () => {
 		}
 	});
 
+	it("commits same-document hash-only navigations without fetch and resolves intent", async () => {
+		window.history.replaceState({}, "", "/intent-resolution-hash");
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(new Response("unused"));
+		const onNavigationIntentResolved = vi.fn();
+		const runtime = createNavigationRuntime({
+			onNavigationIntentResolved,
+		});
+
+		const result = await runtime.navigate({
+			href: "/intent-resolution-hash#details",
+			navigationType: "userNavigation",
+		});
+
+		expect(result).toEqual({ didNavigate: true });
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(window.location.pathname).toBe("/intent-resolution-hash");
+		expect(window.location.hash).toBe("#details");
+		expect(onNavigationIntentResolved).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not resolve navigation intent for stale successful completions", async () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
 		const onNavigationIntentResolved = vi.fn();
@@ -3018,459 +3035,6 @@ describe("navigation runtime submit stale checkpoints", () => {
 	});
 });
 
-function buildContext(
-	targetHref: string,
-	overrides: Partial<SkipCheckContext> = {},
-): SkipCheckContext {
-	return {
-		routeManifest: { "/items": 1 },
-		patternRegistry: createRegisteredPatternRegistry(["/items"]),
-		patternToWaitFnMap: {},
-		clientModuleMap: {
-			"/items": {
-				importURL: "/items.js",
-				exportKey: "default",
-				errorExportKey: "",
-			},
-		},
-		currentMatchedPatterns: ["/items"],
-		currentParams: {},
-		currentSplatValues: [],
-		currentLoadersData: [{}],
-		url: new URL(targetHref),
-		matchResult: {
-			matches: [createMatch("/items")],
-			params: {},
-			splatValues: [],
-		},
-		...overrides,
-	};
-}
-
-describe("skip server fetch eligibility", () => {
-	it("treats query order changes as changed for skip gating", () => {
-		window.history.replaceState({}, "", "/items?a=1&b=2");
-		const ctx = buildContext("http://localhost:3000/items?b=2&a=1");
-
-		expect(isSkipEligibilityViolated(ctx)).toBe(true);
-	});
-
-	it("allows skip gating when query string is exactly unchanged", () => {
-		window.history.replaceState({}, "", "/items?a=1&b=2");
-		const ctx = buildContext("http://localhost:3000/items?a=1&b=2");
-
-		expect(isSkipEligibilityViolated(ctx)).toBe(false);
-	});
-
-	it("blocks skip when a previously matched server-loader route is removed", () => {
-		const ctx = buildContext("http://localhost:3000/new", {
-			routeManifest: {
-				"/old": 1,
-				"/new": 1,
-			},
-			currentMatchedPatterns: ["/old"],
-			matchResult: {
-				matches: [createMatch("/new")],
-				params: {},
-				splatValues: [],
-			},
-		});
-
-		expect(isSkipEligibilityViolated(ctx)).toBe(true);
-	});
-
-	it("blocks skip when outermost loader dynamic params change", () => {
-		const ctx = buildContext("http://localhost:3000/items/2", {
-			routeManifest: { "/items/:id": 1 },
-			currentMatchedPatterns: ["/items/:id"],
-			currentParams: { id: "1" },
-			matchResult: {
-				matches: [
-					createMatch("/items/:id", {
-						normalizedSegments: [
-							{
-								segType: "dynamic",
-								normalizedVal: ":id",
-							},
-						],
-					}),
-				],
-				params: { id: "2" },
-				splatValues: [],
-			},
-		});
-
-		expect(isSkipEligibilityViolated(ctx)).toBe(true);
-	});
-
-	it("does not block skip when outermost loader dynamic params are unchanged", () => {
-		const ctx = buildContext("http://localhost:3000/items/1", {
-			routeManifest: { "/items/:id": 1 },
-			currentMatchedPatterns: ["/items/:id"],
-			currentParams: { id: "1" },
-			matchResult: {
-				matches: [
-					createMatch("/items/:id", {
-						normalizedSegments: [
-							{
-								segType: "dynamic",
-								normalizedVal: ":id",
-							},
-						],
-					}),
-				],
-				params: { id: "1" },
-				splatValues: [],
-			},
-		});
-
-		expect(isSkipEligibilityViolated(ctx)).toBe(false);
-	});
-
-	it("blocks skip when outermost loader splat values change", () => {
-		const ctx = buildContext("http://localhost:3000/files/a/b", {
-			routeManifest: { "/files/*": 1 },
-			currentMatchedPatterns: ["/files/*"],
-			currentSplatValues: ["a"],
-			matchResult: {
-				matches: [
-					createMatch("/files/*", {
-						lastSegType: "splat",
-					}),
-				],
-				params: {},
-				splatValues: ["a", "b"],
-			},
-		});
-
-		expect(isSkipEligibilityViolated(ctx)).toBe(true);
-	});
-
-	it("does not block skip when outermost loader splat values are unchanged", () => {
-		const ctx = buildContext("http://localhost:3000/files/a/b", {
-			routeManifest: { "/files/*": 1 },
-			currentMatchedPatterns: ["/files/*"],
-			currentSplatValues: ["a", "b"],
-			matchResult: {
-				matches: [
-					createMatch("/files/*", {
-						lastSegType: "splat",
-					}),
-				],
-				params: {},
-				splatValues: ["a", "b"],
-			},
-		});
-
-		expect(isSkipEligibilityViolated(ctx)).toBe(false);
-	});
-
-	it("does not block skip when no loaders are present, even if search changes", () => {
-		window.history.replaceState({}, "", "/items?mode=a");
-		const ctx = buildContext("http://localhost:3000/items?mode=b", {
-			routeManifest: { "/items": 0 },
-		});
-
-		expect(isSkipEligibilityViolated(ctx)).toBe(false);
-	});
-});
-
-describe("canSkipServerFetch decisions", () => {
-	it("cannot skip when route manifest is unavailable", () => {
-		installVormaGlobal({
-			routeManifest: undefined,
-			patternRegistry: createRegisteredPatternRegistry(["/items"]),
-		});
-
-		expect(canSkipServerFetch("http://localhost:3000/items").canSkip).toBe(
-			false,
-		);
-	});
-
-	it("cannot skip when pattern registry is unavailable", () => {
-		installVormaGlobal({
-			routeManifest: { "/items": 1 },
-			patternRegistry: undefined,
-		});
-
-		expect(canSkipServerFetch("http://localhost:3000/items").canSkip).toBe(
-			false,
-		);
-	});
-
-	it("cannot skip when target URL does not match any route", () => {
-		installVormaGlobal({
-			routeManifest: { "/other": 1 },
-			patternRegistry: createRegisteredPatternRegistry(["/other"]),
-		});
-
-		expect(
-			canSkipServerFetch("http://localhost:3000/not-registered").canSkip,
-		).toBe(false);
-	});
-
-	it("cannot skip when target introduces a newly matched client loader", () => {
-		installVormaGlobal({
-			routeManifest: {
-				"/existing": 0,
-				"/new": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry([
-				"/existing",
-				"/new",
-			]),
-			patternToWaitFnMap: {
-				"/new": vi.fn(),
-			},
-			matchedPatterns: ["/existing"],
-			clientModuleMap: {
-				"/existing": {
-					importURL: "/existing.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-				"/new": {
-					importURL: "/new.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-		});
-
-		expect(canSkipServerFetch("http://localhost:3000/new").canSkip).toBe(
-			false,
-		);
-	});
-
-	it("throws when matcher returns sparse route matches during skip checks", () => {
-		const findNestedMatchesSpy = vi
-			.spyOn(matcherFindNestedModule, "findNestedMatches")
-			.mockReturnValue({
-				params: {},
-				splatValues: [],
-				matches: [undefined as any, createMatch("/sparse")],
-			} as any);
-		installVormaGlobal({
-			routeManifest: {
-				"/sparse": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry(["/sparse"]),
-			clientModuleMap: {
-				"/sparse": {
-					importURL: "/sparse.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-		});
-
-		try {
-			expect(() =>
-				canSkipServerFetch("http://localhost:3000/sparse"),
-			).toThrow(
-				"Route matcher returned a sparse matches array at index 0.",
-			);
-		} finally {
-			findNestedMatchesSpy.mockRestore();
-		}
-	});
-
-	it("throws when matcher returns an empty route pattern", () => {
-		const findNestedMatchesSpy = vi
-			.spyOn(matcherFindNestedModule, "findNestedMatches")
-			.mockReturnValue({
-				params: {},
-				splatValues: [],
-				matches: [createMatch("")],
-			} as any);
-		installVormaGlobal({
-			routeManifest: {
-				"": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry(["/placeholder"]),
-			clientModuleMap: {
-				"": {
-					importURL: "/empty-pattern.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-		});
-
-		try {
-			expect(() =>
-				canSkipServerFetch("http://localhost:3000/placeholder"),
-			).toThrow(
-				"Route matcher returned an empty route pattern at index 0.",
-			);
-		} finally {
-			findNestedMatchesSpy.mockRestore();
-		}
-	});
-
-	it("returns client-only skip payload for routes without server loaders", () => {
-		installVormaGlobal({
-			routeManifest: {
-				"/client-only": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry(["/client-only"]),
-			clientModuleMap: {
-				"/client-only": {
-					importURL: "/client-only.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-		});
-
-		const result = canSkipServerFetch("http://localhost:3000/client-only");
-		expect(result.canSkip).toBe(true);
-		if (!result.canSkip) {
-			throw new Error(
-				"Expected canSkipServerFetch to return canSkip=true",
-			);
-		}
-
-		expect(result.importURLs).toEqual(["/client-only.js"]);
-		expect(result.exportKeys).toEqual(["default"]);
-		expect(result.loadersData).toEqual([undefined]);
-	});
-
-	it("cannot skip when matched route has no client module info", () => {
-		installVormaGlobal({
-			routeManifest: {
-				"/missing-module": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry([
-				"/missing-module",
-			]),
-			clientModuleMap: {},
-		});
-
-		expect(
-			canSkipServerFetch("http://localhost:3000/missing-module").canSkip,
-		).toBe(false);
-	});
-
-	it("cannot skip when client module map is missing", () => {
-		installVormaGlobal({
-			routeManifest: {
-				"/without-module-map": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry([
-				"/without-module-map",
-			]),
-			clientModuleMap: undefined,
-		});
-
-		expect(
-			canSkipServerFetch("http://localhost:3000/without-module-map")
-				.canSkip,
-		).toBe(false);
-	});
-
-	it("cannot skip when server-loader data is required but missing", () => {
-		installVormaGlobal({
-			routeManifest: {
-				"/needs-data": 1,
-			},
-			patternRegistry: createRegisteredPatternRegistry(["/needs-data"]),
-			clientModuleMap: {
-				"/needs-data": {
-					importURL: "/needs-data.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-			matchedPatterns: ["/needs-data"],
-			loadersData: [],
-		});
-
-		expect(
-			canSkipServerFetch("http://localhost:3000/needs-data").canSkip,
-		).toBe(false);
-	});
-
-	it("cannot skip when server-loader route was not previously matched", () => {
-		installVormaGlobal({
-			routeManifest: {
-				"/needs-data": 1,
-			},
-			patternRegistry: createRegisteredPatternRegistry(["/needs-data"]),
-			clientModuleMap: {
-				"/needs-data": {
-					importURL: "/needs-data.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-			matchedPatterns: [],
-			loadersData: [],
-		});
-
-		expect(
-			canSkipServerFetch("http://localhost:3000/needs-data").canSkip,
-		).toBe(false);
-	});
-
-	it("returns server-loader data when all required skip data is available", () => {
-		installVormaGlobal({
-			routeManifest: {
-				"/with-data": 1,
-			},
-			patternRegistry: createRegisteredPatternRegistry(["/with-data"]),
-			clientModuleMap: {
-				"/with-data": {
-					importURL: "/with-data.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-			matchedPatterns: ["/with-data"],
-			loadersData: [{ from: "cache" }],
-		});
-
-		const result = canSkipServerFetch("http://localhost:3000/with-data");
-		expect(result.canSkip).toBe(true);
-		if (!result.canSkip) {
-			throw new Error(
-				"Expected canSkipServerFetch to return canSkip=true",
-			);
-		}
-		expect(result.loadersData).toEqual([{ from: "cache" }]);
-	});
-
-	it("uses empty defaults when optional global snapshots are unset", () => {
-		installVormaGlobal({
-			routeManifest: {
-				"/defaults": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry(["/defaults"]),
-			clientModuleMap: {
-				"/defaults": {
-					importURL: "/defaults.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-			patternToWaitFnMap: undefined,
-			matchedPatterns: undefined,
-			params: undefined,
-			splatValues: undefined,
-			loadersData: undefined,
-		});
-
-		const result = canSkipServerFetch("http://localhost:3000/defaults");
-		expect(result.canSkip).toBe(true);
-		if (!result.canSkip) {
-			throw new Error(
-				"Expected canSkipServerFetch to return canSkip=true",
-			);
-		}
-		expect(result.loadersData).toEqual([undefined]);
-	});
-});
-
 describe("findPartialMatchesOnClient guards", () => {
 	it("returns null when pattern registry is unavailable", async () => {
 		installVormaGlobal({
@@ -3522,14 +3086,38 @@ describe("render runtime initialization guards", () => {
 	});
 });
 
-describe("fetchRouteData client-only skip path", () => {
-	it("short-circuits server fetch for skippable user navigations", async () => {
+describe("fetchRouteData behavior", () => {
+	it("always fetches server route data even for client-only manifest routes", async () => {
 		vi.doMock("/client-only.js", () => ({
 			default: () => null,
 		}));
-		const fetchSpy = vi
-			.spyOn(window, "fetch")
-			.mockResolvedValue(new Response("unused"));
+		const waitFn = vi.fn(async ({ serverDataPromise }) => {
+			const serverData = await serverDataPromise;
+			return serverData.loaderData;
+		});
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: ["/client-only"],
+					loadersData: [{ fromServer: "fresh" }],
+					importURLs: ["/client-only.js"],
+					exportKeys: ["default"],
+					errorExportKeys: [""],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "build-42",
+					},
+				},
+			),
+		);
 		installVormaGlobal({
 			buildID: "build-42",
 			routeManifest: {
@@ -3543,6 +3131,11 @@ describe("fetchRouteData client-only skip path", () => {
 					errorExportKey: "",
 				},
 			},
+			matchedPatterns: ["/client-only"],
+			patternToWaitFnMap: {
+				"/client-only": waitFn,
+			},
+			clientLoadersData: [{ cached: true }],
 		});
 
 		const outcome = await fetchRouteData(new AbortController(), {
@@ -3550,149 +3143,19 @@ describe("fetchRouteData client-only skip path", () => {
 			navigationType: "userNavigation",
 		});
 
-		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		expect(outcome.type).toBe("success");
 		if (outcome.type !== "success") {
 			throw new Error("Expected a success outcome");
 		}
-
 		expect(outcome.response.headers.get("X-Vorma-Build-Id")).toBe(
 			"build-42",
 		);
-		expect(outcome.json.matchedPatterns).toEqual(["/client-only"]);
-		expect(outcome.json.importURLs).toEqual(["/client-only.js"]);
-		expect(outcome.json.loadersData).toEqual([undefined]);
 		await expect(outcome.waitFnPromise).resolves.toEqual({
-			data: [undefined],
-			errorMessage: undefined,
-		});
-	});
-
-	it("reuses cached client-loader data in client-only skip outcomes", async () => {
-		vi.doMock("/cached-client.js", () => ({
-			default: () => null,
-		}));
-		const waitFn = vi.fn().mockResolvedValue("unexpected");
-		installVormaGlobal({
-			routeManifest: {
-				"/cached-client": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry([
-				"/cached-client",
-			]),
-			clientModuleMap: {
-				"/cached-client": {
-					importURL: "/cached-client.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-			matchedPatterns: ["/cached-client"],
-			patternToWaitFnMap: {
-				"/cached-client": waitFn,
-			},
-			clientLoadersData: [{ cached: true }],
-		});
-
-		const outcome = await fetchRouteData(new AbortController(), {
-			href: "/cached-client",
-			navigationType: "userNavigation",
-		});
-		expect(outcome.type).toBe("success");
-		if (outcome.type !== "success") {
-			throw new Error("Expected a success outcome");
-		}
-
-		await expect(outcome.waitFnPromise).resolves.toEqual({
-			data: [{ cached: true }],
-			errorMessage: undefined,
-		});
-		expect(waitFn).not.toHaveBeenCalled();
-	});
-
-	it("does not seed cached client-loader results when current match snapshot is missing", async () => {
-		vi.doMock("/uncached-client.js", () => ({
-			default: () => null,
-		}));
-		const waitFn = vi.fn().mockResolvedValue({ fromWaitFn: true });
-		installVormaGlobal({
-			routeManifest: {
-				"/uncached-client": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry([
-				"/uncached-client",
-			]),
-			clientModuleMap: {
-				"/uncached-client": {
-					importURL: "/uncached-client.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-			matchedPatterns: ["/uncached-client"],
-			patternToWaitFnMap: {
-				"/uncached-client": waitFn,
-			},
-			clientLoadersData: [],
-		});
-
-		const outcome = await fetchRouteData(new AbortController(), {
-			href: "/uncached-client",
-			navigationType: "userNavigation",
-		});
-		expect(outcome.type).toBe("success");
-		if (outcome.type !== "success") {
-			throw new Error("Expected a success outcome");
-		}
-
-		await expect(outcome.waitFnPromise).resolves.toEqual({
-			data: [{ fromWaitFn: true }],
+			data: [{ fromServer: "fresh" }],
 			errorMessage: undefined,
 		});
 		expect(waitFn).toHaveBeenCalledTimes(1);
-	});
-
-	it("falls back to default optional globals in skippable client-only outcomes", async () => {
-		vi.doMock("/fallback-defaults.js", () => ({
-			default: () => null,
-		}));
-		installVormaGlobal({
-			buildID: undefined,
-			routeManifest: {
-				"/fallback-defaults": 0,
-			},
-			patternRegistry: createRegisteredPatternRegistry([
-				"/fallback-defaults",
-			]),
-			clientModuleMap: {
-				"/fallback-defaults": {
-					importURL: "/fallback-defaults.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-			patternToWaitFnMap: undefined,
-			matchedPatterns: undefined,
-			params: undefined,
-			splatValues: undefined,
-			loadersData: undefined,
-			clientLoadersData: undefined,
-		});
-
-		const outcome = await fetchRouteData(new AbortController(), {
-			href: "/fallback-defaults",
-			navigationType: "userNavigation",
-		});
-		expect(outcome.type).toBe("success");
-		if (outcome.type !== "success") {
-			throw new Error("Expected a success outcome");
-		}
-
-		expect(outcome.response.headers.get("X-Vorma-Build-Id")).toBe("1");
-		await expect(outcome.waitFnPromise).resolves.toEqual({
-			data: [undefined],
-			errorMessage: undefined,
-		});
 	});
 
 	it("handles server fetch outcomes when client-loader map is undefined", async () => {
@@ -4013,6 +3476,78 @@ describe("fetchRouteData client-only skip path", () => {
 				}),
 			).rejects.toThrow(
 				"Partial route matcher returned a sparse matches array at index 0.",
+			);
+			expect(waitFn).not.toHaveBeenCalled();
+			expect(consoleErrorSpy).toHaveBeenCalled();
+		} finally {
+			consoleErrorSpy.mockRestore();
+			partialMatchesSpy.mockRestore();
+		}
+	});
+
+	it("throws when partial matcher returns an empty route pattern", async () => {
+		const partialMatchesSpy = vi
+			.spyOn(renderRuntimeModule, "findPartialMatchesOnClient")
+			.mockResolvedValue({
+				params: {},
+				splatValues: [],
+				matches: [createMatch("")],
+			} as any);
+		const waitFn = vi.fn(async ({ serverDataPromise }) => {
+			const serverData = await serverDataPromise;
+			return serverData.loaderData;
+		});
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					matchedPatterns: ["/placeholder"],
+					loadersData: [{ value: "ok" }],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+				}),
+				{
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				},
+			),
+		);
+		installVormaGlobal({
+			routeManifest: {
+				"": 1,
+			},
+			patternRegistry: createRegisteredPatternRegistry(["/placeholder"]),
+			patternToWaitFnMap: {
+				"": waitFn,
+			},
+			clientModuleMap: {
+				"": {
+					importURL: "/placeholder.js",
+					exportKey: "default",
+					errorExportKey: "",
+				},
+			},
+		});
+		const consoleErrorSpy = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+
+		try {
+			await expect(
+				fetchRouteData(new AbortController(), {
+					href: "/placeholder",
+					navigationType: "userNavigation",
+				}),
+			).rejects.toThrow(
+				"Partial route matcher returned an empty route pattern at index 0.",
 			);
 			expect(waitFn).not.toHaveBeenCalled();
 			expect(consoleErrorSpy).toHaveBeenCalled();

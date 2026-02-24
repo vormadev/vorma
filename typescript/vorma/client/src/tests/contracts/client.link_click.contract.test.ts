@@ -32,6 +32,30 @@ describe("client link click contracts", () => {
 		expect(preventDefault).toHaveBeenCalledTimes(1);
 	});
 
+	it("honors user onClick preventDefault by skipping internal navigation", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const { event } = createClickEvent("/cancelled-navigation", {
+			cancelable: true,
+		});
+		const consumerOnClick = vi.fn((clickEvent: MouseEvent) => {
+			clickEvent.preventDefault();
+		});
+		const finalLinkProps = api.__makeFinalLinkProps({
+			href: "/cancelled-navigation",
+			onClick: consumerOnClick,
+		} as any);
+
+		await finalLinkProps.onClick(event);
+		await vi.runAllTimersAsync();
+
+		expect(consumerOnClick).toHaveBeenCalledTimes(1);
+		expect(event.defaultPrevented).toBe(true);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
 	it("does not prevent default for external links", async () => {
 		const api = await loadClientAPI();
 

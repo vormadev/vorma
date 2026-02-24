@@ -12,6 +12,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/nestedmux"
+	"github.com/vormadev/vorma/vormabuild/buildlifecycle"
 )
 
 func newRouteRegistryBuildExecutorForTest(
@@ -1112,13 +1113,13 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_RunsHeavyArtifactStepsOuts
 		func(dependencies *routeRegistryBuildDependencies) {
 			dependencies.writeStageOnePathsJSONForRuntimeState = func(
 				v *vormaruntime.Vorma,
-				runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+				runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 				routeManifestFile string,
 			) error {
-				if runtimeStateSnapshot.buildID != "captured-build-id" {
+				if runtimeStateSnapshot.BuildID != "captured-build-id" {
 					t.Fatalf(
 						"runtime snapshot build ID = %q, want %q",
-						runtimeStateSnapshot.buildID,
+						runtimeStateSnapshot.BuildID,
 						"captured-build-id",
 					)
 				}
@@ -1136,12 +1137,12 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_RunsHeavyArtifactStepsOuts
 			}
 			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
 				v *vormaruntime.Vorma,
-				runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+				runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			) error {
-				if runtimeStateSnapshot.buildID != "captured-build-id" {
+				if runtimeStateSnapshot.BuildID != "captured-build-id" {
 					t.Fatalf(
 						"runtime snapshot build ID = %q, want %q",
-						runtimeStateSnapshot.buildID,
+						runtimeStateSnapshot.BuildID,
 						"captured-build-id",
 					)
 				}
@@ -1201,14 +1202,14 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_GeneratesManifestOutsideRu
 			}
 			dependencies.writeStageOnePathsJSONForRuntimeState = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 				string,
 			) error {
 				return nil
 			}
 			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			) error {
 				return nil
 			}
@@ -1231,14 +1232,14 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_DoesNotCommitRouteManifest
 		func(dependencies *routeRegistryBuildDependencies) {
 			dependencies.writeStageOnePathsJSONForRuntimeState = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 				string,
 			) error {
 				return nil
 			}
 			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			) error {
 				return expectedErr
 			}
@@ -1317,13 +1318,13 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_UsesSingleCapturedRuntimeS
 		l.SetPaths(initialPaths)
 	})
 
-	var snapshotSeenByStageOne routeBuildRuntimeStateSnapshot
-	var snapshotSeenByGeneratedTS routeBuildRuntimeStateSnapshot
+	var snapshotSeenByStageOne buildlifecycle.RouteBuildRuntimeStateSnapshot
+	var snapshotSeenByGeneratedTS buildlifecycle.RouteBuildRuntimeStateSnapshot
 	routeRegistryBuildExecutor := newRouteRegistryBuildExecutorForTest(
 		func(dependencies *routeRegistryBuildDependencies) {
 			dependencies.writeStageOnePathsJSONForRuntimeState = func(
 				_ *vormaruntime.Vorma,
-				runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+				runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 				_ string,
 			) error {
 				snapshotSeenByStageOne = runtimeStateSnapshot
@@ -1331,7 +1332,7 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_UsesSingleCapturedRuntimeS
 			}
 			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
 				v *vormaruntime.Vorma,
-				runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+				runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			) error {
 				snapshotSeenByGeneratedTS = runtimeStateSnapshot
 				v.WithLock(func(l *vormaruntime.LockedVorma) {
@@ -1356,27 +1357,27 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_UsesSingleCapturedRuntimeS
 		)
 	}
 
-	if snapshotSeenByStageOne.buildID != "build-before-mutation" {
+	if snapshotSeenByStageOne.BuildID != "build-before-mutation" {
 		t.Fatalf(
 			"stage-one snapshot build ID = %q, want %q",
-			snapshotSeenByStageOne.buildID,
+			snapshotSeenByStageOne.BuildID,
 			"build-before-mutation",
 		)
 	}
-	if snapshotSeenByGeneratedTS.buildID != "build-before-mutation" {
+	if snapshotSeenByGeneratedTS.BuildID != "build-before-mutation" {
 		t.Fatalf(
 			"generated TS snapshot build ID = %q, want %q",
-			snapshotSeenByGeneratedTS.buildID,
+			snapshotSeenByGeneratedTS.BuildID,
 			"build-before-mutation",
 		)
 	}
-	if !routeBuildRuntimePathsMapMatches(
-		snapshotSeenByGeneratedTS.paths,
+	if !buildlifecycle.RouteBuildRuntimePathsMapMatches(
+		snapshotSeenByGeneratedTS.Paths,
 		initialPaths,
 	) {
 		t.Fatalf(
 			"generated TS snapshot paths = %#v, want stable initial paths %#v",
-			snapshotSeenByGeneratedTS.paths,
+			snapshotSeenByGeneratedTS.Paths,
 			initialPaths,
 		)
 	}
@@ -1404,13 +1405,13 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_StopsBeforeWritingArtifact
 		func(dependencies *routeRegistryBuildDependencies) {
 			dependencies.isRouteBuildRuntimeStateSnapshotCurrent = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			) bool {
 				return false
 			}
 			dependencies.writeStageOnePathsJSONForRuntimeState = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 				string,
 			) error {
 				t.Fatal(
@@ -1420,7 +1421,7 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_StopsBeforeWritingArtifact
 			}
 			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			) error {
 				t.Fatal(
 					"did not expect TypeScript write when runtime snapshot is stale",
@@ -1471,21 +1472,21 @@ func TestWriteRouteArtifactsWithoutHoldingRuntimeLock_SkipsRollbackCleanupWhenRu
 		func(dependencies *routeRegistryBuildDependencies) {
 			dependencies.isRouteBuildRuntimeStateSnapshotCurrent = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			) bool {
 				stalenessCheckCount++
 				return stalenessCheckCount == 1
 			}
 			dependencies.writeStageOnePathsJSONForRuntimeState = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 				string,
 			) error {
 				return nil
 			}
 			dependencies.writeGeneratedTypeScriptForRuntimeState = func(
 				*vormaruntime.Vorma,
-				routeBuildRuntimeStateSnapshot,
+				buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			) error {
 				t.Fatal(
 					"did not expect TypeScript write after runtime snapshot became stale",
@@ -1538,25 +1539,32 @@ func TestRouteBuildRuntimeStateSnapshotIsCurrent(t *testing.T) {
 		l.SetBuildID("build-snapshot")
 	})
 
-	if !routeBuildRuntimeStateSnapshotIsCurrent(
+	if !buildlifecycle.RouteBuildRuntimeStateSnapshotIsCurrent(
 		app,
-		routeBuildRuntimeStateSnapshot{buildID: "build-snapshot"},
+		buildlifecycle.RouteBuildRuntimeStateSnapshot{
+			BuildID: "build-snapshot",
+		},
 	) {
 		t.Fatal("expected runtime snapshot to be current when build IDs match")
 	}
-	if routeBuildRuntimeStateSnapshotIsCurrent(
+	if buildlifecycle.RouteBuildRuntimeStateSnapshotIsCurrent(
 		app,
-		routeBuildRuntimeStateSnapshot{buildID: "different-build"},
+		buildlifecycle.RouteBuildRuntimeStateSnapshot{
+			BuildID: "different-build",
+		},
 	) {
 		t.Fatal("expected runtime snapshot to be stale when build IDs differ")
 	}
 }
 
 func TestShouldCommitRouteManifestFileForRuntimeState(t *testing.T) {
-	if !shouldCommitRouteManifestFileForRuntimeState("build-id", "build-id") {
+	if !buildlifecycle.ShouldCommitRouteManifestFileForRuntimeState(
+		"build-id",
+		"build-id",
+	) {
 		t.Fatal("expected manifest commit when build IDs match")
 	}
-	if shouldCommitRouteManifestFileForRuntimeState(
+	if buildlifecycle.ShouldCommitRouteManifestFileForRuntimeState(
 		"build-id-current",
 		"build-id-expected",
 	) {

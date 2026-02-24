@@ -7,6 +7,7 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
+	"github.com/vormadev/vorma/vormabuild/buildlifecycle"
 )
 
 func TestCommitRuntimeStateWithLock_CommitsAllCoreBuildFields(t *testing.T) {
@@ -14,23 +15,23 @@ func TestCommitRuntimeStateWithLock_CommitsAllCoreBuildFields(t *testing.T) {
 	app := fixture.app
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
-		commitRuntimeStateWithLock(
+		buildlifecycle.CommitRuntimeStateWithLock(
 			l,
-			runtimeStateCommitInput{
-				shouldCommitIsDev:             true,
-				isDev:                         true,
-				shouldCommitBuildID:           true,
-				buildID:                       "committed-build-id",
-				shouldCommitRouteManifestFile: true,
-				routeManifestFile:             "committed-manifest.json",
-				routePaths: map[string]*vormaruntime.Path{
+			buildlifecycle.RuntimeStateCommitInput{
+				ShouldCommitIsDev:             true,
+				IsDev:                         true,
+				ShouldCommitBuildID:           true,
+				BuildID:                       "committed-build-id",
+				ShouldCommitRouteManifestFile: true,
+				RouteManifestFile:             "committed-manifest.json",
+				RoutePaths: map[string]*vormaruntime.Path{
 					"/committed": {
 						OriginalPattern: "/committed",
 						SrcPath:         "frontend/src/routes/committed.tsx",
 						ExportKey:       "default",
 					},
 				},
-				routePathsUpdateMode: runtimeStateRoutePathsUpdateModeReplaceParsedPathsForInit,
+				RoutePathsUpdateMode: buildlifecycle.RuntimeStateRoutePathsUpdateModeReplaceParsedPathsForInit,
 			},
 		)
 	})
@@ -72,17 +73,17 @@ func TestCommitRuntimeStateWithLock_SyncFromDevReloadMergesServerOnlyHandlers(
 	)
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
-		commitRuntimeStateWithLock(
+		buildlifecycle.CommitRuntimeStateWithLock(
 			l,
-			runtimeStateCommitInput{
-				routePaths: map[string]*vormaruntime.Path{
+			buildlifecycle.RuntimeStateCommitInput{
+				RoutePaths: map[string]*vormaruntime.Path{
 					"/client": {
 						OriginalPattern: "/client",
 						SrcPath:         "frontend/src/routes/client.tsx",
 						ExportKey:       "default",
 					},
 				},
-				routePathsUpdateMode: runtimeStateRoutePathsUpdateModeSyncFromDevReload,
+				RoutePathsUpdateMode: buildlifecycle.RuntimeStateRoutePathsUpdateModeSyncFromDevReload,
 			},
 		)
 	})
@@ -118,11 +119,11 @@ func TestCommitRuntimeState_AppliesMutationViaInternalLockingPath(
 	fixture := newBuildTestFixture(t, nil)
 	app := fixture.app
 
-	commitRuntimeState(
+	buildlifecycle.CommitRuntimeState(
 		app,
-		runtimeStateCommitInput{
-			shouldCommitBuildID: true,
-			buildID:             "lock-wrapper-build-id",
+		buildlifecycle.RuntimeStateCommitInput{
+			ShouldCommitBuildID: true,
+			BuildID:             "lock-wrapper-build-id",
 		},
 	)
 
@@ -141,7 +142,7 @@ func TestCommitRuntimeStateWithLock_PanicsForUnsupportedRoutePathUpdateMode(
 		panicValue := recover()
 		if panicValue == nil {
 			t.Fatal(
-				"expected commitRuntimeStateWithLock to panic for unsupported route path mode",
+				"expected buildlifecycle.CommitRuntimeStateWithLock to panic for unsupported route path mode",
 			)
 		}
 
@@ -166,22 +167,27 @@ func TestCommitRuntimeStateWithLock_PanicsForUnsupportedRoutePathUpdateMode(
 	}()
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
-		commitRuntimeStateWithLock(
+		buildlifecycle.CommitRuntimeStateWithLock(
 			l,
-			runtimeStateCommitInput{
-				routePathsUpdateMode: runtimeStateRoutePathsUpdateMode(255),
+			buildlifecycle.RuntimeStateCommitInput{
+				RoutePathsUpdateMode: buildlifecycle.RuntimeStateRoutePathsUpdateMode(
+					255,
+				),
 			},
 		)
 	})
 }
 
 func TestShouldRestoreRuntimeStateSnapshotForAttemptBuildID(t *testing.T) {
-	if !shouldRestoreRuntimeStateSnapshotForAttemptBuildID("build-id", "") {
+	if !buildlifecycle.ShouldRestoreRuntimeStateSnapshotForAttemptBuildID(
+		"build-id",
+		"",
+	) {
 		t.Fatal(
 			"expected runtime snapshot restore when no attempt build ID token is captured",
 		)
 	}
-	if !shouldRestoreRuntimeStateSnapshotForAttemptBuildID(
+	if !buildlifecycle.ShouldRestoreRuntimeStateSnapshotForAttemptBuildID(
 		"build-id",
 		"build-id",
 	) {
@@ -189,7 +195,7 @@ func TestShouldRestoreRuntimeStateSnapshotForAttemptBuildID(t *testing.T) {
 			"expected runtime snapshot restore when current build ID matches attempt build ID token",
 		)
 	}
-	if shouldRestoreRuntimeStateSnapshotForAttemptBuildID(
+	if buildlifecycle.ShouldRestoreRuntimeStateSnapshotForAttemptBuildID(
 		"build-current",
 		"build-attempt",
 	) {

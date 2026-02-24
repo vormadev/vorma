@@ -41,12 +41,10 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,9 +54,6 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
-	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/tdewolff/parse/v2"
-	"github.com/tdewolff/parse/v2/js"
 	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
@@ -67,10 +62,12 @@ import (
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/lab/viteutil"
-	"github.com/vormadev/vorma/vormabuild/tsgenruntime"
+	"github.com/vormadev/vorma/vormabuild/buildlifecycle"
+	"github.com/vormadev/vorma/vormabuild/routeparse"
+	"github.com/vormadev/vorma/vormabuild/tsartifactgen"
 	"github.com/vormadev/vorma/wave"
-	"github.com/vormadev/vorma/wave/tooling/builder"
-	"github.com/vormadev/vorma/wave/tooling/devserver"
+	"github.com/vormadev/vorma/wave/wavebuild/builder"
+	"github.com/vormadev/vorma/wave/wavedev/devserver"
 )
 
 type atomicFileWriteDependencies struct {
@@ -1991,7 +1988,7 @@ func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionFiles(
 		return nil, fmt.Errorf("vorma config is required")
 	}
 
-	normalizedPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
+	normalizedPatterns, err := routeparse.NormalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ServerRouteDefinitionPatterns,
 	)
 	if err != nil {
@@ -2038,7 +2035,7 @@ func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionFiles(
 func (executor backendRouteDiscoveryExecutor) resolveServerRouteDefinitionPattern(
 	routeDefinitionPattern string,
 ) ([]string, error) {
-	if !patternContainsGlobMeta(routeDefinitionPattern) {
+	if !strings.ContainsAny(routeDefinitionPattern, "*?[{") {
 		fileInfo, err := executor.dependencies.statPath(routeDefinitionPattern)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -2558,7 +2555,7 @@ func discoveredRouteRegistrarDiscoveryCacheKey(v *vormaruntime.Vorma) string {
 		return "<nil-vorma>"
 	}
 
-	normalizedServerRoutePatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
+	normalizedServerRoutePatterns, err := routeparse.NormalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ServerRouteDefinitionPatterns,
 	)
 	if err != nil {
@@ -3419,7 +3416,7 @@ func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOneWithRout
 
 func writePathsToDiskStageOneFromRuntimeState(
 	v *vormaruntime.Vorma,
-	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+	runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 	routeManifestFile string,
 ) error {
 	return defaultBuildArtifactFileSystemExecutor.writePathsToDiskStageOneFromRuntimeState(
@@ -3431,7 +3428,7 @@ func writePathsToDiskStageOneFromRuntimeState(
 
 func (executor buildArtifactFileSystemExecutor) writePathsToDiskStageOneFromRuntimeState(
 	v *vormaruntime.Vorma,
-	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+	runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 	routeManifestFile string,
 ) error {
 	return executor.writeStageOnePathsFileToDisk(
@@ -3486,14 +3483,14 @@ func stageOnePathsFile(
 
 func stageOnePathsFileFromRuntimeState(
 	v *vormaruntime.Vorma,
-	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+	runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 	routeManifestFile string,
 ) *runtimepaths.PathsFile {
 	return &runtimepaths.PathsFile{
 		Stage:             "one",
-		Paths:             toRuntimePathsMap(runtimeStateSnapshot.paths),
+		Paths:             toRuntimePathsMap(runtimeStateSnapshot.Paths),
 		ClientEntrySrc:    v.Config.ClientEntry,
-		BuildID:           runtimeStateSnapshot.buildID,
+		BuildID:           runtimeStateSnapshot.BuildID,
 		RouteManifestFile: routeManifestFile,
 	}
 }
@@ -3953,10 +3950,10 @@ type buildInnerOptions struct {
 }
 
 type buildInnerDependencies struct {
-	captureBuildInnerRuntimeState             func(*vormaruntime.Vorma) buildInnerRuntimeStateSnapshot
+	captureBuildInnerRuntimeState             func(*vormaruntime.Vorma) buildlifecycle.BuildRuntimeStateSnapshot
 	restoreBuildInnerRuntimeStateAfterFailure func(
 		*vormaruntime.Vorma,
-		buildInnerRuntimeStateSnapshot,
+		buildlifecycle.BuildRuntimeStateSnapshot,
 		string,
 	) bool
 	getCurrentBuildIDWithReadLock func(*vormaruntime.Vorma) string
@@ -3972,8 +3969,6 @@ type buildInnerExecutor struct {
 	dependencies buildInnerDependencies
 }
 
-type buildInnerRuntimeStateSnapshot = buildRuntimeStateSnapshot
-
 type buildInnerRouteSyncDependencies struct {
 	parseClientRoutes                func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error)
 	parseBackendLoaderPatterns       func(*vormaruntime.Vorma) ([]string, error)
@@ -3981,7 +3976,7 @@ type buildInnerRouteSyncDependencies struct {
 		map[string]*vormaruntime.Path,
 		[]string,
 	) map[string]*vormaruntime.Path
-	runRouteSyncExecution func(*vormaruntime.Vorma, routeSyncExecutionOptions) error
+	runRouteSyncExecution func(*vormaruntime.Vorma, buildlifecycle.RouteSyncExecutionOptions) error
 }
 
 type buildInnerRouteSyncExecutor struct {
@@ -4013,7 +4008,7 @@ func defaultBuildInnerDependencies() buildInnerDependencies {
 	return buildInnerDependencies{
 		captureBuildInnerRuntimeState:             captureBuildInnerRuntimeState,
 		restoreBuildInnerRuntimeStateAfterFailure: restoreBuildInnerRuntimeStateAfterFailure,
-		getCurrentBuildIDWithReadLock:             currentBuildIDWithReadLock,
+		getCurrentBuildIDWithReadLock:             buildlifecycle.CurrentBuildIDWithReadLock,
 		initializeBuildInnerState:                 initializeBuildInnerState,
 		parseAndSyncClientRoutes:                  parseAndSyncClientRoutes,
 		cleanStaticPublicOutDir:                   cleanStaticPublicOutDir,
@@ -4067,10 +4062,10 @@ func newBuildInnerExecutor(
 
 func defaultBuildInnerRouteSyncDependencies() buildInnerRouteSyncDependencies {
 	return buildInnerRouteSyncDependencies{
-		parseClientRoutes:                parseClientRoutes,
+		parseClientRoutes:                routeparse.ParseClientRoutes,
 		parseBackendLoaderPatterns:       parseBackendLoaderPatterns,
 		mergeBackendLoaderPatternsInPath: mergeBackendLoaderPatternsInPath,
-		runRouteSyncExecution:            runRouteSyncExecution,
+		runRouteSyncExecution:            buildlifecycle.RunRouteSyncExecution,
 	}
 }
 
@@ -4185,11 +4180,11 @@ func (executor buildInnerExecutor) buildInner(
 	}
 
 	start := time.Now()
-	buildLifecycleStateMachine, err := newBuildLifecycleStateMachineWithOptions(
-		buildLifecycleWorkflowFullBuild,
+	buildLifecycleStateMachine, err := buildlifecycle.NewLifecycleStateMachineWithOptions(
+		buildlifecycle.WorkflowFullBuild,
 		v.Log,
-		buildLifecycleStateMachineOptions{
-			attemptInputs: []buildLifecycleAttemptInput{
+		buildlifecycle.LifecycleStateMachineOptions{
+			AttemptInputs: []buildlifecycle.LifecycleAttemptInput{
 				{
 					Key:   "requested_mode",
 					Value: requestedBuildMode,
@@ -4200,7 +4195,7 @@ func (executor buildInnerExecutor) buildInner(
 	if err != nil {
 		return fmt.Errorf("configure build lifecycle state machine: %w", err)
 	}
-	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseStarted, "full build started"); err != nil {
+	if err := buildLifecycleStateMachine.TransitionTo(buildlifecycle.PhaseStarted, "full build started"); err != nil {
 		return fmt.Errorf("transition build lifecycle to started: %w", err)
 	}
 
@@ -4215,7 +4210,7 @@ func (executor buildInnerExecutor) buildInner(
 	runBuildInnerStep := func(
 		step func() error,
 		stepFailureErrorContext string,
-		transitionToPhase buildLifecyclePhase,
+		transitionToPhase buildlifecycle.LifecyclePhase,
 		transitionReason string,
 		transitionFailureErrorContext string,
 	) error {
@@ -4225,20 +4220,20 @@ func (executor buildInnerExecutor) buildInner(
 			}
 			return fmt.Errorf("%s: %w", stepFailureErrorContext, err)
 		}
-		if err := buildLifecycleStateMachine.transitionTo(transitionToPhase, transitionReason); err != nil {
+		if err := buildLifecycleStateMachine.TransitionTo(transitionToPhase, transitionReason); err != nil {
 			return fmt.Errorf("%s: %w", transitionFailureErrorContext, err)
 		}
 		return nil
 	}
-	buildErr := runWithRollbackOnFailureAndPanic(
-		rollbackTransactionOptions{
-			run: func() error {
+	buildErr := buildlifecycle.RunWithRollbackOnFailureAndPanic(
+		buildlifecycle.RollbackTransactionOptions{
+			Run: func() error {
 				if err := runBuildInnerStep(
 					func() error {
 						return executor.dependencies.initializeBuildInnerState(v, &normalizedOptions)
 					},
 					"",
-					buildLifecyclePhaseRuntimeStateInitialized,
+					buildlifecycle.PhaseRuntimeStateInitialized,
 					"runtime state initialized",
 					"transition build lifecycle to runtime-state-initialized",
 				); err != nil {
@@ -4252,7 +4247,7 @@ func (executor buildInnerExecutor) buildInner(
 						return executor.dependencies.parseAndSyncClientRoutes(v)
 					},
 					"parse client routes",
-					buildLifecyclePhaseRoutesSynchronized,
+					buildlifecycle.PhaseRoutesSynchronized,
 					"client routes synchronized",
 					"transition build lifecycle to routes-synchronized",
 				); err != nil {
@@ -4263,7 +4258,7 @@ func (executor buildInnerExecutor) buildInner(
 						return executor.dependencies.cleanStaticPublicOutDir(v)
 					},
 					"clean static public out dir",
-					buildLifecyclePhasePublicOutputCleaned,
+					buildlifecycle.PhasePublicOutputCleaned,
 					"static public output cleaned",
 					"transition build lifecycle to public-output-cleaned",
 				); err != nil {
@@ -4274,7 +4269,7 @@ func (executor buildInnerExecutor) buildInner(
 						return executor.dependencies.writePublicFileMapTypeScript(v)
 					},
 					"write public file map TS",
-					buildLifecyclePhasePublicFileMapWritten,
+					buildlifecycle.PhasePublicFileMapWritten,
 					"public file map written",
 					"transition build lifecycle to public-file-map-written",
 				); err != nil {
@@ -4285,7 +4280,7 @@ func (executor buildInnerExecutor) buildInner(
 						return executor.dependencies.writeRouteArtifacts(v)
 					},
 					"write route artifacts",
-					buildLifecyclePhaseRouteArtifactsWritten,
+					buildlifecycle.PhaseRouteArtifactsWritten,
 					"route artifacts written",
 					"transition build lifecycle to route-artifacts-written",
 				); err != nil {
@@ -4293,7 +4288,7 @@ func (executor buildInnerExecutor) buildInner(
 				}
 				return nil
 			},
-			rollbackOnFailure: func() error {
+			RollbackOnFailure: func() error {
 				rollbackAttempted = executor.dependencies.restoreBuildInnerRuntimeStateAfterFailure(
 					v,
 					initialRuntimeState,
@@ -4305,16 +4300,16 @@ func (executor buildInnerExecutor) buildInner(
 		},
 	)
 	if buildErr != nil {
-		rollbackOutcome := buildLifecycleRollbackOutcomeNotAttempted
+		rollbackOutcome := buildlifecycle.OutcomeNotAttempted
 		rollbackReason := "runtime-state rollback was not attempted after full build failure"
 		if rollbackAttempted {
-			rollbackOutcome = buildLifecycleRollbackOutcomeSucceeded
+			rollbackOutcome = buildlifecycle.OutcomeSucceeded
 			rollbackReason = "restored captured runtime state after full build failure"
 		} else if rollbackSkippedForSupersededBuildID {
 			rollbackReason = "skipped runtime-state rollback because build ID was superseded by a newer build"
 		}
-		if rollbackTraceErr := buildLifecycleStateMachine.recordRollback(
-			buildLifecycleRollbackDecisionRequired,
+		if rollbackTraceErr := buildLifecycleStateMachine.RecordRollback(
+			buildlifecycle.DecisionRequired,
 			rollbackOutcome,
 			rollbackReason,
 			nil,
@@ -4327,7 +4322,7 @@ func (executor buildInnerExecutor) buildInner(
 				),
 			)
 		}
-		if transitionErr := buildLifecycleStateMachine.transitionToFailed("full build failed", buildErr); transitionErr != nil {
+		if transitionErr := buildLifecycleStateMachine.TransitionToFailed("full build failed", buildErr); transitionErr != nil {
 			return errors.Join(
 				buildErr,
 				fmt.Errorf(
@@ -4338,9 +4333,9 @@ func (executor buildInnerExecutor) buildInner(
 		}
 		return buildErr
 	}
-	if rollbackTraceErr := buildLifecycleStateMachine.recordRollback(
-		buildLifecycleRollbackDecisionNotRequired,
-		buildLifecycleRollbackOutcomeNotRequired,
+	if rollbackTraceErr := buildLifecycleStateMachine.RecordRollback(
+		buildlifecycle.DecisionNotRequired,
+		buildlifecycle.OutcomeNotRequired,
 		"build completed successfully without requiring rollback",
 		nil,
 	); rollbackTraceErr != nil {
@@ -4349,7 +4344,7 @@ func (executor buildInnerExecutor) buildInner(
 			rollbackTraceErr,
 		)
 	}
-	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseCompleted, "full build completed"); err != nil {
+	if err := buildLifecycleStateMachine.TransitionTo(buildlifecycle.PhaseCompleted, "full build completed"); err != nil {
 		return fmt.Errorf("transition build lifecycle to completed: %w", err)
 	}
 
@@ -4366,17 +4361,17 @@ func normalizeBuildInnerOptions(opts *buildInnerOptions) buildInnerOptions {
 
 func captureBuildInnerRuntimeState(
 	v *vormaruntime.Vorma,
-) buildInnerRuntimeStateSnapshot {
-	var runtimeStateSnapshot buildInnerRuntimeStateSnapshot
+) buildlifecycle.BuildRuntimeStateSnapshot {
+	var runtimeStateSnapshot buildlifecycle.BuildRuntimeStateSnapshot
 	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
-		runtimeStateSnapshot = captureBuildRuntimeState(l)
+		runtimeStateSnapshot = buildlifecycle.CaptureBuildRuntimeState(l)
 	})
 	return runtimeStateSnapshot
 }
 
 func restoreBuildInnerRuntimeStateAfterFailure(
 	v *vormaruntime.Vorma,
-	state buildInnerRuntimeStateSnapshot,
+	state buildlifecycle.BuildRuntimeStateSnapshot,
 	currentAttemptCommittedBuildID string,
 ) bool {
 	restored := false
@@ -4387,7 +4382,7 @@ func restoreBuildInnerRuntimeStateAfterFailure(
 		) {
 			return
 		}
-		restoreBuildRuntimeState(l, state)
+		buildlifecycle.RestoreBuildRuntimeState(l, state)
 		restored = true
 	})
 	return restored
@@ -4397,7 +4392,7 @@ func shouldRollbackBuildInnerRuntimeStateAfterFailure(
 	currentBuildID string,
 	currentAttemptCommittedBuildID string,
 ) bool {
-	return shouldRestoreRuntimeStateSnapshotForAttemptBuildID(
+	return buildlifecycle.ShouldRestoreRuntimeStateSnapshotForAttemptBuildID(
 		currentBuildID,
 		currentAttemptCommittedBuildID,
 	)
@@ -4420,11 +4415,11 @@ func initializeBuildInnerStateWithBuildIDDependencies(
 	dependencies buildInnerBuildIDDependencies,
 ) error {
 	if !opts.isDev {
-		commitRuntimeState(
+		buildlifecycle.CommitRuntimeState(
 			v,
-			runtimeStateCommitInput{
-				shouldCommitIsDev: true,
-				isDev:             false,
+			buildlifecycle.RuntimeStateCommitInput{
+				ShouldCommitIsDev: true,
+				IsDev:             false,
 			},
 		)
 		v.Log.Info("START building Vorma (PROD)")
@@ -4436,13 +4431,13 @@ func initializeBuildInnerStateWithBuildIDDependencies(
 		return err
 	}
 
-	commitRuntimeState(
+	buildlifecycle.CommitRuntimeState(
 		v,
-		runtimeStateCommitInput{
-			shouldCommitIsDev:   true,
-			isDev:               true,
-			shouldCommitBuildID: true,
-			buildID:             buildID,
+		buildlifecycle.RuntimeStateCommitInput{
+			ShouldCommitIsDev:   true,
+			IsDev:               true,
+			ShouldCommitBuildID: true,
+			BuildID:             buildID,
 		},
 	)
 	v.Log.Info("START building Vorma (DEV)")
@@ -4483,8 +4478,8 @@ func (executor buildInnerRouteSyncExecutor) parseAndSyncClientRoutes(
 ) error {
 	return executor.dependencies.runRouteSyncExecution(
 		v,
-		routeSyncExecutionOptions{
-			parseClientRoutes: executor.parseClientAndBackendRoutesForSync,
+		buildlifecycle.RouteSyncExecutionOptions{
+			ParseClientRoutes: executor.parseClientAndBackendRoutesForSync,
 		},
 	)
 }
@@ -4590,467 +4585,6 @@ func logBuildInnerCompletion(v *vormaruntime.Vorma, start time.Time) {
 	)
 }
 
-type buildLifecycleWorkflow string
-
-const (
-	buildLifecycleWorkflowFullBuild        buildLifecycleWorkflow = "full-build"
-	buildLifecycleWorkflowFastRouteRebuild buildLifecycleWorkflow = "fast-route-rebuild"
-)
-
-type buildLifecyclePhase string
-
-const (
-	buildLifecyclePhaseIdle                    buildLifecyclePhase = "idle"
-	buildLifecyclePhaseStarted                 buildLifecyclePhase = "started"
-	buildLifecyclePhaseRuntimeStateInitialized buildLifecyclePhase = "runtime-state-initialized"
-	buildLifecyclePhaseRoutesSynchronized      buildLifecyclePhase = "routes-synchronized"
-	buildLifecyclePhasePublicOutputCleaned     buildLifecyclePhase = "public-output-cleaned"
-	buildLifecyclePhasePublicFileMapWritten    buildLifecyclePhase = "public-file-map-written"
-	buildLifecyclePhaseRouteArtifactsWritten   buildLifecyclePhase = "route-artifacts-written"
-	buildLifecyclePhaseCompleted               buildLifecyclePhase = "completed"
-	buildLifecyclePhaseFailed                  buildLifecyclePhase = "failed"
-)
-
-type buildLifecycleTransitionRecord struct {
-	AttemptID string
-	AtUTC     string
-	Sequence  uint64
-	Workflow  buildLifecycleWorkflow
-	From      buildLifecyclePhase
-	To        buildLifecyclePhase
-	Reason    string
-	Error     string
-}
-
-type buildLifecycleTransitionObserver func(buildLifecycleTransitionRecord)
-
-type buildLifecycleAttemptInput struct {
-	Key   string
-	Value string
-}
-
-type buildLifecycleRollbackDecision string
-
-const (
-	buildLifecycleRollbackDecisionRequired    buildLifecycleRollbackDecision = "required"
-	buildLifecycleRollbackDecisionNotRequired buildLifecycleRollbackDecision = "not-required"
-)
-
-type buildLifecycleRollbackOutcome string
-
-const (
-	buildLifecycleRollbackOutcomeSucceeded    buildLifecycleRollbackOutcome = "succeeded"
-	buildLifecycleRollbackOutcomeFailed       buildLifecycleRollbackOutcome = "failed"
-	buildLifecycleRollbackOutcomeNotRequired  buildLifecycleRollbackOutcome = "not-required"
-	buildLifecycleRollbackOutcomeNotAttempted buildLifecycleRollbackOutcome = "not-attempted"
-)
-
-type buildLifecycleRollbackRecord struct {
-	AttemptID string
-	AtUTC     string
-	Sequence  uint64
-	Workflow  buildLifecycleWorkflow
-	Decision  buildLifecycleRollbackDecision
-	Outcome   buildLifecycleRollbackOutcome
-	Reason    string
-	Error     string
-}
-
-type buildLifecycleStateMachineOptions struct {
-	transitionObserver buildLifecycleTransitionObserver
-	attemptInputs      []buildLifecycleAttemptInput
-	dependencies       buildLifecycleStateMachineDependencies
-}
-
-type buildLifecycleStateMachineDependencies struct {
-	nowUTC        func() time.Time
-	nextAttemptID func(buildLifecycleWorkflow) string
-}
-
-var buildLifecycleTraceAttemptSequence atomic.Uint64
-
-func defaultBuildLifecycleStateMachineDependencies() buildLifecycleStateMachineDependencies {
-	return buildLifecycleStateMachineDependencies{
-		nowUTC: time.Now().UTC,
-		nextAttemptID: func(workflow buildLifecycleWorkflow) string {
-			attemptSequence := buildLifecycleTraceAttemptSequence.Add(1)
-			return fmt.Sprintf("%s-attempt-%d", workflow, attemptSequence)
-		},
-	}
-}
-
-func normalizeBuildLifecycleStateMachineDependencies(
-	dependencies buildLifecycleStateMachineDependencies,
-) buildLifecycleStateMachineDependencies {
-	defaultDependencies := defaultBuildLifecycleStateMachineDependencies()
-	if dependencies.nowUTC == nil {
-		dependencies.nowUTC = defaultDependencies.nowUTC
-	}
-	if dependencies.nextAttemptID == nil {
-		dependencies.nextAttemptID = defaultDependencies.nextAttemptID
-	}
-	return dependencies
-}
-
-type buildLifecycleStateMachine struct {
-	workflow           buildLifecycleWorkflow
-	dependencies       buildLifecycleStateMachineDependencies
-	attemptID          string
-	attemptInputs      []buildLifecycleAttemptInput
-	currentPhase       buildLifecyclePhase
-	transitionSeq      uint64
-	rollbackSeq        uint64
-	logger             *slog.Logger
-	allowedTransitions map[buildLifecyclePhase]map[buildLifecyclePhase]struct{}
-	transitionObserver buildLifecycleTransitionObserver
-	transitionHistory  []buildLifecycleTransitionRecord
-	rollbackHistory    []buildLifecycleRollbackRecord
-}
-
-func newBuildLifecycleStateMachine(
-	workflow buildLifecycleWorkflow,
-	logger *slog.Logger,
-	transitionObserver buildLifecycleTransitionObserver,
-) (*buildLifecycleStateMachine, error) {
-	return newBuildLifecycleStateMachineWithOptions(
-		workflow,
-		logger,
-		buildLifecycleStateMachineOptions{
-			transitionObserver: transitionObserver,
-		},
-	)
-}
-
-func newBuildLifecycleStateMachineWithOptions(
-	workflow buildLifecycleWorkflow,
-	logger *slog.Logger,
-	options buildLifecycleStateMachineOptions,
-) (*buildLifecycleStateMachine, error) {
-	allowedTransitions, err := buildLifecycleAllowedTransitions(workflow)
-	if err != nil {
-		return nil, err
-	}
-
-	dependencies := normalizeBuildLifecycleStateMachineDependencies(
-		options.dependencies,
-	)
-	attemptInputs := normalizeBuildLifecycleAttemptInputs(options.attemptInputs)
-	attemptID := strings.TrimSpace(dependencies.nextAttemptID(workflow))
-	if attemptID == "" {
-		return nil, errors.New("build lifecycle attempt ID is required")
-	}
-
-	return &buildLifecycleStateMachine{
-		workflow:           workflow,
-		dependencies:       dependencies,
-		attemptID:          attemptID,
-		attemptInputs:      attemptInputs,
-		currentPhase:       buildLifecyclePhaseIdle,
-		logger:             logger,
-		allowedTransitions: allowedTransitions,
-		transitionObserver: options.transitionObserver,
-	}, nil
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) currentPhaseValue() buildLifecyclePhase {
-	return buildLifecycleMachine.currentPhase
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) attemptIDValue() string {
-	return buildLifecycleMachine.attemptID
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) attemptInputValues() []buildLifecycleAttemptInput {
-	if len(buildLifecycleMachine.attemptInputs) == 0 {
-		return nil
-	}
-	return append(
-		[]buildLifecycleAttemptInput(nil),
-		buildLifecycleMachine.attemptInputs...)
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) transitionHistoryEntries() []buildLifecycleTransitionRecord {
-	if len(buildLifecycleMachine.transitionHistory) == 0 {
-		return nil
-	}
-	return append(
-		[]buildLifecycleTransitionRecord(nil),
-		buildLifecycleMachine.transitionHistory...)
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) rollbackHistoryEntries() []buildLifecycleRollbackRecord {
-	if len(buildLifecycleMachine.rollbackHistory) == 0 {
-		return nil
-	}
-	return append(
-		[]buildLifecycleRollbackRecord(nil),
-		buildLifecycleMachine.rollbackHistory...)
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) transitionTo(
-	nextPhase buildLifecyclePhase,
-	reason string,
-) error {
-	return buildLifecycleMachine.transition(nextPhase, reason, "")
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) transitionToFailed(
-	reason string,
-	buildErr error,
-) error {
-	if buildErr == nil {
-		return errors.New(
-			"build error is required for failed lifecycle transition",
-		)
-	}
-	return buildLifecycleMachine.transition(
-		nextPhaseForFailedTransition(),
-		reason,
-		buildErr.Error(),
-	)
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) recordRollback(
-	decision buildLifecycleRollbackDecision,
-	outcome buildLifecycleRollbackOutcome,
-	reason string,
-	rollbackErr error,
-) error {
-	trimmedReason := strings.TrimSpace(reason)
-	if trimmedReason == "" {
-		return errors.New("rollback reason is required")
-	}
-
-	buildLifecycleMachine.rollbackSeq++
-	rollbackRecord := buildLifecycleRollbackRecord{
-		AttemptID: buildLifecycleMachine.attemptID,
-		AtUTC: buildLifecycleMachine.dependencies.nowUTC().
-			Format(time.RFC3339Nano),
-		Sequence: buildLifecycleMachine.rollbackSeq,
-		Workflow: buildLifecycleMachine.workflow,
-		Decision: decision,
-		Outcome:  outcome,
-		Reason:   trimmedReason,
-	}
-	if rollbackErr != nil {
-		rollbackRecord.Error = rollbackErr.Error()
-	}
-
-	buildLifecycleMachine.rollbackHistory = append(
-		buildLifecycleMachine.rollbackHistory,
-		rollbackRecord,
-	)
-
-	if buildLifecycleMachine.logger != nil {
-		buildLifecycleMachine.logger.Debug(
-			"Vorma build lifecycle rollback decision",
-			"attempt_id",
-			rollbackRecord.AttemptID,
-			"at_utc",
-			rollbackRecord.AtUTC,
-			"seq",
-			rollbackRecord.Sequence,
-			"workflow",
-			rollbackRecord.Workflow,
-			"decision",
-			rollbackRecord.Decision,
-			"outcome",
-			rollbackRecord.Outcome,
-			"reason",
-			rollbackRecord.Reason,
-			"error",
-			rollbackRecord.Error,
-		)
-	}
-
-	return nil
-}
-
-func (buildLifecycleMachine *buildLifecycleStateMachine) transition(
-	nextPhase buildLifecyclePhase,
-	reason string,
-	errorText string,
-) error {
-	trimmedReason := strings.TrimSpace(reason)
-	if trimmedReason == "" {
-		return errors.New("lifecycle transition reason is required")
-	}
-
-	currentPhase := buildLifecycleMachine.currentPhase
-	allowedNextPhases, hasPhase := buildLifecycleMachine.allowedTransitions[currentPhase]
-	if !hasPhase {
-		return fmt.Errorf(
-			"workflow %q is terminal at phase %q and cannot transition to %q",
-			buildLifecycleMachine.workflow,
-			currentPhase,
-			nextPhase,
-		)
-	}
-
-	if _, transitionAllowed := allowedNextPhases[nextPhase]; !transitionAllowed {
-		return fmt.Errorf(
-			"invalid workflow %q lifecycle transition %q -> %q (allowed: %s)",
-			buildLifecycleMachine.workflow,
-			currentPhase,
-			nextPhase,
-			strings.Join(
-				sortedBuildLifecyclePhaseNames(allowedNextPhases),
-				", ",
-			),
-		)
-	}
-
-	buildLifecycleMachine.transitionSeq++
-	buildLifecycleMachine.currentPhase = nextPhase
-
-	transitionRecord := buildLifecycleTransitionRecord{
-		AttemptID: buildLifecycleMachine.attemptID,
-		AtUTC: buildLifecycleMachine.dependencies.nowUTC().
-			Format(time.RFC3339Nano),
-		Sequence: buildLifecycleMachine.transitionSeq,
-		Workflow: buildLifecycleMachine.workflow,
-		From:     currentPhase,
-		To:       nextPhase,
-		Reason:   trimmedReason,
-		Error:    errorText,
-	}
-
-	buildLifecycleMachine.transitionHistory = append(
-		buildLifecycleMachine.transitionHistory,
-		transitionRecord,
-	)
-
-	if buildLifecycleMachine.logger != nil {
-		buildLifecycleMachine.logger.Debug(
-			"Vorma build lifecycle transition",
-			"attempt_id",
-			transitionRecord.AttemptID,
-			"at_utc",
-			transitionRecord.AtUTC,
-			"seq",
-			transitionRecord.Sequence,
-			"workflow",
-			transitionRecord.Workflow,
-			"from",
-			transitionRecord.From,
-			"to",
-			transitionRecord.To,
-			"reason",
-			transitionRecord.Reason,
-			"error",
-			transitionRecord.Error,
-		)
-	}
-	if buildLifecycleMachine.transitionObserver != nil {
-		buildLifecycleMachine.transitionObserver(transitionRecord)
-	}
-	return nil
-}
-
-func normalizeBuildLifecycleAttemptInputs(
-	attemptInputs []buildLifecycleAttemptInput,
-) []buildLifecycleAttemptInput {
-	if len(attemptInputs) == 0 {
-		return nil
-	}
-
-	normalizedAttemptInputs := make(
-		[]buildLifecycleAttemptInput,
-		0,
-		len(attemptInputs),
-	)
-	for _, attemptInput := range attemptInputs {
-		trimmedKey := strings.TrimSpace(attemptInput.Key)
-		if trimmedKey == "" {
-			continue
-		}
-
-		normalizedAttemptInputs = append(
-			normalizedAttemptInputs,
-			buildLifecycleAttemptInput{
-				Key:   trimmedKey,
-				Value: strings.TrimSpace(attemptInput.Value),
-			},
-		)
-	}
-	sort.Slice(normalizedAttemptInputs, func(i int, j int) bool {
-		return normalizedAttemptInputs[i].Key < normalizedAttemptInputs[j].Key
-	})
-	return normalizedAttemptInputs
-}
-
-func buildLifecycleAllowedTransitions(
-	workflow buildLifecycleWorkflow,
-) (map[buildLifecyclePhase]map[buildLifecyclePhase]struct{}, error) {
-	switch workflow {
-	case buildLifecycleWorkflowFullBuild:
-		return map[buildLifecyclePhase]map[buildLifecyclePhase]struct{}{
-			buildLifecyclePhaseIdle: {
-				buildLifecyclePhaseStarted: {},
-			},
-			buildLifecyclePhaseStarted: {
-				buildLifecyclePhaseRuntimeStateInitialized: {},
-				buildLifecyclePhaseFailed:                  {},
-			},
-			buildLifecyclePhaseRuntimeStateInitialized: {
-				buildLifecyclePhaseRoutesSynchronized: {},
-				buildLifecyclePhaseFailed:             {},
-			},
-			buildLifecyclePhaseRoutesSynchronized: {
-				buildLifecyclePhasePublicOutputCleaned: {},
-				buildLifecyclePhaseFailed:              {},
-			},
-			buildLifecyclePhasePublicOutputCleaned: {
-				buildLifecyclePhasePublicFileMapWritten: {},
-				buildLifecyclePhaseFailed:               {},
-			},
-			buildLifecyclePhasePublicFileMapWritten: {
-				buildLifecyclePhaseRouteArtifactsWritten: {},
-				buildLifecyclePhaseFailed:                {},
-			},
-			buildLifecyclePhaseRouteArtifactsWritten: {
-				buildLifecyclePhaseCompleted: {},
-				buildLifecyclePhaseFailed:    {},
-			},
-		}, nil
-	case buildLifecycleWorkflowFastRouteRebuild:
-		return map[buildLifecyclePhase]map[buildLifecyclePhase]struct{}{
-			buildLifecyclePhaseIdle: {
-				buildLifecyclePhaseStarted: {},
-			},
-			buildLifecyclePhaseStarted: {
-				buildLifecyclePhaseRoutesSynchronized: {},
-				buildLifecyclePhaseFailed:             {},
-			},
-			buildLifecyclePhaseRoutesSynchronized: {
-				buildLifecyclePhaseRouteArtifactsWritten: {},
-				buildLifecyclePhaseFailed:                {},
-			},
-			buildLifecyclePhaseRouteArtifactsWritten: {
-				buildLifecyclePhaseCompleted: {},
-				buildLifecyclePhaseFailed:    {},
-			},
-		}, nil
-	default:
-		return nil, fmt.Errorf("unknown build lifecycle workflow %q", workflow)
-	}
-}
-
-func nextPhaseForFailedTransition() buildLifecyclePhase {
-	return buildLifecyclePhaseFailed
-}
-
-func sortedBuildLifecyclePhaseNames(
-	allowedPhases map[buildLifecyclePhase]struct{},
-) []string {
-	phaseNames := make([]string, 0, len(allowedPhases))
-	for allowedPhase := range allowedPhases {
-		phaseNames = append(phaseNames, string(allowedPhase))
-	}
-	sort.Strings(phaseNames)
-	return phaseNames
-}
-
 const (
 	reloadTriggerRouteDefinitionsWatch = "route-definitions-watch"
 	reloadTriggerHTMLTemplateWatch     = "html-template-watch"
@@ -5143,7 +4677,7 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
 }
 
 func routeDefinitionWatchPatterns(v *vormaruntime.Vorma) []wave.WatchedFile {
-	normalizedRouteDefinitionPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
+	normalizedRouteDefinitionPatterns, err := routeparse.NormalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ClientRouteDefinitionPatterns,
 	)
 	if err != nil {
@@ -5555,7 +5089,7 @@ var clientRootElementIDSchema = jsonschema.OptionalString(jsonschema.Def{
 type fastRouteRebuildDependencies struct {
 	parseClientRoutes             func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error)
 	newFastRebuildID              func() (string, error)
-	runRouteSyncExecution         func(*vormaruntime.Vorma, routeSyncExecutionOptions) error
+	runRouteSyncExecution         func(*vormaruntime.Vorma, buildlifecycle.RouteSyncExecutionOptions) error
 	logFastRouteRebuildCompletion func(*vormaruntime.Vorma, time.Time)
 }
 
@@ -5587,9 +5121,9 @@ type fastRouteRebuildIDExecutor struct {
 
 func defaultFastRouteRebuildDependencies() fastRouteRebuildDependencies {
 	return fastRouteRebuildDependencies{
-		parseClientRoutes:             parseClientRoutes,
+		parseClientRoutes:             routeparse.ParseClientRoutes,
 		newFastRebuildID:              newFastRebuildID,
-		runRouteSyncExecution:         runRouteSyncExecution,
+		runRouteSyncExecution:         buildlifecycle.RunRouteSyncExecution,
 		logFastRouteRebuildCompletion: logFastRouteRebuildCompletion,
 	}
 }
@@ -5620,7 +5154,7 @@ func defaultFastRouteRebuildArtifactDependencies() fastRouteRebuildArtifactDepen
 		readRouteManifestArtifact:     os.ReadFile,
 		writeRouteManifestArtifact:    writeFileAtomically,
 		removeRouteManifestArtifact:   os.Remove,
-		getCurrentBuildIDWithReadLock: currentBuildIDWithReadLock,
+		getCurrentBuildIDWithReadLock: buildlifecycle.CurrentBuildIDWithReadLock,
 	}
 }
 
@@ -5742,11 +5276,11 @@ func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(
 		return errors.New("rebuildRoutesOnly should only be called in dev mode")
 	}
 
-	buildLifecycleStateMachine, err := newBuildLifecycleStateMachineWithOptions(
-		buildLifecycleWorkflowFastRouteRebuild,
+	buildLifecycleStateMachine, err := buildlifecycle.NewLifecycleStateMachineWithOptions(
+		buildlifecycle.WorkflowFastRouteRebuild,
 		v.Log,
-		buildLifecycleStateMachineOptions{
-			attemptInputs: []buildLifecycleAttemptInput{
+		buildlifecycle.LifecycleStateMachineOptions{
+			AttemptInputs: []buildlifecycle.LifecycleAttemptInput{
 				{
 					Key:   "is_dev_mode",
 					Value: "true",
@@ -5757,7 +5291,7 @@ func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(
 	if err != nil {
 		return fmt.Errorf("configure build lifecycle state machine: %w", err)
 	}
-	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseStarted, "fast route rebuild started"); err != nil {
+	if err := buildLifecycleStateMachine.TransitionTo(buildlifecycle.PhaseStarted, "fast route rebuild started"); err != nil {
 		return fmt.Errorf("transition build lifecycle to started: %w", err)
 	}
 
@@ -5765,13 +5299,13 @@ func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(
 
 	err = executor.dependencies.runRouteSyncExecution(
 		v,
-		routeSyncExecutionOptions{
-			parseClientRoutes:          executor.dependencies.parseClientRoutes,
-			generateBuildID:            executor.dependencies.newFastRebuildID,
-			parseClientRoutesErrorText: "parse client routes",
-			postSyncHook: func(v *vormaruntime.Vorma) error {
-				if err := buildLifecycleStateMachine.transitionTo(
-					buildLifecyclePhaseRoutesSynchronized,
+		buildlifecycle.RouteSyncExecutionOptions{
+			ParseClientRoutes:          executor.dependencies.parseClientRoutes,
+			GenerateBuildID:            executor.dependencies.newFastRebuildID,
+			ParseClientRoutesErrorText: "parse client routes",
+			PostSyncHook: func(v *vormaruntime.Vorma) error {
+				if err := buildLifecycleStateMachine.TransitionTo(
+					buildlifecycle.PhaseRoutesSynchronized,
 					"client routes synchronized",
 				); err != nil {
 					return fmt.Errorf(
@@ -5782,8 +5316,8 @@ func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(
 				if err := executor.artifactExecutor.writeFastRebuildArtifactsAfterRouteSync(v); err != nil {
 					return err
 				}
-				if err := buildLifecycleStateMachine.transitionTo(
-					buildLifecyclePhaseRouteArtifactsWritten,
+				if err := buildLifecycleStateMachine.TransitionTo(
+					buildlifecycle.PhaseRouteArtifactsWritten,
 					"route artifacts written",
 				); err != nil {
 					return fmt.Errorf(
@@ -5796,9 +5330,9 @@ func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(
 		},
 	)
 	if err != nil {
-		if rollbackTraceErr := buildLifecycleStateMachine.recordRollback(
-			buildLifecycleRollbackDecisionRequired,
-			buildLifecycleRollbackOutcomeNotAttempted,
+		if rollbackTraceErr := buildLifecycleStateMachine.RecordRollback(
+			buildlifecycle.DecisionRequired,
+			buildlifecycle.OutcomeNotAttempted,
 			"fast rebuild failure path requires route-manifest rollback in artifact writer",
 			nil,
 		); rollbackTraceErr != nil {
@@ -5810,7 +5344,7 @@ func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(
 				),
 			)
 		}
-		if transitionErr := buildLifecycleStateMachine.transitionToFailed("fast route rebuild failed", err); transitionErr != nil {
+		if transitionErr := buildLifecycleStateMachine.TransitionToFailed("fast route rebuild failed", err); transitionErr != nil {
 			return errors.Join(
 				err,
 				fmt.Errorf(
@@ -5821,9 +5355,9 @@ func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(
 		}
 		return err
 	}
-	if rollbackTraceErr := buildLifecycleStateMachine.recordRollback(
-		buildLifecycleRollbackDecisionNotRequired,
-		buildLifecycleRollbackOutcomeNotRequired,
+	if rollbackTraceErr := buildLifecycleStateMachine.RecordRollback(
+		buildlifecycle.DecisionNotRequired,
+		buildlifecycle.OutcomeNotRequired,
 		"fast route rebuild completed successfully without requiring rollback",
 		nil,
 	); rollbackTraceErr != nil {
@@ -5832,7 +5366,7 @@ func (executor fastRouteRebuildExecutor) rebuildRoutesOnly(
 			rollbackTraceErr,
 		)
 	}
-	if err := buildLifecycleStateMachine.transitionTo(buildLifecyclePhaseCompleted, "fast route rebuild completed"); err != nil {
+	if err := buildLifecycleStateMachine.TransitionTo(buildlifecycle.PhaseCompleted, "fast route rebuild completed"); err != nil {
 		return fmt.Errorf("transition build lifecycle to completed: %w", err)
 	}
 
@@ -5878,9 +5412,9 @@ func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterR
 	}
 
 	skipRollbackForSupersededBuildID := false
-	return runWithRollbackOnFailureAndPanic(
-		rollbackTransactionOptions{
-			run: func() error {
+	return buildlifecycle.RunWithRollbackOnFailureAndPanic(
+		buildlifecycle.RollbackTransactionOptions{
+			Run: func() error {
 				if !shouldRunFastRebuildArtifactWriteForBuildID(
 					executor.dependencies.getCurrentBuildIDWithReadLock(v),
 					expectedBuildID,
@@ -5903,7 +5437,7 @@ func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterR
 
 				return executor.dependencies.writeRouteArtifacts(v)
 			},
-			rollbackOnFailure: func() error {
+			RollbackOnFailure: func() error {
 				if skipRollbackForSupersededBuildID {
 					return nil
 				}
@@ -5919,8 +5453,8 @@ func (executor fastRouteRebuildArtifactExecutor) writeFastRebuildArtifactsAfterR
 					previousRouteManifestSnapshot,
 				)
 			},
-			rollbackErrorContext: "restore route manifest artifact",
-			logRollbackFailureAfterPanic: func(rollbackErr error) {
+			RollbackErrorContext: "restore route manifest artifact",
+			LogRollbackFailureAfterPanic: func(rollbackErr error) {
 				if v.Log != nil {
 					v.Log.Error(
 						"restore route manifest artifact after panic failed",
@@ -6140,862 +5674,6 @@ func newRestartWithoutRecompileAction() *wave.RefreshAction {
 	}
 }
 
-type rollbackTransactionOptions struct {
-	run                          func() error
-	rollbackOnFailure            func() error
-	rollbackErrorContext         string
-	logRollbackFailureAfterPanic func(error)
-}
-
-func runWithRollbackOnFailureAndPanic(
-	options rollbackTransactionOptions,
-) (operationErr error) {
-	if options.run == nil {
-		return errors.New("rollback transaction run step is required")
-	}
-
-	defer func() {
-		recoveredPanicValue := recover()
-		if recoveredPanicValue == nil {
-			return
-		}
-
-		rollbackPanicValue, rollbackErr := runRollbackIfConfigured(
-			options.rollbackOnFailure,
-		)
-		if rollbackErr != nil && options.logRollbackFailureAfterPanic != nil {
-			options.logRollbackFailureAfterPanic(rollbackErr)
-		}
-		if rollbackPanicValue != nil &&
-			options.logRollbackFailureAfterPanic != nil {
-			options.logRollbackFailureAfterPanic(
-				fmt.Errorf("rollback panic: %v", rollbackPanicValue),
-			)
-		}
-
-		panic(recoveredPanicValue)
-	}()
-
-	operationErr = options.run()
-	if operationErr == nil {
-		return nil
-	}
-
-	rollbackPanicValue, rollbackErr := runRollbackIfConfigured(
-		options.rollbackOnFailure,
-	)
-	if rollbackPanicValue != nil {
-		panic(rollbackPanicValue)
-	}
-	if rollbackErr == nil {
-		return operationErr
-	}
-
-	if options.rollbackErrorContext != "" {
-		rollbackErr = fmt.Errorf(
-			"%s: %w",
-			options.rollbackErrorContext,
-			rollbackErr,
-		)
-	}
-
-	return errors.Join(operationErr, rollbackErr)
-}
-
-func runRollbackIfConfigured(
-	rollbackStep func() error,
-) (rollbackPanicValue any, rollbackErr error) {
-	if rollbackStep == nil {
-		return nil, nil
-	}
-
-	defer func() {
-		recoveredPanicValue := recover()
-		if recoveredPanicValue != nil {
-			rollbackPanicValue = recoveredPanicValue
-		}
-	}()
-
-	rollbackErr = rollbackStep()
-	return nil, rollbackErr
-}
-
-type routeCall struct {
-	Pattern  string
-	Module   string
-	Key      string
-	ErrorKey string
-}
-
-// unresolvedRouteCall represents a route() call where the module path could not
-// be statically determined. This happens when the module argument is a variable,
-// function call, or other dynamic expression.
-type unresolvedRouteCall struct {
-	Pattern       string
-	RawModuleExpr string
-	Reason        string
-}
-
-type routeCallVisitor struct {
-	routeFuncNames    map[string]bool
-	trackedModuleVars map[string]string
-	routes            []routeCall
-	unresolvedRoutes  []unresolvedRouteCall
-}
-
-func (rv *routeCallVisitor) Enter(n js.INode) js.IVisitor {
-	call, isCall := n.(*js.CallExpr)
-	if !isCall {
-		return rv
-	}
-
-	ident, isIdent := call.X.(*js.Var)
-	if !isIdent {
-		return rv
-	}
-
-	if _, isRouteFunc := rv.routeFuncNames[string(ident.Data)]; !isRouteFunc {
-		return rv
-	}
-
-	routeCall, unresolvedRoute := rv.extractRouteCall(call.Args.List)
-	if unresolvedRoute != nil {
-		rv.unresolvedRoutes = append(rv.unresolvedRoutes, *unresolvedRoute)
-		return rv
-	}
-	if routeCall == nil {
-		return rv
-	}
-
-	rv.routes = append(rv.routes, *routeCall)
-	return rv
-}
-
-func (rv *routeCallVisitor) Exit(n js.INode) {
-	_ = n
-}
-
-func (rv *routeCallVisitor) extractRouteCall(
-	argsList []js.Arg,
-) (*routeCall, *unresolvedRouteCall) {
-	route := routeCall{Key: "default"}
-
-	pattern, ok := extractStaticStringArg(argsList, 0)
-	if !ok {
-		return nil, nil
-	}
-	route.Pattern = pattern
-
-	if len(argsList) > 1 {
-		modulePath, unresolvedModule := rv.resolveModuleArgument(
-			route.Pattern,
-			argsList[1].Value,
-		)
-		if unresolvedModule != nil {
-			return nil, unresolvedModule
-		}
-		route.Module = modulePath
-	}
-
-	if key, ok := extractStaticStringArg(argsList, 2); ok {
-		route.Key = key
-	}
-	if errorKey, ok := extractStaticStringArg(argsList, 3); ok {
-		route.ErrorKey = errorKey
-	}
-
-	return &route, nil
-}
-
-func (rv *routeCallVisitor) resolveModuleArgument(
-	routePattern string,
-	moduleExpr js.IExpr,
-) (string, *unresolvedRouteCall) {
-	if varRef, ok := moduleExpr.(*js.Var); ok {
-		varName := string(varRef.Data)
-		if trackedModulePath, exists := rv.trackedModuleVars[varName]; exists {
-			return trackedModulePath, nil
-		}
-		return "", unresolvedModuleArgument(
-			routePattern,
-			varName,
-			fmt.Sprintf(
-				"variable '%s' is not a tracked import or const string",
-				varName,
-			),
-		)
-	}
-
-	if functionCall, ok := moduleExpr.(*js.CallExpr); ok {
-		return resolveModuleArgumentFromFunctionCall(routePattern, functionCall)
-	}
-
-	modulePath, ok := extractStaticStringLiteral(moduleExpr)
-	if !ok {
-		return "", unresolvedModuleArgument(
-			routePattern,
-			"<expression>",
-			"module argument is not a static string, variable, or import() call",
-		)
-	}
-	return modulePath, nil
-}
-
-func resolveModuleArgumentFromFunctionCall(
-	routePattern string,
-	functionCall *js.CallExpr,
-) (string, *unresolvedRouteCall) {
-	if functionCallTargetsJSImport(functionCall) {
-		if modulePath, ok := extractStaticStringArg(functionCall.Args.List, 0); ok {
-			return modulePath, nil
-		}
-		return "", unresolvedModuleArgument(
-			routePattern,
-			"import(...)",
-			"dynamic import() argument is not a static string",
-		)
-	}
-
-	functionName := "<unknown>"
-	if functionIdent, ok := functionCall.X.(*js.Var); ok {
-		functionName = string(functionIdent.Data)
-	}
-	return "", unresolvedModuleArgument(
-		routePattern,
-		functionName+"(...)",
-		"module argument is a function call, which cannot be statically analyzed",
-	)
-}
-
-func unresolvedModuleArgument(
-	routePattern string,
-	rawModuleExpr string,
-	reason string,
-) *unresolvedRouteCall {
-	return &unresolvedRouteCall{
-		Pattern:       routePattern,
-		RawModuleExpr: rawModuleExpr,
-		Reason:        reason,
-	}
-}
-
-func functionCallTargetsJSImport(functionCall *js.CallExpr) bool {
-	functionIdent, ok := functionCall.X.(*js.Var)
-	return ok && string(functionIdent.Data) == "import"
-}
-
-func extractStaticStringArg(args []js.Arg, idx int) (string, bool) {
-	if idx >= len(args) {
-		return "", false
-	}
-	return extractStaticStringLiteral(args[idx].Value)
-}
-
-func extractStaticStringLiteral(expr js.IExpr) (string, bool) {
-	strLit, ok := expr.(*js.LiteralExpr)
-	if !ok || strLit.TokenType != js.StringToken {
-		return "", false
-	}
-	unquoted, err := strconv.Unquote(string(strLit.Data))
-	if err != nil {
-		return "", false
-	}
-	return unquoted, true
-}
-
-func extractRouteCalls(
-	code string,
-) ([]routeCall, []unresolvedRouteCall, error) {
-	parsedAST, err := js.Parse(parse.NewInputString(code), js.Options{})
-	if err != nil {
-		return nil, nil, fmt.Errorf("parse JS/TS: %w", err)
-	}
-
-	metadata := collectRouteParsingMetadata(parsedAST)
-
-	visitor := &routeCallVisitor{
-		routeFuncNames:    metadata.routeFuncNames,
-		trackedModuleVars: metadata.trackedModuleVars,
-	}
-	js.Walk(visitor, parsedAST)
-
-	return visitor.routes, visitor.unresolvedRoutes, nil
-}
-
-var importRegex = regexp.MustCompile(
-	`import\((` + "`" + `[^` + "`" + `]+` + "`" + `|'[^']+'|"[^"]+")\)`,
-)
-
-type routeParsingExecutorDependencies struct {
-	resolveClientRouteDefinitionFiles    func(*vormaruntime.Vorma) ([]string, error)
-	parseRouteDefinitionFileIntoCalls    func(*vormaruntime.Vorma, string) (parsedRouteDefinitionsCode, error)
-	handleUnresolvedRouteCalls           func(*vormaruntime.Vorma, string, []unresolvedRouteCall) error
-	mergeRouteCallsIntoPaths             func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []routeCall) error
-	transformRouteDefinitionsCode        func(*vormaruntime.Vorma, []byte) (string, error)
-	extractRouteCallsFromTransformedCode func(string) ([]routeCall, []unresolvedRouteCall, error)
-	computeRelativeModulePath            func(string, string) (string, error)
-	statRouteModulePath                  func(string) (fs.FileInfo, error)
-	expandRouteDefinitionPattern         func(string) ([]string, error)
-	statRouteDefinitionPath              func(string) (fs.FileInfo, error)
-	readRouteDefinitionFile              func(string) ([]byte, error)
-}
-
-type routeParsingExecutor struct {
-	dependencies routeParsingExecutorDependencies
-}
-
-var defaultRouteParsingExecutor = newRouteParsingExecutor(
-	routeParsingExecutorDependencies{},
-)
-
-func defaultRouteParsingExecutorDependencies() routeParsingExecutorDependencies {
-	return routeParsingExecutorDependencies{
-		transformRouteDefinitionsCode:        transformRouteDefinitionsCode,
-		extractRouteCallsFromTransformedCode: extractRouteCalls,
-		computeRelativeModulePath:            filepath.Rel,
-		statRouteModulePath:                  os.Stat,
-		expandRouteDefinitionPattern:         expandRouteDefinitionPatternWithDoublestar,
-		statRouteDefinitionPath:              os.Stat,
-		handleUnresolvedRouteCalls:           handleUnresolvedRouteCalls,
-		readRouteDefinitionFile:              os.ReadFile,
-	}
-}
-
-func withDefaultRouteParsingExecutorDependencies(
-	dependencies routeParsingExecutorDependencies,
-) routeParsingExecutorDependencies {
-	defaultDependencies := defaultRouteParsingExecutorDependencies()
-
-	if dependencies.transformRouteDefinitionsCode == nil {
-		dependencies.transformRouteDefinitionsCode = defaultDependencies.transformRouteDefinitionsCode
-	}
-	if dependencies.extractRouteCallsFromTransformedCode == nil {
-		dependencies.extractRouteCallsFromTransformedCode = defaultDependencies.extractRouteCallsFromTransformedCode
-	}
-
-	if dependencies.computeRelativeModulePath == nil {
-		dependencies.computeRelativeModulePath = defaultDependencies.computeRelativeModulePath
-	}
-	if dependencies.statRouteModulePath == nil {
-		dependencies.statRouteModulePath = defaultDependencies.statRouteModulePath
-	}
-
-	if dependencies.expandRouteDefinitionPattern == nil {
-		dependencies.expandRouteDefinitionPattern = defaultDependencies.expandRouteDefinitionPattern
-	}
-	if dependencies.statRouteDefinitionPath == nil {
-		dependencies.statRouteDefinitionPath = defaultDependencies.statRouteDefinitionPath
-	}
-
-	if dependencies.handleUnresolvedRouteCalls == nil {
-		dependencies.handleUnresolvedRouteCalls = handleUnresolvedRouteCalls
-	}
-
-	if dependencies.readRouteDefinitionFile == nil {
-		dependencies.readRouteDefinitionFile = defaultDependencies.readRouteDefinitionFile
-	}
-
-	return dependencies
-}
-
-func newRouteParsingExecutor(
-	dependencies routeParsingExecutorDependencies,
-) routeParsingExecutor {
-	return routeParsingExecutor{
-		dependencies: withDefaultRouteParsingExecutorDependencies(dependencies),
-	}
-}
-
-func (executor routeParsingExecutor) resolveClientRouteDefinitionFilesStep() func(*vormaruntime.Vorma) ([]string, error) {
-	if executor.dependencies.resolveClientRouteDefinitionFiles != nil {
-		return executor.dependencies.resolveClientRouteDefinitionFiles
-	}
-	return executor.resolveClientRouteDefinitionFiles
-}
-
-func (executor routeParsingExecutor) parseRouteDefinitionFileIntoCallsStep() func(*vormaruntime.Vorma, string) (parsedRouteDefinitionsCode, error) {
-	if executor.dependencies.parseRouteDefinitionFileIntoCalls != nil {
-		return executor.dependencies.parseRouteDefinitionFileIntoCalls
-	}
-	return executor.parseRouteDefinitionFileIntoCalls
-}
-
-func (executor routeParsingExecutor) handleUnresolvedRouteCallsStep() func(*vormaruntime.Vorma, string, []unresolvedRouteCall) error {
-	return executor.dependencies.handleUnresolvedRouteCalls
-}
-
-func (executor routeParsingExecutor) mergeRouteCallsIntoPathsStep() func(*vormaruntime.Vorma, map[string]*vormaruntime.Path, string, []routeCall) error {
-	if executor.dependencies.mergeRouteCallsIntoPaths != nil {
-		return executor.dependencies.mergeRouteCallsIntoPaths
-	}
-	return executor.mergeRouteCallsIntoPaths
-}
-
-type parsedRouteDefinitionsCode struct {
-	routeCalls       []routeCall
-	unresolvedRoutes []unresolvedRouteCall
-}
-
-func parseClientRoutes(
-	v *vormaruntime.Vorma,
-) (map[string]*vormaruntime.Path, error) {
-	return defaultRouteParsingExecutor.parseClientRoutes(v)
-}
-
-func (executor routeParsingExecutor) parseClientRoutes(
-	v *vormaruntime.Vorma,
-) (map[string]*vormaruntime.Path, error) {
-	resolveRouteDefinitionFiles := executor.resolveClientRouteDefinitionFilesStep()
-	parseRouteDefinitionFile := executor.parseRouteDefinitionFileIntoCallsStep()
-	handleUnresolvedRoutes := executor.handleUnresolvedRouteCallsStep()
-	mergeRouteCalls := executor.mergeRouteCallsIntoPathsStep()
-
-	routeDefinitionFiles, err := resolveRouteDefinitionFiles(v)
-	if err != nil {
-		return nil, err
-	}
-
-	paths := make(map[string]*vormaruntime.Path)
-	for _, routeDefinitionFile := range routeDefinitionFiles {
-		parsedRouteDefinitions, err := parseRouteDefinitionFile(
-			v,
-			routeDefinitionFile,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := handleUnresolvedRoutes(
-			v,
-			routeDefinitionFile,
-			parsedRouteDefinitions.unresolvedRoutes,
-		); err != nil {
-			return nil, err
-		}
-
-		if err := mergeRouteCalls(
-			v,
-			paths,
-			routeDefinitionFile,
-			parsedRouteDefinitions.routeCalls,
-		); err != nil {
-			return nil, err
-		}
-	}
-	return paths, nil
-}
-
-func resolveClientRouteDefinitionFiles(
-	v *vormaruntime.Vorma,
-) ([]string, error) {
-	return defaultRouteParsingExecutor.resolveClientRouteDefinitionFiles(v)
-}
-
-func (executor routeParsingExecutor) resolveClientRouteDefinitionFiles(
-	v *vormaruntime.Vorma,
-) ([]string, error) {
-	if v == nil {
-		return nil, errors.New("vorma runtime is required")
-	}
-	if v.Config == nil {
-		return nil, errors.New("vorma config is required")
-	}
-	if len(v.Config.ClientRouteDefinitionPatterns) == 0 {
-		return nil, errors.New(
-			"Vorma.ClientRouteDefinitionPatterns is required",
-		)
-	}
-
-	normalizedRouteDefinitionPatterns, err := normalizeRouteDefinitionPatternsInInputOrder(
-		v.Config.ClientRouteDefinitionPatterns,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	matchedFilesByPath := make(map[string]struct{})
-	for _, routeDefinitionPattern := range normalizedRouteDefinitionPatterns {
-		if patternContainsGlobMeta(routeDefinitionPattern) {
-			routeDefinitionMatches, err := executor.dependencies.expandRouteDefinitionPattern(
-				routeDefinitionPattern,
-			)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"expand route definition pattern %q: %w",
-					routeDefinitionPattern,
-					err,
-				)
-			}
-			for _, routeDefinitionMatch := range routeDefinitionMatches {
-				routeDefinitionInfo, err := executor.dependencies.statRouteDefinitionPath(
-					routeDefinitionMatch,
-				)
-				if err != nil {
-					return nil, fmt.Errorf(
-						"stat route definition path %q: %w",
-						routeDefinitionMatch,
-						err,
-					)
-				}
-				if routeDefinitionInfo.IsDir() {
-					continue
-				}
-				matchedFilesByPath[filepath.Clean(routeDefinitionMatch)] = struct{}{}
-			}
-			continue
-		}
-
-		routeDefinitionInfo, err := executor.dependencies.statRouteDefinitionPath(
-			routeDefinitionPattern,
-		)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"stat route definition path %q: %w",
-				routeDefinitionPattern,
-				err,
-			)
-		}
-		if routeDefinitionInfo.IsDir() {
-			return nil, fmt.Errorf(
-				"route definition path %q is a directory",
-				routeDefinitionPattern,
-			)
-		}
-		matchedFilesByPath[filepath.Clean(routeDefinitionPattern)] = struct{}{}
-	}
-
-	if len(matchedFilesByPath) == 0 {
-		return nil, fmt.Errorf(
-			"no route definition files matched patterns: %s",
-			strings.Join(normalizedRouteDefinitionPatterns, ", "),
-		)
-	}
-
-	routeDefinitionFiles := make([]string, 0, len(matchedFilesByPath))
-	for routeDefinitionFile := range matchedFilesByPath {
-		routeDefinitionFiles = append(
-			routeDefinitionFiles,
-			filepath.ToSlash(routeDefinitionFile),
-		)
-	}
-	sort.Strings(routeDefinitionFiles)
-	return routeDefinitionFiles, nil
-}
-
-func patternContainsGlobMeta(pattern string) bool {
-	return strings.ContainsAny(pattern, "*?[{")
-}
-
-func expandRouteDefinitionPatternWithDoublestar(
-	pattern string,
-) ([]string, error) {
-	return doublestar.FilepathGlob(pattern)
-}
-
-func parseRouteDefinitionFileIntoCalls(
-	v *vormaruntime.Vorma,
-	routeDefinitionFile string,
-) (parsedRouteDefinitionsCode, error) {
-	return defaultRouteParsingExecutor.parseRouteDefinitionFileIntoCalls(
-		v,
-		routeDefinitionFile,
-	)
-}
-
-func (executor routeParsingExecutor) parseRouteDefinitionFileIntoCalls(
-	v *vormaruntime.Vorma,
-	routeDefinitionFile string,
-) (parsedRouteDefinitionsCode, error) {
-	code, err := executor.dependencies.readRouteDefinitionFile(
-		routeDefinitionFile,
-	)
-	if err != nil {
-		return parsedRouteDefinitionsCode{}, fmt.Errorf(
-			"read route definitions file %q: %w",
-			routeDefinitionFile,
-			err,
-		)
-	}
-	parsedRouteDefinitions, err := executor.parseRouteDefinitionsCodeIntoCalls(
-		v,
-		code,
-	)
-	if err != nil {
-		return parsedRouteDefinitionsCode{}, fmt.Errorf(
-			"parse route definitions file %q: %w",
-			routeDefinitionFile,
-			err,
-		)
-	}
-	return parsedRouteDefinitions, nil
-}
-
-func (executor routeParsingExecutor) parseRouteDefinitionsCodeIntoCalls(
-	v *vormaruntime.Vorma,
-	code []byte,
-) (parsedRouteDefinitionsCode, error) {
-	transformedCode, err := executor.dependencies.transformRouteDefinitionsCode(
-		v,
-		code,
-	)
-	if err != nil {
-		return parsedRouteDefinitionsCode{}, err
-	}
-
-	routeCalls, unresolvedRoutes, err := executor.dependencies.extractRouteCallsFromTransformedCode(
-		transformedCode,
-	)
-	if err != nil {
-		return parsedRouteDefinitionsCode{}, fmt.Errorf(
-			"extract route calls: %w",
-			err,
-		)
-	}
-
-	return parsedRouteDefinitionsCode{
-		routeCalls:       routeCalls,
-		unresolvedRoutes: unresolvedRoutes,
-	}, nil
-}
-
-func transformRouteDefinitionsCode(
-	v *vormaruntime.Vorma,
-	code []byte,
-) (string, error) {
-	transformResult := esbuild.Transform(string(code), esbuild.TransformOptions{
-		Format:            esbuild.FormatESModule,
-		Platform:          esbuild.PlatformNode,
-		MinifyWhitespace:  true,
-		MinifySyntax:      true,
-		MinifyIdentifiers: false,
-		Loader:            esbuild.LoaderTSX,
-		Target:            esbuild.ES2020,
-	})
-
-	if len(transformResult.Errors) > 0 {
-		logEsbuildTransformErrors(v, transformResult.Errors)
-		return "", errors.New("esbuild transform failed")
-	}
-
-	return importRegex.ReplaceAllString(string(transformResult.Code), "$1"), nil
-}
-
-func logEsbuildTransformErrors(
-	v *vormaruntime.Vorma,
-	messages []esbuild.Message,
-) {
-	for _, message := range messages {
-		v.Log.Error(fmt.Sprintf("esbuild error: %s", message.Text))
-	}
-}
-
-func handleUnresolvedRouteCalls(
-	v *vormaruntime.Vorma,
-	routeDefinitionFile string,
-	unresolvedRoutes []unresolvedRouteCall,
-) error {
-	if len(unresolvedRoutes) == 0 {
-		return nil
-	}
-
-	unresolvedRoutePolicy, err := resolveUnresolvedRoutePolicy(v)
-	if err != nil {
-		return err
-	}
-
-	if unresolvedRoutePolicy == vormaruntime.UnresolvedRoutePolicyWarn {
-		logUnresolvedRouteCallsAsWarnings(
-			v,
-			routeDefinitionFile,
-			unresolvedRoutes,
-		)
-		return nil
-	}
-
-	return buildUnresolvedRouteCallsError(routeDefinitionFile, unresolvedRoutes)
-}
-
-func resolveUnresolvedRoutePolicy(v *vormaruntime.Vorma) (string, error) {
-	if v == nil {
-		return "", errors.New(
-			"vorma runtime is required to resolve unresolved route policy",
-		)
-	}
-	if v.Config == nil {
-		return "", errors.New(
-			"vorma config is required to resolve unresolved route policy",
-		)
-	}
-
-	configuredPolicy := strings.TrimSpace(v.Config.UnresolvedRoutePolicy)
-	if configuredPolicy != "" {
-		switch configuredPolicy {
-		case vormaruntime.UnresolvedRoutePolicyWarn:
-			return vormaruntime.UnresolvedRoutePolicyWarn, nil
-		case vormaruntime.UnresolvedRoutePolicyError:
-			return vormaruntime.UnresolvedRoutePolicyError, nil
-		default:
-			return "", fmt.Errorf(
-				"Vorma.UnresolvedRoutePolicy must be %q or %q",
-				vormaruntime.UnresolvedRoutePolicyWarn,
-				vormaruntime.UnresolvedRoutePolicyError,
-			)
-		}
-	}
-
-	return vormaruntime.UnresolvedRoutePolicyError, nil
-}
-
-func logUnresolvedRouteCallsAsWarnings(
-	v *vormaruntime.Vorma,
-	routeDefinitionFile string,
-	unresolvedRoutes []unresolvedRouteCall,
-) {
-	for _, unresolved := range unresolvedRoutes {
-		v.Log.Warn(
-			fmt.Sprintf(
-				"Route pattern %q has a module path that cannot be statically resolved",
-				unresolved.Pattern,
-			),
-			"file",
-			routeDefinitionFile,
-			"expression",
-			unresolved.RawModuleExpr,
-			"reason",
-			unresolved.Reason,
-		)
-		v.Log.Warn(
-			"This route will be ignored. Use a static string path or a const variable assigned to a string literal.",
-		)
-	}
-}
-
-func buildUnresolvedRouteCallsError(
-	routeDefinitionFile string,
-	unresolvedRoutes []unresolvedRouteCall,
-) error {
-	unresolvedRouteErrors := make([]error, 0, len(unresolvedRoutes))
-	for _, unresolvedRoute := range unresolvedRoutes {
-		unresolvedRouteErrors = append(
-			unresolvedRouteErrors,
-			fmt.Errorf(
-				"pattern %q has unresolved module expression %q (%s)",
-				unresolvedRoute.Pattern,
-				unresolvedRoute.RawModuleExpr,
-				unresolvedRoute.Reason,
-			),
-		)
-	}
-
-	return fmt.Errorf(
-		"unresolved route calls are not allowed in %q: %w",
-		routeDefinitionFile,
-		errors.Join(unresolvedRouteErrors...),
-	)
-}
-
-func mergeRouteCallsIntoPaths(
-	v *vormaruntime.Vorma,
-	paths map[string]*vormaruntime.Path,
-	routeDefinitionFile string,
-	routeCalls []routeCall,
-) error {
-	return defaultRouteParsingExecutor.mergeRouteCallsIntoPaths(
-		v,
-		paths,
-		routeDefinitionFile,
-		routeCalls,
-	)
-}
-
-func (executor routeParsingExecutor) mergeRouteCallsIntoPaths(
-	v *vormaruntime.Vorma,
-	paths map[string]*vormaruntime.Path,
-	routeDefinitionFile string,
-	routeCalls []routeCall,
-) error {
-	for _, routeCall := range routeCalls {
-		if routeCall.Module == "" {
-			return fmt.Errorf(
-				"component module is required for pattern: %s",
-				routeCall.Pattern,
-			)
-		}
-
-		if _, hasExistingPattern := paths[routeCall.Pattern]; hasExistingPattern {
-			return fmt.Errorf("duplicate route pattern: %s", routeCall.Pattern)
-		}
-
-		modulePath := executor.resolveRouteModulePath(
-			v,
-			routeDefinitionFile,
-			routeCall,
-		)
-		if err := executor.ensureRouteModuleExists(modulePath, routeCall.Pattern); err != nil {
-			return err
-		}
-
-		paths[routeCall.Pattern] = &vormaruntime.Path{
-			OriginalPattern: routeCall.Pattern,
-			SrcPath:         modulePath,
-			ExportKey:       routeCall.Key,
-			ErrorExportKey:  routeCall.ErrorKey,
-		}
-	}
-	return nil
-}
-
-func (executor routeParsingExecutor) resolveRouteModulePath(
-	v *vormaruntime.Vorma,
-	routeDefinitionFile string,
-	routeCall routeCall,
-) string {
-	routeDefinitionsDirectory := filepath.Dir(routeDefinitionFile)
-	resolvedModulePath, err := executor.dependencies.computeRelativeModulePath(
-		".",
-		filepath.Join(routeDefinitionsDirectory, routeCall.Module),
-	)
-	if err != nil {
-		v.Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
-		resolvedModulePath = routeCall.Module
-	}
-	return filepath.ToSlash(resolvedModulePath)
-}
-
-func ensureRouteModuleExists(modulePath string, pattern string) error {
-	return defaultRouteParsingExecutor.ensureRouteModuleExists(
-		modulePath,
-		pattern,
-	)
-}
-
-func (executor routeParsingExecutor) ensureRouteModuleExists(
-	modulePath string,
-	pattern string,
-) error {
-	fileInfo, err := executor.dependencies.statRouteModulePath(modulePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf(
-				"component module does not exist: %s (pattern: %s)",
-				modulePath,
-				pattern,
-			)
-		}
-		return fmt.Errorf("access component module %s: %w", modulePath, err)
-	}
-
-	if fileInfo != nil && fileInfo.IsDir() {
-		return fmt.Errorf(
-			"component module is a directory: %s (pattern: %s)",
-			modulePath,
-			pattern,
-		)
-	}
-
-	return nil
-}
-
 type routeRegistryBuildDependencies struct {
 	marshalRouteManifestJSON                  func(any) ([]byte, error)
 	writeRouteManifestJSON                    func(string, []byte, os.FileMode) error
@@ -7004,12 +5682,12 @@ type routeRegistryBuildDependencies struct {
 	writeStageOnePathsArtifact                func(string, []byte, os.FileMode) error
 	removeStageOnePathsArtifact               func(string) error
 	writeGeneratedTypeScript                  func(*vormaruntime.LockedVorma) error
-	writeStageOnePathsJSONForRuntimeState     func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot, string) error
-	writeGeneratedTypeScriptForRuntimeState   func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot) error
-	captureRouteBuildRuntimeStateWithReadLock func(*vormaruntime.Vorma) routeBuildRuntimeStateSnapshot
+	writeStageOnePathsJSONForRuntimeState     func(*vormaruntime.Vorma, buildlifecycle.RouteBuildRuntimeStateSnapshot, string) error
+	writeGeneratedTypeScriptForRuntimeState   func(*vormaruntime.Vorma, buildlifecycle.RouteBuildRuntimeStateSnapshot) error
+	captureRouteBuildRuntimeStateWithReadLock func(*vormaruntime.Vorma) buildlifecycle.RouteBuildRuntimeStateSnapshot
 	readRouteManifestFileWithRuntimeLock      func(*vormaruntime.Vorma) string
 	generateRouteManifestFromPaths            func(map[string]*vormaruntime.Path, *nestedmux.Router) map[string]int
-	isRouteBuildRuntimeStateSnapshotCurrent   func(*vormaruntime.Vorma, routeBuildRuntimeStateSnapshot) bool
+	isRouteBuildRuntimeStateSnapshotCurrent   func(*vormaruntime.Vorma, buildlifecycle.RouteBuildRuntimeStateSnapshot) bool
 	commitRouteManifestFileWithRuntimeLock    func(*vormaruntime.Vorma, routeManifestCommitInput) bool
 }
 
@@ -7030,16 +5708,16 @@ func defaultRouteRegistryBuildDependencies() routeRegistryBuildDependencies {
 		writeStageOnePathsArtifact:  writeFileAtomically,
 		removeStageOnePathsArtifact: os.Remove,
 		writeGeneratedTypeScript: func(l *vormaruntime.LockedVorma) error {
-			return tsgenruntime.WriteGeneratedTS(
+			return tsartifactgen.WriteGeneratedTS(
 				l,
-				tsgenruntime.WriteDependencies{
+				tsartifactgen.WriteDependencies{
 					WriteGeneratedTSFile: writeFileAtomically,
 				},
 			)
 		},
 		writeStageOnePathsJSONForRuntimeState: func(
 			v *vormaruntime.Vorma,
-			runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+			runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 			routeManifestFile string,
 		) error {
 			return writePathsToDiskStageOneFromRuntimeState(
@@ -7050,23 +5728,25 @@ func defaultRouteRegistryBuildDependencies() routeRegistryBuildDependencies {
 		},
 		writeGeneratedTypeScriptForRuntimeState: func(
 			v *vormaruntime.Vorma,
-			runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
+			runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 		) error {
-			return tsgenruntime.WriteGeneratedTSForRuntimeState(
+			return tsartifactgen.WriteGeneratedTSForRuntimeState(
 				v,
-				tsgenruntime.RuntimeStateSnapshot{
-					Paths:   runtimeStateSnapshot.paths,
-					BuildID: runtimeStateSnapshot.buildID,
+				tsartifactgen.RuntimeStateSnapshot{
+					Paths:   runtimeStateSnapshot.Paths,
+					BuildID: runtimeStateSnapshot.BuildID,
 				},
-				tsgenruntime.WriteDependencies{
+				tsartifactgen.WriteDependencies{
 					WriteGeneratedTSFile: writeFileAtomically,
 				},
 			)
 		},
-		captureRouteBuildRuntimeStateWithReadLock: func(v *vormaruntime.Vorma) routeBuildRuntimeStateSnapshot {
-			var runtimeStateSnapshot routeBuildRuntimeStateSnapshot
+		captureRouteBuildRuntimeStateWithReadLock: func(v *vormaruntime.Vorma) buildlifecycle.RouteBuildRuntimeStateSnapshot {
+			var runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot
 			v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
-				runtimeStateSnapshot = captureRouteBuildRuntimeState(l)
+				runtimeStateSnapshot = buildlifecycle.CaptureRouteBuildRuntimeState(
+					l,
+				)
 			})
 			return runtimeStateSnapshot
 		},
@@ -7078,24 +5758,24 @@ func defaultRouteRegistryBuildDependencies() routeRegistryBuildDependencies {
 			return previousRouteManifestFile
 		},
 		generateRouteManifestFromPaths:          generateRouteManifestFromPaths,
-		isRouteBuildRuntimeStateSnapshotCurrent: routeBuildRuntimeStateSnapshotIsCurrent,
+		isRouteBuildRuntimeStateSnapshotCurrent: buildlifecycle.RouteBuildRuntimeStateSnapshotIsCurrent,
 		commitRouteManifestFileWithRuntimeLock: func(
 			v *vormaruntime.Vorma,
 			commitInput routeManifestCommitInput,
 		) bool {
 			manifestCommitted := false
 			v.WithLock(func(l *vormaruntime.LockedVorma) {
-				if !shouldCommitRouteManifestFileForRuntimeState(
+				if !buildlifecycle.ShouldCommitRouteManifestFileForRuntimeState(
 					l.BuildID(),
 					commitInput.expectedBuildID,
 				) {
 					return
 				}
-				commitRuntimeStateWithLock(
+				buildlifecycle.CommitRuntimeStateWithLock(
 					l,
-					runtimeStateCommitInput{
-						shouldCommitRouteManifestFile: true,
-						routeManifestFile:             commitInput.routeManifestFile,
+					buildlifecycle.RuntimeStateCommitInput{
+						ShouldCommitRouteManifestFile: true,
+						RouteManifestFile:             commitInput.routeManifestFile,
 					},
 				)
 				manifestCommitted = true
@@ -7189,9 +5869,9 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifacts(
 		return fmt.Errorf("write route manifest: %w", err)
 	}
 
-	transactionErr := runWithRollbackOnFailureAndPanic(
-		rollbackTransactionOptions{
-			run: func() error {
+	transactionErr := buildlifecycle.RunWithRollbackOnFailureAndPanic(
+		buildlifecycle.RollbackTransactionOptions{
+			Run: func() error {
 				if err := writePathsToDiskStageOneWithRouteManifest(l, manifestFile); err != nil {
 					return fmt.Errorf("write paths JSON: %w", err)
 				}
@@ -7201,7 +5881,7 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifacts(
 				}
 				return nil
 			},
-			rollbackOnFailure: func() error {
+			RollbackOnFailure: func() error {
 				return executor.cleanupRouteArtifactsAfterWriteFailure(
 					v,
 					manifestFile,
@@ -7210,7 +5890,7 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifacts(
 					stageOnePathsArtifactSnapshot,
 				)
 			},
-			logRollbackFailureAfterPanic: func(rollbackErr error) {
+			LogRollbackFailureAfterPanic: func(rollbackErr error) {
 				if v.Log != nil {
 					v.Log.Error(
 						"cleanup route artifacts after panic failed",
@@ -7225,11 +5905,11 @@ func (executor routeRegistryBuildExecutor) writeRouteArtifacts(
 		return transactionErr
 	}
 
-	commitRuntimeStateWithLock(
+	buildlifecycle.CommitRuntimeStateWithLock(
 		l,
-		runtimeStateCommitInput{
-			shouldCommitRouteManifestFile: true,
-			routeManifestFile:             manifestFile,
+		buildlifecycle.RuntimeStateCommitInput{
+			ShouldCommitRouteManifestFile: true,
+			RouteManifestFile:             manifestFile,
 		},
 	)
 	return nil
@@ -7247,11 +5927,11 @@ func (executor routeRegistryBuildExecutor) writeAndSetRouteManifest(
 		return err
 	}
 
-	commitRuntimeStateWithLock(
+	buildlifecycle.CommitRuntimeStateWithLock(
 		l,
-		runtimeStateCommitInput{
-			shouldCommitRouteManifestFile: true,
-			routeManifestFile:             manifestFile,
+		buildlifecycle.RuntimeStateCommitInput{
+			ShouldCommitRouteManifestFile: true,
+			RouteManifestFile:             manifestFile,
 		},
 	)
 	return nil
@@ -7317,7 +5997,7 @@ type routeManifestCommitInput struct {
 }
 
 type routeArtifactWritePlan struct {
-	runtimeStateSnapshot      routeBuildRuntimeStateSnapshot
+	runtimeStateSnapshot      buildlifecycle.RouteBuildRuntimeStateSnapshot
 	manifestStateSnapshot     routeManifestStateSnapshot
 	stageOnePathsArtifactPath string
 	stageOnePathsSnapshot     stageOnePathsArtifactSnapshot
@@ -7372,7 +6052,7 @@ func (executor routeRegistryBuildExecutor) planRouteArtifactWrite(
 			v,
 		),
 		routeManifest: executor.dependencies.generateRouteManifestFromPaths(
-			runtimeStateSnapshot.paths,
+			runtimeStateSnapshot.Paths,
 			v.LoadersRouter().NestedRouter,
 		),
 	}
@@ -7409,9 +6089,9 @@ func (executor routeRegistryBuildExecutor) stageRouteArtifactWrite(
 	}
 
 	skipRollbackForSupersededRuntimeState := false
-	transactionErr := runWithRollbackOnFailureAndPanic(
-		rollbackTransactionOptions{
-			run: func() error {
+	transactionErr := buildlifecycle.RunWithRollbackOnFailureAndPanic(
+		buildlifecycle.RollbackTransactionOptions{
+			Run: func() error {
 				if !executor.dependencies.isRouteBuildRuntimeStateSnapshotCurrent(
 					v,
 					plannedWrite.runtimeStateSnapshot,
@@ -7450,7 +6130,7 @@ func (executor routeRegistryBuildExecutor) stageRouteArtifactWrite(
 				}
 				return nil
 			},
-			rollbackOnFailure: func() error {
+			RollbackOnFailure: func() error {
 				if skipRollbackForSupersededRuntimeState {
 					return nil
 				}
@@ -7462,7 +6142,7 @@ func (executor routeRegistryBuildExecutor) stageRouteArtifactWrite(
 					plannedWrite.stageOnePathsSnapshot,
 				)
 			},
-			logRollbackFailureAfterPanic: func(rollbackErr error) {
+			LogRollbackFailureAfterPanic: func(rollbackErr error) {
 				if v.Log != nil {
 					v.Log.Error(
 						"cleanup route artifacts after panic failed",
@@ -7491,28 +6171,10 @@ func (executor routeRegistryBuildExecutor) commitRouteArtifactWrite(
 	executor.dependencies.commitRouteManifestFileWithRuntimeLock(
 		v,
 		routeManifestCommitInput{
-			expectedBuildID:   plannedWrite.runtimeStateSnapshot.buildID,
+			expectedBuildID:   plannedWrite.runtimeStateSnapshot.BuildID,
 			routeManifestFile: manifestFile,
 		},
 	)
-}
-
-func routeBuildRuntimeStateSnapshotIsCurrent(
-	v *vormaruntime.Vorma,
-	runtimeStateSnapshot routeBuildRuntimeStateSnapshot,
-) bool {
-	var currentBuildID string
-	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
-		currentBuildID = l.BuildID()
-	})
-	return currentBuildID == runtimeStateSnapshot.buildID
-}
-
-func shouldCommitRouteManifestFileForRuntimeState(
-	currentBuildID string,
-	expectedBuildID string,
-) bool {
-	return currentBuildID == expectedBuildID
 }
 
 func stageOnePathsArtifactOutputPath(v *vormaruntime.Vorma) string {
@@ -7633,415 +6295,6 @@ func routeManifestServerLoaderFlag(
 	return 0
 }
 
-type postRouteSyncHook func(*vormaruntime.Vorma) error
-
-type routeSyncExecutionOptions struct {
-	parseClientRoutes          func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error)
-	generateBuildID            func() (string, error)
-	parseClientRoutesErrorText string
-	postSyncHook               postRouteSyncHook
-}
-
-func prepareParsedRouteSyncInput(
-	v *vormaruntime.Vorma,
-	parseClientRoutes func(*vormaruntime.Vorma) (map[string]*vormaruntime.Path, error),
-	generateBuildID func() (string, error),
-	parseClientRoutesErrorContext string,
-) (map[string]*vormaruntime.Path, string, error) {
-	clientPaths, err := parseClientRoutes(v)
-	if err != nil {
-		if parseClientRoutesErrorContext != "" {
-			return nil, "", fmt.Errorf(
-				"%s: %w",
-				parseClientRoutesErrorContext,
-				err,
-			)
-		}
-		return nil, "", err
-	}
-
-	buildID := ""
-	if generateBuildID != nil {
-		buildID, err = generateBuildID()
-		if err != nil {
-			return nil, "", err
-		}
-	}
-
-	return clientPaths, buildID, nil
-}
-
-func runRouteSyncExecution(
-	v *vormaruntime.Vorma,
-	options routeSyncExecutionOptions,
-) error {
-	if options.parseClientRoutes == nil {
-		return errors.New("route sync parse function is required")
-	}
-
-	clientPaths, buildID, err := prepareParsedRouteSyncInput(
-		v,
-		options.parseClientRoutes,
-		options.generateBuildID,
-		options.parseClientRoutesErrorText,
-	)
-	if err != nil {
-		return err
-	}
-
-	return syncClientRoutesFromParsedPathsWithLock(
-		v,
-		clientPaths,
-		buildID,
-		options.postSyncHook,
-	)
-}
-
-func syncClientRoutesFromParsedPathsWithLock(
-	v *vormaruntime.Vorma,
-	clientPaths map[string]*vormaruntime.Path,
-	buildID string,
-	postSyncHook postRouteSyncHook,
-) error {
-	var previousRuntimeState buildRuntimeStateSnapshot
-	var currentAttemptCommittedBuildID string
-	return runWithRollbackOnFailureAndPanic(
-		rollbackTransactionOptions{
-			run: func() error {
-				v.WithLock(func(l *vormaruntime.LockedVorma) {
-					previousRuntimeState = captureBuildRuntimeState(l)
-					commitRuntimeStateWithLock(
-						l,
-						runtimeStateCommitInput{
-							shouldCommitBuildID:  buildID != "",
-							buildID:              buildID,
-							routePaths:           clientPaths,
-							routePathsUpdateMode: runtimeStateRoutePathsUpdateModeSyncFromDevReload,
-						},
-					)
-					currentAttemptCommittedBuildID = l.BuildID()
-				})
-
-				if postSyncHook != nil {
-					return postSyncHook(v)
-				}
-				return nil
-			},
-			rollbackOnFailure: func() error {
-				v.WithLock(func(l *vormaruntime.LockedVorma) {
-					rollbackRouteSyncStateAfterPostSyncFailure(
-						l,
-						previousRuntimeState,
-						currentAttemptCommittedBuildID,
-					)
-				})
-				return nil
-			},
-		},
-	)
-}
-
-func rollbackRouteSyncStateAfterPostSyncFailure(
-	l *vormaruntime.LockedVorma,
-	previousRuntimeState buildRuntimeStateSnapshot,
-	currentAttemptCommittedBuildID string,
-) {
-	if !shouldRollbackRouteSyncStateAfterPostSyncFailure(
-		l.BuildID(),
-		currentAttemptCommittedBuildID,
-	) {
-		return
-	}
-	restoreBuildRuntimeState(l, previousRuntimeState)
-}
-
-func shouldRollbackRouteSyncStateAfterPostSyncFailure(
-	currentBuildID string,
-	currentAttemptCommittedBuildID string,
-) bool {
-	return shouldRestoreRuntimeStateSnapshotForAttemptBuildID(
-		currentBuildID,
-		currentAttemptCommittedBuildID,
-	)
-}
-
-type runtimeStateRoutePathsUpdateMode uint8
-
-const (
-	runtimeStateRoutePathsUpdateModeNoPathMutation runtimeStateRoutePathsUpdateMode = iota
-	runtimeStateRoutePathsUpdateModeReplaceParsedPathsForInit
-	runtimeStateRoutePathsUpdateModeSyncFromDevReload
-)
-
-type runtimeStateCommitInput struct {
-	shouldCommitIsDev             bool
-	isDev                         bool
-	shouldCommitBuildID           bool
-	buildID                       string
-	shouldCommitRouteManifestFile bool
-	routeManifestFile             string
-	routePaths                    map[string]*vormaruntime.Path
-	routePathsUpdateMode          runtimeStateRoutePathsUpdateMode
-	shouldRebuildNestedRouter     bool
-}
-
-func commitRuntimeState(
-	v *vormaruntime.Vorma,
-	runtimeStateCommitInput runtimeStateCommitInput,
-) {
-	v.WithLock(func(l *vormaruntime.LockedVorma) {
-		commitRuntimeStateWithLock(l, runtimeStateCommitInput)
-	})
-}
-
-func commitRuntimeStateWithLock(
-	l *vormaruntime.LockedVorma,
-	runtimeStateCommitInput runtimeStateCommitInput,
-) {
-	if runtimeStateCommitInput.shouldCommitIsDev {
-		l.SetIsDev(runtimeStateCommitInput.isDev)
-	}
-
-	switch runtimeStateCommitInput.routePathsUpdateMode {
-	case runtimeStateRoutePathsUpdateModeNoPathMutation:
-		// no-op
-	case runtimeStateRoutePathsUpdateModeReplaceParsedPathsForInit:
-		l.Routes().ReplaceParsedPathsForInit(
-			runtimeStateCommitInput.routePaths,
-			runtimeStateCommitInput.shouldRebuildNestedRouter,
-		)
-	case runtimeStateRoutePathsUpdateModeSyncFromDevReload:
-		l.Routes().SyncFromDevReload(runtimeStateCommitInput.routePaths)
-	default:
-		panic(fmt.Sprintf(
-			"unsupported runtime state route paths update mode: %d",
-			runtimeStateCommitInput.routePathsUpdateMode,
-		))
-	}
-
-	if runtimeStateCommitInput.shouldCommitBuildID {
-		l.SetBuildID(runtimeStateCommitInput.buildID)
-	}
-
-	if runtimeStateCommitInput.shouldCommitRouteManifestFile {
-		l.SetRouteManifestFile(runtimeStateCommitInput.routeManifestFile)
-	}
-}
-
-func shouldRebuildNestedRouterFromCurrentRuntimeState(
-	l *vormaruntime.LockedVorma,
-) bool {
-	return l.Vorma().LoadersRouter() != nil &&
-		l.Vorma().LoadersRouter().NestedRouter != nil
-}
-
-func currentBuildIDWithReadLock(v *vormaruntime.Vorma) string {
-	var currentBuildID string
-	v.WithRLock(func(l *vormaruntime.ReadLockedVorma) {
-		currentBuildID = l.BuildID()
-	})
-	return currentBuildID
-}
-
-func shouldRestoreRuntimeStateSnapshotForAttemptBuildID(
-	currentBuildID string,
-	currentAttemptCommittedBuildID string,
-) bool {
-	if currentAttemptCommittedBuildID == "" {
-		return true
-	}
-	return currentBuildID == currentAttemptCommittedBuildID
-}
-
-type buildRuntimeStateSnapshot struct {
-	isDev                  bool
-	routeBuildRuntimeState routeBuildRuntimeStateSnapshot
-}
-
-type routeBuildRuntimeStateSnapshot struct {
-	paths             map[string]*vormaruntime.Path
-	buildID           string
-	routeManifestFile string
-}
-
-type buildRuntimeStateReader interface {
-	IsDev() bool
-	Paths() map[string]*vormaruntime.Path
-	BuildID() string
-	RouteManifestFile() string
-}
-
-type routeBuildRuntimeStateReader interface {
-	Paths() map[string]*vormaruntime.Path
-	BuildID() string
-	RouteManifestFile() string
-}
-
-func captureBuildRuntimeState(
-	l buildRuntimeStateReader,
-) buildRuntimeStateSnapshot {
-	return buildRuntimeStateSnapshot{
-		isDev:                  l.IsDev(),
-		routeBuildRuntimeState: captureRouteBuildRuntimeState(l),
-	}
-}
-
-func captureRouteBuildRuntimeState(
-	l routeBuildRuntimeStateReader,
-) routeBuildRuntimeStateSnapshot {
-	return routeBuildRuntimeStateSnapshot{
-		paths:             cloneRouteBuildRuntimePathsMap(l.Paths()),
-		buildID:           l.BuildID(),
-		routeManifestFile: l.RouteManifestFile(),
-	}
-}
-
-func restoreBuildRuntimeState(
-	l *vormaruntime.LockedVorma,
-	snapshot buildRuntimeStateSnapshot,
-) {
-	commitRuntimeStateWithLock(
-		l,
-		runtimeStateCommitInput{
-			shouldCommitIsDev:             true,
-			isDev:                         snapshot.isDev,
-			shouldCommitBuildID:           true,
-			buildID:                       snapshot.routeBuildRuntimeState.buildID,
-			shouldCommitRouteManifestFile: true,
-			routeManifestFile:             snapshot.routeBuildRuntimeState.routeManifestFile,
-			routePaths:                    snapshot.routeBuildRuntimeState.paths,
-			routePathsUpdateMode:          runtimeStateRoutePathsUpdateModeReplaceParsedPathsForInit,
-			shouldRebuildNestedRouter: shouldRebuildNestedRouterFromCurrentRuntimeState(
-				l,
-			),
-		},
-	)
-}
-
-func restoreRouteBuildRuntimeState(
-	l *vormaruntime.LockedVorma,
-	snapshot routeBuildRuntimeStateSnapshot,
-) {
-	commitRuntimeStateWithLock(
-		l,
-		runtimeStateCommitInput{
-			shouldCommitBuildID:           true,
-			buildID:                       snapshot.buildID,
-			shouldCommitRouteManifestFile: true,
-			routeManifestFile:             snapshot.routeManifestFile,
-			routePaths:                    snapshot.paths,
-			routePathsUpdateMode:          runtimeStateRoutePathsUpdateModeReplaceParsedPathsForInit,
-			shouldRebuildNestedRouter: shouldRebuildNestedRouterFromCurrentRuntimeState(
-				l,
-			),
-		},
-	)
-}
-
-func buildRuntimeStateSnapshotMatches(
-	l buildRuntimeStateReader,
-	snapshot buildRuntimeStateSnapshot,
-) bool {
-	if l.IsDev() != snapshot.isDev {
-		return false
-	}
-	return routeBuildRuntimeStateSnapshotMatches(
-		l,
-		snapshot.routeBuildRuntimeState,
-	)
-}
-
-func routeBuildRuntimeStateSnapshotMatches(
-	l routeBuildRuntimeStateReader,
-	snapshot routeBuildRuntimeStateSnapshot,
-) bool {
-	if l.BuildID() != snapshot.buildID {
-		return false
-	}
-	if l.RouteManifestFile() != snapshot.routeManifestFile {
-		return false
-	}
-	return routeBuildRuntimePathsMapMatches(l.Paths(), snapshot.paths)
-}
-
-func routeBuildRuntimePathsMapMatches(
-	currentPaths map[string]*vormaruntime.Path,
-	expectedPaths map[string]*vormaruntime.Path,
-) bool {
-	if len(currentPaths) != len(expectedPaths) {
-		return false
-	}
-	for routePattern, currentPath := range currentPaths {
-		expectedPath, hasExpectedPath := expectedPaths[routePattern]
-		if !hasExpectedPath {
-			return false
-		}
-		if !routeBuildRuntimePathMatches(currentPath, expectedPath) {
-			return false
-		}
-	}
-	return true
-}
-
-func routeBuildRuntimePathMatches(
-	currentPath *vormaruntime.Path,
-	expectedPath *vormaruntime.Path,
-) bool {
-	if currentPath == nil || expectedPath == nil {
-		return currentPath == expectedPath
-	}
-	if currentPath.OriginalPattern != expectedPath.OriginalPattern {
-		return false
-	}
-	if currentPath.SrcPath != expectedPath.SrcPath {
-		return false
-	}
-	if currentPath.ExportKey != expectedPath.ExportKey {
-		return false
-	}
-	if currentPath.ErrorExportKey != expectedPath.ErrorExportKey {
-		return false
-	}
-	if currentPath.OutPath != expectedPath.OutPath {
-		return false
-	}
-	if len(currentPath.Deps) != len(expectedPath.Deps) {
-		return false
-	}
-	for depIndex := range currentPath.Deps {
-		if currentPath.Deps[depIndex] != expectedPath.Deps[depIndex] {
-			return false
-		}
-	}
-	return true
-}
-
-func cloneRouteBuildRuntimePathsMap(
-	paths map[string]*vormaruntime.Path,
-) map[string]*vormaruntime.Path {
-	if paths == nil {
-		return nil
-	}
-
-	clonedPaths := make(map[string]*vormaruntime.Path, len(paths))
-	for pattern, path := range paths {
-		clonedPaths[pattern] = cloneRouteBuildRuntimePath(path)
-	}
-	return clonedPaths
-}
-
-func cloneRouteBuildRuntimePath(path *vormaruntime.Path) *vormaruntime.Path {
-	if path == nil {
-		return nil
-	}
-
-	clonedPath := *path
-	if path.Deps != nil {
-		clonedPath.Deps = append([]string(nil), path.Deps...)
-	}
-	return &clonedPath
-}
-
 func generateBuildIDWithPrefix(
 	prefix string,
 	generateBuildIDSuffix func() (string, error),
@@ -8158,45 +6411,6 @@ func restoreBuildArtifactFile(
 	return err
 }
 
-func normalizeRouteDefinitionPatternsInInputOrder(
-	routeDefinitionPatterns []string,
-) ([]string, error) {
-	normalizedPatterns := make([]string, 0, len(routeDefinitionPatterns))
-	seenPatterns := make(map[string]struct{}, len(routeDefinitionPatterns))
-	for index, routeDefinitionPattern := range routeDefinitionPatterns {
-		trimmedRouteDefinitionPattern := strings.TrimSpace(
-			routeDefinitionPattern,
-		)
-		if trimmedRouteDefinitionPattern == "" {
-			return nil, fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d] cannot be empty or whitespace",
-				index,
-			)
-		}
-		if trimmedRouteDefinitionPattern != routeDefinitionPattern {
-			return nil, fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d]=%q must not contain surrounding whitespace",
-				index,
-				routeDefinitionPattern,
-			)
-		}
-		if _, hasSeenPattern := seenPatterns[trimmedRouteDefinitionPattern]; hasSeenPattern {
-			return nil, fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d]=%q duplicates an earlier pattern",
-				index,
-				trimmedRouteDefinitionPattern,
-			)
-		}
-
-		seenPatterns[trimmedRouteDefinitionPattern] = struct{}{}
-		normalizedPatterns = append(
-			normalizedPatterns,
-			trimmedRouteDefinitionPattern,
-		)
-	}
-	return normalizedPatterns, nil
-}
-
 type fsFileSummary struct {
 	path string
 	size int64
@@ -8310,74 +6524,6 @@ func postViteProdBuildWithDependencies(
 
 	dependencies.applyBuildIDToVorma(v, pathsFile.BuildID)
 	return nil
-}
-
-type routeParsingMetadata struct {
-	routeFuncNames    map[string]bool
-	trackedModuleVars map[string]string
-}
-
-func collectRouteParsingMetadata(parsedAST *js.AST) routeParsingMetadata {
-	routeFuncNames := make(map[string]bool)
-	trackedModuleVars := make(map[string]string)
-
-	for _, statement := range parsedAST.BlockStmt.List {
-		if importStmt, isImportStmt := statement.(*js.ImportStmt); isImportStmt {
-			if !isBuildtimeImportStatement(importStmt) {
-				continue
-			}
-			for _, alias := range importStmt.List {
-				if !isRouteImportAlias(alias) {
-					continue
-				}
-				routeFuncName := routeImportAliasBinding(alias)
-				if routeFuncName != "" {
-					routeFuncNames[routeFuncName] = true
-				}
-			}
-			continue
-		}
-
-		varDecl, isVarDecl := statement.(*js.VarDecl)
-		if !isVarDecl {
-			continue
-		}
-		for _, binding := range varDecl.List {
-			varBinding, ok := binding.Binding.(*js.Var)
-			if !ok {
-				continue
-			}
-			modulePath, ok := extractStaticStringLiteral(binding.Default)
-			if !ok {
-				continue
-			}
-			trackedModuleVars[string(varBinding.Data)] = modulePath
-		}
-	}
-	return routeParsingMetadata{
-		routeFuncNames:    routeFuncNames,
-		trackedModuleVars: trackedModuleVars,
-	}
-}
-
-func isBuildtimeImportStatement(importStmt *js.ImportStmt) bool {
-	return strings.Trim(
-		string(importStmt.Module),
-		`"'`+"`",
-	) == "vorma/buildtime"
-}
-
-func isRouteImportAlias(alias js.Alias) bool {
-	aliasName := string(alias.Name)
-	aliasBinding := string(alias.Binding)
-	return aliasName == "route" || (aliasName == "" && aliasBinding == "route")
-}
-
-func routeImportAliasBinding(alias js.Alias) string {
-	if len(alias.Binding) > 0 {
-		return string(alias.Binding)
-	}
-	return string(alias.Name)
 }
 
 type viteManifestApplicationResult struct {
@@ -8705,11 +6851,11 @@ func applyBuildIDToPathsFile(
 }
 
 func applyBuildIDToVorma(v *vormaruntime.Vorma, buildID string) {
-	commitRuntimeState(
+	buildlifecycle.CommitRuntimeState(
 		v,
-		runtimeStateCommitInput{
-			shouldCommitBuildID: true,
-			buildID:             buildID,
+		buildlifecycle.RuntimeStateCommitInput{
+			ShouldCommitBuildID: true,
+			BuildID:             buildID,
 		},
 	)
 }
@@ -9089,11 +7235,11 @@ func (runtimeBuildOperations runtimeBuildOperationExecutor) prepareDevBuildRunti
 	runtimeBuildOperations.dependencies.setWaveModeToDev()
 	// Set isDev on this process's Vorma instance so callbacks
 	// (like rebuildRoutesOnly) can run in the dev server process.
-	commitRuntimeState(
+	buildlifecycle.CommitRuntimeState(
 		v,
-		runtimeStateCommitInput{
-			shouldCommitIsDev: true,
-			isDev:             true,
+		buildlifecycle.RuntimeStateCommitInput{
+			ShouldCommitIsDev: true,
+			IsDev:             true,
 		},
 	)
 }

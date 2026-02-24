@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createAbortAwareFetchRecorder,
 	createDeferred,
-	createSequencedFetchSpy,
 	createRouteDataResponse,
+	createSequencedFetchSpy,
 	loadClientAPI,
 	setupContractTestSuite,
 	stubWindowLocationHref,
@@ -323,6 +323,35 @@ describe("client navigation mode contracts", () => {
 		expect(fetchURL.href).toContain("vorma_json=1");
 		expect(window.location.search).toBe("?q=contract");
 		expect(window.location.hash).toBe("#anchor");
+	});
+
+	it("does not fetch on programmatic same-document hash-only navigation", async () => {
+		const api = await loadClientAPI();
+		window.history.replaceState({}, "", "/hash-no-fetch");
+		api.getHistoryInstance();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const routeChangeDetails: Array<unknown> = [];
+		const removeRouteChangeListener = api.addRouteChangeListener(
+			(event) => {
+				routeChangeDetails.push(event.detail);
+			},
+		);
+
+		await api.vormaNavigate("/hash-no-fetch#section-a");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(window.location.pathname).toBe("/hash-no-fetch");
+		expect(window.location.hash).toBe("#section-a");
+		expect(routeChangeDetails.at(-1)).toEqual(
+			expect.objectContaining({
+				__scrollState: { hash: "section-a" },
+			}),
+		);
+
+		removeRouteChangeListener();
 	});
 
 	it("reuses in-flight navigation when only hash changes on the same data target", async () => {

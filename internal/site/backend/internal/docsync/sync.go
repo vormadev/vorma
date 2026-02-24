@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/vormadev/vorma/wave"
-	"github.com/vormadev/vorma/wave/tooling/builder"
+	"github.com/vormadev/vorma/wave/wavebuild/builder"
 )
 
 const generatedMarker = "<!-- GENERATED_BY: internal/site/backend/cmd/sync_docs -->"
@@ -59,7 +59,10 @@ type assetPlan struct {
 	dirsWithReadmeChildren map[string]struct{}
 }
 
-func newAssetPlan(repoRoot string, readmeDirs, dirsWithReadmeChildren map[string]struct{}) *assetPlan {
+func newAssetPlan(
+	repoRoot string,
+	readmeDirs, dirsWithReadmeChildren map[string]struct{},
+) *assetPlan {
 	return &assetPlan{
 		repoRoot:               repoRoot,
 		mirrorRoot:             filepath.Join(repoRoot, mirrorRootRel),
@@ -69,14 +72,25 @@ func newAssetPlan(repoRoot string, readmeDirs, dirsWithReadmeChildren map[string
 	}
 }
 
-func (p *assetPlan) registerAsset(resolvedRepoPath, sourceAbsPath string) (string, error) {
-	resolvedRepoPath = strings.TrimPrefix(filepath.ToSlash(resolvedRepoPath), "./")
+func (p *assetPlan) registerAsset(
+	resolvedRepoPath, sourceAbsPath string,
+) (string, error) {
+	resolvedRepoPath = strings.TrimPrefix(
+		filepath.ToSlash(resolvedRepoPath),
+		"./",
+	)
 	resolvedRepoPath = strings.TrimPrefix(resolvedRepoPath, "/")
 	if resolvedRepoPath == "" || resolvedRepoPath == "." {
-		return "", fmt.Errorf("invalid mirror path for asset: %q", sourceAbsPath)
+		return "", fmt.Errorf(
+			"invalid mirror path for asset: %q",
+			sourceAbsPath,
+		)
 	}
 
-	destPath := filepath.Join(p.mirrorRoot, filepath.FromSlash(resolvedRepoPath))
+	destPath := filepath.Join(
+		p.mirrorRoot,
+		filepath.FromSlash(resolvedRepoPath),
+	)
 	p.expected[destPath] = sourceAbsPath
 	return mirrorURLPrefix + resolvedRepoPath, nil
 }
@@ -109,10 +123,23 @@ func SyncAllReadmes() (Result, error) {
 	dirsWithReadmeChildren := collectDirsWithReadmeChildren(readmeDirs)
 	sectionDirs := collectSectionDirs(readmeDirs)
 
-	docsRoot := filepath.Join(repoRoot, "internal", "site", "backend", "assets", "markdown", "docs")
+	docsRoot := filepath.Join(
+		repoRoot,
+		"internal",
+		"site",
+		"backend",
+		"assets",
+		"markdown",
+		"docs",
+	)
 	docsOutRoot := filepath.Join(docsRoot, "~")
 	plan := newAssetPlan(repoRoot, readmeDirs, dirsWithReadmeChildren)
-	readmeSpecs, err := buildReadmeSpecs(sources, repoRoot, docsOutRoot, dirsWithReadmeChildren)
+	readmeSpecs, err := buildReadmeSpecs(
+		sources,
+		repoRoot,
+		docsOutRoot,
+		dirsWithReadmeChildren,
+	)
 	if err != nil {
 		return Result{}, err
 	}
@@ -124,12 +151,26 @@ func SyncAllReadmes() (Result, error) {
 
 	for _, spec := range readmeSpecs {
 		expectedDocs[spec.TargetPath] = struct{}{}
-		order, ok := lookupSiblingOrder(siblingOrders, spec.ParentDir, spec.ChildName)
+		order, ok := lookupSiblingOrder(
+			siblingOrders,
+			spec.ParentDir,
+			spec.ChildName,
+		)
 		if !ok {
-			return res, fmt.Errorf("missing sibling order for %s/%s", spec.ParentDir, spec.ChildName)
+			return res, fmt.Errorf(
+				"missing sibling order for %s/%s",
+				spec.ParentDir,
+				spec.ChildName,
+			)
 		}
 
-		content, meta, err := renderReadmeOverviewFile(spec.SourcePath, repoRoot, modulePath, plan, order)
+		content, meta, err := renderReadmeOverviewFile(
+			spec.SourcePath,
+			repoRoot,
+			modulePath,
+			plan,
+			order,
+		)
 		if err != nil {
 			return res, err
 		}
@@ -144,7 +185,13 @@ func SyncAllReadmes() (Result, error) {
 		}
 	}
 
-	indexesWritten, err := writeSectionIndexes(docsOutRoot, sectionDirs, readmeMeta, expectedDocs, siblingOrders)
+	indexesWritten, err := writeSectionIndexes(
+		docsOutRoot,
+		sectionDirs,
+		readmeMeta,
+		expectedDocs,
+		siblingOrders,
+	)
 	if err != nil {
 		return res, err
 	}
@@ -176,7 +223,10 @@ func SyncAllReadmes() (Result, error) {
 
 // SyncAndResolvePublicURLs runs README sync and then rewrites generated doc URLs
 // using the current Wave public file map.
-func SyncAndResolvePublicURLs(cfg *wave.ParsedConfig, log *slog.Logger) (Result, error) {
+func SyncAndResolvePublicURLs(
+	cfg *wave.ParsedConfig,
+	log *slog.Logger,
+) (Result, error) {
 	res, err := SyncAllReadmes()
 	if err != nil {
 		return res, err
@@ -192,7 +242,10 @@ func SyncAndResolvePublicURLs(cfg *wave.ParsedConfig, log *slog.Logger) (Result,
 
 // ResolveGeneratedDocsPublicURLs rewrites generated docs URLs using the current
 // public file map. It uses granular public static processing for speed.
-func ResolveGeneratedDocsPublicURLs(cfg *wave.ParsedConfig, log *slog.Logger) (int, error) {
+func ResolveGeneratedDocsPublicURLs(
+	cfg *wave.ParsedConfig,
+	log *slog.Logger,
+) (int, error) {
 	assetMap, publicPathPrefix, err := loadPublicAssetMap(cfg, log)
 	if err != nil {
 		return 0, err
@@ -200,7 +253,10 @@ func ResolveGeneratedDocsPublicURLs(cfg *wave.ParsedConfig, log *slog.Logger) (i
 	return rewriteGeneratedDocsWithAssetMap(assetMap, publicPathPrefix)
 }
 
-func loadPublicAssetMap(cfg *wave.ParsedConfig, log *slog.Logger) (map[string]string, string, error) {
+func loadPublicAssetMap(
+	cfg *wave.ParsedConfig,
+	log *slog.Logger,
+) (map[string]string, string, error) {
 	if cfg == nil {
 		return nil, "", fmt.Errorf("wave config is required for URL resolution")
 	}
@@ -225,7 +281,10 @@ func loadPublicAssetMap(cfg *wave.ParsedConfig, log *slog.Logger) (map[string]st
 	return assetMap, cfg.PublicPathPrefix(), nil
 }
 
-func rewriteGeneratedDocsWithAssetMap(assetMap map[string]string, publicPathPrefix string) (int, error) {
+func rewriteGeneratedDocsWithAssetMap(
+	assetMap map[string]string,
+	publicPathPrefix string,
+) (int, error) {
 	if len(assetMap) == 0 {
 		return 0, nil
 	}
@@ -240,7 +299,15 @@ func rewriteGeneratedDocsWithAssetMap(assetMap map[string]string, publicPathPref
 		return 0, err
 	}
 
-	docsOutRoot := filepath.Join(repoRoot, "internal", "site", "backend", "assets", "markdown", "docs")
+	docsOutRoot := filepath.Join(
+		repoRoot,
+		"internal",
+		"site",
+		"backend",
+		"assets",
+		"markdown",
+		"docs",
+	)
 	info, err := os.Stat(docsOutRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -249,39 +316,52 @@ func rewriteGeneratedDocsWithAssetMap(assetMap map[string]string, publicPathPref
 		return 0, fmt.Errorf("stat docs output root %s: %w", docsOutRoot, err)
 	}
 	if !info.IsDir() {
-		return 0, fmt.Errorf("docs output root is not a directory: %s", docsOutRoot)
+		return 0, fmt.Errorf(
+			"docs output root is not a directory: %s",
+			docsOutRoot,
+		)
 	}
 
 	rewrittenFiles := 0
-	err = filepath.WalkDir(docsOutRoot, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || filepath.Ext(p) != ".md" {
+	err = filepath.WalkDir(
+		docsOutRoot,
+		func(p string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() || filepath.Ext(p) != ".md" {
+				return nil
+			}
+
+			raw, err := os.ReadFile(p)
+			if err != nil {
+				return fmt.Errorf("read generated doc %s: %w", p, err)
+			}
+			if !bytes.Contains(raw, []byte(generatedMarker)) {
+				return nil
+			}
+
+			updated := rewriteContentWithPublicAssetMap(
+				string(raw),
+				assetMap,
+				publicPathPrefix,
+			)
+
+			changed, err := writeIfChanged(p, []byte(updated))
+			if err != nil {
+				return err
+			}
+			if changed {
+				rewrittenFiles++
+			}
 			return nil
-		}
-
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			return fmt.Errorf("read generated doc %s: %w", p, err)
-		}
-		if !bytes.Contains(raw, []byte(generatedMarker)) {
-			return nil
-		}
-
-		updated := rewriteContentWithPublicAssetMap(string(raw), assetMap, publicPathPrefix)
-
-		changed, err := writeIfChanged(p, []byte(updated))
-		if err != nil {
-			return err
-		}
-		if changed {
-			rewrittenFiles++
-		}
-		return nil
-	})
+		},
+	)
 	if err != nil {
-		return rewrittenFiles, fmt.Errorf("walk generated docs for URL rewrite: %w", err)
+		return rewrittenFiles, fmt.Errorf(
+			"walk generated docs for URL rewrite: %w",
+			err,
+		)
 	}
 
 	return rewrittenFiles, nil
@@ -327,24 +407,27 @@ func isDir(p string) bool {
 
 func collectReadmes(repoRoot string) ([]string, error) {
 	var paths []string
-	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
+	err := filepath.WalkDir(
+		repoRoot,
+		func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
 
-		if d.IsDir() && shouldSkipDir(d.Name()) {
-			return filepath.SkipDir
-		}
+			if d.IsDir() && shouldSkipDir(d.Name()) {
+				return filepath.SkipDir
+			}
 
-		if d.IsDir() {
+			if d.IsDir() {
+				return nil
+			}
+
+			if d.Name() == "README.md" {
+				paths = append(paths, path)
+			}
 			return nil
-		}
-
-		if d.Name() == "README.md" {
-			paths = append(paths, path)
-		}
-		return nil
-	})
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("walk repo for README files: %w", err)
 	}
@@ -353,7 +436,10 @@ func collectReadmes(repoRoot string) ([]string, error) {
 	return paths, nil
 }
 
-func collectReadmeDirs(sources []string, repoRoot string) (map[string]struct{}, error) {
+func collectReadmeDirs(
+	sources []string,
+	repoRoot string,
+) (map[string]struct{}, error) {
 	readmeDirs := make(map[string]struct{}, len(sources))
 	for _, src := range sources {
 		rel, err := filepath.Rel(repoRoot, src)
@@ -366,7 +452,9 @@ func collectReadmeDirs(sources []string, repoRoot string) (map[string]struct{}, 
 	return readmeDirs, nil
 }
 
-func collectDirsWithReadmeChildren(readmeDirs map[string]struct{}) map[string]struct{} {
+func collectDirsWithReadmeChildren(
+	readmeDirs map[string]struct{},
+) map[string]struct{} {
 	withChildren := make(map[string]struct{}, len(readmeDirs))
 	for dir := range readmeDirs {
 		d := normalizeDocDir(dir)
@@ -429,7 +517,10 @@ func buildReadmeSpecs(
 	return specs, nil
 }
 
-func buildSiblingOrderMap(readmeSpecs []readmeDocSpec, sectionDirs map[string]struct{}) map[string]int {
+func buildSiblingOrderMap(
+	readmeSpecs []readmeDocSpec,
+	sectionDirs map[string]struct{},
+) map[string]int {
 	childrenByParent := make(map[string]map[string]struct{})
 	addChild := func(parent, child string) {
 		parent = normalizeDocDir(parent)
@@ -463,10 +554,12 @@ func buildSiblingOrderMap(readmeSpecs []readmeDocSpec, sectionDirs map[string]st
 			children = append(children, child)
 		}
 		sort.Slice(children, func(i, j int) bool {
-			if strings.EqualFold(children[i], "readme") && !strings.EqualFold(children[j], "readme") {
+			if strings.EqualFold(children[i], "readme") &&
+				!strings.EqualFold(children[j], "readme") {
 				return true
 			}
-			if strings.EqualFold(children[j], "readme") && !strings.EqualFold(children[i], "readme") {
+			if strings.EqualFold(children[j], "readme") &&
+				!strings.EqualFold(children[i], "readme") {
 				return false
 			}
 			a := strings.ToLower(children[i])
@@ -485,15 +578,25 @@ func buildSiblingOrderMap(readmeSpecs []readmeDocSpec, sectionDirs map[string]st
 }
 
 func siblingOrderKey(parent, child string) string {
-	return normalizeDocDir(parent) + "\x00" + strings.ToLower(strings.TrimSpace(child))
+	return normalizeDocDir(
+		parent,
+	) + "\x00" + strings.ToLower(
+		strings.TrimSpace(child),
+	)
 }
 
-func lookupSiblingOrder(orders map[string]int, parent, child string) (int, bool) {
+func lookupSiblingOrder(
+	orders map[string]int,
+	parent, child string,
+) (int, bool) {
 	order, ok := orders[siblingOrderKey(parent, child)]
 	return order, ok
 }
 
-func readmeSitemapPlacement(dir string, hasReadmeChildren bool) (parentDir string, childName string) {
+func readmeSitemapPlacement(
+	dir string,
+	hasReadmeChildren bool,
+) (parentDir string, childName string) {
 	dir = normalizeDocDir(dir)
 	if dir == "." {
 		return ".", "readme"
@@ -514,7 +617,10 @@ func shouldSkipDir(name string) bool {
 	}
 }
 
-func overviewTargetPath(readmeRel, outRoot string, hasReadmeChildren bool) string {
+func overviewTargetPath(
+	readmeRel, outRoot string,
+	hasReadmeChildren bool,
+) string {
 	dir := normalizeDocDir(filepath.ToSlash(filepath.Dir(readmeRel)))
 	if dir == "." || hasReadmeChildren {
 		if dir == "." {
@@ -537,21 +643,36 @@ func normalizeDocDir(dir string) string {
 	return clean
 }
 
-func dirHasReadmeChildren(dir string, dirsWithReadmeChildren map[string]struct{}) bool {
+func dirHasReadmeChildren(
+	dir string,
+	dirsWithReadmeChildren map[string]struct{},
+) bool {
 	_, ok := dirsWithReadmeChildren[normalizeDocDir(dir)]
 	return ok
 }
 
-func renderReadmeOverviewFile(srcPath, repoRoot, modulePath string, plan *assetPlan, order int) ([]byte, readmeDocMeta, error) {
+func renderReadmeOverviewFile(
+	srcPath, repoRoot, modulePath string,
+	plan *assetPlan,
+	order int,
+) ([]byte, readmeDocMeta, error) {
 	rel, err := filepath.Rel(repoRoot, srcPath)
 	if err != nil {
-		return nil, readmeDocMeta{}, fmt.Errorf("rel path for %s: %w", srcPath, err)
+		return nil, readmeDocMeta{}, fmt.Errorf(
+			"rel path for %s: %w",
+			srcPath,
+			err,
+		)
 	}
 	rel = filepath.ToSlash(rel)
 
 	raw, err := os.ReadFile(srcPath)
 	if err != nil {
-		return nil, readmeDocMeta{}, fmt.Errorf("read source README %s: %w", srcPath, err)
+		return nil, readmeDocMeta{}, fmt.Errorf(
+			"read source README %s: %w",
+			srcPath,
+			err,
+		)
 	}
 
 	raw = normalizeNewlines(raw)
@@ -641,7 +762,13 @@ func sectionIndexTargetPath(outRoot, dir string) string {
 	return filepath.Join(outRoot, dir, "_index.md")
 }
 
-func renderSectionIndex(dir string, readmeMeta readmeDocMeta, hasReadme bool, order int, hasOrder bool) []byte {
+func renderSectionIndex(
+	dir string,
+	readmeMeta readmeDocMeta,
+	hasReadme bool,
+	order int,
+	hasOrder bool,
+) []byte {
 	title := sectionTitleForDir(dir)
 	description := sectionDescriptionForDir(dir)
 	var out strings.Builder
@@ -703,7 +830,11 @@ func normalizeNewlines(b []byte) []byte {
 	return b
 }
 
-func rewriteContentWithPublicAssetMap(md string, assetMap map[string]string, publicPathPrefix string) string {
+func rewriteContentWithPublicAssetMap(
+	md string,
+	assetMap map[string]string,
+	publicPathPrefix string,
+) string {
 	hasTrailingNewline := strings.HasSuffix(md, "\n")
 	md = strings.TrimSuffix(md, "\n")
 	if md == "" {
@@ -729,8 +860,16 @@ func rewriteContentWithPublicAssetMap(md string, assetMap map[string]string, pub
 			continue
 		}
 
-		rewritten := rewriteHTMLAttrsWithPublicAssetMap(line, assetMap, publicPathPrefix)
-		rewritten = rewriteMarkdownWithPublicAssetMap(rewritten, assetMap, publicPathPrefix)
+		rewritten := rewriteHTMLAttrsWithPublicAssetMap(
+			line,
+			assetMap,
+			publicPathPrefix,
+		)
+		rewritten = rewriteMarkdownWithPublicAssetMap(
+			rewritten,
+			assetMap,
+			publicPathPrefix,
+		)
 		outLines[i] = rewritten
 	}
 
@@ -741,55 +880,89 @@ func rewriteContentWithPublicAssetMap(md string, assetMap map[string]string, pub
 	return out
 }
 
-func rewriteHTMLAttrsWithPublicAssetMap(line string, assetMap map[string]string, publicPathPrefix string) string {
-	out := htmlAttrDoubleURLRe.ReplaceAllStringFunc(line, func(match string) string {
-		parts := htmlAttrDoubleURLRe.FindStringSubmatch(match)
-		if len(parts) != 3 {
-			return match
-		}
-		rewritten, ok := rewritePublicURL(parts[2], assetMap, publicPathPrefix)
-		if !ok {
-			return match
-		}
-		return strings.Replace(match, parts[2], rewritten, 1)
-	})
+func rewriteHTMLAttrsWithPublicAssetMap(
+	line string,
+	assetMap map[string]string,
+	publicPathPrefix string,
+) string {
+	out := htmlAttrDoubleURLRe.ReplaceAllStringFunc(
+		line,
+		func(match string) string {
+			parts := htmlAttrDoubleURLRe.FindStringSubmatch(match)
+			if len(parts) != 3 {
+				return match
+			}
+			rewritten, ok := rewritePublicURL(
+				parts[2],
+				assetMap,
+				publicPathPrefix,
+			)
+			if !ok {
+				return match
+			}
+			return strings.Replace(match, parts[2], rewritten, 1)
+		},
+	)
 
-	out = htmlAttrSingleURLRe.ReplaceAllStringFunc(out, func(match string) string {
-		parts := htmlAttrSingleURLRe.FindStringSubmatch(match)
-		if len(parts) != 3 {
-			return match
-		}
-		rewritten, ok := rewritePublicURL(parts[2], assetMap, publicPathPrefix)
-		if !ok {
-			return match
-		}
-		return strings.Replace(match, parts[2], rewritten, 1)
-	})
+	out = htmlAttrSingleURLRe.ReplaceAllStringFunc(
+		out,
+		func(match string) string {
+			parts := htmlAttrSingleURLRe.FindStringSubmatch(match)
+			if len(parts) != 3 {
+				return match
+			}
+			rewritten, ok := rewritePublicURL(
+				parts[2],
+				assetMap,
+				publicPathPrefix,
+			)
+			if !ok {
+				return match
+			}
+			return strings.Replace(match, parts[2], rewritten, 1)
+		},
+	)
 
 	return out
 }
 
-func rewriteMarkdownWithPublicAssetMap(line string, assetMap map[string]string, publicPathPrefix string) string {
-	return markdownLinkURLRe.ReplaceAllStringFunc(line, func(match string) string {
-		parts := markdownLinkURLRe.FindStringSubmatch(match)
-		if len(parts) != 4 {
-			return match
-		}
-		target := strings.TrimSpace(parts[2])
-		if strings.Contains(target, " ") {
-			return match
-		}
-		rewritten, ok := rewritePublicURL(target, assetMap, publicPathPrefix)
-		if !ok {
-			return match
-		}
-		return parts[1] + rewritten + parts[3]
-	})
+func rewriteMarkdownWithPublicAssetMap(
+	line string,
+	assetMap map[string]string,
+	publicPathPrefix string,
+) string {
+	return markdownLinkURLRe.ReplaceAllStringFunc(
+		line,
+		func(match string) string {
+			parts := markdownLinkURLRe.FindStringSubmatch(match)
+			if len(parts) != 4 {
+				return match
+			}
+			target := strings.TrimSpace(parts[2])
+			if strings.Contains(target, " ") {
+				return match
+			}
+			rewritten, ok := rewritePublicURL(
+				target,
+				assetMap,
+				publicPathPrefix,
+			)
+			if !ok {
+				return match
+			}
+			return parts[1] + rewritten + parts[3]
+		},
+	)
 }
 
-func rewritePublicURL(target string, assetMap map[string]string, publicPathPrefix string) (string, bool) {
+func rewritePublicURL(
+	target string,
+	assetMap map[string]string,
+	publicPathPrefix string,
+) (string, bool) {
 	pathPart, suffix := splitPathAndSuffix(strings.TrimSpace(target))
-	if pathPart == "" || !strings.HasPrefix(pathPart, "/") || strings.HasPrefix(pathPart, "//") {
+	if pathPart == "" || !strings.HasPrefix(pathPart, "/") ||
+		strings.HasPrefix(pathPart, "//") {
 		return "", false
 	}
 
@@ -890,39 +1063,54 @@ func rewriteHTMLSrc(line, readmeRel string, plan *assetPlan) (string, error) {
 	return out, nil
 }
 
-func rewriteMarkdownLinks(line, readmeRel string, plan *assetPlan) (string, error) {
+func rewriteMarkdownLinks(
+	line, readmeRel string,
+	plan *assetPlan,
+) (string, error) {
 	var rewriteErr error
-	out := markdownLinkURLRe.ReplaceAllStringFunc(line, func(match string) string {
-		if rewriteErr != nil {
-			return match
-		}
-		parts := markdownLinkURLRe.FindStringSubmatch(match)
-		if len(parts) != 4 {
-			return match
-		}
-		target := strings.TrimSpace(parts[2])
-		if strings.Contains(target, " ") {
-			return match
-		}
+	out := markdownLinkURLRe.ReplaceAllStringFunc(
+		line,
+		func(match string) string {
+			if rewriteErr != nil {
+				return match
+			}
+			parts := markdownLinkURLRe.FindStringSubmatch(match)
+			if len(parts) != 4 {
+				return match
+			}
+			target := strings.TrimSpace(parts[2])
+			if strings.Contains(target, " ") {
+				return match
+			}
 
-		isImage := strings.HasPrefix(parts[1], "![")
-		rewritten, ok, err := rewriteURLTarget(target, readmeRel, plan, isImage)
-		if err != nil {
-			rewriteErr = err
-			return match
-		}
-		if !ok {
-			return match
-		}
-		return parts[1] + rewritten + parts[3]
-	})
+			isImage := strings.HasPrefix(parts[1], "![")
+			rewritten, ok, err := rewriteURLTarget(
+				target,
+				readmeRel,
+				plan,
+				isImage,
+			)
+			if err != nil {
+				rewriteErr = err
+				return match
+			}
+			if !ok {
+				return match
+			}
+			return parts[1] + rewritten + parts[3]
+		},
+	)
 	if rewriteErr != nil {
 		return "", rewriteErr
 	}
 	return out, nil
 }
 
-func rewriteURLTarget(target, readmeRel string, plan *assetPlan, assetContext bool) (string, bool, error) {
+func rewriteURLTarget(
+	target, readmeRel string,
+	plan *assetPlan,
+	assetContext bool,
+) (string, bool, error) {
 	pathPart, suffix := splitPathAndSuffix(strings.TrimSpace(target))
 	if pathPart == "" {
 		return "", false, nil
@@ -933,31 +1121,52 @@ func rewriteURLTarget(target, readmeRel string, plan *assetPlan, assetContext bo
 		relPath, ok := absPathToRepoRel(pathPart, plan.repoRoot)
 		if !ok {
 			if assetContext {
-				return "", false, fmt.Errorf("asset path outside repo is not allowed: %s (from %s)", target, readmeRel)
+				return "", false, fmt.Errorf(
+					"asset path outside repo is not allowed: %s (from %s)",
+					target,
+					readmeRel,
+				)
 			}
 			return "", false, nil
 		}
-		return rewriteResolvedRepoPath(relPath, suffix, readmeRel, plan, assetContext)
+		return rewriteResolvedRepoPath(
+			relPath,
+			suffix,
+			readmeRel,
+			plan,
+			assetContext,
+		)
 	}
 
 	if strings.HasPrefix(pathPart, "#") || strings.HasPrefix(pathPart, "/") {
 		return "", false, nil
 	}
 
-	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+	if strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") {
 		if assetContext {
-			return "", false, fmt.Errorf("third-party asset URLs are not allowed: %s (from %s)", target, readmeRel)
+			return "", false, fmt.Errorf(
+				"third-party asset URLs are not allowed: %s (from %s)",
+				target,
+				readmeRel,
+			)
 		}
 		return "", false, nil
 	}
 
-	if strings.HasPrefix(lower, "mailto:") || strings.HasPrefix(lower, "tel:") || strings.HasPrefix(lower, "data:") {
+	if strings.HasPrefix(lower, "mailto:") ||
+		strings.HasPrefix(lower, "tel:") ||
+		strings.HasPrefix(lower, "data:") {
 		return "", false, nil
 	}
 
 	if strings.Contains(pathPart, "://") {
 		if assetContext {
-			return "", false, fmt.Errorf("third-party asset URLs are not allowed: %s (from %s)", target, readmeRel)
+			return "", false, fmt.Errorf(
+				"third-party asset URLs are not allowed: %s (from %s)",
+				target,
+				readmeRel,
+			)
 		}
 		return "", false, nil
 	}
@@ -972,7 +1181,13 @@ func rewriteURLTarget(target, readmeRel string, plan *assetPlan, assetContext bo
 		return "", false, nil
 	}
 
-	return rewriteResolvedRepoPath(resolved, suffix, readmeRel, plan, assetContext)
+	return rewriteResolvedRepoPath(
+		resolved,
+		suffix,
+		readmeRel,
+		plan,
+		assetContext,
+	)
 }
 
 func splitPathAndSuffix(target string) (pathPart, suffix string) {
@@ -996,7 +1211,11 @@ func absPathToRepoRel(absPath, repoRoot string) (string, bool) {
 	return rel, true
 }
 
-func rewriteResolvedRepoPath(resolved, suffix, readmeRel string, plan *assetPlan, assetContext bool) (string, bool, error) {
+func rewriteResolvedRepoPath(
+	resolved, suffix, readmeRel string,
+	plan *assetPlan,
+	assetContext bool,
+) (string, bool, error) {
 	resolved = filepath.ToSlash(path.Clean("/" + resolved))
 	resolved = strings.TrimPrefix(resolved, "/")
 	if resolved == "" || resolved == "." {
@@ -1016,7 +1235,11 @@ func rewriteResolvedRepoPath(resolved, suffix, readmeRel string, plan *assetPlan
 	if err != nil {
 		if os.IsNotExist(err) {
 			if assetContext {
-				return "", false, fmt.Errorf("asset file not found: %s (from %s)", resolved, readmeRel)
+				return "", false, fmt.Errorf(
+					"asset file not found: %s (from %s)",
+					resolved,
+					readmeRel,
+				)
 			}
 			return "", false, nil
 		}
@@ -1025,7 +1248,11 @@ func rewriteResolvedRepoPath(resolved, suffix, readmeRel string, plan *assetPlan
 
 	if info.IsDir() {
 		if assetContext {
-			return "", false, fmt.Errorf("asset path points to a directory: %s (from %s)", resolved, readmeRel)
+			return "", false, fmt.Errorf(
+				"asset path points to a directory: %s (from %s)",
+				resolved,
+				readmeRel,
+			)
 		}
 		return "", false, nil
 	}
@@ -1081,7 +1308,11 @@ func syncMirrorAssets(plan *assetPlan) (written, deleted int, err error) {
 		src := plan.expected[dest]
 		content, err := os.ReadFile(src)
 		if err != nil {
-			return written, deleted, fmt.Errorf("read asset source %s: %w", src, err)
+			return written, deleted, fmt.Errorf(
+				"read asset source %s: %w",
+				src,
+				err,
+			)
 		}
 		changed, err := writeIfChanged(dest, content)
 		if err != nil {
@@ -1097,28 +1328,38 @@ func syncMirrorAssets(plan *assetPlan) (written, deleted int, err error) {
 		if os.IsNotExist(err) {
 			return written, deleted, nil
 		}
-		return written, deleted, fmt.Errorf("stat mirror root %s: %w", plan.mirrorRoot, err)
+		return written, deleted, fmt.Errorf(
+			"stat mirror root %s: %w",
+			plan.mirrorRoot,
+			err,
+		)
 	}
 	if !info.IsDir() {
-		return written, deleted, fmt.Errorf("mirror root is not a directory: %s", plan.mirrorRoot)
+		return written, deleted, fmt.Errorf(
+			"mirror root is not a directory: %s",
+			plan.mirrorRoot,
+		)
 	}
 
-	err = filepath.WalkDir(plan.mirrorRoot, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
+	err = filepath.WalkDir(
+		plan.mirrorRoot,
+		func(p string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if _, ok := plan.expected[p]; ok {
+				return nil
+			}
+			if err := os.Remove(p); err != nil {
+				return fmt.Errorf("remove stale mirrored asset %s: %w", p, err)
+			}
+			deleted++
 			return nil
-		}
-		if _, ok := plan.expected[p]; ok {
-			return nil
-		}
-		if err := os.Remove(p); err != nil {
-			return fmt.Errorf("remove stale mirrored asset %s: %w", p, err)
-		}
-		deleted++
-		return nil
-	})
+		},
+	)
 	if err != nil {
 		return written, deleted, err
 	}
@@ -1133,7 +1374,11 @@ func syncMirrorAssets(plan *assetPlan) (written, deleted int, err error) {
 func removeLegacyMirrorRoot(repoRoot string) error {
 	legacy := filepath.Join(repoRoot, legacyMirrorRootRel)
 	if err := os.RemoveAll(legacy); err != nil {
-		return fmt.Errorf("remove legacy mirrored assets under %s: %w", legacy, err)
+		return fmt.Errorf(
+			"remove legacy mirrored assets under %s: %w",
+			legacy,
+			err,
+		)
 	}
 	return nil
 }
@@ -1220,7 +1465,10 @@ func writeIfChanged(path string, content []byte) (bool, error) {
 	return true, nil
 }
 
-func deleteStaleGeneratedDocs(outRoot string, expected map[string]struct{}) (int, error) {
+func deleteStaleGeneratedDocs(
+	outRoot string,
+	expected map[string]struct{},
+) (int, error) {
 	info, err := os.Stat(outRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1233,34 +1481,41 @@ func deleteStaleGeneratedDocs(outRoot string, expected map[string]struct{}) (int
 	}
 
 	deleted := 0
-	err = filepath.WalkDir(outRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if filepath.Ext(path) != ".md" {
-			return nil
-		}
-		if _, ok := expected[path]; ok {
-			return nil
-		}
+	err = filepath.WalkDir(
+		outRoot,
+		func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if filepath.Ext(path) != ".md" {
+				return nil
+			}
+			if _, ok := expected[path]; ok {
+				return nil
+			}
 
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read stale candidate %s: %w", path, err)
-		}
-		if !bytes.Contains(b, []byte(generatedMarker)) {
-			return nil
-		}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("read stale candidate %s: %w", path, err)
+			}
+			if !bytes.Contains(b, []byte(generatedMarker)) {
+				return nil
+			}
 
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("remove stale generated file %s: %w", path, err)
-		}
-		deleted++
-		return nil
-	})
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf(
+					"remove stale generated file %s: %w",
+					path,
+					err,
+				)
+			}
+			deleted++
+			return nil
+		},
+	)
 	if err != nil {
 		return deleted, fmt.Errorf("walk output root %s: %w", outRoot, err)
 	}
@@ -1270,18 +1525,21 @@ func deleteStaleGeneratedDocs(outRoot string, expected map[string]struct{}) (int
 
 func pruneEmptyDirs(root string) error {
 	var dirs []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
+	err := filepath.WalkDir(
+		root,
+		func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if os.IsNotExist(err) {
+					return nil
+				}
+				return err
 			}
-			return err
-		}
-		if d.IsDir() {
-			dirs = append(dirs, path)
-		}
-		return nil
-	})
+			if d.IsDir() {
+				dirs = append(dirs, path)
+			}
+			return nil
+		},
+	)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
