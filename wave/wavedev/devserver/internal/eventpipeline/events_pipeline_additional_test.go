@@ -3,7 +3,6 @@ package eventpipeline_test
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavebuild/builder"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/eventpipeline"
@@ -39,21 +39,8 @@ func newEventPipelineHarness(
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry:   "cmd/app",
-			DistDir:        filepath.Join(root, "dist"),
-			ServerOnlyMode: serverOnly,
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{
-			WatchRoot: root,
-		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := wavetest.NewParsedConfigAtRoot(root)
+	cfg.Core.ServerOnlyMode = serverOnly
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -1291,7 +1278,7 @@ func TestRunConcurrentHooks_AndRunPostHooks_PropagateCallbackErrors(
 }
 
 func newDiscardLoggerForEventPipelineTests() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return wavetest.NewDiscardLogger()
 }
 
 func waveEventForEventPipelineTests(path string) fsnotify.Event {

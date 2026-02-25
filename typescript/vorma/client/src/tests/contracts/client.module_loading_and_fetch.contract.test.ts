@@ -199,13 +199,6 @@ describe("client module-loading and fetch contracts", () => {
 		}));
 		installContractVormaGlobal({
 			routeManifest: { "/needs-data": 1 },
-			clientModuleMap: {
-				"/needs-data": {
-					importURL: "/noop.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
 			matchedPatterns: ["/needs-data"],
 			loadersData: [],
 		});
@@ -230,7 +223,7 @@ describe("client module-loading and fetch contracts", () => {
 		]);
 	});
 
-	it("preserves module error export metadata across hash-only navigations", async () => {
+	it("preserves active error boundaries across hash-only navigations", async () => {
 		vi.doMock("/parity-module.js", () => ({
 			default: () => null,
 			RouteError: () => null,
@@ -247,31 +240,24 @@ describe("client module-loading and fetch contracts", () => {
 				importURLs: ["/parity-module.js"],
 				exportKeys: ["default"],
 				errorExportKeys: ["RouteError"],
+				outermostServerErrorIdx: 0,
 			}),
 		);
 
 		await api.vormaNavigate("/parity-module");
 		await vi.runAllTimersAsync();
 
-		expect(
-			api.__vormaClientGlobal.get("clientModuleMap")["/parity-module"],
-		).toEqual({
-			importURL: "/parity-module.js",
-			exportKey: "default",
-			errorExportKey: "RouteError",
-		});
+		const activeErrorBoundaryBeforeHashNavigation =
+			api.__vormaClientGlobal.get("activeErrorBoundary");
+		expect(activeErrorBoundaryBeforeHashNavigation).toBeTypeOf("function");
 
 		await api.vormaNavigate("/parity-module#details");
 		await vi.runAllTimersAsync();
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
-		expect(
-			api.__vormaClientGlobal.get("clientModuleMap")["/parity-module"],
-		).toEqual({
-			importURL: "/parity-module.js",
-			exportKey: "default",
-			errorExportKey: "RouteError",
-		});
+		expect(api.__vormaClientGlobal.get("activeErrorBoundary")).toBe(
+			activeErrorBoundaryBeforeHashNavigation,
+		);
 	});
 
 	it("resolves module imports from viteDevURL when present", async () => {
@@ -475,7 +461,6 @@ describe("client module-loading and fetch contracts", () => {
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		expect(api.getBuildID()).toBe("build-2");
-		expect(api.__vormaClientGlobal.get("clientModuleMap")).toEqual({});
 		expect(
 			document.head.querySelector(
 				'link[data-vorma-css-bundle="/prefetch-mismatch.css"]',

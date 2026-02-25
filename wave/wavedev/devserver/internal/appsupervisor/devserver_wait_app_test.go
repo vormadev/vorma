@@ -4,18 +4,13 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/appsupervisor"
 )
-
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
 
 func TestWaitForApp_UsesConfiguredHealthcheckEndpoint(t *testing.T) {
 	cfg := newParsedConfigForRuntimeprocessWaitTestsAtRoot(t.TempDir())
@@ -76,21 +71,7 @@ func TestResolveAppReadyURL_UsesIPv4LoopbackHost(t *testing.T) {
 func newParsedConfigForRuntimeprocessWaitTestsAtRoot(
 	root string,
 ) *wave.ParsedConfig {
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{
-			WatchRoot: root,
-		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-	return cfg
+	return wavetest.NewParsedConfigAtRoot(root)
 }
 
 func mustConfigureAndGetWaveAppPortForRuntimeprocessWaitTests(

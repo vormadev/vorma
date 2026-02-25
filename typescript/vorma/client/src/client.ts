@@ -17,6 +17,7 @@ import type {
 import type { StatusEventDetail } from "./platform/events.ts";
 import { HistoryManager } from "./platform/history.ts";
 import { getRuntimeLocationState } from "./platform/location.ts";
+import { assertProgrammaticSameOriginOrThrow } from "./platform/url.ts";
 
 export type {
 	NavigateProps,
@@ -184,6 +185,10 @@ export async function vormaNavigate(
 		search: options?.search,
 		hash: options?.hash,
 	});
+	assertProgrammaticSameOriginOrThrow({
+		absoluteHref: targetHref,
+		apiName: "vormaNavigate(...)",
+	});
 
 	await navigationStateManager.navigate({
 		href: targetHref,
@@ -220,6 +225,10 @@ export async function submit<T = unknown>(
 	requestInit?: RequestInit,
 	options?: SubmitOptions,
 ): Promise<SubmitResult<T>> {
+	assertProgrammaticSameOriginOrThrow({
+		absoluteHref: String(url),
+		apiName: "submit(...)",
+	});
 	return navigationStateManager.submit(url, requestInit, options);
 }
 
@@ -263,24 +272,37 @@ function getClientRootElementID(): string {
  * Returns the client root element and validates both existence and element
  * type.
  */
-export function getRootEl(): HTMLDivElement {
+export function getRootEl(): HTMLElement {
 	const rootElementID = getClientRootElementID();
 	const rootEl = document.getElementById(rootElementID);
 	if (rootEl === null) {
 		throw new Error(`Expected element with id "${rootElementID}" to exist`);
 	}
-	if (!(rootEl instanceof HTMLDivElement)) {
+	if (!(rootEl instanceof HTMLElement)) {
 		throw new Error(
-			`Expected element with id "${rootElementID}" to be an HTMLDivElement`,
+			`Expected element with id "${rootElementID}" to be an HTMLElement`,
 		);
 	}
 	return rootEl;
 }
 
 /**
- * Returns the singleton history integration instance.
+ * Returns the raw singleton `history` instance (`npm:history`) as an unsafe
+ * escape hatch.
+ *
+ * Reach for this only when you explicitly need low-level history integration
+ * that Vorma does not provide, such as:
+ *
+ * - reading raw `history.location.state` snapshots,
+ * - wiring analytics/telemetry listeners directly to history updates, or
+ * - coordinating with non-Vorma URL consumers in the same window.
+ *
+ * Do not use this instance to perform Vorma route navigation (`push`/`replace`
+ * to Vorma routes). That bypasses Vorma's route-data fetch + render lifecycle
+ * and can leave runtime state out of sync with the URL. Use `vormaNavigate(...)`
+ * for navigation and `revalidate()` for data refreshes.
  */
-export function getHistoryInstance(): BrowserHistory {
+export function getUnsafeHistoryInstance(): BrowserHistory {
 	ensureNavigationRuntimeInitialized();
 	return HistoryManager.getInstance();
 }

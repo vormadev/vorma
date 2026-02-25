@@ -1,6 +1,7 @@
 import { getIsGETRequest, resolveAbsoluteHref } from "vorma/kit/url";
 import { __vormaClientGlobal } from "../../app/context.ts";
 import { isAbortError, logError } from "../../platform/safety.ts";
+import { assertProgrammaticSameOriginOrThrow } from "../../platform/url.ts";
 import {
 	effectuateRedirectDataResult,
 	handleRedirects,
@@ -303,6 +304,10 @@ export async function executeSubmitRuntime<T = unknown>(
 
 	try {
 		const submitRequestURL = new URL(resolveAbsoluteHref({ href: url }));
+		assertProgrammaticSameOriginOrThrow({
+			absoluteHref: submitRequestURL.href,
+			apiName: "submit(...)",
+		});
 		const submitRequestHeaders = new Headers(requestInit?.headers);
 		const deploymentID = __vormaClientGlobal.get("deploymentID");
 		if (deploymentID) {
@@ -337,23 +342,11 @@ export async function executeSubmitRuntime<T = unknown>(
 			return staleBeforeFinalize;
 		}
 
-		const shouldReturnSubmitError = !response.ok;
 		const shouldEffectuateRedirect = redirectData?.status === "should";
-		const shouldAutoRevalidate =
-			!shouldReturnSubmitError &&
-			!shouldEffectuateRedirect &&
-			shouldAutoRevalidateSubmitResult({
-				requestInit,
-				redirectData,
-				options,
-			});
+		const shouldReturnSubmitError = !response.ok;
 		const staleAfterResponseClassification = getStaleSubmitResult();
 		if (staleAfterResponseClassification) {
 			return staleAfterResponseClassification;
-		}
-
-		if (shouldReturnSubmitError) {
-			return getSubmitErrorResult<T>(String(response.status));
 		}
 
 		if (shouldEffectuateRedirect) {
@@ -371,6 +364,15 @@ export async function executeSubmitRuntime<T = unknown>(
 			return { success: true, data: undefined as T };
 		}
 
+		if (shouldReturnSubmitError) {
+			return getSubmitErrorResult<T>(String(response.status));
+		}
+
+		const shouldAutoRevalidate = shouldAutoRevalidateSubmitResult({
+			requestInit,
+			redirectData,
+			options,
+		});
 		const data = await readSubmitSuccessResponseData(response);
 		const staleBeforeReturn = getStaleSubmitResult();
 		if (staleBeforeReturn) {

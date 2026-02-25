@@ -1,3 +1,8 @@
+// Package devserver provides the top-level Wave development server orchestration
+// API.
+//
+// It coordinates watchers, hooks, process restarts, and browser signaling so
+// development workflows can be driven from one runtime component.
 package devserver
 
 import (

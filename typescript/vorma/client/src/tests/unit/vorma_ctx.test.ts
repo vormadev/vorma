@@ -116,4 +116,13 @@ describe("__getVormaClientGlobal", () => {
 
 		expect(context.getNavigationStateAccess()).toBe(access);
 	});
+
+	it("throws a clear error when Vorma runtime globals are missing", async () => {
+		delete (globalThis as any)[VORMA_SYMBOL];
+		const { get } = __getVormaClientGlobal();
+
+		expect(() => get("buildID")).toThrow(
+			'Vorma client runtime state is not initialized on globalThis[Symbol.for("__vorma_internal__")].',
+		);
+	});
 });

@@ -1,3 +1,8 @@
+// Package shared contains Wave-internal filesystem and process helpers used by
+// both runtime and tooling paths.
+//
+// Centralizing these helpers avoids duplicating low-level lock, IO, and command
+// behavior across higher-level packages.
 package shared
 
 import (

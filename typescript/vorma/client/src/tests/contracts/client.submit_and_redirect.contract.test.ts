@@ -14,6 +14,16 @@ import {
 setupContractTestSuite();
 
 describe("client submit/redirect contracts", () => {
+	it("throws and avoids fetch when submit target is cross-origin", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch");
+
+		await expect(
+			api.submit("https://external.example/api", { method: "POST" }),
+		).rejects.toThrow("submit(...) only supports same-origin targets.");
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
 	it("deduplicates submissions with the same dedupe key by aborting the first", async () => {
 		const api = await loadClientAPI();
 		const firstDeferred = createDeferred<Response>();
@@ -324,6 +334,38 @@ describe("client submit/redirect contracts", () => {
 		} finally {
 			removeBuildIDListener();
 		}
+	});
+
+	it("follows submit redirect headers even when submit response status is non-OK", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{
+						status: 409,
+						headers: {
+							"X-Client-Redirect": "/submit-redirect-non-ok",
+						},
+					},
+				),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					title: {
+						dangerousInnerHTML: "Submit Redirect Non-OK Winner",
+					},
+				}),
+			);
+
+		const result = await api.submit("/api/action", { method: "POST" });
+		await vi.runAllTimersAsync();
+
+		expect(result).toEqual({ success: true, data: undefined });
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		expect(window.location.pathname).toBe("/submit-redirect-non-ok");
+		expect(document.title).toBe("Submit Redirect Non-OK Winner");
 	});
 
 	it("does not deduplicate submissions when no dedupe key is provided", async () => {
@@ -984,7 +1026,7 @@ describe("client submit/redirect contracts", () => {
 	it("does not fetch route data for submit redirects that only change hash", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/after-submit");
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValueOnce(
 			createRouteDataResponse(

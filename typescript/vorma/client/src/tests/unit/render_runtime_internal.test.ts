@@ -63,7 +63,7 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		isDev: false,
 		viteDevURL: "",
 		publicPathPrefix: "",
-		isTouchDevice: false,
+		isTouchInputModalityActive: false,
 		patternToWaitFnMap: {},
 		clientLoadersData: [],
 		defaultErrorBoundary: () => null,
@@ -72,7 +72,6 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		vormaAppConfig: TEST_VORMA_APP_CONFIG,
 		routeManifestURL: "",
 		routeManifest: undefined,
-		clientModuleMap: {},
 		patternRegistry: createRegisteredPatternRegistry([]),
 		...overrides,
 	};
@@ -104,9 +103,24 @@ function createRouteDataJSON(
 beforeEach(() => {
 	document.body.innerHTML = "";
 	document.head.innerHTML = "";
+	document.head.appendChild(
+		document.createComment('data-vorma="meta-start"'),
+	);
+	document.head.appendChild(document.createComment('data-vorma="meta-end"'));
+	document.head.appendChild(
+		document.createComment('data-vorma="rest-start"'),
+	);
+	document.head.appendChild(document.createComment('data-vorma="rest-end"'));
 	window.history.replaceState({}, "", "/");
 	installVormaGlobal();
 	vi.restoreAllMocks();
+	if (!globalThis.CSS) {
+		(globalThis as Record<string, unknown>).CSS = {};
+	}
+	if (!(globalThis as Record<string, any>).CSS?.escape) {
+		(globalThis as Record<string, any>).CSS.escape = (value: string) =>
+			value.replace(/[!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~]/g, "\\$&");
+	}
 });
 
 describe("render runtime internals", () => {
@@ -718,5 +732,43 @@ describe("render runtime internals", () => {
 
 		expect(updateHeadElsSpy).toHaveBeenCalledWith("meta", []);
 		expect(updateHeadElsSpy).toHaveBeenCalledWith("rest", []);
+	});
+});
+
+describe("render runtime asset manager", () => {
+	it("shares the same in-flight CSS preload promise for repeated bundle preloads", async () => {
+		const appendChild = document.head.appendChild.bind(document.head);
+		vi.spyOn(document.head, "appendChild").mockImplementation((node) => {
+			return appendChild(node);
+		});
+
+		const firstPreloadPromise = AssetManager.preloadCSS("/shared.css");
+		const secondPreloadPromise = AssetManager.preloadCSS("/shared.css");
+
+		let didFirstResolve = false;
+		let didSecondResolve = false;
+		void firstPreloadPromise.then(() => {
+			didFirstResolve = true;
+		});
+		void secondPreloadPromise.then(() => {
+			didSecondResolve = true;
+		});
+
+		await Promise.resolve();
+		expect(didFirstResolve).toBe(false);
+		expect(didSecondResolve).toBe(false);
+		expect(
+			document.head.querySelectorAll('link[rel="preload"][as="style"]'),
+		).toHaveLength(1);
+
+		const preloadLink = document.head.querySelector<HTMLLinkElement>(
+			'link[rel="preload"][as="style"][href="/shared.css"]',
+		);
+		expect(preloadLink).toBeTruthy();
+		preloadLink?.onload?.(new Event("load"));
+
+		await Promise.all([firstPreloadPromise, secondPreloadPromise]);
+		expect(didFirstResolve).toBe(true);
+		expect(didSecondResolve).toBe(true);
 	});
 });

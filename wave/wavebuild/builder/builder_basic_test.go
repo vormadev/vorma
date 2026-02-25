@@ -3,69 +3,30 @@ package builder
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/wave"
 )
 
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
-
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 func newDiscardLoggerForBuilderBasicTests() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return wavetest.NewDiscardLogger()
 }
 
 func newParsedConfigForBuilderBasicTestsAtRoot(root string) *wave.ParsedConfig {
-	config := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{
-			WatchRoot: root,
-		},
-	}
-	config.Dist.Root = config.Core.DistDir
-	return config
+	return wavetest.NewParsedConfigAtRoot(root)
 }
 
 func ensureViteConfigForBuilderBasicTests(
 	t *testing.T,
 	config *wave.ParsedConfig,
 ) {
-	t.Helper()
-	if config == nil {
-		t.Fatal("expected non-nil config")
-	}
-	if config.Vite != nil {
-		return
-	}
-
-	configValue := reflect.ValueOf(config).Elem()
-	viteField := configValue.FieldByName("Vite")
-	if !viteField.IsValid() || !viteField.CanSet() ||
-		viteField.IsNil() == false {
-		t.Fatal("expected settable Vite field")
-	}
-	viteField.Set(reflect.New(viteField.Type().Elem()))
+	wavetest.EnsureViteConfig(t, config)
 }
 
 func TestBuilderConfigReturnsDefensiveCopy(t *testing.T) {

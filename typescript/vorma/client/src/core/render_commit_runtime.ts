@@ -20,6 +20,8 @@ import {
 	setActiveErrorBoundaryFromModules,
 } from "./render_component_runtime.ts";
 
+const inFlightCSSPreloadPromiseByHref = new Map<string, Promise<void>>();
+
 function preloadModule(url: string): void {
 	const href = resolvePublicHref(url);
 	if (
@@ -38,6 +40,10 @@ function preloadModule(url: string): void {
 
 function preloadCSS(url: string): Promise<void> {
 	const href = resolvePublicHref(url);
+	const existingInFlightPromise = inFlightCSSPreloadPromiseByHref.get(href);
+	if (existingInFlightPromise) {
+		return existingInFlightPromise;
+	}
 
 	if (
 		document.querySelector(
@@ -52,12 +58,20 @@ function preloadCSS(url: string): Promise<void> {
 	link.setAttribute("as", "style");
 	link.href = href;
 
+	const preloadPromise = new Promise<void>((resolve, reject) => {
+		link.onload = () => {
+			inFlightCSSPreloadPromiseByHref.delete(href);
+			resolve();
+		};
+		link.onerror = (event) => {
+			inFlightCSSPreloadPromiseByHref.delete(href);
+			reject(event);
+		};
+	});
+	inFlightCSSPreloadPromiseByHref.set(href, preloadPromise);
 	document.head.appendChild(link);
 
-	return new Promise((resolve, reject) => {
-		link.onload = () => resolve();
-		link.onerror = reject;
-	});
+	return preloadPromise;
 }
 
 function applyCSS(bundles: string[]): void {

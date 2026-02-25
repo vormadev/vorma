@@ -38,7 +38,7 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		isDev: false,
 		viteDevURL: "",
 		publicPathPrefix: "",
-		isTouchDevice: false,
+		isTouchInputModalityActive: false,
 		patternToWaitFnMap: {},
 		clientLoadersData: [],
 		defaultErrorBoundary: () => null,
@@ -47,7 +47,6 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		vormaAppConfig: TEST_VORMA_APP_CONFIG,
 		routeManifestURL: "",
 		routeManifest: undefined,
-		clientModuleMap: {},
 		patternRegistry: {},
 		...overrides,
 	};
@@ -171,6 +170,44 @@ describe("fetch route data server internals", () => {
 						metaHeadEls: undefined,
 						restHeadEls: undefined,
 					},
+				},
+			});
+
+			expect(result).toEqual({
+				type: "outcome",
+				outcome: {
+					type: "redirect",
+					redirectData: redirectData as any,
+					props: buildNavigationProps(),
+				},
+			});
+			expect(controller.signal.aborted).toBe(true);
+		});
+
+		it("returns redirect outcome even when redirect response status is non-OK", () => {
+			const controller = new AbortController();
+			const redirectData = {
+				status: "should",
+				href: "/redirect-target",
+				hrefDetails: {
+					isHTTP: true,
+					isInternal: true,
+					isExternal: false,
+					absoluteURL: "http://localhost:3000/redirect-target",
+				},
+			} as const;
+			const response = new Response("{}", {
+				status: 409,
+				headers: { "Content-Type": "application/json" },
+			});
+
+			const result = resolveServerRouteDataResult({
+				controller,
+				navigationProps: buildNavigationProps(),
+				serverResult: {
+					redirectData: redirectData as any,
+					response,
+					json: undefined,
 				},
 			});
 

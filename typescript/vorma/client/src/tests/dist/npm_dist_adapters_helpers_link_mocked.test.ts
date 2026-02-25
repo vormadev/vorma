@@ -2,7 +2,10 @@ import { h, render as renderPreact } from "preact";
 import { act as actPreact } from "preact/test-utils";
 import { render as renderSolid } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installDistTestVormaGlobal } from "./dist_test_harness.ts";
+import {
+	DIST_TEST_VORMA_APP_CONFIG,
+	installDistTestVormaGlobal,
+} from "./dist_test_harness.ts";
 
 const {
 	makeFinalLinkPropsSpy,
@@ -129,7 +132,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("react makeTypedAddClientLoader delegates registration through registerTypedAdapterClientLoader", async () => {
 		const reactAdapter = await import("vorma/react");
-		const addClientLoader = reactAdapter.makeTypedAddClientLoader();
+		const addClientLoader = reactAdapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 		const clientLoader = vi.fn(async () => "ok");
 		const reRunOnModuleChange = { url: "file:///tmp/mod.ts" } as ImportMeta;
 
@@ -149,7 +154,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("preact makeTypedAddClientLoader delegates registration through registerTypedAdapterClientLoader", async () => {
 		const preactAdapter = await import("vorma/preact");
-		const addClientLoader = preactAdapter.makeTypedAddClientLoader();
+		const addClientLoader = preactAdapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 		const clientLoader = vi.fn(async () => "ok");
 		const reRunOnModuleChange = { url: "file:///tmp/mod.ts" } as ImportMeta;
 
@@ -169,7 +176,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 
 	it("solid makeTypedAddClientLoader delegates registration through registerTypedAdapterClientLoader", async () => {
 		const solidAdapter = await import("vorma/solid");
-		const addClientLoader = solidAdapter.makeTypedAddClientLoader();
+		const addClientLoader = solidAdapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 		const clientLoader = vi.fn(async () => "ok");
 		const reRunOnModuleChange = { url: "file:///tmp/mod.ts" } as ImportMeta;
 
@@ -197,7 +206,9 @@ describe("npm_dist adapter mocked helper/link contracts", () => {
 		for (const adapterImportPath of adapterImportPaths) {
 			vi.clearAllMocks();
 			const adapter = await import(adapterImportPath);
-			const addClientLoader = adapter.makeTypedAddClientLoader();
+			const addClientLoader = adapter.makeTypedAddClientLoader(
+				DIST_TEST_VORMA_APP_CONFIG,
+			);
 			const firstClientLoader = vi.fn(async () => "first");
 			const secondClientLoader = vi.fn(async () => "second");
 

@@ -1,3 +1,8 @@
+// Package eventpipeline classifies and plans filesystem watcher events for the
+// Wave dev server.
+//
+// Separating this decision logic from runloop execution keeps event semantics
+// deterministic and independently testable.
 package eventpipeline
 
 import (

@@ -1,0 +1,30 @@
+{
+	"$schema": "dist/static/internal/schema.json",
+	"Core": {
+		"MainAppEntry": "backend/cmd/serve",
+		"DistDir": "backend/dist",
+		"ConfigLocation": "backend/wave.config.json",
+		"StaticAssetDirs": {
+			"Private": "backend/assets",
+			"Public": "frontend/assets"
+		},
+		"PublicPathPrefix": "/"
+	},
+	"Vorma": {
+		"MainBuildEntry": "backend/cmd/build",
+		"UIVariant": "solid",
+		"HTMLTemplateLocation": "entry.go.html",
+		"ClientEntry": "frontend/src/vorma.entry.tsx",
+		"ClientRouteDefinitionPatterns": ["frontend/src/**/*vorma.routes.ts"],
+		"ServerRouteDefinitionPatterns": ["backend/src/router/**/*.go"],
+		"TSGenOutDir": "frontend/src/vorma.gen",
+		"BuildtimePublicURLFuncName": "waveBuildtimeURL"
+	},
+	"Vite": {
+		"JSPackageManagerBaseCmd": "pnpm"
+	},
+	"Watch": {
+		"HealthcheckEndpoint": "/healthz",
+		"Include": []
+	}
+}

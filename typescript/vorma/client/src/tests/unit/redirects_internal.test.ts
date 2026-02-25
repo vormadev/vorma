@@ -338,6 +338,79 @@ describe("redirects internal defensive branches", () => {
 		);
 	});
 
+	it("resolves relative X-Client-Redirect targets against request URL, not current page URL", async () => {
+		window.history.replaceState({}, "", "/current-parent/");
+		const { redirectsModule } = await loadRedirectModules();
+		const response = new Response(
+			JSON.stringify({
+				ok: true,
+			}),
+			{
+				status: 200,
+				headers: {
+					"X-Client-Redirect": "child-redirect",
+				},
+			},
+		);
+		Object.defineProperty(response, "url", {
+			value: "http://localhost:3000/server/base/start?vorma_json=1",
+			configurable: true,
+		});
+		vi.spyOn(window, "fetch").mockResolvedValue(response);
+
+		const result = await redirectsModule.handleRedirects({
+			abortController: new AbortController(),
+			url: new URL(
+				"http://localhost:3000/server/base/start?vorma_json=1",
+			),
+		});
+
+		expect(result.redirectData).toMatchObject({
+			status: "should",
+			shouldRedirectStrategy: "soft",
+			href: "http://localhost:3000/server/base/child-redirect",
+		});
+		expect(result.response).toBe(response);
+	});
+
+	it("resolves relative X-Vorma-Reload targets against request URL, not current page URL", async () => {
+		window.history.replaceState({}, "", "/current-parent/");
+		const { redirectsModule } = await loadRedirectModules();
+		const response = new Response(
+			JSON.stringify({
+				ok: true,
+			}),
+			{
+				status: 200,
+				headers: {
+					"X-Vorma-Reload": "child-reload",
+				},
+			},
+		);
+		Object.defineProperty(response, "url", {
+			value: "http://localhost:3000/server/base/start?vorma_json=1",
+			configurable: true,
+		});
+		vi.spyOn(window, "fetch").mockResolvedValue(response);
+
+		const result = await redirectsModule.handleRedirects({
+			abortController: new AbortController(),
+			url: new URL(
+				"http://localhost:3000/server/base/start?vorma_json=1",
+			),
+		});
+
+		expect(result.redirectData).toMatchObject({
+			status: "should",
+			shouldRedirectStrategy: "hard",
+			href: "child-reload",
+			hrefDetails: {
+				absoluteURL: "http://localhost:3000/server/base/child-reload",
+			},
+		});
+		expect(result.response).toBe(response);
+	});
+
 	it("short-circuits same-target X-Client-Redirect headers to did redirect data", async () => {
 		window.history.replaceState({}, "", "/header-same-target#~");
 		const { redirectsModule } = await loadRedirectModules();

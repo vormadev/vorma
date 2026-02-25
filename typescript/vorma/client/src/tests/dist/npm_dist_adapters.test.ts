@@ -37,7 +37,9 @@ async function assertCompiledAdapterClientLoaderRegistration(props: {
 	vi.resetModules();
 	const adapter = await import(adapterImportPath);
 
-	const addClientLoader = adapter.makeTypedAddClientLoader();
+	const addClientLoader = adapter.makeTypedAddClientLoader(
+		DIST_TEST_VORMA_APP_CONFIG,
+	);
 	const waitFn = vi.fn(async () => "ok");
 
 	const useClientLoaderData = addClientLoader({

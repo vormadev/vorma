@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavedev/internal/watch"
 )
@@ -539,10 +540,6 @@ func TestWatcher_RelativeWatchRootMatchesAbsoluteEventPaths(t *testing.T) {
 		Core: &wave.CoreConfig{
 			MainAppEntry: "cmd/app",
 			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join("static", "public"),
-				Private: filepath.Join("static", "private"),
-			},
 		},
 		Watch: &wave.WatchConfig{
 			WatchRoot: ".",
@@ -551,6 +548,11 @@ func TestWatcher_RelativeWatchRootMatchesAbsoluteEventPaths(t *testing.T) {
 			},
 		},
 	}
+	wavetest.SetStaticAssetDirectories(
+		cfg,
+		filepath.Join("static", "public"),
+		filepath.Join("static", "private"),
+	)
 	cfg.Dist.Root = cfg.Core.DistDir
 
 	watcher, watcherCreateError := watch.NewWatcher(

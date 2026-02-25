@@ -48,7 +48,7 @@ describe("client runtime initialization", () => {
 			"Navigation state access has not been initialized.",
 		);
 
-		clientModule.getHistoryInstance();
+		clientModule.getUnsafeHistoryInstance();
 
 		expect(() => contextModule.getNavigationStateAccess()).not.toThrow();
 	});

@@ -375,8 +375,8 @@ func MustInit(o Options) {
 		"tmpls/frontend_links_tsx_tmpl.txt",
 	)
 	do.mustWriteTmpl(
-		"frontend/src/vorma.app.tsx",
-		"tmpls/frontend_app_tsx_tmpl.txt",
+		"frontend/src/vorma.bindings.ts",
+		"tmpls/frontend_bindings_ts_tmpl.txt",
 	)
 	mustWriteStr("frontend/vite.d.ts", "tmpls/frontend_vite_d_ts_str.txt")
 	if o.DeploymentTarget == "vercel" {

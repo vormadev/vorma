@@ -27,7 +27,7 @@ user to run it manually.
 
 ## Go Rules
 
-### One Source Code File Per Package, Fewer Than 2000 Lines
+### One Source Code File Per Package
 
 Every package must have precisely one source code file. If it's getting too long
 or burdensome, then it needs to be split into meaningful and well-thought-out

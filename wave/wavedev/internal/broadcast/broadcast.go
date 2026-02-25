@@ -1,3 +1,8 @@
+// Package broadcast provides websocket fan-out for Wave dev-server browser
+// updates.
+//
+// Centralizing connection management and heartbeat behavior avoids scattering
+// websocket lifecycle code across dev-server orchestration layers.
 package broadcast
 
 import (

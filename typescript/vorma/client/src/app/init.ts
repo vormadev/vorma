@@ -4,7 +4,6 @@ import {
 } from "vorma/kit/matcher/register";
 import { ensureNavigationRuntimeInitialized } from "../client.ts";
 import { initHMR } from "../core/extras.ts";
-import { mergeClientModuleMapWithRouteModuleMetadata } from "../core/navigation/runtime_navigation_successful_runtime.ts";
 import { ComponentLoader, setupClientLoaders } from "../core/render_runtime.ts";
 import { HistoryManager } from "../platform/history.ts";
 import { scrollStateManager } from "../platform/scroll.ts";
@@ -28,7 +27,7 @@ type InitClientInput = InitClientOptions & {
 };
 
 let beforeUnloadRegistered = false;
-let touchDetectionRegistered = false;
+let inputModalityDetectionRegistered = false;
 let latestRouteManifestProgressiveLoadID = 0;
 
 type RouteManifestRecord = NonNullable<VormaClientGlobal["routeManifest"]>;
@@ -37,20 +36,45 @@ function onBeforeUnload(): void {
 	scrollStateManager.savePageRefreshState();
 }
 
-function onFirstTouch(): void {
-	__vormaClientGlobal.set("isTouchDevice", true);
+function setTouchInputModalityActive(): void {
+	if (__vormaClientGlobal.get("isTouchInputModalityActive")) {
+		return;
+	}
+	__vormaClientGlobal.set("isTouchInputModalityActive", true);
+}
+
+function setFinePointerInputModalityActive(): void {
+	if (!__vormaClientGlobal.get("isTouchInputModalityActive")) {
+		return;
+	}
+	__vormaClientGlobal.set("isTouchInputModalityActive", false);
+}
+
+function onPointerModalityChanged(event: Event): void {
+	const pointerType = (
+		event as Event & {
+			pointerType?: unknown;
+		}
+	).pointerType;
+	if (typeof pointerType !== "string") {
+		return;
+	}
+
+	const normalizedPointerType = pointerType.toLowerCase();
+	if (normalizedPointerType === "touch") {
+		setTouchInputModalityActive();
+		return;
+	}
+
+	if (normalizedPointerType === "mouse" || normalizedPointerType === "pen") {
+		setFinePointerInputModalityActive();
+	}
 }
 
 function registerBeforeUnloadScrollStatePersistence(): void {
 	if (beforeUnloadRegistered) return;
 	window.addEventListener("beforeunload", onBeforeUnload);
 	beforeUnloadRegistered = true;
-}
-
-function registerTouchDetection(): void {
-	if (touchDetectionRegistered) return;
-	window.addEventListener("touchstart", onFirstTouch, { once: true });
-	touchDetectionRegistered = true;
 }
 
 function applyInitClientOptions(options: InitClientOptions): void {
@@ -67,19 +91,6 @@ function applyInitClientOptions(options: InitClientOptions): void {
 		"useViewTransitions",
 		options.useViewTransitions === true,
 	);
-}
-
-function initializeClientModuleMapFromInitialRouteState(): void {
-	const clientModuleMap = mergeClientModuleMapWithRouteModuleMetadata({
-		currentClientModuleMap: undefined,
-		routeModuleMetadata: {
-			matchedPatterns: __vormaClientGlobal.get("matchedPatterns"),
-			importURLs: __vormaClientGlobal.get("importURLs"),
-			exportKeys: __vormaClientGlobal.get("exportKeys"),
-			errorExportKeys: __vormaClientGlobal.get("errorExportKeys"),
-		},
-	});
-	__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
 }
 
 function initializeClientPatternRegistry(vormaAppConfig: VormaAppConfig): void {
@@ -128,6 +139,42 @@ function registerManifestPatterns(props: {
 	}
 }
 
+function clonePatternRegistry(props: {
+	patternRegistry: VormaClientGlobal["patternRegistry"];
+}): VormaClientGlobal["patternRegistry"] {
+	const { dynamicParamPrefixRune, splatSegmentRune, explicitIndexSegment } =
+		props.patternRegistry.config;
+	const nextPatternRegistry = createPatternRegistry({
+		dynamicParamPrefixRune,
+		splatSegmentRune,
+		explicitIndexSegment,
+	});
+
+	for (const registeredPattern of props.patternRegistry.staticPatterns.values()) {
+		registerPattern(nextPatternRegistry, registeredPattern.originalPattern);
+	}
+	for (const registeredPattern of props.patternRegistry.dynamicPatterns.values()) {
+		registerPattern(nextPatternRegistry, registeredPattern.originalPattern);
+	}
+
+	return nextPatternRegistry;
+}
+
+function applyRouteManifestAtomicallyOrThrow(props: {
+	manifest: RouteManifestRecord;
+	patternRegistry: VormaClientGlobal["patternRegistry"];
+}): void {
+	const nextPatternRegistry = clonePatternRegistry({
+		patternRegistry: props.patternRegistry,
+	});
+	registerManifestPatterns({
+		manifest: props.manifest,
+		patternRegistry: nextPatternRegistry,
+	});
+	__vormaClientGlobal.set("patternRegistry", nextPatternRegistry);
+	__vormaClientGlobal.set("routeManifest", props.manifest);
+}
+
 function readPrecompiledRouteManifestOrNull(): RouteManifestRecord | null {
 	const precompiledRouteManifest = __vormaClientGlobal.get("routeManifest");
 	if (!precompiledRouteManifest) {
@@ -144,15 +191,14 @@ function initializePatternRegistryFromPrecompiledRouteManifest(): boolean {
 	}
 
 	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
-	__vormaClientGlobal.set("routeManifest", manifest);
-	registerManifestPatterns({
+	applyRouteManifestAtomicallyOrThrow({
 		manifest,
 		patternRegistry,
 	});
 	return true;
 }
 
-function loadRouteManifestProgressively(): void {
+async function loadRouteManifestProgressively(): Promise<void> {
 	const manifestURL = __vormaClientGlobal.get("routeManifestURL");
 	if (!manifestURL) {
 		return;
@@ -161,40 +207,37 @@ function loadRouteManifestProgressively(): void {
 	const patternRegistry = __vormaClientGlobal.get("patternRegistry");
 	const routeManifestProgressiveLoadID =
 		++latestRouteManifestProgressiveLoadID;
+	let response: Response;
+	try {
+		response = await fetch(manifestURL);
+	} catch (error) {
+		console.warn("Failed to load route manifest:", error);
+		return;
+	}
+	if (!response.ok) {
+		console.warn(
+			"Failed to load route manifest:",
+			new Error(
+				`Route manifest request failed with status ${response.status}.`,
+			),
+		);
+		return;
+	}
 
-	fetch(manifestURL)
-		.then((response) => {
-			if (!response.ok) {
-				throw new Error(
-					`Route manifest request failed with status ${response.status}.`,
-				);
-			}
-			return response.json();
-		})
-		.then((manifestPayload) => {
-			const manifest = parseRouteManifestPayloadOrThrow(manifestPayload);
+	const manifestPayload = await response.json();
+	const manifest = parseRouteManifestPayloadOrThrow(manifestPayload);
 
-			if (
-				routeManifestProgressiveLoadID !==
-				latestRouteManifestProgressiveLoadID
-			) {
-				return;
-			}
+	if (
+		routeManifestProgressiveLoadID !== latestRouteManifestProgressiveLoadID
+	) {
+		return;
+	}
 
-			if (
-				__vormaClientGlobal.get("patternRegistry") !== patternRegistry
-			) {
-				return;
-			}
+	if (__vormaClientGlobal.get("patternRegistry") !== patternRegistry) {
+		return;
+	}
 
-			__vormaClientGlobal.set("routeManifest", manifest);
-
-			registerManifestPatterns({ manifest, patternRegistry });
-		})
-		.catch((error) => {
-			// This is no biggie -- it's a progressive enhancement
-			console.warn("Failed to load route manifest:", error);
-		});
+	applyRouteManifestAtomicallyOrThrow({ manifest, patternRegistry });
 }
 
 function cleanupHardReloadQueryParam(): void {
@@ -205,6 +248,18 @@ function cleanupHardReloadQueryParam(): void {
 
 	url.searchParams.delete(VORMA_HARD_RELOAD_QUERY_PARAM);
 	HistoryManager.getInstance().replace(url.href);
+}
+
+function registerInputModalityDetection(): void {
+	if (inputModalityDetectionRegistered) {
+		return;
+	}
+
+	window.addEventListener("touchstart", setTouchInputModalityActive);
+	window.addEventListener("pointerdown", onPointerModalityChanged);
+	window.addEventListener("pointermove", onPointerModalityChanged);
+	window.addEventListener("pointerenter", onPointerModalityChanged);
+	inputModalityDetectionRegistered = true;
 }
 
 async function bootstrapInitialClientRuntime(
@@ -221,13 +276,12 @@ export async function initClient(options: InitClientInput): Promise<void> {
 	registerBeforeUnloadScrollStatePersistence();
 
 	__vormaClientGlobal.set("vormaAppConfig", options.vormaAppConfig);
-	initializeClientModuleMapFromInitialRouteState();
 	initializeClientPatternRegistry(options.vormaAppConfig);
 
 	const didInitializePatternRegistryFromPrecompiledManifest =
 		initializePatternRegistryFromPrecompiledRouteManifest();
 	if (!didInitializePatternRegistryFromPrecompiledManifest) {
-		loadRouteManifestProgressively();
+		void loadRouteManifestProgressively();
 	}
 	applyInitClientOptions(options);
 
@@ -240,5 +294,7 @@ export async function initClient(options: InitClientInput): Promise<void> {
 
 	options.renderFn();
 	scrollStateManager.restorePageRefreshState();
-	registerTouchDetection();
+	registerInputModalityDetection();
 }
+
+export const __loadRouteManifestProgressively = loadRouteManifestProgressively;

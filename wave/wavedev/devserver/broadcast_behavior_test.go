@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/internal/wavecore"
@@ -36,19 +37,7 @@ func newDiscardLoggerForBroadcastBehaviorTests() *slog.Logger {
 func newParsedConfigForBroadcastBehaviorTestsAtRoot(
 	root string,
 ) *wave.ParsedConfig {
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{WatchRoot: root},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-	return cfg
+	return wavetest.NewParsedConfigAtRoot(root)
 }
 
 func newTCP4HTTPTestServerForBroadcastBehaviorTests(
@@ -1387,10 +1376,11 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 	root := t.TempDir()
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical:    filepath.Join(root, "styles", "critical.css"),
-		NonCritical: filepath.Join(root, "styles", "normal.css"),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "styles", "critical.css"),
+		filepath.Join(root, "styles", "normal.css"),
+	)
 
 	if mkdirCriticalError := os.MkdirAll(
 		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
@@ -1544,10 +1534,11 @@ func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUn
 	root := t.TempDir()
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical:    filepath.Join(root, "styles", "critical.css"),
-		NonCritical: filepath.Join(root, "styles", "normal.css"),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "styles", "critical.css"),
+		filepath.Join(root, "styles", "normal.css"),
+	)
 
 	if mkdirCriticalError := os.MkdirAll(
 		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
@@ -1797,9 +1788,11 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalOnlyPayload(
 	root := t.TempDir()
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical: filepath.Join(root, "styles", "critical.css"),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "styles", "critical.css"),
+		"",
+	)
 
 	if mkdirCriticalError := os.MkdirAll(
 		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
@@ -1876,9 +1869,11 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalPayloadWithEmptyCSSFi
 	root := t.TempDir()
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical: filepath.Join(root, "styles", "critical.css"),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "styles", "critical.css"),
+		"",
+	)
 
 	if mkdirCriticalError := os.MkdirAll(
 		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
@@ -1962,9 +1957,11 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsNormalOnlyPayload(
 	root := t.TempDir()
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		NonCritical: filepath.Join(root, "styles", "normal.css"),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		"",
+		filepath.Join(root, "styles", "normal.css"),
+	)
 
 	if mkdirNormalError := os.MkdirAll(
 		filepath.Dir(cfg.Core.CSSEntryFiles.NonCritical),

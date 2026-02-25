@@ -99,14 +99,14 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 			mutate: func(c *VormaConfig) {
 				c.ClientRouteDefinitionPatterns = []string{""}
 			},
-			wantMsg: "Vorma.ClientRouteDefinitionPatterns cannot contain empty entries",
+			wantMsg: "cannot be empty or whitespace",
 		},
 		{
 			name: "ClientRouteDefinitionPatterns_WhitespaceEntry",
 			mutate: func(c *VormaConfig) {
 				c.ClientRouteDefinitionPatterns = []string{"   "}
 			},
-			wantMsg: "Vorma.ClientRouteDefinitionPatterns cannot contain empty entries",
+			wantMsg: "cannot be empty or whitespace",
 		},
 		{
 			name: "TSGenOutDir",

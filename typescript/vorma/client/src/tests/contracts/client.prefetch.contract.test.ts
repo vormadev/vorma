@@ -510,6 +510,17 @@ describe("client prefetch contracts", () => {
 				title: { dangerousInnerHTML: "Prefetch Commit Boundary" },
 			}),
 		);
+		const appendChild = document.head.appendChild.bind(document.head);
+		vi.spyOn(document.head, "appendChild").mockImplementation((node) => {
+			if (
+				node instanceof HTMLLinkElement &&
+				node.rel === "preload" &&
+				node.getAttribute("as") === "style"
+			) {
+				Promise.resolve().then(() => node.onload?.(new Event("load")));
+			}
+			return appendChild(node);
+		});
 
 		const handlers = api.__getPrefetchHandlers({
 			href: "/prefetch-commit",
@@ -599,14 +610,12 @@ describe("client prefetch contracts", () => {
 		clearTimeoutSpy.mockRestore();
 	});
 
-	it("aborts in-flight prefetch with search/hash overrides when stop is called", async () => {
+	it("aborts in-flight prefetch when stop is called", async () => {
 		const api = await loadClientAPI();
 		const { fetchSpy, signals } = createSignalCapturingNeverFetchSpy();
 
 		const handlers = api.__getPrefetchHandlers({
-			href: "/abort-with-overrides",
-			search: "?mode=preview",
-			hash: "#details",
+			href: "/abort-in-flight-prefetch",
 			delayMs: 0,
 		});
 		handlers?.start(new Event("mouseenter"));

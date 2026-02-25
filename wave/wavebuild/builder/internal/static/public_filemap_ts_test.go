@@ -8,31 +8,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavebuild/builder/internal/static"
 )
-
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
 
 func TestWritePublicFileMapTS_WritesSortedTSAndJSONOutputs(t *testing.T) {
 	root := t.TempDir()
 	outDir := filepath.Join(root, "generated")
 
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		FrameworkPublicFileMapOutDir: outDir,
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := wavetest.NewParsedConfigAtRoot(root)
+	cfg.FrameworkPublicFileMapOutDir = outDir
 
 	processor := static.NewProcessor(
 		cfg,
@@ -102,19 +88,9 @@ func TestWriteFrameworkPublicFileMapTS_ServerOnlyModeWithoutFileMap(
 	root := t.TempDir()
 	outDir := filepath.Join(root, "generated")
 
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry:   "cmd/app",
-			ServerOnlyMode: true,
-			DistDir:        filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		FrameworkPublicFileMapOutDir: outDir,
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := wavetest.NewParsedConfigAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	cfg.FrameworkPublicFileMapOutDir = outDir
 
 	processor := static.NewProcessor(
 		cfg,

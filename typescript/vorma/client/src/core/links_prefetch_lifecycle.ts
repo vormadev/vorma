@@ -1,7 +1,4 @@
-import {
-	getHrefDetails,
-	resolveAbsoluteHrefWithOptionalSearchAndHash,
-} from "vorma/kit/url";
+import { getHrefDetails } from "vorma/kit/url";
 import { navigationStateManager } from "../client.ts";
 import { logError } from "../platform/safety.ts";
 import { hasSameNavigationTarget } from "../platform/url.ts";
@@ -59,18 +56,6 @@ function abortIdlePrefetchNavigation(targetHref: string): void {
 	navigationStateManager.removeNavigation(nav.targetUrl);
 }
 
-function buildPrefetchTargetHref(props: {
-	relativeURL: string;
-	search?: string;
-	hash?: string;
-}): string {
-	return resolveAbsoluteHrefWithOptionalSearchAndHash({
-		href: props.relativeURL,
-		search: props.search,
-		hash: props.hash,
-	});
-}
-
 async function handlePrefetchClick<E extends Event>(props: {
 	event: E;
 	prefetchStarted: boolean;
@@ -108,8 +93,6 @@ export type CreatePrefetchHandlersInput<E extends Event> =
 		delayMs?: number;
 		scrollToTop?: boolean;
 		replace?: boolean;
-		search?: string;
-		hash?: string;
 		state?: unknown;
 	};
 
@@ -129,11 +112,7 @@ export function createPrefetchHandlers<E extends Event>(
 	let timer: number | undefined;
 	let prefetchStarted = false;
 	const delayMs = input.delayMs ?? 100;
-	const targetHref = buildPrefetchTargetHref({
-		relativeURL,
-		search: input.search,
-		hash: input.hash,
-	});
+	const targetHref = hrefDetails.absoluteURL;
 
 	function clearPendingTimer(): void {
 		if (timer === undefined) {
@@ -195,8 +174,6 @@ export function createPrefetchHandlers<E extends Event>(
 			navigationOptions: {
 				scrollToTop: input.scrollToTop,
 				replace: input.replace,
-				search: input.search,
-				hash: input.hash,
 				state: input.state,
 			},
 		});

@@ -474,9 +474,6 @@ describe("client navigation lifecycle contracts", () => {
 		await api.vormaNavigate("/metadata-parity");
 		await vi.runAllTimersAsync();
 
-		const moduleMapBeforeHashNavigation = JSON.parse(
-			JSON.stringify(api.__vormaClientGlobal.get("clientModuleMap")),
-		);
 		expect(document.title).toBe("Metadata Parity Title");
 
 		await api.vormaNavigate("/metadata-parity#details");
@@ -484,9 +481,6 @@ describe("client navigation lifecycle contracts", () => {
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		expect(document.title).toBe("Metadata Parity Title");
-		expect(api.__vormaClientGlobal.get("clientModuleMap")).toEqual(
-			moduleMapBeforeHashNavigation,
-		);
 	});
 
 	it("pushes history for user navigation to a different URL", async () => {
@@ -494,7 +488,7 @@ describe("client navigation lifecycle contracts", () => {
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
 
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 
@@ -515,7 +509,7 @@ describe("client navigation lifecycle contracts", () => {
 			.spyOn(window, "fetch")
 			.mockResolvedValue(createRouteDataResponse());
 
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 
@@ -532,7 +526,7 @@ describe("client navigation lifecycle contracts", () => {
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
 
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 
@@ -549,7 +543,7 @@ describe("client navigation lifecycle contracts", () => {
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
 
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 
@@ -565,7 +559,7 @@ describe("client navigation lifecycle contracts", () => {
 
 	it("includes restored scroll state in browser-history route-change events", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 
 		const routeChanges: Array<unknown> = [];
 		const removeRouteChangeListener = api.addRouteChangeListener(

@@ -1,3 +1,7 @@
+// Package runloop executes the dev-server watcher event loop.
+//
+// It owns the deterministic ordering of hooks, builds, restarts, and browser
+// notifications so caller code does not orchestrate these steps ad hoc.
 package runloop
 
 import (

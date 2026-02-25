@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	createAbortAwareFetchRecorder,
 	createRouteDataResponse,
 	installContractVormaGlobal,
 	loadClientAPI,
 	requestInputToURL,
 	setupContractTestSuite,
+	waitForRequestCount,
 } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
@@ -161,15 +163,13 @@ describe("client utility contracts", () => {
 		);
 	});
 
-	it("throws when #vorma-root is not a div", async () => {
+	it("returns #vorma-root when root is a non-div HTMLElement", async () => {
 		const api = await loadClientAPI();
 		const root = document.createElement("main");
 		root.id = "vorma-root";
 		document.body.appendChild(root);
 
-		expect(() => api.getRootEl()).toThrow(
-			'Expected element with id "vorma-root" to be an HTMLDivElement',
-		);
+		expect(api.getRootEl()).toBe(root);
 	});
 
 	it("uses configured root element id from SSR runtime state", async () => {
@@ -421,7 +421,7 @@ describe("client utility contracts", () => {
 
 	it("supports intent-prefetch link props without requiring user callbacks", async () => {
 		const api = await loadClientAPI();
-		api.__vormaClientGlobal.set("isTouchDevice", true);
+		api.__vormaClientGlobal.set("isTouchInputModalityActive", true);
 		const finalProps = api.__makeFinalLinkProps({
 			href: "/prefetch-only",
 			prefetch: "intent",
@@ -436,5 +436,41 @@ describe("client utility contracts", () => {
 		finalProps.onTouchCancel(new Event("touchcancel"));
 		await finalProps.onClick({ defaultPrevented: true } as any);
 		await vi.runAllTimersAsync();
+	});
+
+	it("cancels idle prefetch after touch when pointer modality switches back to mouse", async () => {
+		const api = await loadClientAPI();
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+		const { requests } = createAbortAwareFetchRecorder();
+		const finalProps = api.__makeFinalLinkProps({
+			href: "/hybrid-prefetch",
+			prefetch: "intent",
+			prefetchDelayMs: 0,
+		} as any);
+
+		window.dispatchEvent(new Event("touchstart"));
+		expect(api.__vormaClientGlobal.get("isTouchInputModalityActive")).toBe(
+			true,
+		);
+
+		finalProps.onPointerEnter(new Event("pointerenter"));
+		await vi.advanceTimersByTimeAsync(1);
+		await waitForRequestCount({ requests, count: 1 });
+		expect(requests[0]?.signal?.aborted).toBe(false);
+
+		const pointerMoveEvent = new Event("pointermove");
+		Object.defineProperty(pointerMoveEvent, "pointerType", {
+			value: "mouse",
+		});
+		window.dispatchEvent(pointerMoveEvent);
+		expect(api.__vormaClientGlobal.get("isTouchInputModalityActive")).toBe(
+			false,
+		);
+
+		finalProps.onPointerLeave(new Event("pointerleave"));
+		expect(requests[0]?.signal?.aborted).toBe(true);
 	});
 });

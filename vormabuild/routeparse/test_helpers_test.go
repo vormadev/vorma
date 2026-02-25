@@ -1,27 +1,22 @@
 package routeparse
 
 import (
-	"io"
 	"io/fs"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
+
+	"log/slog"
+
+	"github.com/vormadev/vorma/vormabuild/internal/testkit"
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return testkit.TestLogger()
 }
 
 func mustWriteFile(t *testing.T, path string, content []byte) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir parent for %s: %v", path, err)
-	}
-	if err := os.WriteFile(path, content, 0o644); err != nil {
-		t.Fatalf("write %s: %v", path, err)
-	}
+	testkit.MustWriteFile(t, path, content)
 }
 
 type staticFileInfo struct {

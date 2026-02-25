@@ -567,7 +567,6 @@ export function decideBuildIDSyncTimingForSuccessfulEntry(props: {
 export type SuccessfulNavigationPostAssetSideEffectPlan = {
 	shouldCommitClientLoadersState: boolean;
 	shouldSyncBuildIDAfterAssetWait: boolean;
-	shouldApplyResponseArtifacts: boolean;
 };
 
 export function decideSuccessfulNavigationPostAssetSideEffectPlan(props: {
@@ -583,6 +582,5 @@ export function decideSuccessfulNavigationPostAssetSideEffectPlan(props: {
 		shouldSyncBuildIDAfterAssetWait:
 			buildIDSyncTiming === "after_asset_wait_if_not_stopped" &&
 			!shouldStop,
-		shouldApplyResponseArtifacts: !shouldStop,
 	};
 }

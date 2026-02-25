@@ -94,7 +94,7 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		isDev: false,
 		viteDevURL: "",
 		publicPathPrefix: "",
-		isTouchDevice: false,
+		isTouchInputModalityActive: false,
 		patternToWaitFnMap: {},
 		clientLoadersData: [],
 		defaultErrorBoundary: () => null,
@@ -103,7 +103,6 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		vormaAppConfig: TEST_VORMA_APP_CONFIG,
 		routeManifestURL: "",
 		routeManifest: undefined,
-		clientModuleMap: {},
 		patternRegistry: createRegisteredPatternRegistry([]),
 		...overrides,
 	};
@@ -1629,101 +1628,6 @@ describe("navigation runtime success-processing defensive branches", () => {
 		}
 	});
 
-	it("defaults missing export keys when applying response artifacts for matching builds", async () => {
-		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
-		const reRenderSpy = vi
-			.spyOn(renderRuntimeModule, "__reRenderApp")
-			.mockResolvedValue();
-
-		try {
-			const runtime = createNavigationRuntime();
-			runtime.beginNavigation({
-				href: "/module-map-default-key",
-				navigationType: "browserHistory",
-			});
-			const targetUrl = new URL(
-				"/module-map-default-key",
-				window.location.href,
-			).href;
-			const entry = runtime.getNavigation(targetUrl);
-			expect(entry).toBeDefined();
-			if (!entry) return;
-
-			const outcome = createSuccessNavigationOutcome({
-				props: {
-					href: targetUrl,
-					navigationType: "browserHistory",
-				},
-			});
-			outcome.json.matchedPatterns = ["/module-map-pattern"];
-			outcome.json.importURLs = ["/module-map.js"];
-			outcome.json.exportKeys = [""];
-			outcome.json.errorExportKeys = [""];
-
-			await expect(
-				runtime.processSuccessfulNavigation(outcome, entry),
-			).resolves.toBeUndefined();
-
-			expect(
-				(globalThis as any)[VORMA_SYMBOL].clientModuleMap[
-					"/module-map-pattern"
-				],
-			).toEqual({
-				importURL: "/module-map.js",
-				exportKey: "default",
-				errorExportKey: "",
-			});
-		} finally {
-			fetchSpy.mockRestore();
-			reRenderSpy.mockRestore();
-		}
-	});
-
-	it("tolerates missing response-artifact arrays when build IDs match", async () => {
-		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
-		const reRenderSpy = vi
-			.spyOn(renderRuntimeModule, "__reRenderApp")
-			.mockResolvedValue();
-
-		try {
-			const runtime = createNavigationRuntime();
-			runtime.beginNavigation({
-				href: "/module-map-missing-arrays",
-				navigationType: "browserHistory",
-			});
-			const targetUrl = new URL(
-				"/module-map-missing-arrays",
-				window.location.href,
-			).href;
-			const entry = runtime.getNavigation(targetUrl);
-			expect(entry).toBeDefined();
-			if (!entry) return;
-
-			const outcome = createSuccessNavigationOutcome({
-				props: {
-					href: targetUrl,
-					navigationType: "browserHistory",
-				},
-			});
-			(globalThis as any)[VORMA_SYMBOL].clientModuleMap = undefined;
-			outcome.json.matchedPatterns = undefined as any;
-			outcome.json.importURLs = undefined as any;
-			outcome.json.exportKeys = undefined as any;
-			outcome.json.errorExportKeys = undefined as any;
-
-			await expect(
-				runtime.processSuccessfulNavigation(outcome, entry),
-			).resolves.toBeUndefined();
-
-			expect((globalThis as any)[VORMA_SYMBOL].clientModuleMap).toEqual(
-				{},
-			);
-		} finally {
-			fetchSpy.mockRestore();
-			reRenderSpy.mockRestore();
-		}
-	});
-
 	it("marks navigation complete and rethrows when render fails", async () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
 		const renderError = new Error("render failed");
@@ -2229,9 +2133,6 @@ describe("navigation runtime success-processing defensive branches", () => {
 			expect(reRenderSpy).not.toHaveBeenCalled();
 			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
 			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
-			expect((globalThis as any)[VORMA_SYMBOL].clientModuleMap).toEqual(
-				{},
-			);
 			expect(buildIDEvents).toEqual([]);
 
 			runtime.clearAll();
@@ -2700,6 +2601,25 @@ describe("navigation runtime submit stale checkpoints", () => {
 		}
 	});
 
+	it("fails fast and avoids fetch for cross-origin submit targets", async () => {
+		const fetchSpy = vi.spyOn(window, "fetch");
+
+		const runtime = createNavigationRuntime();
+		const result = await runtime.submit(
+			"https://external.example/api",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+
+		expect(result).toEqual({
+			success: false,
+			error: expect.stringContaining(
+				"submit(...) only supports same-origin targets.",
+			),
+		});
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
 	it("returns success with undefined data for 204 submit responses", async () => {
 		const handleRedirectsSpy = vi
 			.spyOn(redirectsModule, "handleRedirects")
@@ -2791,6 +2711,61 @@ describe("navigation runtime submit stale checkpoints", () => {
 			});
 		} finally {
 			handleRedirectsSpy.mockRestore();
+		}
+	});
+
+	it("prioritizes submit redirects even when submit response status is non-OK", async () => {
+		const handleRedirectsSpy = vi
+			.spyOn(redirectsModule, "handleRedirects")
+			.mockResolvedValue({
+				redirectData: {
+					status: "should",
+					shouldRedirectStrategy: "soft",
+					latestBuildID: "1",
+					href: "/submit-redirect-target",
+					hrefDetails: {
+						isHTTP: true,
+						isInternal: true,
+						isExternal: false,
+						absoluteURL:
+							"http://localhost:3000/submit-redirect-target",
+					},
+				},
+				response: createSubmitResponse({
+					status: 422,
+					buildID: "1",
+					json: async () => ({ ok: false }),
+				}),
+			} as any);
+		const effectuateRedirectSpy = vi
+			.spyOn(redirectsModule, "effectuateRedirectDataResult")
+			.mockResolvedValue({
+				status: "did",
+				href: "/submit-redirect-target",
+				hrefDetails: {
+					isHTTP: true,
+					isInternal: true,
+					isExternal: false,
+					absoluteURL: "http://localhost:3000/submit-redirect-target",
+				},
+			} as any);
+
+		try {
+			const runtime = createNavigationRuntime();
+			const result = await runtime.submit(
+				"/api/submit-redirect-non-ok",
+				{ method: "POST" },
+				{ revalidate: false },
+			);
+
+			expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
+			expect(result).toEqual({
+				success: true,
+				data: undefined,
+			});
+		} finally {
+			handleRedirectsSpy.mockRestore();
+			effectuateRedirectSpy.mockRestore();
 		}
 	});
 
@@ -3145,13 +3120,6 @@ describe("fetchRouteData behavior", () => {
 				"/client-only": 0,
 			},
 			patternRegistry: createRegisteredPatternRegistry(["/client-only"]),
-			clientModuleMap: {
-				"/client-only": {
-					importURL: "/client-only.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
 			matchedPatterns: ["/client-only"],
 			patternToWaitFnMap: {
 				"/client-only": waitFn,
@@ -3393,13 +3361,6 @@ describe("fetchRouteData behavior", () => {
 			patternToWaitFnMap: {
 				"/build-id-fallback": waitFn,
 			},
-			clientModuleMap: {
-				"/build-id-fallback": {
-					importURL: "/build-id-fallback.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
 		});
 
 		const outcome = await fetchRouteData(new AbortController(), {
@@ -3457,18 +3418,6 @@ describe("fetchRouteData behavior", () => {
 			]),
 			patternToWaitFnMap: {
 				"/parent/child": waitFn,
-			},
-			clientModuleMap: {
-				"/parent": {
-					importURL: "/parent.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-				"/parent/child": {
-					importURL: "/child.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
 			},
 			matchedPatterns: [],
 		});
@@ -3533,13 +3482,6 @@ describe("fetchRouteData behavior", () => {
 			]),
 			patternToWaitFnMap: {
 				"/sparse-loader": waitFn,
-			},
-			clientModuleMap: {
-				"/sparse-loader": {
-					importURL: "/sparse-loader.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
 			},
 		});
 		const consoleErrorSpy = vi
@@ -3606,13 +3548,6 @@ describe("fetchRouteData behavior", () => {
 			patternToWaitFnMap: {
 				"": waitFn,
 			},
-			clientModuleMap: {
-				"": {
-					importURL: "/placeholder.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
 		});
 		const consoleErrorSpy = vi
 			.spyOn(console, "error")
@@ -3672,13 +3607,6 @@ describe("fetchRouteData behavior", () => {
 			patternToWaitFnMap: {
 				"/needs-server": waitFn,
 			},
-			clientModuleMap: {
-				"/needs-server": {
-					importURL: "/needs-server.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
 			matchedPatterns: [],
 		});
 
@@ -3719,13 +3647,6 @@ describe("fetchRouteData behavior", () => {
 			]),
 			patternToWaitFnMap: {
 				"/rejecting-server": waitFn,
-			},
-			clientModuleMap: {
-				"/rejecting-server": {
-					importURL: "/rejecting-server.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
 			},
 			matchedPatterns: [],
 		});

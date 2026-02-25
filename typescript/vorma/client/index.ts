@@ -10,9 +10,14 @@ export {
 export {
 	buildMutationURL,
 	buildQueryURL,
+	makeTypedAPIClient,
 	resolveBody,
+	type APIRequestInitDecorator,
+	type APIRequestInitDecoratorContext,
+	type APIRequestInitOverrides,
 	type ExtractApp,
 	type PermissivePatternBasedProps,
+	type TypedAPIClient,
 	type VormaAppBase,
 	type VormaAppConfig,
 	type VormaLoaderOutput,
@@ -30,10 +35,10 @@ export {
 export { initClient } from "./src/app/init.ts";
 export {
 	getBuildID,
-	getHistoryInstance,
 	getLocation,
 	getRootEl,
 	getStatus,
+	getUnsafeHistoryInstance,
 	revalidate,
 	submit,
 	vormaNavigate,
@@ -50,7 +55,9 @@ export {
 	addRouteChangeListener,
 	addStatusListener,
 	type RouteChangeEvent,
+	type RouteChangeEventDetail,
 	type StatusEvent,
+	type StatusEventDetail,
 } from "./src/platform/events.ts";
 export {
 	defaultErrorBoundary,

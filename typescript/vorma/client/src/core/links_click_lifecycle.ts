@@ -22,8 +22,6 @@ export type LinkLifecycleCallbacks<E extends Event> = {
 export type ClickNavigationOptions = {
 	scrollToTop?: boolean;
 	replace?: boolean;
-	search?: string;
-	hash?: string;
 	state?: unknown;
 };
 

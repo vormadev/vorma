@@ -1,3 +1,8 @@
+// Package vormaruntime owns Vorma runtime bootstrap, state, and public runtime
+// APIs.
+//
+// This package exists so application code can initialize one coherent runtime
+// engine without coupling directly to lower-level routing/template internals.
 package vormaruntime
 
 import (
@@ -8,7 +13,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
@@ -100,90 +104,6 @@ func (v *Vorma) LoadersHandler() mux.TasksCtxRequirerFunc {
 		)
 	})
 	return v.loadersHandler
-}
-
-func (v *Vorma) handleDevReloadActionEndpoints(
-	w http.ResponseWriter,
-	r *http.Request,
-	isDevMode bool,
-) bool {
-	if !isDevMode {
-		return false
-	}
-
-	switch r.URL.Path {
-	case v.DevReloadRoutesEndpointPath():
-		if r.Method != http.MethodPost {
-			w.Header().Set("Allow", http.MethodPost)
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return true
-		}
-		if !v.validateDevReloadExpectedBuildIDOrWriteConflict(w, r) {
-			return true
-		}
-		if err := v.devReloadRoutesFromDisk(); err != nil {
-			v.Log.Error(fmt.Sprintf("route reload failed: %s", err))
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return true
-		}
-		w.Write([]byte("ok"))
-		return true
-	case v.DevReloadTemplateEndpointPath():
-		if r.Method != http.MethodPost {
-			w.Header().Set("Allow", http.MethodPost)
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return true
-		}
-		if !v.validateDevReloadExpectedBuildIDOrWriteConflict(w, r) {
-			return true
-		}
-		if err := v.devReloadTemplateFromDisk(); err != nil {
-			v.Log.Error(fmt.Sprintf("template reload failed: %s", err))
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return true
-		}
-		w.Write([]byte("ok"))
-		return true
-	default:
-		return false
-	}
-}
-
-func (v *Vorma) validateDevReloadExpectedBuildIDOrWriteConflict(
-	w http.ResponseWriter,
-	r *http.Request,
-) bool {
-	if v == nil || r == nil {
-		return true
-	}
-
-	requestExpectedBuildID := strings.TrimSpace(
-		r.Header.Get(wave.FrameworkRuntimeReloadExpectedBuildIDHeaderName),
-	)
-	if requestExpectedBuildID == "" {
-		return true
-	}
-
-	currentBuildID := strings.TrimSpace(v.BuildID())
-	if requestExpectedBuildID == currentBuildID {
-		return true
-	}
-
-	if v.Log != nil {
-		v.Log.Warn(
-			"dev reload endpoint rejected request due to expected build id mismatch",
-			"request_expected_build_id",
-			requestExpectedBuildID,
-			"current_build_id",
-			currentBuildID,
-		)
-	}
-	http.Error(
-		w,
-		"expected build id does not match current build id",
-		http.StatusConflict,
-	)
-	return false
 }
 
 // DevReloadRoutesEndpointPath returns the configured (or default) dev routes
@@ -381,7 +301,34 @@ func (v *Vorma) ActionsHandler() mux.TasksCtxRequirerFunc {
 			func(w http.ResponseWriter, r *http.Request) {
 				res := response.New(w)
 				res.SetHeader(VormaBuildIDHeaderKey, v.BuildID())
-				if v.handleDevReloadActionEndpoints(w, r, v.IsDevMode()) {
+				handled := runtimehttp.HandleDevReloadActionEndpoints(
+					runtimehttp.DevReloadActionEndpointsInput{
+						ResponseWriter:       w,
+						Request:              r,
+						IsDevMode:            v.IsDevMode(),
+						RoutesEndpointPath:   v.DevReloadRoutesEndpointPath(),
+						TemplateEndpointPath: v.DevReloadTemplateEndpointPath(),
+						ValidateExpectedBuildIDOrWriteConflict: func(
+							responseWriter http.ResponseWriter,
+							request *http.Request,
+						) bool {
+							return runtimehttp.ValidateExpectedBuildIDOrWriteConflict(
+								runtimehttp.ValidateExpectedBuildIDOrWriteConflictInput{
+									ResponseWriter: responseWriter,
+									Request:        request,
+									CurrentBuildID: v.BuildID(),
+									ExpectedBuildIDHeaderName: wave.
+										FrameworkRuntimeReloadExpectedBuildIDHeaderName,
+									Log: v.Log,
+								},
+							)
+						},
+						ReloadRoutesFromDisk:   v.devReloadRoutesFromDisk,
+						ReloadTemplateFromDisk: v.devReloadTemplateFromDisk,
+						Log:                    v.Log,
+					},
+				)
+				if handled {
 					return
 				}
 				router.ServeHTTP(w, r)
@@ -679,13 +626,6 @@ func (v *Vorma) getRouteDataStage1(
 		}
 	}
 
-	return v.planRouteResultFromTaskResults(inputs, tasksResults)
-}
-
-func (v *Vorma) planRouteResultFromTaskResults(
-	inputs routepipeline.RouteDataExecutionInputs,
-	tasksResults *nestedmux.TasksResults,
-) *routepipeline.RouteResult {
 	return runtimehttp.PlanRouteResultFromTaskResults(
 		runtimehttp.PlanRouteResultFromTaskResultsInput{
 			ExecutionInputs: inputs,
@@ -707,8 +647,20 @@ func (v *Vorma) prepareRouteDataExecutionInputs(
 	nestedRouter *nestedmux.Router,
 ) (routepipeline.RouteDataExecutionInputs, bool) {
 	v.mu.RLock()
-	runtimeSnapshot := v.captureRuntimeSnapshotLocked().
-		ToRoutePipelineSnapshot()
+	runtimeSnapshot := routepipeline.BuildRuntimeSnapshotFromCore(
+		routepipeline.RuntimeSnapshotFromCoreInput{
+			BuildID:                  v._buildID,
+			IsDev:                    v._isDev,
+			Paths:                    v._paths,
+			ClientEntryDeps:          v._clientEntryDeps,
+			ClientEntryOut:           v._clientEntryOut,
+			DepToCSSBundleMap:        v._depToCSSBundleMap,
+			RootTemplate:             v._rootTemplate,
+			RouteManifestFile:        v._routeManifestFile,
+			RouteDataSnapshotVersion: v._routeDataSnapshotVersion,
+			RouteDataCache:           v._routeDataCache,
+		},
+	)
 	matchResults, found := nestedmux.FindMatches(nestedRouter, r)
 	v.mu.RUnlock()
 
@@ -833,50 +785,6 @@ func (v *Vorma) getDefaultHeadElsRaw(
 		return nil, err
 	}
 	return defaultHeadEls.Collect(), nil
-}
-
-func (v *Vorma) getSSRInnerHTML(
-	routeData *routepipeline.RouteDataFinal,
-) (*rendering.BuildSSRInnerHTMLOutput, error) {
-	if routeData == nil {
-		return nil, fmt.Errorf("routeData cannot be nil")
-	}
-	if routeData.RouteDataCore == nil {
-		return nil, fmt.Errorf("routeData.RouteDataCore cannot be nil")
-	}
-
-	v.mu.RLock()
-	isDev := v._isDev
-	buildID := v._buildID
-	routeManifestFile := v._routeManifestFile
-	v.mu.RUnlock()
-
-	return rendering.BuildSSRInnerHTMLFromRuntimeState(
-		rendering.SSRRuntimeState{
-			VormaSymbolStr:    VormaSymbolStr,
-			IsDev:             isDev,
-			BuildID:           buildID,
-			RootElementID:     v.ClientRootElementID(),
-			PublicPathPrefix:  v.Wave.PublicPathPrefix(),
-			RouteManifestFile: routeManifestFile,
-		},
-		rendering.SSRRouteData{
-			ViteDevURL: routeData.ViteDevURL,
-			CSSBundles: routeData.CSSBundles,
-
-			OutermostServerError:    routeData.RouteDataCore.OutermostServerError,
-			OutermostServerErrorIdx: routeData.RouteDataCore.OutermostServerErrorIdx,
-			ErrorExportKeys:         routeData.RouteDataCore.ErrorExportKeys,
-			MatchedPatterns:         routeData.RouteDataCore.MatchedPatterns,
-			LoadersData:             routeData.RouteDataCore.LoadersData,
-			ImportURLs:              routeData.RouteDataCore.ImportURLs,
-			ExportKeys:              routeData.RouteDataCore.ExportKeys,
-			HasRootData:             routeData.RouteDataCore.HasRootData,
-			Params:                  routeData.RouteDataCore.Params,
-			SplatValues:             routeData.RouteDataCore.SplatValues,
-			Deps:                    routeData.RouteDataCore.Deps,
-		},
-	)
 }
 
 // VormaSymbolStr is the global runtime symbol namespace used by browser
@@ -1336,103 +1244,6 @@ func (v *Vorma) commitRouteArtifactsLocked(
 
 func (v *Vorma) commitRootTemplateLocked(rootTemplate *template.Template) {
 	v._rootTemplate = rootTemplate
-}
-
-type runtimeServingSnapshotInput struct {
-	BuildID                  string
-	IsDev                    bool
-	Paths                    map[string]*runtimecore.RoutePath
-	ClientEntryDeps          []string
-	ClientEntryOut           string
-	DepToCSSBundleMap        map[string][]string
-	RootTemplate             *template.Template
-	RouteManifestFile        string
-	RouteDataSnapshotVersion uint64
-	RouteDataCache           *sync.Map
-}
-
-type runtimeServingSnapshot struct {
-	BuildID                  string
-	IsDev                    bool
-	Paths                    map[string]*runtimecore.RoutePath
-	ClientEntryDeps          []string
-	ClientEntryOut           string
-	DepToCSSBundleMap        map[string][]string
-	RootTemplate             *template.Template
-	RouteManifestFile        string
-	RouteDataSnapshotVersion uint64
-	RouteDataCache           *sync.Map
-}
-
-func captureRuntimeServingSnapshot(
-	input runtimeServingSnapshotInput,
-) runtimeServingSnapshot {
-	return runtimeServingSnapshot(input)
-}
-
-func (snapshot runtimeServingSnapshot) ToLoadersHTMLRenderSnapshot() rendering.LoadersHTMLRenderSnapshot {
-	return rendering.LoadersHTMLRenderSnapshot{
-		IsDevMode:      snapshot.IsDev,
-		ClientEntryOut: snapshot.ClientEntryOut,
-		RootTemplate:   snapshot.RootTemplate,
-	}
-}
-
-func (snapshot runtimeServingSnapshot) ToRoutePipelineSnapshot() routepipeline.RuntimeSnapshot {
-	return routepipeline.RuntimeSnapshot{
-		BuildID: snapshot.BuildID,
-		IsDev:   snapshot.IsDev,
-		Paths: convertRuntimeCorePathsToRoutePipelinePaths(
-			snapshot.Paths,
-		),
-		ClientEntryDeps:          snapshot.ClientEntryDeps,
-		ClientEntryOut:           snapshot.ClientEntryOut,
-		DepToCSSBundleMap:        snapshot.DepToCSSBundleMap,
-		HTMLRenderSnapshot:       snapshot.ToLoadersHTMLRenderSnapshot(),
-		RouteManifestFile:        snapshot.RouteManifestFile,
-		RouteDataSnapshotVersion: snapshot.RouteDataSnapshotVersion,
-		RouteDataCache:           snapshot.RouteDataCache,
-	}
-}
-
-func convertRuntimeCorePathsToRoutePipelinePaths(
-	paths map[string]*runtimecore.RoutePath,
-) map[string]*routepipeline.PathData {
-	if paths == nil {
-		return nil
-	}
-
-	out := make(map[string]*routepipeline.PathData, len(paths))
-	for pattern, pathValue := range paths {
-		if pathValue == nil {
-			out[pattern] = nil
-			continue
-		}
-		out[pattern] = &routepipeline.PathData{
-			OriginalPattern: pathValue.OriginalPattern,
-			SrcPath:         pathValue.SrcPath,
-			OutPath:         pathValue.OutPath,
-			ExportKey:       pathValue.ExportKey,
-			ErrorExportKey:  pathValue.ErrorExportKey,
-			Deps:            pathValue.Deps,
-		}
-	}
-	return out
-}
-
-func (v *Vorma) captureRuntimeSnapshotLocked() runtimeServingSnapshot {
-	return captureRuntimeServingSnapshot(runtimeServingSnapshotInput{
-		BuildID:                  v._buildID,
-		IsDev:                    v._isDev,
-		Paths:                    v._paths,
-		ClientEntryDeps:          v._clientEntryDeps,
-		ClientEntryOut:           v._clientEntryOut,
-		DepToCSSBundleMap:        v._depToCSSBundleMap,
-		RootTemplate:             v._rootTemplate,
-		RouteManifestFile:        v._routeManifestFile,
-		RouteDataSnapshotVersion: v._routeDataSnapshotVersion,
-		RouteDataCache:           v._routeDataCache,
-	})
 }
 
 // invalidateRouteDataCacheLocked invalidates route-data cache entries for

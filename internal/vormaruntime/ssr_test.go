@@ -1,9 +1,11 @@
 package vormaruntime
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/kit/mux"
 )
@@ -46,7 +48,7 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 		ViteDevURL: "http://localhost:5173",
 	}
 
-	out, err := app.getSSRInnerHTML(routeData)
+	out, err := buildSSRInnerHTMLFromAppAndRouteData(app, routeData)
 	if err != nil {
 		t.Fatalf("getSSRInnerHTML returned error: %v", err)
 	}
@@ -117,11 +119,11 @@ func TestGetSSRInnerHTML_HashChangesWhenPayloadChanges(t *testing.T) {
 		CSSBundles: []string{"vorma_out/root.css", "vorma_out/extra.css"},
 	}
 
-	out1, err := app.getSSRInnerHTML(base)
+	out1, err := buildSSRInnerHTMLFromAppAndRouteData(app, base)
 	if err != nil {
 		t.Fatalf("getSSRInnerHTML(base): %v", err)
 	}
-	out2, err := app.getSSRInnerHTML(mutated)
+	out2, err := buildSSRInnerHTMLFromAppAndRouteData(app, mutated)
 	if err != nil {
 		t.Fatalf("getSSRInnerHTML(mutated): %v", err)
 	}
@@ -155,7 +157,7 @@ func TestGetSSRInnerHTML_VercelDeploymentIDGate(t *testing.T) {
 	t.Setenv("VERCEL_SKEW_PROTECTION_ENABLED", "true")
 	t.Setenv("VERCEL_DEPLOYMENT_ID", "dep-123")
 
-	out, err := app.getSSRInnerHTML(routeData)
+	out, err := buildSSRInnerHTMLFromAppAndRouteData(app, routeData)
 	if err != nil {
 		t.Fatalf("getSSRInnerHTML returned error: %v", err)
 	}
@@ -183,7 +185,7 @@ func TestGetSSRInnerHTML_NilRouteDataReturnsError(t *testing.T) {
 	)
 	app := fixture.app
 
-	out, err := app.getSSRInnerHTML(nil)
+	out, err := buildSSRInnerHTMLFromAppAndRouteData(app, nil)
 	if err == nil {
 		t.Fatal("expected error for nil routeData, got nil")
 	}
@@ -207,11 +209,59 @@ func TestGetSSRInnerHTML_NilRouteDataCoreReturnsError(t *testing.T) {
 	)
 	app := fixture.app
 
-	out, err := app.getSSRInnerHTML(&routepipeline.RouteDataFinal{})
+	out, err := buildSSRInnerHTMLFromAppAndRouteData(
+		app,
+		&routepipeline.RouteDataFinal{},
+	)
 	if err == nil {
 		t.Fatal("expected error for nil RouteDataCore, got nil")
 	}
 	if out != nil {
 		t.Fatalf("expected nil output when RouteDataCore is nil, got %#v", out)
 	}
+}
+
+func buildSSRInnerHTMLFromAppAndRouteData(
+	app *Vorma,
+	routeData *routepipeline.RouteDataFinal,
+) (*rendering.BuildSSRInnerHTMLOutput, error) {
+	if routeData == nil {
+		return nil, fmt.Errorf("routeData cannot be nil")
+	}
+	if routeData.RouteDataCore == nil {
+		return nil, fmt.Errorf("routeData.RouteDataCore cannot be nil")
+	}
+
+	app.mu.RLock()
+	isDev := app._isDev
+	buildID := app._buildID
+	routeManifestFile := app._routeManifestFile
+	app.mu.RUnlock()
+
+	return rendering.BuildSSRInnerHTMLFromRuntimeState(
+		rendering.SSRRuntimeState{
+			VormaSymbolStr:    VormaSymbolStr,
+			IsDev:             isDev,
+			BuildID:           buildID,
+			RootElementID:     app.ClientRootElementID(),
+			PublicPathPrefix:  app.Wave.PublicPathPrefix(),
+			RouteManifestFile: routeManifestFile,
+		},
+		rendering.SSRRouteData{
+			ViteDevURL: routeData.ViteDevURL,
+			CSSBundles: routeData.CSSBundles,
+
+			OutermostServerError:    routeData.RouteDataCore.OutermostServerError,
+			OutermostServerErrorIdx: routeData.RouteDataCore.OutermostServerErrorIdx,
+			ErrorExportKeys:         routeData.RouteDataCore.ErrorExportKeys,
+			MatchedPatterns:         routeData.RouteDataCore.MatchedPatterns,
+			LoadersData:             routeData.RouteDataCore.LoadersData,
+			ImportURLs:              routeData.RouteDataCore.ImportURLs,
+			ExportKeys:              routeData.RouteDataCore.ExportKeys,
+			HasRootData:             routeData.RouteDataCore.HasRootData,
+			Params:                  routeData.RouteDataCore.Params,
+			SplatValues:             routeData.RouteDataCore.SplatValues,
+			Deps:                    routeData.RouteDataCore.Deps,
+		},
+	)
 }

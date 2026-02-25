@@ -486,7 +486,6 @@ describe("successful outcome stage plans", () => {
 		).toEqual({
 			shouldCommitClientLoadersState: false,
 			shouldSyncBuildIDAfterAssetWait: false,
-			shouldApplyResponseArtifacts: false,
 		});
 
 		const renderingPostAssetExecutionPlan =
@@ -506,7 +505,6 @@ describe("successful outcome stage plans", () => {
 		).toEqual({
 			shouldCommitClientLoadersState: true,
 			shouldSyncBuildIDAfterAssetWait: true,
-			shouldApplyResponseArtifacts: true,
 		});
 
 		const idlePrefetchPostAssetExecutionPlan =
@@ -526,7 +524,6 @@ describe("successful outcome stage plans", () => {
 		).toEqual({
 			shouldCommitClientLoadersState: false,
 			shouldSyncBuildIDAfterAssetWait: false,
-			shouldApplyResponseArtifacts: true,
 		});
 	});
 
@@ -585,7 +582,6 @@ describe("successful outcome stage plans", () => {
 			sideEffectPlan: {
 				shouldCommitClientLoadersState: true,
 				shouldSyncBuildIDAfterAssetWait: true,
-				shouldApplyResponseArtifacts: true,
 			},
 		});
 

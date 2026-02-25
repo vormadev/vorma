@@ -5,14 +5,6 @@ import * as eventsModule from "../../platform/events.ts";
 
 type TestGlobalState = {
 	buildID: string;
-	clientModuleMap: Record<
-		string,
-		{
-			importURL: string;
-			exportKey: string;
-			errorExportKey: string;
-		}
-	>;
 	clientLoadersData: Array<unknown>;
 	outermostClientError: string | undefined;
 	outermostClientErrorIdx: number | undefined;
@@ -23,7 +15,6 @@ function installTestGlobalState(
 ): void {
 	(globalThis as any)[VORMA_SYMBOL] = {
 		buildID: "1",
-		clientModuleMap: {},
 		clientLoadersData: [],
 		outermostClientError: undefined,
 		outermostClientErrorIdx: undefined,
@@ -89,71 +80,6 @@ describe("successful navigation global commit surface", () => {
 		expect(dispatchBuildIDEventSpy).toHaveBeenCalledWith({
 			newID: "2",
 			oldID: "1",
-		});
-	});
-
-	it("merges route module metadata only when response build matches expected build", () => {
-		installTestGlobalState({
-			clientModuleMap: {
-				"/existing": {
-					importURL: "/existing.js",
-					exportKey: "default",
-					errorExportKey: "",
-				},
-			},
-		});
-
-		commitSuccessfulNavigationGlobalState({
-			commit: {
-				type: "merge_route_module_metadata_when_build_matches",
-				response: createResponseWithBuildID({
-					buildID: "2",
-				}),
-				expectedBuildID: "1",
-				routeModuleMetadata: {
-					matchedPatterns: ["/dashboard"],
-					importURLs: ["/dashboard.js"],
-					exportKeys: ["Route"],
-					errorExportKeys: ["ErrorBoundary"],
-				},
-			},
-		});
-
-		expect(getInstalledTestGlobalState().clientModuleMap).toEqual({
-			"/existing": {
-				importURL: "/existing.js",
-				exportKey: "default",
-				errorExportKey: "",
-			},
-		});
-
-		commitSuccessfulNavigationGlobalState({
-			commit: {
-				type: "merge_route_module_metadata_when_build_matches",
-				response: createResponseWithBuildID({
-					buildID: "2",
-				}),
-				expectedBuildID: "2",
-				routeModuleMetadata: {
-					matchedPatterns: ["/dashboard"],
-					importURLs: ["/dashboard.js"],
-					exportKeys: ["Route"],
-					errorExportKeys: ["ErrorBoundary"],
-				},
-			},
-		});
-
-		expect(getInstalledTestGlobalState().clientModuleMap).toEqual({
-			"/existing": {
-				importURL: "/existing.js",
-				exportKey: "default",
-				errorExportKey: "",
-			},
-			"/dashboard": {
-				importURL: "/dashboard.js",
-				exportKey: "Route",
-				errorExportKey: "ErrorBoundary",
-			},
 		});
 	});
 

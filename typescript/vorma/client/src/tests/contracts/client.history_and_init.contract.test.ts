@@ -6,6 +6,7 @@ import {
 	createRouteDataResponse,
 	loadClientAPI,
 	setupContractTestSuite,
+	withUnhandledRejectionCapture,
 } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
@@ -38,7 +39,7 @@ async function flushProgressiveManifestMicrotasks(): Promise<void> {
 describe("client history/init contracts", () => {
 	it("exposes a usable history instance", async () => {
 		const api = await loadClientAPI();
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 
 		expect(history).toBeDefined();
 		expect(typeof history.push).toBe("function");
@@ -48,18 +49,49 @@ describe("client history/init contracts", () => {
 
 	it("updates history location after push navigation", async () => {
 		const api = await loadClientAPI();
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 
 		history.push("/new-location");
 
 		expect(history.location.pathname).toBe("/new-location");
 	});
 
+	it("treats direct history push as outside Vorma route navigation lifecycle", async () => {
+		const api = await loadClientAPI();
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		const history = api.getUnsafeHistoryInstance();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValue(createRouteDataResponse());
+		const locationListener = vi.fn();
+		const routeChangeListener = vi.fn();
+		const removeLocationListener =
+			api.addLocationListener(locationListener);
+		const removeRouteChangeListener =
+			api.addRouteChangeListener(routeChangeListener);
+
+		history.push("/raw-history-only");
+		await vi.runAllTimersAsync();
+
+		expect(window.location.pathname).toBe("/raw-history-only");
+		expect(api.getLocation().pathname).toBe("/raw-history-only");
+		expect(locationListener).toHaveBeenCalledTimes(1);
+		expect(routeChangeListener).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
+
+		removeLocationListener();
+		removeRouteChangeListener();
+	});
+
 	it("emits location events when history key changes", async () => {
 		const api = await loadClientAPI();
 		const locationListener = vi.fn();
 		const cleanup = api.addLocationListener(locationListener);
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
@@ -80,7 +112,7 @@ describe("client history/init contracts", () => {
 
 	it("applies hash scroll on same-document POP updates", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 
@@ -117,7 +149,7 @@ describe("client history/init contracts", () => {
 
 	it("applies decoded hash scroll on same-document POP updates", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 
@@ -154,7 +186,7 @@ describe("client history/init contracts", () => {
 
 	it("preserves single-decode semantics for percent-encoded literal IDs on POP", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 
@@ -191,7 +223,7 @@ describe("client history/init contracts", () => {
 
 	it("does not re-scroll when POP hash target is encoding-equivalent", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 
@@ -228,7 +260,7 @@ describe("client history/init contracts", () => {
 
 	it("triggers browser-history navigation fetch for cross-document POP", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 
@@ -267,7 +299,7 @@ describe("client history/init contracts", () => {
 
 	it("follows cross-document POP redirects and renders redirected destination", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 
@@ -338,7 +370,7 @@ describe("client history/init contracts", () => {
 
 	it("uses listener location payload as the source of truth for cross-document POP target", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 
@@ -379,7 +411,7 @@ describe("client history/init contracts", () => {
 
 	it("saves scroll state before moving to a different document", async () => {
 		const api = await loadClientAPI();
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		(window as any).scrollX = 123;
 		(window as any).scrollY = 456;
 
@@ -423,7 +455,7 @@ describe("client history/init contracts", () => {
 
 	it("saves outgoing scroll position before user navigation pushes a new history entry", async () => {
 		const api = await loadClientAPI();
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const { HistoryManager } = await import("../../platform/history.ts");
 		HistoryManager.init();
 
@@ -445,7 +477,7 @@ describe("client history/init contracts", () => {
 
 	it("saves scroll state on cross-document POP before restoring the target document", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 
@@ -485,7 +517,7 @@ describe("client history/init contracts", () => {
 
 	it("restores saved scroll position when POP removes a hash from the same document", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 		const { scrollStateManager } = await import("../../platform/scroll.ts");
@@ -519,7 +551,7 @@ describe("client history/init contracts", () => {
 
 	it("restores saved scroll position when POP transitions from hash target to empty-fragment '#'", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");
 		const { scrollStateManager } = await import("../../platform/scroll.ts");
@@ -593,7 +625,7 @@ describe("client history/init contracts", () => {
 
 	it("registers browser history listener during init", async () => {
 		const api = await loadClientAPI();
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const listenSpy = vi.spyOn(history, "listen");
 
 		await api.initClient({
@@ -604,9 +636,9 @@ describe("client history/init contracts", () => {
 		expect(listenSpy).toHaveBeenCalledTimes(1);
 	});
 
-	it("registers beforeunload and touch listeners only once across repeated init calls", async () => {
+	it("registers beforeunload and pointer-modality listeners only once across repeated init calls", async () => {
 		const api = await loadClientAPI();
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const unlistenSpy = vi.fn();
 		const listenSpy = vi
 			.spyOn(history, "listen")
@@ -628,11 +660,23 @@ describe("client history/init contracts", () => {
 		const touchStartCalls = addEventListenerSpy.mock.calls.filter(
 			([eventType]) => eventType === "touchstart",
 		);
+		const pointerDownCalls = addEventListenerSpy.mock.calls.filter(
+			([eventType]) => eventType === "pointerdown",
+		);
+		const pointerMoveCalls = addEventListenerSpy.mock.calls.filter(
+			([eventType]) => eventType === "pointermove",
+		);
+		const pointerEnterCalls = addEventListenerSpy.mock.calls.filter(
+			([eventType]) => eventType === "pointerenter",
+		);
 
 		expect(listenSpy).toHaveBeenCalledTimes(2);
 		expect(unlistenSpy).toHaveBeenCalledTimes(1);
 		expect(beforeUnloadCalls).toHaveLength(1);
 		expect(touchStartCalls).toHaveLength(1);
+		expect(pointerDownCalls).toHaveLength(1);
+		expect(pointerMoveCalls).toHaveLength(1);
+		expect(pointerEnterCalls).toHaveLength(1);
 	});
 
 	it("sets history scrollRestoration to manual during init when supported", async () => {
@@ -656,7 +700,7 @@ describe("client history/init contracts", () => {
 	it("cleans vorma_reload from URL during init", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/?vorma_reload=old&keep=this");
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const replaceSpy = vi.spyOn(history, "replace");
 
 		await api.initClient({
@@ -809,7 +853,7 @@ describe("client history/init contracts", () => {
 		).toBeNull();
 	});
 
-	it("marks device as touch-capable on first touch after init", async () => {
+	it("switches pointer modality between touch and fine pointers after init", async () => {
 		const api = await loadClientAPI();
 
 		await api.initClient({
@@ -818,7 +862,71 @@ describe("client history/init contracts", () => {
 		});
 
 		window.dispatchEvent(new Event("touchstart"));
-		expect(api.__vormaClientGlobal.get("isTouchDevice")).toBe(true);
+		expect(api.__vormaClientGlobal.get("isTouchInputModalityActive")).toBe(
+			true,
+		);
+
+		const mousePointerMoveEvent = new Event("pointermove");
+		Object.defineProperty(mousePointerMoveEvent, "pointerType", {
+			value: "mouse",
+		});
+		window.dispatchEvent(mousePointerMoveEvent);
+		expect(api.__vormaClientGlobal.get("isTouchInputModalityActive")).toBe(
+			false,
+		);
+
+		const touchPointerDownEvent = new Event("pointerdown");
+		Object.defineProperty(touchPointerDownEvent, "pointerType", {
+			value: "touch",
+		});
+		window.dispatchEvent(touchPointerDownEvent);
+		expect(api.__vormaClientGlobal.get("isTouchInputModalityActive")).toBe(
+			true,
+		);
+	});
+
+	it("does not repeatedly write unchanged pointer modality state", async () => {
+		const api = await loadClientAPI();
+		const vormaGlobalSymbol = Symbol.for("__vorma_internal__");
+		const globalRecord = (globalThis as Record<PropertyKey, any>)[
+			vormaGlobalSymbol
+		] as Record<string, unknown>;
+		let writeCount = 0;
+		let trackedModality = globalRecord.isTouchInputModalityActive;
+
+		Object.defineProperty(globalRecord, "isTouchInputModalityActive", {
+			configurable: true,
+			enumerable: true,
+			get() {
+				return trackedModality;
+			},
+			set(value: unknown) {
+				writeCount += 1;
+				trackedModality = value;
+			},
+		});
+
+		await api.initClient({
+			vormaAppConfig: TEST_APP_CONFIG,
+			renderFn: () => {},
+		});
+
+		window.dispatchEvent(new Event("touchstart"));
+		window.dispatchEvent(new Event("touchstart"));
+
+		const mousePointerMoveEvent = new Event("pointermove");
+		Object.defineProperty(mousePointerMoveEvent, "pointerType", {
+			value: "mouse",
+		});
+		window.dispatchEvent(mousePointerMoveEvent);
+		const mousePointerEnterEvent = new Event("pointerenter");
+		Object.defineProperty(mousePointerEnterEvent, "pointerType", {
+			value: "mouse",
+		});
+		window.dispatchEvent(mousePointerEnterEvent);
+
+		expect(writeCount).toBe(2);
+		expect(trackedModality).toBe(false);
 	});
 
 	it("exposes the dev revalidate handle during init", async () => {
@@ -1199,6 +1307,49 @@ describe("client history/init contracts", () => {
 		).toBe("/precompiled/:id");
 	});
 
+	it("fails fast on invalid precompiled route-manifest payload shapes", async () => {
+		const api = await loadClientAPI();
+		api.__vormaClientGlobal.set("routeManifest", [
+			"/invalid-array-entry",
+		] as any);
+
+		await expect(
+			api.initClient({
+				vormaAppConfig: TEST_APP_CONFIG,
+				renderFn: () => {},
+			}),
+		).rejects.toThrow("non-null object");
+		expect(api.__vormaClientGlobal.get("routeManifest")).toEqual([
+			"/invalid-array-entry",
+		]);
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/invalid-array-entry",
+			),
+		).toBeNull();
+	});
+
+	it("fails fast on precompiled route-manifest entries whose loader flags are outside 0 or 1", async () => {
+		const api = await loadClientAPI();
+		api.__vormaClientGlobal.set("routeManifest", {
+			"/invalid-loader-flag": 2,
+		});
+
+		await expect(
+			api.initClient({
+				vormaAppConfig: TEST_APP_CONFIG,
+				renderFn: () => {},
+			}),
+		).rejects.toThrow("0 or 1");
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/invalid-loader-flag",
+			),
+		).toBeNull();
+	});
+
 	it("falls back to progressive route-manifest loading when precompiled manifest is absent", async () => {
 		const api = await loadClientAPI();
 		const manifest = {
@@ -1249,17 +1400,22 @@ describe("client history/init contracts", () => {
 			"http://localhost:3000/manifest.json",
 		);
 
-		await expect(
-			api.initClient({
-				vormaAppConfig: TEST_APP_CONFIG,
-				renderFn: () => {},
-			}),
-		).resolves.toBeUndefined();
-		await flushProgressiveManifestMicrotasks();
+		const { unhandledRejections } = await withUnhandledRejectionCapture({
+			run: async () => {
+				await expect(
+					api.initClient({
+						vormaAppConfig: TEST_APP_CONFIG,
+						renderFn: () => {},
+					}),
+				).resolves.toBeUndefined();
+				await flushProgressiveManifestMicrotasks();
+			},
+		});
 
 		expect(fetchSpy).toHaveBeenCalledWith(
 			"http://localhost:3000/manifest.json",
 		);
+		expect(unhandledRejections).toEqual([]);
 		expect(api.__vormaClientGlobal.get("routeManifest")).toBeUndefined();
 		expect(warnSpy).toHaveBeenCalledWith(
 			"Failed to load route manifest:",
@@ -1267,7 +1423,7 @@ describe("client history/init contracts", () => {
 		);
 	});
 
-	it("rejects invalid route-manifest payload shapes without mutating registry state", async () => {
+	it("fails fast on invalid progressive route-manifest payload shapes without mutating registry state", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
 			new Response(JSON.stringify(["/invalid-array-entry"]), {
@@ -1275,18 +1431,15 @@ describe("client history/init contracts", () => {
 				headers: { "Content-Type": "application/json" },
 			}),
 		);
-		const warnSpy = vi.spyOn(console, "warn");
 
 		api.__vormaClientGlobal.set(
 			"routeManifestURL",
 			"http://localhost:3000/manifest.json",
 		);
 
-		await api.initClient({
-			vormaAppConfig: TEST_APP_CONFIG,
-			renderFn: () => {},
-		});
-		await flushProgressiveManifestMicrotasks();
+		await expect(api.__loadRouteManifestProgressively()).rejects.toThrow(
+			"non-null object",
+		);
 
 		expect(fetchSpy).toHaveBeenCalledWith(
 			"http://localhost:3000/manifest.json",
@@ -1298,17 +1451,6 @@ describe("client history/init contracts", () => {
 				"/invalid-array-entry",
 			),
 		).toBeNull();
-		const manifestWarningCall = warnSpy.mock.calls.find(
-			(call) => call[0] === "Failed to load route manifest:",
-		);
-		expect(manifestWarningCall).toBeDefined();
-		if (!manifestWarningCall) {
-			return;
-		}
-		expect(manifestWarningCall[1]).toBeInstanceOf(Error);
-		expect((manifestWarningCall[1] as Error).message).toContain(
-			"non-null object",
-		);
 	});
 
 	it("treats non-OK route-manifest responses as non-fatal and leaves state unchanged", async () => {
@@ -1326,15 +1468,20 @@ describe("client history/init contracts", () => {
 			"http://localhost:3000/manifest.json",
 		);
 
-		await api.initClient({
-			vormaAppConfig: TEST_APP_CONFIG,
-			renderFn: () => {},
+		const { unhandledRejections } = await withUnhandledRejectionCapture({
+			run: async () => {
+				await api.initClient({
+					vormaAppConfig: TEST_APP_CONFIG,
+					renderFn: () => {},
+				});
+				await flushProgressiveManifestMicrotasks();
+			},
 		});
-		await flushProgressiveManifestMicrotasks();
 
 		expect(fetchSpy).toHaveBeenCalledWith(
 			"http://localhost:3000/manifest.json",
 		);
+		expect(unhandledRejections).toEqual([]);
 		expect(api.__vormaClientGlobal.get("routeManifest")).toBeUndefined();
 		const manifestWarningCall = warnSpy.mock.calls.find(
 			(call) => call[0] === "Failed to load route manifest:",
@@ -1349,7 +1496,7 @@ describe("client history/init contracts", () => {
 		);
 	});
 
-	it("rejects route-manifest entries whose loader flags are outside 0 or 1", async () => {
+	it("fails fast on progressive route-manifest entries whose loader flags are outside 0 or 1", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
 			new Response(
@@ -1362,18 +1509,15 @@ describe("client history/init contracts", () => {
 				},
 			),
 		);
-		const warnSpy = vi.spyOn(console, "warn");
 
 		api.__vormaClientGlobal.set(
 			"routeManifestURL",
 			"http://localhost:3000/manifest.json",
 		);
 
-		await api.initClient({
-			vormaAppConfig: TEST_APP_CONFIG,
-			renderFn: () => {},
-		});
-		await flushProgressiveManifestMicrotasks();
+		await expect(api.__loadRouteManifestProgressively()).rejects.toThrow(
+			"0 or 1",
+		);
 
 		expect(fetchSpy).toHaveBeenCalledWith(
 			"http://localhost:3000/manifest.json",
@@ -1385,15 +1529,64 @@ describe("client history/init contracts", () => {
 				"/invalid-loader-flag",
 			),
 		).toBeNull();
-		const manifestWarningCall = warnSpy.mock.calls.find(
-			(call) => call[0] === "Failed to load route manifest:",
+	});
+
+	it("fails fast on progressive manifest pattern normalization errors without partial registry mutation", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					"/atomic-valid/:id": 1,
+					"/atomic-invalid/": 1,
+				}),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				},
+			),
 		);
-		expect(manifestWarningCall).toBeDefined();
-		if (!manifestWarningCall) {
-			return;
-		}
-		expect(manifestWarningCall[1]).toBeInstanceOf(Error);
-		expect((manifestWarningCall[1] as Error).message).toContain("0 or 1");
+
+		api.__vormaClientGlobal.set(
+			"routeManifestURL",
+			"http://localhost:3000/manifest.json",
+		);
+
+		await expect(api.__loadRouteManifestProgressively()).rejects.toThrow(
+			"bad trailing slash",
+		);
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"http://localhost:3000/manifest.json",
+		);
+		expect(api.__vormaClientGlobal.get("routeManifest")).toBeUndefined();
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/atomic-valid/123",
+			),
+		).toBeNull();
+	});
+
+	it("fails fast on precompiled manifest pattern normalization errors without partial registry mutation", async () => {
+		const api = await loadClientAPI();
+		const precompiledManifest = {
+			"/precompiled-valid/:id": 1,
+			"/precompiled-invalid/": 1,
+		};
+		api.__vormaClientGlobal.set("routeManifest", precompiledManifest);
+
+		await expect(
+			api.initClient({
+				vormaAppConfig: TEST_APP_CONFIG,
+				renderFn: () => {},
+			}),
+		).rejects.toThrow("bad trailing slash");
+		expect(
+			findBestMatch(
+				api.__vormaClientGlobal.get("patternRegistry"),
+				"/precompiled-valid/123",
+			),
+		).toBeNull();
 	});
 
 	it("ignores stale older progressive manifest responses after a newer init", async () => {

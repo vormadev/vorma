@@ -1,3 +1,8 @@
+// Package fileops provides deterministic file hashing and atomic write helpers
+// for Wave build artifacts.
+//
+// Builder phases share these primitives to keep artifact change detection and
+// write semantics consistent across outputs.
 package fileops
 
 import (

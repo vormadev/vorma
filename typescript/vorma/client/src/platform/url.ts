@@ -158,3 +158,29 @@ export function resolvePublicHref(relativeHref: string): string {
 		: baseURL + "/" + relativeHref;
 	return final;
 }
+
+export function assertProgrammaticSameOriginOrThrow(props: {
+	absoluteHref: string;
+	apiName: string;
+	currentHref?: string;
+}): void {
+	const { absoluteHref, apiName, currentHref = window.location.href } = props;
+	let targetURL: URL;
+	let currentURL: URL;
+	try {
+		targetURL = new URL(absoluteHref, currentHref);
+		currentURL = new URL(currentHref);
+	} catch {
+		throw new Error(
+			`${apiName} received an invalid URL target: ${JSON.stringify(absoluteHref)}`,
+		);
+	}
+
+	if (targetURL.origin === currentURL.origin) {
+		return;
+	}
+
+	throw new Error(
+		`${apiName} only supports same-origin targets. Received ${JSON.stringify(targetURL.origin)} while current origin is ${JSON.stringify(currentURL.origin)}.`,
+	);
+}

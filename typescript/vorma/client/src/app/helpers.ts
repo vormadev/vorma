@@ -1,5 +1,5 @@
 import { serializeToSearchParams } from "vorma/kit/json";
-import type { SubmitOptions } from "../client.ts";
+import { submit, type SubmitOptions, type SubmitResult } from "../client.ts";
 import { resolveRequestBodyForTransport } from "../platform/request_body.ts";
 
 export type VormaAppConfig = {
@@ -226,6 +226,35 @@ export type VormaMutationProps<
 		? { input?: VormaMutationInput<App, P> }
 		: { input: VormaMutationInput<App, P> });
 
+export type APIRequestInitOverrides = Omit<RequestInit, "method" | "body">;
+
+export type APIRequestInitDecoratorContext<App extends VormaAppBase> =
+	| {
+			type: "query";
+			pattern: VormaQueryPattern<App>;
+			requestInit?: RequestInit;
+			input?: unknown;
+	  }
+	| {
+			type: "mutation";
+			pattern: VormaMutationPattern<App>;
+			requestInit?: RequestInit;
+			input?: unknown;
+	  };
+
+export type APIRequestInitDecorator<App extends VormaAppBase> = (
+	requestContext: APIRequestInitDecoratorContext<App>,
+) => APIRequestInitOverrides | undefined;
+
+export type TypedAPIClient<App extends VormaAppBase> = {
+	query: <P extends VormaQueryPattern<App>>(
+		props: VormaQueryProps<App, P>,
+	) => Promise<SubmitResult<VormaQueryOutput<App, P>>>;
+	mutate: <P extends VormaMutationPattern<App>>(
+		props: VormaMutationProps<App, P>,
+	) => Promise<SubmitResult<VormaMutationOutput<App, P>>>;
+};
+
 type PathResolutionProps = {
 	pattern: string;
 	params?: Record<string, unknown>;
@@ -310,28 +339,82 @@ function assertPathResolutionInputsMatchPatternOrThrow(props: {
 		pattern: props.pattern,
 		dynamicParamPrefixRune: props.dynamicParamPrefixRune,
 	});
-	if (requiredDynamicParamKeys.length > 0) {
-		const providedParams = props.params ?? {};
-		const unresolvedDynamicParamKeys = requiredDynamicParamKeys.filter(
-			(requiredDynamicParamKey) =>
-				!(requiredDynamicParamKey in providedParams),
-		);
-		if (unresolvedDynamicParamKeys.length > 0) {
-			throw new Error(
-				`Missing required route params for pattern "${props.pattern}": ${unresolvedDynamicParamKeys.join(", ")}`,
-			);
-		}
-	}
 
 	if (
-		hasRequiredSplatSegmentToken({
-			pattern: props.pattern,
-			splatSegmentRune: props.splatSegmentRune,
-		}) &&
-		!props.splatValues
+		props.params !== undefined &&
+		(typeof props.params !== "object" ||
+			props.params === null ||
+			Array.isArray(props.params))
 	) {
 		throw new Error(
+			`Route params for pattern "${props.pattern}" must be an object when provided.`,
+		);
+	}
+
+	const providedParams = props.params ?? {};
+	const unresolvedDynamicParamKeys = requiredDynamicParamKeys.filter(
+		(requiredDynamicParamKey) =>
+			!(requiredDynamicParamKey in providedParams),
+	);
+	if (unresolvedDynamicParamKeys.length > 0) {
+		throw new Error(
+			`Missing required route params for pattern "${props.pattern}": ${unresolvedDynamicParamKeys.join(", ")}`,
+		);
+	}
+
+	const invalidDynamicParamKeys = requiredDynamicParamKeys.filter(
+		(requiredDynamicParamKey) => {
+			const value = providedParams[requiredDynamicParamKey];
+			return typeof value !== "string";
+		},
+	);
+	if (invalidDynamicParamKeys.length > 0) {
+		throw new Error(
+			`Invalid required route params for pattern "${props.pattern}": ${invalidDynamicParamKeys.join(", ")} (expected string values).`,
+		);
+	}
+
+	const unexpectedDynamicParamKeys = Object.keys(providedParams).filter(
+		(providedDynamicParamKey) =>
+			!requiredDynamicParamKeys.includes(providedDynamicParamKey),
+	);
+	if (unexpectedDynamicParamKeys.length > 0) {
+		throw new Error(
+			`Unexpected route params for pattern "${props.pattern}": ${unexpectedDynamicParamKeys.join(", ")}`,
+		);
+	}
+
+	if (props.splatValues !== undefined && !Array.isArray(props.splatValues)) {
+		throw new Error(
+			`Splat values for pattern "${props.pattern}" must be an array when provided.`,
+		);
+	}
+
+	const hasRequiredSplat = hasRequiredSplatSegmentToken({
+		pattern: props.pattern,
+		splatSegmentRune: props.splatSegmentRune,
+	});
+	if (hasRequiredSplat && props.splatValues === undefined) {
+		throw new Error(
 			`Missing required splat values for pattern "${props.pattern}"`,
+		);
+	}
+	if (!hasRequiredSplat && props.splatValues !== undefined) {
+		throw new Error(
+			`Unexpected splat values for pattern "${props.pattern}"`,
+		);
+	}
+
+	if (props.splatValues === undefined) {
+		return;
+	}
+
+	const hasInvalidSplatSegment = props.splatValues.some(
+		(splatSegment) => typeof splatSegment !== "string",
+	);
+	if (hasInvalidSplatSegment) {
+		throw new Error(
+			`Invalid splat values for pattern "${props.pattern}": expected string segments.`,
 		);
 	}
 }
@@ -361,7 +444,7 @@ export function resolveVormaPath(input: ResolvePathInput): string {
 			path = replaceDynamicParam({
 				path,
 				token: `${dynamicParamPrefixRune}${key}`,
-				value: String(value),
+				value: value as string,
 			});
 		}
 	}
@@ -470,6 +553,100 @@ export function buildMutationURL(
 
 export function resolveBody(props: Props): BodyInit | null | undefined {
 	return resolveVormaRequestBody(props.input);
+}
+
+function mergeRequestInitWithHeaders(input: {
+	baseRequestInit: RequestInit;
+	overrideRequestInit?: RequestInit;
+}): RequestInit {
+	const { baseRequestInit, overrideRequestInit } = input;
+	if (overrideRequestInit === undefined) {
+		return baseRequestInit;
+	}
+
+	const mergedHeaders = new Headers(baseRequestInit.headers ?? undefined);
+	const overrideHeaders = new Headers(
+		overrideRequestInit.headers ?? undefined,
+	);
+	overrideHeaders.forEach((value, key) => {
+		mergedHeaders.set(key, value);
+	});
+
+	return {
+		...baseRequestInit,
+		...overrideRequestInit,
+		headers: mergedHeaders,
+	};
+}
+
+export function makeTypedAPIClient<C extends VormaAppConfig>(
+	vormaAppConfig: C,
+	decorateRequestInit?: APIRequestInitDecorator<ExtractApp<C>>,
+): TypedAPIClient<ExtractApp<C>> {
+	const requestInitDecorator = decorateRequestInit;
+
+	const resolveRequestInit = (props: {
+		requestContext: APIRequestInitDecoratorContext<ExtractApp<C>>;
+		fallbackRequestInit: RequestInit;
+	}): RequestInit => {
+		const decoratedRequestInit = requestInitDecorator?.(
+			props.requestContext,
+		);
+		const baseRequestInit = mergeRequestInitWithHeaders({
+			baseRequestInit: props.fallbackRequestInit,
+			overrideRequestInit: decoratedRequestInit,
+		});
+		return mergeRequestInitWithHeaders({
+			baseRequestInit,
+			overrideRequestInit: props.requestContext.requestInit,
+		});
+	};
+
+	const query = async <P extends VormaQueryPattern<ExtractApp<C>>>(
+		queryProps: VormaQueryProps<ExtractApp<C>, P>,
+	): Promise<SubmitResult<VormaQueryOutput<ExtractApp<C>, P>>> => {
+		const requestInit = resolveRequestInit({
+			requestContext: {
+				type: "query",
+				pattern: queryProps.pattern,
+				requestInit: queryProps.requestInit,
+				input: queryProps.input,
+			},
+			fallbackRequestInit: { method: "GET" },
+		});
+		return await submit<VormaQueryOutput<ExtractApp<C>, P>>(
+			buildQueryURL(vormaAppConfig, queryProps),
+			requestInit,
+			queryProps.options,
+		);
+	};
+
+	const mutate = async <P extends VormaMutationPattern<ExtractApp<C>>>(
+		mutationProps: VormaMutationProps<ExtractApp<C>, P>,
+	): Promise<SubmitResult<VormaMutationOutput<ExtractApp<C>, P>>> => {
+		const requestInit = resolveRequestInit({
+			requestContext: {
+				type: "mutation",
+				pattern: mutationProps.pattern,
+				requestInit: mutationProps.requestInit,
+				input: mutationProps.input,
+			},
+			fallbackRequestInit: {
+				method: "POST",
+				body: resolveBody(mutationProps),
+			},
+		});
+		return await submit<VormaMutationOutput<ExtractApp<C>, P>>(
+			buildMutationURL(vormaAppConfig, mutationProps),
+			requestInit,
+			mutationProps.options,
+		);
+	};
+
+	return {
+		query,
+		mutate,
+	};
 }
 
 export function resolvePath(opts: APIClientHelperOpts): string {

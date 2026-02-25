@@ -1,7 +1,4 @@
-import {
-	__vormaClientGlobal,
-	type VormaClientGlobal,
-} from "../../app/context.ts";
+import { __vormaClientGlobal } from "../../app/context.ts";
 import { dispatchBuildIDEvent } from "../../platform/events.ts";
 import { isAbortError, logError } from "../../platform/safety.ts";
 import { getBuildIDFromResponse } from "../redirects.ts";
@@ -27,43 +24,6 @@ const successfulNavigationPhaseReason = {
 	rendering: "process_successful_navigation_rendering",
 	complete: "process_successful_navigation_complete",
 } as const;
-
-export type RouteModuleMetadataInput = {
-	matchedPatterns?: Array<string>;
-	importURLs?: Array<string>;
-	exportKeys?: Array<string>;
-	errorExportKeys?: Array<string>;
-};
-
-export function mergeClientModuleMapWithRouteModuleMetadata(props: {
-	currentClientModuleMap: VormaClientGlobal["clientModuleMap"] | undefined;
-	routeModuleMetadata: RouteModuleMetadataInput;
-}): VormaClientGlobal["clientModuleMap"] {
-	const { currentClientModuleMap, routeModuleMetadata } = props;
-	const nextClientModuleMap: VormaClientGlobal["clientModuleMap"] = {
-		...currentClientModuleMap,
-	};
-	const matchedPatterns = routeModuleMetadata.matchedPatterns ?? [];
-	const importURLs = routeModuleMetadata.importURLs ?? [];
-	const exportKeys = routeModuleMetadata.exportKeys ?? [];
-	const errorExportKeys = routeModuleMetadata.errorExportKeys ?? [];
-
-	for (let index = 0; index < matchedPatterns.length; index += 1) {
-		const pattern = matchedPatterns[index];
-		const importURL = importURLs[index];
-		if (!pattern || !importURL) {
-			continue;
-		}
-
-		nextClientModuleMap[pattern] = {
-			importURL,
-			exportKey: exportKeys[index] || "default",
-			errorExportKey: errorExportKeys[index] || "",
-		};
-	}
-
-	return nextClientModuleMap;
-}
 
 export type ProcessSuccessfulNavigationContext = {
 	transitionPhase: (props: {
@@ -124,12 +84,6 @@ export type SuccessfulNavigationGlobalCommit =
 	| {
 			type: "sync_build_id_from_response";
 			response: Response;
-	  }
-	| {
-			type: "merge_route_module_metadata_when_build_matches";
-			response: Response;
-			expectedBuildID: string;
-			routeModuleMetadata: RouteModuleMetadataInput;
 	  };
 
 export function commitSuccessfulNavigationGlobalState(props: {
@@ -148,25 +102,6 @@ export function commitSuccessfulNavigationGlobalState(props: {
 
 			__vormaClientGlobal.set("buildID", newID);
 			dispatchBuildIDEvent({ newID, oldID });
-			return;
-		}
-		case "merge_route_module_metadata_when_build_matches": {
-			const responseBuildID = getBuildIDFromResponse(
-				props.commit.response,
-			);
-			if (responseBuildID !== props.commit.expectedBuildID) {
-				return;
-			}
-
-			const clientModuleMap = mergeClientModuleMapWithRouteModuleMetadata(
-				{
-					currentClientModuleMap:
-						__vormaClientGlobal.get("clientModuleMap"),
-					routeModuleMetadata: props.commit.routeModuleMetadata,
-				},
-			);
-
-			__vormaClientGlobal.set("clientModuleMap", clientModuleMap);
 			return;
 		}
 	}
@@ -356,15 +291,9 @@ function runSuccessfulNavigationPreAssetWaitCheckpoint(props: {
 async function runSuccessfulNavigationPostAssetCheckpoint(props: {
 	envelope: SuccessfulNavigationCheckpointStateEnvelope;
 	buildIDSyncTiming: BuildIDSyncTiming;
-	expectedBuildID: string;
 	clientLoadersResult: SuccessfulNavigationClientLoadersResult;
 }): Promise<boolean> {
-	const {
-		envelope,
-		buildIDSyncTiming,
-		expectedBuildID,
-		clientLoadersResult,
-	} = props;
+	const { envelope, buildIDSyncTiming, clientLoadersResult } = props;
 	const { context, outcome, entry } = envelope;
 	const checkpointEnvelope = readSuccessfulNavigationCheckpointEnvelope({
 		context,
@@ -395,16 +324,6 @@ async function runSuccessfulNavigationPostAssetCheckpoint(props: {
 			commit: {
 				type: "sync_build_id_from_response",
 				response: outcome.response,
-			},
-		});
-	}
-	if (postAssetSideEffectPlan.shouldApplyResponseArtifacts) {
-		commitSuccessfulNavigationGlobalState({
-			commit: {
-				type: "merge_route_module_metadata_when_build_matches",
-				response: outcome.response,
-				expectedBuildID,
-				routeModuleMetadata: outcome.json,
 			},
 		});
 	}
@@ -463,9 +382,6 @@ export async function processSuccessfulNavigationRuntime(
 	};
 
 	try {
-		const expectedBuildIDForResponseArtifacts =
-			__vormaClientGlobal.get("buildID");
-
 		if (runSuccessfulNavigationPreWaitingCheckpoint(envelope)) {
 			return;
 		}
@@ -488,7 +404,6 @@ export async function processSuccessfulNavigationRuntime(
 			await runSuccessfulNavigationPostAssetCheckpoint({
 				envelope,
 				buildIDSyncTiming,
-				expectedBuildID: expectedBuildIDForResponseArtifacts,
 				clientLoadersResult,
 			});
 		if (shouldStopAfterPostAsset) {

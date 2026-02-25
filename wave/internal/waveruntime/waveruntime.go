@@ -1,3 +1,7 @@
+// Package waveruntime holds Wave runtime-specific rendering and config helpers.
+//
+// It isolates runtime defaults and template behavior from config parsing and
+// build tooling so runtime behavior can evolve independently.
 package waveruntime
 
 import (

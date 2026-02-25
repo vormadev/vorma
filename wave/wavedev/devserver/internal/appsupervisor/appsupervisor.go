@@ -1,3 +1,8 @@
+// Package appsupervisor manages dev-server process lifecycle and readiness
+// probing.
+//
+// It exists to keep process control and health-check policy separate from
+// higher-level watcher and hook orchestration code.
 package appsupervisor
 
 import (

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { updateHeadEls, getStartAndEndComments } from "../../ui/head.ts";
 import type { HeadEl } from "../../app/context.ts";
+import { getStartAndEndComments, updateHeadEls } from "../../ui/head.ts";
 import { setupContractTestSuite } from "./contract_test_harness.ts";
 
 setupContractTestSuite();
@@ -60,7 +60,7 @@ describe("head element contracts", () => {
 	});
 
 	describe("advanced updates", () => {
-		it("no-ops when section markers are out of order", () => {
+		it("throws when section markers are out of order", () => {
 			document.head.innerHTML = "";
 
 			const endMarker = document.createComment('data-vorma="meta-end"');
@@ -75,15 +75,19 @@ describe("head element contracts", () => {
 			document.head.appendChild(startMarker);
 			document.head.appendChild(sentinel);
 
-			updateHeadEls("meta", [
-				{
-					tag: "meta",
-					attributesKnownSafe: {
-						name: "new-meta",
-						content: "new",
+			expect(() =>
+				updateHeadEls("meta", [
+					{
+						tag: "meta",
+						attributesKnownSafe: {
+							name: "new-meta",
+							content: "new",
+						},
 					},
-				},
-			]);
+				]),
+			).toThrow(
+				"Managed head section markers for 'meta' are missing or invalid.",
+			);
 
 			const metaElements = Array.from(
 				document.head.querySelectorAll("meta"),
@@ -541,7 +545,7 @@ describe("head element contracts", () => {
 			expect(style?.innerHTML).toBe(".demo { color: red; }");
 		});
 
-		it("does nothing when requested section markers are missing", () => {
+		it("throws when requested section markers are missing", () => {
 			document.head.innerHTML = "";
 			document.head.appendChild(
 				document.createComment('data-vorma="rest-start"'),
@@ -560,7 +564,9 @@ describe("head element contracts", () => {
 						},
 					},
 				]),
-			).not.toThrow();
+			).toThrow(
+				"Managed head section markers for 'meta' are missing or invalid.",
+			);
 			expect(document.head.querySelector("meta")).toBeNull();
 		});
 

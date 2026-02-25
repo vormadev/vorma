@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/vormabuild/internal/testkit"
 )
 
 func TestBuildRuntimeRegistration_E2EMultiPackageDiscoveredRoutes(
@@ -17,7 +19,7 @@ func TestBuildRuntimeRegistration_E2EMultiPackageDiscoveredRoutes(
 	repoRootDir := mustResolveRepositoryRootDir(t)
 	fixtureRootDir := t.TempDir()
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "go.mod"),
 		[]byte(fmt.Sprintf(`
@@ -31,7 +33,10 @@ replace github.com/vormadev/vorma => %s
 `, filepath.ToSlash(repoRootDir))),
 	)
 
-	mustWriteFile(t, filepath.Join(fixtureRootDir, "backend/wave.go"), []byte(`
+	testkit.MustWriteFile(
+		t,
+		filepath.Join(fixtureRootDir, "backend/wave.go"),
+		[]byte(`
 package backend
 
 import (
@@ -47,9 +52,10 @@ var Wave = wave.New(wave.Config{
 	WaveConfigJSON: fsutil.MustReadFile(waveFS, "backend/wave.config.json"),
 	DistStaticFS:   fsutil.MustSub(waveFS, "backend", "dist", "static"),
 })
-`))
+`),
+	)
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/wave.config.json"),
 		[]byte(`
@@ -78,17 +84,17 @@ var Wave = wave.New(wave.Config{
 `),
 	)
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/assets/private/entry.go.html"),
 		[]byte("<!doctype html><html><body></body></html>"),
 	)
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "frontend/src/components/root.tsx"),
 		[]byte("export const Root = () => null;"),
 	)
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "frontend/src/vorma.routes.ts"),
 		[]byte(`
@@ -98,7 +104,7 @@ route("/", import("./components/root.tsx"), "Root");
 `),
 	)
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/src/app/app.go"),
 		[]byte(`
@@ -116,7 +122,7 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 `),
 	)
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/src/routes/register.go"),
 		[]byte(`
@@ -129,7 +135,7 @@ import (
 `),
 	)
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/src/routes/users/routes.go"),
 		[]byte(`
@@ -167,7 +173,7 @@ var _ = DefineLoaderForRegistration("/users", func(*LoaderCtx) (string, error) {
 `),
 	)
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/src/routes/accounts/routes.go"),
 		[]byte(`
@@ -210,7 +216,7 @@ var _ = registerAccountsRoute()
 `),
 	)
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/cmd/build/main.go"),
 		[]byte(`
@@ -237,7 +243,7 @@ func main() {
 `),
 	)
 
-	mustWriteFile(
+	testkit.MustWriteFile(
 		t,
 		filepath.Join(fixtureRootDir, "backend/cmd/check/main.go"),
 		[]byte(`

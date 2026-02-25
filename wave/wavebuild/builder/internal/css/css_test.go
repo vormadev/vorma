@@ -6,36 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavebuild/builder/internal/css"
 )
 
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
-
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 func newParsedConfigForCSSPackageTestsAtRoot(root string) *wave.ParsedConfig {
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{
-			WatchRoot: root,
-		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-	return cfg
+	return wavetest.NewParsedConfigAtRoot(root)
 }
 
 func TestValidateCSSConfig(t *testing.T) {
@@ -125,10 +102,11 @@ func TestProcessor_BuildCriticalAndNormalCSS(t *testing.T) {
 	root := t.TempDir()
 	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
 	cfg.Core.PublicPathPrefix = "/assets"
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical:    filepath.Join(root, "src", "critical.css"),
-		NonCritical: filepath.Join(root, "src", "normal.css"),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "src", "critical.css"),
+		filepath.Join(root, "src", "normal.css"),
+	)
 
 	if mkdirError := os.MkdirAll(filepath.Join(root, "src"), 0o755); mkdirError != nil {
 		t.Fatalf("mkdir src dir: %v", mkdirError)
@@ -209,9 +187,11 @@ func TestProcessor_BuildCriticalCSSOnly_LeavesProtocolRelativeURLsUntouched(
 	root := t.TempDir()
 	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
 	cfg.Core.PublicPathPrefix = "/assets"
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical: filepath.Join(root, "src", "critical.css"),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "src", "critical.css"),
+		"",
+	)
 
 	if mkdirError := os.MkdirAll(filepath.Join(root, "src"), 0o755); mkdirError != nil {
 		t.Fatalf("mkdir src dir: %v", mkdirError)
@@ -272,10 +252,7 @@ func TestProcessor_IsCSSFileAndImportTracking(t *testing.T) {
 	)
 
 	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical:    criticalPath,
-		NonCritical: normalPath,
-	}
+	wavetest.SetCSSEntryFiles(cfg, criticalPath, normalPath)
 
 	processor := css.NewProcessor(cfg, nil, nil)
 

@@ -1,36 +1,16 @@
 package watch_test
 
 import (
-	"io"
 	"log/slog"
-	"path/filepath"
 
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 )
 
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
-
 func newDiscardLoggerForWatchTests() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return wavetest.NewDiscardLogger()
 }
 
 func newParsedConfigForWatchTestsAtRoot(root string) *wave.ParsedConfig {
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{
-			WatchRoot: root,
-		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-	return cfg
+	return wavetest.NewParsedConfigAtRoot(root)
 }

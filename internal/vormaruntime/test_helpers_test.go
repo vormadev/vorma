@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/wave"
 )
@@ -16,11 +17,6 @@ import (
 type staticAssetDirsForTests = struct {
 	Private string `json:"Private"`
 	Public  string `json:"Public"`
-}
-
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
 }
 
 type testFixture struct {
@@ -98,19 +94,17 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	)
 
 	coreCfg := wave.CoreConfig{
-		MainAppEntry: "backend/cmd/serve",
-		DistDir:      filepath.Join(rootDir, "dist"),
-		StaticAssetDirs: staticAssetDirsForTests{
-			Private: privateDir,
-			Public:  publicDir,
-		},
+		MainAppEntry:     "backend/cmd/serve",
+		DistDir:          filepath.Join(rootDir, "dist"),
 		PublicPathPrefix: o.publicPathPrefix,
 	}
+	wavetest.SetCoreStaticAssetDirectories(&coreCfg, publicDir, privateDir)
 	if o.enableCriticalCSS || o.enableNonCriticalCSS {
-		coreCfg.CSSEntryFiles = cssEntryFilesForTests{
-			Critical:    "frontend/src/styles/main.critical.css",
-			NonCritical: "frontend/src/styles/main.css",
-		}
+		wavetest.SetCoreCSSEntryFiles(
+			&coreCfg,
+			"frontend/src/styles/main.critical.css",
+			"frontend/src/styles/main.css",
+		)
 	}
 
 	if o.enableCriticalCSS {

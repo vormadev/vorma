@@ -116,14 +116,17 @@ type routeBuildRuntimeStateSnapshot struct {
 	buildID string
 }
 
-const buildArtifactFileMode fs.FileMode = 0o644
+const (
+	buildArtifactDirectoryMode fs.FileMode = 0o755
+	buildArtifactFileMode      fs.FileMode = 0o644
+)
 
 func writeFileAtomically(
 	targetPath string,
 	fileContents []byte,
 	fileMode fs.FileMode,
 ) error {
-	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(targetPath), buildArtifactDirectoryMode); err != nil {
 		return fmt.Errorf("create parent directory: %w", err)
 	}
 	return os.WriteFile(targetPath, fileContents, fileMode)
@@ -1064,7 +1067,7 @@ func (generatedTSWriteFileExecutor generatedTSWriteFileExecutor) writeGeneratedT
 
 	if err := generatedTSWriteFileExecutor.dependencies.makeGeneratedTSDirectory(
 		filepath.Dir(targetPath),
-		os.ModePerm,
+		buildArtifactDirectoryMode,
 	); err != nil {
 		return fmt.Errorf("create directory: %w", err)
 	}

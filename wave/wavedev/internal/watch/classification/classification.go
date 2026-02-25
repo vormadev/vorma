@@ -1,3 +1,8 @@
+// Package classification maps changed filesystem paths to semantic watcher file
+// types.
+//
+// This package exists so event planning can operate on stable categories rather
+// than brittle raw path checks spread throughout dev-server code.
 package classification
 
 import (

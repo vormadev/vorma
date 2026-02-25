@@ -60,6 +60,7 @@ export type GetRouteDataOutput = RouteDataState &
 
 /**
  * Process-wide symbol key used to store runtime state on globalThis.
+ * Vorma currently supports one runtime app/version per browser window.
  */
 export const VORMA_SYMBOL = Symbol.for("__vorma_internal__");
 
@@ -99,7 +100,8 @@ export type VormaClientGlobal = RuntimeRouteState & {
 	isDev: boolean;
 	viteDevURL: string;
 	publicPathPrefix: string;
-	isTouchDevice: boolean;
+	// Tracks current pointer modality, not hardware capability.
+	isTouchInputModalityActive: boolean;
 	patternToWaitFnMap: Record<string, PatternWaitFn>;
 	clientLoadersData: Array<unknown>;
 	defaultErrorBoundary: RouteErrorComponent;
@@ -108,14 +110,6 @@ export type VormaClientGlobal = RuntimeRouteState & {
 	vormaAppConfig: VormaAppConfig;
 	routeManifestURL: string;
 	routeManifest: Record<string, number> | undefined;
-	clientModuleMap: Record<
-		string,
-		{
-			importURL: string;
-			exportKey: string;
-			errorExportKey: string;
-		}
-	>;
 	patternRegistry: PatternRegistry;
 };
 
@@ -128,14 +122,26 @@ type VormaGlobalThis = typeof globalThis & {
  */
 export function __getVormaClientGlobal() {
 	const dangerousGlobalThis = globalThis as VormaGlobalThis;
+
+	function getGlobalStateOrThrow(): VormaClientGlobal {
+		const maybeGlobalState = dangerousGlobalThis[VORMA_SYMBOL];
+		if (typeof maybeGlobalState !== "object" || maybeGlobalState === null) {
+			throw new Error(
+				'Vorma client runtime state is not initialized on globalThis[Symbol.for("__vorma_internal__")]. Initialize runtime globals before calling Vorma client APIs.',
+			);
+		}
+
+		return maybeGlobalState;
+	}
+
 	function get<K extends keyof VormaClientGlobal>(key: K) {
-		return dangerousGlobalThis[VORMA_SYMBOL][key] as VormaClientGlobal[K];
+		return getGlobalStateOrThrow()[key] as VormaClientGlobal[K];
 	}
 	function set<
 		K extends keyof VormaClientGlobal,
 		V extends VormaClientGlobal[K],
 	>(key: K, value: V) {
-		dangerousGlobalThis[VORMA_SYMBOL][key] = value;
+		getGlobalStateOrThrow()[key] = value;
 	}
 	return { get, set };
 }

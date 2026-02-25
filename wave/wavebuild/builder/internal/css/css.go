@@ -1,3 +1,7 @@
+// Package css implements the Wave CSS build and manifest generation pipeline.
+//
+// It isolates CSS-specific compilation and cache behavior so the main builder
+// can coordinate phases without embedding CSS engine details.
 package css
 
 import (

@@ -143,11 +143,11 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 	}
 
 	pathsSnapshot := app.Paths()
-	routePipelineSnapshot := captureRuntimeServingSnapshot(
-		runtimeServingSnapshotInput{
+	routePipelineSnapshot := routepipeline.BuildRuntimeSnapshotFromCore(
+		routepipeline.RuntimeSnapshotFromCoreInput{
 			Paths: toRuntimeCoreRoutePaths(pathsSnapshot),
 		},
-	).ToRoutePipelineSnapshot()
+	)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -348,7 +348,7 @@ func BenchmarkSSRInnerHTMLGeneration(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		out, err := app.getSSRInnerHTML(routeData)
+		out, err := buildSSRInnerHTMLFromAppAndRouteData(app, routeData)
 		if err != nil {
 			b.Fatalf("getSSRInnerHTML: %v", err)
 		}

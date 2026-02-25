@@ -1,3 +1,8 @@
+// Package vormagogen provides generated/discovered registration entrypoints for
+// build-time route discovery.
+//
+// Generated code calls these helpers to bind discovered handlers into the
+// runtime without duplicating generic registration glue in emitted sources.
 package vormagogen
 
 import (

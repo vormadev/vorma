@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavebuild/builder"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/eventpipeline"
@@ -1207,9 +1208,7 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
 	criticalEntryPath := filepath.Join(root, "styles", "critical.css")
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical: criticalEntryPath,
-	}
+	wavetest.SetCSSEntryFiles(cfg, criticalEntryPath, "")
 	cfg.Dist.Root = cfg.Core.DistDir
 
 	if err := os.MkdirAll(filepath.Dir(criticalEntryPath), 0o755); err != nil {
@@ -1591,22 +1590,11 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 	cfg.Core.ServerOnlyMode = false
 	cfg.Core.StaticAssetDirs.Public = filepath.Join(root, "frontend", "assets")
 	cfg.Core.StaticAssetDirs.Private = filepath.Join(root, "backend", "assets")
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical: filepath.Join(
-			root,
-			"frontend",
-			"src",
-			"styles",
-			"main.critical.css",
-		),
-		NonCritical: filepath.Join(
-			root,
-			"frontend",
-			"src",
-			"styles",
-			"main.css",
-		),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "frontend", "src", "styles", "main.critical.css"),
+		filepath.Join(root, "frontend", "src", "styles", "main.css"),
+	)
 
 	paths := siteStylePathMatrixForRunloopProcessTests{
 		CriticalCSSEntryPath: cfg.Core.CSSEntryFiles.Critical,

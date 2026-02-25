@@ -1,13 +1,13 @@
 package eventpipeline_test
 
 import (
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavebuild/builder"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/eventpipeline"
@@ -266,10 +266,7 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(
 	criticalCSSFilePath := filepath.Join(root, "styles", "critical.css")
 	normalCSSFilePath := filepath.Join(root, "styles", "normal.css")
 	sharedCSSFilePath := filepath.Join(root, "styles", "shared.css")
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical:    criticalCSSFilePath,
-		NonCritical: normalCSSFilePath,
-	}
+	wavetest.SetCSSEntryFiles(cfg, criticalCSSFilePath, normalCSSFilePath)
 	if makeDirectoryError := os.MkdirAll(filepath.Dir(criticalCSSFilePath), 0o755); makeDirectoryError != nil {
 		t.Fatalf("create css directory: %v", makeDirectoryError)
 	}
@@ -381,22 +378,11 @@ func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 	cfg.Core.ServerOnlyMode = false
 	cfg.Core.StaticAssetDirs.Public = filepath.Join(root, "frontend", "assets")
 	cfg.Core.StaticAssetDirs.Private = filepath.Join(root, "backend", "assets")
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical: filepath.Join(
-			root,
-			"frontend",
-			"src",
-			"styles",
-			"main.critical.css",
-		),
-		NonCritical: filepath.Join(
-			root,
-			"frontend",
-			"src",
-			"styles",
-			"main.css",
-		),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "frontend", "src", "styles", "main.critical.css"),
+		filepath.Join(root, "frontend", "src", "styles", "main.css"),
+	)
 	cfg.Watch.Include = []wave.WatchedFile{
 		{
 			Pattern:                            "backend/assets/markdown/**/*.md",
@@ -761,22 +747,11 @@ func TestClassifyWatcherEventsForProcessing_SiteStyleUnmanagedFrontendFilesDoNoW
 	root := t.TempDir()
 	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
 	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		Critical: filepath.Join(
-			root,
-			"frontend",
-			"src",
-			"styles",
-			"main.critical.css",
-		),
-		NonCritical: filepath.Join(
-			root,
-			"frontend",
-			"src",
-			"styles",
-			"main.css",
-		),
-	}
+	wavetest.SetCSSEntryFiles(
+		cfg,
+		filepath.Join(root, "frontend", "src", "styles", "main.critical.css"),
+		filepath.Join(root, "frontend", "src", "styles", "main.css"),
+	)
 
 	stylesDirectoryPath := filepath.Join(root, "frontend", "src", "styles")
 	if err := os.MkdirAll(stylesDirectoryPath, 0o755); err != nil {
@@ -878,25 +853,11 @@ func TestClassifyWatcherEventsForProcessing_SiteStyleUnmanagedFrontendFilesDoNoW
 }
 
 func newDiscardLoggerForEventClassificationTests() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return wavetest.NewDiscardLogger()
 }
 
 func newParsedConfigForEventClassificationTestsAtRoot(
 	root string,
 ) *wave.ParsedConfig {
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{
-			WatchRoot: root,
-		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-	return cfg
+	return wavetest.NewParsedConfigAtRoot(root)
 }

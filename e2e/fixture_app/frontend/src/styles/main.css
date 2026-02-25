@@ -1,0 +1,215 @@
+html,
+body {
+	margin: 0;
+	padding: 0;
+	min-height: 100%;
+	background:
+		radial-gradient(circle at 15% 10%, #ffdd99 0%, transparent 35%),
+		radial-gradient(circle at 85% 85%, #9be7ff 0%, transparent 38%),
+		linear-gradient(140deg, #07111f 0%, #13233c 60%, #0f1a2d 100%);
+	color: #f6f8ff;
+	font-family:
+		"Avenir Next", "Segoe UI", "Helvetica Neue", "Franklin Gothic Medium",
+		sans-serif;
+}
+
+a {
+	color: #8ce7ff;
+	text-decoration: none;
+	font-weight: 700;
+}
+
+#e2e-root-shell {
+	box-sizing: border-box;
+	width: min(1100px, 100%);
+	margin: 0 auto;
+	padding: 1.25rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.9rem;
+}
+
+#e2e-title {
+	margin: 0;
+	font-size: clamp(1.5rem, 4vw, 2.4rem);
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+
+#e2e-runtime-mode {
+	margin: 0;
+	display: inline-flex;
+	width: fit-content;
+	padding: 0.2rem 0.55rem;
+	border-radius: 999px;
+	background: rgba(13, 20, 35, 0.5);
+	border: 1px solid rgba(140, 231, 255, 0.5);
+	font-family: "Menlo", "Monaco", "Consolas", monospace;
+	text-transform: uppercase;
+	font-size: 0.82rem;
+	letter-spacing: 0.08em;
+}
+
+#e2e-runtime-adapter {
+	margin: 0;
+	display: inline-flex;
+	width: fit-content;
+	padding: 0.2rem 0.55rem;
+	border-radius: 999px;
+	background: rgba(13, 20, 35, 0.5);
+	border: 1px solid rgba(255, 222, 140, 0.5);
+	font-family: "Menlo", "Monaco", "Consolas", monospace;
+	text-transform: uppercase;
+	font-size: 0.82rem;
+	letter-spacing: 0.08em;
+}
+
+#e2e-runtime-status {
+	display: flex;
+	gap: 0.55rem;
+	flex-wrap: wrap;
+}
+
+#e2e-status-navigating,
+#e2e-status-submitting,
+#e2e-status-revalidating {
+	margin: 0;
+	padding: 0.2rem 0.45rem;
+	border-radius: 0.5rem;
+	border: 1px solid rgba(116, 255, 206, 0.4);
+	background: rgba(11, 28, 43, 0.65);
+	font-family: "Menlo", "Monaco", "Consolas", monospace;
+	font-size: 0.8rem;
+}
+
+#e2e-nav {
+	display: flex;
+	gap: 1rem;
+	flex-wrap: wrap;
+	padding: 0.75rem 0.95rem;
+	background: rgba(14, 23, 39, 0.7);
+	border: 1px solid rgba(135, 171, 255, 0.32);
+	border-radius: 0.8rem;
+}
+
+#e2e-route-outlet {
+	padding: 1rem;
+	background: rgba(5, 9, 19, 0.72);
+	border: 1px solid rgba(249, 245, 255, 0.2);
+	border-radius: 0.8rem;
+}
+
+#e2e-home-route,
+#e2e-user-route,
+#e2e-mutation-route,
+#e2e-slow-route,
+#e2e-navigation-race-route,
+#e2e-hmr-probe-route,
+#e2e-redirect-chain-end-route,
+#e2e-odd-shapes-route {
+	display: grid;
+	gap: 0.7rem;
+}
+
+#e2e-home-message {
+	margin: 0;
+	font-size: 1.1rem;
+	font-weight: 700;
+}
+
+#e2e-home-count,
+#e2e-user-id,
+#e2e-user-query,
+#e2e-user-mode,
+#e2e-slow-bucket,
+#e2e-slow-token,
+#e2e-slow-delay,
+#e2e-slow-sequence,
+#e2e-increment-result,
+#e2e-echo-result,
+#e2e-forced-failure-result,
+#e2e-slow-increment-race-result,
+#e2e-redirect-chain-hop,
+#e2e-redirect-chain-terminal,
+#e2e-odd-empty-words-len,
+#e2e-odd-number-matrix-shape,
+#e2e-odd-optional-note,
+#e2e-odd-nested-beta-len,
+#e2e-odd-metadata-source,
+#e2e-odd-mixed-negative,
+#e2e-odd-timeline-signature,
+#e2e-hmr-probe-token {
+	margin: 0;
+	padding: 0.35rem 0.55rem;
+	border-radius: 0.5rem;
+	background: rgba(124, 181, 255, 0.18);
+	border: 1px solid rgba(152, 232, 255, 0.35);
+	font-family: "Menlo", "Monaco", "Consolas", monospace;
+}
+
+button {
+	width: fit-content;
+	padding: 0.45rem 0.75rem;
+	border-radius: 0.45rem;
+	border: 1px solid #8ce7ff;
+	background: linear-gradient(135deg, #3e97ff, #00c6ff);
+	color: #021427;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+input {
+	max-width: 460px;
+	padding: 0.45rem 0.65rem;
+	border-radius: 0.45rem;
+	border: 1px solid rgba(157, 219, 255, 0.65);
+	background: rgba(9, 16, 30, 0.85);
+	color: #f5f8ff;
+}
+
+#e2e-stress-lab {
+	display: grid;
+	gap: 0.6rem;
+	padding: 0.8rem;
+	border-radius: 0.65rem;
+	background: rgba(0, 8, 21, 0.62);
+	border: 1px solid rgba(116, 255, 206, 0.35);
+}
+
+#e2e-stress-summary,
+#e2e-stress-total-count,
+#e2e-stress-failure-count {
+	margin: 0;
+	font-family: "Menlo", "Monaco", "Consolas", monospace;
+}
+
+#e2e-stress-results-table {
+	border-collapse: collapse;
+	width: 100%;
+}
+
+#e2e-stress-results-table th,
+#e2e-stress-results-table td {
+	padding: 0.4rem 0.5rem;
+	border: 1px solid rgba(180, 220, 255, 0.22);
+	font-size: 0.92rem;
+}
+
+#e2e-stress-results-table tbody tr:nth-child(odd) {
+	background: rgba(143, 197, 255, 0.08);
+}
+
+@media (max-width: 800px) {
+	#e2e-root-shell {
+		padding: 0.9rem;
+	}
+
+	#e2e-route-outlet {
+		padding: 0.8rem;
+	}
+
+	button,
+	input {
+		width: 100%;
+	}
+}

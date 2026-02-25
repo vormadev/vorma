@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/vormabuild/internal/testkit"
 )
 
 func TestParseBuildCommandOptions(t *testing.T) {
@@ -241,11 +242,11 @@ func TestRunBuildCommand(t *testing.T) {
 }
 
 func TestDefaultBuildCommandHooks_RunBuildHookUsesBuildInner(t *testing.T) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 
-	t.Chdir(fixture.rootDir)
-	writeBootstrapStyleRoutesFixtureFiles(t)
+	t.Chdir(fixture.RootDir)
+	testkit.WriteBootstrapStyleRoutesFixtureFiles(t)
 
 	hooks := defaultBuildCommandHooks()
 	if err := hooks.runBuildHook(app, true); err != nil {

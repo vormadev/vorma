@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/eventpipeline"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/hooks"
@@ -262,20 +263,7 @@ func newWatcherForHookPlanTests(t *testing.T) *watch.Watcher {
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{
-			WatchRoot: root,
-		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := wavetest.NewParsedConfigAtRoot(root)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,

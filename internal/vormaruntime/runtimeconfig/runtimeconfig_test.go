@@ -1,6 +1,9 @@
 package runtimeconfig
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestResolveDefaultsAndTrimmedValues(t *testing.T) {
 	if got := ResolveDevReloadRoutesEndpointPath("   "); got != DefaultDevReloadRoutesEndpointPath {
@@ -213,6 +216,56 @@ func TestNormalizeAndValidateMutableConfig_ReturnsValidationErrors(
 			)
 		}
 	})
+
+	t.Run(
+		"duplicate client route definition patterns rejected",
+		func(t *testing.T) {
+			config := validMutableValidationConfig()
+			*config.ClientRouteDefinitionPatterns = []string{
+				"frontend/src/routes/core.vorma.routes.ts",
+				"frontend/src/routes/core.vorma.routes.ts",
+			}
+
+			err := NormalizeAndValidateMutableConfig(config)
+			if err == nil {
+				t.Fatal(
+					"expected NormalizeAndValidateMutableConfig to reject duplicate client route definition patterns",
+				)
+			}
+			if !strings.Contains(err.Error(), "duplicates an earlier pattern") {
+				t.Fatalf(
+					"error = %q, expected duplicate-pattern validation message",
+					err,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"client route definition patterns with surrounding whitespace rejected",
+		func(t *testing.T) {
+			config := validMutableValidationConfig()
+			*config.ClientRouteDefinitionPatterns = []string{
+				" frontend/src/routes/core.vorma.routes.ts ",
+			}
+
+			err := NormalizeAndValidateMutableConfig(config)
+			if err == nil {
+				t.Fatal(
+					"expected NormalizeAndValidateMutableConfig to reject client route definition patterns with surrounding whitespace",
+				)
+			}
+			if !strings.Contains(
+				err.Error(),
+				"must not contain surrounding whitespace",
+			) {
+				t.Fatalf(
+					"error = %q, expected surrounding-whitespace validation message",
+					err,
+				)
+			}
+		},
+	)
 }
 
 func validMutableValidationConfig() MutableValidationConfig {

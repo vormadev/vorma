@@ -2,71 +2,33 @@ package devserver
 
 import (
 	"encoding/json"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavebuild/builder"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/restartengine"
 	"github.com/vormadev/vorma/wave/wavedev/internal/watch"
 )
 
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
-
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 func newDiscardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return wavetest.NewDiscardLogger()
 }
 
 func newParsedConfigForToolingTestsAtRoot(root string) *wave.ParsedConfig {
-	cfg := &wave.ParsedConfig{
-		Core: &wave.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Public:  filepath.Join(root, "static", "public"),
-				Private: filepath.Join(root, "static", "private"),
-			},
-		},
-		Watch: &wave.WatchConfig{
-			WatchRoot: root,
-		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-	return cfg
+	return wavetest.NewParsedConfigAtRoot(root)
 }
 
 func ensureViteConfigForToolingTests(
 	t *testing.T,
 	cfg *wave.ParsedConfig,
 ) {
-	t.Helper()
-	if cfg == nil {
-		t.Fatal("expected non-nil config")
-	}
-	if cfg.Vite != nil {
-		return
-	}
-
-	cfgValue := reflect.ValueOf(cfg).Elem()
-	viteField := cfgValue.FieldByName("Vite")
-	if !viteField.IsValid() || !viteField.CanSet() || !viteField.IsNil() {
-		t.Fatal("expected settable nil Vite field")
-	}
-	viteField.Set(reflect.New(viteField.Type().Elem()))
+	wavetest.EnsureViteConfig(t, cfg)
 }
 
 type configEventPathShapeCase struct {

@@ -1,3 +1,7 @@
+// Package dedup performs deterministic watcher event and path deduplication.
+//
+// It keeps duplicate suppression policy explicit and testable so downstream
+// event orchestration does not need ad hoc dedupe logic.
 package dedup
 
 import (

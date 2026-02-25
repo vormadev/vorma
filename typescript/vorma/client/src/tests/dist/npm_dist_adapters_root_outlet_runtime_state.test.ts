@@ -6,6 +6,7 @@ import { createComponent, createEffect } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
+	DIST_TEST_VORMA_APP_CONFIG,
 	installDistTestVormaGlobal,
 	type DistTestVormaInternal,
 } from "./dist_test_harness.ts";
@@ -766,8 +767,12 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 		let rootRenderCount = 0;
 		let dataRenderCount = 0;
-		const useRouterData = adapter.makeTypedUseRouterData();
-		const useLoaderData = adapter.makeTypedUseLoaderData();
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 
 		const StableRootComp = () => {
 			rootRenderCount += 1;
@@ -865,8 +870,12 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 		let rootRenderCount = 0;
 		let dataRenderCount = 0;
-		const useRouterData = adapter.makeTypedUseRouterData();
-		const useLoaderData = adapter.makeTypedUseLoaderData();
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 
 		const StableRootComp = () => {
 			rootRenderCount += 1;
@@ -953,8 +962,12 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 		let rootRunCount = 0;
 		let dataRunCount = 0;
-		const useRouterData = adapter.makeTypedUseRouterData();
-		const useLoaderData = adapter.makeTypedUseLoaderData();
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 
 		const StableRootComp = () => {
 			rootRunCount += 1;
@@ -1046,10 +1059,16 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 		window.history.replaceState(null, "", "/");
 
-		const useRouterData = adapter.makeTypedUseRouterData();
-		const useLoaderData = adapter.makeTypedUseLoaderData();
-		const useClientLoaderData = adapter.makeTypedAddClientLoader()({
-			pattern: "/probe",
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/",
 			clientLoader: async () => "unused",
 		});
 
@@ -1060,7 +1079,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			const loaderData = useLoaderData({ idx: 0 }) as
 				| { value?: string }
 				| undefined;
-			const clientLoaderData = useClientLoaderData({ idx: 0 }) as
+			const clientLoaderData = useClientLoaderData() as
 				| string
 				| undefined;
 			return React.createElement(
@@ -1115,7 +1134,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 				dispatchRouteChange({ x: 0, y: 0 });
 			});
 			expect(container.querySelector("[data-probe]")?.textContent).toBe(
-				"b|cb|/next",
+				"b||/next",
 			);
 			expect(dataRenderCount).toBeGreaterThan(rendersAfterInitial);
 		} finally {
@@ -1139,10 +1158,16 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		document.body.appendChild(container);
 		window.history.replaceState(null, "", "/");
 
-		const useRouterData = adapter.makeTypedUseRouterData();
-		const useLoaderData = adapter.makeTypedUseLoaderData();
-		const useClientLoaderData = adapter.makeTypedAddClientLoader()({
-			pattern: "/probe",
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/",
 			clientLoader: async () => "unused",
 		});
 
@@ -1153,7 +1178,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			const loaderData = useLoaderData({ idx: 0 }) as
 				| { value?: string }
 				| undefined;
-			const clientLoaderData = useClientLoaderData({ idx: 0 }) as
+			const clientLoaderData = useClientLoaderData() as
 				| string
 				| undefined;
 			return h(
@@ -1207,7 +1232,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 				dispatchRouteChange({ x: 0, y: 0 });
 			});
 			expect(container.querySelector("[data-probe]")?.textContent).toBe(
-				"b|cb|/next",
+				"b||/next",
 			);
 			expect(dataRenderCount).toBeGreaterThan(rendersAfterInitial);
 		} finally {
@@ -1227,10 +1252,16 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		document.body.appendChild(container);
 		window.history.replaceState(null, "", "/");
 
-		const useRouterData = adapter.makeTypedUseRouterData();
-		const useLoaderData = adapter.makeTypedUseLoaderData();
-		const useClientLoaderData = adapter.makeTypedAddClientLoader()({
-			pattern: "/probe",
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/",
 			clientLoader: async () => "unused",
 		});
 
@@ -1238,7 +1269,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const DataProbe = () => {
 			const routerData = useRouterData();
 			const loaderData = useLoaderData({ idx: 0 });
-			const clientLoaderData = useClientLoaderData({ idx: 0 });
+			const clientLoaderData = useClientLoaderData();
 			const node = document.createElement("div");
 			node.setAttribute("data-probe", "true");
 			createEffect(() => {
@@ -1295,7 +1326,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			await waitForCondition(() => {
 				expect(
 					container.querySelector("[data-probe]")?.textContent,
-				).toBe("b|cb|/next");
+				).toBe("b||/next");
 			});
 			expect(dataRenderCount).toBeGreaterThan(rendersAfterInitial);
 		} finally {
@@ -1318,8 +1349,12 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData();
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
 			pattern: "/probe",
 			clientLoader: async () => "unused",
 		});
@@ -1415,8 +1450,12 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData();
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
 			pattern: "/probe",
 			clientLoader: async () => "unused",
 		});
@@ -1507,8 +1546,12 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData();
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
 			pattern: "/probe",
 			clientLoader: async () => "unused",
 		});
@@ -1602,7 +1645,9 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData();
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 		const PatternLoaderProbe = () => {
 			const loaderData = usePatternLoaderData("/probe") as
 				| { value?: string }
@@ -1691,7 +1736,9 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData();
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 		const PatternLoaderProbe = () => {
 			const loaderData = usePatternLoaderData("/probe") as
 				| { value?: string }
@@ -1775,7 +1822,9 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData();
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
 		const PatternLoaderProbe = () => {
 			const loaderData = usePatternLoaderData("/probe");
 			const node = document.createElement("div");
@@ -1861,7 +1910,9 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
 			pattern: "/probe",
 			clientLoader: async () => "unused",
 		});
@@ -1953,7 +2004,9 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
 			pattern: "/probe",
 			clientLoader: async () => "unused",
 		});
@@ -2040,7 +2093,9 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
 			pattern: "/probe",
 			clientLoader: async () => "unused",
 		});
@@ -2115,7 +2170,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		}
 	});
 
-	it("react pattern client-loader selector honors explicit route-props idx override", async () => {
+	it("react useClientLoaderData(routeProps) throws when route-props idx does not match the registered pattern", async () => {
 		const globals = installDistTestVormaGlobal();
 		vi.resetModules();
 		const adapter = await import("vorma/react");
@@ -2127,19 +2182,51 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
 			pattern: "/probe",
 			clientLoader: async () => "unused",
 		});
+
+		class RoutePropsContractErrorBoundary extends React.Component<
+			{
+				children?: React.ReactNode;
+			},
+			{
+				errorMessage: string | null;
+			}
+		> {
+			constructor(props: { children?: React.ReactNode }) {
+				super(props);
+				this.state = {
+					errorMessage: null,
+				};
+			}
+
+			static getDerivedStateFromError(error: Error) {
+				return {
+					errorMessage: error.message,
+				};
+			}
+
+			render() {
+				if (this.state.errorMessage) {
+					return React.createElement(
+						"div",
+						{ "data-route-props-contract-error": true },
+						this.state.errorMessage,
+					);
+				}
+				return this.props.children;
+			}
+		}
+
 		const PatternClientProbe = () => {
-			const clientData = usePatternClientLoaderData({ idx: 1 } as any) as
-				| string
-				| undefined;
-			return React.createElement(
-				"div",
-				{ "data-pattern-client-props-override-probe": true },
-				clientData ?? "none",
-			);
+			usePatternClientLoaderData({ idx: 1 } as any);
+			return React.createElement("div", {
+				"data-pattern-client-props-contract-probe": true,
+			});
 		};
 
 		applyRuntimeState(globals, {
@@ -2158,203 +2245,35 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			await act(async () => {
 				root.render(
 					React.createElement(
-						React.Fragment,
+						RoutePropsContractErrorBoundary,
 						{},
-						React.createElement(adapter.VormaRootOutlet as any, {
-							idx: 0,
-						}),
-						React.createElement(PatternClientProbe),
+						React.createElement(
+							React.Fragment,
+							{},
+							React.createElement(
+								adapter.VormaRootOutlet as any,
+								{
+									idx: 0,
+								},
+							),
+							React.createElement(PatternClientProbe),
+						),
 					),
 				);
 			});
-			expect(
-				container.querySelector(
-					"[data-pattern-client-props-override-probe]",
-				)?.textContent,
-			).toBe("other-a");
 
-			applyRuntimeState(globals, {
-				activeComponents: [
-					makeReactOutlet("root"),
-					makeReactOutlet("child"),
-				],
-				importURLs: ["/root.js", "/child.js"],
-				exportKeys: ["default", "default"],
-				loadersData: [{}, {}],
-				clientLoadersData: ["probe-b", "other-b"],
-				matchedPatterns: ["/probe", "/other"],
-			});
-			await act(async () => {
-				dispatchRouteChange({ x: 0, y: 0 });
-			});
-			expect(
-				container.querySelector(
-					"[data-pattern-client-props-override-probe]",
-				)?.textContent,
-			).toBe("other-b");
+			const errorText = container.querySelector(
+				"[data-route-props-contract-error]",
+			)?.textContent;
+			expect(errorText).toContain(
+				'useClientLoaderData(routeProps) contract violated for pattern "/probe"',
+			);
 		} finally {
 			await act(async () => {
 				root.unmount();
 			});
 			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
 				originalActEnvironment;
-			container.remove();
-			restore();
-		}
-	});
-
-	it("preact pattern client-loader selector honors explicit route-props idx override", async () => {
-		const globals = installDistTestVormaGlobal();
-		vi.resetModules();
-		const adapter = await import("vorma/preact");
-		const { restore } = installImmediateRAFAndScrollSpy();
-		const container = document.createElement("div");
-		document.body.appendChild(container);
-
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
-			pattern: "/probe",
-			clientLoader: async () => "unused",
-		});
-		const PatternClientProbe = () => {
-			const clientData = usePatternClientLoaderData({ idx: 1 } as any) as
-				| string
-				| undefined;
-			return h(
-				"div",
-				{ "data-pattern-client-props-override-probe": true },
-				clientData ?? "none",
-			);
-		};
-
-		applyRuntimeState(globals, {
-			activeComponents: [
-				makePreactOutlet("root"),
-				makePreactOutlet("child"),
-			],
-			importURLs: ["/root.js", "/child.js"],
-			exportKeys: ["default", "default"],
-			loadersData: [{}, {}],
-			clientLoadersData: ["probe-a", "other-a"],
-			matchedPatterns: ["/probe", "/other"],
-		});
-
-		try {
-			await actPreact(async () => {
-				renderPreact(
-					h(
-						"div",
-						{},
-						h(adapter.VormaRootOutlet as any, { idx: 0 }),
-						h(PatternClientProbe, {}),
-					),
-					container,
-				);
-			});
-			expect(
-				container.querySelector(
-					"[data-pattern-client-props-override-probe]",
-				)?.textContent,
-			).toBe("other-a");
-
-			applyRuntimeState(globals, {
-				activeComponents: [
-					makePreactOutlet("root"),
-					makePreactOutlet("child"),
-				],
-				importURLs: ["/root.js", "/child.js"],
-				exportKeys: ["default", "default"],
-				loadersData: [{}, {}],
-				clientLoadersData: ["probe-b", "other-b"],
-				matchedPatterns: ["/probe", "/other"],
-			});
-			await actPreact(async () => {
-				dispatchRouteChange({ x: 0, y: 0 });
-			});
-			expect(
-				container.querySelector(
-					"[data-pattern-client-props-override-probe]",
-				)?.textContent,
-			).toBe("other-b");
-		} finally {
-			renderPreact(null, container);
-			container.remove();
-			restore();
-		}
-	});
-
-	it("solid pattern client-loader selector honors explicit route-props idx override", async () => {
-		const globals = installDistTestVormaGlobal();
-		vi.resetModules();
-		const adapter = await import("vorma/solid");
-		const { restore } = installImmediateRAFAndScrollSpy();
-		const container = document.createElement("div");
-		document.body.appendChild(container);
-
-		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader()({
-			pattern: "/probe",
-			clientLoader: async () => "unused",
-		});
-		const PatternClientProbe = () => {
-			const clientData = usePatternClientLoaderData({ idx: 1 } as any);
-			const node = document.createElement("div");
-			node.setAttribute(
-				"data-pattern-client-props-override-probe",
-				"true",
-			);
-			createEffect(() => {
-				const nextClientData = clientData() as string | undefined;
-				node.textContent = nextClientData ?? "none";
-			});
-			return node;
-		};
-
-		applyRuntimeState(globals, {
-			activeComponents: [
-				makeSolidOutlet("root"),
-				makeSolidOutlet("child"),
-			],
-			importURLs: ["/root.js", "/child.js"],
-			exportKeys: ["default", "default"],
-			loadersData: [{}, {}],
-			clientLoadersData: ["probe-a", "other-a"],
-			matchedPatterns: ["/probe", "/other"],
-		});
-
-		const dispose = renderSolid(() => {
-			return [
-				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
-				PatternClientProbe(),
-			];
-		}, container);
-
-		try {
-			expect(
-				container.querySelector(
-					"[data-pattern-client-props-override-probe]",
-				)?.textContent,
-			).toBe("other-a");
-
-			applyRuntimeState(globals, {
-				activeComponents: [
-					makeSolidOutlet("root"),
-					makeSolidOutlet("child"),
-				],
-				importURLs: ["/root.js", "/child.js"],
-				exportKeys: ["default", "default"],
-				loadersData: [{}, {}],
-				clientLoadersData: ["probe-b", "other-b"],
-				matchedPatterns: ["/probe", "/other"],
-			});
-			dispatchRouteChange({ x: 0, y: 0 });
-			await waitForCondition(() => {
-				expect(
-					container.querySelector(
-						"[data-pattern-client-props-override-probe]",
-					)?.textContent,
-				).toBe("other-b");
-			});
-		} finally {
-			dispose();
 			container.remove();
 			restore();
 		}

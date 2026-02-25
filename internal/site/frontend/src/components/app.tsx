@@ -3,7 +3,7 @@ import { setupGlobalLoadingIndicator } from "vorma/client";
 import { setTheme, THEMES } from "vorma/kit/theme";
 import { VormaRootOutlet } from "vorma/solid";
 import "../styles/tailwind.css";
-import { Link, theme, useRouterData } from "../vorma.app.tsx";
+import { Link, theme, useRouterData } from "../vorma.bindings.ts";
 
 setupGlobalLoadingIndicator({ start, stop: done, isRunning: isStarted });
 

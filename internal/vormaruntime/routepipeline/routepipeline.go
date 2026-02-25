@@ -1,14 +1,20 @@
+// Package routepipeline runs Vorma's per-request routing and data-task pipeline.
+//
+// Keeping this orchestration separate from runtime bootstrap code allows the
+// request execution contract to be tested without reinitializing full app state.
 package routepipeline
 
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimecore"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/mux"
@@ -182,6 +188,69 @@ type RuntimeSnapshot struct {
 	RouteManifestFile        string
 	RouteDataSnapshotVersion uint64
 	RouteDataCache           *sync.Map
+}
+
+// RuntimeSnapshotFromCoreInput captures runtimecore-backed mutable runtime
+// state used to build one routepipeline runtime snapshot.
+type RuntimeSnapshotFromCoreInput struct {
+	BuildID                  string
+	IsDev                    bool
+	Paths                    map[string]*runtimecore.RoutePath
+	ClientEntryDeps          []string
+	ClientEntryOut           string
+	DepToCSSBundleMap        map[string][]string
+	RootTemplate             *template.Template
+	RouteManifestFile        string
+	RouteDataSnapshotVersion uint64
+	RouteDataCache           *sync.Map
+}
+
+// BuildRuntimeSnapshotFromCore converts runtimecore-backed mutable state to the
+// routepipeline runtime snapshot shape.
+func BuildRuntimeSnapshotFromCore(
+	input RuntimeSnapshotFromCoreInput,
+) RuntimeSnapshot {
+	return RuntimeSnapshot{
+		BuildID:           input.BuildID,
+		IsDev:             input.IsDev,
+		Paths:             convertRuntimeCorePathsToPathData(input.Paths),
+		ClientEntryDeps:   input.ClientEntryDeps,
+		ClientEntryOut:    input.ClientEntryOut,
+		DepToCSSBundleMap: input.DepToCSSBundleMap,
+		HTMLRenderSnapshot: rendering.LoadersHTMLRenderSnapshot{
+			IsDevMode:      input.IsDev,
+			ClientEntryOut: input.ClientEntryOut,
+			RootTemplate:   input.RootTemplate,
+		},
+		RouteManifestFile:        input.RouteManifestFile,
+		RouteDataSnapshotVersion: input.RouteDataSnapshotVersion,
+		RouteDataCache:           input.RouteDataCache,
+	}
+}
+
+func convertRuntimeCorePathsToPathData(
+	paths map[string]*runtimecore.RoutePath,
+) map[string]*PathData {
+	if paths == nil {
+		return nil
+	}
+
+	out := make(map[string]*PathData, len(paths))
+	for pattern, pathValue := range paths {
+		if pathValue == nil {
+			out[pattern] = nil
+			continue
+		}
+		out[pattern] = &PathData{
+			OriginalPattern: pathValue.OriginalPattern,
+			SrcPath:         pathValue.SrcPath,
+			OutPath:         pathValue.OutPath,
+			ExportKey:       pathValue.ExportKey,
+			ErrorExportKey:  pathValue.ErrorExportKey,
+			Deps:            pathValue.Deps,
+		}
+	}
+	return out
 }
 
 // RouteDataExecutionInputs are the prepared inputs for route-data planning.

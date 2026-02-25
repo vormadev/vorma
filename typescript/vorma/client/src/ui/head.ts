@@ -1,5 +1,5 @@
-import { panic } from "../platform/safety.ts";
 import type { HeadEl } from "../app/context.ts";
+import { panic } from "../platform/safety.ts";
 
 function findNearestManagedSectionBoundaryComments(type: "meta" | "rest"): {
 	startComment: Comment | null;
@@ -252,7 +252,9 @@ export function updateHeadEls(type: "meta" | "rest", blocks: Array<HeadEl>) {
 		endComment,
 	});
 	if (!parent || !startComment || !endComment) {
-		return;
+		panic(
+			`Managed head section markers for '${type}' are missing or invalid.`,
+		);
 	}
 
 	const currentNodes: Array<Node> = [];

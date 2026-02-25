@@ -16,16 +16,6 @@ import (
 	"github.com/vormadev/vorma/wave/wavedev/internal/watch/dedup"
 )
 
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
-
-type cssEntryFilesForTests = struct {
-	Critical    string `json:"Critical,omitempty"`
-	NonCritical string `json:"NonCritical,omitempty"`
-}
-
 func isConfigFileForEventPipelineTests(
 	cfg *wave.ParsedConfig,
 	path string,

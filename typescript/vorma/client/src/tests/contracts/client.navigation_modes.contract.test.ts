@@ -13,6 +13,18 @@ import {
 setupContractTestSuite();
 
 describe("client navigation mode contracts", () => {
+	it("throws and avoids fetch when vormaNavigate target is cross-origin", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi.spyOn(window, "fetch");
+
+		await expect(
+			api.vormaNavigate("https://external.example/path"),
+		).rejects.toThrow(
+			"vormaNavigate(...) only supports same-origin targets.",
+		);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
 	it("fetches route data for user navigation with vorma_json marker", async () => {
 		const api = await loadClientAPI();
 		const fetchSpy = vi
@@ -29,7 +41,7 @@ describe("client navigation mode contracts", () => {
 
 	it("uses browser history flow on POP updates", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
 			.mockResolvedValue(createRouteDataResponse());
@@ -59,7 +71,7 @@ describe("client navigation mode contracts", () => {
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
 
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 
@@ -96,6 +108,70 @@ describe("client navigation mode contracts", () => {
 		expect(secondFetchURL.href).toContain("/redirected?vorma_json=1");
 		expect(window.location.pathname).toBe("/redirected");
 		expect(document.title).toBe("Redirected Page");
+	});
+
+	it("follows redirect headers even when navigation response status is non-OK", async () => {
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{
+						status: 409,
+						headers: {
+							"X-Client-Redirect": "/redirected-non-ok",
+						},
+					},
+				),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					title: { dangerousInnerHTML: "Redirected Non-OK Page" },
+				}),
+			);
+
+		await api.vormaNavigate("/original-non-ok");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		const firstFetchURL = fetchSpy.mock.calls[0]?.[0] as URL;
+		const secondFetchURL = fetchSpy.mock.calls[1]?.[0] as URL;
+		expect(firstFetchURL.href).toContain("/original-non-ok?vorma_json=1");
+		expect(secondFetchURL.href).toContain(
+			"/redirected-non-ok?vorma_json=1",
+		);
+		expect(window.location.pathname).toBe("/redirected-non-ok");
+		expect(document.title).toBe("Redirected Non-OK Page");
+	});
+
+	it("resolves relative X-Client-Redirect targets against the redirecting request URL path", async () => {
+		window.history.replaceState({}, "", "/current-parent/");
+		const api = await loadClientAPI();
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{ headers: { "X-Client-Redirect": "child-redirect" } },
+				),
+			)
+			.mockResolvedValueOnce(
+				createRouteDataResponse({
+					title: { dangerousInnerHTML: "Relative Redirected Page" },
+				}),
+			);
+
+		await api.vormaNavigate("/server/base/start");
+		await vi.runAllTimersAsync();
+
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		const secondFetchURL = fetchSpy.mock.calls[1]?.[0] as URL;
+		expect(secondFetchURL.href).toContain(
+			"/server/base/child-redirect?vorma_json=1",
+		);
+		expect(window.location.pathname).toBe("/server/base/child-redirect");
+		expect(document.title).toBe("Relative Redirected Page");
 	});
 
 	it("does not re-follow X-Client-Redirect targets that are same-document current locations", async () => {
@@ -184,6 +260,38 @@ describe("client navigation mode contracts", () => {
 				isSubmitting: false,
 				isRevalidating: false,
 			});
+		} finally {
+			locationHrefStub.restore();
+		}
+	});
+
+	it("resolves relative X-Vorma-Reload targets against the redirecting request URL path", async () => {
+		window.history.replaceState({}, "", "/current-parent/");
+		const api = await loadClientAPI();
+		const locationHrefStub = stubWindowLocationHref();
+
+		try {
+			const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValueOnce(
+				createRouteDataResponse(
+					{},
+					{
+						headers: {
+							"X-Vorma-Reload": "child-reload",
+							"X-Vorma-Build-Id": "relative-reload-build-1",
+						},
+					},
+				),
+			);
+
+			await api.vormaNavigate("/server/base/start");
+			await vi.runAllTimersAsync();
+
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			const redirectedURL = new URL(locationHrefStub.getHref());
+			expect(redirectedURL.pathname).toBe("/server/base/child-reload");
+			expect(redirectedURL.searchParams.get("vorma_reload")).toBe(
+				"relative-reload-build-1",
+			);
 		} finally {
 			locationHrefStub.restore();
 		}
@@ -311,7 +419,7 @@ describe("client navigation mode contracts", () => {
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
 
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const replaceSpy = vi.spyOn(history, "replace");
 		const pushSpy = vi.spyOn(history, "push");
 
@@ -350,7 +458,7 @@ describe("client navigation mode contracts", () => {
 	it("does not fetch on programmatic same-document hash-only navigation", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/hash-no-fetch");
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
 			.mockResolvedValue(createRouteDataResponse());
@@ -379,7 +487,7 @@ describe("client navigation mode contracts", () => {
 	it("treats programmatic same-document no-op targets as no-op without fetch", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/hash-noop#~");
-		const history = api.getHistoryInstance();
+		const history = api.getUnsafeHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 		const fetchSpy = vi
@@ -445,7 +553,7 @@ describe("client navigation mode contracts", () => {
 
 	it("does not let a stale browser-history POP completion override a newer user navigation", async () => {
 		const api = await loadClientAPI();
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const stalePOPFetch = createDeferred<Response>();
 		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
 		const removeBuildIDListener = api.addBuildIDListener((event) => {

@@ -21,6 +21,7 @@ import (
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/js"
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 )
 
 type routeCall struct {
@@ -802,40 +803,9 @@ func (executor routeParsingExecutor) ensureRouteModuleExists(
 func NormalizeRouteDefinitionPatternsInInputOrder(
 	routeDefinitionPatterns []string,
 ) ([]string, error) {
-	normalizedPatterns := make([]string, 0, len(routeDefinitionPatterns))
-	seenPatterns := make(map[string]struct{}, len(routeDefinitionPatterns))
-	for index, routeDefinitionPattern := range routeDefinitionPatterns {
-		trimmedRouteDefinitionPattern := strings.TrimSpace(
-			routeDefinitionPattern,
-		)
-		if trimmedRouteDefinitionPattern == "" {
-			return nil, fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d] cannot be empty or whitespace",
-				index,
-			)
-		}
-		if trimmedRouteDefinitionPattern != routeDefinitionPattern {
-			return nil, fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d]=%q must not contain surrounding whitespace",
-				index,
-				routeDefinitionPattern,
-			)
-		}
-		if _, hasSeenPattern := seenPatterns[trimmedRouteDefinitionPattern]; hasSeenPattern {
-			return nil, fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d]=%q duplicates an earlier pattern",
-				index,
-				trimmedRouteDefinitionPattern,
-			)
-		}
-
-		seenPatterns[trimmedRouteDefinitionPattern] = struct{}{}
-		normalizedPatterns = append(
-			normalizedPatterns,
-			trimmedRouteDefinitionPattern,
-		)
-	}
-	return normalizedPatterns, nil
+	return runtimeconfig.NormalizeAndValidateClientRouteDefinitionPatternsInInputOrder(
+		routeDefinitionPatterns,
+	)
 }
 
 type routeParsingMetadata struct {

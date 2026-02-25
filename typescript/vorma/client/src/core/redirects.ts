@@ -52,13 +52,17 @@ type RedirectRequestFlowResult =
 			response: Response;
 	  };
 
-function resolveHTTPRedirectTarget(props: { href: string; source: string }): {
+function resolveHTTPRedirectTarget(props: {
+	href: string;
+	source: string;
+	baseHref?: string;
+}): {
 	hrefDetails: Extract<HrefDetails, { isHTTP: true }>;
 } {
-	const { href, source } = props;
+	const { href, source, baseHref } = props;
 	let absoluteHref: string;
 	try {
-		absoluteHref = resolveAbsoluteHref({ href: href });
+		absoluteHref = resolveAbsoluteHref({ href, baseHref });
 	} catch {
 		throw new Error(
 			`${source} has invalid redirect target ${JSON.stringify(href)}`,
@@ -102,10 +106,12 @@ function buildShouldRedirectFromHref(props: {
 	latestBuildID: string;
 	shouldRedirectStrategy?: ShouldRedirectData["shouldRedirectStrategy"];
 	normalizeToAbsoluteHref?: boolean;
+	baseHref?: string;
 	source: string;
 }): ShouldRedirectData {
 	const resolvedTarget = resolveHTTPRedirectTarget({
 		href: props.href,
+		baseHref: props.baseHref,
 		source: props.source,
 	});
 
@@ -153,6 +159,7 @@ function parseHeaderRedirect(props: {
 	response: Response;
 	headerName: "X-Vorma-Reload" | "X-Client-Redirect";
 	latestBuildID: string;
+	baseHref: string;
 	shouldRedirectStrategy?: ShouldRedirectData["shouldRedirectStrategy"];
 	normalizeToAbsoluteHref?: boolean;
 	shortCircuitCurrentLocation?: boolean;
@@ -165,6 +172,7 @@ function parseHeaderRedirect(props: {
 	const shouldRedirectData = buildShouldRedirectFromHref({
 		href: headerValue,
 		latestBuildID: props.latestBuildID,
+		baseHref: props.baseHref,
 		shouldRedirectStrategy: props.shouldRedirectStrategy,
 		normalizeToAbsoluteHref: props.normalizeToAbsoluteHref,
 		source: props.headerName,
@@ -290,10 +298,11 @@ function effectuateHardRedirect(
 		return null;
 	}
 
+	const absoluteTargetHref = redirectData.hrefDetails.absoluteURL;
 	if (redirectData.hrefDetails.isExternal) {
-		window.location.href = redirectData.href;
+		window.location.href = absoluteTargetHref;
 	} else {
-		const url = new URL(redirectData.href, window.location.href);
+		const url = new URL(absoluteTargetHref);
 		url.searchParams.set(
 			VORMA_HARD_RELOAD_QUERY_PARAM,
 			redirectData.latestBuildID,
@@ -382,11 +391,16 @@ export async function handleRedirects(props: {
 	}
 
 	const latestBuildID = getBuildIDFromResponse(requestFlow.response);
+	const redirectBaseHref =
+		requestFlow.response.url.trim().length > 0
+			? requestFlow.response.url
+			: props.url.href;
 	const redirectData =
 		parseHeaderRedirect({
 			response: requestFlow.response,
 			headerName: "X-Vorma-Reload",
 			latestBuildID,
+			baseHref: redirectBaseHref,
 			shouldRedirectStrategy: "hard",
 		}) ??
 		parseBrowserRedirect(requestFlow.response, latestBuildID) ??
@@ -394,6 +408,7 @@ export async function handleRedirects(props: {
 			response: requestFlow.response,
 			headerName: "X-Client-Redirect",
 			latestBuildID,
+			baseHref: redirectBaseHref,
 			normalizeToAbsoluteHref: true,
 			shortCircuitCurrentLocation: true,
 		});

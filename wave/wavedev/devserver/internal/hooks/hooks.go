@@ -1,3 +1,7 @@
+// Package hooks normalizes and executes configured dev-server on-change hooks.
+//
+// The package isolates hook matching and execution policy so watcher/runloop
+// code can remain focused on orchestration instead of hook internals.
 package hooks
 
 import (

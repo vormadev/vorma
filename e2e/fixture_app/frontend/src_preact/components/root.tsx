@@ -1,0 +1,72 @@
+import { useEffect, useState } from "preact/hooks";
+import { addStatusListener, getStatus } from "vorma/client";
+import { Link, uiAdapterName, useLoaderData } from "../vorma.bindings.ts";
+import type { RouteProps } from "../vorma.gen/index.ts";
+
+export function Root(props: RouteProps<"/">) {
+	const data = useLoaderData(props);
+	const [status, setStatus] = useState(getStatus());
+
+	useEffect(() => {
+		const removeStatusListener = addStatusListener((event) => {
+			setStatus(event.detail);
+		});
+		return removeStatusListener;
+	}, []);
+
+	return (
+		<div id="e2e-root-shell">
+			<h1 id="e2e-title">Wave/Vorma Framework E2E Stress Harness</h1>
+			<p id="e2e-runtime-mode">{data.mode}</p>
+			<p id="e2e-runtime-adapter">{uiAdapterName}</p>
+			<div id="e2e-runtime-status">
+				<p id="e2e-status-navigating">
+					{status.isNavigating ? "1" : "0"}
+				</p>
+				<p id="e2e-status-submitting">
+					{status.isSubmitting ? "1" : "0"}
+				</p>
+				<p id="e2e-status-revalidating">
+					{status.isRevalidating ? "1" : "0"}
+				</p>
+			</div>
+
+			<nav id="e2e-nav">
+				<Link pattern="/" id="e2e-nav-home">
+					Home
+				</Link>
+				<Link
+					pattern="/users/:id"
+					params={{ id: "alpha" }}
+					id="e2e-nav-user"
+				>
+					User Route
+				</Link>
+				<Link pattern="/mutation-lab" id="e2e-nav-mutation">
+					Mutation Lab
+				</Link>
+				<Link pattern="/navigation-race" id="e2e-nav-race">
+					Navigation Race
+				</Link>
+				<Link
+					pattern="/slow/:bucket"
+					params={{ bucket: "alpha" }}
+					search="?delay=700&token=nav-link-slow"
+					id="e2e-nav-slow"
+				>
+					Slow Loader
+				</Link>
+				<Link pattern="/hmr-probe" id="e2e-nav-hmr-probe">
+					HMR Probe
+				</Link>
+				<Link pattern="/explode" id="e2e-nav-explode">
+					Explode
+				</Link>
+			</nav>
+
+			<div id="e2e-route-outlet">
+				<props.Outlet />
+			</div>
+		</div>
+	);
+}

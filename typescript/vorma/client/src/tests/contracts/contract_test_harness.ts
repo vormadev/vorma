@@ -41,7 +41,7 @@ export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
 		isDev: false,
 		viteDevURL: "",
 		publicPathPrefix: "",
-		isTouchDevice: false,
+		isTouchInputModalityActive: false,
 		patternToWaitFnMap: {},
 		clientLoadersData: [],
 		defaultErrorBoundary: () => null,
@@ -50,7 +50,6 @@ export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
 		vormaAppConfig: DEFAULT_VORMA_APP_CONFIG,
 		routeManifestURL: "",
 		routeManifest: undefined,
-		clientModuleMap: {},
 		patternRegistry: createPatternRegistry({
 			dynamicParamPrefixRune: DEFAULT_VORMA_APP_CONFIG.loadersDynamicRune,
 			splatSegmentRune: DEFAULT_VORMA_APP_CONFIG.loadersSplatRune,
@@ -364,6 +363,7 @@ type ContractInternalAPI = {
 	__makeFinalLinkProps: typeof import("../../ui/helpers.ts").__makeFinalLinkProps;
 	__resolvePath: typeof import("../../app/helpers.ts").__resolvePath;
 	__runClientLoadersAfterHMRUpdate: typeof import("../../core/extras.ts").__runClientLoadersAfterHMRUpdate;
+	__loadRouteManifestProgressively: typeof import("../../app/init.ts").__loadRouteManifestProgressively;
 };
 
 export type ContractClientAPI = PublicClientAPI & ContractInternalAPI;
@@ -381,6 +381,7 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		extrasInternal,
 		uiHelpersInternal,
 		appHelpersInternal,
+		initInternal,
 	] = await Promise.all([
 		import("../../../index.ts"),
 		import("../../core/links_prefetch_lifecycle.ts"),
@@ -392,6 +393,7 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		import("../../core/extras.ts"),
 		import("../../ui/helpers.ts"),
 		import("../../app/helpers.ts"),
+		import("../../app/init.ts"),
 	]);
 
 	// Contract tests may still exercise internal helpers, but we now source
@@ -412,6 +414,8 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		__resolvePath: appHelpersInternal.__resolvePath,
 		__runClientLoadersAfterHMRUpdate:
 			extrasInternal.__runClientLoadersAfterHMRUpdate,
+		__loadRouteManifestProgressively:
+			initInternal.__loadRouteManifestProgressively,
 	};
 
 	Object.defineProperty(clientAPI, "__runClientLoadersAfterHMRUpdate", {
@@ -476,6 +480,18 @@ export function setupContractTestSuite(): void {
 
 		document.body.innerHTML = "";
 		document.head.innerHTML = "";
+		document.head.appendChild(
+			document.createComment('data-vorma="meta-start"'),
+		);
+		document.head.appendChild(
+			document.createComment('data-vorma="meta-end"'),
+		);
+		document.head.appendChild(
+			document.createComment('data-vorma="rest-start"'),
+		);
+		document.head.appendChild(
+			document.createComment('data-vorma="rest-end"'),
+		);
 		document.title = "Initial Title";
 		window.history.replaceState({}, "", "/");
 

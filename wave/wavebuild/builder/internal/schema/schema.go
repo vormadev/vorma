@@ -1,3 +1,8 @@
+// Package schema parses and validates Wave configuration documents for build
+// and runtime consumers.
+//
+// It provides one normalization/validation surface so downstream engines do not
+// each re-implement config safety checks.
 package schema
 
 import (

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-	installContractVormaGlobal,
-	setupContractTestSuite,
-} from "./contract_test_harness.ts";
-import {
 	__getVormaClientGlobal,
 	getRouterData,
 	VORMA_SYMBOL,
 } from "../../app/context.ts";
+import {
+	installContractVormaGlobal,
+	setupContractTestSuite,
+} from "./contract_test_harness.ts";
 
 setupContractTestSuite();
 
@@ -77,5 +77,14 @@ describe("vorma context contracts", () => {
 			params: { slug: "home" },
 			rootData,
 		});
+	});
+
+	it("throws a clear bootstrap error when runtime globals are missing", () => {
+		delete (globalThis as any)[VORMA_SYMBOL];
+		const { get } = __getVormaClientGlobal();
+
+		expect(() => get("buildID")).toThrow(
+			'Vorma client runtime state is not initialized on globalThis[Symbol.for("__vorma_internal__")].',
+		);
 	});
 });

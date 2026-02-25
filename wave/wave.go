@@ -1,3 +1,8 @@
+// Package wave is the public framework entrypoint for configuration, runtime
+// state, and request handling.
+//
+// Applications depend on this package to construct a validated runtime surface
+// without reaching into internal orchestration packages.
 package wave
 
 import (

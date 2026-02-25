@@ -2,8 +2,10 @@
 
 import type { JSX } from "preact/jsx-runtime";
 import {
+	type ExtractApp,
 	type UseRouterDataFunction,
 	type VormaAppBase,
+	type VormaAppConfig,
 	type VormaLoaderOutput,
 	type VormaLoaderPattern,
 	type VormaRouteGeneric,
@@ -27,13 +29,21 @@ export type VormaRoute<
 	Pattern extends VormaLoaderPattern<App> = string,
 > = VormaRouteGeneric<JSX.Element, App, Pattern>;
 
-export function makeTypedUseRouterData<App extends VormaAppBase>() {
+export function makeTypedUseRouterData<C extends VormaAppConfig>(
+	vormaAppConfig: C,
+) {
+	void vormaAppConfig;
+	type App = ExtractApp<C>;
 	return (() => {
 		return routerData.value;
 	}) as UseRouterDataFunction<App, false>;
 }
 
-export function makeTypedUseLoaderData<App extends VormaAppBase>() {
+export function makeTypedUseLoaderData<C extends VormaAppConfig>(
+	vormaAppConfig: C,
+) {
+	void vormaAppConfig;
+	type App = ExtractApp<C>;
 	return function useLoaderData<Pattern extends VormaLoaderPattern<App>>(
 		props: VormaRouteProps<App, Pattern>,
 	): VormaLoaderOutput<App, Pattern> {
@@ -41,7 +51,11 @@ export function makeTypedUseLoaderData<App extends VormaAppBase>() {
 	};
 }
 
-export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
+export function makeTypedUsePatternLoaderData<C extends VormaAppConfig>(
+	vormaAppConfig: C,
+) {
+	void vormaAppConfig;
+	type App = ExtractApp<C>;
 	return function usePatternLoaderData<
 		Pattern extends VormaLoaderPattern<App>,
 	>(pattern: Pattern): VormaLoaderOutput<App, Pattern> | undefined {
@@ -55,7 +69,11 @@ export function makeTypedUsePatternLoaderData<App extends VormaAppBase>() {
 	};
 }
 
-export function makeTypedAddClientLoader<App extends VormaAppBase>() {
+export function makeTypedAddClientLoader<C extends VormaAppConfig>(
+	vormaAppConfig: C,
+) {
+	void vormaAppConfig;
+	type App = ExtractApp<C>;
 	return function addClientLoader<
 		Pattern extends VormaLoaderPattern<App>,
 		LoaderData extends VormaLoaderOutput<App, Pattern>,

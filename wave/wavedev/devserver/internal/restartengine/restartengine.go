@@ -1,3 +1,7 @@
+// Package restartengine decides and executes dev-server restart/build behavior.
+//
+// Keeping restart policy here prevents runloop and hook layers from duplicating
+// process ordering and cancellation logic.
 package restartengine
 
 import (

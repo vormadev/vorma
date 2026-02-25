@@ -1,3 +1,8 @@
+// Package builder orchestrates Wave build execution across schema, CSS, and
+// static artifact phases.
+//
+// The package exists to provide one deterministic build engine instead of
+// scattering phase coordination across CLI and runtime entrypoints.
 package builder
 
 import (

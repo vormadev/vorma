@@ -1,3 +1,8 @@
+// Package static owns Wave static-asset planning, hashing, and public map
+// generation.
+//
+// This package isolates static processing rules so builder orchestration can
+// stay focused on phase control rather than asset transformation details.
 package static
 
 import (

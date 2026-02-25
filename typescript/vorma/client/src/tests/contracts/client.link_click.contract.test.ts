@@ -148,7 +148,7 @@ describe("client link click contracts", () => {
 	it("does not save scroll state for modifier-key same-document hash clicks", async () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/current-page");
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const initialScrollStateMap = sessionStorage.getItem(
 			"__vorma__scrollStateMap",
 		);
@@ -168,7 +168,7 @@ describe("client link click contracts", () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/current-page");
 		// saveScrollState expects history manager state to be initialized.
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
 			.mockResolvedValue(createRouteDataResponse());
@@ -193,7 +193,7 @@ describe("client link click contracts", () => {
 		const api = await loadClientAPI();
 		window.history.replaceState({}, "", "/current-page#section-a");
 		// saveScrollState expects history manager state to be initialized.
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
 			.mockResolvedValue(createRouteDataResponse());

@@ -11,12 +11,13 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
+	"github.com/vormadev/vorma/vormabuild/internal/testkit"
 )
 
 func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 	t.Run("wraps generate TypeScript errors", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+		fixture := testkit.NewBuildTestFixture(t, nil)
+		app := fixture.App
 
 		expectedErr := errors.New("generate TS failed")
 		dependencies := generatedTSAssemblyDependencies{
@@ -56,8 +57,8 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 	})
 
 	t.Run("wraps generate rollup options errors", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+		fixture := testkit.NewBuildTestFixture(t, nil)
+		app := fixture.App
 
 		expectedErr := errors.New("rollup generation failed")
 		dependencies := generatedTSAssemblyDependencies{
@@ -101,8 +102,8 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 	t.Run(
 		"concatenates TypeScript output and rollup options output",
 		func(t *testing.T) {
-			fixture := newBuildTestFixture(t, nil)
-			app := fixture.app
+			fixture := testkit.NewBuildTestFixture(t, nil)
+			app := fixture.App
 
 			dependencies := generatedTSAssemblyDependencies{
 				generateTypeScript: func(tsGenInput) (string, error) {
@@ -155,8 +156,8 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 	}
 
 	t.Run("wraps generate TypeScript errors", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+		fixture := testkit.NewBuildTestFixture(t, nil)
+		app := fixture.App
 
 		expectedErr := errors.New("generate TS failed")
 		dependencies := generatedTSAssemblyDependencies{
@@ -193,8 +194,8 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 	})
 
 	t.Run("wraps generate rollup options errors", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+		fixture := testkit.NewBuildTestFixture(t, nil)
+		app := fixture.App
 
 		expectedErr := errors.New("rollup generation failed")
 		dependencies := generatedTSAssemblyDependencies{
@@ -236,8 +237,8 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 	t.Run(
 		"concatenates TypeScript output and rollup options output",
 		func(t *testing.T) {
-			fixture := newBuildTestFixture(t, nil)
-			app := fixture.app
+			fixture := testkit.NewBuildTestFixture(t, nil)
+			app := fixture.App
 
 			dependencies := generatedTSAssemblyDependencies{
 				generateTypeScript: func(tsGenInput) (string, error) {
@@ -277,8 +278,8 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 	t.Run(
 		"passes generated content to write step with expected target path",
 		func(t *testing.T) {
-			fixture := newBuildTestFixture(t, nil)
-			app := fixture.app
+			fixture := testkit.NewBuildTestFixture(t, nil)
+			app := fixture.App
 
 			var writeCalled bool
 			dependencies := generatedTSWriteDependencies{
@@ -328,8 +329,8 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 	)
 
 	t.Run("returns assembly error", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+		fixture := testkit.NewBuildTestFixture(t, nil)
+		app := fixture.App
 
 		expectedErr := errors.New("assembly failed")
 		dependencies := generatedTSWriteDependencies{
@@ -354,8 +355,8 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 	})
 
 	t.Run("returns write step error", func(t *testing.T) {
-		fixture := newBuildTestFixture(t, nil)
-		app := fixture.app
+		fixture := testkit.NewBuildTestFixture(t, nil)
+		app := fixture.App
 
 		expectedErr := errors.New("write failed")
 		dependencies := generatedTSWriteDependencies{
@@ -382,8 +383,8 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(
 	t *testing.T,
 ) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 	runtimeStateSnapshot := routeBuildRuntimeStateSnapshot{
 		paths:   map[string]*vormaruntime.Path{},
 		buildID: "snapshot-build-id",
@@ -512,8 +513,8 @@ func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(
 }
 
 func TestWriteGeneratedTSContentIfChanged_ErrorBranches(t *testing.T) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 	targetPath := filepath.Join(t.TempDir(), "generated", "index.ts")
 	contentBytes := []byte("export const value = 1;")
 
@@ -649,16 +650,21 @@ func TestWriteGeneratedTSContentIfChanged_ErrorBranches(t *testing.T) {
 	t.Run(
 		"writes generated TS file with build artifact file mode",
 		func(t *testing.T) {
-			var capturedMode fs.FileMode
+			var capturedDirectoryMode fs.FileMode
+			var capturedFileMode fs.FileMode
 			dependencies := generatedTSWriteFileDependencies{
 				generatedTSUnchanged: func(string, []byte) (bool, error) {
 					return false, nil
 				},
-				makeGeneratedTSDirectory: func(string, fs.FileMode) error {
+				makeGeneratedTSDirectory: func(
+					_ string,
+					fileMode fs.FileMode,
+				) error {
+					capturedDirectoryMode = fileMode
 					return nil
 				},
 				writeGeneratedTSFile: func(_ string, _ []byte, fileMode fs.FileMode) error {
-					capturedMode = fileMode
+					capturedFileMode = fileMode
 					return nil
 				},
 			}
@@ -674,10 +680,17 @@ func TestWriteGeneratedTSContentIfChanged_ErrorBranches(t *testing.T) {
 					err,
 				)
 			}
-			if capturedMode != buildArtifactFileMode {
+			if capturedDirectoryMode != buildArtifactDirectoryMode {
+				t.Fatalf(
+					"directory mode = %v, want %v",
+					capturedDirectoryMode,
+					buildArtifactDirectoryMode,
+				)
+			}
+			if capturedFileMode != buildArtifactFileMode {
 				t.Fatalf(
 					"file mode = %v, want %v",
-					capturedMode,
+					capturedFileMode,
 					buildArtifactFileMode,
 				)
 			}
@@ -780,8 +793,8 @@ func TestGenerateRollupOptions_WrapsRenderError(t *testing.T) {
 		template.New("broken").Parse(`{{index .Entrypoints 99}}`),
 	)
 
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		_, err := generateRollupOptions(

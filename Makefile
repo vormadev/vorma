@@ -50,6 +50,7 @@ nuke-node-modules:
 tsinstall:
 	@pnpm i
 	@cd typescript/vorma/create && pnpm i
+	@$(MAKE) --no-print-directory e2e-install
 
 tsreset: nuke-node-modules tsinstall
 
@@ -84,6 +85,28 @@ tscheck-fw-create:
 
 npmbuild:
 	@go run ./internal/cmd/buildts
+
+#####################################################################
+####### E2E
+#####################################################################
+
+e2e-install:
+	@cd e2e && pnpm i
+	@cd e2e/fixture_app && pnpm i
+
+e2e-install-browsers:
+	@cd e2e && pnpm exec playwright install chromium
+
+e2e-setup: e2e-install e2e-install-browsers
+
+e2e-test:
+	@cd e2e && pnpm exec playwright test --config ./playwright.config.ts
+
+e2e-test-dev:
+	@cd e2e && VORMA_E2E_MODE=dev pnpm exec playwright test --config ./playwright.config.ts
+
+e2e-test-prod:
+	@cd e2e && VORMA_E2E_MODE=prod pnpm exec playwright test --config ./playwright.config.ts
 
 #####################################################################
 ####### OTHER

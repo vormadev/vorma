@@ -15,11 +15,6 @@ import (
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/hooks"
 )
 
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
-
 func TestBuildNormalizedChangedFilePathsByWatchedPatternForHookContexts(
 	t *testing.T,
 ) {

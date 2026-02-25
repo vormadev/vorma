@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 const sourcePath = (relativePath: string): string =>
 	resolve(process.cwd(), relativePath);
@@ -56,5 +56,8 @@ export default defineConfig({
 			"vorma/kit/url": sourcePath("./typescript/kit/url/url.ts"),
 		},
 	},
-	test: { environment: "jsdom" },
+	test: {
+		environment: "jsdom",
+		exclude: [...configDefaults.exclude, "e2e/**"],
+	},
 });

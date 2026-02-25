@@ -120,10 +120,12 @@ export function buildRouteDataRequestURL(props: {
 	const buildID = __vormaClientGlobal.get("buildID") || "1";
 	const deploymentID = __vormaClientGlobal.get("deploymentID");
 	const url = new URL(props.targetHref);
+	// Reserved internal marker for Vorma route-data requests.
 	url.searchParams.set("vorma_json", buildID);
 
 	if (props.navigationType === "revalidation") {
 		if (deploymentID) {
+			// Reserved deployment-routing key for skew-protection revalidation.
 			url.searchParams.set("dpl", deploymentID);
 		}
 	}
@@ -186,17 +188,17 @@ export function resolveServerRouteDataResult(props: {
 		throw new Error("Fetch returned 304 without route JSON payload.");
 	}
 
-	if (responseNotOK) {
-		controller.abort();
-		throw new Error(`Fetch failed with status ${response.status}`);
-	}
-
 	if (redirectData?.status === "should") {
 		controller.abort();
 		return {
 			type: "outcome",
 			outcome: { type: "redirect", redirectData, props: navigationProps },
 		};
+	}
+
+	if (responseNotOK) {
+		controller.abort();
+		throw new Error(`Fetch failed with status ${response.status}`);
 	}
 
 	if (!json) {

@@ -5,6 +5,7 @@ import {
 } from "vorma/kit/url";
 import { VORMA_SYMBOL } from "../../app/context.ts";
 import {
+	assertProgrammaticSameOriginOrThrow,
 	classifyNavigationTargetAgainstCurrentLocation,
 	findMapEntryByNavigationTarget,
 	hasSameDataTarget,
@@ -260,5 +261,23 @@ describe("hash fragment helpers", () => {
 		expect(resolvePublicHref("//cdn.example.com/entry.js")).toBe(
 			"//cdn.example.com/entry.js",
 		);
+	});
+
+	it("allows same-origin targets for programmatic client APIs", () => {
+		expect(() =>
+			assertProgrammaticSameOriginOrThrow({
+				absoluteHref: "http://localhost:3000/path",
+				apiName: "vormaNavigate(...)",
+			}),
+		).not.toThrow();
+	});
+
+	it("throws for cross-origin programmatic client API targets", () => {
+		expect(() =>
+			assertProgrammaticSameOriginOrThrow({
+				absoluteHref: "https://external.example/path",
+				apiName: "submit(...)",
+			}),
+		).toThrow("submit(...) only supports same-origin targets.");
 	});
 });

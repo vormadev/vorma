@@ -1,4 +1,4 @@
-import { type RouteProps, useRouterData } from "../vorma.app.tsx";
+import { type RouteProps, useRouterData } from "../vorma.bindings.ts";
 
 export function Dyn(props: RouteProps<"/__/:dyn">) {
 	const routerData = useRouterData(props);

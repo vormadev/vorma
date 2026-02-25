@@ -139,7 +139,7 @@ export function makeFinalLinkProps<LinkEvent>(
 			callOriginalHandlerIfPresent(keys.onFocus, event);
 		},
 		onPointerLeave: (event: LinkEvent) => {
-			if (!__vormaClientGlobal.get("isTouchDevice")) {
+			if (!__vormaClientGlobal.get("isTouchInputModalityActive")) {
 				prefetchObj?.stop();
 			}
 			callOriginalHandlerIfPresent(keys.onPointerLeave, event);

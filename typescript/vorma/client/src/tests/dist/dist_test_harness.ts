@@ -41,7 +41,6 @@ export type DistTestVormaInternal = {
 	vormaAppConfig: typeof DIST_TEST_VORMA_APP_CONFIG;
 	routeManifestURL: string;
 	routeManifest: unknown;
-	clientModuleMap: Record<string, unknown>;
 	patternRegistry: unknown;
 };
 
@@ -83,7 +82,6 @@ export function installDistTestVormaGlobal(): DistTestVormaInternal {
 		vormaAppConfig: DIST_TEST_VORMA_APP_CONFIG,
 		routeManifestURL: "",
 		routeManifest: undefined,
-		clientModuleMap: {},
 		patternRegistry,
 	};
 

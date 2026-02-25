@@ -5,7 +5,7 @@ import {
 	addClientLoader,
 	useLoaderData,
 	type RouteProps,
-} from "../vorma.app.tsx";
+} from "../vorma.bindings.ts";
 import { useRootClientLoaderData } from "./home.tsx";
 import { RenderedMarkdown } from "./rendered-markdown.tsx";
 

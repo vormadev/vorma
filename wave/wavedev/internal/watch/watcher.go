@@ -1,3 +1,8 @@
+// Package watch owns fsnotify watcher wiring and normalized event emission for
+// Wave dev tooling.
+//
+// It encapsulates watcher setup and lifecycle handling so higher-level packages
+// can consume stable event streams instead of raw fsnotify behavior.
 package watch
 
 import (

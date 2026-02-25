@@ -89,6 +89,49 @@ function resolveTypedAdapterMatchedPatternIndex(props: {
 	);
 }
 
+function resolveTypedAdapterRoutePropsIndex(props: {
+	matchedPatterns: readonly string[];
+	routeProps?: VormaTypedAdapterRoutePropsWithIndex;
+}): number | undefined {
+	const routePropsIndex = props.routeProps?.idx;
+	if (routePropsIndex === undefined) {
+		return undefined;
+	}
+	if (
+		routePropsIndex < 0 ||
+		routePropsIndex >= props.matchedPatterns.length
+	) {
+		return undefined;
+	}
+	return routePropsIndex;
+}
+
+function resolveRoutePropsIndexOrThrow(props: {
+	pattern: string;
+	matchedPatterns: readonly string[];
+	routeProps: VormaTypedAdapterRoutePropsWithIndex;
+}): number {
+	const routePropsIndex = resolveTypedAdapterRoutePropsIndex({
+		matchedPatterns: props.matchedPatterns,
+		routeProps: props.routeProps,
+	});
+	if (routePropsIndex === undefined) {
+		throw new Error(
+			`useClientLoaderData(routeProps) contract violated for pattern "${props.pattern}": routeProps.idx is out of bounds for current matched patterns.`,
+		);
+	}
+
+	const matchedPatternAtRoutePropsIndex =
+		props.matchedPatterns[routePropsIndex];
+	if (matchedPatternAtRoutePropsIndex !== props.pattern) {
+		throw new Error(
+			`useClientLoaderData(routeProps) contract violated for pattern "${props.pattern}": routeProps.idx resolved to "${matchedPatternAtRoutePropsIndex ?? "<none>"}".`,
+		);
+	}
+
+	return routePropsIndex;
+}
+
 export function resolveTypedAdapterIndexedDataForPattern<Data>(props: {
 	pattern: string;
 	matchedPatterns: readonly string[];
@@ -112,15 +155,27 @@ export function resolveTypedAdapterIndexedDataForPatternOrRouteProps<
 	indexedData: readonly unknown[];
 	routeProps?: VormaTypedAdapterRoutePropsWithIndex;
 }): Data | undefined {
-	const idx =
-		props.routeProps?.idx ??
-		resolveTypedAdapterMatchedPatternIndex({
-			matchedPatterns: props.matchedPatterns,
-			pattern: props.pattern,
-		});
+	const patternIdx = resolveTypedAdapterMatchedPatternIndex({
+		matchedPatterns: props.matchedPatterns,
+		pattern: props.pattern,
+	});
 
-	if (idx === -1) {
+	if (patternIdx === -1 && props.routeProps) {
+		throw new Error(
+			`useClientLoaderData(routeProps) contract violated for pattern "${props.pattern}": pattern is not currently matched.`,
+		);
+	}
+	if (patternIdx === -1) {
 		return undefined;
 	}
-	return props.indexedData[idx] as Data | undefined;
+
+	if (props.routeProps) {
+		resolveRoutePropsIndexOrThrow({
+			pattern: props.pattern,
+			matchedPatterns: props.matchedPatterns,
+			routeProps: props.routeProps,
+		});
+	}
+
+	return props.indexedData[patternIdx] as Data | undefined;
 }

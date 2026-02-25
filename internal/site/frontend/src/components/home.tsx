@@ -3,7 +3,7 @@ import {
 	Link,
 	type RouteProps,
 	usePatternLoaderData,
-} from "../vorma.app.tsx";
+} from "../vorma.bindings.ts";
 // import { useSplatClientLoaderData } from "./md.tsx";
 
 export const useRootClientLoaderData = addClientLoader({

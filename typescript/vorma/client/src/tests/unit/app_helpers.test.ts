@@ -183,6 +183,113 @@ describe("resolveVormaPath", () => {
 			}),
 		).toThrow('Missing required splat values for pattern "/users/$id/**"');
 	});
+
+	it("throws when required route param values are nullish or non-string", () => {
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/users/:id",
+					params: {
+						id: undefined,
+					},
+				},
+			}),
+		).toThrow(
+			'Invalid required route params for pattern "/users/:id": id (expected string values).',
+		);
+
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/users/:id",
+					params: {
+						id: null,
+					},
+				},
+			}),
+		).toThrow(
+			'Invalid required route params for pattern "/users/:id": id (expected string values).',
+		);
+
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/users/:id",
+					params: {
+						id: 42,
+					},
+				},
+			}),
+		).toThrow(
+			'Invalid required route params for pattern "/users/:id": id (expected string values).',
+		);
+	});
+
+	it("throws when unexpected extra route params are provided", () => {
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/users/:id",
+					params: {
+						id: "123",
+						extra: "nope",
+					},
+				},
+			}),
+		).toThrow('Unexpected route params for pattern "/users/:id": extra');
+
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/no-params",
+					params: {
+						extra: "nope",
+					},
+				},
+			}),
+		).toThrow('Unexpected route params for pattern "/no-params": extra');
+	});
+
+	it("throws when splat values are provided for non-splat patterns", () => {
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/users/:id",
+					params: {
+						id: "123",
+					},
+					splatValues: ["extra"],
+				},
+			}),
+		).toThrow('Unexpected splat values for pattern "/users/:id"');
+	});
+
+	it("throws when splat payload includes non-string segments", () => {
+		expect(() =>
+			resolveVormaPath({
+				vormaAppConfig: TEST_CONFIG,
+				type: "loader",
+				props: {
+					pattern: "/files/*",
+					splatValues: ["ok", undefined as any],
+				},
+			}),
+		).toThrow(
+			'Invalid splat values for pattern "/files/*": expected string segments.',
+		);
+	});
 });
 
 describe("URL and wrapper helper exports", () => {

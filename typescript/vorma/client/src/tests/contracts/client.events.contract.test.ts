@@ -13,7 +13,7 @@ describe("client events contracts", () => {
 		const locationListener = vi.fn();
 		const cleanup = api.addLocationListener(locationListener);
 		// Ensure HistoryManager has an initialized lastKnownLocation.
-		api.getHistoryInstance();
+		api.getUnsafeHistoryInstance();
 
 		const { customHistoryListener } =
 			await import("../../platform/history.ts");

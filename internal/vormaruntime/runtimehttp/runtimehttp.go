@@ -7,6 +7,7 @@ package runtimehttp
 
 import (
 	"errors"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
@@ -68,6 +69,187 @@ func BuildSupportedMethodsMap(supportedMethods []string) map[string]bool {
 		out[upperMethod] = true
 	}
 	return out
+}
+
+// ValidateExpectedBuildIDOrWriteConflictInput defines the inputs for
+// ValidateExpectedBuildIDOrWriteConflict.
+type ValidateExpectedBuildIDOrWriteConflictInput struct {
+	ResponseWriter            http.ResponseWriter
+	Request                   *http.Request
+	CurrentBuildID            string
+	ExpectedBuildIDHeaderName string
+	Log                       *slog.Logger
+}
+
+// ValidateExpectedBuildIDOrWriteConflict validates the dev-reload expected
+// build id header and writes a conflict response when the requested build id
+// does not match current runtime state.
+func ValidateExpectedBuildIDOrWriteConflict(
+	input ValidateExpectedBuildIDOrWriteConflictInput,
+) bool {
+	if input.Request == nil {
+		return true
+	}
+
+	requestExpectedBuildID := strings.TrimSpace(
+		input.Request.Header.Get(input.ExpectedBuildIDHeaderName),
+	)
+	if requestExpectedBuildID == "" {
+		return true
+	}
+
+	currentBuildID := strings.TrimSpace(input.CurrentBuildID)
+	if requestExpectedBuildID == currentBuildID {
+		return true
+	}
+
+	if input.Log != nil {
+		input.Log.Warn(
+			"dev reload endpoint rejected request due to expected build id mismatch",
+			"request_expected_build_id",
+			requestExpectedBuildID,
+			"current_build_id",
+			currentBuildID,
+		)
+	}
+
+	if input.ResponseWriter != nil {
+		http.Error(
+			input.ResponseWriter,
+			"expected build id does not match current build id",
+			http.StatusConflict,
+		)
+	}
+	return false
+}
+
+// DevReloadActionEndpointsInput defines the inputs for
+// HandleDevReloadActionEndpoints.
+type DevReloadActionEndpointsInput struct {
+	ResponseWriter http.ResponseWriter
+	Request        *http.Request
+	IsDevMode      bool
+
+	RoutesEndpointPath   string
+	TemplateEndpointPath string
+
+	ValidateExpectedBuildIDOrWriteConflict func(
+		responseWriter http.ResponseWriter,
+		request *http.Request,
+	) bool
+	ReloadRoutesFromDisk   func() error
+	ReloadTemplateFromDisk func() error
+	Log                    *slog.Logger
+}
+
+// HandleDevReloadActionEndpoints dispatches dev-reload action endpoints and
+// writes method/validation/error responses when needed.
+func HandleDevReloadActionEndpoints(
+	input DevReloadActionEndpointsInput,
+) bool {
+	if !input.IsDevMode || input.Request == nil {
+		return false
+	}
+
+	switch input.Request.URL.Path {
+	case input.RoutesEndpointPath:
+		return handleSingleDevReloadActionEndpoint(
+			handleSingleDevReloadActionEndpointInput{
+				ResponseWriter:                         input.ResponseWriter,
+				Request:                                input.Request,
+				ValidateExpectedBuildIDOrWriteConflict: input.ValidateExpectedBuildIDOrWriteConflict,
+				ReloadFromDisk:                         input.ReloadRoutesFromDisk,
+				LogErrorPrefix:                         "route reload failed",
+				Log:                                    input.Log,
+			},
+		)
+	case input.TemplateEndpointPath:
+		return handleSingleDevReloadActionEndpoint(
+			handleSingleDevReloadActionEndpointInput{
+				ResponseWriter:                         input.ResponseWriter,
+				Request:                                input.Request,
+				ValidateExpectedBuildIDOrWriteConflict: input.ValidateExpectedBuildIDOrWriteConflict,
+				ReloadFromDisk:                         input.ReloadTemplateFromDisk,
+				LogErrorPrefix:                         "template reload failed",
+				Log:                                    input.Log,
+			},
+		)
+	default:
+		return false
+	}
+}
+
+type handleSingleDevReloadActionEndpointInput struct {
+	ResponseWriter                         http.ResponseWriter
+	Request                                *http.Request
+	ValidateExpectedBuildIDOrWriteConflict func(
+		responseWriter http.ResponseWriter,
+		request *http.Request,
+	) bool
+	ReloadFromDisk func() error
+	LogErrorPrefix string
+	Log            *slog.Logger
+}
+
+func handleSingleDevReloadActionEndpoint(
+	input handleSingleDevReloadActionEndpointInput,
+) bool {
+	if input.Request.Method != http.MethodPost {
+		if input.ResponseWriter != nil {
+			input.ResponseWriter.Header().Set("Allow", http.MethodPost)
+			http.Error(
+				input.ResponseWriter,
+				"method not allowed",
+				http.StatusMethodNotAllowed,
+			)
+		}
+		return true
+	}
+
+	if input.ValidateExpectedBuildIDOrWriteConflict != nil &&
+		!input.ValidateExpectedBuildIDOrWriteConflict(
+			input.ResponseWriter,
+			input.Request,
+		) {
+		return true
+	}
+
+	if input.ReloadFromDisk == nil {
+		if input.Log != nil {
+			input.Log.Error(
+				input.LogErrorPrefix,
+				"error",
+				"reload operation is nil",
+			)
+		}
+		if input.ResponseWriter != nil {
+			http.Error(
+				input.ResponseWriter,
+				"reload operation is not configured",
+				http.StatusInternalServerError,
+			)
+		}
+		return true
+	}
+
+	if err := input.ReloadFromDisk(); err != nil {
+		if input.Log != nil {
+			input.Log.Error(input.LogErrorPrefix, "error", err.Error())
+		}
+		if input.ResponseWriter != nil {
+			http.Error(
+				input.ResponseWriter,
+				err.Error(),
+				http.StatusInternalServerError,
+			)
+		}
+		return true
+	}
+
+	if input.ResponseWriter != nil {
+		_, _ = input.ResponseWriter.Write([]byte("ok"))
+	}
+	return true
 }
 
 // ParseActionInput applies the runtime action-input parse policy for one

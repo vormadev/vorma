@@ -106,6 +106,9 @@ type HotModuleRuntime = {
 };
 
 type HMRWindow = Window & {
+	// Wave dev runtime refresh script looks this up by name via
+	// window[browserRevalidateFunctionName]. Keep this default key aligned with
+	// wave/wave.go defaultBrowserRevalidateFunctionName.
 	__waveRevalidate?: typeof revalidate;
 };
 
@@ -194,6 +197,7 @@ function getTrackedPatternsForRuntimePathname(
 
 export function initHMR() {
 	if (import.meta.env.DEV) {
+		// Wave dev refresh calls this by name to trigger client revalidation.
 		(window as HMRWindow).__waveRevalidate = revalidate;
 
 		devTimeSetupClientLoadersDebounced = debounce(async () => {

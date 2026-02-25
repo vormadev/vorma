@@ -15,6 +15,7 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
+	"github.com/vormadev/vorma/vormabuild/internal/testkit"
 )
 
 func TestExtractDynamicParamsFromPattern(t *testing.T) {
@@ -42,8 +43,8 @@ func TestIsSplat(t *testing.T) {
 }
 
 func TestGetEntrypoints_ReturnsStableSortedUniqueList(t *testing.T) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetPaths(map[string]*vormaruntime.Path{
@@ -82,8 +83,8 @@ func TestGetEntrypoints_ReturnsStableSortedUniqueList(t *testing.T) {
 }
 
 func TestGenerateRollupOptions_ContainsExpectedConfig(t *testing.T) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		content, err := generateRollupOptions(
@@ -360,8 +361,8 @@ func TestDedupeListForUIVariant(t *testing.T) {
 }
 
 func TestBuildVitePluginTemplateData(t *testing.T) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 
 	entrypoints := []string{
 		"frontend/src/vorma.entry.tsx",
@@ -404,8 +405,8 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 func TestBuildViteIgnoredPatterns_PanicsForInvalidRouteDefinitionPatterns(
 	t *testing.T,
 ) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 	app.Config.ClientRouteDefinitionPatterns = []string{
 		" frontend/src/routes/core.vorma.routes.ts ",
 		"frontend/src/routes/core.vorma.routes.ts",
@@ -627,8 +628,8 @@ func TestGeneratedTSUnchanged(t *testing.T) {
 }
 
 func TestGenerateAndAssembleTSContent(t *testing.T) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetPaths(map[string]*vormaruntime.Path{
@@ -660,8 +661,8 @@ func TestGenerateAndAssembleTSContent(t *testing.T) {
 }
 
 func TestWriteGeneratedTSContentIfChanged(t *testing.T) {
-	fixture := newBuildTestFixture(t, nil)
-	app := fixture.app
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
 
 	targetPath := filepath.Join(t.TempDir(), "index.ts")
 	contentBytes := []byte("export const x = 1;\n")
