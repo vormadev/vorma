@@ -1,7 +1,7 @@
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
 import { h, render as renderPreact } from "preact";
 import { act as actPreact } from "preact/test-utils";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 import { createComponent } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { describe, expect, it, vi } from "vitest";
@@ -97,8 +97,10 @@ function applyRuntimeState(
 		activeErrorBoundary?: unknown;
 	},
 ) {
-	globals.matchedPatterns = ["/", "/child"];
-	globals.clientLoadersData = [];
+	const nextMatchedPatterns = ["/", "/child"];
+	const nextClientLoadersData: Array<unknown> = [];
+	globals.matchedPatterns = nextMatchedPatterns;
+	globals.clientLoadersData = nextClientLoadersData;
 	globals.activeComponents = props.activeComponents;
 	globals.importURLs = props.importURLs;
 	globals.exportKeys = props.exportKeys;
@@ -106,6 +108,28 @@ function applyRuntimeState(
 	globals.outermostError = props.outermostError;
 	globals.outermostErrorIdx = props.outermostErrorIdx;
 	globals.activeErrorBoundary = props.activeErrorBoundary;
+	globals.runtimeRouteSnapshot = {
+		...globals.runtimeRouteSnapshot,
+		buildID: globals.buildID,
+		rootElementID: (globals.runtimeRouteSnapshot ?? {})["rootElementID"],
+		matchedPatterns: nextMatchedPatterns,
+		loadersData: props.loadersData,
+		clientLoadersData: nextClientLoadersData,
+		importURLs: props.importURLs,
+		exportKeys: props.exportKeys,
+		errorExportKeys: globals.errorExportKeys ?? [],
+		hasRootData: globals.hasRootData ?? false,
+		params: globals.params ?? {},
+		splatValues: globals.splatValues ?? [],
+		outermostServerError: globals.outermostServerError,
+		outermostServerErrorIdx: globals.outermostServerErrorIdx,
+		outermostClientError: globals.outermostClientError,
+		outermostClientErrorIdx: globals.outermostClientErrorIdx,
+		outermostError: props.outermostError,
+		outermostErrorIdx: props.outermostErrorIdx,
+		activeComponents: props.activeComponents,
+		activeErrorBoundary: props.activeErrorBoundary,
+	};
 }
 
 describe("npm_dist root outlet branch coverage", () => {

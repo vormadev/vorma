@@ -410,7 +410,6 @@ export type SuccessfulNavigationCheckpointExecutionPlan =
 	| {
 			checkpoint: "post_asset";
 			plan: SuccessfulNavigationPostAssetExecutionPlan;
-			sideEffectPlan: SuccessfulNavigationPostAssetSideEffectPlan;
 	  }
 	| {
 			checkpoint: "cleanup";
@@ -435,7 +434,6 @@ export type SuccessfulNavigationCheckpointExecutionPlanProps =
 			entry: NavigationEntry;
 			isCurrentEntry: boolean;
 			currentHref: string;
-			buildIDSyncTiming: BuildIDSyncTiming;
 	  }
 	| {
 			checkpoint: "cleanup";
@@ -466,11 +464,9 @@ export function decideSuccessfulNavigationCheckpointExecutionPlan(props: {
 	entry: NavigationEntry;
 	isCurrentEntry: boolean;
 	currentHref: string;
-	buildIDSyncTiming: BuildIDSyncTiming;
 }): {
 	checkpoint: "post_asset";
 	plan: SuccessfulNavigationPostAssetExecutionPlan;
-	sideEffectPlan: SuccessfulNavigationPostAssetSideEffectPlan;
 };
 export function decideSuccessfulNavigationCheckpointExecutionPlan(props: {
 	checkpoint: "cleanup";
@@ -510,11 +506,6 @@ export function decideSuccessfulNavigationCheckpointExecutionPlan(
 			return {
 				checkpoint: "post_asset",
 				plan: postAssetExecutionPlan,
-				sideEffectPlan:
-					decideSuccessfulNavigationPostAssetSideEffectPlan({
-						postAssetExecutionPlan,
-						buildIDSyncTiming: props.buildIDSyncTiming,
-					}),
 			};
 		}
 		case "cleanup":
@@ -562,25 +553,4 @@ export function decideBuildIDSyncTimingForSuccessfulEntry(props: {
 	return isIdlePrefetchNavigationEntry(props.entry)
 		? "before_asset_wait"
 		: "after_asset_wait_if_not_stopped";
-}
-
-export type SuccessfulNavigationPostAssetSideEffectPlan = {
-	shouldCommitClientLoadersState: boolean;
-	shouldSyncBuildIDAfterAssetWait: boolean;
-};
-
-export function decideSuccessfulNavigationPostAssetSideEffectPlan(props: {
-	postAssetExecutionPlan: SuccessfulNavigationPostAssetExecutionPlan;
-	buildIDSyncTiming: BuildIDSyncTiming;
-}): SuccessfulNavigationPostAssetSideEffectPlan {
-	const { postAssetExecutionPlan, buildIDSyncTiming } = props;
-	const shouldStop = postAssetExecutionPlan.type === "stop";
-
-	return {
-		shouldCommitClientLoadersState:
-			postAssetExecutionPlan.type === "render",
-		shouldSyncBuildIDAfterAssetWait:
-			buildIDSyncTiming === "after_asset_wait_if_not_stopped" &&
-			!shouldStop,
-	};
 }

@@ -9,7 +9,11 @@ import {
 import {
 	buildInitialRouteOutletStoreState,
 	buildRouteOutletBranchState,
+	buildTypedAdapterRoutePropsWithInternalRouteInstanceToken,
 	createRouteOutletRuntimeListenerInitializer,
+	createTypedAdapterRouteInstanceToken,
+	markTypedAdapterRouteInstanceTokenActive,
+	markTypedAdapterRouteInstanceTokenDisposed,
 	resolveRouteOutletBranchRenderState,
 	syncRouteOutletStoreStateFromRuntime,
 	type RouteOutletStoreState,
@@ -95,6 +99,51 @@ type VormaErrorBoundaryProps = {
 	error: unknown;
 };
 
+type VormaRouteComponentMountProps = {
+	CurrentComp: ComponentType<VormaOutletProps>;
+	idx: number;
+	routeKey: string;
+	Outlet: (localProps: Record<string, any> | undefined) => JSX.Element;
+};
+
+function VormaRouteComponentMount(
+	props: VormaRouteComponentMountProps,
+): JSX.Element {
+	const routeInstanceTokenRef = useRef<unknown>(undefined);
+	if (routeInstanceTokenRef.current === undefined) {
+		const currentNavigationState = store.getSnapshot().navigation;
+		routeInstanceTokenRef.current = createTypedAdapterRouteInstanceToken({
+			routePropsIndex: props.idx,
+			routeKey: props.routeKey,
+			matchedPatterns: currentNavigationState.routerData.matchedPatterns,
+			loadersData: currentNavigationState.loadersData,
+			clientLoadersData: currentNavigationState.clientLoadersData,
+		});
+	}
+
+	useLayoutEffect(() => {
+		const routeInstanceToken = routeInstanceTokenRef.current;
+		markTypedAdapterRouteInstanceTokenActive({
+			routeInstanceToken,
+		});
+		return () => {
+			markTypedAdapterRouteInstanceTokenDisposed({
+				routeInstanceToken,
+			});
+		};
+	}, []);
+
+	return (
+		<props.CurrentComp
+			idx={props.idx}
+			Outlet={props.Outlet}
+			{...buildTypedAdapterRoutePropsWithInternalRouteInstanceToken({
+				routeInstanceToken: routeInstanceTokenRef.current,
+			})}
+		/>
+	);
+}
+
 export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 	const idx = props.idx ?? 0;
 	const isInitialRootRenderRef = useRef(true);
@@ -159,9 +208,11 @@ export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
 				return <></>;
 			}
 			return (
-				<CurrentComp
+				<VormaRouteComponentMount
 					key={routeOutletBranchRenderState.currentRouteKey}
+					CurrentComp={CurrentComp}
 					idx={idx}
+					routeKey={routeOutletBranchRenderState.currentRouteKey}
 					Outlet={Outlet}
 				/>
 			);

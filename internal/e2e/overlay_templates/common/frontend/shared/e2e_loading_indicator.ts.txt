@@ -1,0 +1,92 @@
+import { getStatus, setupGlobalLoadingIndicator } from "vorma/client";
+
+const runtimeLoadingAttributeName = "data-e2e-loading";
+const indicatorReconciliationIntervalMS = 25;
+
+type E2ELoadingIndicatorWindow = Window & {
+	__vormaE2ELoadingIndicatorCleanup?: () => void;
+	__vormaE2ELoadingIndicatorRunning?: boolean;
+};
+
+function isRuntimeWorkingNow(): boolean {
+	const runtimeStatus = getStatus();
+	return (
+		runtimeStatus.isNavigating ||
+		runtimeStatus.isSubmitting ||
+		runtimeStatus.isRevalidating
+	);
+}
+
+function setRuntimeLoadingAttribute(isWorking: boolean): void {
+	document.documentElement.setAttribute(
+		runtimeLoadingAttributeName,
+		isWorking ? "1" : "0",
+	);
+}
+
+export function installE2ELoadingIndicator(): void {
+	if (typeof window === "undefined") {
+		return;
+	}
+
+	const indicatorWindow = window as E2ELoadingIndicatorWindow;
+	indicatorWindow.__vormaE2ELoadingIndicatorCleanup?.();
+
+	indicatorWindow.__vormaE2ELoadingIndicatorRunning = isRuntimeWorkingNow();
+	setRuntimeLoadingAttribute(indicatorWindow.__vormaE2ELoadingIndicatorRunning);
+
+	const removeGlobalLoadingIndicatorListener = setupGlobalLoadingIndicator({
+		start: () => {
+			indicatorWindow.__vormaE2ELoadingIndicatorRunning = true;
+			setRuntimeLoadingAttribute(true);
+		},
+		stop: () => {
+			indicatorWindow.__vormaE2ELoadingIndicatorRunning = false;
+			setRuntimeLoadingAttribute(false);
+		},
+		isRunning: () =>
+			indicatorWindow.__vormaE2ELoadingIndicatorRunning === true,
+		startDelayMS: 0,
+		stopDelayMS: 0,
+	});
+
+	const reconcileTimer = window.setInterval(() => {
+		const runtimeWorkingNow = isRuntimeWorkingNow();
+		if (
+			indicatorWindow.__vormaE2ELoadingIndicatorRunning !==
+			runtimeWorkingNow
+		) {
+			indicatorWindow.__vormaE2ELoadingIndicatorRunning =
+				runtimeWorkingNow;
+			setRuntimeLoadingAttribute(runtimeWorkingNow);
+		}
+	}, indicatorReconciliationIntervalMS);
+
+	const cleanupLoadingIndicator = () => {
+		window.clearInterval(reconcileTimer);
+		removeGlobalLoadingIndicatorListener();
+		indicatorWindow.__vormaE2ELoadingIndicatorRunning = false;
+		setRuntimeLoadingAttribute(false);
+	};
+
+	indicatorWindow.__vormaE2ELoadingIndicatorCleanup = cleanupLoadingIndicator;
+
+	const hotModuleRuntime = (import.meta as ImportMeta & {
+		hot?: { dispose: (callback: () => void) => void };
+	}).hot;
+	if (!hotModuleRuntime) {
+		return;
+	}
+
+	hotModuleRuntime.dispose(() => {
+		if (
+			indicatorWindow.__vormaE2ELoadingIndicatorCleanup !==
+			cleanupLoadingIndicator
+		) {
+			return;
+		}
+
+		cleanupLoadingIndicator();
+		delete indicatorWindow.__vormaE2ELoadingIndicatorCleanup;
+	});
+}

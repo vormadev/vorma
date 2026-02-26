@@ -14,8 +14,9 @@ import {
 } from "vorma/client";
 import {
 	registerTypedAdapterClientLoader,
+	resolveTypedAdapterClientLoaderDataForPatternOrRouteProps,
 	resolveTypedAdapterIndexedDataForPattern,
-	resolveTypedAdapterIndexedDataForPatternOrRouteProps,
+	resolveTypedAdapterLoaderDataForRoutePropsOrThrow,
 	type VormaTypedAdapterAddClientLoaderProps,
 } from "vorma/client/__internal";
 import { clientLoadersData, loadersData, routerData } from "./solid.tsx";
@@ -47,7 +48,14 @@ export function makeTypedUseLoaderData<C extends VormaAppConfig>(
 		props: VormaRouteProps<App, Pattern>,
 	): Accessor<VormaLoaderOutput<App, Pattern>> {
 		return createMemo<VormaLoaderOutput<App, Pattern>>(() => {
-			return loadersData()[props.idx] as VormaLoaderOutput<App, Pattern>;
+			return resolveTypedAdapterLoaderDataForRoutePropsOrThrow<
+				VormaLoaderOutput<App, Pattern>
+			>({
+				routeProps: props,
+				matchedPatterns: routerData().matchedPatterns,
+				loadersData: loadersData(),
+				clientLoadersData: clientLoadersData(),
+			});
 		});
 	};
 }
@@ -100,11 +108,12 @@ export function makeTypedAddClientLoader<C extends VormaAppConfig>(
 			routeProps?: VormaRouteProps<App, Pattern>,
 		): Accessor<Res | undefined> => {
 			return createMemo<Res | undefined>(() => {
-				return resolveTypedAdapterIndexedDataForPatternOrRouteProps<Res>(
+				return resolveTypedAdapterClientLoaderDataForPatternOrRouteProps<Res>(
 					{
 						pattern,
 						matchedPatterns: routerData().matchedPatterns,
-						indexedData: clientLoadersData(),
+						loadersData: loadersData(),
+						clientLoadersData: clientLoadersData(),
 						routeProps,
 					},
 				);

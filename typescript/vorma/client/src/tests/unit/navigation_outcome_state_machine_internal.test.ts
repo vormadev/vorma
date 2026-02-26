@@ -5,7 +5,6 @@ import {
 	decideSuccessfulNavigationCheckpointExecutionPlan,
 	decideSuccessfulNavigationCleanupExecutionPlan,
 	decideSuccessfulNavigationPostAssetExecutionPlan,
-	decideSuccessfulNavigationPostAssetSideEffectPlan,
 	decideSuccessfulNavigationPreWaitingExecutionPlan,
 	resolveNavigationEntryLifecycleState,
 	toPublicNavigateResult,
@@ -468,65 +467,6 @@ describe("successful outcome stage plans", () => {
 		});
 	});
 
-	it("decides post-asset side-effect commits through one reducer seam", () => {
-		const stoppedPostAssetExecutionPlan =
-			decideSuccessfulNavigationPostAssetExecutionPlan({
-				entry: createEntry({
-					type: "userNavigation",
-					intent: "navigate",
-				}),
-				isCurrentEntry: false,
-				currentHref: "http://localhost:3000/current",
-			});
-		expect(
-			decideSuccessfulNavigationPostAssetSideEffectPlan({
-				postAssetExecutionPlan: stoppedPostAssetExecutionPlan,
-				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
-			}),
-		).toEqual({
-			shouldCommitClientLoadersState: false,
-			shouldSyncBuildIDAfterAssetWait: false,
-		});
-
-		const renderingPostAssetExecutionPlan =
-			decideSuccessfulNavigationPostAssetExecutionPlan({
-				entry: createEntry({
-					type: "userNavigation",
-					intent: "navigate",
-				}),
-				isCurrentEntry: true,
-				currentHref: "http://localhost:3000/current",
-			});
-		expect(
-			decideSuccessfulNavigationPostAssetSideEffectPlan({
-				postAssetExecutionPlan: renderingPostAssetExecutionPlan,
-				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
-			}),
-		).toEqual({
-			shouldCommitClientLoadersState: true,
-			shouldSyncBuildIDAfterAssetWait: true,
-		});
-
-		const idlePrefetchPostAssetExecutionPlan =
-			decideSuccessfulNavigationPostAssetExecutionPlan({
-				entry: createEntry({
-					type: "prefetch",
-					intent: "none",
-				}),
-				isCurrentEntry: true,
-				currentHref: "http://localhost:3000/current",
-			});
-		expect(
-			decideSuccessfulNavigationPostAssetSideEffectPlan({
-				postAssetExecutionPlan: idlePrefetchPostAssetExecutionPlan,
-				buildIDSyncTiming: "before_asset_wait",
-			}),
-		).toEqual({
-			shouldCommitClientLoadersState: false,
-			shouldSyncBuildIDAfterAssetWait: false,
-		});
-	});
-
 	it("emits checkpoint-specific plans through a single planner seam", () => {
 		const currentEntry = createEntry({
 			type: "userNavigation",
@@ -570,7 +510,6 @@ describe("successful outcome stage plans", () => {
 				entry: currentEntry,
 				isCurrentEntry: true,
 				currentHref: "http://localhost:3000/current",
-				buildIDSyncTiming: "after_asset_wait_if_not_stopped",
 			},
 		);
 		expect(postAssetPlan).toEqual({
@@ -578,10 +517,6 @@ describe("successful outcome stage plans", () => {
 			plan: {
 				type: "render",
 				reason: "post_asset_render",
-			},
-			sideEffectPlan: {
-				shouldCommitClientLoadersState: true,
-				shouldSyncBuildIDAfterAssetWait: true,
 			},
 		});
 

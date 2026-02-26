@@ -231,13 +231,18 @@ export function registerPattern(
 	originalPattern: string,
 ): RegisteredPattern {
 	const normalized = normalizePattern(originalPattern, registry.config);
+	const existingPattern =
+		registry.staticPatterns.get(normalized.normalizedPattern) ||
+		registry.dynamicPatterns.get(normalized.normalizedPattern);
 
-	if (
-		!(globalThis.window && globalThis.document) &&
-		(registry.staticPatterns.has(normalized.normalizedPattern) ||
-			registry.dynamicPatterns.has(normalized.normalizedPattern))
-	) {
-		console.warn(`already registered: ${originalPattern}`);
+	if (existingPattern) {
+		if (existingPattern.originalPattern === originalPattern) {
+			return existingPattern;
+		}
+
+		throw new Error(
+			`normalized pattern collision: "${originalPattern}" and "${existingPattern.originalPattern}" both normalize to "${normalized.normalizedPattern}"`,
+		);
 	}
 
 	if (isStatic(normalized.normalizedSegments)) {

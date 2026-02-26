@@ -1831,6 +1831,10 @@ describe("navigation runtime success-processing defensive branches", () => {
 		const reRenderSpy = vi
 			.spyOn(renderRuntimeModule, "__reRenderApp")
 			.mockResolvedValue();
+		const buildIDEvents: Array<{ oldID: string; newID: string }> = [];
+		const removeBuildIDListener = addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
 
 		try {
 			const targetUrl = new URL(
@@ -1864,6 +1868,7 @@ describe("navigation runtime success-processing defensive branches", () => {
 								data: [{ stale: true }],
 							};
 						}),
+						responseBuildID: "2",
 						props: {
 							href: targetUrl,
 							navigationType: "browserHistory",
@@ -1877,8 +1882,71 @@ describe("navigation runtime success-processing defensive branches", () => {
 			expect((globalThis as any)[VORMA_SYMBOL].clientLoadersData).toEqual(
 				[{ stable: true }],
 			);
+			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
+			expect(buildIDEvents).toEqual([]);
 			expect(deleteNavigation).not.toHaveBeenCalled();
 		} finally {
+			removeBuildIDListener();
+			reRenderSpy.mockRestore();
+		}
+	});
+
+	it("syncs build ID only after asset wait completes for current browser-history entries", async () => {
+		const reRenderSpy = vi
+			.spyOn(renderRuntimeModule, "__reRenderApp")
+			.mockResolvedValue();
+		const buildIDEvents: Array<{ oldID: string; newID: string }> = [];
+		const removeBuildIDListener = addBuildIDListener((event) => {
+			buildIDEvents.push(event.detail);
+		});
+		const waitDeferred = createDeferred<{
+			data: Array<unknown>;
+			errorMessage?: string;
+		}>();
+
+		try {
+			const targetUrl = new URL(
+				"/build-id-sync-after-asset-wait",
+				window.location.href,
+			).href;
+			const entry = createEntry({
+				targetUrl,
+				type: "browserHistory",
+				intent: "navigate",
+			});
+
+			const processingPromise = processSuccessfulNavigationRuntime(
+				{
+					transitionPhase: vi.fn(),
+					findNavigationEntry: (_nextTargetUrl: string) => entry,
+					deleteNavigation: vi.fn(() => true),
+				},
+				createSuccessNavigationOutcome({
+					waitFnPromise: waitDeferred.promise,
+					responseBuildID: "2",
+					props: {
+						href: targetUrl,
+						navigationType: "browserHistory",
+					},
+				}),
+				entry,
+			);
+
+			await Promise.resolve();
+			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
+			expect(buildIDEvents).toEqual([]);
+
+			waitDeferred.resolve({ data: [] });
+			await expect(processingPromise).resolves.toBeUndefined();
+			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("2");
+			expect(buildIDEvents).toEqual([
+				{
+					oldID: "1",
+					newID: "2",
+				},
+			]);
+		} finally {
+			removeBuildIDListener();
 			reRenderSpy.mockRestore();
 		}
 	});

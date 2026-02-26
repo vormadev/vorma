@@ -1,12 +1,8 @@
-import { __vormaClientGlobal } from "../../app/context.ts";
+import { __vormaClientGlobal, setRuntimeBuildID } from "../../app/context.ts";
 import { dispatchBuildIDEvent } from "../../platform/events.ts";
 import { isAbortError, logError } from "../../platform/safety.ts";
 import { getBuildIDFromResponse } from "../redirects.ts";
-import {
-	AssetManager,
-	__reRenderApp,
-	setClientLoadersState,
-} from "../render_runtime.ts";
+import { AssetManager, __reRenderApp } from "../render_runtime.ts";
 import {
 	decideBuildIDSyncTimingForSuccessfulEntry,
 	decideSuccessfulNavigationCheckpointExecutionPlan,
@@ -76,44 +72,17 @@ function transitionPhaseForCurrentEntry(props: {
 	});
 }
 
-export type SuccessfulNavigationGlobalCommit =
-	| {
-			type: "set_client_loaders_state";
-			clientLoadersResult: SuccessfulNavigationClientLoadersResult;
-	  }
-	| {
-			type: "sync_build_id_from_response";
-			response: Response;
-	  };
-
-export function commitSuccessfulNavigationGlobalState(props: {
-	commit: SuccessfulNavigationGlobalCommit;
-}): void {
-	switch (props.commit.type) {
-		case "set_client_loaders_state":
-			setClientLoadersState(props.commit.clientLoadersResult);
-			return;
-		case "sync_build_id_from_response": {
-			const oldID = __vormaClientGlobal.get("buildID");
-			const newID = getBuildIDFromResponse(props.commit.response);
-			if (!newID || newID === oldID) {
-				return;
-			}
-
-			__vormaClientGlobal.set("buildID", newID);
-			dispatchBuildIDEvent({ newID, oldID });
-			return;
-		}
-	}
-}
-
 export function syncBuildIDFromResponse(response: Response): void {
-	commitSuccessfulNavigationGlobalState({
-		commit: {
-			type: "sync_build_id_from_response",
-			response,
-		},
+	const oldID = __vormaClientGlobal.get("buildID");
+	const newID = getBuildIDFromResponse(response);
+	if (!newID || newID === oldID) {
+		return;
+	}
+
+	setRuntimeBuildID({
+		buildID: newID,
 	});
+	dispatchBuildIDEvent({ newID, oldID });
 }
 
 async function waitForSuccessfulNavigationAssets(
@@ -164,6 +133,7 @@ async function renderSuccessfulNavigation(
 	context: ProcessSuccessfulNavigationContext,
 	outcome: SuccessfulNavigationOutcome,
 	entry: NavigationEntry,
+	clientLoadersResult: SuccessfulNavigationClientLoadersResult,
 ): Promise<void> {
 	transitionPhaseForCurrentEntry({
 		context,
@@ -176,6 +146,7 @@ async function renderSuccessfulNavigation(
 		await __reRenderApp({
 			json: outcome.json,
 			navigationType: entry.type,
+			clientLoadersResult,
 			runHistoryOptions: buildRunHistoryOptions(entry, outcome.props),
 			shouldCommit: () =>
 				isCurrentNavigationEntry({
@@ -305,27 +276,13 @@ async function runSuccessfulNavigationPostAssetCheckpoint(props: {
 			entry,
 			isCurrentEntry: checkpointEnvelope.isCurrentEntry,
 			currentHref: checkpointEnvelope.currentHref,
-			buildIDSyncTiming,
 		});
 	const postAssetExecutionPlan = postAssetExecutionPlanEnvelope.plan;
-	const postAssetSideEffectPlan =
-		postAssetExecutionPlanEnvelope.sideEffectPlan;
-
-	if (postAssetSideEffectPlan.shouldCommitClientLoadersState) {
-		commitSuccessfulNavigationGlobalState({
-			commit: {
-				type: "set_client_loaders_state",
-				clientLoadersResult,
-			},
-		});
-	}
-	if (postAssetSideEffectPlan.shouldSyncBuildIDAfterAssetWait) {
-		commitSuccessfulNavigationGlobalState({
-			commit: {
-				type: "sync_build_id_from_response",
-				response: outcome.response,
-			},
-		});
+	const shouldSyncBuildIDAfterAssetWait =
+		buildIDSyncTiming === "after_asset_wait_if_not_stopped" &&
+		postAssetExecutionPlan.type !== "stop";
+	if (shouldSyncBuildIDAfterAssetWait) {
+		syncBuildIDFromResponse(outcome.response);
 	}
 
 	switch (postAssetExecutionPlan.type) {
@@ -340,7 +297,12 @@ async function runSuccessfulNavigationPostAssetCheckpoint(props: {
 			});
 			return false;
 		case "render":
-			await renderSuccessfulNavigation(context, outcome, entry);
+			await renderSuccessfulNavigation(
+				context,
+				outcome,
+				entry,
+				clientLoadersResult,
+			);
 			return false;
 	}
 }

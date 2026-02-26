@@ -115,3 +115,25 @@ func TestRegisterPatternAndFindBestMatch(t *testing.T) {
 		)
 	}
 }
+
+func TestRegisterPatternPanicsOnNormalizedCollision(t *testing.T) {
+	m := New(&Options{
+		DynamicParamPrefix: '$',
+	})
+	m.RegisterPattern("/users/$id")
+
+	defer func() {
+		recoveredPanic := recover()
+		if recoveredPanic == nil {
+			t.Fatal("expected panic for normalized collision")
+		}
+
+		expectedMessage :=
+			`normalized pattern collision: "/users/:id" and "/users/$id" both normalize to "/users/:id"`
+		if got := recoveredPanic.(string); got != expectedMessage {
+			t.Fatalf("panic = %q, want %q", got, expectedMessage)
+		}
+	}()
+
+	m.RegisterPattern("/users/:id")
+}

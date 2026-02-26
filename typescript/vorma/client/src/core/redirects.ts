@@ -6,6 +6,7 @@ import {
 import {
 	__vormaClientGlobal,
 	getNavigationStateAccess,
+	setRuntimeBuildID,
 } from "../app/context.ts";
 import { dispatchBuildIDEvent } from "../platform/events.ts";
 import { resolveRequestBodyForTransport } from "../platform/request_body.ts";
@@ -348,7 +349,9 @@ export function syncBuildIDFromRedirectData(redirectData: RedirectData): void {
 	const oldID = __vormaClientGlobal.get("buildID");
 	const newID = redirectData.latestBuildID;
 	if (newID && newID !== oldID) {
-		__vormaClientGlobal.set("buildID", newID);
+		setRuntimeBuildID({
+			buildID: newID,
+		});
 		dispatchBuildIDEvent({ newID, oldID });
 	}
 }

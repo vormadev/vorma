@@ -3,7 +3,12 @@ import {
 	createPatternRegistry,
 	registerPattern,
 } from "vorma/kit/matcher/register";
-import { VORMA_SYMBOL, __vormaClientGlobal } from "../../app/context.ts";
+import {
+	VORMA_SYMBOL,
+	__vormaClientGlobal,
+	getRuntimeRouteSnapshot,
+} from "../../app/context.ts";
+import { setClientLoadersState } from "../../core/render_client_loader_runtime.ts";
 import {
 	AssetManager,
 	ComponentLoader,
@@ -11,9 +16,7 @@ import {
 	__registerClientLoaderPattern,
 	buildClientLoaderServerData,
 	completeClientLoaders,
-	deriveAndSetErrorState,
 	findPartialMatchesOnClient,
-	setClientLoadersState,
 	setupClientLoaders,
 } from "../../core/render_runtime.ts";
 import { VORMA_ROUTE_CHANGE_EVENT_KEY } from "../../platform/events.ts";
@@ -132,7 +135,10 @@ describe("render runtime internals", () => {
 			outermostClientError: "client-error",
 		});
 
-		deriveAndSetErrorState();
+		setClientLoadersState({
+			data: ["a", "b", "c"],
+			errorMessage: "client-error",
+		});
 
 		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBe(2);
 		expect(__vormaClientGlobal.get("outermostError")).toBe("client-error");
@@ -146,7 +152,9 @@ describe("render runtime internals", () => {
 			outermostClientError: "stale-client-error",
 		});
 
-		deriveAndSetErrorState();
+		setClientLoadersState({
+			data: ["ok"],
+		});
 
 		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBeUndefined();
 		expect(__vormaClientGlobal.get("outermostError")).toBeUndefined();
@@ -160,7 +168,10 @@ describe("render runtime internals", () => {
 			outermostClientError: "client-error",
 		});
 
-		deriveAndSetErrorState();
+		setClientLoadersState({
+			data: ["a", "b"],
+			errorMessage: "client-error",
+		});
 
 		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBe(1);
 		expect(__vormaClientGlobal.get("outermostError")).toBe("client-error");
@@ -172,7 +183,9 @@ describe("render runtime internals", () => {
 			outermostClientErrorIdx: undefined,
 		});
 
-		deriveAndSetErrorState();
+		setClientLoadersState({
+			data: [],
+		});
 
 		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBeUndefined();
 		expect(__vormaClientGlobal.get("outermostError")).toBeUndefined();
@@ -732,6 +745,86 @@ describe("render runtime internals", () => {
 
 		expect(updateHeadElsSpy).toHaveBeenCalledWith("meta", []);
 		expect(updateHeadElsSpy).toHaveBeenCalledWith("rest", []);
+	});
+
+	it("commits a coherent runtime snapshot before route-change events are dispatched", async () => {
+		const capturedSnapshots: Array<{
+			runtimeSnapshot: ReturnType<typeof getRuntimeRouteSnapshot>;
+			legacySnapshot: {
+				matchedPatterns: unknown;
+				loadersData: unknown;
+				clientLoadersData: unknown;
+				outermostError: unknown;
+				outermostErrorIdx: unknown;
+			};
+		}> = [];
+		const listener = () => {
+			capturedSnapshots.push({
+				runtimeSnapshot: getRuntimeRouteSnapshot(),
+				legacySnapshot: {
+					matchedPatterns: __vormaClientGlobal.get("matchedPatterns"),
+					loadersData: __vormaClientGlobal.get("loadersData"),
+					clientLoadersData:
+						__vormaClientGlobal.get("clientLoadersData"),
+					outermostError: __vormaClientGlobal.get("outermostError"),
+					outermostErrorIdx:
+						__vormaClientGlobal.get("outermostErrorIdx"),
+				},
+			});
+		};
+		window.addEventListener(VORMA_ROUTE_CHANGE_EVENT_KEY, listener);
+
+		try {
+			await __reRenderApp({
+				navigationType: "userNavigation",
+				onFinish: vi.fn(),
+				clientLoadersResult: {
+					data: ["client-new"],
+				},
+				json: createRouteDataJSON({
+					matchedPatterns: ["/new"],
+					loadersData: [{ value: "loader-new" }],
+					hasRootData: true,
+					params: { id: "42" },
+					splatValues: ["tail"],
+				}) as any,
+			});
+		} finally {
+			window.removeEventListener(VORMA_ROUTE_CHANGE_EVENT_KEY, listener);
+		}
+
+		expect(capturedSnapshots).toHaveLength(1);
+		const committedSnapshot = capturedSnapshots[0]!;
+		expect(committedSnapshot.runtimeSnapshot.matchedPatterns).toEqual([
+			"/new",
+		]);
+		expect(committedSnapshot.runtimeSnapshot.loadersData).toEqual([
+			{ value: "loader-new" },
+		]);
+		expect(committedSnapshot.runtimeSnapshot.clientLoadersData).toEqual([
+			"client-new",
+		]);
+		expect(
+			committedSnapshot.runtimeSnapshot.outermostError,
+		).toBeUndefined();
+		expect(
+			committedSnapshot.runtimeSnapshot.outermostErrorIdx,
+		).toBeUndefined();
+		expect(committedSnapshot.legacySnapshot.matchedPatterns).toEqual(
+			committedSnapshot.runtimeSnapshot.matchedPatterns,
+		);
+		expect(committedSnapshot.legacySnapshot.loadersData).toEqual(
+			committedSnapshot.runtimeSnapshot.loadersData,
+		);
+		expect(committedSnapshot.legacySnapshot.clientLoadersData).toEqual(
+			committedSnapshot.runtimeSnapshot.clientLoadersData,
+		);
+		expect(committedSnapshot.legacySnapshot.outermostError).toBe(
+			committedSnapshot.runtimeSnapshot.outermostError,
+		);
+		expect(committedSnapshot.legacySnapshot.outermostErrorIdx).toBe(
+			committedSnapshot.runtimeSnapshot.outermostErrorIdx,
+		);
 	});
 });
 

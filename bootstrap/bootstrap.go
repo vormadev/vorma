@@ -35,6 +35,16 @@ type Options struct {
 	ModuleRoot      string // Absolute path to go.mod location
 	CurrentDir      string // Absolute path where Vorma app is being created
 	HasParentModule bool   // True if using a parent go.mod
+
+	// SkipJavaScriptDependencyInstall avoids running package-manager install
+	// commands for generated package dependencies.
+	SkipJavaScriptDependencyInstall bool
+	// SkipGoModTidy avoids running `go mod tidy` after scaffold generation.
+	SkipGoModTidy bool
+	// SkipInitialProjectBuild avoids running the first `go run ./backend/cmd/build`.
+	SkipInitialProjectBuild bool
+	// SuppressSuccessOutput avoids printing the interactive success banner.
+	SuppressSuccessOutput bool
 }
 
 type derivedOptions struct {
@@ -390,13 +400,15 @@ func MustInit(o Options) {
 	// last
 	do.mustWriteTmpl("tsconfig.json", "tmpls/ts_config_json_tmpl.txt")
 
-	mustInstallJSPkgs(
-		do,
-		"typescript",
-		"vite",
-		fmt.Sprintf("vorma@%s", vorma.CurrentReleaseVersion()),
-		resolveUIVitePlugin(do),
-	)
+	if !o.SkipJavaScriptDependencyInstall {
+		mustInstallJSPkgs(
+			do,
+			"typescript",
+			"vite",
+			fmt.Sprintf("vorma@%s", vorma.CurrentReleaseVersion()),
+			resolveUIVitePlugin(do),
+		)
+	}
 
 	if do.UIVariant == "react" {
 		do.mustWriteTmpl(
@@ -404,13 +416,15 @@ func MustInit(o Options) {
 			"tmpls/frontend_entry_tsx_react_tmpl.txt",
 		)
 
-		mustInstallJSPkgs(
-			do,
-			"react",
-			"react-dom",
-			"@types/react",
-			"@types/react-dom",
-		)
+		if !o.SkipJavaScriptDependencyInstall {
+			mustInstallJSPkgs(
+				do,
+				"react",
+				"react-dom",
+				"@types/react",
+				"@types/react-dom",
+			)
+		}
 	}
 
 	if do.UIVariant == "solid" {
@@ -419,7 +433,9 @@ func MustInit(o Options) {
 			"tmpls/frontend_entry_tsx_solid_tmpl.txt",
 		)
 
-		mustInstallJSPkgs(do, "solid-js")
+		if !o.SkipJavaScriptDependencyInstall {
+			mustInstallJSPkgs(do, "solid-js")
+		}
 	}
 
 	if do.UIVariant == "preact" {
@@ -428,15 +444,19 @@ func MustInit(o Options) {
 			"tmpls/frontend_entry_tsx_preact_tmpl.txt",
 		)
 
-		mustInstallJSPkgs(do, "preact", "@preact/signals")
+		if !o.SkipJavaScriptDependencyInstall {
+			mustInstallJSPkgs(do, "preact", "@preact/signals")
+		}
 	}
 
-	if do.DeploymentTarget == "vercel" {
+	if do.DeploymentTarget == "vercel" && !o.SkipJavaScriptDependencyInstall {
 		mustInstallJSPkgs(do, "@vercel/node")
 	}
 
 	if do.IncludeTailwind {
-		mustInstallJSPkgs(do, "@tailwindcss/vite", "tailwindcss")
+		if !o.SkipJavaScriptDependencyInstall {
+			mustInstallJSPkgs(do, "@tailwindcss/vite", "tailwindcss")
+		}
 		mustWriteStr(
 			"frontend/src/styles/tailwind.css",
 			"tmpls/frontend_css_tailwind_css_str.txt",
@@ -446,30 +466,42 @@ func MustInit(o Options) {
 	// write assets
 	mustWriteFile("frontend/assets/favicon.svg", "assets/favicon.svg")
 
-	// tidy go modules
-	if err := executil.RunCmd("go", "mod", "tidy"); err != nil {
-		panic("failed to tidy go modules: " + err.Error())
+	if !o.SkipGoModTidy {
+		// tidy go modules
+		if err := executil.RunCmd("go", "mod", "tidy"); err != nil {
+			panic("failed to tidy go modules: " + err.Error())
+		}
 	}
 
-	// build once (no binary)
-	if err := executil.RunCmd("go", "run", "./backend/cmd/build", "--no-binary"); err != nil {
-		panic("failed to run build command: " + err.Error())
+	if !o.SkipInitialProjectBuild {
+		// build once (no binary)
+		if err := executil.RunCmd(
+			"go",
+			"run",
+			"./backend/cmd/build",
+			"--no-binary",
+		); err != nil {
+			panic("failed to run build command: " + err.Error())
+		}
 	}
 
-	fmt.Println()
-	fmt.Println("✨ SUCCESS! Your Vorma app is ready.")
-	fmt.Println()
-	if o.CreatedInDir != "" {
-		fmt.Printf("💻 Run `cd %s && %s dev` to start the development server.\n",
-			o.CreatedInDir,
-			do.ResolveJSPackageManagerRunScriptPrefix(),
-		)
-	} else {
-		fmt.Printf("💻 Run `%s dev` to start the development server.\n",
-			do.ResolveJSPackageManagerRunScriptPrefix(),
-		)
+	if !o.SuppressSuccessOutput {
+		fmt.Println()
+		fmt.Println("✨ SUCCESS! Your Vorma app is ready.")
+		fmt.Println()
+		if o.CreatedInDir != "" {
+			fmt.Printf(
+				"💻 Run `cd %s && %s dev` to start the development server.\n",
+				o.CreatedInDir,
+				do.ResolveJSPackageManagerRunScriptPrefix(),
+			)
+		} else {
+			fmt.Printf("💻 Run `%s dev` to start the development server.\n",
+				do.ResolveJSPackageManagerRunScriptPrefix(),
+			)
+		}
+		fmt.Println()
 	}
-	fmt.Println()
 }
 
 func (do derivedOptions) ResolveJSPackageManagerRunScriptPrefix() string {

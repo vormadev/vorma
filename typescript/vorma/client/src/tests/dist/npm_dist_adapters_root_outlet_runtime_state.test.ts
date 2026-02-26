@@ -2,7 +2,7 @@ import { h, render as renderPreact } from "preact";
 import { act as actPreact } from "preact/test-utils";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { createComponent, createEffect } from "solid-js";
+import { createComponent, createEffect, createMemo } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -61,15 +61,40 @@ function applyRuntimeState(
 		matchedPatterns?: string[];
 	},
 ): void {
-	globals.matchedPatterns = props.matchedPatterns ?? ["/"];
-	globals.loadersData = props.loadersData ?? [{}];
-	globals.clientLoadersData = props.clientLoadersData ?? [];
+	const nextMatchedPatterns = props.matchedPatterns ?? ["/"];
+	const nextLoadersData = props.loadersData ?? [{}];
+	const nextClientLoadersData = props.clientLoadersData ?? [];
+	globals.matchedPatterns = nextMatchedPatterns;
+	globals.loadersData = nextLoadersData;
+	globals.clientLoadersData = nextClientLoadersData;
 	globals.outermostError = undefined;
 	globals.outermostErrorIdx = undefined;
 	globals.activeErrorBoundary = undefined;
 	globals.activeComponents = props.activeComponents;
 	globals.importURLs = props.importURLs;
 	globals.exportKeys = props.exportKeys;
+	globals.runtimeRouteSnapshot = {
+		...globals.runtimeRouteSnapshot,
+		buildID: globals.buildID,
+		rootElementID: (globals.runtimeRouteSnapshot ?? {})["rootElementID"],
+		matchedPatterns: nextMatchedPatterns,
+		loadersData: nextLoadersData,
+		clientLoadersData: nextClientLoadersData,
+		importURLs: props.importURLs,
+		exportKeys: props.exportKeys,
+		errorExportKeys: globals.errorExportKeys ?? [],
+		hasRootData: globals.hasRootData ?? false,
+		params: globals.params ?? {},
+		splatValues: globals.splatValues ?? [],
+		outermostServerError: globals.outermostServerError,
+		outermostServerErrorIdx: globals.outermostServerErrorIdx,
+		outermostClientError: globals.outermostClientError,
+		outermostClientErrorIdx: globals.outermostClientErrorIdx,
+		outermostError: undefined,
+		outermostErrorIdx: undefined,
+		activeComponents: props.activeComponents,
+		activeErrorBoundary: undefined,
+	};
 }
 
 function dispatchRouteChange(scrollState: { x: number; y: number }) {
@@ -770,7 +795,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const useRouterData = adapter.makeTypedUseRouterData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
-		const useLoaderData = adapter.makeTypedUseLoaderData(
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
 
@@ -784,10 +809,10 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		};
 		const DataProbe = () => {
 			dataRenderCount += 1;
-			const nextLoaderData = useLoaderData({ idx: 0 }) as
-				| { value?: string }
-				| undefined;
 			const nextRouterData = useRouterData();
+			const nextLoaderData = usePatternLoaderData(
+				(nextRouterData.matchedPatterns[0] ?? "/") as any,
+			) as { value?: string } | undefined;
 			return React.createElement(
 				"div",
 				{ "data-data-probe": true },
@@ -836,7 +861,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 				exportKeys: stableExportKeys,
 				loadersData: [{ value: "b" }],
 				clientLoadersData: ["cb"],
-				matchedPatterns: ["/next"],
+				matchedPatterns: ["/"],
 			});
 			await act(async () => {
 				dispatchRouteChange({ x: 0, y: 0 });
@@ -844,7 +869,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 			expect(
 				container.querySelector("[data-data-probe]")?.textContent,
-			).toBe("b|/next");
+			).toBe("b|/");
 			expect(rootRenderCount).toBe(rootRendersAfterInitial);
 			expect(dataRenderCount).toBeGreaterThan(dataRendersAfterInitial);
 		} finally {
@@ -873,7 +898,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const useRouterData = adapter.makeTypedUseRouterData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
-		const useLoaderData = adapter.makeTypedUseLoaderData(
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
 
@@ -883,10 +908,10 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		};
 		const DataProbe = () => {
 			dataRenderCount += 1;
-			const nextLoaderData = useLoaderData({ idx: 0 }) as
-				| { value?: string }
-				| undefined;
 			const nextRouterData = useRouterData();
+			const nextLoaderData = usePatternLoaderData(
+				(nextRouterData.matchedPatterns[0] ?? "/") as any,
+			) as { value?: string } | undefined;
 			return h(
 				"div",
 				{ "data-data-probe": true },
@@ -932,7 +957,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 				exportKeys: stableExportKeys,
 				loadersData: [{ value: "b" }],
 				clientLoadersData: ["cb"],
-				matchedPatterns: ["/next"],
+				matchedPatterns: ["/"],
 			});
 			await actPreact(async () => {
 				dispatchRouteChange({ x: 0, y: 0 });
@@ -940,7 +965,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 
 			expect(
 				dataContainer.querySelector("[data-data-probe]")?.textContent,
-			).toBe("b|/next");
+			).toBe("b|/");
 			expect(rootRenderCount).toBe(rootRendersAfterInitial);
 			expect(dataRenderCount).toBeGreaterThan(dataRendersAfterInitial);
 		} finally {
@@ -965,7 +990,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const useRouterData = adapter.makeTypedUseRouterData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
-		const useLoaderData = adapter.makeTypedUseLoaderData(
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
 
@@ -977,8 +1002,13 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			return node;
 		};
 		const DataProbe = () => {
-			const loaderData = useLoaderData({ idx: 0 });
 			const routerData = useRouterData();
+			const loaderData = createMemo(() => {
+				const nextRouterData = routerData();
+				return usePatternLoaderData(
+					(nextRouterData.matchedPatterns[0] ?? "/") as any,
+				)();
+			});
 			const node = document.createElement("div");
 			node.setAttribute("data-data-probe", "true");
 			createEffect(() => {
@@ -1028,13 +1058,13 @@ describe("npm_dist root outlet runtime state coverage", () => {
 				exportKeys: stableExportKeys,
 				loadersData: [{ value: "b" }],
 				clientLoadersData: ["cb"],
-				matchedPatterns: ["/next"],
+				matchedPatterns: ["/"],
 			});
 			dispatchRouteChange({ x: 0, y: 0 });
 			await waitForCondition(() => {
 				expect(
 					container.querySelector("[data-data-probe]")?.textContent,
-				).toBe("b|/next");
+				).toBe("b|/");
 			});
 
 			expect(rootRunCount).toBe(rootRunsAfterInitial);
@@ -1062,7 +1092,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const useRouterData = adapter.makeTypedUseRouterData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
-		const useLoaderData = adapter.makeTypedUseLoaderData(
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
 		const useClientLoaderData = adapter.makeTypedAddClientLoader(
@@ -1076,9 +1106,9 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const DataProbe = () => {
 			dataRenderCount += 1;
 			const routerData = useRouterData();
-			const loaderData = useLoaderData({ idx: 0 }) as
-				| { value?: string }
-				| undefined;
+			const loaderData = usePatternLoaderData(
+				(routerData.matchedPatterns[0] ?? "/") as any,
+			) as { value?: string } | undefined;
 			const clientLoaderData = useClientLoaderData() as
 				| string
 				| undefined;
@@ -1161,7 +1191,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const useRouterData = adapter.makeTypedUseRouterData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
-		const useLoaderData = adapter.makeTypedUseLoaderData(
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
 		const useClientLoaderData = adapter.makeTypedAddClientLoader(
@@ -1175,9 +1205,9 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const DataProbe = () => {
 			dataRenderCount += 1;
 			const routerData = useRouterData();
-			const loaderData = useLoaderData({ idx: 0 }) as
-				| { value?: string }
-				| undefined;
+			const loaderData = usePatternLoaderData(
+				(routerData.matchedPatterns[0] ?? "/") as any,
+			) as { value?: string } | undefined;
 			const clientLoaderData = useClientLoaderData() as
 				| string
 				| undefined;
@@ -1255,7 +1285,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		const useRouterData = adapter.makeTypedUseRouterData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
-		const useLoaderData = adapter.makeTypedUseLoaderData(
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
 			DIST_TEST_VORMA_APP_CONFIG,
 		);
 		const useClientLoaderData = adapter.makeTypedAddClientLoader(
@@ -1268,7 +1298,12 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		let dataRenderCount = 0;
 		const DataProbe = () => {
 			const routerData = useRouterData();
-			const loaderData = useLoaderData({ idx: 0 });
+			const loaderData = createMemo(() => {
+				const nextRouterData = routerData();
+				return usePatternLoaderData(
+					(nextRouterData.matchedPatterns[0] ?? "/") as any,
+				)();
+			});
 			const clientLoaderData = useClientLoaderData();
 			const node = document.createElement("div");
 			node.setAttribute("data-probe", "true");
@@ -2170,8 +2205,1651 @@ describe("npm_dist root outlet runtime state coverage", () => {
 		}
 	});
 
-	it("react useClientLoaderData(routeProps) throws when route-props idx does not match the registered pattern", async () => {
+	it("react useClientLoaderData(routeProps) stays fresh across transition windows for a stable route scope", async () => {
 		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/react");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const originalActEnvironment = (globalThis as any)
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		const RouteComponent = (routeProps: any) => {
+			const clientData = usePatternClientLoaderData(routeProps) as
+				| string
+				| undefined;
+			return React.createElement(
+				"div",
+				{ "data-react-route-props-client-probe": true },
+				clientData ?? "none",
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					React.createElement(adapter.VormaRootOutlet as any, {
+						idx: 0,
+					}),
+				);
+			});
+			expect(
+				container.querySelector("[data-react-route-props-client-probe]")
+					?.textContent,
+			).toBe("probe-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-b" }],
+				clientLoadersData: ["probe-b"],
+				matchedPatterns: ["/probe"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector("[data-react-route-props-client-probe]")
+					?.textContent,
+			).toBe("probe-b");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector("[data-react-route-props-client-probe]")
+					?.textContent,
+			).toBe("probe-c");
+		} finally {
+			await act(async () => {
+				root.unmount();
+			});
+			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
+				originalActEnvironment;
+			container.remove();
+			restore();
+		}
+	});
+
+	it("react useLoaderData(routeProps) tracks current route scope through transition windows", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/react");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const originalActEnvironment = (globalThis as any)
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const RouteComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps) as
+				| { value?: string }
+				| undefined;
+			return React.createElement(
+				"div",
+				{ "data-react-route-props-loader-probe": true },
+				loaderData?.value ?? "none",
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					React.createElement(adapter.VormaRootOutlet as any, {
+						idx: 0,
+					}),
+				);
+			});
+			expect(
+				container.querySelector("[data-react-route-props-loader-probe]")
+					?.textContent,
+			).toBe("loader-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "root-loader-b" }],
+				clientLoadersData: ["root-b"],
+				matchedPatterns: ["/root"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector("[data-react-route-props-loader-probe]")
+					?.textContent,
+			).toBe("root-loader-b");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector("[data-react-route-props-loader-probe]")
+					?.textContent,
+			).toBe("loader-c");
+		} finally {
+			await act(async () => {
+				root.unmount();
+			});
+			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
+				originalActEnvironment;
+			container.remove();
+			restore();
+		}
+	});
+
+	it("preact useLoaderData(routeProps) tracks current route scope through transition windows", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/preact");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const RouteComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps) as
+				| { value?: string }
+				| undefined;
+			return h(
+				"div",
+				{ "data-preact-route-props-loader-probe": true },
+				loaderData?.value ?? "none",
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		try {
+			await actPreact(async () => {
+				renderPreact(
+					h(adapter.VormaRootOutlet as any, { idx: 0 }),
+					container,
+				);
+			});
+			expect(
+				container.querySelector(
+					"[data-preact-route-props-loader-probe]",
+				)?.textContent,
+			).toBe("loader-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "root-loader-b" }],
+				clientLoadersData: ["root-b"],
+				matchedPatterns: ["/root"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector(
+					"[data-preact-route-props-loader-probe]",
+				)?.textContent,
+			).toBe("root-loader-b");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector(
+					"[data-preact-route-props-loader-probe]",
+				)?.textContent,
+			).toBe("loader-c");
+		} finally {
+			renderPreact(null, container);
+			container.remove();
+			restore();
+		}
+	});
+
+	it("preact useClientLoaderData(routeProps) stays fresh across transition windows for a stable route scope", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/preact");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		const RouteComponent = (routeProps: any) => {
+			const clientData = usePatternClientLoaderData(routeProps) as
+				| string
+				| undefined;
+			return h(
+				"div",
+				{ "data-preact-route-props-client-probe": true },
+				clientData ?? "none",
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		try {
+			await actPreact(async () => {
+				renderPreact(
+					h(adapter.VormaRootOutlet as any, { idx: 0 }),
+					container,
+				);
+			});
+			expect(
+				container.querySelector(
+					"[data-preact-route-props-client-probe]",
+				)?.textContent,
+			).toBe("probe-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-b" }],
+				clientLoadersData: ["probe-b"],
+				matchedPatterns: ["/probe"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector(
+					"[data-preact-route-props-client-probe]",
+				)?.textContent,
+			).toBe("probe-b");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector(
+					"[data-preact-route-props-client-probe]",
+				)?.textContent,
+			).toBe("probe-c");
+		} finally {
+			renderPreact(null, container);
+			container.remove();
+			restore();
+		}
+	});
+
+	it("solid useLoaderData(routeProps) tracks current route scope through transition windows", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/solid");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const RouteComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps);
+			const node = document.createElement("div");
+			node.setAttribute("data-solid-route-props-loader-probe", "true");
+			createEffect(() => {
+				const nextLoaderData = loaderData() as
+					| { value?: string }
+					| undefined;
+				node.textContent = nextLoaderData?.value ?? "none";
+			});
+			return node;
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		const dispose = renderSolid(() => {
+			return createComponent(adapter.VormaRootOutlet as any, { idx: 0 });
+		}, container);
+
+		try {
+			await waitForCondition(() => {
+				expect(
+					container.querySelector(
+						"[data-solid-route-props-loader-probe]",
+					)?.textContent,
+				).toBe("loader-a");
+			});
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "root-loader-b" }],
+				clientLoadersData: ["root-b"],
+				matchedPatterns: ["/root"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector(
+						"[data-solid-route-props-loader-probe]",
+					)?.textContent,
+				).toBe("root-loader-b");
+			});
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector(
+						"[data-solid-route-props-loader-probe]",
+					)?.textContent,
+				).toBe("loader-c");
+			});
+		} finally {
+			dispose();
+			container.remove();
+			restore();
+		}
+	});
+
+	it("solid useClientLoaderData(routeProps) stays fresh across transition windows for a stable route scope", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/solid");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const outletContainer = document.createElement("div");
+		const probeContainer = document.createElement("div");
+		document.body.appendChild(outletContainer);
+		document.body.appendChild(probeContainer);
+
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		let capturedRouteProps: any;
+		const RouteComponent = (routeProps: any) => {
+			const node = document.createElement("div");
+			capturedRouteProps = routeProps;
+			return node;
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		const disposeOutlet = renderSolid(() => {
+			return createComponent(adapter.VormaRootOutlet as any, { idx: 0 });
+		}, outletContainer);
+		await waitForCondition(() => {
+			expect(capturedRouteProps).toBeDefined();
+		});
+		const disposeProbe = renderSolid(() => {
+			const clientData = usePatternClientLoaderData(capturedRouteProps);
+			const node = document.createElement("div");
+			node.setAttribute("data-solid-route-props-client-probe", "true");
+			createEffect(() => {
+				const nextClientData = clientData() as string | undefined;
+				node.textContent = nextClientData ?? "none";
+			});
+			return node;
+		}, probeContainer);
+
+		try {
+			expect(
+				probeContainer.querySelector(
+					"[data-solid-route-props-client-probe]",
+				)?.textContent,
+			).toBe("probe-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-b" }],
+				clientLoadersData: ["probe-b"],
+				matchedPatterns: ["/probe"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					probeContainer.querySelector(
+						"[data-solid-route-props-client-probe]",
+					)?.textContent,
+				).toBe("probe-b");
+			});
+
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					probeContainer.querySelector(
+						"[data-solid-route-props-client-probe]",
+					)?.textContent,
+				).toBe("probe-c");
+			});
+		} finally {
+			disposeProbe();
+			disposeOutlet();
+			outletContainer.remove();
+			probeContainer.remove();
+			restore();
+		}
+	});
+
+	it("react route-props hooks keep owner-consistent values on every transition tick", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/react");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const originalActEnvironment = (globalThis as any)
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		let phase: "initial" | "to-root" | "back-to-probe" = "initial";
+		const trace: Array<{
+			phase: string;
+			value: string;
+			matchedPattern: string;
+		}> = [];
+		const RouteComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps) as
+				| { value?: string }
+				| undefined;
+			const clientData = usePatternClientLoaderData(routeProps) as
+				| string
+				| undefined;
+			const routerData = useRouterData();
+			trace.push({
+				phase,
+				value: `${loaderData?.value ?? "none"}|${clientData ?? "none"}`,
+				matchedPattern: routerData.matchedPatterns[0] ?? "<none>",
+			});
+			return React.createElement(
+				"div",
+				{ "data-react-route-props-tick-trace": true },
+				`${loaderData?.value ?? "none"}|${clientData ?? "none"}`,
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					React.createElement(adapter.VormaRootOutlet as any, {
+						idx: 0,
+					}),
+				);
+			});
+
+			phase = "to-root";
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-b" }],
+				clientLoadersData: ["probe-b"],
+				matchedPatterns: ["/probe"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			phase = "back-to-probe";
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			const initialTrace = trace.filter(
+				(entry) => entry.phase === "initial",
+			);
+			const toRootTrace = trace.filter(
+				(entry) => entry.phase === "to-root",
+			);
+			const reboundTrace = trace.filter(
+				(entry) => entry.phase === "back-to-probe",
+			);
+			expect(initialTrace.length).toBeGreaterThan(0);
+			expect(toRootTrace.length).toBeGreaterThan(0);
+			expect(reboundTrace.length).toBeGreaterThan(0);
+			if (
+				!initialTrace.every((entry) => {
+					return (
+						entry.value === "loader-a|probe-a" &&
+						entry.matchedPattern === "/probe"
+					);
+				})
+			) {
+				throw new Error(JSON.stringify({ reactTrace: trace }));
+			}
+			expect(
+				toRootTrace.every((entry) => {
+					return (
+						entry.value === "loader-b|probe-b" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+			expect(
+				reboundTrace.every((entry) => {
+					return (
+						entry.value === "loader-c|probe-c" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+		} finally {
+			await act(async () => {
+				root.unmount();
+			});
+			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
+				originalActEnvironment;
+			container.remove();
+			restore();
+		}
+	});
+
+	it("preact route-props hooks keep owner-consistent values on every transition tick", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/preact");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		let phase: "initial" | "to-root" | "back-to-probe" = "initial";
+		const trace: Array<{
+			phase: string;
+			value: string;
+			matchedPattern: string;
+		}> = [];
+		const RouteComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps) as
+				| { value?: string }
+				| undefined;
+			const clientData = usePatternClientLoaderData(routeProps) as
+				| string
+				| undefined;
+			const routerData = useRouterData();
+			trace.push({
+				phase,
+				value: `${loaderData?.value ?? "none"}|${clientData ?? "none"}`,
+				matchedPattern: routerData.matchedPatterns[0] ?? "<none>",
+			});
+			return h(
+				"div",
+				{ "data-preact-route-props-tick-trace": true },
+				`${loaderData?.value ?? "none"}|${clientData ?? "none"}`,
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		try {
+			await actPreact(async () => {
+				renderPreact(
+					h(adapter.VormaRootOutlet as any, { idx: 0 }),
+					container,
+				);
+			});
+
+			phase = "to-root";
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-b" }],
+				clientLoadersData: ["probe-b"],
+				matchedPatterns: ["/probe"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			phase = "back-to-probe";
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			const initialTrace = trace.filter(
+				(entry) => entry.phase === "initial",
+			);
+			const toRootTrace = trace.filter(
+				(entry) => entry.phase === "to-root",
+			);
+			const reboundTrace = trace.filter(
+				(entry) => entry.phase === "back-to-probe",
+			);
+			expect(initialTrace.length).toBeGreaterThan(0);
+			expect(toRootTrace.length).toBeGreaterThan(0);
+			expect(reboundTrace.length).toBeGreaterThan(0);
+			if (
+				!initialTrace.every((entry) => {
+					return (
+						entry.value === "loader-a|probe-a" &&
+						entry.matchedPattern === "/probe"
+					);
+				})
+			) {
+				throw new Error(JSON.stringify({ preactTrace: trace }));
+			}
+			expect(
+				toRootTrace.every((entry) => {
+					return (
+						entry.value === "loader-b|probe-b" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+			expect(
+				reboundTrace.every((entry) => {
+					return (
+						entry.value === "loader-c|probe-c" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+		} finally {
+			renderPreact(null, container);
+			container.remove();
+			restore();
+		}
+	});
+
+	it("solid route-props hooks keep owner-consistent values on every transition tick", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/solid");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		let phase: "initial" | "to-root" | "back-to-probe" = "initial";
+		const trace: Array<{
+			phase: string;
+			value: string;
+			matchedPattern: string;
+		}> = [];
+		const RouteComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps);
+			const clientData = usePatternClientLoaderData(routeProps);
+			const routerData = useRouterData();
+			const node = document.createElement("div");
+			node.setAttribute("data-solid-route-props-tick-trace", "true");
+			createEffect(() => {
+				const currentRouterData = routerData();
+				const currentLoaderData = loaderData() as
+					| { value?: string }
+					| undefined;
+				const currentClientData = clientData() as string | undefined;
+				trace.push({
+					phase,
+					value: `${currentLoaderData?.value ?? "none"}|${currentClientData ?? "none"}`,
+					matchedPattern:
+						currentRouterData.matchedPatterns[0] ?? "<none>",
+				});
+				node.textContent = `${currentLoaderData?.value ?? "none"}|${currentClientData ?? "none"}`;
+			});
+			return node;
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RouteComponent],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		const dispose = renderSolid(() => {
+			return createComponent(adapter.VormaRootOutlet as any, { idx: 0 });
+		}, container);
+
+		try {
+			await waitForCondition(() => {
+				expect(
+					container.querySelector(
+						"[data-solid-route-props-tick-trace]",
+					)?.textContent,
+				).toBe("loader-a|probe-a");
+			});
+
+			phase = "to-root";
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-b" }],
+				clientLoadersData: ["probe-b"],
+				matchedPatterns: ["/probe"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector(
+						"[data-solid-route-props-tick-trace]",
+					)?.textContent,
+				).toBe("loader-b|probe-b");
+			});
+
+			phase = "back-to-probe";
+			applyRuntimeState(globals, {
+				activeComponents: [RouteComponent],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector(
+						"[data-solid-route-props-tick-trace]",
+					)?.textContent,
+				).toBe("loader-c|probe-c");
+			});
+
+			const initialTrace = trace.filter(
+				(entry) => entry.phase === "initial",
+			);
+			const toRootTrace = trace.filter(
+				(entry) => entry.phase === "to-root",
+			);
+			const reboundTrace = trace.filter(
+				(entry) => entry.phase === "back-to-probe",
+			);
+			expect(initialTrace.length).toBeGreaterThan(0);
+			expect(toRootTrace.length).toBeGreaterThan(0);
+			expect(reboundTrace.length).toBeGreaterThan(0);
+			expect(
+				initialTrace.every((entry) => {
+					return (
+						entry.value === "loader-a|probe-a" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+			expect(
+				toRootTrace.every((entry) => {
+					return (
+						entry.value === "loader-b|probe-b" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+			expect(
+				reboundTrace.every((entry) => {
+					return (
+						entry.value === "loader-c|probe-c" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+		} finally {
+			dispose();
+			container.remove();
+			restore();
+		}
+	});
+
+	it("react global selectors keep snapshot-coherent values on every transition tick", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/react");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const originalActEnvironment = (globalThis as any)
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		let phase: "initial" | "to-root" | "back-to-probe" = "initial";
+		const trace: Array<{
+			phase: string;
+			value: string;
+			matchedPattern: string;
+		}> = [];
+		const GlobalProbe = () => {
+			const routerData = useRouterData();
+			const matchedPattern = (routerData.matchedPatterns[0] ??
+				"/probe") as any;
+			const loaderData = usePatternLoaderData(matchedPattern) as
+				| { value?: string }
+				| undefined;
+			const clientData = usePatternClientLoaderData() as
+				| string
+				| undefined;
+			trace.push({
+				phase,
+				value: `${loaderData?.value ?? "none"}|${clientData ?? "none"}`,
+				matchedPattern: routerData.matchedPatterns[0] ?? "<none>",
+			});
+			return React.createElement(
+				"div",
+				{ "data-react-global-tick-trace": true },
+				`${loaderData?.value ?? "none"}|${clientData ?? "none"}`,
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [makeReactOutlet("root")],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					React.createElement(
+						React.Fragment,
+						{},
+						React.createElement(adapter.VormaRootOutlet as any, {
+							idx: 0,
+						}),
+						React.createElement(GlobalProbe),
+					),
+				);
+			});
+
+			phase = "to-root";
+			applyRuntimeState(globals, {
+				activeComponents: [makeReactOutlet("root")],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "root-loader-b" }],
+				clientLoadersData: ["root-b"],
+				matchedPatterns: ["/root"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			phase = "back-to-probe";
+			applyRuntimeState(globals, {
+				activeComponents: [makeReactOutlet("root")],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			const initialTrace = trace.filter(
+				(entry) => entry.phase === "initial",
+			);
+			const toRootTrace = trace.filter(
+				(entry) => entry.phase === "to-root",
+			);
+			const reboundTrace = trace.filter(
+				(entry) => entry.phase === "back-to-probe",
+			);
+			expect(initialTrace.length).toBeGreaterThan(0);
+			expect(toRootTrace.length).toBeGreaterThan(0);
+			expect(reboundTrace.length).toBeGreaterThan(0);
+			expect(
+				initialTrace.every((entry) => {
+					return (
+						(entry.value === "none|none" &&
+							entry.matchedPattern === "<none>") ||
+						(entry.value === "loader-a|probe-a" &&
+							entry.matchedPattern === "/probe")
+					);
+				}),
+			).toBe(true);
+			expect(
+				toRootTrace.every((entry) => {
+					return (
+						entry.value === "root-loader-b|none" &&
+						entry.matchedPattern === "/root"
+					);
+				}),
+			).toBe(true);
+			expect(
+				reboundTrace.every((entry) => {
+					return (
+						entry.value === "loader-c|probe-c" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+		} finally {
+			await act(async () => {
+				root.unmount();
+			});
+			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
+				originalActEnvironment;
+			container.remove();
+			restore();
+		}
+	});
+
+	it("preact global selectors keep snapshot-coherent values on every transition tick", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/preact");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		let phase: "initial" | "to-root" | "back-to-probe" = "initial";
+		const trace: Array<{
+			phase: string;
+			value: string;
+			matchedPattern: string;
+		}> = [];
+		const GlobalProbe = () => {
+			const routerData = useRouterData();
+			const matchedPattern = (routerData.matchedPatterns[0] ??
+				"/probe") as any;
+			const loaderData = usePatternLoaderData(matchedPattern) as
+				| { value?: string }
+				| undefined;
+			const clientData = usePatternClientLoaderData() as
+				| string
+				| undefined;
+			trace.push({
+				phase,
+				value: `${loaderData?.value ?? "none"}|${clientData ?? "none"}`,
+				matchedPattern: routerData.matchedPatterns[0] ?? "<none>",
+			});
+			return h(
+				"div",
+				{ "data-preact-global-tick-trace": true },
+				`${loaderData?.value ?? "none"}|${clientData ?? "none"}`,
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [makePreactOutlet("root")],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		try {
+			await actPreact(async () => {
+				renderPreact(
+					h(
+						"div",
+						{},
+						h(adapter.VormaRootOutlet as any, { idx: 0 }),
+						h(GlobalProbe, {}),
+					),
+					container,
+				);
+			});
+
+			phase = "to-root";
+			applyRuntimeState(globals, {
+				activeComponents: [makePreactOutlet("root")],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "root-loader-b" }],
+				clientLoadersData: ["root-b"],
+				matchedPatterns: ["/root"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			phase = "back-to-probe";
+			applyRuntimeState(globals, {
+				activeComponents: [makePreactOutlet("root")],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+
+			const initialTrace = trace.filter(
+				(entry) => entry.phase === "initial",
+			);
+			const toRootTrace = trace.filter(
+				(entry) => entry.phase === "to-root",
+			);
+			const reboundTrace = trace.filter(
+				(entry) => entry.phase === "back-to-probe",
+			);
+			expect(initialTrace.length).toBeGreaterThan(0);
+			expect(toRootTrace.length).toBeGreaterThan(0);
+			expect(reboundTrace.length).toBeGreaterThan(0);
+			expect(
+				initialTrace.every((entry) => {
+					return (
+						(entry.value === "none|none" &&
+							entry.matchedPattern === "<none>") ||
+						(entry.value === "loader-a|probe-a" &&
+							entry.matchedPattern === "/probe")
+					);
+				}),
+			).toBe(true);
+			expect(
+				toRootTrace.every((entry) => {
+					return (
+						entry.value === "root-loader-b|none" &&
+						entry.matchedPattern === "/root"
+					);
+				}),
+			).toBe(true);
+			expect(
+				reboundTrace.every((entry) => {
+					return (
+						entry.value === "loader-c|probe-c" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+		} finally {
+			renderPreact(null, container);
+			container.remove();
+			restore();
+		}
+	});
+
+	it("solid global selectors keep snapshot-coherent values on every transition tick", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/solid");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const useRouterData = adapter.makeTypedUseRouterData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternLoaderData = adapter.makeTypedUsePatternLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const usePatternClientLoaderData = adapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		)({
+			pattern: "/probe",
+			clientLoader: async () => "unused",
+		});
+		let phase: "initial" | "to-root" | "back-to-probe" = "initial";
+		const trace: Array<{
+			phase: string;
+			value: string;
+			matchedPattern: string;
+		}> = [];
+		const GlobalProbe = () => {
+			const routerData = useRouterData();
+			const loaderData = createMemo(() => {
+				const matchedPattern = (routerData().matchedPatterns[0] ??
+					"/probe") as any;
+				return usePatternLoaderData(matchedPattern)();
+			});
+			const clientData = usePatternClientLoaderData();
+			const node = document.createElement("div");
+			node.setAttribute("data-solid-global-tick-trace", "true");
+			createEffect(() => {
+				const currentRouterData = routerData();
+				const currentLoaderData = loaderData() as
+					| { value?: string }
+					| undefined;
+				const currentClientData = clientData() as string | undefined;
+				trace.push({
+					phase,
+					value: `${currentLoaderData?.value ?? "none"}|${currentClientData ?? "none"}`,
+					matchedPattern:
+						currentRouterData.matchedPatterns[0] ?? "<none>",
+				});
+				node.textContent = `${currentLoaderData?.value ?? "none"}|${currentClientData ?? "none"}`;
+			});
+			return node;
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [makeSolidOutlet("root")],
+			importURLs: ["/root.js"],
+			exportKeys: ["default"],
+			loadersData: [{ value: "loader-a" }],
+			clientLoadersData: ["probe-a"],
+			matchedPatterns: ["/probe"],
+		});
+
+		const dispose = renderSolid(() => {
+			return [
+				createComponent(adapter.VormaRootOutlet as any, { idx: 0 }),
+				GlobalProbe(),
+			];
+		}, container);
+
+		try {
+			await waitForCondition(() => {
+				expect(
+					container.querySelector("[data-solid-global-tick-trace]")
+						?.textContent,
+				).toBe("loader-a|probe-a");
+			});
+
+			phase = "to-root";
+			applyRuntimeState(globals, {
+				activeComponents: [makeSolidOutlet("root")],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "root-loader-b" }],
+				clientLoadersData: ["root-b"],
+				matchedPatterns: ["/root"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector("[data-solid-global-tick-trace]")
+						?.textContent,
+				).toBe("root-loader-b|none");
+			});
+
+			phase = "back-to-probe";
+			applyRuntimeState(globals, {
+				activeComponents: [makeSolidOutlet("root")],
+				importURLs: ["/root.js"],
+				exportKeys: ["default"],
+				loadersData: [{ value: "loader-c" }],
+				clientLoadersData: ["probe-c"],
+				matchedPatterns: ["/probe"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector("[data-solid-global-tick-trace]")
+						?.textContent,
+				).toBe("loader-c|probe-c");
+			});
+
+			const initialTrace = trace.filter(
+				(entry) => entry.phase === "initial",
+			);
+			const toRootTrace = trace.filter(
+				(entry) => entry.phase === "to-root",
+			);
+			const reboundTrace = trace.filter(
+				(entry) => entry.phase === "back-to-probe",
+			);
+			expect(initialTrace.length).toBeGreaterThan(0);
+			expect(toRootTrace.length).toBeGreaterThan(0);
+			expect(reboundTrace.length).toBeGreaterThan(0);
+			expect(
+				initialTrace.every((entry) => {
+					return (
+						entry.value === "loader-a|probe-a" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+			expect(
+				toRootTrace.every((entry) => {
+					return (
+						entry.value === "root-loader-b|none" &&
+						entry.matchedPattern === "/root"
+					);
+				}),
+			).toBe(true);
+			expect(
+				reboundTrace.every((entry) => {
+					return (
+						entry.value === "loader-c|probe-c" &&
+						entry.matchedPattern === "/probe"
+					);
+				}),
+			).toBe(true);
+		} finally {
+			dispose();
+			container.remove();
+			restore();
+		}
+	});
+
+	it("react nested route-props loader data follows route-key remounts when component identity is reused", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/react");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const originalActEnvironment = (globalThis as any)
+			.IS_REACT_ACT_ENVIRONMENT;
+		(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const RootComponent = (routeProps: any) => {
+			return routeProps.Outlet(undefined);
+		};
+		const SharedChildComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps) as
+				| { value?: string }
+				| undefined;
+			return React.createElement(
+				"div",
+				{ "data-react-nested-route-props-loader-probe": true },
+				loaderData?.value ?? "none",
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RootComponent, SharedChildComponent],
+			importURLs: ["/root.js", "/child-a.js"],
+			exportKeys: ["default", "default"],
+			loadersData: [{ value: "root-a" }, { value: "loader-a" }],
+			clientLoadersData: ["root-client-a", "child-client-a"],
+			matchedPatterns: ["/root", "/probe"],
+		});
+
+		try {
+			await act(async () => {
+				root.render(
+					React.createElement(adapter.VormaRootOutlet as any, {
+						idx: 0,
+					}),
+				);
+			});
+			expect(
+				container.querySelector(
+					"[data-react-nested-route-props-loader-probe]",
+				)?.textContent,
+			).toBe("loader-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RootComponent, SharedChildComponent],
+				importURLs: ["/root.js", "/child-b.js"],
+				exportKeys: ["default", "default"],
+				loadersData: [{ value: "root-b" }, { value: "loader-b" }],
+				clientLoadersData: ["root-client-b", "child-client-b"],
+				matchedPatterns: ["/root", "/other"],
+			});
+			await act(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector(
+					"[data-react-nested-route-props-loader-probe]",
+				)?.textContent,
+			).toBe("loader-b");
+		} finally {
+			await act(async () => {
+				root.unmount();
+			});
+			(globalThis as any).IS_REACT_ACT_ENVIRONMENT =
+				originalActEnvironment;
+			container.remove();
+			restore();
+		}
+	});
+
+	it("preact nested route-props loader data follows route-key remounts when component identity is reused", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/preact");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const RootComponent = (routeProps: any) => {
+			return routeProps.Outlet(undefined);
+		};
+		const SharedChildComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps) as
+				| { value?: string }
+				| undefined;
+			return h(
+				"div",
+				{ "data-preact-nested-route-props-loader-probe": true },
+				loaderData?.value ?? "none",
+			);
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RootComponent, SharedChildComponent],
+			importURLs: ["/root.js", "/child-a.js"],
+			exportKeys: ["default", "default"],
+			loadersData: [{ value: "root-a" }, { value: "loader-a" }],
+			clientLoadersData: ["root-client-a", "child-client-a"],
+			matchedPatterns: ["/root", "/probe"],
+		});
+
+		try {
+			await actPreact(async () => {
+				renderPreact(
+					h(adapter.VormaRootOutlet as any, { idx: 0 }),
+					container,
+				);
+			});
+			expect(
+				container.querySelector(
+					"[data-preact-nested-route-props-loader-probe]",
+				)?.textContent,
+			).toBe("loader-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RootComponent, SharedChildComponent],
+				importURLs: ["/root.js", "/child-b.js"],
+				exportKeys: ["default", "default"],
+				loadersData: [{ value: "root-b" }, { value: "loader-b" }],
+				clientLoadersData: ["root-client-b", "child-client-b"],
+				matchedPatterns: ["/root", "/other"],
+			});
+			await actPreact(async () => {
+				dispatchRouteChange({ x: 0, y: 0 });
+			});
+			expect(
+				container.querySelector(
+					"[data-preact-nested-route-props-loader-probe]",
+				)?.textContent,
+			).toBe("loader-b");
+		} finally {
+			renderPreact(null, container);
+			container.remove();
+			restore();
+		}
+	});
+
+	it("solid nested route-props loader data follows route-key remounts when component identity is reused", async () => {
+		const globals = installDistTestVormaGlobal();
+		vi.resetModules();
+		const adapter = await import("vorma/solid");
+		const { restore } = installImmediateRAFAndScrollSpy();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+
+		const useLoaderData = adapter.makeTypedUseLoaderData(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		const RootComponent = (routeProps: any) => {
+			return routeProps.Outlet(undefined);
+		};
+		const SharedChildComponent = (routeProps: any) => {
+			const loaderData = useLoaderData(routeProps);
+			const node = document.createElement("div");
+			node.setAttribute(
+				"data-solid-nested-route-props-loader-probe",
+				"true",
+			);
+			createEffect(() => {
+				const nextLoaderData = loaderData() as
+					| { value?: string }
+					| undefined;
+				node.textContent = nextLoaderData?.value ?? "none";
+			});
+			return node;
+		};
+
+		applyRuntimeState(globals, {
+			activeComponents: [RootComponent, SharedChildComponent],
+			importURLs: ["/root.js", "/child-a.js"],
+			exportKeys: ["default", "default"],
+			loadersData: [{ value: "root-a" }, { value: "loader-a" }],
+			clientLoadersData: ["root-client-a", "child-client-a"],
+			matchedPatterns: ["/root", "/probe"],
+		});
+
+		const dispose = renderSolid(() => {
+			return createComponent(adapter.VormaRootOutlet as any, { idx: 0 });
+		}, container);
+
+		try {
+			expect(
+				container.querySelector(
+					"[data-solid-nested-route-props-loader-probe]",
+				)?.textContent,
+			).toBe("loader-a");
+
+			applyRuntimeState(globals, {
+				activeComponents: [RootComponent, SharedChildComponent],
+				importURLs: ["/root.js", "/child-b.js"],
+				exportKeys: ["default", "default"],
+				loadersData: [{ value: "root-b" }, { value: "loader-b" }],
+				clientLoadersData: ["root-client-b", "child-client-b"],
+				matchedPatterns: ["/root", "/other"],
+			});
+			dispatchRouteChange({ x: 0, y: 0 });
+			await waitForCondition(() => {
+				expect(
+					container.querySelector(
+						"[data-solid-nested-route-props-loader-probe]",
+					)?.textContent,
+				).toBe("loader-b");
+			});
+		} finally {
+			dispose();
+			container.remove();
+			restore();
+		}
+	});
+
+	it("react useClientLoaderData(routeProps) throws when route props are not produced by a route component", async () => {
+		const globals = installDistTestVormaGlobal();
+		applyRuntimeState(globals, {
+			activeComponents: [
+				makeReactOutlet("root"),
+				makeReactOutlet("child"),
+			],
+			importURLs: ["/root.js", "/child.js"],
+			exportKeys: ["default", "default"],
+			loadersData: [{}, {}],
+			clientLoadersData: ["probe-a", "other-a"],
+			matchedPatterns: ["/probe", "/other"],
+		});
 		vi.resetModules();
 		const adapter = await import("vorma/react");
 		const { restore } = installImmediateRAFAndScrollSpy();
@@ -2229,18 +3907,6 @@ describe("npm_dist root outlet runtime state coverage", () => {
 			});
 		};
 
-		applyRuntimeState(globals, {
-			activeComponents: [
-				makeReactOutlet("root"),
-				makeReactOutlet("child"),
-			],
-			importURLs: ["/root.js", "/child.js"],
-			exportKeys: ["default", "default"],
-			loadersData: [{}, {}],
-			clientLoadersData: ["probe-a", "other-a"],
-			matchedPatterns: ["/probe", "/other"],
-		});
-
 		try {
 			await act(async () => {
 				root.render(
@@ -2266,7 +3932,7 @@ describe("npm_dist root outlet runtime state coverage", () => {
 				"[data-route-props-contract-error]",
 			)?.textContent;
 			expect(errorText).toContain(
-				'useClientLoaderData(routeProps) contract violated for pattern "/probe"',
+				"useClientLoaderData(routeProps) contract violated",
 			);
 		} finally {
 			await act(async () => {

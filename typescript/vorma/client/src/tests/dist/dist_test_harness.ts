@@ -42,6 +42,7 @@ export type DistTestVormaInternal = {
 	routeManifestURL: string;
 	routeManifest: unknown;
 	patternRegistry: unknown;
+	runtimeRouteSnapshot?: Record<string, unknown>;
 };
 
 export function installDistTestVormaGlobal(): DistTestVormaInternal {
@@ -83,6 +84,27 @@ export function installDistTestVormaGlobal(): DistTestVormaInternal {
 		routeManifestURL: "",
 		routeManifest: undefined,
 		patternRegistry,
+		runtimeRouteSnapshot: {
+			buildID: "1",
+			matchedPatterns: [],
+			loadersData: [],
+			importURLs: [],
+			exportKeys: [],
+			errorExportKeys: [],
+			hasRootData: false,
+			params: {},
+			splatValues: [],
+			activeComponents: [],
+			activeErrorBoundary: undefined,
+			outermostServerError: undefined,
+			outermostClientError: undefined,
+			outermostServerErrorIdx: undefined,
+			outermostClientErrorIdx: undefined,
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			rootElementID: undefined,
+			clientLoadersData: [],
+		},
 	};
 
 	const symbol = Symbol.for("__vorma_internal__");

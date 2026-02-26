@@ -13,8 +13,9 @@ import {
 } from "vorma/client";
 import {
 	registerTypedAdapterClientLoader,
+	resolveTypedAdapterClientLoaderDataForPatternOrRouteProps,
 	resolveTypedAdapterIndexedDataForPattern,
-	resolveTypedAdapterIndexedDataForPatternOrRouteProps,
+	resolveTypedAdapterLoaderDataForRoutePropsOrThrow,
 	type VormaTypedAdapterAddClientLoaderProps,
 } from "vorma/client/__internal";
 import {
@@ -50,7 +51,16 @@ export function makeTypedUseLoaderData<C extends VormaAppConfig>(
 		props: VormaRouteProps<App, Pattern>,
 	): VormaLoaderOutput<App, Pattern> {
 		const loadersData = useLoadersData();
-		return loadersData[props.idx];
+		const clientLoadersData = useClientLoadersData();
+		const routerData = useRouterData();
+		return resolveTypedAdapterLoaderDataForRoutePropsOrThrow<
+			VormaLoaderOutput<App, Pattern>
+		>({
+			routeProps: props,
+			matchedPatterns: routerData.matchedPatterns,
+			loadersData,
+			clientLoadersData,
+		});
 	};
 }
 
@@ -101,14 +111,18 @@ export function makeTypedAddClientLoader<C extends VormaAppConfig>(
 		const useClientLoaderData = (
 			routeProps?: VormaRouteProps<App, Pattern>,
 		): Res | undefined => {
+			const loadersData = useLoadersData();
 			const clientLoadersData = useClientLoadersData();
 			const routerData = useRouterData();
-			return resolveTypedAdapterIndexedDataForPatternOrRouteProps<Res>({
-				pattern,
-				matchedPatterns: routerData.matchedPatterns,
-				indexedData: clientLoadersData,
-				routeProps,
-			});
+			return resolveTypedAdapterClientLoaderDataForPatternOrRouteProps<Res>(
+				{
+					pattern,
+					matchedPatterns: routerData.matchedPatterns,
+					loadersData,
+					clientLoadersData,
+					routeProps,
+				},
+			);
 		};
 
 		return useClientLoaderData as {

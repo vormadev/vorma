@@ -2,6 +2,8 @@ import { findNestedMatches } from "vorma/kit/matcher/find-nested";
 import { registerPattern } from "vorma/kit/matcher/register";
 import {
 	__vormaClientGlobal,
+	getRuntimeRouteSnapshot,
+	updateRuntimeRouteSnapshot,
 	type ClientLoaderAwaitedServerData,
 	type GetRouteDataOutput,
 	type VormaClientGlobal,
@@ -9,7 +11,7 @@ import {
 import { isAbortError, logError } from "../platform/safety.ts";
 import {
 	ComponentLoader,
-	getEffectiveErrorData,
+	getEffectiveErrorDataFromSnapshot,
 } from "./render_component_runtime.ts";
 
 export type PartialWaitFnJSON = Pick<
@@ -259,16 +261,15 @@ async function executeClientLoaders(
 }
 
 function buildClientLoaderSnapshotFromGlobal(): PartialWaitFnJSON {
+	const runtimeRouteSnapshot = getRuntimeRouteSnapshot();
 	return {
-		hasRootData: __vormaClientGlobal.get("hasRootData"),
-		importURLs: __vormaClientGlobal.get("importURLs"),
-		loadersData: __vormaClientGlobal.get("loadersData"),
-		matchedPatterns: __vormaClientGlobal.get("matchedPatterns"),
-		outermostServerErrorIdx: __vormaClientGlobal.get(
-			"outermostServerErrorIdx",
-		),
-		params: __vormaClientGlobal.get("params"),
-		splatValues: __vormaClientGlobal.get("splatValues"),
+		hasRootData: runtimeRouteSnapshot.hasRootData,
+		importURLs: runtimeRouteSnapshot.importURLs,
+		loadersData: runtimeRouteSnapshot.loadersData,
+		matchedPatterns: runtimeRouteSnapshot.matchedPatterns,
+		outermostServerErrorIdx: runtimeRouteSnapshot.outermostServerErrorIdx,
+		params: runtimeRouteSnapshot.params,
+		splatValues: runtimeRouteSnapshot.splatValues,
 	};
 }
 
@@ -280,25 +281,32 @@ export function setClientLoadersState(
 	}
 
 	const normalizedClientLoaderData = clientLoadersResult.data ?? [];
-	__vormaClientGlobal.set("clientLoadersData", normalizedClientLoaderData);
-	__vormaClientGlobal.set(
-		"outermostClientErrorIdx",
-		clientLoadersResult.errorMessage
-			? normalizedClientLoaderData.length > 0
-				? normalizedClientLoaderData.length - 1
-				: undefined
-			: undefined,
-	);
-	__vormaClientGlobal.set(
-		"outermostClientError",
-		clientLoadersResult.errorMessage,
-	);
-}
-
-export function deriveAndSetErrorState(): void {
-	const effectiveErrData = getEffectiveErrorData();
-	__vormaClientGlobal.set("outermostErrorIdx", effectiveErrData.index);
-	__vormaClientGlobal.set("outermostError", effectiveErrData.error);
+	updateRuntimeRouteSnapshot({
+		updater: (runtimeRouteSnapshot) => {
+			const outermostClientErrorIdx = clientLoadersResult.errorMessage
+				? normalizedClientLoaderData.length > 0
+					? normalizedClientLoaderData.length - 1
+					: undefined
+				: undefined;
+			const nextSnapshot = {
+				...runtimeRouteSnapshot,
+				clientLoadersData: normalizedClientLoaderData,
+				outermostClientErrorIdx,
+				outermostClientError: clientLoadersResult.errorMessage,
+			};
+			const effectiveErrData = getEffectiveErrorDataFromSnapshot({
+				outermostServerErrorIdx: nextSnapshot.outermostServerErrorIdx,
+				outermostClientErrorIdx: nextSnapshot.outermostClientErrorIdx,
+				outermostServerError: nextSnapshot.outermostServerError,
+				outermostClientError: nextSnapshot.outermostClientError,
+			});
+			return {
+				...nextSnapshot,
+				outermostErrorIdx: effectiveErrData.index,
+				outermostError: effectiveErrData.error,
+			};
+		},
+	});
 }
 
 export async function setupClientLoaders(): Promise<void> {
@@ -309,7 +317,6 @@ export async function setupClientLoaders(): Promise<void> {
 	);
 
 	setClientLoadersState(clientLoadersResult);
-	deriveAndSetErrorState();
 }
 
 export function registerClientLoaderPatternOrThrow(pattern: string): void {

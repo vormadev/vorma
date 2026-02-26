@@ -22,6 +22,7 @@ import (
 	"github.com/tdewolff/parse/v2/js"
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
+	"github.com/vormadev/vorma/kit/nestedmatcher"
 )
 
 type routeCall struct {
@@ -718,6 +719,23 @@ func (executor routeParsingExecutor) mergeRouteCallsIntoPaths(
 	routeDefinitionFile string,
 	routeCalls []routeCall,
 ) error {
+	routePatternNormalizer := buildRoutePatternNormalizer(v)
+	normalizedPatternToOriginalPattern := make(
+		map[string]string,
+		len(paths)+len(routeCalls),
+	)
+	for existingOriginalPattern := range paths {
+		normalizedPattern, err := normalizeRoutePatternForCollisionChecks(
+			routePatternNormalizer,
+			existingOriginalPattern,
+		)
+		if err != nil {
+			return err
+		}
+		normalizedPatternToOriginalPattern[normalizedPattern] =
+			existingOriginalPattern
+	}
+
 	for _, routeCall := range routeCalls {
 		if routeCall.Module == "" {
 			return fmt.Errorf(
@@ -729,6 +747,24 @@ func (executor routeParsingExecutor) mergeRouteCallsIntoPaths(
 		if _, hasExistingPattern := paths[routeCall.Pattern]; hasExistingPattern {
 			return fmt.Errorf("duplicate route pattern: %s", routeCall.Pattern)
 		}
+		normalizedPattern, err := normalizeRoutePatternForCollisionChecks(
+			routePatternNormalizer,
+			routeCall.Pattern,
+		)
+		if err != nil {
+			return err
+		}
+		if existingOriginalPattern, hasExistingNormalizedPattern :=
+			normalizedPatternToOriginalPattern[normalizedPattern]; hasExistingNormalizedPattern {
+			return fmt.Errorf(
+				"normalized route pattern collision: %s and %s both normalize to %s",
+				existingOriginalPattern,
+				routeCall.Pattern,
+				normalizedPattern,
+			)
+		}
+		normalizedPatternToOriginalPattern[normalizedPattern] =
+			routeCall.Pattern
 
 		modulePath := executor.resolveRouteModulePath(
 			v,
@@ -747,6 +783,53 @@ func (executor routeParsingExecutor) mergeRouteCallsIntoPaths(
 		}
 	}
 	return nil
+}
+
+func buildRoutePatternNormalizer(
+	v *vormaruntime.Vorma,
+) *nestedmatcher.Matcher {
+	routePatternNormalizerOptions := &nestedmatcher.Options{
+		DynamicParamPrefix:             ':',
+		SplatSegmentIdentifier:         '*',
+		ExplicitIndexSegmentIdentifier: "_index",
+	}
+	if v == nil || v.LoadersRouter() == nil ||
+		v.LoadersRouter().NestedRouter == nil {
+		return nestedmatcher.New(routePatternNormalizerOptions)
+	}
+
+	loadersNestedRouter := v.LoadersRouter().NestedRouter
+	routePatternNormalizerOptions.DynamicParamPrefix =
+		loadersNestedRouter.DynamicParamPrefix()
+	routePatternNormalizerOptions.SplatSegmentIdentifier =
+		loadersNestedRouter.SplatSegmentIdentifier()
+	routePatternNormalizerOptions.ExplicitIndexSegmentIdentifier =
+		loadersNestedRouter.ExplicitIndexSegmentIdentifier()
+
+	return nestedmatcher.New(routePatternNormalizerOptions)
+}
+
+func normalizeRoutePatternForCollisionChecks(
+	routePatternNormalizer *nestedmatcher.Matcher,
+	pattern string,
+) (normalizedPattern string, returnedErr error) {
+	defer func() {
+		recoveredPanicValue := recover()
+		if recoveredPanicValue == nil {
+			return
+		}
+
+		returnedErr = fmt.Errorf(
+			"invalid route pattern %q for normalization: %v",
+			pattern,
+			recoveredPanicValue,
+		)
+	}()
+
+	normalizedPattern = routePatternNormalizer.NormalizePattern(
+		pattern,
+	).NormalizedPattern()
+	return normalizedPattern, nil
 }
 
 func (executor routeParsingExecutor) resolveRouteModulePath(

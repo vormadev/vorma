@@ -44,3 +44,25 @@ func TestFindMatchesReturnsNestedResults(t *testing.T) {
 		t.Fatalf("Params[id] = %q, want %q", got, want)
 	}
 }
+
+func TestRegisterPatternPanicsOnNormalizedCollision(t *testing.T) {
+	m := nestedmatcher.New(&nestedmatcher.Options{
+		DynamicParamPrefix: '$',
+	})
+	m.RegisterPattern("/users/$id")
+
+	defer func() {
+		recoveredPanic := recover()
+		if recoveredPanic == nil {
+			t.Fatal("expected panic for normalized collision")
+		}
+
+		expectedMessage :=
+			`normalized pattern collision: "/users/:id" and "/users/$id" both normalize to "/users/:id"`
+		if got := recoveredPanic.(string); got != expectedMessage {
+			t.Fatalf("panic = %q, want %q", got, expectedMessage)
+		}
+	}()
+
+	m.RegisterPattern("/users/:id")
+}

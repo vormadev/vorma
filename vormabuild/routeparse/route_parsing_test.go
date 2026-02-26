@@ -612,6 +612,112 @@ func TestParseClientRoutes_ReturnsErrorForDuplicatePatternAcrossDefinitionFiles(
 	}
 }
 
+func TestParseClientRoutes_ReturnsErrorForNormalizedRootAliasCollision(
+	t *testing.T,
+) {
+	rootDir := t.TempDir()
+	t.Chdir(rootDir)
+
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "components", "root.tsx"),
+		[]byte("export const Root = () => null;"),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "components", "root_index.tsx"),
+		[]byte("export const RootAlias = () => null;"),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "routes", "root.vorma.routes.ts"),
+		[]byte(`
+			import { route } from "vorma/buildtime";
+			route("/", import("../components/root.tsx"), "Root");
+			route("", import("../components/root_index.tsx"), "RootAlias");
+		`),
+	)
+
+	v := &vormaruntime.Vorma{
+		Config: &vormaruntime.VormaConfig{
+			ClientRouteDefinitionPatterns: []string{
+				"frontend/src/**/*vorma.routes.ts",
+			},
+		},
+		Log: testLogger(),
+	}
+
+	_, err := ParseClientRoutes(v)
+	if err == nil {
+		t.Fatal("expected normalized route pattern collision error, got nil")
+	}
+	if !strings.Contains(err.Error(), "normalized route pattern collision") {
+		t.Fatalf(
+			"error = %q, expected normalized route pattern collision message",
+			err,
+		)
+	}
+}
+
+func TestParseClientRoutes_ReturnsErrorForNormalizedRootAliasCollisionAcrossFiles(
+	t *testing.T,
+) {
+	rootDir := t.TempDir()
+	t.Chdir(rootDir)
+
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "components", "root.tsx"),
+		[]byte("export const Root = () => null;"),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "components", "root_index.tsx"),
+		[]byte("export const RootAlias = () => null;"),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join("frontend", "src", "routes", "root.vorma.routes.ts"),
+		[]byte(`
+			import { route } from "vorma/buildtime";
+			route("/", import("../components/root.tsx"), "Root");
+		`),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(
+			"frontend",
+			"src",
+			"routes",
+			"root_index.vorma.routes.ts",
+		),
+		[]byte(`
+			import { route } from "vorma/buildtime";
+			route("", import("../components/root_index.tsx"), "RootAlias");
+		`),
+	)
+
+	v := &vormaruntime.Vorma{
+		Config: &vormaruntime.VormaConfig{
+			ClientRouteDefinitionPatterns: []string{
+				"frontend/src/**/*vorma.routes.ts",
+			},
+		},
+		Log: testLogger(),
+	}
+
+	_, err := ParseClientRoutes(v)
+	if err == nil {
+		t.Fatal("expected normalized route pattern collision error, got nil")
+	}
+	if !strings.Contains(err.Error(), "normalized route pattern collision") {
+		t.Fatalf(
+			"error = %q, expected normalized route pattern collision message",
+			err,
+		)
+	}
+}
+
 func TestParseClientRoutes_ReturnsErrorWhenRouteDefinitionPatternsNeedNormalization(
 	t *testing.T,
 ) {

@@ -4,7 +4,11 @@ import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import {
 	buildInitialRouteOutletStoreState,
 	buildRouteOutletBranchState,
+	buildTypedAdapterRoutePropsWithInternalRouteInstanceToken,
 	createRouteOutletRuntimeListenerInitializer,
+	createTypedAdapterRouteInstanceToken,
+	markTypedAdapterRouteInstanceTokenActive,
+	markTypedAdapterRouteInstanceTokenDisposed,
 	resolveRouteOutletBranchRenderState,
 	syncRouteOutletStoreStateFromRuntime,
 	type RouteOutletBranchInputState,
@@ -65,6 +69,49 @@ type VormaErrorBoundaryProps = {
 	error: unknown;
 };
 
+type VormaRouteComponentMountProps = {
+	CurrentComp: ComponentType<VormaOutletProps>;
+	idx: number;
+	routeKey: string;
+	Outlet: (
+		localProps: Record<string, any> | undefined,
+	) => h.JSX.Element | null;
+};
+
+function VormaRouteComponentMount(props: VormaRouteComponentMountProps) {
+	const routeInstanceTokenRef = useRef<unknown>(undefined);
+	if (routeInstanceTokenRef.current === undefined) {
+		const currentNavigationState = storeState.peek().navigation;
+		routeInstanceTokenRef.current = createTypedAdapterRouteInstanceToken({
+			routePropsIndex: props.idx,
+			routeKey: props.routeKey,
+			matchedPatterns: currentNavigationState.routerData.matchedPatterns,
+			loadersData: currentNavigationState.loadersData,
+			clientLoadersData: currentNavigationState.clientLoadersData,
+		});
+	}
+
+	useLayoutEffect(() => {
+		const routeInstanceToken = routeInstanceTokenRef.current;
+		markTypedAdapterRouteInstanceTokenActive({
+			routeInstanceToken,
+		});
+		return () => {
+			markTypedAdapterRouteInstanceTokenDisposed({
+				routeInstanceToken,
+			});
+		};
+	}, []);
+
+	return h(props.CurrentComp, {
+		idx: props.idx,
+		Outlet: props.Outlet,
+		...buildTypedAdapterRoutePropsWithInternalRouteInstanceToken({
+			routeInstanceToken: routeInstanceTokenRef.current,
+		}),
+	});
+}
+
 export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element | null {
 	const idx = props.idx ?? 0;
 	const isInitialRootRenderRef = useRef(true);
@@ -122,9 +169,11 @@ export function VormaRootOutlet(props: { idx?: number }): h.JSX.Element | null {
 			if (!CurrentComp) {
 				return null;
 			}
-			return h(CurrentComp, {
+			return h(VormaRouteComponentMount, {
 				key: routeOutletBranchRenderState.currentRouteKey,
+				CurrentComp,
 				idx,
+				routeKey: routeOutletBranchRenderState.currentRouteKey,
 				Outlet,
 			});
 		}

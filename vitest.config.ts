@@ -58,6 +58,6 @@ export default defineConfig({
 	},
 	test: {
 		environment: "jsdom",
-		exclude: [...configDefaults.exclude, "e2e/**"],
+		exclude: [...configDefaults.exclude, "internal/e2e/**"],
 	},
 });

@@ -2,6 +2,7 @@ import { debounce } from "vorma/kit/debounce";
 import { addOnWindowFocusListener } from "vorma/kit/listeners";
 import {
 	__vormaClientGlobal,
+	getRuntimeRouteSnapshot,
 	type PatternWaitFn,
 	setClientLoaderWaitFn,
 } from "../app/context.ts";
@@ -151,10 +152,7 @@ function shouldRefreshClientLoadersForTrackedHMRUpdate(props: {
 		return false;
 	}
 
-	const matchedPatterns = __vormaClientGlobal.get("matchedPatterns");
-	const matchedPatternList = Array.isArray(matchedPatterns)
-		? matchedPatterns
-		: [];
+	const matchedPatternList = getRuntimeRouteSnapshot().matchedPatterns;
 	return Array.from(trackedPatterns).some((trackedPattern) =>
 		matchedPatternList.includes(trackedPattern),
 	);

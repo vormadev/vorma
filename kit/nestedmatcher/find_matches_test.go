@@ -1083,13 +1083,14 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 		}
 	})
 
-	t.Run("multiple dynamic same depth", func(t *testing.T) {
+	t.Run("dynamic and splat same depth", func(t *testing.T) {
 		var firstParams Params
+		var firstSplatValues []string
 
 		for i := range 1000 {
 			m := New(&Options{Quiet: true})
 			m.RegisterPattern("/users/:id")
-			m.RegisterPattern("/users/:user_id")
+			m.RegisterPattern("/users/*")
 
 			results, ok := m.FindMatches("/users/123")
 			if !ok {
@@ -1098,6 +1099,7 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 
 			if i == 0 {
 				firstParams = results.Params
+				firstSplatValues = results.SplatValues
 				if len(firstParams) == 0 {
 					t.Fatal("Expected params from dynamic match")
 				}
@@ -1110,6 +1112,14 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 					i,
 					firstParams,
 					results.Params,
+				)
+			}
+			if !reflect.DeepEqual(results.SplatValues, firstSplatValues) {
+				t.Fatalf(
+					"Iteration %d: splat values inconsistent. First: %v, Now: %v",
+					i,
+					firstSplatValues,
+					results.SplatValues,
 				)
 			}
 		}

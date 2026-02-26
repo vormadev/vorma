@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/genericsutil"
 )
 
@@ -280,19 +279,6 @@ var segTypes = struct {
 	index:   "index",
 }
 
-func getAppropriateWarningMsg(
-	pattern string,
-	usingExplicitIndexSegmentIdentifier bool,
-) string {
-	base := fmt.Sprintf("Pattern '%s' is already registered.", pattern)
-	if usingExplicitIndexSegmentIdentifier {
-		return base + " When you use an explicit index segment, trailing slashes are ignored, which may be the reason for your effectively duplicated patterns."
-	}
-	return base
-}
-
-var matcherLog = colorlog.New("matcher")
-
 // NormalizePattern validates and normalizes one input pattern.
 func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern {
 	normalizedPattern := originalPattern
@@ -375,25 +361,31 @@ func (m *Matcher) NormalizePattern(originalPattern string) *RegisteredPattern {
 func (m *Matcher) RegisterPattern(originalPattern string) *RegisteredPattern {
 	normalizedPattern := m.NormalizePattern(originalPattern)
 
-	if _, alreadyRegistered := m.staticPatterns[normalizedPattern.normalizedPattern]; alreadyRegistered {
-		if !m.quiet {
-			matcherLog.Warn(
-				getAppropriateWarningMsg(
-					originalPattern,
-					m.usingExplicitIndexSegmentIdentifier,
-				),
-			)
+	if existingPattern, isAlreadyRegistered :=
+		m.staticPatterns[normalizedPattern.normalizedPattern]; isAlreadyRegistered {
+		if existingPattern.originalPattern == originalPattern {
+			return existingPattern
 		}
+
+		panic(fmt.Sprintf(
+			`normalized pattern collision: "%s" and "%s" both normalize to "%s"`,
+			originalPattern,
+			existingPattern.originalPattern,
+			normalizedPattern.normalizedPattern,
+		))
 	}
-	if _, alreadyRegistered := m.dynamicPatterns[normalizedPattern.normalizedPattern]; alreadyRegistered {
-		if !m.quiet {
-			matcherLog.Warn(
-				getAppropriateWarningMsg(
-					originalPattern,
-					m.usingExplicitIndexSegmentIdentifier,
-				),
-			)
+	if existingPattern, isAlreadyRegistered :=
+		m.dynamicPatterns[normalizedPattern.normalizedPattern]; isAlreadyRegistered {
+		if existingPattern.originalPattern == originalPattern {
+			return existingPattern
 		}
+
+		panic(fmt.Sprintf(
+			`normalized pattern collision: "%s" and "%s" both normalize to "%s"`,
+			originalPattern,
+			existingPattern.originalPattern,
+			normalizedPattern.normalizedPattern,
+		))
 	}
 
 	if getIsStatic(normalizedPattern.normalizedSegments) {

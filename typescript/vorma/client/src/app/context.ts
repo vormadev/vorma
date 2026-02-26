@@ -49,6 +49,35 @@ type RuntimeRouteState = RouteDataState & {
 	activeErrorBoundary?: unknown;
 };
 
+export type RuntimeRouteSnapshot = RuntimeRouteState & {
+	clientLoadersData: Array<unknown>;
+};
+
+const runtimeRouteSnapshotFieldKeys = [
+	"outermostServerError",
+	"outermostServerErrorIdx",
+	"matchedPatterns",
+	"loadersData",
+	"importURLs",
+	"exportKeys",
+	"errorExportKeys",
+	"hasRootData",
+	"params",
+	"splatValues",
+	"outermostClientError",
+	"outermostClientErrorIdx",
+	"outermostError",
+	"outermostErrorIdx",
+	"buildID",
+	"rootElementID",
+	"activeComponents",
+	"activeErrorBoundary",
+	"clientLoadersData",
+] as const satisfies ReadonlyArray<keyof RuntimeRouteSnapshot>;
+const runtimeRouteSnapshotFieldKeySet = new Set<keyof RuntimeRouteSnapshot>(
+	runtimeRouteSnapshotFieldKeys,
+);
+
 /**
  * Canonical route-data payload shape consumed by adapters and runtime helpers.
  */
@@ -111,6 +140,7 @@ export type VormaClientGlobal = RuntimeRouteState & {
 	routeManifestURL: string;
 	routeManifest: Record<string, number> | undefined;
 	patternRegistry: PatternRegistry;
+	runtimeRouteSnapshot?: RuntimeRouteSnapshot;
 };
 
 type VormaGlobalThis = typeof globalThis & {
@@ -137,16 +167,137 @@ export function __getVormaClientGlobal() {
 	function get<K extends keyof VormaClientGlobal>(key: K) {
 		return getGlobalStateOrThrow()[key] as VormaClientGlobal[K];
 	}
+
+	function isRuntimeRouteSnapshotFieldKey(
+		key: keyof VormaClientGlobal,
+	): key is keyof RuntimeRouteSnapshot {
+		return runtimeRouteSnapshotFieldKeySet.has(
+			key as keyof RuntimeRouteSnapshot,
+		);
+	}
+
 	function set<
 		K extends keyof VormaClientGlobal,
 		V extends VormaClientGlobal[K],
 	>(key: K, value: V) {
-		getGlobalStateOrThrow()[key] = value;
+		const globalState = getGlobalStateOrThrow();
+		globalState[key] = value;
+		if (key === "runtimeRouteSnapshot") {
+			return;
+		}
+		if (!isRuntimeRouteSnapshotFieldKey(key)) {
+			return;
+		}
+
+		if (!globalState.runtimeRouteSnapshot) {
+			return;
+		}
+
+		globalState.runtimeRouteSnapshot = normalizeRuntimeRouteSnapshot({
+			...globalState.runtimeRouteSnapshot,
+			[key]: value,
+		} as RuntimeRouteSnapshot);
 	}
 	return { get, set };
 }
 
 export const __vormaClientGlobal = __getVormaClientGlobal();
+
+function normalizeRuntimeRouteSnapshot(
+	snapshot: RuntimeRouteSnapshot,
+): RuntimeRouteSnapshot {
+	return {
+		...snapshot,
+		matchedPatterns: snapshot.matchedPatterns ?? [],
+		loadersData: snapshot.loadersData ?? [],
+		importURLs: snapshot.importURLs ?? [],
+		exportKeys: snapshot.exportKeys ?? [],
+		errorExportKeys: snapshot.errorExportKeys ?? [],
+		hasRootData: snapshot.hasRootData === true,
+		params: snapshot.params ?? {},
+		splatValues: snapshot.splatValues ?? [],
+		buildID: snapshot.buildID || "",
+		activeComponents: snapshot.activeComponents ?? null,
+		clientLoadersData: snapshot.clientLoadersData ?? [],
+	};
+}
+
+function buildRuntimeRouteSnapshotFromLegacyGlobals(): RuntimeRouteSnapshot {
+	return normalizeRuntimeRouteSnapshot({
+		outermostServerError: __vormaClientGlobal.get("outermostServerError"),
+		outermostServerErrorIdx: __vormaClientGlobal.get(
+			"outermostServerErrorIdx",
+		),
+		matchedPatterns: __vormaClientGlobal.get("matchedPatterns") || [],
+		loadersData: __vormaClientGlobal.get("loadersData") || [],
+		importURLs: __vormaClientGlobal.get("importURLs") || [],
+		exportKeys: __vormaClientGlobal.get("exportKeys") || [],
+		errorExportKeys: __vormaClientGlobal.get("errorExportKeys") || [],
+		hasRootData: __vormaClientGlobal.get("hasRootData") === true,
+		params: __vormaClientGlobal.get("params") || {},
+		splatValues: __vormaClientGlobal.get("splatValues") || [],
+		outermostClientError: __vormaClientGlobal.get("outermostClientError"),
+		outermostClientErrorIdx: __vormaClientGlobal.get(
+			"outermostClientErrorIdx",
+		),
+		outermostError: __vormaClientGlobal.get("outermostError"),
+		outermostErrorIdx: __vormaClientGlobal.get("outermostErrorIdx"),
+		buildID: __vormaClientGlobal.get("buildID") || "",
+		rootElementID: __vormaClientGlobal.get("rootElementID"),
+		activeComponents: __vormaClientGlobal.get("activeComponents") ?? null,
+		activeErrorBoundary: __vormaClientGlobal.get("activeErrorBoundary"),
+		clientLoadersData: __vormaClientGlobal.get("clientLoadersData") || [],
+	});
+}
+
+export function getRuntimeRouteSnapshot(): RuntimeRouteSnapshot {
+	const existingSnapshot = __vormaClientGlobal.get("runtimeRouteSnapshot");
+	if (existingSnapshot) {
+		return normalizeRuntimeRouteSnapshot(existingSnapshot);
+	}
+
+	const initializedSnapshot = buildRuntimeRouteSnapshotFromLegacyGlobals();
+	__vormaClientGlobal.set("runtimeRouteSnapshot", initializedSnapshot);
+	return initializedSnapshot;
+}
+
+export function setRuntimeRouteSnapshot(
+	nextSnapshot: RuntimeRouteSnapshot,
+): RuntimeRouteSnapshot {
+	const normalizedSnapshot = normalizeRuntimeRouteSnapshot(nextSnapshot);
+	__vormaClientGlobal.set("runtimeRouteSnapshot", normalizedSnapshot);
+
+	for (const key of runtimeRouteSnapshotFieldKeys) {
+		(
+			__vormaClientGlobal as {
+				set: (
+					snapshotKey: keyof VormaClientGlobal,
+					value: unknown,
+				) => void;
+			}
+		).set(key, normalizedSnapshot[key]);
+	}
+
+	return normalizedSnapshot;
+}
+
+export function updateRuntimeRouteSnapshot(props: {
+	updater: (snapshot: RuntimeRouteSnapshot) => RuntimeRouteSnapshot;
+}): RuntimeRouteSnapshot {
+	const previousSnapshot = getRuntimeRouteSnapshot();
+	return setRuntimeRouteSnapshot(props.updater(previousSnapshot));
+}
+
+export function setRuntimeBuildID(props: {
+	buildID: string;
+}): RuntimeRouteSnapshot {
+	return updateRuntimeRouteSnapshot({
+		updater: (runtimeRouteSnapshot) => ({
+			...runtimeRouteSnapshot,
+			buildID: props.buildID,
+		}),
+	});
+}
 
 /**
  * Returns router data snapshot for application consumption.
@@ -155,22 +306,23 @@ export function getRouterData<
 	T = unknown,
 	P extends Record<string, string> = Record<string, string>,
 >() {
+	const runtimeRouteSnapshot = getRuntimeRouteSnapshot();
 	const rootData = (
-		__vormaClientGlobal.get("hasRootData")
-			? __vormaClientGlobal.get("loadersData")[0]
+		runtimeRouteSnapshot.hasRootData
+			? runtimeRouteSnapshot.loadersData[0]
 			: null
 	) as T;
 	return {
-		buildID: __vormaClientGlobal.get("buildID") || "",
-		matchedPatterns: __vormaClientGlobal.get("matchedPatterns") || [],
-		splatValues: __vormaClientGlobal.get("splatValues") || [],
-		params: (__vormaClientGlobal.get("params") || {}) as P,
+		buildID: runtimeRouteSnapshot.buildID || "",
+		matchedPatterns: runtimeRouteSnapshot.matchedPatterns || [],
+		splatValues: runtimeRouteSnapshot.splatValues || [],
+		params: (runtimeRouteSnapshot.params || {}) as P,
 		rootData,
 	};
 }
 
 export type ClientRuntimeRenderState = Pick<
-	VormaClientGlobal,
+	RuntimeRouteSnapshot,
 	| "loadersData"
 	| "clientLoadersData"
 	| "outermostError"
@@ -185,15 +337,16 @@ export type ClientRuntimeRenderState = Pick<
  * Returns render-state fields required by route outlet runtime reconciliation.
  */
 export function getClientRuntimeRenderState(): ClientRuntimeRenderState {
+	const runtimeRouteSnapshot = getRuntimeRouteSnapshot();
 	return {
-		loadersData: __vormaClientGlobal.get("loadersData"),
-		clientLoadersData: __vormaClientGlobal.get("clientLoadersData"),
-		outermostError: __vormaClientGlobal.get("outermostError"),
-		outermostErrorIdx: __vormaClientGlobal.get("outermostErrorIdx"),
-		activeComponents: __vormaClientGlobal.get("activeComponents"),
-		activeErrorBoundary: __vormaClientGlobal.get("activeErrorBoundary"),
-		importURLs: __vormaClientGlobal.get("importURLs"),
-		exportKeys: __vormaClientGlobal.get("exportKeys"),
+		loadersData: runtimeRouteSnapshot.loadersData,
+		clientLoadersData: runtimeRouteSnapshot.clientLoadersData,
+		outermostError: runtimeRouteSnapshot.outermostError,
+		outermostErrorIdx: runtimeRouteSnapshot.outermostErrorIdx,
+		activeComponents: runtimeRouteSnapshot.activeComponents,
+		activeErrorBoundary: runtimeRouteSnapshot.activeErrorBoundary,
+		importURLs: runtimeRouteSnapshot.importURLs,
+		exportKeys: runtimeRouteSnapshot.exportKeys,
 	};
 }
 

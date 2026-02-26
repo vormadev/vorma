@@ -79,11 +79,13 @@ describe("route outlet runtime internals", () => {
 		const firstKey = buildRouteOutletRouteKey({
 			importURLs: ["/routes/a|b.tsx"],
 			exportKeys: ["Route"],
+			matchedPatterns: ["/a"],
 			idx: 0,
 		});
 		const secondKey = buildRouteOutletRouteKey({
 			importURLs: ["/routes/a.tsx"],
 			exportKeys: ["b|Route"],
+			matchedPatterns: ["/a"],
 			idx: 0,
 		});
 
@@ -99,16 +101,17 @@ describe("route outlet runtime internals", () => {
 				activeErrorBoundary: undefined,
 				importURLs: ["/routes/a|b.tsx", "/routes/a.tsx"],
 				exportKeys: ["Route", "b|Route"],
+				matchedPatterns: ["/a", "/b"],
 			},
 			idx: 0,
 		});
 
 		expect(branchState.currentRouteKey).not.toBe(branchState.nextRouteKey);
 		expect(branchState.currentRouteKey).toBe(
-			JSON.stringify([0, "/routes/a|b.tsx", "Route"]),
+			JSON.stringify([0, "/routes/a|b.tsx", "Route", "/a"]),
 		);
 		expect(branchState.nextRouteKey).toBe(
-			JSON.stringify([1, "/routes/a.tsx", "b|Route"]),
+			JSON.stringify([1, "/routes/a.tsx", "b|Route", "/b"]),
 		);
 	});
 
@@ -121,6 +124,7 @@ describe("route outlet runtime internals", () => {
 				activeErrorBoundary: undefined,
 				importURLs: [],
 				exportKeys: [],
+				matchedPatterns: [],
 			},
 			idx: 0,
 		});
@@ -137,6 +141,7 @@ describe("route outlet runtime internals", () => {
 				activeErrorBoundary: undefined,
 				importURLs: ["/routes/a.tsx", "/routes/b.tsx"],
 				exportKeys: ["Route", "Route"],
+				matchedPatterns: ["/a", "/b"],
 			},
 			idx: 0,
 		});
@@ -158,6 +163,7 @@ describe("route outlet runtime internals", () => {
 				activeErrorBoundary: undefined,
 				importURLs: ["/routes/a.tsx", "/routes/b.tsx"],
 				exportKeys: ["Route", "Route"],
+				matchedPatterns: ["/a", "/b"],
 			},
 			idx: 0,
 		});
@@ -180,6 +186,7 @@ describe("route outlet runtime internals", () => {
 				activeErrorBoundary: errorBoundary,
 				importURLs: ["/routes/root.tsx"],
 				exportKeys: ["Route"],
+				matchedPatterns: ["/"],
 			},
 			idx: 0,
 		});
@@ -195,7 +202,7 @@ describe("route outlet runtime internals", () => {
 		});
 	});
 
-	it("remount policy remounts on component identity change and root key changes only", () => {
+	it("remount policy remounts on component identity change and any key change", () => {
 		const previousComponent = () => "A";
 		const nextComponent = () => "B";
 
@@ -227,7 +234,7 @@ describe("route outlet runtime internals", () => {
 				previousRouteComponent: previousComponent,
 				nextRouteComponent: previousComponent,
 			}),
-		).toBe(false);
+		).toBe(true);
 	});
 
 	it("compares location state by pathname/search/hash and state identity", () => {
@@ -278,6 +285,7 @@ describe("route outlet runtime internals", () => {
 			activeErrorBoundary: undefined,
 			importURLs,
 			exportKeys,
+			matchedPatterns: ["/a"],
 		};
 
 		expect(
@@ -290,6 +298,7 @@ describe("route outlet runtime internals", () => {
 					activeErrorBoundary: undefined,
 					importURLs,
 					exportKeys,
+					matchedPatterns: ["/a"],
 				},
 			}),
 		).toBe(true);
@@ -304,6 +313,7 @@ describe("route outlet runtime internals", () => {
 					activeErrorBoundary: undefined,
 					importURLs,
 					exportKeys,
+					matchedPatterns: ["/a"],
 				},
 			}),
 		).toBe(false);
@@ -336,6 +346,7 @@ describe("route outlet runtime internals", () => {
 			activeErrorBoundary: undefined,
 			importURLs: ["/routes/root.tsx"],
 			exportKeys: ["Route"],
+			matchedPatterns: ["/"],
 		});
 		expect(initialState.location).toEqual({
 			pathname: "/",

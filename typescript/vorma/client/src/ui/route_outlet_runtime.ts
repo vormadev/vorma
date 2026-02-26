@@ -5,6 +5,7 @@ import {
 	type ClientRuntimeRenderState,
 } from "../app/context.ts";
 import { getRuntimeLocationState } from "../platform/location.ts";
+import { syncTypedAdapterRouteInstanceStoreFromNavigationState } from "./typed_adapter_helpers_runtime.ts";
 
 type RouteOutletRouterDataState = ReturnType<typeof getRouterData>;
 
@@ -75,6 +76,7 @@ export type RouteOutletBranchInputState = Pick<
 	| "exportKeys"
 > & {
 	loaderCount: number;
+	matchedPatterns: readonly string[];
 };
 
 export type RouteOutletStoreState = {
@@ -223,11 +225,13 @@ export function buildCurrentRouteOutletLocationState(): RouteOutletLocationState
 export function buildRouteOutletRouteKey(props: {
 	importURLs: ReadonlyArray<string> | null | undefined;
 	exportKeys: ReadonlyArray<string> | null | undefined;
+	matchedPatterns: ReadonlyArray<string> | null | undefined;
 	idx: number;
 }): string {
 	const importURL = props.importURLs?.[props.idx] || "";
 	const exportKey = props.exportKeys?.[props.idx] || "";
-	return JSON.stringify([props.idx, importURL, exportKey]);
+	const matchedPattern = props.matchedPatterns?.[props.idx] || "";
+	return JSON.stringify([props.idx, importURL, exportKey, matchedPattern]);
 }
 
 export function buildRouteOutletBranchInputState(
@@ -240,6 +244,7 @@ export function buildRouteOutletBranchInputState(
 		activeErrorBoundary: navigationState.activeErrorBoundary,
 		importURLs: navigationState.importURLs,
 		exportKeys: navigationState.exportKeys,
+		matchedPatterns: navigationState.routerData.matchedPatterns,
 	};
 }
 
@@ -261,7 +266,11 @@ export function areRouteOutletBranchInputsEqualByIdentity(props: {
 			secondInputState.activeErrorBoundary,
 		) &&
 		firstInputState.importURLs === secondInputState.importURLs &&
-		firstInputState.exportKeys === secondInputState.exportKeys
+		firstInputState.exportKeys === secondInputState.exportKeys &&
+		jsonDeepEquals(
+			firstInputState.matchedPatterns,
+			secondInputState.matchedPatterns,
+		)
 	);
 }
 
@@ -359,6 +368,13 @@ export function syncRouteOutletStoreStateFromRuntime(props: {
 	const previousStoreState = props.getCurrentStoreState();
 	const nextStoreState =
 		buildNextRouteOutletStoreStateFromRuntime(previousStoreState);
+	syncTypedAdapterRouteInstanceStoreFromNavigationState({
+		matchedPatterns: nextStoreState.navigation.routerData.matchedPatterns,
+		loadersData: nextStoreState.navigation.loadersData,
+		clientLoadersData: nextStoreState.navigation.clientLoadersData,
+		importURLs: nextStoreState.navigation.importURLs ?? [],
+		exportKeys: nextStoreState.navigation.exportKeys ?? [],
+	});
 	if (nextStoreState !== previousStoreState) {
 		props.applyNextStoreState(nextStoreState);
 	}
@@ -386,11 +402,13 @@ export function buildRouteOutletBranchState(props: {
 		currentRouteKey: buildRouteOutletRouteKey({
 			importURLs,
 			exportKeys,
+			matchedPatterns: navigationState.matchedPatterns,
 			idx,
 		}),
 		nextRouteKey: buildRouteOutletRouteKey({
 			importURLs,
 			exportKeys,
+			matchedPatterns: navigationState.matchedPatterns,
 			idx: idx + 1,
 		}),
 		isErrorIdx,
@@ -452,6 +470,7 @@ export function shouldRemountRouteOutletComponentMount(props: {
 		previousRouteComponent,
 		nextRouteComponent,
 	} = props;
+	void idx;
 	const didRouteComponentIdentityChange =
 		previousRouteComponent !== undefined &&
 		previousRouteComponent !== nextRouteComponent;
@@ -462,5 +481,5 @@ export function shouldRemountRouteOutletComponentMount(props: {
 	const didRouteKeyChange =
 		typeof previousRouteKey === "string" &&
 		previousRouteKey !== nextRouteKey;
-	return idx === 0 && didRouteKeyChange;
+	return didRouteKeyChange;
 }

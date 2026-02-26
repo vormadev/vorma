@@ -1,0 +1,364 @@
+/////////////////////////////////////////////////////////////////////
+/////// Types
+/////////////////////////////////////////////////////////////////////
+
+export type EchoStressCase = {
+	caseLabel: string;
+	value: string;
+	amount: number;
+};
+
+export type StressResultRow = {
+	caseLabel: string;
+	simpleEchoMatched: boolean;
+	complexEchoMatched: boolean;
+	scoreTotalMatched: boolean;
+};
+
+export type ComplexEchoPayload = {
+	title: string;
+	flags: boolean[];
+	scores: number[];
+	metadata: Record<string, string>;
+};
+
+type EchoBodyMutationInput = {
+	value: string;
+	amount: number;
+};
+
+type SlowIncrementMutationInput = {
+	delayMs: number;
+	tag: string;
+};
+
+type EchoBodyMutationResult = {
+	value: string;
+	amount: number;
+};
+
+type EchoComplexBodyMutationResult = ComplexEchoPayload & {
+	scoreTotal: number;
+};
+
+type SlowIncrementMutationResult = {
+	count: number;
+	tag: string;
+};
+
+type MutationSuccess<DataShape> = {
+	success: true;
+	data: DataShape;
+};
+
+type MutationFailure = {
+	success: false;
+	error: string;
+};
+
+type MutationResult<DataShape> = MutationSuccess<DataShape> | MutationFailure;
+
+type MutationInputByPattern = {
+	"/echo-body": EchoBodyMutationInput;
+	"/echo-complex-body": ComplexEchoPayload;
+	"/slow-increment": SlowIncrementMutationInput;
+};
+
+type MutationResultByPattern = {
+	"/echo-body": MutationResult<EchoBodyMutationResult>;
+	"/echo-complex-body": MutationResult<EchoComplexBodyMutationResult>;
+	"/slow-increment": MutationResult<SlowIncrementMutationResult>;
+};
+
+type MutationRequest =
+	| {
+			pattern: "/echo-body";
+			input: MutationInputByPattern["/echo-body"];
+	  }
+	| {
+			pattern: "/echo-complex-body";
+			input: MutationInputByPattern["/echo-complex-body"];
+	  }
+	| {
+			pattern: "/slow-increment";
+			input: MutationInputByPattern["/slow-increment"];
+	  };
+
+export type MutationInvoker = {
+	(props: {
+		pattern: "/echo-body";
+		input: MutationInputByPattern["/echo-body"];
+	}): Promise<MutationResultByPattern["/echo-body"]>;
+	(props: {
+		pattern: "/echo-complex-body";
+		input: MutationInputByPattern["/echo-complex-body"];
+	}): Promise<MutationResultByPattern["/echo-complex-body"]>;
+	(props: {
+		pattern: "/slow-increment";
+		input: MutationInputByPattern["/slow-increment"];
+	}): Promise<MutationResultByPattern["/slow-increment"]>;
+};
+
+export type MutationRouteBindings = {
+	mutateEchoBody: (props: {
+		input: MutationInputByPattern["/echo-body"];
+	}) => Promise<MutationResultByPattern["/echo-body"]>;
+	mutateEchoComplexBody: (props: {
+		input: MutationInputByPattern["/echo-complex-body"];
+	}) => Promise<MutationResultByPattern["/echo-complex-body"]>;
+	mutateSlowIncrement: (props: {
+		input: MutationInputByPattern["/slow-increment"];
+	}) => Promise<MutationResultByPattern["/slow-increment"]>;
+};
+
+export type StressMatrixSummary = {
+	rows: StressResultRow[];
+	failureCount: number;
+};
+
+/////////////////////////////////////////////////////////////////////
+/////// Constants
+/////////////////////////////////////////////////////////////////////
+
+const staticStressCases: ReadonlyArray<EchoStressCase> = [
+	{ caseLabel: "empty-string", value: "", amount: 0 },
+	{ caseLabel: "padding", value: "  left and right  ", amount: 17 },
+	{ caseLabel: "symbols", value: "!@#$%^&*()[]{}", amount: -13 },
+	{
+		caseLabel: "json-looking",
+		value: '{"looks":"like-json","still":"string"}',
+		amount: 33,
+	},
+	{ caseLabel: "long", value: "x".repeat(160), amount: 4096 },
+];
+
+const generatedStressCases = buildDeterministicStressCases({
+	seed: 0x5eedb0b5,
+	caseCount: 96,
+});
+
+export const allStressCases: ReadonlyArray<EchoStressCase> = [
+	...staticStressCases,
+	...generatedStressCases,
+];
+
+/////////////////////////////////////////////////////////////////////
+/////// Public API
+/////////////////////////////////////////////////////////////////////
+
+export function deriveRowPasses(row: StressResultRow): boolean {
+	return (
+		row.simpleEchoMatched && row.complexEchoMatched && row.scoreTotalMatched
+	);
+}
+
+export function createMutationInvoker(props: {
+	bindings: MutationRouteBindings;
+}): MutationInvoker {
+	function mutationInvoker(request: {
+		pattern: "/echo-body";
+		input: MutationInputByPattern["/echo-body"];
+	}): Promise<MutationResultByPattern["/echo-body"]>;
+	function mutationInvoker(request: {
+		pattern: "/echo-complex-body";
+		input: MutationInputByPattern["/echo-complex-body"];
+	}): Promise<MutationResultByPattern["/echo-complex-body"]>;
+	function mutationInvoker(request: {
+		pattern: "/slow-increment";
+		input: MutationInputByPattern["/slow-increment"];
+	}): Promise<MutationResultByPattern["/slow-increment"]>;
+	function mutationInvoker(request: MutationRequest) {
+		if (request.pattern === "/echo-body") {
+			return props.bindings.mutateEchoBody({
+				input: request.input,
+			});
+		}
+		if (request.pattern === "/echo-complex-body") {
+			return props.bindings.mutateEchoComplexBody({
+				input: request.input,
+			});
+		}
+		return props.bindings.mutateSlowIncrement({
+			input: request.input,
+		});
+	}
+	return mutationInvoker;
+}
+
+export function deriveRowStatusText(row: StressResultRow): string {
+	if (deriveRowPasses(row)) {
+		return "pass";
+	}
+
+	const reasons = [
+		!row.simpleEchoMatched ? "simple-echo-mismatch" : "",
+		!row.complexEchoMatched ? "complex-echo-mismatch" : "",
+		!row.scoreTotalMatched ? "score-total-mismatch" : "",
+	].filter((reason) => reason !== "");
+	return reasons.join("|");
+}
+
+export async function runDeterministicStressMatrix(props: {
+	mutate: MutationInvoker;
+}): Promise<StressMatrixSummary> {
+	const computedRows: StressResultRow[] = [];
+
+	for (const stressCase of allStressCases) {
+		const simpleResponse = await props.mutate({
+			pattern: "/echo-body",
+			input: {
+				value: stressCase.value,
+				amount: stressCase.amount,
+			},
+		});
+		if (!simpleResponse.success) {
+			computedRows.push({
+				caseLabel: stressCase.caseLabel,
+				simpleEchoMatched: false,
+				complexEchoMatched: false,
+				scoreTotalMatched: false,
+			});
+			continue;
+		}
+
+		const complexPayload = buildComplexEchoPayloadForStressCase({
+			stressCase,
+		});
+		const complexResponse = await props.mutate({
+			pattern: "/echo-complex-body",
+			input: complexPayload,
+		});
+		if (!complexResponse.success) {
+			computedRows.push({
+				caseLabel: stressCase.caseLabel,
+				simpleEchoMatched: true,
+				complexEchoMatched: false,
+				scoreTotalMatched: false,
+			});
+			continue;
+		}
+
+		const scoreTotal = complexPayload.scores.reduce(
+			(total, score) => total + score,
+			0,
+		);
+		computedRows.push({
+			caseLabel: stressCase.caseLabel,
+			simpleEchoMatched:
+				simpleResponse.data.value === stressCase.value &&
+				simpleResponse.data.amount === stressCase.amount,
+			complexEchoMatched:
+				complexResponse.data.title === complexPayload.title &&
+				JSON.stringify(complexResponse.data.flags) ===
+					JSON.stringify(complexPayload.flags) &&
+				JSON.stringify(complexResponse.data.scores) ===
+					JSON.stringify(complexPayload.scores) &&
+				JSON.stringify(complexResponse.data.metadata) ===
+					JSON.stringify(complexPayload.metadata),
+			scoreTotalMatched: complexResponse.data.scoreTotal === scoreTotal,
+		});
+	}
+
+	const failureCount = computedRows.filter(
+		(row) => !deriveRowPasses(row),
+	).length;
+	return {
+		rows: computedRows,
+		failureCount,
+	};
+}
+
+export async function runSlowIncrementRace(props: {
+	mutate: MutationInvoker;
+}): Promise<string> {
+	const slowMutationPromise = props.mutate({
+		pattern: "/slow-increment",
+		input: {
+			delayMs: 650,
+			tag: "slow",
+		},
+	});
+	await sleepMS({ milliseconds: 20 });
+	const fastMutationPromise = props.mutate({
+		pattern: "/slow-increment",
+		input: {
+			delayMs: 30,
+			tag: "fast",
+		},
+	});
+
+	const [slowMutation, fastMutation] = await Promise.all([
+		slowMutationPromise,
+		fastMutationPromise,
+	]);
+	if (!slowMutation.success || !fastMutation.success) {
+		return "failed";
+	}
+	return `${slowMutation.data.tag}:${slowMutation.data.count}|${fastMutation.data.tag}:${fastMutation.data.count}`;
+}
+
+export async function sleepMS(props: { milliseconds: number }): Promise<void> {
+	await new Promise((resolve) => {
+		setTimeout(resolve, props.milliseconds);
+	});
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Internal Helpers
+/////////////////////////////////////////////////////////////////////
+
+function buildComplexEchoPayloadForStressCase(input: {
+	stressCase: EchoStressCase;
+}): ComplexEchoPayload {
+	return {
+		title: `${input.stressCase.caseLabel}:${input.stressCase.value}`,
+		flags: [
+			input.stressCase.amount >= 0,
+			input.stressCase.value.length > 12,
+		],
+		scores: [
+			input.stressCase.amount,
+			input.stressCase.value.length,
+			input.stressCase.amount * -1,
+		],
+		metadata: {
+			caseLabel: input.stressCase.caseLabel,
+			valueLength: String(input.stressCase.value.length),
+		},
+	};
+}
+
+function buildDeterministicStressCases(input: {
+	seed: number;
+	caseCount: number;
+}): EchoStressCase[] {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-_=+[]{}()!?/";
+	let state = input.seed >>> 0;
+	const generatedCases: EchoStressCase[] = [];
+
+	for (let index = 0; index < input.caseCount; index += 1) {
+		state = nextDeterministicState({ state });
+		const valueLength = (state % 30) + 1;
+		let value = "";
+
+		for (let charIndex = 0; charIndex < valueLength; charIndex += 1) {
+			state = nextDeterministicState({ state });
+			const alphabetIndex = state % alphabet.length;
+			value += alphabet[alphabetIndex] ?? "x";
+		}
+
+		state = nextDeterministicState({ state });
+		const signedAmount = Number(state % 8000) - 4000;
+		generatedCases.push({
+			caseLabel: `generated-${index + 1}`,
+			value,
+			amount: signedAmount,
+		});
+	}
+
+	return generatedCases;
+}
+
+function nextDeterministicState(input: { state: number }): number {
+	return (input.state * 1_664_525 + 1_013_904_223) >>> 0;
+}

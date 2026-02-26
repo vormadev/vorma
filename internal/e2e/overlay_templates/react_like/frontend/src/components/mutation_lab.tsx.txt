@@ -1,0 +1,223 @@
+import { useState } from "react";
+import { buildMutationURL } from "vorma/client";
+import {
+	allStressCases,
+	createMutationInvoker,
+	type StressResultRow,
+	deriveRowStatusText,
+	runDeterministicStressMatrix,
+	runSlowIncrementRace,
+} from "../../shared/mutation_lab_logic.ts";
+import { api } from "../vorma.bindings.ts";
+import type { RouteProps } from "../vorma.gen/index.ts";
+import { vormaAppConfig } from "../vorma.gen/index.ts";
+
+export function MutationLab(_props: RouteProps<"/mutation-lab">) {
+	const [incrementCount, setIncrementCount] = useState<number | null>(null);
+	const [echoValue, setEchoValue] = useState("hello");
+	const [echoAmount, setEchoAmount] = useState("1");
+	const [echoResult, setEchoResult] = useState("");
+	const [forcedFailureResult, setForcedFailureResult] = useState("unset");
+	const [slowIncrementRaceResult, setSlowIncrementRaceResult] =
+		useState("unset");
+	const [stressSummary, setStressSummary] = useState("not-run");
+	const [stressFailureCount, setStressFailureCount] = useState(0);
+	const [stressRows, setStressRows] = useState<StressResultRow[]>([]);
+
+	const redirectActionURL = buildMutationURL(vormaAppConfig, {
+		pattern: "/submit-and-redirect",
+	});
+	const stressMutationInvoker = createMutationInvoker({
+		bindings: {
+			mutateEchoBody: ({ input }) =>
+				api.mutate({
+					pattern: "/echo-body",
+					input,
+				}),
+			mutateEchoComplexBody: ({ input }) =>
+				api.mutate({
+					pattern: "/echo-complex-body",
+					input,
+				}),
+			mutateSlowIncrement: ({ input }) =>
+				api.mutate({
+					pattern: "/slow-increment",
+					input,
+				}),
+		},
+	});
+
+	async function runIncrement() {
+		const response = await api.mutate({ pattern: "/increment-count" });
+		if (!response.success) {
+			setIncrementCount(null);
+			return;
+		}
+		setIncrementCount(response.data.count);
+	}
+
+	async function runReset() {
+		const response = await api.mutate({ pattern: "/reset-count" });
+		if (!response.success) {
+			setIncrementCount(null);
+			return;
+		}
+		setIncrementCount(response.data.count);
+	}
+
+	async function runEchoMutation() {
+		const numericAmount = Number.parseInt(echoAmount, 10);
+		const response = await api.mutate({
+			pattern: "/echo-body",
+			input: {
+				value: echoValue,
+				amount: Number.isNaN(numericAmount) ? 0 : numericAmount,
+			},
+		});
+		if (!response.success) {
+			setEchoResult(`failed:${response.error}`);
+			return;
+		}
+		setEchoResult(`${response.data.value}|${response.data.amount}`);
+	}
+
+	async function runForcedFailureMutation() {
+		const response = await api.mutate({ pattern: "/always-fail" });
+		if (response.success) {
+			setForcedFailureResult("unexpected-success");
+			return;
+		}
+		setForcedFailureResult(`failed:${response.error}`);
+	}
+
+	async function runSlowIncrementRaceMutation() {
+		setSlowIncrementRaceResult("running");
+		const raceResult = await runSlowIncrementRace({
+			mutate: stressMutationInvoker,
+		});
+		setSlowIncrementRaceResult(raceResult);
+	}
+
+	async function runStressMatrix() {
+		setStressSummary("running");
+		setStressFailureCount(0);
+		setStressRows([]);
+
+		const stressMatrixSummary = await runDeterministicStressMatrix({
+			mutate: stressMutationInvoker,
+		});
+		setStressRows(stressMatrixSummary.rows);
+		setStressFailureCount(stressMatrixSummary.failureCount);
+		setStressSummary(`completed:${stressMatrixSummary.rows.length}`);
+	}
+
+	return (
+		<section id="e2e-mutation-route">
+			<button
+				id="e2e-increment-button"
+				type="button"
+				onClick={runIncrement}
+			>
+				Increment Counter
+			</button>
+			<button id="e2e-reset-button" type="button" onClick={runReset}>
+				Reset Counter
+			</button>
+			<p id="e2e-increment-result">{incrementCount ?? "unset"}</p>
+
+			<label htmlFor="e2e-echo-value">Echo Value</label>
+			<input
+				id="e2e-echo-value"
+				value={echoValue}
+				onChange={(event) => {
+					setEchoValue(event.currentTarget.value);
+				}}
+			/>
+
+			<label htmlFor="e2e-echo-amount">Echo Amount</label>
+			<input
+				id="e2e-echo-amount"
+				value={echoAmount}
+				onChange={(event) => {
+					setEchoAmount(event.currentTarget.value);
+				}}
+			/>
+
+			<button
+				id="e2e-echo-button"
+				type="button"
+				onClick={runEchoMutation}
+			>
+				Run Echo Mutation
+			</button>
+			<p id="e2e-echo-result">{echoResult}</p>
+
+			<button
+				id="e2e-forced-failure-button"
+				type="button"
+				onClick={runForcedFailureMutation}
+			>
+				Run Forced Failure Mutation
+			</button>
+			<p id="e2e-forced-failure-result">{forcedFailureResult}</p>
+			<button
+				id="e2e-run-slow-increment-race-button"
+				type="button"
+				onClick={runSlowIncrementRaceMutation}
+			>
+				Run Slow Increment Race
+			</button>
+			<p id="e2e-slow-increment-race-result">{slowIncrementRaceResult}</p>
+
+			<div id="e2e-stress-lab">
+				<button
+					id="e2e-run-stress-button"
+					type="button"
+					onClick={runStressMatrix}
+				>
+					Run Deterministic Stress Matrix
+				</button>
+				<p id="e2e-stress-summary">{stressSummary}</p>
+				<p id="e2e-stress-total-count">{allStressCases.length}</p>
+				<p id="e2e-stress-failure-count">{stressFailureCount}</p>
+
+				<table id="e2e-stress-results-table">
+					<thead>
+						<tr>
+							<th>Case</th>
+							<th>Status</th>
+						</tr>
+					</thead>
+					<tbody>
+						{stressRows.map((row) => {
+							return (
+								<tr
+									key={row.caseLabel}
+									data-case-label={row.caseLabel}
+								>
+									<td>{row.caseLabel}</td>
+									<td>{deriveRowStatusText(row)}</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
+
+			<form
+				id="e2e-redirect-form"
+				method="post"
+				action={redirectActionURL.toString()}
+			>
+				<input
+					id="e2e-redirect-target"
+					name="target"
+					defaultValue="/users/redirected-from-action?q=redirected"
+				/>
+				<button id="e2e-redirect-submit" type="submit">
+					Submit Redirect Action
+				</button>
+			</form>
+		</section>
+	);
+}

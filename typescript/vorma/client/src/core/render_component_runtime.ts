@@ -1,18 +1,29 @@
 import { jsonDeepEquals } from "vorma/kit/json";
+import {
+	__vormaClientGlobal,
+	getRuntimeRouteSnapshot,
+	updateRuntimeRouteSnapshot,
+} from "../app/context.ts";
 import { resolvePublicHref } from "../platform/url.ts";
-import { __vormaClientGlobal } from "../app/context.ts";
 
 type ModuleExports = Record<string, unknown>;
 export type ComponentModulesMap = Map<string, ModuleExports | undefined>;
 
-export function getEffectiveErrorData(): {
+export function getEffectiveErrorDataFromSnapshot(props: {
+	outermostServerErrorIdx: number | undefined;
+	outermostClientErrorIdx: number | undefined;
+	outermostServerError: string | undefined;
+	outermostClientError: string | undefined;
+}): {
 	index: number | undefined;
 	error: string | undefined;
 } {
-	const serverErrorIdx = __vormaClientGlobal.get("outermostServerErrorIdx");
-	const clientErrorIdx = __vormaClientGlobal.get("outermostClientErrorIdx");
-	const serverError = __vormaClientGlobal.get("outermostServerError");
-	const clientError = __vormaClientGlobal.get("outermostClientError");
+	const {
+		outermostServerErrorIdx: serverErrorIdx,
+		outermostClientErrorIdx: clientErrorIdx,
+		outermostServerError: serverError,
+		outermostClientError: clientError,
+	} = props;
 	let errorIdx: number | undefined;
 	if (serverErrorIdx != null && clientErrorIdx != null) {
 		errorIdx = Math.min(serverErrorIdx, clientErrorIdx);
@@ -44,6 +55,19 @@ export function getEffectiveErrorData(): {
 	};
 }
 
+export function getEffectiveErrorData(): {
+	index: number | undefined;
+	error: string | undefined;
+} {
+	const snapshot = getRuntimeRouteSnapshot();
+	return getEffectiveErrorDataFromSnapshot({
+		outermostServerErrorIdx: snapshot.outermostServerErrorIdx,
+		outermostClientErrorIdx: snapshot.outermostClientErrorIdx,
+		outermostServerError: snapshot.outermostServerError,
+		outermostClientError: snapshot.outermostClientError,
+	});
+}
+
 async function loadComponentModules(
 	importURLs: string[] = [],
 ): Promise<ComponentModulesMap> {
@@ -57,7 +81,7 @@ async function loadComponentModules(
 	return new Map(dedupedURLs.map((url, i) => [url, modules[i]]));
 }
 
-function buildActiveComponents(props: {
+export function buildActiveComponentsFromModules(props: {
 	importURLs: string[];
 	exportKeys: string[];
 	modulesMap: ComponentModulesMap;
@@ -70,7 +94,7 @@ function buildActiveComponents(props: {
 	});
 }
 
-function resolveErrorBoundaryComponent(props: {
+export function resolveErrorBoundaryComponentFromModules(props: {
 	errorIdx: number;
 	importURLs: string[];
 	errorExportKeys: Array<string> | undefined;
@@ -109,19 +133,20 @@ export function setActiveComponentsFromModules(props: {
 	exportKeys: Array<string> | undefined;
 	modulesMap: ComponentModulesMap;
 }): void {
-	const newActiveComponents = buildActiveComponents({
+	const snapshot = getRuntimeRouteSnapshot();
+	const newActiveComponents = buildActiveComponentsFromModules({
 		importURLs: props.importURLs ?? [],
 		exportKeys: props.exportKeys ?? [],
 		modulesMap: props.modulesMap,
 	});
 
-	if (
-		!jsonDeepEquals(
-			newActiveComponents,
-			__vormaClientGlobal.get("activeComponents"),
-		)
-	) {
-		__vormaClientGlobal.set("activeComponents", newActiveComponents);
+	if (!jsonDeepEquals(newActiveComponents, snapshot.activeComponents)) {
+		updateRuntimeRouteSnapshot({
+			updater: (previousSnapshot) => ({
+				...previousSnapshot,
+				activeComponents: newActiveComponents,
+			}),
+		});
 	}
 }
 
@@ -130,12 +155,18 @@ export function setActiveErrorBoundaryFromModules(props: {
 	errorExportKeys: Array<string> | undefined;
 	modulesMap: ComponentModulesMap;
 }): void {
-	const errorIdx = getEffectiveErrorData().index;
+	const snapshot = getRuntimeRouteSnapshot();
+	const errorIdx = getEffectiveErrorDataFromSnapshot({
+		outermostServerErrorIdx: snapshot.outermostServerErrorIdx,
+		outermostClientErrorIdx: snapshot.outermostClientErrorIdx,
+		outermostServerError: snapshot.outermostServerError,
+		outermostClientError: snapshot.outermostClientError,
+	}).index;
 	if (errorIdx == null) {
 		return;
 	}
 
-	const newErrorBoundary = resolveErrorBoundaryComponent({
+	const newErrorBoundary = resolveErrorBoundaryComponentFromModules({
 		errorIdx,
 		importURLs: props.importURLs ?? [],
 		errorExportKeys: props.errorExportKeys,
@@ -143,9 +174,13 @@ export function setActiveErrorBoundaryFromModules(props: {
 		defaultErrorBoundary: __vormaClientGlobal.get("defaultErrorBoundary"),
 	});
 
-	const currentErrorBoundary = __vormaClientGlobal.get("activeErrorBoundary");
-	if (currentErrorBoundary !== newErrorBoundary) {
-		__vormaClientGlobal.set("activeErrorBoundary", newErrorBoundary);
+	if (snapshot.activeErrorBoundary !== newErrorBoundary) {
+		updateRuntimeRouteSnapshot({
+			updater: (previousSnapshot) => ({
+				...previousSnapshot,
+				activeErrorBoundary: newErrorBoundary,
+			}),
+		});
 	}
 }
 
@@ -153,9 +188,10 @@ export async function handleComponents(
 	importURLs?: string[],
 ): Promise<ComponentModulesMap> {
 	const modulesMap = await loadComponents(importURLs);
+	const snapshot = getRuntimeRouteSnapshot();
 	setActiveComponentsFromModules({
-		importURLs: __vormaClientGlobal.get("importURLs"),
-		exportKeys: __vormaClientGlobal.get("exportKeys"),
+		importURLs: snapshot.importURLs,
+		exportKeys: snapshot.exportKeys,
 		modulesMap,
 	});
 	return modulesMap;
@@ -166,9 +202,10 @@ export async function handleErrorBoundaryComponent(
 	modulesMapOverride?: ComponentModulesMap,
 ): Promise<void> {
 	const modulesMap = modulesMapOverride ?? (await loadComponents(importURLs));
+	const snapshot = getRuntimeRouteSnapshot();
 	setActiveErrorBoundaryFromModules({
-		importURLs: __vormaClientGlobal.get("importURLs"),
-		errorExportKeys: __vormaClientGlobal.get("errorExportKeys"),
+		importURLs: snapshot.importURLs,
+		errorExportKeys: snapshot.errorExportKeys,
 		modulesMap,
 	});
 }

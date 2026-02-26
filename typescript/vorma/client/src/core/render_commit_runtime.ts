@@ -1,6 +1,9 @@
 import {
 	__vormaClientGlobal,
+	getRuntimeRouteSnapshot,
+	setRuntimeRouteSnapshot,
 	type GetRouteDataOutput,
+	type RuntimeRouteSnapshot,
 } from "../app/context.ts";
 import { dispatchRouteChangeEvent } from "../platform/events.ts";
 import { HistoryManager } from "../platform/history.ts";
@@ -12,12 +15,13 @@ import {
 } from "../platform/url.ts";
 import { updateHeadEls } from "../ui/head.ts";
 import type { VormaNavigationType } from "./navigation/types.ts";
-import { deriveAndSetErrorState } from "./render_client_loader_runtime.ts";
+import type { ClientLoadersResult } from "./render_client_loader_runtime.ts";
 import {
+	buildActiveComponentsFromModules,
 	ComponentLoader,
+	getEffectiveErrorDataFromSnapshot,
+	resolveErrorBoundaryComponentFromModules,
 	type ComponentModulesMap,
-	setActiveComponentsFromModules,
-	setActiveErrorBoundaryFromModules,
 } from "./render_component_runtime.ts";
 
 const inFlightCSSPreloadPromiseByHref = new Map<string, Promise<void>>();
@@ -153,25 +157,6 @@ function runHistoryAndDeriveScrollState(props: {
 	return scrollStateToDispatch;
 }
 
-function applyRouteDataToGlobalState(json: GetRouteDataOutput): void {
-	const stateKeys = [
-		"outermostServerError",
-		"outermostServerErrorIdx",
-		"errorExportKeys",
-		"matchedPatterns",
-		"loadersData",
-		"importURLs",
-		"exportKeys",
-		"hasRootData",
-		"params",
-		"splatValues",
-	] as const;
-
-	for (const key of stateKeys) {
-		__vormaClientGlobal.set(key, json[key]);
-	}
-}
-
 function applyRouteDocumentTitle(title: GetRouteDataOutput["title"]): void {
 	if (title === undefined) {
 		return;
@@ -196,6 +181,7 @@ function applyRouteHeadElements(json: GetRouteDataOutput): void {
 type RerenderAppProps = {
 	json: GetRouteDataOutput;
 	navigationType: VormaNavigationType;
+	clientLoadersResult?: ClientLoadersResult;
 	runHistoryOptions?: RenderingHistoryOptions;
 	shouldCommit?: () => boolean;
 	onFinish: () => void;
@@ -210,25 +196,111 @@ function canCommitRender(props: {
 	return props.shouldCommit();
 }
 
+function buildSnapshotWithCommittedClientLoaders(props: {
+	previousSnapshot: RuntimeRouteSnapshot;
+	clientLoadersResult: ClientLoadersResult | undefined;
+}): RuntimeRouteSnapshot {
+	const { previousSnapshot, clientLoadersResult } = props;
+	if (!clientLoadersResult) {
+		return previousSnapshot;
+	}
+
+	const normalizedClientLoaderData = clientLoadersResult.data ?? [];
+	const outermostClientErrorIdx = clientLoadersResult.errorMessage
+		? normalizedClientLoaderData.length > 0
+			? normalizedClientLoaderData.length - 1
+			: undefined
+		: undefined;
+
+	return {
+		...previousSnapshot,
+		clientLoadersData: normalizedClientLoaderData,
+		outermostClientErrorIdx,
+		outermostClientError: clientLoadersResult.errorMessage,
+	};
+}
+
+function buildCommittedRuntimeRouteSnapshot(props: {
+	previousSnapshot: RuntimeRouteSnapshot;
+	json: GetRouteDataOutput;
+	modulesMap: ComponentModulesMap;
+	clientLoadersResult: ClientLoadersResult | undefined;
+}): RuntimeRouteSnapshot {
+	const snapshotWithCommittedClientLoaders =
+		buildSnapshotWithCommittedClientLoaders({
+			previousSnapshot: props.previousSnapshot,
+			clientLoadersResult: props.clientLoadersResult,
+		});
+
+	const baseCommittedSnapshot: RuntimeRouteSnapshot = {
+		...snapshotWithCommittedClientLoaders,
+		buildID: __vormaClientGlobal.get("buildID") || "",
+		outermostServerError: props.json.outermostServerError,
+		outermostServerErrorIdx: props.json.outermostServerErrorIdx,
+		errorExportKeys: props.json.errorExportKeys,
+		matchedPatterns: props.json.matchedPatterns,
+		loadersData: props.json.loadersData,
+		importURLs: props.json.importURLs,
+		exportKeys: props.json.exportKeys,
+		hasRootData: props.json.hasRootData,
+		params: props.json.params,
+		splatValues: props.json.splatValues,
+		activeErrorBoundary: undefined,
+		activeComponents: buildActiveComponentsFromModules({
+			importURLs: props.json.importURLs ?? [],
+			exportKeys: props.json.exportKeys ?? [],
+			modulesMap: props.modulesMap,
+		}),
+	};
+
+	const effectiveErrData = getEffectiveErrorDataFromSnapshot({
+		outermostServerErrorIdx: baseCommittedSnapshot.outermostServerErrorIdx,
+		outermostClientErrorIdx: baseCommittedSnapshot.outermostClientErrorIdx,
+		outermostServerError: baseCommittedSnapshot.outermostServerError,
+		outermostClientError: baseCommittedSnapshot.outermostClientError,
+	});
+
+	if (effectiveErrData.index == null) {
+		return {
+			...baseCommittedSnapshot,
+			outermostErrorIdx: undefined,
+			outermostError: undefined,
+			activeErrorBoundary: undefined,
+		};
+	}
+
+	return {
+		...baseCommittedSnapshot,
+		outermostErrorIdx: effectiveErrData.index,
+		outermostError: effectiveErrData.error,
+		activeErrorBoundary: resolveErrorBoundaryComponentFromModules({
+			errorIdx: effectiveErrData.index,
+			importURLs: props.json.importURLs ?? [],
+			errorExportKeys: props.json.errorExportKeys,
+			modulesMap: props.modulesMap,
+			defaultErrorBoundary: __vormaClientGlobal.get(
+				"defaultErrorBoundary",
+			),
+		}),
+	};
+}
+
 function executeRenderCommitPipeline(props: {
 	json: GetRouteDataOutput;
 	navigationType: VormaNavigationType;
+	clientLoadersResult: ClientLoadersResult | undefined;
 	runHistoryOptions?: RenderingHistoryOptions;
 	modulesMap: ComponentModulesMap;
 	onFinish: () => void;
 }): void {
-	applyRouteDataToGlobalState(props.json);
-	deriveAndSetErrorState();
-	setActiveComponentsFromModules({
-		importURLs: props.json.importURLs,
-		exportKeys: props.json.exportKeys,
+	const previousSnapshot = getRuntimeRouteSnapshot();
+	const committedSnapshot = buildCommittedRuntimeRouteSnapshot({
+		previousSnapshot,
+		json: props.json,
 		modulesMap: props.modulesMap,
+		clientLoadersResult: props.clientLoadersResult,
 	});
-	setActiveErrorBoundaryFromModules({
-		importURLs: props.json.importURLs,
-		errorExportKeys: props.json.errorExportKeys,
-		modulesMap: props.modulesMap,
-	});
+	setRuntimeRouteSnapshot(committedSnapshot);
 	const scrollStateToDispatch = runHistoryAndDeriveScrollState({
 		navigationType: props.navigationType,
 		runHistoryOptions: props.runHistoryOptions,
@@ -262,7 +334,13 @@ export async function __reRenderApp(props: RerenderAppProps): Promise<void> {
 }
 
 async function __reRenderAppInner(props: RerenderAppProps): Promise<void> {
-	const { json, navigationType, runHistoryOptions, shouldCommit } = props;
+	const {
+		json,
+		navigationType,
+		runHistoryOptions,
+		shouldCommit,
+		clientLoadersResult,
+	} = props;
 
 	if (
 		!canCommitRender({
@@ -285,6 +363,7 @@ async function __reRenderAppInner(props: RerenderAppProps): Promise<void> {
 	executeRenderCommitPipeline({
 		json,
 		navigationType,
+		clientLoadersResult,
 		runHistoryOptions,
 		modulesMap,
 		onFinish: props.onFinish,

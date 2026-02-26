@@ -38,9 +38,15 @@ export {
 	type RouteOutletStoreState,
 } from "./src/ui/route_outlet_runtime.ts";
 export {
+	buildTypedAdapterRoutePropsWithInternalRouteInstanceToken,
+	createTypedAdapterRouteInstanceToken,
+	markTypedAdapterRouteInstanceTokenActive,
+	markTypedAdapterRouteInstanceTokenDisposed,
 	registerTypedAdapterClientLoader,
+	resolveTypedAdapterClientLoaderDataForPatternOrRouteProps,
 	resolveTypedAdapterIndexedDataForPattern,
-	resolveTypedAdapterIndexedDataForPatternOrRouteProps,
+	resolveTypedAdapterLoaderDataForRoutePropsOrThrow,
+	syncTypedAdapterRouteInstanceStoreFromNavigationState,
 	type VormaTypedAdapterAddClientLoaderProps,
 } from "./src/ui/typed_adapter_helpers_runtime.ts";
 export {

@@ -5,6 +5,7 @@ import {
 	onCleanup,
 	onMount,
 	Show,
+	untrack,
 	type JSX,
 	type ValidComponent,
 } from "solid-js";
@@ -12,7 +13,11 @@ import { Dynamic, render as renderSolid } from "solid-js/web";
 import {
 	buildInitialRouteOutletStoreState,
 	buildRouteOutletBranchState,
+	buildTypedAdapterRoutePropsWithInternalRouteInstanceToken,
 	createRouteOutletRuntimeListenerInitializer,
+	createTypedAdapterRouteInstanceToken,
+	markTypedAdapterRouteInstanceTokenActive,
+	markTypedAdapterRouteInstanceTokenDisposed,
 	resolveRouteOutletBranchRenderState,
 	shouldRemountRouteOutletComponentMount,
 	syncRouteOutletStoreStateFromRuntime,
@@ -94,6 +99,9 @@ const initUIListeners = createRouteOutletRuntimeListenerInitializer({
 type VormaRouteComponentMountProps = {
 	getCurrentRouteKey: () => string;
 	getCurrentRouteComponent: () => ValidComponent | undefined;
+	getMatchedPatterns: () => readonly string[];
+	getLoadersData: () => readonly unknown[];
+	getClientLoadersData: () => readonly unknown[];
 	idx: number;
 	Outlet: (localProps?: Record<string, any>) => JSX.Element;
 };
@@ -158,11 +166,31 @@ function VormaRouteComponentMount(
 		ValidComponent | undefined
 	>(undefined);
 	let disposeMountedRouteComponent: (() => void) | undefined;
+	let mountedRouteInstanceToken: unknown | undefined;
 	let previousObservedRouteComponent: ValidComponent | undefined;
 
 	function mountRouteComponentIntoContainer(
 		mountContainer: HTMLSpanElement,
 	): void {
+		const routeKeyAtMount = untrack(() => props.getCurrentRouteKey());
+		const matchedPatternsAtMount = untrack(() =>
+			props.getMatchedPatterns(),
+		);
+		const loadersDataAtMount = untrack(() => props.getLoadersData());
+		const clientLoadersDataAtMount = untrack(() =>
+			props.getClientLoadersData(),
+		);
+		mountedRouteInstanceToken = createTypedAdapterRouteInstanceToken({
+			routePropsIndex: props.idx,
+			routeKey: routeKeyAtMount,
+			matchedPatterns: matchedPatternsAtMount,
+			loadersData: loadersDataAtMount,
+			clientLoadersData: clientLoadersDataAtMount,
+		});
+		markTypedAdapterRouteInstanceTokenActive({
+			routeInstanceToken: mountedRouteInstanceToken,
+		});
+		const routeInstanceTokenForMountedComponent = mountedRouteInstanceToken;
 		disposeMountedRouteComponent = renderSolid(() => {
 			const CurrentComp = mountedRouteComponent();
 			if (!CurrentComp) {
@@ -173,9 +201,26 @@ function VormaRouteComponentMount(
 					component={CurrentComp as ValidComponent}
 					idx={props.idx}
 					Outlet={props.Outlet}
+					{...buildTypedAdapterRoutePropsWithInternalRouteInstanceToken(
+						{
+							routeInstanceToken:
+								routeInstanceTokenForMountedComponent,
+						},
+					)}
 				/>
 			);
 		}, mountContainer);
+	}
+
+	function disposeMountedRouteComponentAndToken(): void {
+		if (mountedRouteInstanceToken !== undefined) {
+			markTypedAdapterRouteInstanceTokenDisposed({
+				routeInstanceToken: mountedRouteInstanceToken,
+			});
+			mountedRouteInstanceToken = undefined;
+		}
+		disposeMountedRouteComponent?.();
+		disposeMountedRouteComponent = undefined;
 	}
 
 	createEffect((previousRouteKey: string | undefined) => {
@@ -204,8 +249,7 @@ function VormaRouteComponentMount(
 		}
 
 		if (shouldRemountMountedRouteComponent) {
-			disposeMountedRouteComponent();
-			disposeMountedRouteComponent = undefined;
+			disposeMountedRouteComponentAndToken();
 			setMountedRouteComponent(() => {
 				return nextRouteComponent;
 			});
@@ -217,7 +261,7 @@ function VormaRouteComponentMount(
 	}, undefined);
 
 	onCleanup(() => {
-		disposeMountedRouteComponent?.();
+		disposeMountedRouteComponentAndToken();
 	});
 
 	return <span ref={setMountContainerEl} style={{ display: "contents" }} />;
@@ -344,6 +388,9 @@ export function VormaRootOutlet(
 				<VormaRouteComponentMount
 					getCurrentRouteKey={currentRouteKey}
 					getCurrentRouteComponent={currentRouteComponent}
+					getMatchedPatterns={() => routerData().matchedPatterns}
+					getLoadersData={loadersData}
+					getClientLoadersData={clientLoadersData}
 					idx={idx}
 					Outlet={Outlet}
 				/>
