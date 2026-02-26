@@ -10,9 +10,5 @@
 		"allowImportingTsExtensions": true,
 		"types": ["node"]
 	},
-	"include": [
-		"./framework.integration.spec.ts",
-		"./playwright.config.ts",
-		"./runtime_harness.ts"
-	]
+	"include": ["./**/*.ts"]
 }

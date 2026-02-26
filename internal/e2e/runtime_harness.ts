@@ -76,11 +76,19 @@ export async function startFixtureSiteForE2E(props: {
 	uiAdapter: E2EUIAdapter;
 }): Promise<RunningFixtureSite> {
 	assertFixtureFilesExist();
-	const preparedFixtureVariant = await prepareFixtureVariantForAdapter({
+	const viteDefaultPort = resolvePreferredViteDefaultPortForLane({
+		mode: props.mode,
 		uiAdapter: props.uiAdapter,
 	});
+	const preparedFixtureVariant = await prepareFixtureVariantForAdapter({
+		uiAdapter: props.uiAdapter,
+		viteDefaultPort,
+	});
 
-	const port = await reserveOpenPort();
+	const port = await resolvePortForLane({
+		mode: props.mode,
+		uiAdapter: props.uiAdapter,
+	});
 	const baseURL = `http://127.0.0.1:${port}`;
 	const commonEnv = {
 		...process.env,
@@ -292,9 +300,11 @@ async function stopManagedCommand(props: {
 /** Creates and configures an isolated fixture copy for the selected adapter. */
 async function prepareFixtureVariantForAdapter(props: {
 	uiAdapter: E2EUIAdapter;
+	viteDefaultPort: number;
 }): Promise<PreparedFixtureVariant> {
 	const isolatedFixtureRootDir = await createIsolatedFixtureRootDirectory({
 		uiAdapter: props.uiAdapter,
+		viteDefaultPort: props.viteDefaultPort,
 	});
 
 	return {
@@ -312,6 +322,7 @@ async function prepareFixtureVariantForAdapter(props: {
 /** Generates a temp fixture app with fully prepared dependencies. */
 async function createIsolatedFixtureRootDirectory(props: {
 	uiAdapter: E2EUIAdapter;
+	viteDefaultPort: number;
 }): Promise<string> {
 	const isolatedFixtureRootDir = await fs.promises.mkdtemp(
 		isolatedFixtureRootDirectoryPrefix,
@@ -327,6 +338,8 @@ async function createIsolatedFixtureRootDirectory(props: {
 			repositoryRootDir,
 			"--ui-adapter",
 			props.uiAdapter,
+			"--vite-default-port",
+			String(props.viteDefaultPort),
 		],
 		cwd: repositoryRootDir,
 		env: {
@@ -351,26 +364,20 @@ async function waitForHealthEndpoint(props: {
 	const healthcheckURL = `${props.baseURL}/healthz`;
 
 	for (;;) {
-		if (
-			props.spawnedCommand.child.exitCode !== null ||
-			props.spawnedCommand.child.signalCode !== null
-		) {
-			throw new Error(
-				[
-					`runtime exited before readiness: ${props.spawnedCommand.commandLine}`,
-					`exit code: ${props.spawnedCommand.child.exitCode ?? "null"}`,
-					`signal: ${props.spawnedCommand.child.signalCode ?? "null"}`,
-					"recent output:",
-					formatRecentCommandOutput({
-						spawnedCommand: props.spawnedCommand,
-					}),
-				].join("\n"),
-			);
-		}
+		throwIfRuntimeExitedBeforeReadiness({
+			spawnedCommand: props.spawnedCommand,
+		});
 
 		const statusCode = await readHTTPStatusCode({ url: healthcheckURL });
 		if (statusCode === 200) {
-			return;
+			const readinessIsStable =
+				await didRuntimeReadinessStabilizeAfterHealthSuccess({
+					healthcheckURL,
+					spawnedCommand: props.spawnedCommand,
+				});
+			if (readinessIsStable) {
+				return;
+			}
 		}
 
 		if (Date.now() >= deadlineMS) {
@@ -388,6 +395,50 @@ async function waitForHealthEndpoint(props: {
 
 		await sleep(250);
 	}
+}
+
+async function didRuntimeReadinessStabilizeAfterHealthSuccess(input: {
+	healthcheckURL: string;
+	spawnedCommand: SpawnedCommand;
+}): Promise<boolean> {
+	const readinessStabilizationWindowMS = 900;
+	const readinessStabilizationPollIntervalMS = 75;
+	const stabilizationDeadlineMS = Date.now() + readinessStabilizationWindowMS;
+
+	while (Date.now() < stabilizationDeadlineMS) {
+		throwIfRuntimeExitedBeforeReadiness({
+			spawnedCommand: input.spawnedCommand,
+		});
+		await sleep(readinessStabilizationPollIntervalMS);
+	}
+
+	const statusCodeAfterStabilizationWindow = await readHTTPStatusCode({
+		url: input.healthcheckURL,
+	});
+	return statusCodeAfterStabilizationWindow === 200;
+}
+
+function throwIfRuntimeExitedBeforeReadiness(input: {
+	spawnedCommand: SpawnedCommand;
+}): void {
+	if (
+		input.spawnedCommand.child.exitCode === null &&
+		input.spawnedCommand.child.signalCode === null
+	) {
+		return;
+	}
+
+	throw new Error(
+		[
+			`runtime exited before readiness: ${input.spawnedCommand.commandLine}`,
+			`exit code: ${input.spawnedCommand.child.exitCode ?? "null"}`,
+			`signal: ${input.spawnedCommand.child.signalCode ?? "null"}`,
+			"recent output:",
+			formatRecentCommandOutput({
+				spawnedCommand: input.spawnedCommand,
+			}),
+		].join("\n"),
+	);
 }
 
 /** Reads an HTTP response status code for liveness checks. */
@@ -442,6 +493,94 @@ async function reserveOpenPort(): Promise<number> {
 	probeServer.close();
 	await once(probeServer, "close");
 	return listeningAddress.port;
+}
+
+/**
+ * Returns a deterministic per-lane port when available to avoid cross-lane
+ * races in concurrent runs; falls back to any available loopback port.
+ */
+async function resolvePortForLane(props: {
+	mode: E2ERunMode;
+	uiAdapter: E2EUIAdapter;
+}): Promise<number> {
+	const preferredPort = resolvePreferredPortForLane({
+		mode: props.mode,
+		uiAdapter: props.uiAdapter,
+	});
+	const canUsePreferredPort = await canBindLoopbackPort({
+		port: preferredPort,
+	});
+	if (canUsePreferredPort) {
+		return preferredPort;
+	}
+
+	return reserveOpenPort();
+}
+
+/** Computes a stable non-overlapping port for each mode+adapter lane. */
+function resolvePreferredPortForLane(props: {
+	mode: E2ERunMode;
+	uiAdapter: E2EUIAdapter;
+}): number {
+	return (
+		58_100 +
+		resolveLanePortOffset({
+			mode: props.mode,
+			uiAdapter: props.uiAdapter,
+		})
+	);
+}
+
+/** Computes a stable Vite default port for each mode+adapter lane. */
+function resolvePreferredViteDefaultPortForLane(props: {
+	mode: E2ERunMode;
+	uiAdapter: E2EUIAdapter;
+}): number {
+	return (
+		59_100 +
+		resolveLanePortOffset({
+			mode: props.mode,
+			uiAdapter: props.uiAdapter,
+		})
+	);
+}
+
+/** Resolves a deterministic numeric lane offset shared across port families. */
+function resolveLanePortOffset(props: {
+	mode: E2ERunMode;
+	uiAdapter: E2EUIAdapter;
+}): number {
+	const modeOffset = props.mode === "dev" ? 0 : 100;
+	const uiAdapterOffset =
+		props.uiAdapter === "solid" ? 1 : props.uiAdapter === "react" ? 2 : 3;
+	return modeOffset + uiAdapterOffset;
+}
+
+/** Checks whether a specific loopback port can be bound right now. */
+async function canBindLoopbackPort(props: { port: number }): Promise<boolean> {
+	return await new Promise((resolve) => {
+		const probeServer = createServer();
+		let didSettle = false;
+		const settle = (canBind: boolean) => {
+			if (didSettle) {
+				return;
+			}
+			didSettle = true;
+			resolve(canBind);
+		};
+
+		probeServer.once("error", () => {
+			settle(false);
+		});
+		probeServer.once("listening", () => {
+			probeServer.close();
+		});
+		probeServer.once("close", () => {
+			settle(true);
+		});
+		probeServer.unref();
+		probeServer.listen(props.port, "127.0.0.1");
+	});
 }
 
 /** Ensures required fixture files exist before runtime boot attempts. */

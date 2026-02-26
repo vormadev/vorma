@@ -34,7 +34,8 @@ It does not depend on `internal/site`.
 
 ## Layout
 
-- `framework.integration.spec.ts`: browser test matrix for mode + adapter.
+- `framework.integration.shared.ts`: shared browser test definitions.
+- `framework.integration.*.spec.ts`: lane wrappers for each mode+adapter pair.
 - `runtime_harness.ts`: boots fixture app in each mode and manages lifecycle.
 - `overlay_templates/`: additive E2E fixture layer (`.tmpl`/`.txt`) applied on
   top of bootstrap-generated temporary apps.
@@ -45,6 +46,9 @@ It does not depend on `internal/site`.
 
 1. `make e2e-setup`
 2. `make e2e-test`
+
+By default, `make e2e-test` now runs the full `dev/prod × solid/react/preact`
+lane matrix in parallel (one isolated temp fixture per lane).
 
 Granular setup targets:
 
@@ -61,3 +65,7 @@ Targeted adapter runs:
 - `VORMA_E2E_UI_ADAPTERS=solid make e2e-test`
 - `VORMA_E2E_UI_ADAPTERS=react make e2e-test-dev`
 - `VORMA_E2E_UI_ADAPTERS=preact make e2e-test-prod`
+
+Worker tuning:
+
+- `VORMA_E2E_WORKERS=6 make e2e-test`

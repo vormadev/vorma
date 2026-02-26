@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -20,6 +21,7 @@ type commandOptions struct {
 	outputDirectoryPath string
 	repositoryRootPath  string
 	uiAdapter           string
+	viteDefaultPort     int
 }
 
 type overlayTemplateData struct {
@@ -125,6 +127,10 @@ func generateFixtureProject(options commandOptions) error {
 		}
 	}
 
+	if configureWaveConfigError := configureGeneratedWaveConfigForFixture(options); configureWaveConfigError != nil {
+		return configureWaveConfigError
+	}
+
 	if ensureGoModuleDependenciesError := ensureFixtureGoModuleDependencies(options); ensureGoModuleDependenciesError != nil {
 		return ensureGoModuleDependenciesError
 	}
@@ -195,6 +201,87 @@ func ensureFixtureJavaScriptDependencies(options commandOptions) error {
 			"run pnpm install for generated fixture: %w\noutput:\n%s",
 			commandError,
 			string(commandOutput),
+		)
+	}
+
+	return nil
+}
+
+func configureGeneratedWaveConfigForFixture(options commandOptions) error {
+	if options.viteDefaultPort == 0 {
+		return nil
+	}
+
+	waveConfigFilePath := filepath.Join(
+		options.outputDirectoryPath,
+		"backend",
+		"wave.config.json",
+	)
+
+	waveConfigFileBytes, readWaveConfigFileError := os.ReadFile(
+		waveConfigFilePath,
+	)
+	if readWaveConfigFileError != nil {
+		return fmt.Errorf(
+			"read generated wave config file %q: %w",
+			waveConfigFilePath,
+			readWaveConfigFileError,
+		)
+	}
+
+	waveConfigObject := make(map[string]any)
+	if unmarshalWaveConfigError := json.Unmarshal(
+		waveConfigFileBytes,
+		&waveConfigObject,
+	); unmarshalWaveConfigError != nil {
+		return fmt.Errorf(
+			"decode generated wave config file %q: %w",
+			waveConfigFilePath,
+			unmarshalWaveConfigError,
+		)
+	}
+
+	var viteConfigObject map[string]any
+	rawViteConfigObject, hasViteConfigObject := waveConfigObject["Vite"]
+	if hasViteConfigObject {
+		typedViteConfigObject, isViteConfigObject := rawViteConfigObject.(map[string]any)
+		if !isViteConfigObject {
+			return fmt.Errorf(
+				"generated wave config file %q has non-object Vite section",
+				waveConfigFilePath,
+			)
+		}
+		viteConfigObject = typedViteConfigObject
+	} else {
+		viteConfigObject = make(map[string]any)
+	}
+
+	viteConfigObject["DefaultPort"] = options.viteDefaultPort
+	waveConfigObject["Vite"] = viteConfigObject
+
+	updatedWaveConfigFileBytes, marshalWaveConfigError := json.MarshalIndent(
+		waveConfigObject,
+		"",
+		"\t",
+	)
+	if marshalWaveConfigError != nil {
+		return fmt.Errorf(
+			"encode generated wave config file %q: %w",
+			waveConfigFilePath,
+			marshalWaveConfigError,
+		)
+	}
+	updatedWaveConfigFileBytes = append(updatedWaveConfigFileBytes, '\n')
+
+	if writeWaveConfigFileError := os.WriteFile(
+		waveConfigFilePath,
+		updatedWaveConfigFileBytes,
+		0644,
+	); writeWaveConfigFileError != nil {
+		return fmt.Errorf(
+			"write generated wave config file %q: %w",
+			waveConfigFilePath,
+			writeWaveConfigFileError,
 		)
 	}
 
@@ -522,6 +609,12 @@ func parseCommandOptions() (commandOptions, error) {
 		"",
 		"UI adapter for the generated fixture (solid|react|preact)",
 	)
+	flag.IntVar(
+		&options.viteDefaultPort,
+		"vite-default-port",
+		0,
+		"optional preferred Vite default port written to backend/wave.config.json",
+	)
 	flag.Parse()
 
 	if flag.NArg() != 0 {
@@ -548,6 +641,12 @@ func parseCommandOptions() (commandOptions, error) {
 		return commandOptions{}, fmt.Errorf(
 			"--ui-adapter must be one of solid|react|preact, got %q",
 			options.uiAdapter,
+		)
+	}
+	if options.viteDefaultPort < 0 || options.viteDefaultPort > 65535 {
+		return commandOptions{}, fmt.Errorf(
+			"--vite-default-port must be between 0 and 65535, got %d",
+			options.viteDefaultPort,
 		)
 	}
 
