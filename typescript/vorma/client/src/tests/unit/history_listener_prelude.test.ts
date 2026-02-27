@@ -3,10 +3,10 @@ import {
 	analyzeHistoryListenerPrelude,
 	customHistoryListener,
 	HistoryManager,
-} from "../../platform/history.ts";
-import { setNavigationStateAccess } from "../../app/context.ts";
-import { addLocationListener } from "../../platform/events.ts";
-import { saveStoredScrollState } from "../../platform/scroll.ts";
+} from "../../runtime.ts";
+import { setNavigationStateAccess } from "../../runtime.ts";
+import { addLocationListener } from "../../runtime.ts";
+import { saveStoredScrollState } from "../../runtime.ts";
 
 type HistoryLikeLocation = {
 	pathname: string;

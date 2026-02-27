@@ -50,26 +50,32 @@ const ssrInnerHTMLTemplateString = `<script>
 globalThis[Symbol.for("{{.VormaSymbolStr}}")] = {};
 const x = globalThis[Symbol.for("{{.VormaSymbolStr}}")];
 x.patternToWaitFnMap = {};
-x.clientLoadersData = [];
 x.isDev = {{.IsDev}};
 x.viteDevURL = {{.ViteDevURL}};
-x.buildID = {{.BuildID}};
-x.rootElementID = "{{.RootElementID}}";
 x.publicPathPrefix = "{{.PublicPathPrefix}}";
-x.outermostServerError = {{.OutermostServerError}};
-x.outermostServerErrorIdx = {{.OutermostServerErrorIdx}};
-x.errorExportKeys = {{.ErrorExportKeys}};
-x.matchedPatterns = {{.MatchedPatterns}};
-x.loadersData = {{.LoadersData}};
-x.importURLs = {{.ImportURLs}};
-x.exportKeys = {{.ExportKeys}};
-x.hasRootData = {{.HasRootData}};
-x.params = {{.Params}};
-x.splatValues = {{.SplatValues}};
-x.deps = {{.Deps}};
-x.cssBundles = {{.CSSBundles}};
 x.deploymentID = {{.DeploymentID}};
 x.routeManifestURL = {{.RouteManifestURL}};
+x.runtimeRouteSnapshot = {
+	outermostServerError: {{.OutermostServerError}},
+	outermostServerErrorIdx: {{.OutermostServerErrorIdx}},
+	matchedPatterns: {{.MatchedPatterns}},
+	loadersData: {{.LoadersData}},
+	importURLs: {{.ImportURLs}},
+	exportKeys: {{.ExportKeys}},
+	errorExportKeys: {{.ErrorExportKeys}},
+	hasRootData: {{.HasRootData}},
+	params: {{.Params}},
+	splatValues: {{.SplatValues}},
+	outermostClientError: undefined,
+	outermostClientErrorIdx: undefined,
+	outermostError: {{.OutermostServerError}},
+	outermostErrorIdx: {{.OutermostServerErrorIdx}},
+	buildID: {{.BuildID}},
+	rootElementID: "{{.RootElementID}}",
+	activeComponents: null,
+	activeErrorBoundary: undefined,
+	clientLoadersData: [],
+};
 </script>`
 
 var ssrInnerTemplate = template.Must(

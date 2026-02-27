@@ -3,7 +3,7 @@ import {
 	buildTypedLinkDisplayName,
 	buildTypedLinkHrefForRouteResolution,
 	buildTypedLinkResolvedProps,
-} from "./typed_adapter_link_props.ts";
+} from "../runtime.ts";
 
 const TEST_VORMA_APP_CONFIG = {
 	actionsRouterMountRoot: "/api/",

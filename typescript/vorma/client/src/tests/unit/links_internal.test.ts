@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { navigationStateManager } from "../../client.ts";
+import { navigationStateManager } from "../../runtime.ts";
 import {
 	createLinkOnClickFn as __makeLinkOnClickFn,
 	getEligibleInternalAnchorDetails,
 	navigateEligibleInternalAnchorClick,
-} from "../../core/links_click_lifecycle.ts";
+} from "../../runtime.ts";
 
 function createClickEvent(props: {
 	href: string;

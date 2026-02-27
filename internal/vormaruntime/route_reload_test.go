@@ -1176,30 +1176,30 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_OnlyServeCoherentArtifactSet
 			body,
 			"/frontend/src/routes/products.$id.new.tsx",
 		)
-		hasOldDep := strings.Contains(body, "vorma_out/chunk-old.js")
-		hasNewDep := strings.Contains(body, "vorma_out/chunk-new.js")
+		hasOldBuildID := strings.Contains(body, `buildID: "build-old"`)
+		hasNewBuildID := strings.Contains(body, `buildID: "build-new"`)
 
 		if hasOldImport && hasNewImport {
 			return "", fmt.Errorf("response contained mixed import URLs")
 		}
-		if hasOldDep && hasNewDep {
-			return "", fmt.Errorf("response contained mixed dependency chunks")
+		if hasOldBuildID && hasNewBuildID {
+			return "", fmt.Errorf("response contained mixed build IDs")
 		}
 		if !hasOldImport && !hasNewImport {
 			return "", fmt.Errorf(
 				"response contained neither old nor new import URL",
 			)
 		}
-		if !hasOldDep && !hasNewDep {
+		if !hasOldBuildID && !hasNewBuildID {
 			return "", fmt.Errorf(
-				"response contained neither old nor new dependency chunk",
+				"response contained neither old nor new build ID",
 			)
 		}
 
-		// Import URL and dependency chunk should describe the same build generation.
-		if hasOldImport != hasOldDep || hasNewImport != hasNewDep {
+		// Import URL and build ID should describe the same build generation.
+		if hasOldImport != hasOldBuildID || hasNewImport != hasNewBuildID {
 			return "", fmt.Errorf(
-				"response mixed old/new artifacts across route imports and deps",
+				"response mixed old/new artifacts across route imports and build ID",
 			)
 		}
 
@@ -1524,14 +1524,9 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 
 	body := rec.Body.String()
 	expectedOldFragments := []string{
-		`x.buildID = "build-old";`,
+		`buildID: "build-old",`,
 		`x.routeManifestURL = "/vorma_out/route-manifest-old.js";`,
 		"/frontend/src/routes/products.$id.old.tsx",
-		"vorma_out/shared-old.js",
-		"vorma_out/chunk-old.js",
-		"vorma_out/client-old.css",
-		"vorma_out/shared-old.css",
-		"vorma_out/chunk-old.css",
 	}
 	for _, expectedOldFragment := range expectedOldFragments {
 		if !strings.Contains(body, expectedOldFragment) {
@@ -1544,14 +1539,9 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 	}
 
 	unexpectedNewFragments := []string{
-		`x.buildID = "build-new";`,
+		`buildID: "build-new",`,
 		`x.routeManifestURL = "/vorma_out/route-manifest-new.js";`,
 		"/frontend/src/routes/products.$id.new.tsx",
-		"vorma_out/shared-new.js",
-		"vorma_out/chunk-new.js",
-		"vorma_out/client-new.css",
-		"vorma_out/shared-new.css",
-		"vorma_out/chunk-new.css",
 	}
 	for _, unexpectedNewFragment := range unexpectedNewFragments {
 		if strings.Contains(body, unexpectedNewFragment) {

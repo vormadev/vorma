@@ -19,10 +19,7 @@ async function bundleNavigationStateMachineWithDevFlag(props: {
 		join(tmpdir(), "vorma-navigation-state-machine-bundle-"),
 	);
 	const runtimeStateMachinePath = fileURLToPath(
-		new URL(
-			"../../core/navigation/runtime_state_machine.ts",
-			import.meta.url,
-		),
+		new URL("../../runtime.ts", import.meta.url),
 	);
 	const entryPath = join(tempDir, "entry.ts");
 

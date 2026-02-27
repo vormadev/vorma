@@ -1,11 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleNavigationOutcomeWithInternalResult } from "../../core/navigation/runtime_navigation_pass_runtime.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	NavigateProps,
 	NavigationEntry,
 	NavigationOutcome,
-} from "../../core/navigation/types.ts";
-import * as redirectsModule from "../../core/redirects.ts";
+} from "../../../src/runtime.ts";
+import {
+	__vormaClientGlobal,
+	handleNavigationOutcomeWithInternalResult,
+	setNavigationStateAccess,
+	VORMA_SYMBOL,
+} from "../../runtime.ts";
 
 function createEntry(props: {
 	type: NavigationEntry["type"];
@@ -98,8 +102,58 @@ function createSuccessOutcome(
 	};
 }
 
+function installVormaGlobalForNavigationOutcomeTests(): void {
+	(globalThis as any)[VORMA_SYMBOL] = {
+		isDev: false,
+		viteDevURL: "",
+		publicPathPrefix: "",
+		isTouchInputModalityActive: false,
+		patternToWaitFnMap: {},
+		defaultErrorBoundary: () => null,
+		useViewTransitions: false,
+		deploymentID: "",
+		vormaAppConfig: {
+			actionsRouterMountRoot: "/api/",
+			actionsDynamicRune: ":",
+			actionsSplatRune: "*",
+			loadersDynamicRune: ":",
+			loadersSplatRune: "*",
+			loadersExplicitIndexSegmentIdentifier: "_index",
+		},
+		routeManifestURL: "",
+		routeManifest: undefined,
+		patternRegistry: undefined,
+		runtimeRouteSnapshot: {
+			outermostServerError: undefined,
+			outermostServerErrorIdx: undefined,
+			matchedPatterns: [],
+			loadersData: [],
+			importURLs: [],
+			exportKeys: [],
+			errorExportKeys: [],
+			hasRootData: false,
+			params: {},
+			splatValues: [],
+			outermostClientError: undefined,
+			outermostClientErrorIdx: undefined,
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			buildID: "1",
+			rootElementID: undefined,
+			activeComponents: [],
+			activeErrorBoundary: undefined,
+			clientLoadersData: [],
+		},
+	};
+}
+
+beforeEach(() => {
+	installVormaGlobalForNavigationOutcomeTests();
+});
+
 afterEach(() => {
 	vi.restoreAllMocks();
+	delete (globalThis as any)[VORMA_SYMBOL];
 });
 
 describe("navigation outcome runtime", () => {
@@ -163,18 +217,16 @@ describe("navigation outcome runtime", () => {
 			intent: "navigate",
 		});
 		const redirectOutcome = createRedirectOutcome();
-		const deleteNavigation = vi.fn(() => true);
+		const navigateSpy = vi.fn(async () => ({ didNavigate: true }));
+		setNavigationStateAccess({
+			navigate: navigateSpy,
+			removeNavigation: vi.fn(),
+			getNavigations: () => new Map(),
+		});
+		const deleteNavigation = vi.fn(() => {
+			return true;
+		});
 		const processSuccessfulNavigation = vi.fn(async () => {});
-		const syncBuildIDSpy = vi
-			.spyOn(redirectsModule, "syncBuildIDFromRedirectData")
-			.mockImplementation(() => {});
-		const effectuateRedirectSpy = vi
-			.spyOn(redirectsModule, "effectuateRedirectDataResult")
-			.mockResolvedValue({
-				status: "did",
-				href: "/redirect-target",
-				hrefDetails: redirectOutcome.redirectData.hrefDetails,
-			} as any);
 		const navigationProps: NavigateProps = {
 			href: "/target",
 			navigationType: "userNavigation",
@@ -193,28 +245,61 @@ describe("navigation outcome runtime", () => {
 			type: "committed",
 			didNavigate: true,
 		});
-		expect(syncBuildIDSpy).toHaveBeenCalledOnce();
-		expect(syncBuildIDSpy).toHaveBeenCalledWith(
-			redirectOutcome.redirectData,
+		expect(__vormaClientGlobal.get("runtimeRouteSnapshot").buildID).toBe(
+			"2",
 		);
 		expect(deleteNavigation).toHaveBeenCalledOnce();
 		expect(deleteNavigation).toHaveBeenCalledWith({
 			targetUrl: entry.targetUrl,
 			reason: "redirect_effectuate",
 		});
-		expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
-		expect(effectuateRedirectSpy).toHaveBeenCalledWith(
-			redirectOutcome.redirectData,
-			0,
-			{
-				href: entry.targetUrl,
-				navigationType: entry.type,
-				scrollToTop: entry.scrollToTop,
-				replace: entry.replace,
-				state: entry.state,
-			},
-		);
+		expect(navigateSpy).toHaveBeenCalledOnce();
+		expect(navigateSpy).toHaveBeenCalledWith({
+			href: "/redirect-target",
+			navigationType: "redirect",
+			redirectCount: 1,
+			state: entry.state,
+			replace: entry.replace,
+			scrollToTop: entry.scrollToTop,
+		});
 		expect(processSuccessfulNavigation).not.toHaveBeenCalled();
+	});
+
+	it("does not run redirect side effects when stale ownership cancels the outcome", async () => {
+		const entry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		const redirectOutcome = createRedirectOutcome();
+		const deleteNavigation = vi.fn(() => true);
+		const navigateSpy = vi.fn(async () => ({ didNavigate: true }));
+		setNavigationStateAccess({
+			navigate: navigateSpy,
+			removeNavigation: vi.fn(),
+			getNavigations: () => new Map(),
+		});
+
+		const result = await handleNavigationOutcomeWithInternalResult({
+			findNavigationEntry: () => entry,
+			deleteNavigation,
+			processSuccessfulNavigation: vi.fn(async () => {}),
+			navigationProps: {
+				href: "/target",
+				navigationType: "userNavigation",
+			},
+			outcome: redirectOutcome,
+			expectedOperationID: entry.operationID + 1,
+		});
+
+		expect(result).toEqual({
+			type: "cancelled",
+			reason: "stale_control_ownership",
+		});
+		expect(__vormaClientGlobal.get("runtimeRouteSnapshot").buildID).toBe(
+			"1",
+		);
+		expect(navigateSpy).not.toHaveBeenCalled();
+		expect(deleteNavigation).not.toHaveBeenCalled();
 	});
 
 	it("processes successful outcomes and returns committed didNavigate true", async () => {

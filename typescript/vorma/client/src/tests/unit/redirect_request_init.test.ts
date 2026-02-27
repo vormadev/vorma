@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildRedirectRequestInit } from "../../core/redirects.ts";
+import { buildRedirectRequestInit } from "../../runtime.ts";
 
 describe("buildRedirectRequestInit", () => {
 	afterEach(() => {

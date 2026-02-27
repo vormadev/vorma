@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VORMA_SYMBOL } from "../../app/context.ts";
+import {
+	createPatternRegistry,
+	registerPattern,
+} from "vorma/kit/matcher/register";
+import type {
+	GetRouteDataOutput,
+	NavigateProps,
+} from "../../../src/runtime.ts";
 import {
 	buildRouteDataRequestURL,
+	createServerRouteDataPromise,
+	decodeServerRouteDataJSONOrThrow,
 	resolveServerRouteDataResult,
 	startParallelClientLoaders,
-} from "../../core/navigation/fetch_route_data_server.ts";
-import type { NavigateProps } from "../../core/navigation/types.ts";
-import * as renderRuntimeModule from "../../core/render_runtime.ts";
+	VORMA_SYMBOL,
+} from "../../runtime.ts";
 
 const TEST_VORMA_APP_CONFIG = {
 	actionsRouterMountRoot: "/api/",
@@ -18,7 +26,7 @@ const TEST_VORMA_APP_CONFIG = {
 };
 
 function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
-	(globalThis as any)[VORMA_SYMBOL] = {
+	const baseGlobalState = {
 		buildID: "1",
 		matchedPatterns: [],
 		loadersData: [],
@@ -29,6 +37,8 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		params: {},
 		splatValues: [],
 		activeComponents: [],
+		activeErrorBoundary: undefined,
+		rootElementID: undefined,
 		outermostServerError: undefined,
 		outermostClientError: undefined,
 		outermostServerErrorIdx: undefined,
@@ -50,6 +60,73 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		patternRegistry: {},
 		...overrides,
 	};
+
+	const runtimeRouteSnapshot = {
+		buildID: baseGlobalState.buildID,
+		matchedPatterns: baseGlobalState.matchedPatterns,
+		loadersData: baseGlobalState.loadersData,
+		importURLs: baseGlobalState.importURLs,
+		exportKeys: baseGlobalState.exportKeys,
+		errorExportKeys: baseGlobalState.errorExportKeys,
+		hasRootData: baseGlobalState.hasRootData,
+		params: baseGlobalState.params,
+		splatValues: baseGlobalState.splatValues,
+		activeComponents: baseGlobalState.activeComponents,
+		activeErrorBoundary: baseGlobalState.activeErrorBoundary,
+		outermostServerError: baseGlobalState.outermostServerError,
+		outermostClientError: baseGlobalState.outermostClientError,
+		outermostServerErrorIdx: baseGlobalState.outermostServerErrorIdx,
+		outermostClientErrorIdx: baseGlobalState.outermostClientErrorIdx,
+		outermostError: baseGlobalState.outermostError,
+		outermostErrorIdx: baseGlobalState.outermostErrorIdx,
+		rootElementID: baseGlobalState.rootElementID,
+		clientLoadersData: baseGlobalState.clientLoadersData,
+		...(typeof overrides.runtimeRouteSnapshot === "object" &&
+		overrides.runtimeRouteSnapshot !== null
+			? overrides.runtimeRouteSnapshot
+			: {}),
+	};
+	const nonSnapshotGlobalState: Record<string, unknown> = {
+		...baseGlobalState,
+	};
+	delete nonSnapshotGlobalState.buildID;
+	delete nonSnapshotGlobalState.matchedPatterns;
+	delete nonSnapshotGlobalState.loadersData;
+	delete nonSnapshotGlobalState.importURLs;
+	delete nonSnapshotGlobalState.exportKeys;
+	delete nonSnapshotGlobalState.errorExportKeys;
+	delete nonSnapshotGlobalState.hasRootData;
+	delete nonSnapshotGlobalState.params;
+	delete nonSnapshotGlobalState.splatValues;
+	delete nonSnapshotGlobalState.activeComponents;
+	delete nonSnapshotGlobalState.activeErrorBoundary;
+	delete nonSnapshotGlobalState.rootElementID;
+	delete nonSnapshotGlobalState.outermostServerError;
+	delete nonSnapshotGlobalState.outermostClientError;
+	delete nonSnapshotGlobalState.outermostServerErrorIdx;
+	delete nonSnapshotGlobalState.outermostClientErrorIdx;
+	delete nonSnapshotGlobalState.outermostError;
+	delete nonSnapshotGlobalState.outermostErrorIdx;
+	delete nonSnapshotGlobalState.clientLoadersData;
+	delete nonSnapshotGlobalState.runtimeRouteSnapshot;
+
+	(globalThis as any)[VORMA_SYMBOL] = {
+		...nonSnapshotGlobalState,
+		runtimeRouteSnapshot,
+	};
+}
+
+function createRegisteredPatternRegistry(patterns: string[]) {
+	const registry = createPatternRegistry({
+		dynamicParamPrefixRune: TEST_VORMA_APP_CONFIG.loadersDynamicRune,
+		splatSegmentRune: TEST_VORMA_APP_CONFIG.loadersSplatRune,
+		explicitIndexSegment:
+			TEST_VORMA_APP_CONFIG.loadersExplicitIndexSegmentIdentifier,
+	});
+	for (const pattern of patterns) {
+		registerPattern(registry, pattern);
+	}
+	return registry;
 }
 
 function buildNavigationProps(
@@ -62,15 +139,24 @@ function buildNavigationProps(
 	};
 }
 
-function createMatch(pattern: string) {
+function buildValidRouteDataJSON(
+	overrides: Partial<GetRouteDataOutput> = {},
+): GetRouteDataOutput {
 	return {
-		registeredPattern: {
-			originalPattern: pattern,
-			normalizedSegments: [],
-			lastSegType: "static",
-		},
-		params: {},
+		matchedPatterns: ["/items/:id"],
+		loadersData: [{ id: "123" }],
+		importURLs: ["/items.js"],
+		exportKeys: ["default"],
+		errorExportKeys: [""],
+		hasRootData: true,
+		params: { id: "123" },
 		splatValues: [],
+		deps: [],
+		cssBundles: [],
+		title: undefined,
+		metaHeadEls: undefined,
+		restHeadEls: undefined,
+		...overrides,
 	};
 }
 
@@ -113,6 +199,141 @@ describe("fetch route data server internals", () => {
 
 			expect(requestURL.searchParams.get("vorma_json")).toBe("build-42");
 			expect(requestURL.searchParams.get("dpl")).toBe("deploy-1");
+		});
+	});
+
+	describe("decodeServerRouteDataJSONOrThrow", () => {
+		it("returns decoded payload for valid route-data JSON", () => {
+			const json = buildValidRouteDataJSON();
+			expect(
+				decodeServerRouteDataJSONOrThrow({
+					json,
+				}),
+			).toEqual(json);
+		});
+
+		it("throws when payload root is not an object", () => {
+			expect(() =>
+				decodeServerRouteDataJSONOrThrow({
+					json: null,
+				}),
+			).toThrow("route-data payload must be an object");
+		});
+
+		it("throws when a required route-data key is missing", () => {
+			expect(() =>
+				decodeServerRouteDataJSONOrThrow({
+					json: {
+						loadersData: [],
+						importURLs: [],
+						exportKeys: [],
+						errorExportKeys: [],
+						hasRootData: false,
+						params: {},
+						splatValues: [],
+						deps: [],
+						cssBundles: [],
+					},
+				}),
+			).toThrow('missing required key "matchedPatterns"');
+		});
+
+		it("throws when top-level required array fields are not arrays", () => {
+			expect(() =>
+				decodeServerRouteDataJSONOrThrow({
+					json: buildValidRouteDataJSON({
+						importURLs: "/a.js" as unknown as string[],
+					}),
+				}),
+			).toThrow('"importURLs" must be an array');
+		});
+
+		it("throws when hasRootData is not a boolean", () => {
+			expect(() =>
+				decodeServerRouteDataJSONOrThrow({
+					json: buildValidRouteDataJSON({
+						hasRootData: "yes" as unknown as boolean,
+					}),
+				}),
+			).toThrow('"hasRootData" must be a boolean');
+		});
+
+		it("throws when params is not an object", () => {
+			expect(() =>
+				decodeServerRouteDataJSONOrThrow({
+					json: buildValidRouteDataJSON({
+						params: [] as unknown as Record<string, string>,
+					}),
+				}),
+			).toThrow('"params" must be an object');
+		});
+
+		it("throws when optional clientLoadersData is present and not an array", () => {
+			expect(() =>
+				decodeServerRouteDataJSONOrThrow({
+					json: {
+						...buildValidRouteDataJSON(),
+						clientLoadersData: "bad" as unknown as unknown[],
+					},
+				}),
+			).toThrow('"clientLoadersData" must be an array when present');
+		});
+
+		it("accepts semantically odd but top-level shape-correct payloads", () => {
+			expect(
+				decodeServerRouteDataJSONOrThrow({
+					json: {
+						...buildValidRouteDataJSON({
+							matchedPatterns: [""],
+							loadersData: [],
+							importURLs: [],
+							exportKeys: [],
+							errorExportKeys: [],
+							hasRootData: true,
+						}),
+						clientLoadersData: [],
+					},
+				}),
+			).toEqual({
+				...buildValidRouteDataJSON({
+					matchedPatterns: [""],
+					loadersData: [],
+					importURLs: [],
+					exportKeys: [],
+					errorExportKeys: [],
+					hasRootData: true,
+				}),
+				clientLoadersData: [],
+			});
+		});
+
+		it("deep-freezes decoded payload to prevent post-decode mutation", () => {
+			const decoded = decodeServerRouteDataJSONOrThrow({
+				json: buildValidRouteDataJSON({
+					loadersData: [{ nested: { count: 1 } }],
+				}),
+			});
+
+			expect(Object.isFrozen(decoded)).toBe(true);
+			expect(Object.isFrozen(decoded.loadersData)).toBe(true);
+			expect(Object.isFrozen(decoded.loadersData[0] as object)).toBe(
+				true,
+			);
+			expect(
+				Object.isFrozen(
+					(decoded.loadersData[0] as { nested: { count: number } })
+						.nested,
+				),
+			).toBe(true);
+
+			expect(() => {
+				(decoded.matchedPatterns as string[]).push("/next");
+			}).toThrow(TypeError);
+			expect(() => {
+				(
+					decoded.loadersData[0] as { nested: { count: number } }
+				).nested.count = 2;
+			}).toThrow(TypeError);
 		});
 	});
 
@@ -242,21 +463,7 @@ describe("fetch route data server internals", () => {
 				status: 200,
 				headers: { "Content-Type": "application/json" },
 			});
-			const json = {
-				matchedPatterns: ["/items/:id"],
-				loadersData: [{ id: "123" }],
-				importURLs: ["/items.js"],
-				exportKeys: ["default"],
-				errorExportKeys: [""],
-				hasRootData: true,
-				params: { id: "123" },
-				splatValues: [],
-				deps: [],
-				cssBundles: [],
-				title: undefined,
-				metaHeadEls: undefined,
-				restHeadEls: undefined,
-			};
+			const json = buildValidRouteDataJSON();
 
 			const result = resolveServerRouteDataResult({
 				controller,
@@ -273,18 +480,47 @@ describe("fetch route data server internals", () => {
 		});
 	});
 
+	describe("createServerRouteDataPromise", () => {
+		it("throws and aborts when route-data JSON violates top-level contract at ingress", async () => {
+			const abortController = new AbortController();
+			vi.spyOn(window, "fetch").mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						matchedPatterns: ["/a"],
+						loadersData: ["A"],
+						importURLs: "/a.js",
+						exportKeys: ["default"],
+						errorExportKeys: [""],
+						hasRootData: false,
+						params: {},
+						splatValues: [],
+						deps: [],
+						cssBundles: [],
+					}),
+					{
+						status: 200,
+						headers: { "Content-Type": "application/json" },
+					},
+				),
+			);
+
+			await expect(
+				createServerRouteDataPromise({
+					abortController,
+					url: new URL("http://localhost:3000/next"),
+				}),
+			).rejects.toThrow('"importURLs" must be an array');
+			expect(abortController.signal.aborted).toBe(true);
+		});
+	});
+
 	describe("startParallelClientLoaders", () => {
 		it("starts matched loader wait functions and forwards resolved server data", async () => {
-			vi.spyOn(
-				renderRuntimeModule,
-				"findPartialMatchesOnClient",
-			).mockResolvedValue({
-				params: { id: "123" },
-				splatValues: [],
-				matches: [createMatch("/a"), createMatch("/b")],
-			} as any);
-
 			installVormaGlobal({
+				patternRegistry: createRegisteredPatternRegistry([
+					"/a",
+					"/a/b",
+				]),
 				patternToWaitFnMap: {
 					"/a": async (props: any) => {
 						const serverData = await props.serverDataPromise;
@@ -294,10 +530,10 @@ describe("fetch route data server internals", () => {
 							buildID: serverData.buildID,
 						};
 					},
-					"/b": async (props: any) => {
+					"/a/b": async (props: any) => {
 						const serverData = await props.serverDataPromise;
 						return {
-							pattern: "/b",
+							pattern: "/a/b",
 							loaderData: serverData.loaderData,
 							buildID: serverData.buildID,
 						};
@@ -315,11 +551,11 @@ describe("fetch route data server internals", () => {
 					},
 				}),
 				json: {
-					matchedPatterns: ["/a", "/b"],
+					matchedPatterns: ["/a", "/a/b"],
 					loadersData: ["A", "B"],
-					importURLs: [],
-					exportKeys: [],
-					errorExportKeys: [],
+					importURLs: ["/a.js", "/a-b.js"],
+					exportKeys: ["default", "default"],
+					errorExportKeys: ["", ""],
 					hasRootData: false,
 					params: {},
 					splatValues: [],
@@ -332,53 +568,122 @@ describe("fetch route data server internals", () => {
 			});
 
 			const runningLoaders = await startParallelClientLoaders({
-				pathname: "/next",
+				pathname: "/a/b",
 				serverPromise,
 				signal: new AbortController().signal,
 			});
 
-			expect(Array.from(runningLoaders.keys())).toEqual(["/a", "/b"]);
+			expect(Array.from(runningLoaders.keys())).toEqual(["/a", "/a/b"]);
 			await expect(runningLoaders.get("/a")).resolves.toEqual({
 				pattern: "/a",
 				loaderData: "A",
 				buildID: "build-77",
 			});
-			await expect(runningLoaders.get("/b")).resolves.toEqual({
-				pattern: "/b",
+			await expect(runningLoaders.get("/a/b")).resolves.toEqual({
+				pattern: "/a/b",
 				loaderData: "B",
 				buildID: "build-77",
 			});
 		});
 
-		it("converts server promise rejection into unavailable-server-data abort errors", async () => {
-			vi.spyOn(
-				renderRuntimeModule,
-				"findPartialMatchesOnClient",
-			).mockResolvedValue({
-				params: {},
-				splatValues: [],
-				matches: [createMatch("/a"), createMatch("/b")],
-			} as any);
-
+		it("starts speculative loader work before the server route-data promise resolves", async () => {
+			const startedPatterns: string[] = [];
 			installVormaGlobal({
+				patternRegistry: createRegisteredPatternRegistry([
+					"/a",
+					"/a/b",
+				]),
 				patternToWaitFnMap: {
-					"/a": async (props: any) => props.serverDataPromise,
-					"/b": async (props: any) => props.serverDataPromise,
+					"/a": async (props: any) => {
+						startedPatterns.push("/a");
+						const serverData = await props.serverDataPromise;
+						return serverData.loaderData;
+					},
+					"/a/b": async (props: any) => {
+						startedPatterns.push("/a/b");
+						const serverData = await props.serverDataPromise;
+						return serverData.loaderData;
+					},
 				},
 			});
 
+			let resolveServerResult: (value: unknown) => void = () => {};
+			const serverPromise = new Promise<unknown>((resolve) => {
+				resolveServerResult = resolve;
+			});
+
 			const runningLoaders = await startParallelClientLoaders({
-				pathname: "/next",
-				serverPromise: Promise.reject(
-					new Error("server route fetch failed"),
-				),
+				pathname: "/a/b",
+				serverPromise: serverPromise as Promise<any>,
+				signal: new AbortController().signal,
+			});
+
+			expect(Array.from(runningLoaders.keys())).toEqual(["/a", "/a/b"]);
+			expect(startedPatterns).toEqual(["/a", "/a/b"]);
+
+			let settledBeforeServerResolve = false;
+			void runningLoaders.get("/a")?.finally(() => {
+				settledBeforeServerResolve = true;
+			});
+			await Promise.resolve();
+			expect(settledBeforeServerResolve).toBe(false);
+
+			resolveServerResult({
+				redirectData: null,
+				response: new Response("{}", {
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "build-78",
+					},
+				}),
+				json: {
+					matchedPatterns: ["/a", "/a/b"],
+					loadersData: ["A", "B"],
+					importURLs: ["/a.js", "/a-b.js"],
+					exportKeys: ["default", "default"],
+					errorExportKeys: ["", ""],
+					hasRootData: false,
+					params: {},
+					splatValues: [],
+					deps: [],
+					cssBundles: [],
+					title: undefined,
+					metaHeadEls: undefined,
+					restHeadEls: undefined,
+				},
+			});
+
+			await expect(runningLoaders.get("/a")).resolves.toEqual("A");
+			await expect(runningLoaders.get("/a/b")).resolves.toEqual("B");
+		});
+
+		it("converts server promise rejection into unavailable-server-data abort errors", async () => {
+			installVormaGlobal({
+				patternRegistry: createRegisteredPatternRegistry([
+					"/a",
+					"/a/b",
+				]),
+				patternToWaitFnMap: {
+					"/a": async (props: any) => props.serverDataPromise,
+					"/a/b": async (props: any) => props.serverDataPromise,
+				},
+			});
+			const serverPromise = Promise.reject(
+				new Error("server route fetch failed"),
+			);
+			void serverPromise.catch(() => {});
+
+			const runningLoaders = await startParallelClientLoaders({
+				pathname: "/a/b",
+				serverPromise,
 				signal: new AbortController().signal,
 			});
 
 			await expect(runningLoaders.get("/a")).rejects.toMatchObject({
 				name: "AbortError",
 			});
-			await expect(runningLoaders.get("/b")).rejects.toMatchObject({
+			await expect(runningLoaders.get("/a/b")).rejects.toMatchObject({
 				name: "AbortError",
 			});
 		});

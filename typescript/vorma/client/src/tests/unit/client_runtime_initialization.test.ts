@@ -3,13 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 describe("client runtime initialization", () => {
 	it("does not initialize navigation state access during module import", async () => {
 		vi.resetModules();
-		const contextModule = await import("../../app/context.ts");
+		const contextModule = await import("../../runtime.ts");
 
 		expect(() => contextModule.getNavigationStateAccess()).toThrow(
 			"Navigation state access has not been initialized.",
 		);
 
-		await import("../../client.ts");
+		await import("../../runtime.ts");
 
 		expect(() => contextModule.getNavigationStateAccess()).toThrow(
 			"Navigation state access has not been initialized.",
@@ -18,8 +18,8 @@ describe("client runtime initialization", () => {
 
 	it("initializes navigation state access on first runtime usage", async () => {
 		vi.resetModules();
-		const contextModule = await import("../../app/context.ts");
-		const clientModule = await import("../../client.ts");
+		const contextModule = await import("../../runtime.ts");
+		const clientModule = await import("../../runtime.ts");
 
 		expect(() => contextModule.getNavigationStateAccess()).toThrow(
 			"Navigation state access has not been initialized.",
@@ -41,8 +41,8 @@ describe("client runtime initialization", () => {
 
 	it("initializes navigation state access when history instance is requested", async () => {
 		vi.resetModules();
-		const contextModule = await import("../../app/context.ts");
-		const clientModule = await import("../../client.ts");
+		const contextModule = await import("../../runtime.ts");
+		const clientModule = await import("../../runtime.ts");
 
 		expect(() => contextModule.getNavigationStateAccess()).toThrow(
 			"Navigation state access has not been initialized.",
@@ -59,7 +59,7 @@ describe("client runtime initialization", () => {
 		(import.meta.env as any).DEV = false;
 
 		try {
-			const clientModule = await import("../../client.ts");
+			const clientModule = await import("../../runtime.ts");
 			expect(clientModule.getNavigationDebugJournal()).toEqual([]);
 
 			const control = clientModule.navigationStateManager.beginNavigation(

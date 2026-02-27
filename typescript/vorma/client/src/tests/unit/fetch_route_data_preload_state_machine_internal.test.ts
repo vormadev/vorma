@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildServerSuccessPreloadPlan } from "../../core/navigation/fetch_route_data_server.ts";
+import { buildServerSuccessPreloadPlan } from "../../runtime.ts";
 
 describe("server-success preload state machine", () => {
 	it("returns empty preload plan when signal is already aborted", () => {

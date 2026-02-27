@@ -16,7 +16,7 @@ describe("client events contracts", () => {
 		api.getUnsafeHistoryInstance();
 
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 		await customHistoryListener({
 			action: "PUSH",
 			location: {

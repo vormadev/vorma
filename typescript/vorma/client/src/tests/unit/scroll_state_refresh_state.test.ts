@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { restoreRecentPageRefreshScrollState } from "../../platform/scroll.ts";
+import { restoreRecentPageRefreshScrollState } from "../../runtime.ts";
 
 const PAGE_REFRESH_KEY = "__vorma__pageRefreshScrollState";
 

@@ -1,13 +1,15 @@
-type ImportPromise = Promise<Record<string, any>>;
-type Key<T extends ImportPromise> = keyof Awaited<T>;
+import type {
+	BuildtimeImportKey,
+	BuildtimeImportPromise,
+} from "./src/runtime.ts";
 
-export function route<IP extends ImportPromise>(
+export function route<IP extends BuildtimeImportPromise>(
 	// oxlint-disable-next-line no-unused-vars
 	pattern: string,
 	// oxlint-disable-next-line no-unused-vars
 	importPromise: IP,
 	// oxlint-disable-next-line no-unused-vars
-	componentKey: Key<IP>,
+	componentKey: BuildtimeImportKey<IP>,
 	// oxlint-disable-next-line no-unused-vars
-	errorBoundaryKey?: Key<IP>,
+	errorBoundaryKey?: BuildtimeImportKey<IP>,
 ): void {}

@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VORMA_SYMBOL } from "../../app/context.ts";
-import { syncBuildIDFromResponse } from "../../core/navigation/runtime_navigation_successful_runtime.ts";
-import * as eventsModule from "../../platform/events.ts";
+import { __vormaClientGlobal, VORMA_SYMBOL } from "../../runtime.ts";
+import { addBuildIDListener } from "../../runtime.ts";
+import {
+	getBuildIDFromResponse,
+	syncRuntimeBuildIDIfChanged,
+} from "../../runtime.ts";
 
 type TestGlobalState = {
-	buildID: string;
-	runtimeRouteSnapshot?: {
+	runtimeRouteSnapshot: {
 		buildID: string;
 	};
 };
@@ -14,7 +16,9 @@ function installTestGlobalState(
 	overrides: Partial<TestGlobalState> = {},
 ): void {
 	(globalThis as any)[VORMA_SYMBOL] = {
-		buildID: "1",
+		runtimeRouteSnapshot: {
+			buildID: "1",
+		},
 		...overrides,
 	} satisfies TestGlobalState;
 }
@@ -47,31 +51,37 @@ afterEach(() => {
 
 describe("successful navigation build-id sync", () => {
 	it("syncs build ID from response only when it changes", () => {
-		const dispatchBuildIDEventSpy = vi
-			.spyOn(eventsModule, "dispatchBuildIDEvent")
-			.mockImplementation(() => {});
-
-		syncBuildIDFromResponse(
-			createResponseWithBuildID({
-				buildID: "1",
-			}),
-		);
-
-		expect(getInstalledTestGlobalState().buildID).toBe("1");
-		expect(dispatchBuildIDEventSpy).not.toHaveBeenCalled();
-
-		syncBuildIDFromResponse(
-			createResponseWithBuildID({
-				buildID: "2",
-			}),
-		);
-
-		expect(getInstalledTestGlobalState().buildID).toBe("2");
-		expect(dispatchBuildIDEventSpy).toHaveBeenCalledTimes(1);
-		expect(dispatchBuildIDEventSpy).toHaveBeenCalledWith({
-			newID: "2",
-			oldID: "1",
+		const events: Array<{ oldID: string; newID: string }> = [];
+		const removeBuildIDListener = addBuildIDListener((event) => {
+			events.push(event.detail);
 		});
+
+		syncRuntimeBuildIDIfChanged({
+			nextBuildID: getBuildIDFromResponse(
+				createResponseWithBuildID({
+					buildID: "1",
+				}),
+			),
+		});
+
+		expect(__vormaClientGlobal.get("runtimeRouteSnapshot").buildID).toBe(
+			"1",
+		);
+		expect(events).toEqual([]);
+
+		syncRuntimeBuildIDIfChanged({
+			nextBuildID: getBuildIDFromResponse(
+				createResponseWithBuildID({
+					buildID: "2",
+				}),
+			),
+		});
+		removeBuildIDListener();
+
+		expect(__vormaClientGlobal.get("runtimeRouteSnapshot").buildID).toBe(
+			"2",
+		);
+		expect(events).toEqual([{ newID: "2", oldID: "1" }]);
 		expect(
 			getInstalledTestGlobalState().runtimeRouteSnapshot?.buildID,
 		).toBe("2");

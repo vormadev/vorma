@@ -5,6 +5,7 @@ import {
 	createDeferred,
 	createRouteDataResponse,
 	loadClientAPI,
+	patchContractRuntimeRouteSnapshot,
 	setupContractTestSuite,
 	withUnhandledRejectionCapture,
 } from "./contract_test_harness.ts";
@@ -94,7 +95,7 @@ describe("client history/init contracts", () => {
 		api.getUnsafeHistoryInstance();
 
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 		await customHistoryListener({
 			action: "PUSH",
 			location: {
@@ -114,7 +115,7 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -151,7 +152,7 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -188,7 +189,7 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -225,7 +226,7 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -262,7 +263,7 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -301,7 +302,7 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -372,7 +373,7 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -416,7 +417,7 @@ describe("client history/init contracts", () => {
 		(window as any).scrollY = 456;
 
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 		await customHistoryListener({
 			action: "PUSH",
 			location: {
@@ -439,7 +440,7 @@ describe("client history/init contracts", () => {
 
 	it("stores scroll states in session storage with FIFO eviction at 50 entries", async () => {
 		await loadClientAPI();
-		const { scrollStateManager } = await import("../../platform/scroll.ts");
+		const { scrollStateManager } = await import("../../runtime.ts");
 
 		for (let i = 0; i <= 50; i++) {
 			scrollStateManager.saveState(`key-${i}`, { x: i, y: i });
@@ -456,7 +457,7 @@ describe("client history/init contracts", () => {
 	it("saves outgoing scroll position before user navigation pushes a new history entry", async () => {
 		const api = await loadClientAPI();
 		const history = api.getUnsafeHistoryInstance();
-		const { HistoryManager } = await import("../../platform/history.ts");
+		const { HistoryManager } = await import("../../runtime.ts");
 		HistoryManager.init();
 
 		history.push("/current-source");
@@ -479,7 +480,7 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+			await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -519,8 +520,8 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
-		const { scrollStateManager } = await import("../../platform/scroll.ts");
+			await import("../../runtime.ts");
+		const { scrollStateManager } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -553,8 +554,8 @@ describe("client history/init contracts", () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
 		const { customHistoryListener } =
-			await import("../../platform/history.ts");
-		const { scrollStateManager } = await import("../../platform/scroll.ts");
+			await import("../../runtime.ts");
+		const { scrollStateManager } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -720,17 +721,23 @@ describe("client history/init contracts", () => {
 			default: initialComponent,
 		}));
 
-		api.__vormaClientGlobal.set("importURLs", ["/initial.js"]);
-		api.__vormaClientGlobal.set("matchedPatterns", ["/"]);
-		api.__vormaClientGlobal.set("exportKeys", ["default"]);
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				importURLs: ["/initial.js"],
+				matchedPatterns: ["/"],
+				exportKeys: ["default"],
+			},
+		});
 
 		await api.initClient({
 			vormaAppConfig: TEST_APP_CONFIG,
 			renderFn: () => {},
 		});
 
-		const activeComponents =
-			api.__vormaClientGlobal.get("activeComponents");
+		const activeComponents = api.__vormaClientGlobal.get(
+			"runtimeRouteSnapshot",
+		).activeComponents;
 		if (!activeComponents) {
 			throw new Error("Expected activeComponents to be initialized");
 		}
@@ -743,8 +750,13 @@ describe("client history/init contracts", () => {
 		const waitFn = vi.fn().mockResolvedValue({ initialized: true });
 
 		api.__vormaClientGlobal.set("patternToWaitFnMap", { "/": waitFn });
-		api.__vormaClientGlobal.set("matchedPatterns", ["/"]);
-		api.__vormaClientGlobal.set("loadersData", [{ initial: "data" }]);
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				matchedPatterns: ["/"],
+				loadersData: [{ initial: "data" }],
+			},
+		});
 
 		await api.initClient({
 			vormaAppConfig: TEST_APP_CONFIG,
@@ -752,9 +764,10 @@ describe("client history/init contracts", () => {
 		});
 
 		expect(waitFn).toHaveBeenCalledTimes(1);
-		expect(api.__vormaClientGlobal.get("clientLoadersData")).toEqual([
-			{ initialized: true },
-		]);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.clientLoadersData,
+		).toEqual([{ initialized: true }]);
 	});
 
 	it("restores recent page-refresh scroll state during init", async () => {
@@ -984,7 +997,12 @@ describe("client history/init contracts", () => {
 			renderFn: () => {},
 		});
 
-		api.__vormaClientGlobal.set("matchedPatterns", ["/hmr-match"]);
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				matchedPatterns: ["/hmr-match"],
+			},
+		});
 
 		const routeChangeListener = vi.fn();
 		const removeRouteChangeListener =
@@ -1068,7 +1086,12 @@ describe("client history/init contracts", () => {
 			renderFn: () => {},
 		});
 
-		api.__vormaClientGlobal.set("matchedPatterns", ["/hmr-css-only"]);
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				matchedPatterns: ["/hmr-css-only"],
+			},
+		});
 
 		const routeChangeListener = vi.fn();
 		const removeRouteChangeListener =
@@ -1122,7 +1145,12 @@ describe("client history/init contracts", () => {
 			renderFn: () => {},
 		});
 
-		api.__vormaClientGlobal.set("matchedPatterns", ["/hmr-second"]);
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				matchedPatterns: ["/hmr-second"],
+			},
+		});
 
 		const routeChangeListener = vi.fn();
 		const removeRouteChangeListener =
@@ -1227,7 +1255,12 @@ describe("client history/init contracts", () => {
 			renderFn: () => {},
 		});
 
-		api.__vormaClientGlobal.set("matchedPatterns", undefined as any);
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				matchedPatterns: undefined as any,
+			},
+		});
 
 		const routeChangeListener = vi.fn();
 		const removeRouteChangeListener =

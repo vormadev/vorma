@@ -1118,7 +1118,7 @@ describe("client loading/focus contracts", () => {
 		const {
 			getLastTriggeredNavOrRevalidateTimestampMS:
 				getLastTriggeredTimestamp,
-		} = await import("../../client.ts");
+		} = await import("../../runtime.ts");
 		const timestampBeforeNavigation = getLastTriggeredTimestamp();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
@@ -1159,7 +1159,7 @@ describe("client loading/focus contracts", () => {
 		const {
 			getLastTriggeredNavOrRevalidateTimestampMS:
 				getLastTriggeredTimestamp,
-		} = await import("../../client.ts");
+		} = await import("../../runtime.ts");
 		window.history.replaceState({}, "", "/focus-stale-hash-only");
 		const timestampBeforeHashNavigation = getLastTriggeredTimestamp();
 		const fetchSpy = vi
@@ -1194,7 +1194,7 @@ describe("client loading/focus contracts", () => {
 			navigationStateManager,
 			getLastTriggeredNavOrRevalidateTimestampMS:
 				getLastTriggeredTimestamp,
-		} = await import("../../client.ts");
+		} = await import("../../runtime.ts");
 		const timestampBeforeAbort = getLastTriggeredTimestamp();
 		const deferredNavigationResponse = createDeferred<Response>();
 		const { fetchSpy } = createSequencedFetchSpy([
@@ -1233,7 +1233,7 @@ describe("client loading/focus contracts", () => {
 		const {
 			getLastTriggeredNavOrRevalidateTimestampMS:
 				getLastTriggeredTimestamp,
-		} = await import("../../client.ts");
+		} = await import("../../runtime.ts");
 		const timestampBeforeRevalidate = getLastTriggeredTimestamp();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
@@ -1271,7 +1271,7 @@ describe("client loading/focus contracts", () => {
 			navigationStateManager,
 			getLastTriggeredNavOrRevalidateTimestampMS:
 				getLastTriggeredTimestamp,
-		} = await import("../../client.ts");
+		} = await import("../../runtime.ts");
 		const timestampBeforeAbort = getLastTriggeredTimestamp();
 		const deferredRevalidateResponse = createDeferred<Response>();
 		const { fetchSpy } = createSequencedFetchSpy([

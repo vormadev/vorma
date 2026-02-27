@@ -8,6 +8,7 @@ import { render as renderSolid } from "solid-js/web";
 import { describe, expect, it, vi } from "vitest";
 import {
 	installDistTestVormaGlobal,
+	patchDistRuntimeRouteSnapshot,
 	type DistTestVormaInternal,
 } from "./dist_test_harness.ts";
 
@@ -33,37 +34,21 @@ function applyRootOutletRuntimeState(
 	const nextMatchedPatterns = props.matchedPatterns ?? ["/", "/child"];
 	const nextLoadersData = props.loadersData ?? [{}, {}];
 	const nextClientLoadersData = props.clientLoadersData ?? [];
-	globals.matchedPatterns = nextMatchedPatterns;
-	globals.loadersData = nextLoadersData;
-	globals.clientLoadersData = nextClientLoadersData;
-	globals.outermostError = props.outermostError;
-	globals.outermostErrorIdx = props.outermostErrorIdx;
-	globals.activeComponents = props.activeComponents;
-	globals.activeErrorBoundary = props.activeErrorBoundary;
-	globals.importURLs = props.importURLs;
-	globals.exportKeys = props.exportKeys;
-	globals.runtimeRouteSnapshot = {
-		...globals.runtimeRouteSnapshot,
-		buildID: globals.buildID,
-		rootElementID: (globals.runtimeRouteSnapshot ?? {})["rootElementID"],
-		matchedPatterns: nextMatchedPatterns,
-		loadersData: nextLoadersData,
-		clientLoadersData: nextClientLoadersData,
-		importURLs: props.importURLs,
-		exportKeys: props.exportKeys,
-		errorExportKeys: globals.errorExportKeys ?? [],
-		hasRootData: globals.hasRootData ?? false,
-		params: globals.params ?? {},
-		splatValues: globals.splatValues ?? [],
-		outermostServerError: globals.outermostServerError,
-		outermostServerErrorIdx: globals.outermostServerErrorIdx,
-		outermostClientError: globals.outermostClientError,
-		outermostClientErrorIdx: globals.outermostClientErrorIdx,
-		outermostError: props.outermostError,
-		outermostErrorIdx: props.outermostErrorIdx,
-		activeComponents: props.activeComponents,
-		activeErrorBoundary: props.activeErrorBoundary,
-	};
+
+	patchDistRuntimeRouteSnapshot({
+		globals,
+		patch: {
+			matchedPatterns: nextMatchedPatterns,
+			loadersData: nextLoadersData,
+			clientLoadersData: nextClientLoadersData,
+			importURLs: props.importURLs,
+			exportKeys: props.exportKeys,
+			outermostError: props.outermostError,
+			outermostErrorIdx: props.outermostErrorIdx,
+			activeComponents: props.activeComponents,
+			activeErrorBoundary: props.activeErrorBoundary,
+		},
+	});
 }
 
 function dispatchRouteChangeWithScrollState(scrollState: {

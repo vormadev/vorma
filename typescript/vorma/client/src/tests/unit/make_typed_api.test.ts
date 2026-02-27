@@ -1,23 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const { submitMock } = vi.hoisted(() => {
-	return {
-		submitMock: vi.fn(),
-	};
-});
-
-vi.mock("../../client.ts", async () => {
-	const originalModule =
-		await vi.importActual<typeof import("../../client.ts")>(
-			"../../client.ts",
-		);
-	return {
-		...originalModule,
-		submit: submitMock,
-	};
-});
-
-import { makeTypedAPIClient, type VormaAppConfig } from "../../app/helpers.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { VormaAppConfig } from "../../../src/runtime.ts";
+import { makeTypedAPIClient, VORMA_SYMBOL } from "../../runtime.ts";
 
 type TestVormaApp = {
 	routes: readonly [
@@ -49,13 +32,62 @@ const TEST_CONFIG: VormaAppConfig & { __phantom: TestVormaApp } = {
 	__phantom: undefined as unknown as TestVormaApp,
 };
 
+function installVormaGlobalForTypedAPITests() {
+	(globalThis as any)[VORMA_SYMBOL] = {
+		isDev: false,
+		viteDevURL: "",
+		publicPathPrefix: "",
+		isTouchInputModalityActive: false,
+		patternToWaitFnMap: {},
+		defaultErrorBoundary: () => null,
+		useViewTransitions: false,
+		deploymentID: "",
+		vormaAppConfig: TEST_CONFIG,
+		routeManifestURL: "",
+		routeManifest: undefined,
+		patternRegistry: undefined,
+		runtimeRouteSnapshot: {
+			buildID: "1",
+			matchedPatterns: [],
+			loadersData: [],
+			importURLs: [],
+			exportKeys: [],
+			errorExportKeys: [],
+			hasRootData: false,
+			params: {},
+			splatValues: [],
+			activeComponents: [],
+			activeErrorBoundary: undefined,
+			rootElementID: undefined,
+			outermostServerError: undefined,
+			outermostClientError: undefined,
+			outermostServerErrorIdx: undefined,
+			outermostClientErrorIdx: undefined,
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			clientLoadersData: [],
+		},
+	};
+}
+
 describe("makeTypedAPIClient", () => {
+	beforeEach(() => {
+		installVormaGlobalForTypedAPITests();
+	});
+
 	afterEach(() => {
-		submitMock.mockReset();
+		vi.restoreAllMocks();
 	});
 
 	it("merges resolver defaults with per-call requestInit headers", async () => {
-		submitMock.mockResolvedValue({ kind: "ok" });
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(JSON.stringify({ ids: ["1"] }), {
+				status: 200,
+				headers: {
+					"Content-Type": "application/json",
+				},
+			}),
+		);
 
 		const typedAPI = makeTypedAPIClient(TEST_CONFIG, () => {
 			return {
@@ -75,19 +107,23 @@ describe("makeTypedAPIClient", () => {
 					"X-Trace-ID": "trace-1",
 				},
 			},
+			options: {
+				revalidate: false,
+			},
 		});
 
-		expect(submitMock).toHaveBeenCalledTimes(1);
-		const firstSubmitCall = submitMock.mock.calls[0];
-		expect(firstSubmitCall).toBeDefined();
-		const submitURL = firstSubmitCall![0];
-		const submitRequestInit = firstSubmitCall![1] as RequestInit;
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const firstFetchCall = fetchSpy.mock.calls[0];
+		expect(firstFetchCall).toBeDefined();
+		const submitURL = firstFetchCall?.[0];
+		const submitRequestInit = firstFetchCall?.[1] as RequestInit;
 		const submitHeaders = new Headers(
 			submitRequestInit.headers ?? undefined,
 		);
 
 		expect(submitURL).toBeInstanceOf(URL);
 		expect((submitURL as URL).pathname).toBe("/api/search");
+		expect((submitURL as URL).search).toBe("?query=vorma");
 		expect(submitRequestInit.method).toBe("GET");
 		expect(submitRequestInit.credentials).toBe("include");
 		expect(submitHeaders.get("Authorization")).toBe("Bearer token");
@@ -96,7 +132,14 @@ describe("makeTypedAPIClient", () => {
 	});
 
 	it("supports mutation calls without request-init decoration", async () => {
-		submitMock.mockResolvedValue({ kind: "ok" });
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: {
+					"Content-Type": "application/json",
+				},
+			}),
+		);
 
 		const typedAPI = makeTypedAPIClient(TEST_CONFIG);
 
@@ -108,12 +151,15 @@ describe("makeTypedAPIClient", () => {
 					"X-Request-ID": "req-1",
 				},
 			},
+			options: {
+				revalidate: false,
+			},
 		});
 
-		expect(submitMock).toHaveBeenCalledTimes(1);
-		const firstSubmitCall = submitMock.mock.calls[0];
-		expect(firstSubmitCall).toBeDefined();
-		const submitRequestInit = firstSubmitCall![1] as RequestInit;
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const firstFetchCall = fetchSpy.mock.calls[0];
+		expect(firstFetchCall).toBeDefined();
+		const submitRequestInit = firstFetchCall?.[1] as RequestInit;
 		const submitHeaders = new Headers(
 			submitRequestInit.headers ?? undefined,
 		);

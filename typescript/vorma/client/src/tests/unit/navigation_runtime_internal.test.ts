@@ -3,33 +3,32 @@ import {
 	createPatternRegistry,
 	registerPattern,
 } from "vorma/kit/matcher/register";
-import { VORMA_SYMBOL } from "../../app/context.ts";
-import { fetchRouteData } from "../../core/navigation/fetch_route_data_server.ts";
-import {
-	createNavigationRuntime,
-	deleteNavigationFromNavigationLanes,
-	findNavigationEntryInNavigationLanes,
-	handleNavigationOutcome,
-	processSuccessfulNavigationRuntime,
-	transitionNavigationPhaseInNavigationLanes,
-	type NavigationLanes,
-} from "../../core/navigation/runtime.ts";
-import {
-	executeSubmitRuntime,
-	type SubmitExecutionContext,
-} from "../../core/navigation/runtime_submit.ts";
 import type {
 	NavigationEntry,
+	NavigationLanes,
 	NavigationOutcome,
-} from "../../core/navigation/types.ts";
-import * as redirectsModule from "../../core/redirects.ts";
-import * as renderRuntimeModule from "../../core/render_runtime.ts";
+	SubmitExecutionContext,
+} from "../../../src/runtime.ts";
+import * as renderRuntimeModule from "../../runtime.ts";
 import {
-	__registerClientLoaderPattern,
+	__vormaClientGlobal,
+	addBuildIDListener,
+	createInitialNavigationRuntimeEngineState,
+	createNavigationRuntime,
+	deleteNavigationFromNavigationLanes,
+	executeSubmitRuntime,
+	fetchRouteData,
 	findPartialMatchesOnClient,
+	getMatchedPatternsOrThrow,
+	handleNavigationOutcome,
+	matchNavigationLaneByTargetURL,
+	processSuccessfulNavigationRuntime,
+	reduceNavigationRuntimeEngineEvent,
+	registerClientLoaderPattern,
+	setNavigationStateAccess,
 	setupClientLoaders,
-} from "../../core/render_runtime.ts";
-import { addBuildIDListener } from "../../platform/events.ts";
+	VORMA_SYMBOL,
+} from "../../runtime.ts";
 
 const TEST_VORMA_APP_CONFIG = {
 	actionsRouterMountRoot: "/api/",
@@ -74,7 +73,7 @@ function createRegisteredPatternRegistry(patterns: string[]) {
 }
 
 function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
-	(globalThis as any)[VORMA_SYMBOL] = {
+	const baseGlobalState = {
 		buildID: "1",
 		matchedPatterns: [],
 		loadersData: [],
@@ -85,6 +84,8 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		params: {},
 		splatValues: [],
 		activeComponents: [],
+		activeErrorBoundary: undefined,
+		rootElementID: undefined,
 		outermostServerError: undefined,
 		outermostClientError: undefined,
 		outermostServerErrorIdx: undefined,
@@ -105,6 +106,60 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		routeManifest: undefined,
 		patternRegistry: createRegisteredPatternRegistry([]),
 		...overrides,
+	};
+
+	const runtimeRouteSnapshot = {
+		buildID: baseGlobalState.buildID,
+		matchedPatterns: baseGlobalState.matchedPatterns,
+		loadersData: baseGlobalState.loadersData,
+		importURLs: baseGlobalState.importURLs,
+		exportKeys: baseGlobalState.exportKeys,
+		errorExportKeys: baseGlobalState.errorExportKeys,
+		hasRootData: baseGlobalState.hasRootData,
+		params: baseGlobalState.params,
+		splatValues: baseGlobalState.splatValues,
+		activeComponents: baseGlobalState.activeComponents,
+		activeErrorBoundary: baseGlobalState.activeErrorBoundary,
+		outermostServerError: baseGlobalState.outermostServerError,
+		outermostClientError: baseGlobalState.outermostClientError,
+		outermostServerErrorIdx: baseGlobalState.outermostServerErrorIdx,
+		outermostClientErrorIdx: baseGlobalState.outermostClientErrorIdx,
+		outermostError: baseGlobalState.outermostError,
+		outermostErrorIdx: baseGlobalState.outermostErrorIdx,
+		rootElementID: baseGlobalState.rootElementID,
+		clientLoadersData: baseGlobalState.clientLoadersData,
+		...(typeof overrides.runtimeRouteSnapshot === "object" &&
+		overrides.runtimeRouteSnapshot !== null
+			? overrides.runtimeRouteSnapshot
+			: {}),
+	};
+	const nonSnapshotGlobalState: Record<string, unknown> = {
+		...baseGlobalState,
+	};
+	delete nonSnapshotGlobalState.buildID;
+	delete nonSnapshotGlobalState.matchedPatterns;
+	delete nonSnapshotGlobalState.loadersData;
+	delete nonSnapshotGlobalState.importURLs;
+	delete nonSnapshotGlobalState.exportKeys;
+	delete nonSnapshotGlobalState.errorExportKeys;
+	delete nonSnapshotGlobalState.hasRootData;
+	delete nonSnapshotGlobalState.params;
+	delete nonSnapshotGlobalState.splatValues;
+	delete nonSnapshotGlobalState.activeComponents;
+	delete nonSnapshotGlobalState.activeErrorBoundary;
+	delete nonSnapshotGlobalState.rootElementID;
+	delete nonSnapshotGlobalState.outermostServerError;
+	delete nonSnapshotGlobalState.outermostClientError;
+	delete nonSnapshotGlobalState.outermostServerErrorIdx;
+	delete nonSnapshotGlobalState.outermostClientErrorIdx;
+	delete nonSnapshotGlobalState.outermostError;
+	delete nonSnapshotGlobalState.outermostErrorIdx;
+	delete nonSnapshotGlobalState.clientLoadersData;
+	delete nonSnapshotGlobalState.runtimeRouteSnapshot;
+
+	(globalThis as any)[VORMA_SYMBOL] = {
+		...nonSnapshotGlobalState,
+		runtimeRouteSnapshot,
 	};
 }
 
@@ -251,11 +306,131 @@ beforeEach(() => {
 	window.history.replaceState({}, "", "/");
 	vi.spyOn(console, "error").mockImplementation(() => {});
 	installVormaGlobal();
+	setNavigationStateAccess({
+		navigate: async () => ({ didNavigate: true }),
+		removeNavigation: () => {},
+		getNavigations: () => new Map(),
+	});
 });
 
 afterEach(() => {
 	vi.restoreAllMocks();
 	delete (globalThis as any)[VORMA_SYMBOL];
+});
+
+describe("runtime engine start-event planning", () => {
+	it("routes start events into revalidation/hash/noop/single-pass terminal behavior", () => {
+		let state = createInitialNavigationRuntimeEngineState();
+		const revalidationTransition = reduceNavigationRuntimeEngineEvent({
+			state,
+			event: {
+				type: "start",
+				lane: "revalidate",
+				navigationProps: {
+					href: "/revalidate",
+					navigationType: "revalidation",
+				},
+				targetUrl: "http://localhost:3000/revalidate",
+				currentHref: "http://localhost:3000/current",
+			},
+		});
+		expect(revalidationTransition.terminalResult).toEqual({
+			type: "run-revalidation-lane",
+		});
+		expect(revalidationTransition.commands).toEqual([
+			{
+				type: "fetch",
+				lane: "revalidate",
+				targetUrl: "http://localhost:3000/revalidate",
+				operationID: null,
+			},
+		]);
+		state = revalidationTransition.state;
+
+		window.history.replaceState({}, "", "/same-doc#~");
+		const hashTransition = reduceNavigationRuntimeEngineEvent({
+			state,
+			event: {
+				type: "start",
+				lane: "navigate",
+				navigationProps: {
+					href: "/same-doc#details",
+					navigationType: "userNavigation",
+				},
+				targetUrl: "http://localhost:3000/same-doc#details",
+				currentHref: window.location.href,
+			},
+		});
+		expect(hashTransition.terminalResult).toEqual({
+			type: "return-without-fetch",
+			didNavigate: true,
+		});
+		expect(hashTransition.commands).toEqual([
+			{ type: "clear-queued-revalidation-request" },
+			{
+				type: "commit-same-document-hash-navigation-without-fetch",
+				navigationProps: {
+					href: "/same-doc#details",
+					navigationType: "userNavigation",
+				},
+				targetUrl: "http://localhost:3000/same-doc#details",
+			},
+			{
+				type: "history-write",
+				lane: "navigate",
+				targetUrl: "http://localhost:3000/same-doc#details",
+				operationID: null,
+			},
+		]);
+		state = hashTransition.state;
+
+		const noopTransition = reduceNavigationRuntimeEngineEvent({
+			state,
+			event: {
+				type: "start",
+				lane: "navigate",
+				navigationProps: {
+					href: "/same-doc#%7E",
+					navigationType: "userNavigation",
+				},
+				targetUrl: "http://localhost:3000/same-doc#%7E",
+				currentHref: window.location.href,
+			},
+		});
+		expect(noopTransition.terminalResult).toEqual({
+			type: "return-without-fetch",
+			didNavigate: false,
+		});
+		expect(noopTransition.commands).toEqual([
+			{ type: "clear-queued-revalidation-request" },
+		]);
+
+		const singlePassTransition = reduceNavigationRuntimeEngineEvent({
+			state: noopTransition.state,
+			event: {
+				type: "start",
+				lane: "navigate",
+				navigationProps: {
+					href: "/different-target",
+					navigationType: "userNavigation",
+				},
+				targetUrl: "http://localhost:3000/different-target",
+				currentHref: window.location.href,
+			},
+		});
+		expect(singlePassTransition.terminalResult).toEqual({
+			type: "run-single-pass",
+		});
+		expect(singlePassTransition.commands).toEqual([
+			{ type: "clear-queued-revalidation-request" },
+			{
+				type: "fetch",
+				lane: "navigate",
+				targetUrl: "http://localhost:3000/different-target",
+				operationID: null,
+			},
+		]);
+	});
 });
 
 describe("navigation bookkeeping key aliasing", () => {
@@ -271,10 +446,10 @@ describe("navigation bookkeeping key aliasing", () => {
 			revalidation: null,
 		};
 
-		const found = findNavigationEntryInNavigationLanes({
+		const found = matchNavigationLaneByTargetURL({
 			lanes: slots,
 			targetUrl: "http://localhost:3000/alias#second",
-		});
+		})?.entry;
 		expect(found).toBe(active);
 	});
 
@@ -290,10 +465,10 @@ describe("navigation bookkeeping key aliasing", () => {
 			revalidation: null,
 		};
 
-		const found = findNavigationEntryInNavigationLanes({
+		const found = matchNavigationLaneByTargetURL({
 			lanes: slots,
 			targetUrl: "http://localhost:3000/alias?tab=b#first",
-		});
+		})?.entry;
 		expect(found).toBeUndefined();
 	});
 
@@ -342,54 +517,6 @@ describe("navigation bookkeeping key aliasing", () => {
 
 		expect(deleted).toBe(false);
 		expect(slots.prefetch.size).toBe(1);
-		expect(onStatusRelevantChange).not.toHaveBeenCalled();
-	});
-
-	it("transitions pending revalidation phase by same data target alias", () => {
-		const revalidation = createEntry({
-			targetUrl: "http://localhost:3000/revalidate#first",
-			type: "revalidation",
-			intent: "revalidate",
-		});
-		const slots: NavigationLanes = {
-			active: null,
-			prefetch: new Map(),
-			revalidation,
-		};
-		const onStatusRelevantChange = vi.fn();
-
-		transitionNavigationPhaseInNavigationLanes({
-			lanes: slots,
-			targetUrl: "http://localhost:3000/revalidate#second",
-			phase: "waiting",
-			onStatusRelevantChange,
-		});
-
-		expect(slots.revalidation?.phase).toBe("waiting");
-		expect(onStatusRelevantChange).toHaveBeenCalledTimes(1);
-	});
-
-	it("does not transition pending revalidation phase when search params differ", () => {
-		const revalidation = createEntry({
-			targetUrl: "http://localhost:3000/revalidate?view=a#first",
-			type: "revalidation",
-			intent: "revalidate",
-		});
-		const slots: NavigationLanes = {
-			active: null,
-			prefetch: new Map(),
-			revalidation,
-		};
-		const onStatusRelevantChange = vi.fn();
-
-		transitionNavigationPhaseInNavigationLanes({
-			lanes: slots,
-			targetUrl: "http://localhost:3000/revalidate?view=b#first",
-			phase: "waiting",
-			onStatusRelevantChange,
-		});
-
-		expect(slots.revalidation?.phase).toBe("fetching");
 		expect(onStatusRelevantChange).not.toHaveBeenCalled();
 	});
 });
@@ -1095,7 +1222,7 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 		(import.meta.env as any).DEV = false;
 		vi.resetModules();
 
-		const runtimeModule = await import("../../core/navigation/runtime.ts");
+		const runtimeModule = await import("../../runtime.ts");
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			new Response(
 				JSON.stringify({
@@ -1337,44 +1464,40 @@ describe("navigation runtime outcome redirect signaling", () => {
 		const processSuccessfulNavigation = vi
 			.fn()
 			.mockResolvedValue(undefined);
-		const effectuateRedirectSpy = vi
-			.spyOn(redirectsModule, "effectuateRedirectDataResult")
-			.mockResolvedValue({
-				status: "did",
-				href: "/redirect-destination",
-				hrefDetails: {
-					url: new URL("http://localhost:3000/redirect-destination"),
-					isHTTP: true,
-					isInternal: true,
-					isExternal: false,
-					absoluteURL: "http://localhost:3000/redirect-destination",
-					relativeURL: "/redirect-destination",
-				},
-			});
+		const redirectNavigateSpy = vi.fn(async () => ({ didNavigate: true }));
+		setNavigationStateAccess({
+			navigate: redirectNavigateSpy,
+			removeNavigation: () => {},
+			getNavigations: () => new Map(),
+		});
 
-		try {
-			const result = await handleNavigationOutcome({
-				findNavigationEntry: () => currentEntry,
-				deleteNavigation,
-				processSuccessfulNavigation,
-				navigationProps: {
-					href: targetUrl,
-					navigationType: "browserHistory",
-				},
-				outcome: redirectOutcome,
-				expectedOperationID: currentEntry.operationID,
-			});
+		const result = await handleNavigationOutcome({
+			findNavigationEntry: () => currentEntry,
+			deleteNavigation,
+			processSuccessfulNavigation,
+			navigationProps: {
+				href: targetUrl,
+				navigationType: "browserHistory",
+			},
+			outcome: redirectOutcome,
+			expectedOperationID: currentEntry.operationID,
+		});
 
-			expect(result).toEqual({ didNavigate: true });
-			expect(deleteNavigation).toHaveBeenCalledOnce();
-			expect(deleteNavigation).toHaveBeenCalledWith({
-				targetUrl,
-				reason: "redirect_effectuate",
-			});
-			expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
-		} finally {
-			effectuateRedirectSpy.mockRestore();
-		}
+		expect(result).toEqual({ didNavigate: true });
+		expect(deleteNavigation).toHaveBeenCalledOnce();
+		expect(deleteNavigation).toHaveBeenCalledWith({
+			targetUrl,
+			reason: "redirect_effectuate",
+		});
+		expect(redirectNavigateSpy).toHaveBeenCalledOnce();
+		expect(redirectNavigateSpy).toHaveBeenCalledWith({
+			href: "/redirect-destination",
+			navigationType: "redirect",
+			redirectCount: 1,
+			state: currentEntry.state,
+			replace: currentEntry.replace,
+			scrollToTop: currentEntry.scrollToTop,
+		});
 	});
 
 	it("uses current entry navigation options for redirect effectuation when a prefetch is promoted", async () => {
@@ -1425,47 +1548,30 @@ describe("navigation runtime outcome redirect signaling", () => {
 		const processSuccessfulNavigation = vi
 			.fn()
 			.mockResolvedValue(undefined);
-		const effectuateRedirectSpy = vi
-			.spyOn(redirectsModule, "effectuateRedirectDataResult")
-			.mockResolvedValue({
-				status: "did",
-				href: "/redirected-destination",
-				hrefDetails: {
-					url: new URL(
-						"http://localhost:3000/redirected-destination",
-					),
-					isHTTP: true,
-					isInternal: true,
-					isExternal: false,
-					absoluteURL: "http://localhost:3000/redirected-destination",
-					relativeURL: "/redirected-destination",
-				},
-			});
+		const redirectNavigateSpy = vi.fn(async () => ({ didNavigate: true }));
+		setNavigationStateAccess({
+			navigate: redirectNavigateSpy,
+			removeNavigation: () => {},
+			getNavigations: () => new Map(),
+		});
 
-		try {
-			await handleNavigationOutcome({
-				findNavigationEntry: () => promotedEntry,
-				deleteNavigation,
-				processSuccessfulNavigation,
-				navigationProps: redirectOutcome.props,
-				outcome: redirectOutcome,
-				expectedOperationID: promotedEntry.operationID,
-			});
+		await handleNavigationOutcome({
+			findNavigationEntry: () => promotedEntry,
+			deleteNavigation,
+			processSuccessfulNavigation,
+			navigationProps: redirectOutcome.props,
+			outcome: redirectOutcome,
+			expectedOperationID: promotedEntry.operationID,
+		});
 
-			expect(effectuateRedirectSpy).toHaveBeenCalledWith(
-				redirectOutcome.redirectData,
-				0,
-				{
-					href: promotedEntry.targetUrl,
-					navigationType: promotedEntry.type,
-					scrollToTop: promotedEntry.scrollToTop,
-					replace: promotedEntry.replace,
-					state: promotedEntry.state,
-				},
-			);
-		} finally {
-			effectuateRedirectSpy.mockRestore();
-		}
+		expect(redirectNavigateSpy).toHaveBeenCalledWith({
+			href: "/redirected-destination",
+			navigationType: "redirect",
+			redirectCount: 1,
+			state: promotedEntry.state,
+			replace: promotedEntry.replace,
+			scrollToTop: promotedEntry.scrollToTop,
+		});
 	});
 
 	it("does not synchronize build IDs or effectuate redirects for stale redirect outcomes", async () => {
@@ -1507,35 +1613,28 @@ describe("navigation runtime outcome redirect signaling", () => {
 		const processSuccessfulNavigation = vi
 			.fn()
 			.mockResolvedValue(undefined);
-		const syncBuildIDSpy = vi.spyOn(
-			redirectsModule,
-			"syncBuildIDFromRedirectData",
-		);
-		const effectuateRedirectSpy = vi
-			.spyOn(redirectsModule, "effectuateRedirectDataResult")
-			.mockResolvedValue(null);
+		const redirectNavigateSpy = vi.fn(async () => ({ didNavigate: true }));
+		setNavigationStateAccess({
+			navigate: redirectNavigateSpy,
+			removeNavigation: () => {},
+			getNavigations: () => new Map(),
+		});
 
-		try {
-			const result = await handleNavigationOutcome({
-				findNavigationEntry: () => currentEntry,
-				deleteNavigation,
-				processSuccessfulNavigation,
-				navigationProps: {
-					href: targetUrl,
-					navigationType: "browserHistory",
-				},
-				outcome: redirectOutcome,
-				expectedOperationID: currentEntry.operationID + 1,
-			});
+		const result = await handleNavigationOutcome({
+			findNavigationEntry: () => currentEntry,
+			deleteNavigation,
+			processSuccessfulNavigation,
+			navigationProps: {
+				href: targetUrl,
+				navigationType: "browserHistory",
+			},
+			outcome: redirectOutcome,
+			expectedOperationID: currentEntry.operationID + 1,
+		});
 
-			expect(result).toEqual({ didNavigate: false });
-			expect(syncBuildIDSpy).not.toHaveBeenCalled();
-			expect(effectuateRedirectSpy).not.toHaveBeenCalled();
-			expect(deleteNavigation).not.toHaveBeenCalled();
-		} finally {
-			syncBuildIDSpy.mockRestore();
-			effectuateRedirectSpy.mockRestore();
-		}
+		expect(result).toEqual({ didNavigate: false });
+		expect(redirectNavigateSpy).not.toHaveBeenCalled();
+		expect(deleteNavigation).not.toHaveBeenCalled();
 	});
 });
 
@@ -1572,9 +1671,6 @@ describe("navigation runtime success-processing defensive branches", () => {
 
 	it("continues successful processing when css preload commands reject", async () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
-		const reRenderSpy = vi
-			.spyOn(renderRuntimeModule, "__reRenderApp")
-			.mockResolvedValue();
 		const consoleErrorSpy = vi
 			.spyOn(console, "error")
 			.mockImplementation(() => {});
@@ -1611,7 +1707,6 @@ describe("navigation runtime success-processing defensive branches", () => {
 			await expect(
 				runtime.processSuccessfulNavigation(outcome, entry),
 			).resolves.toBeUndefined();
-			expect(reRenderSpy).toHaveBeenCalledTimes(1);
 			expect(
 				consoleErrorSpy.mock.calls.some(
 					(call) =>
@@ -1622,7 +1717,6 @@ describe("navigation runtime success-processing defensive branches", () => {
 			).toBe(true);
 		} finally {
 			fetchSpy.mockRestore();
-			reRenderSpy.mockRestore();
 			consoleErrorSpy.mockRestore();
 			preloadCSSSpy.mockRestore();
 		}
@@ -1631,8 +1725,8 @@ describe("navigation runtime success-processing defensive branches", () => {
 	it("marks navigation complete and rethrows when render fails", async () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
 		const renderError = new Error("render failed");
-		const reRenderSpy = vi
-			.spyOn(renderRuntimeModule, "__reRenderApp")
+		const loadComponentsSpy = vi
+			.spyOn(renderRuntimeModule.ComponentLoader, "loadComponents")
 			.mockRejectedValue(renderError);
 		const consoleErrorSpy = vi
 			.spyOn(console, "error")
@@ -1672,7 +1766,7 @@ describe("navigation runtime success-processing defensive branches", () => {
 			).toBe(true);
 		} finally {
 			fetchSpy.mockRestore();
-			reRenderSpy.mockRestore();
+			loadComponentsSpy.mockRestore();
 			consoleErrorSpy.mockRestore();
 		}
 	});
@@ -1681,8 +1775,8 @@ describe("navigation runtime success-processing defensive branches", () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
 		const renderAbortError = new Error("Aborted");
 		renderAbortError.name = "AbortError";
-		const reRenderSpy = vi
-			.spyOn(renderRuntimeModule, "__reRenderApp")
+		const loadComponentsSpy = vi
+			.spyOn(renderRuntimeModule.ComponentLoader, "loadComponents")
 			.mockRejectedValue(renderAbortError);
 		const consoleErrorSpy = vi
 			.spyOn(console, "error")
@@ -1721,7 +1815,7 @@ describe("navigation runtime success-processing defensive branches", () => {
 			).toBe(false);
 		} finally {
 			fetchSpy.mockRestore();
-			reRenderSpy.mockRestore();
+			loadComponentsSpy.mockRestore();
 			consoleErrorSpy.mockRestore();
 		}
 	});
@@ -1879,10 +1973,13 @@ describe("navigation runtime success-processing defensive branches", () => {
 			).resolves.toBeUndefined();
 
 			expect(reRenderSpy).not.toHaveBeenCalled();
-			expect((globalThis as any)[VORMA_SYMBOL].clientLoadersData).toEqual(
-				[{ stable: true }],
-			);
-			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
+			expect(
+				__vormaClientGlobal.get("runtimeRouteSnapshot")
+					.clientLoadersData,
+			).toEqual([{ stable: true }]);
+			expect(
+				__vormaClientGlobal.get("runtimeRouteSnapshot").buildID,
+			).toBe("1");
 			expect(buildIDEvents).toEqual([]);
 			expect(deleteNavigation).not.toHaveBeenCalled();
 		} finally {
@@ -1933,12 +2030,16 @@ describe("navigation runtime success-processing defensive branches", () => {
 			);
 
 			await Promise.resolve();
-			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
+			expect(
+				__vormaClientGlobal.get("runtimeRouteSnapshot").buildID,
+			).toBe("1");
 			expect(buildIDEvents).toEqual([]);
 
 			waitDeferred.resolve({ data: [] });
 			await expect(processingPromise).resolves.toBeUndefined();
-			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("2");
+			expect(
+				__vormaClientGlobal.get("runtimeRouteSnapshot").buildID,
+			).toBe("2");
 			expect(buildIDEvents).toEqual([
 				{
 					oldID: "1",
@@ -2200,7 +2301,9 @@ describe("navigation runtime success-processing defensive branches", () => {
 
 			expect(reRenderSpy).not.toHaveBeenCalled();
 			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
-			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
+			expect(
+				__vormaClientGlobal.get("runtimeRouteSnapshot").buildID,
+			).toBe("1");
 			expect(buildIDEvents).toEqual([]);
 
 			runtime.clearAll();
@@ -2219,15 +2322,20 @@ describe("navigation runtime success-processing defensive branches", () => {
 
 	it("does not mark a newer same-target entry complete from a stale render onFinish callback", async () => {
 		const fetchSpy = createAbortAwareNeverResolvingFetchSpy();
-		const renderDeferred = createDeferred<void>();
-		const renderStartedDeferred = createDeferred<void>();
-		let staleOnFinishCallback: (() => void) | undefined;
-		const reRenderSpy = vi
-			.spyOn(renderRuntimeModule, "__reRenderApp")
-			.mockImplementation(async (props) => {
-				staleOnFinishCallback = props.onFinish;
-				renderStartedDeferred.resolve();
-				await renderDeferred.promise;
+		const loadComponentsDeferred =
+			createDeferred<
+				Awaited<
+					ReturnType<
+						typeof renderRuntimeModule.ComponentLoader.loadComponents
+					>
+				>
+			>();
+		const loadComponentsStartedDeferred = createDeferred<void>();
+		const loadComponentsSpy = vi
+			.spyOn(renderRuntimeModule.ComponentLoader, "loadComponents")
+			.mockImplementation(async () => {
+				loadComponentsStartedDeferred.resolve();
+				return loadComponentsDeferred.promise;
 			});
 
 		try {
@@ -2260,8 +2368,7 @@ describe("navigation runtime success-processing defensive branches", () => {
 					firstEntry,
 				);
 
-			await renderStartedDeferred.promise;
-			expect(staleOnFinishCallback).toBeDefined();
+			await loadComponentsStartedDeferred.promise;
 
 			runtime.removeNavigation(targetUrl);
 
@@ -2278,13 +2385,11 @@ describe("navigation runtime success-processing defensive branches", () => {
 			expect(secondEntry).not.toBe(firstEntry);
 			expect(secondEntry.phase).toBe("fetching");
 
-			staleOnFinishCallback?.();
-			expect(secondEntry.phase).toBe("fetching");
-
-			renderDeferred.resolve();
+			loadComponentsDeferred.resolve(new Map());
 			await expect(
 				olderSuccessProcessingPromise,
 			).resolves.toBeUndefined();
+			expect(secondEntry.phase).toBe("fetching");
 			expect(runtime.getNavigation(targetUrl)).toBe(secondEntry);
 
 			runtime.clearAll();
@@ -2295,9 +2400,9 @@ describe("navigation runtime success-processing defensive branches", () => {
 				name: "AbortError",
 			});
 		} finally {
-			renderDeferred.resolve();
+			loadComponentsDeferred.resolve(new Map());
 			fetchSpy.mockRestore();
-			reRenderSpy.mockRestore();
+			loadComponentsSpy.mockRestore();
 		}
 	});
 
@@ -2372,9 +2477,9 @@ describe("navigation runtime success-processing defensive branches", () => {
 			expect(
 				document.head.querySelector('meta[name="stale-commit-fence"]'),
 			).toBeNull();
-			expect((globalThis as any)[VORMA_SYMBOL].matchedPatterns).toEqual(
-				[],
-			);
+			expect(
+				__vormaClientGlobal.get("runtimeRouteSnapshot").matchedPatterns,
+			).toEqual([]);
 			expect(deleteNavigation).not.toHaveBeenCalled();
 		} finally {
 			loadComponentsSpy.mockRestore();
@@ -2640,13 +2745,17 @@ describe("navigation runtime submit stale checkpoints", () => {
 		}
 	});
 
-	it("returns explicit submit error when redirect handling produces no response object", async () => {
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
-			.mockResolvedValue({
-				redirectData: null,
-				response: undefined,
-			} as any);
+	it("returns success for submit responses that trigger client redirects", async () => {
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response("{}", {
+				status: 200,
+				headers: {
+					"Content-Type": "application/json",
+					"X-Vorma-Build-Id": "1",
+					"X-Client-Redirect": "/loop-redirect",
+				},
+			}),
+		);
 		const consoleErrorSpy = vi
 			.spyOn(console, "error")
 			.mockImplementation(() => {});
@@ -2660,11 +2769,11 @@ describe("navigation runtime submit stale checkpoints", () => {
 			);
 
 			expect(result).toEqual({
-				success: false,
-				error: "Submit request completed without a response.",
+				success: true,
+				data: undefined,
 			});
 		} finally {
-			handleRedirectsSpy.mockRestore();
+			fetchSpy.mockRestore();
 			consoleErrorSpy.mockRestore();
 		}
 	});
@@ -2689,20 +2798,14 @@ describe("navigation runtime submit stale checkpoints", () => {
 	});
 
 	it("returns success with undefined data for 204 submit responses", async () => {
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
-			.mockResolvedValue({
-				redirectData: null,
-				response: createSubmitResponse({
-					status: 204,
-					buildID: "1",
-					json: async () => {
-						throw new Error(
-							"json() should not be called for 204 submit responses",
-						);
-					},
-				}),
-			} as any);
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(null, {
+				status: 204,
+				headers: {
+					"X-Vorma-Build-Id": "1",
+				},
+			}),
+		);
 
 		try {
 			const runtime = createNavigationRuntime();
@@ -2717,23 +2820,20 @@ describe("navigation runtime submit stale checkpoints", () => {
 				data: undefined,
 			});
 		} finally {
-			handleRedirectsSpy.mockRestore();
+			fetchSpy.mockRestore();
 		}
 	});
 
 	it("returns text data for successful non-JSON submit responses", async () => {
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
-			.mockResolvedValue({
-				redirectData: null,
-				response: new Response("ok-text", {
-					status: 200,
-					headers: {
-						"Content-Type": "text/plain",
-						"X-Vorma-Build-Id": "1",
-					},
-				}),
-			} as any);
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response("ok-text", {
+				status: 200,
+				headers: {
+					"Content-Type": "text/plain",
+					"X-Vorma-Build-Id": "1",
+				},
+			}),
+		);
 
 		try {
 			const runtime = createNavigationRuntime();
@@ -2748,22 +2848,19 @@ describe("navigation runtime submit stale checkpoints", () => {
 				data: "ok-text",
 			});
 		} finally {
-			handleRedirectsSpy.mockRestore();
+			fetchSpy.mockRestore();
 		}
 	});
 
 	it("returns text data for successful submit responses without content-type", async () => {
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
-			.mockResolvedValue({
-				redirectData: null,
-				response: new Response("ok-text-no-content-type", {
-					status: 200,
-					headers: {
-						"X-Vorma-Build-Id": "1",
-					},
-				}),
-			} as any);
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response("ok-text-no-content-type", {
+				status: 200,
+				headers: {
+					"X-Vorma-Build-Id": "1",
+				},
+			}),
+		);
 
 		try {
 			const runtime = createNavigationRuntime();
@@ -2778,45 +2875,27 @@ describe("navigation runtime submit stale checkpoints", () => {
 				data: "ok-text-no-content-type",
 			});
 		} finally {
-			handleRedirectsSpy.mockRestore();
+			fetchSpy.mockRestore();
 		}
 	});
 
 	it("prioritizes submit redirects even when submit response status is non-OK", async () => {
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
-			.mockResolvedValue({
-				redirectData: {
-					status: "should",
-					shouldRedirectStrategy: "soft",
-					latestBuildID: "1",
-					href: "/submit-redirect-target",
-					hrefDetails: {
-						isHTTP: true,
-						isInternal: true,
-						isExternal: false,
-						absoluteURL:
-							"http://localhost:3000/submit-redirect-target",
-					},
+		const redirectNavigateSpy = vi.fn(async () => ({ didNavigate: true }));
+		setNavigationStateAccess({
+			navigate: redirectNavigateSpy,
+			removeNavigation: () => {},
+			getNavigations: () => new Map(),
+		});
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(JSON.stringify({ ok: false }), {
+				status: 422,
+				headers: {
+					"Content-Type": "application/json",
+					"X-Vorma-Build-Id": "1",
+					"X-Client-Redirect": "/submit-redirect-target",
 				},
-				response: createSubmitResponse({
-					status: 422,
-					buildID: "1",
-					json: async () => ({ ok: false }),
-				}),
-			} as any);
-		const effectuateRedirectSpy = vi
-			.spyOn(redirectsModule, "effectuateRedirectDataResult")
-			.mockResolvedValue({
-				status: "did",
-				href: "/submit-redirect-target",
-				hrefDetails: {
-					isHTTP: true,
-					isInternal: true,
-					isExternal: false,
-					absoluteURL: "http://localhost:3000/submit-redirect-target",
-				},
-			} as any);
+			}),
+		);
 
 		try {
 			const runtime = createNavigationRuntime();
@@ -2826,42 +2905,33 @@ describe("navigation runtime submit stale checkpoints", () => {
 				{ revalidate: false },
 			);
 
-			expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
+			expect(redirectNavigateSpy).toHaveBeenCalledOnce();
 			expect(result).toEqual({
 				success: true,
 				data: undefined,
 			});
 		} finally {
-			handleRedirectsSpy.mockRestore();
-			effectuateRedirectSpy.mockRestore();
+			fetchSpy.mockRestore();
 		}
 	});
 
 	it("returns explicit submit error when redirect effectuation fails", async () => {
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
-			.mockResolvedValue({
-				redirectData: {
-					status: "should",
-					shouldRedirectStrategy: "soft",
-					latestBuildID: "1",
-					href: "/submit-redirect-target",
-					hrefDetails: {
-						isHTTP: true,
-						isInternal: true,
-						isExternal: false,
-						absoluteURL:
-							"http://localhost:3000/submit-redirect-target",
-					},
+		const redirectNavigateSpy = vi.fn(async () => ({ didNavigate: false }));
+		setNavigationStateAccess({
+			navigate: redirectNavigateSpy,
+			removeNavigation: () => {},
+			getNavigations: () => new Map(),
+		});
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: {
+					"Content-Type": "application/json",
+					"X-Vorma-Build-Id": "1",
+					"X-Client-Redirect": "/submit-redirect-target",
 				},
-				response: createSubmitResponse({
-					buildID: "1",
-					json: async () => ({ ok: true }),
-				}),
-			} as any);
-		const effectuateRedirectSpy = vi
-			.spyOn(redirectsModule, "effectuateRedirectDataResult")
-			.mockResolvedValue(null);
+			}),
+		);
 
 		try {
 			const runtime = createNavigationRuntime();
@@ -2871,14 +2941,13 @@ describe("navigation runtime submit stale checkpoints", () => {
 				{ revalidate: false },
 			);
 
-			expect(effectuateRedirectSpy).toHaveBeenCalledOnce();
+			expect(redirectNavigateSpy).toHaveBeenCalledOnce();
 			expect(result).toEqual({
 				success: false,
 				error: "Redirect failed",
 			});
 		} finally {
-			handleRedirectsSpy.mockRestore();
-			effectuateRedirectSpy.mockRestore();
+			fetchSpy.mockRestore();
 		}
 	});
 
@@ -2890,30 +2959,8 @@ describe("navigation runtime submit stale checkpoints", () => {
 					| { success: false; error: string }
 			  >
 			| undefined;
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
-			.mockResolvedValue({
-				redirectData: {
-					status: "should",
-					shouldRedirectStrategy: "soft",
-					latestBuildID: "1",
-					href: "/submit-redirect-target",
-					hrefDetails: {
-						isHTTP: true,
-						isInternal: true,
-						isExternal: false,
-						absoluteURL:
-							"http://localhost:3000/submit-redirect-target",
-					},
-				},
-				response: createSubmitResponse({
-					buildID: "1",
-					json: async () => ({ ok: true }),
-				}),
-			} as any);
-		const effectuateRedirectSpy = vi
-			.spyOn(redirectsModule, "effectuateRedirectDataResult")
-			.mockImplementation(async () => {
+		setNavigationStateAccess({
+			navigate: async () => {
 				if (!replacementSubmit) {
 					replacementSubmit = runtime.submit(
 						"/api/replacement",
@@ -2924,17 +2971,33 @@ describe("navigation runtime submit stale checkpoints", () => {
 						},
 					);
 				}
-				return {
-					status: "did",
-					href: "/submit-redirect-target",
-					hrefDetails: {
-						isHTTP: true,
-						isInternal: true,
-						isExternal: false,
-						absoluteURL:
-							"http://localhost:3000/submit-redirect-target",
+				return { didNavigate: true };
+			},
+			removeNavigation: () => {},
+			getNavigations: () => new Map(),
+		});
+		let fetchCallCount = 0;
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
+			.mockImplementation(async () => {
+				fetchCallCount += 1;
+				if (fetchCallCount === 1) {
+					return new Response(JSON.stringify({ ok: true }), {
+						status: 200,
+						headers: {
+							"Content-Type": "application/json",
+							"X-Vorma-Build-Id": "1",
+							"X-Client-Redirect": "/submit-redirect-target",
+						},
+					});
+				}
+				return new Response(JSON.stringify({ replacement: true }), {
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
 					},
-				} as any;
+				});
 			});
 
 		try {
@@ -2951,15 +3014,13 @@ describe("navigation runtime submit stale checkpoints", () => {
 				success: false,
 				error: "Aborted",
 			});
-			expect(effectuateRedirectSpy).toHaveBeenCalled();
 			expect(replacementSubmit).toBeDefined();
 			await expect(replacementSubmit).resolves.toEqual({
 				success: true,
-				data: undefined,
+				data: { replacement: true },
 			});
 		} finally {
-			handleRedirectsSpy.mockRestore();
-			effectuateRedirectSpy.mockRestore();
+			fetchSpy.mockRestore();
 		}
 	});
 
@@ -2993,26 +3054,26 @@ describe("navigation runtime submit stale checkpoints", () => {
 		};
 
 		let requestCount = 0;
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
+		const fetchSpy = vi
+			.spyOn(window, "fetch")
 			.mockImplementation(async () => {
-				requestCount++;
+				requestCount += 1;
 				if (requestCount === 1) {
-					return {
-						redirectData: null,
-						response: createSubmitResponse({
-							buildID: "1",
-							json: async () => ({ stale: true }),
-						}),
-					} as any;
+					return new Response(JSON.stringify({ stale: true }), {
+						status: 200,
+						headers: {
+							"Content-Type": "application/json",
+							"X-Vorma-Build-Id": "1",
+						},
+					});
 				}
-				return {
-					redirectData: null,
-					response: createSubmitResponse({
-						buildID: "1",
-						json: async () => ({ fresh: true }),
-					}),
-				} as any;
+				return new Response(JSON.stringify({ fresh: true }), {
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-Vorma-Build-Id": "1",
+					},
+				});
 			});
 
 		try {
@@ -3036,7 +3097,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 			});
 			expect(requestCount).toBe(2);
 		} finally {
-			handleRedirectsSpy.mockRestore();
+			fetchSpy.mockRestore();
 		}
 	});
 
@@ -3052,15 +3113,12 @@ describe("navigation runtime submit stale checkpoints", () => {
 			navigate: async () => ({ didNavigate: true }),
 		};
 
-		const handleRedirectsSpy = vi
-			.spyOn(redirectsModule, "handleRedirects")
-			.mockResolvedValue({
-				redirectData: null,
-				response: createSubmitResponse({
-					buildID: "1",
-					json: () => parseDeferred.promise,
-				}),
-			} as any);
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			createSubmitResponse({
+				buildID: "1",
+				json: () => parseDeferred.promise,
+			}),
+		);
 
 		try {
 			const submitPromise = executeSubmitRuntime(
@@ -3094,7 +3152,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 			});
 			expect(context.submissions.has(submissionKey)).toBe(false);
 		} finally {
-			handleRedirectsSpy.mockRestore();
+			fetchSpy.mockRestore();
 		}
 	});
 });
@@ -3134,17 +3192,21 @@ describe("render runtime initialization guards", () => {
 
 		await expect(setupClientLoaders()).resolves.toBeUndefined();
 
-		const runtimeGlobal = (globalThis as any)[VORMA_SYMBOL];
-		expect(runtimeGlobal.clientLoadersData).toEqual([]);
-		expect(runtimeGlobal.outermostClientError).toBeUndefined();
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").clientLoadersData,
+		).toEqual([]);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.outermostClientError,
+		).toBeUndefined();
 	});
 
-	it("__registerClientLoaderPattern fails fast without a registry", async () => {
+	it("registerClientLoaderPattern fails fast without a registry", async () => {
 		installVormaGlobal({
 			patternRegistry: undefined,
 		});
 
-		await expect(__registerClientLoaderPattern("/x")).rejects.toThrow(
+		await expect(registerClientLoaderPattern("/x")).rejects.toThrow(
 			"Pattern registry has not been initialized.",
 		);
 	});
@@ -3223,9 +3285,9 @@ describe("fetchRouteData behavior", () => {
 				JSON.stringify({
 					matchedPatterns: ["/a", "/b"],
 					loadersData: [{ fromServer: "a" }, { fromServer: "b" }],
-					importURLs: [],
-					exportKeys: [],
-					errorExportKeys: [],
+					importURLs: ["", ""],
+					exportKeys: ["", ""],
+					errorExportKeys: ["", ""],
 					hasRootData: false,
 					params: {},
 					splatValues: [],
@@ -3308,7 +3370,7 @@ describe("fetchRouteData behavior", () => {
 		expect(outcome.type).toBe("success");
 	});
 
-	it("succeeds when server JSON omits importURLs", async () => {
+	it("fails fast when server JSON omits required importURLs", async () => {
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			new Response(
 				JSON.stringify({
@@ -3336,18 +3398,12 @@ describe("fetchRouteData behavior", () => {
 			patternToWaitFnMap: undefined,
 		});
 
-		const outcome = await fetchRouteData(new AbortController(), {
-			href: "/missing-import-urls",
-			navigationType: "userNavigation",
-		});
-		expect(outcome.type).toBe("success");
-		if (outcome.type !== "success") {
-			throw new Error("Expected success outcome");
-		}
-		await expect(outcome.waitFnPromise).resolves.toEqual({
-			data: [],
-			errorMessage: undefined,
-		});
+		await expect(
+			fetchRouteData(new AbortController(), {
+				href: "/missing-import-urls",
+				navigationType: "userNavigation",
+			}),
+		).rejects.toThrow('missing required key "importURLs"');
 	});
 
 	it("uses build-id fallback in server route-data request URLs", async () => {
@@ -3402,9 +3458,9 @@ describe("fetchRouteData behavior", () => {
 				JSON.stringify({
 					matchedPatterns: ["/build-id-fallback"],
 					loadersData: [{ fromServer: true }],
-					importURLs: [],
-					exportKeys: [],
-					errorExportKeys: [],
+					importURLs: [""],
+					exportKeys: [""],
+					errorExportKeys: [""],
 					hasRootData: false,
 					params: {},
 					splatValues: [],
@@ -3457,9 +3513,9 @@ describe("fetchRouteData behavior", () => {
 				JSON.stringify({
 					matchedPatterns: ["/parent", "/parent/child"],
 					loadersData: [{ root: true }, { fromServer: "child" }],
-					importURLs: [],
-					exportKeys: [],
-					errorExportKeys: [],
+					importURLs: ["", ""],
+					exportKeys: ["", ""],
+					errorExportKeys: ["", ""],
 					hasRootData: true,
 					params: {},
 					splatValues: [],
@@ -3506,139 +3562,29 @@ describe("fetchRouteData behavior", () => {
 		expect(waitFn).toHaveBeenCalledTimes(1);
 	});
 
-	it("throws when partial matcher returns sparse route matches", async () => {
-		const partialMatchesSpy = vi
-			.spyOn(renderRuntimeModule, "findPartialMatchesOnClient")
-			.mockResolvedValue({
-				params: {},
-				splatValues: [],
+	it("throws when matched route arrays contain sparse entries", () => {
+		expect(() =>
+			getMatchedPatternsOrThrow({
 				matches: [undefined as any, createMatch("/sparse-loader")],
-			} as any);
-		const waitFn = vi.fn(async ({ serverDataPromise }) => {
-			const serverData = await serverDataPromise;
-			return serverData.loaderData;
-		});
-		vi.spyOn(window, "fetch").mockResolvedValue(
-			new Response(
-				JSON.stringify({
-					matchedPatterns: ["/sparse-loader"],
-					loadersData: [{ value: "ok" }],
-					importURLs: [],
-					exportKeys: [],
-					errorExportKeys: [],
-					hasRootData: false,
-					params: {},
-					splatValues: [],
-					deps: [],
-					cssBundles: [],
-				}),
-				{
-					status: 200,
-					headers: {
-						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
-					},
-				},
-			),
+				context: "Partial route matcher",
+			}),
+		).toThrow(
+			"Partial route matcher returned a sparse matches array at index 0.",
 		);
-		installVormaGlobal({
-			routeManifest: {
-				"/sparse-loader": 1,
-			},
-			patternRegistry: createRegisteredPatternRegistry([
-				"/sparse-loader",
-			]),
-			patternToWaitFnMap: {
-				"/sparse-loader": waitFn,
-			},
-		});
-		const consoleErrorSpy = vi
-			.spyOn(console, "error")
-			.mockImplementation(() => {});
-
-		try {
-			await expect(
-				fetchRouteData(new AbortController(), {
-					href: "/sparse-loader",
-					navigationType: "userNavigation",
-				}),
-			).rejects.toThrow(
-				"Partial route matcher returned a sparse matches array at index 0.",
-			);
-			expect(waitFn).not.toHaveBeenCalled();
-			expect(consoleErrorSpy).toHaveBeenCalled();
-		} finally {
-			consoleErrorSpy.mockRestore();
-			partialMatchesSpy.mockRestore();
-		}
 	});
 
-	it("throws when partial matcher returns an empty route pattern", async () => {
-		const partialMatchesSpy = vi
-			.spyOn(renderRuntimeModule, "findPartialMatchesOnClient")
-			.mockResolvedValue({
-				params: {},
-				splatValues: [],
+	it("throws when matched route arrays contain empty route patterns", () => {
+		expect(() =>
+			getMatchedPatternsOrThrow({
 				matches: [createMatch("")],
-			} as any);
-		const waitFn = vi.fn(async ({ serverDataPromise }) => {
-			const serverData = await serverDataPromise;
-			return serverData.loaderData;
-		});
-		vi.spyOn(window, "fetch").mockResolvedValue(
-			new Response(
-				JSON.stringify({
-					matchedPatterns: ["/placeholder"],
-					loadersData: [{ value: "ok" }],
-					importURLs: [],
-					exportKeys: [],
-					errorExportKeys: [],
-					hasRootData: false,
-					params: {},
-					splatValues: [],
-					deps: [],
-					cssBundles: [],
-				}),
-				{
-					status: 200,
-					headers: {
-						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
-					},
-				},
-			),
+				context: "Partial route matcher",
+			}),
+		).toThrow(
+			"Partial route matcher returned an empty route pattern at index 0.",
 		);
-		installVormaGlobal({
-			routeManifest: {
-				"": 1,
-			},
-			patternRegistry: createRegisteredPatternRegistry(["/placeholder"]),
-			patternToWaitFnMap: {
-				"": waitFn,
-			},
-		});
-		const consoleErrorSpy = vi
-			.spyOn(console, "error")
-			.mockImplementation(() => {});
-
-		try {
-			await expect(
-				fetchRouteData(new AbortController(), {
-					href: "/placeholder",
-					navigationType: "userNavigation",
-				}),
-			).rejects.toThrow(
-				"Partial route matcher returned an empty route pattern at index 0.",
-			);
-			expect(waitFn).not.toHaveBeenCalled();
-			expect(consoleErrorSpy).toHaveBeenCalled();
-		} finally {
-			consoleErrorSpy.mockRestore();
-			partialMatchesSpy.mockRestore();
-		}
 	});
 
-	it("lets client loaders handle unavailable server data when payload lacks matched loader arrays", async () => {
+	it("aborts waiting client loaders when server JSON omits required matched loader arrays", async () => {
 		const unavailableNames: string[] = [];
 		const waitFn = vi.fn(async ({ serverDataPromise }) => {
 			try {
@@ -3678,11 +3624,12 @@ describe("fetchRouteData behavior", () => {
 			matchedPatterns: [],
 		});
 
-		const outcome = await fetchRouteData(new AbortController(), {
-			href: "/needs-server",
-			navigationType: "userNavigation",
-		});
-		expect(outcome.type).toBe("success");
+		await expect(
+			fetchRouteData(new AbortController(), {
+				href: "/needs-server",
+				navigationType: "userNavigation",
+			}),
+		).rejects.toThrow('missing required key "matchedPatterns"');
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(waitFn).toHaveBeenCalledTimes(1);
@@ -3732,7 +3679,7 @@ describe("fetchRouteData behavior", () => {
 		logErrorSpy.mockRestore();
 	});
 
-	it("handles production responses with undefined deps and cssBundles", async () => {
+	it("defaults omitted deps and cssBundles to empty arrays in production", async () => {
 		const originalDev = import.meta.env.DEV;
 		(import.meta.env as any).DEV = false;
 		try {
@@ -3769,6 +3716,8 @@ describe("fetchRouteData behavior", () => {
 			if (outcome.type !== "success") {
 				throw new Error("Expected success outcome");
 			}
+			expect(outcome.json.deps).toEqual([]);
+			expect(outcome.json.cssBundles).toEqual([]);
 			expect(outcome.preloadPlan).toEqual({
 				moduleDependencies: [],
 				cssBundles: [],
@@ -3785,15 +3734,15 @@ describe("fetchRouteData behavior", () => {
 			vi.spyOn(window, "fetch").mockResolvedValue(
 				new Response(
 					JSON.stringify({
-						matchedPatterns: [],
-						loadersData: [],
+						matchedPatterns: ["/prod-deps"],
+						loadersData: [{}],
 						importURLs: ["/ignored-in-prod.js"],
-						exportKeys: [],
-						errorExportKeys: [],
+						exportKeys: [""],
+						errorExportKeys: [""],
 						hasRootData: false,
 						params: {},
 						splatValues: [],
-						deps: ["", "/prod-dep.js", null],
+						deps: ["", "/prod-dep.js"],
 						cssBundles: [],
 					}),
 					{
@@ -3928,7 +3877,9 @@ describe("fetchRouteData behavior", () => {
 
 			expect(preloadModuleSpy).toHaveBeenCalledTimes(1);
 			expect(preloadModuleSpy).toHaveBeenCalledWith("/winner-dep.js");
-			expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("1");
+			expect(
+				__vormaClientGlobal.get("runtimeRouteSnapshot").buildID,
+			).toBe("1");
 			expect(buildIDEvents).toEqual([]);
 		} finally {
 			removeBuildIDListener();

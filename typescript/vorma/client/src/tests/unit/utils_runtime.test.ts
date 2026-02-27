@@ -3,7 +3,7 @@ import {
 	isArrayBufferView,
 	isInstanceOfGlobal,
 	observePromiseRejection,
-} from "../../platform/safety.ts";
+} from "../../runtime.ts";
 
 describe("global_constructors", () => {
 	afterEach(() => {

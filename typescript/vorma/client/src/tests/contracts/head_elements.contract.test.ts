@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { HeadEl } from "../../app/context.ts";
-import { getStartAndEndComments, updateHeadEls } from "../../ui/head.ts";
+import type { HeadEl } from "../../../src/runtime.ts";
+import { getStartAndEndComments, updateHeadEls } from "../../runtime.ts";
 import { setupContractTestSuite } from "./contract_test_harness.ts";
 
 setupContractTestSuite();

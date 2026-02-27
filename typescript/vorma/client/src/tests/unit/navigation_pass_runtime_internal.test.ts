@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { executeNavigationSinglePass } from "../../core/navigation/runtime_navigation_pass_runtime.ts";
 import type {
 	NavigateProps,
 	NavigationControl,
 	NavigationEntry,
 	NavigationOutcome,
-} from "../../core/navigation/types.ts";
+} from "../../../src/runtime.ts";
+import { executeNavigationSinglePass } from "../../runtime.ts";
 
 function createNavigationEntry(props: {
 	operationID: number;

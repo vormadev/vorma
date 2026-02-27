@@ -1,37 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SubmissionEntry } from "../../../src/runtime.ts";
 import {
 	computeNavigationStatus,
+	createInitialNavigationRuntimeEngineState,
 	createRuntimeLanes,
 	createStatusSignaler,
-	type RuntimeLanes,
-} from "../../core/navigation/runtime_slots.ts";
-import type {
-	NavigationEntry,
-	SubmissionEntry,
-} from "../../core/navigation/types.ts";
-
-function createNavigationEntry(props: {
-	operationID: number;
-	intent: NavigationEntry["intent"];
-	phase: NavigationEntry["phase"];
-	type?: NavigationEntry["type"];
-	targetUrl?: string;
-}): NavigationEntry {
-	return {
-		operationID: props.operationID,
-		control: {
-			abortController: undefined,
-			promise: new Promise<never>(() => {}),
-		},
-		type: props.type ?? "userNavigation",
-		intent: props.intent,
-		phase: props.phase,
-		startTime: 0,
-		targetUrl:
-			props.targetUrl ?? `http://localhost:3000/${props.operationID}`,
-		originUrl: "http://localhost:3000/",
-	};
-}
+} from "../../runtime.ts";
 
 function createSubmissionEntry(props: {
 	operationID: number;
@@ -48,20 +22,29 @@ function createSubmissionEntry(props: {
 	};
 }
 
-function buildBaseRuntimeLanes(): RuntimeLanes {
-	return createRuntimeLanes();
+function buildStatusInputs() {
+	return {
+		runtimeEngineState: createInitialNavigationRuntimeEngineState(),
+		lanes: createRuntimeLanes(),
+	};
 }
 
 describe("navigation runtime slots internals", () => {
 	it("treats active non-complete user navigation as navigating", () => {
-		const lanes = buildBaseRuntimeLanes();
-		lanes.active = createNavigationEntry({
+		const { runtimeEngineState, lanes } = buildStatusInputs();
+		runtimeEngineState.lanes.navigate = {
+			targetUrl: "http://localhost:3000/1",
 			operationID: 1,
-			intent: "navigate",
 			phase: "fetching",
-		});
+			ownership: "current",
+		};
 
-		expect(computeNavigationStatus({ lanes })).toEqual({
+		expect(
+			computeNavigationStatus({
+				runtimeEngineState,
+				submissions: lanes.submissions,
+			}),
+		).toEqual({
 			isNavigating: true,
 			isSubmitting: false,
 			isRevalidating: false,
@@ -69,15 +52,20 @@ describe("navigation runtime slots internals", () => {
 	});
 
 	it("does not treat non-navigate active entries as navigating", () => {
-		const lanes = buildBaseRuntimeLanes();
-		lanes.active = createNavigationEntry({
+		const { runtimeEngineState, lanes } = buildStatusInputs();
+		runtimeEngineState.lanes.prefetch.set("http://localhost:3000/1", {
+			targetUrl: "http://localhost:3000/1",
 			operationID: 1,
-			type: "prefetch",
-			intent: "none",
 			phase: "fetching",
+			ownership: "current",
 		});
 
-		expect(computeNavigationStatus({ lanes })).toEqual({
+		expect(
+			computeNavigationStatus({
+				runtimeEngineState,
+				submissions: lanes.submissions,
+			}),
+		).toEqual({
 			isNavigating: false,
 			isSubmitting: false,
 			isRevalidating: false,
@@ -85,13 +73,13 @@ describe("navigation runtime slots internals", () => {
 	});
 
 	it("reports revalidation and global submission status independently", () => {
-		const lanes = buildBaseRuntimeLanes();
-		lanes.revalidation = createNavigationEntry({
+		const { runtimeEngineState, lanes } = buildStatusInputs();
+		runtimeEngineState.lanes.revalidate = {
+			targetUrl: "http://localhost:3000/revalidate",
 			operationID: 2,
-			type: "revalidation",
-			intent: "revalidate",
 			phase: "waiting",
-		});
+			ownership: "current",
+		};
 		lanes.submissions.set(
 			"skip",
 			createSubmissionEntry({
@@ -107,7 +95,12 @@ describe("navigation runtime slots internals", () => {
 			}),
 		);
 
-		expect(computeNavigationStatus({ lanes })).toEqual({
+		expect(
+			computeNavigationStatus({
+				runtimeEngineState,
+				submissions: lanes.submissions,
+			}),
+		).toEqual({
 			isNavigating: false,
 			isSubmitting: true,
 			isRevalidating: true,

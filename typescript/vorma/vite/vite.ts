@@ -2,7 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ConfigEnv, Plugin, UserConfig, ViteDevServer } from "vite";
 
-type VormaVitePluginConfig = {
+export type VormaVitePluginConfig = {
 	rollupInput: ReadonlyArray<string>;
 	publicPathPrefix: string;
 	staticPublicAssetMap: Record<string, string>;
@@ -11,10 +11,6 @@ type VormaVitePluginConfig = {
 	ignoredPatterns: ReadonlyArray<string>;
 	dedupeList: ReadonlyArray<string>;
 };
-
-type UserConfigServerWatchIgnored = NonNullable<
-	NonNullable<UserConfig["server"]>["watch"]
->["ignored"];
 
 function mergeRollupInput(
 	vormaRollupInput: ReadonlyArray<string>,
@@ -62,6 +58,10 @@ function mergeRollupInput(
 
 	return [...vormaRollupInput];
 }
+
+type UserConfigServerWatchIgnored = NonNullable<
+	NonNullable<UserConfig["server"]>["watch"]
+>["ignored"];
 
 function mergeServerWatchIgnoredPatterns(
 	existingIgnoredPatterns: UserConfigServerWatchIgnored,

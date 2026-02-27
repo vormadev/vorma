@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDeterministicRevalidationLane } from "../../core/navigation/runtime_revalidation_lane.ts";
-import type { NavigateProps } from "../../core/navigation/types.ts";
+import type { NavigateProps } from "../../../src/runtime.ts";
+import {
+	buildRevalidationLaneRuntimeCommandPlan,
+	createDeterministicRevalidationLane,
+	reduceRevalidationLaneEvent,
+} from "../../runtime.ts";
 
 type Deferred<T> = {
 	promise: Promise<T>;
@@ -18,17 +22,127 @@ function createDeferred<T>(): Deferred<T> {
 	return { promise, resolve, reject };
 }
 
+describe("deterministic revalidation lane reducer and command planning", () => {
+	it("plans start-pass commands when no pass is in flight", () => {
+		const executionPlan = reduceRevalidationLaneEvent({
+			state: {
+				hasInFlightPass: false,
+				isTrailingEligible: false,
+				inFlightTargetMatchesCurrentHref: true,
+			},
+			event: {
+				type: "revalidation_requested",
+			},
+		});
+		expect(executionPlan).toEqual({
+			type: "start_new_pass",
+		});
+		expect(
+			buildRevalidationLaneRuntimeCommandPlan({
+				executionPlan,
+			}),
+		).toEqual({
+			commands: [{ type: "start_pass" }],
+			terminalResult: { type: "return_started_pass" },
+		});
+	});
+
+	it("plans mismatch restart commands in deterministic order", () => {
+		const executionPlan = reduceRevalidationLaneEvent({
+			state: {
+				hasInFlightPass: true,
+				isTrailingEligible: false,
+				inFlightTargetMatchesCurrentHref: false,
+			},
+			event: {
+				type: "revalidation_requested",
+			},
+		});
+		expect(executionPlan).toEqual({
+			type: "restart_after_target_mismatch",
+		});
+		expect(
+			buildRevalidationLaneRuntimeCommandPlan({
+				executionPlan,
+			}),
+		).toEqual({
+			commands: [
+				{ type: "notify_in_flight_target_mismatch" },
+				{ type: "clear_queued_trailing_request" },
+				{ type: "start_pass" },
+			],
+			terminalResult: { type: "return_started_pass" },
+		});
+	});
+
+	it("plans in-flight reuse before trailing eligibility opens", () => {
+		const executionPlan = reduceRevalidationLaneEvent({
+			state: {
+				hasInFlightPass: true,
+				isTrailingEligible: false,
+				inFlightTargetMatchesCurrentHref: true,
+			},
+			event: {
+				type: "revalidation_requested",
+			},
+		});
+		expect(executionPlan).toEqual({
+			type: "reuse_in_flight_pass",
+		});
+		expect(
+			buildRevalidationLaneRuntimeCommandPlan({
+				executionPlan,
+			}),
+		).toEqual({
+			commands: [],
+			terminalResult: { type: "return_in_flight_pass" },
+		});
+	});
+
+	it("plans trailing-pass scheduling when the trailing window is open", () => {
+		const executionPlan = reduceRevalidationLaneEvent({
+			state: {
+				hasInFlightPass: true,
+				isTrailingEligible: true,
+				inFlightTargetMatchesCurrentHref: true,
+			},
+			event: {
+				type: "revalidation_requested",
+			},
+		});
+		expect(executionPlan).toEqual({
+			type: "schedule_trailing_pass",
+		});
+		expect(
+			buildRevalidationLaneRuntimeCommandPlan({
+				executionPlan,
+			}),
+		).toEqual({
+			commands: [{ type: "schedule_trailing_pass" }],
+			terminalResult: { type: "return_scheduled_trailing_pass" },
+		});
+	});
+});
+
 describe("deterministic revalidation lane internals", () => {
 	it("starts a single pass when idle", async () => {
 		let currentHref = "http://localhost:3000/one";
+		let hasInFlightPass = false;
+		let inFlightTargetUrl: string | null = null;
 		const onInFlightTargetMismatch = vi.fn();
 		const runLane = createDeterministicRevalidationLane({
 			getCurrentHref: () => currentHref,
+			getHasInFlightPass: () => hasInFlightPass,
+			getInFlightTargetUrl: () => inFlightTargetUrl,
 			onInFlightTargetMismatch,
 		});
-		const navigateSinglePass = vi.fn(async (_props: NavigateProps) => ({
-			didNavigate: true,
-		}));
+		const navigateSinglePass = vi.fn(async (props: NavigateProps) => {
+			inFlightTargetUrl = props.href;
+			hasInFlightPass = true;
+			return {
+				didNavigate: true,
+			};
+		});
 
 		const result = await runLane.runRevalidation({ navigateSinglePass });
 
@@ -43,11 +157,21 @@ describe("deterministic revalidation lane internals", () => {
 
 	it("reuses in-flight promise before trailing window opens", async () => {
 		const deferred = createDeferred<{ didNavigate: boolean }>();
+		let hasInFlightPass = false;
+		let inFlightTargetUrl: string | null = null;
 		const runLane = createDeterministicRevalidationLane({
 			getCurrentHref: () => "http://localhost:3000/same",
+			getHasInFlightPass: () => hasInFlightPass,
+			getInFlightTargetUrl: () => inFlightTargetUrl,
 			onInFlightTargetMismatch: vi.fn(),
 		});
-		const navigateSinglePass = vi.fn(() => deferred.promise);
+		const navigateSinglePass = vi.fn((props: NavigateProps) => {
+			inFlightTargetUrl = props.href;
+			hasInFlightPass = true;
+			return deferred.promise.finally(() => {
+				hasInFlightPass = false;
+			});
+		});
 
 		const firstPromise = runLane.runRevalidation({ navigateSinglePass });
 		const secondPromise = runLane.runRevalidation({ navigateSinglePass });
@@ -62,14 +186,30 @@ describe("deterministic revalidation lane internals", () => {
 	it("queues at most one trailing pass once trailing window opens", async () => {
 		const firstDeferred = createDeferred<{ didNavigate: boolean }>();
 		const secondDeferred = createDeferred<{ didNavigate: boolean }>();
+		let hasInFlightPass = false;
+		let inFlightTargetUrl: string | null = null;
 		const runLane = createDeterministicRevalidationLane({
 			getCurrentHref: () => "http://localhost:3000/trailing",
+			getHasInFlightPass: () => hasInFlightPass,
+			getInFlightTargetUrl: () => inFlightTargetUrl,
 			onInFlightTargetMismatch: vi.fn(),
 		});
 		const navigateSinglePass = vi
 			.fn()
-			.mockImplementationOnce(() => firstDeferred.promise)
-			.mockImplementationOnce(() => secondDeferred.promise);
+			.mockImplementationOnce((props: NavigateProps) => {
+				inFlightTargetUrl = props.href;
+				hasInFlightPass = true;
+				return firstDeferred.promise.finally(() => {
+					hasInFlightPass = false;
+				});
+			})
+			.mockImplementationOnce((props: NavigateProps) => {
+				inFlightTargetUrl = props.href;
+				hasInFlightPass = true;
+				return secondDeferred.promise.finally(() => {
+					hasInFlightPass = false;
+				});
+			});
 
 		const firstPromise = runLane.runRevalidation({ navigateSinglePass });
 		await Promise.resolve();
@@ -95,17 +235,33 @@ describe("deterministic revalidation lane internals", () => {
 
 	it("starts a new pass immediately when in-flight target mismatches current href", async () => {
 		let currentHref = "http://localhost:3000/first";
+		let hasInFlightPass = false;
+		let inFlightTargetUrl: string | null = null;
 		const firstDeferred = createDeferred<{ didNavigate: boolean }>();
 		const mismatchResultPromise = Promise.resolve({ didNavigate: true });
 		const onInFlightTargetMismatch = vi.fn();
 		const runLane = createDeterministicRevalidationLane({
 			getCurrentHref: () => currentHref,
+			getHasInFlightPass: () => hasInFlightPass,
+			getInFlightTargetUrl: () => inFlightTargetUrl,
 			onInFlightTargetMismatch,
 		});
 		const navigateSinglePass = vi
 			.fn()
-			.mockImplementationOnce(() => firstDeferred.promise)
-			.mockImplementationOnce(() => mismatchResultPromise);
+			.mockImplementationOnce((props: NavigateProps) => {
+				inFlightTargetUrl = props.href;
+				hasInFlightPass = true;
+				return firstDeferred.promise.finally(() => {
+					hasInFlightPass = false;
+				});
+			})
+			.mockImplementationOnce((props: NavigateProps) => {
+				inFlightTargetUrl = props.href;
+				hasInFlightPass = true;
+				return mismatchResultPromise.finally(() => {
+					hasInFlightPass = false;
+				});
+			});
 
 		const firstPromise = runLane.runRevalidation({ navigateSinglePass });
 		currentHref = "http://localhost:3000/second";
@@ -126,11 +282,21 @@ describe("deterministic revalidation lane internals", () => {
 
 	it("clears queued trailing request without running a second pass", async () => {
 		const firstDeferred = createDeferred<{ didNavigate: boolean }>();
+		let hasInFlightPass = false;
+		let inFlightTargetUrl: string | null = null;
 		const runLane = createDeterministicRevalidationLane({
 			getCurrentHref: () => "http://localhost:3000/clear",
+			getHasInFlightPass: () => hasInFlightPass,
+			getInFlightTargetUrl: () => inFlightTargetUrl,
 			onInFlightTargetMismatch: vi.fn(),
 		});
-		const navigateSinglePass = vi.fn(() => firstDeferred.promise);
+		const navigateSinglePass = vi.fn((props: NavigateProps) => {
+			inFlightTargetUrl = props.href;
+			hasInFlightPass = true;
+			return firstDeferred.promise.finally(() => {
+				hasInFlightPass = false;
+			});
+		});
 
 		const firstPromise = runLane.runRevalidation({ navigateSinglePass });
 		await Promise.resolve();

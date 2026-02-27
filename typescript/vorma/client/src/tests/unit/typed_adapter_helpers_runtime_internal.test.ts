@@ -1,39 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
-	buildTypedAdapterRoutePropsWithInternalRouteInstanceToken,
-	createTypedAdapterRouteInstanceToken,
-	markTypedAdapterRouteInstanceTokenActive,
-	markTypedAdapterRouteInstanceTokenDisposed,
+	buildTypedAdapterRoutePropsWithInternalRouteScope,
+	createTypedAdapterRouteScope,
 	resolveTypedAdapterClientLoaderDataForPatternOrRouteProps,
 	resolveTypedAdapterIndexedDataForPattern,
 	resolveTypedAdapterLoaderDataForRoutePropsOrThrow,
-	syncTypedAdapterRouteInstanceStoreFromNavigationState,
-} from "../../ui/typed_adapter_helpers_runtime.ts";
+} from "../../runtime.ts";
 
-function buildRoutePropsWithToken(props: {
-	idx: number;
-	routeInstanceToken: unknown;
-}) {
+function buildRoutePropsWithScope(props: { idx: number; routeScope: unknown }) {
 	return {
 		idx: props.idx,
-		...buildTypedAdapterRoutePropsWithInternalRouteInstanceToken({
-			routeInstanceToken: props.routeInstanceToken,
+		...buildTypedAdapterRoutePropsWithInternalRouteScope({
+			routeScope: props.routeScope,
 		}),
 	} as any;
-}
-
-function buildRouteKey(props: {
-	idx: number;
-	importURL: string;
-	exportKey: string;
-	matchedPattern?: string;
-}): string {
-	return JSON.stringify([
-		props.idx,
-		props.importURL,
-		props.exportKey,
-		props.matchedPattern ?? "/probe",
-	]);
 }
 
 describe("typed adapter helper runtime selection contracts", () => {
@@ -55,185 +35,52 @@ describe("typed adapter helper runtime selection contracts", () => {
 		expect(result).toBe("probe-a");
 	});
 
-	it("resolves loader data by explicit route-instance store transitions", () => {
-		const routeInstanceToken = createTypedAdapterRouteInstanceToken({
+	it("resolves loader data by route scope against current snapshot", () => {
+		const routeScope = createTypedAdapterRouteScope({
 			routePropsIndex: 0,
-			routeKey: buildRouteKey({
-				idx: 0,
-				importURL: "/root.js",
-				exportKey: "default",
-			}),
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-a"],
-			clientLoadersData: ["client-a"],
+			matchedPattern: "/probe",
 		});
-		const routeProps = buildRoutePropsWithToken({
+		const routeProps = buildRoutePropsWithScope({
 			idx: 0,
-			routeInstanceToken,
-		});
-		markTypedAdapterRouteInstanceTokenActive({
-			routeInstanceToken,
+			routeScope,
 		});
 
-		const activeResult =
+		const result =
 			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
 				routeProps,
-				matchedPatterns: ["/probe"],
 				loadersData: ["loader-a"],
+			});
+		expect(result).toBe("loader-a");
+	});
+
+	it("resolves client loader data by route scope against current snapshot", () => {
+		const routeScope = createTypedAdapterRouteScope({
+			routePropsIndex: 0,
+			matchedPattern: "/probe",
+		});
+		const routeProps = buildRoutePropsWithScope({
+			idx: 0,
+			routeScope,
+		});
+
+		const result =
+			resolveTypedAdapterClientLoaderDataForPatternOrRouteProps<string>({
+				pattern: "/probe",
+				routeProps,
+				matchedPatterns: ["/probe"],
 				clientLoadersData: ["client-a"],
 			});
-		expect(activeResult).toBe("loader-a");
-
-		syncTypedAdapterRouteInstanceStoreFromNavigationState({
-			matchedPatterns: ["/root"],
-			loadersData: ["root-b"],
-			clientLoadersData: ["root-client-b"],
-			importURLs: ["/root.js"],
-			exportKeys: ["default"],
-		});
-		const exitingResult =
-			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
-				routeProps,
-				matchedPatterns: ["/root"],
-				loadersData: ["root-b"],
-				clientLoadersData: ["root-client-b"],
-			});
-		expect(exitingResult).toBe("loader-a");
-
-		syncTypedAdapterRouteInstanceStoreFromNavigationState({
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-c"],
-			clientLoadersData: ["client-c"],
-			importURLs: ["/root.js"],
-			exportKeys: ["default"],
-		});
-		const reboundResult =
-			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
-				routeProps,
-				matchedPatterns: ["/probe"],
-				loadersData: ["loader-c"],
-				clientLoadersData: ["client-c"],
-			});
-		expect(reboundResult).toBe("loader-c");
+		expect(result).toBe("client-a");
 	});
 
-	it("marks route instance exiting on route-key replacement and keeps previous snapshot", () => {
-		const routeInstanceToken = createTypedAdapterRouteInstanceToken({
+	it("throws for client-loader route-props path when scope is bound to another pattern", () => {
+		const routeScope = createTypedAdapterRouteScope({
 			routePropsIndex: 0,
-			routeKey: buildRouteKey({
-				idx: 0,
-				importURL: "/root-a.js",
-				exportKey: "default",
-			}),
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-a"],
-			clientLoadersData: ["client-a"],
+			matchedPattern: "/probe",
 		});
-		const routeProps = buildRoutePropsWithToken({
+		const routeProps = buildRoutePropsWithScope({
 			idx: 0,
-			routeInstanceToken,
-		});
-		markTypedAdapterRouteInstanceTokenActive({
-			routeInstanceToken,
-		});
-
-		syncTypedAdapterRouteInstanceStoreFromNavigationState({
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-b"],
-			clientLoadersData: ["client-b"],
-			importURLs: ["/root-b.js"],
-			exportKeys: ["default"],
-		});
-		const exitingResult =
-			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
-				routeProps,
-				matchedPatterns: ["/probe"],
-				loadersData: ["loader-b"],
-				clientLoadersData: ["client-b"],
-			});
-		expect(exitingResult).toBe("loader-a");
-	});
-
-	it("resolves client loader data by explicit route-instance store transitions", () => {
-		const routeInstanceToken = createTypedAdapterRouteInstanceToken({
-			routePropsIndex: 0,
-			routeKey: buildRouteKey({
-				idx: 0,
-				importURL: "/root.js",
-				exportKey: "default",
-			}),
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-a"],
-			clientLoadersData: ["client-a"],
-		});
-		const routeProps = buildRoutePropsWithToken({
-			idx: 0,
-			routeInstanceToken,
-		});
-		markTypedAdapterRouteInstanceTokenActive({
-			routeInstanceToken,
-		});
-
-		const activeResult =
-			resolveTypedAdapterClientLoaderDataForPatternOrRouteProps<string>({
-				pattern: "/probe",
-				routeProps,
-				matchedPatterns: ["/probe"],
-				loadersData: ["loader-a"],
-				clientLoadersData: ["client-a"],
-			});
-		expect(activeResult).toBe("client-a");
-
-		syncTypedAdapterRouteInstanceStoreFromNavigationState({
-			matchedPatterns: ["/root"],
-			loadersData: ["root-b"],
-			clientLoadersData: ["root-client-b"],
-			importURLs: ["/root.js"],
-			exportKeys: ["default"],
-		});
-		const exitingResult =
-			resolveTypedAdapterClientLoaderDataForPatternOrRouteProps<string>({
-				pattern: "/probe",
-				routeProps,
-				matchedPatterns: ["/root"],
-				loadersData: ["root-b"],
-				clientLoadersData: ["root-client-b"],
-			});
-		expect(exitingResult).toBe("client-a");
-
-		syncTypedAdapterRouteInstanceStoreFromNavigationState({
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-c"],
-			clientLoadersData: ["client-c"],
-			importURLs: ["/root.js"],
-			exportKeys: ["default"],
-		});
-		const reboundResult =
-			resolveTypedAdapterClientLoaderDataForPatternOrRouteProps<string>({
-				pattern: "/probe",
-				routeProps,
-				matchedPatterns: ["/probe"],
-				loadersData: ["loader-c"],
-				clientLoadersData: ["client-c"],
-			});
-		expect(reboundResult).toBe("client-c");
-	});
-
-	it("throws for client loader route-props path when token is bound to a different pattern", () => {
-		const routeInstanceToken = createTypedAdapterRouteInstanceToken({
-			routePropsIndex: 0,
-			routeKey: buildRouteKey({
-				idx: 0,
-				importURL: "/root.js",
-				exportKey: "default",
-			}),
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-a"],
-			clientLoadersData: ["client-a"],
-		});
-		const routeProps = buildRoutePropsWithToken({
-			idx: 0,
-			routeInstanceToken,
+			routeScope,
 		});
 
 		expect(() =>
@@ -241,85 +88,79 @@ describe("typed adapter helper runtime selection contracts", () => {
 				pattern: "/other",
 				routeProps,
 				matchedPatterns: ["/probe"],
-				loadersData: ["loader-a"],
 				clientLoadersData: ["client-a"],
 			}),
 		).toThrow(
-			'useClientLoaderData(routeProps) contract violated for pattern "/other": route instance is bound to pattern "/probe".',
+			'useClientLoaderData(routeProps) contract violated for pattern "/other": route scope is bound to pattern "/probe".',
 		);
 	});
 
-	it("throws for route-props path when route instance token is missing", () => {
+	it("throws for route-props path when route scope is missing", () => {
 		expect(() =>
 			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
 				routeProps: { idx: 0 } as any,
-				matchedPatterns: ["/probe"],
 				loadersData: ["loader-a"],
-				clientLoadersData: ["client-a"],
 			}),
 		).toThrow(
-			"useLoaderData(routeProps) contract violated: route instance token is missing or invalid.",
+			"useLoaderData(routeProps) contract violated: route scope is missing or invalid.",
 		);
 	});
 
-	it("throws for route-props path when route instance token is disposed", () => {
-		const routeInstanceToken = createTypedAdapterRouteInstanceToken({
+	it("throws when route props index changes after route scope binding", () => {
+		const routeScope = createTypedAdapterRouteScope({
 			routePropsIndex: 0,
-			routeKey: buildRouteKey({
-				idx: 0,
-				importURL: "/root.js",
-				exportKey: "default",
-			}),
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-a"],
-			clientLoadersData: ["client-a"],
+			matchedPattern: "/probe",
 		});
-		markTypedAdapterRouteInstanceTokenDisposed({
-			routeInstanceToken,
-		});
-		const routeProps = buildRoutePropsWithToken({
-			idx: 0,
-			routeInstanceToken,
-		});
-
-		expect(() =>
-			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
-				routeProps,
-				matchedPatterns: ["/probe"],
-				loadersData: ["loader-a"],
-				clientLoadersData: ["client-a"],
-			}),
-		).toThrow(
-			"useLoaderData(routeProps) contract violated: route instance has been disposed.",
-		);
-	});
-
-	it("throws when route props index changes after route instance binding", () => {
-		const routeInstanceToken = createTypedAdapterRouteInstanceToken({
-			routePropsIndex: 0,
-			routeKey: buildRouteKey({
-				idx: 0,
-				importURL: "/root.js",
-				exportKey: "default",
-			}),
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-a"],
-			clientLoadersData: ["client-a"],
-		});
-		const routeProps = buildRoutePropsWithToken({
+		const routeProps = buildRoutePropsWithScope({
 			idx: 1,
-			routeInstanceToken,
+			routeScope,
 		});
 
 		expect(() =>
 			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
 				routeProps,
-				matchedPatterns: ["/probe", "/child"],
 				loadersData: ["loader-a", "loader-b"],
-				clientLoadersData: ["client-a", "client-b"],
 			}),
 		).toThrow(
-			"useLoaderData(routeProps) contract violated: routeProps.idx changed after route instance binding.",
+			"useLoaderData(routeProps) contract violated: routeProps.idx changed after route scope binding.",
+		);
+	});
+
+	it("follows current indexed loader data for a bound route scope across pattern changes", () => {
+		const routeScope = createTypedAdapterRouteScope({
+			routePropsIndex: 0,
+			matchedPattern: "/probe",
+		});
+		const routeProps = buildRoutePropsWithScope({
+			idx: 0,
+			routeScope,
+		});
+
+		expect(
+			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
+				routeProps,
+				loadersData: ["loader-b"],
+			}),
+		).toBe("loader-b");
+	});
+
+	it("throws when route-scoped loader data is unavailable", () => {
+		const routeScope = createTypedAdapterRouteScope({
+			routePropsIndex: 1,
+			matchedPattern: "/child",
+		});
+		const routeProps = buildRoutePropsWithScope({
+			idx: 1,
+			routeScope,
+		});
+
+		expect(() =>
+			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
+				routeProps,
+				loadersData: ["loader-root"],
+			}),
+		).toThrow(
+			"useLoaderData(routeProps) contract violated: no route-scoped loader snapshot is available.",
 		);
 	});
 
@@ -328,55 +169,28 @@ describe("typed adapter helper runtime selection contracts", () => {
 			resolveTypedAdapterClientLoaderDataForPatternOrRouteProps<string>({
 				pattern: "/probe",
 				matchedPatterns: ["/other"],
-				loadersData: ["other-loader"],
 				clientLoadersData: ["other-client"],
 			});
 
 		expect(result).toBeUndefined();
 	});
 
-	it("does not sync snapshots for tokens that were created but never mounted", () => {
-		const unmountedRouteInstanceToken =
-			createTypedAdapterRouteInstanceToken({
+	it("validates route scope initialization contracts", () => {
+		expect(() =>
+			createTypedAdapterRouteScope({
+				routePropsIndex: -1,
+				matchedPattern: "/probe",
+			}),
+		).toThrow(
+			"Vorma route scope initialization violated: route index must be a non-negative integer.",
+		);
+		expect(() =>
+			createTypedAdapterRouteScope({
 				routePropsIndex: 0,
-				routeKey: buildRouteKey({
-					idx: 0,
-					importURL: "/root.js",
-					exportKey: "default",
-				}),
-				matchedPatterns: ["/probe"],
-				loadersData: ["loader-a"],
-				clientLoadersData: ["client-a"],
-			});
-		const unmountedRouteProps = buildRoutePropsWithToken({
-			idx: 0,
-			routeInstanceToken: unmountedRouteInstanceToken,
-		});
-
-		syncTypedAdapterRouteInstanceStoreFromNavigationState({
-			matchedPatterns: ["/probe"],
-			loadersData: ["loader-b"],
-			clientLoadersData: ["client-b"],
-			importURLs: ["/root.js"],
-			exportKeys: ["default"],
-		});
-
-		expect(
-			resolveTypedAdapterLoaderDataForRoutePropsOrThrow<string>({
-				routeProps: unmountedRouteProps,
-				matchedPatterns: ["/probe"],
-				loadersData: ["loader-b"],
-				clientLoadersData: ["client-b"],
+				matchedPattern: "",
 			}),
-		).toBe("loader-a");
-		expect(
-			resolveTypedAdapterClientLoaderDataForPatternOrRouteProps<string>({
-				pattern: "/probe",
-				routeProps: unmountedRouteProps,
-				matchedPatterns: ["/probe"],
-				loadersData: ["loader-b"],
-				clientLoadersData: ["client-b"],
-			}),
-		).toBe("client-a");
+		).toThrow(
+			"Vorma route scope initialization violated: matched pattern is missing at route index.",
+		);
 	});
 });

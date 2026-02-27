@@ -51,7 +51,9 @@ describe("client module-loading and fetch contracts", () => {
 		await api.vormaNavigate("/multi-export");
 		await vi.runAllTimersAsync();
 
-		const components = api.__vormaClientGlobal.get("activeComponents");
+		const components = api.__vormaClientGlobal.get(
+			"runtimeRouteSnapshot",
+		).activeComponents;
 		expect(components).toHaveLength(2);
 		expect(components?.[0]).toBe(mockModule.default);
 		expect(components?.[1]).toBe(mockModule.NamedExport);
@@ -81,9 +83,10 @@ describe("client module-loading and fetch contracts", () => {
 		await api.vormaNavigate("/with-error-boundary");
 		await vi.runAllTimersAsync();
 
-		expect(api.__vormaClientGlobal.get("activeErrorBoundary")).toBe(
-			errorBoundary,
-		);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.activeErrorBoundary,
+		).toBe(errorBoundary);
 	});
 
 	it("falls back to default error boundary when server index has no error component", async () => {
@@ -93,11 +96,11 @@ describe("client module-loading and fetch contracts", () => {
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse({
-				importURLs: [],
-				exportKeys: [],
-				errorExportKeys: [],
-				matchedPatterns: [],
-				loadersData: [],
+				importURLs: [""],
+				exportKeys: [""],
+				errorExportKeys: [""],
+				matchedPatterns: ["/fallback-error-boundary"],
+				loadersData: [{}],
 				outermostServerErrorIdx: 0,
 			}),
 		);
@@ -105,9 +108,10 @@ describe("client module-loading and fetch contracts", () => {
 		await api.vormaNavigate("/fallback-error-boundary");
 		await vi.runAllTimersAsync();
 
-		expect(api.__vormaClientGlobal.get("activeErrorBoundary")).toBe(
-			defaultErrorBoundary,
-		);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.activeErrorBoundary,
+		).toBe(defaultErrorBoundary);
 	});
 
 	it("replaces active error boundary when later navigations report a new boundary", async () => {
@@ -142,15 +146,17 @@ describe("client module-loading and fetch contracts", () => {
 
 		await api.vormaNavigate("/error-a");
 		await vi.runAllTimersAsync();
-		expect(api.__vormaClientGlobal.get("activeErrorBoundary")).toBe(
-			firstBoundary,
-		);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.activeErrorBoundary,
+		).toBe(firstBoundary);
 
 		await api.vormaNavigate("/error-b");
 		await vi.runAllTimersAsync();
-		expect(api.__vormaClientGlobal.get("activeErrorBoundary")).toBe(
-			secondBoundary,
-		);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.activeErrorBoundary,
+		).toBe(secondBoundary);
 		expect(fetchSpy).toHaveBeenCalledTimes(2);
 	});
 
@@ -163,8 +169,9 @@ describe("client module-loading and fetch contracts", () => {
 		const api = await loadClientAPI();
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse({
-				importURLs: [],
-				exportKeys: [],
+				importURLs: [""],
+				exportKeys: [""],
+				errorExportKeys: [""],
 				matchedPatterns: ["/pattern"],
 				loadersData: [{ serverData: "test" }],
 				hasRootData: true,
@@ -218,9 +225,9 @@ describe("client module-loading and fetch contracts", () => {
 		await vi.runAllTimersAsync();
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
-		expect(api.__vormaClientGlobal.get("loadersData")).toEqual([
-			{ serverData: "from-server" },
-		]);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot").loadersData,
+		).toEqual([{ serverData: "from-server" }]);
 	});
 
 	it("preserves active error boundaries across hash-only navigations", async () => {
@@ -248,16 +255,19 @@ describe("client module-loading and fetch contracts", () => {
 		await vi.runAllTimersAsync();
 
 		const activeErrorBoundaryBeforeHashNavigation =
-			api.__vormaClientGlobal.get("activeErrorBoundary");
+			api.__vormaClientGlobal.get(
+				"runtimeRouteSnapshot",
+			).activeErrorBoundary;
 		expect(activeErrorBoundaryBeforeHashNavigation).toBeTypeOf("function");
 
 		await api.vormaNavigate("/parity-module#details");
 		await vi.runAllTimersAsync();
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
-		expect(api.__vormaClientGlobal.get("activeErrorBoundary")).toBe(
-			activeErrorBoundaryBeforeHashNavigation,
-		);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.activeErrorBoundary,
+		).toBe(activeErrorBoundaryBeforeHashNavigation);
 	});
 
 	it("resolves module imports from viteDevURL when present", async () => {
@@ -283,7 +293,9 @@ describe("client module-loading and fetch contracts", () => {
 		await api.vormaNavigate("/dev-module");
 		await vi.runAllTimersAsync();
 
-		const components = api.__vormaClientGlobal.get("activeComponents");
+		const components = api.__vormaClientGlobal.get(
+			"runtimeRouteSnapshot",
+		).activeComponents;
 		expect(components?.[0]).toBe(devComponent);
 	});
 

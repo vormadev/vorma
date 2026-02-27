@@ -4,7 +4,7 @@ import {
 	addStatusListener,
 	dispatchLocationEvent,
 	dispatchStatusEvent,
-} from "../../platform/events.ts";
+} from "../../runtime.ts";
 
 describe("platform events", () => {
 	it("dispatchStatusEvent does not throw when window is unavailable", () => {

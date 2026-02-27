@@ -1,3 +1,18 @@
+## Always, Always, Always Do The Hardest Task First
+
+When you have a checklist of tasks to do, always always always do the #1 hardest
+task first, then the second hardest, and so on. No exceptions. If you do the
+easy low-hanging-fruit first, you only further embed/ossify whatever structures
+are making the hard items hard in the first place. Never ever ever violate this
+rule. It's the most important rule.
+
+## Whenever An E2E Test Unearths A Bug, Create a Non-E2E Regression Test That Covers It
+
+Our E2E tests are intended to be a last resort, and they take a long time to
+run. For that reason, every time you come across a failing E2E test, make sure
+to (if possible) recreate a non-E2E regression test version covering the issue
+for faster feedback and regression protection.
+
 ## Git Command Policy
 
 The agent may use Git only for read-only inspection.

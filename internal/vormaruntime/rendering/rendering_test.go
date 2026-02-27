@@ -44,9 +44,15 @@ func TestBuildSSRInnerHTML_RendersScriptAndHash(t *testing.T) {
 	if !strings.Contains(script, `type="module"`) {
 		t.Fatalf("expected module script tag, got %q", script)
 	}
-	if !strings.Contains(script, `x.rootElementID = "root-id";`) {
+	if !strings.Contains(script, `x.runtimeRouteSnapshot = {`) {
 		t.Fatalf(
-			"expected root element id assignment in script, got %q",
+			"expected runtime route snapshot bootstrap in script, got %q",
+			script,
+		)
+	}
+	if !strings.Contains(script, `rootElementID: "root-id",`) {
+		t.Fatalf(
+			"expected root element id in runtime route snapshot bootstrap, got %q",
 			script,
 		)
 	}
@@ -270,7 +276,7 @@ func TestBuildLoadersHTMLResponseBytes_RendersDocument(t *testing.T) {
 	if !strings.Contains(rendered, `/static/vorma_out/client-entry.js`) {
 		t.Fatalf("missing body scripts in output: %s", rendered)
 	}
-	if !strings.Contains(rendered, `x.buildID = "build-123";`) {
+	if !strings.Contains(rendered, `buildID: "build-123",`) {
 		t.Fatalf("missing SSR script output: %s", rendered)
 	}
 }

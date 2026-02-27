@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldTriggerFocusRevalidation } from "../../core/extras.ts";
+import { shouldTriggerFocusRevalidation } from "../../runtime.ts";
 
 describe("focus revalidation trigger policy state machine", () => {
 	it("blocks focus revalidate while navigating", () => {

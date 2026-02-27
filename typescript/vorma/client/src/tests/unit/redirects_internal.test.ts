@@ -1,17 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { NavigationEntry } from "../../core/navigation/types.ts";
-import type { RedirectData } from "../../core/redirects.ts";
+import type { NavigationEntry, RedirectData } from "../../../src/runtime.ts";
 
-type ContextModule = typeof import("../../app/context.ts");
-type RedirectsModule = typeof import("../../core/redirects.ts");
+type ContextModule = typeof import("../../runtime.ts");
+type RedirectsModule = typeof import("../../runtime.ts");
 
 async function loadRedirectModules(): Promise<{
 	contextModule: ContextModule;
 	redirectsModule: RedirectsModule;
 }> {
 	vi.resetModules();
-	const contextModule = await import("../../app/context.ts");
-	const redirectsModule = await import("../../core/redirects.ts");
+	const contextModule = await import("../../runtime.ts");
+	const redirectsModule = await import("../../runtime.ts");
 	return { contextModule, redirectsModule };
 }
 
@@ -72,14 +71,15 @@ describe("redirects internal defensive branches", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("does nothing when syncing build ID for already-applied redirect data", async () => {
+	it("is a no-op for already-applied redirect data", async () => {
 		const { redirectsModule } = await loadRedirectModules();
 
-		expect(() => {
-			redirectsModule.syncBuildIDFromRedirectData(
+		await expect(
+			redirectsModule.effectuateRedirectDataResult(
 				createDidRedirectData(),
-			);
-		}).not.toThrow();
+				0,
+			),
+		).resolves.toBeNull();
 	});
 
 	it("returns null for already-applied redirect data without requiring navigation state", async () => {

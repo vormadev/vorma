@@ -5,6 +5,7 @@ import {
 	createJSONResponse,
 	createRouteDataResponse,
 	loadClientAPI,
+	patchContractRuntimeRouteSnapshot,
 	setupContractTestSuite,
 	stubWindowLocationHref,
 	waitForRequestCount,
@@ -1053,10 +1054,15 @@ describe("client submit/redirect contracts", () => {
 		window.history.replaceState({}, "", "/after-submit");
 		document.title = "Before Submit";
 
-		api.__vormaClientGlobal.set("matchedPatterns", ["/after-submit"]);
-		api.__vormaClientGlobal.set("loadersData", [{ stale: true }]);
-		api.__vormaClientGlobal.set("params", {});
-		api.__vormaClientGlobal.set("splatValues", []);
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				matchedPatterns: ["/after-submit"],
+				loadersData: [{ stale: true }],
+				params: {},
+				splatValues: [],
+			},
+		});
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
 			.mockResolvedValueOnce(

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { decideBeginNavigationExecutionPlan } from "../../core/navigation/begin_navigation_state_machine.ts";
 import type {
 	NavigateProps,
 	NavigationEntry,
 	NavigationOutcome,
-} from "../../core/navigation/types.ts";
+} from "../../../src/runtime.ts";
+import { decideBeginNavigationExecutionPlan } from "../../runtime.ts";
 
 let nextOperationID = 1;
 
@@ -299,6 +299,171 @@ describe("begin navigation state machine", () => {
 			createInstruction: {
 				slot: "revalidation",
 				revalidationHref: "http://localhost:3000/settings",
+			},
+		});
+	});
+
+	it("creates an active-lane navigation when no reusable lane entry exists", () => {
+		const staleActive = createEntry({
+			targetUrl: "http://localhost:3000/stale-active",
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		const stalePrefetch = createEntry({
+			targetUrl: "http://localhost:3000/stale-prefetch",
+			type: "prefetch",
+			intent: "none",
+		});
+		const staleRevalidation = createEntry({
+			targetUrl: "http://localhost:3000/stale-revalidation",
+			type: "revalidation",
+			intent: "revalidate",
+		});
+
+		const executionPlan = decideBeginNavigationExecutionPlan({
+			navigationProps: createNavigationProps({
+				href: "http://localhost:3000/fresh-target",
+				navigationType: "browserHistory",
+			}),
+			currentHref: "http://localhost:3000/current",
+			lanes: {
+				active: staleActive,
+				revalidation: staleRevalidation,
+				prefetch: new Map([[stalePrefetch.targetUrl, stalePrefetch]]),
+			},
+		});
+
+		expect(executionPlan).toEqual({
+			type: "create",
+			abortInstructions: [
+				{
+					slot: "active",
+					entry: staleActive,
+				},
+				{
+					slot: "prefetch",
+					key: stalePrefetch.targetUrl,
+					entry: stalePrefetch,
+				},
+				{
+					slot: "revalidation",
+					entry: staleRevalidation,
+				},
+			],
+			createInstruction: {
+				slot: "active",
+			},
+		});
+	});
+
+	it("reuses active lane entry for matching prefetch target", () => {
+		const activeEntry = createEntry({
+			targetUrl: "http://localhost:3000/profile#a",
+			type: "userNavigation",
+			intent: "navigate",
+		});
+
+		const executionPlan = decideBeginNavigationExecutionPlan({
+			navigationProps: createNavigationProps({
+				href: "http://localhost:3000/profile#b",
+				navigationType: "prefetch",
+			}),
+			currentHref: "http://localhost:3000/current",
+			lanes: {
+				active: activeEntry,
+				revalidation: null,
+				prefetch: new Map(),
+			},
+		});
+
+		expect(executionPlan).toEqual({
+			type: "reuse",
+			abortInstructions: [],
+			reuseInstruction: {
+				sourceSlot: "active",
+				sourcePrefetchKey: null,
+				entry: activeEntry,
+				promotion: null,
+			},
+		});
+	});
+
+	it("reuses revalidation lane entry for matching prefetch target", () => {
+		const revalidationEntry = createEntry({
+			targetUrl: "http://localhost:3000/settings#live",
+			type: "revalidation",
+			intent: "revalidate",
+		});
+
+		const executionPlan = decideBeginNavigationExecutionPlan({
+			navigationProps: createNavigationProps({
+				href: "http://localhost:3000/settings#next",
+				navigationType: "prefetch",
+			}),
+			currentHref: "http://localhost:3000/current",
+			lanes: {
+				active: null,
+				revalidation: revalidationEntry,
+				prefetch: new Map(),
+			},
+		});
+
+		expect(executionPlan).toEqual({
+			type: "reuse",
+			abortInstructions: [],
+			reuseInstruction: {
+				sourceSlot: "revalidation",
+				sourcePrefetchKey: null,
+				entry: revalidationEntry,
+				promotion: null,
+			},
+		});
+	});
+
+	it("creates a new prefetch when target is unmatched and not current", () => {
+		const executionPlan = decideBeginNavigationExecutionPlan({
+			navigationProps: createNavigationProps({
+				href: "http://localhost:3000/catalog",
+				navigationType: "prefetch",
+			}),
+			currentHref: "http://localhost:3000/current",
+			lanes: {
+				active: null,
+				revalidation: null,
+				prefetch: new Map(),
+			},
+		});
+
+		expect(executionPlan).toEqual({
+			type: "create",
+			abortInstructions: [],
+			createInstruction: {
+				slot: "prefetch",
+				targetUrl: "http://localhost:3000/catalog",
+			},
+		});
+	});
+
+	it("creates a new revalidation lane when none is active", () => {
+		const executionPlan = decideBeginNavigationExecutionPlan({
+			navigationProps: createNavigationProps({
+				href: "http://localhost:3000/ignored",
+				navigationType: "revalidation",
+			}),
+			currentHref: "http://localhost:3000/fresh",
+			lanes: {
+				active: null,
+				revalidation: null,
+				prefetch: new Map(),
+			},
+		});
+
+		expect(executionPlan).toEqual({
+			type: "create",
+			abortInstructions: [],
+			createInstruction: {
+				slot: "revalidation",
+				revalidationHref: "http://localhost:3000/fresh",
 			},
 		});
 	});

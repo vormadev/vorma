@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
+import type {
+	NavigationEntry,
+	NavigationLanes,
+	SubmissionEntry,
+} from "../../../src/runtime.ts";
 import {
-	applyNavigationPhaseLifecycleTransition,
 	applyNavigationRemovalLifecycleTransition,
 	buildClearAllLifecycleTransitionEvent,
 	buildNavigationBeginArbitratedLifecycleTransitionEvent,
 	buildNavigationFailureLifecycleTransitionEvent,
+	buildNavigationPhaseLifecycleTransitionEvent,
 	buildSubmissionStateLifecycleTransitionEvent,
-} from "../../core/navigation/runtime_lifecycle_transitions.ts";
-import type { NavigationLanes } from "../../core/navigation/runtime_slots.ts";
-import type {
-	NavigationEntry,
-	SubmissionEntry,
-} from "../../core/navigation/types.ts";
+} from "../../runtime.ts";
 
 function createNavigationEntry(props: {
 	operationID: number;
@@ -134,7 +134,7 @@ describe("runtime lifecycle transitions", () => {
 		expect(scheduleStatusUpdate).not.toHaveBeenCalled();
 	});
 
-	it("applies phase transition and returns a navigation_phase_transitioned event", () => {
+	it("builds navigation phase transition events from explicit phases", () => {
 		const entry = createNavigationEntry({
 			operationID: 2,
 			targetUrl: "http://localhost:3000/phase-me",
@@ -142,22 +142,13 @@ describe("runtime lifecycle transitions", () => {
 			intent: "navigate",
 			phase: "fetching",
 		});
-		const slots: NavigationLanes = {
-			active: entry,
-			prefetch: new Map(),
-			revalidation: null,
-		};
-		const scheduleStatusUpdate = vi.fn();
-
-		const transitionEvent = applyNavigationPhaseLifecycleTransition({
-			lanes: slots,
-			targetUrl: "http://localhost:3000/phase-me",
-			phase: "waiting",
-			scheduleStatusUpdate,
+		const transitionEvent = buildNavigationPhaseLifecycleTransitionEvent({
+			entry,
+			fromPhase: "fetching",
+			toPhase: "waiting",
 			reason: "test_phase_waiting",
 		});
 
-		expect(entry.phase).toBe("waiting");
 		expect(transitionEvent).toEqual({
 			type: "navigation_phase_transitioned",
 			entry,
@@ -165,10 +156,9 @@ describe("runtime lifecycle transitions", () => {
 			toPhase: "waiting",
 			reason: "test_phase_waiting",
 		});
-		expect(scheduleStatusUpdate).toHaveBeenCalledTimes(1);
 	});
 
-	it("does not emit phase transition event when phase is unchanged", () => {
+	it("allows same-phase transition events when reason logging is needed", () => {
 		const entry = createNavigationEntry({
 			operationID: 3,
 			targetUrl: "http://localhost:3000/phase-unchanged",
@@ -176,23 +166,20 @@ describe("runtime lifecycle transitions", () => {
 			intent: "none",
 			phase: "waiting",
 		});
-		const slots: NavigationLanes = {
-			active: null,
-			prefetch: new Map([[entry.targetUrl, entry]]),
-			revalidation: null,
-		};
-		const scheduleStatusUpdate = vi.fn();
-
-		const transitionEvent = applyNavigationPhaseLifecycleTransition({
-			lanes: slots,
-			targetUrl: "http://localhost:3000/phase-unchanged",
-			phase: "waiting",
-			scheduleStatusUpdate,
+		const transitionEvent = buildNavigationPhaseLifecycleTransitionEvent({
+			entry,
+			fromPhase: "waiting",
+			toPhase: "waiting",
 			reason: "test_phase_unchanged",
 		});
 
-		expect(transitionEvent).toBeNull();
-		expect(scheduleStatusUpdate).not.toHaveBeenCalled();
+		expect(transitionEvent).toEqual({
+			type: "navigation_phase_transitioned",
+			entry,
+			fromPhase: "waiting",
+			toPhase: "waiting",
+			reason: "test_phase_unchanged",
+		});
 	});
 
 	it("builds begin-arbitrated transition event with updated after snapshot", () => {

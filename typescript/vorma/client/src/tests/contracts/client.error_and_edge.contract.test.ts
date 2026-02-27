@@ -237,7 +237,7 @@ describe("client error and edge contracts", () => {
 	it("does not leak unhandled rejections when stale prefetch success is dropped before wait phase", async () => {
 		const api = await loadClientAPI();
 		const { ComponentLoader } =
-			await import("../../core/render_runtime.ts");
+			await import("../../runtime.ts");
 
 		vi.spyOn(ComponentLoader, "loadComponents").mockRejectedValueOnce(
 			new Error("Module preload failed"),

@@ -7,6 +7,7 @@ import { render as renderSolid } from "solid-js/web";
 import { describe, expect, it, vi } from "vitest";
 import {
 	installDistTestVormaGlobal,
+	patchDistRuntimeRouteSnapshot,
 	type DistTestVormaInternal,
 } from "./dist_test_harness.ts";
 
@@ -99,37 +100,20 @@ function applyRuntimeState(
 ) {
 	const nextMatchedPatterns = ["/", "/child"];
 	const nextClientLoadersData: Array<unknown> = [];
-	globals.matchedPatterns = nextMatchedPatterns;
-	globals.clientLoadersData = nextClientLoadersData;
-	globals.activeComponents = props.activeComponents;
-	globals.importURLs = props.importURLs;
-	globals.exportKeys = props.exportKeys;
-	globals.loadersData = props.loadersData;
-	globals.outermostError = props.outermostError;
-	globals.outermostErrorIdx = props.outermostErrorIdx;
-	globals.activeErrorBoundary = props.activeErrorBoundary;
-	globals.runtimeRouteSnapshot = {
-		...globals.runtimeRouteSnapshot,
-		buildID: globals.buildID,
-		rootElementID: (globals.runtimeRouteSnapshot ?? {})["rootElementID"],
-		matchedPatterns: nextMatchedPatterns,
-		loadersData: props.loadersData,
-		clientLoadersData: nextClientLoadersData,
-		importURLs: props.importURLs,
-		exportKeys: props.exportKeys,
-		errorExportKeys: globals.errorExportKeys ?? [],
-		hasRootData: globals.hasRootData ?? false,
-		params: globals.params ?? {},
-		splatValues: globals.splatValues ?? [],
-		outermostServerError: globals.outermostServerError,
-		outermostServerErrorIdx: globals.outermostServerErrorIdx,
-		outermostClientError: globals.outermostClientError,
-		outermostClientErrorIdx: globals.outermostClientErrorIdx,
-		outermostError: props.outermostError,
-		outermostErrorIdx: props.outermostErrorIdx,
-		activeComponents: props.activeComponents,
-		activeErrorBoundary: props.activeErrorBoundary,
-	};
+	patchDistRuntimeRouteSnapshot({
+		globals,
+		patch: {
+			matchedPatterns: nextMatchedPatterns,
+			clientLoadersData: nextClientLoadersData,
+			activeComponents: props.activeComponents,
+			importURLs: props.importURLs,
+			exportKeys: props.exportKeys,
+			loadersData: props.loadersData,
+			outermostError: props.outermostError,
+			outermostErrorIdx: props.outermostErrorIdx,
+			activeErrorBoundary: props.activeErrorBoundary,
+		},
+	});
 }
 
 describe("npm_dist root outlet branch coverage", () => {

@@ -3,7 +3,7 @@ import {
 	__getVormaClientGlobal,
 	getRouterData,
 	VORMA_SYMBOL,
-} from "../../app/context.ts";
+} from "../../runtime.ts";
 import {
 	installContractVormaGlobal,
 	setupContractTestSuite,
@@ -18,15 +18,22 @@ describe("vorma context contracts", () => {
 		});
 
 		const { get } = __getVormaClientGlobal();
-		expect(get("params")).toEqual({ key: "value" });
+		expect(get("runtimeRouteSnapshot").params).toEqual({ key: "value" });
 	});
 
 	it("writes values into the shared global state", () => {
 		const { get, set } = __getVormaClientGlobal();
-		set("buildID", "123");
+		set("runtimeRouteSnapshot", {
+			...get("runtimeRouteSnapshot"),
+			buildID: "123",
+		});
 
-		expect(get("buildID")).toBe("123");
-		expect((globalThis as any)[VORMA_SYMBOL].buildID).toBe("123");
+		expect(get("runtimeRouteSnapshot").buildID).toBe("123");
+		expect(
+			(globalThis as any)[VORMA_SYMBOL].runtimeRouteSnapshot,
+		).toMatchObject({
+			buildID: "123",
+		});
 	});
 
 	it("overwrites existing global values deterministically", () => {
@@ -35,9 +42,14 @@ describe("vorma context contracts", () => {
 		});
 
 		const { get, set } = __getVormaClientGlobal();
-		set("activeComponents", ["Component1"]);
+		set("runtimeRouteSnapshot", {
+			...get("runtimeRouteSnapshot"),
+			activeComponents: ["Component1"],
+		});
 
-		expect(get("activeComponents")).toEqual(["Component1"]);
+		expect(get("runtimeRouteSnapshot").activeComponents).toEqual([
+			"Component1",
+		]);
 	});
 
 	it("returns safe defaults from getRouterData when state is uninitialized", () => {
@@ -83,8 +95,20 @@ describe("vorma context contracts", () => {
 		delete (globalThis as any)[VORMA_SYMBOL];
 		const { get } = __getVormaClientGlobal();
 
-		expect(() => get("buildID")).toThrow(
+		expect(() => get("runtimeRouteSnapshot").buildID).toThrow(
 			'Vorma client runtime state is not initialized on globalThis[Symbol.for("__vorma_internal__")].',
+		);
+	});
+
+	it("fails loud when invalid route-field keys are passed through unsafe casts", () => {
+		installContractVormaGlobal();
+		const { get, set } = __getVormaClientGlobal();
+
+		expect(() => (get as any)("buildID")).toThrow(
+			'Vorma client global get contract violated: unsupported key "buildID".',
+		);
+		expect(() => (set as any)("buildID", "unsafe")).toThrow(
+			'Vorma client global set contract violated: unsupported key "buildID".',
 		);
 	});
 });

@@ -3,22 +3,19 @@ import {
 	resolveAbsoluteHref,
 	resolveAbsoluteHrefWithOptionalSearchAndHash,
 } from "vorma/kit/url";
-import { VORMA_SYMBOL } from "../../app/context.ts";
+import { VORMA_SYMBOL } from "../../runtime.ts";
 import {
 	assertProgrammaticSameOriginOrThrow,
 	classifyNavigationTargetAgainstCurrentLocation,
 	findMapEntryByNavigationTarget,
 	hasSameDataTarget,
-	hasSameNavigationTarget,
 	hashFragmentFromHash,
 	hashFragmentFromHref,
 	hrefWithoutHash,
-	isSameDocumentHashChange,
-	isSameDocumentLocation,
 	normalizedHashFragmentFromHash,
 	normalizedHashFragmentFromHref,
 	resolvePublicHref,
-} from "../../platform/url.ts";
+} from "../../runtime.ts";
 
 function setPublicHrefResolutionBase(props: {
 	viteDevURL: string;
@@ -88,19 +85,19 @@ describe("hash fragment helpers", () => {
 		window.history.replaceState({}, "", "/same-doc?mode=1#base");
 
 		expect(
-			hasSameNavigationTarget({
+			hasSameDataTarget({
 				firstHref: "/same-doc?mode=1#stable",
 				secondHref: "/same-doc?mode=1#stable",
 			}),
 		).toBe(true);
 		expect(
-			hasSameNavigationTarget({
+			hasSameDataTarget({
 				firstHref: "/same-doc?mode=1#one",
 				secondHref: "/same-doc?mode=1#two",
 			}),
 		).toBe(true);
 		expect(
-			hasSameNavigationTarget({
+			hasSameDataTarget({
 				firstHref: "/same-doc?b=2&a=1#one",
 				secondHref: "/same-doc?a=1&b=2#one",
 			}),
@@ -181,44 +178,60 @@ describe("hash fragment helpers", () => {
 		window.history.replaceState({}, "", "/same-doc?mode=1#first");
 
 		expect(
-			isSameDocumentHashChange({ targetHref: "/same-doc?mode=1#second" }),
-		).toBe(true);
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=1#second",
+			}),
+		).toBe("hash-change");
 		expect(
-			isSameDocumentHashChange({ targetHref: "/same-doc?mode=1" }),
-		).toBe(true);
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=1",
+			}),
+		).toBe("hash-change");
 		expect(
-			isSameDocumentHashChange({ targetHref: "/same-doc?mode=1#first" }),
-		).toBe(false);
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=1#first",
+			}),
+		).toBe("same-document-noop");
 		expect(
-			isSameDocumentHashChange({
+			classifyNavigationTargetAgainstCurrentLocation({
 				targetHref: "/same-doc?mode=1#%66irst",
 			}),
-		).toBe(false);
+		).toBe("same-document-noop");
 		expect(
-			isSameDocumentHashChange({ targetHref: "/same-doc?mode=2#second" }),
-		).toBe(false);
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=2#second",
+			}),
+		).toBe("navigate");
 		expect(
-			isSameDocumentHashChange({
+			classifyNavigationTargetAgainstCurrentLocation({
 				targetHref: "https://example.com/same-doc?mode=1#x",
 			}),
-		).toBe(false);
+		).toBe("navigate");
 	});
 
 	it("detects same-document location no-op targets", () => {
 		window.history.replaceState({}, "", "/same-doc?mode=1#~");
 
 		expect(
-			isSameDocumentLocation({ targetHref: "/same-doc?mode=1#~" }),
-		).toBe(true);
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=1#~",
+			}),
+		).toBe("same-document-noop");
 		expect(
-			isSameDocumentLocation({ targetHref: "/same-doc?mode=1#%7E" }),
-		).toBe(true);
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=1#%7E",
+			}),
+		).toBe("same-document-noop");
 		expect(
-			isSameDocumentLocation({ targetHref: "/same-doc?mode=1#other" }),
-		).toBe(false);
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=1#other",
+			}),
+		).toBe("hash-change");
 		expect(
-			isSameDocumentLocation({ targetHref: "/same-doc?mode=2#~" }),
-		).toBe(false);
+			classifyNavigationTargetAgainstCurrentLocation({
+				targetHref: "/same-doc?mode=2#~",
+			}),
+		).toBe("navigate");
 	});
 
 	it("classifies same-document targets as noop, hash-change, or navigate", () => {

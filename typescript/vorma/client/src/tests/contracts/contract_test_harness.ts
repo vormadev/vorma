@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { createPatternRegistry } from "vorma/kit/matcher/register";
+import { runtimeRouteSnapshotFieldKeys } from "../../runtime.ts";
 
 const VORMA_INTERNAL_SYMBOL = Symbol.for("__vorma_internal__");
 
@@ -20,9 +21,27 @@ const DEFAULT_VORMA_APP_CONFIG = {
 	loadersExplicitIndexSegmentIdentifier: "_index",
 };
 
+const RUNTIME_ROUTE_SNAPSHOT_TOP_LEVEL_KEYS = runtimeRouteSnapshotFieldKeys;
+
+function stripRuntimeRouteSnapshotTopLevelFields(
+	globals: AnyRecord,
+): AnyRecord {
+	const cleanedGlobals: AnyRecord = {
+		...globals,
+	};
+
+	for (const key of RUNTIME_ROUTE_SNAPSHOT_TOP_LEVEL_KEYS) {
+		delete cleanedGlobals[key];
+	}
+
+	delete cleanedGlobals.runtimeRouteSnapshot;
+	return cleanedGlobals;
+}
+
 export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
-	const globals: AnyRecord = {
-		buildID: "1",
+	const defaultRuntimeRouteSnapshot: AnyRecord = {
+		outermostServerError: undefined,
+		outermostServerErrorIdx: undefined,
 		matchedPatterns: [],
 		loadersData: [],
 		importURLs: [],
@@ -31,19 +50,23 @@ export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
 		hasRootData: false,
 		params: {},
 		splatValues: [],
-		activeComponents: [],
-		outermostServerError: undefined,
 		outermostClientError: undefined,
-		outermostServerErrorIdx: undefined,
 		outermostClientErrorIdx: undefined,
 		outermostError: undefined,
 		outermostErrorIdx: undefined,
+		buildID: "1",
+		rootElementID: undefined,
+		activeComponents: [],
+		activeErrorBoundary: undefined,
+		clientLoadersData: [],
+	};
+
+	const baseGlobals: AnyRecord = {
 		isDev: false,
 		viteDevURL: "",
 		publicPathPrefix: "",
 		isTouchInputModalityActive: false,
 		patternToWaitFnMap: {},
-		clientLoadersData: [],
 		defaultErrorBoundary: () => null,
 		useViewTransitions: false,
 		deploymentID: "",
@@ -57,20 +80,107 @@ export function installContractVormaGlobal(overrides: AnyRecord = {}): void {
 				DEFAULT_VORMA_APP_CONFIG.loadersExplicitIndexSegmentIdentifier,
 		}),
 	};
-
-	(globalThis as AnyPropertyRecord)[VORMA_INTERNAL_SYMBOL] = {
-		...globals,
+	const mergedGlobals: AnyRecord = {
+		...baseGlobals,
 		...overrides,
+	};
+	const snapshotOverrides = isRecord(mergedGlobals.runtimeRouteSnapshot)
+		? mergedGlobals.runtimeRouteSnapshot
+		: {};
+	const hasBuildIDOverride = Object.prototype.hasOwnProperty.call(
+		overrides,
+		"buildID",
+	);
+	const runtimeRouteSnapshot: AnyRecord = {
+		...defaultRuntimeRouteSnapshot,
+		outermostServerError:
+			mergedGlobals.outermostServerError ??
+			defaultRuntimeRouteSnapshot.outermostServerError,
+		outermostServerErrorIdx:
+			mergedGlobals.outermostServerErrorIdx ??
+			defaultRuntimeRouteSnapshot.outermostServerErrorIdx,
+		matchedPatterns:
+			mergedGlobals.matchedPatterns ??
+			defaultRuntimeRouteSnapshot.matchedPatterns,
+		loadersData:
+			mergedGlobals.loadersData ??
+			defaultRuntimeRouteSnapshot.loadersData,
+		importURLs:
+			mergedGlobals.importURLs ?? defaultRuntimeRouteSnapshot.importURLs,
+		exportKeys:
+			mergedGlobals.exportKeys ?? defaultRuntimeRouteSnapshot.exportKeys,
+		errorExportKeys:
+			mergedGlobals.errorExportKeys ??
+			defaultRuntimeRouteSnapshot.errorExportKeys,
+		hasRootData:
+			mergedGlobals.hasRootData ??
+			defaultRuntimeRouteSnapshot.hasRootData,
+		params: mergedGlobals.params ?? defaultRuntimeRouteSnapshot.params,
+		splatValues:
+			mergedGlobals.splatValues ??
+			defaultRuntimeRouteSnapshot.splatValues,
+		outermostClientError:
+			mergedGlobals.outermostClientError ??
+			defaultRuntimeRouteSnapshot.outermostClientError,
+		outermostClientErrorIdx:
+			mergedGlobals.outermostClientErrorIdx ??
+			defaultRuntimeRouteSnapshot.outermostClientErrorIdx,
+		outermostError:
+			mergedGlobals.outermostError ??
+			defaultRuntimeRouteSnapshot.outermostError,
+		outermostErrorIdx:
+			mergedGlobals.outermostErrorIdx ??
+			defaultRuntimeRouteSnapshot.outermostErrorIdx,
+		buildID: hasBuildIDOverride
+			? overrides.buildID
+			: defaultRuntimeRouteSnapshot.buildID,
+		rootElementID:
+			mergedGlobals.rootElementID ??
+			defaultRuntimeRouteSnapshot.rootElementID,
+		activeComponents:
+			mergedGlobals.activeComponents ??
+			defaultRuntimeRouteSnapshot.activeComponents,
+		activeErrorBoundary:
+			mergedGlobals.activeErrorBoundary ??
+			defaultRuntimeRouteSnapshot.activeErrorBoundary,
+		clientLoadersData:
+			mergedGlobals.clientLoadersData ??
+			defaultRuntimeRouteSnapshot.clientLoadersData,
+		...snapshotOverrides,
+	};
+
+	const nonSnapshotGlobals =
+		stripRuntimeRouteSnapshotTopLevelFields(mergedGlobals);
+	(globalThis as AnyPropertyRecord)[VORMA_INTERNAL_SYMBOL] = {
+		...nonSnapshotGlobals,
+		runtimeRouteSnapshot,
 	};
 }
 
+function isRecord(value: unknown): value is AnyRecord {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function createRouteData(overrides: AnyRecord = {}): AnyRecord {
+	const matchedPatterns = Array.isArray(overrides.matchedPatterns)
+		? overrides.matchedPatterns
+		: [];
+	const routeCount = matchedPatterns.length;
+
 	return {
-		matchedPatterns: [],
-		loadersData: [],
-		importURLs: [],
-		exportKeys: [],
-		errorExportKeys: [],
+		matchedPatterns,
+		loadersData:
+			overrides.loadersData ??
+			Array.from({ length: routeCount }, () => null),
+		importURLs:
+			overrides.importURLs ??
+			Array.from({ length: routeCount }, () => ""),
+		exportKeys:
+			overrides.exportKeys ??
+			Array.from({ length: routeCount }, () => ""),
+		errorExportKeys:
+			overrides.errorExportKeys ??
+			Array.from({ length: routeCount }, () => ""),
 		hasRootData: false,
 		params: {},
 		splatValues: [],
@@ -353,17 +463,17 @@ export function expectNoLoadingGapBeforeFinalEvent(
 
 type PublicClientAPI = typeof import("../../../index.ts");
 type ContractInternalAPI = {
-	__getPrefetchHandlers: typeof import("../../core/links_prefetch_lifecycle.ts").createPrefetchHandlers;
-	__makeLinkOnClickFn: typeof import("../../core/links_click_lifecycle.ts").createLinkOnClickFn;
-	__applyScrollState: typeof import("../../platform/scroll.ts").__applyScrollState;
-	__vormaClientGlobal: typeof import("../../app/context.ts").__vormaClientGlobal;
-	__getNavigationDebugJournal: typeof import("../../client.ts").getNavigationDebugJournal;
-	__clearNavigationDebugJournal: typeof import("../../client.ts").clearNavigationDebugJournal;
-	__registerClientLoaderPattern: typeof import("../../core/render_runtime.ts").__registerClientLoaderPattern;
-	__makeFinalLinkProps: typeof import("../../ui/helpers.ts").__makeFinalLinkProps;
-	__resolvePath: typeof import("../../app/helpers.ts").__resolvePath;
-	__runClientLoadersAfterHMRUpdate: typeof import("../../core/extras.ts").__runClientLoadersAfterHMRUpdate;
-	__loadRouteManifestProgressively: typeof import("../../app/init.ts").__loadRouteManifestProgressively;
+	__getPrefetchHandlers: typeof import("../../runtime.ts").createPrefetchHandlers;
+	__makeLinkOnClickFn: typeof import("../../runtime.ts").createLinkOnClickFn;
+	__applyScrollState: typeof import("../../runtime.ts").applyScrollState;
+	__vormaClientGlobal: typeof import("../../runtime.ts").__vormaClientGlobal;
+	__getNavigationDebugJournal: typeof import("../../runtime.ts").getNavigationDebugJournal;
+	__clearNavigationDebugJournal: typeof import("../../runtime.ts").clearNavigationDebugJournal;
+	__registerClientLoaderPattern: typeof import("../../runtime.ts").registerClientLoaderPattern;
+	__makeFinalLinkProps: typeof import("../../runtime.ts").makeFinalLinkProps;
+	__resolvePath: typeof import("../../runtime.ts").resolvePath;
+	__runClientLoadersAfterHMRUpdate: typeof import("../../runtime.ts").__runClientLoadersAfterHMRUpdate;
+	__loadRouteManifestProgressively: typeof import("../../runtime.ts").loadRouteManifestProgressively;
 };
 
 export type ContractClientAPI = PublicClientAPI & ContractInternalAPI;
@@ -384,16 +494,16 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		initInternal,
 	] = await Promise.all([
 		import("../../../index.ts"),
-		import("../../core/links_prefetch_lifecycle.ts"),
-		import("../../core/links_click_lifecycle.ts"),
-		import("../../platform/scroll.ts"),
-		import("../../app/context.ts"),
-		import("../../client.ts"),
-		import("../../core/render_runtime.ts"),
-		import("../../core/extras.ts"),
-		import("../../ui/helpers.ts"),
-		import("../../app/helpers.ts"),
-		import("../../app/init.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
+		import("../../runtime.ts"),
 	]);
 
 	// Contract tests may still exercise internal helpers, but we now source
@@ -402,20 +512,20 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 		...publicClientAPI,
 		__getPrefetchHandlers: linksPrefetchInternal.createPrefetchHandlers,
 		__makeLinkOnClickFn: linksClickInternal.createLinkOnClickFn,
-		__applyScrollState: scrollInternal.__applyScrollState,
+		__applyScrollState: scrollInternal.applyScrollState,
 		__vormaClientGlobal: contextInternal.__vormaClientGlobal,
 		__getNavigationDebugJournal:
 			clientRuntimeInternal.getNavigationDebugJournal,
 		__clearNavigationDebugJournal:
 			clientRuntimeInternal.clearNavigationDebugJournal,
 		__registerClientLoaderPattern:
-			renderRuntimeInternal.__registerClientLoaderPattern,
-		__makeFinalLinkProps: uiHelpersInternal.__makeFinalLinkProps,
-		__resolvePath: appHelpersInternal.__resolvePath,
+			renderRuntimeInternal.registerClientLoaderPattern,
+		__makeFinalLinkProps: uiHelpersInternal.makeFinalLinkProps,
+		__resolvePath: appHelpersInternal.resolvePath,
 		__runClientLoadersAfterHMRUpdate:
 			extrasInternal.__runClientLoadersAfterHMRUpdate,
 		__loadRouteManifestProgressively:
-			initInternal.__loadRouteManifestProgressively,
+			initInternal.loadRouteManifestProgressively,
 	};
 
 	Object.defineProperty(clientAPI, "__runClientLoadersAfterHMRUpdate", {
@@ -425,6 +535,19 @@ export async function loadClientAPI(): Promise<ContractClientAPI> {
 	});
 
 	return clientAPI;
+}
+
+export function patchContractRuntimeRouteSnapshot(props: {
+	api: ContractClientAPI;
+	patch: Partial<import("../../../src/runtime.ts").RuntimeRouteSnapshot>;
+}): void {
+	const runtimeRouteSnapshot = props.api.__vormaClientGlobal.get(
+		"runtimeRouteSnapshot",
+	);
+	props.api.__vormaClientGlobal.set("runtimeRouteSnapshot", {
+		...runtimeRouteSnapshot,
+		...props.patch,
+	});
 }
 
 export async function registerServerDataFieldProbeLoader(props: {

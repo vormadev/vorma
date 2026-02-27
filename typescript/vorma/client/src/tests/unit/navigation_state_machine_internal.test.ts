@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { RuntimeTransitionEvent } from "../../core/navigation/runtime_state_machine.ts";
+import type { RuntimeTransitionEvent } from "../../../src/runtime.ts";
 
 function createNavigationFailedTransitionEvent(props: {
 	reason: string;
@@ -19,8 +19,7 @@ describe("navigation runtime state machine debug journal gating", () => {
 		try {
 			vi.resetModules();
 
-			const runtimeStateMachineModule =
-				await import("../../core/navigation/runtime_state_machine.ts");
+			const runtimeStateMachineModule = await import("../../runtime.ts");
 			const runtimeStateMachine =
 				runtimeStateMachineModule.createNavigationRuntimeStateMachine();
 
@@ -47,8 +46,7 @@ describe("navigation runtime state machine debug journal gating", () => {
 		try {
 			vi.resetModules();
 
-			const runtimeStateMachineModule =
-				await import("../../core/navigation/runtime_state_machine.ts");
+			const runtimeStateMachineModule = await import("../../runtime.ts");
 			const runtimeStateMachine =
 				runtimeStateMachineModule.createNavigationRuntimeStateMachine();
 

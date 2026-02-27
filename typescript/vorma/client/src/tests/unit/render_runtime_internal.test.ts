@@ -4,23 +4,20 @@ import {
 	registerPattern,
 } from "vorma/kit/matcher/register";
 import {
-	VORMA_SYMBOL,
-	__vormaClientGlobal,
-	getRuntimeRouteSnapshot,
-} from "../../app/context.ts";
-import { setClientLoadersState } from "../../core/render_client_loader_runtime.ts";
-import {
 	AssetManager,
 	ComponentLoader,
+	VORMA_ROUTE_CHANGE_EVENT_KEY,
+	VORMA_SYMBOL,
 	__reRenderApp,
-	__registerClientLoaderPattern,
+	__vormaClientGlobal,
 	buildClientLoaderServerData,
 	completeClientLoaders,
 	findPartialMatchesOnClient,
+	getRuntimeRouteSnapshot,
+	registerClientLoaderPattern,
+	setClientLoadersState,
 	setupClientLoaders,
-} from "../../core/render_runtime.ts";
-import { VORMA_ROUTE_CHANGE_EVENT_KEY } from "../../platform/events.ts";
-import * as headModule from "../../ui/head.ts";
+} from "../../runtime.ts";
 
 const TEST_VORMA_APP_CONFIG = {
 	actionsRouterMountRoot: "/api/",
@@ -45,7 +42,7 @@ function createRegisteredPatternRegistry(patterns: string[]) {
 }
 
 function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
-	(globalThis as any)[VORMA_SYMBOL] = {
+	const baseGlobalState = {
 		buildID: "1",
 		matchedPatterns: [],
 		loadersData: [],
@@ -57,6 +54,7 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		splatValues: [],
 		activeComponents: [],
 		activeErrorBoundary: undefined,
+		rootElementID: undefined,
 		outermostServerError: undefined,
 		outermostClientError: undefined,
 		outermostServerErrorIdx: undefined,
@@ -77,6 +75,60 @@ function installVormaGlobal(overrides: Record<string, unknown> = {}): void {
 		routeManifest: undefined,
 		patternRegistry: createRegisteredPatternRegistry([]),
 		...overrides,
+	};
+
+	const runtimeRouteSnapshot = {
+		buildID: baseGlobalState.buildID,
+		matchedPatterns: baseGlobalState.matchedPatterns,
+		loadersData: baseGlobalState.loadersData,
+		importURLs: baseGlobalState.importURLs,
+		exportKeys: baseGlobalState.exportKeys,
+		errorExportKeys: baseGlobalState.errorExportKeys,
+		hasRootData: baseGlobalState.hasRootData,
+		params: baseGlobalState.params,
+		splatValues: baseGlobalState.splatValues,
+		activeComponents: baseGlobalState.activeComponents,
+		activeErrorBoundary: baseGlobalState.activeErrorBoundary,
+		outermostServerError: baseGlobalState.outermostServerError,
+		outermostClientError: baseGlobalState.outermostClientError,
+		outermostServerErrorIdx: baseGlobalState.outermostServerErrorIdx,
+		outermostClientErrorIdx: baseGlobalState.outermostClientErrorIdx,
+		outermostError: baseGlobalState.outermostError,
+		outermostErrorIdx: baseGlobalState.outermostErrorIdx,
+		rootElementID: baseGlobalState.rootElementID,
+		clientLoadersData: baseGlobalState.clientLoadersData,
+		...(typeof overrides.runtimeRouteSnapshot === "object" &&
+		overrides.runtimeRouteSnapshot !== null
+			? overrides.runtimeRouteSnapshot
+			: {}),
+	};
+	const nonSnapshotGlobalState: Record<string, unknown> = {
+		...baseGlobalState,
+	};
+	delete nonSnapshotGlobalState.buildID;
+	delete nonSnapshotGlobalState.matchedPatterns;
+	delete nonSnapshotGlobalState.loadersData;
+	delete nonSnapshotGlobalState.importURLs;
+	delete nonSnapshotGlobalState.exportKeys;
+	delete nonSnapshotGlobalState.errorExportKeys;
+	delete nonSnapshotGlobalState.hasRootData;
+	delete nonSnapshotGlobalState.params;
+	delete nonSnapshotGlobalState.splatValues;
+	delete nonSnapshotGlobalState.activeComponents;
+	delete nonSnapshotGlobalState.activeErrorBoundary;
+	delete nonSnapshotGlobalState.rootElementID;
+	delete nonSnapshotGlobalState.outermostServerError;
+	delete nonSnapshotGlobalState.outermostClientError;
+	delete nonSnapshotGlobalState.outermostServerErrorIdx;
+	delete nonSnapshotGlobalState.outermostClientErrorIdx;
+	delete nonSnapshotGlobalState.outermostError;
+	delete nonSnapshotGlobalState.outermostErrorIdx;
+	delete nonSnapshotGlobalState.clientLoadersData;
+	delete nonSnapshotGlobalState.runtimeRouteSnapshot;
+
+	(globalThis as any)[VORMA_SYMBOL] = {
+		...nonSnapshotGlobalState,
+		runtimeRouteSnapshot,
 	};
 }
 
@@ -101,6 +153,36 @@ function createRouteDataJSON(
 		restHeadEls: undefined,
 		...overrides,
 	};
+}
+
+function getManagedHeadElements(type: "meta" | "rest"): Array<Element> {
+	const startComment = Array.from(document.head.childNodes).find((node) => {
+		return (
+			node.nodeType === Node.COMMENT_NODE &&
+			(node as Comment).data === `data-vorma="${type}-start"`
+		);
+	}) as Comment | undefined;
+	const endComment = Array.from(document.head.childNodes).find((node) => {
+		return (
+			node.nodeType === Node.COMMENT_NODE &&
+			(node as Comment).data === `data-vorma="${type}-end"`
+		);
+	}) as Comment | undefined;
+
+	if (!startComment || !endComment) {
+		throw new Error(`Missing managed head markers for '${type}'.`);
+	}
+
+	const managedElements: Array<Element> = [];
+	let currentNode = startComment.nextSibling;
+	while (currentNode && currentNode !== endComment) {
+		if (currentNode.nodeType === Node.ELEMENT_NODE) {
+			managedElements.push(currentNode as Element);
+		}
+		currentNode = currentNode.nextSibling;
+	}
+
+	return managedElements;
 }
 
 beforeEach(() => {
@@ -140,8 +222,12 @@ describe("render runtime internals", () => {
 			errorMessage: "client-error",
 		});
 
-		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBe(2);
-		expect(__vormaClientGlobal.get("outermostError")).toBe("client-error");
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").outermostErrorIdx,
+		).toBe(2);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").outermostError,
+		).toBe("client-error");
 	});
 
 	it("ignores stale error text when no error index is set", () => {
@@ -156,8 +242,12 @@ describe("render runtime internals", () => {
 			data: ["ok"],
 		});
 
-		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBeUndefined();
-		expect(__vormaClientGlobal.get("outermostError")).toBeUndefined();
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").outermostErrorIdx,
+		).toBeUndefined();
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").outermostError,
+		).toBeUndefined();
 	});
 
 	it("uses available error text when indices tie", () => {
@@ -173,8 +263,12 @@ describe("render runtime internals", () => {
 			errorMessage: "client-error",
 		});
 
-		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBe(1);
-		expect(__vormaClientGlobal.get("outermostError")).toBe("client-error");
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").outermostErrorIdx,
+		).toBe(1);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").outermostError,
+		).toBe("client-error");
 	});
 
 	it("clears derived error state when no server/client error exists", () => {
@@ -187,8 +281,12 @@ describe("render runtime internals", () => {
 			data: [],
 		});
 
-		expect(__vormaClientGlobal.get("outermostErrorIdx")).toBeUndefined();
-		expect(__vormaClientGlobal.get("outermostError")).toBeUndefined();
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").outermostErrorIdx,
+		).toBeUndefined();
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").outermostError,
+		).toBeUndefined();
 	});
 
 	it("loads component modules while tolerating empty import URLs", async () => {
@@ -216,10 +314,9 @@ describe("render runtime internals", () => {
 
 		await ComponentLoader.handleComponents(["/a.js", "/b.js"]);
 
-		expect(__vormaClientGlobal.get("activeComponents")).toEqual([
-			defaultComponent,
-			null,
-		]);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").activeComponents,
+		).toEqual([defaultComponent, null]);
 	});
 
 	it("skips error-boundary updates when no effective error index exists", async () => {
@@ -231,7 +328,9 @@ describe("render runtime internals", () => {
 		});
 
 		await ComponentLoader.handleErrorBoundaryComponent(["/err.js"]);
-		expect(__vormaClientGlobal.get("activeErrorBoundary")).toBeUndefined();
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").activeErrorBoundary,
+		).toBeUndefined();
 	});
 
 	it("does not rewrite activeErrorBoundary when it is unchanged", async () => {
@@ -258,8 +357,7 @@ describe("render runtime internals", () => {
 
 		expect(
 			setSpy.mock.calls.some(
-				(call) =>
-					call[0] === "activeErrorBoundary" && call[1] === boundary,
+				(call) => call[0] === "runtimeRouteSnapshot",
 			),
 		).toBe(false);
 	});
@@ -286,9 +384,9 @@ describe("render runtime internals", () => {
 			]),
 		);
 
-		expect(__vormaClientGlobal.get("activeErrorBoundary")).toBe(
-			defaultBoundary,
-		);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").activeErrorBoundary,
+		).toBe(defaultBoundary);
 	});
 
 	it("returns null when client-loader server data is missing pattern match", () => {
@@ -378,6 +476,94 @@ describe("render runtime internals", () => {
 			data: ["loader-a", undefined],
 			errorMessage: undefined,
 		});
+	});
+
+	it("starts matched client loaders in parallel before waiting for settlement", async () => {
+		const startOrder: string[] = [];
+		let resolveFirstLoader: (value: string) => void = () => {};
+		const firstLoaderDeferred = new Promise<string>((resolve) => {
+			resolveFirstLoader = resolve;
+		});
+		installVormaGlobal({
+			patternToWaitFnMap: {
+				"/a": async () => {
+					startOrder.push("/a");
+					return firstLoaderDeferred;
+				},
+				"/b": async () => {
+					startOrder.push("/b");
+					return "loader-b";
+				},
+			},
+			routeManifest: { "/a": 0, "/b": 0 },
+		});
+
+		const completionPromise = completeClientLoaders(
+			{
+				matchedPatterns: ["/a", "/b"],
+				loadersData: [{}, {}],
+				hasRootData: false,
+				importURLs: [],
+				params: {},
+				splatValues: [],
+			},
+			"1",
+			new Map(),
+			new AbortController().signal,
+		);
+
+		await vi.waitFor(() => {
+			expect(startOrder).toEqual(["/a", "/b"]);
+		});
+		expect(startOrder).toEqual(["/a", "/b"]);
+
+		let settled = false;
+		void completionPromise.finally(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+
+		resolveFirstLoader("loader-a");
+
+		await expect(completionPromise).resolves.toEqual({
+			data: ["loader-a", "loader-b"],
+			errorMessage: undefined,
+		});
+	});
+
+	it("reuses running loader promises without invoking duplicate wait functions", async () => {
+		const duplicateWaitFn = vi.fn(async () => "duplicate");
+		installVormaGlobal({
+			patternToWaitFnMap: {
+				"/a": duplicateWaitFn,
+			},
+			routeManifest: { "/a": 0 },
+		});
+
+		const runningLoaders = new Map<string, Promise<unknown>>([
+			["/a", Promise.resolve("running-loader-result")],
+		]);
+
+		const result = await completeClientLoaders(
+			{
+				matchedPatterns: ["/a"],
+				loadersData: [{}],
+				hasRootData: false,
+				importURLs: [],
+				params: {},
+				splatValues: [],
+			},
+			"1",
+			runningLoaders,
+			new AbortController().signal,
+		);
+
+		expect(result).toEqual({
+			data: ["running-loader-result"],
+			errorMessage: undefined,
+		});
+		expect(duplicateWaitFn).not.toHaveBeenCalled();
 	});
 
 	it("reports non-Error client loader failures using string conversion", async () => {
@@ -494,14 +680,16 @@ describe("render runtime internals", () => {
 
 		await ComponentLoader.handleComponents(["/no-export-keys.js"]);
 
-		expect(__vormaClientGlobal.get("activeComponents")).toEqual([
-			moduleDefault,
-		]);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").activeComponents,
+		).toEqual([moduleDefault]);
 	});
 
 	it("setupClientLoaders no-ops cleanly when no result is provided", () => {
 		setClientLoadersState(undefined);
-		expect(__vormaClientGlobal.get("clientLoadersData")).toEqual([]);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").clientLoadersData,
+		).toEqual([]);
 	});
 
 	it("sets client error index only when an error message exists", () => {
@@ -509,26 +697,22 @@ describe("render runtime internals", () => {
 			data: ["ok"],
 		});
 		expect(
-			__vormaClientGlobal.get("outermostClientErrorIdx"),
+			__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.outermostClientErrorIdx,
 		).toBeUndefined();
-		expect(__vormaClientGlobal.get("outermostClientError")).toBeUndefined();
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.outermostClientError,
+		).toBeUndefined();
 	});
 
-	it("handles malformed client-loader results with missing data arrays safely", () => {
+	it("fails loud when client-loader results violate the typed data contract", () => {
 		expect(() =>
 			setClientLoadersState({
 				data: undefined as any,
 				errorMessage: "loader-error",
 			}),
-		).not.toThrow();
-
-		expect(__vormaClientGlobal.get("clientLoadersData")).toEqual([]);
-		expect(
-			__vormaClientGlobal.get("outermostClientErrorIdx"),
-		).toBeUndefined();
-		expect(__vormaClientGlobal.get("outermostClientError")).toBe(
-			"loader-error",
-		);
+		).toThrow("Cannot read properties of undefined");
 	});
 
 	it("sets outermost client error index to the last loader index when data exists", () => {
@@ -537,10 +721,14 @@ describe("render runtime internals", () => {
 			errorMessage: "loader-error",
 		});
 
-		expect(__vormaClientGlobal.get("outermostClientErrorIdx")).toBe(2);
-		expect(__vormaClientGlobal.get("outermostClientError")).toBe(
-			"loader-error",
-		);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.outermostClientErrorIdx,
+		).toBe(2);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.outermostClientError,
+		).toBe("loader-error");
 	});
 
 	it("supports setupClientLoaders with missing snapshots and empty maps", async () => {
@@ -554,7 +742,9 @@ describe("render runtime internals", () => {
 		});
 
 		await expect(setupClientLoaders()).resolves.toBeUndefined();
-		expect(__vormaClientGlobal.get("clientLoadersData")).toEqual([]);
+		expect(
+			__vormaClientGlobal.get("runtimeRouteSnapshot").clientLoadersData,
+		).toEqual([]);
 	});
 
 	it("passes unavailable server data to client loaders when required server payload is missing", async () => {
@@ -597,13 +787,12 @@ describe("render runtime internals", () => {
 			patternRegistry: undefined,
 		});
 
-		await expect(__registerClientLoaderPattern("/x")).rejects.toThrow(
+		await expect(registerClientLoaderPattern("/x")).rejects.toThrow(
 			"Pattern registry has not been initialized.",
 		);
 	});
 
-	it("re-renders while applying head updates even when importURLs/cssBundles are omitted", async () => {
-		const updateHeadElsSpy = vi.spyOn(headModule, "updateHeadEls");
+	it("re-renders while applying head updates with canonical empty asset arrays", async () => {
 		const applyCSSSpy = vi.spyOn(AssetManager, "applyCSS");
 		const onFinish = vi.fn();
 
@@ -611,17 +800,18 @@ describe("render runtime internals", () => {
 			navigationType: "userNavigation",
 			onFinish,
 			json: createRouteDataJSON({
-				importURLs: undefined,
-				cssBundles: undefined,
+				importURLs: [],
+				cssBundles: [],
 				metaHeadEls: [],
 				restHeadEls: [],
 			}) as any,
 		});
 
 		expect(onFinish).toHaveBeenCalledTimes(1);
-		expect(applyCSSSpy).not.toHaveBeenCalled();
-		expect(updateHeadElsSpy).toHaveBeenCalledWith("meta", []);
-		expect(updateHeadElsSpy).toHaveBeenCalledWith("rest", []);
+		expect(applyCSSSpy).toHaveBeenCalledTimes(1);
+		expect(applyCSSSpy).toHaveBeenCalledWith([]);
+		expect(getManagedHeadElements("meta")).toEqual([]);
+		expect(getManagedHeadElements("rest")).toEqual([]);
 	});
 
 	it("applies CSS bundles during rerender when cssBundles are provided", async () => {
@@ -641,7 +831,6 @@ describe("render runtime internals", () => {
 
 	it("skips module loading and commit side effects when shouldCommit is false before module load", async () => {
 		const loadComponentsSpy = vi.spyOn(ComponentLoader, "loadComponents");
-		const updateHeadElsSpy = vi.spyOn(headModule, "updateHeadEls");
 		const onFinish = vi.fn();
 
 		await __reRenderApp({
@@ -655,7 +844,8 @@ describe("render runtime internals", () => {
 		});
 
 		expect(loadComponentsSpy).not.toHaveBeenCalled();
-		expect(updateHeadElsSpy).not.toHaveBeenCalled();
+		expect(getManagedHeadElements("meta")).toEqual([]);
+		expect(getManagedHeadElements("rest")).toEqual([]);
 		expect(onFinish).not.toHaveBeenCalled();
 	});
 
@@ -663,7 +853,6 @@ describe("render runtime internals", () => {
 		const loadComponentsSpy = vi
 			.spyOn(ComponentLoader, "loadComponents")
 			.mockResolvedValue(new Map());
-		const updateHeadElsSpy = vi.spyOn(headModule, "updateHeadEls");
 		const onFinish = vi.fn();
 		let shouldCommitCallCount = 0;
 
@@ -682,7 +871,8 @@ describe("render runtime internals", () => {
 
 		expect(shouldCommitCallCount).toBe(2);
 		expect(loadComponentsSpy).toHaveBeenCalledTimes(1);
-		expect(updateHeadElsSpy).not.toHaveBeenCalled();
+		expect(getManagedHeadElements("meta")).toEqual([]);
+		expect(getManagedHeadElements("rest")).toEqual([]);
 		expect(onFinish).not.toHaveBeenCalled();
 	});
 
@@ -732,8 +922,6 @@ describe("render runtime internals", () => {
 	});
 
 	it("normalizes null head-element arrays to empty lists during rerender", async () => {
-		const updateHeadElsSpy = vi.spyOn(headModule, "updateHeadEls");
-
 		await __reRenderApp({
 			navigationType: "userNavigation",
 			onFinish: vi.fn(),
@@ -743,8 +931,8 @@ describe("render runtime internals", () => {
 			}) as any,
 		});
 
-		expect(updateHeadElsSpy).toHaveBeenCalledWith("meta", []);
-		expect(updateHeadElsSpy).toHaveBeenCalledWith("rest", []);
+		expect(getManagedHeadElements("meta")).toEqual([]);
+		expect(getManagedHeadElements("rest")).toEqual([]);
 	});
 
 	it("commits a coherent runtime snapshot before route-change events are dispatched", async () => {
@@ -762,13 +950,20 @@ describe("render runtime internals", () => {
 			capturedSnapshots.push({
 				runtimeSnapshot: getRuntimeRouteSnapshot(),
 				legacySnapshot: {
-					matchedPatterns: __vormaClientGlobal.get("matchedPatterns"),
-					loadersData: __vormaClientGlobal.get("loadersData"),
-					clientLoadersData:
-						__vormaClientGlobal.get("clientLoadersData"),
-					outermostError: __vormaClientGlobal.get("outermostError"),
-					outermostErrorIdx:
-						__vormaClientGlobal.get("outermostErrorIdx"),
+					matchedPatterns: __vormaClientGlobal.get(
+						"runtimeRouteSnapshot",
+					).matchedPatterns,
+					loadersData: __vormaClientGlobal.get("runtimeRouteSnapshot")
+						.loadersData,
+					clientLoadersData: __vormaClientGlobal.get(
+						"runtimeRouteSnapshot",
+					).clientLoadersData,
+					outermostError: __vormaClientGlobal.get(
+						"runtimeRouteSnapshot",
+					).outermostError,
+					outermostErrorIdx: __vormaClientGlobal.get(
+						"runtimeRouteSnapshot",
+					).outermostErrorIdx,
 				},
 			});
 		};

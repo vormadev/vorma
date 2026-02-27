@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createAbortAwareFetchRecorder,
 	createRouteDataResponse,
-	installContractVormaGlobal,
 	loadClientAPI,
+	patchContractRuntimeRouteSnapshot,
 	requestInputToURL,
 	setupContractTestSuite,
 	waitForRequestCount,
@@ -174,8 +174,12 @@ describe("client utility contracts", () => {
 
 	it("uses configured root element id from SSR runtime state", async () => {
 		const api = await loadClientAPI();
-		const symbol = Symbol.for("__vorma_internal__");
-		(globalThis as any)[symbol].rootElementID = "app-root-custom";
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				rootElementID: "app-root-custom",
+			},
+		});
 
 		const root = document.createElement("div");
 		root.id = "app-root-custom";
@@ -257,11 +261,11 @@ describe("client utility contracts", () => {
 
 	it("returns current build ID from getBuildID()", async () => {
 		const api = await loadClientAPI();
-		const symbol = Symbol.for("__vorma_internal__");
-		const currentGlobal = (globalThis as any)[symbol];
-		installContractVormaGlobal({
-			...currentGlobal,
-			buildID: "test-build-12345",
+		patchContractRuntimeRouteSnapshot({
+			api,
+			patch: {
+				buildID: "test-build-12345",
+			},
 		});
 
 		expect(api.getBuildID()).toBe("test-build-12345");

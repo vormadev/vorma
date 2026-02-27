@@ -3,7 +3,7 @@ import {
 	getStoredScrollState,
 	restoreRecentPageRefreshScrollState,
 	saveStoredScrollState,
-} from "../../platform/scroll.ts";
+} from "../../runtime.ts";
 
 const STORAGE_KEY = "__vorma__scrollStateMap";
 

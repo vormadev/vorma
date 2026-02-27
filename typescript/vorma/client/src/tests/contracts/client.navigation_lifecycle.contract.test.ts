@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PatternWaitFn } from "../../app/context.ts";
+import type { PatternWaitFn } from "../../../src/runtime.ts";
 import {
 	createAbortAwareFetchRecorder,
 	createDeferred,
@@ -95,14 +95,17 @@ describe("client navigation lifecycle contracts", () => {
 		expect(speculativeSideEffects).toEqual(["executed"]);
 		expect(abortStatesAtFailure).toEqual([true]);
 		expect(requests[0]?.signal?.aborted).toBe(true);
-		expect(api.__vormaClientGlobal.get("clientLoadersData")).toEqual([]);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.clientLoadersData,
+		).toEqual([]);
 		expect(window.location.pathname).toBe("/fresh-target");
 		expect(document.title).toBe("Fresh Target");
 	});
 
 	it("clearAll aborts in-flight navigation and submit work, then returns idle", async () => {
 		const api = await loadClientAPI();
-		const { navigationStateManager } = await import("../../client.ts");
+		const { navigationStateManager } = await import("../../runtime.ts");
 		const { requests } = createAbortAwareFetchRecorder();
 
 		const { result, unhandledRejections } =
@@ -145,7 +148,7 @@ describe("client navigation lifecycle contracts", () => {
 
 	it("clearAll aborts in-flight prefetch and revalidation work, then returns idle", async () => {
 		const api = await loadClientAPI();
-		const { navigationStateManager } = await import("../../client.ts");
+		const { navigationStateManager } = await import("../../runtime.ts");
 		const { requests } = createAbortAwareFetchRecorder();
 		const prefetchHandlers = api.__getPrefetchHandlers({
 			href: "/clear-all-prefetch",
@@ -177,7 +180,7 @@ describe("client navigation lifecycle contracts", () => {
 
 	it("clearAll prevents late side effects from navigations whose fetch ignores abort", async () => {
 		const api = await loadClientAPI();
-		const { navigationStateManager } = await import("../../client.ts");
+		const { navigationStateManager } = await import("../../runtime.ts");
 		const fetchCall = createDeferredFetchCall();
 		const requestAnimationFrameSpy = vi.spyOn(
 			window,
@@ -220,7 +223,7 @@ describe("client navigation lifecycle contracts", () => {
 
 	it("clearAll prevents late side effects from prefetches whose fetch ignores abort", async () => {
 		const api = await loadClientAPI();
-		const { navigationStateManager } = await import("../../client.ts");
+		const { navigationStateManager } = await import("../../runtime.ts");
 		const fetchCall = createDeferredFetchCall();
 		const requestAnimationFrameSpy = vi.spyOn(
 			window,
@@ -273,7 +276,7 @@ describe("client navigation lifecycle contracts", () => {
 
 	it("remains operable after clearAll by allowing fresh navigation to complete", async () => {
 		const api = await loadClientAPI();
-		const { navigationStateManager } = await import("../../client.ts");
+		const { navigationStateManager } = await import("../../runtime.ts");
 		const firstFetchCall = createDeferredFetchCall();
 		vi.spyOn(window, "fetch")
 			.mockImplementationOnce(firstFetchCall.mock)
@@ -362,9 +365,10 @@ describe("client navigation lifecycle contracts", () => {
 		await vi.runAllTimersAsync();
 
 		expect(routeChangeListener).toHaveBeenCalledTimes(1);
-		expect(api.__vormaClientGlobal.get("clientLoadersData")).toEqual([
-			{ ready: true },
-		]);
+		expect(
+			api.__vormaClientGlobal.get("runtimeRouteSnapshot")
+				.clientLoadersData,
+		).toEqual([{ ready: true }]);
 
 		removeRouteChangeListener();
 	});
@@ -569,8 +573,7 @@ describe("client navigation lifecycle contracts", () => {
 		);
 
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
-		const { customHistoryListener } =
-			await import("../../platform/history.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",

@@ -1,18 +1,28 @@
 import { describe, expect, it } from "vitest";
+import type {
+	NavigationEntry,
+	NavigationOutcome,
+} from "../../../src/runtime.ts";
 import {
-	decideBuildIDSyncTimingForSuccessfulEntry,
+	buildNavigationOutcomeRuntimeCommandPlan,
+	buildNavigationPassRejectionRuntimeCommandPlan,
+	buildSuccessfulNavigationCleanupRuntimeCommandPlan,
+	buildSuccessfulNavigationPostAssetRuntimeCommandPlan,
+	buildSuccessfulNavigationPostWaitingRuntimeCommandPlan,
+	buildSuccessfulNavigationPreAssetWaitRuntimeCommandPlan,
+	buildSuccessfulNavigationPreWaitingRuntimeCommandPlan,
 	decideNavigationOutcomeExecutionPlan,
+	decideNavigationPassRejectionExecutionPlan,
 	decideSuccessfulNavigationCheckpointExecutionPlan,
 	decideSuccessfulNavigationCleanupExecutionPlan,
 	decideSuccessfulNavigationPostAssetExecutionPlan,
 	decideSuccessfulNavigationPreWaitingExecutionPlan,
+	reduceNavigationPassEvent,
+	reduceSuccessfulNavigationCheckpointEvent,
 	resolveNavigationEntryLifecycleState,
+	resolveSuccessfulEntryBuildIDSyncPolicy,
 	toPublicNavigateResult,
-} from "../../core/navigation/runtime_navigation_outcome_state_machine.ts";
-import type {
-	NavigationEntry,
-	NavigationOutcome,
-} from "../../core/navigation/types.ts";
+} from "../../runtime.ts";
 
 function createEntry(props: {
 	type: NavigationEntry["type"];
@@ -271,6 +281,251 @@ describe("navigation outcome state machine", () => {
 			didNavigate: false,
 		});
 	});
+
+	it("builds redirect runtime command plans with explicit command ordering", () => {
+		const redirectOutcome = createRedirectOutcome();
+		const entry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		const executionPlan = decideNavigationOutcomeExecutionPlan({
+			outcome: redirectOutcome,
+			targetUrl: entry.targetUrl,
+			entry,
+			expectedOperationID: entry.operationID,
+			currentHref: "http://localhost:3000/",
+		});
+		const commandPlan = buildNavigationOutcomeRuntimeCommandPlan({
+			executionPlan,
+			resolvedTargetUrl: entry.targetUrl,
+			navigationProps: {
+				href: "/target",
+				navigationType: "userNavigation",
+				redirectCount: 2,
+			},
+		});
+
+		expect(commandPlan.terminalResult).toEqual({
+			type: "committed_from_redirect",
+		});
+		expect(commandPlan.commands.map((command) => command.type)).toEqual([
+			"sync_redirect_build_id",
+			"delete_navigation",
+			"effectuate_redirect",
+		]);
+		const effectuateRedirectCommand = commandPlan.commands[2];
+		if (effectuateRedirectCommand?.type !== "effectuate_redirect") {
+			throw new Error("expected effectuate_redirect command");
+		}
+		expect(effectuateRedirectCommand.redirectCount).toBe(2);
+		expect(effectuateRedirectCommand.navigationProps).toMatchObject({
+			href: entry.targetUrl,
+			navigationType: entry.type,
+			scrollToTop: entry.scrollToTop,
+			replace: entry.replace,
+			state: entry.state,
+		});
+	});
+
+	it("builds delete-and-stop runtime command plans for aborted outcomes", () => {
+		const entry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+		});
+		const executionPlan = decideNavigationOutcomeExecutionPlan({
+			outcome: { type: "aborted" },
+			targetUrl: entry.targetUrl,
+			entry,
+			expectedOperationID: entry.operationID,
+			currentHref: "http://localhost:3000/",
+		});
+		const commandPlan = buildNavigationOutcomeRuntimeCommandPlan({
+			executionPlan,
+			resolvedTargetUrl: entry.targetUrl,
+			navigationProps: {
+				href: "/target",
+				navigationType: "userNavigation",
+			},
+		});
+
+		expect(commandPlan.terminalResult).toEqual({
+			type: "cancelled",
+			reason: "outcome_aborted",
+		});
+		expect(commandPlan.commands).toEqual([
+			{
+				type: "delete_navigation",
+				targetUrl: entry.targetUrl,
+				reason: "outcome_aborted",
+			},
+		]);
+	});
+});
+
+describe("navigation pass rejection plans", () => {
+	it("plans delete+report for owned rejected passes", () => {
+		const ownedEntry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+			targetUrl: "http://localhost:3000/rejected",
+		});
+		const executionPlan = decideNavigationPassRejectionExecutionPlan({
+			targetUrl: ownedEntry.targetUrl,
+			candidateEntry: ownedEntry,
+			expectedOperationID: ownedEntry.operationID,
+		});
+		expect(executionPlan).toEqual({
+			type: "deleteAndReport",
+			targetUrl: ownedEntry.targetUrl,
+			ownedEntry,
+		});
+		expect(
+			buildNavigationPassRejectionRuntimeCommandPlan({
+				executionPlan,
+			}),
+		).toEqual({
+			commands: [
+				{
+					type: "delete_navigation",
+					targetUrl: ownedEntry.targetUrl,
+					reason: "navigate_promise_rejected",
+				},
+			],
+			report: {
+				targetUrl: ownedEntry.targetUrl,
+				ownedEntry,
+			},
+		});
+	});
+
+	it("plans report-only for stale or missing ownership", () => {
+		const staleEntry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+			targetUrl: "http://localhost:3000/stale-rejected",
+		});
+		const staleExecutionPlan = decideNavigationPassRejectionExecutionPlan({
+			targetUrl: staleEntry.targetUrl,
+			candidateEntry: staleEntry,
+			expectedOperationID: staleEntry.operationID + 1,
+		});
+		expect(staleExecutionPlan).toEqual({
+			type: "report",
+			targetUrl: staleEntry.targetUrl,
+		});
+		expect(
+			buildNavigationPassRejectionRuntimeCommandPlan({
+				executionPlan: staleExecutionPlan,
+			}),
+		).toEqual({
+			commands: [],
+			report: {
+				targetUrl: staleEntry.targetUrl,
+				ownedEntry: undefined,
+			},
+		});
+
+		const missingExecutionPlan = decideNavigationPassRejectionExecutionPlan(
+			{
+				targetUrl: "http://localhost:3000/missing",
+				candidateEntry: undefined,
+				expectedOperationID: 42,
+			},
+		);
+		expect(missingExecutionPlan).toEqual({
+			type: "report",
+			targetUrl: "http://localhost:3000/missing",
+		});
+	});
+});
+
+describe("navigation pass reducer transitions", () => {
+	it("reduces resolved events into resolved command plans", () => {
+		const entry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+			targetUrl: "http://localhost:3000/reducer-target",
+		});
+		const redirectOutcome = createRedirectOutcome();
+		const transition = reduceNavigationPassEvent({
+			state: {
+				targetUrl: entry.targetUrl,
+				currentHref: "http://localhost:3000/current",
+				entry,
+				expectedOperationID: entry.operationID,
+			},
+			event: {
+				type: "outcome_resolved",
+				outcome: redirectOutcome,
+				navigationProps: {
+					href: "/reducer-target",
+					navigationType: "userNavigation",
+				},
+			},
+		});
+
+		expect(transition.type).toBe("resolved");
+		expect(transition.commandPlan.terminalResult).toEqual({
+			type: "committed_from_redirect",
+		});
+		expect(
+			transition.commandPlan.commands.map((command) => command.type),
+		).toEqual([
+			"sync_redirect_build_id",
+			"delete_navigation",
+			"effectuate_redirect",
+		]);
+	});
+
+	it("reduces rejected events into rejected delete-or-report plans", () => {
+		const ownedEntry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+			targetUrl: "http://localhost:3000/reducer-rejected",
+		});
+
+		const ownedTransition = reduceNavigationPassEvent({
+			state: {
+				targetUrl: ownedEntry.targetUrl,
+				currentHref: "http://localhost:3000/current",
+				entry: ownedEntry,
+				expectedOperationID: ownedEntry.operationID,
+			},
+			event: {
+				type: "outcome_rejected",
+			},
+		});
+		expect(ownedTransition.type).toBe("rejected");
+		expect(ownedTransition.commandPlan.commands).toEqual([
+			{
+				type: "delete_navigation",
+				targetUrl: ownedEntry.targetUrl,
+				reason: "navigate_promise_rejected",
+			},
+		]);
+		expect(ownedTransition.commandPlan.report).toEqual({
+			targetUrl: ownedEntry.targetUrl,
+			ownedEntry,
+		});
+
+		const staleTransition = reduceNavigationPassEvent({
+			state: {
+				targetUrl: ownedEntry.targetUrl,
+				currentHref: "http://localhost:3000/current",
+				entry: ownedEntry,
+				expectedOperationID: ownedEntry.operationID + 1,
+			},
+			event: {
+				type: "outcome_rejected",
+			},
+		});
+		expect(staleTransition.type).toBe("rejected");
+		expect(staleTransition.commandPlan.commands).toEqual([]);
+		expect(staleTransition.commandPlan.report).toEqual({
+			targetUrl: ownedEntry.targetUrl,
+			ownedEntry: undefined,
+		});
+	});
 });
 
 describe("successful outcome stage plans", () => {
@@ -335,6 +590,14 @@ describe("successful outcome stage plans", () => {
 			type: "stop",
 			reason: "non_current_entry",
 		});
+		expect(
+			buildSuccessfulNavigationPreWaitingRuntimeCommandPlan({
+				executionPlan: plan,
+			}),
+		).toEqual({
+			shouldStop: true,
+			commands: [],
+		});
 	});
 
 	it("pre-waiting deletes stale revalidation entries", () => {
@@ -354,6 +617,20 @@ describe("successful outcome stage plans", () => {
 			targetUrl: entry.targetUrl,
 			reason: "stale_revalidation_pre_waiting",
 		});
+		expect(
+			buildSuccessfulNavigationPreWaitingRuntimeCommandPlan({
+				executionPlan: plan,
+			}),
+		).toEqual({
+			shouldStop: true,
+			commands: [
+				{
+					type: "delete_navigation",
+					targetUrl: entry.targetUrl,
+					reason: "stale_revalidation_pre_waiting",
+				},
+			],
+		});
 	});
 
 	it("pre-waiting continues for idle prefetch entries that remain current", () => {
@@ -361,15 +638,62 @@ describe("successful outcome stage plans", () => {
 			type: "prefetch",
 			intent: "none",
 		});
-		expect(
-			decideSuccessfulNavigationPreWaitingExecutionPlan({
-				entry,
-				isCurrentEntry: true,
-				currentHref: "http://localhost:3000/current",
-			}),
-		).toEqual({
+		const plan = decideSuccessfulNavigationPreWaitingExecutionPlan({
+			entry,
+			isCurrentEntry: true,
+			currentHref: "http://localhost:3000/current",
+		});
+		expect(plan).toEqual({
 			type: "continue",
 			reason: "entry_current_and_fresh",
+		});
+		expect(
+			buildSuccessfulNavigationPreWaitingRuntimeCommandPlan({
+				executionPlan: plan,
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [{ type: "transition_to_waiting" }],
+		});
+	});
+
+	it("post-waiting command planner reflects ownership stop/continue states", () => {
+		const stopExecutionPlan =
+			decideSuccessfulNavigationCheckpointExecutionPlan({
+				checkpoint: "post_waiting",
+				entry: createEntry({
+					type: "userNavigation",
+					intent: "navigate",
+				}),
+				isCurrentEntry: false,
+				currentHref: "http://localhost:3000/current",
+			}).plan;
+		expect(
+			buildSuccessfulNavigationPostWaitingRuntimeCommandPlan({
+				executionPlan: stopExecutionPlan,
+			}),
+		).toEqual({
+			shouldStop: true,
+			commands: [],
+		});
+
+		const continueExecutionPlan =
+			decideSuccessfulNavigationCheckpointExecutionPlan({
+				checkpoint: "post_waiting",
+				entry: createEntry({
+					type: "userNavigation",
+					intent: "navigate",
+				}),
+				isCurrentEntry: true,
+				currentHref: "http://localhost:3000/current",
+			}).plan;
+		expect(
+			buildSuccessfulNavigationPostWaitingRuntimeCommandPlan({
+				executionPlan: continueExecutionPlan,
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [],
 		});
 	});
 
@@ -378,30 +702,51 @@ describe("successful outcome stage plans", () => {
 			type: "userNavigation",
 			intent: "navigate",
 		});
-		expect(
+		const renderExecutionPlan =
 			decideSuccessfulNavigationPostAssetExecutionPlan({
 				entry: activeEntry,
 				isCurrentEntry: true,
 				currentHref: "http://localhost:3000/current",
-			}),
-		).toEqual({
+			});
+		expect(renderExecutionPlan).toEqual({
 			type: "render",
 			reason: "post_asset_render",
+		});
+		expect(
+			buildSuccessfulNavigationPostAssetRuntimeCommandPlan({
+				executionPlan: renderExecutionPlan,
+				shouldSyncBuildIDAfterAssetWaitIfNotStopped: true,
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [
+				{ type: "sync_build_id_from_response" },
+				{ type: "render_navigation" },
+			],
 		});
 
 		const prefetchEntry = createEntry({
 			type: "prefetch",
 			intent: "none",
 		});
-		expect(
+		const completeWithoutRenderExecutionPlan =
 			decideSuccessfulNavigationPostAssetExecutionPlan({
 				entry: prefetchEntry,
 				isCurrentEntry: true,
 				currentHref: "http://localhost:3000/current",
-			}),
-		).toEqual({
+			});
+		expect(completeWithoutRenderExecutionPlan).toEqual({
 			type: "completeWithoutRender",
 			reason: "post_asset_idle_prefetch",
+		});
+		expect(
+			buildSuccessfulNavigationPostAssetRuntimeCommandPlan({
+				executionPlan: completeWithoutRenderExecutionPlan,
+				shouldSyncBuildIDAfterAssetWaitIfNotStopped: false,
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [{ type: "transition_to_complete" }],
 		});
 	});
 
@@ -412,15 +757,24 @@ describe("successful outcome stage plans", () => {
 			originUrl: "http://localhost:3000/origin",
 		});
 
-		expect(
+		const stopExecutionPlan =
 			decideSuccessfulNavigationPostAssetExecutionPlan({
 				entry: staleRevalidationEntry,
 				isCurrentEntry: true,
 				currentHref: "http://localhost:3000/other",
-			}),
-		).toEqual({
+			});
+		expect(stopExecutionPlan).toEqual({
 			type: "stop",
 			reason: "post_asset_stale_revalidation",
+		});
+		expect(
+			buildSuccessfulNavigationPostAssetRuntimeCommandPlan({
+				executionPlan: stopExecutionPlan,
+				shouldSyncBuildIDAfterAssetWaitIfNotStopped: true,
+			}),
+		).toEqual({
+			shouldStop: true,
+			commands: [],
 		});
 	});
 
@@ -430,15 +784,29 @@ describe("successful outcome stage plans", () => {
 			intent: "navigate",
 			targetUrl: "http://localhost:3000/cleanup-target",
 		});
-		expect(
+		const deleteExecutionPlan =
 			decideSuccessfulNavigationCleanupExecutionPlan({
 				entry: activeEntry,
 				isCurrentEntry: true,
-			}),
-		).toEqual({
+			});
+		expect(deleteExecutionPlan).toEqual({
 			type: "deleteNavigation",
 			targetUrl: "http://localhost:3000/cleanup-target",
 			reason: "successful_navigation_cleanup",
+		});
+		expect(
+			buildSuccessfulNavigationCleanupRuntimeCommandPlan({
+				executionPlan: deleteExecutionPlan,
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [
+				{
+					type: "delete_navigation",
+					targetUrl: "http://localhost:3000/cleanup-target",
+					reason: "successful_navigation_cleanup",
+				},
+			],
 		});
 
 		const idlePrefetchEntry = createEntry({
@@ -446,14 +814,22 @@ describe("successful outcome stage plans", () => {
 			intent: "none",
 			targetUrl: "http://localhost:3000/prefetch-cleanup-target",
 		});
-		expect(
+		const skipIdlePrefetchExecutionPlan =
 			decideSuccessfulNavigationCleanupExecutionPlan({
 				entry: idlePrefetchEntry,
 				isCurrentEntry: true,
-			}),
-		).toEqual({
+			});
+		expect(skipIdlePrefetchExecutionPlan).toEqual({
 			type: "skip",
 			reason: "cleanup_skipped_idle_prefetch_or_non_current_entry",
+		});
+		expect(
+			buildSuccessfulNavigationCleanupRuntimeCommandPlan({
+				executionPlan: skipIdlePrefetchExecutionPlan,
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [],
 		});
 
 		expect(
@@ -534,6 +910,90 @@ describe("successful outcome stage plans", () => {
 			},
 		});
 	});
+
+	it("reduces successful-navigation checkpoint events through one reducer seam", () => {
+		const currentEntry = createEntry({
+			type: "userNavigation",
+			intent: "navigate",
+			targetUrl: "http://localhost:3000/current",
+		});
+		expect(
+			reduceSuccessfulNavigationCheckpointEvent({
+				event: {
+					checkpoint: "pre_waiting",
+					entry: currentEntry,
+					isCurrentEntry: true,
+					currentHref: "http://localhost:3000/current",
+				},
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [{ type: "transition_to_waiting" }],
+		});
+
+		expect(
+			reduceSuccessfulNavigationCheckpointEvent({
+				event: {
+					checkpoint: "post_waiting",
+					entry: currentEntry,
+					isCurrentEntry: false,
+					currentHref: "http://localhost:3000/current",
+				},
+			}),
+		).toEqual({
+			shouldStop: true,
+			commands: [],
+		});
+
+		expect(
+			reduceSuccessfulNavigationCheckpointEvent({
+				event: {
+					checkpoint: "pre_asset_wait",
+					shouldSyncBuildIDBeforeAssetWait: true,
+				},
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [{ type: "sync_build_id_from_response" }],
+		});
+
+		expect(
+			reduceSuccessfulNavigationCheckpointEvent({
+				event: {
+					checkpoint: "post_asset",
+					entry: currentEntry,
+					isCurrentEntry: true,
+					currentHref: "http://localhost:3000/current",
+					shouldSyncBuildIDAfterAssetWaitIfNotStopped: true,
+				},
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [
+				{ type: "sync_build_id_from_response" },
+				{ type: "render_navigation" },
+			],
+		});
+
+		expect(
+			reduceSuccessfulNavigationCheckpointEvent({
+				event: {
+					checkpoint: "cleanup",
+					entry: currentEntry,
+					isCurrentEntry: true,
+				},
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [
+				{
+					type: "delete_navigation",
+					targetUrl: currentEntry.targetUrl,
+					reason: "successful_navigation_cleanup",
+				},
+			],
+		});
+	});
 });
 
 describe("internal navigate result mapping", () => {
@@ -572,19 +1032,41 @@ describe("build-id sync timing policy", () => {
 			intent: "none",
 		});
 		expect(
-			decideBuildIDSyncTimingForSuccessfulEntry({
+			resolveSuccessfulEntryBuildIDSyncPolicy({
 				entry: idlePrefetchEntry,
 			}),
-		).toBe("before_asset_wait");
+		).toEqual({
+			shouldSyncBuildIDBeforeAssetWait: true,
+			shouldSyncBuildIDAfterAssetWaitIfNotStopped: false,
+		});
 
 		const navigationEntry = createEntry({
 			type: "userNavigation",
 			intent: "navigate",
 		});
 		expect(
-			decideBuildIDSyncTimingForSuccessfulEntry({
+			resolveSuccessfulEntryBuildIDSyncPolicy({
 				entry: navigationEntry,
 			}),
-		).toBe("after_asset_wait_if_not_stopped");
+		).toEqual({
+			shouldSyncBuildIDBeforeAssetWait: false,
+			shouldSyncBuildIDAfterAssetWaitIfNotStopped: true,
+		});
+		expect(
+			buildSuccessfulNavigationPreAssetWaitRuntimeCommandPlan({
+				shouldSyncBuildIDBeforeAssetWait: true,
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [{ type: "sync_build_id_from_response" }],
+		});
+		expect(
+			buildSuccessfulNavigationPreAssetWaitRuntimeCommandPlan({
+				shouldSyncBuildIDBeforeAssetWait: false,
+			}),
+		).toEqual({
+			shouldStop: false,
+			commands: [],
+		});
 	});
 });

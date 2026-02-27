@@ -11,7 +11,7 @@ export const DIST_TEST_VORMA_APP_CONFIG = {
 
 type DistGlobalRecord = Record<PropertyKey, unknown>;
 
-export type DistTestVormaInternal = {
+export type DistTestRuntimeRouteSnapshot = {
 	buildID: string;
 	matchedPatterns: string[];
 	loadersData: unknown[];
@@ -29,12 +29,16 @@ export type DistTestVormaInternal = {
 	outermostClientErrorIdx: number | undefined;
 	outermostError: unknown;
 	outermostErrorIdx: number | undefined;
+	rootElementID: string | undefined;
+	clientLoadersData: unknown[];
+};
+
+export type DistTestVormaInternal = {
 	isDev: boolean;
 	viteDevURL: string;
 	publicPathPrefix: string;
 	isTouchDevice: boolean;
 	patternToWaitFnMap: Record<string, unknown>;
-	clientLoadersData: unknown[];
 	defaultErrorBoundary: () => null;
 	useViewTransitions: boolean;
 	deploymentID: string;
@@ -42,8 +46,20 @@ export type DistTestVormaInternal = {
 	routeManifestURL: string;
 	routeManifest: unknown;
 	patternRegistry: unknown;
-	runtimeRouteSnapshot?: Record<string, unknown>;
+	runtimeRouteSnapshot: DistTestRuntimeRouteSnapshot;
 };
+
+export function patchDistRuntimeRouteSnapshot(props: {
+	globals: DistTestVormaInternal;
+	patch: Partial<DistTestRuntimeRouteSnapshot>;
+}): DistTestRuntimeRouteSnapshot {
+	const nextSnapshot: DistTestRuntimeRouteSnapshot = {
+		...props.globals.runtimeRouteSnapshot,
+		...props.patch,
+	};
+	props.globals.runtimeRouteSnapshot = nextSnapshot;
+	return nextSnapshot;
+}
 
 export function installDistTestVormaGlobal(): DistTestVormaInternal {
 	const patternRegistry = createPatternRegistry({
@@ -54,29 +70,11 @@ export function installDistTestVormaGlobal(): DistTestVormaInternal {
 	});
 
 	const globals = {
-		buildID: "1",
-		matchedPatterns: [],
-		loadersData: [],
-		importURLs: [],
-		exportKeys: [],
-		errorExportKeys: [],
-		hasRootData: false,
-		params: {},
-		splatValues: [],
-		activeComponents: [],
-		activeErrorBoundary: undefined,
-		outermostServerError: undefined,
-		outermostClientError: undefined,
-		outermostServerErrorIdx: undefined,
-		outermostClientErrorIdx: undefined,
-		outermostError: undefined,
-		outermostErrorIdx: undefined,
 		isDev: false,
 		viteDevURL: "",
 		publicPathPrefix: "",
 		isTouchDevice: false,
 		patternToWaitFnMap: {},
-		clientLoadersData: [],
 		defaultErrorBoundary: () => null,
 		useViewTransitions: false,
 		deploymentID: "",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildServerSuccessPreloadPlan } from "../../core/navigation/fetch_route_data_server.ts";
+import { buildServerSuccessPreloadPlan } from "../../runtime.ts";
 
 describe("server-success preload plan builder", () => {
 	it("returns empty preload plan for aborted preloads", () => {
@@ -32,18 +32,30 @@ describe("server-success preload plan builder", () => {
 		});
 	});
 
-	it("filters empty or non-string preload entries", () => {
+	it("filters empty-string preload entries", () => {
 		const preloadPlan = buildServerSuccessPreloadPlan({
 			signalAborted: false,
 			isDev: false,
 			importURLs: [],
-			deps: ["", "/a.js", null as unknown as string],
-			cssBundles: ["", "/a.css", null as unknown as string],
+			deps: ["", "/a.js"],
+			cssBundles: ["", "/a.css"],
 		});
 
 		expect(preloadPlan).toEqual({
 			moduleDependencies: ["/a.js"],
 			cssBundles: ["/a.css"],
 		});
+	});
+
+	it("fails loud for non-string preload entries that violate the typed contract", () => {
+		expect(() =>
+			buildServerSuccessPreloadPlan({
+				signalAborted: false,
+				isDev: false,
+				importURLs: [],
+				deps: ["/a.js", null as unknown as string],
+				cssBundles: ["/a.css"],
+			}),
+		).toThrow("Cannot read properties of null");
 	});
 });

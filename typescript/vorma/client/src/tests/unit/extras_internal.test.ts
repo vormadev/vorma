@@ -1,88 +1,125 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPatternRegistry } from "vorma/kit/matcher/register";
+import {
+	__vormaClientGlobal,
+	findPartialMatchesOnClient,
+	registerClientLoaderForAdapter,
+	VORMA_SYMBOL,
+} from "../../runtime.ts";
 
-const { setClientLoaderWaitFnSpy, registerClientLoaderPatternOrThrowSpy } =
-	vi.hoisted(() => {
-		return {
-			setClientLoaderWaitFnSpy: vi.fn(),
-			registerClientLoaderPatternOrThrowSpy: vi.fn(),
-		};
-	});
+const TEST_VORMA_APP_CONFIG = {
+	actionsRouterMountRoot: "/api/",
+	actionsDynamicRune: ":",
+	actionsSplatRune: "*",
+	loadersDynamicRune: ":",
+	loadersSplatRune: "*",
+	loadersExplicitIndexSegmentIdentifier: "_index",
+};
 
-vi.mock("../../app/context.ts", async (importOriginal) => {
-	const actual =
-		await importOriginal<typeof import("../../app/context.ts")>();
-	return {
-		...actual,
-		__vormaClientGlobal: {
-			get: vi.fn(),
-			set: vi.fn(),
+function installVormaGlobalForClientLoaderAdapterTests(props?: {
+	patternRegistry?: unknown;
+}) {
+	const patternRegistry =
+		props?.patternRegistry === undefined
+			? createPatternRegistry({
+					dynamicParamPrefixRune:
+						TEST_VORMA_APP_CONFIG.loadersDynamicRune,
+					splatSegmentRune: TEST_VORMA_APP_CONFIG.loadersSplatRune,
+					explicitIndexSegment:
+						TEST_VORMA_APP_CONFIG.loadersExplicitIndexSegmentIdentifier,
+				})
+			: props.patternRegistry;
+
+	(globalThis as any)[VORMA_SYMBOL] = {
+		isDev: false,
+		viteDevURL: "",
+		publicPathPrefix: "",
+		isTouchInputModalityActive: false,
+		patternToWaitFnMap: {},
+		defaultErrorBoundary: () => null,
+		useViewTransitions: false,
+		deploymentID: "",
+		vormaAppConfig: TEST_VORMA_APP_CONFIG,
+		routeManifestURL: "",
+		routeManifest: undefined,
+		patternRegistry,
+		runtimeRouteSnapshot: {
+			outermostServerError: undefined,
+			outermostServerErrorIdx: undefined,
+			matchedPatterns: [],
+			loadersData: [],
+			importURLs: [],
+			exportKeys: [],
+			errorExportKeys: [],
+			hasRootData: false,
+			params: {},
+			splatValues: [],
+			outermostClientError: undefined,
+			outermostClientErrorIdx: undefined,
+			outermostError: undefined,
+			outermostErrorIdx: undefined,
+			buildID: "1",
+			rootElementID: undefined,
+			activeComponents: [],
+			activeErrorBoundary: undefined,
+			clientLoadersData: [],
 		},
-		setClientLoaderWaitFn: setClientLoaderWaitFnSpy,
 	};
-});
-
-vi.mock("../../core/render_runtime.ts", () => {
-	return {
-		registerClientLoaderPatternOrThrow:
-			registerClientLoaderPatternOrThrowSpy,
-		setupClientLoaders: vi.fn(async () => {}),
-	};
-});
-
-import { __registerClientLoaderForAdapter } from "../../core/extras.ts";
+}
 
 describe("client loader adapter registration", () => {
 	beforeEach(() => {
-		setClientLoaderWaitFnSpy.mockReset();
-		registerClientLoaderPatternOrThrowSpy.mockReset();
+		installVormaGlobalForClientLoaderAdapterTests();
 	});
 
-	it("registers pattern before installing wait function", () => {
+	it("registers pattern and installs the wait function", async () => {
 		const waitFn = vi.fn(async () => "ok");
-		__registerClientLoaderForAdapter({
+		registerClientLoaderForAdapter({
 			pattern: "/items/:id",
 			waitFn: waitFn as any,
 		});
 
-		expect(registerClientLoaderPatternOrThrowSpy).toHaveBeenCalledTimes(1);
-		expect(registerClientLoaderPatternOrThrowSpy).toHaveBeenCalledWith(
-			"/items/:id",
-		);
-		expect(setClientLoaderWaitFnSpy).toHaveBeenCalledTimes(1);
-		expect(setClientLoaderWaitFnSpy).toHaveBeenCalledWith(
-			"/items/:id",
-			waitFn,
-		);
+		const patternToWaitFnMap =
+			__vormaClientGlobal.get("patternToWaitFnMap");
+		expect(patternToWaitFnMap["/items/:id"]).toBe(waitFn);
+		await expect(
+			findPartialMatchesOnClient("/items/123"),
+		).resolves.toMatchObject({
+			matches: [
+				{
+					registeredPattern: {
+						originalPattern: "/items/:id",
+					},
+				},
+			],
+		});
 	});
 
 	it("throws with pattern context when registration fails", () => {
-		const registrationError = new Error(
-			"Pattern registry has not been initialized.",
-		);
-		registerClientLoaderPatternOrThrowSpy.mockImplementation(() => {
-			throw registrationError;
+		installVormaGlobalForClientLoaderAdapterTests({
+			patternRegistry: null,
 		});
 
 		expect(() => {
-			__registerClientLoaderForAdapter({
+			registerClientLoaderForAdapter({
 				pattern: "/broken",
 				waitFn: vi.fn(async () => "ok") as any,
 			});
 		}).toThrow(
 			'Failed to register client loader pattern "/broken": Pattern registry has not been initialized.',
 		);
-		expect(setClientLoaderWaitFnSpy).not.toHaveBeenCalled();
+
+		expect(__vormaClientGlobal.get("patternToWaitFnMap")).toEqual({});
 	});
 
 	it("delegates failures to onRegistrationError without installing wait function", () => {
-		const registrationError = new Error("invalid pattern");
-		registerClientLoaderPatternOrThrowSpy.mockImplementation(() => {
-			throw registrationError;
+		installVormaGlobalForClientLoaderAdapterTests({
+			patternRegistry: null,
 		});
 		const onRegistrationError = vi.fn();
 
 		expect(() => {
-			__registerClientLoaderForAdapter({
+			registerClientLoaderForAdapter({
 				pattern: "/broken",
 				waitFn: vi.fn(async () => "ok") as any,
 				onRegistrationError,
@@ -90,7 +127,10 @@ describe("client loader adapter registration", () => {
 		}).not.toThrow();
 
 		expect(onRegistrationError).toHaveBeenCalledTimes(1);
-		expect(onRegistrationError).toHaveBeenCalledWith(registrationError);
-		expect(setClientLoaderWaitFnSpy).not.toHaveBeenCalled();
+		expect(onRegistrationError.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+		expect((onRegistrationError.mock.calls[0]?.[0] as Error).message).toBe(
+			"Pattern registry has not been initialized.",
+		);
+		expect(__vormaClientGlobal.get("patternToWaitFnMap")).toEqual({});
 	});
 });

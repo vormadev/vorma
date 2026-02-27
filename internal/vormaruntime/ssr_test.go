@@ -64,13 +64,13 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 		`<script type="module">`,
 		`Symbol.for("__vorma_internal__")`,
 		`x.isDev =`,
-		`x.buildID = "build-ssr";`,
-		`x.rootElementID = "vorma-root";`,
+		`x.runtimeRouteSnapshot = {`,
+		`buildID: "build-ssr",`,
+		`rootElementID: "vorma-root",`,
 		`x.publicPathPrefix = "\/static\/";`,
 		`x.routeManifestURL = "/static/vorma_out/route-manifest.js";`,
-		`x.matchedPatterns = ["/items/:id"];`,
-		`x.importURLs = ["/vorma_out/routes/items.$id.js"];`,
-		`x.cssBundles = ["vorma_out/chunk-items.css"];`,
+		`matchedPatterns: ["/items/:id"],`,
+		`importURLs: ["/vorma_out/routes/items.$id.js"],`,
 	} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf(

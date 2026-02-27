@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	__resolvePath,
 	buildMutationURL,
 	buildQueryURL,
 	resolveBody,
+	resolvePath,
 	resolveVormaPath,
 	resolveVormaRequestBody,
-} from "../../app/helpers.ts";
+} from "../../runtime.ts";
 
 describe("resolveVormaRequestBody", () => {
 	afterEach(() => {
@@ -380,8 +380,8 @@ describe("URL and wrapper helper exports", () => {
 		);
 	});
 
-	it("resolves query and mutation paths using action runes via __resolvePath", () => {
-		const queryPath = __resolvePath({
+	it("resolves query and mutation paths using action runes via resolvePath", () => {
+		const queryPath = resolvePath({
 			vormaAppConfig: CUSTOM_RUNE_CONFIG,
 			type: "query",
 			props: {
@@ -392,7 +392,7 @@ describe("URL and wrapper helper exports", () => {
 				splatValues: ["docs/reports", "2026"],
 			},
 		} as any);
-		const mutationPath = __resolvePath({
+		const mutationPath = resolvePath({
 			vormaAppConfig: CUSTOM_RUNE_CONFIG,
 			type: "mutation",
 			props: {

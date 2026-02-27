@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createRevalidationTriggerTimestampRuntime,
 	reduceRevalidationTriggerTimestampState,
-} from "../../client.ts";
+} from "../../runtime.ts";
 
 describe("revalidation trigger timestamp state machine", () => {
 	it("reduces committed intent events to the committed timestamp", () => {
